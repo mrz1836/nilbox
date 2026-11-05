@@ -1,7 +1,7 @@
 // Package repoguard holds repository-wide guard tests. They scan the source tree for
 // patterns this project forbids: a hard-coded product name outside internal/brand,
-// personal home-directory paths, schema creation from models instead of migrations, and
-// a data layer that needs CGO.
+// personal home-directory paths, schema creation from models instead of migrations, a
+// data layer that needs CGO, and tests that would call the live GitHub API.
 //
 // The package has no production code; everything lives in its tests, which run with the
 // rest of the suite on every platform.

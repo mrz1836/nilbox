@@ -275,3 +275,24 @@ func TestNoHardcodedProductName(t *testing.T) {
 
 	assert.Empty(t, found, "reference brand.Name and brand.Slug instead of writing the product name")
 }
+
+func TestNoLiveGitHubCallsInTests(t *testing.T) {
+	root := moduleRoot(t)
+
+	// Built from parts so this file does not match itself.
+	needle := "api." + "github" + ".com"
+
+	var found []string
+
+	for _, rel := range goFiles(t, root) {
+		if !strings.HasSuffix(rel, "_test.go") {
+			continue
+		}
+
+		if text, ok := readText(t, root, rel); ok {
+			found = append(found, hits(rel, text, func(line string) bool { return strings.Contains(line, needle) })...)
+		}
+	}
+
+	assert.Empty(t, found, "tests use local httptest servers or fakes, never the live GitHub API")
+}
