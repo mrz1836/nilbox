@@ -296,3 +296,54 @@ func TestNoLiveGitHubCallsInTests(t *testing.T) {
 
 	assert.Empty(t, found, "tests use local httptest servers or fakes, never the live GitHub API")
 }
+
+// branchDeleteNeedles are the ways Go code could spell a branch deletion: an argv
+// ("branch", "-d") or a command string (branch -D), with each delete flag. They are built
+// from parts so this file does not match itself.
+func branchDeleteNeedles() []string {
+	verb := "bran" + "ch"
+	flags := []string{"-" + "d", "-" + "D", "--" + "delete"}
+	needles := make([]string, 0, len(flags)*5)
+
+	for _, flag := range flags {
+		needles = append(needles,
+			`"`+verb+`", "`+flag+`"`,
+			`"`+verb+`","`+flag+`"`,
+			verb+" "+flag+" ",
+			verb+" "+flag+`"`,
+			verb+" "+flag+"`",
+		)
+	}
+
+	return needles
+}
+
+// containsAny reports whether line contains any of needles.
+func containsAny(line string, needles []string) bool {
+	for _, needle := range needles {
+		if strings.Contains(line, needle) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func TestNoBranchDeletion(t *testing.T) {
+	root := moduleRoot(t)
+	needles := branchDeleteNeedles()
+
+	var found []string
+
+	for _, rel := range goFiles(t, root) {
+		if strings.HasSuffix(rel, "_test.go") {
+			continue
+		}
+
+		if text, ok := readText(t, root, rel); ok {
+			found = append(found, hits(rel, text, func(line string) bool { return containsAny(line, needles) })...)
+		}
+	}
+
+	assert.Empty(t, found, "removing worktrees must never delete a branch")
+}
