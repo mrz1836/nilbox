@@ -34,8 +34,8 @@ dist
 coverage.txt
 coverage.out
 
-# Fuzz Tests
-testdata
+# Fuzz test corpora (recorded test fixtures under testdata/ are committed)
+**/testdata/fuzz/
 
 # Node modules
 node_modules/
@@ -43,3 +43,7 @@ node_modules/
 # Build output and local build caches
 /bin/
 .mage-cache/
+
+# Frontend build artifacts
+frontend/coverage/
+*.tsbuildinfo
