@@ -573,13 +573,26 @@ func reasonOf(err error) string {
 	return err.Error()
 }
 
-// resolvedPath returns path with symlinks resolved, or cleaned when it does not exist.
+// resolvedPath returns path with symlinks resolved. A path that no longer exists, such as
+// a deleted worktree, is resolved through its nearest existing parent, so it still matches
+// the form git reports for it. A path with no existing parent is only cleaned.
 func resolvedPath(path string) string {
-	if resolved, err := filepath.EvalSymlinks(path); err == nil {
-		return resolved
-	}
+	clean := filepath.Clean(path)
 
-	return filepath.Clean(path)
+	for dir := clean; ; dir = filepath.Dir(dir) {
+		if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+			rest, relErr := filepath.Rel(dir, clean)
+			if relErr != nil {
+				return clean
+			}
+
+			return filepath.Join(resolved, rest)
+		}
+
+		if filepath.Dir(dir) == dir {
+			return clean
+		}
+	}
 }
 
 // samePath reports whether two paths name the same directory.

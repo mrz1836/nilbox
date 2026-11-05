@@ -647,3 +647,33 @@ func TestServiceErrors(t *testing.T) {
 		assert.True(t, row.CanRemove, "git's own check still guards a remove")
 	})
 }
+
+func TestResolvedPathThroughALink(t *testing.T) {
+	target := t.TempDir()
+	link := filepath.Join(t.TempDir(), "link")
+	require.NoError(t, os.Symlink(target, link))
+
+	realDir := resolvedPath(target)
+	require.NoError(t, os.MkdirAll(filepath.Join(target, "kept"), 0o700))
+
+	tests := []struct {
+		name string
+		path string
+		want string
+	}{
+		{name: "existing directory", path: filepath.Join(link, "kept"), want: filepath.Join(realDir, "kept")},
+		{name: "deleted directory", path: filepath.Join(link, "gone"), want: filepath.Join(realDir, "gone")},
+		{name: "deleted nested directory", path: filepath.Join(link, "a", "b"), want: filepath.Join(realDir, "a", "b")},
+		{name: "unclean path", path: link + "/kept/../gone/", want: filepath.Join(realDir, "gone")},
+		{name: "relative path", path: "no-such-dir/x", want: filepath.Join("no-such-dir", "x")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, resolvedPath(tt.path))
+		})
+	}
+
+	assert.True(t, samePath(filepath.Join(link, "gone"), filepath.Join(realDir, "gone")))
+	assert.False(t, samePath(filepath.Join(link, "gone"), filepath.Join(realDir, "kept")))
+}
