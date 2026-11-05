@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	github.com/glebarez/go-sqlite v1.21.2
 	github.com/glebarez/sqlite v1.11.0
+	github.com/magefile/mage v1.17.2
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/sync v0.24.0
 	gorm.io/gorm v1.31.2
