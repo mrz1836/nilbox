@@ -71,8 +71,8 @@ var (
 	errNoLintVersion = errors.New("the golangci-lint version is not pinned")
 )
 
-// App groups the targets for the desktop app: bindings, lint, dev run, and the macOS
-// bundle.
+// App groups the targets for the desktop app: bindings, lint, dev run, and building and
+// opening the macOS bundle.
 type App mg.Namespace
 
 // Bindings regenerates the TypeScript bindings for the services the desktop shell binds.
@@ -234,6 +234,28 @@ func (App) Build() error {
 	}
 
 	return reportSize(bundle, exe)
+}
+
+// Open opens the macOS app bundle, bin/<Name>.app, building it first when it is missing.
+// It opens the bundle as it is, so run `magex app:build` first after a change; when the
+// app is already running, macOS brings its window to the front instead.
+//
+//	magex app:open
+func (App) Open() error {
+	bundle, _, err := appBundle()
+	if errors.Is(err, errNoBundle) {
+		if err = (App{}).Build(); err != nil {
+			return err
+		}
+
+		bundle, _, err = appBundle()
+	}
+
+	if err != nil {
+		return err
+	}
+
+	return sh.RunV("open", bundle)
 }
 
 // Check runs every desktop check: the bindings drift check, the desktop lint, and the
