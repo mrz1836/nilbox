@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -37,6 +37,13 @@ beforeEach(() => {
   platform.getAppInfo.mockResolvedValue({ name: brand.name, tagline: brand.tagline, version: 'dev' })
 })
 
+// rowOptions opens the inbox row's launch options and returns queries scoped to them.
+async function rowOptions() {
+  await userEvent.click(await screen.findByRole('button', { name: /^Launch options/ }))
+
+  return within(screen.getByRole('dialog', { name: 'Launch options' }))
+}
+
 // openSettingsFromMenu opens the settings page the way a person would: the account menu.
 async function openSettingsFromMenu() {
   await userEvent.click(await screen.findByRole('button', { name: 'Account: octo-user' }))
@@ -71,8 +78,11 @@ describe('App', () => {
     render(<App />)
 
     expect(await screen.findByRole('button', { name: 'Open in Claude' })).toBeInTheDocument()
-    expect(screen.getByRole('combobox', { name: 'Profile' })).toHaveValue('work')
-    expect(screen.getByRole('checkbox', { name: 'Start in a worktree' })).not.toBeChecked()
+    expect(screen.getByRole('button', { name: /^Launch options/ })).toHaveAccessibleName('Launch options: work')
+
+    const options = await rowOptions()
+    expect(options.getByRole('radio', { name: 'work' })).toBeChecked()
+    expect(options.getByRole('checkbox', { name: 'Start in a worktree' })).not.toBeChecked()
   })
 
   it('switches between the inbox and the worktrees view', async () => {
@@ -114,14 +124,15 @@ describe('App', () => {
 
   it('applies a new launch default to the inbox rows', async () => {
     render(<App />)
-    expect(await screen.findByRole('checkbox', { name: 'Start in a worktree' })).not.toBeChecked()
+    expect((await rowOptions()).getByRole('checkbox', { name: 'Start in a worktree' })).not.toBeChecked()
+    await userEvent.keyboard('{Escape}')
 
     await openSettingsFromMenu()
     await userEvent.click(screen.getByRole('button', { name: 'Launching' }))
     await userEvent.click(screen.getByRole('switch', { name: 'Start in a worktree' }))
     await userEvent.keyboard('{Escape}')
 
-    expect(await screen.findByRole('checkbox', { name: 'Start in a worktree' })).toBeChecked()
+    expect((await rowOptions()).getByRole('checkbox', { name: 'Start in a worktree' })).toBeChecked()
   })
 
   it('opens the settings with ⌘, and returns to the view it came from', async () => {

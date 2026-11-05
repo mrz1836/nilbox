@@ -8,9 +8,13 @@ export {
 
 export type {
     Account,
+    Checks,
+    Details,
     Item,
+    Label,
     List,
     Rate,
     RateGauge,
+    Reviews,
     Snapshot
 } from "./models.js";

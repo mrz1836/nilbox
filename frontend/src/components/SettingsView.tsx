@@ -1,7 +1,7 @@
 import { useEffect, useId, useState, type ReactNode, type SubmitEvent } from 'react'
 
 import { brand } from '../generated/brand'
-import { errorMessage } from '../lib/format'
+import { counted, errorMessage } from '../lib/format'
 import {
   getAppInfo,
   openInBrowser,
@@ -262,11 +262,6 @@ function LaunchingSection({ settings, profiles, onSaved }: SettingsSectionProps 
       </SettingRow>
     </Group>
   )
-}
-
-// counted reads a count with its noun, e.g. "1 extra directory" or "2 extra directories".
-function counted(n: number, one: string, many: string): string {
-  return `${String(n)} ${n === 1 ? one : many}`
 }
 
 // profileTraits lists what a profile sets for a session, in the order a row shows them:

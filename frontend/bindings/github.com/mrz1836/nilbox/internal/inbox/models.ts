@@ -28,6 +28,51 @@ export interface Account {
 }
 
 /**
+ * Checks counts the head commit's check runs and commit statuses by outcome.
+ */
+export interface Checks {
+    /**
+     * State is GitHub's overall result: SUCCESS, FAILURE, ERROR, PENDING, or EXPECTED,
+     * and "" when the head commit has no checks.
+     */
+    "state": string;
+    "passed": number;
+    "failed": number;
+    "pending": number;
+    "skipped": number;
+}
+
+/**
+ * Details is what an item's inbox card shows beyond its title. The pull request fields
+ * are zero, or "", for an issue.
+ */
+export interface Details {
+    "labels": Label[] | null;
+
+    /**
+     * Comments counts the conversation's comments, review comments included for a pull
+     * request.
+     */
+    "comments": number;
+    "additions": number;
+    "deletions": number;
+    "changedFiles": number;
+    "commits": number;
+
+    /**
+     * Mergeable is MERGEABLE, CONFLICTING, or UNKNOWN while GitHub works it out.
+     */
+    "mergeable": string;
+    "checks": Checks;
+    "reviews": Reviews;
+
+    /**
+     * FetchedAt is when the details were read, as RFC 3339.
+     */
+    "fetchedAt": string;
+}
+
+/**
  * Item is one pull request or issue in a list.
  */
 export interface Item {
@@ -61,6 +106,23 @@ export interface Item {
      */
     "branch": string;
     "isDraft": boolean;
+
+    /**
+     * Details is nil until a refresh has read the item's details.
+     */
+    "details": Details | null;
+}
+
+/**
+ * Label is one label on an item.
+ */
+export interface Label {
+    "name": string;
+
+    /**
+     * Color is "#rrggbb", or "" when GitHub's value was not a color.
+     */
+    "color": string;
 }
 
 /**
@@ -96,6 +158,30 @@ export interface RateGauge {
     "graphql": Rate;
     "core": Rate;
     "search": Rate;
+}
+
+/**
+ * Reviews counts who was asked to review a pull request and who has.
+ */
+export interface Reviews {
+    /**
+     * Decision is APPROVED, CHANGES_REQUESTED, or REVIEW_REQUIRED, and "" when the
+     * repository requires no review.
+     */
+    "decision": string;
+
+    /**
+     * Reviewers is everyone asked to review or who has, the author excluded; Reviewed
+     * is how many of them have reviewed and are not asked to review again.
+     */
+    "reviewers": number;
+    "reviewed": number;
+
+    /**
+     * Approvals and ChangesRequested count the reviewers whose latest review is one.
+     */
+    "approvals": number;
+    "changesRequested": number;
 }
 
 /**

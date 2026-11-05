@@ -25,6 +25,7 @@ const fakeToken = "test-token-not-real"
 var (
 	errFakeNetwork = errors.New("network unreachable")
 	errFakeBroken  = errors.New("refresher broke")
+	errNotParallel = errors.New("the inbox query waited for a details request that never started")
 )
 
 // fakeTokens hands out a fixed token, or fails.
@@ -47,20 +48,37 @@ func (f *fakeTokens) Token(ctx context.Context) (github.Token, error) {
 	return github.NewToken(fakeToken), nil
 }
 
-// fakeClient returns canned results. Both fetches run concurrently.
+// fakeClient returns canned results. The inbox and rate-limit fetches run concurrently.
 type fakeClient struct {
-	mu         sync.Mutex
-	inbox      *github.Inbox
-	limits     *github.RateLimits
-	avatar     *github.Avatar
-	inboxErr   error
-	limitsErr  error
-	avatarErr  error
-	gotTokens  []string
-	avatarURLs []string
+	mu          sync.Mutex
+	inbox       *github.Inbox
+	limits      *github.RateLimits
+	avatar      *github.Avatar
+	details     map[string]github.ItemDetails
+	detailsRate github.QueryRate
+	inboxErr    error
+	limitsErr   error
+	avatarErr   error
+	detailsErr  error
+	gotTokens   []string
+	avatarURLs  []string
+	detailsIDs  [][]string
+
+	// inboxGate, when set, holds the inbox query until a details request has started,
+	// which only happens when the two run side by side.
+	inboxGate  chan struct{}
+	gateOpened sync.Once
 }
 
 func (c *fakeClient) FetchInbox(_ context.Context, tok github.Token) (*github.Inbox, error) {
+	if c.inboxGate != nil {
+		select {
+		case <-c.inboxGate:
+		case <-time.After(2 * time.Second):
+			return nil, errNotParallel
+		}
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -76,6 +94,36 @@ func (c *fakeClient) FetchRateLimits(_ context.Context, tok github.Token) (*gith
 	c.gotTokens = append(c.gotTokens, tok.Reveal())
 
 	return c.limits, c.limitsErr
+}
+
+// FetchDetails answers with the canned details of the IDs asked for, as one request.
+func (c *fakeClient) FetchDetails(_ context.Context, tok github.Token, ids []string) (*github.Details, error) {
+	if c.inboxGate != nil {
+		c.gateOpened.Do(func() { close(c.inboxGate) })
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.gotTokens = append(c.gotTokens, tok.Reveal())
+	c.detailsIDs = append(c.detailsIDs, ids)
+
+	if c.detailsErr != nil {
+		return nil, c.detailsErr
+	}
+
+	out := &github.Details{Items: map[string]github.ItemDetails{}, RateLimit: c.detailsRate}
+	if len(ids) > 0 {
+		out.Requests = 1
+	}
+
+	for _, id := range ids {
+		if d, ok := c.details[id]; ok {
+			out.Items[id] = d
+		}
+	}
+
+	return out, nil
 }
 
 func (c *fakeClient) FetchAvatar(_ context.Context, url string) (*github.Avatar, error) {
@@ -182,13 +230,18 @@ func issue(repo string, number int, assoc string) github.Item {
 	return item(repo, number, assoc, false, false)
 }
 
+// nodeID is the fake node ID of the item with a number.
+func nodeID(number int) string {
+	return fmt.Sprintf("NODE_%d", number)
+}
+
 // item builds a fetched item in acme-org.
 func item(repo string, number int, assoc string, isPR, crossRepo bool) github.Item {
 	updated := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(number) * time.Hour)
 
 	it := github.Item{
 		IsPR:              isPR,
-		NodeID:            fmt.Sprintf("NODE_%d", number),
+		NodeID:            nodeID(number),
 		Number:            number,
 		Title:             fmt.Sprintf("Item %d", number),
 		URL:               fmt.Sprintf("https://github.com/acme-org/%s/pull/%d", repo, number),
@@ -459,7 +512,7 @@ func TestRefreshNeverPersistsToken(t *testing.T) {
 	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, []github.Item{issue("other-repo", 2, "MEMBER")})
 	h.refresh(t)
 
-	assert.Equal(t, []string{fakeToken, fakeToken}, h.client.gotTokens, "the token reaches the client")
+	assert.Equal(t, []string{fakeToken, fakeToken, fakeToken}, h.client.gotTokens, "the token reaches the client")
 
 	// A failure whose message echoes the token is recorded without it.
 	h.client.inboxErr = fmt.Errorf("%w: upstream said: %s", errFakeNetwork, fakeToken)
@@ -707,4 +760,243 @@ func TestNewServiceUsesTheSystemClock(t *testing.T) {
 	refreshed, err := time.Parse(time.RFC3339, snap.LastRefreshedAt)
 	require.NoError(t, err)
 	assert.False(t, refreshed.Before(before))
+}
+
+// prDetails returns the details of a pull request with passing checks and one approval.
+func prDetails() github.ItemDetails {
+	return github.ItemDetails{
+		Labels:       []github.Label{{Name: "enhancement", Color: "#a2eeef"}},
+		Comments:     4,
+		Additions:    120,
+		Deletions:    30,
+		ChangedFiles: 6,
+		Commits:      3,
+		Mergeable:    "MERGEABLE",
+		Checks:       github.Checks{State: "SUCCESS", Passed: 12, Skipped: 3},
+		Reviews:      github.Reviews{Decision: "APPROVED", Reviewers: 2, Reviewed: 1, Approvals: 1},
+	}
+}
+
+// itemByNumber finds an item in a list.
+func itemByNumber(t *testing.T, l List, number int) Item {
+	t.Helper()
+
+	for _, it := range l.Items {
+		if it.Number == number {
+			return it
+		}
+	}
+
+	require.Failf(t, "missing item", "#%d", number)
+
+	return Item{}
+}
+
+func TestRefreshStoresEachItemsDetails(t *testing.T) {
+	h := newHarness(t)
+
+	a := pr(1, "OWNER", false)
+	b := pr(2, "OWNER", false)
+	c := issue("docs-repo", 3, "COLLABORATOR")
+
+	h.client.inbox = fetched([]github.Item{a}, []github.Item{b}, []github.Item{a, c})
+	h.client.details = map[string]github.ItemDetails{
+		nodeID(1): prDetails(),
+		nodeID(3): {Labels: []github.Label{{Name: "bug", Color: "#d73a4a"}}, Comments: 7},
+	}
+
+	snap := h.refresh(t)
+
+	assert.Equal(t, [][]string{{nodeID(1), nodeID(2), nodeID(3)}}, h.client.detailsIDs, "each item is asked for once")
+
+	assert.Equal(t, &Details{
+		Labels:       []Label{{Name: "enhancement", Color: "#a2eeef"}},
+		Comments:     4,
+		Additions:    120,
+		Deletions:    30,
+		ChangedFiles: 6,
+		Commits:      3,
+		Mergeable:    "MERGEABLE",
+		Checks:       Checks{State: "SUCCESS", Passed: 12, Skipped: 3},
+		Reviews:      Reviews{Decision: "APPROVED", Reviewers: 2, Reviewed: 1, Approvals: 1},
+		FetchedAt:    "2026-01-10T12:00:00Z",
+	}, itemByNumber(t, snap.ReviewRequested, 1).Details)
+	assert.Equal(t, itemByNumber(t, snap.ReviewRequested, 1).Details, itemByNumber(t, snap.Assigned, 1).Details)
+
+	assert.Equal(t, &Details{
+		Labels:    []Label{{Name: "bug", Color: "#d73a4a"}},
+		Comments:  7,
+		FetchedAt: "2026-01-10T12:00:00Z",
+	}, itemByNumber(t, snap.Assigned, 3).Details)
+
+	assert.Nil(t, itemByNumber(t, snap.Authored, 2).Details, "GitHub sent nothing for it")
+}
+
+func TestRefreshReplacesTheDetails(t *testing.T) {
+	h := newHarness(t)
+	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false), pr(2, "OWNER", false)}, nil, nil)
+	h.client.details = map[string]github.ItemDetails{nodeID(1): prDetails(), nodeID(2): prDetails()}
+	h.refresh(t)
+
+	// Checks finished failing on #1; GitHub sends nothing for #2 this time.
+	failing := prDetails()
+	failing.Labels = nil
+	failing.Checks = github.Checks{State: "FAILURE", Passed: 10, Failed: 2}
+	h.client.details = map[string]github.ItemDetails{nodeID(1): failing}
+	h.clock.now = h.clock.now.Add(DefaultInterval)
+
+	snap := h.refresh(t)
+
+	first := itemByNumber(t, snap.ReviewRequested, 1).Details
+	require.NotNil(t, first)
+	assert.Equal(t, Checks{State: "FAILURE", Passed: 10, Failed: 2}, first.Checks)
+	assert.Empty(t, first.Labels)
+	assert.NotNil(t, first.Labels, "no labels is an empty list, not null")
+	assert.Equal(t, "2026-01-10T12:05:00Z", first.FetchedAt)
+
+	second := itemByNumber(t, snap.ReviewRequested, 2).Details
+	require.NotNil(t, second, "details GitHub did not send again are kept")
+	assert.Equal(t, "2026-01-10T12:00:00Z", second.FetchedAt)
+	assert.Equal(t, int64(2), h.count(t, "item_details"))
+}
+
+func TestRefreshDetailsFailureKeepsTheStoredInbox(t *testing.T) {
+	h := newHarness(t)
+	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
+	h.client.details = map[string]github.ItemDetails{nodeID(1): prDetails()}
+	h.refresh(t)
+
+	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false), pr(2, "OWNER", false)}, nil, nil)
+	h.client.detailsErr = fmt.Errorf("%w: upstream said: %s", errFakeNetwork, fakeToken)
+	h.clock.now = h.clock.now.Add(DefaultInterval)
+
+	snap, err := h.svc.Refresh(t.Context())
+	require.ErrorIs(t, err, errFakeNetwork)
+	assert.Contains(t, err.Error(), "read the item details")
+	assert.NotContains(t, err.Error(), fakeToken)
+	assert.Contains(t, snap.LastError, "read the item details")
+	assert.NotContains(t, snap.LastError, fakeToken)
+
+	assert.Equal(t, []int{1}, numbers(snap.ReviewRequested), "the last good inbox is still shown")
+	assert.NotNil(t, itemByNumber(t, snap.ReviewRequested, 1).Details)
+	assert.Equal(t, "2026-01-10T12:00:00Z", snap.LastRefreshedAt)
+}
+
+func TestRefreshRecordsTheCostOfBothQueries(t *testing.T) {
+	h := newHarness(t)
+	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
+	h.client.detailsRate = github.QueryRate{
+		Cost: 1, Limit: 5000, Remaining: 4988, Used: 12, ResetAt: time.Date(2026, 1, 10, 13, 0, 0, 0, time.UTC),
+	}
+
+	snap := h.refresh(t)
+
+	assert.Equal(t, 2, snap.Rate.GraphQL.Cost, "the inbox query and the details query")
+	assert.Equal(t, 4988, snap.Rate.GraphQL.Remaining, "what is left after the details query")
+}
+
+func TestGraphQLReading(t *testing.T) {
+	inbox := github.QueryRate{Cost: 1, Limit: 5000, Remaining: 4990}
+	later := github.QueryRate{Cost: 2, Limit: 5000, Remaining: 4988}
+
+	tests := []struct {
+		name    string
+		details *github.Details
+		want    github.QueryRate
+	}{
+		{name: "no details query", details: nil, want: inbox},
+		{name: "no items to ask about", details: &github.Details{}, want: inbox},
+		{name: "no budget sent", details: &github.Details{Requests: 1}, want: inbox},
+		{
+			name:    "details query",
+			details: &github.Details{Requests: 2, RateLimit: later},
+			want:    github.QueryRate{Cost: 3, Limit: 5000, Remaining: 4988},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, graphQLReading(inbox, tt.details))
+		})
+	}
+}
+
+func TestSaveWithoutDetails(t *testing.T) {
+	h := newHarness(t)
+	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
+
+	require.NoError(t, h.svc.save(t.Context(), h.client.inbox, restLimits(), nil, ""))
+
+	snap, err := h.svc.Snapshot(t.Context())
+	require.NoError(t, err)
+	assert.Nil(t, itemByNumber(t, snap.ReviewRequested, 1).Details)
+}
+
+func TestRefreshReadsTheListedDetailsAlongsideTheInbox(t *testing.T) {
+	h := newHarness(t)
+	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
+	h.refresh(t)
+
+	// The inbox query now answers only once a details request has started.
+	h.client.inboxGate = make(chan struct{})
+	h.client.details = map[string]github.ItemDetails{nodeID(1): prDetails()}
+
+	snap := h.refresh(t)
+
+	assert.NotNil(t, itemByNumber(t, snap.ReviewRequested, 1).Details)
+}
+
+func TestRefreshAsksAfterTheInboxOnlyAboutNewItems(t *testing.T) {
+	h := newHarness(t)
+	a := pr(1, "OWNER", false)
+	b := pr(2, "OWNER", false)
+	c := pr(3, "OWNER", false)
+
+	// The first refresh has nothing listed yet, so it asks about everything afterwards.
+	h.client.inbox = fetched([]github.Item{a, b}, nil, nil)
+	h.refresh(t)
+
+	// Then A leaves the lists and C joins: the listed A and B are read alongside the
+	// inbox query (newest first), and only C afterwards.
+	h.client.inbox = fetched([]github.Item{b, c}, nil, nil)
+	h.refresh(t)
+
+	// Nothing new: one request, alongside the inbox query.
+	h.refresh(t)
+
+	assert.Equal(t, [][]string{
+		{nodeID(1), nodeID(2)},
+		{nodeID(2), nodeID(1)},
+		{nodeID(3)},
+		{nodeID(3), nodeID(2)},
+	}, h.client.detailsIDs)
+}
+
+func TestRefreshNewItemDetailsFailure(t *testing.T) {
+	h := newHarness(t)
+	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
+	h.client.detailsErr = errFakeNetwork
+
+	snap, err := h.svc.Refresh(t.Context())
+	require.ErrorIs(t, err, errFakeNetwork)
+	assert.Contains(t, snap.LastError, "read the item details")
+	assert.Empty(t, snap.ReviewRequested.Items, "nothing is stored")
+	assert.Empty(t, snap.LastRefreshedAt)
+}
+
+func TestListedNodeIDsError(t *testing.T) {
+	h := newHarness(t)
+	require.NoError(t, h.db.Exec("DROP TABLE items").Error)
+
+	_, err := listedNodeIDs(h.db)
+	require.ErrorContains(t, err, "read the listed items")
+
+	_, err = h.svc.Refresh(t.Context())
+	require.ErrorContains(t, err, "read the listed items")
+}
+
+func TestNewIDs(t *testing.T) {
+	assert.Equal(t, []string{"c"}, newIDs([]string{"a", "c", "b"}, []string{"b", "a"}))
+	assert.Empty(t, newIDs([]string{"a"}, []string{"a"}))
+	assert.Equal(t, []string{"a"}, newIDs([]string{"a"}, nil))
 }

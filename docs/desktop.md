@@ -3,8 +3,9 @@
 Nilbox is a macOS desktop app: a Go core, a [Wails v3](https://wails.io) shell, and a React +
 TypeScript + Vite + Tailwind frontend in `frontend/`. This guide covers the one-time setup, the
 build targets, how the desktop shell is kept out of the Linux CI build, and what the app does
-on your machine: where it keeps its data, how the window is laid out, how it finds your agent
-profiles, how it decides what an item may do, and how it treats git worktrees.
+on your machine: where it keeps its data, how the window and the inbox cards are laid out, how
+it finds your agent profiles, how it decides what an item may do, and how it treats git
+worktrees.
 
 Measured startup, refresh, launch, size, and API-budget numbers, and how they were taken, are
 in [performance.md](performance.md).
@@ -160,8 +161,49 @@ The readings are taken on each refresh, and a budget whose reset time has passed
 again.
 
 **Settings** is a page of its own, with sections for your account, launching, agent profiles,
-repositories, and the app's version. Each change is saved as you make it, except the clone root, which is
-saved with **Save**. Escape or the back arrow returns to the view you came from.
+repositories, and the app's version. Each change is saved as you make it, except the clone
+root, which is saved with **Save**. Escape or the back arrow returns to the view you came from.
+
+<br>
+
+## Inbox cards
+
+Each pull request or issue in the inbox is a card three lines high:
+
+1. Its title, with a **Draft** tag on a draft pull request and a **Conflicts** tag when it has
+   merge conflicts with its base branch. A long title is cut short; hover it for all of it.
+2. The repository and number, the author, how long ago it last changed, and an **outside
+   contributor** tag when the [trust rule](#outside-contributors) applies.
+3. Its details, in a fixed order that lines up from card to card. Hover any of them for the
+   whole sentence, which is also what a screen reader reads.
+
+| Detail | What it shows | Color |
+|---|---|---|
+| Checks | The latest commit's checks that passed, out of those that ran. Skipped checks count toward neither. | Green when all passed, yellow while any still run, red when any failed |
+| Reviews | Reviewers who have reviewed, out of everyone asked or who reviewed. The author's own replies don't count, and a reviewer asked again owes a new review. | Green once approved, red when changes were requested |
+| Comments | The conversation's comments, review comments included | None |
+| Size | XS (under 10 changed lines), S (under 30), M (under 100), L (under 500), XL (under 1,000), or XXL; then the lines added and removed, the files, and the commits | Added lines green, removed lines red |
+| Labels | The first three labels with their GitHub colors, then how many more | None |
+
+An issue shows its comments and labels.
+
+**Where the details come from.** Each refresh reads them with a second GraphQL query that asks
+for the listed items by node ID. Asking for these fields inside the inbox query's three
+searches would cost about 12 points a refresh, because GitHub prices nested lists per result
+slot; asking for the listed items alone costs about one point per request. GitHub answers
+these requests at roughly 150 ms per item, so they go out in batches of at least 10 items, up
+to 4 at a time, and the details of the items already listed are read alongside the inbox
+query rather than after it. Only items new to the lists wait for a request of their own, so a
+refresh takes no longer than before once its items are known. The details are stored with each
+item and read again on every refresh, since checks finish without the item itself changing.
+A card whose details no refresh has read yet, right after updating the app for instance, says
+so.
+
+**Opening a session.** The **Open in Claude** button on the right of a card starts a session
+with the card's choices. The arrow beside it names the profile and opens the choices: the
+profile, **Start in a worktree**, and, on an outside contributor's item, **Use profile
+permissions for this item**. A choice applies to the next launch only, and the arrow shows a
+dot while any choice differs from the defaults. The launch's outcome appears below the card.
 
 <br>
 
@@ -192,9 +234,9 @@ the default profile setting, the setting falls back to `default`.
 a session (model, effort, plan mode, extras, and permissions), and marks any whose folder has
 gone missing.
 
-Each inbox row has an **Open in Claude** button and a profile dropdown. The dropdown preselects
-the default profile (the `profile.default` setting, initially `default`, under **Settings →
-Launching**); picking another one applies to that launch only. Model, effort, plan mode, extra
+Each inbox card's **Open in Claude** button uses the default profile (the `profile.default`
+setting, initially `default`, under **Settings → Launching**) unless you pick another in the
+card's launch options, which applies to that launch only. Model, effort, plan mode, extra
 directories, and extra arguments come from the profile.
 
 <br>
@@ -206,14 +248,15 @@ MEMBER, or COLLABORATOR and, for a pull request, its branch is in the same repos
 fork. Everything else is untrusted, including bots such as Dependabot. The rule applies to
 issues as well, because the agent reads an issue body the same way it reads a pull request.
 
-Untrusted rows show an **outside contributor** badge and launch in plan mode
+Untrusted items show an **outside contributor** tag and launch in plan mode
 (`--permission-mode plan`), whatever the profile says, without the option to switch to full
 access later.
 
-On untrusted rows only, an unchecked **Use profile permissions for this item** checkbox is the
-one override. Its help text reads: "Lifts the outside-contributor restriction; keeps the
-profile's plan and permission settings." It does not force full access: the item is then
-treated as trusted, and the selected profile's own plan-mode and permission settings decide.
+On untrusted items only, the card's launch options hold the one override: an unchecked **Use
+profile permissions for this item** checkbox. Its help text reads: "Lifts the
+outside-contributor restriction; keeps the profile's plan and permission settings." It does
+not force full access: the item is then treated as trusted, and the selected profile's own
+plan-mode and permission settings decide.
 
 A profile's extra arguments can never set permissions themselves. A launch whose profile passes
 `--permission-mode`, `--dangerously-skip-permissions`, or `--allow-dangerously-skip-permissions`
@@ -242,10 +285,10 @@ remote lookup. It never runs a git command that changes a clone: no checkout, st
 branch switch, or worktree creation. When a session needs a pull request's branch, the starter
 prompt asks the agent to run `gh pr checkout <n>`.
 
-**Worktrees.** The **Start in a worktree** checkbox is ticked by default (the `launch.worktree`
-setting, under **Settings → Launching**); unticking it applies to that launch only. With it on, the agent creates and owns the
-worktree with its own `--worktree` flag, under `<clone>/.claude/worktrees/<name>` on a branch
-named `worktree-<name>`:
+**Worktrees.** The **Start in a worktree** launch option is on by default (the
+`launch.worktree` setting, under **Settings → Launching**); turning it off applies to that
+launch only. With it on, the agent creates and owns the worktree with its own `--worktree`
+flag, under `<clone>/.claude/worktrees/<name>` on a branch named `worktree-<name>`:
 
 - A pull request whose repository is the clone's `origin` launches with `--worktree '#<n>'`, so
   the agent names the worktree `pr-<n>` and starts it at the pull request's head.

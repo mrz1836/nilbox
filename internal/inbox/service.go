@@ -1,10 +1,13 @@
 // Package inbox keeps the local inbox in step with GitHub and serves it to the UI.
 //
-// A refresh borrows the token, fetches the batched inbox query and the REST rate limits
-// concurrently, checks the token's scopes, and writes everything in one transaction:
-// the account, the repositories, the items with their reason flags and trust fields, and
-// rate-limit snapshots. A snapshot reads it back as three plain lists, the signed-in
-// account, and a rate gauge.
+// A refresh borrows the token and fetches, concurrently, the batched inbox query, the REST
+// rate limits, and the details of the items listed after the last refresh (labels,
+// comments and, for pull requests, size, checks, and reviews) by node ID. It checks the
+// token's scopes, reads the details of any item new to the lists, and writes everything
+// in one transaction: the account, the repositories, the items with their reason flags,
+// trust fields, and details, and rate-limit snapshots. A snapshot reads it back as three
+// plain lists, the signed-in account, and a rate gauge. The details are read on every
+// refresh, because check results change without the item's own update time moving.
 //
 // After a successful refresh, the account's avatar is downloaded once and cached as a
 // data URL, so the UI shows it offline and never loads anything from the network itself.
@@ -71,9 +74,11 @@ type TokenSource interface {
 	Token(ctx context.Context) (github.Token, error)
 }
 
-// Client fetches the inbox, the rate limits, and the viewer's avatar from GitHub.
+// Client fetches the inbox, its items' details, the rate limits, and the viewer's avatar
+// from GitHub.
 type Client interface {
 	FetchInbox(ctx context.Context, tok github.Token) (*github.Inbox, error)
+	FetchDetails(ctx context.Context, tok github.Token, ids []string) (*github.Details, error)
 	FetchRateLimits(ctx context.Context, tok github.Token) (*github.RateLimits, error)
 	FetchAvatar(ctx context.Context, url string) (*github.Avatar, error)
 }
@@ -177,45 +182,66 @@ func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 	return snap, nil
 }
 
-// refresh does one fetch-and-store cycle.
+// refresh does one fetch-and-store cycle. The details of the items already listed are
+// read alongside the inbox query, which takes as long; only items new since the last
+// refresh wait for a second details request after it.
 func (s *Service) refresh(ctx context.Context) error {
 	tok, err := s.tokens.Token(ctx)
 	if err != nil {
 		return err
 	}
 
-	inbox, limits, err := s.fetch(ctx, tok)
-	if err != nil {
-		return github.Redact(err, tok)
-	}
-
-	warning, err := github.CheckScopes(inbox.OAuthScopes)
+	listed, err := listedNodeIDs(s.db.WithContext(ctx))
 	if err != nil {
 		return err
 	}
 
-	if err = s.save(ctx, inbox, limits, warning); err != nil {
+	got, err := s.fetch(ctx, tok, listed)
+	if err != nil {
 		return github.Redact(err, tok)
 	}
 
-	s.cacheAvatar(ctx, inbox.Viewer.AvatarURL)
+	warning, err := github.CheckScopes(got.inbox.OAuthScopes)
+	if err != nil {
+		return err
+	}
+
+	if added := newIDs(nodeIDs(got.inbox), listed); len(added) > 0 {
+		more, detailsErr := s.client.FetchDetails(ctx, tok, added)
+		if detailsErr != nil {
+			return github.Redact(fmt.Errorf("read the item details: %w", detailsErr), tok)
+		}
+
+		got.details.Add(more)
+	}
+
+	if err = s.save(ctx, got.inbox, got.limits, got.details, warning); err != nil {
+		return github.Redact(err, tok)
+	}
+
+	s.cacheAvatar(ctx, got.inbox.Viewer.AvatarURL)
 
 	return nil
 }
 
-// fetch gets the inbox and the rate limits concurrently.
-func (s *Service) fetch(ctx context.Context, tok github.Token) (*github.Inbox, *github.RateLimits, error) {
-	var (
-		inbox  *github.Inbox
-		limits *github.RateLimits
-	)
+// refreshed is what one refresh read from GitHub.
+type refreshed struct {
+	inbox   *github.Inbox
+	limits  *github.RateLimits
+	details *github.Details
+}
+
+// fetch gets the inbox, the rate limits, and the details of the listed items
+// concurrently. details is never nil.
+func (s *Service) fetch(ctx context.Context, tok github.Token, listed []string) (refreshed, error) {
+	got := refreshed{details: &github.Details{}}
 
 	g, gctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
 		var err error
 
-		limits, err = s.client.FetchRateLimits(gctx, tok)
+		got.limits, err = s.client.FetchRateLimits(gctx, tok)
 
 		return err
 	})
@@ -223,28 +249,48 @@ func (s *Service) fetch(ctx context.Context, tok github.Token) (*github.Inbox, *
 	g.Go(func() error {
 		var err error
 
-		inbox, err = s.client.FetchInbox(gctx, tok)
+		got.inbox, err = s.client.FetchInbox(gctx, tok)
 
 		return err
 	})
 
+	if len(listed) > 0 {
+		g.Go(func() error {
+			details, err := s.client.FetchDetails(gctx, tok, listed)
+			if err != nil {
+				return fmt.Errorf("read the item details: %w", err)
+			}
+
+			got.details.Add(details)
+
+			return nil
+		})
+	}
+
 	if err := g.Wait(); err != nil {
-		return nil, nil, err
+		return refreshed{}, err
 	}
 
-	if inbox == nil || limits == nil || inbox.Viewer.Login == "" {
-		return nil, nil, ErrIncompleteFetch
+	if got.inbox == nil || got.limits == nil || got.inbox.Viewer.Login == "" {
+		return refreshed{}, ErrIncompleteFetch
 	}
 
-	return inbox, limits, nil
+	return got, nil
 }
 
-// save stores a fetched inbox in one transaction.
-func (s *Service) save(ctx context.Context, inbox *github.Inbox, limits *github.RateLimits, warning github.ScopeWarning) error {
+// save stores a fetched inbox and its items' details in one transaction.
+func (s *Service) save(
+	ctx context.Context, inbox *github.Inbox, limits *github.RateLimits, details *github.Details, warning github.ScopeWarning,
+) error {
 	now := s.now()
 
+	var items map[string]github.ItemDetails
+	if details != nil {
+		items = details.Items
+	}
+
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		w := &writer{tx: tx, now: now, repos: make(map[string]int64)}
+		w := &writer{tx: tx, now: now, repos: make(map[string]int64), details: items}
 
 		if err := w.saveAccount(inbox.Viewer.Login); err != nil {
 			return err
@@ -254,7 +300,7 @@ func (s *Service) save(ctx context.Context, inbox *github.Inbox, limits *github.
 			return err
 		}
 
-		if err := w.saveRates(inbox.RateLimit, limits); err != nil {
+		if err := w.saveRates(graphQLReading(inbox.RateLimit, details), limits); err != nil {
 			return err
 		}
 
@@ -373,6 +419,54 @@ func mergeLists(inbox *github.Inbox) []*entry {
 	add(inbox.Assigned.Items, func(e *entry) { e.assigned = true })
 
 	return order
+}
+
+// newIDs returns the IDs in ids that are not in known, in order.
+func newIDs(ids, known []string) []string {
+	seen := make(map[string]bool, len(known))
+	for _, id := range known {
+		seen[id] = true
+	}
+
+	var out []string
+
+	for _, id := range ids {
+		if !seen[id] {
+			out = append(out, id)
+		}
+	}
+
+	return out
+}
+
+// nodeIDs lists the node IDs of the inbox's items, each once, in first-seen order.
+func nodeIDs(inbox *github.Inbox) []string {
+	entries := mergeLists(inbox)
+	ids := make([]string, 0, len(entries))
+	seen := make(map[string]bool, len(entries))
+
+	for _, e := range entries {
+		if id := e.item.NodeID; id != "" && !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+
+	return ids
+}
+
+// graphQLReading is the GraphQL budget a refresh leaves: the details query's reading,
+// since it ran last, with the cost of both queries; or the inbox query's alone when no
+// details were asked for or GitHub sent no budget with them.
+func graphQLReading(inbox github.QueryRate, details *github.Details) github.QueryRate {
+	if details == nil || details.Requests == 0 || details.RateLimit.Limit == 0 {
+		return inbox
+	}
+
+	reading := details.RateLimit
+	reading.Cost += inbox.Cost
+
+	return reading
 }
 
 // itemKey identifies an item across lists; owner and repository names are case-insensitive.

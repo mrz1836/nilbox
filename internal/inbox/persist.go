@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/model"
@@ -44,7 +45,8 @@ ON CONFLICT (account_id, repo_id, kind, number) DO UPDATE SET
     reason_review_requested = excluded.reason_review_requested,
     reason_authored = excluded.reason_authored,
     reason_assigned = excluded.reason_assigned,
-    fetched_at = excluded.fetched_at`
+    fetched_at = excluded.fetched_at
+RETURNING id`
 
 	upsertPrefSQL = `INSERT INTO prefs (key, value, updated_at) VALUES (?, ?, ?)
 ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
@@ -56,6 +58,10 @@ type writer struct {
 	now       time.Time
 	accountID int64
 	repos     map[string]int64
+
+	// details holds the items' details by node ID. An item without an entry keeps the
+	// details stored before.
+	details map[string]github.ItemDetails
 }
 
 // saveAccount upserts the signed-in account and remembers its id.
@@ -106,20 +112,64 @@ func (w *writer) repoID(owner, name string) (int64, error) {
 	return id, nil
 }
 
-// saveItem upserts one item.
+// saveItem upserts one item, then its details when this refresh read them.
 func (w *writer) saveItem(repoID int64, e *entry) error {
 	it := e.item
 
-	err := w.tx.Exec(upsertItemSQL,
+	var id int64
+
+	err := w.tx.Raw(upsertItemSQL,
 		w.accountID, repoID, kindOf(it), it.Number, it.NodeID, it.Title, it.URL, it.AuthorLogin, it.AuthorAssociation,
 		it.IsCrossRepository, it.IsDraft, it.HeadRef, it.CreatedAt.UTC(), it.UpdatedAt.UTC(),
 		e.reviewRequested, e.authored, e.assigned, w.now,
-	).Error
+	).Scan(&id).Error
 	if err != nil {
 		return fmt.Errorf("save the item %s/%s#%d: %w", it.RepoOwner, it.RepoName, it.Number, err)
 	}
 
+	d, ok := w.details[it.NodeID]
+	if !ok {
+		return nil
+	}
+
+	row := detailsRow(id, d, w.now)
+
+	err = w.tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "item_id"}}, UpdateAll: true}).Create(&row).Error
+	if err != nil {
+		return fmt.Errorf("save the details of %s/%s#%d: %w", it.RepoOwner, it.RepoName, it.Number, err)
+	}
+
 	return nil
+}
+
+// detailsRow converts fetched details to their row.
+func detailsRow(itemID int64, d github.ItemDetails, now time.Time) model.ItemDetails {
+	labels := make(model.Labels, 0, len(d.Labels))
+	for _, l := range d.Labels {
+		labels = append(labels, model.Label{Name: l.Name, Color: l.Color})
+	}
+
+	return model.ItemDetails{
+		ItemID:           itemID,
+		Labels:           labels,
+		Comments:         d.Comments,
+		Additions:        d.Additions,
+		Deletions:        d.Deletions,
+		ChangedFiles:     d.ChangedFiles,
+		Commits:          d.Commits,
+		Mergeable:        d.Mergeable,
+		ChecksState:      d.Checks.State,
+		ChecksPassed:     d.Checks.Passed,
+		ChecksFailed:     d.Checks.Failed,
+		ChecksPending:    d.Checks.Pending,
+		ChecksSkipped:    d.Checks.Skipped,
+		ReviewDecision:   d.Reviews.Decision,
+		Reviewers:        d.Reviews.Reviewers,
+		Reviewed:         d.Reviews.Reviewed,
+		Approvals:        d.Reviews.Approvals,
+		ChangesRequested: d.Reviews.ChangesRequested,
+		FetchedAt:        now,
+	}
 }
 
 // saveRates records one snapshot per resource and prunes snapshots past the retention
@@ -157,6 +207,26 @@ func (w *writer) restSnapshot(resource string, r github.Rate) model.RateSnapshot
 // pref is one key/value pair for the prefs table.
 type pref struct {
 	key, value string
+}
+
+// listedNodeIDsSQL reads the node IDs of the signed-in account's listed items, newest
+// activity first.
+const listedNodeIDsSQL = `SELECT i.node_id
+FROM items i
+JOIN accounts a ON a.id = i.account_id
+WHERE a.login = (SELECT value FROM prefs WHERE key = ?)
+  AND i.node_id <> ''
+  AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1)
+ORDER BY i.item_updated_at DESC, i.id DESC`
+
+// listedNodeIDs returns the node IDs of the items the last refresh listed.
+func listedNodeIDs(db *gorm.DB) ([]string, error) {
+	var ids []string
+	if err := db.Raw(listedNodeIDsSQL, prefViewer).Scan(&ids).Error; err != nil {
+		return nil, fmt.Errorf("read the listed items: %w", err)
+	}
+
+	return ids, nil
 }
 
 // setPrefs upserts prefs, in order.

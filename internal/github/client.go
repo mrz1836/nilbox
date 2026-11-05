@@ -323,7 +323,8 @@ type QueryRate struct {
 
 // graphQLRequest is a GraphQL request body.
 type graphQLRequest struct {
-	Query string `json:"query"`
+	Query     string         `json:"query"`
+	Variables map[string]any `json:"variables,omitempty"`
 }
 
 // graphQLResponse is the inbox query's response body.
@@ -368,13 +369,7 @@ func (d *graphQLData) inbox() *Inbox {
 		ReviewRequested: d.ReviewRequested.result(),
 		Authored:        d.Authored.result(),
 		Assigned:        d.Assigned.result(),
-		RateLimit: QueryRate{
-			Cost:      d.RateLimit.Cost,
-			Limit:     d.RateLimit.Limit,
-			Remaining: d.RateLimit.Remaining,
-			Used:      d.RateLimit.Used,
-			ResetAt:   d.RateLimit.ResetAt.UTC(),
-		},
+		RateLimit:       d.RateLimit.queryRate(),
 	}
 }
 

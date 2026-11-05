@@ -42,14 +42,15 @@ type Refresher interface {
 	Refresh(ctx context.Context) (inbox.Snapshot, error)
 }
 
-// RefreshReport is a series of timed refreshes and the batched query's point cost.
+// RefreshReport is a series of timed refreshes and their GraphQL point cost.
 type RefreshReport struct {
 	// Runs is each refresh's duration, in order: borrowing the token, the REST rate-limit
-	// and GraphQL inbox requests (made concurrently), and the database write.
+	// request, the GraphQL inbox query, and the details of the items already listed (made
+	// concurrently), the details of any item new to the lists, and the database write.
 	Runs []time.Duration
 
-	// Cost is the GraphQL point cost GitHub charged for the batched inbox query (the
-	// highest seen across the runs).
+	// Cost is the GraphQL point cost GitHub charged for one refresh, the inbox query and
+	// the details requests together (the highest seen across the runs).
 	Cost int
 
 	// Limit is the hourly GraphQL point budget GitHub reported.

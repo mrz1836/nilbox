@@ -20,3 +20,8 @@ export function errorMessage(err: unknown): string {
 
   return 'Something went wrong.'
 }
+
+// counted reads a count with its noun, e.g. "1 file" or "1,204 files".
+export function counted(n: number, one: string, many: string): string {
+  return `${formatCount(n)} ${n === 1 ? one : many}`
+}

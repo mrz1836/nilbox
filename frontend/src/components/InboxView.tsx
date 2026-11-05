@@ -1,14 +1,9 @@
 import { formatAge } from '../lib/age'
 import type { InboxState } from '../lib/useInbox'
-import { openInBrowser, type InboxItem, type InboxList, type Profile } from '../platform'
-import { LaunchControls } from './LaunchControls'
+import type { InboxList } from '../platform'
+import { ItemRow, type LaunchOptions } from './ItemRow'
 
-// LaunchOptions are what each row's launch controls need from the settings and profiles.
-export interface LaunchOptions {
-  profiles: Profile[]
-  defaultProfile: string
-  worktreeDefault: boolean
-}
+export type { LaunchOptions } from './ItemRow'
 
 export interface InboxViewProps {
   // inbox is the window's shared inbox state (useInbox).
@@ -43,52 +38,6 @@ function firstMessage(...messages: string[]): string {
   return messages.find((m) => m !== '') ?? ''
 }
 
-function openItem(url: string) {
-  openInBrowser(url).catch((err: unknown) => {
-    console.error('could not open the item in the browser', err)
-  })
-}
-
-interface ItemRowProps {
-  item: InboxItem
-  now: Date
-  launch: LaunchOptions | null
-}
-
-function ItemRow({ item, now, launch }: ItemRowProps) {
-  return (
-    <li className="flex flex-col gap-1.5 border-b border-border px-3 py-2.5 last:border-b-0">
-      <div className="flex items-baseline gap-2">
-        <span className="shrink-0 rounded bg-raised px-1.5 py-0.5 text-xs text-muted">
-          {item.kind === 'pr' ? 'PR' : 'Issue'}
-        </span>
-        <button
-          type="button"
-          onClick={() => {
-            openItem(item.url)
-          }}
-          className="text-left font-medium text-text hover:text-accent hover:underline"
-        >
-          {item.title}
-        </button>
-        {item.isDraft && <span className="shrink-0 text-xs text-muted">draft</span>}
-      </div>
-      <p className="text-xs text-muted">
-        {item.repo} #{item.number} · {item.author} ·{' '}
-        <time dateTime={item.updatedAt}>{formatAge(now, item.updatedAt)}</time>
-      </p>
-      {launch !== null && (
-        <LaunchControls
-          item={item}
-          profiles={launch.profiles}
-          defaultProfile={launch.defaultProfile}
-          worktreeDefault={launch.worktreeDefault}
-        />
-      )}
-    </li>
-  )
-}
-
 interface ListSectionProps {
   title: string
   list: InboxList
@@ -101,12 +50,12 @@ function ListSection({ title, list, now, launch }: ListSectionProps) {
 
   return (
     <section aria-label={title} className="rounded-lg border border-border bg-surface">
-      <header className="flex items-baseline justify-between border-b border-border px-3 py-2">
+      <header className="flex items-baseline justify-between border-b border-border px-4 py-2">
         <h2 className="text-sm font-semibold">{title}</h2>
         <span className="text-xs text-muted">{countText(list)}</span>
       </header>
       {items.length === 0 ? (
-        <p className="px-3 py-3 text-sm text-muted">Nothing here.</p>
+        <p className="px-4 py-3 text-sm text-muted">Nothing here.</p>
       ) : (
         <ul>
           {items.map((item) => (

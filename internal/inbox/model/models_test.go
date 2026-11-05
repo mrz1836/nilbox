@@ -23,7 +23,28 @@ func TestAllModelsTableNames(t *testing.T) {
 		names = append(names, tm.TableName())
 	}
 
-	assert.Equal(t, []string{"accounts", "repos", "items", "item_local_state", "rate_snapshots"}, names)
+	assert.Equal(t, []string{"accounts", "repos", "items", "item_details", "item_local_state", "rate_snapshots"}, names)
+}
+
+func TestLabelsRoundTrip(t *testing.T) {
+	value, err := model.Labels(nil).Value()
+	require.NoError(t, err)
+	assert.Equal(t, "[]", value, "no labels are stored as an empty array")
+
+	labels := model.Labels{{Name: "bug", Color: "#d73a4a"}, {Name: "odd"}}
+	value, err = labels.Value()
+	require.NoError(t, err)
+	assert.JSONEq(t, `[{"name":"bug","color":"#d73a4a"},{"name":"odd","color":""}]`, value.(string))
+
+	for _, src := range []any{value, []byte(value.(string))} {
+		var got model.Labels
+		require.NoError(t, got.Scan(src))
+		assert.Equal(t, labels, got)
+	}
+
+	var got model.Labels
+	require.ErrorIs(t, got.Scan(42), model.ErrUnsupportedScanType)
+	require.ErrorContains(t, got.Scan("{not json"), "decode the labels")
 }
 
 func TestItemKinds(t *testing.T) {

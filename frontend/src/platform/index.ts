@@ -26,7 +26,11 @@ import type {
 export type { Info } from '../../bindings/github.com/mrz1836/nilbox/internal/appinfo'
 export type {
   Account,
+  Checks,
+  Details as ItemDetails,
   Item as InboxItem,
+  Label,
+  Reviews,
   List as InboxList,
   Rate,
   RateGauge,

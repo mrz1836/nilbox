@@ -16,29 +16,61 @@ function props(overrides: Partial<LaunchControlsProps> = {}): LaunchControlsProp
   return { item: item(), profiles, defaultProfile: 'default', worktreeDefault: true, ...overrides }
 }
 
+type Scope = Pick<typeof screen, 'getByRole'>
+
+// optionsButton is the arrow beside "Open in Claude".
+function optionsButton(scope: Scope = screen): HTMLElement {
+  return scope.getByRole('button', { name: /^Launch options/ })
+}
+
+// openOptions opens the launch options and returns queries scoped to them.
+async function openOptions(scope: Scope = screen) {
+  await userEvent.click(optionsButton(scope))
+
+  return within(scope.getByRole('dialog', { name: 'Launch options' }))
+}
+
 beforeEach(() => {
   platform.launch.mockReset()
   platform.launch.mockResolvedValue(launchResult())
 })
 
 describe('LaunchControls', () => {
-  it('preselects the default profile', () => {
+  it('is one quiet button with the profile beside it', () => {
     render(<LaunchControls {...props({ defaultProfile: 'work' })} />)
 
-    expect(screen.getByRole('combobox', { name: 'Profile' })).toHaveValue('work')
-    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['default', 'work'])
+    expect(screen.getByRole('button', { name: 'Open in Claude' })).toBeEnabled()
+    expect(optionsButton()).toHaveAccessibleName('Launch options: work')
+    expect(optionsButton()).toHaveTextContent('work')
+    expect(optionsButton()).toHaveAttribute('aria-haspopup', 'dialog')
+    expect(optionsButton()).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('falls back to the first profile when the default is missing', () => {
+  it('preselects the default profile in the options, focused', async () => {
+    render(<LaunchControls {...props({ defaultProfile: 'work' })} />)
+
+    const options = await openOptions()
+
+    expect(optionsButton()).toHaveAttribute('aria-expanded', 'true')
+    expect(options.getAllByRole('radio').map((r) => r.getAttribute('value'))).toEqual(['default', 'work'])
+    expect(options.getByRole('radio', { name: 'work' })).toBeChecked()
+    expect(options.getByRole('radio', { name: 'work' })).toHaveFocus()
+  })
+
+  it('falls back to the first profile when the default is missing', async () => {
     render(<LaunchControls {...props({ defaultProfile: 'gone' })} />)
 
-    expect(screen.getByRole('combobox', { name: 'Profile' })).toHaveValue('default')
+    expect(optionsButton()).toHaveAccessibleName('Launch options: default')
+    expect((await openOptions()).getByRole('radio', { name: 'default' })).toBeChecked()
   })
 
   it('launches with the picked profile for this launch only', async () => {
     render(<LaunchControls {...props()} />)
 
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Profile' }), 'work')
+    await userEvent.click((await openOptions()).getByRole('radio', { name: 'work' }))
+    expect(optionsButton()).toHaveAccessibleName('Launch options: work, changed for this launch')
+
     await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
 
     expect(platform.launch).toHaveBeenCalledWith({
@@ -48,30 +80,51 @@ describe('LaunchControls', () => {
       fullAccessOverride: false,
     })
     expect(await screen.findByRole('status')).toBeInTheDocument()
-    expect(screen.getByRole('combobox', { name: 'Profile' })).toHaveValue('default')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(optionsButton()).toHaveAccessibleName('Launch options: default')
+  })
+
+  it('closes the options on Escape and on a click outside, keeping the choices', async () => {
+    render(
+      <>
+        <LaunchControls {...props()} />
+        <button type="button">Elsewhere</button>
+      </>,
+    )
+
+    await userEvent.click((await openOptions()).getByRole('radio', { name: 'work' }))
+    await userEvent.keyboard('{Escape}')
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(optionsButton()).toHaveFocus()
+
+    await openOptions()
+    await userEvent.click(screen.getByRole('button', { name: 'Elsewhere' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(optionsButton()).toHaveAccessibleName('Launch options: work, changed for this launch')
   })
 
   it('launches with no profile when none were discovered', async () => {
     render(<LaunchControls {...props({ profiles: [] })} />)
 
-    expect(screen.getByRole('combobox', { name: 'Profile' })).toBeDisabled()
+    expect(optionsButton()).toHaveAccessibleName('Launch options: default')
+    expect((await openOptions()).getByText(/No profiles were found/)).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
 
     expect(platform.launch).toHaveBeenCalledWith({ itemId: 1, profile: '', worktree: true, fullAccessOverride: false })
   })
 
-  it('override only on untrusted rows', () => {
+  it('offers the override only on untrusted rows', async () => {
     const { unmount } = render(<LaunchControls {...props({ item: item({ trusted: true }) })} />)
 
-    expect(screen.queryByText('outside contributor')).not.toBeInTheDocument()
-    expect(screen.queryByRole('checkbox', { name: overrideLabel })).not.toBeInTheDocument()
+    expect((await openOptions()).queryByRole('checkbox', { name: overrideLabel })).not.toBeInTheDocument()
 
     unmount()
     render(<LaunchControls {...props({ item: item({ trusted: false, authorAssociation: 'NONE' }) })} />)
 
-    expect(screen.getByText('outside contributor')).toBeInTheDocument()
-    const override = screen.getByRole('checkbox', { name: overrideLabel })
+    const override = (await openOptions()).getByRole('checkbox', { name: overrideLabel })
     expect(override).not.toBeChecked()
     expect(override).toHaveAccessibleDescription(
       "Lifts the outside-contributor restriction; keeps the profile's plan and permission settings.",
@@ -101,7 +154,7 @@ describe('LaunchControls', () => {
       />,
     )
 
-    await userEvent.click(screen.getByRole('checkbox', { name: overrideLabel }))
+    await userEvent.click((await openOptions()).getByRole('checkbox', { name: overrideLabel }))
     await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
 
     // The request names the profile and lifts only the outside-contributor restriction: it
@@ -115,12 +168,12 @@ describe('LaunchControls', () => {
       fullAccessOverride: true,
     })
     expect(await screen.findByRole('status')).toHaveTextContent('plan mode')
-    expect(screen.getByRole('checkbox', { name: overrideLabel })).not.toBeChecked()
+    expect((await openOptions()).getByRole('checkbox', { name: overrideLabel })).not.toBeChecked()
   })
 
-  it('worktree checkbox preset from the pref and untick applies to this launch only', async () => {
+  it('worktree choice preset from the pref, and unticking applies to this launch only', async () => {
     const { unmount } = render(<LaunchControls {...props({ worktreeDefault: false })} />)
-    expect(screen.getByRole('checkbox', { name: 'Start in a worktree' })).not.toBeChecked()
+    expect((await openOptions()).getByRole('checkbox', { name: 'Start in a worktree' })).not.toBeChecked()
     unmount()
 
     render(
@@ -136,11 +189,9 @@ describe('LaunchControls', () => {
     const first = within(screen.getByTestId('first'))
     const second = within(screen.getByTestId('second'))
 
-    expect(first.getByRole('checkbox', { name: 'Start in a worktree' })).toBeChecked()
-    expect(second.getByRole('checkbox', { name: 'Start in a worktree' })).toBeChecked()
-
-    await userEvent.click(first.getByRole('checkbox', { name: 'Start in a worktree' }))
-    expect(second.getByRole('checkbox', { name: 'Start in a worktree' })).toBeChecked()
+    await userEvent.click((await openOptions(first)).getByRole('checkbox', { name: 'Start in a worktree' }))
+    expect(optionsButton(first)).toHaveAccessibleName('Launch options: default, changed for this launch')
+    expect((await openOptions(second)).getByRole('checkbox', { name: 'Start in a worktree' })).toBeChecked()
 
     await userEvent.click(first.getByRole('button', { name: 'Open in Claude' }))
     expect(platform.launch).toHaveBeenLastCalledWith({
@@ -153,7 +204,7 @@ describe('LaunchControls', () => {
     // The untick covered that launch only: the row is back on the default, and the next
     // launch starts in a worktree again.
     await first.findByRole('status')
-    expect(first.getByRole('checkbox', { name: 'Start in a worktree' })).toBeChecked()
+    expect(optionsButton(first)).toHaveAccessibleName('Launch options: default')
 
     await userEvent.click(first.getByRole('button', { name: 'Open in Claude' }))
     expect(platform.launch).toHaveBeenLastCalledWith({
@@ -177,9 +228,10 @@ describe('LaunchControls', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
 
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      'Opened in iterm2: ~/projects/example-repo (worktree pr-7) · default · full access',
-    )
+    const status = await screen.findByRole('status')
+    const text = 'Opened in iterm2: ~/projects/example-repo (worktree pr-7) · default · full access'
+    expect(status).toHaveTextContent(text)
+    expect(status).toHaveAttribute('title', text)
   })
 
   it('shows a launch without a worktree in the clone', async () => {
@@ -195,13 +247,13 @@ describe('LaunchControls', () => {
     platform.launch.mockRejectedValue(new Error('no local clone of acme-org/example-repo under ~/projects'))
     render(<LaunchControls {...props()} />)
 
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Start in a worktree' }))
+    await userEvent.click((await openOptions()).getByRole('checkbox', { name: 'Start in a worktree' }))
     await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'no local clone of acme-org/example-repo under ~/projects',
     )
-    expect(screen.getByRole('checkbox', { name: 'Start in a worktree' })).not.toBeChecked()
+    expect((await openOptions()).getByRole('checkbox', { name: 'Start in a worktree' })).not.toBeChecked()
   })
 
   it('disables the button while opening', async () => {

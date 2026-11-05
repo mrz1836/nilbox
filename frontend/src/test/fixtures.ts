@@ -3,6 +3,7 @@
 import type {
   Account,
   InboxItem,
+  ItemDetails,
   InboxList,
   InboxSnapshot,
   LaunchResult,
@@ -29,6 +30,28 @@ export function item(overrides: Partial<InboxItem> = {}): InboxItem {
     authorAssociation: 'OWNER',
     branch: 'widget-cache',
     isDraft: false,
+    details: null,
+    ...overrides,
+  }
+}
+
+// details are a pull request's details: passing checks, an approval out of two
+// reviewers, a few comments, and two labels.
+export function details(overrides: Partial<ItemDetails> = {}): ItemDetails {
+  return {
+    labels: [
+      { name: 'enhancement', color: '#a2eeef' },
+      { name: 'needs-docs', color: '' },
+    ],
+    comments: 4,
+    additions: 120,
+    deletions: 30,
+    changedFiles: 6,
+    commits: 3,
+    mergeable: 'MERGEABLE',
+    checks: { state: 'SUCCESS', passed: 12, failed: 0, pending: 0, skipped: 3 },
+    reviews: { decision: 'APPROVED', reviewers: 2, reviewed: 1, approvals: 1, changesRequested: 0 },
+    fetchedAt: '2026-06-15T11:59:00Z',
     ...overrides,
   }
 }

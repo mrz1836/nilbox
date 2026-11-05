@@ -1,12 +1,21 @@
 // Package model holds the inbox's persisted records: the signed-in account, the
-// repositories it sees, the unified pull request and issue cache, local triage state, and
-// GitHub rate-limit readings.
+// repositories it sees, the unified pull request and issue cache with each item's
+// details, local triage state, and GitHub rate-limit readings.
 //
 // The schema itself is owned by the SQL migrations; these structs only map onto it, and a
 // parity test keeps the two in step.
 package model
 
-import "time"
+import (
+	"database/sql/driver"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"time"
+)
+
+// ErrUnsupportedScanType is returned when a JSON column holds neither text nor bytes.
+var ErrUnsupportedScanType = errors.New("unsupported column value for a JSON field")
 
 // Item kinds stored in Item.Kind.
 const (
@@ -79,6 +88,79 @@ type ItemLocalState struct {
 // TableName maps ItemLocalState to its table.
 func (ItemLocalState) TableName() string { return "item_local_state" }
 
+// ItemDetails is what a refresh learned about an item beyond the inbox lists: what its
+// inbox card shows. A refresh replaces the whole row. The pull request fields stay zero
+// for an issue.
+type ItemDetails struct {
+	ItemID           int64     `gorm:"column:item_id;primaryKey;autoIncrement:false"`
+	Labels           Labels    `gorm:"column:labels"`
+	Comments         int       `gorm:"column:comments"`
+	Additions        int       `gorm:"column:additions"`
+	Deletions        int       `gorm:"column:deletions"`
+	ChangedFiles     int       `gorm:"column:changed_files"`
+	Commits          int       `gorm:"column:commits"`
+	Mergeable        string    `gorm:"column:mergeable"`
+	ChecksState      string    `gorm:"column:checks_state"`
+	ChecksPassed     int       `gorm:"column:checks_passed"`
+	ChecksFailed     int       `gorm:"column:checks_failed"`
+	ChecksPending    int       `gorm:"column:checks_pending"`
+	ChecksSkipped    int       `gorm:"column:checks_skipped"`
+	ReviewDecision   string    `gorm:"column:review_decision"`
+	Reviewers        int       `gorm:"column:reviewers"`
+	Reviewed         int       `gorm:"column:reviewed"`
+	Approvals        int       `gorm:"column:approvals"`
+	ChangesRequested int       `gorm:"column:changes_requested"`
+	FetchedAt        time.Time `gorm:"column:fetched_at"`
+}
+
+// TableName maps ItemDetails to its table.
+func (ItemDetails) TableName() string { return "item_details" }
+
+// Label is one label on an item. Color is "#rrggbb", or "" when GitHub's was not a color.
+type Label struct {
+	Name  string `json:"name"`
+	Color string `json:"color"`
+}
+
+// Labels is a list of labels stored as a JSON array. A nil list is stored as [].
+//
+// Value has a value receiver so a plain field is a driver.Valuer; Scan needs a pointer.
+type Labels []Label //nolint:recvcheck // Valuer on the value, Scanner on the pointer
+
+// Value encodes the labels as a JSON array.
+func (l Labels) Value() (driver.Value, error) {
+	if l == nil {
+		return "[]", nil
+	}
+
+	b, err := json.Marshal([]Label(l))
+	if err != nil {
+		return nil, fmt.Errorf("encode the labels: %w", err)
+	}
+
+	return string(b), nil
+}
+
+// Scan decodes a JSON array of labels.
+func (l *Labels) Scan(src any) error {
+	var raw []byte
+
+	switch v := src.(type) {
+	case string:
+		raw = []byte(v)
+	case []byte:
+		raw = v
+	default:
+		return fmt.Errorf("%w: %T", ErrUnsupportedScanType, src)
+	}
+
+	if err := json.Unmarshal(raw, (*[]Label)(l)); err != nil {
+		return fmt.Errorf("decode the labels: %w", err)
+	}
+
+	return nil
+}
+
 // RateSnapshot is one GitHub API rate-limit reading for a resource (graphql, core, or
 // search). Cost is the point cost of the query that produced it, when known.
 type RateSnapshot struct {
@@ -98,5 +180,5 @@ func (RateSnapshot) TableName() string { return "rate_snapshots" }
 
 // AllModels returns every model in this package.
 func AllModels() []any {
-	return []any{&Account{}, &Repo{}, &Item{}, &ItemLocalState{}, &RateSnapshot{}}
+	return []any{&Account{}, &Repo{}, &Item{}, &ItemDetails{}, &ItemLocalState{}, &RateSnapshot{}}
 }

@@ -63,3 +63,98 @@ export function ChevronLeftIcon({ className }: IconProps) {
     </Icon>
   )
 }
+
+// ChevronDownIcon marks a control that opens a menu.
+export function ChevronDownIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M7 10l5 5 5-5" />
+    </Icon>
+  )
+}
+
+// PullRequestIcon stands for a pull request: two commits and a branch merging back.
+export function PullRequestIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <circle cx="6" cy="6" r="2.25" />
+      <circle cx="6" cy="18" r="2.25" />
+      <circle cx="18" cy="18" r="2.25" />
+      <path d="M6 8.25v7.5M18 15.75V9.5a3 3 0 0 0-3-3h-4.5M12.5 4l-2.5 2.5 2.5 2.5" />
+    </Icon>
+  )
+}
+
+// IssueIcon stands for an issue.
+export function IssueIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <circle cx="12" cy="12" r="8.25" />
+      <circle cx="12" cy="12" r="1.75" fill="currentColor" />
+    </Icon>
+  )
+}
+
+// CheckIcon marks something that passed.
+export function CheckIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M5 12.5l4.5 4.5L19 7.5" />
+    </Icon>
+  )
+}
+
+// XIcon marks something that failed.
+export function XIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M6.5 6.5l11 11M17.5 6.5l-11 11" />
+    </Icon>
+  )
+}
+
+// DotIcon marks something still running.
+export function DotIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <circle cx="12" cy="12" r="4" fill="currentColor" stroke="none" />
+    </Icon>
+  )
+}
+
+// RingIcon marks something absent, such as a commit without checks.
+export function RingIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <circle cx="12" cy="12" r="5" />
+    </Icon>
+  )
+}
+
+// EyeIcon stands for reviews.
+export function EyeIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" />
+      <circle cx="12" cy="12" r="2.75" />
+    </Icon>
+  )
+}
+
+// CommentIcon stands for comments.
+export function CommentIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M6.5 4.5h11a2 2 0 0 1 2 2V14a2 2 0 0 1-2 2H11l-4.5 3.5V16a2 2 0 0 1-2-2V6.5a2 2 0 0 1 2-2z" />
+    </Icon>
+  )
+}
+
+// TerminalIcon stands for opening a session in the terminal.
+export function TerminalIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M5 7.5l4.5 4.5L5 16.5M12.5 16.5H19" />
+    </Icon>
+  )
+}

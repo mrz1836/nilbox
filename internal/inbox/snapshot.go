@@ -11,13 +11,25 @@ import (
 	"github.com/mrz1836/nilbox/internal/trust"
 )
 
-// loadItemsSQL reads every item that is in at least one list, newest activity first.
+// loadItemsSQL reads every item that is in at least one list, newest activity first, with
+// its details when a refresh has read them (has_details).
 const loadItemsSQL = `SELECT
     i.id, i.kind, i.number, i.title, i.url, r.owner AS repo_owner, r.name AS repo_name,
     i.author_login, i.author_association, i.is_cross_repository, i.is_draft, i.head_ref,
-    i.item_updated_at, i.reason_review_requested, i.reason_authored, i.reason_assigned
+    i.item_updated_at, i.reason_review_requested, i.reason_authored, i.reason_assigned,
+    d.item_id IS NOT NULL AS has_details,
+    COALESCE(d.labels, '[]') AS labels, COALESCE(d.comments, 0) AS comments,
+    COALESCE(d.additions, 0) AS additions, COALESCE(d.deletions, 0) AS deletions,
+    COALESCE(d.changed_files, 0) AS changed_files, COALESCE(d.commits, 0) AS commits,
+    COALESCE(d.mergeable, '') AS mergeable, COALESCE(d.checks_state, '') AS checks_state,
+    COALESCE(d.checks_passed, 0) AS checks_passed, COALESCE(d.checks_failed, 0) AS checks_failed,
+    COALESCE(d.checks_pending, 0) AS checks_pending, COALESCE(d.checks_skipped, 0) AS checks_skipped,
+    COALESCE(d.review_decision, '') AS review_decision, COALESCE(d.reviewers, 0) AS reviewers,
+    COALESCE(d.reviewed, 0) AS reviewed, COALESCE(d.approvals, 0) AS approvals,
+    COALESCE(d.changes_requested, 0) AS changes_requested, d.fetched_at AS details_fetched_at
 FROM items i
 JOIN repos r ON r.id = i.repo_id
+LEFT JOIN item_details d ON d.item_id = i.id
 WHERE i.account_id = ?
   AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1)
 ORDER BY i.item_updated_at DESC, i.id DESC`
@@ -94,6 +106,69 @@ type Item struct {
 	// Branch is a pull request's head branch ("" for issues).
 	Branch  string `json:"branch"`
 	IsDraft bool   `json:"isDraft"`
+
+	// Details is nil until a refresh has read the item's details.
+	Details *Details `json:"details"`
+}
+
+// Details is what an item's inbox card shows beyond its title. The pull request fields
+// are zero, or "", for an issue.
+type Details struct {
+	Labels []Label `json:"labels"`
+
+	// Comments counts the conversation's comments, review comments included for a pull
+	// request.
+	Comments int `json:"comments"`
+
+	Additions    int `json:"additions"`
+	Deletions    int `json:"deletions"`
+	ChangedFiles int `json:"changedFiles"`
+	Commits      int `json:"commits"`
+
+	// Mergeable is MERGEABLE, CONFLICTING, or UNKNOWN while GitHub works it out.
+	Mergeable string `json:"mergeable"`
+
+	Checks  Checks  `json:"checks"`
+	Reviews Reviews `json:"reviews"`
+
+	// FetchedAt is when the details were read, as RFC 3339.
+	FetchedAt string `json:"fetchedAt"`
+}
+
+// Label is one label on an item.
+type Label struct {
+	Name string `json:"name"`
+
+	// Color is "#rrggbb", or "" when GitHub's value was not a color.
+	Color string `json:"color"`
+}
+
+// Checks counts the head commit's check runs and commit statuses by outcome.
+type Checks struct {
+	// State is GitHub's overall result: SUCCESS, FAILURE, ERROR, PENDING, or EXPECTED,
+	// and "" when the head commit has no checks.
+	State string `json:"state"`
+
+	Passed  int `json:"passed"`
+	Failed  int `json:"failed"`
+	Pending int `json:"pending"`
+	Skipped int `json:"skipped"`
+}
+
+// Reviews counts who was asked to review a pull request and who has.
+type Reviews struct {
+	// Decision is APPROVED, CHANGES_REQUESTED, or REVIEW_REQUIRED, and "" when the
+	// repository requires no review.
+	Decision string `json:"decision"`
+
+	// Reviewers is everyone asked to review or who has, the author excluded; Reviewed
+	// is how many of them have reviewed and are not asked to review again.
+	Reviewers int `json:"reviewers"`
+	Reviewed  int `json:"reviewed"`
+
+	// Approvals and ChangesRequested count the reviewers whose latest review is one.
+	Approvals        int `json:"approvals"`
+	ChangesRequested int `json:"changesRequested"`
 }
 
 // RateGauge holds the latest reading of each budget.
@@ -205,6 +280,26 @@ type itemRow struct {
 	ReasonReviewRequested bool      `gorm:"column:reason_review_requested"`
 	ReasonAuthored        bool      `gorm:"column:reason_authored"`
 	ReasonAssigned        bool      `gorm:"column:reason_assigned"`
+
+	HasDetails       bool         `gorm:"column:has_details"`
+	Labels           model.Labels `gorm:"column:labels"`
+	Comments         int          `gorm:"column:comments"`
+	Additions        int          `gorm:"column:additions"`
+	Deletions        int          `gorm:"column:deletions"`
+	ChangedFiles     int          `gorm:"column:changed_files"`
+	Commits          int          `gorm:"column:commits"`
+	Mergeable        string       `gorm:"column:mergeable"`
+	ChecksState      string       `gorm:"column:checks_state"`
+	ChecksPassed     int          `gorm:"column:checks_passed"`
+	ChecksFailed     int          `gorm:"column:checks_failed"`
+	ChecksPending    int          `gorm:"column:checks_pending"`
+	ChecksSkipped    int          `gorm:"column:checks_skipped"`
+	ReviewDecision   string       `gorm:"column:review_decision"`
+	Reviewers        int          `gorm:"column:reviewers"`
+	Reviewed         int          `gorm:"column:reviewed"`
+	Approvals        int          `gorm:"column:approvals"`
+	ChangesRequested int          `gorm:"column:changes_requested"`
+	DetailsFetchedAt *time.Time   `gorm:"column:details_fetched_at"`
 }
 
 // item converts a row to its DTO.
@@ -225,6 +320,43 @@ func (r *itemRow) item() Item {
 		AuthorAssociation: r.AuthorAssociation,
 		Branch:            r.HeadRef,
 		IsDraft:           r.IsDraft,
+		Details:           r.details(),
+	}
+}
+
+// details converts the row's details, or nil when no refresh has read them.
+func (r *itemRow) details() *Details {
+	if !r.HasDetails {
+		return nil
+	}
+
+	labels := make([]Label, 0, len(r.Labels))
+	for _, l := range r.Labels {
+		labels = append(labels, Label{Name: l.Name, Color: l.Color})
+	}
+
+	fetchedAt := ""
+	if r.DetailsFetchedAt != nil {
+		fetchedAt = formatTime(*r.DetailsFetchedAt)
+	}
+
+	return &Details{
+		Labels:       labels,
+		Comments:     r.Comments,
+		Additions:    r.Additions,
+		Deletions:    r.Deletions,
+		ChangedFiles: r.ChangedFiles,
+		Commits:      r.Commits,
+		Mergeable:    r.Mergeable,
+		Checks: Checks{
+			State: r.ChecksState, Passed: r.ChecksPassed, Failed: r.ChecksFailed,
+			Pending: r.ChecksPending, Skipped: r.ChecksSkipped,
+		},
+		Reviews: Reviews{
+			Decision: r.ReviewDecision, Reviewers: r.Reviewers, Reviewed: r.Reviewed,
+			Approvals: r.Approvals, ChangesRequested: r.ChangesRequested,
+		},
+		FetchedAt: fetchedAt,
 	}
 }
 

@@ -80,15 +80,15 @@ describe('InboxView', () => {
     expect(review.getByRole('button', { name: 'Add the widget cache' })).toBeInTheDocument()
     expect(review.getByText(/acme-org\/example-repo #7 · octo-user ·/)).toBeInTheDocument()
     expect(review.getByText('3h')).toHaveAttribute('dateTime', '2026-06-15T09:00:00Z')
-    expect(review.getByText('PR')).toBeInTheDocument()
+    expect(review.getByRole('img', { name: 'Pull request' })).toBeInTheDocument()
 
     const authored = await section('Authored')
     expect(authored.getByRole('button', { name: 'Fix the parser' })).toBeInTheDocument()
     expect(authored.getByText(/acme-org\/other-repo #12/)).toBeInTheDocument()
-    expect(authored.getByText('draft')).toBeInTheDocument()
+    expect(authored.getByText('Draft')).toBeInTheDocument()
 
     const assigned = await section('Assigned')
-    expect(assigned.getByText('Issue')).toBeInTheDocument()
+    expect(assigned.getByRole('img', { name: 'Issue' })).toBeInTheDocument()
     expect(assigned.getByText(/dependabot\[bot\]/)).toBeInTheDocument()
     expect(assigned.getByText('outside contributor')).toBeInTheDocument()
 

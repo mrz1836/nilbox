@@ -1,0 +1,282 @@
+{
+    "data": {
+        "nodes": [
+            {
+                "__typename": "PullRequest",
+                "id": "PR_fakeNodeIdPassing",
+                "additions": 120,
+                "deletions": 30,
+                "changedFiles": 6,
+                "totalCommentsCount": 4,
+                "reviewDecision": "APPROVED",
+                "mergeable": "MERGEABLE",
+                "author": {
+                    "login": "octo-author"
+                },
+                "commits": {
+                    "totalCount": 3
+                },
+                "labels": {
+                    "nodes": [
+                        {
+                            "name": "enhancement",
+                            "color": "A2EEEF"
+                        },
+                        {
+                            "name": "odd-color",
+                            "color": "not-a-color"
+                        },
+                        {
+                            "name": "",
+                            "color": "ffffff"
+                        },
+                        null
+                    ]
+                },
+                "reviewRequests": {
+                    "nodes": [
+                        {
+                            "requestedReviewer": {
+                                "__typename": "User",
+                                "login": "octo-user"
+                            }
+                        },
+                        {
+                            "requestedReviewer": {
+                                "__typename": "Team",
+                                "slug": "reviewers"
+                            }
+                        },
+                        {
+                            "requestedReviewer": {
+                                "__typename": "User",
+                                "login": "Octo-Approver"
+                            }
+                        },
+                        {
+                            "requestedReviewer": null
+                        },
+                        null
+                    ]
+                },
+                "latestReviews": {
+                    "nodes": [
+                        {
+                            "state": "APPROVED",
+                            "author": {
+                                "login": "octo-approver"
+                            }
+                        },
+                        {
+                            "state": "APPROVED",
+                            "author": {
+                                "login": "octo-second"
+                            }
+                        },
+                        {
+                            "state": "COMMENTED",
+                            "author": {
+                                "login": "octo-commenter"
+                            }
+                        },
+                        {
+                            "state": "COMMENTED",
+                            "author": {
+                                "login": "Octo-Author"
+                            }
+                        },
+                        {
+                            "state": "DISMISSED",
+                            "author": {
+                                "login": "octo-dismissed"
+                            }
+                        },
+                        {
+                            "state": "PENDING",
+                            "author": {
+                                "login": "octo-drafting"
+                            }
+                        },
+                        {
+                            "state": "COMMENTED",
+                            "author": null
+                        },
+                        null
+                    ]
+                },
+                "statusCheckRollup": {
+                    "state": "SUCCESS",
+                    "contexts": {
+                        "checkRunCountsByState": [
+                            {
+                                "state": "SUCCESS",
+                                "count": 12
+                            },
+                            {
+                                "state": "NEUTRAL",
+                                "count": 1
+                            },
+                            {
+                                "state": "SKIPPED",
+                                "count": 15
+                            },
+                            {
+                                "state": "FAILURE",
+                                "count": 0
+                            }
+                        ],
+                        "statusContextCountsByState": [
+                            {
+                                "state": "SUCCESS",
+                                "count": 2
+                            },
+                            {
+                                "state": "PENDING",
+                                "count": 0
+                            }
+                        ]
+                    }
+                }
+            },
+            {
+                "__typename": "PullRequest",
+                "id": "PR_fakeNodeIdFailing",
+                "additions": 937,
+                "deletions": 40,
+                "changedFiles": 8,
+                "totalCommentsCount": 14,
+                "reviewDecision": "CHANGES_REQUESTED",
+                "mergeable": "CONFLICTING",
+                "author": {
+                    "login": "octo-contributor"
+                },
+                "commits": {
+                    "totalCount": 6
+                },
+                "labels": {
+                    "nodes": [
+                        {
+                            "name": "needs-work",
+                            "color": "ffd700"
+                        }
+                    ]
+                },
+                "reviewRequests": {
+                    "nodes": []
+                },
+                "latestReviews": {
+                    "nodes": [
+                        {
+                            "state": "CHANGES_REQUESTED",
+                            "author": {
+                                "login": "octo-reviewer"
+                            }
+                        }
+                    ]
+                },
+                "statusCheckRollup": {
+                    "state": "FAILURE",
+                    "contexts": {
+                        "checkRunCountsByState": [
+                            {
+                                "state": "SUCCESS",
+                                "count": 18
+                            },
+                            {
+                                "state": "FAILURE",
+                                "count": 2
+                            },
+                            {
+                                "state": "TIMED_OUT",
+                                "count": 1
+                            },
+                            {
+                                "state": "CANCELLED",
+                                "count": 1
+                            },
+                            {
+                                "state": "IN_PROGRESS",
+                                "count": 1
+                            },
+                            {
+                                "state": "QUEUED",
+                                "count": 1
+                            }
+                        ],
+                        "statusContextCountsByState": [
+                            {
+                                "state": "ERROR",
+                                "count": 1
+                            },
+                            {
+                                "state": "PENDING",
+                                "count": 1
+                            },
+                            {
+                                "state": "EXPECTED",
+                                "count": 1
+                            }
+                        ]
+                    }
+                }
+            },
+            {
+                "__typename": "PullRequest",
+                "id": "PR_fakeNodeIdNoChecks",
+                "additions": 2,
+                "deletions": 2,
+                "changedFiles": 2,
+                "totalCommentsCount": 0,
+                "reviewDecision": null,
+                "mergeable": "UNKNOWN",
+                "author": null,
+                "commits": {
+                    "totalCount": 1
+                },
+                "labels": {
+                    "nodes": []
+                },
+                "reviewRequests": {
+                    "nodes": []
+                },
+                "latestReviews": {
+                    "nodes": []
+                },
+                "statusCheckRollup": null
+            },
+            {
+                "__typename": "Issue",
+                "id": "I_fakeNodeIdIssue",
+                "comments": {
+                    "totalCount": 7
+                },
+                "labels": {
+                    "nodes": [
+                        {
+                            "name": "bug",
+                            "color": "d73a4a"
+                        }
+                    ]
+                }
+            },
+            null
+        ],
+        "rateLimit": {
+            "cost": 1,
+            "limit": 5000,
+            "remaining": 4980,
+            "resetAt": "2026-01-10T13:00:00Z",
+            "used": 20
+        }
+    },
+    "errors": [
+        {
+            "type": "NOT_FOUND",
+            "path": [
+                "nodes",
+                4
+            ],
+            "message": "Could not resolve to a node with the global id of 'PR_fakeNodeIdGone'"
+        }
+    ]
+}

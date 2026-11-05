@@ -114,6 +114,12 @@ func TestModelsRoundTrip(t *testing.T) {
 
 	done := at.Add(2 * time.Hour)
 	require.NoError(t, db.Create(&inboxmodel.ItemLocalState{ItemID: item.ID, DoneAt: &done}).Error)
+	require.NoError(t, db.Create(&inboxmodel.ItemDetails{
+		ItemID: item.ID, Labels: inboxmodel.Labels{{Name: "bug", Color: "#d73a4a"}}, Comments: 4,
+		Additions: 120, Deletions: 30, ChangedFiles: 6, Commits: 3, Mergeable: "MERGEABLE",
+		ChecksState: "SUCCESS", ChecksPassed: 12, ChecksSkipped: 3,
+		ReviewDecision: "APPROVED", Reviewers: 2, Reviewed: 1, Approvals: 1, FetchedAt: at,
+	}).Error)
 	require.NoError(t, db.Create(&inboxmodel.RateSnapshot{
 		AccountID: account.ID, Resource: "graphql", LimitTotal: 5000, Remaining: 4999, Used: 1, Cost: 1,
 		ResetAt: at, TakenAt: at,
@@ -139,6 +145,12 @@ func TestModelsRoundTrip(t *testing.T) {
 	assert.True(t, gotRepo.Pinned)
 	assert.False(t, gotRepo.Muted)
 
+	var gotDetails inboxmodel.ItemDetails
+	require.NoError(t, db.First(&gotDetails, item.ID).Error)
+	assert.Equal(t, inboxmodel.Labels{{Name: "bug", Color: "#d73a4a"}}, gotDetails.Labels)
+	assert.Equal(t, 12, gotDetails.ChecksPassed)
+	assert.Equal(t, "APPROVED", gotDetails.ReviewDecision)
+
 	var gotState inboxmodel.ItemLocalState
 	require.NoError(t, db.First(&gotState, item.ID).Error)
 	require.NotNil(t, gotState.DoneAt)
@@ -156,6 +168,8 @@ func TestModelsRoundTrip(t *testing.T) {
 
 	var remaining int64
 	require.NoError(t, db.Model(&inboxmodel.ItemLocalState{}).Count(&remaining).Error)
+	assert.Zero(t, remaining)
+	require.NoError(t, db.Model(&inboxmodel.ItemDetails{}).Count(&remaining).Error)
 	assert.Zero(t, remaining)
 	require.NoError(t, db.Model(&inboxmodel.RateSnapshot{}).Count(&remaining).Error)
 	assert.Zero(t, remaining)
@@ -182,4 +196,20 @@ func TestSchemaRejectsInvalidRows(t *testing.T) {
 	// JSON columns must hold the right JSON shape.
 	require.Error(t, db.Exec(`INSERT INTO claude_profiles (name, add_dirs, created_at, updated_at)
 		VALUES ('broken', '{"not": "an array"}', '2026-01-01 00:00:00', '2026-01-01 00:00:00')`).Error)
+
+	item := inboxmodel.Item{AccountID: account.ID, RepoID: repo.ID, Kind: inboxmodel.KindPR, Number: 1}
+	require.NoError(t, db.Create(&item).Error)
+
+	// Item details: labels must be an array, counts cannot go negative, and no more
+	// reviewers can have reviewed than there are.
+	for _, bad := range []string{
+		`INSERT INTO item_details (item_id, labels, fetched_at) VALUES (?, '{"not": "an array"}', '2026-01-01 00:00:00')`,
+		`INSERT INTO item_details (item_id, comments, fetched_at) VALUES (?, -1, '2026-01-01 00:00:00')`,
+		`INSERT INTO item_details (item_id, reviewers, reviewed, fetched_at) VALUES (?, 1, 2, '2026-01-01 00:00:00')`,
+	} {
+		require.Error(t, db.Exec(bad, item.ID).Error, bad)
+	}
+
+	// Details for an item that does not exist.
+	require.Error(t, db.Create(&inboxmodel.ItemDetails{ItemID: item.ID + 100}).Error)
 }

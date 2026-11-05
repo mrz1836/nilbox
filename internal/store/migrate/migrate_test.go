@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -136,31 +137,58 @@ func TestMigrateFreshDatabase(t *testing.T) {
 	res, err := migrate.Apply(t.Context(), db, path, migrate.Options{})
 	require.NoError(t, err)
 
-	assert.Equal(t, migrate.Result{From: 0, To: 1, Applied: []int{1}}, res)
+	// Every migration shipped in migrations/, in order.
+	files, err := filepath.Glob(filepath.Join("migrations", "*.sql"))
+	require.NoError(t, err)
+	require.NotEmpty(t, files)
+	sort.Strings(files)
+
+	applied := make([]int, 0, len(files))
+	for i := range files {
+		applied = append(applied, i+1)
+	}
+
+	assert.Equal(t, migrate.Result{From: 0, To: len(files), Applied: applied}, res)
 	assert.Equal(t, []string{
-		"accounts", "claude_profiles", "item_local_state", "items",
+		"accounts", "claude_profiles", "item_details", "item_local_state", "items",
 		"prefs", "rate_snapshots", "repos", "schema_migrations",
 	}, tables(t, db))
 
-	body, err := os.ReadFile(filepath.Join("migrations", "0001_init.sql"))
+	// Every shipped migration is recorded with its name and the checksum of its file.
+	rows, err := db.QueryContext(t.Context(), `SELECT version, name, checksum, applied_at FROM schema_migrations ORDER BY version`)
 	require.NoError(t, err)
 
-	sum := sha256.Sum256(body)
+	defer func() { _ = rows.Close() }()
 
-	var (
-		name, checksum, appliedAt string
-		version                   int
-	)
+	var seen int
 
-	require.NoError(t, db.QueryRowContext(t.Context(),
-		`SELECT version, name, checksum, applied_at FROM schema_migrations`).
-		Scan(&version, &name, &checksum, &appliedAt))
-	assert.Equal(t, 1, version)
-	assert.Equal(t, "init", name)
-	assert.Equal(t, hex.EncodeToString(sum[:]), checksum)
+	for rows.Next() {
+		var (
+			name, checksum, appliedAt string
+			version                   int
+		)
 
-	_, err = time.Parse(time.RFC3339, appliedAt)
-	require.NoError(t, err)
+		require.NoError(t, rows.Scan(&version, &name, &checksum, &appliedAt))
+		require.Less(t, seen, len(files), "more migrations recorded than shipped")
+
+		body, readErr := os.ReadFile(files[seen])
+		require.NoError(t, readErr)
+
+		sum := sha256.Sum256(body)
+		wantName := strings.TrimSuffix(filepath.Base(files[seen])[len("0001_"):], ".sql")
+
+		assert.Equal(t, seen+1, version)
+		assert.Equal(t, wantName, name)
+		assert.Equal(t, hex.EncodeToString(sum[:]), checksum)
+
+		_, err = time.Parse(time.RFC3339, appliedAt)
+		require.NoError(t, err)
+
+		seen++
+	}
+
+	require.NoError(t, rows.Err())
+	assert.Equal(t, len(files), seen)
 
 	// A brand-new database has nothing to protect, so no backup is written.
 	assert.Empty(t, backups(t, path))
