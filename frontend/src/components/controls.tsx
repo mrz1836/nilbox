@@ -1,0 +1,150 @@
+import { useId, type ReactNode } from 'react'
+
+// Shared styles and small controls for forms: text fields, buttons, and a segmented
+// choice. Every control is a native element, so it works with the keyboard and screen
+// readers as is.
+
+export const fieldClass =
+  'rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm text-text placeholder:text-muted/70 disabled:opacity-60 aria-invalid:border-danger'
+
+export const buttonClass =
+  'inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text transition-colors hover:bg-raised disabled:cursor-default disabled:opacity-50 disabled:hover:bg-surface'
+
+export const primaryButtonClass =
+  'inline-flex items-center justify-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:cursor-default disabled:opacity-50'
+
+export const quietButtonClass =
+  'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted transition-colors hover:bg-raised hover:text-text disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent'
+
+export const chipClass = 'rounded-full border border-border px-2 py-0.5 text-xs whitespace-nowrap text-muted'
+
+export interface SegmentOption<T extends string> {
+  value: T
+  label: string
+  // title is the option's tooltip, if any.
+  title?: string
+}
+
+export interface SegmentedProps<T extends string> {
+  // label names the choice for assistive tech.
+  label: string
+  value: T
+  options: readonly SegmentOption<T>[]
+  onChange: (value: T) => void
+  disabled?: boolean
+  // size is "sm" for dense rows.
+  size?: 'sm' | 'md'
+}
+
+// Segmented is a row of mutually exclusive options drawn as one control: radio buttons
+// underneath, so arrow keys move between them.
+export function Segmented<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+  disabled = false,
+  size = 'md',
+}: SegmentedProps<T>) {
+  const name = useId()
+  const pad = size === 'sm' ? 'px-2 py-0.5 text-xs' : 'px-2.5 py-1 text-[13px]'
+
+  return (
+    <div
+      role="radiogroup"
+      aria-label={label}
+      className="inline-flex shrink-0 rounded-md border border-border bg-background p-0.5"
+    >
+      {options.map((o) => (
+        <label
+          key={o.value}
+          title={o.title}
+          className={`relative rounded-[5px] ${pad} font-medium whitespace-nowrap text-muted transition-colors select-none hover:text-text has-checked:bg-raised has-checked:text-text has-checked:shadow-sm has-focus-visible:outline-2 has-focus-visible:outline-accent ${disabled ? 'opacity-60' : 'cursor-pointer'}`}
+        >
+          <input
+            type="radio"
+            name={name}
+            value={o.value}
+            checked={value === o.value}
+            disabled={disabled}
+            onChange={() => {
+              onChange(o.value)
+            }}
+            className="sr-only"
+          />
+          {o.label}
+        </label>
+      ))}
+    </div>
+  )
+}
+
+// Inherit, on, or off: a launch setting that is either set or left to the layer above.
+export type TriState = 'inherit' | 'on' | 'off'
+
+// triState reads an optional setting as a TriState.
+export function triState(v: boolean | null): TriState {
+  if (v === null) {
+    return 'inherit'
+  }
+
+  return v ? 'on' : 'off'
+}
+
+// fromTriState turns a TriState back into an optional setting.
+export function fromTriState(v: TriState): boolean | null {
+  if (v === 'inherit') {
+    return null
+  }
+
+  return v === 'on'
+}
+
+export interface FieldProps {
+  label: string
+  // controlId is the id of the control the label names.
+  controlId: string
+  // hint is help shown under the control while there is no error.
+  hint?: ReactNode
+  error?: string
+  // aside sits at the end of the label line, such as a character count.
+  aside?: ReactNode
+  children: ReactNode
+}
+
+// Field lays out a labeled control with its hint or error below it. The hint and error
+// carry ids the control can point aria-describedby at: `${controlId}-hint` and
+// `${controlId}-error`.
+export function Field({ label, controlId, hint, error = '', aside, children }: FieldProps) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <div className="flex items-baseline justify-between gap-2">
+        <label htmlFor={controlId} className="text-xs font-medium text-muted">
+          {label}
+        </label>
+        {aside}
+      </div>
+      {children}
+      {error !== '' ? (
+        <p id={`${controlId}-error`} role="alert" className="text-xs text-danger">
+          {error}
+        </p>
+      ) : (
+        hint !== undefined && (
+          <p id={`${controlId}-hint`} className="text-xs text-muted">
+            {hint}
+          </p>
+        )
+      )}
+    </div>
+  )
+}
+
+// describedBy returns the ids a Field's control should point aria-describedby at.
+export function describedBy(controlId: string, error: string | undefined, hasHint: boolean): string | undefined {
+  if (error !== undefined && error !== '') {
+    return `${controlId}-error`
+  }
+
+  return hasHint ? `${controlId}-hint` : undefined
+}

@@ -4,7 +4,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { App } from './App'
 import { brand } from './generated/brand'
-import { item, list, profile, rate, settings, snapshot, unknownRate, worktreesSnapshot } from './test/fixtures'
+import {
+  checkResult,
+  item,
+  itemResolution,
+  list,
+  profile,
+  prompts,
+  rate,
+  resolution,
+  settings,
+  snapshot,
+  unknownRate,
+  variables,
+  worktreesSnapshot,
+} from './test/fixtures'
 
 const platform = vi.hoisted(() => ({
   getAppInfo: vi.fn(),
@@ -20,6 +34,19 @@ const platform = vi.hoisted(() => ({
   openInBrowser: vi.fn(),
   launch: vi.fn(),
   listWorktrees: vi.fn(),
+  listPrompts: vi.fn(),
+  getDefaultPrompts: vi.fn(),
+  listPromptVariables: vi.fn(),
+  listLaunchDefaults: vi.fn(),
+  resolveLaunches: vi.fn(),
+  resolveLaunch: vi.fn(),
+  previewLaunch: vi.fn(),
+  checkPrompt: vi.fn(),
+  setDefaultPrompt: vi.fn(),
+  listLaunchTargets: vi.fn(),
+  checkLaunchDefaults: vi.fn(),
+  setTrustedBots: vi.fn(),
+  resetTrustedBots: vi.fn(),
 }))
 
 vi.mock('./platform', () => platform)
@@ -35,6 +62,21 @@ beforeEach(() => {
   platform.setWorktreeDefault.mockResolvedValue(undefined)
   platform.listWorktrees.mockResolvedValue(worktreesSnapshot())
   platform.getAppInfo.mockResolvedValue({ name: brand.name, tagline: brand.tagline, version: 'dev' })
+  platform.listPrompts.mockResolvedValue(prompts())
+  platform.getDefaultPrompts.mockResolvedValue({ pr: 1, issue: 4 })
+  platform.listPromptVariables.mockResolvedValue(variables())
+  platform.listLaunchDefaults.mockResolvedValue([])
+  platform.resolveLaunches.mockResolvedValue([
+    itemResolution({
+      profile: { value: 'work', source: 'app', inherited: 'work', inheritedSource: 'app' },
+      worktree: { value: false, source: 'app', inherited: false, inheritedSource: 'app' },
+    }),
+  ])
+  platform.resolveLaunch.mockResolvedValue(resolution())
+  platform.checkPrompt.mockResolvedValue(checkResult())
+  platform.listLaunchTargets.mockResolvedValue([])
+  platform.checkLaunchDefaults.mockResolvedValue([])
+  platform.setTrustedBots.mockResolvedValue(undefined)
 })
 
 // rowOptions opens the inbox row's launch options and returns queries scoped to them.
@@ -77,12 +119,13 @@ describe('App', () => {
   it('opens on the inbox with launch controls from the settings', async () => {
     render(<App />)
 
-    expect(await screen.findByRole('button', { name: 'Open in Claude' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Launch options/ })).toHaveAccessibleName('Launch options: work')
+    expect(await screen.findByRole('button', { name: 'Launch options: Review · work' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open in Claude' })).toBeEnabled()
+    expect(platform.resolveLaunches).toHaveBeenCalledWith([1])
 
     const options = await rowOptions()
     expect(options.getByRole('radio', { name: 'work' })).toBeChecked()
-    expect(options.getByRole('checkbox', { name: 'Start in a worktree' })).not.toBeChecked()
+    expect(options.getByRole('checkbox', { name: /Start in a worktree/ })).not.toBeChecked()
   })
 
   it('switches between the inbox and the worktrees view', async () => {
@@ -122,17 +165,71 @@ describe('App', () => {
     expect(screen.getByRole('combobox', { name: 'Terminal' })).toHaveValue('terminal')
   })
 
-  it('applies a new launch default to the inbox rows', async () => {
+  it('re-resolves the inbox rows after a settings change', async () => {
     render(<App />)
-    expect((await rowOptions()).getByRole('checkbox', { name: 'Start in a worktree' })).not.toBeChecked()
-    await userEvent.keyboard('{Escape}')
+    await screen.findByRole('button', { name: 'Launch options: Review · work' })
+    expect(platform.resolveLaunches).toHaveBeenCalledOnce()
+
+    platform.resolveLaunches.mockResolvedValue([itemResolution()])
 
     await openSettingsFromMenu()
     await userEvent.click(screen.getByRole('button', { name: 'Launching' }))
     await userEvent.click(screen.getByRole('switch', { name: 'Start in a worktree' }))
     await userEvent.keyboard('{Escape}')
 
-    expect((await rowOptions()).getByRole('checkbox', { name: 'Start in a worktree' })).toBeChecked()
+    expect(await screen.findByRole('button', { name: 'Launch options: Review · default' })).toBeInTheDocument()
+    expect(platform.resolveLaunches).toHaveBeenCalledTimes(2)
+  })
+
+  it('reads the inbox again when the trusted bots change, so the cards relabel', async () => {
+    const bot = item({ author: 'dependabot', trust: 'outside', trusted: false, authorIsBot: true })
+    platform.getSettings.mockResolvedValue(settings({ trustedBots: [] }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([bot]) }))
+    render(<App />)
+
+    expect(await screen.findByText('untrusted bot')).toBeInTheDocument()
+
+    await openSettingsFromMenu()
+    await userEvent.click(screen.getByRole('button', { name: 'Trust' }))
+
+    platform.getSettings.mockResolvedValue(settings({ trustedBots: ['dependabot'] }))
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ reviewRequested: list([{ ...bot, trust: 'bot', trusted: true }]) }),
+    )
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Bot to trust' }), 'dependabot')
+    await userEvent.click(screen.getByRole('button', { name: 'Trust bot' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Close settings' }))
+
+    expect(await screen.findByText('bot')).toBeInTheDocument()
+    expect(screen.queryByText('untrusted bot')).not.toBeInTheDocument()
+  })
+
+  it('opens the Prompts page and keeps it while switching tabs', async () => {
+    render(<App />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Prompts' }))
+
+    const library = await screen.findByRole('navigation', { name: 'Prompts' })
+    expect(within(library).getByRole('button', { name: /^Fix checks/ })).toHaveAttribute('aria-current', 'true')
+
+    const title = screen.getByRole('textbox', { name: 'Title' })
+    await userEvent.type(title, ' again')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Inbox' }))
+    expect(screen.queryByRole('navigation', { name: 'Prompts' })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Prompts' }))
+    expect(screen.getByRole('textbox', { name: 'Title' })).toHaveValue('Fix a pull request’s failing checks again')
+  })
+
+  it('opens the Prompts page from a row’s launch menu', async () => {
+    render(<App />)
+
+    await userEvent.click((await rowOptions()).getByRole('button', { name: 'Manage' }))
+
+    expect(await screen.findByRole('navigation', { name: 'Prompts' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Prompts' })).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('opens the settings with ⌘, and returns to the view it came from', async () => {

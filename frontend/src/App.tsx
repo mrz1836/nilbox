@@ -2,43 +2,33 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { AppHeader, type View } from './components/AppHeader'
 import { InboxView, type LaunchOptions } from './components/InboxView'
+import { PromptsView } from './components/PromptsView'
 import { SettingsView } from './components/SettingsView'
 import { WorktreesView } from './components/WorktreesView'
-import { errorMessage } from './lib/format'
 import { useInbox } from './lib/useInbox'
-import { getSettings, listProfiles, type Profile, type Settings } from './platform'
+import { useLaunchConfig } from './lib/useLaunchConfig'
+import type { Settings } from './platform'
 
 // App is the window's root: the toolbar over the active page. It holds the state the
-// pages share: the inbox (the lists, the account, and the API budget), and the settings
-// and launch profiles, loaded once for the rows' launch controls and the settings page.
+// pages share: the inbox (the lists, the account, and the API budget), and the launch
+// configuration (settings, profiles, prompts, launch defaults, and each item's resolved
+// launch settings) that the rows, the Prompts page, and the settings page use.
 export function App() {
   const inbox = useInbox()
+  const config = useLaunchConfig(inbox.snapshot)
   const [view, setView] = useState<View>('inbox')
   // returnView is where closing the settings page goes back to.
   const [returnView, setReturnView] = useState<View>('inbox')
-  const [settings, setSettings] = useState<Settings | null>(null)
-  const [profiles, setProfiles] = useState<Profile[]>([])
-  const [setupError, setSetupError] = useState('')
+  // promptsOpened keeps the Prompts page mounted once opened, so an unsaved draft
+  // survives switching tabs.
+  const [promptsOpened, setPromptsOpened] = useState(false)
 
-  useEffect(() => {
-    let active = true
-
-    Promise.all([getSettings(), listProfiles()])
-      .then(([loadedSettings, loadedProfiles]) => {
-        if (active) {
-          setSettings(loadedSettings)
-          setProfiles(loadedProfiles)
-        }
-      })
-      .catch((err: unknown) => {
-        if (active) {
-          setSetupError(errorMessage(err))
-        }
-      })
-
-    return () => {
-      active = false
+  const changeView = useCallback((next: View) => {
+    if (next === 'prompts') {
+      setPromptsOpened(true)
     }
+
+    setView(next)
   }, [])
 
   const openSettings = useCallback(() => {
@@ -68,12 +58,36 @@ export function App() {
     }
   }, [openSettings])
 
+  const { reload, setSettings } = config
+  const { reload: reloadInbox } = inbox
+
+  // saveSettings records changed settings: every row's launch settings resolve again, and
+  // the stored inbox is read again, since the trusted bots decide each card's trust.
+  const saveSettings = useCallback(
+    (next: Settings) => {
+      setSettings(next)
+      reloadInbox()
+    },
+    [setSettings, reloadInbox],
+  )
+
+  const openPrompts = useCallback(() => {
+    changeView('prompts')
+  }, [changeView])
+
   const launch = useMemo<LaunchOptions | null>(
     () =>
-      settings === null
+      config.settings === null
         ? null
-        : { profiles, defaultProfile: settings.defaultProfile, worktreeDefault: settings.worktreeDefault },
-    [settings, profiles],
+        : {
+            profiles: config.profiles,
+            prompts: config.prompts,
+            launchDefaults: config.launchDefaults,
+            resolutions: config.resolutions,
+            onDefaultsSaved: reload,
+            onManagePrompts: openPrompts,
+          },
+    [config.settings, config.profiles, config.prompts, config.launchDefaults, config.resolutions, reload, openPrompts],
   )
 
   const account = inbox.snapshot?.account ?? null
@@ -82,27 +96,44 @@ export function App() {
     <div className="flex h-screen flex-col bg-background text-text">
       <AppHeader
         view={view}
-        onViewChange={setView}
+        onViewChange={changeView}
         account={account}
         gauge={inbox.snapshot?.rate ?? null}
         now={inbox.now}
         onOpenSettings={openSettings}
       />
-      {setupError !== '' && (
+      {config.error !== '' && (
         <p role="alert" className="mx-4 mt-4 rounded-md border border-danger px-3 py-2 text-sm text-danger">
-          Could not load the launch settings: {setupError}
+          Could not load the launch settings: {config.error}
         </p>
       )}
       <main className="min-h-0 flex-1 overflow-y-auto">
-        {/* Only the active page is mounted, so the worktrees are listed when that view opens. */}
+        {/* Only the active page is mounted, so the worktrees are listed when that view opens.
+            The Prompts page stays mounted once opened, hidden, to keep an unsaved draft. */}
         {view === 'inbox' && <InboxView inbox={inbox} launch={launch} />}
         {view === 'worktrees' && <WorktreesView />}
+        {promptsOpened && (
+          <div hidden={view !== 'prompts'} className="h-full">
+            <PromptsView
+              prompts={config.prompts}
+              defaults={config.defaultPrompts}
+              variables={config.variables}
+              items={config.items}
+              active={view === 'prompts'}
+              onChanged={reload}
+            />
+          </div>
+        )}
         {view === 'settings' && (
           <SettingsView
-            settings={settings}
-            profiles={profiles}
+            settings={config.settings}
+            profiles={config.profiles}
+            prompts={config.prompts}
+            defaultPrompts={config.defaultPrompts}
+            launchDefaults={config.launchDefaults}
             account={account}
-            onSaved={setSettings}
+            onSaved={saveSettings}
+            onLaunchChanged={reload}
             onClose={closeSettings}
           />
         )}

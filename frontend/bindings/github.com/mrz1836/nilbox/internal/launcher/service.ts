@@ -17,14 +17,14 @@ import * as $models from "./models.js";
 /**
  * Launch starts a session on an inbox item:
  *
- *  1. load the item (computing its trust) and the profile (the default profile setting
- *     when none is named);
+ *  1. load the item (computing its trust) and resolve its launch settings: the
+ *     request's choices, then the prompt's, the repository's and its owner's launch
+ *     defaults, the profile's, and the app's settings;
  *  2. find the item's local clone: the cached path when it still is a clone of the
  *     repository, otherwise a scan of the clone root, whose result is cached;
- *  3. decide the worktree: the request's choice, else the worktree default setting;
- *  4. find the agent, build the plan, and render the starter prompt;
- *  5. write the prompt file and launch script;
- *  6. open the script in the terminal chosen in settings.
+ *  3. find the agent, build the plan, and fill in the prompt;
+ *  4. write the prompt file and launch script;
+ *  5. open the script in the terminal chosen in settings.
  *
  * The only git command it runs is the read-only `git -C <clone> config --get-regexp`
  * remote lookup. The script only changes into the clone and runs the agent; it never
@@ -32,4 +32,32 @@ import * as $models from "./models.js";
  */
 export function Launch(req: $models.LaunchRequest): $CancellablePromise<$models.LaunchResult> {
     return $Call.ByID(3088047411, req);
+}
+
+/**
+ * Preview plans a launch without writing files or opening a terminal: the resolved
+ * settings, the clone, the command, and the filled-in prompt. Launch runs the same plan,
+ * so the prompt shown is the prompt sent.
+ */
+export function Preview(req: $models.LaunchRequest): $CancellablePromise<$models.Preview> {
+    return $Call.ByID(2971060196, req);
+}
+
+/**
+ * Resolve returns the launch settings for one item with the request's choices applied,
+ * each with where it came from. It reads only the database: it looks for no clone and
+ * writes nothing.
+ */
+export function Resolve(req: $models.LaunchRequest): $CancellablePromise<$models.Resolution> {
+    return $Call.ByID(417736972, req);
+}
+
+/**
+ * ResolveItems returns each item's default launch settings, as Resolve with no choices
+ * would, for the inbox's launch buttons. An item whose settings cannot resolve, such as
+ * one no prompt applies to, carries the reason in Problem; items no longer stored are
+ * left out.
+ */
+export function ResolveItems(ids: number[] | null): $CancellablePromise<$models.ItemResolution[] | null> {
+    return $Call.ByID(2484134288, ids);
 }

@@ -1,17 +1,48 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useState } from 'react'
 
 import { errorMessage } from '../lib/format'
+import {
+  defaultsInput,
+  emptyDefaults,
+  findDefaults,
+  hasChoices,
+  launchRequest,
+  noChoices,
+  savableChoices,
+  saveStatus,
+  shadowedChoices,
+  withChoices,
+  type Choices,
+  type SaveStatus,
+} from '../lib/launchChoices'
 import { usePopover } from '../lib/usePopover'
-import { launch, type InboxItem, type LaunchResult, type Profile } from '../platform'
-import { ChevronDownIcon, TerminalIcon } from './icons'
+import {
+  launch,
+  resolveLaunch,
+  saveLaunchDefaults,
+  type InboxItem,
+  type ItemResolution,
+  type LaunchDefaults,
+  type LaunchResult,
+  type Profile,
+  type Prompt,
+  type Resolution,
+} from '../platform'
+import { AlertIcon, ChevronDownIcon, TerminalIcon } from './icons'
+import { LaunchMenu } from './LaunchMenu'
 
 export interface LaunchControlsProps {
   item: InboxItem
-  profiles: Profile[]
-  // defaultProfile is the profile preselected (the profile.default setting).
-  defaultProfile: string
-  // worktreeDefault presets the "Start in a worktree" choice (the launch.worktree setting).
-  worktreeDefault: boolean
+  // resolution is the item's default launch settings, or null while they load.
+  resolution: ItemResolution | null
+  profiles: readonly Profile[]
+  prompts: readonly Prompt[]
+  // launchDefaults are every saved org and repo default, for saving this launch's choices.
+  launchDefaults: readonly LaunchDefaults[]
+  // onDefaultsSaved reloads the launch defaults and every row's settings.
+  onDefaultsSaved: () => Promise<void>
+  // onManagePrompts opens the Prompts page.
+  onManagePrompts: () => void
 }
 
 type LaunchState =
@@ -20,78 +51,159 @@ type LaunchState =
   | { kind: 'launched'; result: LaunchResult }
   | { kind: 'failed'; message: string }
 
-const overrideHelp = "Lifts the outside-contributor restriction; keeps the profile's plan and permission settings."
-
-const optionClass = 'flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 hover:bg-raised'
-
-// initialProfile is the preselection: the default profile when it exists, otherwise the
-// first profile, or "" (the backend then uses its default) when there are none.
-function initialProfile(profiles: Profile[], defaultProfile: string): string {
-  if (profiles.some((p) => p.name === defaultProfile)) {
-    return defaultProfile
-  }
-
-  return profiles[0]?.name ?? ''
-}
-
 // launchedText summarizes a started launch for the row.
 function launchedText(result: LaunchResult): string {
   const where = result.worktree === '' ? result.clonePath : `${result.clonePath} (worktree ${result.worktree})`
 
-  return `Opened in ${result.terminal}: ${where} · ${result.profile} · ${result.permission}`
+  return `Opened “${result.prompt}” in ${result.terminal}: ${where} · ${result.profile} · ${result.permission}`
 }
 
-// LaunchControls is one row's "Open in Claude" split button: the button launches with the
-// row's choices, and the arrow beside it, which names the profile, opens those choices:
-// the profile, whether to start in a worktree, and, for an outside contributor's item,
-// the permissions override. Every choice is local to the row and applies to the next
-// launch only: once a launch starts they return to the defaults, and no setting changes.
-// A choice that differs from the defaults is marked on the arrow.
+// LaunchControls is one row's "Open in Claude" split button. The button launches with
+// the item's resolved settings: the prompt and profile its org's and repository's
+// defaults choose, named on the arrow beside it ("Review · default"). The arrow opens the
+// launch menu, where this launch can use another prompt, profile, model, effort,
+// worktree, or plan mode, preview exactly what it runs, or save those choices as the
+// repository's or the org's defaults. Choices apply to the next launch only, and the
+// arrow shows a dot while any differs from the defaults.
 //
 // It renders two grid children: the button, and below the row's content, the launch's
 // outcome. The inbox row is the grid that places them.
-export function LaunchControls({ item, profiles, defaultProfile, worktreeDefault }: LaunchControlsProps) {
+export function LaunchControls({
+  item,
+  resolution,
+  profiles,
+  prompts,
+  launchDefaults,
+  onDefaultsSaved,
+  onManagePrompts,
+}: LaunchControlsProps) {
   const id = useId()
   const { open, toggle, close, triggerRef, panelRef } = usePopover<HTMLButtonElement, HTMLDivElement>()
-  const preset = initialProfile(profiles, defaultProfile)
-  const [profile, setProfile] = useState(preset)
-  const [worktree, setWorktree] = useState(worktreeDefault)
-  const [override, setOverride] = useState(false)
+  const [choices, setChoices] = useState<Choices>(noChoices)
+  // fetched is the resolution under the chosen prompt and profile, with what it was
+  // fetched for, so a stale one is never shown.
+  const [fetched, setFetched] = useState<{ base: ItemResolution; key: string; value: Resolution } | null>(null)
   const [state, setState] = useState<LaunchState>({ kind: 'idle' })
+  const [saving, setSaving] = useState(false)
+  const [status, setStatus] = useState<SaveStatus | null>(null)
+  // resolveError says why the settings under the chosen prompt and profile could not be
+  // worked out, keyed by those choices.
+  const [resolveError, setResolveError] = useState<{ key: string; message: string } | null>(null)
+  const [above, setAbove] = useState(false)
 
   const untrusted = !item.trusted
-  const shownProfile = profile === '' ? 'default' : profile
-  const changed = profile !== preset || worktree !== worktreeDefault || override
+  const problem = resolution?.problem ?? ''
+  const key = `${String(choices.promptId)}:${choices.profile}`
+  const resolved = fetched !== null && fetched.base === resolution && fetched.key === key ? fetched.value : null
+  const base: Resolution | null = resolution === null || problem !== '' ? null : (resolved ?? resolution)
+  const changed = hasChoices(choices)
+  const agentName = resolution === null || resolution.agent.name === '' ? 'Claude' : resolution.agent.name
 
-  // Focus moves to the chosen profile (or the first choice) when the options open.
+  // Re-resolve under the chosen prompt and profile, so every other setting's default
+  // (a prompt's model, a profile's effort) is shown as it would really apply.
   useEffect(() => {
+    if (resolution === null || problem !== '' || (choices.promptId === 0 && choices.profile === '')) {
+      return undefined
+    }
+
+    let current = true
+
+    resolveLaunch({ ...launchRequest(item.id, noChoices, false), promptId: choices.promptId, profile: choices.profile })
+      .then((value) => {
+        if (current) {
+          setFetched({ base: resolution, key: `${String(choices.promptId)}:${choices.profile}`, value })
+        }
+      })
+      .catch((err: unknown) => {
+        if (current) {
+          setResolveError({ key: `${String(choices.promptId)}:${choices.profile}`, message: errorMessage(err) })
+        }
+      })
+
+    return () => {
+      current = false
+    }
+  }, [item.id, resolution, problem, choices.promptId, choices.profile])
+
+  // Open the menu upward when there is not enough room below the button.
+  useLayoutEffect(() => {
+    const trigger = triggerRef.current
     const panel = panelRef.current
 
-    if (!open || panel === null) {
+    if (!open || trigger === null || panel === null) {
       return
     }
 
-    const target =
-      panel.querySelector<HTMLInputElement>('input:checked') ?? panel.querySelector<HTMLInputElement>('input')
+    const spaceBelow = window.innerHeight - trigger.getBoundingClientRect().bottom
+    const spaceAbove = trigger.getBoundingClientRect().top
 
-    target?.focus()
+    setAbove(panel.offsetHeight + 12 > spaceBelow && spaceAbove > spaceBelow)
+  }, [open, triggerRef, panelRef])
+
+  // Focus the chosen prompt when the menu opens.
+  useEffect(() => {
+    if (open) {
+      const panel = panelRef.current
+
+      ;(
+        panel?.querySelector<HTMLInputElement>('input:checked') ?? panel?.querySelector<HTMLInputElement>('input')
+      )?.focus()
+    }
   }, [open, panelRef])
 
   const start = () => {
     close()
     setState({ kind: 'launching' })
 
-    launch({ itemId: item.id, profile, worktree, fullAccessOverride: untrusted && override })
+    launch(launchRequest(item.id, choices, untrusted))
       .then((result) => {
         setState({ kind: 'launched', result })
-        setProfile(preset)
-        setWorktree(worktreeDefault)
-        setOverride(false)
+        setChoices(noChoices)
+        setStatus(null)
       })
       .catch((err: unknown) => {
         setState({ kind: 'failed', message: errorMessage(err) })
       })
   }
+
+  const save = (scope: 'repo' | 'org') => {
+    if (base === null || !savableChoices(choices)) {
+      setStatus({ tone: 'warning', text: 'Choose something different first.' })
+
+      return
+    }
+
+    const name = scope === 'org' ? '' : (base.repo.split('/').at(-1) ?? '')
+    const stored = findDefaults(launchDefaults, base.owner, name)
+    const input = withChoices(
+      stored === undefined ? emptyDefaults(base.owner, name) : defaultsInput(stored),
+      choices,
+      item.kind,
+    )
+    const target = scope === 'org' ? `every ${base.owner} repository` : base.repo
+    const report = saveStatus(target, base.prompt.nickname, base.repo, shadowedChoices(choices, base, scope))
+
+    setSaving(true)
+    saveLaunchDefaults(input)
+      .then(async () => {
+        await onDefaultsSaved()
+        setChoices({ ...noChoices, override: choices.override })
+        setStatus(report)
+      })
+      .catch((err: unknown) => {
+        setStatus({ tone: 'error', text: errorMessage(err) })
+      })
+      .finally(() => {
+        setSaving(false)
+      })
+  }
+
+  const promptName =
+    choices.promptId === 0
+      ? (base?.prompt.nickname ?? '')
+      : (prompts.find((p) => p.id === choices.promptId)?.nickname ?? '')
+  const profileName = choices.profile === '' ? (base?.profile.value ?? '') : choices.profile
+  const chip = problem !== '' ? 'No prompt' : base === null ? '…' : `${promptName} · ${profileName}`
 
   return (
     <>
@@ -99,26 +211,29 @@ export function LaunchControls({ item, profiles, defaultProfile, worktreeDefault
         <div className="inline-flex items-stretch rounded-md border border-border bg-surface text-[13px]">
           <button
             type="button"
-            disabled={state.kind === 'launching'}
+            disabled={state.kind === 'launching' || base === null}
             onClick={start}
-            className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-60"
+            title={problem !== '' ? problem : `Open in ${agentName} with “${promptName}” as ${profileName}`}
+            className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent"
           >
             <TerminalIcon className="size-3.5 text-accent" />
-            {state.kind === 'launching' ? 'Opening…' : 'Open in Claude'}
+            {state.kind === 'launching' ? 'Opening…' : `Open in ${agentName}`}
           </button>
           <button
             ref={triggerRef}
             type="button"
-            aria-label={`Launch options: ${shownProfile}${changed ? ', changed for this launch' : ''}`}
-            title="Profile and options for this launch"
+            disabled={resolution === null}
+            aria-label={`Launch options: ${chip}${changed ? ', changed for this launch' : ''}`}
+            title="Prompt, profile, and options for this launch"
             aria-haspopup="dialog"
             aria-expanded={open}
             aria-controls={open ? id : undefined}
             onClick={toggle}
-            className="inline-flex max-w-36 items-center gap-1 rounded-r-md border-l border-border px-2 text-xs text-muted transition-colors hover:bg-raised hover:text-text aria-expanded:bg-raised"
+            className="inline-flex max-w-52 items-center gap-1 rounded-r-md border-l border-border px-2 text-xs text-muted transition-colors hover:bg-raised hover:text-text aria-expanded:bg-raised"
           >
             {changed && <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-accent" />}
-            <span className={`truncate ${changed ? 'font-medium text-text' : ''}`}>{shownProfile}</span>
+            {problem !== '' && <AlertIcon className="size-3 shrink-0 text-warning" />}
+            <span className={`truncate ${changed ? 'font-medium text-text' : ''}`}>{chip}</span>
             <ChevronDownIcon className="size-3 shrink-0" />
           </button>
         </div>
@@ -128,64 +243,49 @@ export function LaunchControls({ item, profiles, defaultProfile, worktreeDefault
             id={id}
             role="dialog"
             aria-label="Launch options"
-            className="absolute top-full right-0 z-20 mt-1.5 w-64 origin-top-right rounded-lg border border-border bg-surface p-1.5 text-sm shadow-xl shadow-black/20 motion-safe:animate-pop-in"
+            className={`absolute right-0 z-20 max-h-[calc(100vh-8rem)] w-[22rem] overflow-y-auto rounded-lg border border-border bg-surface shadow-xl shadow-black/25 motion-safe:animate-pop-in ${above ? 'bottom-full mb-1.5 origin-bottom-right' : 'top-full mt-1.5 origin-top-right'}`}
           >
-            <fieldset>
-              <legend className="px-2 pt-1 pb-1 text-[11px] font-semibold tracking-wide text-muted uppercase">
-                Profile
-              </legend>
-              {profiles.length === 0 ? (
-                <p className="px-2 pb-1 text-xs text-muted">
-                  No profiles were found; the agent&apos;s default is used.
+            {base === null ? (
+              <div className="flex flex-col gap-2 p-3.5 text-sm">
+                <p className="flex items-start gap-2 text-warning">
+                  <AlertIcon className="mt-0.5 size-4 shrink-0" />
+                  {problem !== '' ? problem : 'Loading the launch settings…'}
                 </p>
-              ) : (
-                profiles.map((p) => (
-                  <label key={p.name} className={optionClass}>
-                    <input
-                      type="radio"
-                      name={`${id}-profile`}
-                      value={p.name}
-                      checked={profile === p.name}
-                      onChange={() => {
-                        setProfile(p.name)
-                      }}
-                      className="accent-accent"
-                    />
-                    <span className="truncate">{p.name}</span>
-                  </label>
-                ))
-              )}
-            </fieldset>
-            <div className="my-1.5 border-t border-border" />
-            <label className={optionClass}>
-              <input
-                type="checkbox"
-                checked={worktree}
-                onChange={(e) => {
-                  setWorktree(e.target.checked)
-                }}
-                className="accent-accent"
-              />
-              Start in a worktree
-            </label>
-            {untrusted && (
-              <>
-                <label className={optionClass}>
-                  <input
-                    type="checkbox"
-                    checked={override}
-                    aria-describedby={`${id}-override-help`}
-                    onChange={(e) => {
-                      setOverride(e.target.checked)
+                {problem !== '' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      close()
+                      onManagePrompts()
                     }}
-                    className="accent-accent"
-                  />
-                  Use profile permissions for this item
-                </label>
-                <p id={`${id}-override-help`} className="px-2 pb-1 pl-8 text-xs text-muted">
-                  {overrideHelp}
-                </p>
-              </>
+                    className="self-start text-sm font-medium text-accent hover:underline"
+                  >
+                    Open the Prompts page
+                  </button>
+                )}
+              </div>
+            ) : (
+              <LaunchMenu
+                item={item}
+                resolved={base}
+                choices={choices}
+                onChoices={(next) => {
+                  setChoices(next)
+                  setStatus(null)
+                }}
+                profiles={profiles}
+                prompts={prompts}
+                agentName={agentName}
+                onLaunch={start}
+                onSave={save}
+                saving={saving}
+                status={status}
+                resolveError={resolveError?.key === key ? resolveError.message : ''}
+                onManagePrompts={() => {
+                  close()
+                  onManagePrompts()
+                }}
+              />
             )}
           </div>
         )}

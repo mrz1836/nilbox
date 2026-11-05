@@ -9,10 +9,32 @@ import { Service as AppInfo } from '../../bindings/github.com/mrz1836/nilbox/int
 import type { Info } from '../../bindings/github.com/mrz1836/nilbox/internal/appinfo'
 import { Service as Inbox } from '../../bindings/github.com/mrz1836/nilbox/internal/inbox'
 import type { Snapshot as InboxSnapshot } from '../../bindings/github.com/mrz1836/nilbox/internal/inbox'
+import { Service as LaunchDefaultsService } from '../../bindings/github.com/mrz1836/nilbox/internal/launchdefaults'
+import type {
+  Defaults as LaunchDefaults,
+  FieldError as LaunchDefaultsFieldError,
+  Input as LaunchDefaultsInput,
+  Target as LaunchTarget,
+} from '../../bindings/github.com/mrz1836/nilbox/internal/launchdefaults'
 import { Service as Launcher } from '../../bindings/github.com/mrz1836/nilbox/internal/launcher'
-import type { LaunchRequest, LaunchResult } from '../../bindings/github.com/mrz1836/nilbox/internal/launcher'
+import type {
+  ItemResolution,
+  LaunchRequest,
+  LaunchResult,
+  Preview as LaunchPreview,
+  Resolution,
+} from '../../bindings/github.com/mrz1836/nilbox/internal/launcher'
 import { Service as Profiles } from '../../bindings/github.com/mrz1836/nilbox/internal/profiles'
 import type { Profile } from '../../bindings/github.com/mrz1836/nilbox/internal/profiles'
+import { Service as PromptsService } from '../../bindings/github.com/mrz1836/nilbox/internal/prompts'
+import type {
+  CheckRequest as PromptCheckRequest,
+  CheckResult as PromptCheckResult,
+  DefaultPrompts,
+  Input as PromptInput,
+  Prompt,
+  Variable as PromptVariable,
+} from '../../bindings/github.com/mrz1836/nilbox/internal/prompts'
 import { Service as SettingsService } from '../../bindings/github.com/mrz1836/nilbox/internal/settings'
 import type { Settings } from '../../bindings/github.com/mrz1836/nilbox/internal/settings'
 import { Service as Worktrees } from '../../bindings/github.com/mrz1836/nilbox/internal/worktrees'
@@ -36,8 +58,35 @@ export type {
   RateGauge,
   Snapshot as InboxSnapshot,
 } from '../../bindings/github.com/mrz1836/nilbox/internal/inbox'
-export type { LaunchRequest, LaunchResult } from '../../bindings/github.com/mrz1836/nilbox/internal/launcher'
+export type { Agent } from '../../bindings/github.com/mrz1836/nilbox/internal/agents'
+export type {
+  Defaults as LaunchDefaults,
+  FieldError as LaunchDefaultsFieldError,
+  Input as LaunchDefaultsInput,
+  Target as LaunchTarget,
+} from '../../bindings/github.com/mrz1836/nilbox/internal/launchdefaults'
+export type {
+  ItemResolution,
+  LaunchRequest,
+  LaunchResult,
+  Preview as LaunchPreview,
+  PromptChoice,
+  Resolution,
+  Setting as LaunchSetting,
+  Toggle as LaunchToggle,
+} from '../../bindings/github.com/mrz1836/nilbox/internal/launcher'
 export type { Profile } from '../../bindings/github.com/mrz1836/nilbox/internal/profiles'
+export type {
+  CheckRequest as PromptCheckRequest,
+  CheckResult as PromptCheckResult,
+  DefaultPrompts,
+  Diagnostic,
+  FieldError,
+  Input as PromptInput,
+  Prompt,
+  Usage as PromptUsage,
+  Variable as PromptVariable,
+} from '../../bindings/github.com/mrz1836/nilbox/internal/prompts'
 export type { Settings } from '../../bindings/github.com/mrz1836/nilbox/internal/settings'
 export type {
   RemoveResult,
@@ -93,6 +142,87 @@ export function launch(request: LaunchRequest): Promise<LaunchResult> {
   return Launcher.Launch(request)
 }
 
+// resolveLaunch returns what a launch on one item resolves to with the request's choices.
+export function resolveLaunch(request: LaunchRequest): Promise<Resolution> {
+  return Launcher.Resolve(request)
+}
+
+// resolveLaunches returns each item's default launch settings.
+export async function resolveLaunches(ids: number[]): Promise<ItemResolution[]> {
+  return (await Launcher.ResolveItems(ids)) ?? []
+}
+
+// previewLaunch plans a launch without starting it: the command and the filled-in prompt.
+export function previewLaunch(request: LaunchRequest): Promise<LaunchPreview> {
+  return Launcher.Preview(request)
+}
+
+// Prompts
+
+export async function listPrompts(): Promise<Prompt[]> {
+  return (await PromptsService.List()) ?? []
+}
+
+export function createPrompt(input: PromptInput): Promise<Prompt> {
+  return PromptsService.Create(input)
+}
+
+export function updatePrompt(id: number, input: PromptInput): Promise<Prompt> {
+  return PromptsService.Update(id, input)
+}
+
+export function deletePrompt(id: number): Promise<void> {
+  return PromptsService.Delete(id)
+}
+
+export function duplicatePrompt(id: number): Promise<Prompt> {
+  return PromptsService.Duplicate(id)
+}
+
+export function resetPrompt(id: number): Promise<Prompt> {
+  return PromptsService.Reset(id)
+}
+
+// checkPrompt checks a prompt being edited and fills it in for a preview.
+export function checkPrompt(request: PromptCheckRequest): Promise<PromptCheckResult> {
+  return PromptsService.Check(request)
+}
+
+export async function listPromptVariables(): Promise<PromptVariable[]> {
+  return (await PromptsService.Variables()) ?? []
+}
+
+export function getDefaultPrompts(): Promise<DefaultPrompts> {
+  return PromptsService.Defaults()
+}
+
+export function setDefaultPrompt(kind: string, id: number): Promise<void> {
+  return PromptsService.SetDefault(kind, id)
+}
+
+// Launch defaults
+
+export async function listLaunchDefaults(): Promise<LaunchDefaults[]> {
+  return (await LaunchDefaultsService.List()) ?? []
+}
+
+// checkLaunchDefaults validates launch defaults being edited.
+export async function checkLaunchDefaults(input: LaunchDefaultsInput): Promise<LaunchDefaultsFieldError[]> {
+  return (await LaunchDefaultsService.Check(input)) ?? []
+}
+
+export function saveLaunchDefaults(input: LaunchDefaultsInput): Promise<LaunchDefaults> {
+  return LaunchDefaultsService.Save(input)
+}
+
+export function removeLaunchDefaults(owner: string, name: string): Promise<void> {
+  return LaunchDefaultsService.Remove(owner, name)
+}
+
+export async function listLaunchTargets(): Promise<LaunchTarget[]> {
+  return (await LaunchDefaultsService.Targets()) ?? []
+}
+
 // Settings
 
 export function getSettings(): Promise<Settings> {
@@ -113,6 +243,16 @@ export function setDefaultProfile(name: string): Promise<void> {
 
 export function setWorktreeDefault(on: boolean): Promise<void> {
   return SettingsService.SetWorktreeDefault(on)
+}
+
+// setTrustedBots stores the bots whose items are trusted like a collaborator's.
+export function setTrustedBots(bots: string[]): Promise<void> {
+  return SettingsService.SetTrustedBots(bots)
+}
+
+// resetTrustedBots goes back to the default trusted bots.
+export function resetTrustedBots(): Promise<void> {
+  return SettingsService.ResetTrustedBots()
 }
 
 // Worktrees

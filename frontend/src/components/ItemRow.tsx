@@ -1,21 +1,33 @@
 import { formatAge } from '../lib/age'
-import { openInBrowser, type InboxItem, type Profile } from '../platform'
+import {
+  openInBrowser,
+  type InboxItem,
+  type ItemResolution,
+  type LaunchDefaults,
+  type Profile,
+  type Prompt,
+} from '../platform'
 import { IssueIcon, PullRequestIcon } from './icons'
 import { ItemSignals } from './ItemSignals'
 import { LaunchControls } from './LaunchControls'
 
-// LaunchOptions are what each row's launch controls need from the settings and profiles.
+// LaunchOptions are what each row's launch controls need: the profiles and prompts to
+// choose from, each item's resolved launch settings, and the saved launch defaults.
 export interface LaunchOptions {
-  profiles: Profile[]
-  defaultProfile: string
-  worktreeDefault: boolean
+  profiles: readonly Profile[]
+  prompts: readonly Prompt[]
+  launchDefaults: readonly LaunchDefaults[]
+  // resolutions holds each item's resolved launch settings by item ID, as they load.
+  resolutions: ReadonlyMap<number, ItemResolution>
+  onDefaultsSaved: () => Promise<void>
+  onManagePrompts: () => void
 }
 
 export interface ItemRowProps {
   item: InboxItem
   now: Date
-  // launch is null until the settings and profiles have loaded; the row has no launch
-  // button until then.
+  // launch is null until the launch settings have loaded; the row has no launch button
+  // until then.
   launch: LaunchOptions | null
 }
 
@@ -36,6 +48,46 @@ function KindIcon({ item }: { item: InboxItem }) {
   return (
     <span role="img" aria-label={label} title={label} className={`mt-0.5 ${color}`}>
       {isPR ? <PullRequestIcon className="size-4" /> : <IssueIcon className="size-4" />}
+    </span>
+  )
+}
+
+// TrustTag marks an item by who opened it: a trusted bot quietly, and an untrusted bot or
+// an outside contributor as a warning, since their items launch in plan mode. Items from
+// the repository's own people carry no tag.
+function TrustTag({ item }: { item: InboxItem }) {
+  if (item.trust === 'bot') {
+    return (
+      <span
+        title="A trusted bot: launches use the profile's permissions. Manage trusted bots in Settings → Trust."
+        className={`${tagClass} border-border text-muted`}
+      >
+        bot
+      </span>
+    )
+  }
+
+  if (item.trusted) {
+    return null
+  }
+
+  if (item.authorIsBot) {
+    return (
+      <span
+        title="A bot that isn't trusted, so launches start in plan mode. Add it to your trusted bots in Settings → Trust."
+        className={`${tagClass} border-warning text-warning`}
+      >
+        untrusted bot
+      </span>
+    )
+  }
+
+  return (
+    <span
+      title="Launches in plan mode unless you lift the restriction"
+      className={`${tagClass} border-warning text-warning`}
+    >
+      outside contributor
     </span>
   )
 }
@@ -75,23 +127,19 @@ export function ItemRow({ item, now, launch }: ItemRowProps) {
             {item.repo} #{item.number} · {item.author} ·{' '}
             <time dateTime={item.updatedAt}>{formatAge(now, item.updatedAt)}</time>
           </span>
-          {!item.trusted && (
-            <span
-              title="Launches in plan mode unless you lift the restriction"
-              className={`${tagClass} border-warning text-warning`}
-            >
-              outside contributor
-            </span>
-          )}
+          <TrustTag item={item} />
         </p>
         <ItemSignals item={item} />
       </div>
       {launch !== null && (
         <LaunchControls
           item={item}
+          resolution={launch.resolutions.get(item.id) ?? null}
           profiles={launch.profiles}
-          defaultProfile={launch.defaultProfile}
-          worktreeDefault={launch.worktreeDefault}
+          prompts={launch.prompts}
+          launchDefaults={launch.launchDefaults}
+          onDefaultsSaved={launch.onDefaultsSaved}
+          onManagePrompts={launch.onManagePrompts}
         />
       )}
     </li>

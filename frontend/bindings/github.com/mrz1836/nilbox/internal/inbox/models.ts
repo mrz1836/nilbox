@@ -94,10 +94,21 @@ export interface Item {
     "updatedAt": string;
 
     /**
-     * Trusted applies the outside-contributor rule to AuthorAssociation and
-     * IsCrossRepository.
+     * Trust is the item's trust class (see the trust package): "member" for the
+     * repository's owner, org members, and collaborators, "bot" for a trusted bot, and
+     * "outside" for everyone else, every untrusted bot, and every fork.
+     */
+    "trust": string;
+
+    /**
+     * Trusted reports whether Trust is anything but "outside".
      */
     "trusted": boolean;
+
+    /**
+     * AuthorIsBot reports whether GitHub reports the author as a bot.
+     */
+    "authorIsBot": boolean;
     "isCrossRepository": boolean;
     "authorAssociation": string;
 
