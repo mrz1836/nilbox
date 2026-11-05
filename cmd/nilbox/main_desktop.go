@@ -7,8 +7,9 @@
 // except the window itself is assembled by internal/core, which builds and is tested on
 // any OS; this file only adds the desktop runtime.
 //
-// Run with --measure-startup to quit right after the first paint and print the startup
-// timing line.
+// Two flags measure the app for docs/performance.md: --measure-startup quits right after
+// the first paint and prints the startup timing line, and --measure-refresh opens no
+// window, times live inbox refreshes against a scratch database, and prints the report.
 package main
 
 import (
@@ -17,9 +18,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"slices"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -29,6 +32,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/core"
+	"github.com/mrz1836/nilbox/internal/measure"
 	"github.com/mrz1836/nilbox/internal/timing"
 )
 
@@ -44,9 +48,6 @@ var (
 const (
 	// inboxUpdatedEvent tells the frontend the stored inbox changed.
 	inboxUpdatedEvent = "inbox:updated"
-
-	// measureFlag quits after the first paint and prints the startup timing.
-	measureFlag = "--measure-startup"
 
 	// measureTimeout bounds a measurement run whose window never reports a first paint.
 	measureTimeout = time.Minute
@@ -90,7 +91,11 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return fmt.Errorf("find the home directory: %w", err)
 	}
 
-	s := &shell{stdout: stdout, stderr: stderr, measure: slices.Contains(args, measureFlag)}
+	if slices.Contains(args, measure.RefreshFlag) {
+		return measureRefresh(stdout, home)
+	}
+
+	s := &shell{stdout: stdout, stderr: stderr, measureStartup: slices.Contains(args, measure.StartupFlag)}
 
 	c, err := core.Bootstrap(context.Background(), core.Options{
 		Paths:        paths,
@@ -134,6 +139,26 @@ func run(args []string, stdout, stderr io.Writer) error {
 	return errors.Join(runErr, s.closeErr)
 }
 
+// measureRefresh times live inbox refreshes the way the app makes them, against a scratch
+// database that is deleted afterwards, and prints the report. It opens no window.
+func measureRefresh(stdout io.Writer, home string) error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	report, err := measure.RunRefresh(ctx, measure.RefreshOptions{Home: home, Version: version})
+	if err != nil {
+		return fmt.Errorf("measure the inbox refresh: %w", err)
+	}
+
+	for _, line := range report.Lines() {
+		if _, err = fmt.Fprintln(stdout, line); err != nil {
+			return fmt.Errorf("write the report: %w", err)
+		}
+	}
+
+	return nil
+}
+
 // services wraps each core service for binding. The bindings generator reads these
 // calls, so every service is named here by its concrete type.
 func services(c *core.Core) []application.Service {
@@ -163,11 +188,11 @@ func baseWindowOptions() application.WebviewWindowOptions {
 // scheduler once the app has started, forwards inbox changes as events, ends a startup
 // measurement, and closes the core on shutdown.
 type shell struct {
-	app     atomic.Pointer[application.App]
-	core    *core.Core
-	stdout  io.Writer
-	stderr  io.Writer
-	measure bool
+	app            atomic.Pointer[application.App]
+	core           *core.Core
+	stdout         io.Writer
+	stderr         io.Writer
+	measureStartup bool
 
 	scheduler sync.WaitGroup
 	stopping  atomic.Bool
@@ -198,14 +223,14 @@ func (s *shell) started() {
 
 	s.scheduler.Go(func() { s.core.Scheduler.Run(ctx) })
 
-	if s.measure {
+	if s.measureStartup {
 		time.AfterFunc(measureTimeout, s.measureTimedOut)
 	}
 }
 
 // firstPaint ends a measurement run: it prints the timing line and quits.
 func (s *shell) firstPaint(m timing.Measurement) {
-	if !s.measure {
+	if !s.measureStartup {
 		return
 	}
 
