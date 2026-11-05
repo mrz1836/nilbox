@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"go/parser"
+	"go/token"
 	"io/fs"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -450,4 +453,76 @@ func TestRunnerValues(t *testing.T) {
 		"w.yml:7: macos-15",
 		"w.yml:11: ${{ matrix.os }} # comment",
 	}, runnerValues("w.yml", workflow))
+}
+
+// wailsBootstrapFiles are the only files allowed to import the desktop runtime: the
+// desktop main, its per-OS window options, and the desktop-tagged frontend embed.
+func wailsBootstrapFiles() []string {
+	cmd := "cmd/" + brand.Slug + "/"
+
+	return []string{cmd + "*_desktop.go", cmd + "window_*.go", "frontend/assets_desktop.go"}
+}
+
+// wailsAllowed reports whether the repository file rel may import the desktop runtime.
+func wailsAllowed(rel string) bool {
+	for _, pattern := range wailsBootstrapFiles() {
+		if ok, _ := path.Match(pattern, rel); ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+func TestOnlyDesktopBootstrapImportsWails(t *testing.T) {
+	root := moduleRoot(t)
+
+	// Built from parts so the needle reads as data, not as an import path.
+	runtimePrefix := "github.com/" + "wailsapp/"
+
+	var found []string
+
+	// Every Go file is parsed whatever its build tags, so a tagged file cannot hide an
+	// import from this check.
+	for _, rel := range goFiles(t, root) {
+		if wailsAllowed(rel) {
+			continue
+		}
+
+		src, ok := readText(t, root, rel)
+		if !ok {
+			continue
+		}
+
+		file, err := parser.ParseFile(token.NewFileSet(), rel, src, parser.ImportsOnly)
+		require.NoError(t, err, rel)
+
+		for _, imp := range file.Imports {
+			if strings.HasPrefix(strings.Trim(imp.Path.Value, `"`), runtimePrefix) {
+				found = append(found, rel+": "+imp.Path.Value)
+			}
+		}
+	}
+
+	assert.Empty(t, found, "only the desktop bootstrap may import the desktop runtime; keep services in plain Go")
+}
+
+func TestWailsAllowed(t *testing.T) {
+	t.Parallel()
+
+	cmd := "cmd/" + brand.Slug + "/"
+
+	for rel, want := range map[string]bool{
+		cmd + "main_desktop.go":             true,
+		cmd + "window_darwin.go":            true,
+		cmd + "window_other.go":             true,
+		"frontend/assets_desktop.go":        true,
+		cmd + "main.go":                     false,
+		cmd + "sub/main_desktop.go":         false,
+		"internal/core/core.go":             false,
+		"internal/launcher/main_desktop.go": false,
+		"frontend/other_desktop.go":         false,
+	} {
+		assert.Equal(t, want, wailsAllowed(rel), rel)
+	}
 }

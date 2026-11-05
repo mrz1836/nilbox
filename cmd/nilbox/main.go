@@ -1,7 +1,11 @@
+//go:build !desktop
+
 // Command nilbox is the application entry point.
 //
-// The desktop shell is not wired in yet. Until it is, the binary reports its identity and
-// build metadata, which keeps the build, version-injection, and release plumbing honest.
+// This file is the headless build: it reports the product identity and build metadata,
+// which keeps the build, version-injection, and release plumbing honest on every OS
+// without a webview. The desktop app builds from the same package with the desktop build
+// tag (see main_desktop.go); `magex app:build` produces it.
 package main
 
 import (

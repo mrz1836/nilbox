@@ -106,3 +106,33 @@ func TestTextTokensCoversEveryTextField(t *testing.T) {
 		assert.Containsf(t, tokens, k, "missing text token %s", k)
 	}
 }
+
+func TestRGB(t *testing.T) {
+	tests := []struct {
+		hex              string
+		red, green, blue uint8
+	}{
+		{"#000000", 0, 0, 0},
+		{"#FFFFFF", 255, 255, 255},
+		{"#1a2B3c", 0x1a, 0x2b, 0x3c},
+		{"#C2410C", 0xc2, 0x41, 0x0c},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.hex, func(t *testing.T) {
+			r, g, b, err := RGB(tt.hex)
+			require.NoError(t, err)
+			assert.Equal(t, [3]uint8{tt.red, tt.green, tt.blue}, [3]uint8{r, g, b})
+		})
+	}
+
+	for _, bad := range []string{"", "#FFF", "FFFFFF0", "#GGGGGG", "#+FFFFF"} {
+		_, _, _, err := RGB(bad)
+		require.ErrorIs(t, err, ErrInvalidHexColor, bad)
+	}
+
+	for _, p := range []Palette{Dark, Light} {
+		_, _, _, err := RGB(p.Background)
+		require.NoError(t, err)
+	}
+}

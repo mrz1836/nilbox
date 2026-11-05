@@ -100,8 +100,18 @@ func ContrastRatio(a, b string) (float64, error) {
 	return (hi + 0.05) / (lo + 0.05), nil
 }
 
-// relativeLuminance returns the WCAG relative luminance of a #RRGGBB color.
-func relativeLuminance(hex string) (float64, error) {
+// RGB returns the red, green, and blue channels of a #RRGGBB color.
+func RGB(hex string) (red, green, blue uint8, err error) {
+	v, err := parseHex(hex)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
+	return uint8(v >> 16), uint8(v >> 8), uint8(v), nil //nolint:gosec // each channel is masked to 8 bits by the conversion
+}
+
+// parseHex returns a #RRGGBB color as a 24-bit value.
+func parseHex(hex string) (uint64, error) {
 	if len(hex) != 7 || !strings.HasPrefix(hex, "#") {
 		return 0, fmt.Errorf("%w: %q", ErrInvalidHexColor, hex)
 	}
@@ -109,6 +119,16 @@ func relativeLuminance(hex string) (float64, error) {
 	v, err := strconv.ParseUint(hex[1:], 16, 32)
 	if err != nil {
 		return 0, fmt.Errorf("%w: %q", ErrInvalidHexColor, hex)
+	}
+
+	return v, nil
+}
+
+// relativeLuminance returns the WCAG relative luminance of a #RRGGBB color.
+func relativeLuminance(hex string) (float64, error) {
+	v, err := parseHex(hex)
+	if err != nil {
+		return 0, err
 	}
 
 	channel := func(shift uint) float64 {
