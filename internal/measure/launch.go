@@ -416,7 +416,9 @@ func (t launchTimer) findAgent(ctx context.Context, before []int) (int, bool, er
 	return 0, false, nil
 }
 
-// inClone reports whether dir is the clone or under its agent worktree directory.
+// inClone reports whether dir is the clone or under its agent worktree directory. clone
+// must already have its symbolic links resolved, as newLaunchFixture does; dir is resolved
+// here.
 func inClone(dir, clone string) bool {
 	if dir == "" {
 		return false

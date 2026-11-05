@@ -75,6 +75,17 @@ func (p *fakeProbe) Stop(_ context.Context, pid int) error {
 	return p.stopErr
 }
 
+// realTempDir returns a new temporary directory with its symbolic links resolved, the way
+// newLaunchFixture resolves the clone (on macOS the temporary directory sits under one).
+func realTempDir(t *testing.T) string {
+	t.Helper()
+
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+
+	return dir
+}
+
 func newTimer(probe agentProbe, clone string, launch func(context.Context) (launcher.LaunchResult, error)) launchTimer {
 	clock := &fakeClock{now: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)}
 
@@ -94,7 +105,7 @@ func launched(context.Context) (launcher.LaunchResult, error) {
 }
 
 func TestLaunchTimerFindsTheAgent(t *testing.T) {
-	clone := t.TempDir()
+	clone := realTempDir(t)
 
 	tests := []struct {
 		name string
@@ -152,7 +163,7 @@ func TestLaunchTimerAutomation(t *testing.T) {
 }
 
 func TestLaunchTimerErrors(t *testing.T) {
-	clone := t.TempDir()
+	clone := realTempDir(t)
 
 	t.Run("launch fails", func(t *testing.T) {
 		launch := func(context.Context) (launcher.LaunchResult, error) {
@@ -199,7 +210,7 @@ func TestLaunchTimerErrors(t *testing.T) {
 }
 
 func TestInClone(t *testing.T) {
-	clone := t.TempDir()
+	clone := realTempDir(t)
 
 	assert.True(t, inClone(clone, clone))
 	assert.True(t, inClone(filepath.Join(clone, ".claude", "worktrees", "issue-3"), clone))
