@@ -1,6 +1,17 @@
 // Fake data for component tests: fake orgs, users, and repositories only.
 
-import type { InboxItem, InboxList, InboxSnapshot, LaunchResult, Profile, Rate, Settings } from '../platform'
+import type {
+  InboxItem,
+  InboxList,
+  InboxSnapshot,
+  LaunchResult,
+  Profile,
+  Rate,
+  Settings,
+  Worktree,
+  WorktreeRepo,
+  WorktreesSnapshot,
+} from '../platform'
 
 export function item(overrides: Partial<InboxItem> = {}): InboxItem {
   return {
@@ -70,4 +81,56 @@ export function snapshot(overrides: Partial<InboxSnapshot> = {}): InboxSnapshot 
     scopeWarning: '',
     ...overrides,
   }
+}
+
+export function worktree(overrides: Partial<Worktree> = {}): Worktree {
+  return {
+    path: '/home/user/projects/example-repo/.claude/worktrees/pr-7',
+    displayPath: '~/projects/example-repo/.claude/worktrees/pr-7',
+    branch: 'worktree-pr-7',
+    detached: false,
+    main: false,
+    locked: false,
+    lockReason: '',
+    staleLock: false,
+    prunable: false,
+    prunableReason: '',
+    dirty: false,
+    dirtyCount: 0,
+    lastCommitUnix: 0,
+    claudeCreated: true,
+    canRemove: true,
+    canForceRemove: false,
+    error: '',
+    ...overrides,
+  }
+}
+
+// mainWorktree is a repository's main worktree, which is never removable.
+export function mainWorktree(overrides: Partial<Worktree> = {}): Worktree {
+  return worktree({
+    path: '/home/user/projects/example-repo',
+    displayPath: '~/projects/example-repo',
+    branch: 'main',
+    main: true,
+    claudeCreated: false,
+    canRemove: false,
+    ...overrides,
+  })
+}
+
+export function worktreeRepo(overrides: Partial<WorktreeRepo> = {}): WorktreeRepo {
+  return {
+    path: '/home/user/projects/example-repo',
+    displayPath: '~/projects/example-repo',
+    name: 'example-repo',
+    hasStale: false,
+    error: '',
+    worktrees: [mainWorktree(), worktree()],
+    ...overrides,
+  }
+}
+
+export function worktreesSnapshot(overrides: Partial<WorktreesSnapshot> = {}): WorktreesSnapshot {
+  return { root: '~/projects', repos: [worktreeRepo()], cleanCount: 1, listedAt: '2026-06-15T12:00:00Z', ...overrides }
 }

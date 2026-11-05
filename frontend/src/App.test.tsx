@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { App } from './App'
 import { brand } from './generated/brand'
-import { item, list, profile, settings, snapshot } from './test/fixtures'
+import { item, list, profile, settings, snapshot, worktreesSnapshot } from './test/fixtures'
 
 const platform = vi.hoisted(() => ({
   getSettings: vi.fn(),
@@ -16,6 +16,7 @@ const platform = vi.hoisted(() => ({
   onInboxUpdated: vi.fn(),
   openInBrowser: vi.fn(),
   launch: vi.fn(),
+  listWorktrees: vi.fn(),
 }))
 
 vi.mock('./platform', () => platform)
@@ -27,6 +28,7 @@ beforeEach(() => {
   platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([item()]) }))
   platform.onInboxUpdated.mockReturnValue(() => undefined)
   platform.setTerminal.mockResolvedValue(undefined)
+  platform.listWorktrees.mockResolvedValue(worktreesSnapshot())
 })
 
 describe('App', () => {
@@ -51,6 +53,7 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
 
     expect(screen.getByRole('region', { name: 'Worktrees' })).toBeInTheDocument()
+    expect(await screen.findByRole('region', { name: 'example-repo' })).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Review requested' })).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: 'Inbox' }))

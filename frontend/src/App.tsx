@@ -3,6 +3,7 @@ import { useEffect, useId, useMemo, useState } from 'react'
 import { AppHeader, type View } from './components/AppHeader'
 import { InboxView, type LaunchOptions } from './components/InboxView'
 import { SettingsPanel } from './components/SettingsPanel'
+import { WorktreesView } from './components/WorktreesView'
 import { errorMessage } from './lib/format'
 import { getSettings, listProfiles, type Profile, type Settings } from './platform'
 
@@ -65,13 +66,8 @@ export function App() {
         </p>
       )}
       <main className="flex-1">
-        {view === 'inbox' ? (
-          <InboxView launch={launch} />
-        ) : (
-          <section aria-label="Worktrees" className="p-4 text-sm text-muted">
-            Worktrees under the clone root are listed here.
-          </section>
-        )}
+        {/* Only the active view is mounted, so the worktrees are listed when that view opens. */}
+        {view === 'inbox' ? <InboxView launch={launch} /> : <WorktreesView />}
       </main>
     </div>
   )
