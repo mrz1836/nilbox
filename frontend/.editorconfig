@@ -1,0 +1,9 @@
+# The frontend follows Prettier's layout (two-space indent), which differs from the Go
+# side of the repository. This file overrides the root settings for frontend/ only.
+
+[*]
+indent_style = space
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false

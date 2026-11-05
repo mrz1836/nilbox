@@ -1,0 +1,21 @@
+# Supply-chain policy for the desktop frontend. Every setting here applies to every
+# install: local, CI, and the frontend gate.
+
+# A release must be at least seven days old (in minutes) before pnpm installs it, so a
+# compromised publish has time to be noticed and pulled before it reaches this project.
+minimumReleaseAge: 10080
+
+minimumReleaseAgeExclude:
+  # The desktop runtime ships in lockstep with the pinned Go module
+  # (github.com/wailsapp/wails/v3 v3.1.0), and 3.1.0 was published inside the
+  # release-age window. The exclusion names that exact version, and package.json
+  # pins it exactly, so no other release can slip through.
+  - '@wailsio/runtime@3.1.0'
+
+# Build (install) scripts run only for packages listed here as true. Anything not
+# reviewed and listed fails the install, so a new build script is always a decision.
+allowBuilds: {}
+
+audit:
+  # Advisories are fixed by upgrading, not ignored. An entry here needs a written reason.
+  ignore: []

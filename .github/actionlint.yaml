@@ -1,0 +1,7 @@
+# actionlint configuration (https://github.com/rhysd/actionlint).
+#
+# ubuntu-26.04 is a GitHub-hosted runner label that is newer than actionlint's
+# built-in label list. Declaring it here keeps actionlint from rejecting it.
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04

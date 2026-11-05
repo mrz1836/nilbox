@@ -347,3 +347,107 @@ func TestNoBranchDeletion(t *testing.T) {
 
 	assert.Empty(t, found, "removing worktrees must never delete a branch")
 }
+
+// runsOnPattern matches a workflow `runs-on:` key and captures its inline value.
+var runsOnPattern = regexp.MustCompile(`^(\s*)(?:-\s+)?runs-on:\s*(.*)$`)
+
+// runnerEnvPattern matches a runner assignment in the CI env files, such as
+// PRIMARY_RUNNER=ubuntu-26.04.
+var runnerEnvPattern = regexp.MustCompile(`^\s*[A-Z0-9_]*_RUNNER=`)
+
+// runnerValues returns "file:line: value" for every runner a workflow selects: the
+// inline value of each runs-on key and the items of a runs-on list.
+func runnerValues(rel, text string) []string {
+	var (
+		values     []string
+		listIndent = -1
+	)
+
+	for i, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		indent := len(line) - len(strings.TrimLeft(line, " "))
+
+		if listIndent >= 0 && strings.HasPrefix(trimmed, "- ") && indent > listIndent {
+			values = append(values, fmt.Sprintf("%s:%d: %s", rel, i+1, strings.TrimPrefix(trimmed, "- ")))
+
+			continue
+		}
+
+		listIndent = -1
+
+		m := runsOnPattern.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+
+		value := strings.TrimSpace(m[2])
+		if value == "" || strings.HasPrefix(value, "#") {
+			listIndent = len(m[1])
+
+			continue
+		}
+
+		values = append(values, fmt.Sprintf("%s:%d: %s", rel, i+1, value))
+	}
+
+	return values
+}
+
+// fileRunners returns the runner selections in one repository file: runs-on values in
+// workflows and *_RUNNER assignments in the CI env files.
+func fileRunners(rel, text string) []string {
+	switch {
+	case strings.HasPrefix(rel, ".github/workflows/") && (strings.HasSuffix(rel, ".yml") || strings.HasSuffix(rel, ".yaml")):
+		return runnerValues(rel, text)
+	case strings.HasPrefix(rel, ".github/env/") && strings.HasSuffix(rel, ".env"):
+		return hits(rel, text, func(line string) bool { return runnerEnvPattern.MatchString(line) })
+	default:
+		return nil
+	}
+}
+
+func TestNoMacOSRunners(t *testing.T) {
+	root := moduleRoot(t)
+
+	var found []string
+
+	for _, rel := range repoFiles(t, root) {
+		text, ok := readText(t, root, rel)
+		if !ok {
+			continue
+		}
+
+		for _, v := range fileRunners(rel, text) {
+			if strings.Contains(strings.ToLower(v), "macos") {
+				found = append(found, v)
+			}
+		}
+	}
+
+	assert.Empty(t, found, "CI runs on ubuntu runners only; macOS runners are not used")
+}
+
+func TestRunnerValues(t *testing.T) {
+	t.Parallel()
+
+	workflow := strings.Join([]string{
+		"jobs:",
+		"  a:",
+		"    runs-on: ubuntu-26.04",
+		"  b:",
+		"    runs-on:",
+		"      - self-hosted",
+		"      - macos-15",
+		"    steps:",
+		"      - run: echo macos is mentioned here",
+		"  c:",
+		"    runs-on: ${{ matrix.os }} # comment",
+	}, "\n")
+
+	assert.Equal(t, []string{
+		"w.yml:3: ubuntu-26.04",
+		"w.yml:6: self-hosted",
+		"w.yml:7: macos-15",
+		"w.yml:11: ${{ matrix.os }} # comment",
+	}, runnerValues("w.yml", workflow))
+}
