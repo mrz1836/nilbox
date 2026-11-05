@@ -3,12 +3,17 @@ import { createRoot } from 'react-dom/client'
 
 import { App } from './App'
 import './index.css'
+import { followTheme } from './lib/theme'
 import { reportFirstPaint } from './platform'
 
 const container = document.getElementById('root')
 if (container === null) {
   throw new Error('index.html is missing the #root element')
 }
+
+// The stylesheet already matches the system appearance; this pins it on <html> before
+// the first render and keeps following system changes for the life of the window.
+followTheme('system')
 
 createRoot(container).render(
   <StrictMode>

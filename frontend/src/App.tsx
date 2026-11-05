@@ -1,12 +1,78 @@
-import { brand } from './generated/brand'
+import { useEffect, useId, useMemo, useState } from 'react'
 
-// App is the window's root component. It shows the product identity until the inbox and
-// worktree views are added.
+import { AppHeader, type View } from './components/AppHeader'
+import { InboxView, type LaunchOptions } from './components/InboxView'
+import { SettingsPanel } from './components/SettingsPanel'
+import { errorMessage } from './lib/format'
+import { getSettings, listProfiles, type Profile, type Settings } from './platform'
+
+// App is the window's root: the header, the optional settings panel, and the active view.
+// It loads the settings and the launch profiles once, for the rows' launch controls.
 export function App() {
+  const settingsPanelId = useId()
+  const [view, setView] = useState<View>('inbox')
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settings, setSettings] = useState<Settings | null>(null)
+  const [profiles, setProfiles] = useState<Profile[]>([])
+  const [setupError, setSetupError] = useState('')
+
+  useEffect(() => {
+    let active = true
+
+    Promise.all([getSettings(), listProfiles()])
+      .then(([loadedSettings, loadedProfiles]) => {
+        if (active) {
+          setSettings(loadedSettings)
+          setProfiles(loadedProfiles)
+        }
+      })
+      .catch((err: unknown) => {
+        if (active) {
+          setSetupError(errorMessage(err))
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const launch = useMemo<LaunchOptions | null>(
+    () =>
+      settings === null
+        ? null
+        : { profiles, defaultProfile: settings.defaultProfile, worktreeDefault: settings.worktreeDefault },
+    [settings, profiles],
+  )
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-2 bg-[var(--brand-background)] text-[var(--brand-text)]">
-      <h1 className="text-2xl font-semibold">{brand.name}</h1>
-      <p className="text-[var(--brand-muted)]">{brand.tagline}</p>
-    </main>
+    <div className="flex min-h-screen flex-col bg-background text-text">
+      <AppHeader
+        view={view}
+        onViewChange={setView}
+        settingsOpen={settingsOpen}
+        onToggleSettings={() => {
+          setSettingsOpen((open) => !open)
+        }}
+        settingsPanelId={settingsPanelId}
+      />
+      {settingsOpen && settings !== null && (
+        <SettingsPanel id={settingsPanelId} settings={settings} onSaved={setSettings} />
+      )}
+      {setupError !== '' && (
+        <p role="alert" className="mx-4 mt-4 rounded-md border border-danger px-3 py-2 text-sm text-danger">
+          Could not load the launch settings: {setupError}
+        </p>
+      )}
+      <main className="flex-1">
+        {view === 'inbox' ? (
+          <InboxView launch={launch} />
+        ) : (
+          <section aria-label="Worktrees" className="p-4 text-sm text-muted">
+            Worktrees under the clone root are listed here.
+          </section>
+        )}
+      </main>
+    </div>
   )
 }

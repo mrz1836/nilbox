@@ -247,36 +247,92 @@ func TestNoAbsoluteHomePaths(t *testing.T) {
 	assert.Empty(t, found, "use ~/projects or a placeholder home directory, never a real one")
 }
 
+// frontendBrandFile reports a frontend file the product-name guard scans: the page shell
+// and every hand-written source under frontend/src. The generated brand files are exempt.
+func frontendBrandFile(rel string) bool {
+	if rel == "frontend/index.html" {
+		return true
+	}
+
+	if !strings.HasPrefix(rel, "frontend/src/") || strings.HasPrefix(rel, "frontend/src/generated/") {
+		return false
+	}
+
+	switch path.Ext(rel) {
+	case ".ts", ".tsx", ".css":
+		return true
+	default:
+		return false
+	}
+}
+
+func TestFrontendBrandFile(t *testing.T) {
+	cases := map[string]bool{
+		"frontend/index.html":                   true,
+		"frontend/src/App.tsx":                  true,
+		"frontend/src/lib/theme.ts":             true,
+		"frontend/src/index.css":                true,
+		"frontend/src/components/App.test.tsx":  true,
+		"frontend/src/generated/brand.ts":       false,
+		"frontend/src/generated/theme.css":      false,
+		"frontend/src/assets/logo.svg":          false,
+		"frontend/package.json":                 false,
+		"frontend/bindings/github.com/x/y/a.ts": false,
+		"frontend/vite.config.ts":               false,
+		"docs/frontend/src/notes.ts":            false,
+	}
+
+	for rel, want := range cases {
+		assert.Equal(t, want, frontendBrandFile(rel), rel)
+	}
+}
+
+// productNameText returns the text of a file the product-name guard scans, with the
+// exempt module path and command directory removed, or ok=false for a file it skips:
+// anything that is neither Go nor a frontend source, the brand package itself, and
+// generated Go files.
+func productNameText(t *testing.T, root, module, rel string) (string, bool) {
+	t.Helper()
+
+	isGo := strings.HasSuffix(rel, ".go")
+	if (!isGo && !frontendBrandFile(rel)) || strings.HasPrefix(rel, "internal/brand/") {
+		return "", false
+	}
+
+	text, ok := readText(t, root, rel)
+	if !ok || (isGo && generatedPattern.MatchString(text)) {
+		return "", false
+	}
+
+	// The module path is exempt everywhere (the frontend imports the bindings under it),
+	// and the command directory's own name is exempt both inside it and in references
+	// to it.
+	text = strings.ReplaceAll(text, module, "")
+
+	return strings.ReplaceAll(text, "cmd/"+brand.Slug, ""), true
+}
+
 func TestNoHardcodedProductName(t *testing.T) {
 	root := moduleRoot(t)
 	module := modulePath(t, root)
-	brandDir := "internal/brand/"
-	cmdDir := "cmd/" + brand.Slug
+	cmdDir := "cmd/" + brand.Slug + "/"
 
 	var found []string
 
-	for _, rel := range goFiles(t, root) {
-		if strings.HasPrefix(rel, brandDir) {
+	for _, rel := range repoFiles(t, root) {
+		text, ok := productNameText(t, root, module, rel)
+		if !ok {
 			continue
 		}
 
-		text, ok := readText(t, root, rel)
-		if !ok || generatedPattern.MatchString(text) {
-			continue
-		}
-
-		// The module path is exempt everywhere, and the command directory's own name is
-		// exempt both inside it and in references to it.
-		text = strings.ReplaceAll(text, module, "")
-		inCmd := strings.HasPrefix(rel, cmdDir+"/")
-		text = strings.ReplaceAll(text, cmdDir, "")
+		inCmd := strings.HasPrefix(rel, cmdDir)
 
 		found = append(found, hits(rel, text, func(line string) bool {
 			return strings.Contains(line, brand.Name) || (!inCmd && strings.Contains(line, brand.Slug))
 		})...)
 	}
 
-	assert.Empty(t, found, "reference brand.Name and brand.Slug instead of writing the product name")
+	assert.Empty(t, found, "reference the brand package (or the generated frontend brand file) instead of writing the product name")
 }
 
 func TestNoLiveGitHubCallsInTests(t *testing.T) {
