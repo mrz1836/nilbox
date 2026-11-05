@@ -78,7 +78,7 @@ and Windows support, comes after the MVP proves the desktop app is worth it.
 ```bash
 cd ~/projects/nilbox
 magex app:build        # build the macOS app into bin/Nilbox.app
-open bin/Nilbox.app
+magex app:open         # open it (builds it first if it is missing)
 ```
 
 The app borrows your [GitHub CLI](https://cli.github.com) login, so run `gh auth login` first.
@@ -97,6 +97,7 @@ magex format:fix     # format the code
 magex frontend:gate  # format check, lint, typecheck, and test the frontend
 magex app:dev        # run the desktop app with a hot-reloading frontend
 magex app:build      # build the macOS app bundle
+magex app:open       # open the built app (builds it first if it is missing)
 magex help           # list every available command
 ```
 

@@ -52,6 +52,7 @@ pins.
 | `magex app:lint` | Lints the desktop-tagged Go code (the desktop main and the frontend embed) |
 | `magex app:dev` | Runs the app against the Vite dev server with hot reload |
 | `magex app:build` | Builds the production bundle `bin/Nilbox.app` and signs it ad hoc for local use |
+| `magex app:open` | Opens `bin/Nilbox.app`, building it first when it is missing (run `app:build` to pick up a change) |
 | `magex app:check` | Runs `app:bindingsCheck`, `app:lint`, and `app:build` |
 | `magex measure:startup` | Startup to the first frame on screen, over six launches |
 | `magex measure:refresh` | Five live, read-only inbox refreshes and the API budget they imply |
@@ -64,7 +65,7 @@ A typical first build:
 ```bash
 cd ~/projects/nilbox
 magex app:build
-open bin/Nilbox.app
+magex app:open
 ```
 
 Before opening a pull request, run the Go gate, then the frontend gate, then (on a Mac) the
