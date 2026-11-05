@@ -12,6 +12,16 @@ minimumReleaseAgeExclude:
   # pins it exactly, so no other release can slip through.
   - '@wailsio/runtime@3.1.0'
 
+# Each override closes a published advisory in a transitive dependency that its parent
+# has not picked up yet. Every entry names the advisory, its scope, and when to drop it.
+overrides:
+  # minimatch 10.x is affected by a moderate denial-of-service advisory
+  # (GHSA-g3hv-75wg-m249), fixed in 11.0.1 with no 10.x backport. The TypeScript ESLint
+  # parser still asks for ^10.2.2 and calls only the named minimatch() export, which 11.x
+  # keeps unchanged. Lint-only tooling, never bundled into the app. Drop this entry once
+  # the parser depends on minimatch 11 itself.
+  '@typescript-eslint/typescript-estree>minimatch': 11.0.3
+
 # Build (install) scripts run only for packages listed here as true. Anything not
 # reviewed and listed fails the install, so a new build script is always a decision.
 allowBuilds: {}
