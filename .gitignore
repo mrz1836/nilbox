@@ -47,3 +47,6 @@ node_modules/
 # Frontend build artifacts
 frontend/coverage/
 *.tsbuildinfo
+
+# Plans
+.plans/
