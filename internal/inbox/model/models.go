@@ -34,8 +34,9 @@ type Account struct {
 // TableName maps Account to its table.
 func (Account) TableName() string { return "accounts" }
 
-// Repo is a repository seen in the inbox, with its per-repo preferences and the matched
-// local clone.
+// Repo is a repository seen in the inbox, with its per-repo preferences, the matched
+// local clone, and what GitHub says about it (rewritten on every refresh; FetchedAt is nil
+// until a refresh has described it). An archived repository's items are never listed.
 type Repo struct {
 	ID        int64     `gorm:"column:id;primaryKey"`
 	Owner     string    `gorm:"column:owner"`
@@ -45,6 +46,30 @@ type Repo struct {
 	LocalPath string    `gorm:"column:local_path"`
 	CreatedAt time.Time `gorm:"column:created_at"`
 	UpdatedAt time.Time `gorm:"column:updated_at"`
+
+	NodeID              string     `gorm:"column:node_id"`
+	Description         string     `gorm:"column:description"`
+	Visibility          string     `gorm:"column:visibility"`
+	IsArchived          bool       `gorm:"column:is_archived"`
+	ArchivedAt          *time.Time `gorm:"column:archived_at"`
+	IsDisabled          bool       `gorm:"column:is_disabled"`
+	IsLocked            bool       `gorm:"column:is_locked"`
+	LockReason          string     `gorm:"column:lock_reason"`
+	IsFork              bool       `gorm:"column:is_fork"`
+	Parent              string     `gorm:"column:parent"`
+	DefaultBranch       string     `gorm:"column:default_branch"`
+	ViewerPermission    string     `gorm:"column:viewer_permission"`
+	ViewerMergeMethod   string     `gorm:"column:viewer_merge_method"`
+	MergeCommitAllowed  bool       `gorm:"column:merge_commit_allowed"`
+	SquashMergeAllowed  bool       `gorm:"column:squash_merge_allowed"`
+	RebaseMergeAllowed  bool       `gorm:"column:rebase_merge_allowed"`
+	AutoMergeAllowed    bool       `gorm:"column:auto_merge_allowed"`
+	DeleteBranchOnMerge bool       `gorm:"column:delete_branch_on_merge"`
+	AllowUpdateBranch   bool       `gorm:"column:allow_update_branch"`
+	Language            string     `gorm:"column:language"`
+	LanguageColor       string     `gorm:"column:language_color"`
+	PushedAt            *time.Time `gorm:"column:pushed_at"`
+	FetchedAt           *time.Time `gorm:"column:fetched_at"`
 }
 
 // TableName maps Repo to its table.

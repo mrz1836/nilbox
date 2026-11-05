@@ -215,7 +215,7 @@ func (s *Service) refresh(ctx context.Context) error {
 		got.details.Add(more)
 	}
 
-	if err = s.save(ctx, got.inbox, got.limits, got.details, warning); err != nil {
+	if err = s.save(ctx, got, warning); err != nil {
 		return github.Redact(err, tok)
 	}
 
@@ -229,6 +229,9 @@ type refreshed struct {
 	inbox   *github.Inbox
 	limits  *github.RateLimits
 	details *github.Details
+
+	// archived holds the items left out because their repository is archived.
+	archived []github.Item
 }
 
 // fetch gets the inbox, the rate limits, and the details of the listed items
@@ -275,14 +278,43 @@ func (s *Service) fetch(ctx context.Context, tok github.Token, listed []string) 
 		return refreshed{}, ErrIncompleteFetch
 	}
 
+	got.archived = dropArchived(got.inbox)
+
 	return got, nil
 }
 
-// save stores a fetched inbox and its items' details in one transaction.
-func (s *Service) save(
-	ctx context.Context, inbox *github.Inbox, limits *github.RateLimits, details *github.Details, warning github.ScopeWarning,
-) error {
+// dropArchived takes the items of archived repositories out of the inbox's lists and
+// returns them. The searches already leave archived repositories out (archived:false);
+// this covers a repository archived after GitHub indexed its items, so nothing about an
+// archived repository is listed, asked about, or launched. The lists' totals stay as
+// GitHub counted them.
+func dropArchived(inbox *github.Inbox) []github.Item {
+	var dropped []github.Item
+
+	for _, list := range []*github.SearchResult{&inbox.ReviewRequested, &inbox.Authored, &inbox.Assigned} {
+		kept := list.Items[:0]
+
+		for _, it := range list.Items {
+			if it.Repo.IsArchived {
+				dropped = append(dropped, it)
+
+				continue
+			}
+
+			kept = append(kept, it)
+		}
+
+		list.Items = kept
+	}
+
+	return dropped
+}
+
+// save stores what a refresh read in one transaction: the inbox and its items' details,
+// the repositories of items left out, and the rate readings.
+func (s *Service) save(ctx context.Context, got refreshed, warning github.ScopeWarning) error {
 	now := s.now()
+	inbox, limits, details := got.inbox, got.limits, got.details
 
 	var items map[string]github.ItemDetails
 	if details != nil {
@@ -293,6 +325,10 @@ func (s *Service) save(
 		w := &writer{tx: tx, now: now, repos: make(map[string]int64), details: items}
 
 		if err := w.saveAccount(inbox.Viewer.Login); err != nil {
+			return err
+		}
+
+		if err := w.saveRepos(got.archived); err != nil {
 			return err
 		}
 

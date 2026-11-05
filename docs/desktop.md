@@ -187,6 +187,22 @@ Each pull request or issue in the inbox is a card three lines high:
 
 An issue shows its comments and labels.
 
+**Archived repositories are left out.** Each of the inbox's three searches asks GitHub for
+`archived:false`, so an archived repository's pull requests and issues never appear, never
+count toward a list's total, and never cost a details request. The inbox query also reports
+each item's repository, so an item whose repository was archived after GitHub indexed it is
+dropped before anything is stored, and the repository is recorded as archived. Clones of
+archived repositories still show in the Worktrees view, where their worktrees can be cleaned
+up.
+
+**Repository details.** The same query reads what GitHub says about each item's repository, at
+no extra cost, since GitHub prices lists and a repository is a single object: its description,
+visibility, whether it is archived, disabled, or locked (and why), the repository a fork was
+made from, its default branch, your permission and the merge method GitHub offers you first,
+which merge methods it allows, whether it allows auto-merge and branch updates and deletes
+merged branches, its primary language, and its last push. Every refresh rewrites them with
+the repository; your own settings for it, and its matched clone, are left alone.
+
 **Where the details come from.** Each refresh reads them with a second GraphQL query that asks
 for the listed items by node ID. Asking for these fields inside the inbox query's three
 searches would cost about 12 points a refresh, because GitHub prices nested lists per result

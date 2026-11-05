@@ -925,7 +925,7 @@ func TestSaveWithoutDetails(t *testing.T) {
 	h := newHarness(t)
 	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
 
-	require.NoError(t, h.svc.save(t.Context(), h.client.inbox, restLimits(), nil, ""))
+	require.NoError(t, h.svc.save(t.Context(), refreshed{inbox: h.client.inbox, limits: restLimits()}, ""))
 
 	snap, err := h.svc.Snapshot(t.Context())
 	require.NoError(t, err)
@@ -999,4 +999,120 @@ func TestNewIDs(t *testing.T) {
 	assert.Equal(t, []string{"c"}, newIDs([]string{"a", "c", "b"}, []string{"b", "a"}))
 	assert.Empty(t, newIDs([]string{"a"}, []string{"a"}))
 	assert.Equal(t, []string{"a"}, newIDs([]string{"a"}, nil))
+}
+
+// repoRow reads a stored repository by name.
+func (h *harness) repoRow(t *testing.T, name string) model.Repo {
+	t.Helper()
+
+	var rows []model.Repo
+	require.NoError(t, h.db.Where("name = ?", name).Find(&rows).Error)
+	require.Len(t, rows, 1)
+
+	return rows[0]
+}
+
+func TestRefreshStoresWhatGitHubSaysAboutEachRepository(t *testing.T) {
+	h := newHarness(t)
+
+	a := pr(1, "OWNER", false)
+	a.Repo = github.Repository{
+		NodeID: "R_fakeRepoExample", Description: "An example repository", Visibility: "PRIVATE",
+		IsFork: true, Parent: "acme-org/upstream-repo", DefaultBranch: "main", ViewerPermission: "WRITE",
+		ViewerMergeMethod: "SQUASH", SquashMergeAllowed: true, AutoMergeAllowed: true, AllowUpdateBranch: true,
+		Language: "Go", LanguageColor: "#00add8", PushedAt: time.Date(2026, 1, 9, 8, 0, 0, 0, time.UTC),
+	}
+	h.client.inbox = fetched([]github.Item{a}, nil, nil)
+	h.refresh(t)
+
+	repo := h.repoRow(t, "example-repo")
+	assert.Equal(t, "R_fakeRepoExample", repo.NodeID)
+	assert.Equal(t, "An example repository", repo.Description)
+	assert.Equal(t, "PRIVATE", repo.Visibility)
+	assert.True(t, repo.IsFork)
+	assert.Equal(t, "acme-org/upstream-repo", repo.Parent)
+	assert.Equal(t, "main", repo.DefaultBranch)
+	assert.Equal(t, "WRITE", repo.ViewerPermission)
+	assert.Equal(t, "SQUASH", repo.ViewerMergeMethod)
+	assert.True(t, repo.SquashMergeAllowed)
+	assert.False(t, repo.MergeCommitAllowed)
+	assert.True(t, repo.AutoMergeAllowed)
+	assert.True(t, repo.AllowUpdateBranch)
+	assert.Equal(t, "Go", repo.Language)
+	assert.Equal(t, "#00add8", repo.LanguageColor)
+	require.NotNil(t, repo.PushedAt)
+	assert.True(t, a.Repo.PushedAt.Equal(*repo.PushedAt))
+	assert.Nil(t, repo.ArchivedAt)
+	require.NotNil(t, repo.FetchedAt)
+	assert.True(t, h.clock.now.Equal(*repo.FetchedAt))
+
+	// The local columns are the user's, and a refresh leaves them alone while it rewrites
+	// GitHub's.
+	require.NoError(t, h.db.Model(&model.Repo{}).Where("id = ?", repo.ID).
+		Updates(map[string]any{"pinned": true, "muted": true, "local_path": "~/projects/example-repo"}).Error)
+
+	a.Repo.Description = "Renamed description"
+	a.Repo.PushedAt = time.Time{}
+	h.client.inbox = fetched([]github.Item{a}, nil, nil)
+	h.refresh(t)
+
+	repo = h.repoRow(t, "example-repo")
+	assert.Equal(t, "Renamed description", repo.Description)
+	assert.Nil(t, repo.PushedAt, "an unknown push time is stored as unknown")
+	assert.True(t, repo.Pinned)
+	assert.True(t, repo.Muted)
+	assert.Equal(t, "~/projects/example-repo", repo.LocalPath)
+}
+
+func TestRefreshLeavesArchivedRepositoriesOut(t *testing.T) {
+	h := newHarness(t)
+
+	live := pr(1, "OWNER", false)
+	old := issue("old-repo", 2, "MEMBER")
+
+	h.client.inbox = fetched([]github.Item{live}, nil, []github.Item{old})
+	snap := h.refresh(t)
+	assert.Equal(t, []int{2}, numbers(snap.Assigned))
+
+	// old-repo is archived; GitHub's index has not caught up, so the search still returns
+	// its issue, and in two lists.
+	archivedAt := time.Date(2026, 1, 10, 11, 0, 0, 0, time.UTC)
+	old.Repo = github.Repository{IsArchived: true, ArchivedAt: archivedAt}
+	h.client.inbox = fetched([]github.Item{live, old}, nil, []github.Item{old})
+	h.client.detailsIDs = nil
+
+	snap = h.refresh(t)
+
+	assert.Equal(t, []int{1}, numbers(snap.ReviewRequested))
+	assert.Empty(t, snap.Assigned.Items, "the archived repository's issue is no longer listed")
+	assert.Equal(t, [][]string{{nodeID(2), nodeID(1)}}, h.client.detailsIDs,
+		"it was listed before, so it was asked about alongside the inbox (newest first), and nothing new after")
+	assert.Equal(t, [3]bool{false, false, false}, h.reasons(t, 2))
+
+	repo := h.repoRow(t, "old-repo")
+	assert.True(t, repo.IsArchived)
+	require.NotNil(t, repo.ArchivedAt)
+	assert.True(t, archivedAt.Equal(*repo.ArchivedAt))
+
+	// The next refresh no longer asks about it at all.
+	h.client.detailsIDs = nil
+	h.refresh(t)
+	assert.Equal(t, [][]string{{nodeID(1)}}, h.client.detailsIDs)
+}
+
+func TestDropArchived(t *testing.T) {
+	keep := pr(1, "OWNER", false)
+	gone := pr(2, "OWNER", false)
+	gone.Repo.IsArchived = true
+
+	inbox := fetched([]github.Item{keep, gone}, []github.Item{gone}, nil)
+	inbox.ReviewRequested.IssueCount = 2
+
+	dropped := dropArchived(inbox)
+
+	assert.Equal(t, []github.Item{gone, gone}, dropped)
+	assert.Equal(t, []github.Item{keep}, inbox.ReviewRequested.Items)
+	assert.Empty(t, inbox.Authored.Items)
+	assert.Empty(t, inbox.Assigned.Items)
+	assert.Equal(t, 2, inbox.ReviewRequested.IssueCount, "totals stay as GitHub counted them")
 }

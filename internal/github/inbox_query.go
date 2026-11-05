@@ -5,19 +5,25 @@ package github
 // count and up to 100 items with the fields the trust rule needs (authorAssociation, and
 // isCrossRepository for pull requests). __typename tells pull requests from issues.
 //
-// The viewer's name, profile URL, and avatar URL cost no extra points. The avatar is
-// asked for at 128 pixels, enough for a sharp picture at menu size on a Retina display.
+// Each search leaves out archived repositories (archived:false), so their items never
+// take a result slot, count toward a total, or cost a details request.
+//
+// Each item carries its repository's description, state, settings, and the viewer's
+// access to it (RepoFields). Like the viewer's name, profile URL, and avatar URL, they
+// cost no extra points: GitHub prices lists, and a repository is a single object. The
+// avatar is asked for at 128 pixels, enough for a sharp picture at menu size on a
+// Retina display.
 const inboxQuery = `query Inbox {
   viewer { login name url avatarUrl(size: 128) }
-  reviewRequested: search(query: "is:pr is:open review-requested:@me", type: ISSUE, first: 100) {
+  reviewRequested: search(query: "is:pr is:open archived:false review-requested:@me", type: ISSUE, first: 100) {
     issueCount
     nodes { ...ItemFields }
   }
-  authored: search(query: "is:pr is:open author:@me", type: ISSUE, first: 100) {
+  authored: search(query: "is:pr is:open archived:false author:@me", type: ISSUE, first: 100) {
     issueCount
     nodes { ...ItemFields }
   }
-  assigned: search(query: "is:open assignee:@me", type: ISSUE, first: 100) {
+  assigned: search(query: "is:open archived:false assignee:@me", type: ISSUE, first: 100) {
     issueCount
     nodes { ...ItemFields }
   }
@@ -30,13 +36,25 @@ fragment ItemFields on SearchResultItem {
     id number title url createdAt updatedAt isDraft headRefName
     authorAssociation isCrossRepository
     author { login }
-    repository { name owner { login } }
+    repository { ...RepoFields }
   }
   ... on Issue {
     id number title url createdAt updatedAt
     authorAssociation
     author { login }
-    repository { name owner { login } }
+    repository { ...RepoFields }
   }
+}
+
+fragment RepoFields on Repository {
+  id name owner { login } description visibility
+  isArchived archivedAt isDisabled isLocked lockReason
+  isFork parent { nameWithOwner }
+  defaultBranchRef { name }
+  viewerPermission viewerDefaultMergeMethod
+  mergeCommitAllowed squashMergeAllowed rebaseMergeAllowed autoMergeAllowed
+  deleteBranchOnMerge allowUpdateBranch
+  primaryLanguage { name color }
+  pushedAt
 }
 `

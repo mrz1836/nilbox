@@ -13,10 +13,33 @@
                     "id": "I_fakeNodeId21",
                     "number": 21,
                     "repository": {
+                        "allowUpdateBranch": false,
+                        "archivedAt": null,
+                        "autoMergeAllowed": false,
+                        "defaultBranchRef": null,
+                        "deleteBranchOnMerge": false,
+                        "description": null,
+                        "id": "R_fakeRepoOther",
+                        "isArchived": false,
+                        "isDisabled": false,
+                        "isFork": true,
+                        "isLocked": true,
+                        "lockReason": "MIGRATING",
+                        "mergeCommitAllowed": true,
                         "name": "other-repo",
                         "owner": {
                             "login": "acme-org"
-                        }
+                        },
+                        "parent": {
+                            "nameWithOwner": "acme-org/upstream-repo"
+                        },
+                        "primaryLanguage": null,
+                        "pushedAt": null,
+                        "rebaseMergeAllowed": true,
+                        "squashMergeAllowed": false,
+                        "viewerDefaultMergeMethod": "MERGE",
+                        "viewerPermission": "WRITE",
+                        "visibility": "PRIVATE"
                     },
                     "title": "Settings page loses the clone root",
                     "updatedAt": "2026-01-04T09:30:00Z",
@@ -35,10 +58,36 @@
                     "isDraft": true,
                     "number": 7,
                     "repository": {
+                        "allowUpdateBranch": true,
+                        "archivedAt": null,
+                        "autoMergeAllowed": true,
+                        "defaultBranchRef": {
+                            "name": "main"
+                        },
+                        "deleteBranchOnMerge": true,
+                        "description": "An example repository",
+                        "id": "R_fakeRepoExample",
+                        "isArchived": false,
+                        "isDisabled": false,
+                        "isFork": false,
+                        "isLocked": false,
+                        "lockReason": null,
+                        "mergeCommitAllowed": false,
                         "name": "example-repo",
                         "owner": {
                             "login": "acme-org"
-                        }
+                        },
+                        "parent": null,
+                        "primaryLanguage": {
+                            "color": "#00ADD8",
+                            "name": "Go"
+                        },
+                        "pushedAt": "2026-01-05T08:00:00Z",
+                        "rebaseMergeAllowed": false,
+                        "squashMergeAllowed": true,
+                        "viewerDefaultMergeMethod": "SQUASH",
+                        "viewerPermission": "ADMIN",
+                        "visibility": "PUBLIC"
                     },
                     "title": "Make the inbox refresh faster",
                     "updatedAt": "2026-01-05T12:00:00Z",
@@ -63,10 +112,36 @@
                     "isDraft": true,
                     "number": 7,
                     "repository": {
+                        "allowUpdateBranch": true,
+                        "archivedAt": null,
+                        "autoMergeAllowed": true,
+                        "defaultBranchRef": {
+                            "name": "main"
+                        },
+                        "deleteBranchOnMerge": true,
+                        "description": "An example repository",
+                        "id": "R_fakeRepoExample",
+                        "isArchived": false,
+                        "isDisabled": false,
+                        "isFork": false,
+                        "isLocked": false,
+                        "lockReason": null,
+                        "mergeCommitAllowed": false,
                         "name": "example-repo",
                         "owner": {
                             "login": "acme-org"
-                        }
+                        },
+                        "parent": null,
+                        "primaryLanguage": {
+                            "color": "#00ADD8",
+                            "name": "Go"
+                        },
+                        "pushedAt": "2026-01-05T08:00:00Z",
+                        "rebaseMergeAllowed": false,
+                        "squashMergeAllowed": true,
+                        "viewerDefaultMergeMethod": "SQUASH",
+                        "viewerPermission": "ADMIN",
+                        "visibility": "PUBLIC"
                     },
                     "title": "Make the inbox refresh faster",
                     "updatedAt": "2026-01-05T12:00:00Z",
@@ -85,10 +160,33 @@
                     "isDraft": false,
                     "number": 3,
                     "repository": {
+                        "allowUpdateBranch": false,
+                        "archivedAt": null,
+                        "autoMergeAllowed": false,
+                        "defaultBranchRef": null,
+                        "deleteBranchOnMerge": false,
+                        "description": null,
+                        "id": "R_fakeRepoOther",
+                        "isArchived": false,
+                        "isDisabled": false,
+                        "isFork": true,
+                        "isLocked": true,
+                        "lockReason": "MIGRATING",
+                        "mergeCommitAllowed": true,
                         "name": "other-repo",
                         "owner": {
                             "login": "acme-org"
-                        }
+                        },
+                        "parent": {
+                            "nameWithOwner": "acme-org/upstream-repo"
+                        },
+                        "primaryLanguage": null,
+                        "pushedAt": null,
+                        "rebaseMergeAllowed": true,
+                        "squashMergeAllowed": false,
+                        "viewerDefaultMergeMethod": "MERGE",
+                        "viewerPermission": "WRITE",
+                        "visibility": "PRIVATE"
                     },
                     "title": "Fix a typo in the README",
                     "updatedAt": "2026-01-01T07:30:00Z",
@@ -119,10 +217,36 @@
                     "isDraft": false,
                     "number": 12,
                     "repository": {
+                        "allowUpdateBranch": true,
+                        "archivedAt": null,
+                        "autoMergeAllowed": true,
+                        "defaultBranchRef": {
+                            "name": "main"
+                        },
+                        "deleteBranchOnMerge": true,
+                        "description": "An example repository",
+                        "id": "R_fakeRepoExample",
+                        "isArchived": false,
+                        "isDisabled": false,
+                        "isFork": false,
+                        "isLocked": false,
+                        "lockReason": null,
+                        "mergeCommitAllowed": false,
                         "name": "example-repo",
                         "owner": {
                             "login": "acme-org"
-                        }
+                        },
+                        "parent": null,
+                        "primaryLanguage": {
+                            "color": "#00ADD8",
+                            "name": "Go"
+                        },
+                        "pushedAt": "2026-01-05T08:00:00Z",
+                        "rebaseMergeAllowed": false,
+                        "squashMergeAllowed": true,
+                        "viewerDefaultMergeMethod": "SQUASH",
+                        "viewerPermission": "ADMIN",
+                        "visibility": "PUBLIC"
                     },
                     "title": "Add a dark mode toggle",
                     "updatedAt": "2026-01-05T15:00:00Z",
@@ -141,10 +265,36 @@
                     "isDraft": false,
                     "number": 15,
                     "repository": {
+                        "allowUpdateBranch": true,
+                        "archivedAt": null,
+                        "autoMergeAllowed": true,
+                        "defaultBranchRef": {
+                            "name": "main"
+                        },
+                        "deleteBranchOnMerge": true,
+                        "description": "An example repository",
+                        "id": "R_fakeRepoExample",
+                        "isArchived": false,
+                        "isDisabled": false,
+                        "isFork": false,
+                        "isLocked": false,
+                        "lockReason": null,
+                        "mergeCommitAllowed": false,
                         "name": "example-repo",
                         "owner": {
                             "login": "acme-org"
-                        }
+                        },
+                        "parent": null,
+                        "primaryLanguage": {
+                            "color": "#00ADD8",
+                            "name": "Go"
+                        },
+                        "pushedAt": "2026-01-05T08:00:00Z",
+                        "rebaseMergeAllowed": false,
+                        "squashMergeAllowed": true,
+                        "viewerDefaultMergeMethod": "SQUASH",
+                        "viewerPermission": "ADMIN",
+                        "visibility": "PUBLIC"
                     },
                     "title": "Bump example-dep from 1.2.2 to 1.2.3",
                     "updatedAt": "2026-01-04T06:05:00Z",
@@ -163,10 +313,33 @@
                     "isDraft": false,
                     "number": 18,
                     "repository": {
+                        "allowUpdateBranch": false,
+                        "archivedAt": null,
+                        "autoMergeAllowed": false,
+                        "defaultBranchRef": null,
+                        "deleteBranchOnMerge": false,
+                        "description": null,
+                        "id": "R_fakeRepoOther",
+                        "isArchived": false,
+                        "isDisabled": false,
+                        "isFork": true,
+                        "isLocked": true,
+                        "lockReason": "MIGRATING",
+                        "mergeCommitAllowed": true,
                         "name": "other-repo",
                         "owner": {
                             "login": "acme-org"
-                        }
+                        },
+                        "parent": {
+                            "nameWithOwner": "acme-org/upstream-repo"
+                        },
+                        "primaryLanguage": null,
+                        "pushedAt": null,
+                        "rebaseMergeAllowed": true,
+                        "squashMergeAllowed": false,
+                        "viewerDefaultMergeMethod": "MERGE",
+                        "viewerPermission": "WRITE",
+                        "visibility": "PRIVATE"
                     },
                     "title": "Improve the install docs",
                     "updatedAt": "2026-01-04T21:00:00Z",

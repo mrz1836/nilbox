@@ -100,7 +100,12 @@ func TestModelsRoundTrip(t *testing.T) {
 	account := inboxmodel.Account{Login: "octo-user"}
 	require.NoError(t, db.Create(&account).Error)
 
-	repo := inboxmodel.Repo{Owner: "acme-org", Name: "example-repo", Pinned: true, LocalPath: "~/projects/example-repo"}
+	repo := inboxmodel.Repo{
+		Owner: "acme-org", Name: "example-repo", Pinned: true, LocalPath: "~/projects/example-repo",
+		NodeID: "R_fakeRepoExample", Visibility: "PRIVATE", IsFork: true, Parent: "acme-org/upstream-repo",
+		DefaultBranch: "main", ViewerPermission: "WRITE", ViewerMergeMethod: "SQUASH", SquashMergeAllowed: true,
+		Language: "Go", LanguageColor: "#00add8", PushedAt: &at, FetchedAt: &at,
+	}
 	require.NoError(t, db.Create(&repo).Error)
 
 	item := inboxmodel.Item{
@@ -144,6 +149,12 @@ func TestModelsRoundTrip(t *testing.T) {
 		"owner and name match case-insensitively")
 	assert.True(t, gotRepo.Pinned)
 	assert.False(t, gotRepo.Muted)
+	assert.Equal(t, "acme-org/upstream-repo", gotRepo.Parent)
+	assert.True(t, gotRepo.SquashMergeAllowed)
+	assert.False(t, gotRepo.IsArchived)
+	assert.Nil(t, gotRepo.ArchivedAt, "never archived")
+	require.NotNil(t, gotRepo.PushedAt)
+	assert.True(t, at.Equal(*gotRepo.PushedAt))
 
 	var gotDetails inboxmodel.ItemDetails
 	require.NoError(t, db.First(&gotDetails, item.ID).Error)
@@ -186,6 +197,9 @@ func TestSchemaRejectsInvalidRows(t *testing.T) {
 
 	// Duplicate repository, differing only by case.
 	require.Error(t, db.Create(&inboxmodel.Repo{Owner: "Acme-Org", Name: "EXAMPLE-REPO"}).Error)
+
+	// Repository flags are 0 or 1.
+	require.Error(t, db.Exec(`UPDATE repos SET is_archived = 2 WHERE id = ?`, repo.ID).Error)
 
 	// Unknown item kind.
 	require.Error(t, db.Create(&inboxmodel.Item{AccountID: account.ID, RepoID: repo.ID, Kind: "discussion", Number: 1}).Error)

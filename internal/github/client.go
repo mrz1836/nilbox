@@ -310,6 +310,62 @@ type Item struct {
 
 	RepoOwner string
 	RepoName  string
+
+	// Repo describes the item's repository.
+	Repo Repository
+}
+
+// Repository is what the inbox query reads about an item's repository: its identity, its
+// state, its merge settings, and the viewer's access to it.
+type Repository struct {
+	// NodeID is the repository's GraphQL ID, which survives a rename.
+	NodeID string
+
+	Description string
+
+	// Visibility is PUBLIC, PRIVATE, or INTERNAL.
+	Visibility string
+
+	IsArchived bool
+
+	// ArchivedAt is when the repository was archived; zero when it is not.
+	ArchivedAt time.Time
+
+	// IsDisabled and IsLocked report a repository that cannot be used: disabled by
+	// GitHub, or locked, for instance while it migrates (LockReason says why).
+	IsDisabled bool
+	IsLocked   bool
+	LockReason string
+
+	// IsFork reports a fork, and Parent is the "owner/name" it was made from ("" when the
+	// viewer cannot see the parent).
+	IsFork bool
+	Parent string
+
+	// DefaultBranch is the default branch's name ("" for an empty repository).
+	DefaultBranch string
+
+	// ViewerPermission is the viewer's access: ADMIN, MAINTAIN, WRITE, TRIAGE, or READ.
+	ViewerPermission string
+
+	// ViewerMergeMethod is the merge method GitHub offers the viewer first: MERGE,
+	// SQUASH, or REBASE.
+	ViewerMergeMethod string
+
+	MergeCommitAllowed  bool
+	SquashMergeAllowed  bool
+	RebaseMergeAllowed  bool
+	AutoMergeAllowed    bool
+	DeleteBranchOnMerge bool
+	AllowUpdateBranch   bool
+
+	// Language is the primary language's name, and LanguageColor its "#rrggbb" color in
+	// lower case; both "" when GitHub detected none.
+	Language      string
+	LanguageColor string
+
+	// PushedAt is the last push to any branch; zero when unknown.
+	PushedAt time.Time
 }
 
 // QueryRate is the GraphQL budget reported by the query itself.
@@ -387,10 +443,79 @@ type graphQLViewer struct {
 	AvatarURL string `json:"avatarUrl"`
 }
 
-// graphQLRepository is an item's repository.
+// graphQLRepository is an item's repository (the RepoFields fragment). GitHub's nulls
+// decode to zero values.
 type graphQLRepository struct {
-	Name  string       `json:"name"`
-	Owner graphQLActor `json:"owner"`
+	ID          string       `json:"id"`
+	Name        string       `json:"name"`
+	Owner       graphQLActor `json:"owner"`
+	Description string       `json:"description"`
+	Visibility  string       `json:"visibility"`
+	IsArchived  bool         `json:"isArchived"`
+	ArchivedAt  time.Time    `json:"archivedAt"`
+	IsDisabled  bool         `json:"isDisabled"`
+	IsLocked    bool         `json:"isLocked"`
+	LockReason  string       `json:"lockReason"`
+	IsFork      bool         `json:"isFork"`
+	Parent      *struct {
+		NameWithOwner string `json:"nameWithOwner"`
+	} `json:"parent"`
+	DefaultBranchRef *struct {
+		Name string `json:"name"`
+	} `json:"defaultBranchRef"`
+	ViewerPermission         string `json:"viewerPermission"`
+	ViewerDefaultMergeMethod string `json:"viewerDefaultMergeMethod"`
+	MergeCommitAllowed       bool   `json:"mergeCommitAllowed"`
+	SquashMergeAllowed       bool   `json:"squashMergeAllowed"`
+	RebaseMergeAllowed       bool   `json:"rebaseMergeAllowed"`
+	AutoMergeAllowed         bool   `json:"autoMergeAllowed"`
+	DeleteBranchOnMerge      bool   `json:"deleteBranchOnMerge"`
+	AllowUpdateBranch        bool   `json:"allowUpdateBranch"`
+	PrimaryLanguage          *struct {
+		Name  string `json:"name"`
+		Color string `json:"color"`
+	} `json:"primaryLanguage"`
+	PushedAt time.Time `json:"pushedAt"`
+}
+
+// repository converts the repository object.
+func (r *graphQLRepository) repository() Repository {
+	out := Repository{
+		NodeID:              r.ID,
+		Description:         r.Description,
+		Visibility:          r.Visibility,
+		IsArchived:          r.IsArchived,
+		ArchivedAt:          r.ArchivedAt.UTC(),
+		IsDisabled:          r.IsDisabled,
+		IsLocked:            r.IsLocked,
+		LockReason:          r.LockReason,
+		IsFork:              r.IsFork,
+		ViewerPermission:    r.ViewerPermission,
+		ViewerMergeMethod:   r.ViewerDefaultMergeMethod,
+		MergeCommitAllowed:  r.MergeCommitAllowed,
+		SquashMergeAllowed:  r.SquashMergeAllowed,
+		RebaseMergeAllowed:  r.RebaseMergeAllowed,
+		AutoMergeAllowed:    r.AutoMergeAllowed,
+		DeleteBranchOnMerge: r.DeleteBranchOnMerge,
+		AllowUpdateBranch:   r.AllowUpdateBranch,
+		PushedAt:            r.PushedAt.UTC(),
+	}
+
+	if r.Parent != nil {
+		out.Parent = r.Parent.NameWithOwner
+	}
+
+	if r.DefaultBranchRef != nil {
+		out.DefaultBranch = r.DefaultBranchRef.Name
+	}
+
+	if r.PrimaryLanguage != nil {
+		out.Language = r.PrimaryLanguage.Name
+		// Unlike a label's color, a language's comes with its "#".
+		out.LanguageColor = labelColor(strings.TrimPrefix(r.PrimaryLanguage.Color, "#"))
+	}
+
+	return out
 }
 
 // graphQLRateLimit is the query's rateLimit object.
@@ -459,6 +584,7 @@ func (n *graphQLNode) item() (Item, bool) {
 		AuthorAssociation: n.AuthorAssociation,
 		RepoOwner:         n.Repository.Owner.Login,
 		RepoName:          n.Repository.Name,
+		Repo:              n.Repository.repository(),
 	}
 
 	if item.IsPR {

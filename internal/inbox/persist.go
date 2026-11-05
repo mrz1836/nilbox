@@ -18,8 +18,42 @@ const (
 ON CONFLICT (login) DO UPDATE SET login = excluded.login, updated_at = excluded.updated_at
 RETURNING id`
 
-	upsertRepoSQL = `INSERT INTO repos (owner, name, created_at, updated_at) VALUES (?, ?, ?, ?)
-ON CONFLICT (owner, name) DO UPDATE SET owner = excluded.owner, name = excluded.name, updated_at = excluded.updated_at
+	// upsertRepoSQL rewrites what GitHub says about a repository; the local columns
+	// (muted, pinned, local_path) are left as they are.
+	upsertRepoSQL = `INSERT INTO repos (
+    owner, name, node_id, description, visibility, is_archived, archived_at, is_disabled, is_locked,
+    lock_reason, is_fork, parent, default_branch, viewer_permission, viewer_merge_method,
+    merge_commit_allowed, squash_merge_allowed, rebase_merge_allowed, auto_merge_allowed,
+    delete_branch_on_merge, allow_update_branch, language, language_color, pushed_at, fetched_at,
+    created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (owner, name) DO UPDATE SET
+    owner = excluded.owner,
+    name = excluded.name,
+    node_id = excluded.node_id,
+    description = excluded.description,
+    visibility = excluded.visibility,
+    is_archived = excluded.is_archived,
+    archived_at = excluded.archived_at,
+    is_disabled = excluded.is_disabled,
+    is_locked = excluded.is_locked,
+    lock_reason = excluded.lock_reason,
+    is_fork = excluded.is_fork,
+    parent = excluded.parent,
+    default_branch = excluded.default_branch,
+    viewer_permission = excluded.viewer_permission,
+    viewer_merge_method = excluded.viewer_merge_method,
+    merge_commit_allowed = excluded.merge_commit_allowed,
+    squash_merge_allowed = excluded.squash_merge_allowed,
+    rebase_merge_allowed = excluded.rebase_merge_allowed,
+    auto_merge_allowed = excluded.auto_merge_allowed,
+    delete_branch_on_merge = excluded.delete_branch_on_merge,
+    allow_update_branch = excluded.allow_update_branch,
+    language = excluded.language,
+    language_color = excluded.language_color,
+    pushed_at = excluded.pushed_at,
+    fetched_at = excluded.fetched_at,
+    updated_at = excluded.updated_at
 RETURNING id`
 
 	clearReasonsSQL = `UPDATE items
@@ -82,7 +116,7 @@ func (w *writer) saveItems(inbox *github.Inbox) error {
 	}
 
 	for _, e := range mergeLists(inbox) {
-		repoID, err := w.repoID(e.item.RepoOwner, e.item.RepoName)
+		repoID, err := w.repoID(e.item)
 		if err != nil {
 			return err
 		}
@@ -95,21 +129,55 @@ func (w *writer) saveItems(inbox *github.Inbox) error {
 	return nil
 }
 
-// repoID upserts a repository once per refresh and returns its id.
-func (w *writer) repoID(owner, name string) (int64, error) {
-	key := repoKey(owner, name)
+// saveRepos records the repositories of items that were left out, so an archived
+// repository is known as one.
+func (w *writer) saveRepos(items []github.Item) error {
+	for _, it := range items {
+		if _, err := w.repoID(it); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// repoID upserts an item's repository, with what GitHub says about it, once per refresh
+// and returns its id.
+func (w *writer) repoID(it github.Item) (int64, error) {
+	key := repoKey(it.RepoOwner, it.RepoName)
 	if id, ok := w.repos[key]; ok {
 		return id, nil
 	}
 
+	r := it.Repo
+
 	var id int64
-	if err := w.tx.Raw(upsertRepoSQL, owner, name, w.now, w.now).Scan(&id).Error; err != nil {
-		return 0, fmt.Errorf("save the repository %s/%s: %w", owner, name, err)
+
+	err := w.tx.Raw(upsertRepoSQL,
+		it.RepoOwner, it.RepoName, r.NodeID, r.Description, r.Visibility, r.IsArchived, timeOrNil(r.ArchivedAt),
+		r.IsDisabled, r.IsLocked, r.LockReason, r.IsFork, r.Parent, r.DefaultBranch, r.ViewerPermission,
+		r.ViewerMergeMethod, r.MergeCommitAllowed, r.SquashMergeAllowed, r.RebaseMergeAllowed, r.AutoMergeAllowed,
+		r.DeleteBranchOnMerge, r.AllowUpdateBranch, r.Language, r.LanguageColor, timeOrNil(r.PushedAt), w.now,
+		w.now, w.now,
+	).Scan(&id).Error
+	if err != nil {
+		return 0, fmt.Errorf("save the repository %s/%s: %w", it.RepoOwner, it.RepoName, err)
 	}
 
 	w.repos[key] = id
 
 	return id, nil
+}
+
+// timeOrNil stores a zero time as NULL.
+func timeOrNil(t time.Time) *time.Time {
+	if t.IsZero() {
+		return nil
+	}
+
+	t = t.UTC()
+
+	return &t
 }
 
 // saveItem upserts one item, then its details when this refresh read them.

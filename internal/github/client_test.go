@@ -104,9 +104,11 @@ func TestFetchInboxSingleBatchedRequest(t *testing.T) {
 		assert.NoError(t, json.Unmarshal(raw, &req))
 
 		for _, part := range []string{
-			`reviewRequested: search(query: "is:pr is:open review-requested:@me"`,
-			`authored: search(query: "is:pr is:open author:@me"`,
-			`assigned: search(query: "is:open assignee:@me"`,
+			`reviewRequested: search(query: "is:pr is:open archived:false review-requested:@me"`,
+			`authored: search(query: "is:pr is:open archived:false author:@me"`,
+			`assigned: search(query: "is:open archived:false assignee:@me"`,
+			"repository { ...RepoFields }",
+			"fragment RepoFields on Repository",
 			"rateLimit { cost remaining resetAt limit used }",
 			"viewer { login name url avatarUrl(size: 128) }",
 			"authorAssociation",
@@ -177,6 +179,7 @@ func TestFetchInboxParsesTrustFields(t *testing.T) {
 		AuthorAssociation: "OWNER",
 		RepoOwner:         "acme-org",
 		RepoName:          "example-repo",
+		Repo:              own.Repo,
 	}, own)
 
 	issue := items[21]
@@ -184,6 +187,61 @@ func TestFetchInboxParsesTrustFields(t *testing.T) {
 	assert.Equal(t, "MEMBER", issue.AuthorAssociation)
 	assert.False(t, issue.IsCrossRepository)
 	assert.Equal(t, "other-repo", issue.RepoName)
+}
+
+func TestFetchInboxParsesRepositories(t *testing.T) {
+	items := byNumber(fetchFixtureInbox(t))
+
+	assert.Equal(t, Repository{
+		NodeID:              "R_fakeRepoExample",
+		Description:         "An example repository",
+		Visibility:          "PUBLIC",
+		DefaultBranch:       "main",
+		ViewerPermission:    "ADMIN",
+		ViewerMergeMethod:   "SQUASH",
+		SquashMergeAllowed:  true,
+		AutoMergeAllowed:    true,
+		DeleteBranchOnMerge: true,
+		AllowUpdateBranch:   true,
+		Language:            "Go",
+		LanguageColor:       "#00add8",
+		PushedAt:            time.Date(2026, 1, 5, 8, 0, 0, 0, time.UTC),
+	}, items[7].Repo)
+
+	// A locked, private fork with no default branch, no language, and no push yet: GitHub's
+	// nulls come out as zero values.
+	assert.Equal(t, Repository{
+		NodeID:             "R_fakeRepoOther",
+		Visibility:         "PRIVATE",
+		IsLocked:           true,
+		LockReason:         "MIGRATING",
+		IsFork:             true,
+		Parent:             "acme-org/upstream-repo",
+		ViewerPermission:   "WRITE",
+		ViewerMergeMethod:  "MERGE",
+		MergeCommitAllowed: true,
+		RebaseMergeAllowed: true,
+	}, items[21].Repo)
+}
+
+func TestFetchInboxParsesAnArchivedRepository(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"data":{"viewer":{"login":"octo-user"},
+			"reviewRequested":{"issueCount":1,"nodes":[{"__typename":"Issue","id":"I_fakeNodeId1","number":1,
+				"repository":{"name":"old-repo","owner":{"login":"acme-org"},"isArchived":true,
+					"archivedAt":"2022-08-01T00:00:00Z","isDisabled":true}}]},
+			"authored":{"issueCount":0,"nodes":[]},"assigned":{"issueCount":0,"nodes":[]},
+			"rateLimit":{"cost":1,"limit":5000,"remaining":4999,"used":1,"resetAt":"2026-01-10T13:00:00Z"}}}`)
+	})
+
+	inbox, err := client.FetchInbox(t.Context(), NewToken(fakeToken))
+	require.NoError(t, err)
+	require.Len(t, inbox.ReviewRequested.Items, 1)
+
+	repo := inbox.ReviewRequested.Items[0].Repo
+	assert.True(t, repo.IsArchived)
+	assert.True(t, repo.IsDisabled)
+	assert.Equal(t, time.Date(2022, 8, 1, 0, 0, 0, 0, time.UTC), repo.ArchivedAt)
 }
 
 func TestFetchInboxGraphQLErrors(t *testing.T) {
