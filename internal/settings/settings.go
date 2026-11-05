@@ -114,7 +114,20 @@ func (s *Service) Get(ctx context.Context) (Settings, error) {
 		stored[r.Key] = r.Value
 	}
 
-	return fromStored(stored), nil
+	out := fromStored(stored)
+
+	// A default profile that is no longer stored (pruned, say) falls back too, so the
+	// settings never name a profile the launch dropdown cannot offer.
+	if out.DefaultProfile != DefaultProfile {
+		_, err := profiles.Lookup(ctx, s.db, out.DefaultProfile)
+		if errors.Is(err, profiles.ErrProfileNotFound) {
+			out.DefaultProfile = DefaultProfile
+		} else if err != nil {
+			return Settings{}, fmt.Errorf("read settings: %w", err)
+		}
+	}
+
+	return out, nil
 }
 
 // SetTerminal stores the terminal launches open in: "iterm2" or "terminal".

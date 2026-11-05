@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -217,6 +217,80 @@ describe('SettingsView', () => {
     await openSection('About')
 
     expect(await screen.findByText('unknown (no build info)')).toBeInTheDocument()
+  })
+
+  it('lists each profile with its folder and what it sets', async () => {
+    renderSettings({
+      profiles: [
+        profile(),
+        profile({
+          name: 'work',
+          configDir: '/home/user/.claude_work',
+          folder: '~/.claude_work',
+          model: 'opus',
+          effort: 'high',
+          planMode: true,
+          permissionMode: 'acceptEdits',
+          addDirs: ['~/shared', '~/docs'],
+          extraArgs: ['--verbose', '--debug'],
+          env: { EXAMPLE_FLAG: '1', OTHER_FLAG: '2' },
+        }),
+        profile({
+          name: 'odd',
+          folder: '/opt/profiles/odd',
+          permissionMode: 'customMode',
+          addDirs: ['~/shared'],
+          extraArgs: ['--verbose'],
+          env: { EXAMPLE_FLAG: '1' },
+        }),
+        profile({ name: 'old', folder: '~/.claude_old', missing: true, permissionMode: '' }),
+        profile({ name: 'bare', folder: '~/.claude_bare', addDirs: null, extraArgs: null, env: null }),
+      ],
+    })
+    await openSection('Profiles')
+
+    expect(screen.getByRole('button', { name: 'Profiles' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('heading', { name: 'Profiles' })).toBeInTheDocument()
+
+    const traits = (name: string) =>
+      within(screen.getByRole('list', { name: `${name} settings` }))
+        .getAllByRole('listitem')
+        .map((chip) => chip.textContent)
+
+    const rows = within(screen.getByRole('list', { name: 'Profiles' }))
+    expect(rows.getByText('~/.claude')).toHaveAttribute('title', '~/.claude')
+    expect(rows.getByText('~/.claude_work')).toBeInTheDocument()
+
+    expect(traits('default')).toEqual(['Full access'])
+    expect(traits('work')).toEqual([
+      'opus',
+      'high effort',
+      'Starts in plan mode',
+      '2 extra directories',
+      '2 extra arguments',
+      '2 environment variables',
+      'Accepts edits',
+    ])
+    expect(traits('odd')).toEqual(['1 extra directory', '1 extra argument', '1 environment variable', 'customMode'])
+    expect(traits('old')).toEqual(['Folder missing', 'Asks first'])
+    expect(traits('bare')).toEqual(['Full access'])
+  })
+
+  it('explains where profiles come from and what counts as one', async () => {
+    renderSettings()
+    await openSection('Profiles')
+
+    const note = screen.getByText(/looks for profiles in your home folder each time it starts/)
+    expect(note).toHaveTextContent('each ~/.claude_<name> or ~/.claude-<name> folder the agent has run with')
+    expect(note).toHaveTextContent('.claude.json, settings.json, or projects/')
+  })
+
+  it('says when no profiles were found', async () => {
+    renderSettings({ profiles: [] })
+    await openSection('Profiles')
+
+    expect(screen.getByText('No agent profiles were found in your home folder.')).toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'Profiles' })).not.toBeInTheDocument()
   })
 
   it('closes from the back button and on Escape', async () => {

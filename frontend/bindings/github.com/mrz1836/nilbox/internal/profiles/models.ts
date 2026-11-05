@@ -49,4 +49,15 @@ export interface Profile {
      * Env holds extra environment variables for the session.
      */
     "env": { [_ in string]?: string } | null;
+
+    /**
+     * Folder is the profile's config directory as shown to people, with ~ for the home
+     * directory: "~/.claude" for the default profile. Only List sets it.
+     */
+    "folder": string;
+
+    /**
+     * Missing reports that the config directory no longer exists. Only List sets it.
+     */
+    "missing": boolean;
 }

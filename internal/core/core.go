@@ -144,10 +144,24 @@ func (c *Core) Close() error {
 	return store.Close(c.DB)
 }
 
-// syncProfiles records every agent profile discovered under home. Existing rows are never
-// changed or removed. A home directory that cannot be read only skips discovery, with a
-// warning: the profiles already stored still work, and the inbox does not need them.
+// syncProfiles brings the stored agent profiles in line with home. It first removes
+// unedited profiles whose directory holds no agent config (another tool's folder that
+// happens to be named ~/.claude-<name>), then records every profile discovered under
+// home. It never changes a stored profile, and keeps any that was edited or whose
+// directory is gone. Pruning comes first so a name freed by a removed row can be taken
+// by the directory that now owns it. A home directory that cannot be read only skips
+// discovery, with a warning: the profiles already stored still work, and the inbox does
+// not need them.
 func syncProfiles(ctx context.Context, db *gorm.DB, home string, logger *slog.Logger) error {
+	removed, err := profiles.Prune(ctx, db)
+	if err != nil {
+		return fmt.Errorf("prune profiles: %w", err)
+	}
+
+	if len(removed) > 0 {
+		logger.InfoContext(ctx, "removed profiles whose directory holds no agent config", "profiles", removed)
+	}
+
 	found, err := profiles.Discover(home)
 	if err != nil {
 		logger.WarnContext(ctx, "profile discovery skipped", "error", err)
@@ -186,7 +200,7 @@ func assemble(db *gorm.DB, opts Options, logger *slog.Logger) *Core {
 	return &Core{
 		DB:       db,
 		Settings: prefs,
-		Profiles: profiles.NewService(db),
+		Profiles: profiles.NewService(db, opts.Home),
 		Inbox:    inboxSvc,
 		Launcher: launcher.NewService(launcher.Config{
 			DB:       db,

@@ -37,6 +37,8 @@ export function profile(overrides: Partial<Profile> = {}): Profile {
   return {
     name: 'default',
     configDir: '',
+    folder: '~/.claude',
+    missing: false,
     model: '',
     effort: '',
     permissionMode: 'full',

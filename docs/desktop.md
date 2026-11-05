@@ -159,8 +159,8 @@ Click it for each budget's remaining points, when it resets, and what the last r
 The readings are taken on each refresh, and a budget whose reset time has passed counts as full
 again.
 
-**Settings** is a page of its own, with sections for your account, launching, repositories,
-and the app's version. Each change is saved as you make it, except the clone root, which is
+**Settings** is a page of its own, with sections for your account, launching, agent profiles,
+repositories, and the app's version. Each change is saved as you make it, except the clone root, which is
 saved with **Save**. Escape or the back arrow returns to the view you came from.
 
 <br>
@@ -171,19 +171,31 @@ Profiles are discovered from your home directory on every start:
 
 - `~/.claude` becomes the `default` profile. Its sessions run without `CLAUDE_CONFIG_DIR`, so
   the agent uses its default login.
-- Each `~/.claude_<name>` or `~/.claude-<name>` directory becomes profile `<name>`, and its
-  sessions run with `CLAUDE_CONFIG_DIR` set to that directory. If both spellings exist for one
-  name, the underscore form wins. Files such as `~/.claude.json` are ignored.
+- Each `~/.claude_<name>` or `~/.claude-<name>` directory that the agent has run with becomes
+  profile `<name>`, and its sessions run with `CLAUDE_CONFIG_DIR` set to that directory. A
+  directory counts only when it holds `.claude.json`, `settings.json`, or a `projects/`
+  directory, which the agent writes into a config directory it uses. Other tools name their
+  own folders `~/.claude-<name>` too, such as session managers and usage monitors, and those
+  folders are left out. If both spellings exist for one name, the underscore form wins. Files
+  such as `~/.claude.json` are ignored.
 - A newly discovered profile starts with full access (`--dangerously-skip-permissions`), the
   agent's default model and effort, and plan mode off.
 
-Discovery only adds profiles. It never changes or deletes a stored one, so edits to a profile
-row survive restarts, and a profile whose directory disappears is kept.
+Discovery never changes a stored profile, so edits to a profile survive restarts, and a
+profile whose directory disappears is kept. On each start the app removes only the stored
+profiles that hold nothing worth keeping: ones whose directory is still there but holds no
+agent config, and that were never edited. Their folders are left untouched. If such a folder
+later becomes an agent config directory, it is discovered again. When the removed profile was
+the default profile setting, the setting falls back to `default`.
+
+**Settings → Profiles** lists every profile with the folder it runs from and what it sets for
+a session (model, effort, plan mode, extras, and permissions), and marks any whose folder has
+gone missing.
 
 Each inbox row has an **Open in Claude** button and a profile dropdown. The dropdown preselects
 the default profile (the `profile.default` setting, initially `default`, under **Settings →
-Launching**); picking another one applies to that launch only. Model, effort, plan mode, extra directories, and extra arguments
-come from the profile.
+Launching**); picking another one applies to that launch only. Model, effort, plan mode, extra
+directories, and extra arguments come from the profile.
 
 <br>
 

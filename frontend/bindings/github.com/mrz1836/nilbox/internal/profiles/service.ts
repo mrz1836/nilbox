@@ -15,7 +15,8 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
- * List returns every stored profile, the default first and the rest by name.
+ * List returns every stored profile, the default first and the rest by name, each with
+ * its Folder and whether that folder is missing.
  */
 export function List(): $CancellablePromise<$models.Profile[] | null> {
     return $Call.ByID(2356274378);

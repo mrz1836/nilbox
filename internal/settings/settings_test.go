@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -14,6 +15,9 @@ import (
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/store"
 )
+
+// errRefused is what a test's database callback fails with.
+var errRefused = errors.New("refused by the test")
 
 // openDB opens the database at path, closing it when the test ends.
 func openDB(t *testing.T, path string) *gorm.DB {
@@ -158,6 +162,32 @@ func TestGetFallsBackOnBadStoredValues(t *testing.T) {
 	got, err := svc.Get(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, fromStored(nil), got)
+}
+
+func TestGetFallsBackWhenTheDefaultProfileIsGone(t *testing.T) {
+	svc, db, _ := newTestService(t)
+	require.NoError(t, profiles.Sync(t.Context(), db, []profiles.Profile{{Name: "work", ConfigDir: "/opt/profiles/work"}}))
+	require.NoError(t, svc.SetDefaultProfile(t.Context(), "work"))
+
+	// The profile is removed, say because its folder turned out to be another tool's.
+	require.NoError(t, db.Exec("DELETE FROM claude_profiles WHERE name = 'work'").Error)
+
+	got, err := svc.Get(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, DefaultProfile, got.DefaultProfile)
+}
+
+func TestGetReportsAProfileLookupError(t *testing.T) {
+	svc, db, _ := newTestService(t)
+	setPref(t, db, KeyDefaultProfile, "work")
+
+	require.NoError(t, db.Callback().Query().Before("gorm:query").Register("test:refuse", func(tx *gorm.DB) {
+		_ = tx.AddError(errRefused)
+	}))
+
+	_, err := svc.Get(t.Context())
+	require.ErrorIs(t, err, errRefused)
+	require.ErrorContains(t, err, "read settings")
 }
 
 func TestDatabaseErrors(t *testing.T) {

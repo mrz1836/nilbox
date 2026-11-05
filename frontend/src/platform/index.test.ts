@@ -109,6 +109,8 @@ describe('launch', () => {
       addDirs: [],
       extraArgs: [],
       env: {},
+      folder: '~/.claude',
+      missing: false,
     }
 
     mocks.profiles.List.mockResolvedValueOnce([profile]).mockResolvedValueOnce(null)

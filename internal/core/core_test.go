@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -43,16 +44,31 @@ func (r *recordingRunner) names() []string {
 	return append([]string(nil), r.calls...)
 }
 
-// tempHome returns a home directory holding the given entries as directories.
+// tempHome returns a home directory holding the given entries as directories. Each
+// ~/.claude_<name> or ~/.claude-<name> one is an agent config directory, holding the
+// state file the agent writes on its first run with it.
 func tempHome(t *testing.T, dirs ...string) string {
 	t.Helper()
 
 	home := t.TempDir()
 	for _, d := range dirs {
-		require.NoError(t, os.Mkdir(filepath.Join(home, d), 0o700))
+		makeDir(t, home, d)
 	}
 
 	return home
+}
+
+// makeDir creates dir under home, as an agent config directory when its name is a
+// named profile's.
+func makeDir(t *testing.T, home, dir string) {
+	t.Helper()
+
+	path := filepath.Join(home, dir)
+	require.NoError(t, os.Mkdir(path, 0o700))
+
+	if strings.HasPrefix(dir, ".claude_") || strings.HasPrefix(dir, ".claude-") {
+		require.NoError(t, os.WriteFile(filepath.Join(path, ".claude.json"), []byte("{}"), 0o600))
+	}
 }
 
 // bootstrap starts a Core over a fresh data directory and closes it when the test ends.
@@ -116,8 +132,8 @@ func TestBootstrapKeepsExistingProfiles(t *testing.T) {
 	require.NoError(t, first.Close())
 
 	// The work profile's directory is gone and a new one appeared.
-	require.NoError(t, os.Remove(filepath.Join(home, ".claude_work")))
-	require.NoError(t, os.Mkdir(filepath.Join(home, ".claude-alt"), 0o700))
+	require.NoError(t, os.RemoveAll(filepath.Join(home, ".claude_work")))
+	makeDir(t, home, ".claude-alt")
 
 	c := bootstrap(t, Options{Paths: paths, Home: home, Runner: &recordingRunner{}})
 
@@ -126,6 +142,62 @@ func TestBootstrapKeepsExistingProfiles(t *testing.T) {
 	work, err := profiles.Lookup(t.Context(), c.DB, "work")
 	require.NoError(t, err)
 	assert.Equal(t, "opus", work.Model, "an edited row is never overwritten")
+}
+
+func TestBootstrapRemovesProfilesForOtherToolsFolders(t *testing.T) {
+	home := tempHome(t, ".claude", ".claude_work", ".claude-dup")
+	paths := appdata.NewPaths(filepath.Join(t.TempDir(), "data"))
+
+	// Folders other tools name ~/.claude-<name>, and an empty twin of a real profile.
+	for _, dir := range []string{".claude-squad", ".claude-monitor", ".claude_dup"} {
+		require.NoError(t, os.Mkdir(filepath.Join(home, dir), 0o700))
+	}
+
+	require.NoError(t, os.WriteFile(filepath.Join(home, ".claude-squad", "state.json"), []byte("{}"), 0o600))
+
+	// An older version stored a profile for each of them.
+	first := bootstrap(t, Options{Paths: paths, Home: home, Runner: &recordingRunner{}})
+	require.NoError(t, profiles.Sync(t.Context(), first.DB, []profiles.Profile{
+		{Name: "squad", ConfigDir: filepath.Join(home, ".claude-squad"), PermissionMode: profiles.PermissionFull},
+		{Name: "monitor", ConfigDir: filepath.Join(home, ".claude-monitor"), PermissionMode: profiles.PermissionFull},
+	}))
+	require.NoError(t, first.DB.Exec("UPDATE claude_profiles SET config_dir = ? WHERE name = 'dup'",
+		filepath.Join(home, ".claude_dup")).Error)
+	require.NoError(t, first.Close())
+
+	var logs bytes.Buffer
+
+	c := bootstrap(t, Options{
+		Paths:  paths,
+		Home:   home,
+		Runner: &recordingRunner{},
+		Logger: slog.New(slog.NewTextHandler(&logs, nil)),
+	})
+
+	assert.Equal(t, []string{profiles.DefaultName, "dup", "work"}, profileNames(t, c))
+	assert.Contains(t, logs.String(), "removed profiles whose directory holds no agent config")
+	assert.Contains(t, logs.String(), "profiles=\"[dup monitor squad]\"")
+
+	// The freed name went to the directory that holds the config.
+	dup, err := profiles.Lookup(t.Context(), c.DB, "dup")
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(home, ".claude-dup"), dup.ConfigDir)
+
+	// The folders themselves are left alone.
+	assert.DirExists(t, filepath.Join(home, ".claude-squad"))
+	assert.DirExists(t, filepath.Join(home, ".claude-monitor"))
+}
+
+func TestBootstrapStopsWhenProfilesCannotBePruned(t *testing.T) {
+	paths := appdata.NewPaths(filepath.Join(t.TempDir(), "data"))
+	home := tempHome(t, ".claude")
+
+	first := bootstrap(t, Options{Paths: paths, Home: home, Runner: &recordingRunner{}})
+	require.NoError(t, first.DB.Exec("DROP TABLE claude_profiles").Error)
+	require.NoError(t, first.Close())
+
+	_, err := Bootstrap(t.Context(), Options{Paths: paths, Home: home, Runner: &recordingRunner{}})
+	require.ErrorContains(t, err, "prune profiles")
 }
 
 func TestBootstrapUnreadableHomeSkipsDiscovery(t *testing.T) {
