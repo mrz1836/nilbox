@@ -3,8 +3,8 @@
 Nilbox is a macOS desktop app: a Go core, a [Wails v3](https://wails.io) shell, and a React +
 TypeScript + Vite + Tailwind frontend in `frontend/`. This guide covers the one-time setup, the
 build targets, how the desktop shell is kept out of the Linux CI build, and what the app does
-on your machine: where it keeps its data, how it finds your agent profiles, how it decides
-what an item may do, and how it treats git worktrees.
+on your machine: where it keeps its data, how the window is laid out, how it finds your agent
+profiles, how it decides what an item may do, and how it treats git worktrees.
 
 Measured startup, refresh, launch, size, and API-budget numbers, and how they were taken, are
 in [performance.md](performance.md).
@@ -81,8 +81,11 @@ magex app:check
 enough to run it on the machine that built it. Distribution signing and notarization are not
 part of the build.
 
-**Firewalls.** The app talks only to `api.github.com`. A per-app firewall must allow
-`bin/Nilbox.app/Contents/MacOS/nilbox` to reach it, or every refresh times out.
+**Firewalls.** The app talks only to GitHub: `api.github.com` on every refresh, and
+`avatars.githubusercontent.com` to download your profile picture once (it is then cached). A
+per-app firewall must allow `bin/Nilbox.app/Contents/MacOS/nilbox` to reach `api.github.com`,
+or every refresh times out. Blocking the avatar host only means the toolbar shows your initial
+instead of your picture.
 
 <br>
 
@@ -127,6 +130,41 @@ refresh and keeps it in memory only.
 
 <br>
 
+## The window
+
+A single toolbar runs beside the macOS window controls. It holds the **Inbox** and
+**Worktrees** tabs and, on the right, the API budget gauge and your profile picture. Drag the
+bar to move the window, and double-click it to zoom.
+
+**Account menu.** Click your picture for who is signed in, **Settings** (also ⌘,), and **View
+GitHub profile**. After a refresh, the picture is downloaded from
+`avatars.githubusercontent.com` without your token and cached in the database, so it shows
+offline. It is downloaded again only when GitHub reports a new picture, such as after you
+change it or sign in as another account with `gh auth switch`. Until it arrives, the button
+shows your initial.
+
+**API budget gauge.** The dial follows whichever GitHub budget has the least left: GraphQL,
+which the inbox spends, or REST and search, which `gh` and your agents spend from the same
+account. Its needle points right when the budget is full and left when it is empty, and its
+color follows the share left:
+
+| Color | Share of the budget left |
+|---|---|
+| Green | More than 50% |
+| Yellow | More than 25%, up to 50% |
+| Orange | More than 10%, up to 25% |
+| Red | 10% or less |
+
+Click it for each budget's remaining points, when it resets, and what the last refresh cost.
+The readings are taken on each refresh, and a budget whose reset time has passed counts as full
+again.
+
+**Settings** is a page of its own, with sections for your account, launching, repositories,
+and the app's version. Each change is saved as you make it, except the clone root, which is
+saved with **Save**. Escape or the back arrow returns to the view you came from.
+
+<br>
+
 ## Agent profiles
 
 Profiles are discovered from your home directory on every start:
@@ -143,8 +181,8 @@ Discovery only adds profiles. It never changes or deletes a stored one, so edits
 row survive restarts, and a profile whose directory disappears is kept.
 
 Each inbox row has an **Open in Claude** button and a profile dropdown. The dropdown preselects
-the default profile (the `profile.default` setting, initially `default`); picking another one
-applies to that launch only. Model, effort, plan mode, extra directories, and extra arguments
+the default profile (the `profile.default` setting, initially `default`, under **Settings →
+Launching**); picking another one applies to that launch only. Model, effort, plan mode, extra directories, and extra arguments
 come from the profile.
 
 <br>
@@ -182,8 +220,8 @@ terminal then runs the script:
   open.
 - **Terminal.app** opens a new window (`open -a Terminal`).
 
-Choose the terminal and the clone root (the directory whose children are your clones, initially
-`~/projects`) in the settings panel.
+Choose the terminal under **Settings → Launching**, and the clone root (the directory whose
+children are your clones, initially `~/projects`) under **Settings → Repositories**.
 
 **Clones.** The item's clone is found by scanning the clone root one level deep and matching
 each repository's git remotes. The match is remembered and checked again on the next launch. To
@@ -193,7 +231,7 @@ branch switch, or worktree creation. When a session needs a pull request's branc
 prompt asks the agent to run `gh pr checkout <n>`.
 
 **Worktrees.** The **Start in a worktree** checkbox is ticked by default (the `launch.worktree`
-setting); unticking it applies to that launch only. With it on, the agent creates and owns the
+setting, under **Settings → Launching**); unticking it applies to that launch only. With it on, the agent creates and owns the
 worktree with its own `--worktree` flag, under `<clone>/.claude/worktrees/<name>` on a branch
 named `worktree-<name>`:
 

@@ -1,6 +1,7 @@
 // Fake data for component tests: fake orgs, users, and repositories only.
 
 import type {
+  Account,
   InboxItem,
   InboxList,
   InboxSnapshot,
@@ -65,13 +66,44 @@ export function launchResult(overrides: Partial<LaunchResult> = {}): LaunchResul
 
 export const unknownRate: Rate = { known: false, limit: 0, remaining: 0, used: 0, cost: 0, resetAt: '', takenAt: '' }
 
+// rate is a GraphQL-sized budget reading, taken a minute before the tests' noon and
+// resetting 42 minutes after it.
+export function rate(overrides: Partial<Rate> = {}): Rate {
+  return {
+    known: true,
+    limit: 5000,
+    remaining: 4980,
+    used: 20,
+    cost: 1,
+    resetAt: '2026-06-15T12:42:00Z',
+    takenAt: '2026-06-15T11:59:00Z',
+    ...overrides,
+  }
+}
+
+// avatarDataURL is a stand-in for a cached avatar; the image never decodes in jsdom.
+export const avatarDataURL = 'data:image/png;base64,bm90LXJlYWxseS1hLXBuZw=='
+
+export function account(overrides: Partial<Account> = {}): Account {
+  return {
+    login: 'octo-user',
+    name: 'Octo User',
+    profileUrl: 'https://github.com/octo-user',
+    avatar: avatarDataURL,
+    ...overrides,
+  }
+}
+
+// signedOut is the account before the first refresh.
+export const signedOut: Account = { login: '', name: '', profileUrl: '', avatar: '' }
+
 export function list(items: InboxItem[], total = items.length): InboxList {
   return { items, shown: items.length, total }
 }
 
 export function snapshot(overrides: Partial<InboxSnapshot> = {}): InboxSnapshot {
   return {
-    viewer: 'octo-user',
+    account: account(),
     reviewRequested: list([]),
     authored: list([]),
     assigned: list([]),

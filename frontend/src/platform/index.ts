@@ -25,6 +25,7 @@ import type {
 // never declare their own copies.
 export type { Info } from '../../bindings/github.com/mrz1836/nilbox/internal/appinfo'
 export type {
+  Account,
   Item as InboxItem,
   List as InboxList,
   Rate,
@@ -100,6 +101,14 @@ export function setTerminal(terminal: string): Promise<void> {
 
 export function setCloneRoot(root: string): Promise<void> {
   return SettingsService.SetCloneRoot(root)
+}
+
+export function setDefaultProfile(name: string): Promise<void> {
+  return SettingsService.SetDefaultProfile(name)
+}
+
+export function setWorktreeDefault(on: boolean): Promise<void> {
+  return SettingsService.SetWorktreeDefault(on)
 }
 
 // Worktrees

@@ -17,9 +17,11 @@ const MinTextContrast = 4.5
 // Palette holds the semantic color tokens for one theme. Every value is an sRGB hex
 // color in #RRGGBB form.
 //
-// Accent is both the brand color and the semantic "needs you" signal. Text, Muted,
-// Accent, Info, Success, Warning, and Danger are text-bearing tokens and must meet
-// MinTextContrast against Background and Surface.
+// Accent is both the brand color and the semantic "needs you" signal. Success, Warning,
+// Caution, and Danger form an ordered status scale (green, yellow, orange, red) for
+// anything that runs down, such as the API budget. Text, Muted, Accent, Info, Success,
+// Warning, Caution, and Danger are text-bearing tokens and must meet MinTextContrast
+// against Background and Surface.
 type Palette struct {
 	Background string // app window background
 	Surface    string // cards, rows, panels
@@ -31,6 +33,7 @@ type Palette struct {
 	Info       string // neutral emphasis
 	Success    string // passing checks, merged
 	Warning    string // pending, attention soon
+	Caution    string // running low, act soon
 	Danger     string // failing checks, critical alerts
 }
 
@@ -44,6 +47,7 @@ func (p Palette) TextTokens() map[string]string {
 		"Info":    p.Info,
 		"Success": p.Success,
 		"Warning": p.Warning,
+		"Caution": p.Caution,
 		"Danger":  p.Danger,
 	}
 }
@@ -62,6 +66,7 @@ var Dark = Palette{
 	Info:       "#8FA4C4",
 	Success:    "#3DBE8B",
 	Warning:    "#E9B44C",
+	Caution:    "#F28C38",
 	Danger:     "#F05D5E",
 }
 
@@ -79,6 +84,7 @@ var Light = Palette{
 	Info:       "#4A6285",
 	Success:    "#17784F",
 	Warning:    "#9A6200",
+	Caution:    "#B54C00",
 	Danger:     "#C42B2B",
 }
 

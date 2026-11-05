@@ -81,6 +81,10 @@ type Client struct {
 
 	// UserAgent identifies the app to GitHub.
 	UserAgent string
+
+	// AvatarHost is the only host FetchAvatar downloads from, as host or host:port. It
+	// defaults to DefaultAvatarHost; tests point it at a local server.
+	AvatarHost string
 }
 
 // NewClient returns a client for GitHub's public API that identifies itself with the
@@ -91,9 +95,10 @@ func NewClient(version string) *Client {
 	}
 
 	return &Client{
-		BaseURL:   DefaultBaseURL,
-		HTTP:      &http.Client{Timeout: defaultTimeout},
-		UserAgent: brand.Slug + "/" + version,
+		BaseURL:    DefaultBaseURL,
+		HTTP:       &http.Client{Timeout: defaultTimeout},
+		UserAgent:  brand.Slug + "/" + version,
+		AvatarHost: DefaultAvatarHost,
 	}
 }
 
@@ -244,8 +249,8 @@ func truncate(msg string) string {
 
 // Inbox is the decoded result of the batched inbox query.
 type Inbox struct {
-	// Viewer is the login of the token's account.
-	Viewer string
+	// Viewer is the token's account.
+	Viewer Viewer
 
 	ReviewRequested SearchResult
 	Authored        SearchResult
@@ -256,6 +261,21 @@ type Inbox struct {
 
 	// OAuthScopes is the response's X-OAuth-Scopes header ("" when absent).
 	OAuthScopes string
+}
+
+// Viewer is the account a token belongs to.
+type Viewer struct {
+	// Login is the account's username.
+	Login string
+
+	// Name is the profile's display name ("" when the profile sets none).
+	Name string
+
+	// URL is the account's profile page on GitHub.
+	URL string
+
+	// AvatarURL is the profile picture on GitHub's avatar host. FetchAvatar downloads it.
+	AvatarURL string
 }
 
 // SearchResult is one aliased search: the total match count and the items returned.
@@ -329,7 +349,7 @@ type graphQLError struct {
 
 // graphQLData is the inbox query's data object.
 type graphQLData struct {
-	Viewer          graphQLActor     `json:"viewer"`
+	Viewer          graphQLViewer    `json:"viewer"`
 	ReviewRequested graphQLSearch    `json:"reviewRequested"`
 	Authored        graphQLSearch    `json:"authored"`
 	Assigned        graphQLSearch    `json:"assigned"`
@@ -339,7 +359,12 @@ type graphQLData struct {
 // inbox converts the decoded data.
 func (d *graphQLData) inbox() *Inbox {
 	return &Inbox{
-		Viewer:          d.Viewer.Login,
+		Viewer: Viewer{
+			Login:     d.Viewer.Login,
+			Name:      d.Viewer.Name,
+			URL:       d.Viewer.URL,
+			AvatarURL: d.Viewer.AvatarURL,
+		},
 		ReviewRequested: d.ReviewRequested.result(),
 		Authored:        d.Authored.result(),
 		Assigned:        d.Assigned.result(),
@@ -356,6 +381,15 @@ func (d *graphQLData) inbox() *Inbox {
 // graphQLActor is a user or bot.
 type graphQLActor struct {
 	Login string `json:"login"`
+}
+
+// graphQLViewer is the query's viewer object. Name is null when the profile sets none,
+// which decodes to "".
+type graphQLViewer struct {
+	Login     string `json:"login"`
+	Name      string `json:"name"`
+	URL       string `json:"url"`
+	AvatarURL string `json:"avatarUrl"`
 }
 
 // graphQLRepository is an item's repository.

@@ -7,6 +7,7 @@ export {
 };
 
 export type {
+    Account,
     Item,
     List,
     Rate,

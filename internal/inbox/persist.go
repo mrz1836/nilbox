@@ -173,7 +173,8 @@ func setPrefs(db *gorm.DB, now time.Time, prefs []pref) error {
 // readPrefs returns the inbox status prefs that are set.
 func readPrefs(db *gorm.DB) (map[string]string, error) {
 	keys := []string{
-		prefViewer, prefTotalReviewRequested, prefTotalAuthored, prefTotalAssigned,
+		prefViewer, prefViewerName, prefViewerURL, prefViewerAvatarURL, prefAvatar, prefAvatarSource,
+		prefTotalReviewRequested, prefTotalAuthored, prefTotalAssigned,
 		prefLastRefreshAt, prefLastError, prefScopeWarning,
 	}
 

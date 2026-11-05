@@ -22,10 +22,14 @@ WHERE i.account_id = ?
   AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1)
 ORDER BY i.item_updated_at DESC, i.id DESC`
 
+// githubWebURL is the root of GitHub's website, for a profile link stored before the
+// profile URL was.
+const githubWebURL = "https://github.com/"
+
 // Snapshot is the stored inbox as the UI shows it. Every field is a plain value.
 type Snapshot struct {
-	// Viewer is the signed-in account's login ("" before the first refresh).
-	Viewer string `json:"viewer"`
+	// Account is the signed-in account (all "" before the first refresh).
+	Account Account `json:"account"`
 
 	ReviewRequested List `json:"reviewRequested"`
 	Authored        List `json:"authored"`
@@ -41,6 +45,22 @@ type Snapshot struct {
 
 	// ScopeWarning is set when the token's scopes could not be verified.
 	ScopeWarning string `json:"scopeWarning"`
+}
+
+// Account is the signed-in GitHub account.
+type Account struct {
+	// Login is the account's username ("" before the first refresh).
+	Login string `json:"login"`
+
+	// Name is the profile's display name ("" when the profile sets none).
+	Name string `json:"name"`
+
+	// ProfileURL is the account's page on GitHub.
+	ProfileURL string `json:"profileUrl"`
+
+	// Avatar is the profile picture as a data: URL, cached locally. It is "" until the
+	// current avatar has been downloaded.
+	Avatar string `json:"avatar"`
 }
 
 // List is one inbox list. Total is GitHub's match count, which can exceed Shown.
@@ -100,7 +120,7 @@ type Rate struct {
 // newSnapshot starts a snapshot with empty lists and the stored status.
 func newSnapshot(prefs map[string]string) Snapshot {
 	return Snapshot{
-		Viewer:          prefs[prefViewer],
+		Account:         accountFromPrefs(prefs),
 		ReviewRequested: List{Items: []Item{}},
 		Authored:        List{Items: []Item{}},
 		Assigned:        List{Items: []Item{}},
@@ -108,6 +128,27 @@ func newSnapshot(prefs map[string]string) Snapshot {
 		LastError:       prefs[prefLastError],
 		ScopeWarning:    prefs[prefScopeWarning],
 	}
+}
+
+// accountFromPrefs reads the signed-in account. The cached avatar is used only while it
+// is the picture GitHub last reported, so another account's avatar never shows.
+func accountFromPrefs(prefs map[string]string) Account {
+	login := prefs[prefViewer]
+	if login == "" {
+		return Account{}
+	}
+
+	account := Account{Login: login, Name: prefs[prefViewerName], ProfileURL: prefs[prefViewerURL]}
+
+	if account.ProfileURL == "" {
+		account.ProfileURL = githubWebURL + login
+	}
+
+	if source := prefs[prefAvatarSource]; source != "" && source == prefs[prefViewerAvatarURL] {
+		account.Avatar = prefs[prefAvatar]
+	}
+
+	return account
 }
 
 // addItems sorts rows into the lists whose flags they carry.

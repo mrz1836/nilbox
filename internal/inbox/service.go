@@ -3,11 +3,18 @@
 // A refresh borrows the token, fetches the batched inbox query and the REST rate limits
 // concurrently, checks the token's scopes, and writes everything in one transaction:
 // the account, the repositories, the items with their reason flags and trust fields, and
-// rate-limit snapshots. A snapshot reads it back as three plain lists plus a rate gauge.
+// rate-limit snapshots. A snapshot reads it back as three plain lists, the signed-in
+// account, and a rate gauge.
 //
-// Inbox status that has no column of its own (each list's total match count, the time of
-// the last successful refresh, the last error, and a scope warning) is kept in the prefs
-// table under internal inbox.* keys, so it survives a restart.
+// After a successful refresh, the account's avatar is downloaded once and cached as a
+// data URL, so the UI shows it offline and never loads anything from the network itself.
+// It is downloaded again only when GitHub reports a different avatar URL, which happens
+// when the picture or the signed-in account changes.
+//
+// Inbox status that has no column of its own (each list's total match count, the
+// account's profile, the time of the last successful refresh, the last error, a scope
+// warning, and the cached avatar) is kept in the prefs table under internal inbox.* keys,
+// so it survives a restart.
 package inbox
 
 import (
@@ -29,6 +36,10 @@ import (
 // snapshotRetention is how long rate-limit snapshots are kept.
 const snapshotRetention = 7 * 24 * time.Hour
 
+// avatarTimeout bounds the avatar download, so a slow avatar host never holds up the
+// refresh that triggered it.
+const avatarTimeout = 10 * time.Second
+
 // Rate-limit resources stored in rate_snapshots.resource.
 const (
 	resourceGraphQL = "graphql"
@@ -39,6 +50,11 @@ const (
 // Internal prefs keys for inbox status.
 const (
 	prefViewer               = "inbox.viewer"
+	prefViewerName           = "inbox.viewer_name"
+	prefViewerURL            = "inbox.viewer_url"
+	prefViewerAvatarURL      = "inbox.viewer_avatar_url"
+	prefAvatar               = "inbox.avatar"
+	prefAvatarSource         = "inbox.avatar_source"
 	prefTotalReviewRequested = "inbox.total.review_requested"
 	prefTotalAuthored        = "inbox.total.authored"
 	prefTotalAssigned        = "inbox.total.assigned"
@@ -55,10 +71,11 @@ type TokenSource interface {
 	Token(ctx context.Context) (github.Token, error)
 }
 
-// Client fetches the inbox and the rate limits from GitHub.
+// Client fetches the inbox, the rate limits, and the viewer's avatar from GitHub.
 type Client interface {
 	FetchInbox(ctx context.Context, tok github.Token) (*github.Inbox, error)
 	FetchRateLimits(ctx context.Context, tok github.Token) (*github.RateLimits, error)
+	FetchAvatar(ctx context.Context, url string) (*github.Avatar, error)
 }
 
 // Clock tells the time.
@@ -177,7 +194,13 @@ func (s *Service) refresh(ctx context.Context) error {
 		return err
 	}
 
-	return github.Redact(s.save(ctx, inbox, limits, warning), tok)
+	if err = s.save(ctx, inbox, limits, warning); err != nil {
+		return github.Redact(err, tok)
+	}
+
+	s.cacheAvatar(ctx, inbox.Viewer.AvatarURL)
+
+	return nil
 }
 
 // fetch gets the inbox and the rate limits concurrently.
@@ -209,7 +232,7 @@ func (s *Service) fetch(ctx context.Context, tok github.Token) (*github.Inbox, *
 		return nil, nil, err
 	}
 
-	if inbox == nil || limits == nil || inbox.Viewer == "" {
+	if inbox == nil || limits == nil || inbox.Viewer.Login == "" {
 		return nil, nil, ErrIncompleteFetch
 	}
 
@@ -223,7 +246,7 @@ func (s *Service) save(ctx context.Context, inbox *github.Inbox, limits *github.
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		w := &writer{tx: tx, now: now, repos: make(map[string]int64)}
 
-		if err := w.saveAccount(inbox.Viewer); err != nil {
+		if err := w.saveAccount(inbox.Viewer.Login); err != nil {
 			return err
 		}
 
@@ -236,7 +259,10 @@ func (s *Service) save(ctx context.Context, inbox *github.Inbox, limits *github.
 		}
 
 		return setPrefs(tx, now, []pref{
-			{prefViewer, inbox.Viewer},
+			{prefViewer, inbox.Viewer.Login},
+			{prefViewerName, inbox.Viewer.Name},
+			{prefViewerURL, inbox.Viewer.URL},
+			{prefViewerAvatarURL, inbox.Viewer.AvatarURL},
 			{prefTotalReviewRequested, strconv.Itoa(inbox.ReviewRequested.IssueCount)},
 			{prefTotalAuthored, strconv.Itoa(inbox.Authored.IssueCount)},
 			{prefTotalAssigned, strconv.Itoa(inbox.Assigned.IssueCount)},
@@ -250,6 +276,40 @@ func (s *Service) save(ctx context.Context, inbox *github.Inbox, limits *github.
 	}
 
 	return nil
+}
+
+// cacheAvatar downloads the viewer's avatar and stores it as a data URL, unless the one
+// cached already came from avatarURL. It is best effort: the picture is cosmetic, so a
+// failed download or write leaves the cache as it was, the UI shows the account's
+// initial instead, and the next refresh tries again.
+func (s *Service) cacheAvatar(ctx context.Context, avatarURL string) {
+	if avatarURL == "" {
+		return
+	}
+
+	db := s.db.WithContext(ctx)
+
+	var sources []string
+	if db.Raw("SELECT value FROM prefs WHERE key = ?", prefAvatarSource).Scan(&sources).Error != nil {
+		return
+	}
+
+	if len(sources) > 0 && sources[0] == avatarURL {
+		return
+	}
+
+	fetchCtx, cancel := context.WithTimeout(ctx, avatarTimeout)
+	defer cancel()
+
+	avatar, err := s.client.FetchAvatar(fetchCtx, avatarURL)
+	if err != nil {
+		return
+	}
+
+	// The source is written with the picture, so it never names a picture not stored.
+	_ = db.Transaction(func(tx *gorm.DB) error {
+		return setPrefs(tx, s.now(), []pref{{prefAvatar, avatar.DataURL()}, {prefAvatarSource, avatarURL}})
+	})
 }
 
 // recordFailure stores a failed refresh's message as the last error.

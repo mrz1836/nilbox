@@ -1,19 +1,7 @@
-import { useEffect, useState } from 'react'
-
 import { formatAge } from '../lib/age'
-import { errorMessage } from '../lib/format'
-import {
-  getInboxSnapshot,
-  onInboxUpdated,
-  openInBrowser,
-  refreshInbox,
-  type InboxItem,
-  type InboxList,
-  type InboxSnapshot,
-  type Profile,
-} from '../platform'
+import type { InboxState } from '../lib/useInbox'
+import { openInBrowser, type InboxItem, type InboxList, type Profile } from '../platform'
 import { LaunchControls } from './LaunchControls'
-import { RateGauge } from './RateGauge'
 
 // LaunchOptions are what each row's launch controls need from the settings and profiles.
 export interface LaunchOptions {
@@ -23,11 +11,11 @@ export interface LaunchOptions {
 }
 
 export interface InboxViewProps {
+  // inbox is the window's shared inbox state (useInbox).
+  inbox: InboxState
   // launch is null until the settings and profiles have loaded; rows show no launch
   // controls until then.
   launch: LaunchOptions | null
-  // clock returns the current time for the relative ages. Keep it stable across renders.
-  clock?: () => Date
 }
 
 type ListKey = 'reviewRequested' | 'authored' | 'assigned'
@@ -37,13 +25,6 @@ const sections: readonly { key: ListKey; title: string }[] = [
   { key: 'authored', title: 'Authored' },
   { key: 'assigned', title: 'Assigned' },
 ]
-
-// tickMs is how often the relative ages are brought up to date.
-const tickMs = 60_000
-
-function systemClock(): Date {
-  return new Date()
-}
 
 // countText is a list's size, as "N of M" when GitHub matched more than it returned.
 function countText(list: InboxList): string {
@@ -137,113 +118,46 @@ function ListSection({ title, list, now, launch }: ListSectionProps) {
   )
 }
 
-// InboxView shows the three inbox lists and the API budget. It loads the stored inbox on
-// mount and again whenever the shell reports the inbox changed (the background refresh),
-// and refreshes from GitHub when asked.
-export function InboxView({ launch, clock = systemClock }: InboxViewProps) {
-  const [snapshot, setSnapshot] = useState<InboxSnapshot | null>(null)
-  const [loadError, setLoadError] = useState('')
-  const [refreshError, setRefreshError] = useState('')
-  const [refreshing, setRefreshing] = useState(false)
-  const [now, setNow] = useState(clock)
-
-  useEffect(() => {
-    let active = true
-
-    const load = () => {
-      getInboxSnapshot()
-        .then((next) => {
-          if (active) {
-            setSnapshot(next)
-            setLoadError('')
-            setRefreshError('')
-            setNow(clock())
-          }
-        })
-        .catch((err: unknown) => {
-          if (active) {
-            setLoadError(errorMessage(err))
-          }
-        })
-    }
-
-    load()
-
-    const stop = onInboxUpdated(load)
-    const tick = setInterval(() => {
-      setNow(clock())
-    }, tickMs)
-
-    return () => {
-      active = false
-      stop()
-      clearInterval(tick)
-    }
-  }, [clock])
-
-  const refresh = () => {
-    setRefreshing(true)
-
-    refreshInbox()
-      .then((next) => {
-        setSnapshot(next)
-        setRefreshError('')
-      })
-      .catch((err: unknown) => {
-        setRefreshError(errorMessage(err))
-      })
-      .finally(() => {
-        setRefreshing(false)
-        setNow(clock())
-      })
-  }
-
+// InboxView shows the three inbox lists across the full width, with a refresh control and
+// the time of the last refresh. The account and the API budget live in the toolbar.
+export function InboxView({ inbox, launch }: InboxViewProps) {
+  const { snapshot, now, loadError, refreshError, refreshing, refresh } = inbox
   const error = firstMessage(refreshError, snapshot?.lastError ?? '', loadError)
 
   return (
-    <div className="flex flex-col gap-4 p-4 lg:flex-row lg:items-start">
-      <div className="flex min-w-0 flex-1 flex-col gap-4">
-        <div className="flex items-center gap-3 text-sm">
-          <button
-            type="button"
-            disabled={refreshing}
-            onClick={refresh}
-            className="rounded-md border border-border bg-surface px-3 py-1 font-medium hover:bg-raised disabled:opacity-60"
-          >
-            {refreshing ? 'Refreshing…' : 'Refresh'}
-          </button>
-          <span className="text-muted">
-            {snapshot === null || snapshot.lastRefreshedAt === '' ? (
-              'Not refreshed yet'
-            ) : (
-              <>
-                Last refreshed <time dateTime={snapshot.lastRefreshedAt}>{agoText(now, snapshot.lastRefreshedAt)}</time>
-              </>
-            )}
-          </span>
-          {snapshot !== null && snapshot.viewer !== '' && (
-            <span className="ml-auto text-muted">Signed in as {snapshot.viewer}</span>
+    <div className="flex flex-col gap-4 p-4">
+      <div className="flex items-center gap-3 text-sm">
+        <button
+          type="button"
+          disabled={refreshing}
+          onClick={refresh}
+          className="rounded-md border border-border bg-surface px-3 py-1 font-medium hover:bg-raised disabled:opacity-60"
+        >
+          {refreshing ? 'Refreshing…' : 'Refresh'}
+        </button>
+        <span className="text-muted">
+          {snapshot === null || snapshot.lastRefreshedAt === '' ? (
+            'Not refreshed yet'
+          ) : (
+            <>
+              Last refreshed <time dateTime={snapshot.lastRefreshedAt}>{agoText(now, snapshot.lastRefreshedAt)}</time>
+            </>
           )}
-        </div>
-        {error !== '' && (
-          <p role="alert" className="rounded-md border border-danger px-3 py-2 text-sm text-danger">
-            {error}
-          </p>
-        )}
-        {snapshot !== null && snapshot.scopeWarning !== '' && (
-          <p className="rounded-md border border-warning px-3 py-2 text-sm text-warning">{snapshot.scopeWarning}</p>
-        )}
-        {snapshot === null
-          ? loadError === '' && <p className="text-sm text-muted">Loading the inbox…</p>
-          : sections.map(({ key, title }) => (
-              <ListSection key={key} title={title} list={snapshot[key]} now={now} launch={launch} />
-            ))}
+        </span>
       </div>
-      {snapshot !== null && (
-        <aside className="w-full lg:w-72 lg:shrink-0">
-          <RateGauge gauge={snapshot.rate} now={now} />
-        </aside>
+      {error !== '' && (
+        <p role="alert" className="rounded-md border border-danger px-3 py-2 text-sm text-danger">
+          {error}
+        </p>
       )}
+      {snapshot !== null && snapshot.scopeWarning !== '' && (
+        <p className="rounded-md border border-warning px-3 py-2 text-sm text-warning">{snapshot.scopeWarning}</p>
+      )}
+      {snapshot === null
+        ? loadError === '' && <p className="text-sm text-muted">Loading the inbox…</p>
+        : sections.map(({ key, title }) => (
+            <ListSection key={key} title={title} list={snapshot[key]} now={now} launch={launch} />
+          ))}
     </div>
   )
 }

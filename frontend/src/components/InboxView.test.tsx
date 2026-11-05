@@ -2,6 +2,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { useInbox } from '../lib/useInbox'
 import { item, launchResult, list, profile, snapshot } from '../test/fixtures'
 import { InboxView, type LaunchOptions } from './InboxView'
 
@@ -21,6 +22,18 @@ const clock = () => now
 const launchOptions: LaunchOptions = { profiles: [profile()], defaultProfile: 'default', worktreeDefault: true }
 
 const stopListening = vi.fn()
+
+interface HarnessProps {
+  launch: LaunchOptions | null
+  clock: () => Date
+}
+
+// Harness renders the view over the real inbox state, the way App does.
+function Harness({ launch, clock }: HarnessProps) {
+  const inbox = useInbox(clock)
+
+  return <InboxView inbox={inbox} launch={launch} />
+}
 
 // section waits for one inbox list and returns the queries scoped to it.
 async function section(title: string) {
@@ -61,7 +74,7 @@ describe('InboxView', () => {
       }),
     )
 
-    render(<InboxView launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={clock} />)
 
     const review = await section('Review requested')
     expect(review.getByRole('button', { name: 'Add the widget cache' })).toBeInTheDocument()
@@ -80,8 +93,9 @@ describe('InboxView', () => {
     expect(assigned.getByText('outside contributor')).toBeInTheDocument()
 
     expect(screen.getByText('5m ago')).toBeInTheDocument()
-    expect(screen.getByText('Signed in as octo-user')).toBeInTheDocument()
-    expect(screen.getByRole('meter', { name: 'GraphQL budget remaining' })).toBeInTheDocument()
+    // The account and the API budget live in the toolbar now, not beside the lists.
+    expect(screen.queryByText(/Signed in as/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('meter')).not.toBeInTheDocument()
   })
 
   it('shows N of M', async () => {
@@ -92,7 +106,7 @@ describe('InboxView', () => {
       }),
     )
 
-    render(<InboxView launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={clock} />)
 
     expect((await section('Review requested')).getByText('2 of 250')).toBeInTheDocument()
     expect((await section('Authored')).getByText('1')).toBeInTheDocument()
@@ -103,7 +117,7 @@ describe('InboxView', () => {
   it('treats a list with no items as empty', async () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ authored: { items: null, shown: 0, total: 0 } }))
 
-    render(<InboxView launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={clock} />)
 
     expect((await section('Authored')).getByText('Nothing here.')).toBeInTheDocument()
     expect(screen.getByText('Not refreshed yet')).toBeInTheDocument()
@@ -112,19 +126,19 @@ describe('InboxView', () => {
   it('shows launch controls only once the launch options are loaded', async () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([item()]) }))
 
-    const { rerender } = render(<InboxView launch={null} clock={clock} />)
+    const { rerender } = render(<Harness launch={null} clock={clock} />)
 
     expect(await screen.findByRole('button', { name: 'Add the widget cache' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Open in Claude' })).not.toBeInTheDocument()
 
-    rerender(<InboxView launch={launchOptions} clock={clock} />)
+    rerender(<Harness launch={launchOptions} clock={clock} />)
 
     expect(screen.getByRole('button', { name: 'Open in Claude' })).toBeInTheDocument()
   })
 
   it('opens an item in the browser', async () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([item()]) }))
-    render(<InboxView launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={clock} />)
 
     await userEvent.click(await screen.findByRole('button', { name: 'Add the widget cache' }))
 
@@ -135,7 +149,7 @@ describe('InboxView', () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     platform.openInBrowser.mockRejectedValue(new Error('no browser'))
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([item()]) }))
-    render(<InboxView launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={clock} />)
 
     await userEvent.click(await screen.findByRole('button', { name: 'Add the widget cache' }))
 
@@ -152,7 +166,7 @@ describe('InboxView', () => {
         finish = resolve
       }),
     )
-    render(<InboxView launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={clock} />)
 
     await userEvent.click(await screen.findByRole('button', { name: 'Refresh' }))
     expect(screen.getByRole('button', { name: 'Refreshing…' })).toBeDisabled()
@@ -171,7 +185,7 @@ describe('InboxView', () => {
     const message =
       'borrow the GitHub token: gh not found: install the GitHub CLI from https://cli.github.com, then run gh auth login'
     platform.refreshInbox.mockRejectedValue(new Error(message))
-    render(<InboxView launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={clock} />)
 
     await userEvent.click(await screen.findByRole('button', { name: 'Refresh' }))
 
@@ -185,7 +199,7 @@ describe('InboxView', () => {
         scopeWarning: 'the token reports no scopes, so they could not be verified',
       }),
     )
-    render(<InboxView launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={clock} />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent('run gh auth refresh -s repo,read:org')
     expect(screen.getByText('the token reports no scopes, so they could not be verified')).toBeInTheDocument()
@@ -193,7 +207,7 @@ describe('InboxView', () => {
 
   it('shows an inbox that could not be loaded', async () => {
     platform.getInboxSnapshot.mockRejectedValue(new Error('open the database: locked'))
-    render(<InboxView launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={clock} />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent('open the database: locked')
     expect(screen.queryByText('Loading the inbox…')).not.toBeInTheDocument()
@@ -204,7 +218,7 @@ describe('InboxView', () => {
       .mockResolvedValueOnce(snapshot())
       .mockResolvedValueOnce(snapshot({ assigned: list([item({ title: 'Updated in the background' })]) }))
 
-    const { unmount } = render(<InboxView launch={launchOptions} clock={clock} />)
+    const { unmount } = render(<Harness launch={launchOptions} clock={clock} />)
 
     expect(await screen.findAllByText('Nothing here.')).toHaveLength(3)
     expect(platform.onInboxUpdated).toHaveBeenCalledOnce()
@@ -228,7 +242,7 @@ describe('InboxView', () => {
     const ticking = () => current
 
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: '2026-06-15T11:55:00Z' }))
-    render(<InboxView launch={launchOptions} clock={ticking} />)
+    render(<Harness launch={launchOptions} clock={ticking} />)
 
     expect(await screen.findByText('5m ago')).toBeInTheDocument()
 

@@ -108,6 +108,7 @@ func TestFetchInboxSingleBatchedRequest(t *testing.T) {
 			`authored: search(query: "is:pr is:open author:@me"`,
 			`assigned: search(query: "is:open assignee:@me"`,
 			"rateLimit { cost remaining resetAt limit used }",
+			"viewer { login name url avatarUrl(size: 128) }",
 			"authorAssociation",
 			"isCrossRepository",
 		} {
@@ -122,7 +123,12 @@ func TestFetchInboxSingleBatchedRequest(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, int32(1), requests.Load(), "the whole inbox is one request")
-	assert.Equal(t, "octo-user", inbox.Viewer)
+	assert.Equal(t, Viewer{
+		Login:     "octo-user",
+		Name:      "Octo User",
+		URL:       "https://github.com/octo-user",
+		AvatarURL: "https://avatars.githubusercontent.com/u/101?v=4&s=128",
+	}, inbox.Viewer)
 	assert.Equal(t, "repo, read:org", inbox.OAuthScopes)
 
 	assert.Equal(t, 5, inbox.ReviewRequested.IssueCount)
@@ -330,6 +336,7 @@ func TestNewClientDefaults(t *testing.T) {
 
 	assert.Equal(t, DefaultBaseURL, client.BaseURL)
 	assert.Equal(t, brand.Slug+"/1.2.3", client.UserAgent)
+	assert.Equal(t, DefaultAvatarHost, client.AvatarHost)
 	require.NotNil(t, client.HTTP)
 	assert.Equal(t, defaultTimeout, client.HTTP.Timeout)
 
@@ -347,7 +354,7 @@ func TestClientFallbacks(t *testing.T) {
 
 	inbox, err := (&Client{BaseURL: srv.URL + "/"}).FetchInbox(t.Context(), NewToken(fakeToken))
 	require.NoError(t, err)
-	assert.Equal(t, "octo-user", inbox.Viewer)
+	assert.Equal(t, "octo-user", inbox.Viewer.Login)
 }
 
 func TestStatusErrorMessages(t *testing.T) {

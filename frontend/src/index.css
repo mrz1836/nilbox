@@ -15,7 +15,22 @@
   --color-info: var(--brand-info);
   --color-success: var(--brand-success);
   --color-warning: var(--brand-warning);
+  --color-caution: var(--brand-caution);
   --color-danger: var(--brand-danger);
+
+  /* Popovers and menus grow out of their trigger. */
+  --animate-pop-in: pop-in 120ms ease-out;
+
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px) scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
 }
 
 @layer base {

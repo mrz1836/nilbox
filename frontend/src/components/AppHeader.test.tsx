@@ -3,15 +3,19 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
+import { account, rate, unknownRate } from '../test/fixtures'
 import { AppHeader, type AppHeaderProps } from './AppHeader'
+
+vi.mock('../platform', () => ({ openInBrowser: vi.fn() }))
 
 function renderHeader(overrides: Partial<AppHeaderProps> = {}) {
   const props: AppHeaderProps = {
     view: 'inbox',
     onViewChange: vi.fn(),
-    settingsOpen: false,
-    onToggleSettings: vi.fn(),
-    settingsPanelId: 'settings-panel',
+    account: account(),
+    gauge: { graphql: rate(), core: unknownRate, search: unknownRate },
+    now: new Date('2026-06-15T12:00:00Z'),
+    onOpenSettings: vi.fn(),
     ...overrides,
   }
 
@@ -21,11 +25,23 @@ function renderHeader(overrides: Partial<AppHeaderProps> = {}) {
 }
 
 describe('AppHeader', () => {
-  it('header shows brand name and tagline', () => {
+  it('is one toolbar: the product name, the views, the budget gauge, and the account', () => {
     renderHeader()
 
     expect(screen.getByRole('heading', { level: 1, name: brand.name })).toBeInTheDocument()
-    expect(screen.getByText(brand.tagline)).toBeInTheDocument()
+    expect(screen.queryByText(brand.tagline)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^API budget: Healthy/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Account: octo-user' })).toBeInTheDocument()
+  })
+
+  it('drags the window from the bar but not from its controls', () => {
+    renderHeader()
+
+    expect(screen.getByRole('banner')).toHaveClass('[--wails-draggable:drag]')
+    expect(screen.getByRole('navigation', { name: 'Views' })).toHaveClass('[--wails-draggable:no-drag]')
+    expect(
+      screen.getByRole('button', { name: /^Account/ }).closest('.\\[--wails-draggable\\:no-drag\\]'),
+    ).not.toBeNull()
   })
 
   it('marks the active view and switches views on click', async () => {
@@ -39,15 +55,26 @@ describe('AppHeader', () => {
     expect(props.onViewChange).toHaveBeenCalledWith('worktrees')
   })
 
-  it('toggles the settings panel', async () => {
-    const props = renderHeader({ settingsOpen: true })
-    const toggle = screen.getByRole('button', { name: 'Settings' })
+  it('marks no tab on the settings page', () => {
+    renderHeader({ view: 'settings' })
 
-    expect(toggle).toHaveAttribute('aria-expanded', 'true')
-    expect(toggle).toHaveAttribute('aria-controls', 'settings-panel')
+    expect(screen.getByRole('button', { name: 'Inbox' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Worktrees' })).toHaveAttribute('aria-pressed', 'false')
+  })
 
-    await userEvent.click(toggle)
+  it('opens the settings from the account menu', async () => {
+    const props = renderHeader()
 
-    expect(props.onToggleSettings).toHaveBeenCalledOnce()
+    await userEvent.click(screen.getByRole('button', { name: 'Account: octo-user' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: /Settings/ }))
+
+    expect(props.onOpenSettings).toHaveBeenCalledOnce()
+  })
+
+  it('renders before the inbox has loaded', () => {
+    renderHeader({ account: null, gauge: null })
+
+    expect(screen.getByRole('button', { name: 'API budget: not read yet' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Account' })).toBeInTheDocument()
   })
 })

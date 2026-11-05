@@ -7,7 +7,13 @@ const mocks = vi.hoisted(() => ({
   inbox: { Snapshot: vi.fn(), Refresh: vi.fn() },
   launcher: { Launch: vi.fn() },
   profiles: { List: vi.fn() },
-  settings: { Get: vi.fn(), SetTerminal: vi.fn(), SetCloneRoot: vi.fn() },
+  settings: {
+    Get: vi.fn(),
+    SetTerminal: vi.fn(),
+    SetCloneRoot: vi.fn(),
+    SetDefaultProfile: vi.fn(),
+    SetWorktreeDefault: vi.fn(),
+  },
   worktrees: { List: vi.fn(), Remove: vi.fn(), ForceRemove: vi.fn(), RemoveAllClean: vi.fn(), Prune: vi.fn() },
   events: { On: vi.fn() },
   browser: { OpenURL: vi.fn() },
@@ -25,7 +31,7 @@ const emptyList: platform.InboxList = { items: [], shown: 0, total: 0 }
 const unknownRate: platform.Rate = { known: false, limit: 0, remaining: 0, used: 0, cost: 0, resetAt: '', takenAt: '' }
 
 const snapshot: platform.InboxSnapshot = {
-  viewer: 'octo-user',
+  account: { login: 'octo-user', name: '', profileUrl: 'https://github.com/octo-user', avatar: '' },
   reviewRequested: emptyList,
   authored: emptyList,
   assigned: emptyList,
@@ -139,14 +145,20 @@ describe('settings', () => {
     mocks.settings.Get.mockResolvedValue(settings)
     mocks.settings.SetTerminal.mockResolvedValue(undefined)
     mocks.settings.SetCloneRoot.mockResolvedValue(undefined)
+    mocks.settings.SetDefaultProfile.mockResolvedValue(undefined)
+    mocks.settings.SetWorktreeDefault.mockResolvedValue(undefined)
 
     await expect(platform.getSettings()).resolves.toBe(settings)
 
     await platform.setTerminal('terminal')
     await platform.setCloneRoot('~/code')
+    await platform.setDefaultProfile('work')
+    await platform.setWorktreeDefault(false)
 
     expect(mocks.settings.SetTerminal).toHaveBeenCalledWith('terminal')
     expect(mocks.settings.SetCloneRoot).toHaveBeenCalledWith('~/code')
+    expect(mocks.settings.SetDefaultProfile).toHaveBeenCalledWith('work')
+    expect(mocks.settings.SetWorktreeDefault).toHaveBeenCalledWith(false)
   })
 })
 

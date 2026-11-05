@@ -175,7 +175,10 @@
             ]
         },
         "viewer": {
-            "login": "octo-user"
+            "avatarUrl": "https://avatars.githubusercontent.com/u/101?v=4&s=128",
+            "login": "octo-user",
+            "name": "Octo User",
+            "url": "https://github.com/octo-user"
         }
     }
 }

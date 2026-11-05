@@ -13,6 +13,7 @@
   --brand-info: #4A6285;
   --brand-success: #17784F;
   --brand-warning: #9A6200;
+  --brand-caution: #B54C00;
   --brand-danger: #C42B2B;
 }
 
@@ -29,6 +30,7 @@
     --brand-info: #8FA4C4;
     --brand-success: #3DBE8B;
     --brand-warning: #E9B44C;
+    --brand-caution: #F28C38;
     --brand-danger: #F05D5E;
   }
 }
@@ -45,6 +47,7 @@
   --brand-info: #4A6285;
   --brand-success: #17784F;
   --brand-warning: #9A6200;
+  --brand-caution: #B54C00;
   --brand-danger: #C42B2B;
 }
 
@@ -60,5 +63,6 @@
   --brand-info: #8FA4C4;
   --brand-success: #3DBE8B;
   --brand-warning: #E9B44C;
+  --brand-caution: #F28C38;
   --brand-danger: #F05D5E;
 }

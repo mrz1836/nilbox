@@ -49,12 +49,15 @@ func (f *fakeTokens) Token(ctx context.Context) (github.Token, error) {
 
 // fakeClient returns canned results. Both fetches run concurrently.
 type fakeClient struct {
-	mu        sync.Mutex
-	inbox     *github.Inbox
-	limits    *github.RateLimits
-	inboxErr  error
-	limitsErr error
-	gotTokens []string
+	mu         sync.Mutex
+	inbox      *github.Inbox
+	limits     *github.RateLimits
+	avatar     *github.Avatar
+	inboxErr   error
+	limitsErr  error
+	avatarErr  error
+	gotTokens  []string
+	avatarURLs []string
 }
 
 func (c *fakeClient) FetchInbox(_ context.Context, tok github.Token) (*github.Inbox, error) {
@@ -73,6 +76,15 @@ func (c *fakeClient) FetchRateLimits(_ context.Context, tok github.Token) (*gith
 	c.gotTokens = append(c.gotTokens, tok.Reveal())
 
 	return c.limits, c.limitsErr
+}
+
+func (c *fakeClient) FetchAvatar(_ context.Context, url string) (*github.Avatar, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.avatarURLs = append(c.avatarURLs, url)
+
+	return c.avatar, c.avatarErr
 }
 
 // fakeClock returns a settable time.
@@ -114,7 +126,7 @@ func newHarness(t *testing.T) *harness {
 		db:       db,
 		path:     path,
 		tokens:   &fakeTokens{},
-		client:   &fakeClient{limits: restLimits()},
+		client:   &fakeClient{limits: restLimits(), avatar: fakeAvatar()},
 		clock:    &fakeClock{now: time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)},
 		notifier: &fakeNotifier{},
 	}
@@ -196,10 +208,26 @@ func item(repo string, number int, assoc string, isPR, crossRepo bool) github.It
 	return it
 }
 
+// Avatar URLs on GitHub's avatar host for the fake accounts.
+const (
+	octoUserAvatar  = "https://avatars.githubusercontent.com/u/101?v=4&s=128"
+	octoOtherAvatar = "https://avatars.githubusercontent.com/u/202?v=4&s=128"
+)
+
+// fakeAvatar is a downloaded avatar; the bytes need not be a real image here.
+func fakeAvatar() *github.Avatar {
+	return &github.Avatar{ContentType: "image/png", Data: []byte("not-really-a-png")}
+}
+
 // fetched builds an inbox whose totals equal the items returned.
 func fetched(review, authored, assigned []github.Item) *github.Inbox {
 	return &github.Inbox{
-		Viewer:          "octo-user",
+		Viewer: github.Viewer{
+			Login:     "octo-user",
+			Name:      "Octo User",
+			URL:       "https://github.com/octo-user",
+			AvatarURL: octoUserAvatar,
+		},
 		ReviewRequested: github.SearchResult{IssueCount: len(review), Items: review},
 		Authored:        github.SearchResult{IssueCount: len(authored), Items: authored},
 		Assigned:        github.SearchResult{IssueCount: len(assigned), Items: assigned},
@@ -423,7 +451,7 @@ func TestSnapshotReportsNofM(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, snap, again)
 	assert.Equal(t, "2026-01-10T12:00:00Z", again.LastRefreshedAt)
-	assert.Equal(t, "octo-user", again.Viewer)
+	assert.Equal(t, "octo-user", again.Account.Login)
 }
 
 func TestRefreshNeverPersistsToken(t *testing.T) {
@@ -497,7 +525,7 @@ func TestRefreshFetchErrorsKeepTheStoredInbox(t *testing.T) {
 func TestRefreshRequiresViewer(t *testing.T) {
 	h := newHarness(t)
 	h.client.inbox = fetched(nil, nil, nil)
-	h.client.inbox.Viewer = ""
+	h.client.inbox.Viewer.Login = ""
 
 	_, err := h.svc.Refresh(t.Context())
 	require.ErrorIs(t, err, ErrIncompleteFetch)
@@ -549,13 +577,108 @@ func TestSnapshotSwitchesWithTheViewer(t *testing.T) {
 
 	// Signing in as another account shows only that account's items.
 	h.client.inbox = fetched(nil, []github.Item{pr(2, "MEMBER", false)}, nil)
-	h.client.inbox.Viewer = "octo-other"
+	h.client.inbox.Viewer = github.Viewer{Login: "octo-other", URL: "https://github.com/octo-other", AvatarURL: octoOtherAvatar}
 	snap := h.refresh(t)
 
-	assert.Equal(t, "octo-other", snap.Viewer)
+	assert.Equal(t, "octo-other", snap.Account.Login)
 	assert.Empty(t, snap.ReviewRequested.Items)
 	assert.Equal(t, []int{2}, numbers(snap.Authored))
 	assert.Equal(t, int64(2), h.count(t, "accounts"))
+}
+
+func TestRefreshStoresTheAccount(t *testing.T) {
+	h := newHarness(t)
+	h.client.inbox = fetched(nil, nil, nil)
+
+	snap := h.refresh(t)
+
+	assert.Equal(t, Account{
+		Login:      "octo-user",
+		Name:       "Octo User",
+		ProfileURL: "https://github.com/octo-user",
+		Avatar:     "data:image/png;base64,bm90LXJlYWxseS1hLXBuZw==",
+	}, snap.Account)
+	assert.Equal(t, []string{octoUserAvatar}, h.client.avatarURLs)
+
+	// The account survives a restart.
+	again, err := h.service().Snapshot(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, snap.Account, again.Account)
+}
+
+func TestRefreshDownloadsTheAvatarOnlyWhenItChanges(t *testing.T) {
+	h := newHarness(t)
+	h.client.inbox = fetched(nil, nil, nil)
+
+	h.refresh(t)
+	h.refresh(t)
+	assert.Equal(t, []string{octoUserAvatar}, h.client.avatarURLs, "a cached avatar is not downloaded again")
+
+	// A new picture has a new URL, and is downloaded once.
+	changed := "https://avatars.githubusercontent.com/u/101?v=5&s=128"
+	h.client.inbox.Viewer.AvatarURL = changed
+	h.client.avatar = &github.Avatar{ContentType: "image/jpeg", Data: []byte("new")}
+
+	snap := h.refresh(t)
+	h.refresh(t)
+
+	assert.Equal(t, []string{octoUserAvatar, changed}, h.client.avatarURLs)
+	assert.Equal(t, "data:image/jpeg;base64,bmV3", snap.Account.Avatar)
+}
+
+func TestRefreshAvatarFailureIsBestEffort(t *testing.T) {
+	h := newHarness(t)
+	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
+	h.client.avatarErr = errFakeNetwork
+
+	snap := h.refresh(t)
+	assert.Empty(t, snap.LastError, "a missing picture is not a refresh failure")
+	assert.Equal(t, []int{1}, numbers(snap.ReviewRequested))
+	assert.Equal(t, "octo-user", snap.Account.Login)
+	assert.Empty(t, snap.Account.Avatar)
+
+	// The next refresh tries again.
+	h.client.avatarErr = nil
+	snap = h.refresh(t)
+
+	assert.Len(t, h.client.avatarURLs, 2)
+	assert.NotEmpty(t, snap.Account.Avatar)
+}
+
+func TestRefreshWithoutAnAvatarURL(t *testing.T) {
+	h := newHarness(t)
+	h.client.inbox = fetched(nil, nil, nil)
+	h.client.inbox.Viewer.AvatarURL = ""
+
+	snap := h.refresh(t)
+
+	assert.Empty(t, h.client.avatarURLs)
+	assert.Empty(t, snap.Account.Avatar)
+}
+
+func TestSnapshotNeverShowsAnotherAccountsAvatar(t *testing.T) {
+	h := newHarness(t)
+	h.client.inbox = fetched(nil, nil, nil)
+	require.NotEmpty(t, h.refresh(t).Account.Avatar)
+
+	// The new account's picture cannot be downloaded, so it shows none rather than the old one.
+	h.client.inbox.Viewer = github.Viewer{Login: "octo-other", AvatarURL: octoOtherAvatar}
+	h.client.avatarErr = errFakeNetwork
+
+	snap := h.refresh(t)
+
+	assert.Equal(t, "octo-other", snap.Account.Login)
+	assert.Empty(t, snap.Account.Avatar)
+}
+
+func TestSnapshotFallsBackToTheGitHubProfileURL(t *testing.T) {
+	h := newHarness(t)
+	h.client.inbox = fetched(nil, nil, nil)
+	h.client.inbox.Viewer.URL = ""
+
+	snap := h.refresh(t)
+
+	assert.Equal(t, "https://github.com/octo-user", snap.Account.ProfileURL)
 }
 
 func TestSnapshotDatabaseErrors(t *testing.T) {

@@ -19,6 +19,7 @@ export const palettes = {
     info: "#4A6285",
     success: "#17784F",
     warning: "#9A6200",
+    caution: "#B54C00",
     danger: "#C42B2B",
   },
   dark: {
@@ -32,6 +33,7 @@ export const palettes = {
     info: "#8FA4C4",
     success: "#3DBE8B",
     warning: "#E9B44C",
+    caution: "#F28C38",
     danger: "#F05D5E",
   },
 } as const

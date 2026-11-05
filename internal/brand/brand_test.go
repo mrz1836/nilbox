@@ -100,9 +100,9 @@ func TestTextTokensCoversEveryTextField(t *testing.T) {
 	t.Parallel()
 
 	tokens := Dark.TextTokens()
-	assert.Len(t, tokens, 7)
+	assert.Len(t, tokens, 8)
 
-	for _, k := range []string{"Text", "Muted", "Accent", "Info", "Success", "Warning", "Danger"} {
+	for _, k := range []string{"Text", "Muted", "Accent", "Info", "Success", "Warning", "Caution", "Danger"} {
 		assert.Containsf(t, tokens, k, "missing text token %s", k)
 	}
 }
