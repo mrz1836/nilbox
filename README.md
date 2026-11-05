@@ -70,15 +70,33 @@ and Windows support, comes after the MVP proves the desktop app is worth it.
 - [Go](https://go.dev/dl/) 1.26 or newer
 - [MAGE-X](https://github.com/mrz1836/mage-x) build tool: `go install github.com/mrz1836/mage-x/cmd/magex@latest`
 - [go-pre-commit](https://github.com/mrz1836/go-pre-commit) hooks: `go-pre-commit install`
+- For the desktop app: macOS 13 or newer, the Xcode Command Line Tools, Node 26, and pnpm at the
+  version pinned in `frontend/package.json` (`npm install -g pnpm@12.16.1`, once)
+
+### Quick start
+
+```bash
+cd ~/projects/nilbox
+magex app:build        # build the macOS app into bin/Nilbox.app
+open bin/Nilbox.app
+```
+
+The app borrows your [GitHub CLI](https://cli.github.com) login, so run `gh auth login` first.
+[docs/desktop.md](docs/desktop.md) covers the full setup, every build target, and how the app
+treats your clones and worktrees; [docs/performance.md](docs/performance.md) has the measured
+startup, refresh, and size numbers.
 
 ### Common commands
 
 ```bash
-magex build          # build the binary into bin/
+magex build          # build the headless binary into bin/
 magex test           # run the test suite
 magex test:race      # run tests with the race detector
 magex lint           # run golangci-lint
 magex format:fix     # format the code
+magex frontend:gate  # format check, lint, typecheck, and test the frontend
+magex app:dev        # run the desktop app with a hot-reloading frontend
+magex app:build      # build the macOS app bundle
 magex help           # list every available command
 ```
 
@@ -86,14 +104,20 @@ Before opening a pull request, run the full gate:
 
 ```bash
 magex format:fix && magex lint && magex test:race && go-pre-commit run --all-files
+magex frontend:gate
+magex app:check      # on macOS: bindings drift check, desktop lint, and bundle build
 ```
 
 ### Project layout
 
 | Path               | Purpose                                                        |
 |--------------------|----------------------------------------------------------------|
-| `cmd/nilbox/`      | Application entry point                                        |
+| `cmd/nilbox/`      | Application entry point (the desktop app builds with the `desktop` tag) |
 | `internal/brand/`  | Product identity and design tokens (the only place the name lives) |
+| `internal/`        | The core services: inbox, launcher, settings, profiles, worktrees, and the data layer |
+| `frontend/`        | The React + TypeScript frontend and its generated Go bindings  |
+| `magefiles/`       | Custom `magex` targets for the frontend, the app, and measurements |
+| `docs/`            | Desktop build guide and measured performance                   |
 | `.github/`         | CI workflows, community docs, and engineering conventions      |
 
 <br/>

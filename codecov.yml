@@ -36,6 +36,7 @@ ignore:
   - "examples/**"
   - "mocks/**"
   - "testing/**"
+  - "magefiles/**"
 
 # Parsers
 # --------------

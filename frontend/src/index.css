@@ -1,0 +1,49 @@
+@import 'tailwindcss';
+@import './generated/theme.css';
+
+/* Expose every brand token as a Tailwind color (bg-surface, text-muted, border-border, …).
+   The values stay CSS variables, so the generated light/dark blocks switch them before the
+   first paint and on every appearance change. */
+@theme inline {
+  --color-background: var(--brand-background);
+  --color-surface: var(--brand-surface);
+  --color-raised: var(--brand-raised);
+  --color-border: var(--brand-border);
+  --color-text: var(--brand-text);
+  --color-muted: var(--brand-muted);
+  --color-accent: var(--brand-accent);
+  --color-info: var(--brand-info);
+  --color-success: var(--brand-success);
+  --color-warning: var(--brand-warning);
+  --color-danger: var(--brand-danger);
+}
+
+@layer base {
+  html,
+  body {
+    background-color: var(--color-background);
+    color: var(--color-text);
+  }
+
+  body {
+    margin: 0;
+    font-family:
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      'Segoe UI',
+      sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  button:not(:disabled),
+  select:not(:disabled),
+  input[type='checkbox']:not(:disabled) {
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}

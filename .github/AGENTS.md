@@ -20,7 +20,7 @@ These rules are specific to this repository and override anything less strict el
 * **Never bypass git hooks.** No `--no-verify`, no `-n`. If a hook fails, fix the cause.
 * **One home for the product name.** Product identity lives in `internal/brand`. Reference it; never hard-code the name elsewhere.
 * **User data stays local.** The app talks only to GitHub's API; preferences, triage state, and caches never leave the user's machine.
-* **The gate.** Run `magex format:fix && magex lint && magex test:race && go-pre-commit run --all-files` before every pull request.
+* **The gate.** Run `magex format:fix && magex lint && magex test:race && go-pre-commit run --all-files`, then `magex frontend:gate`, before every pull request; on macOS also run `magex app:check` when the desktop shell, a bound service, or the frontend changed. See [docs/desktop.md](../docs/desktop.md).
 
 <br><br>
 
@@ -58,5 +58,13 @@ Our technical standards are organized into focused, portable documents in the `.
 | `.github/tech-conventions/` | Technical conventions and standards for development     |
 | `.github/workflows/`        | GitHub Actions workflows for CI/CD                      |
 | `.vscode/`                  | VS Code settings and extensions for development         |
-| `cmd/nilbox/`               | Application entry point                                 |
+| `build/darwin/`             | Generated macOS bundle metadata (Info.plist)            |
+| `cmd/nilbox/`               | Application entry point (headless; desktop with the `desktop` tag) |
+| `docs/`                     | Desktop build guide and measured performance            |
+| `frontend/`                 | React + TypeScript desktop frontend and its generated bindings |
 | `internal/brand/`           | Product identity and design tokens                      |
+| `internal/brandgen/`        | Generates frontend theme tokens and Info.plist from the brand |
+| `internal/core/`            | Assembles the app and the services the window binds     |
+| `internal/measure/`         | Startup, refresh, launch, and size measurements         |
+| `internal/*/`               | The inbox, launcher, settings, profiles, worktrees, and data-layer packages |
+| `magefiles/`                | Custom `magex` targets: `brand`, `frontend`, `app`, `measure` |

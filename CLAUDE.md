@@ -33,15 +33,35 @@ magex format:fix
 magex lint
 magex test:race
 go-pre-commit run --all-files
+magex frontend:gate   # the frontend gate; CI runs the same script
 ```
+
+On macOS, a change to the desktop shell, the bound services, or the frontend must also pass
+`magex app:check` (bindings drift check, desktop lint, and the app bundle build). CI has no
+macOS runner, so this check is local.
 
 <br>
 
 ## Layout
 
-- `cmd/nilbox/` is the application entry point.
+- `cmd/nilbox/` is the application entry point: a headless build by default, and the Wails
+  desktop app with the `desktop` build tag (`main_desktop.go`). Only the desktop bootstrap
+  imports Wails.
 - `internal/brand/` holds product identity and design tokens. The palette tests enforce WCAG AA
-  contrast for every text color in both themes.
+  contrast for every text color in both themes. `internal/brandgen/` generates the frontend
+  theme tokens and `build/darwin/Info.plist` from it (`magex brand:generate`).
+- `internal/core/` assembles the app; the other `internal/*` packages are the services it binds
+  (inbox, launcher, settings, profiles, worktrees) and their building blocks. All of them are
+  plain Go, built and tested on Linux without CGO.
+- `internal/measure/` and `magefiles/measure.go` take the numbers in
+  [`docs/performance.md`](docs/performance.md).
+- `frontend/` is the React + TypeScript + Vite + Tailwind app. It reaches Go only through the
+  generated bindings in `frontend/bindings/`, funneled through `frontend/src/platform/`.
+- `magefiles/` holds the custom `magex` targets: `brand:*`, `frontend:*`, `app:*`, and
+  `measure:*`.
+
+Building and running the desktop app, and the rules it follows on your machine, are in
+[`docs/desktop.md`](docs/desktop.md).
 
 Conventions for commits, branches, pull requests, testing, and security live in
 [`.github/tech-conventions/`](.github/tech-conventions/README.md).

@@ -1,0 +1,102 @@
+// Package model holds the inbox's persisted records: the signed-in account, the
+// repositories it sees, the unified pull request and issue cache, local triage state, and
+// GitHub rate-limit readings.
+//
+// The schema itself is owned by the SQL migrations; these structs only map onto it, and a
+// parity test keeps the two in step.
+package model
+
+import "time"
+
+// Item kinds stored in Item.Kind.
+const (
+	KindPR    = "pr"
+	KindIssue = "issue"
+)
+
+// Account is the signed-in GitHub account.
+type Account struct {
+	ID        int64     `gorm:"column:id;primaryKey"`
+	Login     string    `gorm:"column:login"`
+	CreatedAt time.Time `gorm:"column:created_at"`
+	UpdatedAt time.Time `gorm:"column:updated_at"`
+}
+
+// TableName maps Account to its table.
+func (Account) TableName() string { return "accounts" }
+
+// Repo is a repository seen in the inbox, with its per-repo preferences and the matched
+// local clone.
+type Repo struct {
+	ID        int64     `gorm:"column:id;primaryKey"`
+	Owner     string    `gorm:"column:owner"`
+	Name      string    `gorm:"column:name"`
+	Muted     bool      `gorm:"column:muted"`
+	Pinned    bool      `gorm:"column:pinned"`
+	LocalPath string    `gorm:"column:local_path"`
+	CreatedAt time.Time `gorm:"column:created_at"`
+	UpdatedAt time.Time `gorm:"column:updated_at"`
+}
+
+// TableName maps Repo to its table.
+func (Repo) TableName() string { return "repos" }
+
+// Item is one cached pull request or issue. The Reason* flags record which inbox lists
+// returned it on the latest refresh; AuthorAssociation and IsCrossRepository feed the
+// outside-contributor trust rule.
+type Item struct {
+	ID                    int64     `gorm:"column:id;primaryKey"`
+	AccountID             int64     `gorm:"column:account_id"`
+	RepoID                int64     `gorm:"column:repo_id"`
+	Kind                  string    `gorm:"column:kind"`
+	Number                int       `gorm:"column:number"`
+	NodeID                string    `gorm:"column:node_id"`
+	Title                 string    `gorm:"column:title"`
+	URL                   string    `gorm:"column:url"`
+	AuthorLogin           string    `gorm:"column:author_login"`
+	AuthorAssociation     string    `gorm:"column:author_association"`
+	IsCrossRepository     bool      `gorm:"column:is_cross_repository"`
+	IsDraft               bool      `gorm:"column:is_draft"`
+	HeadRef               string    `gorm:"column:head_ref"`
+	ItemCreatedAt         time.Time `gorm:"column:item_created_at"`
+	ItemUpdatedAt         time.Time `gorm:"column:item_updated_at"`
+	ReasonReviewRequested bool      `gorm:"column:reason_review_requested"`
+	ReasonAuthored        bool      `gorm:"column:reason_authored"`
+	ReasonAssigned        bool      `gorm:"column:reason_assigned"`
+	FetchedAt             time.Time `gorm:"column:fetched_at"`
+}
+
+// TableName maps Item to its table.
+func (Item) TableName() string { return "items" }
+
+// ItemLocalState is local-only triage state for an item, such as a done marker.
+type ItemLocalState struct {
+	ItemID    int64      `gorm:"column:item_id;primaryKey;autoIncrement:false"`
+	DoneAt    *time.Time `gorm:"column:done_at"`
+	UpdatedAt time.Time  `gorm:"column:updated_at"`
+}
+
+// TableName maps ItemLocalState to its table.
+func (ItemLocalState) TableName() string { return "item_local_state" }
+
+// RateSnapshot is one GitHub API rate-limit reading for a resource (graphql, core, or
+// search). Cost is the point cost of the query that produced it, when known.
+type RateSnapshot struct {
+	ID         int64     `gorm:"column:id;primaryKey"`
+	AccountID  int64     `gorm:"column:account_id"`
+	Resource   string    `gorm:"column:resource"`
+	LimitTotal int       `gorm:"column:limit_total"`
+	Remaining  int       `gorm:"column:remaining"`
+	Used       int       `gorm:"column:used"`
+	Cost       int       `gorm:"column:cost"`
+	ResetAt    time.Time `gorm:"column:reset_at"`
+	TakenAt    time.Time `gorm:"column:taken_at"`
+}
+
+// TableName maps RateSnapshot to its table.
+func (RateSnapshot) TableName() string { return "rate_snapshots" }
+
+// AllModels returns every model in this package.
+func AllModels() []any {
+	return []any{&Account{}, &Repo{}, &Item{}, &ItemLocalState{}, &RateSnapshot{}}
+}

@@ -1,0 +1,8 @@
+# Generated files are written by their generators, never formatted by hand.
+bindings/
+src/generated/
+pnpm-lock.yaml
+
+# Build and test output.
+dist/
+coverage/
