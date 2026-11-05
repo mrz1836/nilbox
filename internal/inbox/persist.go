@@ -1,6 +1,7 @@
 package inbox
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/model"
+	"github.com/mrz1836/nilbox/internal/trust"
 )
 
 // The upserts below key on each table's unique columns. RETURNING id gives back the row's
@@ -61,15 +63,16 @@ SET reason_review_requested = 0, reason_authored = 0, reason_assigned = 0
 WHERE account_id = ?`
 
 	upsertItemSQL = `INSERT INTO items (
-    account_id, repo_id, kind, number, node_id, title, url, author_login, author_association,
+    account_id, repo_id, kind, number, node_id, title, url, author_login, author_type, author_association,
     is_cross_repository, is_draft, head_ref, item_created_at, item_updated_at,
     reason_review_requested, reason_authored, reason_assigned, fetched_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (account_id, repo_id, kind, number) DO UPDATE SET
     node_id = excluded.node_id,
     title = excluded.title,
     url = excluded.url,
     author_login = excluded.author_login,
+    author_type = excluded.author_type,
     author_association = excluded.author_association,
     is_cross_repository = excluded.is_cross_repository,
     is_draft = excluded.is_draft,
@@ -187,8 +190,8 @@ func (w *writer) saveItem(repoID int64, e *entry) error {
 	var id int64
 
 	err := w.tx.Raw(upsertItemSQL,
-		w.accountID, repoID, kindOf(it), it.Number, it.NodeID, it.Title, it.URL, it.AuthorLogin, it.AuthorAssociation,
-		it.IsCrossRepository, it.IsDraft, it.HeadRef, it.CreatedAt.UTC(), it.UpdatedAt.UTC(),
+		w.accountID, repoID, kindOf(it), it.Number, it.NodeID, it.Title, it.URL, it.AuthorLogin, it.AuthorType,
+		it.AuthorAssociation, it.IsCrossRepository, it.IsDraft, it.HeadRef, it.CreatedAt.UTC(), it.UpdatedAt.UTC(),
 		e.reviewRequested, e.authored, e.assigned, w.now,
 	).Scan(&id).Error
 	if err != nil {
@@ -313,7 +316,7 @@ func readPrefs(db *gorm.DB) (map[string]string, error) {
 	keys := []string{
 		prefViewer, prefViewerName, prefViewerURL, prefViewerAvatarURL, prefAvatar, prefAvatarSource,
 		prefTotalReviewRequested, prefTotalAuthored, prefTotalAssigned,
-		prefLastRefreshAt, prefLastError, prefScopeWarning,
+		prefLastRefreshAt, prefLastError, prefScopeWarning, trust.PrefBots,
 	}
 
 	var rows []struct {
@@ -331,4 +334,19 @@ func readPrefs(db *gorm.DB) (map[string]string, error) {
 	}
 
 	return prefs, nil
+}
+
+// ViewerLogin returns the signed-in account's login as the last refresh recorded it, or ""
+// before the first refresh.
+func ViewerLogin(ctx context.Context, db *gorm.DB) (string, error) {
+	var values []string
+	if err := db.WithContext(ctx).Raw("SELECT value FROM prefs WHERE key = ?", prefViewer).Scan(&values).Error; err != nil {
+		return "", fmt.Errorf("read the signed-in account: %w", err)
+	}
+
+	if len(values) == 0 {
+		return "", nil
+	}
+
+	return values[0], nil
 }

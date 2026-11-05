@@ -21,6 +21,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/inbox/model"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/profiles"
+	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/store"
 )
@@ -221,6 +222,7 @@ func (h *launchHarness) seed(t *testing.T) {
 		AddDirs: []string{}, ExtraArgs: []string{}, Env: map[string]string{},
 	}
 	require.NoError(t, profiles.Sync(t.Context(), h.db, []profiles.Profile{full, work}))
+	require.NoError(t, prompts.Seed(t.Context(), h.db))
 }
 
 // service returns a launch Service over the harness's current config.
@@ -296,6 +298,7 @@ func TestLaunchWritesFilesAndOpensDriver(t *testing.T) {
 		ScriptPath: res.ScriptPath,
 		ClonePath:  "~/projects/example-repo",
 		Worktree:   "pr-7",
+		Prompt:     "Review",
 		Profile:    profiles.DefaultName,
 		Permission: "full access",
 		Terminal:   settings.TerminalITerm2,
@@ -303,7 +306,7 @@ func TestLaunchWritesFilesAndOpensDriver(t *testing.T) {
 
 	assert.Contains(t, script, "cd -- "+shQuote(h.clone)+" || exit 1\n")
 	assert.Contains(t, script, "unset CLAUDE_CONFIG_DIR\n")
-	assert.Contains(t, script, "'--dangerously-skip-permissions' '--worktree' '#7'\n")
+	assert.Contains(t, script, "'--dangerously-skip-permissions' '--name=Review · example-repo#7' '--worktree' '#7'\n")
 	assert.Contains(t, promptFor(t, res.ScriptPath), "Review pull request #7 in acme-org/example-repo: Change 7")
 	assert.Len(t, h.launchFiles(t), 2, "one script and one prompt file")
 

@@ -301,6 +301,10 @@ type Item struct {
 
 	AuthorLogin string
 
+	// AuthorType is the author's GraphQL type: User for a person, Bot for a GitHub App
+	// or bot, or another actor type such as Mannequin.
+	AuthorType string
+
 	// AuthorAssociation is the author's relationship to the repository (OWNER, MEMBER,
 	// COLLABORATOR, CONTRIBUTOR, NONE, ...).
 	AuthorAssociation string
@@ -429,9 +433,11 @@ func (d *graphQLData) inbox() *Inbox {
 	}
 }
 
-// graphQLActor is a user or bot.
+// graphQLActor is a user, bot, or other actor. TypeName is only asked for on an item's
+// author.
 type graphQLActor struct {
-	Login string `json:"login"`
+	TypeName string `json:"__typename"`
+	Login    string `json:"login"`
 }
 
 // graphQLViewer is the query's viewer object. Name is null when the profile sets none,
@@ -594,7 +600,7 @@ func (n *graphQLNode) item() (Item, bool) {
 	}
 
 	if n.Author != nil {
-		item.AuthorLogin = n.Author.Login
+		item.AuthorLogin, item.AuthorType = n.Author.Login, n.Author.TypeName
 	}
 
 	return item, true

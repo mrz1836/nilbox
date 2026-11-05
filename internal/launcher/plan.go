@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mrz1836/nilbox/internal/agentflags"
 	"github.com/mrz1836/nilbox/internal/profiles"
 )
 
@@ -37,6 +38,7 @@ const (
 	flagPermissionMode       = "--permission-mode"
 	flagAddDirPrefix         = "--add-dir="
 	flagWorktree             = "--worktree"
+	flagNamePrefix           = "--name="
 
 	// modePlan is the --permission-mode value that starts a session in plan mode.
 	modePlan = "plan"
@@ -72,10 +74,11 @@ var (
 	ErrRelativePath = errors.New("path must be absolute")
 
 	// ErrInvalidEffort is returned for an effort level the agent does not accept.
-	ErrInvalidEffort = errors.New("unknown effort level")
+	ErrInvalidEffort = agentflags.ErrInvalidEffort
 
-	// ErrInvalidModel is returned for a model name that could be read as a flag.
-	ErrInvalidModel = errors.New("model name must not start with -")
+	// ErrInvalidModel is returned for a model name the agent could misread, such as one
+	// that looks like a flag.
+	ErrInvalidModel = agentflags.ErrInvalidModel
 
 	// ErrInvalidPermissionMode is returned for a profile permission mode the agent does
 	// not accept.
@@ -104,7 +107,7 @@ func envKeyPattern() *regexp.Regexp {
 
 // effortLevels returns the values the agent accepts for --effort.
 func effortLevels() []string {
-	return []string{"low", "medium", "high", "xhigh", "max"}
+	return agentflags.EffortLevels()
 }
 
 // permissionFlags returns the switches only resolvePermission may set.
@@ -171,6 +174,10 @@ type Request struct {
 	// PromptFile is the prompt file's absolute path, or "" when WriteLaunchFiles will
 	// choose it.
 	PromptFile string
+
+	// SessionName names the session in the agent's prompt box, its resume list, and the
+	// terminal's title, or "" to leave it unnamed.
+	SessionName string
 }
 
 // Plan is an OS-independent description of one launch. The prompt is passed as the
@@ -223,8 +230,9 @@ func (p Plan) Argv(prompt string) []string {
 //
 // The arguments are, in order: --model, --effort, the permission flags chosen by the
 // trust policy, one --add-dir=<dir> per extra directory, the profile's extra arguments
-// verbatim, and --worktree <name> last. Extra arguments that try to set a permission
-// switch are rejected with ErrConflictingExtraArg, and no plan is returned.
+// verbatim, --name=<session name>, and --worktree <name> last. Extra arguments that try
+// to set a permission switch are rejected with ErrConflictingExtraArg, and no plan is
+// returned.
 func BuildPlan(req Request) (Plan, error) {
 	if err := validateRequest(req); err != nil {
 		return Plan{}, err
@@ -254,6 +262,10 @@ func BuildPlan(req Request) (Plan, error) {
 		Unset:      unset,
 		PromptFile: req.PromptFile,
 		Permission: perm.summary,
+	}
+
+	if req.SessionName != "" {
+		args = append(args, flagNamePrefix+req.SessionName)
 	}
 
 	if req.Worktree {
@@ -342,21 +354,20 @@ func profileArgs(p profiles.Profile, permArgs []string) ([]string, error) {
 func modelEffortArgs(p profiles.Profile) ([]string, error) {
 	var args []string
 
-	if p.Model != "" {
-		if strings.HasPrefix(p.Model, "-") {
-			return nil, fmt.Errorf("%w: %q", ErrInvalidModel, p.Model)
-		}
+	if err := agentflags.ValidateModel(p.Model); err != nil {
+		return nil, err
+	}
 
+	if p.Model != "" {
 		args = append(args, flagModel, p.Model)
+	}
+
+	if err := agentflags.ValidateEffort(p.Effort); err != nil {
+		return nil, err
 	}
 
 	if p.Effort == "" {
 		return args, nil
-	}
-
-	if !slices.Contains(effortLevels(), p.Effort) {
-		return nil, fmt.Errorf("%w %q: choose one of %s", ErrInvalidEffort, p.Effort,
-			strings.Join(effortLevels(), ", "))
 	}
 
 	return append(args, flagEffort, p.Effort), nil

@@ -14,6 +14,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/trust"
 )
 
 // errRefused is what a test's database callback fails with.
@@ -53,11 +54,44 @@ func TestPrefDefaults(t *testing.T) {
 	got, err := svc.Get(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, Settings{
-		DefaultProfile:  "default",
-		WorktreeDefault: true,
-		Terminal:        "iterm2",
-		CloneRoot:       "~/projects",
+		DefaultProfile:     "default",
+		WorktreeDefault:    true,
+		Terminal:           "iterm2",
+		CloneRoot:          "~/projects",
+		TrustedBots:        []string{"dependabot", "github-actions", "renovate"},
+		DefaultTrustedBots: []string{"dependabot", "github-actions", "renovate"},
 	}, got)
+}
+
+func TestTrustedBots(t *testing.T) {
+	svc, db, _ := newTestService(t)
+	ctx := t.Context()
+
+	require.NoError(t, svc.SetTrustedBots(ctx, []string{"Renovate[bot]", "app/my-release-bot", " ", "renovate"}))
+
+	got, err := svc.Get(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"my-release-bot", "renovate"}, got.TrustedBots, "normalized, deduplicated, and sorted")
+
+	require.NoError(t, svc.SetTrustedBots(ctx, nil))
+
+	got, err = svc.Get(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []string{}, got.TrustedBots, "an emptied list trusts no bot")
+
+	require.ErrorIs(t, svc.SetTrustedBots(ctx, []string{"not a login"}), trust.ErrInvalidBot)
+
+	require.NoError(t, svc.ResetTrustedBots(ctx))
+
+	got, err = svc.Get(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, trust.DefaultBots(), got.TrustedBots)
+
+	setPref(t, db, KeyTrustedBots, "{broken")
+
+	got, err = svc.Get(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, trust.DefaultBots(), got.TrustedBots, "an unreadable list falls back to the defaults")
 }
 
 func TestTerminalPrefPersists(t *testing.T) {
@@ -88,10 +122,12 @@ func TestSettersPersist(t *testing.T) {
 	got, err := svc.Get(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, Settings{
-		DefaultProfile:  "work",
-		WorktreeDefault: false,
-		Terminal:        TerminalITerm2,
-		CloneRoot:       "~/code/clones",
+		DefaultProfile:     "work",
+		WorktreeDefault:    false,
+		Terminal:           TerminalITerm2,
+		CloneRoot:          "~/code/clones",
+		TrustedBots:        trust.DefaultBots(),
+		DefaultTrustedBots: trust.DefaultBots(),
 	}, got)
 
 	abs := t.TempDir()

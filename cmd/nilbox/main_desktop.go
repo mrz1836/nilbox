@@ -165,6 +165,8 @@ func services(c *core.Core) []application.Service {
 	return []application.Service{
 		application.NewService(c.Settings),
 		application.NewService(c.Profiles),
+		application.NewService(c.Prompts),
+		application.NewService(c.LaunchDefaults),
 		application.NewService(c.Inbox),
 		application.NewService(c.Launcher),
 		application.NewService(c.Worktrees),

@@ -20,6 +20,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/profiles"
+	"github.com/mrz1836/nilbox/internal/trust"
 )
 
 // Preference keys.
@@ -35,6 +36,9 @@ const (
 
 	// KeyCloneRoot is the directory whose children are the user's local clones.
 	KeyCloneRoot = "clones.root"
+
+	// KeyTrustedBots lists the bots whose items are trusted (see the trust package).
+	KeyTrustedBots = trust.PrefBots
 )
 
 // Terminal choices.
@@ -83,6 +87,13 @@ type Settings struct {
 
 	// CloneRoot is the clone root as entered, e.g. "~/projects".
 	CloneRoot string `json:"cloneRoot"`
+
+	// TrustedBots lists the bots (GitHub Apps) whose pull requests and issues are trusted
+	// like a collaborator's, by login, sorted. It starts as trust.DefaultBots.
+	TrustedBots []string `json:"trustedBots"`
+
+	// DefaultTrustedBots is the list ResetTrustedBots restores.
+	DefaultTrustedBots []string `json:"defaultTrustedBots"`
 }
 
 // Service reads and writes the preferences.
@@ -104,7 +115,7 @@ func (s *Service) Get(ctx context.Context) (Settings, error) {
 		Value string
 	}
 
-	keys := []string{KeyDefaultProfile, KeyWorktreeDefault, KeyTerminal, KeyCloneRoot}
+	keys := []string{KeyDefaultProfile, KeyWorktreeDefault, KeyTerminal, KeyCloneRoot, KeyTrustedBots}
 	if err := s.db.WithContext(ctx).Raw("SELECT key, value FROM prefs WHERE key IN ?", keys).Scan(&rows).Error; err != nil {
 		return Settings{}, fmt.Errorf("read settings: %w", err)
 	}
@@ -181,6 +192,27 @@ func (s *Service) SetCloneRoot(ctx context.Context, root string) error {
 	return s.set(ctx, KeyCloneRoot, filepath.Clean(root))
 }
 
+// SetTrustedBots stores the bots whose items are trusted. Each login may be written as
+// GitHub shows it ("dependabot", "dependabot[bot]", or "app/dependabot"); the list is
+// stored normalized and sorted, and may be empty to trust no bot.
+func (s *Service) SetTrustedBots(ctx context.Context, bots []string) error {
+	normalized, err := trust.NormalizeBots(bots)
+	if err != nil {
+		return err
+	}
+
+	return s.set(ctx, KeyTrustedBots, trust.EncodeBots(normalized))
+}
+
+// ResetTrustedBots goes back to the default trusted bots.
+func (s *Service) ResetTrustedBots(ctx context.Context) error {
+	if err := s.db.WithContext(ctx).Exec("DELETE FROM prefs WHERE key = ?", KeyTrustedBots).Error; err != nil {
+		return fmt.Errorf("reset the trusted bots: %w", err)
+	}
+
+	return nil
+}
+
 // set stores one preference.
 func (s *Service) set(ctx context.Context, key, value string) error {
 	if err := s.db.WithContext(ctx).Exec(upsertPrefSQL, key, value, time.Now().UTC()).Error; err != nil {
@@ -192,11 +224,15 @@ func (s *Service) set(ctx context.Context, key, value string) error {
 
 // fromStored builds Settings from stored values, falling back to the defaults.
 func fromStored(stored map[string]string) Settings {
+	rawBots, hasBots := stored[KeyTrustedBots]
+
 	out := Settings{
-		DefaultProfile:  DefaultProfile,
-		WorktreeDefault: DefaultWorktreeDefault,
-		Terminal:        DefaultTerminal,
-		CloneRoot:       DefaultCloneRoot,
+		DefaultProfile:     DefaultProfile,
+		WorktreeDefault:    DefaultWorktreeDefault,
+		Terminal:           DefaultTerminal,
+		CloneRoot:          DefaultCloneRoot,
+		TrustedBots:        trust.DecodeBots(rawBots, hasBots),
+		DefaultTrustedBots: trust.DefaultBots(),
 	}
 
 	if v := stored[KeyDefaultProfile]; v != "" {

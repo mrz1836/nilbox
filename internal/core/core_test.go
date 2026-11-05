@@ -17,6 +17,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/profiles"
+	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/timing"
 )
 
@@ -247,7 +248,9 @@ func TestServicesListsBoundServices(t *testing.T) {
 
 	services := c.Services()
 
-	assert.Equal(t, []any{c.Settings, c.Profiles, c.Inbox, c.Launcher, c.Worktrees, c.AppInfo}, services)
+	assert.Equal(t, []any{
+		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.AppInfo,
+	}, services)
 
 	for _, s := range services {
 		assert.NotNil(t, s)
@@ -317,4 +320,41 @@ func TestInboxRefreshUsesInjectedRunner(t *testing.T) {
 	snap, err := c.Inbox.Snapshot(t.Context())
 	require.NoError(t, err)
 	assert.NotEmpty(t, snap.LastError)
+}
+
+func TestBootstrapAddsTheStarterPrompts(t *testing.T) {
+	opts := Options{
+		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
+		Home:   tempHome(t, ".claude"),
+		Runner: &recordingRunner{},
+	}
+
+	c := bootstrap(t, opts)
+
+	all, err := c.Prompts.List(t.Context())
+	require.NoError(t, err)
+	assert.Len(t, all, len(prompts.Starters()))
+
+	defaults, err := c.Prompts.Defaults(t.Context())
+	require.NoError(t, err)
+	assert.NotZero(t, defaults.PR)
+	assert.NotZero(t, defaults.Issue)
+
+	// A starter the user deleted is not added back on the next start.
+	var quick int64
+
+	for _, p := range all {
+		if p.StarterKey == prompts.StarterQuickLook {
+			quick = p.ID
+		}
+	}
+
+	require.NoError(t, c.Prompts.Delete(t.Context(), quick))
+	require.NoError(t, c.Close())
+
+	c = bootstrap(t, opts)
+
+	all, err = c.Prompts.List(t.Context())
+	require.NoError(t, err)
+	assert.Len(t, all, len(prompts.Starters())-1)
 }

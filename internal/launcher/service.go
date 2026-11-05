@@ -5,26 +5,23 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 
 	"gorm.io/gorm"
 
+	"github.com/mrz1836/nilbox/internal/agentflags"
 	"github.com/mrz1836/nilbox/internal/appdata"
+	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/localrepos"
-	"github.com/mrz1836/nilbox/internal/profiles"
+	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/settings"
-	"github.com/mrz1836/nilbox/internal/trust"
 )
 
-// claudeBin is the agent command the launch scripts run.
+// claudeBin is the command Claude Code runs as.
 const claudeBin = "claude"
-
-// loadItemSQL reads one cached item with its repository and cached clone path.
-const loadItemSQL = `SELECT i.kind, i.number, i.url, i.title, i.head_ref, i.author_association,
-	i.is_cross_repository, r.id AS repo_id, r.owner, r.name, r.local_path
-FROM items i JOIN repos r ON r.id = i.repo_id
-WHERE i.id = ?`
 
 // cacheClonePathSQL remembers the clone a repository resolved to.
 const cacheClonePathSQL = `UPDATE repos SET local_path = ?, updated_at = ? WHERE id = ?`
@@ -50,7 +47,8 @@ type Clock interface {
 
 // Config holds a Service's dependencies. Clock is optional.
 type Config struct {
-	// DB is the app database: items, repositories, and profiles.
+	// DB is the app database: items, repositories, profiles, prompts, and launch
+	// defaults.
 	DB *gorm.DB
 
 	// Settings reads the default profile, worktree default, terminal, and clone root.
@@ -76,16 +74,28 @@ type Config struct {
 	Clock Clock
 }
 
-// LaunchRequest asks to start a session on one inbox item.
+// LaunchRequest asks to start a session on one inbox item. Every choice is optional:
+// a zero or nil one keeps what the item's launch settings resolve to.
 type LaunchRequest struct {
 	// ItemID is the item's local ID from the inbox snapshot.
 	ItemID int64 `json:"itemId"`
 
-	// Profile names the profile to launch with; "" uses the default profile setting.
+	// Profile names the profile to launch with; "" keeps the resolved profile.
 	Profile string `json:"profile"`
 
-	// Worktree starts the session in an agent-created worktree; nil uses the worktree
-	// default setting.
+	// PromptID is the prompt to fill in; 0 keeps the resolved prompt.
+	PromptID int64 `json:"promptId"`
+
+	// Model and Effort replace the resolved --model and --effort; "" asks for the
+	// agent's own default. nil keeps the resolved value.
+	Model  *string `json:"model"`
+	Effort *string `json:"effort"`
+
+	// PlanMode starts the session in plan mode, or not; nil keeps the resolved setting.
+	PlanMode *bool `json:"planMode"`
+
+	// Worktree starts the session in an agent-created worktree, or not; nil keeps the
+	// resolved setting.
 	Worktree *bool `json:"worktree"`
 
 	// FullAccessOverride lifts the outside-contributor restriction for this launch only.
@@ -105,6 +115,9 @@ type LaunchResult struct {
 	// clone's .claude/worktrees directory, or "" when the session starts in the clone.
 	Worktree string `json:"worktree"`
 
+	// Prompt is the nickname of the prompt the session was started with.
+	Prompt string `json:"prompt"`
+
 	// Profile is the profile the session was launched with.
 	Profile string `json:"profile"`
 
@@ -112,6 +125,35 @@ type LaunchResult struct {
 	Permission string `json:"permission"`
 
 	// Terminal is the terminal the launch opened in.
+	Terminal string `json:"terminal"`
+}
+
+// Preview is a launch planned but not started: what it resolved to, where it runs, the
+// command it runs, and the prompt it passes. Launch runs exactly this plan.
+type Preview struct {
+	Resolution Resolution `json:"resolution"`
+
+	// Dir is the directory the session starts in, with ~ for home.
+	Dir string `json:"dir"`
+
+	// Worktree is the worktree the agent creates or resumes, or "".
+	Worktree string `json:"worktree"`
+
+	// Command is the agent's command line, quoted as a shell would read it, with the
+	// prompt shown as <prompt> and home as ~.
+	Command string `json:"command"`
+
+	// Env lists the environment changes, such as "CLAUDE_CONFIG_DIR=~/.claude_work" or
+	// "unset CLAUDE_CONFIG_DIR".
+	Env []string `json:"env"`
+
+	// Permission summarizes the session's permissions.
+	Permission string `json:"permission"`
+
+	// Prompt is the filled-in prompt, exactly as the session receives it.
+	Prompt string `json:"prompt"`
+
+	// Terminal is the terminal the launch opens in.
 	Terminal string `json:"terminal"`
 }
 
@@ -125,7 +167,6 @@ type Service struct {
 	paths    appdata.Paths
 	home     string
 	clock    Clock
-	prompts  *Prompts
 }
 
 // NewService returns a launch Service over cfg.
@@ -144,168 +185,247 @@ func NewService(cfg Config) *Service {
 		paths:    cfg.Paths,
 		home:     cfg.Home,
 		clock:    clock,
-		prompts:  NewPrompts(),
 	}
+}
+
+// Resolve returns the launch settings for one item with the request's choices applied,
+// each with where it came from. It reads only the database: it looks for no clone and
+// writes nothing.
+func (s *Service) Resolve(ctx context.Context, req LaunchRequest) (Resolution, error) {
+	w, err := loadWorld(ctx, s.db, s.settings)
+	if err != nil {
+		return Resolution{}, err
+	}
+
+	row, err := s.loadItem(ctx, req.ItemID)
+	if err != nil {
+		return Resolution{}, err
+	}
+
+	res, _, _, err := resolve(w, row.subject(w.policy), req)
+
+	return res, err
+}
+
+// ResolveItems returns each item's default launch settings, as Resolve with no choices
+// would, for the inbox's launch buttons. An item whose settings cannot resolve, such as
+// one no prompt applies to, carries the reason in Problem; items no longer stored are
+// left out.
+func (s *Service) ResolveItems(ctx context.Context, ids []int64) ([]ItemResolution, error) {
+	out := []ItemResolution{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+
+	w, err := loadWorld(ctx, s.db, s.settings)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := s.loadItems(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, row := range rows {
+		res, _, _, resolveErr := resolve(w, row.subject(w.policy), LaunchRequest{ItemID: row.ID})
+		if resolveErr != nil {
+			res = Resolution{ItemID: row.ID, Kind: row.Kind, Owner: row.Owner, Repo: row.Owner + "/" + row.Name}
+			out = append(out, ItemResolution{Resolution: res, Problem: sentenceCase(resolveErr.Error())})
+
+			continue
+		}
+
+		out = append(out, ItemResolution{Resolution: res})
+	}
+
+	return out, nil
+}
+
+// ItemResolution is one item's default launch settings, or why they cannot resolve.
+type ItemResolution struct {
+	Resolution
+
+	// Problem says why the item cannot be launched as it stands, or "".
+	Problem string `json:"problem"`
+}
+
+// Preview plans a launch without writing files or opening a terminal: the resolved
+// settings, the clone, the command, and the filled-in prompt. Launch runs the same plan,
+// so the prompt shown is the prompt sent.
+func (s *Service) Preview(ctx context.Context, req LaunchRequest) (Preview, error) {
+	p, err := s.plan(ctx, req)
+	if err != nil {
+		return Preview{}, err
+	}
+
+	return p.preview(s.home), nil
 }
 
 // Launch starts a session on an inbox item:
 //
-//  1. load the item (computing its trust) and the profile (the default profile setting
-//     when none is named);
+//  1. load the item (computing its trust) and resolve its launch settings: the
+//     request's choices, then the prompt's, the repository's and its owner's launch
+//     defaults, the profile's, and the app's settings;
 //  2. find the item's local clone: the cached path when it still is a clone of the
 //     repository, otherwise a scan of the clone root, whose result is cached;
-//  3. decide the worktree: the request's choice, else the worktree default setting;
-//  4. find the agent, build the plan, and render the starter prompt;
-//  5. write the prompt file and launch script;
-//  6. open the script in the terminal chosen in settings.
+//  3. find the agent, build the plan, and fill in the prompt;
+//  4. write the prompt file and launch script;
+//  5. open the script in the terminal chosen in settings.
 //
 // The only git command it runs is the read-only `git -C <clone> config --get-regexp`
 // remote lookup. The script only changes into the clone and runs the agent; it never
 // checks out, stashes, fetches, switches branches, or creates worktrees.
 func (s *Service) Launch(ctx context.Context, req LaunchRequest) (LaunchResult, error) {
-	in, err := s.prepare(ctx, req)
+	p, err := s.plan(ctx, req)
 	if err != nil {
 		return LaunchResult{}, err
 	}
 
-	plan, err := BuildPlan(Request{
-		Item:               in.item,
-		Profile:            in.profile,
-		Clone:              in.clone,
-		Worktree:           in.worktree,
-		FullAccessOverride: req.FullAccessOverride,
-		ClaudePath:         in.claude,
-	})
-	if err != nil {
-		return LaunchResult{}, fmt.Errorf("plan the launch: %w", err)
-	}
-
-	prompt, err := s.prompts.Render(in.item.Kind, NewPromptData(in.item, plan))
+	files, err := WriteLaunchFiles(s.paths, p.plan, p.prompt, s.clock.Now())
 	if err != nil {
 		return LaunchResult{}, err
 	}
 
-	files, err := WriteLaunchFiles(s.paths, plan, prompt, s.clock.Now())
-	if err != nil {
-		return LaunchResult{}, err
-	}
-
-	if err = in.driver.Open(ctx, files.Script); err != nil {
+	if err = p.driver.Open(ctx, files.Script); err != nil {
 		return LaunchResult{}, err
 	}
 
 	return LaunchResult{
 		ScriptPath: files.Script,
-		ClonePath:  localrepos.TildePath(in.clone.Dir, s.home),
-		Worktree:   worktreeDirName(plan.Worktree),
-		Profile:    in.profile.Name,
-		Permission: plan.Permission,
-		Terminal:   in.driver.ID(),
+		ClonePath:  localrepos.TildePath(p.clone.Dir, s.home),
+		Worktree:   worktreeDirName(p.plan.Worktree),
+		Prompt:     p.res.Prompt.Nickname,
+		Profile:    p.res.Profile.Value,
+		Permission: p.plan.Permission,
+		Terminal:   p.driver.ID(),
 	}, nil
 }
 
-// launchInputs is everything a launch is planned from.
-type launchInputs struct {
-	item     Item
-	profile  profiles.Profile
-	clone    Clone
-	driver   Driver
-	claude   string
-	worktree bool
+// planned is a launch worked out but not started.
+type planned struct {
+	res    Resolution
+	plan   Plan
+	prompt string
+	clone  Clone
+	driver Driver
 }
 
-// prepare gathers a launch's inputs. The terminal driver is chosen before the clone is
-// resolved, so an OS without terminal support fails before anything runs or is written.
-func (s *Service) prepare(ctx context.Context, req LaunchRequest) (launchInputs, error) {
-	prefs, err := s.settings.Get(ctx)
+// plan works out a launch. The terminal driver is chosen before the clone is resolved,
+// so an OS without terminal support fails before anything runs or is written.
+func (s *Service) plan(ctx context.Context, req LaunchRequest) (planned, error) {
+	w, err := loadWorld(ctx, s.db, s.settings)
 	if err != nil {
-		return launchInputs{}, err
+		return planned{}, err
 	}
 
-	item, repo, err := s.loadItem(ctx, req.ItemID)
+	row, err := s.loadItem(ctx, req.ItemID)
 	if err != nil {
-		return launchInputs{}, err
+		return planned{}, err
 	}
 
-	in := launchInputs{item: item, worktree: prefs.WorktreeDefault}
-	if req.Worktree != nil {
-		in.worktree = *req.Worktree
+	res, profile, prompt, err := resolve(w, row.subject(w.policy), req)
+	if err != nil {
+		return planned{}, err
 	}
 
-	if in.profile, err = s.loadProfile(ctx, req.Profile, prefs.DefaultProfile); err != nil {
-		return launchInputs{}, err
+	tmpl, err := prompt.Template()
+	if err != nil {
+		return planned{}, err
 	}
 
-	if in.driver, err = s.registry.Get(prefs.Terminal); err != nil {
-		return launchInputs{}, err
+	p := planned{res: res}
+
+	if p.driver, err = s.registry.Get(w.settings.Terminal); err != nil {
+		return planned{}, err
 	}
 
-	if in.clone, err = s.resolveClone(ctx, repo, prefs.CloneRoot); err != nil {
-		return launchInputs{}, err
+	if p.clone, err = s.resolveClone(ctx, row.repoRef(), w.settings.CloneRoot); err != nil {
+		return planned{}, err
 	}
 
-	if in.claude, err = s.finder.Find(claudeBin); err != nil {
-		return launchInputs{}, fmt.Errorf("find the agent: %w", err)
+	bin, err := s.finder.Find(res.Agent.Command)
+	if err != nil {
+		return planned{}, fmt.Errorf("find the agent: %w", err)
 	}
 
-	return in, nil
+	p.plan, err = BuildPlan(Request{
+		Item: row.item(w.policy), Profile: effectiveProfile(profile, res), Clone: p.clone, Worktree: res.Worktree.Value,
+		FullAccessOverride: req.FullAccessOverride, ClaudePath: bin, SessionName: sessionName(prompt.Nickname, row),
+	})
+	if err != nil {
+		return planned{}, fmt.Errorf("plan the launch: %w", err)
+	}
+
+	if p.prompt, err = s.fillIn(ctx, row.promptData(w.policy, profile.Name, ""), prompt.Nickname, tmpl, p.plan); err != nil {
+		return planned{}, err
+	}
+
+	return p, nil
 }
 
-// repoRef is the repository an item belongs to, as stored.
-type repoRef struct {
-	id        int64
-	owner     string
-	name      string
-	localPath string
+// fillIn fills in a launch's prompt from the item's data, adding the signed-in account
+// and the planned session.
+func (s *Service) fillIn(ctx context.Context, data prompts.Data, nickname string, tmpl *prompts.Template,
+	plan Plan,
+) (string, error) {
+	viewer, err := inbox.ViewerLogin(ctx, s.db)
+	if err != nil {
+		return "", err
+	}
+
+	data.Me = viewer
+	data = data.WithSession(plan.Worktree != "", plan.WorktreeOnPRHead)
+
+	text, err := tmpl.Render(data)
+	if err != nil {
+		return "", fmt.Errorf("fill in the %q prompt: %w", nickname, err)
+	}
+
+	return text, nil
 }
 
-// launchItemRow is one row of loadItemSQL.
-type launchItemRow struct {
-	Kind              string `gorm:"column:kind"`
-	Number            int    `gorm:"column:number"`
-	URL               string `gorm:"column:url"`
-	Title             string `gorm:"column:title"`
-	HeadRef           string `gorm:"column:head_ref"`
-	AuthorAssociation string `gorm:"column:author_association"`
-	IsCrossRepository bool   `gorm:"column:is_cross_repository"`
-	RepoID            int64  `gorm:"column:repo_id"`
-	Owner             string `gorm:"column:owner"`
-	Name              string `gorm:"column:name"`
-	LocalPath         string `gorm:"column:local_path"`
+// preview describes a planned launch for the UI, with home shown as ~.
+func (p planned) preview(home string) Preview {
+	args := make([]string, 0, len(p.plan.Args))
+	for _, arg := range p.plan.Args {
+		args = append(args, tildeIn(arg, home))
+	}
+
+	env := make([]string, 0, len(p.plan.Unset)+len(p.plan.Env))
+	for _, name := range p.plan.Unset {
+		env = append(env, "unset "+name)
+	}
+
+	for _, name := range slices.Sorted(maps.Keys(p.plan.Env)) {
+		env = append(env, name+"="+tildeIn(p.plan.Env[name], home))
+	}
+
+	return Preview{
+		Resolution: p.res,
+		Dir:        localrepos.TildePath(p.clone.Dir, home),
+		Worktree:   worktreeDirName(p.plan.Worktree),
+		Command:    strings.TrimSpace(p.res.Agent.Command + " <prompt> " + agentflags.Join(args)),
+		Env:        env,
+		Permission: p.plan.Permission,
+		Prompt:     p.prompt,
+		Terminal:   p.driver.ID(),
+	}
 }
 
-// loadItem reads an item and its repository, and decides whether the item is trusted.
-func (s *Service) loadItem(ctx context.Context, id int64) (Item, repoRef, error) {
-	var rows []launchItemRow
-	if err := s.db.WithContext(ctx).Raw(loadItemSQL, id).Scan(&rows).Error; err != nil {
-		return Item{}, repoRef{}, fmt.Errorf("load item: %w", err)
+// tildeIn writes home as ~ wherever it appears in s, for display.
+func tildeIn(s, home string) string {
+	if home == "" || home == "/" {
+		return s
 	}
 
-	if len(rows) == 0 {
-		return Item{}, repoRef{}, fmt.Errorf("%w (id %d)", ErrItemNotFound, id)
-	}
-
-	row := rows[0]
-	item := Item{
-		Kind:    row.Kind,
-		Number:  row.Number,
-		URL:     row.URL,
-		Title:   row.Title,
-		Repo:    row.Owner + "/" + row.Name,
-		Branch:  row.HeadRef,
-		Trusted: trust.Trusted(row.AuthorAssociation, row.Kind == KindPR, row.IsCrossRepository),
-	}
-
-	return item, repoRef{id: row.RepoID, owner: row.Owner, name: row.Name, localPath: row.LocalPath}, nil
+	return strings.ReplaceAll(s, home, "~")
 }
 
-// loadProfile returns the named profile, or the default profile setting's when name is "".
-func (s *Service) loadProfile(ctx context.Context, name, defaultName string) (profiles.Profile, error) {
-	if name == "" {
-		name = defaultName
-	}
-
-	return profiles.Lookup(ctx, s.db, name)
+// sessionName names a session in the agent's prompt box, its resume list, and the
+// terminal's title: the prompt's nickname, then the repository and the item's number.
+func sessionName(nickname string, row launchItemRow) string {
+	return fmt.Sprintf("%s · %s#%d", nickname, row.Name, row.Number)
 }
 
 // resolveClone finds the clone a launch starts in. A cached path is used while it is
@@ -371,6 +491,21 @@ func worktreeDirName(arg string) string {
 	}
 
 	return arg
+}
+
+// sentenceCase capitalizes the first letter of an error message and ends it with a
+// period, for showing it as a sentence.
+func sentenceCase(msg string) string {
+	if msg == "" {
+		return msg
+	}
+
+	msg = strings.ToUpper(msg[:1]) + msg[1:]
+	if !strings.HasSuffix(msg, ".") {
+		msg += "."
+	}
+
+	return msg
 }
 
 // systemClock is the real clock.

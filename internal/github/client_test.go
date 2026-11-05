@@ -155,9 +155,12 @@ func TestFetchInboxParsesTrustFields(t *testing.T) {
 	assert.True(t, fork.IsCrossRepository)
 	assert.Equal(t, "fork-contributor", fork.AuthorLogin)
 
+	assert.Equal(t, "User", fork.AuthorType)
+
 	bot := items[15]
 	assert.Equal(t, "NONE", bot.AuthorAssociation)
-	assert.Equal(t, "dependabot[bot]", bot.AuthorLogin)
+	assert.Equal(t, "dependabot", bot.AuthorLogin, "GraphQL names a bot by its app's slug")
+	assert.Equal(t, "Bot", bot.AuthorType)
 	assert.False(t, bot.IsCrossRepository)
 
 	firstTimer := items[18]
@@ -176,6 +179,7 @@ func TestFetchInboxParsesTrustFields(t *testing.T) {
 		IsDraft:           true,
 		HeadRef:           "feat/faster-refresh",
 		AuthorLogin:       "octo-user",
+		AuthorType:        "User",
 		AuthorAssociation: "OWNER",
 		RepoOwner:         "acme-org",
 		RepoName:          "example-repo",
