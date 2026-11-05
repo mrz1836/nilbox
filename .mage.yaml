@@ -1,0 +1,14 @@
+project:
+  name: nilbox
+  binary: nilbox
+  module: github.com/mrz1836/nilbox
+  main: ./cmd/nilbox/main.go
+build:
+  # Version metadata injected into cmd/nilbox (printed at startup)
+  ldflags:
+    - "-s -w"
+    - "-X main.version={{.Version}}"
+    - "-X main.commit={{.Commit}}"
+    - "-X main.buildDate={{.Date}}"
+  flags:
+    - "-trimpath"
