@@ -8,6 +8,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"gorm.io/gorm"
@@ -66,6 +67,10 @@ type Config struct {
 	// Git runs the read-only `git config --get-regexp` remote lookup that finds and
 	// validates clones. The launcher runs no other git command.
 	Git localrepos.Runner
+
+	// GH runs `gh repo clone owner/name <dir>` when the user confirms cloning a
+	// repository that has no local clone. It runs nothing else; without it, Clone fails.
+	GH localrepos.Runner
 
 	// Finder finds the agent binary.
 	Finder Finder
@@ -175,12 +180,16 @@ type Service struct {
 	db       *gorm.DB
 	settings SettingsReader
 	git      localrepos.Runner
+	gh       localrepos.Runner
 	finder   Finder
 	registry Registry
 	paths    appdata.Paths
 	home     string
 	clock    Clock
 	launches LaunchRecorder
+
+	// cloneMu runs one Clone at a time.
+	cloneMu sync.Mutex
 }
 
 // NewService returns a launch Service over cfg.
@@ -194,6 +203,7 @@ func NewService(cfg Config) *Service {
 		db:       cfg.DB,
 		settings: cfg.Settings,
 		git:      cfg.Git,
+		gh:       cfg.GH,
 		finder:   cfg.Finder,
 		registry: cfg.Registry,
 		paths:    cfg.Paths,

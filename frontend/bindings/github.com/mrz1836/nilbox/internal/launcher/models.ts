@@ -6,6 +6,33 @@
 import * as agents$0 from "../agents/models.js";
 
 /**
+ * CloneTarget is a repository's local clone, or where Clone would create one.
+ */
+export interface CloneTarget {
+    /**
+     * Repo is the repository, "owner/name".
+     */
+    "repo": string;
+
+    /**
+     * Cloned reports whether the repository has a local clone, which Dir then names.
+     */
+    "cloned": boolean;
+
+    /**
+     * Dir is the clone, or for a repository without one, where Clone would create it:
+     * <clone root>/<name>. It is shown with ~ for home.
+     */
+    "dir": string;
+
+    /**
+     * Taken reports that a repository without a clone cannot get one at Dir, because
+     * something is already there. Clone refuses it.
+     */
+    "taken": boolean;
+}
+
+/**
  * ItemResolution is one item's default launch settings, or why they cannot resolve.
  */
 export interface ItemResolution {

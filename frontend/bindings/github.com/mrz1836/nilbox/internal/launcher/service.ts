@@ -15,6 +15,28 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * Clone creates the missing local clone of an item's repository at <clone root>/<name>
+ * by running `gh repo clone owner/name <dir>` as an argv, never through a shell, and
+ * caches the new clone's path, so the next launch starts in it. A repository that
+ * already has a clone is returned as it is, without running anything. Clone refuses
+ * when anything already exists at the target: it creates clones but never writes into
+ * or changes an existing directory. Clones run one at a time, so two requests for the
+ * same repository clone it once.
+ */
+export function Clone(itemID: number): $CancellablePromise<$models.CloneTarget> {
+    return $Call.ByID(2212338429, itemID);
+}
+
+/**
+ * CloneTarget reports whether an item's repository has a local clone and, when it has
+ * none, where Clone would create one and whether that path is free. It finds the clone
+ * as a launch does, so the result can be cached, and writes nothing else.
+ */
+export function CloneTarget(itemID: number): $CancellablePromise<$models.CloneTarget> {
+    return $Call.ByID(4220066368, itemID);
+}
+
+/**
  * Launch starts a session on an inbox item:
  *
  *  1. load the item (computing its trust) and resolve its launch settings: the

@@ -7,6 +7,7 @@ export {
 };
 
 export type {
+    CloneTarget,
     ItemResolution,
     LaunchRequest,
     LaunchResult,
