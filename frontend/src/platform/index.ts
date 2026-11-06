@@ -129,6 +129,12 @@ export function refreshInbox(): Promise<InboxSnapshot> {
   return Inbox.Refresh()
 }
 
+// refreshItem reads one item from GitHub again, without refreshing the rest of the inbox,
+// and returns the new inbox. An item merged or closed since leaves its lists.
+export function refreshItem(id: number): Promise<InboxSnapshot> {
+  return Inbox.RefreshItem(id)
+}
+
 // dismissItem hides an item from every list until it is restored, and returns the new
 // inbox. Triage stays on this machine.
 export function dismissItem(id: number): Promise<InboxSnapshot> {

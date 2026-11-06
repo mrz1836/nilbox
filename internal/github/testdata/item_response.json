@@ -1,0 +1,104 @@
+{
+    "data": {
+        "node": {
+            "__typename": "PullRequest",
+            "id": "PR_fakeNodeId12",
+            "number": 12,
+            "title": "Add a dark mode toggle",
+            "url": "https://github.com/acme-org/example-repo/pull/12",
+            "createdAt": "2026-01-03T11:00:00Z",
+            "updatedAt": "2026-01-10T12:30:00Z",
+            "isDraft": false,
+            "headRefName": "patch-1",
+            "prState": "MERGED",
+            "authorAssociation": "CONTRIBUTOR",
+            "isCrossRepository": true,
+            "author": {
+                "__typename": "User",
+                "login": "fork-contributor"
+            },
+            "repository": {
+                "id": "R_fakeRepoExample",
+                "name": "example-repo",
+                "owner": {
+                    "login": "acme-org"
+                },
+                "description": "An example repository",
+                "visibility": "PUBLIC",
+                "isArchived": false,
+                "archivedAt": null,
+                "isDisabled": false,
+                "isLocked": false,
+                "lockReason": null,
+                "isFork": false,
+                "parent": null,
+                "defaultBranchRef": {
+                    "name": "main"
+                },
+                "viewerPermission": "ADMIN",
+                "viewerDefaultMergeMethod": "SQUASH",
+                "mergeCommitAllowed": false,
+                "squashMergeAllowed": true,
+                "rebaseMergeAllowed": false,
+                "autoMergeAllowed": true,
+                "deleteBranchOnMerge": true,
+                "allowUpdateBranch": true,
+                "primaryLanguage": {
+                    "name": "Go",
+                    "color": "#00ADD8"
+                },
+                "pushedAt": "2026-01-10T12:29:00Z"
+            },
+            "additions": 120,
+            "deletions": 30,
+            "changedFiles": 6,
+            "totalCommentsCount": 4,
+            "reviewDecision": "APPROVED",
+            "mergeable": "UNKNOWN",
+            "headRefOid": "1111111111111111111111111111111111111111",
+            "commits": {
+                "totalCount": 3
+            },
+            "labels": {
+                "nodes": [
+                    {
+                        "name": "enhancement",
+                        "color": "a2eeef"
+                    }
+                ]
+            },
+            "reviewRequests": {
+                "nodes": []
+            },
+            "latestReviews": {
+                "nodes": [
+                    {
+                        "state": "APPROVED",
+                        "author": {
+                            "login": "octo-user"
+                        }
+                    }
+                ]
+            },
+            "statusCheckRollup": {
+                "state": "SUCCESS",
+                "contexts": {
+                    "checkRunCountsByState": [
+                        {
+                            "state": "SUCCESS",
+                            "count": 9
+                        }
+                    ],
+                    "statusContextCountsByState": []
+                }
+            }
+        },
+        "rateLimit": {
+            "cost": 1,
+            "remaining": 4970,
+            "resetAt": "2026-01-10T13:00:00Z",
+            "limit": 5000,
+            "used": 30
+        }
+    }
+}

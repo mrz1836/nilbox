@@ -4,7 +4,14 @@ import * as platform from './index'
 
 const mocks = vi.hoisted(() => ({
   appInfo: { Info: vi.fn(), ReportFirstPaint: vi.fn() },
-  inbox: { Snapshot: vi.fn(), Refresh: vi.fn(), Dismiss: vi.fn(), Snooze: vi.fn(), Restore: vi.fn() },
+  inbox: {
+    Snapshot: vi.fn(),
+    Refresh: vi.fn(),
+    RefreshItem: vi.fn(),
+    Dismiss: vi.fn(),
+    Snooze: vi.fn(),
+    Restore: vi.fn(),
+  },
   launcher: { Launch: vi.fn(), Resolve: vi.fn(), ResolveItems: vi.fn(), Preview: vi.fn() },
   profiles: { List: vi.fn() },
   prompts: {
@@ -107,6 +114,14 @@ describe('inbox', () => {
 
     await expect(platform.getInboxSnapshot()).resolves.toBe(snapshot)
     await expect(platform.refreshInbox()).resolves.toBe(snapshot)
+  })
+
+  it('refreshes one item', async () => {
+    mocks.inbox.RefreshItem.mockResolvedValue(snapshot)
+
+    await expect(platform.refreshItem(4)).resolves.toBe(snapshot)
+
+    expect(mocks.inbox.RefreshItem).toHaveBeenCalledWith(4)
   })
 
   it('dismisses, snoozes, and restores an item', async () => {

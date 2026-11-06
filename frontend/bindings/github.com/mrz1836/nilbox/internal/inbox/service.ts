@@ -32,6 +32,23 @@ export function Refresh(): $CancellablePromise<$models.Snapshot> {
 }
 
 /**
+ * RefreshItem brings one item up to date from GitHub and returns the new snapshot. It
+ * asks about that item alone, for one GraphQL point, so a change the user knows of, such
+ * as a pull request they just merged, shows without refreshing the whole inbox.
+ *
+ * An item still open gets its card and details rewritten and stays in the lists it is
+ * in; only the searches of a whole refresh can tell which lists those are. An item
+ * merged, closed, or deleted since, or whose repository was archived, leaves every list,
+ * as a whole refresh would have it. New activity on a snoozed item can end the snooze.
+ *
+ * A failure is returned, not recorded as the inbox's last error, which reports whole
+ * refreshes, and the stored inbox is left as it was.
+ */
+export function RefreshItem(id: number): $CancellablePromise<$models.Snapshot> {
+    return $Call.ByID(2803834770, id);
+}
+
+/**
  * Restore brings a dismissed or snoozed item back to its lists, and returns the new
  * snapshot. Restoring an item that is neither does nothing.
  */

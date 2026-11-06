@@ -200,6 +200,11 @@ func (w *writer) saveItem(repoID int64, e *entry) error {
 		return fmt.Errorf("save the item %s/%s#%d: %w", it.RepoOwner, it.RepoName, it.Number, err)
 	}
 
+	return w.saveDetails(id, it)
+}
+
+// saveDetails stores an item's details when this refresh read them.
+func (w *writer) saveDetails(id int64, it github.Item) error {
 	d, ok := w.details[it.NodeID]
 	if !ok {
 		return nil
@@ -207,7 +212,7 @@ func (w *writer) saveItem(repoID int64, e *entry) error {
 
 	row := detailsRow(id, d, w.now)
 
-	err = w.tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "item_id"}}, UpdateAll: true}).Create(&row).Error
+	err := w.tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "item_id"}}, UpdateAll: true}).Create(&row).Error
 	if err != nil {
 		return fmt.Errorf("save the details of %s/%s#%d: %w", it.RepoOwner, it.RepoName, it.Number, err)
 	}
@@ -250,10 +255,7 @@ func detailsRow(itemID int64, d github.ItemDetails, now time.Time) model.ItemDet
 // window. The GraphQL row comes from the query itself, so it carries the query's cost.
 func (w *writer) saveRates(query github.QueryRate, limits *github.RateLimits) error {
 	rows := []model.RateSnapshot{
-		{
-			AccountID: w.accountID, Resource: resourceGraphQL, LimitTotal: query.Limit, Remaining: query.Remaining,
-			Used: query.Used, Cost: query.Cost, ResetAt: query.ResetAt.UTC(), TakenAt: w.now,
-		},
+		w.graphQLSnapshot(query),
 		w.restSnapshot(resourceCore, limits.Core),
 		w.restSnapshot(resourceSearch, limits.Search),
 	}
@@ -268,6 +270,26 @@ func (w *writer) saveRates(query github.QueryRate, limits *github.RateLimits) er
 	}
 
 	return nil
+}
+
+// saveGraphQLRate records the GraphQL budget a single query left, with its cost. The REST
+// budgets keep their last readings.
+func (w *writer) saveGraphQLRate(query github.QueryRate) error {
+	row := w.graphQLSnapshot(query)
+
+	if err := w.tx.Create(&row).Error; err != nil {
+		return fmt.Errorf("save the rate limit: %w", err)
+	}
+
+	return nil
+}
+
+// graphQLSnapshot builds a snapshot row from a query's own budget reading.
+func (w *writer) graphQLSnapshot(query github.QueryRate) model.RateSnapshot {
+	return model.RateSnapshot{
+		AccountID: w.accountID, Resource: resourceGraphQL, LimitTotal: query.Limit, Remaining: query.Remaining,
+		Used: query.Used, Cost: query.Cost, ResetAt: query.ResetAt.UTC(), TakenAt: w.now,
+	}
 }
 
 // restSnapshot builds a snapshot row from a REST budget.

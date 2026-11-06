@@ -15,6 +15,7 @@ const platform = vi.hoisted(() => ({
   dismissItem: vi.fn(),
   snoozeItem: vi.fn(),
   restoreItem: vi.fn(),
+  refreshItem: vi.fn(),
 }))
 
 vi.mock('../platform', () => platform)
@@ -499,6 +500,70 @@ describe('InboxView triage', () => {
     await userEvent.click((await section('Review requested')).getByRole('button', { name: 'Snooze for 3 days' }))
 
     expect(await screen.findByRole('status')).toHaveTextContent(/^Snoozed · Add the widget cache/)
+  })
+
+  it('refreshes one item from GitHub in place', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh, snoozed]) }))
+    platform.refreshItem.mockResolvedValue(
+      snapshot({ reviewRequested: list([{ ...fresh, title: 'Add the widget cache, take two' }, snoozed]) }),
+    )
+    render(<Harness launch={launchOptions} clock={clock} />)
+
+    const review = await section('Review requested')
+    const button = review.getByRole('button', { name: 'Refresh from GitHub' })
+    expect(button).toHaveAttribute('title', 'Refresh this item from GitHub, without refreshing the rest of the inbox')
+
+    await userEvent.click(button)
+
+    expect(platform.refreshItem).toHaveBeenCalledWith(1)
+    expect(platform.refreshInbox).not.toHaveBeenCalled()
+    expect(await review.findByRole('button', { name: 'Add the widget cache, take two' })).toBeInTheDocument()
+    expect(screen.getByRole('status')).toBeEmptyDOMElement()
+  })
+
+  it('says why a refreshed item left the inbox', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
+    platform.refreshItem.mockResolvedValue(snapshot())
+    render(<Harness launch={launchOptions} clock={clock} />)
+
+    const review = await section('Review requested')
+    await userEvent.click(review.getByRole('button', { name: 'Refresh from GitHub' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent('No longer open on GitHub · Add the widget cache')
+    expect(review.queryByRole('button', { name: 'Add the widget cache' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
+  })
+
+  it('holds the row controls while a refresh runs, and says why it failed', async () => {
+    let fail: (err: Error) => void = () => undefined
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
+    platform.refreshItem.mockReturnValue(
+      new Promise((_, reject) => {
+        fail = reject
+      }),
+    )
+    render(<Harness launch={launchOptions} clock={clock} />)
+
+    const review = await section('Review requested')
+    const button = review.getByRole('button', { name: 'Refresh from GitHub' })
+    expect(button.parentElement).toHaveClass('opacity-0')
+
+    await userEvent.click(button)
+
+    expect(button).toBeDisabled()
+    expect(button.parentElement).toHaveClass('opacity-100')
+    expect(button.querySelector('svg')).toHaveClass('motion-safe:animate-spin')
+
+    act(() => {
+      fail(new Error('the GitHub GraphQL API returned errors: timeout'))
+    })
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Could not refresh “Add the widget cache” · the GitHub GraphQL API returned errors: timeout',
+    )
+    expect(button).toBeEnabled()
+    expect(button.parentElement).toHaveClass('opacity-0')
+    expect(button.querySelector('svg')).not.toHaveClass('motion-safe:animate-spin')
   })
 
   it('brings an item back when its snooze ends, marked as back', async () => {

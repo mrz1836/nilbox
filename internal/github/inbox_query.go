@@ -9,11 +9,12 @@ package github
 // Each search leaves out archived repositories (archived:false), so their items never
 // take a result slot, count toward a total, or cost a details request.
 //
-// Each item carries its repository's description, state, settings, and the viewer's
-// access to it (RepoFields). Like the viewer's name, profile URL, and avatar URL, they
-// cost no extra points: GitHub prices lists, and a repository is a single object. The
-// avatar is asked for at 128 pixels, enough for a sharp picture at menu size on a
-// Retina display.
+// Each item carries its own state, since GitHub's index can trail a merge or a close for
+// a while and keep returning the item to an is:open search, and its repository's
+// description, state, settings, and the viewer's access to it (RepoFields). Like the
+// viewer's name, profile URL, and avatar URL, they cost no extra points: GitHub prices
+// lists, and a repository is a single object. The avatar is asked for at 128 pixels,
+// enough for a sharp picture at menu size on a Retina display.
 const inboxQuery = `query Inbox {
   viewer { login name url avatarUrl(size: 128) }
   reviewRequested: search(query: "is:pr is:open archived:false review-requested:@me", type: ISSUE, first: 100) {
@@ -30,23 +31,34 @@ const inboxQuery = `query Inbox {
   }
   rateLimit { cost remaining resetAt limit used }
 }
+` + itemFieldsFragment + repoFieldsFragment
 
+// itemFieldsFragment is what the inbox reads about a pull request or issue itself. The
+// item query spreads it too, on a single node. The two states are aliased because a pull
+// request's and an issue's are different enum types, which GitHub will not merge under
+// one name.
+const itemFieldsFragment = `
 fragment ItemFields on SearchResultItem {
   __typename
   ... on PullRequest {
     id number title url createdAt updatedAt isDraft headRefName
+    prState: state
     authorAssociation isCrossRepository
     author { __typename login }
     repository { ...RepoFields }
   }
   ... on Issue {
     id number title url createdAt updatedAt
+    issueState: state
     authorAssociation
     author { __typename login }
     repository { ...RepoFields }
   }
 }
+`
 
+// repoFieldsFragment is what the inbox reads about an item's repository.
+const repoFieldsFragment = `
 fragment RepoFields on Repository {
   id name owner { login } description visibility
   isArchived archivedAt isDisabled isLocked lockReason

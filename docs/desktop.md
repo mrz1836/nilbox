@@ -215,6 +215,11 @@ dropped before anything is stored, and the repository is recorded as archived. C
 archived repositories still show in the Worktrees view, where their worktrees can be cleaned
 up.
 
+**Merged and closed items are left out.** The searches ask GitHub for open items only, but its
+search index can trail a merge or a close for a while. The inbox query also reads each item's
+state as of now, at no extra cost, so an item merged or closed since GitHub indexed it is
+dropped before anything is stored.
+
 **Repository details.** The same query reads what GitHub says about each item's repository, at
 no extra cost, since GitHub prices lists and a repository is a single object: its description,
 visibility, whether it is archived, disabled, or locked (and why), the repository a fork was
@@ -234,6 +239,14 @@ refresh takes no longer than before once its items are known. The details are st
 item and read again on every refresh, since checks finish without the item itself changing.
 A card whose details no refresh has read yet, right after updating the app for instance, says
 so.
+
+**Refreshing one card.** Hover a card and click the circular arrow, left of the snooze clock, to
+read that item alone from GitHub, for one point, rather than refreshing the whole inbox. A pull
+request you just merged, or an issue you just closed, leaves the inbox at once, and a toast
+says so. An item still open gets its card and details rewritten in place, and new activity can
+end its snooze. Which lists it is in waits for the next whole refresh, since only the searches
+can tell. The last-refreshed time and the error line above the lists belong to whole
+refreshes; a card refresh that fails says why in a toast.
 
 **Opening a session.** The **Open in Claude** button on the right of a card starts a session
 with the item's [resolved launch settings](#launch-defaults) in one click. The arrow beside it

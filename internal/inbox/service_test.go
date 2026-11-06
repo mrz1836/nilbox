@@ -61,9 +61,12 @@ type fakeClient struct {
 	limitsErr   error
 	avatarErr   error
 	detailsErr  error
+	items       map[string]*github.ItemUpdate
+	itemErr     error
 	gotTokens   []string
 	avatarURLs  []string
 	detailsIDs  [][]string
+	itemIDs     []string
 
 	// inboxGate, when set, holds the inbox query until a details request has started,
 	// which only happens when the two run side by side.
@@ -125,6 +128,25 @@ func (c *fakeClient) FetchDetails(_ context.Context, tok github.Token, ids []str
 	}
 
 	return out, nil
+}
+
+// FetchItem answers with the canned update for the ID, or with one that did not find it.
+func (c *fakeClient) FetchItem(_ context.Context, tok github.Token, id string) (*github.ItemUpdate, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.gotTokens = append(c.gotTokens, tok.Reveal())
+	c.itemIDs = append(c.itemIDs, id)
+
+	if c.itemErr != nil {
+		return nil, c.itemErr
+	}
+
+	if update, ok := c.items[id]; ok {
+		return update, nil
+	}
+
+	return &github.ItemUpdate{}, nil
 }
 
 func (c *fakeClient) FetchAvatar(_ context.Context, url string) (*github.Avatar, error) {

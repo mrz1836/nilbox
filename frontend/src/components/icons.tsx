@@ -217,6 +217,15 @@ export function ResetIcon({ className }: IconProps) {
   )
 }
 
+// RefreshIcon stands for reading something from GitHub again.
+export function RefreshIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M19.5 9.5A8 8 0 1 0 20 13M19.5 4.5v5h-5" />
+    </Icon>
+  )
+}
+
 // StarIcon marks a default.
 export function StarIcon({ className }: IconProps) {
   return (

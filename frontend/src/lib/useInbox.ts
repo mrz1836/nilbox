@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
   dismissItem,
+  refreshItem as refreshInboxItem,
   getInboxSnapshot,
   onInboxUpdated,
   refreshInbox,
@@ -39,6 +40,9 @@ export interface InboxState {
   dismiss: (id: number) => Promise<InboxSnapshot>
   snooze: (id: number, days: number) => Promise<InboxSnapshot>
   restore: (id: number) => Promise<InboxSnapshot>
+  // refreshItem reads one item from GitHub again, without refreshing the rest, and
+  // resolves with the new inbox once it is shown.
+  refreshItem: (id: number) => Promise<InboxSnapshot>
 }
 
 // useInbox loads the stored inbox, loads it again whenever the shell reports a change
@@ -148,6 +152,7 @@ export function useInbox(clock: () => Date = systemClock): InboxState {
   const dismiss = useCallback((id: number) => triage(() => dismissItem(id)), [triage])
   const snooze = useCallback((id: number, days: number) => triage(() => snoozeItem(id, days)), [triage])
   const restore = useCallback((id: number) => triage(() => restoreItem(id)), [triage])
+  const refreshItem = useCallback((id: number) => triage(() => refreshInboxItem(id)), [triage])
 
-  return { snapshot, now, loadError, refreshError, refreshing, refresh, reload, dismiss, snooze, restore }
+  return { snapshot, now, loadError, refreshError, refreshing, refresh, reload, dismiss, snooze, restore, refreshItem }
 }

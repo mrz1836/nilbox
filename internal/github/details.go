@@ -33,41 +33,48 @@ const (
 // The counts per check state come without listing the checks themselves, and review
 // requests and latest reviews come with their logins so a reviewer is counted once. The
 // head commit's SHA tells a snooze when a pull request was pushed, force-pushes included.
+// The fields are a fragment the item query spreads too, so a card refreshed on its own
+// reads exactly what a whole refresh reads.
 const detailsQuery = `query Details($ids: [ID!]!) {
-  nodes(ids: $ids) {
-    __typename
-    ... on PullRequest {
-      id additions deletions changedFiles totalCommentsCount reviewDecision mergeable headRefOid
-      author { login }
-      commits { totalCount }
-      labels(first: 50) { nodes { name color } }
-      reviewRequests(first: 50) {
-        nodes {
-          requestedReviewer {
-            __typename
-            ... on User { login }
-            ... on Bot { login }
-            ... on Mannequin { login }
-            ... on Team { slug }
-          }
-        }
-      }
-      latestReviews(first: 50) { nodes { state author { login } } }
-      statusCheckRollup {
-        state
-        contexts {
-          checkRunCountsByState { state count }
-          statusContextCountsByState { state count }
+  nodes(ids: $ids) { ...DetailFields }
+  rateLimit { cost remaining resetAt limit used }
+}
+` + detailFieldsFragment
+
+// detailFieldsFragment is what an inbox card shows about one pull request or issue.
+const detailFieldsFragment = `
+fragment DetailFields on Node {
+  __typename
+  ... on PullRequest {
+    id additions deletions changedFiles totalCommentsCount reviewDecision mergeable headRefOid
+    author { login }
+    commits { totalCount }
+    labels(first: 50) { nodes { name color } }
+    reviewRequests(first: 50) {
+      nodes {
+        requestedReviewer {
+          __typename
+          ... on User { login }
+          ... on Bot { login }
+          ... on Mannequin { login }
+          ... on Team { slug }
         }
       }
     }
-    ... on Issue {
-      id
-      comments { totalCount }
-      labels(first: 50) { nodes { name color } }
+    latestReviews(first: 50) { nodes { state author { login } } }
+    statusCheckRollup {
+      state
+      contexts {
+        checkRunCountsByState { state count }
+        statusContextCountsByState { state count }
+      }
     }
   }
-  rateLimit { cost remaining resetAt limit used }
+  ... on Issue {
+    id
+    comments { totalCount }
+    labels(first: 50) { nodes { name color } }
+  }
 }
 `
 

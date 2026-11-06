@@ -35,6 +35,13 @@ const (
 	typeIssue       = "Issue"
 )
 
+// An item's state, as GitHub reports it. MERGED is for pull requests only.
+const (
+	StateOpen   = "OPEN"
+	StateClosed = "CLOSED"
+	StateMerged = "MERGED"
+)
+
 var (
 	// ErrGraphQL is returned when a GraphQL response carries errors.
 	ErrGraphQL = errors.New("the GitHub GraphQL API returned errors")
@@ -295,6 +302,9 @@ type Item struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 
+	// State is StateOpen, StateClosed, or StateMerged, and "" when GitHub did not say.
+	State string
+
 	// IsDraft and HeadRef are set for pull requests only.
 	IsDraft bool
 	HeadRef string
@@ -372,6 +382,11 @@ type Repository struct {
 	PushedAt time.Time
 }
 
+// Closed reports an item closed or merged. An item whose state is unknown is not.
+func (i Item) Closed() bool {
+	return i.State == StateClosed || i.State == StateMerged
+}
+
 // QueryRate is the GraphQL budget reported by the query itself.
 type QueryRate struct {
 	Cost      int
@@ -403,9 +418,11 @@ func (r *graphQLResponse) err() error {
 	return fmt.Errorf("%w: %s", ErrGraphQL, truncate(strings.Join(msgs, "; ")))
 }
 
-// graphQLError is one entry of a GraphQL errors array.
+// graphQLError is one entry of a GraphQL errors array. Type is GitHub's error type,
+// such as NOT_FOUND, when it gives one.
 type graphQLError struct {
 	Message string `json:"message"`
+	Type    string `json:"type"`
 }
 
 // graphQLData is the inbox query's data object.
@@ -563,6 +580,8 @@ type graphQLNode struct {
 	UpdatedAt         time.Time          `json:"updatedAt"`
 	IsDraft           bool               `json:"isDraft"`
 	HeadRefName       string             `json:"headRefName"`
+	PRState           string             `json:"prState"`
+	IssueState        string             `json:"issueState"`
 	AuthorAssociation string             `json:"authorAssociation"`
 	IsCrossRepository bool               `json:"isCrossRepository"`
 	Author            *graphQLActor      `json:"author"`
@@ -594,9 +613,12 @@ func (n *graphQLNode) item() (Item, bool) {
 	}
 
 	if item.IsPR {
+		item.State = n.PRState
 		item.IsDraft = n.IsDraft
 		item.HeadRef = n.HeadRefName
 		item.IsCrossRepository = n.IsCrossRepository
+	} else {
+		item.State = n.IssueState
 	}
 
 	if n.Author != nil {

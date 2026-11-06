@@ -33,6 +33,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -84,11 +85,12 @@ type TokenSource interface {
 	Token(ctx context.Context) (github.Token, error)
 }
 
-// Client fetches the inbox, its items' details, the rate limits, and the viewer's avatar
-// from GitHub.
+// Client fetches the inbox, its items' details, a single item, the rate limits, and the
+// viewer's avatar from GitHub.
 type Client interface {
 	FetchInbox(ctx context.Context, tok github.Token) (*github.Inbox, error)
 	FetchDetails(ctx context.Context, tok github.Token, ids []string) (*github.Details, error)
+	FetchItem(ctx context.Context, tok github.Token, id string) (*github.ItemUpdate, error)
 	FetchRateLimits(ctx context.Context, tok github.Token) (*github.RateLimits, error)
 	FetchAvatar(ctx context.Context, url string) (*github.Avatar, error)
 }
@@ -290,6 +292,7 @@ func (s *Service) fetch(ctx context.Context, tok github.Token, listed []string) 
 	}
 
 	got.archived = dropArchived(got.inbox)
+	dropClosed(got.inbox)
 
 	return got, nil
 }
@@ -319,6 +322,17 @@ func dropArchived(inbox *github.Inbox) []github.Item {
 	}
 
 	return dropped
+}
+
+// dropClosed takes the items closed or merged since GitHub indexed them out of the
+// inbox's lists. The searches ask for open items only, but the index can trail a merge
+// or a close for a while; the state the query reads with each item does not. Like an
+// archived repository's items, they leave every list, so a refresh never brings back an
+// item that RefreshItem saw merged. The lists' totals stay as GitHub counted them.
+func dropClosed(inbox *github.Inbox) {
+	for _, list := range []*github.SearchResult{&inbox.ReviewRequested, &inbox.Authored, &inbox.Assigned} {
+		list.Items = slices.DeleteFunc(list.Items, github.Item.Closed)
+	}
 }
 
 // save stores what a refresh read in one transaction: the inbox and its items' details,

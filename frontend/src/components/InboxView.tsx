@@ -213,7 +213,7 @@ function ListSection({ title, list, now, launch, triage }: ListSectionProps) {
 // it, and each triage action is confirmed by a toast with an Undo. The account and the
 // API budget live in the toolbar.
 export function InboxView({ inbox, launch, snoozeDays, onSnoozeSettings }: InboxViewProps) {
-  const { snapshot, now, loadError, refreshError, refreshing, refresh, dismiss, snooze, restore } = inbox
+  const { snapshot, now, loadError, refreshError, refreshing, refresh, dismiss, snooze, restore, refreshItem } = inbox
   const error = firstMessage(refreshError, snapshot?.lastError ?? '', loadError)
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const toastCount = useRef(0)
@@ -264,9 +264,19 @@ export function InboxView({ inbox, launch, snoozeDays, onSnoozeSettings }: Inbox
           })
           .catch(failed('restore', item))
       },
+      // A refreshed item that is still open updates in place; one that is not leaves the
+      // inbox, which the toast explains.
+      onRefresh: (item) =>
+        refreshItem(item.id)
+          .then((next) => {
+            if (findItem(next, item.id) === undefined) {
+              showToast({ text: 'No longer open on GitHub', detail: item.title })
+            }
+          })
+          .catch(failed('refresh', item)),
       onChangeDefault: onSnoozeSettings,
     }
-  }, [snoozeDays, now, dismiss, snooze, restore, showToast, closeToast, onSnoozeSettings])
+  }, [snoozeDays, now, dismiss, snooze, restore, refreshItem, showToast, closeToast, onSnoozeSettings])
 
   return (
     <div className="flex flex-col gap-4 p-4">
