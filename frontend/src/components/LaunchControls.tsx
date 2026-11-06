@@ -67,7 +67,8 @@ function launchedText(result: LaunchResult): string {
 // arrow shows a dot while any differs from the defaults.
 //
 // It renders two grid children: the button, and below the row's content, the launch's
-// outcome. The inbox row is the grid that places them.
+// outcome, which runs to the card's right edge. The inbox row is the grid that places
+// them.
 export function LaunchControls({
   item,
   resolution,
@@ -291,16 +292,12 @@ export function LaunchControls({
         )}
       </div>
       {state.kind === 'launched' && (
-        <p
-          role="status"
-          title={launchedText(state.result)}
-          className="col-span-2 col-start-2 mt-1.5 truncate text-xs text-success"
-        >
+        <p role="status" title={launchedText(state.result)} className="col-[2/-1] mt-1.5 truncate text-xs text-success">
           {launchedText(state.result)}
         </p>
       )}
       {state.kind === 'failed' && (
-        <p role="alert" className="col-span-2 col-start-2 mt-1.5 text-xs text-danger">
+        <p role="alert" className="col-[2/-1] mt-1.5 text-xs text-danger">
           {state.message}
         </p>
       )}

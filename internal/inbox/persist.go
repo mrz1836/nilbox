@@ -111,8 +111,10 @@ func (w *writer) saveAccount(login string) error {
 }
 
 // saveItems clears every reason flag for the account, then upserts each fetched item with
-// the flags of the lists that returned it. Items no longer returned keep their row (local
-// state may reference it) with all three flags off.
+// the flags of the lists that returned it, and its details. Items no longer returned keep
+// their row (local state may reference it) with all three flags off. Last, it ends the
+// snoozes that the new details give cause to, so no snapshot shows new activity on an
+// item still snoozed.
 func (w *writer) saveItems(inbox *github.Inbox) error {
 	if err := w.tx.Exec(clearReasonsSQL, w.accountID).Error; err != nil {
 		return fmt.Errorf("clear the reason flags: %w", err)
@@ -129,7 +131,7 @@ func (w *writer) saveItems(inbox *github.Inbox) error {
 		}
 	}
 
-	return nil
+	return w.wakeSnoozed()
 }
 
 // saveRepos records the repositories of items that were left out, so an archived
@@ -228,6 +230,7 @@ func detailsRow(itemID int64, d github.ItemDetails, now time.Time) model.ItemDet
 		Deletions:        d.Deletions,
 		ChangedFiles:     d.ChangedFiles,
 		Commits:          d.Commits,
+		HeadOID:          d.HeadOID,
 		Mergeable:        d.Mergeable,
 		ChecksState:      d.Checks.State,
 		ChecksPassed:     d.Checks.Passed,

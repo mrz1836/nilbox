@@ -12,6 +12,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as snooze$0 from "../snooze/models.js";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
 /**
@@ -47,6 +51,22 @@ export function SetDefaultProfile(name: string): $CancellablePromise<void> {
 }
 
 /**
+ * SetSnoozeDays stores how many days the Snooze button hides an item:
+ * snooze.MinDays to snooze.MaxDays.
+ */
+export function SetSnoozeDays(days: number): $CancellablePromise<void> {
+    return $Call.ByID(1056409924, days);
+}
+
+/**
+ * SetSnoozeWake stores which new activity ends a snooze early. Every rule is stored
+ * together, so the rules never mix two saves.
+ */
+export function SetSnoozeWake(rules: snooze$0.Rules): $CancellablePromise<void> {
+    return $Call.ByID(4037306883, rules);
+}
+
+/**
  * SetTerminal stores the terminal launches open in: "iterm2" or "terminal".
  */
 export function SetTerminal(terminal: string): $CancellablePromise<void> {
@@ -60,6 +80,14 @@ export function SetTerminal(terminal: string): $CancellablePromise<void> {
  */
 export function SetTrustedBots(bots: string[] | null): $CancellablePromise<void> {
     return $Call.ByID(2221826650, bots);
+}
+
+/**
+ * SetWindowSize stores the size the window opens at, which takes effect at the next
+ * launch: MinWindowWidth by MinWindowHeight up to MaxWindowWidth by MaxWindowHeight.
+ */
+export function SetWindowSize(size: $models.WindowSize): $CancellablePromise<void> {
+    return $Call.ByID(4072565640, size);
 }
 
 /**

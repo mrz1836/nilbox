@@ -12,6 +12,9 @@ const platform = vi.hoisted(() => ({
   onInboxUpdated: vi.fn(),
   openInBrowser: vi.fn(),
   launch: vi.fn(),
+  dismissItem: vi.fn(),
+  snoozeItem: vi.fn(),
+  restoreItem: vi.fn(),
 }))
 
 vi.mock('../platform', () => platform)
@@ -30,16 +33,19 @@ const launchOptions: LaunchOptions = {
 
 const stopListening = vi.fn()
 
+const openSnoozeSettings = vi.fn()
+
 interface HarnessProps {
   launch: LaunchOptions | null
   clock: () => Date
+  snoozeDays?: number
 }
 
 // Harness renders the view over the real inbox state, the way App does.
-function Harness({ launch, clock }: HarnessProps) {
+function Harness({ launch, clock, snoozeDays = 3 }: HarnessProps) {
   const inbox = useInbox(clock)
 
-  return <InboxView inbox={inbox} launch={launch} />
+  return <InboxView inbox={inbox} launch={launch} snoozeDays={snoozeDays} onSnoozeSettings={openSnoozeSettings} />
 }
 
 // section waits for one inbox list and returns the queries scoped to it.
@@ -259,5 +265,321 @@ describe('InboxView', () => {
     })
 
     expect(screen.getByText('6m ago')).toBeInTheDocument()
+  })
+})
+
+describe('InboxView triage', () => {
+  // A review request that is in the inbox, one snoozed until Thursday, and one dismissed.
+  const fresh = item({ id: 1, title: 'Add the widget cache' })
+  const snoozed = item({ id: 2, number: 8, title: 'Bump the parser', snoozedUntil: '2026-06-18T12:00:00Z' })
+  const dismissed = item({ id: 3, number: 9, title: 'Rename the flag', dismissedAt: '2026-06-15T09:00:00Z' })
+
+  it('shows each list as tabs, with what was set aside counted apart', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ reviewRequested: list([fresh, snoozed, dismissed], 40), assigned: list([fresh]) }),
+    )
+    render(<Harness launch={launchOptions} clock={clock} />)
+
+    const review = await section('Review requested')
+    expect(review.getByRole('tab', { name: 'Review requested 1 of 38' })).toHaveAttribute('aria-selected', 'true')
+    expect(review.getByRole('tab', { name: 'Snoozed 1' })).toHaveAttribute('aria-selected', 'false')
+    expect(review.getByRole('tab', { name: 'Dismissed 1' })).toBeInTheDocument()
+    expect(review.getByRole('button', { name: 'Add the widget cache' })).toBeInTheDocument()
+    expect(review.queryByRole('button', { name: 'Bump the parser' })).not.toBeInTheDocument()
+    expect(review.queryByRole('button', { name: 'Rename the flag' })).not.toBeInTheDocument()
+
+    // Tabs with nothing in them show no count.
+    const assigned = await section('Assigned')
+    expect(assigned.getByRole('tab', { name: 'Snoozed' })).toBeInTheDocument()
+    expect(assigned.getByRole('tab', { name: 'Dismissed' })).toBeInTheDocument()
+
+    await userEvent.click(review.getByRole('tab', { name: 'Snoozed 1' }))
+    expect(review.getByRole('tabpanel')).toHaveAccessibleName('Snoozed 1')
+    expect(review.getByRole('button', { name: 'Bump the parser' })).toBeInTheDocument()
+    expect(review.getByText(/Back Thu, 12:00\sPM/)).toHaveAttribute(
+      'title',
+      expect.stringMatching(/^Snoozed until Thursday, June 18, 2026/),
+    )
+    expect(review.getByRole('button', { name: 'Unsnooze' })).toBeInTheDocument()
+
+    await userEvent.click(review.getByRole('tab', { name: 'Dismissed 1' }))
+    expect(review.getByRole('button', { name: 'Rename the flag' })).toBeInTheDocument()
+    expect(review.getByText('Dismissed 3h ago')).toBeInTheDocument()
+    expect(review.getByRole('button', { name: 'Restore' })).toBeInTheDocument()
+  })
+
+  it('explains empty tabs', async () => {
+    render(<Harness launch={launchOptions} clock={clock} />)
+    const review = await section('Review requested')
+
+    await userEvent.click(review.getByRole('tab', { name: 'Snoozed' }))
+    expect(review.getByText(/Nothing snoozed\. .* comes back to Review requested on its own/)).toBeInTheDocument()
+
+    await userEvent.click(review.getByRole('tab', { name: 'Dismissed' }))
+    expect(review.getByText(/Nothing dismissed\. .* stays here until you restore it/)).toBeInTheDocument()
+  })
+
+  it('moves between tabs with the arrow keys', async () => {
+    render(<Harness launch={launchOptions} clock={clock} />)
+    const review = await section('Review requested')
+    const inbox = review.getByRole('tab', { name: 'Review requested 0' })
+
+    expect(inbox).toHaveAttribute('tabIndex', '0')
+    expect(review.getByRole('tab', { name: 'Snoozed' })).toHaveAttribute('tabIndex', '-1')
+
+    inbox.focus()
+    await userEvent.keyboard('{ArrowRight}')
+    expect(review.getByRole('tab', { name: 'Snoozed' })).toHaveFocus()
+    expect(review.getByRole('tab', { name: 'Snoozed' })).toHaveAttribute('aria-selected', 'true')
+
+    await userEvent.keyboard('{End}')
+    expect(review.getByRole('tab', { name: 'Dismissed' })).toHaveFocus()
+
+    await userEvent.keyboard('{ArrowRight}')
+    expect(inbox).toHaveFocus()
+
+    await userEvent.keyboard('{ArrowLeft}')
+    expect(review.getByRole('tab', { name: 'Dismissed' })).toHaveFocus()
+
+    await userEvent.keyboard('{Home}')
+    expect(inbox).toHaveFocus()
+
+    // Other keys are left alone.
+    await userEvent.keyboard('{ArrowDown}')
+    expect(inbox).toHaveFocus()
+  })
+
+  it('dismisses an item, and undoes it from the toast', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
+    platform.dismissItem.mockResolvedValue(
+      snapshot({ reviewRequested: list([{ ...fresh, dismissedAt: now.toISOString() }]) }),
+    )
+    platform.restoreItem.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
+    render(<Harness launch={launchOptions} clock={clock} />)
+
+    const review = await section('Review requested')
+    await userEvent.click(review.getByRole('button', { name: 'Dismiss' }))
+
+    expect(platform.dismissItem).toHaveBeenCalledWith(1)
+    expect(await screen.findByRole('status')).toHaveTextContent('Dismissed · Add the widget cache')
+    expect(review.queryByRole('button', { name: 'Add the widget cache' })).not.toBeInTheDocument()
+    expect(review.getByRole('tab', { name: 'Dismissed 1' })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }))
+
+    expect(platform.restoreItem).toHaveBeenCalledWith(1)
+    expect(await review.findByRole('button', { name: 'Add the widget cache' })).toBeInTheDocument()
+    expect(screen.getByRole('status')).toBeEmptyDOMElement()
+  })
+
+  it('snoozes for the default length in one click', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
+    platform.snoozeItem.mockResolvedValue(
+      snapshot({ reviewRequested: list([{ ...fresh, snoozedUntil: '2026-06-22T12:00:00Z' }]) }),
+    )
+    render(<Harness launch={launchOptions} clock={clock} snoozeDays={7} />)
+
+    const review = await section('Review requested')
+    const button = review.getByRole('button', { name: 'Snooze for 1 week' })
+    expect(button).toHaveTextContent('1w')
+    expect(button).toHaveAttribute('title', expect.stringMatching(/^Snooze for 1 week: back Mon, Jun 22$/))
+
+    await userEvent.click(button)
+
+    expect(platform.snoozeItem).toHaveBeenCalledWith(1, 7)
+    expect(await screen.findByRole('status')).toHaveTextContent('Snoozed until Mon, Jun 22 · Add the widget cache')
+    expect(review.getByRole('tab', { name: 'Snoozed 1' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument()
+  })
+
+  it('snoozes for another length from the menu, or opens the default', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
+    platform.snoozeItem.mockResolvedValue(
+      snapshot({ reviewRequested: list([{ ...fresh, snoozedUntil: '2026-06-16T12:00:00Z' }]) }),
+    )
+    render(<Harness launch={launchOptions} clock={clock} />)
+
+    const review = await section('Review requested')
+    await userEvent.click(review.getByRole('button', { name: 'Snooze for…' }))
+
+    const menu = screen.getByRole('menu', { name: 'Snooze for…' })
+    const choices = within(menu).getAllByRole('menuitem')
+    expect(choices.map((c) => c.textContent.replace(/\s/g, ' '))).toEqual([
+      '1 day, Tomorrow, 12:00 PM',
+      '2 days, Wed, 12:00 PM',
+      '3 days, Thu, 12:00 PM, Default',
+      '1 week, Mon, Jun 22',
+      '2 weeks, Mon, Jun 29',
+      '30 days, Wed, Jul 15',
+      'Snooze settings…',
+    ])
+    expect(choices[0]).toHaveFocus()
+
+    await userEvent.click(within(menu).getByRole('menuitem', { name: /^1 day/ }))
+
+    expect(platform.snoozeItem).toHaveBeenCalledWith(1, 1)
+    expect(await screen.findByRole('status')).toHaveTextContent(/Snoozed until tomorrow, 12:00\sPM/)
+
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
+    platform.restoreItem.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }))
+    await userEvent.click(await review.findByRole('button', { name: 'Snooze for…' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Snooze settings…' }))
+
+    expect(openSnoozeSettings).toHaveBeenCalledOnce()
+  })
+
+  it('unsnoozes and restores from their tabs', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([snoozed, dismissed]) }))
+    platform.restoreItem.mockResolvedValue(snapshot({ reviewRequested: list([{ ...snoozed, snoozedUntil: '' }]) }))
+    render(<Harness launch={launchOptions} clock={clock} />)
+
+    const review = await section('Review requested')
+    await userEvent.click(review.getByRole('tab', { name: 'Snoozed 1' }))
+    await userEvent.click(review.getByRole('button', { name: 'Unsnooze' }))
+
+    expect(platform.restoreItem).toHaveBeenCalledWith(2)
+    expect(await screen.findByRole('status')).toHaveTextContent('Unsnoozed · Bump the parser')
+    expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
+    expect(review.getByText(/Nothing snoozed/)).toBeInTheDocument()
+
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([dismissed]) }))
+    platform.restoreItem.mockResolvedValue(snapshot({ reviewRequested: list([{ ...dismissed, dismissedAt: '' }]) }))
+    act(() => {
+      ;(platform.onInboxUpdated.mock.calls[0]?.[0] as () => void)()
+    })
+    await userEvent.click(await review.findByRole('tab', { name: 'Dismissed 1' }))
+    await userEvent.click(review.getByRole('button', { name: 'Restore' }))
+
+    expect(platform.restoreItem).toHaveBeenLastCalledWith(3)
+    expect(await screen.findByRole('status')).toHaveTextContent('Restored · Rename the flag')
+  })
+
+  it('says why a triage action failed', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
+    platform.dismissItem.mockRejectedValue(new Error('item not found; refresh the inbox and try again'))
+    render(<Harness launch={launchOptions} clock={clock} />)
+
+    await userEvent.click((await section('Review requested')).getByRole('button', { name: 'Dismiss' }))
+
+    const status = await screen.findByRole('status')
+    expect(status).toHaveTextContent(
+      'Could not dismiss “Add the widget cache” · item not found; refresh the inbox and try again',
+    )
+    expect(within(status).getByText(/Could not dismiss/)).toHaveClass('text-danger')
+
+    await userEvent.click(within(status).getByRole('button', { name: 'Close' }))
+    expect(status).toBeEmptyDOMElement()
+  })
+
+  it('reports an undo that failed', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
+    platform.snoozeItem.mockRejectedValue(new Error('database is locked'))
+    platform.dismissItem.mockResolvedValue(snapshot({ reviewRequested: list([{ ...fresh, dismissedAt: '' }]) }))
+    platform.restoreItem.mockRejectedValue(new Error('database is locked'))
+    render(<Harness launch={launchOptions} clock={clock} />)
+
+    const review = await section('Review requested')
+    await userEvent.click(review.getByRole('button', { name: 'Snooze for 3 days' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Could not snooze')
+
+    await userEvent.click(review.getByRole('button', { name: 'Dismiss' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Undo' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Could not undo the change to “Add the widget cache” · database is locked',
+    )
+  })
+
+  it('says a snooze without a stored end was snoozed', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
+    platform.snoozeItem.mockResolvedValue(snapshot())
+    render(<Harness launch={launchOptions} clock={clock} />)
+
+    await userEvent.click((await section('Review requested')).getByRole('button', { name: 'Snooze for 3 days' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/^Snoozed · Add the widget cache/)
+  })
+
+  it('brings an item back when its snooze ends, marked as back', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    let current = now
+    const ticking = () => current
+
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ reviewRequested: list([{ ...fresh, snoozedUntil: '2026-06-15T12:00:30Z' }]) }),
+    )
+    render(<Harness launch={launchOptions} clock={ticking} />)
+
+    const review = await section('Review requested')
+    expect(review.getByRole('tab', { name: 'Snoozed 1' })).toBeInTheDocument()
+
+    current = new Date(now.getTime() + 60_000)
+    act(() => {
+      vi.advanceTimersByTime(60_000)
+    })
+
+    expect(review.getByRole('button', { name: 'Add the widget cache' })).toBeInTheDocument()
+    expect(review.getByText('Back from snooze')).toBeInTheDocument()
+    expect(review.getByRole('tab', { name: 'Snoozed' })).toBeInTheDocument()
+  })
+
+  it('says what new activity brought an item back early', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({
+        reviewRequested: list([
+          {
+            ...fresh,
+            snoozedUntil: '2026-06-15T11:00:00Z',
+            wokeBy: { commits: 2, forcePushed: false, review: 'approved', comments: 0 },
+          },
+        ]),
+      }),
+    )
+    render(<Harness launch={launchOptions} clock={clock} />)
+
+    const review = await section('Review requested')
+    const chip = review.getByText('Back early: approved, 2 new commits')
+
+    expect(chip.parentElement).toHaveAttribute(
+      'title',
+      expect.stringMatching(
+        /^Back early, Monday, June 15, 2026 at 11:00\sAM: approved, 2 new commits since you snoozed it$/,
+      ),
+    )
+    expect(review.queryByText('Back from snooze')).not.toBeInTheDocument()
+  })
+
+  it('never lets an older answer replace a newer one', async () => {
+    let finishDismiss: (value: unknown) => void = () => undefined
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
+    platform.dismissItem.mockReturnValue(
+      new Promise((resolve) => {
+        finishDismiss = resolve
+      }),
+    )
+    render(<Harness launch={launchOptions} clock={clock} />)
+
+    const review = await section('Review requested')
+    await userEvent.click(review.getByRole('button', { name: 'Dismiss' }))
+
+    // The shell's update after the dismissal is read first, and already has it.
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ reviewRequested: list([{ ...fresh, title: 'Read later', dismissedAt: now.toISOString() }]) }),
+    )
+    act(() => {
+      ;(platform.onInboxUpdated.mock.calls[0]?.[0] as () => void)()
+    })
+    expect(await review.findByRole('tab', { name: 'Dismissed 1' })).toBeInTheDocument()
+
+    // The dismissal's own, older answer arrives last and is not shown.
+    await act(async () => {
+      finishDismiss(snapshot({ reviewRequested: list([fresh]) }))
+      await Promise.resolve()
+    })
+
+    expect(review.getByRole('tab', { name: 'Dismissed 1' })).toBeInTheDocument()
+    expect(review.queryByRole('button', { name: 'Add the widget cache' })).not.toBeInTheDocument()
+    expect(await screen.findByRole('status')).toHaveTextContent('Dismissed · Add the widget cache')
   })
 })

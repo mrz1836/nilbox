@@ -40,7 +40,7 @@ The first release is a deliberately thin steel thread on macOS:
 
 - A three-step setup: GitHub CLI check, repository mute/pin, agent and terminal preferences
 - Three views: **Needs Review**, **My Pull Requests**, and **Assigned**
-- Local triage: mark items done, pin and mute repositories inline
+- Local triage: snooze or dismiss items, pin and mute repositories inline
 - **Open in agent**: launch a terminal (iTerm2, Terminal.app, and more) in the right clone or a fresh
   worktree, with a saved agent profile and a prompt from your library
 - **Prompt library**: write prompts as Go templates with `{{.Title}}`-style variables, checked as you

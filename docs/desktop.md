@@ -47,7 +47,8 @@ pins.
 | `magex frontend:install` | Installs the frontend dependencies exactly as `pnpm-lock.yaml` pins them |
 | `magex frontend:build` | Type-checks the frontend and builds it into `frontend/dist` |
 | `magex frontend:gate` | The frontend gate: frozen-lockfile install, format check, lint, typecheck, and tests with coverage (`frontend/scripts/gate.sh`, the script CI runs) |
-| `magex brand:generate` | Regenerates the theme tokens, frontend brand constants, and `build/darwin/Info.plist` from `internal/brand` |
+| `magex brand:generate` | Regenerates the theme tokens, frontend brand constants, `build/darwin/Info.plist`, and the app icon artwork `build/appicon.svg` from `internal/brand` |
+| `magex brand:icons` | Renders `build/appicon.svg` into the bundle's icon set `build/darwin/icons.icns` and the development Dock icon `cmd/nilbox/appicon.png` (needs `rsvg-convert`: `brew install librsvg`); run it after changing the mark or the artwork |
 | `magex app:bindings` | Regenerates the committed TypeScript bindings in `frontend/bindings` |
 | `magex app:bindingsCheck` | Regenerates the bindings into a temporary directory and fails on any drift |
 | `magex app:lint` | Lints the desktop-tagged Go code (the desktop main and the frontend embed) |
@@ -160,7 +161,9 @@ Click it for each budget's remaining points, when it resets, and what the last r
 The readings are taken on each refresh, and a budget whose reset time has passed counts as full
 again.
 
-**Settings** is a page of its own, with sections for your account, launching (the terminal,
+**Settings** is a page of its own, with sections for your account, snoozing (how long the
+[Snooze](#snooze-and-dismiss) button sets an item aside, and what [wakes a snooze
+early](#waking-a-snooze-early)), launching (the terminal,
 the default profile, the default prompt for pull requests and for issues, and the worktree
 default), agent profiles, repositories (the clone root and the [launch
 defaults](#launch-defaults) for orgs and repositories), trust (the [trusted
@@ -245,6 +248,54 @@ again clears the choice. Choosing another prompt or profile resolves the setting
 each default shown is the one that would really apply, such as a prompt's own model. The
 launch's outcome appears below the card. An item no prompt applies to shows **No prompt** and
 says why.
+
+<br>
+
+## Snooze and dismiss
+
+Each list has three tabs: the list itself with its count (**Review requested 14**), then
+**Snoozed** and **Dismissed**, each counted once it holds anything. Snoozing or dismissing an
+item moves it out of every list it is in, so the lists only show what still needs you.
+
+- **Snooze** sets an item aside for a while. Hover a card and click the clock, which shows the
+  length (**3d**), to snooze it for your default length; the arrow beside it offers 1 day, 2
+  days, 3 days, 1 week, 2 weeks, or 30 days, each with the time the item comes back. The
+  item waits in the **Snoozed** tab, soonest back first, then returns to its list on its own at
+  the same time of day, even across a change of the clocks. For a day after that, its card
+  says **Back from snooze**. New activity can bring it back sooner; see below.
+- **Dismiss** (the archive box) sets an item aside until you bring it back. It waits in the
+  **Dismissed** tab, most recently dismissed first, however much it changes on GitHub.
+- **Unsnooze** and **Restore**, on the cards in those tabs, put an item back in its lists
+  right away.
+
+A toast at the bottom of the window confirms each snooze or dismissal, with **Undo**. The
+default length and the wake rules are under **Settings → Snoozing**, which the snooze menu's
+**Snooze settings…** opens. Snoozes and dismissals are kept in the local database only: GitHub
+never hears about them. The **N of M** count of a list leaves out the items set aside.
+
+### Waking a snooze early
+
+When you snooze an item, its activity as the last refresh read it is recorded: the head
+commit, the number of commits and comments, and its reviews. Every refresh compares the item
+with that record, and a snooze ends at once when the new activity reaches any of your rules:
+
+| Rule | Choices | Default |
+|---|---|---|
+| New commits | **Never**, **Any** (any push), **3+**, or **5+** new commits | Any |
+| Reviews | **Never**, **Decisions** (an approval or a request for changes, or the review decision turning to either), or **Any** (also a review that only comments) | Decisions |
+| New comments | **Never**, **Any**, **3+**, **5+**, or **10+** new comments | Never |
+
+**Any** push counts a force-push too, which keeps the commit count but moves the head, except
+on a bot's pull request, where a force-push is usually a rebase. Comments include review
+comments and bots' comments, since GitHub reports only their count; a higher threshold rides
+out bot noise. Counts are measured from the moment you snoozed, so three comments over three
+refreshes reach **3+**.
+
+An item woken early comes back to its lists with a tag saying what was new, most decisive
+first, such as **Back early: approved, 2 new commits** or **Back early: changes requested,
+force-pushed**. Hover the tag for when it woke. Only the activity that met a rule is named.
+Dismissed items never wake, and a snooze that has ended is not woken again; snoozing an item
+again starts a fresh record.
 
 <br>
 

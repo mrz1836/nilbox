@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { brand } from '../generated/brand'
 import type { Account, LaunchDefaults, Profile, Settings } from '../platform'
 import { account, launchDefaults, profile, prompts, settings, signedOut } from '../test/fixtures'
-import { SettingsView } from './SettingsView'
+import { SettingsView, type SettingsSection } from './SettingsView'
 
 const platform = vi.hoisted(() => ({
   getAppInfo: vi.fn(),
@@ -14,6 +14,9 @@ const platform = vi.hoisted(() => ({
   setDefaultProfile: vi.fn(),
   setTerminal: vi.fn(),
   setWorktreeDefault: vi.fn(),
+  setSnoozeDays: vi.fn(),
+  setSnoozeWake: vi.fn(),
+  setWindowSize: vi.fn(),
   setDefaultPrompt: vi.fn(),
   getSettings: vi.fn(),
   setTrustedBots: vi.fn(),
@@ -37,6 +40,7 @@ beforeEach(() => {
 })
 
 interface Options {
+  section?: SettingsSection
   current?: Settings | null
   profiles?: Profile[]
   who?: Account | null
@@ -44,6 +48,7 @@ interface Options {
 }
 
 function renderSettings({
+  section,
   current = settings(),
   profiles = [profile(), profile({ name: 'work' })],
   who = account(),
@@ -55,6 +60,7 @@ function renderSettings({
 
   render(
     <SettingsView
+      initialSection={section}
       settings={current}
       profiles={profiles}
       prompts={prompts()}
@@ -116,6 +122,143 @@ describe('SettingsView', () => {
 
     expect(screen.getByText('Not signed in yet')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'View on GitHub' })).not.toBeInTheDocument()
+  })
+
+  it('opens at the section asked for', () => {
+    renderSettings({ section: 'snoozing' })
+
+    expect(screen.getByRole('button', { name: 'Snoozing' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('region', { name: 'Snoozing' })).toBeInTheDocument()
+  })
+
+  it('saves the snooze length as soon as it is chosen', async () => {
+    const { onSaved } = renderSettings()
+    await openSection('Snoozing')
+
+    const lengths = screen.getByRole('radiogroup', { name: 'Snooze for' })
+    expect(within(lengths).getByRole('radio', { name: '3d' })).toBeChecked()
+    expect(within(lengths).getAllByRole('radio')).toHaveLength(6)
+    expect(screen.getByText(/never comes back on its own/)).toBeInTheDocument()
+
+    await userEvent.click(within(lengths).getByRole('radio', { name: '1w' }))
+
+    expect(platform.setSnoozeDays).toHaveBeenCalledWith(7)
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(settings({ snoozeDays: 7 }))
+    })
+  })
+
+  it('saves which activity wakes a snooze early, one rule at a time', async () => {
+    const { onSaved } = renderSettings()
+    await openSection('Snoozing')
+
+    const commits = screen.getByRole('radiogroup', { name: 'Wake on new commits' })
+    const reviews = screen.getByRole('radiogroup', { name: 'Wake on reviews' })
+    const comments = screen.getByRole('radiogroup', { name: 'Wake on new comments' })
+
+    expect(within(commits).getByRole('radio', { name: 'Any' })).toBeChecked()
+    expect(within(reviews).getByRole('radio', { name: 'Decisions' })).toBeChecked()
+    expect(within(comments).getByRole('radio', { name: 'Never' })).toBeChecked()
+    expect(
+      within(comments)
+        .getAllByRole('radio')
+        .map((r) => r.closest('label')?.textContent),
+    ).toEqual(['Never', 'Any', '3+', '5+', '10+'])
+    expect(within(commits).getByRole('radio', { name: '3+' }).closest('label')).toHaveAttribute(
+      'title',
+      '3 or more new commits',
+    )
+
+    await userEvent.click(within(comments).getByRole('radio', { name: '5+' }))
+
+    expect(platform.setSnoozeWake).toHaveBeenCalledWith({ commits: 1, reviews: 'decisions', comments: 5 })
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(settings({ snoozeWake: { commits: 1, reviews: 'decisions', comments: 5 } }))
+    })
+
+    await userEvent.click(within(reviews).getByRole('radio', { name: 'Never' }))
+    expect(platform.setSnoozeWake).toHaveBeenLastCalledWith({ commits: 1, reviews: 'never', comments: 0 })
+
+    await userEvent.click(within(commits).getByRole('radio', { name: 'Never' }))
+    expect(platform.setSnoozeWake).toHaveBeenLastCalledWith({ commits: 0, reviews: 'decisions', comments: 0 })
+  })
+
+  it('shows wake rules the backend refused', async () => {
+    platform.setSnoozeWake.mockRejectedValue(new Error('invalid snooze wake rules'))
+    const { onSaved } = renderSettings()
+    await openSection('Snoozing')
+
+    await userEvent.click(
+      within(screen.getByRole('radiogroup', { name: 'Wake on reviews' })).getByRole('radio', { name: 'Any' }),
+    )
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('invalid snooze wake rules')
+    expect(onSaved).not.toHaveBeenCalled()
+  })
+
+  it('shows a snooze length the backend refused', async () => {
+    platform.setSnoozeDays.mockRejectedValue(new Error('invalid snooze length'))
+    const { onSaved } = renderSettings()
+    await openSection('Snoozing')
+
+    await userEvent.click(screen.getByRole('radio', { name: '2w' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('invalid snooze length')
+    expect(onSaved).not.toHaveBeenCalled()
+  })
+
+  it('waits for the settings before showing the snooze length', async () => {
+    renderSettings({ current: null })
+    await openSection('Snoozing')
+
+    expect(screen.getByText('Loading the settings…')).toBeInTheDocument()
+  })
+
+  it('saves and applies the window size as soon as it is chosen', async () => {
+    const { onSaved } = renderSettings()
+    await openSection('Window')
+
+    const sizes = screen.getByRole('radiogroup', { name: 'Window size' })
+    expect(within(sizes).getAllByRole('radio')).toHaveLength(4)
+    expect(within(sizes).getByRole('radio', { name: 'Standard' })).toBeChecked()
+    expect(within(sizes).getByText('Standard')).toHaveAttribute('title', '1280 × 800 (default)')
+    expect(within(sizes).getByText('Large')).toHaveAttribute('title', '1440 × 900')
+    expect(screen.getByText(/Opens at 1280 × 800\./)).toBeInTheDocument()
+
+    await userEvent.click(within(sizes).getByRole('radio', { name: 'Large' }))
+
+    expect(platform.setWindowSize).toHaveBeenCalledWith({ width: 1440, height: 900 })
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(settings({ windowSize: { width: 1440, height: 900 } }))
+    })
+  })
+
+  it('shows a window size the backend refused', async () => {
+    platform.setWindowSize.mockRejectedValue(new Error('invalid window size'))
+    const { onSaved } = renderSettings()
+    await openSection('Window')
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Extra large' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('invalid window size')
+    expect(onSaved).not.toHaveBeenCalled()
+  })
+
+  it('selects no preset for a size that matches none', async () => {
+    renderSettings({ current: settings({ windowSize: { width: 1366, height: 768 } }) })
+    await openSection('Window')
+
+    for (const radio of screen.getAllByRole('radio')) {
+      expect(radio).not.toBeChecked()
+    }
+    expect(screen.getByText(/Opens at 1366 × 768\./)).toBeInTheDocument()
+  })
+
+  it('waits for the settings before showing the window size', async () => {
+    renderSettings({ current: null })
+    await openSection('Window')
+
+    expect(screen.getByText('Loading the settings…')).toBeInTheDocument()
   })
 
   it('persists the terminal choice', async () => {
@@ -232,6 +375,9 @@ describe('SettingsView', () => {
     renderSettings()
     await openSection('About')
 
+    const about = screen.getByRole('region', { name: 'About' })
+    expect(within(about).getByText(brand.name)).toHaveClass('lowercase')
+    expect(about.querySelector('svg[aria-hidden="true"] path')).toHaveAttribute('d', brand.mark.path)
     expect(screen.getByText(brand.tagline)).toBeInTheDocument()
     expect(await screen.findByText('1.4.0')).toBeInTheDocument()
   })

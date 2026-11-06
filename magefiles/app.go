@@ -189,8 +189,9 @@ func (App) Dev() error {
 }
 
 // Build builds the production macOS app bundle, bin/<Name>.app: it checks the generated
-// brand files, builds the frontend, compiles the desktop binary, adds the Info.plist with
-// this build's version, and signs the bundle ad hoc for local use. Distribution signing
+// brand files and app icons, builds the frontend, compiles the desktop binary, adds the
+// Info.plist with this build's version and the app icon, and signs the bundle ad hoc for
+// local use. Distribution signing
 // and notarization are not part of this target.
 //
 //	magex app:build
@@ -199,8 +200,8 @@ func (App) Build() error {
 		return errNeedsMacOS
 	}
 
-	if err := brandgen.Check("."); err != nil {
-		return fmt.Errorf("generated brand files: %w", err)
+	if err := checkBrandFiles(); err != nil {
+		return err
 	}
 
 	if err := (Frontend{}).Build(); err != nil {
@@ -226,6 +227,10 @@ func (App) Build() error {
 	}
 
 	if err := writeInfoPlist(filepath.Join(contents, "Info.plist"), meta.bundleVersion); err != nil {
+		return err
+	}
+
+	if err := copyIconSet(filepath.Join(contents, "Resources")); err != nil {
 		return err
 	}
 
@@ -567,6 +572,40 @@ func writeInfoPlist(dst, version string) error {
 		if err = sh.Run("plutil", "-replace", key, "-string", version, dst); err != nil {
 			return fmt.Errorf("stamp %s: %w", key, err)
 		}
+	}
+
+	return nil
+}
+
+// checkBrandFiles fails when a file generated from internal/brand, or an app icon
+// rendered from its artwork, is out of date.
+func checkBrandFiles() error {
+	if err := brandgen.Check("."); err != nil {
+		return fmt.Errorf("generated brand files: %w", err)
+	}
+
+	if err := brandgen.CheckIcons("."); err != nil {
+		return fmt.Errorf("app icons: %w", err)
+	}
+
+	return nil
+}
+
+// copyIconSet copies the committed app icon set into the bundle's resources directory,
+// under the name the Info.plist gives it.
+func copyIconSet(resources string) error {
+	body, err := os.ReadFile(filepath.FromSlash(brandgen.IconSetPath))
+	if err != nil {
+		return fmt.Errorf("read the app icon set: %w", err)
+	}
+
+	if err = os.MkdirAll(resources, 0o755); err != nil { //nolint:gosec // an app bundle is world-readable
+		return fmt.Errorf("create the bundle resources: %w", err)
+	}
+
+	dst := filepath.Join(resources, brandgen.IconFile+".icns")
+	if err = os.WriteFile(dst, body, 0o644); err != nil { //nolint:gosec // an app bundle is world-readable
+		return fmt.Errorf("write the bundle app icon: %w", err)
 	}
 
 	return nil

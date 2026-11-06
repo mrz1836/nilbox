@@ -3,7 +3,7 @@
 // here (an ESLint rule enforces it), so another shell or an OS port replaces this module's
 // implementation and never its callers.
 
-import { Browser, Events } from '@wailsio/runtime'
+import { Browser, Events, Window } from '@wailsio/runtime'
 
 import { Service as AppInfo } from '../../bindings/github.com/mrz1836/nilbox/internal/appinfo'
 import type { Info } from '../../bindings/github.com/mrz1836/nilbox/internal/appinfo'
@@ -36,7 +36,8 @@ import type {
   Variable as PromptVariable,
 } from '../../bindings/github.com/mrz1836/nilbox/internal/prompts'
 import { Service as SettingsService } from '../../bindings/github.com/mrz1836/nilbox/internal/settings'
-import type { Settings } from '../../bindings/github.com/mrz1836/nilbox/internal/settings'
+import type { Settings, WindowSize } from '../../bindings/github.com/mrz1836/nilbox/internal/settings'
+import type { Rules as SnoozeRules } from '../../bindings/github.com/mrz1836/nilbox/internal/snooze'
 import { Service as Worktrees } from '../../bindings/github.com/mrz1836/nilbox/internal/worktrees'
 import type {
   RemoveResult,
@@ -87,7 +88,11 @@ export type {
   Usage as PromptUsage,
   Variable as PromptVariable,
 } from '../../bindings/github.com/mrz1836/nilbox/internal/prompts'
-export type { Settings } from '../../bindings/github.com/mrz1836/nilbox/internal/settings'
+export type { Settings, WindowSize } from '../../bindings/github.com/mrz1836/nilbox/internal/settings'
+export type {
+  Reasons as WakeReasons,
+  Rules as SnoozeRules,
+} from '../../bindings/github.com/mrz1836/nilbox/internal/snooze'
 export type {
   RemoveResult,
   Repo as WorktreeRepo,
@@ -122,6 +127,24 @@ export function getInboxSnapshot(): Promise<InboxSnapshot> {
 
 export function refreshInbox(): Promise<InboxSnapshot> {
   return Inbox.Refresh()
+}
+
+// dismissItem hides an item from every list until it is restored, and returns the new
+// inbox. Triage stays on this machine.
+export function dismissItem(id: number): Promise<InboxSnapshot> {
+  return Inbox.Dismiss(id)
+}
+
+// snoozeItem hides an item from every list for a number of days, and returns the new
+// inbox. Triage stays on this machine.
+export function snoozeItem(id: number, days: number): Promise<InboxSnapshot> {
+  return Inbox.Snooze(id, days)
+}
+
+// restoreItem brings a dismissed or snoozed item back to its lists, and returns the new
+// inbox.
+export function restoreItem(id: number): Promise<InboxSnapshot> {
+  return Inbox.Restore(id)
 }
 
 // onInboxUpdated calls listener whenever the stored inbox changed, and returns a function
@@ -243,6 +266,22 @@ export function setDefaultProfile(name: string): Promise<void> {
 
 export function setWorktreeDefault(on: boolean): Promise<void> {
   return SettingsService.SetWorktreeDefault(on)
+}
+
+// setSnoozeDays stores how many days an inbox row's Snooze button hides an item.
+export function setSnoozeDays(days: number): Promise<void> {
+  return SettingsService.SetSnoozeDays(days)
+}
+
+// setSnoozeWake stores which new activity ends a snooze early.
+export function setSnoozeWake(rules: SnoozeRules): Promise<void> {
+  return SettingsService.SetSnoozeWake(rules)
+}
+
+// setWindowSize stores the size the window opens at, then resizes the open window to it.
+export async function setWindowSize(size: WindowSize): Promise<void> {
+  await SettingsService.SetWindowSize(size)
+  await Window.SetSize(size.width, size.height)
 }
 
 // setTrustedBots stores the bots whose items are trusted like a collaborator's.

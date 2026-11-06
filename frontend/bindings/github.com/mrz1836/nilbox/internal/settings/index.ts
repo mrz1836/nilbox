@@ -7,5 +7,6 @@ export {
 };
 
 export type {
-    Settings
+    Settings,
+    WindowSize
 } from "./models.js";

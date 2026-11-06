@@ -15,6 +15,14 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * Dismiss hides an item from every list until it is restored, and returns the new
+ * snapshot. It replaces a snooze. Nothing is written to GitHub.
+ */
+export function Dismiss(id: number): $CancellablePromise<$models.Snapshot> {
+    return $Call.ByID(2737462950, id);
+}
+
+/**
  * Refresh fetches the inbox from GitHub, stores it, and returns the new snapshot. On
  * failure the error is recorded as the snapshot's last error (unless ctx was canceled)
  * and the stored inbox is left as it was; the returned snapshot then shows that error.
@@ -24,9 +32,31 @@ export function Refresh(): $CancellablePromise<$models.Snapshot> {
 }
 
 /**
+ * Restore brings a dismissed or snoozed item back to its lists, and returns the new
+ * snapshot. Restoring an item that is neither does nothing.
+ */
+export function Restore(id: number): $CancellablePromise<$models.Snapshot> {
+    return $Call.ByID(2819403784, id);
+}
+
+/**
  * Snapshot returns the stored inbox: the three lists, the latest rate readings, and the
  * refresh status.
  */
 export function Snapshot(): $CancellablePromise<$models.Snapshot> {
     return $Call.ByID(1187837806);
+}
+
+/**
+ * Snooze hides an item from every list for a number of days (snooze.MinDays to
+ * snooze.MaxDays), after which it is back on its own, and returns the new snapshot. It
+ * replaces a dismissal or an earlier snooze. The snooze ends at the same wall-clock time
+ * of day, so a change of the clocks in between does not move it.
+ *
+ * The item's activity as the last refresh read it is recorded with the snooze, so a
+ * later refresh can end it early when new activity passes the user's wake rules. Nothing
+ * is written to GitHub.
+ */
+export function Snooze(id: number, days: number): $CancellablePromise<$models.Snapshot> {
+    return $Call.ByID(3352799032, id, days);
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatAge, formatUntil } from './age'
+import { formatAge, formatAgo, formatUntil } from './age'
 
 const now = new Date('2026-06-15T12:00:00Z')
 
@@ -53,5 +53,14 @@ describe('formatUntil', () => {
   it('returns an empty string for an empty or invalid time', () => {
     expect(formatUntil(now, '')).toBe('')
     expect(formatUntil(now, 'soon')).toBe('')
+  })
+})
+
+describe('formatAgo', () => {
+  it('reads an age as a phrase', () => {
+    expect(formatAgo(now, ago(5 * 60))).toBe('5m ago')
+    expect(formatAgo(now, ago(3 * 86400))).toBe('3d ago')
+    expect(formatAgo(now, ago(20))).toBe('just now')
+    expect(formatAgo(now, '')).toBe('')
   })
 })

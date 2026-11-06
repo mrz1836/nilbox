@@ -1,5 +1,5 @@
 // Package brand is the single source of truth for the product's identity: its name,
-// identifiers, tagline, and color palette.
+// identifiers, tagline, color palette, and logo mark.
 //
 // Nothing else in the codebase should hard-code the product name. Keeping identity in one
 // place means a rename is a change to this package plus the files generated from it.

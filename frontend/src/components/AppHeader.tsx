@@ -1,7 +1,7 @@
-import { brand } from '../generated/brand'
 import type { Account, RateGauge } from '../platform'
 import { AccountMenu } from './AccountMenu'
 import { BudgetMenu } from './BudgetMenu'
+import { Logo } from './Logo'
 
 // View is the page the window shows. Settings is opened from the account menu (or ⌘,)
 // rather than from a tab.
@@ -24,14 +24,16 @@ export interface AppHeaderProps {
 }
 
 // AppHeader is the window's single toolbar, sitting beside the macOS window controls:
-// the product name, the view tabs (Inbox, Worktrees, Prompts), and on the right the API
-// budget gauge and the account
-// menu. The bar itself drags the window (--wails-draggable), double-clicking it zooms,
-// and the controls opt out so they take clicks. The left inset clears the traffic lights.
+// the logo, the view tabs (Inbox, Worktrees,
+// Prompts), and on the right the API budget gauge and the account menu. The bar itself
+// drags the window (--wails-draggable), double-clicking it zooms, and the controls opt
+// out so they take clicks. The left inset clears the traffic lights.
 export function AppHeader({ view, onViewChange, account, gauge, now, onOpenSettings }: AppHeaderProps) {
   return (
     <header className="relative z-30 flex h-[52px] shrink-0 items-center gap-4 border-b border-border bg-surface pr-3 pl-20 select-none [--wails-draggable:drag]">
-      <h1 className="text-[15px] font-semibold tracking-tight">{brand.name}</h1>
+      <h1 className="flex">
+        <Logo />
+      </h1>
       <nav aria-label="Views" className="flex items-center gap-0.5 [--wails-draggable:no-drag]">
         {tabs.map(({ id, label }) => (
           <button

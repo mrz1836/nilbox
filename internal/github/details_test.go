@@ -48,6 +48,7 @@ func TestFetchDetailsReadsEachItem(t *testing.T) {
 		req := readDetailsRequest(t, r)
 		assert.Contains(t, req.Query, "nodes(ids: $ids)")
 		assert.Contains(t, req.Query, "statusCheckRollup")
+		assert.Contains(t, req.Query, "headRefOid")
 		assert.Equal(t, ids, req.Variables.IDs)
 
 		_, _ = w.Write(body)
@@ -69,6 +70,7 @@ func TestFetchDetailsReadsEachItem(t *testing.T) {
 			Deletions:    30,
 			ChangedFiles: 6,
 			Commits:      3,
+			HeadOID:      "1111111111111111111111111111111111111111",
 			Mergeable:    "MERGEABLE",
 			Checks:       Checks{State: "SUCCESS", Passed: 15, Skipped: 15},
 			// Asked: octo-user, the team, and octo-approver again. Reviewed and not asked
@@ -83,6 +85,7 @@ func TestFetchDetailsReadsEachItem(t *testing.T) {
 			Deletions:    40,
 			ChangedFiles: 8,
 			Commits:      6,
+			HeadOID:      "2222222222222222222222222222222222222222",
 			Mergeable:    "CONFLICTING",
 			Checks:       Checks{State: "FAILURE", Passed: 18, Failed: 5, Pending: 4},
 			Reviews:      Reviews{Decision: "CHANGES_REQUESTED", Reviewers: 1, Reviewed: 1, ChangesRequested: 1},
@@ -93,6 +96,7 @@ func TestFetchDetailsReadsEachItem(t *testing.T) {
 			Deletions:    2,
 			ChangedFiles: 2,
 			Commits:      1,
+			HeadOID:      "3333333333333333333333333333333333333333",
 			Mergeable:    "UNKNOWN",
 		},
 		"I_fakeNodeIdIssue": {

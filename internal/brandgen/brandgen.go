@@ -1,5 +1,6 @@
 // Package brandgen renders the files that are generated from internal/brand: the
-// frontend's theme tokens and brand constants, and the macOS app bundle's Info.plist.
+// frontend's theme tokens and brand constants, the macOS app bundle's Info.plist, and the
+// app icon artwork that `magex brand:icons` renders into the raster icons.
 //
 // The generated files are committed. Write regenerates them (magex brand:generate), and
 // Check reports any that drifted from internal/brand, so a test fails until they are
@@ -15,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -75,6 +77,7 @@ func Files() []File {
 		{Path: BrandTSPath, Content: brandTS(tokens)},
 		{Path: BrandJSONPath, Content: brandJSON()},
 		{Path: InfoPlistPath, Content: infoPlist()},
+		{Path: IconSVGPath, Content: iconSVG()},
 	}
 }
 
@@ -183,16 +186,22 @@ func cssBlock(b *strings.Builder, selector, indent, scheme string, tokens []toke
 	b.WriteString(indent + "}\n")
 }
 
-// brandTS renders the brand identity and both palettes as TypeScript constants.
+// brandTS renders the brand identity, the mark, and both palettes as TypeScript constants.
 func brandTS(tokens []token) []byte {
 	var b strings.Builder
 
 	b.WriteString("// " + Header + "\n")
-	b.WriteString("// Product identity and theme palettes from internal/brand.\n\n")
+	b.WriteString("// Product identity, the logo mark, and theme palettes from internal/brand.\n\n")
 	b.WriteString("export const brand = {\n")
 	b.WriteString("  name: " + jsString(brand.Name) + ",\n")
 	b.WriteString("  slug: " + jsString(brand.Slug) + ",\n")
 	b.WriteString("  tagline: " + jsString(brand.Tagline) + ",\n")
+	b.WriteString("  mark: {\n")
+	b.WriteString("    width: " + strconv.Itoa(brand.MarkWidth) + ",\n")
+	b.WriteString("    height: " + strconv.Itoa(brand.MarkHeight) + ",\n")
+	b.WriteString("    path: " + jsString(brand.MarkPath) + ",\n")
+	b.WriteString("    highlight: " + jsString(brand.MarkHighlight) + ",\n")
+	b.WriteString("  },\n")
 	b.WriteString("} as const\n\n")
 	b.WriteString("export const palettes = {\n")
 	tsPalette(&b, "light", tokens, false)
@@ -238,6 +247,7 @@ func infoPlist() []byte {
 		{"CFBundleDevelopmentRegion", "en"},
 		{"CFBundleDisplayName", brand.Name},
 		{"CFBundleExecutable", brand.Slug},
+		{"CFBundleIconFile", IconFile},
 		{"CFBundleIdentifier", brand.BundleID},
 		{"CFBundleInfoDictionaryVersion", "6.0"},
 		{"CFBundleName", brand.Name},

@@ -9,6 +9,8 @@
 	<string>Nilbox</string>
 	<key>CFBundleExecutable</key>
 	<string>nilbox</string>
+	<key>CFBundleIconFile</key>
+	<string>icons</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.mrz1836.nilbox</string>
 	<key>CFBundleInfoDictionaryVersion</key>

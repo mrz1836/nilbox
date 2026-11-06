@@ -33,6 +33,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/core"
 	"github.com/mrz1836/nilbox/internal/measure"
+	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/timing"
 )
 
@@ -54,12 +55,6 @@ const (
 
 	// schedulerStopTimeout bounds how long shutdown waits for an in-flight refresh.
 	schedulerStopTimeout = 5 * time.Second
-
-	// Window geometry, in points.
-	windowWidth     = 1100
-	windowHeight    = 720
-	windowMinWidth  = 800
-	windowMinHeight = 520
 )
 
 var (
@@ -120,6 +115,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	app := application.New(application.Options{
 		Name:         brand.Name,
 		Description:  brand.Tagline,
+		Icon:         appIcon(),
 		Services:     bound,
 		Assets:       application.AssetOptions{Handler: application.AssetFileServerFS(frontend.Assets)},
 		Mac:          macAppOptions(),
@@ -174,14 +170,15 @@ func services(c *core.Core) []application.Service {
 	}
 }
 
-// baseWindowOptions are the window settings shared by every OS.
-func baseWindowOptions() application.WebviewWindowOptions {
+// baseWindowOptions are the window settings shared by every OS, for a window of the given
+// size in points.
+func baseWindowOptions(size settings.WindowSize) application.WebviewWindowOptions {
 	return application.WebviewWindowOptions{
 		Title:     brand.Name,
-		Width:     windowWidth,
-		Height:    windowHeight,
-		MinWidth:  windowMinWidth,
-		MinHeight: windowMinHeight,
+		Width:     size.Width,
+		Height:    size.Height,
+		MinWidth:  settings.MinWindowWidth,
+		MinHeight: settings.MinWindowHeight,
 		URL:       "/",
 	}
 }
@@ -215,11 +212,12 @@ func (s *shell) InboxUpdated() {
 }
 
 // started opens the window, themed for the current system appearance (which is known
-// only once the app runs), and starts refreshing the inbox.
+// only once the app runs) and at the size the settings hold, and starts refreshing the
+// inbox.
 func (s *shell) started() {
 	app := s.app.Load()
 
-	app.Window.NewWithOptions(windowOptions(app.Env.IsDarkMode()))
+	app.Window.NewWithOptions(windowOptions(app.Env.IsDarkMode(), s.windowSize(app)))
 
 	ctx := app.Context()
 
@@ -228,6 +226,25 @@ func (s *shell) started() {
 	if s.measureStartup {
 		time.AfterFunc(measureTimeout, s.measureTimedOut)
 	}
+}
+
+// windowSize is the size the window opens at: the one the settings hold, or the default
+// when they cannot be read, shrunk where needed to fit the primary screen's work area.
+func (s *shell) windowSize(app *application.App) settings.WindowSize {
+	size := settings.DefaultWindowSize()
+
+	prefs, err := s.core.Settings.Get(app.Context())
+	if err == nil {
+		size = prefs.WindowSize
+	} else {
+		_, _ = fmt.Fprintln(s.stderr, "read the window size, opening at the default:", err)
+	}
+
+	if screen := app.Screen.GetPrimary(); screen != nil {
+		size = size.Fit(screen.WorkArea.Width, screen.WorkArea.Height)
+	}
+
+	return size
 }
 
 // firstPaint ends a measurement run: it prints the timing line and quits.

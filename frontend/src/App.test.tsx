@@ -47,6 +47,8 @@ const platform = vi.hoisted(() => ({
   checkLaunchDefaults: vi.fn(),
   setTrustedBots: vi.fn(),
   resetTrustedBots: vi.fn(),
+  setSnoozeDays: vi.fn(),
+  snoozeItem: vi.fn(),
 }))
 
 vi.mock('./platform', () => platform)
@@ -163,6 +165,31 @@ describe('App', () => {
     await openSettingsFromMenu()
     await userEvent.click(screen.getByRole('button', { name: 'Launching' }))
     expect(screen.getByRole('combobox', { name: 'Terminal' })).toHaveValue('terminal')
+  })
+
+  it('snoozes for the length chosen in Settings, reached from the snooze menu', async () => {
+    platform.setSnoozeDays.mockResolvedValue(undefined)
+    platform.snoozeItem.mockResolvedValue(snapshot({ reviewRequested: list([item()]) }))
+    render(<App />)
+
+    expect(await screen.findByRole('button', { name: 'Snooze for 3 days' })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Snooze for…' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Snooze settings…' }))
+
+    expect(screen.getByRole('region', { name: 'Snoozing' })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('radio', { name: '2w' }))
+    expect(platform.setSnoozeDays).toHaveBeenCalledWith(14)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Close settings' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Snooze for 2 weeks' }))
+
+    expect(platform.snoozeItem).toHaveBeenCalledWith(1, 14)
+
+    // The account menu still opens the settings at the account.
+    await openSettingsFromMenu()
+    expect(screen.getByRole('region', { name: 'Account' })).toBeInTheDocument()
   })
 
   it('re-resolves the inbox rows after a settings change', async () => {

@@ -40,6 +40,9 @@ export function item(overrides: Partial<InboxItem> = {}): InboxItem {
     branch: 'widget-cache',
     isDraft: false,
     details: null,
+    dismissedAt: '',
+    snoozedUntil: '',
+    wokeBy: null,
     ...overrides,
   }
 }
@@ -90,6 +93,10 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     cloneRoot: '~/projects',
     trustedBots: ['dependabot', 'github-actions', 'renovate'],
     defaultTrustedBots: ['dependabot', 'github-actions', 'renovate'],
+    snoozeDays: 3,
+    snoozeWake: { commits: 1, reviews: 'decisions', comments: 0 },
+    windowSize: { width: 1280, height: 800 },
+    defaultWindowSize: { width: 1280, height: 800 },
     ...overrides,
   }
 }

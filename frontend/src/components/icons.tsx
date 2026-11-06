@@ -273,3 +273,23 @@ export function DocumentIcon({ className }: IconProps) {
     </Icon>
   )
 }
+
+// ClockIcon stands for a snooze.
+export function ClockIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5V12l3 2" />
+    </Icon>
+  )
+}
+
+// ArchiveIcon stands for dismissing an item out of the inbox.
+export function ArchiveIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <rect x="3.5" y="4" width="17" height="4.5" rx="1" />
+      <path d="M5 8.5V18a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 18V8.5M10 12.5h4" />
+    </Icon>
+  )
+}

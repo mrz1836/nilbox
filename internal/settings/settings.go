@@ -20,6 +20,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/profiles"
+	"github.com/mrz1836/nilbox/internal/snooze"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
 
@@ -39,6 +40,10 @@ const (
 
 	// KeyTrustedBots lists the bots whose items are trusted (see the trust package).
 	KeyTrustedBots = trust.PrefBots
+
+	// KeySnoozeDays is how many days an inbox row's Snooze button hides an item. The
+	// wake rules are stored under the other snooze.* keys (see the snooze package).
+	KeySnoozeDays = snooze.PrefDays
 )
 
 // Terminal choices.
@@ -56,6 +61,7 @@ const (
 	DefaultWorktreeDefault = true
 	DefaultTerminal        = TerminalITerm2
 	DefaultCloneRoot       = "~/projects"
+	DefaultSnoozeDays      = snooze.DefaultDays
 )
 
 // upsertPrefSQL stores one preference, replacing any earlier value.
@@ -94,6 +100,19 @@ type Settings struct {
 
 	// DefaultTrustedBots is the list ResetTrustedBots restores.
 	DefaultTrustedBots []string `json:"defaultTrustedBots"`
+
+	// SnoozeDays is how many days an inbox row's Snooze button hides an item; its menu
+	// offers other lengths for one snooze.
+	SnoozeDays int `json:"snoozeDays"`
+
+	// SnoozeWake is which new activity ends a snooze early.
+	SnoozeWake snooze.Rules `json:"snoozeWake"`
+
+	// WindowSize is the size the window opens at.
+	WindowSize WindowSize `json:"windowSize"`
+
+	// DefaultWindowSize is the size a fresh database opens the window at.
+	DefaultWindowSize WindowSize `json:"defaultWindowSize"`
 }
 
 // Service reads and writes the preferences.
@@ -115,7 +134,10 @@ func (s *Service) Get(ctx context.Context) (Settings, error) {
 		Value string
 	}
 
-	keys := []string{KeyDefaultProfile, KeyWorktreeDefault, KeyTerminal, KeyCloneRoot, KeyTrustedBots}
+	keys := []string{
+		KeyDefaultProfile, KeyWorktreeDefault, KeyTerminal, KeyCloneRoot, KeyTrustedBots, KeySnoozeDays, KeyWindowSize,
+		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments,
+	}
 	if err := s.db.WithContext(ctx).Raw("SELECT key, value FROM prefs WHERE key IN ?", keys).Scan(&rows).Error; err != nil {
 		return Settings{}, fmt.Errorf("read settings: %w", err)
 	}
@@ -213,6 +235,41 @@ func (s *Service) ResetTrustedBots(ctx context.Context) error {
 	return nil
 }
 
+// SetSnoozeDays stores how many days the Snooze button hides an item:
+// snooze.MinDays to snooze.MaxDays.
+func (s *Service) SetSnoozeDays(ctx context.Context, days int) error {
+	if !snooze.ValidDays(days) {
+		return fmt.Errorf("%w: %d days; choose %d to %d", snooze.ErrInvalidDays, days, snooze.MinDays, snooze.MaxDays)
+	}
+
+	return s.set(ctx, KeySnoozeDays, strconv.Itoa(days))
+}
+
+// SetSnoozeWake stores which new activity ends a snooze early. Every rule is stored
+// together, so the rules never mix two saves.
+func (s *Service) SetSnoozeWake(ctx context.Context, rules snooze.Rules) error {
+	if err := rules.Validate(); err != nil {
+		return err
+	}
+
+	now := time.Now().UTC()
+
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for key, value := range rules.Encode() {
+			if err := tx.Exec(upsertPrefSQL, key, value, now).Error; err != nil {
+				return fmt.Errorf("save setting %s: %w", key, err)
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("save the snooze rules: %w", err)
+	}
+
+	return nil
+}
+
 // set stores one preference.
 func (s *Service) set(ctx context.Context, key, value string) error {
 	if err := s.db.WithContext(ctx).Exec(upsertPrefSQL, key, value, time.Now().UTC()).Error; err != nil {
@@ -233,6 +290,10 @@ func fromStored(stored map[string]string) Settings {
 		CloneRoot:          DefaultCloneRoot,
 		TrustedBots:        trust.DecodeBots(rawBots, hasBots),
 		DefaultTrustedBots: trust.DefaultBots(),
+		SnoozeDays:         snooze.DecodeDays(stored),
+		SnoozeWake:         snooze.DecodeRules(stored),
+		WindowSize:         DefaultWindowSize(),
+		DefaultWindowSize:  DefaultWindowSize(),
 	}
 
 	if v := stored[KeyDefaultProfile]; v != "" {
@@ -249,6 +310,10 @@ func fromStored(stored map[string]string) Settings {
 
 	if v := strings.TrimSpace(stored[KeyCloneRoot]); v != "" {
 		out.CloneRoot = v
+	}
+
+	if v, ok := decodeWindowSize(stored[KeyWindowSize]); ok {
+		out.WindowSize = v
 	}
 
 	return out

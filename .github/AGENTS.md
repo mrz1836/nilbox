@@ -58,12 +58,13 @@ Our technical standards are organized into focused, portable documents in the `.
 | `.github/tech-conventions/` | Technical conventions and standards for development     |
 | `.github/workflows/`        | GitHub Actions workflows for CI/CD                      |
 | `.vscode/`                  | VS Code settings and extensions for development         |
-| `build/darwin/`             | Generated macOS bundle metadata (Info.plist)            |
+| `build/`                    | Generated app icon artwork (`appicon.svg`) and the stamp of what the icons were rendered from |
+| `build/darwin/`             | Generated macOS bundle metadata (Info.plist) and the rendered icon set (icons.icns) |
 | `cmd/nilbox/`               | Application entry point (headless; desktop with the `desktop` tag) |
 | `docs/`                     | Desktop build guide and measured performance            |
 | `frontend/`                 | React + TypeScript desktop frontend and its generated bindings |
 | `internal/brand/`           | Product identity and design tokens                      |
-| `internal/brandgen/`        | Generates frontend theme tokens and Info.plist from the brand |
+| `internal/brandgen/`        | Generates frontend theme tokens, Info.plist, and the app icon artwork from the brand |
 | `internal/core/`            | Assembles the app and the services the window binds     |
 | `internal/measure/`         | Startup, refresh, launch, and size measurements         |
 | `internal/*/`               | The inbox, launcher, prompts, launch defaults, settings, profiles, worktrees, and data-layer packages |

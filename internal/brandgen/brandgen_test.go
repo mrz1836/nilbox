@@ -6,8 +6,10 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -91,6 +93,8 @@ func TestInfoPlistHasAutomationUsage(t *testing.T) {
 	assert.Equal(t, brand.Name, values["CFBundleDisplayName"])
 	assert.Equal(t, brand.BundleID, values["CFBundleIdentifier"])
 	assert.Equal(t, brand.Slug, values["CFBundleExecutable"])
+	assert.Equal(t, IconFile, values["CFBundleIconFile"])
+	assert.Equal(t, IconFile+".icns", path.Base(IconSetPath), "the bundle's icon set is the one the plist names")
 	assert.Equal(t, "APPL", values["CFBundlePackageType"])
 	assert.Equal(t, MinimumMacOS, values["LSMinimumSystemVersion"])
 	assert.Equal(t, PlaceholderVersion, values["CFBundleShortVersionString"])
@@ -145,6 +149,9 @@ func TestBrandTSAndJSON(t *testing.T) {
 	assert.Contains(t, ts, `  name: "`+brand.Name+`",`)
 	assert.Contains(t, ts, `  slug: "`+brand.Slug+`",`)
 	assert.Contains(t, ts, `  tagline: "`+brand.Tagline+`",`)
+	assert.Contains(t, ts, "  mark: {\n    width: "+strconv.Itoa(brand.MarkWidth)+",\n    height: "+
+		strconv.Itoa(brand.MarkHeight)+",\n    path: \""+brand.MarkPath+"\",\n    highlight: \""+
+		brand.MarkHighlight+"\",\n  },")
 	assert.Contains(t, ts, `    accent: "`+brand.Light.Accent+`",`)
 	assert.Contains(t, ts, `    accent: "`+brand.Dark.Accent+`",`)
 

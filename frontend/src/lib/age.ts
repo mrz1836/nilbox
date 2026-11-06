@@ -64,3 +64,10 @@ export function formatUntil(now: Date, iso: string): string {
 
   return span === 'just now' ? 'now' : span
 }
+
+// formatAgo is how long ago iso was as a phrase: "5m ago", or "just now".
+export function formatAgo(now: Date, iso: string): string {
+  const age = formatAge(now, iso)
+
+  return age === 'just now' || age === '' ? age : `${age} ago`
+}

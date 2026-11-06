@@ -72,4 +72,46 @@ describe('MenuButton', () => {
 
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
+
+  it('shows a heading, hints, and a divider', async () => {
+    const choices: MenuItem[] = [
+      { label: '1 day', hint: 'Tomorrow', onSelect: vi.fn() },
+      { label: 'Change the default…', divided: true, onSelect: vi.fn() },
+    ]
+
+    render(
+      <MenuButton label="Snooze for…" heading="Snooze until" items={choices}>
+        ▾
+      </MenuButton>,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Snooze for…' }))
+
+    expect(screen.getByText('Snooze until')).toHaveAttribute('aria-hidden', 'true')
+    expect(screen.getByRole('menuitem', { name: /^1 day,\s?Tomorrow$/ })).toBeInTheDocument()
+    expect(screen.getByRole('separator')).toBeInTheDocument()
+    expect(screen.getAllByRole('menuitem')).toHaveLength(2)
+  })
+
+  it('opens upward when there is no room below the button', async () => {
+    const rect = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockReturnValue(DOMRect.fromRect({ x: 0, y: window.innerHeight - 40, width: 24, height: 24 }))
+    const height = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(200)
+
+    render(
+      <MenuButton label="More actions" items={items()} align="left">
+        ⋯
+      </MenuButton>,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'More actions' }))
+
+    const panel = screen.getByRole('menu').parentElement
+    expect(panel).toHaveClass('bottom-full', 'left-0', 'origin-bottom-left')
+    expect(panel).not.toHaveClass('top-full')
+
+    rect.mockRestore()
+    height.mockRestore()
+  })
 })

@@ -3,8 +3,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AppHeader, type View } from './components/AppHeader'
 import { InboxView, type LaunchOptions } from './components/InboxView'
 import { PromptsView } from './components/PromptsView'
-import { SettingsView } from './components/SettingsView'
+import { SettingsView, type SettingsSection } from './components/SettingsView'
 import { WorktreesView } from './components/WorktreesView'
+import { defaultSnoozeDays } from './lib/triage'
 import { useInbox } from './lib/useInbox'
 import { useLaunchConfig } from './lib/useLaunchConfig'
 import type { Settings } from './platform'
@@ -19,6 +20,8 @@ export function App() {
   const [view, setView] = useState<View>('inbox')
   // returnView is where closing the settings page goes back to.
   const [returnView, setReturnView] = useState<View>('inbox')
+  // settingsSection is the section the settings page opens at.
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>('account')
   // promptsOpened keeps the Prompts page mounted once opened, so an unsaved draft
   // survives switching tabs.
   const [promptsOpened, setPromptsOpened] = useState(false)
@@ -31,12 +34,25 @@ export function App() {
     setView(next)
   }, [])
 
+  const openSettingsAt = useCallback(
+    (section: SettingsSection) => {
+      if (view !== 'settings') {
+        setSettingsSection(section)
+        setReturnView(view)
+        setView('settings')
+      }
+    },
+    [view],
+  )
+
   const openSettings = useCallback(() => {
-    if (view !== 'settings') {
-      setReturnView(view)
-      setView('settings')
-    }
-  }, [view])
+    openSettingsAt('account')
+  }, [openSettingsAt])
+
+  // openSnoozeSettings opens the setting for the Snooze button's length.
+  const openSnoozeSettings = useCallback(() => {
+    openSettingsAt('snoozing')
+  }, [openSettingsAt])
 
   const closeSettings = useCallback(() => {
     setView(returnView)
@@ -110,7 +126,14 @@ export function App() {
       <main className="min-h-0 flex-1 overflow-y-auto">
         {/* Only the active page is mounted, so the worktrees are listed when that view opens.
             The Prompts page stays mounted once opened, hidden, to keep an unsaved draft. */}
-        {view === 'inbox' && <InboxView inbox={inbox} launch={launch} />}
+        {view === 'inbox' && (
+          <InboxView
+            inbox={inbox}
+            launch={launch}
+            snoozeDays={config.settings?.snoozeDays ?? defaultSnoozeDays}
+            onSnoozeSettings={openSnoozeSettings}
+          />
+        )}
         {view === 'worktrees' && <WorktreesView />}
         {promptsOpened && (
           <div hidden={view !== 'prompts'} className="h-full">
@@ -126,6 +149,7 @@ export function App() {
         )}
         {view === 'settings' && (
           <SettingsView
+            initialSection={settingsSection}
             settings={config.settings}
             profiles={config.profiles}
             prompts={config.prompts}

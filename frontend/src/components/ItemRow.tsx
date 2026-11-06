@@ -1,4 +1,5 @@
-import { formatAge } from '../lib/age'
+import { formatAge, formatAgo } from '../lib/age'
+import { formatFull, formatWhen, isBackFromSnooze, wakeSummary, type TriageTab } from '../lib/triage'
 import {
   openInBrowser,
   type InboxItem,
@@ -7,9 +8,10 @@ import {
   type Profile,
   type Prompt,
 } from '../platform'
-import { IssueIcon, PullRequestIcon } from './icons'
+import { ArchiveIcon, ClockIcon, IssueIcon, PullRequestIcon } from './icons'
 import { ItemSignals } from './ItemSignals'
 import { LaunchControls } from './LaunchControls'
+import { TriageControls, type TriageActions } from './TriageControls'
 
 // LaunchOptions are what each row's launch controls need: the profiles and prompts to
 // choose from, each item's resolved launch settings, and the saved launch defaults.
@@ -29,6 +31,11 @@ export interface ItemRowProps {
   // launch is null until the launch settings have loaded; the row has no launch button
   // until then.
   launch: LaunchOptions | null
+  // tab is the list tab the row is in: the inbox, Snoozed, or Dismissed.
+  tab?: TriageTab
+  // triage is what the row's snooze, dismiss, and restore buttons do; without it the row
+  // has none.
+  triage?: TriageActions
 }
 
 const tagClass = 'shrink-0 rounded-full border px-1.5 py-px text-[11px] leading-4 font-medium'
@@ -92,16 +99,61 @@ function TrustTag({ item }: { item: InboxItem }) {
   )
 }
 
+// TriageTag says where a snoozed or dismissed item stands, and marks an item just back
+// from a snooze, so it is easy to spot among the rest.
+function TriageTag({ item, tab, now }: { item: InboxItem; tab: TriageTab; now: Date }) {
+  const quiet = `${tagClass} inline-flex items-center gap-1 border-border text-muted`
+
+  if (tab === 'snoozed') {
+    return (
+      <span title={`Snoozed until ${formatFull(item.snoozedUntil)}`} className={quiet}>
+        <ClockIcon className="size-3" />
+        Back {formatWhen(now, new Date(item.snoozedUntil))}
+      </span>
+    )
+  }
+
+  if (tab === 'dismissed') {
+    return (
+      <span title={`Dismissed ${formatFull(item.dismissedAt)}`} className={quiet}>
+        <ArchiveIcon className="size-3" />
+        Dismissed {formatAgo(now, item.dismissedAt)}
+      </span>
+    )
+  }
+
+  if (isBackFromSnooze(item, now)) {
+    // A snooze that new activity ended early says what was new.
+    const woke = wakeSummary(item.wokeBy)
+
+    return (
+      <span
+        title={
+          woke === ''
+            ? `Snoozed until ${formatFull(item.snoozedUntil)}`
+            : `Back early, ${formatFull(item.snoozedUntil)}: ${woke} since you snoozed it`
+        }
+        className="inline-flex min-w-0 items-center gap-1 rounded-full border border-info px-1.5 py-px text-[11px] leading-4 font-medium text-info"
+      >
+        <ClockIcon className="size-3 shrink-0" />
+        <span className="truncate">{woke === '' ? 'Back from snooze' : `Back early: ${woke}`}</span>
+      </span>
+    )
+  }
+
+  return null
+}
+
 // ItemRow is one inbox card, three lines high: the title with its draft and conflict
 // tags; where it is, who opened it, and when it last moved; and its signals (checks,
-// reviews, comments, size, labels). The launch button sits on the right, and a launch's
-// outcome spans the card below. Long titles are cut short with an ellipsis, so every card
-// keeps the same shape.
-export function ItemRow({ item, now, launch }: ItemRowProps) {
+// reviews, comments, size, labels). The triage buttons and the launch button sit on the
+// right, and a launch's outcome spans the card below. Long titles are cut short with an
+// ellipsis, so every card keeps the same shape.
+export function ItemRow({ item, now, launch, tab = 'inbox', triage }: ItemRowProps) {
   const conflicting = item.details?.mergeable === 'CONFLICTING'
 
   return (
-    <li className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 border-b border-border px-4 py-3 transition-colors last:border-b-0 hover:bg-raised/40">
+    <li className="group grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-start gap-x-3 border-b border-border px-4 py-3 transition-colors last:border-b-0 hover:bg-raised/40">
       <KindIcon item={item} />
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">
@@ -128,9 +180,11 @@ export function ItemRow({ item, now, launch }: ItemRowProps) {
             <time dateTime={item.updatedAt}>{formatAge(now, item.updatedAt)}</time>
           </span>
           <TrustTag item={item} />
+          <TriageTag item={item} tab={tab} now={now} />
         </p>
         <ItemSignals item={item} />
       </div>
+      {triage !== undefined && <TriageControls item={item} tab={tab} now={now} actions={triage} />}
       {launch !== null && (
         <LaunchControls
           item={item}

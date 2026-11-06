@@ -34,6 +34,16 @@ describe('AppHeader', () => {
     expect(screen.getByRole('button', { name: 'Account: octo-user' })).toBeInTheDocument()
   })
 
+  it('leads with the logo: the mark beside the wordmark, named by the product name alone', () => {
+    renderHeader()
+
+    const heading = screen.getByRole('heading', { level: 1 })
+
+    expect(heading).toHaveAccessibleName(brand.name)
+    expect(heading.querySelector('svg[aria-hidden="true"] path')).toHaveAttribute('d', brand.mark.path)
+    expect(screen.getByText(brand.name)).toHaveClass('lowercase')
+  })
+
   it('drags the window from the bar but not from its controls', () => {
     renderHeader()
 

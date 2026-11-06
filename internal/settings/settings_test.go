@@ -13,6 +13,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/profiles"
+	"github.com/mrz1836/nilbox/internal/snooze"
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
@@ -60,6 +61,10 @@ func TestPrefDefaults(t *testing.T) {
 		CloneRoot:          "~/projects",
 		TrustedBots:        []string{"dependabot", "github-actions", "renovate"},
 		DefaultTrustedBots: []string{"dependabot", "github-actions", "renovate"},
+		SnoozeDays:         3,
+		SnoozeWake:         snooze.Rules{Commits: 1, Reviews: "decisions", Comments: 0},
+		WindowSize:         WindowSize{Width: 1280, Height: 800},
+		DefaultWindowSize:  WindowSize{Width: 1280, Height: 800},
 	}, got)
 }
 
@@ -118,6 +123,8 @@ func TestSettersPersist(t *testing.T) {
 	require.NoError(t, svc.SetTerminal(t.Context(), TerminalApp))
 	require.NoError(t, svc.SetTerminal(t.Context(), TerminalITerm2))
 	require.NoError(t, svc.SetCloneRoot(t.Context(), " ~/code/clones/ "))
+	require.NoError(t, svc.SetSnoozeDays(t.Context(), 7))
+	require.NoError(t, svc.SetSnoozeWake(t.Context(), snooze.Rules{Commits: 3, Reviews: snooze.ReviewsAny, Comments: 5}))
 
 	got, err := svc.Get(t.Context())
 	require.NoError(t, err)
@@ -128,6 +135,10 @@ func TestSettersPersist(t *testing.T) {
 		CloneRoot:          "~/code/clones",
 		TrustedBots:        trust.DefaultBots(),
 		DefaultTrustedBots: trust.DefaultBots(),
+		SnoozeDays:         7,
+		SnoozeWake:         snooze.Rules{Commits: 3, Reviews: snooze.ReviewsAny, Comments: 5},
+		WindowSize:         DefaultWindowSize(),
+		DefaultWindowSize:  DefaultWindowSize(),
 	}, got)
 
 	abs := t.TempDir()
@@ -162,6 +173,12 @@ func TestSetRejectsInvalid(t *testing.T) {
 		{name: "relative clone root", set: func() error { return svc.SetCloneRoot(t.Context(), "projects") }, wantErr: localrepos.ErrRelativeRoot},
 		{name: "missing clone root", set: func() error { return svc.SetCloneRoot(t.Context(), "~/missing") }, wantErr: fs.ErrNotExist},
 		{name: "clone root is a file", set: func() error { return svc.SetCloneRoot(t.Context(), file) }, wantErr: ErrInvalidCloneRoot, wantMsg: "~/notes.txt is not a directory"},
+		{name: "no snooze", set: func() error { return svc.SetSnoozeDays(t.Context(), 0) }, wantErr: snooze.ErrInvalidDays, wantMsg: "0 days; choose 1 to 365"},
+		{name: "snooze past a year", set: func() error { return svc.SetSnoozeDays(t.Context(), 366) }, wantErr: snooze.ErrInvalidDays},
+		{name: "unknown review rule", set: func() error { return svc.SetSnoozeWake(t.Context(), snooze.Rules{Reviews: "sometimes"}) }, wantErr: snooze.ErrInvalidRules, wantMsg: `"sometimes"`},
+		{name: "negative comment rule", set: func() error {
+			return svc.SetSnoozeWake(t.Context(), snooze.Rules{Reviews: snooze.ReviewsAny, Comments: -1})
+		}, wantErr: snooze.ErrInvalidRules},
 	}
 
 	for _, tt := range tests {
@@ -194,8 +211,17 @@ func TestGetFallsBackOnBadStoredValues(t *testing.T) {
 	setPref(t, db, KeyWorktreeDefault, "maybe")
 	setPref(t, db, KeyTerminal, "warp")
 	setPref(t, db, KeyCloneRoot, "   ")
+	setPref(t, db, KeySnoozeDays, "-2")
+	setPref(t, db, snooze.PrefWakeReviews, "sometimes")
+	setPref(t, db, snooze.PrefWakeCommits, "lots")
 
 	got, err := svc.Get(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, fromStored(nil), got)
+
+	setPref(t, db, KeySnoozeDays, "soon")
+
+	got, err = svc.Get(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, fromStored(nil), got)
 }
@@ -238,4 +264,6 @@ func TestDatabaseErrors(t *testing.T) {
 	err = svc.SetDefaultProfile(t.Context(), "default")
 	require.Error(t, err)
 	require.NotErrorIs(t, err, ErrUnknownProfile)
+
+	require.ErrorContains(t, svc.SetSnoozeWake(t.Context(), snooze.DefaultRules()), "save the snooze rules")
 }

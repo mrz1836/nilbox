@@ -120,8 +120,8 @@ func TestModelsRoundTrip(t *testing.T) {
 	}
 	require.NoError(t, db.Create(&item).Error)
 
-	done := at.Add(2 * time.Hour)
-	require.NoError(t, db.Create(&inboxmodel.ItemLocalState{ItemID: item.ID, DoneAt: &done}).Error)
+	dismissed := at.Add(2 * time.Hour)
+	require.NoError(t, db.Create(&inboxmodel.ItemLocalState{ItemID: item.ID, DismissedAt: &dismissed}).Error)
 	require.NoError(t, db.Create(&inboxmodel.ItemDetails{
 		ItemID: item.ID, Labels: inboxmodel.Labels{{Name: "bug", Color: "#d73a4a"}}, Comments: 4,
 		Additions: 120, Deletions: 30, ChangedFiles: 6, Commits: 3, Mergeable: "MERGEABLE",
@@ -167,8 +167,16 @@ func TestModelsRoundTrip(t *testing.T) {
 
 	var gotState inboxmodel.ItemLocalState
 	require.NoError(t, db.First(&gotState, item.ID).Error)
-	require.NotNil(t, gotState.DoneAt)
-	assert.True(t, done.Equal(*gotState.DoneAt))
+	require.NotNil(t, gotState.DismissedAt)
+	assert.True(t, dismissed.Equal(*gotState.DismissedAt))
+	assert.Nil(t, gotState.SnoozedUntil)
+
+	until := at.Add(72 * time.Hour)
+	require.NoError(t, db.Model(&gotState).Updates(map[string]any{"dismissed_at": nil, "snoozed_until": until}).Error)
+	require.NoError(t, db.First(&gotState, item.ID).Error)
+	assert.Nil(t, gotState.DismissedAt)
+	require.NotNil(t, gotState.SnoozedUntil)
+	assert.True(t, until.Equal(*gotState.SnoozedUntil))
 
 	var gotProfile profilesmodel.ClaudeProfile
 	require.NoError(t, db.First(&gotProfile, profile.ID).Error)
@@ -229,6 +237,24 @@ func TestSchemaRejectsInvalidRows(t *testing.T) {
 
 	// Details for an item that does not exist.
 	require.Error(t, db.Create(&inboxmodel.ItemDetails{ItemID: item.ID + 100}).Error)
+
+	// An item is dismissed or snoozed, never both.
+	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	require.Error(t, db.Create(&inboxmodel.ItemLocalState{ItemID: item.ID, DismissedAt: &at, SnoozedUntil: &at}).Error)
+
+	// Triage state for an item that does not exist.
+	require.Error(t, db.Create(&inboxmodel.ItemLocalState{ItemID: item.ID + 100, DismissedAt: &at}).Error)
+
+	// A snooze's baseline and wake reasons are JSON objects.
+	for _, bad := range []string{"not json", "[1, 2]"} {
+		require.Error(t, db.Create(&inboxmodel.ItemLocalState{ItemID: item.ID, SnoozedUntil: &at, SnoozeBaseline: &bad}).Error, bad)
+		require.Error(t, db.Create(&inboxmodel.ItemLocalState{ItemID: item.ID, SnoozedUntil: &at, WakeReasons: &bad}).Error, bad)
+	}
+
+	baseline, reasons := `{"commits":3}`, `{"commits":2}`
+	require.NoError(t, db.Create(&inboxmodel.ItemLocalState{
+		ItemID: item.ID, SnoozedUntil: &at, SnoozeBaseline: &baseline, WakeReasons: &reasons,
+	}).Error)
 }
 
 func TestPromptsAndLaunchDefaultsRoundTrip(t *testing.T) {

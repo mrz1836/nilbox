@@ -14,6 +14,15 @@
 // It is downloaded again only when GitHub reports a different avatar URL, which happens
 // when the picture or the signed-in account changes.
 //
+// Triage is local: Dismiss hides an item until Restore, and Snooze hides it for a number
+// of days, after which it is back on its own. Both record the state in item_local_state
+// and nothing else, so GitHub never hears of them. A snooze also records the item's
+// activity, and each refresh, in the same transaction that stores the new details, ends
+// early any snooze whose new activity passes the user's wake rules (see the snooze
+// package), keeping the reasons. A snapshot keeps triaged items in their lists, each with
+// its state, and the UI sets them apart; a snooze that runs its course ends without
+// anything having to be written.
+//
 // Inbox status that has no column of its own (each list's total match count, the
 // account's profile, the time of the last successful refresh, the last error, a scope
 // warning, and the cached avatar) is kept in the prefs table under internal inbox.* keys,

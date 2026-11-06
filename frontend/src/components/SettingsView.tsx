@@ -4,12 +4,24 @@ import { brand } from '../generated/brand'
 import { counted, errorMessage } from '../lib/format'
 import { kindPlural, promptApplies } from '../lib/launch'
 import {
+  commentThresholds,
+  commitThresholds,
+  reviewWakes,
+  snoozeChoices,
+  snoozeLength,
+  snoozeShort,
+} from '../lib/triage'
+import { presetFor, sizeKey, sizeLabel, windowPresets } from '../lib/windowSize'
+import {
   getAppInfo,
   openInBrowser,
   setCloneRoot,
   setDefaultPrompt,
   setDefaultProfile,
+  setSnoozeDays,
+  setSnoozeWake,
   setTerminal,
+  setWindowSize,
   setWorktreeDefault,
   type Account,
   type DefaultPrompts,
@@ -17,19 +29,40 @@ import {
   type Profile,
   type Prompt,
   type Settings,
+  type SnoozeRules,
 } from '../platform'
 import { Avatar } from './Avatar'
+import { Segmented } from './controls'
 import { ChevronLeftIcon, ExternalIcon } from './icons'
 import { LaunchDefaultsSection } from './LaunchDefaultsSection'
+import { Logo } from './Logo'
 import { TrustSection } from './TrustSection'
 
-type SectionId = 'account' | 'launching' | 'profiles' | 'repositories' | 'trust' | 'about'
+// SettingsSection is one section of the settings page.
+export type SettingsSection =
+  'account' | 'snoozing' | 'window' | 'launching' | 'profiles' | 'repositories' | 'trust' | 'about'
+
+type SectionId = SettingsSection
 
 // sectionOrder is the sidebar's order; sections holds each one's heading and summary.
-const sectionOrder: readonly SectionId[] = ['account', 'launching', 'profiles', 'repositories', 'trust', 'about']
+const sectionOrder: readonly SectionId[] = [
+  'account',
+  'snoozing',
+  'window',
+  'launching',
+  'profiles',
+  'repositories',
+  'trust',
+  'about',
+]
 
 const sections: Readonly<Record<SectionId, { label: string; description: string }>> = {
   account: { label: 'Account', description: 'The GitHub account your inbox comes from.' },
+  snoozing: {
+    label: 'Snoozing',
+    description: 'How long a snooze lasts, and what new activity brings an item back early.',
+  },
+  window: { label: 'Window', description: 'The size the window opens at.' },
   launching: {
     label: 'Launching',
     description: 'How Open in Claude starts a coding session: the app defaults every launch starts from.',
@@ -73,6 +106,8 @@ const switchClass =
   'relative h-5 w-9 shrink-0 appearance-none rounded-full bg-border transition-colors checked:bg-accent before:absolute before:top-0.5 before:left-0.5 before:size-4 before:rounded-full before:bg-white before:shadow before:transition-transform checked:before:translate-x-4'
 
 export interface SettingsViewProps {
+  // initialSection is the section the page opens at; it defaults to the account.
+  initialSection?: SettingsSection
   // settings is null until it has loaded; the launch and clone sections wait for it.
   settings: Settings | null
   profiles: readonly Profile[]
@@ -195,6 +230,221 @@ function AccountSection({ account }: { account: Account | null }) {
 interface SettingsSectionProps {
   settings: Settings
   onSaved: (settings: Settings) => void
+}
+
+// thresholdOption is one choice of a wake rule's count: 0 is never, 1 any.
+function thresholdOption(n: number, any: string, many: (n: number) => string) {
+  if (n === 0) {
+    return { value: '0', label: 'Never', title: 'Never wakes a snooze' }
+  }
+
+  return n === 1
+    ? { value: '1', label: 'Any', title: any }
+    : { value: String(n), label: `${String(n)}+`, title: many(n) }
+}
+
+const commitOptions = commitThresholds.map((n) =>
+  thresholdOption(n, 'Any push, a force-push included', (k) => `${String(k)} or more new commits`),
+)
+
+const commentOptions = commentThresholds.map((n) =>
+  thresholdOption(n, 'Any new comment', (k) => `${String(k)} or more new comments`),
+)
+
+const reviewOptions: readonly { value: (typeof reviewWakes)[number]; label: string; title: string }[] = [
+  { value: 'never', label: 'Never', title: 'Reviews never wake a snooze' },
+  { value: 'decisions', label: 'Decisions', title: 'An approval or a request for changes' },
+  { value: 'any', label: 'Any', title: 'Any review, including one that only comments' },
+]
+
+interface ChoiceRowProps {
+  label: string
+  description: ReactNode
+  children: ReactNode
+}
+
+// ChoiceRow lays out one setting chosen with a segmented control: its name and help on
+// the left, the choices on the right. The control carries its own accessible name.
+function ChoiceRow({ label, description, children }: ChoiceRowProps) {
+  return (
+    <div className="flex items-center justify-between gap-8 px-4 py-3.5">
+      <div className="min-w-0">
+        <p className="text-sm font-medium">{label}</p>
+        <p className="mt-0.5 text-xs text-muted">{description}</p>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+// SnoozingSection holds how long the Snooze button sets an item aside and which new
+// activity ends a snooze early, each saved as soon as it is chosen.
+function SnoozingSection({ settings, onSaved }: SettingsSectionProps) {
+  const [error, setError] = useState('')
+  const wake = settings.snoozeWake
+
+  const save = (call: Promise<void>, next: Settings) => {
+    setError('')
+    call
+      .then(() => {
+        onSaved(next)
+      })
+      .catch((err: unknown) => {
+        setError(errorMessage(err))
+      })
+  }
+
+  const chooseDays = (value: string) => {
+    const snoozeDays = Number(value)
+
+    save(setSnoozeDays(snoozeDays), { ...settings, snoozeDays })
+  }
+
+  const chooseWake = (change: Partial<SnoozeRules>) => {
+    const snoozeWake = { ...wake, ...change }
+
+    save(setSnoozeWake(snoozeWake), { ...settings, snoozeWake })
+  }
+
+  return (
+    <div className="flex flex-col gap-8">
+      <Group>
+        <ChoiceRow
+          label="Snooze for"
+          description="How long a row’s Snooze button sets an item aside. Its arrow offers the other lengths for one snooze."
+        >
+          <Segmented
+            label="Snooze for"
+            value={String(settings.snoozeDays)}
+            options={snoozeChoices.map((days) => ({
+              value: String(days),
+              label: snoozeShort(days),
+              title: snoozeLength(days),
+            }))}
+            onChange={chooseDays}
+          />
+        </ChoiceRow>
+      </Group>
+      <div className="flex flex-col gap-3">
+        <div>
+          <h3 className="text-sm font-semibold">Wake early</h3>
+          <p className="mt-0.5 text-xs text-muted">
+            A snoozed item comes back before its time when new activity since you snoozed it reaches any of these. Its
+            card then says what was new, such as <em>Back early: approved, 2 new commits</em>.
+          </p>
+        </div>
+        <Group>
+          <ChoiceRow
+            label="New commits"
+            description="Any counts a force-push too, except on a bot’s pull request, where a force-push is usually a rebase."
+          >
+            <Segmented
+              label="Wake on new commits"
+              value={String(wake.commits)}
+              options={commitOptions}
+              onChange={(v) => {
+                chooseWake({ commits: Number(v) })
+              }}
+            />
+          </ChoiceRow>
+          <ChoiceRow
+            label="Reviews"
+            description="Decisions are approvals and requests for changes. Any adds reviews that only comment."
+          >
+            <Segmented
+              label="Wake on reviews"
+              value={wake.reviews}
+              options={reviewOptions}
+              onChange={(reviews) => {
+                chooseWake({ reviews })
+              }}
+            />
+          </ChoiceRow>
+          <ChoiceRow
+            label="New comments"
+            description="Conversation and review comments, bots’ included: a higher count rides out their noise."
+          >
+            <Segmented
+              label="Wake on new comments"
+              value={String(wake.comments)}
+              options={commentOptions}
+              onChange={(v) => {
+                chooseWake({ comments: Number(v) })
+              }}
+            />
+          </ChoiceRow>
+        </Group>
+      </div>
+      {error !== '' && (
+        <p role="alert" className="-mt-5 text-xs text-danger">
+          {error}
+        </p>
+      )}
+      <p className="text-xs leading-relaxed text-muted">
+        A snoozed item waits in its list&apos;s <strong className="font-medium">Snoozed</strong> tab, and an item back
+        on time is marked <em>Back from snooze</em>. A dismissed item never comes back on its own: it stays in the{' '}
+        <strong className="font-medium">Dismissed</strong> tab until you restore it. Both stay on this Mac, and GitHub
+        never hears about them.
+      </p>
+    </div>
+  )
+}
+
+// WindowSection holds the size the window opens at. Choosing a size stores it and resizes
+// the open window to it at once.
+function WindowSection({ settings, onSaved }: SettingsSectionProps) {
+  const [error, setError] = useState('')
+  const defaultKey = sizeKey(settings.defaultWindowSize)
+
+  const choose = (key: string) => {
+    const preset = presetFor(key)
+    if (preset === undefined) {
+      return
+    }
+
+    setError('')
+    setWindowSize(preset.size)
+      .then(() => {
+        onSaved({ ...settings, windowSize: preset.size })
+      })
+      .catch((err: unknown) => {
+        setError(errorMessage(err))
+      })
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <Group>
+        <div className="flex items-center justify-between gap-8 px-4 py-3.5">
+          <div className="min-w-0">
+            <p className="text-sm font-medium">Window size</p>
+            <p className="mt-0.5 text-xs text-muted">
+              Opens at {sizeLabel(settings.windowSize)}. Choosing a size resizes the window now, too.
+            </p>
+            {error !== '' && (
+              <p role="alert" className="mt-1 text-xs text-danger">
+                {error}
+              </p>
+            )}
+          </div>
+          <Segmented
+            label="Window size"
+            value={sizeKey(settings.windowSize)}
+            options={windowPresets.map(({ label, size }) => ({
+              value: sizeKey(size),
+              label,
+              title: sizeKey(size) === defaultKey ? `${sizeLabel(size)} (default)` : sizeLabel(size),
+            }))}
+            onChange={choose}
+          />
+        </div>
+      </Group>
+      <p className="text-xs leading-relaxed text-muted">
+        Sizes are in points. A size larger than your screen opens as large as the screen allows, and you can still
+        resize the window by dragging its edges.
+      </p>
+    </div>
+  )
 }
 
 interface LaunchingSectionProps extends SettingsSectionProps {
@@ -540,8 +790,10 @@ function AboutSection() {
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <p className="text-base font-semibold">{brand.name}</p>
-        <p className="text-sm text-muted">{brand.tagline}</p>
+        <p className="flex">
+          <Logo className="text-2xl" />
+        </p>
+        <p className="mt-2.5 text-sm text-muted">{brand.tagline}</p>
       </div>
       <Group>
         <dl className="flex items-center justify-between px-4 py-3 text-sm">
@@ -560,6 +812,7 @@ function AboutSection() {
 // settings, each saved as soon as it changes (the clone root on Save). Escape, or the
 // back button, returns to the view it was opened from.
 export function SettingsView({
+  initialSection = 'account',
   settings,
   profiles,
   prompts,
@@ -571,7 +824,7 @@ export function SettingsView({
   onClose,
 }: SettingsViewProps) {
   const headingId = useId()
-  const [section, setSection] = useState<SectionId>('account')
+  const [section, setSection] = useState<SectionId>(initialSection)
   const current = sections[section]
 
   useEffect(() => {
@@ -627,6 +880,10 @@ export function SettingsView({
           {current.description !== '' && <p className="mt-1 text-sm text-muted">{current.description}</p>}
           <div className="mt-6">
             {section === 'account' && <AccountSection account={account} />}
+            {section === 'snoozing' &&
+              (settings === null ? loading : <SnoozingSection settings={settings} onSaved={onSaved} />)}
+            {section === 'window' &&
+              (settings === null ? loading : <WindowSection settings={settings} onSaved={onSaved} />)}
             {section === 'launching' &&
               (settings === null ? (
                 loading

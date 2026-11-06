@@ -1,9 +1,18 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { getInboxSnapshot, onInboxUpdated, refreshInbox, type InboxSnapshot } from '../platform'
+import {
+  dismissItem,
+  getInboxSnapshot,
+  onInboxUpdated,
+  refreshInbox,
+  restoreItem,
+  snoozeItem,
+  type InboxSnapshot,
+} from '../platform'
 import { errorMessage } from './format'
 
-// tickMs is how often now moves on, so relative times and the budget levels stay current.
+// tickMs is how often now moves on, so relative times, the budget levels, and snoozes
+// stay current.
 const tickMs = 60_000
 
 function systemClock(): Date {
@@ -14,7 +23,7 @@ function systemClock(): Date {
 export interface InboxState {
   // snapshot is null until the first load finishes.
   snapshot: InboxSnapshot | null
-  // now is the time relative ages and budget levels are measured against.
+  // now is the time relative ages, budget levels, and snoozes are measured against.
   now: Date
   loadError: string
   refreshError: string
@@ -24,27 +33,55 @@ export interface InboxState {
   // reload reads the stored inbox again, without asking GitHub, such as after a setting
   // that changes how items are shown.
   reload: () => void
+  // dismiss hides an item until it is restored, snooze hides it for a number of days,
+  // and restore brings back either. Each resolves with the new inbox once it is shown,
+  // and rejects with the reason it failed.
+  dismiss: (id: number) => Promise<InboxSnapshot>
+  snooze: (id: number, days: number) => Promise<InboxSnapshot>
+  restore: (id: number) => Promise<InboxSnapshot>
 }
 
 // useInbox loads the stored inbox, loads it again whenever the shell reports a change
 // (the background refresh), and refreshes from GitHub when asked. The whole window shares
 // one InboxState: the inbox lists, the account menu, and the budget gauge. clock returns
 // the current time; keep it stable across renders.
+//
+// Loads, refreshes, and triage can overlap, and their answers can arrive out of order.
+// Each request is numbered as it starts, and an answer is shown only when no later
+// request's answer already is, so an older inbox never replaces a newer one. Every change
+// to the stored inbox is followed by an update from the shell, whose load is the latest.
 export function useInbox(clock: () => Date = systemClock): InboxState {
   const [snapshot, setSnapshot] = useState<InboxSnapshot | null>(null)
   const [loadError, setLoadError] = useState('')
   const [refreshError, setRefreshError] = useState('')
   const [refreshing, setRefreshing] = useState(false)
   const [now, setNow] = useState(clock)
+  // started numbers the requests; shown is the number of the one whose answer is shown.
+  const started = useRef(0)
+  const shown = useRef(0)
+
+  // request starts a call for the inbox, shows its answer unless a later request's
+  // answer is already shown, and resolves with the answer either way.
+  const request = useCallback(async (call: () => Promise<InboxSnapshot>): Promise<InboxSnapshot> => {
+    started.current += 1
+    const number = started.current
+    const next = await call()
+
+    if (number > shown.current) {
+      shown.current = number
+      setSnapshot(next)
+    }
+
+    return next
+  }, [])
 
   useEffect(() => {
     let active = true
 
     const load = () => {
-      getInboxSnapshot()
-        .then((next) => {
+      request(getInboxSnapshot)
+        .then(() => {
           if (active) {
-            setSnapshot(next)
             setLoadError('')
             setRefreshError('')
             setNow(clock())
@@ -69,14 +106,13 @@ export function useInbox(clock: () => Date = systemClock): InboxState {
       stop()
       clearInterval(tick)
     }
-  }, [clock])
+  }, [clock, request])
 
   const refresh = useCallback(() => {
     setRefreshing(true)
 
-    refreshInbox()
-      .then((next) => {
-        setSnapshot(next)
+    request(refreshInbox)
+      .then(() => {
         setRefreshError('')
       })
       .catch((err: unknown) => {
@@ -86,18 +122,32 @@ export function useInbox(clock: () => Date = systemClock): InboxState {
         setRefreshing(false)
         setNow(clock())
       })
-  }, [clock])
+  }, [clock, request])
 
   const reload = useCallback(() => {
-    getInboxSnapshot()
-      .then((next) => {
-        setSnapshot(next)
+    request(getInboxSnapshot)
+      .then(() => {
         setLoadError('')
       })
       .catch((err: unknown) => {
         setLoadError(errorMessage(err))
       })
-  }, [])
+  }, [request])
 
-  return { snapshot, now, loadError, refreshError, refreshing, refresh, reload }
+  // triage runs a triage call and shows its inbox, measured against a fresh clock.
+  const triage = useCallback(
+    async (call: () => Promise<InboxSnapshot>) => {
+      const next = await request(call)
+      setNow(clock())
+
+      return next
+    },
+    [clock, request],
+  )
+
+  const dismiss = useCallback((id: number) => triage(() => dismissItem(id)), [triage])
+  const snooze = useCallback((id: number, days: number) => triage(() => snoozeItem(id, days)), [triage])
+  const restore = useCallback((id: number) => triage(() => restoreItem(id)), [triage])
+
+  return { snapshot, now, loadError, refreshError, refreshing, refresh, reload, dismiss, snooze, restore }
 }

@@ -12,6 +12,9 @@ export default defineConfig({
           environment: 'jsdom',
           include: ['src/**/*.test.{ts,tsx}'],
           setupFiles: ['./src/test/setup.ts'],
+          // Calendar words such as "tomorrow" depend on the time zone; tests read them in UTC
+          // on every machine.
+          env: { TZ: 'UTC' },
         },
       },
     ],

@@ -31,12 +31,13 @@ const (
 // inbox returned costs one or two.
 //
 // The counts per check state come without listing the checks themselves, and review
-// requests and latest reviews come with their logins so a reviewer is counted once.
+// requests and latest reviews come with their logins so a reviewer is counted once. The
+// head commit's SHA tells a snooze when a pull request was pushed, force-pushes included.
 const detailsQuery = `query Details($ids: [ID!]!) {
   nodes(ids: $ids) {
     __typename
     ... on PullRequest {
-      id additions deletions changedFiles totalCommentsCount reviewDecision mergeable
+      id additions deletions changedFiles totalCommentsCount reviewDecision mergeable headRefOid
       author { login }
       commits { totalCount }
       labels(first: 50) { nodes { name color } }
@@ -104,6 +105,9 @@ type ItemDetails struct {
 	Deletions    int
 	ChangedFiles int
 	Commits      int
+
+	// HeadOID is the SHA of a pull request's head commit; it changes on every push.
+	HeadOID string
 
 	// Mergeable is MERGEABLE, CONFLICTING, or UNKNOWN while GitHub is still working it out.
 	Mergeable string
@@ -296,6 +300,7 @@ type detailsNode struct {
 	TotalCommentsCount int             `json:"totalCommentsCount"`
 	ReviewDecision     string          `json:"reviewDecision"`
 	Mergeable          string          `json:"mergeable"`
+	HeadRefOID         string          `json:"headRefOid"`
 	Author             *graphQLActor   `json:"author"`
 	Commits            graphQLCount    `json:"commits"`
 	Comments           graphQLCount    `json:"comments"`
@@ -374,6 +379,7 @@ func (n *detailsNode) details() (id string, item ItemDetails, ok bool) {
 			Deletions:    n.Deletions,
 			ChangedFiles: n.ChangedFiles,
 			Commits:      n.Commits.TotalCount,
+			HeadOID:      n.HeadRefOID,
 			Mergeable:    n.Mergeable,
 			Checks:       n.StatusCheckRollup.checks(),
 			Reviews:      n.reviews(author),

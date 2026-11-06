@@ -4,7 +4,7 @@ import * as platform from './index'
 
 const mocks = vi.hoisted(() => ({
   appInfo: { Info: vi.fn(), ReportFirstPaint: vi.fn() },
-  inbox: { Snapshot: vi.fn(), Refresh: vi.fn() },
+  inbox: { Snapshot: vi.fn(), Refresh: vi.fn(), Dismiss: vi.fn(), Snooze: vi.fn(), Restore: vi.fn() },
   launcher: { Launch: vi.fn(), Resolve: vi.fn(), ResolveItems: vi.fn(), Preview: vi.fn() },
   profiles: { List: vi.fn() },
   prompts: {
@@ -28,13 +28,17 @@ const mocks = vi.hoisted(() => ({
     SetWorktreeDefault: vi.fn(),
     SetTrustedBots: vi.fn(),
     ResetTrustedBots: vi.fn(),
+    SetSnoozeDays: vi.fn(),
+    SetSnoozeWake: vi.fn(),
+    SetWindowSize: vi.fn(),
   },
   worktrees: { List: vi.fn(), Remove: vi.fn(), ForceRemove: vi.fn(), RemoveAllClean: vi.fn(), Prune: vi.fn() },
   events: { On: vi.fn() },
   browser: { OpenURL: vi.fn() },
+  window: { SetSize: vi.fn() },
 }))
 
-vi.mock('@wailsio/runtime', () => ({ Events: mocks.events, Browser: mocks.browser }))
+vi.mock('@wailsio/runtime', () => ({ Events: mocks.events, Browser: mocks.browser, Window: mocks.window }))
 vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/appinfo', () => ({ Service: mocks.appInfo }))
 vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/inbox', () => ({ Service: mocks.inbox }))
 vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/launcher', () => ({ Service: mocks.launcher }))
@@ -94,6 +98,20 @@ describe('inbox', () => {
 
     await expect(platform.getInboxSnapshot()).resolves.toBe(snapshot)
     await expect(platform.refreshInbox()).resolves.toBe(snapshot)
+  })
+
+  it('dismisses, snoozes, and restores an item', async () => {
+    mocks.inbox.Dismiss.mockResolvedValue(snapshot)
+    mocks.inbox.Snooze.mockResolvedValue(snapshot)
+    mocks.inbox.Restore.mockResolvedValue(snapshot)
+
+    await expect(platform.dismissItem(4)).resolves.toBe(snapshot)
+    await expect(platform.snoozeItem(4, 3)).resolves.toBe(snapshot)
+    await expect(platform.restoreItem(4)).resolves.toBe(snapshot)
+
+    expect(mocks.inbox.Dismiss).toHaveBeenCalledWith(4)
+    expect(mocks.inbox.Snooze).toHaveBeenCalledWith(4, 3)
+    expect(mocks.inbox.Restore).toHaveBeenCalledWith(4)
   })
 
   it('subscribes to inbox updates and returns the unsubscribe function', () => {
@@ -250,6 +268,10 @@ describe('settings', () => {
       cloneRoot: '~/projects',
       trustedBots: ['dependabot'],
       defaultTrustedBots: ['dependabot'],
+      snoozeDays: 3,
+      snoozeWake: { commits: 1, reviews: 'decisions', comments: 0 },
+      windowSize: { width: 1280, height: 800 },
+      defaultWindowSize: { width: 1280, height: 800 },
     }
     mocks.settings.Get.mockResolvedValue(settings)
     mocks.settings.SetTerminal.mockResolvedValue(undefined)
@@ -276,6 +298,43 @@ describe('settings', () => {
 
     expect(mocks.settings.SetTrustedBots).toHaveBeenCalledWith(['renovate'])
     expect(mocks.settings.ResetTrustedBots).toHaveBeenCalledOnce()
+
+    mocks.settings.SetSnoozeDays.mockResolvedValue(undefined)
+    await platform.setSnoozeDays(7)
+
+    expect(mocks.settings.SetSnoozeDays).toHaveBeenCalledWith(7)
+
+    const rules: platform.SnoozeRules = { commits: 3, reviews: 'any', comments: 5 }
+    mocks.settings.SetSnoozeWake.mockResolvedValue(undefined)
+    await platform.setSnoozeWake(rules)
+
+    expect(mocks.settings.SetSnoozeWake).toHaveBeenCalledWith(rules)
+  })
+
+  it('stores the window size, then resizes the open window', async () => {
+    const calls: string[] = []
+    mocks.settings.SetWindowSize.mockImplementation(() => {
+      calls.push('store')
+      return Promise.resolve()
+    })
+    mocks.window.SetSize.mockImplementation(() => {
+      calls.push('resize')
+      return Promise.resolve()
+    })
+
+    await platform.setWindowSize({ width: 1440, height: 900 })
+
+    expect(mocks.settings.SetWindowSize).toHaveBeenCalledWith({ width: 1440, height: 900 })
+    expect(mocks.window.SetSize).toHaveBeenCalledWith(1440, 900)
+    expect(calls).toEqual(['store', 'resize'])
+  })
+
+  it('leaves the window alone when the size is refused', async () => {
+    mocks.window.SetSize.mockClear()
+    mocks.settings.SetWindowSize.mockRejectedValue(new Error('invalid window size'))
+
+    await expect(platform.setWindowSize({ width: 100, height: 100 })).rejects.toThrow('invalid window size')
+    expect(mocks.window.SetSize).not.toHaveBeenCalled()
   })
 })
 

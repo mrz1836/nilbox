@@ -3,6 +3,7 @@
         "nodes": [
             {
                 "__typename": "PullRequest",
+                "headRefOid": "1111111111111111111111111111111111111111",
                 "id": "PR_fakeNodeIdPassing",
                 "additions": 120,
                 "deletions": 30,
@@ -140,6 +141,7 @@
             },
             {
                 "__typename": "PullRequest",
+                "headRefOid": "2222222222222222222222222222222222222222",
                 "id": "PR_fakeNodeIdFailing",
                 "additions": 937,
                 "deletions": 40,
@@ -222,6 +224,7 @@
             },
             {
                 "__typename": "PullRequest",
+                "headRefOid": "3333333333333333333333333333333333333333",
                 "id": "PR_fakeNodeIdNoChecks",
                 "additions": 2,
                 "deletions": 2,
