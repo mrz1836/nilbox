@@ -12,6 +12,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -405,6 +406,102 @@ func TestNoBranchDeletion(t *testing.T) {
 	}
 
 	assert.Empty(t, found, "removing worktrees must never delete a branch")
+}
+
+// cloneWriterFile is the only production file allowed to create a clone: the launcher's
+// clone of a repository with no local clone, run after the user confirms it.
+const cloneWriterFile = "internal/launcher/clone.go"
+
+// argvLiteral matches any of words as a Go string literal passed as an argv element: a
+// quoted word at the start of a line, or after whitespace, a comma, an opening
+// parenthesis, or a brace, but not a struct tag such as json:"word".
+func argvLiteral(words ...string) *regexp.Regexp {
+	quoted := make([]string, 0, len(words))
+	for _, w := range words {
+		quoted = append(quoted, regexp.QuoteMeta(w))
+	}
+
+	return regexp.MustCompile(`(^|[\s,({])"(` + strings.Join(quoted, "|") + `)"`)
+}
+
+// productionGoHits returns "file:line: text" for every line of a non-test Go file that
+// pattern matches, skipping the files in exempt.
+func productionGoHits(t *testing.T, root string, pattern *regexp.Regexp, exempt ...string) []string {
+	t.Helper()
+
+	var found []string
+
+	for _, rel := range goFiles(t, root) {
+		if strings.HasSuffix(rel, "_test.go") || slices.Contains(exempt, rel) {
+			continue
+		}
+
+		if text, ok := readText(t, root, rel); ok {
+			found = append(found, hits(rel, text, pattern.MatchString)...)
+		}
+	}
+
+	return found
+}
+
+func TestOnlyTheLauncherCreatesClones(t *testing.T) {
+	root := moduleRoot(t)
+
+	// Built from parts so this file does not match itself. "clone" is the argv word of
+	// both `git clone` and `gh repo clone`.
+	clone := argvLiteral("clo" + "ne")
+
+	writer, ok := readText(t, root, cloneWriterFile)
+	require.True(t, ok, "%s is gone; update this guard", cloneWriterFile)
+	assert.NotEmpty(t, hits(cloneWriterFile, writer, clone.MatchString),
+		"%s no longer runs the clone; update this guard", cloneWriterFile)
+
+	assert.Empty(t, productionGoHits(t, root, clone, cloneWriterFile),
+		"only the launcher's confirmed clone of a missing repository may create a clone")
+}
+
+// cloneChangingVerbs are the git subcommands that change an existing clone's checkout,
+// index, history, or remotes' refs. Built from parts so this file does not match itself.
+func cloneChangingVerbs() []string {
+	return []string{
+		"check" + "out", "sta" + "sh", "fet" + "ch", "swi" + "tch", "pu" + "ll", "re" + "set", "mer" + "ge",
+		"re" + "base", "com" + "mit", "pu" + "sh", "res" + "tore", "cherry" + "-pick", "cle" + "an",
+	}
+}
+
+func TestNoGitCommandChangesAClone(t *testing.T) {
+	root := moduleRoot(t)
+	verbs := argvLiteral(cloneChangingVerbs()...)
+	worktreeAdd := regexp.MustCompile(`"work` + `tree",\s*"add"`)
+
+	found := productionGoHits(t, root, verbs)
+	found = append(found, productionGoHits(t, root, worktreeAdd)...)
+
+	assert.Empty(t, found, "the app never changes an existing clone: no checkout, stash, fetch, branch "+
+		"switch, pull, reset, merge, rebase, commit, push, restore, cherry-pick, clean, or worktree creation")
+}
+
+func TestArgvLiteral(t *testing.T) {
+	t.Parallel()
+
+	pattern := argvLiteral("fet"+"ch", "cherry"+"-pick")
+
+	for line, want := range map[string]bool{
+		`run(ctx, "git", "-C", dir, "fet` + `ch")`: true,
+		`args := []string{"fet` + `ch", "origin"}`: true,
+		`	"fet` + `ch",`:     true,
+		`"cherry` + `-pick"`: true,
+		`Reset int64 ` + "`" + `json:"fet` + `ch"` + "`": false,
+		`msg := "fet` + `ch failed"`:                     false,
+		`"prefetch"`:                                     false,
+		`"cherry"`:                                       false,
+	} {
+		assert.Equal(t, want, pattern.MatchString(line), line)
+	}
+
+	worktreeAdd := regexp.MustCompile(`"work` + `tree",\s*"add"`)
+	assert.True(t, worktreeAdd.MatchString(`"-C", dir, "work`+`tree", "add", path`))
+	assert.False(t, worktreeAdd.MatchString(`"remote", "add", "origin"`))
 }
 
 // runsOnPattern matches a workflow `runs-on:` key and captures its inline value.
