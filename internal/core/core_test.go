@@ -288,10 +288,15 @@ func TestAppInfoReportsVersion(t *testing.T) {
 		Paths:   appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
 		Home:    tempHome(t),
 		Version: "v1.2.3",
+		Release: "1.2.3",
+		Build:   "42",
 		Runner:  &recordingRunner{},
 	})
 
-	assert.Equal(t, "v1.2.3", c.AppInfo.Info().Version)
+	info := c.AppInfo.Info()
+	assert.Equal(t, "v1.2.3", info.Version)
+	assert.Equal(t, "1.2.3", info.Release)
+	assert.Equal(t, "42", info.Build)
 }
 
 func TestInboxRefreshUsesInjectedRunner(t *testing.T) {

@@ -68,7 +68,16 @@ beforeEach(() => {
 
 describe('app', () => {
   it('reads the app info', async () => {
-    const info: platform.Info = { name: 'App', tagline: 'Tagline', version: 'dev' }
+    const info: platform.Info = {
+      name: 'App',
+      tagline: 'Tagline',
+      version: 'dev',
+      release: '0.0.0',
+      build: '0',
+      system: 'macOS 15.1 (24B83)',
+      arch: 'arm64',
+      bugReportUrl: 'https://github.com/acme-org/example-repo/issues/new',
+    }
     mocks.appInfo.Info.mockResolvedValue(info)
 
     await expect(platform.getAppInfo()).resolves.toEqual(info)

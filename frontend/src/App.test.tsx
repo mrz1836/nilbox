@@ -63,7 +63,16 @@ beforeEach(() => {
   platform.setDefaultProfile.mockResolvedValue(undefined)
   platform.setWorktreeDefault.mockResolvedValue(undefined)
   platform.listWorktrees.mockResolvedValue(worktreesSnapshot())
-  platform.getAppInfo.mockResolvedValue({ name: brand.name, tagline: brand.tagline, version: 'dev' })
+  platform.getAppInfo.mockResolvedValue({
+    name: brand.name,
+    tagline: brand.tagline,
+    version: 'dev',
+    release: '0.0.0',
+    build: '0',
+    system: 'macOS 15.1 (24B83)',
+    arch: 'arm64',
+    bugReportUrl: 'https://github.com/acme-org/example-repo/issues/new',
+  })
   platform.listPrompts.mockResolvedValue(prompts())
   platform.getDefaultPrompts.mockResolvedValue({ pr: 1, issue: 4 })
   platform.listPromptVariables.mockResolvedValue(variables())

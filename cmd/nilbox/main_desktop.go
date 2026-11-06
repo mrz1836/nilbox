@@ -41,9 +41,11 @@ import (
 //
 //nolint:gochecknoglobals // set by the linker
 var (
-	version   = "dev"
-	commit    = "none"
-	buildDate = "unknown"
+	version     = "dev"
+	commit      = "none"
+	buildDate   = "unknown"
+	release     = "0.0.0"
+	buildNumber = "0"
 )
 
 const (
@@ -96,6 +98,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		Paths:        paths,
 		Home:         home,
 		Version:      version,
+		Release:      release,
+		Build:        buildNumber,
 		Notifier:     s,
 		OnFirstPaint: s.firstPaint,
 	})

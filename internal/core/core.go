@@ -63,6 +63,11 @@ type Options struct {
 	// part of the user agent.
 	Version string
 
+	// Release is the release version and Build the build number; both are reported to
+	// the frontend.
+	Release string
+	Build   string
+
 	// Clock stamps refreshes, launches, and worktree listings. It defaults to the system
 	// clock.
 	Clock Clock
@@ -236,6 +241,8 @@ func assemble(db *gorm.DB, opts Options, logger *slog.Logger) *Core {
 		}),
 		AppInfo: appinfo.NewService(appinfo.Config{
 			Version:      opts.Version,
+			Release:      opts.Release,
+			Build:        opts.Build,
 			Recorder:     recorder,
 			OnFirstPaint: opts.OnFirstPaint,
 		}),

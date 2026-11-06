@@ -4,6 +4,10 @@ import (
 	"bytes"
 	"errors"
 	"log/slog"
+	"net/url"
+	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -34,9 +38,48 @@ func (r *stubRecorder) FirstPaint() (timing.Measurement, bool, error) {
 }
 
 func TestInfo(t *testing.T) {
-	s := NewService(Config{Version: "1.2.3"})
+	s := NewService(Config{Version: "v1.2.3-4-gabc1234-dirty", Release: "1.2.3", Build: "42", System: "macOS 15.1 (24B83)"})
 
-	assert.Equal(t, Info{Name: brand.Name, Tagline: brand.Tagline, Version: "1.2.3"}, s.Info())
+	info := s.Info()
+	assert.Equal(t, brand.Name, info.Name)
+	assert.Equal(t, brand.Tagline, info.Tagline)
+	assert.Equal(t, "v1.2.3-4-gabc1234-dirty", info.Version)
+	assert.Equal(t, "1.2.3", info.Release)
+	assert.Equal(t, "42", info.Build)
+	assert.Equal(t, "macOS 15.1 (24B83)", info.System)
+	assert.Equal(t, runtime.GOARCH, info.Arch)
+}
+
+func TestInfoDetectsTheSystem(t *testing.T) {
+	info := NewService(Config{Version: "dev"}).Info()
+
+	assert.NotEmpty(t, info.System)
+
+	if runtime.GOOS == "darwin" {
+		assert.Regexp(t, `^macOS \d+(\.\d+)* \(\w+\)$`, info.System)
+	}
+}
+
+func TestBugReportURLFillsInTheEnvironment(t *testing.T) {
+	info := NewService(Config{Version: "abc1234-dirty", Release: "0.0.0", Build: "16", System: "macOS 15.1 (24B83)"}).Info()
+
+	u, err := url.Parse(info.BugReportURL)
+	require.NoError(t, err)
+
+	assert.Equal(t, brand.Repository+"/issues/new", u.Scheme+"://"+u.Host+u.Path)
+	assert.Equal(t, bugReportTemplate, u.Query().Get("template"))
+	assert.Equal(t,
+		"- Version: 0.0.0 (16)\n- Commit: abc1234-dirty\n- System: macOS 15.1 (24B83), "+runtime.GOARCH+"\n",
+		u.Query().Get(environmentField))
+}
+
+// TestBugReportFormHasTheEnvironmentField guards the link against a renamed issue form or
+// field: GitHub ignores a prefill for a field the form does not have.
+func TestBugReportFormHasTheEnvironmentField(t *testing.T) {
+	form, err := os.ReadFile(filepath.Join("..", "..", ".github", "ISSUE_TEMPLATE", bugReportTemplate))
+	require.NoError(t, err)
+
+	assert.Contains(t, string(form), "id: "+environmentField+"\n")
 }
 
 func TestReportFirstPaintCallsHookOnce(t *testing.T) {

@@ -15,6 +15,9 @@ const (
 	// BundleID is the reverse-DNS application identifier (the macOS bundle ID).
 	BundleID = "com.mrz1836." + Slug
 
+	// Repository is the project's public GitHub repository, where bug reports go.
+	Repository = "https://github.com/mrz1836/" + Slug
+
 	// Tagline is the one-line product promise.
 	Tagline = "Your GitHub inbox, set to nil."
 
