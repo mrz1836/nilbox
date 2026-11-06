@@ -151,7 +151,7 @@ func TestMigrateFreshDatabase(t *testing.T) {
 	assert.Equal(t, migrate.Result{From: 0, To: len(files), Applied: applied}, res)
 	assert.Equal(t, []string{
 		"accounts", "claude_profiles", "item_details", "item_local_state", "items", "launch_defaults",
-		"prefs", "prompts", "rate_snapshots", "repos", "schema_migrations",
+		"prefs", "prompts", "rate_snapshots", "repos", "schema_migrations", "worktree_launches",
 	}, tables(t, db))
 
 	// Every shipped migration is recorded with its name and the checksum of its file.

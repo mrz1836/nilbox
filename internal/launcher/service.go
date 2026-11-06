@@ -16,6 +16,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/agents"
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/inbox"
+	"github.com/mrz1836/nilbox/internal/launchlog"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/settings"
@@ -47,7 +48,13 @@ type Clock interface {
 	Now() time.Time
 }
 
-// Config holds a Service's dependencies. Clock is optional.
+// LaunchRecorder records the worktrees sessions are launched in. *launchlog.Store
+// implements it.
+type LaunchRecorder interface {
+	Record(ctx context.Context, l launchlog.Launch) error
+}
+
+// Config holds a Service's dependencies. Clock and Launches are optional.
 type Config struct {
 	// DB is the app database: items, repositories, profiles, prompts, and launch
 	// defaults.
@@ -74,6 +81,10 @@ type Config struct {
 
 	// Clock stamps launch files. It defaults to the system clock.
 	Clock Clock
+
+	// Launches records each worktree a session is launched in, and the item it is for,
+	// so the Worktrees view links it and its cleanup finds it.
+	Launches LaunchRecorder
 }
 
 // LaunchRequest asks to start a session on one inbox item. Every choice is optional:
@@ -169,6 +180,7 @@ type Service struct {
 	paths    appdata.Paths
 	home     string
 	clock    Clock
+	launches LaunchRecorder
 }
 
 // NewService returns a launch Service over cfg.
@@ -187,6 +199,7 @@ func NewService(cfg Config) *Service {
 		paths:    cfg.Paths,
 		home:     cfg.Home,
 		clock:    clock,
+		launches: cfg.Launches,
 	}
 }
 
@@ -275,7 +288,8 @@ func (s *Service) Preview(ctx context.Context, req LaunchRequest) (Preview, erro
 //  4. mark the clone trusted in the agent config the session runs with, since a
 //     worktree session cannot show the agent's workspace trust dialog;
 //  5. write the prompt file and launch script;
-//  6. open the script in the terminal chosen in settings.
+//  6. open the script in the terminal chosen in settings;
+//  7. record the worktree, if the session starts in one, with the item it is for.
 //
 // The only git command it runs is the read-only `git -C <clone> config --get-regexp`
 // remote lookup. The script only changes into the clone and runs the agent; it never
@@ -299,6 +313,8 @@ func (s *Service) Launch(ctx context.Context, req LaunchRequest) (LaunchResult, 
 		return LaunchResult{}, err
 	}
 
+	s.recordLaunch(ctx, p)
+
 	return LaunchResult{
 		ScriptPath: files.Script,
 		ClonePath:  localrepos.TildePath(p.clone.Dir, s.home),
@@ -312,6 +328,7 @@ func (s *Service) Launch(ctx context.Context, req LaunchRequest) (LaunchResult, 
 
 // planned is a launch worked out but not started.
 type planned struct {
+	row    launchItemRow
 	res    Resolution
 	plan   Plan
 	prompt string
@@ -342,7 +359,7 @@ func (s *Service) plan(ctx context.Context, req LaunchRequest) (planned, error) 
 		return planned{}, err
 	}
 
-	p := planned{res: res}
+	p := planned{row: row, res: res}
 
 	if p.driver, err = s.registry.Get(w.settings.Terminal); err != nil {
 		return planned{}, err
@@ -370,6 +387,23 @@ func (s *Service) plan(ctx context.Context, req LaunchRequest) (planned, error) 
 	}
 
 	return p, nil
+}
+
+// recordLaunch records the worktree a session was launched in, with its item. The launch
+// has started by then, and a missing record only means the worktree is linked by its
+// name, so a failure is logged rather than returned.
+func (s *Service) recordLaunch(ctx context.Context, p planned) {
+	if s.launches == nil || p.plan.Worktree == "" {
+		return
+	}
+
+	err := s.launches.Record(ctx, launchlog.Launch{
+		ClonePath: p.clone.Dir, Worktree: worktreeDirName(p.plan.Worktree), Owner: p.row.Owner, Name: p.row.Name,
+		Kind: p.row.Kind, Number: p.row.Number, LaunchedAt: s.clock.Now(),
+	})
+	if err != nil {
+		slog.WarnContext(ctx, "could not record the worktree launch", "error", err)
+	}
 }
 
 // trustClone marks the clone trusted in the agent config the session reads (the

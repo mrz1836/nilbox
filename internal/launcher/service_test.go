@@ -20,6 +20,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/inbox/model"
+	"github.com/mrz1836/nilbox/internal/launchlog"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
@@ -460,6 +461,46 @@ func TestLaunchTrustsTheCloneForTheAgent(t *testing.T) {
 	h.launch(t, LaunchRequest{ItemID: h.outsidePR, Profile: profileWork, Worktree: boolPtr(false)})
 	assert.True(t, trustedIn(t, filepath.Join(workDir, ".claude.json"), key),
 		"the profile's own config trusts the clone, for every item and with or without a worktree")
+}
+
+// recordingLaunches keeps the launches the launcher records, or fails.
+type recordingLaunches struct {
+	launches []launchlog.Launch
+	err      error
+}
+
+func (r *recordingLaunches) Record(_ context.Context, l launchlog.Launch) error {
+	if r.err != nil {
+		return r.err
+	}
+
+	r.launches = append(r.launches, l)
+
+	return nil
+}
+
+func TestLaunchRecordsTheWorktree(t *testing.T) {
+	h := newLaunchHarness(t)
+	rec := &recordingLaunches{}
+	h.cfg.Launches = rec
+
+	h.launch(t, LaunchRequest{ItemID: h.trustedPR})
+	h.launch(t, LaunchRequest{ItemID: h.issue})
+	h.launch(t, LaunchRequest{ItemID: h.trustedPR, Worktree: boolPtr(false)})
+
+	assert.Equal(t, []launchlog.Launch{
+		{
+			ClonePath: h.clone, Worktree: "pr-7", Owner: "acme-org", Name: "example-repo", Kind: "pr", Number: 7,
+			LaunchedAt: fixedNow(),
+		},
+		{
+			ClonePath: h.clone, Worktree: "issue-3", Owner: "acme-org", Name: "example-repo", Kind: "issue", Number: 3,
+			LaunchedAt: fixedNow(),
+		},
+	}, rec.launches, "the worktree's directory name, for launches in a worktree only")
+
+	h.cfg.Launches = &recordingLaunches{err: errFakeSettings}
+	h.launch(t, LaunchRequest{ItemID: h.trustedPR})
 }
 
 func TestLaunchUsesTerminalPref(t *testing.T) {
