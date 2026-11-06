@@ -54,6 +54,8 @@ const platform = vi.hoisted(() => ({
   lastWorktreeSweep: vi.fn(),
   onWorktreesUpdated: vi.fn(),
   recentCleanups: vi.fn(),
+  getCollapsedSections: vi.fn(),
+  setSectionCollapsed: vi.fn(),
 }))
 
 vi.mock('./platform', () => platform)
@@ -68,6 +70,8 @@ beforeEach(() => {
   platform.setDefaultProfile.mockResolvedValue(undefined)
   platform.setWorktreeDefault.mockResolvedValue(undefined)
   platform.listWorktrees.mockResolvedValue(worktreesSnapshot())
+  platform.getCollapsedSections.mockResolvedValue([])
+  platform.setSectionCollapsed.mockResolvedValue(undefined)
   platform.getAppInfo.mockResolvedValue({
     name: brand.name,
     tagline: brand.tagline,
@@ -159,6 +163,28 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Inbox' }))
 
     expect(await screen.findByRole('region', { name: 'Review requested' })).toBeInTheDocument()
+  })
+
+  it('keeps the inbox lists collapsed the way they were left, across views', async () => {
+    platform.getCollapsedSections.mockResolvedValue(['assigned'])
+    render(<App />)
+
+    const review = within(await screen.findByRole('region', { name: 'Review requested' }))
+    const assigned = within(screen.getByRole('region', { name: 'Assigned' }))
+    expect(assigned.getByRole('button', { name: 'Expand Assigned' })).toHaveAttribute('aria-expanded', 'false')
+
+    await userEvent.click(review.getByRole('button', { name: 'Collapse Review requested' }))
+    expect(platform.setSectionCollapsed).toHaveBeenCalledWith('reviewRequested', true)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Inbox' }))
+
+    const back = within(await screen.findByRole('region', { name: 'Review requested' }))
+    expect(back.getByRole('button', { name: 'Expand Review requested' })).toBeInTheDocument()
+    expect(
+      within(screen.getByRole('region', { name: 'Assigned' })).getByRole('button', { name: 'Expand Assigned' }),
+    ).toBeInTheDocument()
+    expect(platform.getCollapsedSections).toHaveBeenCalledOnce()
   })
 
   it('opens the settings page from the account menu and keeps a saved change', async () => {

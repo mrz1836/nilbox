@@ -2,6 +2,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { useCollapsedSections } from '../lib/useCollapsedSections'
 import { useInbox } from '../lib/useInbox'
 import { item, itemResolution, launchResult, list, profile, prompts, snapshot } from '../test/fixtures'
 import { InboxView, type LaunchOptions } from './InboxView'
@@ -16,6 +17,8 @@ const platform = vi.hoisted(() => ({
   snoozeItem: vi.fn(),
   restoreItem: vi.fn(),
   refreshItem: vi.fn(),
+  getCollapsedSections: vi.fn(),
+  setSectionCollapsed: vi.fn(),
 }))
 
 vi.mock('../platform', () => platform)
@@ -42,11 +45,21 @@ interface HarnessProps {
   snoozeDays?: number
 }
 
-// Harness renders the view over the real inbox state, the way App does.
+// Harness renders the view over the real inbox state and collapsed lists, the way App does.
 function Harness({ launch, clock, snoozeDays = 3 }: HarnessProps) {
   const inbox = useInbox(clock)
+  const sections = useCollapsedSections()
 
-  return <InboxView inbox={inbox} launch={launch} snoozeDays={snoozeDays} onSnoozeSettings={openSnoozeSettings} />
+  return (
+    <InboxView
+      inbox={inbox}
+      launch={launch}
+      snoozeDays={snoozeDays}
+      onSnoozeSettings={openSnoozeSettings}
+      collapsed={sections.collapsed}
+      onCollapse={sections.setCollapsed}
+    />
+  )
 }
 
 // section waits for one inbox list and returns the queries scoped to it.
@@ -60,6 +73,8 @@ beforeEach(() => {
   platform.onInboxUpdated.mockReturnValue(stopListening)
   platform.openInBrowser.mockResolvedValue(undefined)
   platform.launch.mockResolvedValue(launchResult())
+  platform.getCollapsedSections.mockResolvedValue([])
+  platform.setSectionCollapsed.mockResolvedValue(undefined)
 })
 
 afterEach(() => {
@@ -266,6 +281,102 @@ describe('InboxView', () => {
     })
 
     expect(screen.getByText('6m ago')).toBeInTheDocument()
+  })
+})
+
+describe('InboxView collapsing', () => {
+  const authored = snapshot({
+    authored: list([
+      item({ id: 1, title: 'Fix the parser' }),
+      item({ id: 2, number: 8, title: 'Bump the parser', snoozedUntil: '2026-06-18T12:00:00Z' }),
+    ]),
+  })
+
+  it('collapses a list from its header to just its tabs, and opens it again', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(authored)
+    render(<Harness launch={launchOptions} clock={clock} />)
+
+    const list = await section('Authored')
+    expect(list.getByRole('button', { name: 'Fix the parser' })).toBeInTheDocument()
+
+    await userEvent.click(list.getByRole('button', { name: 'Collapse Authored' }))
+
+    const toggle = list.getByRole('button', { name: 'Expand Authored' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(list.queryByRole('tabpanel')).not.toBeInTheDocument()
+    expect(list.queryByRole('button', { name: 'Fix the parser' })).not.toBeInTheDocument()
+    // The tabs and their counts stay.
+    expect(list.getByRole('tab', { name: 'Authored 1' })).toBeInTheDocument()
+    expect(list.getByRole('tab', { name: 'Snoozed 1' })).toBeInTheDocument()
+    // The other lists stay open.
+    expect((await section('Assigned')).getByRole('button', { name: 'Collapse Assigned' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
+
+    await userEvent.click(toggle)
+
+    expect(list.getByRole('button', { name: 'Collapse Authored' })).toHaveAttribute('aria-expanded', 'true')
+    expect(list.getByRole('button', { name: 'Fix the parser' })).toBeInTheDocument()
+    expect(platform.setSectionCollapsed.mock.calls).toEqual([
+      ['authored', true],
+      ['authored', false],
+    ])
+  })
+
+  it('opens with the lists collapsed the way they were left', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(authored)
+    platform.getCollapsedSections.mockResolvedValue(['authored', 'assigned'])
+    render(<Harness launch={launchOptions} clock={clock} />)
+
+    const list = await section('Authored')
+    expect(list.getByRole('button', { name: 'Expand Authored' })).toHaveAttribute('aria-expanded', 'false')
+    expect(list.queryByRole('button', { name: 'Fix the parser' })).not.toBeInTheDocument()
+    expect((await section('Assigned')).getByRole('button', { name: 'Expand Assigned' })).toBeInTheDocument()
+    expect((await section('Review requested')).getByRole('tabpanel')).toBeVisible()
+    expect(platform.setSectionCollapsed).not.toHaveBeenCalled()
+  })
+
+  it('waits for the collapsed lists before showing any, so none flashes open', async () => {
+    let resolve: (sections: string[]) => void = () => undefined
+    platform.getInboxSnapshot.mockResolvedValue(authored)
+    platform.getCollapsedSections.mockReturnValue(
+      new Promise<string[]>((r) => {
+        resolve = r
+      }),
+    )
+    render(<Harness launch={launchOptions} clock={clock} />)
+
+    await waitFor(() => {
+      expect(platform.getInboxSnapshot).toHaveBeenCalled()
+    })
+    expect(screen.getByText('Loading the inbox…')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Authored' })).not.toBeInTheDocument()
+
+    act(() => {
+      resolve(['authored'])
+    })
+
+    const list = await section('Authored')
+    expect(list.queryByRole('button', { name: 'Fix the parser' })).not.toBeInTheDocument()
+  })
+
+  it('opens a collapsed list when one of its tabs is chosen', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(authored)
+    platform.getCollapsedSections.mockResolvedValue(['authored'])
+    render(<Harness launch={launchOptions} clock={clock} />)
+
+    const list = await section('Authored')
+    await userEvent.click(list.getByRole('tab', { name: 'Snoozed 1' }))
+
+    expect(list.getByRole('button', { name: 'Collapse Authored' })).toHaveAttribute('aria-expanded', 'true')
+    expect(list.getByRole('tabpanel')).toHaveAccessibleName('Snoozed 1')
+    expect(list.getByRole('button', { name: 'Bump the parser' })).toBeInTheDocument()
+    expect(platform.setSectionCollapsed).toHaveBeenCalledWith('authored', false)
+
+    // Choosing a tab of an open list leaves it as it is.
+    await userEvent.click(list.getByRole('tab', { name: 'Authored 1' }))
+    expect(platform.setSectionCollapsed).toHaveBeenCalledOnce()
   })
 })
 

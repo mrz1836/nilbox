@@ -315,6 +315,18 @@ export function resetTrustedBots(): Promise<void> {
   return SettingsService.ResetTrustedBots()
 }
 
+// getCollapsedSections lists the inbox sections the user collapsed, by list name
+// ("reviewRequested", "authored", "assigned"), in the inbox's order.
+export async function getCollapsedSections(): Promise<string[]> {
+  return (await SettingsService.CollapsedSections()) ?? []
+}
+
+// setSectionCollapsed stores whether an inbox section is collapsed, so the inbox opens the
+// same way at the next launch.
+export function setSectionCollapsed(section: string, collapsed: boolean): Promise<void> {
+  return SettingsService.SetSectionCollapsed(section, collapsed)
+}
+
 // Worktrees
 
 export function listWorktrees(): Promise<WorktreesSnapshot> {

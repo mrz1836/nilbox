@@ -19,6 +19,15 @@ import * as snooze$0 from "../snooze/models.js";
 import * as $models from "./models.js";
 
 /**
+ * CollapsedSections returns the inbox sections the user collapsed, in the order the inbox
+ * shows them. None is collapsed on a fresh database, and a stored value that is not a
+ * boolean counts as open.
+ */
+export function CollapsedSections(): $CancellablePromise<string[] | null> {
+    return $Call.ByID(3963432648);
+}
+
+/**
  * Get returns every preference, with the default for any that is unset or holds a value
  * that is no longer valid.
  */
@@ -48,6 +57,14 @@ export function SetCloneRoot(root: string): $CancellablePromise<void> {
  */
 export function SetDefaultProfile(name: string): $CancellablePromise<void> {
     return $Call.ByID(3789750455, name);
+}
+
+/**
+ * SetSectionCollapsed stores whether an inbox section is collapsed, so the inbox opens the
+ * same way at the next launch.
+ */
+export function SetSectionCollapsed(section: string, collapsed: boolean): $CancellablePromise<void> {
+    return $Call.ByID(124774945, section, collapsed);
 }
 
 /**

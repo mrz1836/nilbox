@@ -7,6 +7,7 @@ import { SettingsView, type SettingsSection } from './components/SettingsView'
 import { Toast, type ToastMessage } from './components/Toast'
 import { WorktreesView } from './components/WorktreesView'
 import { defaultSnoozeDays } from './lib/triage'
+import { useCollapsedSections } from './lib/useCollapsedSections'
 import { useInbox } from './lib/useInbox'
 import { useLaunchConfig } from './lib/useLaunchConfig'
 import {
@@ -86,12 +87,15 @@ function useWorktreeSweeps() {
 // App is the window's root: the toolbar over the active page. It holds the state the
 // pages share: the inbox (the lists, the account, and the API budget), the launch
 // configuration (settings, profiles, prompts, launch defaults, and each item's resolved
-// launch settings) that the rows, the Prompts page, and the settings page use, and the
-// automatic worktree cleanup's latest news.
+// launch settings) that the rows, the Prompts page, and the settings page use, which
+// inbox lists are collapsed, and the automatic worktree cleanup's latest news.
 export function App() {
   const inbox = useInbox()
   const config = useLaunchConfig(inbox.snapshot)
   const sweeps = useWorktreeSweeps()
+  // sections lives here rather than in the inbox page, so leaving the page and coming
+  // back keeps the lists as they were without reading them again.
+  const sections = useCollapsedSections()
   const [view, setView] = useState<View>('inbox')
   // returnView is where closing the settings page goes back to.
   const [returnView, setReturnView] = useState<View>('inbox')
@@ -230,6 +234,8 @@ export function App() {
             launch={launch}
             snoozeDays={config.settings?.snoozeDays ?? defaultSnoozeDays}
             onSnoozeSettings={openSnoozeSettings}
+            collapsed={sections.collapsed}
+            onCollapse={sections.setCollapsed}
           />
         )}
         {view === 'worktrees' && (

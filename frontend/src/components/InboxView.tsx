@@ -5,7 +5,7 @@ import { errorMessage } from '../lib/format'
 import { formatWhen, isDismissed, triageList, type TriageTab } from '../lib/triage'
 import type { InboxState } from '../lib/useInbox'
 import type { InboxItem, InboxList, InboxSnapshot } from '../platform'
-import { ArchiveIcon, ClockIcon } from './icons'
+import { ArchiveIcon, ChevronDownIcon, ClockIcon } from './icons'
 import { ItemRow, type LaunchOptions } from './ItemRow'
 import { Toast, type ToastMessage } from './Toast'
 import type { TriageActions } from './TriageControls'
@@ -22,8 +22,14 @@ export interface InboxViewProps {
   snoozeDays: number
   // onSnoozeSettings opens the setting for the Snooze button's length.
   onSnoozeSettings: () => void
+  // collapsed holds the list names of the collapsed lists. It is null until the stored
+  // state loads; the lists wait for it, so a collapsed list never shows open first.
+  collapsed: ReadonlySet<string> | null
+  // onCollapse collapses or opens a list.
+  onCollapse: (section: ListKey, collapsed: boolean) => void
 }
 
+// ListKey names an inbox list, as the snapshot does.
 type ListKey = 'reviewRequested' | 'authored' | 'assigned'
 
 const sections: readonly { key: ListKey; title: string }[] = [
@@ -117,17 +123,29 @@ interface ListSectionProps {
   now: Date
   launch: LaunchOptions | null
   triage: TriageActions
+  collapsed: boolean
+  onCollapse: (collapsed: boolean) => void
 }
 
 // ListSection is one inbox list as tabs: the list itself, then what was snoozed and
-// what was dismissed from it, each with its count.
-function ListSection({ title, list, now, launch, triage }: ListSectionProps) {
+// what was dismissed from it, each with its count. The toggle at the right of its header
+// collapses it to just the tabs, which keep their counts.
+function ListSection({ title, list, now, launch, triage, collapsed, onCollapse }: ListSectionProps) {
   const id = useId()
   const [tab, setTab] = useState<TriageTab>('inbox')
   const triaged = useMemo(() => triageList(list, now), [list, now])
   const items = triaged[tab]
   const tabId = (t: TriageTab) => `${id}-tab-${t}`
   const panelId = `${id}-panel`
+
+  // select shows a tab; choosing a tab of a collapsed list opens the list to show it.
+  const select = (t: TriageTab) => {
+    setTab(t)
+
+    if (collapsed) {
+      onCollapse(false)
+    }
+  }
 
   // The arrow keys, Home, and End move between the tabs and select the one they reach.
   const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
@@ -147,7 +165,7 @@ function ListSection({ title, list, now, launch, triage }: ListSectionProps) {
     e.preventDefault()
 
     const target = tabOrder[next] ?? 'inbox'
-    setTab(target)
+    select(target)
     document.getElementById(tabId(target))?.focus()
   }
 
@@ -155,45 +173,60 @@ function ListSection({ title, list, now, launch, triage }: ListSectionProps) {
 
   return (
     <section aria-label={title} className="rounded-lg border border-border bg-surface">
-      <div role="tablist" aria-label={title} className="flex items-center gap-1 border-b border-border px-1.5">
-        <Tab
-          id={tabId('inbox')}
-          panelId={panelId}
-          selected={tab === 'inbox'}
-          label={title}
-          count={countText(triaged.inbox.length, triaged.total)}
-          strong
-          onSelect={() => {
-            setTab('inbox')
+      <div className={`flex items-center gap-1 px-1.5 ${collapsed ? '' : 'border-b border-border'}`}>
+        <div role="tablist" aria-label={title} className="flex flex-1 items-center gap-1">
+          <Tab
+            id={tabId('inbox')}
+            panelId={panelId}
+            selected={tab === 'inbox'}
+            label={title}
+            count={countText(triaged.inbox.length, triaged.total)}
+            strong
+            onSelect={() => {
+              select('inbox')
+            }}
+            onKeyDown={onKeyDown}
+          />
+          <Tab
+            id={tabId('snoozed')}
+            panelId={panelId}
+            selected={tab === 'snoozed'}
+            label="Snoozed"
+            count={hiddenCount(triaged.snoozed.length)}
+            icon={<ClockIcon className="size-3.5" />}
+            onSelect={() => {
+              select('snoozed')
+            }}
+            onKeyDown={onKeyDown}
+          />
+          <Tab
+            id={tabId('dismissed')}
+            panelId={panelId}
+            selected={tab === 'dismissed'}
+            label="Dismissed"
+            count={hiddenCount(triaged.dismissed.length)}
+            icon={<ArchiveIcon className="size-3.5" />}
+            onSelect={() => {
+              select('dismissed')
+            }}
+            onKeyDown={onKeyDown}
+          />
+        </div>
+        <button
+          type="button"
+          aria-expanded={!collapsed}
+          aria-controls={panelId}
+          aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${title}`}
+          title={collapsed ? 'Expand' : 'Collapse'}
+          onClick={() => {
+            onCollapse(!collapsed)
           }}
-          onKeyDown={onKeyDown}
-        />
-        <Tab
-          id={tabId('snoozed')}
-          panelId={panelId}
-          selected={tab === 'snoozed'}
-          label="Snoozed"
-          count={hiddenCount(triaged.snoozed.length)}
-          icon={<ClockIcon className="size-3.5" />}
-          onSelect={() => {
-            setTab('snoozed')
-          }}
-          onKeyDown={onKeyDown}
-        />
-        <Tab
-          id={tabId('dismissed')}
-          panelId={panelId}
-          selected={tab === 'dismissed'}
-          label="Dismissed"
-          count={hiddenCount(triaged.dismissed.length)}
-          icon={<ArchiveIcon className="size-3.5" />}
-          onSelect={() => {
-            setTab('dismissed')
-          }}
-          onKeyDown={onKeyDown}
-        />
+          className="mr-1 rounded-md p-1 text-muted transition-colors hover:bg-raised hover:text-text"
+        >
+          <ChevronDownIcon className={`size-4 transition-transform ${collapsed ? '-rotate-90' : ''}`} />
+        </button>
       </div>
-      <div role="tabpanel" id={panelId} aria-labelledby={tabId(tab)}>
+      <div role="tabpanel" id={panelId} aria-labelledby={tabId(tab)} hidden={collapsed}>
         {items.length === 0 ? (
           <p className="px-4 py-3 text-sm text-muted">{emptyText(tab, title)}</p>
         ) : (
@@ -210,9 +243,9 @@ function ListSection({ title, list, now, launch, triage }: ListSectionProps) {
 
 // InboxView shows the three inbox lists across the full width, with a refresh control and
 // the time of the last refresh. Each list has tabs for what was snoozed or dismissed from
-// it, and each triage action is confirmed by a toast with an Undo. The account and the
-// API budget live in the toolbar.
-export function InboxView({ inbox, launch, snoozeDays, onSnoozeSettings }: InboxViewProps) {
+// it and collapses from its header, and each triage action is confirmed by a toast with an
+// Undo. The account and the API budget live in the toolbar.
+export function InboxView({ inbox, launch, snoozeDays, onSnoozeSettings, collapsed, onCollapse }: InboxViewProps) {
   const { snapshot, now, loadError, refreshError, refreshing, refresh, dismiss, snooze, restore, refreshItem } = inbox
   const error = firstMessage(refreshError, snapshot?.lastError ?? '', loadError)
   const [toast, setToast] = useState<ToastMessage | null>(null)
@@ -307,10 +340,21 @@ export function InboxView({ inbox, launch, snoozeDays, onSnoozeSettings }: Inbox
       {snapshot !== null && snapshot.scopeWarning !== '' && (
         <p className="rounded-md border border-warning px-3 py-2 text-sm text-warning">{snapshot.scopeWarning}</p>
       )}
-      {snapshot === null
+      {snapshot === null || collapsed === null
         ? loadError === '' && <p className="text-sm text-muted">Loading the inbox…</p>
         : sections.map(({ key, title }) => (
-            <ListSection key={key} title={title} list={snapshot[key]} now={now} launch={launch} triage={triage} />
+            <ListSection
+              key={key}
+              title={title}
+              list={snapshot[key]}
+              now={now}
+              launch={launch}
+              triage={triage}
+              collapsed={collapsed.has(key)}
+              onCollapse={(on) => {
+                onCollapse(key, on)
+              }}
+            />
           ))}
       <Toast toast={toast} onClose={closeToast} />
     </div>

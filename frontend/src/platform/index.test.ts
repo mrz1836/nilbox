@@ -39,6 +39,8 @@ const mocks = vi.hoisted(() => ({
     SetSnoozeDays: vi.fn(),
     SetSnoozeWake: vi.fn(),
     SetWindowSize: vi.fn(),
+    CollapsedSections: vi.fn(),
+    SetSectionCollapsed: vi.fn(),
   },
   worktrees: {
     List: vi.fn(),
@@ -351,6 +353,19 @@ describe('settings', () => {
     await platform.setSnoozeWake(rules)
 
     expect(mocks.settings.SetSnoozeWake).toHaveBeenCalledWith(rules)
+  })
+
+  it('reads and stores which inbox sections are collapsed', async () => {
+    mocks.settings.CollapsedSections.mockResolvedValue(['authored'])
+    await expect(platform.getCollapsedSections()).resolves.toEqual(['authored'])
+
+    mocks.settings.CollapsedSections.mockResolvedValue(null)
+    await expect(platform.getCollapsedSections()).resolves.toEqual([])
+
+    mocks.settings.SetSectionCollapsed.mockResolvedValue(undefined)
+    await platform.setSectionCollapsed('assigned', true)
+
+    expect(mocks.settings.SetSectionCollapsed).toHaveBeenCalledWith('assigned', true)
   })
 
   it('stores the window size, then resizes the open window', async () => {
