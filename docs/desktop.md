@@ -185,7 +185,7 @@ early](#waking-a-snooze-early)), launching (the terminal,
 the default profile, the default prompt for pull requests and for issues, and the worktree
 default), agent profiles, repositories (the clone root and the [launch
 defaults](#launch-defaults) for orgs and repositories), trust (the [trusted
-bots](#outside-contributors)), and the app's version. Each change is
+bots](#outside-contributors)), [sensitive files](#sensitive-files), and the app's version. Each change is
 saved as you make it, except the clone root and launch defaults, which are saved with their
 **Save** buttons. Escape or the back arrow returns to the view you came from.
 
@@ -199,7 +199,8 @@ Each pull request or issue in the inbox is a card three lines high:
    merge conflicts with its base branch. A long title is cut short; hover it for all of it.
 2. The repository and number, the author, how long ago it last changed, and a tag when the
    [trust rule](#outside-contributors) says so: **bot** for a trusted bot, **untrusted bot**,
-   or **outside contributor**.
+   or **outside contributor**. A pull request whose files are checked then shows its
+   [sensitive files](#sensitive-files) chip.
 3. Its details, in a fixed order that lines up from card to card. Hover any of them for the
    whole sentence, which is also what a screen reader reads.
 
@@ -411,6 +412,7 @@ syntax snippet in the cheat sheet inserts it at the caret.
 | `.Kind`, `.IsPR`, `.Number`, `.Title`, `.URL`, `.Author`, `.IsBot`, `.Labels`, `.IsDraft` | The item: its kind ("pull request" or "issue"), number, title (cut to 200 characters), address, author, whether a bot opened it, label names, and whether a pull request is a draft |
 | `.Repo`, `.Owner`, `.RepoName`, `.DefaultBranch` | The repository |
 | `.Branch`, `.Checks`, `.Review`, `.HasConflicts`, `.Additions`, `.Deletions`, `.ChangedFiles`, `.Commits` | A pull request's head branch, its checks ("passing", "failing", "pending", or empty), its review decision, whether it conflicts with its base, and its size; empty or zero for issues |
+| `.SensitiveFiles` | A checked pull request's [sensitive files](#sensitive-files), each with its category, as in ".github/workflows/ci.yml (Workflows)", separated by commas; empty when there are none, and for issues |
 | `.InWorktree`, `.WorktreeOnPRHead`, `.Worktree`, `.Profile`, `.Me`, `.OutsideContributor` | The session: whether it starts in a worktree, whether that worktree is at the pull request's head, its name, the profile, your login, and whether the item comes from an outside contributor |
 
 An item's description and comments are deliberately not variables: the agent reads them with
@@ -516,6 +518,86 @@ is refused.
 
 <br>
 
+## Sensitive files
+
+Reviewing a pull request from outside the project starts with its list of changed files: a
+change to a workflow, a build script, or an agent's settings can do harm long before anyone
+reads the code. The app does that first look for you. It checks the pull requests of:
+
+- every fork, every outside contributor, and every bot not on the trusted list, always;
+- collaborators (people with access to the repository who are not its owner or members of its
+  org), unless you choose **Outside contributors** under **Settings → Sensitive files**.
+
+The repository's owner and members, the trusted bots, and you are never checked, so
+Dependabot's `go.mod` updates stay quiet.
+
+**What counts.** A changed file is sensitive when its path, or a renamed file's previous path,
+matches a pattern of one of these categories. A file counts once, under the first category that
+matches it:
+
+| Category | Color | Examples | Why |
+|---|---|---|---|
+| Agent configuration | Red | `.claude/`, `.mcp.json`, `CLAUDE.md`, `AGENTS.md`, `.cursor/` | Coding agents load them. Hooks run commands as soon as a session starts, even in plan mode. |
+| Workflows and CI | Red | `.github/workflows/`, `.github/actions/`, `action.yml`, `.goreleaser.yml` | They run on CI with the repository's token and secrets. |
+| Build and dev tooling | Red | `Makefile`, `magefiles/`, `*.sh`, `.husky/`, `.envrc`, `.vscode/`, `Dockerfile`, `package.json` | They run on your machine when you build, test, install, or commit, or open the project in an editor. |
+| Review and merge rules | Amber | `CODEOWNERS`, `.github/dependabot.yml`, `renovate.json`, `.mergify.yml` | They decide who must review, and what updates or merges on its own. |
+| Dependencies | Amber | `go.mod`, `go.sum`, lockfiles, `vendor/`, `.gitmodules` | They bring in third-party code, or change where it comes from. |
+
+**Settings → Sensitive files** lists every pattern of each category behind its pattern count,
+turns any category but agent configuration off (launches are guarded by that one), and takes
+patterns of your own, flagged in red, such as `infra/` or `*.tf`. Patterns work like
+`.gitignore`, ignoring case, since macOS opens `.Claude/Settings.json` for
+`.claude/settings.json`: a name alone matches at any depth, one with a slash matches from the
+repository's root, a trailing slash matches a folder's contents, and `**` matches any number of
+folders. A pattern that would match every file, or an exclusion (`!`), is refused with the
+reason. **Try a path** says whether a path would be flagged, and by which pattern. A change
+there shows on every card at once, without asking GitHub.
+
+**On the card.** The chip beside who opened the pull request names the categories it touches,
+as in **Agent config · Workflows**, red when any category is red. A pull request whose files
+could not all be checked shows an amber **Files not checked** or **Not all files checked**; one
+pushed since its last check, **Files not checked yet**; and one whose every file was checked
+with nothing found, a quiet checked shield, so "checked, nothing found" never looks like "not
+checked". Click the chip for the files by category, each opening its diff on GitHub, a moved
+file with the path it left (moving a workflow away disables it), the commit they were checked
+at, and **Check now**.
+
+**How the files are read.** A refresh checks a pull request when its head commit has moved since
+its last check, or the last check failed, and otherwise reuses it, so most refreshes check
+nothing. The paths come from GitHub's REST API, which, unlike GraphQL, says where a renamed file
+came from: one request per 100 files, between two readings of the head commit, so the list
+belongs to one commit. A refresh checks at most 20 pull requests, 4 at a time, within 30
+seconds; the rest show **Files not checked yet** until the next one. A check that fails never
+fails the refresh: its card says so, and the next refresh tries again. GitHub lists at most
+3,000 files, so a larger pull request is marked as not fully checked. Only paths are stored,
+never content, and a check is removed when its item leaves the inbox.
+
+**Opening a session.** Launching on a checked pull request checks its files against GitHub again
+at that moment, one request when nothing was pushed. When it changes agent configuration, nothing
+starts: a dialog lists those files, each opening its diff, and says when the agent would load
+them, at once in a worktree at the pull request's head, or once a session checks it out (in that
+session and every later one in the same folder). **Cancel** is the default; **Open anyway**
+confirms that exact commit, so a push in between asks again. A pull request whose files could
+not all be checked is held back the same way, since it may change agent configuration unseen.
+The other categories never hold a launch back.
+
+Why it matters: the app marks each clone trusted for the agent (see [Workspace
+trust](#launching-a-session)), and plan mode limits what the agent does but not what a project's
+hooks do. A `SessionStart` hook added only on a pull request's branch runs as soon as a session
+starts in a worktree at that branch.
+
+**In the prompt.** The prompt of a session on a pull request with sensitive files ends with a
+line no prompt can leave out, after the outside-contributor line: "This pull request changes
+sensitive files, which can run on CI or on this machine, or steer a coding agent:
+.claude/settings.json (Agent config), .github/workflows/ci.yml (Workflows). Review those changes
+first and most closely." Prompts can also use `{{.SensitiveFiles}}`.
+
+**What it can't see.** Paths alone can't show what a change does inside an ordinary file, such
+as a test that runs during a build, or a `go:generate` line. The check is a first look that
+points the review at the riskiest files, not a review.
+
+<br>
+
 ## Launching a session
 
 A launch writes two files under the data directory's `launch/` folder: the filled-in
@@ -575,7 +657,9 @@ directory. It sets `projects["<clone>"].hasTrustDialogAccepted` to `true`, which
 agent's own documentation says to trust a folder by hand. It takes the lock the agent takes on
 that file and changes nothing else in it. A clone that is already trusted is left alone, and a
 profile directory that doesn't exist yet is left for the agent to set up. A project's
-`.claude/settings.json` then applies in every session, as it would after you accept the dialog.
+`.claude/settings.json` then applies in every session, as it would after you accept the dialog,
+hooks included, which is why a launch on a pull request that changes agent configuration
+[asks first](#sensitive-files).
 
 ### The one-time Automation prompt
 

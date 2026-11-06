@@ -116,7 +116,11 @@ worktrees) and whose first argument is the starter prompt.
 **How.** `magex measure:launch` creates a throwaway clone whose `origin` is the placeholder
 repository `acme-org/example-repo`, without fetching anything. It stores one pull request from an
 outside contributor, so the session starts in plan mode, and launches it without a worktree
-through the real launch service and iTerm2. It then checks the process list (`ps`) and each new
+through the real launch service and iTerm2. A launch on an outside contributor's pull request
+first checks its [sensitive files](desktop.md#sensitive-files) on GitHub; the placeholder's
+cannot be checked, so the launch is held back for confirmation, and the target confirms it at
+once and launches again, as a user would. The time includes both requests, so it is an upper
+bound for a pull request whose files check out. It then checks the process list (`ps`) and each new
 agent process's working directory (`lsof`) every 100 ms, and stops the agent as soon as it is
 found. The clone and the scratch data directory are deleted afterwards.
 
@@ -151,6 +155,14 @@ the same details inside the inbox query's three searches would cost 12 points a 
 (2.9% of the budget), because GitHub prices nested lists by the result slots asked for, not
 the items returned; that dry-run cost is why the details are a separate query. Before the
 cards read details, a refresh cost 1 point (0.24%).
+
+The [sensitive-file check](desktop.md#sensitive-files) costs no GraphQL points: it reads a
+pull request's changed files from the REST API, whose separate budget is 5,000 requests an hour.
+It runs only for pull requests from outside the repository (and collaborators', by default),
+and only when one's head commit has moved since its last check: two requests for a pull request
+of up to 100 files, plus one per further 100. A refresh that finds nothing pushed checks
+nothing, and one refresh checks at most 20 pull requests. A launch on such a pull request asks
+for its head once more, one request, and lists its files again only if it was pushed since.
 
 <br>
 

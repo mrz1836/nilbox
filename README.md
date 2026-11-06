@@ -45,6 +45,9 @@ The first release is a deliberately thin steel thread on macOS:
   worktree, with a saved agent profile and a prompt from your library
 - **Worktree cleanup**: a session's worktree is linked to its pull request or issue, and cleaned up
   with its branch once that merges or closes, only when nothing in it would be lost
+- **Sensitive files**: pull requests from forks and outside contributors (and collaborators, unless
+  you narrow it) point out the files that run on CI, run on your machine, or steer a coding agent,
+  and a session on one that changes agent configuration asks you first
 - **Prompt library**: write prompts as Go templates with `{{.Title}}`-style variables, checked as you
   type and previewed against real items; set defaults per org and per repository
 - An always-visible GitHub API rate-limit gauge, because every tool on your machine shares one budget
