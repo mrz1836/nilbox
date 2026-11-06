@@ -21,7 +21,9 @@
 // early any snooze whose new activity passes the user's wake rules (see the snooze
 // package), keeping the reasons. A snapshot keeps triaged items in their lists, each with
 // its state, and the UI sets them apart; a snooze that runs its course ends without
-// anything having to be written.
+// anything having to be written. Pin keeps an item at the top of its lists, the most
+// recently pinned first, until Unpin; it is stored in the same row, apart from a snooze or
+// a dismissal, so it outlasts both and Restore leaves it as it is.
 //
 // Inbox status that has no column of its own (each list's total match count, the
 // account's profile, the time of the last successful refresh, the last error, a scope

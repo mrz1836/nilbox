@@ -146,6 +146,13 @@ export interface Item {
      * nil when its snooze ran its course, is still running, or there was none.
      */
     "wokeBy": snooze$0.Reasons | null;
+
+    /**
+     * PinnedAt is when the item was pinned, as RFC 3339, or "" when it is not. Pinned
+     * items come first in each list, the most recently pinned first. A pin outlasts a
+     * snooze or a dismissal.
+     */
+    "pinnedAt": string;
 }
 
 /**

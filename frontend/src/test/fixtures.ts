@@ -46,6 +46,7 @@ export function item(overrides: Partial<InboxItem> = {}): InboxItem {
     dismissedAt: '',
     snoozedUntil: '',
     wokeBy: null,
+    pinnedAt: '',
     ...overrides,
   }
 }

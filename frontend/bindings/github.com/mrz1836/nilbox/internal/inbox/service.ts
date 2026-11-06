@@ -23,6 +23,16 @@ export function Dismiss(id: number): $CancellablePromise<$models.Snapshot> {
 }
 
 /**
+ * Pin keeps an item at the top of every list it is in, above the items not pinned, the
+ * most recently pinned first, and returns the new snapshot. A snoozed or dismissed item
+ * stays set aside and comes back pinned. Pinning a pinned item does nothing. Nothing is
+ * written to GitHub.
+ */
+export function Pin(id: number): $CancellablePromise<$models.Snapshot> {
+    return $Call.ByID(998741849, id);
+}
+
+/**
  * Refresh fetches the inbox from GitHub, stores it, and returns the new snapshot. On
  * failure the error is recorded as the snapshot's last error (unless ctx was canceled)
  * and the stored inbox is left as it was; the returned snapshot then shows that error.
@@ -50,7 +60,7 @@ export function RefreshItem(id: number): $CancellablePromise<$models.Snapshot> {
 
 /**
  * Restore brings a dismissed or snoozed item back to its lists, and returns the new
- * snapshot. Restoring an item that is neither does nothing.
+ * snapshot. A pinned item stays pinned. Restoring an item that is neither does nothing.
  */
 export function Restore(id: number): $CancellablePromise<$models.Snapshot> {
     return $Call.ByID(2819403784, id);
@@ -76,4 +86,13 @@ export function Snapshot(): $CancellablePromise<$models.Snapshot> {
  */
 export function Snooze(id: number, days: number): $CancellablePromise<$models.Snapshot> {
     return $Call.ByID(3352799032, id, days);
+}
+
+/**
+ * Unpin puts a pinned item back in its place among the rest, by its last activity, and
+ * returns the new snapshot. It leaves a snooze or a dismissal as it is. Unpinning an item
+ * that is not pinned does nothing.
+ */
+export function Unpin(id: number): $CancellablePromise<$models.Snapshot> {
+    return $Call.ByID(2952742416, id);
 }

@@ -108,12 +108,15 @@ func (Item) TableName() string { return "items" }
 // its snooze ends. At most one of the two is set. SnoozeBaseline is a JSON object of the
 // item's activity when it was snoozed, and WakeReasons a JSON object of the new activity
 // that ended its snooze early (see the snooze package); both are NULL when unset.
+// PinnedAt is when the item was pinned to the top of its lists, or NULL; a pin is kept
+// apart from a snooze or a dismissal and outlasts both.
 type ItemLocalState struct {
 	ItemID         int64      `gorm:"column:item_id;primaryKey;autoIncrement:false"`
 	DismissedAt    *time.Time `gorm:"column:dismissed_at"`
 	SnoozedUntil   *time.Time `gorm:"column:snoozed_until"`
 	SnoozeBaseline *string    `gorm:"column:snooze_baseline"`
 	WakeReasons    *string    `gorm:"column:wake_reasons"`
+	PinnedAt       *time.Time `gorm:"column:pinned_at"`
 	UpdatedAt      time.Time  `gorm:"column:updated_at"`
 }
 

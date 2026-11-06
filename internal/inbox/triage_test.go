@@ -126,6 +126,95 @@ func TestSnoozeRejectsInvalidLengths(t *testing.T) {
 	assert.Equal(t, notified+1, h.notifier.calls, "only the valid snooze notifies")
 }
 
+func TestPinKeepsAnItemOnTop(t *testing.T) {
+	h, first, second := triageHarness(t)
+	notified := h.notifier.calls
+
+	// #2 moved last, so it leads until #1 is pinned.
+	snap, err := h.svc.Snapshot(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, []int{2, 1}, numbers(snap.ReviewRequested))
+
+	snap, err = h.svc.Pin(t.Context(), first)
+	require.NoError(t, err)
+	assert.Equal(t, notified+1, h.notifier.calls)
+	assert.Equal(t, []int{1, 2}, numbers(snap.ReviewRequested))
+	assert.Equal(t, "2026-01-10T12:00:00Z", itemByNumber(t, snap.Assigned, 1).PinnedAt, "pinned in every list")
+	assert.Empty(t, itemByNumber(t, snap.ReviewRequested, 2).PinnedAt)
+
+	// The most recently pinned comes first, even within the same second.
+	h.clock.now = h.clock.now.Add(500 * time.Millisecond)
+	snap, err = h.svc.Pin(t.Context(), second)
+	require.NoError(t, err)
+	assert.Equal(t, []int{2, 1}, numbers(snap.ReviewRequested))
+
+	// Pinning a pinned item does not move it.
+	h.clock.now = h.clock.now.Add(time.Minute)
+	snap, err = h.svc.Pin(t.Context(), first)
+	require.NoError(t, err)
+	assert.Equal(t, []int{2, 1}, numbers(snap.ReviewRequested))
+	assert.Equal(t, "2026-01-10T12:00:00Z", itemByNumber(t, snap.ReviewRequested, 1).PinnedAt)
+
+	// A refresh keeps the pins.
+	snap = h.refresh(t)
+	assert.Equal(t, []int{2, 1}, numbers(snap.ReviewRequested))
+
+	// Unpinning puts an item back among the rest by its last activity.
+	snap, err = h.svc.Unpin(t.Context(), second)
+	require.NoError(t, err)
+	assert.Equal(t, []int{1, 2}, numbers(snap.ReviewRequested))
+	assert.Empty(t, itemByNumber(t, snap.ReviewRequested, 2).PinnedAt)
+
+	snap, err = h.svc.Unpin(t.Context(), first)
+	require.NoError(t, err)
+	assert.Equal(t, []int{2, 1}, numbers(snap.ReviewRequested))
+	assert.Zero(t, h.count(t, "item_local_state"))
+
+	// Unpinning an item that is not pinned does nothing.
+	_, err = h.svc.Unpin(t.Context(), first)
+	require.NoError(t, err)
+}
+
+func TestAPinOutlastsSnoozesAndDismissals(t *testing.T) {
+	h, id, _ := triageHarness(t)
+
+	_, err := h.svc.Pin(t.Context(), id)
+	require.NoError(t, err)
+
+	// Snoozing a pinned item keeps the pin, and so does ending the snooze.
+	snap, err := h.svc.Snooze(t.Context(), id, 3)
+	require.NoError(t, err)
+	it := itemByNumber(t, snap.ReviewRequested, 1)
+	assert.NotEmpty(t, it.SnoozedUntil)
+	assert.Equal(t, "2026-01-10T12:00:00Z", it.PinnedAt)
+
+	snap, err = h.svc.Restore(t.Context(), id)
+	require.NoError(t, err)
+	it = itemByNumber(t, snap.ReviewRequested, 1)
+	assert.Empty(t, it.SnoozedUntil)
+	assert.Equal(t, "2026-01-10T12:00:00Z", it.PinnedAt)
+	assert.Equal(t, []int{1, 2}, numbers(snap.ReviewRequested))
+
+	// The same for a dismissal.
+	snap, err = h.svc.Dismiss(t.Context(), id)
+	require.NoError(t, err)
+	it = itemByNumber(t, snap.ReviewRequested, 1)
+	assert.NotEmpty(t, it.DismissedAt)
+	assert.NotEmpty(t, it.PinnedAt)
+
+	// Unpinning a dismissed item leaves it dismissed.
+	snap, err = h.svc.Unpin(t.Context(), id)
+	require.NoError(t, err)
+	it = itemByNumber(t, snap.ReviewRequested, 1)
+	assert.NotEmpty(t, it.DismissedAt)
+	assert.Empty(t, it.PinnedAt)
+	assert.Equal(t, int64(1), h.count(t, "item_local_state"))
+
+	_, err = h.svc.Restore(t.Context(), id)
+	require.NoError(t, err)
+	assert.Zero(t, h.count(t, "item_local_state"))
+}
+
 func TestTriageUnknownItem(t *testing.T) {
 	h, _, _ := triageHarness(t)
 	notified := h.notifier.calls
@@ -135,6 +224,9 @@ func TestTriageUnknownItem(t *testing.T) {
 	require.ErrorContains(t, err, "(id 999)")
 
 	_, err = h.svc.Snooze(t.Context(), 999, 3)
+	require.ErrorIs(t, err, ErrItemNotFound)
+
+	_, err = h.svc.Pin(t.Context(), 999)
 	require.ErrorIs(t, err, ErrItemNotFound)
 
 	assert.Zero(t, h.count(t, "item_local_state"))
@@ -153,6 +245,12 @@ func TestTriageDatabaseErrors(t *testing.T) {
 
 	_, err = h.svc.Restore(t.Context(), id)
 	require.ErrorContains(t, err, "restore the item")
+
+	_, err = h.svc.Pin(t.Context(), id)
+	require.ErrorContains(t, err, "pin the item")
+
+	_, err = h.svc.Unpin(t.Context(), id)
+	require.ErrorContains(t, err, "unpin the item")
 }
 
 // wakeHarness refreshes an inbox with one pull request (#1) whose details are known, and

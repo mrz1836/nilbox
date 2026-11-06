@@ -28,6 +28,29 @@ ON CONFLICT (item_id) DO UPDATE SET
     wake_reasons = NULL,
     updated_at = excluded.updated_at`
 
+// pinSQL pins an item to the top of its lists, keeping its triage state and the time of an
+// earlier pin, so pinning a pinned item does not move it. It inserts nothing for an
+// unknown item, which the caller reads as zero rows affected.
+const pinSQL = `INSERT INTO item_local_state (item_id, pinned_at, updated_at)
+SELECT id, ?, ? FROM items WHERE id = ?
+ON CONFLICT (item_id) DO UPDATE SET
+    pinned_at = COALESCE(item_local_state.pinned_at, excluded.pinned_at),
+    updated_at = excluded.updated_at`
+
+// restoreSQL ends an item's dismissal or snooze, and forgets what woke the snooze, leaving
+// a pin as it is.
+const restoreSQL = `UPDATE item_local_state
+SET dismissed_at = NULL, snoozed_until = NULL, snooze_baseline = NULL, wake_reasons = NULL, updated_at = ?
+WHERE item_id = ?`
+
+// unpinSQL unpins an item, leaving its dismissal or snooze as it is.
+const unpinSQL = `UPDATE item_local_state SET pinned_at = NULL, updated_at = ? WHERE item_id = ?`
+
+// pruneStateSQL deletes an item's local state once nothing is left in it: not pinned,
+// dismissed, or snoozed, nor back from a snooze.
+const pruneStateSQL = `DELETE FROM item_local_state
+WHERE item_id = ? AND pinned_at IS NULL AND dismissed_at IS NULL AND snoozed_until IS NULL`
+
 // activityColumns are an item's details a snooze compares, as snooze.State reads them.
 const activityColumns = `d.head_oid AS head, d.commits, d.comments, d.review_decision AS decision,
     d.reviewed, d.approvals, d.changes_requested`
@@ -84,10 +107,41 @@ func (s *Service) Snooze(ctx context.Context, id int64, days int) (Snapshot, err
 }
 
 // Restore brings a dismissed or snoozed item back to its lists, and returns the new
-// snapshot. Restoring an item that is neither does nothing.
+// snapshot. A pinned item stays pinned. Restoring an item that is neither does nothing.
 func (s *Service) Restore(ctx context.Context, id int64) (Snapshot, error) {
-	if err := s.db.WithContext(ctx).Exec("DELETE FROM item_local_state WHERE item_id = ?", id).Error; err != nil {
-		return Snapshot{}, fmt.Errorf("restore the item: %w", err)
+	return s.clearState(ctx, "restore the item", restoreSQL, id)
+}
+
+// Pin keeps an item at the top of every list it is in, above the items not pinned, the
+// most recently pinned first, and returns the new snapshot. A snoozed or dismissed item
+// stays set aside and comes back pinned. Pinning a pinned item does nothing. Nothing is
+// written to GitHub.
+func (s *Service) Pin(ctx context.Context, id int64) (Snapshot, error) {
+	now := s.now()
+
+	return s.setState(ctx, "pin", id, pinSQL, now, now, id)
+}
+
+// Unpin puts a pinned item back in its place among the rest, by its last activity, and
+// returns the new snapshot. It leaves a snooze or a dismissal as it is. Unpinning an item
+// that is not pinned does nothing.
+func (s *Service) Unpin(ctx context.Context, id int64) (Snapshot, error) {
+	return s.clearState(ctx, "unpin the item", unpinSQL, id)
+}
+
+// clearState runs clearSQL, which clears some of an item's local state, deletes the row
+// once nothing is left in it, tells the notifier, and returns the new snapshot. what
+// names the action in an error.
+func (s *Service) clearState(ctx context.Context, what, clearSQL string, id int64) (Snapshot, error) {
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(clearSQL, s.now(), id).Error; err != nil {
+			return err
+		}
+
+		return tx.Exec(pruneStateSQL, id).Error
+	})
+	if err != nil {
+		return Snapshot{}, fmt.Errorf("%s: %w", what, err)
 	}
 
 	s.notify()
@@ -100,7 +154,14 @@ func (s *Service) Restore(ctx context.Context, id int64) (Snapshot, error) {
 func (s *Service) setTriage(
 	ctx context.Context, verb string, id int64, dismissedAt, snoozedUntil *time.Time, baseline *string,
 ) (Snapshot, error) {
-	res := s.db.WithContext(ctx).Exec(setTriageSQL, dismissedAt, snoozedUntil, baseline, s.now(), id)
+	return s.setState(ctx, verb, id, setTriageSQL, dismissedAt, snoozedUntil, baseline, s.now(), id)
+}
+
+// setState runs query, which records some of the local state of the item with id and
+// inserts nothing for an unknown item, then tells the notifier and returns the new
+// snapshot. verb names the action in an error.
+func (s *Service) setState(ctx context.Context, verb string, id int64, query string, args ...any) (Snapshot, error) {
+	res := s.db.WithContext(ctx).Exec(query, args...)
 	if res.Error != nil {
 		return Snapshot{}, fmt.Errorf("%s the item: %w", verb, res.Error)
 	}

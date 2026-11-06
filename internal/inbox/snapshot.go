@@ -13,8 +13,9 @@ import (
 	"github.com/mrz1836/nilbox/internal/trust"
 )
 
-// loadItemsSQL reads every item that is in at least one list, newest activity first, with
-// its details when a refresh has read them (has_details) and its triage state.
+// loadItemsSQL reads every item that is in at least one list, with its details when a
+// refresh has read them (has_details) and its triage state: the pinned items first, the
+// most recently pinned first, then the rest by newest activity.
 const loadItemsSQL = `SELECT
     i.id, i.kind, i.number, i.title, i.url, r.owner AS repo_owner, r.name AS repo_name,
     i.author_login, i.author_type, i.author_association, i.is_cross_repository, i.is_draft, i.head_ref,
@@ -29,14 +30,14 @@ const loadItemsSQL = `SELECT
     COALESCE(d.review_decision, '') AS review_decision, COALESCE(d.reviewers, 0) AS reviewers,
     COALESCE(d.reviewed, 0) AS reviewed, COALESCE(d.approvals, 0) AS approvals,
     COALESCE(d.changes_requested, 0) AS changes_requested, d.fetched_at AS details_fetched_at,
-    ls.dismissed_at, ls.snoozed_until, ls.wake_reasons
+    ls.dismissed_at, ls.snoozed_until, ls.wake_reasons, ls.pinned_at
 FROM items i
 JOIN repos r ON r.id = i.repo_id
 LEFT JOIN item_details d ON d.item_id = i.id
 LEFT JOIN item_local_state ls ON ls.item_id = i.id
 WHERE i.account_id = ?
   AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1)
-ORDER BY i.item_updated_at DESC, i.id DESC`
+ORDER BY ls.pinned_at IS NULL, ls.pinned_at DESC, i.item_updated_at DESC, i.id DESC`
 
 // githubWebURL is the root of GitHub's website, for a profile link stored before the
 // profile URL was.
@@ -135,6 +136,11 @@ type Item struct {
 	// WokeBy is the new activity that ended the item's snooze early, at SnoozedUntil, or
 	// nil when its snooze ran its course, is still running, or there was none.
 	WokeBy *snooze.Reasons `json:"wokeBy"`
+
+	// PinnedAt is when the item was pinned, as RFC 3339, or "" when it is not. Pinned
+	// items come first in each list, the most recently pinned first. A pin outlasts a
+	// snooze or a dismissal.
+	PinnedAt string `json:"pinnedAt"`
 }
 
 // Details is what an item's inbox card shows beyond its title. The pull request fields
@@ -332,6 +338,7 @@ type itemRow struct {
 	DismissedAt  *time.Time `gorm:"column:dismissed_at"`
 	SnoozedUntil *time.Time `gorm:"column:snoozed_until"`
 	WakeReasons  *string    `gorm:"column:wake_reasons"`
+	PinnedAt     *time.Time `gorm:"column:pinned_at"`
 }
 
 // item converts a row to its DTO, deciding its trust with policy.
@@ -360,6 +367,7 @@ func (r *itemRow) item(policy trust.Policy) Item {
 		DismissedAt:       formatOptionalTime(r.DismissedAt),
 		SnoozedUntil:      formatOptionalTime(r.SnoozedUntil),
 		WokeBy:            decodeReasons(r.WakeReasons),
+		PinnedAt:          formatOptionalTime(r.PinnedAt),
 	}
 }
 
