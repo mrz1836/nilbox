@@ -13,11 +13,13 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/mrz1836/nilbox/internal/agentflags"
+	"github.com/mrz1836/nilbox/internal/agents"
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/settings"
+	"github.com/mrz1836/nilbox/internal/workspacetrust"
 )
 
 // claudeBin is the command Claude Code runs as.
@@ -270,8 +272,10 @@ func (s *Service) Preview(ctx context.Context, req LaunchRequest) (Preview, erro
 //  2. find the item's local clone: the cached path when it still is a clone of the
 //     repository, otherwise a scan of the clone root, whose result is cached;
 //  3. find the agent, build the plan, and fill in the prompt;
-//  4. write the prompt file and launch script;
-//  5. open the script in the terminal chosen in settings.
+//  4. mark the clone trusted in the agent config the session runs with, since a
+//     worktree session cannot show the agent's workspace trust dialog;
+//  5. write the prompt file and launch script;
+//  6. open the script in the terminal chosen in settings.
 //
 // The only git command it runs is the read-only `git -C <clone> config --get-regexp`
 // remote lookup. The script only changes into the clone and runs the agent; it never
@@ -279,6 +283,10 @@ func (s *Service) Preview(ctx context.Context, req LaunchRequest) (Preview, erro
 func (s *Service) Launch(ctx context.Context, req LaunchRequest) (LaunchResult, error) {
 	p, err := s.plan(ctx, req)
 	if err != nil {
+		return LaunchResult{}, err
+	}
+
+	if err = s.trustClone(ctx, p); err != nil {
 		return LaunchResult{}, err
 	}
 
@@ -362,6 +370,24 @@ func (s *Service) plan(ctx context.Context, req LaunchRequest) (planned, error) 
 	}
 
 	return p, nil
+}
+
+// trustClone marks the clone trusted in the agent config the session reads (the
+// profile's CLAUDE_CONFIG_DIR, or home for the default profile), so the agent starts
+// without its workspace trust dialog. A --worktree session cannot show that dialog: it
+// exits with "Workspace trust not yet accepted" in a repository not trusted yet.
+func (s *Service) trustClone(ctx context.Context, p planned) error {
+	if p.res.Agent.ID != agents.Claude {
+		return nil
+	}
+
+	file := workspacetrust.ConfigFile(p.plan.Env[envConfigDir], s.home)
+
+	if _, err := workspacetrust.Grant(ctx, file, p.clone.Dir); err != nil {
+		return fmt.Errorf("trust %s for the agent: %w", localrepos.TildePath(p.clone.Dir, s.home), err)
+	}
+
+	return nil
 }
 
 // fillIn fills in a launch's prompt from the item's data, adding the signed-in account

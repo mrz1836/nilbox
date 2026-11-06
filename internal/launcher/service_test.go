@@ -2,6 +2,7 @@ package launcher
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -24,6 +25,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/workspacetrust"
 )
 
 // remoteLookupPattern is the only git config pattern the launcher may pass.
@@ -418,6 +420,48 @@ func TestLaunchCloneNotFound(t *testing.T) {
 	assert.Empty(t, h.cachedPath(t, "missing-repo"))
 }
 
+// trustedIn reports whether the agent config file at path trusts dir.
+func trustedIn(t *testing.T, path, dir string) bool {
+	t.Helper()
+
+	data, err := os.ReadFile(path) //nolint:gosec // a test file under a temp dir
+	require.NoError(t, err)
+
+	var config struct {
+		Projects map[string]struct {
+			HasTrustDialogAccepted bool `json:"hasTrustDialogAccepted"`
+		} `json:"projects"`
+	}
+	require.NoError(t, json.Unmarshal(data, &config))
+
+	return config.Projects[dir].HasTrustDialogAccepted
+}
+
+func TestLaunchTrustsTheCloneForTheAgent(t *testing.T) {
+	h := newLaunchHarness(t)
+	defaultConfig := filepath.Join(h.home, ".claude.json")
+	workDir := filepath.Join(h.home, ".claude_work")
+
+	key, err := filepath.EvalSymlinks(h.clone)
+	require.NoError(t, err)
+
+	_, err = h.service().Preview(t.Context(), LaunchRequest{ItemID: h.trustedPR})
+	require.NoError(t, err)
+	assert.NoFileExists(t, defaultConfig, "a preview trusts nothing")
+
+	h.launch(t, LaunchRequest{ItemID: h.trustedPR})
+	assert.True(t, trustedIn(t, defaultConfig, key), "the default profile's config, in home, trusts the clone")
+
+	// A profile the agent has never run with is left for the agent to set up.
+	h.launch(t, LaunchRequest{ItemID: h.trustedPR, Profile: profileWork})
+	assert.NoDirExists(t, workDir)
+
+	require.NoError(t, os.Mkdir(workDir, 0o700))
+	h.launch(t, LaunchRequest{ItemID: h.outsidePR, Profile: profileWork, Worktree: boolPtr(false)})
+	assert.True(t, trustedIn(t, filepath.Join(workDir, ".claude.json"), key),
+		"the profile's own config trusts the clone, for every item and with or without a worktree")
+}
+
 func TestLaunchUsesTerminalPref(t *testing.T) {
 	h := newLaunchHarness(t)
 	require.NoError(t, h.settings.SetTerminal(t.Context(), settings.TerminalApp))
@@ -553,6 +597,14 @@ func TestLaunchFailures(t *testing.T) {
 				require.NoError(t, h.db.Exec("UPDATE claude_profiles SET effort = 'turbo' WHERE name = 'default'").Error)
 			},
 			wantErr: ErrInvalidEffort,
+		},
+		{
+			name: "agent config unreadable",
+			mutate: func(t *testing.T, h *launchHarness) {
+				t.Helper()
+				require.NoError(t, os.WriteFile(filepath.Join(h.home, ".claude.json"), []byte("[]"), 0o600))
+			},
+			wantErr: workspacetrust.ErrNotObject,
 		},
 	}
 

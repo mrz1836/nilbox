@@ -23,8 +23,10 @@ import * as $models from "./models.js";
  *  2. find the item's local clone: the cached path when it still is a clone of the
  *     repository, otherwise a scan of the clone root, whose result is cached;
  *  3. find the agent, build the plan, and fill in the prompt;
- *  4. write the prompt file and launch script;
- *  5. open the script in the terminal chosen in settings.
+ *  4. mark the clone trusted in the agent config the session runs with, since a
+ *     worktree session cannot show the agent's workspace trust dialog;
+ *  5. write the prompt file and launch script;
+ *  6. open the script in the terminal chosen in settings.
  *
  * The only git command it runs is the read-only `git -C <clone> config --get-regexp`
  * remote lookup. The script only changes into the clone and runs the agent; it never

@@ -530,6 +530,16 @@ flag, under `<clone>/.claude/worktrees/<name>` on a branch named `worktree-<name
 Launching on the same item again reuses the name, so the agent resumes the existing worktree
 instead of creating another. The outside-contributor rule applies unchanged.
 
+**Workspace trust.** Claude Code asks once per repository whether you trust it, and a
+`--worktree` session can't ask: it exits with "Workspace trust not yet accepted" instead. So
+before each launch the app marks the clone trusted in the config of the profile the session runs
+with: `~/.claude.json` for the default profile, or `.claude.json` in the profile's config
+directory. It sets `projects["<clone>"].hasTrustDialogAccepted` to `true`, which is how the
+agent's own documentation says to trust a folder by hand. It takes the lock the agent takes on
+that file and changes nothing else in it. A clone that is already trusted is left alone, and a
+profile directory that doesn't exist yet is left for the agent to set up. A project's
+`.claude/settings.json` then applies in every session, as it would after you accept the dialog.
+
 ### The one-time Automation prompt
 
 The first launch in iTerm2 makes macOS ask once whether the app may control iTerm2: "“Nilbox”
