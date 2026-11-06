@@ -21,9 +21,10 @@ const DefaultSweepInterval = 5 * time.Minute
 // automatic cleanup is on, cleans up each finished one whose pull request merged or whose
 // issue closed (see autoCleanable for which count). It never lists every clone: it looks
 // only in clones with an agent worktree directory or a recorded launch, so it is cheap to
-// run on a timer. It also drops the launch records of worktrees that are gone. The report
-// is kept for LastSweep, and the notifier is told when a worktree was removed or the
-// number left for the user changed.
+// run on a timer. It also drops the launch records of worktrees that are gone, and counts
+// the linked worktrees of every clone from their git directories, again without running
+// git. The report is kept for LastSweep, and the notifier is told when a worktree was
+// removed or either count changed.
 func (s *Service) Sweep(ctx context.Context) SweepReport {
 	s.act.Lock()
 	report := s.sweep(ctx)
@@ -32,7 +33,8 @@ func (s *Service) Sweep(ctx context.Context) SweepReport {
 	report.At = s.clock.Now().UTC().Format(time.RFC3339)
 
 	s.mu.Lock()
-	changed := len(report.Cleaned) > 0 || report.Leftover != s.last.Leftover || report.Error != s.last.Error
+	changed := len(report.Cleaned) > 0 || report.Leftover != s.last.Leftover ||
+		report.WorktreeCount != s.last.WorktreeCount || report.Error != s.last.Error
 	report.Seq = s.last.Seq + 1
 	s.last = report
 	s.mu.Unlock()
@@ -77,30 +79,39 @@ func (s *Service) sweep(ctx context.Context) SweepReport {
 	}
 
 	report.Enabled = prefs.WorktreeAutoCleanup
+	s.sweepAgentWork(ctx, g, root, &report)
+
+	// Counted last, so the worktrees the sweep removed are not.
+	report.WorktreeCount = countWorktrees(root)
+
+	return report
+}
+
+// sweepAgentWork checks the clones with agent worktrees or recorded launches, cleans up
+// what it may, and forgets the launches whose worktree is gone.
+func (s *Service) sweepAgentWork(ctx context.Context, g git, root string, report *SweepReport) {
 	launches := s.launchRecords(ctx)
 
 	clones := s.sweepClones(ctx, root, launches)
 	if len(clones) == 0 {
 		s.pruneLaunches(ctx, root, launches, Snapshot{})
 
-		return report
+		return
 	}
 
 	snap, err := s.assessClones(ctx, g, root, clones)
 	if err != nil {
 		report.Error = err.Error()
 
-		return report
+		return
 	}
 
 	s.pruneLaunches(ctx, root, launches, snap)
 	report.Error = snap.LinkError
 
 	for repo, wt := range rows(snap.Repos) {
-		s.sweepRow(ctx, g, repo.Path, *wt, &report)
+		s.sweepRow(ctx, g, repo.Path, *wt, report)
 	}
-
-	return report
 }
 
 // sweepRow cleans up one worktree when the sweep may, and counts it when it is left for
@@ -179,6 +190,108 @@ func hasAgentWorktrees(dir string) bool {
 	names, err := f.Readdirnames(1)
 
 	return err == nil && len(names) > 0
+}
+
+// countWorktrees counts the linked worktrees of the clones directly under root, not
+// hidden, as a listing would, without running git. Git registers each linked worktree in
+// its repository's common git directory, under worktrees/, and lists every entry there
+// that holds a gitdir file, whether or not the worktree's own directory is still there;
+// this counts the same entries. Clones of one repository (one a linked worktree of
+// another, or one clone reached through a symlink) count its worktrees once.
+func countWorktrees(root string) int {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return 0
+	}
+
+	seen := make(map[string]bool, len(entries))
+	count := 0
+
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+
+		common := commonDir(filepath.Join(root, e.Name()))
+		if common == "" || seen[common] {
+			continue
+		}
+
+		seen[common] = true
+		count += registeredWorktrees(common)
+	}
+
+	return count
+}
+
+// registeredWorktrees counts the linked worktrees registered in a common git directory:
+// the entries of its worktrees directory that hold a non-empty gitdir file.
+func registeredWorktrees(common string) int {
+	dir := filepath.Join(common, "worktrees")
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+
+	count := 0
+
+	for _, e := range entries {
+		info, statErr := os.Stat(filepath.Join(dir, e.Name(), "gitdir"))
+		if statErr == nil && info.Mode().IsRegular() && info.Size() > 0 {
+			count++
+		}
+	}
+
+	return count
+}
+
+// commonDir returns the resolved common git directory of the clone at dir, or "" when
+// dir has no readable .git. A .git directory is that directory. A .git file (a linked
+// worktree, or a clone whose git directory lives elsewhere) points at the git directory,
+// and a commondir file there points on to the common one.
+func commonDir(dir string) string {
+	dotGit := filepath.Join(dir, ".git")
+
+	info, err := os.Stat(dotGit)
+	if err != nil {
+		return ""
+	}
+
+	if info.IsDir() {
+		return resolvedPath(dotGit)
+	}
+
+	gitDir, ok := readGitPointer(dotGit, dir, "gitdir: ")
+	if !ok {
+		return ""
+	}
+
+	if common, found := readGitPointer(filepath.Join(gitDir, "commondir"), gitDir, ""); found {
+		return resolvedPath(common)
+	}
+
+	return resolvedPath(gitDir)
+}
+
+// readGitPointer reads the path a one-line git file holds after prefix. A relative path
+// is taken from base, as git takes it.
+func readGitPointer(file, base, prefix string) (string, bool) {
+	data, err := os.ReadFile(file) //nolint:gosec // a git file of a clone under the clone root
+	if err != nil {
+		return "", false
+	}
+
+	path, ok := strings.CutPrefix(strings.TrimRight(string(data), "\r\n"), prefix)
+	if !ok || path == "" {
+		return "", false
+	}
+
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(base, path)
+	}
+
+	return path, true
 }
 
 // pruneLaunches forgets the launch records whose worktree is gone: its clone is no

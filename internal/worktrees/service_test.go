@@ -296,6 +296,8 @@ func TestListScansAllReposUnderRoot(t *testing.T) {
 	assert.Equal(t, listedAt().Format(time.RFC3339), snap.ListedAt)
 	assert.Equal(t, []string{"alpha", "broken", "gamma"}, repoNames(snap), "beta has no linked worktrees, nested is too deep, and gamma-wt folds into gamma")
 	assert.Equal(t, 3, snap.CleanCount, "alpha-feature, alpha-detached, and gamma-wt are clean")
+	assert.Equal(t, 6, snap.WorktreeCount, "alpha's five linked worktrees and gamma-wt, the main worktrees aside")
+	assert.Equal(t, snap.WorktreeCount, countWorktrees(e.root), "the sweep's count, read without git, agrees")
 
 	repo, ok := findRepo(snap, "alpha")
 	require.True(t, ok)

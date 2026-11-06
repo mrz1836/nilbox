@@ -46,6 +46,10 @@ type Snapshot struct {
 	// ReviewCount is how many worktrees are done on GitHub but hold work that is not.
 	ReviewCount int `json:"reviewCount"`
 
+	// WorktreeCount is how many linked worktrees the snapshot lists, the main worktrees
+	// aside.
+	WorktreeCount int `json:"worktreeCount"`
+
 	// LinkError explains why the pull requests and issues could not be read from GitHub,
 	// or is "". The worktrees are listed without their items then.
 	LinkError string `json:"linkError"`
@@ -300,6 +304,11 @@ type SweepReport struct {
 	// Leftover is how many worktrees are done on GitHub but still on disk and not in use,
 	// so the user may want to look at them.
 	Leftover int `json:"leftover"`
+
+	// WorktreeCount is how many linked worktrees the clones under the clone root have
+	// once the sweep is done, as a listing's Snapshot.WorktreeCount would count them. It
+	// is read from each clone's git directory, without running git.
+	WorktreeCount int `json:"worktreeCount"`
 
 	// Error explains why the sweep could not run, or is "".
 	Error string `json:"error"`

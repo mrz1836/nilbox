@@ -90,6 +90,7 @@ func TestSweepCleansUpMergedAndClosedWork(t *testing.T) {
 	assert.Equal(t, listedAt().Format(time.RFC3339), report.At)
 	assert.Empty(t, report.Failed)
 	assert.Equal(t, 3, report.Leftover, "pr-3 and issue-4 are finished but left for the user, and pr-6 needs a look")
+	assert.Equal(t, 4, report.WorktreeCount, "the four agent worktrees the sweep kept")
 
 	cleaned := make([]string, 0, len(report.Cleaned))
 	for _, r := range report.Cleaned {
@@ -129,7 +130,73 @@ func TestSweepOnlyCountsWhenAutomaticCleanupIsOff(t *testing.T) {
 	assert.False(t, report.Enabled)
 	assert.Empty(t, report.Cleaned)
 	assert.Equal(t, 6, report.Leftover, "every finished worktree, and pr-6")
+	assert.Equal(t, 7, report.WorktreeCount)
 	assert.Len(t, gitWorktreePaths(t, f.repo), 8, "the main worktree and all seven agent worktrees stay")
+}
+
+func TestSweepCountsTheWorktreesOfEveryClone(t *testing.T) {
+	e := newEnv(t)
+	plain := e.newRepo(t, "plain")
+	feature := addWorktree(t, plain, filepath.Join(e.home, "wt", "feature"), "feature")
+	notifier := &countingNotifier{}
+	svc := e.linked(linkDeps{gh: &fakeGitHub{}, notifier: notifier, auto: true})
+
+	report := svc.Sweep(t.Context())
+	assert.Empty(t, report.Error)
+	assert.Equal(t, 1, report.WorktreeCount, "a clone without agent worktrees still counts, though git never runs in it")
+	assert.Equal(t, 1, notifier.calls(), "the first count is news")
+
+	svc.Sweep(t.Context())
+	assert.Equal(t, 1, notifier.calls(), "the same count is not")
+
+	addWorktree(t, plain, filepath.Join(e.home, "wt", "second"), "second")
+	assert.Equal(t, 2, svc.Sweep(t.Context()).WorktreeCount)
+	assert.Equal(t, 2, notifier.calls(), "a new worktree is news")
+
+	gitOut(t, "-C", plain, "worktree", "remove", feature)
+	assert.Equal(t, 1, svc.Sweep(t.Context()).WorktreeCount)
+	assert.Equal(t, 3, notifier.calls(), "so is one removed")
+}
+
+func TestCountWorktrees(t *testing.T) {
+	e := newEnv(t)
+	wt := filepath.Join(e.home, "wt")
+
+	// Two linked worktrees outside the root, one of them gone from disk but still
+	// registered, as git lists it until pruned.
+	alpha := e.newRepo(t, "alpha")
+	addWorktree(t, alpha, filepath.Join(wt, "alpha-one"), "one")
+	require.NoError(t, os.RemoveAll(addWorktree(t, alpha, filepath.Join(wt, "alpha-gone"), "gone")))
+
+	// A linked worktree under the root counts with its clone, once, and so does the clone
+	// reached through a symlink.
+	addWorktree(t, alpha, filepath.Join(e.root, "alpha-wt"), "alpha-wt")
+	require.NoError(t, os.Symlink(alpha, filepath.Join(e.root, "alpha-link")))
+
+	// A registration without a gitdir file, which git does not list.
+	require.NoError(t, os.MkdirAll(filepath.Join(alpha, ".git", "worktrees", "half-made"), 0o700))
+
+	// A linked worktree under the root of a repository outside it brings that
+	// repository's worktrees, as a listing shows them.
+	outside := filepath.Join(e.home, "outside")
+	gitOut(t, "-c", "init.defaultBranch=main", "init", "-q", outside)
+	gitOut(t, "-C", outside, "commit", "-q", "--allow-empty", "-m", "init")
+	addWorktree(t, outside, filepath.Join(e.root, "outside-wt"), "outside-wt")
+	addWorktree(t, outside, filepath.Join(wt, "outside-two"), "outside-two")
+
+	// Not counted: a clone without linked worktrees, a hidden clone, a directory that is
+	// not a clone, and a .git file that points nowhere.
+	e.newRepo(t, "beta")
+	addWorktree(t, e.newRepo(t, ".hidden"), filepath.Join(wt, "hidden-wt"), "hidden")
+	require.NoError(t, os.MkdirAll(filepath.Join(e.root, "notes"), 0o700))
+
+	broken := filepath.Join(e.root, "broken")
+	require.NoError(t, os.MkdirAll(broken, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(broken, ".git"), []byte("not a pointer\n"), 0o600))
+
+	assert.Equal(t, 5, countWorktrees(e.root), "alpha's three and outside's two")
+	assert.Equal(t, e.list(t).WorktreeCount, countWorktrees(e.root), "as a listing counts them")
+	assert.Zero(t, countWorktrees(filepath.Join(e.root, "missing")))
 }
 
 func TestSweepReportsWhatItCouldNotRemove(t *testing.T) {

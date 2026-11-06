@@ -409,12 +409,17 @@ func (s *Service) launchRecords(ctx context.Context) []launchlog.Launch {
 	return records
 }
 
-// tally works out each worktree's stage and counts what the bulk actions would remove.
+// tally works out each worktree's stage, counts what the bulk actions would remove, and
+// counts the linked worktrees.
 func (s *Service) tally(snap *Snapshot) {
-	snap.CleanCount, snap.FinishedCount, snap.ReviewCount = 0, 0, 0
+	snap.CleanCount, snap.FinishedCount, snap.ReviewCount, snap.WorktreeCount = 0, 0, 0, 0
 
 	for _, wt := range rows(snap.Repos) {
 		assess(wt)
+
+		if !wt.Main {
+			snap.WorktreeCount++
+		}
 
 		if wt.CanRemove {
 			snap.CleanCount++

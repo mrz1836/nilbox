@@ -414,6 +414,7 @@ export function sweepReport(overrides: Partial<SweepReport> = {}): SweepReport {
     cleaned: [],
     failed: [],
     leftover: 0,
+    worktreeCount: 0,
     error: '',
     ...overrides,
   }
@@ -451,6 +452,7 @@ export function worktreesSnapshot(overrides: Partial<WorktreesSnapshot> = {}): W
     cleanCount: 1,
     finishedCount: 0,
     reviewCount: 0,
+    worktreeCount: 1,
     linkError: '',
     listedAt: '2026-06-15T12:00:00Z',
     ...overrides,

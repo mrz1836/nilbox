@@ -205,6 +205,12 @@ export interface Snapshot {
     "reviewCount": number;
 
     /**
+     * WorktreeCount is how many linked worktrees the snapshot lists, the main worktrees
+     * aside.
+     */
+    "worktreeCount": number;
+
+    /**
      * LinkError explains why the pull requests and issues could not be read from GitHub,
      * or is "". The worktrees are listed without their items then.
      */
@@ -250,6 +256,13 @@ export interface SweepReport {
      * so the user may want to look at them.
      */
     "leftover": number;
+
+    /**
+     * WorktreeCount is how many linked worktrees the clones under the clone root have
+     * once the sweep is done, as a listing's Snapshot.WorktreeCount would count them. It
+     * is read from each clone's git directory, without running git.
+     */
+    "worktreeCount": number;
 
     /**
      * Error explains why the sweep could not run, or is "".

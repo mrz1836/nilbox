@@ -403,6 +403,7 @@ describe('worktrees', () => {
       cleanCount: 0,
       finishedCount: 0,
       reviewCount: 0,
+      worktreeCount: 0,
       linkError: '',
       listedAt: '',
     }
@@ -455,6 +456,7 @@ describe('worktrees', () => {
       cleaned: [cleaned],
       failed: [],
       leftover: 1,
+      worktreeCount: 2,
       error: '',
     }
     mocks.worktrees.Unlock.mockResolvedValue(undefined)

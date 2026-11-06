@@ -106,9 +106,10 @@ export function RemoveAllClean(): $CancellablePromise<$models.RemoveResult[] | n
  * automatic cleanup is on, cleans up each finished one whose pull request merged or whose
  * issue closed (see autoCleanable for which count). It never lists every clone: it looks
  * only in clones with an agent worktree directory or a recorded launch, so it is cheap to
- * run on a timer. It also drops the launch records of worktrees that are gone. The report
- * is kept for LastSweep, and the notifier is told when a worktree was removed or the
- * number left for the user changed.
+ * run on a timer. It also drops the launch records of worktrees that are gone, and counts
+ * the linked worktrees of every clone from their git directories, again without running
+ * git. The report is kept for LastSweep, and the notifier is told when a worktree was
+ * removed or either count changed.
  */
 export function Sweep(): $CancellablePromise<$models.SweepReport> {
     return $Call.ByID(1408242560);
