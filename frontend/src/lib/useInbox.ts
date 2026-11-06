@@ -21,6 +21,9 @@ export interface InboxState {
   refreshing: boolean
   // refresh fetches the inbox from GitHub now.
   refresh: () => void
+  // reload reads the stored inbox again, without asking GitHub, such as after a setting
+  // that changes how items are shown.
+  reload: () => void
 }
 
 // useInbox loads the stored inbox, loads it again whenever the shell reports a change
@@ -85,5 +88,16 @@ export function useInbox(clock: () => Date = systemClock): InboxState {
       })
   }, [clock])
 
-  return { snapshot, now, loadError, refreshError, refreshing, refresh }
+  const reload = useCallback(() => {
+    getInboxSnapshot()
+      .then((next) => {
+        setSnapshot(next)
+        setLoadError('')
+      })
+      .catch((err: unknown) => {
+        setLoadError(errorMessage(err))
+      })
+  }, [])
+
+  return { snapshot, now, loadError, refreshError, refreshing, refresh, reload }
 }

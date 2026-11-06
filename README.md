@@ -42,7 +42,9 @@ The first release is a deliberately thin steel thread on macOS:
 - Three views: **Needs Review**, **My Pull Requests**, and **Assigned**
 - Local triage: mark items done, pin and mute repositories inline
 - **Open in agent**: launch a terminal (iTerm2, Terminal.app, and more) in the right clone or a fresh
-  worktree, with a saved agent profile and a rendered prompt
+  worktree, with a saved agent profile and a prompt from your library
+- **Prompt library**: write prompts as Go templates with `{{.Title}}`-style variables, checked as you
+  type and previewed against real items; set defaults per org and per repository
 - An always-visible GitHub API rate-limit gauge, because every tool on your machine shares one budget
 - Light and dark themes
 
@@ -115,7 +117,7 @@ magex app:check      # on macOS: bindings drift check, desktop lint, and bundle 
 |--------------------|----------------------------------------------------------------|
 | `cmd/nilbox/`      | Application entry point (the desktop app builds with the `desktop` tag) |
 | `internal/brand/`  | Product identity and design tokens (the only place the name lives) |
-| `internal/`        | The core services: inbox, launcher, settings, profiles, worktrees, and the data layer |
+| `internal/`        | The core services: inbox, launcher, prompts, launch defaults, settings, profiles, worktrees, and the data layer |
 | `frontend/`        | The React + TypeScript frontend and its generated Go bindings  |
 | `magefiles/`       | Custom `magex` targets for the frontend, the app, and measurements |
 | `docs/`            | Desktop build guide and measured performance                   |

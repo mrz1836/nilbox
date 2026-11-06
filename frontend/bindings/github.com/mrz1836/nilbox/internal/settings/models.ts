@@ -25,4 +25,15 @@ export interface Settings {
      * CloneRoot is the clone root as entered, e.g. "~/projects".
      */
     "cloneRoot": string;
+
+    /**
+     * TrustedBots lists the bots (GitHub Apps) whose pull requests and issues are trusted
+     * like a collaborator's, by login, sorted. It starts as trust.DefaultBots.
+     */
+    "trustedBots": string[] | null;
+
+    /**
+     * DefaultTrustedBots is the list ResetTrustedBots restores.
+     */
+    "defaultTrustedBots": string[] | null;
 }

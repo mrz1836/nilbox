@@ -7,6 +7,12 @@ export interface ConfirmDialogProps {
   confirmLabel: string
   onConfirm: () => void
   onCancel: () => void
+  // tone colors the confirm button: danger for destructive actions (the default),
+  // primary for safe ones.
+  tone?: 'danger' | 'primary'
+  // cancelLabel names the cancel button; null leaves only the confirm button, for a
+  // message that only needs acknowledging.
+  cancelLabel?: string | null
 }
 
 // focusableSelector finds the dialog's controls for keeping keyboard focus inside it.
@@ -40,19 +46,29 @@ function nextFocus(dialog: HTMLElement, backwards: boolean): HTMLElement | null 
   return null
 }
 
-// ConfirmDialog asks the user to confirm a destructive action. It is modal: it starts
-// with focus on Cancel (the safe choice), keeps Tab inside itself, cancels on Escape, and
-// returns focus to where it was when it closes. Render it only while it is open.
-export function ConfirmDialog({ title, children, confirmLabel, onConfirm, onCancel }: ConfirmDialogProps) {
+// ConfirmDialog asks the user to confirm an action, or to acknowledge a message. It is
+// modal: it starts with focus on Cancel (the safe choice) when there is one, keeps Tab
+// inside itself, cancels on Escape, and returns focus to where it was when it closes.
+// Render it only while it is open.
+export function ConfirmDialog({
+  title,
+  children,
+  confirmLabel,
+  onConfirm,
+  onCancel,
+  tone = 'danger',
+  cancelLabel = 'Cancel',
+}: ConfirmDialogProps) {
   const id = useId()
   const dialogRef = useRef<HTMLDivElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
+  const confirmRef = useRef<HTMLButtonElement>(null)
 
   // Move focus into the dialog on open, and back to the opener on close.
   useEffect(() => {
     const opener = document.activeElement
 
-    cancelRef.current?.focus()
+    ;(cancelRef.current ?? confirmRef.current)?.focus()
 
     return () => {
       if (opener instanceof HTMLElement && opener.isConnected) {
@@ -82,10 +98,12 @@ export function ConfirmDialog({ title, children, confirmLabel, onConfirm, onCanc
       }
     }
 
-    document.addEventListener('keydown', onKeyDown)
+    // The capture phase runs this before any page-level Escape handler, which then sees
+    // the key as handled (defaultPrevented) and leaves the page open.
+    document.addEventListener('keydown', onKeyDown, true)
 
     return () => {
-      document.removeEventListener('keydown', onKeyDown)
+      document.removeEventListener('keydown', onKeyDown, true)
     }
   }, [onCancel])
 
@@ -106,18 +124,21 @@ export function ConfirmDialog({ title, children, confirmLabel, onConfirm, onCanc
           {children}
         </div>
         <div className="mt-4 flex justify-end gap-2 text-sm">
+          {cancelLabel !== null && (
+            <button
+              ref={cancelRef}
+              type="button"
+              onClick={onCancel}
+              className="rounded-md border border-border bg-surface px-3 py-1 font-medium hover:bg-raised"
+            >
+              {cancelLabel}
+            </button>
+          )}
           <button
-            ref={cancelRef}
-            type="button"
-            onClick={onCancel}
-            className="rounded-md border border-border bg-surface px-3 py-1 font-medium hover:bg-raised"
-          >
-            Cancel
-          </button>
-          <button
+            ref={confirmRef}
             type="button"
             onClick={onConfirm}
-            className="rounded-md bg-danger px-3 py-1 font-medium text-background hover:opacity-90"
+            className={`rounded-md px-3 py-1 font-medium text-background hover:opacity-90 ${tone === 'danger' ? 'bg-danger' : 'bg-accent'}`}
           >
             {confirmLabel}
           </button>

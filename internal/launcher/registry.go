@@ -130,3 +130,13 @@ func firstLine(s string) string {
 
 	return ""
 }
+
+// truncateRunes caps s at limit runes.
+func truncateRunes(s string, limit int) string {
+	runes := []rune(s)
+	if len(runes) <= limit {
+		return s
+	}
+
+	return strings.TrimSpace(string(runes[:limit]))
+}

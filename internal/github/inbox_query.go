@@ -2,8 +2,9 @@ package github
 
 // inboxQuery is the one GraphQL request behind an inbox refresh: the viewer, three aliased
 // searches, and the query's own rate-limit cost. Each search returns the total match
-// count and up to 100 items with the fields the trust rule needs (authorAssociation, and
-// isCrossRepository for pull requests). __typename tells pull requests from issues.
+// count and up to 100 items with the fields the trust rule needs (the author's type and
+// authorAssociation, and isCrossRepository for pull requests). __typename tells pull
+// requests from issues, and, on the author, a bot (Bot) from a person (User).
 //
 // Each search leaves out archived repositories (archived:false), so their items never
 // take a result slot, count toward a total, or cost a details request.
@@ -35,13 +36,13 @@ fragment ItemFields on SearchResultItem {
   ... on PullRequest {
     id number title url createdAt updatedAt isDraft headRefName
     authorAssociation isCrossRepository
-    author { login }
+    author { __typename login }
     repository { ...RepoFields }
   }
   ... on Issue {
     id number title url createdAt updatedAt
     authorAssociation
-    author { login }
+    author { __typename login }
     repository { ...RepoFields }
   }
 }

@@ -6,6 +6,7 @@
                 {
                     "__typename": "Issue",
                     "author": {
+                        "__typename": "User",
                         "login": "octo-teammate"
                     },
                     "authorAssociation": "MEMBER",
@@ -48,6 +49,7 @@
                 {
                     "__typename": "PullRequest",
                     "author": {
+                        "__typename": "User",
                         "login": "octo-user"
                     },
                     "authorAssociation": "OWNER",
@@ -102,6 +104,7 @@
                 {
                     "__typename": "PullRequest",
                     "author": {
+                        "__typename": "User",
                         "login": "octo-user"
                     },
                     "authorAssociation": "OWNER",
@@ -150,6 +153,7 @@
                 {
                     "__typename": "PullRequest",
                     "author": {
+                        "__typename": "User",
                         "login": "octo-user"
                     },
                     "authorAssociation": "MEMBER",
@@ -207,6 +211,7 @@
                 {
                     "__typename": "PullRequest",
                     "author": {
+                        "__typename": "User",
                         "login": "fork-contributor"
                     },
                     "authorAssociation": "CONTRIBUTOR",
@@ -255,7 +260,8 @@
                 {
                     "__typename": "PullRequest",
                     "author": {
-                        "login": "dependabot[bot]"
+                        "__typename": "Bot",
+                        "login": "dependabot"
                     },
                     "authorAssociation": "NONE",
                     "createdAt": "2026-01-04T06:00:00Z",
@@ -303,6 +309,7 @@
                 {
                     "__typename": "PullRequest",
                     "author": {
+                        "__typename": "User",
                         "login": "new-contributor"
                     },
                     "authorAssociation": "FIRST_TIME_CONTRIBUTOR",

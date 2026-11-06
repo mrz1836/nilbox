@@ -15,7 +15,7 @@ import (
 // its details when a refresh has read them (has_details).
 const loadItemsSQL = `SELECT
     i.id, i.kind, i.number, i.title, i.url, r.owner AS repo_owner, r.name AS repo_name,
-    i.author_login, i.author_association, i.is_cross_repository, i.is_draft, i.head_ref,
+    i.author_login, i.author_type, i.author_association, i.is_cross_repository, i.is_draft, i.head_ref,
     i.item_updated_at, i.reason_review_requested, i.reason_authored, i.reason_assigned,
     d.item_id IS NOT NULL AS has_details,
     COALESCE(d.labels, '[]') AS labels, COALESCE(d.comments, 0) AS comments,
@@ -97,9 +97,17 @@ type Item struct {
 	// UpdatedAt is the item's last activity on GitHub, as RFC 3339.
 	UpdatedAt string `json:"updatedAt"`
 
-	// Trusted applies the outside-contributor rule to AuthorAssociation and
-	// IsCrossRepository.
-	Trusted           bool   `json:"trusted"`
+	// Trust is the item's trust class (see the trust package): "member" for the
+	// repository's owner, org members, and collaborators, "bot" for a trusted bot, and
+	// "outside" for everyone else, every untrusted bot, and every fork.
+	Trust string `json:"trust"`
+
+	// Trusted reports whether Trust is anything but "outside".
+	Trusted bool `json:"trusted"`
+
+	// AuthorIsBot reports whether GitHub reports the author as a bot.
+	AuthorIsBot bool `json:"authorIsBot"`
+
 	IsCrossRepository bool   `json:"isCrossRepository"`
 	AuthorAssociation string `json:"authorAssociation"`
 
@@ -226,10 +234,11 @@ func accountFromPrefs(prefs map[string]string) Account {
 	return account
 }
 
-// addItems sorts rows into the lists whose flags they carry.
-func (s *Snapshot) addItems(rows []itemRow) {
+// addItems sorts rows into the lists whose flags they carry, deciding each item's trust
+// with policy.
+func (s *Snapshot) addItems(rows []itemRow, policy trust.Policy) {
 	for _, r := range rows {
-		item := r.item()
+		item := r.item(policy)
 
 		if r.ReasonReviewRequested {
 			s.ReviewRequested.Items = append(s.ReviewRequested.Items, item)
@@ -272,6 +281,7 @@ type itemRow struct {
 	RepoOwner             string    `gorm:"column:repo_owner"`
 	RepoName              string    `gorm:"column:repo_name"`
 	AuthorLogin           string    `gorm:"column:author_login"`
+	AuthorType            string    `gorm:"column:author_type"`
 	AuthorAssociation     string    `gorm:"column:author_association"`
 	IsCrossRepository     bool      `gorm:"column:is_cross_repository"`
 	IsDraft               bool      `gorm:"column:is_draft"`
@@ -302,9 +312,11 @@ type itemRow struct {
 	DetailsFetchedAt *time.Time   `gorm:"column:details_fetched_at"`
 }
 
-// item converts a row to its DTO.
-func (r *itemRow) item() Item {
+// item converts a row to its DTO, deciding its trust with policy.
+func (r *itemRow) item(policy trust.Policy) Item {
 	isPR := r.Kind == model.KindPR
+	author := trust.Author{Login: r.AuthorLogin, Type: r.AuthorType, Association: r.AuthorAssociation}
+	class := policy.Classify(author, isPR, r.IsCrossRepository)
 
 	return Item{
 		ID:                r.ID,
@@ -315,7 +327,9 @@ func (r *itemRow) item() Item {
 		Repo:              r.RepoOwner + "/" + r.RepoName,
 		Author:            r.AuthorLogin,
 		UpdatedAt:         formatTime(r.ItemUpdatedAt),
-		Trusted:           trust.Trusted(r.AuthorAssociation, isPR, r.IsCrossRepository),
+		Trust:             class,
+		Trusted:           class != trust.ClassOutside,
+		AuthorIsBot:       author.IsBot(),
 		IsCrossRepository: r.IsCrossRepository,
 		AuthorAssociation: r.AuthorAssociation,
 		Branch:            r.HeadRef,

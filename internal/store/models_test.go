@@ -15,7 +15,9 @@ import (
 	"gorm.io/gorm/schema"
 
 	inboxmodel "github.com/mrz1836/nilbox/internal/inbox/model"
+	launchdefaultsmodel "github.com/mrz1836/nilbox/internal/launchdefaults/model"
 	profilesmodel "github.com/mrz1836/nilbox/internal/profiles/model"
+	promptsmodel "github.com/mrz1836/nilbox/internal/prompts/model"
 	settingsmodel "github.com/mrz1836/nilbox/internal/settings/model"
 	"github.com/mrz1836/nilbox/internal/store"
 )
@@ -83,7 +85,8 @@ func TestModelsMatchMigratedSchema(t *testing.T) {
 }
 
 func TestAllModelsAggregatesBoundedContexts(t *testing.T) {
-	want := slices.Concat(inboxmodel.AllModels(), settingsmodel.AllModels(), profilesmodel.AllModels())
+	want := slices.Concat(inboxmodel.AllModels(), settingsmodel.AllModels(), profilesmodel.AllModels(),
+		promptsmodel.AllModels(), launchdefaultsmodel.AllModels())
 
 	got := store.AllModels()
 	require.Len(t, got, len(want))
@@ -226,4 +229,74 @@ func TestSchemaRejectsInvalidRows(t *testing.T) {
 
 	// Details for an item that does not exist.
 	require.Error(t, db.Create(&inboxmodel.ItemDetails{ItemID: item.ID + 100}).Error)
+}
+
+func TestPromptsAndLaunchDefaultsRoundTrip(t *testing.T) {
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	on, off := true, false
+
+	prompt := promptsmodel.Prompt{
+		Name: "Review a pull request", Nickname: "Review", AppliesTo: "pr", Body: "Review {{.URL}}",
+		Model: "sonnet", PlanMode: &on, ExtraArgs: profilesmodel.StringList{"--advisor", "fable"},
+		StarterKey: "review-pr",
+	}
+	require.NoError(t, db.Create(&prompt).Error)
+
+	defaults := launchdefaultsmodel.LaunchDefault{
+		Owner: "acme-org", Profile: "work", PRPromptID: &prompt.ID, Worktree: &off,
+	}
+	require.NoError(t, db.Create(&defaults).Error)
+
+	var gotPrompt promptsmodel.Prompt
+	require.NoError(t, db.First(&gotPrompt, prompt.ID).Error)
+	assert.Equal(t, "Review", gotPrompt.Nickname)
+	require.NotNil(t, gotPrompt.PlanMode)
+	assert.True(t, *gotPrompt.PlanMode)
+	assert.Nil(t, gotPrompt.Worktree, "NULL inherits")
+	assert.Equal(t, profilesmodel.StringList{"--advisor", "fable"}, gotPrompt.ExtraArgs)
+
+	var gotDefaults launchdefaultsmodel.LaunchDefault
+	require.NoError(t, db.First(&gotDefaults, "owner = ? AND name = ''", "ACME-ORG").Error,
+		"owners match case-insensitively")
+	require.NotNil(t, gotDefaults.PRPromptID)
+	assert.Equal(t, prompt.ID, *gotDefaults.PRPromptID)
+	assert.Nil(t, gotDefaults.IssuePromptID)
+	require.NotNil(t, gotDefaults.Worktree)
+	assert.False(t, *gotDefaults.Worktree)
+	assert.Empty(t, gotDefaults.ExtraArgs)
+
+	// A prompt that is a launch default cannot be deleted.
+	require.Error(t, db.Delete(&prompt).Error)
+}
+
+func TestPromptsAndLaunchDefaultsRejectInvalidRows(t *testing.T) {
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+
+	prompt := promptsmodel.Prompt{Name: "Review", Nickname: "Review", AppliesTo: "pr", Body: "x"}
+	require.NoError(t, db.Create(&prompt).Error)
+
+	// Nicknames are unique, ignoring case.
+	require.Error(t, db.Create(&promptsmodel.Prompt{Name: "Other", Nickname: "REVIEW", AppliesTo: "pr", Body: "x"}).Error)
+
+	// A prompt applies to pr, issue, or any.
+	require.Error(t, db.Create(&promptsmodel.Prompt{Name: "Other", Nickname: "Other", AppliesTo: "discussion", Body: "x"}).Error)
+
+	for _, bad := range []string{
+		`INSERT INTO prompts (name, nickname, applies_to, body, plan_mode, created_at, updated_at)
+			VALUES ('x', 'bad plan', 'pr', 'x', 2, '2026-01-01 00:00:00', '2026-01-01 00:00:00')`,
+		`INSERT INTO prompts (name, nickname, applies_to, body, extra_args, created_at, updated_at)
+			VALUES ('x', 'bad args', 'pr', 'x', '{}', '2026-01-01 00:00:00', '2026-01-01 00:00:00')`,
+		`INSERT INTO launch_defaults (owner, pr_prompt_id, created_at, updated_at)
+			VALUES ('acme-org', 999, '2026-01-01 00:00:00', '2026-01-01 00:00:00')`,
+		`INSERT INTO launch_defaults (owner, worktree, created_at, updated_at)
+			VALUES ('acme-org', 3, '2026-01-01 00:00:00', '2026-01-01 00:00:00')`,
+	} {
+		require.Error(t, db.Exec(bad).Error, bad)
+	}
+
+	// One row per owner, and per repository, ignoring case.
+	require.NoError(t, db.Create(&launchdefaultsmodel.LaunchDefault{Owner: "acme-org"}).Error)
+	require.NoError(t, db.Create(&launchdefaultsmodel.LaunchDefault{Owner: "acme-org", Name: "example-repo"}).Error)
+	require.Error(t, db.Create(&launchdefaultsmodel.LaunchDefault{Owner: "ACME-ORG"}).Error)
+	require.Error(t, db.Create(&launchdefaultsmodel.LaunchDefault{Owner: "acme-org", Name: "Example-Repo"}).Error)
 }

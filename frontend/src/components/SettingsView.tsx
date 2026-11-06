@@ -2,33 +2,50 @@ import { useEffect, useId, useState, type ReactNode, type SubmitEvent } from 're
 
 import { brand } from '../generated/brand'
 import { counted, errorMessage } from '../lib/format'
+import { kindPlural, promptApplies } from '../lib/launch'
 import {
   getAppInfo,
   openInBrowser,
   setCloneRoot,
+  setDefaultPrompt,
   setDefaultProfile,
   setTerminal,
   setWorktreeDefault,
   type Account,
+  type DefaultPrompts,
+  type LaunchDefaults,
   type Profile,
+  type Prompt,
   type Settings,
 } from '../platform'
 import { Avatar } from './Avatar'
 import { ChevronLeftIcon, ExternalIcon } from './icons'
+import { LaunchDefaultsSection } from './LaunchDefaultsSection'
+import { TrustSection } from './TrustSection'
 
-type SectionId = 'account' | 'launching' | 'profiles' | 'repositories' | 'about'
+type SectionId = 'account' | 'launching' | 'profiles' | 'repositories' | 'trust' | 'about'
 
 // sectionOrder is the sidebar's order; sections holds each one's heading and summary.
-const sectionOrder: readonly SectionId[] = ['account', 'launching', 'profiles', 'repositories', 'about']
+const sectionOrder: readonly SectionId[] = ['account', 'launching', 'profiles', 'repositories', 'trust', 'about']
 
 const sections: Readonly<Record<SectionId, { label: string; description: string }>> = {
   account: { label: 'Account', description: 'The GitHub account your inbox comes from.' },
-  launching: { label: 'Launching', description: 'How Open in Claude starts a coding session.' },
+  launching: {
+    label: 'Launching',
+    description: 'How Open in Claude starts a coding session: the app defaults every launch starts from.',
+  },
   profiles: {
     label: 'Profiles',
     description: 'The agent configurations a session can start with, and the folder each one runs from.',
   },
-  repositories: { label: 'Repositories', description: 'Where your local clones live.' },
+  repositories: {
+    label: 'Repositories',
+    description: 'Where your local clones live, and the launch defaults for orgs and repositories.',
+  },
+  trust: {
+    label: 'Trust',
+    description: 'Who launches trust with the profile’s permissions, and which bots count.',
+  },
   about: { label: 'About', description: '' },
 }
 
@@ -58,11 +75,18 @@ const switchClass =
 export interface SettingsViewProps {
   // settings is null until it has loaded; the launch and clone sections wait for it.
   settings: Settings | null
-  profiles: Profile[]
+  profiles: readonly Profile[]
+  prompts: readonly Prompt[]
+  // defaultPrompts is null until it has loaded.
+  defaultPrompts: DefaultPrompts | null
+  launchDefaults: readonly LaunchDefaults[]
   // account is null until the inbox has loaded.
   account: Account | null
   // onSaved receives the settings after a change was stored.
   onSaved: (settings: Settings) => void
+  // onLaunchChanged reloads the prompts and launch defaults after a change; it resolves
+  // once they are in.
+  onLaunchChanged: () => Promise<void>
   // onClose leaves the settings page for the view it was opened from.
   onClose: () => void
 }
@@ -70,15 +94,17 @@ export interface SettingsViewProps {
 // Input types that take no typing, so Escape in them is free to close the page.
 const untypedInputs = new Set(['checkbox', 'radio', 'button', 'submit', 'reset', 'range', 'color', 'file'])
 
-// isTyping reports whether a key event belongs to text entry: a text field, where leaving
-// the page would drop an unsaved draft, or an input method mid-composition.
+// isTyping reports whether a key event belongs to editing: a text field or any control in
+// a form, where leaving the page would drop an unsaved draft, or an input method
+// mid-composition.
 function isTyping(e: KeyboardEvent): boolean {
   const target = e.target
 
   return (
     e.isComposing ||
     target instanceof HTMLTextAreaElement ||
-    (target instanceof HTMLInputElement && !untypedInputs.has(target.type))
+    (target instanceof HTMLInputElement && !untypedInputs.has(target.type)) ||
+    (target instanceof Element && target.closest('form') !== null)
   )
 }
 
@@ -171,9 +197,23 @@ interface SettingsSectionProps {
   onSaved: (settings: Settings) => void
 }
 
-function LaunchingSection({ settings, profiles, onSaved }: SettingsSectionProps & { profiles: Profile[] }) {
+interface LaunchingSectionProps extends SettingsSectionProps {
+  profiles: readonly Profile[]
+  prompts: readonly Prompt[]
+  defaultPrompts: DefaultPrompts | null
+  onLaunchChanged: () => Promise<void>
+}
+
+function LaunchingSection({
+  settings,
+  profiles,
+  prompts,
+  defaultPrompts,
+  onSaved,
+  onLaunchChanged,
+}: LaunchingSectionProps) {
   const id = useId()
-  const [errors, setErrors] = useState({ terminal: '', profile: '', worktree: '' })
+  const [errors, setErrors] = useState({ terminal: '', profile: '', worktree: '', pr: '', issue: '' })
 
   // save stores one change, then reports the new settings, or shows why it was refused.
   const save = (field: keyof typeof errors, call: Promise<void>, next: Settings) => {
@@ -185,6 +225,17 @@ function LaunchingSection({ settings, profiles, onSaved }: SettingsSectionProps 
       })
       .catch((err: unknown) => {
         setErrors((was) => ({ ...was, [field]: errorMessage(err) }))
+      })
+  }
+
+  // savePrompt makes a prompt the app's default for a kind of item.
+  const savePrompt = (kind: 'pr' | 'issue', promptId: number) => {
+    setErrors((was) => ({ ...was, [kind]: '' }))
+
+    setDefaultPrompt(kind, promptId)
+      .then(onLaunchChanged)
+      .catch((err: unknown) => {
+        setErrors((was) => ({ ...was, [kind]: errorMessage(err) }))
       })
   }
 
@@ -241,6 +292,34 @@ function LaunchingSection({ settings, profiles, onSaved }: SettingsSectionProps 
           ))}
         </select>
       </SettingRow>
+      {(['pr', 'issue'] as const).map((kind) => (
+        <SettingRow
+          key={kind}
+          label={kind === 'pr' ? 'Prompt for pull requests' : 'Prompt for issues'}
+          controlId={`${id}-prompt-${kind}`}
+          description={`What a launch on ${kindPlural(kind)} asks, unless an org or repository chooses another. Edit prompts on the Prompts tab.`}
+          error={errors[kind]}
+        >
+          <select
+            id={`${id}-prompt-${kind}`}
+            aria-describedby={`${id}-prompt-${kind}-help`}
+            value={defaultPrompts === null ? 0 : defaultPrompts[kind]}
+            disabled={defaultPrompts === null}
+            onChange={(e) => {
+              savePrompt(kind, Number(e.target.value))
+            }}
+            className={fieldClass}
+          >
+            {prompts
+              .filter((p) => promptApplies(p, kind))
+              .map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nickname}
+                </option>
+              ))}
+          </select>
+        </SettingRow>
+      ))}
       <SettingRow
         label="Start in a worktree"
         controlId={`${id}-worktree`}
@@ -305,7 +384,7 @@ const chipClass = 'rounded-full border border-border px-2 py-0.5 text-xs whitesp
 
 // ProfilesSection lists every profile with the folder it runs from, what it sets for a
 // session, and whether its folder has gone missing, then says how profiles are found.
-function ProfilesSection({ profiles }: { profiles: Profile[] }) {
+function ProfilesSection({ profiles }: { profiles: readonly Profile[] }) {
   return (
     <div className="flex flex-col gap-3">
       {profiles.length === 0 ? (
@@ -351,7 +430,23 @@ function ProfilesSection({ profiles }: { profiles: Profile[] }) {
   )
 }
 
-function RepositoriesSection({ settings, onSaved }: SettingsSectionProps) {
+interface RepositoriesSectionProps extends SettingsSectionProps {
+  profiles: readonly Profile[]
+  prompts: readonly Prompt[]
+  defaultPrompts: DefaultPrompts | null
+  launchDefaults: readonly LaunchDefaults[]
+  onLaunchChanged: () => Promise<void>
+}
+
+function RepositoriesSection({
+  settings,
+  onSaved,
+  profiles,
+  prompts,
+  defaultPrompts,
+  launchDefaults,
+  onLaunchChanged,
+}: RepositoriesSectionProps) {
   const id = useId()
   const [draft, setDraft] = useState(settings.cloneRoot)
   const [error, setError] = useState('')
@@ -375,37 +470,47 @@ function RepositoriesSection({ settings, onSaved }: SettingsSectionProps) {
   }
 
   return (
-    <Group>
-      <form onSubmit={submit}>
-        <SettingRow
-          label="Clone root"
-          controlId={`${id}-clone-root`}
-          description="The folder your local clones live in, such as ~/projects. Launches and the Worktrees view look one level inside it."
-          error={error}
-        >
-          <input
-            id={`${id}-clone-root`}
-            type="text"
-            aria-describedby={`${id}-clone-root-help`}
-            value={draft}
-            spellCheck={false}
-            onChange={(e) => {
-              setDraft(e.target.value)
-              setSaved(false)
-            }}
-            className={`${fieldClass} w-56 font-mono text-[13px]`}
-          />
-          <button type="submit" className={buttonClass}>
-            Save
-          </button>
-        </SettingRow>
-      </form>
-      {saved && (
-        <p role="status" className="px-4 py-2 text-xs text-success">
-          Saved.
-        </p>
-      )}
-    </Group>
+    <div className="flex flex-col gap-8">
+      <Group>
+        <form onSubmit={submit}>
+          <SettingRow
+            label="Clone root"
+            controlId={`${id}-clone-root`}
+            description="The folder your local clones live in, such as ~/projects. Launches and the Worktrees view look one level inside it."
+            error={error}
+          >
+            <input
+              id={`${id}-clone-root`}
+              type="text"
+              aria-describedby={`${id}-clone-root-help`}
+              value={draft}
+              spellCheck={false}
+              onChange={(e) => {
+                setDraft(e.target.value)
+                setSaved(false)
+              }}
+              className={`${fieldClass} w-56 font-mono text-[13px]`}
+            />
+            <button type="submit" className={buttonClass}>
+              Save
+            </button>
+          </SettingRow>
+        </form>
+        {saved && (
+          <p role="status" className="px-4 py-2 text-xs text-success">
+            Saved.
+          </p>
+        )}
+      </Group>
+      <LaunchDefaultsSection
+        settings={settings}
+        profiles={profiles}
+        prompts={prompts}
+        defaultPrompts={defaultPrompts}
+        launchDefaults={launchDefaults}
+        onChanged={onLaunchChanged}
+      />
+    </div>
   )
 }
 
@@ -454,7 +559,17 @@ function AboutSection() {
 // SettingsView is the settings page: a sidebar of sections and the chosen section's
 // settings, each saved as soon as it changes (the clone root on Save). Escape, or the
 // back button, returns to the view it was opened from.
-export function SettingsView({ settings, profiles, account, onSaved, onClose }: SettingsViewProps) {
+export function SettingsView({
+  settings,
+  profiles,
+  prompts,
+  defaultPrompts,
+  launchDefaults,
+  account,
+  onSaved,
+  onLaunchChanged,
+  onClose,
+}: SettingsViewProps) {
   const headingId = useId()
   const [section, setSection] = useState<SectionId>('account')
   const current = sections[section]
@@ -516,11 +631,32 @@ export function SettingsView({ settings, profiles, account, onSaved, onClose }: 
               (settings === null ? (
                 loading
               ) : (
-                <LaunchingSection settings={settings} profiles={profiles} onSaved={onSaved} />
+                <LaunchingSection
+                  settings={settings}
+                  profiles={profiles}
+                  prompts={prompts}
+                  defaultPrompts={defaultPrompts}
+                  onSaved={onSaved}
+                  onLaunchChanged={onLaunchChanged}
+                />
               ))}
             {section === 'profiles' && <ProfilesSection profiles={profiles} />}
             {section === 'repositories' &&
-              (settings === null ? loading : <RepositoriesSection settings={settings} onSaved={onSaved} />)}
+              (settings === null ? (
+                loading
+              ) : (
+                <RepositoriesSection
+                  settings={settings}
+                  onSaved={onSaved}
+                  profiles={profiles}
+                  prompts={prompts}
+                  defaultPrompts={defaultPrompts}
+                  launchDefaults={launchDefaults}
+                  onLaunchChanged={onLaunchChanged}
+                />
+              ))}
+            {section === 'trust' &&
+              (settings === null ? loading : <TrustSection settings={settings} onSaved={onSaved} />)}
             {section === 'about' && <AboutSection />}
           </div>
         </div>

@@ -5,14 +5,29 @@ import * as platform from './index'
 const mocks = vi.hoisted(() => ({
   appInfo: { Info: vi.fn(), ReportFirstPaint: vi.fn() },
   inbox: { Snapshot: vi.fn(), Refresh: vi.fn() },
-  launcher: { Launch: vi.fn() },
+  launcher: { Launch: vi.fn(), Resolve: vi.fn(), ResolveItems: vi.fn(), Preview: vi.fn() },
   profiles: { List: vi.fn() },
+  prompts: {
+    List: vi.fn(),
+    Create: vi.fn(),
+    Update: vi.fn(),
+    Delete: vi.fn(),
+    Duplicate: vi.fn(),
+    Reset: vi.fn(),
+    Check: vi.fn(),
+    Variables: vi.fn(),
+    Defaults: vi.fn(),
+    SetDefault: vi.fn(),
+  },
+  launchDefaults: { List: vi.fn(), Check: vi.fn(), Save: vi.fn(), Remove: vi.fn(), Targets: vi.fn() },
   settings: {
     Get: vi.fn(),
     SetTerminal: vi.fn(),
     SetCloneRoot: vi.fn(),
     SetDefaultProfile: vi.fn(),
     SetWorktreeDefault: vi.fn(),
+    SetTrustedBots: vi.fn(),
+    ResetTrustedBots: vi.fn(),
   },
   worktrees: { List: vi.fn(), Remove: vi.fn(), ForceRemove: vi.fn(), RemoveAllClean: vi.fn(), Prune: vi.fn() },
   events: { On: vi.fn() },
@@ -24,6 +39,8 @@ vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/appinfo', () => ({ Se
 vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/inbox', () => ({ Service: mocks.inbox }))
 vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/launcher', () => ({ Service: mocks.launcher }))
 vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/profiles', () => ({ Service: mocks.profiles }))
+vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/prompts', () => ({ Service: mocks.prompts }))
+vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/launchdefaults', () => ({ Service: mocks.launchDefaults }))
 vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/settings', () => ({ Service: mocks.settings }))
 vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/worktrees', () => ({ Service: mocks.worktrees }))
 
@@ -119,12 +136,23 @@ describe('launch', () => {
     await expect(platform.listProfiles()).resolves.toEqual([])
   })
 
+  const request: platform.LaunchRequest = {
+    itemId: 3,
+    profile: '',
+    promptId: 0,
+    model: null,
+    effort: null,
+    planMode: null,
+    worktree: null,
+    fullAccessOverride: false,
+  }
+
   it('launches with the request', async () => {
-    const request: platform.LaunchRequest = { itemId: 3, profile: '', worktree: null, fullAccessOverride: false }
     const result: platform.LaunchResult = {
       scriptPath: '~/launch/pr-7.command',
       clonePath: '~/projects/example-repo',
       worktree: 'pr-7',
+      prompt: 'Review',
       profile: 'default',
       permission: 'full access',
       terminal: 'iterm2',
@@ -133,6 +161,83 @@ describe('launch', () => {
 
     await expect(platform.launch(request)).resolves.toBe(result)
     expect(mocks.launcher.Launch).toHaveBeenCalledWith(request)
+  })
+
+  it('resolves, previews, and resolves many items, treating no rows as an empty list', async () => {
+    const resolution = { itemId: 3 }
+    const preview = { prompt: 'Review it' }
+    mocks.launcher.Resolve.mockResolvedValue(resolution)
+    mocks.launcher.Preview.mockResolvedValue(preview)
+    mocks.launcher.ResolveItems.mockResolvedValueOnce([resolution]).mockResolvedValueOnce(null)
+
+    await expect(platform.resolveLaunch(request)).resolves.toBe(resolution)
+    await expect(platform.previewLaunch(request)).resolves.toBe(preview)
+    await expect(platform.resolveLaunches([3])).resolves.toEqual([resolution])
+    await expect(platform.resolveLaunches([])).resolves.toEqual([])
+    expect(mocks.launcher.ResolveItems).toHaveBeenCalledWith([3])
+  })
+})
+
+describe('prompts', () => {
+  it('passes every call through, treating no rows as empty lists', async () => {
+    const input = { name: 'x' } as unknown as platform.PromptInput
+    const prompt = { id: 4 }
+    const check = { preview: '' }
+
+    for (const fn of [mocks.prompts.Create, mocks.prompts.Update, mocks.prompts.Duplicate, mocks.prompts.Reset]) {
+      fn.mockResolvedValue(prompt)
+    }
+
+    mocks.prompts.List.mockResolvedValueOnce([prompt]).mockResolvedValueOnce(null)
+    mocks.prompts.Variables.mockResolvedValueOnce([{ name: 'Title' }]).mockResolvedValueOnce(null)
+    mocks.prompts.Check.mockResolvedValue(check)
+    mocks.prompts.Defaults.mockResolvedValue({ pr: 1, issue: 2 })
+    mocks.prompts.Delete.mockResolvedValue(undefined)
+    mocks.prompts.SetDefault.mockResolvedValue(undefined)
+
+    await expect(platform.listPrompts()).resolves.toEqual([prompt])
+    await expect(platform.listPrompts()).resolves.toEqual([])
+    await expect(platform.listPromptVariables()).resolves.toEqual([{ name: 'Title' }])
+    await expect(platform.listPromptVariables()).resolves.toEqual([])
+    await expect(platform.createPrompt(input)).resolves.toBe(prompt)
+    await expect(platform.updatePrompt(4, input)).resolves.toBe(prompt)
+    await expect(platform.duplicatePrompt(4)).resolves.toBe(prompt)
+    await expect(platform.resetPrompt(4)).resolves.toBe(prompt)
+    await expect(platform.getDefaultPrompts()).resolves.toEqual({ pr: 1, issue: 2 })
+
+    const checkRequest = { id: 4, input, itemId: 0, inWorktree: false, atPrHead: false }
+    await expect(platform.checkPrompt(checkRequest)).resolves.toBe(check)
+
+    await platform.deletePrompt(4)
+    await platform.setDefaultPrompt('pr', 4)
+
+    expect(mocks.prompts.Update).toHaveBeenCalledWith(4, input)
+    expect(mocks.prompts.Delete).toHaveBeenCalledWith(4)
+    expect(mocks.prompts.SetDefault).toHaveBeenCalledWith('pr', 4)
+    expect(mocks.prompts.Check).toHaveBeenCalledWith(checkRequest)
+  })
+})
+
+describe('launch defaults', () => {
+  it('passes every call through, treating no rows as empty lists', async () => {
+    const input = { owner: 'acme-org' } as unknown as platform.LaunchDefaultsInput
+    const saved = { owner: 'acme-org' }
+    mocks.launchDefaults.List.mockResolvedValueOnce([saved]).mockResolvedValueOnce(null)
+    mocks.launchDefaults.Check.mockResolvedValueOnce([{ field: 'owner', message: 'x' }]).mockResolvedValueOnce(null)
+    mocks.launchDefaults.Targets.mockResolvedValueOnce([{ owner: 'acme-org' }]).mockResolvedValueOnce(null)
+    mocks.launchDefaults.Save.mockResolvedValue(saved)
+    mocks.launchDefaults.Remove.mockResolvedValue(undefined)
+
+    await expect(platform.listLaunchDefaults()).resolves.toEqual([saved])
+    await expect(platform.listLaunchDefaults()).resolves.toEqual([])
+    await expect(platform.checkLaunchDefaults(input)).resolves.toEqual([{ field: 'owner', message: 'x' }])
+    await expect(platform.checkLaunchDefaults(input)).resolves.toEqual([])
+    await expect(platform.listLaunchTargets()).resolves.toEqual([{ owner: 'acme-org' }])
+    await expect(platform.listLaunchTargets()).resolves.toEqual([])
+    await expect(platform.saveLaunchDefaults(input)).resolves.toBe(saved)
+
+    await platform.removeLaunchDefaults('acme-org', 'api')
+    expect(mocks.launchDefaults.Remove).toHaveBeenCalledWith('acme-org', 'api')
   })
 })
 
@@ -143,6 +248,8 @@ describe('settings', () => {
       worktreeDefault: true,
       terminal: 'iterm2',
       cloneRoot: '~/projects',
+      trustedBots: ['dependabot'],
+      defaultTrustedBots: ['dependabot'],
     }
     mocks.settings.Get.mockResolvedValue(settings)
     mocks.settings.SetTerminal.mockResolvedValue(undefined)
@@ -161,6 +268,14 @@ describe('settings', () => {
     expect(mocks.settings.SetCloneRoot).toHaveBeenCalledWith('~/code')
     expect(mocks.settings.SetDefaultProfile).toHaveBeenCalledWith('work')
     expect(mocks.settings.SetWorktreeDefault).toHaveBeenCalledWith(false)
+
+    mocks.settings.SetTrustedBots.mockResolvedValue(undefined)
+    mocks.settings.ResetTrustedBots.mockResolvedValue(undefined)
+    await platform.setTrustedBots(['renovate'])
+    await platform.resetTrustedBots()
+
+    expect(mocks.settings.SetTrustedBots).toHaveBeenCalledWith(['renovate'])
+    expect(mocks.settings.ResetTrustedBots).toHaveBeenCalledOnce()
   })
 })
 

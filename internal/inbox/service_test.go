@@ -17,6 +17,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/model"
 	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/trust"
 )
 
 // fakeToken is a placeholder that matches no real token format.
@@ -361,17 +362,22 @@ func TestRefreshStoresTrustFields(t *testing.T) {
 
 	fork := pr(12, "CONTRIBUTOR", true)
 	bot := pr(15, "NONE", false)
-	bot.AuthorLogin = "dependabot[bot]"
+	bot.AuthorLogin, bot.AuthorType = "dependabot", "Bot"
+	impostor := pr(16, "NONE", false)
+	impostor.AuthorLogin, impostor.AuthorType = "dependabot", "User"
+	unknownBot := pr(17, "NONE", false)
+	unknownBot.AuthorLogin, unknownBot.AuthorType = "random-helper", "Bot"
 	own := pr(7, "OWNER", false)
 	ownFork := pr(8, "MEMBER", true)
 	memberIssue := issue("other-repo", 21, "MEMBER")
 
-	h.client.inbox = fetched([]github.Item{fork, bot, ownFork}, []github.Item{own}, []github.Item{memberIssue})
+	h.client.inbox = fetched([]github.Item{fork, bot, ownFork, impostor, unknownBot}, []github.Item{own},
+		[]github.Item{memberIssue})
 	snap := h.refresh(t)
 
 	var stored []model.Item
 	require.NoError(t, h.db.Order("number").Find(&stored).Error)
-	require.Len(t, stored, 5)
+	require.Len(t, stored, 7)
 
 	got := make(map[int]model.Item)
 	for _, it := range stored {
@@ -381,31 +387,55 @@ func TestRefreshStoresTrustFields(t *testing.T) {
 	assert.Equal(t, "CONTRIBUTOR", got[12].AuthorAssociation)
 	assert.True(t, got[12].IsCrossRepository)
 	assert.Equal(t, "NONE", got[15].AuthorAssociation)
-	assert.Equal(t, "dependabot[bot]", got[15].AuthorLogin)
+	assert.Equal(t, "dependabot", got[15].AuthorLogin)
+	assert.Equal(t, "Bot", got[15].AuthorType)
+	assert.Equal(t, "User", got[16].AuthorType)
 	assert.Equal(t, "OWNER", got[7].AuthorAssociation)
 	assert.False(t, got[7].IsCrossRepository)
 	assert.Equal(t, model.KindIssue, got[21].Kind)
 	assert.Equal(t, "branch-7", got[7].HeadRef)
 
+	classes := make(map[int]string)
 	trusted := make(map[int]bool)
+	bots := make(map[int]bool)
 
 	for _, l := range []List{snap.ReviewRequested, snap.Authored, snap.Assigned} {
 		for _, it := range l.Items {
-			trusted[it.Number] = it.Trusted
+			classes[it.Number], trusted[it.Number], bots[it.Number] = it.Trust, it.Trusted, it.AuthorIsBot
 		}
 	}
 
-	assert.Equal(t, map[int]bool{12: false, 15: false, 8: false, 7: true, 21: true}, trusted)
+	assert.Equal(t, map[int]string{
+		12: trust.ClassOutside, 15: trust.ClassBot, 16: trust.ClassOutside, 17: trust.ClassOutside,
+		8: trust.ClassOutside, 7: trust.ClassMember, 21: trust.ClassMember,
+	}, classes, "Dependabot is a trusted bot by default; a person named like it and an unlisted bot are not")
+	assert.Equal(t, map[int]bool{12: false, 15: true, 16: false, 17: false, 8: false, 7: true, 21: true}, trusted)
+	assert.Equal(t, map[int]bool{12: false, 15: true, 16: false, 17: true, 8: false, 7: false, 21: false}, bots)
 
-	assert.Equal(t, []int{15, 12, 8}, numbers(snap.ReviewRequested), "newest activity first")
+	assert.Equal(t, []int{17, 16, 15, 12, 8}, numbers(snap.ReviewRequested), "newest activity first")
 
-	fromFork := snap.ReviewRequested.Items[1]
+	fromFork := snap.ReviewRequested.Items[3]
 	assert.Equal(t, Item{
 		ID: fromFork.ID, Kind: model.KindPR, Number: 12, Title: "Item 12",
 		URL:  "https://github.com/acme-org/example-repo/pull/12",
 		Repo: "acme-org/example-repo", Author: "octo-user", UpdatedAt: "2026-01-01T12:00:00Z",
-		Trusted: false, IsCrossRepository: true, AuthorAssociation: "CONTRIBUTOR", Branch: "branch-12",
+		Trust: trust.ClassOutside, Trusted: false, IsCrossRepository: true, AuthorAssociation: "CONTRIBUTOR",
+		Branch: "branch-12",
 	}, fromFork)
+
+	// The trusted list is the user's: with it emptied, Dependabot is an outside contributor.
+	require.NoError(t, h.db.Exec(`INSERT INTO prefs (key, value, updated_at) VALUES (?, '[]', ?)`, trust.PrefBots,
+		h.clock.now).Error)
+
+	snap, err := h.svc.Snapshot(t.Context())
+	require.NoError(t, err)
+
+	for _, it := range snap.ReviewRequested.Items {
+		if it.Number == 15 {
+			assert.Equal(t, trust.ClassOutside, it.Trust)
+			assert.True(t, it.AuthorIsBot)
+		}
+	}
 }
 
 func TestRefreshWritesRateSnapshot(t *testing.T) {

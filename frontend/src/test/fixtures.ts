@@ -6,9 +6,16 @@ import type {
   ItemDetails,
   InboxList,
   InboxSnapshot,
+  ItemResolution,
+  LaunchDefaults,
+  LaunchPreview,
   LaunchResult,
   Profile,
+  Prompt,
+  PromptCheckResult,
+  PromptVariable,
   Rate,
+  Resolution,
   Settings,
   Worktree,
   WorktreeRepo,
@@ -25,7 +32,9 @@ export function item(overrides: Partial<InboxItem> = {}): InboxItem {
     repo: 'acme-org/example-repo',
     author: 'octo-user',
     updatedAt: '2026-06-15T09:00:00Z',
+    trust: 'member',
     trusted: true,
+    authorIsBot: false,
     isCrossRepository: false,
     authorAssociation: 'OWNER',
     branch: 'widget-cache',
@@ -74,7 +83,15 @@ export function profile(overrides: Partial<Profile> = {}): Profile {
 }
 
 export function settings(overrides: Partial<Settings> = {}): Settings {
-  return { defaultProfile: 'default', worktreeDefault: true, terminal: 'iterm2', cloneRoot: '~/projects', ...overrides }
+  return {
+    defaultProfile: 'default',
+    worktreeDefault: true,
+    terminal: 'iterm2',
+    cloneRoot: '~/projects',
+    trustedBots: ['dependabot', 'github-actions', 'renovate'],
+    defaultTrustedBots: ['dependabot', 'github-actions', 'renovate'],
+    ...overrides,
+  }
 }
 
 export function launchResult(overrides: Partial<LaunchResult> = {}): LaunchResult {
@@ -82,8 +99,175 @@ export function launchResult(overrides: Partial<LaunchResult> = {}): LaunchResul
     scriptPath: '~/launch/pr-7.command',
     clonePath: '~/projects/example-repo',
     worktree: 'pr-7',
+    prompt: 'Review',
     profile: 'default',
     permission: 'full access',
+    terminal: 'iterm2',
+    ...overrides,
+  }
+}
+
+// prompt is the review starter as the library lists it: the app's default for pull
+// requests.
+export function prompt(overrides: Partial<Prompt> = {}): Prompt {
+  return {
+    id: 1,
+    name: 'Review a pull request',
+    nickname: 'Review',
+    appliesTo: 'pr',
+    body: 'Review pull request #{{.Number}} in {{.Repo}}: {{.Title}}\n{{.URL}}\n',
+    model: '',
+    effort: '',
+    planMode: null,
+    worktree: null,
+    extraArgs: [],
+    extraFlags: '',
+    starterKey: 'review-pr',
+    modified: false,
+    usage: { defaults: ['pr'], orgs: [], repos: [], kinds: ['pr'] },
+    updatedAt: '2026-06-15T09:00:00Z',
+    ...overrides,
+  }
+}
+
+// prompts is a small library: two pull request prompts, an issue prompt, and one for both.
+export function prompts(): Prompt[] {
+  return [
+    prompt({
+      id: 3,
+      name: 'Fix a pull request’s failing checks',
+      nickname: 'Fix checks',
+      starterKey: 'fix-checks',
+      usage: { defaults: [], orgs: [], repos: [], kinds: [] },
+    }),
+    prompt({
+      id: 2,
+      name: 'Take a quick look for blockers',
+      nickname: 'Quick look',
+      model: 'sonnet',
+      effort: 'low',
+      worktree: false,
+      starterKey: 'quick-look',
+      usage: { defaults: [], orgs: ['acme-org'], repos: ['acme-org/api'], kinds: ['pr'] },
+    }),
+    prompt(),
+    prompt({
+      id: 4,
+      name: 'Work on an issue',
+      nickname: 'Work on it',
+      appliesTo: 'issue',
+      body: 'Work on issue #{{.Number}}\n',
+      starterKey: 'work-on-issue',
+      usage: { defaults: ['issue'], orgs: [], repos: [], kinds: ['issue'] },
+    }),
+    prompt({
+      id: 5,
+      name: 'Explain the change',
+      nickname: 'Explain',
+      appliesTo: 'any',
+      body: 'Explain {{.URL}}\n',
+      starterKey: '',
+      usage: { defaults: [], orgs: [], repos: [], kinds: [] },
+    }),
+  ]
+}
+
+export function variables(): PromptVariable[] {
+  return [
+    { name: 'Kind', group: 'Item', type: 'text', description: '"pull request" or "issue"', prOnly: false },
+    { name: 'Number', group: 'Item', type: 'number', description: 'The pull request or issue number', prOnly: false },
+    { name: 'Title', group: 'Item', type: 'text', description: 'The title, cut to 200 characters', prOnly: false },
+    { name: 'URL', group: 'Item', type: 'text', description: 'The web address on GitHub', prOnly: false },
+    { name: 'Repo', group: 'Repository', type: 'text', description: 'The repository, as owner/name', prOnly: false },
+    { name: 'Branch', group: 'Pull request', type: 'text', description: 'The head branch', prOnly: true },
+    {
+      name: 'InWorktree',
+      group: 'Session',
+      type: 'yes/no',
+      description: 'The session starts in its own worktree',
+      prOnly: false,
+    },
+  ]
+}
+
+// checkResult is a clean check of a prompt filled in for pull request 7.
+export function checkResult(overrides: Partial<PromptCheckResult> = {}): PromptCheckResult {
+  return {
+    fields: [],
+    diagnostics: [],
+    preview: 'Review pull request #7 in acme-org/example-repo: Add the widget cache\n',
+    notice: '',
+    previewError: '',
+    previewNote: '',
+    sample: false,
+    values: { Title: 'Add the widget cache', Number: '7', Branch: 'widget-cache', URL: '' },
+    characters: 66,
+    ...overrides,
+  }
+}
+
+// resolution is a trusted pull request's resolved launch settings: the review prompt and
+// the default profile from the app's settings, nothing else set.
+export function resolution(overrides: Partial<Resolution> = {}): Resolution {
+  return {
+    itemId: 1,
+    kind: 'pr',
+    owner: 'acme-org',
+    repo: 'acme-org/example-repo',
+    trusted: true,
+    agent: { id: 'claude', name: 'Claude', command: 'claude' },
+    agentSource: 'app',
+    profile: { value: 'default', source: 'app', inherited: 'default', inheritedSource: 'app' },
+    prompt: {
+      id: 1,
+      nickname: 'Review',
+      name: 'Review a pull request',
+      source: 'app',
+      inheritedId: 1,
+      inheritedSource: 'app',
+    },
+    model: { value: '', source: 'agent', inherited: '', inheritedSource: 'agent' },
+    effort: { value: 'high', source: 'profile', inherited: 'high', inheritedSource: 'profile' },
+    planMode: { value: false, source: 'profile', inherited: false, inheritedSource: 'profile' },
+    worktree: { value: true, source: 'app', inherited: true, inheritedSource: 'app' },
+    extraArgs: [],
+    warnings: [],
+    ...overrides,
+  }
+}
+
+export function itemResolution(overrides: Partial<ItemResolution> = {}): ItemResolution {
+  return { ...resolution(), problem: '', ...overrides }
+}
+
+export function launchDefaults(overrides: Partial<LaunchDefaults> = {}): LaunchDefaults {
+  return {
+    owner: 'acme-org',
+    name: '',
+    agent: '',
+    profile: 'work',
+    prPromptId: null,
+    issuePromptId: null,
+    model: '',
+    effort: '',
+    planMode: null,
+    worktree: null,
+    extraArgs: [],
+    extraFlags: '',
+    updatedAt: '2026-06-15T09:00:00Z',
+    ...overrides,
+  }
+}
+
+export function launchPreview(overrides: Partial<LaunchPreview> = {}): LaunchPreview {
+  return {
+    resolution: resolution(),
+    dir: '~/projects/example-repo',
+    worktree: 'pr-7',
+    command: "claude <prompt> --dangerously-skip-permissions '--name=Review · example-repo#7' --worktree '#7'",
+    env: ['unset CLAUDE_CONFIG_DIR'],
+    permission: 'full access',
+    prompt: 'Review pull request #7 in acme-org/example-repo: Add the widget cache\n',
     terminal: 'iterm2',
     ...overrides,
   }

@@ -23,6 +23,13 @@ export function Get(): $CancellablePromise<$models.Settings> {
 }
 
 /**
+ * ResetTrustedBots goes back to the default trusted bots.
+ */
+export function ResetTrustedBots(): $CancellablePromise<void> {
+    return $Call.ByID(3791295291);
+}
+
+/**
  * SetCloneRoot stores the clone root. It must be an absolute or ~-relative path to an
  * existing directory; it is stored as entered (trimmed and cleaned), so "~/projects"
  * stays portable across machines.
@@ -44,6 +51,15 @@ export function SetDefaultProfile(name: string): $CancellablePromise<void> {
  */
 export function SetTerminal(terminal: string): $CancellablePromise<void> {
     return $Call.ByID(2731649341, terminal);
+}
+
+/**
+ * SetTrustedBots stores the bots whose items are trusted. Each login may be written as
+ * GitHub shows it ("dependabot", "dependabot[bot]", or "app/dependabot"); the list is
+ * stored normalized and sorted, and may be empty to trust no bot.
+ */
+export function SetTrustedBots(bots: string[] | null): $CancellablePromise<void> {
+    return $Call.ByID(2221826650, bots);
 }
 
 /**

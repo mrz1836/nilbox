@@ -263,7 +263,7 @@ func checkTrustCase(t *testing.T, c trustCase) {
 	t.Helper()
 
 	req := baseRequest()
-	req.Item.Trusted = trust.Trusted(c.assoc, true, c.cross)
+	req.Item.Trusted = trust.NewPolicy(nil).Trusted(trust.Author{Association: c.assoc}, true, c.cross)
 	req.Profile.PermissionMode = c.mode
 	req.Profile.PlanMode = c.plan
 	req.FullAccessOverride = c.override
@@ -290,7 +290,7 @@ func TestUntrustedLaunchIsPlanMode(t *testing.T) {
 	for _, plan := range []bool{false, true} {
 		t.Run("profile plan="+strconv.FormatBool(plan), func(t *testing.T) {
 			req := baseRequest()
-			req.Item.Trusted = trust.Trusted("CONTRIBUTOR", true, true)
+			req.Item.Trusted = trust.NewPolicy(nil).Trusted(trust.Author{Association: "CONTRIBUTOR"}, true, true)
 			req.Profile.PlanMode = plan
 
 			got, err := BuildPlan(req)
@@ -304,7 +304,7 @@ func TestUntrustedLaunchIsPlanMode(t *testing.T) {
 
 	// A bot's issue is untrusted too.
 	req := baseRequest()
-	req.Item = Item{Kind: KindIssue, Number: 3, Trusted: trust.Trusted("NONE", false, false)}
+	req.Item = Item{Kind: KindIssue, Number: 3, Trusted: trust.NewPolicy(nil).Trusted(trust.Author{Association: "NONE"}, false, false)}
 
 	assert.Equal(t, []string{flagPermissionMode, modePlan}, buildArgs(t, req))
 }
@@ -632,4 +632,21 @@ func TestExtraArgsCannotOverridePermissions(t *testing.T) {
 		got := buildArgs(t, req)
 		assert.Equal(t, append([]string{flagPermissionMode, modePlan}, req.Profile.ExtraArgs...), got)
 	})
+}
+
+func TestSessionName(t *testing.T) {
+	req := baseRequest()
+	req.Worktree = true
+	req.SessionName = "Review · example-repo#7"
+
+	args := buildArgs(t, req)
+	assert.Equal(t, []string{"--dangerously-skip-permissions", "--name=Review · example-repo#7", "--worktree", "#7"}, args,
+		"the session name comes just before the worktree, as one argument")
+
+	req.SessionName = ""
+	assert.NotContains(t, buildArgs(t, req), "--name=")
+
+	req.SessionName = "a\x00b"
+	_, err := BuildPlan(req)
+	require.ErrorIs(t, err, ErrNULByte)
 }

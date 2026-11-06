@@ -123,3 +123,52 @@ describe('ConfirmDialog', () => {
     expect(screen.getByRole('button', { name: 'Remove' })).toHaveFocus()
   })
 })
+
+describe('ConfirmDialog tones', () => {
+  it('can confirm a safe action, and can only acknowledge a message', async () => {
+    const onConfirm = vi.fn()
+    const { rerender } = render(
+      <ConfirmDialog
+        title="Reset?"
+        confirmLabel="Reset"
+        tone="primary"
+        cancelLabel="Keep"
+        onConfirm={onConfirm}
+        onCancel={vi.fn()}
+      >
+        Back to the original.
+      </ConfirmDialog>,
+    )
+
+    expect(screen.getByRole('button', { name: 'Keep' })).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'Reset' })).toHaveClass('bg-accent')
+
+    rerender(
+      <ConfirmDialog
+        title="In use"
+        confirmLabel="Got it"
+        tone="primary"
+        cancelLabel={null}
+        onConfirm={onConfirm}
+        onCancel={vi.fn()}
+      >
+        Choose other defaults first.
+      </ConfirmDialog>,
+    )
+
+    expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Got it' }))
+    expect(onConfirm).toHaveBeenCalledOnce()
+  })
+
+  it('starts on the only button when there is no cancel', () => {
+    render(
+      <ConfirmDialog title="In use" confirmLabel="Got it" cancelLabel={null} onConfirm={vi.fn()} onCancel={vi.fn()}>
+        Choose other defaults first.
+      </ConfirmDialog>,
+    )
+
+    expect(screen.getByRole('button', { name: 'Got it' })).toHaveFocus()
+  })
+})

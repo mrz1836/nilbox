@@ -51,8 +51,8 @@ macOS runner, so this check is local.
   contrast for every text color in both themes. `internal/brandgen/` generates the frontend
   theme tokens and `build/darwin/Info.plist` from it (`magex brand:generate`).
 - `internal/core/` assembles the app; the other `internal/*` packages are the services it binds
-  (inbox, launcher, settings, profiles, worktrees) and their building blocks. All of them are
-  plain Go, built and tested on Linux without CGO.
+  (inbox, launcher, prompts, launch defaults, settings, profiles, worktrees) and their building
+  blocks. All of them are plain Go, built and tested on Linux without CGO.
 - `internal/measure/` and `magefiles/measure.go` take the numbers in
   [`docs/performance.md`](docs/performance.md).
 - `frontend/` is the React + TypeScript + Vite + Tailwind app. It reaches Go only through the

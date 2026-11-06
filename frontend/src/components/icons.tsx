@@ -158,3 +158,118 @@ export function TerminalIcon({ className }: IconProps) {
     </Icon>
   )
 }
+
+// PlusIcon stands for adding something.
+export function PlusIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M12 5v14M5 12h14" />
+    </Icon>
+  )
+}
+
+// SearchIcon marks a search field.
+export function SearchIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <circle cx="11" cy="11" r="6" />
+      <path d="M20 20l-4.5-4.5" />
+    </Icon>
+  )
+}
+
+// MoreIcon opens a menu of further actions.
+export function MoreIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <circle cx="6" cy="12" r="1.25" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1.25" fill="currentColor" stroke="none" />
+      <circle cx="18" cy="12" r="1.25" fill="currentColor" stroke="none" />
+    </Icon>
+  )
+}
+
+// CopyIcon stands for duplicating something.
+export function CopyIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <rect x="8.5" y="8.5" width="11" height="11" rx="2" />
+      <path d="M15.5 8.5V6.5a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2" />
+    </Icon>
+  )
+}
+
+// TrashIcon stands for deleting something.
+export function TrashIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M4.5 7h15M10 7V5h4v2M6.5 7l1 12a1.5 1.5 0 0 0 1.5 1.5h6a1.5 1.5 0 0 0 1.5-1.5l1-12M10 11v6M14 11v6" />
+    </Icon>
+  )
+}
+
+// ResetIcon stands for restoring an original.
+export function ResetIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M4.5 9.5A8 8 0 1 1 4 13M4.5 4.5v5h5" />
+    </Icon>
+  )
+}
+
+// StarIcon marks a default.
+export function StarIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M12 4.5l2.3 4.7 5.2.75-3.75 3.65.9 5.15L12 16.35l-4.65 2.4.9-5.15L4.5 9.95l5.2-.75z" />
+    </Icon>
+  )
+}
+
+// AlertIcon marks an error or a warning.
+export function AlertIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M12 4.5l8.5 15h-17z" />
+      <path d="M12 10v4M12 16.75v.25" />
+    </Icon>
+  )
+}
+
+// CircleCheckIcon marks something that checked out fine.
+export function CircleCheckIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <circle cx="12" cy="12" r="8.25" />
+      <path d="M8.5 12.25l2.5 2.5 4.5-5" />
+    </Icon>
+  )
+}
+
+// ChevronRightIcon marks a section that opens.
+export function ChevronRightIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M10 6l6 6-6 6" />
+    </Icon>
+  )
+}
+
+// BracesIcon stands for template variables.
+export function BracesIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M9 4.5H8a2 2 0 0 0-2 2V10a2 2 0 0 1-2 2 2 2 0 0 1 2 2v3.5a2 2 0 0 0 2 2h1M15 4.5h1a2 2 0 0 1 2 2V10a2 2 0 0 0 2 2 2 2 0 0 0-2 2v3.5a2 2 0 0 1-2 2h-1" />
+    </Icon>
+  )
+}
+
+// DocumentIcon stands for a prompt.
+export function DocumentIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M7 3.5h7l4.5 4.5v11a1.5 1.5 0 0 1-1.5 1.5H7a1.5 1.5 0 0 1-1.5-1.5V5A1.5 1.5 0 0 1 7 3.5z" />
+      <path d="M14 3.5V8h4.5M9 12.5h6M9 16h4" />
+    </Icon>
+  )
+}

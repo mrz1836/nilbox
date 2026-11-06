@@ -76,8 +76,8 @@ type Repo struct {
 func (Repo) TableName() string { return "repos" }
 
 // Item is one cached pull request or issue. The Reason* flags record which inbox lists
-// returned it on the latest refresh; AuthorAssociation and IsCrossRepository feed the
-// outside-contributor trust rule.
+// returned it on the latest refresh; AuthorType, AuthorAssociation, and IsCrossRepository
+// feed the trust rule.
 type Item struct {
 	ID                    int64     `gorm:"column:id;primaryKey"`
 	AccountID             int64     `gorm:"column:account_id"`
@@ -88,6 +88,7 @@ type Item struct {
 	Title                 string    `gorm:"column:title"`
 	URL                   string    `gorm:"column:url"`
 	AuthorLogin           string    `gorm:"column:author_login"`
+	AuthorType            string    `gorm:"column:author_type"`
 	AuthorAssociation     string    `gorm:"column:author_association"`
 	IsCrossRepository     bool      `gorm:"column:is_cross_repository"`
 	IsDraft               bool      `gorm:"column:is_draft"`

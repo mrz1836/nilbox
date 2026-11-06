@@ -5,11 +5,12 @@ import { BudgetMenu } from './BudgetMenu'
 
 // View is the page the window shows. Settings is opened from the account menu (or ⌘,)
 // rather than from a tab.
-export type View = 'inbox' | 'worktrees' | 'settings'
+export type View = 'inbox' | 'worktrees' | 'prompts' | 'settings'
 
 const tabs: readonly { id: View; label: string }[] = [
   { id: 'inbox', label: 'Inbox' },
   { id: 'worktrees', label: 'Worktrees' },
+  { id: 'prompts', label: 'Prompts' },
 ]
 
 export interface AppHeaderProps {
@@ -23,7 +24,8 @@ export interface AppHeaderProps {
 }
 
 // AppHeader is the window's single toolbar, sitting beside the macOS window controls:
-// the product name, the view tabs, and on the right the API budget gauge and the account
+// the product name, the view tabs (Inbox, Worktrees, Prompts), and on the right the API
+// budget gauge and the account
 // menu. The bar itself drags the window (--wails-draggable), double-clicking it zooms,
 // and the controls opt out so they take clicks. The left inset clears the traffic lights.
 export function AppHeader({ view, onViewChange, account, gauge, now, onOpenSettings }: AppHeaderProps) {

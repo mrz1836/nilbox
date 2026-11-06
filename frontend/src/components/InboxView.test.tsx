@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useInbox } from '../lib/useInbox'
-import { item, launchResult, list, profile, snapshot } from '../test/fixtures'
+import { item, itemResolution, launchResult, list, profile, prompts, snapshot } from '../test/fixtures'
 import { InboxView, type LaunchOptions } from './InboxView'
 
 const platform = vi.hoisted(() => ({
@@ -19,7 +19,14 @@ vi.mock('../platform', () => platform)
 const now = new Date('2026-06-15T12:00:00Z')
 const clock = () => now
 
-const launchOptions: LaunchOptions = { profiles: [profile()], defaultProfile: 'default', worktreeDefault: true }
+const launchOptions: LaunchOptions = {
+  profiles: [profile()],
+  prompts: prompts(),
+  launchDefaults: [],
+  resolutions: new Map([[1, itemResolution()]]),
+  onDefaultsSaved: () => Promise.resolve(),
+  onManagePrompts: () => undefined,
+}
 
 const stopListening = vi.fn()
 

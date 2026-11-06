@@ -1,6 +1,6 @@
 // Package core assembles the app: it prepares the data directory, opens and migrates the
-// database, syncs the discovered agent profiles, and builds every service the window
-// binds to.
+// database, syncs the discovered agent profiles, adds the starter prompts, and builds
+// every service the window binds to.
 //
 // Core is plain Go with no desktop dependency, so the whole startup path is tested on any
 // OS. The desktop shell only adds the window, binds Services, and runs the scheduler.
@@ -20,8 +20,10 @@ import (
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
+	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/profiles"
+	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/timing"
@@ -85,12 +87,14 @@ type Core struct {
 	DB *gorm.DB
 
 	// The services bound to the frontend.
-	Settings  *settings.Service
-	Profiles  *profiles.Service
-	Inbox     *inbox.Service
-	Launcher  *launcher.Service
-	Worktrees *worktrees.Service
-	AppInfo   *appinfo.Service
+	Settings       *settings.Service
+	Profiles       *profiles.Service
+	Prompts        *prompts.Service
+	LaunchDefaults *launchdefaults.Service
+	Inbox          *inbox.Service
+	Launcher       *launcher.Service
+	Worktrees      *worktrees.Service
+	AppInfo        *appinfo.Service
 
 	// Scheduler refreshes the inbox on start and every five minutes once Run is called.
 	Scheduler *inbox.Scheduler
@@ -100,8 +104,9 @@ type Core struct {
 }
 
 // Bootstrap prepares the data directory, opens the database (backing it up and applying
-// any pending migrations), syncs the agent profiles found under the home directory, and
-// builds every service. It contacts no network; the scheduler does that once started.
+// any pending migrations), syncs the agent profiles found under the home directory, adds
+// any starter prompt not added before, and builds every service. It contacts no network;
+// the scheduler does that once started.
 func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 	if opts.Paths.Root == "" {
 		return nil, ErrNoDataDir
@@ -131,12 +136,18 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 		return nil, err
 	}
 
+	if err = prompts.Seed(ctx, db); err != nil {
+		_ = store.Close(db)
+
+		return nil, fmt.Errorf("add the starter prompts: %w", err)
+	}
+
 	return assemble(db, opts, logger), nil
 }
 
 // Services returns the services the frontend binds to, in a stable order.
 func (c *Core) Services() []any {
-	return []any{c.Settings, c.Profiles, c.Inbox, c.Launcher, c.Worktrees, c.AppInfo}
+	return []any{c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.AppInfo}
 }
 
 // Close closes the database.
@@ -197,21 +208,25 @@ func assemble(db *gorm.DB, opts Options, logger *slog.Logger) *Core {
 
 	recorder := timing.NewRecorder(timing.Config{Logger: logger, LogsDir: opts.Paths.Logs})
 
-	return &Core{
+	launch := launcher.NewService(launcher.Config{
 		DB:       db,
 		Settings: prefs,
-		Profiles: profiles.NewService(db, opts.Home),
-		Inbox:    inboxSvc,
-		Launcher: launcher.NewService(launcher.Config{
-			DB:       db,
-			Settings: prefs,
-			Git:      runner,
-			Finder:   finder,
-			Registry: launcher.DefaultRegistry(runner),
-			Paths:    opts.Paths,
-			Home:     opts.Home,
-			Clock:    opts.Clock,
-		}),
+		Git:      runner,
+		Finder:   finder,
+		Registry: launcher.DefaultRegistry(runner),
+		Paths:    opts.Paths,
+		Home:     opts.Home,
+		Clock:    opts.Clock,
+	})
+
+	return &Core{
+		DB:             db,
+		Settings:       prefs,
+		Profiles:       profiles.NewService(db, opts.Home),
+		Prompts:        prompts.NewService(prompts.Config{DB: db, Source: launcher.NewPromptSource(launch)}),
+		LaunchDefaults: launchdefaults.NewService(db),
+		Inbox:          inboxSvc,
+		Launcher:       launch,
 		Worktrees: worktrees.NewService(worktrees.Config{
 			Settings: prefs,
 			Git:      runner,

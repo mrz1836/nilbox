@@ -3,8 +3,8 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
-import type { Account, Profile, Settings } from '../platform'
-import { account, profile, settings, signedOut } from '../test/fixtures'
+import type { Account, LaunchDefaults, Profile, Settings } from '../platform'
+import { account, launchDefaults, profile, prompts, settings, signedOut } from '../test/fixtures'
 import { SettingsView } from './SettingsView'
 
 const platform = vi.hoisted(() => ({
@@ -14,6 +14,14 @@ const platform = vi.hoisted(() => ({
   setDefaultProfile: vi.fn(),
   setTerminal: vi.fn(),
   setWorktreeDefault: vi.fn(),
+  setDefaultPrompt: vi.fn(),
+  getSettings: vi.fn(),
+  setTrustedBots: vi.fn(),
+  resetTrustedBots: vi.fn(),
+  listLaunchTargets: vi.fn(),
+  checkLaunchDefaults: vi.fn(),
+  saveLaunchDefaults: vi.fn(),
+  removeLaunchDefaults: vi.fn(),
 }))
 
 vi.mock('../platform', () => platform)
@@ -24,25 +32,42 @@ beforeEach(() => {
   }
 
   platform.getAppInfo.mockResolvedValue({ name: brand.name, tagline: brand.tagline, version: '1.4.0' })
+  platform.listLaunchTargets.mockResolvedValue([])
+  platform.checkLaunchDefaults.mockResolvedValue([])
 })
 
 interface Options {
   current?: Settings | null
   profiles?: Profile[]
   who?: Account | null
+  defaults?: LaunchDefaults[]
 }
 
 function renderSettings({
   current = settings(),
   profiles = [profile(), profile({ name: 'work' })],
   who = account(),
+  defaults = [],
 }: Options = {}) {
   const onSaved = vi.fn()
   const onClose = vi.fn()
+  const onLaunchChanged = vi.fn(() => Promise.resolve())
 
-  render(<SettingsView settings={current} profiles={profiles} account={who} onSaved={onSaved} onClose={onClose} />)
+  render(
+    <SettingsView
+      settings={current}
+      profiles={profiles}
+      prompts={prompts()}
+      defaultPrompts={{ pr: 1, issue: 4 }}
+      launchDefaults={defaults}
+      account={who}
+      onSaved={onSaved}
+      onLaunchChanged={onLaunchChanged}
+      onClose={onClose}
+    />,
+  )
 
-  return { onSaved, onClose }
+  return { onSaved, onClose, onLaunchChanged }
 }
 
 // openSection picks a section from the sidebar.
@@ -332,5 +357,98 @@ describe('SettingsView', () => {
     // An input method composing text owns the key too.
     fireEvent.keyDown(document.body, { key: 'Escape', isComposing: true })
     expect(onClose).not.toHaveBeenCalled()
+  })
+})
+
+describe('SettingsView launch defaults', () => {
+  it('sets the app’s default prompt for each kind of item', async () => {
+    const { onLaunchChanged } = renderSettings()
+
+    await openSection('Launching')
+
+    const pr = screen.getByRole('combobox', { name: 'Prompt for pull requests' })
+    const issue = screen.getByRole('combobox', { name: 'Prompt for issues' })
+
+    expect(pr).toHaveValue('1')
+    expect(
+      within(pr)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['Fix checks', 'Quick look', 'Review', 'Explain'])
+    expect(issue).toHaveValue('4')
+    expect(
+      within(issue)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['Work on it', 'Explain'])
+
+    await userEvent.selectOptions(pr, '2')
+
+    expect(platform.setDefaultPrompt).toHaveBeenCalledWith('pr', 2)
+    await waitFor(() => {
+      expect(onLaunchChanged).toHaveBeenCalledOnce()
+    })
+  })
+
+  it('shows why a default prompt was refused', async () => {
+    platform.setDefaultPrompt.mockRejectedValue(new Error('the prompt doesn’t apply to that kind of item'))
+    renderSettings()
+
+    await openSection('Launching')
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Prompt for issues' }), '5')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('doesn’t apply to that kind of item')
+  })
+
+  it('lists the org and repository launch defaults under Repositories', async () => {
+    renderSettings({
+      defaults: [
+        launchDefaults({ prPromptId: 2, effort: 'max' }),
+        launchDefaults({ name: 'api', profile: '', worktree: false }),
+      ],
+    })
+
+    await openSection('Repositories')
+
+    const list = within(screen.getByRole('list', { name: 'Launch defaults' }))
+
+    expect(list.getByText('acme-org')).toBeInTheDocument()
+    expect(list.getByText('All repositories')).toBeInTheDocument()
+    expect(list.getByText('profile work')).toBeInTheDocument()
+    expect(list.getByText('Quick look for PRs')).toBeInTheDocument()
+    expect(list.getByText('max effort')).toBeInTheDocument()
+    expect(list.getByText('acme-org/api')).toBeInTheDocument()
+    expect(list.getByText('no worktree')).toBeInTheDocument()
+  })
+})
+
+describe('SettingsView escape and trust', () => {
+  it('keeps the page open on Escape inside a dialog or an editor', async () => {
+    const { onClose } = renderSettings({ defaults: [launchDefaults()] })
+
+    await openSection('Repositories')
+    await userEvent.click(screen.getByRole('button', { name: 'Remove' }))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+
+    await userEvent.keyboard('{Escape}')
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    screen.getByRole('combobox', { name: 'Effort' }).focus()
+    await userEvent.keyboard('{Escape}')
+
+    expect(onClose).not.toHaveBeenCalled()
+    expect(screen.getByRole('form')).toBeInTheDocument()
+  })
+
+  it('has a Trust section for the trusted bots', async () => {
+    renderSettings()
+
+    await openSection('Trust')
+
+    expect(screen.getByRole('region', { name: 'Trust' })).toBeInTheDocument()
+    expect(within(screen.getByRole('list', { name: 'Trusted bots' })).getAllByRole('listitem')).toHaveLength(3)
   })
 })

@@ -34,6 +34,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/model"
+	"github.com/mrz1836/nilbox/internal/trust"
 )
 
 // snapshotRetention is how long rate-limit snapshots are kept.
@@ -172,7 +173,8 @@ func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 
-	snap.addItems(rows)
+	raw, stored := prefs[trust.PrefBots]
+	snap.addItems(rows, trust.NewPolicy(trust.DecodeBots(raw, stored)))
 	snap.applyTotals(prefs)
 
 	if snap.Rate, err = loadRates(db, accountID); err != nil {
