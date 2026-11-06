@@ -180,7 +180,7 @@ The readings are taken on each refresh, and a budget whose reset time has passed
 again.
 
 **Settings** is a page of its own, with sections for your account, snoozing (how long the
-[Snooze](#snooze-and-dismiss) button sets an item aside, and what [wakes a snooze
+[Snooze](#snooze-dismiss-and-pin) button sets an item aside, and what [wakes a snooze
 early](#waking-a-snooze-early)), launching (the terminal,
 the default profile, the default prompt for pull requests and for issues, and the worktree
 default), agent profiles, repositories (the clone root and the [launch
@@ -282,7 +282,7 @@ says why.
 
 <br>
 
-## Snooze and dismiss
+## Snooze, dismiss, and pin
 
 Each list has three tabs: the list itself with its count (**Review requested 14**), then
 **Snoozed** and **Dismissed**, each counted once it holds anything. Snoozing or dismissing an
@@ -298,11 +298,17 @@ item moves it out of every list it is in, so the lists only show what still need
   **Dismissed** tab, most recently dismissed first, however much it changes on GitHub.
 - **Unsnooze** and **Restore**, on the cards in those tabs, put an item back in its lists
   right away.
+- **Pin** (the pushpin, at the right end of the card's buttons) keeps an item at the top of
+  every list it is in, above everything not pinned. With more than one pinned, the most
+  recently pinned comes first; the rest keep their order by last activity. A pinned card
+  shows its pin filled, in the accent color, without hovering; click it to unpin, and the item
+  goes back to its place. A pin outlasts a snooze or a dismissal: the item waits in its tab,
+  pin showing, and comes back pinned, so **Undo** leaves the pin as it was.
 
 A toast at the bottom of the window confirms each snooze or dismissal, with **Undo**. The
 default length and the wake rules are under **Settings → Snoozing**, which the snooze menu's
-**Snooze settings…** opens. Snoozes and dismissals are kept in the local database only: GitHub
-never hears about them. The **N of M** count of a list leaves out the items set aside.
+**Snooze settings…** opens. Snoozes, dismissals, and pins are kept in the local database only:
+GitHub never hears about them. The **N of M** count of a list leaves out the items set aside.
 
 ### Waking a snooze early
 
