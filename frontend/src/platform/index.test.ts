@@ -12,7 +12,14 @@ const mocks = vi.hoisted(() => ({
     Snooze: vi.fn(),
     Restore: vi.fn(),
   },
-  launcher: { Launch: vi.fn(), Resolve: vi.fn(), ResolveItems: vi.fn(), Preview: vi.fn() },
+  launcher: {
+    Launch: vi.fn(),
+    Resolve: vi.fn(),
+    ResolveItems: vi.fn(),
+    Preview: vi.fn(),
+    CloneTarget: vi.fn(),
+    Clone: vi.fn(),
+  },
   profiles: { List: vi.fn() },
   prompts: {
     List: vi.fn(),
@@ -233,6 +240,23 @@ describe('launch', () => {
     await expect(platform.resolveLaunches([3])).resolves.toEqual([resolution])
     await expect(platform.resolveLaunches([])).resolves.toEqual([])
     expect(mocks.launcher.ResolveItems).toHaveBeenCalledWith([3])
+  })
+
+  it('finds where a missing clone goes, and clones it', async () => {
+    const target: platform.CloneTarget = {
+      repo: 'acme-org/example-repo',
+      cloned: false,
+      dir: '~/projects/example-repo',
+      taken: false,
+    }
+    const cloned: platform.CloneTarget = { ...target, cloned: true }
+    mocks.launcher.CloneTarget.mockResolvedValue(target)
+    mocks.launcher.Clone.mockResolvedValue(cloned)
+
+    await expect(platform.cloneTarget(3)).resolves.toBe(target)
+    await expect(platform.cloneRepo(3)).resolves.toBe(cloned)
+    expect(mocks.launcher.CloneTarget).toHaveBeenCalledWith(3)
+    expect(mocks.launcher.Clone).toHaveBeenCalledWith(3)
   })
 })
 

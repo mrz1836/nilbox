@@ -19,6 +19,8 @@ const platform = vi.hoisted(() => ({
   resolveLaunch: vi.fn(),
   previewLaunch: vi.fn(),
   saveLaunchDefaults: vi.fn(),
+  cloneTarget: vi.fn(),
+  cloneRepo: vi.fn(),
 }))
 
 vi.mock('../platform', () => platform)
@@ -68,7 +70,18 @@ beforeEach(() => {
   platform.resolveLaunch.mockResolvedValue(resolution())
   platform.previewLaunch.mockResolvedValue(launchPreview())
   platform.saveLaunchDefaults.mockResolvedValue(launchDefaults())
+  platform.cloneTarget.mockResolvedValue(cloned)
+  platform.cloneRepo.mockResolvedValue(cloned)
 })
+
+// missingClone is where a repository with no local clone would be cloned.
+const missingClone = { repo: 'acme-org/example-repo', cloned: false, dir: '~/projects/example-repo', taken: false }
+
+// cloned is the same repository once it has a clone.
+const cloned = { ...missingClone, cloned: true }
+
+// noCloneError is how a launch with no local clone fails.
+const noCloneError = new Error('no local clone of acme-org/example-repo under ~/projects')
 
 describe('LaunchControls', () => {
   it('names the resolved prompt and profile beside the button', () => {
@@ -103,12 +116,115 @@ describe('LaunchControls', () => {
   })
 
   it('shows why a launch failed', async () => {
-    platform.launch.mockRejectedValue(new Error('no local clone of acme-org/example-repo'))
+    platform.launch.mockRejectedValue(new Error('find the agent: executable not found'))
     render(<LaunchControls {...props()} />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('no local clone of acme-org/example-repo')
+    expect(await screen.findByRole('alert')).toHaveTextContent('find the agent: executable not found')
+    expect(platform.cloneTarget).toHaveBeenCalledWith(1)
+    expect(screen.queryByRole('button', { name: /^Clone into/ })).not.toBeInTheDocument()
+  })
+
+  it('shows the launch’s own failure when the clone check fails too', async () => {
+    platform.launch.mockRejectedValue(noCloneError)
+    platform.cloneTarget.mockRejectedValue(new Error('read clone root: permission denied'))
+    render(<LaunchControls {...props()} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(noCloneError.message)
+    expect(screen.queryByRole('button', { name: /^Clone into/ })).not.toBeInTheDocument()
+  })
+
+  it('offers to clone a repository with no local clone, then continues the launch', async () => {
+    platform.launch.mockRejectedValueOnce(noCloneError).mockResolvedValueOnce(launchResult())
+    platform.cloneTarget.mockResolvedValue(missingClone)
+    render(<LaunchControls {...props()} />)
+
+    const menu = await openMenu()
+
+    await userEvent.click(menu.getByRole('radio', { name: 'work' }))
+    await userEvent.click(menu.getByRole('button', { name: 'Open in Claude' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('No local clone of acme-org/example-repo.')
+    expect(platform.cloneRepo).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Clone into ~/projects/example-repo' }))
+
+    const dialog = within(screen.getByRole('dialog', { name: 'Clone acme-org/example-repo?' }))
+
+    expect(dialog.getByText('gh repo clone acme-org/example-repo ~/projects/example-repo')).toBeInTheDocument()
+    expect(platform.cloneRepo).not.toHaveBeenCalled()
+
+    await userEvent.click(dialog.getByRole('button', { name: 'Clone and open' }))
+
+    expect(platform.cloneRepo).toHaveBeenCalledWith(1)
+    expect(await screen.findByRole('status')).toHaveTextContent('Opened “Review” in iterm2: ~/projects/example-repo')
+    expect(platform.launch).toHaveBeenCalledTimes(2)
+    expect(platform.launch).toHaveBeenNthCalledWith(1, { ...defaultRequest, profile: 'work' })
+    expect(platform.launch).toHaveBeenNthCalledWith(2, { ...defaultRequest, profile: 'work' })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shows the clone running', async () => {
+    platform.launch.mockRejectedValueOnce(noCloneError)
+    platform.cloneTarget.mockResolvedValue(missingClone)
+    platform.cloneRepo.mockReturnValue(new Promise(() => undefined))
+    render(<LaunchControls {...props()} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Clone into ~/projects/example-repo' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Clone and open' }))
+
+    expect(screen.getByRole('button', { name: 'Cloning…' })).toBeDisabled()
+    expect(screen.getByRole('status')).toHaveTextContent('Cloning acme-org/example-repo into ~/projects/example-repo…')
+    expect(platform.launch).toHaveBeenCalledTimes(1)
+  })
+
+  it('clones nothing when the clone is cancelled', async () => {
+    platform.launch.mockRejectedValue(noCloneError)
+    platform.cloneTarget.mockResolvedValue(missingClone)
+    render(<LaunchControls {...props()} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Clone into ~/projects/example-repo' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(platform.cloneRepo).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Clone into ~/projects/example-repo' })).toBeInTheDocument()
+  })
+
+  it('offers no clone where something already is', async () => {
+    platform.launch.mockRejectedValue(noCloneError)
+    platform.cloneTarget.mockResolvedValue({ ...missingClone, taken: true })
+    render(<LaunchControls {...props()} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'No local clone of acme-org/example-repo, and ~/projects/example-repo already exists, so it can’t be cloned there.',
+    )
+    expect(screen.queryByRole('button', { name: /^Clone into/ })).not.toBeInTheDocument()
+  })
+
+  it('shows a failed clone and launches nothing', async () => {
+    platform.launch.mockRejectedValue(noCloneError)
+    platform.cloneTarget.mockResolvedValue(missingClone)
+    platform.cloneRepo.mockRejectedValue(new Error('clone acme-org/example-repo: GraphQL: Could not resolve'))
+    render(<LaunchControls {...props()} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Clone into ~/projects/example-repo' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Clone and open' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'clone acme-org/example-repo: GraphQL: Could not resolve',
+    )
+    expect(platform.launch).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('button', { name: 'Open in Claude' })).toBeEnabled()
   })
 
   it('offers the prompts for the item’s kind, the default marked and focused', async () => {

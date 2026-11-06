@@ -17,17 +17,22 @@ import {
 } from '../lib/launchChoices'
 import { usePopover } from '../lib/usePopover'
 import {
+  cloneRepo,
+  cloneTarget,
   launch,
   resolveLaunch,
   saveLaunchDefaults,
+  type CloneTarget,
   type InboxItem,
   type ItemResolution,
   type LaunchDefaults,
+  type LaunchRequest,
   type LaunchResult,
   type Profile,
   type Prompt,
   type Resolution,
 } from '../platform'
+import { ConfirmDialog } from './ConfirmDialog'
 import { AlertIcon, ChevronDownIcon, TerminalIcon } from './icons'
 import { LaunchMenu } from './LaunchMenu'
 
@@ -45,11 +50,15 @@ export interface LaunchControlsProps {
   onManagePrompts: () => void
 }
 
+// LaunchState is where the row's launch stands. A launch that finds no local clone ends
+// in noClone, which keeps the request so a confirmed clone can continue it.
 type LaunchState =
   | { kind: 'idle' }
   | { kind: 'launching' }
+  | { kind: 'cloning'; target: CloneTarget }
   | { kind: 'launched'; result: LaunchResult }
   | { kind: 'failed'; message: string }
+  | { kind: 'noClone'; target: CloneTarget; request: LaunchRequest }
 
 // launchedText summarizes a started launch for the row.
 function launchedText(result: LaunchResult): string {
@@ -64,7 +73,9 @@ function launchedText(result: LaunchResult): string {
 // launch menu, where this launch can use another prompt, profile, model, effort,
 // worktree, or plan mode, preview exactly what it runs, or save those choices as the
 // repository's or the org's defaults. Choices apply to the next launch only, and the
-// arrow shows a dot while any differs from the defaults.
+// arrow shows a dot while any differs from the defaults. A launch that finds no local
+// clone offers to clone the repository into the clone root and, once confirmed, continues
+// with the same choices.
 //
 // It renders two grid children: the button, and below the row's content, the launch's
 // outcome, which runs to the card's right edge. The inbox row is the grid that places
@@ -85,6 +96,7 @@ export function LaunchControls({
   // fetched for, so a stale one is never shown.
   const [fetched, setFetched] = useState<{ base: ItemResolution; key: string; value: Resolution } | null>(null)
   const [state, setState] = useState<LaunchState>({ kind: 'idle' })
+  const [confirmingClone, setConfirmingClone] = useState(false)
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState<SaveStatus | null>(null)
   // resolveError says why the settings under the chosen prompt and profile could not be
@@ -152,20 +164,46 @@ export function LaunchControls({
     }
   }, [open, panelRef])
 
-  const start = () => {
-    close()
+  // run launches request. When the launch fails, it asks whether the repository has a
+  // local clone, and offers to clone it when it has none.
+  const run = (request: LaunchRequest) => {
     setState({ kind: 'launching' })
 
-    launch(launchRequest(item.id, choices, untrusted))
+    launch(request)
       .then((result) => {
         setState({ kind: 'launched', result })
         setChoices(noChoices)
         setStatus(null)
       })
+      .catch(async (err: unknown) => {
+        const message = errorMessage(err)
+        const target = await cloneTarget(item.id).catch(() => null)
+
+        setState(target === null || target.cloned ? { kind: 'failed', message } : { kind: 'noClone', target, request })
+      })
+  }
+
+  const start = () => {
+    close()
+    run(launchRequest(item.id, choices, untrusted))
+  }
+
+  // cloneThenLaunch clones the repository a launch found no clone of, then continues that
+  // launch.
+  const cloneThenLaunch = (target: CloneTarget, request: LaunchRequest) => {
+    setConfirmingClone(false)
+    setState({ kind: 'cloning', target })
+
+    cloneRepo(item.id)
+      .then(() => {
+        run(request)
+      })
       .catch((err: unknown) => {
         setState({ kind: 'failed', message: errorMessage(err) })
       })
   }
+
+  const busy = state.kind === 'launching' || state.kind === 'cloning'
 
   const save = (scope: 'repo' | 'org') => {
     if (base === null || !savableChoices(choices)) {
@@ -212,13 +250,13 @@ export function LaunchControls({
         <div className="inline-flex items-stretch rounded-md border border-border bg-surface text-[13px]">
           <button
             type="button"
-            disabled={state.kind === 'launching' || base === null}
+            disabled={busy || base === null}
             onClick={start}
             title={problem !== '' ? problem : `Open in ${agentName} with “${promptName}” as ${profileName}`}
             className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent"
           >
             <TerminalIcon className="size-3.5 text-accent" />
-            {state.kind === 'launching' ? 'Opening…' : `Open in ${agentName}`}
+            {state.kind === 'launching' ? 'Opening…' : state.kind === 'cloning' ? 'Cloning…' : `Open in ${agentName}`}
           </button>
           <button
             ref={triggerRef}
@@ -300,6 +338,50 @@ export function LaunchControls({
         <p role="alert" className="col-[2/-1] mt-1.5 text-xs text-danger">
           {state.message}
         </p>
+      )}
+      {state.kind === 'cloning' && (
+        <p role="status" className="col-[2/-1] mt-1.5 truncate text-xs text-muted">
+          {`Cloning ${state.target.repo} into ${state.target.dir}…`}
+        </p>
+      )}
+      {state.kind === 'noClone' && (
+        <div className="col-[2/-1] mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
+          <p role="alert" className="text-warning">
+            {state.target.taken
+              ? `No local clone of ${state.target.repo}, and ${state.target.dir} already exists, so it can’t be cloned there.`
+              : `No local clone of ${state.target.repo}.`}
+          </p>
+          {!state.target.taken && (
+            <button
+              type="button"
+              onClick={() => {
+                setConfirmingClone(true)
+              }}
+              className="font-medium text-accent hover:underline"
+            >
+              {`Clone into ${state.target.dir}`}
+            </button>
+          )}
+        </div>
+      )}
+      {confirmingClone && state.kind === 'noClone' && (
+        <ConfirmDialog
+          title={`Clone ${state.target.repo}?`}
+          confirmLabel="Clone and open"
+          tone="primary"
+          onCancel={() => {
+            setConfirmingClone(false)
+          }}
+          onConfirm={() => {
+            cloneThenLaunch(state.target, state.request)
+          }}
+        >
+          <p>
+            This runs{' '}
+            <code className="font-mono text-text">{`gh repo clone ${state.target.repo} ${state.target.dir}`}</code>,
+            then opens the session in the new clone.
+          </p>
+        </ConfirmDialog>
       )}
     </>
   )
