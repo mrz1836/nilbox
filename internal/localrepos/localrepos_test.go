@@ -377,3 +377,13 @@ func TestTildePath(t *testing.T) {
 	assert.Equal(t, home+"-other", TildePath(home+"-other", home))
 	assert.Equal(t, other, TildePath(other, ""))
 }
+
+func TestValidName(t *testing.T) {
+	for _, s := range []string{"acme-org", "example-repo", "example_repo", "example.repo", ".github", "a", "Repo-2"} {
+		assert.True(t, ValidName(s), s)
+	}
+
+	for _, s := range []string{"", ".", "..", "acme/org", `acme\org`, "acme org", "acme~", "repo$", "ré"} {
+		assert.False(t, ValidName(s), s)
+	}
+}

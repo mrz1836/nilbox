@@ -18,6 +18,7 @@ import type {
 } from '../../bindings/github.com/mrz1836/nilbox/internal/launchdefaults'
 import { Service as Launcher } from '../../bindings/github.com/mrz1836/nilbox/internal/launcher'
 import type {
+  CloneTarget,
   ItemResolution,
   LaunchRequest,
   LaunchResult,
@@ -69,6 +70,7 @@ export type {
   Target as LaunchTarget,
 } from '../../bindings/github.com/mrz1836/nilbox/internal/launchdefaults'
 export type {
+  CloneTarget,
   ItemResolution,
   LaunchRequest,
   LaunchResult,
@@ -193,6 +195,18 @@ export async function resolveLaunches(ids: number[]): Promise<ItemResolution[]> 
 // previewLaunch plans a launch without starting it: the command and the filled-in prompt.
 export function previewLaunch(request: LaunchRequest): Promise<LaunchPreview> {
   return Launcher.Preview(request)
+}
+
+// cloneTarget reports whether an item's repository has a local clone and, when it has
+// none, where cloneRepo would create one and whether that path is already taken.
+export function cloneTarget(itemId: number): Promise<CloneTarget> {
+  return Launcher.CloneTarget(itemId)
+}
+
+// cloneRepo clones an item's repository into <clone root>/<name> with `gh repo clone`,
+// refusing a path that already exists, and remembers the new clone for the next launch.
+export function cloneRepo(itemId: number): Promise<CloneTarget> {
+  return Launcher.Clone(itemId)
 }
 
 // Prompts

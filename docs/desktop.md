@@ -531,9 +531,18 @@ children are your clones, initially `~/projects`) under **Settings → Repositor
 **Clones.** The item's clone is found by scanning the clone root one level deep and matching
 each repository's git remotes. The match is remembered and checked again on the next launch. To
 find and check clones, the app runs only the read-only `git -C <clone> config --get-regexp`
-remote lookup. It never runs a git command that changes a clone: no checkout, stash, fetch,
-branch switch, or worktree creation. When a session needs a pull request's branch, the starter
-prompts ask the agent to run `gh pr checkout <n>`.
+remote lookup. It never runs a git command that changes an existing clone: no checkout, stash,
+fetch, pull, reset, branch switch, or worktree creation. When a session needs a pull request's
+branch, the starter prompts ask the agent to run `gh pr checkout <n>`.
+
+**A repository with no clone.** When a launch finds no clone of the item's repository, the row
+says so and offers **Clone into ~/projects/&lt;name&gt;**: the clone root, then the repository's
+name. Confirm, and the app runs `gh repo clone <owner>/<name> ~/projects/<name>` as a program
+with arguments, never through a shell. It then remembers the new clone and continues the launch
+with the same choices. The clone uses the GitHub CLI's own sign-in and its git protocol setting.
+This is the only time the app creates a clone, and it never writes into an existing directory.
+If anything is already at that path, such as a clone of another repository with the same name,
+the row says so and offers no clone: clone the repository yourself, or change the clone root.
 
 **Worktrees.** The **Start in a worktree** launch option is on by default (the
 `launch.worktree` setting, under **Settings → Launching**); launch defaults and prompts can

@@ -403,6 +403,12 @@ func isGitHubHost(host string) bool {
 	return false
 }
 
+// ValidName reports whether s can be a GitHub owner or repository name: letters, digits,
+// '-', '_', and '.', but never "." or "..", so it is always a single path element.
+func ValidName(s string) bool {
+	return validSegment(s)
+}
+
 // validSegment reports whether s can be a GitHub owner or repository name.
 func validSegment(s string) bool {
 	if s == "" || s == "." || s == ".." {

@@ -41,8 +41,8 @@ var (
 )
 
 // Runner runs a program as an argv, never through a shell. execpath.Runner implements it;
-// the GitHub token source, the clone scan, the terminal drivers, and the worktree service
-// all run their programs through it.
+// the GitHub token source, the clone scan, the confirmed clone of a missing repository,
+// the terminal drivers, and the worktree service all run their programs through it.
 type Runner interface {
 	Run(ctx context.Context, name string, args ...string) (stdout, stderr []byte, err error)
 }
@@ -227,6 +227,7 @@ func assemble(db *gorm.DB, opts Options, logger *slog.Logger) *Core {
 		DB:       db,
 		Settings: prefs,
 		Git:      runner,
+		GH:       runner,
 		Finder:   finder,
 		Registry: launcher.DefaultRegistry(runner),
 		Paths:    opts.Paths,
