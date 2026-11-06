@@ -13,8 +13,10 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -58,6 +60,12 @@ const (
 
 	// devServerStopTimeout bounds how long Dev waits for the dev server to exit.
 	devServerStopTimeout = 5 * time.Second
+
+	// appQuitTimeout bounds how long Run waits for a running copy of the app to quit.
+	appQuitTimeout = 10 * time.Second
+
+	// appQuitPoll is how often Run checks whether the running copy has quit.
+	appQuitPoll = 100 * time.Millisecond
 )
 
 var (
@@ -69,6 +77,9 @@ var (
 
 	// errNoLintVersion is returned when the golangci-lint pin cannot be found.
 	errNoLintVersion = errors.New("the golangci-lint version is not pinned")
+
+	// errStillRunning is returned when a running copy of the app does not quit in time.
+	errStillRunning = errors.New("the running app did not quit; quit it and run the target again")
 )
 
 // App groups the targets for the desktop app: bindings, lint, dev run, and building and
@@ -169,7 +180,9 @@ func (App) Dev() error {
 
 	defer stopProcessGroup(vite)
 
-	app := exec.CommandContext(ctx, "go", "run", "-tags", desktopTag, "./cmd/"+brand.Slug) //nolint:gosec // argv only, no shell
+	ldflags := versionFlags(readBuildMeta())
+
+	app := exec.CommandContext(ctx, "go", "run", "-tags", desktopTag, "-ldflags", ldflags, "./cmd/"+brand.Slug) //nolint:gosec // argv only, no shell
 
 	app.Env = append(os.Environ(), "FRONTEND_DEVSERVER_URL="+devServerURL, "CGO_ENABLED=1")
 	app.Stdout = os.Stdout
@@ -226,7 +239,7 @@ func (App) Build() error {
 		return err
 	}
 
-	if err := writeInfoPlist(filepath.Join(contents, "Info.plist"), meta.bundleVersion); err != nil {
+	if err := writeInfoPlist(filepath.Join(contents, "Info.plist"), meta); err != nil {
 		return err
 	}
 
@@ -242,8 +255,8 @@ func (App) Build() error {
 }
 
 // Open opens the macOS app bundle, bin/<Name>.app, building it first when it is missing.
-// It opens the bundle as it is, so run `magex app:build` first after a change; when the
-// app is already running, macOS brings its window to the front instead.
+// It opens the bundle as it is, so use `magex app:run` to pick up a change; when the app
+// is already running, macOS brings its window to the front instead.
 //
 //	magex app:open
 func (App) Open() error {
@@ -261,6 +274,81 @@ func (App) Open() error {
 	}
 
 	return sh.RunV("open", bundle)
+}
+
+// Run builds the macOS app bundle and opens it. It quits a copy of the app that is
+// already running first, so the fresh build is the one that opens; otherwise macOS would
+// bring the old copy to the front.
+//
+//	magex app:run
+func (App) Run() error {
+	if err := (App{}).Build(); err != nil {
+		return err
+	}
+
+	bundle, exe, err := appBundle()
+	if err != nil {
+		return err
+	}
+
+	if err = quitRunningApp(exe); err != nil {
+		return err
+	}
+
+	return sh.RunV("open", bundle)
+}
+
+// quitRunningApp asks every process running exe to quit, with SIGTERM, which the app
+// handles as a normal quit, and waits until they have exited.
+func quitRunningApp(exe string) error {
+	pids, err := appProcesses(exe)
+	if err != nil || len(pids) == 0 {
+		return err
+	}
+
+	fmt.Printf("Quitting the running %s...\n", brand.Name) //nolint:forbidigo // mage target output
+
+	for _, pid := range pids {
+		if err = syscall.Kill(pid, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
+			return fmt.Errorf("quit the running app (pid %d): %w", pid, err)
+		}
+	}
+
+	for deadline := time.Now().Add(appQuitTimeout); time.Now().Before(deadline); time.Sleep(appQuitPoll) {
+		if pids, err = appProcesses(exe); err != nil || len(pids) == 0 {
+			return err
+		}
+	}
+
+	return errStillRunning
+}
+
+// appProcesses returns the IDs of the processes whose command line starts with exe.
+func appProcesses(exe string) ([]int, error) {
+	pattern := "^" + regexp.QuoteMeta(exe) + "( |$)"
+
+	out, err := exec.CommandContext(context.Background(), "pgrep", "-f", pattern).Output() //nolint:gosec // argv only, no shell
+	if err != nil {
+		var exit *exec.ExitError
+		if errors.As(err, &exit) && exit.ExitCode() == 1 { // pgrep exits 1 when nothing matches
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf("find the running app: %w", err)
+	}
+
+	var pids []int
+
+	for _, field := range strings.Fields(string(out)) {
+		pid, convErr := strconv.Atoi(field)
+		if convErr != nil {
+			return nil, fmt.Errorf("parse the pgrep output %q: %w", field, convErr)
+		}
+
+		pids = append(pids, pid)
+	}
+
+	return pids, nil
 }
 
 // Check runs every desktop check: the bindings drift check, the desktop lint, and the
@@ -499,13 +587,24 @@ type buildMeta struct {
 	version       string // the build's version, e.g. v0.1.0-3-gabc1234
 	commit        string // the short commit hash
 	date          string // the build time, RFC 3339 UTC
-	bundleVersion string // the numeric version macOS shows, e.g. 0.1.0
+	bundleVersion string // the release version macOS shows, e.g. 0.1.0 (CFBundleShortVersionString)
+	bundleBuild   string // the build number, the commit count, e.g. 42 (CFBundleVersion)
 }
 
 // readBuildMeta derives the version metadata from git; outside a git checkout it falls
 // back to development values.
+//
+// The build number is the commit count, so it grows with every commit, tagged or not.
+// macOS keys its icon caches on the bundle version (CFBundleVersion), and a build number
+// that never changed would leave Stage Manager and Finder showing a stale icon.
 func readBuildMeta() buildMeta {
-	meta := buildMeta{version: "dev", commit: "none", date: time.Now().UTC().Format(time.RFC3339), bundleVersion: "0.0.0"}
+	meta := buildMeta{
+		version:       "dev",
+		commit:        "none",
+		date:          time.Now().UTC().Format(time.RFC3339),
+		bundleVersion: brandgen.PlaceholderVersion,
+		bundleBuild:   brandgen.PlaceholderVersion,
+	}
 
 	if out := gitOutput("describe", "--tags", "--always", "--dirty"); out != "" {
 		meta.version = out
@@ -517,6 +616,10 @@ func readBuildMeta() buildMeta {
 
 	if out := gitOutput("describe", "--tags", "--abbrev=0"); out != "" {
 		meta.bundleVersion = strings.TrimPrefix(out, "v")
+	}
+
+	if out := gitOutput("rev-list", "--count", "HEAD"); out != "" {
+		meta.bundleBuild = out
 	}
 
 	return meta
@@ -533,6 +636,13 @@ func gitOutput(args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
+// versionFlags returns the linker flags that stamp the build's version metadata into the
+// desktop command, which reports it on the About page.
+func versionFlags(meta buildMeta) string {
+	return fmt.Sprintf("-X main.version=%s -X main.commit=%s -X main.buildDate=%s -X main.release=%s -X main.buildNumber=%s",
+		meta.version, meta.commit, meta.date, meta.bundleVersion, meta.bundleBuild)
+}
+
 // buildDesktopBinary compiles the production desktop binary into exe.
 func buildDesktopBinary(exe string, meta buildMeta) error {
 	minVersion := "-mmacosx-version-min=" + macOSMinVersion
@@ -543,12 +653,9 @@ func buildDesktopBinary(exe string, meta buildMeta) error {
 		"MACOSX_DEPLOYMENT_TARGET": macOSMinVersion,
 	}
 
-	ldflags := fmt.Sprintf("-s -w -X main.version=%s -X main.commit=%s -X main.buildDate=%s",
-		meta.version, meta.commit, meta.date)
-
 	err := sh.RunWithV(env, "go", "build",
 		"-tags", desktopTag+",production", "-trimpath", "-buildvcs=false",
-		"-ldflags", ldflags, "-o", exe, "./cmd/"+brand.Slug)
+		"-ldflags", "-s -w "+versionFlags(meta), "-o", exe, "./cmd/"+brand.Slug)
 	if err != nil {
 		return fmt.Errorf("build the desktop binary: %w", err)
 	}
@@ -557,8 +664,9 @@ func buildDesktopBinary(exe string, meta buildMeta) error {
 }
 
 // writeInfoPlist copies the generated Info.plist into the bundle and stamps the build's
-// version into the copy; the committed file keeps its placeholder version.
-func writeInfoPlist(dst, version string) error {
+// release version and build number into the copy; the committed file keeps its
+// placeholder version.
+func writeInfoPlist(dst string, meta buildMeta) error {
 	body, err := os.ReadFile(filepath.Join("build", "darwin", "Info.plist"))
 	if err != nil {
 		return fmt.Errorf("read the Info.plist: %w", err)
@@ -568,9 +676,14 @@ func writeInfoPlist(dst, version string) error {
 		return fmt.Errorf("write the bundle Info.plist: %w", err)
 	}
 
-	for _, key := range []string{"CFBundleShortVersionString", "CFBundleVersion"} {
-		if err = sh.Run("plutil", "-replace", key, "-string", version, dst); err != nil {
-			return fmt.Errorf("stamp %s: %w", key, err)
+	stamps := []struct{ key, value string }{
+		{"CFBundleShortVersionString", meta.bundleVersion},
+		{"CFBundleVersion", meta.bundleBuild},
+	}
+
+	for _, s := range stamps {
+		if err = sh.Run("plutil", "-replace", s.key, "-string", s.value, dst); err != nil {
+			return fmt.Errorf("stamp %s: %w", s.key, err)
 		}
 	}
 

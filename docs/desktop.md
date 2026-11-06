@@ -54,7 +54,8 @@ pins.
 | `magex app:lint` | Lints the desktop-tagged Go code (the desktop main and the frontend embed) |
 | `magex app:dev` | Runs the app against the Vite dev server with hot reload |
 | `magex app:build` | Builds the production bundle `bin/Nilbox.app` and signs it ad hoc for local use |
-| `magex app:open` | Opens `bin/Nilbox.app`, building it first when it is missing (run `app:build` to pick up a change) |
+| `magex app:open` | Opens `bin/Nilbox.app` as it is, building it first when it is missing; a running copy is only brought to the front |
+| `magex app:run` | Builds `bin/Nilbox.app`, quits the copy already running, and opens the fresh build: the one command after a change |
 | `magex app:check` | Runs `app:bindingsCheck`, `app:lint`, and `app:build` |
 | `magex measure:startup` | Startup to the first frame on screen, over six launches |
 | `magex measure:refresh` | Five live, read-only inbox refreshes and the API budget they imply |
@@ -66,8 +67,7 @@ A typical first build:
 
 ```bash
 cd ~/projects/nilbox
-magex app:build
-magex app:open
+magex app:run
 ```
 
 Before opening a pull request, run the Go gate, then the frontend gate, then (on a Mac) the
@@ -82,6 +82,18 @@ magex app:check
 **Signing.** `magex app:build` signs the bundle ad hoc (`codesign --force --sign -`), which is
 enough to run it on the machine that built it. Distribution signing and notarization are not
 part of the build.
+
+**Versions.** `magex app:build` stamps the build's versions from git: the release version
+(the latest tag, `0.0.0` before the first release), a build number (the commit count), and the
+`git describe` commit, such as `v0.1.0-3-gabc1234`, or the bare commit hash before the first
+tag, with `-dirty` when the working tree had uncommitted changes. Settings → About shows all
+three, with the macOS version and the processor architecture, and its **Report a bug** button
+opens a new GitHub issue with those details filled in. The bundle's `Info.plist` carries the
+release version and the build number too. macOS caches app icons by that build number, so a
+new commit is what refreshes the icon Stage Manager and Finder show. An icon change you have
+not committed yet keeps the old build number; if a stale icon persists, clear the cache with
+`sudo rm -rf /Library/Caches/com.apple.iconservices.store` and then
+`killall Dock WindowManager`.
 
 **Firewalls.** The app talks only to GitHub: `api.github.com` on every refresh, and
 `avatars.githubusercontent.com` to download your profile picture once (it is then cached). A
