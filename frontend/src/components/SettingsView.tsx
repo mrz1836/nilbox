@@ -25,6 +25,7 @@ import {
   setWorktreeDefault,
   type Account,
   type DefaultPrompts,
+  type Info,
   type LaunchDefaults,
   type Profile,
   type Prompt,
@@ -764,21 +765,46 @@ function RepositoriesSection({
   )
 }
 
+function openBugReport(url: string) {
+  openInBrowser(url).catch((err: unknown) => {
+    console.error('could not open the bug report in the browser', err)
+  })
+}
+
+// aboutRows is what the About page lists: the release version and build number, the
+// commit the build came from, and the system it runs on, which a bug report needs.
+function aboutRows(info: Info | null, failure: string): [string, string][] {
+  if (failure !== '') {
+    return [['Version', `unknown (${failure})`]]
+  }
+
+  if (info === null) {
+    return [['Version', '…']]
+  }
+
+  return [
+    ['Version', `${info.release} (${info.build})`],
+    ['Commit', info.version],
+    ['System', `${info.system}, ${info.arch}`],
+  ]
+}
+
 function AboutSection() {
-  const [version, setVersion] = useState('')
+  const [info, setInfo] = useState<Info | null>(null)
+  const [failure, setFailure] = useState('')
 
   useEffect(() => {
     let active = true
 
     getAppInfo()
-      .then((info) => {
+      .then((got) => {
         if (active) {
-          setVersion(info.version)
+          setInfo(got)
         }
       })
       .catch((err: unknown) => {
         if (active) {
-          setVersion(`unknown (${errorMessage(err)})`)
+          setFailure(errorMessage(err))
         }
       })
 
@@ -796,11 +822,28 @@ function AboutSection() {
         <p className="mt-2.5 text-sm text-muted">{brand.tagline}</p>
       </div>
       <Group>
-        <dl className="flex items-center justify-between px-4 py-3 text-sm">
-          <dt className="font-medium">Version</dt>
-          <dd className="font-mono text-[13px] text-muted">{version === '' ? '…' : version}</dd>
-        </dl>
+        {aboutRows(info, failure).map(([term, value]) => (
+          <dl key={term} className="flex items-center justify-between gap-6 px-4 py-3 text-sm">
+            <dt className="font-medium">{term}</dt>
+            <dd className="text-right font-mono text-[13px] break-all text-muted">{value}</dd>
+          </dl>
+        ))}
       </Group>
+      {info !== null && (
+        <div className="flex items-center justify-between gap-6">
+          <p className="text-sm text-muted">Found a bug? Open a report on GitHub with these details filled in.</p>
+          <button
+            type="button"
+            onClick={() => {
+              openBugReport(info.bugReportUrl)
+            }}
+            className={`${buttonClass} inline-flex shrink-0 items-center gap-1.5`}
+          >
+            Report a bug
+            <ExternalIcon className="size-3.5 text-muted" />
+          </button>
+        </div>
+      )}
       <p className="text-xs leading-relaxed text-muted">
         Your inbox, settings, and triage state stay on this Mac. {brand.name} talks only to GitHub.
       </p>
@@ -846,17 +889,19 @@ export function SettingsView({
   return (
     <div className="flex h-full min-h-0">
       <nav aria-label="Settings sections" className="flex w-52 shrink-0 flex-col gap-0.5 border-r border-border p-3">
-        <div className="flex items-center gap-1 pb-2">
+        <div className="flex pb-2">
           <button
             type="button"
             aria-label="Close settings"
             title="Close settings (Esc)"
             onClick={onClose}
-            className="flex size-7 items-center justify-center rounded-md text-muted hover:bg-raised hover:text-text"
+            className="group flex items-center gap-1 rounded-md pr-2.5 text-sm font-semibold hover:bg-raised"
           >
-            <ChevronLeftIcon className="size-4" />
+            <span className="flex size-7 items-center justify-center text-muted group-hover:text-text">
+              <ChevronLeftIcon className="size-4" />
+            </span>
+            Settings
           </button>
-          <p className="text-sm font-semibold">Settings</p>
         </div>
         {sectionOrder.map((id) => (
           <button

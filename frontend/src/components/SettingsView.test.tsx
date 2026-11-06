@@ -34,7 +34,16 @@ beforeEach(() => {
     mock.mockReset().mockResolvedValue(undefined)
   }
 
-  platform.getAppInfo.mockResolvedValue({ name: brand.name, tagline: brand.tagline, version: '1.4.0' })
+  platform.getAppInfo.mockResolvedValue({
+    name: brand.name,
+    tagline: brand.tagline,
+    version: 'v1.4.0-2-gabc1234-dirty',
+    release: '1.4.0',
+    build: '42',
+    system: 'macOS 15.1 (24B83)',
+    arch: 'arm64',
+    bugReportUrl: 'https://github.com/acme-org/example-repo/issues/new?template=bug_report.yml',
+  })
   platform.listLaunchTargets.mockResolvedValue([])
   platform.checkLaunchDefaults.mockResolvedValue([])
 })
@@ -379,7 +388,52 @@ describe('SettingsView', () => {
     expect(within(about).getByText(brand.name)).toHaveClass('lowercase')
     expect(about.querySelector('svg[aria-hidden="true"] path')).toHaveAttribute('d', brand.mark.path)
     expect(screen.getByText(brand.tagline)).toBeInTheDocument()
-    expect(await screen.findByText('1.4.0')).toBeInTheDocument()
+    expect(await screen.findByText('1.4.0 (42)')).toBeInTheDocument()
+  })
+
+  it('lists the commit and the system a bug report needs', async () => {
+    renderSettings()
+    await openSection('About')
+
+    const about = screen.getByRole('region', { name: 'About' })
+    expect(await within(about).findByText('v1.4.0-2-gabc1234-dirty')).toBeInTheDocument()
+    expect(within(about).getByText('Commit')).toBeInTheDocument()
+    expect(within(about).getByText('macOS 15.1 (24B83), arm64')).toBeInTheDocument()
+    expect(within(about).getByText('System')).toBeInTheDocument()
+  })
+
+  it('opens a bug report with the details filled in', async () => {
+    renderSettings()
+    await openSection('About')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Report a bug' }))
+
+    expect(platform.openInBrowser).toHaveBeenCalledWith(
+      'https://github.com/acme-org/example-repo/issues/new?template=bug_report.yml',
+    )
+  })
+
+  it('logs a bug report that could not be opened', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    platform.openInBrowser.mockRejectedValue(new Error('no browser'))
+    renderSettings()
+    await openSection('About')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Report a bug' }))
+
+    await waitFor(() => {
+      expect(logged).toHaveBeenCalled()
+    })
+    logged.mockRestore()
+  })
+
+  it('shows a placeholder while the version loads', async () => {
+    platform.getAppInfo.mockReturnValue(new Promise(() => undefined))
+    renderSettings()
+    await openSection('About')
+
+    expect(screen.getByText('…')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Report a bug' })).not.toBeInTheDocument()
   })
 
   it('says when the version could not be read', async () => {
@@ -388,6 +442,7 @@ describe('SettingsView', () => {
     await openSection('About')
 
     expect(await screen.findByText('unknown (no build info)')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Report a bug' })).not.toBeInTheDocument()
   })
 
   it('lists each profile with its folder and what it sets', async () => {
@@ -472,6 +527,13 @@ describe('SettingsView', () => {
 
     await userEvent.keyboard('{Escape}')
     expect(onClose).toHaveBeenCalledTimes(2)
+  })
+
+  it('closes from the Settings title too, part of the back button', async () => {
+    const { onClose } = renderSettings()
+
+    await userEvent.click(screen.getByText('Settings'))
+    expect(onClose).toHaveBeenCalledOnce()
   })
 
   it('closes on Escape from a switch or a menu, which do not use the key', async () => {
