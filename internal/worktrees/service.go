@@ -13,6 +13,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/mrz1836/nilbox/internal/cleanuplog"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/launchlog"
 	"github.com/mrz1836/nilbox/internal/localrepos"
@@ -135,6 +136,13 @@ type Launches interface {
 	Forget(ctx context.Context, clonePath, worktree string) error
 }
 
+// History records the worktrees the app cleaned up. *cleanuplog.Store implements it.
+type History interface {
+	Record(ctx context.Context, c cleanuplog.Cleanup) error
+	Recent(ctx context.Context, limit int) ([]cleanuplog.Cleanup, error)
+	Clear(ctx context.Context) error
+}
+
 // Notifier is told when an automatic sweep removed a worktree or changed how many need
 // the user's attention.
 type Notifier interface {
@@ -167,6 +175,9 @@ type Config struct {
 	// Launches holds the worktrees the app launched sessions in.
 	Launches Launches
 
+	// History records each cleanup, for the view's list of recent ones.
+	History History
+
 	// Notifier is told when a sweep changed something.
 	Notifier Notifier
 
@@ -184,6 +195,7 @@ type Service struct {
 	clock    Clock
 	github   GitHub
 	launches Launches
+	history  History
 	notifier Notifier
 	logger   *slog.Logger
 	procs    processTable
@@ -226,6 +238,7 @@ func NewService(cfg Config) *Service {
 		clock:    clock,
 		github:   cfg.GitHub,
 		launches: cfg.Launches,
+		history:  cfg.History,
 		notifier: cfg.Notifier,
 		logger:   logger,
 		procs:    osProcesses{},

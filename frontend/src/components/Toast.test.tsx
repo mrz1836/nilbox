@@ -40,6 +40,16 @@ describe('Toast', () => {
     expect(onClose).toHaveBeenCalledOnce()
   })
 
+  it('shows an action button with its label', () => {
+    const onClick = vi.fn()
+    render(<Toast toast={{ id: 1, text: 'Cleaned up', action: { label: 'View', onClick } }} onClose={vi.fn()} />)
+
+    expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'View' }))
+    expect(onClick).toHaveBeenCalledOnce()
+  })
+
   it('waits while the pointer rests on it', () => {
     const onClose = vi.fn()
     render(<Toast toast={{ id: 1, text: 'Restored' }} onClose={onClose} />)

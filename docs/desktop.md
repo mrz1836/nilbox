@@ -627,9 +627,17 @@ listing every clone, and, with **Clean up after merging** on (**Settings → Lau
 default), cleans up each finished worktree whose pull request merged or whose issue closed. It
 takes only worktrees the app launched, or whose HEAD is the merged pull request's own head
 commit, so a worktree is never matched by its name alone. A toast names what was cleaned up,
-and the **Worktrees** tab counts the worktrees that are done on GitHub but still on disk.
-Removing a worktree also removes the files git ignores in it, such as build output, as the
-agent's own cleanup does.
+with **View** to open the list below, and the **Worktrees** tab counts the worktrees that are
+done on GitHub but still on disk. Removing a worktree also removes the files git ignores in it,
+such as build output, as the agent's own cleanup does.
+
+**Recently cleaned up.** A toast is easy to miss, so every cleanup, by hand or automatic, is
+also recorded, and the bottom of the Worktrees view lists the newest five (**Show more** for
+the rest). Each entry names the repository and worktree, links the pull request or issue it
+was for, says whether you or the automatic cleanup removed it, which branch went with it, the
+commit it was at (on GitHub, so `git fetch` and `git worktree add` bring it back), and when.
+The list survives restarts and keeps the newest 100; **Clear** empties it and removes nothing
+else.
 
 Branches are deleted only as described above: the agent's own `worktree-<name>` branch, once
 everything on it is on GitHub. Nothing on GitHub is ever changed.

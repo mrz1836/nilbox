@@ -51,6 +51,8 @@ const mocks = vi.hoisted(() => ({
     CleanUpFinished: vi.fn(),
     Sweep: vi.fn(),
     LastSweep: vi.fn(),
+    RecentCleanups: vi.fn(),
+    ClearCleanups: vi.fn(),
   },
   events: { On: vi.fn() },
   browser: { OpenURL: vi.fn() },
@@ -457,6 +459,28 @@ describe('worktrees', () => {
 
     await expect(platform.sweepWorktrees()).resolves.toBe(report)
     await expect(platform.lastWorktreeSweep()).resolves.toBe(report)
+  })
+
+  it('lists and clears the recent cleanups, treating none as an empty list', async () => {
+    const cleanup: platform.WorktreeCleanup = {
+      id: 1,
+      cleanedAt: '2026-11-06T18:00:00Z',
+      automatic: true,
+      repo: 'example-repo',
+      worktree: 'pr-7',
+      displayPath: '~/projects/example-repo/.claude/worktrees/pr-7',
+      deletedBranch: 'worktree-pr-7',
+      head: 'fc1c3975011e66491785ace891c893e4fc716587',
+      item: null,
+    }
+    mocks.worktrees.RecentCleanups.mockResolvedValueOnce([cleanup]).mockResolvedValueOnce(null)
+    mocks.worktrees.ClearCleanups.mockResolvedValue(undefined)
+
+    await expect(platform.recentCleanups()).resolves.toEqual([cleanup])
+    await expect(platform.recentCleanups()).resolves.toEqual([])
+
+    await platform.clearCleanups()
+    expect(mocks.worktrees.ClearCleanups).toHaveBeenCalledOnce()
   })
 
   it('subscribes to worktree sweeps and returns the unsubscribe function', () => {

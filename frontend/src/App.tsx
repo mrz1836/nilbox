@@ -100,14 +100,36 @@ export function App() {
   // promptsOpened keeps the Prompts page mounted once opened, so an unsaved draft
   // survives switching tabs.
   const [promptsOpened, setPromptsOpened] = useState(false)
+  // historyFocus opens the Worktrees view at its recently cleaned-up list, as a cleanup
+  // toast's View asks; switching views clears it.
+  const [historyFocus, setHistoryFocus] = useState(false)
 
   const changeView = useCallback((next: View) => {
     if (next === 'prompts') {
       setPromptsOpened(true)
     }
 
+    setHistoryFocus(false)
     setView(next)
   }, [])
+
+  const { closeToast: closeSweepToast } = sweeps
+
+  // viewCleanups opens the Worktrees view at the recently cleaned-up list.
+  const viewCleanups = useCallback(() => {
+    closeSweepToast()
+    setHistoryFocus(true)
+    setView('worktrees')
+  }, [closeSweepToast])
+
+  // sweepToast offers View on a cleanup toast, unless the Worktrees view is already open.
+  const sweepToast = useMemo(
+    () =>
+      sweeps.toast === null || view === 'worktrees'
+        ? sweeps.toast
+        : { ...sweeps.toast, action: { label: 'View', onClick: viewCleanups } },
+    [sweeps.toast, view, viewCleanups],
+  )
 
   const openSettingsAt = useCallback(
     (section: SettingsSection) => {
@@ -210,7 +232,9 @@ export function App() {
             onSnoozeSettings={openSnoozeSettings}
           />
         )}
-        {view === 'worktrees' && <WorktreesView reloadKey={sweeps.seq} onSnapshot={sweeps.listed} />}
+        {view === 'worktrees' && (
+          <WorktreesView reloadKey={sweeps.seq} onSnapshot={sweeps.listed} focusHistory={historyFocus} />
+        )}
         {promptsOpened && (
           <div hidden={view !== 'prompts'} className="h-full">
             <PromptsView
@@ -238,7 +262,7 @@ export function App() {
           />
         )}
       </main>
-      <Toast toast={sweeps.toast} onClose={sweeps.closeToast} />
+      <Toast toast={sweepToast} onClose={closeSweepToast} />
     </div>
   )
 }

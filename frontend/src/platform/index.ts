@@ -40,6 +40,7 @@ import type { Settings, WindowSize } from '../../bindings/github.com/mrz1836/nil
 import type { Rules as SnoozeRules } from '../../bindings/github.com/mrz1836/nilbox/internal/snooze'
 import { Service as Worktrees } from '../../bindings/github.com/mrz1836/nilbox/internal/worktrees'
 import type {
+  Cleanup as WorktreeCleanup,
   RemoveResult,
   Snapshot as WorktreesSnapshot,
   SweepReport,
@@ -95,6 +96,7 @@ export type {
   Rules as SnoozeRules,
 } from '../../bindings/github.com/mrz1836/nilbox/internal/snooze'
 export type {
+  Cleanup as WorktreeCleanup,
   LinkedItem,
   RemoveResult,
   Repo as WorktreeRepo,
@@ -353,6 +355,17 @@ export async function cleanUpFinishedWorktrees(): Promise<RemoveResult[]> {
 // sweepWorktrees runs the automatic cleanup now, as it runs on its own every few minutes.
 export function sweepWorktrees(): Promise<SweepReport> {
   return Worktrees.Sweep()
+}
+
+// recentCleanups lists the worktrees cleaned up most recently, newest first, by hand or by
+// the automatic sweep. The history survives restarts.
+export async function recentCleanups(): Promise<WorktreeCleanup[]> {
+  return (await Worktrees.RecentCleanups()) ?? []
+}
+
+// clearCleanups forgets the history of cleaned-up worktrees. It removes nothing else.
+export function clearCleanups(): Promise<void> {
+  return Worktrees.ClearCleanups()
 }
 
 // lastWorktreeSweep returns what the latest automatic sweep found and did; its seq is 0

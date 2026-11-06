@@ -250,6 +250,36 @@ type RemoveResult struct {
 	Reason string `json:"reason"`
 }
 
+// Cleanup is one worktree the app cleaned up, as the Worktrees view's history shows it.
+type Cleanup struct {
+	// ID identifies the record.
+	ID int64 `json:"id"`
+
+	// CleanedAt is when the worktree was removed, in RFC 3339.
+	CleanedAt string `json:"cleanedAt"`
+
+	// Automatic reports a cleanup by the sweep rather than by the user.
+	Automatic bool `json:"automatic"`
+
+	// Repo is the clone's directory name.
+	Repo string `json:"repo"`
+
+	// Worktree is the worktree's directory name, e.g. "pr-184".
+	Worktree string `json:"worktree"`
+
+	// DisplayPath was the worktree's path relative to home with ~.
+	DisplayPath string `json:"displayPath"`
+
+	// DeletedBranch is the branch deleted with it, or "" when it was kept.
+	DeletedBranch string `json:"deletedBranch"`
+
+	// Head is the commit it had checked out, which is on GitHub.
+	Head string `json:"head"`
+
+	// Item is the pull request or issue it was for, or nil.
+	Item *LinkedItem `json:"item"`
+}
+
 // SweepReport is what the latest automatic sweep found and did.
 type SweepReport struct {
 	// Seq numbers the sweeps since the app started, from 1; 0 means none has run yet.

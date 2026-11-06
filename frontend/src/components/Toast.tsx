@@ -5,6 +5,10 @@ import { XIcon } from './icons'
 // toastMs is how long a toast shows, unless the pointer rests on it.
 export const toastMs = 6000
 
+// toastButtonClass is a toast's text button, such as Undo.
+const toastButtonClass =
+  'shrink-0 rounded-md px-2 py-1 text-sm font-medium text-accent transition-colors hover:bg-surface'
+
 // ToastMessage is one short confirmation, such as "Dismissed", with an optional Undo.
 export interface ToastMessage {
   // id tells one toast from the next, so each gets its full time on screen.
@@ -16,6 +20,14 @@ export interface ToastMessage {
   tone?: 'normal' | 'error'
   // undo, when set, puts an Undo button on the toast.
   undo?: () => void
+  // action, when set, puts a button with its label on the toast, such as View.
+  action?: ToastAction
+}
+
+// ToastAction is a toast's button that leads somewhere, such as View.
+export interface ToastAction {
+  label: string
+  onClick: () => void
 }
 
 export interface ToastProps {
@@ -83,12 +95,13 @@ export function Toast({ toast, onClose }: ToastProps) {
             {toast.detail !== undefined && toast.detail !== '' && <span className="text-muted"> · {toast.detail}</span>}
           </p>
           {toast.undo !== undefined && (
-            <button
-              type="button"
-              onClick={toast.undo}
-              className="shrink-0 rounded-md px-2 py-1 text-sm font-medium text-accent transition-colors hover:bg-surface"
-            >
+            <button type="button" onClick={toast.undo} className={toastButtonClass}>
               Undo
+            </button>
+          )}
+          {toast.action !== undefined && (
+            <button type="button" onClick={toast.action.onClick} className={toastButtonClass}>
+              {toast.action.label}
             </button>
           )}
           <button

@@ -20,6 +20,7 @@ import type {
   Settings,
   SweepReport,
   Worktree,
+  WorktreeCleanup,
   WorktreeRepo,
   WorktreesSnapshot,
 } from '../platform'
@@ -386,6 +387,23 @@ export function linkedItem(overrides: Partial<LinkedItem> = {}): LinkedItem {
 // finishedWorktree is a worktree whose pull request merged, ready to clean up.
 export function finishedWorktree(overrides: Partial<Worktree> = {}): Worktree {
   return worktree({ item: linkedItem(), stage: 'finished', canCleanUp: true, ...overrides })
+}
+
+// worktreeCleanup is example-repo's pr-7, cleaned up automatically after its pull request
+// merged.
+export function worktreeCleanup(overrides: Partial<WorktreeCleanup> = {}): WorktreeCleanup {
+  return {
+    id: 1,
+    cleanedAt: '2026-06-15T10:00:00Z',
+    automatic: true,
+    repo: 'example-repo',
+    worktree: 'pr-7',
+    displayPath: '~/projects/example-repo/.claude/worktrees/pr-7',
+    deletedBranch: 'worktree-pr-7',
+    head: 'fc1c3975011e66491785ace891c893e4fc716587',
+    item: linkedItem({ closedAt: '', headOid: '', launched: false }),
+    ...overrides,
+  }
 }
 
 export function sweepReport(overrides: Partial<SweepReport> = {}): SweepReport {

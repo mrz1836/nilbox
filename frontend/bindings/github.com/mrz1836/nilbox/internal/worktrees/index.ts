@@ -7,6 +7,7 @@ export {
 };
 
 export type {
+    Cleanup,
     LinkedItem,
     RemoveResult,
     Repo,

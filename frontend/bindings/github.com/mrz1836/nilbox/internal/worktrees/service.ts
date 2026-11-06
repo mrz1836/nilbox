@@ -34,6 +34,13 @@ export function CleanUpFinished(): $CancellablePromise<$models.RemoveResult[] | 
 }
 
 /**
+ * ClearCleanups forgets the cleanups RecentCleanups lists. It removes nothing else.
+ */
+export function ClearCleanups(): $CancellablePromise<void> {
+    return $Call.ByID(3423894336);
+}
+
+/**
  * ForceRemove removes one unlocked linked worktree that has uncommitted changes,
  * discarding them, with a single --force. Locked worktrees are refused even here, so a
  * running session's worktree is never pulled out from under it.
@@ -65,6 +72,14 @@ export function List(): $CancellablePromise<$models.Snapshot> {
  */
 export function Prune(repoPath: string): $CancellablePromise<void> {
     return $Call.ByID(2625998552, repoPath);
+}
+
+/**
+ * RecentCleanups returns the worktrees the app cleaned up most recently, newest first,
+ * whether the user asked or the automatic sweep did it.
+ */
+export function RecentCleanups(): $CancellablePromise<$models.Cleanup[] | null> {
+    return $Call.ByID(1672658018);
 }
 
 /**

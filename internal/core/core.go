@@ -17,6 +17,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/appinfo"
+	"github.com/mrz1836/nilbox/internal/cleanuplog"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
@@ -250,6 +251,7 @@ func assemble(db *gorm.DB, opts Options, logger *slog.Logger) *Core {
 			Clock:    opts.Clock,
 			GitHub:   itemStates{tokens: tokens, client: client},
 			Launches: launches,
+			History:  cleanuplog.NewStore(db),
 			Notifier: opts.WorktreeNotifier,
 			Logger:   logger,
 		}),

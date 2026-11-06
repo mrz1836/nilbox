@@ -12,6 +12,7 @@ import {
   snapshot,
   sweepReport,
   worktree,
+  worktreeCleanup,
   worktreeRepo,
   worktreesSnapshot,
 } from '../test/fixtures'
@@ -37,6 +38,8 @@ const platform = vi.hoisted(() => ({
   cleanUpFinishedWorktrees: vi.fn(),
   lastWorktreeSweep: vi.fn(),
   onWorktreesUpdated: vi.fn(),
+  recentCleanups: vi.fn(),
+  clearCleanups: vi.fn(),
 }))
 
 vi.mock('../platform', () => platform)
@@ -79,6 +82,8 @@ beforeEach(() => {
   platform.cleanUpFinishedWorktrees.mockResolvedValue([])
   platform.lastWorktreeSweep.mockResolvedValue(sweepReport({ seq: 0 }))
   platform.onWorktreesUpdated.mockReturnValue(() => undefined)
+  platform.recentCleanups.mockResolvedValue([])
+  platform.clearCleanups.mockResolvedValue(undefined)
 })
 
 afterEach(() => {
@@ -858,5 +863,174 @@ describe('WorktreesView', () => {
     expect(await screen.findByText('No clone under ~/projects has linked worktrees.')).toBeInTheDocument()
     expect(screen.getByText('Worktrees of the clones under ~/projects')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Refresh' })).toBeEnabled()
+  })
+})
+
+describe('WorktreesView history', () => {
+  // history waits for the recently cleaned-up list and returns the queries scoped to it.
+  async function history() {
+    return within(await screen.findByRole('region', { name: 'Recently cleaned up' }))
+  }
+
+  it('lists what was cleaned up, how, and when', async () => {
+    platform.recentCleanups.mockResolvedValue([
+      worktreeCleanup(),
+      worktreeCleanup({
+        id: 2,
+        cleanedAt: '2026-06-13T12:00:00Z',
+        automatic: false,
+        worktree: 'issue-9',
+        displayPath: '~/projects/example-repo/.claude/worktrees/issue-9',
+        deletedBranch: '',
+        head: '',
+        item: linkedItem({
+          kind: 'issue',
+          number: 9,
+          title: 'Crash on start',
+          url: 'https://github.com/acme-org/example-repo/issues/9',
+          state: 'closed',
+        }),
+      }),
+      worktreeCleanup({ id: 3, worktree: 'scratch', item: null }),
+    ])
+    render(<WorktreesView clock={clock} />)
+
+    const list = await history()
+    expect(list.getByText('Everything in them was on GitHub')).toBeInTheDocument()
+
+    const rows = list.getAllByRole('listitem')
+    expect(rows).toHaveLength(3)
+
+    const auto = within(rows[0] as HTMLElement)
+    expect(auto.getByText('example-repo')).toBeInTheDocument()
+    expect(auto.getByText('pr-7')).toHaveAttribute('title', '~/projects/example-repo/.claude/worktrees/pr-7')
+    expect(auto.getByText(/Add the widget cache/)).toBeInTheDocument()
+    expect(rows[0]).toHaveTextContent(
+      'Cleaned up automatically after the pull request merged · deleted worktree-pr-7 · was at fc1c397',
+    )
+    expect(auto.getByText('fc1c397')).toHaveAttribute('title', 'fc1c3975011e66491785ace891c893e4fc716587')
+    const when = auto.getByText('2h ago')
+    expect(when).toHaveAttribute('dateTime', '2026-06-15T10:00:00Z')
+    expect(when.getAttribute('title')).toMatch(/2026/)
+
+    await userEvent.click(auto.getByRole('button', { name: 'PR #7' }))
+    expect(platform.openInBrowser).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/pull/7')
+
+    const manual = within(rows[1] as HTMLElement)
+    expect(manual.getByRole('button', { name: 'Issue #9' })).toHaveAttribute('title', 'acme-org/example-repo#9')
+    expect(rows[1]).toHaveTextContent('Cleaned up by you after the issue closed · its branch was kept')
+    expect(rows[1]).not.toHaveTextContent('was at')
+    expect(manual.getByText('2d ago')).toBeInTheDocument()
+
+    expect(rows[2]).toHaveTextContent('Cleaned up automatically · deleted worktree-pr-7')
+    expect(within(rows[2] as HTMLElement).queryByRole('button')).not.toBeInTheDocument()
+
+    expect(list.queryByRole('button', { name: /more/ })).not.toBeInTheDocument()
+  })
+
+  it('shows the newest five, and the rest on request', async () => {
+    platform.recentCleanups.mockResolvedValue(
+      Array.from({ length: 7 }, (_, i) => worktreeCleanup({ id: i + 1, worktree: `pr-${String(i + 1)}` })),
+    )
+    render(<WorktreesView clock={clock} />)
+
+    const list = await history()
+    expect(list.getAllByRole('listitem')).toHaveLength(5)
+
+    const more = list.getByRole('button', { name: 'Show 2 more' })
+    expect(more).toHaveAttribute('aria-expanded', 'false')
+
+    await userEvent.click(more)
+    expect(list.getAllByRole('listitem')).toHaveLength(7)
+    expect(list.getByText('pr-7')).toBeInTheDocument()
+
+    await userEvent.click(list.getByRole('button', { name: 'Show fewer' }))
+    expect(list.getAllByRole('listitem')).toHaveLength(5)
+  })
+
+  it('is left out when nothing was cleaned up', async () => {
+    render(<WorktreesView clock={clock} />)
+    await repo('example-repo')
+
+    expect(platform.recentCleanups).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('region', { name: 'Recently cleaned up' })).not.toBeInTheDocument()
+  })
+
+  it('clears the list, and shows a clear that failed', async () => {
+    platform.recentCleanups.mockResolvedValue([worktreeCleanup()])
+    platform.clearCleanups.mockRejectedValueOnce(new Error('database is locked'))
+    render(<WorktreesView clock={clock} />)
+
+    await userEvent.click((await history()).getByRole('button', { name: 'Clear' }))
+    expect(await (await history()).findByRole('alert')).toHaveTextContent('database is locked')
+
+    await userEvent.click((await history()).getByRole('button', { name: 'Clear' }))
+
+    expect(platform.clearCleanups).toHaveBeenCalledTimes(2)
+    await vi.waitFor(() => {
+      expect(screen.queryByRole('region', { name: 'Recently cleaned up' })).not.toBeInTheDocument()
+    })
+  })
+
+  it('lists again after a change, so a cleanup shows at once', async () => {
+    platform.listWorktrees.mockResolvedValue(
+      worktreesSnapshot({ repos: [worktreeRepo({ worktrees: [mainWorktree(), finishedWorktree()] })] }),
+    )
+    platform.cleanUpWorktree.mockResolvedValue({
+      repoPath,
+      path: linkedPath,
+      displayPath: linkedDisplay,
+      removed: true,
+      deletedBranch: 'worktree-pr-7',
+      item: 'acme-org/example-repo#7',
+      reason: '',
+    })
+    render(<WorktreesView clock={clock} />)
+    await repo('example-repo')
+
+    platform.recentCleanups.mockResolvedValue([worktreeCleanup({ automatic: false })])
+    await userEvent.click(row(linkedDisplay).getByRole('button', { name: 'Clean up' }))
+
+    expect((await history()).getByText(/Cleaned up by you/)).toBeInTheDocument()
+  })
+
+  it('scrolls to the list once when asked to', async () => {
+    const scroll = vi.spyOn(Element.prototype, 'scrollIntoView')
+    platform.recentCleanups.mockResolvedValue([worktreeCleanup()])
+    const { rerender } = render(<WorktreesView clock={clock} focusHistory />)
+
+    await history()
+    await vi.waitFor(() => {
+      expect(scroll).toHaveBeenCalledOnce()
+    })
+    expect(scroll).toHaveBeenCalledWith({ block: 'start' })
+
+    rerender(<WorktreesView clock={clock} focusHistory reloadKey={1} />)
+    await vi.waitFor(() => {
+      expect(platform.recentCleanups).toHaveBeenCalledTimes(2)
+    })
+    expect(scroll).toHaveBeenCalledOnce()
+  })
+
+  it('does not scroll when not asked to', async () => {
+    const scroll = vi.spyOn(Element.prototype, 'scrollIntoView')
+    platform.recentCleanups.mockResolvedValue([worktreeCleanup()])
+    render(<WorktreesView clock={clock} />)
+
+    await history()
+    expect(scroll).not.toHaveBeenCalled()
+  })
+
+  it('logs a list that could not be read and still lists the worktrees', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    platform.recentCleanups.mockRejectedValue(new Error('database is locked'))
+    render(<WorktreesView clock={clock} />)
+
+    await repo('example-repo')
+    await vi.waitFor(() => {
+      expect(error).toHaveBeenCalledWith('could not read the recently cleaned-up worktrees', expect.any(Error))
+    })
+    expect(screen.queryByRole('region', { name: 'Recently cleaned up' })).not.toBeInTheDocument()
+    error.mockRestore()
   })
 })

@@ -107,7 +107,7 @@ func (s *Service) sweep(ctx context.Context) SweepReport {
 // the user.
 func (s *Service) sweepRow(ctx context.Context, g git, repoPath string, wt Worktree, report *SweepReport) {
 	if report.Enabled && autoCleanable(wt) && ctx.Err() == nil {
-		res := s.cleanUpRow(ctx, g, repoPath, wt)
+		res := s.cleanUpRow(ctx, g, repoPath, wt, true)
 		if res.Removed {
 			report.Cleaned = append(report.Cleaned, res)
 

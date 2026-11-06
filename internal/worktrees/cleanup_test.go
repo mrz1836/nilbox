@@ -116,6 +116,7 @@ func (n *countingNotifier) calls() int {
 type linkDeps struct {
 	gh       *fakeGitHub
 	launches *fakeLaunches
+	history  History
 	notifier *countingNotifier
 	auto     bool
 	procs    processTable
@@ -143,6 +144,10 @@ func (e *env) linked(deps linkDeps) *Service {
 
 	if deps.notifier != nil {
 		cfg.Notifier = deps.notifier
+	}
+
+	if deps.history != nil {
+		cfg.History = deps.history
 	}
 
 	svc := NewService(cfg)
@@ -585,7 +590,7 @@ func TestCleanUpRowChecksAgainBeforeEachStep(t *testing.T) {
 
 	t.Run("a worktree whose commit moved is kept", func(t *testing.T) {
 		path, head := agentWorktree(t, repo, "pr-1")
-		res := svc.cleanUpRow(t.Context(), g, repo, Worktree{Path: path, DisplayPath: "pr-1", Head: head + "x"})
+		res := svc.cleanUpRow(t.Context(), g, repo, Worktree{Path: path, DisplayPath: "pr-1", Head: head + "x"}, false)
 		assert.False(t, res.Removed)
 		assert.Equal(t, ErrChanged.Error(), res.Reason)
 		assert.Contains(t, gitWorktreePaths(t, repo), resolvedPath(path))
@@ -597,7 +602,7 @@ func TestCleanUpRowChecksAgainBeforeEachStep(t *testing.T) {
 
 		res := svc.cleanUpRow(t.Context(), g, repo, Worktree{
 			Path: path, Head: head, Locked: true, LockReason: "claude session pr-2 (pid 999999)",
-		})
+		}, false)
 		assert.False(t, res.Removed)
 		assert.Equal(t, ErrChanged.Error(), res.Reason)
 		assert.True(t, mustRow(t, e.list(t), path).Locked, "the new lock stays")
@@ -607,7 +612,7 @@ func TestCleanUpRowChecksAgainBeforeEachStep(t *testing.T) {
 		path, head := agentWorktree(t, repo, "pr-3")
 		res := svc.cleanUpRow(t.Context(), g, repo, Worktree{
 			Path: path, Head: head, Branch: "worktree-pr-3", OwnBranch: true,
-		})
+		}, false)
 		assert.True(t, res.Removed)
 		assert.Equal(t, "worktree-pr-3", res.DeletedBranch)
 		assert.Empty(t, res.Reason)
@@ -630,13 +635,13 @@ func TestCleanUpRowChecksAgainBeforeEachStep(t *testing.T) {
 
 		assert.Contains(t, branches(t, repo), "worktree-pr-4")
 
-		res := svc.cleanUpRow(t.Context(), g, repo, Worktree{Path: other, Head: otherHead, Branch: "worktree-pr-4", OwnBranch: true})
+		res := svc.cleanUpRow(t.Context(), g, repo, Worktree{Path: other, Head: otherHead, Branch: "worktree-pr-4", OwnBranch: true}, false)
 		assert.False(t, res.Removed, "it is no longer a worktree")
 	})
 
 	t.Run("a removed worktree whose branch git keeps says why", func(t *testing.T) {
 		path, head := agentWorktree(t, repo, "pr-5")
-		res := svc.cleanUpRow(t.Context(), g, repo, Worktree{Path: path, Head: head, Branch: "worktree-pr-5x", OwnBranch: true})
+		res := svc.cleanUpRow(t.Context(), g, repo, Worktree{Path: path, Head: head, Branch: "worktree-pr-5x", OwnBranch: true}, false)
 		assert.True(t, res.Removed)
 		assert.Empty(t, res.DeletedBranch)
 		assert.Contains(t, res.Reason, "kept the branch worktree-pr-5x")

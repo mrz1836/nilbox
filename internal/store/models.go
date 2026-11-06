@@ -3,6 +3,7 @@ package store
 import (
 	"slices"
 
+	cleanuplogmodel "github.com/mrz1836/nilbox/internal/cleanuplog/model"
 	inboxmodel "github.com/mrz1836/nilbox/internal/inbox/model"
 	launchdefaultsmodel "github.com/mrz1836/nilbox/internal/launchdefaults/model"
 	launchlogmodel "github.com/mrz1836/nilbox/internal/launchlog/model"
@@ -15,5 +16,6 @@ import (
 // application table. The parity test checks it against the migrated schema.
 func AllModels() []any {
 	return slices.Concat(inboxmodel.AllModels(), settingsmodel.AllModels(), profilesmodel.AllModels(),
-		promptsmodel.AllModels(), launchdefaultsmodel.AllModels(), launchlogmodel.AllModels())
+		promptsmodel.AllModels(), launchdefaultsmodel.AllModels(), launchlogmodel.AllModels(),
+		cleanuplogmodel.AllModels())
 }

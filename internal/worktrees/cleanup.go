@@ -55,7 +55,7 @@ func (s *Service) CleanUp(ctx context.Context, repoPath, path string) (RemoveRes
 		return RemoveResult{}, err
 	}
 
-	res := s.cleanUpRow(ctx, g, repoPath, wt)
+	res := s.cleanUpRow(ctx, g, repoPath, wt, false)
 	if !res.Removed {
 		return res, fmt.Errorf("%w: %s: %s", ErrCleanUpFailed, wt.DisplayPath, res.Reason)
 	}
@@ -94,7 +94,7 @@ func (s *Service) CleanUpFinished(ctx context.Context) ([]RemoveResult, error) {
 			return results, err
 		}
 
-		results = append(results, s.cleanUpRow(ctx, g, repo.Path, *wt))
+		results = append(results, s.cleanUpRow(ctx, g, repo.Path, *wt, false))
 	}
 
 	return results, nil
@@ -146,12 +146,13 @@ func (s *Service) cleanUpRefusal(wt Worktree, found bool, path, linkError string
 	}
 }
 
-// cleanUpRow removes one worktree assessed as finished and reports the outcome. Each step
-// checks git again: the lock must be the one assessed and its session still ended, the
-// worktree must still have the commit assessed checked out, git refuses one with
-// uncommitted changes, and the branch is deleted only while it still points at that
-// commit and no worktree has it checked out.
-func (s *Service) cleanUpRow(ctx context.Context, g git, repoPath string, wt Worktree) RemoveResult {
+// cleanUpRow removes one worktree assessed as finished, records it in the history, and
+// reports the outcome; automatic tells a sweep from the user. Each step checks git again:
+// the lock must be the one assessed and its session still ended, the worktree must still
+// have the commit assessed checked out, git refuses one with uncommitted changes, and the
+// branch is deleted only while it still points at that commit and no worktree has it
+// checked out.
+func (s *Service) cleanUpRow(ctx context.Context, g git, repoPath string, wt Worktree, automatic bool) RemoveResult {
 	res := RemoveResult{RepoPath: repoPath, Path: wt.Path, DisplayPath: wt.DisplayPath, Item: itemName(wt.Item)}
 
 	if err := s.removeFinished(ctx, g, repoPath, wt); err != nil {
@@ -164,15 +165,15 @@ func (s *Service) cleanUpRow(ctx context.Context, g git, repoPath string, wt Wor
 
 	s.forgetLaunch(ctx, wt.Path)
 
-	if !wt.OwnBranch {
-		return res
+	if wt.OwnBranch {
+		if err := s.deleteOwnBranch(ctx, g, repoPath, wt.Branch, wt.Head); err != nil {
+			res.Reason = "kept the branch " + wt.Branch + ": " + reasonOf(err)
+		} else {
+			res.DeletedBranch = wt.Branch
+		}
 	}
 
-	if err := s.deleteOwnBranch(ctx, g, repoPath, wt.Branch, wt.Head); err != nil {
-		res.Reason = "kept the branch " + wt.Branch + ": " + reasonOf(err)
-	} else {
-		res.DeletedBranch = wt.Branch
-	}
+	s.recordCleanup(ctx, repoPath, wt, res.DeletedBranch, automatic)
 
 	return res
 }

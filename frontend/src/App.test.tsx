@@ -17,6 +17,7 @@ import {
   snapshot,
   sweepReport,
   unknownRate,
+  worktreeCleanup,
   variables,
   worktreesSnapshot,
 } from './test/fixtures'
@@ -52,6 +53,7 @@ const platform = vi.hoisted(() => ({
   snoozeItem: vi.fn(),
   lastWorktreeSweep: vi.fn(),
   onWorktreesUpdated: vi.fn(),
+  recentCleanups: vi.fn(),
 }))
 
 vi.mock('./platform', () => platform)
@@ -93,6 +95,7 @@ beforeEach(() => {
   platform.setTrustedBots.mockResolvedValue(undefined)
   platform.lastWorktreeSweep.mockResolvedValue(sweepReport({ seq: 0 }))
   platform.onWorktreesUpdated.mockReturnValue(() => undefined)
+  platform.recentCleanups.mockResolvedValue([])
 })
 
 // rowOptions opens the inbox row's launch options and returns queries scoped to them.
@@ -416,6 +419,76 @@ describe('App', () => {
     await vi.waitFor(() => {
       expect(within(tab).queryByText(/\d/)).not.toBeInTheDocument()
     })
+  })
+
+  it("opens the recently cleaned-up list from a cleanup toast's View", async () => {
+    const scroll = vi.spyOn(Element.prototype, 'scrollIntoView')
+    const cleaned = {
+      repoPath: '/home/user/projects/example-repo',
+      path: '/home/user/projects/example-repo/.claude/worktrees/pr-7',
+      displayPath: '~/projects/example-repo/.claude/worktrees/pr-7',
+      removed: true,
+      deletedBranch: 'worktree-pr-7',
+      item: 'acme-org/example-repo#7',
+      reason: '',
+    }
+    platform.lastWorktreeSweep.mockResolvedValue(sweepReport({ seq: 1, cleaned: [cleaned] }))
+    platform.recentCleanups.mockResolvedValue([worktreeCleanup()])
+
+    render(<App />)
+
+    expect(await screen.findByText('Cleaned up a finished worktree')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'View' }))
+
+    expect(screen.queryByText('Cleaned up a finished worktree')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Worktrees' })).toHaveAttribute('aria-pressed', 'true')
+    expect(await screen.findByRole('region', { name: 'Recently cleaned up' })).toBeInTheDocument()
+    await vi.waitFor(() => {
+      expect(scroll).toHaveBeenCalledOnce()
+    })
+
+    // Back through the tabs, the view opens at the top again.
+    await userEvent.click(screen.getByRole('button', { name: 'Inbox' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
+    expect(await screen.findByRole('region', { name: 'Recently cleaned up' })).toBeInTheDocument()
+    expect(scroll).toHaveBeenCalledOnce()
+  })
+
+  it('offers no View on a cleanup toast while the Worktrees view is open', async () => {
+    let swept: () => void = () => undefined
+    platform.onWorktreesUpdated.mockImplementation((listener: () => void) => {
+      swept = listener
+
+      return () => undefined
+    })
+
+    render(<App />)
+    await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
+    await screen.findByRole('region', { name: 'example-repo' })
+
+    platform.lastWorktreeSweep.mockResolvedValue(
+      sweepReport({
+        seq: 2,
+        cleaned: [
+          {
+            repoPath: '/r',
+            path: '/r/.claude/worktrees/pr-9',
+            displayPath: '~/r/.claude/worktrees/pr-9',
+            removed: true,
+            deletedBranch: '',
+            item: 'acme-org/r#9',
+            reason: '',
+          },
+        ],
+      }),
+    )
+    await act(async () => {
+      swept()
+      await Promise.resolve()
+    })
+
+    expect(await screen.findByText('Cleaned up a finished worktree')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'View' })).not.toBeInTheDocument()
   })
 
   it('logs a sweep that could not be read', async () => {
