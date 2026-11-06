@@ -66,6 +66,13 @@ const (
 
 	// appQuitPoll is how often Run checks whether the running copy has quit.
 	appQuitPoll = 100 * time.Millisecond
+
+	// appReopenTimeout bounds how long Run keeps trying to open the fresh build after
+	// quitting a running copy (see openAfterQuit).
+	appReopenTimeout = 5 * time.Second
+
+	// appReopenPoll is how long Run waits between those tries.
+	appReopenPoll = 250 * time.Millisecond
 )
 
 var (
@@ -291,36 +298,63 @@ func (App) Run() error {
 		return err
 	}
 
-	if err = quitRunningApp(exe); err != nil {
+	quit, err := quitRunningApp(exe)
+	if err != nil {
 		return err
+	}
+
+	if quit {
+		return openAfterQuit(bundle)
 	}
 
 	return sh.RunV("open", bundle)
 }
 
 // quitRunningApp asks every process running exe to quit, with SIGTERM, which the app
-// handles as a normal quit, and waits until they have exited.
-func quitRunningApp(exe string) error {
+// handles as a normal quit, and waits until they have exited. It reports whether any was
+// running.
+func quitRunningApp(exe string) (bool, error) {
 	pids, err := appProcesses(exe)
 	if err != nil || len(pids) == 0 {
-		return err
+		return false, err
 	}
 
 	fmt.Printf("Quitting the running %s...\n", brand.Name) //nolint:forbidigo // mage target output
 
 	for _, pid := range pids {
 		if err = syscall.Kill(pid, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
-			return fmt.Errorf("quit the running app (pid %d): %w", pid, err)
+			return true, fmt.Errorf("quit the running app (pid %d): %w", pid, err)
 		}
 	}
 
 	for deadline := time.Now().Add(appQuitTimeout); time.Now().Before(deadline); time.Sleep(appQuitPoll) {
 		if pids, err = appProcesses(exe); err != nil || len(pids) == 0 {
-			return err
+			return true, err
 		}
 	}
 
-	return errStillRunning
+	return true, errStillRunning
+}
+
+// openAfterQuit opens bundle just after a running copy of the app quit. LaunchServices
+// can still list the old copy for a moment after its process exits, and an open in that
+// window fails with error -600 (procNotFound), so it tries again until appReopenTimeout,
+// quietly, and reports the last failure only if none succeeds.
+func openAfterQuit(bundle string) error {
+	deadline := time.Now().Add(appReopenTimeout)
+
+	for {
+		out, err := exec.CommandContext(context.Background(), "open", bundle).CombinedOutput() //nolint:gosec // argv only, no shell
+		if err == nil {
+			return nil
+		}
+
+		if time.Now().After(deadline) {
+			return fmt.Errorf("open %s: %w: %s", bundle, err, strings.TrimSpace(string(out)))
+		}
+
+		time.Sleep(appReopenPoll)
+	}
 }
 
 // appProcesses returns the IDs of the processes whose command line starts with exe.
