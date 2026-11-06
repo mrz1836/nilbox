@@ -42,7 +42,8 @@ function repoKey(path: string): string {
   return `repo:${path}`
 }
 
-const badge = 'rounded-full border px-2 py-0.5 text-xs font-medium'
+// badge is a status marker: weight and color mark it, with no pill around it.
+const badge = 'text-xs font-medium'
 
 interface WorktreeRowProps {
   worktree: Worktree
@@ -75,16 +76,14 @@ function WorktreeStatus({ worktree }: { worktree: Worktree }) {
   return (
     <>
       {worktree.prunable ? (
-        <span className={`${badge} border-warning text-warning`}>prunable</span>
+        <span className={`${badge} text-warning`}>prunable</span>
       ) : worktree.dirty ? (
-        <span className={`${badge} border-warning text-warning`}>
-          dirty · {plural(worktree.dirtyCount, 'uncommitted file')}
-        </span>
+        <span className={`${badge} text-warning`}>dirty · {plural(worktree.dirtyCount, 'uncommitted file')}</span>
       ) : (
-        worktree.error === '' && <span className={`${badge} border-success text-success`}>clean</span>
+        worktree.error === '' && <span className={`${badge} text-success`}>clean</span>
       )}
-      {worktree.locked && <span className={`${badge} border-danger text-danger`}>locked</span>}
-      {worktree.claudeCreated && <span className={`${badge} border-border text-muted`}>created by Claude</span>}
+      {worktree.locked && <span className={`${badge} text-danger`}>locked</span>}
+      {worktree.claudeCreated && <span className={`${badge} text-muted`}>created by Claude</span>}
     </>
   )
 }

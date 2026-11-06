@@ -49,6 +49,7 @@ describe('ConfirmDialog', () => {
     const dialog = screen.getByRole('dialog', { name: 'Remove it?' })
     expect(dialog).toHaveAttribute('aria-modal', 'true')
     expect(dialog).toHaveAccessibleDescription('This cannot be undone.')
+    expect(screen.getByRole('button', { name: 'Remove' })).toHaveClass('bg-danger/14')
   })
 
   it('starts on Cancel and returns focus to the opener when it closes', async () => {
@@ -141,7 +142,7 @@ describe('ConfirmDialog tones', () => {
     )
 
     expect(screen.getByRole('button', { name: 'Keep' })).toHaveFocus()
-    expect(screen.getByRole('button', { name: 'Reset' })).toHaveClass('bg-accent')
+    expect(screen.getByRole('button', { name: 'Reset' })).toHaveClass('bg-accent/14')
 
     rerender(
       <ConfirmDialog

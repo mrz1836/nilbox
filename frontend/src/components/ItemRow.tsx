@@ -38,7 +38,8 @@ export interface ItemRowProps {
   triage?: TriageActions
 }
 
-const tagClass = 'shrink-0 rounded-full border px-1.5 py-px text-[11px] leading-4 font-medium'
+// tagClass is a status tag: weight and color mark it, with no pill around it.
+const tagClass = 'shrink-0 text-[11px] leading-4 font-medium'
 
 function openItem(url: string) {
   openInBrowser(url).catch((err: unknown) => {
@@ -67,7 +68,7 @@ function TrustTag({ item }: { item: InboxItem }) {
     return (
       <span
         title="A trusted bot: launches use the profile's permissions. Manage trusted bots in Settings → Trust."
-        className={`${tagClass} border-border text-muted`}
+        className={`${tagClass} text-muted`}
       >
         bot
       </span>
@@ -82,7 +83,7 @@ function TrustTag({ item }: { item: InboxItem }) {
     return (
       <span
         title="A bot that isn't trusted, so launches start in plan mode. Add it to your trusted bots in Settings → Trust."
-        className={`${tagClass} border-warning text-warning`}
+        className={`${tagClass} text-warning`}
       >
         untrusted bot
       </span>
@@ -90,10 +91,7 @@ function TrustTag({ item }: { item: InboxItem }) {
   }
 
   return (
-    <span
-      title="Launches in plan mode unless you lift the restriction"
-      className={`${tagClass} border-warning text-warning`}
-    >
+    <span title="Launches in plan mode unless you lift the restriction" className={`${tagClass} text-warning`}>
       outside contributor
     </span>
   )
@@ -102,7 +100,7 @@ function TrustTag({ item }: { item: InboxItem }) {
 // TriageTag says where a snoozed or dismissed item stands, and marks an item just back
 // from a snooze, so it is easy to spot among the rest.
 function TriageTag({ item, tab, now }: { item: InboxItem; tab: TriageTab; now: Date }) {
-  const quiet = `${tagClass} inline-flex items-center gap-1 border-border text-muted`
+  const quiet = `${tagClass} inline-flex items-center gap-1 text-muted`
 
   if (tab === 'snoozed') {
     return (
@@ -133,7 +131,7 @@ function TriageTag({ item, tab, now }: { item: InboxItem; tab: TriageTab; now: D
             ? `Snoozed until ${formatFull(item.snoozedUntil)}`
             : `Back early, ${formatFull(item.snoozedUntil)}: ${woke} since you snoozed it`
         }
-        className="inline-flex min-w-0 items-center gap-1 rounded-full border border-info px-1.5 py-px text-[11px] leading-4 font-medium text-info"
+        className="inline-flex min-w-0 items-center gap-1 text-[11px] leading-4 font-medium text-info"
       >
         <ClockIcon className="size-3 shrink-0" />
         <span className="truncate">{woke === '' ? 'Back from snooze' : `Back early: ${woke}`}</span>
@@ -167,9 +165,9 @@ export function ItemRow({ item, now, launch, tab = 'inbox', triage }: ItemRowPro
           >
             {item.title}
           </button>
-          {item.isDraft && <span className={`${tagClass} border-border text-muted`}>Draft</span>}
+          {item.isDraft && <span className={`${tagClass} text-muted`}>Draft</span>}
           {conflicting && (
-            <span title="Has merge conflicts with its base branch" className={`${tagClass} border-danger text-danger`}>
+            <span title="Has merge conflicts with its base branch" className={`${tagClass} text-danger`}>
               Conflicts
             </span>
           )}

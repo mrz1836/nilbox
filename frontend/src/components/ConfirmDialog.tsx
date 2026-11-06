@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react'
 
+import { buttonClass, dangerButtonClass, primaryButtonClass } from './controls'
+
 export interface ConfirmDialogProps {
   title: string
   // children is the dialog's message: what confirming does.
@@ -123,14 +125,9 @@ export function ConfirmDialog({
         <div id={`${id}-body`} className="mt-2 text-sm text-muted">
           {children}
         </div>
-        <div className="mt-4 flex justify-end gap-2 text-sm">
+        <div className="mt-4 flex justify-end gap-2">
           {cancelLabel !== null && (
-            <button
-              ref={cancelRef}
-              type="button"
-              onClick={onCancel}
-              className="rounded-md border border-border bg-surface px-3 py-1 font-medium hover:bg-raised"
-            >
+            <button ref={cancelRef} type="button" onClick={onCancel} className={buttonClass}>
               {cancelLabel}
             </button>
           )}
@@ -138,7 +135,7 @@ export function ConfirmDialog({
             ref={confirmRef}
             type="button"
             onClick={onConfirm}
-            className={`rounded-md px-3 py-1 font-medium text-background hover:opacity-90 ${tone === 'danger' ? 'bg-danger' : 'bg-accent'}`}
+            className={tone === 'danger' ? dangerButtonClass : primaryButtonClass}
           >
             {confirmLabel}
           </button>

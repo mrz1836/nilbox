@@ -10,8 +10,20 @@ export const fieldClass =
 export const buttonClass =
   'inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text transition-colors hover:bg-raised disabled:cursor-default disabled:opacity-50 disabled:hover:bg-surface'
 
-export const primaryButtonClass =
-  'inline-flex items-center justify-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:cursor-default disabled:opacity-50'
+// tintedButtonClass is the shape shared by the tinted buttons below: a wash of the tone
+// with an edge of it, ink text, and a press that sinks a pixel. The text stays ink, not
+// the tone, because tone text on a tone wash falls short of AA contrast in the light
+// theme; an icon inside takes the tone instead. Disabled, the button turns neutral
+// rather than fading, since a faded wash reads as mud on the dark theme. It sizes like
+// buttonClass and fieldClass, so the three line up in a row.
+const tintedButtonClass =
+  'inline-flex items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium text-text shadow-xs shadow-black/15 inset-shadow-[0_1px_0_rgb(255_255_255/0.06)] transition enabled:active:translate-y-px disabled:cursor-default disabled:border-border disabled:bg-raised disabled:text-muted disabled:shadow-none disabled:inset-shadow-none disabled:[&>svg]:text-muted'
+
+// primaryButtonClass marks a view's main action.
+export const primaryButtonClass = `${tintedButtonClass} border-accent/45 bg-accent/14 enabled:hover:border-accent/65 enabled:hover:bg-accent/22 [&>svg]:text-accent`
+
+// dangerButtonClass confirms a destructive action.
+export const dangerButtonClass = `${tintedButtonClass} border-danger/45 bg-danger/14 enabled:hover:border-danger/65 enabled:hover:bg-danger/22 [&>svg]:text-danger`
 
 export const quietButtonClass =
   'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted transition-colors hover:bg-raised hover:text-text disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent'
