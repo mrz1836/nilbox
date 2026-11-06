@@ -57,6 +57,7 @@ export function launchRequest(itemId: number, c: Choices, untrusted: boolean): L
     planMode: c.planMode,
     worktree: c.worktree,
     fullAccessOverride: untrusted && c.override,
+    confirmed: '',
   }
 }
 

@@ -36,6 +36,7 @@ describe('choices', () => {
       planMode: true,
       worktree: null,
       fullAccessOverride: true,
+      confirmed: '',
     })
     expect(launchRequest(7, c, false).fullAccessOverride).toBe(false)
   })

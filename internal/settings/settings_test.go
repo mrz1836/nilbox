@@ -13,6 +13,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/profiles"
+	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/snooze"
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/trust"
@@ -66,6 +67,8 @@ func TestPrefDefaults(t *testing.T) {
 		SnoozeWake:          snooze.Rules{Commits: 1, Reviews: "decisions", Comments: 0},
 		WindowSize:          WindowSize{Width: 1280, Height: 800},
 		DefaultWindowSize:   WindowSize{Width: 1280, Height: 800},
+		SensitiveFiles:      sensitive.Config{Scope: "collaborators", Off: []string{}, Patterns: []string{}},
+		SensitiveCategories: sensitive.Categories(),
 	}, got)
 }
 
@@ -142,6 +145,8 @@ func TestSettersPersist(t *testing.T) {
 		SnoozeWake:          snooze.Rules{Commits: 3, Reviews: snooze.ReviewsAny, Comments: 5},
 		WindowSize:          DefaultWindowSize(),
 		DefaultWindowSize:   DefaultWindowSize(),
+		SensitiveFiles:      sensitive.DefaultConfig(),
+		SensitiveCategories: sensitive.Categories(),
 	}, got)
 
 	abs := t.TempDir()
@@ -272,4 +277,57 @@ func TestDatabaseErrors(t *testing.T) {
 	require.NotErrorIs(t, err, ErrUnknownProfile)
 
 	require.ErrorContains(t, svc.SetSnoozeWake(t.Context(), snooze.DefaultRules()), "save the snooze rules")
+}
+
+func TestSensitiveFiles(t *testing.T) {
+	svc, db, _ := newTestService(t)
+	ctx := t.Context()
+
+	require.NoError(t, svc.SetSensitiveScope(ctx, sensitive.ScopeOutside))
+	require.NoError(t, svc.SetSensitiveCategory(ctx, sensitive.CategoryDependencies, false))
+	require.NoError(t, svc.SetSensitiveCategory(ctx, sensitive.CategoryReview, false))
+	require.NoError(t, svc.SetSensitiveCategory(ctx, sensitive.CategoryReview, true))
+	require.NoError(t, svc.SetSensitivePatterns(ctx, []string{" infra/ ", "*.tf", "", "INFRA/"}))
+
+	got, err := svc.Get(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, sensitive.Config{
+		Scope: sensitive.ScopeOutside, Off: []string{sensitive.CategoryDependencies}, Patterns: []string{"infra/", "*.tf"},
+	}, got.SensitiveFiles)
+
+	match, err := svc.MatchSensitivePath(ctx, "infra/prod/main.tf")
+	require.NoError(t, err)
+	assert.Equal(t, sensitive.CategoryCustom, match.Category)
+	assert.Equal(t, "infra/", match.Pattern)
+
+	match, err = svc.MatchSensitivePath(ctx, "go.mod")
+	require.NoError(t, err)
+	assert.False(t, match.Sensitive, "dependencies are off")
+
+	// Refused changes leave the settings as they were.
+	require.ErrorIs(t, svc.SetSensitiveScope(ctx, "everyone"), sensitive.ErrInvalidScope)
+	require.ErrorIs(t, svc.SetSensitiveCategory(ctx, sensitive.CategoryAgent, false), sensitive.ErrLockedCategory)
+	require.ErrorIs(t, svc.SetSensitiveCategory(ctx, "nope", false), sensitive.ErrUnknownCategory)
+	require.ErrorIs(t, svc.SetSensitivePatterns(ctx, []string{"ok/", "*"}), sensitive.ErrInvalidPattern)
+
+	again, err := svc.Get(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, got.SensitiveFiles, again.SensitiveFiles)
+
+	// Clearing the patterns stores an empty list.
+	require.NoError(t, svc.SetSensitivePatterns(ctx, nil))
+
+	var value string
+	require.NoError(t, db.Raw("SELECT value FROM prefs WHERE key = ?", sensitive.PrefPatterns).Scan(&value).Error)
+	assert.Equal(t, "[]", value)
+}
+
+func TestSensitiveFilesDatabaseErrors(t *testing.T) {
+	svc, db, _ := newTestService(t)
+	require.NoError(t, store.Close(db))
+
+	require.Error(t, svc.SetSensitiveCategory(t.Context(), sensitive.CategoryReview, false))
+
+	_, err := svc.MatchSensitivePath(t.Context(), "go.mod")
+	require.Error(t, err)
 }

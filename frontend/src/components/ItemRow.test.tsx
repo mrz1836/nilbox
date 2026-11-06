@@ -3,10 +3,10 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { InboxItem } from '../platform'
-import { details, item, itemResolution, profile, prompts } from '../test/fixtures'
+import { details, fileCheck, item, itemResolution, profile, prompts } from '../test/fixtures'
 import { ItemRow, type LaunchOptions } from './ItemRow'
 
-const platform = vi.hoisted(() => ({ openInBrowser: vi.fn(), launch: vi.fn() }))
+const platform = vi.hoisted(() => ({ openInBrowser: vi.fn(), launch: vi.fn(), checkItemFiles: vi.fn() }))
 
 vi.mock('../platform', () => platform)
 
@@ -218,5 +218,33 @@ describe('ItemRow', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Add the widget cache' }))
 
     expect(platform.openInBrowser).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/pull/7')
+  })
+
+  it('points out the sensitive files of a checked pull request beside who opened it', async () => {
+    const onFilesSettings = vi.fn()
+    render(
+      <ul>
+        <ItemRow
+          item={item({ trusted: false, trust: 'outside', details: details(), files: fileCheck() })}
+          now={now}
+          launch={launch}
+          onFilesSettings={onFilesSettings}
+        />
+      </ul>,
+    )
+
+    const chip = screen.getByRole('button', { name: /^Changes sensitive files/ })
+    expect(chip).toHaveTextContent('Agent config · Workflows')
+    expect(chip.closest('div')).toHaveTextContent('outside contributor')
+
+    await userEvent.click(chip)
+    await userEvent.click(screen.getByRole('button', { name: 'What counts as sensitive' }))
+    expect(onFilesSettings).toHaveBeenCalledOnce()
+  })
+
+  it('shows no file chip for an item whose files are not checked', () => {
+    renderRow(item({ details: details(), files: null }))
+
+    expect(screen.queryByRole('button', { name: /sensitive/i })).not.toBeInTheDocument()
   })
 })

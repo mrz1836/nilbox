@@ -230,11 +230,23 @@ func newLaunchFixture(ctx context.Context, dir string, opts LaunchOptions, runne
 	return &launchFixture{core: c, clone: clone}, nil
 }
 
-// launch starts a session on the fixture item in the clone itself, with no worktree.
+// launch starts a session on the fixture item in the clone itself, with no worktree. A
+// launch on an outside contributor's pull request first checks its files on GitHub, and
+// the placeholder repository's cannot be checked, so the launch is held back as an
+// unchecked pull request's is. It confirms that at once, as a user would, so the time
+// includes both launch requests.
 func (f *launchFixture) launch(ctx context.Context) (launcher.LaunchResult, error) {
 	noWorktree := false
+	req := launcher.LaunchRequest{ItemID: fixtureID, Worktree: &noWorktree}
 
-	return f.core.Launcher.Launch(ctx, launcher.LaunchRequest{ItemID: fixtureID, Worktree: &noWorktree})
+	res, err := f.core.Launcher.Launch(ctx, req)
+	if err != nil || res.Hold == nil {
+		return res, err
+	}
+
+	req.Confirmed = res.Hold.Key
+
+	return f.core.Launcher.Launch(ctx, req)
 }
 
 // close closes the app's database.

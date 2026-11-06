@@ -44,12 +44,16 @@ export function CloneTarget(itemID: number): $CancellablePromise<$models.CloneTa
  *     defaults, the profile's, and the app's settings;
  *  2. find the item's local clone: the cached path when it still is a clone of the
  *     repository, otherwise a scan of the clone root, whose result is cached;
- *  3. find the agent, build the plan, and fill in the prompt;
- *  4. mark the clone trusted in the agent config the session runs with, since a
+ *  3. find the agent and build the plan;
+ *  4. for a pull request whose files are checked, check them against GitHub as of now,
+ *     and fill in the prompt, which names its sensitive files;
+ *  5. hold the launch back, starting nothing, when the pull request changes agent files
+ *     or its files could not all be checked, unless the request confirms that hold;
+ *  6. mark the clone trusted in the agent config the session runs with, since a
  *     worktree session cannot show the agent's workspace trust dialog;
- *  5. write the prompt file and launch script;
- *  6. open the script in the terminal chosen in settings;
- *  7. record the worktree, if the session starts in one, with the item it is for.
+ *  7. write the prompt file and launch script;
+ *  8. open the script in the terminal chosen in settings;
+ *  9. record the worktree, if the session starts in one, with the item it is for.
  *
  * The only git command it runs is the read-only `git -C <clone> config --get-regexp`
  * remote lookup. The script only changes into the clone and runs the agent; it never
@@ -62,7 +66,8 @@ export function Launch(req: $models.LaunchRequest): $CancellablePromise<$models.
 /**
  * Preview plans a launch without writing files or opening a terminal: the resolved
  * settings, the clone, the command, and the filled-in prompt. Launch runs the same plan,
- * so the prompt shown is the prompt sent.
+ * so the prompt shown is the prompt sent, except that Launch checks a pull request's
+ * files against GitHub again where Preview uses the last check.
  */
 export function Preview(req: $models.LaunchRequest): $CancellablePromise<$models.Preview> {
     return $Call.ByID(2971060196, req);

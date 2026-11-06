@@ -22,6 +22,8 @@ export interface InboxViewProps {
   snoozeDays: number
   // onSnoozeSettings opens the setting for the Snooze button's length.
   onSnoozeSettings: () => void
+  // onFilesSettings opens Settings → Sensitive files.
+  onFilesSettings?: () => void
   // collapsed holds the list names of the collapsed lists. It is null until the stored
   // state loads; the lists wait for it, so a collapsed list never shows open first.
   collapsed: ReadonlySet<string> | null
@@ -125,12 +127,13 @@ interface ListSectionProps {
   triage: TriageActions
   collapsed: boolean
   onCollapse: (collapsed: boolean) => void
+  onFilesSettings?: () => void
 }
 
 // ListSection is one inbox list as tabs: the list itself, then what was snoozed and
 // what was dismissed from it, each with its count. The toggle at the right of its header
 // collapses it to just the tabs, which keep their counts.
-function ListSection({ title, list, now, launch, triage, collapsed, onCollapse }: ListSectionProps) {
+function ListSection({ title, list, now, launch, triage, collapsed, onCollapse, onFilesSettings }: ListSectionProps) {
   const id = useId()
   const [tab, setTab] = useState<TriageTab>('inbox')
   const triaged = useMemo(() => triageList(list, now), [list, now])
@@ -232,7 +235,15 @@ function ListSection({ title, list, now, launch, triage, collapsed, onCollapse }
         ) : (
           <ul>
             {items.map((item) => (
-              <ItemRow key={item.id} item={item} now={now} launch={launch} tab={tab} triage={triage} />
+              <ItemRow
+                key={item.id}
+                item={item}
+                now={now}
+                launch={launch}
+                tab={tab}
+                triage={triage}
+                onFilesSettings={onFilesSettings}
+              />
             ))}
           </ul>
         )}
@@ -245,7 +256,15 @@ function ListSection({ title, list, now, launch, triage, collapsed, onCollapse }
 // the time of the last refresh. Each list has tabs for what was snoozed or dismissed from
 // it and collapses from its header, and each triage action is confirmed by a toast with an
 // Undo. The account and the API budget live in the toolbar.
-export function InboxView({ inbox, launch, snoozeDays, onSnoozeSettings, collapsed, onCollapse }: InboxViewProps) {
+export function InboxView({
+  inbox,
+  launch,
+  snoozeDays,
+  onSnoozeSettings,
+  onFilesSettings,
+  collapsed,
+  onCollapse,
+}: InboxViewProps) {
   const {
     snapshot,
     now,
@@ -374,6 +393,7 @@ export function InboxView({ inbox, launch, snoozeDays, onSnoozeSettings, collaps
               onCollapse={(on) => {
                 onCollapse(key, on)
               }}
+              onFilesSettings={onFilesSettings}
             />
           ))}
       <Toast toast={toast} onClose={closeToast} />

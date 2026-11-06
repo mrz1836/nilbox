@@ -301,6 +301,7 @@ func sampleVariants(kind string) []Data {
 	flipped := Sample(kind)
 	flipped.IsDraft, flipped.HasConflicts, flipped.OutsideContributor = flipped.IsPR, flipped.IsPR, true
 	flipped.IsBot, flipped.Author = true, "dependabot"
+	flipped.SensitiveFiles = ".github/workflows/ci.yml (Workflows)"
 	flipped.Labels, flipped.Branch, flipped.Checks, flipped.Review, flipped.DefaultBranch = "", "", "", "", ""
 
 	var out []Data

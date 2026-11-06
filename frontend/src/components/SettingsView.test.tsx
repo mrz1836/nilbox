@@ -27,6 +27,11 @@ const platform = vi.hoisted(() => ({
   checkLaunchDefaults: vi.fn(),
   saveLaunchDefaults: vi.fn(),
   removeLaunchDefaults: vi.fn(),
+  setSensitiveScope: vi.fn(),
+  setSensitiveCategory: vi.fn(),
+  setSensitivePatterns: vi.fn(),
+  matchSensitivePath: vi.fn(),
+  refreshInbox: vi.fn(),
 }))
 
 vi.mock('../platform', () => platform)
@@ -701,5 +706,25 @@ describe('SettingsView escape and trust', () => {
 
     expect(screen.getByRole('region', { name: 'Trust' })).toBeInTheDocument()
     expect(within(screen.getByRole('list', { name: 'Trusted bots' })).getAllByRole('listitem')).toHaveLength(3)
+  })
+
+  it('has a Sensitive files section after Trust', async () => {
+    renderSettings()
+
+    const nav = within(screen.getByRole('navigation', { name: 'Settings sections' }))
+    const names = nav.getAllByRole('button').map((b) => b.textContent)
+    expect(names.indexOf('Sensitive files')).toBe(names.indexOf('Trust') + 1)
+
+    await openSection('Sensitive files')
+
+    expect(screen.getByRole('region', { name: 'Sensitive files' })).toBeInTheDocument()
+    expect(screen.getByRole('radiogroup', { name: 'Check pull requests from' })).toBeInTheDocument()
+    expect(screen.getByRole('list', { name: 'Categories' })).toBeInTheDocument()
+  })
+
+  it('opens at the Sensitive files section when asked', () => {
+    renderSettings({ section: 'files' })
+
+    expect(screen.getByRole('button', { name: 'Sensitive files' })).toHaveAttribute('aria-current', 'page')
   })
 })

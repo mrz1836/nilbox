@@ -35,15 +35,16 @@ import {
   type SnoozeRules,
 } from '../platform'
 import { Avatar } from './Avatar'
-import { Segmented } from './controls'
+import { Segmented, switchClass } from './controls'
 import { ChevronLeftIcon, ExternalIcon } from './icons'
 import { LaunchDefaultsSection } from './LaunchDefaultsSection'
 import { Logo } from './Logo'
+import { SensitiveFilesSection } from './SensitiveFilesSection'
 import { TrustSection } from './TrustSection'
 
 // SettingsSection is one section of the settings page.
 export type SettingsSection =
-  'account' | 'snoozing' | 'window' | 'launching' | 'profiles' | 'repositories' | 'trust' | 'about'
+  'account' | 'snoozing' | 'window' | 'launching' | 'profiles' | 'repositories' | 'trust' | 'files' | 'about'
 
 type SectionId = SettingsSection
 
@@ -56,6 +57,7 @@ const sectionOrder: readonly SectionId[] = [
   'profiles',
   'repositories',
   'trust',
+  'files',
   'about',
 ]
 
@@ -82,6 +84,11 @@ const sections: Readonly<Record<SectionId, { label: string; description: string 
     label: 'Trust',
     description: 'Who launches trust with the profile’s permissions, and which bots count.',
   },
+  files: {
+    label: 'Sensitive files',
+    description:
+      'The changed files to point out on pull requests from outside the repository, before you review them or open a session on them.',
+  },
   about: { label: 'About', description: '' },
 }
 
@@ -103,10 +110,6 @@ const terminals: readonly { id: string; label: string }[] = [
 
 const fieldClass = 'rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm disabled:opacity-60'
 const buttonClass = 'rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium hover:bg-raised'
-
-// A native checkbox drawn as a switch; role="switch" makes assistive tech announce on/off.
-const switchClass =
-  'relative h-5 w-9 shrink-0 appearance-none rounded-full bg-border transition-colors checked:bg-accent before:absolute before:top-0.5 before:left-0.5 before:size-4 before:rounded-full before:bg-white before:shadow before:transition-transform checked:before:translate-x-4'
 
 export interface SettingsViewProps {
   // initialSection is the section the page opens at; it defaults to the account.
@@ -988,6 +991,8 @@ export function SettingsView({
               ))}
             {section === 'trust' &&
               (settings === null ? loading : <TrustSection settings={settings} onSaved={onSaved} />)}
+            {section === 'files' &&
+              (settings === null ? loading : <SensitiveFilesSection settings={settings} onSaved={onSaved} />)}
             {section === 'about' && <AboutSection />}
           </div>
         </div>

@@ -8,6 +8,7 @@ export {
 
 export type {
     CloneTarget,
+    Hold,
     ItemResolution,
     LaunchRequest,
     LaunchResult,

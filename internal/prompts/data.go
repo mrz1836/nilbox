@@ -15,6 +15,9 @@ const (
 
 	// maxLabelsRunes caps the list of label names.
 	maxLabelsRunes = 300
+
+	// maxSensitiveRunes caps the list of sensitive files.
+	maxSensitiveRunes = 1000
 )
 
 // Item kinds, as the inbox stores them.
@@ -112,6 +115,12 @@ type Data struct {
 	// Commits counts a pull request's commits.
 	Commits int
 
+	// SensitiveFiles lists a pull request's sensitive files, each with its category, as
+	// in ".github/workflows/ci.yml (Workflows)", separated by commas. It is empty unless
+	// the pull request's files are checked and some are sensitive (see the sensitive
+	// package).
+	SensitiveFiles string
+
 	// InWorktree reports whether the session starts in its own worktree.
 	InWorktree bool
 
@@ -178,6 +187,10 @@ func Variables() []Variable {
 		{Name: "Deletions", Group: groupPR, Type: typeNumber, Description: "Lines removed", PROnly: true},
 		{Name: "ChangedFiles", Group: groupPR, Type: typeNumber, Description: "Files changed", PROnly: true},
 		{Name: "Commits", Group: groupPR, Type: typeNumber, Description: "Commits", PROnly: true},
+		{
+			Name: "SensitiveFiles", Group: groupPR, Type: typeText, PROnly: true,
+			Description: "Sensitive files it changes, such as workflows, with their categories, or empty",
+		},
 		{Name: "InWorktree", Group: groupSession, Type: typeYesNo, Description: "The session starts in its own worktree"},
 		{
 			Name: "WorktreeOnPRHead", Group: groupSession, Type: typeYesNo, PROnly: true,
@@ -254,13 +267,14 @@ func (d Data) Values() map[string]string {
 func (d Data) sanitized() Data {
 	for _, field := range []*string{
 		&d.Kind, &d.URL, &d.Author, &d.Repo, &d.Owner, &d.RepoName, &d.DefaultBranch,
-		&d.Branch, &d.Checks, &d.Review, &d.Worktree, &d.Profile, &d.Me,
+		&d.Branch, &d.Checks, &d.Review, &d.Worktree, &d.Profile, &d.Me, &d.SensitiveFiles,
 	} {
 		*field = sanitizeLine(*field)
 	}
 
 	d.Title = truncateRunes(sanitizeLine(d.Title), maxTitleRunes)
 	d.Labels = truncateRunes(sanitizeLine(d.Labels), maxLabelsRunes)
+	d.SensitiveFiles = truncateRunes(d.SensitiveFiles, maxSensitiveRunes)
 
 	return d
 }

@@ -12,6 +12,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as sensitive$0 from "../sensitive/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as snooze$0 from "../snooze/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -33,6 +36,14 @@ export function CollapsedSections(): $CancellablePromise<string[] | null> {
  */
 export function Get(): $CancellablePromise<$models.Settings> {
     return $Call.ByID(1529537877);
+}
+
+/**
+ * MatchSensitivePath reports whether a path would count as sensitive under the stored
+ * settings, and which category and pattern it matches, for trying patterns out.
+ */
+export function MatchSensitivePath(path: string): $CancellablePromise<sensitive$0.PathMatch> {
+    return $Call.ByID(3163334067, path);
 }
 
 /**
@@ -65,6 +76,31 @@ export function SetDefaultProfile(name: string): $CancellablePromise<void> {
  */
 export function SetSectionCollapsed(section: string, collapsed: boolean): $CancellablePromise<void> {
     return $Call.ByID(124774945, section, collapsed);
+}
+
+/**
+ * SetSensitiveCategory turns a built-in category of sensitive files on or off. The agent
+ * configuration category cannot be turned off, since launches are held back by it.
+ */
+export function SetSensitiveCategory(id: string, on: boolean): $CancellablePromise<void> {
+    return $Call.ByID(2501737511, id, on);
+}
+
+/**
+ * SetSensitivePatterns stores the user's own patterns of sensitive files, in order. Each
+ * is trimmed, empty ones and repeats are dropped, and a pattern that cannot be used is
+ * refused with the reason (see the sensitive package for the syntax).
+ */
+export function SetSensitivePatterns(patterns: string[] | null): $CancellablePromise<void> {
+    return $Call.ByID(2773765992, patterns);
+}
+
+/**
+ * SetSensitiveScope stores whose pull requests have their changed files checked:
+ * sensitive.ScopeOutside, or sensitive.ScopeCollaborators to check collaborators' too.
+ */
+export function SetSensitiveScope(scope: string): $CancellablePromise<void> {
+    return $Call.ByID(2000338137, scope);
 }
 
 /**

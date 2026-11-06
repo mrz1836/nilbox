@@ -38,6 +38,10 @@ import type {
 } from '../../bindings/github.com/mrz1836/nilbox/internal/prompts'
 import { Service as SettingsService } from '../../bindings/github.com/mrz1836/nilbox/internal/settings'
 import type { Settings, WindowSize } from '../../bindings/github.com/mrz1836/nilbox/internal/settings'
+import type {
+  Check as FileCheck,
+  PathMatch as SensitivePathMatch,
+} from '../../bindings/github.com/mrz1836/nilbox/internal/sensitive'
 import type { Rules as SnoozeRules } from '../../bindings/github.com/mrz1836/nilbox/internal/snooze'
 import { Service as Worktrees } from '../../bindings/github.com/mrz1836/nilbox/internal/worktrees'
 import type {
@@ -71,6 +75,7 @@ export type {
 } from '../../bindings/github.com/mrz1836/nilbox/internal/launchdefaults'
 export type {
   CloneTarget,
+  Hold as LaunchHold,
   ItemResolution,
   LaunchRequest,
   LaunchResult,
@@ -81,6 +86,14 @@ export type {
   Toggle as LaunchToggle,
 } from '../../bindings/github.com/mrz1836/nilbox/internal/launcher'
 export type { Profile } from '../../bindings/github.com/mrz1836/nilbox/internal/profiles'
+export type {
+  Category as SensitiveCategory,
+  Check as FileCheck,
+  Config as SensitiveConfig,
+  Finding as SensitiveFile,
+  Group as SensitiveGroup,
+  PathMatch as SensitivePathMatch,
+} from '../../bindings/github.com/mrz1836/nilbox/internal/sensitive'
 export type {
   CheckRequest as PromptCheckRequest,
   CheckResult as PromptCheckResult,
@@ -173,6 +186,19 @@ export function pinItem(id: number): Promise<InboxSnapshot> {
 // unpinItem puts a pinned item back among the rest, and returns the new inbox.
 export function unpinItem(id: number): Promise<InboxSnapshot> {
   return Inbox.Unpin(id)
+}
+
+// checkItemFiles checks a pull request's changed files against GitHub now, stores the
+// outcome (the inbox is updated with it), and returns it. It fails for an item whose files
+// are not checked.
+export async function checkItemFiles(id: number): Promise<FileCheck> {
+  const check = await Inbox.CheckFiles(id)
+
+  if (check === null) {
+    throw new Error('This item’s files are not checked.')
+  }
+
+  return check
 }
 
 // onInboxUpdated calls listener whenever the stored inbox changed, and returns a function
@@ -338,6 +364,28 @@ export function setTrustedBots(bots: string[]): Promise<void> {
 // resetTrustedBots goes back to the default trusted bots.
 export function resetTrustedBots(): Promise<void> {
   return SettingsService.ResetTrustedBots()
+}
+
+// setSensitiveScope stores whose pull requests have their changed files checked:
+// "outside" for outside contributors, or "collaborators" for collaborators' too.
+export function setSensitiveScope(scope: string): Promise<void> {
+  return SettingsService.SetSensitiveScope(scope)
+}
+
+// setSensitiveCategory turns a built-in category of sensitive files on or off.
+export function setSensitiveCategory(id: string, on: boolean): Promise<void> {
+  return SettingsService.SetSensitiveCategory(id, on)
+}
+
+// setSensitivePatterns stores the user's own patterns of sensitive files, in order.
+export function setSensitivePatterns(patterns: string[]): Promise<void> {
+  return SettingsService.SetSensitivePatterns(patterns)
+}
+
+// matchSensitivePath reports whether a path counts as sensitive under the stored
+// settings, and which category and pattern it matches.
+export function matchSensitivePath(path: string): Promise<SensitivePathMatch> {
+  return SettingsService.MatchSensitivePath(path)
 }
 
 // getCollapsedSections lists the inbox sections the user collapsed, by list name

@@ -6,6 +6,7 @@ import {
   item,
   itemResolution,
   launchDefaults,
+  launchHold,
   launchPreview,
   launchResult,
   profile,
@@ -21,6 +22,7 @@ const platform = vi.hoisted(() => ({
   saveLaunchDefaults: vi.fn(),
   cloneTarget: vi.fn(),
   cloneRepo: vi.fn(),
+  openInBrowser: vi.fn(),
 }))
 
 vi.mock('../platform', () => platform)
@@ -37,6 +39,7 @@ const defaultRequest = {
   planMode: null,
   worktree: null,
   fullAccessOverride: false,
+  confirmed: '',
 }
 
 function props(overrides: Partial<LaunchControlsProps> = {}): LaunchControlsProps {
@@ -497,5 +500,92 @@ describe('LaunchControls', () => {
 
     await userEvent.click(menu.getByRole('button', { name: 'Open the Prompts page' }))
     expect(onManagePrompts).toHaveBeenCalledOnce()
+  })
+
+  it('asks before opening a pull request that changes agent configuration', async () => {
+    const hold = launchHold()
+    platform.launch.mockResolvedValueOnce(launchResult({ hold })).mockResolvedValueOnce(launchResult())
+    platform.openInBrowser.mockResolvedValue(undefined)
+    render(<LaunchControls {...props({ item: item({ trusted: false, trust: 'outside' }) })} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+
+    const dialog = within(await screen.findByRole('dialog', { name: 'This pull request changes agent configuration' }))
+    expect(dialog.getByText(/starts in worktree pr-7, at the pull request’s head/)).toBeInTheDocument()
+    expect(dialog.getByText(/run commands on your Mac, even in plan mode/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+
+    // Each file opens its diff on GitHub.
+    const files = within(dialog.getByRole('list', { name: 'Agent configuration it changes' }))
+    expect(files.getByText('added')).toBeInTheDocument()
+    await userEvent.click(files.getByRole('button', { name: /\.claude\/settings\.json/ }))
+    expect(platform.openInBrowser).toHaveBeenCalledWith(
+      'https://github.com/acme-org/example-repo/pull/7/files#diff-aaaa',
+    )
+
+    await userEvent.click(dialog.getByRole('button', { name: 'Open anyway' }))
+
+    expect(platform.launch).toHaveBeenNthCalledWith(1, { ...defaultRequest, fullAccessOverride: false })
+    expect(platform.launch).toHaveBeenNthCalledWith(2, { ...defaultRequest, confirmed: hold.key })
+    expect(await screen.findByRole('status')).toHaveTextContent('Opened “Review”')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('opens nothing when a held launch is cancelled', async () => {
+    platform.launch.mockResolvedValueOnce(launchResult({ hold: launchHold({ atHead: false, worktree: '' }) }))
+    render(<LaunchControls {...props()} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+
+    const dialog = within(await screen.findByRole('dialog'))
+    expect(dialog.getByText(/If the session checks the pull request out, Claude loads these files/)).toBeInTheDocument()
+    expect(dialog.getByText(/every later session in ~\/projects\/example-repo/)).toBeInTheDocument()
+
+    await userEvent.keyboard('{Escape}')
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(platform.launch).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open in Claude' })).toBeEnabled()
+  })
+
+  it('asks again when the pull request moved after the first question', async () => {
+    const first = launchHold()
+    const second = launchHold({ key: 'agentFiles:bbbb', head: 'bbbb' })
+    platform.launch
+      .mockResolvedValueOnce(launchResult({ hold: first }))
+      .mockResolvedValueOnce(launchResult({ hold: second }))
+    render(<LaunchControls {...props()} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Open anyway' }))
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    expect(platform.launch).toHaveBeenLastCalledWith({ ...defaultRequest, confirmed: first.key })
+  })
+
+  it('explains a pull request whose files could not all be checked', async () => {
+    platform.launch.mockResolvedValueOnce(
+      launchResult({ hold: launchHold({ reason: 'unchecked', files: [], checked: 3000, total: 4210 }) }),
+    )
+    render(<LaunchControls {...props()} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+
+    const dialog = within(await screen.findByRole('dialog', { name: 'Its files couldn’t all be checked' }))
+    expect(dialog.getByText(/GitHub listed only 3,000 of its 4,210 changed files/)).toBeInTheDocument()
+    expect(dialog.queryByRole('list')).not.toBeInTheDocument()
+  })
+
+  it('names why a check failed', async () => {
+    platform.launch.mockResolvedValueOnce(
+      launchResult({ hold: launchHold({ reason: 'unchecked', files: [], error: 'GitHub answered 502' }) }),
+    )
+    render(<LaunchControls {...props()} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+
+    expect(await screen.findByText(/GitHub didn’t list its files: GitHub answered 502\./)).toBeInTheDocument()
   })
 })

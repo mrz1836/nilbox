@@ -3,6 +3,9 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as sensitive$0 from "../sensitive/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as snooze$0 from "../snooze/models.js";
 
 /**
@@ -67,6 +70,19 @@ export interface Settings {
      * DefaultWindowSize is the size a fresh database opens the window at.
      */
     "defaultWindowSize": WindowSize;
+
+    /**
+     * SensitiveFiles is whose pull requests have their changed files checked, which
+     * built-in categories are off, and the user's own patterns (see the sensitive
+     * package).
+     */
+    "sensitiveFiles": sensitive$0.Config;
+
+    /**
+     * SensitiveCategories are the built-in categories in matching order, with their
+     * patterns, for the settings page to describe.
+     */
+    "sensitiveCategories": sensitive$0.Category[] | null;
 }
 
 /**

@@ -234,6 +234,7 @@ func assemble(db *gorm.DB, opts Options, logger *slog.Logger) *Core {
 		Home:     opts.Home,
 		Clock:    opts.Clock,
 		Launches: launches,
+		Files:    inboxSvc,
 	})
 
 	return &Core{

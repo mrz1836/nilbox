@@ -6,6 +6,7 @@ import { App } from './App'
 import { brand } from './generated/brand'
 import {
   checkResult,
+  fileCheck,
   item,
   itemResolution,
   list,
@@ -56,6 +57,11 @@ const platform = vi.hoisted(() => ({
   recentCleanups: vi.fn(),
   getCollapsedSections: vi.fn(),
   setSectionCollapsed: vi.fn(),
+  checkItemFiles: vi.fn(),
+  setSensitiveScope: vi.fn(),
+  setSensitiveCategory: vi.fn(),
+  setSensitivePatterns: vi.fn(),
+  matchSensitivePath: vi.fn(),
 }))
 
 vi.mock('./platform', () => platform)
@@ -208,6 +214,21 @@ describe('App', () => {
     await openSettingsFromMenu()
     await userEvent.click(screen.getByRole('button', { name: 'Launching' }))
     expect(screen.getByRole('combobox', { name: 'Terminal' })).toHaveValue('terminal')
+  })
+
+  it('opens Settings → Sensitive files from a card’s sensitive files, and comes back', async () => {
+    const outside = item({ trusted: false, trust: 'outside', files: fileCheck() })
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([outside]) }))
+    render(<App />)
+
+    await userEvent.click(await screen.findByRole('button', { name: /^Changes sensitive files/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'What counts as sensitive' }))
+
+    expect(screen.getByRole('region', { name: 'Sensitive files' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Sensitive files' })).toHaveAttribute('aria-current', 'page')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Close settings' }))
+    expect(await screen.findByRole('region', { name: 'Review requested' })).toBeInTheDocument()
   })
 
   it('snoozes for the length chosen in Settings, reached from the snooze menu', async () => {

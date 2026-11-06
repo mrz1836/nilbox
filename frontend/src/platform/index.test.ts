@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
     Restore: vi.fn(),
     Pin: vi.fn(),
     Unpin: vi.fn(),
+    CheckFiles: vi.fn(),
   },
   launcher: {
     Launch: vi.fn(),
@@ -50,6 +51,10 @@ const mocks = vi.hoisted(() => ({
     SetWindowSize: vi.fn(),
     CollapsedSections: vi.fn(),
     SetSectionCollapsed: vi.fn(),
+    SetSensitiveScope: vi.fn(),
+    SetSensitiveCategory: vi.fn(),
+    SetSensitivePatterns: vi.fn(),
+    MatchSensitivePath: vi.fn(),
   },
   worktrees: {
     List: vi.fn(),
@@ -149,6 +154,24 @@ describe('inbox', () => {
     expect(mocks.inbox.RefreshItem).toHaveBeenCalledWith(4)
   })
 
+  it("checks a pull request's files now", async () => {
+    const check: platform.FileCheck = {
+      status: 'clear',
+      head: 'abc',
+      checked: 2,
+      total: 2,
+      complete: true,
+      groups: [],
+      checkedAt: '2026-06-15T12:00:00Z',
+      error: '',
+    }
+    mocks.inbox.CheckFiles.mockResolvedValueOnce(check).mockResolvedValueOnce(null)
+
+    await expect(platform.checkItemFiles(4)).resolves.toBe(check)
+    await expect(platform.checkItemFiles(5)).rejects.toThrow('not checked')
+    expect(mocks.inbox.CheckFiles).toHaveBeenCalledWith(4)
+  })
+
   it('dismisses, snoozes, and restores an item', async () => {
     mocks.inbox.Dismiss.mockResolvedValue(snapshot)
     mocks.inbox.Snooze.mockResolvedValue(snapshot)
@@ -223,6 +246,7 @@ describe('launch', () => {
     planMode: null,
     worktree: null,
     fullAccessOverride: false,
+    confirmed: '',
   }
 
   it('launches with the request', async () => {
@@ -234,6 +258,7 @@ describe('launch', () => {
       profile: 'default',
       permission: 'full access',
       terminal: 'iterm2',
+      hold: null,
     }
     mocks.launcher.Launch.mockResolvedValue(result)
 
@@ -350,6 +375,8 @@ describe('settings', () => {
       snoozeWake: { commits: 1, reviews: 'decisions', comments: 0 },
       windowSize: { width: 1280, height: 800 },
       defaultWindowSize: { width: 1280, height: 800 },
+      sensitiveFiles: { scope: 'collaborators', off: [], patterns: [] },
+      sensitiveCategories: [],
     }
     mocks.settings.Get.mockResolvedValue(settings)
     mocks.settings.SetTerminal.mockResolvedValue(undefined)
@@ -390,6 +417,30 @@ describe('settings', () => {
     await platform.setSnoozeWake(rules)
 
     expect(mocks.settings.SetSnoozeWake).toHaveBeenCalledWith(rules)
+  })
+
+  it('stores the sensitive file settings and tries a path', async () => {
+    mocks.settings.SetSensitiveScope.mockResolvedValue(undefined)
+    mocks.settings.SetSensitiveCategory.mockResolvedValue(undefined)
+    mocks.settings.SetSensitivePatterns.mockResolvedValue(undefined)
+
+    const match: platform.SensitivePathMatch = {
+      sensitive: true,
+      category: 'workflows',
+      label: 'Workflows and CI',
+      level: 'danger',
+      pattern: '.github/workflows/',
+    }
+    mocks.settings.MatchSensitivePath.mockResolvedValue(match)
+
+    await platform.setSensitiveScope('outside')
+    await platform.setSensitiveCategory('dependencies', false)
+    await platform.setSensitivePatterns(['infra/'])
+
+    expect(mocks.settings.SetSensitiveScope).toHaveBeenCalledWith('outside')
+    expect(mocks.settings.SetSensitiveCategory).toHaveBeenCalledWith('dependencies', false)
+    expect(mocks.settings.SetSensitivePatterns).toHaveBeenCalledWith(['infra/'])
+    await expect(platform.matchSensitivePath('.github/workflows/ci.yml')).resolves.toBe(match)
   })
 
   it('reads and stores which inbox sections are collapsed', async () => {

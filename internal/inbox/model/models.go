@@ -1,6 +1,7 @@
 // Package model holds the inbox's persisted records: the signed-in account, the
 // repositories it sees, the unified pull request and issue cache with each item's
-// details, local triage state, and GitHub rate-limit readings.
+// details and, for checked pull requests, changed files, local triage state, and GitHub
+// rate-limit readings.
 //
 // The schema itself is owned by the SQL migrations; these structs only map onto it, and a
 // parity test keeps the two in step.
@@ -197,6 +198,71 @@ func (l *Labels) Scan(src any) error {
 	return nil
 }
 
+// ItemFiles is the last check of a pull request's changed files: their paths at one head
+// commit, for the sensitive-file check (see the sensitive package). Total is how many
+// files GitHub says the pull request changes; Complete reports that Files holds them all.
+// A failed check keeps its message in Error and no files.
+type ItemFiles struct {
+	ItemID    int64        `gorm:"column:item_id;primaryKey;autoIncrement:false"`
+	HeadOID   string       `gorm:"column:head_oid"`
+	Total     int          `gorm:"column:total"`
+	Files     ChangedFiles `gorm:"column:files"`
+	Complete  bool         `gorm:"column:complete"`
+	Error     string       `gorm:"column:error"`
+	CheckedAt time.Time    `gorm:"column:checked_at"`
+}
+
+// TableName maps ItemFiles to its table.
+func (ItemFiles) TableName() string { return "item_files" }
+
+// ChangedFile is one file a pull request changes: its path after the change, a renamed or
+// copied file's path before it, and GitHub's word for the change.
+type ChangedFile struct {
+	Path     string `json:"path"`
+	Previous string `json:"previous,omitempty"`
+	Change   string `json:"change"`
+}
+
+// ChangedFiles is a list of changed files stored as a JSON array. A nil list is stored
+// as [].
+//
+// Value has a value receiver so a plain field is a driver.Valuer; Scan needs a pointer.
+type ChangedFiles []ChangedFile //nolint:recvcheck // Valuer on the value, Scanner on the pointer
+
+// Value encodes the files as a JSON array.
+func (f ChangedFiles) Value() (driver.Value, error) {
+	if f == nil {
+		return "[]", nil
+	}
+
+	b, err := json.Marshal([]ChangedFile(f))
+	if err != nil {
+		return nil, fmt.Errorf("encode the changed files: %w", err)
+	}
+
+	return string(b), nil
+}
+
+// Scan decodes a JSON array of changed files.
+func (f *ChangedFiles) Scan(src any) error {
+	var raw []byte
+
+	switch v := src.(type) {
+	case string:
+		raw = []byte(v)
+	case []byte:
+		raw = v
+	default:
+		return fmt.Errorf("%w: %T", ErrUnsupportedScanType, src)
+	}
+
+	if err := json.Unmarshal(raw, (*[]ChangedFile)(f)); err != nil {
+		return fmt.Errorf("decode the changed files: %w", err)
+	}
+
+	return nil
+}
+
 // RateSnapshot is one GitHub API rate-limit reading for a resource (graphql, core, or
 // search). Cost is the point cost of the query that produced it, when known.
 type RateSnapshot struct {
@@ -216,5 +282,5 @@ func (RateSnapshot) TableName() string { return "rate_snapshots" }
 
 // AllModels returns every model in this package.
 func AllModels() []any {
-	return []any{&Account{}, &Repo{}, &Item{}, &ItemDetails{}, &ItemLocalState{}, &RateSnapshot{}}
+	return []any{&Account{}, &Repo{}, &Item{}, &ItemDetails{}, &ItemFiles{}, &ItemLocalState{}, &RateSnapshot{}}
 }

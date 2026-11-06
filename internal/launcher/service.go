@@ -20,6 +20,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/launchlog"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/prompts"
+	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/workspacetrust"
 )
@@ -90,6 +91,11 @@ type Config struct {
 	// Launches records each worktree a session is launched in, and the item it is for,
 	// so the Worktrees view links it and its cleanup finds it.
 	Launches LaunchRecorder
+
+	// Files checks the changed files of pull requests from outside the repository, so a
+	// launch on one that changes agent files waits for the user to confirm, and its
+	// prompt names its sensitive files. Without it, no launch is held back.
+	Files FileChecker
 }
 
 // LaunchRequest asks to start a session on one inbox item. Every choice is optional:
@@ -119,10 +125,19 @@ type LaunchRequest struct {
 	// FullAccessOverride lifts the outside-contributor restriction for this launch only.
 	// The profile's own plan and permission settings still apply.
 	FullAccessOverride bool `json:"fullAccessOverride"`
+
+	// Confirmed is the Key of a Hold the user confirmed: the launch goes ahead if it
+	// would be held back for exactly that reason again, and is held back otherwise.
+	Confirmed string `json:"confirmed"`
 }
 
-// LaunchResult describes a started launch. Every field is a plain value.
+// LaunchResult describes a started launch, or one held back. Every field is a plain
+// value.
 type LaunchResult struct {
+	// Hold is set when the launch was held back for the user to confirm, and nothing was
+	// started; the other fields are empty then.
+	Hold *Hold `json:"hold"`
+
 	// ScriptPath is the launch script the terminal was asked to run.
 	ScriptPath string `json:"scriptPath"`
 
@@ -187,6 +202,7 @@ type Service struct {
 	home     string
 	clock    Clock
 	launches LaunchRecorder
+	files    FileChecker
 
 	// cloneMu runs one Clone at a time.
 	cloneMu sync.Mutex
@@ -210,6 +226,7 @@ func NewService(cfg Config) *Service {
 		home:     cfg.Home,
 		clock:    clock,
 		launches: cfg.Launches,
+		files:    cfg.Files,
 	}
 }
 
@@ -277,9 +294,10 @@ type ItemResolution struct {
 
 // Preview plans a launch without writing files or opening a terminal: the resolved
 // settings, the clone, the command, and the filled-in prompt. Launch runs the same plan,
-// so the prompt shown is the prompt sent.
+// so the prompt shown is the prompt sent, except that Launch checks a pull request's
+// files against GitHub again where Preview uses the last check.
 func (s *Service) Preview(ctx context.Context, req LaunchRequest) (Preview, error) {
-	p, err := s.plan(ctx, req)
+	p, err := s.plan(ctx, req, false)
 	if err != nil {
 		return Preview{}, err
 	}
@@ -294,20 +312,29 @@ func (s *Service) Preview(ctx context.Context, req LaunchRequest) (Preview, erro
 //     defaults, the profile's, and the app's settings;
 //  2. find the item's local clone: the cached path when it still is a clone of the
 //     repository, otherwise a scan of the clone root, whose result is cached;
-//  3. find the agent, build the plan, and fill in the prompt;
-//  4. mark the clone trusted in the agent config the session runs with, since a
+//  3. find the agent and build the plan;
+//  4. for a pull request whose files are checked, check them against GitHub as of now,
+//     and fill in the prompt, which names its sensitive files;
+//  5. hold the launch back, starting nothing, when the pull request changes agent files
+//     or its files could not all be checked, unless the request confirms that hold;
+//  6. mark the clone trusted in the agent config the session runs with, since a
 //     worktree session cannot show the agent's workspace trust dialog;
-//  5. write the prompt file and launch script;
-//  6. open the script in the terminal chosen in settings;
-//  7. record the worktree, if the session starts in one, with the item it is for.
+//  7. write the prompt file and launch script;
+//  8. open the script in the terminal chosen in settings;
+//  9. record the worktree, if the session starts in one, with the item it is for.
 //
 // The only git command it runs is the read-only `git -C <clone> config --get-regexp`
 // remote lookup. The script only changes into the clone and runs the agent; it never
 // checks out, stashes, fetches, switches branches, or creates worktrees.
 func (s *Service) Launch(ctx context.Context, req LaunchRequest) (LaunchResult, error) {
-	p, err := s.plan(ctx, req)
+	p, err := s.plan(ctx, req, true)
 	if err != nil {
 		return LaunchResult{}, err
+	}
+
+	if hold := holdFor(p.check, p.plan, localrepos.TildePath(p.clone.Dir, s.home)); hold != nil &&
+		hold.Key != req.Confirmed {
+		return LaunchResult{Hold: hold}, nil
 	}
 
 	if err = s.trustClone(ctx, p); err != nil {
@@ -344,11 +371,16 @@ type planned struct {
 	prompt string
 	clone  Clone
 	driver Driver
+
+	// check is the pull request's file check, or nil when its files are not checked.
+	check *sensitive.Check
 }
 
 // plan works out a launch. The terminal driver is chosen before the clone is resolved,
-// so an OS without terminal support fails before anything runs or is written.
-func (s *Service) plan(ctx context.Context, req LaunchRequest) (planned, error) {
+// so an OS without terminal support fails before anything runs or is written. A pull
+// request's files are checked last, against GitHub when fresh is set, so a launch that
+// cannot be planned asks GitHub nothing.
+func (s *Service) plan(ctx context.Context, req LaunchRequest, fresh bool) (planned, error) {
 	w, err := loadWorld(ctx, s.db, s.settings)
 	if err != nil {
 		return planned{}, err
@@ -369,7 +401,32 @@ func (s *Service) plan(ctx context.Context, req LaunchRequest) (planned, error) 
 		return planned{}, err
 	}
 
+	p, err := s.place(ctx, w, row, res, Request{
+		Item: row.item(w.policy), Profile: effectiveProfile(profile, res), Worktree: res.Worktree.Value,
+		FullAccessOverride: req.FullAccessOverride, SessionName: sessionName(prompt.Nickname, row),
+	})
+	if err != nil {
+		return planned{}, err
+	}
+
+	if p.check, err = s.fileCheck(ctx, row.ID, fresh); err != nil && !errors.Is(err, sensitive.ErrNotChecked) {
+		return planned{}, err
+	}
+
+	data := row.promptData(w.policy, profile.Name, "", p.check)
+	if p.prompt, err = s.fillIn(ctx, data, prompt.Nickname, tmpl, p.plan); err != nil {
+		return planned{}, err
+	}
+
+	return p, nil
+}
+
+// place works out where and how a launch runs: the terminal driver, the clone, the agent
+// binary, and the plan for req, which needs only its clone and agent filled in.
+func (s *Service) place(ctx context.Context, w world, row launchItemRow, res Resolution, req Request) (planned, error) {
 	p := planned{row: row, res: res}
+
+	var err error
 
 	if p.driver, err = s.registry.Get(w.settings.Terminal); err != nil {
 		return planned{}, err
@@ -379,24 +436,46 @@ func (s *Service) plan(ctx context.Context, req LaunchRequest) (planned, error) 
 		return planned{}, err
 	}
 
-	bin, err := s.finder.Find(res.Agent.Command)
-	if err != nil {
+	if req.ClaudePath, err = s.finder.Find(res.Agent.Command); err != nil {
 		return planned{}, fmt.Errorf("find the agent: %w", err)
 	}
 
-	p.plan, err = BuildPlan(Request{
-		Item: row.item(w.policy), Profile: effectiveProfile(profile, res), Clone: p.clone, Worktree: res.Worktree.Value,
-		FullAccessOverride: req.FullAccessOverride, ClaudePath: bin, SessionName: sessionName(prompt.Nickname, row),
-	})
-	if err != nil {
+	req.Clone = p.clone
+
+	if p.plan, err = BuildPlan(req); err != nil {
 		return planned{}, fmt.Errorf("plan the launch: %w", err)
 	}
 
-	if p.prompt, err = s.fillIn(ctx, row.promptData(w.policy, profile.Name, ""), prompt.Nickname, tmpl, p.plan); err != nil {
-		return planned{}, err
+	return p, nil
+}
+
+// fileCheck returns an item's file check: as of now when fresh is set, else the last
+// one. It returns sensitive.ErrNotChecked for an item whose files are not checked, and
+// for every item when the service has no FileChecker.
+func (s *Service) fileCheck(ctx context.Context, itemID int64, fresh bool) (*sensitive.Check, error) {
+	if s.files == nil {
+		return nil, sensitive.ErrNotChecked
 	}
 
-	return p, nil
+	var (
+		check *sensitive.Check
+		err   error
+	)
+
+	if fresh {
+		check, err = s.files.CheckFiles(ctx, itemID)
+	} else {
+		check, err = s.files.StoredFiles(ctx, itemID)
+	}
+
+	switch {
+	case errors.Is(err, sensitive.ErrNotChecked):
+		return nil, err
+	case err != nil:
+		return nil, fmt.Errorf("check the pull request's files: %w", err)
+	default:
+		return check, nil
+	}
 }
 
 // recordLaunch records the worktree a session was launched in, with its item. The launch

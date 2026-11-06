@@ -2,12 +2,14 @@
 
 import type {
   Account,
+  FileCheck,
   InboxItem,
   ItemDetails,
   InboxList,
   InboxSnapshot,
   ItemResolution,
   LaunchDefaults,
+  LaunchHold,
   LaunchPreview,
   LaunchResult,
   LinkedItem,
@@ -17,6 +19,8 @@ import type {
   PromptVariable,
   Rate,
   Resolution,
+  SensitiveCategory,
+  SensitiveGroup,
   Settings,
   SweepReport,
   Worktree,
@@ -43,6 +47,7 @@ export function item(overrides: Partial<InboxItem> = {}): InboxItem {
     branch: 'widget-cache',
     isDraft: false,
     details: null,
+    files: null,
     dismissedAt: '',
     snoozedUntil: '',
     wokeBy: null,
@@ -102,6 +107,117 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     snoozeWake: { commits: 1, reviews: 'decisions', comments: 0 },
     windowSize: { width: 1280, height: 800 },
     defaultWindowSize: { width: 1280, height: 800 },
+    sensitiveFiles: { scope: 'collaborators', off: [], patterns: [] },
+    sensitiveCategories: sensitiveCategories(),
+    ...overrides,
+  }
+}
+
+// sensitiveCategories are three built-in categories of sensitive files, with a few of
+// their patterns each: the locked agent category first.
+export function sensitiveCategories(): SensitiveCategory[] {
+  return [
+    {
+      id: 'agent',
+      label: 'Agent configuration',
+      short: 'Agent config',
+      description: 'Settings, hooks, MCP servers, and instructions that coding agents load.',
+      level: 'danger',
+      locked: true,
+      patterns: ['.claude/', '.mcp.json', 'CLAUDE.md'],
+    },
+    {
+      id: 'workflows',
+      label: 'Workflows and CI',
+      short: 'Workflows',
+      description: 'Run on CI with the repository’s token and secrets.',
+      level: 'danger',
+      locked: false,
+      patterns: ['.github/workflows/', '.github/actions/'],
+    },
+    {
+      id: 'dependencies',
+      label: 'Dependencies',
+      short: 'Dependencies',
+      description: 'Bring in third-party code, or change where it comes from.',
+      level: 'warning',
+      locked: false,
+      patterns: ['go.mod', 'go.sum'],
+    },
+  ]
+}
+
+// agentGroup is a pull request's agent files: new agent settings.
+export function agentGroup(overrides: Partial<SensitiveGroup> = {}): SensitiveGroup {
+  return {
+    category: 'agent',
+    label: 'Agent configuration',
+    short: 'Agent config',
+    description: 'Settings, hooks, MCP servers, and instructions that coding agents load.',
+    level: 'danger',
+    files: [
+      {
+        path: '.claude/settings.json',
+        previousPath: '',
+        change: 'added',
+        pattern: '.claude/',
+        url: 'https://github.com/acme-org/example-repo/pull/7/files#diff-aaaa',
+      },
+    ],
+    ...overrides,
+  }
+}
+
+// workflowsGroup is a pull request's workflow files: one moved out of the workflows folder.
+export function workflowsGroup(overrides: Partial<SensitiveGroup> = {}): SensitiveGroup {
+  return {
+    category: 'workflows',
+    label: 'Workflows and CI',
+    short: 'Workflows',
+    description: 'Run on CI with the repository’s token and secrets.',
+    level: 'danger',
+    files: [
+      {
+        path: 'docs/old-codeql.yml',
+        previousPath: '.github/workflows/codeql.yml',
+        change: 'renamed',
+        pattern: '.github/workflows/',
+        url: 'https://github.com/acme-org/example-repo/pull/7/files#diff-bbbb',
+      },
+    ],
+    ...overrides,
+  }
+}
+
+// fileCheck is a finished check of a pull request's files that flagged agent settings and
+// a workflow.
+export function fileCheck(overrides: Partial<FileCheck> = {}): FileCheck {
+  return {
+    status: 'flagged',
+    head: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
+    checked: 6,
+    total: 6,
+    complete: true,
+    groups: [agentGroup(), workflowsGroup()],
+    checkedAt: '2026-06-15T11:58:00Z',
+    error: '',
+    ...overrides,
+  }
+}
+
+// launchHold is a launch held back because the pull request changes agent settings.
+export function launchHold(overrides: Partial<LaunchHold> = {}): LaunchHold {
+  return {
+    key: 'agentFiles:a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
+    reason: 'agentFiles',
+    head: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
+    files: agentGroup().files,
+    checked: 6,
+    total: 6,
+    error: '',
+    atHead: true,
+    dir: '~/projects/example-repo',
+    worktree: 'pr-7',
     ...overrides,
   }
 }
@@ -115,6 +231,7 @@ export function launchResult(overrides: Partial<LaunchResult> = {}): LaunchResul
     profile: 'default',
     permission: 'full access',
     terminal: 'iterm2',
+    hold: null,
     ...overrides,
   }
 }

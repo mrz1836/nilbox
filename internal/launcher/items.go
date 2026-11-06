@@ -2,12 +2,14 @@ package launcher
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/inbox"
 	inboxmodel "github.com/mrz1836/nilbox/internal/inbox/model"
 	"github.com/mrz1836/nilbox/internal/prompts"
+	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
 
@@ -117,8 +119,9 @@ func (r launchItemRow) repoRef() repoRef {
 }
 
 // promptData is what a prompt is filled in from for the item, judged by policy and
-// launched with profile by viewer. The session facts are left for WithSession.
-func (r launchItemRow) promptData(policy trust.Policy, profile, viewer string) prompts.Data {
+// launched with profile by viewer, with the sensitive files its file check found (nil
+// when its files are not checked). The session facts are left for WithSession.
+func (r launchItemRow) promptData(policy trust.Policy, profile, viewer string, check *sensitive.Check) prompts.Data {
 	isPR := r.Kind == KindPR
 
 	labels := make([]string, 0, len(r.Labels))
@@ -137,6 +140,10 @@ func (r launchItemRow) promptData(policy trust.Policy, profile, viewer string) p
 		d.IsDraft, d.Branch, d.HasConflicts = r.IsDraft, r.HeadRef, r.Mergeable == "CONFLICTING"
 		d.Checks, d.Review = checksWord(r.ChecksState), reviewWord(r.ReviewDecision)
 		d.Additions, d.Deletions, d.ChangedFiles, d.Commits = r.Additions, r.Deletions, r.ChangedFiles, r.Commits
+
+		if check != nil {
+			d.SensitiveFiles = check.Summary()
+		}
 	}
 
 	return d
@@ -208,5 +215,10 @@ func (p promptSource) PreviewData(ctx context.Context, itemID int64) (prompts.Da
 		return prompts.Data{}, err
 	}
 
-	return row.promptData(w.policy, profile, viewer), nil
+	check, err := p.s.fileCheck(ctx, row.ID, false)
+	if err != nil && !errors.Is(err, sensitive.ErrNotChecked) {
+		return prompts.Data{}, err
+	}
+
+	return row.promptData(w.policy, profile, viewer, check), nil
 }

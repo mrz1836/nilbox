@@ -10,6 +10,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/model"
+	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
 
@@ -99,6 +100,10 @@ type writer struct {
 	// details holds the items' details by node ID. An item without an entry keeps the
 	// details stored before.
 	details map[string]github.ItemDetails
+
+	// files holds the outcome of each file check by node ID. An item without an entry
+	// keeps the check stored before.
+	files map[string]fileCheck
 }
 
 // saveAccount upserts the signed-in account and remembers its id.
@@ -111,10 +116,10 @@ func (w *writer) saveAccount(login string) error {
 }
 
 // saveItems clears every reason flag for the account, then upserts each fetched item with
-// the flags of the lists that returned it, and its details. Items no longer returned keep
-// their row (local state may reference it) with all three flags off. Last, it ends the
-// snoozes that the new details give cause to, so no snapshot shows new activity on an
-// item still snoozed.
+// the flags of the lists that returned it, its details, and its file check. Items no
+// longer returned keep their row (local state may reference it) with all three flags off,
+// and lose their file check. Last, it ends the snoozes that the new details give cause
+// to, so no snapshot shows new activity on an item still snoozed.
 func (w *writer) saveItems(inbox *github.Inbox) error {
 	if err := w.tx.Exec(clearReasonsSQL, w.accountID).Error; err != nil {
 		return fmt.Errorf("clear the reason flags: %w", err)
@@ -129,6 +134,10 @@ func (w *writer) saveItems(inbox *github.Inbox) error {
 		if err = w.saveItem(repoID, e); err != nil {
 			return err
 		}
+	}
+
+	if err := w.pruneFiles(); err != nil {
+		return err
 	}
 
 	return w.wakeSnoozed()
@@ -185,7 +194,8 @@ func timeOrNil(t time.Time) *time.Time {
 	return &t
 }
 
-// saveItem upserts one item, then its details when this refresh read them.
+// saveItem upserts one item, then its details and file check when this refresh read
+// them.
 func (w *writer) saveItem(repoID int64, e *entry) error {
 	it := e.item
 
@@ -200,7 +210,11 @@ func (w *writer) saveItem(repoID int64, e *entry) error {
 		return fmt.Errorf("save the item %s/%s#%d: %w", it.RepoOwner, it.RepoName, it.Number, err)
 	}
 
-	return w.saveDetails(id, it)
+	if err = w.saveDetails(id, it); err != nil {
+		return err
+	}
+
+	return w.saveFiles(id, it)
 }
 
 // saveDetails stores an item's details when this refresh read them.
@@ -342,6 +356,7 @@ func readPrefs(db *gorm.DB) (map[string]string, error) {
 		prefViewer, prefViewerName, prefViewerURL, prefViewerAvatarURL, prefAvatar, prefAvatarSource,
 		prefTotalReviewRequested, prefTotalAuthored, prefTotalAssigned,
 		prefLastRefreshAt, prefLastError, prefScopeWarning, trust.PrefBots,
+		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns,
 	}
 
 	var rows []struct {

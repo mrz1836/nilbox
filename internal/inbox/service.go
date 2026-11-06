@@ -46,7 +46,6 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/model"
-	"github.com/mrz1836/nilbox/internal/trust"
 )
 
 // snapshotRetention is how long rate-limit snapshots are kept.
@@ -87,12 +86,14 @@ type TokenSource interface {
 	Token(ctx context.Context) (github.Token, error)
 }
 
-// Client fetches the inbox, its items' details, a single item, the rate limits, and the
-// viewer's avatar from GitHub.
+// Client fetches the inbox, its items' details, a single item, a pull request's head and
+// changed files, the rate limits, and the viewer's avatar from GitHub.
 type Client interface {
 	FetchInbox(ctx context.Context, tok github.Token) (*github.Inbox, error)
 	FetchDetails(ctx context.Context, tok github.Token, ids []string) (*github.Details, error)
 	FetchItem(ctx context.Context, tok github.Token, id string) (*github.ItemUpdate, error)
+	FetchPullHead(ctx context.Context, tok github.Token, ref github.ItemRef) (*github.PullHead, error)
+	FetchChangedFiles(ctx context.Context, tok github.Token, ref github.ItemRef, head string) (*github.ChangedFiles, error)
 	FetchRateLimits(ctx context.Context, tok github.Token) (*github.RateLimits, error)
 	FetchAvatar(ctx context.Context, url string) (*github.Avatar, error)
 }
@@ -186,8 +187,7 @@ func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 
-	raw, stored := prefs[trust.PrefBots]
-	snap.addItems(rows, trust.NewPolicy(trust.DecodeBots(raw, stored)))
+	snap.addItems(rows, newFileScope(prefs))
 	snap.applyTotals(prefs)
 
 	if snap.Rate, err = loadRates(db, accountID); err != nil {
@@ -230,6 +230,10 @@ func (s *Service) refresh(ctx context.Context) error {
 		got.details.Add(more)
 	}
 
+	if got.files, err = s.checkFiles(ctx, tok, got); err != nil {
+		return github.Redact(err, tok)
+	}
+
 	if err = s.save(ctx, got, warning); err != nil {
 		return github.Redact(err, tok)
 	}
@@ -247,6 +251,9 @@ type refreshed struct {
 
 	// archived holds the items left out because their repository is archived.
 	archived []github.Item
+
+	// files holds the outcome of each file check the refresh ran, by node ID.
+	files map[string]fileCheck
 }
 
 // fetch gets the inbox, the rate limits, and the details of the listed items
@@ -349,7 +356,7 @@ func (s *Service) save(ctx context.Context, got refreshed, warning github.ScopeW
 	}
 
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		w := &writer{tx: tx, now: now, repos: make(map[string]int64), details: items}
+		w := &writer{tx: tx, now: now, repos: make(map[string]int64), details: items, files: got.files}
 
 		if err := w.saveAccount(inbox.Viewer.Login); err != nil {
 			return err

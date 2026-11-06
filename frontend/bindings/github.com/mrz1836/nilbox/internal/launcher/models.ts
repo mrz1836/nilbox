@@ -4,6 +4,9 @@
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as agents$0 from "../agents/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as sensitive$0 from "../sensitive/models.js";
 
 /**
  * CloneTarget is a repository's local clone, or where Clone would create one.
@@ -30,6 +33,60 @@ export interface CloneTarget {
      * something is already there. Clone refuses it.
      */
     "taken": boolean;
+}
+
+/**
+ * Hold is a launch held back for the user to confirm: nothing was started, written, or
+ * trusted. Every field is a plain value.
+ */
+export interface Hold {
+    /**
+     * Key is what LaunchRequest.Confirmed carries to launch anyway. It names what the
+     * user was shown (the head commit, and whether every file was checked), so a
+     * confirmation never carries over to a later push.
+     */
+    "key": string;
+
+    /**
+     * Reason is HoldAgentFiles or HoldUnchecked.
+     */
+    "reason": string;
+
+    /**
+     * Head is the head commit the files were checked at, or "".
+     */
+    "head": string;
+
+    /**
+     * Files are the agent files the pull request changes; empty for HoldUnchecked.
+     */
+    "files": sensitive$0.Finding[] | null;
+
+    /**
+     * Checked is how many files were checked, out of Total; for HoldUnchecked, Checked
+     * falls short of Total, or the check failed.
+     */
+    "checked": number;
+    "total": number;
+
+    /**
+     * Error says why the check failed, or is "".
+     */
+    "error": string;
+
+    /**
+     * AtHead reports that the session would start in a worktree at the pull request's
+     * head, where the agent loads its files the moment it starts. Otherwise they load
+     * once the session, or a later one in the same folder, checks the pull request out.
+     */
+    "atHead": boolean;
+
+    /**
+     * Dir is where the session would start, with ~ for home, and Worktree its worktree,
+     * or "".
+     */
+    "dir": string;
+    "worktree": string;
 }
 
 /**
@@ -126,12 +183,25 @@ export interface LaunchRequest {
      * The profile's own plan and permission settings still apply.
      */
     "fullAccessOverride": boolean;
+
+    /**
+     * Confirmed is the Key of a Hold the user confirmed: the launch goes ahead if it
+     * would be held back for exactly that reason again, and is held back otherwise.
+     */
+    "confirmed": string;
 }
 
 /**
- * LaunchResult describes a started launch. Every field is a plain value.
+ * LaunchResult describes a started launch, or one held back. Every field is a plain
+ * value.
  */
 export interface LaunchResult {
+    /**
+     * Hold is set when the launch was held back for the user to confirm, and nothing was
+     * started; the other fields are empty then.
+     */
+    "hold": Hold | null;
+
     /**
      * ScriptPath is the launch script the terminal was asked to run.
      */

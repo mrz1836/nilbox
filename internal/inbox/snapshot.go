@@ -9,13 +9,15 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/mrz1836/nilbox/internal/inbox/model"
+	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/snooze"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
 
 // loadItemsSQL reads every item that is in at least one list, with its details when a
-// refresh has read them (has_details) and its triage state: the pinned items first, the
-// most recently pinned first, then the rest by newest activity.
+// refresh has read them (has_details), its last file check (has_files), and its triage
+// state: the pinned items first, the most recently pinned first, then the rest by newest
+// activity.
 const loadItemsSQL = `SELECT
     i.id, i.kind, i.number, i.title, i.url, r.owner AS repo_owner, r.name AS repo_name,
     i.author_login, i.author_type, i.author_association, i.is_cross_repository, i.is_draft, i.head_ref,
@@ -30,10 +32,15 @@ const loadItemsSQL = `SELECT
     COALESCE(d.review_decision, '') AS review_decision, COALESCE(d.reviewers, 0) AS reviewers,
     COALESCE(d.reviewed, 0) AS reviewed, COALESCE(d.approvals, 0) AS approvals,
     COALESCE(d.changes_requested, 0) AS changes_requested, d.fetched_at AS details_fetched_at,
+    COALESCE(d.head_oid, '') AS head_oid,
+    f.item_id IS NOT NULL AS has_files, COALESCE(f.head_oid, '') AS files_head, COALESCE(f.total, 0) AS files_total,
+    COALESCE(f.files, '[]') AS files, COALESCE(f.complete, 0) AS files_complete,
+    COALESCE(f.error, '') AS files_error, f.checked_at AS files_checked_at,
     ls.dismissed_at, ls.snoozed_until, ls.wake_reasons, ls.pinned_at
 FROM items i
 JOIN repos r ON r.id = i.repo_id
 LEFT JOIN item_details d ON d.item_id = i.id
+LEFT JOIN item_files f ON f.item_id = i.id
 LEFT JOIN item_local_state ls ON ls.item_id = i.id
 WHERE i.account_id = ?
   AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1)
@@ -122,6 +129,12 @@ type Item struct {
 
 	// Details is nil until a refresh has read the item's details.
 	Details *Details `json:"details"`
+
+	// Files is what checking a pull request's changed files found, with the user's
+	// categories applied, or nil for an item whose files are not checked: an issue, or a
+	// pull request from the repository's own people, a trusted bot, or the signed-in user
+	// (see the sensitive package).
+	Files *sensitive.Check `json:"files"`
 
 	// DismissedAt is when the item was dismissed, as RFC 3339, or "" when it is not. A
 	// dismissed item stays in its lists here, and the UI sets it apart until it is
@@ -258,11 +271,11 @@ func accountFromPrefs(prefs map[string]string) Account {
 	return account
 }
 
-// addItems sorts rows into the lists whose flags they carry, deciding each item's trust
-// with policy.
-func (s *Snapshot) addItems(rows []itemRow, policy trust.Policy) {
+// addItems sorts rows into the lists whose flags they carry, deciding each item's trust,
+// and whether its files are checked, with scope.
+func (s *Snapshot) addItems(rows []itemRow, scope fileScope) {
 	for _, r := range rows {
-		item := r.item(policy)
+		item := r.item(scope)
 
 		if r.ReasonReviewRequested {
 			s.ReviewRequested.Items = append(s.ReviewRequested.Items, item)
@@ -334,6 +347,10 @@ type itemRow struct {
 	Approvals        int          `gorm:"column:approvals"`
 	ChangesRequested int          `gorm:"column:changes_requested"`
 	DetailsFetchedAt *time.Time   `gorm:"column:details_fetched_at"`
+	HeadOID          string       `gorm:"column:head_oid"`
+
+	// Stored is the item's last file check.
+	Stored filesColumns `gorm:"embedded"`
 
 	DismissedAt  *time.Time `gorm:"column:dismissed_at"`
 	SnoozedUntil *time.Time `gorm:"column:snoozed_until"`
@@ -341,11 +358,12 @@ type itemRow struct {
 	PinnedAt     *time.Time `gorm:"column:pinned_at"`
 }
 
-// item converts a row to its DTO, deciding its trust with policy.
-func (r *itemRow) item(policy trust.Policy) Item {
+// item converts a row to its DTO, deciding its trust, and whether its files are
+// checked, with scope.
+func (r *itemRow) item(scope fileScope) Item {
 	isPR := r.Kind == model.KindPR
 	author := trust.Author{Login: r.AuthorLogin, Type: r.AuthorType, Association: r.AuthorAssociation}
-	class := policy.Classify(author, isPR, r.IsCrossRepository)
+	class := scope.policy.Classify(author, isPR, r.IsCrossRepository)
 
 	return Item{
 		ID:                r.ID,
@@ -364,11 +382,24 @@ func (r *itemRow) item(policy trust.Policy) Item {
 		Branch:            r.HeadRef,
 		IsDraft:           r.IsDraft,
 		Details:           r.details(),
+		Files:             r.checkedFiles(scope, isPR, author),
 		DismissedAt:       formatOptionalTime(r.DismissedAt),
 		SnoozedUntil:      formatOptionalTime(r.SnoozedUntil),
 		WokeBy:            decodeReasons(r.WakeReasons),
 		PinnedAt:          formatOptionalTime(r.PinnedAt),
 	}
+}
+
+// checkedFiles evaluates the row's last file check with scope's categories, or returns nil
+// when its files are not checked.
+func (r *itemRow) checkedFiles(scope fileScope, isPR bool, author trust.Author) *sensitive.Check {
+	if !scope.checks(isPR, author, r.IsCrossRepository) {
+		return nil
+	}
+
+	check := scope.matcher.Evaluate(r.Stored.result(), r.HeadOID, r.URL)
+
+	return &check
 }
 
 // decodeReasons reads stored wake reasons, or nil when there are none or they cannot be

@@ -12,7 +12,26 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as sensitive$0 from "../sensitive/models.js";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as $models from "./models.js";
+
+/**
+ * CheckFiles checks an item's changed files against GitHub as of now, stores the
+ * outcome, and returns it with the user's categories applied, for a launch to decide on.
+ * It asks GitHub for the pull request's head first and lists the files again only when
+ * the head moved since the stored check, so a launch right after a refresh costs one
+ * request. It returns sensitive.ErrNotChecked for an item whose files are not checked
+ * (see StoredFiles).
+ *
+ * A check that cannot finish is returned with StatusFailed and its reason, never as an
+ * error, so the caller can hold back on it; an error means the item could not be read.
+ */
+export function CheckFiles(itemID: number): $CancellablePromise<sensitive$0.Check | null> {
+    return $Call.ByID(925094773, itemID);
+}
 
 /**
  * Dismiss hides an item from every list until it is restored, and returns the new
@@ -47,7 +66,8 @@ export function Refresh(): $CancellablePromise<$models.Snapshot> {
  * as a pull request they just merged, shows without refreshing the whole inbox.
  *
  * An item still open gets its card and details rewritten and stays in the lists it is
- * in; only the searches of a whole refresh can tell which lists those are. An item
+ * in; only the searches of a whole refresh can tell which lists those are. A pull request
+ * whose files are checked has them checked again when its head moved. An item
  * merged, closed, or deleted since, or whose repository was archived, leaves every list,
  * as a whole refresh would have it. New activity on a snoozed item can end the snooze.
  *
@@ -86,6 +106,16 @@ export function Snapshot(): $CancellablePromise<$models.Snapshot> {
  */
 export function Snooze(id: number, days: number): $CancellablePromise<$models.Snapshot> {
     return $Call.ByID(3352799032, id, days);
+}
+
+/**
+ * StoredFiles returns the last check of an item's changed files, without asking GitHub,
+ * with the user's categories applied: StatusPending when the item was pushed since. It
+ * returns sensitive.ErrNotChecked for an item whose files are not checked: an issue, or
+ * a pull request from the repository's own people, a trusted bot, or the signed-in user.
+ */
+export function StoredFiles(itemID: number): $CancellablePromise<sensitive$0.Check | null> {
+    return $Call.ByID(4275007344, itemID);
 }
 
 /**

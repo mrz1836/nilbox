@@ -11,6 +11,7 @@ import {
 import { ArchiveIcon, ClockIcon, IssueIcon, PullRequestIcon } from './icons'
 import { ItemSignals } from './ItemSignals'
 import { LaunchControls } from './LaunchControls'
+import { SensitiveFiles } from './SensitiveFiles'
 import { TriageControls, type TriageActions } from './TriageControls'
 
 // LaunchOptions are what each row's launch controls need: the profiles and prompts to
@@ -36,6 +37,8 @@ export interface ItemRowProps {
   // triage is what the row's snooze, dismiss, and restore buttons do; without it the row
   // has none.
   triage?: TriageActions
+  // onFilesSettings opens Settings → Sensitive files from the sensitive-file panel.
+  onFilesSettings?: () => void
 }
 
 // tagClass is a status tag: weight and color mark it, with no pill around it.
@@ -143,11 +146,12 @@ function TriageTag({ item, tab, now }: { item: InboxItem; tab: TriageTab; now: D
 }
 
 // ItemRow is one inbox card, three lines high: the title with its draft and conflict
-// tags; where it is, who opened it, and when it last moved; and its signals (checks,
+// tags; where it is, who opened it, when it last moved, and, for a pull request from
+// outside the repository, the sensitive files it changes; and its signals (checks,
 // reviews, comments, size, labels). The triage buttons and the launch button sit on the
 // right, and a launch's outcome spans the card below. Long titles are cut short with an
 // ellipsis, so every card keeps the same shape.
-export function ItemRow({ item, now, launch, tab = 'inbox', triage }: ItemRowProps) {
+export function ItemRow({ item, now, launch, tab = 'inbox', triage, onFilesSettings }: ItemRowProps) {
   const conflicting = item.details?.mergeable === 'CONFLICTING'
 
   return (
@@ -172,14 +176,17 @@ export function ItemRow({ item, now, launch, tab = 'inbox', triage }: ItemRowPro
             </span>
           )}
         </div>
-        <p className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-muted">
+        <div className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-muted">
           <span className="truncate">
             {item.repo} #{item.number} · {item.author} ·{' '}
             <time dateTime={item.updatedAt}>{formatAge(now, item.updatedAt)}</time>
           </span>
           <TrustTag item={item} />
+          {item.files !== null && (
+            <SensitiveFiles itemId={item.id} check={item.files} now={now} onSettings={onFilesSettings} />
+          )}
           <TriageTag item={item} tab={tab} now={now} />
-        </p>
+        </div>
         <ItemSignals item={item} />
       </div>
       {triage !== undefined && <TriageControls item={item} tab={tab} now={now} actions={triage} />}

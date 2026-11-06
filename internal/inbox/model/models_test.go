@@ -23,7 +23,8 @@ func TestAllModelsTableNames(t *testing.T) {
 		names = append(names, tm.TableName())
 	}
 
-	assert.Equal(t, []string{"accounts", "repos", "items", "item_details", "item_local_state", "rate_snapshots"}, names)
+	assert.Equal(t, []string{"accounts", "repos", "items", "item_details", "item_files", "item_local_state", "rate_snapshots"},
+		names)
 }
 
 func TestLabelsRoundTrip(t *testing.T) {
@@ -45,6 +46,31 @@ func TestLabelsRoundTrip(t *testing.T) {
 	var got model.Labels
 	require.ErrorIs(t, got.Scan(42), model.ErrUnsupportedScanType)
 	require.ErrorContains(t, got.Scan("{not json"), "decode the labels")
+}
+
+func TestChangedFilesRoundTrip(t *testing.T) {
+	value, err := model.ChangedFiles(nil).Value()
+	require.NoError(t, err)
+	assert.Equal(t, "[]", value, "no files are stored as an empty array")
+
+	files := model.ChangedFiles{
+		{Path: "docs/old.yml", Previous: ".github/workflows/ci.yml", Change: "renamed"},
+		{Path: "go.mod", Change: "modified"},
+	}
+	value, err = files.Value()
+	require.NoError(t, err)
+	assert.JSONEq(t, `[{"path":"docs/old.yml","previous":".github/workflows/ci.yml","change":"renamed"},`+
+		`{"path":"go.mod","change":"modified"}]`, value.(string))
+
+	for _, src := range []any{value, []byte(value.(string))} {
+		var got model.ChangedFiles
+		require.NoError(t, got.Scan(src))
+		assert.Equal(t, files, got)
+	}
+
+	var got model.ChangedFiles
+	require.ErrorIs(t, got.Scan(42), model.ErrUnsupportedScanType)
+	require.ErrorContains(t, got.Scan("{not json"), "decode the changed files")
 }
 
 func TestItemKinds(t *testing.T) {

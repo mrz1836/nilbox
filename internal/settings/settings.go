@@ -20,6 +20,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/profiles"
+	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/snooze"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
@@ -122,6 +123,15 @@ type Settings struct {
 
 	// DefaultWindowSize is the size a fresh database opens the window at.
 	DefaultWindowSize WindowSize `json:"defaultWindowSize"`
+
+	// SensitiveFiles is whose pull requests have their changed files checked, which
+	// built-in categories are off, and the user's own patterns (see the sensitive
+	// package).
+	SensitiveFiles sensitive.Config `json:"sensitiveFiles"`
+
+	// SensitiveCategories are the built-in categories in matching order, with their
+	// patterns, for the settings page to describe.
+	SensitiveCategories []sensitive.Category `json:"sensitiveCategories"`
 }
 
 // Service reads and writes the preferences.
@@ -147,6 +157,7 @@ func (s *Service) Get(ctx context.Context) (Settings, error) {
 		KeyDefaultProfile, KeyWorktreeDefault, KeyWorktreeAutoCleanup, KeyTerminal, KeyCloneRoot, KeyTrustedBots,
 		KeySnoozeDays, KeyWindowSize,
 		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments,
+		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns,
 	}
 	if err := s.db.WithContext(ctx).Raw("SELECT key, value FROM prefs WHERE key IN ?", keys).Scan(&rows).Error; err != nil {
 		return Settings{}, fmt.Errorf("read settings: %w", err)
@@ -285,6 +296,83 @@ func (s *Service) SetSnoozeWake(ctx context.Context, rules snooze.Rules) error {
 	return nil
 }
 
+// SetSensitiveScope stores whose pull requests have their changed files checked:
+// sensitive.ScopeOutside, or sensitive.ScopeCollaborators to check collaborators' too.
+func (s *Service) SetSensitiveScope(ctx context.Context, scope string) error {
+	if !sensitive.ValidScope(scope) {
+		return fmt.Errorf("%w %q: choose %q or %q", sensitive.ErrInvalidScope, scope, sensitive.ScopeOutside,
+			sensitive.ScopeCollaborators)
+	}
+
+	return s.set(ctx, sensitive.PrefScope, scope)
+}
+
+// SetSensitiveCategory turns a built-in category of sensitive files on or off. The agent
+// configuration category cannot be turned off, since launches are held back by it.
+func (s *Service) SetSensitiveCategory(ctx context.Context, id string, on bool) error {
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		cfg, err := readSensitive(tx)
+		if err != nil {
+			return err
+		}
+
+		off, err := sensitive.SetCategory(cfg.Off, id, on)
+		if err != nil {
+			return err
+		}
+
+		return tx.Exec(upsertPrefSQL, sensitive.PrefOff, sensitive.EncodeList(off), time.Now().UTC()).Error
+	})
+	if err != nil {
+		return fmt.Errorf("save the sensitive file categories: %w", err)
+	}
+
+	return nil
+}
+
+// SetSensitivePatterns stores the user's own patterns of sensitive files, in order. Each
+// is trimmed, empty ones and repeats are dropped, and a pattern that cannot be used is
+// refused with the reason (see the sensitive package for the syntax).
+func (s *Service) SetSensitivePatterns(ctx context.Context, patterns []string) error {
+	normalized, err := sensitive.NormalizePatterns(patterns)
+	if err != nil {
+		return err
+	}
+
+	return s.set(ctx, sensitive.PrefPatterns, sensitive.EncodeList(normalized))
+}
+
+// MatchSensitivePath reports whether a path would count as sensitive under the stored
+// settings, and which category and pattern it matches, for trying patterns out.
+func (s *Service) MatchSensitivePath(ctx context.Context, path string) (sensitive.PathMatch, error) {
+	cfg, err := readSensitive(s.db.WithContext(ctx))
+	if err != nil {
+		return sensitive.PathMatch{}, err
+	}
+
+	return sensitive.Lookup(cfg, path), nil
+}
+
+// readSensitive reads the stored sensitive-file settings.
+func readSensitive(db *gorm.DB) (sensitive.Config, error) {
+	var rows []struct {
+		Key   string
+		Value string
+	}
+
+	keys := []string{sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns}
+	if err := db.Raw("SELECT key, value FROM prefs WHERE key IN ?", keys).Scan(&rows).Error; err != nil {
+		return sensitive.Config{}, fmt.Errorf("read the sensitive file settings: %w", err)
+	}
+
+	stored := make(map[string]string, len(rows))
+	for _, r := range rows {
+		stored[r.Key] = r.Value
+	}
+
+	return sensitive.DecodeConfig(stored), nil
+}
+
 // set stores one preference.
 func (s *Service) set(ctx context.Context, key, value string) error {
 	if err := s.db.WithContext(ctx).Exec(upsertPrefSQL, key, value, time.Now().UTC()).Error; err != nil {
@@ -310,6 +398,8 @@ func fromStored(stored map[string]string) Settings {
 		SnoozeWake:          snooze.DecodeRules(stored),
 		WindowSize:          DefaultWindowSize(),
 		DefaultWindowSize:   DefaultWindowSize(),
+		SensitiveFiles:      sensitive.DecodeConfig(stored),
+		SensitiveCategories: sensitive.Categories(),
 	}
 
 	if v := stored[KeyDefaultProfile]; v != "" {

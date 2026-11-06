@@ -26,6 +26,7 @@ import {
   type InboxItem,
   type ItemResolution,
   type LaunchDefaults,
+  type LaunchHold,
   type LaunchRequest,
   type LaunchResult,
   type Profile,
@@ -34,6 +35,7 @@ import {
 } from '../platform'
 import { ConfirmDialog } from './ConfirmDialog'
 import { AlertIcon, ChevronDownIcon, TerminalIcon } from './icons'
+import { LaunchHoldDialog } from './LaunchHoldDialog'
 import { LaunchMenu } from './LaunchMenu'
 
 export interface LaunchControlsProps {
@@ -51,10 +53,12 @@ export interface LaunchControlsProps {
 }
 
 // LaunchState is where the row's launch stands. A launch that finds no local clone ends
-// in noClone, which keeps the request so a confirmed clone can continue it.
+// in noClone, which keeps the request so a confirmed clone can continue it; one the app
+// held back for the user to confirm ends in held, which keeps the request to send again.
 type LaunchState =
   | { kind: 'idle' }
   | { kind: 'launching' }
+  | { kind: 'held'; hold: LaunchHold; request: LaunchRequest }
   | { kind: 'cloning'; target: CloneTarget }
   | { kind: 'launched'; result: LaunchResult }
   | { kind: 'failed'; message: string }
@@ -164,13 +168,20 @@ export function LaunchControls({
     }
   }, [open, panelRef])
 
-  // run launches request. When the launch fails, it asks whether the repository has a
-  // local clone, and offers to clone it when it has none.
+  // run launches request. A launch the app holds back asks the user to confirm; when the
+  // launch fails, it asks whether the repository has a local clone, and offers to clone
+  // it when it has none.
   const run = (request: LaunchRequest) => {
     setState({ kind: 'launching' })
 
     launch(request)
       .then((result) => {
+        if (result.hold !== null) {
+          setState({ kind: 'held', hold: result.hold, request })
+
+          return
+        }
+
         setState({ kind: 'launched', result })
         setChoices(noChoices)
         setStatus(null)
@@ -363,6 +374,18 @@ export function LaunchControls({
             </button>
           )}
         </div>
+      )}
+      {state.kind === 'held' && (
+        <LaunchHoldDialog
+          hold={state.hold}
+          agentName={agentName}
+          onCancel={() => {
+            setState({ kind: 'idle' })
+          }}
+          onConfirm={() => {
+            run({ ...state.request, confirmed: state.hold.key })
+          }}
+        />
       )}
       {confirmingClone && state.kind === 'noClone' && (
         <ConfirmDialog

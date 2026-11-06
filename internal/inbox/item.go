@@ -37,7 +37,8 @@ type storedItem struct {
 // as a pull request they just merged, shows without refreshing the whole inbox.
 //
 // An item still open gets its card and details rewritten and stays in the lists it is
-// in; only the searches of a whole refresh can tell which lists those are. An item
+// in; only the searches of a whole refresh can tell which lists those are. A pull request
+// whose files are checked has them checked again when its head moved. An item
 // merged, closed, or deleted since, or whose repository was archived, leaves every list,
 // as a whole refresh would have it. New activity on a snoozed item can end the snooze.
 //
@@ -81,19 +82,26 @@ func (s *Service) refreshItem(ctx context.Context, id int64) error {
 		return ErrIncompleteFetch
 	}
 
-	return github.Redact(s.saveItemUpdate(ctx, id, rows[0], update), tok)
+	files, err := s.checkUpdatedFiles(ctx, tok, id, update)
+	if err != nil {
+		return github.Redact(err, tok)
+	}
+
+	return github.Redact(s.saveItemUpdate(ctx, id, rows[0], update, files), tok)
 }
 
 // saveItemUpdate stores what one item's refresh read, in one transaction, with the
-// query's budget reading.
-func (s *Service) saveItemUpdate(ctx context.Context, id int64, stored storedItem, update *github.ItemUpdate) error {
+// query's budget reading and the item's file check, if one ran.
+func (s *Service) saveItemUpdate(
+	ctx context.Context, id int64, stored storedItem, update *github.ItemUpdate, files map[string]fileCheck,
+) error {
 	now := s.now()
 	it := update.Item
 
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		w := &writer{
 			tx: tx, now: now, accountID: stored.AccountID, repos: make(map[string]int64),
-			details: map[string]github.ItemDetails{it.NodeID: update.Details},
+			details: map[string]github.ItemDetails{it.NodeID: update.Details}, files: files,
 		}
 
 		if err := w.saveGraphQLRate(update.RateLimit); err != nil {
@@ -104,24 +112,34 @@ func (s *Service) saveItemUpdate(ctx context.Context, id int64, stored storedIte
 			return w.unlist(id, update)
 		}
 
-		err := w.exec("update the item", updateItemSQL,
-			it.NodeID, it.Title, it.URL, it.AuthorLogin, it.AuthorType, it.AuthorAssociation, it.IsCrossRepository,
-			it.IsDraft, it.HeadRef, it.CreatedAt.UTC(), it.UpdatedAt.UTC(), now, id)
-		if err != nil {
-			return err
-		}
-
-		if err = w.saveDetails(id, it); err != nil {
-			return err
-		}
-
-		return w.wakeSnoozed()
+		return w.rewrite(id, it)
 	})
 	if err != nil {
 		return fmt.Errorf("save the item: %w", err)
 	}
 
 	return nil
+}
+
+// rewrite stores what GitHub says about an open item in place, with its details and file
+// check, then ends the snoozes the new details give cause to.
+func (w *writer) rewrite(id int64, it github.Item) error {
+	err := w.exec("update the item", updateItemSQL,
+		it.NodeID, it.Title, it.URL, it.AuthorLogin, it.AuthorType, it.AuthorAssociation, it.IsCrossRepository,
+		it.IsDraft, it.HeadRef, it.CreatedAt.UTC(), it.UpdatedAt.UTC(), w.now, id)
+	if err != nil {
+		return err
+	}
+
+	if err = w.saveDetails(id, it); err != nil {
+		return err
+	}
+
+	if err = w.saveFiles(id, it); err != nil {
+		return err
+	}
+
+	return w.wakeSnoozed()
 }
 
 // unlist takes an item out of every list. An item in an archived repository records the

@@ -68,6 +68,13 @@ type fakeClient struct {
 	detailsIDs  [][]string
 	itemIDs     []string
 
+	// files holds each pull request's changed files by "owner/name#number"; its Head is
+	// also what FetchPullHead reports. filesErr fails every file and head request.
+	files     map[string]*github.ChangedFiles
+	filesErr  error
+	fileReads []string
+	headReads []string
+
 	// inboxGate, when set, holds the inbox query until a details request has started,
 	// which only happens when the two run side by side.
 	inboxGate  chan struct{}
@@ -147,6 +154,48 @@ func (c *fakeClient) FetchItem(_ context.Context, tok github.Token, id string) (
 	}
 
 	return &github.ItemUpdate{}, nil
+}
+
+// FetchPullHead answers with the head of the canned files.
+func (c *fakeClient) FetchPullHead(_ context.Context, tok github.Token, ref github.ItemRef) (*github.PullHead, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.gotTokens = append(c.gotTokens, tok.Reveal())
+	c.headReads = append(c.headReads, ref.String())
+
+	if c.filesErr != nil {
+		return nil, c.filesErr
+	}
+
+	files, ok := c.files[ref.String()]
+	if !ok {
+		return nil, &github.StatusError{StatusCode: 404, Message: "Not Found"}
+	}
+
+	return &github.PullHead{Head: files.Head, ChangedFiles: files.Total, State: "open"}, nil
+}
+
+// FetchChangedFiles answers with the canned files, whatever head was asked for.
+func (c *fakeClient) FetchChangedFiles(
+	_ context.Context, tok github.Token, ref github.ItemRef, _ string,
+) (*github.ChangedFiles, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.gotTokens = append(c.gotTokens, tok.Reveal())
+	c.fileReads = append(c.fileReads, ref.String())
+
+	if c.filesErr != nil {
+		return nil, c.filesErr
+	}
+
+	files, ok := c.files[ref.String()]
+	if !ok {
+		return nil, &github.StatusError{StatusCode: 404, Message: "Not Found"}
+	}
+
+	return files, nil
 }
 
 func (c *fakeClient) FetchAvatar(_ context.Context, url string) (*github.Avatar, error) {

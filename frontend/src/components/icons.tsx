@@ -312,3 +312,23 @@ export function PinIcon({ className, filled = false }: IconProps & { filled?: bo
     </Icon>
   )
 }
+
+// ShieldAlertIcon marks files that deserve a closer look before a review or a launch.
+export function ShieldAlertIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M12 3.5l7 2.75v5.5c0 4.25-2.85 7.6-7 8.75-4.15-1.15-7-4.5-7-8.75v-5.5z" />
+      <path d="M12 8.5v4M12 15.25v.25" />
+    </Icon>
+  )
+}
+
+// ShieldCheckIcon marks files that were checked and found nothing to point out.
+export function ShieldCheckIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M12 3.5l7 2.75v5.5c0 4.25-2.85 7.6-7 8.75-4.15-1.15-7-4.5-7-8.75v-5.5z" />
+      <path d="M9 12.25l2.25 2.25 4-4.25" />
+    </Icon>
+  )
+}

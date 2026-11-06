@@ -159,6 +159,11 @@ export function App() {
     openSettingsAt('snoozing')
   }, [openSettingsAt])
 
+  // openFilesSettings opens what counts as a sensitive file.
+  const openFilesSettings = useCallback(() => {
+    openSettingsAt('files')
+  }, [openSettingsAt])
+
   const closeSettings = useCallback(() => {
     setView(returnView)
   }, [returnView])
@@ -183,7 +188,8 @@ export function App() {
   const { reload: reloadInbox } = inbox
 
   // saveSettings records changed settings: every row's launch settings resolve again, and
-  // the stored inbox is read again, since the trusted bots decide each card's trust.
+  // the stored inbox is read again, since the trusted bots decide each card's trust and the
+  // sensitive-file settings what each card points out.
   const saveSettings = useCallback(
     (next: Settings) => {
       setSettings(next)
@@ -244,6 +250,7 @@ export function App() {
             launch={launch}
             snoozeDays={config.settings?.snoozeDays ?? defaultSnoozeDays}
             onSnoozeSettings={openSnoozeSettings}
+            onFilesSettings={openFilesSettings}
             collapsed={sections.collapsed}
             onCollapse={sections.setCollapsed}
           />
