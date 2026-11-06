@@ -150,6 +150,12 @@ A single toolbar runs beside the macOS window controls. It holds the **Inbox**, 
 and **Prompts** tabs and, on the right, the API budget gauge and your profile picture. Drag the
 bar to move the window, and double-click it to zoom.
 
+**Tab counts.** **Inbox** counts the items in your lists, leaving out what is snoozed or
+dismissed. An item in two lists, such as a pull request you opened and are assigned, counts
+once. **Worktrees** counts the linked worktrees on disk across every clone under the clone root,
+main worktrees aside, with an amber dot while some are done on GitHub but still on disk. Hover
+either tab for what its number means. **Prompts** has no count.
+
 **Account menu.** Click your picture for who is signed in, **Settings** (also ⌘,), and **View
 GitHub profile**. After a refresh, the picture is downloaded from
 `avatars.githubusercontent.com` without your token and cached in the database, so it shows
@@ -627,9 +633,10 @@ listing every clone, and, with **Clean up after merging** on (**Settings → Lau
 default), cleans up each finished worktree whose pull request merged or whose issue closed. It
 takes only worktrees the app launched, or whose HEAD is the merged pull request's own head
 commit, so a worktree is never matched by its name alone. A toast names what was cleaned up,
-with **View** to open the list below, and the **Worktrees** tab counts the worktrees that are
-done on GitHub but still on disk. Removing a worktree also removes the files git ignores in it,
-such as build output, as the agent's own cleanup does.
+with **View** to open the list below. The same check updates the **Worktrees** tab's count,
+which it reads from each clone's git directory without running git, and marks the tab while
+some worktrees are done on GitHub but still on disk. Removing a worktree also removes the files
+git ignores in it, such as build output, as the agent's own cleanup does.
 
 **Recently cleaned up.** A toast is easy to miss, so every cleanup, by hand or automatic, is
 also recorded, and the bottom of the Worktrees view lists the newest five (**Show more** for

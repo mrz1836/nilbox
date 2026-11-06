@@ -1,4 +1,4 @@
-import type { InboxItem, InboxList, WakeReasons } from '../platform'
+import type { InboxItem, InboxList, InboxSnapshot, WakeReasons } from '../platform'
 import { counted } from './format'
 
 // Triage as the inbox shows it. The snapshot keeps every item in its lists with its
@@ -126,6 +126,23 @@ export function triageList(list: InboxList, now: Date): TriagedList {
   const total = Math.max(list.total - snoozed.length - dismissed.length, inbox.length)
 
   return { inbox, snoozed, dismissed, total }
+}
+
+// inboxCount counts the items in the inbox at now: those in any list's own tab, neither
+// snoozed nor dismissed. An item in more than one list, such as a pull request you wrote
+// and are assigned, counts once.
+export function inboxCount(snapshot: InboxSnapshot, now: Date): number {
+  const ids = new Set<number>()
+
+  for (const list of [snapshot.reviewRequested, snapshot.authored, snapshot.assigned]) {
+    for (const item of list.items ?? []) {
+      if (!isDismissed(item) && !isSnoozed(item, now)) {
+        ids.add(item.id)
+      }
+    }
+  }
+
+  return ids.size
 }
 
 // snoozeLength names a snooze length: "1 day", "3 days", "1 week", "2 weeks".

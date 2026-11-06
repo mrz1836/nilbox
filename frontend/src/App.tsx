@@ -6,7 +6,7 @@ import { PromptsView } from './components/PromptsView'
 import { SettingsView, type SettingsSection } from './components/SettingsView'
 import { Toast, type ToastMessage } from './components/Toast'
 import { WorktreesView } from './components/WorktreesView'
-import { defaultSnoozeDays } from './lib/triage'
+import { defaultSnoozeDays, inboxCount } from './lib/triage'
 import { useCollapsedSections } from './lib/useCollapsedSections'
 import { useInbox } from './lib/useInbox'
 import { useLaunchConfig } from './lib/useLaunchConfig'
@@ -29,10 +29,12 @@ function cleanedToast(seq: number, cleaned: readonly RemoveResult[]): ToastMessa
   }
 }
 
-// useWorktreeSweeps follows the automatic worktree cleanup: how many worktrees are done
-// on GitHub but still on disk, the latest sweep that changed something (so an open
-// Worktrees view lists again), and a toast for each sweep that removed a worktree.
+// useWorktreeSweeps follows the automatic worktree cleanup: how many linked worktrees are
+// on disk and how many of them are done on GitHub, the latest sweep that changed
+// something (so an open Worktrees view lists again), and a toast for each sweep that
+// removed a worktree.
 function useWorktreeSweeps() {
+  const [count, setCount] = useState(0)
   const [attention, setAttention] = useState(0)
   const [seq, setSeq] = useState(0)
   const [toast, setToast] = useState<ToastMessage | null>(null)
@@ -50,6 +52,7 @@ function useWorktreeSweeps() {
           }
 
           seen.current = report.seq
+          setCount(report.worktreeCount)
           setAttention(report.leftover)
           setSeq(report.seq)
 
@@ -74,6 +77,7 @@ function useWorktreeSweeps() {
 
   // listed counts from a listing of the Worktrees view, which sees the same worktrees.
   const listed = useCallback((snapshot: WorktreesSnapshot) => {
+    setCount(snapshot.worktreeCount)
     setAttention(snapshot.finishedCount + snapshot.reviewCount)
   }, [])
 
@@ -81,7 +85,7 @@ function useWorktreeSweeps() {
     setToast(null)
   }, [])
 
-  return { attention, seq, toast, listed, closeToast }
+  return { count, attention, seq, toast, listed, closeToast }
 }
 
 // App is the window's root: the toolbar over the active page. It holds the state the
@@ -208,6 +212,10 @@ export function App() {
   )
 
   const account = inbox.snapshot?.account ?? null
+  const inboxItems = useMemo(
+    () => (inbox.snapshot === null ? 0 : inboxCount(inbox.snapshot, inbox.now)),
+    [inbox.snapshot, inbox.now],
+  )
 
   return (
     <div className="flex h-screen flex-col bg-background text-text">
@@ -217,6 +225,8 @@ export function App() {
         account={account}
         gauge={inbox.snapshot?.rate ?? null}
         now={inbox.now}
+        inboxCount={inboxItems}
+        worktreeCount={sweeps.count}
         worktreeAttention={sweeps.attention}
         onOpenSettings={openSettings}
       />

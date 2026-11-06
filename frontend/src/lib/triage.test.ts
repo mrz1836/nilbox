@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { item, list } from '../test/fixtures'
+import { item, list, snapshot } from '../test/fixtures'
 import {
   capitalize,
   formatFull,
   formatWhen,
+  inboxCount,
   isBackFromSnooze,
   isDismissed,
   isSnoozed,
@@ -88,6 +89,30 @@ describe('triageList', () => {
       dismissed: [],
       total: 0,
     })
+  })
+})
+
+describe('inboxCount', () => {
+  it('counts what is in the inbox, each item once, leaving out what is snoozed or dismissed', () => {
+    const mine = item({ id: 1 })
+    const review = item({ id: 2 })
+    const back = item({ id: 3, snoozedUntil: at(-2) })
+
+    const counted = inboxCount(
+      snapshot({
+        reviewRequested: list([review, item({ id: 4, snoozedUntil: at(5) })]),
+        authored: list([mine, back, item({ id: 5, dismissedAt: at(-1) })], 40),
+        assigned: list([mine]),
+      }),
+      now,
+    )
+
+    expect(counted).toBe(3)
+  })
+
+  it('is 0 for an empty inbox, and reads a missing list as empty', () => {
+    expect(inboxCount(snapshot(), now)).toBe(0)
+    expect(inboxCount(snapshot({ authored: { items: null, shown: 0, total: 0 } }), now)).toBe(0)
   })
 })
 

@@ -321,7 +321,7 @@ describe('App', () => {
     expect(screen.queryByRole('navigation', { name: 'Settings sections' })).not.toBeInTheDocument()
   })
 
-  it('counts the worktrees worth a look on the Worktrees tab and toasts an automatic cleanup', async () => {
+  it('counts the worktrees on the Worktrees tab, marks those worth a look, and toasts an automatic cleanup', async () => {
     let swept: () => void = () => undefined
     const stop = vi.fn()
     platform.onWorktreesUpdated.mockImplementation((listener: () => void) => {
@@ -329,13 +329,16 @@ describe('App', () => {
 
       return stop
     })
-    platform.lastWorktreeSweep.mockResolvedValue(sweepReport({ seq: 1, leftover: 2 }))
+    platform.lastWorktreeSweep.mockResolvedValue(sweepReport({ seq: 1, leftover: 2, worktreeCount: 5 }))
 
     const { unmount } = render(<App />)
 
     const tab = screen.getByRole('button', { name: 'Worktrees' })
-    expect(await within(tab).findByText('2')).toBeInTheDocument()
-    expect(tab).toHaveAttribute('title', '2 worktrees are done on GitHub but still on disk')
+    await vi.waitFor(() => {
+      expect(tab).toHaveTextContent('Worktrees5')
+    })
+    expect(tab).toHaveAccessibleDescription('5 linked worktrees, 2 done on GitHub but still on disk')
+    expect(within(tab).getByTestId('worktree-attention')).toBeInTheDocument()
     expect(screen.queryByText(/Cleaned up/)).not.toBeInTheDocument()
 
     // A sweep removed two worktrees, one of them for an item.
@@ -343,6 +346,7 @@ describe('App', () => {
       sweepReport({
         seq: 2,
         leftover: 1,
+        worktreeCount: 3,
         cleaned: [
           {
             repoPath: '/home/user/projects/example-repo',
@@ -374,8 +378,8 @@ describe('App', () => {
     expect(
       screen.getByText(/acme-org\/example-repo#7, ~\/projects\/example-repo\/\.claude\/worktrees\/pr-8/),
     ).toBeInTheDocument()
-    expect(within(tab).getByText('1')).toBeInTheDocument()
-    expect(tab).toHaveAttribute('title', '1 worktree is done on GitHub but still on disk')
+    expect(tab).toHaveTextContent('Worktrees3')
+    expect(tab).toHaveAccessibleDescription('3 linked worktrees, 1 done on GitHub but still on disk')
 
     // An event for a sweep already read changes nothing; a later one with one cleaned
     // worktree says so.
@@ -387,6 +391,7 @@ describe('App', () => {
     platform.lastWorktreeSweep.mockResolvedValue(
       sweepReport({
         seq: 3,
+        worktreeCount: 2,
         cleaned: [
           {
             repoPath: '/r',
@@ -406,8 +411,9 @@ describe('App', () => {
     })
 
     expect(await screen.findByText('Cleaned up a finished worktree')).toBeInTheDocument()
-    expect(within(tab).queryByText('1')).not.toBeInTheDocument()
-    expect(tab).not.toHaveAttribute('title')
+    expect(tab).toHaveTextContent('Worktrees2')
+    expect(tab).toHaveAccessibleDescription('2 linked worktrees')
+    expect(within(tab).queryByTestId('worktree-attention')).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: 'Close' }))
     expect(screen.queryByText('Cleaned up a finished worktree')).not.toBeInTheDocument()
@@ -423,17 +429,20 @@ describe('App', () => {
 
       return () => undefined
     })
-    platform.listWorktrees.mockResolvedValue(worktreesSnapshot({ finishedCount: 2, reviewCount: 1 }))
+    platform.listWorktrees.mockResolvedValue(worktreesSnapshot({ worktreeCount: 6, finishedCount: 2, reviewCount: 1 }))
 
     render(<App />)
     const tab = screen.getByRole('button', { name: 'Worktrees' })
     await userEvent.click(tab)
 
-    expect(await within(tab).findByText('3')).toBeInTheDocument()
+    await vi.waitFor(() => {
+      expect(tab).toHaveTextContent('Worktrees6')
+    })
+    expect(tab).toHaveAccessibleDescription('6 linked worktrees, 3 done on GitHub but still on disk')
     expect(platform.listWorktrees).toHaveBeenCalledOnce()
 
-    platform.lastWorktreeSweep.mockResolvedValue(sweepReport({ seq: 4, leftover: 0 }))
-    platform.listWorktrees.mockResolvedValue(worktreesSnapshot())
+    platform.lastWorktreeSweep.mockResolvedValue(sweepReport({ seq: 4, leftover: 0, worktreeCount: 0 }))
+    platform.listWorktrees.mockResolvedValue(worktreesSnapshot({ worktreeCount: 0, repos: [] }))
     await act(async () => {
       swept()
       await Promise.resolve()
@@ -445,6 +454,43 @@ describe('App', () => {
     await vi.waitFor(() => {
       expect(within(tab).queryByText(/\d/)).not.toBeInTheDocument()
     })
+    expect(tab).not.toHaveAttribute('title')
+  })
+
+  it('counts the items in the inbox on the Inbox tab, each once, as the inbox changes', async () => {
+    let updated: () => void = () => undefined
+    platform.onInboxUpdated.mockImplementation((listener: () => void) => {
+      updated = listener
+
+      return () => undefined
+    })
+
+    const mine = item({ id: 2, number: 8, title: 'Tidy the cache keys' })
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ reviewRequested: list([item()]), authored: list([mine]), assigned: list([mine]) }),
+    )
+
+    render(<App />)
+    const tab = screen.getByRole('button', { name: 'Inbox' })
+
+    await vi.waitFor(() => {
+      expect(tab).toHaveTextContent('Inbox2')
+    })
+    expect(tab).toHaveAccessibleDescription('2 items in the inbox')
+
+    const dismissed = { ...mine, dismissedAt: '2026-06-15T12:00:00Z' }
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ reviewRequested: list([item()]), authored: list([dismissed]), assigned: list([dismissed]) }),
+    )
+    await act(async () => {
+      updated()
+      await Promise.resolve()
+    })
+
+    await vi.waitFor(() => {
+      expect(tab).toHaveTextContent('Inbox1')
+    })
+    expect(tab).toHaveAccessibleDescription('1 item in the inbox')
   })
 
   it("opens the recently cleaned-up list from a cleanup toast's View", async () => {

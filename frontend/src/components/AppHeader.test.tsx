@@ -54,19 +54,39 @@ describe('AppHeader', () => {
     ).not.toBeNull()
   })
 
-  it('counts the worktrees worth a look on the Worktrees tab', () => {
-    renderHeader({ worktreeAttention: 3 })
+  it('counts the items in the inbox and the linked worktrees, but not the prompts', () => {
+    renderHeader({ inboxCount: 1234, worktreeCount: 5 })
 
-    const tab = screen.getByRole('button', { name: 'Worktrees' })
-    expect(tab).toHaveTextContent('Worktrees3')
-    expect(tab).toHaveAttribute('title', '3 worktrees are done on GitHub but still on disk')
-    expect(screen.getByRole('button', { name: 'Inbox' })).not.toHaveAttribute('title')
+    const inbox = screen.getByRole('button', { name: 'Inbox' })
+    expect(inbox).toHaveTextContent('Inbox1,234')
+    expect(inbox).toHaveAccessibleDescription('1,234 items in the inbox')
+
+    const worktrees = screen.getByRole('button', { name: 'Worktrees' })
+    expect(worktrees).toHaveTextContent('Worktrees5')
+    expect(worktrees).toHaveAccessibleDescription('5 linked worktrees')
+    expect(screen.queryByTestId('worktree-attention')).not.toBeInTheDocument()
+
+    const prompts = screen.getByRole('button', { name: 'Prompts' })
+    expect(prompts).toHaveTextContent(/^Prompts$/)
+    expect(prompts).not.toHaveAttribute('title')
   })
 
-  it('shows no count when no worktree needs a look', () => {
+  it('marks the worktree count when some are done on GitHub but still on disk', () => {
+    renderHeader({ inboxCount: 1, worktreeCount: 4, worktreeAttention: 2 })
+
+    const worktrees = screen.getByRole('button', { name: 'Worktrees' })
+    expect(worktrees).toHaveTextContent('Worktrees4')
+    expect(worktrees).toHaveAccessibleDescription('4 linked worktrees, 2 done on GitHub but still on disk')
+    expect(screen.getByTestId('worktree-attention')).toHaveAttribute('aria-hidden', 'true')
+    expect(screen.getByRole('button', { name: 'Inbox' })).toHaveAccessibleDescription('1 item in the inbox')
+  })
+
+  it('shows no count while there is nothing to count', () => {
     renderHeader()
 
-    expect(screen.queryByTestId('worktree-attention')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('inbox-count')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('worktrees-count')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Inbox' })).not.toHaveAttribute('title')
     expect(screen.getByRole('button', { name: 'Worktrees' })).not.toHaveAttribute('title')
   })
 
