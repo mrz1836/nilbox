@@ -14,6 +14,8 @@ const platform = vi.hoisted(() => ({
   setDefaultProfile: vi.fn(),
   setTerminal: vi.fn(),
   setWorktreeDefault: vi.fn(),
+  setWorktreeAutoCleanup: vi.fn(),
+  sweepWorktrees: vi.fn(),
   setSnoozeDays: vi.fn(),
   setSnoozeWake: vi.fn(),
   setWindowSize: vi.fn(),
@@ -333,6 +335,47 @@ describe('SettingsView', () => {
     await openSection('Launching')
 
     await userEvent.click(screen.getByRole('switch', { name: 'Start in a worktree' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('database is locked')
+  })
+
+  it('turns the automatic worktree cleanup off and on, sweeping at once when turned on', async () => {
+    const { onSaved } = renderSettings()
+    await openSection('Launching')
+
+    const toggle = screen.getByRole('switch', { name: 'Clean up after merging' })
+    expect(toggle).toBeChecked()
+    expect(toggle).toHaveAccessibleDescription(/once its pull request merges or its issue closes/)
+
+    await userEvent.click(toggle)
+
+    expect(platform.setWorktreeAutoCleanup).toHaveBeenCalledWith(false)
+    await vi.waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(settings({ worktreeAutoCleanup: false }))
+    })
+    expect(platform.sweepWorktrees).not.toHaveBeenCalled()
+  })
+
+  it('sweeps when the automatic cleanup is turned on, and shows a refusal', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    platform.sweepWorktrees.mockRejectedValue(new Error('no clone root'))
+    const { onSaved } = renderSettings({ current: settings({ worktreeAutoCleanup: false }) })
+    await openSection('Launching')
+
+    await userEvent.click(screen.getByRole('switch', { name: 'Clean up after merging' }))
+
+    expect(platform.setWorktreeAutoCleanup).toHaveBeenCalledWith(true)
+    await vi.waitFor(() => {
+      expect(platform.sweepWorktrees).toHaveBeenCalledOnce()
+    })
+    await vi.waitFor(() => {
+      expect(error).toHaveBeenCalledWith('could not sweep the worktrees', expect.any(Error))
+    })
+    expect(onSaved).toHaveBeenCalledWith(settings({ worktreeAutoCleanup: true }))
+    error.mockRestore()
+
+    platform.setWorktreeAutoCleanup.mockRejectedValue(new Error('database is locked'))
+    await userEvent.click(screen.getByRole('switch', { name: 'Clean up after merging' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('database is locked')
   })

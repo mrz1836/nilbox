@@ -4,12 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
+	"log/slog"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/launchlog"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/settings"
 )
@@ -30,6 +35,32 @@ var (
 	// ErrLocked is returned for a locked worktree, which is never removed: a running
 	// session usually holds the lock.
 	ErrLocked = errors.New("the worktree is locked, usually by a running session; unlock it with git worktree unlock first")
+
+	// ErrNotLocked is returned when unlocking a worktree that has no lock.
+	ErrNotLocked = errors.New("the worktree is not locked")
+
+	// ErrHandLock is returned for a lock that no agent session wrote; only the user who
+	// set it should release it.
+	ErrHandLock = errors.New("the worktree was locked by hand, not by an agent session; unlock it yourself with git worktree unlock")
+
+	// ErrSessionRunning is returned for an agent lock whose session may still be running.
+	ErrSessionRunning = errors.New("the agent session that locked the worktree may still be running")
+
+	// ErrChanged is returned when a worktree's commit or lock changed since it was checked.
+	ErrChanged = errors.New("the worktree changed since it was checked; refresh and try again")
+
+	// ErrNotFinished is returned by CleanUp for a worktree that is not finished.
+	ErrNotFinished = errors.New("the worktree is not finished")
+
+	// ErrCleanUpFailed is returned by CleanUp when a step of the removal was refused.
+	ErrCleanUpFailed = errors.New("the worktree could not be cleaned up")
+
+	// ErrBranchInUse is returned when a branch to delete is checked out in a worktree.
+	ErrBranchInUse = errors.New("the branch is checked out in a worktree")
+
+	// ErrGitHubUnavailable is returned when GitHub could not say which worktrees are
+	// finished.
+	ErrGitHubUnavailable = errors.New("GitHub could not be asked which worktrees are finished")
 
 	// ErrNotAWorktree is returned for a path that is not a linked worktree of the
 	// repository.
@@ -91,7 +122,27 @@ type Clock interface {
 	Now() time.Time
 }
 
-// Config holds a Service's dependencies. Finder and Clock are optional.
+// GitHub reads the current state of pull requests and issues. A GitHub CLI token and a
+// github.Client implement it in the app.
+type GitHub interface {
+	ItemStates(ctx context.Context, refs []github.ItemRef) (map[github.ItemRef]github.ItemState, error)
+}
+
+// Launches reads and prunes the record of the worktrees the app launched sessions in.
+// *launchlog.Store implements it.
+type Launches interface {
+	List(ctx context.Context) ([]launchlog.Launch, error)
+	Forget(ctx context.Context, clonePath, worktree string) error
+}
+
+// Notifier is told when an automatic sweep removed a worktree or changed how many need
+// the user's attention.
+type Notifier interface {
+	WorktreesUpdated()
+}
+
+// Config holds a Service's dependencies. Settings and Git are required; the rest are
+// optional.
 type Config struct {
 	// Settings supplies the clone root.
 	Settings SettingsReader
@@ -108,6 +159,19 @@ type Config struct {
 
 	// Clock stamps snapshots. It defaults to the system clock.
 	Clock Clock
+
+	// GitHub reads the state of the items worktrees are linked to. Without it no
+	// worktree is linked, so none is ever finished.
+	GitHub GitHub
+
+	// Launches holds the worktrees the app launched sessions in.
+	Launches Launches
+
+	// Notifier is told when a sweep changed something.
+	Notifier Notifier
+
+	// Logger receives sweep failures. It defaults to slog.Default().
+	Logger *slog.Logger
 }
 
 // Service lists and removes worktrees of the clones under the clone root.
@@ -118,6 +182,22 @@ type Service struct {
 	home     string
 	realHome string
 	clock    Clock
+	github   GitHub
+	launches Launches
+	notifier Notifier
+	logger   *slog.Logger
+	procs    processTable
+
+	// zone is the machine's time zone, which an agent lock's start may be written in.
+	zone *time.Location
+
+	// act serializes every change, so a sweep and a click never work on the same
+	// worktree at once.
+	act sync.Mutex
+
+	// mu guards last.
+	mu   sync.Mutex
+	last SweepReport
 }
 
 // NewService returns a worktrees Service over cfg.
@@ -132,6 +212,11 @@ func NewService(cfg Config) *Service {
 		realHome = resolvedPath(cfg.Home)
 	}
 
+	logger := cfg.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+
 	return &Service{
 		settings: cfg.Settings,
 		run:      cfg.Git,
@@ -139,15 +224,21 @@ func NewService(cfg Config) *Service {
 		home:     cfg.Home,
 		realHome: realHome,
 		clock:    clock,
+		github:   cfg.GitHub,
+		launches: cfg.Launches,
+		notifier: cfg.Notifier,
+		logger:   logger,
+		procs:    osProcesses{},
+		zone:     time.Local, //nolint:gosmopolitan // the agent writes a session's start in the machine's zone or in UTC
 	}
 }
 
 // List scans the clone root and returns every repository that has linked worktrees,
-// with the status of each worktree. A repository that git cannot read is listed with an
-// error rather than hiding the rest. A clone that is itself a linked worktree of another
-// clone is folded into that repository.
+// with the status of each worktree and the pull request or issue it was made for. A
+// repository that git cannot read is listed with an error rather than hiding the rest. A
+// clone that is itself a linked worktree of another clone is folded into that repository.
 func (s *Service) List(ctx context.Context) (Snapshot, error) {
-	g, root, err := s.prepare(ctx)
+	g, root, _, err := s.prepare(ctx)
 	if err != nil {
 		return Snapshot{}, err
 	}
@@ -157,25 +248,7 @@ func (s *Service) List(ctx context.Context) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 
-	listed := make([]listedRepo, len(clones))
-
-	eg, ectx := errgroup.WithContext(ctx)
-	eg.SetLimit(listConcurrency)
-
-	for i, clone := range clones {
-		eg.Go(func() error {
-			repo, listErr := s.listRepo(ectx, g, clone.Path)
-			listed[i] = repo
-
-			return listErr
-		})
-	}
-
-	if err = eg.Wait(); err != nil {
-		return Snapshot{}, err
-	}
-
-	return s.snapshot(root, listed), nil
+	return s.assessClones(ctx, g, root, clones)
 }
 
 // Remove removes one linked worktree without --force. The repository must be a clone
@@ -183,19 +256,20 @@ func (s *Service) List(ctx context.Context) (Snapshot, error) {
 // locked worktrees are refused before git runs, and git itself refuses a worktree with
 // uncommitted changes, which comes back as a RefusedError.
 func (s *Service) Remove(ctx context.Context, repoPath, path string) error {
-	g, e, err := s.removable(ctx, repoPath, path)
-	if err != nil {
-		return err
-	}
+	s.act.Lock()
+	defer s.act.Unlock()
 
-	return s.removeEntry(ctx, g, repoPath, e, false)
+	return s.remove(ctx, repoPath, path)
 }
 
 // ForceRemove removes one unlocked linked worktree that has uncommitted changes,
 // discarding them, with a single --force. Locked worktrees are refused even here, so a
 // running session's worktree is never pulled out from under it.
 func (s *Service) ForceRemove(ctx context.Context, repoPath, path string) error {
-	g, e, err := s.removable(ctx, repoPath, path)
+	s.act.Lock()
+	defer s.act.Unlock()
+
+	g, e, err := s.removable(ctx, repoPath, path, "")
 	if err != nil {
 		return err
 	}
@@ -220,6 +294,9 @@ func (s *Service) ForceRemove(ctx context.Context, repoPath, path string) error 
 // exists, one at a time, and reports each outcome. Each removal is re-checked against
 // the repository first, and git refuses any worktree that changed in the meantime.
 func (s *Service) RemoveAllClean(ctx context.Context) ([]RemoveResult, error) {
+	s.act.Lock()
+	defer s.act.Unlock()
+
 	snap, err := s.List(ctx)
 	if err != nil {
 		return nil, err
@@ -233,7 +310,7 @@ func (s *Service) RemoveAllClean(ctx context.Context) ([]RemoveResult, error) {
 			return results, err
 		}
 
-		if err = s.Remove(ctx, target.RepoPath, target.Path); err != nil {
+		if err = s.remove(ctx, target.RepoPath, target.Path); err != nil {
 			target.Reason = reasonOf(err)
 		} else {
 			target.Removed = true
@@ -248,6 +325,9 @@ func (s *Service) RemoveAllClean(ctx context.Context) ([]RemoveResult, error) {
 // Prune clears the repository's entries for worktrees whose directories are gone. It
 // never touches a worktree that still exists or any branch.
 func (s *Service) Prune(ctx context.Context, repoPath string) error {
+	s.act.Lock()
+	defer s.act.Unlock()
+
 	g, err := s.checkedGit(ctx, repoPath)
 	if err != nil {
 		return err
@@ -260,24 +340,101 @@ func (s *Service) Prune(ctx context.Context, repoPath string) error {
 	return nil
 }
 
-// prepare resolves git and the clone root.
-func (s *Service) prepare(ctx context.Context) (git, string, error) {
+// remove is Remove without taking the action lock.
+func (s *Service) remove(ctx context.Context, repoPath, path string) error {
+	g, e, err := s.removable(ctx, repoPath, path, "")
+	if err != nil {
+		return err
+	}
+
+	return s.removeEntry(ctx, g, repoPath, e, false)
+}
+
+// assessClones lists the given clones' worktrees, links them to their items, and works
+// out each one's stage.
+func (s *Service) assessClones(ctx context.Context, g git, root string, clones []localrepos.LocalRepo) (Snapshot, error) {
+	listed := make([]listedRepo, len(clones))
+	remotes := make(map[string]map[string]string, len(clones))
+
+	eg, ectx := errgroup.WithContext(ctx)
+	eg.SetLimit(listConcurrency)
+
+	for i, clone := range clones {
+		remotes[clone.Path] = clone.Remotes
+
+		eg.Go(func() error {
+			repo, listErr := s.listRepo(ectx, g, clone.Path)
+			listed[i] = repo
+
+			return listErr
+		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		return Snapshot{}, err
+	}
+
+	snap := s.snapshot(root, listed)
+	snap.LinkError = s.link(ctx, snap.Repos, remotes, s.launchRecords(ctx))
+	s.tally(&snap)
+
+	return snap, nil
+}
+
+// launchRecords reads the launch records. Without them worktrees are still linked by
+// name, so a failure is only logged.
+func (s *Service) launchRecords(ctx context.Context) []launchlog.Launch {
+	if s.launches == nil {
+		return nil
+	}
+
+	records, err := s.launches.List(ctx)
+	if err != nil {
+		s.logger.WarnContext(ctx, "could not read the worktree launches", "error", err)
+	}
+
+	return records
+}
+
+// tally works out each worktree's stage and counts what the bulk actions would remove.
+func (s *Service) tally(snap *Snapshot) {
+	snap.CleanCount, snap.FinishedCount, snap.ReviewCount = 0, 0, 0
+
+	for _, wt := range rows(snap.Repos) {
+		assess(wt)
+
+		if wt.CanRemove {
+			snap.CleanCount++
+		}
+
+		if wt.CanCleanUp {
+			snap.FinishedCount++
+		}
+
+		if wt.Stage == StageNeedsReview {
+			snap.ReviewCount++
+		}
+	}
+}
+
+// prepare resolves git, the preferences, and the clone root.
+func (s *Service) prepare(ctx context.Context) (git, string, settings.Settings, error) {
 	g, err := s.git()
 	if err != nil {
-		return git{}, "", err
+		return git{}, "", settings.Settings{}, err
 	}
 
 	prefs, err := s.settings.Get(ctx)
 	if err != nil {
-		return git{}, "", err
+		return git{}, "", settings.Settings{}, err
 	}
 
 	root, err := localrepos.ExpandRoot(prefs.CloneRoot, s.home)
 	if err != nil {
-		return git{}, "", err
+		return git{}, "", settings.Settings{}, err
 	}
 
-	return g, root, nil
+	return g, root, prefs, nil
 }
 
 // git returns the allowlisted git runner, resolving the binary when a Finder is set.
@@ -297,31 +454,32 @@ func (s *Service) git() (git, error) {
 // checkedGit resolves git and checks that repoPath is a clone directly under the clone
 // root, as List reports them.
 func (s *Service) checkedGit(ctx context.Context, repoPath string) (git, error) {
-	g, root, err := s.prepare(ctx)
+	g, root, _, err := s.prepare(ctx)
 	if err != nil {
 		return git{}, err
 	}
 
-	clean := filepath.Clean(repoPath)
-	if !filepath.IsAbs(clean) || strings.HasPrefix(filepath.Base(clean), ".") ||
-		resolvedPath(filepath.Dir(clean)) != resolvedPath(root) {
+	if !s.underRoot(repoPath, root) {
 		return git{}, fmt.Errorf("%w: %s", ErrOutsideCloneRoot, s.display(repoPath))
 	}
 
 	return g, nil
 }
 
-// removable re-lists the repository and returns path's entry when it is a linked,
-// unlocked worktree of it.
-func (s *Service) removable(ctx context.Context, repoPath, path string) (git, Entry, error) {
-	g, err := s.checkedGit(ctx, repoPath)
-	if err != nil {
-		return git{}, Entry{}, err
-	}
+// underRoot reports an absolute, non-hidden directory directly under root.
+func (s *Service) underRoot(repoPath, root string) bool {
+	clean := filepath.Clean(repoPath)
 
+	return filepath.IsAbs(clean) && !strings.HasPrefix(filepath.Base(clean), ".") &&
+		resolvedPath(filepath.Dir(clean)) == resolvedPath(root)
+}
+
+// entryOf re-lists the repository and returns path's entry when it is a linked worktree
+// of it.
+func (s *Service) entryOf(ctx context.Context, g git, repoPath, path string) (Entry, error) {
 	entries, stderr, err := g.list(ctx, repoPath)
 	if err != nil {
-		return git{}, Entry{}, fmt.Errorf("list the worktrees of %s: %w", s.display(repoPath), gitError(err, stderr))
+		return Entry{}, fmt.Errorf("list the worktrees of %s: %w", s.display(repoPath), gitError(err, stderr))
 	}
 
 	for _, e := range entries {
@@ -329,17 +487,37 @@ func (s *Service) removable(ctx context.Context, repoPath, path string) (git, En
 			continue
 		}
 
-		switch {
-		case e.Main || e.Bare:
-			return git{}, Entry{}, ErrMainWorktree
-		case e.Locked:
-			return git{}, Entry{}, ErrLocked
-		default:
-			return g, e, nil
+		if e.Main || e.Bare {
+			return Entry{}, ErrMainWorktree
 		}
+
+		return e, nil
 	}
 
-	return git{}, Entry{}, fmt.Errorf("%w: %s", ErrNotAWorktree, s.display(path))
+	return Entry{}, fmt.Errorf("%w: %s", ErrNotAWorktree, s.display(path))
+}
+
+// removable re-lists the repository and returns path's entry when it is a linked,
+// unlocked worktree of it. When head is not "", the worktree must still have that commit
+// checked out.
+func (s *Service) removable(ctx context.Context, repoPath, path, head string) (git, Entry, error) {
+	g, err := s.checkedGit(ctx, repoPath)
+	if err != nil {
+		return git{}, Entry{}, err
+	}
+
+	e, err := s.entryOf(ctx, g, repoPath, path)
+
+	switch {
+	case err != nil:
+		return git{}, Entry{}, err
+	case e.Locked:
+		return git{}, Entry{}, ErrLocked
+	case head != "" && e.HEAD != head:
+		return git{}, Entry{}, ErrChanged
+	default:
+		return g, e, nil
+	}
 }
 
 // removeEntry runs `git worktree remove` for a checked entry and turns a refusal into a
@@ -410,11 +588,15 @@ func (s *Service) row(ctx context.Context, g git, e Entry, claudeDir string) (Wo
 		Main:           e.Main,
 		Locked:         e.Locked,
 		LockReason:     e.LockReason,
-		StaleLock:      e.Locked && staleClaudeLock(e.LockReason),
 		Prunable:       e.Prunable,
 		PrunableReason: e.PrunableReason,
 		ClaudeCreated:  within(claudeDir, resolvedPath(e.Path)),
+		Head:           e.HEAD,
+		Unpushed:       -1,
 	}
+
+	s.judgeLock(&wt)
+	wt.OwnBranch = wt.ClaudeCreated && !e.Detached && e.Branch == ownBranchPrefix+filepath.Base(e.Path)
 
 	if !e.Prunable {
 		if err := s.readState(ctx, g, &wt); err != nil {
@@ -427,6 +609,17 @@ func (s *Service) row(ctx context.Context, g git, e Entry, claudeDir string) (Wo
 	wt.CanForceRemove = linked && wt.Dirty
 
 	return wt, nil
+}
+
+// judgeLock fills in who holds a locked worktree and whether that session has ended.
+func (s *Service) judgeLock(wt *Worktree) {
+	if !wt.Locked {
+		return
+	}
+
+	_, wt.AgentLock = parseAgentLock(wt.LockReason)
+	wt.StaleLock = endedAgentLock(wt.LockReason, s.procs, s.zone)
+	wt.CanUnlock = wt.StaleLock && !wt.Main
 }
 
 // readState fills in a worktree's uncommitted-file count and last commit time. A git
@@ -455,11 +648,26 @@ func (s *Service) readState(ctx context.Context, g git, wt *Worktree) error {
 		return fmt.Errorf("read the last commit of %s: %w", wt.DisplayPath, err)
 	}
 
+	if wt.Main {
+		return nil
+	}
+
+	unpushed, _, err := g.unpushed(ctx, wt.Path)
+
+	switch {
+	case err == nil:
+		wt.Unpushed = unpushed
+	case exitCode(ctx, err) || errors.Is(err, errParseCount):
+		// Unknown, which never counts as on GitHub.
+	default:
+		return fmt.Errorf("count the unpushed commits of %s: %w", wt.DisplayPath, err)
+	}
+
 	return nil
 }
 
-// snapshot folds clones that share a main worktree, keeps the repositories worth
-// showing, and counts the worktrees "Remove all clean" would remove.
+// snapshot folds clones that share a main worktree and keeps the repositories worth
+// showing.
 func (s *Service) snapshot(root string, listed []listedRepo) Snapshot {
 	snap := Snapshot{
 		Root:     s.display(root),
@@ -476,12 +684,6 @@ func (s *Service) snapshot(root string, listed []listedRepo) Snapshot {
 
 		seen[l.key] = true
 		snap.Repos = append(snap.Repos, l.repo)
-
-		for _, wt := range l.repo.Worktrees {
-			if wt.CanRemove {
-				snap.CleanCount++
-			}
-		}
 	}
 
 	return snap
@@ -518,6 +720,20 @@ func (l *listedRepo) add(wt Worktree) {
 
 	if wt.Prunable {
 		l.repo.HasStale = true
+	}
+}
+
+// rows yields every worktree of repos with its repository, in order, for reading or
+// changing in place.
+func rows(repos []Repo) iter.Seq2[*Repo, *Worktree] {
+	return func(yield func(*Repo, *Worktree) bool) {
+		for i := range repos {
+			for j := range repos[i].Worktrees {
+				if !yield(&repos[i], &repos[i].Worktrees[j]) {
+					return
+				}
+			}
+		}
 	}
 }
 

@@ -91,6 +91,13 @@ export function SetWindowSize(size: $models.WindowSize): $CancellablePromise<voi
 }
 
 /**
+ * SetWorktreeAutoCleanup stores whether finished worktrees are cleaned up on their own.
+ */
+export function SetWorktreeAutoCleanup(on: boolean): $CancellablePromise<void> {
+    return $Call.ByID(514380997, on);
+}
+
+/**
  * SetWorktreeDefault stores whether launches start in a worktree unless unticked.
  */
 export function SetWorktreeDefault(on: boolean): $CancellablePromise<void> {

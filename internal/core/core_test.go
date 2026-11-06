@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/appdata"
+	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
@@ -325,6 +326,26 @@ func TestInboxRefreshUsesInjectedRunner(t *testing.T) {
 	snap, err := c.Inbox.Snapshot(t.Context())
 	require.NoError(t, err)
 	assert.NotEmpty(t, snap.LastError)
+}
+
+func TestWorktreeItemStatesBorrowTheToken(t *testing.T) {
+	runner := &recordingRunner{}
+
+	c := bootstrap(t, Options{
+		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
+		Home:   tempHome(t),
+		Runner: runner,
+	})
+
+	states := itemStates{tokens: github.NewTokenSource(runner, execpath.Finder{Home: tempHome(t)}), client: github.NewClient("test")}
+
+	// The token is borrowed through the injected runner, which runs nothing, so no
+	// request is made.
+	_, err := states.ItemStates(t.Context(), []github.ItemRef{{Owner: "acme-org", Name: "example-repo", Number: 1}})
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, github.ErrNotLoggedIn) || errors.Is(err, github.ErrGHNotFound), err)
+
+	assert.Zero(t, c.Worktrees.LastSweep().Seq, "nothing sweeps until the shell starts the sweeps")
 }
 
 func TestBootstrapAddsTheStarterPrompts(t *testing.T) {

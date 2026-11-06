@@ -32,6 +32,10 @@ const (
 	// KeyWorktreeDefault is whether launches start in a worktree unless unticked.
 	KeyWorktreeDefault = "launch.worktree"
 
+	// KeyWorktreeAutoCleanup is whether a worktree is cleaned up on its own once its pull
+	// request merges or its issue closes (see the worktrees package for what is checked).
+	KeyWorktreeAutoCleanup = "worktrees.autoCleanup"
+
 	// KeyTerminal is the terminal app launches open in.
 	KeyTerminal = "launch.terminal"
 
@@ -59,6 +63,7 @@ const (
 const (
 	DefaultProfile         = profiles.DefaultName
 	DefaultWorktreeDefault = true
+	DefaultAutoCleanup     = true
 	DefaultTerminal        = TerminalITerm2
 	DefaultCloneRoot       = "~/projects"
 	DefaultSnoozeDays      = snooze.DefaultDays
@@ -87,6 +92,10 @@ type Settings struct {
 
 	// WorktreeDefault presets each row's "Start in a worktree" checkbox.
 	WorktreeDefault bool `json:"worktreeDefault"`
+
+	// WorktreeAutoCleanup cleans up a finished worktree on its own once its pull request
+	// merges or its issue closes.
+	WorktreeAutoCleanup bool `json:"worktreeAutoCleanup"`
 
 	// Terminal is "iterm2" or "terminal".
 	Terminal string `json:"terminal"`
@@ -135,7 +144,8 @@ func (s *Service) Get(ctx context.Context) (Settings, error) {
 	}
 
 	keys := []string{
-		KeyDefaultProfile, KeyWorktreeDefault, KeyTerminal, KeyCloneRoot, KeyTrustedBots, KeySnoozeDays, KeyWindowSize,
+		KeyDefaultProfile, KeyWorktreeDefault, KeyWorktreeAutoCleanup, KeyTerminal, KeyCloneRoot, KeyTrustedBots,
+		KeySnoozeDays, KeyWindowSize,
 		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments,
 	}
 	if err := s.db.WithContext(ctx).Raw("SELECT key, value FROM prefs WHERE key IN ?", keys).Scan(&rows).Error; err != nil {
@@ -189,6 +199,11 @@ func (s *Service) SetDefaultProfile(ctx context.Context, name string) error {
 // SetWorktreeDefault stores whether launches start in a worktree unless unticked.
 func (s *Service) SetWorktreeDefault(ctx context.Context, on bool) error {
 	return s.set(ctx, KeyWorktreeDefault, strconv.FormatBool(on))
+}
+
+// SetWorktreeAutoCleanup stores whether finished worktrees are cleaned up on their own.
+func (s *Service) SetWorktreeAutoCleanup(ctx context.Context, on bool) error {
+	return s.set(ctx, KeyWorktreeAutoCleanup, strconv.FormatBool(on))
 }
 
 // SetCloneRoot stores the clone root. It must be an absolute or ~-relative path to an
@@ -284,16 +299,17 @@ func fromStored(stored map[string]string) Settings {
 	rawBots, hasBots := stored[KeyTrustedBots]
 
 	out := Settings{
-		DefaultProfile:     DefaultProfile,
-		WorktreeDefault:    DefaultWorktreeDefault,
-		Terminal:           DefaultTerminal,
-		CloneRoot:          DefaultCloneRoot,
-		TrustedBots:        trust.DecodeBots(rawBots, hasBots),
-		DefaultTrustedBots: trust.DefaultBots(),
-		SnoozeDays:         snooze.DecodeDays(stored),
-		SnoozeWake:         snooze.DecodeRules(stored),
-		WindowSize:         DefaultWindowSize(),
-		DefaultWindowSize:  DefaultWindowSize(),
+		DefaultProfile:      DefaultProfile,
+		WorktreeDefault:     DefaultWorktreeDefault,
+		WorktreeAutoCleanup: DefaultAutoCleanup,
+		Terminal:            DefaultTerminal,
+		CloneRoot:           DefaultCloneRoot,
+		TrustedBots:         trust.DecodeBots(rawBots, hasBots),
+		DefaultTrustedBots:  trust.DefaultBots(),
+		SnoozeDays:          snooze.DecodeDays(stored),
+		SnoozeWake:          snooze.DecodeRules(stored),
+		WindowSize:          DefaultWindowSize(),
+		DefaultWindowSize:   DefaultWindowSize(),
 	}
 
 	if v := stored[KeyDefaultProfile]; v != "" {
@@ -302,6 +318,10 @@ func fromStored(stored map[string]string) Settings {
 
 	if v, err := strconv.ParseBool(stored[KeyWorktreeDefault]); err == nil {
 		out.WorktreeDefault = v
+	}
+
+	if v, err := strconv.ParseBool(stored[KeyWorktreeAutoCleanup]); err == nil {
+		out.WorktreeAutoCleanup = v
 	}
 
 	if v := stored[KeyTerminal]; validTerminal(v) {

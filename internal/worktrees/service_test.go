@@ -33,14 +33,15 @@ type fixedClock struct{}
 
 func (fixedClock) Now() time.Time { return listedAt() }
 
-// fakeSettings serves a clone root.
+// fakeSettings serves a clone root and the automatic cleanup setting.
 type fakeSettings struct {
 	root string
+	auto bool
 	err  error
 }
 
 func (f fakeSettings) Get(context.Context) (settings.Settings, error) {
-	return settings.Settings{CloneRoot: f.root}, f.err
+	return settings.Settings{CloneRoot: f.root, WorktreeAutoCleanup: f.auto}, f.err
 }
 
 // fakeFinder resolves git to a fixed path or fails.

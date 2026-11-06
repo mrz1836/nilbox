@@ -16,6 +16,7 @@ const (
 	gitPath  = "/opt/tools/bin/git"
 	repoDir  = "/srv/projects/example-repo"
 	treePath = "/srv/wt/feature"
+	headSHA  = "fc1c3975011e66491785ace891c893e4fc716587"
 )
 
 var errFakeStart = errors.New("fake: cannot start git")
@@ -101,6 +102,22 @@ func TestGitArgvUsesDashC(t *testing.T) {
 			call: func(g git) error { _, err := g.lastCommit(ctx, treePath); return err },
 			want: argv(gitPath, "-C", treePath, "log -1 --format=%ct"),
 		},
+		{
+			name:   "unpushed count runs in the worktree",
+			stdout: "0\n",
+			call:   func(g git) error { _, _, err := g.unpushed(ctx, treePath); return err },
+			want:   argv(gitPath, "-C", treePath, "rev-list --count HEAD --not --remotes"),
+		},
+		{
+			name: "unlock",
+			call: func(g git) error { _, err := g.unlock(ctx, repoDir, treePath); return err },
+			want: argv(gitPath, "-C", repoDir, "worktree unlock", treePath),
+		},
+		{
+			name: "delete branch compares and deletes",
+			call: func(g git) error { _, err := g.deleteBranch(ctx, repoDir, "worktree-pr-7", headSHA); return err },
+			want: argv(gitPath, "-C", repoDir, "update-ref -d refs/heads/worktree-pr-7", headSHA),
+		},
 	}
 
 	for _, tt := range tests {
@@ -126,7 +143,23 @@ func TestGitRejectsCommandsOutsideAllowlist(t *testing.T) {
 		argv("worktree remove", ""),
 		argv("worktree remove", treePath, "extra"),
 		argv("worktree add", treePath),
-		argv("worktree unlock", treePath),
+		argv("worktree unlock"),
+		argv("worktree unlock", "--porcelain"),
+		argv("worktree unlock", treePath, "extra"),
+		argv("worktree lock", treePath),
+		argv("update-ref -d refs/heads/main", headSHA),
+		argv("update-ref -d refs/heads/feature/worktree-pr-7", headSHA),
+		argv("update-ref -d refs/heads/worktree-", headSHA),
+		argv("update-ref -d refs/heads/worktree-pr/7", headSHA),
+		argv("update-ref -d refs/heads/worktree-..", headSHA),
+		argv("update-ref -d refs/heads/worktree-pr-7.lock", headSHA),
+		argv("update-ref -d refs/tags/worktree-pr-7", headSHA),
+		argv("update-ref -d refs/heads/worktree-pr-7", "HEAD"),
+		argv("update-ref -d refs/heads/worktree-pr-7", strings.Repeat("0", 40)),
+		argv("update-ref -d refs/heads/worktree-pr-7", strings.Repeat("0", 64)),
+		argv("update-ref -d refs/heads/worktree-pr-7"),
+		argv("update-ref refs/heads/worktree-pr-7", headSHA),
+		argv("rev-list --count HEAD"),
 		argv("worktree list"),
 		argv("checkout main"),
 		argv("status"),
@@ -192,6 +225,42 @@ func TestGitOutputParsing(t *testing.T) {
 		_, err := git{run: run, bin: gitBin}.lastCommit(ctx, treePath)
 		require.Error(t, err)
 	})
+
+	t.Run("unpushed count", func(t *testing.T) {
+		run := &recordingRunner{stdout: "3\n"}
+		count, _, err := git{run: run, bin: gitBin}.unpushed(ctx, treePath)
+		require.NoError(t, err)
+		assert.Equal(t, 3, count)
+	})
+
+	t.Run("unpushed count with unexpected output", func(t *testing.T) {
+		for _, out := range []string{"many\n", "-1\n"} {
+			run := &recordingRunner{stdout: out}
+			_, _, err := git{run: run, bin: gitBin}.unpushed(ctx, treePath)
+			require.ErrorIs(t, err, errParseCount, out)
+		}
+	})
+
+	t.Run("unpushed count failure returns stderr", func(t *testing.T) {
+		run := &recordingRunner{stderr: "fatal: bad revision 'HEAD'", err: exitError{code: 128}}
+		_, stderr, err := git{run: run, bin: gitBin}.unpushed(ctx, treePath)
+		require.Error(t, err)
+		assert.Equal(t, "fatal: bad revision 'HEAD'", string(stderr))
+	})
+}
+
+func TestOwnBranchRefs(t *testing.T) {
+	assert.True(t, isOwnBranchRef("refs/heads/worktree-pr-184"))
+	assert.True(t, isOwnBranchRef("refs/heads/worktree-issue-7"))
+	assert.True(t, isOwnBranchRef("refs/heads/worktree-bright-running-fox"))
+
+	for _, ref := range []string{
+		"refs/heads/main", "refs/heads/worktree-", "refs/heads/worktree-a/b", "refs/heads/worktree-a b",
+		"refs/heads/worktree-.hidden", "refs/heads/worktree-a..b", "refs/heads/worktree-x.lock", "worktree-pr-7",
+		`refs/heads/worktree-a\b`, "refs/heads/worktree-a:b",
+	} {
+		assert.False(t, isOwnBranchRef(ref), ref)
+	}
 }
 
 func TestCountStatusEntries(t *testing.T) {

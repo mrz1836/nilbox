@@ -55,16 +55,17 @@ func TestPrefDefaults(t *testing.T) {
 	got, err := svc.Get(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, Settings{
-		DefaultProfile:     "default",
-		WorktreeDefault:    true,
-		Terminal:           "iterm2",
-		CloneRoot:          "~/projects",
-		TrustedBots:        []string{"dependabot", "github-actions", "renovate"},
-		DefaultTrustedBots: []string{"dependabot", "github-actions", "renovate"},
-		SnoozeDays:         3,
-		SnoozeWake:         snooze.Rules{Commits: 1, Reviews: "decisions", Comments: 0},
-		WindowSize:         WindowSize{Width: 1280, Height: 800},
-		DefaultWindowSize:  WindowSize{Width: 1280, Height: 800},
+		DefaultProfile:      "default",
+		WorktreeDefault:     true,
+		WorktreeAutoCleanup: true,
+		Terminal:            "iterm2",
+		CloneRoot:           "~/projects",
+		TrustedBots:         []string{"dependabot", "github-actions", "renovate"},
+		DefaultTrustedBots:  []string{"dependabot", "github-actions", "renovate"},
+		SnoozeDays:          3,
+		SnoozeWake:          snooze.Rules{Commits: 1, Reviews: "decisions", Comments: 0},
+		WindowSize:          WindowSize{Width: 1280, Height: 800},
+		DefaultWindowSize:   WindowSize{Width: 1280, Height: 800},
 	}, got)
 }
 
@@ -120,6 +121,7 @@ func TestSettersPersist(t *testing.T) {
 
 	require.NoError(t, svc.SetDefaultProfile(t.Context(), "work"))
 	require.NoError(t, svc.SetWorktreeDefault(t.Context(), false))
+	require.NoError(t, svc.SetWorktreeAutoCleanup(t.Context(), false))
 	require.NoError(t, svc.SetTerminal(t.Context(), TerminalApp))
 	require.NoError(t, svc.SetTerminal(t.Context(), TerminalITerm2))
 	require.NoError(t, svc.SetCloneRoot(t.Context(), " ~/code/clones/ "))
@@ -129,26 +131,29 @@ func TestSettersPersist(t *testing.T) {
 	got, err := svc.Get(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, Settings{
-		DefaultProfile:     "work",
-		WorktreeDefault:    false,
-		Terminal:           TerminalITerm2,
-		CloneRoot:          "~/code/clones",
-		TrustedBots:        trust.DefaultBots(),
-		DefaultTrustedBots: trust.DefaultBots(),
-		SnoozeDays:         7,
-		SnoozeWake:         snooze.Rules{Commits: 3, Reviews: snooze.ReviewsAny, Comments: 5},
-		WindowSize:         DefaultWindowSize(),
-		DefaultWindowSize:  DefaultWindowSize(),
+		DefaultProfile:      "work",
+		WorktreeDefault:     false,
+		WorktreeAutoCleanup: false,
+		Terminal:            TerminalITerm2,
+		CloneRoot:           "~/code/clones",
+		TrustedBots:         trust.DefaultBots(),
+		DefaultTrustedBots:  trust.DefaultBots(),
+		SnoozeDays:          7,
+		SnoozeWake:          snooze.Rules{Commits: 3, Reviews: snooze.ReviewsAny, Comments: 5},
+		WindowSize:          DefaultWindowSize(),
+		DefaultWindowSize:   DefaultWindowSize(),
 	}, got)
 
 	abs := t.TempDir()
 	require.NoError(t, svc.SetCloneRoot(t.Context(), abs))
 	require.NoError(t, svc.SetWorktreeDefault(t.Context(), true))
+	require.NoError(t, svc.SetWorktreeAutoCleanup(t.Context(), true))
 
 	got, err = svc.Get(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, abs, got.CloneRoot)
 	assert.True(t, got.WorktreeDefault)
+	assert.True(t, got.WorktreeAutoCleanup)
 }
 
 func TestSetRejectsInvalid(t *testing.T) {
@@ -209,6 +214,7 @@ func TestGetFallsBackOnBadStoredValues(t *testing.T) {
 	svc, db, _ := newTestService(t)
 	setPref(t, db, KeyDefaultProfile, "")
 	setPref(t, db, KeyWorktreeDefault, "maybe")
+	setPref(t, db, KeyWorktreeAutoCleanup, "sometimes")
 	setPref(t, db, KeyTerminal, "warp")
 	setPref(t, db, KeyCloneRoot, "   ")
 	setPref(t, db, KeySnoozeDays, "-2")

@@ -35,6 +35,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/measure"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/timing"
+	"github.com/mrz1836/nilbox/internal/worktrees"
 )
 
 // Build metadata, injected at build time via -ldflags (see magefiles/app.go).
@@ -51,6 +52,10 @@ var (
 const (
 	// inboxUpdatedEvent tells the frontend the stored inbox changed.
 	inboxUpdatedEvent = "inbox:updated"
+
+	// worktreesUpdatedEvent tells the frontend an automatic worktree sweep removed a
+	// worktree or changed how many need attention.
+	worktreesUpdatedEvent = "worktrees:updated"
 
 	// measureTimeout bounds a measurement run whose window never reports a first paint.
 	measureTimeout = time.Minute
@@ -95,13 +100,14 @@ func run(args []string, stdout, stderr io.Writer) error {
 	s := &shell{stdout: stdout, stderr: stderr, measureStartup: slices.Contains(args, measure.StartupFlag)}
 
 	c, err := core.Bootstrap(context.Background(), core.Options{
-		Paths:        paths,
-		Home:         home,
-		Version:      version,
-		Release:      release,
-		Build:        buildNumber,
-		Notifier:     s,
-		OnFirstPaint: s.firstPaint,
+		Paths:            paths,
+		Home:             home,
+		Version:          version,
+		Release:          release,
+		Build:            buildNumber,
+		Notifier:         s,
+		WorktreeNotifier: s,
+		OnFirstPaint:     s.firstPaint,
 	})
 	if err != nil {
 		return fmt.Errorf("start the app (%s, commit %s, built %s): %w", version, commit, buildDate, err)
@@ -215,6 +221,17 @@ func (s *shell) InboxUpdated() {
 	}
 }
 
+// WorktreesUpdated tells the frontend to read the latest worktree sweep.
+func (s *shell) WorktreesUpdated() {
+	if s.stopping.Load() {
+		return
+	}
+
+	if app := s.app.Load(); app != nil {
+		app.Event.Emit(worktreesUpdatedEvent)
+	}
+}
+
 // started opens the window, themed for the current system appearance (which is known
 // only once the app runs) and at the size the settings hold, and starts refreshing the
 // inbox.
@@ -226,6 +243,7 @@ func (s *shell) started() {
 	ctx := app.Context()
 
 	s.scheduler.Go(func() { s.core.Scheduler.Run(ctx) })
+	s.scheduler.Go(func() { worktrees.NewSweeper(s.core.Worktrees).Run(ctx, worktrees.DefaultSweepInterval) })
 
 	if s.measureStartup {
 		time.AfterFunc(measureTimeout, s.measureTimedOut)

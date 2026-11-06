@@ -7,8 +7,10 @@ export {
 };
 
 export type {
+    LinkedItem,
     RemoveResult,
     Repo,
     Snapshot,
+    SweepReport,
     Worktree
 } from "./models.js";

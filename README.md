@@ -43,6 +43,8 @@ The first release is a deliberately thin steel thread on macOS:
 - Local triage: snooze or dismiss items, pin and mute repositories inline
 - **Open in agent**: launch a terminal (iTerm2, Terminal.app, and more) in the right clone or a fresh
   worktree, with a saved agent profile and a prompt from your library
+- **Worktree cleanup**: a session's worktree is linked to its pull request or issue, and cleaned up
+  with its branch once that merges or closes, only when nothing in it would be lost
 - **Prompt library**: write prompts as Go templates with `{{.Title}}`-style variables, checked as you
   type and previewed against real items; set defaults per org and per repository
 - An always-visible GitHub API rate-limit gauge, because every tool on your machine shares one budget

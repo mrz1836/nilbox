@@ -541,7 +541,10 @@ flag, under `<clone>/.claude/worktrees/<name>` on a branch named `worktree-<name
 - An issue launches with `--worktree issue-<n>`.
 
 Launching on the same item again reuses the name, so the agent resumes the existing worktree
-instead of creating another. The outside-contributor rule applies unchanged.
+instead of creating another. The outside-contributor rule applies unchanged. The app records
+each worktree it launches a session in, with the pull request or issue it is for, so the
+[Worktrees view](#the-worktrees-view) can link the two and clean the worktree up once that item
+is done.
 
 **Workspace trust.** Claude Code asks once per repository whether you trust it, and a
 `--worktree` session can't ask: it exits with "Workspace trust not yet accepted" instead. So
@@ -571,25 +574,64 @@ The **Worktrees** tab lists every linked worktree of every git repository one le
 clone root, including worktrees from sessions started outside the app. It loads when you open
 it or click **Refresh**, not on the inbox's five-minute timer. Each row shows the repository,
 the path, the branch (or "detached"), clean or dirty with the count of uncommitted files
-(untracked files included), whether it is locked and why, whether its directory is gone, the
-age of its last commit, and a **created by Claude** marker for worktrees under
-`.claude/worktrees/`.
+(untracked files included), how many commits are not on GitHub, whether it is locked and by
+whom, whether its directory is gone, the age of its last commit, and a **created by Claude**
+marker for worktrees under `.claude/worktrees/`.
 
-- **Remove** runs `git worktree remove` without `--force`. Git refuses a dirty or locked
-  worktree, and the row shows why.
-- **Remove all clean** removes every clean, unlocked worktree, after a confirmation that shows
-  the count.
+**Linked pull requests and issues.** A worktree the agent made for an item, `pr-<n>` or
+`issue-<n>` under `.claude/worktrees/`, is linked to it: exactly, from the app's record of the
+launch, or otherwise by its name and the clone's GitHub remotes. One GraphQL request, for one
+point, asks GitHub whether each is open, merged, or closed, and the row links to it. Each
+linked worktree gets a stage:
+
+- **in use**: an agent session is running in it.
+- **ready to clean up**: its pull request merged or its issue closed, and removing it loses
+  nothing. It has no uncommitted changes, every commit it has is on GitHub (on a
+  remote-tracking branch, or as the pull request's head, which GitHub keeps after the branch
+  is deleted), and no session runs in it.
+- **needs a look**: its item is done, but it holds uncommitted changes or commits that are not
+  on GitHub.
+- An item still open gets no marker; the row just says it is open.
+
+GitHub decides when a worktree is finished, and git alone decides whether removing it is safe,
+so a name that only looks like an item's can never cost work. If GitHub can't be reached, the
+view says so and lists the worktrees without their items.
+
+**Actions.** Each row offers only what is allowed:
+
+- **Clean up** removes a finished worktree. It checks the worktree again first, releases the
+  lock of an agent session that has ended, runs `git worktree remove` without `--force`, and
+  deletes the agent's own `worktree-<name>` branch with `git update-ref -d`, which refuses if
+  the branch moved since it was checked. A branch the worktree had checked out that isn't its
+  own is kept. **Clean up finished** does the same for every finished worktree, after a
+  confirmation that shows the count.
+- **Unlock** appears when an agent session's lock outlived the session (you closed the
+  terminal, say). The lock records the session's process and start time. A lock counts as
+  stale only when no process has that ID, or the process that has it now started after the
+  session did (the ID was reused, after a restart for instance). Anything in doubt counts as a
+  running session. A lock you set yourself with `git worktree lock` is never released: the row
+  shows the `git worktree unlock` command to run instead.
+- **Remove** runs `git worktree remove` without `--force` and keeps the branch. Git refuses a
+  dirty or locked worktree, and the row shows why. **Remove all clean** removes every clean,
+  unlocked worktree, after a confirmation that shows the count.
 - **Force remove** is offered only on dirty, unlocked rows. It runs `git worktree remove
   --force` after a confirmation that shows the number of uncommitted files.
-- **Locked** rows have no remove action at all. The agent locks its worktree while a session
-  runs, so a locked worktree usually belongs to a live session. The row shows the lock reason
-  and the `git worktree unlock` command to run yourself once the session has ended. When the
-  lock names an agent process that is no longer running, the row also says the session appears
-  to have ended (a stale lock). It is still not removable from the app.
 - **Prune** appears for a repository with entries whose directory is gone, and runs
   `git worktree prune`.
 - The main worktree is listed for context and is never removable.
-- **Branches are never deleted.** Removing a worktree keeps its branch, including the
-  `worktree-<name>` branches the agent creates.
+
+**Cleaning up after a merge.** The agent cleans up its own worktree when you exit a session,
+but not one you leave behind by closing the terminal, and never one whose pull request merges
+later. So every five minutes the app checks the clones that have agent worktrees, without
+listing every clone, and, with **Clean up after merging** on (**Settings → Launching**, on by
+default), cleans up each finished worktree whose pull request merged or whose issue closed. It
+takes only worktrees the app launched, or whose HEAD is the merged pull request's own head
+commit, so a worktree is never matched by its name alone. A toast names what was cleaned up,
+and the **Worktrees** tab counts the worktrees that are done on GitHub but still on disk.
+Removing a worktree also removes the files git ignores in it, such as build output, as the
+agent's own cleanup does.
+
+Branches are deleted only as described above: the agent's own `worktree-<name>` branch, once
+everything on it is on GitHub. Nothing on GitHub is ever changed.
 
 Every git command runs as an argument list with `git -C <repository>`, never through a shell.

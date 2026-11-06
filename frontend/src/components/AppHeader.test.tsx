@@ -54,6 +54,22 @@ describe('AppHeader', () => {
     ).not.toBeNull()
   })
 
+  it('counts the worktrees worth a look on the Worktrees tab', () => {
+    renderHeader({ worktreeAttention: 3 })
+
+    const tab = screen.getByRole('button', { name: 'Worktrees' })
+    expect(tab).toHaveTextContent('Worktrees3')
+    expect(tab).toHaveAttribute('title', '3 worktrees are done on GitHub but still on disk')
+    expect(screen.getByRole('button', { name: 'Inbox' })).not.toHaveAttribute('title')
+  })
+
+  it('shows no count when no worktree needs a look', () => {
+    renderHeader()
+
+    expect(screen.queryByTestId('worktree-attention')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Worktrees' })).not.toHaveAttribute('title')
+  })
+
   it('marks the active view and switches views on click', async () => {
     const props = renderHeader({ view: 'inbox' })
 

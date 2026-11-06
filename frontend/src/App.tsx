@@ -1,22 +1,97 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { AppHeader, type View } from './components/AppHeader'
 import { InboxView, type LaunchOptions } from './components/InboxView'
 import { PromptsView } from './components/PromptsView'
 import { SettingsView, type SettingsSection } from './components/SettingsView'
+import { Toast, type ToastMessage } from './components/Toast'
 import { WorktreesView } from './components/WorktreesView'
 import { defaultSnoozeDays } from './lib/triage'
 import { useInbox } from './lib/useInbox'
 import { useLaunchConfig } from './lib/useLaunchConfig'
-import type { Settings } from './platform'
+import {
+  lastWorktreeSweep,
+  onWorktreesUpdated,
+  type RemoveResult,
+  type Settings,
+  type WorktreesSnapshot,
+} from './platform'
+
+// cleanedToast tells what an automatic sweep cleaned up.
+function cleanedToast(seq: number, cleaned: readonly RemoveResult[]): ToastMessage {
+  const n = cleaned.length
+
+  return {
+    id: seq,
+    text: n === 1 ? 'Cleaned up a finished worktree' : `Cleaned up ${String(n)} finished worktrees`,
+    detail: cleaned.map((r) => (r.item === '' ? r.displayPath : r.item)).join(', '),
+  }
+}
+
+// useWorktreeSweeps follows the automatic worktree cleanup: how many worktrees are done
+// on GitHub but still on disk, the latest sweep that changed something (so an open
+// Worktrees view lists again), and a toast for each sweep that removed a worktree.
+function useWorktreeSweeps() {
+  const [attention, setAttention] = useState(0)
+  const [seq, setSeq] = useState(0)
+  const [toast, setToast] = useState<ToastMessage | null>(null)
+  // seen is the latest sweep read, so each one is reported once.
+  const seen = useRef(0)
+
+  useEffect(() => {
+    let active = true
+
+    const read = () => {
+      lastWorktreeSweep()
+        .then((report) => {
+          if (!active || report.seq <= seen.current) {
+            return
+          }
+
+          seen.current = report.seq
+          setAttention(report.leftover)
+          setSeq(report.seq)
+
+          const cleaned = report.cleaned ?? []
+          if (cleaned.length > 0) {
+            setToast(cleanedToast(report.seq, cleaned))
+          }
+        })
+        .catch((err: unknown) => {
+          console.error('could not read the latest worktree sweep', err)
+        })
+    }
+
+    read()
+    const stop = onWorktreesUpdated(read)
+
+    return () => {
+      active = false
+      stop()
+    }
+  }, [])
+
+  // listed counts from a listing of the Worktrees view, which sees the same worktrees.
+  const listed = useCallback((snapshot: WorktreesSnapshot) => {
+    setAttention(snapshot.finishedCount + snapshot.reviewCount)
+  }, [])
+
+  const closeToast = useCallback(() => {
+    setToast(null)
+  }, [])
+
+  return { attention, seq, toast, listed, closeToast }
+}
 
 // App is the window's root: the toolbar over the active page. It holds the state the
-// pages share: the inbox (the lists, the account, and the API budget), and the launch
+// pages share: the inbox (the lists, the account, and the API budget), the launch
 // configuration (settings, profiles, prompts, launch defaults, and each item's resolved
-// launch settings) that the rows, the Prompts page, and the settings page use.
+// launch settings) that the rows, the Prompts page, and the settings page use, and the
+// automatic worktree cleanup's latest news.
 export function App() {
   const inbox = useInbox()
   const config = useLaunchConfig(inbox.snapshot)
+  const sweeps = useWorktreeSweeps()
   const [view, setView] = useState<View>('inbox')
   // returnView is where closing the settings page goes back to.
   const [returnView, setReturnView] = useState<View>('inbox')
@@ -116,6 +191,7 @@ export function App() {
         account={account}
         gauge={inbox.snapshot?.rate ?? null}
         now={inbox.now}
+        worktreeAttention={sweeps.attention}
         onOpenSettings={openSettings}
       />
       {config.error !== '' && (
@@ -134,7 +210,7 @@ export function App() {
             onSnoozeSettings={openSnoozeSettings}
           />
         )}
-        {view === 'worktrees' && <WorktreesView />}
+        {view === 'worktrees' && <WorktreesView reloadKey={sweeps.seq} onSnapshot={sweeps.listed} />}
         {promptsOpened && (
           <div hidden={view !== 'prompts'} className="h-full">
             <PromptsView
@@ -162,6 +238,7 @@ export function App() {
           />
         )}
       </main>
+      <Toast toast={sweeps.toast} onClose={sweeps.closeToast} />
     </div>
   )
 }

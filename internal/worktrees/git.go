@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -15,6 +17,10 @@ const (
 
 	// worktreeCmd is git's worktree subcommand.
 	worktreeCmd = "worktree"
+
+	// ownBranchPrefix starts the name of the branch the agent creates with a worktree:
+	// "worktree-<name>". It is the only kind of branch ever deleted.
+	ownBranchPrefix = "worktree-"
 )
 
 // ErrGitCommandNotAllowed is returned for a git command outside the allowlist; it is
@@ -24,6 +30,12 @@ var ErrGitCommandNotAllowed = errors.New("git command not allowed")
 // errParseCommitTime is returned when git log prints something other than a Unix time.
 var errParseCommitTime = errors.New("unexpected commit time")
 
+// errParseCount is returned when git rev-list prints something other than a count.
+var errParseCount = errors.New("unexpected commit count")
+
+// objectIDPattern is a full commit ID, SHA-1 or SHA-256.
+var objectIDPattern = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
+
 // Runner runs a program with arguments and returns what it wrote. Implementations run the
 // argv directly, never through a shell; execpath.Runner is the app's.
 type Runner interface {
@@ -31,13 +43,15 @@ type Runner interface {
 }
 
 // allowedFixedCommands are the complete argument lists, after `-C <dir>`, that git may
-// run with. `worktree remove` is checked separately because it takes a path.
+// run with. `worktree remove`, `worktree unlock`, and `update-ref -d` are checked
+// separately because they take a path or a branch.
 func allowedFixedCommands() []string {
 	return []string{
 		joinArgs(listArgs()),
 		joinArgs(pruneArgs()),
 		joinArgs(statusArgs()),
 		joinArgs(lastCommitArgs()),
+		joinArgs(unpushedArgs()),
 	}
 }
 
@@ -50,6 +64,9 @@ func statusArgs() []string {
 }
 
 func lastCommitArgs() []string { return []string{"log", "-1", "--format=%ct"} }
+
+// unpushedArgs counts the commits on HEAD that no remote-tracking branch has.
+func unpushedArgs() []string { return []string{"rev-list", "--count", "HEAD", "--not", "--remotes"} }
 
 // git runs allowlisted git commands as `git -C <dir> <args>`.
 type git struct {
@@ -94,6 +111,38 @@ func (g git) remove(ctx context.Context, dir, path string, force bool) ([]byte, 
 	return stderr, err
 }
 
+// unlock releases the lock on the worktree at path.
+func (g git) unlock(ctx context.Context, dir, path string) ([]byte, error) {
+	_, stderr, err := g.do(ctx, dir, worktreeCmd, "unlock", path)
+
+	return stderr, err
+}
+
+// deleteBranch deletes the local branch only while it still points at oid, so a commit
+// made after the check keeps it. Only the agent's own worktree-<name> branches and a real
+// commit ID pass the allowlist.
+func (g git) deleteBranch(ctx context.Context, dir, branch, oid string) ([]byte, error) {
+	_, stderr, err := g.do(ctx, dir, "update-ref", "-d", headsPrefix+branch, oid)
+
+	return stderr, err
+}
+
+// unpushed returns how many commits on HEAD in the worktree at dir no remote-tracking
+// branch has.
+func (g git) unpushed(ctx context.Context, dir string) (int, []byte, error) {
+	stdout, stderr, err := g.do(ctx, dir, unpushedArgs()...)
+	if err != nil {
+		return 0, stderr, err
+	}
+
+	count, err := strconv.Atoi(strings.TrimSpace(string(stdout)))
+	if err != nil || count < 0 {
+		return 0, nil, fmt.Errorf("%w %q", errParseCount, stdout)
+	}
+
+	return count, nil, nil
+}
+
 // prune clears the entries of worktrees whose directories are gone.
 func (g git) prune(ctx context.Context, dir string) ([]byte, error) {
 	_, stderr, err := g.do(ctx, dir, pruneArgs()...)
@@ -126,26 +175,58 @@ func (g git) lastCommit(ctx context.Context, dir string) (int64, error) {
 	return unix, nil
 }
 
-// allowed reports whether args is one of the allowlisted git commands. The removal path
-// must not look like an option.
+// allowed reports whether args is one of the allowlisted git commands. A path must not
+// look like an option.
 func allowed(args []string) bool {
-	joined := joinArgs(args)
-	for _, cmd := range allowedFixedCommands() {
-		if joined == cmd {
-			return true
-		}
+	if slices.Contains(allowedFixedCommands(), joinArgs(args)) {
+		return true
 	}
 
-	if len(args) < 3 || args[0] != worktreeCmd || args[1] != "remove" {
+	if len(args) < 3 {
 		return false
 	}
 
-	rest := args[2:]
+	switch args[0] + " " + args[1] {
+	case worktreeCmd + " remove":
+		return allowedRemove(args[2:])
+	case worktreeCmd + " unlock":
+		return len(args) == 3 && isPathArg(args[2])
+	case "update-ref -d":
+		return len(args) == 4 && isOwnBranchRef(args[2]) && isCommitID(args[3])
+	default:
+		return false
+	}
+}
+
+// allowedRemove reports the arguments after `worktree remove` that may run: a path, with
+// at most a single --force before it.
+func allowedRemove(rest []string) bool {
 	if len(rest) == 2 && rest[0] == "--force" {
 		rest = rest[1:]
 	}
 
-	return len(rest) == 1 && rest[0] != "" && !strings.HasPrefix(rest[0], "-")
+	return len(rest) == 1 && isPathArg(rest[0])
+}
+
+// isCommitID reports a full commit ID that names a commit. The null ID is refused: given
+// as the old value to `update-ref -d` it turns the comparison off, and git reports it as
+// the HEAD of a worktree with no commits.
+func isCommitID(oid string) bool {
+	return objectIDPattern.MatchString(oid) && strings.Trim(oid, "0") != ""
+}
+
+// isPathArg reports a non-empty argument that cannot be read as an option.
+func isPathArg(arg string) bool {
+	return arg != "" && !strings.HasPrefix(arg, "-")
+}
+
+// isOwnBranchRef reports refs/heads/worktree-<name>, where name is a single plain path
+// component, so no other branch and no other kind of ref can be deleted.
+func isOwnBranchRef(ref string) bool {
+	name, ok := strings.CutPrefix(ref, headsPrefix+ownBranchPrefix)
+
+	return ok && name != "" && !strings.ContainsAny(name, "/\\ ~^:?*[") && !strings.Contains(name, "..") &&
+		!strings.HasPrefix(name, ".") && !strings.HasSuffix(name, ".lock")
 }
 
 // joinArgs joins an argument list with NULs, which cannot appear in an argument.

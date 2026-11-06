@@ -15,6 +15,25 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * CleanUp removes one finished worktree: its pull request merged or its issue closed, it
+ * has no uncommitted changes, every commit it has is on GitHub, and no session runs in it.
+ * The worktree is assessed again first, GitHub included. It releases the lock of an agent
+ * session that has ended, removes the worktree without --force, and deletes its own
+ * worktree-<name> branch while that still points at the commit checked.
+ */
+export function CleanUp(repoPath: string, path: string): $CancellablePromise<$models.RemoveResult> {
+    return $Call.ByID(3658666180, repoPath, path);
+}
+
+/**
+ * CleanUpFinished cleans up every finished worktree under the clone root, one at a time,
+ * and reports each outcome. Each is checked again just before it is removed.
+ */
+export function CleanUpFinished(): $CancellablePromise<$models.RemoveResult[] | null> {
+    return $Call.ByID(3921883602);
+}
+
+/**
  * ForceRemove removes one unlocked linked worktree that has uncommitted changes,
  * discarding them, with a single --force. Locked worktrees are refused even here, so a
  * running session's worktree is never pulled out from under it.
@@ -24,10 +43,17 @@ export function ForceRemove(repoPath: string, path: string): $CancellablePromise
 }
 
 /**
+ * LastSweep returns the latest sweep's report; its Seq is 0 before the first sweep.
+ */
+export function LastSweep(): $CancellablePromise<$models.SweepReport> {
+    return $Call.ByID(3577525952);
+}
+
+/**
  * List scans the clone root and returns every repository that has linked worktrees,
- * with the status of each worktree. A repository that git cannot read is listed with an
- * error rather than hiding the rest. A clone that is itself a linked worktree of another
- * clone is folded into that repository.
+ * with the status of each worktree and the pull request or issue it was made for. A
+ * repository that git cannot read is listed with an error rather than hiding the rest. A
+ * clone that is itself a linked worktree of another clone is folded into that repository.
  */
 export function List(): $CancellablePromise<$models.Snapshot> {
     return $Call.ByID(3590969184);
@@ -58,4 +84,26 @@ export function Remove(repoPath: string, path: string): $CancellablePromise<void
  */
 export function RemoveAllClean(): $CancellablePromise<$models.RemoveResult[] | null> {
     return $Call.ByID(532446488);
+}
+
+/**
+ * Sweep checks the worktrees the agent made for pull requests and issues and, when
+ * automatic cleanup is on, cleans up each finished one whose pull request merged or whose
+ * issue closed (see autoCleanable for which count). It never lists every clone: it looks
+ * only in clones with an agent worktree directory or a recorded launch, so it is cheap to
+ * run on a timer. It also drops the launch records of worktrees that are gone. The report
+ * is kept for LastSweep, and the notifier is told when a worktree was removed or the
+ * number left for the user changed.
+ */
+export function Sweep(): $CancellablePromise<$models.SweepReport> {
+    return $Call.ByID(1408242560);
+}
+
+/**
+ * Unlock releases a lock the coding agent wrote for a session that has certainly ended,
+ * so the worktree can be removed. A lock set by hand, or one whose session may still be
+ * running, is refused, and the lock is read again just before it is released.
+ */
+export function Unlock(repoPath: string, path: string): $CancellablePromise<void> {
+    return $Call.ByID(862354900, repoPath, path);
 }

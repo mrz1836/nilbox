@@ -10,7 +10,18 @@
 //   - ForceRemove passes a single --force and only for an unlocked worktree with
 //     uncommitted changes, so a locked worktree (usually a live agent session) is never
 //     removed;
-//   - the main worktree is never removed, and no branch is ever deleted.
+//   - Unlock releases only a lock the coding agent wrote for a session that has certainly
+//     ended, never a lock set by hand or one whose session may still run;
+//   - the main worktree is never removed.
+//
+// A worktree the agent made for a pull request or issue (pr-<n> or issue-<n> under the
+// clone's .claude/worktrees) is linked to that item, and GitHub says whether it is done.
+// GitHub decides when a worktree is finished; git alone decides whether removing it is
+// safe. CleanUp, CleanUpFinished, and the automatic Sweep remove a worktree only when its
+// item is merged or closed, it has no uncommitted changes, every commit it has is on
+// GitHub, and no session runs in it. Then they also delete the agent's own
+// worktree-<name> branch, and only while it still points at the commit checked. No other
+// branch is ever deleted, and nothing on GitHub is touched.
 //
 // Every git command runs as an argv `git -C <dir> ...` from a short allowlist, never
 // through a shell.
@@ -29,8 +40,77 @@ type Snapshot struct {
 	// CleanCount is how many worktrees "Remove all clean" would remove.
 	CleanCount int `json:"cleanCount"`
 
+	// FinishedCount is how many worktrees "Clean up finished" would remove.
+	FinishedCount int `json:"finishedCount"`
+
+	// ReviewCount is how many worktrees are done on GitHub but hold work that is not.
+	ReviewCount int `json:"reviewCount"`
+
+	// LinkError explains why the pull requests and issues could not be read from GitHub,
+	// or is "". The worktrees are listed without their items then.
+	LinkError string `json:"linkError"`
+
 	// ListedAt is when the snapshot was taken, in RFC 3339.
 	ListedAt string `json:"listedAt"`
+}
+
+// Stages of a worktree's pull request or issue, as Worktree.Stage reports them.
+const (
+	// StageInUse is a worktree a running agent session holds.
+	StageInUse = "in-use"
+
+	// StageActive is a worktree whose pull request or issue is still open.
+	StageActive = "active"
+
+	// StageFinished is a worktree whose item is done and that CleanUp removes without
+	// losing anything.
+	StageFinished = "finished"
+
+	// StageNeedsReview is a worktree whose item is done but that holds uncommitted
+	// changes or commits that are not on GitHub, or whose state could not be read.
+	StageNeedsReview = "needs-review"
+)
+
+// Item states, as LinkedItem.State reports them.
+const (
+	ItemOpen   = "open"
+	ItemMerged = "merged"
+	ItemClosed = "closed"
+)
+
+// LinkedItem is the pull request or issue a worktree was made for, as GitHub reports it
+// now.
+type LinkedItem struct {
+	// Kind is "pr" or "issue".
+	Kind string `json:"kind"`
+
+	// Owner and Name are the item's repository.
+	Owner string `json:"owner"`
+	Name  string `json:"name"`
+
+	// Number is the item's number.
+	Number int `json:"number"`
+
+	Title string `json:"title"`
+	URL   string `json:"url"`
+
+	// State is ItemOpen, ItemMerged, or ItemClosed.
+	State string `json:"state"`
+
+	// ClosedAt is when the item was merged or closed, in RFC 3339, or "" while open.
+	ClosedAt string `json:"closedAt"`
+
+	// HeadOID is a pull request's head commit, or "".
+	HeadOID string `json:"headOid"`
+
+	// Launched reports a worktree the app launched the session in, which the automatic
+	// cleanup looks after. Others are linked by their name alone.
+	Launched bool `json:"launched"`
+}
+
+// done reports a merged or closed item.
+func (i *LinkedItem) done() bool {
+	return i != nil && (i.State == ItemMerged || i.State == ItemClosed)
 }
 
 // Repo is one clone under the clone root and its worktrees.
@@ -79,9 +159,15 @@ type Worktree struct {
 	// LockReason is the lock's reason, if any.
 	LockReason string `json:"lockReason"`
 
-	// StaleLock reports an agent lock whose session process is no longer running. It is
-	// only a hint: the worktree stays locked and is still not removable.
+	// AgentLock reports a lock the coding agent wrote for a session.
+	AgentLock bool `json:"agentLock"`
+
+	// StaleLock reports an agent lock whose session has certainly ended: its process is
+	// gone, or the PID now belongs to a process that started later.
 	StaleLock bool `json:"staleLock"`
+
+	// CanUnlock reports a stale agent lock, which Unlock releases.
+	CanUnlock bool `json:"canUnlock"`
 
 	// Prunable reports an entry whose directory is gone.
 	Prunable bool `json:"prunable"`
@@ -98,6 +184,29 @@ type Worktree struct {
 	// LastCommitUnix is the commit time of HEAD in Unix seconds, or 0 when unknown.
 	LastCommitUnix int64 `json:"lastCommitUnix"`
 
+	// Head is the commit the worktree has checked out.
+	Head string `json:"head"`
+
+	// Unpushed is how many commits on HEAD no remote-tracking branch has, or -1 when it
+	// could not be counted (or was not, for the main worktree).
+	Unpushed int `json:"unpushed"`
+
+	// OnGitHub reports that every commit the worktree has is on GitHub: none is missing
+	// from the remote-tracking branches, or HEAD is its pull request's head commit, which
+	// GitHub keeps.
+	OnGitHub bool `json:"onGitHub"`
+
+	// Item is the pull request or issue the worktree was made for, or nil.
+	Item *LinkedItem `json:"item"`
+
+	// Stage is where the worktree stands (one of the Stage constants), or "" for a
+	// worktree with no item or one locked by hand.
+	Stage string `json:"stage"`
+
+	// OwnBranch reports that the checked-out branch is the agent's worktree-<name> branch
+	// for this worktree, which CleanUp deletes with it.
+	OwnBranch bool `json:"ownBranch"`
+
 	// ClaudeCreated reports a worktree under the repository's .claude/worktrees
 	// directory, where the coding agent creates its worktrees.
 	ClaudeCreated bool `json:"claudeCreated"`
@@ -108,6 +217,9 @@ type Worktree struct {
 	// CanForceRemove reports an unlocked linked worktree with uncommitted changes that
 	// ForceRemove accepts after the user confirms.
 	CanForceRemove bool `json:"canForceRemove"`
+
+	// CanCleanUp reports a finished worktree that CleanUp removes, with its own branch.
+	CanCleanUp bool `json:"canCleanUp"`
 
 	// Error explains why the worktree's status could not be read, or is "".
 	Error string `json:"error"`
@@ -127,6 +239,38 @@ type RemoveResult struct {
 	// Removed reports whether the worktree was removed.
 	Removed bool `json:"removed"`
 
-	// Reason explains why it was not removed, or is "".
+	// DeletedBranch is the branch deleted with the worktree, or "".
+	DeletedBranch string `json:"deletedBranch"`
+
+	// Item names the pull request or issue a cleaned-up worktree was for, e.g.
+	// "acme-org/example-repo#184", or is "".
+	Item string `json:"item"`
+
+	// Reason explains why it was not removed, or why its branch was kept, or is "".
 	Reason string `json:"reason"`
+}
+
+// SweepReport is what the latest automatic sweep found and did.
+type SweepReport struct {
+	// Seq numbers the sweeps since the app started, from 1; 0 means none has run yet.
+	Seq int `json:"seq"`
+
+	// At is when the sweep finished, in RFC 3339, or "".
+	At string `json:"at"`
+
+	// Enabled reports whether automatic cleanup was on.
+	Enabled bool `json:"enabled"`
+
+	// Cleaned lists the worktrees the sweep removed.
+	Cleaned []RemoveResult `json:"cleaned"`
+
+	// Failed lists the worktrees it tried to remove and could not, with why.
+	Failed []RemoveResult `json:"failed"`
+
+	// Leftover is how many worktrees are done on GitHub but still on disk and not in use,
+	// so the user may want to look at them.
+	Leftover int `json:"leftover"`
+
+	// Error explains why the sweep could not run, or is "".
+	Error string `json:"error"`
 }

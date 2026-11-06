@@ -22,6 +22,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/launcher"
+	"github.com/mrz1836/nilbox/internal/launchlog"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/settings"
@@ -75,6 +76,9 @@ type Options struct {
 	// Notifier is told when the stored inbox changed.
 	Notifier inbox.Notifier
 
+	// WorktreeNotifier is told when an automatic worktree sweep changed something.
+	WorktreeNotifier worktrees.Notifier
+
 	// Runner runs external programs. It defaults to an execpath.Runner whose finder
 	// searches the well-known directories under Home.
 	Runner Runner
@@ -102,6 +106,8 @@ type Core struct {
 	AppInfo        *appinfo.Service
 
 	// Scheduler refreshes the inbox on start and every five minutes once Run is called.
+	// A worktrees.Sweeper over Worktrees does the same for the automatic worktree
+	// cleanup.
 	Scheduler *inbox.Scheduler
 
 	// Timing records the first paint.
@@ -202,11 +208,14 @@ func assemble(db *gorm.DB, opts Options, logger *slog.Logger) *Core {
 	}
 
 	prefs := settings.NewService(db, opts.Home)
+	tokens := github.NewTokenSource(runner, finder)
+	client := github.NewClient(opts.Version)
+	launches := launchlog.NewStore(db)
 
 	inboxSvc := inbox.NewService(inbox.Config{
 		DB:       db,
-		Tokens:   github.NewTokenSource(runner, finder),
-		Client:   github.NewClient(opts.Version),
+		Tokens:   tokens,
+		Client:   client,
 		Clock:    opts.Clock,
 		Notifier: opts.Notifier,
 	})
@@ -222,6 +231,7 @@ func assemble(db *gorm.DB, opts Options, logger *slog.Logger) *Core {
 		Paths:    opts.Paths,
 		Home:     opts.Home,
 		Clock:    opts.Clock,
+		Launches: launches,
 	})
 
 	return &Core{
@@ -238,6 +248,10 @@ func assemble(db *gorm.DB, opts Options, logger *slog.Logger) *Core {
 			Finder:   finder,
 			Home:     opts.Home,
 			Clock:    opts.Clock,
+			GitHub:   itemStates{tokens: tokens, client: client},
+			Launches: launches,
+			Notifier: opts.WorktreeNotifier,
+			Logger:   logger,
 		}),
 		AppInfo: appinfo.NewService(appinfo.Config{
 			Version:      opts.Version,
@@ -249,4 +263,21 @@ func assemble(db *gorm.DB, opts Options, logger *slog.Logger) *Core {
 		Scheduler: inbox.NewScheduler(inboxSvc, inbox.WithLogger(logger)),
 		Timing:    recorder,
 	}
+}
+
+// itemStates reads the state of the pull requests and issues worktrees are linked to,
+// with the GitHub CLI's token, for the worktree service.
+type itemStates struct {
+	tokens *github.TokenSource
+	client *github.Client
+}
+
+// ItemStates asks GitHub about refs.
+func (s itemStates) ItemStates(ctx context.Context, refs []github.ItemRef) (map[github.ItemRef]github.ItemState, error) {
+	tok, err := s.tokens.Token(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.client.FetchItemStates(ctx, tok, refs)
 }

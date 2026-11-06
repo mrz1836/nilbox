@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -15,6 +15,7 @@ import {
   resolution,
   settings,
   snapshot,
+  sweepReport,
   unknownRate,
   variables,
   worktreesSnapshot,
@@ -49,6 +50,8 @@ const platform = vi.hoisted(() => ({
   resetTrustedBots: vi.fn(),
   setSnoozeDays: vi.fn(),
   snoozeItem: vi.fn(),
+  lastWorktreeSweep: vi.fn(),
+  onWorktreesUpdated: vi.fn(),
 }))
 
 vi.mock('./platform', () => platform)
@@ -88,6 +91,8 @@ beforeEach(() => {
   platform.listLaunchTargets.mockResolvedValue([])
   platform.checkLaunchDefaults.mockResolvedValue([])
   platform.setTrustedBots.mockResolvedValue(undefined)
+  platform.lastWorktreeSweep.mockResolvedValue(sweepReport({ seq: 0 }))
+  platform.onWorktreesUpdated.mockReturnValue(() => undefined)
 })
 
 // rowOptions opens the inbox row's launch options and returns queries scoped to them.
@@ -285,6 +290,144 @@ describe('App', () => {
     // A comma without ⌘ is just a comma.
     await userEvent.keyboard(',')
     expect(screen.queryByRole('navigation', { name: 'Settings sections' })).not.toBeInTheDocument()
+  })
+
+  it('counts the worktrees worth a look on the Worktrees tab and toasts an automatic cleanup', async () => {
+    let swept: () => void = () => undefined
+    const stop = vi.fn()
+    platform.onWorktreesUpdated.mockImplementation((listener: () => void) => {
+      swept = listener
+
+      return stop
+    })
+    platform.lastWorktreeSweep.mockResolvedValue(sweepReport({ seq: 1, leftover: 2 }))
+
+    const { unmount } = render(<App />)
+
+    const tab = screen.getByRole('button', { name: 'Worktrees' })
+    expect(await within(tab).findByText('2')).toBeInTheDocument()
+    expect(tab).toHaveAttribute('title', '2 worktrees are done on GitHub but still on disk')
+    expect(screen.queryByText(/Cleaned up/)).not.toBeInTheDocument()
+
+    // A sweep removed two worktrees, one of them for an item.
+    platform.lastWorktreeSweep.mockResolvedValue(
+      sweepReport({
+        seq: 2,
+        leftover: 1,
+        cleaned: [
+          {
+            repoPath: '/home/user/projects/example-repo',
+            path: '/home/user/projects/example-repo/.claude/worktrees/pr-7',
+            displayPath: '~/projects/example-repo/.claude/worktrees/pr-7',
+            removed: true,
+            deletedBranch: 'worktree-pr-7',
+            item: 'acme-org/example-repo#7',
+            reason: '',
+          },
+          {
+            repoPath: '/home/user/projects/example-repo',
+            path: '/home/user/projects/example-repo/.claude/worktrees/pr-8',
+            displayPath: '~/projects/example-repo/.claude/worktrees/pr-8',
+            removed: true,
+            deletedBranch: '',
+            item: '',
+            reason: '',
+          },
+        ],
+      }),
+    )
+    await act(async () => {
+      swept()
+      await Promise.resolve()
+    })
+
+    expect(await screen.findByText('Cleaned up 2 finished worktrees')).toBeInTheDocument()
+    expect(
+      screen.getByText(/acme-org\/example-repo#7, ~\/projects\/example-repo\/\.claude\/worktrees\/pr-8/),
+    ).toBeInTheDocument()
+    expect(within(tab).getByText('1')).toBeInTheDocument()
+    expect(tab).toHaveAttribute('title', '1 worktree is done on GitHub but still on disk')
+
+    // An event for a sweep already read changes nothing; a later one with one cleaned
+    // worktree says so.
+    await act(async () => {
+      swept()
+      await Promise.resolve()
+    })
+
+    platform.lastWorktreeSweep.mockResolvedValue(
+      sweepReport({
+        seq: 3,
+        cleaned: [
+          {
+            repoPath: '/r',
+            path: '/r/.claude/worktrees/pr-9',
+            displayPath: '~/r/.claude/worktrees/pr-9',
+            removed: true,
+            deletedBranch: '',
+            item: 'acme-org/r#9',
+            reason: '',
+          },
+        ],
+      }),
+    )
+    await act(async () => {
+      swept()
+      await Promise.resolve()
+    })
+
+    expect(await screen.findByText('Cleaned up a finished worktree')).toBeInTheDocument()
+    expect(within(tab).queryByText('1')).not.toBeInTheDocument()
+    expect(tab).not.toHaveAttribute('title')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(screen.queryByText('Cleaned up a finished worktree')).not.toBeInTheDocument()
+
+    unmount()
+    expect(stop).toHaveBeenCalledOnce()
+  })
+
+  it('counts from the Worktrees view and lists again after a sweep', async () => {
+    let swept: () => void = () => undefined
+    platform.onWorktreesUpdated.mockImplementation((listener: () => void) => {
+      swept = listener
+
+      return () => undefined
+    })
+    platform.listWorktrees.mockResolvedValue(worktreesSnapshot({ finishedCount: 2, reviewCount: 1 }))
+
+    render(<App />)
+    const tab = screen.getByRole('button', { name: 'Worktrees' })
+    await userEvent.click(tab)
+
+    expect(await within(tab).findByText('3')).toBeInTheDocument()
+    expect(platform.listWorktrees).toHaveBeenCalledOnce()
+
+    platform.lastWorktreeSweep.mockResolvedValue(sweepReport({ seq: 4, leftover: 0 }))
+    platform.listWorktrees.mockResolvedValue(worktreesSnapshot())
+    await act(async () => {
+      swept()
+      await Promise.resolve()
+    })
+
+    await vi.waitFor(() => {
+      expect(platform.listWorktrees).toHaveBeenCalledTimes(2)
+    })
+    await vi.waitFor(() => {
+      expect(within(tab).queryByText(/\d/)).not.toBeInTheDocument()
+    })
+  })
+
+  it('logs a sweep that could not be read', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    platform.lastWorktreeSweep.mockRejectedValue(new Error('backend gone'))
+
+    render(<App />)
+
+    await vi.waitFor(() => {
+      expect(error).toHaveBeenCalledWith('could not read the latest worktree sweep', expect.any(Error))
+    })
+    error.mockRestore()
   })
 
   it('shows settings that could not be loaded', async () => {

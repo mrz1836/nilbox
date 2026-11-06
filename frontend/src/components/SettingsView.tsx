@@ -22,7 +22,9 @@ import {
   setSnoozeWake,
   setTerminal,
   setWindowSize,
+  setWorktreeAutoCleanup,
   setWorktreeDefault,
+  sweepWorktrees,
   type Account,
   type DefaultPrompts,
   type Info,
@@ -464,7 +466,7 @@ function LaunchingSection({
   onLaunchChanged,
 }: LaunchingSectionProps) {
   const id = useId()
-  const [errors, setErrors] = useState({ terminal: '', profile: '', worktree: '', pr: '', issue: '' })
+  const [errors, setErrors] = useState({ terminal: '', profile: '', worktree: '', cleanup: '', pr: '', issue: '' })
 
   // save stores one change, then reports the new settings, or shows why it was refused.
   const save = (field: keyof typeof errors, call: Promise<void>, next: Settings) => {
@@ -586,6 +588,33 @@ function LaunchingSection({
           onChange={(e) => {
             const worktreeDefault = e.target.checked
             save('worktree', setWorktreeDefault(worktreeDefault), { ...settings, worktreeDefault })
+          }}
+          className={switchClass}
+        />
+      </SettingRow>
+      <SettingRow
+        label="Clean up after merging"
+        controlId={`${id}-cleanup`}
+        description="Removes a session's worktree, with its own worktree-… branch, once its pull request merges or its issue closes, if it has no uncommitted changes, all its commits are on GitHub, and no session runs in it. Checked every few minutes; ignored files in it go with it."
+        error={errors.cleanup}
+      >
+        <input
+          id={`${id}-cleanup`}
+          type="checkbox"
+          role="switch"
+          aria-describedby={`${id}-cleanup-help`}
+          checked={settings.worktreeAutoCleanup}
+          onChange={(e) => {
+            const worktreeAutoCleanup = e.target.checked
+            // Turned on, it sweeps at once rather than at the next check.
+            const call = setWorktreeAutoCleanup(worktreeAutoCleanup).then(() => {
+              if (worktreeAutoCleanup) {
+                sweepWorktrees().catch((err: unknown) => {
+                  console.error('could not sweep the worktrees', err)
+                })
+              }
+            })
+            save('cleanup', call, { ...settings, worktreeAutoCleanup })
           }}
           className={switchClass}
         />

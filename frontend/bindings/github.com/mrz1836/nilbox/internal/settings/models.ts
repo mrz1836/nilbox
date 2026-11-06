@@ -21,6 +21,12 @@ export interface Settings {
     "worktreeDefault": boolean;
 
     /**
+     * WorktreeAutoCleanup cleans up a finished worktree on its own once its pull request
+     * merges or its issue closes.
+     */
+    "worktreeAutoCleanup": boolean;
+
+    /**
      * Terminal is "iterm2" or "terminal".
      */
     "terminal": string;

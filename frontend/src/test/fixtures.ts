@@ -10,6 +10,7 @@ import type {
   LaunchDefaults,
   LaunchPreview,
   LaunchResult,
+  LinkedItem,
   Profile,
   Prompt,
   PromptCheckResult,
@@ -17,6 +18,7 @@ import type {
   Rate,
   Resolution,
   Settings,
+  SweepReport,
   Worktree,
   WorktreeRepo,
   WorktreesSnapshot,
@@ -89,6 +91,7 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
   return {
     defaultProfile: 'default',
     worktreeDefault: true,
+    worktreeAutoCleanup: true,
     terminal: 'iterm2',
     cloneRoot: '~/projects',
     trustedBots: ['dependabot', 'github-actions', 'renovate'],
@@ -340,15 +343,59 @@ export function worktree(overrides: Partial<Worktree> = {}): Worktree {
     main: false,
     locked: false,
     lockReason: '',
+    agentLock: false,
     staleLock: false,
+    canUnlock: false,
     prunable: false,
     prunableReason: '',
     dirty: false,
     dirtyCount: 0,
     lastCommitUnix: 0,
+    head: 'fc1c3975011e66491785ace891c893e4fc716587',
+    unpushed: 0,
+    onGitHub: true,
+    item: null,
+    stage: '',
+    ownBranch: true,
     claudeCreated: true,
     canRemove: true,
     canForceRemove: false,
+    canCleanUp: false,
+    error: '',
+    ...overrides,
+  }
+}
+
+// linkedItem is the pull request a worktree was made for: example-repo#7, merged.
+export function linkedItem(overrides: Partial<LinkedItem> = {}): LinkedItem {
+  return {
+    kind: 'pr',
+    owner: 'acme-org',
+    name: 'example-repo',
+    number: 7,
+    title: 'Add the widget cache',
+    url: 'https://github.com/acme-org/example-repo/pull/7',
+    state: 'merged',
+    closedAt: '2026-06-15T10:00:00Z',
+    headOid: 'fc1c3975011e66491785ace891c893e4fc716587',
+    launched: true,
+    ...overrides,
+  }
+}
+
+// finishedWorktree is a worktree whose pull request merged, ready to clean up.
+export function finishedWorktree(overrides: Partial<Worktree> = {}): Worktree {
+  return worktree({ item: linkedItem(), stage: 'finished', canCleanUp: true, ...overrides })
+}
+
+export function sweepReport(overrides: Partial<SweepReport> = {}): SweepReport {
+  return {
+    seq: 1,
+    at: '2026-06-15T12:00:00Z',
+    enabled: true,
+    cleaned: [],
+    failed: [],
+    leftover: 0,
     error: '',
     ...overrides,
   }
@@ -380,5 +427,14 @@ export function worktreeRepo(overrides: Partial<WorktreeRepo> = {}): WorktreeRep
 }
 
 export function worktreesSnapshot(overrides: Partial<WorktreesSnapshot> = {}): WorktreesSnapshot {
-  return { root: '~/projects', repos: [worktreeRepo()], cleanCount: 1, listedAt: '2026-06-15T12:00:00Z', ...overrides }
+  return {
+    root: '~/projects',
+    repos: [worktreeRepo()],
+    cleanCount: 1,
+    finishedCount: 0,
+    reviewCount: 0,
+    linkError: '',
+    listedAt: '2026-06-15T12:00:00Z',
+    ...overrides,
+  }
 }

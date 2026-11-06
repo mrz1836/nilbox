@@ -33,13 +33,25 @@ const mocks = vi.hoisted(() => ({
     SetCloneRoot: vi.fn(),
     SetDefaultProfile: vi.fn(),
     SetWorktreeDefault: vi.fn(),
+    SetWorktreeAutoCleanup: vi.fn(),
     SetTrustedBots: vi.fn(),
     ResetTrustedBots: vi.fn(),
     SetSnoozeDays: vi.fn(),
     SetSnoozeWake: vi.fn(),
     SetWindowSize: vi.fn(),
   },
-  worktrees: { List: vi.fn(), Remove: vi.fn(), ForceRemove: vi.fn(), RemoveAllClean: vi.fn(), Prune: vi.fn() },
+  worktrees: {
+    List: vi.fn(),
+    Remove: vi.fn(),
+    ForceRemove: vi.fn(),
+    RemoveAllClean: vi.fn(),
+    Prune: vi.fn(),
+    Unlock: vi.fn(),
+    CleanUp: vi.fn(),
+    CleanUpFinished: vi.fn(),
+    Sweep: vi.fn(),
+    LastSweep: vi.fn(),
+  },
   events: { On: vi.fn() },
   browser: { OpenURL: vi.fn() },
   window: { SetSize: vi.fn() },
@@ -288,6 +300,7 @@ describe('settings', () => {
     const settings: platform.Settings = {
       defaultProfile: 'default',
       worktreeDefault: true,
+      worktreeAutoCleanup: true,
       terminal: 'iterm2',
       cloneRoot: '~/projects',
       trustedBots: ['dependabot'],
@@ -302,6 +315,7 @@ describe('settings', () => {
     mocks.settings.SetCloneRoot.mockResolvedValue(undefined)
     mocks.settings.SetDefaultProfile.mockResolvedValue(undefined)
     mocks.settings.SetWorktreeDefault.mockResolvedValue(undefined)
+    mocks.settings.SetWorktreeAutoCleanup.mockResolvedValue(undefined)
 
     await expect(platform.getSettings()).resolves.toBe(settings)
 
@@ -309,11 +323,13 @@ describe('settings', () => {
     await platform.setCloneRoot('~/code')
     await platform.setDefaultProfile('work')
     await platform.setWorktreeDefault(false)
+    await platform.setWorktreeAutoCleanup(false)
 
     expect(mocks.settings.SetTerminal).toHaveBeenCalledWith('terminal')
     expect(mocks.settings.SetCloneRoot).toHaveBeenCalledWith('~/code')
     expect(mocks.settings.SetDefaultProfile).toHaveBeenCalledWith('work')
     expect(mocks.settings.SetWorktreeDefault).toHaveBeenCalledWith(false)
+    expect(mocks.settings.SetWorktreeAutoCleanup).toHaveBeenCalledWith(false)
 
     mocks.settings.SetTrustedBots.mockResolvedValue(undefined)
     mocks.settings.ResetTrustedBots.mockResolvedValue(undefined)
@@ -364,7 +380,15 @@ describe('settings', () => {
 
 describe('worktrees', () => {
   it('lists, removes, force-removes, and prunes', async () => {
-    const listing: platform.WorktreesSnapshot = { root: '~/projects', repos: [], cleanCount: 0, listedAt: '' }
+    const listing: platform.WorktreesSnapshot = {
+      root: '~/projects',
+      repos: [],
+      cleanCount: 0,
+      finishedCount: 0,
+      reviewCount: 0,
+      linkError: '',
+      listedAt: '',
+    }
     mocks.worktrees.List.mockResolvedValue(listing)
     mocks.worktrees.Remove.mockResolvedValue(undefined)
     mocks.worktrees.ForceRemove.mockResolvedValue(undefined)
@@ -387,11 +411,68 @@ describe('worktrees', () => {
       path: '/repo/.claude/worktrees/pr-7',
       displayPath: '~/projects/example-repo/.claude/worktrees/pr-7',
       removed: true,
+      deletedBranch: '',
+      item: '',
       reason: '',
     }
     mocks.worktrees.RemoveAllClean.mockResolvedValueOnce([removed]).mockResolvedValueOnce(null)
 
     await expect(platform.removeAllCleanWorktrees()).resolves.toEqual([removed])
     await expect(platform.removeAllCleanWorktrees()).resolves.toEqual([])
+  })
+
+  it('unlocks, cleans up, and sweeps', async () => {
+    const cleaned: platform.RemoveResult = {
+      repoPath: '/repo',
+      path: '/repo/.claude/worktrees/pr-7',
+      displayPath: '~/projects/example-repo/.claude/worktrees/pr-7',
+      removed: true,
+      deletedBranch: 'worktree-pr-7',
+      item: 'acme-org/example-repo#7',
+      reason: '',
+    }
+    const report: platform.SweepReport = {
+      seq: 3,
+      at: '2026-11-06T18:00:00Z',
+      enabled: true,
+      cleaned: [cleaned],
+      failed: [],
+      leftover: 1,
+      error: '',
+    }
+    mocks.worktrees.Unlock.mockResolvedValue(undefined)
+    mocks.worktrees.CleanUp.mockResolvedValue(cleaned)
+    mocks.worktrees.CleanUpFinished.mockResolvedValueOnce([cleaned]).mockResolvedValueOnce(null)
+    mocks.worktrees.Sweep.mockResolvedValue(report)
+    mocks.worktrees.LastSweep.mockResolvedValue(report)
+
+    await platform.unlockWorktree('/repo', cleaned.path)
+    expect(mocks.worktrees.Unlock).toHaveBeenCalledWith('/repo', cleaned.path)
+
+    await expect(platform.cleanUpWorktree('/repo', cleaned.path)).resolves.toBe(cleaned)
+    expect(mocks.worktrees.CleanUp).toHaveBeenCalledWith('/repo', cleaned.path)
+
+    await expect(platform.cleanUpFinishedWorktrees()).resolves.toEqual([cleaned])
+    await expect(platform.cleanUpFinishedWorktrees()).resolves.toEqual([])
+
+    await expect(platform.sweepWorktrees()).resolves.toBe(report)
+    await expect(platform.lastWorktreeSweep()).resolves.toBe(report)
+  })
+
+  it('subscribes to worktree sweeps and returns the unsubscribe function', () => {
+    const unsubscribe = vi.fn()
+    mocks.events.On.mockReturnValue(unsubscribe)
+
+    const listener = vi.fn()
+    const stop = platform.onWorktreesUpdated(listener)
+
+    expect(mocks.events.On).toHaveBeenCalledWith(platform.worktreesUpdatedEvent, expect.any(Function))
+
+    const handler = mocks.events.On.mock.calls.at(-1)?.[1] as () => void
+    handler()
+    expect(listener).toHaveBeenCalledOnce()
+
+    stop()
+    expect(unsubscribe).toHaveBeenCalledOnce()
   })
 })

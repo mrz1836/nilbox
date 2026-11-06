@@ -42,6 +42,7 @@ import { Service as Worktrees } from '../../bindings/github.com/mrz1836/nilbox/i
 import type {
   RemoveResult,
   Snapshot as WorktreesSnapshot,
+  SweepReport,
 } from '../../bindings/github.com/mrz1836/nilbox/internal/worktrees'
 
 // The bound services' data types, generated from the Go structs. Callers use these and
@@ -94,14 +95,20 @@ export type {
   Rules as SnoozeRules,
 } from '../../bindings/github.com/mrz1836/nilbox/internal/snooze'
 export type {
+  LinkedItem,
   RemoveResult,
   Repo as WorktreeRepo,
   Snapshot as WorktreesSnapshot,
+  SweepReport,
   Worktree,
 } from '../../bindings/github.com/mrz1836/nilbox/internal/worktrees'
 
 // inboxUpdatedEvent is the event the shell emits whenever the stored inbox changed.
 export const inboxUpdatedEvent = 'inbox:updated'
+
+// worktreesUpdatedEvent is the event the shell emits when an automatic worktree sweep
+// removed a worktree or changed how many need attention.
+export const worktreesUpdatedEvent = 'worktrees:updated'
 
 // App
 
@@ -274,6 +281,12 @@ export function setWorktreeDefault(on: boolean): Promise<void> {
   return SettingsService.SetWorktreeDefault(on)
 }
 
+// setWorktreeAutoCleanup stores whether finished worktrees are cleaned up on their own once
+// their pull request merges or their issue closes.
+export function setWorktreeAutoCleanup(on: boolean): Promise<void> {
+  return SettingsService.SetWorktreeAutoCleanup(on)
+}
+
 // setSnoozeDays stores how many days an inbox row's Snooze button hides an item.
 export function setSnoozeDays(days: number): Promise<void> {
   return SettingsService.SetSnoozeDays(days)
@@ -320,4 +333,38 @@ export async function removeAllCleanWorktrees(): Promise<RemoveResult[]> {
 
 export function pruneWorktrees(repoPath: string): Promise<void> {
   return Worktrees.Prune(repoPath)
+}
+
+// unlockWorktree releases a lock an agent session wrote, once that session has ended.
+export function unlockWorktree(repoPath: string, path: string): Promise<void> {
+  return Worktrees.Unlock(repoPath, path)
+}
+
+// cleanUpWorktree removes one finished worktree, and its own branch, after checking it
+// again.
+export function cleanUpWorktree(repoPath: string, path: string): Promise<RemoveResult> {
+  return Worktrees.CleanUp(repoPath, path)
+}
+
+export async function cleanUpFinishedWorktrees(): Promise<RemoveResult[]> {
+  return (await Worktrees.CleanUpFinished()) ?? []
+}
+
+// sweepWorktrees runs the automatic cleanup now, as it runs on its own every few minutes.
+export function sweepWorktrees(): Promise<SweepReport> {
+  return Worktrees.Sweep()
+}
+
+// lastWorktreeSweep returns what the latest automatic sweep found and did; its seq is 0
+// before the first one.
+export function lastWorktreeSweep(): Promise<SweepReport> {
+  return Worktrees.LastSweep()
+}
+
+// onWorktreesUpdated calls listener whenever an automatic sweep changed something, and
+// returns a function that stops listening.
+export function onWorktreesUpdated(listener: () => void): () => void {
+  return Events.On(worktreesUpdatedEvent, () => {
+    listener()
+  })
 }
