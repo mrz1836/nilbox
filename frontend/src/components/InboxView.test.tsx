@@ -845,3 +845,66 @@ describe('InboxView triage', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Dismissed · Add the widget cache')
   })
 })
+
+describe('InboxView at nil', () => {
+  const refreshed = '2026-06-15T11:55:00Z'
+  const last = item({ id: 1, title: 'Add the widget cache' })
+
+  // party finds the party, when there is one.
+  const party = () => screen.queryByRole('region', { name: 'inbox == nil' })
+
+  it('throws a party over the lists once a refresh finds every list empty', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: refreshed }))
+    render(<Harness launch={launchOptions} clock={clock} />)
+
+    expect(await screen.findByRole('region', { name: 'inbox == nil' })).toBeInTheDocument()
+    // Opening the page at nil sprinkles; the achievement is for emptying it.
+    expect(screen.queryByText('Achievement unlocked')).not.toBeInTheDocument()
+    // The lists stay, for what was snoozed or dismissed.
+    expect(await section('Review requested')).toBeTruthy()
+    expect(screen.getAllByText('Nothing here.')).toHaveLength(3)
+  })
+
+  it('throws no party before the first refresh, after an error, or while anything is left', async () => {
+    platform.getInboxSnapshot.mockResolvedValueOnce(snapshot())
+    const { unmount } = render(<Harness launch={launchOptions} clock={clock} />)
+    expect(await screen.findAllByText('Nothing here.')).toHaveLength(3)
+    expect(party()).not.toBeInTheDocument()
+    unmount()
+
+    platform.getInboxSnapshot.mockResolvedValueOnce(snapshot({ lastRefreshedAt: refreshed, lastError: 'rate limited' }))
+    const failed = render(<Harness launch={launchOptions} clock={clock} />)
+    expect(await screen.findByRole('alert')).toHaveTextContent('rate limited')
+    expect(party()).not.toBeInTheDocument()
+    failed.unmount()
+
+    platform.getInboxSnapshot.mockResolvedValueOnce(snapshot({ lastRefreshedAt: refreshed, assigned: list([last]) }))
+    render(<Harness launch={launchOptions} clock={clock} />)
+    expect(await screen.findByRole('button', { name: 'Add the widget cache' })).toBeInTheDocument()
+    expect(party()).not.toBeInTheDocument()
+  })
+
+  it('unlocks the achievement when the last item is dismissed, and leaves with an undo', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: refreshed, reviewRequested: list([last]) }))
+    platform.dismissItem.mockResolvedValue(
+      snapshot({ lastRefreshedAt: refreshed, reviewRequested: list([{ ...last, dismissedAt: now.toISOString() }]) }),
+    )
+    platform.restoreItem.mockResolvedValue(snapshot({ lastRefreshedAt: refreshed, reviewRequested: list([last]) }))
+    render(<Harness launch={launchOptions} clock={clock} />)
+
+    const review = await section('Review requested')
+    expect(party()).not.toBeInTheDocument()
+
+    await userEvent.click(review.getByRole('button', { name: 'Dismiss' }))
+
+    expect(await screen.findByText('Achievement unlocked')).toBeInTheDocument()
+    expect(party()).toHaveTextContent('Inbox zero is for amateurs. You hit nil.')
+    expect(screen.getAllByTestId('confetti').length).toBeGreaterThan(0)
+    expect(within(screen.getByRole('figure', { name: 'Terminal' })).getByText('dismissed')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }))
+
+    expect(await review.findByRole('button', { name: 'Add the widget cache' })).toBeInTheDocument()
+    expect(party()).not.toBeInTheDocument()
+  })
+})

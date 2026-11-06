@@ -2,10 +2,12 @@ import { useCallback, useId, useMemo, useRef, useState, type KeyboardEvent, type
 
 import { formatAgo } from '../lib/age'
 import { errorMessage } from '../lib/format'
-import { formatWhen, isDismissed, triageList, type TriageTab } from '../lib/triage'
+import { isInboxNil } from '../lib/nil'
+import { formatWhen, inboxCount, isDismissed, triageList, type TriageTab } from '../lib/triage'
 import type { InboxState } from '../lib/useInbox'
 import type { InboxItem, InboxList, InboxSnapshot } from '../platform'
 import { ArchiveIcon, ChevronDownIcon, ClockIcon } from './icons'
+import { InboxNil } from './InboxNil'
 import { ItemRow, type LaunchOptions } from './ItemRow'
 import { Toast, type ToastMessage } from './Toast'
 import type { TriageActions } from './TriageControls'
@@ -255,7 +257,8 @@ function ListSection({ title, list, now, launch, triage, collapsed, onCollapse, 
 // InboxView shows the three inbox lists across the full width, with a refresh control and
 // the time of the last refresh. Each list has tabs for what was snoozed or dismissed from
 // it and collapses from its header, and each triage action is confirmed by a toast with an
-// Undo. The account and the API budget live in the toolbar.
+// Undo. When every list is empty, the inbox throws a party above them (InboxNil). The
+// account and the API budget live in the toolbar.
 export function InboxView({
   inbox,
   launch,
@@ -281,6 +284,17 @@ export function InboxView({
   } = inbox
   const error = firstMessage(refreshError, snapshot?.lastError ?? '', loadError)
   const [toast, setToast] = useState<ToastMessage | null>(null)
+  const count = useMemo(() => (snapshot === null ? 0 : inboxCount(snapshot, now)), [snapshot, now])
+  const nil = useMemo(
+    () => snapshot !== null && collapsed !== null && error === '' && isInboxNil(snapshot, now),
+    [snapshot, collapsed, error, now],
+  )
+  // busy records that the inbox has held something while the page was open, so emptying it
+  // from here throws the full party, while opening the page at nil only sprinkles.
+  const [busy, setBusy] = useState(false)
+  if (!busy && count > 0) {
+    setBusy(true)
+  }
   const toastCount = useRef(0)
 
   const showToast = useCallback((message: Omit<ToastMessage, 'id'>) => {
@@ -379,6 +393,7 @@ export function InboxView({
       {snapshot !== null && snapshot.scopeWarning !== '' && (
         <p className="rounded-md border border-warning px-3 py-2 text-sm text-warning">{snapshot.scopeWarning}</p>
       )}
+      {nil && snapshot !== null && <InboxNil snapshot={snapshot} now={now} earned={busy} />}
       {snapshot === null || collapsed === null
         ? loadError === '' && <p className="text-sm text-muted">Loading the inbox…</p>
         : sections.map(({ key, title }) => (

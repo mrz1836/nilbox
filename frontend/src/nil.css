@@ -1,0 +1,371 @@
+/* The inbox-nil party: components/InboxNil.tsx and components/Confetti.tsx.
+   Everything that moves does so only under prefers-reduced-motion: no-preference; with
+   reduced motion the page is the same party, holding still, and no confetti flies. */
+
+@layer components {
+  /* A blueprint grid behind the party, fading out from the middle. */
+  .nil-grid {
+    background-image:
+      linear-gradient(to right, color-mix(in oklab, var(--brand-border) 80%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in oklab, var(--brand-border) 80%, transparent) 1px, transparent 1px);
+    background-size: 28px 28px;
+    mask-image: radial-gradient(ellipse 70% 62% at 50% 26%, #000 20%, transparent 100%);
+  }
+
+  /* The accent glow the mark sits in. */
+  .nil-glow {
+    background: radial-gradient(closest-side, color-mix(in oklab, var(--brand-accent) 30%, transparent), transparent);
+    filter: blur(24px);
+  }
+
+  .nil-mark {
+    filter: drop-shadow(0 10px 28px color-mix(in oklab, var(--brand-accent) 50%, transparent));
+  }
+
+  /* Sonar rings that ping out from the mark. */
+  .nil-ring {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 96px;
+    height: 96px;
+    translate: -50% -50%;
+    border: 2px solid var(--brand-accent);
+    border-radius: 32%;
+    opacity: 0;
+  }
+
+  /* "nil", in the accent warming toward the mark's highlight, as the mark does. */
+  .nil-word {
+    display: inline-block;
+    background-image: linear-gradient(
+      100deg,
+      var(--brand-accent) 35%,
+      color-mix(in oklab, var(--brand-accent) 45%, var(--nil-highlight)) 50%,
+      var(--brand-accent) 65%
+    );
+    background-size: 250% 100%;
+    background-position: 100% 0;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* The terminal's command, typed out one character at a time. */
+  .nil-type {
+    display: inline-block;
+    overflow: hidden;
+    white-space: nowrap;
+    vertical-align: bottom;
+  }
+
+  .nil-cursor {
+    display: inline-block;
+    width: 0.6em;
+    height: 1.15em;
+    vertical-align: text-bottom;
+    background-color: var(--brand-text);
+  }
+
+  .nil-replay:hover {
+    box-shadow: 0 0 28px -6px var(--brand-accent);
+  }
+
+  /* Confetti: the outer span drifts sideways and fades, the middle one rises and falls,
+     and the inner one, the shape itself, tumbles in 3D. */
+  .nil-confetti {
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+
+  .nil-confetti > span,
+  .nil-confetti > span > span {
+    display: block;
+  }
+
+  .nil-confetti > span > span {
+    translate: -50% -50%;
+    will-change: transform;
+  }
+
+  .nil-confetti-paper {
+    border-radius: 1.5px;
+  }
+
+  .nil-confetti-ribbon,
+  .nil-confetti-dot {
+    border-radius: 9999px;
+  }
+
+  .nil-confetti-glyph {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  /* The flash of a big burst going off. */
+  .nil-flash {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      circle at var(--fx) var(--fy),
+      color-mix(in oklab, var(--nil-highlight) 40%, transparent),
+      transparent 55%
+    );
+    opacity: 0;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .nil-confetti,
+    .nil-flash {
+      display: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .nil-rise {
+      animation: nil-rise 650ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+
+    .nil-mark {
+      animation:
+        nil-pop 850ms cubic-bezier(0.34, 1.56, 0.64, 1) both,
+        nil-float 5s ease-in-out 850ms infinite;
+    }
+
+    .nil-ring {
+      animation: nil-ping 3.2s cubic-bezier(0, 0, 0.2, 1) 0.45s infinite;
+    }
+
+    .nil-ring-late {
+      animation-delay: 2.05s;
+    }
+
+    .nil-glow {
+      animation: nil-breathe 6s ease-in-out infinite;
+    }
+
+    .nil-grid {
+      animation: nil-drift 5s linear infinite;
+    }
+
+    .nil-word {
+      animation:
+        nil-shimmer 4s linear 0.6s infinite,
+        nil-glitch 7s steps(1, end) 0.9s infinite;
+    }
+
+    .nil-type {
+      width: 0;
+      animation: nil-type 700ms steps(var(--n), end) 550ms forwards;
+    }
+
+    .nil-line {
+      opacity: 0;
+      animation: nil-line-in 260ms ease-out forwards;
+      animation-delay: calc(1350ms + var(--i) * 140ms);
+    }
+
+    .nil-cursor {
+      animation: nil-blink 1.05s steps(1, end) infinite;
+    }
+
+    .nil-confetti {
+      animation: nil-confetti-x var(--dur) cubic-bezier(0.12, 0.6, 0.3, 1) var(--delay) both;
+    }
+
+    .nil-confetti > span {
+      animation: nil-confetti-y var(--dur) linear var(--delay) both;
+    }
+
+    .nil-confetti > span > span {
+      animation: nil-confetti-spin var(--dur) linear var(--delay) both;
+    }
+
+    .nil-flash {
+      animation: nil-flash 900ms ease-out both;
+    }
+  }
+
+  @keyframes nil-rise {
+    from {
+      opacity: 0;
+      transform: translateY(14px);
+      filter: blur(4px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+      filter: none;
+    }
+  }
+
+  @keyframes nil-pop {
+    from {
+      opacity: 0;
+      scale: 0.4;
+      rotate: -25deg;
+    }
+    to {
+      opacity: 1;
+      scale: 1;
+      rotate: 0deg;
+    }
+  }
+
+  @keyframes nil-float {
+    0%,
+    100% {
+      translate: 0 0;
+    }
+    50% {
+      translate: 0 -7px;
+    }
+  }
+
+  @keyframes nil-ping {
+    0% {
+      opacity: 0.55;
+      scale: 0.8;
+    }
+    70%,
+    100% {
+      opacity: 0;
+      scale: 1.4;
+    }
+  }
+
+  @keyframes nil-breathe {
+    0%,
+    100% {
+      opacity: 0.75;
+      scale: 1;
+    }
+    50% {
+      opacity: 1;
+      scale: 1.08;
+    }
+  }
+
+  @keyframes nil-drift {
+    to {
+      background-position: 0 28px;
+    }
+  }
+
+  /* The highlight sweeps across, then rests; the gradient's ends match, so the loop is
+     seamless. */
+  @keyframes nil-shimmer {
+    0% {
+      background-position: 100% 0;
+    }
+    45%,
+    100% {
+      background-position: 0% 0;
+    }
+  }
+
+  /* A few frames of chromatic glitch, then a long rest. */
+  @keyframes nil-glitch {
+    0% {
+      transform: translate(-3px, 1px) skewX(-12deg);
+      filter: drop-shadow(3px 0 var(--brand-info)) drop-shadow(-3px 0 var(--brand-danger));
+      clip-path: inset(8% 0 52% 0);
+    }
+    1.2% {
+      transform: translate(4px, -1px) skewX(9deg);
+      clip-path: inset(58% 0 6% 0);
+    }
+    2.4% {
+      transform: translate(-2px, 0);
+      filter: drop-shadow(-3px 0 var(--brand-info)) drop-shadow(3px 0 var(--brand-danger));
+      clip-path: inset(30% 0 34% 0);
+    }
+    3.6% {
+      transform: translate(1px, 1px);
+      clip-path: none;
+    }
+    4.8%,
+    100% {
+      transform: none;
+      filter: none;
+      clip-path: none;
+    }
+  }
+
+  @keyframes nil-type {
+    to {
+      width: calc(var(--n) * 1ch);
+    }
+  }
+
+  @keyframes nil-line-in {
+    from {
+      opacity: 0;
+      transform: translateX(-6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @keyframes nil-blink {
+    50% {
+      opacity: 0;
+    }
+  }
+
+  @keyframes nil-confetti-x {
+    0% {
+      transform: translateX(0);
+      opacity: 0;
+    }
+    4%,
+    78% {
+      opacity: 1;
+    }
+    100% {
+      transform: translateX(var(--x));
+      opacity: 0;
+    }
+  }
+
+  /* Thrown up fast and slowing to the peak, then falling faster, toward the end at a
+     steady flutter. */
+  @keyframes nil-confetti-y {
+    0% {
+      transform: translateY(0);
+      animation-timing-function: cubic-bezier(0.2, 0.7, 0.4, 1);
+    }
+    28% {
+      transform: translateY(var(--peak));
+      animation-timing-function: cubic-bezier(0.5, 0, 0.75, 0.6);
+    }
+    100% {
+      transform: translateY(var(--fall));
+    }
+  }
+
+  @keyframes nil-confetti-spin {
+    from {
+      transform: rotate3d(var(--ax), var(--ay), 1, 0deg);
+    }
+    to {
+      transform: rotate3d(var(--ax), var(--ay), 1, var(--spin));
+    }
+  }
+
+  @keyframes nil-flash {
+    0% {
+      opacity: 0;
+    }
+    12% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+}

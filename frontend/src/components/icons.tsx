@@ -332,3 +332,21 @@ export function ShieldCheckIcon({ className }: IconProps) {
     </Icon>
   )
 }
+
+// PlayIcon stands for running something.
+export function PlayIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M7 4.5v15a.5.5 0 0 0 .77.42l11.5-7.5a.5.5 0 0 0 0-.84L7.77 4.08A.5.5 0 0 0 7 4.5Z" />
+    </Icon>
+  )
+}
+
+// TrophyIcon stands for an achievement.
+export function TrophyIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M8 4h8v5a4 4 0 0 1-8 0V4ZM8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M8.5 20h7M10 17h4" />
+    </Icon>
+  )
+}

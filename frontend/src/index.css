@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 @import './generated/theme.css';
+@import './nil.css';
 
 /* Expose every brand token as a Tailwind color (bg-surface, text-muted, border-border, …).
    The values stay CSS variables, so the generated light/dark blocks switch them before the
