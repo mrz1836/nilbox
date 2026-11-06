@@ -337,6 +337,25 @@ again starts a fresh record.
 
 <br>
 
+## Inbox nil
+
+When every list is empty, the inbox throws a party above them: **inbox == nil**, a one-liner,
+and a terminal that checks off each list, counts what you snoozed and dismissed (with when the
+first snooze comes back), and panics, having nothing left to do. Confetti flies from the
+**nil**. Empty the inbox while you watch, by triaging the last item or by a refresh that finds
+nothing left, and you get the full party with **Achievement unlocked**; opening the inbox when
+it is already empty gets a lighter sprinkle. **go run ./party** runs it again, with more
+confetti and a new one-liner each time.
+
+The party needs a successful refresh: an inbox that was never refreshed, or whose last refresh
+failed, is unknown rather than empty. A list whose **N of M** count shows more on GitHub than
+was fetched is not empty either. The lists stay below the party, so the **Snoozed** and
+**Dismissed** tabs are a click away, and an **Undo** that brings an item back ends it. With
+**Reduce motion** on (System Settings → Accessibility → Display), everything holds still and no
+confetti flies.
+
+<br>
+
 ## Agent profiles
 
 Profiles are discovered from your home directory on every start:

@@ -41,6 +41,7 @@ The first release is a deliberately thin steel thread on macOS:
 - A three-step setup: GitHub CLI check, repository mute/pin, agent and terminal preferences
 - Three views: **Needs Review**, **My Pull Requests**, and **Assigned**
 - Local triage: snooze, dismiss, or pin items to the top; pin and mute repositories inline
+- **Inbox nil**: clear every list and the inbox throws you a party
 - **Open in agent**: launch a terminal (iTerm2, Terminal.app, and more) in the right clone or a fresh
   worktree, with a saved agent profile and a prompt from your library
 - **Worktree cleanup**: a session's worktree is linked to its pull request or issue, and cleaned up
