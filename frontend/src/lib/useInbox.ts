@@ -5,9 +5,11 @@ import {
   refreshItem as refreshInboxItem,
   getInboxSnapshot,
   onInboxUpdated,
+  pinItem,
   refreshInbox,
   restoreItem,
   snoozeItem,
+  unpinItem,
   type InboxSnapshot,
 } from '../platform'
 import { errorMessage } from './format'
@@ -40,6 +42,10 @@ export interface InboxState {
   dismiss: (id: number) => Promise<InboxSnapshot>
   snooze: (id: number, days: number) => Promise<InboxSnapshot>
   restore: (id: number) => Promise<InboxSnapshot>
+  // pin keeps an item at the top of its lists, and unpin puts it back among the rest.
+  // Each resolves with the new inbox once it is shown.
+  pin: (id: number) => Promise<InboxSnapshot>
+  unpin: (id: number) => Promise<InboxSnapshot>
   // refreshItem reads one item from GitHub again, without refreshing the rest, and
   // resolves with the new inbox once it is shown.
   refreshItem: (id: number) => Promise<InboxSnapshot>
@@ -152,7 +158,23 @@ export function useInbox(clock: () => Date = systemClock): InboxState {
   const dismiss = useCallback((id: number) => triage(() => dismissItem(id)), [triage])
   const snooze = useCallback((id: number, days: number) => triage(() => snoozeItem(id, days)), [triage])
   const restore = useCallback((id: number) => triage(() => restoreItem(id)), [triage])
+  const pin = useCallback((id: number) => triage(() => pinItem(id)), [triage])
+  const unpin = useCallback((id: number) => triage(() => unpinItem(id)), [triage])
   const refreshItem = useCallback((id: number) => triage(() => refreshInboxItem(id)), [triage])
 
-  return { snapshot, now, loadError, refreshError, refreshing, refresh, reload, dismiss, snooze, restore, refreshItem }
+  return {
+    snapshot,
+    now,
+    loadError,
+    refreshError,
+    refreshing,
+    refresh,
+    reload,
+    dismiss,
+    snooze,
+    restore,
+    pin,
+    unpin,
+    refreshItem,
+  }
 }

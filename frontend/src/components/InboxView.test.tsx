@@ -16,6 +16,8 @@ const platform = vi.hoisted(() => ({
   dismissItem: vi.fn(),
   snoozeItem: vi.fn(),
   restoreItem: vi.fn(),
+  pinItem: vi.fn(),
+  unpinItem: vi.fn(),
   refreshItem: vi.fn(),
   getCollapsedSections: vi.fn(),
   setSectionCollapsed: vi.fn(),
@@ -567,6 +569,87 @@ describe('InboxView triage', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Restored · Rename the flag')
   })
 
+  it('pins an item to the top, marks it, and unpins it from its pin', async () => {
+    const other = item({ id: 4, number: 10, title: 'Tidy the docs' })
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh, other]) }))
+    platform.pinItem.mockResolvedValue(
+      snapshot({ reviewRequested: list([{ ...other, pinnedAt: now.toISOString() }, fresh]) }),
+    )
+    platform.unpinItem.mockResolvedValue(snapshot({ reviewRequested: list([fresh, other]) }))
+    render(<Harness launch={launchOptions} clock={clock} />)
+
+    const review = await section('Review requested')
+    const titles = () => review.getAllByRole('listitem').map((row) => within(row).getAllByRole('button')[0]?.title)
+    const pins = review.getAllByRole('button', { name: 'Pin to top' })
+    expect(pins).toHaveLength(2)
+    expect(pins[1]?.parentElement).toHaveClass('opacity-0')
+
+    await userEvent.click(pins[1] as HTMLElement)
+
+    expect(platform.pinItem).toHaveBeenCalledWith(4)
+    const unpin = await review.findByRole('button', { name: 'Unpin' })
+    expect(titles()).toEqual(['Tidy the docs', 'Add the widget cache'])
+    // The pin of a pinned item shows without hovering, in the accent color.
+    expect(unpin.parentElement).not.toHaveClass('opacity-0')
+    expect(unpin).toHaveClass('text-accent')
+    expect(unpin).not.toHaveClass('text-muted')
+    expect(unpin).toHaveAttribute('title', 'Pinned to the top of the list: click to unpin')
+    expect(screen.getByRole('status')).toBeEmptyDOMElement()
+
+    await userEvent.click(unpin)
+
+    expect(platform.unpinItem).toHaveBeenCalledWith(4)
+    await waitFor(() => {
+      expect(review.queryByRole('button', { name: 'Unpin' })).not.toBeInTheDocument()
+    })
+    expect(titles()).toEqual(['Add the widget cache', 'Tidy the docs'])
+  })
+
+  it('shows the pin of a pinned item set aside, and unpins it there', async () => {
+    const pinned = { ...snoozed, pinnedAt: '2026-06-14T12:00:00Z' }
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([pinned, dismissed]) }))
+    platform.unpinItem.mockResolvedValue(snapshot({ reviewRequested: list([snoozed, dismissed]) }))
+    render(<Harness launch={launchOptions} clock={clock} />)
+
+    const review = await section('Review requested')
+    await userEvent.click(review.getByRole('tab', { name: 'Snoozed 1' }))
+    expect(review.getByRole('button', { name: 'Unsnooze' })).toBeInTheDocument()
+
+    await userEvent.click(review.getByRole('button', { name: 'Unpin' }))
+
+    expect(platform.unpinItem).toHaveBeenCalledWith(2)
+    await waitFor(() => {
+      expect(review.queryByRole('button', { name: 'Unpin' })).not.toBeInTheDocument()
+    })
+
+    // An item set aside without a pin offers none there.
+    await userEvent.click(review.getByRole('tab', { name: 'Dismissed 1' }))
+    expect(review.getByRole('button', { name: 'Restore' })).toBeInTheDocument()
+    expect(review.queryByRole('button', { name: 'Pin to top' })).not.toBeInTheDocument()
+  })
+
+  it('says why a pin failed', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({
+        reviewRequested: list([fresh, { ...dismissed, id: 5, dismissedAt: '', pinnedAt: now.toISOString() }]),
+      }),
+    )
+    platform.pinItem.mockRejectedValue(new Error('database is locked'))
+    platform.unpinItem.mockRejectedValue(new Error('database is locked'))
+    render(<Harness launch={launchOptions} clock={clock} />)
+
+    const review = await section('Review requested')
+    await userEvent.click(review.getByRole('button', { name: 'Pin to top' }))
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Could not pin “Add the widget cache” · database is locked',
+    )
+
+    await userEvent.click(review.getByRole('button', { name: 'Unpin' }))
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Could not unpin “Rename the flag” · database is locked',
+    )
+  })
+
   it('says why a triage action failed', async () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     platform.dismissItem.mockRejectedValue(new Error('item not found; refresh the inbox and try again'))
@@ -657,12 +740,15 @@ describe('InboxView triage', () => {
 
     const review = await section('Review requested')
     const button = review.getByRole('button', { name: 'Refresh from GitHub' })
+    const pin = review.getByRole('button', { name: 'Pin to top' })
     expect(button.parentElement).toHaveClass('opacity-0')
+    expect(pin.parentElement).toHaveClass('opacity-0')
 
     await userEvent.click(button)
 
     expect(button).toBeDisabled()
     expect(button.parentElement).toHaveClass('opacity-100')
+    expect(pin.parentElement).toHaveClass('opacity-100')
     expect(button.querySelector('svg')).toHaveClass('motion-safe:animate-spin')
 
     act(() => {

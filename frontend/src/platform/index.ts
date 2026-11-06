@@ -164,6 +164,17 @@ export function restoreItem(id: number): Promise<InboxSnapshot> {
   return Inbox.Restore(id)
 }
 
+// pinItem keeps an item at the top of its lists, the most recently pinned first, and
+// returns the new inbox. Triage stays on this machine.
+export function pinItem(id: number): Promise<InboxSnapshot> {
+  return Inbox.Pin(id)
+}
+
+// unpinItem puts a pinned item back among the rest, and returns the new inbox.
+export function unpinItem(id: number): Promise<InboxSnapshot> {
+  return Inbox.Unpin(id)
+}
+
 // onInboxUpdated calls listener whenever the stored inbox changed, and returns a function
 // that stops listening.
 export function onInboxUpdated(listener: () => void): () => void {

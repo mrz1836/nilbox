@@ -246,7 +246,20 @@ function ListSection({ title, list, now, launch, triage, collapsed, onCollapse }
 // it and collapses from its header, and each triage action is confirmed by a toast with an
 // Undo. The account and the API budget live in the toolbar.
 export function InboxView({ inbox, launch, snoozeDays, onSnoozeSettings, collapsed, onCollapse }: InboxViewProps) {
-  const { snapshot, now, loadError, refreshError, refreshing, refresh, dismiss, snooze, restore, refreshItem } = inbox
+  const {
+    snapshot,
+    now,
+    loadError,
+    refreshError,
+    refreshing,
+    refresh,
+    dismiss,
+    snooze,
+    restore,
+    pin,
+    unpin,
+    refreshItem,
+  } = inbox
   const error = firstMessage(refreshError, snapshot?.lastError ?? '', loadError)
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const toastCount = useRef(0)
@@ -297,6 +310,13 @@ export function InboxView({ inbox, launch, snoozeDays, onSnoozeSettings, collaps
           })
           .catch(failed('restore', item))
       },
+      // A pin shows at once, as the item moves to the top, so it needs no toast.
+      onPin: (item) => {
+        pin(item.id).catch(failed('pin', item))
+      },
+      onUnpin: (item) => {
+        unpin(item.id).catch(failed('unpin', item))
+      },
       // A refreshed item that is still open updates in place; one that is not leaves the
       // inbox, which the toast explains.
       onRefresh: (item) =>
@@ -309,7 +329,7 @@ export function InboxView({ inbox, launch, snoozeDays, onSnoozeSettings, collaps
           .catch(failed('refresh', item)),
       onChangeDefault: onSnoozeSettings,
     }
-  }, [snoozeDays, now, dismiss, snooze, restore, refreshItem, showToast, closeToast, onSnoozeSettings])
+  }, [snoozeDays, now, dismiss, snooze, restore, pin, unpin, refreshItem, showToast, closeToast, onSnoozeSettings])
 
   return (
     <div className="flex flex-col gap-4 p-4">

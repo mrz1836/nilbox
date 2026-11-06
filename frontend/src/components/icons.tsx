@@ -302,3 +302,13 @@ export function ArchiveIcon({ className }: IconProps) {
     </Icon>
   )
 }
+
+// PinIcon stands for pinning an item to the top of its list; filled, it marks one pinned.
+export function PinIcon({ className, filled = false }: IconProps & { filled?: boolean }) {
+  return (
+    <Icon className={className}>
+      <path d="M9.5 3.5h5v5L18 13H6l3.5-4.5z" fill={filled ? 'currentColor' : 'none'} />
+      <path d="M8 3.5h8M12 13v7.5" />
+    </Icon>
+  )
+}

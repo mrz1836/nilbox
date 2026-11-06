@@ -70,6 +70,8 @@ export type TriageTab = 'inbox' | 'snoozed' | 'dismissed'
 
 // TriagedList is one inbox list sorted into its tabs.
 export interface TriagedList {
+  // inbox keeps the list's order: the pinned items first, the most recently pinned first,
+  // then the rest by newest activity.
   inbox: InboxItem[]
   // snoozed are soonest back first.
   snoozed: InboxItem[]
@@ -89,6 +91,11 @@ function timeOf(iso: string): number {
 // isDismissed reports whether an item was dismissed.
 export function isDismissed(item: InboxItem): boolean {
   return item.dismissedAt !== ''
+}
+
+// isPinned reports whether an item is pinned to the top of its lists.
+export function isPinned(item: InboxItem): boolean {
+  return item.pinnedAt !== ''
 }
 
 // isSnoozed reports whether an item's snooze is still running at now.

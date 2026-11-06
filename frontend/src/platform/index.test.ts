@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
     Dismiss: vi.fn(),
     Snooze: vi.fn(),
     Restore: vi.fn(),
+    Pin: vi.fn(),
+    Unpin: vi.fn(),
   },
   launcher: {
     Launch: vi.fn(),
@@ -159,6 +161,17 @@ describe('inbox', () => {
     expect(mocks.inbox.Dismiss).toHaveBeenCalledWith(4)
     expect(mocks.inbox.Snooze).toHaveBeenCalledWith(4, 3)
     expect(mocks.inbox.Restore).toHaveBeenCalledWith(4)
+  })
+
+  it('pins and unpins an item', async () => {
+    mocks.inbox.Pin.mockResolvedValue(snapshot)
+    mocks.inbox.Unpin.mockResolvedValue(snapshot)
+
+    await expect(platform.pinItem(4)).resolves.toBe(snapshot)
+    await expect(platform.unpinItem(4)).resolves.toBe(snapshot)
+
+    expect(mocks.inbox.Pin).toHaveBeenCalledWith(4)
+    expect(mocks.inbox.Unpin).toHaveBeenCalledWith(4)
   })
 
   it('subscribes to inbox updates and returns the unsubscribe function', () => {
