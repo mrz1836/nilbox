@@ -61,7 +61,7 @@ pins.
 | `magex measure:refresh` | Five live, read-only inbox refreshes and the API budget they imply |
 | `magex measure:launch` | One real launch in iTerm2, timed until the agent runs in the clone |
 | `magex measure:size` | The size of the app binary and the bundle |
-| `magex measure:all` | Every measurement, in that order |
+| `magex measure:all` | Every measurement: size, startup, refresh, and launch, in that order |
 
 A typical first build:
 
@@ -196,8 +196,8 @@ size the window opens at), [notifications](#menu-bar-and-notifications) (the men
 which banners show), snoozing (how long the
 [Snooze](#snooze-dismiss-and-pin) button sets an item aside, and what [wakes a snooze
 early](#waking-a-snooze-early)), launching (the terminal,
-the default profile, the default prompt for pull requests and for issues, and the worktree
-default), agent profiles, repositories (the clone root and the [launch
+the default profile, the default prompt for pull requests and for issues, the worktree
+default, and whether to [clean up worktrees after merging](#the-worktrees-view)), agent profiles, repositories (the clone root and the [launch
 defaults](#launch-defaults) for orgs and repositories), trust (the [trusted
 bots](#outside-contributors)), [sensitive files](#sensitive-files), and the app's version. Each change is
 saved as you make it, except the clone root and launch defaults, which are saved with their
@@ -449,10 +449,11 @@ Profiles are discovered from your home directory on every start:
 - A newly discovered profile starts with full access (`--dangerously-skip-permissions`), the
   agent's default model and effort, and plan mode off.
 
-Discovery never changes a stored profile, so edits to a profile survive restarts, and a
-profile whose directory disappears is kept. On each start the app removes only the stored
-profiles that hold nothing worth keeping: ones whose directory is still there but holds no
-agent config, and that were never edited. Their folders are left untouched. If such a folder
+Profiles can't be edited in the app yet: each one keeps the settings discovery gave it.
+Discovery never changes a stored profile, though, and a profile whose directory disappears is
+kept. On each start the app removes only the stored profiles that hold nothing worth keeping:
+ones whose directory is still there but holds no agent config, and whose settings are still
+the ones discovery gave them. Their folders are left untouched. If such a folder
 later becomes an agent config directory, it is discovered again. When the removed profile was
 the default profile setting, the setting falls back to `default`.
 
@@ -563,8 +564,9 @@ Every launch setting resolves in this order, the first that is set winning:
    and the worktree default).
 
 Extra flags add up instead: the profile's, then the org's, the repository's, and the prompt's.
-Flags the launcher sets itself can't be added this way: `--model`, `--effort`, `--worktree`,
-`--name`, the permission flags, `--print`, and `--background`, and a value starting with `~` is
+Flags the launcher sets itself can't be added this way: `--model`, `--effort`, `--worktree`
+(`-w`), `--name` (`-n`), the permission flags, `--print` (`-p`), and `--background` (`--bg`),
+and a value starting with `~` is
 refused (as in `~/x` or `--add-dir=~/x`), since nothing expands it. A default that no longer makes sense, such as a profile that
 was removed, is skipped with a warning in the launch menu. The outside-contributor rule applies
 above everything.
@@ -715,9 +717,11 @@ children are your clones, initially `~/projects`) under **Settings → Repositor
 **Clones.** The item's clone is found by scanning the clone root one level deep and matching
 each repository's git remotes. The match is remembered and checked again on the next launch. To
 find and check clones, the app runs only the read-only `git -C <clone> config --get-regexp`
-remote lookup. It never runs a git command that changes an existing clone: no checkout, stash,
+remote lookup. A launch never runs a git command that changes the clone: no checkout, stash,
 fetch, pull, reset, branch switch, or worktree creation. When a session needs a pull request's
-branch, the starter prompts ask the agent to run `gh pr checkout <n>`.
+branch, the starter prompts ask the agent to run `gh pr checkout <n>`. The only git commands
+the app runs that change a clone are the [Worktrees view's](#the-worktrees-view) removals,
+prunes, and unlocks, and its deletion of a cleaned-up worktree's own branch.
 
 **A repository with no clone.** When a launch finds no clone of the item's repository, the row
 says so and offers **Clone into ~/projects/&lt;name&gt;**: the clone root, then the repository's
