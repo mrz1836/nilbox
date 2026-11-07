@@ -4,8 +4,8 @@ import (
 	"context"
 	"path/filepath"
 
-	"github.com/mrz1836/nilbox/internal/cleanuplog"
 	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/worklog"
 )
 
 // recentLimit is how many cleanups RecentCleanups returns.
@@ -18,7 +18,7 @@ func (s *Service) RecentCleanups(ctx context.Context) ([]Cleanup, error) {
 		return []Cleanup{}, nil
 	}
 
-	records, err := s.history.Recent(ctx, recentLimit)
+	records, err := s.history.RecentCleanups(ctx, recentLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +37,7 @@ func (s *Service) ClearCleanups(ctx context.Context) error {
 		return nil
 	}
 
-	return s.history.Clear(ctx)
+	return s.history.ClearCleanups(ctx)
 }
 
 // recordCleanup adds a removed worktree to the history. The worktree is gone either way,
@@ -47,7 +47,7 @@ func (s *Service) recordCleanup(ctx context.Context, repoPath string, wt Worktre
 		return
 	}
 
-	record := cleanuplog.Cleanup{
+	record := worklog.Cleanup{
 		CleanedAt:     s.clock.Now(),
 		Automatic:     automatic,
 		Repo:          filepath.Base(repoPath),
@@ -62,13 +62,13 @@ func (s *Service) recordCleanup(ctx context.Context, repoPath string, wt Worktre
 		record.ItemTitle, record.ItemURL, record.ItemState = it.Title, it.URL, it.State
 	}
 
-	if err := s.history.Record(ctx, record); err != nil {
+	if err := s.history.RecordCleanup(ctx, record); err != nil {
 		s.logger.WarnContext(ctx, "could not record a worktree cleanup", "error", err)
 	}
 }
 
 // cleanupOf converts a stored cleanup for the view.
-func cleanupOf(r cleanuplog.Cleanup) Cleanup {
+func cleanupOf(r worklog.Cleanup) Cleanup {
 	c := Cleanup{
 		ID:            r.ID,
 		CleanedAt:     clock.Format(r.CleanedAt),

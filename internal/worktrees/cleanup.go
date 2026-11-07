@@ -228,7 +228,7 @@ func (s *Service) forgetLaunch(ctx context.Context, path string) {
 			continue
 		}
 
-		if err := s.launches.Forget(ctx, l.ClonePath, l.Worktree); err != nil {
+		if err := s.launches.ForgetLaunch(ctx, l.ClonePath, l.Worktree); err != nil {
 			s.logger.WarnContext(ctx, "could not forget a worktree launch", "error", err)
 		}
 	}

@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/clock"
-	"github.com/mrz1836/nilbox/internal/launchlog"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/periodic"
+	"github.com/mrz1836/nilbox/internal/worklog"
 )
 
 // DefaultSweepInterval is how often a Sweeper sweeps. A sweep runs git only in clones
@@ -148,7 +148,7 @@ func (s *Service) sweepRow(ctx context.Context, g git, repoPath string, wt Workt
 // sweepClones lists the clones worth checking: those directly under root that hold an
 // agent worktree directory, found without running git, and those with a recorded launch.
 // A directory that is not a git clone is skipped.
-func (s *Service) sweepClones(ctx context.Context, root string, launches []launchlog.Launch) []localrepos.LocalRepo {
+func (s *Service) sweepClones(ctx context.Context, root string, launches []worklog.Launch) []localrepos.LocalRepo {
 	dirs := agentCloneDirs(root)
 
 	for _, l := range launches {
@@ -306,7 +306,7 @@ func readGitPointer(file, base, prefix string) (string, bool) {
 // pruneLaunches forgets the launch records whose worktree is gone: its clone is no
 // longer a directory, or was listed without the worktree. A clone that could not be
 // listed keeps its records.
-func (s *Service) pruneLaunches(ctx context.Context, root string, launches []launchlog.Launch, snap Snapshot) {
+func (s *Service) pruneLaunches(ctx context.Context, root string, launches []worklog.Launch, snap Snapshot) {
 	if s.launches == nil {
 		return
 	}
@@ -318,7 +318,7 @@ func (s *Service) pruneLaunches(ctx context.Context, root string, launches []lau
 			continue
 		}
 
-		if err := s.launches.Forget(ctx, l.ClonePath, l.Worktree); err != nil {
+		if err := s.launches.ForgetLaunch(ctx, l.ClonePath, l.Worktree); err != nil {
 			s.logger.WarnContext(ctx, "could not forget a worktree launch", "error", err)
 		}
 	}
@@ -343,7 +343,7 @@ func listedPaths(snap Snapshot) (worktrees, repos map[string]bool) {
 }
 
 // launchGone reports a recorded launch whose worktree is certainly gone.
-func (s *Service) launchGone(l launchlog.Launch, root string, listed map[string]bool) bool {
+func (s *Service) launchGone(l worklog.Launch, root string, listed map[string]bool) bool {
 	info, err := os.Stat(l.ClonePath)
 
 	switch {

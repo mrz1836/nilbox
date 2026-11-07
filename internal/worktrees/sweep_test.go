@@ -17,10 +17,10 @@ import (
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
-	"github.com/mrz1836/nilbox/internal/launchlog"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/testutil"
+	"github.com/mrz1836/nilbox/internal/worklog"
 )
 
 // sweepFixture is a clone with one agent worktree of each kind the sweep tells apart.
@@ -240,7 +240,7 @@ func TestSweepForgetsLaunchesWhoseWorktreeIsGone(t *testing.T) {
 	elsewhere := filepath.Join(e.home, "elsewhere", "example-repo")
 	require.NoError(t, os.MkdirAll(elsewhere, 0o700))
 
-	launches := &fakeLaunches{records: []launchlog.Launch{
+	launches := &fakeLaunches{records: []worklog.Launch{
 		launchOf(repo, "pr-1", item.KindPR, 1),
 		launchOf(repo, "pr-2", item.KindPR, 2),
 		launchOf(filepath.Join(e.root, "deleted-clone"), "pr-3", item.KindPR, 3),
@@ -259,14 +259,14 @@ func TestSweepForgetsLaunchesWhoseWorktreeIsGone(t *testing.T) {
 
 func TestSweepForgetsLaunchesWhenNoCloneIsLeft(t *testing.T) {
 	e := newEnv(t)
-	launches := &fakeLaunches{records: []launchlog.Launch{launchOf(filepath.Join(e.root, "gone"), "pr-1", item.KindPR, 1)}}
+	launches := &fakeLaunches{records: []worklog.Launch{launchOf(filepath.Join(e.root, "gone"), "pr-1", item.KindPR, 1)}}
 
 	report := e.linked(linkDeps{gh: &fakeGitHub{}, launches: launches, auto: true}).Sweep(t.Context())
 	assert.Empty(t, report.Error)
 	assert.Zero(t, report.Leftover)
 	assert.Equal(t, []string{"gone/pr-1"}, launches.forgotten)
 
-	launches = &fakeLaunches{records: []launchlog.Launch{launchOf(filepath.Join(e.root, "gone"), "pr-1", item.KindPR, 1)}, forgetErr: errFakeLaunches}
+	launches = &fakeLaunches{records: []worklog.Launch{launchOf(filepath.Join(e.root, "gone"), "pr-1", item.KindPR, 1)}, forgetErr: errFakeLaunches}
 	e.linked(linkDeps{gh: &fakeGitHub{}, launches: launches}).Sweep(t.Context())
 	assert.Empty(t, launches.forgotten, "a failure to forget is only logged")
 }
@@ -325,7 +325,7 @@ func TestSweepClones(t *testing.T) {
 
 	require.NoError(t, os.WriteFile(filepath.Join(e.root, "file.txt"), []byte("x"), 0o600))
 
-	launches := []launchlog.Launch{
+	launches := []worklog.Launch{
 		launchOf(recorded, "pr-9", item.KindPR, 9),
 		launchOf(agent, "pr-1", item.KindPR, 1),
 		launchOf(filepath.Join(e.home, "outside"), "pr-2", item.KindPR, 2),

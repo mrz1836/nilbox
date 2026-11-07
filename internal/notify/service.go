@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 
-	"gorm.io/gorm"
-
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
@@ -28,15 +26,14 @@ type Notifier interface {
 	NotificationsUpdated()
 }
 
-// Config holds the dependencies of a Dispatcher and a Service. Poster, Notifier, Clock,
-// and Logger are optional: without a Poster no banner is shown, and the log is still
-// kept.
+// Config holds the dependencies of a Dispatcher and a Service. Pool is required; Poster,
+// Notifier, Clock, and Logger are optional: without a Poster no banner is shown, and the
+// log is still kept.
 type Config struct {
-	// Pool is the database's connection pool, which DB shares. The Dispatcher reads which
-	// banners are on from its prefs.
+	// Pool is the database's connection pool. It holds the log, and the prefs the
+	// Dispatcher reads which banners are on from.
 	Pool *sql.DB
 
-	DB       *gorm.DB
 	Poster   Poster
 	Notifier Notifier
 	Clock    clock.Clock
@@ -56,7 +53,7 @@ type base struct {
 // newBase fills in the defaults.
 func newBase(cfg Config) base {
 	b := base{
-		store: NewStore(cfg.DB), prefs: prefs.New(cfg.Pool, cfg.Clock), poster: cfg.Poster, notifier: cfg.Notifier,
+		store: NewStore(cfg.Pool), prefs: prefs.New(cfg.Pool, cfg.Clock), poster: cfg.Poster, notifier: cfg.Notifier,
 		clock: clock.Or(cfg.Clock), logger: cfg.Logger,
 	}
 

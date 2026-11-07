@@ -17,7 +17,6 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/appinfo"
-	"github.com/mrz1836/nilbox/internal/cleanuplog"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
@@ -25,7 +24,6 @@ import (
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/launcher"
-	"github.com/mrz1836/nilbox/internal/launchlog"
 	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/profiles"
@@ -33,6 +31,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/timing"
+	"github.com/mrz1836/nilbox/internal/worklog"
 	"github.com/mrz1836/nilbox/internal/worktrees"
 )
 
@@ -256,11 +255,10 @@ func assemble(pool *sql.DB, db *gorm.DB, reset *appinfo.DataReset, opts Options,
 		settings.WithThemeNotifier(opts.ThemeNotifier), settings.WithMenuBarNotifier(opts.MenuBarNotifier))
 	tokens := github.NewTokenSource(runner, finder)
 	client := github.NewClient(opts.Version)
-	launches := launchlog.NewStore(db)
+	workLog := worklog.New(pool)
 
 	notices := notify.Config{
-		Pool: pool, DB: db, Poster: opts.Banners, Notifier: opts.NotificationsNotifier, Clock: opts.Clock,
-		Logger: logger,
+		Pool: pool, Poster: opts.Banners, Notifier: opts.NotificationsNotifier, Clock: opts.Clock, Logger: logger,
 	}
 
 	inboxSvc := inbox.NewService(inbox.Config{
@@ -285,7 +283,7 @@ func assemble(pool *sql.DB, db *gorm.DB, reset *appinfo.DataReset, opts Options,
 		Paths:    opts.Paths,
 		Home:     opts.Home,
 		Clock:    opts.Clock,
-		Launches: launches,
+		Launches: workLog,
 		Files:    inboxSvc,
 	})
 
@@ -305,8 +303,8 @@ func assemble(pool *sql.DB, db *gorm.DB, reset *appinfo.DataReset, opts Options,
 			Home:     opts.Home,
 			Clock:    opts.Clock,
 			GitHub:   itemStates{tokens: tokens, client: client},
-			Launches: launches,
-			History:  cleanuplog.NewStore(db),
+			Launches: workLog,
+			History:  workLog,
 			Notifier: opts.WorktreeNotifier,
 			Logger:   logger,
 		}),

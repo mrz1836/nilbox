@@ -9,8 +9,8 @@ import (
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
-	"github.com/mrz1836/nilbox/internal/launchlog"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/worklog"
 )
 
 // originRemote is the remote a clone was cloned from; it is tried first.
@@ -42,7 +42,7 @@ func launchKey(clonePath, worktree string) string {
 //
 // remotes maps each repository's Path to its remotes (remote name to repository).
 func (s *Service) link(ctx context.Context, repos []Repo, remotes map[string]map[string]repo.Name,
-	launches []launchlog.Launch,
+	launches []worklog.Launch,
 ) string {
 	if s.github == nil {
 		return ""
@@ -66,8 +66,8 @@ func (s *Service) link(ctx context.Context, repos []Repo, remotes map[string]map
 }
 
 // linkTargets lists the worktrees of repos that may belong to a pull request or issue.
-func linkTargets(repos []Repo, remotes map[string]map[string]repo.Name, launches []launchlog.Launch) []linkTarget {
-	recorded := make(map[string]launchlog.Launch, len(launches))
+func linkTargets(repos []Repo, remotes map[string]map[string]repo.Name, launches []worklog.Launch) []linkTarget {
+	recorded := make(map[string]worklog.Launch, len(launches))
 	for _, l := range launches {
 		recorded[launchKey(l.ClonePath, l.Worktree)] = l
 	}
@@ -86,7 +86,7 @@ func linkTargets(repos []Repo, remotes map[string]map[string]repo.Name, launches
 // linkTargetFor works out which items a worktree may be for. Only a worktree the agent
 // made (under .claude/worktrees) is linked, and only when a launch record or its name
 // says which item.
-func linkTargetFor(wt *Worktree, remotes map[string]repo.Name, recorded map[string]launchlog.Launch) (linkTarget, bool) {
+func linkTargetFor(wt *Worktree, remotes map[string]repo.Name, recorded map[string]worklog.Launch) (linkTarget, bool) {
 	if wt.Main || !wt.ClaudeCreated {
 		return linkTarget{}, false
 	}

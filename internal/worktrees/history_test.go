@@ -8,32 +8,31 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mrz1836/nilbox/internal/cleanuplog"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
-	"github.com/mrz1836/nilbox/internal/launchlog"
 	"github.com/mrz1836/nilbox/internal/testutil"
+	"github.com/mrz1836/nilbox/internal/worklog"
 )
 
 var errFakeHistory = errors.New("fake: history unavailable")
 
 // openHistory opens a fresh, migrated database and a cleanup history over it.
-func openHistory(t *testing.T) *cleanuplog.Store {
+func openHistory(t *testing.T) *worklog.Store {
 	t.Helper()
 
-	return cleanuplog.NewStore(testutil.DB(t))
+	return worklog.New(testutil.SQLDB(t))
 }
 
 // failingHistory fails every call.
 type failingHistory struct{}
 
-func (failingHistory) Record(context.Context, cleanuplog.Cleanup) error { return errFakeHistory }
+func (failingHistory) RecordCleanup(context.Context, worklog.Cleanup) error { return errFakeHistory }
 
-func (failingHistory) Recent(context.Context, int) ([]cleanuplog.Cleanup, error) {
+func (failingHistory) RecentCleanups(context.Context, int) ([]worklog.Cleanup, error) {
 	return nil, errFakeHistory
 }
 
-func (failingHistory) Clear(context.Context) error { return errFakeHistory }
+func (failingHistory) ClearCleanups(context.Context) error { return errFakeHistory }
 
 func TestCleanUpsAreRecorded(t *testing.T) {
 	e := newEnv(t)
@@ -49,7 +48,7 @@ func TestCleanUpsAreRecorded(t *testing.T) {
 	pushed(t, repo, "two", autoHead)
 	gh.set("example-repo", 2, closedIssue())
 
-	launches := &fakeLaunches{records: []launchlog.Launch{launchOf(repo, "issue-2", item.KindIssue, 2)}}
+	launches := &fakeLaunches{records: []worklog.Launch{launchOf(repo, "issue-2", item.KindIssue, 2)}}
 	svc := e.linked(linkDeps{gh: gh, launches: launches, history: history, auto: true})
 
 	none, err := svc.RecentCleanups(t.Context())
@@ -101,7 +100,7 @@ func TestCleanUpsAreRecorded(t *testing.T) {
 }
 
 func TestCleanupOfAnUnlinkedRecord(t *testing.T) {
-	c := cleanupOf(cleanuplog.Cleanup{ID: 3, Repo: "example-repo", Worktree: "scratch"})
+	c := cleanupOf(worklog.Cleanup{ID: 3, Repo: "example-repo", Worktree: "scratch"})
 	assert.Nil(t, c.Item, "a record without an item has none")
 	assert.Equal(t, "scratch", c.Worktree)
 }

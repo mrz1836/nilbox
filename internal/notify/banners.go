@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/brand"
-	"github.com/mrz1836/nilbox/internal/notify/model"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/snooze"
 	"github.com/mrz1836/nilbox/internal/textutil"
@@ -84,31 +83,26 @@ var summaryNouns = map[string][2]string{
 const maxTitleRunes = 160
 
 // banner is the banner for one recorded notification.
-func banner(n model.Notification) Banner {
+func banner(n Notification) Banner {
 	body := textutil.Truncate(n.Title, maxTitleRunes)
 	if n.Detail != "" {
 		body += "\n" + textutil.Capitalize(n.Detail)
 	}
 
-	itemID := int64(0)
-	if n.ItemID != nil {
-		itemID = *n.ItemID
-	}
-
 	return Banner{
 		ID:       brand.Slug + "-" + strconv.FormatInt(n.ID, 10),
 		Title:    kindTitles[n.Kind],
-		Subtitle: repoName(n.RepoOwner, n.RepoName) + " #" + strconv.Itoa(n.Number),
+		Subtitle: n.Repo + " #" + strconv.Itoa(n.Number),
 		Body:     body,
 		Thread:   n.Kind,
-		ItemID:   itemID,
+		ItemID:   n.ItemID,
 		URL:      n.URL,
 	}
 }
 
 // summary is the one banner that stands for many: "5 new in your inbox", with how many of
 // each kind.
-func summary(rows []model.Notification) Banner {
+func summary(rows []Notification) Banner {
 	counts := make(map[string]int)
 	for _, r := range rows {
 		counts[r.Kind]++
@@ -137,8 +131,8 @@ func summary(rows []model.Notification) Banner {
 
 // Banners returns what to show for recorded notifications: one banner each, or a single
 // summary when there are more than MaxBanners. It shows none of the kinds in off.
-func Banners(rows []model.Notification, off []string) []Banner {
-	shown := slices.DeleteFunc(slices.Clone(rows), func(r model.Notification) bool {
+func Banners(rows []Notification, off []string) []Banner {
+	shown := slices.DeleteFunc(slices.Clone(rows), func(r Notification) bool {
 		return slices.Contains(off, r.Kind)
 	})
 

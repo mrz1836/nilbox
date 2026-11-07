@@ -13,17 +13,16 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/schema"
 
-	cleanuplogmodel "github.com/mrz1836/nilbox/internal/cleanuplog/model"
 	inboxmodel "github.com/mrz1836/nilbox/internal/inbox/model"
 	"github.com/mrz1836/nilbox/internal/item"
 	launchdefaultsmodel "github.com/mrz1836/nilbox/internal/launchdefaults/model"
-	launchlogmodel "github.com/mrz1836/nilbox/internal/launchlog/model"
 	notifymodel "github.com/mrz1836/nilbox/internal/notify/model"
 	profilesmodel "github.com/mrz1836/nilbox/internal/profiles/model"
 	promptsmodel "github.com/mrz1836/nilbox/internal/prompts/model"
 	settingsmodel "github.com/mrz1836/nilbox/internal/settings/model"
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/testutil"
+	worklogmodel "github.com/mrz1836/nilbox/internal/worklog/model"
 )
 
 // migratedTables lists the application tables (everything but SQLite internals and the
@@ -90,8 +89,8 @@ func TestModelsMatchMigratedSchema(t *testing.T) {
 
 func TestAllModelsAggregatesBoundedContexts(t *testing.T) {
 	want := slices.Concat(inboxmodel.AllModels(), settingsmodel.AllModels(), profilesmodel.AllModels(),
-		promptsmodel.AllModels(), launchdefaultsmodel.AllModels(), launchlogmodel.AllModels(),
-		cleanuplogmodel.AllModels(), notifymodel.AllModels())
+		promptsmodel.AllModels(), launchdefaultsmodel.AllModels(), worklogmodel.AllModels(),
+		notifymodel.AllModels())
 
 	got := store.AllModels()
 	require.Len(t, got, len(want))

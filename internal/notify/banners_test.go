@@ -8,18 +8,15 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/brand"
-	"github.com/mrz1836/nilbox/internal/notify/model"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/snooze"
 )
 
 // row is a recorded notification of kind about pull request number in example-repo.
-func row(id int64, kind string, number int) model.Notification {
-	itemID := id * 10
-
-	return model.Notification{
-		ID: id, Kind: kind, ItemID: &itemID, ItemKind: "pr", RepoOwner: "acme-org", RepoName: "example-repo",
-		Number: number, Title: "Fix the login redirect", URL: "https://github.com/acme-org/example-repo/pull/7",
+func row(id int64, kind string, number int) Notification {
+	return Notification{
+		ID: id, Kind: kind, ItemID: id * 10, ItemKind: "pr", Repo: "acme-org/example-repo", Number: number,
+		Title: "Fix the login redirect", URL: "https://github.com/acme-org/example-repo/pull/7",
 	}
 }
 
@@ -27,7 +24,7 @@ func TestABannerPerNotification(t *testing.T) {
 	woke := row(2, KindWoke, 8)
 	woke.Detail = "approved, 2 new commits"
 
-	got := Banners([]model.Notification{row(1, KindReviewRequested, 7), woke}, nil)
+	got := Banners([]Notification{row(1, KindReviewRequested, 7), woke}, nil)
 
 	require.Len(t, got, 2)
 	assert.Equal(t, Banner{
@@ -41,16 +38,16 @@ func TestABannerPerNotification(t *testing.T) {
 
 func TestABannerForAnItemNoLongerStored(t *testing.T) {
 	r := row(1, KindAssigned, 7)
-	r.ItemID = nil
+	r.ItemID = 0
 
-	got := Banners([]model.Notification{r}, nil)
+	got := Banners([]Notification{r}, nil)
 	require.Len(t, got, 1)
 	assert.Zero(t, got[0].ItemID)
 	assert.Equal(t, "Assigned to you", got[0].Title)
 }
 
 func TestManyBannersAreSummedUp(t *testing.T) {
-	rows := []model.Notification{
+	rows := []Notification{
 		row(4, KindReviewRequested, 1), row(5, KindReviewRequested, 2), row(6, KindAssigned, 3),
 		row(7, KindWoke, 4), row(8, KindReviewRequested, 5),
 	}
@@ -77,7 +74,7 @@ func TestManyBannersAreSummedUp(t *testing.T) {
 }
 
 func TestNoBannersWhenEveryKindIsOff(t *testing.T) {
-	assert.Empty(t, Banners([]model.Notification{row(1, KindReviewRequested, 1)}, notifyprefs.Kinds()))
+	assert.Empty(t, Banners([]Notification{row(1, KindReviewRequested, 1)}, notifyprefs.Kinds()))
 	assert.Empty(t, Banners(nil, nil))
 }
 
@@ -85,7 +82,7 @@ func TestALongTitleIsCut(t *testing.T) {
 	r := row(1, KindReviewRequested, 7)
 	r.Title = strings.Repeat("word ", 60)
 
-	body := Banners([]model.Notification{r}, nil)[0].Body
+	body := Banners([]Notification{r}, nil)[0].Body
 
 	assert.Len(t, []rune(body), maxTitleRunes)
 	assert.True(t, strings.HasSuffix(body, "word…"), "trailing space is trimmed before the ellipsis: %q", body)

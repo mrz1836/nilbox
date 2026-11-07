@@ -48,14 +48,11 @@ const (
 // entry with no ORM import left, so remove a directory once its last one is gone.
 func ormAllowlist() []string {
 	return []string{
-		"internal/cleanuplog",
 		"internal/core",
 		"internal/inbox",
 		"internal/launchdefaults",
 		"internal/launcher",
-		"internal/launchlog",
 		"internal/measure",
-		"internal/notify",
 		"internal/profiles",
 		"internal/prompts",
 		"internal/settings",
@@ -71,12 +68,10 @@ func ormAllowlist() []string {
 // once its last statement has moved.
 func sqlAllowlist() []string {
 	return []string{
-		"internal/cleanuplog",
 		"internal/inbox",
 		"internal/launchdefaults",
 		"internal/launcher",
 		"internal/measure",
-		"internal/notify",
 		"internal/prompts",
 	}
 }

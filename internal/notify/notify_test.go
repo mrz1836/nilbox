@@ -12,14 +12,13 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/snooze"
-	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -74,7 +73,6 @@ func (p *fakePoster) posted() []Banner {
 // fixture is a database with stored items to notify about.
 type fixture struct {
 	pool     *sql.DB
-	db       *gorm.DB
 	clock    *testutil.Clock
 	poster   *fakePoster
 	notifier *testutil.Notifier
@@ -86,26 +84,27 @@ type fixture struct {
 func newFixture(t *testing.T, n int) *fixture {
 	t.Helper()
 
-	pool, db := testutil.BridgedDB(t)
+	pool := testutil.SQLDB(t)
+	ctx := t.Context()
 
 	var accountID, repoID int64
 
-	require.NoError(t, db.Raw(`INSERT INTO accounts (login, created_at, updated_at) VALUES ('octo-user', ?, ?)
-RETURNING id`, testNow, testNow).Scan(&accountID).Error)
-	require.NoError(t, db.Raw(`INSERT INTO repos (owner, name, created_at, updated_at)
-VALUES ('acme-org', 'example-repo', ?, ?) RETURNING id`, testNow, testNow).Scan(&repoID).Error)
+	require.NoError(t, pool.QueryRowContext(ctx, `INSERT INTO accounts (login, created_at, updated_at)
+VALUES ('octo-user', ?, ?) RETURNING id`, testNow, testNow).Scan(&accountID))
+	require.NoError(t, pool.QueryRowContext(ctx, `INSERT INTO repos (owner, name, created_at, updated_at)
+VALUES ('acme-org', 'example-repo', ?, ?) RETURNING id`, testNow, testNow).Scan(&repoID))
 
 	f := &fixture{
-		pool: pool, db: db, clock: testutil.NewClock(testNow), poster: &fakePoster{status: StatusOn},
+		pool: pool, clock: testutil.NewClock(testNow), poster: &fakePoster{status: StatusOn},
 		notifier: &testutil.Notifier{},
 	}
 
 	for i := 1; i <= n; i++ {
 		var id int64
 
-		require.NoError(t, db.Raw(`INSERT INTO items (account_id, repo_id, kind, number, item_created_at,
-item_updated_at, fetched_at) VALUES (?, ?, 'pr', ?, ?, ?, ?) RETURNING id`,
-			accountID, repoID, i, testNow, testNow, testNow).Scan(&id).Error)
+		require.NoError(t, pool.QueryRowContext(ctx, `INSERT INTO items (account_id, repo_id, kind, number,
+item_created_at, item_updated_at, fetched_at) VALUES (?, ?, 'pr', ?, ?, ?, ?) RETURNING id`,
+			accountID, repoID, i, testNow, testNow, testNow).Scan(&id))
 
 		f.items = append(f.items, id)
 	}
@@ -114,7 +113,7 @@ item_updated_at, fetched_at) VALUES (?, ?, 'pr', ?, ?, ?, ?) RETURNING id`,
 }
 
 func (f *fixture) config() Config {
-	return Config{Pool: f.pool, DB: f.db, Poster: f.poster, Notifier: f.notifier, Clock: f.clock}
+	return Config{Pool: f.pool, Poster: f.poster, Notifier: f.notifier, Clock: f.clock}
 }
 
 // arrival is the arrival of the fixture's item i (from 0) as kind.
@@ -135,7 +134,7 @@ func TestKindsAreTheInboxArrivals(t *testing.T) {
 
 func TestTheLogKeepsWhatWasRecorded(t *testing.T) {
 	f := newFixture(t, 2)
-	s := NewStore(f.db)
+	s := NewStore(f.pool)
 
 	woke := f.arrival(1, KindWoke)
 	woke.Woke = snooze.Reasons{Review: snooze.ReviewApproved, Commits: 2}
@@ -165,19 +164,20 @@ func TestTheLogKeepsWhatWasRecorded(t *testing.T) {
 		URL: "https://github.com/acme-org/example-repo/pull/2", Author: "octo-other",
 		Detail: "approved, 2 new commits",
 	}, got)
+	assert.Equal(t, rows[1], got, "Record returns what the log reads back")
 }
 
 func TestRecordingNothingStoresNothing(t *testing.T) {
 	f := newFixture(t, 0)
 
-	rows, err := NewStore(f.db).Record(t.Context(), testNow, nil)
+	rows, err := NewStore(f.pool).Record(t.Context(), testNow, nil)
 	require.NoError(t, err)
 	assert.Empty(t, rows)
 }
 
 func TestTheLogKeepsOnlyTheNewest(t *testing.T) {
 	f := newFixture(t, 1)
-	s := NewStore(f.db)
+	s := NewStore(f.pool)
 
 	arrivals := make([]inbox.Arrival, Keep+5)
 	for i := range arrivals {
@@ -200,7 +200,7 @@ func TestTheLogKeepsOnlyTheNewest(t *testing.T) {
 
 func TestMarkAllReadAndClear(t *testing.T) {
 	f := newFixture(t, 1)
-	s := NewStore(f.db)
+	s := NewStore(f.pool)
 
 	_, err := s.Record(t.Context(), testNow, []inbox.Arrival{f.arrival(0, KindReviewRequested)})
 	require.NoError(t, err)
@@ -221,11 +221,12 @@ func TestMarkAllReadAndClear(t *testing.T) {
 
 func TestAnEntryOutlivesItsItem(t *testing.T) {
 	f := newFixture(t, 1)
-	s := NewStore(f.db)
+	s := NewStore(f.pool)
 
 	_, err := s.Record(t.Context(), testNow, []inbox.Arrival{f.arrival(0, KindReviewRequested)})
 	require.NoError(t, err)
-	require.NoError(t, f.db.Exec("DELETE FROM items").Error)
+	_, err = f.pool.ExecContext(t.Context(), "DELETE FROM items")
+	require.NoError(t, err)
 
 	log, err := s.Log(t.Context())
 	require.NoError(t, err)
@@ -234,10 +235,25 @@ func TestAnEntryOutlivesItsItem(t *testing.T) {
 	assert.Equal(t, "https://github.com/acme-org/example-repo/pull/1", log.Items[0].URL, "the copy still reads")
 }
 
+func TestAnEntryWithoutARepository(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, 1)
+	s := NewStore(f.pool)
+
+	a := f.arrival(0, KindAssigned)
+	a.RepoOwner, a.RepoName = "", ""
+
+	rows, err := s.Record(t.Context(), testNow, []inbox.Arrival{a})
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Empty(t, rows[0].Repo, "no repository reads as none, not as a lone slash")
+}
+
 func TestTheStoreFailsOnAClosedDatabase(t *testing.T) {
 	f := newFixture(t, 1)
-	s := NewStore(f.db)
-	require.NoError(t, store.Close(f.db))
+	s := NewStore(f.pool)
+	require.NoError(t, f.pool.Close())
 
 	_, err := s.Record(t.Context(), testNow, []inbox.Arrival{f.arrival(0, KindReviewRequested)})
 	require.Error(t, err)
@@ -248,13 +264,169 @@ func TestTheStoreFailsOnAClosedDatabase(t *testing.T) {
 	require.Error(t, s.Clear(t.Context()))
 }
 
+// stamp returns the stored text of a notification's DATETIME column, or "" when it is
+// NULL.
+func stamp(t *testing.T, db *sql.DB, column string, id int64) string {
+	t.Helper()
+
+	var text sql.NullString
+	require.NoError(t, db.QueryRowContext(t.Context(),
+		"SELECT CAST("+column+" AS TEXT) FROM notifications WHERE id = ?", id).Scan(&text))
+
+	return text.String
+}
+
+// countNotifications returns how many notifications are stored.
+func countNotifications(t *testing.T, db *sql.DB) int {
+	t.Helper()
+
+	var n int
+	require.NoError(t, db.QueryRowContext(t.Context(), "SELECT count(*) FROM notifications").Scan(&n))
+
+	return n
+}
+
+func TestTheLogKeepsTheLastRecordedOfTheSameTime(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, 1)
+	s := NewStore(f.pool)
+
+	arrivals := make([]inbox.Arrival, Keep+3)
+	for i := range arrivals {
+		arrivals[i] = f.arrival(0, KindReviewRequested)
+	}
+
+	rows, err := s.Record(t.Context(), testNow, arrivals)
+	require.NoError(t, err)
+	require.Len(t, rows, Keep+3, "Record returns every one it stored")
+	assert.Equal(t, Keep, countNotifications(t, f.pool), "exactly Keep are kept")
+
+	log, err := s.Log(t.Context())
+	require.NoError(t, err)
+	require.Len(t, log.Items, Keep)
+	assert.Equal(t, rows[len(rows)-1].ID, log.Items[0].ID, "the last recorded comes first")
+	assert.Equal(t, rows[3].ID, log.Items[Keep-1].ID, "the first three recorded are dropped")
+}
+
+func TestRecordIsAllOrNothing(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, 1)
+	s := NewStore(f.pool)
+
+	unknown := f.arrival(0, KindAssigned)
+	unknown.ItemID = f.items[0] + 100
+
+	_, err := s.Record(t.Context(), testNow, []inbox.Arrival{f.arrival(0, KindReviewRequested), unknown})
+	require.ErrorContains(t, err, "record the notifications")
+	assert.Zero(t, countNotifications(t, f.pool), "an arrival for an item that is not stored stores none")
+
+	// A trim that fails takes the notifications it followed with it.
+	_, err = f.pool.ExecContext(t.Context(), `CREATE TRIGGER refuse_trim BEFORE DELETE ON notifications
+BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`)
+	require.NoError(t, err)
+
+	arrivals := make([]inbox.Arrival, Keep+1)
+	for i := range arrivals {
+		arrivals[i] = f.arrival(0, KindReviewRequested)
+	}
+
+	_, err = s.Record(t.Context(), testNow, arrivals)
+	require.ErrorContains(t, err, "refused by the test")
+	assert.Zero(t, countNotifications(t, f.pool))
+}
+
+func TestRecordConcurrently(t *testing.T) {
+	t.Parallel()
+
+	const (
+		writers   = 8
+		perWriter = 30
+	)
+
+	f := newFixture(t, 1)
+	s := NewStore(f.pool)
+
+	var g errgroup.Group
+
+	for w := range writers {
+		g.Go(func() error {
+			for i := range perWriter {
+				// Every notification has its own time, so which are newest does not
+				// depend on the order the writers ran in.
+				at := testNow.Add(time.Duration(w*perWriter+i) * time.Second)
+				if _, err := s.Record(t.Context(), at, []inbox.Arrival{f.arrival(0, KindAssigned)}); err != nil {
+					return err
+				}
+			}
+
+			return nil
+		})
+	}
+
+	require.NoError(t, g.Wait())
+	assert.Equal(t, Keep, countNotifications(t, f.pool))
+
+	log, err := s.Log(t.Context())
+	require.NoError(t, err)
+	require.Len(t, log.Items, Keep)
+
+	for i, n := range log.Items {
+		want := testNow.Add(time.Duration(writers*perWriter-1-i) * time.Second)
+		assert.Equal(t, want.Format(time.RFC3339), n.CreatedAt, "exactly the newest are kept, newest first")
+	}
+}
+
+func TestMarkAllReadStampsOnlyTheUnread(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, 1)
+	s := NewStore(f.pool)
+	svc := NewService(f.config())
+
+	first, err := s.Record(t.Context(), testNow, []inbox.Arrival{f.arrival(0, KindReviewRequested)})
+	require.NoError(t, err)
+	assert.Empty(t, stamp(t, f.pool, "read_at", first[0].ID), "unread")
+
+	f.clock.Set(testNow.Add(time.Minute))
+	require.NoError(t, svc.MarkAllRead(t.Context()))
+	assert.Equal(t, "2026-03-04 12:01:00+00:00", stamp(t, f.pool, "read_at", first[0].ID), "read at the clock's time")
+
+	f.clock.Set(testNow.Add(2 * time.Minute))
+	second, err := s.Record(t.Context(), f.clock.Now(), []inbox.Arrival{f.arrival(0, KindAssigned)})
+	require.NoError(t, err)
+	assert.Equal(t, "2026-03-04 12:02:00+00:00", stamp(t, f.pool, "created_at", second[0].ID))
+
+	f.clock.Set(testNow.Add(3 * time.Minute))
+	require.NoError(t, svc.MarkAllRead(t.Context()))
+	assert.Equal(t, "2026-03-04 12:01:00+00:00", stamp(t, f.pool, "read_at", first[0].ID), "already read")
+	assert.Equal(t, "2026-03-04 12:03:00+00:00", stamp(t, f.pool, "read_at", second[0].ID))
+}
+
+func TestTimesAreStoredInUTC(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, 1)
+	s := NewStore(f.pool)
+	zone := time.FixedZone("UTC-5", -5*60*60)
+
+	rows, err := s.Record(t.Context(), testNow.In(zone), []inbox.Arrival{f.arrival(0, KindReviewRequested)})
+	require.NoError(t, err)
+	assert.Equal(t, "2026-03-04T12:00:00Z", rows[0].CreatedAt)
+	assert.Equal(t, "2026-03-04 12:00:00+00:00", stamp(t, f.pool, "created_at", rows[0].ID))
+
+	require.NoError(t, s.MarkAllRead(t.Context(), testNow.Add(time.Hour).In(zone)))
+	assert.Equal(t, "2026-03-04 13:00:00+00:00", stamp(t, f.pool, "read_at", rows[0].ID))
+}
+
 func TestTheDispatcherRecordsAndShowsBanners(t *testing.T) {
 	f := newFixture(t, 2)
 	d := NewDispatcher(f.config())
 
 	d.Arrived(t.Context(), []inbox.Arrival{f.arrival(0, KindReviewRequested), f.arrival(1, KindAssigned)})
 
-	log, err := NewStore(f.db).Log(t.Context())
+	log, err := NewStore(f.pool).Log(t.Context())
 	require.NoError(t, err)
 	require.Len(t, log.Items, 2)
 	assert.Equal(t, 1, f.notifier.Calls())
@@ -280,7 +452,7 @@ func TestTheDispatcherLeavesOutBannersThatAreOff(t *testing.T) {
 	require.Len(t, banners, 1)
 	assert.Equal(t, "Assigned to you", banners[0].Title)
 
-	log, err := NewStore(f.db).Log(t.Context())
+	log, err := NewStore(f.pool).Log(t.Context())
 	require.NoError(t, err)
 	assert.Len(t, log.Items, 2, "the log keeps every kind")
 }
@@ -292,7 +464,7 @@ func TestTheDispatcherKeepsTheLogWithoutAPoster(t *testing.T) {
 
 	NewDispatcher(cfg).Arrived(t.Context(), []inbox.Arrival{f.arrival(0, KindReviewRequested)})
 
-	log, err := NewStore(f.db).Log(t.Context())
+	log, err := NewStore(f.pool).Log(t.Context())
 	require.NoError(t, err)
 	assert.Len(t, log.Items, 1)
 	assert.Equal(t, 1, f.notifier.Calls())
@@ -319,16 +491,29 @@ func TestTheDispatcherSurvivesFailures(t *testing.T) {
 	d.Arrived(t.Context(), nil)
 	assert.Equal(t, 1, f.notifier.Calls(), "nothing new, nothing told")
 
-	require.NoError(t, store.Close(f.db))
+	require.NoError(t, f.pool.Close())
 	d.Arrived(context.Background(), []inbox.Arrival{f.arrival(0, KindReviewRequested)})
 	assert.Equal(t, 1, f.notifier.Calls(), "nothing was recorded")
+}
+
+func TestTheDispatcherShowsNoBannersWhenTheSettingsCannotBeRead(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, 1)
+	_, err := f.pool.ExecContext(t.Context(), "DROP TABLE prefs")
+	require.NoError(t, err)
+
+	NewDispatcher(f.config()).Arrived(t.Context(), []inbox.Arrival{f.arrival(0, KindReviewRequested)})
+
+	assert.Empty(t, f.poster.posted(), "without the settings, no banner the user may have turned off is shown")
+	assert.Equal(t, 1, f.notifier.Calls(), "the log still has it")
 }
 
 func TestTheServiceServesTheLog(t *testing.T) {
 	f := newFixture(t, 1)
 	svc := NewService(f.config())
 
-	_, err := NewStore(f.db).Record(t.Context(), testNow, []inbox.Arrival{f.arrival(0, KindReviewRequested)})
+	_, err := NewStore(f.pool).Record(t.Context(), testNow, []inbox.Arrival{f.arrival(0, KindReviewRequested)})
 	require.NoError(t, err)
 
 	log, err := svc.List(t.Context())
@@ -349,7 +534,7 @@ func TestTheServiceServesTheLog(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, log.Items)
 
-	require.NoError(t, store.Close(f.db))
+	require.NoError(t, f.pool.Close())
 	require.Error(t, svc.MarkAllRead(t.Context()))
 	require.Error(t, svc.Clear(t.Context()))
 	assert.Equal(t, 2, f.notifier.Calls(), "failures are not told")
@@ -389,7 +574,7 @@ func TestBannerStatusAndTest(t *testing.T) {
 
 func TestTheDefaultsFillIn(t *testing.T) {
 	f := newFixture(t, 0)
-	svc := NewService(Config{DB: f.db})
+	svc := NewService(Config{Pool: f.pool})
 
 	require.NotNil(t, svc.clock)
 	assert.NotNil(t, svc.logger)

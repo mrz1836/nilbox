@@ -17,13 +17,13 @@ import (
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/inbox"
-	"github.com/mrz1836/nilbox/internal/launchlog"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/textutil"
+	"github.com/mrz1836/nilbox/internal/worklog"
 	"github.com/mrz1836/nilbox/internal/workspacetrust"
 )
 
@@ -44,10 +44,10 @@ type Finder interface {
 	Find(name string) (string, error)
 }
 
-// LaunchRecorder records the worktrees sessions are launched in. *launchlog.Store
+// LaunchRecorder records the worktrees sessions are launched in. *worklog.Store
 // implements it.
 type LaunchRecorder interface {
-	Record(ctx context.Context, l launchlog.Launch) error
+	RecordLaunch(ctx context.Context, l worklog.Launch) error
 }
 
 // Config holds a Service's dependencies. Clock and Launches are optional.
@@ -475,7 +475,7 @@ func (s *Service) recordLaunch(ctx context.Context, p planned) {
 		return
 	}
 
-	err := s.launches.Record(ctx, launchlog.Launch{
+	err := s.launches.RecordLaunch(ctx, worklog.Launch{
 		ClonePath: p.clone.Dir, Worktree: p.plan.worktreeDir(), Owner: p.row.Owner, Name: p.row.Name,
 		Kind: p.row.Kind, Number: p.row.Number, LaunchedAt: s.clock.Now(),
 	})

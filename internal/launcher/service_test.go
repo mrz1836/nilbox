@@ -22,12 +22,12 @@ import (
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/inbox/model"
 	"github.com/mrz1836/nilbox/internal/item"
-	"github.com/mrz1836/nilbox/internal/launchlog"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/testutil"
+	"github.com/mrz1836/nilbox/internal/worklog"
 	"github.com/mrz1836/nilbox/internal/workspacetrust"
 )
 
@@ -441,11 +441,11 @@ func TestLaunchTrustsTheCloneForTheAgent(t *testing.T) {
 
 // recordingLaunches keeps the launches the launcher records, or fails.
 type recordingLaunches struct {
-	launches []launchlog.Launch
+	launches []worklog.Launch
 	err      error
 }
 
-func (r *recordingLaunches) Record(_ context.Context, l launchlog.Launch) error {
+func (r *recordingLaunches) RecordLaunch(_ context.Context, l worklog.Launch) error {
 	if r.err != nil {
 		return r.err
 	}
@@ -464,7 +464,7 @@ func TestLaunchRecordsTheWorktree(t *testing.T) {
 	h.launch(t, LaunchRequest{ItemID: h.issue})
 	h.launch(t, LaunchRequest{ItemID: h.trustedPR, Worktree: boolPtr(false)})
 
-	assert.Equal(t, []launchlog.Launch{
+	assert.Equal(t, []worklog.Launch{
 		{
 			ClonePath: h.clone, Worktree: "pr-7", Owner: "acme-org", Name: "example-repo", Kind: "pr", Number: 7,
 			LaunchedAt: fixedNow(),

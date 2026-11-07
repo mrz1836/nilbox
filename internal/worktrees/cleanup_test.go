@@ -18,9 +18,9 @@ import (
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
-	"github.com/mrz1836/nilbox/internal/launchlog"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/testutil"
+	"github.com/mrz1836/nilbox/internal/worklog"
 )
 
 var (
@@ -76,20 +76,20 @@ func refKeys(refs []item.Ref) []string {
 // fakeLaunches is an in-memory launch log.
 type fakeLaunches struct {
 	mu        sync.Mutex
-	records   []launchlog.Launch
+	records   []worklog.Launch
 	forgotten []string
 	listErr   error
 	forgetErr error
 }
 
-func (f *fakeLaunches) List(context.Context) ([]launchlog.Launch, error) {
+func (f *fakeLaunches) Launches(context.Context) ([]worklog.Launch, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	return append([]launchlog.Launch(nil), f.records...), f.listErr
+	return append([]worklog.Launch(nil), f.records...), f.listErr
 }
 
-func (f *fakeLaunches) Forget(_ context.Context, clonePath, worktree string) error {
+func (f *fakeLaunches) ForgetLaunch(_ context.Context, clonePath, worktree string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -210,8 +210,8 @@ func closedIssue() github.ItemState {
 }
 
 // launchOf records a launch of the agent worktree at path for kind and number.
-func launchOf(repo, name string, kind item.Kind, number int) launchlog.Launch {
-	return launchlog.Launch{ClonePath: repo, Worktree: name, Owner: "acme-org", Name: filepath.Base(repo), Kind: kind, Number: number}
+func launchOf(repo, name string, kind item.Kind, number int) worklog.Launch {
+	return worklog.Launch{ClonePath: repo, Worktree: name, Owner: "acme-org", Name: filepath.Base(repo), Kind: kind, Number: number}
 }
 
 func TestListLinksAndStagesAgentWorktrees(t *testing.T) {
@@ -358,7 +358,7 @@ func TestListLinksByLaunchRecord(t *testing.T) {
 
 	record := launchOf(repo, "pr-3", item.KindIssue, 12)
 	record.Owner = "Upstream-Org"
-	launches := &fakeLaunches{records: []launchlog.Launch{record}}
+	launches := &fakeLaunches{records: []worklog.Launch{record}}
 
 	snap, err := e.linked(linkDeps{gh: gh, launches: launches}).List(t.Context())
 	require.NoError(t, err)
@@ -472,7 +472,7 @@ func TestCleanUpRemovesAFinishedWorktreeAndItsBranch(t *testing.T) {
 	gh := &fakeGitHub{}
 	gh.set("example-repo", 184, pr(github.StateMerged, head))
 
-	launches := &fakeLaunches{records: []launchlog.Launch{launchOf(repo, "pr-184", item.KindPR, 184)}}
+	launches := &fakeLaunches{records: []worklog.Launch{launchOf(repo, "pr-184", item.KindPR, 184)}}
 	svc := e.linked(linkDeps{gh: gh, launches: launches})
 
 	res, err := svc.CleanUp(t.Context(), repo, path)

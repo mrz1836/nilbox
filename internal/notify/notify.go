@@ -17,15 +17,15 @@ package notify
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
-	"gorm.io/gorm"
-
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/inbox"
-	"github.com/mrz1836/nilbox/internal/notify/model"
+	"github.com/mrz1836/nilbox/internal/notify/internal/queries"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/store"
 )
 
 // Kinds of notification. They are the inbox's kinds of arrival, which notifyprefs lists
@@ -43,11 +43,6 @@ const (
 
 // Keep is how many notifications the log keeps; recording more drops the oldest.
 const Keep = 200
-
-// pruneSQL drops every notification older than the newest Keep.
-const pruneSQL = `DELETE FROM notifications WHERE id NOT IN (
-  SELECT id FROM notifications ORDER BY created_at DESC, id DESC LIMIT ?
-)`
 
 // Notification is one entry in the log, as the window shows it. Every field is a plain
 // value.
@@ -90,53 +85,56 @@ type Log struct {
 
 // Store reads and writes the notification log.
 type Store struct {
-	db *gorm.DB
+	db *sql.DB
+	q  *queries.Queries
 }
 
-// NewStore returns a Store over db.
-func NewStore(db *gorm.DB) *Store {
-	return &Store{db: db}
+// NewStore returns a Store over the pool db.
+func NewStore(db *sql.DB) *Store {
+	return &Store{db: db, q: queries.New(db)}
 }
 
 // Record stores the notifications for arrivals at now, in order, and drops the oldest
-// past Keep, in one transaction. It returns the stored rows, with their ids.
-func (s *Store) Record(ctx context.Context, now time.Time, arrivals []inbox.Arrival) ([]model.Notification, error) {
-	rows := make([]model.Notification, 0, len(arrivals))
-
-	for _, a := range arrivals {
-		itemID := a.ItemID
-		rows = append(rows, model.Notification{
-			Kind: a.Kind, CreatedAt: now.UTC(), ItemID: &itemID, ItemKind: string(a.ItemKind), RepoOwner: a.RepoOwner,
-			RepoName: a.RepoName, Number: a.Number, Title: a.Title, URL: a.URL, Author: a.Author,
-			Detail: WakeDetail(a.Woke),
-		})
-	}
-
-	if len(rows) == 0 {
+// past Keep, in one transaction. It returns what it stored, with the ids.
+func (s *Store) Record(ctx context.Context, now time.Time, arrivals []inbox.Arrival) ([]Notification, error) {
+	if len(arrivals) == 0 {
 		return nil, nil
 	}
 
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(&rows).Error; err != nil {
-			return err
+	now = now.UTC()
+	out := make([]Notification, 0, len(arrivals))
+
+	err := store.InTx(ctx, s.db, func(tx *sql.Tx) error {
+		q := s.q.WithTx(tx)
+
+		for _, a := range arrivals {
+			itemID := a.ItemID
+
+			row, err := q.InsertNotification(ctx, queries.InsertNotificationParams{
+				Kind: a.Kind, CreatedAt: now, ItemID: &itemID, ItemKind: string(a.ItemKind), RepoOwner: a.RepoOwner,
+				RepoName: a.RepoName, Number: int64(a.Number), Title: a.Title, URL: a.URL, Author: a.Author,
+				Detail: WakeDetail(a.Woke),
+			})
+			if err != nil {
+				return err
+			}
+
+			out = append(out, fromRow(row))
 		}
 
-		return tx.Exec(pruneSQL, Keep).Error
+		return q.TrimNotifications(ctx, Keep)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("record the notifications: %w", err)
 	}
 
-	return rows, nil
+	return out, nil
 }
 
 // Log returns the stored notifications, newest first, and how many are unread.
 func (s *Store) Log(ctx context.Context) (Log, error) {
-	var rows []model.Notification
-
-	db := s.db.WithContext(ctx)
-
-	if err := db.Order("created_at DESC, id DESC").Limit(Keep).Find(&rows).Error; err != nil {
+	rows, err := s.q.ListNotifications(ctx, Keep)
+	if err != nil {
 		return Log{}, fmt.Errorf("read the notifications: %w", err)
 	}
 
@@ -156,8 +154,8 @@ func (s *Store) Log(ctx context.Context) (Log, error) {
 
 // MarkAllRead marks every unread notification read at now.
 func (s *Store) MarkAllRead(ctx context.Context, now time.Time) error {
-	err := s.db.WithContext(ctx).Exec("UPDATE notifications SET read_at = ? WHERE read_at IS NULL", now.UTC()).Error
-	if err != nil {
+	readAt := now.UTC()
+	if err := s.q.MarkAllRead(ctx, &readAt); err != nil {
 		return fmt.Errorf("mark the notifications read: %w", err)
 	}
 
@@ -166,7 +164,7 @@ func (s *Store) MarkAllRead(ctx context.Context, now time.Time) error {
 
 // Clear forgets every notification.
 func (s *Store) Clear(ctx context.Context) error {
-	if err := s.db.WithContext(ctx).Where("1 = 1").Delete(&model.Notification{}).Error; err != nil {
+	if err := s.q.ClearNotifications(ctx); err != nil {
 		return fmt.Errorf("clear the notifications: %w", err)
 	}
 
@@ -174,7 +172,7 @@ func (s *Store) Clear(ctx context.Context) error {
 }
 
 // fromRow converts a stored notification to the window's.
-func fromRow(r model.Notification) Notification {
+func fromRow(r queries.Notification) Notification {
 	var itemID int64
 	if r.ItemID != nil {
 		itemID = *r.ItemID
@@ -182,7 +180,7 @@ func fromRow(r model.Notification) Notification {
 
 	return Notification{
 		ID: r.ID, Kind: r.Kind, CreatedAt: clock.Format(r.CreatedAt), Read: r.ReadAt != nil,
-		ItemID: itemID, ItemKind: r.ItemKind, Repo: repoName(r.RepoOwner, r.RepoName), Number: r.Number,
+		ItemID: itemID, ItemKind: r.ItemKind, Repo: repoName(r.RepoOwner, r.RepoName), Number: int(r.Number),
 		Title: r.Title, URL: r.URL, Author: r.Author, Detail: r.Detail,
 	}
 }

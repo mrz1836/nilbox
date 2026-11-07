@@ -13,16 +13,15 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/mrz1836/nilbox/internal/cleanuplog"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
-	"github.com/mrz1836/nilbox/internal/launchlog"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/settings"
+	"github.com/mrz1836/nilbox/internal/worklog"
 )
 
 // listConcurrency bounds how many repositories List reads at once.
@@ -130,17 +129,17 @@ type GitHub interface {
 }
 
 // Launches reads and prunes the record of the worktrees the app launched sessions in.
-// *launchlog.Store implements it.
+// *worklog.Store implements it.
 type Launches interface {
-	List(ctx context.Context) ([]launchlog.Launch, error)
-	Forget(ctx context.Context, clonePath, worktree string) error
+	Launches(ctx context.Context) ([]worklog.Launch, error)
+	ForgetLaunch(ctx context.Context, clonePath, worktree string) error
 }
 
-// History records the worktrees the app cleaned up. *cleanuplog.Store implements it.
+// History records the worktrees the app cleaned up. *worklog.Store implements it.
 type History interface {
-	Record(ctx context.Context, c cleanuplog.Cleanup) error
-	Recent(ctx context.Context, limit int) ([]cleanuplog.Cleanup, error)
-	Clear(ctx context.Context) error
+	RecordCleanup(ctx context.Context, c worklog.Cleanup) error
+	RecentCleanups(ctx context.Context, limit int) ([]worklog.Cleanup, error)
+	ClearCleanups(ctx context.Context) error
 }
 
 // Notifier is told when an automatic sweep removed a worktree or changed how many need
@@ -391,12 +390,12 @@ func (s *Service) assessClones(ctx context.Context, g git, root string, clones [
 
 // launchRecords reads the launch records. Without them worktrees are still linked by
 // name, so a failure is only logged.
-func (s *Service) launchRecords(ctx context.Context) []launchlog.Launch {
+func (s *Service) launchRecords(ctx context.Context) []worklog.Launch {
 	if s.launches == nil {
 		return nil
 	}
 
-	records, err := s.launches.List(ctx)
+	records, err := s.launches.Launches(ctx)
 	if err != nil {
 		s.logger.WarnContext(ctx, "could not read the worktree launches", "error", err)
 	}

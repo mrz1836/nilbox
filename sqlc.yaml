@@ -5,13 +5,14 @@
 #
 # Each table owner keeps its queries in internal/<owner>/internal/queries/*.sql, generated into
 # package queries in that same directory, so only the owner can import them. The first entry
-# carries the shared settings; add an owner by merging them and naming its directory twice:
+# carries the shared settings; add an owner by merging them and naming its directory twice
+# (the YAML formatter tags each merge key with !!merge):
 #
-#   - <<: *owner
+#   - !!merge <<: *owner
 #     queries: internal/<owner>/internal/queries
 #     gen:
 #       go:
-#         <<: *go
+#         !!merge <<: *go
 #         out: internal/<owner>/internal/queries
 version: "2"
 sql:
@@ -35,3 +36,17 @@ sql:
         emit_pointers_for_null_types: true
         emit_empty_slices: true
         omit_unused_structs: true
+        # Go names spell these in capitals: item_url is ItemURL.
+        initialisms: [id, url]
+  - !!merge <<: *owner
+    queries: internal/worklog/internal/queries
+    gen:
+      go:
+        !!merge <<: *go
+        out: internal/worklog/internal/queries
+  - !!merge <<: *owner
+    queries: internal/notify/internal/queries
+    gen:
+      go:
+        !!merge <<: *go
+        out: internal/notify/internal/queries
