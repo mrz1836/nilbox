@@ -11,7 +11,7 @@ One inbox for every repository you touch. One click to hand any pull request or 
 <a href="https://github.com/mrz1836/nilbox/releases"><img src="https://img.shields.io/github/release-pre/mrz1836/nilbox?include_prereleases&style=flat-square&logo=github&color=black" alt="Release"></a>
 <a href="https://golang.org/"><img src="https://img.shields.io/github/go-mod/go-version/mrz1836/nilbox?style=flat-square&logo=go&color=00ADD8" alt="Go Version"></a>
 <a href="#-installation"><img src="https://img.shields.io/badge/platform-macOS%2013%2B-000000?style=flat-square&logo=apple&logoColor=white" alt="Platform"></a>
-<a href="https://github.com/mrz1836/nilbox/blob/master/LICENSE"><img src="https://img.shields.io/github/license/mrz1836/nilbox?style=flat-square&color=blue&v=1" alt="License"></a>
+<a href="https://github.com/mrz1836/nilbox/blob/master/LICENSE"><img src="https://img.shields.io/github/license/mrz1836/nilbox?style=flat-square&color=blue&v=2" alt="License"></a>
 
 <br/>
 
@@ -247,17 +247,17 @@ merges or the issue closes.
 
 ## ✨ Features
 
-- 📥 **One inbox, every repository** — Review requested, Authored, and Assigned, across every repo your account can see
-- 🗂️ **Cards that answer "is it ready?"** — checks, reviews, comments, size grade, labels, and Draft and Conflicts tags
-- 💤 **Local triage** — snooze, dismiss, or pin; wake rules end a snooze early when something changes
-- 🤖 **One-click agent launch** — Claude Code in iTerm2 or Terminal.app, in the right clone and its own worktree
-- 👤 **Profiles per repo or org** — every `~/.claude-<name>` config directory is a profile, so each repo launches on its own account
-- 📝 **Prompt library** — Go templates with highlighting, autocomplete, error checking, and a live preview
-- 🛡️ **Trust guardrails** — outside contributors launch in plan mode, and changes to sensitive files are flagged
-- 🌳 **Safe worktree cleanup** — finished worktrees are removed only when nothing would be lost
-- 🔔 **Menu bar and notifications** — a live count in the menu bar and native banners for what's new
-- 📊 **API budget gauge** — an always-visible dial for the GitHub budget closest to running out
-- 🎉 **Inbox nil** — empty every list and the inbox throws you a party
+- **One inbox, every repository** — Review requested, Authored, and Assigned, across every repo your account can see
+- **Cards that answer "is it ready?"** — checks, reviews, comments, size grade, labels, and Draft and Conflicts tags
+- **Local triage** — snooze, dismiss, or pin; wake rules end a snooze early when something changes
+- **One-click agent launch** — Claude Code in iTerm2 or Terminal.app, in the right clone and its own worktree
+- **Profiles per repo or org** — every `~/.claude-<name>` config directory is a profile, so each repo launches on its own account
+- **Prompt library** — Go templates with highlighting, autocomplete, error checking, and a live preview
+- **Trust guardrails** — outside contributors launch in plan mode, and changes to sensitive files are flagged
+- **Safe worktree cleanup** — finished worktrees are removed only when nothing would be lost
+- **Menu bar and notifications** — a live count in the menu bar and native banners for what's new
+- **API budget gauge** — an always-visible dial for the GitHub budget closest to running out
+- **Inbox nil** — empty every list and the inbox throws you a party
 
 <br/>
 
@@ -736,6 +736,4 @@ to ensure this journey continues indefinitely! :rocket:
 
 ## 📝 License
 
-[![License](https://img.shields.io/github/license/mrz1836/nilbox.svg?style=flat&v=1)](LICENSE)
-
-Nilbox is released under the [MIT License](LICENSE).
+[![License](https://img.shields.io/github/license/mrz1836/nilbox.svg?style=flat&v=2)](LICENSE)
