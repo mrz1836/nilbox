@@ -13,8 +13,8 @@ numbers with the `magex measure:*` targets.
 |---|---|---|---|
 | Cold start to first paint | < 1 s | 1013 ms | Not met in the recorded run (13 ms over); an earlier run of the same code measured 922 ms |
 | Inbox refresh | < 3 s | 2.54 s | Met once the inbox's items are known; the first refresh into an empty database takes 6–10 s |
-| Launch to prompt loaded | < 3 s | measured in the maintainer verification run | Pending: the build host cannot grant the Automation permission unattended |
-| App binary size | < 30 MB | 16.4 MB | Met |
+| Launch to prompt loaded | < 3 s | Not recorded yet | Pending: the build host cannot grant the Automation permission unattended, so the number needs a run on the maintainer's Mac |
+| App binary size | < 30 MB | 17.8 MB | Met |
 | API budget at 5-minute cadence | < 2% | 0.72% | Met |
 
 Measured on the build host: an Apple Silicon Mac (M4 Pro, 24 GB memory) running macOS 15, with
@@ -135,17 +135,23 @@ found. The clone and the scratch data directory are deleted afterwards.
 **Result.** Not measured on the build host. Its build session cannot answer macOS's one-time
 prompt to let a process control iTerm2: asking macOS without prompting
 (`AEDeterminePermissionToAutomateTarget`) returned "would require user consent" (-1744), so a
-live run there would only leave the permission dialog on screen. The number comes from the
-maintainer verification run instead, with `magex measure:launch` run from iTerm2 on the
-maintainer's Mac. When the permission is missing, the target prints `NEEDS AUTOMATION
-PERMISSION` and exits without a number.
+live run there would only leave the permission dialog on screen. No number has been recorded
+yet: it is to come from `magex measure:launch` run from iTerm2 on the maintainer's Mac. When
+the permission is missing, the target prints `NEEDS AUTOMATION PERMISSION` and exits without a
+number.
 
 ### App binary size
 
 `magex measure:size` reads the size of the production executable,
-`bin/Nilbox.app/Contents/MacOS/nilbox`: 16,446,784 bytes, or 16.4 MB in decimal megabytes. The
-whole bundle is 16.4 MB. The binary is built with `-tags desktop,production -trimpath -ldflags
-"-s -w"` and embeds the built frontend (about 280 KB, without source maps).
+`bin/Nilbox.app/Contents/MacOS/nilbox`: 17,791,344 bytes, or 17.8 MB in decimal megabytes,
+measured again once the menu bar icon and notifications had landed. The whole bundle, the
+executable with its icon set and `Info.plist`, is 19.1 MB. The binary is built with `-tags
+desktop,production -trimpath -ldflags "-s -w"` and embeds the built frontend (about 510 KB,
+without source maps).
+
+The first desktop build, before the card details, the prompt library, snoozing, the app icon,
+worktree cleanup, the sensitive-file check, and the menu bar, measured 16,446,784 bytes
+(16.4 MB), with a 16.4 MB bundle and a frontend of about 280 KB.
 
 ### API budget at 5-minute cadence
 
