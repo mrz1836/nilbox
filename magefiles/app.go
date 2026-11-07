@@ -220,6 +220,12 @@ func (App) Build() error {
 		return errNeedsMacOS
 	}
 
+	return buildBundle(filepath.Join("bin", brand.Name+".app"))
+}
+
+// buildBundle builds the production app bundle at bundle, the steps App.Build runs once
+// it knows it is on macOS.
+func buildBundle(bundle string) error {
 	if err := checkBrandFiles(); err != nil {
 		return err
 	}
@@ -228,7 +234,6 @@ func (App) Build() error {
 		return err
 	}
 
-	bundle := filepath.Join("bin", brand.Name+".app")
 	contents := filepath.Join(bundle, "Contents")
 	exe := filepath.Join(contents, "MacOS", brand.Slug)
 
@@ -298,22 +303,22 @@ func (App) Run() error {
 		return err
 	}
 
-	quit, err := quitRunningApp(exe)
+	quit, err := quitRunningApp(exe, appQuitTimeout)
 	if err != nil {
 		return err
 	}
 
 	if quit {
-		return openAfterQuit(bundle)
+		return openAfterQuit(bundle, appReopenTimeout)
 	}
 
 	return sh.RunV("open", bundle)
 }
 
 // quitRunningApp asks every process running exe to quit, with SIGTERM, which the app
-// handles as a normal quit, and waits until they have exited. It reports whether any was
-// running.
-func quitRunningApp(exe string) (bool, error) {
+// handles as a normal quit, and waits up to timeout until they have exited. It reports
+// whether any was running.
+func quitRunningApp(exe string, timeout time.Duration) (bool, error) {
 	pids, err := appProcesses(exe)
 	if err != nil || len(pids) == 0 {
 		return false, err
@@ -327,7 +332,7 @@ func quitRunningApp(exe string) (bool, error) {
 		}
 	}
 
-	for deadline := time.Now().Add(appQuitTimeout); time.Now().Before(deadline); time.Sleep(appQuitPoll) {
+	for deadline := time.Now().Add(timeout); time.Now().Before(deadline); time.Sleep(appQuitPoll) {
 		if pids, err = appProcesses(exe); err != nil || len(pids) == 0 {
 			return true, err
 		}
@@ -338,10 +343,10 @@ func quitRunningApp(exe string) (bool, error) {
 
 // openAfterQuit opens bundle just after a running copy of the app quit. LaunchServices
 // can still list the old copy for a moment after its process exits, and an open in that
-// window fails with error -600 (procNotFound), so it tries again until appReopenTimeout,
-// quietly, and reports the last failure only if none succeeds.
-func openAfterQuit(bundle string) error {
-	deadline := time.Now().Add(appReopenTimeout)
+// window fails with error -600 (procNotFound), so it tries again until timeout, quietly,
+// and reports the last failure only if none succeeds.
+func openAfterQuit(bundle string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
 
 	for {
 		out, err := exec.CommandContext(context.Background(), "open", bundle).CombinedOutput() //nolint:gosec // argv only, no shell

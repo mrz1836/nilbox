@@ -65,6 +65,13 @@ func (Brand) Icons() error {
 
 	mg.Deps(Brand.Generate)
 
+	return renderIcons()
+}
+
+// renderIcons renders the app icon set, the development Dock icon, and the menu bar icon
+// from the artwork under the working directory, then records which artwork they came
+// from: the steps Brand.Icons runs once it knows the tools are there.
+func renderIcons() error {
 	tmp, err := os.MkdirTemp("", brand.Slug+"-icons-")
 	if err != nil {
 		return fmt.Errorf("create a temporary directory: %w", err)
