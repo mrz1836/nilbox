@@ -220,8 +220,9 @@ Each pull request or issue in the inbox is a card three lines high:
    [trust rule](#outside-contributors) says so: **bot** for a trusted bot, **untrusted bot**,
    or **outside contributor**. A pull request whose files are checked then shows its
    [sensitive files](#sensitive-files) chip.
-3. Its details, in a fixed order that lines up from card to card. Hover any of them for the
-   whole sentence, which is also what a screen reader reads.
+3. Its details, in a fixed order. Each detail before the labels keeps the same width on every
+   card, sized for the longest value a card should meet, so the details line up from card to
+   card. Hover any of them for the whole sentence, which is also what a screen reader reads.
 
 | Detail | What it shows | Color |
 |---|---|---|

@@ -168,6 +168,37 @@ describe('ItemRow', () => {
     expect(screen.queryByTitle(/^Size/)).not.toBeInTheDocument()
   })
 
+  it('gives each value the same width on every card, whatever it says, so the columns line up', () => {
+    const small = details({ comments: 8, additions: 689, deletions: 65, changedFiles: 20, commits: 3 })
+    const large = details({
+      comments: 0,
+      additions: 12_799,
+      deletions: 25_322,
+      changedFiles: 358,
+      commits: 63,
+      checks: { state: '', passed: 0, failed: 0, pending: 0, skipped: 0 },
+      reviews: { decision: '', reviewers: 0, reviewed: 0, approvals: 0, changesRequested: 0 },
+    })
+    render(
+      <ul>
+        <ItemRow item={item({ id: 1, details: small })} now={now} launch={null} />
+        <ItemRow item={item({ id: 2, details: large })} now={now} launch={null} />
+      </ul>,
+    )
+
+    // values reads the classes of every value on a card's line of details, labels aside.
+    const values = (list: HTMLElement) =>
+      [...list.querySelectorAll('li[title] > [aria-hidden] > span')].map((value) => value.className)
+    const [first = [], second] = screen.getAllByRole('list', { name: 'Details' }).map(values)
+
+    expect(slot('No checks on the latest commit')).toHaveTextContent('No checks')
+    expect(first).toHaveLength(8)
+    expect(second).toEqual(first)
+    for (const value of first) {
+      expect(value).toMatch(/\bmin-w-\[[\d.]+ch\]/)
+    }
+  })
+
   it('handles details with no labels at all', () => {
     renderRow(item({ details: details({ labels: null }) }))
 

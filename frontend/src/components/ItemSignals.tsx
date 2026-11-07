@@ -19,6 +19,22 @@ const shownLabels = 3
 
 const iconClass = 'size-3.5 shrink-0'
 
+// columns is the width each value takes on every card, whatever it says, so the values
+// line up from card to card. Each fits the longest value a card should meet, measured in
+// the line's own font: a ch is one digit, since the line uses tabular figures. A longer
+// value still shows in full; it pushes the rest of its line along instead of overlapping.
+// Labels close the line and take what they need.
+const columns = {
+  checks: 'min-w-[8ch]', // "No checks", the longest; fractions up to "999/999"
+  reviews: 'min-w-[4.5ch]', // up to "99/99"
+  comments: 'min-w-[3ch]', // up to "999"
+  size: 'min-w-[5ch]', // "XXL" with its border, in the badge's smaller font
+  added: 'min-w-[6.5ch]', // up to "+99,999"
+  removed: 'min-w-[6.5ch]', // up to "−99,999"
+  files: 'min-w-[7.5ch]', // up to "· 999 files"
+  commits: 'min-w-[11ch]', // up to "· 999 commits"
+} as const
+
 const checkIcons: Readonly<Record<ChecksKind, ReactNode>> = {
   passed: <CheckIcon className={iconClass} />,
   failed: <XIcon className={iconClass} />,
@@ -35,17 +51,15 @@ const reviewIcons: Readonly<Record<ReviewsKind, ReactNode>> = {
 interface SlotProps {
   // long says the signal in full: the tooltip, and what a screen reader reads.
   long: string
-  // width keeps the slot the same width on every card, so the columns line up.
-  width: string
   className?: string
   children: ReactNode
 }
 
 // Slot is one signal: an icon and a short form, with the full sentence for a tooltip and
-// for screen readers.
-function Slot({ long, width, className = '', children }: SlotProps) {
+// for screen readers. Each value in it sits in its column (see columns).
+function Slot({ long, className = '', children }: SlotProps) {
   return (
-    <li title={long} className={`inline-flex shrink-0 items-center gap-1 ${width} ${className}`}>
+    <li title={long} className={`inline-flex shrink-0 items-center gap-1 ${className}`}>
       <span aria-hidden="true" className="inline-flex items-center gap-1">
         {children}
       </span>
@@ -54,11 +68,19 @@ function Slot({ long, width, className = '', children }: SlotProps) {
   )
 }
 
-function SignalSlot<K extends string>({ signal, icon, width }: { signal: Signal<K>; icon: ReactNode; width: string }) {
+function SignalSlot<K extends string>({
+  signal,
+  icon,
+  column,
+}: {
+  signal: Signal<K>
+  icon: ReactNode
+  column: string
+}) {
   return (
-    <Slot long={signal.long} width={width} className={toneText[signal.tone]}>
+    <Slot long={signal.long} className={toneText[signal.tone]}>
       {icon}
-      {signal.short}
+      <span className={column}>{signal.short}</span>
     </Slot>
   )
 }
@@ -104,8 +126,8 @@ export interface ItemSignalsProps {
 
 // ItemSignals is the card's line of facts about an item. For a pull request: its checks,
 // its reviews, its comments, and its size (lines added and removed, files, commits);
-// for an issue, its comments. Labels close the line. Checks, reviews, and comments keep
-// fixed widths, so they line up from card to card.
+// for an issue, its comments. Labels close the line. Every value before the labels keeps
+// a fixed width, so the values line up from card to card.
 export function ItemSignals({ item }: ItemSignalsProps) {
   const details = item.details
 
@@ -123,21 +145,23 @@ export function ItemSignals({ item }: ItemSignalsProps) {
       aria-label="Details"
       className="mt-1.5 flex min-w-0 items-center gap-x-3 overflow-hidden text-xs whitespace-nowrap text-muted tabular-nums"
     >
-      {isPR && <SignalSlot signal={checks} icon={checkIcons[checks.kind]} width="min-w-[4.5rem]" />}
-      {isPR && <SignalSlot signal={reviews} icon={reviewIcons[reviews.kind]} width="min-w-[3.25rem]" />}
-      <Slot long={counted(details.comments, 'comment', 'comments')} width="min-w-[2.75rem]">
+      {isPR && <SignalSlot signal={checks} icon={checkIcons[checks.kind]} column={columns.checks} />}
+      {isPR && <SignalSlot signal={reviews} icon={reviewIcons[reviews.kind]} column={columns.reviews} />}
+      <Slot long={counted(details.comments, 'comment', 'comments')}>
         <CommentIcon className={iconClass} />
-        {formatCount(details.comments)}
+        <span className={columns.comments}>{formatCount(details.comments)}</span>
       </Slot>
       {isPR && (
-        <Slot long={sizeText(additions, deletions, changedFiles, commits)} width="">
-          <span className="rounded border border-border px-1 text-[10px] leading-4 font-semibold text-text">
+        <Slot long={sizeText(additions, deletions, changedFiles, commits)}>
+          <span
+            className={`${columns.size} rounded border border-border px-1 text-center text-[10px] leading-4 font-semibold text-text`}
+          >
             {sizeOf(additions + deletions)}
           </span>
-          <span className="text-success">+{formatCount(additions)}</span>
-          <span className="text-danger">−{formatCount(deletions)}</span>
-          <span>· {counted(changedFiles, 'file', 'files')}</span>
-          <span>· {counted(commits, 'commit', 'commits')}</span>
+          <span className={`${columns.added} text-success`}>+{formatCount(additions)}</span>
+          <span className={`${columns.removed} text-danger`}>−{formatCount(deletions)}</span>
+          <span className={columns.files}>· {counted(changedFiles, 'file', 'files')}</span>
+          <span className={columns.commits}>· {counted(commits, 'commit', 'commits')}</span>
         </Slot>
       )}
       <Labels labels={details.labels ?? []} />
