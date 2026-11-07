@@ -2,12 +2,10 @@ package prompts
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"slices"
 	"sort"
 	"strconv"
-	"time"
 	"unicode/utf8"
 
 	"gorm.io/gorm"
@@ -15,12 +13,15 @@ import (
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/prompts/model"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
-// Preference keys the library keeps in the prefs table.
+// Preference keys the library keeps in the prefs table. The library writes them, and no
+// other package.
 const (
 	// prefSeeded lists, as a JSON array, the starter keys already added once.
 	prefSeeded = "prompts.seeded"
@@ -29,10 +30,6 @@ const (
 	prefDefaultPR    = "prompts.default.pr"
 	prefDefaultIssue = "prompts.default.issue"
 )
-
-// upsertPrefSQL stores one preference, replacing any earlier value.
-const upsertPrefSQL = `INSERT INTO prefs (key, value, updated_at) VALUES (?, ?, ?)
-ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
 
 // usageSQL reads the launch defaults that name a prompt.
 const usageSQL = `SELECT owner, name, pr_prompt_id, issue_prompt_id FROM launch_defaults
@@ -115,12 +112,12 @@ func Seed(ctx context.Context, db *gorm.DB) error {
 			return err
 		}
 
-		encoded, err := json.Marshal(seeded)
+		p, err := prefsOf(tx)
 		if err != nil {
-			return fmt.Errorf("record the starter prompts: %w", err)
+			return err
 		}
 
-		return setPref(tx, prefSeeded, string(encoded))
+		return p.SetList(ctx, prefSeeded, seeded)
 	})
 }
 
@@ -333,13 +330,13 @@ func freeNickname(db *gorm.DB, base string) (string, error) {
 
 // readSeeded reads the starter keys already added.
 func readSeeded(db *gorm.DB) ([]string, error) {
-	raw, err := readPref(db, prefSeeded)
-	if err != nil || raw == "" {
+	p, err := prefsOf(db)
+	if err != nil {
 		return nil, err
 	}
 
-	var keys []string
-	if err = json.Unmarshal([]byte(raw), &keys); err != nil {
+	keys, _, err := p.GetList(db.Statement.Context, prefSeeded)
+	if err != nil {
 		return nil, fmt.Errorf("read the starter prompts added: %w", err)
 	}
 
@@ -397,25 +394,42 @@ func defaultPrefKey(kind item.Kind) string {
 
 // readPref reads one preference, "" when it is unset.
 func readPref(db *gorm.DB, key string) (string, error) {
-	var values []string
-	if err := db.Raw("SELECT value FROM prefs WHERE key = ?", key).Scan(&values).Error; err != nil {
-		return "", fmt.Errorf("read setting %s: %w", key, err)
+	p, err := prefsOf(db)
+	if err != nil {
+		return "", err
 	}
 
-	if len(values) == 0 {
-		return "", nil
-	}
+	value, _, err := p.Get(db.Statement.Context, key)
 
-	return values[0], nil
+	return value, err
 }
 
 // setPref stores one preference.
 func setPref(db *gorm.DB, key, value string) error {
-	if err := db.Exec(upsertPrefSQL, key, value, time.Now().UTC()).Error; err != nil {
-		return fmt.Errorf("save setting %s: %w", key, err)
+	p, err := prefsOf(db)
+	if err != nil {
+		return err
 	}
 
-	return nil
+	return p.Set(db.Statement.Context, key, value)
+}
+
+// prefsOf returns the prefs over the connection the GORM handle db runs on. Inside a
+// transaction they join it, so they commit or roll back with the prompts; outside one
+// they run on the pool.
+func prefsOf(db *gorm.DB) (*prefs.Store, error) {
+	pool, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("reach the prefs: %w", err)
+	}
+
+	p := prefs.New(pool, nil)
+
+	if tx, txErr := store.SQLTx(db); txErr == nil {
+		p = p.WithTx(tx)
+	}
+
+	return p, nil
 }
 
 // fromRow converts a row and its usage to a Prompt. Nil lists become empty ones.

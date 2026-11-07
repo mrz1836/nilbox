@@ -10,6 +10,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/snooze"
 	"github.com/mrz1836/nilbox/internal/store"
 )
@@ -282,12 +283,10 @@ func (h *harness) later(t *testing.T, details github.ItemDetails) Item {
 }
 
 // setPrefs writes raw prefs, as the settings service would.
-func (h *harness) setPrefs(t *testing.T, prefs map[string]string) {
+func (h *harness) setPrefs(t *testing.T, values map[string]string) {
 	t.Helper()
 
-	for k, v := range prefs {
-		require.NoError(t, h.db.Exec(upsertPrefSQL, k, v, h.clock.Now()).Error)
-	}
+	require.NoError(t, prefs.New(h.pool, h.clock).SetMany(t.Context(), values))
 }
 
 func TestSnoozeRecordsTheItemsActivity(t *testing.T) {
@@ -456,7 +455,7 @@ func TestWakeRulesDatabaseError(t *testing.T) {
 	h, _, _ := triageHarness(t)
 	require.NoError(t, store.Close(h.db))
 
-	_, err := wakeRules(h.db)
+	_, err := wakeRules(t.Context(), h.svc.prefs)
 	require.ErrorContains(t, err, "read the snooze rules")
 
 	_, err = activityBaseline(h.db, 1)

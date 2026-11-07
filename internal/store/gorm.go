@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -9,6 +10,9 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
+
+// ErrNotInTx is returned by SQLTx for a GORM handle outside a transaction.
+var ErrNotInTx = errors.New("the GORM handle is not in a transaction")
 
 // Gorm returns a GORM handle over db's connection pool, for code that reads and writes
 // through GORM. The handle shares db's connections, pragmas, and pool limits; it never
@@ -38,4 +42,16 @@ func Close(db *gorm.DB) error {
 	}
 
 	return nil
+}
+
+// SQLTx returns the database/sql transaction under tx, a handle that GORM's Transaction
+// passed in, so code on database/sql can run inside the same transaction: its writes then
+// commit or roll back together with GORM's. A handle outside a transaction is
+// ErrNotInTx. It goes when nothing runs on GORM any more.
+func SQLTx(tx *gorm.DB) (*sql.Tx, error) {
+	if sqlTx, ok := tx.Statement.ConnPool.(*sql.Tx); ok {
+		return sqlTx, nil
+	}
+
+	return nil, ErrNotInTx
 }

@@ -2,6 +2,7 @@ package notify
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strconv"
@@ -15,6 +16,8 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/inbox"
+	"github.com/mrz1836/nilbox/internal/notifyprefs"
+	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/snooze"
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/testutil"
@@ -70,6 +73,7 @@ func (p *fakePoster) posted() []Banner {
 
 // fixture is a database with stored items to notify about.
 type fixture struct {
+	pool     *sql.DB
 	db       *gorm.DB
 	clock    *testutil.Clock
 	poster   *fakePoster
@@ -82,7 +86,7 @@ type fixture struct {
 func newFixture(t *testing.T, n int) *fixture {
 	t.Helper()
 
-	db := testutil.DB(t)
+	pool, db := testutil.BridgedDB(t)
 
 	var accountID, repoID int64
 
@@ -92,7 +96,7 @@ RETURNING id`, testNow, testNow).Scan(&accountID).Error)
 VALUES ('acme-org', 'example-repo', ?, ?) RETURNING id`, testNow, testNow).Scan(&repoID).Error)
 
 	f := &fixture{
-		db: db, clock: testutil.NewClock(testNow), poster: &fakePoster{status: StatusOn},
+		pool: pool, db: db, clock: testutil.NewClock(testNow), poster: &fakePoster{status: StatusOn},
 		notifier: &testutil.Notifier{},
 	}
 
@@ -110,7 +114,7 @@ item_updated_at, fetched_at) VALUES (?, ?, 'pr', ?, ?, ?, ?) RETURNING id`,
 }
 
 func (f *fixture) config() Config {
-	return Config{DB: f.db, Poster: f.poster, Notifier: f.notifier, Clock: f.clock}
+	return Config{Pool: f.pool, DB: f.db, Poster: f.poster, Notifier: f.notifier, Clock: f.clock}
 }
 
 // arrival is the arrival of the fixture's item i (from 0) as kind.
@@ -122,8 +126,11 @@ func (f *fixture) arrival(i int, kind string) inbox.Arrival {
 	}
 }
 
-func TestKinds(t *testing.T) {
-	assert.Equal(t, []string{"review_requested", "assigned", "woke"}, Kinds())
+func TestKindsAreTheInboxArrivals(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, []string{KindReviewRequested, KindAssigned, KindWoke}, notifyprefs.Kinds(),
+		"the kinds the settings list are the inbox's kinds of arrival, in order")
 }
 
 func TestTheLogKeepsWhatWasRecorded(t *testing.T) {
@@ -264,8 +271,7 @@ func TestTheDispatcherRecordsAndShowsBanners(t *testing.T) {
 
 func TestTheDispatcherLeavesOutBannersThatAreOff(t *testing.T) {
 	f := newFixture(t, 2)
-	require.NoError(t, f.db.Exec(`INSERT INTO prefs (key, value, updated_at) VALUES (?, ?, ?)`,
-		PrefBannersOff, `["review_requested"]`, testNow).Error)
+	require.NoError(t, prefs.New(f.pool, f.clock).Set(t.Context(), notifyprefs.KeyBannersOff, `["review_requested"]`))
 
 	NewDispatcher(f.config()).Arrived(t.Context(),
 		[]inbox.Arrival{f.arrival(0, KindReviewRequested), f.arrival(1, KindAssigned)})

@@ -27,12 +27,13 @@
 //
 // Inbox status that has no column of its own (each list's total match count, the
 // account's profile, the time of the last successful refresh, the last error, a scope
-// warning, and the cached avatar) is kept in the prefs table under internal inbox.* keys,
-// so it survives a restart.
+// warning, and the cached avatar) is kept in the prefs table, so it survives a restart,
+// under internal inbox.* keys that only this package writes.
 package inbox
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"slices"
@@ -46,6 +47,8 @@ import (
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/prefs"
+	"github.com/mrz1836/nilbox/internal/store"
 )
 
 // snapshotRetention is how long rate-limit snapshots are kept.
@@ -62,7 +65,7 @@ const (
 	resourceSearch  = "search"
 )
 
-// Internal prefs keys for inbox status.
+// Internal prefs keys for inbox status. The inbox writes them, and no other package.
 const (
 	prefViewer               = "inbox.viewer"
 	prefViewerName           = "inbox.viewer_name"
@@ -105,6 +108,10 @@ type Notifier interface {
 
 // Config holds a Service's dependencies. Clock, Notifier, and Arrivals are optional.
 type Config struct {
+	// Pool is the database's connection pool, which DB shares. The inbox status and the
+	// settings the inbox reads are kept in its prefs.
+	Pool *sql.DB
+
 	DB       *gorm.DB
 	Tokens   TokenSource
 	Client   Client
@@ -118,6 +125,7 @@ type Config struct {
 // Service refreshes the inbox from GitHub and serves snapshots of it.
 type Service struct {
 	db       *gorm.DB
+	prefs    *prefs.Store
 	tokens   TokenSource
 	client   Client
 	clock    clock.Clock
@@ -130,9 +138,11 @@ type Service struct {
 
 // NewService returns a Service. A nil Clock uses the system clock.
 func NewService(cfg Config) *Service {
+	c := clock.Or(cfg.Clock)
+
 	return &Service{
-		db: cfg.DB, tokens: cfg.Tokens, client: cfg.Client, clock: clock.Or(cfg.Clock), notifier: cfg.Notifier,
-		arrivals: cfg.Arrivals,
+		db: cfg.DB, prefs: prefs.New(cfg.Pool, c), tokens: cfg.Tokens, client: cfg.Client, clock: c,
+		notifier: cfg.Notifier, arrivals: cfg.Arrivals,
 	}
 }
 
@@ -156,14 +166,14 @@ func (s *Service) Refresh(ctx context.Context) (Snapshot, error) {
 func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 	db := s.db.WithContext(ctx)
 
-	prefs, err := readPrefs(db)
+	status, err := readStatus(ctx, s.prefs)
 	if err != nil {
 		return Snapshot{}, err
 	}
 
-	snap := newSnapshot(prefs)
+	snap := newSnapshot(status)
 
-	accountID, err := lookupAccount(db, prefs[prefViewer])
+	accountID, err := lookupAccount(db, status[prefViewer])
 	if err != nil || accountID == 0 {
 		return snap, err
 	}
@@ -173,8 +183,8 @@ func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 
-	snap.addItems(rows, newFileScope(prefs))
-	snap.applyTotals(prefs)
+	snap.addItems(rows, newFileScope(status))
+	snap.applyTotals(status)
 
 	if snap.Rate, err = loadRates(db, accountID); err != nil {
 		return Snapshot{}, err
@@ -220,7 +230,7 @@ func (s *Service) refresh(ctx context.Context) ([]Arrival, error) {
 		return nil, err
 	}
 
-	listed, err := listedNodeIDs(s.db.WithContext(ctx))
+	listed, err := s.listedNodeIDs(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -371,11 +381,14 @@ func (s *Service) save(ctx context.Context, got refreshed, warning github.ScopeW
 	var arrivals []Arrival
 
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		w := &writer{tx: tx, now: s.now(), repos: make(map[string]int64), details: items, files: got.files}
+		w, err := s.newWriter(tx)
+		if err != nil {
+			return err
+		}
 
-		var err error
+		w.details, w.files = items, got.files
 
-		arrivals, err = w.saveRefresh(got, warning)
+		arrivals, err = w.saveRefresh(ctx, got, warning)
 
 		return err
 	})
@@ -388,14 +401,14 @@ func (s *Service) save(ctx context.Context, got refreshed, warning github.ScopeW
 
 // saveRefresh stores what a refresh read, in the writer's transaction, and returns the
 // items that newly need the user.
-func (w *writer) saveRefresh(got refreshed, warning github.ScopeWarning) ([]Arrival, error) {
+func (w *writer) saveRefresh(ctx context.Context, got refreshed, warning github.ScopeWarning) ([]Arrival, error) {
 	inbox := got.inbox
 
 	if err := w.saveAccount(inbox.Viewer.Login); err != nil {
 		return nil, err
 	}
 
-	watch, err := w.watchArrivals(inbox)
+	watch, err := w.watchArrivals(ctx, inbox)
 	if err != nil {
 		return nil, err
 	}
@@ -404,7 +417,7 @@ func (w *writer) saveRefresh(got refreshed, warning github.ScopeWarning) ([]Arri
 		return nil, err
 	}
 
-	if err = w.saveItems(inbox); err != nil {
+	if err = w.saveItems(ctx, inbox); err != nil {
 		return nil, err
 	}
 
@@ -417,17 +430,17 @@ func (w *writer) saveRefresh(got refreshed, warning github.ScopeWarning) ([]Arri
 		return nil, err
 	}
 
-	return arrivals, setPrefs(w.tx, w.now, []pref{
-		{prefViewer, inbox.Viewer.Login},
-		{prefViewerName, inbox.Viewer.Name},
-		{prefViewerURL, inbox.Viewer.URL},
-		{prefViewerAvatarURL, inbox.Viewer.AvatarURL},
-		{prefTotalReviewRequested, strconv.Itoa(inbox.ReviewRequested.IssueCount)},
-		{prefTotalAuthored, strconv.Itoa(inbox.Authored.IssueCount)},
-		{prefTotalAssigned, strconv.Itoa(inbox.Assigned.IssueCount)},
-		{prefLastRefreshAt, clock.Format(w.now)},
-		{prefLastError, ""},
-		{prefScopeWarning, string(warning)},
+	return arrivals, w.prefs.SetMany(ctx, map[string]string{
+		prefViewer:               inbox.Viewer.Login,
+		prefViewerName:           inbox.Viewer.Name,
+		prefViewerURL:            inbox.Viewer.URL,
+		prefViewerAvatarURL:      inbox.Viewer.AvatarURL,
+		prefTotalReviewRequested: strconv.Itoa(inbox.ReviewRequested.IssueCount),
+		prefTotalAuthored:        strconv.Itoa(inbox.Authored.IssueCount),
+		prefTotalAssigned:        strconv.Itoa(inbox.Assigned.IssueCount),
+		prefLastRefreshAt:        clock.Format(w.now),
+		prefLastError:            "",
+		prefScopeWarning:         string(warning),
 	})
 }
 
@@ -440,14 +453,8 @@ func (s *Service) cacheAvatar(ctx context.Context, avatarURL string) {
 		return
 	}
 
-	db := s.db.WithContext(ctx)
-
-	var sources []string
-	if db.Raw("SELECT value FROM prefs WHERE key = ?", prefAvatarSource).Scan(&sources).Error != nil {
-		return
-	}
-
-	if len(sources) > 0 && sources[0] == avatarURL {
+	source, _, err := s.prefs.Get(ctx, prefAvatarSource)
+	if err != nil || source == avatarURL {
 		return
 	}
 
@@ -460,18 +467,27 @@ func (s *Service) cacheAvatar(ctx context.Context, avatarURL string) {
 	}
 
 	// The source is written with the picture, so it never names a picture not stored.
-	_ = db.Transaction(func(tx *gorm.DB) error {
-		return setPrefs(tx, s.now(), []pref{{prefAvatar, avatar.DataURL()}, {prefAvatarSource, avatarURL}})
-	})
+	_ = s.prefs.SetMany(ctx, map[string]string{prefAvatar: avatar.DataURL(), prefAvatarSource: avatarURL})
 }
 
 // recordFailure stores a failed refresh's message as the last error.
 func (s *Service) recordFailure(ctx context.Context, err error) error {
-	if recErr := setPrefs(s.db.WithContext(ctx), s.now(), []pref{{prefLastError, err.Error()}}); recErr != nil {
+	if recErr := s.prefs.Set(ctx, prefLastError, err.Error()); recErr != nil {
 		return fmt.Errorf("record the refresh error: %w", recErr)
 	}
 
 	return nil
+}
+
+// newWriter returns a writer for one change stored in tx, a GORM transaction: its prefs
+// run in the same transaction, so they commit or roll back with the rest.
+func (s *Service) newWriter(tx *gorm.DB) (*writer, error) {
+	sqlTx, err := store.SQLTx(tx)
+	if err != nil {
+		return nil, err
+	}
+
+	return &writer{tx: tx, prefs: s.prefs.WithTx(sqlTx), now: s.now(), repos: make(map[string]int64)}, nil
 }
 
 // notify tells the notifier, if any, that the inbox changed.

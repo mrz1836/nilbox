@@ -103,16 +103,16 @@ type savedEntry struct {
 // watchArrivals reads the lists as they are before the refresh rewrites them with inbox.
 // It returns nil, so no arrival is told, when the account was never refreshed or another
 // account was refreshed last: everything in the lists would be new.
-func (w *writer) watchArrivals(inbox *github.Inbox) (*arrivalWatch, error) {
-	prefs, err := readPrefs(w.tx)
+func (w *writer) watchArrivals(ctx context.Context, inbox *github.Inbox) (*arrivalWatch, error) {
+	status, err := readStatus(ctx, w.prefs)
 	if err != nil {
 		return nil, err
 	}
 
 	viewer := inbox.Viewer.Login
 
-	last, refreshed := lastRefresh(prefs)
-	if !refreshed || prefs[prefViewer] != viewer {
+	last, refreshed := lastRefresh(status)
+	if !refreshed || status[prefViewer] != viewer {
 		return nil, nil //nolint:nilnil // no watch is the answer for a first refresh
 	}
 
@@ -141,8 +141,8 @@ func (w *writer) watchArrivals(inbox *github.Inbox) (*arrivalWatch, error) {
 }
 
 // lastRefresh reads when the last successful refresh was, and whether there was one.
-func lastRefresh(prefs map[string]string) (time.Time, bool) {
-	at, err := time.Parse(time.RFC3339, prefs[prefLastRefreshAt])
+func lastRefresh(status map[string]string) (time.Time, bool) {
+	at, err := time.Parse(time.RFC3339, status[prefLastRefreshAt])
 
 	return at, err == nil
 }

@@ -6,13 +6,15 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
-	"github.com/mrz1836/nilbox/internal/notify"
+	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/paths"
+	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/snooze"
@@ -29,16 +31,28 @@ func newTestService(t *testing.T) (*Service, *gorm.DB, string) {
 	t.Helper()
 
 	home := t.TempDir()
-	db := testutil.DB(t)
+	pool, db := testutil.BridgedDB(t)
 
-	return NewService(db, home), db, home
+	return NewService(pool, db, home), db, home
+}
+
+// serviceOver returns a Service over db and the pool under it.
+func serviceOver(t *testing.T, db *gorm.DB, home string, opts ...Option) *Service {
+	t.Helper()
+
+	pool, err := db.DB()
+	require.NoError(t, err)
+
+	return NewService(pool, db, home, opts...)
 }
 
 // setPref writes a raw preference value, bypassing validation.
 func setPref(t *testing.T, db *gorm.DB, key, value string) {
 	t.Helper()
 
-	require.NoError(t, db.Exec(upsertPrefSQL, key, value, "2026-01-10T12:00:00Z").Error)
+	pool, err := db.DB()
+	require.NoError(t, err)
+	require.NoError(t, prefs.New(pool, nil).Set(t.Context(), key, value))
 }
 
 func TestPrefDefaults(t *testing.T) {
@@ -101,12 +115,27 @@ func TestTerminalPrefPersists(t *testing.T) {
 	home := t.TempDir()
 
 	db := testutil.DBAt(t, path)
-	require.NoError(t, NewService(db, home).SetTerminal(t.Context(), TerminalApp))
+	require.NoError(t, serviceOver(t, db, home).SetTerminal(t.Context(), TerminalApp))
 	require.NoError(t, store.Close(db))
 
-	got, err := NewService(testutil.DBAt(t, path), home).Get(t.Context())
+	got, err := serviceOver(t, testutil.DBAt(t, path), home).Get(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, TerminalApp, got.Terminal)
+}
+
+func TestWithClockStampsTheStoredSettings(t *testing.T) {
+	t.Parallel()
+
+	pool, db := testutil.BridgedDB(t)
+	at := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+	svc := NewService(pool, db, t.TempDir(), WithClock(testutil.NewClock(at)))
+
+	require.NoError(t, svc.SetTerminal(t.Context(), TerminalApp))
+
+	var stamp string
+	require.NoError(t, pool.QueryRowContext(t.Context(),
+		"SELECT CAST(updated_at AS TEXT) FROM prefs WHERE key = ?", KeyTerminal).Scan(&stamp))
+	assert.Equal(t, "2026-01-10 12:00:00+00:00", stamp)
 }
 
 func TestSettersPersist(t *testing.T) {
@@ -123,7 +152,7 @@ func TestSettersPersist(t *testing.T) {
 	require.NoError(t, svc.SetSnoozeDays(t.Context(), 7))
 	require.NoError(t, svc.SetSnoozeWake(t.Context(), snooze.Rules{Commits: 3, Reviews: snooze.ReviewsAny, Comments: 5}))
 	require.NoError(t, svc.SetMenuBar(t.Context(), false))
-	require.NoError(t, svc.SetNotificationBanner(t.Context(), notify.KindWoke, false))
+	require.NoError(t, svc.SetNotificationBanner(t.Context(), notifyprefs.KindWoke, false))
 
 	got, err := svc.Get(t.Context())
 	require.NoError(t, err)
@@ -142,7 +171,7 @@ func TestSettersPersist(t *testing.T) {
 		SensitiveFiles:      sensitive.DefaultConfig(),
 		SensitiveCategories: sensitive.Categories(),
 		MenuBar:             false,
-		BannersOff:          []string{notify.KindWoke},
+		BannersOff:          []string{notifyprefs.KindWoke},
 	}, got)
 
 	abs := t.TempDir()

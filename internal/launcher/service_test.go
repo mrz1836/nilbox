@@ -135,10 +135,11 @@ func newLaunchHarness(t *testing.T) *launchHarness {
 
 	makeRepoDir(t, h.clone)
 
-	h.db = testutil.DBAt(t, h.paths.DB)
+	pool, db := testutil.BridgedDBAt(t, h.paths.DB)
+	h.db = db
 	h.seed(t)
 
-	h.settings = settings.NewService(h.db, h.home)
+	h.settings = settings.NewService(pool, h.db, h.home)
 	h.cfg = Config{
 		DB:       h.db,
 		Settings: h.settings,

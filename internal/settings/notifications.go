@@ -4,11 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"time"
 
-	"gorm.io/gorm"
-
-	"github.com/mrz1836/nilbox/internal/notify"
+	"github.com/mrz1836/nilbox/internal/notifyprefs"
 )
 
 // KeyMenuBar is whether the app shows its icon, with how many items need the user, in the
@@ -33,24 +30,18 @@ func WithMenuBarNotifier(n MenuBarNotifier) Option {
 // MenuBar returns whether the app shows its menu bar icon: the stored setting, or
 // DefaultMenuBar when none is stored or the stored value cannot be read.
 func (s *Service) MenuBar(ctx context.Context) (bool, error) {
-	var stored []string
-
-	err := s.db.WithContext(ctx).Raw("SELECT value FROM prefs WHERE key = ?", KeyMenuBar).Scan(&stored).Error
+	stored, _, err := s.prefs.Get(ctx, KeyMenuBar)
 	if err != nil {
 		return DefaultMenuBar, fmt.Errorf("read the menu bar setting: %w", err)
 	}
 
-	if len(stored) == 0 {
-		return DefaultMenuBar, nil
-	}
-
-	return decodeMenuBar(stored[0]), nil
+	return decodeMenuBar(stored), nil
 }
 
 // SetMenuBar stores whether the app shows its menu bar icon. Once it is stored, the menu
 // bar notifier, if any, is told.
 func (s *Service) SetMenuBar(ctx context.Context, on bool) error {
-	if err := s.set(ctx, KeyMenuBar, strconv.FormatBool(on)); err != nil {
+	if err := s.prefs.Set(ctx, KeyMenuBar, strconv.FormatBool(on)); err != nil {
 		return err
 	}
 
@@ -64,23 +55,13 @@ func (s *Service) SetMenuBar(ctx context.Context, on bool) error {
 // SetNotificationBanner turns the banners of one kind of notification on or off (see the
 // notify package for the kinds). The notification history keeps every kind either way.
 func (s *Service) SetNotificationBanner(ctx context.Context, kind string, on bool) error {
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var stored []string
-		if err := tx.Raw("SELECT value FROM prefs WHERE key = ?", notify.PrefBannersOff).Scan(&stored).Error; err != nil {
-			return err
-		}
-
-		prefs := map[string]string{}
-		if len(stored) == 1 {
-			prefs[notify.PrefBannersOff] = stored[0]
-		}
-
-		off, err := notify.SetBanner(notify.DecodeBannersOff(prefs), kind, on)
+	err := s.prefs.Update(ctx, notifyprefs.KeyBannersOff, func(stored string, _ bool) (string, error) {
+		off, err := notifyprefs.SetBanner(notifyprefs.DecodeBannersOff(stored), kind, on)
 		if err != nil {
-			return err
+			return "", err
 		}
 
-		return tx.Exec(upsertPrefSQL, notify.PrefBannersOff, notify.EncodeBannersOff(off), time.Now().UTC()).Error
+		return notifyprefs.EncodeBannersOff(off), nil
 	})
 	if err != nil {
 		return fmt.Errorf("save the notification settings: %w", err)

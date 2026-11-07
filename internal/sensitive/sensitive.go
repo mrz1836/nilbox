@@ -93,7 +93,7 @@ const (
 // DefaultScope is the scope of a fresh database.
 const DefaultScope = ScopeCollaborators
 
-// Prefs keys for the settings.
+// Prefs keys for the settings, which the settings package writes.
 const (
 	// PrefScope is ScopeOutside or ScopeCollaborators.
 	PrefScope = "files.scope"

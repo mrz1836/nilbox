@@ -50,6 +50,41 @@ VALUES ('octo-user', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`).Error)
 	assert.Equal(t, "octo-user", login)
 }
 
+func TestBridgedDBSharesOnePool(t *testing.T) {
+	t.Parallel()
+
+	pool, db := testutil.BridgedDB(t)
+
+	got, err := db.DB()
+	require.NoError(t, err)
+	assert.Same(t, pool, got, "the GORM handle runs on the pool")
+
+	_, err = pool.ExecContext(t.Context(), `INSERT INTO accounts (login, created_at, updated_at)
+VALUES ('octo-user', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`)
+	require.NoError(t, err)
+
+	var login string
+	require.NoError(t, db.Raw("SELECT login FROM accounts").Scan(&login).Error)
+	assert.Equal(t, "octo-user", login)
+}
+
+func TestBridgedDBAtReopensTheSameFile(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "app.db")
+
+	pool, _ := testutil.BridgedDBAt(t, path)
+	_, err := pool.ExecContext(t.Context(), `INSERT INTO accounts (login, created_at, updated_at)
+VALUES ('octo-user', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`)
+	require.NoError(t, err)
+
+	_, db := testutil.BridgedDBAt(t, path)
+
+	var login string
+	require.NoError(t, db.Raw("SELECT login FROM accounts").Scan(&login).Error)
+	assert.Equal(t, "octo-user", login)
+}
+
 func TestSQLDBIsMigrated(t *testing.T) {
 	t.Parallel()
 
@@ -62,16 +97,19 @@ func TestDatabasesCloseWhenTheTestEnds(t *testing.T) {
 	t.Parallel()
 
 	var (
-		pool *sql.DB
-		db   *gorm.DB
+		pool, bridgedPool *sql.DB
+		db, bridged       *gorm.DB
 	)
 
 	t.Run("open", func(t *testing.T) {
 		pool, db = testutil.SQLDB(t), testutil.DB(t)
+		bridgedPool, bridged = testutil.BridgedDB(t)
 	})
 
 	require.Error(t, pool.PingContext(t.Context()))
 	require.Error(t, db.Exec("SELECT 1").Error)
+	require.Error(t, bridgedPool.PingContext(t.Context()))
+	require.Error(t, bridged.Exec("SELECT 1").Error)
 }
 
 func TestClosedDBRefusesQueries(t *testing.T) {

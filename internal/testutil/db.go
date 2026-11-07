@@ -45,10 +45,31 @@ func DB(t testing.TB) *gorm.DB {
 func DBAt(t testing.TB, path string) *gorm.DB {
 	t.Helper()
 
-	db, err := store.Gorm(SQLDBAt(t, path))
-	require.NoError(t, err)
+	_, db := BridgedDBAt(t, path)
 
 	return db
+}
+
+// BridgedDB opens a fresh, migrated database in a temporary directory, as SQLDB does, and
+// returns its pool and a GORM handle over that pool, for code that reads and writes
+// through both. Closing either closes the other.
+func BridgedDB(t testing.TB) (*sql.DB, *gorm.DB) {
+	t.Helper()
+
+	return BridgedDBAt(t, filepath.Join(t.TempDir(), "app.db"))
+}
+
+// BridgedDBAt opens the database at path, as SQLDBAt does, and returns its pool and a
+// GORM handle over that pool.
+func BridgedDBAt(t testing.TB, path string) (*sql.DB, *gorm.DB) {
+	t.Helper()
+
+	pool := SQLDBAt(t, path)
+
+	db, err := store.Gorm(pool)
+	require.NoError(t, err)
+
+	return pool, db
 }
 
 // ClosedDB returns a migrated database that is already closed, so every query on it

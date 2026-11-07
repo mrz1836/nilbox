@@ -1,21 +1,16 @@
 package notify
 
 import (
-	"encoding/json"
-	"fmt"
 	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/notify/model"
+	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/snooze"
 	"github.com/mrz1836/nilbox/internal/textutil"
 )
-
-// PrefBannersOff is the prefs key listing, as a JSON array, the kinds of notification
-// whose banners are off. Kinds are on unless listed, so a kind added later starts on.
-const PrefBannersOff = "notify.bannersOff"
 
 // MaxBanners is how many banners one refresh shows one by one; more are summed up in one.
 const MaxBanners = 3
@@ -121,7 +116,7 @@ func summary(rows []model.Notification) Banner {
 
 	var parts []string
 
-	for _, kind := range Kinds() {
+	for _, kind := range notifyprefs.Kinds() {
 		if n := counts[kind]; n > 0 {
 			noun := summaryNouns[kind]
 			if n == 1 {
@@ -198,59 +193,6 @@ func WakeDetail(r snooze.Reasons) string {
 	}
 
 	return strings.Join(parts, ", ")
-}
-
-// DecodeBannersOff reads the kinds whose banners are off from the stored prefs. A value
-// that cannot be read turns none off, and kinds that are not known are dropped.
-func DecodeBannersOff(stored map[string]string) []string {
-	var listed []string
-	if json.Unmarshal([]byte(stored[PrefBannersOff]), &listed) != nil {
-		return []string{}
-	}
-
-	off := []string{}
-
-	for _, kind := range Kinds() {
-		if slices.Contains(listed, kind) {
-			off = append(off, kind)
-		}
-	}
-
-	return off
-}
-
-// SetBanner turns a kind's banners on or off in off, the kinds whose banners are off, and
-// returns the new list in the order of Kinds.
-func SetBanner(off []string, kind string, on bool) ([]string, error) {
-	if !slices.Contains(Kinds(), kind) {
-		return nil, fmt.Errorf("%w %q", ErrUnknownKind, kind)
-	}
-
-	out := []string{}
-
-	for _, k := range Kinds() {
-		isOff := slices.Contains(off, k)
-		if k == kind {
-			isOff = !on
-		}
-
-		if isOff {
-			out = append(out, k)
-		}
-	}
-
-	return out, nil
-}
-
-// EncodeBannersOff writes the kinds whose banners are off for the prefs table.
-func EncodeBannersOff(off []string) string {
-	if off == nil {
-		off = []string{}
-	}
-
-	b, _ := json.Marshal(off) //nolint:errchkjson // a []string always encodes
-
-	return string(b)
 }
 
 // counted is "1 thing" or "N things".

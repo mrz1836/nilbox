@@ -252,17 +252,19 @@ func assemble(pool *sql.DB, db *gorm.DB, reset *appinfo.DataReset, opts Options,
 		runner = execpath.Exec{Finder: finder}
 	}
 
-	prefs := settings.NewService(db, opts.Home,
+	prefs := settings.NewService(pool, db, opts.Home, settings.WithClock(opts.Clock),
 		settings.WithThemeNotifier(opts.ThemeNotifier), settings.WithMenuBarNotifier(opts.MenuBarNotifier))
 	tokens := github.NewTokenSource(runner, finder)
 	client := github.NewClient(opts.Version)
 	launches := launchlog.NewStore(db)
 
 	notices := notify.Config{
-		DB: db, Poster: opts.Banners, Notifier: opts.NotificationsNotifier, Clock: opts.Clock, Logger: logger,
+		Pool: pool, DB: db, Poster: opts.Banners, Notifier: opts.NotificationsNotifier, Clock: opts.Clock,
+		Logger: logger,
 	}
 
 	inboxSvc := inbox.NewService(inbox.Config{
+		Pool:     pool,
 		DB:       db,
 		Tokens:   tokens,
 		Client:   client,

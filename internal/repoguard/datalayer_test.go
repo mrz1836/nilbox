@@ -78,7 +78,6 @@ func sqlAllowlist() []string {
 		"internal/measure",
 		"internal/notify",
 		"internal/prompts",
-		"internal/settings",
 	}
 }
 

@@ -47,7 +47,8 @@ const (
 // TypeBot is the GraphQL type GitHub reports for a bot or GitHub App author.
 const TypeBot = "Bot"
 
-// PrefBots is the preference that lists the trusted bots, as a JSON array of logins.
+// PrefBots is the preference that lists the trusted bots, as a JSON array of logins. The
+// settings package writes it.
 const PrefBots = "trust.bots"
 
 // maxBots caps the trusted list.

@@ -2,6 +2,7 @@ package notify
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/inbox"
+	"github.com/mrz1836/nilbox/internal/notifyprefs"
+	"github.com/mrz1836/nilbox/internal/prefs"
 )
 
 var (
@@ -29,6 +32,10 @@ type Notifier interface {
 // and Logger are optional: without a Poster no banner is shown, and the log is still
 // kept.
 type Config struct {
+	// Pool is the database's connection pool, which DB shares. The Dispatcher reads which
+	// banners are on from its prefs.
+	Pool *sql.DB
+
 	DB       *gorm.DB
 	Poster   Poster
 	Notifier Notifier
@@ -39,7 +46,7 @@ type Config struct {
 // base is what the Dispatcher and the Service share.
 type base struct {
 	store    *Store
-	db       *gorm.DB
+	prefs    *prefs.Store
 	poster   Poster
 	notifier Notifier
 	clock    clock.Clock
@@ -49,8 +56,8 @@ type base struct {
 // newBase fills in the defaults.
 func newBase(cfg Config) base {
 	b := base{
-		store: NewStore(cfg.DB), db: cfg.DB, poster: cfg.Poster, notifier: cfg.Notifier, clock: clock.Or(cfg.Clock),
-		logger: cfg.Logger,
+		store: NewStore(cfg.DB), prefs: prefs.New(cfg.Pool, cfg.Clock), poster: cfg.Poster, notifier: cfg.Notifier,
+		clock: clock.Or(cfg.Clock), logger: cfg.Logger,
 	}
 
 	if b.logger == nil {
@@ -65,6 +72,16 @@ func (b base) notify() {
 	if b.notifier != nil {
 		b.notifier.NotificationsUpdated()
 	}
+}
+
+// bannersOff reads the kinds whose banners are off.
+func (b base) bannersOff(ctx context.Context) ([]string, error) {
+	stored, _, err := b.prefs.Get(ctx, notifyprefs.KeyBannersOff)
+	if err != nil {
+		return nil, fmt.Errorf("read the notification settings: %w", err)
+	}
+
+	return notifyprefs.DecodeBannersOff(stored), nil
 }
 
 // Dispatcher records the inbox's arrivals and shows their banners. It is the inbox's
@@ -99,7 +116,7 @@ func (d *Dispatcher) Arrived(ctx context.Context, arrivals []inbox.Arrival) {
 		return
 	}
 
-	off, err := bannersOff(d.db.WithContext(ctx))
+	off, err := d.bannersOff(ctx)
 	if err != nil {
 		d.logger.WarnContext(ctx, "could not read which banners are on", "error", err)
 
@@ -181,19 +198,4 @@ func (s *Service) SendTest() error {
 	}
 
 	return nil
-}
-
-// bannersOff reads the kinds whose banners are off.
-func bannersOff(db *gorm.DB) ([]string, error) {
-	var stored []string
-	if err := db.Raw("SELECT value FROM prefs WHERE key = ?", PrefBannersOff).Scan(&stored).Error; err != nil {
-		return nil, fmt.Errorf("read the notification settings: %w", err)
-	}
-
-	prefs := map[string]string{}
-	if len(stored) == 1 {
-		prefs[PrefBannersOff] = stored[0]
-	}
-
-	return DecodeBannersOff(prefs), nil
 }

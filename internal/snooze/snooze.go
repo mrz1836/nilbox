@@ -26,7 +26,7 @@ const (
 // MaxThreshold is the largest count of new commits or comments a rule can wait for.
 const MaxThreshold = 99
 
-// Prefs keys for the snooze settings.
+// Prefs keys for the snooze settings, which the settings package writes.
 const (
 	// PrefDays is how many days the Snooze button sets an item aside.
 	PrefDays = "snooze.days"

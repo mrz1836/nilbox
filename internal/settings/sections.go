@@ -17,9 +17,10 @@ const (
 )
 
 // keyCollapsedPrefix starts the key that stores whether an inbox section is collapsed:
-// "inbox.collapsed.<section>", holding "true" or "false". Each section has its own key, so
-// collapsing one never rewrites another.
-const keyCollapsedPrefix = "inbox.collapsed."
+// "ui.collapsed.<section>", holding "true" or "false". Each section has its own key, so
+// collapsing one never rewrites another. The keys are the user's, so they sit under ui.*
+// with the other window settings rather than under the inbox's own inbox.* keys.
+const keyCollapsedPrefix = "ui.collapsed."
 
 // ErrUnknownSection is returned for a section that is not one of the inbox lists.
 var ErrUnknownSection = errors.New("unknown inbox section")
@@ -40,26 +41,15 @@ func (s *Service) CollapsedSections(ctx context.Context) ([]string, error) {
 		keys[i] = keyCollapsedPrefix + section
 	}
 
-	var rows []struct {
-		Key   string
-		Value string
-	}
-
-	if err := s.db.WithContext(ctx).Raw("SELECT key, value FROM prefs WHERE key IN ?", keys).Scan(&rows).Error; err != nil {
+	stored, err := s.prefs.GetMany(ctx, keys...)
+	if err != nil {
 		return nil, fmt.Errorf("read the collapsed inbox sections: %w", err)
-	}
-
-	collapsed := make(map[string]bool, len(rows))
-	for _, r := range rows {
-		if v, err := strconv.ParseBool(r.Value); err == nil {
-			collapsed[strings.TrimPrefix(r.Key, keyCollapsedPrefix)] = v
-		}
 	}
 
 	// A non-nil slice, so the UI receives [] rather than null.
 	out := make([]string, 0, len(sections))
 	for _, section := range sections {
-		if collapsed[section] {
+		if collapsed, err := strconv.ParseBool(stored[keyCollapsedPrefix+section]); err == nil && collapsed {
 			out = append(out, section)
 		}
 	}
@@ -74,5 +64,5 @@ func (s *Service) SetSectionCollapsed(ctx context.Context, section string, colla
 		return fmt.Errorf("%w %q: choose one of %s", ErrUnknownSection, section, strings.Join(sectionNames(), ", "))
 	}
 
-	return s.set(ctx, keyCollapsedPrefix+section, strconv.FormatBool(collapsed))
+	return s.prefs.Set(ctx, keyCollapsedPrefix+section, strconv.FormatBool(collapsed))
 }

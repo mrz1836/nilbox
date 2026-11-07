@@ -10,6 +10,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/model"
+	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/snooze"
 	"github.com/mrz1836/nilbox/internal/trust"
@@ -86,14 +87,15 @@ ON CONFLICT (account_id, repo_id, kind, number) DO UPDATE SET
     reason_assigned = excluded.reason_assigned,
     fetched_at = excluded.fetched_at
 RETURNING id`
-
-	upsertPrefSQL = `INSERT INTO prefs (key, value, updated_at) VALUES (?, ?, ?)
-ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
 )
 
 // writer stores one refresh inside a transaction.
 type writer struct {
-	tx        *gorm.DB
+	tx *gorm.DB
+
+	// prefs runs in tx, so the status it writes commits or rolls back with the rest.
+	prefs *prefs.Store
+
 	now       time.Time
 	accountID int64
 	repos     map[string]int64
@@ -126,7 +128,7 @@ func (w *writer) saveAccount(login string) error {
 // longer returned keep their row (local state may reference it) with all three flags off,
 // and lose their file check. Last, it ends the snoozes that the new details give cause
 // to, so no snapshot shows new activity on an item still snoozed.
-func (w *writer) saveItems(inbox *github.Inbox) error {
+func (w *writer) saveItems(ctx context.Context, inbox *github.Inbox) error {
 	if err := w.tx.Exec(clearReasonsSQL, w.accountID).Error; err != nil {
 		return fmt.Errorf("clear the reason flags: %w", err)
 	}
@@ -146,7 +148,7 @@ func (w *writer) saveItems(inbox *github.Inbox) error {
 		return err
 	}
 
-	return w.wakeSnoozed()
+	return w.wakeSnoozed(ctx)
 }
 
 // saveRepos records the repositories of items that were left out, so an archived
@@ -322,79 +324,60 @@ func (w *writer) restSnapshot(resource string, r github.Rate) model.RateSnapshot
 	}
 }
 
-// pref is one key/value pair for the prefs table.
-type pref struct {
-	key, value string
-}
-
-// listedNodeIDsSQL reads the node IDs of the signed-in account's listed items, newest
+// listedNodeIDsSQL reads the node IDs of an account's listed items, by its login, newest
 // activity first.
 const listedNodeIDsSQL = `SELECT i.node_id
 FROM items i
 JOIN accounts a ON a.id = i.account_id
-WHERE a.login = (SELECT value FROM prefs WHERE key = ?)
+WHERE a.login = ?
   AND i.node_id <> ''
   AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1)
 ORDER BY i.item_updated_at DESC, i.id DESC`
 
 // listedNodeIDs returns the node IDs of the items the last refresh listed.
-func listedNodeIDs(db *gorm.DB) ([]string, error) {
+func (s *Service) listedNodeIDs(ctx context.Context) ([]string, error) {
+	viewer, _, err := s.prefs.Get(ctx, prefViewer)
+	if err != nil {
+		return nil, fmt.Errorf("read the listed items: %w", err)
+	}
+
 	var ids []string
-	if err := db.Raw(listedNodeIDsSQL, prefViewer).Scan(&ids).Error; err != nil {
+	if err = s.db.WithContext(ctx).Raw(listedNodeIDsSQL, viewer).Scan(&ids).Error; err != nil {
 		return nil, fmt.Errorf("read the listed items: %w", err)
 	}
 
 	return ids, nil
 }
 
-// setPrefs upserts prefs, in order.
-func setPrefs(db *gorm.DB, now time.Time, prefs []pref) error {
-	for _, p := range prefs {
-		if err := db.Exec(upsertPrefSQL, p.key, p.value, now).Error; err != nil {
-			return fmt.Errorf("save the %s pref: %w", p.key, err)
-		}
-	}
-
-	return nil
-}
-
-// readPrefs returns the inbox status prefs that are set.
-func readPrefs(db *gorm.DB) (map[string]string, error) {
-	keys := []string{
+// readStatus returns the stored inbox status, and the settings the inbox reads with it,
+// that are set.
+func readStatus(ctx context.Context, p *prefs.Store) (map[string]string, error) {
+	status, err := p.GetMany(ctx,
 		prefViewer, prefViewerName, prefViewerURL, prefViewerAvatarURL, prefAvatar, prefAvatarSource,
 		prefTotalReviewRequested, prefTotalAuthored, prefTotalAssigned,
 		prefLastRefreshAt, prefLastError, prefScopeWarning, trust.PrefBots,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns,
-	}
-
-	var rows []struct {
-		Key   string `gorm:"column:key"`
-		Value string `gorm:"column:value"`
-	}
-
-	if err := db.Raw("SELECT key, value FROM prefs WHERE key IN ?", keys).Scan(&rows).Error; err != nil {
+	)
+	if err != nil {
 		return nil, fmt.Errorf("read the inbox status: %w", err)
 	}
 
-	prefs := make(map[string]string, len(rows))
-	for _, r := range rows {
-		prefs[r.Key] = r.Value
-	}
-
-	return prefs, nil
+	return status, nil
 }
 
 // ViewerLogin returns the signed-in account's login as the last refresh recorded it, or ""
-// before the first refresh.
+// before the first refresh. db is a GORM handle outside a transaction; the login is read
+// from the prefs on the pool under it.
 func ViewerLogin(ctx context.Context, db *gorm.DB) (string, error) {
-	var values []string
-	if err := db.WithContext(ctx).Raw("SELECT value FROM prefs WHERE key = ?", prefViewer).Scan(&values).Error; err != nil {
+	pool, err := db.DB()
+	if err != nil {
 		return "", fmt.Errorf("read the signed-in account: %w", err)
 	}
 
-	if len(values) == 0 {
-		return "", nil
+	login, _, err := prefs.New(pool, nil).Get(ctx, prefViewer)
+	if err != nil {
+		return "", fmt.Errorf("read the signed-in account: %w", err)
 	}
 
-	return values[0], nil
+	return login, nil
 }

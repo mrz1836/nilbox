@@ -37,12 +37,12 @@ const (
 	maxFileErrorRunes = 300
 )
 
-// storedFilesSQL reads the head commit and outcome of each stored check, by the item's
-// node ID.
+// storedFilesSQL reads the head commit and outcome of each stored check of an account's
+// items, by its login, keyed by the item's node ID.
 const storedFilesSQL = `SELECT i.node_id, f.head_oid, f.error
 FROM item_files f
 JOIN items i ON i.id = f.item_id
-WHERE i.account_id = (SELECT id FROM accounts WHERE login = (SELECT value FROM prefs WHERE key = ?))
+WHERE i.account_id = (SELECT id FROM accounts WHERE login = ?)
   AND i.node_id <> ''`
 
 // pruneFilesSQL removes the checks of an account's items that left every list.
@@ -72,16 +72,16 @@ type fileScope struct {
 	matcher *sensitive.Matcher
 }
 
-// newFileScope reads the scope from the stored prefs: the sensitive-file settings, the
+// newFileScope reads the scope from the stored status: the sensitive-file settings, the
 // trusted bots, and the signed-in account.
-func newFileScope(prefs map[string]string) fileScope {
-	raw, stored := prefs[trust.PrefBots]
-	cfg := sensitive.DecodeConfig(prefs)
+func newFileScope(status map[string]string) fileScope {
+	raw, stored := status[trust.PrefBots]
+	cfg := sensitive.DecodeConfig(status)
 
 	return fileScope{
 		cfg:     cfg,
 		policy:  trust.NewPolicy(trust.DecodeBots(raw, stored)),
-		viewer:  prefs[prefViewer],
+		viewer:  status[prefViewer],
 		matcher: sensitive.NewMatcher(cfg),
 	}
 }
@@ -124,22 +124,21 @@ type fileTarget struct {
 // maxFileChecks of them, a few at a time. It returns each one's outcome by node ID. A
 // check that fails is an outcome, not an error: the refresh stores it and goes on.
 func (s *Service) checkFiles(ctx context.Context, tok github.Token, got refreshed) (map[string]fileCheck, error) {
-	db := s.db.WithContext(ctx)
-
-	prefs, err := readPrefs(db)
+	status, err := readStatus(ctx, s.prefs)
 	if err != nil {
 		return nil, err
 	}
 
-	// The scope is judged for the account this refresh read, which may be new.
-	prefs[prefViewer] = got.inbox.Viewer.Login
-
+	// The checks stored are those of the account the last refresh read; the scope is
+	// judged for the account this refresh read, which may be new.
 	var stored []filesStored
-	if err = db.Raw(storedFilesSQL, prefViewer).Scan(&stored).Error; err != nil {
+	if err = s.db.WithContext(ctx).Raw(storedFilesSQL, status[prefViewer]).Scan(&stored).Error; err != nil {
 		return nil, fmt.Errorf("read the checked files: %w", err)
 	}
 
-	targets := fileTargets(newFileScope(prefs), got, stored)
+	status[prefViewer] = got.inbox.Viewer.Login
+
+	targets := fileTargets(newFileScope(status), got, stored)
 	if len(targets) == 0 {
 		return map[string]fileCheck{}, nil
 	}
@@ -457,15 +456,13 @@ func filesColumnsOf(row model.ItemFiles) filesColumns {
 
 // loadCheckItem reads a stored item with its last check, and the scope it is judged by.
 func (s *Service) loadCheckItem(ctx context.Context, itemID int64) (checkItemRow, fileScope, error) {
-	db := s.db.WithContext(ctx)
-
-	prefs, err := readPrefs(db)
+	status, err := readStatus(ctx, s.prefs)
 	if err != nil {
 		return checkItemRow{}, fileScope{}, err
 	}
 
 	var rows []checkItemRow
-	if err = db.Raw(checkItemSQL, itemID).Scan(&rows).Error; err != nil {
+	if err = s.db.WithContext(ctx).Raw(checkItemSQL, itemID).Scan(&rows).Error; err != nil {
 		return checkItemRow{}, fileScope{}, fmt.Errorf("read the item: %w", err)
 	}
 
@@ -473,7 +470,7 @@ func (s *Service) loadCheckItem(ctx context.Context, itemID int64) (checkItemRow
 		return checkItemRow{}, fileScope{}, fmt.Errorf("%w (id %d)", item.ErrNotFound, itemID)
 	}
 
-	return rows[0], newFileScope(prefs), nil
+	return rows[0], newFileScope(status), nil
 }
 
 // checkUpdatedFiles checks the files of an item one refresh of its own read, when they

@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/snooze"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
@@ -211,8 +212,8 @@ type snoozedRow struct {
 // user's wake rules: the snooze ends now, with the reasons recorded for the inbox to
 // show. A snooze recorded before its item's details were known takes them as its
 // baseline instead.
-func (w *writer) wakeSnoozed() error {
-	rules, err := wakeRules(w.tx)
+func (w *writer) wakeSnoozed(ctx context.Context) error {
+	rules, err := wakeRules(ctx, w.prefs)
 	if err != nil {
 		return err
 	}
@@ -284,23 +285,13 @@ func (w *writer) exec(what, query string, args ...any) error {
 }
 
 // wakeRules reads the user's wake rules from the prefs.
-func wakeRules(db *gorm.DB) (snooze.Rules, error) {
-	var rows []struct {
-		Key   string `gorm:"column:key"`
-		Value string `gorm:"column:value"`
-	}
-
-	keys := []string{snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments}
-	if err := db.Raw("SELECT key, value FROM prefs WHERE key IN ?", keys).Scan(&rows).Error; err != nil {
+func wakeRules(ctx context.Context, p *prefs.Store) (snooze.Rules, error) {
+	stored, err := p.GetMany(ctx, snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments)
+	if err != nil {
 		return snooze.Rules{}, fmt.Errorf("read the snooze rules: %w", err)
 	}
 
-	prefs := make(map[string]string, len(rows))
-	for _, r := range rows {
-		prefs[r.Key] = r.Value
-	}
-
-	return snooze.DecodeRules(prefs), nil
+	return snooze.DecodeRules(stored), nil
 }
 
 // encodeJSON encodes v for a JSON column.

@@ -46,10 +46,10 @@ func TestCollapsedSectionsSurviveARestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "app.db")
 
 	db := testutil.DBAt(t, path)
-	require.NoError(t, NewService(db, home).SetSectionCollapsed(ctx, SectionAuthored, true))
+	require.NoError(t, serviceOver(t, db, home).SetSectionCollapsed(ctx, SectionAuthored, true))
 	require.NoError(t, store.Close(db))
 
-	got, err := NewService(testutil.DBAt(t, path), home).CollapsedSections(ctx)
+	got, err := serviceOver(t, testutil.DBAt(t, path), home).CollapsedSections(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, []string{SectionAuthored}, got)
 }
@@ -57,7 +57,7 @@ func TestCollapsedSectionsSurviveARestart(t *testing.T) {
 func TestSetSectionCollapsedRejectsAnUnknownSection(t *testing.T) {
 	svc, _, _ := newTestService(t)
 
-	for _, section := range []string{"", "Authored", "snoozed", "inbox.collapsed.authored", " authored"} {
+	for _, section := range []string{"", "Authored", "snoozed", "ui.collapsed.authored", " authored"} {
 		err := svc.SetSectionCollapsed(t.Context(), section, true)
 		require.ErrorIs(t, err, ErrUnknownSection, section)
 	}
@@ -91,5 +91,5 @@ func TestCollapsedSectionsDatabaseErrors(t *testing.T) {
 	require.ErrorContains(t, err, "read the collapsed inbox sections")
 
 	err = svc.SetSectionCollapsed(t.Context(), SectionAuthored, true)
-	require.ErrorContains(t, err, "save setting inbox.collapsed.authored")
+	require.ErrorContains(t, err, "save setting ui.collapsed.authored")
 }

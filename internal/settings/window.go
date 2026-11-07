@@ -58,7 +58,7 @@ func (s *Service) SetWindowSize(ctx context.Context, size WindowSize) error {
 			MinWindowWidth, MinWindowHeight, MaxWindowWidth, MaxWindowHeight)
 	}
 
-	return s.set(ctx, KeyWindowSize, size.encode())
+	return s.prefs.Set(ctx, KeyWindowSize, size.encode())
 }
 
 // valid reports whether the size is within the bounds.

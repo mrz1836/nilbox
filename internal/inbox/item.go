@@ -96,16 +96,18 @@ func (s *Service) refreshItem(ctx context.Context, id int64) error {
 func (s *Service) saveItemUpdate(
 	ctx context.Context, id int64, stored storedItem, update *github.ItemUpdate, files map[string]fileCheck,
 ) error {
-	now := s.now()
 	it := update.Item
 
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		w := &writer{
-			tx: tx, now: now, accountID: stored.AccountID, repos: make(map[string]int64),
-			details: map[string]github.ItemDetails{it.NodeID: update.Details}, files: files,
+		w, err := s.newWriter(tx)
+		if err != nil {
+			return err
 		}
 
-		if err := w.saveGraphQLRate(update.RateLimit); err != nil {
+		w.accountID, w.files = stored.AccountID, files
+		w.details = map[string]github.ItemDetails{it.NodeID: update.Details}
+
+		if err = w.saveGraphQLRate(update.RateLimit); err != nil {
 			return err
 		}
 
@@ -113,7 +115,7 @@ func (s *Service) saveItemUpdate(
 			return w.unlist(id, update)
 		}
 
-		return w.rewrite(id, it)
+		return w.rewrite(ctx, id, it)
 	})
 	if err != nil {
 		return fmt.Errorf("save the item: %w", err)
@@ -124,7 +126,7 @@ func (s *Service) saveItemUpdate(
 
 // rewrite stores what GitHub says about an open item in place, with its details and file
 // check, then ends the snoozes the new details give cause to.
-func (w *writer) rewrite(id int64, it github.Item) error {
+func (w *writer) rewrite(ctx context.Context, id int64, it github.Item) error {
 	err := w.exec("update the item", updateItemSQL,
 		it.NodeID, it.Title, it.URL, it.AuthorLogin, it.AuthorType, it.AuthorAssociation, it.IsCrossRepository,
 		it.IsDraft, it.HeadRef, it.CreatedAt.UTC(), it.UpdatedAt.UTC(), w.now, id)
@@ -140,7 +142,7 @@ func (w *writer) rewrite(id int64, it github.Item) error {
 		return err
 	}
 
-	return w.wakeSnoozed()
+	return w.wakeSnoozed(ctx)
 }
 
 // unlist takes an item out of every list. An item in an archived repository records the

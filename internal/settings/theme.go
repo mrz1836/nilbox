@@ -70,15 +70,13 @@ func IsDark(theme string, systemDark bool) bool {
 // Theme returns the stored theme, or DefaultTheme when none is stored or the stored
 // value is no longer a choice.
 func (s *Service) Theme(ctx context.Context) (string, error) {
-	var stored []string
-
-	err := s.db.WithContext(ctx).Raw("SELECT value FROM prefs WHERE key = ?", KeyTheme).Scan(&stored).Error
+	stored, _, err := s.prefs.Get(ctx, KeyTheme)
 	if err != nil {
 		return "", fmt.Errorf("read the theme: %w", err)
 	}
 
-	if len(stored) == 1 && validTheme(stored[0]) {
-		return stored[0], nil
+	if validTheme(stored) {
+		return stored, nil
 	}
 
 	return DefaultTheme, nil
@@ -91,7 +89,7 @@ func (s *Service) SetTheme(ctx context.Context, theme string) error {
 		return fmt.Errorf("%w %q: choose one of %s", ErrInvalidTheme, theme, strings.Join(themeNames(), ", "))
 	}
 
-	if err := s.set(ctx, KeyTheme, theme); err != nil {
+	if err := s.prefs.Set(ctx, KeyTheme, theme); err != nil {
 		return err
 	}
 

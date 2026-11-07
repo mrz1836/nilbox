@@ -3,23 +3,27 @@
 //
 // Each preference is a typed key with a default, so a fresh database already has a
 // complete set of settings. Setters validate their value before storing it and reject
-// anything unknown with a sentinel error.
+// anything unknown with a sentinel error. Settings writes every key it declares, and the
+// rule keys the trust, snooze, sensitive, and notifyprefs packages declare and decode;
+// see the prefs package for which package writes the others.
 package settings
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"gorm.io/gorm"
 
-	"github.com/mrz1836/nilbox/internal/notify"
+	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/paths"
+	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/snooze"
@@ -69,10 +73,6 @@ const (
 	DefaultTerminal        = TerminalITerm2
 	DefaultCloneRoot       = "~/projects"
 )
-
-// upsertPrefSQL stores one preference, replacing any earlier value.
-const upsertPrefSQL = `INSERT INTO prefs (key, value, updated_at) VALUES (?, ?, ?)
-ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
 
 var (
 	// ErrInvalidTerminal is returned for a terminal that is not one of the choices.
@@ -144,44 +144,45 @@ type Settings struct {
 
 // Service reads and writes the preferences.
 type Service struct {
+	prefs   *prefs.Store
 	db      *gorm.DB
 	home    string
+	clock   clock.Clock
 	themes  ThemeNotifier
 	menuBar MenuBarNotifier
 }
 
-// NewService returns a Service over db. home expands a ~ clone root.
-func NewService(db *gorm.DB, home string, opts ...Option) *Service {
+// NewService returns a Service over the database: pool is its connection pool, which
+// holds the preferences, and db a GORM handle over the same pool, which looks up the
+// stored profiles. home expands a ~ clone root.
+func NewService(pool *sql.DB, db *gorm.DB, home string, opts ...Option) *Service {
 	s := &Service{db: db, home: home}
 
 	for _, opt := range opts {
 		opt(s)
 	}
 
+	s.prefs = prefs.New(pool, s.clock)
+
 	return s
+}
+
+// WithClock stamps the stored preferences from c rather than from the system clock.
+func WithClock(c clock.Clock) Option {
+	return func(s *Service) { s.clock = c }
 }
 
 // Get returns every preference, with the default for any that is unset or holds a value
 // that is no longer valid.
 func (s *Service) Get(ctx context.Context) (Settings, error) {
-	var rows []struct {
-		Key   string
-		Value string
-	}
-
-	keys := []string{
+	stored, err := s.prefs.GetMany(ctx,
 		KeyDefaultProfile, KeyWorktreeDefault, KeyWorktreeAutoCleanup, KeyTerminal, KeyCloneRoot, KeyTrustedBots,
 		KeySnoozeDays, KeyWindowSize,
 		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments,
-		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notify.PrefBannersOff,
-	}
-	if err := s.db.WithContext(ctx).Raw("SELECT key, value FROM prefs WHERE key IN ?", keys).Scan(&rows).Error; err != nil {
-		return Settings{}, fmt.Errorf("read settings: %w", err)
-	}
-
-	stored := make(map[string]string, len(rows))
-	for _, r := range rows {
-		stored[r.Key] = r.Value
+		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff,
+	)
+	if err != nil {
+		return Settings{}, err
 	}
 
 	out := fromStored(stored)
@@ -206,7 +207,7 @@ func (s *Service) SetTerminal(ctx context.Context, terminal string) error {
 		return fmt.Errorf("%w %q: choose %q or %q", ErrInvalidTerminal, terminal, TerminalITerm2, TerminalApp)
 	}
 
-	return s.set(ctx, KeyTerminal, terminal)
+	return s.prefs.Set(ctx, KeyTerminal, terminal)
 }
 
 // SetDefaultProfile stores the profile the launch dropdown preselects. It must name a
@@ -220,17 +221,17 @@ func (s *Service) SetDefaultProfile(ctx context.Context, name string) error {
 		return err
 	}
 
-	return s.set(ctx, KeyDefaultProfile, name)
+	return s.prefs.Set(ctx, KeyDefaultProfile, name)
 }
 
 // SetWorktreeDefault stores whether launches start in a worktree unless unticked.
 func (s *Service) SetWorktreeDefault(ctx context.Context, on bool) error {
-	return s.set(ctx, KeyWorktreeDefault, strconv.FormatBool(on))
+	return s.prefs.Set(ctx, KeyWorktreeDefault, strconv.FormatBool(on))
 }
 
 // SetWorktreeAutoCleanup stores whether finished worktrees are cleaned up on their own.
 func (s *Service) SetWorktreeAutoCleanup(ctx context.Context, on bool) error {
-	return s.set(ctx, KeyWorktreeAutoCleanup, strconv.FormatBool(on))
+	return s.prefs.Set(ctx, KeyWorktreeAutoCleanup, strconv.FormatBool(on))
 }
 
 // SetCloneRoot stores the clone root. It must be an absolute or ~-relative path to an
@@ -253,7 +254,7 @@ func (s *Service) SetCloneRoot(ctx context.Context, root string) error {
 		return fmt.Errorf("%w: %s is not a directory", ErrInvalidCloneRoot, paths.Tilde(dir, s.home))
 	}
 
-	return s.set(ctx, KeyCloneRoot, filepath.Clean(root))
+	return s.prefs.Set(ctx, KeyCloneRoot, filepath.Clean(root))
 }
 
 // SetTrustedBots stores the bots whose items are trusted. Each login may be written as
@@ -265,12 +266,12 @@ func (s *Service) SetTrustedBots(ctx context.Context, bots []string) error {
 		return err
 	}
 
-	return s.set(ctx, KeyTrustedBots, trust.EncodeBots(normalized))
+	return s.prefs.Set(ctx, KeyTrustedBots, trust.EncodeBots(normalized))
 }
 
 // ResetTrustedBots goes back to the default trusted bots.
 func (s *Service) ResetTrustedBots(ctx context.Context) error {
-	if err := s.db.WithContext(ctx).Exec("DELETE FROM prefs WHERE key = ?", KeyTrustedBots).Error; err != nil {
+	if err := s.prefs.Delete(ctx, KeyTrustedBots); err != nil {
 		return fmt.Errorf("reset the trusted bots: %w", err)
 	}
 
@@ -284,7 +285,7 @@ func (s *Service) SetSnoozeDays(ctx context.Context, days int) error {
 		return fmt.Errorf("%w: %d days; choose %d to %d", snooze.ErrInvalidDays, days, snooze.MinDays, snooze.MaxDays)
 	}
 
-	return s.set(ctx, KeySnoozeDays, strconv.Itoa(days))
+	return s.prefs.Set(ctx, KeySnoozeDays, strconv.Itoa(days))
 }
 
 // SetSnoozeWake stores which new activity ends a snooze early. Every rule is stored
@@ -294,18 +295,7 @@ func (s *Service) SetSnoozeWake(ctx context.Context, rules snooze.Rules) error {
 		return err
 	}
 
-	now := time.Now().UTC()
-
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		for key, value := range rules.Encode() {
-			if err := tx.Exec(upsertPrefSQL, key, value, now).Error; err != nil {
-				return fmt.Errorf("save setting %s: %w", key, err)
-			}
-		}
-
-		return nil
-	})
-	if err != nil {
+	if err := s.prefs.SetMany(ctx, rules.Encode()); err != nil {
 		return fmt.Errorf("save the snooze rules: %w", err)
 	}
 
@@ -320,24 +310,21 @@ func (s *Service) SetSensitiveScope(ctx context.Context, scope string) error {
 			sensitive.ScopeCollaborators)
 	}
 
-	return s.set(ctx, sensitive.PrefScope, scope)
+	return s.prefs.Set(ctx, sensitive.PrefScope, scope)
 }
 
 // SetSensitiveCategory turns a built-in category of sensitive files on or off. The agent
 // configuration category cannot be turned off, since launches are held back by it.
 func (s *Service) SetSensitiveCategory(ctx context.Context, id string, on bool) error {
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		cfg, err := readSensitive(tx)
-		if err != nil {
-			return err
-		}
+	err := s.prefs.Update(ctx, sensitive.PrefOff, func(stored string, _ bool) (string, error) {
+		cfg := sensitive.DecodeConfig(map[string]string{sensitive.PrefOff: stored})
 
 		off, err := sensitive.SetCategory(cfg.Off, id, on)
 		if err != nil {
-			return err
+			return "", err
 		}
 
-		return tx.Exec(upsertPrefSQL, sensitive.PrefOff, sensitive.EncodeList(off), time.Now().UTC()).Error
+		return sensitive.EncodeList(off), nil
 	})
 	if err != nil {
 		return fmt.Errorf("save the sensitive file categories: %w", err)
@@ -355,47 +342,18 @@ func (s *Service) SetSensitivePatterns(ctx context.Context, patterns []string) e
 		return err
 	}
 
-	return s.set(ctx, sensitive.PrefPatterns, sensitive.EncodeList(normalized))
+	return s.prefs.Set(ctx, sensitive.PrefPatterns, sensitive.EncodeList(normalized))
 }
 
 // MatchSensitivePath reports whether a path would count as sensitive under the stored
 // settings, and which category and pattern it matches, for trying patterns out.
 func (s *Service) MatchSensitivePath(ctx context.Context, path string) (sensitive.PathMatch, error) {
-	cfg, err := readSensitive(s.db.WithContext(ctx))
+	stored, err := s.prefs.GetMany(ctx, sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns)
 	if err != nil {
-		return sensitive.PathMatch{}, err
+		return sensitive.PathMatch{}, fmt.Errorf("read the sensitive file settings: %w", err)
 	}
 
-	return sensitive.Lookup(cfg, path), nil
-}
-
-// readSensitive reads the stored sensitive-file settings.
-func readSensitive(db *gorm.DB) (sensitive.Config, error) {
-	var rows []struct {
-		Key   string
-		Value string
-	}
-
-	keys := []string{sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns}
-	if err := db.Raw("SELECT key, value FROM prefs WHERE key IN ?", keys).Scan(&rows).Error; err != nil {
-		return sensitive.Config{}, fmt.Errorf("read the sensitive file settings: %w", err)
-	}
-
-	stored := make(map[string]string, len(rows))
-	for _, r := range rows {
-		stored[r.Key] = r.Value
-	}
-
-	return sensitive.DecodeConfig(stored), nil
-}
-
-// set stores one preference.
-func (s *Service) set(ctx context.Context, key, value string) error {
-	if err := s.db.WithContext(ctx).Exec(upsertPrefSQL, key, value, time.Now().UTC()).Error; err != nil {
-		return fmt.Errorf("save setting %s: %w", key, err)
-	}
-
-	return nil
+	return sensitive.Lookup(sensitive.DecodeConfig(stored), path), nil
 }
 
 // fromStored builds Settings from stored values, falling back to the defaults.
@@ -417,7 +375,7 @@ func fromStored(stored map[string]string) Settings {
 		SensitiveFiles:      sensitive.DecodeConfig(stored),
 		SensitiveCategories: sensitive.Categories(),
 		MenuBar:             decodeMenuBar(stored[KeyMenuBar]),
-		BannersOff:          notify.DecodeBannersOff(stored),
+		BannersOff:          notifyprefs.DecodeBannersOff(stored[notifyprefs.KeyBannersOff]),
 	}
 
 	if v := stored[KeyDefaultProfile]; v != "" {

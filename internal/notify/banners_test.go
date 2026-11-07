@@ -9,6 +9,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/notify/model"
+	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/snooze"
 )
 
@@ -76,7 +77,7 @@ func TestManyBannersAreSummedUp(t *testing.T) {
 }
 
 func TestNoBannersWhenEveryKindIsOff(t *testing.T) {
-	assert.Empty(t, Banners([]model.Notification{row(1, KindReviewRequested, 1)}, Kinds()))
+	assert.Empty(t, Banners([]model.Notification{row(1, KindReviewRequested, 1)}, notifyprefs.Kinds()))
 	assert.Empty(t, Banners(nil, nil))
 }
 
@@ -114,31 +115,4 @@ func TestWakeDetail(t *testing.T) {
 			assert.Equal(t, tt.want, WakeDetail(tt.reasons))
 		})
 	}
-}
-
-func TestBannersOffRoundTrip(t *testing.T) {
-	assert.Equal(t, []string{}, DecodeBannersOff(nil), "nothing stored: every kind is on")
-	assert.Equal(t, []string{}, DecodeBannersOff(map[string]string{PrefBannersOff: "not json"}))
-	assert.Equal(t, []string{KindReviewRequested, KindWoke},
-		DecodeBannersOff(map[string]string{PrefBannersOff: `["woke","mentions","review_requested"]`}),
-		"unknown kinds are dropped and the rest kept in order")
-
-	off, err := SetBanner(nil, KindWoke, false)
-	require.NoError(t, err)
-	assert.Equal(t, []string{KindWoke}, off)
-
-	off, err = SetBanner(off, KindReviewRequested, false)
-	require.NoError(t, err)
-	assert.Equal(t, []string{KindReviewRequested, KindWoke}, off)
-
-	off, err = SetBanner(off, KindWoke, true)
-	require.NoError(t, err)
-	assert.Equal(t, []string{KindReviewRequested}, off)
-
-	_, err = SetBanner(off, "mentions", true)
-	require.ErrorIs(t, err, ErrUnknownKind)
-
-	assert.JSONEq(t, `["review_requested"]`, EncodeBannersOff(off))
-	assert.JSONEq(t, `[]`, EncodeBannersOff(nil))
-	assert.Equal(t, off, DecodeBannersOff(map[string]string{PrefBannersOff: EncodeBannersOff(off)}))
 }

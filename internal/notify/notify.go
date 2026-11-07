@@ -17,7 +17,6 @@ package notify
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -29,7 +28,8 @@ import (
 	"github.com/mrz1836/nilbox/internal/repo"
 )
 
-// Kinds of notification. They are the inbox's kinds of arrival.
+// Kinds of notification. They are the inbox's kinds of arrival, which notifyprefs lists
+// for the settings.
 const (
 	// KindReviewRequested is a pull request that newly asks for the user's review.
 	KindReviewRequested = inbox.ArrivalReviewRequested
@@ -48,14 +48,6 @@ const Keep = 200
 const pruneSQL = `DELETE FROM notifications WHERE id NOT IN (
   SELECT id FROM notifications ORDER BY created_at DESC, id DESC LIMIT ?
 )`
-
-// ErrUnknownKind is returned for a kind of notification that is not one of Kinds.
-var ErrUnknownKind = errors.New("unknown kind of notification")
-
-// Kinds returns the kinds of notification in the order Settings lists them.
-func Kinds() []string {
-	return []string{KindReviewRequested, KindAssigned, KindWoke}
-}
 
 // Notification is one entry in the log, as the window shows it. Every field is a plain
 // value.

@@ -106,7 +106,7 @@ func TestRefreshThatCannotBeSavedKeepsTheStoredInbox(t *testing.T) {
 		},
 		{
 			name: "status", event: "BEFORE INSERT ON prefs", when: "NEW.key = '" + prefViewer + "'",
-			want: "save the " + prefViewer + " pref",
+			want: "save setting " + prefViewer,
 		},
 	}
 
@@ -186,7 +186,7 @@ func TestSnapshotOfAViewerWithNoStoredAccount(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	require.NoError(t, h.db.Exec(upsertPrefSQL, prefViewer, "octo-user", h.clock.Now()).Error)
+	h.setPrefs(t, map[string]string{prefViewer: "octo-user"})
 
 	snap, err := h.svc.Snapshot(t.Context())
 	require.NoError(t, err)

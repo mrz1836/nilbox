@@ -2,6 +2,7 @@ package inbox
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -212,6 +213,7 @@ func (c *fakeClient) FetchAvatar(_ context.Context, url string) (*github.Avatar,
 // harness is a Service over a temp database with fakes for everything else.
 type harness struct {
 	svc      *Service
+	pool     *sql.DB
 	db       *gorm.DB
 	path     string
 	tokens   *fakeTokens
@@ -225,9 +227,11 @@ func newHarness(t *testing.T) *harness {
 	t.Helper()
 
 	path := filepath.Join(t.TempDir(), "app.db")
+	pool, db := testutil.BridgedDBAt(t, path)
 
 	h := &harness{
-		db:       testutil.DBAt(t, path),
+		pool:     pool,
+		db:       db,
 		path:     path,
 		tokens:   &fakeTokens{},
 		client:   &fakeClient{limits: restLimits(), avatar: fakeAvatar()},
@@ -242,7 +246,9 @@ func newHarness(t *testing.T) *harness {
 
 // service builds a Service over the harness's database and fakes.
 func (h *harness) service() *Service {
-	return NewService(Config{DB: h.db, Tokens: h.tokens, Client: h.client, Clock: h.clock, Notifier: h.notifier})
+	return NewService(Config{
+		Pool: h.pool, DB: h.db, Tokens: h.tokens, Client: h.client, Clock: h.clock, Notifier: h.notifier,
+	})
 }
 
 // refresh runs a refresh that must succeed.
@@ -480,8 +486,7 @@ func TestRefreshStoresTrustFields(t *testing.T) {
 	}, fromFork)
 
 	// The trusted list is the user's: with it emptied, Dependabot is an outside contributor.
-	require.NoError(t, h.db.Exec(`INSERT INTO prefs (key, value, updated_at) VALUES (?, '[]', ?)`, trust.PrefBots,
-		h.clock.Now()).Error)
+	h.setPrefs(t, map[string]string{trust.PrefBots: "[]"})
 
 	snap, err := h.svc.Snapshot(t.Context())
 	require.NoError(t, err)
@@ -835,7 +840,7 @@ func TestSnapshotDatabaseErrors(t *testing.T) {
 
 func TestNewServiceUsesTheSystemClock(t *testing.T) {
 	h := newHarness(t)
-	svc := NewService(Config{DB: h.db, Tokens: h.tokens, Client: h.client})
+	svc := NewService(Config{Pool: h.pool, DB: h.db, Tokens: h.tokens, Client: h.client})
 	h.client.inbox = fetched(nil, nil, nil)
 
 	before := time.Now().UTC().Truncate(time.Second)
@@ -1075,7 +1080,7 @@ func TestListedNodeIDsError(t *testing.T) {
 	h := newHarness(t)
 	require.NoError(t, h.db.Exec("DROP TABLE items").Error)
 
-	_, err := listedNodeIDs(h.db)
+	_, err := h.svc.listedNodeIDs(t.Context())
 	require.ErrorContains(t, err, "read the listed items")
 
 	_, err = h.svc.Refresh(t.Context())

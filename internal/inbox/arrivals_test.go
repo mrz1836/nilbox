@@ -47,7 +47,8 @@ func arrivalHarness(t *testing.T) (*harness, *fakeSink) {
 	h := newHarness(t)
 	sink := &fakeSink{}
 	h.svc = NewService(Config{
-		DB: h.db, Tokens: h.tokens, Client: h.client, Clock: h.clock, Notifier: h.notifier, Arrivals: sink,
+		Pool: h.pool, DB: h.db, Tokens: h.tokens, Client: h.client, Clock: h.clock, Notifier: h.notifier,
+		Arrivals: sink,
 	})
 
 	return h, sink
@@ -184,7 +185,8 @@ func TestASnoozeEndedEarlyArrives(t *testing.T) {
 	h, id, details := wakeHarness(t)
 	sink := &fakeSink{}
 	h.svc = NewService(Config{
-		DB: h.db, Tokens: h.tokens, Client: h.client, Clock: h.clock, Notifier: h.notifier, Arrivals: sink,
+		Pool: h.pool, DB: h.db, Tokens: h.tokens, Client: h.client, Clock: h.clock, Notifier: h.notifier,
+		Arrivals: sink,
 	})
 
 	_, err := h.svc.Snooze(t.Context(), id, 3)
@@ -256,7 +258,9 @@ func TestTheSinkIsToldOutsideTheLock(t *testing.T) {
 	h.client.inbox = fetched(nil, nil, nil)
 
 	sink := &lockingSink{}
-	h.svc = NewService(Config{DB: h.db, Tokens: h.tokens, Client: h.client, Clock: h.clock, Arrivals: sink})
+	h.svc = NewService(Config{
+		Pool: h.pool, DB: h.db, Tokens: h.tokens, Client: h.client, Clock: h.clock, Arrivals: sink,
+	})
 	sink.svc = h.svc
 	h.refresh(t)
 
