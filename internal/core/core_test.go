@@ -19,6 +19,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
+	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/timing"
 )
 
@@ -282,6 +283,45 @@ func TestFirstPaintHookAndTimingLog(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(paths.Logs, timing.LogFileName))
 	require.NoError(t, err)
 	assert.Contains(t, string(data), timing.FirstPaintKey+"=")
+}
+
+// themeRecorder records the themes the settings service announces.
+type themeRecorder struct {
+	themes []string
+}
+
+func (r *themeRecorder) ThemeChanged(theme string) {
+	r.themes = append(r.themes, theme)
+}
+
+func TestThemeChangesReachTheThemeNotifier(t *testing.T) {
+	recorder := &themeRecorder{}
+
+	c := bootstrap(t, Options{
+		Paths:         appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
+		Home:          tempHome(t),
+		Runner:        &recordingRunner{},
+		ThemeNotifier: recorder,
+	})
+
+	require.NoError(t, c.Settings.SetTheme(t.Context(), settings.ThemeDark))
+	require.Error(t, c.Settings.SetTheme(t.Context(), "sepia"))
+
+	assert.Equal(t, []string{settings.ThemeDark}, recorder.themes)
+}
+
+func TestThemeWithoutAThemeNotifier(t *testing.T) {
+	c := bootstrap(t, Options{
+		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
+		Home:   tempHome(t),
+		Runner: &recordingRunner{},
+	})
+
+	require.NoError(t, c.Settings.SetTheme(t.Context(), settings.ThemeLight))
+
+	got, err := c.Settings.Theme(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, settings.ThemeLight, got)
 }
 
 func TestAppInfoReportsVersion(t *testing.T) {

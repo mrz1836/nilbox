@@ -136,13 +136,20 @@ type Settings struct {
 
 // Service reads and writes the preferences.
 type Service struct {
-	db   *gorm.DB
-	home string
+	db     *gorm.DB
+	home   string
+	themes ThemeNotifier
 }
 
 // NewService returns a Service over db. home expands a ~ clone root.
-func NewService(db *gorm.DB, home string) *Service {
-	return &Service{db: db, home: home}
+func NewService(db *gorm.DB, home string, opts ...Option) *Service {
+	s := &Service{db: db, home: home}
+
+	for _, opt := range opts {
+		opt(s)
+	}
+
+	return s
 }
 
 // Get returns every preference, with the default for any that is unset or holds a value

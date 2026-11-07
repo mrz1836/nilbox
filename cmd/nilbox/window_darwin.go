@@ -5,7 +5,6 @@ package main
 import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 
-	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/settings"
 )
 
@@ -14,9 +13,8 @@ func macAppOptions() application.MacOptions {
 	return application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true}
 }
 
-// windowOptions returns the macOS window, at the given size: an inset, hidden title bar
-// and a native background in the brand palette for the system appearance, so the frame
-// never flashes a different color before the page paints.
+// windowOptions returns the macOS window, at the given size and on the background of the
+// dark or light palette, with an inset, hidden title bar.
 //
 // The content extends beneath the window controls, where the frontend's toolbar sits.
 // The toolbar marks itself as the drag region with the --wails-draggable CSS property
@@ -24,25 +22,15 @@ func macAppOptions() application.MacOptions {
 // clicks. A native InvisibleTitleBarHeight is not set: it would turn every click in that
 // strip into a window drag, buttons included.
 func windowOptions(dark bool, size settings.WindowSize) application.WebviewWindowOptions {
-	opts := baseWindowOptions(size)
-	opts.BackgroundColour = backgroundColour(dark)
+	opts := baseWindowOptions(dark, size)
 	opts.Mac = application.MacWindow{TitleBar: application.MacTitleBarHiddenInset}
 
 	return opts
 }
 
-// backgroundColour is the palette's window background for the appearance.
-func backgroundColour(dark bool) application.RGBA {
-	palette := brand.Light
-	if dark {
-		palette = brand.Dark
-	}
-
-	red, green, blue, err := brand.RGB(palette.Background)
-	if err != nil {
-		// Unreachable: the brand tests validate every palette color.
-		return application.NewRGB(0, 0, 0)
-	}
-
-	return application.NewRGB(red, green, blue)
+// applyAppearance pins the app's native appearance to a light or dark theme, or lets it
+// follow the system, on the main thread. Before the window opens, this is what makes its
+// first frame match the theme: the page's prefers-color-scheme already answers for it.
+func applyAppearance(theme string) {
+	application.InvokeSync(func() { setNativeAppearance(theme) })
 }

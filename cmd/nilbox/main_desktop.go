@@ -107,6 +107,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		Build:            buildNumber,
 		Notifier:         s,
 		WorktreeNotifier: s,
+		ThemeNotifier:    s,
 		OnFirstPaint:     s.firstPaint,
 	})
 	if err != nil {
@@ -136,6 +137,10 @@ func run(args []string, stdout, stderr io.Writer) error {
 
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 		s.started()
+	})
+
+	app.Event.OnApplicationEvent(events.Common.ThemeChanged, func(*application.ApplicationEvent) {
+		s.systemThemeChanged()
 	})
 
 	runErr := app.Run()
@@ -181,27 +186,52 @@ func services(c *core.Core) []application.Service {
 }
 
 // baseWindowOptions are the window settings shared by every OS, for a window of the given
-// size in points.
-func baseWindowOptions(size settings.WindowSize) application.WebviewWindowOptions {
+// size in points, on the native background of the dark or light palette, so the frame
+// never flashes a different color before the page paints.
+func baseWindowOptions(dark bool, size settings.WindowSize) application.WebviewWindowOptions {
 	return application.WebviewWindowOptions{
-		Title:     brand.Name,
-		Width:     size.Width,
-		Height:    size.Height,
-		MinWidth:  settings.MinWindowWidth,
-		MinHeight: settings.MinWindowHeight,
-		URL:       "/",
+		Title:            brand.Name,
+		Width:            size.Width,
+		Height:           size.Height,
+		MinWidth:         settings.MinWindowWidth,
+		MinHeight:        settings.MinWindowHeight,
+		URL:              "/",
+		BackgroundColour: backgroundColour(dark),
 	}
 }
 
+// backgroundColour is the palette's window background for the appearance.
+func backgroundColour(dark bool) application.RGBA {
+	palette := brand.Light
+	if dark {
+		palette = brand.Dark
+	}
+
+	red, green, blue, err := brand.RGB(palette.Background)
+	if err != nil {
+		// Unreachable: the brand tests validate every palette color.
+		return application.NewRGB(0, 0, 0)
+	}
+
+	return application.NewRGB(red, green, blue)
+}
+
 // shell connects the core to the window: it opens the window and starts the inbox
-// scheduler once the app has started, forwards inbox changes as events, ends a startup
-// measurement, and closes the core on shutdown.
+// scheduler once the app has started, forwards inbox changes as events, keeps the native
+// appearance in the chosen theme, ends a startup measurement, and closes the core on
+// shutdown.
 type shell struct {
 	app            atomic.Pointer[application.App]
 	core           *core.Core
 	stdout         io.Writer
 	stderr         io.Writer
 	measureStartup bool
+
+	// appearance guards theme and window, so a theme the user chose and a change of the
+	// system appearance are applied one at a time, in order.
+	appearance sync.Mutex
+	theme      string
+	window     *application.WebviewWindow
 
 	scheduler sync.WaitGroup
 	stopping  atomic.Bool
@@ -232,13 +262,60 @@ func (s *shell) WorktreesUpdated() {
 	}
 }
 
-// started opens the window, themed for the current system appearance (which is known
-// only once the app runs) and at the size the settings hold, and starts refreshing the
-// inbox.
+// ThemeChanged brings the native appearance and the window background along with a
+// theme the user chose; the page has already switched itself.
+func (s *shell) ThemeChanged(theme string) {
+	if s.stopping.Load() {
+		return
+	}
+
+	s.appearance.Lock()
+	defer s.appearance.Unlock()
+
+	s.theme = theme
+	applyAppearance(theme)
+	s.paintBackground()
+}
+
+// systemThemeChanged repaints the window background when the system appearance changes,
+// which the System theme follows. AppKit and the page follow the system on their own.
+func (s *shell) systemThemeChanged() {
+	if s.stopping.Load() {
+		return
+	}
+
+	s.appearance.Lock()
+	defer s.appearance.Unlock()
+
+	s.paintBackground()
+}
+
+// paintBackground sets the window's native background, which shows while the page has
+// not painted, such as at the edges of a live resize, to the palette the theme shows now.
+// The caller holds s.appearance.
+func (s *shell) paintBackground() {
+	app := s.app.Load()
+	if app == nil || s.window == nil {
+		return
+	}
+
+	s.window.SetBackgroundColour(backgroundColour(settings.IsDark(s.theme, app.Env.IsDarkMode())))
+}
+
+// started opens the window in the theme and at the size the settings hold, and starts
+// refreshing the inbox. The system appearance, which the System theme follows, is known
+// only once the app runs.
 func (s *shell) started() {
 	app := s.app.Load()
+	size := s.windowSize(app)
 
-	app.Window.NewWithOptions(windowOptions(app.Env.IsDarkMode(), s.windowSize(app)))
+	s.appearance.Lock()
+	s.theme = s.storedTheme(app)
+	// Pinning the appearance before the window exists is what keeps its first frame from
+	// flashing the other palette: the page's prefers-color-scheme already matches.
+	applyAppearance(s.theme)
+	s.window = app.Window.NewWithOptions(windowOptions(settings.IsDark(s.theme, app.Env.IsDarkMode()), size))
+	s.appearance.Unlock()
 
 	ctx := app.Context()
 
@@ -267,6 +344,18 @@ func (s *shell) windowSize(app *application.App) settings.WindowSize {
 	}
 
 	return size
+}
+
+// storedTheme is the theme the settings hold, or the default when they cannot be read.
+func (s *shell) storedTheme(app *application.App) string {
+	theme, err := s.core.Settings.Theme(app.Context())
+	if err != nil {
+		_, _ = fmt.Fprintln(s.stderr, "read the theme, following the system:", err)
+
+		return settings.DefaultTheme
+	}
+
+	return theme
 }
 
 // firstPaint ends a measurement run: it prints the timing line and quits.

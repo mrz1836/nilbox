@@ -127,6 +127,14 @@ export function SetTerminal(terminal: string): $CancellablePromise<void> {
 }
 
 /**
+ * SetTheme stores the theme the app shows: ThemeSystem, ThemeLight, or ThemeDark. Once
+ * it is stored, the theme notifier, if any, is told.
+ */
+export function SetTheme(theme: string): $CancellablePromise<void> {
+    return $Call.ByID(3709078766, theme);
+}
+
+/**
  * SetTrustedBots stores the bots whose items are trusted. Each login may be written as
  * GitHub shows it ("dependabot", "dependabot[bot]", or "app/dependabot"); the list is
  * stored normalized and sorted, and may be empty to trust no bot.
@@ -155,4 +163,12 @@ export function SetWorktreeAutoCleanup(on: boolean): $CancellablePromise<void> {
  */
 export function SetWorktreeDefault(on: boolean): $CancellablePromise<void> {
     return $Call.ByID(2809427945, on);
+}
+
+/**
+ * Theme returns the stored theme, or DefaultTheme when none is stored or the stored
+ * value is no longer a choice.
+ */
+export function Theme(): $CancellablePromise<string> {
+    return $Call.ByID(2166540932);
 }

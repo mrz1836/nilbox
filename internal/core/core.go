@@ -80,6 +80,9 @@ type Options struct {
 	// WorktreeNotifier is told when an automatic worktree sweep changed something.
 	WorktreeNotifier worktrees.Notifier
 
+	// ThemeNotifier is told when the theme was changed and stored.
+	ThemeNotifier settings.ThemeNotifier
+
 	// Runner runs external programs. It defaults to an execpath.Runner whose finder
 	// searches the well-known directories under Home.
 	Runner Runner
@@ -208,7 +211,7 @@ func assemble(db *gorm.DB, opts Options, logger *slog.Logger) *Core {
 		runner = execpath.Runner{Finder: finder}
 	}
 
-	prefs := settings.NewService(db, opts.Home)
+	prefs := settings.NewService(db, opts.Home, settings.WithThemeNotifier(opts.ThemeNotifier))
 	tokens := github.NewTokenSource(runner, finder)
 	client := github.NewClient(opts.Version)
 	launches := launchlog.NewStore(db)

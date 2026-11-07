@@ -13,8 +13,12 @@ func macAppOptions() application.MacOptions {
 	return application.MacOptions{}
 }
 
-// windowOptions returns the shared window settings at the given size; a port adds this
-// OS's options here.
-func windowOptions(_ bool, size settings.WindowSize) application.WebviewWindowOptions {
-	return baseWindowOptions(size)
+// windowOptions returns the shared window settings at the given size, on the background
+// of the dark or light palette; a port adds this OS's options here.
+func windowOptions(dark bool, size settings.WindowSize) application.WebviewWindowOptions {
+	return baseWindowOptions(dark, size)
 }
+
+// applyAppearance has no native appearance to set off macOS; a port sets this OS's here.
+// The page still shows the theme, which the frontend applies.
+func applyAppearance(string) {}
