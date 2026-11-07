@@ -5,6 +5,12 @@
 // deletes a git branch, a clone created anywhere but the launcher's confirmed clone of a
 // missing repository, and any git command that changes an existing clone.
 //
+// One guard is personal: a contributor can list their own private names (employers,
+// clients, private organizations and repositories) in the clone's git directory, at
+// .git/info/private-terms, and the guard fails wherever one appears in a file, the branch
+// name, or an unpushed commit message. The list never enters the repository, so the guard
+// skips wherever it is absent, CI included.
+//
 // The package has no production code; everything lives in its tests, which run with the
 // rest of the suite on every platform.
 package repoguard

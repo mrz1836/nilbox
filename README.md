@@ -722,6 +722,36 @@ View the [contributing guidelines](.github/CONTRIBUTING.md) and please follow th
 [AGENTS.md](.github/AGENTS.md) for the conventions on code, tests, commits, branches, and pull
 requests that both humans and AI agents follow here.
 
+### Keep private names out of the repository
+
+Nilbox is public, so nothing committed here may name your employer, your clients, or your
+private organizations and repositories. The guard tests can check that for you: list those names
+in your clone's private-terms file, and `magex test` fails wherever one appears.
+
+Create or edit the file (it lives inside `.git`, so it works from any worktree of your clone):
+
+```bash
+"${EDITOR:-vi}" "$(git rev-parse --path-format=absolute --git-common-dir)/info/private-terms"
+```
+
+```text
+# One term per line. Blank lines and lines starting with # are ignored.
+your-employer
+your-client-org
+an-internal-codename
+```
+
+- **Matching** ignores case and finds whole words only: `acme` matches `Acme`, `acme-org`, and
+  `acme_api`, but not `acmetools` or `AcmeClient`. List each form you use, and prefer distinctive
+  names over common words, which would flag ordinary text.
+- **What it checks:** the contents and path of every file (tracked files, plus untracked files
+  that aren't ignored), the current branch name, and every commit that no remote has yet. A
+  failure lists each `file:line` or commit to fix.
+- **Run it** with the rest of the suite (`magex test` or the full gate), or on its own with
+  `go test ./internal/repoguard -run PrivateTerms -v`.
+- **It stays on your machine.** Git never commits anything inside `.git`, and CI, which has no
+  such file, skips the check.
+
 ### How can I help?
 
 All kinds of contributions are welcome :raised_hands:!

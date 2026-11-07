@@ -15,7 +15,9 @@ differ.
    repo. Never write personal machine paths (absolute home directories) or private tracker or
    ticket IDs. That applies to code, comments, tests, fixtures, docs, commit messages, branch
    names, and pull request titles and bodies. Use neutral placeholders such as `acme-org`,
-   `example-repo`, and `~/projects`.
+   `example-repo`, and `~/projects`. A contributor's own private names can be listed in
+   `.git/info/private-terms`, and the guard tests then fail wherever one appears (README,
+   "Keep private names out of the repository"). Never write that file's terms anywhere else.
 2. **Never bypass git hooks.** No `--no-verify`, no `-n`, no `core.hooksPath` tricks. If a hook
    fails, fix the cause.
 3. **The product name lives only in `internal/brand`.** Reference `brand.Name`, `brand.Slug`, and
