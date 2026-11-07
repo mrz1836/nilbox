@@ -242,7 +242,7 @@ func TestRefreshTriageAndSettingsWritesShareOnePool(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	pool := testutil.SQLDB(t)
+	pool := testutil.DB(t)
 	clk := testutil.NewClock(time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC))
 
 	var logs lockedBuffer

@@ -47,7 +47,7 @@ func toggles(t *testing.T, db *sql.DB, owner string) (planMode, worktree sql.Nul
 func TestSaveStampsTheRowFromTheClock(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 	clk := testutil.NewClock(time.Date(2026, 1, 10, 7, 0, 0, 0, time.FixedZone("UTC-5", -5*60*60)))
 	s := NewStore(db, clk)
 	ctx := t.Context()
@@ -102,7 +102,7 @@ func TestSaveRoundTripsInheritedToggles(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			db := testutil.SQLDB(t)
+			db := testutil.DB(t)
 			s := NewStore(db, nil)
 			ctx := t.Context()
 
@@ -131,7 +131,7 @@ func TestSaveRoundTripsInheritedToggles(t *testing.T) {
 func TestStoreRemovesIgnoringCase(t *testing.T) {
 	t.Parallel()
 
-	s := NewStore(testutil.SQLDB(t), nil)
+	s := NewStore(testutil.DB(t), nil)
 	ctx := t.Context()
 
 	_, err := s.save(ctx, Input{Owner: "Acme-Org", Name: "Example-Repo", Model: "opus"}, nil)
@@ -153,7 +153,7 @@ func TestStoreRemovesIgnoringCase(t *testing.T) {
 func TestStoreJoinsATransaction(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 	s := NewStore(db, nil)
 	ctx := t.Context()
 
@@ -190,7 +190,7 @@ func TestStoreJoinsATransaction(t *testing.T) {
 func TestStoreReportsUnreadableExtraArguments(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 	s := NewStore(db, nil)
 
 	// A JSON array the schema accepts, but not a list of strings.
@@ -205,7 +205,7 @@ func TestStoreReportsUnreadableExtraArguments(t *testing.T) {
 func TestSaveReportsARefusedWrite(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 	s := NewStore(db, nil)
 	ctx := t.Context()
 

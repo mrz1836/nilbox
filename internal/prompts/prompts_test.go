@@ -64,7 +64,7 @@ func newService(db *sql.DB, source PreviewSource) *Service {
 func empty(t *testing.T, source PreviewSource) (*Service, *sql.DB) {
 	t.Helper()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 
 	return newService(db, source), db
 }
@@ -84,7 +84,7 @@ func seeded(t *testing.T, source PreviewSource) (*Service, *sql.DB) {
 func closedService(t *testing.T) *Service {
 	t.Helper()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 	require.NoError(t, db.Close())
 
 	return newService(db, nil)

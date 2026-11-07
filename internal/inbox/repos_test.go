@@ -14,7 +14,7 @@ import (
 func TestRepoCounts(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 
 	in := func(owner, name string, number int, listed bool) FixtureItem {
 		it := githubItem(name, number, "OWNER", true, false)
@@ -50,7 +50,7 @@ func TestRepoCounts(t *testing.T) {
 func TestRepoCountsWithNoRepositories(t *testing.T) {
 	t.Parallel()
 
-	got, err := NewStore(testutil.SQLDB(t), nil).RepoCounts(t.Context())
+	got, err := NewStore(testutil.DB(t), nil).RepoCounts(t.Context())
 	require.NoError(t, err)
 	assert.NotNil(t, got)
 	assert.Empty(t, got)
@@ -59,7 +59,7 @@ func TestRepoCountsWithNoRepositories(t *testing.T) {
 func TestRepoCountsReportsAnUnreadableDatabase(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 	require.NoError(t, db.Close())
 
 	_, err := NewStore(db, nil).RepoCounts(t.Context())

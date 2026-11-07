@@ -1,12 +1,22 @@
 // Package store opens the application's local SQLite database.
 //
-// The database is opened with database/sql over a pure-Go SQLite driver, so it builds
-// without CGO. Every pooled connection runs in write-ahead-logging mode with foreign keys
+// The database is opened with database/sql over the pure-Go modernc.org/sqlite driver,
+// so it builds without CGO; no other package imports the driver. Every pooled connection runs in write-ahead-logging mode with foreign keys
 // on and a busy timeout, and begins its transactions IMMEDIATE, so a transaction that
 // reads and then writes waits for the write lock up front instead of failing part way.
 // Open then brings the schema up to date with the checksummed migrations in the migrate
-// package, backing up a migrated database before it changes it. The schema is never
-// created from the models: AutoMigrate is not used anywhere.
+// package, backing up a migrated database before it changes it. The schema comes from
+// those migrations alone.
+//
+// The store owns no table. Each table's owner package queries it through code sqlc
+// generates from the owner's SQL, on the pool Open returns or in a transaction from
+// InTx; the store gives every owner DBTX, the JSON column codecs, and
+// IsForeignKeyViolation.
+//
+// Timestamps are written as UTC text in one sortable format,
+// "2006-01-02 15:04:05.999999999+00:00", whatever a time.Time's location, so the
+// database orders and compares them as text in time order. DATETIME columns read back as
+// time.Time values in UTC.
 //
 // Before the pool connects, Open reads the migration history over a connection that
 // writes nothing, so a database it refuses or sets aside has not been changed by the
@@ -24,8 +34,6 @@
 //   - Anything else, such as a database another process has open, a permission error,
 //     a full disk, or a migration that failed after its backup, is returned as an
 //     error, and the file is never moved.
-//
-// Code that reads and writes through GORM gets a handle over the same pool from Gorm.
 package store
 
 import (
@@ -39,7 +47,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/glebarez/go-sqlite" // registers the "sqlite" database/sql driver
+	_ "modernc.org/sqlite" // registers the "sqlite" database/sql driver
 	sqlite3 "modernc.org/sqlite/lib"
 
 	"github.com/mrz1836/nilbox/internal/appdata"
@@ -63,11 +71,13 @@ const (
 	// that is just letting go.
 	probeParams = "_pragma=busy_timeout(250)&_pragma=locking_mode(EXCLUSIVE)"
 
-	// dsnParams configure every new connection. The driver writes a time.Time as
-	// "2006-01-02 15:04:05.999999999-07:00" text by default, which is the format the
-	// stored timestamps use. Asking for that format by name would make this driver
-	// version skip the _txlock parameter.
-	dsnParams = "_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_txlock=immediate"
+	// dsnParams configure every new connection. _txlock begins every transaction
+	// IMMEDIATE. _time_format writes a time.Time as "2006-01-02 15:04:05.999999999-07:00"
+	// text, the format the stored timestamps use, and _timezone converts it to UTC first
+	// and reads DATETIME columns back in UTC, so every stored stamp ends in +00:00 and
+	// sorts as text in time order.
+	dsnParams = "_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)" +
+		"&_txlock=immediate&_time_format=sqlite&_timezone=UTC"
 
 	// maxConns caps the pool, and every one of those connections is kept open when idle.
 	// SQLite allows one writer at a time, so more connections would only queue on the

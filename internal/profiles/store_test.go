@@ -23,7 +23,7 @@ BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`
 func openStore(t *testing.T) (*Store, *sql.DB) {
 	t.Helper()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 
 	return NewStore(db, nil), db
 }
@@ -50,7 +50,7 @@ func stamps(t *testing.T, db *sql.DB, name string) (created, updated string) {
 func TestSyncStampsNewRowsFromTheClock(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 	clk := testutil.NewClock(time.Date(2026, 1, 10, 7, 0, 0, 0, time.FixedZone("UTC-5", -5*60*60)))
 	s := NewStore(db, clk)
 

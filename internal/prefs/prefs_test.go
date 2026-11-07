@@ -39,7 +39,7 @@ BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`
 func newStore(t *testing.T) (*prefs.Store, *sql.DB) {
 	t.Helper()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 
 	return prefs.New(db, testutil.NewClock(start)), db
 }
@@ -48,7 +48,7 @@ func newStore(t *testing.T) (*prefs.Store, *sql.DB) {
 func closedStore(t *testing.T) *prefs.Store {
 	t.Helper()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 	require.NoError(t, db.Close())
 
 	return prefs.New(db, nil)
@@ -187,7 +187,7 @@ func TestSetManyStoresAllOrNothing(t *testing.T) {
 func TestWritesStampUpdatedAtFromTheClock(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 	clk := testutil.NewClock(start.In(time.FixedZone("UTC+2", 2*60*60)))
 	s := prefs.New(db, clk)
 
@@ -211,7 +211,7 @@ func TestWritesStampUpdatedAtFromTheClock(t *testing.T) {
 func TestANilClockIsTheSystemClock(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 	before := time.Now().UTC().Truncate(time.Second)
 
 	require.NoError(t, prefs.New(db, nil).Set(t.Context(), keyA, valueOne))

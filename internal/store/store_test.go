@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/glebarez/go-sqlite" // registers the "sqlite" database/sql driver
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -52,7 +51,7 @@ func pragma[T any](t *testing.T, conn *sql.Conn, name string) T {
 func TestOpenConfiguresEveryPooledConnection(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 	conns := holdConns(t, db, poolSize)
 	require.Equal(t, poolSize, db.Stats().OpenConnections, "each connection is a separate one")
 
@@ -66,7 +65,7 @@ func TestOpenConfiguresEveryPooledConnection(t *testing.T) {
 func TestOpenKeepsAFewConnectionsOpen(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 	assert.Equal(t, poolSize, db.Stats().MaxOpenConnections)
 
 	for _, conn := range holdConns(t, db, poolSize) {
@@ -134,12 +133,13 @@ func assertUTCText(t *testing.T, stamps []stamp) {
 func TestTimestampsAreStoredAsSortableUTCText(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 	last := time.Date(2026, time.December, 31, 23, 59, 59, 0, time.UTC)
 
 	// In time order, with the cases a text comparison could get wrong: a whole second
-	// beside fractions of it, fractions of different lengths, and a rollover into the
-	// next minute, day, and year.
+	// beside fractions of it, fractions of different lengths, a rollover into the next
+	// minute, day, and year, and times in other zones, whose own wall clocks would sort
+	// them out of order.
 	times := []time.Time{
 		last.AddDate(0, 0, -1),
 		last,
@@ -149,6 +149,8 @@ func TestTimestampsAreStoredAsSortableUTCText(t *testing.T) {
 		last.Add(time.Second - time.Nanosecond),
 		last.Add(time.Second),
 		last.Add(time.Second + time.Nanosecond),
+		last.Add(2 * time.Second).In(time.FixedZone("UTC-10", -10*60*60)),
+		last.Add(3 * time.Second).In(time.FixedZone("UTC+14", 14*60*60)),
 	}
 
 	// Stored newest first, so the database does the sorting.
@@ -163,7 +165,7 @@ func TestTimestampsAreStoredAsSortableUTCText(t *testing.T) {
 
 	for i, at := range times {
 		wantKeys = append(wantKeys, fmt.Sprintf("example.%d", i))
-		wantTexts = append(wantTexts, at.Format("2006-01-02 15:04:05.999999999-07:00"))
+		wantTexts = append(wantTexts, at.UTC().Format("2006-01-02 15:04:05.999999999-07:00"))
 	}
 
 	stamps := storedStamps(t, db)
@@ -172,6 +174,22 @@ func TestTimestampsAreStoredAsSortableUTCText(t *testing.T) {
 	keys, texts := keysAndTexts(stamps)
 	assert.Equal(t, wantKeys, keys, "ordered as text, the stamps are in time order")
 	assert.Equal(t, wantTexts, texts)
+}
+
+func TestTimestampsReadBackInUTC(t *testing.T) {
+	t.Parallel()
+
+	db := testutil.DB(t)
+	at := time.Date(2026, time.March, 4, 5, 6, 7, 890, time.FixedZone("UTC-10", -10*60*60))
+
+	_, err := db.ExecContext(t.Context(), "INSERT INTO prefs (key, value, updated_at) VALUES ('example.key', 'v', ?)", at)
+	require.NoError(t, err)
+
+	var got time.Time
+	require.NoError(t, db.QueryRowContext(t.Context(),
+		"SELECT updated_at FROM prefs WHERE key = 'example.key'").Scan(&got))
+	assert.True(t, at.Equal(got), "got %s, want %s", got, at)
+	assert.Same(t, time.UTC, got.Location(), "a DATETIME column reads back in UTC")
 }
 
 func TestOpenCreatesParentDir(t *testing.T) {
@@ -193,7 +211,7 @@ func TestOpenCreatesParentDir(t *testing.T) {
 func TestOpenAppliesMigrations(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 
 	var newest int
 	require.NoError(t, db.QueryRowContext(t.Context(), "SELECT max(version) FROM schema_migrations").Scan(&newest))
@@ -217,7 +235,7 @@ VALUES ('example.key', 'kept', CURRENT_TIMESTAMP)`)
 	require.NoError(t, opened.DB.Close())
 
 	var value string
-	require.NoError(t, testutil.SQLDBAt(t, path).QueryRowContext(t.Context(),
+	require.NoError(t, testutil.DBAt(t, path).QueryRowContext(t.Context(),
 		"SELECT value FROM prefs WHERE key = 'example.key'").Scan(&value))
 	assert.Equal(t, "kept", value)
 

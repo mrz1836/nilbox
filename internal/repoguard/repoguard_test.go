@@ -167,25 +167,6 @@ func hits(rel, text string, match func(line string) bool) []string {
 	return found
 }
 
-func TestNoAutoMigrateInProductionCode(t *testing.T) {
-	root := moduleRoot(t)
-	needle := "Auto" + "Migrate("
-
-	var found []string
-
-	for _, rel := range goFiles(t, root) {
-		if strings.HasSuffix(rel, "_test.go") {
-			continue
-		}
-
-		if text, ok := readText(t, root, rel); ok {
-			found = append(found, hits(rel, text, func(line string) bool { return strings.Contains(line, needle) })...)
-		}
-	}
-
-	assert.Empty(t, found, "the schema comes from SQL migrations only; never create it from models")
-}
-
 func TestDataLayerBuildsWithoutCGO(t *testing.T) {
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("the go command is not available")

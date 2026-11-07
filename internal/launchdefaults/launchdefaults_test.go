@@ -54,7 +54,7 @@ type harness struct {
 func newHarness(t *testing.T) *harness {
 	t.Helper()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 	known := profiles.NewStore(db, nil)
 	library := prompts.NewStore(db, nil)
 	stored := launchdefaults.NewStore(db, nil)

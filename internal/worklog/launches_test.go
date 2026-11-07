@@ -22,7 +22,7 @@ var storedStamp = regexp.MustCompile(`^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d(\.\d+)?\+0
 func openStore(t *testing.T) (*worklog.Store, *sql.DB) {
 	t.Helper()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 
 	return worklog.New(db), db
 }

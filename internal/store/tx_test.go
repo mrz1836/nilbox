@@ -19,7 +19,7 @@ var errExample = errors.New("example failure")
 func counterDB(t *testing.T) *sql.DB {
 	t.Helper()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 	_, err := db.ExecContext(t.Context(), `CREATE TABLE counter (id INTEGER PRIMARY KEY, n INTEGER NOT NULL);
 INSERT INTO counter (id, n) VALUES (1, 0)`)
 	require.NoError(t, err)
@@ -102,7 +102,7 @@ func TestInTxRollsBackAndRepanicsOnPanic(t *testing.T) {
 func TestInTxReportsAFailedCommit(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 	_, err := db.ExecContext(t.Context(), `CREATE TABLE parent (id INTEGER PRIMARY KEY);
 CREATE TABLE child (parent_id INTEGER NOT NULL REFERENCES parent (id))`)
 	require.NoError(t, err)
@@ -135,7 +135,7 @@ CREATE TABLE child (parent_id INTEGER NOT NULL REFERENCES parent (id))`)
 func TestInTxReportsAFailedBegin(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 	require.NoError(t, db.Close())
 
 	called := false

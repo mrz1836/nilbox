@@ -59,11 +59,11 @@ func TestThemeSurvivesARestart(t *testing.T) {
 	home := t.TempDir()
 	path := filepath.Join(t.TempDir(), "app.db")
 
-	db := testutil.SQLDBAt(t, path)
+	db := testutil.DBAt(t, path)
 	require.NoError(t, serviceOver(t, db, home).SetTheme(ctx, ThemeLight))
 	require.NoError(t, db.Close())
 
-	got, err := serviceOver(t, testutil.SQLDBAt(t, path), home).Theme(ctx)
+	got, err := serviceOver(t, testutil.DBAt(t, path), home).Theme(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, ThemeLight, got)
 }
@@ -71,7 +71,7 @@ func TestThemeSurvivesARestart(t *testing.T) {
 func TestSetThemeRejectsAnUnknownTheme(t *testing.T) {
 	log := &themeLog{}
 	home := t.TempDir()
-	svc := serviceOver(t, testutil.SQLDB(t), home, WithThemeNotifier(log))
+	svc := serviceOver(t, testutil.DB(t), home, WithThemeNotifier(log))
 	ctx := t.Context()
 
 	require.NoError(t, svc.SetTheme(ctx, ThemeDark))
@@ -112,7 +112,7 @@ func TestThemeReportsAClosedDatabase(t *testing.T) {
 
 func TestSetThemeTellsTheNotifierOnceStored(t *testing.T) {
 	log := &themeLog{}
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 	svc := serviceOver(t, db, t.TempDir(), WithThemeNotifier(log))
 	ctx := t.Context()
 

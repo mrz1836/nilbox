@@ -15,7 +15,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
@@ -28,12 +27,13 @@ func TestDBIsMigratedAndFresh(t *testing.T) {
 	first, second := testutil.DB(t), testutil.DB(t)
 
 	var count int64
-	require.NoError(t, first.Raw("SELECT COUNT(*) FROM schema_migrations").Scan(&count).Error)
+	require.NoError(t, first.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM schema_migrations").Scan(&count))
 	assert.Positive(t, count, "the schema is migrated")
 
-	require.NoError(t, first.Exec(`INSERT INTO accounts (login, created_at, updated_at)
-VALUES ('octo-user', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`).Error)
-	require.NoError(t, second.Raw("SELECT COUNT(*) FROM accounts").Scan(&count).Error)
+	_, err := first.ExecContext(t.Context(), `INSERT INTO accounts (login, created_at, updated_at)
+VALUES ('octo-user', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`)
+	require.NoError(t, err)
+	require.NoError(t, second.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM accounts").Scan(&count))
 	assert.Zero(t, count, "each call opens its own database")
 }
 
@@ -42,80 +42,89 @@ func TestDBAtReopensTheSameFile(t *testing.T) {
 
 	path := filepath.Join(t.TempDir(), "app.db")
 
-	require.NoError(t, testutil.DBAt(t, path).Exec(`INSERT INTO accounts (login, created_at, updated_at)
-VALUES ('octo-user', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`).Error)
-
-	var login string
-	require.NoError(t, testutil.DBAt(t, path).Raw("SELECT login FROM accounts").Scan(&login).Error)
-	assert.Equal(t, "octo-user", login)
-}
-
-func TestBridgedDBSharesOnePool(t *testing.T) {
-	t.Parallel()
-
-	pool, db := testutil.BridgedDB(t)
-
-	got, err := db.DB()
-	require.NoError(t, err)
-	assert.Same(t, pool, got, "the GORM handle runs on the pool")
-
-	_, err = pool.ExecContext(t.Context(), `INSERT INTO accounts (login, created_at, updated_at)
+	_, err := testutil.DBAt(t, path).ExecContext(t.Context(), `INSERT INTO accounts (login, created_at, updated_at)
 VALUES ('octo-user', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`)
 	require.NoError(t, err)
 
 	var login string
-	require.NoError(t, db.Raw("SELECT login FROM accounts").Scan(&login).Error)
+	require.NoError(t, testutil.DBAt(t, path).QueryRowContext(t.Context(), "SELECT login FROM accounts").Scan(&login))
 	assert.Equal(t, "octo-user", login)
 }
 
-func TestBridgedDBAtReopensTheSameFile(t *testing.T) {
+// failureTB records a test failure instead of failing the test it wraps. FailNow ends
+// the goroutine it runs on, as testing's does, so call the code under test on one of
+// its own.
+type failureTB struct {
+	testing.TB
+
+	mu     sync.Mutex
+	failed bool
+}
+
+func (f *failureTB) Errorf(string, ...any) { f.fail() }
+
+func (f *failureTB) FailNow() {
+	f.fail()
+	runtime.Goexit()
+}
+
+func (f *failureTB) Failed() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return f.failed
+}
+
+func (f *failureTB) fail() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.failed = true
+}
+
+func TestDBAtFailsWhenTheDatabaseWasSetAside(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "app.db")
+	testutil.WriteFile(t, path, "this is not a database file, just text long enough to have a header")
 
-	pool, _ := testutil.BridgedDBAt(t, path)
-	_, err := pool.ExecContext(t.Context(), `INSERT INTO accounts (login, created_at, updated_at)
-VALUES ('octo-user', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`)
+	tb := &failureTB{TB: t}
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		testutil.DBAt(tb, path)
+	}()
+
+	<-done
+
+	assert.True(t, tb.Failed(), "a test never runs on a fresh database it did not ask for")
+
+	aside, err := filepath.Glob(path + ".broken-*")
 	require.NoError(t, err)
-
-	_, db := testutil.BridgedDBAt(t, path)
-
-	var login string
-	require.NoError(t, db.Raw("SELECT login FROM accounts").Scan(&login).Error)
-	assert.Equal(t, "octo-user", login)
-}
-
-func TestSQLDBIsMigrated(t *testing.T) {
-	t.Parallel()
-
-	var count int64
-	require.NoError(t, testutil.SQLDB(t).QueryRowContext(t.Context(), "SELECT COUNT(*) FROM schema_migrations").Scan(&count))
-	assert.Positive(t, count)
+	assert.Len(t, aside, 1, "the database opened by setting the file aside, so the failure is the set-aside check")
 }
 
 func TestDatabasesCloseWhenTheTestEnds(t *testing.T) {
 	t.Parallel()
 
-	var (
-		pool, bridgedPool *sql.DB
-		db, bridged       *gorm.DB
-	)
+	var db, at *sql.DB
 
 	t.Run("open", func(t *testing.T) {
-		pool, db = testutil.SQLDB(t), testutil.DB(t)
-		bridgedPool, bridged = testutil.BridgedDB(t)
+		db = testutil.DB(t)
+		at = testutil.DBAt(t, filepath.Join(t.TempDir(), "app.db"))
 	})
 
-	require.Error(t, pool.PingContext(t.Context()))
-	require.Error(t, db.Exec("SELECT 1").Error)
-	require.Error(t, bridgedPool.PingContext(t.Context()))
-	require.Error(t, bridged.Exec("SELECT 1").Error)
+	require.Error(t, db.PingContext(t.Context()))
+	require.Error(t, at.PingContext(t.Context()))
 }
 
 func TestClosedDBRefusesQueries(t *testing.T) {
 	t.Parallel()
 
-	require.Error(t, testutil.ClosedDB(t).Exec("SELECT 1").Error)
+	_, err := testutil.ClosedDB(t).ExecContext(t.Context(), "SELECT 1")
+	require.Error(t, err)
 }
 
 func TestRequireGitReturnsAnExecutable(t *testing.T) {

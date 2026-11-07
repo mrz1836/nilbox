@@ -26,7 +26,7 @@ func newTestService(t *testing.T) (*Service, *sql.DB, string) {
 	t.Helper()
 
 	home := t.TempDir()
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 
 	return serviceOver(t, db, home), db, home
 }
@@ -42,7 +42,7 @@ func serviceOver(t *testing.T, db *sql.DB, home string, opts ...Option) *Service
 func closedDB(t *testing.T) *sql.DB {
 	t.Helper()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 	require.NoError(t, db.Close())
 
 	return db
@@ -121,11 +121,11 @@ func TestTerminalPrefPersists(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "app.db")
 	home := t.TempDir()
 
-	db := testutil.SQLDBAt(t, path)
+	db := testutil.DBAt(t, path)
 	require.NoError(t, serviceOver(t, db, home).SetTerminal(t.Context(), TerminalApp))
 	require.NoError(t, db.Close())
 
-	got, err := serviceOver(t, testutil.SQLDBAt(t, path), home).Get(t.Context())
+	got, err := serviceOver(t, testutil.DBAt(t, path), home).Get(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, TerminalApp, got.Terminal)
 }
@@ -133,7 +133,7 @@ func TestTerminalPrefPersists(t *testing.T) {
 func TestWithClockStampsTheStoredSettings(t *testing.T) {
 	t.Parallel()
 
-	pool := testutil.SQLDB(t)
+	pool := testutil.DB(t)
 	at := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
 	svc := serviceOver(t, pool, t.TempDir(), WithClock(testutil.NewClock(at)))
 

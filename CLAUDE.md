@@ -124,8 +124,51 @@ Conventions for commits, branches, pull requests, testing, and security live in
 ## Data layer
 
 The app keeps its data in one local SQLite database. `internal/store` opens it with
-`database/sql` over a pure-Go driver, so it builds without CGO, and brings the schema up to
-date with the checksummed, forward-only SQL migrations in `internal/store/migrate/migrations/`.
-The services then query it partly through the GORM models in the `internal/*/model` packages,
-over a GORM handle that shares the same connection pool (`store.Gorm`), and partly with raw
-SQL. This section will hold the data layer's rules once it moves to sqlc-generated queries.
+`database/sql` over the pure-Go `modernc.org/sqlite` driver, so it builds without CGO. No other
+package imports the driver, and nothing imports an ORM (`internal/repoguard` enforces both).
+
+- **Migrations.** The schema lives in `internal/store/migrate/migrations/`: forward-only,
+  checksummed SQL files, starting from the squashed `0001_init.sql`. Never edit an applied
+  migration; change the schema with a new `NNNN_<name>.sql`. Nothing else creates, alters, or
+  drops a table.
+- **Ownership.** Every table has one owner package (`tableOwners` in
+  `internal/repoguard/datalayer_test.go`). The owner keeps its SQL in
+  `internal/<owner>/internal/queries/*.sql`, and sqlc generates package `queries` beside it, so
+  Go's `internal/` rule lets only the owner import it. Other packages call the owner's API,
+  usually through a small interface the consumer declares and `internal/core` wires. SQL
+  appears nowhere else but `internal/store`, and a query file never names another owner's table.
+- **Adding a query.** Write it in the owner's query file under a `-- name: <Name> :one`
+  (`:many`, `:exec`, `:execrows`) comment, run `magex db:generate`, and commit the generated code
+  with it. A new owner also adds an entry to `sqlc.yaml`. Never edit a `queries` package by hand.
+  `magex db:check` fails when the generated code is stale or a query does not prepare against
+  the schema. sqlc on SQLite has sharp edges:
+  - Put scalar parameters before a `sqlc.slice(...)`: one after it is numbered into the
+    expanded list. Return early on an empty slice in Go.
+  - Never mix `sqlc.arg` / `sqlc.narg` with `?` in one query; use all named or all `?`.
+  - Never name a parameter after a Go builtin (`max`, `min`, `len`); use `row_limit`.
+  - In `sqlc.yaml`, write merge keys in the formatter's `!!merge <<:` form.
+  - sqlc mistypes `COALESCE`, so a LEFT JOIN selects the raw nullable columns and the owner maps
+    the defaults in Go.
+- **Transactions.** `store.InTx(ctx, db, fn)` commits when `fn` returns nil and rolls back on an
+  error or a panic. Every transaction begins IMMEDIATE, so one that reads and then writes waits
+  for the write lock instead of failing. Inside, run the owner's queries with `q.WithTx(tx)`, and
+  join another owner's store with its `WithTx(tx)` (`prefs.WithTx` most often). Never call a
+  pool-backed store from inside an open transaction: it waits on the lock the transaction holds.
+- **Prefs.** `internal/prefs` owns the `prefs` table. Any package reads any key, but each key has
+  exactly one writer: settings writes the user's settings, including the rule keys that the trust,
+  snooze, sensitive, and notifyprefs packages declare; inbox writes `inbox.*`; prompts writes
+  `prompts.*` (the package doc has the full list).
+- **Values.** Owners stamp `created_at`, `updated_at`, and every other time from their injected
+  `clock.Clock`; nothing fills them in. The driver stores every `time.Time` as UTC text
+  (`2006-01-02 15:04:05.999999999+00:00`), so stamps compare and sort as text in time order.
+  JSON columns are TEXT, written with `store.EncodeJSON` and read with `store.DecodeJSON[T]`.
+- **Self-heal.** `store.Open` backs the database up before applying pending migrations. A file
+  that is not a database or is damaged, a schema the migrations did not create, or a history this
+  build disagrees with is renamed, with its `-wal` and `-shm` files, to
+  `<path>.broken-<UTC stamp>` once no other process has it open; a fresh database starts in its
+  place, and `Opened.Reset` reaches the window as a notice. A database from a newer build is
+  refused with `store.ErrNewerSchema` and left untouched. Any other failure (a lock, a
+  permission, a full disk, a failed migration) is a plain error, and nothing is moved.
+- **Tests** open a fresh, migrated database with `testutil.DB(t)`, a given file with
+  `testutil.DBAt(t, path)`, and a closed one with `testutil.ClosedDB(t)`. To make a write fail,
+  add a trigger that calls `RAISE(ABORT, ...)`, or drop the table.

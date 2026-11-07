@@ -225,7 +225,7 @@ func newHarness(t *testing.T) *harness {
 	path := filepath.Join(t.TempDir(), "app.db")
 
 	h := &harness{
-		pool:     testutil.SQLDBAt(t, path),
+		pool:     testutil.DBAt(t, path),
 		path:     path,
 		tokens:   &fakeTokens{},
 		client:   &fakeClient{limits: restLimits(), avatar: fakeAvatar()},

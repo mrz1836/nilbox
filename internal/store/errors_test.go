@@ -18,7 +18,7 @@ import (
 func parentAndChild(t *testing.T) *sql.DB {
 	t.Helper()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 	_, err := db.ExecContext(t.Context(), `CREATE TABLE parent (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);
 CREATE TABLE child (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES parent (id) ON DELETE RESTRICT);
 INSERT INTO parent (id, name) VALUES (1, 'one');

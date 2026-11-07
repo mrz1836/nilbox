@@ -13,9 +13,9 @@ import (
 	"testing/fstest"
 	"time"
 
-	_ "github.com/glebarez/go-sqlite" // registers the "sqlite" database/sql driver
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite" // registers the "sqlite" database/sql driver
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/store/migrate"

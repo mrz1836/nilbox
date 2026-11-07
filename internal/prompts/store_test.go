@@ -376,7 +376,7 @@ func TestDeletingAPromptLaunchDefaultsNameIsRefusedByTheForeignKey(t *testing.T)
 func TestDeletingAnUnusedPromptReadsNoUsage(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 	uses := &countingUses{}
 	s := NewService(Config{Store: NewStore(db, nil), Usage: uses})
 	ctx := t.Context()
@@ -394,7 +394,7 @@ func TestDeletingAnUnusedPromptReadsNoUsage(t *testing.T) {
 func TestDeleteReportsUsageItCannotRead(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 	s := NewService(Config{Store: NewStore(db, nil), Usage: failingUses{}})
 	ctx := t.Context()
 
@@ -409,7 +409,7 @@ func TestDeleteReportsUsageItCannotRead(t *testing.T) {
 func TestDeleteWithoutAUsageSourceNamesOnlyTheDefaults(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 	s := NewService(Config{Store: NewStore(db, nil)})
 	ctx := t.Context()
 
@@ -446,7 +446,7 @@ func idOf(t *testing.T, s *Service, nickname string) int64 {
 func TestWritesStampTheRowsFromTheClock(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 	clk := testutil.NewClock(time.Date(2026, 1, 10, 7, 0, 0, 0, time.FixedZone("UTC-5", -5*60*60)))
 	s := NewService(Config{Store: NewStore(db, clk)})
 	ctx := t.Context()
@@ -553,7 +553,7 @@ func TestLibraryReportsUnreadableDefaults(t *testing.T) {
 func TestAStoreJoinedToATransactionRollsBackWithIt(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 	s := NewStore(db, nil)
 	ctx := t.Context()
 

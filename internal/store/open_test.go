@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	settingsmodel "github.com/mrz1836/nilbox/internal/settings/model"
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/store/migrate"
 	"github.com/mrz1836/nilbox/internal/testutil"
@@ -106,17 +105,4 @@ func TestOpenKeepsAnExistingFilesPermissions(t *testing.T) {
 	info, err := os.Stat(path)
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0o640), info.Mode().Perm(), "only a new file is created private")
-}
-
-func TestStampsAreUTC(t *testing.T) {
-	t.Parallel()
-
-	db := testutil.DB(t)
-
-	pref := settingsmodel.Pref{Key: "example.key", Value: "v"}
-	require.NoError(t, db.Create(&pref).Error)
-
-	var stored settingsmodel.Pref
-	require.NoError(t, db.First(&stored, "key = ?", "example.key").Error)
-	assert.Equal(t, "UTC", stored.UpdatedAt.Location().String())
 }

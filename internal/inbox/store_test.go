@@ -56,7 +56,7 @@ func TestViewerLogin(t *testing.T) {
 func TestStoreReportsAnUnreadableDatabase(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 	require.NoError(t, db.Close())
 
 	s := NewStore(db, nil)
@@ -140,7 +140,7 @@ func TestRememberClone(t *testing.T) {
 func TestStoreFixture(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.SQLDB(t)
+	db := testutil.DB(t)
 	at := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 	details := prDetails()
 

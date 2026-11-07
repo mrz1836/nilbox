@@ -1,8 +1,7 @@
 // Package prefs owns the prefs table: the user's settings and the app state that has no
 // table of its own, each stored as text under a string key.
 //
-// Any package may read any key, but every key has one writer, the package that declares
-// it as a constant:
+// Any package may read any key, but every key has exactly one writer:
 //
 //   - settings writes the user's settings, among them the rules that the trust, snooze,
 //     sensitive, and notifyprefs packages declare and decode (trust.*, snooze.*, files.*,

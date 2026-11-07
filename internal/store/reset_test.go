@@ -606,7 +606,7 @@ func TestOpenLeavesADatabaseWhoseMigrationFailed(t *testing.T) {
 	assert.Empty(t, setAsideFiles(t, path), "a failed migration does not discard the data")
 	assert.Len(t, backupsOf(t, path), 1, "the database was backed up before the migration ran")
 
-	db := testutil.SQLDBAt(t, path)
+	db := testutil.DBAt(t, path)
 
 	var value string
 	require.NoError(t, db.QueryRowContext(t.Context(), "SELECT value FROM prefs WHERE key = 'example.key'").Scan(&value))
@@ -634,7 +634,7 @@ SELECT * FROM bad;
 	assert.Len(t, backupsOf(t, path), 1, "the database was backed up before the migration ran")
 
 	// The migration was rolled back, so the database still opens as it was.
-	db := testutil.SQLDBAt(t, path)
+	db := testutil.DBAt(t, path)
 
 	var value string
 	require.NoError(t, db.QueryRowContext(t.Context(), "SELECT value FROM prefs WHERE key = 'example.key'").Scan(&value))

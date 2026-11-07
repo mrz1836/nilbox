@@ -189,7 +189,7 @@ func newLaunchHarness(t *testing.T) *launchHarness {
 
 	makeRepoDir(t, h.clone)
 
-	pool := testutil.SQLDBAt(t, h.paths.DB)
+	pool := testutil.DBAt(t, h.paths.DB)
 	h.pool = pool
 	h.items = inbox.NewStore(pool, testutil.NewClock(fixedNow()))
 	h.profiles = profiles.NewStore(pool, nil)

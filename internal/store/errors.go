@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/glebarez/go-sqlite"
+	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 )
 

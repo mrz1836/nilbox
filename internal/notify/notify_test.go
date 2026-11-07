@@ -84,7 +84,7 @@ type fixture struct {
 func newFixture(t *testing.T, n int) *fixture {
 	t.Helper()
 
-	pool := testutil.SQLDB(t)
+	pool := testutil.DB(t)
 	ctx := t.Context()
 
 	var accountID, repoID int64
