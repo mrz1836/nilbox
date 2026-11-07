@@ -66,6 +66,5 @@ We follow the [OpenSSF](https://openssf.org) best practices to ensure this repos
 To proactively protect this repository, we use several automated GitHub workflows:
 
 - **[GoFortress Security Scans](workflows/fortress-security-scans.yml)**: Runs [gitleaks](https://github.com/gitleaks/gitleaks), [govulncheck](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck), and [Nancy](https://github.com/sonatype-nexus-community/nancy) against every push and pull request.
-- **CodeQL Analysis** and **OpenSSF Scorecard** are enabled when the repository becomes public.
 
 These workflows help us identify, remediate, and prevent security issues as early as possible in the development lifecycle. For more details, see the workflow files in the [`.github/workflows/`](workflows) directory.
