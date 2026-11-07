@@ -103,6 +103,14 @@ app:lint` reads.
   (inbox, launcher, prompts, launch defaults, settings, profiles, worktrees, notifications) and
   their building blocks, `internal/menubar` among them. All of them are plain Go, built and
   tested on Linux without CGO.
+- When a service needs another, prefer a narrow interface or value type declared where it is
+  used (the launcher's `ItemStore` and `LaunchSettings`, the worktree service's
+  `SweepSettings` and `GitHub`) over importing the other service; `internal/core` adapts the
+  real services to them. The repoguard boundary test (`internal/repoguard/deps_test.go`)
+  keeps the cuts it lists.
+- `internal/launcher/` plans a launch and writes its files; `internal/launcher/terminal/`
+  renders the launch script and opens it in the user's terminal app, one driver per terminal
+  and OS.
 - `internal/measure/` and `magefiles/measure.go` take the numbers in
   [`docs/performance.md`](docs/performance.md).
 - `frontend/` is the React + TypeScript + Vite + Tailwind app. It reaches Go only through the

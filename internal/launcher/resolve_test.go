@@ -12,7 +12,6 @@ import (
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/repo"
-	"github.com/mrz1836/nilbox/internal/settings"
 )
 
 // Prompt IDs in testWorld.
@@ -46,7 +45,7 @@ func testWorld() world {
 	work.Name, work.Model, work.Effort, work.ExtraArgs = profileWork, strOpus, "high", []string{"--advisor", "fable"}
 
 	return world{
-		settings: settings.Settings{DefaultProfile: profiles.DefaultName, WorktreeDefault: true},
+		settings: LaunchSettings{DefaultProfile: profiles.DefaultName, WorktreeDefault: true},
 		defaults: prompts.DefaultPrompts{PR: reviewID, Issue: workID},
 		prompts: map[int64]prompts.Prompt{
 			reviewID: {ID: reviewID, Nickname: "Review", Name: "Review a pull request", AppliesTo: prompts.AppliesToPR},

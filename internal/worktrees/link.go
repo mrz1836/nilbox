@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/clock"
-	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/worklog"
@@ -165,7 +164,7 @@ func appendRef(refs []item.Ref, ref item.Ref) []item.Ref {
 // pickItem chooses the target's item among GitHub's answers: of the right kind, and for a
 // pull request preferably the one whose head is the worktree's HEAD; otherwise the most
 // likely. It is nil when GitHub knows none of them.
-func pickItem(t linkTarget, states map[string]github.ItemState) *LinkedItem {
+func pickItem(t linkTarget, states map[string]ItemState) *LinkedItem {
 	var chosen *LinkedItem
 
 	for _, ref := range t.refs {
@@ -189,17 +188,15 @@ func pickItem(t linkTarget, states map[string]github.ItemState) *LinkedItem {
 }
 
 // linkedItem converts GitHub's answer for ref.
-func linkedItem(t linkTarget, ref item.Ref, state github.ItemState) *LinkedItem {
+func linkedItem(t linkTarget, ref item.Ref, state ItemState) *LinkedItem {
 	linked := &LinkedItem{
 		Kind: string(t.kind), Owner: ref.Repo.Owner, Name: ref.Repo.Repo, Number: ref.Number, Title: state.Title,
 		URL: state.URL, HeadOID: state.HeadOID, Launched: t.launched,
 	}
 
 	switch state.State {
-	case github.StateMerged:
-		linked.State = ItemMerged
-	case github.StateClosed:
-		linked.State = ItemClosed
+	case ItemMerged, ItemClosed:
+		linked.State = state.State
 	default:
 		linked.State = ItemOpen
 	}

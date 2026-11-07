@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/prefs"
@@ -54,13 +55,13 @@ const (
 	KeySnoozeDays = snooze.PrefDays
 )
 
-// Terminal choices.
+// Terminal choices: the IDs of the terminal drivers.
 const (
 	// TerminalITerm2 opens launches in a new iTerm2 tab or window.
-	TerminalITerm2 = "iterm2"
+	TerminalITerm2 = terminal.ITerm2
 
 	// TerminalApp opens launches in a new Terminal.app window.
-	TerminalApp = "terminal"
+	TerminalApp = terminal.TerminalApp
 )
 
 // Defaults for a fresh database.

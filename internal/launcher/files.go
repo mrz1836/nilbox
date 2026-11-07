@@ -17,6 +17,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 )
 
 const (
@@ -61,12 +62,12 @@ type LaunchFiles struct {
 // their names. Pruning never touches other files, and a pruning failure is logged
 // rather than failing the launch.
 func WriteLaunchFiles(paths appdata.Paths, plan Plan, prompt string, now time.Time) (LaunchFiles, error) {
-	return writeLaunchFiles(paths, plan, prompt, now, DefaultRenderer(), rand.Reader)
+	return writeLaunchFiles(paths, plan, prompt, now, terminal.DefaultRenderer(), rand.Reader)
 }
 
 // writeLaunchFiles is WriteLaunchFiles with the renderer and randomness injected.
 func writeLaunchFiles(
-	paths appdata.Paths, plan Plan, prompt string, now time.Time, renderer ScriptRenderer, random io.Reader,
+	paths appdata.Paths, plan Plan, prompt string, now time.Time, renderer terminal.ScriptRenderer, random io.Reader,
 ) (LaunchFiles, error) {
 	if err := validateLaunchFiles(plan, prompt); err != nil {
 		return LaunchFiles{}, err
@@ -91,7 +92,7 @@ func writeLaunchFiles(
 
 	plan.PromptFile = files.Prompt
 
-	if err := writeNewFile(files.Script, renderer.Render(plan), scriptFilePerm); err != nil {
+	if err := writeNewFile(files.Script, renderer.Render(plan.script()), scriptFilePerm); err != nil {
 		_ = os.Remove(files.Prompt)
 
 		return LaunchFiles{}, err

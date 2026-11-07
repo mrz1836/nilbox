@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,6 +15,8 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/launcher/terminal"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // errReader is returned by failingReader.
@@ -96,7 +99,7 @@ func TestWriteLaunchFiles(t *testing.T) {
 	require.NoError(t, err)
 
 	plan.PromptFile = files.Prompt
-	assert.Equal(t, string(POSIXRenderer{}.Render(plan)), string(script), "the script reads the written prompt file")
+	assert.Equal(t, string(terminal.POSIXRenderer{}.Render(plan.script())), string(script), "the script reads the written prompt file")
 
 	t.Run("a second launch in the same second gets new files", func(t *testing.T) {
 		again, err := WriteLaunchFiles(paths, plan, "Review again", fixedNow())
@@ -196,7 +199,7 @@ func TestWriteLaunchFilesFailures(t *testing.T) {
 	plan := testPlan(t)
 
 	t.Run("no randomness", func(t *testing.T) {
-		_, err := writeLaunchFiles(testPaths(t), plan, "p", fixedNow(), POSIXRenderer{}, failingReader{})
+		_, err := writeLaunchFiles(testPaths(t), plan, "p", fixedNow(), terminal.POSIXRenderer{}, failingReader{})
 		require.ErrorIs(t, err, errReader)
 	})
 
@@ -213,10 +216,10 @@ func TestWriteLaunchFilesFailures(t *testing.T) {
 		paths := testPaths(t)
 		suffix := bytes.Repeat([]byte{0xab}, suffixBytes)
 
-		first, err := writeLaunchFiles(paths, plan, "first", fixedNow(), POSIXRenderer{}, bytes.NewReader(suffix))
+		first, err := writeLaunchFiles(paths, plan, "first", fixedNow(), terminal.POSIXRenderer{}, bytes.NewReader(suffix))
 		require.NoError(t, err)
 
-		_, err = writeLaunchFiles(paths, plan, "second", fixedNow(), POSIXRenderer{}, bytes.NewReader(suffix))
+		_, err = writeLaunchFiles(paths, plan, "second", fixedNow(), terminal.POSIXRenderer{}, bytes.NewReader(suffix))
 		require.ErrorIs(t, err, os.ErrExist)
 
 		stored, err := os.ReadFile(first.Prompt)
@@ -228,12 +231,140 @@ func TestWriteLaunchFilesFailures(t *testing.T) {
 		paths := testPaths(t)
 		suffix := bytes.Repeat([]byte{0xcd}, suffixBytes)
 
-		planned, err := writeLaunchFiles(paths, plan, "first", fixedNow(), POSIXRenderer{}, bytes.NewReader(suffix))
+		planned, err := writeLaunchFiles(paths, plan, "first", fixedNow(), terminal.POSIXRenderer{}, bytes.NewReader(suffix))
 		require.NoError(t, err)
 		require.NoError(t, os.Remove(planned.Prompt))
 
-		_, err = writeLaunchFiles(paths, plan, "second", fixedNow(), POSIXRenderer{}, bytes.NewReader(suffix))
+		_, err = writeLaunchFiles(paths, plan, "second", fixedNow(), terminal.POSIXRenderer{}, bytes.NewReader(suffix))
 		require.ErrorIs(t, err, os.ErrExist)
 		assert.NoFileExists(t, planned.Prompt, "the orphaned prompt file is cleaned up")
 	})
+}
+
+// fakeAgent is a stand-in for the agent binary. It prints its working directory, two
+// environment variables, and then every argument, each terminated by a NUL byte, so the
+// test can check argument boundaries exactly.
+const fakeAgent = `#!/bin/sh
+printf 'cwd=%s\000' "$(pwd -P)"
+printf 'cfg=%s\000' "${CLAUDE_CONFIG_DIR-<unset>}"
+printf 'extra=%s\000' "${EXTRA_VAR-<unset>}"
+for a in "$@"; do printf '%s\000' "$a"; done
+`
+
+// runSh runs a shell command line with /bin/sh and returns its stdout.
+func runSh(t *testing.T, env []string, args ...string) ([]byte, error) {
+	t.Helper()
+
+	cmd := exec.CommandContext(t.Context(), "/bin/sh", args...) //nolint:gosec // runs the test's own generated script
+	cmd.Env = env
+
+	var stderr bytes.Buffer
+
+	cmd.Stderr = &stderr
+
+	out, err := cmd.Output()
+	if err != nil {
+		t.Logf("sh stderr: %s", stderr.String())
+	}
+
+	return out, err
+}
+
+// shQuote quotes s for a POSIX shell the way launch scripts do, for matching their lines.
+func shQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+func TestPromptNeverOnCommandLine(t *testing.T) {
+	prompt := "Review pull request #7: it's `rm -rf ~` $(curl evil) \"quoted\"\nsecond line"
+
+	req := baseRequest()
+	req.Worktree = true
+
+	plan, err := BuildPlan(req)
+	require.NoError(t, err)
+
+	files, err := WriteLaunchFiles(testPaths(t), plan, prompt, fixedNow())
+	require.NoError(t, err)
+
+	script, err := os.ReadFile(files.Script)
+	require.NoError(t, err)
+
+	for _, piece := range []string{prompt, "Review pull request", "rm -rf", "curl evil", "second line"} {
+		assert.NotContains(t, string(script), piece)
+	}
+
+	assert.Contains(t, string(script), "prompt=$(cat -- "+shQuote(files.Prompt)+")\n")
+	assert.Contains(t, string(script), `"$prompt"`)
+
+	stored, err := os.ReadFile(files.Prompt)
+	require.NoError(t, err)
+	assert.Equal(t, prompt, string(stored))
+}
+
+func TestRenderedScriptRunsWithExactArgv(t *testing.T) {
+	root := t.TempDir()
+	clone := filepath.Join(root, "clone dir 'quoted' $x")
+	require.NoError(t, os.MkdirAll(clone, 0o700))
+
+	agent := filepath.Join(root, "bin with space", "claude")
+	require.NoError(t, os.MkdirAll(filepath.Dir(agent), 0o700))
+	testutil.WriteExecutable(t, agent, fakeAgent)
+
+	req := baseRequest()
+	req.Clone.Dir = clone
+	req.ClaudePath = agent
+	req.Worktree = true
+	req.Profile.AddDirs = []string{filepath.Join(root, "docs; rm -rf x")}
+	req.Profile.ExtraArgs = []string{"--append-system-prompt", "keep `this` & $that", "--verbose"}
+	req.Profile.Env = map[string]string{"EXTRA_VAR": "it's $HOME\nnext"}
+
+	plan, err := BuildPlan(req)
+	require.NoError(t, err)
+
+	prompt := "Review #7: it's `id` $(id) \"q\"\n\nwith café 🚀\n"
+
+	files, err := WriteLaunchFiles(testPaths(t), plan, prompt, fixedNow())
+	require.NoError(t, err)
+
+	env := append(os.Environ(), "CLAUDE_CONFIG_DIR="+filepath.Join(root, "inherited"))
+
+	out, err := runSh(t, env, files.Script)
+	require.NoError(t, err)
+
+	realClone, err := filepath.EvalSymlinks(clone)
+	require.NoError(t, err)
+
+	fields := strings.Split(strings.TrimSuffix(string(out), "\x00"), "\x00")
+	require.GreaterOrEqual(t, len(fields), 3)
+	assert.Equal(t, "cwd="+realClone, fields[0])
+	assert.Equal(t, "cfg=<unset>", fields[1], "the default profile unsets an inherited config dir")
+	assert.Equal(t, "extra=it's $HOME\nnext", fields[2])
+
+	// $(...) drops the prompt's trailing newlines; everything else arrives intact, as one
+	// argument, in front of every flag.
+	wantArgv := plan.Argv(strings.TrimRight(prompt, "\n"))[1:]
+	assert.Equal(t, wantArgv, fields[3:])
+	assert.Equal(t, []string{"--worktree", "#7"}, fields[len(fields)-2:])
+}
+
+func TestRenderedScriptStopsWhenTheCloneIsMissing(t *testing.T) {
+	root := t.TempDir()
+	marker := filepath.Join(root, "agent-ran")
+	agent := filepath.Join(root, "claude")
+	testutil.WriteExecutable(t, agent, "#!/bin/sh\ntouch "+shQuote(marker)+"\n")
+
+	req := baseRequest()
+	req.Clone.Dir = filepath.Join(root, "gone")
+	req.ClaudePath = agent
+
+	plan, err := BuildPlan(req)
+	require.NoError(t, err)
+
+	files, err := WriteLaunchFiles(testPaths(t), plan, "Review", fixedNow())
+	require.NoError(t, err)
+
+	_, err = runSh(t, os.Environ(), files.Script)
+	require.Error(t, err)
+	assert.NoFileExists(t, marker)
 }

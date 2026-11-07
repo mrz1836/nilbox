@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/execpath"
-	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -35,8 +34,8 @@ type fakeSettings struct {
 	err  error
 }
 
-func (f fakeSettings) Get(context.Context) (settings.Settings, error) {
-	return settings.Settings{CloneRoot: f.root, WorktreeAutoCleanup: f.auto}, f.err
+func (f fakeSettings) Get(context.Context) (SweepSettings, error) {
+	return SweepSettings{CloneRoot: f.root, AutoCleanup: f.auto}, f.err
 }
 
 // reply is a scripted git answer.
@@ -107,7 +106,7 @@ func (e *env) service(run execpath.Runner) *Service {
 	return NewService(Config{
 		Settings: fakeSettings{root: cloneRoot},
 		Git:      run,
-		Finder:   execpath.Finder{},
+		Finder:   execpath.Search{},
 		Home:     e.home,
 		Clock:    testutil.NewClock(listedAt()),
 	})

@@ -1,13 +1,12 @@
 //go:build darwin
 
-package launcher
+package terminal
 
 import (
 	"context"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/execpath"
-	"github.com/mrz1836/nilbox/internal/settings"
 )
 
 const (
@@ -29,7 +28,7 @@ type itermDriver struct {
 }
 
 // ID returns the iTerm2 terminal setting.
-func (itermDriver) ID() string { return settings.TerminalITerm2 }
+func (itermDriver) ID() string { return ITerm2 }
 
 // Open runs the script in a new iTerm2 tab, or a new window when none is open.
 func (d itermDriver) Open(ctx context.Context, scriptPath string) error {
@@ -47,7 +46,7 @@ type terminalAppDriver struct {
 }
 
 // ID returns the Terminal.app terminal setting.
-func (terminalAppDriver) ID() string { return settings.TerminalApp }
+func (terminalAppDriver) ID() string { return TerminalApp }
 
 // Open runs the script in a new Terminal.app window.
 func (d terminalAppDriver) Open(ctx context.Context, scriptPath string) error {

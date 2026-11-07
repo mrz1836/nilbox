@@ -41,7 +41,7 @@ func TestFindAugmentsGUIPath(t *testing.T) {
 	_, err := exec.LookPath(fakeTool)
 	require.Error(t, err, "the minimal PATH must not already contain the fake tool")
 
-	got, err := Finder{Home: t.TempDir(), Extra: []string{"", extra}}.Find(fakeTool)
+	got, err := Search{Home: t.TempDir(), Extra: []string{"", extra}}.Find(fakeTool)
 	require.NoError(t, err)
 	assert.Equal(t, want, got)
 	assert.True(t, filepath.IsAbs(got))
@@ -59,7 +59,7 @@ func TestFindPrefersSearchPath(t *testing.T) {
 
 	t.Setenv("PATH", onPath)
 
-	got, err := Finder{Extra: []string{extra}}.Find(fakeTool)
+	got, err := Search{Extra: []string{extra}}.Find(fakeTool)
 	require.NoError(t, err)
 	assert.Equal(t, want, got)
 }
@@ -74,7 +74,7 @@ func TestFindHomeWellKnownDir(t *testing.T) {
 	home := t.TempDir()
 	want := writeExecutable(t, filepath.Join(home, ".local", "bin"))
 
-	got, err := Finder{Home: home}.Find(fakeTool)
+	got, err := Search{Home: home}.Find(fakeTool)
 	if runtime.GOOS == "darwin" {
 		require.NoError(t, err)
 		assert.Equal(t, want, got)
@@ -90,7 +90,7 @@ func TestFindNotFoundNamesProgramAndDirs(t *testing.T) {
 
 	extra := t.TempDir()
 
-	_, err := Finder{Extra: []string{extra}}.Find(fakeTool)
+	_, err := Search{Extra: []string{extra}}.Find(fakeTool)
 	require.ErrorIs(t, err, ErrNotFound)
 	assert.Contains(t, err.Error(), fakeTool)
 	assert.Contains(t, err.Error(), extra)
@@ -106,7 +106,7 @@ func TestFindSkipsNonExecutable(t *testing.T) {
 	extra := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(extra, fakeTool), []byte("data"), 0o600))
 
-	_, err := Finder{Extra: []string{extra}}.Find(fakeTool)
+	_, err := Search{Extra: []string{extra}}.Find(fakeTool)
 	require.ErrorIs(t, err, ErrNotFound)
 }
 
@@ -131,7 +131,7 @@ func TestWellKnownDirs(t *testing.T) {
 func TestExecRun(t *testing.T) {
 	testutil.RequireGit(t)
 
-	runner := Exec{Finder: Finder{}}
+	runner := Exec{Search: Search{}}
 
 	stdout, stderr, err := runner.Run(t.Context(), "git", "--version")
 	require.NoError(t, err)
@@ -165,7 +165,7 @@ func TestExecRunExitError(t *testing.T) {
 func TestExecRunNotFound(t *testing.T) {
 	t.Setenv("PATH", "/usr/bin:/bin")
 
-	_, _, err := Exec{Finder: Finder{Extra: []string{t.TempDir()}}}.Run(t.Context(), fakeTool)
+	_, _, err := Exec{Search: Search{Extra: []string{t.TempDir()}}}.Run(t.Context(), fakeTool)
 	require.ErrorIs(t, err, ErrNotFound)
 }
 

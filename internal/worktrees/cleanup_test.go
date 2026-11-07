@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/execpath"
-	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/testutil"
@@ -35,12 +34,12 @@ func mergedAt() time.Time { return time.Date(2026, 11, 6, 18, 0, 0, 0, time.UTC)
 // and records each call.
 type fakeGitHub struct {
 	mu     sync.Mutex
-	states map[string]github.ItemState
+	states map[string]ItemState
 	err    error
 	calls  [][]item.Ref
 }
 
-func (f *fakeGitHub) ItemStates(_ context.Context, refs []item.Ref) (map[string]github.ItemState, error) {
+func (f *fakeGitHub) ItemStates(_ context.Context, refs []item.Ref) (map[string]ItemState, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -50,9 +49,9 @@ func (f *fakeGitHub) ItemStates(_ context.Context, refs []item.Ref) (map[string]
 }
 
 // set records an item's state under acme-org/<name>.
-func (f *fakeGitHub) set(name string, number int, state github.ItemState) {
+func (f *fakeGitHub) set(name string, number int, state ItemState) {
 	if f.states == nil {
-		f.states = make(map[string]github.ItemState)
+		f.states = make(map[string]ItemState)
 	}
 
 	f.states[refKey("acme-org", name, number)] = state
@@ -127,7 +126,7 @@ func (e *env) linked(deps linkDeps) *Service {
 	cfg := Config{
 		Settings: fakeSettings{root: cloneRoot, auto: deps.auto},
 		Git:      execpath.Exec{},
-		Finder:   execpath.Finder{},
+		Finder:   execpath.Search{},
 		Home:     e.home,
 		Clock:    testutil.NewClock(listedAt()),
 		Logger:   slog.New(slog.DiscardHandler),
@@ -192,9 +191,9 @@ func pushed(t *testing.T, repo, branch, head string) {
 }
 
 // pr is a pull request's state on GitHub.
-func pr(state, head string) github.ItemState {
-	s := github.ItemState{PullRequest: true, Title: "Fix things", URL: "https://github.com/acme-org/example-repo/pull/1", State: state, HeadOID: head}
-	if state != github.StateOpen {
+func pr(state, head string) ItemState {
+	s := ItemState{PullRequest: true, Title: "Fix things", URL: "https://github.com/acme-org/example-repo/pull/1", State: state, HeadOID: head}
+	if state != ItemOpen {
 		s.ClosedAt = mergedAt()
 	}
 
@@ -202,9 +201,9 @@ func pr(state, head string) github.ItemState {
 }
 
 // closedIssue is a closed issue's state on GitHub.
-func closedIssue() github.ItemState {
-	return github.ItemState{
-		Title: "It breaks", URL: "https://github.com/acme-org/example-repo/issues/1", State: github.StateClosed,
+func closedIssue() ItemState {
+	return ItemState{
+		Title: "It breaks", URL: "https://github.com/acme-org/example-repo/issues/1", State: ItemClosed,
 		ClosedAt: mergedAt(),
 	}
 }
@@ -222,18 +221,18 @@ func TestListLinksAndStagesAgentWorktrees(t *testing.T) {
 
 	finished, finishedHead := agentWorktree(t, repo, "pr-1")
 	pushed(t, repo, "feat/one", finishedHead)
-	gh.set("example-repo", 1, pr(github.StateMerged, finishedHead))
+	gh.set("example-repo", 1, pr(ItemMerged, finishedHead))
 
 	unpushed, _ := agentWorktree(t, repo, "pr-2")
 
-	gh.set("example-repo", 2, pr(github.StateMerged, "0000000000000000000000000000000000000002"))
+	gh.set("example-repo", 2, pr(ItemMerged, "0000000000000000000000000000000000000002"))
 
 	prHead, prHeadOID := agentWorktree(t, repo, "pr-3")
-	gh.set("example-repo", 3, pr(github.StateMerged, prHeadOID))
+	gh.set("example-repo", 3, pr(ItemMerged, prHeadOID))
 
 	open, openHead := agentWorktree(t, repo, "pr-4")
 	pushed(t, repo, "feat/four", openHead)
-	gh.set("example-repo", 4, pr(github.StateOpen, openHead))
+	gh.set("example-repo", 4, pr(ItemOpen, openHead))
 
 	changed, changedHead := agentWorktree(t, repo, "issue-5")
 	pushed(t, repo, "feat/five", changedHead)
@@ -243,23 +242,23 @@ func TestListLinksAndStagesAgentWorktrees(t *testing.T) {
 	inUse, inUseHead := agentWorktree(t, repo, "pr-6")
 	pushed(t, repo, "feat/six", inUseHead)
 	lock(t, repo, inUse, "claude session pr-6 (pid "+strconv.Itoa(alive)+")")
-	gh.set("example-repo", 6, pr(github.StateMerged, inUseHead))
+	gh.set("example-repo", 6, pr(ItemMerged, inUseHead))
 
 	stale, staleHead := agentWorktree(t, repo, "pr-7")
 	pushed(t, repo, "feat/seven", staleHead)
 	lock(t, repo, stale, "claude session pr-7 (pid 999999)")
-	gh.set("example-repo", 7, pr(github.StateMerged, staleHead))
+	gh.set("example-repo", 7, pr(ItemMerged, staleHead))
 
 	byHand, byHandHead := agentWorktree(t, repo, "pr-8")
 	pushed(t, repo, "feat/eight", byHandHead)
 	lock(t, repo, byHand, "keep this")
-	gh.set("example-repo", 8, pr(github.StateMerged, byHandHead))
+	gh.set("example-repo", 8, pr(ItemMerged, byHandHead))
 
 	unknown, _ := agentWorktree(t, repo, "pr-9") // GitHub does not know it
 	named, _ := agentWorktree(t, repo, "bright-running-fox")
 	elsewhere := addWorktree(t, repo, filepath.Join(e.home, "wt", "pr-10"), "pr-10")
 
-	gh.set("example-repo", 10, pr(github.StateMerged, ""))
+	gh.set("example-repo", 10, pr(ItemMerged, ""))
 
 	svc := e.linked(linkDeps{gh: gh, procs: fakeProcesses{alive: {state: livenessAlive}}})
 
@@ -354,7 +353,7 @@ func TestListLinksByLaunchRecord(t *testing.T) {
 	pushed(t, repo, "feat/x", head)
 
 	gh := &fakeGitHub{}
-	gh.states = map[string]github.ItemState{refKey("upstream-org", "example-repo", 12): closedIssue()}
+	gh.states = map[string]ItemState{refKey("upstream-org", "example-repo", 12): closedIssue()}
 
 	record := launchOf(repo, "pr-3", item.KindIssue, 12)
 	record.Owner = "Upstream-Org"
@@ -387,10 +386,10 @@ func TestListPicksTheRightRemote(t *testing.T) {
 	upstream := func(n int) string { return refKey("upstream-org", "example-repo", n) }
 	origin := func(n int) string { return refKey("acme-org", "example-repo", n) }
 
-	gh := &fakeGitHub{states: map[string]github.ItemState{
-		origin(1):   pr(github.StateOpen, "other"),
-		upstream(1): pr(github.StateMerged, head),
-		origin(2):   pr(github.StateOpen, "x"),
+	gh := &fakeGitHub{states: map[string]ItemState{
+		origin(1):   pr(ItemOpen, "other"),
+		upstream(1): pr(ItemMerged, head),
+		origin(2):   pr(ItemOpen, "x"),
 		upstream(2): closedIssue(),
 	}}
 
@@ -470,7 +469,7 @@ func TestCleanUpRemovesAFinishedWorktreeAndItsBranch(t *testing.T) {
 	lock(t, repo, path, "claude session pr-184 (pid 999999 start Fri Nov  6 17:14:26 2026)")
 
 	gh := &fakeGitHub{}
-	gh.set("example-repo", 184, pr(github.StateMerged, head))
+	gh.set("example-repo", 184, pr(ItemMerged, head))
 
 	launches := &fakeLaunches{records: []worklog.Launch{launchOf(repo, "pr-184", item.KindPR, 184)}}
 	svc := e.linked(linkDeps{gh: gh, launches: launches})
@@ -497,7 +496,7 @@ func TestCleanUpKeepsABranchThatIsNotItsOwn(t *testing.T) {
 	pushed(t, repo, "feat/five", head)
 
 	gh := &fakeGitHub{}
-	gh.set("example-repo", 5, pr(github.StateMerged, head))
+	gh.set("example-repo", 5, pr(ItemMerged, head))
 
 	res, err := e.linked(linkDeps{gh: gh}).CleanUp(t.Context(), repo, path)
 	require.NoError(t, err)
@@ -514,26 +513,26 @@ func TestCleanUpRefusesWhatIsNotFinished(t *testing.T) {
 
 	open, openHead := agentWorktree(t, repo, "pr-1")
 	pushed(t, repo, "a", openHead)
-	gh.set("example-repo", 1, pr(github.StateOpen, openHead))
+	gh.set("example-repo", 1, pr(ItemOpen, openHead))
 
 	running, runningHead := agentWorktree(t, repo, "pr-2")
 	pushed(t, repo, "b", runningHead)
 	lock(t, repo, running, "claude session pr-2 (pid "+strconv.Itoa(alive)+")")
-	gh.set("example-repo", 2, pr(github.StateMerged, runningHead))
+	gh.set("example-repo", 2, pr(ItemMerged, runningHead))
 
 	unpushed, _ := agentWorktree(t, repo, "pr-3")
 
-	gh.set("example-repo", 3, pr(github.StateMerged, "elsewhere"))
+	gh.set("example-repo", 3, pr(ItemMerged, "elsewhere"))
 
 	changed, changedHead := agentWorktree(t, repo, "pr-4")
 	pushed(t, repo, "d", changedHead)
 	dirty(t, changed)
-	gh.set("example-repo", 4, pr(github.StateMerged, changedHead))
+	gh.set("example-repo", 4, pr(ItemMerged, changedHead))
 
 	byHand, byHandHead := agentWorktree(t, repo, "pr-6")
 	pushed(t, repo, "f", byHandHead)
 	lock(t, repo, byHand, "mine")
-	gh.set("example-repo", 6, pr(github.StateMerged, byHandHead))
+	gh.set("example-repo", 6, pr(ItemMerged, byHandHead))
 
 	plain, _ := agentWorktree(t, repo, "scratch")
 
@@ -652,7 +651,7 @@ func TestCleanUpFinished(t *testing.T) {
 
 	one, oneHead := agentWorktree(t, alpha, "pr-1")
 	pushed(t, alpha, "one", oneHead)
-	gh.set("alpha", 1, pr(github.StateMerged, oneHead))
+	gh.set("alpha", 1, pr(ItemMerged, oneHead))
 
 	two, twoHead := agentWorktree(t, beta, "issue-2")
 	pushed(t, beta, "two", twoHead)
@@ -660,7 +659,7 @@ func TestCleanUpFinished(t *testing.T) {
 
 	open, openHead := agentWorktree(t, beta, "pr-3")
 	pushed(t, beta, "three", openHead)
-	gh.set("beta", 3, pr(github.StateOpen, openHead))
+	gh.set("beta", 3, pr(ItemOpen, openHead))
 
 	svc := e.linked(linkDeps{gh: gh})
 

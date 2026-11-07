@@ -1,11 +1,11 @@
 // Package execpath finds the external programs the app runs (gh, git, claude) and runs them.
 //
 // An app started from the Finder or the Dock inherits launchd's minimal PATH, which lacks
-// Homebrew, ~/.local/bin, and other common install locations. Finder.Find therefore tries
+// Homebrew, ~/.local/bin, and other common install locations. Search.Find therefore tries
 // the inherited PATH first and then a short list of well-known directories for the current
-// OS. Exec runs a program as an argv, never through a shell, and every service that runs
-// a program takes it as a Runner, so tests can hand it a fake. ExitCode and GitMessage
-// read a failed program's outcome.
+// OS. Exec runs a program as an argv, never through a shell. Every service that finds a
+// program takes a Finder, and every service that runs one takes a Runner, so tests can
+// hand it a fake. ExitCode and GitMessage read a failed program's outcome.
 package execpath
 
 import (
@@ -22,8 +22,16 @@ import (
 // well-known directories.
 var ErrNotFound = errors.New("executable not found")
 
-// Finder resolves a program name to the absolute path of an executable.
-type Finder struct {
+// Finder resolves a program name to the absolute path of an executable. Search is the
+// app's.
+type Finder interface {
+	Find(name string) (string, error)
+}
+
+// Search finds programs on the inherited search path and in the well-known directories
+// where command-line tools are installed. Its zero value searches those without the
+// home-relative directories.
+type Search struct {
 	// Home is the user's home directory. Home-relative well-known directories are skipped
 	// when it is empty.
 	Home string
@@ -35,7 +43,7 @@ type Finder struct {
 // Find returns the absolute path of the named executable. It tries exec.LookPath(name)
 // first, then each extra and well-known directory in order, and returns ErrNotFound
 // naming the program and every directory searched when none has it.
-func (f Finder) Find(name string) (string, error) {
+func (f Search) Find(name string) (string, error) {
 	if path, err := exec.LookPath(name); err == nil {
 		return absolute(path)
 	}
@@ -51,7 +59,7 @@ func (f Finder) Find(name string) (string, error) {
 }
 
 // dirs returns the non-empty extra directories followed by the well-known ones.
-func (f Finder) dirs() []string {
+func (f Search) dirs() []string {
 	known := wellKnownDirs(f.Home)
 	dirs := make([]string, 0, len(f.Extra)+len(known))
 
@@ -71,9 +79,9 @@ type Runner interface {
 }
 
 // Exec runs programs as argv with exec.CommandContext. A name that is not an absolute
-// path is resolved with Finder first.
+// path is resolved with Search first.
 type Exec struct {
-	Finder Finder
+	Search Search
 }
 
 // Run runs name with args and returns what it wrote to stdout and stderr. The error is the
@@ -82,7 +90,7 @@ type Exec struct {
 func (r Exec) Run(ctx context.Context, name string, args ...string) (stdout, stderr []byte, err error) {
 	path := name
 	if !filepath.IsAbs(path) {
-		if path, err = r.Finder.Find(name); err != nil {
+		if path, err = r.Search.Find(name); err != nil {
 			return nil, nil, err
 		}
 	}

@@ -15,10 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/execpath"
-	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
-	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/worklog"
 )
@@ -42,17 +40,17 @@ func newSweepFixture(t *testing.T, e *env) *sweepFixture {
 	// Launched by the app, and its pull request merged: cleaned up.
 	f.launchedPR, head = agentWorktree(t, f.repo, "pr-1")
 	pushed(t, f.repo, "one", head)
-	f.gh.set("example-repo", 1, pr(github.StateMerged, "a different head"))
+	f.gh.set("example-repo", 1, pr(ItemMerged, "a different head"))
 	f.launches.records = append(f.launches.records, launchOf(f.repo, "pr-1", item.KindPR, 1))
 
 	// Not launched by the app, but HEAD is the merged pull request's head: cleaned up.
 	f.commitLinked, head = agentWorktree(t, f.repo, "pr-2")
-	f.gh.set("example-repo", 2, pr(github.StateMerged, head))
+	f.gh.set("example-repo", 2, pr(ItemMerged, head))
 
 	// Not launched, and linked by its name alone: finished, but left for the user.
 	f.nameOnly, head = agentWorktree(t, f.repo, "pr-3")
 	pushed(t, f.repo, "three", head)
-	f.gh.set("example-repo", 3, pr(github.StateMerged, "a different head"))
+	f.gh.set("example-repo", 3, pr(ItemMerged, "a different head"))
 
 	// An issue not launched by the app: left for the user.
 	f.unlaunchedIssue, head = agentWorktree(t, f.repo, "issue-4")
@@ -69,13 +67,13 @@ func newSweepFixture(t *testing.T, e *env) *sweepFixture {
 	f.changed, head = agentWorktree(t, f.repo, "pr-6")
 	pushed(t, f.repo, "six", head)
 	dirty(t, f.changed)
-	f.gh.set("example-repo", 6, pr(github.StateMerged, head))
+	f.gh.set("example-repo", 6, pr(ItemMerged, head))
 	f.launches.records = append(f.launches.records, launchOf(f.repo, "pr-6", item.KindPR, 6))
 
 	// Still open: nothing to do.
 	f.open, head = agentWorktree(t, f.repo, "pr-7")
 	pushed(t, f.repo, "seven", head)
-	f.gh.set("example-repo", 7, pr(github.StateOpen, head))
+	f.gh.set("example-repo", 7, pr(ItemOpen, head))
 
 	return f
 }
@@ -210,7 +208,7 @@ func TestSweepReportsWhatItCouldNotRemove(t *testing.T) {
 	repo := e.newGitHubRepo(t, "example-repo")
 	path, head := agentWorktree(t, repo, "pr-1")
 	gh := &fakeGitHub{}
-	gh.set("example-repo", 1, pr(github.StateMerged, head))
+	gh.set("example-repo", 1, pr(ItemMerged, head))
 
 	// git reports the worktree's commit as of the listing; a commit made by the time it
 	// is removed keeps it.
@@ -248,7 +246,7 @@ func TestSweepForgetsLaunchesWhoseWorktreeIsGone(t *testing.T) {
 	}}
 
 	gh := &fakeGitHub{}
-	gh.set("example-repo", 1, pr(github.StateOpen, head))
+	gh.set("example-repo", 1, pr(ItemOpen, head))
 
 	e.linked(linkDeps{gh: gh, launches: launches, auto: true}).Sweep(t.Context())
 
@@ -376,7 +374,7 @@ func TestSweeperRunsUntilCanceled(t *testing.T) {
 // panickingSettings panics when read.
 type panickingSettings struct{}
 
-func (panickingSettings) Get(context.Context) (settings.Settings, error) { panic("settings exploded") }
+func (panickingSettings) Get(context.Context) (SweepSettings, error) { panic("settings exploded") }
 
 func TestSweeperSurvivesAPanicAndLogsFailures(t *testing.T) {
 	var logs bytes.Buffer

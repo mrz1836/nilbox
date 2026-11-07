@@ -20,6 +20,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/launcher"
+	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/settings"
 )
@@ -132,7 +133,7 @@ func (r LaunchReport) Lines() []string {
 func RunLaunch(ctx context.Context, opts LaunchOptions) (LaunchReport, error) {
 	runner := deadlineRunner{inner: opts.Runner}
 	if opts.Runner == nil {
-		runner.inner = execpath.Exec{Finder: execpath.Finder{Home: opts.Home}}
+		runner.inner = execpath.Exec{Search: execpath.Search{Home: opts.Home}}
 	}
 
 	dir, err := os.MkdirTemp(opts.TempDir, brand.Slug+"-measure-")
@@ -149,7 +150,7 @@ func RunLaunch(ctx context.Context, opts LaunchOptions) (LaunchReport, error) {
 
 	defer fx.close()
 
-	agent, err := execpath.Finder{Home: opts.Home}.Find(agentBin)
+	agent, err := execpath.Search{Home: opts.Home}.Find(agentBin)
 	if err != nil {
 		return LaunchReport{}, fmt.Errorf("find the agent: %w", err)
 	}
@@ -443,11 +444,11 @@ func inClone(dir, clone string) bool {
 // process control the terminal: refused outright, or a permission dialog left unanswered
 // until the terminal driver gave up.
 func needsAutomation(err error) bool {
-	if errors.Is(err, launcher.ErrAutomationDenied) {
+	if errors.Is(err, terminal.ErrAutomationDenied) {
 		return true
 	}
 
-	return errors.Is(err, launcher.ErrTerminalOpen) && errors.Is(err, context.DeadlineExceeded)
+	return errors.Is(err, terminal.ErrTerminalOpen) && errors.Is(err, context.DeadlineExceeded)
 }
 
 // deadlineRunner adds the context's error to a program's failure once its context has

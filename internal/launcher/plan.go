@@ -4,10 +4,10 @@
 //
 //  1. BuildPlan turns an item, a profile, and a local clone into an OS-independent Plan:
 //     the working directory, the agent binary and its arguments, and the environment.
-//  2. A ScriptRenderer writes that plan as a script (POSIX sh today). The prompt is kept
-//     in its own file and read by the script at run time, so prompt text never appears
-//     on a command line and needs no shell quoting.
-//  3. A terminal driver opens the script in the user's terminal app.
+//  2. A terminal.ScriptRenderer writes that plan as a script (POSIX sh today). The prompt
+//     is kept in its own file and read by the script at run time, so prompt text never
+//     appears on a command line and needs no shell quoting.
+//  3. A terminal.Driver opens the script in the user's terminal app.
 //
 // Everything up to the terminal driver is pure and tested on every OS. The launcher
 // never runs a state-changing git command in the clone: worktree launches use the
@@ -19,13 +19,13 @@ import (
 	"fmt"
 	"maps"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/profiles"
 )
 
@@ -80,9 +80,6 @@ var (
 	// outside contributor's item can never be launched with more access than it allows.
 	ErrConflictingExtraArg = errors.New("extra argument conflicts with the launch permission policy")
 )
-
-// envKeyPattern is what an environment variable name must look like.
-var envKeyPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // permissionFlags returns the switches only resolvePermission may set.
 func permissionFlags() []string {
@@ -271,6 +268,13 @@ func worktreeArg(it Item, originIsItemRepo bool) string {
 	return item.WorktreeName(it.Kind, it.Number)
 }
 
+// script is what the plan's launch script runs, for a terminal.ScriptRenderer.
+func (p Plan) script() terminal.Script {
+	return terminal.Script{
+		Dir: p.Dir, Binary: p.Binary, Args: p.Args, Env: p.Env, Unset: p.Unset, PromptFile: p.PromptFile,
+	}
+}
+
 // worktreeDir is the name of the worktree directory the agent uses for the plan's
 // --worktree argument (the "#<n>" form becomes "pr-<n>"), or "" without a worktree.
 func (p Plan) worktreeDir() string {
@@ -400,7 +404,7 @@ func conflictsWithPermissions(arg string) bool {
 func planEnv(p profiles.Profile) (map[string]string, []string, error) {
 	env := make(map[string]string, len(p.Env)+1)
 	for key, value := range p.Env {
-		if !envKeyPattern.MatchString(key) {
+		if !terminal.ValidEnvName(key) {
 			return nil, nil, fmt.Errorf("%w: %q", ErrInvalidEnvKey, key)
 		}
 

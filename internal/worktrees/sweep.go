@@ -90,7 +90,7 @@ func (s *Service) sweep(ctx context.Context) SweepReport {
 		return report
 	}
 
-	report.Enabled = prefs.WorktreeAutoCleanup
+	report.Enabled = prefs.AutoCleanup
 	s.sweepAgentWork(ctx, g, root, &report)
 
 	// Counted last, so the worktrees the sweep removed are not.

@@ -24,6 +24,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
+	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
@@ -43,7 +44,23 @@ var (
 	errFakeProfiles  = errors.New("profiles unreadable")
 	errFakePrompts   = errors.New("prompts unreadable")
 	errFakeDefaults  = errors.New("launch defaults unreadable")
+	errFakeOpen      = errors.New("fake open failed")
 )
+
+// fakeDriver is a terminal driver that records the scripts it was asked to open.
+type fakeDriver struct {
+	id     string
+	err    error
+	opened []string
+}
+
+func (d *fakeDriver) ID() string { return d.id }
+
+func (d *fakeDriver) Open(_ context.Context, scriptPath string) error {
+	d.opened = append(d.opened, scriptPath)
+
+	return d.err
+}
 
 // fakeGit answers the read-only remote lookup from a map of clone directory to
 // `git config --get-regexp` output, and refuses every other git command.
@@ -130,8 +147,44 @@ func (c *countingPrompts) count() int {
 // failingSettings cannot read the settings.
 type failingSettings struct{}
 
-func (failingSettings) Get(context.Context) (settings.Settings, error) {
-	return settings.Settings{}, errFakeSettings
+func (failingSettings) Get(context.Context) (LaunchSettings, error) {
+	return LaunchSettings{}, errFakeSettings
+}
+
+// launchSettings reads the launch settings from the settings service, as the app does.
+type launchSettings struct {
+	prefs *settings.Service
+}
+
+func (s launchSettings) Get(ctx context.Context) (LaunchSettings, error) {
+	all, err := s.prefs.Get(ctx)
+	if err != nil {
+		return LaunchSettings{}, err
+	}
+
+	return LaunchSettings{
+		DefaultProfile: all.DefaultProfile, WorktreeDefault: all.WorktreeDefault, Terminal: all.Terminal,
+		CloneRoot: all.CloneRoot, TrustedBots: all.TrustedBots,
+	}, nil
+}
+
+// inboxItems reads the launch items from the inbox's store, as the app does.
+type inboxItems struct {
+	*inbox.Store
+}
+
+func (s inboxItems) LaunchItems(ctx context.Context, ids []int64) ([]StoredItem, error) {
+	stored, err := s.Store.LaunchItems(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]StoredItem, 0, len(stored))
+	for _, it := range stored {
+		items = append(items, StoredItem(it))
+	}
+
+	return items, nil
 }
 
 // failingProfiles cannot read the stored profiles.
@@ -178,8 +231,8 @@ func newLaunchHarness(t *testing.T) *launchHarness {
 	h := &launchHarness{
 		home:     filepath.Join(tmp, "home"),
 		paths:    appdata.NewPaths(filepath.Join(tmp, "data")),
-		iterm:    &fakeDriver{id: settings.TerminalITerm2},
-		terminal: &fakeDriver{id: settings.TerminalApp},
+		iterm:    &fakeDriver{id: terminal.ITerm2},
+		terminal: &fakeDriver{id: terminal.TerminalApp},
 	}
 	h.root = filepath.Join(h.home, "projects")
 	h.clone = filepath.Join(h.root, "example-repo")
@@ -199,14 +252,14 @@ func newLaunchHarness(t *testing.T) *launchHarness {
 
 	h.settings = settings.NewService(pool, h.profiles, h.home)
 	h.cfg = Config{
-		Items:    h.items,
-		Settings: h.settings,
+		Items:    inboxItems{Store: h.items},
+		Settings: launchSettings{prefs: h.settings},
 		Profiles: h.profiles,
 		Prompts:  h.prompts,
 		Defaults: h.defaults,
 		Git:      h.git,
 		Finder:   testutil.Finder{Paths: map[string]string{claudeBin: filepath.Join(tmp, "bin", "claude")}},
-		Registry: NewRegistry(h.iterm, h.terminal),
+		Registry: terminal.NewRegistry(h.iterm, h.terminal),
 		Paths:    h.paths,
 		Home:     h.home,
 		Clock:    testutil.NewClock(fixedNow()),
@@ -675,8 +728,8 @@ func TestLaunchFailures(t *testing.T) {
 		},
 		{
 			name:    "no terminal support on this OS",
-			mutate:  func(_ *testing.T, h *launchHarness) { h.cfg.Registry = NewRegistry() },
-			wantErr: ErrUnsupportedOS,
+			mutate:  func(_ *testing.T, h *launchHarness) { h.cfg.Registry = terminal.NewRegistry() },
+			wantErr: terminal.ErrUnsupportedOS,
 		},
 		{
 			name:    "terminal fails to open",

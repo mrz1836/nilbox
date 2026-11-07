@@ -7,8 +7,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/mrz1836/nilbox/internal/inbox"
 )
 
 var (
@@ -25,7 +23,7 @@ type failingItems struct {
 	launchErr, viewerErr, rememberErr error
 }
 
-func (f failingItems) LaunchItems(ctx context.Context, ids []int64) ([]inbox.LaunchItem, error) {
+func (f failingItems) LaunchItems(ctx context.Context, ids []int64) ([]StoredItem, error) {
 	if f.launchErr != nil {
 		return nil, f.launchErr
 	}
@@ -53,7 +51,7 @@ func TestLaunchesFailWhenTheItemsCannotBeRead(t *testing.T) {
 	t.Parallel()
 
 	h := newLaunchHarness(t)
-	h.cfg.Items = failingItems{ItemStore: h.items, launchErr: errFakeItems}
+	h.cfg.Items = failingItems{ItemStore: h.cfg.Items, launchErr: errFakeItems}
 	svc := h.service()
 
 	_, err := svc.Resolve(t.Context(), LaunchRequest{ItemID: h.trustedPR})
@@ -76,7 +74,7 @@ func TestLaunchesFailWhenTheSignedInAccountCannotBeRead(t *testing.T) {
 	t.Parallel()
 
 	h := newLaunchHarness(t)
-	h.cfg.Items = failingItems{ItemStore: h.items, viewerErr: errFakeViewer}
+	h.cfg.Items = failingItems{ItemStore: h.cfg.Items, viewerErr: errFakeViewer}
 	svc := h.service()
 
 	_, err := svc.Launch(t.Context(), LaunchRequest{ItemID: h.trustedPR})
@@ -92,7 +90,7 @@ func TestALaunchGoesOnWhenItsCloneCannotBeRemembered(t *testing.T) {
 	t.Parallel()
 
 	h := newLaunchHarness(t)
-	h.cfg.Items = failingItems{ItemStore: h.items, rememberErr: errFakeRemember}
+	h.cfg.Items = failingItems{ItemStore: h.cfg.Items, rememberErr: errFakeRemember}
 
 	res, _ := h.launch(t, LaunchRequest{ItemID: h.trustedPR})
 	assert.Equal(t, "~/projects/example-repo", res.ClonePath)

@@ -1,4 +1,12 @@
-package launcher
+// Package terminal opens launch scripts in the user's terminal app. A ScriptRenderer
+// writes a Script (the directory, environment, prompt file, and agent command a launch
+// runs) as a script the terminal can run, and a Driver opens that script in one terminal
+// app. The Registry holds the drivers for this OS, under the IDs the terminal setting
+// stores.
+//
+// The renderers and the scripts the drivers send are pure and tested on every OS; only
+// running a terminal program is per OS, and an OS without drivers registers none.
+package terminal
 
 import (
 	"context"
@@ -12,6 +20,15 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/textutil"
+)
+
+// The terminals launches can open in, by the ID the terminal setting stores.
+const (
+	// ITerm2 opens launches in a new iTerm2 tab or window.
+	ITerm2 = "iterm2"
+
+	// TerminalApp opens launches in a new Terminal.app window.
+	TerminalApp = "terminal"
 )
 
 // maxErrDetail caps how much of a terminal program's error output an error message carries.
@@ -43,7 +60,7 @@ var (
 
 // Driver opens a launch script in one terminal app.
 type Driver interface {
-	// ID is the terminal's settings value, such as "iterm2".
+	// ID is the terminal's settings value, such as ITerm2.
 	ID() string
 
 	// Open runs the script at scriptPath in a new tab or window of the terminal.

@@ -1,8 +1,7 @@
-package launcher
+package terminal
 
 import (
 	"context"
-	"errors"
 	"os/exec"
 	"testing"
 
@@ -10,22 +9,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var errFakeOpen = errors.New("fake open failed")
-
-// fakeDriver records the scripts it was asked to open.
+// fakeDriver is a driver registered under id that opens nothing.
 type fakeDriver struct {
-	id     string
-	err    error
-	opened []string
+	id string
 }
 
 func (d *fakeDriver) ID() string { return d.id }
 
-func (d *fakeDriver) Open(_ context.Context, scriptPath string) error {
-	d.opened = append(d.opened, scriptPath)
-
-	return d.err
-}
+func (*fakeDriver) Open(context.Context, string) error { return nil }
 
 func TestUnsupportedOS(t *testing.T) {
 	r := NewRegistry()

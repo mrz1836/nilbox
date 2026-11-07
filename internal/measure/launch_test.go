@@ -18,6 +18,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/launcher"
+	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -122,8 +123,8 @@ func TestLaunchTimerAutomation(t *testing.T) {
 		name string
 		err  error
 	}{
-		{name: "refused", err: fmt.Errorf("%w (iTerm2)", launcher.ErrAutomationDenied)},
-		{name: "dialog never answered", err: fmt.Errorf("%w iTerm2: %w", launcher.ErrTerminalOpen, context.DeadlineExceeded)},
+		{name: "refused", err: fmt.Errorf("%w (iTerm2)", terminal.ErrAutomationDenied)},
+		{name: "dialog never answered", err: fmt.Errorf("%w iTerm2: %w", terminal.ErrTerminalOpen, context.DeadlineExceeded)},
 	}
 
 	for _, tt := range tests {
@@ -146,7 +147,7 @@ func TestLaunchTimerErrors(t *testing.T) {
 
 	t.Run("launch fails", func(t *testing.T) {
 		launch := func(context.Context) (launcher.LaunchResult, error) {
-			return launcher.LaunchResult{}, fmt.Errorf("%w iTerm2: %w", launcher.ErrTerminalOpen, errTerminal)
+			return launcher.LaunchResult{}, fmt.Errorf("%w iTerm2: %w", terminal.ErrTerminalOpen, errTerminal)
 		}
 
 		_, err := newTimer(&fakeProbe{pids: [][]int{{}}}, clone, launch).run(t.Context())
@@ -404,7 +405,7 @@ func TestRunLaunch(t *testing.T) {
 	assert.Empty(t, entries, "the scratch clone and data directory are deleted")
 
 	if runtime.GOOS != "darwin" {
-		require.ErrorIs(t, err, launcher.ErrUnsupportedOS)
+		require.ErrorIs(t, err, terminal.ErrUnsupportedOS)
 
 		return
 	}

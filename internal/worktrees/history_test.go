@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/worklog"
@@ -42,7 +41,7 @@ func TestCleanUpsAreRecorded(t *testing.T) {
 
 	byHand, byHandHead := agentWorktree(t, repo, "pr-1")
 	pushed(t, repo, "one", byHandHead)
-	gh.set("example-repo", 1, pr(github.StateMerged, byHandHead))
+	gh.set("example-repo", 1, pr(ItemMerged, byHandHead))
 
 	_, autoHead := agentWorktree(t, repo, "issue-2")
 	pushed(t, repo, "two", autoHead)
@@ -112,7 +111,7 @@ func TestHistoryFailuresAndAbsence(t *testing.T) {
 	pushed(t, repo, "one", head)
 
 	gh := &fakeGitHub{}
-	gh.set("example-repo", 1, pr(github.StateMerged, head))
+	gh.set("example-repo", 1, pr(ItemMerged, head))
 
 	svc := e.linked(linkDeps{gh: gh, history: failingHistory{}})
 

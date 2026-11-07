@@ -13,6 +13,12 @@
 // file that touches another owner's table, no table without exactly one owner, and no
 // generated query file from a sqlc version other than the pinned one.
 //
+// The boundary guard keeps package dependencies cut, as go list reports them for the
+// macOS and the Linux build: settings, the launcher, and the worktree service never
+// depend on the inbox or the GitHub client, and the launcher and the worktree service
+// read their settings through their own narrow interfaces rather than the settings
+// package.
+//
 // One guard is personal: a contributor can list their own private names (employers,
 // clients, private organizations and repositories) in the clone's git directory, at
 // .git/info/private-terms, and the guard fails wherever one appears in a file, the branch

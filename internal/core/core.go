@@ -19,9 +19,9 @@ import (
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
-	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/launcher"
+	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/profiles"
@@ -83,8 +83,8 @@ type Options struct {
 
 	// Runner runs external programs: the GitHub token source, the clone scan, the
 	// confirmed clone of a missing repository, the terminal drivers, and the worktree
-	// service all run theirs through it. It defaults to an execpath.Exec whose finder
-	// searches the well-known directories under Home.
+	// service all run theirs through it. It defaults to an execpath.Exec whose search
+	// covers the well-known directories under Home.
 	Runner execpath.Runner
 
 	// Logger receives scheduler and timing records. It defaults to slog.Default().
@@ -236,11 +236,11 @@ func dataReset(ctx context.Context, reset *store.Reset, home string, logger *slo
 // assemble builds every service over the open database's connection pool. reset, when
 // set, tells the window the database was set aside at startup.
 func assemble(pool *sql.DB, reset *appinfo.DataReset, opts Options, logger *slog.Logger) *Core {
-	finder := execpath.Finder{Home: opts.Home}
+	search := execpath.Search{Home: opts.Home}
 
 	runner := opts.Runner
 	if runner == nil {
-		runner = execpath.Exec{Finder: finder}
+		runner = execpath.Exec{Search: search}
 	}
 
 	profileStore := profiles.NewStore(pool, opts.Clock)
@@ -249,7 +249,7 @@ func assemble(pool *sql.DB, reset *appinfo.DataReset, opts Options, logger *slog
 	inboxStore := inbox.NewStore(pool, opts.Clock)
 	prefs := settings.NewService(pool, profileStore, opts.Home, settings.WithClock(opts.Clock),
 		settings.WithThemeNotifier(opts.ThemeNotifier), settings.WithMenuBarNotifier(opts.MenuBarNotifier))
-	tokens := github.NewTokenSource(runner, finder)
+	tokens := github.NewTokenSource(runner, search)
 	client := github.NewClient(opts.Version)
 	workLog := worklog.New(pool)
 
@@ -269,15 +269,15 @@ func assemble(pool *sql.DB, reset *appinfo.DataReset, opts Options, logger *slog
 	recorder := timing.NewRecorder(timing.Config{Logger: logger, LogsDir: opts.Paths.Logs})
 
 	launch := launcher.NewService(launcher.Config{
-		Items:    inboxStore,
-		Settings: prefs,
+		Items:    launchItems{Store: inboxStore},
+		Settings: settingsView[launcher.LaunchSettings]{settings: prefs, part: launchSettings},
 		Profiles: profileStore,
 		Prompts:  promptStore,
 		Defaults: defaultsStore,
 		Git:      runner,
 		GH:       runner,
-		Finder:   finder,
-		Registry: launcher.DefaultRegistry(runner),
+		Finder:   search,
+		Registry: terminal.DefaultRegistry(runner),
 		Paths:    opts.Paths,
 		Home:     opts.Home,
 		Clock:    opts.Clock,
@@ -298,9 +298,9 @@ func assemble(pool *sql.DB, reset *appinfo.DataReset, opts Options, logger *slog
 		Inbox:    inboxSvc,
 		Launcher: launch,
 		Worktrees: worktrees.NewService(worktrees.Config{
-			Settings: prefs,
+			Settings: settingsView[worktrees.SweepSettings]{settings: prefs, part: sweepSettings},
 			Git:      runner,
-			Finder:   finder,
+			Finder:   search,
 			Home:     opts.Home,
 			Clock:    opts.Clock,
 			GitHub:   itemStates{tokens: tokens, client: client},
@@ -322,21 +322,4 @@ func assemble(pool *sql.DB, reset *appinfo.DataReset, opts Options, logger *slog
 		Scheduler:    inbox.NewScheduler(inboxSvc, logger),
 		Timing:       recorder,
 	}
-}
-
-// itemStates reads the state of the pull requests and issues worktrees are linked to,
-// with the GitHub CLI's token, for the worktree service.
-type itemStates struct {
-	tokens *github.TokenSource
-	client *github.Client
-}
-
-// ItemStates asks GitHub about refs.
-func (s itemStates) ItemStates(ctx context.Context, refs []item.Ref) (map[string]github.ItemState, error) {
-	tok, err := s.tokens.Token(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	return s.client.FetchItemStates(ctx, tok, refs)
 }

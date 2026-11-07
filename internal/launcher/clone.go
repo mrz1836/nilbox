@@ -15,8 +15,14 @@ import (
 	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
-// ghBin is the command the GitHub CLI runs as.
-const ghBin = "gh"
+const (
+	// ghBin is the command the GitHub CLI runs as.
+	ghBin = "gh"
+
+	// maxErrDetail caps how much of the GitHub CLI's error output a failed clone's error
+	// carries.
+	maxErrDetail = 200
+)
 
 var (
 	// ErrCloneTargetExists is returned when the directory a clone would be created in

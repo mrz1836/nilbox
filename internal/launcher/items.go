@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/repo"
@@ -21,9 +20,55 @@ type repoRef struct {
 	localPath string
 }
 
+// StoredItem is a stored item as a launch reads it: the item, its repository with the
+// clone last remembered for it, and the details a prompt can name, which are zero until
+// a refresh has read them. The pull request fields are zero, or "", for an issue.
+//
+// Its fields match the inbox's own record of an item one for one, so the app converts
+// one to the other directly.
+type StoredItem struct {
+	ID     int64
+	Kind   item.Kind
+	Number int
+	URL    string
+	Title  string
+
+	// HeadRef is a pull request's head branch.
+	HeadRef string
+
+	AuthorLogin       string
+	AuthorType        string
+	AuthorAssociation string
+	IsCrossRepository bool
+	IsDraft           bool
+
+	// RepoID, Owner, and Name are the item's repository.
+	RepoID int64
+	Owner  string
+	Name   string
+
+	// LocalPath is the clone last remembered for the repository, or "".
+	LocalPath     string
+	DefaultBranch string
+
+	// Labels names the item's labels, in GitHub's order.
+	Labels []string
+
+	Additions    int
+	Deletions    int
+	ChangedFiles int
+	Commits      int
+
+	// Mergeable, ChecksState, and ReviewDecision are GitHub's words, as a refresh read
+	// them.
+	Mergeable      string
+	ChecksState    string
+	ReviewDecision string
+}
+
 // launchItemRow is a stored item as a launch reads it.
 type launchItemRow struct {
-	inbox.LaunchItem
+	StoredItem
 }
 
 // loadItem reads one item, or item.ErrNotFound.
@@ -49,7 +94,7 @@ func (s *Service) loadItems(ctx context.Context, ids []int64) ([]launchItemRow, 
 
 	rows := make([]launchItemRow, 0, len(items))
 	for _, it := range items {
-		rows = append(rows, launchItemRow{LaunchItem: it})
+		rows = append(rows, launchItemRow{StoredItem: it})
 	}
 
 	return rows, nil

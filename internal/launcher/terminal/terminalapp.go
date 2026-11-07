@@ -1,4 +1,4 @@
-package launcher
+package terminal
 
 // appTerminal names Terminal.app, both for `open -a` and in error messages.
 const appTerminal = "Terminal"

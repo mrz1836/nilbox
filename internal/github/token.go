@@ -36,11 +36,6 @@ var (
 	ErrNotLoggedIn = errors.New("the GitHub CLI is not logged in to github.com: run gh auth login")
 )
 
-// Finder resolves a program name to the absolute path of an executable.
-type Finder interface {
-	Find(name string) (string, error)
-}
-
 // Token is a GitHub API token. Its value is only reachable through Reveal; printing,
 // logging, or encoding a Token always yields [redacted].
 //
@@ -98,11 +93,11 @@ func (Token) LogValue() slog.Value {
 // TokenSource borrows the GitHub CLI's token for github.com.
 type TokenSource struct {
 	runner execpath.Runner
-	finder Finder
+	finder execpath.Finder
 }
 
 // NewTokenSource returns a TokenSource that finds gh with finder and runs it with runner.
-func NewTokenSource(runner execpath.Runner, finder Finder) *TokenSource {
+func NewTokenSource(runner execpath.Runner, finder execpath.Finder) *TokenSource {
 	return &TokenSource{runner: runner, finder: finder}
 }
 

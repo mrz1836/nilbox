@@ -15,12 +15,10 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/execpath"
-	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/repo"
-	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/worklog"
 )
 
@@ -110,22 +108,48 @@ func (e *RefusedError) Is(target error) bool {
 	return target == ErrRemovalRefused
 }
 
-// SettingsReader reads the user's preferences; the clone root comes from them.
-// *settings.Service implements it.
+// SweepSettings is the part of the user's preferences the worktree service reads. Every
+// field is a plain value.
+type SweepSettings struct {
+	// CloneRoot is the directory whose children are the clones, as entered, e.g.
+	// "~/projects".
+	CloneRoot string
+
+	// AutoCleanup lets the automatic sweep clean up a finished worktree once its pull
+	// request merges or its issue closes.
+	AutoCleanup bool
+}
+
+// SettingsReader reads the sweep settings as they are now, so every listing and sweep
+// sees the user's latest choices. The app adapts the settings service to it.
 type SettingsReader interface {
-	Get(ctx context.Context) (settings.Settings, error)
+	Get(ctx context.Context) (SweepSettings, error)
 }
 
-// Finder resolves a program name to an executable's absolute path. execpath.Finder
-// implements it.
-type Finder interface {
-	Find(name string) (string, error)
+// ItemState is what GitHub says about a pull request or issue as of now.
+type ItemState struct {
+	// PullRequest reports a pull request; false is an issue.
+	PullRequest bool
+
+	Title string
+	URL   string
+
+	// State is ItemOpen, ItemMerged, or ItemClosed; any other value reads as ItemOpen.
+	State string
+
+	// ClosedAt is when the item was merged or closed, or zero while it is open.
+	ClosedAt time.Time
+
+	// HeadOID is a pull request's head commit SHA; "" for an issue.
+	HeadOID string
 }
 
-// GitHub reads the current state of pull requests and issues. A GitHub CLI token and a
-// github.Client implement it in the app.
+// GitHub reads the current state of pull requests and issues. The app adapts the GitHub
+// client to it, with the GitHub CLI's token.
 type GitHub interface {
-	ItemStates(ctx context.Context, refs []item.Ref) (map[string]github.ItemState, error)
+	// ItemStates returns the state of each item in refs that GitHub knows, keyed by the
+	// ref's Key.
+	ItemStates(ctx context.Context, refs []item.Ref) (map[string]ItemState, error)
 }
 
 // Launches reads and prunes the record of the worktrees the app launched sessions in.
@@ -151,7 +175,7 @@ type Notifier interface {
 // Config holds a Service's dependencies. Settings and Git are required; the rest are
 // optional.
 type Config struct {
-	// Settings supplies the clone root.
+	// Settings supplies the clone root and whether the sweep cleans up on its own.
 	Settings SettingsReader
 
 	// Git runs git argv; it also reads remotes during the clone-root scan.
@@ -159,7 +183,7 @@ type Config struct {
 
 	// Finder resolves the git binary up front, so a missing git fails with a clear
 	// error. Without it, Git resolves "git" itself.
-	Finder Finder
+	Finder execpath.Finder
 
 	// Home is the user's home directory; it expands a ~ clone root and shortens paths.
 	Home string
@@ -188,7 +212,7 @@ type Config struct {
 type Service struct {
 	settings SettingsReader
 	run      execpath.Runner
-	finder   Finder
+	finder   execpath.Finder
 	home     string
 	realHome string
 	clock    clock.Clock
@@ -430,20 +454,20 @@ func (s *Service) tally(snap *Snapshot) {
 }
 
 // prepare resolves git, the preferences, and the clone root.
-func (s *Service) prepare(ctx context.Context) (git, string, settings.Settings, error) {
+func (s *Service) prepare(ctx context.Context) (git, string, SweepSettings, error) {
 	g, err := s.git()
 	if err != nil {
-		return git{}, "", settings.Settings{}, err
+		return git{}, "", SweepSettings{}, err
 	}
 
 	prefs, err := s.settings.Get(ctx)
 	if err != nil {
-		return git{}, "", settings.Settings{}, err
+		return git{}, "", SweepSettings{}, err
 	}
 
 	root, err := paths.ExpandHome(prefs.CloneRoot, s.home)
 	if err != nil {
-		return git{}, "", settings.Settings{}, fmt.Errorf("clone root: %w", err)
+		return git{}, "", SweepSettings{}, fmt.Errorf("clone root: %w", err)
 	}
 
 	return g, root, prefs, nil

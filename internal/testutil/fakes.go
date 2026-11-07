@@ -57,7 +57,7 @@ func (r *Runner) Calls() [][]string {
 	return calls
 }
 
-// Finder is a fake program finder: it resolves names without looking at the disk.
+// Finder is a fake execpath.Finder: it resolves names without looking at the disk.
 type Finder struct {
 	// Path is what every name resolves to when Paths is nil.
 	Path string

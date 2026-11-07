@@ -14,14 +14,13 @@ import (
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/execpath"
-	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
+	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/sensitive"
-	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/worklog"
 	"github.com/mrz1836/nilbox/internal/workspacetrust"
@@ -32,22 +31,45 @@ const claudeBin = "claude"
 
 // ItemStore reads the stored inbox items a launch is for, with their repositories and
 // details, names the signed-in account, and remembers the clone each repository resolved
-// to. *inbox.Store implements it.
+// to. The app adapts the inbox's store to it.
 type ItemStore interface {
-	LaunchItems(ctx context.Context, ids []int64) ([]inbox.LaunchItem, error)
+	// LaunchItems returns the stored items among ids, by id, leaving out any id with no
+	// stored item.
+	LaunchItems(ctx context.Context, ids []int64) ([]StoredItem, error)
+
+	// ViewerLogin returns the signed-in account's login, or "" before the first refresh.
 	ViewerLogin(ctx context.Context) (string, error)
+
+	// RememberClone records path as the local clone of the repository with repoID.
 	RememberClone(ctx context.Context, repoID int64, path string) error
 }
 
-// SettingsReader reads the user's preferences. *settings.Service implements it.
-type SettingsReader interface {
-	Get(ctx context.Context) (settings.Settings, error)
+// LaunchSettings is the part of the user's preferences a launch reads. Every field is a
+// plain value.
+type LaunchSettings struct {
+	// DefaultProfile is the profile a launch runs with when nothing more specific names
+	// one.
+	DefaultProfile string
+
+	// WorktreeDefault starts a launch in a worktree when nothing more specific decides.
+	WorktreeDefault bool
+
+	// Terminal is the ID of the terminal a launch opens in, such as terminal.ITerm2.
+	Terminal string
+
+	// CloneRoot is the directory whose children are the user's local clones, as entered,
+	// e.g. "~/projects".
+	CloneRoot string
+
+	// TrustedBots lists the bots whose items are trusted like a collaborator's (see the
+	// trust package).
+	TrustedBots []string
 }
 
-// Finder resolves a program name to an executable's absolute path. execpath.Finder
-// implements it.
-type Finder interface {
-	Find(name string) (string, error)
+// SettingsReader reads the launch settings as they are now, so every launch sees the
+// user's latest choices. The app adapts the settings service to it.
+type SettingsReader interface {
+	Get(ctx context.Context) (LaunchSettings, error)
 }
 
 // ProfileReader reads the stored agent profiles, the default first and the rest by name.
@@ -80,7 +102,8 @@ type Config struct {
 	// repository's clone.
 	Items ItemStore
 
-	// Settings reads the default profile, worktree default, terminal, and clone root.
+	// Settings reads the default profile, worktree default, terminal, clone root, and
+	// trusted bots.
 	Settings SettingsReader
 
 	// Profiles reads the profiles a launch runs with.
@@ -101,10 +124,10 @@ type Config struct {
 	GH execpath.Runner
 
 	// Finder finds the agent binary.
-	Finder Finder
+	Finder execpath.Finder
 
 	// Registry holds the terminal drivers for this OS.
-	Registry Registry
+	Registry terminal.Registry
 
 	// Paths is where launch scripts and prompt files are written.
 	Paths appdata.Paths
@@ -226,8 +249,8 @@ type Service struct {
 	defaults DefaultsReader
 	git      execpath.Runner
 	gh       execpath.Runner
-	finder   Finder
-	registry Registry
+	finder   execpath.Finder
+	registry terminal.Registry
 	paths    appdata.Paths
 	home     string
 	clock    clock.Clock
@@ -398,7 +421,7 @@ type planned struct {
 	plan   Plan
 	prompt string
 	clone  Clone
-	driver Driver
+	driver terminal.Driver
 
 	// check is the pull request's file check, or nil when its files are not checked.
 	check *sensitive.Check

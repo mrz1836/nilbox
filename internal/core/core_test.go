@@ -448,7 +448,7 @@ func TestWorktreeItemStatesBorrowTheToken(t *testing.T) {
 		Runner: runner,
 	})
 
-	states := itemStates{tokens: github.NewTokenSource(runner, execpath.Finder{Home: testutil.ClaudeHome(t)}), client: github.NewClient("test")}
+	states := itemStates{tokens: github.NewTokenSource(runner, execpath.Search{Home: testutil.ClaudeHome(t)}), client: github.NewClient("test")}
 
 	// The token is borrowed through the injected runner, which runs nothing, so no
 	// request is made.

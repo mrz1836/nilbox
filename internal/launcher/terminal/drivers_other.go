@@ -1,6 +1,6 @@
 //go:build !darwin
 
-package launcher
+package terminal
 
 import "github.com/mrz1836/nilbox/internal/execpath"
 

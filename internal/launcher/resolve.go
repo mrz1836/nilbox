@@ -12,7 +12,6 @@ import (
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/repo"
-	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
@@ -112,7 +111,7 @@ type Resolution struct {
 // world is everything resolution reads besides the item: the app's settings, the prompt
 // library, the profiles, and the launch defaults.
 type world struct {
-	settings settings.Settings
+	settings LaunchSettings
 	defaults prompts.DefaultPrompts
 	prompts  map[int64]prompts.Prompt
 	profiles map[string]profiles.Profile
