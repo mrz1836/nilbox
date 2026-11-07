@@ -3,7 +3,6 @@ package worktrees
 import (
 	"context"
 	"errors"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,7 +11,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/cleanuplog"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/launchlog"
-	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 var errFakeHistory = errors.New("fake: history unavailable")
@@ -21,11 +20,7 @@ var errFakeHistory = errors.New("fake: history unavailable")
 func openHistory(t *testing.T) *cleanuplog.Store {
 	t.Helper()
 
-	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "app.db"))
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = store.Close(db) })
-
-	return cleanuplog.NewStore(db)
+	return cleanuplog.NewStore(testutil.DB(t))
 }
 
 // failingHistory fails every call.

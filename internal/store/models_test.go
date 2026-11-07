@@ -1,7 +1,6 @@
 package store_test
 
 import (
-	"path/filepath"
 	"reflect"
 	"slices"
 	"sort"
@@ -23,6 +22,7 @@ import (
 	promptsmodel "github.com/mrz1836/nilbox/internal/prompts/model"
 	settingsmodel "github.com/mrz1836/nilbox/internal/settings/model"
 	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // migratedTables lists the application tables (everything but SQLite internals and the
@@ -56,7 +56,7 @@ func tableColumns(t *testing.T, db *gorm.DB, table string) []string {
 }
 
 func TestModelsMatchMigratedSchema(t *testing.T) {
-	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	db := testutil.DB(t)
 
 	modelTables := make(map[string]bool)
 
@@ -101,7 +101,7 @@ func TestAllModelsAggregatesBoundedContexts(t *testing.T) {
 }
 
 func TestModelsRoundTrip(t *testing.T) {
-	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	db := testutil.DB(t)
 	at := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
 
 	account := inboxmodel.Account{Login: "octo-user"}
@@ -202,7 +202,7 @@ func TestModelsRoundTrip(t *testing.T) {
 }
 
 func TestSchemaRejectsInvalidRows(t *testing.T) {
-	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	db := testutil.DB(t)
 
 	account := inboxmodel.Account{Login: "octo-user"}
 	require.NoError(t, db.Create(&account).Error)
@@ -262,7 +262,7 @@ func TestSchemaRejectsInvalidRows(t *testing.T) {
 }
 
 func TestPromptsAndLaunchDefaultsRoundTrip(t *testing.T) {
-	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	db := testutil.DB(t)
 	on, off := true, false
 
 	prompt := promptsmodel.Prompt{
@@ -300,7 +300,7 @@ func TestPromptsAndLaunchDefaultsRoundTrip(t *testing.T) {
 }
 
 func TestPromptsAndLaunchDefaultsRejectInvalidRows(t *testing.T) {
-	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	db := testutil.DB(t)
 
 	prompt := promptsmodel.Prompt{Name: "Review", Nickname: "Review", AppliesTo: "pr", Body: "x"}
 	require.NoError(t, db.Create(&prompt).Error)

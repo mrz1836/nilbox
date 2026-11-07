@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/inbox"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 var (
@@ -111,18 +112,11 @@ func TestTimeRefreshesErrors(t *testing.T) {
 	require.ErrorIs(t, err, ErrNoGraphQLReading)
 }
 
-// refusingRunner runs no program.
-type refusingRunner struct{}
-
-func (refusingRunner) Run(context.Context, string, ...string) (stdout, stderr []byte, err error) {
-	return nil, []byte("not run"), errNotRun
-}
-
 func TestRunRefreshUsesAScratchDatabase(t *testing.T) {
 	tmp := t.TempDir()
 
 	// No token can be borrowed, so the first refresh fails before any request is made.
-	_, err := RunRefresh(t.Context(), RefreshOptions{Home: t.TempDir(), Version: "test", TempDir: tmp, Runner: refusingRunner{}})
+	_, err := RunRefresh(t.Context(), RefreshOptions{Home: t.TempDir(), Version: "test", TempDir: tmp, Runner: &testutil.Runner{Stderr: "not run", Err: errNotRun}})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "refresh 1 of 5")
 
@@ -132,7 +126,7 @@ func TestRunRefreshUsesAScratchDatabase(t *testing.T) {
 }
 
 func TestRunRefreshBootstrapFails(t *testing.T) {
-	_, err := RunRefresh(t.Context(), RefreshOptions{TempDir: t.TempDir(), Runner: refusingRunner{}})
+	_, err := RunRefresh(t.Context(), RefreshOptions{TempDir: t.TempDir(), Runner: &testutil.Runner{Stderr: "not run", Err: errNotRun}})
 	require.Error(t, err, "a home directory is required")
 
 	_, err = RunRefresh(t.Context(), RefreshOptions{Home: t.TempDir(), TempDir: "/nonexistent-scratch-parent"})

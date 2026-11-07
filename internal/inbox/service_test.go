@@ -17,6 +17,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/model"
 	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
 
@@ -207,20 +208,6 @@ func (c *fakeClient) FetchAvatar(_ context.Context, url string) (*github.Avatar,
 	return c.avatar, c.avatarErr
 }
 
-// fakeClock returns a settable time.
-type fakeClock struct {
-	now time.Time
-}
-
-func (c *fakeClock) Now() time.Time { return c.now }
-
-// fakeNotifier counts notifications.
-type fakeNotifier struct {
-	calls int
-}
-
-func (n *fakeNotifier) InboxUpdated() { n.calls++ }
-
 // harness is a Service over a temp database with fakes for everything else.
 type harness struct {
 	svc      *Service
@@ -228,8 +215,8 @@ type harness struct {
 	path     string
 	tokens   *fakeTokens
 	client   *fakeClient
-	clock    *fakeClock
-	notifier *fakeNotifier
+	clock    *testutil.Clock
+	notifier *testutil.Notifier
 }
 
 // newHarness opens a fresh database and a Service over it.
@@ -238,17 +225,13 @@ func newHarness(t *testing.T) *harness {
 
 	path := filepath.Join(t.TempDir(), "app.db")
 
-	db, err := store.Open(t.Context(), path)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = store.Close(db) })
-
 	h := &harness{
-		db:       db,
+		db:       testutil.DBAt(t, path),
 		path:     path,
 		tokens:   &fakeTokens{},
 		client:   &fakeClient{limits: restLimits(), avatar: fakeAvatar()},
-		clock:    &fakeClock{now: time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)},
-		notifier: &fakeNotifier{},
+		clock:    testutil.NewClock(time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)),
+		notifier: &testutil.Notifier{},
 	}
 
 	h.svc = h.service()
@@ -407,11 +390,12 @@ func TestRefreshUpsertsItemsWithReasonFlags(t *testing.T) {
 	// Local state keeps B's row alive after it drops out of every list.
 	var bRow model.Item
 	require.NoError(t, h.db.Where("number = ?", 2).First(&bRow).Error)
-	require.NoError(t, h.db.Create(&model.ItemLocalState{ItemID: bRow.ID, UpdatedAt: h.clock.now}).Error)
+	require.NoError(t, h.db.Create(&model.ItemLocalState{ItemID: bRow.ID, UpdatedAt: h.clock.Now()}).Error)
 
 	// Next refresh: A is only review-requested (retitled), B is gone, C is still assigned.
 	a.Title = "Item 1, retitled"
-	h.clock.now = h.clock.now.Add(DefaultInterval)
+
+	h.clock.Advance(DefaultInterval)
 	h.client.inbox = fetched([]github.Item{a}, nil, []github.Item{c})
 	snap = h.refresh(t)
 
@@ -496,7 +480,7 @@ func TestRefreshStoresTrustFields(t *testing.T) {
 
 	// The trusted list is the user's: with it emptied, Dependabot is an outside contributor.
 	require.NoError(t, h.db.Exec(`INSERT INTO prefs (key, value, updated_at) VALUES (?, '[]', ?)`, trust.PrefBots,
-		h.clock.now).Error)
+		h.clock.Now()).Error)
 
 	snap, err := h.svc.Snapshot(t.Context())
 	require.NoError(t, err)
@@ -518,16 +502,16 @@ func TestRefreshWritesRateSnapshot(t *testing.T) {
 	require.NoError(t, h.db.First(&acct).Error)
 
 	// Readings older than the retention window are pruned on the next refresh.
-	old := model.RateSnapshot{AccountID: acct.ID, Resource: resourceCore, LimitTotal: 1, TakenAt: h.clock.now.Add(-8 * 24 * time.Hour)}
-	recent := model.RateSnapshot{AccountID: acct.ID, Resource: resourceCore, LimitTotal: 2, TakenAt: h.clock.now.Add(-6 * 24 * time.Hour)}
+	old := model.RateSnapshot{AccountID: acct.ID, Resource: resourceCore, LimitTotal: 1, TakenAt: h.clock.Now().Add(-8 * 24 * time.Hour)}
+	recent := model.RateSnapshot{AccountID: acct.ID, Resource: resourceCore, LimitTotal: 2, TakenAt: h.clock.Now().Add(-6 * 24 * time.Hour)}
 	require.NoError(t, h.db.Create(&old).Error)
 	require.NoError(t, h.db.Create(&recent).Error)
 
-	h.clock.now = h.clock.now.Add(DefaultInterval)
+	h.clock.Advance(DefaultInterval)
 	snap := h.refresh(t)
 
 	var rows []model.RateSnapshot
-	require.NoError(t, h.db.Where("taken_at = ?", h.clock.now).Order("resource").Find(&rows).Error)
+	require.NoError(t, h.db.Where("taken_at = ?", h.clock.Now()).Order("resource").Find(&rows).Error)
 	require.Len(t, rows, 3, "one row per resource per refresh")
 
 	assert.Equal(t, resourceCore, rows[0].Resource)
@@ -561,7 +545,7 @@ func TestRefreshMissingScopesError(t *testing.T) {
 	require.ErrorIs(t, err, github.ErrMissingScopes)
 	assert.Contains(t, snap.LastError, "gh auth refresh -s repo,read:org")
 	assert.Equal(t, int64(0), h.count(t, "items"), "nothing is stored without the needed scopes")
-	assert.Equal(t, 1, h.notifier.calls, "the UI hears about the failure")
+	assert.Equal(t, 1, h.notifier.Calls(), "the UI hears about the failure")
 
 	// A restart still shows the error.
 	snap, err = h.service().Snapshot(t.Context())
@@ -667,7 +651,7 @@ func TestRefreshFetchErrorsKeepTheStoredInbox(t *testing.T) {
 	h.refresh(t)
 
 	h.client.limitsErr = errFakeNetwork
-	h.clock.now = h.clock.now.Add(DefaultInterval)
+	h.clock.Advance(DefaultInterval)
 
 	snap, err := h.svc.Refresh(t.Context())
 	require.ErrorIs(t, err, errFakeNetwork)
@@ -693,7 +677,7 @@ func TestRefreshCanceledIsNotRecorded(t *testing.T) {
 
 	_, err := h.svc.Refresh(ctx)
 	require.ErrorIs(t, err, context.Canceled)
-	assert.Zero(t, h.notifier.calls)
+	assert.Zero(t, h.notifier.Calls())
 
 	snap, err := h.svc.Snapshot(t.Context())
 	require.NoError(t, err)
@@ -704,11 +688,11 @@ func TestRefreshNotifies(t *testing.T) {
 	h := newHarness(t)
 	h.client.inbox = fetched(nil, nil, nil)
 	h.refresh(t)
-	assert.Equal(t, 1, h.notifier.calls)
+	assert.Equal(t, 1, h.notifier.Calls())
 	assert.Equal(t, 1, h.tokens.calls, "the token is borrowed on every refresh")
 
 	h.refresh(t)
-	assert.Equal(t, 2, h.notifier.calls)
+	assert.Equal(t, 2, h.notifier.Calls())
 	assert.Equal(t, 2, h.tokens.calls)
 }
 
@@ -944,7 +928,7 @@ func TestRefreshReplacesTheDetails(t *testing.T) {
 	failing.Labels = nil
 	failing.Checks = github.Checks{State: "FAILURE", Passed: 10, Failed: 2}
 	h.client.details = map[string]github.ItemDetails{nodeID(1): failing}
-	h.clock.now = h.clock.now.Add(DefaultInterval)
+	h.clock.Advance(DefaultInterval)
 
 	snap := h.refresh(t)
 
@@ -969,7 +953,7 @@ func TestRefreshDetailsFailureKeepsTheStoredInbox(t *testing.T) {
 
 	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false), pr(2, "OWNER", false)}, nil, nil)
 	h.client.detailsErr = fmt.Errorf("%w: upstream said: %s", errFakeNetwork, fakeToken)
-	h.clock.now = h.clock.now.Add(DefaultInterval)
+	h.clock.Advance(DefaultInterval)
 
 	snap, err := h.svc.Refresh(t.Context())
 	require.ErrorIs(t, err, errFakeNetwork)
@@ -1146,7 +1130,7 @@ func TestRefreshStoresWhatGitHubSaysAboutEachRepository(t *testing.T) {
 	assert.True(t, a.Repo.PushedAt.Equal(*repo.PushedAt))
 	assert.Nil(t, repo.ArchivedAt)
 	require.NotNil(t, repo.FetchedAt)
-	assert.True(t, h.clock.now.Equal(*repo.FetchedAt))
+	assert.True(t, h.clock.Now().Equal(*repo.FetchedAt))
 
 	// The local columns are the user's, and a refresh leaves them alone while it rewrites
 	// GitHub's.

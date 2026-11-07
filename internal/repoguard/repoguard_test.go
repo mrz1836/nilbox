@@ -608,6 +608,27 @@ func TestRunnerValues(t *testing.T) {
 	}, runnerValues("w.yml", workflow))
 }
 
+// fileImports returns the import paths of the Go file rel, whatever its build tags, or
+// none for a file that cannot be read as text.
+func fileImports(t *testing.T, root, rel string) []string {
+	t.Helper()
+
+	src, ok := readText(t, root, rel)
+	if !ok {
+		return nil
+	}
+
+	file, err := parser.ParseFile(token.NewFileSet(), rel, src, parser.ImportsOnly)
+	require.NoError(t, err, rel)
+
+	paths := make([]string, 0, len(file.Imports))
+	for _, imp := range file.Imports {
+		paths = append(paths, strings.Trim(imp.Path.Value, `"`))
+	}
+
+	return paths
+}
+
 // wailsBootstrapFiles are the only files allowed to import the desktop runtime: the
 // desktop shell (the desktop main, the menu bar icon, and the notification banners, each
 // in a *_desktop.go file), its per-OS window options, and the desktop-tagged frontend
@@ -644,17 +665,9 @@ func TestOnlyDesktopBootstrapImportsWails(t *testing.T) {
 			continue
 		}
 
-		src, ok := readText(t, root, rel)
-		if !ok {
-			continue
-		}
-
-		file, err := parser.ParseFile(token.NewFileSet(), rel, src, parser.ImportsOnly)
-		require.NoError(t, err, rel)
-
-		for _, imp := range file.Imports {
-			if strings.HasPrefix(strings.Trim(imp.Path.Value, `"`), runtimePrefix) {
-				found = append(found, rel+": "+imp.Path.Value)
+		for _, imp := range fileImports(t, root, rel) {
+			if strings.HasPrefix(imp, runtimePrefix) {
+				found = append(found, rel+": "+imp)
 			}
 		}
 	}
@@ -680,4 +693,34 @@ func TestWailsAllowed(t *testing.T) {
 	} {
 		assert.Equal(t, want, wailsAllowed(rel), rel)
 	}
+}
+
+// testSupportDir holds the test-support package: helpers and fakes the test suites share,
+// which must never reach the app.
+const testSupportDir = "internal/testutil"
+
+func TestOnlyTestsImportTestSupport(t *testing.T) {
+	root := moduleRoot(t)
+	testSupport := modulePath(t, root) + "/" + testSupportDir
+
+	require.DirExists(t, filepath.Join(root, filepath.FromSlash(testSupportDir)),
+		"%s is gone; update this guard", testSupportDir)
+
+	var found []string
+
+	// Every Go file is parsed whatever its build tags, so a tagged file cannot hide an
+	// import from this check.
+	for _, rel := range goFiles(t, root) {
+		if strings.HasSuffix(rel, "_test.go") {
+			continue
+		}
+
+		for _, imp := range fileImports(t, root, rel) {
+			if imp == testSupport || strings.HasPrefix(imp, testSupport+"/") {
+				found = append(found, rel+": "+imp)
+			}
+		}
+	}
+
+	assert.Empty(t, found, "only _test.go files may import the test-support package")
 }

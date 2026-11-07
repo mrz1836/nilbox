@@ -1,7 +1,6 @@
 package launchdefaults_test
 
 import (
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -13,7 +12,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	profilesmodel "github.com/mrz1836/nilbox/internal/profiles/model"
 	"github.com/mrz1836/nilbox/internal/prompts"
-	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // acme is the fake org most tests use.
@@ -31,10 +30,7 @@ type harness struct {
 func newHarness(t *testing.T) *harness {
 	t.Helper()
 
-	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "app.db"))
-	require.NoError(t, err)
-
-	t.Cleanup(func() { _ = store.Close(db) })
+	db := testutil.DB(t)
 
 	require.NoError(t, prompts.Seed(t.Context(), db))
 	require.NoError(t, db.Create(&profilesmodel.ClaudeProfile{Name: "work", ConfigDir: "/tmp/work"}).Error)

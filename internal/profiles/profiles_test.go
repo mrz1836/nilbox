@@ -12,21 +12,11 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/profiles/model"
 	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // errRefused is what a test's database callback fails with.
 var errRefused = errors.New("refused by the test")
-
-// openDB opens a fresh, migrated database.
-func openDB(t *testing.T) *gorm.DB {
-	t.Helper()
-
-	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "app.db"))
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = store.Close(db) })
-
-	return db
-}
 
 // mkdirs creates each directory under home.
 func mkdirs(t *testing.T, home string, names ...string) {
@@ -34,17 +24,6 @@ func mkdirs(t *testing.T, home string, names ...string) {
 
 	for _, name := range names {
 		require.NoError(t, os.MkdirAll(filepath.Join(home, name), 0o700))
-	}
-}
-
-// configs creates each directory under home as an agent config directory, holding the
-// state file the agent writes on its first run with it.
-func configs(t *testing.T, home string, names ...string) {
-	t.Helper()
-
-	for _, name := range names {
-		mkdirs(t, home, name)
-		touch(t, filepath.Join(home, name), ".claude.json")
 	}
 }
 
@@ -68,9 +47,8 @@ func names(profiles []Profile) []string {
 }
 
 func TestDiscoverProfiles(t *testing.T) {
-	home := t.TempDir()
-	mkdirs(t, home, ".claude", ".config")
-	configs(t, home, ".claude_work", ".claude-alt", ".claude_", ".claude-", ".claude_-bad", ".claude_two words")
+	home := testutil.ClaudeHome(t, ".claude", ".config",
+		".claude_work", ".claude-alt", ".claude_", ".claude-", ".claude_-bad", ".claude_two words")
 	touch(t, home, ".claude.json", ".claude.json.backup", ".claude_file")
 
 	got, err := Discover(home)
@@ -100,9 +78,7 @@ func TestDiscoverProfiles(t *testing.T) {
 }
 
 func TestDiscoverDuplicateNames(t *testing.T) {
-	home := t.TempDir()
-	mkdirs(t, home, ".claude")
-	configs(t, home, ".claude_default", ".claude-default", ".claude-dup", ".claude_dup")
+	home := testutil.ClaudeHome(t, ".claude", ".claude_default", ".claude-default", ".claude-dup", ".claude_dup")
 
 	got, err := Discover(home)
 	require.NoError(t, err)
@@ -139,10 +115,8 @@ func TestDiscoverWithoutProfiles(t *testing.T) {
 }
 
 func TestSyncDoesNotOverwriteOrDelete(t *testing.T) {
-	db := openDB(t)
-	home := t.TempDir()
-	mkdirs(t, home, ".claude")
-	configs(t, home, ".claude_work", ".claude-alt")
+	db := testutil.DB(t)
+	home := testutil.ClaudeHome(t, ".claude", ".claude_work", ".claude-alt")
 
 	found, err := Discover(home)
 	require.NoError(t, err)
@@ -159,7 +133,7 @@ func TestSyncDoesNotOverwriteOrDelete(t *testing.T) {
 
 	// A directory disappears and a new one appears; discovery runs again.
 	require.NoError(t, os.RemoveAll(filepath.Join(home, ".claude-alt")))
-	configs(t, home, ".claude_new")
+	testutil.MakeClaudeDirs(t, home, ".claude_new")
 
 	found, err = Discover(home)
 	require.NoError(t, err)
@@ -184,7 +158,7 @@ func TestSyncDoesNotOverwriteOrDelete(t *testing.T) {
 }
 
 func TestSyncNothingFound(t *testing.T) {
-	db := openDB(t)
+	db := testutil.DB(t)
 	require.NoError(t, Sync(t.Context(), db, nil))
 
 	list, err := NewService(db, t.TempDir()).List(t.Context())
@@ -193,7 +167,7 @@ func TestSyncNothingFound(t *testing.T) {
 }
 
 func TestSyncError(t *testing.T) {
-	db := openDB(t)
+	db := testutil.DB(t)
 	require.NoError(t, store.Close(db))
 
 	err := Sync(t.Context(), db, []Profile{newDiscovered(DefaultName, "")})
@@ -202,7 +176,7 @@ func TestSyncError(t *testing.T) {
 }
 
 func TestListOrdersDefaultFirst(t *testing.T) {
-	db := openDB(t)
+	db := testutil.DB(t)
 
 	require.NoError(t, Sync(t.Context(), db, []Profile{
 		newDiscovered("zeta", "/opt/profiles/zeta"),
@@ -219,7 +193,7 @@ func TestListOrdersDefaultFirst(t *testing.T) {
 }
 
 func TestListError(t *testing.T) {
-	db := openDB(t)
+	db := testutil.DB(t)
 	require.NoError(t, store.Close(db))
 
 	_, err := NewService(db, t.TempDir()).List(t.Context())
@@ -227,7 +201,7 @@ func TestListError(t *testing.T) {
 }
 
 func TestLookup(t *testing.T) {
-	db := openDB(t)
+	db := testutil.DB(t)
 	require.NoError(t, Sync(t.Context(), db, []Profile{{
 		Name:      "work",
 		ConfigDir: "/opt/profiles/work",
@@ -253,15 +227,6 @@ func TestLookup(t *testing.T) {
 	_, err = Lookup(t.Context(), db, "work")
 	require.Error(t, err)
 	require.NotErrorIs(t, err, ErrProfileNotFound)
-}
-
-// skipAsRoot skips a test that needs file permissions enforced, which root ignores.
-func skipAsRoot(t *testing.T) {
-	t.Helper()
-
-	if os.Geteuid() == 0 {
-		t.Skip("root ignores file permissions")
-	}
 }
 
 // lockDir makes dir unreadable until the test ends.
@@ -338,10 +303,9 @@ func TestDiscoverNeedsAnAgentConfig(t *testing.T) {
 }
 
 func TestDiscoverSkipsUnreadableFolders(t *testing.T) {
-	skipAsRoot(t)
+	testutil.SkipAsRoot(t)
 
-	home := t.TempDir()
-	configs(t, home, ".claude_locked")
+	home := testutil.ClaudeHome(t, ".claude_locked")
 	lockDir(t, filepath.Join(home, ".claude_locked"))
 
 	got, err := Discover(home)
@@ -352,7 +316,7 @@ func TestDiscoverSkipsUnreadableFolders(t *testing.T) {
 func TestDiscoverPrefersAConfigOverAnEmptyTwin(t *testing.T) {
 	home := t.TempDir()
 	mkdirs(t, home, ".claude_dup")
-	configs(t, home, ".claude-dup")
+	testutil.MakeClaudeDirs(t, home, ".claude-dup")
 
 	got, err := Discover(home)
 	require.NoError(t, err)
@@ -363,13 +327,13 @@ func TestDiscoverPrefersAConfigOverAnEmptyTwin(t *testing.T) {
 }
 
 func TestPruneRemovesUneditedProfilesWithNoAgentConfig(t *testing.T) {
-	db := openDB(t)
+	db := testutil.DB(t)
 	home := t.TempDir()
 	dir := func(name string) string { return filepath.Join(home, name) }
 
 	mkdirs(t, home, ".claude", ".claude-squad/worktrees", ".claude-monitor/cache", ".claude-edited", ".claude-empty")
 	touch(t, dir(".claude-squad"), "config.json", "state.json")
-	configs(t, home, ".claude_real")
+	testutil.MakeClaudeDirs(t, home, ".claude_real")
 
 	// Rows an older discovery stored for every folder, and one whose folder is gone.
 	require.NoError(t, Sync(t.Context(), db, []Profile{
@@ -402,9 +366,9 @@ func TestPruneRemovesUneditedProfilesWithNoAgentConfig(t *testing.T) {
 }
 
 func TestPruneKeepsTheDefaultAndWhatItCannotRead(t *testing.T) {
-	skipAsRoot(t)
+	testutil.SkipAsRoot(t)
 
-	db := openDB(t)
+	db := testutil.DB(t)
 	home := t.TempDir()
 	mkdirs(t, home, ".claude", ".claude-locked", ".claude_default")
 	lockDir(t, filepath.Join(home, ".claude-locked"))
@@ -425,7 +389,7 @@ func TestPruneKeepsTheDefaultAndWhatItCannotRead(t *testing.T) {
 
 func TestPruneErrors(t *testing.T) {
 	t.Run("read", func(t *testing.T) {
-		db := openDB(t)
+		db := testutil.DB(t)
 		require.NoError(t, store.Close(db))
 
 		_, err := Prune(t.Context(), db)
@@ -433,7 +397,7 @@ func TestPruneErrors(t *testing.T) {
 	})
 
 	t.Run("remove", func(t *testing.T) {
-		db := openDB(t)
+		db := testutil.DB(t)
 		home := t.TempDir()
 		mkdirs(t, home, ".claude-stray")
 		require.NoError(t, Sync(t.Context(), db, []Profile{newDiscovered("stray", filepath.Join(home, ".claude-stray"))}))
@@ -476,11 +440,11 @@ func TestUntouched(t *testing.T) {
 }
 
 func TestListDescribesEachFolder(t *testing.T) {
-	db := openDB(t)
+	db := testutil.DB(t)
 	home := t.TempDir()
 	outside := t.TempDir()
 	mkdirs(t, home, ".claude")
-	configs(t, home, ".claude_work")
+	testutil.MakeClaudeDirs(t, home, ".claude_work")
 
 	require.NoError(t, Sync(t.Context(), db, []Profile{
 		newDiscovered(DefaultName, ""),

@@ -25,7 +25,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/settings"
-	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/workspacetrust"
 )
 
@@ -89,29 +89,6 @@ func allowedGitArgv(argv []string) bool {
 		argv[3] == "config" && argv[4] == "--get-regexp" && argv[5] == remoteLookupPattern
 }
 
-// fakeFinder resolves claude to a fixed path, or fails.
-type fakeFinder struct {
-	path string
-	err  error
-}
-
-func (f fakeFinder) Find(name string) (string, error) {
-	if f.err != nil {
-		return "", f.err
-	}
-
-	if name != claudeBin {
-		return "", fmt.Errorf("%w: %s", errGitNotAllowed, name)
-	}
-
-	return f.path, nil
-}
-
-// fixedClock always returns the same time.
-type fixedClock struct{ now time.Time }
-
-func (c fixedClock) Now() time.Time { return c.now }
-
 // failingSettings cannot read the settings.
 type failingSettings struct{}
 
@@ -156,23 +133,19 @@ func newLaunchHarness(t *testing.T) *launchHarness {
 
 	makeRepoDir(t, h.clone)
 
-	db, err := store.Open(t.Context(), h.paths.DB)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = store.Close(db) })
-
-	h.db = db
+	h.db = testutil.DBAt(t, h.paths.DB)
 	h.seed(t)
 
-	h.settings = settings.NewService(db, h.home)
+	h.settings = settings.NewService(h.db, h.home)
 	h.cfg = Config{
-		DB:       db,
+		DB:       h.db,
 		Settings: h.settings,
 		Git:      h.git,
-		Finder:   fakeFinder{path: filepath.Join(tmp, "bin", "claude")},
+		Finder:   testutil.Finder{Paths: map[string]string{claudeBin: filepath.Join(tmp, "bin", "claude")}},
 		Registry: NewRegistry(h.iterm, h.terminal),
 		Paths:    h.paths,
 		Home:     h.home,
-		Clock:    fixedClock{now: fixedNow()},
+		Clock:    testutil.NewClock(fixedNow()),
 	}
 
 	return h
@@ -617,7 +590,7 @@ func TestLaunchFailures(t *testing.T) {
 		},
 		{
 			name:    "agent not installed",
-			mutate:  func(_ *testing.T, h *launchHarness) { h.cfg.Finder = fakeFinder{err: errFakeNoClaude} },
+			mutate:  func(_ *testing.T, h *launchHarness) { h.cfg.Finder = testutil.Finder{Err: errFakeNoClaude} },
 			wantErr: errFakeNoClaude,
 		},
 		{

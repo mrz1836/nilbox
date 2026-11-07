@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -165,8 +166,12 @@ func TestFetchChangedFilesRedactsErrors(t *testing.T) {
 }
 
 func TestFetchChangedFilesRefusesABadReference(t *testing.T) {
+	// The handler runs on the server's goroutine, where t.Fatal must not be called, so it
+	// only counts the requests and the test checks the count.
+	var requests atomic.Int32
+
 	c := newTestClient(t, func(http.ResponseWriter, *http.Request) {
-		t.Fatal("no request is sent")
+		requests.Add(1)
 	})
 
 	for _, ref := range []ItemRef{{Name: "x", Number: 1}, {Owner: "x", Number: 1}, {Owner: "x", Name: "y"}} {
@@ -176,6 +181,8 @@ func TestFetchChangedFilesRefusesABadReference(t *testing.T) {
 		_, err = c.FetchPullHead(t.Context(), NewToken(fakeToken), ref)
 		require.ErrorIs(t, err, ErrInvalidItemRef)
 	}
+
+	assert.Zero(t, requests.Load(), "no request is sent")
 }
 
 func TestFetchPullHead(t *testing.T) {

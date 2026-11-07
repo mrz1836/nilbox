@@ -18,6 +18,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/launchlog"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 var (
@@ -92,32 +93,12 @@ func (f *fakeLaunches) Forget(_ context.Context, clonePath, worktree string) err
 	return nil
 }
 
-// countingNotifier counts WorktreesUpdated calls.
-type countingNotifier struct {
-	mu    sync.Mutex
-	count int
-}
-
-func (n *countingNotifier) WorktreesUpdated() {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-
-	n.count++
-}
-
-func (n *countingNotifier) calls() int {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-
-	return n.count
-}
-
 // linkDeps are the optional dependencies of a linking Service.
 type linkDeps struct {
 	gh       *fakeGitHub
 	launches *fakeLaunches
 	history  History
-	notifier *countingNotifier
+	notifier *testutil.Notifier
 	auto     bool
 	procs    processTable
 }
@@ -130,7 +111,7 @@ func (e *env) linked(deps linkDeps) *Service {
 		Git:      execpath.Runner{},
 		Finder:   execpath.Finder{},
 		Home:     e.home,
-		Clock:    fixedClock{},
+		Clock:    testutil.NewClock(listedAt()),
 		Logger:   slog.New(slog.DiscardHandler),
 	}
 
@@ -167,7 +148,7 @@ func (e *env) newGitHubRepo(t *testing.T, name string) string {
 	t.Helper()
 
 	dir := e.newRepo(t, name)
-	gitOut(t, "-C", dir, "remote", "add", "origin", "https://github.com/acme-org/"+name+".git")
+	testutil.RunGit(t, dir, "remote", "add", "origin", "https://github.com/acme-org/"+name+".git")
 
 	return dir
 }
@@ -179,17 +160,17 @@ func agentWorktree(t *testing.T, repo, name string) (string, string) {
 
 	path := addWorktree(t, repo, filepath.Join(repo, ".claude", "worktrees", name), ownBranchPrefix+name)
 	require.NoError(t, os.WriteFile(filepath.Join(path, "fix.txt"), []byte(name+"\n"), 0o600))
-	gitOut(t, "-C", path, "add", "fix.txt")
-	gitOut(t, "-C", path, "commit", "-q", "-m", "fix "+name)
+	testutil.RunGit(t, path, "add", "fix.txt")
+	testutil.RunGit(t, path, "commit", "-q", "-m", "fix "+name)
 
-	return path, strings.TrimSpace(gitOut(t, "-C", path, "rev-parse", "HEAD"))
+	return path, strings.TrimSpace(testutil.RunGit(t, path, "rev-parse", "HEAD"))
 }
 
 // pushed records head on a remote-tracking branch, as a push and fetch would.
 func pushed(t *testing.T, repo, branch, head string) {
 	t.Helper()
 
-	gitOut(t, "-C", repo, "update-ref", "refs/remotes/origin/"+branch, head)
+	testutil.RunGit(t, repo, "update-ref", "refs/remotes/origin/"+branch, head)
 }
 
 // pr is a pull request's state on GitHub.
@@ -348,7 +329,7 @@ func TestListLinksAndStagesAgentWorktrees(t *testing.T) {
 func TestListLinksByLaunchRecord(t *testing.T) {
 	e := newEnv(t)
 	repo := e.newGitHubRepo(t, "example-repo")
-	gitOut(t, "-C", repo, "remote", "add", "upstream", "https://github.com/upstream-org/example-repo.git")
+	testutil.RunGit(t, repo, "remote", "add", "upstream", "https://github.com/upstream-org/example-repo.git")
 
 	// The app launched it on upstream's issue 12, though the name says pr-3.
 	path, head := agentWorktree(t, repo, "pr-3")
@@ -380,8 +361,8 @@ func TestListLinksByLaunchRecord(t *testing.T) {
 func TestListPicksTheRightRemote(t *testing.T) {
 	e := newEnv(t)
 	repo := e.newGitHubRepo(t, "example-repo")
-	gitOut(t, "-C", repo, "remote", "add", "upstream", "https://github.com/upstream-org/example-repo.git")
-	gitOut(t, "-C", repo, "remote", "add", "mirror", "https://gitlab.example.com/acme-org/example-repo.git")
+	testutil.RunGit(t, repo, "remote", "add", "upstream", "https://github.com/upstream-org/example-repo.git")
+	testutil.RunGit(t, repo, "remote", "add", "mirror", "https://gitlab.example.com/acme-org/example-repo.git")
 
 	byHead, head := agentWorktree(t, repo, "pr-1")
 	byKind, _ := agentWorktree(t, repo, "issue-2")
@@ -489,7 +470,7 @@ func TestCleanUpRemovesAFinishedWorktreeAndItsBranch(t *testing.T) {
 	assert.NotContains(t, gitWorktreePaths(t, repo), resolvedPath(path))
 	assert.NotContains(t, branches(t, repo), "worktree-pr-184")
 	assert.Equal(t, []string{"example-repo/pr-184"}, launches.forgotten)
-	assert.Equal(t, head, strings.TrimSpace(gitOut(t, "-C", repo, "rev-parse", "refs/remotes/origin/feat/locktimes")),
+	assert.Equal(t, head, strings.TrimSpace(testutil.RunGit(t, repo, "rev-parse", "refs/remotes/origin/feat/locktimes")),
 		"nothing on the remote side is touched")
 }
 
@@ -497,7 +478,7 @@ func TestCleanUpKeepsABranchThatIsNotItsOwn(t *testing.T) {
 	e := newEnv(t)
 	repo := e.newGitHubRepo(t, "example-repo")
 	path := addWorktree(t, repo, filepath.Join(repo, ".claude", "worktrees", "pr-5"), "feat/five")
-	head := strings.TrimSpace(gitOut(t, "-C", path, "rev-parse", "HEAD"))
+	head := strings.TrimSpace(testutil.RunGit(t, path, "rev-parse", "HEAD"))
 	pushed(t, repo, "feat/five", head)
 
 	gh := &fakeGitHub{}
@@ -623,7 +604,7 @@ func TestCleanUpRowChecksAgainBeforeEachStep(t *testing.T) {
 		other, otherHead := agentWorktree(t, repo, "pr-4")
 		require.ErrorIs(t, svc.deleteOwnBranch(t.Context(), g, repo, "worktree-pr-4", otherHead), ErrBranchInUse)
 
-		gitOut(t, "-C", repo, "worktree", "remove", other)
+		testutil.RunGit(t, repo, "worktree", "remove", other)
 
 		err := svc.deleteOwnBranch(t.Context(), g, repo, "worktree-pr-4", strings.Repeat("1", 40))
 		require.ErrorIs(t, err, errGit, "git refuses: the branch is not at the commit checked")

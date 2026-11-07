@@ -9,26 +9,15 @@ import (
 	_ "github.com/glebarez/go-sqlite" // registers the "sqlite" database/sql driver
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 
 	settingsmodel "github.com/mrz1836/nilbox/internal/settings/model"
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/store/migrate"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
-// open opens a database at path and closes it when the test ends.
-func open(t *testing.T, path string) *gorm.DB {
-	t.Helper()
-
-	db, err := store.Open(t.Context(), path)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = store.Close(db) })
-
-	return db
-}
-
 func TestOpenEnablesWAL(t *testing.T) {
-	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	db := testutil.DB(t)
 
 	var mode string
 	require.NoError(t, db.Raw("PRAGMA journal_mode").Scan(&mode).Error)
@@ -47,7 +36,7 @@ func TestOpenCreatesParentDir(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "nested", "data")
 	path := filepath.Join(dir, "app.db")
 
-	open(t, path)
+	testutil.DBAt(t, path)
 
 	info, err := os.Stat(dir)
 	require.NoError(t, err)
@@ -60,7 +49,7 @@ func TestOpenCreatesParentDir(t *testing.T) {
 }
 
 func TestOpenAppliesMigrations(t *testing.T) {
-	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	db := testutil.DB(t)
 
 	var newest int
 	require.NoError(t, db.Raw("SELECT max(version) FROM schema_migrations").Scan(&newest).Error)
@@ -79,7 +68,7 @@ func TestOpenReopensExistingDatabase(t *testing.T) {
 	require.NoError(t, db.Create(&settingsmodel.Pref{Key: "example.key", Value: "kept"}).Error)
 	require.NoError(t, store.Close(db))
 
-	db = open(t, path)
+	db = testutil.DBAt(t, path)
 
 	var pref settingsmodel.Pref
 	require.NoError(t, db.First(&pref, "key = ?", "example.key").Error)
@@ -150,8 +139,8 @@ func TestOpenReportsUnusablePaths(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.name == "directory is not writable" && os.Geteuid() == 0 {
-				t.Skip("directory permissions do not apply to root")
+			if tt.name == "directory is not writable" {
+				testutil.SkipAsRoot(t)
 			}
 
 			_, err := store.Open(t.Context(), tt.path(t))

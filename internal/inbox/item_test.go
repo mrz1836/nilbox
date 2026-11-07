@@ -23,7 +23,7 @@ func itemHarness(t *testing.T) (h *harness, id int64) {
 
 	snap := h.refresh(t)
 
-	h.clock.now = h.clock.now.Add(10 * time.Minute)
+	h.clock.Advance(10 * time.Minute)
 	h.client.detailsIDs = nil
 
 	return h, itemByNumber(t, snap.ReviewRequested, 1).ID
@@ -38,13 +38,13 @@ func itemRate() github.QueryRate {
 
 func TestRefreshItemRewritesAnOpenItem(t *testing.T) {
 	h, id := itemHarness(t)
-	calls := h.notifier.calls
+	calls := h.notifier.Calls()
 
 	now := pr(1, "OWNER", false)
 	now.State = github.StateOpen
 	now.Title = "Item 1, retitled"
 	now.IsDraft = true
-	now.UpdatedAt = h.clock.now
+	now.UpdatedAt = h.clock.Now()
 
 	details := prDetails()
 	details.Checks = github.Checks{State: "FAILURE", Passed: 10, Failed: 2}
@@ -75,7 +75,7 @@ func TestRefreshItemRewritesAnOpenItem(t *testing.T) {
 	assert.Equal(t, 1, snap.Rate.GraphQL.Cost)
 	assert.Equal(t, 4980, snap.Rate.Core.Remaining, "the REST budgets keep their readings")
 	assert.Equal(t, "2026-01-10T12:00:00Z", snap.LastRefreshedAt, "a single item is not a whole refresh")
-	assert.Equal(t, calls+1, h.notifier.calls)
+	assert.Equal(t, calls+1, h.notifier.Calls())
 }
 
 func TestRefreshItemTakesAnItemThatIsNoLongerOpenOutOfTheLists(t *testing.T) {
@@ -156,7 +156,8 @@ func TestRefreshItemCanEndASnooze(t *testing.T) {
 	_, err := h.svc.Snooze(t.Context(), id, 3)
 	require.NoError(t, err)
 
-	h.clock.now = h.clock.now.Add(time.Hour)
+	h.clock.Advance(time.Hour)
+
 	details.Commits = 5
 	details.HeadOID = "2222222222222222222222222222222222222222"
 
@@ -209,7 +210,7 @@ func TestRefreshItemFailuresKeepTheStoredInbox(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			h, id := itemHarness(t)
-			calls := h.notifier.calls
+			calls := h.notifier.Calls()
 			tt.prepare(h)
 
 			_, err := h.svc.RefreshItem(t.Context(), tt.id(id))
@@ -221,7 +222,7 @@ func TestRefreshItemFailuresKeepTheStoredInbox(t *testing.T) {
 			assert.Empty(t, snap.LastError, "a single item's failure is not the inbox's last error")
 			assert.Equal(t, "Item 1", itemByNumber(t, snap.ReviewRequested, 1).Title)
 			assert.Equal(t, [3]bool{true, false, true}, h.reasons(t, 1))
-			assert.Equal(t, calls, h.notifier.calls)
+			assert.Equal(t, calls, h.notifier.Calls())
 		})
 	}
 }

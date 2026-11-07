@@ -38,6 +38,20 @@ func fakeTool(t *testing.T, dir, name, body string) string {
 	return path
 }
 
+// fakeLoggedTool writes a fake tool named name into dir, as fakeTool does, that appends
+// its arguments as one line to a fresh log before it runs body, and returns the log's
+// path. The script holds the path in $log, so body can append lines of its own.
+func fakeLoggedTool(t *testing.T, dir, name, body string) string {
+	t.Helper()
+
+	log := filepath.Join(t.TempDir(), name+".log")
+	require.NotContains(t, log, "'", "the script single-quotes the log's path")
+
+	fakeTool(t, dir, name, "log='"+log+"'\n"+`printf '%s\n' "$*" >> "$log"`+"\n"+body)
+
+	return log
+}
+
 // writeExecutable writes content to path, creating its directory, with the execute bit set.
 func writeExecutable(t *testing.T, path, content string) {
 	t.Helper()

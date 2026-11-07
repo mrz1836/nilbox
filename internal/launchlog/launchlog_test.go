@@ -1,7 +1,6 @@
 package launchlog_test
 
 import (
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -10,16 +9,14 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/mrz1836/nilbox/internal/launchlog"
-	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // openStore opens a fresh, migrated database and a Store over it.
 func openStore(t *testing.T) (*launchlog.Store, *gorm.DB) {
 	t.Helper()
 
-	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "app.db"))
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = store.Close(db) })
+	db := testutil.DB(t)
 
 	return launchlog.NewStore(db), db
 }

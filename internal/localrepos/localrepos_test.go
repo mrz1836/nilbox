@@ -1,21 +1,19 @@
 package localrepos
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 const (
@@ -27,38 +25,26 @@ const (
 
 var errFakeLaunch = errors.New("fake: cannot start git")
 
-// isolateGit keeps the user's and the system's git configuration out of the test.
+// isolateGit keeps the user's and the system's git configuration, which could list
+// remotes of its own, out of the git the scan runs: that git inherits the test process's
+// environment.
 func isolateGit(t *testing.T) {
 	t.Helper()
 
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git is not installed")
-	}
+	testutil.RequireGit(t)
 
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
-	t.Setenv("GIT_AUTHOR_NAME", "Octo User")
-	t.Setenv("GIT_AUTHOR_EMAIL", "octo-user@example.com")
-	t.Setenv("GIT_COMMITTER_NAME", "Octo User")
-	t.Setenv("GIT_COMMITTER_EMAIL", "octo-user@example.com")
-}
-
-// git runs a git command in the test and fails on error.
-func git(t *testing.T, args ...string) {
-	t.Helper()
-
-	out, err := exec.CommandContext(t.Context(), "git", args...).CombinedOutput() //nolint:gosec // test fixture setup with fixed arguments
-	require.NoError(t, err, "git %s: %s", strings.Join(args, " "), out)
 }
 
 // initRepo creates a git repository at dir with the given remotes (name, url pairs).
 func initRepo(t *testing.T, dir string, remotes ...string) {
 	t.Helper()
 
-	git(t, "-c", "init.defaultBranch=main", "init", "-q", dir)
+	testutil.InitRepo(t, dir)
 
 	for i := 0; i+1 < len(remotes); i += 2 {
-		git(t, "-C", dir, "remote", "add", remotes[i], remotes[i+1])
+		testutil.RunGit(t, dir, "remote", "add", remotes[i], remotes[i+1])
 	}
 }
 
@@ -73,23 +59,6 @@ type exitError struct{ code int }
 func (e exitError) Error() string { return fmt.Sprintf("exit status %d", e.code) }
 
 func (e exitError) ExitCode() int { return e.code }
-
-// recordingGit records every call and answers with fixed output or error.
-type recordingGit struct {
-	mu     sync.Mutex
-	calls  [][]string
-	stdout string
-	err    error
-}
-
-func (g *recordingGit) Run(_ context.Context, name string, args ...string) (stdout, stderr []byte, err error) {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-
-	g.calls = append(g.calls, append([]string{name}, args...))
-
-	return []byte(g.stdout), nil, g.err
-}
 
 func TestParseRemoteURL(t *testing.T) {
 	tests := []struct {
@@ -193,13 +162,13 @@ func TestScanRunsReadOnlyGitArgv(t *testing.T) {
 	repo := filepath.Join(root, "example-repo")
 	require.NoError(t, os.MkdirAll(filepath.Join(repo, ".git"), 0o700))
 
-	fake := &recordingGit{stdout: "remote.origin.url " + exampleHTTPS + "\n"}
+	fake := &testutil.Runner{Stdout: "remote.origin.url " + exampleHTTPS + "\n"}
 
 	repos, err := Scan(t.Context(), root, fake)
 	require.NoError(t, err)
 	require.Len(t, repos, 1)
 	assert.Equal(t, map[string]string{"origin": exampleRepoSlug}, repos[0].Remotes)
-	assert.Equal(t, [][]string{{"git", "-C", repo, "config", "--get-regexp", `^remote\..*\.url$`}}, fake.calls)
+	assert.Equal(t, [][]string{{"git", "-C", repo, "config", "--get-regexp", `^remote\..*\.url$`}}, fake.Calls())
 }
 
 func TestScanToleratesGitExitStatus(t *testing.T) {
@@ -208,7 +177,7 @@ func TestScanToleratesGitExitStatus(t *testing.T) {
 
 	for _, code := range []int{1, 128} {
 		t.Run(fmt.Sprint(code), func(t *testing.T) {
-			repos, err := Scan(t.Context(), root, &recordingGit{err: exitError{code: code}})
+			repos, err := Scan(t.Context(), root, &testutil.Runner{Err: exitError{code: code}})
 			require.NoError(t, err)
 			require.Len(t, repos, 1)
 			assert.Empty(t, repos[0].Remotes)
@@ -220,20 +189,20 @@ func TestScanFailsWhenGitCannotRun(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "example-repo", ".git"), 0o700))
 
-	_, err := Scan(t.Context(), root, &recordingGit{err: errFakeLaunch})
+	_, err := Scan(t.Context(), root, &testutil.Runner{Err: errFakeLaunch})
 	require.ErrorIs(t, err, errFakeLaunch)
 
-	_, err = Scan(t.Context(), root, &recordingGit{err: exitError{code: -1}})
+	_, err = Scan(t.Context(), root, &testutil.Runner{Err: exitError{code: -1}})
 	require.Error(t, err)
 }
 
 func TestScanMissingRoot(t *testing.T) {
-	_, err := Scan(t.Context(), filepath.Join(t.TempDir(), "missing"), &recordingGit{})
+	_, err := Scan(t.Context(), filepath.Join(t.TempDir(), "missing"), &testutil.Runner{})
 	require.ErrorIs(t, err, fs.ErrNotExist)
 }
 
 func TestScanEmptyRoot(t *testing.T) {
-	repos, err := Scan(t.Context(), t.TempDir(), &recordingGit{})
+	repos, err := Scan(t.Context(), t.TempDir(), &testutil.Runner{})
 	require.NoError(t, err)
 	assert.Empty(t, repos)
 }
@@ -287,10 +256,10 @@ func TestResolveUnknownRepoError(t *testing.T) {
 }
 
 func TestResolveRootErrors(t *testing.T) {
-	_, err := Resolver{Root: "", Git: &recordingGit{}}.Resolve(t.Context(), exampleOwner, exampleName)
+	_, err := Resolver{Root: "", Git: &testutil.Runner{}}.Resolve(t.Context(), exampleOwner, exampleName)
 	require.ErrorIs(t, err, ErrEmptyRoot)
 
-	_, err = Resolver{Root: filepath.Join(t.TempDir(), "missing"), Git: &recordingGit{}}.Resolve(t.Context(), exampleOwner, exampleName)
+	_, err = Resolver{Root: filepath.Join(t.TempDir(), "missing"), Git: &testutil.Runner{}}.Resolve(t.Context(), exampleOwner, exampleName)
 	require.ErrorIs(t, err, fs.ErrNotExist)
 }
 
@@ -326,7 +295,7 @@ func TestInspect(t *testing.T) {
 	_, err = Inspect(t.Context(), t.TempDir(), realGit())
 	require.ErrorIs(t, err, ErrNotARepo)
 
-	_, err = Inspect(t.Context(), dir, &recordingGit{err: errFakeLaunch})
+	_, err = Inspect(t.Context(), dir, &testutil.Runner{Err: errFakeLaunch})
 	require.ErrorIs(t, err, errFakeLaunch)
 }
 

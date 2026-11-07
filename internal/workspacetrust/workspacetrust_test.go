@@ -9,19 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/workspacetrust"
 )
-
-// realTempDir returns a temp directory with symlinks resolved (macOS keeps them under a
-// symlinked /var), so it is the key the agent would use.
-func realTempDir(t *testing.T) string {
-	t.Helper()
-
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	require.NoError(t, err)
-
-	return dir
-}
 
 // makeDir creates dir and its parents.
 func makeDir(t *testing.T, dir string) string {
@@ -30,13 +20,6 @@ func makeDir(t *testing.T, dir string) string {
 	require.NoError(t, os.MkdirAll(dir, 0o700))
 
 	return dir
-}
-
-// writeFile writes a file with mode 0600.
-func writeFile(t *testing.T, path, content string) {
-	t.Helper()
-
-	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 }
 
 // readJSON decodes a config file into raw values.
@@ -78,7 +61,7 @@ func dirNames(t *testing.T, dir string) []string {
 }
 
 func TestConfigFile(t *testing.T) {
-	home := realTempDir(t)
+	home := testutil.RealTempDir(t)
 	work := makeDir(t, filepath.Join(home, ".claude_work"))
 	makeDir(t, filepath.Join(home, ".claude"))
 
@@ -89,22 +72,22 @@ func TestConfigFile(t *testing.T) {
 	assert.Empty(t, workspacetrust.ConfigFile("", ""), "the default profile needs a home")
 
 	// An empty legacy file is ignored; one that holds anything wins.
-	writeFile(t, filepath.Join(work, ".config.json"), "")
+	testutil.WriteFile(t, filepath.Join(work, ".config.json"), "")
 	assert.Equal(t, filepath.Join(work, ".claude.json"), workspacetrust.ConfigFile(work, home))
 
-	writeFile(t, filepath.Join(work, ".config.json"), "{}")
+	testutil.WriteFile(t, filepath.Join(work, ".config.json"), "{}")
 	assert.Equal(t, filepath.Join(work, ".config.json"), workspacetrust.ConfigFile(work, home))
 
-	writeFile(t, filepath.Join(home, ".claude", ".config.json"), "{}")
+	testutil.WriteFile(t, filepath.Join(home, ".claude", ".config.json"), "{}")
 	assert.Equal(t, filepath.Join(home, ".claude", ".config.json"), workspacetrust.ConfigFile("", home))
 }
 
 func TestGrantTrustsTheCloneAndKeepsEverythingElse(t *testing.T) {
-	home := realTempDir(t)
+	home := testutil.RealTempDir(t)
 	clone := makeDir(t, filepath.Join(home, "projects", "example-repo"))
 	file := filepath.Join(home, ".claude.json")
 
-	writeFile(t, file, `{
+	testutil.WriteFile(t, file, `{
   "numStartups": 12345678901234567890,
   "oauthAccount": {"emailAddress": "octo-user@example.com"},
   "note": "keeps <, >, & and é as written",
@@ -144,12 +127,12 @@ func TestGrantTrustsTheCloneAndKeepsEverythingElse(t *testing.T) {
 }
 
 func TestGrantLeavesATrustedCloneAlone(t *testing.T) {
-	home := realTempDir(t)
+	home := testutil.RealTempDir(t)
 	clone := makeDir(t, filepath.Join(home, "example-repo"))
 	file := filepath.Join(home, ".claude.json")
 	content := `{"projects": {"` + clone + `": {"hasTrustDialogAccepted": true}}, "z": 1, "a": 2}`
 
-	writeFile(t, file, content)
+	testutil.WriteFile(t, file, content)
 
 	changed, err := workspacetrust.Grant(t.Context(), file, clone)
 	require.NoError(t, err)
@@ -161,7 +144,7 @@ func TestGrantLeavesATrustedCloneAlone(t *testing.T) {
 }
 
 func TestGrantCreatesAMissingConfigFile(t *testing.T) {
-	home := realTempDir(t)
+	home := testutil.RealTempDir(t)
 	clone := makeDir(t, filepath.Join(home, "example-repo"))
 	file := filepath.Join(home, ".claude.json")
 
@@ -176,7 +159,7 @@ func TestGrantCreatesAMissingConfigFile(t *testing.T) {
 	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 
 	// An empty file is an empty config too.
-	writeFile(t, file, "  \n")
+	testutil.WriteFile(t, file, "  \n")
 
 	changed, err = workspacetrust.Grant(t.Context(), file, clone)
 	require.NoError(t, err)
@@ -185,7 +168,7 @@ func TestGrantCreatesAMissingConfigFile(t *testing.T) {
 }
 
 func TestGrantSkipsAConfigDirectoryThatDoesNotExist(t *testing.T) {
-	home := realTempDir(t)
+	home := testutil.RealTempDir(t)
 	clone := makeDir(t, filepath.Join(home, "example-repo"))
 	configDir := filepath.Join(home, ".claude_new")
 
@@ -196,7 +179,7 @@ func TestGrantSkipsAConfigDirectoryThatDoesNotExist(t *testing.T) {
 }
 
 func TestGrantKeysTheCloneByItsRealPath(t *testing.T) {
-	home := realTempDir(t)
+	home := testutil.RealTempDir(t)
 	clone := makeDir(t, filepath.Join(home, "elsewhere", "example-repo"))
 	link := filepath.Join(home, "linked-repo")
 	file := filepath.Join(home, ".claude.json")
@@ -212,7 +195,7 @@ func TestGrantKeysTheCloneByItsRealPath(t *testing.T) {
 }
 
 func TestGrantKeysTheCloneInNFC(t *testing.T) {
-	home := realTempDir(t)
+	home := testutil.RealTempDir(t)
 	// The same name with "é" as one code point (NFC) and as "e" plus a combining accent.
 	composed, decomposed := "caf\u00e9-repo", "cafe\u0301-repo"
 	clone := makeDir(t, filepath.Join(home, decomposed))
@@ -227,13 +210,13 @@ func TestGrantKeysTheCloneInNFC(t *testing.T) {
 }
 
 func TestGrantWritesThroughASymlinkedConfigFile(t *testing.T) {
-	home := realTempDir(t)
+	home := testutil.RealTempDir(t)
 	clone := makeDir(t, filepath.Join(home, "example-repo"))
 	dotfiles := makeDir(t, filepath.Join(home, "dotfiles"))
 	target := filepath.Join(dotfiles, "claude.json")
 	file := filepath.Join(home, ".claude.json")
 
-	writeFile(t, target, `{"numStartups": 3}`)
+	testutil.WriteFile(t, target, `{"numStartups": 3}`)
 	require.NoError(t, os.Symlink(target, file))
 
 	changed, err := workspacetrust.Grant(t.Context(), file, clone)
@@ -269,7 +252,7 @@ func TestGrantRefusesAConfigItCannotRead(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			home := realTempDir(t)
+			home := testutil.RealTempDir(t)
 			clone := makeDir(t, filepath.Join(home, "example-repo"))
 			file := filepath.Join(home, ".claude.json")
 			content := []byte(tt.content(clone))
@@ -294,7 +277,7 @@ func TestGrantRefusesAConfigItCannotRead(t *testing.T) {
 }
 
 func TestGrantNeedsAbsolutePathsAndAClone(t *testing.T) {
-	home := realTempDir(t)
+	home := testutil.RealTempDir(t)
 	clone := makeDir(t, filepath.Join(home, "example-repo"))
 
 	_, err := workspacetrust.Grant(t.Context(), ".claude.json", clone)

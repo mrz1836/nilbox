@@ -28,11 +28,11 @@ func triageHarness(t *testing.T) (h *harness, first, second int64) {
 
 func TestDismissUntilRestored(t *testing.T) {
 	h, id, other := triageHarness(t)
-	notified := h.notifier.calls
+	notified := h.notifier.Calls()
 
 	snap, err := h.svc.Dismiss(t.Context(), id)
 	require.NoError(t, err)
-	assert.Equal(t, notified+1, h.notifier.calls)
+	assert.Equal(t, notified+1, h.notifier.Calls())
 
 	// The item stays in both its lists, marked; the UI sets it apart.
 	for _, l := range []List{snap.ReviewRequested, snap.Assigned} {
@@ -44,7 +44,7 @@ func TestDismissUntilRestored(t *testing.T) {
 	assert.Empty(t, itemByNumber(t, snap.ReviewRequested, 2).DismissedAt, "other items are untouched")
 
 	// A refresh leaves it dismissed, however much later.
-	h.clock.now = h.clock.now.Add(30 * 24 * time.Hour)
+	h.clock.Advance(30 * 24 * time.Hour)
 	snap = h.refresh(t)
 	assert.Equal(t, "2026-01-10T12:00:00Z", itemByNumber(t, snap.ReviewRequested, 1).DismissedAt)
 
@@ -60,7 +60,7 @@ func TestDismissUntilRestored(t *testing.T) {
 
 func TestSnoozeForDays(t *testing.T) {
 	h, id, _ := triageHarness(t)
-	h.clock.now = time.Date(2026, 1, 10, 12, 0, 0, 500, time.UTC)
+	h.clock.Set(time.Date(2026, 1, 10, 12, 0, 0, 500, time.UTC))
 
 	snap, err := h.svc.Snooze(t.Context(), id, 3)
 	require.NoError(t, err)
@@ -84,7 +84,7 @@ func TestSnoozeForDays(t *testing.T) {
 
 	// Once the snooze has passed, the item still says it was snoozed, so the UI can mark
 	// it as back.
-	h.clock.now = h.clock.now.Add(48 * time.Hour)
+	h.clock.Advance(48 * time.Hour)
 	snap = h.refresh(t)
 	assert.Equal(t, "2026-01-11T12:00:00Z", itemByNumber(t, snap.Assigned, 1).SnoozedUntil)
 	assert.Equal(t, int64(1), h.count(t, "item_local_state"))
@@ -97,7 +97,7 @@ func TestSnoozeKeepsTheWallClockTime(t *testing.T) {
 	require.NoError(t, err)
 
 	// Noon on the Saturday before the clocks go forward: noon on Sunday is 23 hours on.
-	h.clock.now = time.Date(2026, 3, 7, 12, 0, 0, 0, newYork)
+	h.clock.Set(time.Date(2026, 3, 7, 12, 0, 0, 0, newYork))
 
 	snap, err := h.svc.Snooze(t.Context(), id, 1)
 	require.NoError(t, err)
@@ -105,12 +105,12 @@ func TestSnoozeKeepsTheWallClockTime(t *testing.T) {
 	until, err := time.Parse(time.RFC3339, itemByNumber(t, snap.ReviewRequested, 1).SnoozedUntil)
 	require.NoError(t, err)
 	assert.Equal(t, time.Date(2026, 3, 8, 12, 0, 0, 0, newYork).UTC(), until)
-	assert.Equal(t, 23*time.Hour, until.Sub(h.clock.now))
+	assert.Equal(t, 23*time.Hour, until.Sub(h.clock.Now()))
 }
 
 func TestSnoozeRejectsInvalidLengths(t *testing.T) {
 	h, id, _ := triageHarness(t)
-	notified := h.notifier.calls
+	notified := h.notifier.Calls()
 
 	for _, days := range []int{0, -1, snooze.MaxDays + 1} {
 		_, err := h.svc.Snooze(t.Context(), id, days)
@@ -123,12 +123,12 @@ func TestSnoozeRejectsInvalidLengths(t *testing.T) {
 	_, err = h.svc.Snooze(t.Context(), id, snooze.MaxDays)
 	require.NoError(t, err, "a year is the longest snooze")
 
-	assert.Equal(t, notified+1, h.notifier.calls, "only the valid snooze notifies")
+	assert.Equal(t, notified+1, h.notifier.Calls(), "only the valid snooze notifies")
 }
 
 func TestPinKeepsAnItemOnTop(t *testing.T) {
 	h, first, second := triageHarness(t)
-	notified := h.notifier.calls
+	notified := h.notifier.Calls()
 
 	// #2 moved last, so it leads until #1 is pinned.
 	snap, err := h.svc.Snapshot(t.Context())
@@ -137,19 +137,19 @@ func TestPinKeepsAnItemOnTop(t *testing.T) {
 
 	snap, err = h.svc.Pin(t.Context(), first)
 	require.NoError(t, err)
-	assert.Equal(t, notified+1, h.notifier.calls)
+	assert.Equal(t, notified+1, h.notifier.Calls())
 	assert.Equal(t, []int{1, 2}, numbers(snap.ReviewRequested))
 	assert.Equal(t, "2026-01-10T12:00:00Z", itemByNumber(t, snap.Assigned, 1).PinnedAt, "pinned in every list")
 	assert.Empty(t, itemByNumber(t, snap.ReviewRequested, 2).PinnedAt)
 
 	// The most recently pinned comes first, even within the same second.
-	h.clock.now = h.clock.now.Add(500 * time.Millisecond)
+	h.clock.Advance(500 * time.Millisecond)
 	snap, err = h.svc.Pin(t.Context(), second)
 	require.NoError(t, err)
 	assert.Equal(t, []int{2, 1}, numbers(snap.ReviewRequested))
 
 	// Pinning a pinned item does not move it.
-	h.clock.now = h.clock.now.Add(time.Minute)
+	h.clock.Advance(time.Minute)
 	snap, err = h.svc.Pin(t.Context(), first)
 	require.NoError(t, err)
 	assert.Equal(t, []int{2, 1}, numbers(snap.ReviewRequested))
@@ -217,7 +217,7 @@ func TestAPinOutlastsSnoozesAndDismissals(t *testing.T) {
 
 func TestTriageUnknownItem(t *testing.T) {
 	h, _, _ := triageHarness(t)
-	notified := h.notifier.calls
+	notified := h.notifier.Calls()
 
 	_, err := h.svc.Dismiss(t.Context(), 999)
 	require.ErrorIs(t, err, ErrItemNotFound)
@@ -230,7 +230,7 @@ func TestTriageUnknownItem(t *testing.T) {
 	require.ErrorIs(t, err, ErrItemNotFound)
 
 	assert.Zero(t, h.count(t, "item_local_state"))
-	assert.Equal(t, notified, h.notifier.calls)
+	assert.Equal(t, notified, h.notifier.Calls())
 }
 
 func TestTriageDatabaseErrors(t *testing.T) {
@@ -274,7 +274,7 @@ func wakeHarness(t *testing.T) (h *harness, id int64, details github.ItemDetails
 func (h *harness) later(t *testing.T, details github.ItemDetails) Item {
 	t.Helper()
 
-	h.clock.now = h.clock.now.Add(time.Hour)
+	h.clock.Advance(time.Hour)
 	h.client.details = map[string]github.ItemDetails{nodeID(1): details}
 
 	return itemByNumber(t, h.refresh(t).ReviewRequested, 1)
@@ -285,7 +285,7 @@ func (h *harness) setPrefs(t *testing.T, prefs map[string]string) {
 	t.Helper()
 
 	for k, v := range prefs {
-		require.NoError(t, h.db.Exec(upsertPrefSQL, k, v, h.clock.now).Error)
+		require.NoError(t, h.db.Exec(upsertPrefSQL, k, v, h.clock.Now()).Error)
 	}
 }
 

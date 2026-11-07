@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/brand"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // fakeAgent is a stand-in for the agent binary. It prints its working directory, two
@@ -41,13 +42,6 @@ func runSh(t *testing.T, env []string, args ...string) ([]byte, error) {
 	}
 
 	return out, err
-}
-
-// writeExecutable writes an executable file for the test.
-func writeExecutable(t *testing.T, path, body string) {
-	t.Helper()
-
-	require.NoError(t, os.WriteFile(path, []byte(body), 0o700)) //nolint:gosec // test executable must be runnable
 }
 
 func TestShellQuote(t *testing.T) {
@@ -167,7 +161,7 @@ func TestRenderedScriptRunsWithExactArgv(t *testing.T) {
 
 	agent := filepath.Join(root, "bin with space", "claude")
 	require.NoError(t, os.MkdirAll(filepath.Dir(agent), 0o700))
-	writeExecutable(t, agent, fakeAgent)
+	testutil.WriteExecutable(t, agent, fakeAgent)
 
 	req := baseRequest()
 	req.Clone.Dir = clone
@@ -210,7 +204,7 @@ func TestRenderedScriptStopsWhenTheCloneIsMissing(t *testing.T) {
 	root := t.TempDir()
 	marker := filepath.Join(root, "agent-ran")
 	agent := filepath.Join(root, "claude")
-	writeExecutable(t, agent, "#!/bin/sh\ntouch "+shQuote(marker)+"\n")
+	testutil.WriteExecutable(t, agent, "#!/bin/sh\ntouch "+shQuote(marker)+"\n")
 
 	req := baseRequest()
 	req.Clone.Dir = filepath.Join(root, "gone")

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strconv"
 	"sync"
 	"testing"
@@ -18,17 +17,13 @@ import (
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/snooze"
 	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 var errPostFailed = errors.New("the notification center said no")
 
 // testNow is the fixed time the tests record at.
 var testNow = time.Date(2026, 3, 4, 12, 0, 0, 0, time.UTC) //nolint:gochecknoglobals // a fixed test time
-
-// fakeClock returns a settable time.
-type fakeClock struct{ now time.Time }
-
-func (c *fakeClock) Now() time.Time { return c.now }
 
 // fakePoster records the banners posted, and fails when err is set. denied and
 // authErr are the answer to Authorize.
@@ -73,32 +68,12 @@ func (p *fakePoster) posted() []Banner {
 	return append([]Banner(nil), p.banners...)
 }
 
-// countingNotifier counts the times the log was reported changed.
-type countingNotifier struct {
-	mu    sync.Mutex
-	calls int
-}
-
-func (n *countingNotifier) NotificationsUpdated() {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-
-	n.calls++
-}
-
-func (n *countingNotifier) count() int {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-
-	return n.calls
-}
-
 // fixture is a database with stored items to notify about.
 type fixture struct {
 	db       *gorm.DB
-	clock    *fakeClock
+	clock    *testutil.Clock
 	poster   *fakePoster
-	notifier *countingNotifier
+	notifier *testutil.Notifier
 	items    []int64
 }
 
@@ -107,9 +82,7 @@ type fixture struct {
 func newFixture(t *testing.T, n int) *fixture {
 	t.Helper()
 
-	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "app.db"))
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = store.Close(db) })
+	db := testutil.DB(t)
 
 	var accountID, repoID int64
 
@@ -119,8 +92,8 @@ RETURNING id`, testNow, testNow).Scan(&accountID).Error)
 VALUES ('acme-org', 'example-repo', ?, ?) RETURNING id`, testNow, testNow).Scan(&repoID).Error)
 
 	f := &fixture{
-		db: db, clock: &fakeClock{now: testNow}, poster: &fakePoster{status: StatusOn},
-		notifier: &countingNotifier{},
+		db: db, clock: testutil.NewClock(testNow), poster: &fakePoster{status: StatusOn},
+		notifier: &testutil.Notifier{},
 	}
 
 	for i := 1; i <= n; i++ {
@@ -165,8 +138,8 @@ func TestTheLogKeepsWhatWasRecorded(t *testing.T) {
 	require.Len(t, rows, 2)
 	assert.NotZero(t, rows[0].ID)
 
-	f.clock.now = testNow.Add(time.Minute)
-	_, err = s.Record(t.Context(), f.clock.now, []inbox.Arrival{f.arrival(0, KindAssigned)})
+	f.clock.Set(testNow.Add(time.Minute))
+	_, err = s.Record(t.Context(), f.clock.Now(), []inbox.Arrival{f.arrival(0, KindAssigned)})
 	require.NoError(t, err)
 
 	log, err := s.Log(t.Context())
@@ -277,7 +250,7 @@ func TestTheDispatcherRecordsAndShowsBanners(t *testing.T) {
 	log, err := NewStore(f.db).Log(t.Context())
 	require.NoError(t, err)
 	require.Len(t, log.Items, 2)
-	assert.Equal(t, 1, f.notifier.count())
+	assert.Equal(t, 1, f.notifier.Calls())
 
 	banners := f.poster.posted()
 	require.Len(t, banners, 2)
@@ -316,7 +289,7 @@ func TestTheDispatcherKeepsTheLogWithoutAPoster(t *testing.T) {
 	log, err := NewStore(f.db).Log(t.Context())
 	require.NoError(t, err)
 	assert.Len(t, log.Items, 1)
-	assert.Equal(t, 1, f.notifier.count())
+	assert.Equal(t, 1, f.notifier.Calls())
 }
 
 func TestTheDispatcherShowsNoBannersTheUserHasNotAllowed(t *testing.T) {
@@ -326,7 +299,7 @@ func TestTheDispatcherShowsNoBannersTheUserHasNotAllowed(t *testing.T) {
 	NewDispatcher(f.config()).Arrived(t.Context(), []inbox.Arrival{f.arrival(0, KindReviewRequested)})
 
 	assert.Empty(t, f.poster.posted())
-	assert.Equal(t, 1, f.notifier.count(), "the log still has it")
+	assert.Equal(t, 1, f.notifier.Calls(), "the log still has it")
 }
 
 func TestTheDispatcherSurvivesFailures(t *testing.T) {
@@ -335,14 +308,14 @@ func TestTheDispatcherSurvivesFailures(t *testing.T) {
 
 	d := NewDispatcher(f.config())
 	d.Arrived(t.Context(), []inbox.Arrival{f.arrival(0, KindReviewRequested)})
-	assert.Equal(t, 1, f.notifier.count(), "the entry was still recorded")
+	assert.Equal(t, 1, f.notifier.Calls(), "the entry was still recorded")
 
 	d.Arrived(t.Context(), nil)
-	assert.Equal(t, 1, f.notifier.count(), "nothing new, nothing told")
+	assert.Equal(t, 1, f.notifier.Calls(), "nothing new, nothing told")
 
 	require.NoError(t, store.Close(f.db))
 	d.Arrived(context.Background(), []inbox.Arrival{f.arrival(0, KindReviewRequested)})
-	assert.Equal(t, 1, f.notifier.count(), "nothing was recorded")
+	assert.Equal(t, 1, f.notifier.Calls(), "nothing was recorded")
 }
 
 func TestTheServiceServesTheLog(t *testing.T) {
@@ -357,14 +330,14 @@ func TestTheServiceServesTheLog(t *testing.T) {
 	assert.Equal(t, 1, log.Unread)
 
 	require.NoError(t, svc.MarkAllRead(t.Context()))
-	assert.Equal(t, 1, f.notifier.count())
+	assert.Equal(t, 1, f.notifier.Calls())
 
 	log, err = svc.List(t.Context())
 	require.NoError(t, err)
 	assert.Zero(t, log.Unread)
 
 	require.NoError(t, svc.Clear(t.Context()))
-	assert.Equal(t, 2, f.notifier.count())
+	assert.Equal(t, 2, f.notifier.Calls())
 
 	log, err = svc.List(t.Context())
 	require.NoError(t, err)
@@ -373,7 +346,7 @@ func TestTheServiceServesTheLog(t *testing.T) {
 	require.NoError(t, store.Close(f.db))
 	require.Error(t, svc.MarkAllRead(t.Context()))
 	require.Error(t, svc.Clear(t.Context()))
-	assert.Equal(t, 2, f.notifier.count(), "failures are not told")
+	assert.Equal(t, 2, f.notifier.Calls(), "failures are not told")
 }
 
 func TestBannerStatusAndTest(t *testing.T) {
@@ -412,7 +385,7 @@ func TestTheDefaultsFillIn(t *testing.T) {
 	f := newFixture(t, 0)
 	svc := NewService(Config{DB: f.db})
 
-	assert.NotNil(t, svc.clock)
+	require.NotNil(t, svc.clock)
 	assert.NotNil(t, svc.logger)
 	assert.WithinDuration(t, time.Now(), svc.clock.Now(), time.Minute)
 	svc.notify() // no notifier: nothing to tell

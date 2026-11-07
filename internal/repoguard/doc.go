@@ -3,7 +3,8 @@
 // personal home-directory paths, schema creation from models instead of migrations, a
 // data layer that needs CGO, tests that would call the live GitHub API, any command that
 // deletes a git branch, a clone created anywhere but the launcher's confirmed clone of a
-// missing repository, and any git command that changes an existing clone.
+// missing repository, any git command that changes an existing clone, and the
+// test-support package (internal/testutil) imported anywhere but a _test.go file.
 //
 // One guard is personal: a contributor can list their own private names (employers,
 // clients, private organizations and repositories) in the clone's git directory, at

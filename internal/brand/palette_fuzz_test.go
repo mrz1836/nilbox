@@ -1,8 +1,9 @@
 package brand
 
 import (
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // FuzzContrastRatio checks that ContrastRatio never panics, only fails with
@@ -34,24 +35,20 @@ func FuzzContrastRatio(f *testing.F) {
 func requireInvalidHex(t *testing.T, err error) {
 	t.Helper()
 
-	if !errors.Is(err, ErrInvalidHexColor) {
-		t.Fatalf("unexpected error type: %v", err)
-	}
+	require.ErrorIs(t, err, ErrInvalidHexColor)
 }
 
 func requireRatioInRange(t *testing.T, got float64, a, b string) {
 	t.Helper()
 
-	if got < 1 || got > 21.0001 {
-		t.Fatalf("ratio %f out of range for %q/%q", got, a, b)
-	}
+	require.GreaterOrEqual(t, got, 1.0, "ratio out of range for %q/%q", a, b)
+	require.LessOrEqual(t, got, 21.0001, "ratio out of range for %q/%q", a, b)
 }
 
 func requireSymmetric(t *testing.T, got float64, a, b string) {
 	t.Helper()
 
 	swapped, err := ContrastRatio(b, a)
-	if err != nil || swapped != got {
-		t.Fatalf("ratio not symmetric for %q/%q: %f vs %f (%v)", a, b, got, swapped, err)
-	}
+	require.NoError(t, err, "ratio not symmetric for %q/%q", a, b)
+	require.InDelta(t, got, swapped, 0, "ratio not symmetric for %q/%q", a, b)
 }

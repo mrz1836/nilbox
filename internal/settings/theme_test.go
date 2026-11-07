@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // themeLog records the themes a ThemeNotifier was told about, in order.
@@ -64,7 +65,7 @@ func TestThemeSurvivesARestart(t *testing.T) {
 	require.NoError(t, NewService(db, home).SetTheme(ctx, ThemeLight))
 	require.NoError(t, store.Close(db))
 
-	got, err := NewService(openDB(t, path), home).Theme(ctx)
+	got, err := NewService(testutil.DBAt(t, path), home).Theme(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, ThemeLight, got)
 }
@@ -72,7 +73,7 @@ func TestThemeSurvivesARestart(t *testing.T) {
 func TestSetThemeRejectsAnUnknownTheme(t *testing.T) {
 	log := &themeLog{}
 	home := t.TempDir()
-	svc := NewService(openDB(t, filepath.Join(t.TempDir(), "app.db")), home, WithThemeNotifier(log))
+	svc := NewService(testutil.DB(t), home, WithThemeNotifier(log))
 	ctx := t.Context()
 
 	require.NoError(t, svc.SetTheme(ctx, ThemeDark))
@@ -119,7 +120,7 @@ func TestThemeReportsAClosedDatabase(t *testing.T) {
 
 func TestSetThemeTellsTheNotifierOnceStored(t *testing.T) {
 	log := &themeLog{}
-	db := openDB(t, filepath.Join(t.TempDir(), "app.db"))
+	db := testutil.DB(t)
 	svc := NewService(db, t.TempDir(), WithThemeNotifier(log))
 	ctx := t.Context()
 

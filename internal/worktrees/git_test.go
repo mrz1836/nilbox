@@ -5,11 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 const (
@@ -42,24 +43,6 @@ func argv(parts ...string) []string {
 	}
 
 	return out
-}
-
-// recordingRunner records every call and answers with fixed output or error.
-type recordingRunner struct {
-	mu     sync.Mutex
-	calls  [][]string
-	stdout string
-	stderr string
-	err    error
-}
-
-func (r *recordingRunner) Run(_ context.Context, name string, args ...string) (stdout, stderr []byte, err error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.calls = append(r.calls, append([]string{name}, args...))
-
-	return []byte(r.stdout), []byte(r.stderr), r.err
 }
 
 func TestGitArgvUsesDashC(t *testing.T) {
@@ -122,13 +105,13 @@ func TestGitArgvUsesDashC(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			run := &recordingRunner{stdout: tt.stdout}
-			if run.stdout == "" {
-				run.stdout = "1700000000\n"
+			run := &testutil.Runner{Stdout: tt.stdout}
+			if run.Stdout == "" {
+				run.Stdout = "1700000000\n"
 			}
 
 			require.NoError(t, tt.call(git{run: run, bin: gitPath}))
-			assert.Equal(t, [][]string{tt.want}, run.calls)
+			assert.Equal(t, [][]string{tt.want}, run.Calls())
 		})
 	}
 }
@@ -168,10 +151,10 @@ func TestGitRejectsCommandsOutsideAllowlist(t *testing.T) {
 
 	for _, args := range refused {
 		t.Run(fmt.Sprint(args), func(t *testing.T) {
-			run := &recordingRunner{}
+			run := &testutil.Runner{}
 			_, _, err := git{run: run, bin: gitBin}.do(t.Context(), repoDir, args...)
 			require.ErrorIs(t, err, ErrGitCommandNotAllowed)
-			assert.Empty(t, run.calls, "a refused command never runs")
+			assert.Empty(t, run.Calls(), "a refused command never runs")
 		})
 	}
 }
@@ -180,7 +163,7 @@ func TestGitOutputParsing(t *testing.T) {
 	ctx := t.Context()
 
 	t.Run("list parses porcelain", func(t *testing.T) {
-		run := &recordingRunner{stdout: string(porcelain(mainAttrs()))}
+		run := &testutil.Runner{Stdout: string(porcelain(mainAttrs()))}
 		entries, _, err := git{run: run, bin: gitBin}.list(ctx, repoDir)
 		require.NoError(t, err)
 		require.Len(t, entries, 1)
@@ -188,46 +171,46 @@ func TestGitOutputParsing(t *testing.T) {
 	})
 
 	t.Run("list returns git's stderr on failure", func(t *testing.T) {
-		run := &recordingRunner{stderr: "fatal: not a git repository", err: exitError{code: 128}}
+		run := &testutil.Runner{Stderr: "fatal: not a git repository", Err: exitError{code: 128}}
 		_, stderr, err := git{run: run, bin: gitBin}.list(ctx, repoDir)
 		require.Error(t, err)
 		assert.Equal(t, "fatal: not a git repository", string(stderr))
 	})
 
 	t.Run("dirty count", func(t *testing.T) {
-		run := &recordingRunner{stdout: " M f\x00?? g\x00"}
+		run := &testutil.Runner{Stdout: " M f\x00?? g\x00"}
 		count, _, err := git{run: run, bin: gitBin}.dirtyCount(ctx, treePath)
 		require.NoError(t, err)
 		assert.Equal(t, 2, count)
 	})
 
 	t.Run("dirty count failure", func(t *testing.T) {
-		run := &recordingRunner{err: errFakeStart}
+		run := &testutil.Runner{Err: errFakeStart}
 		_, _, err := git{run: run, bin: gitBin}.dirtyCount(ctx, treePath)
 		require.ErrorIs(t, err, errFakeStart)
 	})
 
 	t.Run("last commit", func(t *testing.T) {
-		run := &recordingRunner{stdout: "1700000000\n"}
+		run := &testutil.Runner{Stdout: "1700000000\n"}
 		unix, err := git{run: run, bin: gitBin}.lastCommit(ctx, treePath)
 		require.NoError(t, err)
 		assert.Equal(t, int64(1700000000), unix)
 	})
 
 	t.Run("last commit with unexpected output", func(t *testing.T) {
-		run := &recordingRunner{stdout: "yesterday\n"}
+		run := &testutil.Runner{Stdout: "yesterday\n"}
 		_, err := git{run: run, bin: gitBin}.lastCommit(ctx, treePath)
 		require.ErrorIs(t, err, errParseCommitTime)
 	})
 
 	t.Run("last commit failure", func(t *testing.T) {
-		run := &recordingRunner{err: exitError{code: 128}}
+		run := &testutil.Runner{Err: exitError{code: 128}}
 		_, err := git{run: run, bin: gitBin}.lastCommit(ctx, treePath)
 		require.Error(t, err)
 	})
 
 	t.Run("unpushed count", func(t *testing.T) {
-		run := &recordingRunner{stdout: "3\n"}
+		run := &testutil.Runner{Stdout: "3\n"}
 		count, _, err := git{run: run, bin: gitBin}.unpushed(ctx, treePath)
 		require.NoError(t, err)
 		assert.Equal(t, 3, count)
@@ -235,14 +218,14 @@ func TestGitOutputParsing(t *testing.T) {
 
 	t.Run("unpushed count with unexpected output", func(t *testing.T) {
 		for _, out := range []string{"many\n", "-1\n"} {
-			run := &recordingRunner{stdout: out}
+			run := &testutil.Runner{Stdout: out}
 			_, _, err := git{run: run, bin: gitBin}.unpushed(ctx, treePath)
 			require.ErrorIs(t, err, errParseCount, out)
 		}
 	})
 
 	t.Run("unpushed count failure returns stderr", func(t *testing.T) {
-		run := &recordingRunner{stderr: "fatal: bad revision 'HEAD'", err: exitError{code: 128}}
+		run := &testutil.Runner{Stderr: "fatal: bad revision 'HEAD'", Err: exitError{code: 128}}
 		_, stderr, err := git{run: run, bin: gitBin}.unpushed(ctx, treePath)
 		require.Error(t, err)
 		assert.Equal(t, "fatal: bad revision 'HEAD'", string(stderr))

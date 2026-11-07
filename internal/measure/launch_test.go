@@ -18,6 +18,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/launcher"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 var (
@@ -25,17 +26,6 @@ var (
 	errTerminal   = errors.New("terminal failed")
 	errExecFailed = errors.New("exit status 1")
 )
-
-// fakeClock returns times one second apart.
-type fakeClock struct {
-	now time.Time
-}
-
-func (c *fakeClock) Now() time.Time {
-	c.now = c.now.Add(time.Second)
-
-	return c.now
-}
 
 // fakeProbe answers process queries from scripted lists.
 type fakeProbe struct {
@@ -75,19 +65,8 @@ func (p *fakeProbe) Stop(_ context.Context, pid int) error {
 	return p.stopErr
 }
 
-// realTempDir returns a new temporary directory with its symbolic links resolved, the way
-// newLaunchFixture resolves the clone (on macOS the temporary directory sits under one).
-func realTempDir(t *testing.T) string {
-	t.Helper()
-
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	require.NoError(t, err)
-
-	return dir
-}
-
 func newTimer(probe agentProbe, clone string, launch func(context.Context) (launcher.LaunchResult, error)) launchTimer {
-	clock := &fakeClock{now: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)}
+	clock := testutil.NewSteppingClock(time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC), time.Second)
 
 	return launchTimer{
 		launch:  launch,
@@ -105,7 +84,7 @@ func launched(context.Context) (launcher.LaunchResult, error) {
 }
 
 func TestLaunchTimerFindsTheAgent(t *testing.T) {
-	clone := realTempDir(t)
+	clone := testutil.RealTempDir(t)
 
 	tests := []struct {
 		name string
@@ -163,7 +142,7 @@ func TestLaunchTimerAutomation(t *testing.T) {
 }
 
 func TestLaunchTimerErrors(t *testing.T) {
-	clone := realTempDir(t)
+	clone := testutil.RealTempDir(t)
 
 	t.Run("launch fails", func(t *testing.T) {
 		launch := func(context.Context) (launcher.LaunchResult, error) {
@@ -210,7 +189,7 @@ func TestLaunchTimerErrors(t *testing.T) {
 }
 
 func TestInClone(t *testing.T) {
-	clone := realTempDir(t)
+	clone := testutil.RealTempDir(t)
 
 	assert.True(t, inClone(clone, clone))
 	assert.True(t, inClone(filepath.Join(clone, ".claude", "worktrees", "issue-3"), clone))
@@ -243,25 +222,31 @@ func TestParseLsofCwds(t *testing.T) {
 	assert.Equal(t, map[int]string{}, parseLsofCwds("nno-process\n"))
 }
 
-// scriptedRunner answers programs by base name and records the calls.
-type scriptedRunner struct {
-	mu      sync.Mutex
-	answers map[string]func(args []string) ([]byte, []byte, error)
-	calls   []string
+// answers maps a program's base name to its scripted answer, given the arguments.
+type answers map[string]func(args []string) ([]byte, []byte, error)
+
+// scripted returns a runner that answers each program from a by its base name and fails
+// any other with errNotRun.
+func scripted(a answers) *testutil.Runner {
+	return &testutil.Runner{Script: func(_ context.Context, argv []string) ([]byte, []byte, error) {
+		if answer, ok := a[filepath.Base(argv[0])]; ok {
+			return answer(argv[1:])
+		}
+
+		return nil, nil, errNotRun
+	}}
 }
 
-func (r *scriptedRunner) Run(_ context.Context, name string, args ...string) (stdout, stderr []byte, err error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+// ran returns every call r recorded, as the program's base name and its arguments.
+func ran(r *testutil.Runner) []string {
+	calls := r.Calls()
+	out := make([]string, 0, len(calls))
 
-	base := filepath.Base(name)
-	r.calls = append(r.calls, base+" "+strings.Join(args, " "))
-
-	if answer, ok := r.answers[base]; ok {
-		return answer(args)
+	for _, argv := range calls {
+		out = append(out, filepath.Base(argv[0])+" "+strings.Join(argv[1:], " "))
 	}
 
-	return nil, nil, errNotRun
+	return out
 }
 
 // exitError returns a real *exec.ExitError.
@@ -275,11 +260,11 @@ func exitError(t *testing.T) error {
 }
 
 func TestProcessProbe(t *testing.T) {
-	runner := &scriptedRunner{answers: map[string]func([]string) ([]byte, []byte, error){
+	runner := scripted(answers{
 		"ps":   func([]string) ([]byte, []byte, error) { return []byte(" 7 /opt/agent/claude go\n"), nil, nil },
 		"lsof": func([]string) ([]byte, []byte, error) { return []byte("p7\nfcwd\nn/tmp/clone\n"), nil, exitError(t) },
 		"kill": func([]string) ([]byte, []byte, error) { return nil, nil, nil },
-	}}
+	})
 	probe := processProbe{run: runner}
 
 	pids, err := probe.PIDs(t.Context(), "/opt/agent/claude")
@@ -291,12 +276,12 @@ func TestProcessProbe(t *testing.T) {
 	assert.Equal(t, map[int]string{7: "/tmp/clone"}, cwds)
 
 	require.NoError(t, probe.Stop(t.Context(), 7))
-	assert.Contains(t, runner.calls, "lsof -a -p 7,8 -d cwd -Fn")
-	assert.Contains(t, runner.calls, "kill -TERM 7")
+	assert.Contains(t, ran(runner), "lsof -a -p 7,8 -d cwd -Fn")
+	assert.Contains(t, ran(runner), "kill -TERM 7")
 }
 
 func TestProcessProbeErrors(t *testing.T) {
-	probe := processProbe{run: &scriptedRunner{}}
+	probe := processProbe{run: scripted(nil)}
 
 	_, err := probe.PIDs(t.Context(), "/opt/agent/claude")
 	require.ErrorIs(t, err, errNotRun)
@@ -308,9 +293,9 @@ func TestProcessProbeErrors(t *testing.T) {
 }
 
 func TestDeadlineRunner(t *testing.T) {
-	inner := &scriptedRunner{answers: map[string]func([]string) ([]byte, []byte, error){
+	inner := scripted(answers{
 		"osascript": func([]string) ([]byte, []byte, error) { return nil, nil, errExecFailed },
-	}}
+	})
 	runner := deadlineRunner{inner: inner}
 
 	_, _, err := runner.Run(t.Context(), "osascript")
@@ -344,17 +329,15 @@ func fakeAgent(t *testing.T) string {
 func isolateGit(t *testing.T) {
 	t.Helper()
 
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git is not installed")
-	}
-
+	// The launch runs git itself, inheriting the test process's environment.
+	testutil.RequireGit(t)
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 }
 
 // launchRunner runs git for real and scripts the terminal and the process tools: the agent
 // appears in the clone once the terminal was asked to open the launch script.
-func launchRunner(t *testing.T, agent string, osascript func() ([]byte, []byte, error)) *scriptedRunner {
+func launchRunner(t *testing.T, agent string, osascript func() ([]byte, []byte, error)) *testutil.Runner {
 	t.Helper()
 
 	var (
@@ -365,7 +348,7 @@ func launchRunner(t *testing.T, agent string, osascript func() ([]byte, []byte, 
 
 	git := execpath.Runner{}
 
-	return &scriptedRunner{answers: map[string]func([]string) ([]byte, []byte, error){
+	return scripted(answers{
 		"git": func(args []string) ([]byte, []byte, error) {
 			if len(args) > 2 && args[0] == "-C" && args[2] == "init" {
 				mu.Lock()
@@ -401,7 +384,7 @@ func launchRunner(t *testing.T, agent string, osascript func() ([]byte, []byte, 
 			return []byte("p4242\nfcwd\nn" + clone + "\n"), nil, nil
 		},
 		"kill": func([]string) ([]byte, []byte, error) { return nil, nil, nil },
-	}}
+	})
 }
 
 func TestRunLaunch(t *testing.T) {
@@ -431,7 +414,7 @@ func TestRunLaunch(t *testing.T) {
 	assert.Equal(t, "iterm2", report.Terminal)
 	assert.Contains(t, report.Permission, "plan", "an outside contributor's pull request launches in plan mode")
 	assert.Positive(t, report.Elapsed)
-	assert.Contains(t, runner.calls, "kill -TERM 4242")
+	assert.Contains(t, ran(runner), "kill -TERM 4242")
 }
 
 func TestRunLaunchAutomationDenied(t *testing.T) {
@@ -459,7 +442,7 @@ func TestRunLaunchSetupErrors(t *testing.T) {
 	})
 
 	t.Run("git fails", func(t *testing.T) {
-		_, err := RunLaunch(t.Context(), LaunchOptions{Home: t.TempDir(), TempDir: t.TempDir(), Runner: &scriptedRunner{}})
+		_, err := RunLaunch(t.Context(), LaunchOptions{Home: t.TempDir(), TempDir: t.TempDir(), Runner: scripted(nil)})
 		require.ErrorIs(t, err, errNotRun)
 	})
 
@@ -474,21 +457,11 @@ func TestRunLaunchSetupErrors(t *testing.T) {
 
 	t.Run("no agent", func(t *testing.T) {
 		isolateGit(t)
-		t.Setenv("PATH", filepath.Dir(gitPath(t)))
+		t.Setenv("PATH", filepath.Dir(testutil.RequireGit(t)))
 
 		runner := launchRunner(t, "/opt/agent/claude", func() ([]byte, []byte, error) { return nil, nil, nil })
 
 		_, err := RunLaunch(t.Context(), LaunchOptions{Home: t.TempDir(), TempDir: t.TempDir(), Runner: runner})
 		require.ErrorIs(t, err, execpath.ErrNotFound)
 	})
-}
-
-// gitPath returns the git executable's absolute path.
-func gitPath(t *testing.T) string {
-	t.Helper()
-
-	path, err := exec.LookPath("git")
-	require.NoError(t, err)
-
-	return path
 }

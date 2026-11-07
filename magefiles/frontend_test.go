@@ -16,12 +16,7 @@ import (
 func fakePNPM(t *testing.T, body string) string {
 	t.Helper()
 
-	log := filepath.Join(t.TempDir(), "pnpm.log")
-	t.Setenv("PNPM_LOG", log)
-
-	fakeTool(t, isolatedPath(t), "pnpm", `printf '%s\n' "$*" >> "$PNPM_LOG"`+"\n"+body)
-
-	return log
+	return fakeLoggedTool(t, isolatedPath(t), "pnpm", body)
 }
 
 func TestRequirePNPM(t *testing.T) {

@@ -3,35 +3,22 @@ package prompts
 import (
 	"context"
 	"errors"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
-	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 var errFakeItemGone = errors.New("item not found")
-
-// newDB opens a migrated database in a temp directory.
-func newDB(t *testing.T) *gorm.DB {
-	t.Helper()
-
-	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "app.db"))
-	require.NoError(t, err)
-
-	t.Cleanup(func() { _ = store.Close(db) })
-
-	return db
-}
 
 // seeded returns a Service over a database holding the starter prompts.
 func seeded(t *testing.T, source PreviewSource) (*Service, *gorm.DB) {
 	t.Helper()
 
-	db := newDB(t)
+	db := testutil.DB(t)
 	require.NoError(t, Seed(t.Context(), db))
 
 	return NewService(Config{DB: db, Source: source}), db
@@ -134,7 +121,7 @@ func TestSeed(t *testing.T) {
 }
 
 func TestSeedFindsAFreeNickname(t *testing.T) {
-	db := newDB(t)
+	db := testutil.DB(t)
 	s := NewService(Config{DB: db})
 
 	mine, err := s.Create(t.Context(), Input{Name: "Mine", Nickname: "review", AppliesTo: AppliesToAny, Body: "Look at {{.URL}}"})
@@ -374,7 +361,7 @@ func TestSetDefault(t *testing.T) {
 }
 
 func TestLoadDefaultsFallsBack(t *testing.T) {
-	db := newDB(t)
+	db := testutil.DB(t)
 	ctx := t.Context()
 
 	defaults, err := LoadDefaults(ctx, db)

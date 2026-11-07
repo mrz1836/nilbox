@@ -1,7 +1,6 @@
 package cleanuplog_test
 
 import (
-	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -11,16 +10,14 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/mrz1836/nilbox/internal/cleanuplog"
-	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // openStore opens a fresh, migrated database and a Store over it.
 func openStore(t *testing.T) (*cleanuplog.Store, *gorm.DB) {
 	t.Helper()
 
-	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "app.db"))
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = store.Close(db) })
+	db := testutil.DB(t)
 
 	return cleanuplog.NewStore(db), db
 }

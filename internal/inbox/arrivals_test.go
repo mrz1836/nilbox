@@ -71,7 +71,7 @@ func kindsAndNumbers(arrivals []Arrival) []string {
 
 // tick moves the clock on an hour.
 func (h *harness) tick() {
-	h.clock.now = h.clock.now.Add(time.Hour)
+	h.clock.Advance(time.Hour)
 }
 
 func TestTheFirstRefreshTellsNoArrivals(t *testing.T) {
@@ -205,7 +205,7 @@ func TestASnoozeEndedEarlyArrives(t *testing.T) {
 
 func TestATruncatedListNeedsTheItemToHaveMoved(t *testing.T) {
 	h, sink := arrivalHarness(t)
-	h.clock.now = time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+	h.clock.Set(time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC))
 	h.client.inbox = fetched([]github.Item{pr(1, "MEMBER", false)}, nil, nil)
 	h.client.inbox.ReviewRequested.IssueCount = 150
 	h.refresh(t)
@@ -213,7 +213,7 @@ func TestATruncatedListNeedsTheItemToHaveMoved(t *testing.T) {
 	// Another item fell out of the truncated list, so an old one slid in: not new.
 	old := byOther(pr(2, "MEMBER", false))
 	moved := byOther(pr(3, "MEMBER", false))
-	moved.UpdatedAt = h.clock.now.Add(30 * time.Minute)
+	moved.UpdatedAt = h.clock.Now().Add(30 * time.Minute)
 
 	h.tick()
 	h.client.inbox = fetched([]github.Item{pr(1, "MEMBER", false), old, moved}, nil, nil)

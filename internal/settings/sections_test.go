@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 func TestNoSectionIsCollapsedOnAFreshDatabase(t *testing.T) {
@@ -49,7 +50,7 @@ func TestCollapsedSectionsSurviveARestart(t *testing.T) {
 	require.NoError(t, NewService(db, home).SetSectionCollapsed(ctx, SectionAuthored, true))
 	require.NoError(t, store.Close(db))
 
-	got, err := NewService(openDB(t, path), home).CollapsedSections(ctx)
+	got, err := NewService(testutil.DBAt(t, path), home).CollapsedSections(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, []string{SectionAuthored}, got)
 }

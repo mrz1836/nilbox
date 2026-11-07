@@ -17,29 +17,19 @@ import (
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/snooze"
 	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
 
 // errRefused is what a test's database callback fails with.
 var errRefused = errors.New("refused by the test")
 
-// openDB opens the database at path, closing it when the test ends.
-func openDB(t *testing.T, path string) *gorm.DB {
-	t.Helper()
-
-	db, err := store.Open(t.Context(), path)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = store.Close(db) })
-
-	return db
-}
-
 // newTestService returns a Service over a fresh database and a temp home directory.
 func newTestService(t *testing.T) (*Service, *gorm.DB, string) {
 	t.Helper()
 
 	home := t.TempDir()
-	db := openDB(t, filepath.Join(t.TempDir(), "app.db"))
+	db := testutil.DB(t)
 
 	return NewService(db, home), db, home
 }
@@ -115,7 +105,7 @@ func TestTerminalPrefPersists(t *testing.T) {
 	require.NoError(t, NewService(db, home).SetTerminal(t.Context(), TerminalApp))
 	require.NoError(t, store.Close(db))
 
-	got, err := NewService(openDB(t, path), home).Get(t.Context())
+	got, err := NewService(testutil.DBAt(t, path), home).Get(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, TerminalApp, got.Terminal)
 }

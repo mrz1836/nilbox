@@ -13,6 +13,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // fakeToken is a placeholder that matches no real token format.
@@ -26,50 +28,27 @@ var (
 	errFakeNotFound = errors.New("gh: executable file not found")
 )
 
-// fakeFinder resolves every name to path, or fails with err.
-type fakeFinder struct {
-	path string
-	err  error
-}
-
-func (f *fakeFinder) Find(string) (string, error) {
-	return f.path, f.err
-}
-
-// fakeRunner returns canned output and records each argv.
-type fakeRunner struct {
-	stdout, stderr string
-	err            error
-	calls          [][]string
-}
-
-func (r *fakeRunner) Run(_ context.Context, name string, args ...string) ([]byte, []byte, error) {
-	r.calls = append(r.calls, append([]string{name}, args...))
-
-	return []byte(r.stdout), []byte(r.stderr), r.err
-}
-
 func TestTokenSourceErrors(t *testing.T) {
-	found := &fakeFinder{path: fakeGHPath}
+	found := testutil.Finder{Path: fakeGHPath}
 
 	cases := []struct {
 		name    string
-		finder  *fakeFinder
-		runner  *fakeRunner
+		finder  testutil.Finder
+		runner  *testutil.Runner
 		wantErr error
 		want    string
 	}{
-		{name: "gh missing", finder: &fakeFinder{err: errFakeNotFound}, runner: &fakeRunner{}, wantErr: ErrGHNotFound},
+		{name: "gh missing", finder: testutil.Finder{Err: errFakeNotFound}, runner: &testutil.Runner{}, wantErr: ErrGHNotFound},
 		{
 			name:    "not logged in",
 			finder:  found,
-			runner:  &fakeRunner{stderr: "no oauth token found for github.com", err: errFakeExit},
+			runner:  &testutil.Runner{Stderr: "no oauth token found for github.com", Err: errFakeExit},
 			wantErr: ErrNotLoggedIn,
 		},
-		{name: "empty output", finder: found, runner: &fakeRunner{stdout: "\n"}, wantErr: ErrNotLoggedIn},
-		{name: "output is not a token", finder: found, runner: &fakeRunner{stdout: "not a token"}, wantErr: ErrNotLoggedIn},
-		{name: "gh vanished after lookup", finder: found, runner: &fakeRunner{err: exec.ErrNotFound}, wantErr: ErrGHNotFound},
-		{name: "success", finder: found, runner: &fakeRunner{stdout: fakeToken + "\n"}, want: fakeToken},
+		{name: "empty output", finder: found, runner: &testutil.Runner{Stdout: "\n"}, wantErr: ErrNotLoggedIn},
+		{name: "output is not a token", finder: found, runner: &testutil.Runner{Stdout: "not a token"}, wantErr: ErrNotLoggedIn},
+		{name: "gh vanished after lookup", finder: found, runner: &testutil.Runner{Err: exec.ErrNotFound}, wantErr: ErrGHNotFound},
+		{name: "success", finder: found, runner: &testutil.Runner{Stdout: fakeToken + "\n"}, want: fakeToken},
 	}
 
 	for _, tc := range cases {
@@ -85,8 +64,8 @@ func TestTokenSourceErrors(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.Equal(t, tc.want, tok.Reveal())
-			require.Len(t, tc.runner.calls, 1)
-			assert.Equal(t, []string{fakeGHPath, "auth", "token", "--hostname", "github.com"}, tc.runner.calls[0])
+			require.Len(t, tc.runner.Calls(), 1)
+			assert.Equal(t, []string{fakeGHPath, "auth", "token", "--hostname", "github.com"}, tc.runner.Calls()[0])
 		})
 	}
 }
@@ -101,7 +80,7 @@ func TestTokenSourceCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	_, err := NewTokenSource(&fakeRunner{err: errFakeExit}, &fakeFinder{path: fakeGHPath}).Token(ctx)
+	_, err := NewTokenSource(&testutil.Runner{Err: errFakeExit}, testutil.Finder{Path: fakeGHPath}).Token(ctx)
 	require.ErrorIs(t, err, context.Canceled)
 }
 
@@ -171,9 +150,9 @@ func TestTokenNeverAppearsInErrorsOrLogs(t *testing.T) {
 	})
 
 	t.Run("failing gh run", func(t *testing.T) {
-		runner := &fakeRunner{stdout: fakeToken, stderr: "error: " + fakeToken, err: errFakeExit}
+		runner := &testutil.Runner{Stdout: fakeToken, Stderr: "error: " + fakeToken, Err: errFakeExit}
 
-		_, err := NewTokenSource(runner, &fakeFinder{path: fakeGHPath}).Token(t.Context())
+		_, err := NewTokenSource(runner, testutil.Finder{Path: fakeGHPath}).Token(t.Context())
 		require.Error(t, err)
 		assert.NotContains(t, err.Error(), fakeToken)
 	})

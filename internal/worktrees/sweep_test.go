@@ -15,6 +15,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/launchlog"
 	"github.com/mrz1836/nilbox/internal/settings"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // sweepFixture is a clone with one agent worktree of each kind the sweep tells apart.
@@ -77,7 +78,7 @@ func newSweepFixture(t *testing.T, e *env) *sweepFixture {
 func TestSweepCleansUpMergedAndClosedWork(t *testing.T) {
 	e := newEnv(t)
 	f := newSweepFixture(t, e)
-	notifier := &countingNotifier{}
+	notifier := &testutil.Notifier{}
 	svc := e.linked(linkDeps{gh: f.gh, launches: f.launches, notifier: notifier, auto: true})
 
 	assert.Zero(t, svc.LastSweep().Seq, "no sweep yet")
@@ -111,14 +112,14 @@ func TestSweepCleansUpMergedAndClosedWork(t *testing.T) {
 
 	assert.NotContains(t, branches(t, f.repo), "worktree-pr-1")
 	assert.ElementsMatch(t, []string{"example-repo/pr-1", "example-repo/issue-5"}, f.launches.forgotten)
-	assert.Equal(t, 1, notifier.calls())
+	assert.Equal(t, 1, notifier.Calls())
 	assert.Equal(t, report, svc.LastSweep())
 
 	again := svc.Sweep(t.Context())
 	assert.Equal(t, 2, again.Seq)
 	assert.Empty(t, again.Cleaned)
 	assert.Equal(t, 3, again.Leftover)
-	assert.Equal(t, 1, notifier.calls(), "nothing changed, so nobody is told")
+	assert.Equal(t, 1, notifier.Calls(), "nothing changed, so nobody is told")
 }
 
 func TestSweepOnlyCountsWhenAutomaticCleanupIsOff(t *testing.T) {
@@ -138,24 +139,24 @@ func TestSweepCountsTheWorktreesOfEveryClone(t *testing.T) {
 	e := newEnv(t)
 	plain := e.newRepo(t, "plain")
 	feature := addWorktree(t, plain, filepath.Join(e.home, "wt", "feature"), "feature")
-	notifier := &countingNotifier{}
+	notifier := &testutil.Notifier{}
 	svc := e.linked(linkDeps{gh: &fakeGitHub{}, notifier: notifier, auto: true})
 
 	report := svc.Sweep(t.Context())
 	assert.Empty(t, report.Error)
 	assert.Equal(t, 1, report.WorktreeCount, "a clone without agent worktrees still counts, though git never runs in it")
-	assert.Equal(t, 1, notifier.calls(), "the first count is news")
+	assert.Equal(t, 1, notifier.Calls(), "the first count is news")
 
 	svc.Sweep(t.Context())
-	assert.Equal(t, 1, notifier.calls(), "the same count is not")
+	assert.Equal(t, 1, notifier.Calls(), "the same count is not")
 
 	addWorktree(t, plain, filepath.Join(e.home, "wt", "second"), "second")
 	assert.Equal(t, 2, svc.Sweep(t.Context()).WorktreeCount)
-	assert.Equal(t, 2, notifier.calls(), "a new worktree is news")
+	assert.Equal(t, 2, notifier.Calls(), "a new worktree is news")
 
-	gitOut(t, "-C", plain, "worktree", "remove", feature)
+	testutil.RunGit(t, plain, "worktree", "remove", feature)
 	assert.Equal(t, 1, svc.Sweep(t.Context()).WorktreeCount)
-	assert.Equal(t, 3, notifier.calls(), "so is one removed")
+	assert.Equal(t, 3, notifier.Calls(), "so is one removed")
 }
 
 func TestCountWorktrees(t *testing.T) {
@@ -179,8 +180,8 @@ func TestCountWorktrees(t *testing.T) {
 	// A linked worktree under the root of a repository outside it brings that
 	// repository's worktrees, as a listing shows them.
 	outside := filepath.Join(e.home, "outside")
-	gitOut(t, "-c", "init.defaultBranch=main", "init", "-q", outside)
-	gitOut(t, "-C", outside, "commit", "-q", "--allow-empty", "-m", "init")
+	testutil.InitRepo(t, outside)
+	testutil.RunGit(t, outside, "commit", "-q", "--allow-empty", "-m", "init")
 	addWorktree(t, outside, filepath.Join(e.root, "outside-wt"), "outside-wt")
 	addWorktree(t, outside, filepath.Join(wt, "outside-two"), "outside-two")
 
@@ -209,13 +210,13 @@ func TestSweepReportsWhatItCouldNotRemove(t *testing.T) {
 	// git reports the worktree's commit as of the listing; a commit made by the time it
 	// is removed keeps it.
 	svc := e.linked(linkDeps{gh: gh, auto: true})
-	svc.run = scriptedRunner{real: execpath.Runner{}, intercept: func(sub []string) (reply, bool) {
+	svc.run = scriptedGit(func(sub []string) (reply, bool) {
 		if startsWith(sub, "worktree remove") {
 			return reply{stderr: "fatal: '" + path + "' contains modified or untracked files, use --force to delete it", err: exitError{code: 128}}, true
 		}
 
 		return reply{}, false
-	}}
+	})
 
 	report := svc.Sweep(t.Context())
 	require.Len(t, report.Failed, 1)
@@ -229,7 +230,7 @@ func TestSweepForgetsLaunchesWhoseWorktreeIsGone(t *testing.T) {
 	kept, head := agentWorktree(t, repo, "pr-1")
 	pushed(t, repo, "one", head)
 	removed, _ := agentWorktree(t, repo, "pr-2")
-	gitOut(t, "-C", repo, "worktree", "remove", removed)
+	testutil.RunGit(t, repo, "worktree", "remove", removed)
 
 	elsewhere := filepath.Join(e.home, "elsewhere", "example-repo")
 	require.NoError(t, os.MkdirAll(elsewhere, 0o700))
@@ -270,14 +271,14 @@ func TestSweepErrors(t *testing.T) {
 	repo := e.newGitHubRepo(t, "example-repo")
 	agentWorktree(t, repo, "pr-1")
 
-	notifier := &countingNotifier{}
+	notifier := &testutil.Notifier{}
 	gh := &fakeGitHub{err: errFakeGitHub}
 	svc := e.linked(linkDeps{gh: gh, notifier: notifier, auto: true})
 
 	report := svc.Sweep(t.Context())
 	assert.Contains(t, report.Error, errFakeGitHub.Error())
 	assert.Empty(t, report.Cleaned)
-	assert.Equal(t, 1, notifier.calls(), "a new error is news")
+	assert.Equal(t, 1, notifier.Calls(), "a new error is news")
 
 	svc.settings = fakeSettings{err: errFakeSettings}
 
@@ -286,13 +287,13 @@ func TestSweepErrors(t *testing.T) {
 	assert.NotEmpty(t, report.At)
 
 	svc.settings = fakeSettings{root: cloneRoot, auto: true}
-	svc.run = scriptedRunner{real: execpath.Runner{}, intercept: func(sub []string) (reply, bool) {
+	svc.run = scriptedGit(func(sub []string) (reply, bool) {
 		if startsWith(sub, "worktree list") {
 			return reply{err: errFakeStart}, true
 		}
 
 		return reply{}, false
-	}}
+	})
 
 	report = svc.Sweep(t.Context())
 	assert.Contains(t, report.Error, errFakeStart.Error())

@@ -38,18 +38,12 @@ printf '/**\n * Doc. \n */\nexport const a = 1;\n' > "$out/models/a.ts"`
 
 // fakeGo puts a go on an isolated PATH that logs each call's arguments, answers
 // `go list` with fakeWailsVersion, and runs body for every other command. It returns
-// the log's path.
+// the log's path, which body can append to through $log.
 func fakeGo(t *testing.T, body string) string {
 	t.Helper()
 
-	log := filepath.Join(t.TempDir(), "go.log")
-	t.Setenv("GO_LOG", log)
-
-	fakeTool(t, isolatedPath(t), "go", `printf '%s\n' "$*" >> "$GO_LOG"
-if [ "$1" = list ]; then echo "`+fakeWailsVersion+`"; exit 0; fi
+	return fakeLoggedTool(t, isolatedPath(t), "go", `if [ "$1" = list ]; then echo "`+fakeWailsVersion+`"; exit 0; fi
 `+body)
-
-	return log
 }
 
 // fakeLint puts a golangci-lint at version 2.15.0 on an isolated PATH that logs each
@@ -75,12 +69,7 @@ printf '%s\n' "$*" >> "$LINT_LOG"`)
 func fakeOpen(t *testing.T, body string) string {
 	t.Helper()
 
-	log := filepath.Join(t.TempDir(), "open.log")
-	t.Setenv("OPEN_LOG", log)
-
-	fakeTool(t, isolatedPath(t), "open", `printf '%s\n' "$*" >> "$OPEN_LOG"`+"\n"+body)
-
-	return log
+	return fakeLoggedTool(t, isolatedPath(t), "open", body)
 }
 
 // appTools puts a fake of every tool the app targets run on an isolated PATH, each
@@ -141,12 +130,11 @@ func checkout(t *testing.T, dir string) {
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, frontendDir), 0o750))
 }
 
-// startSleeper starts a process of the test's own that sleeps until it is stopped and
-// returns its ID. The test reaps it when it ends.
-func startSleeper(t *testing.T) int {
+// startProcess starts cmd, a process of the test's own, and returns its ID and a channel
+// that is closed once it has exited. The test kills and reaps it when it ends.
+func startProcess(t *testing.T, cmd *exec.Cmd) (int, <-chan struct{}) {
 	t.Helper()
 
-	cmd := exec.CommandContext(t.Context(), requireTool(t, "sleep"), "30") //nolint:gosec // the test's own process, fixed arguments
 	require.NoError(t, cmd.Start())
 
 	done := make(chan struct{})
@@ -163,7 +151,28 @@ func startSleeper(t *testing.T) int {
 		<-done
 	})
 
-	return cmd.Process.Pid
+	return cmd.Process.Pid, done
+}
+
+// startSleeper starts a process of the test's own that sleeps until it is stopped and
+// returns its ID. The test reaps it when it ends.
+func startSleeper(t *testing.T) int {
+	t.Helper()
+
+	pid, _ := startProcess(t, exec.CommandContext(t.Context(), requireTool(t, "sleep"), "30")) //nolint:gosec // the test's own process, fixed arguments
+
+	return pid
+}
+
+// requireProcessList skips a test that needs pgrep to see real processes when pgrep
+// cannot list any, as inside a sandbox that hides the process table. A pattern that
+// matches every command line finds at least the go command running the tests.
+func requireProcessList(t *testing.T) {
+	t.Helper()
+
+	if err := exec.CommandContext(t.Context(), requireTool(t, "pgrep"), "-f", ".").Run(); err != nil { //nolint:gosec // fixed arguments
+		t.Skipf("pgrep cannot list processes here: %v", err)
+	}
 }
 
 // packageVars returns the names of the package-level variables declared in the Go file
@@ -707,9 +716,7 @@ func TestAppProcesses(t *testing.T) {
 	}
 
 	t.Run("matches the whole executable path at the start of the command line", func(t *testing.T) {
-		log := filepath.Join(t.TempDir(), "pgrep.log")
-		t.Setenv("PGREP_LOG", log)
-		fakeTool(t, isolatedPath(t), "pgrep", `printf '%s\n' "$*" >> "$PGREP_LOG"; exit 1`)
+		log := fakeLoggedTool(t, isolatedPath(t), "pgrep", "exit 1")
 
 		_, err := appProcesses(exe)
 
@@ -719,34 +726,19 @@ func TestAppProcesses(t *testing.T) {
 }
 
 func TestAppProcessesFindsARealProcess(t *testing.T) {
-	requireTool(t, "pgrep")
+	requireProcessList(t)
 	requireTool(t, "sleep")
 
 	bash := requireTool(t, "bash")
 	exe := filepath.Join(t.TempDir(), brand.Name+".app", "Contents", "MacOS", brand.Slug)
 
 	// bash replaces itself with sleep, run under the app's path as its command name.
-	cmd := exec.CommandContext(t.Context(), bash, "-c", `exec -a "$0" sleep 30`, exe) //nolint:gosec // the test's own process, fixed arguments
-	require.NoError(t, cmd.Start())
-
-	done := make(chan struct{})
-
-	go func() {
-		_ = cmd.Wait()
-
-		close(done)
-	}()
-
-	t.Cleanup(func() {
-		_ = cmd.Process.Kill()
-
-		<-done
-	})
+	pid, done := startProcess(t, exec.CommandContext(t.Context(), bash, "-c", `exec -a "$0" sleep 30`, exe)) //nolint:gosec // the test's own process, fixed arguments
 
 	assert.Eventually(t, func() bool {
 		pids, err := appProcesses(exe)
 
-		return err == nil && slices.Equal(pids, []int{cmd.Process.Pid})
+		return err == nil && slices.Equal(pids, []int{pid})
 	}, 5*time.Second, 20*time.Millisecond)
 
 	var (
@@ -978,7 +970,7 @@ func TestBuildDesktopBinary(t *testing.T) {
 	}
 
 	t.Run("builds the tagged production binary for the oldest supported macOS", func(t *testing.T) {
-		log := fakeGo(t, `printf '%s|%s|%s|%s\n' "$CGO_ENABLED" "$CGO_CFLAGS" "$CGO_LDFLAGS" "$MACOSX_DEPLOYMENT_TARGET" >> "$GO_LOG"`)
+		log := fakeGo(t, `printf '%s|%s|%s|%s\n' "$CGO_ENABLED" "$CGO_CFLAGS" "$CGO_LDFLAGS" "$MACOSX_DEPLOYMENT_TARGET" >> "$log"`)
 		minVersion := "-mmacosx-version-min=" + macOSMinVersion
 
 		require.NoError(t, buildDesktopBinary("bin/app", meta))
@@ -1007,9 +999,7 @@ func TestWriteInfoPlist(t *testing.T) {
 		dir := inTempDir(t)
 		writeFile(t, filepath.FromSlash(brandgen.InfoPlistPath), "<plist/>")
 
-		log := filepath.Join(t.TempDir(), "plutil.log")
-		t.Setenv("PLUTIL_LOG", log)
-		fakeTool(t, isolatedPath(t), "plutil", `printf '%s\n' "$*" >> "$PLUTIL_LOG"`)
+		log := fakeLoggedTool(t, isolatedPath(t), "plutil", "")
 
 		dst := filepath.Join(dir, "Info.plist")
 

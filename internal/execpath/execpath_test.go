@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // fakeTool is the name of the executable the tests create; nothing real is called that.
@@ -19,10 +21,8 @@ const fakeTool = "example-fake-tool"
 func writeExecutable(t *testing.T, dir string) string {
 	t.Helper()
 
-	require.NoError(t, os.MkdirAll(dir, 0o700))
-
 	path := filepath.Join(dir, fakeTool)
-	require.NoError(t, os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o700)) //nolint:gosec // test executable must be runnable
+	testutil.WriteExecutable(t, path, "#!/bin/sh\nexit 0\n")
 
 	return path
 }
@@ -128,9 +128,7 @@ func TestWellKnownDirs(t *testing.T) {
 }
 
 func TestRunnerRun(t *testing.T) {
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git is not installed")
-	}
+	testutil.RequireGit(t)
 
 	runner := Runner{Finder: Finder{}}
 
@@ -141,12 +139,7 @@ func TestRunnerRun(t *testing.T) {
 }
 
 func TestRunnerRunAbsolutePath(t *testing.T) {
-	git, err := exec.LookPath("git")
-	if err != nil {
-		t.Skip("git is not installed")
-	}
-
-	abs, err := filepath.Abs(git)
+	abs, err := filepath.Abs(testutil.RequireGit(t))
 	require.NoError(t, err)
 
 	t.Setenv("PATH", "")
@@ -157,9 +150,7 @@ func TestRunnerRunAbsolutePath(t *testing.T) {
 }
 
 func TestRunnerRunExitError(t *testing.T) {
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git is not installed")
-	}
+	testutil.RequireGit(t)
 
 	_, stderr, err := Runner{}.Run(t.Context(), "git", "-C", t.TempDir(), "rev-parse", "--git-dir")
 	require.Error(t, err)
@@ -178,9 +169,7 @@ func TestRunnerRunNotFound(t *testing.T) {
 }
 
 func TestRunnerRunCanceled(t *testing.T) {
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git is not installed")
-	}
+	testutil.RequireGit(t)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()

@@ -27,12 +27,7 @@ done
 func fakeRenderer(t *testing.T, dir, body string) string {
 	t.Helper()
 
-	log := filepath.Join(t.TempDir(), "rsvg.log")
-	t.Setenv("RSVG_LOG", log)
-
-	fakeTool(t, dir, svgRenderer, `printf '%s\n' "$*" >> "$RSVG_LOG"`+"\n"+body)
-
-	return log
+	return fakeLoggedTool(t, dir, svgRenderer, body)
 }
 
 func TestBrandGenerate(t *testing.T) {
