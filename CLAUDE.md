@@ -9,7 +9,8 @@ before changing anything.
 
 ## Non-negotiable rules
 
-1. **This is a public, open-source project.** Never write the names of employers, clients,
+1. **Treat this as a public, open-source project.** It stays private until the MVP proves
+   itself, then goes public under the MIT license. Never write the names of employers, clients,
    customers, companies, private projects, or private repositories into this repo. Never write
    personal machine paths (absolute home directories) or private tracker or ticket IDs. That
    applies to code, comments, tests, fixtures, docs, commit messages, branch names, and pull

@@ -54,17 +54,17 @@ Our technical standards are organized into focused, portable documents in the `.
 |-----------------------------|---------------------------------------------------------|
 | `.github/`                  | Issue templates, workflows, and community documentation |
 | `.github/actions/`          | GitHub composite actions for CI/CD and automation       |
-| `.github/ISSUE_TEMPLATE/`   | Issue and pull request templates                        |
+| `.github/ISSUE_TEMPLATE/`   | Issue forms; Settings → About's **Report a bug** prefills the bug report form |
 | `.github/tech-conventions/` | Technical conventions and standards for development     |
 | `.github/workflows/`        | GitHub Actions workflows for CI/CD                      |
 | `.vscode/`                  | VS Code settings and extensions for development         |
-| `build/`                    | Generated app icon artwork (`appicon.svg`) and the stamp of what the icons were rendered from |
+| `build/`                    | Generated icon artwork (the app icon `appicon.svg` and the menu bar icon `trayicon.svg`) and the stamp of what the icons were rendered from |
 | `build/darwin/`             | Generated macOS bundle metadata (Info.plist) and the rendered icon set (icons.icns) |
 | `cmd/nilbox/`               | Application entry point (headless; desktop with the `desktop` tag) |
 | `docs/`                     | Desktop build guide and measured performance            |
 | `frontend/`                 | React + TypeScript desktop frontend and its generated bindings |
 | `internal/brand/`           | Product identity and design tokens                      |
-| `internal/brandgen/`        | Generates frontend theme tokens, Info.plist, and the app icon artwork from the brand |
+| `internal/brandgen/`        | Generates frontend theme tokens, Info.plist, and the app and menu bar icon artwork from the brand |
 | `internal/core/`            | Assembles the app and the services the window binds     |
 | `internal/measure/`         | Startup, refresh, launch, and size measurements         |
 | `internal/*/`               | The inbox, launcher, prompts, launch defaults, settings, profiles, worktrees, notifications, menu bar, and data-layer packages |
