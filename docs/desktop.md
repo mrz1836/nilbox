@@ -47,11 +47,11 @@ pins.
 | `magex frontend:install` | Installs the frontend dependencies exactly as `pnpm-lock.yaml` pins them |
 | `magex frontend:build` | Type-checks the frontend and builds it into `frontend/dist` |
 | `magex frontend:gate` | The frontend gate: frozen-lockfile install, format check, lint, typecheck, and tests with coverage (`frontend/scripts/gate.sh`, the script CI runs) |
-| `magex brand:generate` | Regenerates the theme tokens, frontend brand constants, `build/darwin/Info.plist`, and the app icon artwork `build/appicon.svg` from `internal/brand` |
-| `magex brand:icons` | Renders `build/appicon.svg` into the bundle's icon set `build/darwin/icons.icns` and the development Dock icon `cmd/nilbox/appicon.png` (needs `rsvg-convert`: `brew install librsvg`); run it after changing the mark or the artwork |
+| `magex brand:generate` | Regenerates the theme tokens, frontend brand constants, `build/darwin/Info.plist`, and the icon artwork (the app icon `build/appicon.svg` and the menu bar icon `build/trayicon.svg`) from `internal/brand` |
+| `magex brand:icons` | Renders `build/appicon.svg` into the bundle's icon set `build/darwin/icons.icns` and the development Dock icon `cmd/nilbox/appicon.png`, and `build/trayicon.svg` into the menu bar icon `cmd/nilbox/trayicon.png` (needs `rsvg-convert`: `brew install librsvg`); run it after changing the mark or the artwork |
 | `magex app:bindings` | Regenerates the committed TypeScript bindings in `frontend/bindings` |
 | `magex app:bindingsCheck` | Regenerates the bindings into a temporary directory and fails on any drift |
-| `magex app:lint` | Lints the desktop-tagged Go code (the desktop main and the frontend embed) |
+| `magex app:lint` | Lints the desktop-tagged Go code (the desktop shell and the frontend embed) |
 | `magex app:dev` | Runs the app against the Vite dev server with hot reload |
 | `magex app:build` | Builds the production bundle `bin/Nilbox.app` and signs it ad hoc for local use |
 | `magex app:open` | Opens `bin/Nilbox.app` as it is, building it first when it is missing; a running copy is only brought to the front |
@@ -111,8 +111,11 @@ and it sits behind the `desktop` build tag:
 
 - `cmd/nilbox/main.go` (`//go:build !desktop`) is the headless build, which prints the product
   identity. `magex build` and every untagged `go build ./...` build it.
-- `cmd/nilbox/main_desktop.go` (`//go:build desktop`) is the Wails app. macOS window options
-  live in `window_darwin.go` (`desktop && darwin`).
+- `cmd/nilbox/main_desktop.go` (`//go:build desktop`) is the Wails app. The menu bar icon is
+  `tray_desktop.go`, and the notification banners `banners_darwin_desktop.go`. macOS window
+  options live in `window_darwin.go` (`desktop && darwin`). What the menu bar shows and every
+  notification are decided in plain Go (`internal/menubar` and `internal/notify`), so the
+  desktop files only draw and post them.
 - `frontend/assets_desktop.go` (`//go:build desktop`) embeds `frontend/dist`, so no untagged
   build needs a built frontend.
 - MAGE-X discovers build tags and tests them in one combined pass, which would compile the
@@ -147,8 +150,9 @@ refresh and keeps it in memory only.
 ## The window
 
 A single toolbar runs beside the macOS window controls. It holds the **Inbox**, **Worktrees**,
-and **Prompts** tabs and, on the right, the API budget gauge and your profile picture. Drag the
-bar to move the window, and double-click it to zoom.
+and **Prompts** tabs and, on the right, the [notification](#menu-bar-and-notifications) bell,
+the API budget gauge, and your profile picture. Drag the bar to move the window, and
+double-click it to zoom.
 
 **Tab counts.** **Inbox** counts the items in your lists, leaving out what is snoozed or
 dismissed. An item in two lists, such as a pull request you opened and are assigned, counts
@@ -188,7 +192,8 @@ that palette, and the window frame, menus, and pop-up lists match the theme rath
 system.
 
 **Settings** is a page of its own, with sections for your account, appearance (the theme and the
-size the window opens at), snoozing (how long the
+size the window opens at), [notifications](#menu-bar-and-notifications) (the menu bar icon and
+which banners show), snoozing (how long the
 [Snooze](#snooze-dismiss-and-pin) button sets an item aside, and what [wakes a snooze
 early](#waking-a-snooze-early)), launching (the terminal,
 the default profile, the default prompt for pull requests and for issues, and the worktree
@@ -362,6 +367,69 @@ was fetched is not empty either. The lists stay below the party, so the **Snooze
 **Dismissed** tabs are a click away, and an **Undo** that brings an item back ends it. With
 **Reduce motion** on (System Settings → Accessibility → Display), everything holds still and no
 confetti flies.
+
+<br>
+
+## Menu bar and notifications
+
+**The menu bar icon.** While the app runs, its mark sits in the menu bar with how many items
+need you beside it: the **Inbox** tab's count, so snoozed and dismissed items stay out of it,
+and no number shows at zero. The icon is a template image, so macOS tints it to suit a light or
+dark menu bar. Click it for its menu:
+
+- **Open Nilbox** brings the window forward.
+- Up to five items from each list that need you, under the list's name (a native section
+  heading on macOS 14 and later), each item once even when it is in two lists, and **N more…**
+  for the rest. Hover an item for its full title. Click it to bring the window forward with the
+  item in view: its list opens at the tab that holds it, and its row scrolls into view,
+  highlighted for a moment.
+- **Refresh Now**, and when the last refresh finished, or that it failed (hover for why).
+- **Quit Nilbox** (⌘Q).
+
+The menu is redrawn whenever the inbox changes, after a refresh or a snooze, dismissal, or pin
+in the window, and when a snooze ends, so the count is right without waiting for a refresh.
+
+**Closing the window.** While the icon is in the menu bar, closing the window only hides it:
+the app keeps refreshing, keeps the count current, and can still show notifications. The icon,
+its **Open Nilbox**, or the Dock icon brings the window back; quit from the icon's menu or with
+⌘Q. Turn the icon off in Settings → Notifications, and closing the window quits the app.
+
+**What is notified.** After each refresh, the app compares the lists with the last refresh's
+and records what newly needs you:
+
+| Kind | When |
+|---|---|
+| Review requested | A pull request newly asks for your review, including when it asks again after you reviewed it |
+| Assigned to you | An issue or pull request someone else opened is newly assigned to you |
+| Back from snooze | New activity ends a snooze early under your [wake rules](#waking-a-snooze-early); it says what was new |
+
+Nothing is recorded for the first refresh of an account (everything in it would be new), for
+an item you dismissed or that is still snoozed, or for a refresh that failed. A list that shows
+**N of M** can gain an item only because another left it, so in one an item counts only if it
+changed since the last refresh. Refreshing a single card never notifies.
+
+**The history.** The bell in the toolbar keeps every notification, newest first, up to the
+latest 200. Its badge counts the unread ones; opening it marks them read, and they stay marked
+until it closes. Click an entry to show its item in the inbox, or on GitHub once the item has
+left the inbox. **Clear** empties the history. It lives in the local database (the
+`notifications` table), whether or not a banner was shown.
+
+**Banners.** Each kind can also show a native macOS banner. All three are on by default, and
+each has its own switch in Settings → Notifications. A banner gives the kind, the repository
+and number, and the title; a snooze that ended early adds what was new. When one refresh finds
+more than three, a single banner sums them up, such as **5 new in your inbox: 3 review
+requests, 2 assignments**. Clicking a banner brings the window forward with its item in view.
+
+The first time the app starts, macOS asks whether to allow its notifications. **Send a test**
+in Settings shows a sample banner, asking first if macOS never has. If notifications are
+turned off for the app, Settings says so; turn them back on in System Settings →
+Notifications → Nilbox, which also sets the banner style, sounds, and Focus.
+
+Banners need the app bundle, whose identifier macOS files notifications under. They show in a
+built app (`magex app:build`, `magex app:run`) but not in `magex app:dev`, which runs a bare
+binary: there the history still fills, and Settings explains why no banner shows. Nothing
+about notifications leaves your Mac: they are made from what the inbox already reads and
+posted to macOS.
 
 <br>
 

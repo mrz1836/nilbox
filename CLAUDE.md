@@ -49,12 +49,14 @@ macOS runner, so this check is local.
   imports Wails.
 - `internal/brand/` holds product identity, design tokens, and the logo mark. The palette tests
   enforce WCAG AA contrast for every text color in both themes. `internal/brandgen/` generates
-  the frontend theme tokens, `build/darwin/Info.plist`, and the app icon artwork
-  `build/appicon.svg` from it (`magex brand:generate`); `magex brand:icons` renders the artwork
-  into the committed icon set (macOS, needs `rsvg-convert`).
+  the frontend theme tokens, `build/darwin/Info.plist`, and the icon artwork (the app icon
+  `build/appicon.svg` and the menu bar icon `build/trayicon.svg`) from it (`magex
+  brand:generate`); `magex brand:icons` renders the artwork into the committed icons (macOS,
+  needs `rsvg-convert`).
 - `internal/core/` assembles the app; the other `internal/*` packages are the services it binds
-  (inbox, launcher, prompts, launch defaults, settings, profiles, worktrees) and their building
-  blocks. All of them are plain Go, built and tested on Linux without CGO.
+  (inbox, launcher, prompts, launch defaults, settings, profiles, worktrees, notifications) and
+  their building blocks, `internal/menubar` among them. All of them are plain Go, built and
+  tested on Linux without CGO.
 - `internal/measure/` and `magefiles/measure.go` take the numbers in
   [`docs/performance.md`](docs/performance.md).
 - `frontend/` is the React + TypeScript + Vite + Tailwind app. It reaches Go only through the

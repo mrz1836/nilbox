@@ -67,5 +67,5 @@ Our technical standards are organized into focused, portable documents in the `.
 | `internal/brandgen/`        | Generates frontend theme tokens, Info.plist, and the app icon artwork from the brand |
 | `internal/core/`            | Assembles the app and the services the window binds     |
 | `internal/measure/`         | Startup, refresh, launch, and size measurements         |
-| `internal/*/`               | The inbox, launcher, prompts, launch defaults, settings, profiles, worktrees, and data-layer packages |
+| `internal/*/`               | The inbox, launcher, prompts, launch defaults, settings, profiles, worktrees, notifications, menu bar, and data-layer packages |
 | `magefiles/`                | Custom `magex` targets: `brand`, `frontend`, `app`, `measure` |

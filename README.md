@@ -53,9 +53,12 @@ The first release is a deliberately thin steel thread on macOS:
   type and previewed against real items; set defaults per org and per repository
 - An always-visible GitHub API rate-limit gauge, because every tool on your machine shares one budget
 - Light and dark themes: follow the system, or pin one in Settings
+- **Menu bar and notifications**: a menu bar icon with how many items need you and a mini-inbox,
+  native banners for new review requests, assignments, and snoozes that end early, and a
+  notification history behind the toolbar's bell
 
-Everything else, including notifications, a menu bar extra, security alert sweeps, integrations,
-and Windows support, comes after the MVP proves the desktop app is worth it.
+Everything else, including security alert sweeps, integrations, and Windows support, comes after
+the MVP proves the desktop app is worth it.
 
 <br/>
 
