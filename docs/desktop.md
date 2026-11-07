@@ -179,7 +179,16 @@ Click it for each budget's remaining points, when it resets, and what the last r
 The readings are taken on each refresh, and a budget whose reset time has passed counts as full
 again.
 
-**Settings** is a page of its own, with sections for your account, snoozing (how long the
+**Theme.** Settings → Appearance offers **System**, **Light**, and **Dark**. System follows
+your Mac's appearance and switches when it does; Light and Dark stay put whatever the Mac does.
+A choice shows at once: the window cross-fades to the new palette, and the picked option's icon
+turns in (with **Reduce motion** on, the switch is instant). The app opens in the theme you
+chose: its native appearance is set before the window appears, so the first frame is already in
+that palette, and the window frame, menus, and pop-up lists match the theme rather than the
+system.
+
+**Settings** is a page of its own, with sections for your account, appearance (the theme and the
+size the window opens at), snoozing (how long the
 [Snooze](#snooze-dismiss-and-pin) button sets an item aside, and what [wakes a snooze
 early](#waking-a-snooze-early)), launching (the terminal,
 the default profile, the default prompt for pull requests and for issues, and the worktree

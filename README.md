@@ -52,7 +52,7 @@ The first release is a deliberately thin steel thread on macOS:
 - **Prompt library**: write prompts as Go templates with `{{.Title}}`-style variables, checked as you
   type and previewed against real items; set defaults per org and per repository
 - An always-visible GitHub API rate-limit gauge, because every tool on your machine shares one budget
-- Light and dark themes
+- Light and dark themes: follow the system, or pin one in Settings
 
 Everything else, including notifications, a menu bar extra, security alert sweeps, integrations,
 and Windows support, comes after the MVP proves the desktop app is worth it.

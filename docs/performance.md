@@ -69,6 +69,14 @@ about 10 ms. The rest is macOS's app launch and WebKit. Showing the window befor
 loads, and delaying the first background refresh until after the first paint, were both tried:
 neither moved the median beyond the run-to-run noise.
 
+**The theme setting.** Opening in the chosen theme added one step before the window opens:
+reading the stored theme and setting the app's native appearance. Cold start was measured again with and
+without it on the second Mac (M1 Max, 32 GB memory, macOS 15), three `magex measure:startup`
+runs of each build, alternating, for 15 cold starts each. The medians were 552 ms without it
+and 551 ms with it; single runs ranged from 519 to 584 ms either way, so the step costs nothing
+measurable. This Mac starts the app faster than the build host, so these numbers compare with
+each other, not with the table above.
+
 ### Inbox refresh
 
 **What is measured.** One refresh as the app runs it: borrowing the token with `gh auth token`
