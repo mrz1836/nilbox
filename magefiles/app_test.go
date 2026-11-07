@@ -410,7 +410,7 @@ func TestLintVersion(t *testing.T) {
 		{
 			name:    "no pin",
 			env:     "MAGE_X_GOFUMPT_VERSION=v0.11.0\n",
-			wantErr: "the golangci-lint version is not pinned: " + mageXEnvFile + " has no " + lintVersionKey,
+			wantErr: "the tool version is not pinned: " + mageXEnvFile + " has no " + lintVersionKey,
 		},
 		{
 			name:    "unreadable line",

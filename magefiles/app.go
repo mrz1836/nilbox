@@ -82,8 +82,8 @@ var (
 	// errBindingsDrift is returned when the committed bindings differ from the generated ones.
 	errBindingsDrift = errors.New("frontend/bindings is out of date; run magex app:bindings")
 
-	// errNoLintVersion is returned when the golangci-lint pin cannot be found.
-	errNoLintVersion = errors.New("the golangci-lint version is not pinned")
+	// errNotPinned is returned when a tool's version pin cannot be found.
+	errNotPinned = errors.New("the tool version is not pinned")
 
 	// errStillRunning is returned when a running copy of the app does not quit in time.
 	errStillRunning = errors.New("the running app did not quit; quit it and run the target again")
@@ -560,31 +560,36 @@ func treeFiles(root string) (map[string][]byte, error) {
 	return files, nil
 }
 
-// lintVersion returns the pinned golangci-lint version: the environment's value when set,
-// else the MAGE-X env file's.
+// lintVersion returns the golangci-lint version MAGE-X pins.
 func lintVersion() (string, error) {
-	if v := os.Getenv(lintVersionKey); v != "" {
+	return pinnedVersion(mageXEnvFile, lintVersionKey)
+}
+
+// pinnedVersion returns the tool version that key pins: the environment's value when set,
+// else the first non-empty value file assigns it.
+func pinnedVersion(file, key string) (string, error) {
+	if v := os.Getenv(key); v != "" {
 		return v, nil
 	}
 
-	f, err := os.Open(mageXEnvFile)
+	f, err := os.Open(file) //nolint:gosec // one of this repository's own env files
 	if err != nil {
-		return "", fmt.Errorf("read %s: %w", mageXEnvFile, err)
+		return "", fmt.Errorf("read %s: %w", file, err)
 	}
 	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
-		if v, ok := strings.CutPrefix(strings.TrimSpace(scanner.Text()), lintVersionKey+"="); ok && v != "" {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(scanner.Text()), key+"="); ok && v != "" {
 			return v, nil
 		}
 	}
 
 	if err = scanner.Err(); err != nil {
-		return "", fmt.Errorf("read %s: %w", mageXEnvFile, err)
+		return "", fmt.Errorf("read %s: %w", file, err)
 	}
 
-	return "", fmt.Errorf("%w: %s has no %s", errNoLintVersion, mageXEnvFile, lintVersionKey)
+	return "", fmt.Errorf("%w: %s has no %s", errNotPinned, file, key)
 }
 
 // lintOnPath reports whether golangci-lint on PATH is the pinned version, so it can run

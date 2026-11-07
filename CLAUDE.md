@@ -37,7 +37,13 @@ magex lint
 magex test:race
 go-pre-commit run --all-files
 magex frontend:gate   # the frontend gate; CI runs the same script
+magex db:check        # the generated queries are current and every query prepares; CI runs it too
 ```
+
+After changing a query file (`internal/<owner>/internal/queries/*.sql`) or a migration, run
+`magex db:generate` and commit the regenerated code with the change. Both targets run the sqlc
+version `SQLC_VERSION` pins in `.github/env/90-project.env`, through `go run`, so sqlc never
+enters `go.mod`.
 
 On macOS, a change to the desktop shell, the bound services, or the frontend must also pass
 `magex app:check` (bindings drift check, desktop lint, and the app bundle build). CI has no
@@ -101,8 +107,8 @@ app:lint` reads.
   [`docs/performance.md`](docs/performance.md).
 - `frontend/` is the React + TypeScript + Vite + Tailwind app. It reaches Go only through the
   generated bindings in `frontend/bindings/`, funneled through `frontend/src/platform/`.
-- `magefiles/` holds the custom `magex` targets: `brand:*`, `frontend:*`, `app:*`, and
-  `measure:*`. Its tests build with the `mage` tag and run the real target code against fake
+- `magefiles/` holds the custom `magex` targets: `brand:*`, `frontend:*`, `app:*`, `db:*`,
+  and `measure:*`. Its tests build with the `mage` tag and run the real target code against fake
   tools on an isolated `PATH` (`fakeTool` in `magefiles/helpers_test.go`). Keep new targets
   testable on Linux the same way: a macOS-only target checks the OS, then hands the real work
   to a helper the tests can call, as `App.Build` does with `buildBundle`.

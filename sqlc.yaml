@@ -1,0 +1,37 @@
+# sqlc generates the typed Go queries of every table owner from its SQL, against the schema the
+# migrations build. Run `magex db:generate` after changing a query or a migration, and `magex
+# db:check` to confirm the generated code is current and every query prepares against the
+# schema; the version is pinned by SQLC_VERSION in .github/env/90-project.env.
+#
+# Each table owner keeps its queries in internal/<owner>/internal/queries/*.sql, generated into
+# package queries in that same directory, so only the owner can import them. The first entry
+# carries the shared settings; add an owner by merging them and naming its directory twice:
+#
+#   - <<: *owner
+#     queries: internal/<owner>/internal/queries
+#     gen:
+#       go:
+#         <<: *go
+#         out: internal/<owner>/internal/queries
+version: "2"
+sql:
+  - &owner
+    engine: sqlite
+    schema: internal/store/migrate/migrations
+    queries: internal/prefs/internal/queries
+    # `sqlc vet` builds the schema in an in-memory database and prepares every query against
+    # it. Types still come from the schema files: the database analyzer would report every
+    # column as nullable.
+    database:
+      uri: ":memory:"
+    analyzer:
+      database: false
+    rules:
+      - sqlc/db-prepare
+    gen:
+      go: &go
+        package: queries
+        out: internal/prefs/internal/queries
+        emit_pointers_for_null_types: true
+        emit_empty_slices: true
+        omit_unused_structs: true
