@@ -94,9 +94,10 @@ func TestOpenRefusesADatabaseFromANewerBuild(t *testing.T) {
 
 	db, err := store.Open(t.Context(), path)
 	require.NoError(t, err)
-	require.NoError(t, db.Exec(`INSERT INTO schema_migrations (version, name, checksum, applied_at)
-VALUES (9999, 'from_the_future', 'abc', CURRENT_TIMESTAMP)`).Error)
-	require.NoError(t, store.Close(db))
+	_, err = db.ExecContext(t.Context(), `INSERT INTO schema_migrations (version, name, checksum, applied_at)
+VALUES (9999, 'from_the_future', 'abc', CURRENT_TIMESTAMP)`)
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
 
 	_, err = store.Open(t.Context(), path)
 	require.ErrorIs(t, err, migrate.ErrUnknownVersion)
@@ -111,8 +112,9 @@ func TestOpenRefusesAChangedMigration(t *testing.T) {
 
 	db, err := store.Open(t.Context(), path)
 	require.NoError(t, err)
-	require.NoError(t, db.Exec("UPDATE schema_migrations SET checksum = 'edited' WHERE version = 1").Error)
-	require.NoError(t, store.Close(db))
+	_, err = db.ExecContext(t.Context(), "UPDATE schema_migrations SET checksum = 'edited' WHERE version = 1")
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
 
 	_, err = store.Open(t.Context(), path)
 	require.ErrorIs(t, err, migrate.ErrChecksumMismatch)

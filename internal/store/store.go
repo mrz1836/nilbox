@@ -1,31 +1,45 @@
 // Package store opens the application's local SQLite database.
 //
-// The database uses GORM over a pure-Go SQLite driver, so it builds without CGO. Open
-// enables write-ahead logging, foreign keys, and a busy timeout on every connection, then
-// brings the schema up to date with the checksummed migrations in the migrate package.
-// The schema is never created from the models: AutoMigrate is not used anywhere.
+// The database is opened with database/sql over a pure-Go SQLite driver, so it builds
+// without CGO. Every pooled connection runs in write-ahead-logging mode with foreign keys
+// on and a busy timeout, and begins its transactions IMMEDIATE, so a transaction that
+// reads and then writes waits for the write lock up front instead of failing part way.
+// Open then brings the schema up to date with the checksummed migrations in the migrate
+// package. The schema is never created from the models: AutoMigrate is not used
+// anywhere.
+//
+// Code that reads and writes through GORM gets a handle over the same pool from Gorm.
 package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
-	"github.com/glebarez/sqlite"
-	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
+	_ "github.com/glebarez/go-sqlite" // registers the "sqlite" database/sql driver
 
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/store/migrate"
 )
 
 const (
-	// pragmas run on every new connection.
-	pragmas = "_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"
+	// driverName is the database/sql driver the database is opened with.
+	driverName = "sqlite"
+
+	// dsnParams configure every new connection. The driver writes a time.Time as
+	// "2006-01-02 15:04:05.999999999-07:00" text by default, which is the format the
+	// stored timestamps use. Asking for that format by name would make this driver
+	// version skip the _txlock parameter.
+	dsnParams = "_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_txlock=immediate"
+
+	// maxConns caps the pool, and every one of those connections is kept open when idle.
+	// SQLite allows one writer at a time, so more connections would only queue on the
+	// write lock; a few let reads run beside a write.
+	maxConns = 4
 )
 
 var (
@@ -37,8 +51,8 @@ var (
 )
 
 // Open opens (creating if needed) the database at path and applies pending migrations.
-// Timestamps that GORM sets are in UTC.
-func Open(ctx context.Context, path string) (*gorm.DB, error) {
+// The caller closes the returned pool.
+func Open(ctx context.Context, path string) (*sql.DB, error) {
 	if path == "" {
 		return nil, ErrEmptyPath
 	}
@@ -52,40 +66,31 @@ func Open(ctx context.Context, path string) (*gorm.DB, error) {
 		return nil, err
 	}
 
-	db, err := gorm.Open(sqlite.Open(path+"?"+pragmas), &gorm.Config{
-		Logger:  logger.Discard, // never log SQL or its arguments
-		NowFunc: func() time.Time { return time.Now().UTC() },
-	})
+	db, err := sql.Open(driverName, path+"?"+dsnParams)
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
 
-	sqlDB, err := db.DB()
-	if err != nil {
+	db.SetMaxOpenConns(maxConns)
+	db.SetMaxIdleConns(maxConns)
+	db.SetConnMaxLifetime(0)
+	db.SetConnMaxIdleTime(0)
+
+	// sql.Open connects lazily; connecting now reports a file that is not a database,
+	// or a path that is a directory, as an open error rather than a migration one.
+	if err = db.PingContext(ctx); err != nil {
+		_ = db.Close()
+
 		return nil, fmt.Errorf("open database: %w", err)
 	}
 
-	if _, err = migrate.Apply(ctx, sqlDB, path, migrate.Options{}); err != nil {
-		_ = sqlDB.Close()
+	if _, err = migrate.Apply(ctx, db, path, migrate.Options{}); err != nil {
+		_ = db.Close()
 
 		return nil, fmt.Errorf("migrate database: %w", err)
 	}
 
 	return db, nil
-}
-
-// Close closes the database's underlying connection pool.
-func Close(db *gorm.DB) error {
-	sqlDB, err := db.DB()
-	if err != nil {
-		return fmt.Errorf("close database: %w", err)
-	}
-
-	if err = sqlDB.Close(); err != nil {
-		return fmt.Errorf("close database: %w", err)
-	}
-
-	return nil
 }
 
 // createFile creates the database's parent directory and an empty, user-only database

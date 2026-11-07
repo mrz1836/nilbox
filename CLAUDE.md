@@ -117,9 +117,9 @@ Conventions for commits, branches, pull requests, testing, and security live in
 
 ## Data layer
 
-The app keeps its data in one local SQLite database. `internal/store` opens it through GORM
-over a pure-Go driver, so it builds without CGO, and brings the schema up to date with the
-checksummed, forward-only SQL migrations in `internal/store/migrate/migrations/`; the services
-then query it partly through the GORM models in the `internal/*/model` packages and partly
-with raw SQL. This section will hold the data layer's rules once it moves to `database/sql`
-with sqlc-generated queries.
+The app keeps its data in one local SQLite database. `internal/store` opens it with
+`database/sql` over a pure-Go driver, so it builds without CGO, and brings the schema up to
+date with the checksummed, forward-only SQL migrations in `internal/store/migrate/migrations/`.
+The services then query it partly through the GORM models in the `internal/*/model` packages,
+over a GORM handle that shares the same connection pool (`store.Gorm`), and partly with raw
+SQL. This section will hold the data layer's rules once it moves to sqlc-generated queries.

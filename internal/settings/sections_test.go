@@ -45,8 +45,7 @@ func TestCollapsedSectionsSurviveARestart(t *testing.T) {
 	home := t.TempDir()
 	path := filepath.Join(t.TempDir(), "app.db")
 
-	db, err := store.Open(ctx, path)
-	require.NoError(t, err)
+	db := testutil.DBAt(t, path)
 	require.NoError(t, NewService(db, home).SetSectionCollapsed(ctx, SectionAuthored, true))
 	require.NoError(t, store.Close(db))
 

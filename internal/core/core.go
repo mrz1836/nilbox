@@ -8,6 +8,7 @@ package core
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -97,8 +98,11 @@ type Options struct {
 
 // Core is the assembled app: the database and every service.
 type Core struct {
-	// DB is the open, migrated database.
+	// DB is a GORM handle over the open, migrated database.
 	DB *gorm.DB
+
+	// pool is the database's connection pool, which DB shares.
+	pool *sql.DB
 
 	// The services bound to the frontend.
 	Settings       *settings.Service
@@ -137,8 +141,15 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 		return nil, err
 	}
 
-	db, err := store.Open(ctx, opts.Paths.DB)
+	pool, err := store.Open(ctx, opts.Paths.DB)
 	if err != nil {
+		return nil, err
+	}
+
+	db, err := store.Gorm(pool)
+	if err != nil {
+		_ = pool.Close()
+
 		return nil, err
 	}
 
@@ -148,18 +159,18 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 	}
 
 	if err = syncProfiles(ctx, db, opts.Home, logger); err != nil {
-		_ = store.Close(db)
+		_ = pool.Close()
 
 		return nil, err
 	}
 
 	if err = prompts.Seed(ctx, db); err != nil {
-		_ = store.Close(db)
+		_ = pool.Close()
 
 		return nil, fmt.Errorf("add the starter prompts: %w", err)
 	}
 
-	return assemble(db, opts, logger), nil
+	return assemble(pool, db, opts, logger), nil
 }
 
 // Services returns the services the frontend binds to, in a stable order.
@@ -172,7 +183,11 @@ func (c *Core) Services() []any {
 
 // Close closes the database.
 func (c *Core) Close() error {
-	return store.Close(c.DB)
+	if err := c.pool.Close(); err != nil {
+		return fmt.Errorf("close database: %w", err)
+	}
+
+	return nil
 }
 
 // syncProfiles brings the stored agent profiles in line with home. It first removes
@@ -207,8 +222,9 @@ func syncProfiles(ctx context.Context, db *gorm.DB, home string, logger *slog.Lo
 	return nil
 }
 
-// assemble builds every service over the open database.
-func assemble(db *gorm.DB, opts Options, logger *slog.Logger) *Core {
+// assemble builds every service over the open database: pool is its connection pool and
+// db the GORM handle over it.
+func assemble(pool *sql.DB, db *gorm.DB, opts Options, logger *slog.Logger) *Core {
 	finder := execpath.Finder{Home: opts.Home}
 
 	runner := opts.Runner
@@ -253,6 +269,7 @@ func assemble(db *gorm.DB, opts Options, logger *slog.Logger) *Core {
 
 	return &Core{
 		DB:             db,
+		pool:           pool,
 		Settings:       prefs,
 		Profiles:       profiles.NewService(db, opts.Home),
 		Prompts:        prompts.NewService(prompts.Config{DB: db, Source: launcher.NewPromptSource(launch)}),

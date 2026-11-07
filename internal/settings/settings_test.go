@@ -100,8 +100,7 @@ func TestTerminalPrefPersists(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "app.db")
 	home := t.TempDir()
 
-	db, err := store.Open(t.Context(), path)
-	require.NoError(t, err)
+	db := testutil.DBAt(t, path)
 	require.NoError(t, NewService(db, home).SetTerminal(t.Context(), TerminalApp))
 	require.NoError(t, store.Close(db))
 

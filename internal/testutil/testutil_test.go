@@ -2,6 +2,7 @@ package testutil_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"os/exec"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
@@ -46,6 +48,30 @@ VALUES ('octo-user', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`).Error)
 	var login string
 	require.NoError(t, testutil.DBAt(t, path).Raw("SELECT login FROM accounts").Scan(&login).Error)
 	assert.Equal(t, "octo-user", login)
+}
+
+func TestSQLDBIsMigrated(t *testing.T) {
+	t.Parallel()
+
+	var count int64
+	require.NoError(t, testutil.SQLDB(t).QueryRowContext(t.Context(), "SELECT COUNT(*) FROM schema_migrations").Scan(&count))
+	assert.Positive(t, count)
+}
+
+func TestDatabasesCloseWhenTheTestEnds(t *testing.T) {
+	t.Parallel()
+
+	var (
+		pool *sql.DB
+		db   *gorm.DB
+	)
+
+	t.Run("open", func(t *testing.T) {
+		pool, db = testutil.SQLDB(t), testutil.DB(t)
+	})
+
+	require.Error(t, pool.PingContext(t.Context()))
+	require.Error(t, db.Exec("SELECT 1").Error)
 }
 
 func TestClosedDBRefusesQueries(t *testing.T) {

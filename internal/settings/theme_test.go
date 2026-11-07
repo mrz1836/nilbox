@@ -60,8 +60,7 @@ func TestThemeSurvivesARestart(t *testing.T) {
 	home := t.TempDir()
 	path := filepath.Join(t.TempDir(), "app.db")
 
-	db, err := store.Open(ctx, path)
-	require.NoError(t, err)
+	db := testutil.DBAt(t, path)
 	require.NoError(t, NewService(db, home).SetTheme(ctx, ThemeLight))
 	require.NoError(t, store.Close(db))
 
@@ -104,15 +103,9 @@ func TestThemeIgnoresABadStoredValue(t *testing.T) {
 }
 
 func TestThemeReportsAClosedDatabase(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "app.db")
+	svc := NewService(testutil.ClosedDB(t), t.TempDir())
 
-	db, err := store.Open(t.Context(), path)
-	require.NoError(t, err)
-	require.NoError(t, store.Close(db))
-
-	svc := NewService(db, t.TempDir())
-
-	_, err = svc.Theme(t.Context())
+	_, err := svc.Theme(t.Context())
 	require.ErrorContains(t, err, "read the theme")
 
 	require.ErrorContains(t, svc.SetTheme(t.Context(), ThemeDark), "save setting "+KeyTheme)
