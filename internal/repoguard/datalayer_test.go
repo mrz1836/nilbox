@@ -50,7 +50,6 @@ func ormAllowlist() []string {
 	return []string{
 		"internal/core",
 		"internal/inbox",
-		"internal/launchdefaults",
 		"internal/launcher",
 		"internal/measure",
 		"internal/store",
@@ -66,7 +65,6 @@ func ormAllowlist() []string {
 func sqlAllowlist() []string {
 	return []string{
 		"internal/inbox",
-		"internal/launchdefaults",
 		"internal/launcher",
 		"internal/measure",
 	}

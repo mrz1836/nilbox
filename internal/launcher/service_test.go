@@ -22,6 +22,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/inbox/model"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
@@ -40,6 +41,7 @@ var (
 	errFakeSettings  = errors.New("settings unreadable")
 	errFakeProfiles  = errors.New("profiles unreadable")
 	errFakePrompts   = errors.New("prompts unreadable")
+	errFakeDefaults  = errors.New("launch defaults unreadable")
 )
 
 // fakeGit answers the read-only remote lookup from a map of clone directory to
@@ -138,12 +140,20 @@ func (failingProfiles) All(context.Context) ([]profiles.Profile, error) {
 	return nil, errFakeProfiles
 }
 
+// failingDefaults cannot read the launch defaults.
+type failingDefaults struct{}
+
+func (failingDefaults) All(context.Context) ([]launchdefaults.Defaults, error) {
+	return nil, errFakeDefaults
+}
+
 // launchHarness is a launch Service over a temp database, a temp home with one clone,
 // and fakes for git, the agent lookup, and the terminals.
 type launchHarness struct {
 	db       *gorm.DB
 	profiles *profiles.Store
 	prompts  *prompts.Store
+	defaults *launchdefaults.Store
 	home     string
 	root     string
 	clone    string
@@ -181,6 +191,7 @@ func newLaunchHarness(t *testing.T) *launchHarness {
 	h.db = db
 	h.profiles = profiles.NewStore(pool, nil)
 	h.prompts = prompts.NewStore(pool, nil)
+	h.defaults = launchdefaults.NewStore(pool, nil)
 	h.seed(t)
 
 	h.settings = settings.NewService(pool, h.profiles, h.home)
@@ -189,6 +200,7 @@ func newLaunchHarness(t *testing.T) *launchHarness {
 		Settings: h.settings,
 		Profiles: h.profiles,
 		Prompts:  h.prompts,
+		Defaults: h.defaults,
 		Git:      h.git,
 		Finder:   testutil.Finder{Paths: map[string]string{claudeBin: filepath.Join(tmp, "bin", "claude")}},
 		Registry: NewRegistry(h.iterm, h.terminal),

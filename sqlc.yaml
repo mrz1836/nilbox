@@ -36,8 +36,8 @@ sql:
         emit_pointers_for_null_types: true
         emit_empty_slices: true
         omit_unused_structs: true
-        # Go names spell these in capitals: item_url is ItemURL.
-        initialisms: [id, url]
+        # Go names spell these in capitals: item_url is ItemURL, and pr_prompt_id PRPromptID.
+        initialisms: [id, url, pr]
   - !!merge <<: *owner
     queries: internal/worklog/internal/queries
     gen:
@@ -62,3 +62,9 @@ sql:
       go:
         !!merge <<: *go
         out: internal/prompts/internal/queries
+  - !!merge <<: *owner
+    queries: internal/launchdefaults/internal/queries
+    gen:
+      go:
+        !!merge <<: *go
+        out: internal/launchdefaults/internal/queries

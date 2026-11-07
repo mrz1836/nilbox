@@ -37,7 +37,9 @@ func (h *launchHarness) promptID(t *testing.T, nickname string) int64 {
 func (h *launchHarness) saveDefaults(t *testing.T, in launchdefaults.Input) {
 	t.Helper()
 
-	_, err := launchdefaults.NewService(h.db, h.profiles, h.prompts).Save(t.Context(), in)
+	svc := launchdefaults.NewService(launchdefaults.Config{Store: h.defaults, Profiles: h.profiles, Prompts: h.prompts})
+
+	_, err := svc.Save(t.Context(), in)
 	require.NoError(t, err)
 }
 
@@ -55,6 +57,14 @@ func TestResolveReportsAnUnreadablePromptLibrary(t *testing.T) {
 
 	_, err := h.service().Resolve(t.Context(), LaunchRequest{ItemID: h.trustedPR})
 	require.ErrorIs(t, err, errFakePrompts)
+}
+
+func TestResolveReportsUnreadableLaunchDefaults(t *testing.T) {
+	h := newLaunchHarness(t)
+	h.cfg.Defaults = failingDefaults{}
+
+	_, err := h.service().Resolve(t.Context(), LaunchRequest{ItemID: h.trustedPR})
+	require.ErrorIs(t, err, errFakeDefaults)
 }
 
 func TestLaunchReadsThePromptLibraryOnce(t *testing.T) {

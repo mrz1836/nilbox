@@ -122,8 +122,8 @@ type world struct {
 	policy trust.Policy
 }
 
-// loadWorld reads everything resolution needs from the database, the settings, the
-// prompt library, and the stored profiles.
+// loadWorld reads everything resolution needs: the settings, the prompt library, the
+// stored profiles, and the launch defaults.
 func (s *Service) loadWorld(ctx context.Context) (world, error) {
 	prefs, err := s.settings.Get(ctx)
 	if err != nil {
@@ -140,7 +140,7 @@ func (s *Service) loadWorld(ctx context.Context) (world, error) {
 		return world{}, err
 	}
 
-	rules, err := launchdefaults.All(ctx, s.db)
+	rules, err := s.defaults.All(ctx)
 	if err != nil {
 		return world{}, err
 	}

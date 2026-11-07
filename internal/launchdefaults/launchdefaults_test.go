@@ -1,15 +1,15 @@
 package launchdefaults_test
 
 import (
+	"context"
+	"database/sql"
+	"errors"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 
 	"github.com/mrz1836/nilbox/internal/agent"
-	inboxmodel "github.com/mrz1836/nilbox/internal/inbox/model"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/profiles"
@@ -21,10 +21,30 @@ import (
 // acme is the fake org most tests use.
 const acme = "acme-org"
 
+// errFakeRepos is what failingRepos returns.
+var errFakeRepos = errors.New("repositories unreadable")
+
+// fakeRepos lists fixed repositories, as the inbox would.
+type fakeRepos []launchdefaults.Target
+
+func (f fakeRepos) Repos(context.Context) ([]launchdefaults.Target, error) {
+	return f, nil
+}
+
+// failingRepos cannot list the repositories.
+type failingRepos struct{}
+
+func (failingRepos) Repos(context.Context) ([]launchdefaults.Target, error) {
+	return nil, errFakeRepos
+}
+
 // harness is a launch defaults Service over a database with the starter prompts and a
 // "work" profile, and a prompt Service whose usage comes from the launch defaults.
 type harness struct {
-	db      *gorm.DB
+	db      *sql.DB
+	store   *launchdefaults.Store
+	known   *profiles.Store
+	library *prompts.Store
 	svc     *launchdefaults.Service
 	prompts *prompts.Service
 	review  int64 // the review starter, for pull requests
@@ -34,9 +54,10 @@ type harness struct {
 func newHarness(t *testing.T) *harness {
 	t.Helper()
 
-	pool, db := testutil.BridgedDB(t)
-	known := profiles.NewStore(pool, nil)
-	library := prompts.NewStore(pool, nil)
+	db := testutil.SQLDB(t)
+	known := profiles.NewStore(db, nil)
+	library := prompts.NewStore(db, nil)
+	stored := launchdefaults.NewStore(db, nil)
 
 	require.NoError(t, prompts.Seed(t.Context(), library))
 	require.NoError(t, known.Sync(t.Context(), []profiles.Profile{{Name: "work", ConfigDir: "/tmp/work"}}))
@@ -46,11 +67,22 @@ func newHarness(t *testing.T) *harness {
 
 	return &harness{
 		db:      db,
-		svc:     launchdefaults.NewService(db, known, library),
-		prompts: prompts.NewService(prompts.Config{Store: library, Usage: launchdefaults.NewStore(db)}),
+		store:   stored,
+		known:   known,
+		library: library,
+		svc:     launchdefaults.NewService(launchdefaults.Config{Store: stored, Profiles: known, Prompts: library}),
+		prompts: prompts.NewService(prompts.Config{Store: library, Usage: stored}),
 		review:  defaults.PR,
 		work:    defaults.Issue,
 	}
+}
+
+// withRepos returns a Service over the harness's stores that lists repos as the
+// repositories the inbox has seen.
+func (h *harness) withRepos(repos launchdefaults.RepoSource) *launchdefaults.Service {
+	return launchdefaults.NewService(launchdefaults.Config{
+		Store: h.store, Profiles: h.known, Prompts: h.library, Repos: repos,
+	})
 }
 
 // fields maps a ValidationError's fields to their messages.
@@ -242,7 +274,7 @@ func TestPromptUses(t *testing.T) {
 	_, err = h.svc.Save(ctx, launchdefaults.Input{Owner: "beta-org", Effort: "high"})
 	require.NoError(t, err)
 
-	uses, err := launchdefaults.NewStore(h.db).PromptUses(ctx)
+	uses, err := h.store.PromptUses(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, []prompts.Use{
 		{PromptID: h.review, Kind: item.KindPR, Target: repo.Name{Owner: acme}},
@@ -252,30 +284,15 @@ func TestPromptUses(t *testing.T) {
 }
 
 func TestTargets(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
-	at := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 
-	account := inboxmodel.Account{Login: "octo-user"}
-	require.NoError(t, h.db.Create(&account).Error)
-
-	repos := []inboxmodel.Repo{
-		{Owner: acme, Name: "web"},
-		{Owner: acme, Name: "api"},
+	got, err := h.withRepos(fakeRepos{
+		{Owner: acme, Name: "api", Items: 2},
+		{Owner: acme, Name: "web", Items: 1},
 		{Owner: "beta-org", Name: "tools"},
-		{Owner: acme, Name: "old", IsArchived: true},
-	}
-	for i := range repos {
-		require.NoError(t, h.db.Create(&repos[i]).Error)
-	}
-
-	for n, repo := range []int64{repos[1].ID, repos[1].ID, repos[0].ID, repos[2].ID} {
-		require.NoError(t, h.db.Create(&inboxmodel.Item{
-			AccountID: account.ID, RepoID: repo, Kind: item.KindPR, Number: n + 1,
-			ItemCreatedAt: at, ItemUpdatedAt: at, FetchedAt: at, ReasonAssigned: n != 3,
-		}).Error)
-	}
-
-	got, err := h.svc.Targets(t.Context())
+	}).Targets(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, []launchdefaults.Target{
 		{Owner: acme, Items: 3},
@@ -284,6 +301,32 @@ func TestTargets(t *testing.T) {
 		{Owner: "beta-org", Items: 0},
 		{Owner: "beta-org", Name: "tools", Items: 0},
 	}, got)
+}
+
+func TestTargetsGroupAnOwnerIgnoringCase(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+
+	got, err := h.withRepos(fakeRepos{
+		{Owner: "Acme-Org", Name: "api", Items: 2},
+		{Owner: acme, Name: "web", Items: 1},
+	}).Targets(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, []launchdefaults.Target{
+		{Owner: "Acme-Org", Items: 3},
+		{Owner: "Acme-Org", Name: "api", Items: 2},
+		{Owner: acme, Name: "web", Items: 1},
+	}, got, "one owner, named as its first repository spells it")
+}
+
+func TestTargetsWithNoRepositories(t *testing.T) {
+	t.Parallel()
+
+	got, err := newHarness(t).withRepos(fakeRepos{}).Targets(t.Context())
+	require.NoError(t, err)
+	assert.NotNil(t, got, "the UI always gets a list")
+	assert.Empty(t, got)
 }
 
 func TestIndex(t *testing.T) {

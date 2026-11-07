@@ -17,6 +17,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/inbox"
+	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/profiles"
@@ -57,6 +58,12 @@ type PromptReader interface {
 	Library(ctx context.Context) (prompts.Library, error)
 }
 
+// DefaultsReader reads every org's and repository's launch defaults.
+// *launchdefaults.Store implements it.
+type DefaultsReader interface {
+	All(ctx context.Context) ([]launchdefaults.Defaults, error)
+}
+
 // LaunchRecorder records the worktrees sessions are launched in. *worklog.Store
 // implements it.
 type LaunchRecorder interface {
@@ -65,7 +72,7 @@ type LaunchRecorder interface {
 
 // Config holds a Service's dependencies. Clock and Launches are optional.
 type Config struct {
-	// DB is the app database: items, repositories, and launch defaults.
+	// DB is the app database: items and repositories.
 	DB *gorm.DB
 
 	// Settings reads the default profile, worktree default, terminal, and clone root.
@@ -76,6 +83,9 @@ type Config struct {
 
 	// Prompts reads the prompts a launch fills in, and the default prompts.
 	Prompts PromptReader
+
+	// Defaults reads the launch defaults of the item's owner and repository.
+	Defaults DefaultsReader
 
 	// Git runs the read-only `git config --get-regexp` remote lookup that finds and
 	// validates clones. The launcher runs no other git command.
@@ -208,6 +218,7 @@ type Service struct {
 	settings SettingsReader
 	profiles ProfileReader
 	prompts  PromptReader
+	defaults DefaultsReader
 	git      execpath.Runner
 	gh       execpath.Runner
 	finder   Finder
@@ -229,6 +240,7 @@ func NewService(cfg Config) *Service {
 		settings: cfg.Settings,
 		profiles: cfg.Profiles,
 		prompts:  cfg.Prompts,
+		defaults: cfg.Defaults,
 		git:      cfg.Git,
 		gh:       cfg.GH,
 		finder:   cfg.Finder,

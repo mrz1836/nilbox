@@ -153,24 +153,28 @@ func TestListOrdersByOwnerThenRepositoryIgnoringCase(t *testing.T) {
 func TestServiceReportsAClosedDatabase(t *testing.T) {
 	t.Parallel()
 
-	pool, db := testutil.BridgedDB(t)
-	require.NoError(t, pool.Close())
+	db := testutil.SQLDB(t)
+	require.NoError(t, db.Close())
 
-	svc := launchdefaults.NewService(db, profiles.NewStore(pool, nil), prompts.NewStore(pool, nil))
+	stored := launchdefaults.NewStore(db, nil)
+	svc := launchdefaults.NewService(launchdefaults.Config{
+		Store: stored, Profiles: profiles.NewStore(db, nil), Prompts: prompts.NewStore(db, nil), Repos: failingRepos{},
+	})
 	ctx := t.Context()
 	review := int64(1)
 
 	_, err := svc.List(ctx)
 	require.ErrorContains(t, err, "read the launch defaults")
 
-	_, err = launchdefaults.All(ctx, db)
+	_, err = stored.All(ctx)
 	require.ErrorContains(t, err, "read the launch defaults")
 
-	_, err = launchdefaults.NewStore(db).PromptUses(ctx)
+	_, err = stored.PromptUses(ctx)
 	require.ErrorContains(t, err, "read the launch defaults")
 
 	_, err = svc.Targets(ctx)
 	require.ErrorContains(t, err, "list the repositories")
+	require.ErrorIs(t, err, errFakeRepos)
 
 	err = svc.Remove(ctx, acme, "")
 	require.ErrorContains(t, err, "remove the launch defaults for acme-org")

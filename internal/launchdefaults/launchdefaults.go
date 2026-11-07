@@ -13,17 +13,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
-	"time"
-
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 
 	"github.com/mrz1836/nilbox/internal/agent"
-	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/item"
-	"github.com/mrz1836/nilbox/internal/launchdefaults/model"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/repo"
@@ -42,16 +35,6 @@ const (
 	FieldEffort        = agent.FieldEffort
 	FieldExtraFlags    = agent.FieldExtraFlags
 )
-
-// targetsSQL lists the owners and repositories the inbox has seen, with how many of
-// their items are listed now.
-const targetsSQL = `SELECT r.owner, r.name, COUNT(i.id) AS items
-FROM repos r
-LEFT JOIN items i ON i.repo_id = r.id
-  AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1)
-WHERE r.is_archived = 0
-GROUP BY r.id
-ORDER BY r.owner COLLATE NOCASE, r.name COLLATE NOCASE`
 
 var (
 	// ErrInvalidDefaults is returned when launch defaults cannot be saved (see
@@ -147,23 +130,47 @@ type PromptLookup interface {
 	Lookup(ctx context.Context, id int64) (prompts.Prompt, error)
 }
 
-// Service manages the launch defaults.
-type Service struct {
-	db       *gorm.DB
-	profiles ProfileLookup
-	prompts  PromptLookup
+// RepoSource lists the repositories the inbox has seen, for choosing where to add
+// defaults.
+type RepoSource interface {
+	// Repos returns every repository that is not archived, by owner and then name
+	// ignoring case, each with how many of its items the inbox lists now.
+	Repos(ctx context.Context) ([]Target, error)
 }
 
-// NewService returns a Service over db. known looks up the profiles a default may name,
-// and library the prompts.
-func NewService(db *gorm.DB, known ProfileLookup, library PromptLookup) *Service {
-	return &Service{db: db, profiles: known, prompts: library}
+// Config holds a Service's dependencies. Store, Profiles, and Prompts are required;
+// Repos is needed only by Targets.
+type Config struct {
+	// Store holds the launch defaults.
+	Store *Store
+
+	// Profiles looks up the profiles a default may name.
+	Profiles ProfileLookup
+
+	// Prompts looks up the prompts a default may name.
+	Prompts PromptLookup
+
+	// Repos lists the repositories offered when adding defaults.
+	Repos RepoSource
+}
+
+// Service manages the launch defaults.
+type Service struct {
+	store    *Store
+	profiles ProfileLookup
+	prompts  PromptLookup
+	repos    RepoSource
+}
+
+// NewService returns a Service over cfg.
+func NewService(cfg Config) *Service {
+	return &Service{store: cfg.Store, profiles: cfg.Profiles, prompts: cfg.Prompts, repos: cfg.Repos}
 }
 
 // List returns every stored launch default, by owner and then repository, each owner's
 // own defaults first.
 func (s *Service) List(ctx context.Context) ([]Defaults, error) {
-	return All(ctx, s.db)
+	return s.store.All(ctx)
 }
 
 // Check validates launch defaults being edited, as Save would, without saving them.
@@ -177,7 +184,6 @@ func (s *Service) Check(ctx context.Context, in Input) ([]agent.FieldError, erro
 // where every setting inherits are removed instead, since they would change nothing.
 func (s *Service) Save(ctx context.Context, in Input) (Defaults, error) {
 	in = in.normalized()
-	db := s.db.WithContext(ctx)
 
 	args, fields, err := validate(ctx, s.profiles, s.prompts, in)
 	if err != nil {
@@ -189,40 +195,27 @@ func (s *Service) Save(ctx context.Context, in Input) (Defaults, error) {
 	}
 
 	if in.Empty() {
-		if err = remove(db, in.Owner, in.Name); err != nil && !errors.Is(err, ErrNotFound) {
+		if err = s.store.remove(ctx, in.Owner, in.Name); err != nil && !errors.Is(err, ErrNotFound) {
 			return Defaults{}, err
 		}
 
 		return Defaults{Owner: in.Owner, Name: in.Name, ExtraArgs: []string{}}, nil
 	}
 
-	row := toRow(in, args)
-
-	err = db.Clauses(clause.OnConflict{
-		Columns: []clause.Column{{Name: "owner"}, {Name: "name"}},
-		DoUpdates: clause.AssignmentColumns([]string{
-			"agent", "profile", "pr_prompt_id", "issue_prompt_id", "model", "effort", "plan_mode", "worktree",
-			"extra_args", "updated_at",
-		}),
-	}).Create(&row).Error
-	if err != nil {
-		return Defaults{}, fmt.Errorf("save the launch defaults for %s: %w", target(in.Owner, in.Name), err)
-	}
-
-	return lookup(db, in.Owner, in.Name)
+	return s.store.save(ctx, in, args)
 }
 
 // Remove deletes an org's (name "") or a repository's launch defaults.
 func (s *Service) Remove(ctx context.Context, owner, name string) error {
-	return remove(s.db.WithContext(ctx), strings.TrimSpace(owner), strings.TrimSpace(name))
+	return s.store.remove(ctx, strings.TrimSpace(owner), strings.TrimSpace(name))
 }
 
 // Targets lists the owners and repositories the inbox has seen, each owner before its
 // repositories, for choosing where to add defaults. Archived repositories are left out.
 // An owner's Items adds up its repositories'.
 func (s *Service) Targets(ctx context.Context) ([]Target, error) {
-	var repos []Target
-	if err := s.db.WithContext(ctx).Raw(targetsSQL).Scan(&repos).Error; err != nil {
+	repos, err := s.repos.Repos(ctx)
+	if err != nil {
 		return nil, fmt.Errorf("list the repositories: %w", err)
 	}
 
@@ -237,24 +230,6 @@ func (s *Service) Targets(ctx context.Context) ([]Target, error) {
 
 		out[owner].Items += r.Items
 		out = append(out, r)
-	}
-
-	return out, nil
-}
-
-// All returns every stored launch default, by owner and then repository, each owner's
-// own defaults first.
-func All(ctx context.Context, db *gorm.DB) ([]Defaults, error) {
-	var rows []model.LaunchDefault
-
-	err := db.WithContext(ctx).Order("owner COLLATE NOCASE").Order("name COLLATE NOCASE").Find(&rows).Error
-	if err != nil {
-		return nil, fmt.Errorf("read the launch defaults: %w", err)
-	}
-
-	out := make([]Defaults, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, fromRow(row))
 	}
 
 	return out, nil
@@ -402,34 +377,6 @@ func checkPrompt(ctx context.Context, library PromptLookup, id *int64, kind item
 	}
 }
 
-// lookup reads one stored row as Defaults.
-func lookup(db *gorm.DB, owner, name string) (Defaults, error) {
-	var rows []model.LaunchDefault
-	if err := db.Where("owner = ? AND name = ?", owner, name).Limit(1).Find(&rows).Error; err != nil {
-		return Defaults{}, fmt.Errorf("read the launch defaults for %s: %w", target(owner, name), err)
-	}
-
-	if len(rows) == 0 {
-		return Defaults{}, fmt.Errorf("%w: %s", ErrNotFound, target(owner, name))
-	}
-
-	return fromRow(rows[0]), nil
-}
-
-// remove deletes one stored row.
-func remove(db *gorm.DB, owner, name string) error {
-	res := db.Where("owner = ? AND name = ?", owner, name).Delete(&model.LaunchDefault{})
-	if res.Error != nil {
-		return fmt.Errorf("remove the launch defaults for %s: %w", target(owner, name), res.Error)
-	}
-
-	if res.RowsAffected == 0 {
-		return fmt.Errorf("%w: %s", ErrNotFound, target(owner, name))
-	}
-
-	return nil
-}
-
 // target names an org ("acme-org") or a repository ("acme-org/example-repo").
 func target(owner, name string) string {
 	if name == "" {
@@ -437,31 +384,4 @@ func target(owner, name string) string {
 	}
 
 	return repo.Name{Owner: owner, Repo: name}.String()
-}
-
-// toRow converts a validated Input and its extra arguments to a row.
-func toRow(in Input, args []string) model.LaunchDefault {
-	now := time.Now().UTC()
-
-	return model.LaunchDefault{
-		Owner: in.Owner, Name: in.Name, Agent: in.Agent, Profile: in.Profile,
-		PRPromptID: in.PRPromptID, IssuePromptID: in.IssuePromptID, Model: in.Model, Effort: in.Effort,
-		PlanMode: in.PlanMode, Worktree: in.Worktree, ExtraArgs: append([]string{}, args...),
-		CreatedAt: now, UpdatedAt: now,
-	}
-}
-
-// fromRow converts a row to Defaults. A nil list becomes an empty one.
-func fromRow(row model.LaunchDefault) Defaults {
-	args := slices.Clone([]string(row.ExtraArgs))
-	if args == nil {
-		args = []string{}
-	}
-
-	return Defaults{
-		Owner: row.Owner, Name: row.Name, Agent: row.Agent, Profile: row.Profile,
-		PRPromptID: row.PRPromptID, IssuePromptID: row.IssuePromptID, Model: row.Model, Effort: row.Effort,
-		PlanMode: row.PlanMode, Worktree: row.Worktree, ExtraArgs: args, ExtraFlags: agent.Join(args),
-		UpdatedAt: clock.Format(row.UpdatedAt),
-	}
 }
