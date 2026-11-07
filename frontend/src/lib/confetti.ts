@@ -149,12 +149,3 @@ export function burst(count: number, room: Room, random: () => number = Math.ran
 export function lifetime(particles: readonly Particle[]): number {
   return particles.reduce((longest, p) => Math.max(longest, p.delay + p.duration), 0)
 }
-
-// reducedMotionQuery matches when the system asks for less motion.
-const reducedMotionQuery = '(prefers-reduced-motion: reduce)'
-
-// prefersReducedMotion reports whether the system asks for less motion, in which case
-// nothing is thrown. Without matchMedia it reports false.
-export function prefersReducedMotion(win: Window = window): boolean {
-  return typeof win.matchMedia === 'function' && win.matchMedia(reducedMotionQuery).matches
-}

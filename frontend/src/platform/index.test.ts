@@ -51,6 +51,8 @@ const mocks = vi.hoisted(() => ({
     SetWindowSize: vi.fn(),
     CollapsedSections: vi.fn(),
     SetSectionCollapsed: vi.fn(),
+    Theme: vi.fn(),
+    SetTheme: vi.fn(),
     SetSensitiveScope: vi.fn(),
     SetSensitiveCategory: vi.fn(),
     SetSensitivePatterns: vi.fn(),
@@ -454,6 +456,16 @@ describe('settings', () => {
     await platform.setSectionCollapsed('assigned', true)
 
     expect(mocks.settings.SetSectionCollapsed).toHaveBeenCalledWith('assigned', true)
+  })
+
+  it('reads and stores the theme', async () => {
+    mocks.settings.Theme.mockResolvedValue('dark')
+    await expect(platform.getTheme()).resolves.toBe('dark')
+
+    mocks.settings.SetTheme.mockResolvedValue(undefined)
+    await platform.setTheme('light')
+
+    expect(mocks.settings.SetTheme).toHaveBeenCalledWith('light')
   })
 
   it('stores the window size, then resizes the open window', async () => {

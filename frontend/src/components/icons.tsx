@@ -350,3 +350,32 @@ export function TrophyIcon({ className }: IconProps) {
     </Icon>
   )
 }
+
+// SunIcon stands for the light theme.
+export function SunIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4" />
+    </Icon>
+  )
+}
+
+// MoonIcon stands for the dark theme.
+export function MoonIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M20.5 13.6A8.5 8.5 0 1 1 10.4 3.5a6.6 6.6 0 0 0 10.1 10.1Z" />
+    </Icon>
+  )
+}
+
+// DisplayIcon stands for following the system, as the System theme does.
+export function DisplayIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <rect x="3" y="4" width="18" height="12.5" rx="2" />
+      <path d="M8.5 20.5h7M12 16.5v4" />
+    </Icon>
+  )
+}

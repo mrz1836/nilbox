@@ -22,6 +22,33 @@
   /* Popovers and menus grow out of their trigger. */
   --animate-pop-in: pop-in 120ms ease-out;
 
+  /* A theme's icon turns in as the theme is picked: the sun spins a quarter turn, the
+     moon rocks into place, and the display rises. Each settles with a slight overshoot. */
+  --animate-sun-in: sun-in 400ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  --animate-moon-in: moon-in 400ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  --animate-display-in: display-in 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  @keyframes sun-in {
+    from {
+      opacity: 0.4;
+      transform: rotate(-90deg) scale(0.6);
+    }
+  }
+
+  @keyframes moon-in {
+    from {
+      opacity: 0.4;
+      transform: rotate(40deg) scale(0.6);
+    }
+  }
+
+  @keyframes display-in {
+    from {
+      opacity: 0.4;
+      transform: translateY(3px) scale(0.8);
+    }
+  }
+
   @keyframes pop-in {
     from {
       opacity: 0;
@@ -32,6 +59,15 @@
       transform: translateY(0) scale(1);
     }
   }
+}
+
+/* A theme switch cross-fades the whole window, as a view transition that lib/theme.ts
+   starts (it is the app's only one): the browser's cross-fade, a little quicker. With
+   reduced motion the switch happens at once and no transition starts. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 200ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 @layer base {

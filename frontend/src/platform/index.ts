@@ -388,6 +388,17 @@ export function matchSensitivePath(path: string): Promise<SensitivePathMatch> {
   return SettingsService.MatchSensitivePath(path)
 }
 
+// getTheme reads the stored theme: "system", "light", or "dark".
+export function getTheme(): Promise<string> {
+  return SettingsService.Theme()
+}
+
+// setTheme stores the theme, and the desktop shell brings the window's native appearance
+// along with it. The page switches itself.
+export function setTheme(theme: string): Promise<void> {
+  return SettingsService.SetTheme(theme)
+}
+
 // getCollapsedSections lists the inbox sections the user collapsed, by list name
 // ("reviewRequested", "authored", "assigned"), in the inbox's order.
 export async function getCollapsedSections(): Promise<string[]> {

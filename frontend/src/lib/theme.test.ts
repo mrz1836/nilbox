@@ -1,25 +1,39 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
-import { applyTheme, followTheme, resolveDark } from './theme'
+import {
+  appearanceIsDark,
+  defaultTheme,
+  onAppearanceChange,
+  resolveDark,
+  schemeSwitch,
+  themes,
+  toTheme,
+  type Theme,
+} from './theme'
 
-// fakeWindow is a window whose system appearance the test controls.
-function fakeWindow(prefersDark: boolean) {
+// fakeAppearance is a window whose appearance (dark or light) and reduced-motion setting
+// the test controls, over a document of its own.
+function fakeAppearance({ dark = false, reducedMotion = false } = {}) {
   const listeners = new Set<() => void>()
-  const query = {
-    matches: prefersDark,
+  const darkQuery = {
+    matches: dark,
     addEventListener: vi.fn((_type: string, listener: () => void) => listeners.add(listener)),
     removeEventListener: vi.fn((_type: string, listener: () => void) => listeners.delete(listener)),
   }
-  const matchMedia = vi.fn(() => query)
-  const win = { document, matchMedia } as unknown as Window
+  const matchMedia = vi.fn((query: string) =>
+    query === '(prefers-color-scheme: dark)' ? darkQuery : { matches: reducedMotion },
+  )
+  const doc = document.implementation.createHTMLDocument('')
+  const win = { document: doc, matchMedia } as unknown as Window
 
   return {
     win,
+    doc,
+    root: doc.documentElement,
     matchMedia,
-    query,
     listeners,
-    setSystemDark(dark: boolean) {
-      query.matches = dark
+    setDark(next: boolean) {
+      darkQuery.matches = next
       for (const listener of listeners) {
         listener()
       }
@@ -27,73 +41,201 @@ function fakeWindow(prefersDark: boolean) {
   }
 }
 
-afterEach(() => {
-  delete document.documentElement.dataset.theme
-  document.documentElement.style.colorScheme = ''
+// withTransitions gives a document view transitions whose update callbacks the test runs,
+// returning the callbacks in the order the transitions started.
+function withTransitions(doc: Document, ready: () => Promise<void> = () => Promise.resolve()) {
+  const updates: (() => void)[] = []
+  const startViewTransition = vi.fn((update: () => void) => {
+    updates.push(update)
+
+    return { ready: ready() }
+  })
+
+  Object.assign(doc, { startViewTransition })
+
+  return { startViewTransition, updates }
+}
+
+describe('toTheme', () => {
+  it('reads each choice and takes anything else for the default', () => {
+    for (const theme of themes) {
+      expect(toTheme(theme)).toBe(theme)
+    }
+
+    for (const stored of ['', 'auto', 'Dark', ' light']) {
+      expect(toTheme(stored)).toBe(defaultTheme)
+    }
+
+    expect(defaultTheme).toBe('system')
+    expect(themes).toEqual(['system', 'light', 'dark'])
+  })
 })
 
 describe('resolveDark', () => {
-  it('resolveDark follows the system when preference is system', () => {
-    expect(resolveDark('system', true)).toBe(false)
-    expect(resolveDark('system', false)).toBe(true)
+  it('follows the appearance for System', () => {
+    expect(resolveDark('system', true)).toBe(true)
+    expect(resolveDark('system', false)).toBe(false)
   })
 
-  it('an explicit preference wins over the system', () => {
-    expect(resolveDark('dark', true)).toBe(true)
-    expect(resolveDark('dark', false)).toBe(true)
-    expect(resolveDark('light', true)).toBe(false)
-    expect(resolveDark('light', false)).toBe(false)
-  })
-})
+  it('pins Light and Dark whatever the appearance', () => {
+    const cases: [Theme, boolean, boolean][] = [
+      ['dark', true, true],
+      ['dark', false, true],
+      ['light', true, false],
+      ['light', false, false],
+    ]
 
-describe('applyTheme', () => {
-  it('sets data-theme and color-scheme on the root', () => {
-    const root = document.documentElement
-
-    applyTheme(root, true)
-    expect(root.dataset.theme).toBe('dark')
-    expect(root.style.colorScheme).toBe('dark')
-
-    applyTheme(root, false)
-    expect(root.dataset.theme).toBe('light')
-    expect(root.style.colorScheme).toBe('light')
+    for (const [theme, appearanceDark, want] of cases) {
+      expect(resolveDark(theme, appearanceDark)).toBe(want)
+    }
   })
 })
 
-describe('followTheme', () => {
-  it('applies the system appearance and follows live changes until stopped', () => {
-    const system = fakeWindow(true)
-    const root = document.documentElement
+describe('appearanceIsDark', () => {
+  it('asks the prefers-color-scheme query', () => {
+    const appearance = fakeAppearance({ dark: true })
 
-    const stop = followTheme('system', system.win)
-    expect(system.matchMedia).toHaveBeenCalledWith('(prefers-color-scheme: dark)')
-    expect(root.dataset.theme).toBe('dark')
+    expect(appearanceIsDark(appearance.win)).toBe(true)
+    expect(appearance.matchMedia).toHaveBeenCalledWith('(prefers-color-scheme: dark)')
 
-    system.setSystemDark(false)
-    expect(root.dataset.theme).toBe('light')
-
-    stop()
-    expect(system.listeners.size).toBe(0)
-
-    system.setSystemDark(true)
-    expect(root.dataset.theme).toBe('light')
+    appearance.setDark(false)
+    expect(appearanceIsDark(appearance.win)).toBe(false)
   })
 
-  it('keeps an explicit preference when the system changes', () => {
-    const system = fakeWindow(false)
+  it('reports light without matchMedia', () => {
+    expect(appearanceIsDark({ document } as unknown as Window)).toBe(false)
+  })
+})
 
-    followTheme('dark', system.win)
-    expect(document.documentElement.dataset.theme).toBe('dark')
+describe('onAppearanceChange', () => {
+  it('reports each change until stopped', () => {
+    const appearance = fakeAppearance()
+    const seen: boolean[] = []
 
-    system.setSystemDark(false)
-    expect(document.documentElement.dataset.theme).toBe('dark')
+    const stop = onAppearanceChange((dark) => seen.push(dark), appearance.win)
+
+    appearance.setDark(true)
+    appearance.setDark(false)
+    expect(seen).toEqual([true, false])
+
+    stop()
+    expect(appearance.listeners.size).toBe(0)
+
+    appearance.setDark(true)
+    expect(seen).toEqual([true, false])
   })
 
-  it('falls back to light without matchMedia', () => {
-    const win = { document } as unknown as Window
+  it('never reports without matchMedia', () => {
+    const stop = onAppearanceChange(
+      () => {
+        throw new Error('no appearance to change')
+      },
+      { document } as unknown as Window,
+    )
 
-    const stop = followTheme('system', win)
-    expect(document.documentElement.dataset.theme).toBe('light')
-    stop()
+    expect(() => {
+      stop()
+    }).not.toThrow()
+  })
+})
+
+describe('schemeSwitch', () => {
+  it('pins the palette on the root, at once when not animated', () => {
+    const appearance = fakeAppearance()
+    const { startViewTransition } = withTransitions(appearance.doc)
+    const switchScheme = schemeSwitch(appearance.win)
+
+    switchScheme(true, false)
+    expect(appearance.root.dataset.theme).toBe('dark')
+    expect(appearance.root.style.colorScheme).toBe('dark')
+
+    switchScheme(false, false)
+    expect(appearance.root.dataset.theme).toBe('light')
+    expect(appearance.root.style.colorScheme).toBe('light')
+
+    expect(startViewTransition).not.toHaveBeenCalled()
+  })
+
+  it('cross-fades an animated switch as a view transition', () => {
+    const appearance = fakeAppearance()
+    const { startViewTransition, updates } = withTransitions(appearance.doc)
+    const switchScheme = schemeSwitch(appearance.win)
+
+    switchScheme(false, false)
+    switchScheme(true, true)
+
+    expect(startViewTransition).toHaveBeenCalledOnce()
+    expect(appearance.root.dataset.theme).toBe('light')
+
+    updates[0]?.()
+    expect(appearance.root.dataset.theme).toBe('dark')
+    expect(appearance.root.style.colorScheme).toBe('dark')
+  })
+
+  it('does nothing for the palette already shown or on its way', () => {
+    const appearance = fakeAppearance()
+    const { startViewTransition } = withTransitions(appearance.doc)
+    appearance.root.dataset.theme = 'dark'
+    const switchScheme = schemeSwitch(appearance.win)
+
+    switchScheme(true, true)
+    expect(startViewTransition).not.toHaveBeenCalled()
+
+    switchScheme(false, true)
+    switchScheme(false, true)
+    expect(startViewTransition).toHaveBeenCalledOnce()
+  })
+
+  it('shows the latest palette asked for when a quick second switch finishes first', () => {
+    const appearance = fakeAppearance()
+    const { updates } = withTransitions(appearance.doc)
+    const switchScheme = schemeSwitch(appearance.win)
+
+    switchScheme(false, false)
+    switchScheme(true, true)
+    switchScheme(false, true)
+
+    // The second transition's update runs first, then the first one's, late.
+    updates[1]?.()
+    updates[0]?.()
+
+    expect(appearance.root.dataset.theme).toBe('light')
+  })
+
+  it('swallows a cross-fade that a newer switch skipped', async () => {
+    const appearance = fakeAppearance()
+    const skipped = () => Promise.reject(new DOMException('Skipped by a newer transition', 'AbortError'))
+    const { updates } = withTransitions(appearance.doc, skipped)
+    const switchScheme = schemeSwitch(appearance.win)
+
+    switchScheme(true, true)
+    switchScheme(false, true)
+    updates[0]?.()
+    updates[1]?.()
+
+    // An unhandled rejection would fail the run; let it surface if there is one.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(appearance.root.dataset.theme).toBe('light')
+  })
+
+  it('switches at once when the system asks for less motion', () => {
+    const appearance = fakeAppearance({ reducedMotion: true })
+    const { startViewTransition } = withTransitions(appearance.doc)
+    const switchScheme = schemeSwitch(appearance.win)
+
+    switchScheme(true, true)
+
+    expect(startViewTransition).not.toHaveBeenCalled()
+    expect(appearance.root.dataset.theme).toBe('dark')
+  })
+
+  it('switches at once without view transitions', () => {
+    const appearance = fakeAppearance()
+    const switchScheme = schemeSwitch(appearance.win)
+
+    expect('startViewTransition' in appearance.doc).toBe(false)
+
+    switchScheme(true, true)
+    expect(appearance.root.dataset.theme).toBe('dark')
   })
 })

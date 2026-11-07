@@ -42,6 +42,8 @@ const platform = vi.hoisted(() => ({
   clearCleanups: vi.fn(),
   getCollapsedSections: vi.fn(),
   setSectionCollapsed: vi.fn(),
+  getTheme: vi.fn(),
+  setTheme: vi.fn(),
 }))
 
 vi.mock('../platform', () => platform)
@@ -76,6 +78,7 @@ beforeEach(() => {
   platform.onInboxUpdated.mockReturnValue(() => undefined)
   platform.listWorktrees.mockResolvedValue(worktreesSnapshot())
   platform.getCollapsedSections.mockResolvedValue([])
+  platform.getTheme.mockResolvedValue('system')
   platform.setSectionCollapsed.mockResolvedValue(undefined)
   platform.removeWorktree.mockResolvedValue(undefined)
   platform.forceRemoveWorktree.mockResolvedValue(undefined)

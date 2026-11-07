@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 
 import { brand, palettes } from '../generated/brand'
-import { prefersReducedMotion } from '../lib/confetti'
+import { prefersReducedMotion } from '../lib/motion'
 import {
   arrivalBurst,
   earnedBurst,

@@ -3,6 +3,7 @@ import { useEffect, useId, useState, type ReactNode, type SubmitEvent } from 're
 import { brand } from '../generated/brand'
 import { counted, errorMessage } from '../lib/format'
 import { kindPlural, promptApplies } from '../lib/launch'
+import type { Theme } from '../lib/theme'
 import {
   commentThresholds,
   commitThresholds,
@@ -36,7 +37,7 @@ import {
 } from '../platform'
 import { Avatar } from './Avatar'
 import { Segmented, switchClass } from './controls'
-import { ChevronLeftIcon, ExternalIcon } from './icons'
+import { ChevronLeftIcon, DisplayIcon, ExternalIcon, MoonIcon, SunIcon } from './icons'
 import { LaunchDefaultsSection } from './LaunchDefaultsSection'
 import { Logo } from './Logo'
 import { SensitiveFilesSection } from './SensitiveFilesSection'
@@ -44,15 +45,15 @@ import { TrustSection } from './TrustSection'
 
 // SettingsSection is one section of the settings page.
 export type SettingsSection =
-  'account' | 'snoozing' | 'window' | 'launching' | 'profiles' | 'repositories' | 'trust' | 'files' | 'about'
+  'account' | 'appearance' | 'snoozing' | 'launching' | 'profiles' | 'repositories' | 'trust' | 'files' | 'about'
 
 type SectionId = SettingsSection
 
 // sectionOrder is the sidebar's order; sections holds each one's heading and summary.
 const sectionOrder: readonly SectionId[] = [
   'account',
+  'appearance',
   'snoozing',
-  'window',
   'launching',
   'profiles',
   'repositories',
@@ -63,11 +64,11 @@ const sectionOrder: readonly SectionId[] = [
 
 const sections: Readonly<Record<SectionId, { label: string; description: string }>> = {
   account: { label: 'Account', description: 'The GitHub account your inbox comes from.' },
+  appearance: { label: 'Appearance', description: 'The theme, and the size the window opens at.' },
   snoozing: {
     label: 'Snoozing',
     description: 'How long a snooze lasts, and what new activity brings an item back early.',
   },
-  window: { label: 'Window', description: 'The size the window opens at.' },
   launching: {
     label: 'Launching',
     description: 'How Open in Claude starts a coding session: the app defaults every launch starts from.',
@@ -123,6 +124,10 @@ export interface SettingsViewProps {
   launchDefaults: readonly LaunchDefaults[]
   // account is null until the inbox has loaded.
   account: Account | null
+  // theme is the chosen theme, and onThemeChange switches to another and stores it,
+  // rejecting when it could not be stored.
+  theme: Theme
+  onThemeChange: (theme: Theme) => Promise<void>
   // onSaved receives the settings after a change was stored.
   onSaved: (settings: Settings) => void
   // onLaunchChanged reloads the prompts and launch defaults after a change; it resolves
@@ -396,9 +401,76 @@ function SnoozingSection({ settings, onSaved }: SettingsSectionProps) {
   )
 }
 
-// WindowSection holds the size the window opens at. Choosing a size stores it and resizes
+// themeChoices are the theme options, each with its icon and the turn-in it plays when
+// picked (see index.css).
+const themeChoices: readonly {
+  value: Theme
+  label: string
+  title: string
+  Icon: typeof SunIcon
+  turnIn: string
+}[] = [
+  {
+    value: 'system',
+    label: 'System',
+    title: 'Light or dark as your Mac is, switching when it does',
+    Icon: DisplayIcon,
+    turnIn: 'motion-safe:animate-display-in',
+  },
+  { value: 'light', label: 'Light', title: 'Always light', Icon: SunIcon, turnIn: 'motion-safe:animate-sun-in' },
+  { value: 'dark', label: 'Dark', title: 'Always dark', Icon: MoonIcon, turnIn: 'motion-safe:animate-moon-in' },
+]
+
+interface ThemeRowProps {
+  theme: Theme
+  onThemeChange: (theme: Theme) => Promise<void>
+}
+
+// ThemeRow chooses the theme. A choice shows at once, with a short cross-fade, and is
+// stored; the picked option's icon turns in.
+function ThemeRow({ theme, onThemeChange }: ThemeRowProps) {
+  const [error, setError] = useState('')
+  // picked is the theme picked last on this page: only its icon turns in, so nothing
+  // moves when the page opens.
+  const [picked, setPicked] = useState<Theme | null>(null)
+
+  const choose = (next: Theme) => {
+    setError('')
+    setPicked(next)
+    onThemeChange(next).catch((err: unknown) => {
+      setError(errorMessage(err))
+    })
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-8 px-4 py-3.5">
+      <div className="min-w-0">
+        <p className="text-sm font-medium">Theme</p>
+        <p className="mt-0.5 text-xs text-muted">System matches your Mac, light or dark, and switches when it does.</p>
+        {error !== '' && (
+          <p role="alert" className="mt-1 text-xs text-danger">
+            {error}
+          </p>
+        )}
+      </div>
+      <Segmented
+        label="Theme"
+        value={theme}
+        options={themeChoices.map(({ value, label, title, Icon, turnIn }) => ({
+          value,
+          label,
+          title,
+          icon: <Icon className={`size-3.5 ${picked === value ? turnIn : ''}`} />,
+        }))}
+        onChange={choose}
+      />
+    </div>
+  )
+}
+
+// WindowSizeRow holds the size the window opens at. Choosing a size stores it and resizes
 // the open window to it at once.
-function WindowSection({ settings, onSaved }: SettingsSectionProps) {
+function WindowSizeRow({ settings, onSaved }: SettingsSectionProps) {
   const [error, setError] = useState('')
   const defaultKey = sizeKey(settings.defaultWindowSize)
 
@@ -419,31 +491,50 @@ function WindowSection({ settings, onSaved }: SettingsSectionProps) {
   }
 
   return (
+    <div className="flex items-center justify-between gap-8 px-4 py-3.5">
+      <div className="min-w-0">
+        <p className="text-sm font-medium">Window size</p>
+        <p className="mt-0.5 text-xs text-muted">
+          Opens at {sizeLabel(settings.windowSize)}. Choosing a size resizes the window now, too.
+        </p>
+        {error !== '' && (
+          <p role="alert" className="mt-1 text-xs text-danger">
+            {error}
+          </p>
+        )}
+      </div>
+      <Segmented
+        label="Window size"
+        value={sizeKey(settings.windowSize)}
+        options={windowPresets.map(({ label, size }) => ({
+          value: sizeKey(size),
+          label,
+          title: sizeKey(size) === defaultKey ? `${sizeLabel(size)} (default)` : sizeLabel(size),
+        }))}
+        onChange={choose}
+      />
+    </div>
+  )
+}
+
+interface AppearanceSectionProps extends ThemeRowProps {
+  // settings is null until it has loaded; the window size waits for it.
+  settings: Settings | null
+  onSaved: (settings: Settings) => void
+}
+
+// AppearanceSection holds how the app looks: the theme, which needs no settings to show,
+// and the size the window opens at.
+function AppearanceSection({ settings, onSaved, theme, onThemeChange }: AppearanceSectionProps) {
+  return (
     <div className="flex flex-col gap-3">
       <Group>
-        <div className="flex items-center justify-between gap-8 px-4 py-3.5">
-          <div className="min-w-0">
-            <p className="text-sm font-medium">Window size</p>
-            <p className="mt-0.5 text-xs text-muted">
-              Opens at {sizeLabel(settings.windowSize)}. Choosing a size resizes the window now, too.
-            </p>
-            {error !== '' && (
-              <p role="alert" className="mt-1 text-xs text-danger">
-                {error}
-              </p>
-            )}
-          </div>
-          <Segmented
-            label="Window size"
-            value={sizeKey(settings.windowSize)}
-            options={windowPresets.map(({ label, size }) => ({
-              value: sizeKey(size),
-              label,
-              title: sizeKey(size) === defaultKey ? `${sizeLabel(size)} (default)` : sizeLabel(size),
-            }))}
-            onChange={choose}
-          />
-        </div>
+        <ThemeRow theme={theme} onThemeChange={onThemeChange} />
+        {settings === null ? (
+          <p className="px-4 py-3.5 text-sm text-muted">Loading the window size…</p>
+        ) : (
+          <WindowSizeRow settings={settings} onSaved={onSaved} />
+        )}
       </Group>
       <p className="text-xs leading-relaxed text-muted">
         Sizes are in points. A size larger than your screen opens as large as the screen allows, and you can still
@@ -894,6 +985,8 @@ export function SettingsView({
   defaultPrompts,
   launchDefaults,
   account,
+  theme,
+  onThemeChange,
   onSaved,
   onLaunchChanged,
   onClose,
@@ -957,10 +1050,11 @@ export function SettingsView({
           {current.description !== '' && <p className="mt-1 text-sm text-muted">{current.description}</p>}
           <div className="mt-6">
             {section === 'account' && <AccountSection account={account} />}
+            {section === 'appearance' && (
+              <AppearanceSection settings={settings} onSaved={onSaved} theme={theme} onThemeChange={onThemeChange} />
+            )}
             {section === 'snoozing' &&
               (settings === null ? loading : <SnoozingSection settings={settings} onSaved={onSaved} />)}
-            {section === 'window' &&
-              (settings === null ? loading : <WindowSection settings={settings} onSaved={onSaved} />)}
             {section === 'launching' &&
               (settings === null ? (
                 loading

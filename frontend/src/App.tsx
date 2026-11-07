@@ -10,6 +10,7 @@ import { defaultSnoozeDays, inboxCount } from './lib/triage'
 import { useCollapsedSections } from './lib/useCollapsedSections'
 import { useInbox } from './lib/useInbox'
 import { useLaunchConfig } from './lib/useLaunchConfig'
+import { useTheme } from './lib/useTheme'
 import {
   lastWorktreeSweep,
   onWorktreesUpdated,
@@ -89,11 +90,12 @@ function useWorktreeSweeps() {
 }
 
 // App is the window's root: the toolbar over the active page. It holds the state the
-// pages share: the inbox (the lists, the account, and the API budget), the launch
-// configuration (settings, profiles, prompts, launch defaults, and each item's resolved
-// launch settings) that the rows, the Prompts page, and the settings page use, which
-// inbox lists are collapsed, and the automatic worktree cleanup's latest news.
+// pages share: the theme, the inbox (the lists, the account, and the API budget), the
+// launch configuration (settings, profiles, prompts, launch defaults, and each item's
+// resolved launch settings) that the rows, the Prompts page, and the settings page use,
+// which inbox lists are collapsed, and the automatic worktree cleanup's latest news.
 export function App() {
+  const theme = useTheme()
   const inbox = useInbox()
   const config = useLaunchConfig(inbox.snapshot)
   const sweeps = useWorktreeSweeps()
@@ -279,6 +281,8 @@ export function App() {
             defaultPrompts={config.defaultPrompts}
             launchDefaults={config.launchDefaults}
             account={account}
+            theme={theme.theme}
+            onThemeChange={theme.chooseTheme}
             onSaved={saveSettings}
             onLaunchChanged={reload}
             onClose={closeSettings}

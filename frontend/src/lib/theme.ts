@@ -1,55 +1,117 @@
-// Theme selection. The generated theme.css already follows the system appearance through
-// prefers-color-scheme, so the first paint is correct before any script runs; this module
-// pins the resolved choice on <html> so components and a future theme setting agree.
+// The theme: the user's choice of palette, and switching the page to it.
+//
+// The generated theme.css sets every brand token for the light palette, and again for the
+// dark one under prefers-color-scheme: dark, so the first paint follows the web view's
+// appearance before any script runs. On macOS the desktop shell pins that appearance to a
+// Light or Dark theme before the window opens, and leaves it to the system for System, so
+// the first frame already shows the chosen palette. From then on the page pins the palette
+// it shows on <html> (data-theme wins over the media query) and cross-fades on a switch.
 
-export type ThemePreference = 'system' | 'light' | 'dark'
+import { prefersReducedMotion } from './motion'
 
-// darkQuery matches when the system appearance is dark.
+export type Theme = 'system' | 'light' | 'dark'
+
+// themes are the choices, in the order Settings offers them.
+export const themes: readonly Theme[] = ['system', 'light', 'dark']
+
+// defaultTheme is the theme of a fresh install, and the one shown until the stored theme
+// has loaded.
+export const defaultTheme: Theme = 'system'
+
+// toTheme reads a theme as stored, taking anything that is not a choice for the default.
+export function toTheme(value: string): Theme {
+  return themes.find((theme) => theme === value) ?? defaultTheme
+}
+
+// darkQuery matches while the web view's appearance is dark: the system's, or the one the
+// desktop shell pinned for a Light or Dark theme.
 const darkQuery = '(prefers-color-scheme: dark)'
 
-// resolveDark reports whether the dark palette applies for a preference, given whether
-// the system currently prefers the light appearance.
-export function resolveDark(preference: ThemePreference, systemPrefersLight: boolean): boolean {
-  switch (preference) {
+// resolveDark reports whether a theme shows the dark palette while the appearance is dark
+// or light.
+export function resolveDark(theme: Theme, appearanceDark: boolean): boolean {
+  switch (theme) {
     case 'dark':
       return true
     case 'light':
       return false
     case 'system':
-      return !systemPrefersLight
+      return appearanceDark
   }
 }
 
-// applyTheme sets data-theme and color-scheme on the root element, which selects the
-// matching block of the generated theme tokens.
-export function applyTheme(root: HTMLElement, dark: boolean): void {
-  const scheme = dark ? 'dark' : 'light'
-
-  root.dataset.theme = scheme
-  root.style.colorScheme = scheme
+// appearanceIsDark reports whether the web view's appearance is dark. Without matchMedia
+// it reports false, matching the tokens' light default.
+export function appearanceIsDark(win: Window = window): boolean {
+  return typeof win.matchMedia === 'function' && win.matchMedia(darkQuery).matches
 }
 
-// followTheme applies the preference now and again whenever the system appearance
-// changes. It returns a function that stops following. Without matchMedia the system is
-// treated as preferring light, matching the tokens' default.
-export function followTheme(preference: ThemePreference, win: Window = window): () => void {
-  const root = win.document.documentElement
-
+// onAppearanceChange calls listener with whether the appearance is dark each time it
+// changes, and returns a function that stops listening. Without matchMedia it never
+// changes.
+export function onAppearanceChange(listener: (dark: boolean) => void, win: Window = window): () => void {
   if (typeof win.matchMedia !== 'function') {
-    applyTheme(root, resolveDark(preference, true))
-
     return () => undefined
   }
 
   const query = win.matchMedia(darkQuery)
-  const update = () => {
-    applyTheme(root, resolveDark(preference, !query.matches))
+  const changed = () => {
+    listener(query.matches)
   }
 
-  update()
-  query.addEventListener('change', update)
+  query.addEventListener('change', changed)
 
   return () => {
-    query.removeEventListener('change', update)
+    query.removeEventListener('change', changed)
+  }
+}
+
+type Scheme = 'light' | 'dark'
+
+// pin shows a palette: data-theme selects the matching block of the theme tokens, and
+// color-scheme draws native controls and scrollbars to match.
+function pin(root: HTMLElement, scheme: Scheme): void {
+  root.dataset.theme = scheme
+  root.style.colorScheme = scheme
+}
+
+// SchemeSwitch moves the page to the dark (true) or light (false) palette. With animate,
+// the whole window cross-fades.
+export type SchemeSwitch = (dark: boolean, animate: boolean) => void
+
+// schemeSwitch returns the switch for a window's page. A switch to the palette already
+// shown, or already on its way, does nothing. An animated switch runs as a view transition
+// (styled in index.css); without view transitions, or when the system asks for less
+// motion, it switches at once. Each switch shows the latest palette asked for, so a quick
+// second switch can never be undone by the first one finishing late.
+export function schemeSwitch(win: Window = window): SchemeSwitch {
+  const doc = win.document
+  const root = doc.documentElement
+  // target is the palette shown, or on its way while a cross-fade is under way.
+  let target = root.dataset.theme
+
+  const show = () => {
+    if (target === 'light' || target === 'dark') {
+      pin(root, target)
+    }
+  }
+
+  return (dark, animate) => {
+    const scheme: Scheme = dark ? 'dark' : 'light'
+    if (scheme === target) {
+      return
+    }
+
+    target = scheme
+
+    if (!animate || !('startViewTransition' in doc) || prefersReducedMotion(win)) {
+      show()
+
+      return
+    }
+
+    // A newer switch skips this one's cross-fade, which rejects ready; its update still
+    // runs and shows the latest palette, so there is nothing to recover.
+    doc.startViewTransition(show).ready.catch(() => undefined)
   }
 }

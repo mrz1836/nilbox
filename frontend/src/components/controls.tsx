@@ -40,6 +40,8 @@ export interface SegmentOption<T extends string> {
   label: string
   // title is the option's tooltip, if any.
   title?: string
+  // icon sits before the label, if any; it is decorative, since the label names the option.
+  icon?: ReactNode
 }
 
 export interface SegmentedProps<T extends string> {
@@ -76,7 +78,7 @@ export function Segmented<T extends string>({
         <label
           key={o.value}
           title={o.title}
-          className={`relative rounded-[5px] ${pad} font-medium whitespace-nowrap text-muted transition-colors select-none hover:text-text has-checked:bg-raised has-checked:text-text has-checked:shadow-sm has-focus-visible:outline-2 has-focus-visible:outline-accent ${disabled ? 'opacity-60' : 'cursor-pointer'}`}
+          className={`relative flex items-center gap-1.5 rounded-[5px] ${pad} font-medium whitespace-nowrap text-muted transition-colors select-none hover:text-text has-checked:bg-raised has-checked:text-text has-checked:shadow-sm has-focus-visible:outline-2 has-focus-visible:outline-accent ${disabled ? 'opacity-60' : 'cursor-pointer'}`}
         >
           <input
             type="radio"
@@ -89,6 +91,7 @@ export function Segmented<T extends string>({
             }}
             className="sr-only"
           />
+          {o.icon}
           {o.label}
         </label>
       ))}

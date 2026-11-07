@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { burst, confettiColors, confettiGlyphs, lifetime, prefersReducedMotion, type Room } from './confetti'
+import { burst, confettiColors, confettiGlyphs, lifetime, type Room } from './confetti'
 
 // seeded is a small deterministic random source (a linear congruential generator), so a
 // burst can be rolled the same way every run.
@@ -78,21 +78,5 @@ describe('lifetime', () => {
 
     expect(lifetime(particles)).toBe(last)
     expect(lifetime([])).toBe(0)
-  })
-})
-
-describe('prefersReducedMotion', () => {
-  const windowWith = (matches: boolean) =>
-    ({
-      matchMedia: (query: string) => ({ matches: matches && query === '(prefers-reduced-motion: reduce)' }),
-    }) as unknown as Window
-
-  it('follows the system setting', () => {
-    expect(prefersReducedMotion(windowWith(true))).toBe(true)
-    expect(prefersReducedMotion(windowWith(false))).toBe(false)
-  })
-
-  it('reports false without matchMedia', () => {
-    expect(prefersReducedMotion({} as Window)).toBe(false)
   })
 })

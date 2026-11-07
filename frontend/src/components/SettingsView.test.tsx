@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { brand } from '../generated/brand'
 import type { Account, LaunchDefaults, Profile, Settings } from '../platform'
 import { account, launchDefaults, profile, prompts, settings, signedOut } from '../test/fixtures'
+import type { Theme } from '../lib/theme'
 import { SettingsView, type SettingsSection } from './SettingsView'
 
 const platform = vi.hoisted(() => ({
@@ -61,6 +62,8 @@ interface Options {
   profiles?: Profile[]
   who?: Account | null
   defaults?: LaunchDefaults[]
+  theme?: Theme
+  onThemeChange?: (theme: Theme) => Promise<void>
 }
 
 function renderSettings({
@@ -69,6 +72,8 @@ function renderSettings({
   profiles = [profile(), profile({ name: 'work' })],
   who = account(),
   defaults = [],
+  theme = 'system',
+  onThemeChange = vi.fn(() => Promise.resolve()),
 }: Options = {}) {
   const onSaved = vi.fn()
   const onClose = vi.fn()
@@ -83,13 +88,15 @@ function renderSettings({
       defaultPrompts={{ pr: 1, issue: 4 }}
       launchDefaults={defaults}
       account={who}
+      theme={theme}
+      onThemeChange={onThemeChange}
       onSaved={onSaved}
       onLaunchChanged={onLaunchChanged}
       onClose={onClose}
     />,
   )
 
-  return { onSaved, onClose, onLaunchChanged }
+  return { onSaved, onClose, onLaunchChanged, onThemeChange }
 }
 
 // openSection picks a section from the sidebar.
@@ -232,7 +239,7 @@ describe('SettingsView', () => {
 
   it('saves and applies the window size as soon as it is chosen', async () => {
     const { onSaved } = renderSettings()
-    await openSection('Window')
+    await openSection('Appearance')
 
     const sizes = screen.getByRole('radiogroup', { name: 'Window size' })
     expect(within(sizes).getAllByRole('radio')).toHaveLength(4)
@@ -252,7 +259,7 @@ describe('SettingsView', () => {
   it('shows a window size the backend refused', async () => {
     platform.setWindowSize.mockRejectedValue(new Error('invalid window size'))
     const { onSaved } = renderSettings()
-    await openSection('Window')
+    await openSection('Appearance')
 
     await userEvent.click(screen.getByRole('radio', { name: 'Extra large' }))
 
@@ -262,19 +269,68 @@ describe('SettingsView', () => {
 
   it('selects no preset for a size that matches none', async () => {
     renderSettings({ current: settings({ windowSize: { width: 1366, height: 768 } }) })
-    await openSection('Window')
+    await openSection('Appearance')
 
-    for (const radio of screen.getAllByRole('radio')) {
+    const sizes = screen.getByRole('radiogroup', { name: 'Window size' })
+    for (const radio of within(sizes).getAllByRole('radio')) {
       expect(radio).not.toBeChecked()
     }
     expect(screen.getByText(/Opens at 1366 × 768\./)).toBeInTheDocument()
   })
 
-  it('waits for the settings before showing the window size', async () => {
+  it('waits for the settings before showing the window size, but not to show the theme', async () => {
     renderSettings({ current: null })
-    await openSection('Window')
+    await openSection('Appearance')
 
-    expect(screen.getByText('Loading the settings…')).toBeInTheDocument()
+    expect(screen.getByText('Loading the window size…')).toBeInTheDocument()
+    expect(screen.queryByRole('radiogroup', { name: 'Window size' })).not.toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'System' })).toBeChecked()
+  })
+
+  it('offers the themes, with the chosen one checked', async () => {
+    renderSettings({ theme: 'dark' })
+    await openSection('Appearance')
+
+    const themes = screen.getByRole('radiogroup', { name: 'Theme' })
+    expect(
+      within(themes)
+        .getAllByRole('radio')
+        .map((r) => r.getAttribute('value')),
+    ).toEqual(['system', 'light', 'dark'])
+    expect(within(themes).getByRole('radio', { name: 'Dark' })).toBeChecked()
+    expect(within(themes).getByText('System')).toHaveAttribute(
+      'title',
+      'Light or dark as your Mac is, switching when it does',
+    )
+    expect(within(themes).getByText('Light')).toHaveAttribute('title', 'Always light')
+  })
+
+  it('switches the theme as soon as it is chosen, turning in only the picked icon', async () => {
+    const { onThemeChange } = renderSettings({ theme: 'system' })
+    await openSection('Appearance')
+
+    const themes = screen.getByRole('radiogroup', { name: 'Theme' })
+    const icon = (name: string) => within(themes).getByText(name).querySelector('svg')
+
+    expect(icon('System')?.getAttribute('class')).not.toMatch(/animate-/)
+    expect(icon('Light')?.getAttribute('class')).not.toMatch(/animate-/)
+
+    await userEvent.click(within(themes).getByRole('radio', { name: 'Light' }))
+
+    expect(onThemeChange).toHaveBeenCalledExactlyOnceWith('light')
+    expect(icon('Light')).toHaveClass('motion-safe:animate-sun-in')
+    expect(icon('Dark')?.getAttribute('class')).not.toMatch(/animate-/)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shows a theme that could not be stored', async () => {
+    const onThemeChange = vi.fn(() => Promise.reject(new Error('unknown theme "dim"')))
+    renderSettings({ onThemeChange })
+    await openSection('Appearance')
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Dark' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('unknown theme "dim"')
   })
 
   it('persists the terminal choice', async () => {
