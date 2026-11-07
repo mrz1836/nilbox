@@ -64,8 +64,10 @@ func TestGormStoresTimestampsAsSortableUTCText(t *testing.T) {
 func TestCloseClosesPool(t *testing.T) {
 	t.Parallel()
 
-	pool, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "app.db"))
+	opened, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "app.db"))
 	require.NoError(t, err)
+
+	pool := opened.DB
 
 	db, err := store.Gorm(pool)
 	require.NoError(t, err)

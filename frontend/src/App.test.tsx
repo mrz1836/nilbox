@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { brand } from './generated/brand'
 import {
+  appInfo,
   checkResult,
   fileCheck,
   item,
@@ -92,16 +93,7 @@ beforeEach(() => {
   platform.setSectionCollapsed.mockResolvedValue(undefined)
   platform.getTheme.mockResolvedValue('system')
   platform.setTheme.mockResolvedValue(undefined)
-  platform.getAppInfo.mockResolvedValue({
-    name: brand.name,
-    tagline: brand.tagline,
-    version: 'dev',
-    release: '0.0.0',
-    build: '0',
-    system: 'macOS 15.1 (24B83)',
-    arch: 'arm64',
-    bugReportUrl: 'https://github.com/acme-org/example-repo/issues/new',
-  })
+  platform.getAppInfo.mockResolvedValue(appInfo())
   platform.listPrompts.mockResolvedValue(prompts())
   platform.getDefaultPrompts.mockResolvedValue({ pr: 1, issue: 4 })
   platform.listPromptVariables.mockResolvedValue(variables())
@@ -643,6 +635,26 @@ describe('App', () => {
       expect(error).toHaveBeenCalledWith('could not read the latest worktree sweep', expect.any(Error))
     })
     error.mockRestore()
+  })
+
+  it('says when the data could not be read and was set aside, until dismissed', async () => {
+    platform.getAppInfo.mockResolvedValue(
+      appInfo({ dataReset: { path: '~/data/app.db.broken-20260102T030405Z', reason: 'corrupt' } }),
+    )
+    render(<App />)
+
+    expect(
+      await screen.findByText(
+        (_, el) =>
+          el?.tagName === 'P' &&
+          el.textContent ===
+            `${brand.name} couldn’t read its data, so it set it aside at ~/data/app.db.broken-20260102T030405Z and started fresh.`,
+      ),
+    ).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Dismiss notice' }))
+
+    expect(screen.queryByText(/couldn’t read its data/)).not.toBeInTheDocument()
   })
 
   it('shows settings that could not be loaded', async () => {

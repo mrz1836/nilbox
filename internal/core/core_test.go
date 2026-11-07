@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -20,6 +21,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/settings"
+	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/timing"
 )
@@ -357,6 +359,51 @@ func TestAppInfoReportsVersion(t *testing.T) {
 	assert.Equal(t, "v1.2.3", info.Version)
 	assert.Equal(t, "1.2.3", info.Release)
 	assert.Equal(t, "42", info.Build)
+	assert.Nil(t, info.DataReset, "a database that opens is not reset")
+}
+
+func TestBootstrapStartsFreshWhenTheDatabaseCannotBeRead(t *testing.T) {
+	home := testutil.ClaudeHome(t, ".claude")
+	paths := appdata.NewPaths(filepath.Join(home, "data"))
+	testutil.WriteFile(t, paths.DB, "this is not a database file, just text long enough to have a header")
+
+	var logs bytes.Buffer
+
+	c := bootstrap(t, Options{
+		Paths:  paths,
+		Home:   home,
+		Runner: noPrograms(),
+		Logger: slog.New(slog.NewTextHandler(&logs, nil)),
+	})
+
+	reset := c.AppInfo.Info().DataReset
+	require.NotNil(t, reset, "the window is told the data was reset")
+	assert.Equal(t, string(store.ResetCorrupt), reset.Reason)
+	assert.Regexp(t, `^~/data/`+regexp.QuoteMeta(filepath.Base(paths.DB))+`\.broken-\d{8}T\d{6}Z$`, reset.Path,
+		"the path is shown with ~ for the home directory")
+	assert.Contains(t, logs.String(), "set aside")
+
+	// The fresh database is set up like any new one.
+	all, err := c.Prompts.List(t.Context())
+	require.NoError(t, err)
+	assert.Len(t, all, len(prompts.Starters()))
+	assert.Equal(t, []string{profiles.DefaultName}, profileNames(t, c))
+}
+
+func TestBootstrapRefusesADatabaseFromANewerBuild(t *testing.T) {
+	opts := Options{
+		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
+		Home:   testutil.ClaudeHome(t),
+		Runner: noPrograms(),
+	}
+
+	c := bootstrap(t, opts)
+	require.NoError(t, c.DB.Exec(`INSERT INTO schema_migrations (version, name, checksum, applied_at)
+VALUES (9999, 'from_the_future', 'abc', '2026-01-01T00:00:00Z')`).Error)
+	require.NoError(t, c.Close())
+
+	_, err := Bootstrap(t.Context(), opts)
+	require.ErrorIs(t, err, store.ErrNewerSchema)
 }
 
 func TestInboxRefreshUsesInjectedRunner(t *testing.T) {

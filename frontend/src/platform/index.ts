@@ -55,7 +55,7 @@ import type {
 
 // The bound services' data types, generated from the Go structs. Callers use these and
 // never declare their own copies.
-export type { Info } from '../../bindings/github.com/mrz1836/nilbox/internal/appinfo'
+export type { DataReset, Info } from '../../bindings/github.com/mrz1836/nilbox/internal/appinfo'
 export type {
   Account,
   Checks,

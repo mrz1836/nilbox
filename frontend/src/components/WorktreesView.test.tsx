@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { App } from '../App'
 import {
+  appInfo,
   finishedWorktree,
   linkedItem,
   mainWorktree,
@@ -19,6 +20,7 @@ import {
 import { WorktreesView } from './WorktreesView'
 
 const platform = vi.hoisted(() => ({
+  getAppInfo: vi.fn(),
   getSettings: vi.fn(),
   listProfiles: vi.fn(),
   setTerminal: vi.fn(),
@@ -75,6 +77,7 @@ async function repo(name: string) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  platform.getAppInfo.mockResolvedValue(appInfo())
   platform.getSettings.mockResolvedValue(settings())
   platform.listProfiles.mockResolvedValue([profile()])
   platform.getInboxSnapshot.mockResolvedValue(snapshot())

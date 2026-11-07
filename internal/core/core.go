@@ -27,6 +27,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/launchlog"
 	"github.com/mrz1836/nilbox/internal/notify"
+	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/settings"
@@ -125,9 +126,10 @@ type Core struct {
 }
 
 // Bootstrap prepares the data directory, opens the database (backing it up and applying
-// any pending migrations), syncs the agent profiles found under the home directory, adds
-// any starter prompt not added before, and builds every service. It contacts no network;
-// the scheduler does that once started.
+// any pending migrations, or setting it aside for a fresh one when it cannot be used),
+// syncs the agent profiles found under the home directory, adds any starter prompt not
+// added before, and builds every service. It contacts no network; the scheduler does that
+// once started.
 func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 	if opts.Paths.Root == "" {
 		return nil, ErrNoDataDir
@@ -141,10 +143,17 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 		return nil, err
 	}
 
-	pool, err := store.Open(ctx, opts.Paths.DB)
+	logger := opts.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	opened, err := store.Open(ctx, opts.Paths.DB)
 	if err != nil {
 		return nil, err
 	}
+
+	pool := opened.DB
 
 	db, err := store.Gorm(pool)
 	if err != nil {
@@ -153,10 +162,7 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 		return nil, err
 	}
 
-	logger := opts.Logger
-	if logger == nil {
-		logger = slog.Default()
-	}
+	reset := dataReset(ctx, opened.Reset, opts.Home, logger)
 
 	if err = syncProfiles(ctx, db, opts.Home, logger); err != nil {
 		_ = pool.Close()
@@ -170,7 +176,7 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 		return nil, fmt.Errorf("add the starter prompts: %w", err)
 	}
 
-	return assemble(pool, db, opts, logger), nil
+	return assemble(pool, db, reset, opts, logger), nil
 }
 
 // Services returns the services the frontend binds to, in a stable order.
@@ -222,9 +228,23 @@ func syncProfiles(ctx context.Context, db *gorm.DB, home string, logger *slog.Lo
 	return nil
 }
 
+// dataReset logs a database Open set aside, and returns what the window tells the user
+// about it, or nil when there was none.
+func dataReset(ctx context.Context, reset *store.Reset, home string, logger *slog.Logger) *appinfo.DataReset {
+	if reset == nil {
+		return nil
+	}
+
+	logger.WarnContext(ctx, "the database could not be used; it was set aside and a fresh one started",
+		"path", reset.Path, "reason", reset.Reason, "error", reset.Err)
+
+	return &appinfo.DataReset{Path: paths.Tilde(reset.Path, home), Reason: string(reset.Reason)}
+}
+
 // assemble builds every service over the open database: pool is its connection pool and
-// db the GORM handle over it.
-func assemble(pool *sql.DB, db *gorm.DB, opts Options, logger *slog.Logger) *Core {
+// db the GORM handle over it. reset, when set, tells the window the database was set
+// aside at startup.
+func assemble(pool *sql.DB, db *gorm.DB, reset *appinfo.DataReset, opts Options, logger *slog.Logger) *Core {
 	finder := execpath.Finder{Home: opts.Home}
 
 	runner := opts.Runner
@@ -295,6 +315,7 @@ func assemble(pool *sql.DB, db *gorm.DB, opts Options, logger *slog.Logger) *Cor
 			Build:        opts.Build,
 			Recorder:     recorder,
 			OnFirstPaint: opts.OnFirstPaint,
+			DataReset:    reset,
 		}),
 		Scheduler: inbox.NewScheduler(inboxSvc, logger),
 		Timing:    recorder,

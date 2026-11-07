@@ -34,6 +34,8 @@ import (
 	"github.com/mrz1836/nilbox/internal/core"
 	"github.com/mrz1836/nilbox/internal/measure"
 	"github.com/mrz1836/nilbox/internal/settings"
+	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/timing"
 	"github.com/mrz1836/nilbox/internal/worktrees"
 )
@@ -122,7 +124,13 @@ func run(args []string, stdout, stderr io.Writer) error {
 		OnFirstPaint:          s.firstPaint,
 	})
 	if err != nil {
-		return fmt.Errorf("start the app (%s, commit %s, built %s): %w", version, commit, buildDate, err)
+		err = fmt.Errorf("start the app (%s, commit %s, built %s): %w", version, commit, buildDate, err)
+
+		if errors.Is(err, store.ErrNewerSchema) && !s.measureStartup {
+			failStartup(stderr, err, brand.Name+" needs an update", textutil.Sentence(store.ErrNewerSchema.Error()))
+		}
+
+		return err
 	}
 
 	s.core = c
@@ -165,6 +173,34 @@ func run(args []string, stdout, stderr io.Writer) error {
 	s.shutdown()
 
 	return errors.Join(runErr, s.closeErr)
+}
+
+// failStartup stops an app that could not start for a reason the user can act on. It
+// prints err to stderr, shows title and message in a native error dialog, since nobody
+// sees stderr when the app is launched from Finder, and exits with a failure status
+// once the dialog is dismissed. The dialog needs a running app, so a bare one, with no
+// window and no services, runs just to show it.
+func failStartup(stderr io.Writer, err error, title, message string) {
+	_, _ = fmt.Fprintln(stderr, err)
+
+	app := application.New(application.Options{
+		Name:        brand.Name,
+		Description: brand.Tagline,
+		Icon:        appIcon(),
+		// On macOS the app exits from inside Run once it terminates, with a success
+		// status unless this hook exits first.
+		PostShutdown: func() { os.Exit(1) },
+	})
+
+	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+		dialog := app.Dialog.Error().SetTitle(title).SetMessage(message)
+		dialog.AddButton("Quit").SetAsDefault().OnClick(app.Quit)
+		dialog.Show()
+	})
+
+	_ = app.Run()
+
+	os.Exit(1)
 }
 
 // measureRefresh times live inbox refreshes the way the app makes them, against a scratch

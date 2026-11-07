@@ -209,12 +209,12 @@ func TestOpenReopensExistingDatabase(t *testing.T) {
 
 	path := filepath.Join(t.TempDir(), "app.db")
 
-	db, err := store.Open(t.Context(), path)
+	opened, err := store.Open(t.Context(), path)
 	require.NoError(t, err)
-	_, err = db.ExecContext(t.Context(), `INSERT INTO prefs (key, value, updated_at)
+	_, err = opened.DB.ExecContext(t.Context(), `INSERT INTO prefs (key, value, updated_at)
 VALUES ('example.key', 'kept', CURRENT_TIMESTAMP)`)
 	require.NoError(t, err)
-	require.NoError(t, db.Close())
+	require.NoError(t, opened.DB.Close())
 
 	var value string
 	require.NoError(t, testutil.SQLDBAt(t, path).QueryRowContext(t.Context(),
@@ -233,21 +233,6 @@ func TestOpenRejectsInvalidPath(t *testing.T) {
 
 	_, err = store.Open(t.Context(), filepath.Join(t.TempDir(), "odd?name.db"))
 	require.ErrorIs(t, err, store.ErrInvalidPath)
-}
-
-func TestOpenRefusesUnmanagedDatabase(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "foreign.db")
-
-	raw, err := sql.Open("sqlite", path)
-	require.NoError(t, err)
-
-	_, err = raw.ExecContext(t.Context(), "CREATE TABLE notes (id INTEGER PRIMARY KEY)")
-	require.NoError(t, err)
-	require.NoError(t, raw.Close())
-
-	_, err = store.Open(t.Context(), path)
-	require.ErrorIs(t, err, migrate.ErrUnmanagedSchema)
-	assert.Contains(t, err.Error(), "migrate database")
 }
 
 func TestOpenReportsUnusablePaths(t *testing.T) {

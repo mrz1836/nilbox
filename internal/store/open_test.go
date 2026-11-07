@@ -2,7 +2,7 @@ package store_test
 
 import (
 	"database/sql"
-	"io/fs"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -17,37 +17,25 @@ import (
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
-// olderMigrations returns the embedded migrations without the newest, as an earlier build
-// shipped them, and the newest version.
-func olderMigrations(t *testing.T) (fs.FS, int) {
+// laterMigrations returns the embedded migrations plus one more, as a later build
+// would ship them, and that one's version.
+func laterMigrations(t *testing.T, extra string) (fstest.MapFS, int) {
 	t.Helper()
 
 	all, err := migrate.Load(migrate.Embedded())
 	require.NoError(t, err)
-	require.GreaterOrEqual(t, len(all), 2)
+	require.NotEmpty(t, all)
 
-	older := fstest.MapFS{}
+	later := fstest.MapFS{}
 
-	for _, m := range all[:len(all)-1] {
-		body, readErr := fs.ReadFile(migrate.Embedded(), m.File)
-		require.NoError(t, readErr)
-
-		older[m.File] = &fstest.MapFile{Data: body}
+	for _, m := range all {
+		later[m.File] = &fstest.MapFile{Data: []byte(m.SQL)}
 	}
 
-	return older, all[len(all)-1].Version
-}
+	next := all[len(all)-1].Version + 1
+	later[fmt.Sprintf("%04d_later.sql", next)] = &fstest.MapFile{Data: []byte(extra)}
 
-// rawDB opens the database file at path with no migrations, closing it when the test
-// ends.
-func rawDB(t *testing.T, path string) *sql.DB {
-	t.Helper()
-
-	raw, err := sql.Open("sqlite", path)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = raw.Close() })
-
-	return raw
+	return later, next
 }
 
 // backupsOf returns the pre-migration backups written next to the database at path.
@@ -60,81 +48,49 @@ func backupsOf(t *testing.T, path string) []string {
 	return found
 }
 
+// newestVersion reads the newest migration applied to db.
+func newestVersion(t *testing.T, db *sql.DB) int {
+	t.Helper()
+
+	var version int
+	require.NoError(t, db.QueryRowContext(t.Context(), "SELECT max(version) FROM schema_migrations").Scan(&version))
+
+	return version
+}
+
+// storePref opens the database at path, stores an example pref in it, and closes it.
+func storePref(t *testing.T, path string) {
+	t.Helper()
+
+	opened, err := store.Open(t.Context(), path)
+	require.NoError(t, err)
+	_, err = opened.DB.ExecContext(t.Context(), `INSERT INTO prefs (key, value, updated_at)
+VALUES ('example.key', 'kept', CURRENT_TIMESTAMP)`)
+	require.NoError(t, err)
+	require.NoError(t, opened.DB.Close())
+}
+
 func TestOpenUpgradesAnOlderDatabaseAfterABackup(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "app.db")
-	older, newest := olderMigrations(t)
+	storePref(t, path)
 
-	raw := rawDB(t, path)
-	_, err := migrate.Apply(t.Context(), raw, path, migrate.Options{Source: older})
+	later, newest := laterMigrations(t, "CREATE TABLE example_later (id INTEGER PRIMARY KEY);\n")
+
+	opened, err := store.OpenWith(t.Context(), path, later, nil)
 	require.NoError(t, err)
-	_, err = raw.ExecContext(t.Context(), `INSERT INTO prefs (key, value, updated_at)
-VALUES ('example.key', 'kept', CURRENT_TIMESTAMP)`)
-	require.NoError(t, err)
-	require.NoError(t, raw.Close())
+	t.Cleanup(func() { _ = opened.DB.Close() })
 
-	db := testutil.DBAt(t, path)
+	assert.Nil(t, opened.Reset)
+	assert.Equal(t, newest, newestVersion(t, opened.DB), "the pending migration is applied")
 
-	var version int
-	require.NoError(t, db.Raw("SELECT max(version) FROM schema_migrations").Scan(&version).Error)
-	assert.Equal(t, newest, version, "the pending migration is applied")
-
-	var pref settingsmodel.Pref
-	require.NoError(t, db.First(&pref, "key = ?", "example.key").Error)
-	assert.Equal(t, "kept", pref.Value, "the data survives the upgrade")
+	var value string
+	require.NoError(t, opened.DB.QueryRowContext(t.Context(),
+		"SELECT value FROM prefs WHERE key = 'example.key'").Scan(&value))
+	assert.Equal(t, "kept", value, "the data survives the upgrade")
 
 	assert.Len(t, backupsOf(t, path), 1, "the database is backed up before it is changed")
-}
-
-func TestOpenRefusesADatabaseFromANewerBuild(t *testing.T) {
-	t.Parallel()
-
-	path := filepath.Join(t.TempDir(), "app.db")
-
-	db, err := store.Open(t.Context(), path)
-	require.NoError(t, err)
-	_, err = db.ExecContext(t.Context(), `INSERT INTO schema_migrations (version, name, checksum, applied_at)
-VALUES (9999, 'from_the_future', 'abc', CURRENT_TIMESTAMP)`)
-	require.NoError(t, err)
-	require.NoError(t, db.Close())
-
-	_, err = store.Open(t.Context(), path)
-	require.ErrorIs(t, err, migrate.ErrUnknownVersion)
-	require.ErrorContains(t, err, "migrate database")
-	assert.Empty(t, backupsOf(t, path))
-}
-
-func TestOpenRefusesAChangedMigration(t *testing.T) {
-	t.Parallel()
-
-	path := filepath.Join(t.TempDir(), "app.db")
-
-	db, err := store.Open(t.Context(), path)
-	require.NoError(t, err)
-	_, err = db.ExecContext(t.Context(), "UPDATE schema_migrations SET checksum = 'edited' WHERE version = 1")
-	require.NoError(t, err)
-	require.NoError(t, db.Close())
-
-	_, err = store.Open(t.Context(), path)
-	require.ErrorIs(t, err, migrate.ErrChecksumMismatch)
-	require.ErrorContains(t, err, "migrate database")
-}
-
-func TestOpenRefusesAFileThatIsNotADatabase(t *testing.T) {
-	t.Parallel()
-
-	path := filepath.Join(t.TempDir(), "app.db")
-	garbage := []byte("this is not a database file, just some text that is long enough to have a header")
-	testutil.WriteFile(t, path, string(garbage))
-
-	_, err := store.Open(t.Context(), path)
-	require.ErrorContains(t, err, "open database")
-
-	body, readErr := os.ReadFile(path) //nolint:gosec // the test's own file
-	require.NoError(t, readErr)
-	assert.Equal(t, garbage, body, "the file is left as it was")
-	assert.Empty(t, backupsOf(t, path))
 }
 
 func TestOpenKeepsAnExistingFilesPermissions(t *testing.T) {

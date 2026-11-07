@@ -2,6 +2,7 @@ package appinfo
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/url"
@@ -48,6 +49,29 @@ func TestInfo(t *testing.T) {
 	assert.Equal(t, "42", info.Build)
 	assert.Equal(t, "macOS 15.1 (24B83)", info.System)
 	assert.Equal(t, runtime.GOARCH, info.Arch)
+}
+
+func TestInfoReportsADataReset(t *testing.T) {
+	assert.Nil(t, NewService(Config{Version: "dev"}).Info().DataReset, "no reset by default")
+
+	reset := &DataReset{Path: "~/data/app.db.broken-20260102T030405Z", Reason: "corrupt"}
+	info := NewService(Config{Version: "dev", DataReset: reset}).Info()
+	assert.Equal(t, reset, info.DataReset)
+}
+
+func TestInfoLeavesOutAMissingDataReset(t *testing.T) {
+	without, err := json.Marshal(NewService(Config{Version: "dev", System: "macOS"}).Info())
+	require.NoError(t, err)
+	assert.NotContains(t, string(without), "dataReset")
+
+	with, err := json.Marshal(NewService(Config{
+		Version:   "dev",
+		System:    "macOS",
+		DataReset: &DataReset{Path: "~/data/app.db.broken-20260102T030405Z", Reason: "history"},
+	}).Info())
+	require.NoError(t, err)
+	assert.Contains(t, string(with),
+		`"dataReset":{"path":"~/data/app.db.broken-20260102T030405Z","reason":"history"}`)
 }
 
 func TestInfoDetectsTheSystem(t *testing.T) {

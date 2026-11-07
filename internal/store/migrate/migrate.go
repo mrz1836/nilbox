@@ -4,12 +4,16 @@
 // are forward-only: there is no down path, and an applied migration is never edited.
 // Every applied migration is recorded in schema_migrations with the SHA-256 checksum of
 // its file, and Apply refuses to touch a database whose history does not match the
-// embedded set:
+// embedded set, checking in this order:
 //
 //   - application tables with no schema_migrations table (an unmanaged schema)
-//   - an applied version that is not embedded (a database from a newer build)
 //   - an applied migration whose file has changed since it ran
+//   - an applied version that is not embedded (a database from a newer build)
 //   - an embedded version below the newest applied one that never ran
+//
+// Changed files are looked for before unknown versions, so a database migrated by an
+// older build whose migrations were since combined into fewer files reads as changed,
+// not as one from a newer build.
 //
 // Before applying anything to a database that already holds migrated data, Apply copies
 // the database to a timestamped backup file next to it with VACUUM INTO, and keeps only
@@ -36,6 +40,7 @@ import (
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/appdata"
+	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/clock"
 )
 
@@ -55,9 +60,11 @@ var (
 	// migration history, so its schema was not created by this package.
 	ErrUnmanagedSchema = errors.New("database schema is not managed by migrations")
 
-	// ErrUnknownVersion is returned when the database records a migration this build does
-	// not have, which usually means a newer build already migrated it.
-	ErrUnknownVersion = errors.New("database has an applied migration this build does not know")
+	// ErrNewerSchema is returned when the database records a migration this build does
+	// not have, which means a newer build already migrated it. The message tells the user
+	// to update the app.
+	ErrNewerSchema = errors.New("the data was saved by a newer version of " + brand.Name +
+		"; update " + brand.Name + " to open it")
 
 	// ErrChecksumMismatch is returned when an applied migration's file has been edited.
 	ErrChecksumMismatch = errors.New("applied migration has been modified")
@@ -65,6 +72,11 @@ var (
 	// ErrOutOfOrder is returned when a migration older than the newest applied one has
 	// never been applied.
 	ErrOutOfOrder = errors.New("migration is older than the newest applied migration")
+
+	// ErrMigrationFailed wraps the error of a pending migration that could not be applied.
+	// The migration was rolled back, and a database that held migrated data was backed up
+	// before it ran.
+	ErrMigrationFailed = errors.New("migration failed")
 
 	// ErrInvalidMigration is returned for a migration file with a bad name, a duplicate
 	// version, or no SQL.
@@ -193,6 +205,38 @@ func Apply(ctx context.Context, db *sql.DB, dbPath string, opts Options) (Result
 	return applyPending(ctx, db, pending, opts, result)
 }
 
+// Check reports whether Apply would refuse the database, without writing to it: it
+// returns the error Apply would for an unmanaged schema or a history that does not match
+// the migrations in opts.Source, and nil for a database Apply can bring up to date,
+// including a new, empty one.
+func Check(ctx context.Context, db *sql.DB, opts Options) error {
+	opts = opts.withDefaults()
+
+	migrations, err := Load(opts.Source)
+	if err != nil {
+		return err
+	}
+
+	tables, err := listTables(ctx, db)
+	if err != nil {
+		return err
+	}
+
+	managed, err := checkManaged(tables)
+	if err != nil || !managed {
+		return err
+	}
+
+	applied, err := readApplied(ctx, db)
+	if err != nil {
+		return err
+	}
+
+	_, err = verify(migrations, applied, newestVersion(applied))
+
+	return err
+}
+
 // withDefaults fills in the zero-value fields.
 func (o Options) withDefaults() Options {
 	if o.Source == nil {
@@ -257,12 +301,9 @@ func ensureManaged(ctx context.Context, db *sql.DB) error {
 		return err
 	}
 
-	if slices.Contains(tables, historyTable) {
-		return nil
-	}
-
-	if len(tables) > 0 {
-		return fmt.Errorf("%w: found tables %s", ErrUnmanagedSchema, strings.Join(tables, ", "))
+	managed, err := checkManaged(tables)
+	if err != nil || managed {
+		return err
 	}
 
 	_, err = db.ExecContext(ctx, `CREATE TABLE schema_migrations (
@@ -276,6 +317,20 @@ func ensureManaged(ctx context.Context, db *sql.DB) error {
 	}
 
 	return nil
+}
+
+// checkManaged reports whether a database with tables has a migration history. A
+// database with neither is new; one with tables but no history is refused.
+func checkManaged(tables []string) (bool, error) {
+	if slices.Contains(tables, historyTable) {
+		return true, nil
+	}
+
+	if len(tables) > 0 {
+		return false, fmt.Errorf("%w: found tables %s", ErrUnmanagedSchema, strings.Join(tables, ", "))
+	}
+
+	return false, nil
 }
 
 // listTables lists every table that is not an SQLite internal, including the migration
@@ -369,8 +424,10 @@ func verify(migrations []Migration, applied map[int]appliedMigration, newest int
 	return pending, nil
 }
 
-// verifyHistory checks that every applied migration is still available, unchanged. All
-// unknown versions are reported before any checksum mismatch.
+// verifyHistory checks that every applied migration is still available, unchanged. Every
+// changed migration is reported before any unknown version: a database whose recorded
+// history this build disagrees with is not one from a newer build, even when it also
+// records versions this build does not have.
 func verifyHistory(migrations []Migration, applied map[int]appliedMigration) error {
 	known := make(map[int]Migration, len(migrations))
 	for _, m := range migrations {
@@ -385,14 +442,15 @@ func verifyHistory(migrations []Migration, applied map[int]appliedMigration) err
 	slices.Sort(versions)
 
 	for _, v := range versions {
-		if _, ok := known[v]; !ok {
-			return fmt.Errorf("%w: version %d (%s)", ErrUnknownVersion, v, applied[v].Name)
+		if m, ok := known[v]; ok && m.Checksum != applied[v].Checksum {
+			return fmt.Errorf("%w: %s", ErrChecksumMismatch, m.File)
 		}
 	}
 
 	for _, v := range versions {
-		if m := known[v]; m.Checksum != applied[v].Checksum {
-			return fmt.Errorf("%w: %s", ErrChecksumMismatch, m.File)
+		if _, ok := known[v]; !ok {
+			return fmt.Errorf("%w: it records version %d (%s), which this build does not have",
+				ErrNewerSchema, v, applied[v].Name)
 		}
 	}
 
@@ -476,10 +534,11 @@ func pruneBackups(dbPath string, keep int) error {
 }
 
 // applyPending applies each pending migration in order, recording progress in result.
+// A migration that fails is reported as ErrMigrationFailed.
 func applyPending(ctx context.Context, db *sql.DB, pending []Migration, opts Options, result Result) (Result, error) {
 	for _, m := range pending {
 		if err := applyOne(ctx, db, m, opts.Now()); err != nil {
-			return result, err
+			return result, fmt.Errorf("%w: %w", ErrMigrationFailed, err)
 		}
 
 		result.Applied = append(result.Applied, m.Version)

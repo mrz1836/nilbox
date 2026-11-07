@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { AppHeader, type View } from './components/AppHeader'
+import { DataResetNotice } from './components/DataResetNotice'
 import { InboxView, type LaunchOptions, type Reveal } from './components/InboxView'
 import { PromptsView } from './components/PromptsView'
 import { SettingsView, type SettingsSection } from './components/SettingsView'
@@ -324,6 +325,7 @@ export function App() {
         onOpenNotification={openNotification}
         onNotificationSettings={openNotificationSettings}
       />
+      <DataResetNotice />
       {config.error !== '' && (
         <p role="alert" className="mx-4 mt-4 rounded-md border border-danger px-3 py-2 text-sm text-danger">
           Could not load the launch settings: {config.error}

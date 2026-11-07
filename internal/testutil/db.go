@@ -21,14 +21,16 @@ func SQLDB(t testing.TB) *sql.DB {
 
 // SQLDBAt opens the database at path, creating and migrating it when needed, and closes
 // it when the test ends. A test of what survives a restart opens the same path twice.
+// The test fails if the database at path could not be used and was set aside.
 func SQLDBAt(t testing.TB, path string) *sql.DB {
 	t.Helper()
 
-	db, err := store.Open(t.Context(), path)
+	opened, err := store.Open(t.Context(), path)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = opened.DB.Close() })
+	require.Nil(t, opened.Reset, "the database at %s was set aside", path)
 
-	return db
+	return opened.DB
 }
 
 // DB opens a fresh, migrated database in a temporary directory, as SQLDB does, and

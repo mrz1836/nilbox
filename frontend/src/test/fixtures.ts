@@ -1,9 +1,11 @@
 // Fake data for component tests: fake orgs, users, and repositories only.
 
+import { brand } from '../generated/brand'
 import type {
   Account,
   AppNotification,
   FileCheck,
+  Info,
   InboxItem,
   ItemDetails,
   InboxList,
@@ -29,6 +31,21 @@ import type {
   WorktreeRepo,
   WorktreesSnapshot,
 } from '../platform'
+
+// appInfo is a development build's identity on macOS, with no data reset.
+export function appInfo(overrides: Partial<Info> = {}): Info {
+  return {
+    name: brand.name,
+    tagline: brand.tagline,
+    version: 'dev',
+    release: '0.0.0',
+    build: '0',
+    system: 'macOS 15.1 (24B83)',
+    arch: 'arm64',
+    bugReportUrl: 'https://github.com/acme-org/example-repo/issues/new',
+    ...overrides,
+  }
+}
 
 export function item(overrides: Partial<InboxItem> = {}): InboxItem {
   return {

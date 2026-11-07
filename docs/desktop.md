@@ -150,6 +150,14 @@ database, a copy of it is saved next to it, and the three newest copies are kept
 stored there, nor anywhere else: the app borrows the token from `gh auth token` for each
 refresh and keeps it in memory only.
 
+If the database can't be read at startup, because the file is damaged, isn't a database, or
+wasn't set up by this app's migrations, the app renames it (with its `-wal` and `-shm` files)
+to `nilbox.db.broken-<UTC time>`, starts with an empty database, and says so in the window. A
+database saved by a newer version of the app is left as it is: a dialog asks you to update,
+and the app quits. A database another process has open, such as an older copy of the app
+that is still running, or one that can't be written, is never moved; the app exits with the
+error instead.
+
 <br>
 
 ## The window
