@@ -9,13 +9,12 @@ before changing anything.
 
 ## Non-negotiable rules
 
-1. **Treat this as a public, open-source project.** It stays private until the MVP proves
-   itself, then goes public under the MIT license. Never write the names of employers, clients,
-   customers, companies, private projects, or private repositories into this repo. Never write
-   personal machine paths (absolute home directories) or private tracker or ticket IDs. That
-   applies to code, comments, tests, fixtures, docs, commit messages, branch names, and pull
-   request titles and bodies. Use neutral placeholders such as `acme-org`, `example-repo`, and
-   `~/projects`.
+1. **This is a public, open-source project under the MIT license.** Never write the names of
+   employers, clients, customers, companies, private projects, or private repositories into this
+   repo. Never write personal machine paths (absolute home directories) or private tracker or
+   ticket IDs. That applies to code, comments, tests, fixtures, docs, commit messages, branch
+   names, and pull request titles and bodies. Use neutral placeholders such as `acme-org`,
+   `example-repo`, and `~/projects`.
 2. **Never bypass git hooks.** No `--no-verify`, no `-n`, no `core.hooksPath` tricks. If a hook
    fails, fix the cause.
 3. **The product name lives only in `internal/brand`.** Reference `brand.Name`, `brand.Slug`, and
