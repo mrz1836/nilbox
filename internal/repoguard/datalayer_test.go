@@ -48,10 +48,6 @@ const (
 // entry with no ORM import left, so remove a directory once its last one is gone.
 func ormAllowlist() []string {
 	return []string{
-		"internal/core",
-		"internal/inbox",
-		"internal/launcher",
-		"internal/measure",
 		"internal/store",
 		"internal/store/migrate",
 		"internal/testutil",
@@ -63,11 +59,7 @@ func ormAllowlist() []string {
 // TestSQLOnlyInQueryPackages fails on an entry with no SQL left, so remove a directory
 // once its last statement has moved.
 func sqlAllowlist() []string {
-	return []string{
-		"internal/inbox",
-		"internal/launcher",
-		"internal/measure",
-	}
+	return []string{}
 }
 
 // tableOwners maps every table to the one package that owns it: the only package whose

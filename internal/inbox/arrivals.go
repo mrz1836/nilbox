@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/snooze"
 )
@@ -29,16 +30,6 @@ const (
 // truncationSlack widens the window in which an item of a truncated list must have moved
 // to count as arriving, so a clock a little behind GitHub's does not lose one.
 const truncationSlack = 5 * time.Minute
-
-// listedFlagsSQL reads which items were in the review-requested and assigned lists before
-// a refresh rewrites the flags.
-const listedFlagsSQL = `SELECT id, reason_review_requested, reason_assigned FROM items
-WHERE account_id = ? AND (reason_review_requested = 1 OR reason_assigned = 1)`
-
-// setAsideSQL reads which of some items the user has set aside at a time: dismissed, or
-// snoozed past it.
-const setAsideSQL = `SELECT item_id FROM item_local_state
-WHERE item_id IN ? AND (dismissed_at IS NOT NULL OR snoozed_until > ?)`
 
 // Arrival is an item that newly needs the user after a whole refresh: a review request
 // or an assignment that was not there at the last refresh, or a snooze that new activity
@@ -116,21 +107,16 @@ func (w *writer) watchArrivals(ctx context.Context, inbox *github.Inbox) (*arriv
 		return nil, nil //nolint:nilnil // no watch is the answer for a first refresh
 	}
 
-	var rows []struct {
-		ID              int64 `gorm:"column:id"`
-		ReviewRequested bool  `gorm:"column:reason_review_requested"`
-		Assigned        bool  `gorm:"column:reason_assigned"`
-	}
-
-	if err = w.tx.Raw(listedFlagsSQL, w.accountID).Scan(&rows).Error; err != nil {
+	rows, err := w.q.ListListedFlags(ctx, w.accountID)
+	if err != nil {
 		return nil, fmt.Errorf("read the listed items: %w", err)
 	}
 
 	before := listedFlags{reviewRequested: make(map[int64]bool), assigned: make(map[int64]bool)}
 
 	for _, r := range rows {
-		before.reviewRequested[r.ID] = r.ReviewRequested
-		before.assigned[r.ID] = r.Assigned
+		before.reviewRequested[r.ID] = r.ReasonReviewRequested
+		before.assigned[r.ID] = r.ReasonAssigned
 	}
 
 	return &arrivalWatch{
@@ -196,7 +182,7 @@ func (l *arrivalList) add(kind string, s savedEntry, woke snooze.Reasons) {
 // arrivals tells what newly needs the user once the refresh's items are stored and its
 // snoozes woken: in the order the lists returned them, review requests and assignments
 // that were not there before, then the snoozes woken early. Each item arrives once.
-func (w *writer) arrivals(watch *arrivalWatch) ([]Arrival, error) {
+func (w *writer) arrivals(ctx context.Context, watch *arrivalWatch) ([]Arrival, error) {
 	if watch == nil {
 		return nil, nil
 	}
@@ -209,7 +195,7 @@ func (w *writer) arrivals(watch *arrivalWatch) ([]Arrival, error) {
 		}
 	}
 
-	if err := w.dropSetAside(&list.items); err != nil {
+	if err := w.dropSetAside(ctx, &list.items); err != nil {
 		return nil, err
 	}
 
@@ -224,7 +210,7 @@ func (w *writer) arrivals(watch *arrivalWatch) ([]Arrival, error) {
 
 // dropSetAside removes the arrivals of items the user dismissed or that are still
 // snoozed after the refresh's wake-ups.
-func (w *writer) dropSetAside(arrivals *[]Arrival) error {
+func (w *writer) dropSetAside(ctx context.Context, arrivals *[]Arrival) error {
 	if len(*arrivals) == 0 {
 		return nil
 	}
@@ -234,8 +220,12 @@ func (w *writer) dropSetAside(arrivals *[]Arrival) error {
 		ids = append(ids, a.ItemID)
 	}
 
-	var setAside []int64
-	if err := w.tx.Raw(setAsideSQL, ids, w.now).Scan(&setAside).Error; err != nil {
+	// now is in UTC, as every stored time is, so it compares with snoozed_until as text
+	// in the same format.
+	now := w.now
+
+	setAside, err := w.q.ListSetAside(ctx, queries.ListSetAsideParams{Now: &now, Ids: ids})
+	if err != nil {
 		return fmt.Errorf("read the triage of the new items: %w", err)
 	}
 

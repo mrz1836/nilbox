@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/appdata"
-	"github.com/mrz1836/nilbox/internal/inbox/model"
-	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
@@ -25,16 +25,17 @@ func TestLaunchDefaultTargetsListTheInboxRepositories(t *testing.T) {
 	})
 	at := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 
-	account := model.Account{Login: "octo-user"}
-	require.NoError(t, c.DB.Create(&account).Error)
+	pr := github.Item{IsPR: true, Number: 1, CreatedAt: at, UpdatedAt: at, RepoOwner: "acme-org", RepoName: "web"}
+	archived := github.Item{
+		Number: 2, CreatedAt: at, UpdatedAt: at, RepoOwner: "acme-org", RepoName: "old",
+		Repo: github.Repository{IsArchived: true},
+	}
 
-	web := model.Repo{Owner: "acme-org", Name: "web"}
-	require.NoError(t, c.DB.Create(&web).Error)
-	require.NoError(t, c.DB.Create(&model.Repo{Owner: "acme-org", Name: "old", IsArchived: true}).Error)
-	require.NoError(t, c.DB.Create(&model.Item{
-		AccountID: account.ID, RepoID: web.ID, Kind: item.KindPR, Number: 1,
-		ItemCreatedAt: at, ItemUpdatedAt: at, FetchedAt: at, ReasonAuthored: true,
-	}).Error)
+	_, err := inbox.StoreFixture(t.Context(), c.DB, inbox.Fixture{Viewer: "octo-user", At: at, Items: []inbox.FixtureItem{
+		{Item: pr, Authored: true},
+		{Item: archived, Assigned: true},
+	}})
+	require.NoError(t, err)
 
 	got, err := c.LaunchDefaults.Targets(t.Context())
 	require.NoError(t, err)
@@ -47,6 +48,9 @@ func TestLaunchDefaultTargetsListTheInboxRepositories(t *testing.T) {
 func TestInboxReposReportsAnUnreadableDatabase(t *testing.T) {
 	t.Parallel()
 
-	_, err := inboxRepos{db: testutil.ClosedDB(t)}.Repos(t.Context())
+	db := testutil.SQLDB(t)
+	require.NoError(t, db.Close())
+
+	_, err := inboxRepos{store: inbox.NewStore(db, nil)}.Repos(t.Context())
 	require.ErrorContains(t, err, "count the items of each repository")
 }

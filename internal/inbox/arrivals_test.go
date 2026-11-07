@@ -47,7 +47,7 @@ func arrivalHarness(t *testing.T) (*harness, *fakeSink) {
 	h := newHarness(t)
 	sink := &fakeSink{}
 	h.svc = NewService(Config{
-		Pool: h.pool, DB: h.db, Tokens: h.tokens, Client: h.client, Clock: h.clock, Notifier: h.notifier,
+		Pool: h.pool, Tokens: h.tokens, Client: h.client, Clock: h.clock, Notifier: h.notifier,
 		Arrivals: sink,
 	})
 
@@ -181,11 +181,32 @@ func TestSetAsideItemsDoNotArrive(t *testing.T) {
 	assert.Equal(t, []string{"review_requested #7"}, kindsAndNumbers(sink.last()))
 }
 
+func TestAnItemBackFromASnoozeArrives(t *testing.T) {
+	h, sink := arrivalHarness(t)
+	one, two, three := byOther(pr(1, "MEMBER", false)), byOther(pr(2, "MEMBER", false)),
+		byOther(pr(3, "MEMBER", false))
+	h.client.inbox = fetched(nil, nil, []github.Item{one, two, three})
+	snap := h.refresh(t)
+
+	_, err := h.svc.Dismiss(t.Context(), itemByNumber(t, snap.Assigned, 1).ID)
+	require.NoError(t, err)
+	_, err = h.svc.Snooze(t.Context(), itemByNumber(t, snap.Assigned, 3).ID, 1)
+	require.NoError(t, err)
+
+	// Two days on, 3's snooze has run its course; all three newly ask for a review, and
+	// only the dismissed 1 is still set aside.
+	h.clock.Advance(48 * time.Hour)
+	h.client.inbox = fetched([]github.Item{one, two, three}, nil, []github.Item{one, two, three})
+	h.refresh(t)
+
+	assert.Equal(t, []string{"review_requested #2", "review_requested #3"}, kindsAndNumbers(sink.last()))
+}
+
 func TestASnoozeEndedEarlyArrives(t *testing.T) {
 	h, id, details := wakeHarness(t)
 	sink := &fakeSink{}
 	h.svc = NewService(Config{
-		Pool: h.pool, DB: h.db, Tokens: h.tokens, Client: h.client, Clock: h.clock, Notifier: h.notifier,
+		Pool: h.pool, Tokens: h.tokens, Client: h.client, Clock: h.clock, Notifier: h.notifier,
 		Arrivals: sink,
 	})
 
@@ -259,7 +280,7 @@ func TestTheSinkIsToldOutsideTheLock(t *testing.T) {
 
 	sink := &lockingSink{}
 	h.svc = NewService(Config{
-		Pool: h.pool, DB: h.db, Tokens: h.tokens, Client: h.client, Clock: h.clock, Arrivals: sink,
+		Pool: h.pool, Tokens: h.tokens, Client: h.client, Clock: h.clock, Arrivals: sink,
 	})
 	sink.svc = h.svc
 	h.refresh(t)

@@ -7,28 +7,12 @@ import (
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/inbox"
-	inboxmodel "github.com/mrz1836/nilbox/internal/inbox/model"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
-
-// loadItemsSQL reads cached items with their repository, their details when a refresh has
-// read them, and the repository's cached clone path.
-const loadItemsSQL = `SELECT i.id, i.kind, i.number, i.url, i.title, i.head_ref, i.author_login,
-	i.author_type, i.author_association, i.is_cross_repository, i.is_draft,
-	r.id AS repo_id, r.owner, r.name, r.local_path, r.default_branch,
-	COALESCE(d.labels, '[]') AS labels, COALESCE(d.additions, 0) AS additions,
-	COALESCE(d.deletions, 0) AS deletions, COALESCE(d.changed_files, 0) AS changed_files,
-	COALESCE(d.commits, 0) AS commits, COALESCE(d.mergeable, '') AS mergeable,
-	COALESCE(d.checks_state, '') AS checks_state, COALESCE(d.review_decision, '') AS review_decision
-FROM items i
-JOIN repos r ON r.id = i.repo_id
-LEFT JOIN item_details d ON d.item_id = i.id
-WHERE i.id IN ?
-ORDER BY i.id`
 
 // repoRef is the repository an item belongs to, as stored.
 type repoRef struct {
@@ -37,32 +21,9 @@ type repoRef struct {
 	localPath string
 }
 
-// launchItemRow is one row of loadItemsSQL.
+// launchItemRow is a stored item as a launch reads it.
 type launchItemRow struct {
-	ID                int64             `gorm:"column:id"`
-	Kind              item.Kind         `gorm:"column:kind"`
-	Number            int               `gorm:"column:number"`
-	URL               string            `gorm:"column:url"`
-	Title             string            `gorm:"column:title"`
-	HeadRef           string            `gorm:"column:head_ref"`
-	AuthorLogin       string            `gorm:"column:author_login"`
-	AuthorType        string            `gorm:"column:author_type"`
-	AuthorAssociation string            `gorm:"column:author_association"`
-	IsCrossRepository bool              `gorm:"column:is_cross_repository"`
-	IsDraft           bool              `gorm:"column:is_draft"`
-	RepoID            int64             `gorm:"column:repo_id"`
-	Owner             string            `gorm:"column:owner"`
-	Name              string            `gorm:"column:name"`
-	LocalPath         string            `gorm:"column:local_path"`
-	DefaultBranch     string            `gorm:"column:default_branch"`
-	Labels            inboxmodel.Labels `gorm:"column:labels"`
-	Additions         int               `gorm:"column:additions"`
-	Deletions         int               `gorm:"column:deletions"`
-	ChangedFiles      int               `gorm:"column:changed_files"`
-	Commits           int               `gorm:"column:commits"`
-	Mergeable         string            `gorm:"column:mergeable"`
-	ChecksState       string            `gorm:"column:checks_state"`
-	ReviewDecision    string            `gorm:"column:review_decision"`
+	inbox.LaunchItem
 }
 
 // loadItem reads one item, or item.ErrNotFound.
@@ -81,9 +42,14 @@ func (s *Service) loadItem(ctx context.Context, id int64) (launchItemRow, error)
 
 // loadItems reads the stored items among ids, in ID order.
 func (s *Service) loadItems(ctx context.Context, ids []int64) ([]launchItemRow, error) {
-	var rows []launchItemRow
-	if err := s.db.WithContext(ctx).Raw(loadItemsSQL, ids).Scan(&rows).Error; err != nil {
+	items, err := s.items.LaunchItems(ctx, ids)
+	if err != nil {
 		return nil, fmt.Errorf("load the item: %w", err)
+	}
+
+	rows := make([]launchItemRow, 0, len(items))
+	for _, it := range items {
+		rows = append(rows, launchItemRow{LaunchItem: it})
 	}
 
 	return rows, nil
@@ -128,14 +94,9 @@ func (r launchItemRow) repoRef() repoRef {
 func (r launchItemRow) promptData(policy trust.Policy, profile, viewer string, check *sensitive.Check) prompts.Data {
 	isPR := r.Kind == item.KindPR
 
-	labels := make([]string, 0, len(r.Labels))
-	for _, l := range r.Labels {
-		labels = append(labels, l.Name)
-	}
-
 	d := prompts.Data{
 		Kind: r.Kind.Noun(), IsPR: isPR, Number: r.Number, Title: r.Title, URL: r.URL,
-		Author: r.AuthorLogin, IsBot: r.author().IsBot(), Labels: strings.Join(labels, ", "),
+		Author: r.AuthorLogin, IsBot: r.author().IsBot(), Labels: strings.Join(r.Labels, ", "),
 		Repo: r.repo().String(), Owner: r.Owner, RepoName: r.Name, DefaultBranch: r.DefaultBranch,
 		Profile: profile, Me: viewer, OutsideContributor: r.class(policy) == trust.ClassOutside,
 	}
@@ -214,7 +175,7 @@ func (p promptSource) PreviewData(ctx context.Context, itemID int64) (prompts.Da
 		profile = inherited.Name
 	}
 
-	viewer, err := inbox.ViewerLogin(ctx, p.s.db)
+	viewer, err := p.s.items.ViewerLogin(ctx)
 	if err != nil {
 		return prompts.Data{}, err
 	}

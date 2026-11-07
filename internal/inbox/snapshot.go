@@ -1,53 +1,23 @@
 package inbox
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
 
-	"gorm.io/gorm"
-
 	"github.com/mrz1836/nilbox/internal/clock"
-	"github.com/mrz1836/nilbox/internal/inbox/model"
+	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/snooze"
+	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
-
-// loadItemsSQL reads every item that is in at least one list, with its details when a
-// refresh has read them (has_details), its last file check (has_files), and its triage
-// state: the pinned items first, the most recently pinned first, then the rest by newest
-// activity.
-const loadItemsSQL = `SELECT
-    i.id, i.kind, i.number, i.title, i.url, r.owner AS repo_owner, r.name AS repo_name,
-    i.author_login, i.author_type, i.author_association, i.is_cross_repository, i.is_draft, i.head_ref,
-    i.item_updated_at, i.reason_review_requested, i.reason_authored, i.reason_assigned,
-    d.item_id IS NOT NULL AS has_details,
-    COALESCE(d.labels, '[]') AS labels, COALESCE(d.comments, 0) AS comments,
-    COALESCE(d.additions, 0) AS additions, COALESCE(d.deletions, 0) AS deletions,
-    COALESCE(d.changed_files, 0) AS changed_files, COALESCE(d.commits, 0) AS commits,
-    COALESCE(d.mergeable, '') AS mergeable, COALESCE(d.checks_state, '') AS checks_state,
-    COALESCE(d.checks_passed, 0) AS checks_passed, COALESCE(d.checks_failed, 0) AS checks_failed,
-    COALESCE(d.checks_pending, 0) AS checks_pending, COALESCE(d.checks_skipped, 0) AS checks_skipped,
-    COALESCE(d.review_decision, '') AS review_decision, COALESCE(d.reviewers, 0) AS reviewers,
-    COALESCE(d.reviewed, 0) AS reviewed, COALESCE(d.approvals, 0) AS approvals,
-    COALESCE(d.changes_requested, 0) AS changes_requested, d.fetched_at AS details_fetched_at,
-    COALESCE(d.head_oid, '') AS head_oid,
-    f.item_id IS NOT NULL AS has_files, COALESCE(f.head_oid, '') AS files_head, COALESCE(f.total, 0) AS files_total,
-    COALESCE(f.files, '[]') AS files, COALESCE(f.complete, 0) AS files_complete,
-    COALESCE(f.error, '') AS files_error, f.checked_at AS files_checked_at,
-    ls.dismissed_at, ls.snoozed_until, ls.wake_reasons, ls.pinned_at
-FROM items i
-JOIN repos r ON r.id = i.repo_id
-LEFT JOIN item_details d ON d.item_id = i.id
-LEFT JOIN item_files f ON f.item_id = i.id
-LEFT JOIN item_local_state ls ON ls.item_id = i.id
-WHERE i.account_id = ?
-  AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1)
-ORDER BY ls.pinned_at IS NULL, ls.pinned_at DESC, i.item_updated_at DESC, i.id DESC`
 
 // githubWebURL is the root of GitHub's website, for a profile link stored before the
 // profile URL was.
@@ -311,54 +281,100 @@ func (s *Snapshot) applyTotals(prefs map[string]string) {
 	}
 }
 
-// itemRow is one row of loadItemsSQL.
+// itemRow is one listed item as a snapshot reads it, with the columns of missing
+// details or a missing file check at their zero values.
 type itemRow struct {
-	ID                    int64     `gorm:"column:id"`
-	Kind                  item.Kind `gorm:"column:kind"`
-	Number                int       `gorm:"column:number"`
-	Title                 string    `gorm:"column:title"`
-	URL                   string    `gorm:"column:url"`
-	RepoOwner             string    `gorm:"column:repo_owner"`
-	RepoName              string    `gorm:"column:repo_name"`
-	AuthorLogin           string    `gorm:"column:author_login"`
-	AuthorType            string    `gorm:"column:author_type"`
-	AuthorAssociation     string    `gorm:"column:author_association"`
-	IsCrossRepository     bool      `gorm:"column:is_cross_repository"`
-	IsDraft               bool      `gorm:"column:is_draft"`
-	HeadRef               string    `gorm:"column:head_ref"`
-	ItemUpdatedAt         time.Time `gorm:"column:item_updated_at"`
-	ReasonReviewRequested bool      `gorm:"column:reason_review_requested"`
-	ReasonAuthored        bool      `gorm:"column:reason_authored"`
-	ReasonAssigned        bool      `gorm:"column:reason_assigned"`
+	ID                    int64
+	Kind                  item.Kind
+	Number                int
+	Title                 string
+	URL                   string
+	RepoOwner             string
+	RepoName              string
+	AuthorLogin           string
+	AuthorType            string
+	AuthorAssociation     string
+	IsCrossRepository     bool
+	IsDraft               bool
+	HeadRef               string
+	ItemUpdatedAt         time.Time
+	ReasonReviewRequested bool
+	ReasonAuthored        bool
+	ReasonAssigned        bool
 
-	HasDetails       bool         `gorm:"column:has_details"`
-	Labels           model.Labels `gorm:"column:labels"`
-	Comments         int          `gorm:"column:comments"`
-	Additions        int          `gorm:"column:additions"`
-	Deletions        int          `gorm:"column:deletions"`
-	ChangedFiles     int          `gorm:"column:changed_files"`
-	Commits          int          `gorm:"column:commits"`
-	Mergeable        string       `gorm:"column:mergeable"`
-	ChecksState      string       `gorm:"column:checks_state"`
-	ChecksPassed     int          `gorm:"column:checks_passed"`
-	ChecksFailed     int          `gorm:"column:checks_failed"`
-	ChecksPending    int          `gorm:"column:checks_pending"`
-	ChecksSkipped    int          `gorm:"column:checks_skipped"`
-	ReviewDecision   string       `gorm:"column:review_decision"`
-	Reviewers        int          `gorm:"column:reviewers"`
-	Reviewed         int          `gorm:"column:reviewed"`
-	Approvals        int          `gorm:"column:approvals"`
-	ChangesRequested int          `gorm:"column:changes_requested"`
-	DetailsFetchedAt *time.Time   `gorm:"column:details_fetched_at"`
-	HeadOID          string       `gorm:"column:head_oid"`
+	// HasDetails reports whether a refresh has read the item's details.
+	HasDetails       bool
+	Labels           []storedLabel
+	Comments         int
+	Additions        int
+	Deletions        int
+	ChangedFiles     int
+	Commits          int
+	Mergeable        string
+	ChecksState      string
+	ChecksPassed     int
+	ChecksFailed     int
+	ChecksPending    int
+	ChecksSkipped    int
+	ReviewDecision   string
+	Reviewers        int
+	Reviewed         int
+	Approvals        int
+	ChangesRequested int
+	DetailsFetchedAt *time.Time
+	HeadOID          string
 
-	// Stored is the item's last file check.
-	Stored filesColumns `gorm:"embedded"`
+	// Stored is the item's last file check, or nil when there is none.
+	Stored *sensitive.Result
 
-	DismissedAt  *time.Time `gorm:"column:dismissed_at"`
-	SnoozedUntil *time.Time `gorm:"column:snoozed_until"`
-	WakeReasons  *string    `gorm:"column:wake_reasons"`
-	PinnedAt     *time.Time `gorm:"column:pinned_at"`
+	DismissedAt  *time.Time
+	SnoozedUntil *time.Time
+	WakeReasons  *string
+	PinnedAt     *time.Time
+}
+
+// itemRowOf converts a ListItems row, decoding its labels and its file check.
+func itemRowOf(r queries.ListItemsRow) (itemRow, error) {
+	var labels []storedLabel
+
+	if r.Labels != nil {
+		decoded, err := store.DecodeJSON[[]storedLabel](*r.Labels)
+		if err != nil {
+			return itemRow{}, fmt.Errorf("read the labels of item %d: %w", r.ID, err)
+		}
+
+		labels = decoded
+	}
+
+	stored, err := filesColumns{
+		itemID: r.FilesItemID, head: r.FilesHeadOID, total: r.FilesTotal, files: r.Files,
+		complete: r.FilesComplete, err: r.FilesError, checkedAt: r.FilesCheckedAt,
+	}.result()
+	if err != nil {
+		return itemRow{}, fmt.Errorf("item %d: %w", r.ID, err)
+	}
+
+	return itemRow{
+		ID: r.ID, Kind: item.Kind(r.Kind), Number: int(r.Number), Title: r.Title, URL: r.URL,
+		RepoOwner: r.RepoOwner, RepoName: r.RepoName, AuthorLogin: r.AuthorLogin, AuthorType: r.AuthorType,
+		AuthorAssociation: r.AuthorAssociation, IsCrossRepository: r.IsCrossRepository, IsDraft: r.IsDraft,
+		HeadRef: r.HeadRef, ItemUpdatedAt: r.ItemUpdatedAt, ReasonReviewRequested: r.ReasonReviewRequested,
+		ReasonAuthored: r.ReasonAuthored, ReasonAssigned: r.ReasonAssigned,
+
+		HasDetails: r.DetailsItemID != nil, Labels: labels, Comments: int(value(r.Comments)),
+		Additions: int(value(r.Additions)), Deletions: int(value(r.Deletions)),
+		ChangedFiles: int(value(r.ChangedFiles)), Commits: int(value(r.Commits)), Mergeable: value(r.Mergeable),
+		ChecksState: value(r.ChecksState), ChecksPassed: int(value(r.ChecksPassed)),
+		ChecksFailed: int(value(r.ChecksFailed)), ChecksPending: int(value(r.ChecksPending)),
+		ChecksSkipped: int(value(r.ChecksSkipped)), ReviewDecision: value(r.ReviewDecision),
+		Reviewers: int(value(r.Reviewers)), Reviewed: int(value(r.Reviewed)), Approvals: int(value(r.Approvals)),
+		ChangesRequested: int(value(r.ChangesRequested)), DetailsFetchedAt: r.DetailsFetchedAt,
+		HeadOID: value(r.HeadOID),
+
+		Stored: stored,
+
+		DismissedAt: r.DismissedAt, SnoozedUntil: r.SnoozedUntil, WakeReasons: r.WakeReasons, PinnedAt: r.PinnedAt,
+	}, nil
 }
 
 // item converts a row to its DTO, deciding its trust, and whether its files are
@@ -400,7 +416,7 @@ func (r *itemRow) checkedFiles(scope fileScope, isPR bool, author trust.Author) 
 		return nil
 	}
 
-	check := scope.matcher.Evaluate(r.Stored.result(), r.HeadOID, r.URL)
+	check := scope.matcher.Evaluate(r.Stored, r.HeadOID, r.URL)
 
 	return &check
 }
@@ -428,7 +444,7 @@ func (r *itemRow) details() *Details {
 
 	labels := make([]Label, 0, len(r.Labels))
 	for _, l := range r.Labels {
-		labels = append(labels, Label{Name: l.Name, Color: l.Color})
+		labels = append(labels, Label(l))
 	}
 
 	return &Details{
@@ -452,35 +468,46 @@ func (r *itemRow) details() *Details {
 }
 
 // lookupAccount returns the id of the account with login, or 0 when there is none.
-func lookupAccount(db *gorm.DB, login string) (int64, error) {
+func lookupAccount(ctx context.Context, q *queries.Queries, login string) (int64, error) {
 	if login == "" {
 		return 0, nil
 	}
 
-	var ids []int64
-	if err := db.Raw("SELECT id FROM accounts WHERE login = ?", login).Scan(&ids).Error; err != nil {
-		return 0, fmt.Errorf("read the account: %w", err)
-	}
+	id, err := q.AccountID(ctx, login)
 
-	if len(ids) == 0 {
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
 		return 0, nil
+	case err != nil:
+		return 0, fmt.Errorf("read the account: %w", err)
+	default:
+		return id, nil
 	}
-
-	return ids[0], nil
 }
 
-// loadItems reads the account's listed items.
-func loadItems(db *gorm.DB, accountID int64) ([]itemRow, error) {
-	var rows []itemRow
-	if err := db.Raw(loadItemsSQL, accountID).Scan(&rows).Error; err != nil {
+// loadItems reads the account's listed items, in the order ListItems returns them.
+func loadItems(ctx context.Context, q *queries.Queries, accountID int64) ([]itemRow, error) {
+	stored, err := q.ListItems(ctx, accountID)
+	if err != nil {
 		return nil, fmt.Errorf("read the inbox items: %w", err)
+	}
+
+	rows := make([]itemRow, 0, len(stored))
+
+	for _, r := range stored {
+		row, rowErr := itemRowOf(r)
+		if rowErr != nil {
+			return nil, fmt.Errorf("read the inbox items: %w", rowErr)
+		}
+
+		rows = append(rows, row)
 	}
 
 	return rows, nil
 }
 
 // loadRates reads the newest snapshot of each budget.
-func loadRates(db *gorm.DB, accountID int64) (RateGauge, error) {
+func loadRates(ctx context.Context, q *queries.Queries, accountID int64) (RateGauge, error) {
 	var (
 		gauge RateGauge
 		err   error
@@ -494,7 +521,7 @@ func loadRates(db *gorm.DB, accountID int64) (RateGauge, error) {
 		{&gauge.Core, resourceCore},
 		{&gauge.Search, resourceSearch},
 	} {
-		if *r.dst, err = loadRate(db, accountID, r.resource); err != nil {
+		if *r.dst, err = loadRate(ctx, q, accountID, r.resource); err != nil {
 			return RateGauge{}, err
 		}
 	}
@@ -503,27 +530,22 @@ func loadRates(db *gorm.DB, accountID int64) (RateGauge, error) {
 }
 
 // loadRate reads the newest snapshot of one budget.
-func loadRate(db *gorm.DB, accountID int64, resource string) (Rate, error) {
-	var rows []model.RateSnapshot
+func loadRate(ctx context.Context, q *queries.Queries, accountID int64, resource string) (Rate, error) {
+	r, err := q.GetLatestRate(ctx, queries.GetLatestRateParams{AccountID: accountID, Resource: resource})
 
-	err := db.Where("account_id = ? AND resource = ?", accountID, resource).
-		Order("taken_at DESC").Order("id DESC").Limit(1).Find(&rows).Error
-	if err != nil {
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return Rate{}, nil
+	case err != nil:
 		return Rate{}, fmt.Errorf("read the %s rate limit: %w", resource, err)
 	}
 
-	if len(rows) == 0 {
-		return Rate{}, nil
-	}
-
-	r := rows[0]
-
 	return Rate{
 		Known:     true,
-		Limit:     r.LimitTotal,
-		Remaining: r.Remaining,
-		Used:      r.Used,
-		Cost:      r.Cost,
+		Limit:     int(r.LimitTotal),
+		Remaining: int(r.Remaining),
+		Used:      int(r.Used),
+		Cost:      int(r.Cost),
 		ResetAt:   clock.Format(r.ResetAt),
 		TakenAt:   clock.Format(r.TakenAt),
 	}, nil

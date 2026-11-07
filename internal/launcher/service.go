@@ -10,8 +10,6 @@ import (
 	"strings"
 	"sync"
 
-	"gorm.io/gorm"
-
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/clock"
@@ -32,8 +30,14 @@ import (
 // claudeBin is the command Claude Code runs as.
 const claudeBin = "claude"
 
-// cacheClonePathSQL remembers the clone a repository resolved to.
-const cacheClonePathSQL = `UPDATE repos SET local_path = ?, updated_at = ? WHERE id = ?`
+// ItemStore reads the stored inbox items a launch is for, with their repositories and
+// details, names the signed-in account, and remembers the clone each repository resolved
+// to. *inbox.Store implements it.
+type ItemStore interface {
+	LaunchItems(ctx context.Context, ids []int64) ([]inbox.LaunchItem, error)
+	ViewerLogin(ctx context.Context) (string, error)
+	RememberClone(ctx context.Context, repoID int64, path string) error
+}
 
 // SettingsReader reads the user's preferences. *settings.Service implements it.
 type SettingsReader interface {
@@ -72,8 +76,9 @@ type LaunchRecorder interface {
 
 // Config holds a Service's dependencies. Clock and Launches are optional.
 type Config struct {
-	// DB is the app database: items and repositories.
-	DB *gorm.DB
+	// Items reads the items launched on and the signed-in account, and remembers each
+	// repository's clone.
+	Items ItemStore
 
 	// Settings reads the default profile, worktree default, terminal, and clone root.
 	Settings SettingsReader
@@ -214,7 +219,7 @@ type Preview struct {
 
 // Service launches coding-agent sessions on inbox items.
 type Service struct {
-	db       *gorm.DB
+	items    ItemStore
 	settings SettingsReader
 	profiles ProfileReader
 	prompts  PromptReader
@@ -236,7 +241,7 @@ type Service struct {
 // NewService returns a launch Service over cfg.
 func NewService(cfg Config) *Service {
 	return &Service{
-		db:       cfg.DB,
+		items:    cfg.Items,
 		settings: cfg.Settings,
 		profiles: cfg.Profiles,
 		prompts:  cfg.Prompts,
@@ -541,7 +546,7 @@ func (s *Service) trustClone(ctx context.Context, p planned) error {
 func (s *Service) fillIn(ctx context.Context, data prompts.Data, nickname string, tmpl *prompts.Template,
 	plan Plan,
 ) (string, error) {
-	viewer, err := inbox.ViewerLogin(ctx, s.db)
+	viewer, err := s.items.ViewerLogin(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -649,8 +654,7 @@ func (s *Service) cachedClone(ctx context.Context, ref repoRef) (Clone, bool) {
 // cacheClonePath remembers a repository's clone. A failure only costs a rescan next
 // time, so it is logged rather than failing the launch.
 func (s *Service) cacheClonePath(ctx context.Context, repoID int64, path string) {
-	err := s.db.WithContext(ctx).Exec(cacheClonePathSQL, path, s.clock.Now().UTC(), repoID).Error
-	if err != nil {
+	if err := s.items.RememberClone(ctx, repoID, path); err != nil {
 		slog.Warn("could not remember a repository's local clone", "error", err)
 	}
 }

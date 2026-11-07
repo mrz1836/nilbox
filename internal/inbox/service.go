@@ -42,10 +42,10 @@ import (
 	"time"
 
 	"golang.org/x/sync/errgroup"
-	"gorm.io/gorm"
 
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/store"
@@ -108,11 +108,10 @@ type Notifier interface {
 
 // Config holds a Service's dependencies. Clock, Notifier, and Arrivals are optional.
 type Config struct {
-	// Pool is the database's connection pool, which DB shares. The inbox status and the
-	// settings the inbox reads are kept in its prefs.
+	// Pool is the database's connection pool. It holds the inbox's tables, and the prefs
+	// that keep the inbox status and the settings the inbox reads.
 	Pool *sql.DB
 
-	DB       *gorm.DB
 	Tokens   TokenSource
 	Client   Client
 	Clock    clock.Clock
@@ -124,7 +123,8 @@ type Config struct {
 
 // Service refreshes the inbox from GitHub and serves snapshots of it.
 type Service struct {
-	db       *gorm.DB
+	db       *sql.DB
+	q        *queries.Queries
 	prefs    *prefs.Store
 	tokens   TokenSource
 	client   Client
@@ -141,8 +141,8 @@ func NewService(cfg Config) *Service {
 	c := clock.Or(cfg.Clock)
 
 	return &Service{
-		db: cfg.DB, prefs: prefs.New(cfg.Pool, c), tokens: cfg.Tokens, client: cfg.Client, clock: c,
-		notifier: cfg.Notifier, arrivals: cfg.Arrivals,
+		db: cfg.Pool, q: queries.New(cfg.Pool), prefs: prefs.New(cfg.Pool, c), tokens: cfg.Tokens,
+		client: cfg.Client, clock: c, notifier: cfg.Notifier, arrivals: cfg.Arrivals,
 	}
 }
 
@@ -164,8 +164,6 @@ func (s *Service) Refresh(ctx context.Context) (Snapshot, error) {
 // Snapshot returns the stored inbox: the three lists, the latest rate readings, and the
 // refresh status.
 func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
-	db := s.db.WithContext(ctx)
-
 	status, err := readStatus(ctx, s.prefs)
 	if err != nil {
 		return Snapshot{}, err
@@ -173,12 +171,12 @@ func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 
 	snap := newSnapshot(status)
 
-	accountID, err := lookupAccount(db, status[prefViewer])
+	accountID, err := lookupAccount(ctx, s.q, status[prefViewer])
 	if err != nil || accountID == 0 {
 		return snap, err
 	}
 
-	rows, err := loadItems(db, accountID)
+	rows, err := loadItems(ctx, s.q, accountID)
 	if err != nil {
 		return Snapshot{}, err
 	}
@@ -186,7 +184,7 @@ func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 	snap.addItems(rows, newFileScope(status))
 	snap.applyTotals(status)
 
-	if snap.Rate, err = loadRates(db, accountID); err != nil {
+	if snap.Rate, err = loadRates(ctx, s.q, accountID); err != nil {
 		return Snapshot{}, err
 	}
 
@@ -380,13 +378,11 @@ func (s *Service) save(ctx context.Context, got refreshed, warning github.ScopeW
 
 	var arrivals []Arrival
 
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		w, err := s.newWriter(tx)
-		if err != nil {
-			return err
-		}
-
+	err := store.InTx(ctx, s.db, func(tx *sql.Tx) error {
+		w := s.newWriter(tx)
 		w.details, w.files = items, got.files
+
+		var err error
 
 		arrivals, err = w.saveRefresh(ctx, got, warning)
 
@@ -404,7 +400,7 @@ func (s *Service) save(ctx context.Context, got refreshed, warning github.ScopeW
 func (w *writer) saveRefresh(ctx context.Context, got refreshed, warning github.ScopeWarning) ([]Arrival, error) {
 	inbox := got.inbox
 
-	if err := w.saveAccount(inbox.Viewer.Login); err != nil {
+	if err := w.saveAccount(ctx, inbox.Viewer.Login); err != nil {
 		return nil, err
 	}
 
@@ -413,7 +409,7 @@ func (w *writer) saveRefresh(ctx context.Context, got refreshed, warning github.
 		return nil, err
 	}
 
-	if err = w.saveRepos(got.archived); err != nil {
+	if err = w.saveRepos(ctx, got.archived); err != nil {
 		return nil, err
 	}
 
@@ -421,12 +417,12 @@ func (w *writer) saveRefresh(ctx context.Context, got refreshed, warning github.
 		return nil, err
 	}
 
-	arrivals, err := w.arrivals(watch)
+	arrivals, err := w.arrivals(ctx, watch)
 	if err != nil {
 		return nil, err
 	}
 
-	if err = w.saveRates(graphQLReading(inbox.RateLimit, got.details), got.limits); err != nil {
+	if err = w.saveRates(ctx, graphQLReading(inbox.RateLimit, got.details), got.limits); err != nil {
 		return nil, err
 	}
 
@@ -479,15 +475,10 @@ func (s *Service) recordFailure(ctx context.Context, err error) error {
 	return nil
 }
 
-// newWriter returns a writer for one change stored in tx, a GORM transaction: its prefs
-// run in the same transaction, so they commit or roll back with the rest.
-func (s *Service) newWriter(tx *gorm.DB) (*writer, error) {
-	sqlTx, err := store.SQLTx(tx)
-	if err != nil {
-		return nil, err
-	}
-
-	return &writer{tx: tx, prefs: s.prefs.WithTx(sqlTx), now: s.now(), repos: make(map[string]int64)}, nil
+// newWriter returns a writer for one change stored in tx: its queries and its prefs run
+// in tx, so everything it writes commits or rolls back together.
+func (s *Service) newWriter(tx *sql.Tx) *writer {
+	return newWriter(s.q.WithTx(tx), s.prefs.WithTx(tx), s.now())
 }
 
 // notify tells the notifier, if any, that the inbox changed.

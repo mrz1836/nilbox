@@ -2,13 +2,11 @@ package inbox
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mrz1836/nilbox/internal/inbox/model"
-	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
@@ -16,32 +14,30 @@ import (
 func TestRepoCounts(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.DB(t)
-	at := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	db := testutil.SQLDB(t)
 
-	account := model.Account{Login: "octo-user"}
-	require.NoError(t, db.Create(&account).Error)
+	in := func(owner, name string, number int, listed bool) FixtureItem {
+		it := githubItem(name, number, "OWNER", true, false)
+		it.RepoOwner = owner
 
-	repos := []model.Repo{
-		{Owner: "acme-org", Name: "web"},
-		{Owner: "acme-org", Name: "api"},
-		{Owner: "beta-org", Name: "tools"},
-		{Owner: "acme-org", Name: "old", IsArchived: true},
-		{Owner: "Acme-Org", Name: "Docs"},
-	}
-	for i := range repos {
-		require.NoError(t, db.Create(&repos[i]).Error)
+		return FixtureItem{Item: it, Assigned: listed}
 	}
 
-	// The last item has no reason left, so it is not listed.
-	for n, repoID := range []int64{repos[1].ID, repos[1].ID, repos[0].ID, repos[3].ID, repos[2].ID} {
-		require.NoError(t, db.Create(&model.Item{
-			AccountID: account.ID, RepoID: repoID, Kind: item.KindPR, Number: n + 1,
-			ItemCreatedAt: at, ItemUpdatedAt: at, FetchedAt: at, ReasonAssigned: n != 4,
-		}).Error)
-	}
+	archived := in("acme-org", "old", 4, true)
+	archived.Repo = github.Repository{IsArchived: true}
 
-	got, err := RepoCounts(t.Context(), db)
+	// The items of Docs and tools are in no list, so they are not counted.
+	_, err := StoreFixture(t.Context(), db, Fixture{Viewer: octoUser, Items: []FixtureItem{
+		in("acme-org", "web", 3, true),
+		in("acme-org", "api", 1, true),
+		in("acme-org", "api", 2, true),
+		in("beta-org", "tools", 5, false),
+		archived,
+		in("Acme-Org", "Docs", 6, false),
+	}})
+	require.NoError(t, err)
+
+	got, err := NewStore(db, nil).RepoCounts(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, []RepoCount{
 		{Repo: repo.Name{Owner: "acme-org", Repo: "api"}, Items: 2},
@@ -54,7 +50,7 @@ func TestRepoCounts(t *testing.T) {
 func TestRepoCountsWithNoRepositories(t *testing.T) {
 	t.Parallel()
 
-	got, err := RepoCounts(t.Context(), testutil.DB(t))
+	got, err := NewStore(testutil.SQLDB(t), nil).RepoCounts(t.Context())
 	require.NoError(t, err)
 	assert.NotNil(t, got)
 	assert.Empty(t, got)
@@ -63,6 +59,9 @@ func TestRepoCountsWithNoRepositories(t *testing.T) {
 func TestRepoCountsReportsAnUnreadableDatabase(t *testing.T) {
 	t.Parallel()
 
-	_, err := RepoCounts(t.Context(), testutil.ClosedDB(t))
+	db := testutil.SQLDB(t)
+	require.NoError(t, db.Close())
+
+	_, err := NewStore(db, nil).RepoCounts(t.Context())
 	require.ErrorContains(t, err, "count the items of each repository")
 }

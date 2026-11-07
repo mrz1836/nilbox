@@ -13,12 +13,12 @@ import (
 	"strings"
 	"time"
 
-	"gorm.io/gorm"
-
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/core"
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/settings"
@@ -35,7 +35,6 @@ const (
 	fixtureBranch = "feature"
 	fixtureTitle  = "Measure launch latency"
 	fixtureNumber = 1
-	fixtureID     = 1
 )
 
 // agentBin is the coding agent a launch runs.
@@ -56,16 +55,6 @@ const (
 
 	// defaultPoll is how often the process list is checked for the agent.
 	defaultPoll = 100 * time.Millisecond
-)
-
-// The fixture's account, repository, and pull request.
-const (
-	seedAccountSQL = `INSERT INTO accounts (id, login, created_at, updated_at) VALUES (?, ?, ?, ?)`
-	seedRepoSQL    = `INSERT INTO repos (id, owner, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`
-	seedItemSQL    = `INSERT INTO items (id, account_id, repo_id, kind, number, title, url, author_login,
-	author_association, is_cross_repository, head_ref, item_created_at, item_updated_at,
-	reason_review_requested, fetched_at)
-VALUES (?, ?, ?, 'pr', ?, ?, ?, ?, 'CONTRIBUTOR', 1, ?, ?, ?, 1, ?)`
 )
 
 // ErrAgentNotStarted is returned when the terminal accepted the launch but no agent
@@ -192,6 +181,9 @@ func cmpOr(v, fallback time.Duration) time.Duration {
 type launchFixture struct {
 	core  *core.Core
 	clone string
+
+	// itemID is the fixture item's id.
+	itemID int64
 }
 
 // newLaunchFixture creates the clone, starts the app over a scratch data directory, and
@@ -215,7 +207,8 @@ func newLaunchFixture(ctx context.Context, dir string, opts LaunchOptions, runne
 		return nil, err
 	}
 
-	if err = seed(ctx, c, root); err != nil {
+	itemID, err := seed(ctx, c, root)
+	if err != nil {
 		_ = c.Close()
 
 		return nil, err
@@ -227,7 +220,7 @@ func newLaunchFixture(ctx context.Context, dir string, opts LaunchOptions, runne
 		clone = resolved
 	}
 
-	return &launchFixture{core: c, clone: clone}, nil
+	return &launchFixture{core: c, clone: clone, itemID: itemID}, nil
 }
 
 // launch starts a session on the fixture item in the clone itself, with no worktree. A
@@ -237,7 +230,7 @@ func newLaunchFixture(ctx context.Context, dir string, opts LaunchOptions, runne
 // includes both launch requests.
 func (f *launchFixture) launch(ctx context.Context) (launcher.LaunchResult, error) {
 	noWorktree := false
-	req := launcher.LaunchRequest{ItemID: fixtureID, Worktree: &noWorktree}
+	req := launcher.LaunchRequest{ItemID: f.itemID, Worktree: &noWorktree}
 
 	res, err := f.core.Launcher.Launch(ctx, req)
 	if err != nil || res.Hold == nil {
@@ -274,14 +267,15 @@ func initClone(ctx context.Context, runner execpath.Runner, clone string) error 
 }
 
 // seed stores the launch settings, makes sure the default profile exists (it does when the
-// home directory has the agent's default config), and inserts the fixture item.
-func seed(ctx context.Context, c *core.Core, root string) error {
+// home directory has the agent's default config), and stores the fixture item, whose id
+// it returns.
+func seed(ctx context.Context, c *core.Core, root string) (int64, error) {
 	if err := c.Settings.SetCloneRoot(ctx, root); err != nil {
-		return err
+		return 0, err
 	}
 
 	if err := c.Settings.SetTerminal(ctx, settings.TerminalITerm2); err != nil {
-		return err
+		return 0, err
 	}
 
 	defaultProfile := profiles.Profile{
@@ -293,29 +287,29 @@ func seed(ctx context.Context, c *core.Core, root string) error {
 	}
 
 	if err := c.ProfileStore.Sync(ctx, []profiles.Profile{defaultProfile}); err != nil {
-		return fmt.Errorf("store the default profile: %w", err)
+		return 0, fmt.Errorf("store the default profile: %w", err)
 	}
 
 	now := time.Now().UTC()
-	url := fmt.Sprintf("https://github.com/%s/%s/pull/%d", fixtureOwner, fixtureName, fixtureNumber)
 
-	err := c.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Exec(seedAccountSQL, fixtureID, fixtureViewer, now, now).Error; err != nil {
-			return err
-		}
-
-		if err := tx.Exec(seedRepoSQL, fixtureID, fixtureOwner, fixtureName, now, now).Error; err != nil {
-			return err
-		}
-
-		return tx.Exec(seedItemSQL, fixtureID, fixtureID, fixtureID, fixtureNumber, fixtureTitle, url,
-			fixtureAuthor, fixtureBranch, now, now, now).Error
+	ids, err := inbox.StoreFixture(ctx, c.DB, inbox.Fixture{
+		Viewer: fixtureViewer,
+		Items: []inbox.FixtureItem{{
+			Item: github.Item{
+				IsPR: true, Number: fixtureNumber, Title: fixtureTitle,
+				URL:       fmt.Sprintf("https://github.com/%s/%s/pull/%d", fixtureOwner, fixtureName, fixtureNumber),
+				CreatedAt: now, UpdatedAt: now, HeadRef: fixtureBranch, AuthorLogin: fixtureAuthor,
+				AuthorAssociation: "CONTRIBUTOR", IsCrossRepository: true, RepoOwner: fixtureOwner, RepoName: fixtureName,
+			},
+			ReviewRequested: true,
+		}},
+		At: now,
 	})
 	if err != nil {
-		return fmt.Errorf("store the fixture item: %w", err)
+		return 0, fmt.Errorf("store the fixture item: %w", err)
 	}
 
-	return nil
+	return ids[0], nil
 }
 
 // agentProbe finds and stops agent processes.

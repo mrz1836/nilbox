@@ -2,36 +2,15 @@ package inbox
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 
-	"gorm.io/gorm"
-
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/store"
 )
-
-// storedItemSQL reads what a single refresh needs about a stored item. An item without a
-// node ID cannot be asked about on its own, so it reads as not found.
-const storedItemSQL = `SELECT account_id, node_id FROM items WHERE id = ? AND node_id <> ''`
-
-// updateItemSQL rewrites what GitHub says about a stored item, in place. Its repository,
-// number, and lists stay as they are.
-const updateItemSQL = `UPDATE items SET
-    node_id = ?, title = ?, url = ?, author_login = ?, author_type = ?, author_association = ?,
-    is_cross_repository = ?, is_draft = ?, head_ref = ?, item_created_at = ?, item_updated_at = ?, fetched_at = ?
-WHERE id = ?`
-
-// unlistItemSQL takes an item out of every list, as a refresh does with an item no
-// search returns. The row stays, since local state may reference it.
-const unlistItemSQL = `UPDATE items
-SET reason_review_requested = 0, reason_authored = 0, reason_assigned = 0, fetched_at = ?
-WHERE id = ?`
-
-// storedItem is a stored item as storedItemSQL reads it.
-type storedItem struct {
-	AccountID int64  `gorm:"column:account_id"`
-	NodeID    string `gorm:"column:node_id"`
-}
 
 // RefreshItem brings one item up to date from GitHub and returns the new snapshot. It
 // asks about that item alone, for one GraphQL point, so a change the user knows of, such
@@ -60,13 +39,13 @@ func (s *Service) RefreshItem(ctx context.Context, id int64) (Snapshot, error) {
 
 // refreshItem reads the stored item, asks GitHub about it, and stores the answer.
 func (s *Service) refreshItem(ctx context.Context, id int64) error {
-	var rows []storedItem
-	if err := s.db.WithContext(ctx).Raw(storedItemSQL, id).Scan(&rows).Error; err != nil {
-		return fmt.Errorf("read the item: %w", err)
+	stored, err := s.q.GetStoredItem(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("%w (id %d)", item.ErrNotFound, id)
 	}
 
-	if len(rows) == 0 {
-		return fmt.Errorf("%w (id %d)", item.ErrNotFound, id)
+	if err != nil {
+		return fmt.Errorf("read the item: %w", err)
 	}
 
 	tok, err := s.tokens.Token(ctx)
@@ -74,7 +53,7 @@ func (s *Service) refreshItem(ctx context.Context, id int64) error {
 		return err
 	}
 
-	update, err := s.client.FetchItem(ctx, tok, rows[0].NodeID)
+	update, err := s.client.FetchItem(ctx, tok, stored.NodeID)
 	if err != nil {
 		return err
 	}
@@ -88,31 +67,28 @@ func (s *Service) refreshItem(ctx context.Context, id int64) error {
 		return github.Redact(err, tok)
 	}
 
-	return github.Redact(s.saveItemUpdate(ctx, id, rows[0], update, files), tok)
+	return github.Redact(s.saveItemUpdate(ctx, id, stored.AccountID, update, files), tok)
 }
 
 // saveItemUpdate stores what one item's refresh read, in one transaction, with the
-// query's budget reading and the item's file check, if one ran.
+// query's budget reading and the item's file check, if one ran. accountID is the account
+// the item is stored for.
 func (s *Service) saveItemUpdate(
-	ctx context.Context, id int64, stored storedItem, update *github.ItemUpdate, files map[string]fileCheck,
+	ctx context.Context, id, accountID int64, update *github.ItemUpdate, files map[string]fileCheck,
 ) error {
 	it := update.Item
 
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		w, err := s.newWriter(tx)
-		if err != nil {
-			return err
-		}
-
-		w.accountID, w.files = stored.AccountID, files
+	err := store.InTx(ctx, s.db, func(tx *sql.Tx) error {
+		w := s.newWriter(tx)
+		w.accountID, w.files = accountID, files
 		w.details = map[string]github.ItemDetails{it.NodeID: update.Details}
 
-		if err = w.saveGraphQLRate(update.RateLimit); err != nil {
+		if err := w.saveGraphQLRate(ctx, update.RateLimit); err != nil {
 			return err
 		}
 
 		if !update.Found || it.Closed() || it.Repo.IsArchived {
-			return w.unlist(id, update)
+			return w.unlist(ctx, id, update)
 		}
 
 		return w.rewrite(ctx, id, it)
@@ -127,18 +103,21 @@ func (s *Service) saveItemUpdate(
 // rewrite stores what GitHub says about an open item in place, with its details and file
 // check, then ends the snoozes the new details give cause to.
 func (w *writer) rewrite(ctx context.Context, id int64, it github.Item) error {
-	err := w.exec("update the item", updateItemSQL,
-		it.NodeID, it.Title, it.URL, it.AuthorLogin, it.AuthorType, it.AuthorAssociation, it.IsCrossRepository,
-		it.IsDraft, it.HeadRef, it.CreatedAt.UTC(), it.UpdatedAt.UTC(), w.now, id)
+	err := w.q.UpdateItem(ctx, queries.UpdateItemParams{
+		NodeID: it.NodeID, Title: it.Title, URL: it.URL, AuthorLogin: it.AuthorLogin, AuthorType: it.AuthorType,
+		AuthorAssociation: it.AuthorAssociation, IsCrossRepository: it.IsCrossRepository, IsDraft: it.IsDraft,
+		HeadRef: it.HeadRef, ItemCreatedAt: it.CreatedAt.UTC(), ItemUpdatedAt: it.UpdatedAt.UTC(),
+		FetchedAt: w.now, ID: id,
+	})
 	if err != nil {
+		return fmt.Errorf("update the item: %w", err)
+	}
+
+	if err = w.saveDetails(ctx, id, it); err != nil {
 		return err
 	}
 
-	if err = w.saveDetails(id, it); err != nil {
-		return err
-	}
-
-	if err = w.saveFiles(id, it); err != nil {
+	if err = w.saveFiles(ctx, id, it); err != nil {
 		return err
 	}
 
@@ -147,12 +126,16 @@ func (w *writer) rewrite(ctx context.Context, id int64, it github.Item) error {
 
 // unlist takes an item out of every list. An item in an archived repository records the
 // repository first, so it is known as archived, as a whole refresh does.
-func (w *writer) unlist(id int64, update *github.ItemUpdate) error {
+func (w *writer) unlist(ctx context.Context, id int64, update *github.ItemUpdate) error {
 	if update.Found && update.Item.Repo.IsArchived {
-		if _, err := w.repoID(update.Item); err != nil {
+		if _, err := w.repoID(ctx, update.Item); err != nil {
 			return err
 		}
 	}
 
-	return w.exec("take the item out of the lists", unlistItemSQL, w.now, id)
+	if err := w.q.UnlistItem(ctx, queries.UnlistItemParams{FetchedAt: w.now, ID: id}); err != nil {
+		return fmt.Errorf("take the item out of the lists: %w", err)
+	}
+
+	return nil
 }

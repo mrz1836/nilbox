@@ -28,10 +28,11 @@ func TestBootstrapStopsWhenTheStarterPromptsCannotBeAdded(t *testing.T) {
 	}
 
 	first := bootstrap(t, opts)
-	require.NoError(t, first.DB.Exec("UPDATE prefs SET value = 'not json' WHERE key = 'prompts.seeded'").Error)
+	_, err := first.DB.ExecContext(t.Context(), "UPDATE prefs SET value = 'not json' WHERE key = 'prompts.seeded'")
+	require.NoError(t, err)
 	require.NoError(t, first.Close())
 
-	_, err := Bootstrap(t.Context(), opts)
+	_, err = Bootstrap(t.Context(), opts)
 	require.ErrorContains(t, err, "add the starter prompts: read the starter prompts added")
 }
 
@@ -42,7 +43,7 @@ func TestBootstrapStopsWhenProfilesCannotBeSynced(t *testing.T) {
 	opts := Options{Paths: appdata.NewPaths(filepath.Join(t.TempDir(), "data")), Home: home, Runner: noPrograms()}
 
 	first := bootstrap(t, opts)
-	_, err := first.pool.ExecContext(t.Context(), refuseNewProfiles)
+	_, err := first.DB.ExecContext(t.Context(), refuseNewProfiles)
 	require.NoError(t, err)
 	require.NoError(t, first.Close())
 

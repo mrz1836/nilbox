@@ -311,8 +311,8 @@ func TestCloneRefusesInvalidNames(t *testing.T) {
 		t.Run(tt.owner+"/"+tt.name, func(t *testing.T) {
 			h := newLaunchHarness(t)
 			gh := h.withGH()
-			require.NoError(t, h.db.Exec("UPDATE repos SET owner = ?, name = ? WHERE name = ?",
-				tt.owner, tt.name, "missing-repo").Error)
+			h.exec(t, "UPDATE repos SET owner = ?, name = ? WHERE name = ?",
+				tt.owner, tt.name, "missing-repo")
 
 			_, err := h.service().Clone(t.Context(), h.orphanPR)
 			require.ErrorIs(t, err, repo.ErrInvalid)

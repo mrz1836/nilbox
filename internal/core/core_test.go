@@ -92,7 +92,7 @@ func TestBootstrapTempHome(t *testing.T) {
 	require.NoError(t, err, "the database file exists")
 
 	var mode string
-	require.NoError(t, c.DB.Raw("PRAGMA journal_mode").Scan(&mode).Error)
+	require.NoError(t, c.DB.QueryRowContext(t.Context(), "PRAGMA journal_mode").Scan(&mode))
 	assert.Equal(t, "wal", mode)
 
 	assert.Empty(t, programNames(runner), "startup runs no external program")
@@ -104,7 +104,7 @@ func TestBootstrapKeepsExistingProfiles(t *testing.T) {
 
 	first, err := Bootstrap(t.Context(), Options{Paths: paths, Home: home, Runner: noPrograms()})
 	require.NoError(t, err)
-	_, err = first.pool.ExecContext(t.Context(), "UPDATE claude_profiles SET model = 'opus' WHERE name = 'work'")
+	_, err = first.DB.ExecContext(t.Context(), "UPDATE claude_profiles SET model = 'opus' WHERE name = 'work'")
 	require.NoError(t, err)
 	require.NoError(t, first.Close())
 
@@ -138,7 +138,7 @@ func TestBootstrapRemovesProfilesForOtherToolsFolders(t *testing.T) {
 		{Name: "squad", ConfigDir: filepath.Join(home, ".claude-squad"), PermissionMode: profiles.PermissionFull},
 		{Name: "monitor", ConfigDir: filepath.Join(home, ".claude-monitor"), PermissionMode: profiles.PermissionFull},
 	}))
-	_, err := first.pool.ExecContext(t.Context(), "UPDATE claude_profiles SET config_dir = ? WHERE name = 'dup'",
+	_, err := first.DB.ExecContext(t.Context(), "UPDATE claude_profiles SET config_dir = ? WHERE name = 'dup'",
 		filepath.Join(home, ".claude_dup"))
 	require.NoError(t, err)
 	require.NoError(t, first.Close())
@@ -171,7 +171,7 @@ func TestBootstrapStopsWhenProfilesCannotBePruned(t *testing.T) {
 	home := testutil.ClaudeHome(t, ".claude")
 
 	first := bootstrap(t, Options{Paths: paths, Home: home, Runner: noPrograms()})
-	_, err := first.pool.ExecContext(t.Context(), "DROP TABLE claude_profiles")
+	_, err := first.DB.ExecContext(t.Context(), "DROP TABLE claude_profiles")
 	require.NoError(t, err)
 	require.NoError(t, first.Close())
 
@@ -402,11 +402,12 @@ func TestBootstrapRefusesADatabaseFromANewerBuild(t *testing.T) {
 	}
 
 	c := bootstrap(t, opts)
-	require.NoError(t, c.DB.Exec(`INSERT INTO schema_migrations (version, name, checksum, applied_at)
-VALUES (9999, 'from_the_future', 'abc', '2026-01-01T00:00:00Z')`).Error)
+	_, err := c.DB.ExecContext(t.Context(), `INSERT INTO schema_migrations (version, name, checksum, applied_at)
+VALUES (9999, 'from_the_future', 'abc', '2026-01-01T00:00:00Z')`)
+	require.NoError(t, err)
 	require.NoError(t, c.Close())
 
-	_, err := Bootstrap(t.Context(), opts)
+	_, err = Bootstrap(t.Context(), opts)
 	require.ErrorIs(t, err, store.ErrNewerSchema)
 }
 

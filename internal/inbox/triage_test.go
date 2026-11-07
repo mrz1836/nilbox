@@ -12,7 +12,6 @@ import (
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/snooze"
-	"github.com/mrz1836/nilbox/internal/store"
 )
 
 // triageHarness refreshes an inbox where #1 is in two lists and #2 in one, and returns
@@ -237,7 +236,7 @@ func TestTriageUnknownItem(t *testing.T) {
 
 func TestTriageDatabaseErrors(t *testing.T) {
 	h, id, _ := triageHarness(t)
-	require.NoError(t, store.Close(h.db))
+	require.NoError(t, h.pool.Close())
 
 	_, err := h.svc.Dismiss(t.Context(), id)
 	require.ErrorContains(t, err, "dismiss the item")
@@ -282,6 +281,18 @@ func (h *harness) later(t *testing.T, details github.ItemDetails) Item {
 	return itemByNumber(t, h.refresh(t).ReviewRequested, 1)
 }
 
+// baseline reads the activity an item's snooze compares with, or nil when none is
+// recorded.
+func (h *harness) baseline(t *testing.T, id int64) *string {
+	t.Helper()
+
+	var baseline *string
+	require.NoError(t, h.pool.QueryRowContext(t.Context(),
+		"SELECT snooze_baseline FROM item_local_state WHERE item_id = ?", id).Scan(&baseline))
+
+	return baseline
+}
+
 // setPrefs writes raw prefs, as the settings service would.
 func (h *harness) setPrefs(t *testing.T, values map[string]string) {
 	t.Helper()
@@ -295,11 +306,10 @@ func TestSnoozeRecordsTheItemsActivity(t *testing.T) {
 	_, err := h.svc.Snooze(t.Context(), id, 3)
 	require.NoError(t, err)
 
-	var baseline []string
-	require.NoError(t, h.db.Raw("SELECT snooze_baseline FROM item_local_state WHERE item_id = ?", id).Scan(&baseline).Error)
-	require.Len(t, baseline, 1)
+	baseline := h.baseline(t, id)
+	require.NotNil(t, baseline)
 	assert.JSONEq(t, `{"head":"1111111111111111111111111111111111111111","commits":3,"comments":4,
-		"decision":"REVIEW_REQUIRED","reviewed":0,"approvals":0,"changesRequested":0}`, baseline[0])
+		"decision":"REVIEW_REQUIRED","reviewed":0,"approvals":0,"changesRequested":0}`, *baseline)
 	assert.Equal(t, 3, details.Commits)
 }
 
@@ -405,20 +415,14 @@ func TestASnoozeBeforeTheDetailsTakesItsBaselineLater(t *testing.T) {
 	_, err := h.svc.Snooze(t.Context(), id, 3)
 	require.NoError(t, err)
 
-	var baseline []struct {
-		Value *string `gorm:"column:snooze_baseline"`
-	}
-	require.NoError(t, h.db.Raw("SELECT snooze_baseline FROM item_local_state WHERE item_id = ?", id).Scan(&baseline).Error)
-	require.Len(t, baseline, 1)
-	assert.Nil(t, baseline[0].Value, "no details are known yet")
+	assert.Nil(t, h.baseline(t, id), "no details are known yet")
 
 	details := prDetails()
 	h.client.details = map[string]github.ItemDetails{nodeID(1): details}
 	snap := h.refresh(t)
 	assert.Nil(t, itemByNumber(t, snap.ReviewRequested, 1).WokeBy, "the first details are the baseline, not news")
 
-	require.NoError(t, h.db.Raw("SELECT snooze_baseline FROM item_local_state WHERE item_id = ?", id).Scan(&baseline).Error)
-	require.NotNil(t, baseline[0].Value)
+	require.NotNil(t, h.baseline(t, id))
 
 	details.Commits += 2
 	h.client.details = map[string]github.ItemDetails{nodeID(1): details}
@@ -453,11 +457,11 @@ func TestUnreadableWakeReasonsShowNone(t *testing.T) {
 
 func TestWakeRulesDatabaseError(t *testing.T) {
 	h, _, _ := triageHarness(t)
-	require.NoError(t, store.Close(h.db))
+	require.NoError(t, h.pool.Close())
 
 	_, err := wakeRules(t.Context(), h.svc.prefs)
 	require.ErrorContains(t, err, "read the snooze rules")
 
-	_, err = activityBaseline(h.db, 1)
+	_, err = activityBaseline(t.Context(), h.svc.q, 1)
 	require.ErrorContains(t, err, "read the item's activity")
 }

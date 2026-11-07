@@ -122,7 +122,7 @@ func TestRefreshOnlyChecksPullRequestsFromOutside(t *testing.T) {
 	h := filesHarness(t,
 		from(1, "teammate", "MEMBER", false),
 		from(2, "owner", "OWNER", false),
-		from(3, "octo-user", "NONE", true), // the signed-in user's own
+		from(3, octoUser, "NONE", true), // the signed-in user's own
 		bot,
 		from(5, "helper", "COLLABORATOR", false),
 	)

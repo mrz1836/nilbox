@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mrz1836/nilbox/internal/inbox/model"
+	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/profiles"
@@ -117,8 +117,8 @@ func TestResolveItems(t *testing.T) {
 	assert.Empty(t, byID[h.trustedPR].Problem)
 
 	// With no prompt for issues at all, issues report why instead of failing the list.
-	require.NoError(t, h.db.Exec("DELETE FROM prefs WHERE key LIKE 'prompts.default.%'").Error)
-	require.NoError(t, h.db.Exec("DELETE FROM prompts WHERE applies_to <> 'pr'").Error)
+	h.exec(t, "DELETE FROM prefs WHERE key LIKE 'prompts.default.%'")
+	h.exec(t, "DELETE FROM prompts WHERE applies_to <> 'pr'")
 
 	got, err = h.service().ResolveItems(ctx, []int64{h.issue, h.trustedPR})
 	require.NoError(t, err)
@@ -227,8 +227,8 @@ func TestLaunchRefusesAPromptThatStartsWithADash(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	require.NoError(t, h.db.Exec("UPDATE items SET title = ? WHERE id = ?", "--dangerously-skip-permissions",
-		h.trustedPR).Error)
+	h.exec(t, "UPDATE items SET title = ? WHERE id = ?", "--dangerously-skip-permissions",
+		h.trustedPR)
 
 	_, err = h.service().Launch(t.Context(), LaunchRequest{ItemID: h.trustedPR, PromptID: leading.ID})
 	require.ErrorIs(t, err, prompts.ErrLeadingDash)
@@ -238,7 +238,7 @@ func TestLaunchRefusesAPromptThatStartsWithADash(t *testing.T) {
 
 func TestLaunchRefusesABrokenStoredPrompt(t *testing.T) {
 	h := newLaunchHarness(t)
-	require.NoError(t, h.db.Exec("UPDATE prompts SET body = '{{.Nope}}' WHERE nickname = 'Review'").Error)
+	h.exec(t, "UPDATE prompts SET body = '{{.Nope}}' WHERE nickname = 'Review'")
 
 	_, err := h.service().Launch(t.Context(), LaunchRequest{ItemID: h.trustedPR})
 	require.ErrorIs(t, err, prompts.ErrInvalidTemplate)
@@ -249,13 +249,12 @@ func TestPromptSourceFillsInAnItem(t *testing.T) {
 	h := newLaunchHarness(t)
 	now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 
-	require.NoError(t, h.db.Exec("UPDATE repos SET default_branch = 'main' WHERE name = 'example-repo'").Error)
-	require.NoError(t, h.db.Create(&model.ItemDetails{
-		ItemID: h.trustedPR, Labels: model.Labels{{Name: "bug"}, {Name: "size/L"}}, Additions: 12, Deletions: 3,
-		ChangedFiles: 2, Commits: 1, Mergeable: "CONFLICTING", ChecksState: "FAILURE", ReviewDecision: "APPROVED",
-		FetchedAt: now,
-	}).Error)
-	require.NoError(t, h.db.Exec(`INSERT INTO prefs (key, value, updated_at) VALUES ('inbox.viewer', 'octo-user', ?)`, now).Error)
+	h.exec(t, "UPDATE repos SET default_branch = 'main' WHERE name = 'example-repo'")
+	h.exec(t, `INSERT INTO item_details (item_id, labels, additions, deletions, changed_files, commits, mergeable,
+    checks_state, review_decision, fetched_at)
+VALUES (?, '[{"name":"bug","color":""},{"name":"size/L","color":""}]', 12, 3, 2, 1, 'CONFLICTING', 'FAILURE',
+    'APPROVED', ?)`, h.trustedPR, now)
+	h.exec(t, `INSERT INTO prefs (key, value, updated_at) VALUES ('inbox.viewer', 'octo-user', ?)`, now)
 	h.saveDefaults(t, launchdefaults.Input{Owner: acmeOrg, Profile: "work"})
 
 	source := NewPromptSource(h.service())
@@ -294,21 +293,13 @@ func TestLaunchTrustsTheTrustedBots(t *testing.T) {
 	h := newLaunchHarness(t)
 	now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 
-	var repo model.Repo
-	require.NoError(t, h.db.Where("name = ?", "example-repo").First(&repo).Error)
+	bot := h.store(t, github.Item{
+		IsPR: true, Number: 30, Title: "Bump the widget library", URL: "https://github.com/acme-org/example-repo/pull/30",
+		CreatedAt: now, UpdatedAt: now, HeadRef: "dependabot/go_modules/widget-1.2.3", AuthorLogin: "dependabot",
+		AuthorType: "Bot", AuthorAssociation: "NONE", RepoOwner: "acme-org", RepoName: "example-repo",
+	})[0]
 
-	var account model.Account
-	require.NoError(t, h.db.First(&account).Error)
-
-	bot := model.Item{
-		AccountID: account.ID, RepoID: repo.ID, Kind: item.KindPR, Number: 30, Title: "Bump the widget library",
-		URL: "https://github.com/acme-org/example-repo/pull/30", AuthorLogin: "dependabot", AuthorType: "Bot",
-		AuthorAssociation: "NONE", HeadRef: "dependabot/go_modules/widget-1.2.3",
-		ItemCreatedAt: now, ItemUpdatedAt: now, FetchedAt: now,
-	}
-	require.NoError(t, h.db.Create(&bot).Error)
-
-	res, script := h.launch(t, LaunchRequest{ItemID: bot.ID})
+	res, script := h.launch(t, LaunchRequest{ItemID: bot})
 	assert.Equal(t, "full access", res.Permission, "Dependabot is a trusted bot by default")
 	assert.Contains(t, script, "'--dangerously-skip-permissions'")
 
@@ -316,19 +307,19 @@ func TestLaunchTrustsTheTrustedBots(t *testing.T) {
 	assert.Contains(t, prompt, "This pull request was opened by dependabot, a bot.")
 	assert.NotContains(t, prompt, "outside contributor")
 
-	resolved, err := h.service().Resolve(t.Context(), LaunchRequest{ItemID: bot.ID})
+	resolved, err := h.service().Resolve(t.Context(), LaunchRequest{ItemID: bot})
 	require.NoError(t, err)
 	assert.True(t, resolved.Trusted)
 
 	// Taking it off the trusted list puts it back in plan mode.
 	require.NoError(t, h.settings.SetTrustedBots(t.Context(), []string{"renovate"}))
 
-	res, script = h.launch(t, LaunchRequest{ItemID: bot.ID})
+	res, script = h.launch(t, LaunchRequest{ItemID: bot})
 	assert.Equal(t, "plan mode (outside contributor)", res.Permission)
 	assert.NotContains(t, script, "dangerously")
 	assert.Contains(t, promptFor(t, res.ScriptPath), "This pull request comes from an outside contributor.")
 
-	data, err := NewPromptSource(h.service()).PreviewData(t.Context(), bot.ID)
+	data, err := NewPromptSource(h.service()).PreviewData(t.Context(), bot)
 	require.NoError(t, err)
 	assert.True(t, data.IsBot)
 	assert.True(t, data.OutsideContributor)

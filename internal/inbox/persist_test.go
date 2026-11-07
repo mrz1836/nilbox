@@ -6,61 +6,26 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 
 	"github.com/mrz1836/nilbox/internal/github"
-	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // refuse makes the database reject one kind of write with a trigger, so a test can fail
 // a refresh at exactly one step of storing it. when, if not empty, limits the refusal to
 // the rows it matches.
-func refuse(t *testing.T, db *gorm.DB, event, when string) {
+func refuse(t *testing.T, h *harness, event, when string) {
 	t.Helper()
 
 	if when != "" {
 		when = " WHEN " + when
 	}
 
-	require.NoError(t, db.Exec("CREATE TRIGGER refused_write "+event+when+
-		" BEGIN SELECT RAISE(ABORT, 'refused by the test'); END").Error)
+	h.exec(t, "CREATE TRIGGER refused_write "+event+when+" BEGIN SELECT RAISE(ABORT, 'refused by the test'); END")
 }
 
 // listed returns the numbers of a snapshot's three lists.
 func listed(snap Snapshot) [3][]int {
 	return [3][]int{numbers(snap.ReviewRequested), numbers(snap.Authored), numbers(snap.Assigned)}
-}
-
-func TestViewerLogin(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-
-	login, err := ViewerLogin(t.Context(), h.db)
-	require.NoError(t, err)
-	assert.Empty(t, login, "nobody is signed in before the first refresh")
-
-	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
-	h.refresh(t)
-
-	login, err = ViewerLogin(t.Context(), h.db)
-	require.NoError(t, err)
-	assert.Equal(t, "octo-user", login)
-
-	h.client.inbox.Viewer.Login = "octo-other"
-	h.clock.Advance(DefaultInterval)
-	h.refresh(t)
-
-	login, err = ViewerLogin(t.Context(), h.db)
-	require.NoError(t, err)
-	assert.Equal(t, "octo-other", login, "the last refresh's account wins")
-}
-
-func TestViewerLoginReportsAnUnreadableDatabase(t *testing.T) {
-	t.Parallel()
-
-	_, err := ViewerLogin(t.Context(), testutil.ClosedDB(t))
-	require.ErrorContains(t, err, "read the signed-in account")
 }
 
 func TestRefreshThatCannotBeSavedKeepsTheStoredInbox(t *testing.T) {
@@ -124,9 +89,7 @@ func TestRefreshThatCannotBeSavedKeepsTheStoredInbox(t *testing.T) {
 			}
 
 			if tt.oldRate {
-				require.NoError(t, h.db.Exec(`INSERT INTO rate_snapshots
-(account_id, resource, limit_total, remaining, used, cost, reset_at, taken_at)
-SELECT id, 'core', 1, 1, 0, 0, ?, ? FROM accounts`, h.clock.Now(), h.clock.Now().Add(-8*24*time.Hour)).Error)
+				h.insertRate(t, 1, h.clock.Now().Add(-8*24*time.Hour))
 			}
 
 			before, err := h.svc.Snapshot(t.Context())
@@ -134,7 +97,7 @@ SELECT id, 'core', 1, 1, 0, 0, ?, ? FROM accounts`, h.clock.Now(), h.clock.Now()
 
 			rates := h.count(t, "rate_snapshots")
 
-			refuse(t, h.db, tt.event, tt.when)
+			refuse(t, h, tt.event, tt.when)
 
 			_, err = h.svc.Refresh(t.Context())
 			require.ErrorContains(t, err, "save the inbox")
@@ -174,7 +137,7 @@ func TestSnapshotReportsUnreadableTables(t *testing.T) {
 
 			// Renaming keeps the rows and the references to them, while every read of the
 			// table by its name fails.
-			require.NoError(t, h.db.Exec("ALTER TABLE "+tt.table+" RENAME TO "+tt.table+"_gone").Error)
+			h.exec(t, "ALTER TABLE "+tt.table+" RENAME TO "+tt.table+"_gone")
 
 			_, err := h.svc.Snapshot(t.Context())
 			require.ErrorContains(t, err, tt.want)
@@ -186,11 +149,11 @@ func TestSnapshotOfAViewerWithNoStoredAccount(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.setPrefs(t, map[string]string{prefViewer: "octo-user"})
+	h.setPrefs(t, map[string]string{prefViewer: octoUser})
 
 	snap, err := h.svc.Snapshot(t.Context())
 	require.NoError(t, err)
-	assert.Equal(t, "octo-user", snap.Account.Login, "the account comes from the stored status")
+	assert.Equal(t, octoUser, snap.Account.Login, "the account comes from the stored status")
 	assert.Equal(t, [3][]int{{}, {}, {}}, listed(snap))
 	assert.False(t, snap.Rate.GraphQL.Known)
 }
@@ -202,7 +165,7 @@ func TestSnapshotWithoutRateReadings(t *testing.T) {
 	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
 	h.refresh(t)
 
-	require.NoError(t, h.db.Exec("DELETE FROM rate_snapshots").Error)
+	h.exec(t, "DELETE FROM rate_snapshots")
 
 	snap, err := h.svc.Snapshot(t.Context())
 	require.NoError(t, err)

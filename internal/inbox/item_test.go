@@ -230,7 +230,7 @@ func TestRefreshItemFailuresKeepTheStoredInbox(t *testing.T) {
 
 func TestRefreshItemNeedsANodeID(t *testing.T) {
 	h, id := itemHarness(t)
-	require.NoError(t, h.db.Exec("UPDATE items SET node_id = '' WHERE id = ?", id).Error)
+	h.exec(t, "UPDATE items SET node_id = '' WHERE id = ?", id)
 
 	_, err := h.svc.RefreshItem(t.Context(), id)
 	require.ErrorIs(t, err, item.ErrNotFound)
@@ -239,7 +239,7 @@ func TestRefreshItemNeedsANodeID(t *testing.T) {
 
 func TestRefreshItemDatabaseErrors(t *testing.T) {
 	h, id := itemHarness(t)
-	require.NoError(t, h.db.Exec("DROP TABLE rate_snapshots").Error)
+	h.exec(t, "DROP TABLE rate_snapshots")
 
 	now := pr(1, "OWNER", false)
 	h.client.items = map[string]*github.ItemUpdate{nodeID(1): {Found: true, Item: now}}
@@ -253,8 +253,7 @@ func TestRefreshItemDatabaseErrors(t *testing.T) {
 func (h *harness) itemTitle(t *testing.T, id int64) string {
 	t.Helper()
 
-	var titles []string
-	require.NoError(t, h.db.Raw("SELECT title FROM items WHERE id = ?", id).Scan(&titles).Error)
+	titles := h.column(t, "SELECT title FROM items WHERE id = ?", id)
 	require.Len(t, titles, 1)
 
 	return titles[0]
@@ -280,4 +279,59 @@ func TestDropClosed(t *testing.T) {
 	assert.Equal(t, []github.Item{unknown}, inbox.Authored.Items, "an item whose state is unknown stays")
 	assert.Equal(t, []github.Item{open}, inbox.Assigned.Items)
 	assert.Equal(t, 2, inbox.ReviewRequested.IssueCount, "totals stay as GitHub counted them")
+}
+
+func TestRefreshItemThatCannotBeSavedKeepsTheItem(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name   string
+		update func(it github.Item) *github.ItemUpdate
+		event  string
+		want   string
+	}{
+		{
+			name:   "item",
+			update: func(it github.Item) *github.ItemUpdate { return &github.ItemUpdate{Found: true, Item: it} },
+			event:  "BEFORE UPDATE OF title ON items", want: "update the item",
+		},
+		{
+			name: "details",
+			update: func(it github.Item) *github.ItemUpdate {
+				return &github.ItemUpdate{Found: true, Item: it, Details: prDetails()}
+			},
+			event: "BEFORE UPDATE ON item_details", want: "save the details of acme-org/example-repo#1",
+		},
+		{
+			name:   "unlisted",
+			update: func(github.Item) *github.ItemUpdate { return &github.ItemUpdate{} },
+			event:  "BEFORE UPDATE OF reason_review_requested ON items", want: "take the item out of the lists",
+		},
+		{
+			name: "archived repository",
+			update: func(it github.Item) *github.ItemUpdate {
+				it.Repo.IsArchived = true
+
+				return &github.ItemUpdate{Found: true, Item: it}
+			},
+			event: "BEFORE UPDATE ON repos", want: "save the repository acme-org/example-repo",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			h, id := itemHarness(t)
+
+			now := pr(1, "OWNER", false)
+			now.Title = "Item 1, retitled"
+			h.client.items = map[string]*github.ItemUpdate{nodeID(1): tt.update(now)}
+
+			refuse(t, h, tt.event, "")
+
+			_, err := h.svc.RefreshItem(t.Context(), id)
+			require.ErrorContains(t, err, tt.want)
+			assert.Equal(t, "Item 1", h.itemTitle(t, id), "the transaction left the item as it was")
+			assert.Equal(t, [3]bool{true, false, true}, h.reasons(t, 1))
+		})
+	}
 }

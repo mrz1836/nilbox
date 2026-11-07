@@ -13,8 +13,6 @@ import (
 	"fmt"
 	"log/slog"
 
-	"gorm.io/gorm"
-
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/appinfo"
 	"github.com/mrz1836/nilbox/internal/clock"
@@ -98,11 +96,10 @@ type Options struct {
 
 // Core is the assembled app: the database and every service.
 type Core struct {
-	// DB is a GORM handle over the open, migrated database.
-	DB *gorm.DB
-
-	// pool is the database's connection pool, which DB shares.
-	pool *sql.DB
+	// DB is the open, migrated database's connection pool, which every service shares.
+	// It is not bound; code that seeds the database, such as the launch measurement,
+	// writes through it.
+	DB *sql.DB
 
 	// The services bound to the frontend.
 	Settings       *settings.Service
@@ -157,14 +154,6 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 	}
 
 	pool := opened.DB
-
-	db, err := store.Gorm(pool)
-	if err != nil {
-		_ = pool.Close()
-
-		return nil, err
-	}
-
 	reset := dataReset(ctx, opened.Reset, opts.Home, logger)
 
 	if err = syncProfiles(ctx, profiles.NewStore(pool, opts.Clock), opts.Home, logger); err != nil {
@@ -179,7 +168,7 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 		return nil, fmt.Errorf("add the starter prompts: %w", err)
 	}
 
-	return assemble(pool, db, reset, opts, logger), nil
+	return assemble(pool, reset, opts, logger), nil
 }
 
 // Services returns the services the frontend binds to, in a stable order.
@@ -192,7 +181,7 @@ func (c *Core) Services() []any {
 
 // Close closes the database.
 func (c *Core) Close() error {
-	if err := c.pool.Close(); err != nil {
+	if err := c.DB.Close(); err != nil {
 		return fmt.Errorf("close database: %w", err)
 	}
 
@@ -244,10 +233,9 @@ func dataReset(ctx context.Context, reset *store.Reset, home string, logger *slo
 	return &appinfo.DataReset{Path: paths.Tilde(reset.Path, home), Reason: string(reset.Reason)}
 }
 
-// assemble builds every service over the open database: pool is its connection pool and
-// db the GORM handle over it. reset, when set, tells the window the database was set
-// aside at startup.
-func assemble(pool *sql.DB, db *gorm.DB, reset *appinfo.DataReset, opts Options, logger *slog.Logger) *Core {
+// assemble builds every service over the open database's connection pool. reset, when
+// set, tells the window the database was set aside at startup.
+func assemble(pool *sql.DB, reset *appinfo.DataReset, opts Options, logger *slog.Logger) *Core {
 	finder := execpath.Finder{Home: opts.Home}
 
 	runner := opts.Runner
@@ -258,6 +246,7 @@ func assemble(pool *sql.DB, db *gorm.DB, reset *appinfo.DataReset, opts Options,
 	profileStore := profiles.NewStore(pool, opts.Clock)
 	promptStore := prompts.NewStore(pool, opts.Clock)
 	defaultsStore := launchdefaults.NewStore(pool, opts.Clock)
+	inboxStore := inbox.NewStore(pool, opts.Clock)
 	prefs := settings.NewService(pool, profileStore, opts.Home, settings.WithClock(opts.Clock),
 		settings.WithThemeNotifier(opts.ThemeNotifier), settings.WithMenuBarNotifier(opts.MenuBarNotifier))
 	tokens := github.NewTokenSource(runner, finder)
@@ -270,7 +259,6 @@ func assemble(pool *sql.DB, db *gorm.DB, reset *appinfo.DataReset, opts Options,
 
 	inboxSvc := inbox.NewService(inbox.Config{
 		Pool:     pool,
-		DB:       db,
 		Tokens:   tokens,
 		Client:   client,
 		Clock:    opts.Clock,
@@ -281,7 +269,7 @@ func assemble(pool *sql.DB, db *gorm.DB, reset *appinfo.DataReset, opts Options,
 	recorder := timing.NewRecorder(timing.Config{Logger: logger, LogsDir: opts.Paths.Logs})
 
 	launch := launcher.NewService(launcher.Config{
-		DB:       db,
+		Items:    inboxStore,
 		Settings: prefs,
 		Profiles: profileStore,
 		Prompts:  promptStore,
@@ -298,15 +286,14 @@ func assemble(pool *sql.DB, db *gorm.DB, reset *appinfo.DataReset, opts Options,
 	})
 
 	return &Core{
-		DB:       db,
-		pool:     pool,
+		DB:       pool,
 		Settings: prefs,
 		Profiles: profiles.NewService(profileStore, opts.Home),
 		Prompts: prompts.NewService(prompts.Config{
 			Store: promptStore, Usage: defaultsStore, Source: launcher.NewPromptSource(launch),
 		}),
 		LaunchDefaults: launchdefaults.NewService(launchdefaults.Config{
-			Store: defaultsStore, Profiles: profileStore, Prompts: promptStore, Repos: inboxRepos{db: db},
+			Store: defaultsStore, Profiles: profileStore, Prompts: promptStore, Repos: inboxRepos{store: inboxStore},
 		}),
 		Inbox:    inboxSvc,
 		Launcher: launch,

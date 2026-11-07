@@ -2,75 +2,19 @@ package inbox
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
-	"gorm.io/gorm"
-
+	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/snooze"
+	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
-
-// setTriageSQL records an item's triage state, replacing any earlier one, and clears the
-// reasons an earlier snooze woke for. It inserts nothing for an unknown item, which the
-// caller reads as zero rows affected.
-const setTriageSQL = `INSERT INTO item_local_state (item_id, dismissed_at, snoozed_until, snooze_baseline, wake_reasons, updated_at)
-SELECT id, ?, ?, ?, NULL, ? FROM items WHERE id = ?
-ON CONFLICT (item_id) DO UPDATE SET
-    dismissed_at = excluded.dismissed_at,
-    snoozed_until = excluded.snoozed_until,
-    snooze_baseline = excluded.snooze_baseline,
-    wake_reasons = NULL,
-    updated_at = excluded.updated_at`
-
-// pinSQL pins an item to the top of its lists, keeping its triage state and the time of an
-// earlier pin, so pinning a pinned item does not move it. It inserts nothing for an
-// unknown item, which the caller reads as zero rows affected.
-const pinSQL = `INSERT INTO item_local_state (item_id, pinned_at, updated_at)
-SELECT id, ?, ? FROM items WHERE id = ?
-ON CONFLICT (item_id) DO UPDATE SET
-    pinned_at = COALESCE(item_local_state.pinned_at, excluded.pinned_at),
-    updated_at = excluded.updated_at`
-
-// restoreSQL ends an item's dismissal or snooze, and forgets what woke the snooze, leaving
-// a pin as it is.
-const restoreSQL = `UPDATE item_local_state
-SET dismissed_at = NULL, snoozed_until = NULL, snooze_baseline = NULL, wake_reasons = NULL, updated_at = ?
-WHERE item_id = ?`
-
-// unpinSQL unpins an item, leaving its dismissal or snooze as it is.
-const unpinSQL = `UPDATE item_local_state SET pinned_at = NULL, updated_at = ? WHERE item_id = ?`
-
-// pruneStateSQL deletes an item's local state once nothing is left in it: not pinned,
-// dismissed, or snoozed, nor back from a snooze.
-const pruneStateSQL = `DELETE FROM item_local_state
-WHERE item_id = ? AND pinned_at IS NULL AND dismissed_at IS NULL AND snoozed_until IS NULL`
-
-// activityColumns are an item's details a snooze compares, as snooze.State reads them.
-const activityColumns = `d.head_oid AS head, d.commits, d.comments, d.review_decision AS decision,
-    d.reviewed, d.approvals, d.changes_requested`
-
-// activityRow is one item's activity as activityColumns read it.
-type activityRow struct {
-	Head             string `gorm:"column:head"`
-	Commits          int    `gorm:"column:commits"`
-	Comments         int    `gorm:"column:comments"`
-	Decision         string `gorm:"column:decision"`
-	Reviewed         int    `gorm:"column:reviewed"`
-	Approvals        int    `gorm:"column:approvals"`
-	ChangesRequested int    `gorm:"column:changes_requested"`
-}
-
-// state converts the row to a snooze.State.
-func (r activityRow) state() snooze.State {
-	return snooze.State{
-		Head: r.Head, Commits: r.Commits, Comments: r.Comments, Decision: r.Decision,
-		Reviewed: r.Reviewed, Approvals: r.Approvals, ChangesRequested: r.ChangesRequested,
-	}
-}
 
 // Dismiss hides an item from every list until it is restored, and returns the new
 // snapshot. It replaces a snooze. Nothing is written to GitHub.
@@ -96,7 +40,7 @@ func (s *Service) Snooze(ctx context.Context, id int64, days int) (Snapshot, err
 
 	until := s.clock.Now().AddDate(0, 0, days).UTC().Truncate(time.Second)
 
-	baseline, err := activityBaseline(s.db.WithContext(ctx), id)
+	baseline, err := activityBaseline(ctx, s.q, id)
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("snooze the item: %w", err)
 	}
@@ -107,7 +51,9 @@ func (s *Service) Snooze(ctx context.Context, id int64, days int) (Snapshot, err
 // Restore brings a dismissed or snoozed item back to its lists, and returns the new
 // snapshot. A pinned item stays pinned. Restoring an item that is neither does nothing.
 func (s *Service) Restore(ctx context.Context, id int64) (Snapshot, error) {
-	return s.clearState(ctx, "restore the item", restoreSQL, id)
+	return s.clearState(ctx, "restore the item", id, func(ctx context.Context, q *queries.Queries) error {
+		return q.Restore(ctx, queries.RestoreParams{UpdatedAt: s.now(), ItemID: id})
+	})
 }
 
 // Pin keeps an item at the top of every list it is in, above the items not pinned, the
@@ -117,26 +63,33 @@ func (s *Service) Restore(ctx context.Context, id int64) (Snapshot, error) {
 func (s *Service) Pin(ctx context.Context, id int64) (Snapshot, error) {
 	now := s.now()
 
-	return s.setState(ctx, "pin", id, pinSQL, now, now, id)
+	return s.setState(ctx, "pin", id, func(ctx context.Context) (int64, error) {
+		return s.q.Pin(ctx, queries.PinParams{PinnedAt: &now, UpdatedAt: now, ID: id})
+	})
 }
 
 // Unpin puts a pinned item back in its place among the rest, by its last activity, and
 // returns the new snapshot. It leaves a snooze or a dismissal as it is. Unpinning an item
 // that is not pinned does nothing.
 func (s *Service) Unpin(ctx context.Context, id int64) (Snapshot, error) {
-	return s.clearState(ctx, "unpin the item", unpinSQL, id)
+	return s.clearState(ctx, "unpin the item", id, func(ctx context.Context, q *queries.Queries) error {
+		return q.Unpin(ctx, queries.UnpinParams{UpdatedAt: s.now(), ItemID: id})
+	})
 }
 
-// clearState runs clearSQL, which clears some of an item's local state, deletes the row
-// once nothing is left in it, tells the notifier, and returns the new snapshot. what
-// names the action in an error.
-func (s *Service) clearState(ctx context.Context, what, clearSQL string, id int64) (Snapshot, error) {
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Exec(clearSQL, s.now(), id).Error; err != nil {
+// clearState runs unset, which clears some of the local state of the item with id, and
+// deletes the row once nothing is left in it, both in one transaction; then it tells the
+// notifier and returns the new snapshot. what names the action in an error.
+func (s *Service) clearState(
+	ctx context.Context, what string, id int64, unset func(context.Context, *queries.Queries) error,
+) (Snapshot, error) {
+	err := store.InTx(ctx, s.db, func(tx *sql.Tx) error {
+		q := s.q.WithTx(tx)
+		if err := unset(ctx, q); err != nil {
 			return err
 		}
 
-		return tx.Exec(pruneStateSQL, id).Error
+		return q.PruneState(ctx, id)
 	})
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("%s: %w", what, err)
@@ -152,19 +105,25 @@ func (s *Service) clearState(ctx context.Context, what, clearSQL string, id int6
 func (s *Service) setTriage(
 	ctx context.Context, verb string, id int64, dismissedAt, snoozedUntil *time.Time, baseline *string,
 ) (Snapshot, error) {
-	return s.setState(ctx, verb, id, setTriageSQL, dismissedAt, snoozedUntil, baseline, s.now(), id)
+	return s.setState(ctx, verb, id, func(ctx context.Context) (int64, error) {
+		return s.q.SetTriage(ctx, queries.SetTriageParams{
+			DismissedAt: dismissedAt, SnoozedUntil: snoozedUntil, SnoozeBaseline: baseline, UpdatedAt: s.now(), ID: id,
+		})
+	})
 }
 
-// setState runs query, which records some of the local state of the item with id and
-// inserts nothing for an unknown item, then tells the notifier and returns the new
-// snapshot. verb names the action in an error.
-func (s *Service) setState(ctx context.Context, verb string, id int64, query string, args ...any) (Snapshot, error) {
-	res := s.db.WithContext(ctx).Exec(query, args...)
-	if res.Error != nil {
-		return Snapshot{}, fmt.Errorf("%s the item: %w", verb, res.Error)
+// setState runs set, which records some of the local state of the item with id and
+// returns how many rows it changed: none for an unknown item. Then it tells the notifier
+// and returns the new snapshot. verb names the action in an error.
+func (s *Service) setState(
+	ctx context.Context, verb string, id int64, set func(context.Context) (int64, error),
+) (Snapshot, error) {
+	n, err := set(ctx)
+	if err != nil {
+		return Snapshot{}, fmt.Errorf("%s the item: %w", verb, err)
 	}
 
-	if res.RowsAffected == 0 {
+	if n == 0 {
 		return Snapshot{}, fmt.Errorf("%w (id %d)", item.ErrNotFound, id)
 	}
 
@@ -176,36 +135,29 @@ func (s *Service) setState(ctx context.Context, verb string, id int64, query str
 // activityBaseline returns an item's activity as the last refresh read it, as the JSON a
 // snooze records, or nil when no refresh has read its details yet; the next refresh
 // records it then.
-func activityBaseline(db *gorm.DB, id int64) (*string, error) {
-	var rows []activityRow
+func activityBaseline(ctx context.Context, q *queries.Queries, id int64) (*string, error) {
+	row, err := q.GetActivity(ctx, id)
 
-	err := db.Raw("SELECT "+activityColumns+" FROM item_details d WHERE d.item_id = ?", id).Scan(&rows).Error
-	if err != nil {
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return nil, nil //nolint:nilnil // no details yet is not an error, and there is no baseline
+	case err != nil:
 		return nil, fmt.Errorf("read the item's activity: %w", err)
 	}
 
-	if len(rows) == 0 {
-		return nil, nil //nolint:nilnil // no details yet is not an error, and there is no baseline
-	}
-
-	return encodeJSON(rows[0].state())
+	return encodeJSON(snooze.State{
+		Head: row.HeadOID, Commits: int(row.Commits), Comments: int(row.Comments), Decision: row.ReviewDecision,
+		Reviewed: int(row.Reviewed), Approvals: int(row.Approvals), ChangesRequested: int(row.ChangesRequested),
+	})
 }
 
-// snoozedSQL reads the account's running snoozes on items whose details are known, with
-// their baseline, the author's type, and the activity the refresh just stored.
-const snoozedSQL = `SELECT ls.item_id, ls.snooze_baseline, i.author_type, ` + activityColumns + `
-FROM item_local_state ls
-JOIN items i ON i.id = ls.item_id
-JOIN item_details d ON d.item_id = ls.item_id
-WHERE i.account_id = ? AND ls.dismissed_at IS NULL AND ls.snoozed_until > ?`
-
-// snoozedRow is one row of snoozedSQL.
-type snoozedRow struct {
-	Activity activityRow `gorm:"embedded"`
-
-	ItemID     int64   `gorm:"column:item_id"`
-	Baseline   *string `gorm:"column:snooze_baseline"`
-	AuthorType string  `gorm:"column:author_type"`
+// snoozedActivity is the activity a running snooze is compared with: its item's details
+// as the refresh just stored them.
+func snoozedActivity(r queries.ListRunningSnoozesRow) snooze.State {
+	return snooze.State{
+		Head: r.HeadOID, Commits: int(r.Commits), Comments: int(r.Comments), Decision: r.ReviewDecision,
+		Reviewed: int(r.Reviewed), Approvals: int(r.Approvals), ChangesRequested: int(r.ChangesRequested),
+	}
 }
 
 // wakeSnoozed ends early every running snooze whose item's new activity passes the
@@ -218,13 +170,17 @@ func (w *writer) wakeSnoozed(ctx context.Context) error {
 		return err
 	}
 
-	var rows []snoozedRow
-	if err = w.tx.Raw(snoozedSQL, w.accountID, w.now).Scan(&rows).Error; err != nil {
+	// now is in UTC, as every stored time is, so it compares with snoozed_until as text
+	// in the same format.
+	now := w.now
+
+	rows, err := w.q.ListRunningSnoozes(ctx, queries.ListRunningSnoozesParams{AccountID: w.accountID, SnoozedUntil: &now})
+	if err != nil {
 		return fmt.Errorf("read the snoozed items: %w", err)
 	}
 
 	for _, r := range rows {
-		if err = w.wake(rules, r); err != nil {
+		if err = w.wake(ctx, rules, r); err != nil {
 			return err
 		}
 	}
@@ -233,18 +189,22 @@ func (w *writer) wakeSnoozed(ctx context.Context) error {
 }
 
 // wake checks one running snooze and records what changed.
-func (w *writer) wake(rules snooze.Rules, r snoozedRow) error {
-	now := r.Activity.state()
+func (w *writer) wake(ctx context.Context, rules snooze.Rules, r queries.ListRunningSnoozesRow) error {
+	now := snoozedActivity(r)
 
 	var then snooze.State
-	if r.Baseline == nil || json.Unmarshal([]byte(*r.Baseline), &then) != nil {
+	if r.SnoozeBaseline == nil || json.Unmarshal([]byte(*r.SnoozeBaseline), &then) != nil {
 		baseline, err := encodeJSON(now)
 		if err != nil {
 			return err
 		}
 
-		return w.exec("record the snooze baseline",
-			"UPDATE item_local_state SET snooze_baseline = ? WHERE item_id = ?", baseline, r.ItemID)
+		err = w.q.SetSnoozeBaseline(ctx, queries.SetSnoozeBaselineParams{SnoozeBaseline: baseline, ItemID: r.ItemID})
+		if err != nil {
+			return fmt.Errorf("record the snooze baseline: %w", err)
+		}
+
+		return nil
 	}
 
 	bot := trust.Author{Type: r.AuthorType}.IsBot()
@@ -259,11 +219,13 @@ func (w *writer) wake(rules snooze.Rules, r snoozedRow) error {
 		return err
 	}
 
-	err = w.exec("wake the snoozed item",
-		"UPDATE item_local_state SET snoozed_until = ?, wake_reasons = ?, updated_at = ? WHERE item_id = ?",
-		w.now, encoded, w.now, r.ItemID)
+	endedAt := w.now
+
+	err = w.q.WakeSnooze(ctx, queries.WakeSnoozeParams{
+		SnoozedUntil: &endedAt, WakeReasons: encoded, UpdatedAt: w.now, ItemID: r.ItemID,
+	})
 	if err != nil {
-		return err
+		return fmt.Errorf("wake the snoozed item: %w", err)
 	}
 
 	if w.woke == nil {
@@ -271,15 +233,6 @@ func (w *writer) wake(rules snooze.Rules, r snoozedRow) error {
 	}
 
 	w.woke[r.ItemID] = reasons
-
-	return nil
-}
-
-// exec runs one statement in the refresh's transaction; what names it in an error.
-func (w *writer) exec(what, query string, args ...any) error {
-	if err := w.tx.Exec(query, args...).Error; err != nil {
-		return fmt.Errorf("%s: %w", what, err)
-	}
 
 	return nil
 }
@@ -294,14 +247,12 @@ func wakeRules(ctx context.Context, p *prefs.Store) (snooze.Rules, error) {
 	return snooze.DecodeRules(stored), nil
 }
 
-// encodeJSON encodes v for a JSON column.
+// encodeJSON encodes v for a nullable JSON column.
 func encodeJSON(v any) (*string, error) {
-	b, err := json.Marshal(v)
+	text, err := store.EncodeJSON(v)
 	if err != nil {
-		return nil, fmt.Errorf("encode %T: %w", v, err)
+		return nil, err
 	}
 
-	out := string(b)
-
-	return &out, nil
+	return &text, nil
 }

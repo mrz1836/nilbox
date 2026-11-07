@@ -13,12 +13,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 
 	"github.com/mrz1836/nilbox/internal/github"
-	"github.com/mrz1836/nilbox/internal/inbox/model"
 	"github.com/mrz1836/nilbox/internal/item"
-	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
@@ -214,7 +211,6 @@ func (c *fakeClient) FetchAvatar(_ context.Context, url string) (*github.Avatar,
 type harness struct {
 	svc      *Service
 	pool     *sql.DB
-	db       *gorm.DB
 	path     string
 	tokens   *fakeTokens
 	client   *fakeClient
@@ -227,11 +223,9 @@ func newHarness(t *testing.T) *harness {
 	t.Helper()
 
 	path := filepath.Join(t.TempDir(), "app.db")
-	pool, db := testutil.BridgedDBAt(t, path)
 
 	h := &harness{
-		pool:     pool,
-		db:       db,
+		pool:     testutil.SQLDBAt(t, path),
 		path:     path,
 		tokens:   &fakeTokens{},
 		client:   &fakeClient{limits: restLimits(), avatar: fakeAvatar()},
@@ -247,7 +241,7 @@ func newHarness(t *testing.T) *harness {
 // service builds a Service over the harness's database and fakes.
 func (h *harness) service() *Service {
 	return NewService(Config{
-		Pool: h.pool, DB: h.db, Tokens: h.tokens, Client: h.client, Clock: h.clock, Notifier: h.notifier,
+		Pool: h.pool, Tokens: h.tokens, Client: h.client, Clock: h.clock, Notifier: h.notifier,
 	})
 }
 
@@ -261,15 +255,79 @@ func (h *harness) refresh(t *testing.T) Snapshot {
 	return snap
 }
 
+// exec runs a statement on the harness's database.
+func (h *harness) exec(t *testing.T, query string, args ...any) {
+	t.Helper()
+
+	_, err := h.pool.ExecContext(t.Context(), query, args...)
+	require.NoError(t, err)
+}
+
+// storedItem is a stored item's row, as the tests read it.
+type storedItem struct {
+	ID                    int64
+	Number                int
+	Kind                  item.Kind
+	AuthorLogin           string
+	AuthorType            string
+	AuthorAssociation     string
+	HeadRef               string
+	IsCrossRepository     bool
+	ReasonReviewRequested bool
+	ReasonAuthored        bool
+	ReasonAssigned        bool
+}
+
+// storedItems returns every stored item, by number.
+func (h *harness) storedItems(t *testing.T) []storedItem {
+	t.Helper()
+
+	rows, err := h.pool.QueryContext(t.Context(), `SELECT id, number, kind, author_login, author_type,
+    author_association, head_ref, is_cross_repository, reason_review_requested, reason_authored, reason_assigned
+FROM items ORDER BY number`)
+	require.NoError(t, err)
+
+	defer func() { _ = rows.Close() }()
+
+	var items []storedItem
+
+	for rows.Next() {
+		var it storedItem
+		require.NoError(t, rows.Scan(&it.ID, &it.Number, &it.Kind, &it.AuthorLogin, &it.AuthorType,
+			&it.AuthorAssociation, &it.HeadRef, &it.IsCrossRepository, &it.ReasonReviewRequested, &it.ReasonAuthored,
+			&it.ReasonAssigned))
+		items = append(items, it)
+	}
+
+	require.NoError(t, rows.Err())
+
+	return items
+}
+
+// storedItemNumbered returns the one stored item with a number.
+func (h *harness) storedItemNumbered(t *testing.T, number int) storedItem {
+	t.Helper()
+
+	var found []storedItem
+
+	for _, it := range h.storedItems(t) {
+		if it.Number == number {
+			found = append(found, it)
+		}
+	}
+
+	require.Len(t, found, 1)
+
+	return found[0]
+}
+
 // reasons returns an item's three reason flags by number.
 func (h *harness) reasons(t *testing.T, number int) [3]bool {
 	t.Helper()
 
-	var rows []model.Item
-	require.NoError(t, h.db.Where("number = ?", number).Find(&rows).Error)
-	require.Len(t, rows, 1)
+	it := h.storedItemNumbered(t, number)
 
-	return [3]bool{rows[0].ReasonReviewRequested, rows[0].ReasonAuthored, rows[0].ReasonAssigned}
+	return [3]bool{it.ReasonReviewRequested, it.ReasonAuthored, it.ReasonAssigned}
 }
 
 // count returns the number of rows in a table.
@@ -277,9 +335,75 @@ func (h *harness) count(t *testing.T, table string) int64 {
 	t.Helper()
 
 	var n int64
-	require.NoError(t, h.db.Table(table).Count(&n).Error)
+	require.NoError(t, h.pool.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM "+table).Scan(&n))
 
 	return n
+}
+
+// column returns the text of the first column of every row a query returns.
+func (h *harness) column(t *testing.T, query string, args ...any) []string {
+	t.Helper()
+
+	var out []string
+
+	for _, row := range h.rows(t, query, args...) {
+		for _, v := range row {
+			out = append(out, fmt.Sprint(v))
+		}
+	}
+
+	return out
+}
+
+// rows returns every row a query returns, each as a map of column to value.
+func (h *harness) rows(t *testing.T, query string, args ...any) []map[string]any {
+	t.Helper()
+
+	rows, err := h.pool.QueryContext(t.Context(), query, args...)
+	require.NoError(t, err)
+
+	defer func() { _ = rows.Close() }()
+
+	cols, err := rows.Columns()
+	require.NoError(t, err)
+
+	var out []map[string]any
+
+	for rows.Next() {
+		values := make([]any, len(cols))
+		dest := make([]any, len(cols))
+
+		for i := range values {
+			dest[i] = &values[i]
+		}
+
+		require.NoError(t, rows.Scan(dest...))
+
+		row := make(map[string]any, len(cols))
+		for i, col := range cols {
+			row[col] = values[i]
+		}
+
+		out = append(out, row)
+	}
+
+	require.NoError(t, rows.Err())
+
+	return out
+}
+
+// insertRate stores a core rate reading for the stored account, taken at takenAt, and
+// returns its id.
+func (h *harness) insertRate(t *testing.T, limit int, takenAt time.Time) int64 {
+	t.Helper()
+
+	var id int64
+
+	require.NoError(t, h.pool.QueryRowContext(t.Context(), `INSERT INTO rate_snapshots
+(account_id, resource, limit_total, remaining, used, cost, reset_at, taken_at)
+SELECT id, ?, ?, 0, 0, 0, ?, ? FROM accounts RETURNING id`, resourceCore, limit, takenAt, takenAt).Scan(&id))
+
+	return id
 }
 
 // pr builds a fetched pull request in example-repo.
@@ -309,7 +433,7 @@ func githubItem(repo string, number int, assoc string, isPR, crossRepo bool) git
 		URL:               fmt.Sprintf("https://github.com/acme-org/%s/pull/%d", repo, number),
 		CreatedAt:         updated.Add(-time.Hour),
 		UpdatedAt:         updated,
-		AuthorLogin:       "octo-user",
+		AuthorLogin:       octoUser,
 		AuthorAssociation: assoc,
 		IsCrossRepository: crossRepo,
 		RepoOwner:         "acme-org",
@@ -322,6 +446,9 @@ func githubItem(repo string, number int, assoc string, isPR, crossRepo bool) git
 
 	return it
 }
+
+// octoUser is the signed-in account's login in the fake inbox.
+const octoUser = "octo-user"
 
 // Avatar URLs on GitHub's avatar host for the fake accounts.
 const (
@@ -338,7 +465,7 @@ func fakeAvatar() *github.Avatar {
 func fetched(review, authored, assigned []github.Item) *github.Inbox {
 	return &github.Inbox{
 		Viewer: github.Viewer{
-			Login:     "octo-user",
+			Login:     octoUser,
 			Name:      "Octo User",
 			URL:       "https://github.com/octo-user",
 			AvatarURL: octoUserAvatar,
@@ -395,9 +522,8 @@ func TestRefreshUpsertsItemsWithReasonFlags(t *testing.T) {
 	assert.Equal(t, int64(2), h.count(t, "repos"))
 
 	// Local state keeps B's row alive after it drops out of every list.
-	var bRow model.Item
-	require.NoError(t, h.db.Where("number = ?", 2).First(&bRow).Error)
-	require.NoError(t, h.db.Create(&model.ItemLocalState{ItemID: bRow.ID, UpdatedAt: h.clock.Now()}).Error)
+	h.exec(t, "INSERT INTO item_local_state (item_id, updated_at) VALUES (?, ?)", h.storedItemNumbered(t, 2).ID,
+		h.clock.Now())
 
 	// Next refresh: A is only review-requested (retitled), B is gone, C is still assigned.
 	a.Title = "Item 1, retitled"
@@ -437,11 +563,10 @@ func TestRefreshStoresTrustFields(t *testing.T) {
 		[]github.Item{memberIssue})
 	snap := h.refresh(t)
 
-	var stored []model.Item
-	require.NoError(t, h.db.Order("number").Find(&stored).Error)
+	stored := h.storedItems(t)
 	require.Len(t, stored, 7)
 
-	got := make(map[int]model.Item)
+	got := make(map[int]storedItem)
 	for _, it := range stored {
 		got[it.Number] = it
 	}
@@ -480,7 +605,7 @@ func TestRefreshStoresTrustFields(t *testing.T) {
 	assert.Equal(t, Item{
 		ID: fromFork.ID, Kind: string(item.KindPR), Number: 12, Title: "Item 12",
 		URL:  "https://github.com/acme-org/example-repo/pull/12",
-		Repo: "acme-org/example-repo", Author: "octo-user", UpdatedAt: "2026-01-01T12:00:00Z",
+		Repo: "acme-org/example-repo", Author: octoUser, UpdatedAt: "2026-01-01T12:00:00Z",
 		Trust: trust.ClassOutside, Trusted: false, IsCrossRepository: true, AuthorAssociation: "CONTRIBUTOR",
 		Branch: "branch-12",
 	}, fromFork)
@@ -504,34 +629,59 @@ func TestRefreshWritesRateSnapshot(t *testing.T) {
 	h.client.inbox = fetched(nil, nil, nil)
 	h.refresh(t)
 
-	var acct model.Account
-	require.NoError(t, h.db.First(&acct).Error)
-
 	// Readings older than the retention window are pruned on the next refresh.
-	old := model.RateSnapshot{AccountID: acct.ID, Resource: resourceCore, LimitTotal: 1, TakenAt: h.clock.Now().Add(-8 * 24 * time.Hour)}
-	recent := model.RateSnapshot{AccountID: acct.ID, Resource: resourceCore, LimitTotal: 2, TakenAt: h.clock.Now().Add(-6 * 24 * time.Hour)}
-	require.NoError(t, h.db.Create(&old).Error)
-	require.NoError(t, h.db.Create(&recent).Error)
+	old := h.insertRate(t, 1, h.clock.Now().Add(-8*24*time.Hour))
+	recent := h.insertRate(t, 2, h.clock.Now().Add(-6*24*time.Hour))
 
 	h.clock.Advance(DefaultInterval)
 	snap := h.refresh(t)
 
-	var rows []model.RateSnapshot
-	require.NoError(t, h.db.Where("taken_at = ?", h.clock.Now()).Order("resource").Find(&rows).Error)
-	require.Len(t, rows, 3, "one row per resource per refresh")
+	rows, err := h.pool.QueryContext(t.Context(),
+		"SELECT resource, limit_total, remaining, cost FROM rate_snapshots WHERE taken_at = ? ORDER BY resource",
+		h.clock.Now())
+	require.NoError(t, err)
 
-	assert.Equal(t, resourceCore, rows[0].Resource)
-	assert.Equal(t, 4980, rows[0].Remaining)
-	assert.Equal(t, resourceGraphQL, rows[1].Resource)
-	assert.Equal(t, 1, rows[1].Cost, "the GraphQL row carries the query cost")
-	assert.Equal(t, 4990, rows[1].Remaining)
-	assert.Equal(t, resourceSearch, rows[2].Resource)
-	assert.Equal(t, 30, rows[2].LimitTotal)
+	defer func() { _ = rows.Close() }()
 
-	var kept []model.RateSnapshot
-	require.NoError(t, h.db.Where("id IN ?", []int64{old.ID, recent.ID}).Find(&kept).Error)
-	require.Len(t, kept, 1)
-	assert.Equal(t, recent.ID, kept[0].ID)
+	type reading struct {
+		resource                    string
+		limitTotal, remaining, cost int
+	}
+
+	var readings []reading
+
+	for rows.Next() {
+		var r reading
+		require.NoError(t, rows.Scan(&r.resource, &r.limitTotal, &r.remaining, &r.cost))
+		readings = append(readings, r)
+	}
+
+	require.NoError(t, rows.Err())
+	require.Len(t, readings, 3, "one row per resource per refresh")
+
+	assert.Equal(t, resourceCore, readings[0].resource)
+	assert.Equal(t, 4980, readings[0].remaining)
+	assert.Equal(t, resourceGraphQL, readings[1].resource)
+	assert.Equal(t, 1, readings[1].cost, "the GraphQL row carries the query cost")
+	assert.Equal(t, 4990, readings[1].remaining)
+	assert.Equal(t, resourceSearch, readings[2].resource)
+	assert.Equal(t, 30, readings[2].limitTotal)
+
+	var kept []int64
+
+	keptRows, err := h.pool.QueryContext(t.Context(), "SELECT id FROM rate_snapshots WHERE id IN (?, ?)", old, recent)
+	require.NoError(t, err)
+
+	defer func() { _ = keptRows.Close() }()
+
+	for keptRows.Next() {
+		var id int64
+		require.NoError(t, keptRows.Scan(&id))
+		kept = append(kept, id)
+	}
+
+	require.NoError(t, keptRows.Err())
+	assert.Equal(t, []int64{recent}, kept)
 
 	assert.Equal(t, Rate{
 		Known: true, Limit: 5000, Remaining: 4990, Used: 10, Cost: 1,
@@ -595,7 +745,7 @@ func TestSnapshotReportsNofM(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, snap, again)
 	assert.Equal(t, "2026-01-10T12:00:00Z", again.LastRefreshedAt)
-	assert.Equal(t, "octo-user", again.Account.Login)
+	assert.Equal(t, octoUser, again.Account.Login)
 }
 
 func TestRefreshNeverPersistsToken(t *testing.T) {
@@ -612,15 +762,11 @@ func TestRefreshNeverPersistsToken(t *testing.T) {
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), fakeToken)
 
-	var tables []string
-	require.NoError(t, h.db.Raw("SELECT name FROM sqlite_master WHERE type = 'table'").Scan(&tables).Error)
+	tables := h.column(t, "SELECT name FROM sqlite_master WHERE type = 'table'")
 	require.NotEmpty(t, tables)
 
 	for _, table := range tables {
-		var rows []map[string]any
-		require.NoError(t, h.db.Table(table).Find(&rows).Error)
-
-		for _, row := range rows {
+		for _, row := range h.rows(t, "SELECT * FROM "+table) {
 			for col, v := range row {
 				assert.NotContains(t, fmt.Sprint(v), fakeToken, "%s.%s", table, col)
 			}
@@ -737,7 +883,7 @@ func TestRefreshStoresTheAccount(t *testing.T) {
 	snap := h.refresh(t)
 
 	assert.Equal(t, Account{
-		Login:      "octo-user",
+		Login:      octoUser,
 		Name:       "Octo User",
 		ProfileURL: "https://github.com/octo-user",
 		Avatar:     "data:image/png;base64,bm90LXJlYWxseS1hLXBuZw==",
@@ -778,7 +924,7 @@ func TestRefreshAvatarFailureIsBestEffort(t *testing.T) {
 	snap := h.refresh(t)
 	assert.Empty(t, snap.LastError, "a missing picture is not a refresh failure")
 	assert.Equal(t, []int{1}, numbers(snap.ReviewRequested))
-	assert.Equal(t, "octo-user", snap.Account.Login)
+	assert.Equal(t, octoUser, snap.Account.Login)
 	assert.Empty(t, snap.Account.Avatar)
 
 	// The next refresh tries again.
@@ -829,7 +975,7 @@ func TestSnapshotDatabaseErrors(t *testing.T) {
 	h := newHarness(t)
 	h.client.inbox = fetched(nil, nil, nil)
 	h.refresh(t)
-	require.NoError(t, store.Close(h.db))
+	require.NoError(t, h.pool.Close())
 
 	_, err := h.svc.Snapshot(t.Context())
 	require.Error(t, err)
@@ -840,7 +986,7 @@ func TestSnapshotDatabaseErrors(t *testing.T) {
 
 func TestNewServiceUsesTheSystemClock(t *testing.T) {
 	h := newHarness(t)
-	svc := NewService(Config{Pool: h.pool, DB: h.db, Tokens: h.tokens, Client: h.client})
+	svc := NewService(Config{Pool: h.pool, Tokens: h.tokens, Client: h.client})
 	h.client.inbox = fetched(nil, nil, nil)
 
 	before := time.Now().UTC().Truncate(time.Second)
@@ -1078,7 +1224,7 @@ func TestRefreshNewItemDetailsFailure(t *testing.T) {
 
 func TestListedNodeIDsError(t *testing.T) {
 	h := newHarness(t)
-	require.NoError(t, h.db.Exec("DROP TABLE items").Error)
+	h.exec(t, "DROP TABLE items")
 
 	_, err := h.svc.listedNodeIDs(t.Context())
 	require.ErrorContains(t, err, "read the listed items")
@@ -1093,15 +1239,50 @@ func TestNewIDs(t *testing.T) {
 	assert.Equal(t, []string{"a"}, newIDs([]string{"a"}, nil))
 }
 
+// storedRepo is a stored repository's row, as the tests read it.
+type storedRepo struct {
+	ID                 int64
+	NodeID             string
+	Description        string
+	Visibility         string
+	IsArchived         bool
+	ArchivedAt         *time.Time
+	IsFork             bool
+	Parent             string
+	DefaultBranch      string
+	ViewerPermission   string
+	ViewerMergeMethod  string
+	MergeCommitAllowed bool
+	SquashMergeAllowed bool
+	AutoMergeAllowed   bool
+	AllowUpdateBranch  bool
+	Language           string
+	LanguageColor      string
+	PushedAt           *time.Time
+	FetchedAt          *time.Time
+	Pinned             bool
+	Muted              bool
+	LocalPath          string
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+}
+
 // repoRow reads a stored repository by name.
-func (h *harness) repoRow(t *testing.T, name string) model.Repo {
+func (h *harness) repoRow(t *testing.T, name string) storedRepo {
 	t.Helper()
 
-	var rows []model.Repo
-	require.NoError(t, h.db.Where("name = ?", name).Find(&rows).Error)
-	require.Len(t, rows, 1)
+	var r storedRepo
 
-	return rows[0]
+	require.NoError(t, h.pool.QueryRowContext(t.Context(), `SELECT id, node_id, description, visibility,
+    is_archived, archived_at, is_fork, parent, default_branch, viewer_permission, viewer_merge_method,
+    merge_commit_allowed, squash_merge_allowed, auto_merge_allowed, allow_update_branch, language, language_color,
+    pushed_at, fetched_at, pinned, muted, local_path, created_at, updated_at
+FROM repos WHERE name = ?`, name).Scan(&r.ID, &r.NodeID, &r.Description, &r.Visibility, &r.IsArchived,
+		&r.ArchivedAt, &r.IsFork, &r.Parent, &r.DefaultBranch, &r.ViewerPermission, &r.ViewerMergeMethod,
+		&r.MergeCommitAllowed, &r.SquashMergeAllowed, &r.AutoMergeAllowed, &r.AllowUpdateBranch, &r.Language,
+		&r.LanguageColor, &r.PushedAt, &r.FetchedAt, &r.Pinned, &r.Muted, &r.LocalPath, &r.CreatedAt, &r.UpdatedAt))
+
+	return r
 }
 
 func TestRefreshStoresWhatGitHubSaysAboutEachRepository(t *testing.T) {
@@ -1140,8 +1321,8 @@ func TestRefreshStoresWhatGitHubSaysAboutEachRepository(t *testing.T) {
 
 	// The local columns are the user's, and a refresh leaves them alone while it rewrites
 	// GitHub's.
-	require.NoError(t, h.db.Model(&model.Repo{}).Where("id = ?", repo.ID).
-		Updates(map[string]any{"pinned": true, "muted": true, "local_path": "~/projects/example-repo"}).Error)
+	h.exec(t, "UPDATE repos SET pinned = 1, muted = 1, local_path = ? WHERE id = ?", "~/projects/example-repo",
+		repo.ID)
 
 	a.Repo.Description = "Renamed description"
 	a.Repo.PushedAt = time.Time{}

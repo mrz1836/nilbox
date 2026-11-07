@@ -2,6 +2,7 @@ package launcher
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,11 +17,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/appdata"
-	"github.com/mrz1836/nilbox/internal/inbox/model"
+	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/localrepos"
@@ -150,7 +151,8 @@ func (failingDefaults) All(context.Context) ([]launchdefaults.Defaults, error) {
 // launchHarness is a launch Service over a temp database, a temp home with one clone,
 // and fakes for git, the agent lookup, and the terminals.
 type launchHarness struct {
-	db       *gorm.DB
+	pool     *sql.DB
+	items    *inbox.Store
 	profiles *profiles.Store
 	prompts  *prompts.Store
 	defaults *launchdefaults.Store
@@ -187,8 +189,9 @@ func newLaunchHarness(t *testing.T) *launchHarness {
 
 	makeRepoDir(t, h.clone)
 
-	pool, db := testutil.BridgedDBAt(t, h.paths.DB)
-	h.db = db
+	pool := testutil.SQLDBAt(t, h.paths.DB)
+	h.pool = pool
+	h.items = inbox.NewStore(pool, testutil.NewClock(fixedNow()))
 	h.profiles = profiles.NewStore(pool, nil)
 	h.prompts = prompts.NewStore(pool, nil)
 	h.defaults = launchdefaults.NewStore(pool, nil)
@@ -196,7 +199,7 @@ func newLaunchHarness(t *testing.T) *launchHarness {
 
 	h.settings = settings.NewService(pool, h.profiles, h.home)
 	h.cfg = Config{
-		DB:       h.db,
+		Items:    h.items,
 		Settings: h.settings,
 		Profiles: h.profiles,
 		Prompts:  h.prompts,
@@ -223,32 +226,13 @@ func makeRepoDir(t *testing.T, dir string) {
 func (h *launchHarness) seed(t *testing.T) {
 	t.Helper()
 
-	now := fixedNow()
-	account := model.Account{Login: "octo-user", CreatedAt: now, UpdatedAt: now}
-	require.NoError(t, h.db.Create(&account).Error)
-
-	repo := model.Repo{Owner: "acme-org", Name: "example-repo", CreatedAt: now, UpdatedAt: now}
-	require.NoError(t, h.db.Create(&repo).Error)
-
-	orphan := model.Repo{Owner: "acme-org", Name: "missing-repo", CreatedAt: now, UpdatedAt: now}
-	require.NoError(t, h.db.Create(&orphan).Error)
-
-	addItem := func(repoID int64, kind item.Kind, number int, assoc string, cross bool) int64 {
-		row := model.Item{
-			AccountID: account.ID, RepoID: repoID, Kind: kind, Number: number,
-			Title: fmt.Sprintf("Change %d", number), URL: fmt.Sprintf("https://github.com/acme-org/x/%d", number),
-			AuthorLogin: "octo-user", AuthorAssociation: assoc, IsCrossRepository: cross, HeadRef: "feature-branch",
-			ItemCreatedAt: now, ItemUpdatedAt: now, FetchedAt: now,
-		}
-		require.NoError(t, h.db.Create(&row).Error)
-
-		return row.ID
-	}
-
-	h.trustedPR = addItem(repo.ID, item.KindPR, 7, "OWNER", false)
-	h.outsidePR = addItem(repo.ID, item.KindPR, 8, "CONTRIBUTOR", true)
-	h.issue = addItem(repo.ID, item.KindIssue, 3, "MEMBER", false)
-	h.orphanPR = addItem(orphan.ID, item.KindPR, 9, "OWNER", false)
+	stored := h.store(t,
+		storedItem("example-repo", item.KindPR, 7, "OWNER", false),
+		storedItem("example-repo", item.KindPR, 8, "CONTRIBUTOR", true),
+		storedItem("example-repo", item.KindIssue, 3, "MEMBER", false),
+		storedItem("missing-repo", item.KindPR, 9, "OWNER", false),
+	)
+	h.trustedPR, h.outsidePR, h.issue, h.orphanPR = stored[0], stored[1], stored[2], stored[3]
 
 	work := profiles.Profile{
 		Name: "work", ConfigDir: filepath.Join(h.home, ".claude_work"), PermissionMode: "acceptEdits",
@@ -260,6 +244,40 @@ func (h *launchHarness) seed(t *testing.T) {
 	}
 	require.NoError(t, h.profiles.Sync(t.Context(), []profiles.Profile{full, work}))
 	require.NoError(t, prompts.Seed(t.Context(), h.prompts))
+}
+
+// storedItem is a pull request or issue by octo-user in an acme-org repository, as the
+// inbox stores it.
+func storedItem(repoName string, kind item.Kind, number int, assoc string, cross bool) github.Item {
+	return github.Item{
+		IsPR: kind == item.KindPR, Number: number, Title: fmt.Sprintf("Change %d", number),
+		URL: fmt.Sprintf("https://github.com/acme-org/x/%d", number), CreatedAt: fixedNow(), UpdatedAt: fixedNow(),
+		HeadRef: "feature-branch", AuthorLogin: "octo-user", AuthorAssociation: assoc, IsCrossRepository: cross,
+		RepoOwner: "acme-org", RepoName: repoName,
+	}
+}
+
+// store stores items for octo-user, in no list, and returns their ids.
+func (h *launchHarness) store(t *testing.T, items ...github.Item) []int64 {
+	t.Helper()
+
+	fixture := inbox.Fixture{Viewer: "octo-user", At: fixedNow()}
+	for _, it := range items {
+		fixture.Items = append(fixture.Items, inbox.FixtureItem{Item: it})
+	}
+
+	ids, err := inbox.StoreFixture(t.Context(), h.pool, fixture)
+	require.NoError(t, err)
+
+	return ids
+}
+
+// exec runs a statement on the harness's database.
+func (h *launchHarness) exec(t *testing.T, query string, args ...any) {
+	t.Helper()
+
+	_, err := h.pool.ExecContext(t.Context(), query, args...)
+	require.NoError(t, err)
 }
 
 // service returns a launch Service over the harness's current config.
@@ -284,10 +302,11 @@ func (h *launchHarness) launch(t *testing.T, req LaunchRequest) (LaunchResult, s
 func (h *launchHarness) cachedPath(t *testing.T, name string) string {
 	t.Helper()
 
-	var repo model.Repo
-	require.NoError(t, h.db.Where("name = ?", name).First(&repo).Error)
+	var path string
+	require.NoError(t, h.pool.QueryRowContext(t.Context(), "SELECT local_path FROM repos WHERE name = ?", name).
+		Scan(&path))
 
-	return repo.LocalPath
+	return path
 }
 
 // launchFiles lists the files in the launch directory.
@@ -591,7 +610,7 @@ func TestLaunchRevalidatesTheCachedClone(t *testing.T) {
 	h := newLaunchHarness(t)
 
 	stale := filepath.Join(h.root, "gone")
-	require.NoError(t, h.db.Exec("UPDATE repos SET local_path = ? WHERE name = ?", stale, "example-repo").Error)
+	h.exec(t, "UPDATE repos SET local_path = ? WHERE name = ?", stale, "example-repo")
 
 	res, _ := h.launch(t, LaunchRequest{ItemID: h.trustedPR})
 	assert.Equal(t, "~/projects/example-repo", res.ClonePath, "a vanished cached clone is found again")
@@ -601,7 +620,7 @@ func TestLaunchRevalidatesTheCachedClone(t *testing.T) {
 	other := filepath.Join(h.root, "other-repo")
 	makeRepoDir(t, other)
 	h.git.remotes[other] = "remote.origin.url git@github.com:acme-org/other-repo.git\n"
-	require.NoError(t, h.db.Exec("UPDATE repos SET local_path = ? WHERE name = ?", other, "example-repo").Error)
+	h.exec(t, "UPDATE repos SET local_path = ? WHERE name = ?", other, "example-repo")
 
 	res, _ = h.launch(t, LaunchRequest{ItemID: h.trustedPR})
 	assert.Equal(t, "~/projects/example-repo", res.ClonePath)
@@ -611,7 +630,7 @@ func TestLaunchRevalidatesTheCachedClone(t *testing.T) {
 	elsewhere := filepath.Join(h.home, "elsewhere", "example-repo")
 	makeRepoDir(t, elsewhere)
 	h.git.remotes[elsewhere] = "remote.origin.url https://github.com/acme-org/example-repo\n"
-	require.NoError(t, h.db.Exec("UPDATE repos SET local_path = ? WHERE name = ?", elsewhere, "example-repo").Error)
+	h.exec(t, "UPDATE repos SET local_path = ? WHERE name = ?", elsewhere, "example-repo")
 
 	before := len(h.git.recorded())
 	res, _ = h.launch(t, LaunchRequest{ItemID: h.trustedPR})
@@ -669,7 +688,7 @@ func TestLaunchFailures(t *testing.T) {
 			name: "invalid profile",
 			mutate: func(t *testing.T, h *launchHarness) {
 				t.Helper()
-				require.NoError(t, h.db.Exec("UPDATE claude_profiles SET effort = 'turbo' WHERE name = 'default'").Error)
+				h.exec(t, "UPDATE claude_profiles SET effort = 'turbo' WHERE name = 'default'")
 			},
 			wantErr: agent.ErrInvalidEffort,
 		},
@@ -707,7 +726,7 @@ func TestLaunchFailures(t *testing.T) {
 
 func TestLaunchStopsWhenCancelled(t *testing.T) {
 	h := newLaunchHarness(t)
-	require.NoError(t, h.db.Exec("UPDATE repos SET local_path = ? WHERE name = ?", h.clone, "example-repo").Error)
+	h.exec(t, "UPDATE repos SET local_path = ? WHERE name = ?", h.clone, "example-repo")
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
