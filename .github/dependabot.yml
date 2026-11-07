@@ -19,7 +19,8 @@
 #   • PR limit = 10 to avoid queue flooding.
 #   • All dependency PRs require passing CI checks before merging.
 #   • Cooldown on version updates – new releases must age 3 days (gomod: patch 3 / minor 7 / major 14)
-#     before a PR opens; trusted publishers are excluded. Security updates are never delayed.
+#     before a PR opens; npm (/frontend) waits 7 days (patch 7 / minor 7 / major 14) to match
+#     pnpm's 7-day minimumReleaseAge. Trusted publishers are excluded. Security updates are never delayed.
 # ────────────────────────────────────────────────────────────────
 
 version: 2
@@ -41,6 +42,7 @@ updates:
       semver-major-days: 14
       semver-minor-days: 7
       semver-patch-days: 3
+      exclude: ["golang.org/x/*"]
     allow:
       - dependency-type: "direct"
     groups:
@@ -103,6 +105,36 @@ updates:
     open-pull-requests-limit: 5
     assignees: ["mrz1836"]
     labels: ["chore", "dependencies", "devcontainer"]
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+  # ──────────────────────────────────────────────────────────────
+  # 4. npm (frontend/package.json – managed by pnpm)
+  # ──────────────────────────────────────────────────────────────
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    target-branch: "master"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "11:45"
+      timezone: "America/New_York"
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 7
+    allow:
+      - dependency-type: "direct"
+    groups:
+      npm-all:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    open-pull-requests-limit: 10
+    assignees: ["mrz1836"]
+    labels: ["chore", "dependencies", "npm"]
     commit-message:
       prefix: "chore"
       include: "scope"
