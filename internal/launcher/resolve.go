@@ -122,20 +122,15 @@ type world struct {
 	policy trust.Policy
 }
 
-// loadWorld reads everything resolution needs from the database, the settings, and the
-// stored profiles.
+// loadWorld reads everything resolution needs from the database, the settings, the
+// prompt library, and the stored profiles.
 func (s *Service) loadWorld(ctx context.Context) (world, error) {
 	prefs, err := s.settings.Get(ctx)
 	if err != nil {
 		return world{}, err
 	}
 
-	defaults, err := prompts.LoadDefaults(ctx, s.db)
-	if err != nil {
-		return world{}, err
-	}
-
-	all, err := prompts.All(ctx, s.db)
+	library, err := s.prompts.Library(ctx)
 	if err != nil {
 		return world{}, err
 	}
@@ -151,12 +146,13 @@ func (s *Service) loadWorld(ctx context.Context) (world, error) {
 	}
 
 	w := world{
-		settings: prefs, defaults: defaults, rules: launchdefaults.NewIndex(rules),
-		policy:  trust.NewPolicy(prefs.TrustedBots),
-		prompts: make(map[int64]prompts.Prompt, len(all)), profiles: make(map[string]profiles.Profile, len(stored)),
+		settings: prefs, defaults: library.Defaults, rules: launchdefaults.NewIndex(rules),
+		policy:   trust.NewPolicy(prefs.TrustedBots),
+		prompts:  make(map[int64]prompts.Prompt, len(library.Prompts)),
+		profiles: make(map[string]profiles.Profile, len(stored)),
 	}
 
-	for _, p := range all {
+	for _, p := range library.Prompts {
 		w.prompts[p.ID] = p
 	}
 

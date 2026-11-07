@@ -7,7 +7,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/glebarez/go-sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 
 	"github.com/mrz1836/nilbox/internal/clock"
@@ -21,10 +20,6 @@ const (
 	// maxAsideNameAttempts bounds the search for a free name to set a database aside
 	// under.
 	maxAsideNameAttempts = 100
-
-	// primaryCodeMask keeps an SQLite result code's primary part: an extended code
-	// carries it in its low byte.
-	primaryCodeMask = 0xff
 )
 
 // ErrNoAsideName is returned when every name a database could be set aside under is
@@ -83,17 +78,6 @@ func resetReason(err error) (ResetReason, bool) {
 	default:
 		return "", false
 	}
-}
-
-// sqliteCode returns the primary SQLite result code of the driver error in err's chain,
-// or SQLITE_OK when it holds none.
-func sqliteCode(err error) int {
-	var driverErr *sqlite.Error
-	if !errors.As(err, &driverErr) {
-		return sqlite3.SQLITE_OK
-	}
-
-	return driverErr.Code() & primaryCodeMask
 }
 
 // aside is a database set aside: its files renamed from path to target.

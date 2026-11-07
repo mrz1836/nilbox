@@ -51,6 +51,12 @@ type ProfileReader interface {
 	All(ctx context.Context) ([]profiles.Profile, error)
 }
 
+// PromptReader reads the prompt library: every stored prompt, and the app's default
+// prompt for each kind of item. *prompts.Store implements it.
+type PromptReader interface {
+	Library(ctx context.Context) (prompts.Library, error)
+}
+
 // LaunchRecorder records the worktrees sessions are launched in. *worklog.Store
 // implements it.
 type LaunchRecorder interface {
@@ -59,7 +65,7 @@ type LaunchRecorder interface {
 
 // Config holds a Service's dependencies. Clock and Launches are optional.
 type Config struct {
-	// DB is the app database: items, repositories, prompts, and launch defaults.
+	// DB is the app database: items, repositories, and launch defaults.
 	DB *gorm.DB
 
 	// Settings reads the default profile, worktree default, terminal, and clone root.
@@ -67,6 +73,9 @@ type Config struct {
 
 	// Profiles reads the profiles a launch runs with.
 	Profiles ProfileReader
+
+	// Prompts reads the prompts a launch fills in, and the default prompts.
+	Prompts PromptReader
 
 	// Git runs the read-only `git config --get-regexp` remote lookup that finds and
 	// validates clones. The launcher runs no other git command.
@@ -198,6 +207,7 @@ type Service struct {
 	db       *gorm.DB
 	settings SettingsReader
 	profiles ProfileReader
+	prompts  PromptReader
 	git      execpath.Runner
 	gh       execpath.Runner
 	finder   Finder
@@ -218,6 +228,7 @@ func NewService(cfg Config) *Service {
 		db:       cfg.DB,
 		settings: cfg.Settings,
 		profiles: cfg.Profiles,
+		prompts:  cfg.Prompts,
 		git:      cfg.Git,
 		gh:       cfg.GH,
 		finder:   cfg.Finder,

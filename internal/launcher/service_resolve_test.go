@@ -19,7 +19,7 @@ import (
 func (h *launchHarness) promptID(t *testing.T, nickname string) int64 {
 	t.Helper()
 
-	all, err := prompts.All(t.Context(), h.db)
+	all, err := h.prompts.All(t.Context())
 	require.NoError(t, err)
 
 	for _, p := range all {
@@ -37,7 +37,7 @@ func (h *launchHarness) promptID(t *testing.T, nickname string) int64 {
 func (h *launchHarness) saveDefaults(t *testing.T, in launchdefaults.Input) {
 	t.Helper()
 
-	_, err := launchdefaults.NewService(h.db, h.profiles).Save(t.Context(), in)
+	_, err := launchdefaults.NewService(h.db, h.profiles, h.prompts).Save(t.Context(), in)
 	require.NoError(t, err)
 }
 
@@ -47,6 +47,23 @@ func TestResolveReportsUnreadableProfiles(t *testing.T) {
 
 	_, err := h.service().Resolve(t.Context(), LaunchRequest{ItemID: h.trustedPR})
 	require.ErrorIs(t, err, errFakeProfiles)
+}
+
+func TestResolveReportsAnUnreadablePromptLibrary(t *testing.T) {
+	h := newLaunchHarness(t)
+	h.cfg.Prompts = failingPrompts{}
+
+	_, err := h.service().Resolve(t.Context(), LaunchRequest{ItemID: h.trustedPR})
+	require.ErrorIs(t, err, errFakePrompts)
+}
+
+func TestLaunchReadsThePromptLibraryOnce(t *testing.T) {
+	h := newLaunchHarness(t)
+	library := &countingPrompts{library: h.prompts}
+	h.cfg.Prompts = library
+
+	h.launch(t, LaunchRequest{ItemID: h.trustedPR})
+	assert.Equal(t, 1, library.count(), "the prompts and the default prompts come from one read")
 }
 
 func TestResolveService(t *testing.T) {
@@ -194,7 +211,7 @@ func TestLaunchAddsTheNoticeForOutsideContributors(t *testing.T) {
 func TestLaunchRefusesAPromptThatStartsWithADash(t *testing.T) {
 	h := newLaunchHarness(t)
 
-	svc := prompts.NewService(prompts.Config{DB: h.db})
+	svc := prompts.NewService(prompts.Config{Store: h.prompts})
 	leading, err := svc.Create(t.Context(), prompts.Input{
 		Name: "Leading title", Nickname: "Leading", AppliesTo: prompts.AppliesToPR, Body: "{{.Title}} needs a look",
 	})

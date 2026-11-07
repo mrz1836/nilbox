@@ -16,6 +16,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
@@ -483,6 +484,12 @@ func TestBootstrapAddsTheStarterPrompts(t *testing.T) {
 			quick = p.ID
 		}
 	}
+
+	// While a launch default names it, deleting it is refused, saying where it is used.
+	_, err = c.LaunchDefaults.Save(t.Context(), launchdefaults.Input{Owner: "acme-org", PRPromptID: &quick})
+	require.NoError(t, err)
+	require.ErrorContains(t, c.Prompts.Delete(t.Context(), quick), "while it's a default for acme-org;")
+	require.NoError(t, c.LaunchDefaults.Remove(t.Context(), "acme-org", ""))
 
 	require.NoError(t, c.Prompts.Delete(t.Context(), quick))
 	require.NoError(t, c.Close())

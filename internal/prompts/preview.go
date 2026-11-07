@@ -66,12 +66,11 @@ type CheckResult struct {
 // could not run.
 func (s *Service) Check(ctx context.Context, req CheckRequest) (CheckResult, error) {
 	in := req.Input.normalized()
-	db := s.db.WithContext(ctx)
 
 	var usage Usage
 
 	if req.ID != 0 {
-		u, err := usageOf(db, req.ID)
+		u, err := s.usageOf(ctx, req.ID)
 		if err != nil {
 			return CheckResult{}, err
 		}
@@ -79,7 +78,7 @@ func (s *Service) Check(ctx context.Context, req CheckRequest) (CheckResult, err
 		usage = u
 	}
 
-	_, fields := validateFields(db, req.ID, in, usage)
+	_, fields := validateFields(ctx, s.store, req.ID, in, usage)
 	tmpl, diags := Parse(in.Body, appliesToOrAny(in.AppliesTo))
 
 	data, note := s.previewData(ctx, req, appliesToOrAny(in.AppliesTo))

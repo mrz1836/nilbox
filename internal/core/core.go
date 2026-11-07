@@ -173,7 +173,7 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 		return nil, err
 	}
 
-	if err = prompts.Seed(ctx, db); err != nil {
+	if err = prompts.Seed(ctx, prompts.NewStore(pool, opts.Clock)); err != nil {
 		_ = pool.Close()
 
 		return nil, fmt.Errorf("add the starter prompts: %w", err)
@@ -256,6 +256,7 @@ func assemble(pool *sql.DB, db *gorm.DB, reset *appinfo.DataReset, opts Options,
 	}
 
 	profileStore := profiles.NewStore(pool, opts.Clock)
+	promptStore := prompts.NewStore(pool, opts.Clock)
 	prefs := settings.NewService(pool, profileStore, opts.Home, settings.WithClock(opts.Clock),
 		settings.WithThemeNotifier(opts.ThemeNotifier), settings.WithMenuBarNotifier(opts.MenuBarNotifier))
 	tokens := github.NewTokenSource(runner, finder)
@@ -282,6 +283,7 @@ func assemble(pool *sql.DB, db *gorm.DB, reset *appinfo.DataReset, opts Options,
 		DB:       db,
 		Settings: prefs,
 		Profiles: profileStore,
+		Prompts:  promptStore,
 		Git:      runner,
 		GH:       runner,
 		Finder:   finder,
@@ -294,12 +296,14 @@ func assemble(pool *sql.DB, db *gorm.DB, reset *appinfo.DataReset, opts Options,
 	})
 
 	return &Core{
-		DB:             db,
-		pool:           pool,
-		Settings:       prefs,
-		Profiles:       profiles.NewService(profileStore, opts.Home),
-		Prompts:        prompts.NewService(prompts.Config{DB: db, Source: launcher.NewPromptSource(launch)}),
-		LaunchDefaults: launchdefaults.NewService(db, profileStore),
+		DB:       db,
+		pool:     pool,
+		Settings: prefs,
+		Profiles: profiles.NewService(profileStore, opts.Home),
+		Prompts: prompts.NewService(prompts.Config{
+			Store: promptStore, Usage: launchdefaults.NewStore(db), Source: launcher.NewPromptSource(launch),
+		}),
+		LaunchDefaults: launchdefaults.NewService(db, profileStore, promptStore),
 		Inbox:          inboxSvc,
 		Launcher:       launch,
 		Worktrees: worktrees.NewService(worktrees.Config{

@@ -2,28 +2,101 @@ package prompts
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 var errFakeItemGone = errors.New("item not found")
 
-// seeded returns a Service over a database holding the starter prompts.
-func seeded(t *testing.T, source PreviewSource) (*Service, *gorm.DB) {
+// launchDefaults lists where the launch defaults name prompts by reading their table,
+// as the launchdefaults package does for the app, which this package cannot import.
+type launchDefaults struct {
+	db *sql.DB
+}
+
+func (l launchDefaults) PromptUses(ctx context.Context) ([]Use, error) {
+	rows, err := l.db.QueryContext(ctx, "SELECT owner, name, pr_prompt_id, issue_prompt_id FROM launch_defaults")
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var uses []Use
+
+	for rows.Next() {
+		var (
+			target    repo.Name
+			pr, issue *int64
+		)
+
+		if err = rows.Scan(&target.Owner, &target.Repo, &pr, &issue); err != nil {
+			return nil, err
+		}
+
+		if pr != nil {
+			uses = append(uses, Use{PromptID: *pr, Kind: item.KindPR, Target: target})
+		}
+
+		if issue != nil {
+			uses = append(uses, Use{PromptID: *issue, Kind: item.KindIssue, Target: target})
+		}
+	}
+
+	return uses, rows.Err()
+}
+
+// newService returns a Service over the pool db, reading usage from its launch defaults.
+func newService(db *sql.DB, source PreviewSource) *Service {
+	return NewService(Config{Store: NewStore(db, nil), Usage: launchDefaults{db: db}, Source: source})
+}
+
+// empty returns a Service over a fresh database with no prompts.
+func empty(t *testing.T, source PreviewSource) (*Service, *sql.DB) {
 	t.Helper()
 
-	db := testutil.DB(t)
-	require.NoError(t, Seed(t.Context(), db))
+	db := testutil.SQLDB(t)
 
-	return NewService(Config{DB: db, Source: source}), db
+	return newService(db, source), db
+}
+
+// seeded returns a Service over a database holding the starter prompts.
+func seeded(t *testing.T, source PreviewSource) (*Service, *sql.DB) {
+	t.Helper()
+
+	s, db := empty(t, source)
+	require.NoError(t, Seed(t.Context(), s.store))
+
+	return s, db
+}
+
+// closedService returns a Service over a database that is already closed, so every
+// query fails.
+func closedService(t *testing.T) *Service {
+	t.Helper()
+
+	db := testutil.SQLDB(t)
+	require.NoError(t, db.Close())
+
+	return newService(db, nil)
+}
+
+// exec runs a statement the library has no call for, such as an edit made by hand or
+// another package's write.
+func exec(t *testing.T, db *sql.DB, query string, args ...any) {
+	t.Helper()
+
+	_, err := db.ExecContext(t.Context(), query, args...)
+	require.NoError(t, err)
 }
 
 // byNickname finds a listed prompt by nickname.
@@ -86,15 +159,15 @@ func fieldErrors(t *testing.T, err error) map[string]string {
 
 // addLaunchDefault stores an org's (name "") or a repository's default pull request
 // prompt.
-func addLaunchDefault(t *testing.T, db *gorm.DB, owner, name string, pr int64) {
+func addLaunchDefault(t *testing.T, db *sql.DB, owner, name string, pr int64) {
 	t.Helper()
 
-	require.NoError(t, db.Exec(`INSERT INTO launch_defaults (owner, name, pr_prompt_id, created_at, updated_at)
-		VALUES (?, ?, ?, '2026-01-01 00:00:00', '2026-01-01 00:00:00')`, owner, name, pr).Error)
+	exec(t, db, `INSERT INTO launch_defaults (owner, name, pr_prompt_id, created_at, updated_at)
+		VALUES (?, ?, ?, '2026-01-01 00:00:00', '2026-01-01 00:00:00')`, owner, name, pr)
 }
 
 func TestSeed(t *testing.T) {
-	s, db := seeded(t, nil)
+	s, _ := seeded(t, nil)
 	ctx := t.Context()
 
 	assert.Equal(t, []string{"Fix checks", "Quick look", "Review", "Work on it"}, nicknames(t, s))
@@ -116,20 +189,19 @@ func TestSeed(t *testing.T) {
 	assert.Empty(t, quick.Usage.Defaults)
 
 	// Seeding again adds nothing, and a deleted starter stays deleted.
-	require.NoError(t, Seed(ctx, db))
+	require.NoError(t, Seed(ctx, s.store))
 	require.NoError(t, s.Delete(ctx, quick.ID))
-	require.NoError(t, Seed(ctx, db))
+	require.NoError(t, Seed(ctx, s.store))
 	assert.Equal(t, []string{"Fix checks", "Review", "Work on it"}, nicknames(t, s))
 }
 
 func TestSeedFindsAFreeNickname(t *testing.T) {
-	db := testutil.DB(t)
-	s := NewService(Config{DB: db})
+	s, _ := empty(t, nil)
 
 	mine, err := s.Create(t.Context(), Input{Name: "Mine", Nickname: "review", AppliesTo: AppliesToAny, Body: "Look at {{.URL}}"})
 	require.NoError(t, err)
 
-	require.NoError(t, Seed(t.Context(), db))
+	require.NoError(t, Seed(t.Context(), s.store))
 	assert.Contains(t, nicknames(t, s), "Review 2")
 
 	// A default was already missing, so the review starter became it, not the user's.
@@ -272,7 +344,7 @@ func TestDeleteRefusesAPromptInUse(t *testing.T) {
 	assert.Equal(t, "Fix checks", inUse.Nickname)
 	assert.Contains(t, err.Error(), "a default for acme-org and 2 repositories")
 
-	require.NoError(t, db.Exec("DELETE FROM launch_defaults").Error)
+	exec(t, db, "DELETE FROM launch_defaults")
 	require.NoError(t, s.Delete(ctx, fix.ID))
 	assert.NotContains(t, nicknames(t, s), "Fix checks")
 
@@ -342,7 +414,7 @@ func TestReset(t *testing.T) {
 }
 
 func TestSetDefault(t *testing.T) {
-	s, db := seeded(t, nil)
+	s, _ := seeded(t, nil)
 	ctx := t.Context()
 	fix, work := byNickname(t, s, "Fix checks"), byNickname(t, s, "Work on it")
 
@@ -352,7 +424,7 @@ func TestSetDefault(t *testing.T) {
 
 	require.NoError(t, s.SetDefault(ctx, string(item.KindPR), fix.ID))
 
-	defaults, err := LoadDefaults(ctx, db)
+	defaults, err := s.store.Defaults(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, DefaultPrompts{PR: fix.ID, Issue: work.ID}, defaults)
 	assert.Equal(t, fix.ID, defaults.For(item.KindPR))
@@ -362,38 +434,37 @@ func TestSetDefault(t *testing.T) {
 	require.NoError(t, s.Delete(ctx, byNickname(t, s, "Review").ID))
 }
 
-func TestLoadDefaultsFallsBack(t *testing.T) {
-	db := testutil.DB(t)
+func TestDefaultsFallBack(t *testing.T) {
+	s, _ := empty(t, nil)
 	ctx := t.Context()
 
-	defaults, err := LoadDefaults(ctx, db)
+	defaults, err := s.store.Defaults(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, DefaultPrompts{}, defaults, "no prompts, no defaults")
 
-	require.NoError(t, Seed(ctx, db))
-	require.NoError(t, setPref(db, prefDefaultPR, "9999"))
-	require.NoError(t, setPref(db, prefDefaultIssue, "not a number"))
+	require.NoError(t, Seed(ctx, s.store))
+	require.NoError(t, s.store.prefs.Set(ctx, prefDefaultPR, "9999"))
+	require.NoError(t, s.store.prefs.Set(ctx, prefDefaultIssue, "not a number"))
 
-	s := NewService(Config{DB: db})
-	defaults, err = LoadDefaults(ctx, db)
+	defaults, err = s.store.Defaults(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, byNickname(t, s, "Fix checks").ID, defaults.PR, "the first pull request prompt by nickname")
 	assert.Equal(t, byNickname(t, s, "Work on it").ID, defaults.Issue)
 }
 
 func TestLookupAndAll(t *testing.T) {
-	s, db := seeded(t, nil)
+	s, _ := seeded(t, nil)
 	ctx := t.Context()
 	review := byNickname(t, s, "Review")
 
-	got, err := Lookup(ctx, db, review.ID)
+	got, err := s.store.Lookup(ctx, review.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "Review", got.Nickname)
 
-	_, err = Lookup(ctx, db, 9999)
+	_, err = s.store.Lookup(ctx, 9999)
 	require.ErrorIs(t, err, ErrPromptNotFound)
 
-	all, err := All(ctx, db)
+	all, err := s.store.All(ctx)
 	require.NoError(t, err)
 	assert.Len(t, all, 4)
 

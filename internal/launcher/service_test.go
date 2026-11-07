@@ -39,6 +39,7 @@ var (
 	errFakeNoClaude  = errors.New("claude is not installed")
 	errFakeSettings  = errors.New("settings unreadable")
 	errFakeProfiles  = errors.New("profiles unreadable")
+	errFakePrompts   = errors.New("prompts unreadable")
 )
 
 // fakeGit answers the read-only remote lookup from a map of clone directory to
@@ -92,6 +93,37 @@ func allowedGitArgv(argv []string) bool {
 		argv[3] == "config" && argv[4] == "--get-regexp" && argv[5] == remoteLookupPattern
 }
 
+// failingPrompts cannot read the prompt library.
+type failingPrompts struct{}
+
+func (failingPrompts) Library(context.Context) (prompts.Library, error) {
+	return prompts.Library{}, errFakePrompts
+}
+
+// countingPrompts reads a prompt library and counts the reads.
+type countingPrompts struct {
+	library PromptReader
+
+	mu    sync.Mutex
+	reads int
+}
+
+func (c *countingPrompts) Library(ctx context.Context) (prompts.Library, error) {
+	c.mu.Lock()
+	c.reads++
+	c.mu.Unlock()
+
+	return c.library.Library(ctx)
+}
+
+// count returns how many times the library was read.
+func (c *countingPrompts) count() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.reads
+}
+
 // failingSettings cannot read the settings.
 type failingSettings struct{}
 
@@ -111,6 +143,7 @@ func (failingProfiles) All(context.Context) ([]profiles.Profile, error) {
 type launchHarness struct {
 	db       *gorm.DB
 	profiles *profiles.Store
+	prompts  *prompts.Store
 	home     string
 	root     string
 	clone    string
@@ -147,6 +180,7 @@ func newLaunchHarness(t *testing.T) *launchHarness {
 	pool, db := testutil.BridgedDBAt(t, h.paths.DB)
 	h.db = db
 	h.profiles = profiles.NewStore(pool, nil)
+	h.prompts = prompts.NewStore(pool, nil)
 	h.seed(t)
 
 	h.settings = settings.NewService(pool, h.profiles, h.home)
@@ -154,6 +188,7 @@ func newLaunchHarness(t *testing.T) *launchHarness {
 		DB:       h.db,
 		Settings: h.settings,
 		Profiles: h.profiles,
+		Prompts:  h.prompts,
 		Git:      h.git,
 		Finder:   testutil.Finder{Paths: map[string]string{claudeBin: filepath.Join(tmp, "bin", "claude")}},
 		Registry: NewRegistry(h.iterm, h.terminal),
@@ -212,7 +247,7 @@ func (h *launchHarness) seed(t *testing.T) {
 		AddDirs: []string{}, ExtraArgs: []string{}, Env: map[string]string{},
 	}
 	require.NoError(t, h.profiles.Sync(t.Context(), []profiles.Profile{full, work}))
-	require.NoError(t, prompts.Seed(t.Context(), h.db))
+	require.NoError(t, prompts.Seed(t.Context(), h.prompts))
 }
 
 // service returns a launch Service over the harness's current config.

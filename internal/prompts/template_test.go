@@ -239,6 +239,34 @@ func TestParseWholePromptProblems(t *testing.T) {
 	}
 }
 
+func TestParseReportsAWholePromptProblemOnce(t *testing.T) {
+	t.Parallel()
+
+	const (
+		forPRs    = "The prompt is empty once filled in for pull requests."
+		forIssues = "The prompt is empty once filled in for issues."
+	)
+
+	// A comment fills in empty in every sample variant: six for pull requests and four
+	// for issues. Each kind's problem is reported once.
+	for appliesTo, want := range map[string][]string{
+		AppliesToPR:    {forPRs},
+		AppliesToIssue: {forIssues},
+		AppliesToAny:   {forPRs, forIssues},
+	} {
+		tmpl, diags := Parse("{{/* comment */}}", appliesTo)
+		assert.Nil(t, tmpl, appliesTo)
+
+		messages := make([]string, 0, len(diags))
+		for _, d := range diags {
+			assert.Equal(t, Diagnostic{Severity: SeverityError, Message: d.Message}, d, "a problem with the whole prompt")
+			messages = append(messages, d.Message)
+		}
+
+		assert.Equal(t, want, messages, appliesTo)
+	}
+}
+
 func TestParseStart(t *testing.T) {
 	d := only(t, "\n  \n- do this {{.URL}}", AppliesToAny)
 	assert.Equal(t, SeverityError, d.Severity)

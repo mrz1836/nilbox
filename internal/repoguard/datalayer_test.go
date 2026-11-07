@@ -53,7 +53,6 @@ func ormAllowlist() []string {
 		"internal/launchdefaults",
 		"internal/launcher",
 		"internal/measure",
-		"internal/prompts",
 		"internal/store",
 		"internal/store/migrate",
 		"internal/testutil",
@@ -70,7 +69,6 @@ func sqlAllowlist() []string {
 		"internal/launchdefaults",
 		"internal/launcher",
 		"internal/measure",
-		"internal/prompts",
 	}
 }
 

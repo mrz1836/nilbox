@@ -87,7 +87,15 @@ func (c *checker) hasErrors() bool {
 
 // addWhole records an error with the whole prompt.
 func (c *checker) addWhole(message string) {
-	c.diags = append(c.diags, Diagnostic{Severity: SeverityError, Message: message})
+	c.add(Diagnostic{Severity: SeverityError, Message: message})
+}
+
+// add records d unless it is recorded already: filling in each sample variant can find
+// the same problem again.
+func (c *checker) add(d Diagnostic) {
+	if !slices.Contains(c.diags, d) {
+		c.diags = append(c.diags, d)
+	}
 }
 
 // addAt records a problem with the text from byte offset start, length bytes long.
@@ -104,9 +112,7 @@ func (c *checker) addAt(severity string, start, length int, message string) {
 		Message:  message,
 	}
 
-	if !slices.Contains(c.diags, d) {
-		c.diags = append(c.diags, d)
-	}
+	c.add(d)
 }
 
 // addOnLine records a problem on a 1-based line, placed on the action found there by

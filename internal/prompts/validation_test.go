@@ -10,13 +10,12 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/item"
-	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 func TestValidationErrorListsEveryProblemInOrder(t *testing.T) {
 	t.Parallel()
 
-	s := NewService(Config{DB: testutil.DB(t)})
+	s, _ := empty(t, nil)
 
 	_, err := s.Create(t.Context(), Input{Model: "-x", Effort: "huge", ExtraFlags: "--model opus"})
 
@@ -46,7 +45,7 @@ func TestValidationErrorListsEveryProblemInOrder(t *testing.T) {
 func TestCheckExplainsLongAndMultiLineNames(t *testing.T) {
 	t.Parallel()
 
-	s := NewService(Config{DB: testutil.DB(t)})
+	s, _ := empty(t, nil)
 
 	in := validInput()
 	in.Name, in.Nickname = strings.Repeat("a", maxNameRunes+1), "two\nlines"
@@ -85,7 +84,7 @@ func TestResetRefusesToDropAKindThePromptIsADefaultFor(t *testing.T) {
 func TestCheckPreviewsAnIssuePromptWithTheIssueSample(t *testing.T) {
 	t.Parallel()
 
-	s := NewService(Config{DB: testutil.DB(t)})
+	s, _ := empty(t, nil)
 
 	in := validInput()
 	in.AppliesTo, in.Body = AppliesToIssue, "Fix {{.Title}}"
@@ -109,7 +108,7 @@ func (emptyTitleSource) PreviewData(context.Context, int64) (Data, error) {
 func TestCheckExplainsAPromptThatIsEmptyForTheItem(t *testing.T) {
 	t.Parallel()
 
-	s := NewService(Config{DB: testutil.DB(t), Source: emptyTitleSource{}})
+	s, _ := empty(t, emptyTitleSource{})
 
 	in := validInput()
 	in.Body = "{{.Title}}"

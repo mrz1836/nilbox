@@ -56,3 +56,9 @@ sql:
       go:
         !!merge <<: *go
         out: internal/profiles/internal/queries
+  - !!merge <<: *owner
+    queries: internal/prompts/internal/queries
+    gen:
+      go:
+        !!merge <<: *go
+        out: internal/prompts/internal/queries

@@ -141,15 +141,23 @@ type ProfileLookup interface {
 	Lookup(ctx context.Context, name string) (profiles.Profile, error)
 }
 
+// PromptLookup finds a stored prompt by ID, or returns prompts.ErrPromptNotFound.
+// *prompts.Store implements it.
+type PromptLookup interface {
+	Lookup(ctx context.Context, id int64) (prompts.Prompt, error)
+}
+
 // Service manages the launch defaults.
 type Service struct {
 	db       *gorm.DB
 	profiles ProfileLookup
+	prompts  PromptLookup
 }
 
-// NewService returns a Service over db. known looks up the profiles a default may name.
-func NewService(db *gorm.DB, known ProfileLookup) *Service {
-	return &Service{db: db, profiles: known}
+// NewService returns a Service over db. known looks up the profiles a default may name,
+// and library the prompts.
+func NewService(db *gorm.DB, known ProfileLookup, library PromptLookup) *Service {
+	return &Service{db: db, profiles: known, prompts: library}
 }
 
 // List returns every stored launch default, by owner and then repository, each owner's
@@ -160,7 +168,7 @@ func (s *Service) List(ctx context.Context) ([]Defaults, error) {
 
 // Check validates launch defaults being edited, as Save would, without saving them.
 func (s *Service) Check(ctx context.Context, in Input) ([]agent.FieldError, error) {
-	_, fields, err := validate(ctx, s.db, s.profiles, in.normalized())
+	_, fields, err := validate(ctx, s.profiles, s.prompts, in.normalized())
 
 	return textutil.NonNil(fields), err
 }
@@ -171,7 +179,7 @@ func (s *Service) Save(ctx context.Context, in Input) (Defaults, error) {
 	in = in.normalized()
 	db := s.db.WithContext(ctx)
 
-	args, fields, err := validate(ctx, db, s.profiles, in)
+	args, fields, err := validate(ctx, s.profiles, s.prompts, in)
 	if err != nil {
 		return Defaults{}, err
 	}
@@ -291,7 +299,7 @@ func (in Input) normalized() Input {
 
 // validate checks an Input and returns its extra arguments, or the problems that stop it
 // being saved. An error means the checks themselves could not run.
-func validate(ctx context.Context, db *gorm.DB, known ProfileLookup, in Input) ([]string, []agent.FieldError, error) {
+func validate(ctx context.Context, known ProfileLookup, library PromptLookup, in Input) ([]string, []agent.FieldError, error) {
 	var fields []agent.FieldError
 
 	add := func(field, message string) {
@@ -316,7 +324,7 @@ func validate(ctx context.Context, db *gorm.DB, known ProfileLookup, in Input) (
 		kind  item.Kind
 		id    *int64
 	}{{FieldPRPromptID, item.KindPR, in.PRPromptID}, {FieldIssuePromptID, item.KindIssue, in.IssuePromptID}} {
-		msg, promptErr := checkPrompt(ctx, db, p.id, p.kind)
+		msg, promptErr := checkPrompt(ctx, library, p.id, p.kind)
 		if promptErr != nil {
 			return nil, nil, promptErr
 		}
@@ -375,12 +383,12 @@ func checkProfile(ctx context.Context, known ProfileLookup, profile string) (str
 }
 
 // checkPrompt checks a default prompt for kind, which may be nil to inherit.
-func checkPrompt(ctx context.Context, db *gorm.DB, id *int64, kind item.Kind) (string, error) {
+func checkPrompt(ctx context.Context, library PromptLookup, id *int64, kind item.Kind) (string, error) {
 	if id == nil {
 		return "", nil
 	}
 
-	p, err := prompts.Lookup(ctx, db, *id)
+	p, err := library.Lookup(ctx, *id)
 
 	switch {
 	case errors.Is(err, prompts.ErrPromptNotFound):

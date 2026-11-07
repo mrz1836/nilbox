@@ -22,12 +22,13 @@ import (
 const acme = "acme-org"
 
 // harness is a launch defaults Service over a database with the starter prompts and a
-// "work" profile.
+// "work" profile, and a prompt Service whose usage comes from the launch defaults.
 type harness struct {
-	db     *gorm.DB
-	svc    *launchdefaults.Service
-	review int64 // the review starter, for pull requests
-	work   int64 // the work-on-issue starter, for issues
+	db      *gorm.DB
+	svc     *launchdefaults.Service
+	prompts *prompts.Service
+	review  int64 // the review starter, for pull requests
+	work    int64 // the work-on-issue starter, for issues
 }
 
 func newHarness(t *testing.T) *harness {
@@ -35,14 +36,21 @@ func newHarness(t *testing.T) *harness {
 
 	pool, db := testutil.BridgedDB(t)
 	known := profiles.NewStore(pool, nil)
+	library := prompts.NewStore(pool, nil)
 
-	require.NoError(t, prompts.Seed(t.Context(), db))
+	require.NoError(t, prompts.Seed(t.Context(), library))
 	require.NoError(t, known.Sync(t.Context(), []profiles.Profile{{Name: "work", ConfigDir: "/tmp/work"}}))
 
-	defaults, err := prompts.LoadDefaults(t.Context(), db)
+	defaults, err := library.Defaults(t.Context())
 	require.NoError(t, err)
 
-	return &harness{db: db, svc: launchdefaults.NewService(db, known), review: defaults.PR, work: defaults.Issue}
+	return &harness{
+		db:      db,
+		svc:     launchdefaults.NewService(db, known, library),
+		prompts: prompts.NewService(prompts.Config{Store: library, Usage: launchdefaults.NewStore(db)}),
+		review:  defaults.PR,
+		work:    defaults.Issue,
+	}
 }
 
 // fields maps a ValidationError's fields to their messages.
@@ -180,7 +188,7 @@ func TestRemove(t *testing.T) {
 func TestDefaultPromptsCannotBeDeletedWhileUsed(t *testing.T) {
 	h := newHarness(t)
 	ctx := t.Context()
-	svc := prompts.NewService(prompts.Config{DB: h.db})
+	svc := h.prompts
 
 	all, err := svc.List(ctx)
 	require.NoError(t, err)
@@ -195,10 +203,52 @@ func TestDefaultPromptsCannotBeDeletedWhileUsed(t *testing.T) {
 
 	_, err = h.svc.Save(ctx, launchdefaults.Input{Owner: acme, Name: "example-repo", PRPromptID: &fix.ID})
 	require.NoError(t, err)
-	require.ErrorIs(t, svc.Delete(ctx, fix.ID), prompts.ErrPromptInUse)
+	_, err = h.svc.Save(ctx, launchdefaults.Input{Owner: acme, PRPromptID: &fix.ID})
+	require.NoError(t, err)
+
+	// The launch defaults' foreign keys refuse the delete, and their rows say where.
+	var inUse *prompts.InUseError
+
+	err = svc.Delete(ctx, fix.ID)
+	require.ErrorIs(t, err, prompts.ErrPromptInUse)
+	require.ErrorAs(t, err, &inUse)
+	assert.Equal(t, `"Fix checks" can't be deleted while it's a default for acme-org and acme-org/example-repo; `+
+		"choose other defaults there first", err.Error())
+
+	all, err = svc.List(ctx)
+	require.NoError(t, err)
+
+	fix.Usage = prompts.Usage{
+		Defaults: []string{}, Orgs: []string{acme}, Repos: []string{"acme-org/example-repo"},
+		Kinds: []string{string(item.KindPR)},
+	}
+	require.Contains(t, all, fix, "the prompt is still there, with where it is used")
 
 	require.NoError(t, h.svc.Remove(ctx, acme, "example-repo"))
+	require.NoError(t, h.svc.Remove(ctx, acme, ""))
 	require.NoError(t, svc.Delete(ctx, fix.ID))
+}
+
+func TestPromptUses(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	ctx := t.Context()
+
+	_, err := h.svc.Save(ctx, launchdefaults.Input{Owner: acme, PRPromptID: &h.review, IssuePromptID: &h.work})
+	require.NoError(t, err)
+	_, err = h.svc.Save(ctx, launchdefaults.Input{Owner: acme, Name: "example-repo", IssuePromptID: &h.work})
+	require.NoError(t, err)
+	_, err = h.svc.Save(ctx, launchdefaults.Input{Owner: "beta-org", Effort: "high"})
+	require.NoError(t, err)
+
+	uses, err := launchdefaults.NewStore(h.db).PromptUses(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []prompts.Use{
+		{PromptID: h.review, Kind: item.KindPR, Target: repo.Name{Owner: acme}},
+		{PromptID: h.work, Kind: item.KindIssue, Target: repo.Name{Owner: acme}},
+		{PromptID: h.work, Kind: item.KindIssue, Target: repo.Name{Owner: acme, Repo: "example-repo"}},
+	}, uses, "every org's and repository's default prompt, and nothing for defaults that name none")
 }
 
 func TestTargets(t *testing.T) {

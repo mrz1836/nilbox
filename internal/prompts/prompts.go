@@ -7,22 +7,24 @@
 // once each (see Seed), and from then on every prompt is the user's to change or delete,
 // except while it is a default somewhere: Delete refuses a prompt that is in use, and
 // Update refuses to stop it applying to a kind it is a default for.
+//
+// A Store reads and writes the library; the launcher and the launch defaults read it
+// through interfaces of their own. The Service the window binds to checks prompts before
+// they are saved, fills them in for previews, and says where each one is a default, which
+// the launch defaults report through a UsageSource.
 package prompts
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
-	"time"
 	"unicode"
 	"unicode/utf8"
 
-	"gorm.io/gorm"
-
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/item"
-	"github.com/mrz1836/nilbox/internal/prompts/model"
 	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
@@ -175,6 +177,29 @@ func (d DefaultPrompts) For(kind item.Kind) int64 {
 	return d.Issue
 }
 
+// Template parses the prompt's text, failing when it has errors.
+func (p Prompt) Template() (*Template, error) {
+	t, diags := Parse(p.Body, p.AppliesTo)
+	if t != nil {
+		return t, nil
+	}
+
+	for _, d := range diags {
+		if d.Severity == SeverityError {
+			return nil, fmt.Errorf("%w: %q: %s", ErrInvalidTemplate, p.Nickname, d.Message)
+		}
+	}
+
+	return nil, fmt.Errorf("%w: %q", ErrInvalidTemplate, p.Nickname)
+}
+
+// Library is every stored prompt, without its usage and sorted by nickname, with the
+// app's default prompt for each kind of item.
+type Library struct {
+	Prompts  []Prompt
+	Defaults DefaultPrompts
+}
+
 // PreviewSource fills in Data for an inbox item. The launcher implements it.
 type PreviewSource interface {
 	// PreviewData returns the data a launch on the item would fill a prompt with,
@@ -182,27 +207,49 @@ type PreviewSource interface {
 	PreviewData(ctx context.Context, itemID int64) (Data, error)
 }
 
-// Config holds a Service's dependencies. Source is optional: without it, previews use
-// sample data.
+// Config holds a Service's dependencies. Store is required. Usage is optional: without
+// it, a prompt's usage names only the app's default prompts. Source is optional:
+// without it, previews use sample data.
 type Config struct {
-	DB     *gorm.DB
+	// Store holds the prompts and the app's default prompts.
+	Store *Store
+
+	// Usage lists where launch defaults name prompts.
+	Usage UsageSource
+
+	// Source fills in previews with an inbox item's data.
 	Source PreviewSource
 }
 
 // Service manages the prompt library.
 type Service struct {
-	db     *gorm.DB
+	store  *Store
+	usage  UsageSource
 	source PreviewSource
 }
 
 // NewService returns a Service over cfg.
 func NewService(cfg Config) *Service {
-	return &Service{db: cfg.DB, source: cfg.Source}
+	return &Service{store: cfg.Store, usage: cfg.Usage, source: cfg.Source}
 }
 
 // List returns every prompt with its usage, sorted by nickname.
 func (s *Service) List(ctx context.Context) ([]Prompt, error) {
-	return listWithUsage(ctx, s.db)
+	all, err := s.store.All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	usage, err := s.loadUsage(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range all {
+		all[i].Usage = normalizeUsage(usage[all[i].ID])
+	}
+
+	return all, nil
 }
 
 // Create saves a new prompt.
@@ -211,18 +258,16 @@ func (s *Service) Create(ctx context.Context, in Input) (Prompt, error) {
 
 	var id int64
 
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		args, fields := validate(tx, 0, in, Usage{})
+	err := s.store.inTx(ctx, func(st *Store) error {
+		args, fields := validate(ctx, st, 0, in, Usage{})
 		if len(fields) > 0 {
 			return invalid(fields)
 		}
 
-		row := toRow(in, args)
-		if err := tx.Create(&row).Error; err != nil {
+		var err error
+		if id, err = st.insert(ctx, fromInput(in, args)); err != nil {
 			return fmt.Errorf("save the prompt: %w", err)
 		}
-
-		id = row.ID
 
 		return nil
 	})
@@ -238,27 +283,23 @@ func (s *Service) Create(ctx context.Context, in Input) (Prompt, error) {
 func (s *Service) Update(ctx context.Context, id int64, in Input) (Prompt, error) {
 	in = in.normalized()
 
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		row, err := loadRow(tx, id)
-		if err != nil {
-			return err
-		}
+	if _, err := s.store.Lookup(ctx, id); err != nil {
+		return Prompt{}, err
+	}
 
-		usage, err := usageOf(tx, id)
-		if err != nil {
-			return err
-		}
+	usage, err := s.usageOf(ctx, id)
+	if err != nil {
+		return Prompt{}, err
+	}
 
-		args, fields := validate(tx, id, in, usage)
+	err = s.store.inTx(ctx, func(st *Store) error {
+		args, fields := validate(ctx, st, id, in, usage)
 		if len(fields) > 0 {
 			return invalid(fields)
 		}
 
-		updated := toRow(in, args)
-		updated.ID, updated.StarterKey, updated.CreatedAt = row.ID, row.StarterKey, row.CreatedAt
-
-		if err = tx.Save(&updated).Error; err != nil {
-			return fmt.Errorf("save the prompt: %w", err)
+		if saveErr := st.update(ctx, id, fromInput(in, args)); saveErr != nil {
+			return fmt.Errorf("save the prompt: %w", saveErr)
 		}
 
 		return nil
@@ -273,27 +314,19 @@ func (s *Service) Update(ctx context.Context, id int64, in Input) (Prompt, error
 // Delete removes a prompt. A prompt that is a default anywhere is refused with an
 // InUseError that says where.
 func (s *Service) Delete(ctx context.Context, id int64) error {
-	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		row, err := loadRow(tx, id)
-		if err != nil {
-			return err
-		}
+	err := s.store.remove(ctx, id)
 
-		usage, err := usageOf(tx, id)
-		if err != nil {
-			return err
-		}
+	var inUse *InUseError
+	if !errors.As(err, &inUse) {
+		return err
+	}
 
-		if usage.InUse() {
-			return &InUseError{Nickname: row.Nickname, Usage: usage}
-		}
+	// The store refused it, so the prompt is a default somewhere; say where.
+	if inUse.Usage, err = s.usageOf(ctx, id); err != nil {
+		return err
+	}
 
-		if err = tx.Delete(&row).Error; err != nil {
-			return fmt.Errorf("delete the prompt: %w", err)
-		}
-
-		return nil
-	})
+	return inUse
 }
 
 // Duplicate saves a copy of a prompt: "<title> (copy)" with a free nickname such as
@@ -301,27 +334,23 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 func (s *Service) Duplicate(ctx context.Context, id int64) (Prompt, error) {
 	var newID int64
 
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		row, err := loadRow(tx, id)
+	err := s.store.inTx(ctx, func(st *Store) error {
+		p, err := st.Lookup(ctx, id)
 		if err != nil {
 			return err
 		}
 
-		nickname, err := freeNickname(tx, row.Nickname+" copy")
-		if err != nil {
+		dup := p
+		dup.StarterKey = ""
+		dup.Name = textutil.Clip(p.Name+" (copy)", maxNameRunes)
+
+		if dup.Nickname, err = st.freeNickname(ctx, p.Nickname+" copy"); err != nil {
 			return err
 		}
 
-		dup := row
-		dup.ID, dup.StarterKey, dup.Nickname = 0, "", nickname
-		dup.Name = textutil.Clip(row.Name+" (copy)", maxNameRunes)
-		dup.CreatedAt, dup.UpdatedAt = time.Time{}, time.Time{}
-
-		if err = tx.Create(&dup).Error; err != nil {
+		if newID, err = st.insert(ctx, dup); err != nil {
 			return fmt.Errorf("save the copy: %w", err)
 		}
-
-		newID = dup.ID
 
 		return nil
 	})
@@ -335,8 +364,23 @@ func (s *Service) Duplicate(ctx context.Context, id int64) (Prompt, error) {
 // Reset restores a starter prompt's title, text, and settings, and its nickname when
 // no other prompt has taken it.
 func (s *Service) Reset(ctx context.Context, id int64) (Prompt, error) {
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return resetRow(tx, id)
+	p, err := s.store.Lookup(ctx, id)
+	if err != nil {
+		return Prompt{}, err
+	}
+
+	starter, ok := starterFor(p.StarterKey)
+	if !ok {
+		return Prompt{}, fmt.Errorf("%w: %q", ErrNotStarter, p.Nickname)
+	}
+
+	usage, err := s.usageOf(ctx, id)
+	if err != nil {
+		return Prompt{}, err
+	}
+
+	err = s.store.inTx(ctx, func(st *Store) error {
+		return resetPrompt(ctx, st, p, starter, usage)
 	})
 	if err != nil {
 		return Prompt{}, err
@@ -345,46 +389,9 @@ func (s *Service) Reset(ctx context.Context, id int64) (Prompt, error) {
 	return s.get(ctx, id)
 }
 
-// resetRow restores one starter prompt's row.
-func resetRow(tx *gorm.DB, id int64) error {
-	row, err := loadRow(tx, id)
-	if err != nil {
-		return err
-	}
-
-	starter, ok := starterFor(row.StarterKey)
-	if !ok {
-		return fmt.Errorf("%w: %q", ErrNotStarter, row.Nickname)
-	}
-
-	in := starter.input()
-	if taken, takenErr := nicknameTaken(tx, id, in.Nickname); takenErr != nil || taken {
-		in.Nickname = row.Nickname
-	}
-
-	usage, err := usageOf(tx, id)
-	if err != nil {
-		return err
-	}
-
-	args, fields := validate(tx, id, in, usage)
-	if len(fields) > 0 {
-		return invalid(fields)
-	}
-
-	reset := toRow(in, args)
-	reset.ID, reset.StarterKey, reset.CreatedAt = row.ID, row.StarterKey, row.CreatedAt
-
-	if err = tx.Save(&reset).Error; err != nil {
-		return fmt.Errorf("reset the prompt: %w", err)
-	}
-
-	return nil
-}
-
 // Defaults returns the app's default prompt for each kind of item.
 func (s *Service) Defaults(ctx context.Context) (DefaultPrompts, error) {
-	return LoadDefaults(ctx, s.db)
+	return s.store.Defaults(ctx)
 }
 
 // SetDefault makes a prompt the app's default for kind ("pr" or "issue"). The prompt
@@ -395,16 +402,16 @@ func (s *Service) SetDefault(ctx context.Context, kind string, id int64) error {
 		return err
 	}
 
-	row, err := loadRow(s.db.WithContext(ctx), id)
+	p, err := s.store.Lookup(ctx, id)
 	if err != nil {
 		return err
 	}
 
-	if !AppliesTo(row.AppliesTo, k) {
-		return fmt.Errorf("%w: %q doesn't apply to %s", ErrWrongKind, row.Nickname, k.Plural())
+	if !AppliesTo(p.AppliesTo, k) {
+		return fmt.Errorf("%w: %q doesn't apply to %s", ErrWrongKind, p.Nickname, k.Plural())
 	}
 
-	return setPref(s.db.WithContext(ctx), defaultPrefKey(k), fmt.Sprint(id))
+	return s.store.setDefault(ctx, k, id)
 }
 
 // Variables returns every variable a prompt can use, for the cheat sheet.
@@ -414,18 +421,39 @@ func (s *Service) Variables() []Variable {
 
 // get returns one prompt with its usage.
 func (s *Service) get(ctx context.Context, id int64) (Prompt, error) {
-	all, err := listWithUsage(ctx, s.db)
+	p, err := s.store.Lookup(ctx, id)
 	if err != nil {
 		return Prompt{}, err
 	}
 
-	for _, p := range all {
-		if p.ID == id {
-			return p, nil
-		}
+	usage, err := s.usageOf(ctx, id)
+	if err != nil {
+		return Prompt{}, err
 	}
 
-	return Prompt{}, fmt.Errorf("%w (id %d)", ErrPromptNotFound, id)
+	p.Usage = normalizeUsage(usage)
+
+	return p, nil
+}
+
+// resetPrompt restores the stored prompt p to its starter, keeping p's nickname when
+// another prompt has taken the starter's. usage is where p is a default.
+func resetPrompt(ctx context.Context, st *Store, p Prompt, starter Starter, usage Usage) error {
+	in := starter.input()
+	if taken, err := st.nicknameTaken(ctx, p.ID, in.Nickname); err != nil || taken {
+		in.Nickname = p.Nickname
+	}
+
+	args, fields := validate(ctx, st, p.ID, in, usage)
+	if len(fields) > 0 {
+		return invalid(fields)
+	}
+
+	if err := st.update(ctx, p.ID, fromInput(in, args)); err != nil {
+		return fmt.Errorf("reset the prompt: %w", err)
+	}
+
+	return nil
 }
 
 // normalized trims the names and model, and turns Windows line endings into newlines.
@@ -449,8 +477,8 @@ func (st Starter) input() Input {
 
 // validate checks an Input for the prompt with id (0 for a new one) and returns its
 // extra arguments, or the problems that stop it being saved.
-func validate(db *gorm.DB, id int64, in Input, usage Usage) ([]string, []agent.FieldError) {
-	args, fields := validateFields(db, id, in, usage)
+func validate(ctx context.Context, st *Store, id int64, in Input, usage Usage) ([]string, []agent.FieldError) {
+	args, fields := validateFields(ctx, st, id, in, usage)
 
 	if t, _ := Parse(in.Body, appliesToOrAny(in.AppliesTo)); t == nil {
 		fields = append(fields, agent.FieldError{Field: FieldBody, Message: "Fix the problems in the prompt's text."})
@@ -460,7 +488,7 @@ func validate(db *gorm.DB, id int64, in Input, usage Usage) ([]string, []agent.F
 }
 
 // validateFields checks every field but the text, which Parse checks.
-func validateFields(db *gorm.DB, id int64, in Input, usage Usage) ([]string, []agent.FieldError) {
+func validateFields(ctx context.Context, st *Store, id int64, in Input, usage Usage) ([]string, []agent.FieldError) {
 	var fields []agent.FieldError
 
 	add := func(field, message string) {
@@ -470,7 +498,7 @@ func validateFields(db *gorm.DB, id int64, in Input, usage Usage) ([]string, []a
 	}
 
 	add(FieldName, checkName(in.Name))
-	add(FieldNickname, checkNickname(db, id, in.Nickname))
+	add(FieldNickname, checkNickname(ctx, st, id, in.Nickname))
 	add(FieldAppliesTo, checkAppliesTo(in.AppliesTo, usage))
 
 	args, overrides := agent.CheckOverrides(in.Model, in.Effort, in.ExtraFlags)
@@ -498,7 +526,7 @@ func checkName(name string) string {
 }
 
 // checkNickname checks a prompt's nickname: short, one line, and not another prompt's.
-func checkNickname(db *gorm.DB, id int64, nickname string) string {
+func checkNickname(ctx context.Context, st *Store, id int64, nickname string) string {
 	switch {
 	case nickname == "":
 		return "Give the prompt a nickname for the launch menu."
@@ -508,7 +536,7 @@ func checkNickname(db *gorm.DB, id int64, nickname string) string {
 		return "Keep the nickname on one line."
 	}
 
-	taken, err := nicknameTaken(db, id, nickname)
+	taken, err := st.nicknameTaken(ctx, id, nickname)
 	if err != nil {
 		return "Couldn't check whether the nickname is free."
 	}
@@ -549,50 +577,11 @@ func appliesToOrAny(appliesTo string) string {
 	return AppliesToAny
 }
 
-// describeUsage says where a prompt is a default, as in "the default for pull requests,
-// and a default for acme-org and 2 repositories".
-func describeUsage(u Usage) string {
-	var parts []string
-
-	for _, kind := range u.Defaults {
-		parts = append(parts, "the default for "+item.Kind(kind).Plural())
-	}
-
-	var places []string
-
-	if len(u.Orgs) > 0 {
-		places = append(places, countedNames(u.Orgs, "orgs"))
-	}
-
-	if len(u.Repos) > 0 {
-		places = append(places, countedNames(u.Repos, "repositories"))
-	}
-
-	if len(places) > 0 {
-		parts = append(parts, "a default for "+strings.Join(places, " and "))
-	}
-
-	if len(parts) == 0 {
-		return "not used anywhere"
-	}
-
-	return strings.Join(parts, ", and ")
-}
-
-// countedNames names one item, or counts several: "acme-org" or "3 orgs".
-func countedNames(names []string, many string) string {
-	if len(names) == 1 {
-		return names[0]
-	}
-
-	return fmt.Sprintf("%d %s", len(names), many)
-}
-
-// toRow converts a validated Input and its extra arguments to a row.
-func toRow(in Input, args []string) model.Prompt {
-	return model.Prompt{
+// fromInput returns a validated Input with its extra arguments as a Prompt to store.
+func fromInput(in Input, args []string) Prompt {
+	return Prompt{
 		Name: in.Name, Nickname: in.Nickname, AppliesTo: in.AppliesTo, Body: in.Body,
 		Model: in.Model, Effort: in.Effort, PlanMode: in.PlanMode, Worktree: in.Worktree,
-		ExtraArgs: append([]string{}, args...),
+		ExtraArgs: slices.Clone(args),
 	}
 }

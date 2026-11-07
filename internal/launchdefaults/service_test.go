@@ -9,6 +9,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/profiles"
+	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -155,7 +156,7 @@ func TestServiceReportsAClosedDatabase(t *testing.T) {
 	pool, db := testutil.BridgedDB(t)
 	require.NoError(t, pool.Close())
 
-	svc := launchdefaults.NewService(db, profiles.NewStore(pool, nil))
+	svc := launchdefaults.NewService(db, profiles.NewStore(pool, nil), prompts.NewStore(pool, nil))
 	ctx := t.Context()
 	review := int64(1)
 
@@ -163,6 +164,9 @@ func TestServiceReportsAClosedDatabase(t *testing.T) {
 	require.ErrorContains(t, err, "read the launch defaults")
 
 	_, err = launchdefaults.All(ctx, db)
+	require.ErrorContains(t, err, "read the launch defaults")
+
+	_, err = launchdefaults.NewStore(db).PromptUses(ctx)
 	require.ErrorContains(t, err, "read the launch defaults")
 
 	_, err = svc.Targets(ctx)

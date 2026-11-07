@@ -2,20 +2,19 @@ package prompts
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"slices"
-	"sort"
 	"strconv"
+	"time"
 	"unicode/utf8"
-
-	"gorm.io/gorm"
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/prefs"
-	"github.com/mrz1836/nilbox/internal/prompts/model"
-	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/prompts/internal/queries"
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/textutil"
 )
@@ -31,276 +30,206 @@ const (
 	prefDefaultIssue = "prompts.default.issue"
 )
 
-// usageSQL reads the launch defaults that name a prompt.
-const usageSQL = `SELECT owner, name, pr_prompt_id, issue_prompt_id FROM launch_defaults
-WHERE pr_prompt_id IS NOT NULL OR issue_prompt_id IS NOT NULL ORDER BY owner, name`
-
-// Lookup returns the stored prompt with id, without its usage.
-func Lookup(ctx context.Context, db *gorm.DB, id int64) (Prompt, error) {
-	row, err := loadRow(db.WithContext(ctx), id)
-	if err != nil {
-		return Prompt{}, err
-	}
-
-	return fromRow(row, Usage{}), nil
+// Store reads and writes the prompt library: the prompts table, which no other package
+// touches, and the library's preferences, the app's default prompts among them.
+//
+// A Store from NewStore runs each call on the pool. One joined to a transaction with
+// WithTx runs every call inside it, so a check and the write it allows commit together.
+type Store struct {
+	// db is the pool a Store from NewStore runs on. It is nil for a Store joined to a
+	// transaction, whose queries run on that transaction.
+	db    *sql.DB
+	q     *queries.Queries
+	prefs *prefs.Store
+	clock clock.Clock
 }
 
-// All returns every stored prompt, without usage, sorted by nickname.
-func All(ctx context.Context, db *gorm.DB) ([]Prompt, error) {
-	rows, err := loadRows(db.WithContext(ctx))
+// NewStore returns a Store over the pool db. Writes stamp the rows from c; a nil c is
+// the system clock.
+func NewStore(db *sql.DB, c clock.Clock) *Store {
+	c = clock.Or(c)
+
+	return &Store{db: db, q: queries.New(db), prefs: prefs.New(db, c), clock: c}
+}
+
+// WithTx returns a Store that runs every call inside tx, a transaction on the same
+// database, so its reads see what tx wrote and its writes commit or roll back with tx.
+func (s *Store) WithTx(tx *sql.Tx) *Store {
+	return &Store{q: s.q.WithTx(tx), prefs: s.prefs.WithTx(tx), clock: s.clock}
+}
+
+// All returns every stored prompt, without usage, sorted by nickname ignoring case and
+// then by ID.
+func (s *Store) All(ctx context.Context) ([]Prompt, error) {
+	rows, err := s.q.ListPrompts(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read the prompts: %w", err)
 	}
 
 	out := make([]Prompt, 0, len(rows))
+
 	for _, row := range rows {
-		out = append(out, fromRow(row, Usage{}))
+		p, decodeErr := fromRow(row)
+		if decodeErr != nil {
+			return nil, fmt.Errorf("read the prompts: %w", decodeErr)
+		}
+
+		out = append(out, p)
 	}
 
 	return out, nil
 }
 
-// LoadDefaults returns the app's default prompt for each kind. A stored default that is
-// gone or no longer applies falls back to the first prompt, by nickname, that applies.
-func LoadDefaults(ctx context.Context, db *gorm.DB) (DefaultPrompts, error) {
-	db = db.WithContext(ctx)
+// Lookup returns the stored prompt with id, without its usage, or ErrPromptNotFound.
+func (s *Store) Lookup(ctx context.Context, id int64) (Prompt, error) {
+	row, err := s.q.GetPrompt(ctx, id)
 
-	stored, err := readDefaultPrefs(db)
-	if err != nil {
-		return DefaultPrompts{}, err
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return Prompt{}, fmt.Errorf("%w (id %d)", ErrPromptNotFound, id)
+	case err != nil:
+		return Prompt{}, fmt.Errorf("read the prompt: %w", err)
 	}
 
-	rows, err := loadRows(db)
+	p, err := fromRow(row)
 	if err != nil {
-		return DefaultPrompts{}, err
+		return Prompt{}, fmt.Errorf("read the prompt: %w", err)
 	}
 
-	return DefaultPrompts{
-		PR:    pickDefault(rows, item.KindPR, stored.PR),
-		Issue: pickDefault(rows, item.KindIssue, stored.Issue),
+	return p, nil
+}
+
+// Library returns every stored prompt, as All does, with the app's default prompt for
+// each kind, as Defaults does, reading the prompts once.
+func (s *Store) Library(ctx context.Context) (Library, error) {
+	stored, err := s.storedDefaults(ctx)
+	if err != nil {
+		return Library{}, err
+	}
+
+	all, err := s.All(ctx)
+	if err != nil {
+		return Library{}, err
+	}
+
+	return Library{
+		Prompts: all,
+		Defaults: DefaultPrompts{
+			PR:    pickDefault(all, item.KindPR, stored.PR),
+			Issue: pickDefault(all, item.KindIssue, stored.Issue),
+		},
 	}, nil
 }
 
-// Template parses the prompt's text, failing when it has errors.
-func (p Prompt) Template() (*Template, error) {
-	t, diags := Parse(p.Body, p.AppliesTo)
-	if t != nil {
-		return t, nil
+// Defaults returns the app's default prompt for each kind. A stored default that is
+// gone or no longer applies falls back to the first prompt, by nickname, that applies.
+func (s *Store) Defaults(ctx context.Context) (DefaultPrompts, error) {
+	lib, err := s.Library(ctx)
+	if err != nil {
+		return DefaultPrompts{}, err
 	}
 
-	for _, d := range diags {
-		if d.Severity == SeverityError {
-			return nil, fmt.Errorf("%w: %q: %s", ErrInvalidTemplate, p.Nickname, d.Message)
-		}
-	}
-
-	return nil, fmt.Errorf("%w: %q", ErrInvalidTemplate, p.Nickname)
+	return lib.Defaults, nil
 }
 
-// Seed adds each starter prompt this build ships that was never added before, and makes
-// the review and work-on-issue starters the default prompts where no default is set yet.
-// A starter that was added once is never added again, so one the user deleted stays
-// deleted. A starter whose nickname is taken gets a free one.
-func Seed(ctx context.Context, db *gorm.DB) error {
-	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		seeded, err := readSeeded(tx)
-		if err != nil {
-			return err
-		}
+// inTx runs fn with a Store on the transaction s joined, or else on a transaction of its
+// own that commits when fn returns nil.
+func (s *Store) inTx(ctx context.Context, fn func(*Store) error) error {
+	if s.db == nil {
+		return fn(s)
+	}
 
-		if seeded, err = seedMissing(tx, seeded); err != nil {
-			return err
-		}
-
-		p, err := prefsOf(tx)
-		if err != nil {
-			return err
-		}
-
-		return p.SetList(ctx, prefSeeded, seeded)
+	return store.InTx(ctx, s.db, func(tx *sql.Tx) error {
+		return fn(s.WithTx(tx))
 	})
 }
 
-// seedMissing adds every starter not in seeded and returns seeded with their keys.
-func seedMissing(tx *gorm.DB, seeded []string) ([]string, error) {
-	defaults, err := readDefaultPrefs(tx)
+// insert stores p as a new prompt, with its starter key, stamped now, and returns its
+// ID.
+func (s *Store) insert(ctx context.Context, p Prompt) (int64, error) {
+	args, err := store.EncodeJSON(p.ExtraArgs)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 
-	for _, st := range Starters() {
-		if slices.Contains(seeded, st.Key) {
-			continue
-		}
+	now := s.now()
 
-		if err = seedStarter(tx, st, defaults); err != nil {
-			return nil, err
-		}
-
-		seeded = append(seeded, st.Key)
-	}
-
-	return seeded, nil
+	return s.q.InsertPrompt(ctx, queries.InsertPromptParams{
+		Name: p.Name, Nickname: p.Nickname, AppliesTo: p.AppliesTo, Body: p.Body, Model: p.Model,
+		Effort: p.Effort, PlanMode: p.PlanMode, Worktree: p.Worktree, ExtraArgs: args, StarterKey: p.StarterKey,
+		CreatedAt: now, UpdatedAt: now,
+	})
 }
 
-// seedStarter adds one starter, and makes it the default for its kind when it is the
-// review or work-on-issue starter and no default is set.
-func seedStarter(tx *gorm.DB, st Starter, defaults DefaultPrompts) error {
-	nickname, err := freeNickname(tx, st.Nickname)
+// update replaces the title, nickname, text, and settings of the prompt with id with
+// p's, stamped now. Its starter key stays. It returns ErrPromptNotFound when no prompt
+// has id.
+func (s *Store) update(ctx context.Context, id int64, p Prompt) error {
+	args, err := store.EncodeJSON(p.ExtraArgs)
 	if err != nil {
 		return err
 	}
 
-	in := st.input()
-	in.Nickname = nickname
-
-	row := toRow(in, st.ExtraArgs)
-	row.StarterKey = st.Key
-
-	if err = tx.Create(&row).Error; err != nil {
-		return fmt.Errorf("add the %q starter prompt: %w", st.Name, err)
-	}
+	n, err := s.q.UpdatePrompt(ctx, queries.UpdatePromptParams{
+		Name: p.Name, Nickname: p.Nickname, AppliesTo: p.AppliesTo, Body: p.Body, Model: p.Model,
+		Effort: p.Effort, PlanMode: p.PlanMode, Worktree: p.Worktree, ExtraArgs: args, UpdatedAt: s.now(), ID: id,
+	})
 
 	switch {
-	case st.Key == StarterReviewPR && defaults.PR == 0:
-		return setPref(tx, prefDefaultPR, strconv.FormatInt(row.ID, 10))
-	case st.Key == StarterWorkOnIssue && defaults.Issue == 0:
-		return setPref(tx, prefDefaultIssue, strconv.FormatInt(row.ID, 10))
+	case err != nil:
+		return err
+	case n == 0:
+		return fmt.Errorf("%w (id %d)", ErrPromptNotFound, id)
 	default:
 		return nil
 	}
 }
 
-// listWithUsage returns every prompt with its usage, sorted by nickname.
-func listWithUsage(ctx context.Context, db *gorm.DB) ([]Prompt, error) {
-	db = db.WithContext(ctx)
-
-	rows, err := loadRows(db)
-	if err != nil {
-		return nil, err
-	}
-
-	usage, err := loadUsage(db)
-	if err != nil {
-		return nil, err
-	}
-
-	out := make([]Prompt, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, fromRow(row, usage[row.ID]))
-	}
-
-	return out, nil
-}
-
-// loadRow reads one prompt row.
-func loadRow(db *gorm.DB, id int64) (model.Prompt, error) {
-	var rows []model.Prompt
-	if err := db.Where("id = ?", id).Limit(1).Find(&rows).Error; err != nil {
-		return model.Prompt{}, fmt.Errorf("read the prompt: %w", err)
-	}
-
-	if len(rows) == 0 {
-		return model.Prompt{}, fmt.Errorf("%w (id %d)", ErrPromptNotFound, id)
-	}
-
-	return rows[0], nil
-}
-
-// loadRows reads every prompt row, sorted by nickname (ignoring case), then by ID.
-func loadRows(db *gorm.DB) ([]model.Prompt, error) {
-	var rows []model.Prompt
-	if err := db.Order("nickname COLLATE NOCASE").Order("id").Find(&rows).Error; err != nil {
-		return nil, fmt.Errorf("read the prompts: %w", err)
-	}
-
-	return rows, nil
-}
-
-// usageRow is one row of usageSQL.
-type usageRow struct {
-	Owner         string `gorm:"column:owner"`
-	Name          string `gorm:"column:name"`
-	PRPromptID    *int64 `gorm:"column:pr_prompt_id"`
-	IssuePromptID *int64 `gorm:"column:issue_prompt_id"`
-}
-
-// loadUsage reads where every prompt is a default: the app's default prompts, and the
-// org and repository launch defaults.
-func loadUsage(db *gorm.DB) (map[int64]Usage, error) {
-	defaults, err := readDefaultPrefs(db)
-	if err != nil {
-		return nil, err
-	}
-
-	var rows []usageRow
-	if err = db.Raw(usageSQL).Scan(&rows).Error; err != nil {
-		return nil, fmt.Errorf("read where the prompts are used: %w", err)
-	}
-
-	usage := map[int64]Usage{}
-
-	addDefault := func(id int64, kind item.Kind) {
-		if id != 0 {
-			u := usage[id]
-			u.Defaults = append(u.Defaults, string(kind))
-			u.Kinds = appendUnique(u.Kinds, string(kind))
-			usage[id] = u
+// remove deletes the prompt with id. It returns ErrPromptNotFound when no prompt has
+// id, and an InUseError naming the prompt, with its Usage left for the caller to fill
+// in, when the prompt is one of the app's default prompts, or when launch defaults name
+// it and their foreign keys refuse the delete.
+func (s *Store) remove(ctx context.Context, id int64) error {
+	return s.inTx(ctx, func(st *Store) error {
+		defaults, err := st.storedDefaults(ctx)
+		if err != nil {
+			return err
 		}
-	}
 
-	addDefault(defaults.PR, item.KindPR)
-	addDefault(defaults.Issue, item.KindIssue)
+		if defaults.PR != id && defaults.Issue != id {
+			if err = st.deleteRow(ctx, id); !store.IsForeignKeyViolation(err) {
+				return err
+			}
+		}
 
-	for _, r := range rows {
-		addPlace(usage, r, r.PRPromptID, item.KindPR)
-		addPlace(usage, r, r.IssuePromptID, item.KindIssue)
-	}
+		// The prompt is in use; look it up to name it.
+		p, err := st.Lookup(ctx, id)
+		if err != nil {
+			return err
+		}
 
-	return usage, nil
+		return &InUseError{Nickname: p.Nickname}
+	})
 }
 
-// addPlace records that a launch default uses the prompt id for kind.
-func addPlace(usage map[int64]Usage, r usageRow, id *int64, kind item.Kind) {
-	if id == nil {
-		return
+// deleteRow deletes the prompt row with id, or returns ErrPromptNotFound when there is
+// none. A foreign key refusing it stays in the error's chain.
+func (s *Store) deleteRow(ctx context.Context, id int64) error {
+	n, err := s.q.DeletePrompt(ctx, id)
+
+	switch {
+	case err != nil:
+		return fmt.Errorf("delete the prompt: %w", err)
+	case n == 0:
+		return fmt.Errorf("%w (id %d)", ErrPromptNotFound, id)
+	default:
+		return nil
 	}
-
-	u := usage[*id]
-	if r.Name == "" {
-		u.Orgs = appendUnique(u.Orgs, r.Owner)
-	} else {
-		u.Repos = appendUnique(u.Repos, repo.Name{Owner: r.Owner, Repo: r.Name}.String())
-	}
-
-	u.Kinds = appendUnique(u.Kinds, string(kind))
-	usage[*id] = u
-}
-
-// usageOf returns one prompt's usage.
-func usageOf(db *gorm.DB, id int64) (Usage, error) {
-	usage, err := loadUsage(db)
-	if err != nil {
-		return Usage{}, err
-	}
-
-	return usage[id], nil
-}
-
-// appendUnique appends s unless list already holds it.
-func appendUnique(list []string, s string) []string {
-	if slices.Contains(list, s) {
-		return list
-	}
-
-	return append(list, s)
 }
 
 // nicknameTaken reports whether a prompt other than id has nickname, ignoring case.
-func nicknameTaken(db *gorm.DB, id int64, nickname string) (bool, error) {
-	var count int64
-
-	err := db.Model(&model.Prompt{}).Where("nickname = ? AND id <> ?", nickname, id).Count(&count).Error
+func (s *Store) nicknameTaken(ctx context.Context, id int64, nickname string) (bool, error) {
+	count, err := s.q.CountNickname(ctx, queries.CountNicknameParams{Nickname: nickname, ID: id})
 	if err != nil {
 		return false, fmt.Errorf("check the nickname: %w", err)
 	}
@@ -310,7 +239,7 @@ func nicknameTaken(db *gorm.DB, id int64, nickname string) (bool, error) {
 
 // freeNickname returns base when no prompt has it, or else base followed by the lowest
 // free number, as in "Review copy 2", cut so it stays within the nickname limit.
-func freeNickname(db *gorm.DB, base string) (string, error) {
+func (s *Store) freeNickname(ctx context.Context, base string) (string, error) {
 	base = textutil.Clip(base, maxNicknameRunes)
 
 	for n := 1; ; n++ {
@@ -321,36 +250,22 @@ func freeNickname(db *gorm.DB, base string) (string, error) {
 			candidate = textutil.Clip(base, maxNicknameRunes-utf8.RuneCountInString(suffix)) + suffix
 		}
 
-		taken, err := nicknameTaken(db, 0, candidate)
+		taken, err := s.nicknameTaken(ctx, 0, candidate)
 		if err != nil || !taken {
 			return candidate, err
 		}
 	}
 }
 
-// readSeeded reads the starter keys already added.
-func readSeeded(db *gorm.DB) ([]string, error) {
-	p, err := prefsOf(db)
-	if err != nil {
-		return nil, err
-	}
-
-	keys, _, err := p.GetList(db.Statement.Context, prefSeeded)
-	if err != nil {
-		return nil, fmt.Errorf("read the starter prompts added: %w", err)
-	}
-
-	return keys, nil
-}
-
-// readDefaultPrefs reads the stored default prompt IDs; 0 where none is stored.
-func readDefaultPrefs(db *gorm.DB) (DefaultPrompts, error) {
-	pr, err := readPref(db, prefDefaultPR)
+// storedDefaults reads the stored default prompt IDs; 0 where none is stored, or where
+// the stored value is not a number.
+func (s *Store) storedDefaults(ctx context.Context) (DefaultPrompts, error) {
+	pr, _, err := s.prefs.Get(ctx, prefDefaultPR)
 	if err != nil {
 		return DefaultPrompts{}, err
 	}
 
-	issue, err := readPref(db, prefDefaultIssue)
+	issue, _, err := s.prefs.Get(ctx, prefDefaultIssue)
 	if err != nil {
 		return DefaultPrompts{}, err
 	}
@@ -361,22 +276,47 @@ func readDefaultPrefs(db *gorm.DB) (DefaultPrompts, error) {
 	return DefaultPrompts{PR: prID, Issue: issueID}, nil
 }
 
+// setDefault stores id as the app's default prompt for kind.
+func (s *Store) setDefault(ctx context.Context, kind item.Kind, id int64) error {
+	return s.prefs.Set(ctx, defaultPrefKey(kind), strconv.FormatInt(id, 10))
+}
+
+// seeded reads the starter keys already added.
+func (s *Store) seeded(ctx context.Context) ([]string, error) {
+	keys, _, err := s.prefs.GetList(ctx, prefSeeded)
+	if err != nil {
+		return nil, fmt.Errorf("read the starter prompts added: %w", err)
+	}
+
+	return keys, nil
+}
+
+// setSeeded records keys as the starter keys already added.
+func (s *Store) setSeeded(ctx context.Context, keys []string) error {
+	return s.prefs.SetList(ctx, prefSeeded, keys)
+}
+
+// now is the time a write stamps, in UTC so stored timestamps sort as text.
+func (s *Store) now() time.Time {
+	return s.clock.Now().UTC()
+}
+
 // pickDefault returns the stored default for kind when it exists and applies, else the
 // first prompt that applies, else 0.
-func pickDefault(rows []model.Prompt, kind item.Kind, stored int64) int64 {
+func pickDefault(all []Prompt, kind item.Kind, stored int64) int64 {
 	var first int64
 
-	for _, row := range rows {
-		if !AppliesTo(row.AppliesTo, kind) {
+	for _, p := range all {
+		if !AppliesTo(p.AppliesTo, kind) {
 			continue
 		}
 
-		if row.ID == stored {
+		if p.ID == stored {
 			return stored
 		}
 
 		if first == 0 {
-			first = row.ID
+			first = p.ID
 		}
 	}
 
@@ -392,84 +332,36 @@ func defaultPrefKey(kind item.Kind) string {
 	return prefDefaultIssue
 }
 
-// readPref reads one preference, "" when it is unset.
-func readPref(db *gorm.DB, key string) (string, error) {
-	p, err := prefsOf(db)
+// fromRow converts a stored row to a Prompt with no usage. Its lists are never nil: the
+// schema only accepts a JSON array in extra_args, and an empty one decodes to an empty
+// list.
+func fromRow(row queries.Prompt) (Prompt, error) {
+	args, err := store.DecodeJSON[[]string](row.ExtraArgs)
 	if err != nil {
-		return "", err
+		return Prompt{}, fmt.Errorf("prompt %q: extra arguments: %w", row.Nickname, err)
 	}
-
-	value, _, err := p.Get(db.Statement.Context, key)
-
-	return value, err
-}
-
-// setPref stores one preference.
-func setPref(db *gorm.DB, key, value string) error {
-	p, err := prefsOf(db)
-	if err != nil {
-		return err
-	}
-
-	return p.Set(db.Statement.Context, key, value)
-}
-
-// prefsOf returns the prefs over the connection the GORM handle db runs on. Inside a
-// transaction they join it, so they commit or roll back with the prompts; outside one
-// they run on the pool.
-func prefsOf(db *gorm.DB) (*prefs.Store, error) {
-	pool, err := db.DB()
-	if err != nil {
-		return nil, fmt.Errorf("reach the prefs: %w", err)
-	}
-
-	p := prefs.New(pool, nil)
-
-	if tx, txErr := store.SQLTx(db); txErr == nil {
-		p = p.WithTx(tx)
-	}
-
-	return p, nil
-}
-
-// fromRow converts a row and its usage to a Prompt. Nil lists become empty ones.
-func fromRow(row model.Prompt, usage Usage) Prompt {
-	args := append([]string{}, row.ExtraArgs...)
 
 	p := Prompt{
 		ID: row.ID, Name: row.Name, Nickname: row.Nickname, AppliesTo: row.AppliesTo, Body: row.Body,
 		Model: row.Model, Effort: row.Effort, PlanMode: row.PlanMode, Worktree: row.Worktree,
 		ExtraArgs: args, ExtraFlags: agent.Join(args), StarterKey: row.StarterKey,
-		Usage:     normalizeUsage(usage),
+		Usage:     normalizeUsage(Usage{}),
 		UpdatedAt: clock.Format(row.UpdatedAt),
 	}
 
 	if st, ok := starterFor(row.StarterKey); ok {
-		p.Modified = !matchesStarter(row, st)
+		p.Modified = !matchesStarter(p, st)
 	}
 
-	return p
+	return p, nil
 }
 
-// normalizeUsage sorts a usage's lists and turns nil lists into empty ones.
-func normalizeUsage(u Usage) Usage {
-	for _, list := range []*[]string{&u.Defaults, &u.Orgs, &u.Repos, &u.Kinds} {
-		if *list == nil {
-			*list = []string{}
-		}
-
-		sort.Strings(*list)
-	}
-
-	return u
-}
-
-// matchesStarter reports whether a row still has its starter's title, text, and
+// matchesStarter reports whether a prompt still has its starter's title, text, and
 // settings. The nickname may differ: Reset keeps it when another prompt took it.
-func matchesStarter(row model.Prompt, st Starter) bool {
-	return row.Name == st.Name && row.AppliesTo == st.AppliesTo && row.Body == st.Body &&
-		row.Model == st.Model && row.Effort == st.Effort && sameBool(row.PlanMode, st.PlanMode) &&
-		sameBool(row.Worktree, st.Worktree) && slices.Equal([]string(row.ExtraArgs), st.ExtraArgs)
+func matchesStarter(p Prompt, st Starter) bool {
+	return p.Name == st.Name && p.AppliesTo == st.AppliesTo && p.Body == st.Body &&
+		p.Model == st.Model && p.Effort == st.Effort && sameBool(p.PlanMode, st.PlanMode) &&
+		sameBool(p.Worktree, st.Worktree) && slices.Equal(p.ExtraArgs, st.ExtraArgs)
 }
 
 // sameBool reports whether two optional settings are equal.
