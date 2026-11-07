@@ -103,7 +103,8 @@ func TestBootstrapKeepsExistingProfiles(t *testing.T) {
 
 	first, err := Bootstrap(t.Context(), Options{Paths: paths, Home: home, Runner: noPrograms()})
 	require.NoError(t, err)
-	require.NoError(t, first.DB.Exec("UPDATE claude_profiles SET model = 'opus' WHERE name = 'work'").Error)
+	_, err = first.pool.ExecContext(t.Context(), "UPDATE claude_profiles SET model = 'opus' WHERE name = 'work'")
+	require.NoError(t, err)
 	require.NoError(t, first.Close())
 
 	// The work profile's directory is gone and a new one appeared.
@@ -114,7 +115,7 @@ func TestBootstrapKeepsExistingProfiles(t *testing.T) {
 
 	assert.ElementsMatch(t, []string{profiles.DefaultName, "work", "alt"}, profileNames(t, c))
 
-	work, err := profiles.Lookup(t.Context(), c.DB, "work")
+	work, err := c.ProfileStore.Lookup(t.Context(), "work")
 	require.NoError(t, err)
 	assert.Equal(t, "opus", work.Model, "an edited row is never overwritten")
 }
@@ -132,12 +133,13 @@ func TestBootstrapRemovesProfilesForOtherToolsFolders(t *testing.T) {
 
 	// An older version stored a profile for each of them.
 	first := bootstrap(t, Options{Paths: paths, Home: home, Runner: noPrograms()})
-	require.NoError(t, profiles.Sync(t.Context(), first.DB, []profiles.Profile{
+	require.NoError(t, first.ProfileStore.Sync(t.Context(), []profiles.Profile{
 		{Name: "squad", ConfigDir: filepath.Join(home, ".claude-squad"), PermissionMode: profiles.PermissionFull},
 		{Name: "monitor", ConfigDir: filepath.Join(home, ".claude-monitor"), PermissionMode: profiles.PermissionFull},
 	}))
-	require.NoError(t, first.DB.Exec("UPDATE claude_profiles SET config_dir = ? WHERE name = 'dup'",
-		filepath.Join(home, ".claude_dup")).Error)
+	_, err := first.pool.ExecContext(t.Context(), "UPDATE claude_profiles SET config_dir = ? WHERE name = 'dup'",
+		filepath.Join(home, ".claude_dup"))
+	require.NoError(t, err)
 	require.NoError(t, first.Close())
 
 	var logs bytes.Buffer
@@ -154,7 +156,7 @@ func TestBootstrapRemovesProfilesForOtherToolsFolders(t *testing.T) {
 	assert.Contains(t, logs.String(), "profiles=\"[dup monitor squad]\"")
 
 	// The freed name went to the directory that holds the config.
-	dup, err := profiles.Lookup(t.Context(), c.DB, "dup")
+	dup, err := c.ProfileStore.Lookup(t.Context(), "dup")
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(home, ".claude-dup"), dup.ConfigDir)
 
@@ -168,10 +170,11 @@ func TestBootstrapStopsWhenProfilesCannotBePruned(t *testing.T) {
 	home := testutil.ClaudeHome(t, ".claude")
 
 	first := bootstrap(t, Options{Paths: paths, Home: home, Runner: noPrograms()})
-	require.NoError(t, first.DB.Exec("DROP TABLE claude_profiles").Error)
+	_, err := first.pool.ExecContext(t.Context(), "DROP TABLE claude_profiles")
+	require.NoError(t, err)
 	require.NoError(t, first.Close())
 
-	_, err := Bootstrap(t.Context(), Options{Paths: paths, Home: home, Runner: noPrograms()})
+	_, err = Bootstrap(t.Context(), Options{Paths: paths, Home: home, Runner: noPrograms()})
 	require.ErrorContains(t, err, "prune profiles")
 }
 

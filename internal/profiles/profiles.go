@@ -11,6 +11,9 @@
 // keeps its settings, and one whose directory disappeared keeps its row. Prune removes
 // only rows that hold nothing worth keeping: unedited profiles whose directory is still
 // there but holds no agent config.
+//
+// The Store owns the stored profiles; every other package reads them through it, or
+// through a narrow interface it satisfies. The Service is what the window binds.
 package profiles
 
 import (
@@ -19,18 +22,13 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
-	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
-
 	"github.com/mrz1836/nilbox/internal/paths"
-	"github.com/mrz1836/nilbox/internal/profiles/model"
 )
 
 const (
@@ -103,32 +101,27 @@ type Profile struct {
 
 // Service serves the stored profiles.
 type Service struct {
-	db   *gorm.DB
-	home string
+	store *Store
+	home  string
 }
 
-// NewService returns a Service over db. home is where the default profile's directory
-// lives, and is shown as ~ in each profile's Folder.
-func NewService(db *gorm.DB, home string) *Service {
-	return &Service{db: db, home: home}
+// NewService returns a Service over the profiles in store. home is where the default
+// profile's directory lives, and is shown as ~ in each profile's Folder.
+func NewService(store *Store, home string) *Service {
+	return &Service{store: store, home: home}
 }
 
 // List returns every stored profile, the default first and the rest by name, each with
 // its Folder and whether that folder is missing.
 func (s *Service) List(ctx context.Context) ([]Profile, error) {
-	var rows []model.ClaudeProfile
-	if err := s.db.WithContext(ctx).Find(&rows).Error; err != nil {
-		return nil, fmt.Errorf("list profiles: %w", err)
+	profiles, err := s.store.All(ctx)
+	if err != nil {
+		return nil, err
 	}
 
-	profiles := make([]Profile, 0, len(rows))
-	for _, row := range rows {
-		p := fromRow(row)
-		s.describeFolder(&p)
-		profiles = append(profiles, p)
+	for i := range profiles {
+		s.describeFolder(&profiles[i])
 	}
-
-	sortProfiles(profiles)
 
 	return profiles, nil
 }
@@ -182,79 +175,6 @@ func Discover(home string) ([]Profile, error) {
 	return profiles, nil
 }
 
-// Sync stores every discovered profile that has no row yet. It never updates or deletes
-// a row.
-func Sync(ctx context.Context, db *gorm.DB, found []Profile) error {
-	if len(found) == 0 {
-		return nil
-	}
-
-	rows := make([]model.ClaudeProfile, 0, len(found))
-	for _, p := range found {
-		rows = append(rows, toRow(p))
-	}
-
-	err := db.WithContext(ctx).
-		Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "name"}}, DoNothing: true}).
-		Create(&rows).Error
-	if err != nil {
-		return fmt.Errorf("store discovered profiles: %w", err)
-	}
-
-	return nil
-}
-
-// Prune removes the stored profiles that hold nothing worth keeping: named profiles whose
-// directory is still there but holds no agent config, and whose settings are still the
-// ones discovery gave them, so nobody edited them. Removing such a row loses nothing,
-// and discovery adds it back if the directory later becomes an agent config. The default
-// profile, edited profiles, and profiles whose directory is gone or cannot be read are
-// kept. It returns the names it removed, sorted.
-func Prune(ctx context.Context, db *gorm.DB) ([]string, error) {
-	var rows []model.ClaudeProfile
-	if err := db.WithContext(ctx).Find(&rows).Error; err != nil {
-		return nil, fmt.Errorf("read profiles to prune: %w", err)
-	}
-
-	var (
-		ids     []int64
-		removed []string
-	)
-
-	for _, row := range rows {
-		if prunable(row) {
-			ids = append(ids, row.ID)
-			removed = append(removed, row.Name)
-		}
-	}
-
-	if len(ids) == 0 {
-		return nil, nil
-	}
-
-	if err := db.WithContext(ctx).Where("id IN ?", ids).Delete(&model.ClaudeProfile{}).Error; err != nil {
-		return nil, fmt.Errorf("remove profiles with no agent config: %w", err)
-	}
-
-	sort.Strings(removed)
-
-	return removed, nil
-}
-
-// Lookup returns the stored profile named name, or ErrProfileNotFound.
-func Lookup(ctx context.Context, db *gorm.DB, name string) (Profile, error) {
-	var rows []model.ClaudeProfile
-	if err := db.WithContext(ctx).Where("name = ?", name).Limit(1).Find(&rows).Error; err != nil {
-		return Profile{}, fmt.Errorf("look up profile: %w", err)
-	}
-
-	if len(rows) == 0 {
-		return Profile{}, fmt.Errorf("%w: %q", ErrProfileNotFound, name)
-	}
-
-	return fromRow(rows[0]), nil
-}
-
 // candidate is a profile directory found under home, with its precedence (lower wins).
 // configDir is "" for the default profile; dir is always the directory found.
 type candidate struct {
@@ -286,19 +206,19 @@ func discoverable(home, entry string) (candidate, bool) {
 // prunable reports whether Prune removes a stored profile: a named profile whose
 // directory can be read but holds no agent config, and that nobody edited. An edited one
 // is kept with a warning, since its settings would be lost.
-func prunable(row model.ClaudeProfile) bool {
-	if row.ConfigDir == "" || row.Name == DefaultName {
+func prunable(p Profile) bool {
+	if p.ConfigDir == "" || p.Name == DefaultName {
 		return false
 	}
 
-	config, readable := inspectConfigDir(row.ConfigDir)
+	config, readable := inspectConfigDir(p.ConfigDir)
 	if !readable || config {
 		return false
 	}
 
-	if !untouched(row) {
+	if !untouched(p) {
 		slog.Warn("keeping an edited profile whose directory holds no agent config",
-			"profile", row.Name, "dir", row.ConfigDir)
+			"profile", p.Name, "dir", p.ConfigDir)
 
 		return false
 	}
@@ -377,9 +297,9 @@ func inspectConfigDir(dir string) (config, readable bool) {
 
 // untouched reports whether a stored profile still has the settings discovery gives a
 // new one (see newDiscovered).
-func untouched(row model.ClaudeProfile) bool {
-	return row.Model == "" && row.Effort == "" && row.PermissionMode == PermissionFull && !row.PlanMode &&
-		len(row.AddDirs) == 0 && len(row.ExtraArgs) == 0 && len(row.Env) == 0
+func untouched(p Profile) bool {
+	return p.Model == "" && p.Effort == "" && p.PermissionMode == PermissionFull && !p.PlanMode &&
+		len(p.AddDirs) == 0 && len(p.ExtraArgs) == 0 && len(p.Env) == 0
 }
 
 // newDiscovered returns a discovered profile with the discovery defaults.
@@ -404,38 +324,4 @@ func sortProfiles(profiles []Profile) {
 
 		return a < b
 	})
-}
-
-// fromRow converts a stored row to a Profile. Nil lists and maps become empty ones.
-func fromRow(row model.ClaudeProfile) Profile {
-	p := Profile{
-		Name:           row.Name,
-		ConfigDir:      row.ConfigDir,
-		Model:          row.Model,
-		Effort:         row.Effort,
-		PermissionMode: row.PermissionMode,
-		PlanMode:       row.PlanMode,
-		AddDirs:        append([]string{}, row.AddDirs...),
-		ExtraArgs:      append([]string{}, row.ExtraArgs...),
-		Env:            make(map[string]string, len(row.Env)),
-	}
-
-	maps.Copy(p.Env, row.Env)
-
-	return p
-}
-
-// toRow converts a Profile to a row for insertion.
-func toRow(p Profile) model.ClaudeProfile {
-	return model.ClaudeProfile{
-		Name:           p.Name,
-		ConfigDir:      p.ConfigDir,
-		Model:          p.Model,
-		Effort:         p.Effort,
-		PermissionMode: p.PermissionMode,
-		PlanMode:       p.PlanMode,
-		AddDirs:        model.StringList(p.AddDirs),
-		ExtraArgs:      model.StringList(p.ExtraArgs),
-		Env:            model.StringMap(p.Env),
-	}
 }

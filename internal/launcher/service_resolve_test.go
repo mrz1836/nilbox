@@ -37,8 +37,16 @@ func (h *launchHarness) promptID(t *testing.T, nickname string) int64 {
 func (h *launchHarness) saveDefaults(t *testing.T, in launchdefaults.Input) {
 	t.Helper()
 
-	_, err := launchdefaults.NewService(h.db).Save(t.Context(), in)
+	_, err := launchdefaults.NewService(h.db, h.profiles).Save(t.Context(), in)
 	require.NoError(t, err)
+}
+
+func TestResolveReportsUnreadableProfiles(t *testing.T) {
+	h := newLaunchHarness(t)
+	h.cfg.Profiles = failingProfiles{}
+
+	_, err := h.service().Resolve(t.Context(), LaunchRequest{ItemID: h.trustedPR})
+	require.ErrorIs(t, err, errFakeProfiles)
 }
 
 func TestResolveService(t *testing.T) {

@@ -18,8 +18,6 @@ import (
 	"strconv"
 	"strings"
 
-	"gorm.io/gorm"
-
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/paths"
@@ -142,21 +140,26 @@ type Settings struct {
 	BannersOff []string `json:"bannersOff"`
 }
 
-// Service reads and writes the preferences.
-type Service struct {
-	prefs   *prefs.Store
-	db      *gorm.DB
-	home    string
-	clock   clock.Clock
-	themes  ThemeNotifier
-	menuBar MenuBarNotifier
+// ProfileLookup finds a stored profile by name, or returns profiles.ErrProfileNotFound.
+// *profiles.Store implements it.
+type ProfileLookup interface {
+	Lookup(ctx context.Context, name string) (profiles.Profile, error)
 }
 
-// NewService returns a Service over the database: pool is its connection pool, which
-// holds the preferences, and db a GORM handle over the same pool, which looks up the
-// stored profiles. home expands a ~ clone root.
-func NewService(pool *sql.DB, db *gorm.DB, home string, opts ...Option) *Service {
-	s := &Service{db: db, home: home}
+// Service reads and writes the preferences.
+type Service struct {
+	prefs    *prefs.Store
+	profiles ProfileLookup
+	home     string
+	clock    clock.Clock
+	themes   ThemeNotifier
+	menuBar  MenuBarNotifier
+}
+
+// NewService returns a Service over the preferences in pool. known looks up the stored
+// profiles the default profile must name, and home expands a ~ clone root.
+func NewService(pool *sql.DB, known ProfileLookup, home string, opts ...Option) *Service {
+	s := &Service{profiles: known, home: home}
 
 	for _, opt := range opts {
 		opt(s)
@@ -190,7 +193,7 @@ func (s *Service) Get(ctx context.Context) (Settings, error) {
 	// A default profile that is no longer stored (pruned, say) falls back too, so the
 	// settings never name a profile the launch dropdown cannot offer.
 	if out.DefaultProfile != DefaultProfile {
-		_, err := profiles.Lookup(ctx, s.db, out.DefaultProfile)
+		_, err := s.profiles.Lookup(ctx, out.DefaultProfile)
 		if errors.Is(err, profiles.ErrProfileNotFound) {
 			out.DefaultProfile = DefaultProfile
 		} else if err != nil {
@@ -213,7 +216,7 @@ func (s *Service) SetTerminal(ctx context.Context, terminal string) error {
 // SetDefaultProfile stores the profile the launch dropdown preselects. It must name a
 // stored profile.
 func (s *Service) SetDefaultProfile(ctx context.Context, name string) error {
-	if _, err := profiles.Lookup(ctx, s.db, name); err != nil {
+	if _, err := s.profiles.Lookup(ctx, name); err != nil {
 		if errors.Is(err, profiles.ErrProfileNotFound) {
 			return fmt.Errorf("%w %q", ErrUnknownProfile, name)
 		}

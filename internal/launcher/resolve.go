@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"slices"
 
-	"gorm.io/gorm"
-
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
@@ -124,29 +122,30 @@ type world struct {
 	policy trust.Policy
 }
 
-// loadWorld reads everything resolution needs from the database and settings.
-func loadWorld(ctx context.Context, db *gorm.DB, reader SettingsReader) (world, error) {
-	prefs, err := reader.Get(ctx)
+// loadWorld reads everything resolution needs from the database, the settings, and the
+// stored profiles.
+func (s *Service) loadWorld(ctx context.Context) (world, error) {
+	prefs, err := s.settings.Get(ctx)
 	if err != nil {
 		return world{}, err
 	}
 
-	defaults, err := prompts.LoadDefaults(ctx, db)
+	defaults, err := prompts.LoadDefaults(ctx, s.db)
 	if err != nil {
 		return world{}, err
 	}
 
-	all, err := prompts.All(ctx, db)
+	all, err := prompts.All(ctx, s.db)
 	if err != nil {
 		return world{}, err
 	}
 
-	stored, err := profiles.NewService(db, "").List(ctx)
+	stored, err := s.profiles.All(ctx)
 	if err != nil {
 		return world{}, err
 	}
 
-	rules, err := launchdefaults.All(ctx, db)
+	rules, err := launchdefaults.All(ctx, s.db)
 	if err != nil {
 		return world{}, err
 	}

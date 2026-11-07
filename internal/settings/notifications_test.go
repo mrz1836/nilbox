@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
-	"github.com/mrz1836/nilbox/internal/store"
 )
 
 // menuBarLog records the menu bar settings a MenuBarNotifier was told about, in order.
@@ -77,7 +76,7 @@ func TestTheMenuBarSettingFailsOnAClosedDatabase(t *testing.T) {
 	log := &menuBarLog{}
 	svc.menuBar = log
 
-	require.NoError(t, store.Close(db))
+	require.NoError(t, db.Close())
 
 	on, err := svc.MenuBar(t.Context())
 	require.Error(t, err)
@@ -114,7 +113,7 @@ func TestSetNotificationBannerRejectsAnUnknownKind(t *testing.T) {
 
 func TestSetNotificationBannerFailsOnAClosedDatabase(t *testing.T) {
 	svc, db, _ := newTestService(t)
-	require.NoError(t, store.Close(db))
+	require.NoError(t, db.Close())
 
 	require.Error(t, svc.SetNotificationBanner(t.Context(), notifyprefs.KindWoke, false))
 }

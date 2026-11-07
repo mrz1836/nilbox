@@ -115,6 +115,10 @@ type Core struct {
 	Notifications  *notify.Service
 	AppInfo        *appinfo.Service
 
+	// ProfileStore holds the stored agent profiles that Profiles lists. It is not bound;
+	// code that seeds the database, such as the launch measurement, writes through it.
+	ProfileStore *profiles.Store
+
 	// Scheduler refreshes the inbox on start and every five minutes once Run is called.
 	// A worktrees.Sweeper over Worktrees does the same for the automatic worktree
 	// cleanup.
@@ -163,7 +167,7 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 
 	reset := dataReset(ctx, opened.Reset, opts.Home, logger)
 
-	if err = syncProfiles(ctx, db, opts.Home, logger); err != nil {
+	if err = syncProfiles(ctx, profiles.NewStore(pool, opts.Clock), opts.Home, logger); err != nil {
 		_ = pool.Close()
 
 		return nil, err
@@ -203,8 +207,8 @@ func (c *Core) Close() error {
 // by the directory that now owns it. A home directory that cannot be read only skips
 // discovery, with a warning: the profiles already stored still work, and the inbox does
 // not need them.
-func syncProfiles(ctx context.Context, db *gorm.DB, home string, logger *slog.Logger) error {
-	removed, err := profiles.Prune(ctx, db)
+func syncProfiles(ctx context.Context, stored *profiles.Store, home string, logger *slog.Logger) error {
+	removed, err := stored.Prune(ctx)
 	if err != nil {
 		return fmt.Errorf("prune profiles: %w", err)
 	}
@@ -220,7 +224,7 @@ func syncProfiles(ctx context.Context, db *gorm.DB, home string, logger *slog.Lo
 		return nil
 	}
 
-	if err = profiles.Sync(ctx, db, found); err != nil {
+	if err = stored.Sync(ctx, found); err != nil {
 		return fmt.Errorf("sync profiles: %w", err)
 	}
 
@@ -251,7 +255,8 @@ func assemble(pool *sql.DB, db *gorm.DB, reset *appinfo.DataReset, opts Options,
 		runner = execpath.Exec{Finder: finder}
 	}
 
-	prefs := settings.NewService(pool, db, opts.Home, settings.WithClock(opts.Clock),
+	profileStore := profiles.NewStore(pool, opts.Clock)
+	prefs := settings.NewService(pool, profileStore, opts.Home, settings.WithClock(opts.Clock),
 		settings.WithThemeNotifier(opts.ThemeNotifier), settings.WithMenuBarNotifier(opts.MenuBarNotifier))
 	tokens := github.NewTokenSource(runner, finder)
 	client := github.NewClient(opts.Version)
@@ -276,6 +281,7 @@ func assemble(pool *sql.DB, db *gorm.DB, reset *appinfo.DataReset, opts Options,
 	launch := launcher.NewService(launcher.Config{
 		DB:       db,
 		Settings: prefs,
+		Profiles: profileStore,
 		Git:      runner,
 		GH:       runner,
 		Finder:   finder,
@@ -291,9 +297,9 @@ func assemble(pool *sql.DB, db *gorm.DB, reset *appinfo.DataReset, opts Options,
 		DB:             db,
 		pool:           pool,
 		Settings:       prefs,
-		Profiles:       profiles.NewService(db, opts.Home),
+		Profiles:       profiles.NewService(profileStore, opts.Home),
 		Prompts:        prompts.NewService(prompts.Config{DB: db, Source: launcher.NewPromptSource(launch)}),
-		LaunchDefaults: launchdefaults.NewService(db),
+		LaunchDefaults: launchdefaults.NewService(db, profileStore),
 		Inbox:          inboxSvc,
 		Launcher:       launch,
 		Worktrees: worktrees.NewService(worktrees.Config{
@@ -317,8 +323,9 @@ func assemble(pool *sql.DB, db *gorm.DB, reset *appinfo.DataReset, opts Options,
 			OnFirstPaint: opts.OnFirstPaint,
 			DataReset:    reset,
 		}),
-		Scheduler: inbox.NewScheduler(inboxSvc, logger),
-		Timing:    recorder,
+		ProfileStore: profileStore,
+		Scheduler:    inbox.NewScheduler(inboxSvc, logger),
+		Timing:       recorder,
 	}
 }
 

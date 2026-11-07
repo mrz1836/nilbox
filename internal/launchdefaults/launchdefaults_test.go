@@ -12,7 +12,7 @@ import (
 	inboxmodel "github.com/mrz1836/nilbox/internal/inbox/model"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
-	profilesmodel "github.com/mrz1836/nilbox/internal/profiles/model"
+	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/testutil"
@@ -33,15 +33,16 @@ type harness struct {
 func newHarness(t *testing.T) *harness {
 	t.Helper()
 
-	db := testutil.DB(t)
+	pool, db := testutil.BridgedDB(t)
+	known := profiles.NewStore(pool, nil)
 
 	require.NoError(t, prompts.Seed(t.Context(), db))
-	require.NoError(t, db.Create(&profilesmodel.ClaudeProfile{Name: "work", ConfigDir: "/tmp/work"}).Error)
+	require.NoError(t, known.Sync(t.Context(), []profiles.Profile{{Name: "work", ConfigDir: "/tmp/work"}}))
 
 	defaults, err := prompts.LoadDefaults(t.Context(), db)
 	require.NoError(t, err)
 
-	return &harness{db: db, svc: launchdefaults.NewService(db), review: defaults.PR, work: defaults.Issue}
+	return &harness{db: db, svc: launchdefaults.NewService(db, known), review: defaults.PR, work: defaults.Issue}
 }
 
 // fields maps a ValidationError's fields to their messages.

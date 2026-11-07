@@ -8,6 +8,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
+	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -151,8 +152,10 @@ func TestListOrdersByOwnerThenRepositoryIgnoringCase(t *testing.T) {
 func TestServiceReportsAClosedDatabase(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.ClosedDB(t)
-	svc := launchdefaults.NewService(db)
+	pool, db := testutil.BridgedDB(t)
+	require.NoError(t, pool.Close())
+
+	svc := launchdefaults.NewService(db, profiles.NewStore(pool, nil))
 	ctx := t.Context()
 	review := int64(1)
 

@@ -135,14 +135,21 @@ type Target struct {
 	Items int `json:"items"`
 }
 
-// Service manages the launch defaults.
-type Service struct {
-	db *gorm.DB
+// ProfileLookup finds a stored profile by name, or returns profiles.ErrProfileNotFound.
+// *profiles.Store implements it.
+type ProfileLookup interface {
+	Lookup(ctx context.Context, name string) (profiles.Profile, error)
 }
 
-// NewService returns a Service over db.
-func NewService(db *gorm.DB) *Service {
-	return &Service{db: db}
+// Service manages the launch defaults.
+type Service struct {
+	db       *gorm.DB
+	profiles ProfileLookup
+}
+
+// NewService returns a Service over db. known looks up the profiles a default may name.
+func NewService(db *gorm.DB, known ProfileLookup) *Service {
+	return &Service{db: db, profiles: known}
 }
 
 // List returns every stored launch default, by owner and then repository, each owner's
@@ -153,7 +160,7 @@ func (s *Service) List(ctx context.Context) ([]Defaults, error) {
 
 // Check validates launch defaults being edited, as Save would, without saving them.
 func (s *Service) Check(ctx context.Context, in Input) ([]agent.FieldError, error) {
-	_, fields, err := validate(ctx, s.db, in.normalized())
+	_, fields, err := validate(ctx, s.db, s.profiles, in.normalized())
 
 	return textutil.NonNil(fields), err
 }
@@ -164,7 +171,7 @@ func (s *Service) Save(ctx context.Context, in Input) (Defaults, error) {
 	in = in.normalized()
 	db := s.db.WithContext(ctx)
 
-	args, fields, err := validate(ctx, db, in)
+	args, fields, err := validate(ctx, db, s.profiles, in)
 	if err != nil {
 		return Defaults{}, err
 	}
@@ -284,7 +291,7 @@ func (in Input) normalized() Input {
 
 // validate checks an Input and returns its extra arguments, or the problems that stop it
 // being saved. An error means the checks themselves could not run.
-func validate(ctx context.Context, db *gorm.DB, in Input) ([]string, []agent.FieldError, error) {
+func validate(ctx context.Context, db *gorm.DB, known ProfileLookup, in Input) ([]string, []agent.FieldError, error) {
 	var fields []agent.FieldError
 
 	add := func(field, message string) {
@@ -297,7 +304,7 @@ func validate(ctx context.Context, db *gorm.DB, in Input) ([]string, []agent.Fie
 	add(FieldName, checkName(in.Name))
 	add(FieldAgent, checkAgent(in.Agent))
 
-	profileMsg, err := checkProfile(ctx, db, in.Profile)
+	profileMsg, err := checkProfile(ctx, known, in.Profile)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -350,12 +357,12 @@ func checkAgent(id string) string {
 }
 
 // checkProfile checks the profile, which may be "" to inherit.
-func checkProfile(ctx context.Context, db *gorm.DB, profile string) (string, error) {
+func checkProfile(ctx context.Context, known ProfileLookup, profile string) (string, error) {
 	if profile == "" {
 		return "", nil
 	}
 
-	_, err := profiles.Lookup(ctx, db, profile)
+	_, err := known.Lookup(ctx, profile)
 
 	switch {
 	case errors.Is(err, profiles.ErrProfileNotFound):

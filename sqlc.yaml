@@ -50,3 +50,9 @@ sql:
       go:
         !!merge <<: *go
         out: internal/notify/internal/queries
+  - !!merge <<: *owner
+    queries: internal/profiles/internal/queries
+    gen:
+      go:
+        !!merge <<: *go
+        out: internal/profiles/internal/queries

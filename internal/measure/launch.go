@@ -292,7 +292,7 @@ func seed(ctx context.Context, c *core.Core, root string) error {
 		Env:            map[string]string{},
 	}
 
-	if err := profiles.Sync(ctx, c.DB, []profiles.Profile{defaultProfile}); err != nil {
+	if err := c.ProfileStore.Sync(ctx, []profiles.Profile{defaultProfile}); err != nil {
 		return fmt.Errorf("store the default profile: %w", err)
 	}
 

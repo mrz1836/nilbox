@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -60,11 +59,11 @@ func TestThemeSurvivesARestart(t *testing.T) {
 	home := t.TempDir()
 	path := filepath.Join(t.TempDir(), "app.db")
 
-	db := testutil.DBAt(t, path)
+	db := testutil.SQLDBAt(t, path)
 	require.NoError(t, serviceOver(t, db, home).SetTheme(ctx, ThemeLight))
-	require.NoError(t, store.Close(db))
+	require.NoError(t, db.Close())
 
-	got, err := serviceOver(t, testutil.DBAt(t, path), home).Theme(ctx)
+	got, err := serviceOver(t, testutil.SQLDBAt(t, path), home).Theme(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, ThemeLight, got)
 }
@@ -72,7 +71,7 @@ func TestThemeSurvivesARestart(t *testing.T) {
 func TestSetThemeRejectsAnUnknownTheme(t *testing.T) {
 	log := &themeLog{}
 	home := t.TempDir()
-	svc := serviceOver(t, testutil.DB(t), home, WithThemeNotifier(log))
+	svc := serviceOver(t, testutil.SQLDB(t), home, WithThemeNotifier(log))
 	ctx := t.Context()
 
 	require.NoError(t, svc.SetTheme(ctx, ThemeDark))
@@ -103,7 +102,7 @@ func TestThemeIgnoresABadStoredValue(t *testing.T) {
 }
 
 func TestThemeReportsAClosedDatabase(t *testing.T) {
-	svc := serviceOver(t, testutil.ClosedDB(t), t.TempDir())
+	svc := serviceOver(t, closedDB(t), t.TempDir())
 
 	_, err := svc.Theme(t.Context())
 	require.ErrorContains(t, err, "read the theme")
@@ -113,7 +112,7 @@ func TestThemeReportsAClosedDatabase(t *testing.T) {
 
 func TestSetThemeTellsTheNotifierOnceStored(t *testing.T) {
 	log := &themeLog{}
-	db := testutil.DB(t)
+	db := testutil.SQLDB(t)
 	svc := serviceOver(t, db, t.TempDir(), WithThemeNotifier(log))
 	ctx := t.Context()
 

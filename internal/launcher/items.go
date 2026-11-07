@@ -200,7 +200,7 @@ func (p promptSource) PreviewData(ctx context.Context, itemID int64) (prompts.Da
 		return prompts.Data{}, err
 	}
 
-	w, err := loadWorld(ctx, p.s.db, p.s.settings)
+	w, err := p.s.loadWorld(ctx)
 	if err != nil {
 		return prompts.Data{}, err
 	}

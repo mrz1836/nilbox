@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -45,11 +44,11 @@ func TestCollapsedSectionsSurviveARestart(t *testing.T) {
 	home := t.TempDir()
 	path := filepath.Join(t.TempDir(), "app.db")
 
-	db := testutil.DBAt(t, path)
+	db := testutil.SQLDBAt(t, path)
 	require.NoError(t, serviceOver(t, db, home).SetSectionCollapsed(ctx, SectionAuthored, true))
-	require.NoError(t, store.Close(db))
+	require.NoError(t, db.Close())
 
-	got, err := serviceOver(t, testutil.DBAt(t, path), home).CollapsedSections(ctx)
+	got, err := serviceOver(t, testutil.SQLDBAt(t, path), home).CollapsedSections(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, []string{SectionAuthored}, got)
 }
@@ -85,7 +84,7 @@ func TestCollapsedSectionsIgnoreBadStoredValues(t *testing.T) {
 
 func TestCollapsedSectionsDatabaseErrors(t *testing.T) {
 	svc, db, _ := newTestService(t)
-	require.NoError(t, store.Close(db))
+	require.NoError(t, db.Close())
 
 	_, err := svc.CollapsedSections(t.Context())
 	require.ErrorContains(t, err, "read the collapsed inbox sections")

@@ -1,7 +1,7 @@
 package settings
 
 import (
-	"errors"
+	"database/sql"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -10,7 +10,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/paths"
@@ -18,41 +17,49 @@ import (
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/snooze"
-	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
 
-// errRefused is what a test's database callback fails with.
-var errRefused = errors.New("refused by the test")
-
 // newTestService returns a Service over a fresh database and a temp home directory.
-func newTestService(t *testing.T) (*Service, *gorm.DB, string) {
+func newTestService(t *testing.T) (*Service, *sql.DB, string) {
 	t.Helper()
 
 	home := t.TempDir()
-	pool, db := testutil.BridgedDB(t)
+	db := testutil.SQLDB(t)
 
-	return NewService(pool, db, home), db, home
+	return serviceOver(t, db, home), db, home
 }
 
-// serviceOver returns a Service over db and the pool under it.
-func serviceOver(t *testing.T, db *gorm.DB, home string, opts ...Option) *Service {
+// serviceOver returns a Service over db, which also holds the profiles it looks up.
+func serviceOver(t *testing.T, db *sql.DB, home string, opts ...Option) *Service {
 	t.Helper()
 
-	pool, err := db.DB()
-	require.NoError(t, err)
+	return NewService(db, profiles.NewStore(db, nil), home, opts...)
+}
 
-	return NewService(pool, db, home, opts...)
+// closedDB returns a migrated database that is already closed.
+func closedDB(t *testing.T) *sql.DB {
+	t.Helper()
+
+	db := testutil.SQLDB(t)
+	require.NoError(t, db.Close())
+
+	return db
 }
 
 // setPref writes a raw preference value, bypassing validation.
-func setPref(t *testing.T, db *gorm.DB, key, value string) {
+func setPref(t *testing.T, db *sql.DB, key, value string) {
 	t.Helper()
 
-	pool, err := db.DB()
-	require.NoError(t, err)
-	require.NoError(t, prefs.New(pool, nil).Set(t.Context(), key, value))
+	require.NoError(t, prefs.New(db, nil).Set(t.Context(), key, value))
+}
+
+// storeProfiles stores profiles as discovery would.
+func storeProfiles(t *testing.T, db *sql.DB, found ...profiles.Profile) {
+	t.Helper()
+
+	require.NoError(t, profiles.NewStore(db, nil).Sync(t.Context(), found))
 }
 
 func TestPrefDefaults(t *testing.T) {
@@ -114,11 +121,11 @@ func TestTerminalPrefPersists(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "app.db")
 	home := t.TempDir()
 
-	db := testutil.DBAt(t, path)
+	db := testutil.SQLDBAt(t, path)
 	require.NoError(t, serviceOver(t, db, home).SetTerminal(t.Context(), TerminalApp))
-	require.NoError(t, store.Close(db))
+	require.NoError(t, db.Close())
 
-	got, err := serviceOver(t, testutil.DBAt(t, path), home).Get(t.Context())
+	got, err := serviceOver(t, testutil.SQLDBAt(t, path), home).Get(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, TerminalApp, got.Terminal)
 }
@@ -126,9 +133,9 @@ func TestTerminalPrefPersists(t *testing.T) {
 func TestWithClockStampsTheStoredSettings(t *testing.T) {
 	t.Parallel()
 
-	pool, db := testutil.BridgedDB(t)
+	pool := testutil.SQLDB(t)
 	at := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
-	svc := NewService(pool, db, t.TempDir(), WithClock(testutil.NewClock(at)))
+	svc := serviceOver(t, pool, t.TempDir(), WithClock(testutil.NewClock(at)))
 
 	require.NoError(t, svc.SetTerminal(t.Context(), TerminalApp))
 
@@ -140,7 +147,7 @@ func TestWithClockStampsTheStoredSettings(t *testing.T) {
 
 func TestSettersPersist(t *testing.T) {
 	svc, db, home := newTestService(t)
-	require.NoError(t, profiles.Sync(t.Context(), db, []profiles.Profile{{Name: "work", ConfigDir: "/opt/profiles/work"}}))
+	storeProfiles(t, db, profiles.Profile{Name: "work", ConfigDir: "/opt/profiles/work"})
 	require.NoError(t, os.MkdirAll(filepath.Join(home, "code", "clones"), 0o700))
 
 	require.NoError(t, svc.SetDefaultProfile(t.Context(), "work"))
@@ -188,7 +195,7 @@ func TestSettersPersist(t *testing.T) {
 
 func TestSetRejectsInvalid(t *testing.T) {
 	svc, db, home := newTestService(t)
-	require.NoError(t, profiles.Sync(t.Context(), db, []profiles.Profile{{Name: "default"}}))
+	storeProfiles(t, db, profiles.Profile{Name: "default"})
 
 	file := filepath.Join(home, "notes.txt")
 	require.NoError(t, os.WriteFile(file, []byte("x"), 0o600))
@@ -264,11 +271,12 @@ func TestGetFallsBackOnBadStoredValues(t *testing.T) {
 
 func TestGetFallsBackWhenTheDefaultProfileIsGone(t *testing.T) {
 	svc, db, _ := newTestService(t)
-	require.NoError(t, profiles.Sync(t.Context(), db, []profiles.Profile{{Name: "work", ConfigDir: "/opt/profiles/work"}}))
+	storeProfiles(t, db, profiles.Profile{Name: "work", ConfigDir: "/opt/profiles/work"})
 	require.NoError(t, svc.SetDefaultProfile(t.Context(), "work"))
 
 	// The profile is removed, say because its folder turned out to be another tool's.
-	require.NoError(t, db.Exec("DELETE FROM claude_profiles WHERE name = 'work'").Error)
+	_, err := db.ExecContext(t.Context(), "DELETE FROM claude_profiles WHERE name = 'work'")
+	require.NoError(t, err)
 
 	got, err := svc.Get(t.Context())
 	require.NoError(t, err)
@@ -279,18 +287,18 @@ func TestGetReportsAProfileLookupError(t *testing.T) {
 	svc, db, _ := newTestService(t)
 	setPref(t, db, KeyDefaultProfile, "work")
 
-	require.NoError(t, db.Callback().Query().Before("gorm:query").Register("test:refuse", func(tx *gorm.DB) {
-		_ = tx.AddError(errRefused)
-	}))
+	// The preferences still read; only the profile lookup fails.
+	_, err := db.ExecContext(t.Context(), "DROP TABLE claude_profiles")
+	require.NoError(t, err)
 
-	_, err := svc.Get(t.Context())
-	require.ErrorIs(t, err, errRefused)
-	require.ErrorContains(t, err, "read settings")
+	_, err = svc.Get(t.Context())
+	require.ErrorContains(t, err, "read settings: look up profile")
+	require.NotErrorIs(t, err, profiles.ErrProfileNotFound)
 }
 
 func TestDatabaseErrors(t *testing.T) {
 	svc, db, _ := newTestService(t)
-	require.NoError(t, store.Close(db))
+	require.NoError(t, db.Close())
 
 	_, err := svc.Get(t.Context())
 	require.ErrorContains(t, err, "read settings")
@@ -343,13 +351,13 @@ func TestSensitiveFiles(t *testing.T) {
 	require.NoError(t, svc.SetSensitivePatterns(ctx, nil))
 
 	var value string
-	require.NoError(t, db.Raw("SELECT value FROM prefs WHERE key = ?", sensitive.PrefPatterns).Scan(&value).Error)
+	require.NoError(t, db.QueryRowContext(ctx, "SELECT value FROM prefs WHERE key = ?", sensitive.PrefPatterns).Scan(&value))
 	assert.Equal(t, "[]", value)
 }
 
 func TestSensitiveFilesDatabaseErrors(t *testing.T) {
 	svc, db, _ := newTestService(t)
-	require.NoError(t, store.Close(db))
+	require.NoError(t, db.Close())
 
 	require.Error(t, svc.SetSensitiveCategory(t.Context(), sensitive.CategoryReview, false))
 

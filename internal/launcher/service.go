@@ -19,6 +19,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/paths"
+	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/settings"
@@ -44,6 +45,12 @@ type Finder interface {
 	Find(name string) (string, error)
 }
 
+// ProfileReader reads the stored agent profiles, the default first and the rest by name.
+// *profiles.Store implements it.
+type ProfileReader interface {
+	All(ctx context.Context) ([]profiles.Profile, error)
+}
+
 // LaunchRecorder records the worktrees sessions are launched in. *worklog.Store
 // implements it.
 type LaunchRecorder interface {
@@ -52,12 +59,14 @@ type LaunchRecorder interface {
 
 // Config holds a Service's dependencies. Clock and Launches are optional.
 type Config struct {
-	// DB is the app database: items, repositories, profiles, prompts, and launch
-	// defaults.
+	// DB is the app database: items, repositories, prompts, and launch defaults.
 	DB *gorm.DB
 
 	// Settings reads the default profile, worktree default, terminal, and clone root.
 	Settings SettingsReader
+
+	// Profiles reads the profiles a launch runs with.
+	Profiles ProfileReader
 
 	// Git runs the read-only `git config --get-regexp` remote lookup that finds and
 	// validates clones. The launcher runs no other git command.
@@ -188,6 +197,7 @@ type Preview struct {
 type Service struct {
 	db       *gorm.DB
 	settings SettingsReader
+	profiles ProfileReader
 	git      execpath.Runner
 	gh       execpath.Runner
 	finder   Finder
@@ -207,6 +217,7 @@ func NewService(cfg Config) *Service {
 	return &Service{
 		db:       cfg.DB,
 		settings: cfg.Settings,
+		profiles: cfg.Profiles,
 		git:      cfg.Git,
 		gh:       cfg.GH,
 		finder:   cfg.Finder,
@@ -223,7 +234,7 @@ func NewService(cfg Config) *Service {
 // each with where it came from. It reads only the database: it looks for no clone and
 // writes nothing.
 func (s *Service) Resolve(ctx context.Context, req LaunchRequest) (Resolution, error) {
-	w, err := loadWorld(ctx, s.db, s.settings)
+	w, err := s.loadWorld(ctx)
 	if err != nil {
 		return Resolution{}, err
 	}
@@ -248,7 +259,7 @@ func (s *Service) ResolveItems(ctx context.Context, ids []int64) ([]ItemResoluti
 		return out, nil
 	}
 
-	w, err := loadWorld(ctx, s.db, s.settings)
+	w, err := s.loadWorld(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -370,7 +381,7 @@ type planned struct {
 // request's files are checked last, against GitHub when fresh is set, so a launch that
 // cannot be planned asks GitHub nothing.
 func (s *Service) plan(ctx context.Context, req LaunchRequest, fresh bool) (planned, error) {
-	w, err := loadWorld(ctx, s.db, s.settings)
+	w, err := s.loadWorld(ctx)
 	if err != nil {
 		return planned{}, err
 	}

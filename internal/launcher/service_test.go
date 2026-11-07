@@ -38,6 +38,7 @@ var (
 	errGitNotAllowed = errors.New("git command not allowed in a launch")
 	errFakeNoClaude  = errors.New("claude is not installed")
 	errFakeSettings  = errors.New("settings unreadable")
+	errFakeProfiles  = errors.New("profiles unreadable")
 )
 
 // fakeGit answers the read-only remote lookup from a map of clone directory to
@@ -98,10 +99,18 @@ func (failingSettings) Get(context.Context) (settings.Settings, error) {
 	return settings.Settings{}, errFakeSettings
 }
 
+// failingProfiles cannot read the stored profiles.
+type failingProfiles struct{}
+
+func (failingProfiles) All(context.Context) ([]profiles.Profile, error) {
+	return nil, errFakeProfiles
+}
+
 // launchHarness is a launch Service over a temp database, a temp home with one clone,
 // and fakes for git, the agent lookup, and the terminals.
 type launchHarness struct {
 	db       *gorm.DB
+	profiles *profiles.Store
 	home     string
 	root     string
 	clone    string
@@ -137,12 +146,14 @@ func newLaunchHarness(t *testing.T) *launchHarness {
 
 	pool, db := testutil.BridgedDBAt(t, h.paths.DB)
 	h.db = db
+	h.profiles = profiles.NewStore(pool, nil)
 	h.seed(t)
 
-	h.settings = settings.NewService(pool, h.db, h.home)
+	h.settings = settings.NewService(pool, h.profiles, h.home)
 	h.cfg = Config{
 		DB:       h.db,
 		Settings: h.settings,
+		Profiles: h.profiles,
 		Git:      h.git,
 		Finder:   testutil.Finder{Paths: map[string]string{claudeBin: filepath.Join(tmp, "bin", "claude")}},
 		Registry: NewRegistry(h.iterm, h.terminal),
@@ -200,7 +211,7 @@ func (h *launchHarness) seed(t *testing.T) {
 		Name: profiles.DefaultName, PermissionMode: profiles.PermissionFull,
 		AddDirs: []string{}, ExtraArgs: []string{}, Env: map[string]string{},
 	}
-	require.NoError(t, profiles.Sync(t.Context(), h.db, []profiles.Profile{full, work}))
+	require.NoError(t, h.profiles.Sync(t.Context(), []profiles.Profile{full, work}))
 	require.NoError(t, prompts.Seed(t.Context(), h.db))
 }
 

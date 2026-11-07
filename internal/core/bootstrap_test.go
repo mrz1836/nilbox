@@ -42,12 +42,13 @@ func TestBootstrapStopsWhenProfilesCannotBeSynced(t *testing.T) {
 	opts := Options{Paths: appdata.NewPaths(filepath.Join(t.TempDir(), "data")), Home: home, Runner: noPrograms()}
 
 	first := bootstrap(t, opts)
-	require.NoError(t, first.DB.Exec(refuseNewProfiles).Error)
+	_, err := first.pool.ExecContext(t.Context(), refuseNewProfiles)
+	require.NoError(t, err)
 	require.NoError(t, first.Close())
 
 	testutil.MakeClaudeDirs(t, home, ".claude_work")
 
-	_, err := Bootstrap(t.Context(), opts)
+	_, err = Bootstrap(t.Context(), opts)
 	require.ErrorContains(t, err, "sync profiles")
 }
 
