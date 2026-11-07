@@ -40,8 +40,9 @@ coverage.out
 # Node modules
 node_modules/
 
-# Build output and local build caches
+# Build output and local build caches (magex build writes the headless binary into cmd/nilbox/)
 /bin/
+/cmd/nilbox/nilbox
 .mage-cache/
 
 # Frontend build artifacts
