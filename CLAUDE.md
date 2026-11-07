@@ -45,6 +45,18 @@ macOS runner, so this check is local.
 
 <br>
 
+## Tests
+
+Tests call `t.Parallel()` wherever it is safe, in top-level tests and subtests alike. The
+exception is a test that changes process-wide state: one that uses `t.Setenv` or `t.Chdir`
+(Go refuses both in a parallel test) or swaps a package-level variable. Once the
+`paralleltest` linter is enabled in `.golangci.json`, each such test carries a
+`//nolint:paralleltest` comment that says why. This deliberately overrides the synced
+[`testing-standards.md`](.github/tech-conventions/testing-standards.md), which says to avoid
+`t.Parallel()` outside concurrency tests; for this project, this file wins.
+
+<br>
+
 ## Synced files
 
 Shared tooling is synced from [go-broadcast](https://github.com/mrz1836/go-broadcast), and every
@@ -100,3 +112,14 @@ Building and running the desktop app, and the rules it follows on your machine, 
 
 Conventions for commits, branches, pull requests, testing, and security live in
 [`.github/tech-conventions/`](.github/tech-conventions/README.md).
+
+<br>
+
+## Data layer
+
+The app keeps its data in one local SQLite database. `internal/store` opens it through GORM
+over a pure-Go driver, so it builds without CGO, and brings the schema up to date with the
+checksummed, forward-only SQL migrations in `internal/store/migrate/migrations/`; the services
+then query it partly through the GORM models in the `internal/*/model` packages and partly
+with raw SQL. This section will hold the data layer's rules once it moves to `database/sql`
+with sqlc-generated queries.
