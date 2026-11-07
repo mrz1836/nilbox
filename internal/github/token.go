@@ -18,6 +18,8 @@ import (
 	"log/slog"
 	"os/exec"
 	"strings"
+
+	"github.com/mrz1836/nilbox/internal/execpath"
 )
 
 // redactedText replaces the token wherever it would otherwise be printed.
@@ -33,12 +35,6 @@ var (
 	// ErrNotLoggedIn is returned when the GitHub CLI has no token for github.com.
 	ErrNotLoggedIn = errors.New("the GitHub CLI is not logged in to github.com: run gh auth login")
 )
-
-// Runner runs a program with arguments and returns what it wrote. Implementations run the
-// argv directly, never through a shell.
-type Runner interface {
-	Run(ctx context.Context, name string, args ...string) (stdout, stderr []byte, err error)
-}
 
 // Finder resolves a program name to the absolute path of an executable.
 type Finder interface {
@@ -101,12 +97,12 @@ func (Token) LogValue() slog.Value {
 
 // TokenSource borrows the GitHub CLI's token for github.com.
 type TokenSource struct {
-	runner Runner
+	runner execpath.Runner
 	finder Finder
 }
 
 // NewTokenSource returns a TokenSource that finds gh with finder and runs it with runner.
-func NewTokenSource(runner Runner, finder Finder) *TokenSource {
+func NewTokenSource(runner execpath.Runner, finder Finder) *TokenSource {
 	return &TokenSource{runner: runner, finder: finder}
 }
 

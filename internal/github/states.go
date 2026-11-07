@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mrz1836/nilbox/internal/item"
 )
 
 // statesBatch is the most items one states request asks about. Each is a single object,
@@ -25,17 +26,9 @@ fragment StateFields on IssueOrPullRequest {
 }
 `
 
-// ErrInvalidItemRef is returned for an ItemRef whose number is not positive; it is never
-// sent.
+// ErrInvalidItemRef is returned for an item.Ref that names no pull request or issue; it
+// is never sent.
 var ErrInvalidItemRef = errors.New("invalid pull request or issue reference")
-
-// ItemRef names a pull request or issue by its repository and number. GitHub's numbers
-// are shared by a repository's pull requests and issues, so the number alone picks one.
-type ItemRef struct {
-	Owner  string
-	Name   string
-	Number int
-}
 
 // ItemState is what GitHub says about a pull request or issue as of now.
 type ItemState struct {
@@ -55,12 +48,14 @@ type ItemState struct {
 	HeadOID string
 }
 
-// FetchItemStates reads the state of each pull request or issue in refs, as of now. A ref
-// GitHub cannot resolve (a number that does not exist, a repository that is gone or that
-// the token cannot see) is left out of the result. Any other error fails the whole call,
-// so a passing problem never makes an item look done.
-func (c *Client) FetchItemStates(ctx context.Context, tok Token, refs []ItemRef) (map[ItemRef]ItemState, error) {
-	states := make(map[ItemRef]ItemState, len(refs))
+// FetchItemStates reads the state of each pull request or issue in refs, as of now, keyed
+// by each ref's Key, so a ref finds its answer whatever its casing. A ref GitHub cannot
+// resolve (a number that does not exist, a repository that is gone or that the token
+// cannot see) is left out of the result. Any other error fails the whole call, so a
+// passing problem never makes an item look done. A ref's Kind is not needed: the number
+// alone picks the item.
+func (c *Client) FetchItemStates(ctx context.Context, tok Token, refs []item.Ref) (map[string]ItemState, error) {
+	states := make(map[string]ItemState, len(refs))
 
 	for start := 0; start < len(refs); start += statesBatch {
 		batch := refs[start:min(start+statesBatch, len(refs))]
@@ -74,61 +69,32 @@ func (c *Client) FetchItemStates(ctx context.Context, tok Token, refs []ItemRef)
 }
 
 // fetchStates sends one states query and adds its answers to states.
-func (c *Client) fetchStates(ctx context.Context, tok Token, refs []ItemRef, states map[ItemRef]ItemState) error {
+// fetchStates sends one states query and adds its answers to states. GitHub's not-found
+// errors only leave a ref unanswered; any other error fails it.
+func (c *Client) fetchStates(ctx context.Context, tok Token, refs []item.Ref, states map[string]ItemState) error {
 	query, err := statesQuery(refs)
 	if err != nil {
 		return err
 	}
 
-	body, err := json.Marshal(graphQLRequest{Query: query})
-	if err != nil {
-		return fmt.Errorf("encode the states query: %w", err)
-	}
-
-	raw, _, err := c.do(ctx, tok, http.MethodPost, "/graphql", body)
-	if err != nil {
-		return err
-	}
-
-	resp, err := decodeStates(raw)
+	resp, _, err := postGraphQL[statesData](ctx, c, tok, "states", graphQLRequest{Query: query}, unlessNotFound)
 	if err != nil {
 		return err
 	}
 
 	for i, ref := range refs {
-		if state, ok := resp.Data[statesAlias(i)].state(); ok {
-			states[ref] = state
+		if state, ok := (*resp.Data)[statesAlias(i)].state(); ok {
+			states[ref.Key()] = state
 		}
 	}
 
 	return nil
 }
 
-// decodeStates reads a states response. GitHub's not-found errors only leave a ref
-// unanswered; any other error fails it.
-func decodeStates(raw []byte) (statesResponse, error) {
-	var resp statesResponse
-	if err := json.Unmarshal(raw, &resp); err != nil {
-		return statesResponse{}, fmt.Errorf("%w: decode the states response: %w", ErrMalformedResponse, err)
-	}
-
-	for _, e := range resp.Errors {
-		if e.Type != errorNotFound {
-			return statesResponse{}, (&graphQLResponse{Errors: resp.Errors}).err()
-		}
-	}
-
-	if resp.Data == nil {
-		return statesResponse{}, fmt.Errorf("%w: the states response has no data", ErrMalformedResponse)
-	}
-
-	return resp, nil
-}
-
 // statesQuery asks about each ref under its own alias. The repository names are written
 // as JSON strings, which GraphQL reads the same way, so no name can break out of its
 // argument.
-func statesQuery(refs []ItemRef) (string, error) {
+func statesQuery(refs []item.Ref) (string, error) {
 	var b strings.Builder
 
 	b.WriteString("query ItemStates {\n")
@@ -138,12 +104,12 @@ func statesQuery(refs []ItemRef) (string, error) {
 			return "", fmt.Errorf("%w: number %d", ErrInvalidItemRef, ref.Number)
 		}
 
-		owner, err := json.Marshal(ref.Owner)
+		owner, err := json.Marshal(ref.Repo.Owner)
 		if err != nil {
 			return "", fmt.Errorf("encode the owner: %w", err)
 		}
 
-		name, err := json.Marshal(ref.Name)
+		name, err := json.Marshal(ref.Repo.Repo)
 		if err != nil {
 			return "", fmt.Errorf("encode the name: %w", err)
 		}
@@ -163,12 +129,9 @@ func statesAlias(i int) string {
 	return "r" + strconv.Itoa(i)
 }
 
-// statesResponse is the states query's response body: one aliased repository per ref,
-// null when GitHub could not find it.
-type statesResponse struct {
-	Data   map[string]*statesRepo `json:"data"`
-	Errors []graphQLError         `json:"errors"`
-}
+// statesData is the states query's data object: one aliased repository per ref, null
+// when GitHub could not find it.
+type statesData map[string]*statesRepo
 
 // statesRepo is one aliased repository and the item asked about.
 type statesRepo struct {

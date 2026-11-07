@@ -14,9 +14,14 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/mrz1836/nilbox/internal/cleanuplog"
+	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launchlog"
 	"github.com/mrz1836/nilbox/internal/localrepos"
+	"github.com/mrz1836/nilbox/internal/paths"
+	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/settings"
 )
 
@@ -118,15 +123,10 @@ type Finder interface {
 	Find(name string) (string, error)
 }
 
-// Clock tells the time.
-type Clock interface {
-	Now() time.Time
-}
-
 // GitHub reads the current state of pull requests and issues. A GitHub CLI token and a
 // github.Client implement it in the app.
 type GitHub interface {
-	ItemStates(ctx context.Context, refs []github.ItemRef) (map[github.ItemRef]github.ItemState, error)
+	ItemStates(ctx context.Context, refs []item.Ref) (map[string]github.ItemState, error)
 }
 
 // Launches reads and prunes the record of the worktrees the app launched sessions in.
@@ -156,7 +156,7 @@ type Config struct {
 	Settings SettingsReader
 
 	// Git runs git argv; it also reads remotes during the clone-root scan.
-	Git Runner
+	Git execpath.Runner
 
 	// Finder resolves the git binary up front, so a missing git fails with a clear
 	// error. Without it, Git resolves "git" itself.
@@ -166,7 +166,7 @@ type Config struct {
 	Home string
 
 	// Clock stamps snapshots. It defaults to the system clock.
-	Clock Clock
+	Clock clock.Clock
 
 	// GitHub reads the state of the items worktrees are linked to. Without it no
 	// worktree is linked, so none is ever finished.
@@ -188,11 +188,11 @@ type Config struct {
 // Service lists and removes worktrees of the clones under the clone root.
 type Service struct {
 	settings SettingsReader
-	run      Runner
+	run      execpath.Runner
 	finder   Finder
 	home     string
 	realHome string
-	clock    Clock
+	clock    clock.Clock
 	github   GitHub
 	launches Launches
 	history  History
@@ -214,11 +214,6 @@ type Service struct {
 
 // NewService returns a worktrees Service over cfg.
 func NewService(cfg Config) *Service {
-	clock := cfg.Clock
-	if clock == nil {
-		clock = systemClock{}
-	}
-
 	realHome := cfg.Home
 	if cfg.Home != "" {
 		realHome = resolvedPath(cfg.Home)
@@ -235,7 +230,7 @@ func NewService(cfg Config) *Service {
 		finder:   cfg.Finder,
 		home:     cfg.Home,
 		realHome: realHome,
-		clock:    clock,
+		clock:    clock.Or(cfg.Clock),
 		github:   cfg.GitHub,
 		launches: cfg.Launches,
 		history:  cfg.History,
@@ -367,7 +362,7 @@ func (s *Service) remove(ctx context.Context, repoPath, path string) error {
 // out each one's stage.
 func (s *Service) assessClones(ctx context.Context, g git, root string, clones []localrepos.LocalRepo) (Snapshot, error) {
 	listed := make([]listedRepo, len(clones))
-	remotes := make(map[string]map[string]string, len(clones))
+	remotes := make(map[string]map[string]repo.Name, len(clones))
 
 	eg, ectx := errgroup.WithContext(ctx)
 	eg.SetLimit(listConcurrency)
@@ -447,9 +442,9 @@ func (s *Service) prepare(ctx context.Context) (git, string, settings.Settings, 
 		return git{}, "", settings.Settings{}, err
 	}
 
-	root, err := localrepos.ExpandRoot(prefs.CloneRoot, s.home)
+	root, err := paths.ExpandHome(prefs.CloneRoot, s.home)
 	if err != nil {
-		return git{}, "", settings.Settings{}, err
+		return git{}, "", settings.Settings{}, fmt.Errorf("clone root: %w", err)
 	}
 
 	return g, root, prefs, nil
@@ -546,7 +541,7 @@ func (s *Service) removeEntry(ctx context.Context, g git, repoPath string, e Ent
 		return nil
 	}
 
-	if !exitCode(ctx, err) {
+	if !gitRefused(ctx, err) {
 		return fmt.Errorf("remove %s: %w", s.display(e.Path), err)
 	}
 
@@ -565,7 +560,7 @@ func (s *Service) listRepo(ctx context.Context, g git, dir string) (listedRepo, 
 
 	switch {
 	case err == nil:
-	case exitCode(ctx, err):
+	case gitRefused(ctx, err):
 		listed.repo.Error = gitError(err, stderr).Error()
 
 		return listed, nil
@@ -649,7 +644,7 @@ func (s *Service) readState(ctx context.Context, g git, wt *Worktree) error {
 	switch {
 	case err == nil:
 		wt.Dirty, wt.DirtyCount = count > 0, count
-	case exitCode(ctx, err):
+	case gitRefused(ctx, err):
 		wt.Error = "could not read the status: " + gitError(err, stderr).Error()
 	default:
 		return fmt.Errorf("read the status of %s: %w", wt.DisplayPath, err)
@@ -660,7 +655,7 @@ func (s *Service) readState(ctx context.Context, g git, wt *Worktree) error {
 	switch {
 	case err == nil:
 		wt.LastCommitUnix = unix
-	case exitCode(ctx, err) || errors.Is(err, errParseCommitTime):
+	case gitRefused(ctx, err) || errors.Is(err, errParseCommitTime):
 		// A repository without commits has no commit time to show.
 	default:
 		return fmt.Errorf("read the last commit of %s: %w", wt.DisplayPath, err)
@@ -675,7 +670,7 @@ func (s *Service) readState(ctx context.Context, g git, wt *Worktree) error {
 	switch {
 	case err == nil:
 		wt.Unpushed = unpushed
-	case exitCode(ctx, err) || errors.Is(err, errParseCount):
+	case gitRefused(ctx, err) || errors.Is(err, errParseCount):
 		// Unknown, which never counts as on GitHub.
 	default:
 		return fmt.Errorf("count the unpushed commits of %s: %w", wt.DisplayPath, err)
@@ -690,7 +685,7 @@ func (s *Service) snapshot(root string, listed []listedRepo) Snapshot {
 	snap := Snapshot{
 		Root:     s.display(root),
 		Repos:    []Repo{},
-		ListedAt: s.clock.Now().UTC().Format(time.RFC3339),
+		ListedAt: clock.Format(s.clock.Now()),
 	}
 
 	seen := make(map[string]bool, len(listed))
@@ -710,11 +705,11 @@ func (s *Service) snapshot(root string, listed []listedRepo) Snapshot {
 // display shows path relative to home with ~, also matching home's resolved form (git
 // reports resolved paths, and home may sit behind a symlink).
 func (s *Service) display(path string) string {
-	if shown := localrepos.TildePath(path, s.home); shown != path || s.realHome == s.home {
+	if shown := paths.Tilde(path, s.home); shown != path || s.realHome == s.home {
 		return shown
 	}
 
-	return localrepos.TildePath(path, s.realHome)
+	return paths.Tilde(path, s.realHome)
 }
 
 // listedRepo is one clone's listing before clones that share a main worktree are folded.
@@ -772,7 +767,7 @@ func cleanTargets(snap Snapshot) []RemoveResult {
 
 // gitError turns a git failure into an error carrying git's own message when it gave one.
 func gitError(err error, stderr []byte) error {
-	if line := firstLine(stderr); line != "" {
+	if line := execpath.GitMessage(stderr); line != "" {
 		return fmt.Errorf("%w: %s", errGit, line)
 	}
 
@@ -790,7 +785,7 @@ func refusalReason(stderr []byte) string {
 		return reasonLocked
 	}
 
-	if line := firstLine(stderr); line != "" {
+	if line := execpath.GitMessage(stderr); line != "" {
 		return line
 	}
 
@@ -840,9 +835,3 @@ func within(dir, path string) bool {
 
 	return err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
-
-// systemClock is the real clock.
-type systemClock struct{}
-
-// Now returns the current time.
-func (systemClock) Now() time.Time { return time.Now() }

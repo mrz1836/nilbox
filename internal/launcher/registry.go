@@ -9,6 +9,9 @@ import (
 	"slices"
 	"strings"
 	"unicode"
+
+	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // maxErrDetail caps how much of a terminal program's error output an error message carries.
@@ -37,12 +40,6 @@ var (
 	// ErrTerminalOpen is returned when the terminal app could not be told to run the script.
 	ErrTerminalOpen = errors.New("could not open the terminal")
 )
-
-// Executor runs a program as an argv, never through a shell, and returns what it wrote.
-// execpath.Runner is the implementation used at run time.
-type Executor interface {
-	Run(ctx context.Context, name string, args ...string) (stdout, stderr []byte, err error)
-}
 
 // Driver opens a launch script in one terminal app.
 type Driver interface {
@@ -108,7 +105,7 @@ func validateScriptPath(path string) error {
 // becomes ErrAutomationDenied; anything else is ErrTerminalOpen with the first line of
 // the program's error output.
 func openError(app string, stderr []byte, err error) error {
-	detail := firstLine(string(stderr))
+	detail := errDetail(stderr)
 	if strings.Contains(detail, automationDeniedCode) {
 		return fmt.Errorf("%w (%s)", ErrAutomationDenied, app)
 	}
@@ -120,23 +117,8 @@ func openError(app string, stderr []byte, err error) error {
 	return fmt.Errorf("%w %s: %s: %w", ErrTerminalOpen, app, detail, err)
 }
 
-// firstLine returns the first non-blank line of s, trimmed and capped at maxErrDetail runes.
-func firstLine(s string) string {
-	for _, line := range strings.Split(s, "\n") {
-		if line = strings.TrimSpace(line); line != "" {
-			return truncateRunes(line, maxErrDetail)
-		}
-	}
-
-	return ""
-}
-
-// truncateRunes caps s at limit runes.
-func truncateRunes(s string, limit int) string {
-	runes := []rune(s)
-	if len(runes) <= limit {
-		return s
-	}
-
-	return strings.TrimSpace(string(runes[:limit]))
+// errDetail is the first non-blank line of a program's error output, trimmed and capped
+// at maxErrDetail runes.
+func errDetail(stderr []byte) string {
+	return textutil.Clip(execpath.FirstLine(stderr), maxErrDetail)
 }

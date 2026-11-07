@@ -1,11 +1,4 @@
-// Package agentflags checks the options a launch passes to the coding agent, so every
-// place that stores them (prompts and launch defaults) and the launcher that passes them
-// apply the same rules.
-//
-// It knows the agent's effort levels, what a model name may look like, which flags the
-// launcher sets itself (and so may not be added by hand), and how to read extra flags
-// typed on one line, quoted the way a shell would, into one argument each.
-package agentflags
+package agent
 
 import (
 	"errors"

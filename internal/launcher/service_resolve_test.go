@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/inbox/model"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
@@ -54,7 +55,7 @@ func TestResolveService(t *testing.T) {
 	assert.Empty(t, h.launchFiles(t), "and writes nothing")
 
 	_, err = h.service().Resolve(t.Context(), LaunchRequest{ItemID: 9999})
-	require.ErrorIs(t, err, ErrItemNotFound)
+	require.ErrorIs(t, err, item.ErrNotFound)
 }
 
 func TestResolveItems(t *testing.T) {
@@ -243,7 +244,7 @@ func TestPromptSourceFillsInAnItem(t *testing.T) {
 	assert.True(t, outside.OutsideContributor)
 
 	_, err = source.PreviewData(t.Context(), 9999)
-	require.ErrorIs(t, err, ErrItemNotFound)
+	require.ErrorIs(t, err, item.ErrNotFound)
 }
 
 func TestLaunchKeepsTheDefaultProfileForLaunchesWithoutDefaults(t *testing.T) {
@@ -265,7 +266,7 @@ func TestLaunchTrustsTheTrustedBots(t *testing.T) {
 	require.NoError(t, h.db.First(&account).Error)
 
 	bot := model.Item{
-		AccountID: account.ID, RepoID: repo.ID, Kind: model.KindPR, Number: 30, Title: "Bump the widget library",
+		AccountID: account.ID, RepoID: repo.ID, Kind: item.KindPR, Number: 30, Title: "Bump the widget library",
 		URL: "https://github.com/acme-org/example-repo/pull/30", AuthorLogin: "dependabot", AuthorType: "Bot",
 		AuthorAssociation: "NONE", HeadRef: "dependabot/go_modules/widget-1.2.3",
 		ItemCreatedAt: now, ItemUpdatedAt: now, FetchedAt: now,

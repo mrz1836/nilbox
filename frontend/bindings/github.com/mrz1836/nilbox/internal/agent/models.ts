@@ -20,3 +20,18 @@ export interface Agent {
      */
     "command": string;
 }
+
+/**
+ * FieldError is a problem with one field of something being saved.
+ */
+export interface FieldError {
+    /**
+     * Field is the field's JSON name, such as "model".
+     */
+    "field": string;
+
+    /**
+     * Message is a sentence saying what is wrong and how to fix it.
+     */
+    "message": string;
+}

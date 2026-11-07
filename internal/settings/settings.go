@@ -18,8 +18,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/notify"
+	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/snooze"
@@ -68,7 +68,6 @@ const (
 	DefaultAutoCleanup     = true
 	DefaultTerminal        = TerminalITerm2
 	DefaultCloneRoot       = "~/projects"
-	DefaultSnoozeDays      = snooze.DefaultDays
 )
 
 // upsertPrefSQL stores one preference, replacing any earlier value.
@@ -240,7 +239,7 @@ func (s *Service) SetWorktreeAutoCleanup(ctx context.Context, on bool) error {
 func (s *Service) SetCloneRoot(ctx context.Context, root string) error {
 	root = strings.TrimSpace(root)
 
-	dir, err := localrepos.ExpandRoot(root, s.home)
+	dir, err := paths.ExpandHome(root, s.home)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalidCloneRoot, err)
 	}
@@ -251,7 +250,7 @@ func (s *Service) SetCloneRoot(ctx context.Context, root string) error {
 	}
 
 	if !info.IsDir() {
-		return fmt.Errorf("%w: %s is not a directory", ErrInvalidCloneRoot, localrepos.TildePath(dir, s.home))
+		return fmt.Errorf("%w: %s is not a directory", ErrInvalidCloneRoot, paths.Tilde(dir, s.home))
 	}
 
 	return s.set(ctx, KeyCloneRoot, filepath.Clean(root))

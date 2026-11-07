@@ -12,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/appdata"
 )
 
 // fixedStart is an arbitrary process start time for deterministic measurements.
@@ -25,7 +27,7 @@ func textLogger(buf *bytes.Buffer) *slog.Logger {
 }
 
 func TestProcessStart(t *testing.T) {
-	start, source := ProcessStart()
+	start, source := processStart()
 
 	require.False(t, start.IsZero())
 	assert.False(t, start.After(time.Now()), "the process cannot start in the future")
@@ -83,13 +85,13 @@ func TestFirstPaintLoggedOnce(t *testing.T) {
 
 	info, err := os.Stat(filepath.Join(logs, LogFileName))
 	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(logFilePerm), info.Mode().Perm())
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 }
 
 func TestFirstPaintAppendsToExistingLog(t *testing.T) {
 	logs := t.TempDir()
 	path := filepath.Join(logs, LogFileName)
-	require.NoError(t, os.WriteFile(path, []byte("earlier line\n"), logFilePerm))
+	require.NoError(t, os.WriteFile(path, []byte("earlier line\n"), appdata.PrivateFilePerm))
 
 	r := NewRecorder(Config{
 		Logger:  textLogger(&bytes.Buffer{}),
@@ -143,7 +145,7 @@ func TestFirstPaintReportsLogFileError(t *testing.T) {
 
 	// The logs "directory" is a regular file, so the timing log cannot be created.
 	notDir := filepath.Join(t.TempDir(), "file")
-	require.NoError(t, os.WriteFile(notDir, nil, logFilePerm))
+	require.NoError(t, os.WriteFile(notDir, nil, appdata.PrivateFilePerm))
 
 	r := NewRecorder(Config{
 		Logger:  textLogger(&buf),

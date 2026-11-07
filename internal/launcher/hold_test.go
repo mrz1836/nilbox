@@ -60,7 +60,7 @@ func (f *fakeFiles) answer(id int64) (*sensitive.Check, error) {
 func checkOf(head string, complete bool, paths ...string) *sensitive.Check {
 	files := make([]sensitive.File, 0, len(paths))
 	for _, p := range paths {
-		files = append(files, sensitive.File{Path: p, Change: sensitive.ChangeModified})
+		files = append(files, sensitive.File{Path: p, Change: "modified"})
 	}
 
 	r := &sensitive.Result{Head: head, Total: len(files), Files: files, Complete: complete}

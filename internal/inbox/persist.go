@@ -164,7 +164,7 @@ func (w *writer) saveRepos(items []github.Item) error {
 // repoID upserts an item's repository, with what GitHub says about it, once per refresh
 // and returns its id.
 func (w *writer) repoID(it github.Item) (int64, error) {
-	key := repoKey(it.RepoOwner, it.RepoName)
+	key := it.Ref().Repo.Key()
 	if id, ok := w.repos[key]; ok {
 		return id, nil
 	}
@@ -181,7 +181,7 @@ func (w *writer) repoID(it github.Item) (int64, error) {
 		w.now, w.now,
 	).Scan(&id).Error
 	if err != nil {
-		return 0, fmt.Errorf("save the repository %s/%s: %w", it.RepoOwner, it.RepoName, err)
+		return 0, fmt.Errorf("save the repository %s: %w", it.Ref().Repo, err)
 	}
 
 	w.repos[key] = id
@@ -208,12 +208,12 @@ func (w *writer) saveItem(repoID int64, e *entry) error {
 	var id int64
 
 	err := w.tx.Raw(upsertItemSQL,
-		w.accountID, repoID, kindOf(it), it.Number, it.NodeID, it.Title, it.URL, it.AuthorLogin, it.AuthorType,
+		w.accountID, repoID, string(it.Ref().Kind), it.Number, it.NodeID, it.Title, it.URL, it.AuthorLogin, it.AuthorType,
 		it.AuthorAssociation, it.IsCrossRepository, it.IsDraft, it.HeadRef, it.CreatedAt.UTC(), it.UpdatedAt.UTC(),
 		e.reviewRequested, e.authored, e.assigned, w.now,
 	).Scan(&id).Error
 	if err != nil {
-		return fmt.Errorf("save the item %s/%s#%d: %w", it.RepoOwner, it.RepoName, it.Number, err)
+		return fmt.Errorf("save the item %s: %w", it.Ref(), err)
 	}
 
 	w.saved = append(w.saved, savedEntry{id: id, entry: e})
@@ -236,7 +236,7 @@ func (w *writer) saveDetails(id int64, it github.Item) error {
 
 	err := w.tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "item_id"}}, UpdateAll: true}).Create(&row).Error
 	if err != nil {
-		return fmt.Errorf("save the details of %s/%s#%d: %w", it.RepoOwner, it.RepoName, it.Number, err)
+		return fmt.Errorf("save the details of %s: %w", it.Ref(), err)
 	}
 
 	return nil

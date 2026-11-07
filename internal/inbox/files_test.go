@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
@@ -303,10 +304,10 @@ func TestCheckFilesIgnoresItemsThatAreNotChecked(t *testing.T) {
 	require.ErrorIs(t, err, sensitive.ErrNotChecked)
 
 	_, err = h.svc.CheckFiles(t.Context(), 999)
-	require.ErrorIs(t, err, ErrItemNotFound)
+	require.ErrorIs(t, err, item.ErrNotFound)
 
 	_, err = h.svc.StoredFiles(t.Context(), 999)
-	require.ErrorIs(t, err, ErrItemNotFound)
+	require.ErrorIs(t, err, item.ErrNotFound)
 }
 
 func TestCheckFilesHonorsCancellation(t *testing.T) {

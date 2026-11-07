@@ -13,16 +13,12 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/mrz1836/nilbox/internal/item"
 )
 
 // ErrUnsupportedScanType is returned when a JSON column holds neither text nor bytes.
 var ErrUnsupportedScanType = errors.New("unsupported column value for a JSON field")
-
-// Item kinds stored in Item.Kind.
-const (
-	KindPR    = "pr"
-	KindIssue = "issue"
-)
 
 // Account is the signed-in GitHub account.
 type Account struct {
@@ -83,7 +79,7 @@ type Item struct {
 	ID                    int64     `gorm:"column:id;primaryKey"`
 	AccountID             int64     `gorm:"column:account_id"`
 	RepoID                int64     `gorm:"column:repo_id"`
-	Kind                  string    `gorm:"column:kind"`
+	Kind                  item.Kind `gorm:"column:kind"`
 	Number                int       `gorm:"column:number"`
 	NodeID                string    `gorm:"column:node_id"`
 	Title                 string    `gorm:"column:title"`

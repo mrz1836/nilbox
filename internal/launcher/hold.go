@@ -80,7 +80,7 @@ func holdFor(check *sensitive.Check, p Plan, dir string) *Hold {
 
 	hold := &Hold{
 		Head: check.Head, Checked: check.Checked, Total: check.Total, Error: check.Error, AtHead: p.WorktreeOnPRHead,
-		Dir: dir, Worktree: worktreeDirName(p.Worktree), Files: []sensitive.Finding{},
+		Dir: dir, Worktree: p.worktreeDir(), Files: []sensitive.Finding{},
 	}
 
 	if g, ok := check.Category(sensitive.CategoryAgent); ok {

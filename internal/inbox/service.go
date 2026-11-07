@@ -37,15 +37,15 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
 	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
 
+	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/github"
-	"github.com/mrz1836/nilbox/internal/inbox/model"
+	"github.com/mrz1836/nilbox/internal/item"
 )
 
 // snapshotRetention is how long rate-limit snapshots are kept.
@@ -92,15 +92,10 @@ type Client interface {
 	FetchInbox(ctx context.Context, tok github.Token) (*github.Inbox, error)
 	FetchDetails(ctx context.Context, tok github.Token, ids []string) (*github.Details, error)
 	FetchItem(ctx context.Context, tok github.Token, id string) (*github.ItemUpdate, error)
-	FetchPullHead(ctx context.Context, tok github.Token, ref github.ItemRef) (*github.PullHead, error)
-	FetchChangedFiles(ctx context.Context, tok github.Token, ref github.ItemRef, head string) (*github.ChangedFiles, error)
+	FetchPullHead(ctx context.Context, tok github.Token, ref item.Ref) (*github.PullHead, error)
+	FetchChangedFiles(ctx context.Context, tok github.Token, ref item.Ref, head string) (*github.ChangedFiles, error)
 	FetchRateLimits(ctx context.Context, tok github.Token) (*github.RateLimits, error)
 	FetchAvatar(ctx context.Context, url string) (*github.Avatar, error)
-}
-
-// Clock tells the time.
-type Clock interface {
-	Now() time.Time
 }
 
 // Notifier is told when the stored inbox or its status changed.
@@ -113,7 +108,7 @@ type Config struct {
 	DB       *gorm.DB
 	Tokens   TokenSource
 	Client   Client
-	Clock    Clock
+	Clock    clock.Clock
 	Notifier Notifier
 
 	// Arrivals is told about the items that newly need the user after each refresh.
@@ -125,7 +120,7 @@ type Service struct {
 	db       *gorm.DB
 	tokens   TokenSource
 	client   Client
-	clock    Clock
+	clock    clock.Clock
 	notifier Notifier
 	arrivals ArrivalSink
 
@@ -135,13 +130,8 @@ type Service struct {
 
 // NewService returns a Service. A nil Clock uses the system clock.
 func NewService(cfg Config) *Service {
-	clock := cfg.Clock
-	if clock == nil {
-		clock = systemClock{}
-	}
-
 	return &Service{
-		db: cfg.DB, tokens: cfg.Tokens, client: cfg.Client, clock: clock, notifier: cfg.Notifier,
+		db: cfg.DB, tokens: cfg.Tokens, client: cfg.Client, clock: clock.Or(cfg.Clock), notifier: cfg.Notifier,
 		arrivals: cfg.Arrivals,
 	}
 }
@@ -435,7 +425,7 @@ func (w *writer) saveRefresh(got refreshed, warning github.ScopeWarning) ([]Arri
 		{prefTotalReviewRequested, strconv.Itoa(inbox.ReviewRequested.IssueCount)},
 		{prefTotalAuthored, strconv.Itoa(inbox.Authored.IssueCount)},
 		{prefTotalAssigned, strconv.Itoa(inbox.Assigned.IssueCount)},
-		{prefLastRefreshAt, w.now.Format(time.RFC3339)},
+		{prefLastRefreshAt, clock.Format(w.now)},
 		{prefLastError, ""},
 		{prefScopeWarning, string(warning)},
 	})
@@ -496,12 +486,6 @@ func (s *Service) now() time.Time {
 	return s.clock.Now().UTC()
 }
 
-// systemClock is the real clock.
-type systemClock struct{}
-
-// Now returns the current time.
-func (systemClock) Now() time.Time { return time.Now() }
-
 // entry is one fetched item with the lists that returned it.
 type entry struct {
 	item            github.Item
@@ -517,12 +501,12 @@ func mergeLists(inbox *github.Inbox) []*entry {
 	byKey := make(map[string]*entry)
 
 	add := func(items []github.Item, mark func(*entry)) {
-		for _, item := range items {
-			key := itemKey(item)
+		for _, it := range items {
+			key := it.Ref().Key()
 
 			e, ok := byKey[key]
 			if !ok {
-				e = &entry{item: item}
+				e = &entry{item: it}
 				byKey[key] = e
 				order = append(order, e)
 			}
@@ -584,23 +568,4 @@ func graphQLReading(inbox github.QueryRate, details *github.Details) github.Quer
 	reading.Cost += inbox.Cost
 
 	return reading
-}
-
-// itemKey identifies an item across lists; owner and repository names are case-insensitive.
-func itemKey(item github.Item) string {
-	return repoKey(item.RepoOwner, item.RepoName) + "#" + kindOf(item) + strconv.Itoa(item.Number)
-}
-
-// repoKey identifies a repository case-insensitively.
-func repoKey(owner, name string) string {
-	return strings.ToLower(owner + "/" + name)
-}
-
-// kindOf maps an item to the stored kind.
-func kindOf(item github.Item) string {
-	if item.IsPR {
-		return model.KindPR
-	}
-
-	return model.KindIssue
 }

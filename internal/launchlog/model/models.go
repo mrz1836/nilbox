@@ -4,7 +4,11 @@
 // parity test keeps the two in step.
 package model
 
-import "time"
+import (
+	"time"
+
+	"github.com/mrz1836/nilbox/internal/item"
+)
 
 // WorktreeLaunch is one worktree the app started an agent session in, and the pull
 // request or issue it is for.
@@ -14,7 +18,7 @@ type WorktreeLaunch struct {
 	Worktree   string    `gorm:"column:worktree"`
 	Owner      string    `gorm:"column:owner"`
 	Name       string    `gorm:"column:name"`
-	Kind       string    `gorm:"column:kind"`
+	Kind       item.Kind `gorm:"column:kind"`
 	Number     int       `gorm:"column:number"`
 	LaunchedAt time.Time `gorm:"column:launched_at"`
 }

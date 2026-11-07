@@ -140,13 +140,13 @@ func TestSetThemeWithoutANotifier(t *testing.T) {
 func TestThemesAreTheChoicesInOrder(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, []string{"system", "light", "dark"}, Themes())
+	assert.Equal(t, []string{"system", "light", "dark"}, themeNames())
 
-	for _, theme := range Themes() {
-		assert.True(t, ValidTheme(theme), theme)
+	for _, theme := range themeNames() {
+		assert.True(t, validTheme(theme), theme)
 	}
 
-	assert.False(t, ValidTheme("auto"))
+	assert.False(t, validTheme("auto"))
 }
 
 func TestIsDark(t *testing.T) {

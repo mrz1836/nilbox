@@ -72,8 +72,3 @@ func TestChangedFilesRoundTrip(t *testing.T) {
 	require.ErrorIs(t, got.Scan(42), model.ErrUnsupportedScanType)
 	require.ErrorContains(t, got.Scan("{not json"), "decode the changed files")
 }
-
-func TestItemKinds(t *testing.T) {
-	assert.Equal(t, "pr", model.KindPR)
-	assert.Equal(t, "issue", model.KindIssue)
-}

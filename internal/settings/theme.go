@@ -43,14 +43,14 @@ func WithThemeNotifier(n ThemeNotifier) Option {
 	return func(s *Service) { s.themes = n }
 }
 
-// Themes returns the theme choices in the order Settings offers them.
-func Themes() []string {
+// themeNames returns the theme choices in the order Settings offers them.
+func themeNames() []string {
 	return []string{ThemeSystem, ThemeLight, ThemeDark}
 }
 
-// ValidTheme reports whether theme is one of the choices.
-func ValidTheme(theme string) bool {
-	return slices.Contains(Themes(), theme)
+// validTheme reports whether theme is one of the choices.
+func validTheme(theme string) bool {
+	return slices.Contains(themeNames(), theme)
 }
 
 // IsDark reports whether a theme shows the dark palette while the system appearance is
@@ -77,7 +77,7 @@ func (s *Service) Theme(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("read the theme: %w", err)
 	}
 
-	if len(stored) == 1 && ValidTheme(stored[0]) {
+	if len(stored) == 1 && validTheme(stored[0]) {
 		return stored[0], nil
 	}
 
@@ -87,8 +87,8 @@ func (s *Service) Theme(ctx context.Context) (string, error) {
 // SetTheme stores the theme the app shows: ThemeSystem, ThemeLight, or ThemeDark. Once
 // it is stored, the theme notifier, if any, is told.
 func (s *Service) SetTheme(ctx context.Context, theme string) error {
-	if !ValidTheme(theme) {
-		return fmt.Errorf("%w %q: choose one of %s", ErrInvalidTheme, theme, strings.Join(Themes(), ", "))
+	if !validTheme(theme) {
+		return fmt.Errorf("%w %q: choose one of %s", ErrInvalidTheme, theme, strings.Join(themeNames(), ", "))
 	}
 
 	if err := s.set(ctx, KeyTheme, theme); err != nil {

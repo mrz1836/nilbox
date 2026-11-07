@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
-	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/notify"
+	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/snooze"
@@ -176,8 +176,8 @@ func TestSetRejectsInvalid(t *testing.T) {
 		{name: "terminal in the wrong case", set: func() error { return svc.SetTerminal(t.Context(), "ITERM2") }, wantErr: ErrInvalidTerminal},
 		{name: "unknown profile", set: func() error { return svc.SetDefaultProfile(t.Context(), "missing") }, wantErr: ErrUnknownProfile, wantMsg: `"missing"`},
 		{name: "empty profile", set: func() error { return svc.SetDefaultProfile(t.Context(), "") }, wantErr: ErrUnknownProfile},
-		{name: "empty clone root", set: func() error { return svc.SetCloneRoot(t.Context(), "  ") }, wantErr: localrepos.ErrEmptyRoot},
-		{name: "relative clone root", set: func() error { return svc.SetCloneRoot(t.Context(), "projects") }, wantErr: localrepos.ErrRelativeRoot},
+		{name: "empty clone root", set: func() error { return svc.SetCloneRoot(t.Context(), "  ") }, wantErr: paths.ErrEmpty},
+		{name: "relative clone root", set: func() error { return svc.SetCloneRoot(t.Context(), "projects") }, wantErr: paths.ErrRelative},
 		{name: "missing clone root", set: func() error { return svc.SetCloneRoot(t.Context(), "~/missing") }, wantErr: fs.ErrNotExist},
 		{name: "clone root is a file", set: func() error { return svc.SetCloneRoot(t.Context(), file) }, wantErr: ErrInvalidCloneRoot, wantMsg: "~/notes.txt is not a directory"},
 		{name: "no snooze", set: func() error { return svc.SetSnoozeDays(t.Context(), 0) }, wantErr: snooze.ErrInvalidDays, wantMsg: "0 days; choose 1 to 365"},

@@ -16,13 +16,8 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launchlog/model"
-)
-
-// Item kinds, matching the inbox's.
-const (
-	KindPR    = "pr"
-	KindIssue = "issue"
 )
 
 // ErrInvalidLaunch is returned for a launch missing a field, or with an unknown kind or a
@@ -41,8 +36,8 @@ type Launch struct {
 	Owner string
 	Name  string
 
-	// Kind is KindPR or KindIssue.
-	Kind string
+	// Kind is the item's kind.
+	Kind item.Kind
 
 	// Number is the item's number.
 	Number int
@@ -65,7 +60,7 @@ func NewStore(db *gorm.DB) *Store {
 // clone.
 func (s *Store) Record(ctx context.Context, l Launch) error {
 	if l.ClonePath == "" || l.Worktree == "" || l.Owner == "" || l.Name == "" ||
-		(l.Kind != KindPR && l.Kind != KindIssue) || l.Number <= 0 {
+		!l.Kind.Valid() || l.Number <= 0 {
 		return fmt.Errorf("%w: %+v", ErrInvalidLaunch, l)
 	}
 

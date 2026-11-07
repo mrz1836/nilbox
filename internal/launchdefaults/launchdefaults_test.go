@@ -8,10 +8,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
+	"github.com/mrz1836/nilbox/internal/agent"
 	inboxmodel "github.com/mrz1836/nilbox/internal/inbox/model"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	profilesmodel "github.com/mrz1836/nilbox/internal/profiles/model"
 	"github.com/mrz1836/nilbox/internal/prompts"
+	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -42,7 +45,7 @@ func newHarness(t *testing.T) *harness {
 }
 
 // fields maps a ValidationError's fields to their messages.
-func fields(list []launchdefaults.FieldError) map[string]string {
+func fields(list []agent.FieldError) map[string]string {
 	out := map[string]string{}
 	for _, f := range list {
 		out[f.Field] = f.Message
@@ -216,7 +219,7 @@ func TestTargets(t *testing.T) {
 
 	for n, repo := range []int64{repos[1].ID, repos[1].ID, repos[0].ID, repos[2].ID} {
 		require.NoError(t, h.db.Create(&inboxmodel.Item{
-			AccountID: account.ID, RepoID: repo, Kind: inboxmodel.KindPR, Number: n + 1,
+			AccountID: account.ID, RepoID: repo, Kind: item.KindPR, Number: n + 1,
 			ItemCreatedAt: at, ItemUpdatedAt: at, FetchedAt: at, ReasonAssigned: n != 3,
 		}).Error)
 	}
@@ -238,19 +241,19 @@ func TestIndex(t *testing.T) {
 		{Owner: acme, Name: "api", Effort: "high"},
 	})
 
-	org, repo := idx.For("ACME-ORG", "Api")
+	org, own := idx.For(repo.Name{Owner: "ACME-ORG", Repo: "Api"})
 	require.NotNil(t, org)
-	require.NotNil(t, repo)
+	require.NotNil(t, own)
 	assert.Equal(t, "opus", org.Model)
-	assert.Equal(t, "high", repo.Effort)
+	assert.Equal(t, "high", own.Effort)
 
-	org, repo = idx.For(acme, "web")
+	org, own = idx.For(repo.Name{Owner: acme, Repo: "web"})
 	require.NotNil(t, org)
-	assert.Nil(t, repo)
+	assert.Nil(t, own)
 
-	org, repo = idx.For("other-org", "")
+	org, own = idx.For(repo.Name{Owner: "other-org"})
 	assert.Nil(t, org)
-	assert.Nil(t, repo)
+	assert.Nil(t, own)
 }
 
 func TestInputEmpty(t *testing.T) {

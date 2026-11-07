@@ -11,7 +11,6 @@ export type {
     CheckResult,
     DefaultPrompts,
     Diagnostic,
-    FieldError,
     Input,
     Prompt,
     Usage,

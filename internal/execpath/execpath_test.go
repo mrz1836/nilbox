@@ -2,6 +2,7 @@ package execpath
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -127,10 +128,10 @@ func TestWellKnownDirs(t *testing.T) {
 	}
 }
 
-func TestRunnerRun(t *testing.T) {
+func TestExecRun(t *testing.T) {
 	testutil.RequireGit(t)
 
-	runner := Runner{Finder: Finder{}}
+	runner := Exec{Finder: Finder{}}
 
 	stdout, stderr, err := runner.Run(t.Context(), "git", "--version")
 	require.NoError(t, err)
@@ -138,21 +139,21 @@ func TestRunnerRun(t *testing.T) {
 	assert.Empty(t, stderr)
 }
 
-func TestRunnerRunAbsolutePath(t *testing.T) {
+func TestExecRunAbsolutePath(t *testing.T) {
 	abs, err := filepath.Abs(testutil.RequireGit(t))
 	require.NoError(t, err)
 
 	t.Setenv("PATH", "")
 
-	stdout, _, err := Runner{}.Run(t.Context(), abs, "--version")
+	stdout, _, err := Exec{}.Run(t.Context(), abs, "--version")
 	require.NoError(t, err)
 	assert.Contains(t, string(stdout), "git version")
 }
 
-func TestRunnerRunExitError(t *testing.T) {
+func TestExecRunExitError(t *testing.T) {
 	testutil.RequireGit(t)
 
-	_, stderr, err := Runner{}.Run(t.Context(), "git", "-C", t.TempDir(), "rev-parse", "--git-dir")
+	_, stderr, err := Exec{}.Run(t.Context(), "git", "-C", t.TempDir(), "rev-parse", "--git-dir")
 	require.Error(t, err)
 
 	var exitErr *exec.ExitError
@@ -161,19 +162,84 @@ func TestRunnerRunExitError(t *testing.T) {
 	assert.NotEmpty(t, stderr)
 }
 
-func TestRunnerRunNotFound(t *testing.T) {
+func TestExecRunNotFound(t *testing.T) {
 	t.Setenv("PATH", "/usr/bin:/bin")
 
-	_, _, err := Runner{Finder: Finder{Extra: []string{t.TempDir()}}}.Run(t.Context(), fakeTool)
+	_, _, err := Exec{Finder: Finder{Extra: []string{t.TempDir()}}}.Run(t.Context(), fakeTool)
 	require.ErrorIs(t, err, ErrNotFound)
 }
 
-func TestRunnerRunCanceled(t *testing.T) {
+func TestExecRunCanceled(t *testing.T) {
 	testutil.RequireGit(t)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	_, _, err := Runner{}.Run(ctx, "git", "--version")
+	_, _, err := Exec{}.Run(ctx, "git", "--version")
 	require.ErrorIs(t, err, context.Canceled)
+}
+
+// fakeExitError is a fake process exit with a status.
+type fakeExitError int
+
+func (e fakeExitError) Error() string { return fmt.Sprintf("exit status %d", int(e)) }
+
+func (e fakeExitError) ExitCode() int { return int(e) }
+
+func TestExitCode(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want int
+	}{
+		{name: "no error", want: -1},
+		{name: "not an exit", err: ErrNotFound, want: -1},
+		{name: "an exit", err: fakeExitError(128), want: 128},
+		{name: "a wrapped exit", err: fmt.Errorf("run git: %w", fakeExitError(1)), want: 1},
+		{name: "a clean exit", err: fakeExitError(0), want: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.want, ExitCode(tt.err))
+		})
+	}
+}
+
+func TestExitCodeOfARealExit(t *testing.T) {
+	testutil.RequireGit(t)
+
+	_, _, err := Exec{}.Run(t.Context(), "git", "-C", t.TempDir(), "rev-parse", "--git-dir")
+	assert.Positive(t, ExitCode(err))
+}
+
+func TestFirstLineAndGitMessage(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		out   string
+		first string
+		git   string
+	}{
+		{name: "nothing"},
+		{name: "blank lines", out: " \n\n\t\n"},
+		{name: "fatal", out: "\n  fatal: not a git repository\nmore", first: "fatal: not a git repository", git: "not a git repository"},
+		{name: "error", out: "error: bad thing", first: "error: bad thing", git: "bad thing"},
+		{name: "both prefixes", out: "fatal: error: twice", first: "fatal: error: twice", git: "twice"},
+		{name: "no prefix", out: "LSOpenURLsWithRole() failed\nmore", first: "LSOpenURLsWithRole() failed", git: "LSOpenURLsWithRole() failed"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.first, FirstLine([]byte(tt.out)))
+			assert.Equal(t, tt.git, GitMessage([]byte(tt.out)))
+		})
+	}
 }

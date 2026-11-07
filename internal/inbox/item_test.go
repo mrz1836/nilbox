@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/snooze"
 )
 
@@ -185,7 +186,7 @@ func TestRefreshItemFailuresKeepTheStoredInbox(t *testing.T) {
 			name:    "unknown item",
 			id:      func(id int64) int64 { return id + 100 },
 			prepare: func(*harness) {},
-			wantErr: ErrItemNotFound,
+			wantErr: item.ErrNotFound,
 		},
 		{
 			name:    "no token",
@@ -232,7 +233,7 @@ func TestRefreshItemNeedsANodeID(t *testing.T) {
 	require.NoError(t, h.db.Exec("UPDATE items SET node_id = '' WHERE id = ?", id).Error)
 
 	_, err := h.svc.RefreshItem(t.Context(), id)
-	require.ErrorIs(t, err, ErrItemNotFound)
+	require.ErrorIs(t, err, item.ErrNotFound)
 	assert.Empty(t, h.client.itemIDs, "GitHub was not asked")
 }
 

@@ -34,18 +34,15 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mrz1836/nilbox/internal/appdata"
+	"github.com/mrz1836/nilbox/internal/clock"
 )
 
 // DefaultKeepBackups is how many pre-migration backups are kept when Options does not say.
 const DefaultKeepBackups = 3
 
 const (
-	// backupFilePerm keeps backups private to the user, like the database itself.
-	backupFilePerm = 0o600
-
-	// backupStampLayout is the UTC timestamp in a backup file name; it sorts by time.
-	backupStampLayout = "20060102T150405Z"
-
 	// maxBackupNameAttempts bounds the search for a free backup file name.
 	maxBackupNameAttempts = 100
 
@@ -409,8 +406,7 @@ func backup(ctx context.Context, db *sql.DB, dbPath string, from int, opts Optio
 		return "", ErrNoBackupPath
 	}
 
-	target, err := freeBackupName(fmt.Sprintf("%s.backup-%s-v%d",
-		dbPath, opts.Now().UTC().Format(backupStampLayout), from))
+	target, err := freeBackupName(fmt.Sprintf("%s.backup-%s-v%d", dbPath, clock.Stamp(opts.Now()), from))
 	if err != nil {
 		return "", err
 	}
@@ -419,7 +415,7 @@ func backup(ctx context.Context, db *sql.DB, dbPath string, from int, opts Optio
 		return "", fmt.Errorf("back up database before migrating: %w", err)
 	}
 
-	if err = os.Chmod(target, backupFilePerm); err != nil {
+	if err = os.Chmod(target, appdata.PrivateFilePerm); err != nil {
 		return "", fmt.Errorf("restrict backup permissions: %w", err)
 	}
 
@@ -508,7 +504,7 @@ func applyOne(ctx context.Context, db *sql.DB, m Migration, now time.Time) error
 
 	_, err = tx.ExecContext(ctx,
 		`INSERT INTO schema_migrations (version, name, checksum, applied_at) VALUES (?, ?, ?, ?)`,
-		m.Version, m.Name, m.Checksum, now.UTC().Format(time.RFC3339))
+		m.Version, m.Name, m.Checksum, clock.Format(now))
 	if err != nil {
 		return fmt.Errorf("record %s: %w", m.File, err)
 	}

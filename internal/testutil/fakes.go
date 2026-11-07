@@ -11,9 +11,9 @@ import (
 // ErrNotFound is what Finder fails with for a name it does not resolve.
 var ErrNotFound = errors.New("testutil: program not found")
 
-// Runner is a fake program runner. It satisfies every Runner interface the services
-// declare: it records each argv it is asked to run, runs nothing, and answers with Stdout,
-// Stderr, and Err, or with Script when that is set. It is safe for concurrent use.
+// Runner is a fake execpath.Runner: it records each argv it is asked to run, runs
+// nothing, and answers with Stdout, Stderr, and Err, or with Script when that is set. It
+// is safe for concurrent use.
 type Runner struct {
 	// Stdout, Stderr, and Err answer every call when Script is nil.
 	Stdout string

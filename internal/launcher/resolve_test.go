@@ -6,10 +6,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mrz1836/nilbox/internal/agents"
+	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
+	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/settings"
 )
 
@@ -62,7 +64,7 @@ func testWorld() world {
 
 // prSubject is a trusted pull request in acme-org/example-repo.
 func prSubject() subject {
-	return subject{id: 7, kind: KindPR, owner: acmeOrg, name: "example-repo", trusted: true}
+	return subject{id: 7, kind: item.KindPR, repo: repo.Name{Owner: acmeOrg, Repo: "example-repo"}, trusted: true}
 }
 
 func TestResolveAppDefaults(t *testing.T) {
@@ -71,7 +73,7 @@ func TestResolveAppDefaults(t *testing.T) {
 
 	assert.Equal(t, profiles.DefaultName, profile.Name)
 	assert.Equal(t, reviewID, prompt.ID)
-	assert.Equal(t, agents.Default(), res.Agent)
+	assert.Equal(t, agent.Default(), res.Agent)
 	assert.Equal(t, SourceApp, res.AgentSource)
 	assert.Equal(t, Setting{Value: "default", Source: SourceApp, Inherited: "default", InheritedSource: SourceApp}, res.Profile)
 	assert.Equal(t, PromptChoice{
@@ -87,7 +89,7 @@ func TestResolveAppDefaults(t *testing.T) {
 	assert.Equal(t, "acme-org/example-repo", res.Repo)
 	assert.True(t, res.Trusted)
 
-	res, _, prompt, err = resolve(testWorld(), subject{id: 3, kind: KindIssue, owner: acmeOrg, name: "x"}, LaunchRequest{})
+	res, _, prompt, err = resolve(testWorld(), subject{id: 3, kind: item.KindIssue, repo: repo.Name{Owner: acmeOrg, Repo: "x"}}, LaunchRequest{})
 	require.NoError(t, err)
 	assert.Equal(t, workID, prompt.ID, "issues get the issue default")
 	assert.Equal(t, "Work on it", res.Prompt.Nickname)
@@ -153,7 +155,7 @@ func TestResolveDefaultPrompts(t *testing.T) {
 	assert.Equal(t, SourceRepo, res.Prompt.Source)
 
 	other := prSubject()
-	other.name = "third-repo"
+	other.repo.Repo = "third-repo"
 	res, _, _, err = resolve(w, other, LaunchRequest{})
 	require.NoError(t, err)
 	assert.Equal(t, bothID, res.Prompt.ID)
@@ -161,13 +163,13 @@ func TestResolveDefaultPrompts(t *testing.T) {
 	assert.Equal(t, Toggle{Value: true, Source: SourcePrompt, Inherited: true, InheritedSource: SourcePrompt}, res.PlanMode)
 
 	// A repository default that is gone, or for the other kind, is skipped with a warning.
-	other.name = "other-repo"
+	other.repo.Repo = "other-repo"
 	res, _, _, err = resolve(w, other, LaunchRequest{})
 	require.NoError(t, err)
 	assert.Equal(t, bothID, res.Prompt.ID, "the org's default is next")
 	assert.Equal(t, []string{"The repo default prompt for pull requests no longer exists, so it was skipped."}, res.Warnings)
 
-	issue := subject{id: 3, kind: KindIssue, owner: acmeOrg, name: "other-repo"}
+	issue := subject{id: 3, kind: item.KindIssue, repo: repo.Name{Owner: acmeOrg, Repo: "other-repo"}}
 	res, _, _, err = resolve(w, issue, LaunchRequest{})
 	require.NoError(t, err)
 	assert.Equal(t, workID, res.Prompt.ID, "a pull request prompt is no issue default")
@@ -183,7 +185,7 @@ func TestResolveSkipsDefaultsThatAreGone(t *testing.T) {
 	res, profile, _, err := resolve(w, prSubject(), LaunchRequest{})
 	require.NoError(t, err)
 	assert.Equal(t, profiles.DefaultName, profile.Name)
-	assert.Equal(t, agents.Default(), res.Agent)
+	assert.Equal(t, agent.Default(), res.Agent)
 	assert.Equal(t, []string{
 		`The repo default names a coding tool this version doesn't know ("codex"), so Claude is used.`,
 		`The repo default profile "pruned" no longer exists, so it was skipped.`,
@@ -219,7 +221,7 @@ func TestResolveRejectsBadChoices(t *testing.T) {
 	w.defaults = prompts.DefaultPrompts{}
 	delete(w.prompts, workID)
 	delete(w.prompts, bothID)
-	err = resolveErr(w, subject{id: 3, kind: KindIssue, owner: acmeOrg, name: "x"}, LaunchRequest{})
+	err = resolveErr(w, subject{id: 3, kind: item.KindIssue, repo: repo.Name{Owner: acmeOrg, Repo: "x"}}, LaunchRequest{})
 	require.ErrorIs(t, err, ErrNoPrompt)
 }
 
@@ -272,10 +274,4 @@ func TestChecksAndReviewWords(t *testing.T) {
 	} {
 		assert.Equal(t, want, reviewWord(decision), decision)
 	}
-}
-
-func TestSentenceCase(t *testing.T) {
-	assert.Empty(t, sentenceCase(""))
-	assert.Equal(t, "No prompt applies.", sentenceCase("no prompt applies"))
-	assert.Equal(t, "Done.", sentenceCase("Done."))
 }

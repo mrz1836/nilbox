@@ -24,8 +24,8 @@ const keyCollapsedPrefix = "inbox.collapsed."
 // ErrUnknownSection is returned for a section that is not one of the inbox lists.
 var ErrUnknownSection = errors.New("unknown inbox section")
 
-// Sections returns the inbox sections in the order the inbox shows them.
-func Sections() []string {
+// sectionNames returns the inbox sections in the order the inbox shows them.
+func sectionNames() []string {
 	return []string{SectionReviewRequested, SectionAuthored, SectionAssigned}
 }
 
@@ -33,7 +33,7 @@ func Sections() []string {
 // shows them. None is collapsed on a fresh database, and a stored value that is not a
 // boolean counts as open.
 func (s *Service) CollapsedSections(ctx context.Context) ([]string, error) {
-	sections := Sections()
+	sections := sectionNames()
 
 	keys := make([]string, len(sections))
 	for i, section := range sections {
@@ -70,8 +70,8 @@ func (s *Service) CollapsedSections(ctx context.Context) ([]string, error) {
 // SetSectionCollapsed stores whether an inbox section is collapsed, so the inbox opens the
 // same way at the next launch.
 func (s *Service) SetSectionCollapsed(ctx context.Context, section string, collapsed bool) error {
-	if !slices.Contains(Sections(), section) {
-		return fmt.Errorf("%w %q: choose one of %s", ErrUnknownSection, section, strings.Join(Sections(), ", "))
+	if !slices.Contains(sectionNames(), section) {
+		return fmt.Errorf("%w %q: choose one of %s", ErrUnknownSection, section, strings.Join(sectionNames(), ", "))
 	}
 
 	return s.set(ctx, keyCollapsedPrefix+section, strconv.FormatBool(collapsed))

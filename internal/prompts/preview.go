@@ -4,6 +4,10 @@ import (
 	"context"
 	"errors"
 	"unicode/utf8"
+
+	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // CheckRequest asks to check a prompt being edited and to fill it in for a preview.
@@ -27,7 +31,7 @@ type CheckRequest struct {
 // CheckResult is what the editor shows for a prompt being edited.
 type CheckResult struct {
 	// Fields lists problems with the title, nickname, kind, model, effort, and flags.
-	Fields []FieldError `json:"fields"`
+	Fields []agent.FieldError `json:"fields"`
 
 	// Diagnostics lists problems in the text, placed for the editor.
 	Diagnostics []Diagnostic `json:"diagnostics"`
@@ -80,7 +84,7 @@ func (s *Service) Check(ctx context.Context, req CheckRequest) (CheckResult, err
 
 	data, note := s.previewData(ctx, req, appliesToOrAny(in.AppliesTo))
 	result := CheckResult{
-		Fields: nonNil(fields), Diagnostics: nonNil(diags), Values: data.Values(),
+		Fields: textutil.NonNil(fields), Diagnostics: textutil.NonNil(diags), Values: data.Values(),
 		PreviewNote: note, Sample: note != "" || req.ItemID == 0,
 	}
 
@@ -90,7 +94,7 @@ func (s *Service) Check(ctx context.Context, req CheckRequest) (CheckResult, err
 
 	out, err := tmpl.Execute(data)
 	if err != nil {
-		result.PreviewError = sentence(previewMessage(err))
+		result.PreviewError = textutil.Sentence(previewMessage(err))
 
 		return result, nil
 	}
@@ -108,9 +112,9 @@ func (s *Service) Check(ctx context.Context, req CheckRequest) (CheckResult, err
 // previewData returns the data to preview with and, when it had to fall back to sample
 // data for an item that was asked for, why.
 func (s *Service) previewData(ctx context.Context, req CheckRequest, appliesTo string) (Data, string) {
-	sample := Sample(KindPR)
+	sample := Sample(item.KindPR)
 	if appliesTo == AppliesToIssue {
-		sample = Sample(KindIssue)
+		sample = Sample(item.KindIssue)
 	}
 
 	sample = sample.WithSession(req.InWorktree, req.AtPRHead)
@@ -124,13 +128,8 @@ func (s *Service) previewData(ctx context.Context, req CheckRequest, appliesTo s
 		return sample, "That item is no longer in the inbox, so the preview uses a sample."
 	}
 
-	kind := KindIssue
-	if data.IsPR {
-		kind = KindPR
-	}
-
-	if !AppliesTo(appliesTo, kind) {
-		return sample, "This prompt isn't for " + plural(kind) + ", so the preview uses a sample."
+	if kind := data.kind(); !AppliesTo(appliesTo, kind) {
+		return sample, "This prompt isn't for " + kind.Plural() + ", so the preview uses a sample."
 	}
 
 	return data.WithSession(req.InWorktree, req.AtPRHead), ""
@@ -146,13 +145,4 @@ func previewMessage(err error) string {
 	default:
 		return err.Error()
 	}
-}
-
-// nonNil returns list, or an empty list for nil, so the UI always gets an array.
-func nonNil[T any](list []T) []T {
-	if list == nil {
-		return []T{}
-	}
-
-	return list
 }

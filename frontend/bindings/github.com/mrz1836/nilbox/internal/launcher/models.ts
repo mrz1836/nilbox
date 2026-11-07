@@ -3,7 +3,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as agents$0 from "../agents/models.js";
+import * as agent$0 from "../agent/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as sensitive$0 from "../sensitive/models.js";
@@ -113,7 +113,7 @@ export interface ItemResolution {
     /**
      * Agent is the coding tool, and AgentSource where it was chosen.
      */
-    "agent": agents$0.Agent;
+    "agent": agent$0.Agent;
     "agentSource": string;
     "profile": Setting;
     "prompt": PromptChoice;
@@ -321,7 +321,7 @@ export interface Resolution {
     /**
      * Agent is the coding tool, and AgentSource where it was chosen.
      */
-    "agent": agents$0.Agent;
+    "agent": agent$0.Agent;
     "agentSource": string;
     "profile": Setting;
     "prompt": PromptChoice;

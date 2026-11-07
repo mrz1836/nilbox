@@ -268,10 +268,6 @@ func TestCountStatusEntries(t *testing.T) {
 }
 
 func TestGitMessages(t *testing.T) {
-	assert.Equal(t, "not a git repository", firstLine([]byte("\n  fatal: not a git repository\nmore")))
-	assert.Equal(t, "bad thing", firstLine([]byte("error: bad thing")))
-	assert.Empty(t, firstLine([]byte("\n \n")))
-
 	assert.Equal(t, reasonDirty,
 		refusalReason([]byte("fatal: '/srv/wt/a' contains modified or untracked files, use --force to delete it")))
 	assert.Equal(t, reasonLocked,
@@ -285,10 +281,10 @@ func TestGitMessages(t *testing.T) {
 	assert.Equal(t, "git: broken", gitError(cause, []byte("fatal: broken")).Error())
 
 	ctx, cancel := context.WithCancel(t.Context())
-	assert.True(t, exitCode(ctx, fmt.Errorf("run git: %w", cause)))
-	assert.False(t, exitCode(ctx, errFakeStart))
-	assert.False(t, exitCode(ctx, exitError{code: 0}))
+	assert.True(t, gitRefused(ctx, fmt.Errorf("run git: %w", cause)))
+	assert.False(t, gitRefused(ctx, errFakeStart))
+	assert.False(t, gitRefused(ctx, exitError{code: 0}))
 
 	cancel()
-	assert.False(t, exitCode(ctx, cause), "a canceled run is not git refusing")
+	assert.False(t, gitRefused(ctx, cause), "a canceled run is not git refusing")
 }

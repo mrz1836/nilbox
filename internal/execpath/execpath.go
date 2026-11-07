@@ -3,7 +3,9 @@
 // An app started from the Finder or the Dock inherits launchd's minimal PATH, which lacks
 // Homebrew, ~/.local/bin, and other common install locations. Finder.Find therefore tries
 // the inherited PATH first and then a short list of well-known directories for the current
-// OS. Runner runs a program as an argv, never through a shell.
+// OS. Exec runs a program as an argv, never through a shell, and every service that runs
+// a program takes it as a Runner, so tests can hand it a fake. ExitCode and GitMessage
+// read a failed program's outcome.
 package execpath
 
 import (
@@ -62,16 +64,22 @@ func (f Finder) dirs() []string {
 	return append(dirs, known...)
 }
 
-// Runner runs programs as argv with exec.CommandContext. A name that is not an absolute
+// Runner runs a program with arguments and returns what it wrote. Implementations run the
+// argv directly, never through a shell; Exec is the app's.
+type Runner interface {
+	Run(ctx context.Context, name string, args ...string) (stdout, stderr []byte, err error)
+}
+
+// Exec runs programs as argv with exec.CommandContext. A name that is not an absolute
 // path is resolved with Finder first.
-type Runner struct {
+type Exec struct {
 	Finder Finder
 }
 
 // Run runs name with args and returns what it wrote to stdout and stderr. The error is the
 // lookup or exec error, wrapped; a non-zero exit is an *exec.ExitError in the chain, so
-// callers can read its exit code.
-func (r Runner) Run(ctx context.Context, name string, args ...string) (stdout, stderr []byte, err error) {
+// callers can read its exit code (see ExitCode).
+func (r Exec) Run(ctx context.Context, name string, args ...string) (stdout, stderr []byte, err error) {
 	path := name
 	if !filepath.IsAbs(path) {
 		if path, err = r.Finder.Find(name); err != nil {
@@ -90,6 +98,41 @@ func (r Runner) Run(ctx context.Context, name string, args ...string) (stdout, s
 	}
 
 	return outBuf.Bytes(), errBuf.Bytes(), nil
+}
+
+// ExitCode returns the status a program exited with when err holds its exit (a non-zero
+// exit status is an *exec.ExitError in Exec's error chain), or -1 when err holds none:
+// the program could not be run, was killed by a signal, or err is nil.
+func ExitCode(err error) int {
+	var exit interface{ ExitCode() int }
+	if err == nil || !errors.As(err, &exit) {
+		return -1
+	}
+
+	return exit.ExitCode()
+}
+
+// FirstLine returns the first non-blank line of a program's output, trimmed, or "".
+func FirstLine(out []byte) string {
+	for line := range strings.SplitSeq(string(out), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			return line
+		}
+	}
+
+	return ""
+}
+
+// GitMessage returns the first non-blank line of git's error output without its
+// "fatal: " or "error: " prefix: the part of a git failure worth showing.
+func GitMessage(stderr []byte) string {
+	line := FirstLine(stderr)
+
+	for _, prefix := range []string{"fatal: ", "error: "} {
+		line = strings.TrimPrefix(line, prefix)
+	}
+
+	return line
 }
 
 // absolute makes a found path absolute; exec.LookPath already refuses relative results

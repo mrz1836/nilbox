@@ -3,18 +3,15 @@ package inbox
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
 	"gorm.io/gorm"
 
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/snooze"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
-
-// ErrItemNotFound is returned when a triaged item is not in the local inbox.
-var ErrItemNotFound = errors.New("item not found; refresh the inbox and try again")
 
 // setTriageSQL records an item's triage state, replacing any earlier one, and clears the
 // reasons an earlier snooze woke for. It inserts nothing for an unknown item, which the
@@ -167,7 +164,7 @@ func (s *Service) setState(ctx context.Context, verb string, id int64, query str
 	}
 
 	if res.RowsAffected == 0 {
-		return Snapshot{}, fmt.Errorf("%w (id %d)", ErrItemNotFound, id)
+		return Snapshot{}, fmt.Errorf("%w (id %d)", item.ErrNotFound, id)
 	}
 
 	s.notify()

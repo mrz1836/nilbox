@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestParseClaudeLock(t *testing.T) {
+func TestParseAgentLockReadsThePID(t *testing.T) {
 	tests := []struct {
 		reason string
 		pid    int
@@ -35,9 +35,9 @@ func TestParseClaudeLock(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.reason, func(t *testing.T) {
-			pid, ok := ParseClaudeLock(tt.reason)
+			lock, ok := parseAgentLock(tt.reason)
 			assert.Equal(t, tt.ok, ok)
-			assert.Equal(t, tt.pid, pid)
+			assert.Equal(t, tt.pid, lock.pid)
 		})
 	}
 }

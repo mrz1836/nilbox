@@ -19,15 +19,11 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
+	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/store/migrate"
 )
 
 const (
-	// dirPerm and filePerm keep the database private to the user. SQLite gives its WAL and
-	// shared-memory files the same permissions as the database file.
-	dirPerm  = 0o700
-	filePerm = 0o600
-
 	// pragmas run on every new connection.
 	pragmas = "_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"
 )
@@ -95,11 +91,11 @@ func Close(db *gorm.DB) error {
 // createFile creates the database's parent directory and an empty, user-only database
 // file when they do not exist yet. An existing file is left as it is.
 func createFile(path string) error {
-	if err := os.MkdirAll(filepath.Dir(path), dirPerm); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), appdata.PrivateDirPerm); err != nil {
 		return fmt.Errorf("create database directory: %w", err)
 	}
 
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, filePerm) //nolint:gosec // path is the app's own data file
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, appdata.PrivateFilePerm) //nolint:gosec // path is the app's own data file
 	if errors.Is(err, os.ErrExist) {
 		return nil
 	}

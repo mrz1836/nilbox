@@ -16,6 +16,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/model"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/trust"
@@ -158,7 +159,7 @@ func (c *fakeClient) FetchItem(_ context.Context, tok github.Token, id string) (
 }
 
 // FetchPullHead answers with the head of the canned files.
-func (c *fakeClient) FetchPullHead(_ context.Context, tok github.Token, ref github.ItemRef) (*github.PullHead, error) {
+func (c *fakeClient) FetchPullHead(_ context.Context, tok github.Token, ref item.Ref) (*github.PullHead, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -179,7 +180,7 @@ func (c *fakeClient) FetchPullHead(_ context.Context, tok github.Token, ref gith
 
 // FetchChangedFiles answers with the canned files, whatever head was asked for.
 func (c *fakeClient) FetchChangedFiles(
-	_ context.Context, tok github.Token, ref github.ItemRef, _ string,
+	_ context.Context, tok github.Token, ref item.Ref, _ string,
 ) (*github.ChangedFiles, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -277,12 +278,12 @@ func (h *harness) count(t *testing.T, table string) int64 {
 
 // pr builds a fetched pull request in example-repo.
 func pr(number int, assoc string, crossRepo bool) github.Item {
-	return item("example-repo", number, assoc, true, crossRepo)
+	return githubItem("example-repo", number, assoc, true, crossRepo)
 }
 
 // issue builds a fetched issue.
 func issue(repo string, number int, assoc string) github.Item {
-	return item(repo, number, assoc, false, false)
+	return githubItem(repo, number, assoc, false, false)
 }
 
 // nodeID is the fake node ID of the item with a number.
@@ -290,8 +291,8 @@ func nodeID(number int) string {
 	return fmt.Sprintf("NODE_%d", number)
 }
 
-// item builds a fetched item in acme-org.
-func item(repo string, number int, assoc string, isPR, crossRepo bool) github.Item {
+// githubItem builds a fetched item in acme-org.
+func githubItem(repo string, number int, assoc string, isPR, crossRepo bool) github.Item {
 	updated := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(number) * time.Hour)
 
 	it := github.Item{
@@ -447,7 +448,7 @@ func TestRefreshStoresTrustFields(t *testing.T) {
 	assert.Equal(t, "User", got[16].AuthorType)
 	assert.Equal(t, "OWNER", got[7].AuthorAssociation)
 	assert.False(t, got[7].IsCrossRepository)
-	assert.Equal(t, model.KindIssue, got[21].Kind)
+	assert.Equal(t, item.KindIssue, got[21].Kind)
 	assert.Equal(t, "branch-7", got[7].HeadRef)
 
 	classes := make(map[int]string)
@@ -471,7 +472,7 @@ func TestRefreshStoresTrustFields(t *testing.T) {
 
 	fromFork := snap.ReviewRequested.Items[3]
 	assert.Equal(t, Item{
-		ID: fromFork.ID, Kind: model.KindPR, Number: 12, Title: "Item 12",
+		ID: fromFork.ID, Kind: string(item.KindPR), Number: 12, Title: "Item 12",
 		URL:  "https://github.com/acme-org/example-repo/pull/12",
 		Repo: "acme-org/example-repo", Author: "octo-user", UpdatedAt: "2026-01-01T12:00:00Z",
 		Trust: trust.ClassOutside, Trusted: false, IsCrossRepository: true, AuthorAssociation: "CONTRIBUTOR",

@@ -142,12 +142,12 @@ func TestOpenError(t *testing.T) {
 	}
 }
 
-func TestFirstLineCapsLength(t *testing.T) {
+func TestErrDetailCapsLength(t *testing.T) {
 	long := make([]rune, maxErrDetail+50)
 	for i := range long {
 		long[i] = 'x'
 	}
 
-	assert.Len(t, []rune(firstLine(string(long))), maxErrDetail)
-	assert.Empty(t, firstLine(" \n\t\n"))
+	assert.Len(t, []rune(errDetail([]byte(string(long)))), maxErrDetail)
+	assert.Empty(t, errDetail([]byte(" \n\t\n")))
 }

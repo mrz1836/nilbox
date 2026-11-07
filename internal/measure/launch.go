@@ -92,7 +92,7 @@ type LaunchOptions struct {
 
 	// Runner runs external programs: git, the terminal driver, ps, lsof, and kill. nil
 	// uses the app's default.
-	Runner core.Runner
+	Runner execpath.Runner
 
 	// Logger receives the app's log records; nil uses slog.Default().
 	Logger *slog.Logger
@@ -143,7 +143,7 @@ func (r LaunchReport) Lines() []string {
 func RunLaunch(ctx context.Context, opts LaunchOptions) (LaunchReport, error) {
 	runner := deadlineRunner{inner: opts.Runner}
 	if opts.Runner == nil {
-		runner.inner = execpath.Runner{Finder: execpath.Finder{Home: opts.Home}}
+		runner.inner = execpath.Exec{Finder: execpath.Finder{Home: opts.Home}}
 	}
 
 	dir, err := os.MkdirTemp(opts.TempDir, brand.Slug+"-measure-")
@@ -196,7 +196,7 @@ type launchFixture struct {
 
 // newLaunchFixture creates the clone, starts the app over a scratch data directory, and
 // stores the fixture item, the clone root, and iTerm2 as the terminal.
-func newLaunchFixture(ctx context.Context, dir string, opts LaunchOptions, runner core.Runner) (*launchFixture, error) {
+func newLaunchFixture(ctx context.Context, dir string, opts LaunchOptions, runner execpath.Runner) (*launchFixture, error) {
 	root := filepath.Join(dir, "clones")
 	clone := filepath.Join(root, fixtureName)
 
@@ -256,8 +256,8 @@ func (f *launchFixture) close() {
 
 // initClone creates an empty git repository at clone whose origin is the placeholder
 // repository. Nothing is fetched.
-func initClone(ctx context.Context, runner core.Runner, clone string) error {
-	if err := os.MkdirAll(clone, 0o700); err != nil {
+func initClone(ctx context.Context, runner execpath.Runner, clone string) error {
+	if err := os.MkdirAll(clone, appdata.PrivateDirPerm); err != nil {
 		return fmt.Errorf("create the scratch clone: %w", err)
 	}
 
@@ -459,7 +459,7 @@ func needsAutomation(err error) bool {
 // deadlineRunner adds the context's error to a program's failure once its context has
 // ended, so a terminal app that never answered is told apart from one that failed.
 type deadlineRunner struct {
-	inner core.Runner
+	inner execpath.Runner
 }
 
 // Run runs the program with the inner runner.
@@ -474,7 +474,7 @@ func (r deadlineRunner) Run(ctx context.Context, name string, args ...string) (s
 
 // processProbe inspects processes with ps and lsof, and stops one with kill.
 type processProbe struct {
-	run core.Runner
+	run execpath.Runner
 }
 
 // PIDs lists the processes whose command line starts with the agent binary.

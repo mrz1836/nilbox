@@ -25,6 +25,8 @@ import (
 	"time"
 
 	"golang.org/x/text/unicode/norm"
+
+	"github.com/mrz1836/nilbox/internal/appdata"
 )
 
 // Config file names and keys.
@@ -65,10 +67,10 @@ const (
 // File permissions.
 const (
 	// configPerm is a new config file's mode, the one the agent uses.
-	configPerm fs.FileMode = 0o600
+	configPerm = appdata.PrivateFilePerm
 
 	// lockPerm is the lock directory's mode.
-	lockPerm fs.FileMode = 0o700
+	lockPerm = appdata.PrivateDirPerm
 )
 
 var (

@@ -1,10 +1,13 @@
 package worktrees
 
 import (
+	"bytes"
 	"context"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,7 +16,9 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launchlog"
+	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
@@ -38,7 +43,7 @@ func newSweepFixture(t *testing.T, e *env) *sweepFixture {
 	f.launchedPR, head = agentWorktree(t, f.repo, "pr-1")
 	pushed(t, f.repo, "one", head)
 	f.gh.set("example-repo", 1, pr(github.StateMerged, "a different head"))
-	f.launches.records = append(f.launches.records, launchOf(f.repo, "pr-1", kindPR, 1))
+	f.launches.records = append(f.launches.records, launchOf(f.repo, "pr-1", item.KindPR, 1))
 
 	// Not launched by the app, but HEAD is the merged pull request's head: cleaned up.
 	f.commitLinked, head = agentWorktree(t, f.repo, "pr-2")
@@ -58,14 +63,14 @@ func newSweepFixture(t *testing.T, e *env) *sweepFixture {
 	f.launchedIssue, head = agentWorktree(t, f.repo, "issue-5")
 	pushed(t, f.repo, "five", head)
 	f.gh.set("example-repo", 5, closedIssue())
-	f.launches.records = append(f.launches.records, launchOf(f.repo, "issue-5", kindIssue, 5))
+	f.launches.records = append(f.launches.records, launchOf(f.repo, "issue-5", item.KindIssue, 5))
 
 	// Merged, but it holds uncommitted changes: needs a look.
 	f.changed, head = agentWorktree(t, f.repo, "pr-6")
 	pushed(t, f.repo, "six", head)
 	dirty(t, f.changed)
 	f.gh.set("example-repo", 6, pr(github.StateMerged, head))
-	f.launches.records = append(f.launches.records, launchOf(f.repo, "pr-6", kindPR, 6))
+	f.launches.records = append(f.launches.records, launchOf(f.repo, "pr-6", item.KindPR, 6))
 
 	// Still open: nothing to do.
 	f.open, head = agentWorktree(t, f.repo, "pr-7")
@@ -236,10 +241,10 @@ func TestSweepForgetsLaunchesWhoseWorktreeIsGone(t *testing.T) {
 	require.NoError(t, os.MkdirAll(elsewhere, 0o700))
 
 	launches := &fakeLaunches{records: []launchlog.Launch{
-		launchOf(repo, "pr-1", kindPR, 1),
-		launchOf(repo, "pr-2", kindPR, 2),
-		launchOf(filepath.Join(e.root, "deleted-clone"), "pr-3", kindPR, 3),
-		launchOf(elsewhere, "pr-4", kindPR, 4),
+		launchOf(repo, "pr-1", item.KindPR, 1),
+		launchOf(repo, "pr-2", item.KindPR, 2),
+		launchOf(filepath.Join(e.root, "deleted-clone"), "pr-3", item.KindPR, 3),
+		launchOf(elsewhere, "pr-4", item.KindPR, 4),
 	}}
 
 	gh := &fakeGitHub{}
@@ -254,14 +259,14 @@ func TestSweepForgetsLaunchesWhoseWorktreeIsGone(t *testing.T) {
 
 func TestSweepForgetsLaunchesWhenNoCloneIsLeft(t *testing.T) {
 	e := newEnv(t)
-	launches := &fakeLaunches{records: []launchlog.Launch{launchOf(filepath.Join(e.root, "gone"), "pr-1", kindPR, 1)}}
+	launches := &fakeLaunches{records: []launchlog.Launch{launchOf(filepath.Join(e.root, "gone"), "pr-1", item.KindPR, 1)}}
 
 	report := e.linked(linkDeps{gh: &fakeGitHub{}, launches: launches, auto: true}).Sweep(t.Context())
 	assert.Empty(t, report.Error)
 	assert.Zero(t, report.Leftover)
 	assert.Equal(t, []string{"gone/pr-1"}, launches.forgotten)
 
-	launches = &fakeLaunches{records: []launchlog.Launch{launchOf(filepath.Join(e.root, "gone"), "pr-1", kindPR, 1)}, forgetErr: errFakeLaunches}
+	launches = &fakeLaunches{records: []launchlog.Launch{launchOf(filepath.Join(e.root, "gone"), "pr-1", item.KindPR, 1)}, forgetErr: errFakeLaunches}
 	e.linked(linkDeps{gh: &fakeGitHub{}, launches: launches}).Sweep(t.Context())
 	assert.Empty(t, launches.forgotten, "a failure to forget is only logged")
 }
@@ -321,9 +326,9 @@ func TestSweepClones(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(e.root, "file.txt"), []byte("x"), 0o600))
 
 	launches := []launchlog.Launch{
-		launchOf(recorded, "pr-9", kindPR, 9),
-		launchOf(agent, "pr-1", kindPR, 1),
-		launchOf(filepath.Join(e.home, "outside"), "pr-2", kindPR, 2),
+		launchOf(recorded, "pr-9", item.KindPR, 9),
+		launchOf(agent, "pr-1", item.KindPR, 1),
+		launchOf(filepath.Join(e.home, "outside"), "pr-2", item.KindPR, 2),
 	}
 
 	svc := e.linked(linkDeps{})
@@ -339,7 +344,7 @@ func TestSweepClones(t *testing.T) {
 
 	assert.Equal(t, []string{"agent", "recorded"}, names,
 		"only clones with agent worktrees or records, each once; not plain, empty, hidden, or not a repository")
-	assert.Equal(t, map[string]string{"origin": "acme-org/agent"}, clones[0].Remotes)
+	assert.Equal(t, map[string]repo.Name{"origin": {Owner: "acme-org", Repo: "agent"}}, clones[0].Remotes)
 	assert.Empty(t, svc.sweepClones(t.Context(), filepath.Join(root, "missing"), nil))
 }
 
@@ -373,12 +378,47 @@ type panickingSettings struct{}
 
 func (panickingSettings) Get(context.Context) (settings.Settings, error) { panic("settings exploded") }
 
-func TestSafeSweepSurvivesAPanicAndLogsFailures(t *testing.T) {
-	svc := NewService(Config{Settings: panickingSettings{}, Git: execpath.Runner{}, Logger: slog.New(slog.DiscardHandler)})
+func TestSweeperSurvivesAPanicAndLogsFailures(t *testing.T) {
+	var logs bytes.Buffer
 
-	require.NotPanics(t, func() { svc.safeSweep(t.Context()) })
+	var mu sync.Mutex
 
-	svc = NewService(Config{Settings: fakeSettings{err: errFakeSettings}, Git: execpath.Runner{}, Logger: slog.New(slog.DiscardHandler)})
-	svc.safeSweep(t.Context())
+	logger := slog.New(slog.NewTextHandler(lockedWriter{w: &logs, mu: &mu}, nil))
+	svc := NewService(Config{Settings: panickingSettings{}, Git: execpath.Exec{}, Logger: logger})
+
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		NewSweeper(svc).Run(ctx, time.Millisecond)
+	}()
+
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+
+		return strings.Count(logs.String(), "worktree sweep panicked") >= 2
+	}, 5*time.Second, time.Millisecond, "a panicking sweep is logged and the next one still runs")
+
+	cancel()
+	<-done
+
+	svc = NewService(Config{Settings: fakeSettings{err: errFakeSettings}, Git: execpath.Exec{}, Logger: logger})
+	require.EqualError(t, svc.sweepOnce(t.Context()), errFakeSettings.Error())
 	assert.Equal(t, errFakeSettings.Error(), svc.LastSweep().Error)
+}
+
+// lockedWriter serializes writes to w.
+type lockedWriter struct {
+	w  *bytes.Buffer
+	mu *sync.Mutex
+}
+
+func (l lockedWriter) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	return l.w.Write(p)
 }

@@ -10,9 +10,9 @@ import type { Info } from '../../bindings/github.com/mrz1836/nilbox/internal/app
 import { Service as Inbox } from '../../bindings/github.com/mrz1836/nilbox/internal/inbox'
 import type { Snapshot as InboxSnapshot } from '../../bindings/github.com/mrz1836/nilbox/internal/inbox'
 import { Service as LaunchDefaultsService } from '../../bindings/github.com/mrz1836/nilbox/internal/launchdefaults'
+import type { FieldError } from '../../bindings/github.com/mrz1836/nilbox/internal/agent'
 import type {
   Defaults as LaunchDefaults,
-  FieldError as LaunchDefaultsFieldError,
   Input as LaunchDefaultsInput,
   Target as LaunchTarget,
 } from '../../bindings/github.com/mrz1836/nilbox/internal/launchdefaults'
@@ -68,10 +68,9 @@ export type {
   RateGauge,
   Snapshot as InboxSnapshot,
 } from '../../bindings/github.com/mrz1836/nilbox/internal/inbox'
-export type { Agent } from '../../bindings/github.com/mrz1836/nilbox/internal/agents'
+export type { Agent, FieldError } from '../../bindings/github.com/mrz1836/nilbox/internal/agent'
 export type {
   Defaults as LaunchDefaults,
-  FieldError as LaunchDefaultsFieldError,
   Input as LaunchDefaultsInput,
   Target as LaunchTarget,
 } from '../../bindings/github.com/mrz1836/nilbox/internal/launchdefaults'
@@ -105,7 +104,6 @@ export type {
   CheckResult as PromptCheckResult,
   DefaultPrompts,
   Diagnostic,
-  FieldError,
   Input as PromptInput,
   Prompt,
   Usage as PromptUsage,
@@ -316,7 +314,7 @@ export async function listLaunchDefaults(): Promise<LaunchDefaults[]> {
 }
 
 // checkLaunchDefaults validates launch defaults being edited.
-export async function checkLaunchDefaults(input: LaunchDefaultsInput): Promise<LaunchDefaultsFieldError[]> {
+export async function checkLaunchDefaults(input: LaunchDefaultsInput): Promise<FieldError[]> {
   return (await LaunchDefaultsService.Check(input)) ?? []
 }
 

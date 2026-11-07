@@ -12,6 +12,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/core"
+	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/inbox"
 )
 
@@ -144,7 +145,7 @@ type RefreshOptions struct {
 	TempDir string
 
 	// Runner runs external programs (the GitHub CLI); nil uses the app's default.
-	Runner core.Runner
+	Runner execpath.Runner
 
 	// Logger receives the app's log records; nil uses slog.Default().
 	Logger *slog.Logger

@@ -8,7 +8,10 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/inbox/model"
+	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/snooze"
 	"github.com/mrz1836/nilbox/internal/trust"
@@ -311,7 +314,7 @@ func (s *Snapshot) applyTotals(prefs map[string]string) {
 // itemRow is one row of loadItemsSQL.
 type itemRow struct {
 	ID                    int64     `gorm:"column:id"`
-	Kind                  string    `gorm:"column:kind"`
+	Kind                  item.Kind `gorm:"column:kind"`
 	Number                int       `gorm:"column:number"`
 	Title                 string    `gorm:"column:title"`
 	URL                   string    `gorm:"column:url"`
@@ -361,19 +364,19 @@ type itemRow struct {
 // item converts a row to its DTO, deciding its trust, and whether its files are
 // checked, with scope.
 func (r *itemRow) item(scope fileScope) Item {
-	isPR := r.Kind == model.KindPR
+	isPR := r.Kind == item.KindPR
 	author := trust.Author{Login: r.AuthorLogin, Type: r.AuthorType, Association: r.AuthorAssociation}
 	class := scope.policy.Classify(author, isPR, r.IsCrossRepository)
 
 	return Item{
 		ID:                r.ID,
-		Kind:              r.Kind,
+		Kind:              string(r.Kind),
 		Number:            r.Number,
 		Title:             r.Title,
 		URL:               r.URL,
-		Repo:              r.RepoOwner + "/" + r.RepoName,
+		Repo:              repo.Name{Owner: r.RepoOwner, Repo: r.RepoName}.String(),
 		Author:            r.AuthorLogin,
-		UpdatedAt:         formatTime(r.ItemUpdatedAt),
+		UpdatedAt:         clock.Format(r.ItemUpdatedAt),
 		Trust:             class,
 		Trusted:           class != trust.ClassOutside,
 		AuthorIsBot:       author.IsBot(),
@@ -521,14 +524,9 @@ func loadRate(db *gorm.DB, accountID int64, resource string) (Rate, error) {
 		Remaining: r.Remaining,
 		Used:      r.Used,
 		Cost:      r.Cost,
-		ResetAt:   formatTime(r.ResetAt),
-		TakenAt:   formatTime(r.TakenAt),
+		ResetAt:   clock.Format(r.ResetAt),
+		TakenAt:   clock.Format(r.TakenAt),
 	}, nil
-}
-
-// formatTime renders a stored time as RFC 3339 in UTC.
-func formatTime(t time.Time) string {
-	return t.UTC().Format(time.RFC3339)
 }
 
 // formatOptionalTime renders a nullable stored time as RFC 3339 in UTC, or "" when it is
@@ -538,5 +536,5 @@ func formatOptionalTime(t *time.Time) string {
 		return ""
 	}
 
-	return formatTime(*t)
+	return clock.Format(*t)
 }

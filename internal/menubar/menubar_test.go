@@ -113,11 +113,11 @@ func TestTheStatus(t *testing.T) {
 }
 
 func TestLabel(t *testing.T) {
-	assert.Empty(t, Label(0))
-	assert.Empty(t, Label(-1))
-	assert.Equal(t, "1", Label(1))
-	assert.Equal(t, "99", Label(MaxCount))
-	assert.Equal(t, "99+", Label(MaxCount+1))
+	assert.Empty(t, label(0))
+	assert.Empty(t, label(-1))
+	assert.Equal(t, "1", label(1))
+	assert.Equal(t, "99", label(MaxCount))
+	assert.Equal(t, "99+", label(MaxCount+1))
 }
 
 func TestAnEntryIsTidied(t *testing.T) {

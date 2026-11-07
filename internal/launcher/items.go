@@ -8,7 +8,9 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/inbox"
 	inboxmodel "github.com/mrz1836/nilbox/internal/inbox/model"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/prompts"
+	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
@@ -31,15 +33,14 @@ ORDER BY i.id`
 // repoRef is the repository an item belongs to, as stored.
 type repoRef struct {
 	id        int64
-	owner     string
-	name      string
+	name      repo.Name
 	localPath string
 }
 
 // launchItemRow is one row of loadItemsSQL.
 type launchItemRow struct {
 	ID                int64             `gorm:"column:id"`
-	Kind              string            `gorm:"column:kind"`
+	Kind              item.Kind         `gorm:"column:kind"`
 	Number            int               `gorm:"column:number"`
 	URL               string            `gorm:"column:url"`
 	Title             string            `gorm:"column:title"`
@@ -64,7 +65,7 @@ type launchItemRow struct {
 	ReviewDecision    string            `gorm:"column:review_decision"`
 }
 
-// loadItem reads one item, or ErrItemNotFound.
+// loadItem reads one item, or item.ErrNotFound.
 func (s *Service) loadItem(ctx context.Context, id int64) (launchItemRow, error) {
 	rows, err := s.loadItems(ctx, []int64{id})
 	if err != nil {
@@ -72,7 +73,7 @@ func (s *Service) loadItem(ctx context.Context, id int64) (launchItemRow, error)
 	}
 
 	if len(rows) == 0 {
-		return launchItemRow{}, fmt.Errorf("%w (id %d)", ErrItemNotFound, id)
+		return launchItemRow{}, fmt.Errorf("%w (id %d)", item.ErrNotFound, id)
 	}
 
 	return rows[0], nil
@@ -95,34 +96,37 @@ func (r launchItemRow) author() trust.Author {
 
 // class is the item's trust class under policy.
 func (r launchItemRow) class(policy trust.Policy) string {
-	return policy.Classify(r.author(), r.Kind == KindPR, r.IsCrossRepository)
+	return policy.Classify(r.author(), r.Kind == item.KindPR, r.IsCrossRepository)
 }
 
 // subject is what resolving the item's launch settings needs.
 func (r launchItemRow) subject(policy trust.Policy) subject {
-	return subject{
-		id: r.ID, kind: r.Kind, owner: r.Owner, name: r.Name, trusted: r.class(policy) != trust.ClassOutside,
-	}
+	return subject{id: r.ID, kind: r.Kind, repo: r.repo(), trusted: r.class(policy) != trust.ClassOutside}
 }
 
 // item is what planning a launch needs.
 func (r launchItemRow) item(policy trust.Policy) Item {
 	return Item{
-		Kind: r.Kind, Number: r.Number, URL: r.URL, Title: r.Title, Repo: r.Owner + "/" + r.Name,
+		Kind: r.Kind, Number: r.Number, URL: r.URL, Title: r.Title, Repo: r.repo().String(),
 		Branch: r.HeadRef, Trusted: r.class(policy) != trust.ClassOutside,
 	}
 }
 
+// repo is the item's repository's name.
+func (r launchItemRow) repo() repo.Name {
+	return repo.Name{Owner: r.Owner, Repo: r.Name}
+}
+
 // repoRef is the item's repository.
 func (r launchItemRow) repoRef() repoRef {
-	return repoRef{id: r.RepoID, owner: r.Owner, name: r.Name, localPath: r.LocalPath}
+	return repoRef{id: r.RepoID, name: r.repo(), localPath: r.LocalPath}
 }
 
 // promptData is what a prompt is filled in from for the item, judged by policy and
 // launched with profile by viewer, with the sensitive files its file check found (nil
 // when its files are not checked). The session facts are left for WithSession.
 func (r launchItemRow) promptData(policy trust.Policy, profile, viewer string, check *sensitive.Check) prompts.Data {
-	isPR := r.Kind == KindPR
+	isPR := r.Kind == item.KindPR
 
 	labels := make([]string, 0, len(r.Labels))
 	for _, l := range r.Labels {
@@ -130,9 +134,9 @@ func (r launchItemRow) promptData(policy trust.Policy, profile, viewer string, c
 	}
 
 	d := prompts.Data{
-		Kind: prompts.KindName(r.Kind), IsPR: isPR, Number: r.Number, Title: r.Title, URL: r.URL,
+		Kind: r.Kind.Noun(), IsPR: isPR, Number: r.Number, Title: r.Title, URL: r.URL,
 		Author: r.AuthorLogin, IsBot: r.author().IsBot(), Labels: strings.Join(labels, ", "),
-		Repo: r.Owner + "/" + r.Name, Owner: r.Owner, RepoName: r.Name, DefaultBranch: r.DefaultBranch,
+		Repo: r.repo().String(), Owner: r.Owner, RepoName: r.Name, DefaultBranch: r.DefaultBranch,
 		Profile: profile, Me: viewer, OutsideContributor: r.class(policy) == trust.ClassOutside,
 	}
 
@@ -204,7 +208,7 @@ func (p promptSource) PreviewData(ctx context.Context, itemID int64) (prompts.Da
 	profile := w.settings.DefaultProfile
 
 	r := &resolver{w: w, item: row.subject(w.policy)}
-	r.org, r.repo = w.rules.For(row.Owner, row.Name)
+	r.org, r.repo = w.rules.For(row.repo())
 
 	if inherited, _, profileErr := r.inheritedProfile(); profileErr == nil {
 		profile = inherited.Name

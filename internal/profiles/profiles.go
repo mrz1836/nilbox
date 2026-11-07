@@ -29,7 +29,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
-	"github.com/mrz1836/nilbox/internal/localrepos"
+	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/profiles/model"
 )
 
@@ -62,9 +62,7 @@ func configMarkers() []configMarker {
 var ErrProfileNotFound = errors.New("profile not found")
 
 // namePattern is what a discovered profile name must look like.
-func namePattern() *regexp.Regexp {
-	return regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
-}
+var namePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 // Profile is one launch profile as the UI shows it. Every field is a plain value.
 type Profile struct {
@@ -142,7 +140,7 @@ func (s *Service) describeFolder(p *Profile) {
 		dir = filepath.Join(s.home, defaultDir)
 	}
 
-	p.Folder = localrepos.TildePath(dir, s.home)
+	p.Folder = paths.Tilde(dir, s.home)
 
 	_, err := os.Stat(dir)
 	p.Missing = errors.Is(err, fs.ErrNotExist)
@@ -167,10 +165,9 @@ func Discover(home string) ([]Profile, error) {
 	}
 
 	found := map[string]candidate{}
-	pattern := namePattern()
 
 	for _, entry := range entries {
-		if c, ok := discoverable(home, entry.Name(), pattern); ok {
+		if c, ok := discoverable(home, entry.Name()); ok {
 			keep(found, c)
 		}
 	}
@@ -269,8 +266,8 @@ type candidate struct {
 
 // discoverable returns the profile candidate a home-directory entry makes, if any: the
 // default ~/.claude directory, or a named profile directory that holds an agent config.
-func discoverable(home, entry string, pattern *regexp.Regexp) (candidate, bool) {
-	c, ok := classify(home, entry, pattern)
+func discoverable(home, entry string) (candidate, bool) {
+	c, ok := classify(home, entry)
 	if !ok || !isDir(c.dir) {
 		return candidate{}, false
 	}
@@ -310,7 +307,7 @@ func prunable(row model.ClaudeProfile) bool {
 }
 
 // classify maps a home-directory entry name to a profile candidate.
-func classify(home, entry string, pattern *regexp.Regexp) (candidate, bool) {
+func classify(home, entry string) (candidate, bool) {
 	dir := filepath.Join(home, entry)
 	if entry == defaultDir {
 		return candidate{name: DefaultName, dir: dir}, true
@@ -318,7 +315,7 @@ func classify(home, entry string, pattern *regexp.Regexp) (candidate, bool) {
 
 	for rank, sep := range []string{"_", "-"} {
 		name, ok := strings.CutPrefix(entry, defaultDir+sep)
-		if ok && pattern.MatchString(name) {
+		if ok && namePattern.MatchString(name) {
 			return candidate{name: name, configDir: dir, dir: dir, rank: rank + 1}, true
 		}
 	}

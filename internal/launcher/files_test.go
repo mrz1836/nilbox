@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/appdata"
+	"github.com/mrz1836/nilbox/internal/item"
 )
 
 // errReader is returned by failingReader.
@@ -82,7 +83,7 @@ func TestWriteLaunchFiles(t *testing.T) {
 	assert.Equal(t, paths.Launch, filepath.Dir(files.Script))
 
 	assert.Regexp(t, `^pr-7-20260314T150926Z-[0-9a-f]{8}\.prompt\.md$`, filepath.Base(files.Prompt))
-	assert.True(t, launchFilePattern(".command").MatchString(filepath.Base(files.Script)))
+	assert.Regexp(t, launchFileName, filepath.Base(files.Script))
 	assert.Equal(t, ".command", filepath.Ext(files.Script))
 	assert.Equal(t, strings.TrimSuffix(files.Prompt, promptFileSuffix), strings.TrimSuffix(files.Script, ".command"),
 		"the prompt file and the script share a base name")
@@ -107,7 +108,7 @@ func TestWriteLaunchFiles(t *testing.T) {
 
 	t.Run("issues are named by kind", func(t *testing.T) {
 		req := baseRequest()
-		req.Item.Kind, req.Item.Number = KindIssue, 12
+		req.Item.Kind, req.Item.Number = item.KindIssue, 12
 
 		issuePlan, err := BuildPlan(req)
 		require.NoError(t, err)
@@ -174,7 +175,7 @@ func TestWriteLaunchFilesRejectsInvalidInput(t *testing.T) {
 		prompt string
 		want   error
 	}{
-		{name: "unknown kind", plan: func() Plan { p := valid; p.Kind = "../x"; return p }, prompt: "p", want: ErrInvalidKind},
+		{name: "unknown kind", plan: func() Plan { p := valid; p.Kind = "../x"; return p }, prompt: "p", want: item.ErrInvalidKind},
 		{name: "zero number", plan: func() Plan { p := valid; p.Number = 0; return p }, prompt: "p", want: ErrInvalidNumber},
 		{name: "empty prompt", plan: func() Plan { return valid }, prompt: "", want: ErrEmptyPrompt},
 	}

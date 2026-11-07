@@ -8,8 +8,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/launchlog"
 	"github.com/mrz1836/nilbox/internal/localrepos"
+	"github.com/mrz1836/nilbox/internal/periodic"
 )
 
 // DefaultSweepInterval is how often a Sweeper sweeps. A sweep runs git only in clones
@@ -26,11 +28,8 @@ const DefaultSweepInterval = 5 * time.Minute
 // git. The report is kept for LastSweep, and the notifier is told when a worktree was
 // removed or either count changed.
 func (s *Service) Sweep(ctx context.Context) SweepReport {
-	s.act.Lock()
-	report := s.sweep(ctx)
-	s.act.Unlock()
-
-	report.At = s.clock.Now().UTC().Format(time.RFC3339)
+	report := s.sweepLocked(ctx)
+	report.At = clock.Format(s.clock.Now())
 
 	s.mu.Lock()
 	changed := len(report.Cleaned) > 0 || report.Leftover != s.last.Leftover ||
@@ -54,17 +53,30 @@ func (s *Service) LastSweep() SweepReport {
 	return s.last
 }
 
-// safeSweep runs one sweep, logging a failure or a panic.
-func (s *Service) safeSweep(ctx context.Context) {
-	defer func() {
-		if r := recover(); r != nil {
-			s.logger.ErrorContext(ctx, "worktree sweep panicked", "panic", r)
-		}
-	}()
+// sweepJob names the automatic sweeps in log entries.
+const sweepJob = "worktree sweep"
 
-	if report := s.Sweep(ctx); report.Error != "" && ctx.Err() == nil {
-		s.logger.WarnContext(ctx, "worktree sweep failed", "error", report.Error)
+// sweepError is a sweep's report error, for logging.
+type sweepError string
+
+// Error returns the report's error.
+func (e sweepError) Error() string { return string(e) }
+
+// sweepOnce runs one sweep for a Sweeper, failing with the report's error.
+func (s *Service) sweepOnce(ctx context.Context) error {
+	if report := s.Sweep(ctx); report.Error != "" {
+		return sweepError(report.Error)
 	}
+
+	return nil
+}
+
+// sweepLocked runs sweep while holding act, which a panicking sweep releases too.
+func (s *Service) sweepLocked(ctx context.Context) SweepReport {
+	s.act.Lock()
+	defer s.act.Unlock()
+
+	return s.sweep(ctx)
 }
 
 // sweep does the work of Sweep without the bookkeeping.
@@ -158,19 +170,20 @@ func (s *Service) sweepClones(ctx context.Context, root string, launches []launc
 	return clones
 }
 
-// agentCloneDirs lists the directories directly under root, not hidden, that hold an
-// agent worktree directory.
+// agentCloneDirs lists the clones directly under root (see localrepos.Clones) that hold
+// an agent worktree directory. A clone reached through a symlink is left out, so a
+// clone the root also holds itself is never swept twice; its recorded launches still
+// bring it in.
 func agentCloneDirs(root string) []string {
-	entries, err := os.ReadDir(root)
+	clones, err := localrepos.Clones(root)
 	if err != nil {
 		return nil
 	}
 
 	var dirs []string
 
-	for _, e := range entries {
-		dir := filepath.Join(root, e.Name())
-		if e.IsDir() && !strings.HasPrefix(e.Name(), ".") && hasAgentWorktrees(dir) {
+	for dir := range clones {
+		if info, statErr := os.Lstat(dir); statErr == nil && info.IsDir() && hasAgentWorktrees(dir) {
 			dirs = append(dirs, dir)
 		}
 	}
@@ -199,20 +212,16 @@ func hasAgentWorktrees(dir string) bool {
 // this counts the same entries. Clones of one repository (one a linked worktree of
 // another, or one clone reached through a symlink) count its worktrees once.
 func countWorktrees(root string) int {
-	entries, err := os.ReadDir(root)
+	clones, err := localrepos.Clones(root)
 	if err != nil {
 		return 0
 	}
 
-	seen := make(map[string]bool, len(entries))
+	seen := map[string]bool{}
 	count := 0
 
-	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), ".") {
-			continue
-		}
-
-		common := commonDir(filepath.Join(root, e.Name()))
+	for dir := range clones {
+		common := commonDir(dir)
 		if common == "" || seen[common] {
 			continue
 		}
@@ -360,19 +369,8 @@ func NewSweeper(svc *Service) Sweeper {
 	return Sweeper{svc: svc}
 }
 
-// Run sweeps now and then every interval until ctx is canceled. A panicking sweep is
-// logged and the next one still runs.
+// Run sweeps now and then every interval until ctx is canceled. A failed sweep is logged,
+// and a panicking one is recovered and logged; the next one still runs.
 func (sw Sweeper) Run(ctx context.Context, interval time.Duration) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	for {
-		sw.svc.safeSweep(ctx)
-
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
-	}
+	periodic.Run(ctx, interval, sweepJob, sw.svc.sweepOnce, sw.svc.logger)
 }

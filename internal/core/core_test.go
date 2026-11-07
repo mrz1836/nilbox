@@ -14,9 +14,11 @@ import (
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
+	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/timing"
@@ -398,7 +400,7 @@ func TestWorktreeItemStatesBorrowTheToken(t *testing.T) {
 
 	// The token is borrowed through the injected runner, which runs nothing, so no
 	// request is made.
-	_, err := states.ItemStates(t.Context(), []github.ItemRef{{Owner: "acme-org", Name: "example-repo", Number: 1}})
+	_, err := states.ItemStates(t.Context(), []item.Ref{{Repo: repo.Name{Owner: "acme-org", Repo: "example-repo"}, Number: 1}})
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, github.ErrNotLoggedIn) || errors.Is(err, github.ErrGHNotFound), err)
 

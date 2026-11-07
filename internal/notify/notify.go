@@ -23,8 +23,10 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/notify/model"
+	"github.com/mrz1836/nilbox/internal/repo"
 )
 
 // Kinds of notification. They are the inbox's kinds of arrival.
@@ -112,7 +114,7 @@ func (s *Store) Record(ctx context.Context, now time.Time, arrivals []inbox.Arri
 	for _, a := range arrivals {
 		itemID := a.ItemID
 		rows = append(rows, model.Notification{
-			Kind: a.Kind, CreatedAt: now.UTC(), ItemID: &itemID, ItemKind: a.ItemKind, RepoOwner: a.RepoOwner,
+			Kind: a.Kind, CreatedAt: now.UTC(), ItemID: &itemID, ItemKind: string(a.ItemKind), RepoOwner: a.RepoOwner,
 			RepoName: a.RepoName, Number: a.Number, Title: a.Title, URL: a.URL, Author: a.Author,
 			Detail: WakeDetail(a.Woke),
 		})
@@ -187,7 +189,7 @@ func fromRow(r model.Notification) Notification {
 	}
 
 	return Notification{
-		ID: r.ID, Kind: r.Kind, CreatedAt: r.CreatedAt.UTC().Format(time.RFC3339), Read: r.ReadAt != nil,
+		ID: r.ID, Kind: r.Kind, CreatedAt: clock.Format(r.CreatedAt), Read: r.ReadAt != nil,
 		ItemID: itemID, ItemKind: r.ItemKind, Repo: repoName(r.RepoOwner, r.RepoName), Number: r.Number,
 		Title: r.Title, URL: r.URL, Author: r.Author, Detail: r.Detail,
 	}
@@ -199,5 +201,5 @@ func repoName(owner, name string) string {
 		return ""
 	}
 
-	return owner + "/" + name
+	return repo.Name{Owner: owner, Repo: name}.String()
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/snooze"
 )
 
@@ -101,14 +102,14 @@ func TestNewReviewRequestsAndAssignmentsArrive(t *testing.T) {
 	assert.Equal(t, []string{"review_requested #3", "assigned #4"}, kindsAndNumbers(got))
 
 	first := got[0]
-	assert.Equal(t, "pr", first.ItemKind)
+	assert.Equal(t, item.KindPR, first.ItemKind)
 	assert.Equal(t, "acme-org", first.RepoOwner)
 	assert.Equal(t, "example-repo", first.RepoName)
 	assert.Equal(t, "Item 3", first.Title)
 	assert.Equal(t, "https://github.com/acme-org/example-repo/pull/3", first.URL)
 	assert.Equal(t, "octo-other", first.Author)
 	assert.NotZero(t, first.ItemID)
-	assert.Equal(t, "issue", got[1].ItemKind)
+	assert.Equal(t, item.KindIssue, got[1].ItemKind)
 
 	// The same lists again tell nothing.
 	h.tick()

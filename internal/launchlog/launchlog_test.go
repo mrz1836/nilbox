@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launchlog"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
@@ -28,7 +29,7 @@ func launch(minute int) launchlog.Launch {
 		Worktree:   "pr-184",
 		Owner:      "acme-org",
 		Name:       "example-repo",
-		Kind:       launchlog.KindPR,
+		Kind:       item.KindPR,
 		Number:     184,
 		LaunchedAt: time.Date(2026, 11, 6, 12, minute, 0, 0, time.UTC),
 	}
@@ -39,7 +40,7 @@ func TestRecordListAndForget(t *testing.T) {
 	ctx := t.Context()
 
 	issue := launch(5)
-	issue.Worktree, issue.Kind, issue.Number = "issue-7", launchlog.KindIssue, 7
+	issue.Worktree, issue.Kind, issue.Number = "issue-7", item.KindIssue, 7
 
 	require.NoError(t, s.Record(ctx, issue))
 	require.NoError(t, s.Record(ctx, launch(1)))

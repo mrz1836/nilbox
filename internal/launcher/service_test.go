@@ -18,8 +18,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
+	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/inbox/model"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launchlog"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/profiles"
@@ -172,7 +174,7 @@ func (h *launchHarness) seed(t *testing.T) {
 	orphan := model.Repo{Owner: "acme-org", Name: "missing-repo", CreatedAt: now, UpdatedAt: now}
 	require.NoError(t, h.db.Create(&orphan).Error)
 
-	item := func(repoID int64, kind string, number int, assoc string, cross bool) int64 {
+	addItem := func(repoID int64, kind item.Kind, number int, assoc string, cross bool) int64 {
 		row := model.Item{
 			AccountID: account.ID, RepoID: repoID, Kind: kind, Number: number,
 			Title: fmt.Sprintf("Change %d", number), URL: fmt.Sprintf("https://github.com/acme-org/x/%d", number),
@@ -184,10 +186,10 @@ func (h *launchHarness) seed(t *testing.T) {
 		return row.ID
 	}
 
-	h.trustedPR = item(repo.ID, model.KindPR, 7, "OWNER", false)
-	h.outsidePR = item(repo.ID, model.KindPR, 8, "CONTRIBUTOR", true)
-	h.issue = item(repo.ID, model.KindIssue, 3, "MEMBER", false)
-	h.orphanPR = item(orphan.ID, model.KindPR, 9, "OWNER", false)
+	h.trustedPR = addItem(repo.ID, item.KindPR, 7, "OWNER", false)
+	h.outsidePR = addItem(repo.ID, item.KindPR, 8, "CONTRIBUTOR", true)
+	h.issue = addItem(repo.ID, item.KindIssue, 3, "MEMBER", false)
+	h.orphanPR = addItem(orphan.ID, item.KindPR, 9, "OWNER", false)
 
 	work := profiles.Profile{
 		Name: "work", ConfigDir: filepath.Join(h.home, ".claude_work"), PermissionMode: "acceptEdits",
@@ -581,7 +583,7 @@ func TestLaunchFailures(t *testing.T) {
 		{
 			name:    "unknown item",
 			item:    func(*launchHarness) int64 { return 9999 },
-			wantErr: ErrItemNotFound,
+			wantErr: item.ErrNotFound,
 		},
 		{
 			name:    "unreadable settings",
@@ -610,7 +612,7 @@ func TestLaunchFailures(t *testing.T) {
 				t.Helper()
 				require.NoError(t, h.db.Exec("UPDATE claude_profiles SET effort = 'turbo' WHERE name = 'default'").Error)
 			},
-			wantErr: ErrInvalidEffort,
+			wantErr: agent.ErrInvalidEffort,
 		},
 		{
 			name: "agent config unreadable",
@@ -656,11 +658,13 @@ func TestLaunchStopsWhenCancelled(t *testing.T) {
 	assert.Empty(t, h.iterm.opened)
 }
 
-func TestWorktreeDirName(t *testing.T) {
-	assert.Equal(t, "pr-7", worktreeDirName("#7"))
-	assert.Equal(t, "pr-7", worktreeDirName("pr-7"))
-	assert.Equal(t, "issue-3", worktreeDirName("issue-3"))
-	assert.Empty(t, worktreeDirName(""))
+func TestPlanWorktreeDir(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "pr-7", Plan{Kind: item.KindPR, Number: 7, Worktree: "#7"}.worktreeDir())
+	assert.Equal(t, "pr-7", Plan{Kind: item.KindPR, Number: 7, Worktree: "pr-7"}.worktreeDir())
+	assert.Equal(t, "issue-3", Plan{Kind: item.KindIssue, Number: 3, Worktree: "issue-3"}.worktreeDir())
+	assert.Empty(t, Plan{Kind: item.KindPR, Number: 7}.worktreeDir())
 }
 
 func TestNewServiceDefaultsTheClock(t *testing.T) {

@@ -12,8 +12,12 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/mrz1836/nilbox/internal/agentflags"
+	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/prompts/model"
+	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // Preference keys the library keeps in the prefs table.
@@ -75,8 +79,8 @@ func LoadDefaults(ctx context.Context, db *gorm.DB) (DefaultPrompts, error) {
 	}
 
 	return DefaultPrompts{
-		PR:    pickDefault(rows, KindPR, stored.PR),
-		Issue: pickDefault(rows, KindIssue, stored.Issue),
+		PR:    pickDefault(rows, item.KindPR, stored.PR),
+		Issue: pickDefault(rows, item.KindIssue, stored.Issue),
 	}, nil
 }
 
@@ -239,28 +243,28 @@ func loadUsage(db *gorm.DB) (map[int64]Usage, error) {
 
 	usage := map[int64]Usage{}
 
-	addDefault := func(id int64, kind string) {
+	addDefault := func(id int64, kind item.Kind) {
 		if id != 0 {
 			u := usage[id]
-			u.Defaults = append(u.Defaults, kind)
-			u.Kinds = appendUnique(u.Kinds, kind)
+			u.Defaults = append(u.Defaults, string(kind))
+			u.Kinds = appendUnique(u.Kinds, string(kind))
 			usage[id] = u
 		}
 	}
 
-	addDefault(defaults.PR, KindPR)
-	addDefault(defaults.Issue, KindIssue)
+	addDefault(defaults.PR, item.KindPR)
+	addDefault(defaults.Issue, item.KindIssue)
 
 	for _, r := range rows {
-		addPlace(usage, r, r.PRPromptID, KindPR)
-		addPlace(usage, r, r.IssuePromptID, KindIssue)
+		addPlace(usage, r, r.PRPromptID, item.KindPR)
+		addPlace(usage, r, r.IssuePromptID, item.KindIssue)
 	}
 
 	return usage, nil
 }
 
 // addPlace records that a launch default uses the prompt id for kind.
-func addPlace(usage map[int64]Usage, r usageRow, id *int64, kind string) {
+func addPlace(usage map[int64]Usage, r usageRow, id *int64, kind item.Kind) {
 	if id == nil {
 		return
 	}
@@ -269,10 +273,10 @@ func addPlace(usage map[int64]Usage, r usageRow, id *int64, kind string) {
 	if r.Name == "" {
 		u.Orgs = appendUnique(u.Orgs, r.Owner)
 	} else {
-		u.Repos = appendUnique(u.Repos, r.Owner+"/"+r.Name)
+		u.Repos = appendUnique(u.Repos, repo.Name{Owner: r.Owner, Repo: r.Name}.String())
 	}
 
-	u.Kinds = appendUnique(u.Kinds, kind)
+	u.Kinds = appendUnique(u.Kinds, string(kind))
 	usage[*id] = u
 }
 
@@ -310,14 +314,14 @@ func nicknameTaken(db *gorm.DB, id int64, nickname string) (bool, error) {
 // freeNickname returns base when no prompt has it, or else base followed by the lowest
 // free number, as in "Review copy 2", cut so it stays within the nickname limit.
 func freeNickname(db *gorm.DB, base string) (string, error) {
-	base = truncateRunes(base, maxNicknameRunes)
+	base = textutil.Clip(base, maxNicknameRunes)
 
 	for n := 1; ; n++ {
 		candidate := base
 
 		if n > 1 {
 			suffix := " " + strconv.Itoa(n)
-			candidate = truncateRunes(base, maxNicknameRunes-utf8.RuneCountInString(suffix)) + suffix
+			candidate = textutil.Clip(base, maxNicknameRunes-utf8.RuneCountInString(suffix)) + suffix
 		}
 
 		taken, err := nicknameTaken(db, 0, candidate)
@@ -362,7 +366,7 @@ func readDefaultPrefs(db *gorm.DB) (DefaultPrompts, error) {
 
 // pickDefault returns the stored default for kind when it exists and applies, else the
 // first prompt that applies, else 0.
-func pickDefault(rows []model.Prompt, kind string, stored int64) int64 {
+func pickDefault(rows []model.Prompt, kind item.Kind, stored int64) int64 {
 	var first int64
 
 	for _, row := range rows {
@@ -383,15 +387,12 @@ func pickDefault(rows []model.Prompt, kind string, stored int64) int64 {
 }
 
 // defaultPrefKey returns the preference holding the default prompt for kind.
-func defaultPrefKey(kind string) (string, error) {
-	switch kind {
-	case KindPR:
-		return prefDefaultPR, nil
-	case KindIssue:
-		return prefDefaultIssue, nil
-	default:
-		return "", fmt.Errorf("%w: %q", ErrInvalidKind, kind)
+func defaultPrefKey(kind item.Kind) string {
+	if kind == item.KindPR {
+		return prefDefaultPR
 	}
+
+	return prefDefaultIssue
 }
 
 // readPref reads one preference, "" when it is unset.
@@ -424,9 +425,9 @@ func fromRow(row model.Prompt, usage Usage) Prompt {
 	p := Prompt{
 		ID: row.ID, Name: row.Name, Nickname: row.Nickname, AppliesTo: row.AppliesTo, Body: row.Body,
 		Model: row.Model, Effort: row.Effort, PlanMode: row.PlanMode, Worktree: row.Worktree,
-		ExtraArgs: args, ExtraFlags: agentflags.Join(args), StarterKey: row.StarterKey,
+		ExtraArgs: args, ExtraFlags: agent.Join(args), StarterKey: row.StarterKey,
 		Usage:     normalizeUsage(usage),
-		UpdatedAt: row.UpdatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt: clock.Format(row.UpdatedAt),
 	}
 
 	if st, ok := starterFor(row.StarterKey); ok {

@@ -3,9 +3,11 @@ package prompts
 import (
 	"fmt"
 	"reflect"
-	"strconv"
 	"strings"
 	"unicode"
+
+	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // Text limits for the values a prompt is filled with.
@@ -20,16 +22,10 @@ const (
 	maxSensitiveRunes = 1000
 )
 
-// Item kinds, as the inbox stores them.
-const (
-	KindPR    = "pr"
-	KindIssue = "issue"
-)
-
 // What a prompt applies to.
 const (
-	AppliesToPR    = KindPR
-	AppliesToIssue = KindIssue
+	AppliesToPR    = string(item.KindPR)
+	AppliesToIssue = string(item.KindIssue)
 	AppliesToAny   = "any"
 )
 
@@ -208,19 +204,19 @@ func Variables() []Variable {
 
 // Sample returns made-up data for a pull request or an issue, used to check a prompt and
 // to preview it when the inbox is empty. The session starts in the clone.
-func Sample(kind string) Data {
+func Sample(kind item.Kind) Data {
 	d := Data{
-		Kind: kindName(KindIssue), Number: 12, Title: "Crash on start",
+		Kind: item.KindIssue.Noun(), Number: 12, Title: "Crash on start",
 		URL: "https://github.com/acme-org/example-repo/issues/12", Author: "octo-user", Labels: "bug",
 		Repo: "acme-org/example-repo", Owner: "acme-org", RepoName: "example-repo", DefaultBranch: "main",
 		Profile: "default", Me: "octo-user",
 	}
 
-	if kind != KindPR {
+	if kind != item.KindPR {
 		return d
 	}
 
-	d.Kind, d.IsPR, d.Number, d.Title = kindName(KindPR), true, 7, "Add the widget cache"
+	d.Kind, d.IsPR, d.Number, d.Title = item.KindPR.Noun(), true, 7, "Add the widget cache"
 	d.URL, d.Labels, d.Branch = "https://github.com/acme-org/example-repo/pull/7", "enhancement", "widget-cache"
 	d.Checks, d.Review = "passing", "review required"
 	d.Additions, d.Deletions, d.ChangedFiles, d.Commits = 120, 30, 6, 3
@@ -230,19 +226,14 @@ func Sample(kind string) Data {
 
 // WithSession sets the session facts: whether it starts in a worktree and, for a pull
 // request, whether that worktree starts at the pull request's head. The worktree name
-// follows the launcher's: "pr-<n>" or "issue-<n>".
+// follows the launcher's (see item.WorktreeName).
 func (d Data) WithSession(inWorktree, atPRHead bool) Data {
 	d.InWorktree = inWorktree
 	d.WorktreeOnPRHead = inWorktree && atPRHead && d.IsPR
 	d.Worktree = ""
 
 	if inWorktree {
-		prefix := "issue-"
-		if d.IsPR {
-			prefix = "pr-"
-		}
-
-		d.Worktree = prefix + strconv.Itoa(d.Number)
+		d.Worktree = item.WorktreeName(d.kind(), d.Number)
 	}
 
 	return d
@@ -261,6 +252,15 @@ func (d Data) Values() map[string]string {
 	return out
 }
 
+// kind returns the kind of item d is for.
+func (d Data) kind() item.Kind {
+	if d.IsPR {
+		return item.KindPR
+	}
+
+	return item.KindIssue
+}
+
 // sanitized returns d with every text field made a single line of plain text: control
 // characters become spaces, bidirectional controls are removed, and runs of whitespace
 // collapse. The title and labels are cut to their limits.
@@ -272,32 +272,17 @@ func (d Data) sanitized() Data {
 		*field = sanitizeLine(*field)
 	}
 
-	d.Title = truncateRunes(sanitizeLine(d.Title), maxTitleRunes)
-	d.Labels = truncateRunes(sanitizeLine(d.Labels), maxLabelsRunes)
-	d.SensitiveFiles = truncateRunes(d.SensitiveFiles, maxSensitiveRunes)
+	d.Title = textutil.Clip(sanitizeLine(d.Title), maxTitleRunes)
+	d.Labels = textutil.Clip(sanitizeLine(d.Labels), maxLabelsRunes)
+	d.SensitiveFiles = textutil.Clip(d.SensitiveFiles, maxSensitiveRunes)
 
 	return d
 }
 
-// kindName names an item kind the way prompts read it.
-func kindName(kind string) string {
-	if kind == KindPR {
-		return "pull request"
-	}
-
-	return "issue"
-}
-
-// KindName names an item kind ("pr" or "issue") the way prompts read it: "pull request"
-// or "issue".
-func KindName(kind string) string {
-	return kindName(kind)
-}
-
 // AppliesTo reports whether a prompt that applies to appliesTo ("pr", "issue", or "any")
-// can launch an item of kind ("pr" or "issue").
-func AppliesTo(appliesTo, kind string) bool {
-	return appliesTo == AppliesToAny || appliesTo == kind
+// can launch an item of kind.
+func AppliesTo(appliesTo string, kind item.Kind) bool {
+	return appliesTo == AppliesToAny || appliesTo == string(kind)
 }
 
 // sanitizeLine turns s into a single line of plain text: control characters (including
@@ -316,14 +301,4 @@ func sanitizeLine(s string) string {
 	}, s)
 
 	return strings.Join(strings.Fields(cleaned), " ")
-}
-
-// truncateRunes caps s at limit runes.
-func truncateRunes(s string, limit int) string {
-	runes := []rune(s)
-	if len(runes) <= limit {
-		return s
-	}
-
-	return strings.TrimSpace(string(runes[:limit]))
 }

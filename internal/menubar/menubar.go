@@ -8,10 +8,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/mrz1836/nilbox/internal/inbox"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 const (
@@ -92,7 +91,7 @@ func Summarize(snap inbox.Snapshot, now time.Time) Summary {
 		NextChange: snap.NextSnoozeEnd(now),
 	}
 
-	out.Label = Label(out.Count)
+	out.Label = label(out.Count)
 	out.Nothing = "Nothing needs you"
 
 	if snap.LastRefreshedAt == "" {
@@ -140,8 +139,8 @@ func (s *Section) add(it inbox.Item) {
 	s.Entries = append(s.Entries, entry(it))
 }
 
-// Label is the text beside the icon for count items: "" for none, the count, or "99+".
-func Label(count int) string {
+// label is the text beside the icon for count items: "" for none, the count, or "99+".
+func label(count int) string {
 	switch {
 	case count <= 0:
 		return ""
@@ -169,7 +168,7 @@ func entry(it inbox.Item) Entry {
 
 	return Entry{
 		ItemID:  it.ID,
-		Label:   name + " " + number + " · " + truncate(title, maxTitleRunes),
+		Label:   name + " " + number + " · " + textutil.Truncate(title, maxTitleRunes),
 		Tooltip: it.Repo + " " + number + ": " + title,
 	}
 }
@@ -194,15 +193,4 @@ func status(snap inbox.Snapshot, now time.Time) string {
 	}
 
 	return "Updated " + at.Format("Jan 2, 3:04 PM")
-}
-
-// truncate cuts s to at most n runes, ending it with an ellipsis when it was cut.
-func truncate(s string, n int) string {
-	if utf8.RuneCountInString(s) <= n {
-		return s
-	}
-
-	runes := []rune(s)
-
-	return strings.TrimRightFunc(string(runes[:n-1]), unicode.IsSpace) + "…"
 }

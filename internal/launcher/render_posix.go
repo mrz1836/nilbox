@@ -74,7 +74,7 @@ func (POSIXRenderer) Render(plan Plan) []byte {
 // written as is. Anything else (which BuildPlan never produces) is quoted, so the shell
 // rejects it as an invalid identifier and the script stops instead of running it.
 func shName(name string) string {
-	if envKeyPattern().MatchString(name) {
+	if envKeyPattern.MatchString(name) {
 		return name
 	}
 

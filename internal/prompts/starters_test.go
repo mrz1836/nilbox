@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/item"
 )
 
 // golden turns a template-style golden string into the expected prompt: <bt> stands for
@@ -38,7 +40,7 @@ func starterTemplate(t *testing.T, key string) *Template {
 	st, ok := starterFor(key)
 	require.True(t, ok, key)
 
-	return MustParse(st.Body, st.AppliesTo)
+	return mustParse(t, st.Body, st.AppliesTo)
 }
 
 // TestStarterGoldens pins the review and work-on-issue starters to the launcher's
@@ -214,8 +216,8 @@ func TestEveryStarterIsClean(t *testing.T) {
 			assert.LessOrEqual(t, utf8.RuneCountInString(st.Nickname), maxNicknameRunes)
 			assert.Empty(t, checkAppliesTo(st.AppliesTo, Usage{}))
 
-			for _, data := range sampleVariants(KindPR) {
-				if !AppliesTo(st.AppliesTo, KindPR) {
+			for _, data := range sampleVariants(item.KindPR) {
+				if !AppliesTo(st.AppliesTo, item.KindPR) {
 					break
 				}
 

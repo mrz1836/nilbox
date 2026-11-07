@@ -49,7 +49,7 @@ type reply struct {
 // scriptedGit answers the git commands intercept accepts itself, matching them by their
 // words after any leading -C <dir>, and runs the rest with real git.
 func scriptedGit(intercept func(sub []string) (reply, bool)) *testutil.Runner {
-	realGit := execpath.Runner{}
+	realGit := execpath.Exec{}
 
 	return &testutil.Runner{Script: func(ctx context.Context, argv []string) ([]byte, []byte, error) {
 		sub := argv[1:]
@@ -97,13 +97,13 @@ func newEnv(t *testing.T) *env {
 	require.NoError(t, os.MkdirAll(root, 0o700))
 
 	e := &env{home: home, root: root}
-	e.svc = e.service(execpath.Runner{})
+	e.svc = e.service(execpath.Exec{})
 
 	return e
 }
 
 // service builds a Service over the env with the given git runner.
-func (e *env) service(run Runner) *Service {
+func (e *env) service(run execpath.Runner) *Service {
 	return NewService(Config{
 		Settings: fakeSettings{root: cloneRoot},
 		Git:      run,
@@ -548,21 +548,21 @@ func TestServiceErrors(t *testing.T) {
 	}
 
 	t.Run("git not found", func(t *testing.T) {
-		svc := NewService(Config{Settings: fakeSettings{root: cloneRoot}, Git: execpath.Runner{}, Finder: testutil.Finder{Err: errFakeFind}, Home: e.home})
+		svc := NewService(Config{Settings: fakeSettings{root: cloneRoot}, Git: execpath.Exec{}, Finder: testutil.Finder{Err: errFakeFind}, Home: e.home})
 		_, err := svc.List(ctx)
 		require.ErrorIs(t, err, errFakeFind)
 		require.ErrorIs(t, svc.Prune(ctx, alpha), errFakeFind)
 	})
 
 	t.Run("settings unavailable", func(t *testing.T) {
-		svc := NewService(Config{Settings: fakeSettings{err: errFakeSettings}, Git: execpath.Runner{}, Home: e.home})
+		svc := NewService(Config{Settings: fakeSettings{err: errFakeSettings}, Git: execpath.Exec{}, Home: e.home})
 		_, err := svc.List(ctx)
 		require.ErrorIs(t, err, errFakeSettings)
 	})
 
 	t.Run("bad clone roots", func(t *testing.T) {
 		for _, root := range []string{"projects", "~/missing"} {
-			svc := NewService(Config{Settings: fakeSettings{root: root}, Git: execpath.Runner{}, Home: e.home})
+			svc := NewService(Config{Settings: fakeSettings{root: root}, Git: execpath.Exec{}, Home: e.home})
 			_, err := svc.List(ctx)
 			require.Error(t, err, root)
 		}

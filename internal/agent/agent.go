@@ -1,9 +1,4 @@
-// Package agents lists the coding tools a launch can start.
-//
-// Only Claude Code ships today. Launch defaults already store a tool per org or
-// repository ("" meaning the app's default), so another tool can be added here without
-// changing what is stored.
-package agents
+package agent
 
 import (
 	"errors"

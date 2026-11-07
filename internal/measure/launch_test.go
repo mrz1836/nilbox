@@ -346,7 +346,7 @@ func launchRunner(t *testing.T, agent string, osascript func() ([]byte, []byte, 
 		opened bool
 	)
 
-	git := execpath.Runner{}
+	git := execpath.Exec{}
 
 	return scripted(answers{
 		"git": func(args []string) ([]byte, []byte, error) {

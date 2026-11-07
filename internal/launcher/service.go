@@ -9,19 +9,21 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"time"
 
 	"gorm.io/gorm"
 
-	"github.com/mrz1836/nilbox/internal/agentflags"
-	"github.com/mrz1836/nilbox/internal/agents"
+	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/appdata"
+	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/launchlog"
 	"github.com/mrz1836/nilbox/internal/localrepos"
+	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/settings"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/workspacetrust"
 )
 
@@ -30,9 +32,6 @@ const claudeBin = "claude"
 
 // cacheClonePathSQL remembers the clone a repository resolved to.
 const cacheClonePathSQL = `UPDATE repos SET local_path = ?, updated_at = ? WHERE id = ?`
-
-// ErrItemNotFound is returned when the launched item is not in the local inbox.
-var ErrItemNotFound = errors.New("item not found; refresh the inbox and try again")
 
 // SettingsReader reads the user's preferences. *settings.Service implements it.
 type SettingsReader interface {
@@ -43,11 +42,6 @@ type SettingsReader interface {
 // implements it.
 type Finder interface {
 	Find(name string) (string, error)
-}
-
-// Clock tells the time.
-type Clock interface {
-	Now() time.Time
 }
 
 // LaunchRecorder records the worktrees sessions are launched in. *launchlog.Store
@@ -67,11 +61,11 @@ type Config struct {
 
 	// Git runs the read-only `git config --get-regexp` remote lookup that finds and
 	// validates clones. The launcher runs no other git command.
-	Git localrepos.Runner
+	Git execpath.Runner
 
 	// GH runs `gh repo clone owner/name <dir>` when the user confirms cloning a
 	// repository that has no local clone. It runs nothing else; without it, Clone fails.
-	GH localrepos.Runner
+	GH execpath.Runner
 
 	// Finder finds the agent binary.
 	Finder Finder
@@ -86,7 +80,7 @@ type Config struct {
 	Home string
 
 	// Clock stamps launch files. It defaults to the system clock.
-	Clock Clock
+	Clock clock.Clock
 
 	// Launches records each worktree a session is launched in, and the item it is for,
 	// so the Worktrees view links it and its cleanup finds it.
@@ -194,13 +188,13 @@ type Preview struct {
 type Service struct {
 	db       *gorm.DB
 	settings SettingsReader
-	git      localrepos.Runner
-	gh       localrepos.Runner
+	git      execpath.Runner
+	gh       execpath.Runner
 	finder   Finder
 	registry Registry
 	paths    appdata.Paths
 	home     string
-	clock    Clock
+	clock    clock.Clock
 	launches LaunchRecorder
 	files    FileChecker
 
@@ -210,11 +204,6 @@ type Service struct {
 
 // NewService returns a launch Service over cfg.
 func NewService(cfg Config) *Service {
-	clock := cfg.Clock
-	if clock == nil {
-		clock = systemClock{}
-	}
-
 	return &Service{
 		db:       cfg.DB,
 		settings: cfg.Settings,
@@ -224,7 +213,7 @@ func NewService(cfg Config) *Service {
 		registry: cfg.Registry,
 		paths:    cfg.Paths,
 		home:     cfg.Home,
-		clock:    clock,
+		clock:    clock.Or(cfg.Clock),
 		launches: cfg.Launches,
 		files:    cfg.Files,
 	}
@@ -272,8 +261,8 @@ func (s *Service) ResolveItems(ctx context.Context, ids []int64) ([]ItemResoluti
 	for _, row := range rows {
 		res, _, _, resolveErr := resolve(w, row.subject(w.policy), LaunchRequest{ItemID: row.ID})
 		if resolveErr != nil {
-			res = Resolution{ItemID: row.ID, Kind: row.Kind, Owner: row.Owner, Repo: row.Owner + "/" + row.Name}
-			out = append(out, ItemResolution{Resolution: res, Problem: sentenceCase(resolveErr.Error())})
+			res = Resolution{ItemID: row.ID, Kind: string(row.Kind), Owner: row.Owner, Repo: row.repo().String()}
+			out = append(out, ItemResolution{Resolution: res, Problem: textutil.Sentence(resolveErr.Error())})
 
 			continue
 		}
@@ -332,7 +321,7 @@ func (s *Service) Launch(ctx context.Context, req LaunchRequest) (LaunchResult, 
 		return LaunchResult{}, err
 	}
 
-	if hold := holdFor(p.check, p.plan, localrepos.TildePath(p.clone.Dir, s.home)); hold != nil &&
+	if hold := holdFor(p.check, p.plan, paths.Tilde(p.clone.Dir, s.home)); hold != nil &&
 		hold.Key != req.Confirmed {
 		return LaunchResult{Hold: hold}, nil
 	}
@@ -354,8 +343,8 @@ func (s *Service) Launch(ctx context.Context, req LaunchRequest) (LaunchResult, 
 
 	return LaunchResult{
 		ScriptPath: files.Script,
-		ClonePath:  localrepos.TildePath(p.clone.Dir, s.home),
-		Worktree:   worktreeDirName(p.plan.Worktree),
+		ClonePath:  paths.Tilde(p.clone.Dir, s.home),
+		Worktree:   p.plan.worktreeDir(),
 		Prompt:     p.res.Prompt.Nickname,
 		Profile:    p.res.Profile.Value,
 		Permission: p.plan.Permission,
@@ -487,7 +476,7 @@ func (s *Service) recordLaunch(ctx context.Context, p planned) {
 	}
 
 	err := s.launches.Record(ctx, launchlog.Launch{
-		ClonePath: p.clone.Dir, Worktree: worktreeDirName(p.plan.Worktree), Owner: p.row.Owner, Name: p.row.Name,
+		ClonePath: p.clone.Dir, Worktree: p.plan.worktreeDir(), Owner: p.row.Owner, Name: p.row.Name,
 		Kind: p.row.Kind, Number: p.row.Number, LaunchedAt: s.clock.Now(),
 	})
 	if err != nil {
@@ -500,14 +489,14 @@ func (s *Service) recordLaunch(ctx context.Context, p planned) {
 // without its workspace trust dialog. A --worktree session cannot show that dialog: it
 // exits with "Workspace trust not yet accepted" in a repository not trusted yet.
 func (s *Service) trustClone(ctx context.Context, p planned) error {
-	if p.res.Agent.ID != agents.Claude {
+	if p.res.Agent.ID != agent.Claude {
 		return nil
 	}
 
 	file := workspacetrust.ConfigFile(p.plan.Env[envConfigDir], s.home)
 
 	if _, err := workspacetrust.Grant(ctx, file, p.clone.Dir); err != nil {
-		return fmt.Errorf("trust %s for the agent: %w", localrepos.TildePath(p.clone.Dir, s.home), err)
+		return fmt.Errorf("trust %s for the agent: %w", paths.Tilde(p.clone.Dir, s.home), err)
 	}
 
 	return nil
@@ -552,9 +541,9 @@ func (p planned) preview(home string) Preview {
 
 	return Preview{
 		Resolution: p.res,
-		Dir:        localrepos.TildePath(p.clone.Dir, home),
-		Worktree:   worktreeDirName(p.plan.Worktree),
-		Command:    strings.TrimSpace(p.res.Agent.Command + " <prompt> " + agentflags.Join(args)),
+		Dir:        paths.Tilde(p.clone.Dir, home),
+		Worktree:   p.plan.worktreeDir(),
+		Command:    strings.TrimSpace(p.res.Agent.Command + " <prompt> " + agent.Join(args)),
 		Env:        env,
 		Permission: p.plan.Permission,
 		Prompt:     p.prompt,
@@ -580,8 +569,8 @@ func sessionName(nickname string, row launchItemRow) string {
 // resolveClone finds the clone a launch starts in. A cached path is used while it is
 // still a clone of the repository; otherwise the clone root is scanned and the match is
 // cached for next time.
-func (s *Service) resolveClone(ctx context.Context, repo repoRef, root string) (Clone, error) {
-	if clone, ok := s.cachedClone(ctx, repo); ok {
+func (s *Service) resolveClone(ctx context.Context, ref repoRef, root string) (Clone, error) {
+	if clone, ok := s.cachedClone(ctx, ref); ok {
 		return clone, nil
 	}
 
@@ -589,13 +578,13 @@ func (s *Service) resolveClone(ctx context.Context, repo repoRef, root string) (
 		return Clone{}, err
 	}
 
-	match, err := localrepos.Resolver{Root: root, Home: s.home, Git: s.git}.Resolve(ctx, repo.owner, repo.name)
+	match, err := localrepos.Resolver{Root: root, Home: s.home, Git: s.git}.Resolve(ctx, ref.name)
 	if err != nil {
 		return Clone{}, err
 	}
 
-	if match.Repo.Path != repo.localPath {
-		s.cacheClonePath(ctx, repo.id, match.Repo.Path)
+	if match.Repo.Path != ref.localPath {
+		s.cacheClonePath(ctx, ref.id, match.Repo.Path)
 	}
 
 	return Clone{Dir: match.Repo.Path, OriginIsItemRepo: match.OriginMatched()}, nil
@@ -603,17 +592,17 @@ func (s *Service) resolveClone(ctx context.Context, repo repoRef, root string) (
 
 // cachedClone validates the cached clone path: it must still be a git working tree with
 // a remote that points at the repository.
-func (s *Service) cachedClone(ctx context.Context, repo repoRef) (Clone, bool) {
-	if repo.localPath == "" {
+func (s *Service) cachedClone(ctx context.Context, ref repoRef) (Clone, bool) {
+	if ref.localPath == "" {
 		return Clone{}, false
 	}
 
-	local, err := localrepos.Inspect(ctx, repo.localPath, s.git)
+	local, err := localrepos.Inspect(ctx, ref.localPath, s.git)
 	if err != nil {
 		return Clone{}, false
 	}
 
-	remote, ok := local.RemoteFor(repo.owner, repo.name)
+	remote, ok := local.RemoteFor(ref.name)
 	if !ok {
 		return Clone{}, false
 	}
@@ -631,34 +620,3 @@ func (s *Service) cacheClonePath(ctx context.Context, repoID int64, path string)
 		slog.Warn("could not remember a repository's local clone", "error", err)
 	}
 }
-
-// worktreeDirName returns the name of the worktree directory the agent uses for a
-// --worktree argument: "#<n>" becomes "pr-<n>", and any other name is used as is.
-func worktreeDirName(arg string) string {
-	if n, ok := strings.CutPrefix(arg, worktreePRHeadForm); ok {
-		return worktreePRPrefix + n
-	}
-
-	return arg
-}
-
-// sentenceCase capitalizes the first letter of an error message and ends it with a
-// period, for showing it as a sentence.
-func sentenceCase(msg string) string {
-	if msg == "" {
-		return msg
-	}
-
-	msg = strings.ToUpper(msg[:1]) + msg[1:]
-	if !strings.HasSuffix(msg, ".") {
-		msg += "."
-	}
-
-	return msg
-}
-
-// systemClock is the real clock.
-type systemClock struct{}
-
-// Now returns the current time.
-func (systemClock) Now() time.Time { return time.Now() }

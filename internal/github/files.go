@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/mrz1836/nilbox/internal/item"
 )
 
 // The REST API lists a pull request's files 100 to a page, and at most 3,000 of them.
@@ -67,7 +69,7 @@ type ChangedFile struct {
 
 // FetchPullHead reads a pull request's head commit and size as of now, with one REST
 // request.
-func (c *Client) FetchPullHead(ctx context.Context, tok Token, ref ItemRef) (*PullHead, error) {
+func (c *Client) FetchPullHead(ctx context.Context, tok Token, ref item.Ref) (*PullHead, error) {
 	head, err := c.fetchPullHead(ctx, tok, ref)
 
 	return head, Redact(err, tok)
@@ -81,15 +83,15 @@ func (c *Client) FetchPullHead(ctx context.Context, tok Token, ref ItemRef) (*Pu
 // already known, or "" to read it first.
 //
 // It costs one REST request per 100 files, plus one or two for the head.
-func (c *Client) FetchChangedFiles(ctx context.Context, tok Token, ref ItemRef, head string) (*ChangedFiles, error) {
+func (c *Client) FetchChangedFiles(ctx context.Context, tok Token, ref item.Ref, head string) (*ChangedFiles, error) {
 	files, err := c.fetchChangedFiles(ctx, tok, ref, head)
 
 	return files, Redact(err, tok)
 }
 
 // fetchChangedFiles is FetchChangedFiles without the redaction.
-func (c *Client) fetchChangedFiles(ctx context.Context, tok Token, ref ItemRef, head string) (*ChangedFiles, error) {
-	if err := ref.validate(); err != nil {
+func (c *Client) fetchChangedFiles(ctx context.Context, tok Token, ref item.Ref, head string) (*ChangedFiles, error) {
+	if err := validateRef(ref); err != nil {
 		return nil, err
 	}
 
@@ -108,7 +110,7 @@ func (c *Client) fetchChangedFiles(ctx context.Context, tok Token, ref ItemRef, 
 // readFilesAt lists the files and reads the head again. When the head is still head
 // (read first when it is ""), it returns the list; otherwise it returns no list and the
 // head as it is now.
-func (c *Client) readFilesAt(ctx context.Context, tok Token, ref ItemRef, head string) (*ChangedFiles, string, error) {
+func (c *Client) readFilesAt(ctx context.Context, tok Token, ref item.Ref, head string) (*ChangedFiles, string, error) {
 	if head == "" {
 		before, err := c.fetchPullHead(ctx, tok, ref)
 		if err != nil {
@@ -138,8 +140,8 @@ func (c *Client) readFilesAt(ctx context.Context, tok Token, ref ItemRef, head s
 }
 
 // fetchPullHead sends GET /repos/{owner}/{name}/pulls/{number}.
-func (c *Client) fetchPullHead(ctx context.Context, tok Token, ref ItemRef) (*PullHead, error) {
-	if err := ref.validate(); err != nil {
+func (c *Client) fetchPullHead(ctx context.Context, tok Token, ref item.Ref) (*PullHead, error) {
+	if err := validateRef(ref); err != nil {
 		return nil, err
 	}
 
@@ -169,7 +171,7 @@ func (c *Client) fetchPullHead(ctx context.Context, tok Token, ref ItemRef) (*Pu
 
 // listFiles reads every page of GET /repos/{owner}/{name}/pulls/{number}/files, up to
 // the 3,000 files GitHub lists.
-func (c *Client) listFiles(ctx context.Context, tok Token, ref ItemRef) ([]ChangedFile, error) {
+func (c *Client) listFiles(ctx context.Context, tok Token, ref item.Ref) ([]ChangedFile, error) {
 	var out []ChangedFile
 
 	for page := 1; page <= maxListedFiles/filesPerPage; page++ {
@@ -190,7 +192,7 @@ func (c *Client) listFiles(ctx context.Context, tok Token, ref ItemRef) ([]Chang
 
 // listFilesPage reads one page of a pull request's files, and reports whether it was
 // full, so another may follow.
-func (c *Client) listFilesPage(ctx context.Context, tok Token, ref ItemRef, page int) ([]ChangedFile, bool, error) {
+func (c *Client) listFilesPage(ctx context.Context, tok Token, ref item.Ref, page int) ([]ChangedFile, bool, error) {
 	query := url.Values{"per_page": {strconv.Itoa(filesPerPage)}, "page": {strconv.Itoa(page)}}
 
 	raw, _, err := c.do(ctx, tok, http.MethodGet, pullPath(ref)+"/files?"+query.Encode(), nil)
@@ -220,21 +222,17 @@ func (c *Client) listFilesPage(ctx context.Context, tok Token, ref ItemRef, page
 }
 
 // pullPath is a pull request's REST path, with its owner and name escaped.
-func pullPath(ref ItemRef) string {
-	return "/repos/" + url.PathEscape(ref.Owner) + "/" + url.PathEscape(ref.Name) + "/pulls/" + strconv.Itoa(ref.Number)
+func pullPath(ref item.Ref) string {
+	return "/repos/" + url.PathEscape(ref.Repo.Owner) + "/" + url.PathEscape(ref.Repo.Repo) + "/pulls/" +
+		strconv.Itoa(ref.Number)
 }
 
-// validate rejects a reference that names no pull request: a missing owner or name, or a
-// number that is not positive.
-func (r ItemRef) validate() error {
-	if r.Owner == "" || r.Name == "" || r.Number <= 0 {
-		return fmt.Errorf("%w: %q/%q#%d", ErrInvalidItemRef, r.Owner, r.Name, r.Number)
+// validateRef rejects a reference that names no pull request: a missing owner or name, or
+// a number that is not positive.
+func validateRef(ref item.Ref) error {
+	if ref.Repo.Owner == "" || ref.Repo.Repo == "" || ref.Number <= 0 {
+		return fmt.Errorf("%w: %q/%q#%d", ErrInvalidItemRef, ref.Repo.Owner, ref.Repo.Repo, ref.Number)
 	}
 
 	return nil
-}
-
-// String names the pull request as owner/name#number.
-func (r ItemRef) String() string {
-	return r.Owner + "/" + r.Name + "#" + strconv.Itoa(r.Number)
 }

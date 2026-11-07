@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/snooze"
 )
 
@@ -51,8 +52,8 @@ type Arrival struct {
 	// ItemID is the item's id in the snapshot.
 	ItemID int64
 
-	// ItemKind is "pr" or "issue".
-	ItemKind string
+	// ItemKind is the kind of item.
+	ItemKind item.Kind
 
 	// RepoOwner and RepoName name the item's repository.
 	RepoOwner string
@@ -187,7 +188,7 @@ func (l *arrivalList) add(kind string, s savedEntry, woke snooze.Reasons) {
 	l.told[s.id] = true
 	it := s.entry.item
 	l.items = append(l.items, Arrival{
-		Kind: kind, ItemID: s.id, ItemKind: kindOf(it), RepoOwner: it.RepoOwner, RepoName: it.RepoName,
+		Kind: kind, ItemID: s.id, ItemKind: it.Ref().Kind, RepoOwner: it.RepoOwner, RepoName: it.RepoName,
 		Number: it.Number, Title: it.Title, URL: it.URL, Author: it.AuthorLogin, Woke: woke,
 	})
 }

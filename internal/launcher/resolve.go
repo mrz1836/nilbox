@@ -8,12 +8,14 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/mrz1836/nilbox/internal/agentflags"
-	"github.com/mrz1836/nilbox/internal/agents"
+	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
+	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/settings"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
 
@@ -90,8 +92,8 @@ type Resolution struct {
 	Trusted bool `json:"trusted"`
 
 	// Agent is the coding tool, and AgentSource where it was chosen.
-	Agent       agents.Agent `json:"agent"`
-	AgentSource string       `json:"agentSource"`
+	Agent       agent.Agent `json:"agent"`
+	AgentSource string      `json:"agentSource"`
 
 	Profile  Setting      `json:"profile"`
 	Prompt   PromptChoice `json:"prompt"`
@@ -169,9 +171,8 @@ func loadWorld(ctx context.Context, db *gorm.DB, reader SettingsReader) (world, 
 // subject is what resolution needs to know about an item.
 type subject struct {
 	id      int64
-	kind    string
-	owner   string
-	name    string
+	kind    item.Kind
+	repo    repo.Name
 	trusted bool
 }
 
@@ -189,13 +190,12 @@ type resolver struct {
 // profile's, and the app's settings. A stored default that no longer makes sense (a
 // profile or prompt that is gone, or a prompt for the other kind of item) is skipped
 // with a warning; a request naming one is an error.
-func resolve(w world, item subject, req LaunchRequest) (Resolution, profiles.Profile, prompts.Prompt, error) {
-	r := &resolver{w: w, item: item}
-	r.org, r.repo = w.rules.For(item.owner, item.name)
+func resolve(w world, it subject, req LaunchRequest) (Resolution, profiles.Profile, prompts.Prompt, error) {
+	r := &resolver{w: w, item: it}
+	r.org, r.repo = w.rules.For(it.repo)
 
 	res := Resolution{
-		ItemID: item.id, Kind: item.kind, Owner: item.owner, Repo: item.owner + "/" + item.name,
-		Trusted: item.trusted,
+		ItemID: it.id, Kind: string(it.kind), Owner: it.repo.Owner, Repo: it.repo.String(), Trusted: it.trusted,
 	}
 	res.Agent, res.AgentSource = r.agent()
 
@@ -222,7 +222,7 @@ func resolve(w world, item subject, req LaunchRequest) (Resolution, profiles.Pro
 		return Resolution{}, profiles.Profile{}, prompts.Prompt{}, err
 	}
 
-	res.Warnings = nonNilStrings(r.warnings)
+	res.Warnings = textutil.NonNil(r.warnings)
 
 	return res, profile, prompt, nil
 }
@@ -250,22 +250,22 @@ type sourced struct {
 }
 
 // agent resolves the coding tool: the repository's, else the org's, else the app's.
-func (r *resolver) agent() (agents.Agent, string) {
+func (r *resolver) agent() (agent.Agent, string) {
 	for _, l := range r.layers() {
 		if l.defaults.Agent == "" {
 			continue
 		}
 
-		a, err := agents.Lookup(l.defaults.Agent)
+		a, err := agent.Lookup(l.defaults.Agent)
 		if err == nil {
 			return a, l.source
 		}
 
 		r.warn("The %s default names a coding tool this version doesn't know (%q), so %s is used.",
-			l.source, l.defaults.Agent, agents.Default().Name)
+			l.source, l.defaults.Agent, agent.Default().Name)
 	}
 
-	return agents.Default(), SourceApp
+	return agent.Default(), SourceApp
 }
 
 // profile resolves the profile: the request's, else the repository's, the org's, or the
@@ -349,8 +349,8 @@ func (r *resolver) prompt(requested int64, res *Resolution) (prompts.Prompt, err
 	}
 
 	if !prompts.AppliesTo(p.AppliesTo, r.item.kind) {
-		return prompts.Prompt{}, fmt.Errorf("%w: %q isn't for %ss", prompts.ErrWrongKind, p.Nickname,
-			prompts.KindName(r.item.kind))
+		return prompts.Prompt{}, fmt.Errorf("%w: %q isn't for %s", prompts.ErrWrongKind, p.Nickname,
+			r.item.kind.Plural())
 	}
 
 	res.Prompt.ID, res.Prompt.Nickname, res.Prompt.Name, res.Prompt.Source = p.ID, p.Nickname, p.Name, SourceLaunch
@@ -362,7 +362,7 @@ func (r *resolver) prompt(requested int64, res *Resolution) (prompts.Prompt, err
 func (r *resolver) inheritedPrompt() (prompts.Prompt, string, error) {
 	for _, l := range r.layers() {
 		id := l.defaults.PRPromptID
-		if r.item.kind == prompts.KindIssue {
+		if r.item.kind == item.KindIssue {
 			id = l.defaults.IssuePromptID
 		}
 
@@ -374,15 +374,15 @@ func (r *resolver) inheritedPrompt() (prompts.Prompt, string, error) {
 			return p, l.source, nil
 		}
 
-		r.warn("The %s default prompt for %ss no longer exists, so it was skipped.", l.source,
-			prompts.KindName(r.item.kind))
+		r.warn("The %s default prompt for %s no longer exists, so it was skipped.", l.source,
+			r.item.kind.Plural())
 	}
 
 	if p, ok := r.w.prompts[r.w.defaults.For(r.item.kind)]; ok {
 		return p, SourceApp, nil
 	}
 
-	return prompts.Prompt{}, "", fmt.Errorf("%w (%ss)", ErrNoPrompt, prompts.KindName(r.item.kind))
+	return prompts.Prompt{}, "", fmt.Errorf("%w (%s)", ErrNoPrompt, r.item.kind.Plural())
 }
 
 // text resolves a text setting: the request's, else the prompt's, the repository's, the
@@ -446,18 +446,18 @@ func (r *resolver) extraArgs(profile profiles.Profile, prompt prompts.Prompt) ([
 	args := slices.Clone(profile.ExtraArgs)
 
 	for _, l := range slices.Backward(r.layers()) {
-		if err := agentflags.CheckExtra(l.defaults.ExtraArgs); err != nil {
+		if err := agent.CheckExtra(l.defaults.ExtraArgs); err != nil {
 			return nil, fmt.Errorf("the %s launch defaults' flags: %w", l.source, err)
 		}
 
 		args = append(args, l.defaults.ExtraArgs...)
 	}
 
-	if err := agentflags.CheckExtra(prompt.ExtraArgs); err != nil {
+	if err := agent.CheckExtra(prompt.ExtraArgs); err != nil {
 		return nil, fmt.Errorf("the %q prompt's flags: %w", prompt.Nickname, err)
 	}
 
-	return nonNilStrings(append(args, prompt.ExtraArgs...)), nil
+	return textutil.NonNil(append(args, prompt.ExtraArgs...)), nil
 }
 
 // warn records a warning.
@@ -472,13 +472,4 @@ func effectiveProfile(p profiles.Profile, res Resolution) profiles.Profile {
 	p.ExtraArgs = slices.Clone(res.ExtraArgs)
 
 	return p
-}
-
-// nonNilStrings returns list, or an empty list for nil, so the UI always gets an array.
-func nonNilStrings(list []string) []string {
-	if list == nil {
-		return []string{}
-	}
-
-	return list
 }

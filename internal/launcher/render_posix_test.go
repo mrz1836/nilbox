@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/brand"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -81,7 +82,7 @@ func TestShellQuote(t *testing.T) {
 // goldenPlan is a plan with every part the renderer writes.
 func goldenPlan() Plan {
 	return Plan{
-		Kind:       KindPR,
+		Kind:       item.KindPR,
 		Number:     7,
 		Dir:        "/tmp/projects/example repo",
 		Binary:     "/tmp/bin/claude",

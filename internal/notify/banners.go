@@ -6,12 +6,11 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/notify/model"
 	"github.com/mrz1836/nilbox/internal/snooze"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // PrefBannersOff is the prefs key listing, as a JSON array, the kinds of notification
@@ -91,9 +90,9 @@ const maxTitleRunes = 160
 
 // banner is the banner for one recorded notification.
 func banner(n model.Notification) Banner {
-	body := truncate(n.Title, maxTitleRunes)
+	body := textutil.Truncate(n.Title, maxTitleRunes)
 	if n.Detail != "" {
-		body += "\n" + capitalize(n.Detail)
+		body += "\n" + textutil.Capitalize(n.Detail)
 	}
 
 	itemID := int64(0)
@@ -261,25 +260,4 @@ func counted(n int, one, many string) string {
 	}
 
 	return strconv.Itoa(n) + " " + many
-}
-
-// capitalize upper-cases the first letter of s.
-func capitalize(s string) string {
-	r, size := utf8.DecodeRuneInString(s)
-	if size == 0 {
-		return s
-	}
-
-	return string(unicode.ToUpper(r)) + s[size:]
-}
-
-// truncate cuts s to at most n runes, ending it with an ellipsis when it was cut.
-func truncate(s string, n int) string {
-	if utf8.RuneCountInString(s) <= n {
-		return s
-	}
-
-	runes := []rune(s)
-
-	return strings.TrimRightFunc(string(runes[:n-1]), unicode.IsSpace) + "…"
 }

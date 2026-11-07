@@ -11,14 +11,17 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/repo"
 )
 
 // filesOwner owns the repository the files tests read.
 const filesOwner = "acme-org"
 
 // pullRef is the pull request the files tests read.
-func pullRef() ItemRef {
-	return ItemRef{Owner: filesOwner, Name: "example-repo", Number: 7}
+func pullRef() item.Ref {
+	return item.Ref{Repo: repo.Name{Owner: filesOwner, Repo: "example-repo"}, Number: 7}
 }
 
 // fakePull serves one pull request's REST endpoints: its head, which heads returns in
@@ -174,7 +177,7 @@ func TestFetchChangedFilesRefusesABadReference(t *testing.T) {
 		requests.Add(1)
 	})
 
-	for _, ref := range []ItemRef{{Name: "x", Number: 1}, {Owner: "x", Number: 1}, {Owner: "x", Name: "y"}} {
+	for _, ref := range []item.Ref{{Repo: repo.Name{Repo: "x"}, Number: 1}, {Repo: repo.Name{Owner: "x"}, Number: 1}, {Repo: repo.Name{Owner: "x", Repo: "y"}}} {
 		_, err := c.FetchChangedFiles(t.Context(), NewToken(fakeToken), ref, "")
 		require.ErrorIs(t, err, ErrInvalidItemRef)
 
@@ -204,5 +207,5 @@ func TestFetchPullHeadRefusesAnswersWithoutAHead(t *testing.T) {
 }
 
 func TestPullPathEscapesItsParts(t *testing.T) {
-	assert.Equal(t, "/repos/a%2Fb/c%3Fd/pulls/3", pullPath(ItemRef{Owner: "a/b", Name: "c?d", Number: 3}))
+	assert.Equal(t, "/repos/a%2Fb/c%3Fd/pulls/3", pullPath(item.Ref{Repo: repo.Name{Owner: "a/b", Repo: "c?d"}, Number: 3}))
 }

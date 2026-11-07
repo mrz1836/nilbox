@@ -6,6 +6,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/settings"
 )
 
@@ -24,7 +25,7 @@ const (
 // itermDriver opens launch scripts in iTerm2 by running AppleScript with osascript. The
 // first launch makes macOS ask the user to allow the app to control iTerm2.
 type itermDriver struct {
-	executor Executor
+	executor execpath.Runner
 }
 
 // ID returns the iTerm2 terminal setting.
@@ -42,7 +43,7 @@ func (d itermDriver) Open(ctx context.Context, scriptPath string) error {
 // terminalAppDriver opens launch scripts in a new Terminal.app window with
 // `open -a Terminal`, which needs no Automation permission.
 type terminalAppDriver struct {
-	executor Executor
+	executor execpath.Runner
 }
 
 // ID returns the Terminal.app terminal setting.
@@ -58,7 +59,7 @@ func (d terminalAppDriver) Open(ctx context.Context, scriptPath string) error {
 }
 
 // runTerminal runs one terminal program with openTimeout and explains a failure.
-func runTerminal(ctx context.Context, executor Executor, app, name string, args ...string) error {
+func runTerminal(ctx context.Context, executor execpath.Runner, app, name string, args ...string) error {
 	ctx, cancel := context.WithTimeout(ctx, openTimeout)
 	defer cancel()
 

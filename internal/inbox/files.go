@@ -12,6 +12,8 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/model"
+	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
@@ -113,7 +115,7 @@ type fileCheck struct {
 // fileTarget is a pull request a refresh checks.
 type fileTarget struct {
 	nodeID string
-	ref    github.ItemRef
+	ref    item.Ref
 	head   string
 }
 
@@ -183,7 +185,7 @@ func (f fileScope) due(it github.Item, head string, last map[string]filesStored)
 	}
 
 	return fileTarget{
-		nodeID: it.NodeID, ref: github.ItemRef{Owner: it.RepoOwner, Name: it.RepoName, Number: it.Number}, head: head,
+		nodeID: it.NodeID, ref: it.Ref(), head: head,
 	}, true
 }
 
@@ -233,7 +235,7 @@ func (w *writer) saveFiles(id int64, it github.Item) error {
 
 	err := w.tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "item_id"}}, UpdateAll: true}).Create(&row).Error
 	if err != nil {
-		return fmt.Errorf("save the files of %s/%s#%d: %w", it.RepoOwner, it.RepoName, it.Number, err)
+		return fmt.Errorf("save the files of %s: %w", it.Ref(), err)
 	}
 
 	return nil
@@ -317,17 +319,17 @@ func (c filesColumns) result() *sensitive.Result {
 
 // checkItemRow is one row of checkItemSQL.
 type checkItemRow struct {
-	ID                int64  `gorm:"column:id"`
-	Kind              string `gorm:"column:kind"`
-	Number            int    `gorm:"column:number"`
-	URL               string `gorm:"column:url"`
-	AuthorLogin       string `gorm:"column:author_login"`
-	AuthorType        string `gorm:"column:author_type"`
-	AuthorAssociation string `gorm:"column:author_association"`
-	IsCrossRepository bool   `gorm:"column:is_cross_repository"`
-	RepoOwner         string `gorm:"column:repo_owner"`
-	RepoName          string `gorm:"column:repo_name"`
-	HeadOID           string `gorm:"column:head_oid"`
+	ID                int64     `gorm:"column:id"`
+	Kind              item.Kind `gorm:"column:kind"`
+	Number            int       `gorm:"column:number"`
+	URL               string    `gorm:"column:url"`
+	AuthorLogin       string    `gorm:"column:author_login"`
+	AuthorType        string    `gorm:"column:author_type"`
+	AuthorAssociation string    `gorm:"column:author_association"`
+	IsCrossRepository bool      `gorm:"column:is_cross_repository"`
+	RepoOwner         string    `gorm:"column:repo_owner"`
+	RepoName          string    `gorm:"column:repo_name"`
+	HeadOID           string    `gorm:"column:head_oid"`
 
 	// Stored is the item's last file check.
 	Stored filesColumns `gorm:"embedded"`
@@ -337,7 +339,7 @@ type checkItemRow struct {
 func (r checkItemRow) checked(scope fileScope) bool {
 	author := trust.Author{Login: r.AuthorLogin, Type: r.AuthorType, Association: r.AuthorAssociation}
 
-	return scope.checks(r.Kind == model.KindPR, author, r.IsCrossRepository)
+	return scope.checks(r.Kind == item.KindPR, author, r.IsCrossRepository)
 }
 
 // StoredFiles returns the last check of an item's changed files, without asking GitHub,
@@ -406,7 +408,7 @@ func (s *Service) checkItemFiles(ctx context.Context, row checkItemRow) fileChec
 		return fileCheck{err: err}
 	}
 
-	ref := github.ItemRef{Owner: row.RepoOwner, Name: row.RepoName, Number: row.Number}
+	ref := item.Ref{Repo: repo.Name{Owner: row.RepoOwner, Repo: row.RepoName}, Number: row.Number, Kind: row.Kind}
 
 	pull, err := s.client.FetchPullHead(ctx, tok, ref)
 	if err != nil {
@@ -468,7 +470,7 @@ func (s *Service) loadCheckItem(ctx context.Context, itemID int64) (checkItemRow
 	}
 
 	if len(rows) == 0 {
-		return checkItemRow{}, fileScope{}, fmt.Errorf("%w (id %d)", ErrItemNotFound, itemID)
+		return checkItemRow{}, fileScope{}, fmt.Errorf("%w (id %d)", item.ErrNotFound, itemID)
 	}
 
 	return rows[0], newFileScope(prefs), nil

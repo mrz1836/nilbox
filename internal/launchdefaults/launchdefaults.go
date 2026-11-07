@@ -13,7 +13,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -21,14 +20,17 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
-	"github.com/mrz1836/nilbox/internal/agentflags"
-	"github.com/mrz1836/nilbox/internal/agents"
+	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launchdefaults/model"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
+	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
-// Fields a FieldError can name, matching Input's JSON names.
+// Fields an agent.FieldError can name, matching Input's JSON names.
 const (
 	FieldOwner         = "owner"
 	FieldName          = "name"
@@ -36,9 +38,9 @@ const (
 	FieldProfile       = "profile"
 	FieldPRPromptID    = "prPromptId"
 	FieldIssuePromptID = "issuePromptId"
-	FieldModel         = "model"
-	FieldEffort        = "effort"
-	FieldExtraFlags    = "extraFlags"
+	FieldModel         = agent.FieldModel
+	FieldEffort        = agent.FieldEffort
+	FieldExtraFlags    = agent.FieldExtraFlags
 )
 
 // targetsSQL lists the owners and repositories the inbox has seen, with how many of
@@ -53,22 +55,12 @@ ORDER BY r.owner COLLATE NOCASE, r.name COLLATE NOCASE`
 
 var (
 	// ErrInvalidDefaults is returned when launch defaults cannot be saved (see
-	// ValidationError).
+	// agent.ValidationError).
 	ErrInvalidDefaults = errors.New("the launch defaults can't be saved")
 
 	// ErrNotFound is returned when removing defaults that are not stored.
 	ErrNotFound = errors.New("no launch defaults are stored for that org or repository")
 )
-
-// ownerPattern is what an owner (a GitHub user or org) may look like.
-func ownerPattern() *regexp.Regexp {
-	return regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$`)
-}
-
-// namePattern is what a repository name may look like.
-func namePattern() *regexp.Regexp {
-	return regexp.MustCompile(`^[A-Za-z0-9._-]{1,100}$`)
-}
 
 // Defaults are one org's or repository's launch defaults. Every field is a plain value.
 type Defaults struct {
@@ -106,11 +98,7 @@ type Defaults struct {
 // Target names the org or repository a Defaults is for: "acme-org" or
 // "acme-org/example-repo".
 func (d Defaults) Target() string {
-	if d.Name == "" {
-		return d.Owner
-	}
-
-	return d.Owner + "/" + d.Name
+	return target(d.Owner, d.Name)
 }
 
 // Input is launch defaults as the editor saves them.
@@ -135,36 +123,6 @@ func (in Input) Empty() bool {
 	return in.Agent == "" && in.Profile == "" && in.PRPromptID == nil && in.IssuePromptID == nil &&
 		in.Model == "" && in.Effort == "" && in.PlanMode == nil && in.Worktree == nil &&
 		strings.TrimSpace(in.ExtraFlags) == ""
-}
-
-// FieldError is a problem with one field of an Input.
-type FieldError struct {
-	// Field is the Input field's JSON name, such as "profile".
-	Field string `json:"field"`
-
-	// Message is a sentence saying what is wrong and how to fix it.
-	Message string `json:"message"`
-}
-
-// ValidationError lists why launch defaults cannot be saved. It matches
-// ErrInvalidDefaults.
-type ValidationError struct {
-	Fields []FieldError
-}
-
-// Error joins the field messages.
-func (e *ValidationError) Error() string {
-	messages := make([]string, 0, len(e.Fields))
-	for _, f := range e.Fields {
-		messages = append(messages, f.Message)
-	}
-
-	return "the launch defaults can't be saved: " + strings.Join(messages, " ")
-}
-
-// Is makes a ValidationError match ErrInvalidDefaults.
-func (e *ValidationError) Is(target error) bool {
-	return target == ErrInvalidDefaults
 }
 
 // Target is an org or repository the inbox has seen, offered when adding defaults.
@@ -194,10 +152,10 @@ func (s *Service) List(ctx context.Context) ([]Defaults, error) {
 }
 
 // Check validates launch defaults being edited, as Save would, without saving them.
-func (s *Service) Check(ctx context.Context, in Input) ([]FieldError, error) {
+func (s *Service) Check(ctx context.Context, in Input) ([]agent.FieldError, error) {
 	_, fields, err := validate(ctx, s.db, in.normalized())
 
-	return nonNil(fields), err
+	return textutil.NonNil(fields), err
 }
 
 // Save stores an org's or repository's launch defaults, replacing any it had. Defaults
@@ -212,7 +170,7 @@ func (s *Service) Save(ctx context.Context, in Input) (Defaults, error) {
 	}
 
 	if len(fields) > 0 {
-		return Defaults{}, &ValidationError{Fields: fields}
+		return Defaults{}, &agent.ValidationError{Err: ErrInvalidDefaults, Fields: fields}
 	}
 
 	if in.Empty() {
@@ -294,28 +252,23 @@ type Index map[string]Defaults
 func NewIndex(all []Defaults) Index {
 	idx := make(Index, len(all))
 	for _, d := range all {
-		idx[key(d.Owner, d.Name)] = d
+		idx[repo.Name{Owner: d.Owner, Repo: d.Name}.Key()] = d
 	}
 
 	return idx
 }
 
 // For returns an org's defaults and a repository's own, each nil when none are stored.
-func (idx Index) For(owner, name string) (org, repo *Defaults) {
-	if d, ok := idx[key(owner, "")]; ok {
+func (idx Index) For(name repo.Name) (org, own *Defaults) {
+	if d, ok := idx[repo.Name{Owner: name.Owner}.Key()]; ok {
 		org = &d
 	}
 
-	if d, ok := idx[key(owner, name)]; ok && name != "" {
-		repo = &d
+	if d, ok := idx[name.Key()]; ok && name.Repo != "" {
+		own = &d
 	}
 
-	return org, repo
-}
-
-// key is an Index key: the owner and name, lowercased.
-func key(owner, name string) string {
-	return strings.ToLower(owner) + "/" + strings.ToLower(name)
+	return org, own
 }
 
 // normalized trims every text field.
@@ -331,12 +284,12 @@ func (in Input) normalized() Input {
 
 // validate checks an Input and returns its extra arguments, or the problems that stop it
 // being saved. An error means the checks themselves could not run.
-func validate(ctx context.Context, db *gorm.DB, in Input) ([]string, []FieldError, error) {
-	var fields []FieldError
+func validate(ctx context.Context, db *gorm.DB, in Input) ([]string, []agent.FieldError, error) {
+	var fields []agent.FieldError
 
 	add := func(field, message string) {
 		if message != "" {
-			fields = append(fields, FieldError{Field: field, Message: message})
+			fields = append(fields, agent.FieldError{Field: field, Message: message})
 		}
 	}
 
@@ -352,9 +305,10 @@ func validate(ctx context.Context, db *gorm.DB, in Input) ([]string, []FieldErro
 	add(FieldProfile, profileMsg)
 
 	for _, p := range []struct {
-		field, kind string
-		id          *int64
-	}{{FieldPRPromptID, prompts.KindPR, in.PRPromptID}, {FieldIssuePromptID, prompts.KindIssue, in.IssuePromptID}} {
+		field string
+		kind  item.Kind
+		id    *int64
+	}{{FieldPRPromptID, item.KindPR, in.PRPromptID}, {FieldIssuePromptID, item.KindIssue, in.IssuePromptID}} {
 		msg, promptErr := checkPrompt(ctx, db, p.id, p.kind)
 		if promptErr != nil {
 			return nil, nil, promptErr
@@ -363,51 +317,14 @@ func validate(ctx context.Context, db *gorm.DB, in Input) ([]string, []FieldErro
 		add(p.field, msg)
 	}
 
-	args, flagFields := checkSettings(in)
+	args, flagFields := agent.CheckOverrides(in.Model, in.Effort, in.ExtraFlags)
 
 	return args, append(fields, flagFields...), nil
 }
 
-// checkSettings checks the model, effort, and extra flags.
-func checkSettings(in Input) ([]string, []FieldError) {
-	var fields []FieldError
-
-	if err := agentflags.ValidateModel(in.Model); err != nil {
-		fields = append(fields, FieldError{
-			Field: FieldModel, Message: `A model is one word, such as "opus" or "sonnet", that doesn't start with "-".`,
-		})
-	}
-
-	if err := agentflags.ValidateEffort(in.Effort); err != nil {
-		fields = append(fields, FieldError{Field: FieldEffort, Message: "Choose an effort level from the list."})
-	}
-
-	args, err := agentflags.Split(in.ExtraFlags)
-	if err != nil {
-		return nil, append(fields, FieldError{Field: FieldExtraFlags, Message: "A quote in the flags is never closed."})
-	}
-
-	if err = agentflags.CheckExtra(args); err != nil {
-		return nil, append(fields, FieldError{Field: FieldExtraFlags, Message: flagMessage(err)})
-	}
-
-	return args, fields
-}
-
-// flagMessage explains why extra flags were refused.
-func flagMessage(err error) string {
-	if errors.Is(err, agentflags.ErrEmptyFlag) {
-		return "Remove the empty flag ('')."
-	}
-
-	msg := err.Error()
-
-	return strings.ToUpper(msg[:1]) + msg[1:] + "."
-}
-
 // checkOwner checks an org or user name.
 func checkOwner(owner string) string {
-	if !ownerPattern().MatchString(owner) {
+	if !repo.ValidOwner(owner) {
 		return "Choose an org or user, such as acme-org."
 	}
 
@@ -416,17 +333,17 @@ func checkOwner(owner string) string {
 
 // checkName checks a repository name, which may be "" for an owner's defaults.
 func checkName(name string) string {
-	if name != "" && !namePattern().MatchString(name) {
-		return "A repository name holds only letters, digits, and . _ -."
+	if name != "" && !repo.ValidRepo(name) {
+		return "A repository name holds only letters, digits, and . _ -, can't start with -, and can't be . or .. alone."
 	}
 
 	return ""
 }
 
 // checkAgent checks the coding tool, which may be "" to inherit.
-func checkAgent(agent string) string {
-	if _, err := agents.Lookup(agent); err != nil {
-		return fmt.Sprintf("There's no coding tool called %q.", agent)
+func checkAgent(id string) string {
+	if _, err := agent.Lookup(id); err != nil {
+		return fmt.Sprintf("There's no coding tool called %q.", id)
 	}
 
 	return ""
@@ -451,7 +368,7 @@ func checkProfile(ctx context.Context, db *gorm.DB, profile string) (string, err
 }
 
 // checkPrompt checks a default prompt for kind, which may be nil to inherit.
-func checkPrompt(ctx context.Context, db *gorm.DB, id *int64, kind string) (string, error) {
+func checkPrompt(ctx context.Context, db *gorm.DB, id *int64, kind item.Kind) (string, error) {
 	if id == nil {
 		return "", nil
 	}
@@ -464,7 +381,7 @@ func checkPrompt(ctx context.Context, db *gorm.DB, id *int64, kind string) (stri
 	case err != nil:
 		return "", err
 	case !prompts.AppliesTo(p.AppliesTo, kind):
-		return fmt.Sprintf("%q isn't a prompt for %ss.", p.Nickname, prompts.KindName(kind)), nil
+		return fmt.Sprintf("%q isn't a prompt for %s.", p.Nickname, kind.Plural()), nil
 	default:
 		return "", nil
 	}
@@ -498,9 +415,13 @@ func remove(db *gorm.DB, owner, name string) error {
 	return nil
 }
 
-// target names an org or a repository.
+// target names an org ("acme-org") or a repository ("acme-org/example-repo").
 func target(owner, name string) string {
-	return Defaults{Owner: owner, Name: name}.Target()
+	if name == "" {
+		return owner
+	}
+
+	return repo.Name{Owner: owner, Repo: name}.String()
 }
 
 // toRow converts a validated Input and its extra arguments to a row.
@@ -525,16 +446,7 @@ func fromRow(row model.LaunchDefault) Defaults {
 	return Defaults{
 		Owner: row.Owner, Name: row.Name, Agent: row.Agent, Profile: row.Profile,
 		PRPromptID: row.PRPromptID, IssuePromptID: row.IssuePromptID, Model: row.Model, Effort: row.Effort,
-		PlanMode: row.PlanMode, Worktree: row.Worktree, ExtraArgs: args, ExtraFlags: agentflags.Join(args),
-		UpdatedAt: row.UpdatedAt.UTC().Format(time.RFC3339),
+		PlanMode: row.PlanMode, Worktree: row.Worktree, ExtraArgs: args, ExtraFlags: agent.Join(args),
+		UpdatedAt: clock.Format(row.UpdatedAt),
 	}
-}
-
-// nonNil returns list, or an empty list for nil, so the UI always gets an array.
-func nonNil(list []FieldError) []FieldError {
-	if list == nil {
-		return []FieldError{}
-	}
-
-	return list
 }

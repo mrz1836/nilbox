@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -18,10 +20,10 @@ func TestValidationErrorListsEveryProblemInOrder(t *testing.T) {
 
 	_, err := s.Create(t.Context(), Input{Model: "-x", Effort: "huge", ExtraFlags: "--model opus"})
 
-	var verr *ValidationError
+	var verr *agent.ValidationError
 	require.ErrorAs(t, err, &verr)
 	require.ErrorIs(t, err, ErrInvalidPrompt)
-	assert.Equal(t, []FieldError{
+	assert.Equal(t, []agent.FieldError{
 		{Field: FieldName, Message: "Give the prompt a title."},
 		{Field: FieldNickname, Message: "Give the prompt a nickname for the launch menu."},
 		{Field: FieldAppliesTo, Message: "Choose what the prompt is for: pull requests, issues, or both."},
@@ -38,7 +40,7 @@ func TestValidationErrorListsEveryProblemInOrder(t *testing.T) {
 		"--model is set by the Model setting. "+
 		"Fix the problems in the prompt's text.", err.Error())
 
-	assert.Equal(t, "the prompt can't be saved: ", (&ValidationError{}).Error())
+	assert.Equal(t, "the prompt can't be saved: ", (&agent.ValidationError{Err: ErrInvalidPrompt}).Error())
 }
 
 func TestCheckExplainsLongAndMultiLineNames(t *testing.T) {
@@ -51,7 +53,7 @@ func TestCheckExplainsLongAndMultiLineNames(t *testing.T) {
 
 	got, err := s.Check(t.Context(), CheckRequest{Input: in})
 	require.NoError(t, err)
-	assert.Equal(t, []FieldError{
+	assert.Equal(t, []agent.FieldError{
 		{Field: FieldName, Message: "Keep the title to 80 characters."},
 		{Field: FieldNickname, Message: "Keep the nickname on one line."},
 	}, got.Fields)
@@ -70,7 +72,7 @@ func TestResetRefusesToDropAKindThePromptIsADefaultFor(t *testing.T) {
 	in.Nickname, in.AppliesTo = review.Nickname, AppliesToAny
 	_, err := s.Update(ctx, review.ID, in)
 	require.NoError(t, err)
-	require.NoError(t, s.SetDefault(ctx, KindIssue, review.ID))
+	require.NoError(t, s.SetDefault(ctx, string(item.KindIssue), review.ID))
 
 	_, err = s.Reset(ctx, review.ID)
 	fields := fieldErrors(t, err)
@@ -91,14 +93,14 @@ func TestCheckPreviewsAnIssuePromptWithTheIssueSample(t *testing.T) {
 	got, err := s.Check(t.Context(), CheckRequest{Input: in})
 	require.NoError(t, err)
 	assert.True(t, got.Sample)
-	assert.Equal(t, "Fix "+Sample(KindIssue).Title+"\n", got.Preview)
+	assert.Equal(t, "Fix "+Sample(item.KindIssue).Title+"\n", got.Preview)
 }
 
 // emptyTitleSource serves one pull request whose title is empty.
 type emptyTitleSource struct{}
 
 func (emptyTitleSource) PreviewData(context.Context, int64) (Data, error) {
-	d := Sample(KindPR)
+	d := Sample(item.KindPR)
 	d.Title = ""
 
 	return d, nil
@@ -125,7 +127,7 @@ func TestRenderRefusesAnEmptyPrompt(t *testing.T) {
 	tmpl, _ := Parse("{{.Title}}", AppliesToPR)
 	require.NotNil(t, tmpl)
 
-	d := Sample(KindPR)
+	d := Sample(item.KindPR)
 	d.Title = ""
 
 	_, err := tmpl.Render(d)

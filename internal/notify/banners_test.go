@@ -142,8 +142,3 @@ func TestBannersOffRoundTrip(t *testing.T) {
 	assert.JSONEq(t, `[]`, EncodeBannersOff(nil))
 	assert.Equal(t, off, DecodeBannersOff(map[string]string{PrefBannersOff: EncodeBannersOff(off)}))
 }
-
-func TestCapitalize(t *testing.T) {
-	assert.Empty(t, capitalize(""))
-	assert.Equal(t, "Éclair", capitalize("éclair"))
-}

@@ -281,10 +281,10 @@ func TestEvaluate(t *testing.T) {
 	flagged := &sensitive.Result{
 		Head: "abc", Total: 4, Complete: true, CheckedAt: at,
 		Files: []sensitive.File{
-			{Path: "README.md", Change: sensitive.ChangeModified},
-			{Path: ".github/workflows/ci.yml", Change: sensitive.ChangeModified},
-			{Path: ".claude/settings.json", Change: sensitive.ChangeAdded},
-			{Path: ".claude/agents/x.md", Change: sensitive.ChangeAdded},
+			{Path: "README.md", Change: "modified"},
+			{Path: ".github/workflows/ci.yml", Change: "modified"},
+			{Path: ".claude/settings.json", Change: "added"},
+			{Path: ".claude/agents/x.md", Change: "added"},
 		},
 	}
 
@@ -333,9 +333,9 @@ func TestRenamesMatchEitherPath(t *testing.T) {
 
 	r := &sensitive.Result{Head: "abc", Total: 2, Complete: true, Files: []sensitive.File{
 		// Moving a workflow away disables it.
-		{Path: "docs/old-codeql.yml", PreviousPath: ".github/workflows/codeql.yml", Change: sensitive.ChangeRenamed},
+		{Path: "docs/old-codeql.yml", PreviousPath: ".github/workflows/codeql.yml", Change: "renamed"},
 		// A tooling file moved into the agent's folder counts as the agent's.
-		{Path: ".claude/hooks/x.sh", PreviousPath: "scripts/x.sh", Change: sensitive.ChangeRenamed},
+		{Path: ".claude/hooks/x.sh", PreviousPath: "scripts/x.sh", Change: "renamed"},
 	}}
 
 	c := m.Evaluate(r, "abc", prURL)
@@ -350,9 +350,9 @@ func TestSummary(t *testing.T) {
 	m := sensitive.NewMatcher(sensitive.DefaultConfig())
 
 	c := m.Evaluate(&sensitive.Result{Head: "abc", Total: 3, Complete: true, Files: []sensitive.File{
-		{Path: "docs/old.yml", PreviousPath: ".github/workflows/ci.yml", Change: sensitive.ChangeRenamed},
-		{Path: ".claude/settings.json", Change: sensitive.ChangeAdded},
-		{Path: "README.md", Change: sensitive.ChangeModified},
+		{Path: "docs/old.yml", PreviousPath: ".github/workflows/ci.yml", Change: "renamed"},
+		{Path: ".claude/settings.json", Change: "added"},
+		{Path: "README.md", Change: "modified"},
 	}}, "abc", prURL)
 
 	assert.Equal(t, ".claude/settings.json (Agent config), docs/old.yml (Workflows, moved from "+
@@ -367,14 +367,6 @@ func TestSummary(t *testing.T) {
 
 	many := m.Evaluate(&sensitive.Result{Head: "abc", Total: 23, Complete: true, Files: files}, "abc", prURL)
 	assert.True(t, strings.HasSuffix(many.Summary(), "s19.sh (Build tooling), and 3 more"), many.Summary())
-}
-
-func TestDiffURL(t *testing.T) {
-	assert.Equal(t,
-		prURL+"/files#diff-b803fcb7f17ed9235f1e5cb1fcd2f5d3b2838429d4368ae4c57ce4436577f03f",
-		sensitive.DiffURL(prURL+"/", ".github/workflows/ci.yml"))
-	assert.Empty(t, sensitive.DiffURL("http://example.com/pull/7", "x"))
-	assert.Empty(t, sensitive.DiffURL(prURL, ""))
 }
 
 func TestLookup(t *testing.T) {
@@ -426,7 +418,7 @@ func BenchmarkEvaluateLargePullRequest(b *testing.B) {
 	files := make([]sensitive.File, 3000)
 
 	for i := range files {
-		files[i] = sensitive.File{Path: "internal/pkg" + strings.Repeat("x", i%7) + "/sub/file.go", Change: sensitive.ChangeModified}
+		files[i] = sensitive.File{Path: "internal/pkg" + strings.Repeat("x", i%7) + "/sub/file.go", Change: "modified"}
 	}
 
 	r := &sensitive.Result{Head: "abc", Total: len(files), Files: files, Complete: true}

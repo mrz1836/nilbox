@@ -17,7 +17,9 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launchlog"
+	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -29,15 +31,16 @@ var (
 // mergedAt is when the fake pull requests merged.
 func mergedAt() time.Time { return time.Date(2026, 11, 6, 18, 0, 0, 0, time.UTC) }
 
-// fakeGitHub answers ItemStates from a table and records each call.
+// fakeGitHub answers ItemStates from a table keyed by item.Ref.Key, as the client does,
+// and records each call.
 type fakeGitHub struct {
 	mu     sync.Mutex
-	states map[github.ItemRef]github.ItemState
+	states map[string]github.ItemState
 	err    error
-	calls  [][]github.ItemRef
+	calls  [][]item.Ref
 }
 
-func (f *fakeGitHub) ItemStates(_ context.Context, refs []github.ItemRef) (map[github.ItemRef]github.ItemState, error) {
+func (f *fakeGitHub) ItemStates(_ context.Context, refs []item.Ref) (map[string]github.ItemState, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -46,13 +49,28 @@ func (f *fakeGitHub) ItemStates(_ context.Context, refs []github.ItemRef) (map[g
 	return f.states, f.err
 }
 
-// set records an item's state under acme-org/<repo>.
-func (f *fakeGitHub) set(repo string, number int, state github.ItemState) {
+// set records an item's state under acme-org/<name>.
+func (f *fakeGitHub) set(name string, number int, state github.ItemState) {
 	if f.states == nil {
-		f.states = make(map[github.ItemRef]github.ItemState)
+		f.states = make(map[string]github.ItemState)
 	}
 
-	f.states[github.ItemRef{Owner: "acme-org", Name: repo, Number: number}] = state
+	f.states[refKey("acme-org", name, number)] = state
+}
+
+// refKey is the key of owner/name#number.
+func refKey(owner, name string, number int) string {
+	return item.Ref{Repo: repo.Name{Owner: owner, Repo: name}, Number: number}.Key()
+}
+
+// refKeys lists the keys of refs.
+func refKeys(refs []item.Ref) []string {
+	keys := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		keys = append(keys, ref.Key())
+	}
+
+	return keys
 }
 
 // fakeLaunches is an in-memory launch log.
@@ -108,7 +126,7 @@ type linkDeps struct {
 func (e *env) linked(deps linkDeps) *Service {
 	cfg := Config{
 		Settings: fakeSettings{root: cloneRoot, auto: deps.auto},
-		Git:      execpath.Runner{},
+		Git:      execpath.Exec{},
 		Finder:   execpath.Finder{},
 		Home:     e.home,
 		Clock:    testutil.NewClock(listedAt()),
@@ -192,7 +210,7 @@ func closedIssue() github.ItemState {
 }
 
 // launchOf records a launch of the agent worktree at path for kind and number.
-func launchOf(repo, name, kind string, number int) launchlog.Launch {
+func launchOf(repo, name string, kind item.Kind, number int) launchlog.Launch {
 	return launchlog.Launch{ClonePath: repo, Worktree: name, Owner: "acme-org", Name: filepath.Base(repo), Kind: kind, Number: number}
 }
 
@@ -257,7 +275,7 @@ func TestListLinksAndStagesAgentWorktrees(t *testing.T) {
 	row := mustRow(t, snap, finished)
 	require.NotNil(t, row.Item)
 	assert.Equal(t, LinkedItem{
-		Kind: kindPR, Owner: "acme-org", Name: "example-repo", Number: 1, Title: "Fix things",
+		Kind: string(item.KindPR), Owner: "acme-org", Name: "example-repo", Number: 1, Title: "Fix things",
 		URL: "https://github.com/acme-org/example-repo/pull/1", State: ItemMerged, ClosedAt: "2026-11-06T18:00:00Z",
 		HeadOID: finishedHead,
 	}, *row.Item)
@@ -287,7 +305,7 @@ func TestListLinksAndStagesAgentWorktrees(t *testing.T) {
 	assert.False(t, row.CanCleanUp)
 
 	row = mustRow(t, snap, changed)
-	assert.Equal(t, kindIssue, row.Item.Kind)
+	assert.Equal(t, string(item.KindIssue), row.Item.Kind)
 	assert.Equal(t, ItemClosed, row.Item.State)
 	assert.Equal(t, StageNeedsReview, row.Stage, "done, but it has uncommitted changes")
 
@@ -336,11 +354,9 @@ func TestListLinksByLaunchRecord(t *testing.T) {
 	pushed(t, repo, "feat/x", head)
 
 	gh := &fakeGitHub{}
-	gh.states = map[github.ItemRef]github.ItemState{
-		{Owner: "upstream-org", Name: "example-repo", Number: 12}: closedIssue(),
-	}
+	gh.states = map[string]github.ItemState{refKey("upstream-org", "example-repo", 12): closedIssue()}
 
-	record := launchOf(repo, "pr-3", kindIssue, 12)
+	record := launchOf(repo, "pr-3", item.KindIssue, 12)
 	record.Owner = "Upstream-Org"
 	launches := &fakeLaunches{records: []launchlog.Launch{record}}
 
@@ -348,11 +364,12 @@ func TestListLinksByLaunchRecord(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, gh.calls, 1)
-	assert.Equal(t, []github.ItemRef{{Owner: "upstream-org", Name: "example-repo", Number: 12}}, gh.calls[0])
+	assert.Equal(t, []string{"upstream-org/example-repo#12"}, refKeys(gh.calls[0]),
+		"the recorded item is asked for, matched whatever its casing")
 
 	row := mustRow(t, snap, path)
 	require.NotNil(t, row.Item)
-	assert.Equal(t, kindIssue, row.Item.Kind)
+	assert.Equal(t, string(item.KindIssue), row.Item.Kind)
 	assert.Equal(t, 12, row.Item.Number)
 	assert.True(t, row.Item.Launched)
 	assert.Equal(t, StageFinished, row.Stage)
@@ -367,12 +384,10 @@ func TestListPicksTheRightRemote(t *testing.T) {
 	byHead, head := agentWorktree(t, repo, "pr-1")
 	byKind, _ := agentWorktree(t, repo, "issue-2")
 
-	upstream := func(n int) github.ItemRef {
-		return github.ItemRef{Owner: "upstream-org", Name: "example-repo", Number: n}
-	}
-	origin := func(n int) github.ItemRef { return github.ItemRef{Owner: "acme-org", Name: "example-repo", Number: n} }
+	upstream := func(n int) string { return refKey("upstream-org", "example-repo", n) }
+	origin := func(n int) string { return refKey("acme-org", "example-repo", n) }
 
-	gh := &fakeGitHub{states: map[github.ItemRef]github.ItemState{
+	gh := &fakeGitHub{states: map[string]github.ItemState{
 		origin(1):   pr(github.StateOpen, "other"),
 		upstream(1): pr(github.StateMerged, head),
 		origin(2):   pr(github.StateOpen, "x"),
@@ -383,7 +398,7 @@ func TestListPicksTheRightRemote(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, gh.calls, 1)
-	assert.ElementsMatch(t, []github.ItemRef{origin(1), upstream(1), origin(2), upstream(2)}, gh.calls[0],
+	assert.ElementsMatch(t, []string{origin(1), upstream(1), origin(2), upstream(2)}, refKeys(gh.calls[0]),
 		"origin and upstream are asked; the remote that is not on GitHub is not")
 
 	row := mustRow(t, snap, byHead)
@@ -457,7 +472,7 @@ func TestCleanUpRemovesAFinishedWorktreeAndItsBranch(t *testing.T) {
 	gh := &fakeGitHub{}
 	gh.set("example-repo", 184, pr(github.StateMerged, head))
 
-	launches := &fakeLaunches{records: []launchlog.Launch{launchOf(repo, "pr-184", kindPR, 184)}}
+	launches := &fakeLaunches{records: []launchlog.Launch{launchOf(repo, "pr-184", item.KindPR, 184)}}
 	svc := e.linked(linkDeps{gh: gh, launches: launches})
 
 	res, err := svc.CleanUp(t.Context(), repo, path)

@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
@@ -22,12 +23,12 @@ func TestValidationErrorListsEveryProblemInOrder(t *testing.T) {
 	})
 	require.ErrorIs(t, err, launchdefaults.ErrInvalidDefaults)
 
-	var invalid *launchdefaults.ValidationError
+	var invalid *agent.ValidationError
 	require.ErrorAs(t, err, &invalid)
 
-	want := []launchdefaults.FieldError{
+	want := []agent.FieldError{
 		{Field: launchdefaults.FieldOwner, Message: "Choose an org or user, such as acme-org."},
-		{Field: launchdefaults.FieldName, Message: "A repository name holds only letters, digits, and . _ -."},
+		{Field: launchdefaults.FieldName, Message: "A repository name holds only letters, digits, and . _ -, can't start with -, and can't be . or .. alone."},
 		{Field: launchdefaults.FieldAgent, Message: `There's no coding tool called "codex".`},
 		{Field: launchdefaults.FieldProfile, Message: `There's no profile called "nope".`},
 		{Field: launchdefaults.FieldPRPromptID, Message: "That prompt no longer exists; choose another."},
@@ -39,7 +40,7 @@ func TestValidationErrorListsEveryProblemInOrder(t *testing.T) {
 	assert.Equal(t, want, invalid.Fields)
 
 	assert.Equal(t, "the launch defaults can't be saved: Choose an org or user, such as acme-org. "+
-		"A repository name holds only letters, digits, and . _ -. "+
+		"A repository name holds only letters, digits, and . _ -, can't start with -, and can't be . or .. alone. "+
 		`There's no coding tool called "codex". There's no profile called "nope". `+
 		`That prompt no longer exists; choose another. "Review" isn't a prompt for issues. `+
 		`A model is one word, such as "opus" or "sonnet", that doesn't start with "-". `+
@@ -69,7 +70,7 @@ func TestExtraFlagMessages(t *testing.T) {
 	} {
 		got, err := h.svc.Check(t.Context(), launchdefaults.Input{Owner: acme, ExtraFlags: flags})
 		require.NoError(t, err)
-		assert.Equal(t, []launchdefaults.FieldError{{Field: launchdefaults.FieldExtraFlags, Message: want}}, got, flags)
+		assert.Equal(t, []agent.FieldError{{Field: launchdefaults.FieldExtraFlags, Message: want}}, got, flags)
 	}
 }
 
@@ -184,6 +185,6 @@ func TestServiceReportsAClosedDatabase(t *testing.T) {
 	_, err = svc.Check(ctx, launchdefaults.Input{Owner: acme, PRPromptID: &review})
 	require.ErrorContains(t, err, "read the prompt")
 
-	var invalid *launchdefaults.ValidationError
+	var invalid *agent.ValidationError
 	require.NotErrorAs(t, err, &invalid)
 }

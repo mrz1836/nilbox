@@ -10,6 +10,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/cleanuplog"
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launchlog"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
@@ -48,7 +49,7 @@ func TestCleanUpsAreRecorded(t *testing.T) {
 	pushed(t, repo, "two", autoHead)
 	gh.set("example-repo", 2, closedIssue())
 
-	launches := &fakeLaunches{records: []launchlog.Launch{launchOf(repo, "issue-2", kindIssue, 2)}}
+	launches := &fakeLaunches{records: []launchlog.Launch{launchOf(repo, "issue-2", item.KindIssue, 2)}}
 	svc := e.linked(linkDeps{gh: gh, launches: launches, history: history, auto: true})
 
 	none, err := svc.RecentCleanups(t.Context())
@@ -81,7 +82,7 @@ func TestCleanUpsAreRecorded(t *testing.T) {
 	assert.Equal(t, "worktree-pr-1", manual.DeletedBranch)
 	assert.Equal(t, byHandHead, manual.Head)
 	assert.Equal(t, &LinkedItem{
-		Kind: kindPR, Owner: "acme-org", Name: "example-repo", Number: 1, Title: "Fix things",
+		Kind: string(item.KindPR), Owner: "acme-org", Name: "example-repo", Number: 1, Title: "Fix things",
 		URL: "https://github.com/acme-org/example-repo/pull/1", State: ItemMerged,
 	}, manual.Item)
 
@@ -89,7 +90,7 @@ func TestCleanUpsAreRecorded(t *testing.T) {
 	assert.True(t, swept.Automatic)
 	assert.Equal(t, "worktree-issue-2", swept.DeletedBranch)
 	require.NotNil(t, swept.Item)
-	assert.Equal(t, kindIssue, swept.Item.Kind)
+	assert.Equal(t, string(item.KindIssue), swept.Item.Kind)
 	assert.Equal(t, ItemClosed, swept.Item.State)
 
 	require.NoError(t, svc.ClearCleanups(t.Context()))

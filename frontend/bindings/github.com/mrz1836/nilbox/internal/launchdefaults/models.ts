@@ -53,21 +53,6 @@ export interface Defaults {
 }
 
 /**
- * FieldError is a problem with one field of an Input.
- */
-export interface FieldError {
-    /**
-     * Field is the Input field's JSON name, such as "profile".
-     */
-    "field": string;
-
-    /**
-     * Message is a sentence saying what is wrong and how to fix it.
-     */
-    "message": string;
-}
-
-/**
  * Input is launch defaults as the editor saves them.
  */
 export interface Input {

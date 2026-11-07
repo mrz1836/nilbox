@@ -1,4 +1,4 @@
-package agentflags
+package agent
 
 import (
 	"fmt"

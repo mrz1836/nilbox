@@ -8,9 +8,10 @@ import (
 	"strconv"
 	"strings"
 	"text/template/parse"
-	"unicode"
 	"unicode/utf16"
-	"unicode/utf8"
+
+	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // allowedFuncs are the template functions a prompt may use, in the order help text
@@ -23,16 +24,12 @@ func allowedFuncs() []string {
 const funcHelp = "You can use and, or, not, eq, ne, lt, le, gt, ge, len, and printf."
 
 // parseErrorPattern matches Go's template parse errors: "template: prompt:3: message".
-func parseErrorPattern() *regexp.Regexp {
-	return regexp.MustCompile(`^template: ` + templateName + `:(\d+): (.*)$`)
-}
+var parseErrorPattern = regexp.MustCompile(`^template: ` + templateName + `:(\d+): (.*)$`)
 
 // execErrorPattern matches Go's template execution errors:
 // `template: prompt:3:14: executing "prompt" at <gt .Title 3>: message`, where 14 is the
 // 0-based byte offset within line 3.
-func execErrorPattern() *regexp.Regexp {
-	return regexp.MustCompile(`template: ` + templateName + `:(\d+):(\d+): executing "[^"]*" at <.*?>: (.*)$`)
-}
+var execErrorPattern = regexp.MustCompile(`template: ` + templateName + `:(\d+):(\d+): executing "[^"]*" at <.*?>: (.*)$`)
 
 // checker collects the diagnostics for one prompt text.
 type checker struct {
@@ -157,9 +154,9 @@ func (c *checker) lineSpan(line int) (start, end int) {
 
 // parseError turns a Go template parse error into a diagnostic that says how to fix it.
 func (c *checker) parseError(err error) {
-	m := parseErrorPattern().FindStringSubmatch(err.Error())
+	m := parseErrorPattern.FindStringSubmatch(err.Error())
 	if m == nil {
-		c.addWhole(sentence(err.Error()))
+		c.addWhole(textutil.Sentence(err.Error()))
 
 		return
 	}
@@ -202,7 +199,7 @@ func explainParseError(msg string) (find func(action) bool, text string) {
 	case msg == "unclosed comment":
 		return keyword(keywordComment), "This comment is never closed: end it with */}}."
 	default:
-		return anything, sentence(msg)
+		return anything, textutil.Sentence(msg)
 	}
 }
 
@@ -265,9 +262,9 @@ func (c *checker) execError(err error, hint string) {
 		return
 	}
 
-	m := execErrorPattern().FindStringSubmatch(err.Error())
+	m := execErrorPattern.FindStringSubmatch(err.Error())
 	if m == nil {
-		c.addWhole(sentence(err.Error()))
+		c.addWhole(textutil.Sentence(err.Error()))
 
 		return
 	}
@@ -275,21 +272,21 @@ func (c *checker) execError(err error, hint string) {
 	line, _ := strconv.Atoi(m[1]) // the pattern only matches digits
 	col, _ := strconv.Atoi(m[2])
 	start, _ := c.lineSpan(line)
-	c.addAt(SeverityError, start+col, 0, sentence(m[3]))
+	c.addAt(SeverityError, start+col, 0, textutil.Sentence(m[3]))
 }
 
 // trySamples fills the prompt in with sample data for every kind it applies to, each in
 // every session it can start in, and once more with the yes/no values flipped and the
 // optional text empty, so errors in conditional text show up too.
 func (c *checker) trySamples(t *Template) {
-	for _, kind := range []string{KindPR, KindIssue} {
+	for _, kind := range item.Kinds() {
 		if !AppliesTo(c.appliesTo, kind) {
 			continue
 		}
 
 		for _, data := range sampleVariants(kind) {
 			if _, err := t.Execute(data); err != nil {
-				c.execError(err, "for "+plural(kind))
+				c.execError(err, "for "+kind.Plural())
 			}
 		}
 	}
@@ -297,7 +294,7 @@ func (c *checker) trySamples(t *Template) {
 
 // sampleVariants returns the sample data for kind in each session it can start in, both
 // as is and with every yes/no flipped and the optional text empty.
-func sampleVariants(kind string) []Data {
+func sampleVariants(kind item.Kind) []Data {
 	flipped := Sample(kind)
 	flipped.IsDraft, flipped.HasConflicts, flipped.OutsideContributor = flipped.IsPR, flipped.IsPR, true
 	flipped.IsBot, flipped.Author = true, "dependabot"
@@ -309,38 +306,12 @@ func sampleVariants(kind string) []Data {
 	for _, base := range []Data{Sample(kind), flipped} {
 		out = append(out, base.WithSession(false, false), base.WithSession(true, false))
 
-		if kind == KindPR {
+		if kind == item.KindPR {
 			out = append(out, base.WithSession(true, true))
 		}
 	}
 
 	return out
-}
-
-// plural names a kind of item in the plural.
-func plural(kind string) string {
-	if kind == KindPR {
-		return "pull requests"
-	}
-
-	return "issues"
-}
-
-// sentence capitalizes msg and ends it with a period.
-func sentence(msg string) string {
-	msg = strings.TrimSpace(msg)
-	if msg == "" {
-		return msg
-	}
-
-	r, size := utf8.DecodeRuneInString(msg)
-	msg = string(unicode.ToUpper(r)) + msg[size:]
-
-	if !strings.HasSuffix(msg, ".") {
-		msg += "."
-	}
-
-	return msg
 }
 
 // utf16Len counts s in UTF-16 code units.

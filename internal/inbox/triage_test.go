@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/snooze"
 	"github.com/mrz1836/nilbox/internal/store"
 )
@@ -220,14 +221,14 @@ func TestTriageUnknownItem(t *testing.T) {
 	notified := h.notifier.Calls()
 
 	_, err := h.svc.Dismiss(t.Context(), 999)
-	require.ErrorIs(t, err, ErrItemNotFound)
+	require.ErrorIs(t, err, item.ErrNotFound)
 	require.ErrorContains(t, err, "(id 999)")
 
 	_, err = h.svc.Snooze(t.Context(), 999, 3)
-	require.ErrorIs(t, err, ErrItemNotFound)
+	require.ErrorIs(t, err, item.ErrNotFound)
 
 	_, err = h.svc.Pin(t.Context(), 999)
-	require.ErrorIs(t, err, ErrItemNotFound)
+	require.ErrorIs(t, err, item.ErrNotFound)
 
 	assert.Zero(t, h.count(t, "item_local_state"))
 	assert.Equal(t, notified, h.notifier.Calls())

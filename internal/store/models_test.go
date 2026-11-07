@@ -15,6 +15,7 @@ import (
 
 	cleanuplogmodel "github.com/mrz1836/nilbox/internal/cleanuplog/model"
 	inboxmodel "github.com/mrz1836/nilbox/internal/inbox/model"
+	"github.com/mrz1836/nilbox/internal/item"
 	launchdefaultsmodel "github.com/mrz1836/nilbox/internal/launchdefaults/model"
 	launchlogmodel "github.com/mrz1836/nilbox/internal/launchlog/model"
 	notifymodel "github.com/mrz1836/nilbox/internal/notify/model"
@@ -116,7 +117,7 @@ func TestModelsRoundTrip(t *testing.T) {
 	require.NoError(t, db.Create(&repo).Error)
 
 	item := inboxmodel.Item{
-		AccountID: account.ID, RepoID: repo.ID, Kind: inboxmodel.KindPR, Number: 7,
+		AccountID: account.ID, RepoID: repo.ID, Kind: item.KindPR, Number: 7,
 		NodeID: "PR_node", Title: "Add a widget", URL: "https://github.com/acme-org/example-repo/pull/7",
 		AuthorLogin: "octo-user", AuthorAssociation: "CONTRIBUTOR", IsCrossRepository: true,
 		HeadRef: "feat/widget", ItemCreatedAt: at, ItemUpdatedAt: at.Add(time.Hour),
@@ -220,13 +221,13 @@ func TestSchemaRejectsInvalidRows(t *testing.T) {
 	require.Error(t, db.Create(&inboxmodel.Item{AccountID: account.ID, RepoID: repo.ID, Kind: "discussion", Number: 1}).Error)
 
 	// Item for a repository that does not exist.
-	require.Error(t, db.Create(&inboxmodel.Item{AccountID: account.ID, RepoID: repo.ID + 100, Kind: inboxmodel.KindIssue, Number: 1}).Error)
+	require.Error(t, db.Create(&inboxmodel.Item{AccountID: account.ID, RepoID: repo.ID + 100, Kind: item.KindIssue, Number: 1}).Error)
 
 	// JSON columns must hold the right JSON shape.
 	require.Error(t, db.Exec(`INSERT INTO claude_profiles (name, add_dirs, created_at, updated_at)
 		VALUES ('broken', '{"not": "an array"}', '2026-01-01 00:00:00', '2026-01-01 00:00:00')`).Error)
 
-	item := inboxmodel.Item{AccountID: account.ID, RepoID: repo.ID, Kind: inboxmodel.KindPR, Number: 1}
+	item := inboxmodel.Item{AccountID: account.ID, RepoID: repo.ID, Kind: item.KindPR, Number: 1}
 	require.NoError(t, db.Create(&item).Error)
 
 	// Item details: labels must be an array, counts cannot go negative, and no more

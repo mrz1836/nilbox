@@ -9,6 +9,7 @@ package appdata
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -16,9 +17,14 @@ import (
 	"github.com/mrz1836/nilbox/internal/brand"
 )
 
-// dirPerm is the permission for every directory the application creates: the data is
-// private to the user.
-const dirPerm = 0o700
+// Permissions for everything the application writes: its data is private to the user.
+const (
+	// PrivateDirPerm is the mode of every directory the application creates.
+	PrivateDirPerm fs.FileMode = 0o700
+
+	// PrivateFilePerm is the mode of every file the application writes.
+	PrivateFilePerm fs.FileMode = 0o600
+)
 
 var (
 	// ErrUnsupportedOS is returned for an operating system with no known data location.
@@ -53,7 +59,7 @@ func NewPaths(root string) Paths {
 // user. Existing directories are left as they are.
 func (p Paths) Ensure() error {
 	for _, dir := range []string{p.Root, p.Launch, p.Logs} {
-		if err := os.MkdirAll(dir, dirPerm); err != nil {
+		if err := os.MkdirAll(dir, PrivateDirPerm); err != nil {
 			return fmt.Errorf("create data directory: %w", err)
 		}
 	}

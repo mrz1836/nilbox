@@ -13,7 +13,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/localrepos"
+	"github.com/mrz1836/nilbox/internal/repo"
 )
 
 var (
@@ -276,7 +278,7 @@ func TestCloneFailures(t *testing.T) {
 		gh := h.withGH()
 
 		_, err := h.service().Clone(t.Context(), 9999)
-		require.ErrorIs(t, err, ErrItemNotFound)
+		require.ErrorIs(t, err, item.ErrNotFound)
 		assert.Empty(t, gh.recorded())
 	})
 
@@ -313,7 +315,7 @@ func TestCloneRefusesInvalidNames(t *testing.T) {
 				tt.owner, tt.name, "missing-repo").Error)
 
 			_, err := h.service().Clone(t.Context(), h.orphanPR)
-			require.ErrorIs(t, err, ErrInvalidRepoName)
+			require.ErrorIs(t, err, repo.ErrInvalid)
 			assert.Empty(t, gh.recorded())
 		})
 	}
@@ -341,12 +343,4 @@ func TestClonesRunOneAtATime(t *testing.T) {
 	}
 
 	assert.Len(t, gh.recorded(), 1, "the first clone wins; the rest find it")
-}
-
-func TestCloneDetail(t *testing.T) {
-	assert.Empty(t, cloneDetail(nil))
-	assert.Empty(t, cloneDetail([]byte(" \n\n")))
-	assert.Equal(t, "repository not found", cloneDetail([]byte("\nfatal: repository not found\nmore\n")))
-	assert.Equal(t, "boom", cloneDetail([]byte("error: boom")))
-	assert.Equal(t, "GraphQL: nope", cloneDetail([]byte("  GraphQL: nope  ")))
 }

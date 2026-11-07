@@ -13,6 +13,9 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/mrz1836/nilbox/internal/appdata"
+	"github.com/mrz1836/nilbox/internal/clock"
 )
 
 // Sources of the process start time.
@@ -27,9 +30,6 @@ const (
 // LogFileName is the file under the logs directory that collects timing lines.
 const LogFileName = "timing.log"
 
-// logFilePerm keeps the timing log private to the user.
-const logFilePerm = 0o600
-
 // FirstPaintKey is the key every first-paint record carries, followed by the
 // milliseconds from process start.
 const FirstPaintKey = "startup.first_paint_ms"
@@ -39,9 +39,9 @@ const FirstPaintKey = "startup.first_paint_ms"
 //nolint:gochecknoglobals // process start fallback, captured once at package init
 var runtimeStart = time.Now()
 
-// ProcessStart returns when the current process started and which source that time
+// processStart returns when the current process started and which source that time
 // came from: the operating system's record when available, else the runtime fallback.
-func ProcessStart() (time.Time, string) {
+func processStart() (time.Time, string) {
 	if start, err := osProcessStart(os.Getpid()); err == nil && !start.IsZero() {
 		return start, SourceOS
 	}
@@ -73,7 +73,7 @@ type Config struct {
 	// file.
 	LogsDir string
 
-	// Start is the process start time; zero uses ProcessStart.
+	// Start is the process start time; zero uses processStart.
 	Start time.Time
 
 	// Source names where Start came from; it is ignored when Start is zero.
@@ -105,7 +105,7 @@ func NewRecorder(cfg Config) *Recorder {
 	}
 
 	if r.start.IsZero() {
-		r.start, r.source = ProcessStart()
+		r.start, r.source = processStart()
 	}
 
 	if r.now == nil {
@@ -146,12 +146,12 @@ func (r *Recorder) record() (Measurement, error) {
 		return m, nil
 	}
 
-	return m, appendLine(filepath.Join(r.logsDir, LogFileName), r.now().UTC().Format(time.RFC3339)+" "+m.String())
+	return m, appendLine(filepath.Join(r.logsDir, LogFileName), clock.Format(r.now())+" "+m.String())
 }
 
 // appendLine appends one line to the file at path, creating it user-only if needed.
 func appendLine(path, line string) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, logFilePerm) //nolint:gosec // path is the app's own log file
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, appdata.PrivateFilePerm) //nolint:gosec // path is the app's own log file
 	if err != nil {
 		return fmt.Errorf("open the timing log: %w", err)
 	}

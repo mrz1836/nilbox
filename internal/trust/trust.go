@@ -62,9 +62,7 @@ var (
 )
 
 // botPattern is what a bot login (a GitHub App's slug) looks like once normalized.
-func botPattern() *regexp.Regexp {
-	return regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,38})$`)
-}
+var botPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,38})$`)
 
 // DefaultBots returns the bots trusted until the user changes the list: GitHub's
 // Dependabot and Actions, and Renovate.
@@ -138,7 +136,6 @@ func (p Policy) Trusted(a Author, isPR, crossRepo bool) bool {
 // an ErrInvalidBot.
 func NormalizeBots(logins []string) ([]string, error) {
 	out := make([]string, 0, len(logins))
-	pattern := botPattern()
 
 	for _, login := range logins {
 		b := foldBot(login)
@@ -146,7 +143,7 @@ func NormalizeBots(logins []string) ([]string, error) {
 			continue
 		}
 
-		if !pattern.MatchString(b) {
+		if !botPattern.MatchString(b) {
 			return nil, fmt.Errorf("%w: %q", ErrInvalidBot, strings.TrimSpace(login))
 		}
 

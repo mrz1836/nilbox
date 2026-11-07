@@ -426,11 +426,12 @@ func TestStatusErrorMessages(t *testing.T) {
 }
 
 func TestTruncateCapsMessages(t *testing.T) {
-	long := strings.Repeat("word ", 200)
-
-	got := truncate(long)
-	assert.Len(t, []rune(got), maxMessageRunes+1)
+	got := truncate(strings.Repeat("abcdef ", 100))
+	assert.Len(t, []rune(got), maxMessageRunes+1, "the kept text, then the ellipsis")
 	assert.True(t, strings.HasSuffix(got, "…"))
+
+	got = truncate(strings.Repeat("word ", 200))
+	assert.True(t, strings.HasSuffix(got, "word…"), "space before the ellipsis is dropped: %q", got)
 	assert.Equal(t, "a b", truncate(" a \n\t b "))
 	assert.Empty(t, apiMessage([]byte("not json")))
 	assert.Equal(t, "Not Found", apiMessage([]byte(fmt.Sprintf(`{"message":%q}`, "Not Found"))))

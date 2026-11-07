@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"gorm.io/gorm"
 
+	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/inbox"
 )
 
@@ -25,11 +25,6 @@ type Notifier interface {
 	NotificationsUpdated()
 }
 
-// Clock tells the time.
-type Clock interface {
-	Now() time.Time
-}
-
 // Config holds the dependencies of a Dispatcher and a Service. Poster, Notifier, Clock,
 // and Logger are optional: without a Poster no banner is shown, and the log is still
 // kept.
@@ -37,7 +32,7 @@ type Config struct {
 	DB       *gorm.DB
 	Poster   Poster
 	Notifier Notifier
-	Clock    Clock
+	Clock    clock.Clock
 	Logger   *slog.Logger
 }
 
@@ -47,19 +42,15 @@ type base struct {
 	db       *gorm.DB
 	poster   Poster
 	notifier Notifier
-	clock    Clock
+	clock    clock.Clock
 	logger   *slog.Logger
 }
 
 // newBase fills in the defaults.
 func newBase(cfg Config) base {
 	b := base{
-		store: NewStore(cfg.DB), db: cfg.DB, poster: cfg.Poster, notifier: cfg.Notifier, clock: cfg.Clock,
+		store: NewStore(cfg.DB), db: cfg.DB, poster: cfg.Poster, notifier: cfg.Notifier, clock: clock.Or(cfg.Clock),
 		logger: cfg.Logger,
-	}
-
-	if b.clock == nil {
-		b.clock = systemClock{}
 	}
 
 	if b.logger == nil {
@@ -206,9 +197,3 @@ func bannersOff(db *gorm.DB) ([]string, error) {
 
 	return DecodeBannersOff(prefs), nil
 }
-
-// systemClock is the real clock.
-type systemClock struct{}
-
-// Now returns the current time.
-func (systemClock) Now() time.Time { return time.Now() }

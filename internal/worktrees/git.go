@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/mrz1836/nilbox/internal/execpath"
 )
 
 const (
@@ -35,12 +37,6 @@ var errParseCount = errors.New("unexpected commit count")
 
 // objectIDPattern is a full commit ID, SHA-1 or SHA-256.
 var objectIDPattern = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
-
-// Runner runs a program with arguments and returns what it wrote. Implementations run the
-// argv directly, never through a shell; execpath.Runner is the app's.
-type Runner interface {
-	Run(ctx context.Context, name string, args ...string) (stdout, stderr []byte, err error)
-}
 
 // allowedFixedCommands are the complete argument lists, after `-C <dir>`, that git may
 // run with. `worktree remove`, `worktree unlock`, and `update-ref -d` are checked
@@ -70,7 +66,7 @@ func unpushedArgs() []string { return []string{"rev-list", "--count", "HEAD", "-
 
 // git runs allowlisted git commands as `git -C <dir> <args>`.
 type git struct {
-	run Runner
+	run execpath.Runner
 	bin string
 }
 
@@ -255,29 +251,8 @@ func countStatusEntries(out []byte) int {
 	return count
 }
 
-// exitCode reports whether err is a process exit with a non-zero status (git ran and
+// gitRefused reports whether err is a process exit with a non-zero status (git ran and
 // refused), as opposed to a failure to run git at all or a canceled context.
-func exitCode(ctx context.Context, err error) bool {
-	var exit interface{ ExitCode() int }
-
-	return ctx.Err() == nil && errors.As(err, &exit) && exit.ExitCode() > 0
-}
-
-// firstLine returns git's first non-empty stderr line without its "fatal: " or
-// "error: " prefix.
-func firstLine(stderr []byte) string {
-	for _, line := range strings.Split(string(stderr), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		for _, prefix := range []string{"fatal: ", "error: "} {
-			line = strings.TrimPrefix(line, prefix)
-		}
-
-		return line
-	}
-
-	return ""
+func gitRefused(ctx context.Context, err error) bool {
+	return ctx.Err() == nil && execpath.ExitCode(err) > 0
 }

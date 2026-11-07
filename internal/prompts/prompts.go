@@ -20,8 +20,10 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/mrz1836/nilbox/internal/agentflags"
+	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/prompts/model"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // Limits on a prompt's names.
@@ -30,22 +32,23 @@ const (
 	maxNicknameRunes = 20
 )
 
-// Fields a FieldError can name, matching Input's JSON names.
+// Fields an agent.FieldError can name, matching Input's JSON names.
 const (
 	FieldName       = "name"
 	FieldNickname   = "nickname"
 	FieldAppliesTo  = "appliesTo"
 	FieldBody       = "body"
-	FieldModel      = "model"
-	FieldEffort     = "effort"
-	FieldExtraFlags = "extraFlags"
+	FieldModel      = agent.FieldModel
+	FieldEffort     = agent.FieldEffort
+	FieldExtraFlags = agent.FieldExtraFlags
 )
 
 var (
 	// ErrPromptNotFound is returned for a prompt ID that is not stored.
 	ErrPromptNotFound = errors.New("prompt not found")
 
-	// ErrInvalidPrompt is returned when a prompt cannot be saved (see ValidationError).
+	// ErrInvalidPrompt is returned when a prompt cannot be saved (see
+	// agent.ValidationError).
 	ErrInvalidPrompt = errors.New("the prompt can't be saved")
 
 	// ErrPromptInUse is returned when deleting a prompt that is a default (see InUseError).
@@ -54,9 +57,6 @@ var (
 	// ErrNotStarter is returned when resetting a prompt that did not come from a starter
 	// this build ships.
 	ErrNotStarter = errors.New("the prompt has no original to reset to")
-
-	// ErrInvalidKind is returned for an item kind other than "pr" or "issue".
-	ErrInvalidKind = errors.New(`kind must be "pr" or "issue"`)
 
 	// ErrWrongKind is returned when a prompt is made the default for a kind it does not
 	// apply to.
@@ -141,35 +141,6 @@ type Input struct {
 	ExtraFlags string `json:"extraFlags"`
 }
 
-// FieldError is a problem with one field of an Input.
-type FieldError struct {
-	// Field is the Input field's JSON name, such as "nickname".
-	Field string `json:"field"`
-
-	// Message is a sentence saying what is wrong and how to fix it.
-	Message string `json:"message"`
-}
-
-// ValidationError lists why a prompt cannot be saved. It matches ErrInvalidPrompt.
-type ValidationError struct {
-	Fields []FieldError
-}
-
-// Error joins the field messages.
-func (e *ValidationError) Error() string {
-	messages := make([]string, 0, len(e.Fields))
-	for _, f := range e.Fields {
-		messages = append(messages, f.Message)
-	}
-
-	return "the prompt can't be saved: " + strings.Join(messages, " ")
-}
-
-// Is makes a ValidationError match ErrInvalidPrompt.
-func (e *ValidationError) Is(target error) bool {
-	return target == ErrInvalidPrompt
-}
-
 // InUseError is returned when deleting a prompt that is a default. It matches
 // ErrPromptInUse.
 type InUseError struct {
@@ -180,7 +151,7 @@ type InUseError struct {
 // Error says where the prompt is in use.
 func (e *InUseError) Error() string {
 	return fmt.Sprintf("%q can't be deleted while it's %s; choose other defaults there first",
-		e.Nickname, DescribeUsage(e.Usage))
+		e.Nickname, describeUsage(e.Usage))
 }
 
 // Is makes an InUseError match ErrPromptInUse.
@@ -196,8 +167,8 @@ type DefaultPrompts struct {
 }
 
 // For returns the default for kind.
-func (d DefaultPrompts) For(kind string) int64 {
-	if kind == KindPR {
+func (d DefaultPrompts) For(kind item.Kind) int64 {
+	if kind == item.KindPR {
 		return d.PR
 	}
 
@@ -243,7 +214,7 @@ func (s *Service) Create(ctx context.Context, in Input) (Prompt, error) {
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		args, fields := validate(tx, 0, in, Usage{})
 		if len(fields) > 0 {
-			return &ValidationError{Fields: fields}
+			return invalid(fields)
 		}
 
 		row := toRow(in, args)
@@ -280,7 +251,7 @@ func (s *Service) Update(ctx context.Context, id int64, in Input) (Prompt, error
 
 		args, fields := validate(tx, id, in, usage)
 		if len(fields) > 0 {
-			return &ValidationError{Fields: fields}
+			return invalid(fields)
 		}
 
 		updated := toRow(in, args)
@@ -343,7 +314,7 @@ func (s *Service) Duplicate(ctx context.Context, id int64) (Prompt, error) {
 
 		dup := row
 		dup.ID, dup.StarterKey, dup.Nickname = 0, "", nickname
-		dup.Name = truncateRunes(row.Name+" (copy)", maxNameRunes)
+		dup.Name = textutil.Clip(row.Name+" (copy)", maxNameRunes)
 		dup.CreatedAt, dup.UpdatedAt = time.Time{}, time.Time{}
 
 		if err = tx.Create(&dup).Error; err != nil {
@@ -398,7 +369,7 @@ func resetRow(tx *gorm.DB, id int64) error {
 
 	args, fields := validate(tx, id, in, usage)
 	if len(fields) > 0 {
-		return &ValidationError{Fields: fields}
+		return invalid(fields)
 	}
 
 	reset := toRow(in, args)
@@ -419,7 +390,7 @@ func (s *Service) Defaults(ctx context.Context) (DefaultPrompts, error) {
 // SetDefault makes a prompt the app's default for kind ("pr" or "issue"). The prompt
 // must apply to that kind.
 func (s *Service) SetDefault(ctx context.Context, kind string, id int64) error {
-	key, err := defaultPrefKey(kind)
+	k, err := item.ParseKind(kind)
 	if err != nil {
 		return err
 	}
@@ -429,11 +400,11 @@ func (s *Service) SetDefault(ctx context.Context, kind string, id int64) error {
 		return err
 	}
 
-	if !AppliesTo(row.AppliesTo, kind) {
-		return fmt.Errorf("%w: %q doesn't apply to %s", ErrWrongKind, row.Nickname, plural(kind))
+	if !AppliesTo(row.AppliesTo, k) {
+		return fmt.Errorf("%w: %q doesn't apply to %s", ErrWrongKind, row.Nickname, k.Plural())
 	}
 
-	return setPref(s.db.WithContext(ctx), key, fmt.Sprint(id))
+	return setPref(s.db.WithContext(ctx), defaultPrefKey(k), fmt.Sprint(id))
 }
 
 // Variables returns every variable a prompt can use, for the cheat sheet.
@@ -472,29 +443,29 @@ func (st Starter) input() Input {
 	return Input{
 		Name: st.Name, Nickname: st.Nickname, AppliesTo: st.AppliesTo, Body: st.Body,
 		Model: st.Model, Effort: st.Effort, PlanMode: st.PlanMode, Worktree: st.Worktree,
-		ExtraFlags: agentflags.Join(st.ExtraArgs),
+		ExtraFlags: agent.Join(st.ExtraArgs),
 	}
 }
 
 // validate checks an Input for the prompt with id (0 for a new one) and returns its
 // extra arguments, or the problems that stop it being saved.
-func validate(db *gorm.DB, id int64, in Input, usage Usage) ([]string, []FieldError) {
+func validate(db *gorm.DB, id int64, in Input, usage Usage) ([]string, []agent.FieldError) {
 	args, fields := validateFields(db, id, in, usage)
 
 	if t, _ := Parse(in.Body, appliesToOrAny(in.AppliesTo)); t == nil {
-		fields = append(fields, FieldError{Field: FieldBody, Message: "Fix the problems in the prompt's text."})
+		fields = append(fields, agent.FieldError{Field: FieldBody, Message: "Fix the problems in the prompt's text."})
 	}
 
 	return args, fields
 }
 
 // validateFields checks every field but the text, which Parse checks.
-func validateFields(db *gorm.DB, id int64, in Input, usage Usage) ([]string, []FieldError) {
-	var fields []FieldError
+func validateFields(db *gorm.DB, id int64, in Input, usage Usage) ([]string, []agent.FieldError) {
+	var fields []agent.FieldError
 
 	add := func(field, message string) {
 		if message != "" {
-			fields = append(fields, FieldError{Field: field, Message: message})
+			fields = append(fields, agent.FieldError{Field: field, Message: message})
 		}
 	}
 
@@ -502,18 +473,14 @@ func validateFields(db *gorm.DB, id int64, in Input, usage Usage) ([]string, []F
 	add(FieldNickname, checkNickname(db, id, in.Nickname))
 	add(FieldAppliesTo, checkAppliesTo(in.AppliesTo, usage))
 
-	if err := agentflags.ValidateModel(in.Model); err != nil {
-		add(FieldModel, `A model is one word, such as "opus" or "sonnet", that doesn't start with "-".`)
-	}
+	args, overrides := agent.CheckOverrides(in.Model, in.Effort, in.ExtraFlags)
 
-	if err := agentflags.ValidateEffort(in.Effort); err != nil {
-		add(FieldEffort, "Choose an effort level from the list.")
-	}
+	return args, append(fields, overrides...)
+}
 
-	args, message := checkFlags(in.ExtraFlags)
-	add(FieldExtraFlags, message)
-
-	return args, fields
+// invalid is the error for a prompt that cannot be saved for the reasons in fields.
+func invalid(fields []agent.FieldError) error {
+	return &agent.ValidationError{Err: ErrInvalidPrompt, Fields: fields}
 }
 
 // checkName checks a prompt's title.
@@ -563,31 +530,13 @@ func checkAppliesTo(appliesTo string, usage Usage) string {
 	}
 
 	for _, kind := range usage.Kinds {
-		if !AppliesTo(appliesTo, kind) {
+		if k := item.Kind(kind); !AppliesTo(appliesTo, k) {
 			return fmt.Sprintf("It's a default for %s (%s), so it has to apply to them.",
-				plural(kind), DescribeUsage(usage))
+				k.Plural(), describeUsage(usage))
 		}
 	}
 
 	return ""
-}
-
-// checkFlags reads extra flags typed on one line and checks them.
-func checkFlags(line string) ([]string, string) {
-	args, err := agentflags.Split(line)
-	if err != nil {
-		return nil, "A quote in the flags is never closed."
-	}
-
-	if err = agentflags.CheckExtra(args); err != nil {
-		if errors.Is(err, agentflags.ErrEmptyFlag) {
-			return nil, "Remove the empty flag ('')."
-		}
-
-		return nil, sentence(err.Error())
-	}
-
-	return args, ""
 }
 
 // appliesToOrAny returns appliesTo when it is valid, else "any", so a prompt's text can
@@ -600,13 +549,13 @@ func appliesToOrAny(appliesTo string) string {
 	return AppliesToAny
 }
 
-// DescribeUsage says where a prompt is a default, as in "the default for pull requests,
+// describeUsage says where a prompt is a default, as in "the default for pull requests,
 // and a default for acme-org and 2 repositories".
-func DescribeUsage(u Usage) string {
+func describeUsage(u Usage) string {
 	var parts []string
 
 	for _, kind := range u.Defaults {
-		parts = append(parts, "the default for "+plural(kind))
+		parts = append(parts, "the default for "+item.Kind(kind).Plural())
 	}
 
 	var places []string

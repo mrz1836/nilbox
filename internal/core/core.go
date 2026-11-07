@@ -11,16 +11,17 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"gorm.io/gorm"
 
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/appinfo"
 	"github.com/mrz1836/nilbox/internal/cleanuplog"
+	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/launchlog"
@@ -40,18 +41,6 @@ var (
 	// ErrNoHomeDir is returned when Options.Home is empty.
 	ErrNoHomeDir = errors.New("the home directory is not set")
 )
-
-// Runner runs a program as an argv, never through a shell. execpath.Runner implements it;
-// the GitHub token source, the clone scan, the confirmed clone of a missing repository,
-// the terminal drivers, and the worktree service all run their programs through it.
-type Runner interface {
-	Run(ctx context.Context, name string, args ...string) (stdout, stderr []byte, err error)
-}
-
-// Clock tells the time.
-type Clock interface {
-	Now() time.Time
-}
 
 // Options configure Bootstrap. Paths and Home are required; the rest are optional.
 type Options struct {
@@ -73,7 +62,7 @@ type Options struct {
 
 	// Clock stamps refreshes, launches, and worktree listings. It defaults to the system
 	// clock.
-	Clock Clock
+	Clock clock.Clock
 
 	// Notifier is told when the stored inbox changed.
 	Notifier inbox.Notifier
@@ -93,9 +82,11 @@ type Options struct {
 	// NotificationsNotifier is told when the notification log changed.
 	NotificationsNotifier notify.Notifier
 
-	// Runner runs external programs. It defaults to an execpath.Runner whose finder
+	// Runner runs external programs: the GitHub token source, the clone scan, the
+	// confirmed clone of a missing repository, the terminal drivers, and the worktree
+	// service all run theirs through it. It defaults to an execpath.Exec whose finder
 	// searches the well-known directories under Home.
-	Runner Runner
+	Runner execpath.Runner
 
 	// Logger receives scheduler and timing records. It defaults to slog.Default().
 	Logger *slog.Logger
@@ -222,7 +213,7 @@ func assemble(db *gorm.DB, opts Options, logger *slog.Logger) *Core {
 
 	runner := opts.Runner
 	if runner == nil {
-		runner = execpath.Runner{Finder: finder}
+		runner = execpath.Exec{Finder: finder}
 	}
 
 	prefs := settings.NewService(db, opts.Home,
@@ -288,7 +279,7 @@ func assemble(db *gorm.DB, opts Options, logger *slog.Logger) *Core {
 			Recorder:     recorder,
 			OnFirstPaint: opts.OnFirstPaint,
 		}),
-		Scheduler: inbox.NewScheduler(inboxSvc, inbox.WithLogger(logger)),
+		Scheduler: inbox.NewScheduler(inboxSvc, logger),
 		Timing:    recorder,
 	}
 }
@@ -301,7 +292,7 @@ type itemStates struct {
 }
 
 // ItemStates asks GitHub about refs.
-func (s itemStates) ItemStates(ctx context.Context, refs []github.ItemRef) (map[github.ItemRef]github.ItemState, error) {
+func (s itemStates) ItemStates(ctx context.Context, refs []item.Ref) (map[string]github.ItemState, error) {
 	tok, err := s.tokens.Token(ctx)
 	if err != nil {
 		return nil, err

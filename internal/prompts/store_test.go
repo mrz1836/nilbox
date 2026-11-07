@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
+	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -64,7 +66,7 @@ func TestSetDefaultStoresThePromptID(t *testing.T) {
 	s, db := seeded(t, nil)
 	fix, work := byNickname(t, s, "Fix checks"), byNickname(t, s, "Work on it")
 
-	require.NoError(t, s.SetDefault(t.Context(), KindPR, fix.ID))
+	require.NoError(t, s.SetDefault(t.Context(), string(item.KindPR), fix.ID))
 
 	stored := promptPrefs(t, db)
 	assert.Equal(t, strconv.FormatInt(fix.ID, 10), stored["prompts.default.pr"])
@@ -157,7 +159,7 @@ func TestWritesReportWhatFailed(t *testing.T) {
 		{
 			name: "set a default", trigger: refusePrefInserts, want: "save setting " + prefDefaultPR,
 			run: func(t *testing.T, s *Service) error {
-				return s.SetDefault(t.Context(), KindPR, byNickname(t, s, "Fix checks").ID)
+				return s.SetDefault(t.Context(), string(item.KindPR), byNickname(t, s, "Fix checks").ID)
 			},
 		},
 	}
@@ -255,7 +257,7 @@ func TestAClosedDatabaseIsReported(t *testing.T) {
 	_, err = Lookup(ctx, db, 1)
 	require.ErrorContains(t, err, "read the prompt")
 
-	require.ErrorContains(t, s.SetDefault(ctx, KindPR, 1), "read the prompt")
+	require.ErrorContains(t, s.SetDefault(ctx, string(item.KindPR), 1), "read the prompt")
 
 	_, err = s.Check(ctx, CheckRequest{ID: 1, Input: validInput()})
 	require.ErrorContains(t, err, "read setting "+prefDefaultPR)
@@ -286,7 +288,7 @@ func TestCheckReportsANicknameItCannotCheck(t *testing.T) {
 
 	got, err := s.Check(t.Context(), CheckRequest{Input: validInput()})
 	require.NoError(t, err, "a new prompt's check reads nothing else")
-	assert.Equal(t, []FieldError{{Field: FieldNickname, Message: "Couldn't check whether the nickname is free."}}, got.Fields)
+	assert.Equal(t, []agent.FieldError{{Field: FieldNickname, Message: "Couldn't check whether the nickname is free."}}, got.Fields)
 	assert.NotEmpty(t, got.Preview, "the preview still fills in")
 }
 

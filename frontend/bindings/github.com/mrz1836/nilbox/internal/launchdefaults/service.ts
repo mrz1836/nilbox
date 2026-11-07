@@ -12,12 +12,16 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as agent$0 from "../agent/models.js";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
 /**
  * Check validates launch defaults being edited, as Save would, without saving them.
  */
-export function Check($in: $models.Input): $CancellablePromise<$models.FieldError[] | null> {
+export function Check($in: $models.Input): $CancellablePromise<agent$0.FieldError[] | null> {
     return $Call.ByID(1056842581, $in);
 }
 

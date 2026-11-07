@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/item"
 )
 
 // storedItemSQL reads what a single refresh needs about a stored item. An item without a
@@ -65,7 +66,7 @@ func (s *Service) refreshItem(ctx context.Context, id int64) error {
 	}
 
 	if len(rows) == 0 {
-		return fmt.Errorf("%w (id %d)", ErrItemNotFound, id)
+		return fmt.Errorf("%w (id %d)", item.ErrNotFound, id)
 	}
 
 	tok, err := s.tokens.Token(ctx)

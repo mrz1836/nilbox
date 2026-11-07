@@ -3,9 +3,9 @@ package worktrees
 import (
 	"context"
 	"path/filepath"
-	"time"
 
 	"github.com/mrz1836/nilbox/internal/cleanuplog"
+	"github.com/mrz1836/nilbox/internal/clock"
 )
 
 // recentLimit is how many cleanups RecentCleanups returns.
@@ -71,7 +71,7 @@ func (s *Service) recordCleanup(ctx context.Context, repoPath string, wt Worktre
 func cleanupOf(r cleanuplog.Cleanup) Cleanup {
 	c := Cleanup{
 		ID:            r.ID,
-		CleanedAt:     r.CleanedAt.UTC().Format(time.RFC3339),
+		CleanedAt:     clock.Format(r.CleanedAt),
 		Automatic:     r.Automatic,
 		Repo:          r.Repo,
 		Worktree:      r.Worktree,
