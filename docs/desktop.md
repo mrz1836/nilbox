@@ -121,8 +121,13 @@ and it sits behind the `desktop` build tag:
 - MAGE-X discovers build tags and tests them in one combined pass, which would compile the
   desktop shell on Linux. `.github/env/90-project.env` therefore adds `desktop` (and Wails'
   `production` release tag) to `MAGE_X_AUTO_DISCOVER_BUILD_TAGS_EXCLUDE`. The same file leaves
-  `frontend/` to Prettier, out of the Go formatter, and keeps `magefiles/` out of coverage.
+  `frontend/` to Prettier, out of the Go formatter.
 - A repository test fails if anything outside the desktop bootstrap imports Wails.
+- The `magex` targets in `magefiles/` are tested under the `mage` build tag, which the combined
+  pass includes. Fake tools on an isolated `PATH` stand in for pnpm, go, rsvg-convert, and the
+  macOS-only commands (`plutil`, `codesign`, `iconutil`, `open`), so CI on Linux runs the bundle
+  assembly and icon rendering steps too. On a Mac, the same tests also run `app:open`,
+  `app:run`, and `app:check` end to end against those fakes.
 
 CI runs the fortress workflows on ubuntu for the Go code, and `.github/workflows/frontend.yml`
 on ubuntu for the frontend gate. No macOS runner is used, so `magex app:check` is a local step.

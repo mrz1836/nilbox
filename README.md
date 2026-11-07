@@ -466,7 +466,8 @@ View the full documentation for Nilbox:
 |------------------------------------------------------------|-------------------------------------------------------------------------------------|
 | **[Desktop Guide](docs/desktop.md)**                       | Setup, build targets, data location, and how every feature behaves                  |
 | **[Performance](docs/performance.md)**                     | Measured startup, refresh, launch, size, and API budget, and how to reproduce them  |
-| **[AGENTS.md](.github/AGENTS.md)**                         | The engineering rulebook for contributors and AI agents                             |
+| **[CLAUDE.md](CLAUDE.md)**                                 | Nilbox's own rules, the gate every change passes, and the layout                    |
+| **[AGENTS.md](.github/AGENTS.md)**                         | The shared engineering rulebook for contributors and AI agents                      |
 | **[Tech Conventions](.github/tech-conventions/README.md)** | Commits, branches, pull requests, testing, releases, and security practices         |
 | **[Support](.github/SUPPORT.md)**                          | Questions, bug reports, and private contact                                         |
 
@@ -530,7 +531,7 @@ magex help
 Common commands:
 
 ```bash
-magex build          # build the headless binary into bin/
+magex build          # build the headless binary
 magex app:dev        # run the desktop app with a hot-reloading frontend
 magex app:build      # build the macOS app bundle
 magex app:run        # build the app, quit the running copy, and open the new build
@@ -700,7 +701,8 @@ Read more about this Go project's [code standards](.github/CODE_STANDARDS.md).
 ## 🤖 AI Usage & Assistant Guidelines
 
 Read the [AI Usage & Assistant Guidelines](.github/CLAUDE.md) for details on how AI is used in this
-project and how to interact with AI assistants.
+project and how to interact with AI assistants, and [CLAUDE.md](CLAUDE.md) for the rules every
+assistant follows in this repository.
 
 <br/>
 
@@ -715,8 +717,9 @@ project and how to interact with AI assistants.
 ## 🤝 Contributing
 
 View the [contributing guidelines](.github/CONTRIBUTING.md) and please follow the
-[code of conduct](.github/CODE_OF_CONDUCT.md). Read [AGENTS.md](.github/AGENTS.md) before your
-first pull request: it links to the conventions for code, tests, commits, branches, and pull
+[code of conduct](.github/CODE_OF_CONDUCT.md). Before your first pull request, read
+[CLAUDE.md](CLAUDE.md) for Nilbox's own rules and the gate every change passes, and
+[AGENTS.md](.github/AGENTS.md) for the conventions on code, tests, commits, branches, and pull
 requests that both humans and AI agents follow here.
 
 ### How can I help?
