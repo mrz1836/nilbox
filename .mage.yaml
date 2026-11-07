@@ -3,8 +3,9 @@ project:
   binary: nilbox
   module: github.com/mrz1836/nilbox
   main: ./cmd/nilbox/main.go
+
 build:
-  # Version metadata injected into cmd/nilbox (printed at startup)
+  # Custom ldflags with version injection
   ldflags:
     - "-s -w"
     - "-X main.version={{.Version}}"
@@ -12,3 +13,9 @@ build:
     - "-X main.buildDate={{.Date}}"
   flags:
     - "-trimpath"
+  output: "./cmd/nilbox"
+
+test:
+  # Match CI timeout configuration (TEST_TIMEOUT_RACE_COVER in .github/env/00-core.env)
+  # Default magex timeout is 10m which was killing tests prematurely
+  timeout: 30m
