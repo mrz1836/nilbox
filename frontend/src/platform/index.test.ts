@@ -57,7 +57,10 @@ const mocks = vi.hoisted(() => ({
     SetSensitiveCategory: vi.fn(),
     SetSensitivePatterns: vi.fn(),
     MatchSensitivePath: vi.fn(),
+    SetMenuBar: vi.fn(),
+    SetNotificationBanner: vi.fn(),
   },
+  notify: { List: vi.fn(), MarkAllRead: vi.fn(), Clear: vi.fn(), BannerStatus: vi.fn(), SendTest: vi.fn() },
   worktrees: {
     List: vi.fn(),
     Remove: vi.fn(),
@@ -86,6 +89,7 @@ vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/prompts', () => ({ Se
 vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/launchdefaults', () => ({ Service: mocks.launchDefaults }))
 vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/settings', () => ({ Service: mocks.settings }))
 vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/worktrees', () => ({ Service: mocks.worktrees }))
+vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/notify', () => ({ Service: mocks.notify }))
 
 const emptyList: platform.InboxList = { items: [], shown: 0, total: 0 }
 const unknownRate: platform.Rate = { known: false, limit: 0, remaining: 0, used: 0, cost: 0, resetAt: '', takenAt: '' }
@@ -379,6 +383,8 @@ describe('settings', () => {
       defaultWindowSize: { width: 1280, height: 800 },
       sensitiveFiles: { scope: 'collaborators', off: [], patterns: [] },
       sensitiveCategories: [],
+      menuBar: true,
+      bannersOff: [],
     }
     mocks.settings.Get.mockResolvedValue(settings)
     mocks.settings.SetTerminal.mockResolvedValue(undefined)
@@ -408,6 +414,14 @@ describe('settings', () => {
 
     expect(mocks.settings.SetTrustedBots).toHaveBeenCalledWith(['renovate'])
     expect(mocks.settings.ResetTrustedBots).toHaveBeenCalledOnce()
+
+    mocks.settings.SetMenuBar.mockResolvedValue(undefined)
+    mocks.settings.SetNotificationBanner.mockResolvedValue(undefined)
+    await platform.setMenuBar(false)
+    await platform.setNotificationBanner('woke', false)
+
+    expect(mocks.settings.SetMenuBar).toHaveBeenCalledWith(false)
+    expect(mocks.settings.SetNotificationBanner).toHaveBeenCalledWith('woke', false)
 
     mocks.settings.SetSnoozeDays.mockResolvedValue(undefined)
     await platform.setSnoozeDays(7)
@@ -615,5 +629,86 @@ describe('worktrees', () => {
 
     stop()
     expect(unsubscribe).toHaveBeenCalledOnce()
+  })
+})
+
+describe('notifications', () => {
+  const entry: platform.AppNotification = {
+    id: 3,
+    kind: 'review_requested',
+    createdAt: '2026-03-04T12:00:00Z',
+    read: false,
+    itemId: 7,
+    itemKind: 'pr',
+    repo: 'acme-org/example-repo',
+    number: 12,
+    title: 'Fix the login redirect',
+    url: 'https://github.com/acme-org/example-repo/pull/12',
+    author: 'octo-other',
+    detail: '',
+  }
+
+  it('reads the log, treating no rows as an empty list', async () => {
+    mocks.notify.List.mockResolvedValueOnce({ items: [entry], unread: 1 })
+    await expect(platform.listNotifications()).resolves.toEqual({ items: [entry], unread: 1 })
+
+    mocks.notify.List.mockResolvedValueOnce({ items: null, unread: 0 })
+    await expect(platform.listNotifications()).resolves.toEqual({ items: [], unread: 0 })
+  })
+
+  it('marks the log read, clears it, and tests the banners', async () => {
+    mocks.notify.MarkAllRead.mockResolvedValue(undefined)
+    mocks.notify.Clear.mockResolvedValue(undefined)
+    mocks.notify.BannerStatus.mockResolvedValue('on')
+    mocks.notify.SendTest.mockResolvedValue(undefined)
+
+    await platform.markNotificationsRead()
+    await platform.clearNotifications()
+    await expect(platform.notificationBannerStatus()).resolves.toBe('on')
+    await platform.sendTestNotification()
+
+    expect(mocks.notify.MarkAllRead).toHaveBeenCalledOnce()
+    expect(mocks.notify.Clear).toHaveBeenCalledOnce()
+    expect(mocks.notify.SendTest).toHaveBeenCalledOnce()
+  })
+
+  it('follows changes to the log', () => {
+    const unsubscribe = vi.fn()
+    mocks.events.On.mockReturnValue(unsubscribe)
+    const listener = vi.fn()
+
+    const stop = platform.onNotificationsUpdated(listener)
+
+    expect(mocks.events.On).toHaveBeenCalledWith(platform.notificationsUpdatedEvent, expect.any(Function))
+
+    const handler = mocks.events.On.mock.calls.at(-1)?.[1] as () => void
+    handler()
+    expect(listener).toHaveBeenCalledOnce()
+
+    stop()
+    expect(unsubscribe).toHaveBeenCalledOnce()
+  })
+
+  it('passes on the items the shell asks to show, and ignores requests for nothing', () => {
+    mocks.events.On.mockReturnValue(vi.fn())
+    const listener = vi.fn()
+
+    platform.onRevealItem(listener)
+
+    expect(mocks.events.On).toHaveBeenCalledWith(platform.revealItemEvent, expect.any(Function))
+
+    const handler = mocks.events.On.mock.calls.at(-1)?.[1] as (event: { data: unknown }) => void
+    handler({ data: { itemId: 7, url: 'https://github.com/acme-org/example-repo/pull/12' } })
+    handler({ data: { itemId: 8 } })
+    handler({ data: { itemId: 0, url: '' } })
+    handler({ data: { url: 'https://github.com/acme-org/example-repo/pull/12' } })
+    handler({ data: null })
+    handler({ data: 'nope' })
+
+    expect(listener.mock.calls).toEqual([
+      [{ itemId: 7, url: 'https://github.com/acme-org/example-repo/pull/12' }],
+      [{ itemId: 8, url: '' }],
+      [{ itemId: 0, url: 'https://github.com/acme-org/example-repo/pull/12' }],
+    ])
   })
 })

@@ -609,7 +609,9 @@ func TestRunnerValues(t *testing.T) {
 }
 
 // wailsBootstrapFiles are the only files allowed to import the desktop runtime: the
-// desktop main, its per-OS window options, and the desktop-tagged frontend embed.
+// desktop shell (the desktop main, the menu bar icon, and the notification banners, each
+// in a *_desktop.go file), its per-OS window options, and the desktop-tagged frontend
+// embed.
 func wailsBootstrapFiles() []string {
 	cmd := "cmd/" + brand.Slug + "/"
 

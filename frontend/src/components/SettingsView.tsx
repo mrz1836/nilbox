@@ -3,6 +3,7 @@ import { useEffect, useId, useState, type ReactNode, type SubmitEvent } from 're
 import { brand } from '../generated/brand'
 import { counted, errorMessage } from '../lib/format'
 import { kindPlural, promptApplies } from '../lib/launch'
+import { bannerStatusText, notificationKinds } from '../lib/notifications'
 import type { Theme } from '../lib/theme'
 import {
   commentThresholds,
@@ -15,10 +16,14 @@ import {
 import { presetFor, sizeKey, sizeLabel, windowPresets } from '../lib/windowSize'
 import {
   getAppInfo,
+  notificationBannerStatus,
   openInBrowser,
+  sendTestNotification,
   setCloneRoot,
   setDefaultPrompt,
   setDefaultProfile,
+  setMenuBar,
+  setNotificationBanner,
   setSnoozeDays,
   setSnoozeWake,
   setTerminal,
@@ -45,7 +50,16 @@ import { TrustSection } from './TrustSection'
 
 // SettingsSection is one section of the settings page.
 export type SettingsSection =
-  'account' | 'appearance' | 'snoozing' | 'launching' | 'profiles' | 'repositories' | 'trust' | 'files' | 'about'
+  | 'account'
+  | 'appearance'
+  | 'notifications'
+  | 'snoozing'
+  | 'launching'
+  | 'profiles'
+  | 'repositories'
+  | 'trust'
+  | 'files'
+  | 'about'
 
 type SectionId = SettingsSection
 
@@ -53,6 +67,7 @@ type SectionId = SettingsSection
 const sectionOrder: readonly SectionId[] = [
   'account',
   'appearance',
+  'notifications',
   'snoozing',
   'launching',
   'profiles',
@@ -65,6 +80,10 @@ const sectionOrder: readonly SectionId[] = [
 const sections: Readonly<Record<SectionId, { label: string; description: string }>> = {
   account: { label: 'Account', description: 'The GitHub account your inbox comes from.' },
   appearance: { label: 'Appearance', description: 'The theme, and the size the window opens at.' },
+  notifications: {
+    label: 'Notifications',
+    description: 'The menu bar icon, and the banners that tell you when something new needs you.',
+  },
   snoozing: {
     label: 'Snoozing',
     description: 'How long a snooze lasts, and what new activity brings an item back early.',
@@ -396,6 +415,158 @@ function SnoozingSection({ settings, onSaved }: SettingsSectionProps) {
         on time is marked <em>Back from snooze</em>. A dismissed item never comes back on its own: it stays in the{' '}
         <strong className="font-medium">Dismissed</strong> tab until you restore it. Both stay on this Mac, and GitHub
         never hears about them.
+      </p>
+    </div>
+  )
+}
+
+// TestState is where a test notification is: not sent, on its way, shown, or failed.
+type TestState = { state: 'idle' | 'sending' | 'sent' } | { state: 'failed'; error: string }
+
+// NotificationsSection holds the menu bar icon and which kinds of notification show a
+// banner, each saved as soon as it is switched, with a test banner and a note when banners
+// cannot show.
+function NotificationsSection({ settings, onSaved }: SettingsSectionProps) {
+  const id = useId()
+  const [error, setError] = useState('')
+  const [status, setStatus] = useState('')
+  const [test, setTest] = useState<TestState>({ state: 'idle' })
+  const off = settings.bannersOff ?? []
+
+  const readStatus = () => {
+    notificationBannerStatus()
+      .then(setStatus)
+      .catch((err: unknown) => {
+        console.error('could not read whether notifications are allowed', err)
+      })
+  }
+
+  useEffect(readStatus, [])
+
+  const save = (call: Promise<void>, next: Settings) => {
+    setError('')
+    call
+      .then(() => {
+        onSaved(next)
+      })
+      .catch((err: unknown) => {
+        setError(errorMessage(err))
+      })
+  }
+
+  const switchBanner = (kind: string, on: boolean) => {
+    const bannersOff = on ? off.filter((k) => k !== kind) : [...off, kind]
+
+    save(setNotificationBanner(kind, on), { ...settings, bannersOff })
+  }
+
+  const sendTest = () => {
+    setTest({ state: 'sending' })
+    sendTestNotification()
+      .then(() => {
+        setTest({ state: 'sent' })
+      })
+      .catch((err: unknown) => {
+        setTest({ state: 'failed', error: errorMessage(err) })
+      })
+      // Asking to show one may have changed whether they are allowed.
+      .finally(readStatus)
+  }
+
+  const statusText = bannerStatusText(status)
+
+  return (
+    <div className="flex flex-col gap-8">
+      <Group>
+        <SettingRow
+          label="Show in the menu bar"
+          controlId={`${id}-menu-bar`}
+          description={
+            <>
+              The icon shows how many items need you, and its menu lists them. While it is there, closing the window
+              keeps {brand.name} running and refreshing; quit from its menu or with ⌘Q.
+            </>
+          }
+        >
+          <input
+            id={`${id}-menu-bar`}
+            type="checkbox"
+            role="switch"
+            aria-describedby={`${id}-menu-bar-help`}
+            checked={settings.menuBar}
+            onChange={(e) => {
+              const menuBar = e.target.checked
+
+              save(setMenuBar(menuBar), { ...settings, menuBar })
+            }}
+            className={switchClass}
+          />
+        </SettingRow>
+      </Group>
+      <div className="flex flex-col gap-3">
+        <div>
+          <h3 className="text-sm font-semibold">Banners</h3>
+          <p className="mt-0.5 text-xs text-muted">
+            After each refresh, {brand.name} can show a banner for what newly needs you. More than three at once arrive
+            as one banner that sums them up. Clicking a banner shows its item here.
+          </p>
+        </div>
+        {statusText !== '' && (
+          <p className="rounded-md border border-warning px-3 py-2 text-xs text-warning">{statusText}</p>
+        )}
+        <Group>
+          {notificationKinds.map(({ kind, label, description }) => (
+            <SettingRow key={kind} label={label} controlId={`${id}-${kind}`} description={description}>
+              <input
+                id={`${id}-${kind}`}
+                type="checkbox"
+                role="switch"
+                aria-describedby={`${id}-${kind}-help`}
+                checked={!off.includes(kind)}
+                onChange={(e) => {
+                  switchBanner(kind, e.target.checked)
+                }}
+                className={switchClass}
+              />
+            </SettingRow>
+          ))}
+          <ChoiceRow
+            label="Test"
+            description={
+              <>
+                <span id={`${id}-test-help`}>
+                  {test.state === 'sent'
+                    ? 'Sent. If no banner showed, check Focus and System Settings › Notifications.'
+                    : 'Show a sample banner, asking for permission first if you have not been asked.'}
+                </span>
+                {test.state === 'failed' && (
+                  <span role="alert" className="mt-1 block text-danger">
+                    {test.error}
+                  </span>
+                )}
+              </>
+            }
+          >
+            <button
+              type="button"
+              aria-describedby={`${id}-test-help`}
+              disabled={test.state === 'sending' || status === 'unavailable'}
+              onClick={sendTest}
+              className={buttonClass}
+            >
+              {test.state === 'sending' ? 'Sending…' : 'Send a test'}
+            </button>
+          </ChoiceRow>
+        </Group>
+      </div>
+      {error !== '' && (
+        <p role="alert" className="-mt-5 text-xs text-danger">
+          {error}
+        </p>
+      )}
+      <p className="text-xs leading-relaxed text-muted">
+        The bell in the toolbar keeps every notification, banner or not, so you can look back at what arrived.
+        Notifications are made on this Mac from what the inbox already reads; nothing is sent anywhere else.
       </p>
     </div>
   )
@@ -1053,6 +1224,8 @@ export function SettingsView({
             {section === 'appearance' && (
               <AppearanceSection settings={settings} onSaved={onSaved} theme={theme} onThemeChange={onThemeChange} />
             )}
+            {section === 'notifications' &&
+              (settings === null ? loading : <NotificationsSection settings={settings} onSaved={onSaved} />)}
             {section === 'snoozing' &&
               (settings === null ? loading : <SnoozingSection settings={settings} onSaved={onSaved} />)}
             {section === 'launching' &&

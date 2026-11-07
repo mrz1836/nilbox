@@ -17,6 +17,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/settings"
@@ -251,7 +252,8 @@ func TestServicesListsBoundServices(t *testing.T) {
 	services := c.Services()
 
 	assert.Equal(t, []any{
-		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.AppInfo,
+		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.Notifications,
+		c.AppInfo,
 	}, services)
 
 	for _, s := range services {
@@ -308,6 +310,54 @@ func TestThemeChangesReachTheThemeNotifier(t *testing.T) {
 	require.Error(t, c.Settings.SetTheme(t.Context(), "sepia"))
 
 	assert.Equal(t, []string{settings.ThemeDark}, recorder.themes)
+}
+
+// menuBarRecorder records the menu bar settings the settings service announces.
+type menuBarRecorder struct {
+	changes []bool
+}
+
+func (r *menuBarRecorder) MenuBarChanged(on bool) {
+	r.changes = append(r.changes, on)
+}
+
+// posterStub is a notification center that shows every banner.
+type posterStub struct {
+	banners []notify.Banner
+}
+
+func (p *posterStub) Post(b notify.Banner) error {
+	p.banners = append(p.banners, b)
+
+	return nil
+}
+
+func (p *posterStub) Status() string { return notify.StatusOn }
+
+func (p *posterStub) Authorize() (bool, error) { return true, nil }
+
+func TestMenuBarAndNotificationsReachTheShell(t *testing.T) {
+	menuBar := &menuBarRecorder{}
+	poster := &posterStub{}
+
+	c := bootstrap(t, Options{
+		Paths:           appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
+		Home:            tempHome(t),
+		Runner:          &recordingRunner{},
+		MenuBarNotifier: menuBar,
+		Banners:         poster,
+	})
+
+	require.NoError(t, c.Settings.SetMenuBar(t.Context(), false))
+	assert.Equal(t, []bool{false}, menuBar.changes)
+
+	assert.Equal(t, notify.StatusOn, c.Notifications.BannerStatus())
+	require.NoError(t, c.Notifications.SendTest())
+	assert.Equal(t, []notify.Banner{notify.TestBanner()}, poster.banners)
+
+	log, err := c.Notifications.List(t.Context())
+	require.NoError(t, err)
+	assert.Empty(t, log.Items)
 }
 
 func TestThemeWithoutAThemeNotifier(t *testing.T) {

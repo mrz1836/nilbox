@@ -55,6 +55,9 @@ export function Pin(id: number): $CancellablePromise<$models.Snapshot> {
  * Refresh fetches the inbox from GitHub, stores it, and returns the new snapshot. On
  * failure the error is recorded as the snapshot's last error (unless ctx was canceled)
  * and the stored inbox is left as it was; the returned snapshot then shows that error.
+ *
+ * A refresh that stored what GitHub said tells the arrival sink, once the inbox's lock is
+ * released, about the items that newly need the user.
  */
 export function Refresh(): $CancellablePromise<$models.Snapshot> {
     return $Call.ByID(373787417);

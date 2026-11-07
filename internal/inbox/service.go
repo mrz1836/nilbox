@@ -108,13 +108,16 @@ type Notifier interface {
 	InboxUpdated()
 }
 
-// Config holds a Service's dependencies. Clock and Notifier are optional.
+// Config holds a Service's dependencies. Clock, Notifier, and Arrivals are optional.
 type Config struct {
 	DB       *gorm.DB
 	Tokens   TokenSource
 	Client   Client
 	Clock    Clock
 	Notifier Notifier
+
+	// Arrivals is told about the items that newly need the user after each refresh.
+	Arrivals ArrivalSink
 }
 
 // Service refreshes the inbox from GitHub and serves snapshots of it.
@@ -124,6 +127,7 @@ type Service struct {
 	client   Client
 	clock    Clock
 	notifier Notifier
+	arrivals ArrivalSink
 
 	// mu serializes refreshes, so a manual refresh and a scheduled one never interleave.
 	mu sync.Mutex
@@ -136,33 +140,25 @@ func NewService(cfg Config) *Service {
 		clock = systemClock{}
 	}
 
-	return &Service{db: cfg.DB, tokens: cfg.Tokens, client: cfg.Client, clock: clock, notifier: cfg.Notifier}
+	return &Service{
+		db: cfg.DB, tokens: cfg.Tokens, client: cfg.Client, clock: clock, notifier: cfg.Notifier,
+		arrivals: cfg.Arrivals,
+	}
 }
 
 // Refresh fetches the inbox from GitHub, stores it, and returns the new snapshot. On
 // failure the error is recorded as the snapshot's last error (unless ctx was canceled)
 // and the stored inbox is left as it was; the returned snapshot then shows that error.
+//
+// A refresh that stored what GitHub said tells the arrival sink, once the inbox's lock is
+// released, about the items that newly need the user.
 func (s *Service) Refresh(ctx context.Context) (Snapshot, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if err := s.refresh(ctx); err != nil {
-		if ctx.Err() != nil {
-			return Snapshot{}, fmt.Errorf("refresh the inbox: %w", err)
-		}
-
-		recordErr := s.recordFailure(ctx, err)
-
-		s.notify()
-
-		snap, _ := s.Snapshot(ctx) // best effort; the refresh error is what matters
-
-		return snap, errors.Join(err, recordErr)
+	snap, arrivals, err := s.refreshLocked(ctx)
+	if err == nil {
+		s.announce(ctx, arrivals)
 	}
 
-	s.notify()
-
-	return s.Snapshot(ctx)
+	return snap, err
 }
 
 // Snapshot returns the stored inbox: the three lists, the latest rate readings, and the
@@ -197,50 +193,79 @@ func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 	return snap, nil
 }
 
+// refreshLocked is Refresh under the inbox's lock: it returns the new snapshot and the
+// arrivals the refresh found.
+func (s *Service) refreshLocked(ctx context.Context) (Snapshot, []Arrival, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	arrivals, err := s.refresh(ctx)
+	if err != nil {
+		if ctx.Err() != nil {
+			return Snapshot{}, nil, fmt.Errorf("refresh the inbox: %w", err)
+		}
+
+		recordErr := s.recordFailure(ctx, err)
+
+		s.notify()
+
+		snap, _ := s.Snapshot(ctx) // best effort; the refresh error is what matters
+
+		return snap, nil, errors.Join(err, recordErr)
+	}
+
+	s.notify()
+
+	snap, err := s.Snapshot(ctx)
+
+	return snap, arrivals, err
+}
+
 // refresh does one fetch-and-store cycle. The details of the items already listed are
 // read alongside the inbox query, which takes as long; only items new since the last
 // refresh wait for a second details request after it.
-func (s *Service) refresh(ctx context.Context) error {
+func (s *Service) refresh(ctx context.Context) ([]Arrival, error) {
 	tok, err := s.tokens.Token(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	listed, err := listedNodeIDs(s.db.WithContext(ctx))
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	got, err := s.fetch(ctx, tok, listed)
 	if err != nil {
-		return github.Redact(err, tok)
+		return nil, github.Redact(err, tok)
 	}
 
 	warning, err := github.CheckScopes(got.inbox.OAuthScopes)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if added := newIDs(nodeIDs(got.inbox), listed); len(added) > 0 {
 		more, detailsErr := s.client.FetchDetails(ctx, tok, added)
 		if detailsErr != nil {
-			return github.Redact(fmt.Errorf("read the item details: %w", detailsErr), tok)
+			return nil, github.Redact(fmt.Errorf("read the item details: %w", detailsErr), tok)
 		}
 
 		got.details.Add(more)
 	}
 
 	if got.files, err = s.checkFiles(ctx, tok, got); err != nil {
-		return github.Redact(err, tok)
+		return nil, github.Redact(err, tok)
 	}
 
-	if err = s.save(ctx, got, warning); err != nil {
-		return github.Redact(err, tok)
+	arrivals, err := s.save(ctx, got, warning)
+	if err != nil {
+		return nil, github.Redact(err, tok)
 	}
 
 	s.cacheAvatar(ctx, got.inbox.Viewer.AvatarURL)
 
-	return nil
+	return arrivals, nil
 }
 
 // refreshed is what one refresh read from GitHub.
@@ -345,53 +370,75 @@ func dropClosed(inbox *github.Inbox) {
 }
 
 // save stores what a refresh read in one transaction: the inbox and its items' details,
-// the repositories of items left out, and the rate readings.
-func (s *Service) save(ctx context.Context, got refreshed, warning github.ScopeWarning) error {
-	now := s.now()
-	inbox, limits, details := got.inbox, got.limits, got.details
-
+// the repositories of items left out, and the rate readings. It returns the items that
+// newly need the user (see Arrival).
+func (s *Service) save(ctx context.Context, got refreshed, warning github.ScopeWarning) ([]Arrival, error) {
 	var items map[string]github.ItemDetails
-	if details != nil {
-		items = details.Items
+	if got.details != nil {
+		items = got.details.Items
 	}
+
+	var arrivals []Arrival
 
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		w := &writer{tx: tx, now: now, repos: make(map[string]int64), details: items, files: got.files}
+		w := &writer{tx: tx, now: s.now(), repos: make(map[string]int64), details: items, files: got.files}
 
-		if err := w.saveAccount(inbox.Viewer.Login); err != nil {
-			return err
-		}
+		var err error
 
-		if err := w.saveRepos(got.archived); err != nil {
-			return err
-		}
+		arrivals, err = w.saveRefresh(got, warning)
 
-		if err := w.saveItems(inbox); err != nil {
-			return err
-		}
-
-		if err := w.saveRates(graphQLReading(inbox.RateLimit, details), limits); err != nil {
-			return err
-		}
-
-		return setPrefs(tx, now, []pref{
-			{prefViewer, inbox.Viewer.Login},
-			{prefViewerName, inbox.Viewer.Name},
-			{prefViewerURL, inbox.Viewer.URL},
-			{prefViewerAvatarURL, inbox.Viewer.AvatarURL},
-			{prefTotalReviewRequested, strconv.Itoa(inbox.ReviewRequested.IssueCount)},
-			{prefTotalAuthored, strconv.Itoa(inbox.Authored.IssueCount)},
-			{prefTotalAssigned, strconv.Itoa(inbox.Assigned.IssueCount)},
-			{prefLastRefreshAt, now.Format(time.RFC3339)},
-			{prefLastError, ""},
-			{prefScopeWarning, string(warning)},
-		})
+		return err
 	})
 	if err != nil {
-		return fmt.Errorf("save the inbox: %w", err)
+		return nil, fmt.Errorf("save the inbox: %w", err)
 	}
 
-	return nil
+	return arrivals, nil
+}
+
+// saveRefresh stores what a refresh read, in the writer's transaction, and returns the
+// items that newly need the user.
+func (w *writer) saveRefresh(got refreshed, warning github.ScopeWarning) ([]Arrival, error) {
+	inbox := got.inbox
+
+	if err := w.saveAccount(inbox.Viewer.Login); err != nil {
+		return nil, err
+	}
+
+	watch, err := w.watchArrivals(inbox)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = w.saveRepos(got.archived); err != nil {
+		return nil, err
+	}
+
+	if err = w.saveItems(inbox); err != nil {
+		return nil, err
+	}
+
+	arrivals, err := w.arrivals(watch)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = w.saveRates(graphQLReading(inbox.RateLimit, got.details), got.limits); err != nil {
+		return nil, err
+	}
+
+	return arrivals, setPrefs(w.tx, w.now, []pref{
+		{prefViewer, inbox.Viewer.Login},
+		{prefViewerName, inbox.Viewer.Name},
+		{prefViewerURL, inbox.Viewer.URL},
+		{prefViewerAvatarURL, inbox.Viewer.AvatarURL},
+		{prefTotalReviewRequested, strconv.Itoa(inbox.ReviewRequested.IssueCount)},
+		{prefTotalAuthored, strconv.Itoa(inbox.Authored.IssueCount)},
+		{prefTotalAssigned, strconv.Itoa(inbox.Assigned.IssueCount)},
+		{prefLastRefreshAt, w.now.Format(time.RFC3339)},
+		{prefLastError, ""},
+		{prefScopeWarning, string(warning)},
+	})
 }
 
 // cacheAvatar downloads the viewer's avatar and stores it as a data URL, unless the one

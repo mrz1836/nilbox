@@ -1026,7 +1026,8 @@ func TestSaveWithoutDetails(t *testing.T) {
 	h := newHarness(t)
 	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
 
-	require.NoError(t, h.svc.save(t.Context(), refreshed{inbox: h.client.inbox, limits: restLimits()}, ""))
+	_, err := h.svc.save(t.Context(), refreshed{inbox: h.client.inbox, limits: restLimits()}, "")
+	require.NoError(t, err)
 
 	snap, err := h.svc.Snapshot(t.Context())
 	require.NoError(t, err)

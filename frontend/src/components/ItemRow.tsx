@@ -39,6 +39,8 @@ export interface ItemRowProps {
   triage?: TriageActions
   // onFilesSettings opens Settings → Sensitive files from the sensitive-file panel.
   onFilesSettings?: () => void
+  // highlighted marks the row the menu bar or a notification just asked to show.
+  highlighted?: boolean
 }
 
 // tagClass is a status tag: weight and color mark it, with no pill around it.
@@ -151,11 +153,23 @@ function TriageTag({ item, tab, now }: { item: InboxItem; tab: TriageTab; now: D
 // reviews, comments, size, labels). The triage buttons and the launch button sit on the
 // right, and a launch's outcome spans the card below. Long titles are cut short with an
 // ellipsis, so every card keeps the same shape.
-export function ItemRow({ item, now, launch, tab = 'inbox', triage, onFilesSettings }: ItemRowProps) {
+export function ItemRow({
+  item,
+  now,
+  launch,
+  tab = 'inbox',
+  triage,
+  onFilesSettings,
+  highlighted = false,
+}: ItemRowProps) {
   const conflicting = item.details?.mergeable === 'CONFLICTING'
 
   return (
-    <li className="group grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-start gap-x-3 border-b border-border px-4 py-3 transition-colors last:border-b-0 hover:bg-raised/40">
+    <li
+      data-item-id={item.id}
+      data-highlighted={highlighted || undefined}
+      className="group grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-start gap-x-3 border-b border-border px-4 py-3 transition-colors last:border-b-0 hover:bg-raised/40 data-highlighted:bg-accent/10"
+    >
       <KindIcon item={item} />
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">

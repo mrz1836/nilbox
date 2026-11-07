@@ -135,6 +135,26 @@ export function triageList(list: InboxList, now: Date): TriagedList {
   return { inbox, snoozed, dismissed, total }
 }
 
+// findItem looks an item up in a snapshot's lists.
+export function findItem(snapshot: InboxSnapshot, id: number): InboxItem | undefined {
+  for (const list of [snapshot.reviewRequested, snapshot.authored, snapshot.assigned]) {
+    const found = list.items?.find((item) => item.id === id)
+
+    if (found !== undefined) {
+      return found
+    }
+  }
+
+  return undefined
+}
+
+// tabOf is the tab of a sorted list that holds an item, or null when none does.
+export function tabOf(triaged: TriagedList, id: number): TriageTab | null {
+  const tabs: readonly TriageTab[] = ['inbox', 'snoozed', 'dismissed']
+
+  return tabs.find((tab) => triaged[tab].some((item) => item.id === id)) ?? null
+}
+
 // inboxCount counts the items in the inbox at now: those in any list's own tab, neither
 // snoozed nor dismissed. An item in more than one list, such as a pull request you wrote
 // and are assigned, counts once.

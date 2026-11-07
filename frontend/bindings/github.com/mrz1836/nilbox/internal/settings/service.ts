@@ -47,6 +47,14 @@ export function MatchSensitivePath(path: string): $CancellablePromise<sensitive$
 }
 
 /**
+ * MenuBar returns whether the app shows its menu bar icon: the stored setting, or
+ * DefaultMenuBar when none is stored or the stored value cannot be read.
+ */
+export function MenuBar(): $CancellablePromise<boolean> {
+    return $Call.ByID(2810209881);
+}
+
+/**
  * ResetTrustedBots goes back to the default trusted bots.
  */
 export function ResetTrustedBots(): $CancellablePromise<void> {
@@ -68,6 +76,22 @@ export function SetCloneRoot(root: string): $CancellablePromise<void> {
  */
 export function SetDefaultProfile(name: string): $CancellablePromise<void> {
     return $Call.ByID(3789750455, name);
+}
+
+/**
+ * SetMenuBar stores whether the app shows its menu bar icon. Once it is stored, the menu
+ * bar notifier, if any, is told.
+ */
+export function SetMenuBar(on: boolean): $CancellablePromise<void> {
+    return $Call.ByID(1825092391, on);
+}
+
+/**
+ * SetNotificationBanner turns the banners of one kind of notification on or off (see the
+ * notify package for the kinds). The notification history keeps every kind either way.
+ */
+export function SetNotificationBanner(kind: string, on: boolean): $CancellablePromise<void> {
+    return $Call.ByID(515060680, kind, on);
 }
 
 /**

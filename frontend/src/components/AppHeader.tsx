@@ -1,8 +1,10 @@
 import { counted, formatCount } from '../lib/format'
-import type { Account, RateGauge } from '../platform'
+import type { NotificationsState } from '../lib/useNotifications'
+import type { Account, AppNotification, RateGauge } from '../platform'
 import { AccountMenu } from './AccountMenu'
 import { BudgetMenu } from './BudgetMenu'
 import { Logo } from './Logo'
+import { NotificationsMenu } from './NotificationsMenu'
 
 // View is the page the window shows. Settings is opened from the account menu (or ⌘,)
 // rather than from a tab.
@@ -29,6 +31,12 @@ export interface AppHeaderProps {
   worktreeCount?: number
   worktreeAttention?: number
   onOpenSettings: () => void
+  // notifications is the notification history the bell shows; without it there is no bell.
+  // onOpenNotification shows an entry's item, and onNotificationSettings opens their
+  // settings.
+  notifications?: NotificationsState
+  onOpenNotification?: (entry: AppNotification) => void
+  onNotificationSettings?: () => void
 }
 
 // TabCount is what a view tab counts: how many, what that means, and whether some of
@@ -70,11 +78,21 @@ function tabCount(id: View, props: AppHeaderProps): TabCount {
 
 // AppHeader is the window's single toolbar, sitting beside the macOS window controls:
 // the logo, the view tabs (Inbox and Worktrees with their counts, Prompts), and on the
-// right the API budget gauge and the account menu. The bar itself drags the window
+// right the notification bell, the API budget gauge, and the account menu. The bar itself drags the window
 // (--wails-draggable), double-clicking it zooms, and the controls opt out so they take
 // clicks. The left inset clears the traffic lights.
 export function AppHeader(props: AppHeaderProps) {
-  const { view, onViewChange, account, gauge, now, onOpenSettings } = props
+  const {
+    view,
+    onViewChange,
+    account,
+    gauge,
+    now,
+    onOpenSettings,
+    notifications,
+    onOpenNotification = () => undefined,
+    onNotificationSettings = onOpenSettings,
+  } = props
 
   return (
     <header className="relative z-30 flex h-[52px] shrink-0 items-center gap-4 border-b border-border bg-surface pr-3 pl-20 select-none [--wails-draggable:drag]">
@@ -120,6 +138,14 @@ export function AppHeader(props: AppHeaderProps) {
         })}
       </nav>
       <div className="ml-auto flex items-center gap-1 [--wails-draggable:no-drag]">
+        {notifications !== undefined && (
+          <NotificationsMenu
+            notifications={notifications}
+            now={now}
+            onOpen={onOpenNotification}
+            onSettings={onNotificationSettings}
+          />
+        )}
         <BudgetMenu gauge={gauge} now={now} />
         <AccountMenu account={account} onOpenSettings={onOpenSettings} />
       </div>

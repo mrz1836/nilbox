@@ -11,6 +11,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/model"
 	"github.com/mrz1836/nilbox/internal/sensitive"
+	"github.com/mrz1836/nilbox/internal/snooze"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
 
@@ -104,6 +105,11 @@ type writer struct {
 	// files holds the outcome of each file check by node ID. An item without an entry
 	// keeps the check stored before.
 	files map[string]fileCheck
+
+	// saved lists the items stored, in the order the lists returned them, and woke the
+	// snoozes new activity ended early, with what ended them, for telling arrivals.
+	saved []savedEntry
+	woke  map[int64]snooze.Reasons
 }
 
 // saveAccount upserts the signed-in account and remembers its id.
@@ -209,6 +215,8 @@ func (w *writer) saveItem(repoID int64, e *entry) error {
 	if err != nil {
 		return fmt.Errorf("save the item %s/%s#%d: %w", it.RepoOwner, it.RepoName, it.Number, err)
 	}
+
+	w.saved = append(w.saved, savedEntry{id: id, entry: e})
 
 	if err = w.saveDetails(id, it); err != nil {
 		return err

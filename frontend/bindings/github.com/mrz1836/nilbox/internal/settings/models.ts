@@ -83,6 +83,18 @@ export interface Settings {
      * patterns, for the settings page to describe.
      */
     "sensitiveCategories": sensitive$0.Category[] | null;
+
+    /**
+     * MenuBar shows the app's icon in the menu bar, with how many items need the user and
+     * a short list of them; closing the window then keeps the app running there.
+     */
+    "menuBar": boolean;
+
+    /**
+     * BannersOff lists the kinds of notification (see the notify package) whose banners
+     * are off. The notification history keeps every kind either way.
+     */
+    "bannersOff": string[] | null;
 }
 
 /**

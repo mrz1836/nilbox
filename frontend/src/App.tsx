@@ -1,19 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { AppHeader, type View } from './components/AppHeader'
-import { InboxView, type LaunchOptions } from './components/InboxView'
+import { InboxView, type LaunchOptions, type Reveal } from './components/InboxView'
 import { PromptsView } from './components/PromptsView'
 import { SettingsView, type SettingsSection } from './components/SettingsView'
 import { Toast, type ToastMessage } from './components/Toast'
 import { WorktreesView } from './components/WorktreesView'
-import { defaultSnoozeDays, inboxCount } from './lib/triage'
+import { defaultSnoozeDays, findItem, inboxCount } from './lib/triage'
 import { useCollapsedSections } from './lib/useCollapsedSections'
 import { useInbox } from './lib/useInbox'
 import { useLaunchConfig } from './lib/useLaunchConfig'
+import { useNotifications } from './lib/useNotifications'
 import { useTheme } from './lib/useTheme'
 import {
   lastWorktreeSweep,
+  onRevealItem,
   onWorktreesUpdated,
+  openInBrowser,
+  type AppNotification,
+  type InboxSnapshot,
   type RemoveResult,
   type Settings,
   type WorktreesSnapshot,
@@ -89,16 +94,68 @@ function useWorktreeSweeps() {
   return { count, attention, seq, toast, listed, closeToast }
 }
 
+// useReveal shows an item in the inbox when asked: by the menu bar, a notification, or an
+// entry in the notification history. An item no longer in the inbox opens on GitHub
+// instead. show opens the inbox at the item, so reveal is the request the inbox view
+// follows; clear drops it once another view opens.
+function useReveal(snapshot: InboxSnapshot | null, openInbox: () => void) {
+  const [reveal, setReveal] = useState<Reveal | null>(null)
+  const seq = useRef(0)
+  // latest is the snapshot as last shown, read when a request arrives.
+  const latest = useRef(snapshot)
+
+  useEffect(() => {
+    latest.current = snapshot
+  }, [snapshot])
+
+  const show = useCallback(
+    (itemId: number, url: string) => {
+      const current = latest.current
+
+      if (itemId > 0 && current !== null && findItem(current, itemId) !== undefined) {
+        seq.current += 1
+        openInbox()
+        setReveal({ id: itemId, seq: seq.current })
+
+        return
+      }
+
+      if (url !== '') {
+        openInBrowser(url).catch((err: unknown) => {
+          console.error('could not open the item in the browser', err)
+        })
+      }
+    },
+    [openInbox],
+  )
+
+  useEffect(
+    () =>
+      onRevealItem(({ itemId, url }) => {
+        show(itemId, url)
+      }),
+    [show],
+  )
+
+  const clear = useCallback(() => {
+    setReveal(null)
+  }, [])
+
+  return { reveal, show, clear }
+}
+
 // App is the window's root: the toolbar over the active page. It holds the state the
 // pages share: the theme, the inbox (the lists, the account, and the API budget), the
 // launch configuration (settings, profiles, prompts, launch defaults, and each item's
 // resolved launch settings) that the rows, the Prompts page, and the settings page use,
-// which inbox lists are collapsed, and the automatic worktree cleanup's latest news.
+// which inbox lists are collapsed, the automatic worktree cleanup's latest news, the
+// notification history, and the item the menu bar or a notification last asked to show.
 export function App() {
   const theme = useTheme()
   const inbox = useInbox()
   const config = useLaunchConfig(inbox.snapshot)
   const sweeps = useWorktreeSweeps()
+  const notifications = useNotifications()
   // sections lives here rather than in the inbox page, so leaving the page and coming
   // back keeps the lists as they were without reading them again.
   const sections = useCollapsedSections()
@@ -114,14 +171,25 @@ export function App() {
   // toast's View asks; switching views clears it.
   const [historyFocus, setHistoryFocus] = useState(false)
 
-  const changeView = useCallback((next: View) => {
-    if (next === 'prompts') {
-      setPromptsOpened(true)
-    }
-
+  const openInbox = useCallback(() => {
     setHistoryFocus(false)
-    setView(next)
+    setView('inbox')
   }, [])
+  const revealer = useReveal(inbox.snapshot, openInbox)
+  const { clear: clearReveal } = revealer
+
+  const changeView = useCallback(
+    (next: View) => {
+      if (next === 'prompts') {
+        setPromptsOpened(true)
+      }
+
+      setHistoryFocus(false)
+      clearReveal()
+      setView(next)
+    },
+    [clearReveal],
+  )
 
   const { closeToast: closeSweepToast } = sweeps
 
@@ -165,6 +233,21 @@ export function App() {
   const openFilesSettings = useCallback(() => {
     openSettingsAt('files')
   }, [openSettingsAt])
+
+  // openNotificationSettings opens the menu bar and notification settings.
+  const openNotificationSettings = useCallback(() => {
+    openSettingsAt('notifications')
+  }, [openSettingsAt])
+
+  const { show: showItem } = revealer
+
+  // openNotification shows a history entry's item.
+  const openNotification = useCallback(
+    (entry: AppNotification) => {
+      showItem(entry.itemId, entry.url)
+    },
+    [showItem],
+  )
 
   const closeSettings = useCallback(() => {
     setView(returnView)
@@ -237,6 +320,9 @@ export function App() {
         worktreeCount={sweeps.count}
         worktreeAttention={sweeps.attention}
         onOpenSettings={openSettings}
+        notifications={notifications}
+        onOpenNotification={openNotification}
+        onNotificationSettings={openNotificationSettings}
       />
       {config.error !== '' && (
         <p role="alert" className="mx-4 mt-4 rounded-md border border-danger px-3 py-2 text-sm text-danger">
@@ -255,6 +341,7 @@ export function App() {
             onFilesSettings={openFilesSettings}
             collapsed={sections.collapsed}
             onCollapse={sections.setCollapsed}
+            reveal={revealer.reveal}
           />
         )}
         {view === 'worktrees' && (

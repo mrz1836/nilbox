@@ -34,3 +34,21 @@ func windowOptions(dark bool, size settings.WindowSize) application.WebviewWindo
 func applyAppearance(theme string) {
 	application.InvokeSync(func() { setNativeAppearance(theme) })
 }
+
+// activateApp brings the app to the front, on the main thread, as a click on its menu bar
+// icon or one of its notifications asks.
+func activateApp() {
+	application.InvokeSync(activateNative)
+}
+
+// addSectionHeader heads a run of menu items: a native section header where macOS has them
+// (14 and later), and a disabled item, which reads the same way, before.
+func addSectionHeader(m *application.Menu, title string) {
+	if nativeSectionHeaders() {
+		m.AddSectionHeader(title)
+
+		return
+	}
+
+	m.Add(title).SetEnabled(false)
+}

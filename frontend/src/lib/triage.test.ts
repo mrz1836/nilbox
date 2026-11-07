@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { item, list, snapshot } from '../test/fixtures'
 import {
   capitalize,
+  findItem,
   formatFull,
   formatWhen,
   inboxCount,
@@ -13,6 +14,7 @@ import {
   snoozeEnd,
   snoozeLength,
   snoozeShort,
+  tabOf,
   triageList,
   wakeParts,
   wakeSummary,
@@ -172,5 +174,29 @@ describe('wake reasons', () => {
   it('says nothing when nothing woke it', () => {
     expect(wakeSummary(null)).toBe('')
     expect(wakeSummary({ commits: 0, forcePushed: false, review: 'unknown', comments: 0 })).toBe('')
+  })
+})
+
+describe('findItem and tabOf', () => {
+  const fresh = item({ id: 1 })
+  const snoozed = item({ id: 2, snoozedUntil: '2026-06-18T12:00:00Z' })
+  const dismissed = item({ id: 3, dismissedAt: '2026-06-15T09:00:00Z' })
+
+  it('finds an item in any list', () => {
+    const snap = snapshot({ authored: list([fresh]), assigned: list([snoozed]) })
+
+    expect(findItem(snap, 2)).toBe(snoozed)
+    expect(findItem(snap, 1)).toBe(fresh)
+    expect(findItem(snap, 9)).toBeUndefined()
+    expect(findItem(snapshot({ assigned: { items: null, shown: 0, total: 0 } }), 1)).toBeUndefined()
+  })
+
+  it('finds the tab that holds an item', () => {
+    const triaged = triageList(list([fresh, snoozed, dismissed]), now)
+
+    expect(tabOf(triaged, 1)).toBe('inbox')
+    expect(tabOf(triaged, 2)).toBe('snoozed')
+    expect(tabOf(triaged, 3)).toBe('dismissed')
+    expect(tabOf(triaged, 9)).toBeNull()
   })
 })

@@ -2,6 +2,7 @@
 
 import type {
   Account,
+  AppNotification,
   FileCheck,
   InboxItem,
   ItemDetails,
@@ -52,6 +53,25 @@ export function item(overrides: Partial<InboxItem> = {}): InboxItem {
     snoozedUntil: '',
     wokeBy: null,
     pinnedAt: '',
+    ...overrides,
+  }
+}
+
+// notification is an unread review request for pull request 7 of example-repo.
+export function notification(overrides: Partial<AppNotification> = {}): AppNotification {
+  return {
+    id: 1,
+    kind: 'review_requested',
+    createdAt: '2026-06-15T11:55:00Z',
+    read: false,
+    itemId: 1,
+    itemKind: 'pr',
+    repo: 'acme-org/example-repo',
+    number: 7,
+    title: 'Add the widget cache',
+    url: 'https://github.com/acme-org/example-repo/pull/7',
+    author: 'octo-other',
+    detail: '',
     ...overrides,
   }
 }
@@ -109,6 +129,8 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     defaultWindowSize: { width: 1280, height: 800 },
     sensitiveFiles: { scope: 'collaborators', off: [], patterns: [] },
     sensitiveCategories: sensitiveCategories(),
+    menuBar: true,
+    bannersOff: [],
     ...overrides,
   }
 }

@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
-import { account, rate, unknownRate } from '../test/fixtures'
+import { account, notification, rate, unknownRate } from '../test/fixtures'
 import { AppHeader, type AppHeaderProps } from './AppHeader'
 
 vi.mock('../platform', () => ({ openInBrowser: vi.fn() }))
@@ -25,6 +25,38 @@ function renderHeader(overrides: Partial<AppHeaderProps> = {}) {
 }
 
 describe('AppHeader', () => {
+  it('shows no notification bell without a history', () => {
+    renderHeader()
+    expect(screen.queryByRole('button', { name: /^Notifications/ })).not.toBeInTheDocument()
+  })
+
+  it('opens a notification and the notification settings from the bell', async () => {
+    const entry = notification()
+    const props = renderHeader({
+      notifications: { log: { items: [entry], unread: 1 }, error: '', markRead: vi.fn(), clear: vi.fn() },
+      onOpenNotification: vi.fn(),
+      onNotificationSettings: vi.fn(),
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Notifications, 1 unread' }))
+    await userEvent.click(screen.getByRole('button', { name: /Add the widget cache/ }))
+    expect(props.onOpenNotification).toHaveBeenCalledWith(entry)
+
+    await userEvent.click(screen.getByRole('button', { name: /^Notifications/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Notification settings' }))
+    expect(props.onNotificationSettings).toHaveBeenCalledOnce()
+  })
+
+  it('opens the general settings from the bell when given no notification settings', async () => {
+    const props = renderHeader({
+      notifications: { log: { items: [], unread: 0 }, error: '', markRead: vi.fn(), clear: vi.fn() },
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Notifications' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Notification settings' }))
+    expect(props.onOpenSettings).toHaveBeenCalledOnce()
+  })
+
   it('is one toolbar: the product name, the views, the budget gauge, and the account', () => {
     renderHeader()
 

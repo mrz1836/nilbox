@@ -48,7 +48,8 @@ func (Brand) Generate() error {
 
 // Icons renders the app icon artwork, build/appicon.svg, into the bundle's icon set,
 // build/darwin/icons.icns, and the Dock icon a development run shows,
-// cmd/nilbox/appicon.png, then records which artwork they came from. It regenerates the
+// cmd/nilbox/appicon.png; renders the menu bar icon artwork, build/trayicon.svg, into
+// cmd/nilbox/trayicon.png; then records which artwork they came from. It regenerates the
 // brand files first. It needs macOS for iconutil and rsvg-convert (brew install librsvg);
 // the outputs are committed, so only a change to the mark or the artwork needs it.
 //
@@ -84,12 +85,17 @@ func (Brand) Icons() error {
 		return err
 	}
 
+	err = renderSVG(brandgen.TraySVGPath, brandgen.TrayIconSize, filepath.FromSlash(brandgen.TrayIconPath))
+	if err != nil {
+		return err
+	}
+
 	if err = brandgen.WriteIconStamp("."); err != nil {
 		return err
 	}
 
 	//nolint:forbidigo // mage target output
-	fmt.Printf("✅ Rendered %s and %s\n", brandgen.IconSetPath, brandgen.DevIconPath)
+	fmt.Printf("✅ Rendered %s, %s, and %s\n", brandgen.IconSetPath, brandgen.DevIconPath, brandgen.TrayIconPath)
 
 	return nil
 }
@@ -116,13 +122,19 @@ func renderIconSet(dir string) error {
 	return nil
 }
 
-// renderIcon rasterizes the icon artwork into a square PNG of the given side.
+// renderIcon rasterizes the app icon artwork into a square PNG of the given side.
 func renderIcon(size int, out string) error {
+	return renderSVG(brandgen.IconSVGPath, size, out)
+}
+
+// renderSVG rasterizes the artwork at svgPath, slash-separated, into a square PNG of the
+// given side.
+func renderSVG(svgPath string, size int, out string) error {
 	side := strconv.Itoa(size)
 
-	err := sh.Run(svgRenderer, "--width", side, "--height", side, "--output", out, filepath.FromSlash(brandgen.IconSVGPath))
+	err := sh.Run(svgRenderer, "--width", side, "--height", side, "--output", out, filepath.FromSlash(svgPath))
 	if err != nil {
-		return fmt.Errorf("render the %s-pixel icon: %w", side, err)
+		return fmt.Errorf("render the %s-pixel %s: %w", side, filepath.Base(svgPath), err)
 	}
 
 	return nil

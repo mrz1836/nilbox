@@ -43,6 +43,25 @@ beforeEach(() => {
 })
 
 describe('ItemRow', () => {
+  it('names its item for the inbox to find, and marks it when highlighted', () => {
+    const { rerender } = render(
+      <ul>
+        <ItemRow item={item({ id: 42 })} now={now} launch={launch} />
+      </ul>,
+    )
+
+    const row = screen.getByRole('listitem')
+    expect(row).toHaveAttribute('data-item-id', '42')
+    expect(row).not.toHaveAttribute('data-highlighted')
+
+    rerender(
+      <ul>
+        <ItemRow item={item({ id: 42 })} now={now} launch={launch} highlighted />
+      </ul>,
+    )
+    expect(row).toHaveAttribute('data-highlighted', 'true')
+  })
+
   it('shows a pull request on three lines', () => {
     renderRow(item({ title: 'Add the widget cache', details: details() }))
 

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useCollapsedSections } from '../lib/useCollapsedSections'
 import { useInbox } from '../lib/useInbox'
 import { item, itemResolution, launchResult, list, profile, prompts, snapshot } from '../test/fixtures'
-import { InboxView, type LaunchOptions } from './InboxView'
+import { InboxView, type LaunchOptions, type Reveal } from './InboxView'
 
 const platform = vi.hoisted(() => ({
   getInboxSnapshot: vi.fn(),
@@ -45,10 +45,11 @@ interface HarnessProps {
   launch: LaunchOptions | null
   clock: () => Date
   snoozeDays?: number
+  reveal?: Reveal | null
 }
 
 // Harness renders the view over the real inbox state and collapsed lists, the way App does.
-function Harness({ launch, clock, snoozeDays = 3 }: HarnessProps) {
+function Harness({ launch, clock, snoozeDays = 3, reveal = null }: HarnessProps) {
   const inbox = useInbox(clock)
   const sections = useCollapsedSections()
 
@@ -60,6 +61,7 @@ function Harness({ launch, clock, snoozeDays = 3 }: HarnessProps) {
       onSnoozeSettings={openSnoozeSettings}
       collapsed={sections.collapsed}
       onCollapse={sections.setCollapsed}
+      reveal={reveal}
     />
   )
 }
@@ -906,5 +908,95 @@ describe('InboxView at nil', () => {
 
     expect(await review.findByRole('button', { name: 'Add the widget cache' })).toBeInTheDocument()
     expect(party()).not.toBeInTheDocument()
+  })
+})
+
+describe('InboxView reveal', () => {
+  const fresh = item({ id: 1, title: 'Add the widget cache' })
+  const snoozed = item({ id: 2, number: 8, title: 'Bump the parser', snoozedUntil: '2026-06-18T12:00:00Z' })
+  const assigned = item({ id: 5, number: 21, title: 'Crash on start' })
+  const scrolled = vi.fn()
+
+  beforeEach(() => {
+    // jsdom does not scroll; the row's call is what matters.
+    Element.prototype.scrollIntoView = scrolled
+  })
+
+  afterEach(() => {
+    delete (Element.prototype as Partial<Element>).scrollIntoView
+  })
+
+  // rowOf returns the row of the item titled title in a list.
+  function rowOf(list: Awaited<ReturnType<typeof section>>, title: string): HTMLElement {
+    const row = list.getByRole('button', { name: title }).closest('li')
+
+    if (row === null) {
+      throw new Error(`no row shows ${title}`)
+    }
+
+    return row
+  }
+
+  it('opens a collapsed list at the tab that holds the item, and highlights its row for a moment', async () => {
+    platform.getCollapsedSections.mockResolvedValue(['reviewRequested'])
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh, snoozed]) }))
+    // Fake time runs along with real time, so the queries' own waits still pass.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: true })
+
+    render(<Harness launch={launchOptions} clock={clock} reveal={{ id: 2, seq: 1 }} />)
+
+    const review = await section('Review requested')
+    await waitFor(() => {
+      expect(review.getByRole('button', { name: 'Collapse Review requested' })).toHaveAttribute('aria-expanded', 'true')
+    })
+    expect(platform.setSectionCollapsed).toHaveBeenCalledWith('reviewRequested', false)
+    expect(review.getByRole('tab', { name: 'Snoozed 1' })).toHaveAttribute('aria-selected', 'true')
+
+    const row = rowOf(review, 'Bump the parser')
+    expect(row).toHaveAttribute('data-highlighted', 'true')
+    await waitFor(() => {
+      expect(scrolled).toHaveBeenCalledWith(expect.objectContaining({ block: 'center' }))
+    })
+
+    act(() => {
+      vi.advanceTimersByTime(2400)
+    })
+
+    expect(row).not.toHaveAttribute('data-highlighted')
+  })
+
+  it('shows an item in the first list that holds it, and leaves a list collapsed afterwards alone', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ reviewRequested: list([fresh]), assigned: list([assigned, fresh]) }),
+    )
+
+    const { rerender } = render(<Harness launch={launchOptions} clock={clock} reveal={{ id: 1, seq: 1 }} />)
+
+    const review = await section('Review requested')
+    await waitFor(() => {
+      expect(rowOf(review, 'Add the widget cache')).toHaveAttribute('data-highlighted', 'true')
+    })
+    expect(rowOf(await section('Assigned'), 'Add the widget cache')).not.toHaveAttribute('data-highlighted')
+
+    // Collapsing the list after the reveal keeps it collapsed.
+    await userEvent.click(review.getByRole('button', { name: 'Collapse Review requested' }))
+    rerender(<Harness launch={launchOptions} clock={clock} reveal={{ id: 1, seq: 1 }} />)
+    expect(review.getByRole('button', { name: 'Expand Review requested' })).toBeInTheDocument()
+
+    // Asking again opens it again.
+    rerender(<Harness launch={launchOptions} clock={clock} reveal={{ id: 1, seq: 2 }} />)
+    await waitFor(() => {
+      expect(review.getByRole('button', { name: 'Collapse Review requested' })).toBeInTheDocument()
+    })
+  })
+
+  it('ignores an item that is in no list', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
+
+    render(<Harness launch={launchOptions} clock={clock} reveal={{ id: 99, seq: 1 }} />)
+
+    const review = await section('Review requested')
+    expect(rowOf(review, 'Add the widget cache')).not.toHaveAttribute('data-highlighted')
+    expect(scrolled).not.toHaveBeenCalled()
   })
 })

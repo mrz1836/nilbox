@@ -25,6 +25,8 @@ import type {
   Preview as LaunchPreview,
   Resolution,
 } from '../../bindings/github.com/mrz1836/nilbox/internal/launcher'
+import { Service as Notifications } from '../../bindings/github.com/mrz1836/nilbox/internal/notify'
+import type { Log as NotificationLog } from '../../bindings/github.com/mrz1836/nilbox/internal/notify'
 import { Service as Profiles } from '../../bindings/github.com/mrz1836/nilbox/internal/profiles'
 import type { Profile } from '../../bindings/github.com/mrz1836/nilbox/internal/profiles'
 import { Service as PromptsService } from '../../bindings/github.com/mrz1836/nilbox/internal/prompts'
@@ -85,6 +87,10 @@ export type {
   Setting as LaunchSetting,
   Toggle as LaunchToggle,
 } from '../../bindings/github.com/mrz1836/nilbox/internal/launcher'
+export type {
+  Log as NotificationLog,
+  Notification as AppNotification,
+} from '../../bindings/github.com/mrz1836/nilbox/internal/notify'
 export type { Profile } from '../../bindings/github.com/mrz1836/nilbox/internal/profiles'
 export type {
   Category as SensitiveCategory,
@@ -126,6 +132,20 @@ export const inboxUpdatedEvent = 'inbox:updated'
 // worktreesUpdatedEvent is the event the shell emits when an automatic worktree sweep
 // removed a worktree or changed how many need attention.
 export const worktreesUpdatedEvent = 'worktrees:updated'
+
+// notificationsUpdatedEvent is the event the shell emits when the notification log changed.
+export const notificationsUpdatedEvent = 'notifications:updated'
+
+// revealItemEvent is the event the shell emits to show an item in the inbox: a click on it
+// in the menu bar, or on its notification. Its data is a RevealRequest.
+export const revealItemEvent = 'inbox:reveal'
+
+// RevealRequest is an item the shell asks the window to show, and its URL on GitHub for
+// when it is no longer in the inbox.
+export interface RevealRequest {
+  itemId: number
+  url: string
+}
 
 // App
 
@@ -340,6 +360,18 @@ export function setWorktreeAutoCleanup(on: boolean): Promise<void> {
   return SettingsService.SetWorktreeAutoCleanup(on)
 }
 
+// setMenuBar shows or hides the menu bar icon. While it shows, closing the window keeps the
+// app running there.
+export function setMenuBar(on: boolean): Promise<void> {
+  return SettingsService.SetMenuBar(on)
+}
+
+// setNotificationBanner turns the banners of one kind of notification on or off. The
+// notification history keeps every kind either way.
+export function setNotificationBanner(kind: string, on: boolean): Promise<void> {
+  return SettingsService.SetNotificationBanner(kind, on)
+}
+
 // setSnoozeDays stores how many days an inbox row's Snooze button hides an item.
 export function setSnoozeDays(days: number): Promise<void> {
   return SettingsService.SetSnoozeDays(days)
@@ -476,4 +508,69 @@ export function onWorktreesUpdated(listener: () => void): () => void {
   return Events.On(worktreesUpdatedEvent, () => {
     listener()
   })
+}
+
+// Notifications
+
+// listNotifications returns the notification history, newest first, and how many are
+// unread.
+export async function listNotifications(): Promise<NotificationLog> {
+  const log = await Notifications.List()
+
+  return { items: log.items ?? [], unread: log.unread }
+}
+
+// markNotificationsRead marks the whole history read, as opening it does.
+export function markNotificationsRead(): Promise<void> {
+  return Notifications.MarkAllRead()
+}
+
+// clearNotifications forgets the notification history.
+export function clearNotifications(): Promise<void> {
+  return Notifications.Clear()
+}
+
+// notificationBannerStatus reports whether banners are shown: 'on', 'off' when the user has
+// not allowed them, or 'unavailable' when this build cannot show them.
+export function notificationBannerStatus(): Promise<string> {
+  return Notifications.BannerStatus()
+}
+
+// sendTestNotification shows a sample banner, asking the user to allow them first if they
+// have not been asked.
+export function sendTestNotification(): Promise<void> {
+  return Notifications.SendTest()
+}
+
+// onNotificationsUpdated calls listener whenever the notification log changed, and returns
+// a function that stops listening.
+export function onNotificationsUpdated(listener: () => void): () => void {
+  return Events.On(notificationsUpdatedEvent, () => {
+    listener()
+  })
+}
+
+// onRevealItem calls listener with each item the shell asks the window to show, and returns
+// a function that stops listening. A request with neither an item nor a URL is ignored.
+export function onRevealItem(listener: (request: RevealRequest) => void): () => void {
+  return Events.On(revealItemEvent, (event: { data: unknown }) => {
+    const request = revealRequest(event.data)
+
+    if (request !== null) {
+      listener(request)
+    }
+  })
+}
+
+// revealRequest reads a reveal event's data, or null when it is not one.
+function revealRequest(data: unknown): RevealRequest | null {
+  if (typeof data !== 'object' || data === null) {
+    return null
+  }
+
+  const fields = data as Partial<Record<keyof RevealRequest, unknown>>
+  const itemId = typeof fields.itemId === 'number' && fields.itemId > 0 ? fields.itemId : 0
+  const url = typeof fields.url === 'string' ? fields.url : ''
+
+  return itemId === 0 && url === '' ? null : { itemId, url }
 }

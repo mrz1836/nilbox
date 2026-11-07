@@ -24,6 +24,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/launchlog"
+	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/settings"
@@ -83,6 +84,15 @@ type Options struct {
 	// ThemeNotifier is told when the theme was changed and stored.
 	ThemeNotifier settings.ThemeNotifier
 
+	// MenuBarNotifier is told when the menu bar setting was changed and stored.
+	MenuBarNotifier settings.MenuBarNotifier
+
+	// Banners shows native notifications; without it the notification log is still kept.
+	Banners notify.Poster
+
+	// NotificationsNotifier is told when the notification log changed.
+	NotificationsNotifier notify.Notifier
+
 	// Runner runs external programs. It defaults to an execpath.Runner whose finder
 	// searches the well-known directories under Home.
 	Runner Runner
@@ -107,6 +117,7 @@ type Core struct {
 	Inbox          *inbox.Service
 	Launcher       *launcher.Service
 	Worktrees      *worktrees.Service
+	Notifications  *notify.Service
 	AppInfo        *appinfo.Service
 
 	// Scheduler refreshes the inbox on start and every five minutes once Run is called.
@@ -162,7 +173,10 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 
 // Services returns the services the frontend binds to, in a stable order.
 func (c *Core) Services() []any {
-	return []any{c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.AppInfo}
+	return []any{
+		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.Notifications,
+		c.AppInfo,
+	}
 }
 
 // Close closes the database.
@@ -211,10 +225,15 @@ func assemble(db *gorm.DB, opts Options, logger *slog.Logger) *Core {
 		runner = execpath.Runner{Finder: finder}
 	}
 
-	prefs := settings.NewService(db, opts.Home, settings.WithThemeNotifier(opts.ThemeNotifier))
+	prefs := settings.NewService(db, opts.Home,
+		settings.WithThemeNotifier(opts.ThemeNotifier), settings.WithMenuBarNotifier(opts.MenuBarNotifier))
 	tokens := github.NewTokenSource(runner, finder)
 	client := github.NewClient(opts.Version)
 	launches := launchlog.NewStore(db)
+
+	notices := notify.Config{
+		DB: db, Poster: opts.Banners, Notifier: opts.NotificationsNotifier, Clock: opts.Clock, Logger: logger,
+	}
 
 	inboxSvc := inbox.NewService(inbox.Config{
 		DB:       db,
@@ -222,6 +241,7 @@ func assemble(db *gorm.DB, opts Options, logger *slog.Logger) *Core {
 		Client:   client,
 		Clock:    opts.Clock,
 		Notifier: opts.Notifier,
+		Arrivals: notify.NewDispatcher(notices),
 	})
 
 	recorder := timing.NewRecorder(timing.Config{Logger: logger, LogsDir: opts.Paths.Logs})
@@ -260,6 +280,7 @@ func assemble(db *gorm.DB, opts Options, logger *slog.Logger) *Core {
 			Notifier: opts.WorktreeNotifier,
 			Logger:   logger,
 		}),
+		Notifications: notify.NewService(notices),
 		AppInfo: appinfo.NewService(appinfo.Config{
 			Version:      opts.Version,
 			Release:      opts.Release,

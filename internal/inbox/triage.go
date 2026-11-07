@@ -261,9 +261,20 @@ func (w *writer) wake(rules snooze.Rules, r snoozedRow) error {
 		return err
 	}
 
-	return w.exec("wake the snoozed item",
+	err = w.exec("wake the snoozed item",
 		"UPDATE item_local_state SET snoozed_until = ?, wake_reasons = ?, updated_at = ? WHERE item_id = ?",
 		w.now, encoded, w.now, r.ItemID)
+	if err != nil {
+		return err
+	}
+
+	if w.woke == nil {
+		w.woke = make(map[int64]snooze.Reasons)
+	}
+
+	w.woke[r.ItemID] = reasons
+
+	return nil
 }
 
 // exec runs one statement in the refresh's transaction; what names it in an error.

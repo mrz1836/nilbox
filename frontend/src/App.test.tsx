@@ -8,6 +8,7 @@ import {
   checkResult,
   fileCheck,
   item,
+  notification,
   itemResolution,
   list,
   profile,
@@ -64,6 +65,15 @@ const platform = vi.hoisted(() => ({
   setSensitiveCategory: vi.fn(),
   setSensitivePatterns: vi.fn(),
   matchSensitivePath: vi.fn(),
+  listNotifications: vi.fn(),
+  markNotificationsRead: vi.fn(),
+  clearNotifications: vi.fn(),
+  onNotificationsUpdated: vi.fn(),
+  onRevealItem: vi.fn(),
+  notificationBannerStatus: vi.fn(),
+  sendTestNotification: vi.fn(),
+  setMenuBar: vi.fn(),
+  setNotificationBanner: vi.fn(),
 }))
 
 vi.mock('./platform', () => platform)
@@ -110,6 +120,15 @@ beforeEach(() => {
   platform.lastWorktreeSweep.mockResolvedValue(sweepReport({ seq: 0 }))
   platform.onWorktreesUpdated.mockReturnValue(() => undefined)
   platform.recentCleanups.mockResolvedValue([])
+  platform.listNotifications.mockResolvedValue({ items: [], unread: 0 })
+  platform.markNotificationsRead.mockResolvedValue(undefined)
+  platform.clearNotifications.mockResolvedValue(undefined)
+  platform.onNotificationsUpdated.mockReturnValue(() => undefined)
+  platform.onRevealItem.mockReturnValue(() => undefined)
+  platform.notificationBannerStatus.mockResolvedValue('on')
+  platform.sendTestNotification.mockResolvedValue(undefined)
+  platform.setMenuBar.mockResolvedValue(undefined)
+  platform.setNotificationBanner.mockResolvedValue(undefined)
 })
 
 // rowOptions opens the inbox row's launch options and returns queries scoped to them.
@@ -634,5 +653,87 @@ describe('App', () => {
       'Could not load the launch settings: read the preferences: database is locked',
     )
     expect(screen.queryByRole('button', { name: 'Open in Claude' })).not.toBeInTheDocument()
+  })
+
+  describe('showing an item', () => {
+    // reveal sends a request to show an item, as the shell does for a click in the menu
+    // bar or on a notification.
+    function reveal(itemId: number, url = '') {
+      const handler = platform.onRevealItem.mock.calls.at(-1)?.[0] as (r: { itemId: number; url: string }) => void
+      act(() => {
+        handler({ itemId, url })
+      })
+    }
+
+    // row returns the inbox row of the item titled title in the Review requested list.
+    async function row(title: string) {
+      const review = within(await screen.findByRole('region', { name: 'Review requested' }))
+
+      return review.getByRole('button', { name: title }).closest('li')
+    }
+
+    it('opens the inbox at an item the shell asks for, from any view', async () => {
+      render(<App />)
+      await screen.findByRole('region', { name: 'Review requested' })
+
+      await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
+      await screen.findByRole('region', { name: 'example-repo' })
+
+      reveal(1)
+
+      expect(screen.getByRole('button', { name: 'Inbox' })).toHaveAttribute('aria-pressed', 'true')
+      expect(await row('Add the widget cache')).toHaveAttribute('data-highlighted', 'true')
+      expect(platform.openInBrowser).not.toHaveBeenCalled()
+    })
+
+    it('opens an item no longer in the inbox on GitHub, and ignores one it cannot find', async () => {
+      platform.openInBrowser.mockResolvedValue(undefined)
+      render(<App />)
+      await screen.findByRole('region', { name: 'Review requested' })
+
+      reveal(99, 'https://github.com/acme-org/example-repo/pull/99')
+      expect(platform.openInBrowser).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/pull/99')
+
+      reveal(98)
+      expect(platform.openInBrowser).toHaveBeenCalledOnce()
+    })
+
+    it('does not show the item again when the inbox is opened later', async () => {
+      render(<App />)
+      await screen.findByRole('region', { name: 'Review requested' })
+
+      reveal(1)
+      expect(await row('Add the widget cache')).toHaveAttribute('data-highlighted', 'true')
+
+      await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Inbox' }))
+
+      expect(await row('Add the widget cache')).not.toHaveAttribute('data-highlighted')
+    })
+
+    it('opens an entry of the notification history', async () => {
+      platform.listNotifications.mockResolvedValue({ items: [notification({ itemId: 1 })], unread: 1 })
+      render(<App />)
+      await screen.findByRole('region', { name: 'Review requested' })
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Notifications, 1 unread' }))
+      expect(platform.markNotificationsRead).toHaveBeenCalledOnce()
+
+      const history = within(screen.getByRole('dialog', { name: 'Notifications' }))
+      await userEvent.click(history.getByRole('button', { name: /Add the widget cache/ }))
+
+      expect(await row('Add the widget cache')).toHaveAttribute('data-highlighted', 'true')
+    })
+
+    it('opens the notification settings from the bell', async () => {
+      render(<App />)
+      await screen.findByRole('region', { name: 'Review requested' })
+
+      await userEvent.click(screen.getByRole('button', { name: 'Notifications' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Notification settings' }))
+
+      expect(await screen.findByRole('region', { name: 'Notifications' })).toBeInTheDocument()
+      expect(screen.getByRole('switch', { name: 'Show in the menu bar' })).toBeChecked()
+    })
   })
 })

@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/mrz1836/nilbox/internal/localrepos"
+	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/snooze"
@@ -69,6 +70,8 @@ func TestPrefDefaults(t *testing.T) {
 		DefaultWindowSize:   WindowSize{Width: 1280, Height: 800},
 		SensitiveFiles:      sensitive.Config{Scope: "collaborators", Off: []string{}, Patterns: []string{}},
 		SensitiveCategories: sensitive.Categories(),
+		MenuBar:             DefaultMenuBar,
+		BannersOff:          []string{},
 	}, got)
 }
 
@@ -130,6 +133,8 @@ func TestSettersPersist(t *testing.T) {
 	require.NoError(t, svc.SetCloneRoot(t.Context(), " ~/code/clones/ "))
 	require.NoError(t, svc.SetSnoozeDays(t.Context(), 7))
 	require.NoError(t, svc.SetSnoozeWake(t.Context(), snooze.Rules{Commits: 3, Reviews: snooze.ReviewsAny, Comments: 5}))
+	require.NoError(t, svc.SetMenuBar(t.Context(), false))
+	require.NoError(t, svc.SetNotificationBanner(t.Context(), notify.KindWoke, false))
 
 	got, err := svc.Get(t.Context())
 	require.NoError(t, err)
@@ -147,6 +152,8 @@ func TestSettersPersist(t *testing.T) {
 		DefaultWindowSize:   DefaultWindowSize(),
 		SensitiveFiles:      sensitive.DefaultConfig(),
 		SensitiveCategories: sensitive.Categories(),
+		MenuBar:             false,
+		BannersOff:          []string{notify.KindWoke},
 	}, got)
 
 	abs := t.TempDir()

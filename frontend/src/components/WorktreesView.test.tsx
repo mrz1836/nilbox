@@ -44,6 +44,9 @@ const platform = vi.hoisted(() => ({
   setSectionCollapsed: vi.fn(),
   getTheme: vi.fn(),
   setTheme: vi.fn(),
+  listNotifications: vi.fn(),
+  onNotificationsUpdated: vi.fn(),
+  onRevealItem: vi.fn(),
 }))
 
 vi.mock('../platform', () => platform)
@@ -91,6 +94,9 @@ beforeEach(() => {
   platform.onWorktreesUpdated.mockReturnValue(() => undefined)
   platform.recentCleanups.mockResolvedValue([])
   platform.clearCleanups.mockResolvedValue(undefined)
+  platform.listNotifications.mockResolvedValue({ items: [], unread: 0 })
+  platform.onNotificationsUpdated.mockReturnValue(() => undefined)
+  platform.onRevealItem.mockReturnValue(() => undefined)
 })
 
 afterEach(() => {

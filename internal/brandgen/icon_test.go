@@ -44,6 +44,22 @@ func TestIconSVG(t *testing.T) {
 	}
 }
 
+func TestTraySVG(t *testing.T) {
+	t.Parallel()
+
+	svg := fileContent(t, TraySVGPath)
+
+	assert.True(t, strings.HasPrefix(svg, "<!-- "+Header+" -->\n<svg "))
+	assert.Contains(t, svg, `viewBox="0 0 704 704"`, "the mark's height takes 16 of 22 points")
+	assert.Contains(t, svg, "<title>"+brand.Name+"</title>")
+	assert.Contains(t, svg, `d="`+brand.MarkPath+`"`)
+	assert.Contains(t, svg, `translate(148 96)`, "the mark is centered on the canvas")
+	assert.Contains(t, svg, `fill="#000000"`, "a template image is black on transparent")
+	assert.NotContains(t, svg, "{{", "every field is filled")
+
+	svgIDs(t, svg) // well-formed
+}
+
 // svgIDs decodes an SVG, failing on malformed XML, and returns the ids it defines.
 func svgIDs(t *testing.T, svg string) map[string]bool {
 	t.Helper()
@@ -77,7 +93,8 @@ func TestIconStamp(t *testing.T) {
 
 	stamp := string(IconStamp())
 
-	assert.Regexp(t, `^[0-9a-f]{64}  `+regexp.QuoteMeta(path.Base(IconSVGPath))+"\n$", stamp)
+	assert.Regexp(t, `^[0-9a-f]{64}  `+regexp.QuoteMeta(path.Base(IconSVGPath))+"\n"+
+		`[0-9a-f]{64}  `+regexp.QuoteMeta(path.Base(TraySVGPath))+"\n$", stamp)
 	assert.Equal(t, stamp, string(IconStamp()), "the stamp is stable")
 }
 
@@ -89,13 +106,13 @@ func TestCheckIcons(t *testing.T) {
 	err := CheckIcons(root)
 	require.ErrorIs(t, err, ErrStaleIcons)
 
-	for _, p := range []string{IconSetPath, DevIconPath, IconStampPath} {
+	for _, p := range []string{IconSetPath, DevIconPath, TrayIconPath, IconStampPath} {
 		assert.Contains(t, err.Error(), p+" (missing)")
 	}
 
 	assert.Contains(t, err.Error(), "run magex brand:icons")
 
-	for _, p := range []string{IconSetPath, DevIconPath} {
+	for _, p := range []string{IconSetPath, DevIconPath, TrayIconPath} {
 		file := filepath.Join(root, filepath.FromSlash(p))
 		require.NoError(t, os.MkdirAll(filepath.Dir(file), 0o750))
 		require.NoError(t, os.WriteFile(file, []byte("raster"), 0o600))

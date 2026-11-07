@@ -16,19 +16,30 @@ import (
 	"github.com/mrz1836/nilbox/internal/brand"
 )
 
-// App icon paths, relative to the repository root and slash-separated.
+// Icon paths, relative to the repository root and slash-separated.
 //
-// The artwork, IconSVGPath, is generated like every other brand file. The raster icons are
-// rendered from it by `magex brand:icons`, which needs macOS, and are committed: the
-// bundle's icon set, IconSetPath, and the PNG a development run shows in the Dock, which
-// has no bundle, DevIconPath. IconStampPath records the artwork they were rendered from,
-// so CheckIcons can tell when they are stale.
+// The artwork is generated like every other brand file: the app icon, IconSVGPath, and
+// the menu bar icon, TraySVGPath. The raster icons are rendered from it by `magex
+// brand:icons`, which needs macOS, and are committed: the bundle's icon set, IconSetPath;
+// the PNG a development run shows in the Dock, which has no bundle, DevIconPath; and the
+// menu bar icon both kinds of build show, TrayIconPath. IconStampPath records the artwork
+// they were rendered from, so CheckIcons can tell when they are stale.
 const (
 	IconSVGPath   = "build/appicon.svg"
 	IconSetPath   = "build/darwin/icons.icns"
 	DevIconPath   = "cmd/nilbox/appicon.png"
 	IconStampPath = "build/appicon.svg.sha256"
+	TraySVGPath   = "build/trayicon.svg"
+	TrayIconPath  = "cmd/nilbox/trayicon.png"
 )
+
+// TrayIconSize is the side, in pixels, the menu bar icon is rendered at: three times the
+// menu bar's 22 points, so the system scales it down smoothly on any display.
+const TrayIconSize = 66
+
+// trayGrid is the side of the menu bar icon's canvas, in mark units: the mark's 512 units
+// of height take 16 of the menu bar's 22 points, the size of the system's own icons.
+const trayGrid = brand.MarkHeight * 22 / 16
 
 // IconFile is the bundle's icon set name, without its extension: the Info.plist's
 // CFBundleIconFile, and the name the bundle's Contents/Resources copy takes.
@@ -154,12 +165,46 @@ func iconSVG() []byte {
 	return []byte("<!-- " + Header + " -->\n" + fields.Replace(iconArtwork))
 }
 
-// IconStamp returns the contents of IconStampPath for the current artwork, in the format
-// `shasum -a 256 -c` reads from the build directory.
-func IconStamp() []byte {
-	sum := sha256.Sum256(iconSVG())
+// trayArtwork is the menu bar icon: the mark in black on a transparent canvas, a template
+// image the system tints to suit the menu bar, light or dark, and highlights when its menu
+// is open. The {{…}} fields are filled from internal/brand.
+const trayArtwork = `<svg xmlns="http://www.w3.org/2000/svg" width="{{side}}" height="{{side}}" viewBox="0 0 {{side}} {{side}}">
+  <title>{{name}}</title>
+  <path transform="translate({{markX}} {{markY}})" d="{{mark}}" fill="#000000"/>
+</svg>
+`
 
-	return []byte(hex.EncodeToString(sum[:]) + "  " + path.Base(IconSVGPath) + "\n")
+// traySVG renders the menu bar icon artwork: the mark, centered on the trayGrid.
+func traySVG() []byte {
+	centered := func(size int) string {
+		return strconv.FormatFloat(float64(trayGrid-size)/2, 'f', -1, 64)
+	}
+
+	fields := strings.NewReplacer(
+		"{{side}}", strconv.Itoa(trayGrid),
+		"{{name}}", xmlText(brand.Name),
+		"{{mark}}", brand.MarkPath,
+		"{{markX}}", centered(brand.MarkWidth),
+		"{{markY}}", centered(brand.MarkHeight),
+	)
+
+	return []byte("<!-- " + Header + " -->\n" + fields.Replace(trayArtwork))
+}
+
+// IconStamp returns the contents of IconStampPath for the current artwork, one line per
+// artwork file, in the format `shasum -a 256 -c` reads from the build directory.
+func IconStamp() []byte {
+	var b strings.Builder
+
+	for _, art := range []struct {
+		path    string
+		content []byte
+	}{{IconSVGPath, iconSVG()}, {TraySVGPath, traySVG()}} {
+		sum := sha256.Sum256(art.content)
+		b.WriteString(hex.EncodeToString(sum[:]) + "  " + path.Base(art.path) + "\n")
+	}
+
+	return []byte(b.String())
 }
 
 // WriteIconStamp records under root that the raster icons were rendered from the current
@@ -179,7 +224,7 @@ func WriteIconStamp(root string) error {
 func CheckIcons(root string) error {
 	var stale []string
 
-	for _, p := range []string{IconSetPath, DevIconPath} {
+	for _, p := range []string{IconSetPath, DevIconPath, TrayIconPath} {
 		_, err := os.Stat(filepath.Join(root, filepath.FromSlash(p)))
 
 		switch {
@@ -200,7 +245,7 @@ func CheckIcons(root string) error {
 	case err != nil:
 		return fmt.Errorf("read %s: %w", IconStampPath, err)
 	case !bytes.Equal(stamp, IconStamp()):
-		stale = append(stale, "rendered from older artwork than "+IconSVGPath)
+		stale = append(stale, "rendered from older artwork than "+IconSVGPath+" and "+TraySVGPath)
 	}
 
 	if len(stale) > 0 {

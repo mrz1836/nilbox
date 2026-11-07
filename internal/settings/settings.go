@@ -19,6 +19,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/mrz1836/nilbox/internal/localrepos"
+	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/snooze"
@@ -132,13 +133,22 @@ type Settings struct {
 	// SensitiveCategories are the built-in categories in matching order, with their
 	// patterns, for the settings page to describe.
 	SensitiveCategories []sensitive.Category `json:"sensitiveCategories"`
+
+	// MenuBar shows the app's icon in the menu bar, with how many items need the user and
+	// a short list of them; closing the window then keeps the app running there.
+	MenuBar bool `json:"menuBar"`
+
+	// BannersOff lists the kinds of notification (see the notify package) whose banners
+	// are off. The notification history keeps every kind either way.
+	BannersOff []string `json:"bannersOff"`
 }
 
 // Service reads and writes the preferences.
 type Service struct {
-	db     *gorm.DB
-	home   string
-	themes ThemeNotifier
+	db      *gorm.DB
+	home    string
+	themes  ThemeNotifier
+	menuBar MenuBarNotifier
 }
 
 // NewService returns a Service over db. home expands a ~ clone root.
@@ -164,7 +174,7 @@ func (s *Service) Get(ctx context.Context) (Settings, error) {
 		KeyDefaultProfile, KeyWorktreeDefault, KeyWorktreeAutoCleanup, KeyTerminal, KeyCloneRoot, KeyTrustedBots,
 		KeySnoozeDays, KeyWindowSize,
 		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments,
-		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns,
+		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notify.PrefBannersOff,
 	}
 	if err := s.db.WithContext(ctx).Raw("SELECT key, value FROM prefs WHERE key IN ?", keys).Scan(&rows).Error; err != nil {
 		return Settings{}, fmt.Errorf("read settings: %w", err)
@@ -407,6 +417,8 @@ func fromStored(stored map[string]string) Settings {
 		DefaultWindowSize:   DefaultWindowSize(),
 		SensitiveFiles:      sensitive.DecodeConfig(stored),
 		SensitiveCategories: sensitive.Categories(),
+		MenuBar:             decodeMenuBar(stored[KeyMenuBar]),
+		BannersOff:          notify.DecodeBannersOff(stored),
 	}
 
 	if v := stored[KeyDefaultProfile]; v != "" {

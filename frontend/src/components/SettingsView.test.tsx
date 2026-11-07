@@ -33,6 +33,10 @@ const platform = vi.hoisted(() => ({
   setSensitivePatterns: vi.fn(),
   matchSensitivePath: vi.fn(),
   refreshInbox: vi.fn(),
+  setMenuBar: vi.fn(),
+  setNotificationBanner: vi.fn(),
+  notificationBannerStatus: vi.fn(),
+  sendTestNotification: vi.fn(),
 }))
 
 vi.mock('../platform', () => platform)
@@ -54,6 +58,7 @@ beforeEach(() => {
   })
   platform.listLaunchTargets.mockResolvedValue([])
   platform.checkLaunchDefaults.mockResolvedValue([])
+  platform.notificationBannerStatus.mockResolvedValue('on')
 })
 
 interface Options {
@@ -782,5 +787,112 @@ describe('SettingsView escape and trust', () => {
     renderSettings({ section: 'files' })
 
     expect(screen.getByRole('button', { name: 'Sensitive files' })).toHaveAttribute('aria-current', 'page')
+  })
+})
+
+describe('SettingsView notifications', () => {
+  // banner returns a kind's banner switch.
+  function banner(name: string) {
+    return screen.getByRole('switch', { name })
+  }
+
+  it('comes after Appearance, and is where the bell’s settings link goes', () => {
+    renderSettings({ section: 'notifications' })
+
+    const nav = within(screen.getByRole('navigation', { name: 'Settings sections' }))
+    const names = nav.getAllByRole('button').map((b) => b.textContent)
+    expect(names.indexOf('Notifications')).toBe(names.indexOf('Appearance') + 1)
+    expect(screen.getByRole('button', { name: 'Notifications' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('region', { name: 'Notifications' })).toBeInTheDocument()
+  })
+
+  it('turns the menu bar icon off and on', async () => {
+    const { onSaved } = renderSettings({ section: 'notifications' })
+
+    const menuBar = screen.getByRole('switch', { name: 'Show in the menu bar' })
+    expect(menuBar).toBeChecked()
+    expect(menuBar).toHaveAccessibleDescription(/closing the window keeps/)
+
+    await userEvent.click(menuBar)
+
+    expect(platform.setMenuBar).toHaveBeenCalledWith(false)
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ menuBar: false }))
+    })
+  })
+
+  it('switches each kind’s banners, saving the kinds that are off', async () => {
+    const { onSaved } = renderSettings({ section: 'notifications', current: settings({ bannersOff: ['woke'] }) })
+
+    expect(banner('Review requests')).toBeChecked()
+    expect(banner('Assignments')).toBeChecked()
+    expect(banner('Snoozes ending early')).not.toBeChecked()
+
+    await userEvent.click(banner('Review requests'))
+    expect(platform.setNotificationBanner).toHaveBeenCalledWith('review_requested', false)
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ bannersOff: ['woke', 'review_requested'] }))
+    })
+
+    await userEvent.click(banner('Snoozes ending early'))
+    expect(platform.setNotificationBanner).toHaveBeenCalledWith('woke', true)
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenLastCalledWith(expect.objectContaining({ bannersOff: [] }))
+    })
+  })
+
+  it('shows a setting that could not be saved', async () => {
+    platform.setMenuBar.mockRejectedValue(new Error('database is locked'))
+    const { onSaved } = renderSettings({ section: 'notifications' })
+
+    await userEvent.click(screen.getByRole('switch', { name: 'Show in the menu bar' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('database is locked')
+    expect(onSaved).not.toHaveBeenCalled()
+  })
+
+  it('sends a test banner, and says how it went', async () => {
+    renderSettings({ section: 'notifications' })
+
+    const test = screen.getByRole('button', { name: 'Send a test' })
+    await userEvent.click(test)
+
+    expect(platform.sendTestNotification).toHaveBeenCalledOnce()
+    expect(await screen.findByText(/^Sent\./)).toBeInTheDocument()
+
+    platform.sendTestNotification.mockRejectedValue(new Error('notifications are off for this app in System Settings'))
+    await userEvent.click(test)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('notifications are off')
+    // Asking may have changed whether they are allowed, so the state is read again.
+    expect(platform.notificationBannerStatus).toHaveBeenCalledTimes(3)
+  })
+
+  it('explains banners the user has not allowed', async () => {
+    platform.notificationBannerStatus.mockResolvedValue('off')
+    renderSettings({ section: 'notifications' })
+
+    expect(await screen.findByText(/turned off for this app in System Settings/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send a test' })).toBeEnabled()
+  })
+
+  it('explains a build that cannot show banners, and offers no test', async () => {
+    platform.notificationBannerStatus.mockResolvedValue('unavailable')
+    renderSettings({ section: 'notifications' })
+
+    expect(await screen.findByText(/need the packaged app/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send a test' })).toBeDisabled()
+  })
+
+  it('logs a banner state that could not be read', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    platform.notificationBannerStatus.mockRejectedValue(new Error('timed out'))
+
+    renderSettings({ section: 'notifications' })
+
+    await waitFor(() => {
+      expect(logged).toHaveBeenCalledWith('could not read whether notifications are allowed', expect.any(Error))
+    })
+    logged.mockRestore()
   })
 })

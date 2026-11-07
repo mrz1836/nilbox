@@ -1,11 +1,12 @@
-import { useCallback, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 
 import { formatAgo } from '../lib/age'
 import { errorMessage } from '../lib/format'
 import { isInboxNil } from '../lib/nil'
-import { formatWhen, inboxCount, isDismissed, triageList, type TriageTab } from '../lib/triage'
+import { prefersReducedMotion } from '../lib/motion'
+import { findItem, formatWhen, inboxCount, isDismissed, tabOf, triageList, type TriageTab } from '../lib/triage'
 import type { InboxState } from '../lib/useInbox'
-import type { InboxItem, InboxList, InboxSnapshot } from '../platform'
+import type { InboxItem, InboxList } from '../platform'
 import { ArchiveIcon, ChevronDownIcon, ClockIcon } from './icons'
 import { InboxNil } from './InboxNil'
 import { ItemRow, type LaunchOptions } from './ItemRow'
@@ -31,7 +32,20 @@ export interface InboxViewProps {
   collapsed: ReadonlySet<string> | null
   // onCollapse collapses or opens a list.
   onCollapse: (section: ListKey, collapsed: boolean) => void
+  // reveal is the item the menu bar or a notification last asked to show, or null.
+  reveal?: Reveal | null
 }
+
+// Reveal asks the inbox to show an item: its list opens at the item's tab, and its row
+// scrolls into view, highlighted for a moment. seq tells one request from the next, so
+// asking for the same item again shows it again.
+export interface Reveal {
+  id: number
+  seq: number
+}
+
+// highlightMs is how long a revealed row stays highlighted.
+const highlightMs = 2400
 
 // ListKey names an inbox list, as the snapshot does.
 type ListKey = 'reviewRequested' | 'authored' | 'assigned'
@@ -65,19 +79,6 @@ function emptyText(tab: TriageTab, title: string): string {
 // firstMessage returns the first non-empty message.
 function firstMessage(...messages: string[]): string {
   return messages.find((m) => m !== '') ?? ''
-}
-
-// findItem looks an item up in a snapshot's lists.
-function findItem(snapshot: InboxSnapshot, id: number): InboxItem | undefined {
-  for (const list of [snapshot.reviewRequested, snapshot.authored, snapshot.assigned]) {
-    const found = list.items?.find((item) => item.id === id)
-
-    if (found !== undefined) {
-      return found
-    }
-  }
-
-  return undefined
 }
 
 interface TabProps {
@@ -130,18 +131,63 @@ interface ListSectionProps {
   collapsed: boolean
   onCollapse: (collapsed: boolean) => void
   onFilesSettings?: () => void
+  // reveal is an item in this list to show, or null.
+  reveal: Reveal | null
 }
 
 // ListSection is one inbox list as tabs: the list itself, then what was snoozed and
 // what was dismissed from it, each with its count. The toggle at the right of its header
 // collapses it to just the tabs, which keep their counts.
-function ListSection({ title, list, now, launch, triage, collapsed, onCollapse, onFilesSettings }: ListSectionProps) {
+function ListSection({
+  title,
+  list,
+  now,
+  launch,
+  triage,
+  collapsed,
+  onCollapse,
+  onFilesSettings,
+  reveal,
+}: ListSectionProps) {
   const id = useId()
   const [tab, setTab] = useState<TriageTab>('inbox')
   const triaged = useMemo(() => triageList(list, now), [list, now])
   const items = triaged[tab]
   const tabId = (t: TriageTab) => `${id}-tab-${t}`
   const panelId = `${id}-panel`
+  const panelRef = useRef<HTMLDivElement>(null)
+  // revealed is the last reveal request handled, and highlight the row it highlights.
+  const [revealed, setRevealed] = useState(0)
+  const [highlight, setHighlight] = useState<number | null>(null)
+
+  // A new request to show an item turns to the tab that holds it; the list itself is
+  // opened by the inbox view.
+  if (reveal !== null && reveal.seq !== revealed) {
+    setRevealed(reveal.seq)
+    setTab(tabOf(triaged, reveal.id) ?? 'inbox')
+    setHighlight(reveal.id)
+  }
+
+  // Once the list is open, the highlighted row scrolls into view, and the highlight fades.
+  useEffect(() => {
+    if (highlight === null || collapsed) {
+      return undefined
+    }
+
+    const row = panelRef.current?.querySelector(`[data-item-id="${String(highlight)}"]`)
+
+    if (row instanceof HTMLElement && 'scrollIntoView' in row) {
+      row.scrollIntoView({ block: 'center', behavior: prefersReducedMotion() ? 'auto' : 'smooth' })
+    }
+
+    const timer = setTimeout(() => {
+      setHighlight(null)
+    }, highlightMs)
+
+    return () => {
+      clearTimeout(timer)
+    }
+  }, [highlight, revealed, collapsed])
 
   // select shows a tab; choosing a tab of a collapsed list opens the list to show it.
   const select = (t: TriageTab) => {
@@ -231,7 +277,7 @@ function ListSection({ title, list, now, launch, triage, collapsed, onCollapse, 
           <ChevronDownIcon className={`size-4 transition-transform ${collapsed ? '-rotate-90' : ''}`} />
         </button>
       </div>
-      <div role="tabpanel" id={panelId} aria-labelledby={tabId(tab)} hidden={collapsed}>
+      <div ref={panelRef} role="tabpanel" id={panelId} aria-labelledby={tabId(tab)} hidden={collapsed}>
         {items.length === 0 ? (
           <p className="px-4 py-3 text-sm text-muted">{emptyText(tab, title)}</p>
         ) : (
@@ -245,6 +291,7 @@ function ListSection({ title, list, now, launch, triage, collapsed, onCollapse, 
                 tab={tab}
                 triage={triage}
                 onFilesSettings={onFilesSettings}
+                highlighted={item.id === highlight}
               />
             ))}
           </ul>
@@ -267,6 +314,7 @@ export function InboxView({
   onFilesSettings,
   collapsed,
   onCollapse,
+  reveal = null,
 }: InboxViewProps) {
   const {
     snapshot,
@@ -296,6 +344,30 @@ export function InboxView({
     setBusy(true)
   }
   const toastCount = useRef(0)
+
+  // revealIn is the first list that holds the item to show, the one that shows it.
+  const revealIn = useMemo(
+    () =>
+      reveal === null || snapshot === null
+        ? null
+        : (sections.find(({ key }) => snapshot[key].items?.some((item) => item.id === reveal.id))?.key ?? null),
+    [reveal, snapshot],
+  )
+  // opened is the last reveal request whose list was opened, so a list the user collapses
+  // afterwards stays collapsed.
+  const opened = useRef(0)
+
+  useEffect(() => {
+    if (reveal === null || revealIn === null || collapsed === null || opened.current === reveal.seq) {
+      return
+    }
+
+    opened.current = reveal.seq
+
+    if (collapsed.has(revealIn)) {
+      onCollapse(revealIn, false)
+    }
+  }, [reveal, revealIn, collapsed, onCollapse])
 
   const showToast = useCallback((message: Omit<ToastMessage, 'id'>) => {
     toastCount.current += 1
@@ -409,6 +481,7 @@ export function InboxView({
                 onCollapse(key, on)
               }}
               onFilesSettings={onFilesSettings}
+              reveal={key === revealIn ? reveal : null}
             />
           ))}
       <Toast toast={toast} onClose={closeToast} />

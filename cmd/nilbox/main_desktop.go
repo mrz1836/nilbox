@@ -57,6 +57,13 @@ const (
 	// worktree or changed how many need attention.
 	worktreesUpdatedEvent = "worktrees:updated"
 
+	// notificationsUpdatedEvent tells the frontend the notification log changed.
+	notificationsUpdatedEvent = "notifications:updated"
+
+	// revealItemEvent asks the frontend to show an item in the inbox, for a click on it in
+	// the menu bar or on its notification. Its data is a revealRequest.
+	revealItemEvent = "inbox:reveal"
+
 	// measureTimeout bounds a measurement run whose window never reports a first paint.
 	measureTimeout = time.Minute
 
@@ -98,17 +105,21 @@ func run(args []string, stdout, stderr io.Writer) error {
 	}
 
 	s := &shell{stdout: stdout, stderr: stderr, measureStartup: slices.Contains(args, measure.StartupFlag)}
+	s.banners = newBanners(stderr, s.openFromBanner)
 
 	c, err := core.Bootstrap(context.Background(), core.Options{
-		Paths:            paths,
-		Home:             home,
-		Version:          version,
-		Release:          release,
-		Build:            buildNumber,
-		Notifier:         s,
-		WorktreeNotifier: s,
-		ThemeNotifier:    s,
-		OnFirstPaint:     s.firstPaint,
+		Paths:                 paths,
+		Home:                  home,
+		Version:               version,
+		Release:               release,
+		Build:                 buildNumber,
+		Notifier:              s,
+		WorktreeNotifier:      s,
+		ThemeNotifier:         s,
+		MenuBarNotifier:       s,
+		Banners:               s.banners.poster(),
+		NotificationsNotifier: s,
+		OnFirstPaint:          s.firstPaint,
 	})
 	if err != nil {
 		return fmt.Errorf("start the app (%s, commit %s, built %s): %w", version, commit, buildDate, err)
@@ -133,10 +144,16 @@ func run(args []string, stdout, stderr io.Writer) error {
 		OnShutdown:   s.shutdown,
 		PostShutdown: s.postShutdown,
 	})
+	s.tray = newTray(app, c.Inbox, s, stderr)
 	s.app.Store(app)
 
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 		s.started()
+	})
+
+	// A click on the Dock icon brings back a window closed into the menu bar.
+	app.Event.OnApplicationEvent(events.Mac.ApplicationShouldHandleReopen, func(*application.ApplicationEvent) {
+		s.showWindow()
 	})
 
 	app.Event.OnApplicationEvent(events.Common.ThemeChanged, func(*application.ApplicationEvent) {
@@ -181,6 +198,7 @@ func services(c *core.Core) []application.Service {
 		application.NewService(c.Inbox),
 		application.NewService(c.Launcher),
 		application.NewService(c.Worktrees),
+		application.NewService(c.Notifications),
 		application.NewService(c.AppInfo),
 	}
 }
@@ -217,15 +235,21 @@ func backgroundColour(dark bool) application.RGBA {
 }
 
 // shell connects the core to the window: it opens the window and starts the inbox
-// scheduler once the app has started, forwards inbox changes as events, keeps the native
-// appearance in the chosen theme, ends a startup measurement, and closes the core on
-// shutdown.
+// scheduler once the app has started, forwards inbox and notification changes as events,
+// keeps the menu bar icon and the native appearance in step with the settings, posts
+// notifications, ends a startup measurement, and closes the core on shutdown.
 type shell struct {
 	app            atomic.Pointer[application.App]
 	core           *core.Core
 	stdout         io.Writer
 	stderr         io.Writer
 	measureStartup bool
+
+	// tray is the menu bar icon, shown while menuBar is set; banners posts notifications,
+	// and is nil when this build cannot.
+	tray    *tray
+	banners *banners
+	menuBar atomic.Bool
 
 	// appearance guards theme and window, so a theme the user chose and a change of the
 	// system appearance are applied one at a time, in order.
@@ -240,7 +264,8 @@ type shell struct {
 	closeErr  error
 }
 
-// InboxUpdated tells the frontend to reload the inbox.
+// InboxUpdated tells the frontend to reload the inbox, and redraws the menu bar icon. The
+// inbox calls it while it holds its lock, so the icon is redrawn in the background.
 func (s *shell) InboxUpdated() {
 	if s.stopping.Load() {
 		return
@@ -248,6 +273,36 @@ func (s *shell) InboxUpdated() {
 
 	if app := s.app.Load(); app != nil {
 		app.Event.Emit(inboxUpdatedEvent)
+	}
+
+	if s.tray != nil {
+		go s.tray.update()
+	}
+}
+
+// NotificationsUpdated tells the frontend to reload the notification log.
+func (s *shell) NotificationsUpdated() {
+	if s.stopping.Load() {
+		return
+	}
+
+	if app := s.app.Load(); app != nil {
+		app.Event.Emit(notificationsUpdatedEvent)
+	}
+}
+
+// MenuBarChanged adds or removes the menu bar icon as the user turned it on or off.
+func (s *shell) MenuBarChanged(on bool) {
+	if s.stopping.Load() {
+		return
+	}
+
+	s.menuBar.Store(on)
+
+	if on {
+		s.tray.show()
+	} else {
+		s.tray.hide()
 	}
 }
 
@@ -315,9 +370,24 @@ func (s *shell) started() {
 	// flashing the other palette: the page's prefers-color-scheme already matches.
 	applyAppearance(s.theme)
 	s.window = app.Window.NewWithOptions(windowOptions(settings.IsDark(s.theme, app.Env.IsDarkMode()), size))
+	window := s.window
 	s.appearance.Unlock()
 
+	window.RegisterHook(events.Common.WindowClosing, s.closing)
+
 	ctx := app.Context()
+
+	s.menuBar.Store(s.storedMenuBar(app))
+
+	if s.menuBar.Load() {
+		go s.tray.show()
+	}
+
+	// Asking for permission once, at start, puts the question where the user expects it;
+	// later starts are answered at once. A measurement run asks nothing.
+	if s.banners != nil && !s.measureStartup {
+		go s.askForBanners()
+	}
 
 	s.scheduler.Go(func() { s.core.Scheduler.Run(ctx) })
 	s.scheduler.Go(func() { worktrees.NewSweeper(s.core.Worktrees).Run(ctx, worktrees.DefaultSweepInterval) })
@@ -344,6 +414,93 @@ func (s *shell) windowSize(app *application.App) settings.WindowSize {
 	}
 
 	return size
+}
+
+// storedMenuBar is the menu bar setting, or the default when it cannot be read.
+func (s *shell) storedMenuBar(app *application.App) bool {
+	on, err := s.core.Settings.MenuBar(app.Context())
+	if err != nil {
+		_, _ = fmt.Fprintln(s.stderr, "read the menu bar setting, showing the icon:", err)
+	}
+
+	return on
+}
+
+// askForBanners asks the user, the first time, to allow notifications.
+func (s *shell) askForBanners() {
+	if _, err := s.banners.Authorize(); err != nil {
+		_, _ = fmt.Fprintln(s.stderr, err)
+	}
+}
+
+// closing keeps the app running in the menu bar when its window is closed while the menu
+// bar icon is shown: the window hides, and the icon or the Dock brings it back. Otherwise,
+// and when the app is quitting, the window closes, which quits the app.
+func (s *shell) closing(e *application.WindowEvent) {
+	if s.stopping.Load() || !s.menuBar.Load() {
+		return
+	}
+
+	s.appearance.Lock()
+	window := s.window
+	s.appearance.Unlock()
+
+	if window != nil {
+		window.Hide()
+		e.Cancel()
+	}
+}
+
+// showWindow brings the window forward: shown if it was closed into the menu bar,
+// restored if it was minimized, and the app made active.
+func (s *shell) showWindow() {
+	if s.stopping.Load() {
+		return
+	}
+
+	s.appearance.Lock()
+	window := s.window
+	s.appearance.Unlock()
+
+	if window == nil {
+		return
+	}
+
+	if window.IsMinimised() {
+		window.UnMinimise()
+	}
+
+	window.Show()
+	window.Focus()
+	activateApp()
+}
+
+// revealRequest is revealItemEvent's data: the item to show, and its URL for when it is
+// no longer in the inbox.
+type revealRequest struct {
+	ItemID int64  `json:"itemId"`
+	URL    string `json:"url"`
+}
+
+// reveal brings the window forward with an item in view.
+func (s *shell) reveal(itemID int64, url string) {
+	s.showWindow()
+
+	if app := s.app.Load(); app != nil && !s.stopping.Load() {
+		app.Event.Emit(revealItemEvent, revealRequest{ItemID: itemID, URL: url})
+	}
+}
+
+// openFromBanner answers a click on a notification: it shows the item it was for, or just
+// the window for a banner that stands for many.
+func (s *shell) openFromBanner(itemID int64, url string) {
+	if itemID == 0 && url == "" {
+		s.showWindow()
+
+		return
+	}
+
+	s.reveal(itemID, url)
 }
 
 // storedTheme is the theme the settings hold, or the default when they cannot be read.

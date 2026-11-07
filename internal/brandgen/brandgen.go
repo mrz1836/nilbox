@@ -78,6 +78,7 @@ func Files() []File {
 		{Path: BrandJSONPath, Content: brandJSON()},
 		{Path: InfoPlistPath, Content: infoPlist()},
 		{Path: IconSVGPath, Content: iconSVG()},
+		{Path: TraySVGPath, Content: traySVG()},
 	}
 }
 

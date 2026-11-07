@@ -379,3 +379,23 @@ export function DisplayIcon({ className }: IconProps) {
     </Icon>
   )
 }
+
+// BellIcon stands for notifications.
+export function BellIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2H4.5z" />
+      <path d="M10 20.5a2 2 0 0 0 4 0" />
+    </Icon>
+  )
+}
+
+// AssignIcon stands for an item assigned to the user.
+export function AssignIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <circle cx="10" cy="8.5" r="3.5" />
+      <path d="M3.5 19.5a6.5 6.5 0 0 1 10.5-5.1M16 17.5l2 2 3.5-4" />
+    </Icon>
+  )
+}
