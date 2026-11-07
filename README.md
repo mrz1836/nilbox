@@ -4,235 +4,540 @@
 
 **Your GitHub inbox, set to nil.**
 
-A local-first desktop command center for developers who belong to hundreds of repositories across
-several organizations. It shows what needs *you*, hides the noise, and hands any pull request or
-issue to a coding agent with one click.
+One inbox for every repository you touch. One click to hand any pull request or issue to a coding agent.
+
+<br/>
+
+<a href="https://github.com/mrz1836/nilbox/releases"><img src="https://img.shields.io/github/release-pre/mrz1836/nilbox?include_prereleases&style=flat-square&logo=github&color=black" alt="Release"></a>
+<a href="https://golang.org/"><img src="https://img.shields.io/github/go-mod/go-version/mrz1836/nilbox?style=flat-square&logo=go&color=00ADD8" alt="Go Version"></a>
+<a href="#-installation"><img src="https://img.shields.io/badge/platform-macOS%2013%2B-000000?style=flat-square&logo=apple&logoColor=white" alt="Platform"></a>
+<a href="https://github.com/mrz1836/nilbox/blob/master/LICENSE"><img src="https://img.shields.io/github/license/mrz1836/nilbox?style=flat-square&color=blue&v=1" alt="License"></a>
+
+<br/>
+
+<table align="center" border="0">
+  <tr>
+    <td align="right">
+       <code>CI / CD</code> &nbsp;&nbsp;
+    </td>
+    <td align="left">
+       <a href="https://github.com/mrz1836/nilbox/actions"><img src="https://img.shields.io/github/actions/workflow/status/mrz1836/nilbox/fortress.yml?branch=master&label=build&logo=github&style=flat-square" alt="Build"></a>
+       <a href="https://github.com/mrz1836/nilbox/actions/workflows/frontend.yml"><img src="https://img.shields.io/github/actions/workflow/status/mrz1836/nilbox/frontend.yml?branch=master&label=frontend&logo=react&logoColor=white&style=flat-square" alt="Frontend"></a>
+       <a href="https://github.com/mrz1836/nilbox/actions"><img src="https://img.shields.io/github/last-commit/mrz1836/nilbox?style=flat-square&logo=git&logoColor=white&label=last%20update" alt="Last Commit"></a>
+    </td>
+    <td align="right">
+       &nbsp;&nbsp;&nbsp;&nbsp; <code>Quality</code> &nbsp;&nbsp;
+    </td>
+    <td align="left">
+       <a href="https://codecov.io/gh/mrz1836/nilbox"><img src="https://codecov.io/gh/mrz1836/nilbox/branch/master/graph/badge.svg?style=flat-square" alt="Coverage"></a>
+    </td>
+  </tr>
+
+  <tr>
+    <td align="right">
+       <code>Security</code> &nbsp;&nbsp;
+    </td>
+    <td align="left">
+       <a href="https://scorecard.dev/viewer/?uri=github.com/mrz1836/nilbox"><img src="https://api.scorecard.dev/projects/github.com/mrz1836/nilbox/badge?style=flat-square" alt="Scorecard"></a>
+       <a href=".github/SECURITY.md"><img src="https://img.shields.io/badge/policy-active-success?style=flat-square&logo=security&logoColor=white" alt="Security"></a>
+    </td>
+    <td align="right">
+       &nbsp;&nbsp;&nbsp;&nbsp; <code>Community</code> &nbsp;&nbsp;
+    </td>
+    <td align="left">
+       <a href="https://github.com/mrz1836/nilbox/graphs/contributors"><img src="https://img.shields.io/github/contributors/mrz1836/nilbox?style=flat-square&color=orange" alt="Contributors"></a>
+       <a href="https://mrz1818.com/"><img src="https://img.shields.io/badge/donate-bitcoin-ff9900?style=flat-square&logo=bitcoin" alt="Bitcoin"></a>
+    </td>
+  </tr>
+</table>
 
 </div>
 
 <br/>
+<br/>
 
-> **Status: pre-alpha, private.** Nilbox is under active development and stays private until the MVP
-> proves itself. It runs on macOS only for now, and will be released as open source under the MIT
-> license.
+<div align="center">
+
+### <code>Project Navigation</code>
+
+</div>
+
+<table align="center">
+  <tr>
+    <td align="center" width="33%">
+       🚀&nbsp;<a href="#-installation"><code>Installation</code></a>
+    </td>
+    <td align="center" width="33%">
+       ⚡&nbsp;<a href="#-quick-start"><code>Quick&nbsp;Start</code></a>
+    </td>
+    <td align="center" width="33%">
+       ✨&nbsp;<a href="#-features"><code>Features</code></a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+       🧭&nbsp;<a href="#-how-it-works"><code>How&nbsp;It&nbsp;Works</code></a>
+    </td>
+    <td align="center">
+       📚&nbsp;<a href="#-documentation"><code>Documentation</code></a>
+    </td>
+    <td align="center">
+       🔐&nbsp;<a href="#-security"><code>Security</code></a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      🛠️&nbsp;<a href="#-code-standards"><code>Code&nbsp;Standards</code></a>
+    </td>
+    <td align="center">
+      🧪&nbsp;<a href="#-examples--tests"><code>Examples&nbsp;&&nbsp;Tests</code></a>
+    </td>
+    <td align="center">
+      🤖&nbsp;<a href="#-ai-usage--assistant-guidelines"><code>AI&nbsp;Usage</code></a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+       🤝&nbsp;<a href="#-contributing"><code>Contributing</code></a>
+    </td>
+    <td align="center">
+       👥&nbsp;<a href="#-maintainers"><code>Maintainers</code></a>
+    </td>
+    <td align="center">
+       ⚖️&nbsp;<a href="#-license"><code>License</code></a>
+    </td>
+  </tr>
+</table>
 
 <br/>
 
-## Why
+**Nilbox is a local-first macOS app that turns a GitHub account spread across hundreds of
+repositories into one focused inbox. It shows what needs *you*, hides the noise, and opens any
+pull request or issue in Claude Code, already in the right clone, worktree, account, and prompt.**
 
-GitHub's notifications don't scale past a few dozen repositories. With 200–400 repos across
-personal accounts and organizations, review requests, mentions, assignments, and bot noise all land
-in one unranked pile, and acting on any of it means a context switch: find the clone, check out the
-branch, open a terminal, start an agent, retype the prompt.
-
-Nilbox fixes both halves:
-
-- **Signal.** Three lists of what needs you, drawn from every repository your account can see,
-  with archived repositories and finished items left out. Snooze, dismiss, or pin any item; your
-  triage state lives locally and never touches GitHub.
-- **Action.** Open any pull request or issue in a terminal that is already in the right clone,
-  running Claude Code with your chosen profile (and so your chosen account), model, and flags, and
-  a prompt from your own template library.
+GitHub's notifications stop scaling after a few dozen repositories. Across 200+ repos in personal
+accounts and organizations, review requests, mentions, assignments, and bot noise land in one
+unranked pile, and acting on any of it means a context switch: find the clone, check out the
+branch, open a terminal, start an agent, retype the prompt. Nilbox handles both: it filters out
+the noise, and it launches the agent for you. Your triage state stays on your machine and never
+touches GitHub.
 
 <br/>
 
-## What it does
+```
+                                   YOUR MAC
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                                                                         │
+  │  ┌──────────────────────────────┐        ┌───────────────────────────┐  │
+  │  │  NILBOX                      │        │  iTerm2 / Terminal.app    │  │
+  │  │                              │        │                           │  │
+  │  │  Inbox                       │  Open  │  ~/projects/example-repo  │  │
+  │  │   ├─ Review requested        │   in   │                           │  │
+  │  │   ├─ Authored                │ Claude │  claude --worktree pr-42  │  │
+  │  │   └─ Assigned                │───────►│    profile · model ·      │  │
+  │  │                              │        │    effort · your prompt   │  │
+  │  │  snooze · dismiss · pin      │        │                           │  │
+  │  │  (local SQLite, never sent)  │        └───────────────────────────┘  │
+  │  └───────────────▲──────────────┘                                       │
+  │                  │                                                      │
+  └──────────────────┼──────────────────────────────────────────────────────┘
+                     │  read-only GraphQL + REST
+                     │  your gh CLI token, held in memory
+            ┌────────┴─────────┐
+            │  api.github.com  │
+            └──────────────────┘
+```
 
-The window has three tabs, **Inbox**, **Worktrees**, and **Prompts**, plus a Settings page. The
-[desktop guide](docs/desktop.md) explains how each feature below behaves.
+<br/>
 
-### The inbox
+## 🚀 Installation
 
-- **Three lists**, each one GitHub search across every repository your account can see:
-  **Review requested** (open pull requests that ask for your review), **Authored** (your open pull
-  requests), and **Assigned** (open issues and pull requests assigned to you). Each shows up to
-  100 items, with **N of M** when GitHub matched more.
-- **Compact cards**: the title with **Draft** and **Conflicts** tags; the repository, author, and
+Nilbox is a native macOS app, built from source with one command.
+
+> **Platform:** macOS 13 or newer. Linux and Windows are on the [roadmap](#support--roadmap).
+
+**Requirements**
+
+- **macOS 13+** with the Xcode Command Line Tools (`xcode-select --install`)
+- **[Go](https://go.dev/dl/) 1.26+**, **Node 26**, and **pnpm** at the pinned version (`npm install -g pnpm@12.16.1`)
+- **[MAGE-X](https://github.com/mrz1836/mage-x)**: `go install github.com/mrz1836/mage-x/cmd/magex@latest`
+- **[GitHub CLI](https://cli.github.com)**, signed in with the `repo` and `read:org` scopes
+- To launch sessions: the **Claude Code CLI** (`claude`) and **iTerm2** or Terminal.app
+
+```bash
+git clone https://github.com/mrz1836/nilbox.git && cd nilbox
+magex app:run      # build bin/Nilbox.app and open it
+```
+
+After that, `magex app:open` reopens the build, and `magex app:run` rebuilds after you pull. The
+Wails CLI is never installed: the build runs it with `go run` at the version `go.mod` pins.
+
+<details>
+<summary><strong>Signing, firewalls, and where your data lives</strong></summary>
+<br/>
+
+- **Signing:** `magex app:build` signs the bundle ad hoc, which is enough to run it on the Mac that
+  built it.
+- **Firewalls:** a per-app firewall must let `bin/Nilbox.app/Contents/MacOS/nilbox` reach
+  `api.github.com`, or every refresh times out. Blocking `avatars.githubusercontent.com` only
+  swaps your profile picture for your initial.
+- **Data:** everything lives in `~/Library/Application Support/Nilbox`, readable only by you. The
+  database is `nilbox.db` (SQLite, WAL mode), and a copy is saved before each schema migration
+  (the three newest are kept). GitHub tokens are never stored there or anywhere else.
+
+Full setup and every build target: [docs/desktop.md](docs/desktop.md#build-targets).
+
+</details>
+
+<br/>
+
+## ⚡ Quick Start
+
+Five steps, in the order you'll use them.
+
+<br>
+
+### Connect GitHub
+
+```bash
+gh auth login      # Nilbox borrows this login; it needs the repo and read:org scopes
+gh auth status     # confirm you're signed in
+```
+
+Nilbox reads the token with `gh auth token` on each refresh and keeps it in memory only.
+
+<br>
+
+### Work the inbox
+
+The **Inbox** tab shows three lists: **Review requested**, **Authored**, and **Assigned**, drawn
+from every repository your account can see and refreshed every five minutes. **Snooze** an item
+(3 days by default), **dismiss** it, or **pin** it to the top.
+
+<br>
+
+### Launch a coding agent
+
+Click **Open in Claude** on any card. Nilbox opens a terminal in the item's local clone under
+`~/projects` and starts Claude Code in its own `pr-<n>` or `issue-<n>` worktree with your prompt
+loaded. Use the launch menu instead to pick the prompt, profile, model, effort, and plan mode for
+one launch, and save the choices as the repository's or org's defaults.
+
+<br>
+
+### Make the prompts yours
+
+The **Prompts** tab starts with **Review**, **Work on it**, **Quick look**, and **Fix checks**.
+Edit them or write your own as Go templates (`{{.Title}}`, `{{.URL}}`, …), with a live preview
+filled in from a real inbox item.
+
+<br>
+
+### Clean up finished worktrees
+
+The **Worktrees** tab lists every linked worktree under your clone root. **Clean up** removes one
+only when nothing would be lost, and a background sweep does it for you once the pull request
+merges or the issue closes.
+
+<br/>
+
+> 📖 **For how every feature behaves, see the [Desktop Guide →](docs/desktop.md)**
+
+<br/>
+
+## ✨ Features
+
+- 📥 **One inbox, every repository** — Review requested, Authored, and Assigned, across every repo your account can see
+- 🗂️ **Cards that answer "is it ready?"** — checks, reviews, comments, size grade, labels, and Draft and Conflicts tags
+- 💤 **Local triage** — snooze, dismiss, or pin; wake rules end a snooze early when something changes
+- 🤖 **One-click agent launch** — Claude Code in iTerm2 or Terminal.app, in the right clone and its own worktree
+- 👤 **Profiles per repo or org** — every `~/.claude-<name>` config directory is a profile, so each repo launches on its own account
+- 📝 **Prompt library** — Go templates with highlighting, autocomplete, error checking, and a live preview
+- 🛡️ **Trust guardrails** — outside contributors launch in plan mode, and changes to sensitive files are flagged
+- 🌳 **Safe worktree cleanup** — finished worktrees are removed only when nothing would be lost
+- 🔔 **Menu bar and notifications** — a live count in the menu bar and native banners for what's new
+- 📊 **API budget gauge** — an always-visible dial for the GitHub budget closest to running out
+- 🎉 **Inbox nil** — empty every list and the inbox throws you a party
+
+<br/>
+
+### Feature details
+
+<details>
+<summary><strong><code>Inbox</code></strong></summary>
+<br/>
+
+- **Three lists**, each a GitHub search across every repository your account can see:
+  **Review requested** (open pull requests that ask for your review), **Authored** (your open
+  pull requests), and **Assigned** (open issues and pull requests assigned to you). Each shows up
+  to 100 items, with **N of M** when GitHub matched more.
+- **Compact cards:** the title with **Draft** and **Conflicts** tags; the repository, author, and
   age; then checks passed out of those that ran, reviews, comments, a size grade with lines,
   files, and commits, and the first labels in their GitHub colors.
-- **Kept current**: a refresh on start and every five minutes, a manual refresh, and a per-card
-  refresh that reads one item for one API point. Archived repositories, and items merged or
-  closed since GitHub indexed them, never show.
-- **Tab counts and collapsible lists**: the Inbox tab counts what needs you, each item once.
-  Collapse any list and the app remembers it across launches.
+- **Always current:** a refresh on start and every five minutes, a manual refresh, and a per-card
+  refresh that costs one API point. Archived repositories, and items merged or closed since GitHub
+  indexed them, never show.
+- **Tab counts and collapsible lists:** the Inbox tab counts each item that needs you once, and a
+  collapsed list stays collapsed across launches.
 
-### Triage, kept local
+More in [Inbox cards](docs/desktop.md#inbox-cards).
 
-- **Snooze** an item for 1 day to 30 days (3 days by default), **dismiss** it until you restore
-  it, or **pin** it to the top of its lists. A toast confirms each snooze or dismissal, with
-  **Undo**.
+</details>
+
+<details>
+<summary><strong><code>Triage, kept local</code></strong></summary>
+<br/>
+
+- **Snooze** an item for 1 to 30 days (3 by default), **dismiss** it until you restore it, or
+  **pin** it to the top of its lists. A toast confirms each snooze or dismissal, with **Undo**.
 - **Wake rules** end a snooze early when new commits, reviews, or comments reach your thresholds,
   and the card says why, as in **Back early: approved, 2 new commits**.
-- **Inbox nil**: empty every list and the inbox throws you a party, confetti included. With Reduce
-  motion on, it holds still.
+- **Inbox nil:** empty every list and the inbox celebrates with confetti. With Reduce motion on, it
+  holds still.
 - Snoozes, dismissals, and pins live in the local database. GitHub never hears about them.
 
-### Launching a coding agent
+More in [Snooze, dismiss, and pin](docs/desktop.md#snooze-dismiss-and-pin).
 
-- **Open in Claude** starts Claude Code in a new iTerm2 tab (the default) or a new Terminal.app
-  window, in the item's local clone, found by matching git remotes one level under your clone root
+</details>
+
+<details>
+<summary><strong><code>Launching a coding agent</code></strong></summary>
+<br/>
+
+- **Open in Claude** starts Claude Code in a new iTerm2 tab (the default) or Terminal.app window,
+  in the item's clone, found by matching git remotes one level under your clone root
   (`~/projects` by default).
-- **Worktrees by default**: the session starts in a worktree that Claude Code creates with its own
-  `--worktree` flag, named `pr-<n>` or `issue-<n>`, so launching on the same item again resumes
-  it.
-- **Profiles**: `~/.claude` is the `default` profile, and each `~/.claude-<name>` or
-  `~/.claude_<name>` config directory becomes profile `<name>`, run with `CLAUDE_CONFIG_DIR`, so a
-  repository can launch on its own account.
+- **Worktrees by default:** Claude Code's own `--worktree` flag creates a worktree named `pr-<n>`
+  or `issue-<n>`, so launching on the same item again resumes it.
+- **Profiles:** `~/.claude` is the `default` profile, and each `~/.claude-<name>` or
+  `~/.claude_<name>` directory becomes profile `<name>`, run with `CLAUDE_CONFIG_DIR`.
 - **The launch menu** picks the prompt, profile, model, effort, worktree, and plan mode for one
-  launch, shows where each default comes from, previews the exact prompt and command, and saves
-  the choices as the repository's or the org's defaults.
-- **Launch defaults** per org and per repository set the profile, the default prompts, the model,
-  effort, plan mode, worktree, and extra flags, and resolve in a
+  launch, shows where each default comes from, previews the exact prompt and command, and saves the
+  choices as the repository's or org's defaults.
+- **Launch defaults** per org and per repository resolve in a
   [fixed order](docs/desktop.md#launch-defaults).
-- **No clone yet?** The card offers to run `gh repo clone` into the clone root, then continues the
-  launch. That is the only time the app creates a clone, and a launch never changes an existing
-  one: no checkout, fetch, pull, or reset.
-- **Workspace trust**: before each launch, the clone is marked trusted in the profile's Claude Code
-  config, so a `--worktree` session doesn't stop at the trust dialog.
-- The prompt is written to a file that the launch script reads, so it never appears on a command
-  line.
+- **No clone yet?** The card offers `gh repo clone` into the clone root, then continues the launch.
+  An existing clone is never changed: no checkout, fetch, pull, or reset.
+- **No trust dialog:** before each launch the clone is marked trusted in the profile's Claude Code
+  config, so a `--worktree` session starts straight away.
+- **No prompt on the command line:** the prompt goes through a file that the launch script reads.
 
-### Prompt library
+More in [Agent profiles](docs/desktop.md#agent-profiles) and
+[Launching a session](docs/desktop.md#launching-a-session).
+
+</details>
+
+<details>
+<summary><strong><code>Prompt library</code></strong></summary>
+<br/>
 
 - Prompts are Go `text/template`s with `{{.Title}}`-style variables. Each has a title, a short
   nickname for the launch button, the kinds of item it applies to, and optional launch settings
   (model, effort, plan mode, worktree, and extra flags).
-- Four starters, **Review**, **Work on it**, **Quick look**, and **Fix checks**, are yours to edit,
-  duplicate, delete, or reset.
-- The editor colors the template and completes variables as you type. It checks the template with
-  the same Go template package a launch uses, reporting the line and column with "did you mean"
-  suggestions, and previews the prompt filled in for a real inbox item beside a cheat sheet of
-  variables.
+- Four starters, **Review**, **Work on it**, **Quick look**, and **Fix checks**, are yours to
+  edit, duplicate, delete, or reset.
+- The editor highlights the template and completes variables as you type. It checks the template
+  with the same Go package a launch uses, reporting the line and column with "did you mean"
+  suggestions, and previews it filled in for a real inbox item beside a cheat sheet of variables.
 - Set the default prompt for pull requests and for issues app-wide, per org, or per repository.
 
-### Trust and sensitive files
+More in [Prompts](docs/desktop.md#prompts).
 
-- **Outside contributors**: items from forks, people outside the project, and bots not on your
+</details>
+
+<details>
+<summary><strong><code>Trust and sensitive files</code></strong></summary>
+<br/>
+
+- **Outside contributors:** items from forks, people outside the project, and bots not on your
   trusted list (`dependabot`, `github-actions`, and `renovate` by default) launch in plan mode,
-  whatever the profile says, unless you tick **Use profile permissions for this item** for that
-  launch. Their prompts end with a fixed line telling the agent to treat the item's text as
-  information, not instructions.
-- **Sensitive files**: pull requests from forks, outside contributors, and untrusted bots (and from
+  whatever the profile says, unless you opt out for that one launch. Their prompts end with a
+  fixed line telling the agent to treat the item's text as information, not instructions.
+- **Sensitive files:** pull requests from outside contributors and untrusted bots (and from
   collaborators, unless you narrow the check) have their changed files checked against five
-  categories (agent configuration, workflows and CI, build and dev tooling, review and merge rules,
-  and dependencies) and your own `.gitignore`-style patterns. The card names the categories a pull
-  request touches and lists each file with a link to its diff.
-- A launch on a pull request that changes agent configuration, or whose files couldn't all be
-  checked, waits until you confirm its exact head commit: a project hook added on that branch runs
-  as soon as a session starts, even in plan mode.
+  categories: agent configuration, workflows and CI, build and dev tooling, review and merge
+  rules, and dependencies. Your own `.gitignore`-style patterns are checked too. The card names
+  each category touched and links every file to its diff.
+- **Head-commit confirmation:** a launch on a pull request that changes agent configuration, or
+  whose files couldn't all be checked, waits until you confirm its exact head commit. A project
+  hook added on that branch runs as soon as a session starts, even in plan mode.
 
-### Worktrees
+More in [Outside contributors](docs/desktop.md#outside-contributors) and
+[Sensitive files](docs/desktop.md#sensitive-files).
 
-- The **Worktrees** tab lists every linked worktree of the clones under the clone root, including
-  ones from sessions started outside the app, with the branch, uncommitted files, commits not on
+</details>
+
+<details>
+<summary><strong><code>Worktrees</code></strong></summary>
+<br/>
+
+- The **Worktrees** tab lists every linked worktree of the clones under your clone root, including
+  ones from sessions started outside Nilbox, with the branch, uncommitted files, commits not on
   GitHub, locks, and the age of the last commit.
 - Agent worktrees are linked to their pull request or issue, and GitHub is asked whether it is
-  done, so each one shows as **in use**, **ready to clean up**, or **needs a look**.
-- **Clean up** removes a finished worktree, and its own `worktree-<name>` branch, only when nothing
-  would be lost: no uncommitted changes, every commit on GitHub, and no session running in it. A
-  sweep every five minutes does the same on its own once a pull request merges or an issue closes
-  (on by default).
+  done, so each shows as **in use**, **ready to clean up**, or **needs a look**.
+- **Clean up** removes a finished worktree and its `worktree-<name>` branch only when nothing would
+  be lost: no uncommitted changes, every commit on GitHub, and no session running in it. A sweep
+  every five minutes does the same once a pull request merges or an issue closes (on by default).
 - **Remove**, **Remove all clean**, **Force remove** (for dirty, unlocked worktrees, after a
   confirmation), **Prune**, and **Unlock** for an agent lock whose session has ended. The main
   worktree is never removable, and a lock you set by hand is never released.
-- **Recently cleaned up** lists each cleanup, by hand or automatic, with the branch deleted and the
+- **Recently cleaned up** lists each cleanup, by hand or automatic, with the deleted branch and the
   commit the worktree was at.
-- The Worktrees tab counts the linked worktrees on disk, with an amber dot while some are done on
-  GitHub but still there.
 
-### Menu bar and notifications
+More in [The Worktrees view](docs/desktop.md#the-worktrees-view).
+
+</details>
+
+<details>
+<summary><strong><code>Menu bar and notifications</code></strong></summary>
+<br/>
 
 - A **menu bar icon** shows how many items need you. Its menu lists up to five items per list,
   refreshes the inbox, and opens any item in the window. While the icon is shown, closing the
-  window keeps the app running in the menu bar.
+  window keeps Nilbox running in the menu bar.
 - **Native banners** announce new review requests, new assignments, and snoozes that end early,
   each kind with its own switch. More than three at once are summed up in one banner.
 - A **notification history** behind the toolbar's bell keeps the newest 200.
 
-### Everything else
+More in [Menu bar and notifications](docs/desktop.md#menu-bar-and-notifications).
 
-- **API budget gauge**: an always-visible dial that follows whichever GitHub budget has the least
+</details>
+
+<details>
+<summary><strong><code>Settings, themes, and the API budget</code></strong></summary>
+<br/>
+
+- **API budget gauge:** an always-visible dial that follows whichever GitHub budget has the least
   left (GraphQL, REST core, or search), since every tool on your machine shares them. Click it for
   each budget's remaining points, its reset time, and the last refresh's cost.
-- **Themes**: follow the system, or pin Light or Dark in Settings. The native window frame and
-  menus follow the choice.
-- **Settings** covers your account, appearance (the theme and the window's opening size),
-  notifications, snoozing, launching, profiles, repositories, trust, and sensitive files. **About**
-  shows the version, build, commit, and system, with a **Report a bug** button that opens a GitHub
-  issue with those details filled in.
+- **Themes:** follow the system, or pin Light or Dark. The native window frame and menus follow.
+- **Settings** covers your account, appearance, notifications, snoozing, launching, profiles,
+  repositories, trust, and sensitive files.
+- **About** shows the version, build, commit, and system, and **Report a bug** opens a GitHub issue
+  with those details filled in.
+
+More in [The window](docs/desktop.md#the-window).
+
+</details>
 
 <br/>
 
-## Not built yet
+### Support & roadmap
 
-The MVP plan also includes a first-run setup (a GitHub CLI check, repository mute and pin, and
-agent and terminal preferences) and muting or pinning whole repositories and orgs. Neither exists
-yet. Security alert sweeps, integrations, more coding agents and terminals, and Linux and Windows
-support come after the MVP proves the desktop app is worth it.
-
-<br/>
-
-## How it works
-
-- **Desktop shell:** [Wails v3](https://wails.io) with a Go backend and the native macOS webview.
-  Everything but the window is plain Go, built and tested on Linux without CGO.
-- **Frontend:** React, TypeScript, Vite, and Tailwind, which reach Go only through generated
-  bindings.
-- **GitHub access:** borrows your [GitHub CLI](https://cli.github.com) token (`gh auth token`) for
-  each refresh and keeps it in memory only. One GraphQL request carries all three searches; card
-  details are read by node ID in concurrent batches; REST serves the rate limits and a pull
-  request's changed files. A 20-item inbox refreshed every five minutes spends under 1% of the
-  hourly GraphQL budget.
-- **Network:** the app itself talks only to GitHub: `api.github.com`, and
-  `avatars.githubusercontent.com` for your profile picture, which is then cached. Your GitHub data,
-  preferences, and triage state go nowhere else.
-- **Storage:** SQLite through a pure-Go driver (no CGO) in `~/Library/Application Support/Nilbox`,
-  with forward-only, checksummed migrations and a backup before each one. It holds your
-  preferences, triage state, prompts, launch defaults, notification and cleanup history, and a
-  cache of what GitHub returned.
-- **Agents:** launches the Claude Code CLI you already use, with your own profiles. Nilbox never
-  stores model credentials.
+| Feature                              | Status        | Description                                                         |
+|--------------------------------------|---------------|---------------------------------------------------------------------|
+| ✅ macOS 13+                          | **Supported** | Native desktop app with a menu bar icon and notification banners    |
+| ✅ Claude Code                        | **Supported** | Your own profiles, models, effort, and flags                        |
+| ✅ iTerm2 and Terminal.app            | **Supported** | iTerm2 by default                                                   |
+| 🚧 First-run setup                   | **Planned**   | A GitHub CLI check, plus agent and terminal preferences             |
+| 🚧 Mute or pin repositories and orgs | **Planned**   | Hide or raise everything from a repository or org at once           |
+| 🚧 Security alert sweeps             | **Planned**   | Sweep security alerts across every repository                       |
+| 🚧 More coding agents and terminals  | **Planned**   | Beyond Claude Code, iTerm2, and Terminal.app                        |
+| 🚧 Integrations                      | **Planned**   | Connect Nilbox to the rest of your tools                            |
+| 🚧 Linux and Windows                 | **Planned**   | The core is plain Go and already builds and tests on Linux          |
 
 <br/>
 
-## Development
+## 🧭 How It Works
 
-### Prerequisites
+| Layer             | Details                                                                                                                                                                                                  |
+|-------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Desktop shell** | [Wails v3](https://wails.io): a Go backend in the native macOS webview. Everything but the window is plain Go, built and tested on Linux without CGO                                                     |
+| **Frontend**      | React, TypeScript, Vite, and Tailwind, reaching Go only through generated bindings                                                                                                                       |
+| **GitHub access** | Your [GitHub CLI](https://cli.github.com) token, read on each refresh and held in memory only. One GraphQL request carries all three searches; card details load by node ID in concurrent batches       |
+| **API budget**    | A 20-item inbox refreshed every five minutes spends under 1% of the hourly GraphQL budget                                                                                                                |
+| **Storage**       | SQLite through a pure-Go driver, with forward-only, checksummed migrations and a backup before each one                                                                                                  |
+| **Agents**        | The Claude Code CLI you already use, with your own profiles. Nilbox never stores model credentials                                                                                                       |
 
-- [Go](https://go.dev/dl/) 1.26 or newer
-- [MAGE-X](https://github.com/mrz1836/mage-x) build tool: `go install github.com/mrz1836/mage-x/cmd/magex@latest`
-- [go-pre-commit](https://github.com/mrz1836/go-pre-commit) hooks: `go-pre-commit install`
-- For the desktop app: macOS 13 or newer, the Xcode Command Line Tools, Node 26, and pnpm at the
-  version pinned in `frontend/package.json` (`npm install -g pnpm@12.16.1`, once)
-- To use the app: the [GitHub CLI](https://cli.github.com), signed in with the `repo` and
-  `read:org` scopes, and to launch sessions, the `claude` CLI and iTerm2 or Terminal.app
+<br>
 
-### Quick start
+> **Your data stays on your Mac.** Nilbox talks only to GitHub: `api.github.com`, and
+> `avatars.githubusercontent.com` once for your profile picture. It only reads from GitHub, and your
+> preferences, triage state, and cache never leave your machine.
+
+<br/>
+
+## 📚 Documentation
+
+View the full documentation for Nilbox:
+
+| Document                                                   | Description                                                                         |
+|------------------------------------------------------------|-------------------------------------------------------------------------------------|
+| **[Desktop Guide](docs/desktop.md)**                       | Setup, build targets, data location, and how every feature behaves                  |
+| **[Performance](docs/performance.md)**                     | Measured startup, refresh, launch, size, and API budget, and how to reproduce them  |
+| **[AGENTS.md](.github/AGENTS.md)**                         | The engineering rulebook for contributors and AI agents                             |
+| **[Tech Conventions](.github/tech-conventions/README.md)** | Commits, branches, pull requests, testing, releases, and security practices         |
+| **[Support](.github/SUPPORT.md)**                          | Questions, bug reports, and private contact                                         |
+
+<br/>
+
+## 🔐 Security
+
+### Important Disclaimer
+
+> ⚠️ **Experimental Software — Use at Your Own Risk**
+>
+> Nilbox is open-source software provided "AS-IS" without warranty. By using it, you acknowledge:
+>
+> - **Agents act on your machine:** a launched coding agent runs with your profile's permissions
+>   and can run commands and change files in your clones.
+> - **Untrusted content stays untrusted:** pull requests and issues from outside contributors can
+>   carry prompt injection. Plan mode for outsiders and the sensitive-file checks reduce that risk;
+>   they don't remove it.
+> - **No formal audit:** Nilbox has not been professionally audited.
+> - **No liability:** the authors accept no responsibility for lost work, exposed data, or damages.
+>
+> **Review what you launch, especially from people you don't know.**
+
+For security issues, see our [Security Policy](.github/SECURITY.md) or contact:
+[nilbox@mrz1818.com](mailto:nilbox@mrz1818.com)
+
+<br/>
+
+### Additional Documentation & Repository Management
+
+<details>
+<summary><strong><code>Development Setup (Getting Started)</code></strong></summary>
+<br/>
+
+Install the [MAGE-X](https://github.com/mrz1836/mage-x) build tool and the
+[go-pre-commit](https://github.com/mrz1836/go-pre-commit) hooks
+([install guide](.github/tech-conventions/pre-commit.md)), then the frontend toolchain:
 
 ```bash
-cd ~/projects/nilbox
-magex app:run          # build the macOS app into bin/Nilbox.app and open it
+go install github.com/mrz1836/mage-x/cmd/magex@latest   # build tool
+go-pre-commit install                                   # git hooks, run from the repo root
+npm install -g pnpm@12.16.1                             # once, at the version frontend/package.json pins
+magex frontend:install                                  # frontend dependencies, exactly as the lockfile pins them
 ```
 
-The app borrows your [GitHub CLI](https://cli.github.com) login, so run `gh auth login` first.
-[docs/desktop.md](docs/desktop.md) covers the full setup, every build target, and how the app
-treats your clones and worktrees; [docs/performance.md](docs/performance.md) has the measured
-startup, refresh, and size numbers.
+Node must be version 26 (`frontend/.nvmrc`). Full prerequisites are in the
+[Desktop Guide](docs/desktop.md#prerequisites).
 
-### Common commands
+</details>
+
+<details>
+<summary><strong><code>Build Commands</code></strong></summary>
+<br/>
+
+View all build commands:
+
+```bash
+magex help
+```
+
+Common commands:
 
 ```bash
 magex build          # build the headless binary into bin/
-magex test           # run the test suite
-magex test:race      # run tests with the race detector
+magex app:dev        # run the desktop app with a hot-reloading frontend
+magex app:build      # build the macOS app bundle
+magex app:run        # build the app, quit the running copy, and open the new build
+magex test           # run the Go test suite
 magex lint           # run golangci-lint
 magex format:fix     # format the code
 magex frontend:gate  # format check, lint, typecheck, and test the frontend
-magex app:dev        # run the desktop app with a hot-reloading frontend
-magex app:build      # build the macOS app bundle
-magex app:open       # open the built app (builds it first if it is missing)
-magex app:run        # build the app, quit the running copy, and open the new build
-magex help           # list every available command
 ```
 
 Before opening a pull request, run the full gate:
@@ -240,31 +545,194 @@ Before opening a pull request, run the full gate:
 ```bash
 magex format:fix && magex lint && magex test:race && go-pre-commit run --all-files
 magex frontend:gate
-magex app:check      # on macOS: bindings drift check, desktop lint, and bundle build
+magex app:check      # macOS: bindings drift check, desktop lint, and bundle build
 ```
 
-### Project layout
+</details>
 
-| Path               | Purpose                                                        |
-|--------------------|----------------------------------------------------------------|
-| `cmd/nilbox/`      | Application entry point: a headless build by default, and the desktop app (window, menu bar icon, and notification banners) with the `desktop` tag |
-| `internal/brand/`  | Product identity and design tokens (the only place the name lives); `internal/brandgen/` generates the theme, `Info.plist`, and icon artwork from it |
-| `internal/`        | The services the app binds (inbox, launcher, prompts, launch defaults, settings, profiles, worktrees, and notifications) and their building blocks: the GitHub client, the trust and sensitive-file rules, snoozing, the menu bar, and the SQLite store |
-| `frontend/`        | The React + TypeScript frontend and its generated Go bindings  |
-| `build/`           | The app and menu bar icon artwork, and the macOS bundle's `Info.plist` and icon set, generated from `internal/brand` |
-| `magefiles/`       | Custom `magex` targets for the brand, the frontend, the app, and measurements |
-| `docs/`            | The desktop guide (setup, build targets, and how each feature behaves) and measured performance |
-| `.github/`         | CI workflows, community docs, and engineering conventions      |
+<details>
+<summary><strong><code>Project Layout</code></strong></summary>
+<br/>
+
+| Path              | Purpose                                                                                                                         |
+|-------------------|---------------------------------------------------------------------------------------------------------------------------------|
+| `cmd/nilbox/`     | Entry point: a headless build by default, and the desktop app (window, menu bar icon, banners) with the `desktop` tag          |
+| `internal/brand/` | Product identity and design tokens; `internal/brandgen/` generates the theme, `Info.plist`, and icon artwork from it            |
+| `internal/`       | The bound services (inbox, launcher, prompts, launch defaults, settings, profiles, worktrees, notifications) and their building blocks |
+| `frontend/`       | The React + TypeScript frontend and its generated Go bindings                                                                   |
+| `build/`          | App and menu bar icon artwork, and the macOS bundle's `Info.plist` and icon set                                                 |
+| `magefiles/`      | Custom `magex` targets for the brand, the frontend, the app, and measurements                                                   |
+| `docs/`           | The Desktop Guide and measured performance                                                                                      |
+| `.github/`        | CI workflows, community docs, and engineering conventions                                                                       |
+
+</details>
+
+<details>
+<summary><strong><code>Releases</code></strong></summary>
+<br/>
+
+This project uses [goreleaser](https://github.com/goreleaser/goreleaser) to publish releases to
+GitHub. To get started, install it via:
+
+```bash
+brew install goreleaser
+```
+
+The release process is defined in the [.goreleaser.yml](.goreleaser.yml) configuration file. Then
+create and push a new Git tag using:
+
+```bash
+magex version:bump bump=patch push=true branch=master
+```
+
+The tag triggers [fortress-release.yml](.github/workflows/fortress-release.yml), which publishes the
+release and its changelog. `magex app:build` stamps the app with the same version, build number,
+and commit, all shown in Settings → About.
+
+</details>
+
+<details>
+<summary><strong><code>GitHub Workflows</code></strong></summary>
+<br/>
+
+Nilbox uses the **Fortress** workflow system for its Go CI/CD, plus a dedicated frontend gate:
+
+- **fortress-test-suite.yml** — Complete Go test suite, built on Linux without CGO
+- **fortress-code-quality.yml** — Code quality checks (gofmt, golangci-lint, staticcheck)
+- **fortress-security-scans.yml** — Security scanning with gitleaks, govulncheck, and Nancy
+- **fortress-coverage.yml** — Code coverage reporting to Codecov
+- **fortress-release.yml** — Automated releases via GoReleaser
+- **frontend.yml** — The frontend gate: install, format check, lint, typecheck, and tests
+
+The desktop shell needs macOS, so `magex app:check` runs locally. See all workflows in
+[`.github/workflows/`](.github/workflows/).
+
+</details>
+
+<details>
+<summary><strong><code>Updating Dependencies</code></strong></summary>
+<br/>
+
+To update all Go dependencies (Go modules, linters, and related tools), run:
+
+```bash
+magex deps:update
+```
+
+Frontend dependencies are pinned by `frontend/pnpm-lock.yaml`, and
+[Dependabot](.github/dependabot.yml) keeps Go modules, GitHub Actions, and the dev container
+current.
+
+</details>
 
 <br/>
 
-## Contributing
+## 🧪 Examples & Tests
 
-Read [AGENTS.md](.github/AGENTS.md) before contributing. It links to the conventions for code,
-tests, commits, branches, and pull requests that both humans and AI agents follow here.
+All tests run via [GitHub Actions](https://github.com/mrz1836/nilbox/actions) and use
+[Go version 1.26](https://go.dev/doc/go1.26). View the
+[Go configuration](.github/workflows/fortress.yml) and the
+[frontend configuration](.github/workflows/frontend.yml).
+
+Run all Go tests (fast):
+
+```bash
+magex test
+```
+
+Run all Go tests with race detector (slower):
+
+```bash
+magex test:race
+```
+
+Run the frontend gate (format check, lint, typecheck, and tests with coverage):
+
+```bash
+magex frontend:gate
+```
 
 <br/>
 
-## License
+### Test Coverage
 
-[MIT](LICENSE) © [MrZ](https://github.com/mrz1836)
+View coverage report:
+
+```bash
+magex test:coverage
+```
+
+Coverage reports are automatically uploaded to [Codecov](https://codecov.io/gh/mrz1836/nilbox) on
+every commit.
+
+<br/>
+
+### Performance
+
+Measured on Apple Silicon Macs running macOS 15, against the production bundle `magex app:build`
+produces:
+
+| Metric                         | Target  | Measured |
+|--------------------------------|--------:|---------:|
+| Cold start to first paint      |   < 1 s |   1.01 s |
+| Inbox refresh                  |   < 3 s |   2.54 s |
+| App binary size                | < 30 MB |  17.8 MB |
+| API budget at 5-minute cadence |   < 2 % |   0.72 % |
+
+Re-measure everything (size, startup, live read-only refreshes, and a real launch in iTerm2):
+
+```bash
+magex measure:all
+```
+
+> Numbers are local-machine baselines, not SLOs. Use them to spot regressions on the same
+> hardware after a change. The method, every run, and how to reproduce them are in
+> [docs/performance.md](docs/performance.md).
+
+<br/>
+
+## 🛠️ Code Standards
+
+Read more about this Go project's [code standards](.github/CODE_STANDARDS.md).
+
+<br/>
+
+## 🤖 AI Usage & Assistant Guidelines
+
+Read the [AI Usage & Assistant Guidelines](.github/CLAUDE.md) for details on how AI is used in this
+project and how to interact with AI assistants.
+
+<br/>
+
+## 👥 Maintainers
+
+| [<img src="https://github.com/mrz1836.png" height="50" alt="MrZ" />](https://github.com/mrz1836) |
+|:------------------------------------------------------------------------------------------------:|
+|                                [MrZ](https://github.com/mrz1836)                                 |
+
+<br/>
+
+## 🤝 Contributing
+
+View the [contributing guidelines](.github/CONTRIBUTING.md) and please follow the
+[code of conduct](.github/CODE_OF_CONDUCT.md). Read [AGENTS.md](.github/AGENTS.md) before your
+first pull request: it links to the conventions for code, tests, commits, branches, and pull
+requests that both humans and AI agents follow here.
+
+### How can I help?
+
+All kinds of contributions are welcome :raised_hands:!
+The most basic way to show your support is to star :star2: the project, or to raise issues :speech_balloon:.
+You can also support this project by [becoming a sponsor on GitHub](https://github.com/sponsors/mrz1836) :clap:
+or by making a [**bitcoin donation**](https://mrz1818.com/?tab=tips&utm_source=github&utm_medium=sponsor-link&utm_campaign=nilbox&utm_term=nilbox&utm_content=nilbox)
+to ensure this journey continues indefinitely! :rocket:
+
+[![Stars](https://img.shields.io/github/stars/mrz1836/nilbox?label=Please%20like%20us&style=social)](https://github.com/mrz1836/nilbox/stargazers)
+
+<br/>
+
+## 📝 License
+
+[![License](https://img.shields.io/github/license/mrz1836/nilbox.svg?style=flat&v=1)](LICENSE)
+
+Nilbox is released under the [MIT License](LICENSE).
