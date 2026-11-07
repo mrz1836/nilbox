@@ -31,8 +31,8 @@ const columns = {
   size: 'min-w-[5ch]', // "XXL" with its border, in the badge's smaller font
   added: 'min-w-[6.5ch]', // up to "+99,999"
   removed: 'min-w-[6.5ch]', // up to "−99,999"
-  files: 'min-w-[7.5ch]', // up to "· 999 files"
-  commits: 'min-w-[11ch]', // up to "· 999 commits"
+  files: 'min-w-[6.6ch]', // up to "999 files"
+  commits: 'min-w-[10ch]', // up to "999 commits"
 } as const
 
 const checkIcons: Readonly<Record<ChecksKind, ReactNode>> = {
@@ -160,8 +160,8 @@ export function ItemSignals({ item }: ItemSignalsProps) {
           </span>
           <span className={`${columns.added} text-success`}>+{formatCount(additions)}</span>
           <span className={`${columns.removed} text-danger`}>−{formatCount(deletions)}</span>
-          <span className={columns.files}>· {counted(changedFiles, 'file', 'files')}</span>
-          <span className={columns.commits}>· {counted(commits, 'commit', 'commits')}</span>
+          <span className={columns.files}>{counted(changedFiles, 'file', 'files')}</span>
+          <span className={columns.commits}>{counted(commits, 'commit', 'commits')}</span>
         </Slot>
       )}
       <Labels labels={details.labels ?? []} />
