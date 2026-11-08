@@ -1,8 +1,8 @@
 # CLAUDE.md — read this first
 
 This is **Nilbox**, a local-first desktop app (Go + Wails v3 + React) that turns a GitHub account
-spanning hundreds of repositories into one focused inbox and launches coding agents on pull requests
-and issues. The shared engineering rulebook is [`.github/AGENTS.md`](.github/AGENTS.md). Read it
+spanning hundreds of repositories into one focused inbox and launches coding agents (Claude Code and
+OpenAI Codex) on pull requests and issues. The shared engineering rulebook is [`.github/AGENTS.md`](.github/AGENTS.md). Read it
 before changing anything. The rules in this file are Nilbox's own, and they win wherever the two
 differ.
 
@@ -126,8 +126,13 @@ app:lint` reads.
   Every `internal/*` package is plain Go, built and tested on Linux without CGO.
 - Services share their building blocks rather than keep copies: `internal/repo` and
   `internal/item` name repositories, pull requests and issues, and their worktrees;
-  `internal/agent` knows the coding tools and checks the options a launch passes them;
-  `internal/execpath` finds and runs external programs (`Finder`, `Runner`); and
+  `internal/agent` is the backend registry of the coding agents, one spec each (Claude Code,
+  Codex) with its command, config variable and markers, effort levels, models, permission
+  modes, reserved flags, and how a launch's options become its flags, so adding an agent adds
+  a spec and the launcher, profiles, and editors read the rest from it; `internal/procs` lists
+  the running processes' working directories (`lsof` on macOS, `/proc` on Linux), which tell
+  a worktree some session is in; `internal/execpath` finds and runs external programs
+  (`Finder`, `Runner`); and
   `internal/clock`, `internal/periodic`, `internal/flight`, `internal/paths`, and
   `internal/textutil` hold the clock, the interval runner, one call per key at a time, `~`
   paths, and text helpers. `internal/testutil` holds the fakes and fixtures the test suites
@@ -142,19 +147,28 @@ app:lint` reads.
   `application.RegisterEvent`, which generates its TypeScript type and name in
   `frontend/bindings`; a repository test checks that every window event is registered.
 - When a service needs another, prefer a narrow interface or value type declared where it is
-  used (the launcher's `ItemStore` and `LaunchSettings`, the worktree service's
-  `SweepSettings` and `GitHub`) over importing the other service; `internal/core/adapters.go`
-  adapts the real services to them. The repoguard boundary test
+  used (the launcher's `ItemStore`, `LaunchSettings`, `WorktreeMaker`, and per-agent `Truster`
+  map, the worktree service's `SweepSettings` and `GitHub`) over importing the other service;
+  `internal/core/adapters.go` adapts the real services to them. The repoguard boundary test
   (`internal/repoguard/deps_test.go`) keeps the cuts it lists.
 - `internal/budget/` keeps the GitHub API budget current. The one shared `github.Client` hands
   every response's rate-limit reading, and what the request spent, to its `Tracker`
   (`github.RateObserver`), whose state the `Saver` keeps across runs. Every GitHub request goes
   through `(*github.Client).do`: never build an HTTP request anywhere else, nor run `gh api`;
   `internal/repoguard/githubrequests_test.go` fails the build if anything does.
-- `internal/launcher/` plans a launch and writes its files; `internal/launcher/terminal/`
-  renders the launch script and opens it in the user's terminal app, one driver per terminal
-  and OS. `internal/worklog` records the worktrees launches start and the cleanups that
-  remove them, which the worktrees service reads.
+- `internal/launcher/` resolves a launch (the agent first, then that agent's profile, model,
+  and flags), plans it, and writes its files; `internal/launcher/terminal/` renders the launch
+  script, which only changes into the folder and runs the agent, and opens it in the user's
+  terminal app, one driver per terminal and OS. `internal/workspacetrust` marks the launch
+  folder trusted in each agent's own config (Claude's `.claude.json`, Codex's `config.toml`,
+  appended to and never rewritten).
+- The app owns its worktrees: `internal/worktrees` makes them (one per item per clone, shared by
+  every agent, under `<clone root>/.<slug>/worktrees/<clone>/`), records them in
+  `internal/worklog`, checks every record against git on each listing and sweep, and removes
+  them safely. Only `internal/worktrees/create.go` fetches or runs `git worktree add`, and
+  nothing changes a clone's own checkout; `TestNoGitCommandChangesAClone` in
+  `internal/repoguard` fails the build otherwise. The launcher reaches the `Maker` through its
+  `WorktreeMaker` interface; no agent's own `--worktree` flag is used.
 - `internal/measure/` and `magefiles/measure.go` take the numbers in
   [`docs/performance.md`](docs/performance.md).
 - `frontend/` is the React + TypeScript + Vite + Tailwind app. It reaches Go only through the
@@ -198,7 +212,8 @@ package imports the driver, and nothing imports an ORM (`internal/repoguard` enf
   then reads as a history this build disagrees with and is set aside, and only the prompt
   library comes back on its own.
 - **Ownership.** Every table has one owner package (`tableOwners` in
-  `internal/repoguard/datalayer_test.go`). The owner keeps its SQL in
+  `internal/repoguard/datalayer_test.go`): profiles owns `agent_profiles`, keyed by `(agent,
+  name)`, and worklog owns `worktree_records` and `worktree_cleanups`, for instance. The owner keeps its SQL in
   `internal/<owner>/internal/queries/*.sql`, and sqlc generates package `queries` beside it, so
   Go's `internal/` rule lets only the owner import it. Other packages call the owner's API,
   usually through a small interface the consumer declares and `internal/core` wires. SQL

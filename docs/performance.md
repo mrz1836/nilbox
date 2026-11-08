@@ -140,13 +140,15 @@ the listed items' details alongside the inbox query, where they finish first.
 ### Launch to prompt loaded
 
 **What is measured.** The time from the launch request to the agent running in the clone with
-its prompt: an agent process whose working directory is the clone (or one of its agent
-worktrees) and whose first argument is the starter prompt.
+its prompt: a new process of the agent's program whose working directory is the clone, or one of
+its worktrees (in the managed folder beside the clone, `.nilbox/worktrees/<clone>/`, or under the
+clone's `.claude/worktrees/`, where Claude Code made them before).
 
 **How.** `magex measure:launch` creates a throwaway clone whose `origin` is the placeholder
 repository `acme-org/example-repo`, without fetching anything. It stores one pull request from an
-outside contributor, so the session starts in plan mode, and launches it without a worktree
-through the real launch service and iTerm2. A launch on an outside contributor's pull request
+outside contributor, so the session starts in plan mode (Codex: read-only), and launches it
+without a worktree through the real launch service and iTerm2. It launches Claude Code by
+default; `magex measure:launch agent=codex` launches Codex instead. A launch on an outside contributor's pull request
 first checks its [sensitive files](desktop.md#sensitive-files) on GitHub; the placeholder's
 cannot be checked, so the launch is held back for confirmation, and the target confirms it at
 once and launches again, as a user would. The time includes both requests, so it is an upper
@@ -216,7 +218,8 @@ magex measure:all
 ```
 
 `magex measure:all` runs `measure:size`, `measure:startup`, `measure:refresh`, and
-`measure:launch` in that order, and each prints `key=value` lines. Run `measure:launch` from
+`measure:launch` in that order, and each prints `key=value` lines. `measure:launch` takes an
+optional `agent=` (`claude`, the default, or `codex`). Run `measure:launch` from
 iTerm2, or allow the terminal you run it from to control iTerm2 under System Settings → Privacy
 & Security → Automation. Until macOS allows it, the target reports `NEEDS AUTOMATION
 PERMISSION`.
