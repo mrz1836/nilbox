@@ -262,7 +262,7 @@ merges or the issue closes.
 
 - **One inbox, every repository** — Review requested, Authored, and Assigned, across every repo your account can see
 - **Cards that answer "is it ready?"** — checks, reviews, comments, size grade, labels, and Draft and Conflicts tags
-- **Issue projects** — each issue's GitHub project and its status there, such as In progress, one click from the board
+- **Issue projects** — each issue's GitHub project and its status there, such as In progress, one click from the board, and a status sort in your own order
 - **Local triage** — snooze, dismiss, or pin; wake rules end a snooze early when something changes
 - **One-click agent launch** — Claude Code in iTerm2 or Terminal.app, in the right clone and its own worktree
 - **Profiles per repo or org** — every `~/.claude-<name>` config directory is a profile, so each repo launches on its own account
@@ -292,6 +292,9 @@ merges or the issue closes.
   in the project's color; click it to open the board. It needs the optional, read-only
   `read:project` scope (`gh auth refresh -s read:project`); without it the inbox works as before
   and offers the command until you close the tip.
+- **Sort by status:** flip **Assigned** from **Recent** to **Status** to see work in progress
+  above work that's ready, new, or deferred. Every project names its own statuses, so the order
+  is yours to arrange; statuses you haven't placed are placed by their names.
 - **Always current:** a refresh on start and every five minutes, a manual refresh, and a per-card
   refresh that costs one API point. Archived repositories, and items merged or closed since GitHub
   indexed them, never show.

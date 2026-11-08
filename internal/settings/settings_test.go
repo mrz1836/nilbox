@@ -92,6 +92,7 @@ func TestPrefDefaults(t *testing.T) {
 		BannersOff:          []notifyprefs.Kind{},
 		Theme:               ThemeSystem,
 		CollapsedSections:   []ListKey{},
+		InboxOrder:          InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}},
 	}, got)
 }
 
@@ -196,6 +197,7 @@ func TestSettersPersist(t *testing.T) {
 		BannersOff:          []notifyprefs.Kind{notifyprefs.KindWoke},
 		Theme:               DefaultTheme,
 		CollapsedSections:   []ListKey{},
+		InboxOrder:          InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}},
 	}, got)
 
 	abs := t.TempDir()

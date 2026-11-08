@@ -15,6 +15,24 @@ import * as sensitive$0 from "../sensitive/models.js";
 import * as snooze$0 from "../snooze/models.js";
 
 /**
+ * InboxOrder is how the inbox orders its lists: which are sorted by project status, and
+ * the order of the statuses. Every field is a plain value.
+ */
+export interface InboxOrder {
+    /**
+     * StatusSorted lists the inbox lists sorted by project status, in the order the inbox
+     * shows them. Every other list keeps its newest activity first.
+     */
+    "statusSorted": ListKey[] | null;
+
+    /**
+     * StatusOrder is the user's order of project status names, first ranked highest. It
+     * is empty until the user changes it.
+     */
+    "statusOrder": string[] | null;
+}
+
+/**
  * ListKey names an inbox list, as the inbox snapshot names it: each list is a section of
  * the inbox the user can collapse.
  */
@@ -136,6 +154,12 @@ export interface Settings {
      * the GitHub projects an issue is in.
      */
     "projectsTipDismissed": boolean;
+
+    /**
+     * InboxOrder is which inbox lists are sorted by project status, and the order of the
+     * statuses.
+     */
+    "inboxOrder": InboxOrder;
 }
 
 /**

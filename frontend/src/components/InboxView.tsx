@@ -4,6 +4,7 @@ import { isInboxNil } from '../lib/nil'
 import { formatAgo, formatWhen } from '../lib/time'
 import { findItem, isDismissed, type TriagedInbox } from '../lib/triage'
 import type { InboxState } from '../lib/useInbox'
+import type { InboxOrderState } from '../lib/useInboxOrder'
 import { useClock } from '../lib/useNow'
 import type { InboxItem, ItemResolution, ListKey } from '../platform'
 import { ErrorBanner } from './ErrorBanner'
@@ -48,6 +49,9 @@ export interface InboxViewProps {
   // offersProjects), and onDismissProjects stores that the user put the offer away.
   offerProjects?: boolean
   onDismissProjects?: () => void
+  // inboxOrder is how the lists are ordered (useInboxOrder). The lists wait for it to
+  // load.
+  inboxOrder: InboxOrderState
 }
 
 const sections: readonly { key: ListKey; title: string }[] = [
@@ -80,9 +84,11 @@ export function InboxView({
   showing = true,
   offerProjects = false,
   onDismissProjects,
+  inboxOrder,
 }: InboxViewProps) {
   const { snapshot, loadError, refreshError, refreshing, refresh, dismiss, snooze, restore, pin, unpin, refreshItem } =
     inbox
+  const { order, setStatusSort, setStatusOrder } = inboxOrder
   const clock = useClock()
   const error = firstMessage(refreshError, snapshot?.lastError ?? '', loadError)
   const [toast, setToast] = useState<ToastMessage | null>(null)
@@ -267,7 +273,7 @@ export function InboxView({
         />
       )}
       {nil && <InboxNil key={visit.n} stats={triaged} earned={busy} />}
-      {triaged === null || collapsed === null
+      {triaged === null || collapsed === null || order === null
         ? loadError === '' && <p className="text-sm text-muted">Loading the inbox…</p>
         : sections.map(({ key, title }) => (
             <ListSection
@@ -283,6 +289,14 @@ export function InboxView({
               }}
               onFilesSettings={onFilesSettings}
               reveal={key === revealIn ? reveal : null}
+              order={{
+                byStatus: order.statusSorted.includes(key),
+                stored: order.statusOrder,
+                onSortChange: (on) => {
+                  setStatusSort(key, on)
+                },
+                onOrderChange: setStatusOrder,
+              }}
             />
           ))}
       <Toast toast={toast} onClose={closeToast} />

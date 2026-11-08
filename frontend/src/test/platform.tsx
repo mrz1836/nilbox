@@ -139,6 +139,9 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     getCollapsedSections: () => Promise.resolve([]),
     setSectionCollapsed: (section, collapsed) => stored({ collapsedSections: collapsed ? [section] : [] }),
     setProjectsTipDismissed: (projectsTipDismissed) => stored({ projectsTipDismissed }),
+    getInboxOrder: () => Promise.resolve({ statusSorted: [], statusOrder: [] }),
+    setStatusSort: (section, on) => stored({ inboxOrder: { statusSorted: on ? [section] : [], statusOrder: [] } }),
+    setStatusOrder: (statusOrder) => stored({ inboxOrder: { statusSorted: [], statusOrder: statusOrder ?? [] } }),
     setWindowSize: (windowSize) => stored({ windowSize }),
 
     listWorktrees: () => Promise.resolve(worktreesSnapshot()),

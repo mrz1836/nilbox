@@ -154,6 +154,10 @@ type Settings struct {
 	// ProjectsTipDismissed is set once the user puts away the inbox's tip about showing
 	// the GitHub projects an issue is in.
 	ProjectsTipDismissed bool `json:"projectsTipDismissed"`
+
+	// InboxOrder is which inbox lists are sorted by project status, and the order of the
+	// statuses.
+	InboxOrder InboxOrder `json:"inboxOrder"`
 }
 
 // ProfileLookup finds a stored profile by name, or returns profiles.ErrProfileNotFound.
@@ -424,6 +428,7 @@ func fromStored(stored map[string]string) Settings {
 		CollapsedSections:   decodeCollapsed(stored),
 
 		ProjectsTipDismissed: decodeProjectsTipDismissed(stored[KeyProjectsTipDismissed]),
+		InboxOrder:           decodeInboxOrder(stored),
 	}
 
 	if v := stored[KeyDefaultProfile]; v != "" {
@@ -522,5 +527,5 @@ func settingKeys() []string {
 		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, KeyTheme,
 		KeyProjectsTipDismissed,
-	}, collapsedKeys()...)
+	}, append(collapsedKeys(), orderKeys()...)...)
 }

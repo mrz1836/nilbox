@@ -169,6 +169,7 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     theme: 'system',
     collapsedSections: [],
     projectsTipDismissed: false,
+    inboxOrder: { statusSorted: [], statusOrder: [] },
     ...overrides,
   }
 }

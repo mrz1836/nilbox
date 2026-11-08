@@ -11,6 +11,7 @@ import { offersProjects } from './lib/projects'
 import { defaultSnoozeDays, findItem } from './lib/triage'
 import { useCollapsedSections } from './lib/useCollapsedSections'
 import { useInbox } from './lib/useInbox'
+import { useInboxOrder } from './lib/useInboxOrder'
 import { useLaunchConfig } from './lib/useLaunchConfig'
 import { useNotifications } from './lib/useNotifications'
 import { useQuery } from './lib/useQuery'
@@ -232,6 +233,7 @@ export function App() {
   // sections lives here rather than in the inbox page, so the lists stay as they were
   // left without reading them again.
   const sections = useCollapsedSections()
+  const inboxOrder = useInboxOrder()
   const [nav, go] = useReducer(navigate, startNav)
   const { view } = nav
 
@@ -389,6 +391,7 @@ export function App() {
             showing={view === 'inbox'}
             offerProjects={offersProjects(inbox.snapshot, config.settings)}
             onDismissProjects={dismissProjects}
+            inboxOrder={inboxOrder}
           />
         </Activity>
         {nav.visited.has('worktrees') && (

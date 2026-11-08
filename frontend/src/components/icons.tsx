@@ -427,3 +427,12 @@ export function ProjectIcon(props: IconProps) {
     </Icon>
   )
 }
+
+// SortIcon stands for the order of a list: an arrow up beside an arrow down.
+export function SortIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M8 19V5M4.5 8.5 8 5l3.5 3.5M16 5v14M12.5 15.5 16 19l3.5-3.5" />
+    </Icon>
+  )
+}

@@ -132,6 +132,7 @@ export type SensitiveLevel = sensitive.Level
 export type SensitiveScope = sensitive.Scope
 
 export type Settings = NonNullLists<settings.Settings>
+export type InboxOrder = NonNullLists<settings.InboxOrder>
 export type WindowSize = NonNullLists<settings.WindowSize>
 export type ListKey = settings.ListKey
 export type Theme = settings.Theme
@@ -224,6 +225,9 @@ export const {
   CollapsedSections: getCollapsedSections,
   SetSectionCollapsed: setSectionCollapsed,
   SetProjectsTipDismissed: setProjectsTipDismissed,
+  InboxOrder: getInboxOrder,
+  SetStatusSort: setStatusSort,
+  SetStatusOrder: setStatusOrder,
 } = narrow(settings.Service)
 
 export const {

@@ -12,6 +12,7 @@ export {
 } from "./models.js";
 
 export type {
+    InboxOrder,
     Settings,
     WindowSize
 } from "./models.js";

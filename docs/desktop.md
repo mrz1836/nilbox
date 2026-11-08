@@ -349,6 +349,20 @@ first, in GitHub's order, then **+N**; hover the count for the others and their 
 closed project, and an item archived from its project, are left out. A project whose Status
 field was renamed or deleted shows its name alone. Pull requests show no projects.
 
+**Sorting by status.** A list whose issues are in projects, **Assigned** in practice, has a
+**Recent | Status** toggle at the right of its header. **Recent** is the usual order: pinned
+items first, then newest activity. **Status** keeps the pinned items first, then lists the
+issues by their project status, an issue in several projects by its best one; issues of one
+status stay newest first, and issues without a status come last. Click the arrows icon beside
+the toggle for **Status order**: the statuses found in the list, top ranked first, each moved
+with its up and down arrows. Every project names its own statuses, so the order is yours.
+A status you haven't placed, as a new project brings, is placed by its name: work under way
+(**In progress**), then in review, ready to start (**Ready**, **Todo**), anything else, new
+work (**Backlog**), work set aside (**Blocked**, **Deferred**, **Waiting**), and done last. It
+goes after the last status you placed at the same point or an earlier one. **Reset** puts
+every status back where its name places it. The toggle and the order are kept across
+launches; statuses you placed that are not in the list now keep their places.
+
 **The scope.** GitHub only shows projects to a token with the `read:project` scope (or
 `project`, which includes it), and `gh auth login` doesn't ask for it. Add it to the token
 the app borrows, then refresh:

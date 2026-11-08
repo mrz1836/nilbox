@@ -61,6 +61,15 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.CollapsedSections": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.CollapsedSections(ctx)
 		},
+		"settings.Service.InboxOrder": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.InboxOrder(ctx)
+		},
+		"settings.Service.SetStatusSort": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetStatusSort(ctx, settings.ListAssigned, true)
+		},
+		"settings.Service.SetStatusOrder": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetStatusOrder(ctx, nil)
+		},
 		"settings.Service.SetTerminal": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetTerminal(ctx, settings.TerminalApp)
 		},

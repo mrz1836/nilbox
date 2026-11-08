@@ -1,10 +1,12 @@
 import { useEffect, useId, useRef, useState } from 'react'
 
 import { prefersReducedMotion } from '../lib/motion'
+import { sortByStatus, statusesOf, statusOrder } from '../lib/statusOrder'
 import { tabOf, type TriagedList, type TriageTab } from '../lib/triage'
 import type { ItemResolution } from '../platform'
 import { ArchiveIcon, ChevronDownIcon, ClockIcon } from './icons'
 import { ItemRow, type LaunchOptions } from './ItemRow'
+import { StatusSort } from './StatusSort'
 import { TabPanel, tabPanelId, Tabs } from './Tabs'
 import type { TriageActions } from './TriageControls'
 
@@ -36,6 +38,16 @@ function emptyText(tab: TriageTab, title: string): string {
   }
 }
 
+// ListOrder is how a list orders its own tab: by newest activity, or by project status in
+// the user's order, and the calls that change either.
+export interface ListOrder {
+  byStatus: boolean
+  // stored is the user's order of status names (see statusOrder).
+  stored: readonly string[]
+  onSortChange: (byStatus: boolean) => void
+  onOrderChange: (order: readonly string[]) => void
+}
+
 export interface ListSectionProps {
   title: string
   // triaged is the list sorted into its tabs.
@@ -49,12 +61,15 @@ export interface ListSectionProps {
   onFilesSettings?: (() => void) | undefined
   // reveal is an item in this list to show, or null.
   reveal: Reveal | null
+  // order is how the list's own tab is ordered.
+  order: ListOrder
 }
 
 // ListSection is one inbox list as tabs: the list itself, then what was snoozed and
 // what was dismissed from it, each with its count. The toggle at the right of its header
 // collapses it to just the tabs, which keep their counts; a collapsed list's rows are not
-// rendered at all.
+// rendered at all. A list whose items are in GitHub projects can sort its own tab by
+// project status (StatusSort), left of the toggle.
 export function ListSection({
   title,
   triaged,
@@ -65,10 +80,22 @@ export function ListSection({
   onCollapse,
   onFilesSettings,
   reveal,
+  order,
 }: ListSectionProps) {
   const id = useId()
   const [tab, setTab] = useState<TriageTab>('inbox')
-  const items = triaged[tab]
+  // The list's own tab can sort by project status; the statuses are those of its items,
+  // and the order the user's, with each status they haven't placed placed by its name.
+  const statuses = statusesOf(triaged.inbox)
+  const byStatus = order.byStatus
+  const ranked = statusOrder(
+    order.stored,
+    statuses.map((s) => s.name),
+  )
+  const items = tab === 'inbox' && byStatus ? sortByStatus(triaged.inbox, ranked) : triaged[tab]
+  // The sort shows on the list's own tab while it has a status to sort by, or is sorted
+  // by one, so it can always be turned back.
+  const sortable = tab === 'inbox' && !collapsed && (statuses.length > 0 || byStatus)
   const panelRef = useRef<HTMLDivElement>(null)
   // revealed is the last reveal request handled, and highlight the row it highlights.
   const [revealed, setRevealed] = useState(0)
@@ -143,6 +170,17 @@ export function ListSection({
           className="flex flex-1 items-center gap-1"
           tabClassName="pt-2.5"
         />
+        {sortable && (
+          <StatusSort
+            title={title}
+            byStatus={byStatus}
+            onSortChange={order.onSortChange}
+            statuses={statuses}
+            order={ranked}
+            customized={order.stored.length > 0}
+            onOrderChange={order.onOrderChange}
+          />
+        )}
         <button
           type="button"
           aria-expanded={!collapsed}
