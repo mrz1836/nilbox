@@ -1,6 +1,6 @@
-import { useEffect, useId, useState, type ReactNode } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 
-import { formatAgo } from '../lib/age'
+import { formatAgo } from '../lib/time'
 import { formatCount } from '../lib/format'
 import { entryRef, kindTitle } from '../lib/notifications'
 import { useMutation } from '../lib/useMutation'
@@ -9,6 +9,7 @@ import { usePopover } from '../lib/usePopover'
 import type { AppNotification, NotificationKind } from '../platform'
 import { quietButtonClass } from './controls'
 import { AssignIcon, BellIcon, ClockIcon, EyeIcon, SlidersIcon } from './icons'
+import { PopoverPanel } from './PopoverPanel'
 
 export interface NotificationsMenuProps {
   notifications: NotificationsState
@@ -86,18 +87,12 @@ function Entry({ entry, now, fresh, onOpen }: EntryProps) {
 // that were unread stay marked until it closes. An entry opens its item.
 export function NotificationsMenu({ notifications, now, onOpen, onSettings }: NotificationsMenuProps) {
   const id = useId()
-  const { open, toggle, close, triggerRef, panelRef } = usePopover<HTMLButtonElement, HTMLDivElement>()
+  const popover = usePopover<HTMLButtonElement, HTMLDivElement>({ focus: 'panel' })
+  const { open, toggle, close, triggerRef } = popover
   const { log, error, markRead, markError, clear } = notifications
   const items = log.items
   const [fresh, setFresh] = useState<ReadonlySet<number>>(new Set())
   const clearing = useMutation(clear)
-
-  // Focus moves into the panel, so Escape and Tab behave from there.
-  useEffect(() => {
-    if (open) {
-      panelRef.current?.focus()
-    }
-  }, [open, panelRef])
 
   const onToggle = () => {
     if (!open) {
@@ -146,74 +141,73 @@ export function NotificationsMenu({ notifications, now, onOpen, onSettings }: No
           </span>
         )}
       </button>
-      {open && (
-        <div
-          ref={panelRef}
-          id={id}
-          role="dialog"
-          aria-labelledby={`${id}-title`}
-          tabIndex={-1}
-          className="absolute top-full right-0 z-40 mt-2 flex max-h-[min(32rem,calc(100vh-5rem))] w-96 origin-top-right flex-col rounded-lg border border-border bg-surface shadow-xl shadow-black/20 outline-none motion-safe:animate-pop-in"
-        >
-          <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-            <h2 id={`${id}-title`} className="text-sm font-semibold">
-              Notifications
-            </h2>
-            {items.length > 0 && (
-              <button
-                type="button"
-                onClick={() => {
-                  void clearing.run()
-                }}
-                className={`ml-auto ${quietButtonClass}`}
-              >
-                Clear
-              </button>
-            )}
-          </div>
-          {failure !== '' && (
-            <p role="alert" className="border-b border-border px-4 py-2 text-xs text-danger">
-              {failure}
-            </p>
-          )}
-          {items.length === 0 ? (
-            <div className="px-4 py-6 text-center">
-              <p className="text-sm font-medium">No notifications yet</p>
-              <p className="mt-1 text-xs text-muted">
-                New review requests, assignments, and snoozes that end early show up here.
-              </p>
-            </div>
-          ) : (
-            <ul aria-label="Notification history" className="min-h-0 flex-1 divide-y divide-border overflow-y-auto">
-              {items.map((entry) => (
-                <Entry
-                  key={entry.id}
-                  entry={entry}
-                  now={now}
-                  fresh={fresh.has(entry.id) || !entry.read}
-                  onOpen={() => {
-                    close()
-                    onOpen(entry)
-                  }}
-                />
-              ))}
-            </ul>
-          )}
-          <div className="border-t border-border px-2 py-1.5">
+      <PopoverPanel
+        state={popover}
+        align="right"
+        id={id}
+        role="dialog"
+        aria-labelledby={`${id}-title`}
+        tabIndex={-1}
+        className="z-40 flex max-h-[min(32rem,calc(100vh-5rem))] w-96 flex-col shadow-black/20 outline-none"
+      >
+        <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
+          <h2 id={`${id}-title`} className="text-sm font-semibold">
+            Notifications
+          </h2>
+          {items.length > 0 && (
             <button
               type="button"
               onClick={() => {
-                close()
-                onSettings()
+                void clearing.run()
               }}
-              className={quietButtonClass}
+              className={`ml-auto ${quietButtonClass}`}
             >
-              <SlidersIcon className="size-3.5" />
-              Notification settings
+              Clear
             </button>
-          </div>
+          )}
         </div>
-      )}
+        {failure !== '' && (
+          <p role="alert" className="border-b border-border px-4 py-2 text-xs text-danger">
+            {failure}
+          </p>
+        )}
+        {items.length === 0 ? (
+          <div className="px-4 py-6 text-center">
+            <p className="text-sm font-medium">No notifications yet</p>
+            <p className="mt-1 text-xs text-muted">
+              New review requests, assignments, and snoozes that end early show up here.
+            </p>
+          </div>
+        ) : (
+          <ul aria-label="Notification history" className="min-h-0 flex-1 divide-y divide-border overflow-y-auto">
+            {items.map((entry) => (
+              <Entry
+                key={entry.id}
+                entry={entry}
+                now={now}
+                fresh={fresh.has(entry.id) || !entry.read}
+                onOpen={() => {
+                  close()
+                  onOpen(entry)
+                }}
+              />
+            ))}
+          </ul>
+        )}
+        <div className="border-t border-border px-2 py-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              close()
+              onSettings()
+            }}
+            className={quietButtonClass}
+          >
+            <SlidersIcon className="size-3.5" />
+            Notification settings
+          </button>
+        </div>
+      </PopoverPanel>
     </div>
   )
 }

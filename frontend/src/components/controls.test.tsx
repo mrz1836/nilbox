@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import { describedBy, Field, fromTriState, Segmented, triState } from './controls'
+import { describedBy, Field, fromTriState, Segmented, Switch, triState } from './controls'
 
 describe('Segmented', () => {
   it('is a group of radios, one checked', async () => {
@@ -33,6 +33,47 @@ describe('Segmented', () => {
     )
 
     expect(screen.getByRole('radio', { name: 'A' })).toBeDisabled()
+  })
+
+  it('points at the text that describes it', () => {
+    render(
+      <>
+        <Segmented label="For" value="a" options={[{ value: 'a', label: 'A' }]} onChange={vi.fn()} describedBy="why" />
+        <p id="why">That choice was refused.</p>
+      </>,
+    )
+
+    expect(screen.getByRole('radiogroup', { name: 'For' })).toHaveAccessibleDescription('That choice was refused.')
+  })
+})
+
+describe('Switch', () => {
+  it('is announced as a switch and reports whether it was turned on', async () => {
+    const onChange = vi.fn()
+    render(
+      <>
+        <label htmlFor="wrap">Wrap lines</label>
+        <Switch id="wrap" checked={false} describedBy="wrap-help" onChange={onChange} />
+        <p id="wrap-help">Long lines wrap to the width of the window.</p>
+      </>,
+    )
+
+    const toggle = screen.getByRole('switch', { name: 'Wrap lines' })
+    expect(toggle).not.toBeChecked()
+    expect(toggle).toHaveAccessibleDescription('Long lines wrap to the width of the window.')
+
+    await userEvent.click(toggle)
+
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(true)
+  })
+
+  it('can be held, with a tooltip saying why', () => {
+    render(<Switch id="locked" checked disabled title="Always on" onChange={vi.fn()} className="mt-0.5" />)
+
+    const toggle = screen.getByRole('switch')
+    expect(toggle).toBeDisabled()
+    expect(toggle).toHaveAttribute('title', 'Always on')
+    expect(toggle).toHaveClass('mt-0.5')
   })
 })
 

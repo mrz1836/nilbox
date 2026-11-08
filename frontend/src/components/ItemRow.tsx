@@ -1,5 +1,5 @@
-import { formatAge, formatAgo } from '../lib/age'
-import { formatFull, formatWhen, isBackFromSnooze, wakeSummary, type TriageTab } from '../lib/triage'
+import { formatAge, formatAgo, formatFull, formatWhen } from '../lib/time'
+import { isBackFromSnooze, wakeSummary, type TriageTab } from '../lib/triage'
 import {
   openExternal,
   type InboxItem,

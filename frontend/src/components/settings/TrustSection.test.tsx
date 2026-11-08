@@ -2,8 +2,8 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { Settings } from '../platform'
-import { settings } from '../test/fixtures'
+import type { Settings } from '../../platform'
+import { settings } from '../../test/fixtures'
 import { TrustSection } from './TrustSection'
 
 const platform = vi.hoisted(() => ({
@@ -11,7 +11,7 @@ const platform = vi.hoisted(() => ({
   resetTrustedBots: vi.fn(),
 }))
 
-vi.mock('../platform', () => platform)
+vi.mock('../../platform', () => platform)
 
 function renderTrust(current: Settings = settings()) {
   const onSaved = vi.fn()
@@ -74,6 +74,7 @@ describe('TrustSection', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Trust bot' }))
 
     expect(screen.getByRole('alert')).toHaveTextContent('dependabot is already trusted.')
+    expect(input).toHaveAccessibleDescription('dependabot is already trusted.')
     expect(platform.setTrustedBots).not.toHaveBeenCalled()
 
     await userEvent.clear(input)
@@ -82,6 +83,11 @@ describe('TrustSection', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('not a bot login')
     expect(input).toHaveAttribute('aria-invalid', 'true')
+    expect(input).toHaveAccessibleDescription('not a bot login: "two words"')
+
+    // Typing again clears the refusal, and the field is described by nothing.
+    await userEvent.type(input, '!')
+    expect(input).not.toHaveAttribute('aria-describedby')
   })
 
   it('asks for a login when only a suffix is typed', async () => {

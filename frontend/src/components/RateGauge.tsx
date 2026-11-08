@@ -1,4 +1,4 @@
-import { formatAge, formatUntil } from '../lib/age'
+import { formatAge, formatUntil } from '../lib/time'
 import { budgets, levelFill, levelLabels, levelText, readBudget, summarize, type Budget } from '../lib/budget'
 import { formatCount } from '../lib/format'
 import type { Rate, RateGauge as Gauge } from '../platform'

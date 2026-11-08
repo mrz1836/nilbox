@@ -197,6 +197,7 @@ describe('SettingsView', () => {
     await openSection('Snoozing')
 
     const lengths = screen.getByRole('radiogroup', { name: 'Snooze for' })
+    expect(lengths).not.toHaveAttribute('aria-describedby')
     expect(within(lengths).getByRole('radio', { name: '3d' })).toBeChecked()
     expect(within(lengths).getAllByRole('radio')).toHaveLength(6)
     expect(screen.getByText(/never comes back on its own/)).toBeInTheDocument()
@@ -259,6 +260,13 @@ describe('SettingsView', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('invalid snooze wake rules')
     expect(onSaved).not.toHaveBeenCalled()
+    // Each choice is read with why the last one was refused.
+    expect(screen.getByRole('radiogroup', { name: 'Wake on reviews' })).toHaveAccessibleDescription(
+      'invalid snooze wake rules',
+    )
+    expect(screen.getByRole('radiogroup', { name: 'Snooze for' })).toHaveAccessibleDescription(
+      'invalid snooze wake rules',
+    )
   })
 
   it('shows a snooze length the backend refused', async () => {
@@ -270,6 +278,7 @@ describe('SettingsView', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('invalid snooze length')
     expect(onSaved).not.toHaveBeenCalled()
+    expect(screen.getByRole('radiogroup', { name: 'Snooze for' })).toHaveAccessibleDescription('invalid snooze length')
   })
 
   it('waits for the settings before showing the snooze length', async () => {
@@ -307,6 +316,7 @@ describe('SettingsView', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('invalid window size')
     expect(onSaved).not.toHaveBeenCalled()
+    expect(screen.getByRole('radiogroup', { name: 'Window size' })).toHaveAccessibleDescription('invalid window size')
   })
 
   it('selects no preset for a size that matches none', async () => {
@@ -363,6 +373,7 @@ describe('SettingsView', () => {
     expect(icon('Light')).toHaveClass('motion-safe:animate-sun-in')
     expect(icon('Dark')?.getAttribute('class')).not.toMatch(/animate-/)
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(themes).not.toHaveAttribute('aria-describedby')
   })
 
   it('shows a theme that could not be stored', async () => {
@@ -373,6 +384,7 @@ describe('SettingsView', () => {
     await userEvent.click(screen.getByRole('radio', { name: 'Dark' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('unknown theme "dim"')
+    expect(screen.getByRole('radiogroup', { name: 'Theme' })).toHaveAccessibleDescription('unknown theme "dim"')
   })
 
   it('persists the terminal choice', async () => {
@@ -400,6 +412,10 @@ describe('SettingsView', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('unknown terminal')
     expect(onSaved).not.toHaveBeenCalled()
+    // The menu is read with its help, then why the change was refused.
+    expect(screen.getByRole('combobox', { name: 'Terminal' })).toHaveAccessibleDescription(
+      'The app new sessions open in. unknown terminal',
+    )
   })
 
   it('persists the default profile', async () => {
@@ -412,6 +428,18 @@ describe('SettingsView', () => {
     await waitFor(() => {
       expect(onSaved).toHaveBeenCalledWith(settings({ defaultProfile: 'work' }))
     })
+  })
+
+  it('shows a default profile the backend refused', async () => {
+    platform.setDefaultProfile.mockRejectedValue(new Error('no profile named work'))
+    renderSettings()
+    await openSection('Launching')
+
+    const select = screen.getByRole('combobox', { name: 'Default profile' })
+    await userEvent.selectOptions(select, 'work')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('no profile named work')
+    expect(select).toHaveAccessibleDescription("Preselected in each row's profile menu. no profile named work")
   })
 
   it('cannot pick a default profile when none were found', async () => {
@@ -461,6 +489,7 @@ describe('SettingsView', () => {
     await waitFor(() => {
       expect(toggle).toBeChecked()
     })
+    expect(toggle).toHaveAccessibleDescription(/You can still change it per launch\. database is locked$/)
   })
 
   it('turns the automatic worktree cleanup off and on, sweeping at once when turned on', async () => {
@@ -502,6 +531,9 @@ describe('SettingsView', () => {
     await userEvent.click(screen.getByRole('switch', { name: 'Clean up after merging' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('database is locked')
+    expect(screen.getByRole('switch', { name: 'Clean up after merging' })).toHaveAccessibleDescription(
+      /ignored files in it go with it\. database is locked$/,
+    )
   })
 
   it('persists the clone root', async () => {
@@ -537,6 +569,7 @@ describe('SettingsView', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('clone root ~/missing is not a directory')
     expect(onSaved).not.toHaveBeenCalled()
+    expect(field).toHaveAccessibleDescription(/look one level inside it\. clone root ~\/missing is not a directory$/)
   })
 
   it('waits for the settings to load', async () => {
@@ -547,6 +580,11 @@ describe('SettingsView', () => {
 
     await openSection('Repositories')
     expect(screen.getByText('Loading the settings…')).toBeInTheDocument()
+
+    for (const name of ['Notifications', 'Trust', 'Sensitive files']) {
+      await openSection(name)
+      expect(screen.getByText('Loading the settings…')).toBeInTheDocument()
+    }
   })
 
   it('shows the product and its version', async () => {
@@ -761,6 +799,12 @@ describe('SettingsView launch defaults', () => {
     await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Prompt for issues' }), '5')
 
     expect(await screen.findByRole('alert')).toHaveTextContent('doesn’t apply to that kind of item')
+    expect(screen.getByRole('combobox', { name: 'Prompt for issues' })).toHaveAccessibleDescription(
+      /Edit prompts on the Prompts tab\. the prompt doesn’t apply to that kind of item$/,
+    )
+    expect(screen.getByRole('combobox', { name: 'Prompt for pull requests' })).toHaveAccessibleDescription(
+      /Edit prompts on the Prompts tab\.$/,
+    )
   })
 
   it('lists the org and repository launch defaults under Repositories', async () => {
@@ -909,6 +953,11 @@ describe('SettingsView notifications', () => {
       expect(screen.getByRole('switch', { name: 'Show in the menu bar' })).toBeChecked()
     })
     expect(onSaved).not.toHaveBeenCalled()
+    // Every switch is read with why the last change was refused.
+    expect(screen.getByRole('switch', { name: 'Show in the menu bar' })).toHaveAccessibleDescription(
+      /quit from its menu or with ⌘Q\. database is locked$/,
+    )
+    expect(banner('Review requests')).toHaveAccessibleDescription(/ database is locked$/)
   })
 
   it('sends a test banner, and says how it went', async () => {
@@ -919,11 +968,15 @@ describe('SettingsView notifications', () => {
 
     expect(platform.sendTestNotification).toHaveBeenCalledOnce()
     expect(await screen.findByText(/^Sent\./)).toBeInTheDocument()
+    expect(test).toHaveAccessibleDescription(/^Sent\. If no banner showed/)
 
     platform.sendTestNotification.mockRejectedValue(new Error('notifications are off for this app in System Settings'))
     await userEvent.click(test)
 
     expect(await screen.findByRole('alert')).toHaveTextContent('notifications are off')
+    expect(test).toHaveAccessibleDescription(
+      'Show a sample banner, asking for permission first if you have not been asked. notifications are off for this app in System Settings',
+    )
     // Asking may have changed whether they are allowed, so the state is read again.
     expect(platform.notificationBannerStatus).toHaveBeenCalledTimes(3)
   })

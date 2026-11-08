@@ -1,9 +1,9 @@
 import { startTransition, useActionState, useId, useState } from 'react'
 
-import { attempt } from '../lib/call'
-import { effortChoices, effortLabel, modelChoices, modelLabel, pinSummary, promptApplies } from '../lib/launch'
-import { defaultsInput, emptyDefaults, findDefaults } from '../lib/launchChoices'
-import { useDebouncedQuery, useQuery } from '../lib/useQuery'
+import { attempt } from '../../lib/call'
+import { effortLabel, modelLabel, pinSummary, promptApplies } from '../../lib/launch'
+import { defaultsInput, emptyDefaults, findDefaults } from '../../lib/launchChoices'
+import { useDebouncedQuery, useQuery } from '../../lib/useQuery'
 import {
   checkLaunchDefaults,
   listLaunchTargets,
@@ -16,22 +16,12 @@ import {
   type Profile,
   type Prompt,
   type Settings,
-} from '../platform'
-import { ConfirmDialog } from './ConfirmDialog'
-import {
-  buttonClass,
-  chipClass,
-  describedBy,
-  Field,
-  fieldClass,
-  fromTriState,
-  primaryButtonClass,
-  Segmented,
-  triState,
-  type SegmentOption,
-  type TriState,
-} from './controls'
-import { PlusIcon } from './icons'
+} from '../../platform'
+import { ConfirmDialog } from '../ConfirmDialog'
+import { buttonClass, chipClass, describedBy, Field, fieldClass, primaryButtonClass } from '../controls'
+import { PlusIcon } from '../icons'
+import { LaunchOverrideFields, type LaunchOverrides } from '../LaunchOverrideFields'
+import { ErrorText, SectionIntro } from './rows'
 
 export interface LaunchDefaultsSectionProps {
   settings: Settings
@@ -46,12 +36,6 @@ export interface LaunchDefaultsSectionProps {
 // Editing is the defaults being edited: new ones (target chosen in the form) or stored
 // ones (target fixed).
 type Editing = { kind: 'new' } | { kind: 'existing'; owner: string; name: string }
-
-const triOptions: readonly SegmentOption<TriState>[] = [
-  { value: 'inherit', label: 'Inherit' },
-  { value: 'on', label: 'On' },
-  { value: 'off', label: 'Off' },
-]
 
 // noTargets is the list of targets offered until it loads.
 const noTargets: readonly LaunchTarget[] = []
@@ -121,27 +105,26 @@ export function LaunchDefaultsSection({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <h3 className="text-sm font-semibold">Launch defaults</h3>
-          <p className="mt-0.5 text-xs text-muted">
-            What launches use for an org&apos;s repositories, or for one repository. A repository&apos;s own defaults
-            win over its org&apos;s, and a prompt&apos;s settings win over both.
-          </p>
-        </div>
-        <button
-          type="button"
-          disabled={editing !== null}
-          onClick={() => {
-            setEditing({ kind: 'new' })
-            setStatus('')
-          }}
-          className={`${buttonClass} shrink-0`}
-        >
-          <PlusIcon className="size-4" />
-          Add defaults
-        </button>
-      </div>
+      <SectionIntro
+        title="Launch defaults"
+        action={
+          <button
+            type="button"
+            disabled={editing !== null}
+            onClick={() => {
+              setEditing({ kind: 'new' })
+              setStatus('')
+            }}
+            className={`${buttonClass} shrink-0`}
+          >
+            <PlusIcon className="size-4" />
+            Add defaults
+          </button>
+        }
+      >
+        What launches use for an org&apos;s repositories, or for one repository. A repository&apos;s own defaults win
+        over its org&apos;s, and a prompt&apos;s settings win over both.
+      </SectionIntro>
 
       {editing?.kind === 'new' && (
         <DefaultsEditor
@@ -318,6 +301,10 @@ function DefaultsEditor({
   const set = (patch: Partial<LaunchDefaultsInput>) => {
     setInput((was) => ({ ...was, ...patch }))
   }
+  // Model names hold no spaces, so a typed one is kept trimmed.
+  const setOverride = (patch: Partial<LaunchOverrides>) => {
+    set(patch.model === undefined ? patch : { ...patch, model: patch.model.trim() })
+  }
 
   // inherited names what each setting falls back to: the org's defaults for a
   // repository, else the app's settings or the profile's own.
@@ -421,6 +408,7 @@ function DefaultsEditor({
           <select
             id={`${id}-profile`}
             value={input.profile}
+            aria-describedby={describedBy(`${id}-profile`, errors.profile, false)}
             onChange={(e) => {
               set({ profile: e.target.value })
             }}
@@ -439,6 +427,7 @@ function DefaultsEditor({
           <select
             id={`${id}-pr`}
             value={input.prPromptId ?? 0}
+            aria-describedby={describedBy(`${id}-pr`, errors.prPromptId, false)}
             onChange={(e) => {
               const v = Number(e.target.value)
 
@@ -458,6 +447,7 @@ function DefaultsEditor({
           <select
             id={`${id}-issue`}
             value={input.issuePromptId ?? 0}
+            aria-describedby={describedBy(`${id}-issue`, errors.issuePromptId, false)}
             onChange={(e) => {
               const v = Number(e.target.value)
 
@@ -473,104 +463,22 @@ function DefaultsEditor({
             ))}
           </select>
         </Field>
-        <Field label="Model" controlId={`${id}-model`} error={errors.model}>
-          <input
-            id={`${id}-model`}
-            list={`${id}-models`}
-            value={input.model}
-            placeholder={`Inherit · ${inherited.model}`}
-            spellCheck={false}
-            aria-invalid={errors.model !== undefined}
-            aria-describedby={describedBy(`${id}-model`, errors.model, false)}
-            onChange={(e) => {
-              set({ model: e.target.value.trim() })
-            }}
-            className={`${fieldClass} w-full`}
-          />
-          <datalist id={`${id}-models`}>
-            {modelChoices.map((c) => (
-              <option key={c.value} value={c.value}>
-                {c.label}
-              </option>
-            ))}
-          </datalist>
-        </Field>
-        <Field label="Effort" controlId={`${id}-effort`} error={errors.effort}>
-          <select
-            id={`${id}-effort`}
-            value={input.effort}
-            onChange={(e) => {
-              set({ effort: e.target.value })
-            }}
-            className={`${fieldClass} w-full`}
-          >
-            <option value="">Inherit · {inherited.effort}</option>
-            {effortChoices.map((c) => (
-              <option key={c.value} value={c.value}>
-                {c.label}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <div className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted">Plan mode</span>
-          <Segmented
-            label="Plan mode"
-            size="sm"
-            value={triState(input.planMode)}
-            options={triOptions}
-            onChange={(v) => {
-              set({ planMode: fromTriState(v) })
-            }}
-          />
-          <span className="text-xs text-muted">Inherits {inherited.planMode}</span>
-        </div>
-        <div className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted">Start in a worktree</span>
-          <Segmented
-            label="Start in a worktree"
-            size="sm"
-            value={triState(input.worktree)}
-            options={triOptions}
-            onChange={(v) => {
-              set({ worktree: fromTriState(v) })
-            }}
-          />
-          <span className="text-xs text-muted">Inherits {inherited.worktree}</span>
-        </div>
-        <div className="col-span-2">
-          <Field
-            label="Extra flags"
-            controlId={`${id}-flags`}
-            error={errors.extraFlags}
-            hint={
-              target.name === ''
-                ? 'Added after the profile’s flags, such as --add-dir /srv/shared.'
-                : 'Added after the profile’s and the org’s flags.'
-            }
-          >
-            <input
-              id={`${id}-flags`}
-              value={input.extraFlags}
-              placeholder="None"
-              spellCheck={false}
-              aria-invalid={errors.extraFlags !== undefined}
-              aria-describedby={describedBy(`${id}-flags`, errors.extraFlags, true)}
-              onChange={(e) => {
-                set({ extraFlags: e.target.value })
-              }}
-              className={`${fieldClass} w-full font-mono text-[13px]`}
-            />
-          </Field>
-        </div>
+        <LaunchOverrideFields
+          id={id}
+          values={input}
+          onChange={setOverride}
+          errors={errors}
+          inherited={inherited}
+          flagsHint={
+            target.name === ''
+              ? 'Added after the profile’s flags, such as --add-dir /srv/shared.'
+              : 'Added after the profile’s and the org’s flags.'
+          }
+        />
       </div>
 
       <div className="flex items-center justify-end gap-2">
-        {saveError !== '' && (
-          <p role="alert" className="mr-auto text-xs text-danger">
-            {saveError}
-          </p>
-        )}
+        <ErrorText error={saveError} className="mr-auto" />
         <button
           type="button"
           onClick={() => {

@@ -63,8 +63,6 @@ export function wakeSummary(reasons: WakeReasons | null): string {
 // backMarkMs is how long an item back from a snooze is marked as such.
 const backMarkMs = 24 * 60 * 60 * 1000
 
-const dayMs = 24 * 60 * 60 * 1000
-
 // TriageTab is one of a list's tabs: the items in the list, those snoozed, and those
 // dismissed.
 export type TriageTab = 'inbox' | 'snoozed' | 'dismissed'
@@ -253,46 +251,4 @@ export function snoozeEnd(now: Date, days: number): Date {
   end.setDate(end.getDate() + days)
 
   return end
-}
-
-// startOfDay is the local midnight that starts d's day.
-function startOfDay(d: Date): number {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
-}
-
-// formatWhen names a time from now on the way people say it: "today, 3:42 PM",
-// "tomorrow, 9:00 AM", "Sat, 3:42 PM" within the week, then "Thu, Nov 19", with the year
-// when it is not this one. locale is for tests; the app uses the system's.
-export function formatWhen(now: Date, when: Date, locale?: string): string {
-  // Rounding absorbs the 23- and 25-hour days around a change of the clocks.
-  const days = Math.round((startOfDay(when) - startOfDay(now)) / dayMs)
-  const time = new Intl.DateTimeFormat(locale, { hour: 'numeric', minute: '2-digit' }).format(when)
-
-  if (days <= 0) {
-    return `today, ${time}`
-  }
-
-  if (days === 1) {
-    return `tomorrow, ${time}`
-  }
-
-  if (days < 7) {
-    return `${new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(when)}, ${time}`
-  }
-
-  const year = when.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' as const }
-
-  return new Intl.DateTimeFormat(locale, { weekday: 'short', month: 'short', day: 'numeric', ...year }).format(when)
-}
-
-// formatFull names a time in full, for a tooltip: "Saturday, November 8, 2026 at 3:42 PM".
-export function formatFull(iso: string, locale?: string): string {
-  const ms = timeOf(iso)
-
-  return Number.isNaN(ms) ? '' : new Intl.DateTimeFormat(locale, { dateStyle: 'full', timeStyle: 'short' }).format(ms)
-}
-
-// capitalize starts a phrase with a capital, for formatWhen at the start of a line.
-export function capitalize(phrase: string): string {
-  return phrase.charAt(0).toUpperCase() + phrase.slice(1)
 }

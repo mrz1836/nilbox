@@ -12,7 +12,7 @@ import {
   replayBurst,
   replayLabel,
 } from '../lib/nil'
-import { formatWhen } from '../lib/triage'
+import { formatWhen } from '../lib/time'
 import type { InboxSnapshot } from '../platform'
 import { Confetti, useConfetti, type Point } from './Confetti'
 import { PlayIcon, TrophyIcon } from './icons'

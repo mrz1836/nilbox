@@ -1,19 +1,10 @@
 import { useId, useState, type Ref } from 'react'
 
-import { appliesToLabels, effortChoices, modelChoices, pinSummary, usagePlaces, usageSummary } from '../lib/launch'
+import { appliesToLabels, pinSummary, usagePlaces, usageSummary } from '../lib/launch'
 import type { Diagnostic, Prompt, PromptAppliesTo, PromptInput, PromptVariable } from '../platform'
-import {
-  chipClass,
-  describedBy,
-  Field,
-  fieldClass,
-  fromTriState,
-  Segmented,
-  triState,
-  type SegmentOption,
-  type TriState,
-} from './controls'
+import { chipClass, describedBy, Field, fieldClass, Segmented, type SegmentOption } from './controls'
 import { AlertIcon, ChevronRightIcon, CircleCheckIcon, StarIcon } from './icons'
+import { LaunchOverrideFields } from './LaunchOverrideFields'
 import { TemplateEditor, type TemplateEditorHandle } from './TemplateEditor'
 
 // The limits the backend enforces, mirrored for counters.
@@ -24,12 +15,6 @@ const appliesToOptions: readonly SegmentOption<PromptAppliesTo>[] = [
   { value: 'pr', label: appliesToLabels.pr },
   { value: 'issue', label: appliesToLabels.issue },
   { value: 'any', label: appliesToLabels.any, title: 'Pull requests and issues' },
-]
-
-const triOptions: readonly SegmentOption<TriState>[] = [
-  { value: 'inherit', label: 'Inherit' },
-  { value: 'on', label: 'On' },
-  { value: 'off', label: 'Off' },
 ]
 
 export interface PromptEditorProps {
@@ -247,95 +232,19 @@ export function PromptEditor({
               Used whenever this prompt is chosen, over the org and repo defaults. The profile (the account) always
               comes from the defaults or the launch menu.
             </p>
-            <Field label="Model" controlId={`${id}-model`} error={fieldErrors.model} hint="An alias or a full name.">
-              <input
-                id={`${id}-model`}
-                list={`${id}-models`}
-                value={draft.model}
-                placeholder="Inherit"
-                aria-invalid={(fieldErrors.model ?? '') !== ''}
-                aria-describedby={describedBy(`${id}-model`, fieldErrors.model, true)}
-                spellCheck={false}
-                onChange={(e) => {
-                  set({ model: e.target.value })
-                }}
-                className={`${fieldClass} w-full`}
-              />
-              <datalist id={`${id}-models`}>
-                {modelChoices.map((c) => (
-                  <option key={c.value} value={c.value}>
-                    {c.label}
-                  </option>
-                ))}
-              </datalist>
-            </Field>
-            <Field label="Effort" controlId={`${id}-effort`} error={fieldErrors.effort}>
-              <select
-                id={`${id}-effort`}
-                value={draft.effort}
-                onChange={(e) => {
-                  set({ effort: e.target.value })
-                }}
-                className={`${fieldClass} w-full`}
-              >
-                <option value="">Inherit</option>
-                {effortChoices.map((c) => (
-                  <option key={c.value} value={c.value}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <div className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-muted">Plan mode</span>
-              <Segmented
-                label="Plan mode"
-                size="sm"
-                value={triState(draft.planMode)}
-                options={triOptions}
-                onChange={(v) => {
-                  set({ planMode: fromTriState(v) })
-                }}
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-muted">Start in a worktree</span>
-              <Segmented
-                label="Start in a worktree"
-                size="sm"
-                value={triState(draft.worktree)}
-                options={triOptions}
-                onChange={(v) => {
-                  set({ worktree: fromTriState(v) })
-                }}
-              />
-            </div>
-            <div className="col-span-2">
-              <Field
-                label="Extra flags"
-                controlId={`${id}-flags`}
-                error={fieldErrors.extraFlags}
-                hint={
-                  <>
-                    Added after the profile&apos;s and the defaults&apos; flags, such as{' '}
-                    <code className="font-mono">--advisor fable</code>. Quote values with spaces.
-                  </>
-                }
-              >
-                <input
-                  id={`${id}-flags`}
-                  value={draft.extraFlags}
-                  placeholder="None"
-                  spellCheck={false}
-                  aria-invalid={(fieldErrors.extraFlags ?? '') !== ''}
-                  aria-describedby={describedBy(`${id}-flags`, fieldErrors.extraFlags, true)}
-                  onChange={(e) => {
-                    set({ extraFlags: e.target.value })
-                  }}
-                  className={`${fieldClass} w-full font-mono text-[13px]`}
-                />
-              </Field>
-            </div>
+            <LaunchOverrideFields
+              id={id}
+              values={draft}
+              onChange={set}
+              errors={fieldErrors}
+              modelHint="An alias or a full name."
+              flagsHint={
+                <>
+                  Added after the profile&apos;s and the defaults&apos; flags, such as{' '}
+                  <code className="font-mono">--advisor fable</code>. Quote values with spaces.
+                </>
+              }
+            />
           </div>
         )}
       </section>

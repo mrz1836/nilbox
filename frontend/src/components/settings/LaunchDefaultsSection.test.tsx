@@ -2,8 +2,8 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { LaunchDefaults } from '../platform'
-import { launchDefaults, profile, prompts, settings } from '../test/fixtures'
+import type { LaunchDefaults } from '../../platform'
+import { launchDefaults, profile, prompts, settings } from '../../test/fixtures'
 import { LaunchDefaultsSection } from './LaunchDefaultsSection'
 
 const platform = vi.hoisted(() => ({
@@ -13,7 +13,7 @@ const platform = vi.hoisted(() => ({
   removeLaunchDefaults: vi.fn(),
 }))
 
-vi.mock('../platform', () => platform)
+vi.mock('../../platform', () => platform)
 
 // nth returns the i-th element of a query's results, failing when there is none.
 function nth(list: HTMLElement[], i: number): HTMLElement {
@@ -138,6 +138,33 @@ describe('LaunchDefaultsSection', () => {
 
     await userEvent.click(form.getByRole('button', { name: 'Cancel' }))
     expect(screen.queryByRole('form')).not.toBeInTheDocument()
+  })
+
+  it('describes each select with its problem', async () => {
+    platform.checkLaunchDefaults.mockResolvedValue([
+      { field: 'profile', message: 'No profile named gone.' },
+      { field: 'prPromptId', message: 'That prompt is for issues.' },
+      { field: 'issuePromptId', message: 'That prompt was deleted.' },
+      { field: 'effort', message: 'Effort must be one of the levels.' },
+    ])
+    renderSection([])
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add defaults' }))
+
+    const form = within(screen.getByRole('form', { name: 'New launch defaults' }))
+    await userEvent.type(form.getByRole('combobox', { name: 'Defaults for' }), 'acme-org')
+
+    expect(await form.findByText('No profile named gone.')).toBeInTheDocument()
+    expect(form.getByRole('combobox', { name: 'Profile' })).toHaveAccessibleDescription('No profile named gone.')
+    expect(form.getByRole('combobox', { name: 'Prompt for pull requests' })).toHaveAccessibleDescription(
+      'That prompt is for issues.',
+    )
+    expect(form.getByRole('combobox', { name: 'Prompt for issues' })).toHaveAccessibleDescription(
+      'That prompt was deleted.',
+    )
+    expect(form.getByRole('combobox', { name: 'Effort' })).toHaveAccessibleDescription(
+      'Effort must be one of the levels.',
+    )
   })
 
   it('edits and removes stored defaults', async () => {

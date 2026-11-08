@@ -1,15 +1,7 @@
 import { useState } from 'react'
 
-import {
-  capitalize,
-  formatWhen,
-  isPinned,
-  snoozeChoices,
-  snoozeEnd,
-  snoozeLength,
-  snoozeShort,
-  type TriageTab,
-} from '../lib/triage'
+import { capitalize, formatWhen } from '../lib/time'
+import { isPinned, snoozeChoices, snoozeEnd, snoozeLength, snoozeShort, type TriageTab } from '../lib/triage'
 import type { InboxItem } from '../platform'
 import { ArchiveIcon, ChevronDownIcon, ClockIcon, PinIcon, RefreshIcon, ResetIcon, SlidersIcon } from './icons'
 import { MenuButton, type MenuItem } from './Menu'

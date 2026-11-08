@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useState } from 'react'
+import { useId, useState } from 'react'
 
 import { attempt } from '../lib/call'
 import {
@@ -40,6 +40,7 @@ import { ConfirmDialog } from './ConfirmDialog'
 import { AlertIcon, ChevronDownIcon, TerminalIcon } from './icons'
 import { LaunchHoldDialog } from './LaunchHoldDialog'
 import { LaunchMenu } from './LaunchMenu'
+import { PopoverPanel } from './PopoverPanel'
 
 export interface LaunchControlsProps {
   item: InboxItem
@@ -97,12 +98,17 @@ export function LaunchControls({
   onManagePrompts,
 }: LaunchControlsProps) {
   const id = useId()
-  const { open, toggle, close, triggerRef, panelRef } = usePopover<HTMLButtonElement, HTMLDivElement>()
+  // The menu opens upward when there is not enough room below the button, and focus goes
+  // to the chosen prompt.
+  const popover = usePopover<HTMLButtonElement, HTMLDivElement>({
+    placement: 'flip',
+    focus: (panel) => panel.querySelector<HTMLInputElement>('input:checked') ?? panel.querySelector('input'),
+  })
+  const { open, toggle, close, triggerRef } = popover
   const [choices, setChoices] = useState<Choices>(noChoices)
   const [state, setState] = useState<LaunchState>({ kind: 'idle' })
   const [confirmingClone, setConfirmingClone] = useState(false)
   const [status, setStatus] = useState<SaveStatus | null>(null)
-  const [above, setAbove] = useState(false)
 
   const untrusted = !item.trusted
   const problem = resolution?.problem ?? ''
@@ -138,32 +144,6 @@ export function LaunchControls({
     await saveLaunchDefaults(input)
     await onDefaultsSaved()
   })
-
-  // Open the menu upward when there is not enough room below the button.
-  useLayoutEffect(() => {
-    const trigger = triggerRef.current
-    const panel = panelRef.current
-
-    if (!open || trigger === null || panel === null) {
-      return
-    }
-
-    const spaceBelow = window.innerHeight - trigger.getBoundingClientRect().bottom
-    const spaceAbove = trigger.getBoundingClientRect().top
-
-    setAbove(panel.offsetHeight + 12 > spaceBelow && spaceAbove > spaceBelow)
-  }, [open, triggerRef, panelRef])
-
-  // Focus the chosen prompt when the menu opens.
-  useEffect(() => {
-    if (open) {
-      const panel = panelRef.current
-
-      ;(
-        panel?.querySelector<HTMLInputElement>('input:checked') ?? panel?.querySelector<HTMLInputElement>('input')
-      )?.focus()
-    }
-  }, [open, panelRef])
 
   // run launches request. A launch the app holds back asks the user to confirm; when the
   // launch fails, it asks whether the repository has a local clone, and offers to clone
@@ -286,60 +266,59 @@ export function LaunchControls({
             <ChevronDownIcon className="size-3 shrink-0" />
           </button>
         </div>
-        {open && (
-          <div
-            ref={panelRef}
-            id={id}
-            role="dialog"
-            aria-label="Launch options"
-            className={`absolute right-0 z-20 max-h-[calc(100vh-8rem)] w-[22rem] overflow-y-auto rounded-lg border border-border bg-surface shadow-xl shadow-black/25 motion-safe:animate-pop-in ${above ? 'bottom-full mb-1.5 origin-bottom-right' : 'top-full mt-1.5 origin-top-right'}`}
-          >
-            {base === null ? (
-              <div className="flex flex-col gap-2 p-3.5 text-sm">
-                <p className="flex items-start gap-2 text-warning">
-                  <AlertIcon className="mt-0.5 size-4 shrink-0" />
-                  {problem !== '' ? problem : 'Loading the launch settings…'}
-                </p>
-                {problem !== '' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      close()
-                      onManagePrompts()
-                    }}
-                    className="self-start text-sm font-medium text-accent hover:underline"
-                  >
-                    Open the Prompts page
-                  </button>
-                )}
-              </div>
-            ) : (
-              <LaunchMenu
-                item={item}
-                resolved={base}
-                choices={choices}
-                onChoices={(next) => {
-                  setChoices(next)
-                  setStatus(null)
-                }}
-                profiles={profiles}
-                prompts={prompts}
-                agentName={agentName}
-                onLaunch={start}
-                onSave={(scope) => {
-                  void save(scope)
-                }}
-                saving={saver.pending}
-                status={status}
-                resolveError={resolveError}
-                onManagePrompts={() => {
-                  close()
-                  onManagePrompts()
-                }}
-              />
-            )}
-          </div>
-        )}
+        <PopoverPanel
+          state={popover}
+          align="right"
+          id={id}
+          role="dialog"
+          aria-label="Launch options"
+          className="z-20 max-h-[calc(100vh-8rem)] w-[22rem] overflow-y-auto shadow-black/25"
+        >
+          {base === null ? (
+            <div className="flex flex-col gap-2 p-3.5 text-sm">
+              <p className="flex items-start gap-2 text-warning">
+                <AlertIcon className="mt-0.5 size-4 shrink-0" />
+                {problem !== '' ? problem : 'Loading the launch settings…'}
+              </p>
+              {problem !== '' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    close()
+                    onManagePrompts()
+                  }}
+                  className="self-start text-sm font-medium text-accent hover:underline"
+                >
+                  Open the Prompts page
+                </button>
+              )}
+            </div>
+          ) : (
+            <LaunchMenu
+              item={item}
+              resolved={base}
+              choices={choices}
+              onChoices={(next) => {
+                setChoices(next)
+                setStatus(null)
+              }}
+              profiles={profiles}
+              prompts={prompts}
+              agentName={agentName}
+              onLaunch={start}
+              onSave={(scope) => {
+                void save(scope)
+              }}
+              saving={saver.pending}
+              status={status}
+              resolveError={resolveError}
+              onManagePrompts={() => {
+                close()
+                onManagePrompts()
+              }}
+            />
+          )}
+        </PopoverPanel>
       </div>
       {state.kind === 'launched' && (
         <p role="status" title={launchedText(state.result)} className="col-[2/-1] mt-1.5 truncate text-xs text-success">

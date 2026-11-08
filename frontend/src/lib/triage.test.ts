@@ -4,10 +4,7 @@ import type { WakeReview } from '../platform'
 import { item, list, snapshot } from '../test/fixtures'
 import {
   applyTriage,
-  capitalize,
   findItem,
-  formatFull,
-  formatWhen,
   inboxCount,
   isBackFromSnooze,
   isDismissed,
@@ -24,11 +21,6 @@ import {
 
 // Tests run in UTC (vitest.config.ts); now is a Monday.
 const now = new Date('2026-06-15T12:00:00Z')
-
-// plain folds the narrow and no-break spaces some locales put in times into plain ones.
-function plain(text: string): string {
-  return text.replace(/\s/g, ' ')
-}
 
 // at returns the RFC 3339 time hours after now (before, when negative).
 function at(hours: number): string {
@@ -122,32 +114,6 @@ describe('snooze lengths', () => {
   it('ends a snooze at the same time of day', () => {
     expect(snoozeEnd(now, 3).toISOString()).toBe('2026-06-18T12:00:00.000Z')
     expect(now.toISOString()).toBe('2026-06-15T12:00:00.000Z')
-  })
-})
-
-describe('formatWhen', () => {
-  it('names a time the way people say it', () => {
-    expect(plain(formatWhen(now, new Date('2026-06-15T18:30:00Z'), 'en-US'))).toBe('today, 6:30 PM')
-    expect(plain(formatWhen(now, new Date('2026-06-16T09:00:00Z'), 'en-US'))).toBe('tomorrow, 9:00 AM')
-    expect(plain(formatWhen(now, new Date('2026-06-18T12:00:00Z'), 'en-US'))).toBe('Thu, 12:00 PM')
-    expect(formatWhen(now, new Date('2026-06-22T12:00:00Z'), 'en-US')).toBe('Mon, Jun 22')
-    expect(formatWhen(now, new Date('2027-01-04T12:00:00Z'), 'en-US')).toBe('Mon, Jan 4, 2027')
-  })
-
-  it('counts calendar days, not 24-hour spans', () => {
-    const late = new Date('2026-06-15T23:30:00Z')
-
-    expect(plain(formatWhen(late, new Date('2026-06-16T00:30:00Z'), 'en-US'))).toBe('tomorrow, 12:30 AM')
-  })
-
-  it('names a time in full for a tooltip', () => {
-    expect(plain(formatFull('2026-06-18T12:00:00Z', 'en-US'))).toBe('Thursday, June 18, 2026 at 12:00 PM')
-    expect(formatFull('', 'en-US')).toBe('')
-  })
-
-  it('capitalizes a phrase', () => {
-    expect(capitalize('tomorrow, 9:00 AM')).toBe('Tomorrow, 9:00 AM')
-    expect(capitalize('')).toBe('')
   })
 })
 

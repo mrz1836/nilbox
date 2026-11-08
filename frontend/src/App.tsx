@@ -2,6 +2,7 @@ import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } fro
 
 import { AppHeader, type View } from './components/AppHeader'
 import { DataResetNotice } from './components/DataResetNotice'
+import { ErrorBanner } from './components/ErrorBanner'
 import { InboxView, type LaunchOptions, type Reveal } from './components/InboxView'
 import { PromptsView } from './components/PromptsView'
 import { SettingsView, type SettingsSection } from './components/SettingsView'
@@ -319,9 +320,7 @@ export function App() {
       />
       <DataResetNotice />
       {config.error !== '' && (
-        <p role="alert" className="mx-4 mt-4 rounded-md border border-danger px-3 py-2 text-sm text-danger">
-          Could not load the launch settings: {config.error}
-        </p>
+        <ErrorBanner className="mx-4 mt-4">Could not load the launch settings: {config.error}</ErrorBanner>
       )}
       <main className="min-h-0 flex-1 overflow-y-auto">
         {/* Only the active page is mounted, so the worktrees are listed when that view opens.

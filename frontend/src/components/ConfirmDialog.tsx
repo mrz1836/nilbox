@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useId, useRef, type ReactNode } from 'react'
+import { useEffect, useEffectEvent, useId, useLayoutEffect, useRef, type ReactNode } from 'react'
 
 import { buttonClass, dangerButtonClass, primaryButtonClass } from './controls'
 
@@ -48,8 +48,9 @@ function nextFocus(dialog: HTMLElement, backwards: boolean): HTMLElement | null 
   return null
 }
 
-// ConfirmDialog asks the user to confirm an action, or to acknowledge a message. It is
-// modal: it starts with focus on Cancel (the safe choice) when there is one, keeps Tab
+// ConfirmDialog asks the user to confirm an action, or to acknowledge a message. It is a
+// native modal <dialog>: the rest of the page is inert and dimmed behind it while it is
+// open. It starts with focus on Cancel (the safe choice) when there is one, keeps Tab
 // inside itself, cancels on Escape, and returns focus to where it was when it closes.
 // Render it only while it is open.
 export function ConfirmDialog({
@@ -62,17 +63,22 @@ export function ConfirmDialog({
   cancelLabel = 'Cancel',
 }: ConfirmDialogProps) {
   const id = useId()
-  const dialogRef = useRef<HTMLDivElement>(null)
+  const dialogRef = useRef<HTMLDialogElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
   const confirmRef = useRef<HTMLButtonElement>(null)
 
-  // Move focus into the dialog on open, and back to the opener on close.
-  useEffect(() => {
+  // Open as a modal on mount and move focus in; close and give focus back to the opener on
+  // unmount. The opener is read before showModal, which moves focus itself.
+  useLayoutEffect(() => {
     const opener = document.activeElement
+    const dialog = dialogRef.current
 
+    dialog?.showModal()
     ;(cancelRef.current ?? confirmRef.current)?.focus()
 
     return () => {
+      dialog?.close()
+
       if (opener instanceof HTMLElement && opener.isConnected) {
         opener.focus()
       }
@@ -106,7 +112,9 @@ export function ConfirmDialog({
     }
 
     // The capture phase runs this before any page-level Escape handler, which then sees
-    // the key as handled (defaultPrevented) and leaves the page open.
+    // the key as handled (defaultPrevented) and leaves the page open. Handling the key
+    // also keeps the browser from closing the dialog itself, which only the owner of the
+    // open state may do.
     document.addEventListener('keydown', onKeyDown, true)
 
     return () => {
@@ -115,37 +123,41 @@ export function ConfirmDialog({
   }, [])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={`${id}-title`}
-        aria-describedby={`${id}-body`}
-        className="w-full max-w-md rounded-lg border border-border bg-surface p-4 text-text shadow-lg"
-      >
-        <h2 id={`${id}-title`} className="text-base font-semibold">
-          {title}
-        </h2>
-        <div id={`${id}-body`} className="mt-2 text-sm text-muted">
-          {children}
-        </div>
-        <div className="mt-4 flex justify-end gap-2">
-          {cancelLabel !== null && (
-            <button ref={cancelRef} type="button" onClick={onCancel} className={buttonClass}>
-              {cancelLabel}
-            </button>
-          )}
-          <button
-            ref={confirmRef}
-            type="button"
-            onClick={onConfirm}
-            className={tone === 'danger' ? dangerButtonClass : primaryButtonClass}
-          >
-            {confirmLabel}
-          </button>
-        </div>
+    <dialog
+      ref={dialogRef}
+      aria-modal="true"
+      aria-labelledby={`${id}-title`}
+      aria-describedby={`${id}-body`}
+      onCancel={(e) => {
+        // Any other close request, such as one the system sends, cancels the same way.
+        e.preventDefault()
+        onCancel()
+      }}
+      // The backdrop's color is spelled out: before Safari 17.4, ::backdrop sees none of the
+      // page's custom properties, so a theme color would leave it clear.
+      className="m-auto w-[calc(100%-2rem)] max-w-md rounded-lg border border-border bg-surface p-4 text-text shadow-lg backdrop:bg-[rgb(0_0_0/0.4)]"
+    >
+      <h2 id={`${id}-title`} className="text-base font-semibold">
+        {title}
+      </h2>
+      <div id={`${id}-body`} className="mt-2 text-sm text-muted">
+        {children}
       </div>
-    </div>
+      <div className="mt-4 flex justify-end gap-2">
+        {cancelLabel !== null && (
+          <button ref={cancelRef} type="button" onClick={onCancel} className={buttonClass}>
+            {cancelLabel}
+          </button>
+        )}
+        <button
+          ref={confirmRef}
+          type="button"
+          onClick={onConfirm}
+          className={tone === 'danger' ? dangerButtonClass : primaryButtonClass}
+        >
+          {confirmLabel}
+        </button>
+      </div>
+    </dialog>
   )
 }

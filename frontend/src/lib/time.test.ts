@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatAge, formatAgo, formatUntil } from './age'
+import { capitalize, formatAge, formatAgo, formatFull, formatUntil, formatWhen } from './time'
 
+// Tests run in UTC (vitest.config.ts); now is a Monday.
 const now = new Date('2026-06-15T12:00:00Z')
+
+// plain folds the narrow and no-break spaces some locales put in times into plain ones.
+function plain(text: string): string {
+  return text.replace(/\s/g, ' ')
+}
 
 // ago returns the RFC 3339 time the given number of seconds before now.
 function ago(seconds: number): string {
@@ -62,5 +68,31 @@ describe('formatAgo', () => {
     expect(formatAgo(now, ago(3 * 86400))).toBe('3d ago')
     expect(formatAgo(now, ago(20))).toBe('just now')
     expect(formatAgo(now, '')).toBe('')
+  })
+})
+
+describe('formatWhen', () => {
+  it('names a time the way people say it', () => {
+    expect(plain(formatWhen(now, new Date('2026-06-15T18:30:00Z'), 'en-US'))).toBe('today, 6:30 PM')
+    expect(plain(formatWhen(now, new Date('2026-06-16T09:00:00Z'), 'en-US'))).toBe('tomorrow, 9:00 AM')
+    expect(plain(formatWhen(now, new Date('2026-06-18T12:00:00Z'), 'en-US'))).toBe('Thu, 12:00 PM')
+    expect(formatWhen(now, new Date('2026-06-22T12:00:00Z'), 'en-US')).toBe('Mon, Jun 22')
+    expect(formatWhen(now, new Date('2027-01-04T12:00:00Z'), 'en-US')).toBe('Mon, Jan 4, 2027')
+  })
+
+  it('counts calendar days, not 24-hour spans', () => {
+    const late = new Date('2026-06-15T23:30:00Z')
+
+    expect(plain(formatWhen(late, new Date('2026-06-16T00:30:00Z'), 'en-US'))).toBe('tomorrow, 12:30 AM')
+  })
+
+  it('names a time in full for a tooltip', () => {
+    expect(plain(formatFull('2026-06-18T12:00:00Z', 'en-US'))).toBe('Thursday, June 18, 2026 at 12:00 PM')
+    expect(formatFull('', 'en-US')).toBe('')
+  })
+
+  it('capitalizes a phrase', () => {
+    expect(capitalize('tomorrow, 9:00 AM')).toBe('Tomorrow, 9:00 AM')
+    expect(capitalize('')).toBe('')
   })
 })

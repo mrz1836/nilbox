@@ -1,18 +1,19 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { formatAgo } from '../lib/age'
 import { isInboxNil } from '../lib/nil'
-import { prefersReducedMotion } from '../lib/motion'
-import { findItem, formatWhen, inboxCount, isDismissed, tabOf, triageList, type TriageTab } from '../lib/triage'
+import { formatAgo, formatWhen } from '../lib/time'
+import { findItem, inboxCount, isDismissed } from '../lib/triage'
 import type { InboxState } from '../lib/useInbox'
-import type { InboxItem, InboxList, ListKey } from '../platform'
-import { ArchiveIcon, ChevronDownIcon, ClockIcon } from './icons'
+import type { InboxItem, ListKey } from '../platform'
+import { ErrorBanner } from './ErrorBanner'
 import { InboxNil } from './InboxNil'
-import { ItemRow, type LaunchOptions } from './ItemRow'
+import type { LaunchOptions } from './ItemRow'
+import { ListSection, type Reveal } from './ListSection'
 import { Toast, type ToastMessage } from './Toast'
 import type { TriageActions } from './TriageControls'
 
 export type { LaunchOptions } from './ItemRow'
+export type { Reveal } from './ListSection'
 
 export interface InboxViewProps {
   // inbox is the window's shared inbox state (useInbox).
@@ -35,266 +36,15 @@ export interface InboxViewProps {
   reveal?: Reveal | null
 }
 
-// Reveal asks the inbox to show an item: its list opens at the item's tab, and its row
-// scrolls into view, highlighted for a moment. seq tells one request from the next, so
-// asking for the same item again shows it again.
-export interface Reveal {
-  id: number
-  seq: number
-}
-
-// highlightMs is how long a revealed row stays highlighted.
-const highlightMs = 2400
-
 const sections: readonly { key: ListKey; title: string }[] = [
   { key: 'reviewRequested', title: 'Review requested' },
   { key: 'authored', title: 'Authored' },
   { key: 'assigned', title: 'Assigned' },
 ]
 
-// tabOrder is the order of a list's tabs, for the arrow keys.
-const tabOrder: readonly TriageTab[] = ['inbox', 'snoozed', 'dismissed']
-
-// countText is a tab's size, as "N of M" when GitHub matched more than it returned.
-function countText(shown: number, total: number): string {
-  return total > shown ? `${String(shown)} of ${String(total)}` : String(shown)
-}
-
-// emptyText is what an empty tab says.
-function emptyText(tab: TriageTab, title: string): string {
-  switch (tab) {
-    case 'snoozed':
-      return `Nothing snoozed. A snoozed item comes back to ${title} on its own when its time is up.`
-    case 'dismissed':
-      return 'Nothing dismissed. A dismissed item stays here until you restore it.'
-    default:
-      return 'Nothing here.'
-  }
-}
-
 // firstMessage returns the first non-empty message.
 function firstMessage(...messages: string[]): string {
   return messages.find((m) => m !== '') ?? ''
-}
-
-interface TabProps {
-  id: string
-  panelId: string
-  selected: boolean
-  label: string
-  count: string
-  icon?: ReactNode
-  // strong sets the list's own tab in the weight of a heading.
-  strong?: boolean
-  onSelect: () => void
-  onKeyDown: (e: KeyboardEvent<HTMLButtonElement>) => void
-}
-
-// Tab is one of a list's tabs: its name and, when there is anything in it, its count.
-function Tab({ id, panelId, selected, label, count, icon, strong = false, onSelect, onKeyDown }: TabProps) {
-  return (
-    <button
-      type="button"
-      role="tab"
-      id={id}
-      aria-label={count === '' ? label : `${label} ${count}`}
-      aria-selected={selected}
-      aria-controls={panelId}
-      tabIndex={selected ? 0 : -1}
-      onClick={onSelect}
-      onKeyDown={onKeyDown}
-      className="-mb-px flex items-center gap-1.5 border-b-2 border-transparent px-2.5 pt-2.5 pb-2 text-sm text-muted transition-colors hover:text-text aria-selected:border-accent aria-selected:text-text"
-    >
-      {icon}
-      <span className={strong ? 'font-semibold' : 'font-medium'}>{label}</span>
-      {count !== '' && (
-        <span
-          className={`rounded-full px-1.5 text-[11px] leading-[18px] font-medium tabular-nums ${selected ? 'bg-accent/15 text-text' : 'bg-raised text-muted'}`}
-        >
-          {count}
-        </span>
-      )}
-    </button>
-  )
-}
-
-interface ListSectionProps {
-  title: string
-  list: InboxList
-  now: Date
-  launch: LaunchOptions | null
-  triage: TriageActions
-  collapsed: boolean
-  onCollapse: (collapsed: boolean) => void
-  onFilesSettings?: (() => void) | undefined
-  // reveal is an item in this list to show, or null.
-  reveal: Reveal | null
-}
-
-// ListSection is one inbox list as tabs: the list itself, then what was snoozed and
-// what was dismissed from it, each with its count. The toggle at the right of its header
-// collapses it to just the tabs, which keep their counts.
-function ListSection({
-  title,
-  list,
-  now,
-  launch,
-  triage,
-  collapsed,
-  onCollapse,
-  onFilesSettings,
-  reveal,
-}: ListSectionProps) {
-  const id = useId()
-  const [tab, setTab] = useState<TriageTab>('inbox')
-  const triaged = useMemo(() => triageList(list, now), [list, now])
-  const items = triaged[tab]
-  const tabId = (t: TriageTab) => `${id}-tab-${t}`
-  const panelId = `${id}-panel`
-  const panelRef = useRef<HTMLDivElement>(null)
-  // revealed is the last reveal request handled, and highlight the row it highlights.
-  const [revealed, setRevealed] = useState(0)
-  const [highlight, setHighlight] = useState<number | null>(null)
-
-  // A new request to show an item turns to the tab that holds it; the list itself is
-  // opened by the inbox view.
-  if (reveal !== null && reveal.seq !== revealed) {
-    setRevealed(reveal.seq)
-    setTab(tabOf(triaged, reveal.id) ?? 'inbox')
-    setHighlight(reveal.id)
-  }
-
-  // Once the list is open, the highlighted row scrolls into view, and the highlight fades.
-  useEffect(() => {
-    if (highlight === null || collapsed) {
-      return undefined
-    }
-
-    const row = panelRef.current?.querySelector(`[data-item-id="${String(highlight)}"]`)
-
-    if (row instanceof HTMLElement && 'scrollIntoView' in row) {
-      row.scrollIntoView({ block: 'center', behavior: prefersReducedMotion() ? 'auto' : 'smooth' })
-    }
-
-    const timer = setTimeout(() => {
-      setHighlight(null)
-    }, highlightMs)
-
-    return () => {
-      clearTimeout(timer)
-    }
-  }, [highlight, revealed, collapsed])
-
-  // select shows a tab; choosing a tab of a collapsed list opens the list to show it.
-  const select = (t: TriageTab) => {
-    setTab(t)
-
-    if (collapsed) {
-      onCollapse(false)
-    }
-  }
-
-  // The arrow keys, Home, and End move between the tabs and select the one they reach.
-  const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
-    const at = tabOrder.indexOf(tab)
-    const moves: Readonly<Record<string, number>> = {
-      ArrowRight: (at + 1) % tabOrder.length,
-      ArrowLeft: (at - 1 + tabOrder.length) % tabOrder.length,
-      Home: 0,
-      End: tabOrder.length - 1,
-    }
-    const next = moves[e.key]
-
-    if (next === undefined) {
-      return
-    }
-
-    e.preventDefault()
-
-    const target = tabOrder[next] ?? 'inbox'
-    select(target)
-    document.getElementById(tabId(target))?.focus()
-  }
-
-  const hiddenCount = (n: number) => (n > 0 ? String(n) : '')
-
-  return (
-    <section aria-label={title} className="rounded-lg border border-border bg-surface">
-      <div className={`flex items-center gap-1 px-1.5 ${collapsed ? '' : 'border-b border-border'}`}>
-        <div role="tablist" aria-label={title} className="flex flex-1 items-center gap-1">
-          <Tab
-            id={tabId('inbox')}
-            panelId={panelId}
-            selected={tab === 'inbox'}
-            label={title}
-            count={countText(triaged.inbox.length, triaged.total)}
-            strong
-            onSelect={() => {
-              select('inbox')
-            }}
-            onKeyDown={onKeyDown}
-          />
-          <Tab
-            id={tabId('snoozed')}
-            panelId={panelId}
-            selected={tab === 'snoozed'}
-            label="Snoozed"
-            count={hiddenCount(triaged.snoozed.length)}
-            icon={<ClockIcon className="size-3.5" />}
-            onSelect={() => {
-              select('snoozed')
-            }}
-            onKeyDown={onKeyDown}
-          />
-          <Tab
-            id={tabId('dismissed')}
-            panelId={panelId}
-            selected={tab === 'dismissed'}
-            label="Dismissed"
-            count={hiddenCount(triaged.dismissed.length)}
-            icon={<ArchiveIcon className="size-3.5" />}
-            onSelect={() => {
-              select('dismissed')
-            }}
-            onKeyDown={onKeyDown}
-          />
-        </div>
-        <button
-          type="button"
-          aria-expanded={!collapsed}
-          aria-controls={panelId}
-          aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${title}`}
-          title={collapsed ? 'Expand' : 'Collapse'}
-          onClick={() => {
-            onCollapse(!collapsed)
-          }}
-          className="mr-1 rounded-md p-1 text-muted transition-colors hover:bg-raised hover:text-text"
-        >
-          <ChevronDownIcon className={`size-4 transition-transform ${collapsed ? '-rotate-90' : ''}`} />
-        </button>
-      </div>
-      <div ref={panelRef} role="tabpanel" id={panelId} aria-labelledby={tabId(tab)} hidden={collapsed}>
-        {items.length === 0 ? (
-          <p className="px-4 py-3 text-sm text-muted">{emptyText(tab, title)}</p>
-        ) : (
-          <ul>
-            {items.map((item) => (
-              <ItemRow
-                key={item.id}
-                item={item}
-                now={now}
-                launch={launch}
-                tab={tab}
-                triage={triage}
-                onFilesSettings={onFilesSettings}
-                highlighted={item.id === highlight}
-              />
-            ))}
-          </ul>
-        )}
-      </div>
-    </section>
-  )
 }
 
 // InboxView shows the three inbox lists across the full width, with a refresh control and
@@ -475,11 +225,7 @@ export function InboxView({
           )}
         </span>
       </div>
-      {error !== '' && (
-        <p role="alert" className="rounded-md border border-danger px-3 py-2 text-sm text-danger">
-          {error}
-        </p>
-      )}
+      {error !== '' && <ErrorBanner>{error}</ErrorBanner>}
       {snapshot !== null && snapshot.scopeWarning !== '' && (
         <p className="rounded-md border border-warning px-3 py-2 text-sm text-warning">{snapshot.scopeWarning}</p>
       )}

@@ -2,8 +2,8 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { Settings } from '../platform'
-import { settings } from '../test/fixtures'
+import type { Settings } from '../../platform'
+import { settings } from '../../test/fixtures'
 import { SensitiveFilesSection } from './SensitiveFilesSection'
 
 const platform = vi.hoisted(() => ({
@@ -14,7 +14,7 @@ const platform = vi.hoisted(() => ({
   refreshInbox: vi.fn(),
 }))
 
-vi.mock('../platform', () => platform)
+vi.mock('../../platform', () => platform)
 
 // withFiles returns the settings with the sensitive-file choices changed.
 function withFiles(change: Partial<Settings['sensitiveFiles']>): Settings {
@@ -50,6 +50,7 @@ describe('SensitiveFilesSection', () => {
 
     const scope = within(screen.getByRole('radiogroup', { name: 'Check pull requests from' }))
     expect(scope.getByRole('radio', { name: 'Outside contributors' })).toBeChecked()
+    expect(screen.getByRole('radiogroup', { name: 'Check pull requests from' })).not.toHaveAttribute('aria-describedby')
 
     await userEvent.click(scope.getByRole('radio', { name: 'Also collaborators' }))
 
@@ -115,6 +116,14 @@ describe('SensitiveFilesSection', () => {
     })
   })
 
+  it('turns a category back on', async () => {
+    renderSection(withFiles({ off: ['dependencies'] }))
+
+    await userEvent.click(category('Dependencies'))
+
+    expect(platform.setSensitiveCategory).toHaveBeenCalledWith('dependencies', true)
+  })
+
   it('shows why a change was refused', async () => {
     platform.setSensitiveCategory.mockRejectedValue(new Error('this category is always on'))
     renderSection()
@@ -122,6 +131,11 @@ describe('SensitiveFilesSection', () => {
     await userEvent.click(category('Workflows and CI'))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('this category is always on')
+    // The settings above the patterns are read with why the last change was refused.
+    expect(category('Workflows and CI')).toHaveAccessibleDescription(/ this category is always on$/)
+    expect(screen.getByRole('radiogroup', { name: 'Check pull requests from' })).toHaveAccessibleDescription(
+      'this category is always on',
+    )
   })
 
   it('adds a pattern of the user’s own', async () => {
@@ -130,6 +144,7 @@ describe('SensitiveFilesSection', () => {
     expect(within(screen.getByRole('list', { name: 'Your patterns' })).getByText('infra/')).toBeInTheDocument()
 
     const input = screen.getByRole('textbox', { name: 'Pattern to add' })
+    expect(input).toHaveAccessibleDescription(/^Patterns work like \.gitignore, ignoring case\./)
     await userEvent.type(input, ' *.tf ')
     await userEvent.click(screen.getByRole('button', { name: 'Add pattern' }))
 
@@ -149,6 +164,7 @@ describe('SensitiveFilesSection', () => {
 
     expect(screen.getByRole('alert')).toHaveTextContent('INFRA/ is already on the list.')
     expect(input).toHaveAttribute('aria-invalid', 'true')
+    expect(input).toHaveAccessibleDescription(/^INFRA\/ is already on the list\. Patterns work like/)
     expect(platform.setSensitivePatterns).not.toHaveBeenCalled()
 
     platform.setSensitivePatterns.mockRejectedValue(new Error('invalid pattern "*": it matches every file'))
