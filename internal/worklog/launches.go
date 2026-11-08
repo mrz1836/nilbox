@@ -53,11 +53,15 @@ type Launch struct {
 type Store struct {
 	db *sql.DB
 	q  *queries.Queries
+
+	// keepCleanups is how many cleanups are kept: KeepCleanups, or fewer in tests that
+	// need to run past the cap with few writes.
+	keepCleanups int64
 }
 
 // New returns a Store over the pool db.
 func New(db *sql.DB) *Store {
-	return &Store{db: db, q: queries.New(db)}
+	return &Store{db: db, q: queries.New(db), keepCleanups: KeepCleanups}
 }
 
 // RecordLaunch stores a launch, replacing an earlier one for the same worktree of the same

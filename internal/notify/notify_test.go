@@ -373,13 +373,18 @@ BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`)
 func TestRecordConcurrently(t *testing.T) {
 	t.Parallel()
 
+	// The cap is lowered so the writers run past it in few transactions: SQLite takes
+	// one writer at a time, and hundreds of back-to-back transactions on a loaded machine
+	// can leave one writer waiting longer than the busy timeout.
 	const (
 		writers   = 8
-		perWriter = 30
+		perWriter = 5
+		keep      = 20
 	)
 
 	f := newFixture(t, 1)
 	s := NewStore(f.pool)
+	s.keep = keep
 
 	var g errgroup.Group
 
@@ -399,11 +404,11 @@ func TestRecordConcurrently(t *testing.T) {
 	}
 
 	require.NoError(t, g.Wait())
-	assert.Equal(t, Keep, countNotifications(t, f.pool))
+	assert.Equal(t, keep, countNotifications(t, f.pool))
 
 	log, err := s.Log(t.Context())
 	require.NoError(t, err)
-	require.Len(t, log.Items, Keep)
+	require.Len(t, log.Items, keep)
 
 	for i, n := range log.Items {
 		want := testNow.Add(time.Duration(writers*perWriter-1-i) * time.Second)

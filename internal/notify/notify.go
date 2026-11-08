@@ -88,11 +88,15 @@ type Log struct {
 type Store struct {
 	db *sql.DB
 	q  *queries.Queries
+
+	// keep is how many notifications the log keeps: Keep, or fewer in tests that need
+	// to run past the cap with few writes.
+	keep int64
 }
 
 // NewStore returns a Store over the pool db.
 func NewStore(db *sql.DB) *Store {
-	return &Store{db: db, q: queries.New(db)}
+	return &Store{db: db, q: queries.New(db), keep: Keep}
 }
 
 // Record stores the notifications for arrivals at now, in order, and drops the oldest
@@ -121,7 +125,7 @@ func (s *Store) Record(ctx context.Context, now time.Time, arrivals []inbox.Arri
 			out = append(out, fromRow(row))
 		}
 
-		return q.TrimNotifications(ctx, Keep)
+		return q.TrimNotifications(ctx, s.keep)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("record the notifications: %w", err)
@@ -134,7 +138,7 @@ func (s *Store) Record(ctx context.Context, now time.Time, arrivals []inbox.Arri
 // notification of a kind this build does not know, as another build may have written, is
 // left out.
 func (s *Store) Log(ctx context.Context) (Log, error) {
-	rows, err := s.q.ListNotifications(ctx, Keep)
+	rows, err := s.q.ListNotifications(ctx, s.keep)
 	if err != nil {
 		return Log{}, fmt.Errorf("read the notifications: %w", err)
 	}

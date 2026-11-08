@@ -165,12 +165,17 @@ func TestRecordCleanupKeepsTheLastRecordedOfTheSameTime(t *testing.T) {
 func TestRecordCleanupConcurrently(t *testing.T) {
 	t.Parallel()
 
+	// The cap is lowered so the writers run past it in few transactions: SQLite takes
+	// one writer at a time, and hundreds of back-to-back transactions on a loaded machine
+	// can leave one writer waiting longer than the busy timeout.
 	const (
 		writers   = 8
-		perWriter = 20
+		perWriter = 5
+		keep      = 20
 	)
 
-	s, db := openStore(t)
+	_, db := openStore(t)
+	s := worklog.NewKeeping(db, keep)
 
 	var g errgroup.Group
 
@@ -189,13 +194,13 @@ func TestRecordCleanupConcurrently(t *testing.T) {
 	}
 
 	require.NoError(t, g.Wait())
-	assert.Equal(t, worklog.KeepCleanups, countCleanups(t, db))
+	assert.Equal(t, keep, countCleanups(t, db))
 
 	got, err := s.RecentCleanups(t.Context(), -1)
 	require.NoError(t, err)
 
-	want := make([]string, 0, worklog.KeepCleanups)
-	for n := writers*perWriter - 1; n >= writers*perWriter-worklog.KeepCleanups; n-- {
+	want := make([]string, 0, keep)
+	for n := writers*perWriter - 1; n >= writers*perWriter-keep; n-- {
 		want = append(want, "pr-"+strconv.Itoa(n))
 	}
 

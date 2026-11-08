@@ -72,7 +72,7 @@ func (s *Store) RecordCleanup(ctx context.Context, c Cleanup) error {
 			return err
 		}
 
-		return q.TrimCleanups(ctx, KeepCleanups)
+		return q.TrimCleanups(ctx, s.keepCleanups)
 	})
 	if err != nil {
 		return fmt.Errorf("record the worktree cleanup: %w", err)
