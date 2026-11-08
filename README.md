@@ -166,7 +166,8 @@ Nilbox is a native macOS app, built from source with one command.
 - **macOS 13+** with the Xcode Command Line Tools (`xcode-select --install`)
 - **[Go](https://go.dev/dl/) 1.26+**, **Node 26**, and **pnpm** at the pinned version (`npm install -g pnpm@12.16.1`)
 - **[MAGE-X](https://github.com/mrz1836/mage-x)**: `go install github.com/mrz1836/mage-x/cmd/magex@latest`
-- **[GitHub CLI](https://cli.github.com)**, signed in with the `repo` and `read:org` scopes
+- **[GitHub CLI](https://cli.github.com)**, signed in with the `repo` and `read:org` scopes (add the
+  optional `read:project` scope to see the projects your issues are in)
 - To launch sessions: the **Claude Code CLI** (`claude`) and **iTerm2** or Terminal.app
 
 ```bash
@@ -207,12 +208,16 @@ Five steps, in the order you'll use them.
 ### Connect GitHub
 
 ```bash
-gh auth login      # Nilbox borrows this login; it needs the repo and read:org scopes
-gh auth status     # confirm you're signed in
+gh auth login                     # Nilbox borrows this login; it needs the repo and read:org scopes
+gh auth refresh -s read:project   # optional: show each issue's project and its status there
+gh auth status                    # confirm you're signed in, and see the token's scopes
 ```
 
 Nilbox reads the token with `gh auth token` and keeps it in memory only, for up to ten minutes; it
 asks `gh` again sooner when GitHub refuses the token or you switch accounts with `gh auth switch`.
+`read:project` is read-only and optional: without it everything works, issue cards just leave
+their projects out, and the inbox offers the command until you close the tip. **Settings →
+Account** shows whether projects are on.
 
 <br>
 
@@ -257,6 +262,7 @@ merges or the issue closes.
 
 - **One inbox, every repository** — Review requested, Authored, and Assigned, across every repo your account can see
 - **Cards that answer "is it ready?"** — checks, reviews, comments, size grade, labels, and Draft and Conflicts tags
+- **Issue projects** — each issue's GitHub project and its status there, such as In progress, one click from the board
 - **Local triage** — snooze, dismiss, or pin; wake rules end a snooze early when something changes
 - **One-click agent launch** — Claude Code in iTerm2 or Terminal.app, in the right clone and its own worktree
 - **Profiles per repo or org** — every `~/.claude-<name>` config directory is a profile, so each repo launches on its own account
@@ -282,13 +288,17 @@ merges or the issue closes.
 - **Compact cards:** the title with **Draft** and **Conflicts** tags; the repository, author, and
   age; then checks passed out of those that ran, reviews, comments, a size grade with lines,
   files, and commits, and the first labels in their GitHub colors.
+- **Issue projects:** an issue's card names the GitHub project it is in, with its status there
+  in the project's color; click it to open the board. It needs the optional, read-only
+  `read:project` scope (`gh auth refresh -s read:project`); without it the inbox works as before
+  and offers the command until you close the tip.
 - **Always current:** a refresh on start and every five minutes, a manual refresh, and a per-card
   refresh that costs one API point. Archived repositories, and items merged or closed since GitHub
   indexed them, never show.
 - **Tab counts and collapsible lists:** the Inbox tab counts each item that needs you once, and a
   collapsed list stays collapsed across launches.
 
-More in [Inbox cards](docs/desktop.md#inbox-cards).
+More in [Inbox cards](docs/desktop.md#inbox-cards) and [Issue projects](docs/desktop.md#issue-projects).
 
 </details>
 

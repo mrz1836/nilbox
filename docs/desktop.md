@@ -31,7 +31,9 @@ in [performance.md](performance.md).
 - **[MAGE-X](https://github.com/mrz1836/mage-x)** (`magex`) and
   **[go-pre-commit](https://github.com/mrz1836/go-pre-commit)**, as in the README.
 - The **[GitHub CLI](https://cli.github.com)**, signed in with `gh auth login`. The app borrows
-  its token and needs the `repo` and `read:org` scopes.
+  its token and needs the `repo` and `read:org` scopes. The optional `read:project` scope lets
+  issue cards show [the projects each issue is in](#issue-projects); `gh` doesn't grant it by
+  default, so add it with `gh auth refresh -s read:project`.
 - To launch sessions: the **`claude`** CLI and **iTerm2** (the default terminal) or
   Terminal.app.
 
@@ -255,9 +257,10 @@ Each pull request or issue in the inbox is a card three lines high:
    [trust rule](#outside-contributors) says so: **bot** for a trusted bot, **untrusted bot**,
    or **outside contributor**. A pull request whose files are checked then shows its
    [sensitive files](#sensitive-files) chip.
-3. Its details, in a fixed order. Each detail before the labels keeps the same width on every
-   card, sized for the longest value a card should meet, so the details line up from card to
-   card. Hover any of them for the whole sentence, which is also what a screen reader reads.
+3. Its details, in a fixed order. Each detail before the projects and labels keeps the same
+   width on every card, sized for the longest value a card should meet, so the details line up
+   from card to card. Hover any of them for the whole sentence, which is also what a screen
+   reader reads.
 
 | Detail | What it shows | Color |
 |---|---|---|
@@ -265,9 +268,10 @@ Each pull request or issue in the inbox is a card three lines high:
 | Reviews | Reviewers who have reviewed, out of everyone asked or who reviewed. The author's own replies don't count, and a reviewer asked again owes a new review. | Green once approved, red when changes were requested |
 | Comments | The conversation's comments, review comments included | None |
 | Size | XS (under 10 changed lines), S (under 30), M (under 100), L (under 500), XL (under 1,000), or XXL; then the lines added and removed, the files, and the commits | Added lines green, removed lines red |
+| Projects | On an issue, the first GitHub project it is in and its status there, then how many more. Click it to open the project. See [Issue projects](#issue-projects). | The status in its project color |
 | Labels | The first three labels with their GitHub colors, then how many more | None |
 
-An issue shows its comments and labels.
+An issue shows its comments, its projects, and its labels.
 
 **Archived repositories are left out.** Each of the inbox's three searches asks GitHub for
 `archived:false`, so an archived repository's pull requests and issues never appear, never
@@ -335,6 +339,46 @@ again clears the choice. Choosing another prompt or profile resolves the setting
 each default shown is the one that would really apply, such as a prompt's own model. The
 launch's outcome appears below the card. An item no prompt applies to shows **No prompt** and
 says why.
+
+### Issue projects
+
+An issue's card names the GitHub project it is in, such as **Roadmap**, with the issue's
+**Status** there as a pill in the color the project gives it, such as **In progress** in
+yellow. Click it to open the project on GitHub. An issue in more than one project shows the
+first, in GitHub's order, then **+N**; hover the count for the others and their statuses. A
+closed project, and an item archived from its project, are left out. A project whose Status
+field was renamed or deleted shows its name alone. Pull requests show no projects.
+
+**The scope.** GitHub only shows projects to a token with the `read:project` scope (or
+`project`, which includes it), and `gh auth login` doesn't ask for it. Add it to the token
+the app borrows, then refresh:
+
+```bash
+gh auth refresh -s read:project
+```
+
+`gh` adds it to the scopes the token already has. The app borrows the new token as soon as
+`gh` rewrites its hosts file, as it does when it signs in again, and within ten minutes in any
+case, when the token it holds expires.
+
+**Without it, nothing breaks.** The app never asks GitHub for projects while the token lacks
+the scope, so a refresh goes on as before and issue cards just show none. When the inbox
+holds an issue, a tip above the lists offers to show them, with the command and a **Copy**
+button: **Check again** refreshes to find out, and says so when there is still no access.
+Once a refresh finds access, the tip says the projects are on. Close the tip with **×** and
+it stays away; **Settings → Account → Projects on issues** keeps the command, and says
+**On** once the projects show.
+
+**How they are read.** The projects come with each issue's other details, in the same
+requests, at about one point per hundred issues. A token that reports its scopes is asked for
+projects only when it has the scope. The details of the items already listed are asked for
+before this refresh knows the token's scopes, the way the last refresh read them. When the
+scope was just granted, every item's details are read again once the scopes are known, so the
+first refresh after `gh auth refresh` shows every issue's projects. When it was taken away,
+GitHub refuses the projects, and those requests are sent again without them, so the refresh
+still succeeds and the cards show none. A token that reports no scopes, such as a
+fine-grained token, is asked too; once GitHub refuses it the projects, the app stops asking
+it. Refreshing one card reads its projects when the last whole refresh could.
 
 <br>
 
