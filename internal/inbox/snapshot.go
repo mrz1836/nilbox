@@ -42,6 +42,10 @@ type Snapshot struct {
 
 	// ScopeWarning is set when the token's scopes could not be verified.
 	ScopeWarning string `json:"scopeWarning"`
+
+	// ProjectAccess says whether the last refresh could read the projects each issue is
+	// in, which needs the token's optional read:project scope.
+	ProjectAccess ProjectAccess `json:"projectAccess"`
 }
 
 // Account is the signed-in GitHub account.
@@ -134,6 +138,15 @@ type Item struct {
 type Details struct {
 	Labels []Label `json:"labels"`
 
+	// Projects lists the open GitHub projects an issue is in, with its status in each, in
+	// GitHub's order. It is empty for a pull request, and for every issue while the
+	// snapshot's ProjectAccess is not ProjectAccessOn.
+	Projects []Project `json:"projects"`
+
+	// SubIssues counts an issue's sub-issues, and those done. Both are 0 for a pull
+	// request and an issue without sub-issues.
+	SubIssues SubIssues `json:"subIssues"`
+
 	// Comments counts the conversation's comments, review comments included for a pull
 	// request.
 	Comments int `json:"comments"`
@@ -159,6 +172,45 @@ type Label struct {
 
 	// Color is "#rrggbb", or "" when GitHub's value was not a color.
 	Color string `json:"color"`
+}
+
+// Project is an issue's place in one GitHub project.
+type Project struct {
+	// Title is the project's title, and URL its page on GitHub.
+	Title string `json:"title"`
+	URL   string `json:"url"`
+
+	// Status is the issue's option in the project's Status field, such as "In progress",
+	// or "" when it has none.
+	Status string `json:"status"`
+
+	// StatusColor is the status's color as "#rrggbb", or "" when it has none.
+	StatusColor string `json:"statusColor"`
+
+	// Fields are the issue's values in the project's other fields, such as Priority or
+	// Size, in GitHub's order.
+	Fields []ProjectField `json:"fields"`
+}
+
+// ProjectField is an issue's value in one project field.
+type ProjectField struct {
+	// Name is the field's name, such as "Priority".
+	Name string `json:"name"`
+
+	// Value is the value as the project shows it: an option's name, a number, text, a date
+	// such as "Jun 27, 2026", or an iteration's title.
+	Value string `json:"value"`
+
+	// Color is a single-select option's color as "#rrggbb", and "" for any other value.
+	Color string `json:"color"`
+}
+
+// SubIssues counts an issue's sub-issues.
+type SubIssues struct {
+	Total int `json:"total"`
+
+	// Completed is how many are closed as done; never more than Total.
+	Completed int `json:"completed"`
 }
 
 // Checks counts the head commit's check runs and commit statuses by outcome.
@@ -282,6 +334,7 @@ func newSnapshot(prefs map[string]string) Snapshot {
 		LastRefreshedAt: prefs[prefLastRefreshAt],
 		LastError:       prefs[prefLastError],
 		ScopeWarning:    prefs[prefScopeWarning],
+		ProjectAccess:   decodeProjectAccess(prefs[prefProjects]),
 	}
 }
 
@@ -367,6 +420,7 @@ type itemRow struct {
 	// HasDetails reports whether a refresh has read the item's details.
 	HasDetails       bool
 	Labels           []storedLabel
+	Projects         []storedProject
 	Comments         int
 	Additions        int
 	Deletions        int
@@ -383,6 +437,7 @@ type itemRow struct {
 	Reviewed         int
 	Approvals        int
 	ChangesRequested int
+	SubIssues        SubIssues
 	DetailsFetchedAt *time.Time
 	HeadOID          string
 
@@ -395,17 +450,17 @@ type itemRow struct {
 	PinnedAt     *time.Time
 }
 
-// itemRowOf converts a ListItems row, decoding its labels and its file check.
+// itemRowOf converts a ListItems row, decoding its labels, its projects, and its file
+// check.
 func itemRowOf(r queries.ListItemsRow) (itemRow, error) {
-	var labels []storedLabel
+	labels, err := decodeColumn[storedLabel](r.Labels)
+	if err != nil {
+		return itemRow{}, fmt.Errorf("read the labels of item %d: %w", r.ID, err)
+	}
 
-	if r.Labels != nil {
-		decoded, err := store.DecodeJSON[[]storedLabel](*r.Labels)
-		if err != nil {
-			return itemRow{}, fmt.Errorf("read the labels of item %d: %w", r.ID, err)
-		}
-
-		labels = decoded
+	projects, err := decodeColumn[storedProject](r.Projects)
+	if err != nil {
+		return itemRow{}, fmt.Errorf("read the projects of item %d: %w", r.ID, err)
 	}
 
 	stored, err := filesColumns{
@@ -423,7 +478,7 @@ func itemRowOf(r queries.ListItemsRow) (itemRow, error) {
 		HeadRef: r.HeadRef, ItemUpdatedAt: r.ItemUpdatedAt, ReasonReviewRequested: r.ReasonReviewRequested,
 		ReasonAuthored: r.ReasonAuthored, ReasonAssigned: r.ReasonAssigned,
 
-		HasDetails: r.DetailsItemID != nil, Labels: labels, Comments: int(value(r.Comments)),
+		HasDetails: r.DetailsItemID != nil, Labels: labels, Projects: projects, Comments: int(value(r.Comments)),
 		Additions: int(value(r.Additions)), Deletions: int(value(r.Deletions)),
 		ChangedFiles: int(value(r.ChangedFiles)), Commits: int(value(r.Commits)), Mergeable: value(r.Mergeable),
 		ChecksState: value(r.ChecksState), ChecksPassed: int(value(r.ChecksPassed)),
@@ -431,7 +486,8 @@ func itemRowOf(r queries.ListItemsRow) (itemRow, error) {
 		ChecksSkipped: int(value(r.ChecksSkipped)), ReviewDecision: value(r.ReviewDecision),
 		Reviewers: int(value(r.Reviewers)), Reviewed: int(value(r.Reviewed)), Approvals: int(value(r.Approvals)),
 		ChangesRequested: int(value(r.ChangesRequested)), DetailsFetchedAt: r.DetailsFetchedAt,
-		HeadOID: value(r.HeadOID),
+		SubIssues: SubIssues{Total: int(value(r.SubIssuesTotal)), Completed: int(value(r.SubIssuesCompleted))},
+		HeadOID:   value(r.HeadOID),
 
 		Stored: stored,
 
@@ -481,6 +537,26 @@ func (r *itemRow) checkedFiles(scope fileScope, isPR bool, author trust.Author) 
 	return new(scope.matcher.Evaluate(r.Stored, r.HeadOID, r.URL))
 }
 
+// project converts a stored project. Its fields are never nil, even when a build before
+// them stored it.
+func (p storedProject) project() Project {
+	fields := make([]ProjectField, 0, len(p.Fields))
+	for _, f := range p.Fields {
+		fields = append(fields, ProjectField(f))
+	}
+
+	return Project{Title: p.Title, URL: p.URL, Status: p.Status, StatusColor: p.StatusColor, Fields: fields}
+}
+
+// decodeColumn reads a nullable JSON array column, nil when it is NULL.
+func decodeColumn[T any](raw *string) ([]T, error) {
+	if raw == nil {
+		return nil, nil
+	}
+
+	return store.DecodeJSON[[]T](*raw)
+}
+
 // decodeReasons reads stored wake reasons, or nil when there are none or they cannot be
 // read; a card without its reasons still shows the item as back.
 func decodeReasons(raw *string) *snooze.Reasons {
@@ -517,8 +593,14 @@ func (r *itemRow) details() *Details {
 		labels = append(labels, Label(l))
 	}
 
+	projects := make([]Project, 0, len(r.Projects))
+	for _, p := range r.Projects {
+		projects = append(projects, p.project())
+	}
+
 	return &Details{
 		Labels:       labels,
+		Projects:     projects,
 		Comments:     r.Comments,
 		Additions:    r.Additions,
 		Deletions:    r.Deletions,
@@ -533,6 +615,7 @@ func (r *itemRow) details() *Details {
 			Decision: r.ReviewDecision, Reviewers: r.Reviewers, Reviewed: r.Reviewed,
 			Approvals: r.Approvals, ChangesRequested: r.ChangesRequested,
 		},
+		SubIssues: r.SubIssues,
 		FetchedAt: formatOptionalTime(r.DetailsFetchedAt),
 	}
 }

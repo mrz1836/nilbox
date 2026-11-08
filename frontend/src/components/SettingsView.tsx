@@ -2,7 +2,7 @@ import { useEffect, useEffectEvent, useId, useState } from 'react'
 
 import type { Result } from '../lib/call'
 import type { Theme } from '../lib/theme'
-import type { Account, DefaultPrompts, LaunchDefaults, Profile, Prompt, Settings } from '../platform'
+import type { Account, DefaultPrompts, LaunchDefaults, Profile, ProjectAccess, Prompt, Settings } from '../platform'
 import { ChevronLeftIcon } from './icons'
 import { AboutSection } from './settings/AboutSection'
 import { AccountSection } from './settings/AccountSection'
@@ -45,7 +45,10 @@ const sectionOrder: readonly SectionId[] = [
 ]
 
 const sections: Readonly<Record<SectionId, { label: string; description: string }>> = {
-  account: { label: 'Account', description: 'The GitHub account your inbox comes from.' },
+  account: {
+    label: 'Account',
+    description: 'The GitHub account your inbox comes from, and what it lets the inbox show.',
+  },
   appearance: { label: 'Appearance', description: 'The theme, and the size the window opens at.' },
   notifications: {
     label: 'Notifications',
@@ -94,6 +97,9 @@ export interface SettingsViewProps {
   launchDefaults: readonly LaunchDefaults[]
   // account is null until the inbox has loaded.
   account: Account | null
+  // projectAccess is whether the last refresh could read the GitHub projects issues are
+  // in: '' before the first refresh, or while the inbox loads.
+  projectAccess?: ProjectAccess
   // theme is the chosen theme, and onThemeChange switches to another and stores it,
   // resolving with why it could not be stored, if it could not.
   theme: Theme
@@ -136,6 +142,7 @@ export function SettingsView({
   defaultPrompts,
   launchDefaults,
   account,
+  projectAccess = '',
   theme,
   onThemeChange,
   onSaved,
@@ -211,7 +218,7 @@ export function SettingsView({
           </h2>
           {current.description !== '' && <p className="mt-1 text-sm text-muted">{current.description}</p>}
           <div className="mt-6">
-            {section === 'account' && <AccountSection account={account} />}
+            {section === 'account' && <AccountSection account={account} projectAccess={projectAccess} />}
             {section === 'appearance' && (
               <AppearanceSection settings={settings} onSaved={onSaved} theme={theme} onThemeChange={onThemeChange} />
             )}

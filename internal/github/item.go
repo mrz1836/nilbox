@@ -13,12 +13,19 @@ const errorNotFound = "NOT_FOUND"
 // itemQuery reads one pull request or issue by node ID: what the inbox query reads about
 // it, its state included, and what the details query reads, in one request. It costs one
 // point, where a whole refresh costs a few, so a single card can be brought up to date
-// without asking about every other one.
-const itemQuery = `query Item($id: ID!) {
+// without asking about every other one. itemProjectsQuery reads an issue's projects too,
+// as detailsProjectsQuery does.
+const (
+	itemQuery         = itemQueryHead + detailFieldsFragment
+	itemProjectsQuery = itemQueryHead + detailFieldsProjectsFragment
+)
+
+// itemQueryHead is the item query without the DetailFields fragment.
+const itemQueryHead = `query Item($id: ID!) {
   node(id: $id) { ...ItemFields ...DetailFields }
   rateLimit { cost remaining resetAt limit used }
 }
-` + itemFieldsFragment + repoFieldsFragment + detailFieldsFragment
+` + itemFieldsFragment + repoFieldsFragment
 
 // ItemUpdate is what FetchItem learned about one item.
 type ItemUpdate struct {
@@ -31,27 +38,55 @@ type ItemUpdate struct {
 
 	// RateLimit is the GraphQL budget after the request, including its cost.
 	RateLimit QueryRate
+
+	// ProjectsRefused reports that GitHub refused the projects for want of a scope, so
+	// the item was read without them.
+	ProjectsRefused bool
 }
 
-// FetchItem reads one pull request or issue, by node ID, as of now. Unlike the inbox
-// query's searches, it never waits on GitHub's index, so it sees a merge or a close at
-// once.
-func (c *Client) FetchItem(ctx context.Context, tok Token, id string) (*ItemUpdate, error) {
-	update, err := c.fetchItem(ctx, tok, id)
+// FetchItem reads one pull request or issue, by node ID, as of now, with what opts adds
+// to its details. Unlike the inbox query's searches, it never waits on GitHub's index, so
+// it sees a merge or a close at once.
+func (c *Client) FetchItem(ctx context.Context, tok Token, id string, opts DetailOptions) (*ItemUpdate, error) {
+	update, err := c.fetchItem(ctx, tok, id, opts)
 
 	return update, Redact(err, tok)
 }
 
-// fetchItem sends the item query and decodes the response.
-func (c *Client) fetchItem(ctx context.Context, tok Token, id string) (*ItemUpdate, error) {
-	req := graphQLRequest{Query: itemQuery, Variables: map[string]any{"id": id}}
+// fetchItem sends the item query. When GitHub refuses the projects opts asks for, for
+// want of a scope, it sends the query again without them.
+func (c *Client) fetchItem(ctx context.Context, tok Token, id string, opts DetailOptions) (*ItemUpdate, error) {
+	update, err := c.sendItem(ctx, tok, id, opts)
+	if !opts.Projects || !refusedForScope(err) {
+		return update, err
+	}
+
+	if update, err = c.sendItem(ctx, tok, id, DetailOptions{}); err != nil {
+		return nil, err
+	}
+
+	update.ProjectsRefused = true
+
+	return update, nil
+}
+
+// sendItem sends the item query, with what opts adds, and decodes the response.
+func (c *Client) sendItem(ctx context.Context, tok Token, id string, opts DetailOptions) (*ItemUpdate, error) {
+	req := graphQLRequest{Query: opts.itemQuery(), Variables: map[string]any{"id": id}}
 
 	resp, _, err := postGraphQL[itemData](ctx, c, tok, "item", req, unlessData)
 	if err != nil {
 		return nil, err
 	}
 
-	return itemUpdate(resp)
+	update, err := itemUpdate(resp)
+	if err != nil {
+		return nil, err
+	}
+
+	update.ProjectsRefused = opts.Projects && scopeRefused(resp.Errors)
+
+	return update, nil
 }
 
 // itemData is the item query's data object. The node is kept raw, because the inbox's

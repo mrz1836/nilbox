@@ -45,12 +45,13 @@ func (q *Queries) GetActivity(ctx context.Context, itemID int64) (GetActivityRow
 
 const upsertDetails = `-- name: UpsertDetails :exec
 INSERT INTO item_details (
-    item_id, labels, comments, additions, deletions, changed_files, commits, head_oid, mergeable,
+    item_id, labels, projects, comments, additions, deletions, changed_files, commits, head_oid, mergeable,
     checks_state, checks_passed, checks_failed, checks_pending, checks_skipped, review_decision,
-    reviewers, reviewed, approvals, changes_requested, fetched_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    reviewers, reviewed, approvals, changes_requested, sub_issues_total, sub_issues_completed, fetched_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (item_id) DO UPDATE SET
     labels = excluded.labels,
+    projects = excluded.projects,
     comments = excluded.comments,
     additions = excluded.additions,
     deletions = excluded.deletions,
@@ -68,30 +69,35 @@ ON CONFLICT (item_id) DO UPDATE SET
     reviewed = excluded.reviewed,
     approvals = excluded.approvals,
     changes_requested = excluded.changes_requested,
+    sub_issues_total = excluded.sub_issues_total,
+    sub_issues_completed = excluded.sub_issues_completed,
     fetched_at = excluded.fetched_at
 `
 
 type UpsertDetailsParams struct {
-	ItemID           int64
-	Labels           string
-	Comments         int64
-	Additions        int64
-	Deletions        int64
-	ChangedFiles     int64
-	Commits          int64
-	HeadOID          string
-	Mergeable        string
-	ChecksState      string
-	ChecksPassed     int64
-	ChecksFailed     int64
-	ChecksPending    int64
-	ChecksSkipped    int64
-	ReviewDecision   string
-	Reviewers        int64
-	Reviewed         int64
-	Approvals        int64
-	ChangesRequested int64
-	FetchedAt        time.Time
+	ItemID             int64
+	Labels             string
+	Projects           string
+	Comments           int64
+	Additions          int64
+	Deletions          int64
+	ChangedFiles       int64
+	Commits            int64
+	HeadOID            string
+	Mergeable          string
+	ChecksState        string
+	ChecksPassed       int64
+	ChecksFailed       int64
+	ChecksPending      int64
+	ChecksSkipped      int64
+	ReviewDecision     string
+	Reviewers          int64
+	Reviewed           int64
+	Approvals          int64
+	ChangesRequested   int64
+	SubIssuesTotal     int64
+	SubIssuesCompleted int64
+	FetchedAt          time.Time
 }
 
 // UpsertDetails stores an item's details, replacing every column of details stored
@@ -100,6 +106,7 @@ func (q *Queries) UpsertDetails(ctx context.Context, arg UpsertDetailsParams) er
 	_, err := q.db.ExecContext(ctx, upsertDetails,
 		arg.ItemID,
 		arg.Labels,
+		arg.Projects,
 		arg.Comments,
 		arg.Additions,
 		arg.Deletions,
@@ -117,6 +124,8 @@ func (q *Queries) UpsertDetails(ctx context.Context, arg UpsertDetailsParams) er
 		arg.Reviewed,
 		arg.Approvals,
 		arg.ChangesRequested,
+		arg.SubIssuesTotal,
+		arg.SubIssuesCompleted,
 		arg.FetchedAt,
 	)
 	return err

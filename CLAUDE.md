@@ -24,6 +24,7 @@ differ.
    friends. Never hard-code the name elsewhere.
 4. **User data stays local.** Nilbox never sends a user's GitHub data, preferences, triage state,
    or caches anywhere except GitHub's own API.
+5. **Optimize for local-first operation.** Nilbox should minimize network requests and rely on local caches and state wherever possible, ensuring responsiveness and reducing dependency on external services. Try and use the least amount of GitHub requests necessary for any operation.
 
 <br>
 
@@ -145,6 +146,11 @@ app:lint` reads.
   `SweepSettings` and `GitHub`) over importing the other service; `internal/core/adapters.go`
   adapts the real services to them. The repoguard boundary test
   (`internal/repoguard/deps_test.go`) keeps the cuts it lists.
+- `internal/budget/` keeps the GitHub API budget current. The one shared `github.Client` hands
+  every response's rate-limit reading, and what the request spent, to its `Tracker`
+  (`github.RateObserver`), whose state the `Saver` keeps across runs. Every GitHub request goes
+  through `(*github.Client).do`: never build an HTTP request anywhere else, nor run `gh api`;
+  `internal/repoguard/githubrequests_test.go` fails the build if anything does.
 - `internal/launcher/` plans a launch and writes its files; `internal/launcher/terminal/`
   renders the launch script and opens it in the user's terminal app, one driver per terminal
   and OS. `internal/worklog` records the worktrees launches start and the cleanups that

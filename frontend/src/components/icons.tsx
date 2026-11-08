@@ -417,3 +417,22 @@ export function HistoryIcon(props: IconProps) {
     </Icon>
   )
 }
+
+// ProjectIcon stands for a GitHub project: a board with columns of cards.
+export function ProjectIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="3.5" y="3.5" width="17" height="17" rx="2.5" />
+      <path d="M8 7.5v9M12 7.5v5M16 7.5v7" />
+    </Icon>
+  )
+}
+
+// SortIcon stands for the order of a list: an arrow up beside an arrow down.
+export function SortIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M8 19V5M4.5 8.5 8 5l3.5 3.5M16 5v14M12.5 15.5 16 19l3.5-3.5" />
+    </Icon>
+  )
+}

@@ -63,6 +63,19 @@ export interface Details {
     "labels": Label[] | null;
 
     /**
+     * Projects lists the open GitHub projects an issue is in, with its status in each, in
+     * GitHub's order. It is empty for a pull request, and for every issue while the
+     * snapshot's ProjectAccess is not ProjectAccessOn.
+     */
+    "projects": Project[] | null;
+
+    /**
+     * SubIssues counts an issue's sub-issues, and those done. Both are 0 for a pull
+     * request and an issue without sub-issues.
+     */
+    "subIssues": SubIssues;
+
+    /**
      * Comments counts the conversation's comments, review comments included for a pull
      * request.
      */
@@ -194,6 +207,84 @@ export interface List {
 }
 
 /**
+ * Project is an issue's place in one GitHub project.
+ */
+export interface Project {
+    /**
+     * Title is the project's title, and URL its page on GitHub.
+     */
+    "title": string;
+    "url": string;
+
+    /**
+     * Status is the issue's option in the project's Status field, such as "In progress",
+     * or "" when it has none.
+     */
+    "status": string;
+
+    /**
+     * StatusColor is the status's color as "#rrggbb", or "" when it has none.
+     */
+    "statusColor": string;
+
+    /**
+     * Fields are the issue's values in the project's other fields, such as Priority or
+     * Size, in GitHub's order.
+     */
+    "fields": ProjectField[] | null;
+}
+
+/**
+ * ProjectAccess says whether the inbox can read the GitHub projects an issue is in, as
+ * the last successful refresh found.
+ */
+export type ProjectAccess = "" | "on" | "needs_scope";
+
+/**
+ * The values of ProjectAccess, by the names of their Go constants.
+ */
+export const ProjectAccess = {
+    /**
+     * ProjectAccessUnknown is before the first refresh.
+     */
+    ProjectAccessUnknown: "",
+
+    /**
+     * ProjectAccessOn is a token that reads projects: each issue's card shows the
+     * projects it is in, with its status in each.
+     */
+    ProjectAccessOn: "on",
+
+    /**
+     * ProjectAccessNeedsScope is a token without the read:project scope, so no projects
+     * are read. gh auth refresh -s read:project grants it, and the next refresh reads
+     * them.
+     */
+    ProjectAccessNeedsScope: "needs_scope",
+} as const;
+
+/**
+ * ProjectField is an issue's value in one project field.
+ */
+export interface ProjectField {
+    /**
+     * Name is the field's name, such as "Priority".
+     */
+    "name": string;
+
+    /**
+     * Value is the value as the project shows it: an option's name, a number, text, a date
+     * such as "Jun 27, 2026", or an iteration's title.
+     */
+    "value": string;
+
+    /**
+     * Color is a single-select option's color as "#rrggbb", and "" for any other value.
+     */
+    "color": string;
+}
+
+/**
  * Rate is one budget reading. Known is false until the first refresh records one.
  */
 export interface Rate {
@@ -270,4 +361,22 @@ export interface Snapshot {
      * ScopeWarning is set when the token's scopes could not be verified.
      */
     "scopeWarning": string;
+
+    /**
+     * ProjectAccess says whether the last refresh could read the projects each issue is
+     * in, which needs the token's optional read:project scope.
+     */
+    "projectAccess": ProjectAccess;
+}
+
+/**
+ * SubIssues counts an issue's sub-issues.
+ */
+export interface SubIssues {
+    "total": number;
+
+    /**
+     * Completed is how many are closed as done; never more than Total.
+     */
+    "completed": number;
 }

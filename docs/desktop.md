@@ -31,7 +31,9 @@ in [performance.md](performance.md).
 - **[MAGE-X](https://github.com/mrz1836/mage-x)** (`magex`) and
   **[go-pre-commit](https://github.com/mrz1836/go-pre-commit)**, as in the README.
 - The **[GitHub CLI](https://cli.github.com)**, signed in with `gh auth login`. The app borrows
-  its token and needs the `repo` and `read:org` scopes.
+  its token and needs the `repo` and `read:org` scopes. The optional `read:project` scope lets
+  issue cards show [the projects each issue is in](#issue-projects); `gh` doesn't grant it by
+  default, so add it with `gh auth refresh -s read:project`.
 - To launch sessions: the **`claude`** CLI and **iTerm2** (the default terminal) or
   Terminal.app.
 
@@ -219,9 +221,32 @@ color follows the share left:
 | Orange | More than 10%, up to 25% |
 | Red | 10% or less |
 
-Click it for each budget's remaining points, when it resets, and what the last refresh cost.
-The readings are taken on each refresh, and a budget whose reset time has passed counts as full
-again.
+Click it for each budget's remaining points, when it resets, and who used it, and for what the
+inbox's own refreshes cost.
+
+**How the readings stay current.** GitHub says what is left of a budget on every response it
+sends, so the gauge follows every request the app makes, without making one of its own: an inbox
+refresh, a single card's refresh, a check of a pull request's files, and a worktree sweep alike.
+While the panel is open, it also reads every budget from GitHub's rate limit endpoint, which
+costs nothing, as it opens and every 30 seconds after, so what `gh` and your agents spend shows
+as you watch. **Live · read just now** says the newest reading is fresh. A budget whose reset
+time has passed counts as full again.
+
+**Who used it.** Each budget's row says what the app itself spent from it since it last
+refilled, and what everything else signed in as you did, such as **Nilbox 45 · everything else
+62**. When the app opened after the budget last refilled, it can't know what an earlier copy of
+itself spent, and says **Nilbox 3 since it opened** instead.
+
+**What the refreshes cost.** **Inbox refresh** shows what the last whole refresh spent of the
+GraphQL budget and how many items it tracked, and what that comes to in an hour at one refresh
+every five minutes, as a share of the budget. Each refresh reads every tracked item, so more
+items, or issues read with their [project fields](#issue-projects), cost more.
+
+**Kept across restarts.** The readings and what the app spent are saved a second after each
+change, and once more as the app quits, and come back when it opens. The app spends nothing
+while it is closed, so the count it picks up still covers all it spent. Every GitHub request the
+app makes goes through the one function that reports to the gauge; a repository test fails the
+build for any code that would send one another way, or run `gh api`.
 
 **Theme.** Settings → Appearance offers **System**, **Light**, and **Dark**. System follows
 your Mac's appearance and switches when it does; Light and Dark stay put whatever the Mac does.
@@ -255,9 +280,10 @@ Each pull request or issue in the inbox is a card three lines high:
    [trust rule](#outside-contributors) says so: **bot** for a trusted bot, **untrusted bot**,
    or **outside contributor**. A pull request whose files are checked then shows its
    [sensitive files](#sensitive-files) chip.
-3. Its details, in a fixed order. Each detail before the labels keeps the same width on every
-   card, sized for the longest value a card should meet, so the details line up from card to
-   card. Hover any of them for the whole sentence, which is also what a screen reader reads.
+3. Its details, in a fixed order. Each detail before the projects and labels keeps the same
+   width on every card, sized for the longest value a card should meet, so the details line up
+   from card to card. Hover any of them for the whole sentence, which is also what a screen
+   reader reads.
 
 | Detail | What it shows | Color |
 |---|---|---|
@@ -265,9 +291,12 @@ Each pull request or issue in the inbox is a card three lines high:
 | Reviews | Reviewers who have reviewed, out of everyone asked or who reviewed. The author's own replies don't count, and a reviewer asked again owes a new review. | Green once approved, red when changes were requested |
 | Comments | The conversation's comments, review comments included | None |
 | Size | XS (under 10 changed lines), S (under 30), M (under 100), L (under 500), XL (under 1,000), or XXL; then the lines added and removed, the files, and the commits | Added lines green, removed lines red |
+| Sub-issues | On an issue with sub-issues, how many are done out of all of them, with a small bar | Green once all are done |
+| Projects | On an issue, the first GitHub project it is in, its status there, and its priority and size, then how many more projects. Click it to open the project. See [Issue projects](#issue-projects). | The status and fields in their project colors |
 | Labels | The first three labels with their GitHub colors, then how many more | None |
 
-An issue shows its comments and labels.
+An issue shows its comments, its sub-issues, its projects, and its labels. Sub-issue progress
+needs no extra scope, so it shows for every issue that has sub-issues.
 
 **Archived repositories are left out.** Each of the inbox's three searches asks GitHub for
 `archived:false`, so an archived repository's pull requests and issues never appear, never
@@ -335,6 +364,68 @@ again clears the choice. Choosing another prompt or profile resolves the setting
 each default shown is the one that would really apply, such as a prompt's own model. The
 launch's outcome appears below the card. An item no prompt applies to shows **No prompt** and
 says why.
+
+### Issue projects
+
+An issue's card names the GitHub project it is in, such as **Roadmap**, with the issue's
+**Status** there as a pill in the color the project gives it, such as **In progress** in
+yellow. Beside it, the issue's priority and size show as outlined pills in their option
+colors, such as **High** and **XL**: the first field named like *Priority* (or *Prio*) and
+the first named like *Size* (or *Effort*), whatever their order in the project. Hover the
+project for every field it has a value in, such as **Estimate**, **Phase**, a date, or an
+iteration, and click it to open the project on GitHub. An issue in more than one project
+shows the first, in GitHub's order, then **+N**; hover the count for the others and their
+statuses. A closed project, and an item archived from its project, are left out, and the
+first five projects an issue is in are read. A project whose Status field was renamed or
+deleted shows its name alone. Pull requests show no projects.
+
+**Sorting by status.** A list whose issues are in projects, **Assigned** in practice, has a
+**Recent | Status** toggle at the right of its header. **Recent** is the usual order: pinned
+items first, then newest activity. **Status** keeps the pinned items first, then lists the
+issues by their project status, an issue in several projects by its best one; issues of one
+status stay newest first, and issues without a status come last. Click the arrows icon beside
+the toggle for **Status order**: the statuses found in the list, top ranked first, each moved
+with its up and down arrows. Every project names its own statuses, so the order is yours.
+A status you haven't placed, as a new project brings, is placed by its name: work under way
+(**In progress**), then in review, ready to start (**Ready**, **Todo**), anything else, new
+work (**Backlog**), work set aside (**Blocked**, **Deferred**, **Waiting**), and done last. It
+goes after the last status you placed at the same point or an earlier one. **Reset** puts
+every status back where its name places it. The toggle and the order are kept across
+launches; statuses you placed that are not in the list now keep their places.
+
+**The scope.** GitHub only shows projects to a token with the `read:project` scope (or
+`project`, which includes it), and `gh auth login` doesn't ask for it. Add it to the token
+the app borrows, then refresh:
+
+```bash
+gh auth refresh -s read:project
+```
+
+`gh` adds it to the scopes the token already has. The app borrows the new token as soon as
+`gh` rewrites its hosts file, as it does when it signs in again, and within ten minutes in any
+case, when the token it holds expires.
+
+**Without it, nothing breaks.** The app never asks GitHub for projects while the token lacks
+the scope, so a refresh goes on as before and issue cards just show none. When the inbox
+holds an issue, a tip above the lists offers to show them, with the command and a **Copy**
+button: **Check again** refreshes to find out, and says so when there is still no access.
+Once a refresh finds access, the tip says the projects are on. Close the tip with **×** and
+it stays away; **Settings → Account → Projects on issues** keeps the command, and says
+**On** once the projects show.
+
+**How they are read.** The projects and their fields come with each issue's other details, in
+the same requests, so they never add one. GitHub prices the field values per project an issue
+is in, so with them a batch of 50 issues costs about four points of the GraphQL budget instead
+of one; only a token with the scope pays it. Sub-issue counts cost nothing extra. A token that
+reports its scopes is asked for
+projects only when it has the scope. The details of the items already listed are asked for
+before this refresh knows the token's scopes, the way the last refresh read them. When the
+scope was just granted, every item's details are read again once the scopes are known, so the
+first refresh after `gh auth refresh` shows every issue's projects. When it was taken away,
+GitHub refuses the projects, and those requests are sent again without them, so the refresh
+still succeeds and the cards show none. A token that reports no scopes, such as a
+fine-grained token, is asked too; once GitHub refuses it the projects, the app stops asking
+it. Refreshing one card reads its projects when the last whole refresh could.
 
 <br>
 

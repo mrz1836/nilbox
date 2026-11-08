@@ -4,6 +4,8 @@ import { brand } from '../generated/brand'
 import type {
   Account,
   AppNotification,
+  BudgetGauge,
+  BudgetReading,
   BundlePrompt,
   CloneTarget,
   FileCheck,
@@ -20,6 +22,7 @@ import type {
   LaunchResult,
   LinkedItem,
   Profile,
+  Project,
   Prompt,
   PromptBackup,
   PromptCheckResult,
@@ -98,6 +101,18 @@ export function notification(overrides: Partial<AppNotification> = {}): AppNotif
   }
 }
 
+// project is an issue's place in the roadmap project, with its status there.
+export function project(overrides: Partial<Project> = {}): Project {
+  return {
+    title: 'Roadmap',
+    url: 'https://github.com/orgs/acme-org/projects/1',
+    status: 'In progress',
+    statusColor: '#bf8700',
+    fields: [],
+    ...overrides,
+  }
+}
+
 // details are a pull request's details: passing checks, an approval out of two
 // reviewers, a few comments, and two labels.
 export function details(overrides: Partial<ItemDetails> = {}): ItemDetails {
@@ -106,6 +121,8 @@ export function details(overrides: Partial<ItemDetails> = {}): ItemDetails {
       { name: 'enhancement', color: '#a2eeef' },
       { name: 'needs-docs', color: '' },
     ],
+    projects: [],
+    subIssues: { total: 0, completed: 0 },
     comments: 4,
     additions: 120,
     deletions: 30,
@@ -155,6 +172,8 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     bannersOff: [],
     theme: 'system',
     collapsedSections: [],
+    projectsTipDismissed: false,
+    inboxOrder: { statusSorted: [], statusOrder: [] },
     ...overrides,
   }
 }
@@ -515,6 +534,48 @@ export function rate(overrides: Partial<Rate> = {}): Rate {
   }
 }
 
+// unreadBudget is a budget GitHub has not reported yet.
+export const unreadBudget: BudgetReading = {
+  known: false,
+  limit: 0,
+  remaining: 0,
+  used: 0,
+  resetAt: '',
+  takenAt: '',
+  spent: 0,
+  requests: 0,
+  complete: false,
+}
+
+// reading is a GraphQL-sized budget reading, taken a minute before the tests' noon and
+// refilling 42 minutes after it, with nothing the app spent from it.
+export function reading(overrides: Partial<BudgetReading> = {}): BudgetReading {
+  return {
+    known: true,
+    limit: 5000,
+    remaining: 4980,
+    used: 20,
+    resetAt: '2026-06-15T12:42:00Z',
+    takenAt: '2026-06-15T11:59:00Z',
+    spent: 0,
+    requests: 0,
+    complete: true,
+    ...overrides,
+  }
+}
+
+// budgetGauge is every budget unread, before any refresh, refreshing every five minutes.
+export function budgetGauge(overrides: Partial<BudgetGauge> = {}): BudgetGauge {
+  return {
+    graphql: unreadBudget,
+    core: unreadBudget,
+    search: unreadBudget,
+    refresh: { known: false, at: '', points: 0, items: 0 },
+    refreshesPerHour: 12,
+    ...overrides,
+  }
+}
+
 // avatarDataURL is a stand-in for a cached avatar; the image never decodes in jsdom.
 export const avatarDataURL = 'data:image/png;base64,bm90LXJlYWxseS1hLXBuZw=='
 
@@ -545,6 +606,7 @@ export function snapshot(overrides: Partial<InboxSnapshot> = {}): InboxSnapshot 
     lastRefreshedAt: '',
     lastError: '',
     scopeWarning: '',
+    projectAccess: 'on',
     ...overrides,
   }
 }

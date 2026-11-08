@@ -56,7 +56,7 @@ func TestFetchDetailsReadsEachItem(t *testing.T) {
 		_, _ = w.Write(body)
 	})
 
-	details, err := client.FetchDetails(t.Context(), NewToken(fakeToken), ids)
+	details, err := client.FetchDetails(t.Context(), NewToken(fakeToken), ids, DetailOptions{})
 	require.NoError(t, err)
 
 	assert.Equal(t, 1, details.Requests)
@@ -141,7 +141,7 @@ func TestFetchDetailsBatchesTheIDsSideBySide(t *testing.T) {
 			strings.Join(nodes, ","), n, 5000-n*10, n*10)
 	})
 
-	details, err := client.FetchDetails(t.Context(), NewToken(fakeToken), ids)
+	details, err := client.FetchDetails(t.Context(), NewToken(fakeToken), ids, DetailOptions{})
 	require.NoError(t, err)
 
 	assert.Equal(t, []int{30, 30, 30, 30}, sizes, "a large inbox gets bigger batches, not more requests")
@@ -231,7 +231,7 @@ func TestFetchDetailsWithoutIDs(t *testing.T) {
 		t.Error("nothing is requested without IDs")
 	})
 
-	details, err := client.FetchDetails(t.Context(), NewToken(fakeToken), nil)
+	details, err := client.FetchDetails(t.Context(), NewToken(fakeToken), nil, DetailOptions{})
 	require.NoError(t, err)
 	assert.Zero(t, details.Requests)
 	assert.Empty(t, details.Items)
@@ -261,7 +261,7 @@ func TestFetchDetailsFailures(t *testing.T) {
 				_, _ = io.WriteString(w, tt.body)
 			})
 
-			_, err := client.FetchDetails(t.Context(), NewToken(fakeToken), []string{"I_fakeNodeId1"})
+			_, err := client.FetchDetails(t.Context(), NewToken(fakeToken), []string{"I_fakeNodeId1"}, DetailOptions{})
 			require.ErrorIs(t, err, tt.wantErr)
 		})
 	}

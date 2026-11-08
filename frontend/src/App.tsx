@@ -6,9 +6,13 @@ import { ErrorBanner } from './components/ErrorBanner'
 import { InboxView, type LaunchOptions, type Reveal } from './components/InboxView'
 import type { SettingsSection } from './components/SettingsView'
 import { Toast, type ToastMessage } from './components/Toast'
+import { attempt } from './lib/call'
+import { offersProjects } from './lib/projects'
 import { defaultSnoozeDays, findItem } from './lib/triage'
 import { useCollapsedSections } from './lib/useCollapsedSections'
+import { useBudget } from './lib/useBudget'
 import { useInbox } from './lib/useInbox'
+import { useInboxOrder } from './lib/useInboxOrder'
 import { useLaunchConfig } from './lib/useLaunchConfig'
 import { useNotifications } from './lib/useNotifications'
 import { useQuery } from './lib/useQuery'
@@ -18,6 +22,7 @@ import {
   lastWorktreeSweep,
   on,
   openExternal,
+  setProjectsTipDismissed,
   type AppNotification,
   type InboxSnapshot,
   type RemoveResult,
@@ -222,6 +227,7 @@ function navigate(nav: Nav, action: NavAction): Nav {
 export function App() {
   const theme = useTheme()
   const inbox = useInbox()
+  const budget = useBudget()
   const triaged = useTriage(inbox.snapshot)
   const config = useLaunchConfig(inbox.snapshot)
   const sweeps = useWorktreeSweeps()
@@ -229,6 +235,7 @@ export function App() {
   // sections lives here rather than in the inbox page, so the lists stay as they were
   // left without reading them again.
   const sections = useCollapsedSections()
+  const inboxOrder = useInboxOrder()
   const [nav, go] = useReducer(navigate, startNav)
   const { view } = nav
 
@@ -324,6 +331,19 @@ export function App() {
     changeView('prompts')
   }
 
+  // dismissProjects stores that the user put away the inbox's offer to show issue
+  // projects. The inbox hides it at once; a store that fails only means it is offered
+  // again at the next start.
+  const dismissProjects = () => {
+    void attempt(setProjectsTipDismissed(true)).then((result) => {
+      if (result.ok) {
+        saveSettings(result.data)
+      } else {
+        console.error('could not store that the projects tip was put away:', result.error)
+      }
+    })
+  }
+
   const launch: LaunchOptions | null =
     config.settings === null
       ? null
@@ -344,7 +364,8 @@ export function App() {
         view={view}
         onViewChange={changeView}
         account={account}
-        gauge={inbox.snapshot?.rate ?? null}
+        gauge={budget.gauge}
+        onBudgetCheck={budget.check}
         inboxCount={triaged?.count ?? 0}
         worktreeCount={sweeps.count}
         worktreeAttention={sweeps.attention}
@@ -371,6 +392,9 @@ export function App() {
             onCollapse={sections.setCollapsed}
             reveal={revealer.reveal}
             showing={view === 'inbox'}
+            offerProjects={offersProjects(inbox.snapshot, config.settings)}
+            onDismissProjects={dismissProjects}
+            inboxOrder={inboxOrder}
           />
         </Activity>
         {nav.visited.has('worktrees') && (
@@ -407,6 +431,7 @@ export function App() {
                 defaultPrompts={config.defaultPrompts}
                 launchDefaults={config.launchDefaults}
                 account={account}
+                projectAccess={inbox.snapshot?.projectAccess ?? ''}
                 theme={theme.theme}
                 onThemeChange={theme.chooseTheme}
                 onSaved={saveSettings}

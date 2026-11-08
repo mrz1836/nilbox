@@ -1,13 +1,17 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
-import type { RateGauge as Gauge } from '../platform'
+import type { BudgetGauge as Gauge } from '../platform'
 import { at } from '../test/clock'
-import { rate, unknownRate } from '../test/fixtures'
-import { BudgetMenu } from './BudgetMenu'
+import { budgetGauge, reading, unreadBudget } from '../test/fixtures'
+import { BudgetMenu, checkEveryMs } from './BudgetMenu'
 
-const healthy: Gauge = { graphql: rate(), core: rate({ remaining: 4990 }), search: rate({ limit: 30, remaining: 30 }) }
+const healthy: Gauge = budgetGauge({
+  graphql: reading(),
+  core: reading({ remaining: 4990 }),
+  search: reading({ limit: 30, remaining: 30 }),
+})
 
 function renderMenu(gauge: Gauge | null) {
   return render(
@@ -46,13 +50,13 @@ describe('BudgetMenu', () => {
     ['low', 1000, 'text-caution', 'API budget: Low, 20% left (REST)'],
     ['critical', 0, 'text-danger', 'API budget: Critical, 0% left (REST)'],
   ])('signals a %s budget', (_level, remaining, color, label) => {
-    renderMenu({ ...healthy, core: rate({ remaining }) })
+    renderMenu({ ...healthy, core: reading({ remaining }) })
 
     expect(screen.getByRole('button', { name: label })).toHaveClass(color)
   })
 
   it('points the needle at empty and drops the fill when nothing is left', () => {
-    renderMenu({ ...healthy, graphql: rate({ remaining: 0 }) })
+    renderMenu({ ...healthy, graphql: reading({ remaining: 0 }) })
 
     const gauge = screen.getByRole('button', { name: /Critical/ })
     expect(needle(gauge)).toEqual([7, 15])
@@ -68,7 +72,7 @@ describe('BudgetMenu', () => {
   })
 
   it('opens the details, and closes on Escape with focus back on the gauge', async () => {
-    renderMenu({ ...healthy, core: unknownRate })
+    renderMenu({ ...healthy, core: unreadBudget })
     const gauge = screen.getByRole('button', { name: /API budget/ })
 
     await userEvent.click(gauge)
@@ -108,5 +112,32 @@ describe('BudgetMenu', () => {
     screen.getByRole('button', { name: 'Elsewhere' }).focus()
 
     expect(await screen.findByRole('button', { name: /API budget/ })).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('checks the budgets with GitHub as the panel opens, and while it stays open', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    const onCheck = vi.fn()
+
+    try {
+      render(<BudgetMenu gauge={healthy} onCheck={onCheck} />, { wrapper: at() })
+
+      expect(onCheck).not.toHaveBeenCalled()
+
+      await userEvent.click(screen.getByRole('button', { name: /^API budget/ }))
+      expect(onCheck).toHaveBeenCalledOnce()
+
+      act(() => {
+        vi.advanceTimersByTime(checkEveryMs)
+      })
+      expect(onCheck).toHaveBeenCalledTimes(2)
+
+      await userEvent.click(screen.getByRole('button', { name: /^API budget/ }))
+      act(() => {
+        vi.advanceTimersByTime(checkEveryMs * 3)
+      })
+      expect(onCheck).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

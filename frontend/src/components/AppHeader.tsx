@@ -1,6 +1,6 @@
 import { counted, formatCount } from '../lib/format'
 import type { NotificationsState } from '../lib/useNotifications'
-import type { Account, AppNotification, RateGauge } from '../platform'
+import type { Account, AppNotification, BudgetGauge } from '../platform'
 import { AccountMenu } from './AccountMenu'
 import { BudgetMenu } from './BudgetMenu'
 import { Logo } from './Logo'
@@ -19,9 +19,11 @@ const tabs: readonly { id: View; label: string }[] = [
 export interface AppHeaderProps {
   view: View
   onViewChange: (view: View) => void
-  // account and gauge are null until the inbox has loaded.
+  // account is null until the inbox has loaded, and gauge until the budgets have.
   account: Account | null
-  gauge: RateGauge | null
+  gauge: BudgetGauge | null
+  // onBudgetCheck reads every budget from GitHub now; the budget menu asks while it is open.
+  onBudgetCheck?: () => void
   // inboxCount is how many items are in the inbox; the Inbox tab shows it when it is not 0.
   inboxCount?: number
   // worktreeCount is how many linked worktrees are on disk, and worktreeAttention how many
@@ -86,6 +88,7 @@ export function AppHeader(props: AppHeaderProps) {
     onViewChange,
     account,
     gauge,
+    onBudgetCheck,
     onOpenSettings,
     notifications,
     onOpenNotification = () => undefined,
@@ -143,7 +146,7 @@ export function AppHeader(props: AppHeaderProps) {
             onSettings={onNotificationSettings}
           />
         )}
-        <BudgetMenu gauge={gauge} />
+        <BudgetMenu gauge={gauge} onCheck={onBudgetCheck} />
         <AccountMenu account={account} onOpenSettings={onOpenSettings} />
       </div>
     </header>

@@ -29,6 +29,9 @@ const (
 	// NameNotificationsUpdated is NotificationsUpdated's name.
 	NameNotificationsUpdated = "notifications:updated"
 
+	// NameBudgetUpdated is BudgetUpdated's name.
+	NameBudgetUpdated = "budget:updated"
+
 	// NameThemeChanged is ThemeChanged's name.
 	NameThemeChanged = "settings:theme"
 
@@ -73,7 +76,7 @@ func Or(s Sink) Sink {
 // WindowEvents returns one of each window event. The repository's checks compare it with
 // the events the desktop bootstrap registers.
 func WindowEvents() []WindowEvent {
-	return []WindowEvent{InboxUpdated{}, RevealItem{}, WorktreesUpdated{}, NotificationsUpdated{}}
+	return []WindowEvent{InboxUpdated{}, RevealItem{}, WorktreesUpdated{}, NotificationsUpdated{}, BudgetUpdated{}}
 }
 
 // InboxUpdated says the stored inbox, or the status of its last refresh, changed: the
@@ -119,6 +122,15 @@ type NotificationsUpdated struct{}
 func (NotificationsUpdated) Name() string { return NameNotificationsUpdated }
 
 func (NotificationsUpdated) window() {}
+
+// BudgetUpdated says a GitHub API budget changed, as a response reported it, or what the
+// app spent from one: the window reads the budgets again.
+type BudgetUpdated struct{}
+
+// Name returns NameBudgetUpdated.
+func (BudgetUpdated) Name() string { return NameBudgetUpdated }
+
+func (BudgetUpdated) window() {}
 
 // ThemeChanged says the user chose a theme and it was stored. The shell brings the
 // window's native appearance along with it; the page has already switched itself.

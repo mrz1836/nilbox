@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 import { counted, formatCount } from '../lib/format'
+import { featuredFields, projectText, projectTooltip, subIssuesText } from '../lib/projects'
 import {
   checksSignal,
   reviewsSignal,
@@ -11,11 +12,17 @@ import {
   type ReviewsKind,
   type Signal,
 } from '../lib/signals'
-import type { InboxItem, Label } from '../platform'
-import { CheckIcon, CommentIcon, DotIcon, EyeIcon, RingIcon, XIcon } from './icons'
+import { openExternal, type InboxItem, type Label, type Project, type ProjectField, type SubIssues } from '../platform'
+import { CheckIcon, CommentIcon, DotIcon, EyeIcon, ProjectIcon, RingIcon, XIcon } from './icons'
 
 // shownLabels is how many labels a card shows before folding the rest into "+N".
 const shownLabels = 3
+
+// statusTint is how strongly a project status's color tints its pill: an alpha byte
+// appended to its "#rrggbb", light enough that the ink on it keeps its contrast in both
+// themes. fieldEdge is how strongly a field option's color draws its pill's edge.
+const statusTint = '29'
+const fieldEdge = 'b3'
 
 const iconClass = 'size-3.5 shrink-0'
 
@@ -120,14 +127,120 @@ function Labels({ labels }: { labels: Label[] }) {
   )
 }
 
+// FieldPill is one of a project's featured fields, such as Priority High, outlined in the
+// option's color, as a project board draws it.
+function FieldPill({ field }: { field: ProjectField }) {
+  return (
+    <span
+      className={`inline-flex max-w-24 shrink-0 items-center rounded-full border px-1.5 text-[11px] leading-4 font-medium text-text ${field.color === '' ? 'border-border' : ''}`}
+      style={field.color === '' ? undefined : { borderColor: field.color + fieldEdge }}
+    >
+      <span className="truncate">{field.value}</span>
+    </span>
+  )
+}
+
+// ProjectLink names the project an issue is in, with its status there as a pill in the
+// status's color and its featured fields (see featuredFields) as outlined pills, and
+// opens the project on GitHub. Its tooltip lists every field.
+function ProjectLink({ project }: { project: Project }) {
+  const where = projectText(project)
+  const featured = featuredFields(project)
+  const spoken = featured.map((f) => `, ${f.name} ${f.value}`).join('')
+
+  return (
+    <button
+      type="button"
+      title={projectTooltip(project)}
+      aria-label={`Project ${where}${spoken}. Open it on GitHub`}
+      onClick={() => {
+        openExternal(project.url)
+      }}
+      className="group/project inline-flex min-w-0 items-center gap-1.5 rounded-sm text-muted transition-colors hover:text-text"
+    >
+      <ProjectIcon className={iconClass} />
+      <span className="max-w-40 min-w-0 truncate group-hover/project:underline">{project.title}</span>
+      {project.status !== '' && (
+        <span
+          className={`inline-flex max-w-36 shrink-0 items-center gap-1 rounded-full px-1.5 py-px text-[11px] font-medium text-text ${project.statusColor === '' ? 'bg-raised' : ''}`}
+          style={project.statusColor === '' ? undefined : { backgroundColor: project.statusColor + statusTint }}
+        >
+          <span
+            aria-hidden="true"
+            className={`size-1.5 shrink-0 rounded-full ${project.statusColor === '' ? 'bg-muted' : ''}`}
+            style={project.statusColor === '' ? undefined : { backgroundColor: project.statusColor }}
+          />
+          <span className="truncate">{project.status}</span>
+        </span>
+      )}
+      {featured.map((field) => (
+        <FieldPill key={field.name} field={field} />
+      ))}
+    </button>
+  )
+}
+
+// SubIssueProgress shows how many of an issue's sub-issues are done, as a count and a
+// small bar, green once all are.
+function SubIssueProgress({ subIssues }: { subIssues: SubIssues }) {
+  const { total, completed } = subIssues
+
+  if (total === 0) {
+    return null
+  }
+
+  const done = completed === total
+
+  return (
+    <Slot long={`Sub-issues: ${subIssuesText(subIssues)}`} className={done ? 'text-success' : ''}>
+      <span className="relative h-1.5 w-10 overflow-hidden rounded-full bg-border">
+        <span
+          className="absolute inset-y-0 left-0 rounded-full bg-success"
+          style={{ width: `${String((completed / total) * 100)}%` }}
+        />
+      </span>
+      <span>
+        {formatCount(completed)}/{formatCount(total)}
+      </span>
+    </Slot>
+  )
+}
+
+// Projects shows the first project an issue is in, and the count of the rest, named in
+// its tooltip with their statuses. An issue is rarely in more than one.
+function Projects({ projects }: { projects: Project[] }) {
+  const [first, ...rest] = projects
+
+  if (first === undefined) {
+    return null
+  }
+
+  const others = rest.map(projectText)
+
+  return (
+    <li className="flex min-w-0 items-center gap-1">
+      <span className="sr-only">Projects:</span>
+      <ProjectLink project={first} />
+      {rest.length > 0 && (
+        <span title={others.join('\n')} className="shrink-0 text-[11px]">
+          +{rest.length}
+          <span className="sr-only"> more: {others.join(', ')}</span>
+        </span>
+      )}
+    </li>
+  )
+}
+
 export interface ItemSignalsProps {
   item: InboxItem
 }
 
 // ItemSignals is the card's line of facts about an item. For a pull request: its checks,
 // its reviews, its comments, and its size (lines added and removed, files, commits);
-// for an issue, its comments. Labels close the line. Every value before the labels keeps
-// a fixed width, so the values line up from card to card.
+// for an issue, its comments, how far along its sub-issues are, and the GitHub projects it
+// is in, with its status and featured fields in each.
+// Labels close the line. Every value before the projects and labels keeps a fixed width,
+// so the values line up from card to card.
 export function ItemSignals({ item }: ItemSignalsProps) {
   const details = item.details
 
@@ -164,6 +277,8 @@ export function ItemSignals({ item }: ItemSignalsProps) {
           <span className={columns.commits}>{counted(commits, 'commit', 'commits')}</span>
         </Slot>
       )}
+      {!isPR && <SubIssueProgress subIssues={details.subIssues} />}
+      {!isPR && <Projects projects={details.projects} />}
       <Labels labels={details.labels} />
     </ul>
   )

@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { InboxItem } from '../platform'
 import { at } from '../test/clock'
-import { details, fileCheck, item, itemResolution, profile, prompts } from '../test/fixtures'
+import { details, fileCheck, item, itemResolution, profile, project, prompts } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { ItemRow, type LaunchOptions } from './ItemRow'
 
@@ -166,6 +166,112 @@ describe('ItemRow', () => {
     expect(screen.queryByTitle(/^Checks/)).not.toBeInTheDocument()
     expect(screen.queryByTitle(/^Reviews/)).not.toBeInTheDocument()
     expect(screen.queryByTitle(/^Size/)).not.toBeInTheDocument()
+  })
+
+  it('shows the project an issue is in, with its status there in the status’s color', () => {
+    renderRow(item({ kind: 'issue', details: details({ comments: 2, projects: [project()] }) }))
+
+    const link = signals().getByRole('button', { name: 'Project Roadmap: In progress. Open it on GitHub' })
+    expect(link).toHaveAttribute('title', 'Roadmap: In progress\nOpen the project on GitHub')
+    expect(within(link).getByText('Roadmap')).toBeInTheDocument()
+
+    const status = within(link).getByText('In progress').parentElement
+    expect(status).toHaveStyle({ backgroundColor: '#bf870029' })
+    expect(status?.firstElementChild).toHaveStyle({ backgroundColor: '#bf8700' })
+    expect(signals().getByText('Projects:')).toHaveClass('sr-only')
+  })
+
+  it('opens an issue’s project on GitHub', async () => {
+    renderRow(item({ kind: 'issue', details: details({ projects: [project()] }) }))
+
+    await userEvent.click(signals().getByRole('button', { name: /^Project Roadmap/ }))
+
+    expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/orgs/acme-org/projects/1')
+  })
+
+  it('names a project alone when the issue has no status there, and a status without a color neutrally', () => {
+    renderRow(
+      item({
+        kind: 'issue',
+        details: details({
+          projects: [project({ status: 'Todo', statusColor: '' }), project({ title: 'Sprint', status: '' })],
+        }),
+      }),
+    )
+
+    const status = signals().getByText('Todo').parentElement
+    expect(status).toHaveClass('bg-raised')
+    expect(status?.firstElementChild).toHaveClass('bg-muted')
+    expect(signals().getByTitle('Sprint')).toHaveTextContent('+1')
+    expect(signals().getByText('more: Sprint')).toHaveClass('sr-only')
+  })
+
+  it('folds an issue’s projects past the first into a count, with their statuses in its tooltip', () => {
+    renderRow(
+      item({
+        kind: 'issue',
+        details: details({
+          projects: [
+            project(),
+            project({ title: 'Sprint', status: 'Todo' }),
+            project({ title: 'Triage', status: 'New' }),
+          ],
+        }),
+      }),
+    )
+
+    expect(signals().getByRole('button', { name: /^Project Roadmap/ })).toBeInTheDocument()
+    expect(signals().queryByRole('button', { name: /^Project Sprint/ })).not.toBeInTheDocument()
+    const rest = signals().getByTitle(/^Sprint: Todo\s+Triage: New$/)
+    expect(rest).toHaveAttribute('title', 'Sprint: Todo\nTriage: New')
+    expect(rest).toHaveTextContent('+2')
+  })
+
+  it('shows an issue’s priority and size beside its status, and every field in the tooltip', () => {
+    const fields = [
+      { name: 'Phase', value: 'Beta', color: '' },
+      { name: 'Size', value: 'XL', color: '' },
+      { name: 'Priority', value: 'High', color: '#fa4549' },
+    ]
+    renderRow(item({ kind: 'issue', details: details({ projects: [project({ fields })] }) }))
+
+    const link = signals().getByRole('button', {
+      name: 'Project Roadmap: In progress, Priority High, Size XL. Open it on GitHub',
+    })
+    expect(link).toHaveAttribute(
+      'title',
+      'Roadmap: In progress\nPhase: Beta\nSize: XL\nPriority: High\nOpen the project on GitHub',
+    )
+    expect(within(link).getByText('High').parentElement).toHaveStyle({ borderColor: '#fa4549b3' })
+    expect(within(link).getByText('XL').parentElement).toHaveClass('border-border')
+    expect(within(link).queryByText('Beta')).not.toBeInTheDocument()
+  })
+
+  it('shows how far along an issue’s sub-issues are', () => {
+    renderRow(item({ kind: 'issue', details: details({ subIssues: { total: 8, completed: 6 } }) }))
+
+    const progress = slot('Sub-issues: 6 of 8 sub-issues done (75%)')
+    expect(progress).toHaveTextContent('6/8')
+    expect(progress).not.toHaveClass('text-success')
+    expect(progress.querySelector('.bg-success')).toHaveStyle({ width: '75%' })
+  })
+
+  it('marks an issue whose sub-issues are all done', () => {
+    renderRow(item({ kind: 'issue', details: details({ subIssues: { total: 2, completed: 2 } }) }))
+
+    expect(slot('Sub-issues: 2 of 2 sub-issues done (100%)')).toHaveClass('text-success')
+  })
+
+  it('shows no sub-issue progress for an issue without sub-issues', () => {
+    renderRow(item({ kind: 'issue', details: details() }))
+
+    expect(screen.queryByTitle(/^Sub-issues/)).not.toBeInTheDocument()
+  })
+
+  it('shows no project on a pull request', () => {
+    renderRow(item({ details: details({ projects: [project()] }) }))
+
+    expect(signals().queryByRole('button', { name: /^Project/ })).not.toBeInTheDocument()
   })
 
   it('gives each value the same width on every card, whatever it says, so the columns line up', () => {

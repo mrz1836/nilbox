@@ -79,7 +79,9 @@ export function Refresh(): $CancellablePromise<$models.Snapshot> {
  * as a pull request they just merged, shows without refreshing the whole inbox.
  *
  * An item still open gets its card and details rewritten and stays in the lists it is
- * in; only the searches of a whole refresh can tell which lists those are. A pull request
+ * in; only the searches of a whole refresh can tell which lists those are. An issue's
+ * projects are read when the last whole refresh could read them; only a whole refresh
+ * changes what the snapshot says about that. A pull request
  * whose files are checked has them checked again when its head moved. An item
  * merged, closed, or deleted since, or whose repository was archived, leaves every list,
  * as a whole refresh would have it. New activity on a snoozed item can end the snooze.

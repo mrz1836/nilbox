@@ -2,12 +2,13 @@
 -- UpsertDetails stores an item's details, replacing every column of details stored
 -- before.
 INSERT INTO item_details (
-    item_id, labels, comments, additions, deletions, changed_files, commits, head_oid, mergeable,
+    item_id, labels, projects, comments, additions, deletions, changed_files, commits, head_oid, mergeable,
     checks_state, checks_passed, checks_failed, checks_pending, checks_skipped, review_decision,
-    reviewers, reviewed, approvals, changes_requested, fetched_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    reviewers, reviewed, approvals, changes_requested, sub_issues_total, sub_issues_completed, fetched_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (item_id) DO UPDATE SET
     labels = excluded.labels,
+    projects = excluded.projects,
     comments = excluded.comments,
     additions = excluded.additions,
     deletions = excluded.deletions,
@@ -25,6 +26,8 @@ ON CONFLICT (item_id) DO UPDATE SET
     reviewed = excluded.reviewed,
     approvals = excluded.approvals,
     changes_requested = excluded.changes_requested,
+    sub_issues_total = excluded.sub_issues_total,
+    sub_issues_completed = excluded.sub_issues_completed,
     fetched_at = excluded.fetched_at;
 
 -- name: GetActivity :one

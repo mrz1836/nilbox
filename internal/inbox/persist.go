@@ -196,6 +196,34 @@ type storedLabel struct {
 	Color string `json:"color"`
 }
 
+// storedProject is an issue's place in one project as the projects column of
+// item_details stores it. Fields is absent from a row a build before them stored.
+type storedProject struct {
+	Title       string        `json:"title"`
+	URL         string        `json:"url"`
+	Status      string        `json:"status"`
+	StatusColor string        `json:"statusColor"`
+	Fields      []storedField `json:"fields"`
+}
+
+// storedField is an issue's value in one project field, as storedProject keeps it.
+type storedField struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+	Color string `json:"color"`
+}
+
+// storedProjectOf converts a fetched project for storing. Its fields are never nil, so
+// the column always holds an array.
+func storedProjectOf(p github.ProjectItem) storedProject {
+	fields := make([]storedField, 0, len(p.Fields))
+	for _, f := range p.Fields {
+		fields = append(fields, storedField(f))
+	}
+
+	return storedProject{Title: p.Title, URL: p.URL, Status: p.Status, StatusColor: p.StatusColor, Fields: fields}
+}
+
 // detailsRow converts fetched details to their row.
 func detailsRow(itemID int64, d github.ItemDetails, now time.Time) (queries.UpsertDetailsParams, error) {
 	labels := make([]storedLabel, 0, len(d.Labels))
@@ -203,32 +231,45 @@ func detailsRow(itemID int64, d github.ItemDetails, now time.Time) (queries.Upse
 		labels = append(labels, storedLabel{Name: l.Name, Color: l.Color})
 	}
 
-	encoded, err := store.EncodeJSON(labels)
+	encodedLabels, err := store.EncodeJSON(labels)
+	if err != nil {
+		return queries.UpsertDetailsParams{}, err
+	}
+
+	projects := make([]storedProject, 0, len(d.Projects))
+	for _, p := range d.Projects {
+		projects = append(projects, storedProjectOf(p))
+	}
+
+	encodedProjects, err := store.EncodeJSON(projects)
 	if err != nil {
 		return queries.UpsertDetailsParams{}, err
 	}
 
 	return queries.UpsertDetailsParams{
-		ItemID:           itemID,
-		Labels:           encoded,
-		Comments:         int64(d.Comments),
-		Additions:        int64(d.Additions),
-		Deletions:        int64(d.Deletions),
-		ChangedFiles:     int64(d.ChangedFiles),
-		Commits:          int64(d.Commits),
-		HeadOID:          d.HeadOID,
-		Mergeable:        d.Mergeable,
-		ChecksState:      d.Checks.State,
-		ChecksPassed:     int64(d.Checks.Passed),
-		ChecksFailed:     int64(d.Checks.Failed),
-		ChecksPending:    int64(d.Checks.Pending),
-		ChecksSkipped:    int64(d.Checks.Skipped),
-		ReviewDecision:   d.Reviews.Decision,
-		Reviewers:        int64(d.Reviews.Reviewers),
-		Reviewed:         int64(d.Reviews.Reviewed),
-		Approvals:        int64(d.Reviews.Approvals),
-		ChangesRequested: int64(d.Reviews.ChangesRequested),
-		FetchedAt:        now,
+		ItemID:             itemID,
+		Labels:             encodedLabels,
+		Projects:           encodedProjects,
+		Comments:           int64(d.Comments),
+		Additions:          int64(d.Additions),
+		Deletions:          int64(d.Deletions),
+		ChangedFiles:       int64(d.ChangedFiles),
+		Commits:            int64(d.Commits),
+		HeadOID:            d.HeadOID,
+		Mergeable:          d.Mergeable,
+		ChecksState:        d.Checks.State,
+		ChecksPassed:       int64(d.Checks.Passed),
+		ChecksFailed:       int64(d.Checks.Failed),
+		ChecksPending:      int64(d.Checks.Pending),
+		ChecksSkipped:      int64(d.Checks.Skipped),
+		ReviewDecision:     d.Reviews.Decision,
+		Reviewers:          int64(d.Reviews.Reviewers),
+		Reviewed:           int64(d.Reviews.Reviewed),
+		Approvals:          int64(d.Reviews.Approvals),
+		ChangesRequested:   int64(d.Reviews.ChangesRequested),
+		SubIssuesTotal:     int64(d.SubIssues.Total),
+		SubIssuesCompleted: int64(d.SubIssues.Completed),
+		FetchedAt:          now,
 	}, nil
 }
 
@@ -302,7 +343,7 @@ func readStatus(ctx context.Context, p *prefs.Store) (map[string]string, error) 
 	status, err := p.GetMany(ctx,
 		prefViewer, prefViewerName, prefViewerURL, prefViewerAvatarURL, prefAvatar, prefAvatarSource,
 		prefTotalReviewRequested, prefTotalAuthored, prefTotalAssigned,
-		prefLastRefreshAt, prefLastError, prefScopeWarning, trust.PrefBots,
+		prefLastRefreshAt, prefLastError, prefScopeWarning, prefProjects, trust.PrefBots,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns,
 	)
 	if err != nil {

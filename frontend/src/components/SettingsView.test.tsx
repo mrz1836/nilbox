@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { brand } from '../generated/brand'
 import type { Result } from '../lib/call'
 import type { Theme } from '../lib/theme'
-import type { Account, LaunchDefaults, NotificationKind, Profile, Settings } from '../platform'
+import type { Account, LaunchDefaults, NotificationKind, Profile, ProjectAccess, Settings } from '../platform'
 import { account, appInfo, launchDefaults, profile, prompts, settings, signedOut } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { SettingsView, type SettingsSection, type SettingsViewProps } from './SettingsView'
@@ -48,6 +48,7 @@ interface Options {
   current?: Settings | null
   profiles?: Profile[]
   who?: Account | null
+  access?: ProjectAccess
   defaults?: LaunchDefaults[]
   theme?: Theme
   onThemeChange?: (theme: Theme) => Promise<Result<void>>
@@ -58,6 +59,7 @@ function renderSettings({
   current = settings(),
   profiles = [profile(), profile({ name: 'work' })],
   who = account(),
+  access = 'on',
   defaults = [],
   theme = 'system',
   onThemeChange = vi.fn(() => Promise.resolve<Result<void>>({ ok: true, data: undefined })),
@@ -75,6 +77,7 @@ function renderSettings({
       defaultPrompts={{ pr: 1, issue: 4 }}
       launchDefaults={defaults}
       account={who}
+      projectAccess={access}
       theme={theme}
       onThemeChange={onThemeChange}
       onSaved={onSaved}
@@ -143,6 +146,34 @@ describe('SettingsView', () => {
     renderSettings({ who: account({ name: '' }) })
 
     expect(screen.getByText('octo-user')).toBeInTheDocument()
+  })
+
+  it('says issue cards show their projects when the token reads them', () => {
+    renderSettings()
+
+    const projects = screen.getByRole('region', { name: 'Projects on issues' })
+    expect(within(projects).getByText('On')).toBeInTheDocument()
+    expect(within(projects).getByText(/Issue cards show each GitHub project an issue is in/)).toBeInTheDocument()
+    expect(within(projects).queryByRole('button', { name: 'Copy the command' })).not.toBeInTheDocument()
+  })
+
+  it('gives the command that lets the token read projects', async () => {
+    renderSettings({ access: 'needs_scope' })
+
+    const projects = screen.getByRole('region', { name: 'Projects on issues' })
+    expect(within(projects).getByText('Not set up')).toBeInTheDocument()
+    expect(within(projects).getByText('gh auth refresh -s read:project')).toBeInTheDocument()
+
+    await userEvent.click(within(projects).getByRole('button', { name: 'Copy the command' }))
+    expect(platform.copyText).toHaveBeenCalledWith('gh auth refresh -s read:project')
+  })
+
+  it('says the first refresh checks for projects', () => {
+    renderSettings({ access: '' })
+
+    const projects = screen.getByRole('region', { name: 'Projects on issues' })
+    expect(within(projects).getByText(/The first refresh checks/)).toBeInTheDocument()
+    expect(within(projects).queryByText('On')).not.toBeInTheDocument()
   })
 
   it('says when no one is signed in yet', () => {

@@ -3,13 +3,14 @@
 // here (an ESLint rule enforces it), so another shell or an OS port replaces this module's
 // implementation and never its callers.
 
-import { Browser, Dialogs, Events, Window, type CancellablePromise } from '@wailsio/runtime'
+import { Browser, Clipboard, Dialogs, Events, Window, type CancellablePromise } from '@wailsio/runtime'
 
 // The generated event bindings register the events' data with the runtime, and declare
 // each event's name and payload type for Events.On.
 import '../../bindings/events'
 import type * as agent from '../../bindings/github.com/mrz1836/nilbox/internal/agent'
 import * as appinfo from '../../bindings/github.com/mrz1836/nilbox/internal/appinfo'
+import * as budget from '../../bindings/github.com/mrz1836/nilbox/internal/budget'
 import * as inbox from '../../bindings/github.com/mrz1836/nilbox/internal/inbox'
 import type * as item from '../../bindings/github.com/mrz1836/nilbox/internal/item'
 import * as launchdefaults from '../../bindings/github.com/mrz1836/nilbox/internal/launchdefaults'
@@ -65,6 +66,10 @@ function narrow<S>(service: S): Narrowed<S> {
 
 export type Agent = NonNullLists<agent.Agent>
 
+export type BudgetGauge = NonNullLists<budget.Gauge>
+export type BudgetReading = NonNullLists<budget.Reading>
+export type BudgetRefresh = NonNullLists<budget.Refresh>
+
 export type DataReset = NonNullLists<appinfo.DataReset>
 export type Info = NonNullLists<appinfo.Info>
 export type Restored = NonNullLists<appinfo.Restored>
@@ -75,6 +80,10 @@ export type ItemDetails = NonNullLists<inbox.Details>
 export type InboxItem = NonNullLists<inbox.Item>
 export type Label = NonNullLists<inbox.Label>
 export type InboxList = NonNullLists<inbox.List>
+export type Project = NonNullLists<inbox.Project>
+export type ProjectField = NonNullLists<inbox.ProjectField>
+export type SubIssues = NonNullLists<inbox.SubIssues>
+export type ProjectAccess = inbox.ProjectAccess
 export type Rate = NonNullLists<inbox.Rate>
 export type RateGauge = NonNullLists<inbox.RateGauge>
 export type Reviews = NonNullLists<inbox.Reviews>
@@ -130,6 +139,7 @@ export type SensitiveLevel = sensitive.Level
 export type SensitiveScope = sensitive.Scope
 
 export type Settings = NonNullLists<settings.Settings>
+export type InboxOrder = NonNullLists<settings.InboxOrder>
 export type WindowSize = NonNullLists<settings.WindowSize>
 export type ListKey = settings.ListKey
 export type Theme = settings.Theme
@@ -151,6 +161,8 @@ export type WorktreeStage = worktrees.Stage
 // method's doc comment, which the generated service carries.
 
 export const { Info: getAppInfo, ReportFirstPaint: reportFirstPaint } = narrow(appinfo.Service)
+
+export const { Gauge: getBudget, Check: checkBudget } = narrow(budget.Service)
 
 export const {
   Snapshot: getInboxSnapshot,
@@ -221,6 +233,10 @@ export const {
   SetTheme: setTheme,
   CollapsedSections: getCollapsedSections,
   SetSectionCollapsed: setSectionCollapsed,
+  SetProjectsTipDismissed: setProjectsTipDismissed,
+  InboxOrder: getInboxOrder,
+  SetStatusSort: setStatusSort,
+  SetStatusOrder: setStatusOrder,
 } = narrow(settings.Service)
 
 export const {
@@ -279,6 +295,11 @@ export function openExternal(url: string): void {
   Browser.OpenURL(url).catch((err: unknown) => {
     console.error(`could not open ${url} in the browser`, err)
   })
+}
+
+// copyText puts text on the system clipboard. It rejects when the clipboard refuses it.
+export async function copyText(text: string): Promise<void> {
+  await Clipboard.SetText(text)
 }
 
 // FileChoice is what a native file dialog asks for: its title, the button that confirms

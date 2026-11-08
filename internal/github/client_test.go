@@ -399,11 +399,11 @@ func everyFetch() []fetchCall {
 			return err
 		}},
 		{name: "FetchDetails", graphQL: true, call: func(ctx context.Context, c *Client, tok Token) error {
-			_, err := c.FetchDetails(ctx, tok, []string{"I_fakeNodeId1"})
+			_, err := c.FetchDetails(ctx, tok, []string{"I_fakeNodeId1"}, DetailOptions{})
 			return err
 		}},
 		{name: "FetchItem", graphQL: true, call: func(ctx context.Context, c *Client, tok Token) error {
-			_, err := c.FetchItem(ctx, tok, "I_fakeNodeId1")
+			_, err := c.FetchItem(ctx, tok, "I_fakeNodeId1", DetailOptions{})
 			return err
 		}},
 		{name: "FetchPullHead", call: func(ctx context.Context, c *Client, tok Token) error {

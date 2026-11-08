@@ -50,6 +50,14 @@ export function Get(): $CancellablePromise<$models.Settings> {
 }
 
 /**
+ * InboxOrder returns how the inbox orders its lists. On a fresh database every list is
+ * newest activity first, and the status order is empty.
+ */
+export function InboxOrder(): $CancellablePromise<$models.InboxOrder> {
+    return $Call.ByID(324293363);
+}
+
+/**
  * MatchSensitivePath reports whether a path would count as sensitive under the stored
  * settings, and which category and pattern it matches, for trying patterns out.
  */
@@ -109,6 +117,14 @@ export function SetNotificationBanner(kind: notifyprefs$0.Kind, on: boolean): $C
 }
 
 /**
+ * SetProjectsTipDismissed stores whether the inbox's tip about showing issue projects is
+ * put away, and returns the settings with it.
+ */
+export function SetProjectsTipDismissed(dismissed: boolean): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(407794393, dismissed);
+}
+
+/**
  * SetSectionCollapsed stores whether an inbox section is collapsed, so the inbox opens the
  * same way at the next launch, and returns the settings with it.
  */
@@ -158,6 +174,24 @@ export function SetSnoozeDays(days: number): $CancellablePromise<$models.Setting
  */
 export function SetSnoozeWake(rules: snooze$0.Rules): $CancellablePromise<$models.Settings> {
     return $Call.ByID(4037306883, rules);
+}
+
+/**
+ * SetStatusOrder stores the user's order of project status names, first ranked highest,
+ * and returns the settings with it. Names are trimmed, and empty and repeated ones (ignoring
+ * case) are left out. An empty order puts every status back where the window would place
+ * it.
+ */
+export function SetStatusOrder(order: string[] | null): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(3712144813, order);
+}
+
+/**
+ * SetStatusSort stores whether an inbox list is sorted by project status, rather than by
+ * newest activity, and returns the settings with it.
+ */
+export function SetStatusSort(section: $models.ListKey, on: boolean): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(314342387, section, on);
 }
 
 /**

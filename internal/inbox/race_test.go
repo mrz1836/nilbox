@@ -86,7 +86,9 @@ func (c *raceClient) FetchInbox(context.Context, github.Token) (*github.Inbox, e
 	}, nil
 }
 
-func (c *raceClient) FetchDetails(_ context.Context, _ github.Token, ids []string) (*github.Details, error) {
+func (c *raceClient) FetchDetails(
+	_ context.Context, _ github.Token, ids []string, _ github.DetailOptions,
+) (*github.Details, error) {
 	out := &github.Details{Items: map[string]github.ItemDetails{}, Requests: 1}
 	for _, id := range ids {
 		out.Items[id] = github.ItemDetails{HeadOID: "1111111111111111111111111111111111111111", Commits: 2}
@@ -100,7 +102,9 @@ func (c *raceClient) FetchRateLimits(context.Context, github.Token) (*github.Rat
 }
 
 // FetchItem answers that the item with the node ID is open and unchanged.
-func (c *raceClient) FetchItem(_ context.Context, _ github.Token, id string) (*github.ItemUpdate, error) {
+func (c *raceClient) FetchItem(
+	_ context.Context, _ github.Token, id string, _ github.DetailOptions,
+) (*github.ItemUpdate, error) {
 	var number int
 	if _, err := fmt.Sscanf(id, "NODE_%d", &number); err != nil {
 		return nil, err

@@ -50,7 +50,7 @@ func TestFetchItemReadsTheItemAndItsDetails(t *testing.T) {
 		_, _ = w.Write(body)
 	})
 
-	update, err := client.FetchItem(t.Context(), NewToken(fakeToken), "PR_fakeNodeId12")
+	update, err := client.FetchItem(t.Context(), NewToken(fakeToken), "PR_fakeNodeId12", DetailOptions{})
 	require.NoError(t, err)
 	require.True(t, update.Found)
 
@@ -98,7 +98,7 @@ func TestFetchItemReadsAnIssue(t *testing.T) {
 		"comments":{"totalCount":2},"labels":{"nodes":[{"name":"bug","color":"d73a4a"}]}},
 		"rateLimit":{"cost":1,"limit":5000,"remaining":4999,"used":1,"resetAt":"2026-01-10T13:00:00Z"}}}`
 
-	update, err := newTestClient(t, serveItem(body)).FetchItem(t.Context(), NewToken(fakeToken), "I_fakeNodeId7")
+	update, err := newTestClient(t, serveItem(body)).FetchItem(t.Context(), NewToken(fakeToken), "I_fakeNodeId7", DetailOptions{})
 	require.NoError(t, err)
 	require.True(t, update.Found)
 
@@ -117,7 +117,7 @@ func TestFetchItemThatIsGone(t *testing.T) {
 		"resetAt":"2026-01-10T13:00:00Z"}},"errors":[{"type":"NOT_FOUND","path":["node"],
 		"message":"Could not resolve to a node with the global id of 'PR_fakeNodeIdGone'"}]}`
 
-	update, err := newTestClient(t, serveItem(body)).FetchItem(t.Context(), NewToken(fakeToken), "PR_fakeNodeIdGone")
+	update, err := newTestClient(t, serveItem(body)).FetchItem(t.Context(), NewToken(fakeToken), "PR_fakeNodeIdGone", DetailOptions{})
 	require.NoError(t, err)
 
 	assert.False(t, update.Found)
@@ -173,7 +173,7 @@ func TestFetchItemFailures(t *testing.T) {
 				_, _ = io.WriteString(w, tt.body)
 			})
 
-			_, err := client.FetchItem(t.Context(), NewToken(fakeToken), "I_fakeNodeId1")
+			_, err := client.FetchItem(t.Context(), NewToken(fakeToken), "I_fakeNodeId1", DetailOptions{})
 			require.ErrorIs(t, err, tt.wantErr)
 		})
 	}

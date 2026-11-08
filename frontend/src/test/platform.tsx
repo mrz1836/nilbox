@@ -15,6 +15,7 @@ import type * as real from '../platform'
 import { clockAt, FIXED_NOW, withClock } from './clock'
 import {
   appInfo,
+  budgetGauge,
   checkResult,
   cloneTarget,
   fileCheck,
@@ -75,6 +76,9 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
   return {
     getAppInfo: () => Promise.resolve(appInfo()),
     reportFirstPaint: done,
+
+    getBudget: () => Promise.resolve(budgetGauge()),
+    checkBudget: () => Promise.resolve(budgetGauge()),
 
     getInboxSnapshot: inbox,
     refreshInbox: inbox,
@@ -138,6 +142,10 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     setTheme: (theme) => stored({ theme }),
     getCollapsedSections: () => Promise.resolve([]),
     setSectionCollapsed: (section, collapsed) => stored({ collapsedSections: collapsed ? [section] : [] }),
+    setProjectsTipDismissed: (projectsTipDismissed) => stored({ projectsTipDismissed }),
+    getInboxOrder: () => Promise.resolve({ statusSorted: [], statusOrder: [] }),
+    setStatusSort: (section, on) => stored({ inboxOrder: { statusSorted: on ? [section] : [], statusOrder: [] } }),
+    setStatusOrder: (statusOrder) => stored({ inboxOrder: { statusSorted: [], statusOrder: statusOrder ?? [] } }),
     setWindowSize: (windowSize) => stored({ windowSize }),
 
     listWorktrees: () => Promise.resolve(worktreesSnapshot()),
@@ -160,6 +168,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     sendTestNotification: done,
 
     openExternal: () => undefined,
+    copyText: done,
     on: subscribe,
   }
 }

@@ -6,6 +6,10 @@ export {
     Service
 };
 
+export {
+    ProjectAccess
+} from "./models.js";
+
 export type {
     Account,
     Checks,
@@ -13,8 +17,11 @@ export type {
     Item,
     Label,
     List,
+    Project,
+    ProjectField,
     Rate,
     RateGauge,
     Reviews,
-    Snapshot
+    Snapshot,
+    SubIssues
 } from "./models.js";

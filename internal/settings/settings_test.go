@@ -92,6 +92,7 @@ func TestPrefDefaults(t *testing.T) {
 		BannersOff:          []notifyprefs.Kind{},
 		Theme:               ThemeSystem,
 		CollapsedSections:   []ListKey{},
+		InboxOrder:          InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}},
 	}, got)
 }
 
@@ -196,6 +197,7 @@ func TestSettersPersist(t *testing.T) {
 		BannersOff:          []notifyprefs.Kind{notifyprefs.KindWoke},
 		Theme:               DefaultTheme,
 		CollapsedSections:   []ListKey{},
+		InboxOrder:          InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}},
 	}, got)
 
 	abs := t.TempDir()
@@ -534,6 +536,10 @@ func TestSettersReturnTheStoredSettings(t *testing.T) {
 		{
 			"theme", func() (Settings, error) { return svc.SetTheme(ctx, ThemeDark) },
 			func(s Settings) any { return s.Theme }, ThemeDark,
+		},
+		{
+			"projects tip", func() (Settings, error) { return svc.SetProjectsTipDismissed(ctx, true) },
+			func(s Settings) any { return s.ProjectsTipDismissed }, true,
 		},
 		{
 			"window size", func() (Settings, error) { return svc.SetWindowSize(ctx, size) },

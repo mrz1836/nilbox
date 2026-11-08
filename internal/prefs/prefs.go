@@ -9,6 +9,7 @@
 //   - inbox writes inbox.*: the account and status of the last refresh, and the cached
 //     avatar.
 //   - prompts writes prompts.*: the default prompts and the starters already added.
+//   - budget writes budget.*: the API budget's state between runs, through core's keeper.
 //
 // A Store from New runs each call on the pool. One joined to a transaction with WithTx
 // runs every call inside it, so prefs are written together with another owner's tables
