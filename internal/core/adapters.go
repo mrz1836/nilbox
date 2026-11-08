@@ -106,18 +106,15 @@ func (s launchItems) LaunchItems(ctx context.Context, ids []int64) ([]launcher.S
 // itemStates reads the state of the pull requests and issues worktrees are linked to,
 // with the GitHub CLI's token, for the worktree service.
 type itemStates struct {
-	tokens *github.TokenSource
+	tokens github.Tokens
 	client *github.Client
 }
 
-// ItemStates asks GitHub about refs.
+// ItemStates asks GitHub about refs. A token GitHub refuses is borrowed again once.
 func (s itemStates) ItemStates(ctx context.Context, refs []item.Ref) (map[string]worktrees.ItemState, error) {
-	tok, err := s.tokens.Token(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	states, err := s.client.FetchItemStates(ctx, tok, refs)
+	states, err := github.WithToken(ctx, s.tokens, func(tok github.Token) (map[string]github.ItemState, error) {
+		return s.client.FetchItemStates(ctx, tok, refs)
+	})
 	if err != nil {
 		return nil, err
 	}

@@ -37,6 +37,13 @@ type writer struct {
 	// snoozes new activity ended early, with what ended them, for telling arrivals.
 	saved []savedEntry
 	woke  map[int64]snooze.Reasons
+
+	// checked holds the items whose file check was stored.
+	checked map[int64]bool
+
+	// keep holds the items whose details and file check a newer write stored, which the
+	// writer leaves as they are.
+	keep map[int64]bool
 }
 
 // newWriter returns a writer that stores through q and p, which run in one transaction,
@@ -58,10 +65,11 @@ func (w *writer) saveAccount(ctx context.Context, login string) error {
 }
 
 // saveItems clears every reason flag for the account, then upserts each fetched item with
-// the flags of the lists that returned it, its details, and its file check. Items no
-// longer returned keep their row (local state may reference it) with all three flags off,
-// and lose their file check. Last, it ends the snoozes that the new details give cause
-// to, so no snapshot shows new activity on an item still snoozed.
+// the flags of the lists that returned it, its details, and its file check (an item to
+// keep keeps the details and check stored). Items no longer returned keep their row
+// (local state may reference it) with all three flags off, and lose their file check.
+// Last, it ends the snoozes that the details stored give cause to, so no snapshot shows
+// new activity on an item still snoozed.
 func (w *writer) saveItems(ctx context.Context, inbox *github.Inbox) error {
 	if err := w.q.ClearReasons(ctx, w.accountID); err != nil {
 		return fmt.Errorf("clear the reason flags: %w", err)
@@ -164,10 +172,11 @@ func (w *writer) saveItem(ctx context.Context, repoID int64, e *entry) error {
 	return w.saveFiles(ctx, id, it)
 }
 
-// saveDetails stores an item's details when this refresh read them.
+// saveDetails stores an item's details when this refresh read them, unless the item is
+// one to keep.
 func (w *writer) saveDetails(ctx context.Context, id int64, it github.Item) error {
 	d, ok := w.details[it.NodeID]
-	if !ok {
+	if !ok || w.keep[id] {
 		return nil
 	}
 

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -34,6 +33,8 @@ type raceTokens struct{}
 func (raceTokens) Token(context.Context) (github.Token, error) {
 	return github.NewToken("test-token-not-real"), nil
 }
+
+func (raceTokens) Forget(github.Token) {}
 
 // raceClient answers every refresh with the same items, except that #4 asks for a review
 // on every other refresh only, so refreshes keep recording arrivals.
@@ -98,8 +99,18 @@ func (c *raceClient) FetchRateLimits(context.Context, github.Token) (*github.Rat
 	return &github.RateLimits{Core: github.Rate{Limit: 5000}, Search: github.Rate{Limit: 30}}, nil
 }
 
-func (c *raceClient) FetchItem(context.Context, github.Token, string) (*github.ItemUpdate, error) {
-	return nil, errNotAsked
+// FetchItem answers that the item with the node ID is open and unchanged.
+func (c *raceClient) FetchItem(_ context.Context, _ github.Token, id string) (*github.ItemUpdate, error) {
+	var number int
+	if _, err := fmt.Sscanf(id, "NODE_%d", &number); err != nil {
+		return nil, err
+	}
+
+	return &github.ItemUpdate{
+		Found: true, Item: raceItem(number),
+		Details:   github.ItemDetails{HeadOID: "1111111111111111111111111111111111111111", Commits: 2},
+		RateLimit: github.QueryRate{Cost: 1, Limit: 5000, Remaining: 4980, Used: 20},
+	}, nil
 }
 
 func (c *raceClient) FetchPullHead(context.Context, github.Token, item.Ref) (*github.PullHead, error) {
@@ -225,6 +236,19 @@ func writeSettings(ctx context.Context, s *settings.Service) func() error {
 	})
 }
 
+// rememberClones returns a job that records a clone for the repository with repoID, a
+// different path each round, as launches do while refreshes upsert the same repository.
+func rememberClones(ctx context.Context, items *inbox.Store, repoID int64) func() error {
+	return repeat(func(round int) error {
+		return items.RememberClone(ctx, repoID, clonePath(round))
+	})
+}
+
+// clonePath is the clone the rememberClones job records in a round.
+func clonePath(round int) string {
+	return fmt.Sprintf("~/projects/example-repo-%d", round)
+}
+
 // readNotifications returns a job that marks the notification history read and reads it,
 // as the window does when it is opened.
 func readNotifications(ctx context.Context, s *notify.Service) func() error {
@@ -258,16 +282,27 @@ func TestRefreshTriageAndSettingsWritesShareOnePool(t *testing.T) {
 	first, err := svc.Refresh(ctx)
 	require.NoError(t, err)
 
+	items := inbox.NewStore(pool, clk)
+	pinned := numbered(t, first, 1).ID
+
+	launched, err := items.LaunchItems(ctx, []int64{pinned})
+	require.NoError(t, err)
+	require.Len(t, launched, 1)
+
 	snoozeFor3Days := func(ctx context.Context, id int64) (inbox.Snapshot, error) { return svc.Snooze(ctx, id, 3) }
 
 	// Every job runs at once on the one pool: refreshes, which store the inbox and its
-	// status in one transaction each and record the notifications of what arrived;
-	// triage of three items, each ending in a known state; settings, some of which the
-	// refresh reads; the notification history being read and marked read; and snapshots.
+	// status in one transaction each and record the notifications of what arrived; an
+	// item's own refreshes, which rewrite it in a transaction of their own; clones
+	// remembered for the repository the refreshes upsert; triage of three items, each
+	// ending in a known state; settings, some of which the refresh reads; the
+	// notification history being read and marked read; and snapshots.
 	var g errgroup.Group
 
 	g.Go(repeat(func(int) error { return errOnly(svc.Refresh(ctx)) }))
-	g.Go(toggle(ctx, numbered(t, first, 1).ID, svc.Pin, svc.Unpin))
+	g.Go(repeat(func(int) error { return errOnly(svc.RefreshItem(ctx, pinned)) }))
+	g.Go(rememberClones(ctx, items, launched[0].RepoID))
+	g.Go(toggle(ctx, pinned, svc.Pin, svc.Unpin))
 	g.Go(toggle(ctx, numbered(t, first, 2).ID, svc.Dismiss, svc.Restore))
 	g.Go(toggle(ctx, numbered(t, first, 3).ID, snoozeFor3Days, svc.Restore))
 	g.Go(writeSettings(ctx, userSettings))
@@ -282,13 +317,10 @@ func TestRefreshTriageAndSettingsWritesShareOnePool(t *testing.T) {
 
 	refreshes := 1 + raceRounds
 
-	want := []int{1, 2}
-	if slices.Contains(reviewRequested(refreshes), 4) {
-		want = []int{1, 4, 2}
-	}
-
-	assert.Equal(t, want, listNumbers(snap.ReviewRequested), "the last refresh's list, the pinned item first")
+	// The last refresh is an odd one, which does not ask for #4's review.
+	assert.Equal(t, []int{1, 2}, listNumbers(snap.ReviewRequested), "the last refresh's list, the pinned item first")
 	assert.Equal(t, []int{3}, listNumbers(snap.Assigned))
+	assert.Equal(t, "Item 1", numbered(t, snap, 1).Title)
 
 	now := clk.Now()
 
@@ -299,9 +331,36 @@ func TestRefreshTriageAndSettingsWritesShareOnePool(t *testing.T) {
 	assert.Equal(t, "2026-01-10T12:00:00Z", snap.LastRefreshedAt)
 	assert.Empty(t, snap.LastError)
 
-	var readings int
-	require.NoError(t, pool.QueryRowContext(ctx, "SELECT COUNT(*) FROM rate_snapshots").Scan(&readings))
-	assert.Equal(t, 3*refreshes, readings, "every refresh stored its readings")
+	readings := map[string]int{}
+
+	rows, err := pool.QueryContext(ctx, "SELECT resource, COUNT(*) FROM rate_snapshots GROUP BY resource")
+	require.NoError(t, err)
+
+	for rows.Next() {
+		var (
+			resource string
+			n        int
+		)
+
+		require.NoError(t, rows.Scan(&resource, &n))
+		readings[resource] = n
+	}
+
+	require.NoError(t, rows.Err())
+	require.NoError(t, rows.Close())
+
+	// An item's own refresh stores nothing when a whole refresh that started after it
+	// stored the item first, so how many of their GraphQL readings were stored depends on
+	// how the jobs interleaved.
+	assert.Equal(t, refreshes, readings["core"], "every refresh stored its readings")
+	assert.Equal(t, refreshes, readings["search"])
+	assert.GreaterOrEqual(t, readings["graphql"], refreshes)
+	assert.LessOrEqual(t, readings["graphql"], refreshes+raceRounds)
+
+	launched, err = items.LaunchItems(ctx, []int64{pinned})
+	require.NoError(t, err)
+	require.Len(t, launched, 1)
+	assert.Equal(t, clonePath(raceRounds-1), launched[0].LocalPath, "the last clone remembered holds")
 
 	got, err := userSettings.Get(ctx)
 	require.NoError(t, err)

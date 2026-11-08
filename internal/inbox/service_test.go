@@ -30,13 +30,20 @@ var (
 	errNotParallel = errors.New("the inbox query waited for a details request that never started")
 )
 
-// fakeTokens hands out a fixed token, or fails.
+// fakeTokens hands out a fixed token, or fails, and records the tokens it is told to
+// forget. It is safe for concurrent use; a test reads its fields once the calls it made
+// have returned.
 type fakeTokens struct {
-	err   error
-	calls int
+	mu     sync.Mutex
+	err    error
+	calls  int
+	forgot []string
 }
 
 func (f *fakeTokens) Token(ctx context.Context) (github.Token, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	f.calls++
 
 	if err := ctx.Err(); err != nil {
@@ -48,6 +55,13 @@ func (f *fakeTokens) Token(ctx context.Context) (github.Token, error) {
 	}
 
 	return github.NewToken(fakeToken), nil
+}
+
+func (f *fakeTokens) Forget(tok github.Token) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.forgot = append(f.forgot, tok.Reveal())
 }
 
 // fakeClient returns canned results. The inbox and rate-limit fetches run concurrently.
@@ -256,12 +270,16 @@ func (h *harness) refresh(t *testing.T) Snapshot {
 	return snap
 }
 
-// exec runs a statement on the harness's database.
+// exec runs a statement on the harness's database. The statement writes past the
+// service, so it also empties the service's snapshot cache, as the service's own writes
+// do.
 func (h *harness) exec(t *testing.T, query string, args ...any) {
 	t.Helper()
 
 	_, err := h.pool.ExecContext(t.Context(), query, args...)
 	require.NoError(t, err)
+
+	h.svc.snapshots.empty()
 }
 
 // storedItem is a stored item's row, as the tests read it.
@@ -403,6 +421,8 @@ func (h *harness) insertRate(t *testing.T, limit int, takenAt time.Time) int64 {
 	require.NoError(t, h.pool.QueryRowContext(t.Context(), `INSERT INTO rate_snapshots
 (account_id, resource, limit_total, remaining, used, cost, reset_at, taken_at)
 SELECT id, ?, ?, 0, 0, 0, ?, ? FROM accounts RETURNING id`, resourceCore, limit, takenAt, takenAt).Scan(&id))
+
+	h.svc.snapshots.empty()
 
 	return id
 }
@@ -1163,7 +1183,7 @@ func TestSaveWithoutDetails(t *testing.T) {
 	h := newHarness(t)
 	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
 
-	_, err := h.svc.save(t.Context(), refreshed{inbox: h.client.inbox, limits: restLimits()}, "")
+	_, err := h.svc.save(t.Context(), h.svc.startRefresh(), refreshed{inbox: h.client.inbox, limits: restLimits()})
 	require.NoError(t, err)
 
 	snap, err := h.svc.Snapshot(t.Context())

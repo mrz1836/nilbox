@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -98,6 +99,78 @@ func TestFetchItemStatesBatchesLargeRequests(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, states)
 	assert.Equal(t, int32(2), requests.Load())
+}
+
+// statesRefs returns n refs in the files tests' repository, numbered from 1.
+func statesRefs(n int) []item.Ref {
+	refs := make([]item.Ref, n)
+	for i := range refs {
+		refs[i] = item.Ref{Repo: pullRef().Repo, Number: i + 1}
+	}
+
+	return refs
+}
+
+func TestFetchItemStatesSendsTheBatchesSideBySide(t *testing.T) {
+	// Each request waits until both have arrived, which only happens when they are in
+	// flight together; sent one after another, the first gives up and fails the call.
+	var arrived sync.WaitGroup
+
+	arrived.Add(2)
+
+	both := make(chan struct{})
+
+	go func() {
+		arrived.Wait()
+		close(both)
+	}()
+
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		arrived.Done()
+
+		select {
+		case <-both:
+			_, _ = io.WriteString(w, `{"data": {}}`)
+		case <-time.After(waitTimeout):
+			w.WriteHeader(http.StatusGatewayTimeout)
+		}
+	})
+
+	states, err := client.FetchItemStates(t.Context(), NewToken(fakeToken), statesRefs(statesBatch+1))
+	require.NoError(t, err)
+	assert.Empty(t, states)
+}
+
+func TestFetchItemStatesRefusesABadRefBeforeSendingAnything(t *testing.T) {
+	var requests atomic.Int32
+
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+
+		_, _ = io.WriteString(w, `{"data": {}}`)
+	})
+
+	refs := statesRefs(statesBatch + 1)
+	refs[statesBatch].Number = 0
+
+	_, err := client.FetchItemStates(t.Context(), NewToken(fakeToken), refs)
+	require.ErrorIs(t, err, ErrInvalidItemRef)
+	assert.Zero(t, requests.Load(), "the first batch is not sent either")
+}
+
+func TestFetchItemStatesFailsWhenOneBatchFails(t *testing.T) {
+	var requests atomic.Int32
+
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		if requests.Add(1) == 2 {
+			w.WriteHeader(http.StatusBadGateway)
+		}
+
+		_, _ = io.WriteString(w, `{"data": {}}`)
+	})
+
+	_, err := client.FetchItemStates(t.Context(), NewToken(fakeToken), statesRefs(statesBatch+1))
+	require.ErrorIs(t, err, ErrUnexpectedStatus)
 }
 
 func TestFetchItemStatesFailures(t *testing.T) {

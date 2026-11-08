@@ -79,7 +79,7 @@ type env struct {
 }
 
 // newEnv isolates git, creates home/projects, and builds a Service using real git.
-func newEnv(t *testing.T) *env {
+func newEnv(t testing.TB) *env {
 	t.Helper()
 
 	// The Service runs git itself, inheriting the test process's environment.
@@ -118,7 +118,7 @@ func (e *env) scripted(intercept func(sub []string) (reply, bool)) *Service {
 }
 
 // newRepo creates a repository under the clone root with one commit and returns its path.
-func (e *env) newRepo(t *testing.T, name string) string {
+func (e *env) newRepo(t testing.TB, name string) string {
 	t.Helper()
 
 	dir := filepath.Join(e.root, name)
@@ -131,7 +131,7 @@ func (e *env) newRepo(t *testing.T, name string) string {
 }
 
 // addWorktree adds a linked worktree on a new branch at path.
-func addWorktree(t *testing.T, repo, path, branch string) string {
+func addWorktree(t testing.TB, repo, path, branch string) string {
 	t.Helper()
 
 	testutil.RunGit(t, repo, argv("worktree add -q -b", branch, path)...)
@@ -622,6 +622,71 @@ func TestServiceErrors(t *testing.T) {
 		assert.Zero(t, row.LastCommitUnix)
 		assert.True(t, row.CanRemove, "git's own check still guards a remove")
 	})
+}
+
+// gitCalls counts the git runs a runner recorded by their first words after -C <dir>.
+func gitCalls(run *testutil.Runner, prefixes ...string) map[string]int {
+	counts := make(map[string]int, len(prefixes))
+
+	for _, argv := range run.Calls() {
+		sub := argv[1:]
+		if len(sub) >= 2 && sub[0] == "-C" {
+			sub = sub[2:]
+		}
+
+		for _, prefix := range prefixes {
+			if startsWith(sub, prefix) {
+				counts[prefix]++
+			}
+		}
+	}
+
+	return counts
+}
+
+func TestListReadsAClonesCommitTimesInOneRun(t *testing.T) {
+	e := newEnv(t)
+	alpha := e.newRepo(t, "alpha")
+	first := addWorktree(t, alpha, filepath.Join(e.home, "wt", "first"), "first")
+	second := addWorktree(t, alpha, filepath.Join(e.home, "wt", "second"), "second")
+
+	run := scriptedGit(func([]string) (reply, bool) { return reply{}, false })
+
+	snap, err := e.service(run).List(t.Context())
+	require.NoError(t, err)
+
+	want, err := strconv.ParseInt(strings.TrimSpace(testutil.RunGit(t, alpha, "log", "-1", "--format=%ct")), 10, 64)
+	require.NoError(t, err)
+
+	for _, path := range []string{alpha, first, second} {
+		assert.Equal(t, want, mustRow(t, snap, path).LastCommitUnix, path)
+	}
+
+	assert.Equal(t, map[string]int{
+		"worktree list": 1, "log --no-walk=unsorted": 1, "status": 3, "rev-list": 2,
+	}, gitCalls(run, "worktree list", "log --no-walk=unsorted", "log -1", "status", "rev-list"),
+		"one list and one commit-times run for the clone; a status for each worktree, and an unpushed count for each linked one")
+}
+
+func TestListReadsEachCommitTimeAloneWhenGitRefusesThemTogether(t *testing.T) {
+	e := newEnv(t)
+	alpha := e.newRepo(t, "alpha")
+	feature := addWorktree(t, alpha, filepath.Join(e.home, "wt", "feature"), "feature")
+
+	run := scriptedGit(func(sub []string) (reply, bool) {
+		if startsWith(sub, "log --no-walk=unsorted") {
+			return reply{stderr: "fatal: bad object", err: exitError{code: 128}}, true
+		}
+
+		return reply{}, false
+	})
+
+	snap, err := e.service(run).List(t.Context())
+	require.NoError(t, err)
+
+	assert.Positive(t, mustRow(t, snap, alpha).LastCommitUnix)
+	assert.Positive(t, mustRow(t, snap, feature).LastCommitUnix)
+	assert.Equal(t, 2, gitCalls(run, "log -1")["log -1"], "each worktree's time is read on its own")
 }
 
 func TestResolvedPathThroughALink(t *testing.T) {

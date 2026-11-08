@@ -312,7 +312,7 @@ type lockingSink struct {
 }
 
 func (s *lockingSink) Arrived(context.Context, []Arrival) {
-	s.svc.mu.Lock()
+	s.svc.order.mu.Lock()
 	s.told = true
-	s.svc.mu.Unlock()
+	s.svc.order.mu.Unlock()
 }

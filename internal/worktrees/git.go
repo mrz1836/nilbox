@@ -61,6 +61,13 @@ func statusArgs() []string {
 
 func lastCommitArgs() []string { return []string{"log", "-1", "--format=%ct"} }
 
+// commitTimesCmd starts the argument list that prints the commit time of each commit
+// named after it, each once, without walking their history.
+func commitTimesCmd() []string { return []string{"log", "--no-walk=unsorted", "--format=%H %ct"} }
+
+// commitTimesArgs reads the commit times of oids in one run.
+func commitTimesArgs(oids []string) []string { return append(commitTimesCmd(), oids...) }
+
 // unpushedArgs counts the commits on HEAD that no remote-tracking branch has.
 func unpushedArgs() []string { return []string{"rev-list", "--count", "HEAD", "--not", "--remotes"} }
 
@@ -156,6 +163,34 @@ func (g git) dirtyCount(ctx context.Context, dir string) (int, []byte, error) {
 	return countStatusEntries(stdout), nil, nil
 }
 
+// commitTimes returns the commit time of each of oids, in Unix seconds, by commit ID, read
+// in the repository at dir with one git run. oids must be full commit IDs; a commit git
+// cannot read fails the whole run.
+func (g git) commitTimes(ctx context.Context, dir string, oids []string) (map[string]int64, error) {
+	stdout, _, err := g.do(ctx, dir, commitTimesArgs(oids)...)
+	if err != nil {
+		return nil, err
+	}
+
+	times := make(map[string]int64, len(oids))
+
+	for line := range strings.Lines(string(stdout)) {
+		oid, unix, ok := strings.Cut(strings.TrimSpace(line), " ")
+		if !ok {
+			return nil, fmt.Errorf("%w %q", errParseCommitTime, line)
+		}
+
+		at, parseErr := strconv.ParseInt(unix, 10, 64)
+		if parseErr != nil {
+			return nil, fmt.Errorf("%w %q: %w", errParseCommitTime, line, parseErr)
+		}
+
+		times[oid] = at
+	}
+
+	return times, nil
+}
+
 // lastCommit returns the commit time of HEAD in the worktree at dir, in Unix seconds.
 func (g git) lastCommit(ctx context.Context, dir string) (int64, error) {
 	stdout, _, err := g.do(ctx, dir, lastCommitArgs()...)
@@ -178,6 +213,10 @@ func allowed(args []string) bool {
 		return true
 	}
 
+	if allowedCommitTimes(args) {
+		return true
+	}
+
 	if len(args) < 3 {
 		return false
 	}
@@ -192,6 +231,23 @@ func allowed(args []string) bool {
 	default:
 		return false
 	}
+}
+
+// allowedCommitTimes reports a commit-times run: the fixed words, then one or more full
+// commit IDs and nothing else.
+func allowedCommitTimes(args []string) bool {
+	head := commitTimesCmd()
+	if len(args) <= len(head) || joinArgs(args[:len(head)]) != joinArgs(head) {
+		return false
+	}
+
+	for _, oid := range args[len(head):] {
+		if !isCommitID(oid) {
+			return false
+		}
+	}
+
+	return true
 }
 
 // allowedRemove reports the arguments after `worktree remove` that may run: a path, with

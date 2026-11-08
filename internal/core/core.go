@@ -117,6 +117,10 @@ type Core struct {
 
 	// Timing records the first paint.
 	Timing *timing.Recorder
+
+	// tokens holds the GitHub token the inbox and the worktree service borrow, until
+	// Close forgets it.
+	tokens *github.TokenSource
 }
 
 // Bootstrap prepares the data directory, opens the database (backing it up and applying
@@ -173,8 +177,10 @@ func (c *Core) Services() []any {
 	}
 }
 
-// Close closes the database.
+// Close forgets the GitHub token held in memory and closes the database.
 func (c *Core) Close() error {
+	c.tokens.Clear()
+
 	if err := c.DB.Close(); err != nil {
 		return fmt.Errorf("close database: %w", err)
 	}
@@ -243,7 +249,8 @@ func assemble(pool *sql.DB, reset *appinfo.DataReset, opts Options, logger *slog
 	inboxStore := inbox.NewStore(pool, opts.Clock)
 	prefs := settings.NewService(pool, profileStore, opts.Home, settings.WithClock(opts.Clock),
 		settings.WithEvents(opts.Events), settings.WithLogger(logger))
-	tokens := github.NewTokenSource(runner, search)
+	tokens := github.NewTokenSource(runner, search,
+		github.WithTokenClock(opts.Clock), github.WithHostsFile(github.GHHostsFile(opts.Home)))
 	client := github.NewClient(opts.Version)
 	workLog := worklog.New(pool)
 
@@ -319,5 +326,6 @@ func assemble(pool *sql.DB, reset *appinfo.DataReset, opts Options, logger *slog
 		Scheduler:     inbox.NewScheduler(inboxSvc, logger),
 		Sweeper:       worktrees.NewSweeper(sweeps, worktrees.DefaultSweepInterval),
 		Timing:        recorder,
+		tokens:        tokens,
 	}
 }

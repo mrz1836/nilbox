@@ -95,9 +95,7 @@ func (s *Service) clearState(
 		return Snapshot{}, fmt.Errorf("%s: %w", what, err)
 	}
 
-	s.notify()
-
-	return s.Snapshot(ctx)
+	return s.changed(ctx)
 }
 
 // setTriage stores an item's triage state, says the inbox changed, and returns the new
@@ -127,9 +125,7 @@ func (s *Service) setState(
 		return Snapshot{}, fmt.Errorf("%w (id %d)", item.ErrNotFound, id)
 	}
 
-	s.notify()
-
-	return s.Snapshot(ctx)
+	return s.changed(ctx)
 }
 
 // activityBaseline returns an item's activity as the last refresh read it, as the JSON a

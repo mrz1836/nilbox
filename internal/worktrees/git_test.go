@@ -18,6 +18,7 @@ const (
 	repoDir  = "/srv/projects/example-repo"
 	treePath = "/srv/wt/feature"
 	headSHA  = "fc1c3975011e66491785ace891c893e4fc716587"
+	otherSHA = "0b1c3975011e66491785ace891c893e4fc716588"
 )
 
 var errFakeStart = errors.New("fake: cannot start git")
@@ -86,6 +87,16 @@ func TestGitArgvUsesDashC(t *testing.T) {
 			want: argv(gitPath, "-C", treePath, "log -1 --format=%ct"),
 		},
 		{
+			name:   "commit times run in the clone",
+			stdout: headSHA + " 1700000000\n",
+			call: func(g git) error {
+				_, err := g.commitTimes(ctx, repoDir, []string{headSHA, otherSHA})
+
+				return err
+			},
+			want: []string{gitPath, "-C", repoDir, "log", "--no-walk=unsorted", "--format=%H %ct", headSHA, otherSHA},
+		},
+		{
 			name:   "unpushed count runs in the worktree",
 			stdout: "0\n",
 			call:   func(g git) error { _, _, err := g.unpushed(ctx, treePath); return err },
@@ -143,6 +154,12 @@ func TestGitRejectsCommandsOutsideAllowlist(t *testing.T) {
 		argv("update-ref -d refs/heads/worktree-pr-7"),
 		argv("update-ref refs/heads/worktree-pr-7", headSHA),
 		argv("rev-list --count HEAD"),
+		{"log", "--no-walk=unsorted", "--format=%H %ct"},
+		{"log", "--no-walk=unsorted", "--format=%H %ct", "HEAD"},
+		{"log", "--no-walk=unsorted", "--format=%H %ct", headSHA, "--all"},
+		{"log", "--no-walk=unsorted", "--format=%H %ct", strings.Repeat("0", 40)},
+		{"log", "--no-walk=unsorted", "--format=%H %an", headSHA},
+		{"log", "--no-walk", "--format=%H %ct", headSHA},
 		argv("worktree list"),
 		argv("checkout main"),
 		argv("status"),
@@ -206,6 +223,27 @@ func TestGitOutputParsing(t *testing.T) {
 	t.Run("last commit failure", func(t *testing.T) {
 		run := &testutil.Runner{Err: exitError{code: 128}}
 		_, err := git{run: run, bin: gitBin}.lastCommit(ctx, treePath)
+		require.Error(t, err)
+	})
+
+	t.Run("commit times", func(t *testing.T) {
+		run := &testutil.Runner{Stdout: headSHA + " 1700000000\n" + otherSHA + " 1700000100\n"}
+		times, err := git{run: run, bin: gitBin}.commitTimes(ctx, repoDir, []string{headSHA, otherSHA})
+		require.NoError(t, err)
+		assert.Equal(t, map[string]int64{headSHA: 1700000000, otherSHA: 1700000100}, times)
+	})
+
+	t.Run("commit times with unexpected output", func(t *testing.T) {
+		for _, out := range []string{headSHA + "\n", headSHA + " yesterday\n"} {
+			run := &testutil.Runner{Stdout: out}
+			_, err := git{run: run, bin: gitBin}.commitTimes(ctx, repoDir, []string{headSHA})
+			require.ErrorIs(t, err, errParseCommitTime, out)
+		}
+	})
+
+	t.Run("commit times failure", func(t *testing.T) {
+		run := &testutil.Runner{Err: exitError{code: 128}}
+		_, err := git{run: run, bin: gitBin}.commitTimes(ctx, repoDir, []string{headSHA})
 		require.Error(t, err)
 	})
 

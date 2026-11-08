@@ -150,8 +150,9 @@ and readable only by you:
 
 The database is `nilbox.db` (SQLite, WAL mode). Before a schema migration changes an existing
 database, a copy of it is saved next to it, and the three newest copies are kept. GitHub tokens are never
-stored there, nor anywhere else: the app borrows the token from `gh auth token` for each
-refresh and keeps it in memory only.
+stored there, nor anywhere else: the app borrows the token from `gh auth token` and keeps it in
+memory only. It reuses the token for up to ten minutes, and asks `gh` again sooner when GitHub
+refuses it or `gh`'s account changes (`gh auth switch`, `login`, or `logout`).
 
 If the database can't be read at startup, because the file is damaged, isn't a database, or
 wasn't set up by this app's migrations, the app renames it (with its `-wal` and `-shm` files)

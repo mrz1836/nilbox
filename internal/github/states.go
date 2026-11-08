@@ -5,16 +5,24 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/mrz1836/nilbox/internal/item"
 )
 
 // statesBatch is the most items one states request asks about. Each is a single object,
 // so a request costs one point whatever its size; the cap only keeps a request small.
-const statesBatch = 50
+// Requests are sent side by side, at most statesParallel at a time, like the details
+// requests.
+const (
+	statesBatch    = 50
+	statesParallel = detailsParallel
+)
 
 // stateFieldsFragment is what the states query reads about a pull request or issue: just
 // enough to tell whether it is done, and, for a pull request, the commit it ended on.
@@ -53,42 +61,71 @@ type ItemState struct {
 // resolve (a number that does not exist, a repository that is gone or that the token
 // cannot see) is left out of the result. Any other error fails the whole call, so a
 // passing problem never makes an item look done. A ref's Kind is not needed: the number
-// alone picks the item.
+// alone picks the item. A ref that names no item fails the call before anything is sent.
 func (c *Client) FetchItemStates(ctx context.Context, tok Token, refs []item.Ref) (map[string]ItemState, error) {
-	states := make(map[string]ItemState, len(refs))
+	var queries []statesRequest
 
 	for start := 0; start < len(refs); start += statesBatch {
 		batch := refs[start:min(start+statesBatch, len(refs))]
 
-		if err := c.fetchStates(ctx, tok, batch, states); err != nil {
-			return nil, Redact(err, tok)
+		query, err := statesQuery(batch)
+		if err != nil {
+			return nil, err
 		}
+
+		queries = append(queries, statesRequest{refs: batch, query: query})
+	}
+
+	answers := make([]map[string]ItemState, len(queries))
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(statesParallel)
+
+	for i, req := range queries {
+		g.Go(func() error {
+			var err error
+
+			answers[i], err = c.fetchStates(gctx, tok, req)
+
+			return err
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, Redact(err, tok)
+	}
+
+	states := make(map[string]ItemState, len(refs))
+	for _, answer := range answers {
+		maps.Copy(states, answer)
 	}
 
 	return states, nil
 }
 
-// fetchStates sends one states query and adds its answers to states.
-// fetchStates sends one states query and adds its answers to states. GitHub's not-found
-// errors only leave a ref unanswered; any other error fails it.
-func (c *Client) fetchStates(ctx context.Context, tok Token, refs []item.Ref, states map[string]ItemState) error {
-	query, err := statesQuery(refs)
+// statesRequest is one states query and the refs it asks about, in alias order.
+type statesRequest struct {
+	refs  []item.Ref
+	query string
+}
+
+// fetchStates sends one states query and returns its answers by ref key. GitHub's
+// not-found errors only leave a ref unanswered; any other error fails it.
+func (c *Client) fetchStates(ctx context.Context, tok Token, req statesRequest) (map[string]ItemState, error) {
+	resp, _, err := postGraphQL[statesData](ctx, c, tok, "states", graphQLRequest{Query: req.query}, unlessNotFound)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	resp, _, err := postGraphQL[statesData](ctx, c, tok, "states", graphQLRequest{Query: query}, unlessNotFound)
-	if err != nil {
-		return err
-	}
+	states := make(map[string]ItemState, len(req.refs))
 
-	for i, ref := range refs {
+	for i, ref := range req.refs {
 		if state, ok := (*resp.Data)[statesAlias(i)].state(); ok {
 			states[ref.Key()] = state
 		}
 	}
 
-	return nil
+	return states, nil
 }
 
 // statesQuery asks about each ref under its own alias. The repository names are written

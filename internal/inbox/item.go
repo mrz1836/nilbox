@@ -9,7 +9,6 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/item"
-	"github.com/mrz1836/nilbox/internal/store"
 )
 
 // RefreshItem brings one item up to date from GitHub and returns the new snapshot. It
@@ -22,82 +21,85 @@ import (
 // merged, closed, or deleted since, or whose repository was archived, leaves every list,
 // as a whole refresh would have it. New activity on a snoozed item can end the snooze.
 //
+// It never waits for a whole refresh, only for other work on the same item. A whole
+// refresh that started earlier and stores later keeps what this one stored; one that
+// started later and already stored the item makes this one store nothing.
+//
 // A failure is returned, not recorded as the inbox's last error, which reports whole
 // refreshes, and the stored inbox is left as it was.
 func (s *Service) RefreshItem(ctx context.Context, id int64) (Snapshot, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if err := s.refreshItem(ctx, id); err != nil {
+	unlock, err := s.items.lock(ctx, id)
+	if err != nil {
 		return Snapshot{}, fmt.Errorf("refresh the item: %w", err)
 	}
 
-	s.notify()
+	defer unlock()
 
-	return s.Snapshot(ctx)
+	wrote, err := s.refreshItem(ctx, id)
+	if err != nil {
+		return Snapshot{}, fmt.Errorf("refresh the item: %w", err)
+	}
+
+	if !wrote {
+		return s.Snapshot(ctx)
+	}
+
+	return s.changed(ctx)
 }
 
-// refreshItem reads the stored item, asks GitHub about it, and stores the answer.
-func (s *Service) refreshItem(ctx context.Context, id int64) error {
+// refreshItem reads the stored item, asks GitHub about it, and stores the answer. It
+// reports whether it stored it.
+func (s *Service) refreshItem(ctx context.Context, id int64) (bool, error) {
 	stored, err := s.q.GetStoredItem(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("%w (id %d)", item.ErrNotFound, id)
+		return false, fmt.Errorf("%w (id %d)", item.ErrNotFound, id)
 	}
 
 	if err != nil {
-		return fmt.Errorf("read the item: %w", err)
+		return false, fmt.Errorf("read the item: %w", err)
 	}
 
-	tok, err := s.tokens.Token(ctx)
+	var seq uint64
+
+	update, err := github.WithToken(ctx, s.tokens, func(tok github.Token) (itemUpdate, error) {
+		seq = s.startFetch() // each try numbers its own fetch
+
+		update, fetchErr := s.fetchItem(ctx, tok, id, stored.NodeID)
+
+		return update, github.Redact(fetchErr, tok)
+	})
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	update, err := s.client.FetchItem(ctx, tok, stored.NodeID)
+	update.accountID = stored.AccountID
+
+	wrote, err := s.storeItemWrite(ctx, itemWrite{id: id, seq: seq, update: &update})
 	if err != nil {
-		return err
+		return false, fmt.Errorf("save the item: %w", err)
+	}
+
+	return wrote, nil
+}
+
+// fetchItem asks GitHub about the item with id and nodeID, and checks its files when a
+// check is due.
+func (s *Service) fetchItem(ctx context.Context, tok github.Token, id int64, nodeID string) (itemUpdate, error) {
+	update, err := s.client.FetchItem(ctx, tok, nodeID)
+	if err != nil {
+		return itemUpdate{}, err
 	}
 
 	if update == nil {
-		return ErrIncompleteFetch
+		return itemUpdate{}, ErrIncompleteFetch
 	}
 
 	files, err := s.checkUpdatedFiles(ctx, tok, id, update)
 	if err != nil {
-		return github.Redact(err, tok)
+		return itemUpdate{}, err
 	}
 
-	return github.Redact(s.saveItemUpdate(ctx, id, stored.AccountID, update, files), tok)
-}
-
-// saveItemUpdate stores what one item's refresh read, in one transaction, with the
-// query's budget reading and the item's file check, if one ran. accountID is the account
-// the item is stored for.
-func (s *Service) saveItemUpdate(
-	ctx context.Context, id, accountID int64, update *github.ItemUpdate, files map[string]fileCheck,
-) error {
-	it := update.Item
-
-	err := store.InTx(ctx, s.db, func(tx *sql.Tx) error {
-		w := s.newWriter(tx)
-		w.accountID, w.files = accountID, files
-		w.details = map[string]github.ItemDetails{it.NodeID: update.Details}
-
-		if err := w.saveGraphQLRate(ctx, update.RateLimit); err != nil {
-			return err
-		}
-
-		if !update.Found || it.Closed() || it.Repo.IsArchived {
-			return w.unlist(ctx, id, update)
-		}
-
-		return w.rewrite(ctx, id, it)
-	})
-	if err != nil {
-		return fmt.Errorf("save the item: %w", err)
-	}
-
-	return nil
+	return itemUpdate{update: update, files: files}, nil
 }
 
 // rewrite stores what GitHub says about an open item in place, with its details and file

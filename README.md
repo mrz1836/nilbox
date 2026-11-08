@@ -204,7 +204,8 @@ gh auth login      # Nilbox borrows this login; it needs the repo and read:org s
 gh auth status     # confirm you're signed in
 ```
 
-Nilbox reads the token with `gh auth token` on each refresh and keeps it in memory only.
+Nilbox reads the token with `gh auth token` and keeps it in memory only, for up to ten minutes; it
+asks `gh` again sooner when GitHub refuses the token or you switch accounts with `gh auth switch`.
 
 <br>
 

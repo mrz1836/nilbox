@@ -210,6 +210,68 @@ type Rate struct {
 	TakenAt string `json:"takenAt"`
 }
 
+// Snapshot returns the stored inbox: the three lists, the latest rate readings, and the
+// refresh status.
+//
+// The snapshot is kept until the next write, and only built again when something changed
+// what it shows: reading a kept one costs a read of the settings it depends on. The
+// lists of every snapshot returned share their items with the one kept, so a caller
+// must not change them.
+func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
+	seen := s.snapshots.load()
+
+	if seen != nil && seen.snap != nil {
+		stored, err := s.prefs.GetMany(ctx, settingsPrefs()...)
+		if err != nil {
+			return Snapshot{}, fmt.Errorf("read the inbox status: %w", err)
+		}
+
+		if keyOf(stored) == seen.settings {
+			return *seen.snap, nil
+		}
+	}
+
+	snap, settings, err := s.buildSnapshot(ctx)
+	if err != nil {
+		return snap, err
+	}
+
+	s.snapshots.keep(seen, snap, settings)
+
+	return snap, nil
+}
+
+// buildSnapshot reads the stored inbox, and returns it with the settings it was built
+// under. When the account cannot be read, the snapshot returned holds the status alone.
+func (s *Service) buildSnapshot(ctx context.Context) (Snapshot, settingsKey, error) {
+	status, err := readStatus(ctx, s.prefs)
+	if err != nil {
+		return Snapshot{}, settingsKey{}, err
+	}
+
+	settings := keyOf(status)
+	snap := newSnapshot(status)
+
+	accountID, err := lookupAccount(ctx, s.q, status[prefViewer])
+	if err != nil || accountID == 0 {
+		return snap, settings, err
+	}
+
+	rows, err := loadItems(ctx, s.q, accountID)
+	if err != nil {
+		return Snapshot{}, settingsKey{}, err
+	}
+
+	snap.addItems(rows, s.scopes.scope(status))
+	snap.applyTotals(status)
+
+	if snap.Rate, err = loadRates(ctx, s.q, accountID); err != nil {
+		return Snapshot{}, settingsKey{}, err
+	}
+
+	return snap, settings, nil
+}
+
 // newSnapshot starts a snapshot with empty lists and the stored status.
 func newSnapshot(prefs map[string]string) Snapshot {
 	return Snapshot{

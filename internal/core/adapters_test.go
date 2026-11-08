@@ -1,7 +1,11 @@
 package core
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -11,8 +15,10 @@ import (
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
+	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/worktrees"
@@ -132,4 +138,60 @@ func TestWorktreeStateReadsGitHubsWords(t *testing.T) {
 			State: want, ClosedAt: closed, HeadOID: "abc123",
 		}, got, state)
 	}
+}
+
+func TestItemStatesBorrowTheTokenAgainWhenGitHubRefusesIt(t *testing.T) {
+	t.Parallel()
+
+	var requests atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if requests.Add(1) == 1 {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = io.WriteString(w, `{"message": "Bad credentials"}`)
+
+			return
+		}
+
+		_, _ = io.WriteString(w, `{"data": {}}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	runner := &testutil.Runner{Stdout: "test-token-not-real\n"}
+	states := itemStates{
+		tokens: github.NewTokenSource(runner, testutil.Finder{Path: "/opt/fake/bin/gh"}),
+		client: &github.Client{BaseURL: srv.URL, HTTP: srv.Client()},
+	}
+
+	got, err := states.ItemStates(t.Context(), []item.Ref{{Repo: repo.Name{Owner: "acme-org", Repo: "example-repo"}, Number: 1}})
+	require.NoError(t, err)
+	assert.Empty(t, got)
+	assert.Equal(t, int32(2), requests.Load())
+	assert.Len(t, runner.Calls(), 2, "the refused token was borrowed again")
+}
+
+func TestCloseForgetsTheToken(t *testing.T) {
+	t.Parallel()
+
+	runner := &testutil.Runner{Stdout: "test-token-not-real\n"}
+
+	c, err := Bootstrap(t.Context(), Options{
+		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
+		Home:   testutil.ClaudeHome(t),
+		Runner: runner,
+	})
+	require.NoError(t, err)
+
+	for range 2 {
+		_, err = c.tokens.Token(t.Context())
+		require.NoError(t, err)
+	}
+
+	assert.Len(t, runner.Calls(), 1, "the token is kept while the app runs")
+
+	require.NoError(t, c.Close())
+
+	_, err = c.tokens.Token(t.Context())
+	require.NoError(t, err)
+	assert.Len(t, runner.Calls(), 2, "the token was forgotten when the app closed")
 }

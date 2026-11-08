@@ -253,8 +253,8 @@ function AccountSection({ account }: { account: Account | null }) {
         )}
       </div>
       <p className="text-xs leading-relaxed text-muted">
-        {brand.name} signs in through the GitHub CLI: it borrows gh&apos;s token for each refresh and never stores it.
-        To use another account, run <code className="font-mono">gh auth switch</code>, then refresh the inbox.
+        {brand.name} signs in through the GitHub CLI: it borrows gh&apos;s token, keeps it in memory, and never stores
+        it. To use another account, run <code className="font-mono">gh auth switch</code>, then refresh the inbox.
       </p>
     </div>
   )

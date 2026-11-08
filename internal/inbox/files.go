@@ -109,7 +109,7 @@ func (s *Service) checkFiles(ctx context.Context, tok github.Token, got refreshe
 
 	status[prefViewer] = got.inbox.Viewer.Login
 
-	targets := fileTargets(newFileScope(status), got, stored)
+	targets := fileTargets(s.scopes.scope(status), got, stored)
 	if len(targets) == 0 {
 		return map[string]fileCheck{}, nil
 	}
@@ -194,16 +194,23 @@ func (s *Service) runFileChecks(ctx context.Context, tok github.Token, targets [
 	return out, nil
 }
 
-// saveFiles stores the outcome of an item's file check, when this refresh ran one.
+// saveFiles stores the outcome of an item's file check, when this refresh ran one,
+// unless the item is one to keep.
 func (w *writer) saveFiles(ctx context.Context, id int64, it github.Item) error {
 	check, ok := w.files[it.NodeID]
-	if !ok {
+	if !ok || w.keep[id] {
 		return nil
 	}
 
 	if err := upsertFiles(ctx, w.q, newFilesRow(id, check, w.now)); err != nil {
 		return fmt.Errorf("save the files of %s: %w", it.Ref(), err)
 	}
+
+	if w.checked == nil {
+		w.checked = make(map[int64]bool)
+	}
+
+	w.checked[id] = true
 
 	return nil
 }
@@ -412,11 +419,19 @@ func (s *Service) StoredFiles(ctx context.Context, itemID int64) (*sensitive.Che
 // request. It returns sensitive.ErrNotChecked for an item whose files are not checked
 // (see StoredFiles).
 //
+// It never waits for a whole refresh, only for other work on the same item. A check
+// that finishes after a refresh that started later and checked the item's files is
+// returned but not stored, since the refresh's is the newer.
+//
 // A check that cannot finish is returned with StatusFailed and its reason, never as an
 // error, so the caller can hold back on it; an error means the item could not be read.
 func (s *Service) CheckFiles(ctx context.Context, itemID int64) (*sensitive.Check, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock, err := s.items.lock(ctx, itemID)
+	if err != nil {
+		return nil, err
+	}
+
+	defer unlock()
 
 	row, scope, err := s.loadCheckItem(ctx, itemID)
 	if err != nil {
@@ -427,17 +442,21 @@ func (s *Service) CheckFiles(ctx context.Context, itemID int64) (*sensitive.Chec
 		return nil, sensitive.ErrNotChecked
 	}
 
-	check := s.checkItemFiles(ctx, row)
+	check, seq := s.checkItemFiles(ctx, row)
 	if err = ctx.Err(); err != nil {
 		return nil, err
 	}
 
 	stored := newFilesRow(row.ID, check, s.now())
-	if err = upsertFiles(ctx, s.q, stored); err != nil {
+
+	wrote, err := s.storeItemWrite(ctx, itemWrite{id: row.ID, seq: seq, files: &stored})
+	if err != nil {
 		return nil, fmt.Errorf("save the checked files: %w", err)
 	}
 
-	s.notify()
+	if wrote {
+		_, _ = s.changed(ctx) // the check is what the caller needs; a failed read shows on the next
+	}
 
 	evaluated := scope.matcher.Evaluate(stored.result(), stored.head, row.URL)
 
@@ -445,21 +464,41 @@ func (s *Service) CheckFiles(ctx context.Context, itemID int64) (*sensitive.Chec
 }
 
 // checkItemFiles reads one pull request's head and, when it moved since the stored check
-// or that check failed, its files.
-func (s *Service) checkItemFiles(ctx context.Context, row checkItemRow) fileCheck {
-	tok, err := s.tokens.Token(ctx)
-	if err != nil {
-		return fileCheck{err: err}
-	}
-
+// or that check failed, its files. A token GitHub refuses is borrowed again once. It
+// returns the check with the number its fetch took (see order.go).
+func (s *Service) checkItemFiles(ctx context.Context, row checkItemRow) (fileCheck, uint64) {
 	ref := item.Ref{Repo: repo.Name{Owner: row.RepoOwner, Repo: row.RepoName}, Number: row.Number, Kind: row.Kind}
 
+	var seq uint64
+
+	check, err := github.WithToken(ctx, s.tokens, func(tok github.Token) (fileCheck, error) {
+		seq = s.startFetch() // each try numbers its own fetch
+
+		check := s.readItemFiles(ctx, tok, ref, row.Stored)
+
+		return check, check.err
+	})
+
+	if seq == 0 {
+		seq = s.startFetch() // no token, so nothing was fetched: the failure is as of now
+	}
+
+	if err != nil {
+		return fileCheck{err: err}, seq
+	}
+
+	return check, seq
+}
+
+// readItemFiles reads a pull request's head and, unless prev is a successful check of
+// that head, its files, with tok.
+func (s *Service) readItemFiles(ctx context.Context, tok github.Token, ref item.Ref, prev *sensitive.Result) fileCheck {
 	pull, err := s.client.FetchPullHead(ctx, tok, ref)
 	if err != nil {
 		return fileCheck{err: github.Redact(err, tok)}
 	}
 
-	if prev := row.Stored; prev != nil && prev.Error == "" && strings.EqualFold(prev.Head, pull.Head) {
+	if prev != nil && prev.Error == "" && strings.EqualFold(prev.Head, pull.Head) {
 		return fileCheck{files: storedChangedFiles(prev)}
 	}
 
@@ -499,7 +538,7 @@ func (s *Service) loadCheckItem(ctx context.Context, itemID int64) (checkItemRow
 		return checkItemRow{}, fileScope{}, fmt.Errorf("read the item: %w", err)
 	}
 
-	return row, newFileScope(status), nil
+	return row, s.scopes.scope(status), nil
 }
 
 // checkUpdatedFiles checks the files of an item one refresh of its own read, when they
