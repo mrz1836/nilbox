@@ -22,7 +22,7 @@ const platform = vi.hoisted(() => ({
   saveLaunchDefaults: vi.fn(),
   cloneTarget: vi.fn(),
   cloneRepo: vi.fn(),
-  openInBrowser: vi.fn(),
+  openExternal: vi.fn(),
 }))
 
 vi.mock('../platform', () => platform)
@@ -504,7 +504,6 @@ describe('LaunchControls', () => {
   it('asks before opening a pull request that changes agent configuration', async () => {
     const hold = launchHold()
     platform.launch.mockResolvedValueOnce(launchResult({ hold })).mockResolvedValueOnce(launchResult())
-    platform.openInBrowser.mockResolvedValue(undefined)
     render(<LaunchControls {...props({ item: item({ trusted: false, trust: 'outside' }) })} />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
@@ -519,7 +518,7 @@ describe('LaunchControls', () => {
     const files = within(dialog.getByRole('list', { name: 'Agent configuration it changes' }))
     expect(files.getByText('added')).toBeInTheDocument()
     await userEvent.click(files.getByRole('button', { name: /\.claude\/settings\.json/ }))
-    expect(platform.openInBrowser).toHaveBeenCalledWith(
+    expect(platform.openExternal).toHaveBeenCalledWith(
       'https://github.com/acme-org/example-repo/pull/7/files#diff-aaaa',
     )
 

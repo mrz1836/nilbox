@@ -81,7 +81,7 @@ function uniqueItems(snapshot: InboxSnapshot | null): InboxItem[] {
   const out: InboxItem[] = []
 
   for (const list of [snapshot.reviewRequested, snapshot.authored, snapshot.assigned]) {
-    for (const item of list.items ?? []) {
+    for (const item of list.items) {
       if (!seen.has(item.id)) {
         seen.add(item.id)
         out.push(item)

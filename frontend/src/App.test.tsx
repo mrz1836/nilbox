@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { App } from './App'
 import { brand } from './generated/brand'
+import { sendEvent } from './test/events'
 import {
   appInfo,
   checkResult,
@@ -35,8 +36,8 @@ const platform = vi.hoisted(() => ({
   setWorktreeDefault: vi.fn(),
   getInboxSnapshot: vi.fn(),
   refreshInbox: vi.fn(),
-  onInboxUpdated: vi.fn(),
-  openInBrowser: vi.fn(),
+  on: vi.fn(),
+  openExternal: vi.fn(),
   launch: vi.fn(),
   listWorktrees: vi.fn(),
   listPrompts: vi.fn(),
@@ -55,7 +56,6 @@ const platform = vi.hoisted(() => ({
   setSnoozeDays: vi.fn(),
   snoozeItem: vi.fn(),
   lastWorktreeSweep: vi.fn(),
-  onWorktreesUpdated: vi.fn(),
   recentCleanups: vi.fn(),
   getCollapsedSections: vi.fn(),
   setSectionCollapsed: vi.fn(),
@@ -69,8 +69,6 @@ const platform = vi.hoisted(() => ({
   listNotifications: vi.fn(),
   markNotificationsRead: vi.fn(),
   clearNotifications: vi.fn(),
-  onNotificationsUpdated: vi.fn(),
-  onRevealItem: vi.fn(),
   notificationBannerStatus: vi.fn(),
   sendTestNotification: vi.fn(),
   setMenuBar: vi.fn(),
@@ -83,7 +81,7 @@ beforeEach(() => {
   platform.getSettings.mockResolvedValue(settings({ defaultProfile: 'work', worktreeDefault: false }))
   platform.listProfiles.mockResolvedValue([profile(), profile({ name: 'work' })])
   platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([item()]) }))
-  platform.onInboxUpdated.mockReturnValue(() => undefined)
+  platform.on.mockReturnValue(() => undefined)
   platform.setTerminal.mockResolvedValue(settings())
   platform.setDefaultProfile.mockResolvedValue(settings())
   platform.setWorktreeDefault.mockResolvedValue(settings())
@@ -109,13 +107,10 @@ beforeEach(() => {
   platform.checkLaunchDefaults.mockResolvedValue([])
   platform.setTrustedBots.mockResolvedValue(settings())
   platform.lastWorktreeSweep.mockResolvedValue(sweepReport({ seq: 0 }))
-  platform.onWorktreesUpdated.mockReturnValue(() => undefined)
   platform.recentCleanups.mockResolvedValue([])
   platform.listNotifications.mockResolvedValue({ items: [], unread: 0 })
   platform.markNotificationsRead.mockResolvedValue(undefined)
   platform.clearNotifications.mockResolvedValue(undefined)
-  platform.onNotificationsUpdated.mockReturnValue(() => undefined)
-  platform.onRevealItem.mockReturnValue(() => undefined)
   platform.notificationBannerStatus.mockResolvedValue('on')
   platform.sendTestNotification.mockResolvedValue(undefined)
   platform.setMenuBar.mockResolvedValue(settings())
@@ -383,13 +378,8 @@ describe('App', () => {
   })
 
   it('counts the worktrees on the Worktrees tab, marks those worth a look, and toasts an automatic cleanup', async () => {
-    let swept: () => void = () => undefined
     const stop = vi.fn()
-    platform.onWorktreesUpdated.mockImplementation((listener: () => void) => {
-      swept = listener
-
-      return stop
-    })
+    platform.on.mockImplementation((event: string) => (event === 'worktrees:updated' ? stop : () => undefined))
     platform.lastWorktreeSweep.mockResolvedValue(sweepReport({ seq: 1, leftover: 2, worktreeCount: 5 }))
 
     const { unmount } = render(<App />)
@@ -431,7 +421,7 @@ describe('App', () => {
       }),
     )
     await act(async () => {
-      swept()
+      sendEvent(platform.on, 'worktrees:updated')
       await Promise.resolve()
     })
 
@@ -445,7 +435,7 @@ describe('App', () => {
     // An event for a sweep already read changes nothing; a later one with one cleaned
     // worktree says so.
     await act(async () => {
-      swept()
+      sendEvent(platform.on, 'worktrees:updated')
       await Promise.resolve()
     })
 
@@ -467,7 +457,7 @@ describe('App', () => {
       }),
     )
     await act(async () => {
-      swept()
+      sendEvent(platform.on, 'worktrees:updated')
       await Promise.resolve()
     })
 
@@ -484,12 +474,6 @@ describe('App', () => {
   })
 
   it('counts from the Worktrees view and lists again after a sweep', async () => {
-    let swept: () => void = () => undefined
-    platform.onWorktreesUpdated.mockImplementation((listener: () => void) => {
-      swept = listener
-
-      return () => undefined
-    })
     platform.listWorktrees.mockResolvedValue(worktreesSnapshot({ worktreeCount: 6, finishedCount: 2, reviewCount: 1 }))
 
     render(<App />)
@@ -505,7 +489,7 @@ describe('App', () => {
     platform.lastWorktreeSweep.mockResolvedValue(sweepReport({ seq: 4, leftover: 0, worktreeCount: 0 }))
     platform.listWorktrees.mockResolvedValue(worktreesSnapshot({ worktreeCount: 0, repos: [] }))
     await act(async () => {
-      swept()
+      sendEvent(platform.on, 'worktrees:updated')
       await Promise.resolve()
     })
 
@@ -519,13 +503,6 @@ describe('App', () => {
   })
 
   it('counts the items in the inbox on the Inbox tab, each once, as the inbox changes', async () => {
-    let updated: () => void = () => undefined
-    platform.onInboxUpdated.mockImplementation((listener: () => void) => {
-      updated = listener
-
-      return () => undefined
-    })
-
     const mine = item({ id: 2, number: 8, title: 'Tidy the cache keys' })
     platform.getInboxSnapshot.mockResolvedValue(
       snapshot({ reviewRequested: list([item()]), authored: list([mine]), assigned: list([mine]) }),
@@ -544,7 +521,7 @@ describe('App', () => {
       snapshot({ reviewRequested: list([item()]), authored: list([dismissed]), assigned: list([dismissed]) }),
     )
     await act(async () => {
-      updated()
+      sendEvent(platform.on, 'inbox:updated')
       await Promise.resolve()
     })
 
@@ -588,13 +565,6 @@ describe('App', () => {
   })
 
   it('offers no View on a cleanup toast while the Worktrees view is open', async () => {
-    let swept: () => void = () => undefined
-    platform.onWorktreesUpdated.mockImplementation((listener: () => void) => {
-      swept = listener
-
-      return () => undefined
-    })
-
     render(<App />)
     await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
     await screen.findByRole('region', { name: 'example-repo' })
@@ -616,7 +586,7 @@ describe('App', () => {
       }),
     )
     await act(async () => {
-      swept()
+      sendEvent(platform.on, 'worktrees:updated')
       await Promise.resolve()
     })
 
@@ -670,9 +640,8 @@ describe('App', () => {
     // reveal sends a request to show an item, as the shell does for a click in the menu
     // bar or on a notification.
     function reveal(itemId: number, url = '') {
-      const handler = platform.onRevealItem.mock.calls.at(-1)?.[0] as (r: { itemId: number; url: string }) => void
       act(() => {
-        handler({ itemId, url })
+        sendEvent(platform.on, 'inbox:reveal', { itemId, url })
       })
     }
 
@@ -694,19 +663,18 @@ describe('App', () => {
 
       expect(screen.getByRole('button', { name: 'Inbox' })).toHaveAttribute('aria-pressed', 'true')
       expect(await row('Add the widget cache')).toHaveAttribute('data-highlighted', 'true')
-      expect(platform.openInBrowser).not.toHaveBeenCalled()
+      expect(platform.openExternal).not.toHaveBeenCalled()
     })
 
     it('opens an item no longer in the inbox on GitHub, and ignores one it cannot find', async () => {
-      platform.openInBrowser.mockResolvedValue(undefined)
       render(<App />)
       await screen.findByRole('region', { name: 'Review requested' })
 
       reveal(99, 'https://github.com/acme-org/example-repo/pull/99')
-      expect(platform.openInBrowser).toHaveBeenCalledExactlyOnceWith('https://github.com/acme-org/example-repo/pull/99')
+      expect(platform.openExternal).toHaveBeenCalledExactlyOnceWith('https://github.com/acme-org/example-repo/pull/99')
 
       reveal(98)
-      expect(platform.openInBrowser).toHaveBeenCalledExactlyOnceWith('https://github.com/acme-org/example-repo/pull/99')
+      expect(platform.openExternal).toHaveBeenCalledExactlyOnceWith('https://github.com/acme-org/example-repo/pull/99')
     })
 
     it('does not show the item again when the inbox is opened later', async () => {

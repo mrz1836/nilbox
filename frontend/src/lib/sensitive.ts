@@ -2,7 +2,7 @@
 // the card, and the words for each file's change. The check itself (which files count,
 // whose pull requests are checked) happens in the backend; this only words its outcome.
 
-import type { FileCheck, SensitiveFile, SensitiveGroup } from '../platform'
+import type { FileCheck, SensitiveFile } from '../platform'
 import { counted, formatCount } from './format'
 import type { Tone } from './signals'
 
@@ -22,19 +22,9 @@ export interface FilesChip {
 // "+N".
 const shownCategories = 2
 
-// groupsOf returns a check's groups, never null.
-export function groupsOf(check: FileCheck): SensitiveGroup[] {
-  return check.groups ?? []
-}
-
-// filesOf returns a group's files, never null.
-export function filesOf(group: SensitiveGroup): SensitiveFile[] {
-  return group.files ?? []
-}
-
 // sensitiveCount is how many sensitive files a check found.
 export function sensitiveCount(check: FileCheck): number {
-  return groupsOf(check).reduce((n, g) => n + filesOf(g).length, 0)
+  return check.groups.reduce((n, g) => n + g.files.length, 0)
 }
 
 // filesChip words a check for the card. Agent configuration, workflows, build tooling,
@@ -43,12 +33,12 @@ export function sensitiveCount(check: FileCheck): number {
 // is sensitive shows a quiet checked shield, so "checked, nothing found" never looks like
 // "not checked".
 export function filesChip(check: FileCheck): FilesChip {
-  const groups = groupsOf(check)
+  const groups = check.groups
 
   if (groups.length > 0) {
     const names = groups.slice(0, shownCategories).map((g) => g.short)
     const rest = groups.length - shownCategories
-    const parts = groups.map((g) => `${g.short} (${counted(filesOf(g).length, 'file', 'files')})`)
+    const parts = groups.map((g) => `${g.short} (${counted(g.files.length, 'file', 'files')})`)
     const unchecked = check.complete ? '' : '; not every file was checked'
 
     return {

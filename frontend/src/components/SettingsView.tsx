@@ -17,7 +17,7 @@ import { presetFor, sizeKey, sizeLabel, windowPresets } from '../lib/windowSize'
 import {
   getAppInfo,
   notificationBannerStatus,
-  openInBrowser,
+  openExternal,
   sendTestNotification,
   setCloneRoot,
   setDefaultPrompt,
@@ -212,12 +212,6 @@ function Group({ children }: { children: ReactNode }) {
   return <div className="divide-y divide-border rounded-lg border border-border bg-surface">{children}</div>
 }
 
-function openProfile(url: string) {
-  openInBrowser(url).catch((err: unknown) => {
-    console.error('could not open the GitHub profile in the browser', err)
-  })
-}
-
 function AccountSection({ account }: { account: Account | null }) {
   const signedIn = account !== null && account.login !== ''
   const hasName = signedIn && account.name.trim() !== ''
@@ -243,7 +237,7 @@ function AccountSection({ account }: { account: Account | null }) {
           <button
             type="button"
             onClick={() => {
-              openProfile(account.profileUrl)
+              openExternal(account.profileUrl)
             }}
             className={`${buttonClass} inline-flex items-center gap-1.5`}
           >
@@ -434,7 +428,7 @@ function NotificationsSection({ settings, onSaved }: SettingsSectionProps) {
   const [error, setError] = useState('')
   const [status, setStatus] = useState<BannerStatus | ''>('')
   const [test, setTest] = useState<TestState>({ state: 'idle' })
-  const off = settings.bannersOff ?? []
+  const off = settings.bannersOff
 
   const readStatus = () => {
     notificationBannerStatus()
@@ -900,9 +894,9 @@ function LaunchingSection({
 // model, effort, plan mode, any extras, and its permissions.
 function profileTraits(profile: Profile): string[] {
   const traits: string[] = []
-  const addDirs = profile.addDirs?.length ?? 0
-  const extraArgs = profile.extraArgs?.length ?? 0
-  const env = Object.keys(profile.env ?? {}).length
+  const addDirs = profile.addDirs.length
+  const extraArgs = profile.extraArgs.length
+  const env = Object.keys(profile.env).length
 
   if (profile.model !== '') {
     traits.push(profile.model)
@@ -1067,12 +1061,6 @@ function RepositoriesSection({
   )
 }
 
-function openBugReport(url: string) {
-  openInBrowser(url).catch((err: unknown) => {
-    console.error('could not open the bug report in the browser', err)
-  })
-}
-
 // aboutRows is what the About page lists: the release version and build number, the
 // commit the build came from, and the system it runs on, which a bug report needs.
 function aboutRows(info: Info | null, failure: string): [string, string][] {
@@ -1137,7 +1125,7 @@ function AboutSection() {
           <button
             type="button"
             onClick={() => {
-              openBugReport(info.bugReportUrl)
+              openExternal(info.bugReportUrl)
             }}
             className={`${buttonClass} inline-flex shrink-0 items-center gap-1.5`}
           >

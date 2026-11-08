@@ -243,7 +243,7 @@ export function LaunchMenu({
           </div>
         )}
         {[
-          ...(resolved.warnings ?? []),
+          ...resolved.warnings,
           ...(resolveError === '' ? [] : [`Couldn’t work out the settings for this choice: ${resolveError}`]),
         ].map((w) => (
           <p key={w} className="flex items-start gap-1.5 text-xs text-warning">

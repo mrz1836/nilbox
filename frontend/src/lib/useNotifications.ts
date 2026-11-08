@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import {
-  clearNotifications,
-  listNotifications,
-  markNotificationsRead,
-  onNotificationsUpdated,
-  type NotificationLog,
-} from '../platform'
+import { clearNotifications, listNotifications, markNotificationsRead, on, type NotificationLog } from '../platform'
 import { errorMessage } from './format'
 
 // NotificationsState is the notification history as the window shows it.
@@ -50,12 +44,12 @@ export function useNotifications(): NotificationsState {
   useEffect(() => {
     load()
 
-    return onNotificationsUpdated(load)
+    return on('notifications:updated', load)
   }, [load])
 
   const markRead = useCallback(() => {
     // Shown read at once; the shell's update confirms it.
-    setLog((was) => ({ items: was.items?.map((n) => ({ ...n, read: true })) ?? [], unread: 0 }))
+    setLog((was) => ({ items: was.items.map((n) => ({ ...n, read: true })), unread: 0 }))
 
     markNotificationsRead().catch((err: unknown) => {
       console.error('could not mark the notifications read', err)

@@ -15,9 +15,8 @@ import { useNotifications } from './lib/useNotifications'
 import { useTheme } from './lib/useTheme'
 import {
   lastWorktreeSweep,
-  onRevealItem,
-  onWorktreesUpdated,
-  openInBrowser,
+  on,
+  openExternal,
   type AppNotification,
   type InboxSnapshot,
   type RemoveResult,
@@ -63,9 +62,8 @@ function useWorktreeSweeps() {
           setAttention(report.leftover)
           setSeq(report.seq)
 
-          const cleaned = report.cleaned ?? []
-          if (cleaned.length > 0) {
-            setToast(cleanedToast(report.seq, cleaned))
+          if (report.cleaned.length > 0) {
+            setToast(cleanedToast(report.seq, report.cleaned))
           }
         })
         .catch((err: unknown) => {
@@ -74,7 +72,7 @@ function useWorktreeSweeps() {
     }
 
     read()
-    const stop = onWorktreesUpdated(read)
+    const stop = on('worktrees:updated', read)
 
     return () => {
       active = false
@@ -122,9 +120,7 @@ function useReveal(snapshot: InboxSnapshot | null, openInbox: () => void) {
       }
 
       if (url !== '') {
-        openInBrowser(url).catch((err: unknown) => {
-          console.error('could not open the item in the browser', err)
-        })
+        openExternal(url)
       }
     },
     [openInbox],
@@ -132,7 +128,7 @@ function useReveal(snapshot: InboxSnapshot | null, openInbox: () => void) {
 
   useEffect(
     () =>
-      onRevealItem(({ itemId, url }) => {
+      on('inbox:reveal', ({ itemId, url }) => {
         show(itemId, url)
       }),
     [show],

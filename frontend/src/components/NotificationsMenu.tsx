@@ -87,7 +87,7 @@ export function NotificationsMenu({ notifications, now, onOpen, onSettings }: No
   const id = useId()
   const { open, toggle, close, triggerRef, panelRef } = usePopover<HTMLButtonElement, HTMLDivElement>()
   const { log, error, markRead, clear } = notifications
-  const items = log.items ?? []
+  const items = log.items
   const [fresh, setFresh] = useState<ReadonlySet<number>>(new Set())
   const [clearError, setClearError] = useState('')
 

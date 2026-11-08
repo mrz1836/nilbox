@@ -164,7 +164,7 @@ export function ItemSignals({ item }: ItemSignalsProps) {
           <span className={columns.commits}>{counted(commits, 'commit', 'commits')}</span>
         </Slot>
       )}
-      <Labels labels={details.labels ?? []} />
+      <Labels labels={details.labels} />
     </ul>
   )
 }

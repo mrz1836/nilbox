@@ -36,8 +36,8 @@ export function TrustSection({ settings, onSaved }: TrustSectionProps) {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const bots = settings.trustedBots ?? []
-  const defaults = settings.defaultTrustedBots ?? []
+  const bots = settings.trustedBots
+  const defaults = settings.defaultTrustedBots
   const changed = !sameList(bots, defaults)
 
   // save stores a change, then reports the settings as stored.

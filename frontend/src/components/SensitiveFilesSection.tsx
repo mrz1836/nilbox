@@ -63,7 +63,7 @@ interface CategoryRowProps {
 // patterns behind a disclosure. A locked category's switch stays on.
 function CategoryRow({ category, on, busy, onChange }: CategoryRowProps) {
   const id = useId()
-  const patterns = category.patterns ?? []
+  const patterns = category.patterns
 
   return (
     <li className="flex items-start gap-4 px-4 py-3.5">
@@ -206,9 +206,9 @@ export function SensitiveFilesSection({ settings, onSaved }: SensitiveFilesSecti
   const [busy, setBusy] = useState(false)
 
   const config = settings.sensitiveFiles
-  const off = config.off ?? []
-  const patterns = config.patterns ?? []
-  const categories = settings.sensitiveCategories ?? []
+  const off = config.off
+  const patterns = config.patterns
+  const categories = settings.sensitiveCategories
 
   // save stores a change, then reports the settings as stored; onError shows why it was
   // refused.

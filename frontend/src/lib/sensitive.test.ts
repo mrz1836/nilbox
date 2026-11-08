@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { SensitiveGroup } from '../platform'
 import { agentGroup, fileCheck, workflowsGroup } from '../test/fixtures'
-import { changeText, changeTone, filesChip, groupsOf, sensitiveCount, shortHead } from './sensitive'
+import { changeText, changeTone, filesChip, sensitiveCount, shortHead } from './sensitive'
 
 describe('filesChip', () => {
   it('names the categories of the sensitive files, red when any runs', () => {
@@ -66,7 +66,7 @@ describe('filesChip', () => {
       icon: 'none',
       short: 'Files not checked yet',
     })
-    expect(filesChip(fileCheck({ status: 'clear', groups: null, total: 1 }))).toEqual({
+    expect(filesChip(fileCheck({ status: 'clear', groups: [], total: 1 }))).toEqual({
       tone: 'muted',
       icon: 'clear',
       short: '',
@@ -100,8 +100,7 @@ describe('changes', () => {
 describe('helpers', () => {
   it('counts the sensitive files and shortens a head', () => {
     expect(sensitiveCount(fileCheck())).toBe(2)
-    expect(sensitiveCount(fileCheck({ groups: [{ ...agentGroup(), files: null }] }))).toBe(0)
-    expect(groupsOf(fileCheck({ groups: null }))).toEqual([])
+    expect(sensitiveCount(fileCheck({ groups: [{ ...agentGroup(), files: [] }] }))).toBe(0)
     expect(shortHead('a1b2c3d4e5f6')).toBe('a1b2c3d')
   })
 })

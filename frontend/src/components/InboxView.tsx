@@ -347,7 +347,7 @@ export function InboxView({
     () =>
       reveal === null || snapshot === null
         ? null
-        : (sections.find(({ key }) => snapshot[key].items?.some((item) => item.id === reveal.id))?.key ?? null),
+        : (sections.find(({ key }) => snapshot[key].items.some((item) => item.id === reveal.id))?.key ?? null),
     [reveal, snapshot],
   )
   // opened is the last reveal request whose list was opened, so a list the user collapses

@@ -1,7 +1,7 @@
 import { formatAge, formatAgo } from '../lib/age'
 import { formatFull, formatWhen, isBackFromSnooze, wakeSummary, type TriageTab } from '../lib/triage'
 import {
-  openInBrowser,
+  openExternal,
   type InboxItem,
   type ItemResolution,
   type LaunchDefaults,
@@ -45,12 +45,6 @@ export interface ItemRowProps {
 
 // tagClass is a status tag: weight and color mark it, with no pill around it.
 const tagClass = 'shrink-0 text-[11px] leading-4 font-medium'
-
-function openItem(url: string) {
-  openInBrowser(url).catch((err: unknown) => {
-    console.error('could not open the item in the browser', err)
-  })
-}
 
 // KindIcon tells a pull request from an issue: green while open, muted for a draft.
 function KindIcon({ item }: { item: InboxItem }) {
@@ -177,7 +171,7 @@ export function ItemRow({
             type="button"
             title={item.title}
             onClick={() => {
-              openItem(item.url)
+              openExternal(item.url)
             }}
             className="min-w-0 truncate text-left text-sm font-medium text-text hover:text-accent hover:underline"
           >

@@ -1,12 +1,12 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { InboxItem } from '../platform'
 import { details, fileCheck, item, itemResolution, profile, prompts } from '../test/fixtures'
 import { ItemRow, type LaunchOptions } from './ItemRow'
 
-const platform = vi.hoisted(() => ({ openInBrowser: vi.fn(), launch: vi.fn(), checkItemFiles: vi.fn() }))
+const platform = vi.hoisted(() => ({ openExternal: vi.fn(), launch: vi.fn(), checkItemFiles: vi.fn() }))
 
 vi.mock('../platform', () => platform)
 
@@ -37,10 +37,6 @@ function signals() {
 function slot(text: string): HTMLElement {
   return screen.getByTitle(text)
 }
-
-beforeEach(() => {
-  platform.openInBrowser.mockReset().mockResolvedValue(undefined)
-})
 
 describe('ItemRow', () => {
   it('names its item for the inbox to find, and marks it when highlighted', () => {
@@ -200,7 +196,7 @@ describe('ItemRow', () => {
   })
 
   it('handles details with no labels at all', () => {
-    renderRow(item({ details: details({ labels: null }) }))
+    renderRow(item({ details: details({ labels: [] }) }))
 
     expect(signals().getAllByRole('listitem')).toHaveLength(4)
   })
@@ -267,7 +263,7 @@ describe('ItemRow', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Add the widget cache' }))
 
-    expect(platform.openInBrowser).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/pull/7')
+    expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/pull/7')
   })
 
   it('points out the sensitive files of a checked pull request beside who opened it', async () => {

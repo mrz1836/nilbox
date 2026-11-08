@@ -1,18 +1,14 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { Account } from '../platform'
 import { account, signedOut } from '../test/fixtures'
 import { AccountMenu } from './AccountMenu'
 
-const platform = vi.hoisted(() => ({ openInBrowser: vi.fn() }))
+const platform = vi.hoisted(() => ({ openExternal: vi.fn() }))
 
 vi.mock('../platform', () => platform)
-
-beforeEach(() => {
-  platform.openInBrowser.mockReset().mockResolvedValue(undefined)
-})
 
 function renderMenu(who: Account | null = account()) {
   const onOpenSettings = vi.fn()
@@ -73,22 +69,8 @@ describe('AccountMenu', () => {
     await userEvent.click(trigger)
     await userEvent.click(screen.getByRole('menuitem', { name: 'View GitHub profile' }))
 
-    expect(platform.openInBrowser).toHaveBeenCalledWith('https://github.com/octo-user')
+    expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/octo-user')
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
-  })
-
-  it('logs a profile that could not be opened', async () => {
-    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    platform.openInBrowser.mockRejectedValue(new Error('no browser'))
-    const { trigger } = renderMenu()
-
-    await userEvent.click(trigger)
-    await userEvent.click(screen.getByRole('menuitem', { name: 'View GitHub profile' }))
-
-    await waitFor(() => {
-      expect(logged).toHaveBeenCalled()
-    })
-    logged.mockRestore()
   })
 
   it('moves between items with the arrow keys, Home, and End, wrapping at the ends', async () => {

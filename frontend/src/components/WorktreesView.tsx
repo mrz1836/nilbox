@@ -9,7 +9,7 @@ import {
   clearCleanups,
   forceRemoveWorktree,
   listWorktrees,
-  openInBrowser,
+  openExternal,
   pruneWorktrees,
   recentCleanups,
   removeAllCleanWorktrees,
@@ -86,12 +86,6 @@ const stageLabels: Readonly<Partial<Record<WorktreeStage, { text: string; classN
   'needs-review': { text: 'needs a look', className: 'text-warning' },
 }
 
-function openItem(url: string) {
-  openInBrowser(url).catch((err: unknown) => {
-    console.error('could not open the item in the browser', err)
-  })
-}
-
 interface WorktreeRowProps {
   worktree: Worktree
   now: Date
@@ -133,7 +127,7 @@ function ItemLink({ item, now }: { item: LinkedItem; now: Date }) {
         type="button"
         title={`${item.owner}/${item.name}#${String(item.number)}: ${item.title}`}
         onClick={() => {
-          openItem(item.url)
+          openExternal(item.url)
         }}
         className="font-medium text-text hover:underline"
       >
@@ -333,7 +327,7 @@ function RepoSection({
   onUnlock,
   onCleanUp,
 }: RepoSectionProps) {
-  const worktrees = repo.worktrees ?? []
+  const worktrees = repo.worktrees
   const pruneError = errors[repoKey(repo.path)] ?? ''
 
   return (
@@ -482,7 +476,7 @@ function CleanupRow({ cleanup, now }: { cleanup: WorktreeCleanup; now: Date }) {
                 type="button"
                 title={`${item.owner}/${item.name}#${String(item.number)}`}
                 onClick={() => {
-                  openItem(item.url)
+                  openExternal(item.url)
                 }}
                 className="font-medium text-text hover:underline"
               >

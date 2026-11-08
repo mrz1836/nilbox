@@ -118,7 +118,7 @@ export function triageList(list: InboxList, now: Date): TriagedList {
   const snoozed: InboxItem[] = []
   const dismissed: InboxItem[] = []
 
-  for (const item of list.items ?? []) {
+  for (const item of list.items) {
     if (isDismissed(item)) {
       dismissed.push(item)
     } else if (isSnoozed(item, now)) {
@@ -139,7 +139,7 @@ export function triageList(list: InboxList, now: Date): TriagedList {
 // findItem looks an item up in a snapshot's lists.
 export function findItem(snapshot: InboxSnapshot, id: number): InboxItem | undefined {
   for (const list of [snapshot.reviewRequested, snapshot.authored, snapshot.assigned]) {
-    const found = list.items?.find((item) => item.id === id)
+    const found = list.items.find((item) => item.id === id)
 
     if (found !== undefined) {
       return found
@@ -163,7 +163,7 @@ export function inboxCount(snapshot: InboxSnapshot, now: Date): number {
   const ids = new Set<number>()
 
   for (const list of [snapshot.reviewRequested, snapshot.authored, snapshot.assigned]) {
-    for (const item of list.items ?? []) {
+    for (const item of list.items) {
       if (!isDismissed(item) && !isSnoozed(item, now)) {
         ids.add(item.id)
       }

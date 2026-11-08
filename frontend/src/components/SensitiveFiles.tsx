@@ -2,21 +2,12 @@ import { useId, useLayoutEffect, useState } from 'react'
 
 import { formatAgo } from '../lib/age'
 import { counted, errorMessage, formatCount } from '../lib/format'
-import {
-  changeText,
-  changeTone,
-  filesChip,
-  filesOf,
-  groupsOf,
-  sensitiveCount,
-  shortHead,
-  type FilesChip,
-} from '../lib/sensitive'
+import { changeText, changeTone, filesChip, sensitiveCount, shortHead, type FilesChip } from '../lib/sensitive'
 import { toneText } from '../lib/signals'
 import { usePopover } from '../lib/usePopover'
 import {
   checkItemFiles,
-  openInBrowser,
+  openExternal,
   type FileCheck,
   type SensitiveFile,
   type SensitiveGroup,
@@ -70,12 +61,6 @@ const levelDot: Readonly<Record<SensitiveLevel, string>> = {
   '': 'bg-muted',
 }
 
-function openDiff(url: string) {
-  openInBrowser(url).catch((err: unknown) => {
-    console.error('could not open the file in the browser', err)
-  })
-}
-
 // FileRow is one sensitive file: its path, which opens its diff on GitHub, and how it
 // changed.
 function FileRow({ file }: { file: SensitiveFile }) {
@@ -92,7 +77,7 @@ function FileRow({ file }: { file: SensitiveFile }) {
           type="button"
           title={`Open the diff of ${file.path} on GitHub`}
           onClick={() => {
-            openDiff(file.url)
+            openExternal(file.url)
           }}
           className="group/file inline-flex min-w-0 items-baseline gap-1 text-left font-mono text-xs text-text hover:text-accent hover:underline"
         >
@@ -112,7 +97,7 @@ function FileRow({ file }: { file: SensitiveFile }) {
 
 // GroupSection is one category's files, with why they deserve a look.
 function GroupSection({ group }: { group: SensitiveGroup }) {
-  const files = filesOf(group)
+  const files = group.files
 
   return (
     <section aria-label={group.label} className="flex flex-col gap-1">
@@ -162,7 +147,7 @@ export function SensitiveFiles({ itemId, check, now, onSettings }: SensitiveFile
   const [maxHeight, setMaxHeight] = useState<number | undefined>(undefined)
 
   const chip = filesChip(check)
-  const groups = groupsOf(check)
+  const groups = check.groups
   const agent = groups.some((g) => g.category === 'agent')
   const unchecked = !check.complete && check.status !== 'failed' && check.status !== 'pending'
 

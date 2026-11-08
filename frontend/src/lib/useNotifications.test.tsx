@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { sendEvent } from '../test/events'
 import { notification } from '../test/fixtures'
 import { useNotifications } from './useNotifications'
 
@@ -8,7 +9,7 @@ const platform = vi.hoisted(() => ({
   listNotifications: vi.fn(),
   markNotificationsRead: vi.fn(),
   clearNotifications: vi.fn(),
-  onNotificationsUpdated: vi.fn(),
+  on: vi.fn(),
 }))
 
 vi.mock('../platform', () => platform)
@@ -19,7 +20,7 @@ beforeEach(() => {
   platform.listNotifications.mockResolvedValue({ items: [notification()], unread: 1 })
   platform.markNotificationsRead.mockResolvedValue(undefined)
   platform.clearNotifications.mockResolvedValue(undefined)
-  platform.onNotificationsUpdated.mockReturnValue(stopListening)
+  platform.on.mockReturnValue(stopListening)
 })
 
 describe('useNotifications', () => {
@@ -30,12 +31,13 @@ describe('useNotifications', () => {
       expect(result.current.log.unread).toBe(1)
     })
 
-    const reload = platform.onNotificationsUpdated.mock.calls[0]?.[0] as () => void
     platform.listNotifications.mockResolvedValue({
       items: [notification({ id: 2 }), notification({ read: true })],
       unread: 1,
     })
-    act(reload)
+    act(() => {
+      sendEvent(platform.on, 'notifications:updated')
+    })
 
     await waitFor(() => {
       expect(result.current.log.items).toHaveLength(2)
@@ -54,9 +56,10 @@ describe('useNotifications', () => {
     )
 
     const { result } = renderHook(() => useNotifications())
-    const reload = platform.onNotificationsUpdated.mock.calls[0]?.[0] as () => void
     platform.listNotifications.mockResolvedValue({ items: [], unread: 0 })
-    act(reload)
+    act(() => {
+      sendEvent(platform.on, 'notifications:updated')
+    })
 
     await act(async () => {
       answerFirst({ items: [notification()], unread: 1 })
@@ -87,7 +90,7 @@ describe('useNotifications', () => {
     })
 
     expect(result.current.log.unread).toBe(0)
-    expect(result.current.log.items?.[0]?.read).toBe(true)
+    expect(result.current.log.items[0]?.read).toBe(true)
     expect(platform.markNotificationsRead).toHaveBeenCalledOnce()
 
     const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)

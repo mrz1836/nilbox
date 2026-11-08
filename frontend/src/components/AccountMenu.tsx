@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, type KeyboardEvent } from 'react'
 
 import { usePopover } from '../lib/usePopover'
-import { openInBrowser, type Account } from '../platform'
+import { openExternal, type Account } from '../platform'
 import { Avatar } from './Avatar'
 import { ExternalIcon, SlidersIcon } from './icons'
 
@@ -88,9 +88,7 @@ export function AccountMenu({ account, onOpenSettings }: AccountMenuProps) {
     close(true)
 
     if (signedIn) {
-      openInBrowser(account.profileUrl).catch((err: unknown) => {
-        console.error('could not open the GitHub profile in the browser', err)
-      })
+      openExternal(account.profileUrl)
     }
   }
 

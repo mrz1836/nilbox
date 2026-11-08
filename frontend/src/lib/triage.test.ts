@@ -82,16 +82,10 @@ describe('triageList', () => {
     expect(triaged.total).toBe(36)
   })
 
-  it('never counts fewer than the inbox tab shows, and reads a missing list as empty', () => {
+  it('never counts fewer than the inbox tab shows', () => {
     const triaged = triageList(list([item({ id: 1 }), item({ id: 2, dismissedAt: at(-1) })], 0), now)
 
     expect(triaged.total).toBe(1)
-    expect(triageList({ items: null, shown: 0, total: 0 }, now)).toEqual({
-      inbox: [],
-      snoozed: [],
-      dismissed: [],
-      total: 0,
-    })
   })
 })
 
@@ -113,9 +107,8 @@ describe('inboxCount', () => {
     expect(counted).toBe(3)
   })
 
-  it('is 0 for an empty inbox, and reads a missing list as empty', () => {
+  it('is 0 for an empty inbox', () => {
     expect(inboxCount(snapshot(), now)).toBe(0)
-    expect(inboxCount(snapshot({ authored: { items: null, shown: 0, total: 0 } }), now)).toBe(0)
   })
 })
 
@@ -196,7 +189,6 @@ describe('findItem and tabOf', () => {
     expect(findItem(snap, 2)).toBe(snoozed)
     expect(findItem(snap, 1)).toBe(fresh)
     expect(findItem(snap, 9)).toBeUndefined()
-    expect(findItem(snapshot({ assigned: { items: null, shown: 0, total: 0 } }), 1)).toBeUndefined()
   })
 
   it('finds the tab that holds an item', () => {

@@ -112,7 +112,7 @@ function touchedField(field: string, draft: PromptInput, start: PromptInput): bo
 
 // isAppDefault reports whether a prompt is the app's default for a kind.
 function isAppDefault(p: Prompt): boolean {
-  return (p.usage.defaults?.length ?? 0) > 0
+  return p.usage.defaults.length > 0
 }
 
 // PromptsView is the Prompts page: the prompt library on the left, the selected prompt's
@@ -149,7 +149,7 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
     [shownFields],
   )
   const diagnostics = check?.diagnostics ?? []
-  const hiddenProblems = (check?.fields?.length ?? 0) - shownFields.length
+  const hiddenProblems = (check?.fields.length ?? 0) - shownFields.length
   const problemCount = shownFields.length + diagnostics.filter((d: Diagnostic) => d.severity === 'error').length
 
   // open shows a prompt from list (or a new one) in the editor, and reports whether it
@@ -472,7 +472,7 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
                 <ul>
                   {list.map((p) => {
                     const current = selection?.kind === 'prompt' && selection.id === p.id
-                    const places = (p.usage.orgs?.length ?? 0) + (p.usage.repos?.length ?? 0)
+                    const places = p.usage.orgs.length + p.usage.repos.length
 
                     return (
                       <li key={p.id}>

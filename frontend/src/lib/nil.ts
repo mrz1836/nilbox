@@ -31,7 +31,7 @@ export function nilStats(snapshot: InboxSnapshot, now: Date): NilStats {
   const dismissed = new Set<number>()
 
   for (const list of [snapshot.reviewRequested, snapshot.authored, snapshot.assigned]) {
-    for (const item of list.items ?? []) {
+    for (const item of list.items) {
       if (isDismissed(item)) {
         dismissed.add(item.id)
       } else if (isSnoozed(item, now)) {

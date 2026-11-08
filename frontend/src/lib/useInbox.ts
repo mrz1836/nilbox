@@ -4,7 +4,7 @@ import {
   dismissItem,
   refreshItem as refreshInboxItem,
   getInboxSnapshot,
-  onInboxUpdated,
+  on,
   pinItem,
   refreshInbox,
   restoreItem,
@@ -106,7 +106,7 @@ export function useInbox(clock: () => Date = systemClock): InboxState {
 
     load()
 
-    const stop = onInboxUpdated(load)
+    const stop = on('inbox:updated', load)
     const tick = setInterval(() => {
       setNow(clock())
     }, tickMs)

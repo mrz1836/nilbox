@@ -3,563 +3,281 @@
 // here (an ESLint rule enforces it), so another shell or an OS port replaces this module's
 // implementation and never its callers.
 
-import { Browser, Events, Window } from '@wailsio/runtime'
+import { Browser, Events, Window, type CancellablePromise } from '@wailsio/runtime'
 
-import { InboxReveal, InboxUpdated, NotificationsUpdated, WorktreesUpdated } from '../../bindings/events'
-import type { RevealItem } from '../../bindings/github.com/mrz1836/nilbox/internal/event'
-import { Service as AppInfo } from '../../bindings/github.com/mrz1836/nilbox/internal/appinfo'
-import type { Info } from '../../bindings/github.com/mrz1836/nilbox/internal/appinfo'
-import { Service as Inbox } from '../../bindings/github.com/mrz1836/nilbox/internal/inbox'
-import type { Snapshot as InboxSnapshot } from '../../bindings/github.com/mrz1836/nilbox/internal/inbox'
-import { Service as LaunchDefaultsService } from '../../bindings/github.com/mrz1836/nilbox/internal/launchdefaults'
-import type { FieldError } from '../../bindings/github.com/mrz1836/nilbox/internal/agent'
-import type {
-  Defaults as LaunchDefaults,
-  Input as LaunchDefaultsInput,
-  Target as LaunchTarget,
-} from '../../bindings/github.com/mrz1836/nilbox/internal/launchdefaults'
-import { Service as Launcher } from '../../bindings/github.com/mrz1836/nilbox/internal/launcher'
-import type {
-  CloneTarget,
-  ItemResolution,
-  LaunchRequest,
-  LaunchResult,
-  Preview as LaunchPreview,
-  Resolution,
-} from '../../bindings/github.com/mrz1836/nilbox/internal/launcher'
-import { Service as Notifications } from '../../bindings/github.com/mrz1836/nilbox/internal/notify'
-import type { BannerStatus, Log as NotificationLog } from '../../bindings/github.com/mrz1836/nilbox/internal/notify'
-import { Service as Profiles } from '../../bindings/github.com/mrz1836/nilbox/internal/profiles'
-import type { Profile } from '../../bindings/github.com/mrz1836/nilbox/internal/profiles'
-import { Service as PromptsService } from '../../bindings/github.com/mrz1836/nilbox/internal/prompts'
-import type {
-  CheckRequest as PromptCheckRequest,
-  CheckResult as PromptCheckResult,
-  DefaultPrompts,
-  Input as PromptInput,
-  Prompt,
-  Variable as PromptVariable,
-} from '../../bindings/github.com/mrz1836/nilbox/internal/prompts'
-import type { Kind as ItemKind } from '../../bindings/github.com/mrz1836/nilbox/internal/item'
-import type { ID as TerminalID } from '../../bindings/github.com/mrz1836/nilbox/internal/launcher/terminal'
-import type { Kind as NotificationKind } from '../../bindings/github.com/mrz1836/nilbox/internal/notifyprefs'
-import { Service as SettingsService } from '../../bindings/github.com/mrz1836/nilbox/internal/settings'
-import type { ListKey, Settings, Theme, WindowSize } from '../../bindings/github.com/mrz1836/nilbox/internal/settings'
-import type {
-  Check as FileCheck,
-  PathMatch as SensitivePathMatch,
-  Scope as SensitiveScope,
-} from '../../bindings/github.com/mrz1836/nilbox/internal/sensitive'
-import type { Rules as SnoozeRules } from '../../bindings/github.com/mrz1836/nilbox/internal/snooze'
-import { Service as Worktrees } from '../../bindings/github.com/mrz1836/nilbox/internal/worktrees'
-import type {
-  Cleanup as WorktreeCleanup,
-  RemoveResult,
-  Snapshot as WorktreesSnapshot,
-  SweepReport,
-} from '../../bindings/github.com/mrz1836/nilbox/internal/worktrees'
+// The generated event bindings register the events' data with the runtime, and declare
+// each event's name and payload type for Events.On.
+import '../../bindings/events'
+import type * as agent from '../../bindings/github.com/mrz1836/nilbox/internal/agent'
+import * as appinfo from '../../bindings/github.com/mrz1836/nilbox/internal/appinfo'
+import * as inbox from '../../bindings/github.com/mrz1836/nilbox/internal/inbox'
+import type * as item from '../../bindings/github.com/mrz1836/nilbox/internal/item'
+import * as launchdefaults from '../../bindings/github.com/mrz1836/nilbox/internal/launchdefaults'
+import * as launcher from '../../bindings/github.com/mrz1836/nilbox/internal/launcher'
+import type * as terminal from '../../bindings/github.com/mrz1836/nilbox/internal/launcher/terminal'
+import * as notify from '../../bindings/github.com/mrz1836/nilbox/internal/notify'
+import type * as notifyprefs from '../../bindings/github.com/mrz1836/nilbox/internal/notifyprefs'
+import * as profiles from '../../bindings/github.com/mrz1836/nilbox/internal/profiles'
+import * as prompts from '../../bindings/github.com/mrz1836/nilbox/internal/prompts'
+import type * as sensitive from '../../bindings/github.com/mrz1836/nilbox/internal/sensitive'
+import * as settings from '../../bindings/github.com/mrz1836/nilbox/internal/settings'
+import type * as snooze from '../../bindings/github.com/mrz1836/nilbox/internal/snooze'
+import * as worktrees from '../../bindings/github.com/mrz1836/nilbox/internal/worktrees'
 
-// The bound services' data types, generated from the Go structs, and the closed sets of
-// values their fields take, generated from the Go constants as unions of string literals.
-// Callers use these and never declare their own copies.
-export type { DataReset, Info, ResetReason } from '../../bindings/github.com/mrz1836/nilbox/internal/appinfo'
-export type {
-  Account,
-  Checks,
-  Details as ItemDetails,
-  Item as InboxItem,
-  Label,
-  Reviews,
-  List as InboxList,
-  Rate,
-  RateGauge,
-  Snapshot as InboxSnapshot,
-} from '../../bindings/github.com/mrz1836/nilbox/internal/inbox'
-export type { Agent, FieldError } from '../../bindings/github.com/mrz1836/nilbox/internal/agent'
-export type { RevealItem } from '../../bindings/github.com/mrz1836/nilbox/internal/event'
-export type { Kind as ItemKind } from '../../bindings/github.com/mrz1836/nilbox/internal/item'
-export type { Class as TrustClass } from '../../bindings/github.com/mrz1836/nilbox/internal/trust'
-export type {
-  Defaults as LaunchDefaults,
-  Input as LaunchDefaultsInput,
-  Target as LaunchTarget,
-} from '../../bindings/github.com/mrz1836/nilbox/internal/launchdefaults'
-export type {
-  CloneTarget,
-  Hold as LaunchHold,
-  HoldReason,
-  ItemResolution,
-  LaunchRequest,
-  LaunchResult,
-  Preview as LaunchPreview,
-  PromptChoice,
-  Resolution,
-  Setting as LaunchSetting,
-  Source as LaunchSource,
-  Toggle as LaunchToggle,
-} from '../../bindings/github.com/mrz1836/nilbox/internal/launcher'
-export type { ID as TerminalID } from '../../bindings/github.com/mrz1836/nilbox/internal/launcher/terminal'
-export type {
-  BannerStatus,
-  Log as NotificationLog,
-  Notification as AppNotification,
-} from '../../bindings/github.com/mrz1836/nilbox/internal/notify'
-export type { Kind as NotificationKind } from '../../bindings/github.com/mrz1836/nilbox/internal/notifyprefs'
-export type { Profile } from '../../bindings/github.com/mrz1836/nilbox/internal/profiles'
-export type {
-  Category as SensitiveCategory,
-  Check as FileCheck,
-  Config as SensitiveConfig,
-  Finding as SensitiveFile,
-  Group as SensitiveGroup,
-  Level as SensitiveLevel,
-  PathMatch as SensitivePathMatch,
-  Scope as SensitiveScope,
-  Status as FileCheckStatus,
-} from '../../bindings/github.com/mrz1836/nilbox/internal/sensitive'
-export type {
-  AppliesTo as PromptAppliesTo,
-  CheckRequest as PromptCheckRequest,
-  CheckResult as PromptCheckResult,
-  DefaultPrompts,
-  Diagnostic,
-  Input as PromptInput,
-  Prompt,
-  Severity as DiagnosticSeverity,
-  Usage as PromptUsage,
-  Variable as PromptVariable,
-} from '../../bindings/github.com/mrz1836/nilbox/internal/prompts'
-export type { ListKey, Settings, Theme, WindowSize } from '../../bindings/github.com/mrz1836/nilbox/internal/settings'
-export type {
-  Reasons as WakeReasons,
-  ReviewOutcome as WakeReview,
-  ReviewRule as WakeReviewRule,
-  Rules as SnoozeRules,
-} from '../../bindings/github.com/mrz1836/nilbox/internal/snooze'
-export type {
-  Cleanup as WorktreeCleanup,
-  ItemStatus as LinkedItemStatus,
-  LinkedItem,
-  RemoveResult,
-  Repo as WorktreeRepo,
-  Snapshot as WorktreesSnapshot,
-  Stage as WorktreeStage,
-  SweepReport,
-  Worktree,
-} from '../../bindings/github.com/mrz1836/nilbox/internal/worktrees'
+export type { CancellablePromise }
 
-// App
+// NonNullLists is T with every list and map in it, at any depth, typed as present. The
+// generated bindings type a Go slice or map as `T[] | null`, but Go sends every one the
+// window reads as [] or {}, never null (internal/core/bound_test.go holds every bound
+// method to it), so the types are narrowed once, here, and callers need no fallback. A
+// value that is null for a reason, such as an optional struct or a choice left unset,
+// keeps its null.
+type NonNullLists<T> = null extends T
+  ? Exclude<T, null> extends readonly unknown[] | Record<string, unknown>
+    ? Present<Exclude<T, null>>
+    : Present<Exclude<T, null>> | null
+  : Present<T>
 
-export function getAppInfo(): Promise<Info> {
-  return AppInfo.Info()
+// Present applies NonNullLists to a value's elements or fields.
+type Present<T> = T extends readonly (infer E)[]
+  ? NonNullLists<E>[]
+  : T extends object
+    ? { [K in keyof T]: NonNullLists<T[K]> }
+    : T
+
+// Narrowed is a generated service with NonNullLists applied to every call's result. A call
+// still returns Wails' CancellablePromise, so a caller that loses interest cancels it.
+type Narrowed<S> = {
+  [K in keyof S]: S[K] extends (...args: infer A) => CancellablePromise<infer R>
+    ? (...args: A) => CancellablePromise<NonNullLists<R>>
+    : S[K]
 }
 
-// reportFirstPaint tells the shell the window painted its first frame (startup timing).
-export function reportFirstPaint(): Promise<void> {
-  return AppInfo.ReportFirstPaint()
+// narrow returns a generated service as it is, typed as Narrowed. Nothing is checked at
+// run time: the guarantee is Go's.
+function narrow<S>(service: S): Narrowed<S> {
+  return service as Narrowed<S>
 }
 
-// openInBrowser opens a URL, such as a pull request, in the default browser.
-export function openInBrowser(url: string): Promise<void> {
-  return Browser.OpenURL(url)
-}
+// The bound services' data types, generated from the Go structs and narrowed, and the
+// closed sets of values their fields take, generated from the Go constants as unions of
+// string literals. Callers use these and never declare their own copies.
 
-// Inbox
+export type Agent = NonNullLists<agent.Agent>
 
-export function getInboxSnapshot(): Promise<InboxSnapshot> {
-  return Inbox.Snapshot()
-}
+export type DataReset = NonNullLists<appinfo.DataReset>
+export type Info = NonNullLists<appinfo.Info>
 
-export function refreshInbox(): Promise<InboxSnapshot> {
-  return Inbox.Refresh()
-}
+export type Account = NonNullLists<inbox.Account>
+export type Checks = NonNullLists<inbox.Checks>
+export type ItemDetails = NonNullLists<inbox.Details>
+export type InboxItem = NonNullLists<inbox.Item>
+export type Label = NonNullLists<inbox.Label>
+export type InboxList = NonNullLists<inbox.List>
+export type Rate = NonNullLists<inbox.Rate>
+export type RateGauge = NonNullLists<inbox.RateGauge>
+export type Reviews = NonNullLists<inbox.Reviews>
+export type InboxSnapshot = NonNullLists<inbox.Snapshot>
 
-// refreshItem reads one item from GitHub again, without refreshing the rest of the inbox,
-// and returns the new inbox. An item merged or closed since leaves its lists.
-export function refreshItem(id: number): Promise<InboxSnapshot> {
-  return Inbox.RefreshItem(id)
-}
+export type ItemKind = item.Kind
 
-// dismissItem hides an item from every list until it is restored, and returns the new
-// inbox. Triage stays on this machine.
-export function dismissItem(id: number): Promise<InboxSnapshot> {
-  return Inbox.Dismiss(id)
-}
+export type LaunchDefaults = NonNullLists<launchdefaults.Defaults>
+export type LaunchDefaultsInput = NonNullLists<launchdefaults.Input>
+export type LaunchTarget = NonNullLists<launchdefaults.Target>
 
-// snoozeItem hides an item from every list for a number of days, and returns the new
-// inbox. Triage stays on this machine.
-export function snoozeItem(id: number, days: number): Promise<InboxSnapshot> {
-  return Inbox.Snooze(id, days)
-}
+export type CloneTarget = NonNullLists<launcher.CloneTarget>
+export type LaunchHold = NonNullLists<launcher.Hold>
+export type ItemResolution = NonNullLists<launcher.ItemResolution>
+export type LaunchRequest = NonNullLists<launcher.LaunchRequest>
+export type LaunchResult = NonNullLists<launcher.LaunchResult>
+export type LaunchPreview = NonNullLists<launcher.Preview>
+export type Resolution = NonNullLists<launcher.Resolution>
+export type LaunchSetting = NonNullLists<launcher.Setting>
+export type LaunchSource = launcher.Source
+export type TerminalID = terminal.ID
 
-// restoreItem brings a dismissed or snoozed item back to its lists, and returns the new
-// inbox.
-export function restoreItem(id: number): Promise<InboxSnapshot> {
-  return Inbox.Restore(id)
-}
+export type AppNotification = NonNullLists<notify.Notification>
+export type NotificationLog = NonNullLists<notify.Log>
+export type BannerStatus = notify.BannerStatus
+export type NotificationKind = notifyprefs.Kind
 
-// pinItem keeps an item at the top of its lists, the most recently pinned first, and
-// returns the new inbox. Triage stays on this machine.
-export function pinItem(id: number): Promise<InboxSnapshot> {
-  return Inbox.Pin(id)
-}
+export type Profile = NonNullLists<profiles.Profile>
 
-// unpinItem puts a pinned item back among the rest, and returns the new inbox.
-export function unpinItem(id: number): Promise<InboxSnapshot> {
-  return Inbox.Unpin(id)
-}
+export type PromptCheckRequest = NonNullLists<prompts.CheckRequest>
+export type PromptCheckResult = NonNullLists<prompts.CheckResult>
+export type DefaultPrompts = NonNullLists<prompts.DefaultPrompts>
+export type Diagnostic = NonNullLists<prompts.Diagnostic>
+export type PromptInput = NonNullLists<prompts.Input>
+export type Prompt = NonNullLists<prompts.Prompt>
+export type PromptUsage = NonNullLists<prompts.Usage>
+export type PromptVariable = NonNullLists<prompts.Variable>
+export type PromptAppliesTo = prompts.AppliesTo
+
+export type SensitiveCategory = NonNullLists<sensitive.Category>
+export type FileCheck = NonNullLists<sensitive.Check>
+export type SensitiveFile = NonNullLists<sensitive.Finding>
+export type SensitiveGroup = NonNullLists<sensitive.Group>
+export type SensitivePathMatch = NonNullLists<sensitive.PathMatch>
+export type SensitiveLevel = sensitive.Level
+export type SensitiveScope = sensitive.Scope
+
+export type Settings = NonNullLists<settings.Settings>
+export type WindowSize = NonNullLists<settings.WindowSize>
+export type ListKey = settings.ListKey
+export type Theme = settings.Theme
+
+export type SnoozeRules = NonNullLists<snooze.Rules>
+export type WakeReasons = NonNullLists<snooze.Reasons>
+export type WakeReview = snooze.ReviewOutcome
+
+export type WorktreeCleanup = NonNullLists<worktrees.Cleanup>
+export type LinkedItem = NonNullLists<worktrees.LinkedItem>
+export type RemoveResult = NonNullLists<worktrees.RemoveResult>
+export type WorktreeRepo = NonNullLists<worktrees.Repo>
+export type WorktreesSnapshot = NonNullLists<worktrees.Snapshot>
+export type SweepReport = NonNullLists<worktrees.SweepReport>
+export type Worktree = NonNullLists<worktrees.Worktree>
+export type WorktreeStage = worktrees.Stage
+
+// The bound calls, under the names the app knows them by. What each one does is the Go
+// method's doc comment, which the generated service carries.
+
+export const { Info: getAppInfo, ReportFirstPaint: reportFirstPaint } = narrow(appinfo.Service)
+
+export const {
+  Snapshot: getInboxSnapshot,
+  Refresh: refreshInbox,
+  RefreshItem: refreshItem,
+  Dismiss: dismissItem,
+  Snooze: snoozeItem,
+  Restore: restoreItem,
+  Pin: pinItem,
+  Unpin: unpinItem,
+} = narrow(inbox.Service)
+
+export const { List: listProfiles } = narrow(profiles.Service)
+
+export const {
+  Launch: launch,
+  Resolve: resolveLaunch,
+  ResolveItems: resolveLaunches,
+  Preview: previewLaunch,
+  CloneTarget: cloneTarget,
+  Clone: cloneRepo,
+} = narrow(launcher.Service)
+
+export const {
+  List: listPrompts,
+  Create: createPrompt,
+  Update: updatePrompt,
+  Delete: deletePrompt,
+  Duplicate: duplicatePrompt,
+  Reset: resetPrompt,
+  Check: checkPrompt,
+  Variables: listPromptVariables,
+  Defaults: getDefaultPrompts,
+  SetDefault: setDefaultPrompt,
+} = narrow(prompts.Service)
+
+export const {
+  List: listLaunchDefaults,
+  Check: checkLaunchDefaults,
+  Save: saveLaunchDefaults,
+  Remove: removeLaunchDefaults,
+  Targets: listLaunchTargets,
+} = narrow(launchdefaults.Service)
+
+// The settings setters store one change and return every setting as stored after it.
+export const {
+  Get: getSettings,
+  SetTerminal: setTerminal,
+  SetCloneRoot: setCloneRoot,
+  SetDefaultProfile: setDefaultProfile,
+  SetWorktreeDefault: setWorktreeDefault,
+  SetWorktreeAutoCleanup: setWorktreeAutoCleanup,
+  SetMenuBar: setMenuBar,
+  SetNotificationBanner: setNotificationBanner,
+  SetSnoozeDays: setSnoozeDays,
+  SetSnoozeWake: setSnoozeWake,
+  SetTrustedBots: setTrustedBots,
+  ResetTrustedBots: resetTrustedBots,
+  SetSensitiveScope: setSensitiveScope,
+  SetSensitiveCategory: setSensitiveCategory,
+  SetSensitivePatterns: setSensitivePatterns,
+  MatchSensitivePath: matchSensitivePath,
+  Theme: getTheme,
+  SetTheme: setTheme,
+  CollapsedSections: getCollapsedSections,
+  SetSectionCollapsed: setSectionCollapsed,
+} = narrow(settings.Service)
+
+export const {
+  List: listWorktrees,
+  Remove: removeWorktree,
+  ForceRemove: forceRemoveWorktree,
+  RemoveAllClean: removeAllCleanWorktrees,
+  Prune: pruneWorktrees,
+  Unlock: unlockWorktree,
+  CleanUp: cleanUpWorktree,
+  CleanUpFinished: cleanUpFinishedWorktrees,
+  Sweep: sweepWorktrees,
+  LastSweep: lastWorktreeSweep,
+  RecentCleanups: recentCleanups,
+  ClearCleanups: clearCleanups,
+} = narrow(worktrees.Service)
+
+export const {
+  List: listNotifications,
+  MarkAllRead: markNotificationsRead,
+  Clear: clearNotifications,
+  BannerStatus: notificationBannerStatus,
+  SendTest: sendTestNotification,
+} = narrow(notify.Service)
 
 // checkItemFiles checks a pull request's changed files against GitHub now, stores the
 // outcome (the inbox is updated with it), and returns it. It fails for an item whose files
 // are not checked.
-export async function checkItemFiles(id: number): Promise<FileCheck> {
-  const check = await Inbox.CheckFiles(id)
+export function checkItemFiles(id: number): CancellablePromise<FileCheck> {
+  return narrow(inbox.Service)
+    .CheckFiles(id)
+    .then((check) => {
+      if (check === null) {
+        throw new Error('This item’s files are not checked.')
+      }
 
-  if (check === null) {
-    throw new Error('This item’s files are not checked.')
-  }
-
-  return check
-}
-
-// onInboxUpdated calls listener whenever the stored inbox changed, and returns a function
-// that stops listening.
-export function onInboxUpdated(listener: () => void): () => void {
-  return Events.On(InboxUpdated, () => {
-    listener()
-  })
-}
-
-// Launch
-
-export async function listProfiles(): Promise<Profile[]> {
-  return (await Profiles.List()) ?? []
-}
-
-export function launch(request: LaunchRequest): Promise<LaunchResult> {
-  return Launcher.Launch(request)
-}
-
-// resolveLaunch returns what a launch on one item resolves to with the request's choices.
-export function resolveLaunch(request: LaunchRequest): Promise<Resolution> {
-  return Launcher.Resolve(request)
-}
-
-// resolveLaunches returns each item's default launch settings.
-export async function resolveLaunches(ids: number[]): Promise<ItemResolution[]> {
-  return (await Launcher.ResolveItems(ids)) ?? []
-}
-
-// previewLaunch plans a launch without starting it: the command and the filled-in prompt.
-export function previewLaunch(request: LaunchRequest): Promise<LaunchPreview> {
-  return Launcher.Preview(request)
-}
-
-// cloneTarget reports whether an item's repository has a local clone and, when it has
-// none, where cloneRepo would create one and whether that path is already taken.
-export function cloneTarget(itemId: number): Promise<CloneTarget> {
-  return Launcher.CloneTarget(itemId)
-}
-
-// cloneRepo clones an item's repository into <clone root>/<name> with `gh repo clone`,
-// refusing a path that already exists, and remembers the new clone for the next launch.
-export function cloneRepo(itemId: number): Promise<CloneTarget> {
-  return Launcher.Clone(itemId)
-}
-
-// Prompts
-
-export async function listPrompts(): Promise<Prompt[]> {
-  return (await PromptsService.List()) ?? []
-}
-
-export function createPrompt(input: PromptInput): Promise<Prompt> {
-  return PromptsService.Create(input)
-}
-
-export function updatePrompt(id: number, input: PromptInput): Promise<Prompt> {
-  return PromptsService.Update(id, input)
-}
-
-export function deletePrompt(id: number): Promise<void> {
-  return PromptsService.Delete(id)
-}
-
-export function duplicatePrompt(id: number): Promise<Prompt> {
-  return PromptsService.Duplicate(id)
-}
-
-export function resetPrompt(id: number): Promise<Prompt> {
-  return PromptsService.Reset(id)
-}
-
-// checkPrompt checks a prompt being edited and fills it in for a preview.
-export function checkPrompt(request: PromptCheckRequest): Promise<PromptCheckResult> {
-  return PromptsService.Check(request)
-}
-
-export async function listPromptVariables(): Promise<PromptVariable[]> {
-  return (await PromptsService.Variables()) ?? []
-}
-
-export function getDefaultPrompts(): Promise<DefaultPrompts> {
-  return PromptsService.Defaults()
-}
-
-export function setDefaultPrompt(kind: ItemKind, id: number): Promise<void> {
-  return PromptsService.SetDefault(kind, id)
-}
-
-// Launch defaults
-
-export async function listLaunchDefaults(): Promise<LaunchDefaults[]> {
-  return (await LaunchDefaultsService.List()) ?? []
-}
-
-// checkLaunchDefaults validates launch defaults being edited.
-export async function checkLaunchDefaults(input: LaunchDefaultsInput): Promise<FieldError[]> {
-  return (await LaunchDefaultsService.Check(input)) ?? []
-}
-
-export function saveLaunchDefaults(input: LaunchDefaultsInput): Promise<LaunchDefaults> {
-  return LaunchDefaultsService.Save(input)
-}
-
-export function removeLaunchDefaults(owner: string, name: string): Promise<void> {
-  return LaunchDefaultsService.Remove(owner, name)
-}
-
-export async function listLaunchTargets(): Promise<LaunchTarget[]> {
-  return (await LaunchDefaultsService.Targets()) ?? []
-}
-
-// Settings
-
-export function getSettings(): Promise<Settings> {
-  return SettingsService.Get()
-}
-
-// The settings setters store one change and return every setting as stored after it.
-
-export function setTerminal(terminal: TerminalID): Promise<Settings> {
-  return SettingsService.SetTerminal(terminal)
-}
-
-export function setCloneRoot(root: string): Promise<Settings> {
-  return SettingsService.SetCloneRoot(root)
-}
-
-export function setDefaultProfile(name: string): Promise<Settings> {
-  return SettingsService.SetDefaultProfile(name)
-}
-
-export function setWorktreeDefault(on: boolean): Promise<Settings> {
-  return SettingsService.SetWorktreeDefault(on)
-}
-
-// setWorktreeAutoCleanup stores whether finished worktrees are cleaned up on their own once
-// their pull request merges or their issue closes.
-export function setWorktreeAutoCleanup(on: boolean): Promise<Settings> {
-  return SettingsService.SetWorktreeAutoCleanup(on)
-}
-
-// setMenuBar shows or hides the menu bar icon. While it shows, closing the window keeps the
-// app running there.
-export function setMenuBar(on: boolean): Promise<Settings> {
-  return SettingsService.SetMenuBar(on)
-}
-
-// setNotificationBanner turns the banners of one kind of notification on or off. The
-// notification history keeps every kind either way.
-export function setNotificationBanner(kind: NotificationKind, on: boolean): Promise<Settings> {
-  return SettingsService.SetNotificationBanner(kind, on)
-}
-
-// setSnoozeDays stores how many days an inbox row's Snooze button hides an item.
-export function setSnoozeDays(days: number): Promise<Settings> {
-  return SettingsService.SetSnoozeDays(days)
-}
-
-// setSnoozeWake stores which new activity ends a snooze early.
-export function setSnoozeWake(rules: SnoozeRules): Promise<Settings> {
-  return SettingsService.SetSnoozeWake(rules)
+      return check
+    })
 }
 
 // setWindowSize stores the size the window opens at, then resizes the open window to it.
-export async function setWindowSize(size: WindowSize): Promise<Settings> {
-  const settings = await SettingsService.SetWindowSize(size)
-  await Window.SetSize(size.width, size.height)
+// A size the store refuses leaves the window as it is.
+export function setWindowSize(size: WindowSize): CancellablePromise<Settings> {
+  return narrow(settings.Service)
+    .SetWindowSize(size)
+    .then(async (stored) => {
+      await Window.SetSize(size.width, size.height)
 
-  return settings
+      return stored
+    })
 }
 
-// setTrustedBots stores the bots whose items are trusted like a collaborator's.
-export function setTrustedBots(bots: string[]): Promise<Settings> {
-  return SettingsService.SetTrustedBots(bots)
+// openExternal opens a URL, such as a pull request, in the default browser. Nothing waits
+// on it, so a failure goes to the console, as every failure no one waits on does.
+export function openExternal(url: string): void {
+  Browser.OpenURL(url).catch((err: unknown) => {
+    console.error(`could not open ${url} in the browser`, err)
+  })
 }
 
-// resetTrustedBots goes back to the default trusted bots.
-export function resetTrustedBots(): Promise<Settings> {
-  return SettingsService.ResetTrustedBots()
-}
+// WindowEvent names an event the shell sends the window, and WindowEventData is what the
+// event carries. Both come from the Go event types, through the generated bindings.
+type WindowEvent = keyof Events.CustomEvents
+type WindowEventData<E extends WindowEvent> = NonNullLists<Events.CustomEvents[E]>
 
-// setSensitiveScope stores whose pull requests have their changed files checked:
-// "outside" for outside contributors, or "collaborators" for collaborators' too.
-export function setSensitiveScope(scope: SensitiveScope): Promise<Settings> {
-  return SettingsService.SetSensitiveScope(scope)
-}
-
-// setSensitiveCategory turns a built-in category of sensitive files on or off.
-export function setSensitiveCategory(id: string, on: boolean): Promise<Settings> {
-  return SettingsService.SetSensitiveCategory(id, on)
-}
-
-// setSensitivePatterns stores the user's own patterns of sensitive files, in order.
-export function setSensitivePatterns(patterns: string[]): Promise<Settings> {
-  return SettingsService.SetSensitivePatterns(patterns)
-}
-
-// matchSensitivePath reports whether a path counts as sensitive under the stored
-// settings, and which category and pattern it matches.
-export function matchSensitivePath(path: string): Promise<SensitivePathMatch> {
-  return SettingsService.MatchSensitivePath(path)
-}
-
-// getTheme reads the stored theme.
-export function getTheme(): Promise<Theme> {
-  return SettingsService.Theme()
-}
-
-// setTheme stores the theme, and the desktop shell brings the window's native appearance
-// along with it. The page switches itself.
-export function setTheme(theme: Theme): Promise<Settings> {
-  return SettingsService.SetTheme(theme)
-}
-
-// getCollapsedSections lists the inbox sections the user collapsed, in the inbox's order.
-export async function getCollapsedSections(): Promise<ListKey[]> {
-  return (await SettingsService.CollapsedSections()) ?? []
-}
-
-// setSectionCollapsed stores whether an inbox section is collapsed, so the inbox opens the
-// same way at the next launch.
-export function setSectionCollapsed(section: ListKey, collapsed: boolean): Promise<Settings> {
-  return SettingsService.SetSectionCollapsed(section, collapsed)
-}
-
-// Worktrees
-
-export function listWorktrees(): Promise<WorktreesSnapshot> {
-  return Worktrees.List()
-}
-
-export function removeWorktree(repoPath: string, path: string): Promise<void> {
-  return Worktrees.Remove(repoPath, path)
-}
-
-export function forceRemoveWorktree(repoPath: string, path: string): Promise<void> {
-  return Worktrees.ForceRemove(repoPath, path)
-}
-
-export async function removeAllCleanWorktrees(): Promise<RemoveResult[]> {
-  return (await Worktrees.RemoveAllClean()) ?? []
-}
-
-export function pruneWorktrees(repoPath: string): Promise<void> {
-  return Worktrees.Prune(repoPath)
-}
-
-// unlockWorktree releases a lock an agent session wrote, once that session has ended.
-export function unlockWorktree(repoPath: string, path: string): Promise<void> {
-  return Worktrees.Unlock(repoPath, path)
-}
-
-// cleanUpWorktree removes one finished worktree, and its own branch, after checking it
-// again.
-export function cleanUpWorktree(repoPath: string, path: string): Promise<RemoveResult> {
-  return Worktrees.CleanUp(repoPath, path)
-}
-
-export async function cleanUpFinishedWorktrees(): Promise<RemoveResult[]> {
-  return (await Worktrees.CleanUpFinished()) ?? []
-}
-
-// sweepWorktrees runs the automatic cleanup now, as it runs on its own every few minutes.
-export function sweepWorktrees(): Promise<SweepReport> {
-  return Worktrees.Sweep()
-}
-
-// recentCleanups lists the worktrees cleaned up most recently, newest first, by hand or by
-// the automatic sweep. The history survives restarts.
-export async function recentCleanups(): Promise<WorktreeCleanup[]> {
-  return (await Worktrees.RecentCleanups()) ?? []
-}
-
-// clearCleanups forgets the history of cleaned-up worktrees. It removes nothing else.
-export function clearCleanups(): Promise<void> {
-  return Worktrees.ClearCleanups()
-}
-
-// lastWorktreeSweep returns what the latest automatic sweep found and did; its seq is 0
-// before the first one.
-export function lastWorktreeSweep(): Promise<SweepReport> {
-  return Worktrees.LastSweep()
-}
-
-// onWorktreesUpdated calls listener whenever an automatic sweep changed something, and
+// on calls listener with the data of every event named event that the shell sends, and
 // returns a function that stops listening.
-export function onWorktreesUpdated(listener: () => void): () => void {
-  return Events.On(WorktreesUpdated, () => {
-    listener()
-  })
-}
-
-// Notifications
-
-// listNotifications returns the notification history, newest first, and how many are
-// unread.
-export async function listNotifications(): Promise<NotificationLog> {
-  const log = await Notifications.List()
-
-  return { items: log.items ?? [], unread: log.unread }
-}
-
-// markNotificationsRead marks the whole history read, as opening it does.
-export function markNotificationsRead(): Promise<void> {
-  return Notifications.MarkAllRead()
-}
-
-// clearNotifications forgets the notification history.
-export function clearNotifications(): Promise<void> {
-  return Notifications.Clear()
-}
-
-// notificationBannerStatus reports whether banners are shown: 'on', 'off' when the user has
-// not allowed them, or 'unavailable' when this build cannot show them.
-export function notificationBannerStatus(): Promise<BannerStatus> {
-  return Notifications.BannerStatus()
-}
-
-// sendTestNotification shows a sample banner, asking the user to allow them first if they
-// have not been asked.
-export function sendTestNotification(): Promise<void> {
-  return Notifications.SendTest()
-}
-
-// onNotificationsUpdated calls listener whenever the notification log changed, and returns
-// a function that stops listening.
-export function onNotificationsUpdated(listener: () => void): () => void {
-  return Events.On(NotificationsUpdated, () => {
-    listener()
-  })
-}
-
-// onRevealItem calls listener with each item the shell asks the window to show: a click on
-// it in the menu bar, or on its notification. The shell sends only requests that name an
-// item or its URL on GitHub, for when the item is no longer in the inbox. It returns a
-// function that stops listening.
-export function onRevealItem(listener: (request: RevealItem) => void): () => void {
-  return Events.On(InboxReveal, (event) => {
-    listener(event.data)
+export function on<E extends WindowEvent>(event: E, listener: (data: WindowEventData<E>) => void): () => void {
+  return Events.On(event, (received) => {
+    listener(received.data as unknown as WindowEventData<E>)
   })
 }

@@ -8,7 +8,7 @@ import { SensitiveFiles } from './SensitiveFiles'
 
 const platform = vi.hoisted(() => ({
   checkItemFiles: vi.fn(),
-  openInBrowser: vi.fn(),
+  openExternal: vi.fn(),
 }))
 
 vi.mock('../platform', () => platform)
@@ -27,7 +27,6 @@ async function openPanel(name: RegExp) {
 
 beforeEach(() => {
   platform.checkItemFiles.mockResolvedValue(fileCheck())
-  platform.openInBrowser.mockResolvedValue(undefined)
 })
 
 describe('SensitiveFiles', () => {
@@ -57,25 +56,11 @@ describe('SensitiveFiles', () => {
     expect(workflows.getByText('moved from .github/workflows/codeql.yml')).toBeInTheDocument()
 
     await userEvent.click(workflows.getByRole('button', { name: /docs\/old-codeql\.yml/ }))
-    expect(platform.openInBrowser).toHaveBeenCalledWith(
+    expect(platform.openExternal).toHaveBeenCalledWith(
       'https://github.com/acme-org/example-repo/pull/7/files#diff-bbbb',
     )
 
     expect(panel.getByText(/Opening a session on it asks first/)).toBeInTheDocument()
-  })
-
-  it('logs a diff it could not open', async () => {
-    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    platform.openInBrowser.mockRejectedValue(new Error('no browser'))
-    renderChip()
-
-    const panel = await openPanel(/^Changes sensitive files/)
-    await userEvent.click(panel.getByRole('button', { name: /\.claude\/settings\.json/ }))
-
-    await waitFor(() => {
-      expect(logged).toHaveBeenCalledWith('could not open the file in the browser', expect.any(Error))
-    })
-    logged.mockRestore()
   })
 
   it('shows a file it cannot link as plain text', async () => {

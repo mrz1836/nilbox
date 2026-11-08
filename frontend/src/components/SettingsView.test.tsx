@@ -10,7 +10,7 @@ import { SettingsView, type SettingsSection } from './SettingsView'
 
 const platform = vi.hoisted(() => ({
   getAppInfo: vi.fn(),
-  openInBrowser: vi.fn(),
+  openExternal: vi.fn(),
   setCloneRoot: vi.fn(),
   setDefaultProfile: vi.fn(),
   setTerminal: vi.fn(),
@@ -128,21 +128,13 @@ describe('SettingsView', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'View on GitHub' }))
 
-    expect(platform.openInBrowser).toHaveBeenCalledWith('https://github.com/octo-user')
+    expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/octo-user')
   })
 
-  it('logs a profile that could not be opened', async () => {
-    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    platform.openInBrowser.mockRejectedValue(new Error('no browser'))
+  it('shows the login for an account with no name', () => {
     renderSettings({ who: account({ name: '' }) })
 
     expect(screen.getByText('octo-user')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'View on GitHub' }))
-
-    await waitFor(() => {
-      expect(logged).toHaveBeenCalled()
-    })
-    logged.mockRestore()
   })
 
   it('says when no one is signed in yet', () => {
@@ -517,23 +509,9 @@ describe('SettingsView', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Report a bug' }))
 
-    expect(platform.openInBrowser).toHaveBeenCalledWith(
+    expect(platform.openExternal).toHaveBeenCalledWith(
       'https://github.com/acme-org/example-repo/issues/new?template=bug_report.yml',
     )
-  })
-
-  it('logs a bug report that could not be opened', async () => {
-    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    platform.openInBrowser.mockRejectedValue(new Error('no browser'))
-    renderSettings()
-    await openSection('About')
-
-    await userEvent.click(await screen.findByRole('button', { name: 'Report a bug' }))
-
-    await waitFor(() => {
-      expect(logged).toHaveBeenCalled()
-    })
-    logged.mockRestore()
   })
 
   it('shows a placeholder while the version loads', async () => {
@@ -579,7 +557,7 @@ describe('SettingsView', () => {
           env: { EXAMPLE_FLAG: '1' },
         }),
         profile({ name: 'old', folder: '~/.claude_old', missing: true, permissionMode: '' }),
-        profile({ name: 'bare', folder: '~/.claude_bare', addDirs: null, extraArgs: null, env: null }),
+        profile({ name: 'bare', folder: '~/.claude_bare', addDirs: [], extraArgs: [], env: {} }),
       ],
     })
     await openSection('Profiles')

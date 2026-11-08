@@ -27,8 +27,8 @@ const platform = vi.hoisted(() => ({
   setCloneRoot: vi.fn(),
   getInboxSnapshot: vi.fn(),
   refreshInbox: vi.fn(),
-  onInboxUpdated: vi.fn(),
-  openInBrowser: vi.fn(),
+  on: vi.fn(),
+  openExternal: vi.fn(),
   launch: vi.fn(),
   listWorktrees: vi.fn(),
   removeWorktree: vi.fn(),
@@ -39,7 +39,6 @@ const platform = vi.hoisted(() => ({
   cleanUpWorktree: vi.fn(),
   cleanUpFinishedWorktrees: vi.fn(),
   lastWorktreeSweep: vi.fn(),
-  onWorktreesUpdated: vi.fn(),
   recentCleanups: vi.fn(),
   clearCleanups: vi.fn(),
   getCollapsedSections: vi.fn(),
@@ -47,8 +46,6 @@ const platform = vi.hoisted(() => ({
   getTheme: vi.fn(),
   setTheme: vi.fn(),
   listNotifications: vi.fn(),
-  onNotificationsUpdated: vi.fn(),
-  onRevealItem: vi.fn(),
 }))
 
 vi.mock('../platform', () => platform)
@@ -80,7 +77,7 @@ beforeEach(() => {
   platform.getSettings.mockResolvedValue(settings())
   platform.listProfiles.mockResolvedValue([profile()])
   platform.getInboxSnapshot.mockResolvedValue(snapshot())
-  platform.onInboxUpdated.mockReturnValue(() => undefined)
+  platform.on.mockReturnValue(() => undefined)
   platform.listWorktrees.mockResolvedValue(worktreesSnapshot())
   platform.getCollapsedSections.mockResolvedValue([])
   platform.getTheme.mockResolvedValue('system')
@@ -89,16 +86,12 @@ beforeEach(() => {
   platform.forceRemoveWorktree.mockResolvedValue(undefined)
   platform.removeAllCleanWorktrees.mockResolvedValue([])
   platform.pruneWorktrees.mockResolvedValue(undefined)
-  platform.openInBrowser.mockResolvedValue(undefined)
   platform.unlockWorktree.mockResolvedValue(undefined)
   platform.cleanUpFinishedWorktrees.mockResolvedValue([])
   platform.lastWorktreeSweep.mockResolvedValue(sweepReport({ seq: 0 }))
-  platform.onWorktreesUpdated.mockReturnValue(() => undefined)
   platform.recentCleanups.mockResolvedValue([])
   platform.clearCleanups.mockResolvedValue(undefined)
   platform.listNotifications.mockResolvedValue({ items: [], unread: 0 })
-  platform.onNotificationsUpdated.mockReturnValue(() => undefined)
-  platform.onRevealItem.mockReturnValue(() => undefined)
 })
 
 afterEach(() => {
@@ -138,7 +131,7 @@ describe('WorktreesView', () => {
     vi.useRealTimers()
 
     expect(platform.listWorktrees).toHaveBeenCalledOnce()
-    expect(platform.onInboxUpdated).not.toHaveBeenCalled()
+    expect(platform.on).not.toHaveBeenCalledWith('inbox:updated', expect.any(Function))
 
     platform.listWorktrees.mockResolvedValue(worktreesSnapshot({ repos: [], cleanCount: 0 }))
     await userEvent.click(screen.getByRole('button', { name: 'Refresh' }))
@@ -181,7 +174,7 @@ describe('WorktreesView', () => {
             displayPath: '~/projects/broken-repo',
             name: 'broken-repo',
             error: 'fatal: not a git repository',
-            worktrees: null,
+            worktrees: [],
           }),
         ],
       }),
@@ -414,7 +407,7 @@ describe('WorktreesView', () => {
     expect(finished.queryByText(/not on GitHub/)).not.toBeInTheDocument()
 
     await userEvent.click(finished.getByRole('button', { name: 'PR #7' }))
-    expect(platform.openInBrowser).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/pull/7')
+    expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/pull/7')
 
     const review = row('~/projects/example-repo/.claude/worktrees/issue-9')
     expect(review.getByText('needs a look')).toBeInTheDocument()
@@ -432,23 +425,6 @@ describe('WorktreesView', () => {
     expect(undated.queryByText(/not on GitHub/)).not.toBeInTheDocument()
 
     expect(screen.getByRole('button', { name: 'Clean up finished (1)' })).toBeEnabled()
-  })
-
-  it('logs a pull request link that could not open', async () => {
-    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    platform.openInBrowser.mockRejectedValue(new Error('no browser'))
-    platform.listWorktrees.mockResolvedValue(
-      worktreesSnapshot({ repos: [worktreeRepo({ worktrees: [mainWorktree(), finishedWorktree()] })] }),
-    )
-    render(<WorktreesView clock={clock} />)
-    await repo('example-repo')
-
-    await userEvent.click(row(linkedDisplay).getByRole('button', { name: 'PR #7' }))
-
-    await vi.waitFor(() => {
-      expect(error).toHaveBeenCalledWith('could not open the item in the browser', expect.any(Error))
-    })
-    error.mockRestore()
   })
 
   it('cleans up a finished worktree without asking and says what it did', async () => {
@@ -871,7 +847,7 @@ describe('WorktreesView', () => {
     expect(screen.getByRole('button', { name: 'Refreshing…' })).toBeDisabled()
 
     await act(async () => {
-      finish(worktreesSnapshot({ repos: null, cleanCount: 0 }))
+      finish(worktreesSnapshot({ repos: [], cleanCount: 0 }))
       await Promise.resolve()
     })
 
@@ -929,7 +905,7 @@ describe('WorktreesView history', () => {
     expect(when.getAttribute('title')).toMatch(/2026/)
 
     await userEvent.click(auto.getByRole('button', { name: 'PR #7' }))
-    expect(platform.openInBrowser).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/pull/7')
+    expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/pull/7')
 
     const manual = within(rows[1] as HTMLElement)
     expect(manual.getByRole('button', { name: 'Issue #9' })).toHaveAttribute('title', 'acme-org/example-repo#9')

@@ -4,14 +4,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useCollapsedSections } from '../lib/useCollapsedSections'
 import { useInbox } from '../lib/useInbox'
+import { sendEvent } from '../test/events'
 import { item, itemResolution, launchResult, list, profile, prompts, snapshot } from '../test/fixtures'
 import { InboxView, type LaunchOptions, type Reveal } from './InboxView'
 
 const platform = vi.hoisted(() => ({
   getInboxSnapshot: vi.fn(),
   refreshInbox: vi.fn(),
-  onInboxUpdated: vi.fn(),
-  openInBrowser: vi.fn(),
+  on: vi.fn(),
+  openExternal: vi.fn(),
   launch: vi.fn(),
   dismissItem: vi.fn(),
   snoozeItem: vi.fn(),
@@ -73,8 +74,7 @@ async function section(title: string) {
 
 beforeEach(() => {
   platform.getInboxSnapshot.mockResolvedValue(snapshot())
-  platform.onInboxUpdated.mockReturnValue(stopListening)
-  platform.openInBrowser.mockResolvedValue(undefined)
+  platform.on.mockReturnValue(stopListening)
   platform.launch.mockResolvedValue(launchResult())
   platform.getCollapsedSections.mockResolvedValue([])
   platform.setSectionCollapsed.mockResolvedValue(undefined)
@@ -146,9 +146,7 @@ describe('InboxView', () => {
     expect((await section('Assigned')).getByText('Nothing here.')).toBeInTheDocument()
   })
 
-  it('treats a list with no items as empty', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ authored: { items: null, shown: 0, total: 0 } }))
-
+  it('says when the inbox has not been refreshed yet', async () => {
     render(<Harness launch={launchOptions} clock={clock} />)
 
     expect((await section('Authored')).getByText('Nothing here.')).toBeInTheDocument()
@@ -174,21 +172,7 @@ describe('InboxView', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Add the widget cache' }))
 
-    expect(platform.openInBrowser).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/pull/7')
-  })
-
-  it('logs a browser that could not be opened', async () => {
-    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    platform.openInBrowser.mockRejectedValue(new Error('no browser'))
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([item()]) }))
-    render(<Harness launch={launchOptions} clock={clock} />)
-
-    await userEvent.click(await screen.findByRole('button', { name: 'Add the widget cache' }))
-
-    await waitFor(() => {
-      expect(logged).toHaveBeenCalled()
-    })
-    logged.mockRestore()
+    expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/pull/7')
   })
 
   it('refreshes on click and shows the new snapshot', async () => {
@@ -253,11 +237,10 @@ describe('InboxView', () => {
     const { unmount } = render(<Harness launch={launchOptions} clock={clock} />)
 
     expect(await screen.findAllByText('Nothing here.')).toHaveLength(3)
-    expect(platform.onInboxUpdated).toHaveBeenCalledOnce()
-    const listener = platform.onInboxUpdated.mock.calls[0]?.[0] as () => void
+    expect(platform.on).toHaveBeenCalledExactlyOnceWith('inbox:updated', expect.any(Function))
 
     act(() => {
-      listener()
+      sendEvent(platform.on, 'inbox:updated')
     })
 
     expect(await screen.findByRole('button', { name: 'Updated in the background' })).toBeInTheDocument()
@@ -561,7 +544,7 @@ describe('InboxView triage', () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([dismissed]) }))
     platform.restoreItem.mockResolvedValue(snapshot({ reviewRequested: list([{ ...dismissed, dismissedAt: '' }]) }))
     act(() => {
-      ;(platform.onInboxUpdated.mock.calls[0]?.[0] as () => void)()
+      sendEvent(platform.on, 'inbox:updated')
     })
     await userEvent.click(await review.findByRole('tab', { name: 'Dismissed 1' }))
     await userEvent.click(review.getByRole('button', { name: 'Restore' }))
@@ -831,7 +814,7 @@ describe('InboxView triage', () => {
       snapshot({ reviewRequested: list([{ ...fresh, title: 'Read later', dismissedAt: now.toISOString() }]) }),
     )
     act(() => {
-      ;(platform.onInboxUpdated.mock.calls[0]?.[0] as () => void)()
+      sendEvent(platform.on, 'inbox:updated')
     })
     expect(await review.findByRole('tab', { name: 'Dismissed 1' })).toBeInTheDocument()
 

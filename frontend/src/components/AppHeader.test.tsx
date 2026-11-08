@@ -6,7 +6,7 @@ import { brand } from '../generated/brand'
 import { account, notification, rate, unknownRate } from '../test/fixtures'
 import { AppHeader, type AppHeaderProps } from './AppHeader'
 
-vi.mock('../platform', () => ({ openInBrowser: vi.fn() }))
+vi.mock('../platform', () => ({ openExternal: vi.fn() }))
 
 function renderHeader(overrides: Partial<AppHeaderProps> = {}) {
   const props: AppHeaderProps = {

@@ -83,21 +83,20 @@ export function kindPlural(kind: ItemKind): string {
 // usageCount is how many places use a prompt as a default: the app's settings for each
 // kind, and every org and repository.
 export function usageCount(usage: PromptUsage): number {
-  return (usage.defaults?.length ?? 0) + (usage.orgs?.length ?? 0) + (usage.repos?.length ?? 0)
+  return usage.defaults.length + usage.orgs.length + usage.repos.length
 }
 
 // usageSummary says where a prompt is a default, as in "App default for pull requests ·
 // 2 orgs · 1 repo", or "Not a default anywhere".
 export function usageSummary(usage: PromptUsage): string {
   const parts: string[] = []
-  const defaults = usage.defaults ?? []
 
-  if (defaults.length > 0) {
-    parts.push(`App default for ${defaults.map(kindPlural).join(' and ')}`)
+  if (usage.defaults.length > 0) {
+    parts.push(`App default for ${usage.defaults.map(kindPlural).join(' and ')}`)
   }
 
-  const orgs = usage.orgs?.length ?? 0
-  const repos = usage.repos?.length ?? 0
+  const orgs = usage.orgs.length
+  const repos = usage.repos.length
 
   if (orgs > 0) {
     parts.push(counted(orgs, 'org', 'orgs'))
@@ -113,9 +112,9 @@ export function usageSummary(usage: PromptUsage): string {
 // usagePlaces lists every place a prompt is a default, for a tooltip or a dialog.
 export function usagePlaces(usage: PromptUsage): string[] {
   return [
-    ...(usage.defaults ?? []).map((kind) => `App default for ${kindPlural(kind)}`),
-    ...(usage.orgs ?? []).map((org) => `${org} (all repositories)`),
-    ...(usage.repos ?? []),
+    ...usage.defaults.map((kind) => `App default for ${kindPlural(kind)}`),
+    ...usage.orgs.map((org) => `${org} (all repositories)`),
+    ...usage.repos,
   ]
 }
 
@@ -139,7 +138,7 @@ export function pinSummary(p: Pick<Prompt, 'model' | 'effort' | 'planMode' | 'wo
     pins.push(p.worktree ? 'worktree' : 'no worktree')
   }
 
-  const flags = p.extraArgs?.length ?? 0
+  const flags = p.extraArgs.length
 
   if (flags > 0) {
     pins.push(counted(flags, 'flag', 'flags'))
