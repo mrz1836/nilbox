@@ -188,7 +188,9 @@ Wails CLI is never installed: the build runs it with `go run` at the version `go
   swaps your profile picture for your initial.
 - **Data:** everything lives in `~/Library/Application Support/Nilbox`, readable only by you. The
   database is `nilbox.db` (SQLite, WAL mode), and a copy is saved before each schema migration
-  (the three newest are kept). GitHub tokens are never stored there or anywhere else.
+  (the three newest are kept). Your prompts and launch defaults are also kept in `prompts.json`
+  and `launch-defaults.json` beside it, rewritten after every change, so they survive an update
+  or a damaged database. GitHub tokens are never stored there or anywhere else.
 
 Full setup and every build target: [docs/desktop.md](docs/desktop.md#build-targets).
 
@@ -346,6 +348,11 @@ More in [Agent profiles](docs/desktop.md#agent-profiles) and
   with the same Go package a launch uses, reporting the line and column with "did you mean"
   suggestions, and previews it filled in for a real inbox item beside a cheat sheet of variables.
 - Set the default prompt for pull requests and for issues app-wide, per org, or per repository.
+- Your prompts outlive updates and damaged databases. After every change the library is copied to
+  `prompts.json`, and it comes back on its own whenever the database has to start over.
+- Export the library, or one prompt, to a [prompt file](docs/prompt-files.md), and import one.
+  Before anything changes you see what each prompt would do. **Restore from a backup** brings
+  prompts back from any copy the app kept. Importing never changes a prompt you wrote or edited.
 
 More in [Prompts](docs/desktop.md#prompts).
 

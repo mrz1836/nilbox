@@ -12,5 +12,6 @@ export {
 
 export type {
     DataReset,
-    Info
+    Info,
+    Restored
 } from "./models.js";

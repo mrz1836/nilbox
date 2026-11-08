@@ -153,7 +153,11 @@ and readable only by you:
 | Windows (not yet supported) | `%AppData%\Nilbox` |
 
 The database is `nilbox.db` (SQLite, WAL mode). Before a schema migration changes an existing
-database, a copy of it is saved next to it, and the three newest copies are kept. GitHub tokens are never
+database, a copy of it is saved next to it, and the three newest copies are kept. Beside it,
+`prompts.json` and `launch-defaults.json` hold copies of your prompt library and your launch
+defaults in plain JSON, each rewritten after every change (see
+[Keeping your prompts](#keeping-your-prompts)). Agent profiles need no copy: they are found in
+your home directory on every start. GitHub tokens are never
 stored there, nor anywhere else: the app borrows the token from `gh auth token` and keeps it in
 memory only. It reuses the token for up to ten minutes, and asks `gh` again sooner when GitHub
 refuses it or `gh`'s account changes (`gh auth switch`, `login`, or `logout`).
@@ -170,7 +174,11 @@ GitHub token.
 
 If the database can't be read at startup, because the file is damaged, isn't a database, or
 wasn't set up by this app's migrations, the app renames it (with its `-wal` and `-shm` files)
-to `nilbox.db.broken-<UTC time>`, starts with an empty database, and says so in the window. A
+to `nilbox.db.broken-<UTC time>`, starts with an empty database, and says so in the window.
+Your prompts and launch defaults come back on their own: they are read out of the database
+set aside, or from `prompts.json` and `launch-defaults.json` when that fails, before the
+starters are added. The set-aside file is kept
+until you delete it, and **Restore from a backup** on the Prompts page can read it again. A
 database saved by a newer version of the app is left as it is: a dialog asks you to update,
 and the app quits. A database another process has open, such as an older copy of the app
 that is still running, or one that can't be written, is never moved. Like anything else that
@@ -572,6 +580,68 @@ contributor's item it also shows the line every such prompt ends with.
 **Launch settings.** A prompt can set the model, effort, plan mode, worktree, and extra flags
 whenever it is chosen; they win over the org's and repository's defaults. A prompt never
 chooses the profile, so a prompt can't put a repository on the wrong account.
+
+### Keeping your prompts
+
+Your prompts are the one thing in the app you can't get back from GitHub, so the app keeps
+them in more than one place and brings them back on its own when it can.
+
+- **Where they live.** The library is in the app's database, `nilbox.db`. After every change
+  (creating, editing, duplicating, deleting, resetting a prompt, choosing a default, or an
+  import) the whole library is also written to `prompts.json` beside the database, in one step,
+  so the file always holds a complete library, never half of one. It is plain JSON in the
+  [prompt file format](prompt-files.md): you can read it, copy it, or keep it with your own
+  backups.
+- **After an update, or a damaged database.** When the database can't be used at startup and is
+  set aside, the app reads the prompts out of the database set aside, whatever version of the
+  app wrote it, and stores them in the fresh one before adding any starter. When that file
+  can't be read, it uses `prompts.json`. Your edits, your own prompts, the defaults for pull
+  requests and issues, and the starters you deleted (which stay deleted) all come back, and the
+  window says so. When the database is missing altogether, as on a new Mac where you copied only
+  `prompts.json`, the library comes back from `prompts.json` the same way.
+- **The copy is never overwritten by a loss.** At startup the app writes `prompts.json` only when
+  it is missing or the library was just brought back. A database that came back without its
+  prompts, for whatever reason, can't replace the copy that still has them. Only a change you
+  make rewrites it.
+- **Launch defaults come back with them.** Your org and repository
+  [launch defaults](#launch-defaults) are kept the same way, in `launch-defaults.json`, and
+  come back from the same place as the prompts, still pointing at the right prompts even
+  though restored prompts are stored anew. The copy names prompts by nickname and is rewritten
+  whenever you change a launch default or a prompt, so renaming a prompt never breaks it. A
+  default whose profile isn't on this Mac yet keeps it: the launch menu warns that it is
+  missing, and it works again once the profile is back. Agent profiles themselves need no
+  copy: they are found in your home directory on every start.
+
+**Export and import.** The library menu (**⋯** beside **New**) holds **Export all prompts…**,
+**Import from a file…**, and **Restore from a backup…**; a prompt's own **⋯** menu holds
+**Export…** for that one prompt. An export is a [prompt file](prompt-files.md) you can share or
+keep. A whole-library export also records your defaults and which starters you deleted.
+
+Importing first shows every prompt in the file and what importing it would do, each with a box
+to leave it out. Nothing changes until you confirm. Importing never changes a prompt you wrote
+or edited:
+
+| What the file holds | What happens |
+|---|---|
+| A prompt your library already has (same title, text, and settings, under any nickname) | Left out, and shown as already in your library |
+| A starter exactly as the app ships it | Left out when your library has that starter |
+| Your own edit of a starter, while your copy of that starter is unchanged | Saved over the unchanged starter, which keeps its place as a default; **Reset to original** still restores the shipped text |
+| Anything else | Added, under a free nickname ("Review 2") when its own is taken |
+
+An imported prompt is checked like one you save. Its text is kept even when it has problems, so
+you can fix it in the editor, but it won't launch until you do. A setting the editor would
+refuse is left out, and the preview names it: a model or effort level the agent doesn't know,
+or extra flags the app reserves, such as `--dangerously-skip-permissions`. A shared file can't
+loosen a session's permissions. The preview lists each prompt's launch settings and any extra
+flags it adds, so you can read them before you import.
+
+**Restore from a backup** lists every copy of your library the app keeps, newest first, with how
+many prompts each holds and how many your library doesn't have: `prompts.json`, each database
+the app set aside, and the copies saved before updates. Choose one to see its prompts, then
+restore them, following the same rules as an import.
+
+To start over with only the starters, delete your prompts in the app. Deleting `nilbox.db`
+alone brings them back from `prompts.json` on the next start.
 
 <br>
 

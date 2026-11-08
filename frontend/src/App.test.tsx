@@ -637,7 +637,8 @@ describe('App', () => {
         (_, el) =>
           el?.tagName === 'P' &&
           el.textContent ===
-            `${brand.name} couldn’t read its data, so it set it aside at ~/data/app.db.broken-20260102T030405Z and started fresh.`,
+            `${brand.name} couldn’t read its data, so it set it aside at ~/data/app.db.broken-20260102T030405Z and started fresh. ` +
+              'To bring back prompts from it, choose Restore from a backup on the Prompts page.',
       ),
     ).toBeInTheDocument()
 

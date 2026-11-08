@@ -291,6 +291,23 @@ func (s *Store) seeded(ctx context.Context) ([]string, error) {
 	return keys, nil
 }
 
+// libraryExists reports whether the library was ever started: a starter was added to it
+// once, or it holds a prompt. A database created moments ago holds a library that does
+// not exist yet, as does one whose library was lost.
+func (s *Store) libraryExists(ctx context.Context) (bool, error) {
+	_, seeded, err := s.prefs.Get(ctx, prefSeeded)
+	if err != nil || seeded {
+		return seeded, err
+	}
+
+	all, err := s.All(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	return len(all) > 0, nil
+}
+
 // setSeeded records keys as the starter keys already added.
 func (s *Store) setSeeded(ctx context.Context, keys []string) error {
 	return s.prefs.SetList(ctx, prefSeeded, keys)
@@ -346,6 +363,7 @@ func fromRow(row queries.Prompt) (Prompt, error) {
 		Model: row.Model, Effort: row.Effort, PlanMode: row.PlanMode, Worktree: row.Worktree,
 		ExtraArgs: args, ExtraFlags: agent.Join(args), StarterKey: row.StarterKey,
 		Usage:     normalizeUsage(Usage{}),
+		CreatedAt: clock.Format(row.CreatedAt),
 		UpdatedAt: clock.Format(row.UpdatedAt),
 	}
 

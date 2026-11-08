@@ -8,14 +8,22 @@ export {
 
 export {
     AppliesTo,
-    Severity
+    BackupKind,
+    ImportOutcome,
+    Severity,
+    SourceKind
 } from "./models.js";
 
 export type {
+    Backup,
+    BundlePrompt,
     CheckRequest,
     CheckResult,
     DefaultPrompts,
     Diagnostic,
+    ImportEntry,
+    ImportResult,
+    ImportSource,
     Input,
     Prompt,
     Usage,

@@ -3,7 +3,7 @@
 // here (an ESLint rule enforces it), so another shell or an OS port replaces this module's
 // implementation and never its callers.
 
-import { Browser, Events, Window, type CancellablePromise } from '@wailsio/runtime'
+import { Browser, Dialogs, Events, Window, type CancellablePromise } from '@wailsio/runtime'
 
 // The generated event bindings register the events' data with the runtime, and declare
 // each event's name and payload type for Events.On.
@@ -67,6 +67,7 @@ export type Agent = NonNullLists<agent.Agent>
 
 export type DataReset = NonNullLists<appinfo.DataReset>
 export type Info = NonNullLists<appinfo.Info>
+export type Restored = NonNullLists<appinfo.Restored>
 
 export type Account = NonNullLists<inbox.Account>
 export type Checks = NonNullLists<inbox.Checks>
@@ -112,6 +113,13 @@ export type Prompt = NonNullLists<prompts.Prompt>
 export type PromptUsage = NonNullLists<prompts.Usage>
 export type PromptVariable = NonNullLists<prompts.Variable>
 export type PromptAppliesTo = prompts.AppliesTo
+export type PromptBackup = NonNullLists<prompts.Backup>
+export type PromptBackupKind = prompts.BackupKind
+export type BundlePrompt = NonNullLists<prompts.BundlePrompt>
+export type ImportEntry = NonNullLists<prompts.ImportEntry>
+export type ImportOutcome = prompts.ImportOutcome
+export type ImportResult = NonNullLists<prompts.ImportResult>
+export type ImportSource = NonNullLists<prompts.ImportSource>
 
 export type SensitiveCategory = NonNullLists<sensitive.Category>
 export type FileCheck = NonNullLists<sensitive.Check>
@@ -177,6 +185,10 @@ export const {
   Variables: listPromptVariables,
   Defaults: getDefaultPrompts,
   SetDefault: setDefaultPrompt,
+  Export: exportPrompts,
+  Backups: listPromptBackups,
+  PreviewImport: previewPromptImport,
+  Import: importPrompts,
 } = narrow(prompts.Service)
 
 export const {
@@ -266,6 +278,47 @@ export function setWindowSize(size: WindowSize): CancellablePromise<Settings> {
 export function openExternal(url: string): void {
   Browser.OpenURL(url).catch((err: unknown) => {
     console.error(`could not open ${url} in the browser`, err)
+  })
+}
+
+// FileChoice is what a native file dialog asks for: its title, the button that confirms
+// it, the file types it offers (each a name and a pattern such as "*.json"), and, to save,
+// the file name it suggests.
+export interface FileChoice {
+  title: string
+  button: string
+  filters: readonly { name: string; pattern: string }[]
+  filename?: string
+}
+
+// filters is a FileChoice's file types as the runtime takes them.
+function filters(choice: FileChoice) {
+  return choice.filters.map((f) => ({ DisplayName: f.name, Pattern: f.pattern }))
+}
+
+// chooseFileToOpen asks the user for a file in the system's open dialog, and resolves with
+// its path, or '' when they cancel.
+export async function chooseFileToOpen(choice: FileChoice): Promise<string> {
+  return Dialogs.OpenFile({
+    Title: choice.title,
+    ButtonText: choice.button,
+    Filters: filters(choice),
+    CanChooseFiles: true,
+    CanChooseDirectories: false,
+    AllowsMultipleSelection: false,
+  })
+}
+
+// chooseFileToSave asks the user where to save a file in the system's save dialog, and
+// resolves with the path, or '' when they cancel. The dialog itself asks before replacing a
+// file that is there.
+export async function chooseFileToSave(choice: FileChoice): Promise<string> {
+  return Dialogs.SaveFile({
+    Title: choice.title,
+    ButtonText: choice.button,
+    Filters: filters(choice),
+    Filename: choice.filename ?? '',
+    CanCreateDirectories: true,
   })
 }
 

@@ -26,6 +26,107 @@ export const AppliesTo = {
 } as const;
 
 /**
+ * Backup is a copy of the prompt library the app keeps, which Import can bring prompts
+ * back from.
+ */
+export interface Backup {
+    /**
+     * Path is the file, as an ImportSource names it.
+     */
+    "path": string;
+
+    /**
+     * Kind says what it is.
+     */
+    "kind": BackupKind;
+
+    /**
+     * At is when it was made, as RFC 3339.
+     */
+    "at": string;
+
+    /**
+     * Prompts is how many prompts it holds, and New how many of them importing would add
+     * or save over a starter: the ones the library does not hold already.
+     */
+    "prompts": number;
+    "new": number;
+
+    /**
+     * Error says why it could not be read, or is "" when it could.
+     */
+    "error": string;
+}
+
+/**
+ * BackupKind says what a Backup is.
+ */
+export type BackupKind = "library" | "set-aside" | "update";
+
+/**
+ * The values of BackupKind, by the names of their Go constants.
+ */
+export const BackupKind = {
+    /**
+     * What a Backup is.
+     *
+     * BackupLibrary is the copy of the library kept beside the database (LibraryFile).
+     */
+    BackupLibrary: "library",
+
+    /**
+     * BackupSetAside is a database the app could not open, so it set it aside and started
+     * a fresh one.
+     */
+    BackupSetAside: "set-aside",
+
+    /**
+     * BackupUpdate is the database as it was before an update changed it.
+     */
+    BackupUpdate: "update",
+} as const;
+
+/**
+ * BundlePrompt is one prompt in portable form: its text, its names, and its launch
+ * settings, as the library stores them.
+ */
+export interface BundlePrompt {
+    "name": string;
+    "nickname": string;
+    "appliesTo": AppliesTo;
+    "body": string;
+
+    /**
+     * Model and Effort set --model and --effort; "" inherits.
+     */
+    "model": string;
+    "effort": string;
+
+    /**
+     * PlanMode and Worktree turn plan mode and the worktree on or off; nil inherits.
+     */
+    "planMode": boolean | null;
+    "worktree": boolean | null;
+
+    /**
+     * ExtraArgs are added after the profile's and the launch defaults' arguments.
+     */
+    "extraArgs": string[] | null;
+
+    /**
+     * StarterKey names the starter the prompt came from, or "".
+     */
+    "starterKey": string;
+
+    /**
+     * CreatedAt and UpdatedAt are when the prompt was added and last saved, as RFC 3339,
+     * or "" when not known.
+     */
+    "createdAt": string;
+    "updatedAt": string;
+}
+
+/**
  * CheckRequest asks to check a prompt being edited and to fill it in for a preview.
  */
 export interface CheckRequest {
@@ -132,6 +233,104 @@ export interface Diagnostic {
 }
 
 /**
+ * ImportEntry is one prompt a source holds, and what importing it would do.
+ */
+export interface ImportEntry {
+    /**
+     * Prompt is the prompt as it would be imported: its names trimmed to fit, and any
+     * setting this build would refuse left out.
+     */
+    "prompt": BundlePrompt;
+
+    /**
+     * Outcome is what importing it would do.
+     */
+    "outcome": ImportOutcome;
+
+    /**
+     * Nickname is the nickname it would be saved under, or the nickname of the prompt that
+     * already holds it, for ImportSkip.
+     */
+    "nickname": string;
+
+    /**
+     * Replaces is the nickname of the starter it would be saved over, for ImportReplace.
+     */
+    "replaces": string;
+
+    /**
+     * Notes says what was changed to import it, and what to fix before it can launch.
+     */
+    "notes": string[] | null;
+}
+
+/**
+ * ImportOutcome says what importing a prompt does.
+ */
+export type ImportOutcome = "add" | "rename" | "replace" | "skip";
+
+/**
+ * The values of ImportOutcome, by the names of their Go constants.
+ */
+export const ImportOutcome = {
+    /**
+     * What importing a prompt does.
+     *
+     * ImportAdd adds the prompt under its own nickname.
+     */
+    ImportAdd: "add",
+
+    /**
+     * ImportRename adds the prompt under a free nickname, because another prompt has its
+     * own.
+     */
+    ImportRename: "rename",
+
+    /**
+     * ImportReplace saves the prompt over the library's copy of the same starter, which was
+     * never changed, so nothing of the user's is lost: the starter's text stays one Reset
+     * away.
+     */
+    ImportReplace: "replace",
+
+    /**
+     * ImportSkip leaves the prompt out, because the library already holds it.
+     */
+    ImportSkip: "skip",
+} as const;
+
+/**
+ * ImportResult says what Import did.
+ */
+export interface ImportResult {
+    /**
+     * Added counts the prompts added, Replaced the starters saved over, and Skipped the
+     * prompts the library already held.
+     */
+    "added": number;
+    "replaced": number;
+    "skipped": number;
+
+    /**
+     * First is the ID of the first prompt added or saved over, for the window to open, or 0
+     * when there was none.
+     */
+    "first": number;
+}
+
+/**
+ * ImportSource names where Import reads prompts from.
+ */
+export interface ImportSource {
+    "kind": SourceKind;
+
+    /**
+     * Path is the file: one the user chose, or a Backup's Path.
+     */
+    "path": string;
+}
+
+/**
  * Input is a prompt as the editor saves it.
  */
 export interface Input {
@@ -215,8 +414,10 @@ export interface Prompt {
     "usage": Usage;
 
     /**
-     * UpdatedAt is when the prompt was last saved, as RFC 3339.
+     * CreatedAt is when the prompt was added to this library, and UpdatedAt when it was
+     * last saved, both as RFC 3339.
      */
+    "createdAt": string;
     "updatedAt": string;
 }
 
@@ -240,6 +441,30 @@ export const Severity = {
      * SeverityWarning marks something that works but is probably not what was meant.
      */
     SeverityWarning: "warning",
+} as const;
+
+/**
+ * SourceKind says what an ImportSource is.
+ */
+export type SourceKind = "file" | "backup";
+
+/**
+ * The values of SourceKind, by the names of their Go constants.
+ */
+export const SourceKind = {
+    /**
+     * What an ImportSource is.
+     *
+     * SourceFile is a prompt file the user chose: one Export wrote, or the library file
+     * copied from another Mac. A database file the app kept, copied out of a backup, reads
+     * as well.
+     */
+    SourceFile: "file",
+
+    /**
+     * SourceBackup is one of the copies of the library Backups lists.
+     */
+    SourceBackup: "backup",
 } as const;
 
 /**

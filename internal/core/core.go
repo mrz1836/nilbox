@@ -1,6 +1,7 @@
 // Package core assembles the app: it prepares the data directory, opens and migrates the
-// database, syncs the discovered agent profiles, adds the starter prompts, and builds
-// every service the window binds to.
+// database, syncs the discovered agent profiles, brings back the prompt library and
+// launch defaults the database lost, adds the starter prompts, and builds every service
+// the window binds to.
 //
 // Core is plain Go with no desktop dependency, so the whole startup path is tested on any
 // OS. The desktop shell only adds the window, binds Services, hears the services' events,
@@ -126,8 +127,10 @@ type Core struct {
 
 // Bootstrap prepares the data directory, opens the database (backing it up and applying
 // any pending migrations, or setting it aside for a fresh one when it cannot be used),
-// syncs the agent profiles found under the home directory, adds any starter prompt not
-// added before, and builds every service. It contacts no network; the scheduler does that
+// syncs the agent profiles found under the home directory, brings back the prompt
+// library and the launch defaults when the database holds a new library (from the
+// database set aside, or else from the copies kept beside it), adds any starter prompt
+// not added before, and builds every service. It contacts no network; the scheduler does that
 // once started.
 func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 	if opts.Paths.Root == "" {
@@ -158,13 +161,20 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 		return nil, err
 	}
 
-	if err = prompts.Seed(ctx, prompts.NewStore(pool, opts.Clock)); err != nil {
+	keeper := newKept(pool, opts, logger)
+	restored := keeper.restore(ctx, opened.Reset)
+
+	if err = prompts.Seed(ctx, keeper.prompts); err != nil {
 		_ = pool.Close()
 
 		return nil, fmt.Errorf("add the starter prompts: %w", err)
 	}
 
-	return assemble(pool, reset, opts, logger), nil
+	keeper.keep(ctx, restored.prompts.From != "")
+
+	info := startup{reset: reset, restored: restored.info(opts.Home), kept: keeper}
+
+	return assemble(pool, info, opts, logger), nil
 }
 
 // Services returns the services the frontend binds to, in a stable order.
@@ -218,6 +228,17 @@ func syncProfiles(ctx context.Context, stored *profiles.Store, home string, logg
 	return nil
 }
 
+// startup is what Bootstrap learned before the services were built.
+type startup struct {
+	// reset is set when the database was set aside, and restored when the prompt library
+	// and launch defaults were brought back.
+	reset    *appinfo.DataReset
+	restored *appinfo.Restored
+
+	// kept holds the stores whose data is kept outside the database, with their copies.
+	kept *kept
+}
+
 // dataReset logs a database Open set aside, and returns what the window tells the user
 // about it, or nil when there was none.
 func dataReset(ctx context.Context, reset *store.Reset, home string, logger *slog.Logger) *appinfo.DataReset {
@@ -231,9 +252,10 @@ func dataReset(ctx context.Context, reset *store.Reset, home string, logger *slo
 	return &appinfo.DataReset{Path: paths.Tilde(reset.Path, home), Reason: appinfo.ResetReason(reset.Reason)}
 }
 
-// assemble builds every service over the open database's connection pool. reset, when
-// set, tells the window the database was set aside at startup.
-func assemble(pool *sql.DB, reset *appinfo.DataReset, opts Options, logger *slog.Logger) *Core {
+// assemble builds every service over the open database's connection pool. info says
+// what happened at startup, which the window is told, and holds the stores whose data is
+// kept outside the database, with their copies.
+func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Core {
 	search := execpath.Search{Home: opts.Home}
 
 	runner := opts.Runner
@@ -242,8 +264,8 @@ func assemble(pool *sql.DB, reset *appinfo.DataReset, opts Options, logger *slog
 	}
 
 	profileStore := profiles.NewStore(pool, opts.Clock)
-	promptStore := prompts.NewStore(pool, opts.Clock)
-	defaultsStore := launchdefaults.NewStore(pool, opts.Clock)
+	promptStore := info.kept.prompts
+	defaultsStore := info.kept.defaults
 	inboxStore := inbox.NewStore(pool, opts.Clock)
 	prefs := settings.NewService(pool, profileStore, opts.Home, settings.WithClock(opts.Clock),
 		settings.WithEvents(opts.Events), settings.WithLogger(logger))
@@ -305,9 +327,12 @@ func assemble(pool *sql.DB, reset *appinfo.DataReset, opts Options, logger *slog
 		Profiles: profiles.NewService(profileStore, opts.Home),
 		Prompts: prompts.NewService(prompts.Config{
 			Store: promptStore, Usage: defaultsStore, Source: launcher.NewPromptSource(launch),
+			File: info.kept.promptFile, Database: opts.Paths.DB, App: opts.Version, Clock: opts.Clock, Logger: logger,
+			Changed: info.kept.saveDefaults,
 		}),
 		LaunchDefaults: launchdefaults.NewService(launchdefaults.Config{
 			Store: defaultsStore, Profiles: profileStore, Prompts: promptStore, Repos: inboxRepos{store: inboxStore},
+			File: info.kept.defaultsFile, Logger: logger,
 		}),
 		Inbox:         inboxSvc,
 		Launcher:      launch,
@@ -319,7 +344,8 @@ func assemble(pool *sql.DB, reset *appinfo.DataReset, opts Options, logger *slog
 			Build:     opts.Build,
 			Recorder:  recorder,
 			Events:    opts.Events,
-			DataReset: reset,
+			DataReset: info.reset,
+			Restored:  info.restored,
 		}),
 		ShellSettings: newShellSettings(prefs, pool, opts.Clock),
 		ProfileStore:  profileStore,

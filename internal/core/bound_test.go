@@ -136,6 +136,17 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"prompts.Service.Variables": func(_ context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Prompts.Variables(), nil
 		},
+		"prompts.Service.Backups": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Prompts.Backups(ctx)
+		},
+		"prompts.Service.PreviewImport": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			path := filepath.Join(t.TempDir(), "prompts.json")
+			if _, err := c.Prompts.Export(ctx, path, nil); err != nil {
+				return nil, err
+			}
+
+			return c.Prompts.PreviewImport(ctx, prompts.ImportSource{Kind: prompts.SourceFile, Path: path})
+		},
 		"launchdefaults.Service.List": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.LaunchDefaults.List(ctx)
 		},

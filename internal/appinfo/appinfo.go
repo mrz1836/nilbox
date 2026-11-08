@@ -3,9 +3,9 @@
 // The product name and tagline come from internal/brand, so the frontend never hard-codes
 // them. Info also carries what a bug report needs, the build's versions and the system it
 // runs on, and a link that opens a new bug report with those details filled in. When the
-// database could not be read at startup and was set aside, Info says so, so the window
-// can tell the user once it loads: the window does not exist yet when that happens, so
-// an event would be lost. When the window has painted its first frame, the frontend calls
+// database could not be read at startup and was set aside, or the prompt library and
+// launch defaults were brought back into a new one, Info says so, so the window can tell the user once it
+// loads: the window does not exist yet when that happens, so an event would be lost. When the window has painted its first frame, the frontend calls
 // ReportFirstPaint, which records the startup time once.
 package appinfo
 
@@ -63,6 +63,23 @@ type Info struct {
 	// DataReset is set when the database could not be read at startup, so it was set
 	// aside and the app started with an empty one; it is nil otherwise.
 	DataReset *DataReset `json:"dataReset,omitempty"`
+
+	// Restored is set when the prompt library and the launch defaults were lost at
+	// startup, with the database they were in, and were brought back; it is nil
+	// otherwise.
+	Restored *Restored `json:"restored,omitempty"`
+}
+
+// Restored says what of the user's own was brought back at startup, and from where.
+type Restored struct {
+	// Prompts and LaunchDefaults count the prompts and the org and repository launch
+	// defaults that came back.
+	Prompts        int `json:"prompts"`
+	LaunchDefaults int `json:"launchDefaults"`
+
+	// From is the file they came from, with ~ for the home directory: the database set
+	// aside, or the copy of the prompt library kept beside the database.
+	From string `json:"from"`
 }
 
 // DataReset says where a database that could not be read was set aside, and why.
@@ -120,6 +137,10 @@ type Config struct {
 
 	// DataReset is set when the database was set aside at startup.
 	DataReset *DataReset
+
+	// Restored is set when the prompt library and launch defaults were brought back at
+	// startup.
+	Restored *Restored
 }
 
 // Service serves the app's identity and records its first paint.
@@ -145,6 +166,7 @@ func NewService(cfg Config) *Service {
 		System:    system,
 		Arch:      runtime.GOARCH,
 		DataReset: cfg.DataReset,
+		Restored:  cfg.Restored,
 	}
 	info.BugReportURL = bugReportURL(info)
 

@@ -1,5 +1,7 @@
 // Package appdata resolves where the application keeps its per-user data: the SQLite
-// database, generated launch scripts, and logs.
+// database, the copies of the prompt library and the launch defaults kept beside it,
+// generated launch scripts, and logs. It also writes and reads those files, readable
+// only by the user.
 //
 // The location follows each operating system's convention. The resolver itself is a pure
 // function of the OS name, the home directory, and the environment, so every branch is
@@ -39,19 +41,23 @@ var (
 
 // Paths are the application's data locations, all under one root directory.
 type Paths struct {
-	Root   string // the per-user data directory
-	DB     string // the SQLite database file
-	Launch string // generated launch scripts and prompt files
-	Logs   string // log files
+	Root           string // the per-user data directory
+	DB             string // the SQLite database file
+	Prompts        string // the copy of the prompt library kept beside the database
+	LaunchDefaults string // the copy of the launch defaults kept beside the database
+	Launch         string // generated launch scripts and prompt files
+	Logs           string // log files
 }
 
 // NewPaths returns the data locations under root.
 func NewPaths(root string) Paths {
 	return Paths{
-		Root:   root,
-		DB:     filepath.Join(root, brand.Slug+".db"),
-		Launch: filepath.Join(root, "launch"),
-		Logs:   filepath.Join(root, "logs"),
+		Root:           root,
+		DB:             filepath.Join(root, brand.Slug+".db"),
+		Prompts:        filepath.Join(root, "prompts.json"),
+		LaunchDefaults: filepath.Join(root, "launch-defaults.json"),
+		Launch:         filepath.Join(root, "launch"),
+		Logs:           filepath.Join(root, "logs"),
 	}
 }
 

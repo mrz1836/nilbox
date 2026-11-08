@@ -56,6 +56,11 @@ const (
 	historyTable = "schema_migrations"
 )
 
+// BackupInfix sits between a database's path and the rest of a pre-migration backup's
+// name: <path>.backup-<UTC stamp>-v<from>, where from is the newest version applied
+// before the migrations ran.
+const BackupInfix = ".backup-"
+
 var (
 	// ErrUnmanagedSchema is returned when the database has application tables but no
 	// migration history, so its schema was not created by this package.
@@ -460,7 +465,7 @@ func backup(ctx context.Context, db *sql.DB, dbPath string, from int, opts Optio
 		return "", ErrNoBackupPath
 	}
 
-	target, err := freeBackupName(fmt.Sprintf("%s.backup-%s-v%d", dbPath, clock.Stamp(opts.Now()), from))
+	target, err := freeBackupName(fmt.Sprintf("%s%s%s-v%d", dbPath, BackupInfix, clock.Stamp(opts.Now()), from))
 	if err != nil {
 		return "", err
 	}
@@ -500,7 +505,7 @@ func freeBackupName(base string) (string, error) {
 // pruneBackups deletes all but the newest keep backups of dbPath.
 func pruneBackups(dbPath string, keep int) error {
 	dir := filepath.Dir(dbPath)
-	prefix := filepath.Base(dbPath) + ".backup-"
+	prefix := filepath.Base(dbPath) + BackupInfix
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {

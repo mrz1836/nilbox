@@ -390,3 +390,30 @@ export function AssignIcon(props: IconProps) {
     </Icon>
   )
 }
+
+// ImportIcon stands for bringing prompts in from a file: an arrow into a tray.
+export function ImportIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 4v10.5M7.5 10l4.5 4.5 4.5-4.5M4.5 15.5v2A2.5 2.5 0 0 0 7 20h10a2.5 2.5 0 0 0 2.5-2.5v-2" />
+    </Icon>
+  )
+}
+
+// ExportIcon stands for writing prompts out to a file: an arrow out of a tray.
+export function ExportIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 14.5V4M7.5 8.5 12 4l4.5 4.5M4.5 15.5v2A2.5 2.5 0 0 0 7 20h10a2.5 2.5 0 0 0 2.5-2.5v-2" />
+    </Icon>
+  )
+}
+
+// HistoryIcon stands for bringing back something kept from before: a clock turning back.
+export function HistoryIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4.5 9.5A8 8 0 1 1 4 13M4.5 4.5v5h5M12 8v4l2.5 1.5" />
+    </Icon>
+  )
+}

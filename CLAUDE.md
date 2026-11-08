@@ -188,7 +188,9 @@ package imports the driver, and nothing imports an ORM (`internal/repoguard` enf
 - **Migrations.** The schema lives in `internal/store/migrate/migrations/`: forward-only,
   checksummed SQL files, starting from the squashed `0001_init.sql`. Never edit an applied
   migration; change the schema with a new `NNNN_<name>.sql`. Nothing else creates, alters, or
-  drops a table.
+  drops a table. Never squash or edit a migration a build has shipped: every existing database
+  then reads as a history this build disagrees with and is set aside, and only the prompt
+  library comes back on its own.
 - **Ownership.** Every table has one owner package (`tableOwners` in
   `internal/repoguard/datalayer_test.go`). The owner keeps its SQL in
   `internal/<owner>/internal/queries/*.sql`, and sqlc generates package `queries` beside it, so
@@ -227,6 +229,22 @@ package imports the driver, and nothing imports an ORM (`internal/repoguard` enf
   place, and `Opened.Reset` reaches the window as a notice. A database from a newer build is
   refused with `store.ErrNewerSchema` and left untouched. Any other failure (a lock, a
   permission, a full disk, a failed migration) is a plain error, and nothing is moved.
+- **Prompts and launch defaults outlive the database.** They are what the user made, which
+  GitHub can't give back. `prompts.LibraryFile` rewrites `prompts.json` beside the database
+  after every change to the library, and `launchdefaults.File` rewrites
+  `launch-defaults.json` after every change to the launch defaults or the library, since it
+  names prompts by nickname. At startup, when the library is new, `prompts.Restore` brings it
+  back before `Seed` runs, from the database set aside or else from `prompts.json`, and core
+  (`internal/core/kept.go`) restores the launch defaults from the same place, matched to the
+  restored prompts. Core writes each copy at startup only when it is missing or the data was
+  just restored, so a loss in the database never overwrites a copy. Agent profiles need no
+  copy: discovery finds them on every start, and nothing in the app edits one. `store.OpenSnapshot` reads a kept database of any
+  schema, read-only and tolerant of missing columns, for the restore and for **Restore from a
+  backup**. Import and restore go through one planner (`internal/prompts/importer.go`), which
+  never changes a prompt the user wrote or edited, and checks every imported setting the way
+  the editor does. The file format is `prompts.Bundle`, specified in
+  [`docs/prompt-files.md`](docs/prompt-files.md); keep the two in step, and raise
+  `BundleVersion` only for a change an older build would misread.
 - **Tests** open a fresh, migrated database with `testutil.DB(t)`, a given file with
   `testutil.DBAt(t, path)`, and a closed one with `testutil.ClosedDB(t)`. To make a write fail,
   add a trigger that calls `RAISE(ABORT, ...)`, or drop the table.

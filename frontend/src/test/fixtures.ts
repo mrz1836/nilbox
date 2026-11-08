@@ -4,8 +4,10 @@ import { brand } from '../generated/brand'
 import type {
   Account,
   AppNotification,
+  BundlePrompt,
   CloneTarget,
   FileCheck,
+  ImportEntry,
   Info,
   InboxItem,
   ItemDetails,
@@ -19,6 +21,7 @@ import type {
   LinkedItem,
   Profile,
   Prompt,
+  PromptBackup,
   PromptCheckResult,
   PromptVariable,
   Rate,
@@ -297,7 +300,52 @@ export function prompt(overrides: Partial<Prompt> = {}): Prompt {
     starterKey: 'review-pr',
     modified: false,
     usage: { defaults: ['pr'], orgs: [], repos: [], kinds: ['pr'] },
+    createdAt: '2026-06-01T09:00:00Z',
     updatedAt: '2026-06-15T09:00:00Z',
+    ...overrides,
+  }
+}
+
+// bundlePrompt is a prompt as a prompt file holds it: one the user wrote.
+export function bundlePrompt(overrides: Partial<BundlePrompt> = {}): BundlePrompt {
+  return {
+    name: 'Look for security problems',
+    nickname: 'Security',
+    appliesTo: 'any',
+    body: 'Look for security problems in {{.URL}}\n',
+    model: '',
+    effort: '',
+    planMode: null,
+    worktree: null,
+    extraArgs: [],
+    starterKey: '',
+    createdAt: '2026-11-07T09:00:00Z',
+    updatedAt: '2026-11-07T09:30:00Z',
+    ...overrides,
+  }
+}
+
+// importEntry is a prompt a file holds that importing would add.
+export function importEntry(overrides: Partial<ImportEntry> = {}): ImportEntry {
+  return {
+    prompt: bundlePrompt(),
+    outcome: 'add',
+    nickname: 'Security',
+    replaces: '',
+    notes: [],
+    ...overrides,
+  }
+}
+
+// promptBackup is the database the app set aside when an update could not read it.
+export function promptBackup(overrides: Partial<PromptBackup> = {}): PromptBackup {
+  return {
+    path: '/data/app.db.broken-20261108T165152Z',
+    kind: 'set-aside',
+    at: '2026-11-08T16:51:52Z',
+    prompts: 4,
+    new: 3,
+    error: '',
     ...overrides,
   }
 }

@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
-import type { DataReset, Info } from '../platform'
+import type { DataReset, Info, Restored } from '../platform'
 import { appInfo } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { DataResetNotice } from './DataResetNotice'
@@ -19,7 +19,50 @@ const reset: DataReset = { path: '~/data/app.db.broken-20260102T030405Z', reason
 
 const message = `${brand.name} couldn’t read its data, so it set it aside at ${reset.path} and started fresh.`
 
+const restored: Restored = { prompts: 3, launchDefaults: 2, from: reset.path }
+
 describe('DataResetNotice', () => {
+  it('says the prompts and launch defaults came back with the data set aside', async () => {
+    platform.getAppInfo.mockResolvedValue(appInfo({ dataReset: reset, restored }))
+    render(<DataResetNotice />)
+
+    expect(await screen.findByText(reset.path)).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent(
+      `${message} It brought back your 3 prompts and 2 launch defaults.`,
+    )
+  })
+
+  it.each([
+    [{ prompts: 4, launchDefaults: 0 }, 'your 4 prompts'],
+    [{ prompts: 0, launchDefaults: 1 }, 'your launch default'],
+    [{ prompts: 1, launchDefaults: 1 }, 'your 1 prompt and 1 launch default'],
+  ])('names what came back: %o', async (counts, words) => {
+    platform.getAppInfo.mockResolvedValue(appInfo({ dataReset: reset, restored: { ...counts, from: reset.path } }))
+    render(<DataResetNotice />)
+
+    expect(await screen.findByText(reset.path)).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent(`It brought back ${words}.`)
+  })
+
+  it('points to the backups when the prompts did not come back', async () => {
+    platform.getAppInfo.mockResolvedValue(info(reset))
+    render(<DataResetNotice />)
+
+    expect(await screen.findByText(reset.path)).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('choose Restore from a backup on the Prompts page')
+  })
+
+  it('says the prompts came back from the saved copy when the database was gone', async () => {
+    const from = '~/data/prompts.json'
+    platform.getAppInfo.mockResolvedValue(appInfo({ restored: { prompts: 1, launchDefaults: 0, from } }))
+    render(<DataResetNotice />)
+
+    expect(await screen.findByText(from)).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent(
+      `${brand.name} started with a new database and brought back your prompt from its saved copy at ${from}.`,
+    )
+  })
+
   it('says the data was set aside, where, and that the app started fresh', async () => {
     platform.getAppInfo.mockResolvedValue(info(reset))
     render(<DataResetNotice />)

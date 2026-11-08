@@ -15,6 +15,10 @@ export interface ConfirmDialogProps {
   // cancelLabel names the cancel button; null leaves only the confirm button, for a
   // message that only needs acknowledging.
   cancelLabel?: string | null
+  // confirmDisabled turns the confirm button off, such as while nothing is chosen.
+  confirmDisabled?: boolean
+  // wide gives the dialog room for a list, such as prompts to choose among.
+  wide?: boolean
 }
 
 // focusableSelector finds the dialog's controls for keeping keyboard focus inside it.
@@ -61,6 +65,8 @@ export function ConfirmDialog({
   onCancel,
   tone = 'danger',
   cancelLabel = 'Cancel',
+  confirmDisabled = false,
+  wide = false,
 }: ConfirmDialogProps) {
   const id = useId()
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -135,7 +141,7 @@ export function ConfirmDialog({
       }}
       // The backdrop's color is spelled out: before Safari 17.4, ::backdrop sees none of the
       // page's custom properties, so a theme color would leave it clear.
-      className="m-auto w-[calc(100%-2rem)] max-w-md rounded-lg border border-border bg-surface p-4 text-text shadow-lg backdrop:bg-[rgb(0_0_0/0.4)]"
+      className={`m-auto w-[calc(100%-2rem)] ${wide ? 'max-w-xl' : 'max-w-md'} rounded-lg border border-border bg-surface p-4 text-text shadow-lg backdrop:bg-[rgb(0_0_0/0.4)]`}
     >
       <h2 id={`${id}-title`} className="text-base font-semibold">
         {title}
@@ -152,6 +158,7 @@ export function ConfirmDialog({
         <button
           ref={confirmRef}
           type="button"
+          disabled={confirmDisabled}
           onClick={onConfirm}
           className={tone === 'danger' ? dangerButtonClass : primaryButtonClass}
         >
