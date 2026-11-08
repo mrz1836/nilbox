@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"testing"
 	"time"
 
@@ -154,9 +155,9 @@ func TestTimestampsAreStoredAsSortableUTCText(t *testing.T) {
 	}
 
 	// Stored newest first, so the database does the sorting.
-	for i := len(times) - 1; i >= 0; i-- {
+	for i, at := range slices.Backward(times) {
 		_, err := db.ExecContext(t.Context(), "INSERT INTO prefs (key, value, updated_at) VALUES (?, 'v', ?)",
-			fmt.Sprintf("example.%d", i), times[i])
+			fmt.Sprintf("example.%d", i), at)
 		require.NoError(t, err)
 	}
 

@@ -17,10 +17,10 @@ func TestValidationErrorListsEveryProblemInOrder(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	gone := int64(9999)
+	gone := new(int64(9999))
 
 	_, err := h.svc.Save(t.Context(), launchdefaults.Input{
-		Name: "a b", Agent: "codex", Profile: "nope", PRPromptID: &gone, IssuePromptID: &h.review,
+		Name: "a b", Agent: "codex", Profile: "nope", PRPromptID: gone, IssuePromptID: &h.review,
 		Model: "-x", Effort: "huge", ExtraFlags: `--x "y`,
 	})
 	require.ErrorIs(t, err, launchdefaults.ErrInvalidDefaults)
@@ -49,7 +49,7 @@ func TestValidationErrorListsEveryProblemInOrder(t *testing.T) {
 		"Choose an effort level from the list. A quote in the flags is never closed.", err.Error())
 
 	checked, err := h.svc.Check(t.Context(), launchdefaults.Input{
-		Name: "a b", Agent: "codex", Profile: "nope", PRPromptID: &gone, IssuePromptID: &h.review,
+		Name: "a b", Agent: "codex", Profile: "nope", PRPromptID: gone, IssuePromptID: &h.review,
 		Model: "-x", Effort: "huge", ExtraFlags: `--x "y`,
 	})
 	require.NoError(t, err)
@@ -80,11 +80,9 @@ func TestSaveRoundTripsEverySetting(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	on, off := true, false
-
 	saved, err := h.svc.Save(t.Context(), launchdefaults.Input{
 		Owner: acme, Name: " example-repo ", Agent: " claude ", Profile: " work ", PRPromptID: &h.review,
-		IssuePromptID: &h.work, Model: " opus ", Effort: "high", PlanMode: &on, Worktree: &off,
+		IssuePromptID: &h.work, Model: " opus ", Effort: "high", PlanMode: new(true), Worktree: new(false),
 		ExtraFlags: `--append-system-prompt "be brief" --verbose`,
 	})
 	require.NoError(t, err)
@@ -97,8 +95,8 @@ func TestSaveRoundTripsEverySetting(t *testing.T) {
 	assert.Equal(t, &h.work, saved.IssuePromptID)
 	assert.Equal(t, "opus", saved.Model)
 	assert.Equal(t, "high", saved.Effort)
-	assert.Equal(t, &on, saved.PlanMode)
-	assert.Equal(t, &off, saved.Worktree)
+	assert.Equal(t, new(true), saved.PlanMode)
+	assert.Equal(t, new(false), saved.Worktree)
 	assert.Equal(t, []string{"--append-system-prompt", "be brief", "--verbose"}, saved.ExtraArgs)
 	assert.Equal(t, "--append-system-prompt 'be brief' --verbose", saved.ExtraFlags)
 	assert.Regexp(t, `^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$`, saved.UpdatedAt, "stamped in UTC, to the second")
@@ -161,7 +159,6 @@ func TestServiceReportsAClosedDatabase(t *testing.T) {
 		Store: stored, Profiles: profiles.NewStore(db, nil), Prompts: prompts.NewStore(db, nil), Repos: failingRepos{},
 	})
 	ctx := t.Context()
-	review := int64(1)
 
 	_, err := svc.List(ctx)
 	require.ErrorContains(t, err, "read the launch defaults")
@@ -193,7 +190,7 @@ func TestServiceReportsAClosedDatabase(t *testing.T) {
 	require.ErrorContains(t, err, "look up profile")
 	require.NotErrorIs(t, err, launchdefaults.ErrInvalidDefaults, "a check that could not run is not a validation failure")
 
-	_, err = svc.Check(ctx, launchdefaults.Input{Owner: acme, PRPromptID: &review})
+	_, err = svc.Check(ctx, launchdefaults.Input{Owner: acme, PRPromptID: new(int64(1))})
 	require.ErrorContains(t, err, "read the prompt")
 
 	var invalid *agent.ValidationError

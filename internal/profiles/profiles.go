@@ -25,7 +25,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/logging"
@@ -320,12 +320,16 @@ func newDiscovered(name, configDir string) Profile {
 
 // sortProfiles orders the default profile first and the rest by name.
 func sortProfiles(profiles []Profile) {
-	sort.SliceStable(profiles, func(i, j int) bool {
-		a, b := profiles[i].Name, profiles[j].Name
-		if (a == DefaultName) != (b == DefaultName) {
-			return a == DefaultName
+	slices.SortStableFunc(profiles, func(a, b Profile) int {
+		switch {
+		case a.Name == b.Name:
+			return 0
+		case a.Name == DefaultName:
+			return -1
+		case b.Name == DefaultName:
+			return 1
+		default:
+			return strings.Compare(a.Name, b.Name)
 		}
-
-		return a < b
 	})
 }

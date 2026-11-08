@@ -68,9 +68,9 @@ func checkOf(head string, complete bool, paths ...string) *sensitive.Check {
 		r.Total += 10
 	}
 
-	c := sensitive.NewMatcher(sensitive.DefaultConfig()).Evaluate(r, head, "https://github.com/acme-org/example-repo/pull/8")
+	matcher := sensitive.NewMatcher(sensitive.DefaultConfig())
 
-	return &c
+	return new(matcher.Evaluate(r, head, "https://github.com/acme-org/example-repo/pull/8"))
 }
 
 // withFiles gives the harness a file checker answering checks for the outside PR.
@@ -206,7 +206,7 @@ func TestAHeldLaunchOutsideAWorktreeSaysSo(t *testing.T) {
 	h := newLaunchHarness(t)
 	h.withFiles(checkOf(holdHeadA, true, "CLAUDE.md"))
 
-	res, err := h.service().Launch(t.Context(), LaunchRequest{ItemID: h.outsidePR, Worktree: boolPtr(false)})
+	res, err := h.service().Launch(t.Context(), LaunchRequest{ItemID: h.outsidePR, Worktree: new(false)})
 	require.NoError(t, err)
 	require.NotNil(t, res.Hold)
 	assert.False(t, res.Hold.AtHead)

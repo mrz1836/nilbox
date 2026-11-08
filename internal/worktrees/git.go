@@ -292,7 +292,7 @@ func countStatusEntries(out []byte) int {
 	count := 0
 	skip := false
 
-	for _, field := range bytes.Split(out, []byte{0}) {
+	for field := range bytes.SplitSeq(out, []byte{0}) {
 		switch {
 		case skip:
 			skip = false

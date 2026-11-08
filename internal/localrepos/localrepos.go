@@ -15,7 +15,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 
 	"golang.org/x/sync/errgroup"
@@ -79,7 +78,7 @@ func (r LocalRepo) RemoteFor(name repo.Name) (string, bool) {
 		return "", false
 	}
 
-	sort.Strings(names)
+	slices.Sort(names)
 
 	return names[0], true
 }
@@ -276,7 +275,7 @@ func readRemotes(ctx context.Context, dir string, git execpath.Runner) (map[stri
 func parseRemotes(out string) map[string]repo.Name {
 	remotes := map[string]repo.Name{}
 
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		key, value, found := strings.Cut(strings.TrimRight(line, "\r"), " ")
 		if !found {
 			continue

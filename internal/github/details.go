@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	"maps"
+	"slices"
 	"strings"
 
 	"golang.org/x/sync/errgroup"
@@ -192,12 +193,7 @@ func (d *Details) Add(other *Details) {
 func detailsBatches(ids []string) [][]string {
 	size := min(detailsMaxBatch, max(detailsMinBatch, (len(ids)+detailsParallel-1)/detailsParallel))
 
-	var batches [][]string
-	for start := 0; start < len(ids); start += size {
-		batches = append(batches, ids[start:min(start+size, len(ids))])
-	}
-
-	return batches
+	return slices.Collect(slices.Chunk(ids, size))
 }
 
 // fetchDetails sends the batches side by side and merges the answers in batch order.

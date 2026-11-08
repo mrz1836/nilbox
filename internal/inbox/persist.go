@@ -113,7 +113,7 @@ func (w *writer) repoID(ctx context.Context, it github.Item) (int64, error) {
 		return id, nil
 	}
 
-	r, fetchedAt := it.Repo, w.now
+	r := it.Repo
 
 	id, err := w.q.UpsertRepo(ctx, queries.UpsertRepoParams{
 		Owner: it.RepoOwner, Name: it.RepoName, NodeID: r.NodeID, Description: r.Description,
@@ -124,7 +124,7 @@ func (w *writer) repoID(ctx context.Context, it github.Item) (int64, error) {
 		SquashMergeAllowed: r.SquashMergeAllowed, RebaseMergeAllowed: r.RebaseMergeAllowed,
 		AutoMergeAllowed: r.AutoMergeAllowed, DeleteBranchOnMerge: r.DeleteBranchOnMerge,
 		AllowUpdateBranch: r.AllowUpdateBranch, Language: r.Language, LanguageColor: r.LanguageColor,
-		PushedAt: timeOrNil(r.PushedAt), FetchedAt: &fetchedAt, CreatedAt: w.now, UpdatedAt: w.now,
+		PushedAt: timeOrNil(r.PushedAt), FetchedAt: new(w.now), CreatedAt: w.now, UpdatedAt: w.now,
 	})
 	if err != nil {
 		return 0, fmt.Errorf("save the repository %s: %w", it.Ref().Repo, err)
@@ -141,9 +141,7 @@ func timeOrNil(t time.Time) *time.Time {
 		return nil
 	}
 
-	t = t.UTC()
-
-	return &t
+	return new(t.UTC())
 }
 
 // saveItem upserts one item, then its details and file check when this refresh read

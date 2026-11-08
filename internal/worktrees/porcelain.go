@@ -62,7 +62,7 @@ func ParsePorcelain(data []byte) ([]Entry, error) {
 
 	var p porcelainParser
 
-	for _, attr := range bytes.Split(data[:len(data)-1], []byte{0}) {
+	for attr := range bytes.SplitSeq(data[:len(data)-1], []byte{0}) {
 		if err := p.attribute(string(attr)); err != nil {
 			return nil, err
 		}

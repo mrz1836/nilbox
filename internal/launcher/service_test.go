@@ -391,8 +391,6 @@ func promptFor(t *testing.T, scriptPath string) string {
 	return string(prompt)
 }
 
-func boolPtr(b bool) *bool { return &b }
-
 func TestLaunchWritesFilesAndOpensDriver(t *testing.T) {
 	h := newLaunchHarness(t)
 
@@ -430,11 +428,11 @@ func TestWorktreePrefDefaultAndUntick(t *testing.T) {
 		want bool
 	}{
 		{name: "pref on, request unset", pref: true, req: nil, want: true},
-		{name: "pref on, request on", pref: true, req: boolPtr(true), want: true},
-		{name: "pref on, request unticked", pref: true, req: boolPtr(false), want: false},
+		{name: "pref on, request on", pref: true, req: new(true), want: true},
+		{name: "pref on, request unticked", pref: true, req: new(false), want: false},
 		{name: "pref off, request unset", pref: false, req: nil, want: false},
-		{name: "pref off, request on", pref: false, req: boolPtr(true), want: true},
-		{name: "pref off, request off", pref: false, req: boolPtr(false), want: false},
+		{name: "pref off, request on", pref: false, req: new(true), want: true},
+		{name: "pref off, request off", pref: false, req: new(false), want: false},
 	}
 
 	for _, tt := range tests {
@@ -462,7 +460,7 @@ func TestWorktreePrefDefaultAndUntick(t *testing.T) {
 	// Unticking applies to one launch only: the next launch follows the pref again.
 	h := newLaunchHarness(t)
 
-	res, _ := h.launch(t, LaunchRequest{ItemID: h.issue, Worktree: boolPtr(false)})
+	res, _ := h.launch(t, LaunchRequest{ItemID: h.issue, Worktree: new(false)})
 	assert.Empty(t, res.Worktree)
 
 	res, _ = h.launch(t, LaunchRequest{ItemID: h.issue})
@@ -564,7 +562,7 @@ func TestLaunchTrustsTheCloneForTheAgent(t *testing.T) {
 	assert.NoDirExists(t, workDir)
 
 	require.NoError(t, os.Mkdir(workDir, 0o700))
-	h.launch(t, LaunchRequest{ItemID: h.outsidePR, Profile: profileWork, Worktree: boolPtr(false)})
+	h.launch(t, LaunchRequest{ItemID: h.outsidePR, Profile: profileWork, Worktree: new(false)})
 	assert.True(t, trustedIn(t, filepath.Join(workDir, ".claude.json"), key),
 		"the profile's own config trusts the clone, for every item and with or without a worktree")
 }
@@ -592,7 +590,7 @@ func TestLaunchRecordsTheWorktree(t *testing.T) {
 
 	h.launch(t, LaunchRequest{ItemID: h.trustedPR})
 	h.launch(t, LaunchRequest{ItemID: h.issue})
-	h.launch(t, LaunchRequest{ItemID: h.trustedPR, Worktree: boolPtr(false)})
+	h.launch(t, LaunchRequest{ItemID: h.trustedPR, Worktree: new(false)})
 
 	assert.Equal(t, []worklog.Launch{
 		{

@@ -22,8 +22,8 @@ const (
 // still names, or naming a row that is not there. An owner maps it to its own error,
 // such as a record still in use.
 func IsForeignKeyViolation(err error) bool {
-	var driverErr *sqlite.Error
-	if !errors.As(err, &driverErr) {
+	driverErr, ok := errors.AsType[*sqlite.Error](err)
+	if !ok {
 		return false
 	}
 
@@ -53,8 +53,8 @@ func IsBusy(err error) bool {
 // sqliteCode returns the primary SQLite result code of the driver error in err's chain,
 // or SQLITE_OK when it holds none.
 func sqliteCode(err error) int {
-	var driverErr *sqlite.Error
-	if !errors.As(err, &driverErr) {
+	driverErr, ok := errors.AsType[*sqlite.Error](err)
+	if !ok {
 		return sqlite3.SQLITE_OK
 	}
 

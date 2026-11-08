@@ -166,11 +166,11 @@ func (w *writer) wakeSnoozed(ctx context.Context) error {
 		return err
 	}
 
-	// now is in UTC, as every stored time is, so it compares with snoozed_until as text
+	// w.now is in UTC, as every stored time is, so it compares with snoozed_until as text
 	// in the same format.
-	now := w.now
-
-	rows, err := w.q.ListRunningSnoozes(ctx, queries.ListRunningSnoozesParams{AccountID: w.accountID, SnoozedUntil: &now})
+	rows, err := w.q.ListRunningSnoozes(ctx, queries.ListRunningSnoozesParams{
+		AccountID: w.accountID, SnoozedUntil: new(w.now),
+	})
 	if err != nil {
 		return fmt.Errorf("read the snoozed items: %w", err)
 	}
@@ -215,10 +215,8 @@ func (w *writer) wake(ctx context.Context, rules snooze.Rules, r queries.ListRun
 		return err
 	}
 
-	endedAt := w.now
-
 	err = w.q.WakeSnooze(ctx, queries.WakeSnoozeParams{
-		SnoozedUntil: &endedAt, WakeReasons: encoded, UpdatedAt: w.now, ItemID: r.ItemID,
+		SnoozedUntil: new(w.now), WakeReasons: encoded, UpdatedAt: w.now, ItemID: r.ItemID,
 	})
 	if err != nil {
 		return fmt.Errorf("wake the snoozed item: %w", err)

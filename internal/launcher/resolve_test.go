@@ -35,8 +35,6 @@ func resolveErr(w world, item subject, req LaunchRequest) error {
 	return err
 }
 
-func ptr[T any](v T) *T { return &v }
-
 // testWorld is a world with two profiles, four prompts, and no launch defaults: the app
 // default profile is "default", and the worktree default is on.
 func testWorld() world {
@@ -51,10 +49,10 @@ func testWorld() world {
 			reviewID: {ID: reviewID, Nickname: "Review", Name: "Review a pull request", AppliesTo: prompts.AppliesToPR},
 			quickID: {
 				ID: quickID, Nickname: "Quick look", AppliesTo: prompts.AppliesToPR, Model: strSonnet, Effort: "low",
-				Worktree: ptr(false), ExtraArgs: []string{flagDebug},
+				Worktree: new(false), ExtraArgs: []string{flagDebug},
 			},
 			workID: {ID: workID, Nickname: "Work on it", AppliesTo: prompts.AppliesToIssue},
-			bothID: {ID: bothID, Nickname: "Both", AppliesTo: prompts.AppliesToAny, PlanMode: ptr(true)},
+			bothID: {ID: bothID, Nickname: "Both", AppliesTo: prompts.AppliesToAny, PlanMode: new(true)},
 		},
 		profiles: map[string]profiles.Profile{profiles.DefaultName: full, profileWork: work},
 		rules:    launchdefaults.NewIndex(nil),
@@ -97,8 +95,8 @@ func TestResolveAppDefaults(t *testing.T) {
 func TestResolvePrecedence(t *testing.T) {
 	w := testWorld()
 	w.rules = launchdefaults.NewIndex([]launchdefaults.Defaults{
-		{Owner: acmeOrg, Profile: profileWork, Model: "haiku", PlanMode: ptr(true), ExtraArgs: []string{"--org"}},
-		{Owner: acmeOrg, Name: "example-repo", Model: strSonnet, Worktree: ptr(false), ExtraArgs: []string{"--repo"}},
+		{Owner: acmeOrg, Profile: profileWork, Model: "haiku", PlanMode: new(true), ExtraArgs: []string{"--org"}},
+		{Owner: acmeOrg, Name: "example-repo", Model: strSonnet, Worktree: new(false), ExtraArgs: []string{"--repo"}},
 	})
 
 	res, profile, _, err := resolve(w, prSubject(), LaunchRequest{})
@@ -126,8 +124,8 @@ func TestResolvePrecedence(t *testing.T) {
 
 	// The launch's own choices win over everything, and remember what they replaced.
 	res, profile, _, err = resolve(w, prSubject(), LaunchRequest{
-		PromptID: quickID, Profile: profiles.DefaultName, Model: ptr(strOpus), Effort: ptr(""),
-		PlanMode: ptr(false), Worktree: ptr(true),
+		PromptID: quickID, Profile: profiles.DefaultName, Model: new(strOpus), Effort: new(""),
+		PlanMode: new(false), Worktree: new(true),
 	})
 	require.NoError(t, err)
 	assert.Equal(t, profiles.DefaultName, profile.Name)
@@ -143,9 +141,9 @@ func TestResolvePrecedence(t *testing.T) {
 func TestResolveDefaultPrompts(t *testing.T) {
 	w := testWorld()
 	w.rules = launchdefaults.NewIndex([]launchdefaults.Defaults{
-		{Owner: acmeOrg, PRPromptID: ptr(bothID)},
-		{Owner: acmeOrg, Name: "example-repo", PRPromptID: ptr(quickID)},
-		{Owner: acmeOrg, Name: "other-repo", PRPromptID: ptr(missingID), IssuePromptID: ptr(reviewID)},
+		{Owner: acmeOrg, PRPromptID: new(bothID)},
+		{Owner: acmeOrg, Name: "example-repo", PRPromptID: new(quickID)},
+		{Owner: acmeOrg, Name: "other-repo", PRPromptID: new(missingID), IssuePromptID: new(reviewID)},
 	})
 
 	res, _, _, err := resolve(w, prSubject(), LaunchRequest{})

@@ -142,7 +142,7 @@ func (c *checker) lineOf(pos int) int {
 
 // lineSpan returns the byte offsets where a 1-based line starts and ends.
 func (c *checker) lineSpan(line int) (start, end int) {
-	for i := 1; i < line; i++ {
+	for range line - 1 {
 		next := strings.IndexByte(c.body[start:], '\n')
 		if next < 0 {
 			return len(c.body), len(c.body)

@@ -3,6 +3,7 @@ package sensitive
 import (
 	"fmt"
 	"path"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -100,7 +101,7 @@ func parseNames(p, body string) ([]segment, error) {
 		stars int
 	)
 
-	for _, name := range strings.Split(strings.ToLower(body), "/") {
+	for name := range strings.SplitSeq(strings.ToLower(body), "/") {
 		switch name {
 		case "", ".":
 			continue
@@ -146,13 +147,7 @@ func (p pattern) match(names []string) bool {
 			last--
 		}
 
-		for _, name := range names[:max(last, 0)] {
-			if p.segs[0].match(name) {
-				return true
-			}
-		}
-
-		return false
+		return slices.ContainsFunc(names[:max(last, 0)], p.segs[0].match)
 	}
 
 	return matchFrom(p.segs, names, p.dir)

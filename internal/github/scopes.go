@@ -51,7 +51,7 @@ func CheckScopes(header string) (ScopeWarning, error) {
 
 	granted := make(map[string]bool)
 
-	for _, scope := range strings.Split(header, ",") {
+	for scope := range strings.SplitSeq(header, ",") {
 		granted[strings.TrimSpace(scope)] = true
 	}
 

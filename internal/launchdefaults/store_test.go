@@ -76,8 +76,6 @@ func TestSaveStampsTheRowFromTheClock(t *testing.T) {
 func TestSaveRoundTripsInheritedToggles(t *testing.T) {
 	t.Parallel()
 
-	on, off := true, false
-
 	tests := []struct {
 		name               string
 		planMode, worktree *bool
@@ -85,15 +83,15 @@ func TestSaveRoundTripsInheritedToggles(t *testing.T) {
 	}{
 		{name: "both inherit", wantPlan: sql.NullInt64{}, wantTree: sql.NullInt64{}},
 		{
-			name: "on and off", planMode: &on, worktree: &off,
+			name: "on and off", planMode: new(true), worktree: new(false),
 			wantPlan: sql.NullInt64{Int64: 1, Valid: true}, wantTree: sql.NullInt64{Int64: 0, Valid: true},
 		},
 		{
-			name: "off and inherit", planMode: &off,
+			name: "off and inherit", planMode: new(false),
 			wantPlan: sql.NullInt64{Int64: 0, Valid: true}, wantTree: sql.NullInt64{},
 		},
 		{
-			name: "inherit and on", worktree: &on,
+			name: "inherit and on", worktree: new(true),
 			wantPlan: sql.NullInt64{}, wantTree: sql.NullInt64{Int64: 1, Valid: true},
 		},
 	}
@@ -107,7 +105,7 @@ func TestSaveRoundTripsInheritedToggles(t *testing.T) {
 			ctx := t.Context()
 
 			// Stored defaults that set both first show a later save replacing them.
-			_, err := s.save(ctx, Input{Owner: acmeOrg, Model: "opus", PlanMode: &on, Worktree: &on}, nil)
+			_, err := s.save(ctx, Input{Owner: acmeOrg, Model: "opus", PlanMode: new(true), Worktree: new(true)}, nil)
 			require.NoError(t, err)
 
 			saved, err := s.save(ctx, Input{Owner: acmeOrg, Model: "opus", PlanMode: tt.planMode, Worktree: tt.worktree}, nil)

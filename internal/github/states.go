@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -65,9 +66,7 @@ type ItemState struct {
 func (c *Client) FetchItemStates(ctx context.Context, tok Token, refs []item.Ref) (map[string]ItemState, error) {
 	var queries []statesRequest
 
-	for start := 0; start < len(refs); start += statesBatch {
-		batch := refs[start:min(start+statesBatch, len(refs))]
-
+	for batch := range slices.Chunk(refs, statesBatch) {
 		query, err := statesQuery(batch)
 		if err != nil {
 			return nil, err

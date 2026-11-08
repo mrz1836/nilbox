@@ -478,9 +478,7 @@ func (r *itemRow) checkedFiles(scope fileScope, isPR bool, author trust.Author) 
 		return nil
 	}
 
-	check := scope.matcher.Evaluate(r.Stored, r.HeadOID, r.URL)
-
-	return &check
+	return new(scope.matcher.Evaluate(r.Stored, r.HeadOID, r.URL))
 }
 
 // decodeReasons reads stored wake reasons, or nil when there are none or they cannot be

@@ -22,6 +22,7 @@
 package migrate
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -30,11 +31,11 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -163,7 +164,7 @@ func Load(src fs.FS) ([]Migration, error) {
 		migrations = append(migrations, m)
 	}
 
-	sort.Slice(migrations, func(i, j int) bool { return migrations[i].Version < migrations[j].Version })
+	slices.SortFunc(migrations, func(a, b Migration) int { return cmp.Compare(a.Version, b.Version) })
 
 	return migrations, nil
 }
@@ -434,12 +435,7 @@ func verifyHistory(migrations []Migration, applied map[int]appliedMigration) err
 		known[m.Version] = m
 	}
 
-	versions := make([]int, 0, len(applied))
-	for v := range applied {
-		versions = append(versions, v)
-	}
-
-	slices.Sort(versions)
+	versions := slices.Sorted(maps.Keys(applied))
 
 	for _, v := range versions {
 		if m, ok := known[v]; ok && m.Checksum != applied[v].Checksum {

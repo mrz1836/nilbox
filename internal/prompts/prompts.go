@@ -316,8 +316,8 @@ func (s *Service) Update(ctx context.Context, id int64, in Input) (Prompt, error
 func (s *Service) Delete(ctx context.Context, id int64) error {
 	err := s.store.remove(ctx, id)
 
-	var inUse *InUseError
-	if !errors.As(err, &inUse) {
+	inUse, ok := errors.AsType[*InUseError](err)
+	if !ok {
 		return err
 	}
 

@@ -214,10 +214,9 @@ func TestSeedFindsAFreeNickname(t *testing.T) {
 func TestCreateAndUpdate(t *testing.T) {
 	s, _ := seeded(t, nil)
 	ctx := t.Context()
-	on := true
 
 	in := validInput()
-	in.PlanMode = &on
+	in.PlanMode = new(true)
 	in.Name, in.Nickname = "  "+in.Name+" ", " Feedback "
 	in.Body = "Address the review comments on {{.URL}}\r\nThanks"
 

@@ -3,6 +3,7 @@ package worktrees
 import (
 	"context"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -117,12 +118,7 @@ func linkTargetFor(wt *Worktree, remotes map[string]repo.Name, recorded map[stri
 // remoteRefs lists item number in each GitHub repository the clone has a remote for:
 // origin's first, then the others by remote name, each repository once.
 func remoteRefs(remotes map[string]repo.Name, kind item.Kind, number int) []item.Ref {
-	names := make([]string, 0, len(remotes))
-	for name := range remotes {
-		names = append(names, name)
-	}
-
-	slices.SortFunc(names, func(a, b string) int {
+	names := slices.SortedFunc(maps.Keys(remotes), func(a, b string) int {
 		switch {
 		case a == originRemote:
 			return -1

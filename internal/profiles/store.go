@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"sort"
+	"slices"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/clock"
@@ -144,7 +144,7 @@ func (s *Store) Prune(ctx context.Context, log *slog.Logger) ([]string, error) {
 		return nil, fmt.Errorf("remove profiles with no agent config: %w", err)
 	}
 
-	sort.Strings(removed)
+	slices.Sort(removed)
 
 	return removed, nil
 }

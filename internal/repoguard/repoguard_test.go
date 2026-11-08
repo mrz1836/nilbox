@@ -80,7 +80,7 @@ func repoFiles(t *testing.T, root string) []string {
 
 	var files []string
 
-	for _, f := range strings.Split(string(out), "\x00") {
+	for f := range strings.SplitSeq(string(out), "\x00") {
 		if f != "" {
 			files = append(files, f)
 		}

@@ -230,8 +230,7 @@ func newLaunchFixture(ctx context.Context, dir string, opts LaunchOptions, runne
 // unchecked pull request's is. It confirms that at once, as a user would, so the time
 // includes both launch requests.
 func (f *launchFixture) launch(ctx context.Context) (launcher.LaunchResult, error) {
-	noWorktree := false
-	req := launcher.LaunchRequest{ItemID: f.itemID, Worktree: &noWorktree}
+	req := launcher.LaunchRequest{ItemID: f.itemID, Worktree: new(false)}
 
 	res, err := f.core.Launcher.Launch(ctx, req)
 	if err != nil || res.Hold == nil {
@@ -492,8 +491,7 @@ func (p processProbe) Cwds(ctx context.Context, pids []int) (map[int]string, err
 
 	out, _, err := p.run.Run(ctx, lsofBin, "-a", "-p", strings.Join(list, ","), "-d", "cwd", "-Fn")
 
-	var exitErr *exec.ExitError
-	if err != nil && !errors.As(err, &exitErr) {
+	if _, exited := errors.AsType[*exec.ExitError](err); err != nil && !exited {
 		return nil, fmt.Errorf("read working directories: %w", err)
 	}
 

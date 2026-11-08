@@ -368,8 +368,7 @@ func appProcesses(exe string) ([]int, error) {
 
 	out, err := exec.CommandContext(context.Background(), "pgrep", "-f", pattern).Output() //nolint:gosec // argv only, no shell
 	if err != nil {
-		var exit *exec.ExitError
-		if errors.As(err, &exit) && exit.ExitCode() == 1 { // pgrep exits 1 when nothing matches
+		if exit, ok := errors.AsType[*exec.ExitError](err); ok && exit.ExitCode() == 1 { // pgrep exits 1 when nothing matches
 			return nil, nil
 		}
 
@@ -378,7 +377,7 @@ func appProcesses(exe string) ([]int, error) {
 
 	var pids []int
 
-	for _, field := range strings.Fields(string(out)) {
+	for field := range strings.FieldsSeq(string(out)) {
 		pid, convErr := strconv.Atoi(field)
 		if convErr != nil {
 			return nil, fmt.Errorf("parse the pgrep output %q: %w", field, convErr)

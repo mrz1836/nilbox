@@ -142,13 +142,12 @@ func TestStoreFixture(t *testing.T) {
 
 	db := testutil.DB(t)
 	at := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
-	details := prDetails()
 
 	ids, err := StoreFixture(t.Context(), db, Fixture{
 		Viewer: octoUser,
 		At:     at,
 		Items: []FixtureItem{
-			{Item: pr(1, "OWNER", false), ReviewRequested: true, Details: &details},
+			{Item: pr(1, "OWNER", false), ReviewRequested: true, Details: new(prDetails())},
 			{Item: issue("other-repo", 2, "MEMBER"), Assigned: true},
 			{Item: pr(3, "OWNER", false)},
 		},
@@ -322,10 +321,8 @@ func TestStoreFixtureReportsEachRefusedWrite(t *testing.T) {
 			h := newHarness(t)
 			refuse(t, h, "BEFORE INSERT ON "+tt.table, "")
 
-			details := prDetails()
-
 			_, err := StoreFixture(t.Context(), h.pool, Fixture{Viewer: octoUser, Items: []FixtureItem{
-				{Item: pr(1, "OWNER", false), Details: &details},
+				{Item: pr(1, "OWNER", false), Details: new(prDetails())},
 			}})
 			require.ErrorContains(t, err, tt.want)
 		})

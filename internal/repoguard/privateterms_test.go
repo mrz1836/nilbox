@@ -41,7 +41,7 @@ func privateTermsPath(t *testing.T, root string) (string, bool) {
 func parsePrivateTerms(text string) []string {
 	var terms []string
 
-	for _, line := range strings.Split(text, "\n") {
+	for line := range strings.SplitSeq(text, "\n") {
 		line = strings.TrimSpace(line)
 		if line != "" && !strings.HasPrefix(line, "#") {
 			terms = append(terms, line)
@@ -153,7 +153,7 @@ func privateTermsInGit(t *testing.T, root string, pattern *regexp.Regexp) []stri
 	// separator.
 	log := gitText(t, root, "log", "HEAD", "--not", "--remotes", "--format=%h%x00%B%x1e")
 
-	for _, record := range strings.Split(log, "\x1e") {
+	for record := range strings.SplitSeq(log, "\x1e") {
 		hash, message, ok := strings.Cut(strings.TrimSpace(record), "\x00")
 		if ok && pattern.MatchString(message) {
 			found = append(found, hits("commit "+hash, message, pattern.MatchString)...)

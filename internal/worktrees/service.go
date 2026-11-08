@@ -918,8 +918,7 @@ func refusalReason(stderr []byte) string {
 
 // reasonOf is the reason shown for a failed removal in a bulk result.
 func reasonOf(err error) string {
-	var refused *RefusedError
-	if errors.As(err, &refused) {
+	if refused, ok := errors.AsType[*RefusedError](err); ok {
 		return refused.Reason
 	}
 

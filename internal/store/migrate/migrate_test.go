@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -145,7 +145,7 @@ func TestMigrateFreshDatabase(t *testing.T) {
 	files, err := filepath.Glob(filepath.Join("migrations", "*.sql"))
 	require.NoError(t, err)
 	require.NotEmpty(t, files)
-	sort.Strings(files)
+	slices.Sort(files)
 
 	applied := make([]int, 0, len(files))
 	for i := range files {

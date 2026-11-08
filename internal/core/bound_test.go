@@ -389,8 +389,8 @@ func assertEveryListIsCalled(t *testing.T, c *Core, calls map[string]boundCall) 
 // resultHoldsLists reports whether a method's results, its error aside, hold a list or a
 // map the window would read.
 func resultHoldsLists(method reflect.Type) bool {
-	for i := range method.NumOut() {
-		if holdsList(method.Out(i), map[reflect.Type]bool{}) {
+	for out := range method.Outs() {
+		if holdsList(out, map[reflect.Type]bool{}) {
 			return true
 		}
 	}
@@ -424,8 +424,8 @@ func holdsList(t reflect.Type, seen map[reflect.Type]bool) bool {
 func encodedFields(t reflect.Type) []reflect.StructField {
 	var out []reflect.StructField
 
-	for i := range t.NumField() {
-		if f := t.Field(i); f.IsExported() && f.Tag.Get("json") != "-" {
+	for f := range t.Fields() {
+		if f.IsExported() && f.Tag.Get("json") != "-" {
 			out = append(out, f)
 		}
 	}

@@ -220,11 +220,9 @@ func (w *writer) dropSetAside(ctx context.Context, arrivals *[]Arrival) error {
 		ids = append(ids, a.ItemID)
 	}
 
-	// now is in UTC, as every stored time is, so it compares with snoozed_until as text
+	// w.now is in UTC, as every stored time is, so it compares with snoozed_until as text
 	// in the same format.
-	now := w.now
-
-	setAside, err := w.q.ListSetAside(ctx, queries.ListSetAsideParams{Now: &now, Ids: ids})
+	setAside, err := w.q.ListSetAside(ctx, queries.ListSetAsideParams{Now: new(w.now), Ids: ids})
 	if err != nil {
 		return fmt.Errorf("read the triage of the new items: %w", err)
 	}

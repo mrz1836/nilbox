@@ -335,10 +335,9 @@ func WithToken[T any](ctx context.Context, tokens Tokens, call func(Token) (T, e
 // IsBadCredentials reports whether err is GitHub refusing the token itself: HTTP 401, or
 // a Bad credentials message.
 func IsBadCredentials(err error) bool {
-	var status *StatusError
+	status, ok := errors.AsType[*StatusError](err)
 
-	return errors.As(err, &status) &&
-		(status.StatusCode == http.StatusUnauthorized || strings.EqualFold(status.Message, "Bad credentials"))
+	return ok && (status.StatusCode == http.StatusUnauthorized || strings.EqualFold(status.Message, "Bad credentials"))
 }
 
 // tokenRunError maps a failed gh run to an actionable error without its output.

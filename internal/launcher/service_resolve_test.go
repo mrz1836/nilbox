@@ -143,7 +143,7 @@ func TestResolveItems(t *testing.T) {
 // TestPreviewMatchesLaunch checks that a preview shows exactly what the launch sends.
 func TestPreviewMatchesLaunch(t *testing.T) {
 	h := newLaunchHarness(t)
-	req := LaunchRequest{ItemID: h.trustedPR, Profile: "work", Model: ptr(strOpus)}
+	req := LaunchRequest{ItemID: h.trustedPR, Profile: "work", Model: new(strOpus)}
 
 	preview, err := h.service().Preview(t.Context(), req)
 	require.NoError(t, err)
@@ -162,7 +162,7 @@ func TestPreviewMatchesLaunch(t *testing.T) {
 	assert.Equal(t, settings.TerminalITerm2, preview.Terminal)
 	assert.Equal(t, SourceLaunch, preview.Resolution.Model.Source)
 
-	preview, err = h.service().Preview(t.Context(), LaunchRequest{ItemID: h.issue, Worktree: ptr(false)})
+	preview, err = h.service().Preview(t.Context(), LaunchRequest{ItemID: h.issue, Worktree: new(false)})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"unset CLAUDE_CONFIG_DIR"}, preview.Env)
 	assert.Empty(t, preview.Worktree)
@@ -181,7 +181,7 @@ func TestLaunchUsesPromptSettings(t *testing.T) {
 	assert.Contains(t, promptFor(t, res.ScriptPath), "Take a quick look at pull request #7")
 
 	// The launch's own choices win over the prompt's.
-	_, script = h.launch(t, LaunchRequest{ItemID: h.trustedPR, PromptID: quick, Model: ptr(strOpus), Worktree: ptr(true)})
+	_, script = h.launch(t, LaunchRequest{ItemID: h.trustedPR, PromptID: quick, Model: new(strOpus), Worktree: new(true)})
 	assert.Contains(t, script, "'--model' 'opus' '--effort' 'low'")
 	assert.Contains(t, script, "'--worktree' '#7'")
 
@@ -191,11 +191,11 @@ func TestLaunchUsesPromptSettings(t *testing.T) {
 
 func TestLaunchUsesLaunchDefaults(t *testing.T) {
 	h := newLaunchHarness(t)
-	fix := h.promptID(t, "Fix checks")
+	fix := new(h.promptID(t, "Fix checks"))
 
 	h.saveDefaults(t, launchdefaults.Input{Owner: acmeOrg, Profile: "work", ExtraFlags: "--advisor fable"})
 	h.saveDefaults(t, launchdefaults.Input{
-		Owner: acmeOrg, Name: "example-repo", PRPromptID: &fix, Effort: "max", PlanMode: ptr(true),
+		Owner: acmeOrg, Name: "example-repo", PRPromptID: fix, Effort: "max", PlanMode: new(true),
 	})
 
 	res, script := h.launch(t, LaunchRequest{ItemID: h.trustedPR})

@@ -445,21 +445,15 @@ func TestDismissedItemsNeverWake(t *testing.T) {
 func TestUnreadableWakeReasonsShowNone(t *testing.T) {
 	assert.Nil(t, decodeReasons(nil))
 
-	empty := "{}"
-	assert.Nil(t, decodeReasons(&empty))
-
-	broken := "[1]"
-	assert.Nil(t, decodeReasons(&broken))
-
-	ok := `{"commits":2}`
-	assert.Equal(t, &snooze.Reasons{Commits: 2}, decodeReasons(&ok))
+	assert.Nil(t, decodeReasons(new("{}")))
+	assert.Nil(t, decodeReasons(new("[1]")))
+	assert.Equal(t, &snooze.Reasons{Commits: 2}, decodeReasons(new(`{"commits":2}`)))
 
 	// A review outcome a different build stored reads as none.
-	praised := `{"commits":2,"review":"praised"}`
-	assert.Equal(t, &snooze.Reasons{Commits: 2, Review: snooze.ReviewNone}, decodeReasons(&praised))
+	assert.Equal(t, &snooze.Reasons{Commits: 2, Review: snooze.ReviewNone},
+		decodeReasons(new(`{"commits":2,"review":"praised"}`)))
 
-	onlyPraised := `{"review":"praised"}`
-	assert.Nil(t, decodeReasons(&onlyPraised), "nothing this build knows woke it")
+	assert.Nil(t, decodeReasons(new(`{"review":"praised"}`)), "nothing this build knows woke it")
 }
 
 func TestWakeRulesDatabaseError(t *testing.T) {

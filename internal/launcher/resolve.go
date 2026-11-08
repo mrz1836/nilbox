@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 
 	"github.com/mrz1836/nilbox/internal/agent"
@@ -313,16 +314,10 @@ func (r *resolver) inheritedProfile() (profiles.Profile, Source, error) {
 		return p, SourceApp, nil
 	}
 
-	names := make([]string, 0, len(r.w.profiles))
-	for name := range r.w.profiles {
-		names = append(names, name)
-	}
-
+	names := slices.Sorted(maps.Keys(r.w.profiles))
 	if len(names) == 0 {
 		return profiles.Profile{}, "", ErrNoProfile
 	}
-
-	slices.Sort(names)
 
 	return r.w.profiles[names[0]], SourceApp, nil
 }

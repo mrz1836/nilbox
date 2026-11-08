@@ -98,7 +98,6 @@ func fields(list []agent.FieldError) map[string]string {
 func TestSaveAndList(t *testing.T) {
 	h := newHarness(t)
 	ctx := t.Context()
-	off := false
 
 	org, err := h.svc.Save(ctx, launchdefaults.Input{
 		Owner: " acme-org ", Profile: "work", PRPromptID: &h.review, ExtraFlags: "--advisor fable",
@@ -113,7 +112,7 @@ func TestSaveAndList(t *testing.T) {
 	assert.NotEmpty(t, org.UpdatedAt)
 
 	repo, err := h.svc.Save(ctx, launchdefaults.Input{
-		Owner: acme, Name: "example-repo", IssuePromptID: &h.work, Model: "sonnet", Effort: "low", Worktree: &off,
+		Owner: acme, Name: "example-repo", IssuePromptID: &h.work, Model: "sonnet", Effort: "low", Worktree: new(false),
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "acme-org/example-repo", repo.Target())
@@ -158,7 +157,7 @@ func TestSaveWithNothingSetRemoves(t *testing.T) {
 
 func TestValidation(t *testing.T) {
 	h := newHarness(t)
-	gone := int64(9999)
+	gone := new(int64(9999))
 
 	tests := []struct {
 		name  string
@@ -171,7 +170,7 @@ func TestValidation(t *testing.T) {
 		{name: "bad name", in: launchdefaults.Input{Owner: acme, Name: "a b", Model: "opus"}, field: launchdefaults.FieldName},
 		{name: "agent", in: launchdefaults.Input{Owner: acme, Agent: "codex"}, field: launchdefaults.FieldAgent, want: `There's no coding tool called "codex".`},
 		{name: "profile", in: launchdefaults.Input{Owner: acme, Profile: "nope"}, field: launchdefaults.FieldProfile, want: `There's no profile called "nope".`},
-		{name: "missing prompt", in: launchdefaults.Input{Owner: acme, PRPromptID: &gone}, field: launchdefaults.FieldPRPromptID, want: "no longer exists"},
+		{name: "missing prompt", in: launchdefaults.Input{Owner: acme, PRPromptID: gone}, field: launchdefaults.FieldPRPromptID, want: "no longer exists"},
 		{name: "issue prompt for PRs", in: launchdefaults.Input{Owner: acme, PRPromptID: &h.work}, field: launchdefaults.FieldPRPromptID, want: `"Work on it" isn't a prompt for pull requests.`},
 		{name: "PR prompt for issues", in: launchdefaults.Input{Owner: acme, IssuePromptID: &h.review}, field: launchdefaults.FieldIssuePromptID, want: `"Review" isn't a prompt for issues.`},
 		{name: "model", in: launchdefaults.Input{Owner: acme, Model: "-x"}, field: launchdefaults.FieldModel},
@@ -351,9 +350,7 @@ func TestIndex(t *testing.T) {
 }
 
 func TestInputEmpty(t *testing.T) {
-	on := true
-
 	assert.True(t, launchdefaults.Input{Owner: acme, ExtraFlags: " "}.Empty())
-	assert.False(t, launchdefaults.Input{Owner: acme, Worktree: &on}.Empty())
+	assert.False(t, launchdefaults.Input{Owner: acme, Worktree: new(true)}.Empty())
 	assert.False(t, launchdefaults.Input{Owner: acme, Agent: "claude"}.Empty())
 }
