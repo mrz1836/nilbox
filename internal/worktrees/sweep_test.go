@@ -1,20 +1,27 @@
 package worktrees
 
 import (
+	"bytes"
 	"context"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
-	"github.com/mrz1836/nilbox/internal/github"
-	"github.com/mrz1836/nilbox/internal/launchlog"
-	"github.com/mrz1836/nilbox/internal/settings"
+	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/testutil"
+	"github.com/mrz1836/nilbox/internal/uierr"
+	"github.com/mrz1836/nilbox/internal/worklog"
 )
 
 // sweepFixture is a clone with one agent worktree of each kind the sweep tells apart.
@@ -36,17 +43,17 @@ func newSweepFixture(t *testing.T, e *env) *sweepFixture {
 	// Launched by the app, and its pull request merged: cleaned up.
 	f.launchedPR, head = agentWorktree(t, f.repo, "pr-1")
 	pushed(t, f.repo, "one", head)
-	f.gh.set("example-repo", 1, pr(github.StateMerged, "a different head"))
-	f.launches.records = append(f.launches.records, launchOf(f.repo, "pr-1", kindPR, 1))
+	f.gh.set("example-repo", 1, pr(ItemMerged, "a different head"))
+	f.launches.records = append(f.launches.records, launchOf(f.repo, "pr-1", item.KindPR, 1))
 
 	// Not launched by the app, but HEAD is the merged pull request's head: cleaned up.
 	f.commitLinked, head = agentWorktree(t, f.repo, "pr-2")
-	f.gh.set("example-repo", 2, pr(github.StateMerged, head))
+	f.gh.set("example-repo", 2, pr(ItemMerged, head))
 
 	// Not launched, and linked by its name alone: finished, but left for the user.
 	f.nameOnly, head = agentWorktree(t, f.repo, "pr-3")
 	pushed(t, f.repo, "three", head)
-	f.gh.set("example-repo", 3, pr(github.StateMerged, "a different head"))
+	f.gh.set("example-repo", 3, pr(ItemMerged, "a different head"))
 
 	// An issue not launched by the app: left for the user.
 	f.unlaunchedIssue, head = agentWorktree(t, f.repo, "issue-4")
@@ -57,28 +64,30 @@ func newSweepFixture(t *testing.T, e *env) *sweepFixture {
 	f.launchedIssue, head = agentWorktree(t, f.repo, "issue-5")
 	pushed(t, f.repo, "five", head)
 	f.gh.set("example-repo", 5, closedIssue())
-	f.launches.records = append(f.launches.records, launchOf(f.repo, "issue-5", kindIssue, 5))
+	f.launches.records = append(f.launches.records, launchOf(f.repo, "issue-5", item.KindIssue, 5))
 
 	// Merged, but it holds uncommitted changes: needs a look.
 	f.changed, head = agentWorktree(t, f.repo, "pr-6")
 	pushed(t, f.repo, "six", head)
 	dirty(t, f.changed)
-	f.gh.set("example-repo", 6, pr(github.StateMerged, head))
-	f.launches.records = append(f.launches.records, launchOf(f.repo, "pr-6", kindPR, 6))
+	f.gh.set("example-repo", 6, pr(ItemMerged, head))
+	f.launches.records = append(f.launches.records, launchOf(f.repo, "pr-6", item.KindPR, 6))
 
 	// Still open: nothing to do.
 	f.open, head = agentWorktree(t, f.repo, "pr-7")
 	pushed(t, f.repo, "seven", head)
-	f.gh.set("example-repo", 7, pr(github.StateOpen, head))
+	f.gh.set("example-repo", 7, pr(ItemOpen, head))
 
 	return f
 }
 
 func TestSweepCleansUpMergedAndClosedWork(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	f := newSweepFixture(t, e)
-	notifier := &countingNotifier{}
-	svc := e.linked(linkDeps{gh: f.gh, launches: f.launches, notifier: notifier, auto: true})
+	events := &testutil.Events{}
+	svc := e.linked(linkDeps{gh: f.gh, launches: f.launches, events: events, auto: true})
 
 	assert.Zero(t, svc.LastSweep().Seq, "no sweep yet")
 
@@ -111,17 +120,19 @@ func TestSweepCleansUpMergedAndClosedWork(t *testing.T) {
 
 	assert.NotContains(t, branches(t, f.repo), "worktree-pr-1")
 	assert.ElementsMatch(t, []string{"example-repo/pr-1", "example-repo/issue-5"}, f.launches.forgotten)
-	assert.Equal(t, 1, notifier.calls())
+	assert.Equal(t, []event.Event{event.WorktreesUpdated{}}, events.All())
 	assert.Equal(t, report, svc.LastSweep())
 
 	again := svc.Sweep(t.Context())
 	assert.Equal(t, 2, again.Seq)
 	assert.Empty(t, again.Cleaned)
 	assert.Equal(t, 3, again.Leftover)
-	assert.Equal(t, 1, notifier.calls(), "nothing changed, so nobody is told")
+	assert.Equal(t, 1, events.Count(), "nothing changed, so nobody is told")
 }
 
 func TestSweepOnlyCountsWhenAutomaticCleanupIsOff(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	f := newSweepFixture(t, e)
 	svc := e.linked(linkDeps{gh: f.gh, launches: f.launches})
@@ -135,30 +146,34 @@ func TestSweepOnlyCountsWhenAutomaticCleanupIsOff(t *testing.T) {
 }
 
 func TestSweepCountsTheWorktreesOfEveryClone(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	plain := e.newRepo(t, "plain")
 	feature := addWorktree(t, plain, filepath.Join(e.home, "wt", "feature"), "feature")
-	notifier := &countingNotifier{}
-	svc := e.linked(linkDeps{gh: &fakeGitHub{}, notifier: notifier, auto: true})
+	events := &testutil.Events{}
+	svc := e.linked(linkDeps{gh: &fakeGitHub{}, events: events, auto: true})
 
 	report := svc.Sweep(t.Context())
 	assert.Empty(t, report.Error)
 	assert.Equal(t, 1, report.WorktreeCount, "a clone without agent worktrees still counts, though git never runs in it")
-	assert.Equal(t, 1, notifier.calls(), "the first count is news")
+	assert.Equal(t, 1, events.Count(), "the first count is news")
 
 	svc.Sweep(t.Context())
-	assert.Equal(t, 1, notifier.calls(), "the same count is not")
+	assert.Equal(t, 1, events.Count(), "the same count is not")
 
 	addWorktree(t, plain, filepath.Join(e.home, "wt", "second"), "second")
 	assert.Equal(t, 2, svc.Sweep(t.Context()).WorktreeCount)
-	assert.Equal(t, 2, notifier.calls(), "a new worktree is news")
+	assert.Equal(t, 2, events.Count(), "a new worktree is news")
 
-	gitOut(t, "-C", plain, "worktree", "remove", feature)
+	testutil.RunGit(t, plain, "worktree", "remove", feature)
 	assert.Equal(t, 1, svc.Sweep(t.Context()).WorktreeCount)
-	assert.Equal(t, 3, notifier.calls(), "so is one removed")
+	assert.Equal(t, 3, events.Count(), "so is one removed")
 }
 
 func TestCountWorktrees(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	wt := filepath.Join(e.home, "wt")
 
@@ -179,8 +194,8 @@ func TestCountWorktrees(t *testing.T) {
 	// A linked worktree under the root of a repository outside it brings that
 	// repository's worktrees, as a listing shows them.
 	outside := filepath.Join(e.home, "outside")
-	gitOut(t, "-c", "init.defaultBranch=main", "init", "-q", outside)
-	gitOut(t, "-C", outside, "commit", "-q", "--allow-empty", "-m", "init")
+	testutil.InitRepo(t, outside)
+	testutil.RunGit(t, outside, "commit", "-q", "--allow-empty", "-m", "init")
 	addWorktree(t, outside, filepath.Join(e.root, "outside-wt"), "outside-wt")
 	addWorktree(t, outside, filepath.Join(wt, "outside-two"), "outside-two")
 
@@ -200,22 +215,24 @@ func TestCountWorktrees(t *testing.T) {
 }
 
 func TestSweepReportsWhatItCouldNotRemove(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	repo := e.newGitHubRepo(t, "example-repo")
 	path, head := agentWorktree(t, repo, "pr-1")
 	gh := &fakeGitHub{}
-	gh.set("example-repo", 1, pr(github.StateMerged, head))
+	gh.set("example-repo", 1, pr(ItemMerged, head))
 
 	// git reports the worktree's commit as of the listing; a commit made by the time it
 	// is removed keeps it.
 	svc := e.linked(linkDeps{gh: gh, auto: true})
-	svc.run = scriptedRunner{real: execpath.Runner{}, intercept: func(sub []string) (reply, bool) {
+	svc.run = scriptedGit(e.git, func(sub []string) (reply, bool) {
 		if startsWith(sub, "worktree remove") {
 			return reply{stderr: "fatal: '" + path + "' contains modified or untracked files, use --force to delete it", err: exitError{code: 128}}, true
 		}
 
 		return reply{}, false
-	}}
+	})
 
 	report := svc.Sweep(t.Context())
 	require.Len(t, report.Failed, 1)
@@ -224,25 +241,27 @@ func TestSweepReportsWhatItCouldNotRemove(t *testing.T) {
 }
 
 func TestSweepForgetsLaunchesWhoseWorktreeIsGone(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	repo := e.newGitHubRepo(t, "example-repo")
 	kept, head := agentWorktree(t, repo, "pr-1")
 	pushed(t, repo, "one", head)
 	removed, _ := agentWorktree(t, repo, "pr-2")
-	gitOut(t, "-C", repo, "worktree", "remove", removed)
+	testutil.RunGit(t, repo, "worktree", "remove", removed)
 
 	elsewhere := filepath.Join(e.home, "elsewhere", "example-repo")
 	require.NoError(t, os.MkdirAll(elsewhere, 0o700))
 
-	launches := &fakeLaunches{records: []launchlog.Launch{
-		launchOf(repo, "pr-1", kindPR, 1),
-		launchOf(repo, "pr-2", kindPR, 2),
-		launchOf(filepath.Join(e.root, "deleted-clone"), "pr-3", kindPR, 3),
-		launchOf(elsewhere, "pr-4", kindPR, 4),
+	launches := &fakeLaunches{records: []worklog.Launch{
+		launchOf(repo, "pr-1", item.KindPR, 1),
+		launchOf(repo, "pr-2", item.KindPR, 2),
+		launchOf(filepath.Join(e.root, "deleted-clone"), "pr-3", item.KindPR, 3),
+		launchOf(elsewhere, "pr-4", item.KindPR, 4),
 	}}
 
 	gh := &fakeGitHub{}
-	gh.set("example-repo", 1, pr(github.StateOpen, head))
+	gh.set("example-repo", 1, pr(ItemOpen, head))
 
 	e.linked(linkDeps{gh: gh, launches: launches, auto: true}).Sweep(t.Context())
 
@@ -252,53 +271,59 @@ func TestSweepForgetsLaunchesWhoseWorktreeIsGone(t *testing.T) {
 }
 
 func TestSweepForgetsLaunchesWhenNoCloneIsLeft(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
-	launches := &fakeLaunches{records: []launchlog.Launch{launchOf(filepath.Join(e.root, "gone"), "pr-1", kindPR, 1)}}
+	launches := &fakeLaunches{records: []worklog.Launch{launchOf(filepath.Join(e.root, "gone"), "pr-1", item.KindPR, 1)}}
 
 	report := e.linked(linkDeps{gh: &fakeGitHub{}, launches: launches, auto: true}).Sweep(t.Context())
 	assert.Empty(t, report.Error)
 	assert.Zero(t, report.Leftover)
 	assert.Equal(t, []string{"gone/pr-1"}, launches.forgotten)
 
-	launches = &fakeLaunches{records: []launchlog.Launch{launchOf(filepath.Join(e.root, "gone"), "pr-1", kindPR, 1)}, forgetErr: errFakeLaunches}
+	launches = &fakeLaunches{records: []worklog.Launch{launchOf(filepath.Join(e.root, "gone"), "pr-1", item.KindPR, 1)}, forgetErr: errFakeLaunches}
 	e.linked(linkDeps{gh: &fakeGitHub{}, launches: launches}).Sweep(t.Context())
 	assert.Empty(t, launches.forgotten, "a failure to forget is only logged")
 }
 
 func TestSweepErrors(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	repo := e.newGitHubRepo(t, "example-repo")
 	agentWorktree(t, repo, "pr-1")
 
-	notifier := &countingNotifier{}
+	events := &testutil.Events{}
 	gh := &fakeGitHub{err: errFakeGitHub}
-	svc := e.linked(linkDeps{gh: gh, notifier: notifier, auto: true})
+	svc := e.linked(linkDeps{gh: gh, events: events, auto: true})
 
 	report := svc.Sweep(t.Context())
 	assert.Contains(t, report.Error, errFakeGitHub.Error())
 	assert.Empty(t, report.Cleaned)
-	assert.Equal(t, 1, notifier.calls(), "a new error is news")
+	assert.Equal(t, 1, events.Count(), "a new error is news")
 
 	svc.settings = fakeSettings{err: errFakeSettings}
 
 	report = svc.Sweep(t.Context())
-	assert.Equal(t, errFakeSettings.Error(), report.Error)
+	assert.Equal(t, uierr.Message(errFakeSettings), report.Error, "the report says what the user is told")
 	assert.NotEmpty(t, report.At)
 
 	svc.settings = fakeSettings{root: cloneRoot, auto: true}
-	svc.run = scriptedRunner{real: execpath.Runner{}, intercept: func(sub []string) (reply, bool) {
+	svc.run = scriptedGit(e.git, func(sub []string) (reply, bool) {
 		if startsWith(sub, "worktree list") {
 			return reply{err: errFakeStart}, true
 		}
 
 		return reply{}, false
-	}}
+	})
 
 	report = svc.Sweep(t.Context())
 	assert.Contains(t, report.Error, errFakeStart.Error())
 }
 
 func TestSweepClones(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	agent := e.newGitHubRepo(t, "agent")
 	agentWorktree(t, agent, "pr-1")
@@ -319,10 +344,10 @@ func TestSweepClones(t *testing.T) {
 
 	require.NoError(t, os.WriteFile(filepath.Join(e.root, "file.txt"), []byte("x"), 0o600))
 
-	launches := []launchlog.Launch{
-		launchOf(recorded, "pr-9", kindPR, 9),
-		launchOf(agent, "pr-1", kindPR, 1),
-		launchOf(filepath.Join(e.home, "outside"), "pr-2", kindPR, 2),
+	launches := []worklog.Launch{
+		launchOf(recorded, "pr-9", item.KindPR, 9),
+		launchOf(agent, "pr-1", item.KindPR, 1),
+		launchOf(filepath.Join(e.home, "outside"), "pr-2", item.KindPR, 2),
 	}
 
 	svc := e.linked(linkDeps{})
@@ -338,46 +363,91 @@ func TestSweepClones(t *testing.T) {
 
 	assert.Equal(t, []string{"agent", "recorded"}, names,
 		"only clones with agent worktrees or records, each once; not plain, empty, hidden, or not a repository")
-	assert.Equal(t, map[string]string{"origin": "acme-org/agent"}, clones[0].Remotes)
+	assert.Equal(t, map[string]repo.Name{"origin": {Owner: "acme-org", Repo: "agent"}}, clones[0].Remotes)
 	assert.Empty(t, svc.sweepClones(t.Context(), filepath.Join(root, "missing"), nil))
 }
 
 func TestSweeperRunsUntilCanceled(t *testing.T) {
-	e := newEnv(t)
-	svc := e.linked(linkDeps{gh: &fakeGitHub{}})
+	t.Parallel()
 
-	ctx, cancel := context.WithCancel(t.Context())
-	done := make(chan struct{})
+	// The bubble's clock moves only when every goroutine in it is blocked, so an hour's
+	// interval takes no real time and the count of sweeps is exact.
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv(t)
+		svc := e.linked(linkDeps{gh: &fakeGitHub{}})
 
-	go func() {
-		defer close(done)
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan struct{})
 
-		NewSweeper(svc).Run(ctx, time.Millisecond)
-	}()
+		go func() {
+			defer close(done)
 
-	require.Eventually(t, func() bool { return svc.LastSweep().Seq >= 2 }, 5*time.Second, time.Millisecond,
-		"it sweeps at once and then on every tick")
+			NewSweeper(svc, time.Hour).Run(ctx)
+		}()
 
-	cancel()
+		synctest.Wait()
+		assert.Equal(t, 1, svc.LastSweep().Seq, "it sweeps at once")
 
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("the sweeper did not return once canceled")
-	}
+		time.Sleep(2*time.Hour + time.Second)
+		synctest.Wait()
+		assert.Equal(t, 3, svc.LastSweep().Seq, "and then on every tick")
+
+		cancel()
+		<-done
+	})
 }
 
 // panickingSettings panics when read.
 type panickingSettings struct{}
 
-func (panickingSettings) Get(context.Context) (settings.Settings, error) { panic("settings exploded") }
+func (panickingSettings) Get(context.Context) (SweepSettings, error) { panic("settings exploded") }
 
-func TestSafeSweepSurvivesAPanicAndLogsFailures(t *testing.T) {
-	svc := NewService(Config{Settings: panickingSettings{}, Git: execpath.Runner{}, Logger: slog.New(slog.DiscardHandler)})
+func TestSweeperSurvivesAPanicAndLogsFailures(t *testing.T) {
+	t.Parallel()
 
-	require.NotPanics(t, func() { svc.safeSweep(t.Context()) })
+	var logs bytes.Buffer
 
-	svc = NewService(Config{Settings: fakeSettings{err: errFakeSettings}, Git: execpath.Runner{}, Logger: slog.New(slog.DiscardHandler)})
-	svc.safeSweep(t.Context())
-	assert.Equal(t, errFakeSettings.Error(), svc.LastSweep().Error)
+	var mu sync.Mutex
+
+	logger := slog.New(slog.NewTextHandler(lockedWriter{w: &logs, mu: &mu}, nil))
+
+	synctest.Test(t, func(t *testing.T) {
+		svc := NewService(Config{Settings: panickingSettings{}, Git: execpath.Exec{}, Logger: logger})
+
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan struct{})
+
+		go func() {
+			defer close(done)
+
+			NewSweeper(svc, time.Hour).Run(ctx)
+		}()
+
+		time.Sleep(time.Hour + time.Second)
+		synctest.Wait()
+		cancel()
+		<-done
+	})
+
+	mu.Lock()
+	assert.Equal(t, 2, strings.Count(logs.String(), "worktree sweep panicked"), "a panicking sweep is logged and the next one still runs")
+	mu.Unlock()
+
+	// The log gets the error itself; the report, what the user is told about it.
+	svc := NewService(Config{Settings: fakeSettings{err: errFakeSettings}, Git: execpath.Exec{}, Logger: logger})
+	require.ErrorIs(t, svc.sweepOnce(t.Context()), errFakeSettings)
+	assert.Equal(t, uierr.Message(errFakeSettings), svc.LastSweep().Error)
+}
+
+// lockedWriter serializes writes to w.
+type lockedWriter struct {
+	w  *bytes.Buffer
+	mu *sync.Mutex
+}
+
+func (l lockedWriter) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	return l.w.Write(p)
 }

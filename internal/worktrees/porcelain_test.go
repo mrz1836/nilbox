@@ -36,6 +36,8 @@ func mainAttrs() []string {
 }
 
 func TestParsePorcelain(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		data []byte
@@ -135,6 +137,8 @@ func TestParsePorcelain(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got, err := ParsePorcelain(tt.data)
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
@@ -143,6 +147,8 @@ func TestParsePorcelain(t *testing.T) {
 }
 
 func TestParsePorcelainMalformed(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		data []byte
@@ -155,6 +161,8 @@ func TestParsePorcelainMalformed(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got, err := ParsePorcelain(tt.data)
 			require.ErrorIs(t, err, ErrMalformedPorcelain)
 			assert.Nil(t, got)

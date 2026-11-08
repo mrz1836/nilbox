@@ -3,10 +3,34 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as terminal$0 from "../launcher/terminal/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as notifyprefs$0 from "../notifyprefs/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as sensitive$0 from "../sensitive/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as snooze$0 from "../snooze/models.js";
+
+/**
+ * ListKey names an inbox list, as the inbox snapshot names it: each list is a section of
+ * the inbox the user can collapse.
+ */
+export type ListKey = "reviewRequested" | "authored" | "assigned";
+
+/**
+ * The values of ListKey, by the names of their Go constants.
+ */
+export const ListKey = {
+    /**
+     * The inbox lists, in the order the inbox shows them.
+     */
+    ListReviewRequested: "reviewRequested",
+    ListAuthored: "authored",
+    ListAssigned: "assigned",
+} as const;
 
 /**
  * Settings is the full set of preferences as the UI shows them. Every field is a plain
@@ -30,9 +54,9 @@ export interface Settings {
     "worktreeAutoCleanup": boolean;
 
     /**
-     * Terminal is "iterm2" or "terminal".
+     * Terminal is TerminalITerm2 or TerminalApp.
      */
-    "terminal": string;
+    "terminal": terminal$0.ID;
 
     /**
      * CloneRoot is the clone root as entered, e.g. "~/projects".
@@ -94,8 +118,51 @@ export interface Settings {
      * BannersOff lists the kinds of notification (see the notify package) whose banners
      * are off. The notification history keeps every kind either way.
      */
-    "bannersOff": string[] | null;
+    "bannersOff": notifyprefs$0.Kind[] | null;
+
+    /**
+     * Theme is the palette the app shows.
+     */
+    "theme": Theme;
+
+    /**
+     * CollapsedSections lists the inbox sections the user collapsed, in the order the
+     * inbox shows them.
+     */
+    "collapsedSections": ListKey[] | null;
 }
+
+/**
+ * Theme is the palette the app shows.
+ */
+export type Theme = "system" | "light" | "dark";
+
+/**
+ * The values of Theme, by the names of their Go constants.
+ */
+export const Theme = {
+    /**
+     * Theme choices.
+     *
+     * ThemeSystem follows the system's light or dark appearance as it changes.
+     */
+    ThemeSystem: "system",
+
+    /**
+     * ThemeLight always shows the light palette.
+     */
+    ThemeLight: "light",
+
+    /**
+     * ThemeDark always shows the dark palette.
+     */
+    ThemeDark: "dark",
+
+    /**
+     * DefaultTheme is the theme of a fresh database.
+     */
+    DefaultTheme: "system",
+} as const;
 
 /**
  * WindowSize is the window's size, in points.

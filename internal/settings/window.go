@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/mrz1836/nilbox/internal/prefs"
 )
 
 // KeyWindowSize is the size the window opens at, stored as "<width>x<height>".
@@ -50,15 +52,33 @@ func (w WindowSize) Fit(width, height int) WindowSize {
 	return w
 }
 
-// SetWindowSize stores the size the window opens at, which takes effect at the next
-// launch: MinWindowWidth by MinWindowHeight up to MaxWindowWidth by MaxWindowHeight.
-func (s *Service) SetWindowSize(ctx context.Context, size WindowSize) error {
-	if !size.valid() {
-		return fmt.Errorf("%w: %d x %d; choose %d x %d up to %d x %d", ErrInvalidWindowSize, size.Width, size.Height,
-			MinWindowWidth, MinWindowHeight, MaxWindowWidth, MaxWindowHeight)
+// ReadWindowSize returns the size the window opens at, from the preferences in store: the
+// stored size, or the default when none is stored or the stored one is no longer valid.
+// Only the desktop shell reads the size on its own, so this is a function over the store
+// rather than a method of the Service the window binds.
+func ReadWindowSize(ctx context.Context, store *prefs.Store) (WindowSize, error) {
+	stored, _, err := store.Get(ctx, KeyWindowSize)
+	if err != nil {
+		return DefaultWindowSize(), fmt.Errorf("read the window size: %w", err)
 	}
 
-	return s.set(ctx, KeyWindowSize, size.encode())
+	if size, ok := decodeWindowSize(stored); ok {
+		return size, nil
+	}
+
+	return DefaultWindowSize(), nil
+}
+
+// SetWindowSize stores the size the window opens at, which takes effect at the next
+// launch: MinWindowWidth by MinWindowHeight up to MaxWindowWidth by MaxWindowHeight. It
+// returns the settings with it.
+func (s *Service) SetWindowSize(ctx context.Context, size WindowSize) (Settings, error) {
+	if !size.valid() {
+		return Settings{}, fmt.Errorf("%w: %d x %d; choose %d x %d up to %d x %d", ErrInvalidWindowSize, size.Width,
+			size.Height, MinWindowWidth, MinWindowHeight, MaxWindowWidth, MaxWindowHeight)
+	}
+
+	return s.save(ctx, setting(KeyWindowSize, size.encode()))
 }
 
 // valid reports whether the size is within the bounds.

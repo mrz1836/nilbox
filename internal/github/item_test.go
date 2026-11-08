@@ -2,7 +2,6 @@ package github
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"testing"
@@ -28,6 +27,8 @@ func serveItem(body string) http.HandlerFunc {
 }
 
 func TestFetchItemReadsTheItemAndItsDetails(t *testing.T) {
+	t.Parallel()
+
 	body := fixture(t, "item_response.json")
 
 	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
@@ -89,6 +90,8 @@ func TestFetchItemReadsTheItemAndItsDetails(t *testing.T) {
 }
 
 func TestFetchItemReadsAnIssue(t *testing.T) {
+	t.Parallel()
+
 	body := `{"data":{"node":{"__typename":"Issue","id":"I_fakeNodeId7","number":7,"title":"Fix the docs",
 		"issueState":"OPEN","author":{"__typename":"Bot","login":"helper-bot"},
 		"repository":{"name":"docs-repo","owner":{"login":"acme-org"}},
@@ -107,6 +110,8 @@ func TestFetchItemReadsAnIssue(t *testing.T) {
 }
 
 func TestFetchItemThatIsGone(t *testing.T) {
+	t.Parallel()
+
 	// What GitHub answers for an ID it cannot resolve.
 	body := `{"data":{"node":null,"rateLimit":{"cost":1,"limit":5000,"remaining":4946,"used":54,
 		"resetAt":"2026-01-10T13:00:00Z"}},"errors":[{"type":"NOT_FOUND","path":["node"],
@@ -121,6 +126,8 @@ func TestFetchItemThatIsGone(t *testing.T) {
 }
 
 func TestFetchItemFailures(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		status  int
@@ -159,6 +166,8 @@ func TestFetchItemFailures(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(tt.status)
 				_, _ = io.WriteString(w, tt.body)
@@ -170,20 +179,9 @@ func TestFetchItemFailures(t *testing.T) {
 	}
 }
 
-func TestFetchItemKeepsTheTokenOutOfErrors(t *testing.T) {
-	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = fmt.Fprintf(w, `{"errors":[{"message":"bad token %s"}]}`, fakeToken)
-	})
-
-	_, err := client.FetchItem(t.Context(), NewToken(fakeToken), "I_fakeNodeId1")
-	require.ErrorIs(t, err, ErrGraphQL)
-	assert.NotContains(t, err.Error(), fakeToken)
-
-	_, err = client.FetchItem(t.Context(), Token{}, "I_fakeNodeId1")
-	require.ErrorIs(t, err, ErrNotLoggedIn)
-}
-
 func TestFetchInboxReadsEachItemsState(t *testing.T) {
+	t.Parallel()
+
 	body := `{"data":{"viewer":{"login":"octo-user"},
 	"reviewRequested":{"issueCount":2,"nodes":[
 		{"__typename":"PullRequest","number":1,"prState":"MERGED","repository":{"name":"example-repo","owner":{"login":"acme-org"}}},

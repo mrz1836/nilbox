@@ -1,15 +1,8 @@
 import { useState } from 'react'
 
-import {
-  capitalize,
-  formatWhen,
-  isPinned,
-  snoozeChoices,
-  snoozeEnd,
-  snoozeLength,
-  snoozeShort,
-  type TriageTab,
-} from '../lib/triage'
+import { capitalize, formatWhen } from '../lib/time'
+import { isPinned, snoozeChoices, snoozeEnd, snoozeLength, snoozeShort, type TriageTab } from '../lib/triage'
+import { useClock, useNowAs } from '../lib/useNow'
 import type { InboxItem } from '../platform'
 import { ArchiveIcon, ChevronDownIcon, ClockIcon, PinIcon, RefreshIcon, ResetIcon, SlidersIcon } from './icons'
 import { MenuButton, type MenuItem } from './Menu'
@@ -38,7 +31,6 @@ export interface TriageControlsProps {
   item: InboxItem
   // tab is the list tab the row is in, which decides the controls it gets.
   tab: TriageTab
-  now: Date
   actions: TriageActions
 }
 
@@ -58,6 +50,12 @@ function DefaultTag() {
       </span>
     </>
   )
+}
+
+// SnoozeEnd says when a snooze of days started now would end, kept current while the
+// menu that shows it is open.
+function SnoozeEnd({ days }: { days: number }) {
+  return useNowAs((now) => capitalize(formatWhen(now, snoozeEnd(now, days))))
 }
 
 // PinButton pins an item to the top of its lists, or, on a pinned item, marks it in the
@@ -91,8 +89,13 @@ function PinButton({ item, actions }: { item: InboxItem; actions: TriageActions 
 // item's pin is always shown, filled, and unpins it. In the Snoozed and Dismissed tabs
 // they are a single Unsnooze or Restore, always shown, since bringing items back is what
 // those tabs are for, with the pin of a pinned item beside it.
-export function TriageControls({ item, tab, now, actions }: TriageControlsProps) {
+export function TriageControls({ item, tab, actions }: TriageControlsProps) {
+  const clock = useClock()
   const [refreshing, setRefreshing] = useState(false)
+  // pointedAt is when the pointer or focus last reached the Snooze button, whose tooltip
+  // says when a snooze from then would end. It is worked out only then, so the rows
+  // have nothing to render as the clock moves on.
+  const [pointedAt, setPointedAt] = useState<Date | null>(null)
 
   if (tab !== 'inbox') {
     const snoozed = tab === 'snoozed'
@@ -117,13 +120,22 @@ export function TriageControls({ item, tab, now, actions }: TriageControlsProps)
 
   const { snoozeDays } = actions
   const length = snoozeLength(snoozeDays)
+  const snoozeTitle =
+    pointedAt === null
+      ? `Snooze for ${length}`
+      : `Snooze for ${length}: back ${formatWhen(pointedAt, snoozeEnd(pointedAt, snoozeDays))}`
 
-  const choices: MenuItem[] = [
+  const point = () => {
+    setPointedAt(clock.getSnapshot())
+  }
+
+  // choices are built only as the menu opens; each one's end follows the clock while open.
+  const choices = (): MenuItem[] => [
     ...snoozeChoices.map((days) => ({
       label: snoozeLength(days),
       hint: (
         <>
-          {capitalize(formatWhen(now, snoozeEnd(now, days)))}
+          <SnoozeEnd days={days} />
           {days === snoozeDays && <DefaultTag />}
         </>
       ),
@@ -167,7 +179,9 @@ export function TriageControls({ item, tab, now, actions }: TriageControlsProps)
           <button
             type="button"
             aria-label={`Snooze for ${length}`}
-            title={`Snooze for ${length}: back ${formatWhen(now, snoozeEnd(now, snoozeDays))}`}
+            title={snoozeTitle}
+            onPointerEnter={point}
+            onFocus={point}
             onClick={() => {
               actions.onSnooze(item, snoozeDays)
             }}

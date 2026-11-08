@@ -3,8 +3,11 @@ package sensitive
 import (
 	"fmt"
 	"path"
+	"slices"
 	"strings"
 	"unicode"
+
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // globChars are the characters that make a name a glob rather than a literal.
@@ -98,7 +101,7 @@ func parseNames(p, body string) ([]segment, error) {
 		stars int
 	)
 
-	for _, name := range strings.Split(strings.ToLower(body), "/") {
+	for name := range strings.SplitSeq(strings.ToLower(body), "/") {
 		switch name {
 		case "", ".":
 			continue
@@ -144,13 +147,7 @@ func (p pattern) match(names []string) bool {
 			last--
 		}
 
-		for _, name := range names[:max(last, 0)] {
-			if p.segs[0].match(name) {
-				return true
-			}
-		}
-
-		return false
+		return slices.ContainsFunc(names[:max(last, 0)], p.segs[0].match)
 	}
 
 	return matchFrom(p.segs, names, p.dir)
@@ -209,13 +206,10 @@ func splitPath(p string) []string {
 	return out
 }
 
-// shorten cuts a pattern for an error message.
+// shorten cuts a pattern for an error message to its first 60 characters and an
+// ellipsis.
 func shorten(p string) string {
 	const limit = 60
 
-	if r := []rune(p); len(r) > limit {
-		return string(r[:limit]) + "…"
-	}
-
-	return p
+	return textutil.Truncate(p, limit+1)
 }

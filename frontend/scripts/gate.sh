@@ -4,8 +4,9 @@
 # `magex frontend:gate` target and the frontend CI workflow both run this script,
 # so local runs and CI cannot drift apart.
 #
-# Steps: frozen-lockfile install, format check, lint, typecheck, and tests with
-# coverage. Any failure stops the gate.
+# Steps: frozen-lockfile install, format check, lint, typecheck, tests with
+# coverage, and the render profile through the React Compiler. Any failure stops
+# the gate.
 
 set -euo pipefail
 
@@ -23,3 +24,4 @@ pnpm format:check
 pnpm lint
 pnpm typecheck
 pnpm test:coverage
+pnpm test:renders

@@ -3,43 +3,39 @@ package worktrees
 import (
 	"context"
 	"errors"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mrz1836/nilbox/internal/cleanuplog"
-	"github.com/mrz1836/nilbox/internal/github"
-	"github.com/mrz1836/nilbox/internal/launchlog"
-	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/testutil"
+	"github.com/mrz1836/nilbox/internal/worklog"
 )
 
 var errFakeHistory = errors.New("fake: history unavailable")
 
 // openHistory opens a fresh, migrated database and a cleanup history over it.
-func openHistory(t *testing.T) *cleanuplog.Store {
+func openHistory(t *testing.T) *worklog.Store {
 	t.Helper()
 
-	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "app.db"))
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = store.Close(db) })
-
-	return cleanuplog.NewStore(db)
+	return worklog.New(testutil.DB(t))
 }
 
 // failingHistory fails every call.
 type failingHistory struct{}
 
-func (failingHistory) Record(context.Context, cleanuplog.Cleanup) error { return errFakeHistory }
+func (failingHistory) RecordCleanup(context.Context, worklog.Cleanup) error { return errFakeHistory }
 
-func (failingHistory) Recent(context.Context, int) ([]cleanuplog.Cleanup, error) {
+func (failingHistory) RecentCleanups(context.Context, int) ([]worklog.Cleanup, error) {
 	return nil, errFakeHistory
 }
 
-func (failingHistory) Clear(context.Context) error { return errFakeHistory }
+func (failingHistory) ClearCleanups(context.Context) error { return errFakeHistory }
 
 func TestCleanUpsAreRecorded(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	repo := e.newGitHubRepo(t, "example-repo")
 	history := openHistory(t)
@@ -47,13 +43,13 @@ func TestCleanUpsAreRecorded(t *testing.T) {
 
 	byHand, byHandHead := agentWorktree(t, repo, "pr-1")
 	pushed(t, repo, "one", byHandHead)
-	gh.set("example-repo", 1, pr(github.StateMerged, byHandHead))
+	gh.set("example-repo", 1, pr(ItemMerged, byHandHead))
 
 	_, autoHead := agentWorktree(t, repo, "issue-2")
 	pushed(t, repo, "two", autoHead)
 	gh.set("example-repo", 2, closedIssue())
 
-	launches := &fakeLaunches{records: []launchlog.Launch{launchOf(repo, "issue-2", kindIssue, 2)}}
+	launches := &fakeLaunches{records: []worklog.Launch{launchOf(repo, "issue-2", item.KindIssue, 2)}}
 	svc := e.linked(linkDeps{gh: gh, launches: launches, history: history, auto: true})
 
 	none, err := svc.RecentCleanups(t.Context())
@@ -86,7 +82,7 @@ func TestCleanUpsAreRecorded(t *testing.T) {
 	assert.Equal(t, "worktree-pr-1", manual.DeletedBranch)
 	assert.Equal(t, byHandHead, manual.Head)
 	assert.Equal(t, &LinkedItem{
-		Kind: kindPR, Owner: "acme-org", Name: "example-repo", Number: 1, Title: "Fix things",
+		Kind: item.KindPR, Owner: "acme-org", Name: "example-repo", Number: 1, Title: "Fix things",
 		URL: "https://github.com/acme-org/example-repo/pull/1", State: ItemMerged,
 	}, manual.Item)
 
@@ -94,7 +90,7 @@ func TestCleanUpsAreRecorded(t *testing.T) {
 	assert.True(t, swept.Automatic)
 	assert.Equal(t, "worktree-issue-2", swept.DeletedBranch)
 	require.NotNil(t, swept.Item)
-	assert.Equal(t, kindIssue, swept.Item.Kind)
+	assert.Equal(t, item.KindIssue, swept.Item.Kind)
 	assert.Equal(t, ItemClosed, swept.Item.State)
 
 	require.NoError(t, svc.ClearCleanups(t.Context()))
@@ -105,19 +101,23 @@ func TestCleanUpsAreRecorded(t *testing.T) {
 }
 
 func TestCleanupOfAnUnlinkedRecord(t *testing.T) {
-	c := cleanupOf(cleanuplog.Cleanup{ID: 3, Repo: "example-repo", Worktree: "scratch"})
+	t.Parallel()
+
+	c := cleanupOf(worklog.Cleanup{ID: 3, Repo: "example-repo", Worktree: "scratch"})
 	assert.Nil(t, c.Item, "a record without an item has none")
 	assert.Equal(t, "scratch", c.Worktree)
 }
 
 func TestHistoryFailuresAndAbsence(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	repo := e.newGitHubRepo(t, "example-repo")
 	path, head := agentWorktree(t, repo, "pr-1")
 	pushed(t, repo, "one", head)
 
 	gh := &fakeGitHub{}
-	gh.set("example-repo", 1, pr(github.StateMerged, head))
+	gh.set("example-repo", 1, pr(ItemMerged, head))
 
 	svc := e.linked(linkDeps{gh: gh, history: failingHistory{}})
 

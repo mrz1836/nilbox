@@ -3,20 +3,15 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { FileCheck } from '../platform'
+import { at } from '../test/clock'
 import { agentGroup, fileCheck } from '../test/fixtures'
+import { platform } from '../test/platform'
 import { SensitiveFiles } from './SensitiveFiles'
 
-const platform = vi.hoisted(() => ({
-  checkItemFiles: vi.fn(),
-  openInBrowser: vi.fn(),
-}))
-
-vi.mock('../platform', () => platform)
-
-const now = new Date('2026-06-15T12:00:00Z')
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 function renderChip(check: FileCheck = fileCheck(), onSettings?: () => void) {
-  render(<SensitiveFiles itemId={7} check={check} now={now} onSettings={onSettings} />)
+  render(<SensitiveFiles itemId={7} check={check} onSettings={onSettings} />, { wrapper: at() })
 }
 
 async function openPanel(name: RegExp) {
@@ -26,9 +21,7 @@ async function openPanel(name: RegExp) {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
   platform.checkItemFiles.mockResolvedValue(fileCheck())
-  platform.openInBrowser.mockResolvedValue(undefined)
 })
 
 describe('SensitiveFiles', () => {
@@ -58,25 +51,11 @@ describe('SensitiveFiles', () => {
     expect(workflows.getByText('moved from .github/workflows/codeql.yml')).toBeInTheDocument()
 
     await userEvent.click(workflows.getByRole('button', { name: /docs\/old-codeql\.yml/ }))
-    expect(platform.openInBrowser).toHaveBeenCalledWith(
+    expect(platform.openExternal).toHaveBeenCalledWith(
       'https://github.com/acme-org/example-repo/pull/7/files#diff-bbbb',
     )
 
     expect(panel.getByText(/Opening a session on it asks first/)).toBeInTheDocument()
-  })
-
-  it('logs a diff it could not open', async () => {
-    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    platform.openInBrowser.mockRejectedValue(new Error('no browser'))
-    renderChip()
-
-    const panel = await openPanel(/^Changes sensitive files/)
-    await userEvent.click(panel.getByRole('button', { name: /\.claude\/settings\.json/ }))
-
-    await waitFor(() => {
-      expect(logged).toHaveBeenCalledWith('could not open the file in the browser', expect.any(Error))
-    })
-    logged.mockRestore()
   })
 
   it('shows a file it cannot link as plain text', async () => {
@@ -164,8 +143,9 @@ describe('SensitiveFiles', () => {
   it('fits the panel inside the area it scrolls in', async () => {
     render(
       <div style={{ overflowY: 'auto' }}>
-        <SensitiveFiles itemId={7} check={fileCheck()} now={now} />
+        <SensitiveFiles itemId={7} check={fileCheck()} />
       </div>,
+      { wrapper: at() },
     )
 
     await userEvent.click(screen.getByRole('button', { name: /^Changes sensitive files/ }))

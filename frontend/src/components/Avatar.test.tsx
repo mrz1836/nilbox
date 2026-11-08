@@ -23,6 +23,8 @@ describe('Avatar', () => {
 
     const img = picture(container)
     expect(img).not.toBeNull()
+    // jsdom never loads an image, so the error a picture that cannot be shown raises is sent
+    // by hand.
     fireEvent.error(img as HTMLImageElement)
 
     expect(picture(container)).toBeNull()

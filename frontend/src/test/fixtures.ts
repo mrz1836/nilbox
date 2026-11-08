@@ -1,9 +1,12 @@
 // Fake data for component tests: fake orgs, users, and repositories only.
 
+import { brand } from '../generated/brand'
 import type {
   Account,
   AppNotification,
+  CloneTarget,
   FileCheck,
+  Info,
   InboxItem,
   ItemDetails,
   InboxList,
@@ -19,6 +22,7 @@ import type {
   PromptCheckResult,
   PromptVariable,
   Rate,
+  RemoveResult,
   Resolution,
   SensitiveCategory,
   SensitiveGroup,
@@ -29,6 +33,21 @@ import type {
   WorktreeRepo,
   WorktreesSnapshot,
 } from '../platform'
+
+// appInfo is a development build's identity on macOS, with no data reset.
+export function appInfo(overrides: Partial<Info> = {}): Info {
+  return {
+    name: brand.name,
+    tagline: brand.tagline,
+    version: 'dev',
+    release: '0.0.0',
+    build: '0',
+    system: 'macOS 15.1 (24B83)',
+    arch: 'arm64',
+    bugReportUrl: 'https://github.com/acme-org/example-repo/issues/new',
+    ...overrides,
+  }
+}
 
 export function item(overrides: Partial<InboxItem> = {}): InboxItem {
   return {
@@ -131,6 +150,8 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     sensitiveCategories: sensitiveCategories(),
     menuBar: true,
     bannersOff: [],
+    theme: 'system',
+    collapsedSections: [],
     ...overrides,
   }
 }
@@ -424,6 +445,11 @@ export function launchPreview(overrides: Partial<LaunchPreview> = {}): LaunchPre
   }
 }
 
+// cloneTarget is example-repo's clone under the clone root, already cloned.
+export function cloneTarget(overrides: Partial<CloneTarget> = {}): CloneTarget {
+  return { repo: 'acme-org/example-repo', cloned: true, dir: '~/projects/example-repo', taken: false, ...overrides }
+}
+
 export const unknownRate: Rate = { known: false, limit: 0, remaining: 0, used: 0, cost: 0, resetAt: '', takenAt: '' }
 
 // rate is a GraphQL-sized budget reading, taken a minute before the tests' noon and
@@ -542,6 +568,20 @@ export function worktreeCleanup(overrides: Partial<WorktreeCleanup> = {}): Workt
     deletedBranch: 'worktree-pr-7',
     head: 'fc1c3975011e66491785ace891c893e4fc716587',
     item: linkedItem({ closedAt: '', headOid: '', launched: false }),
+    ...overrides,
+  }
+}
+
+// removeResult is example-repo's pr-7 worktree, removed along with its branch.
+export function removeResult(overrides: Partial<RemoveResult> = {}): RemoveResult {
+  return {
+    repoPath: '/home/user/projects/example-repo',
+    path: '/home/user/projects/example-repo/.claude/worktrees/pr-7',
+    displayPath: '~/projects/example-repo/.claude/worktrees/pr-7',
+    removed: true,
+    deletedBranch: 'worktree-pr-7',
+    item: 'acme-org/example-repo#7',
+    reason: '',
     ...overrides,
   }
 }

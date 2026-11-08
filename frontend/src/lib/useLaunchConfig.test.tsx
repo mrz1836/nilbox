@@ -2,31 +2,26 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { InboxSnapshot } from '../platform'
-import { item, itemResolution, list, profile, prompts, settings, snapshot, variables } from '../test/fixtures'
+import { item, itemResolution, list, prompts, settings, snapshot } from '../test/fixtures'
+import { platform } from '../test/platform'
 import { useLaunchConfig } from './useLaunchConfig'
 
-const platform = vi.hoisted(() => ({
-  getSettings: vi.fn(),
-  listProfiles: vi.fn(),
-  listPrompts: vi.fn(),
-  getDefaultPrompts: vi.fn(),
-  listPromptVariables: vi.fn(),
-  listLaunchDefaults: vi.fn(),
-  resolveLaunches: vi.fn(),
-}))
-
-vi.mock('../platform', () => platform)
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 beforeEach(() => {
-  vi.clearAllMocks()
-  platform.getSettings.mockResolvedValue(settings())
-  platform.listProfiles.mockResolvedValue([profile()])
-  platform.listPrompts.mockResolvedValue(prompts())
-  platform.getDefaultPrompts.mockResolvedValue({ pr: 1, issue: 4 })
-  platform.listPromptVariables.mockResolvedValue(variables())
-  platform.listLaunchDefaults.mockResolvedValue([])
   platform.resolveLaunches.mockResolvedValue([itemResolution()])
 })
+
+// reloaded asks the hook to reload and waits until the new values are in. The reload's
+// request starts once React renders, so it is awaited after the act that asked for it.
+async function reloaded(reload: () => Promise<void>) {
+  let done: Promise<void> = Promise.resolve()
+
+  act(() => {
+    done = reload()
+  })
+  await act(() => done)
+}
 
 describe('useLaunchConfig', () => {
   it('loads the configuration and resolves each listed item once', async () => {
@@ -67,9 +62,7 @@ describe('useLaunchConfig', () => {
 
     platform.listPrompts.mockResolvedValue(prompts().slice(0, 2))
 
-    await act(async () => {
-      await result.current.reload()
-    })
+    await reloaded(result.current.reload)
 
     expect(result.current.prompts).toHaveLength(2)
     await waitFor(() => {
@@ -97,9 +90,7 @@ describe('useLaunchConfig', () => {
 
     platform.resolveLaunches.mockRejectedValueOnce(new Error('item not found'))
 
-    await act(async () => {
-      await result.current.reload()
-    })
+    await reloaded(result.current.reload)
 
     await waitFor(() => {
       expect(result.current.error).toBe('item not found')
@@ -107,9 +98,7 @@ describe('useLaunchConfig', () => {
 
     platform.listPrompts.mockRejectedValueOnce(new Error('read the prompts: busy'))
 
-    await act(async () => {
-      await result.current.reload()
-    })
+    await reloaded(result.current.reload)
 
     expect(result.current.error).toBe('read the prompts: busy')
   })

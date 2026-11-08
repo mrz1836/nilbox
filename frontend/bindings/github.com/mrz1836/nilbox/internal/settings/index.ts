@@ -6,6 +6,11 @@ export {
     Service
 };
 
+export {
+    ListKey,
+    Theme
+} from "./models.js";
+
 export type {
     Settings,
     WindowSize

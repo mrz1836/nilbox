@@ -7,17 +7,23 @@ import (
 	"iter"
 	"log/slog"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/mrz1836/nilbox/internal/cleanuplog"
-	"github.com/mrz1836/nilbox/internal/github"
-	"github.com/mrz1836/nilbox/internal/launchlog"
+	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/event"
+	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/localrepos"
-	"github.com/mrz1836/nilbox/internal/settings"
+	"github.com/mrz1836/nilbox/internal/logging"
+	"github.com/mrz1836/nilbox/internal/paths"
+	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/uierr"
+	"github.com/mrz1836/nilbox/internal/worklog"
 )
 
 // listConcurrency bounds how many repositories List reads at once.
@@ -106,67 +112,82 @@ func (e *RefusedError) Is(target error) bool {
 	return target == ErrRemovalRefused
 }
 
-// SettingsReader reads the user's preferences; the clone root comes from them.
-// *settings.Service implements it.
+// SweepSettings is the part of the user's preferences the worktree service reads. Every
+// field is a plain value.
+type SweepSettings struct {
+	// CloneRoot is the directory whose children are the clones, as entered, e.g.
+	// "~/projects".
+	CloneRoot string
+
+	// AutoCleanup lets the automatic sweep clean up a finished worktree once its pull
+	// request merges or its issue closes.
+	AutoCleanup bool
+}
+
+// SettingsReader reads the sweep settings as they are now, so every listing and sweep
+// sees the user's latest choices. The app adapts the settings service to it.
 type SettingsReader interface {
-	Get(ctx context.Context) (settings.Settings, error)
+	Get(ctx context.Context) (SweepSettings, error)
 }
 
-// Finder resolves a program name to an executable's absolute path. execpath.Finder
-// implements it.
-type Finder interface {
-	Find(name string) (string, error)
+// ItemState is what GitHub says about a pull request or issue as of now.
+type ItemState struct {
+	// PullRequest reports a pull request; false is an issue.
+	PullRequest bool
+
+	Title string
+	URL   string
+
+	// State is ItemOpen, ItemMerged, or ItemClosed; any other value reads as ItemOpen.
+	State ItemStatus
+
+	// ClosedAt is when the item was merged or closed, or zero while it is open.
+	ClosedAt time.Time
+
+	// HeadOID is a pull request's head commit SHA; "" for an issue.
+	HeadOID string
 }
 
-// Clock tells the time.
-type Clock interface {
-	Now() time.Time
-}
-
-// GitHub reads the current state of pull requests and issues. A GitHub CLI token and a
-// github.Client implement it in the app.
+// GitHub reads the current state of pull requests and issues. The app adapts the GitHub
+// client to it, with the GitHub CLI's token.
 type GitHub interface {
-	ItemStates(ctx context.Context, refs []github.ItemRef) (map[github.ItemRef]github.ItemState, error)
+	// ItemStates returns the state of each item in refs that GitHub knows, keyed by the
+	// ref's Key.
+	ItemStates(ctx context.Context, refs []item.Ref) (map[string]ItemState, error)
 }
 
 // Launches reads and prunes the record of the worktrees the app launched sessions in.
-// *launchlog.Store implements it.
+// *worklog.Store implements it.
 type Launches interface {
-	List(ctx context.Context) ([]launchlog.Launch, error)
-	Forget(ctx context.Context, clonePath, worktree string) error
+	Launches(ctx context.Context) ([]worklog.Launch, error)
+	ForgetLaunch(ctx context.Context, clonePath, worktree string) error
 }
 
-// History records the worktrees the app cleaned up. *cleanuplog.Store implements it.
+// History records the worktrees the app cleaned up. *worklog.Store implements it.
 type History interface {
-	Record(ctx context.Context, c cleanuplog.Cleanup) error
-	Recent(ctx context.Context, limit int) ([]cleanuplog.Cleanup, error)
-	Clear(ctx context.Context) error
-}
-
-// Notifier is told when an automatic sweep removed a worktree or changed how many need
-// the user's attention.
-type Notifier interface {
-	WorktreesUpdated()
+	RecordCleanup(ctx context.Context, c worklog.Cleanup) error
+	RecentCleanups(ctx context.Context, limit int) ([]worklog.Cleanup, error)
+	ClearCleanups(ctx context.Context) error
 }
 
 // Config holds a Service's dependencies. Settings and Git are required; the rest are
 // optional.
 type Config struct {
-	// Settings supplies the clone root.
+	// Settings supplies the clone root and whether the sweep cleans up on its own.
 	Settings SettingsReader
 
 	// Git runs git argv; it also reads remotes during the clone-root scan.
-	Git Runner
+	Git execpath.Runner
 
 	// Finder resolves the git binary up front, so a missing git fails with a clear
 	// error. Without it, Git resolves "git" itself.
-	Finder Finder
+	Finder execpath.Finder
 
 	// Home is the user's home directory; it expands a ~ clone root and shortens paths.
 	Home string
 
 	// Clock stamps snapshots. It defaults to the system clock.
-	Clock Clock
+	Clock clock.Clock
 
 	// GitHub reads the state of the items worktrees are linked to. Without it no
 	// worktree is linked, so none is ever finished.
@@ -178,25 +199,27 @@ type Config struct {
 	// History records each cleanup, for the view's list of recent ones.
 	History History
 
-	// Notifier is told when a sweep changed something.
-	Notifier Notifier
+	// Events hears an event.WorktreesUpdated when a sweep removed a worktree or changed
+	// how many need the user's attention.
+	Events event.Sink
 
-	// Logger receives sweep failures. It defaults to slog.Default().
+	// Logger receives sweep failures and, at Debug, why GitHub could not say which pull
+	// requests and issues the worktrees belong to. Without it they are not logged.
 	Logger *slog.Logger
 }
 
 // Service lists and removes worktrees of the clones under the clone root.
 type Service struct {
 	settings SettingsReader
-	run      Runner
-	finder   Finder
+	run      execpath.Runner
+	finder   execpath.Finder
 	home     string
 	realHome string
-	clock    Clock
+	clock    clock.Clock
 	github   GitHub
 	launches Launches
 	history  History
-	notifier Notifier
+	events   event.Sink
 	logger   *slog.Logger
 	procs    processTable
 
@@ -214,19 +237,9 @@ type Service struct {
 
 // NewService returns a worktrees Service over cfg.
 func NewService(cfg Config) *Service {
-	clock := cfg.Clock
-	if clock == nil {
-		clock = systemClock{}
-	}
-
 	realHome := cfg.Home
 	if cfg.Home != "" {
 		realHome = resolvedPath(cfg.Home)
-	}
-
-	logger := cfg.Logger
-	if logger == nil {
-		logger = slog.Default()
 	}
 
 	return &Service{
@@ -235,14 +248,15 @@ func NewService(cfg Config) *Service {
 		finder:   cfg.Finder,
 		home:     cfg.Home,
 		realHome: realHome,
-		clock:    clock,
+		clock:    clock.Or(cfg.Clock),
 		github:   cfg.GitHub,
 		launches: cfg.Launches,
 		history:  cfg.History,
-		notifier: cfg.Notifier,
-		logger:   logger,
+		events:   event.Or(cfg.Events),
+		logger:   logging.Or(cfg.Logger),
 		procs:    osProcesses{},
 		zone:     time.Local, //nolint:gosmopolitan // the agent writes a session's start in the machine's zone or in UTC
+		last:     emptyReport(),
 	}
 }
 
@@ -364,10 +378,11 @@ func (s *Service) remove(ctx context.Context, repoPath, path string) error {
 }
 
 // assessClones lists the given clones' worktrees, links them to their items, and works
-// out each one's stage.
+// out each one's stage. The clones are listed a few at a time, then every worktree's
+// state is read under the same limit, whichever clone it is in.
 func (s *Service) assessClones(ctx context.Context, g git, root string, clones []localrepos.LocalRepo) (Snapshot, error) {
-	listed := make([]listedRepo, len(clones))
-	remotes := make(map[string]map[string]string, len(clones))
+	listings := make([]cloneListing, len(clones))
+	remotes := make(map[string]map[string]repo.Name, len(clones))
 
 	eg, ectx := errgroup.WithContext(ctx)
 	eg.SetLimit(listConcurrency)
@@ -376,8 +391,9 @@ func (s *Service) assessClones(ctx context.Context, g git, root string, clones [
 		remotes[clone.Path] = clone.Remotes
 
 		eg.Go(func() error {
-			repo, listErr := s.listRepo(ectx, g, clone.Path)
-			listed[i] = repo
+			var listErr error
+
+			listings[i], listErr = s.listRepo(ectx, g, clone.Path)
 
 			return listErr
 		})
@@ -385,6 +401,15 @@ func (s *Service) assessClones(ctx context.Context, g git, root string, clones [
 
 	if err := eg.Wait(); err != nil {
 		return Snapshot{}, err
+	}
+
+	if err := s.readRows(ctx, g, listings); err != nil {
+		return Snapshot{}, err
+	}
+
+	listed := make([]listedRepo, 0, len(listings))
+	for _, l := range listings {
+		listed = append(listed, l.withRows())
 	}
 
 	snap := s.snapshot(root, listed)
@@ -396,12 +421,12 @@ func (s *Service) assessClones(ctx context.Context, g git, root string, clones [
 
 // launchRecords reads the launch records. Without them worktrees are still linked by
 // name, so a failure is only logged.
-func (s *Service) launchRecords(ctx context.Context) []launchlog.Launch {
+func (s *Service) launchRecords(ctx context.Context) []worklog.Launch {
 	if s.launches == nil {
 		return nil
 	}
 
-	records, err := s.launches.List(ctx)
+	records, err := s.launches.Launches(ctx)
 	if err != nil {
 		s.logger.WarnContext(ctx, "could not read the worktree launches", "error", err)
 	}
@@ -436,20 +461,20 @@ func (s *Service) tally(snap *Snapshot) {
 }
 
 // prepare resolves git, the preferences, and the clone root.
-func (s *Service) prepare(ctx context.Context) (git, string, settings.Settings, error) {
+func (s *Service) prepare(ctx context.Context) (git, string, SweepSettings, error) {
 	g, err := s.git()
 	if err != nil {
-		return git{}, "", settings.Settings{}, err
+		return git{}, "", SweepSettings{}, err
 	}
 
 	prefs, err := s.settings.Get(ctx)
 	if err != nil {
-		return git{}, "", settings.Settings{}, err
+		return git{}, "", SweepSettings{}, err
 	}
 
-	root, err := localrepos.ExpandRoot(prefs.CloneRoot, s.home)
+	root, err := paths.ExpandHome(prefs.CloneRoot, s.home)
 	if err != nil {
-		return git{}, "", settings.Settings{}, err
+		return git{}, "", SweepSettings{}, fmt.Errorf("clone root: %w", err)
 	}
 
 	return g, root, prefs, nil
@@ -546,16 +571,45 @@ func (s *Service) removeEntry(ctx context.Context, g git, repoPath string, e Ent
 		return nil
 	}
 
-	if !exitCode(ctx, err) {
+	if !gitRefused(ctx, err) {
 		return fmt.Errorf("remove %s: %w", s.display(e.Path), err)
 	}
 
 	return &RefusedError{DisplayPath: s.display(e.Path), Reason: refusalReason(stderr)}
 }
 
-// listRepo lists one clone's worktrees. A git refusal (for example a broken clone) is
-// recorded on the repository; failing to run git at all is an error.
-func (s *Service) listRepo(ctx context.Context, g git, dir string) (listedRepo, error) {
+// cloneListing is one clone's worktrees as git lists them, then their rows.
+type cloneListing struct {
+	repo listedRepo
+
+	// entries are the worktrees listed, the bare repository left out, and claudeDir is
+	// where the agent creates its worktrees in this clone.
+	entries   []Entry
+	claudeDir string
+
+	// times holds the commit time of each listed HEAD, or is nil when git could not read
+	// them together, so each worktree's is read on its own.
+	times map[string]int64
+
+	// rows are the entries' rows, in order, once read.
+	rows []Worktree
+}
+
+// withRows returns the clone's repository with its rows added.
+func (l cloneListing) withRows() listedRepo {
+	listed := l.repo
+
+	for _, wt := range l.rows {
+		listed.add(wt)
+	}
+
+	return listed
+}
+
+// listRepo lists one clone's worktrees and reads the commit time of each one's HEAD, in
+// one git run each. A git refusal (for example a broken clone) is recorded on the
+// repository; failing to run git at all is an error.
+func (s *Service) listRepo(ctx context.Context, g git, dir string) (cloneListing, error) {
 	listed := listedRepo{
 		repo: Repo{Path: dir, DisplayPath: s.display(dir), Name: filepath.Base(dir), Worktrees: []Worktree{}},
 		key:  resolvedPath(dir),
@@ -565,39 +619,88 @@ func (s *Service) listRepo(ctx context.Context, g git, dir string) (listedRepo, 
 
 	switch {
 	case err == nil:
-	case exitCode(ctx, err):
-		listed.repo.Error = gitError(err, stderr).Error()
+	case gitRefused(ctx, err):
+		listed.repo.Error = uierr.Message(gitError(err, stderr))
 
-		return listed, nil
+		return cloneListing{repo: listed}, nil
 	default:
-		return listedRepo{}, fmt.Errorf("list the worktrees of %s: %w", listed.repo.DisplayPath, err)
+		return cloneListing{}, fmt.Errorf("list the worktrees of %s: %w", listed.repo.DisplayPath, err)
 	}
 
 	if len(entries) > 0 && entries[0].Main {
 		listed.key = resolvedPath(entries[0].Path)
 	}
 
-	claudeDir := filepath.Join(listed.key, ".claude", "worktrees")
+	entries = slices.DeleteFunc(entries, func(e Entry) bool { return e.Bare })
 
-	for _, e := range entries {
-		if e.Bare {
-			continue
-		}
-
-		wt, rowErr := s.row(ctx, g, e, claudeDir)
-		if rowErr != nil {
-			return listedRepo{}, rowErr
-		}
-
-		listed.add(wt)
+	times, err := s.commitTimes(ctx, g, dir, entries)
+	if err != nil {
+		return cloneListing{}, err
 	}
 
-	return listed, nil
+	return cloneListing{
+		repo: listed, entries: entries, claudeDir: filepath.Join(listed.key, ".claude", "worktrees"), times: times,
+	}, nil
 }
 
-// row builds a worktree's view row, reading its status and last commit unless its
-// directory is gone.
-func (s *Service) row(ctx context.Context, g git, e Entry, claudeDir string) (Worktree, error) {
+// commitTimes reads the commit time of each listed worktree's HEAD in the clone at dir,
+// in one git run. A worktree whose directory is gone, or whose HEAD has no commit yet,
+// is left out. A git refusal, such as for a HEAD whose commit is missing, returns nil, and
+// each worktree's time is then read on its own; failing to run git at all is an error.
+func (s *Service) commitTimes(ctx context.Context, g git, dir string, entries []Entry) (map[string]int64, error) {
+	var oids []string
+
+	seen := make(map[string]bool, len(entries))
+
+	for _, e := range entries {
+		if !e.Prunable && isCommitID(e.HEAD) && !seen[e.HEAD] {
+			seen[e.HEAD] = true
+			oids = append(oids, e.HEAD)
+		}
+	}
+
+	if len(oids) == 0 {
+		return map[string]int64{}, nil
+	}
+
+	times, err := g.commitTimes(ctx, dir, oids)
+
+	switch {
+	case err == nil:
+		return times, nil
+	case gitRefused(ctx, err) || errors.Is(err, errParseCommitTime):
+		return nil, nil //nolint:nilnil // no times is the answer: each worktree's is then read on its own
+	default:
+		return nil, fmt.Errorf("read the last commits in %s: %w", s.display(dir), err)
+	}
+}
+
+// readRows builds the row of every listed worktree, a few at a time across all clones.
+func (s *Service) readRows(ctx context.Context, g git, listings []cloneListing) error {
+	eg, ectx := errgroup.WithContext(ctx)
+	eg.SetLimit(listConcurrency)
+
+	for i := range listings {
+		l := &listings[i]
+		l.rows = make([]Worktree, len(l.entries))
+
+		for j, e := range l.entries {
+			eg.Go(func() error {
+				var rowErr error
+
+				l.rows[j], rowErr = s.row(ectx, g, e, l.claudeDir, l.times)
+
+				return rowErr
+			})
+		}
+	}
+
+	return eg.Wait()
+}
+
+// row builds a worktree's view row, reading its status, unless its directory is gone.
+// times holds its clone's commit times (see cloneListing).
+func (s *Service) row(ctx context.Context, g git, e Entry, claudeDir string, times map[string]int64) (Worktree, error) {
 	wt := Worktree{
 		Path:           e.Path,
 		DisplayPath:    s.display(e.Path),
@@ -617,7 +720,7 @@ func (s *Service) row(ctx context.Context, g git, e Entry, claudeDir string) (Wo
 	wt.OwnBranch = wt.ClaudeCreated && !e.Detached && e.Branch == ownBranchPrefix+filepath.Base(e.Path)
 
 	if !e.Prunable {
-		if err := s.readState(ctx, g, &wt); err != nil {
+		if err := s.readState(ctx, g, &wt, times); err != nil {
 			return Worktree{}, err
 		}
 	}
@@ -640,31 +743,27 @@ func (s *Service) judgeLock(wt *Worktree) {
 	wt.CanUnlock = wt.StaleLock && !wt.Main
 }
 
-// readState fills in a worktree's uncommitted-file count and last commit time. A git
-// refusal leaves the field unknown (and records why, for the status); failing to run git
-// at all is an error.
-func (s *Service) readState(ctx context.Context, g git, wt *Worktree) error {
+// readState fills in a worktree's uncommitted-file count, last commit time, and unpushed
+// commits. A git refusal leaves the field unknown (and records why, for the status);
+// failing to run git at all is an error.
+func (s *Service) readState(ctx context.Context, g git, wt *Worktree, times map[string]int64) error {
 	count, stderr, err := g.dirtyCount(ctx, wt.Path)
 
 	switch {
 	case err == nil:
 		wt.Dirty, wt.DirtyCount = count > 0, count
-	case exitCode(ctx, err):
-		wt.Error = "could not read the status: " + gitError(err, stderr).Error()
+	case gitRefused(ctx, err):
+		wt.Error = uierr.Message(fmt.Errorf("could not read the status: %w", gitError(err, stderr)))
 	default:
 		return fmt.Errorf("read the status of %s: %w", wt.DisplayPath, err)
 	}
 
-	unix, err := g.lastCommit(ctx, wt.Path)
-
-	switch {
-	case err == nil:
-		wt.LastCommitUnix = unix
-	case exitCode(ctx, err) || errors.Is(err, errParseCommitTime):
-		// A repository without commits has no commit time to show.
-	default:
-		return fmt.Errorf("read the last commit of %s: %w", wt.DisplayPath, err)
+	unix, err := headTime(ctx, g, wt, times)
+	if err != nil {
+		return err
 	}
+
+	wt.LastCommitUnix = unix
 
 	if wt.Main {
 		return nil
@@ -675,7 +774,7 @@ func (s *Service) readState(ctx context.Context, g git, wt *Worktree) error {
 	switch {
 	case err == nil:
 		wt.Unpushed = unpushed
-	case exitCode(ctx, err) || errors.Is(err, errParseCount):
+	case gitRefused(ctx, err) || errors.Is(err, errParseCount):
 		// Unknown, which never counts as on GitHub.
 	default:
 		return fmt.Errorf("count the unpushed commits of %s: %w", wt.DisplayPath, err)
@@ -684,13 +783,33 @@ func (s *Service) readState(ctx context.Context, g git, wt *Worktree) error {
 	return nil
 }
 
+// headTime returns the commit time of a worktree's HEAD: from times, read with the rest
+// of its clone's, or read on its own when times is nil. A HEAD with no commit, as in a
+// repository without commits, has none to show and returns 0.
+func headTime(ctx context.Context, g git, wt *Worktree, times map[string]int64) (int64, error) {
+	if times != nil {
+		return times[wt.Head], nil
+	}
+
+	unix, err := g.lastCommit(ctx, wt.Path)
+
+	switch {
+	case err == nil:
+		return unix, nil
+	case gitRefused(ctx, err) || errors.Is(err, errParseCommitTime):
+		return 0, nil
+	default:
+		return 0, fmt.Errorf("read the last commit of %s: %w", wt.DisplayPath, err)
+	}
+}
+
 // snapshot folds clones that share a main worktree and keeps the repositories worth
 // showing.
 func (s *Service) snapshot(root string, listed []listedRepo) Snapshot {
 	snap := Snapshot{
 		Root:     s.display(root),
 		Repos:    []Repo{},
-		ListedAt: s.clock.Now().UTC().Format(time.RFC3339),
+		ListedAt: clock.Format(s.clock.Now()),
 	}
 
 	seen := make(map[string]bool, len(listed))
@@ -710,11 +829,11 @@ func (s *Service) snapshot(root string, listed []listedRepo) Snapshot {
 // display shows path relative to home with ~, also matching home's resolved form (git
 // reports resolved paths, and home may sit behind a symlink).
 func (s *Service) display(path string) string {
-	if shown := localrepos.TildePath(path, s.home); shown != path || s.realHome == s.home {
+	if shown := paths.Tilde(path, s.home); shown != path || s.realHome == s.home {
 		return shown
 	}
 
-	return localrepos.TildePath(path, s.realHome)
+	return paths.Tilde(path, s.realHome)
 }
 
 // listedRepo is one clone's listing before clones that share a main worktree are folded.
@@ -772,7 +891,7 @@ func cleanTargets(snap Snapshot) []RemoveResult {
 
 // gitError turns a git failure into an error carrying git's own message when it gave one.
 func gitError(err error, stderr []byte) error {
-	if line := firstLine(stderr); line != "" {
+	if line := execpath.GitMessage(stderr); line != "" {
 		return fmt.Errorf("%w: %s", errGit, line)
 	}
 
@@ -790,7 +909,7 @@ func refusalReason(stderr []byte) string {
 		return reasonLocked
 	}
 
-	if line := firstLine(stderr); line != "" {
+	if line := execpath.GitMessage(stderr); line != "" {
 		return line
 	}
 
@@ -799,8 +918,7 @@ func refusalReason(stderr []byte) string {
 
 // reasonOf is the reason shown for a failed removal in a bulk result.
 func reasonOf(err error) string {
-	var refused *RefusedError
-	if errors.As(err, &refused) {
+	if refused, ok := errors.AsType[*RefusedError](err); ok {
 		return refused.Reason
 	}
 
@@ -840,9 +958,3 @@ func within(dir, path string) bool {
 
 	return err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
-
-// systemClock is the real clock.
-type systemClock struct{}
-
-// Now returns the current time.
-func (systemClock) Now() time.Time { return time.Now() }

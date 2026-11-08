@@ -1,12 +1,18 @@
-import { render, screen, within } from '@testing-library/react'
+import { render as renderPlain, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ReactElement } from 'react'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { NotificationsState } from '../lib/useNotifications'
+import type { NotificationKind } from '../platform'
+import { at } from '../test/clock'
 import { notification } from '../test/fixtures'
 import { NotificationsMenu } from './NotificationsMenu'
 
-const now = new Date('2026-06-15T12:00:00Z')
+// render renders on a clock that stands at now.
+function render(ui: ReactElement) {
+  return renderPlain(ui, { wrapper: at() })
+}
 
 const onOpen = vi.fn()
 const onSettings = vi.fn()
@@ -17,6 +23,7 @@ function state(overrides: Partial<NotificationsState> = {}): NotificationsState 
     log: { items: [], unread: 0 },
     error: '',
     markRead: vi.fn(),
+    markError: '',
     clear: vi.fn(() => Promise.resolve()),
     ...overrides,
   }
@@ -28,10 +35,6 @@ async function open() {
 
   return within(screen.getByRole('dialog', { name: 'Notifications' }))
 }
-
-beforeEach(() => {
-  vi.clearAllMocks()
-})
 
 describe('NotificationsMenu', () => {
   const review = notification({ id: 3 })
@@ -49,7 +52,6 @@ describe('NotificationsMenu', () => {
     render(
       <NotificationsMenu
         notifications={state({ log: { items: [review, woke], unread: 1 } })}
-        now={now}
         onOpen={onOpen}
         onSettings={onSettings}
       />,
@@ -63,7 +65,6 @@ describe('NotificationsMenu', () => {
     render(
       <NotificationsMenu
         notifications={state({ log: { items: [review], unread: 140 } })}
-        now={now}
         onOpen={onOpen}
         onSettings={onSettings}
       />,
@@ -72,8 +73,24 @@ describe('NotificationsMenu', () => {
     expect(screen.getByTestId('notifications-unread')).toHaveTextContent('99+')
   })
 
+  it('shows a kind it does not know with the bell, titled plainly', async () => {
+    // A kind another build stored, outside the ones this build knows.
+    const mentions = notification({ id: 4, kind: 'mentions' as unknown as NotificationKind, title: 'Ping' })
+    render(
+      <NotificationsMenu
+        notifications={state({ log: { items: [mentions], unread: 1 } })}
+        onOpen={onOpen}
+        onSettings={onSettings}
+      />,
+    )
+
+    const history = await open()
+
+    expect(history.getByRole('button', { name: /Notification.*Ping/ })).toBeInTheDocument()
+  })
+
   it('shows no count when everything is read', () => {
-    render(<NotificationsMenu notifications={state()} now={now} onOpen={onOpen} onSettings={onSettings} />)
+    render(<NotificationsMenu notifications={state()} onOpen={onOpen} onSettings={onSettings} />)
 
     expect(screen.getByRole('button', { name: 'Notifications' })).toBeInTheDocument()
     expect(screen.queryByTestId('notifications-unread')).not.toBeInTheDocument()
@@ -82,7 +99,7 @@ describe('NotificationsMenu', () => {
   it('lists the history newest first, marks it read, and keeps the new entries marked while open', async () => {
     const notifications = state({ log: { items: [review, woke], unread: 1 } })
     const { rerender } = render(
-      <NotificationsMenu notifications={notifications} now={now} onOpen={onOpen} onSettings={onSettings} />,
+      <NotificationsMenu notifications={notifications} onOpen={onOpen} onSettings={onSettings} />,
     )
 
     const panel = await open()
@@ -102,7 +119,6 @@ describe('NotificationsMenu', () => {
     rerender(
       <NotificationsMenu
         notifications={{ ...notifications, log: { items: [{ ...review, read: true }, woke], unread: 0 } }}
-        now={now}
         onOpen={onOpen}
         onSettings={onSettings}
       />,
@@ -112,7 +128,7 @@ describe('NotificationsMenu', () => {
 
   it('does not mark an all-read history again', async () => {
     const notifications = state({ log: { items: [woke], unread: 0 } })
-    render(<NotificationsMenu notifications={notifications} now={now} onOpen={onOpen} onSettings={onSettings} />)
+    render(<NotificationsMenu notifications={notifications} onOpen={onOpen} onSettings={onSettings} />)
 
     await open()
 
@@ -123,7 +139,6 @@ describe('NotificationsMenu', () => {
     render(
       <NotificationsMenu
         notifications={state({ log: { items: [review], unread: 0 } })}
-        now={now}
         onOpen={onOpen}
         onSettings={onSettings}
       />,
@@ -137,7 +152,7 @@ describe('NotificationsMenu', () => {
   })
 
   it('says when there is nothing yet, and opens the settings', async () => {
-    render(<NotificationsMenu notifications={state()} now={now} onOpen={onOpen} onSettings={onSettings} />)
+    render(<NotificationsMenu notifications={state()} onOpen={onOpen} onSettings={onSettings} />)
 
     const panel = await open()
 
@@ -152,7 +167,7 @@ describe('NotificationsMenu', () => {
 
   it('clears the history, and says when it could not', async () => {
     const notifications = state({ log: { items: [review], unread: 0 } })
-    render(<NotificationsMenu notifications={notifications} now={now} onOpen={onOpen} onSettings={onSettings} />)
+    render(<NotificationsMenu notifications={notifications} onOpen={onOpen} onSettings={onSettings} />)
 
     let panel = await open()
     await userEvent.click(panel.getByRole('button', { name: 'Clear' }))
@@ -168,11 +183,24 @@ describe('NotificationsMenu', () => {
     expect(panel.queryByRole('alert')).not.toBeInTheDocument()
   })
 
+  it('says when the entries could not be marked read', async () => {
+    render(
+      <NotificationsMenu
+        notifications={state({ log: { items: [review], unread: 1 }, markError: 'database is locked' })}
+        onOpen={onOpen}
+        onSettings={onSettings}
+      />,
+    )
+
+    const panel = await open()
+
+    expect(panel.getByRole('alert')).toHaveTextContent('Could not mark them read: database is locked')
+  })
+
   it('says when the history could not be loaded', async () => {
     render(
       <NotificationsMenu
         notifications={state({ error: 'database is locked' })}
-        now={now}
         onOpen={onOpen}
         onSettings={onSettings}
       />,

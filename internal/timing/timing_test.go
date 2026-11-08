@@ -12,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/appdata"
 )
 
 // fixedStart is an arbitrary process start time for deterministic measurements.
@@ -25,7 +27,9 @@ func textLogger(buf *bytes.Buffer) *slog.Logger {
 }
 
 func TestProcessStart(t *testing.T) {
-	start, source := ProcessStart()
+	t.Parallel()
+
+	start, source := processStart()
 
 	require.False(t, start.IsZero())
 	assert.False(t, start.After(time.Now()), "the process cannot start in the future")
@@ -40,12 +44,16 @@ func TestProcessStart(t *testing.T) {
 }
 
 func TestMeasurementString(t *testing.T) {
+	t.Parallel()
+
 	m := Measurement{FirstPaintMS: 412, Source: SourceOS}
 
 	assert.Equal(t, "startup.first_paint_ms=412 source=os", m.String())
 }
 
 func TestFirstPaintLoggedOnce(t *testing.T) {
+	t.Parallel()
+
 	var buf bytes.Buffer
 
 	logs := t.TempDir()
@@ -83,13 +91,15 @@ func TestFirstPaintLoggedOnce(t *testing.T) {
 
 	info, err := os.Stat(filepath.Join(logs, LogFileName))
 	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(logFilePerm), info.Mode().Perm())
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 }
 
 func TestFirstPaintAppendsToExistingLog(t *testing.T) {
+	t.Parallel()
+
 	logs := t.TempDir()
 	path := filepath.Join(logs, LogFileName)
-	require.NoError(t, os.WriteFile(path, []byte("earlier line\n"), logFilePerm))
+	require.NoError(t, os.WriteFile(path, []byte("earlier line\n"), appdata.PrivateFilePerm))
 
 	r := NewRecorder(Config{
 		Logger:  textLogger(&bytes.Buffer{}),
@@ -109,6 +119,8 @@ func TestFirstPaintAppendsToExistingLog(t *testing.T) {
 }
 
 func TestFirstPaintWithoutLogsDirOnlyLogs(t *testing.T) {
+	t.Parallel()
+
 	var buf bytes.Buffer
 
 	r := NewRecorder(Config{
@@ -126,6 +138,8 @@ func TestFirstPaintWithoutLogsDirOnlyLogs(t *testing.T) {
 }
 
 func TestFirstPaintNeverNegative(t *testing.T) {
+	t.Parallel()
+
 	r := NewRecorder(Config{
 		Logger: textLogger(&bytes.Buffer{}),
 		Start:  fixedStart(),
@@ -139,11 +153,13 @@ func TestFirstPaintNeverNegative(t *testing.T) {
 }
 
 func TestFirstPaintReportsLogFileError(t *testing.T) {
+	t.Parallel()
+
 	var buf bytes.Buffer
 
 	// The logs "directory" is a regular file, so the timing log cannot be created.
 	notDir := filepath.Join(t.TempDir(), "file")
-	require.NoError(t, os.WriteFile(notDir, nil, logFilePerm))
+	require.NoError(t, os.WriteFile(notDir, nil, appdata.PrivateFilePerm))
 
 	r := NewRecorder(Config{
 		Logger:  textLogger(&buf),
@@ -166,6 +182,8 @@ func TestFirstPaintReportsLogFileError(t *testing.T) {
 }
 
 func TestNewRecorderDefaults(t *testing.T) {
+	t.Parallel()
+
 	r := NewRecorder(Config{})
 
 	assert.NotNil(t, r.logger)

@@ -15,7 +15,8 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
- * Info returns the product's identity, its versions, and the system it runs on.
+ * Info returns the product's identity, its versions, the system it runs on, and whether
+ * its data was reset at startup.
  */
 export function Info(): $CancellablePromise<$models.Info> {
     return $Call.ByID(2325015551);

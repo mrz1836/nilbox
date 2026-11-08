@@ -60,14 +60,6 @@ type agentLock struct {
 	start string
 }
 
-// ParseClaudeLock returns the PID recorded in a lock reason written by the coding agent.
-// ok is false for any other reason, including an empty one.
-func ParseClaudeLock(reason string) (pid int, ok bool) {
-	lock, ok := parseAgentLock(reason)
-
-	return lock.pid, ok
-}
-
 // parseAgentLock reads a lock reason written by the coding agent.
 func parseAgentLock(reason string) (agentLock, bool) {
 	m := claudeLockPattern.FindStringSubmatch(reason)

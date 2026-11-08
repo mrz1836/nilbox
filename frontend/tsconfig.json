@@ -8,14 +8,13 @@
     "jsx": "react-jsx",
     "types": ["vite/client"],
     "resolveJsonModule": true,
-    "allowJs": true,
-    "checkJs": false,
     "isolatedModules": true,
     "noEmit": true,
     "skipLibCheck": true,
 
     "strict": true,
     "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
     "noImplicitOverride": true,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
@@ -26,5 +25,5 @@
     "erasableSyntaxOnly": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src", "bindings", "vite.config.ts", "vitest.config.ts", "eslint.config.js"]
+  "include": ["src", "bindings", "vite.config.ts", "vitest.config.ts", "vitest.renders.config.ts"]
 }

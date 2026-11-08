@@ -53,6 +53,9 @@ export interface SegmentedProps<T extends string> {
   disabled?: boolean
   // size is "sm" for dense rows.
   size?: 'sm' | 'md'
+  // describedBy lists the ids of the text that describes the choice, such as why the
+  // last one was refused.
+  describedBy?: string | undefined
 }
 
 // Segmented is a row of mutually exclusive options drawn as one control: radio buttons
@@ -64,6 +67,7 @@ export function Segmented<T extends string>({
   onChange,
   disabled = false,
   size = 'md',
+  describedBy,
 }: SegmentedProps<T>) {
   const name = useId()
   const pad = size === 'sm' ? 'px-2 py-0.5 text-xs' : 'px-2.5 py-1 text-[13px]'
@@ -72,6 +76,7 @@ export function Segmented<T extends string>({
     <div
       role="radiogroup"
       aria-label={label}
+      aria-describedby={describedBy}
       className="inline-flex shrink-0 rounded-md border border-border bg-background p-0.5"
     >
       {options.map((o) => (
@@ -96,6 +101,39 @@ export function Segmented<T extends string>({
         </label>
       ))}
     </div>
+  )
+}
+
+export interface SwitchProps {
+  id: string
+  checked: boolean
+  onChange: (on: boolean) => void
+  // describedBy lists the ids of the text that describes the switch, if any.
+  describedBy?: string | undefined
+  disabled?: boolean
+  // title is the switch's tooltip, if any.
+  title?: string | undefined
+  // className adds to the switch's own styles, such as a margin to line it up.
+  className?: string
+}
+
+// Switch is a checkbox drawn as a switch, with role="switch" so assistive tech announces
+// it as on or off rather than checked.
+export function Switch({ id, checked, onChange, describedBy, disabled = false, title, className = '' }: SwitchProps) {
+  return (
+    <input
+      id={id}
+      type="checkbox"
+      role="switch"
+      aria-describedby={describedBy}
+      checked={checked}
+      disabled={disabled}
+      title={title}
+      onChange={(e) => {
+        onChange(e.target.checked)
+      }}
+      className={className === '' ? switchClass : `${switchClass} ${className}`}
+    />
   )
 }
 
@@ -126,7 +164,7 @@ export interface FieldProps {
   controlId: string
   // hint is help shown under the control while there is no error.
   hint?: ReactNode
-  error?: string
+  error?: string | undefined
   // aside sits at the end of the label line, such as a character count.
   aside?: ReactNode
   children: ReactNode

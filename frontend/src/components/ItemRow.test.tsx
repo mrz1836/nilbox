@@ -1,29 +1,33 @@
-import { render, screen, within } from '@testing-library/react'
+import { render as renderPlain, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ReactElement } from 'react'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { InboxItem } from '../platform'
+import { at } from '../test/clock'
 import { details, fileCheck, item, itemResolution, profile, prompts } from '../test/fixtures'
+import { platform } from '../test/platform'
 import { ItemRow, type LaunchOptions } from './ItemRow'
 
-const platform = vi.hoisted(() => ({ openInBrowser: vi.fn(), launch: vi.fn(), checkItemFiles: vi.fn() }))
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
-vi.mock('../platform', () => platform)
-
-const now = new Date('2026-06-15T12:00:00Z')
 const launch: LaunchOptions = {
   profiles: [profile()],
   prompts: prompts(),
   launchDefaults: [],
-  resolutions: new Map([[1, itemResolution()]]),
   onDefaultsSaved: () => Promise.resolve(),
   onManagePrompts: () => undefined,
+}
+
+// render renders on a clock that stands at now.
+function render(ui: ReactElement) {
+  return renderPlain(ui, { wrapper: at() })
 }
 
 function renderRow(it: InboxItem, options: LaunchOptions | null = launch) {
   render(
     <ul>
-      <ItemRow item={it} now={now} launch={options} />
+      <ItemRow item={it} launch={options} resolution={it.id === 1 ? itemResolution() : null} />
     </ul>,
   )
 }
@@ -38,15 +42,11 @@ function slot(text: string): HTMLElement {
   return screen.getByTitle(text)
 }
 
-beforeEach(() => {
-  platform.openInBrowser.mockReset().mockResolvedValue(undefined)
-})
-
 describe('ItemRow', () => {
   it('names its item for the inbox to find, and marks it when highlighted', () => {
     const { rerender } = render(
       <ul>
-        <ItemRow item={item({ id: 42 })} now={now} launch={launch} />
+        <ItemRow item={item({ id: 42 })} launch={launch} />
       </ul>,
     )
 
@@ -56,7 +56,7 @@ describe('ItemRow', () => {
 
     rerender(
       <ul>
-        <ItemRow item={item({ id: 42 })} now={now} launch={launch} highlighted />
+        <ItemRow item={item({ id: 42 })} launch={launch} highlighted />
       </ul>,
     )
     expect(row).toHaveAttribute('data-highlighted', 'true')
@@ -181,8 +181,8 @@ describe('ItemRow', () => {
     })
     render(
       <ul>
-        <ItemRow item={item({ id: 1, details: small })} now={now} launch={null} />
-        <ItemRow item={item({ id: 2, details: large })} now={now} launch={null} />
+        <ItemRow item={item({ id: 1, details: small })} launch={null} />
+        <ItemRow item={item({ id: 2, details: large })} launch={null} />
       </ul>,
     )
 
@@ -200,7 +200,7 @@ describe('ItemRow', () => {
   })
 
   it('handles details with no labels at all', () => {
-    renderRow(item({ details: details({ labels: null }) }))
+    renderRow(item({ details: details({ labels: [] }) }))
 
     expect(signals().getAllByRole('listitem')).toHaveLength(4)
   })
@@ -267,7 +267,7 @@ describe('ItemRow', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Add the widget cache' }))
 
-    expect(platform.openInBrowser).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/pull/7')
+    expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/pull/7')
   })
 
   it('points out the sensitive files of a checked pull request beside who opened it', async () => {
@@ -276,8 +276,8 @@ describe('ItemRow', () => {
       <ul>
         <ItemRow
           item={item({ trusted: false, trust: 'outside', details: details(), files: fileCheck() })}
-          now={now}
           launch={launch}
+          resolution={itemResolution()}
           onFilesSettings={onFilesSettings}
         />
       </ul>,
@@ -290,6 +290,16 @@ describe('ItemRow', () => {
     await userEvent.click(chip)
     await userEvent.click(screen.getByRole('button', { name: 'What counts as sensitive' }))
     expect(onFilesSettings).toHaveBeenCalledOnce()
+  })
+
+  it('marks an item back from a snooze for a day, then no longer', () => {
+    renderRow(item({ id: 2, snoozedUntil: '2026-06-15T11:00:00Z' }))
+    expect(screen.getByText('Back from snooze')).toBeInTheDocument()
+  })
+
+  it('stops marking an item back from a snooze a day after it came back', () => {
+    renderRow(item({ id: 2, snoozedUntil: '2026-06-13T12:00:00Z' }))
+    expect(screen.queryByText('Back from snooze')).not.toBeInTheDocument()
   })
 
   it('shows no file chip for an item whose files are not checked', () => {

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/snooze"
 )
 
@@ -46,7 +47,8 @@ func arrivalHarness(t *testing.T) (*harness, *fakeSink) {
 	h := newHarness(t)
 	sink := &fakeSink{}
 	h.svc = NewService(Config{
-		DB: h.db, Tokens: h.tokens, Client: h.client, Clock: h.clock, Notifier: h.notifier, Arrivals: sink,
+		Pool: h.pool, Tokens: h.tokens, Client: h.client, Clock: h.clock, Events: h.events,
+		Arrivals: sink,
 	})
 
 	return h, sink
@@ -71,10 +73,12 @@ func kindsAndNumbers(arrivals []Arrival) []string {
 
 // tick moves the clock on an hour.
 func (h *harness) tick() {
-	h.clock.now = h.clock.now.Add(time.Hour)
+	h.clock.Advance(time.Hour)
 }
 
 func TestTheFirstRefreshTellsNoArrivals(t *testing.T) {
+	t.Parallel()
+
 	h, sink := arrivalHarness(t)
 	h.client.inbox = fetched([]github.Item{pr(1, "MEMBER", false)}, nil, []github.Item{byOther(issue("example-repo", 2, "MEMBER"))})
 
@@ -84,6 +88,8 @@ func TestTheFirstRefreshTellsNoArrivals(t *testing.T) {
 }
 
 func TestNewReviewRequestsAndAssignmentsArrive(t *testing.T) {
+	t.Parallel()
+
 	h, sink := arrivalHarness(t)
 	h.client.inbox = fetched([]github.Item{pr(1, "MEMBER", false)}, nil, nil)
 	h.refresh(t)
@@ -101,14 +107,14 @@ func TestNewReviewRequestsAndAssignmentsArrive(t *testing.T) {
 	assert.Equal(t, []string{"review_requested #3", "assigned #4"}, kindsAndNumbers(got))
 
 	first := got[0]
-	assert.Equal(t, "pr", first.ItemKind)
+	assert.Equal(t, item.KindPR, first.ItemKind)
 	assert.Equal(t, "acme-org", first.RepoOwner)
 	assert.Equal(t, "example-repo", first.RepoName)
 	assert.Equal(t, "Item 3", first.Title)
 	assert.Equal(t, "https://github.com/acme-org/example-repo/pull/3", first.URL)
 	assert.Equal(t, "octo-other", first.Author)
 	assert.NotZero(t, first.ItemID)
-	assert.Equal(t, "issue", got[1].ItemKind)
+	assert.Equal(t, item.KindIssue, got[1].ItemKind)
 
 	// The same lists again tell nothing.
 	h.tick()
@@ -117,6 +123,8 @@ func TestNewReviewRequestsAndAssignmentsArrive(t *testing.T) {
 }
 
 func TestAReviewRequestedAgainArrivesAgain(t *testing.T) {
+	t.Parallel()
+
 	h, sink := arrivalHarness(t)
 	h.client.inbox = fetched([]github.Item{pr(1, "MEMBER", false)}, nil, nil)
 	h.refresh(t)
@@ -135,6 +143,8 @@ func TestAReviewRequestedAgainArrivesAgain(t *testing.T) {
 }
 
 func TestAnItemArrivesOnceForItsFirstReason(t *testing.T) {
+	t.Parallel()
+
 	h, sink := arrivalHarness(t)
 	h.client.inbox = fetched(nil, nil, nil)
 	h.refresh(t)
@@ -149,6 +159,8 @@ func TestAnItemArrivesOnceForItsFirstReason(t *testing.T) {
 }
 
 func TestAnAssignmentOnYourOwnItemDoesNotArrive(t *testing.T) {
+	t.Parallel()
+
 	h, sink := arrivalHarness(t)
 	h.client.inbox = fetched(nil, nil, nil)
 	h.refresh(t)
@@ -161,6 +173,8 @@ func TestAnAssignmentOnYourOwnItemDoesNotArrive(t *testing.T) {
 }
 
 func TestSetAsideItemsDoNotArrive(t *testing.T) {
+	t.Parallel()
+
 	h, sink := arrivalHarness(t)
 	one, two := byOther(pr(1, "MEMBER", false)), byOther(pr(2, "MEMBER", false))
 	h.client.inbox = fetched(nil, nil, []github.Item{one, two})
@@ -179,11 +193,37 @@ func TestSetAsideItemsDoNotArrive(t *testing.T) {
 	assert.Equal(t, []string{"review_requested #7"}, kindsAndNumbers(sink.last()))
 }
 
+func TestAnItemBackFromASnoozeArrives(t *testing.T) {
+	t.Parallel()
+
+	h, sink := arrivalHarness(t)
+	one, two, three := byOther(pr(1, "MEMBER", false)), byOther(pr(2, "MEMBER", false)),
+		byOther(pr(3, "MEMBER", false))
+	h.client.inbox = fetched(nil, nil, []github.Item{one, two, three})
+	snap := h.refresh(t)
+
+	_, err := h.svc.Dismiss(t.Context(), itemByNumber(t, snap.Assigned, 1).ID)
+	require.NoError(t, err)
+	_, err = h.svc.Snooze(t.Context(), itemByNumber(t, snap.Assigned, 3).ID, 1)
+	require.NoError(t, err)
+
+	// Two days on, 3's snooze has run its course; all three newly ask for a review, and
+	// only the dismissed 1 is still set aside.
+	h.clock.Advance(48 * time.Hour)
+	h.client.inbox = fetched([]github.Item{one, two, three}, nil, []github.Item{one, two, three})
+	h.refresh(t)
+
+	assert.Equal(t, []string{"review_requested #2", "review_requested #3"}, kindsAndNumbers(sink.last()))
+}
+
 func TestASnoozeEndedEarlyArrives(t *testing.T) {
+	t.Parallel()
+
 	h, id, details := wakeHarness(t)
 	sink := &fakeSink{}
 	h.svc = NewService(Config{
-		DB: h.db, Tokens: h.tokens, Client: h.client, Clock: h.clock, Notifier: h.notifier, Arrivals: sink,
+		Pool: h.pool, Tokens: h.tokens, Client: h.client, Clock: h.clock, Events: h.events,
+		Arrivals: sink,
 	})
 
 	_, err := h.svc.Snooze(t.Context(), id, 3)
@@ -204,8 +244,10 @@ func TestASnoozeEndedEarlyArrives(t *testing.T) {
 }
 
 func TestATruncatedListNeedsTheItemToHaveMoved(t *testing.T) {
+	t.Parallel()
+
 	h, sink := arrivalHarness(t)
-	h.clock.now = time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+	h.clock.Set(time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC))
 	h.client.inbox = fetched([]github.Item{pr(1, "MEMBER", false)}, nil, nil)
 	h.client.inbox.ReviewRequested.IssueCount = 150
 	h.refresh(t)
@@ -213,7 +255,7 @@ func TestATruncatedListNeedsTheItemToHaveMoved(t *testing.T) {
 	// Another item fell out of the truncated list, so an old one slid in: not new.
 	old := byOther(pr(2, "MEMBER", false))
 	moved := byOther(pr(3, "MEMBER", false))
-	moved.UpdatedAt = h.clock.now.Add(30 * time.Minute)
+	moved.UpdatedAt = h.clock.Now().Add(30 * time.Minute)
 
 	h.tick()
 	h.client.inbox = fetched([]github.Item{pr(1, "MEMBER", false), old, moved}, nil, nil)
@@ -224,6 +266,8 @@ func TestATruncatedListNeedsTheItemToHaveMoved(t *testing.T) {
 }
 
 func TestAnotherAccountTellsNoArrivals(t *testing.T) {
+	t.Parallel()
+
 	h, sink := arrivalHarness(t)
 	h.client.inbox = fetched(nil, nil, nil)
 	h.refresh(t)
@@ -237,6 +281,8 @@ func TestAnotherAccountTellsNoArrivals(t *testing.T) {
 }
 
 func TestAFailedRefreshTellsNoArrivals(t *testing.T) {
+	t.Parallel()
+
 	h, sink := arrivalHarness(t)
 	h.client.inbox = fetched(nil, nil, nil)
 	h.refresh(t)
@@ -251,11 +297,15 @@ func TestAFailedRefreshTellsNoArrivals(t *testing.T) {
 }
 
 func TestTheSinkIsToldOutsideTheLock(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched(nil, nil, nil)
 
 	sink := &lockingSink{}
-	h.svc = NewService(Config{DB: h.db, Tokens: h.tokens, Client: h.client, Clock: h.clock, Arrivals: sink})
+	h.svc = NewService(Config{
+		Pool: h.pool, Tokens: h.tokens, Client: h.client, Clock: h.clock, Arrivals: sink,
+	})
 	sink.svc = h.svc
 	h.refresh(t)
 
@@ -267,7 +317,7 @@ func TestTheSinkIsToldOutsideTheLock(t *testing.T) {
 	go func() {
 		defer close(done)
 
-		_, _ = h.svc.Refresh(context.Background())
+		_, _ = h.svc.Refresh(t.Context())
 	}()
 
 	select {
@@ -286,7 +336,7 @@ type lockingSink struct {
 }
 
 func (s *lockingSink) Arrived(context.Context, []Arrival) {
-	s.svc.mu.Lock()
+	s.svc.order.mu.Lock()
 	s.told = true
-	s.svc.mu.Unlock()
+	s.svc.order.mu.Unlock()
 }

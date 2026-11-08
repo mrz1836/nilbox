@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/inbox"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 var (
@@ -59,6 +60,8 @@ func (c *steppingClock) Now() time.Time {
 }
 
 func TestTimeRefreshes(t *testing.T) {
+	t.Parallel()
+
 	clock := &steppingClock{
 		now:   time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 		steps: []time.Duration{900 * time.Millisecond, 700 * time.Millisecond, 800 * time.Millisecond, 650 * time.Millisecond, 1200 * time.Millisecond},
@@ -89,6 +92,8 @@ func TestTimeRefreshes(t *testing.T) {
 }
 
 func TestRefreshReportBudget(t *testing.T) {
+	t.Parallel()
+
 	report := RefreshReport{Cost: 1}
 
 	assert.Equal(t, 5000, report.HourlyBudget(), "GitHub's standard budget when none was recorded")
@@ -99,6 +104,8 @@ func TestRefreshReportBudget(t *testing.T) {
 }
 
 func TestTimeRefreshesErrors(t *testing.T) {
+	t.Parallel()
+
 	_, err := TimeRefreshes(t.Context(), &fakeRefresher{costs: []int{1}}, 0, time.Now)
 	require.ErrorIs(t, err, ErrTooFewRuns)
 
@@ -111,18 +118,13 @@ func TestTimeRefreshesErrors(t *testing.T) {
 	require.ErrorIs(t, err, ErrNoGraphQLReading)
 }
 
-// refusingRunner runs no program.
-type refusingRunner struct{}
-
-func (refusingRunner) Run(context.Context, string, ...string) (stdout, stderr []byte, err error) {
-	return nil, []byte("not run"), errNotRun
-}
-
 func TestRunRefreshUsesAScratchDatabase(t *testing.T) {
+	t.Parallel()
+
 	tmp := t.TempDir()
 
 	// No token can be borrowed, so the first refresh fails before any request is made.
-	_, err := RunRefresh(t.Context(), RefreshOptions{Home: t.TempDir(), Version: "test", TempDir: tmp, Runner: refusingRunner{}})
+	_, err := RunRefresh(t.Context(), RefreshOptions{Home: t.TempDir(), Version: "test", TempDir: tmp, Runner: &testutil.Runner{Stderr: "not run", Err: errNotRun}})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "refresh 1 of 5")
 
@@ -132,7 +134,9 @@ func TestRunRefreshUsesAScratchDatabase(t *testing.T) {
 }
 
 func TestRunRefreshBootstrapFails(t *testing.T) {
-	_, err := RunRefresh(t.Context(), RefreshOptions{TempDir: t.TempDir(), Runner: refusingRunner{}})
+	t.Parallel()
+
+	_, err := RunRefresh(t.Context(), RefreshOptions{TempDir: t.TempDir(), Runner: &testutil.Runner{Stderr: "not run", Err: errNotRun}})
 	require.Error(t, err, "a home directory is required")
 
 	_, err = RunRefresh(t.Context(), RefreshOptions{Home: t.TempDir(), TempDir: "/nonexistent-scratch-parent"})

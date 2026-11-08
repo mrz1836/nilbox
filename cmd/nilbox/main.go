@@ -26,11 +26,7 @@ var (
 )
 
 func main() {
-	if err := run(os.Stdout); err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, err)
-
-		os.Exit(1)
-	}
+	os.Exit(exitStatus(run(os.Stdout), os.Stderr))
 }
 
 // run writes the product identity and build metadata to w.

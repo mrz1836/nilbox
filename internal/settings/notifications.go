@@ -4,11 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"time"
 
-	"gorm.io/gorm"
-
-	"github.com/mrz1836/nilbox/internal/notify"
+	"github.com/mrz1836/nilbox/internal/event"
+	"github.com/mrz1836/nilbox/internal/notifyprefs"
+	"github.com/mrz1836/nilbox/internal/prefs"
 )
 
 // KeyMenuBar is whether the app shows its icon, with how many items need the user, in the
@@ -18,75 +17,50 @@ const KeyMenuBar = "ui.menuBar"
 // DefaultMenuBar is the menu bar setting of a fresh database.
 const DefaultMenuBar = true
 
-// MenuBarNotifier is told when the menu bar setting was changed and stored, so the desktop
-// shell can add or remove its icon.
-type MenuBarNotifier interface {
-	MenuBarChanged(on bool)
-}
-
-// WithMenuBarNotifier tells n about every change of the menu bar setting once it is
-// stored.
-func WithMenuBarNotifier(n MenuBarNotifier) Option {
-	return func(s *Service) { s.menuBar = n }
-}
-
 // MenuBar returns whether the app shows its menu bar icon: the stored setting, or
 // DefaultMenuBar when none is stored or the stored value cannot be read.
 func (s *Service) MenuBar(ctx context.Context) (bool, error) {
-	var stored []string
-
-	err := s.db.WithContext(ctx).Raw("SELECT value FROM prefs WHERE key = ?", KeyMenuBar).Scan(&stored).Error
+	stored, _, err := s.prefs.Get(ctx, KeyMenuBar)
 	if err != nil {
 		return DefaultMenuBar, fmt.Errorf("read the menu bar setting: %w", err)
 	}
 
-	if len(stored) == 0 {
-		return DefaultMenuBar, nil
-	}
-
-	return decodeMenuBar(stored[0]), nil
+	return decodeMenuBar(stored), nil
 }
 
-// SetMenuBar stores whether the app shows its menu bar icon. Once it is stored, the menu
-// bar notifier, if any, is told.
-func (s *Service) SetMenuBar(ctx context.Context, on bool) error {
-	if err := s.set(ctx, KeyMenuBar, strconv.FormatBool(on)); err != nil {
-		return err
+// SetMenuBar stores whether the app shows its menu bar icon, and returns the settings
+// with it. Once it is stored, an event.MenuBarChanged is emitted, so the desktop shell
+// adds or removes the icon.
+func (s *Service) SetMenuBar(ctx context.Context, on bool) (Settings, error) {
+	out, err := s.save(ctx, setting(KeyMenuBar, strconv.FormatBool(on)))
+	if err != nil {
+		return Settings{}, err
 	}
 
-	if s.menuBar != nil {
-		s.menuBar.MenuBarChanged(on)
-	}
+	s.events.Emit(event.MenuBarChanged{On: on})
 
-	return nil
+	return out, nil
 }
 
 // SetNotificationBanner turns the banners of one kind of notification on or off (see the
-// notify package for the kinds). The notification history keeps every kind either way.
-func (s *Service) SetNotificationBanner(ctx context.Context, kind string, on bool) error {
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var stored []string
-		if err := tx.Raw("SELECT value FROM prefs WHERE key = ?", notify.PrefBannersOff).Scan(&stored).Error; err != nil {
-			return err
-		}
+// notify package for the kinds), and returns the settings with it. The notification
+// history keeps every kind either way.
+func (s *Service) SetNotificationBanner(ctx context.Context, kind notifyprefs.Kind, on bool) (Settings, error) {
+	return s.save(ctx, func(ctx context.Context, p *prefs.Store) error {
+		err := p.Update(ctx, notifyprefs.KeyBannersOff, func(stored string, _ bool) (string, error) {
+			off, err := notifyprefs.SetBanner(notifyprefs.DecodeBannersOff(stored), kind, on)
+			if err != nil {
+				return "", err
+			}
 
-		prefs := map[string]string{}
-		if len(stored) == 1 {
-			prefs[notify.PrefBannersOff] = stored[0]
-		}
-
-		off, err := notify.SetBanner(notify.DecodeBannersOff(prefs), kind, on)
+			return notifyprefs.EncodeBannersOff(off), nil
+		})
 		if err != nil {
-			return err
+			return fmt.Errorf("save the notification settings: %w", err)
 		}
 
-		return tx.Exec(upsertPrefSQL, notify.PrefBannersOff, notify.EncodeBannersOff(off), time.Now().UTC()).Error
+		return nil
 	})
-	if err != nil {
-		return fmt.Errorf("save the notification settings: %w", err)
-	}
-
-	return nil
 }
 
 // decodeMenuBar reads a stored menu bar setting, falling back to the default for one

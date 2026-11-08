@@ -22,7 +22,6 @@ export interface AppHeaderProps {
   // account and gauge are null until the inbox has loaded.
   account: Account | null
   gauge: RateGauge | null
-  now: Date
   // inboxCount is how many items are in the inbox; the Inbox tab shows it when it is not 0.
   inboxCount?: number
   // worktreeCount is how many linked worktrees are on disk, and worktreeAttention how many
@@ -87,7 +86,6 @@ export function AppHeader(props: AppHeaderProps) {
     onViewChange,
     account,
     gauge,
-    now,
     onOpenSettings,
     notifications,
     onOpenNotification = () => undefined,
@@ -141,12 +139,11 @@ export function AppHeader(props: AppHeaderProps) {
         {notifications !== undefined && (
           <NotificationsMenu
             notifications={notifications}
-            now={now}
             onOpen={onOpenNotification}
             onSettings={onNotificationSettings}
           />
         )}
-        <BudgetMenu gauge={gauge} now={now} />
+        <BudgetMenu gauge={gauge} />
         <AccountMenu account={account} onOpenSettings={onOpenSettings} />
       </div>
     </header>

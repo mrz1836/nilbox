@@ -6,6 +6,11 @@ export {
     Service
 };
 
+export {
+    ResetReason
+} from "./models.js";
+
 export type {
+    DataReset,
     Info
 } from "./models.js";

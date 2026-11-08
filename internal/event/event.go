@@ -1,0 +1,181 @@
+// Package event defines what happens in the app that another part of it reacts to: one
+// Go type per event, the name each is known by, and the Sink that receives them.
+//
+// Services emit events into the Sink they are given; the desktop shell is the one Sink
+// of the running app. A WindowEvent is passed on to the frontend under its Name, with
+// the event itself as the data, and the desktop bootstrap registers each one's type
+// under that name, so the generated bindings type the frontend's listeners. The other
+// events stay in Go: the shell acts on them itself.
+package event
+
+import (
+	"sync/atomic"
+
+	"github.com/mrz1836/nilbox/internal/timing"
+)
+
+// The events' names. A window event's name is part of the frontend's contract: the
+// generated bindings key its type by it, and the frontend listens for it.
+const (
+	// NameInboxUpdated is InboxUpdated's name.
+	NameInboxUpdated = "inbox:updated"
+
+	// NameRevealItem is RevealItem's name.
+	NameRevealItem = "inbox:reveal"
+
+	// NameWorktreesUpdated is WorktreesUpdated's name.
+	NameWorktreesUpdated = "worktrees:updated"
+
+	// NameNotificationsUpdated is NotificationsUpdated's name.
+	NameNotificationsUpdated = "notifications:updated"
+
+	// NameThemeChanged is ThemeChanged's name.
+	NameThemeChanged = "settings:theme"
+
+	// NameMenuBarChanged is MenuBarChanged's name.
+	NameMenuBarChanged = "settings:menuBar"
+
+	// NameFirstPaint is FirstPaint's name.
+	NameFirstPaint = "app:firstPaint"
+)
+
+// Event is something that happened, or was asked for, that another part of the app
+// reacts to.
+type Event interface {
+	// Name is the name the event is known by.
+	Name() string
+}
+
+// WindowEvent is an event the frontend hears too. Only this package's types are window
+// events, so the set the desktop bootstrap registers is the set WindowEvents returns.
+type WindowEvent interface {
+	Event
+
+	// window marks a window event.
+	window()
+}
+
+// Sink receives events. Emit must return promptly and must not call back into the
+// service that emitted: services emit while they hold their own locks.
+type Sink interface {
+	Emit(e Event)
+}
+
+// Or returns s, or Discard when s is nil, so a service given no Sink can still emit.
+func Or(s Sink) Sink {
+	if s == nil {
+		return Discard{}
+	}
+
+	return s
+}
+
+// WindowEvents returns one of each window event. The repository's checks compare it with
+// the events the desktop bootstrap registers.
+func WindowEvents() []WindowEvent {
+	return []WindowEvent{InboxUpdated{}, RevealItem{}, WorktreesUpdated{}, NotificationsUpdated{}}
+}
+
+// InboxUpdated says the stored inbox, or the status of its last refresh, changed: the
+// window reads the inbox again, and the menu bar redraws.
+type InboxUpdated struct{}
+
+// Name returns NameInboxUpdated.
+func (InboxUpdated) Name() string { return NameInboxUpdated }
+
+func (InboxUpdated) window() {}
+
+// RevealItem asks for the window to come forward with an item in view, for a click on
+// the item in the menu bar or on its notification. A request that names neither an item
+// nor a URL, such as a click on a banner that stands for many items, only brings the
+// window forward; the frontend is not told.
+type RevealItem struct {
+	// ItemID is the stored item to show, or 0 for none.
+	ItemID int64 `json:"itemId"`
+
+	// URL is the item on GitHub, which the window opens when the item is no longer in
+	// the inbox.
+	URL string `json:"url"`
+}
+
+// Name returns NameRevealItem.
+func (RevealItem) Name() string { return NameRevealItem }
+
+func (RevealItem) window() {}
+
+// WorktreesUpdated says an automatic worktree sweep removed a worktree or changed how many
+// need attention: the window reads the latest sweep.
+type WorktreesUpdated struct{}
+
+// Name returns NameWorktreesUpdated.
+func (WorktreesUpdated) Name() string { return NameWorktreesUpdated }
+
+func (WorktreesUpdated) window() {}
+
+// NotificationsUpdated says the notification log changed: the window reads it again.
+type NotificationsUpdated struct{}
+
+// Name returns NameNotificationsUpdated.
+func (NotificationsUpdated) Name() string { return NameNotificationsUpdated }
+
+func (NotificationsUpdated) window() {}
+
+// ThemeChanged says the user chose a theme and it was stored. The shell brings the
+// window's native appearance along with it; the page has already switched itself.
+type ThemeChanged struct {
+	// Theme is the stored theme: one of the settings package's theme choices.
+	Theme string
+}
+
+// Name returns NameThemeChanged.
+func (ThemeChanged) Name() string { return NameThemeChanged }
+
+// MenuBarChanged says the user turned the menu bar icon on or off and it was stored.
+type MenuBarChanged struct {
+	// On is whether the icon shows.
+	On bool
+}
+
+// Name returns NameMenuBarChanged.
+func (MenuBarChanged) Name() string { return NameMenuBarChanged }
+
+// FirstPaint says the window painted its first frame. It comes once per run, and ends a
+// startup measurement.
+type FirstPaint struct {
+	// Measurement is the time from process start to the first paint.
+	Measurement timing.Measurement
+}
+
+// Name returns NameFirstPaint.
+func (FirstPaint) Name() string { return NameFirstPaint }
+
+// Discard is a Sink that drops every event.
+type Discard struct{}
+
+// Emit drops e.
+func (Discard) Emit(Event) {}
+
+// Relay is a Sink that passes each event on to the Sink it is connected to, and drops
+// events until it is. It lets the services that emit be built before the Sink that hears
+// them, as the desktop shell is, which needs those services. It is safe for concurrent
+// use; the zero value is ready.
+type Relay struct {
+	to atomic.Pointer[connection]
+}
+
+// connection holds the Sink a Relay passes events on to.
+type connection struct {
+	sink Sink
+}
+
+// Connect passes every later event on to s.
+func (r *Relay) Connect(s Sink) {
+	r.to.Store(&connection{sink: s})
+}
+
+// Emit passes e on, or drops it when nothing is connected yet.
+func (r *Relay) Emit(e Event) {
+	if c := r.to.Load(); c != nil {
+		c.sink.Emit(e)
+	}
+}

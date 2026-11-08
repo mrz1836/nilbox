@@ -2,35 +2,14 @@ package inbox
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 
-	"gorm.io/gorm"
-
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
+	"github.com/mrz1836/nilbox/internal/item"
 )
-
-// storedItemSQL reads what a single refresh needs about a stored item. An item without a
-// node ID cannot be asked about on its own, so it reads as not found.
-const storedItemSQL = `SELECT account_id, node_id FROM items WHERE id = ? AND node_id <> ''`
-
-// updateItemSQL rewrites what GitHub says about a stored item, in place. Its repository,
-// number, and lists stay as they are.
-const updateItemSQL = `UPDATE items SET
-    node_id = ?, title = ?, url = ?, author_login = ?, author_type = ?, author_association = ?,
-    is_cross_repository = ?, is_draft = ?, head_ref = ?, item_created_at = ?, item_updated_at = ?, fetched_at = ?
-WHERE id = ?`
-
-// unlistItemSQL takes an item out of every list, as a refresh does with an item no
-// search returns. The row stays, since local state may reference it.
-const unlistItemSQL = `UPDATE items
-SET reason_review_requested = 0, reason_authored = 0, reason_assigned = 0, fetched_at = ?
-WHERE id = ?`
-
-// storedItem is a stored item as storedItemSQL reads it.
-type storedItem struct {
-	AccountID int64  `gorm:"column:account_id"`
-	NodeID    string `gorm:"column:node_id"`
-}
 
 // RefreshItem brings one item up to date from GitHub and returns the new snapshot. It
 // asks about that item alone, for one GraphQL point, so a change the user knows of, such
@@ -42,114 +21,121 @@ type storedItem struct {
 // merged, closed, or deleted since, or whose repository was archived, leaves every list,
 // as a whole refresh would have it. New activity on a snoozed item can end the snooze.
 //
+// It never waits for a whole refresh, only for other work on the same item. A whole
+// refresh that started earlier and stores later keeps what this one stored; one that
+// started later and already stored the item makes this one store nothing.
+//
 // A failure is returned, not recorded as the inbox's last error, which reports whole
 // refreshes, and the stored inbox is left as it was.
 func (s *Service) RefreshItem(ctx context.Context, id int64) (Snapshot, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if err := s.refreshItem(ctx, id); err != nil {
+	unlock, err := s.items.lock(ctx, id)
+	if err != nil {
 		return Snapshot{}, fmt.Errorf("refresh the item: %w", err)
 	}
 
-	s.notify()
+	defer unlock()
 
-	return s.Snapshot(ctx)
+	wrote, err := s.refreshItem(ctx, id)
+	if err != nil {
+		return Snapshot{}, fmt.Errorf("refresh the item: %w", err)
+	}
+
+	if !wrote {
+		return s.Snapshot(ctx)
+	}
+
+	return s.changed(ctx)
 }
 
-// refreshItem reads the stored item, asks GitHub about it, and stores the answer.
-func (s *Service) refreshItem(ctx context.Context, id int64) error {
-	var rows []storedItem
-	if err := s.db.WithContext(ctx).Raw(storedItemSQL, id).Scan(&rows).Error; err != nil {
-		return fmt.Errorf("read the item: %w", err)
+// refreshItem reads the stored item, asks GitHub about it, and stores the answer. It
+// reports whether it stored it.
+func (s *Service) refreshItem(ctx context.Context, id int64) (bool, error) {
+	stored, err := s.q.GetStoredItem(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, fmt.Errorf("%w (id %d)", item.ErrNotFound, id)
 	}
 
-	if len(rows) == 0 {
-		return fmt.Errorf("%w (id %d)", ErrItemNotFound, id)
-	}
-
-	tok, err := s.tokens.Token(ctx)
 	if err != nil {
-		return err
+		return false, fmt.Errorf("read the item: %w", err)
 	}
 
-	update, err := s.client.FetchItem(ctx, tok, rows[0].NodeID)
+	var seq uint64
+
+	update, err := github.WithToken(ctx, s.tokens, func(tok github.Token) (itemUpdate, error) {
+		seq = s.startFetch() // each try numbers its own fetch
+
+		return s.fetchItem(ctx, tok, id, stored.NodeID)
+	})
 	if err != nil {
-		return err
+		return false, err
+	}
+
+	update.accountID = stored.AccountID
+
+	wrote, err := s.storeItemWrite(ctx, itemWrite{id: id, seq: seq, update: &update})
+	if err != nil {
+		return false, fmt.Errorf("save the item: %w", err)
+	}
+
+	return wrote, nil
+}
+
+// fetchItem asks GitHub about the item with id and nodeID, and checks its files when a
+// check is due.
+func (s *Service) fetchItem(ctx context.Context, tok github.Token, id int64, nodeID string) (itemUpdate, error) {
+	update, err := s.client.FetchItem(ctx, tok, nodeID)
+	if err != nil {
+		return itemUpdate{}, err
 	}
 
 	if update == nil {
-		return ErrIncompleteFetch
+		return itemUpdate{}, ErrIncompleteFetch
 	}
 
 	files, err := s.checkUpdatedFiles(ctx, tok, id, update)
 	if err != nil {
-		return github.Redact(err, tok)
+		return itemUpdate{}, err
 	}
 
-	return github.Redact(s.saveItemUpdate(ctx, id, rows[0], update, files), tok)
-}
-
-// saveItemUpdate stores what one item's refresh read, in one transaction, with the
-// query's budget reading and the item's file check, if one ran.
-func (s *Service) saveItemUpdate(
-	ctx context.Context, id int64, stored storedItem, update *github.ItemUpdate, files map[string]fileCheck,
-) error {
-	now := s.now()
-	it := update.Item
-
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		w := &writer{
-			tx: tx, now: now, accountID: stored.AccountID, repos: make(map[string]int64),
-			details: map[string]github.ItemDetails{it.NodeID: update.Details}, files: files,
-		}
-
-		if err := w.saveGraphQLRate(update.RateLimit); err != nil {
-			return err
-		}
-
-		if !update.Found || it.Closed() || it.Repo.IsArchived {
-			return w.unlist(id, update)
-		}
-
-		return w.rewrite(id, it)
-	})
-	if err != nil {
-		return fmt.Errorf("save the item: %w", err)
-	}
-
-	return nil
+	return itemUpdate{update: update, files: files}, nil
 }
 
 // rewrite stores what GitHub says about an open item in place, with its details and file
 // check, then ends the snoozes the new details give cause to.
-func (w *writer) rewrite(id int64, it github.Item) error {
-	err := w.exec("update the item", updateItemSQL,
-		it.NodeID, it.Title, it.URL, it.AuthorLogin, it.AuthorType, it.AuthorAssociation, it.IsCrossRepository,
-		it.IsDraft, it.HeadRef, it.CreatedAt.UTC(), it.UpdatedAt.UTC(), w.now, id)
+func (w *writer) rewrite(ctx context.Context, id int64, it github.Item) error {
+	err := w.q.UpdateItem(ctx, queries.UpdateItemParams{
+		NodeID: it.NodeID, Title: it.Title, URL: it.URL, AuthorLogin: it.AuthorLogin, AuthorType: it.AuthorType,
+		AuthorAssociation: it.AuthorAssociation, IsCrossRepository: it.IsCrossRepository, IsDraft: it.IsDraft,
+		HeadRef: it.HeadRef, ItemCreatedAt: it.CreatedAt.UTC(), ItemUpdatedAt: it.UpdatedAt.UTC(),
+		FetchedAt: w.now, ID: id,
+	})
 	if err != nil {
+		return fmt.Errorf("update the item: %w", err)
+	}
+
+	if err = w.saveDetails(ctx, id, it); err != nil {
 		return err
 	}
 
-	if err = w.saveDetails(id, it); err != nil {
+	if err = w.saveFiles(ctx, id, it); err != nil {
 		return err
 	}
 
-	if err = w.saveFiles(id, it); err != nil {
-		return err
-	}
-
-	return w.wakeSnoozed()
+	return w.wakeSnoozed(ctx)
 }
 
 // unlist takes an item out of every list. An item in an archived repository records the
 // repository first, so it is known as archived, as a whole refresh does.
-func (w *writer) unlist(id int64, update *github.ItemUpdate) error {
+func (w *writer) unlist(ctx context.Context, id int64, update *github.ItemUpdate) error {
 	if update.Found && update.Item.Repo.IsArchived {
-		if _, err := w.repoID(update.Item); err != nil {
+		if _, err := w.repoID(ctx, update.Item); err != nil {
 			return err
 		}
 	}
 
-	return w.exec("take the item out of the lists", unlistItemSQL, w.now, id)
+	if err := w.q.UnlistItem(ctx, queries.UnlistItemParams{FetchedAt: w.now, ID: id}); err != nil {
+		return fmt.Errorf("take the item out of the lists: %w", err)
+	}
+
+	return nil
 }

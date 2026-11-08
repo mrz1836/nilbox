@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import type { PromptUsage } from '../platform'
 import {
   effortLabel,
   kindPlural,
@@ -12,14 +13,13 @@ import {
   usageSummary,
 } from './launch'
 
-const noUsage = { defaults: [], orgs: [], repos: [], kinds: [] }
+const noUsage: PromptUsage = { defaults: [], orgs: [], repos: [], kinds: [] }
 
 describe('labels', () => {
   it('names where a setting came from', () => {
     expect(sourceLabel('repo')).toBe('repo default')
     expect(sourceLabel('agent')).toBe('agent default')
     expect(sourceLabel('launch')).toBe('this launch')
-    expect(sourceLabel('somewhere')).toBe('somewhere')
   })
 
   it('names models and effort levels', () => {
@@ -52,14 +52,12 @@ describe('usage', () => {
       'App default for pull requests · 1 org · 2 repos',
     )
     expect(usageSummary({ ...noUsage, defaults: ['pr', 'issue'] })).toBe('App default for pull requests and issues')
-    expect(usageSummary({ defaults: null, orgs: null, repos: null, kinds: null })).toBe('Not a default anywhere')
   })
 
   it('counts and lists the places', () => {
-    const usage = { ...noUsage, defaults: ['issue'], orgs: ['acme-org'], repos: ['acme-org/api'] }
+    const usage: PromptUsage = { ...noUsage, defaults: ['issue'], orgs: ['acme-org'], repos: ['acme-org/api'] }
 
     expect(usageCount(usage)).toBe(3)
-    expect(usageCount({ defaults: null, orgs: null, repos: null, kinds: null })).toBe(0)
     expect(usagePlaces(usage)).toEqual(['App default for issues', 'acme-org (all repositories)', 'acme-org/api'])
   })
 })
@@ -76,7 +74,7 @@ describe('pinSummary', () => {
         extraArgs: ['--advisor', 'fable'],
       }),
     ).toEqual(['Sonnet', 'low effort', 'plan mode', 'no worktree', '2 flags'])
-    expect(pinSummary({ model: '', effort: '', planMode: false, worktree: true, extraArgs: null })).toEqual([
+    expect(pinSummary({ model: '', effort: '', planMode: false, worktree: true, extraArgs: [] })).toEqual([
       'no plan mode',
       'worktree',
     ])

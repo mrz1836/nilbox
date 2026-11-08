@@ -3,10 +3,11 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
+import { at } from '../test/clock'
 import { account, notification, rate, unknownRate } from '../test/fixtures'
 import { AppHeader, type AppHeaderProps } from './AppHeader'
 
-vi.mock('../platform', () => ({ openInBrowser: vi.fn() }))
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 function renderHeader(overrides: Partial<AppHeaderProps> = {}) {
   const props: AppHeaderProps = {
@@ -14,12 +15,11 @@ function renderHeader(overrides: Partial<AppHeaderProps> = {}) {
     onViewChange: vi.fn(),
     account: account(),
     gauge: { graphql: rate(), core: unknownRate, search: unknownRate },
-    now: new Date('2026-06-15T12:00:00Z'),
     onOpenSettings: vi.fn(),
     ...overrides,
   }
 
-  render(<AppHeader {...props} />)
+  render(<AppHeader {...props} />, { wrapper: at() })
 
   return props
 }
@@ -32,29 +32,35 @@ describe('AppHeader', () => {
 
   it('opens a notification and the notification settings from the bell', async () => {
     const entry = notification()
-    const props = renderHeader({
-      notifications: { log: { items: [entry], unread: 1 }, error: '', markRead: vi.fn(), clear: vi.fn() },
+    const { onOpenNotification, onNotificationSettings } = renderHeader({
+      notifications: {
+        log: { items: [entry], unread: 1 },
+        error: '',
+        markRead: vi.fn(),
+        markError: '',
+        clear: vi.fn(),
+      },
       onOpenNotification: vi.fn(),
       onNotificationSettings: vi.fn(),
     })
 
     await userEvent.click(screen.getByRole('button', { name: 'Notifications, 1 unread' }))
     await userEvent.click(screen.getByRole('button', { name: /Add the widget cache/ }))
-    expect(props.onOpenNotification).toHaveBeenCalledWith(entry)
+    expect(onOpenNotification).toHaveBeenCalledWith(entry)
 
     await userEvent.click(screen.getByRole('button', { name: /^Notifications/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Notification settings' }))
-    expect(props.onNotificationSettings).toHaveBeenCalledOnce()
+    expect(onNotificationSettings).toHaveBeenCalledOnce()
   })
 
   it('opens the general settings from the bell when given no notification settings', async () => {
-    const props = renderHeader({
-      notifications: { log: { items: [], unread: 0 }, error: '', markRead: vi.fn(), clear: vi.fn() },
+    const { onOpenSettings } = renderHeader({
+      notifications: { log: { items: [], unread: 0 }, error: '', markRead: vi.fn(), markError: '', clear: vi.fn() },
     })
 
     await userEvent.click(screen.getByRole('button', { name: 'Notifications' }))
     await userEvent.click(screen.getByRole('button', { name: 'Notification settings' }))
-    expect(props.onOpenSettings).toHaveBeenCalledOnce()
+    expect(onOpenSettings).toHaveBeenCalledOnce()
   })
 
   it('is one toolbar: the product name, the views, the budget gauge, and the account', () => {
@@ -123,14 +129,14 @@ describe('AppHeader', () => {
   })
 
   it('marks the active view and switches views on click', async () => {
-    const props = renderHeader({ view: 'inbox' })
+    const { onViewChange } = renderHeader({ view: 'inbox' })
 
     expect(screen.getByRole('button', { name: 'Inbox' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: 'Worktrees' })).toHaveAttribute('aria-pressed', 'false')
 
     await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
 
-    expect(props.onViewChange).toHaveBeenCalledWith('worktrees')
+    expect(onViewChange).toHaveBeenCalledWith('worktrees')
   })
 
   it('marks no tab on the settings page', () => {
@@ -141,12 +147,12 @@ describe('AppHeader', () => {
   })
 
   it('opens the settings from the account menu', async () => {
-    const props = renderHeader()
+    const { onOpenSettings } = renderHeader()
 
     await userEvent.click(screen.getByRole('button', { name: 'Account: octo-user' }))
     await userEvent.click(screen.getByRole('menuitem', { name: /Settings/ }))
 
-    expect(props.onOpenSettings).toHaveBeenCalledOnce()
+    expect(onOpenSettings).toHaveBeenCalledOnce()
   })
 
   it('renders before the inbox has loaded', () => {

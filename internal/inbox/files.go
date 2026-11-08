@@ -2,17 +2,20 @@ package inbox
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"golang.org/x/sync/errgroup"
-	"gorm.io/gorm/clause"
 
 	"github.com/mrz1836/nilbox/internal/github"
-	"github.com/mrz1836/nilbox/internal/inbox/model"
+	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
+	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/sensitive"
+	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
 
@@ -35,32 +38,6 @@ const (
 	maxFileErrorRunes = 300
 )
 
-// storedFilesSQL reads the head commit and outcome of each stored check, by the item's
-// node ID.
-const storedFilesSQL = `SELECT i.node_id, f.head_oid, f.error
-FROM item_files f
-JOIN items i ON i.id = f.item_id
-WHERE i.account_id = (SELECT id FROM accounts WHERE login = (SELECT value FROM prefs WHERE key = ?))
-  AND i.node_id <> ''`
-
-// pruneFilesSQL removes the checks of an account's items that left every list.
-const pruneFilesSQL = `DELETE FROM item_files WHERE item_id IN (
-    SELECT id FROM items
-    WHERE account_id = ? AND reason_review_requested = 0 AND reason_authored = 0 AND reason_assigned = 0
-)`
-
-// checkItemSQL reads what checking one stored item's files needs.
-const checkItemSQL = `SELECT i.id, i.kind, i.number, i.url, i.author_login, i.author_type, i.author_association,
-    i.is_cross_repository, r.owner AS repo_owner, r.name AS repo_name, COALESCE(d.head_oid, '') AS head_oid,
-    f.item_id IS NOT NULL AS has_files, COALESCE(f.head_oid, '') AS files_head, COALESCE(f.total, 0) AS files_total,
-    COALESCE(f.files, '[]') AS files, COALESCE(f.complete, 0) AS files_complete,
-    COALESCE(f.error, '') AS files_error, f.checked_at AS files_checked_at
-FROM items i
-JOIN repos r ON r.id = i.repo_id
-LEFT JOIN item_details d ON d.item_id = i.id
-LEFT JOIN item_files f ON f.item_id = i.id
-WHERE i.id = ?`
-
 // fileScope decides whose pull requests have their files checked, and matches the
 // files against the user's categories.
 type fileScope struct {
@@ -70,16 +47,16 @@ type fileScope struct {
 	matcher *sensitive.Matcher
 }
 
-// newFileScope reads the scope from the stored prefs: the sensitive-file settings, the
+// newFileScope reads the scope from the stored status: the sensitive-file settings, the
 // trusted bots, and the signed-in account.
-func newFileScope(prefs map[string]string) fileScope {
-	raw, stored := prefs[trust.PrefBots]
-	cfg := sensitive.DecodeConfig(prefs)
+func newFileScope(status map[string]string) fileScope {
+	raw, stored := status[trust.PrefBots]
+	cfg := sensitive.DecodeConfig(status)
 
 	return fileScope{
 		cfg:     cfg,
 		policy:  trust.NewPolicy(trust.DecodeBots(raw, stored)),
-		viewer:  prefs[prefViewer],
+		viewer:  status[prefViewer],
 		matcher: sensitive.NewMatcher(cfg),
 	}
 }
@@ -96,12 +73,8 @@ func (f fileScope) checks(isPR bool, author trust.Author, crossRepo bool) bool {
 	return sensitive.Checked(f.cfg.Scope, f.policy.Classify(author, true, crossRepo), author.Association, mine)
 }
 
-// filesStored is a stored check's head commit and outcome.
-type filesStored struct {
-	NodeID  string `gorm:"column:node_id"`
-	HeadOID string `gorm:"column:head_oid"`
-	Error   string `gorm:"column:error"`
-}
+// filesStored is a stored check's head commit and outcome, with its item's node ID.
+type filesStored = queries.ListStoredFilesRow
 
 // fileCheck is the outcome of checking one pull request's files: the files, or why they
 // could not be listed.
@@ -113,7 +86,7 @@ type fileCheck struct {
 // fileTarget is a pull request a refresh checks.
 type fileTarget struct {
 	nodeID string
-	ref    github.ItemRef
+	ref    item.Ref
 	head   string
 }
 
@@ -122,22 +95,21 @@ type fileTarget struct {
 // maxFileChecks of them, a few at a time. It returns each one's outcome by node ID. A
 // check that fails is an outcome, not an error: the refresh stores it and goes on.
 func (s *Service) checkFiles(ctx context.Context, tok github.Token, got refreshed) (map[string]fileCheck, error) {
-	db := s.db.WithContext(ctx)
-
-	prefs, err := readPrefs(db)
+	status, err := readStatus(ctx, s.prefs)
 	if err != nil {
 		return nil, err
 	}
 
-	// The scope is judged for the account this refresh read, which may be new.
-	prefs[prefViewer] = got.inbox.Viewer.Login
-
-	var stored []filesStored
-	if err = db.Raw(storedFilesSQL, prefViewer).Scan(&stored).Error; err != nil {
+	// The checks stored are those of the account the last refresh read; the scope is
+	// judged for the account this refresh read, which may be new.
+	stored, err := s.q.ListStoredFiles(ctx, status[prefViewer])
+	if err != nil {
 		return nil, fmt.Errorf("read the checked files: %w", err)
 	}
 
-	targets := fileTargets(newFileScope(prefs), got, stored)
+	status[prefViewer] = got.inbox.Viewer.Login
+
+	targets := fileTargets(s.scopes.scope(status), got, stored)
 	if len(targets) == 0 {
 		return map[string]fileCheck{}, nil
 	}
@@ -183,7 +155,7 @@ func (f fileScope) due(it github.Item, head string, last map[string]filesStored)
 	}
 
 	return fileTarget{
-		nodeID: it.NodeID, ref: github.ItemRef{Owner: it.RepoOwner, Name: it.RepoName, Number: it.Number}, head: head,
+		nodeID: it.NodeID, ref: it.Ref(), head: head,
 	}, true
 }
 
@@ -222,47 +194,101 @@ func (s *Service) runFileChecks(ctx context.Context, tok github.Token, targets [
 	return out, nil
 }
 
-// saveFiles stores the outcome of an item's file check, when this refresh ran one.
-func (w *writer) saveFiles(id int64, it github.Item) error {
+// saveFiles stores the outcome of an item's file check, when this refresh ran one,
+// unless the item is one to keep.
+func (w *writer) saveFiles(ctx context.Context, id int64, it github.Item) error {
 	check, ok := w.files[it.NodeID]
-	if !ok {
+	if !ok || w.keep[id] {
 		return nil
 	}
 
-	row := filesRow(id, check, w.now)
-
-	err := w.tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "item_id"}}, UpdateAll: true}).Create(&row).Error
-	if err != nil {
-		return fmt.Errorf("save the files of %s/%s#%d: %w", it.RepoOwner, it.RepoName, it.Number, err)
+	if err := upsertFiles(ctx, w.q, newFilesRow(id, check, w.now)); err != nil {
+		return fmt.Errorf("save the files of %s: %w", it.Ref(), err)
 	}
+
+	if w.checked == nil {
+		w.checked = make(map[int64]bool)
+	}
+
+	w.checked[id] = true
 
 	return nil
 }
 
 // pruneFiles removes the checks of items no longer in any list.
-func (w *writer) pruneFiles() error {
-	return w.exec("remove the files of items no longer listed", pruneFilesSQL, w.accountID)
+func (w *writer) pruneFiles(ctx context.Context) error {
+	if err := w.q.PruneFiles(ctx, w.accountID); err != nil {
+		return fmt.Errorf("remove the files of items no longer listed: %w", err)
+	}
+
+	return nil
 }
 
-// filesRow converts a check's outcome to its row. A failed check keeps its message and
-// no files, so the next refresh tries again.
-func filesRow(itemID int64, check fileCheck, now time.Time) model.ItemFiles {
-	row := model.ItemFiles{ItemID: itemID, Files: model.ChangedFiles{}, CheckedAt: now}
+// storedFile is one changed file as the files column of item_files stores it: its path
+// after the change, a renamed or copied file's path before it, and GitHub's word for the
+// change.
+type storedFile struct {
+	Path     string `json:"path"`
+	Previous string `json:"previous,omitempty"`
+	Change   string `json:"change"`
+}
+
+// filesRow is one item's file check as item_files stores it. A failed check keeps its
+// message in err and no files.
+type filesRow struct {
+	itemID    int64
+	head      string
+	total     int
+	files     []storedFile
+	complete  bool
+	err       string
+	checkedAt time.Time
+}
+
+// newFilesRow converts a check's outcome to its row. A failed check keeps its message
+// and no files, so the next refresh tries again.
+func newFilesRow(itemID int64, check fileCheck, now time.Time) filesRow {
+	row := filesRow{itemID: itemID, checkedAt: now}
 
 	if check.err != nil || check.files == nil {
-		row.Error = fileErrorMessage(check.err)
+		row.err = fileErrorMessage(check.err)
 
 		return row
 	}
 
-	files := make(model.ChangedFiles, 0, len(check.files.Files))
+	files := make([]storedFile, 0, len(check.files.Files))
 	for _, f := range check.files.Files {
-		files = append(files, model.ChangedFile{Path: f.Path, Previous: f.PreviousPath, Change: f.Status})
+		files = append(files, storedFile{Path: f.Path, Previous: f.PreviousPath, Change: f.Status})
 	}
 
-	row.HeadOID, row.Total, row.Files, row.Complete = check.files.Head, check.files.Total, files, check.files.Complete
+	row.head, row.total, row.files, row.complete = check.files.Head, check.files.Total, files, check.files.Complete
 
 	return row
+}
+
+// result returns the check as the sensitive package reads it.
+func (r filesRow) result() *sensitive.Result {
+	files := make([]sensitive.File, 0, len(r.files))
+	for _, f := range r.files {
+		files = append(files, sensitive.File{Path: f.Path, PreviousPath: f.Previous, Change: f.Change})
+	}
+
+	return &sensitive.Result{
+		Head: r.head, Total: r.total, Files: files, Complete: r.complete, Error: r.err, CheckedAt: r.checkedAt,
+	}
+}
+
+// upsertFiles stores row through q, replacing the item's earlier check.
+func upsertFiles(ctx context.Context, q *queries.Queries, row filesRow) error {
+	files, err := store.EncodeJSON(row.files)
+	if err != nil {
+		return err
+	}
+
+	return q.UpsertFiles(ctx, queries.UpsertFilesParams{
+		ItemID: row.itemID, HeadOID: row.head, Total: int64(row.total), Files: files, Complete: row.complete,
+		Error: row.err, CheckedAt: row.checkedAt,
+	})
 }
 
 // fileErrorMessage is what a failed check stores: why it failed, briefly.
@@ -282,62 +308,89 @@ func fileErrorMessage(err error) string {
 	return msg
 }
 
-// filesColumns are a stored check, as loadItemsSQL and checkItemSQL read it.
+// filesColumns are an item's last file check as ListItems and GetCheckItem read it, from
+// a LEFT JOIN: every column is NULL when the item has no check.
 type filesColumns struct {
-	HasFiles       bool               `gorm:"column:has_files"`
-	FilesHead      string             `gorm:"column:files_head"`
-	FilesTotal     int                `gorm:"column:files_total"`
-	Files          model.ChangedFiles `gorm:"column:files"`
-	FilesComplete  bool               `gorm:"column:files_complete"`
-	FilesError     string             `gorm:"column:files_error"`
-	FilesCheckedAt *time.Time         `gorm:"column:files_checked_at"`
+	itemID    *int64
+	head      *string
+	total     *int64
+	files     *string
+	complete  *bool
+	err       *string
+	checkedAt *time.Time
 }
 
-// result returns the stored check, or nil when there is none.
-func (c filesColumns) result() *sensitive.Result {
-	if !c.HasFiles {
-		return nil
+// result decodes the stored check, or returns nil when there is none.
+func (c filesColumns) result() (*sensitive.Result, error) {
+	if c.itemID == nil {
+		return nil, nil //nolint:nilnil // no check is not an error, and there is no result
 	}
 
-	files := make([]sensitive.File, 0, len(c.Files))
-	for _, f := range c.Files {
-		files = append(files, sensitive.File{Path: f.Path, PreviousPath: f.Previous, Change: f.Change})
+	files, err := store.DecodeJSON[[]storedFile](value(c.files))
+	if err != nil {
+		return nil, fmt.Errorf("read the checked files: %w", err)
 	}
 
-	r := &sensitive.Result{
-		Head: c.FilesHead, Total: c.FilesTotal, Files: files, Complete: c.FilesComplete, Error: c.FilesError,
-	}
-
-	if c.FilesCheckedAt != nil {
-		r.CheckedAt = *c.FilesCheckedAt
-	}
-
-	return r
+	return filesRow{
+		itemID: *c.itemID, head: value(c.head), total: int(value(c.total)), files: files,
+		complete: value(c.complete), err: value(c.err), checkedAt: value(c.checkedAt),
+	}.result(), nil
 }
 
-// checkItemRow is one row of checkItemSQL.
+// value returns what p points to, or T's zero value when p is nil: the value a column
+// from a LEFT JOIN takes when the joined row is missing.
+func value[T any](p *T) T {
+	if p == nil {
+		var zero T
+
+		return zero
+	}
+
+	return *p
+}
+
+// checkItemRow is a stored item as checking its files reads it.
 type checkItemRow struct {
-	ID                int64  `gorm:"column:id"`
-	Kind              string `gorm:"column:kind"`
-	Number            int    `gorm:"column:number"`
-	URL               string `gorm:"column:url"`
-	AuthorLogin       string `gorm:"column:author_login"`
-	AuthorType        string `gorm:"column:author_type"`
-	AuthorAssociation string `gorm:"column:author_association"`
-	IsCrossRepository bool   `gorm:"column:is_cross_repository"`
-	RepoOwner         string `gorm:"column:repo_owner"`
-	RepoName          string `gorm:"column:repo_name"`
-	HeadOID           string `gorm:"column:head_oid"`
+	ID                int64
+	Kind              item.Kind
+	Number            int
+	URL               string
+	AuthorLogin       string
+	AuthorType        string
+	AuthorAssociation string
+	IsCrossRepository bool
+	RepoOwner         string
+	RepoName          string
 
-	// Stored is the item's last file check.
-	Stored filesColumns `gorm:"embedded"`
+	// HeadOID is the head commit the last refresh read, or "" before one has.
+	HeadOID string
+
+	// Stored is the item's last file check, or nil when there is none.
+	Stored *sensitive.Result
+}
+
+// checkItemRowOf converts a GetCheckItem row.
+func checkItemRowOf(r queries.GetCheckItemRow) (checkItemRow, error) {
+	stored, err := filesColumns{
+		itemID: r.FilesItemID, head: r.FilesHeadOID, total: r.FilesTotal, files: r.Files,
+		complete: r.FilesComplete, err: r.FilesError, checkedAt: r.FilesCheckedAt,
+	}.result()
+	if err != nil {
+		return checkItemRow{}, err
+	}
+
+	return checkItemRow{
+		ID: r.ID, Kind: item.Kind(r.Kind), Number: int(r.Number), URL: r.URL, AuthorLogin: r.AuthorLogin,
+		AuthorType: r.AuthorType, AuthorAssociation: r.AuthorAssociation, IsCrossRepository: r.IsCrossRepository,
+		RepoOwner: r.RepoOwner, RepoName: r.RepoName, HeadOID: value(r.HeadOID), Stored: stored,
+	}, nil
 }
 
 // checked reports whether the row's files are checked under scope.
 func (r checkItemRow) checked(scope fileScope) bool {
 	author := trust.Author{Login: r.AuthorLogin, Type: r.AuthorType, Association: r.AuthorAssociation}
 
-	return scope.checks(r.Kind == model.KindPR, author, r.IsCrossRepository)
+	return scope.checks(r.Kind == item.KindPR, author, r.IsCrossRepository)
 }
 
 // StoredFiles returns the last check of an item's changed files, without asking GitHub,
@@ -354,7 +407,7 @@ func (s *Service) StoredFiles(ctx context.Context, itemID int64) (*sensitive.Che
 		return nil, sensitive.ErrNotChecked
 	}
 
-	check := scope.matcher.Evaluate(row.Stored.result(), row.HeadOID, row.URL)
+	check := scope.matcher.Evaluate(row.Stored, row.HeadOID, row.URL)
 
 	return &check, nil
 }
@@ -366,11 +419,19 @@ func (s *Service) StoredFiles(ctx context.Context, itemID int64) (*sensitive.Che
 // request. It returns sensitive.ErrNotChecked for an item whose files are not checked
 // (see StoredFiles).
 //
+// It never waits for a whole refresh, only for other work on the same item. A check
+// that finishes after a refresh that started later and checked the item's files is
+// returned but not stored, since the refresh's is the newer.
+//
 // A check that cannot finish is returned with StatusFailed and its reason, never as an
 // error, so the caller can hold back on it; an error means the item could not be read.
 func (s *Service) CheckFiles(ctx context.Context, itemID int64) (*sensitive.Check, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock, err := s.items.lock(ctx, itemID)
+	if err != nil {
+		return nil, err
+	}
+
+	defer unlock()
 
 	row, scope, err := s.loadCheckItem(ctx, itemID)
 	if err != nil {
@@ -381,45 +442,73 @@ func (s *Service) CheckFiles(ctx context.Context, itemID int64) (*sensitive.Chec
 		return nil, sensitive.ErrNotChecked
 	}
 
-	check := s.checkItemFiles(ctx, row)
+	check, seq := s.checkItemFiles(ctx, row)
 	if err = ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	stored := filesRow(row.ID, check, s.now())
-	if err = s.storeFiles(ctx, stored); err != nil {
-		return nil, err
+	stored := newFilesRow(row.ID, check, s.now())
+
+	wrote, err := s.storeItemWrite(ctx, itemWrite{id: row.ID, seq: seq, files: &stored})
+	if err != nil {
+		return nil, fmt.Errorf("save the checked files: %w", err)
 	}
 
-	s.notify()
+	if wrote {
+		// The check is what the caller needs; a snapshot that cannot be read now is read
+		// again after the next change.
+		if _, readErr := s.changed(ctx); readErr != nil {
+			s.logger.DebugContext(ctx, "could not read the inbox after a file check", "error", readErr)
+		}
+	}
 
-	evaluated := scope.matcher.Evaluate(filesColumnsOf(stored).result(), stored.HeadOID, row.URL)
+	evaluated := scope.matcher.Evaluate(stored.result(), stored.head, row.URL)
 
 	return &evaluated, nil
 }
 
 // checkItemFiles reads one pull request's head and, when it moved since the stored check
-// or that check failed, its files.
-func (s *Service) checkItemFiles(ctx context.Context, row checkItemRow) fileCheck {
-	tok, err := s.tokens.Token(ctx)
+// or that check failed, its files. A token GitHub refuses is borrowed again once. It
+// returns the check with the number its fetch took (see order.go).
+func (s *Service) checkItemFiles(ctx context.Context, row checkItemRow) (fileCheck, uint64) {
+	ref := item.Ref{Repo: repo.Name{Owner: row.RepoOwner, Repo: row.RepoName}, Number: row.Number, Kind: row.Kind}
+
+	var seq uint64
+
+	check, err := github.WithToken(ctx, s.tokens, func(tok github.Token) (fileCheck, error) {
+		seq = s.startFetch() // each try numbers its own fetch
+
+		check := s.readItemFiles(ctx, tok, ref, row.Stored)
+
+		return check, check.err
+	})
+
+	if seq == 0 {
+		seq = s.startFetch() // no token, so nothing was fetched: the failure is as of now
+	}
+
+	if err != nil {
+		return fileCheck{err: err}, seq
+	}
+
+	return check, seq
+}
+
+// readItemFiles reads a pull request's head and, unless prev is a successful check of
+// that head, its files, with tok.
+func (s *Service) readItemFiles(ctx context.Context, tok github.Token, ref item.Ref, prev *sensitive.Result) fileCheck {
+	pull, err := s.client.FetchPullHead(ctx, tok, ref)
 	if err != nil {
 		return fileCheck{err: err}
 	}
 
-	ref := github.ItemRef{Owner: row.RepoOwner, Name: row.RepoName, Number: row.Number}
-
-	pull, err := s.client.FetchPullHead(ctx, tok, ref)
-	if err != nil {
-		return fileCheck{err: github.Redact(err, tok)}
-	}
-
-	if prev := row.Stored.result(); prev != nil && prev.Error == "" && strings.EqualFold(prev.Head, pull.Head) {
+	if prev != nil && prev.Error == "" && strings.EqualFold(prev.Head, pull.Head) {
 		return fileCheck{files: storedChangedFiles(prev)}
 	}
 
 	files, err := s.client.FetchChangedFiles(ctx, tok, ref, pull.Head)
 
-	return fileCheck{files: files, err: github.Redact(err, tok)}
+	return fileCheck{files: files, err: err}
 }
 
 // storedChangedFiles turns a stored check back into the list GitHub returned.
@@ -432,46 +521,28 @@ func storedChangedFiles(r *sensitive.Result) *github.ChangedFiles {
 	return &github.ChangedFiles{Head: r.Head, Total: r.Total, Files: files, Complete: r.Complete}
 }
 
-// storeFiles stores one item's check outside a refresh.
-func (s *Service) storeFiles(ctx context.Context, row model.ItemFiles) error {
-	err := s.db.WithContext(ctx).
-		Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "item_id"}}, UpdateAll: true}).Create(&row).Error
-	if err != nil {
-		return fmt.Errorf("save the checked files: %w", err)
-	}
-
-	return nil
-}
-
-// filesColumnsOf reads a row back as the columns a snapshot reads.
-func filesColumnsOf(row model.ItemFiles) filesColumns {
-	checkedAt := row.CheckedAt
-
-	return filesColumns{
-		HasFiles: true, FilesHead: row.HeadOID, FilesTotal: row.Total, Files: row.Files,
-		FilesComplete: row.Complete, FilesError: row.Error, FilesCheckedAt: &checkedAt,
-	}
-}
-
 // loadCheckItem reads a stored item with its last check, and the scope it is judged by.
 func (s *Service) loadCheckItem(ctx context.Context, itemID int64) (checkItemRow, fileScope, error) {
-	db := s.db.WithContext(ctx)
-
-	prefs, err := readPrefs(db)
+	status, err := readStatus(ctx, s.prefs)
 	if err != nil {
 		return checkItemRow{}, fileScope{}, err
 	}
 
-	var rows []checkItemRow
-	if err = db.Raw(checkItemSQL, itemID).Scan(&rows).Error; err != nil {
+	stored, err := s.q.GetCheckItem(ctx, itemID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return checkItemRow{}, fileScope{}, fmt.Errorf("%w (id %d)", item.ErrNotFound, itemID)
+	}
+
+	if err != nil {
 		return checkItemRow{}, fileScope{}, fmt.Errorf("read the item: %w", err)
 	}
 
-	if len(rows) == 0 {
-		return checkItemRow{}, fileScope{}, fmt.Errorf("%w (id %d)", ErrItemNotFound, itemID)
+	row, err := checkItemRowOf(stored)
+	if err != nil {
+		return checkItemRow{}, fileScope{}, fmt.Errorf("read the item: %w", err)
 	}
 
-	return rows[0], newFileScope(prefs), nil
+	return row, s.scopes.scope(status), nil
 }
 
 // checkUpdatedFiles checks the files of an item one refresh of its own read, when they
@@ -490,8 +561,8 @@ func (s *Service) checkUpdatedFiles(
 	}
 
 	last := map[string]filesStored{}
-	if row.Stored.HasFiles {
-		last[update.Item.NodeID] = filesStored{HeadOID: row.Stored.FilesHead, Error: row.Stored.FilesError}
+	if row.Stored != nil {
+		last[update.Item.NodeID] = filesStored{HeadOID: row.Stored.Head, Error: row.Stored.Error}
 	}
 
 	t, ok := scope.due(update.Item, update.Details.HeadOID, last)

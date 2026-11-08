@@ -11,6 +11,7 @@
 //     internal/brand
 //   - frontend: install, build, and gate the desktop frontend
 //   - app: generate bindings, lint, run, and bundle the desktop app
+//   - db: generate and check the typed queries sqlc builds from the SQL
 //   - measure: record startup, refresh, launch, and size numbers
 //
 // The desktop shell itself builds only with the desktop build tag; these

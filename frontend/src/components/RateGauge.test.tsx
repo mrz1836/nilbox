@@ -3,15 +3,14 @@ import { describe, expect, it } from 'vitest'
 
 import { formatCount } from '../lib/format'
 import type { RateGauge as Gauge } from '../platform'
+import { FIXED_NOW } from '../test/clock'
 import { rate, unknownRate } from '../test/fixtures'
 import { RateGauge } from './RateGauge'
-
-const now = new Date('2026-06-15T12:00:00Z')
 
 const unread: Gauge = { graphql: unknownRate, core: unknownRate, search: unknownRate }
 
 function renderGauge(gauge: Gauge | null) {
-  return render(<RateGauge gauge={gauge} now={now} titleId="budget-title" />)
+  return render(<RateGauge gauge={gauge} now={FIXED_NOW} titleId="budget-title" />)
 }
 
 // row returns the queries scoped to one budget's list item.

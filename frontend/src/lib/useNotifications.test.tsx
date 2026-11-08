@@ -1,26 +1,27 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { NotificationLog } from '../platform'
 import { notification } from '../test/fixtures'
+import { emit, listening, platform } from '../test/platform'
 import { useNotifications } from './useNotifications'
 
-const platform = vi.hoisted(() => ({
-  listNotifications: vi.fn(),
-  markNotificationsRead: vi.fn(),
-  clearNotifications: vi.fn(),
-  onNotificationsUpdated: vi.fn(),
-}))
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
-vi.mock('../platform', () => platform)
+// deferred is a call the test settles.
+function deferred() {
+  let resolve: () => void = () => undefined
+  let reject: (err: unknown) => void = () => undefined
+  const promise = new Promise<void>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
 
-const stopListening = vi.fn()
+  return { promise, resolve, reject }
+}
 
 beforeEach(() => {
-  vi.clearAllMocks()
   platform.listNotifications.mockResolvedValue({ items: [notification()], unread: 1 })
-  platform.markNotificationsRead.mockResolvedValue(undefined)
-  platform.clearNotifications.mockResolvedValue(undefined)
-  platform.onNotificationsUpdated.mockReturnValue(stopListening)
 })
 
 describe('useNotifications', () => {
@@ -31,23 +32,25 @@ describe('useNotifications', () => {
       expect(result.current.log.unread).toBe(1)
     })
 
-    const reload = platform.onNotificationsUpdated.mock.calls[0]?.[0] as () => void
     platform.listNotifications.mockResolvedValue({
       items: [notification({ id: 2 }), notification({ read: true })],
       unread: 1,
     })
-    act(reload)
+    act(() => {
+      emit('notifications:updated')
+    })
 
     await waitFor(() => {
       expect(result.current.log.items).toHaveLength(2)
     })
 
+    expect(listening('notifications:updated')).toBe(1)
     unmount()
-    expect(stopListening).toHaveBeenCalledOnce()
+    expect(listening('notifications:updated')).toBe(0)
   })
 
   it('shows only the latest load’s answer', async () => {
-    let answerFirst: (log: unknown) => void = () => undefined
+    let answerFirst: (log: NotificationLog) => void = () => undefined
     platform.listNotifications.mockReturnValueOnce(
       new Promise((resolve) => {
         answerFirst = resolve
@@ -55,9 +58,10 @@ describe('useNotifications', () => {
     )
 
     const { result } = renderHook(() => useNotifications())
-    const reload = platform.onNotificationsUpdated.mock.calls[0]?.[0] as () => void
     platform.listNotifications.mockResolvedValue({ items: [], unread: 0 })
-    act(reload)
+    act(() => {
+      emit('notifications:updated')
+    })
 
     await act(async () => {
       answerFirst({ items: [notification()], unread: 1 })
@@ -77,7 +81,9 @@ describe('useNotifications', () => {
     })
   })
 
-  it('marks everything read at once, and reloads if that fails', async () => {
+  it('marks everything read at once, and keeps it read once stored', async () => {
+    const stored = deferred()
+    platform.markNotificationsRead.mockReturnValue(stored.promise)
     const { result } = renderHook(() => useNotifications())
     await waitFor(() => {
       expect(result.current.log.unread).toBe(1)
@@ -88,21 +94,40 @@ describe('useNotifications', () => {
     })
 
     expect(result.current.log.unread).toBe(0)
-    expect(result.current.log.items?.[0]?.read).toBe(true)
+    expect(result.current.log.items[0]?.read).toBe(true)
     expect(platform.markNotificationsRead).toHaveBeenCalledOnce()
 
-    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    platform.markNotificationsRead.mockRejectedValue(new Error('busy'))
+    await act(async () => {
+      stored.resolve()
+      await stored.promise
+    })
+
+    expect(result.current.log.unread).toBe(0)
+    expect(result.current.markError).toBe('')
+  })
+
+  it('puts the entries back to unread, and says why, when they cannot be marked read', async () => {
+    const stored = deferred()
+    platform.markNotificationsRead.mockReturnValue(stored.promise)
+    const { result } = renderHook(() => useNotifications())
+    await waitFor(() => {
+      expect(result.current.log.unread).toBe(1)
+    })
 
     act(() => {
       result.current.markRead()
     })
 
-    await waitFor(() => {
-      expect(platform.listNotifications).toHaveBeenCalledTimes(2)
+    expect(result.current.log.unread).toBe(0)
+
+    await act(async () => {
+      stored.reject(new Error('database is locked'))
+      await stored.promise.catch(() => undefined)
     })
-    expect(logged).toHaveBeenCalled()
-    logged.mockRestore()
+
+    expect(result.current.log.unread).toBe(1)
+    expect(result.current.log.items[0]?.read).toBe(false)
+    expect(result.current.markError).toBe('database is locked')
   })
 
   it('clears the history', async () => {

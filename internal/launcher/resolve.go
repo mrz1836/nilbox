@@ -4,39 +4,46 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 
-	"gorm.io/gorm"
-
-	"github.com/mrz1836/nilbox/internal/agentflags"
-	"github.com/mrz1836/nilbox/internal/agents"
+	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
-	"github.com/mrz1836/nilbox/internal/settings"
+	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
 
-// Where a resolved launch setting came from, from the most specific to the least.
+// Source is where a resolved launch setting came from.
+type Source string
+
+// Sources, from the most specific to the least.
 const (
 	// SourceLaunch is a choice made in the launch menu for this launch only.
-	SourceLaunch = "launch"
+	SourceLaunch Source = "launch"
 
 	// SourcePrompt is the chosen prompt's own setting.
-	SourcePrompt = "prompt"
+	SourcePrompt Source = "prompt"
 
 	// SourceRepo and SourceOrg are the repository's and its owner's launch defaults.
-	SourceRepo = "repo"
-	SourceOrg  = "org"
+	SourceRepo Source = "repo"
+	SourceOrg  Source = "org"
 
 	// SourceProfile is the profile's own setting.
-	SourceProfile = "profile"
+	SourceProfile Source = "profile"
 
 	// SourceApp is the app's settings.
-	SourceApp = "app"
+	SourceApp Source = "app"
 
 	// SourceAgent means nothing set it, so the agent uses its own default.
-	SourceAgent = "agent"
+	SourceAgent Source = "agent"
+
+	// SourceNone is the source of every setting of an item whose settings could not
+	// resolve (see ItemResolution.Problem).
+	SourceNone Source = ""
 )
 
 var (
@@ -52,17 +59,17 @@ var (
 // the default.
 type Setting struct {
 	Value           string `json:"value"`
-	Source          string `json:"source"`
+	Source          Source `json:"source"`
 	Inherited       string `json:"inherited"`
-	InheritedSource string `json:"inheritedSource"`
+	InheritedSource Source `json:"inheritedSource"`
 }
 
 // Toggle is a resolved on-or-off launch setting, like Setting.
 type Toggle struct {
 	Value           bool   `json:"value"`
-	Source          string `json:"source"`
+	Source          Source `json:"source"`
 	Inherited       bool   `json:"inherited"`
-	InheritedSource string `json:"inheritedSource"`
+	InheritedSource Source `json:"inheritedSource"`
 }
 
 // PromptChoice is the resolved prompt, like Setting.
@@ -70,17 +77,17 @@ type PromptChoice struct {
 	ID              int64  `json:"id"`
 	Nickname        string `json:"nickname"`
 	Name            string `json:"name"`
-	Source          string `json:"source"`
+	Source          Source `json:"source"`
 	InheritedID     int64  `json:"inheritedId"`
-	InheritedSource string `json:"inheritedSource"`
+	InheritedSource Source `json:"inheritedSource"`
 }
 
 // Resolution is what a launch on one item resolves to, each setting with where it came
 // from. Every field is a plain value.
 type Resolution struct {
 	// ItemID and Kind identify the item.
-	ItemID int64  `json:"itemId"`
-	Kind   string `json:"kind"`
+	ItemID int64     `json:"itemId"`
+	Kind   item.Kind `json:"kind"`
 
 	// Owner and Repo ("owner/name") are where launch defaults for the item are saved.
 	Owner string `json:"owner"`
@@ -90,8 +97,8 @@ type Resolution struct {
 	Trusted bool `json:"trusted"`
 
 	// Agent is the coding tool, and AgentSource where it was chosen.
-	Agent       agents.Agent `json:"agent"`
-	AgentSource string       `json:"agentSource"`
+	Agent       agent.Agent `json:"agent"`
+	AgentSource Source      `json:"agentSource"`
 
 	Profile  Setting      `json:"profile"`
 	Prompt   PromptChoice `json:"prompt"`
@@ -112,7 +119,7 @@ type Resolution struct {
 // world is everything resolution reads besides the item: the app's settings, the prompt
 // library, the profiles, and the launch defaults.
 type world struct {
-	settings settings.Settings
+	settings LaunchSettings
 	defaults prompts.DefaultPrompts
 	prompts  map[int64]prompts.Prompt
 	profiles map[string]profiles.Profile
@@ -122,40 +129,37 @@ type world struct {
 	policy trust.Policy
 }
 
-// loadWorld reads everything resolution needs from the database and settings.
-func loadWorld(ctx context.Context, db *gorm.DB, reader SettingsReader) (world, error) {
-	prefs, err := reader.Get(ctx)
+// loadWorld reads everything resolution needs: the settings, the prompt library, the
+// stored profiles, and the launch defaults.
+func (s *Service) loadWorld(ctx context.Context) (world, error) {
+	prefs, err := s.settings.Get(ctx)
 	if err != nil {
 		return world{}, err
 	}
 
-	defaults, err := prompts.LoadDefaults(ctx, db)
+	library, err := s.prompts.Library(ctx)
 	if err != nil {
 		return world{}, err
 	}
 
-	all, err := prompts.All(ctx, db)
+	stored, err := s.profiles.All(ctx)
 	if err != nil {
 		return world{}, err
 	}
 
-	stored, err := profiles.NewService(db, "").List(ctx)
-	if err != nil {
-		return world{}, err
-	}
-
-	rules, err := launchdefaults.All(ctx, db)
+	rules, err := s.defaults.All(ctx)
 	if err != nil {
 		return world{}, err
 	}
 
 	w := world{
-		settings: prefs, defaults: defaults, rules: launchdefaults.NewIndex(rules),
-		policy:  trust.NewPolicy(prefs.TrustedBots),
-		prompts: make(map[int64]prompts.Prompt, len(all)), profiles: make(map[string]profiles.Profile, len(stored)),
+		settings: prefs, defaults: library.Defaults, rules: launchdefaults.NewIndex(rules),
+		policy:   trust.NewPolicy(prefs.TrustedBots),
+		prompts:  make(map[int64]prompts.Prompt, len(library.Prompts)),
+		profiles: make(map[string]profiles.Profile, len(stored)),
 	}
 
-	for _, p := range all {
+	for _, p := range library.Prompts {
 		w.prompts[p.ID] = p
 	}
 
@@ -169,9 +173,8 @@ func loadWorld(ctx context.Context, db *gorm.DB, reader SettingsReader) (world, 
 // subject is what resolution needs to know about an item.
 type subject struct {
 	id      int64
-	kind    string
-	owner   string
-	name    string
+	kind    item.Kind
+	repo    repo.Name
 	trusted bool
 }
 
@@ -189,13 +192,12 @@ type resolver struct {
 // profile's, and the app's settings. A stored default that no longer makes sense (a
 // profile or prompt that is gone, or a prompt for the other kind of item) is skipped
 // with a warning; a request naming one is an error.
-func resolve(w world, item subject, req LaunchRequest) (Resolution, profiles.Profile, prompts.Prompt, error) {
-	r := &resolver{w: w, item: item}
-	r.org, r.repo = w.rules.For(item.owner, item.name)
+func resolve(w world, it subject, req LaunchRequest) (Resolution, profiles.Profile, prompts.Prompt, error) {
+	r := &resolver{w: w, item: it}
+	r.org, r.repo = w.rules.For(it.repo)
 
 	res := Resolution{
-		ItemID: item.id, Kind: item.kind, Owner: item.owner, Repo: item.owner + "/" + item.name,
-		Trusted: item.trusted,
+		ItemID: it.id, Kind: it.kind, Owner: it.repo.Owner, Repo: it.repo.String(), Trusted: it.trusted,
 	}
 	res.Agent, res.AgentSource = r.agent()
 
@@ -222,7 +224,7 @@ func resolve(w world, item subject, req LaunchRequest) (Resolution, profiles.Pro
 		return Resolution{}, profiles.Profile{}, prompts.Prompt{}, err
 	}
 
-	res.Warnings = nonNilStrings(r.warnings)
+	res.Warnings = textutil.NonNil(r.warnings)
 
 	return res, profile, prompt, nil
 }
@@ -246,26 +248,26 @@ func (r *resolver) layers() []sourced {
 // sourced is a set of launch defaults with where it comes from.
 type sourced struct {
 	defaults *launchdefaults.Defaults
-	source   string
+	source   Source
 }
 
 // agent resolves the coding tool: the repository's, else the org's, else the app's.
-func (r *resolver) agent() (agents.Agent, string) {
+func (r *resolver) agent() (agent.Agent, Source) {
 	for _, l := range r.layers() {
 		if l.defaults.Agent == "" {
 			continue
 		}
 
-		a, err := agents.Lookup(l.defaults.Agent)
+		a, err := agent.Lookup(l.defaults.Agent)
 		if err == nil {
 			return a, l.source
 		}
 
 		r.warn("The %s default names a coding tool this version doesn't know (%q), so %s is used.",
-			l.source, l.defaults.Agent, agents.Default().Name)
+			l.source, l.defaults.Agent, agent.Default().Name)
 	}
 
-	return agents.Default(), SourceApp
+	return agent.Default(), SourceApp
 }
 
 // profile resolves the profile: the request's, else the repository's, the org's, or the
@@ -293,7 +295,7 @@ func (r *resolver) profile(requested string, res *Resolution) (profiles.Profile,
 }
 
 // inheritedProfile resolves the profile without the request's choice.
-func (r *resolver) inheritedProfile() (profiles.Profile, string, error) {
+func (r *resolver) inheritedProfile() (profiles.Profile, Source, error) {
 	for _, c := range r.layers() {
 		if name := c.defaults.Profile; name != "" {
 			if p, ok := r.w.profiles[name]; ok {
@@ -312,16 +314,10 @@ func (r *resolver) inheritedProfile() (profiles.Profile, string, error) {
 		return p, SourceApp, nil
 	}
 
-	names := make([]string, 0, len(r.w.profiles))
-	for name := range r.w.profiles {
-		names = append(names, name)
-	}
-
+	names := slices.Sorted(maps.Keys(r.w.profiles))
 	if len(names) == 0 {
 		return profiles.Profile{}, "", ErrNoProfile
 	}
-
-	slices.Sort(names)
 
 	return r.w.profiles[names[0]], SourceApp, nil
 }
@@ -348,9 +344,9 @@ func (r *resolver) prompt(requested int64, res *Resolution) (prompts.Prompt, err
 		return prompts.Prompt{}, fmt.Errorf("%w (id %d)", prompts.ErrPromptNotFound, requested)
 	}
 
-	if !prompts.AppliesTo(p.AppliesTo, r.item.kind) {
-		return prompts.Prompt{}, fmt.Errorf("%w: %q isn't for %ss", prompts.ErrWrongKind, p.Nickname,
-			prompts.KindName(r.item.kind))
+	if !p.AppliesTo.Covers(r.item.kind) {
+		return prompts.Prompt{}, fmt.Errorf("%w: %q isn't for %s", prompts.ErrWrongKind, p.Nickname,
+			r.item.kind.Plural())
 	}
 
 	res.Prompt.ID, res.Prompt.Nickname, res.Prompt.Name, res.Prompt.Source = p.ID, p.Nickname, p.Name, SourceLaunch
@@ -359,10 +355,10 @@ func (r *resolver) prompt(requested int64, res *Resolution) (prompts.Prompt, err
 }
 
 // inheritedPrompt resolves the prompt without the request's choice.
-func (r *resolver) inheritedPrompt() (prompts.Prompt, string, error) {
+func (r *resolver) inheritedPrompt() (prompts.Prompt, Source, error) {
 	for _, l := range r.layers() {
 		id := l.defaults.PRPromptID
-		if r.item.kind == prompts.KindIssue {
+		if r.item.kind == item.KindIssue {
 			id = l.defaults.IssuePromptID
 		}
 
@@ -370,25 +366,25 @@ func (r *resolver) inheritedPrompt() (prompts.Prompt, string, error) {
 			continue
 		}
 
-		if p, ok := r.w.prompts[*id]; ok && prompts.AppliesTo(p.AppliesTo, r.item.kind) {
+		if p, ok := r.w.prompts[*id]; ok && p.AppliesTo.Covers(r.item.kind) {
 			return p, l.source, nil
 		}
 
-		r.warn("The %s default prompt for %ss no longer exists, so it was skipped.", l.source,
-			prompts.KindName(r.item.kind))
+		r.warn("The %s default prompt for %s no longer exists, so it was skipped.", l.source,
+			r.item.kind.Plural())
 	}
 
 	if p, ok := r.w.prompts[r.w.defaults.For(r.item.kind)]; ok {
 		return p, SourceApp, nil
 	}
 
-	return prompts.Prompt{}, "", fmt.Errorf("%w (%ss)", ErrNoPrompt, prompts.KindName(r.item.kind))
+	return prompts.Prompt{}, "", fmt.Errorf("%w (%s)", ErrNoPrompt, r.item.kind.Plural())
 }
 
 // text resolves a text setting: the request's, else the prompt's, the repository's, the
 // org's, else base (from baseSource), else "" for the agent's default.
 func (r *resolver) text(requested *string, fromPrompt string, pick func(*launchdefaults.Defaults) string,
-	base, baseSource string,
+	base string, baseSource Source,
 ) Setting {
 	value, source := base, baseSource
 
@@ -417,7 +413,7 @@ func (r *resolver) text(requested *string, fromPrompt string, pick func(*launchd
 // toggle resolves an on-or-off setting the way text resolves text, with base as the
 // value nothing else set.
 func (r *resolver) toggle(requested, fromPrompt *bool, pick func(*launchdefaults.Defaults) *bool,
-	base bool, baseSource string,
+	base bool, baseSource Source,
 ) Toggle {
 	value, source := base, baseSource
 
@@ -446,18 +442,18 @@ func (r *resolver) extraArgs(profile profiles.Profile, prompt prompts.Prompt) ([
 	args := slices.Clone(profile.ExtraArgs)
 
 	for _, l := range slices.Backward(r.layers()) {
-		if err := agentflags.CheckExtra(l.defaults.ExtraArgs); err != nil {
+		if err := agent.CheckExtra(l.defaults.ExtraArgs); err != nil {
 			return nil, fmt.Errorf("the %s launch defaults' flags: %w", l.source, err)
 		}
 
 		args = append(args, l.defaults.ExtraArgs...)
 	}
 
-	if err := agentflags.CheckExtra(prompt.ExtraArgs); err != nil {
+	if err := agent.CheckExtra(prompt.ExtraArgs); err != nil {
 		return nil, fmt.Errorf("the %q prompt's flags: %w", prompt.Nickname, err)
 	}
 
-	return nonNilStrings(append(args, prompt.ExtraArgs...)), nil
+	return textutil.NonNil(append(args, prompt.ExtraArgs...)), nil
 }
 
 // warn records a warning.
@@ -472,13 +468,4 @@ func effectiveProfile(p profiles.Profile, res Resolution) profiles.Profile {
 	p.ExtraArgs = slices.Clone(res.ExtraArgs)
 
 	return p
-}
-
-// nonNilStrings returns list, or an empty list for nil, so the UI always gets an array.
-func nonNilStrings(list []string) []string {
-	if list == nil {
-		return []string{}
-	}
-
-	return list
 }

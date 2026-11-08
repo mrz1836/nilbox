@@ -8,8 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mrz1836/nilbox/internal/launchlog"
+	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/localrepos"
+	"github.com/mrz1836/nilbox/internal/periodic"
+	"github.com/mrz1836/nilbox/internal/uierr"
+	"github.com/mrz1836/nilbox/internal/worklog"
 )
 
 // DefaultSweepInterval is how often a Sweeper sweeps. A sweep runs git only in clones
@@ -23,25 +27,10 @@ const DefaultSweepInterval = 5 * time.Minute
 // only in clones with an agent worktree directory or a recorded launch, so it is cheap to
 // run on a timer. It also drops the launch records of worktrees that are gone, and counts
 // the linked worktrees of every clone from their git directories, again without running
-// git. The report is kept for LastSweep, and the notifier is told when a worktree was
-// removed or either count changed.
+// git. The report is kept for LastSweep, and an event.WorktreesUpdated is emitted when a
+// worktree was removed or either count changed.
 func (s *Service) Sweep(ctx context.Context) SweepReport {
-	s.act.Lock()
-	report := s.sweep(ctx)
-	s.act.Unlock()
-
-	report.At = s.clock.Now().UTC().Format(time.RFC3339)
-
-	s.mu.Lock()
-	changed := len(report.Cleaned) > 0 || report.Leftover != s.last.Leftover ||
-		report.WorktreeCount != s.last.WorktreeCount || report.Error != s.last.Error
-	report.Seq = s.last.Seq + 1
-	s.last = report
-	s.mu.Unlock()
-
-	if changed && s.notifier != nil {
-		s.notifier.WorktreesUpdated()
-	}
+	report, _ := s.sweepAndKeep(ctx) // the report says what failed, as the user is told
 
 	return report
 }
@@ -54,56 +43,104 @@ func (s *Service) LastSweep() SweepReport {
 	return s.last
 }
 
-// safeSweep runs one sweep, logging a failure or a panic.
-func (s *Service) safeSweep(ctx context.Context) {
-	defer func() {
-		if r := recover(); r != nil {
-			s.logger.ErrorContext(ctx, "worktree sweep panicked", "panic", r)
-		}
-	}()
+// sweepAndKeep runs Sweep and also returns the error that stopped the sweep early, if
+// any, which the report's Error words for the user.
+func (s *Service) sweepAndKeep(ctx context.Context) (SweepReport, error) {
+	report, err := s.sweepLocked(ctx)
+	report.At = clock.Format(s.clock.Now())
 
-	if report := s.Sweep(ctx); report.Error != "" && ctx.Err() == nil {
-		s.logger.WarnContext(ctx, "worktree sweep failed", "error", report.Error)
+	s.mu.Lock()
+	changed := len(report.Cleaned) > 0 || report.Leftover != s.last.Leftover ||
+		report.WorktreeCount != s.last.WorktreeCount || report.Error != s.last.Error
+	report.Seq = s.last.Seq + 1
+	s.last = report
+	s.mu.Unlock()
+
+	if changed {
+		s.events.Emit(event.WorktreesUpdated{})
 	}
+
+	return report, err
 }
 
-// sweep does the work of Sweep without the bookkeeping.
-func (s *Service) sweep(ctx context.Context) SweepReport {
-	report := SweepReport{Cleaned: []RemoveResult{}, Failed: []RemoveResult{}}
+// emptyReport is a report of a sweep that found nothing, with empty lists rather than nil
+// ones, so the window always receives arrays.
+func emptyReport() SweepReport {
+	return SweepReport{Cleaned: []RemoveResult{}, Failed: []RemoveResult{}}
+}
+
+// sweepJob names the automatic sweeps in log entries.
+const sweepJob = "worktree sweep"
+
+// sweepError is a report's error that has no Go error behind it: GitHub could not be
+// read, which the sweep goes on without.
+type sweepError string
+
+// Error returns the report's error.
+func (e sweepError) Error() string { return string(e) }
+
+// sweepOnce runs one sweep for a Sweeper, failing with the error that stopped it, or else
+// with the report's.
+func (s *Service) sweepOnce(ctx context.Context) error {
+	report, err := s.sweepAndKeep(ctx)
+	if err != nil {
+		return err
+	}
+
+	if report.Error != "" {
+		return sweepError(report.Error)
+	}
+
+	return nil
+}
+
+// sweepLocked runs sweep while holding act, which a panicking sweep releases too.
+func (s *Service) sweepLocked(ctx context.Context) (SweepReport, error) {
+	s.act.Lock()
+	defer s.act.Unlock()
+
+	return s.sweep(ctx)
+}
+
+// sweep does the work of Sweep without the bookkeeping. It returns the error that stopped
+// it early, if any, which the report's Error words for the user.
+func (s *Service) sweep(ctx context.Context) (SweepReport, error) {
+	report := emptyReport()
 
 	g, root, prefs, err := s.prepare(ctx)
 	if err != nil {
-		report.Error = err.Error()
+		report.Error = uierr.Message(err)
 
-		return report
+		return report, err
 	}
 
-	report.Enabled = prefs.WorktreeAutoCleanup
-	s.sweepAgentWork(ctx, g, root, &report)
+	report.Enabled = prefs.AutoCleanup
+	err = s.sweepAgentWork(ctx, g, root, &report)
 
 	// Counted last, so the worktrees the sweep removed are not.
 	report.WorktreeCount = countWorktrees(root)
 
-	return report
+	return report, err
 }
 
 // sweepAgentWork checks the clones with agent worktrees or recorded launches, cleans up
-// what it may, and forgets the launches whose worktree is gone.
-func (s *Service) sweepAgentWork(ctx context.Context, g git, root string, report *SweepReport) {
+// what it may, and forgets the launches whose worktree is gone. It returns the error that
+// stopped it before it could clean up anything, which it also words in the report.
+func (s *Service) sweepAgentWork(ctx context.Context, g git, root string, report *SweepReport) error {
 	launches := s.launchRecords(ctx)
 
 	clones := s.sweepClones(ctx, root, launches)
 	if len(clones) == 0 {
 		s.pruneLaunches(ctx, root, launches, Snapshot{})
 
-		return
+		return nil
 	}
 
 	snap, err := s.assessClones(ctx, g, root, clones)
 	if err != nil {
-		report.Error = err.Error()
+		report.Error = uierr.Message(err)
 
-		return
+		return err
 	}
 
 	s.pruneLaunches(ctx, root, launches, snap)
@@ -112,6 +149,8 @@ func (s *Service) sweepAgentWork(ctx context.Context, g git, root string, report
 	for repo, wt := range rows(snap.Repos) {
 		s.sweepRow(ctx, g, repo.Path, *wt, report)
 	}
+
+	return nil
 }
 
 // sweepRow cleans up one worktree when the sweep may, and counts it when it is left for
@@ -136,7 +175,7 @@ func (s *Service) sweepRow(ctx context.Context, g git, repoPath string, wt Workt
 // sweepClones lists the clones worth checking: those directly under root that hold an
 // agent worktree directory, found without running git, and those with a recorded launch.
 // A directory that is not a git clone is skipped.
-func (s *Service) sweepClones(ctx context.Context, root string, launches []launchlog.Launch) []localrepos.LocalRepo {
+func (s *Service) sweepClones(ctx context.Context, root string, launches []worklog.Launch) []localrepos.LocalRepo {
 	dirs := agentCloneDirs(root)
 
 	for _, l := range launches {
@@ -158,19 +197,20 @@ func (s *Service) sweepClones(ctx context.Context, root string, launches []launc
 	return clones
 }
 
-// agentCloneDirs lists the directories directly under root, not hidden, that hold an
-// agent worktree directory.
+// agentCloneDirs lists the clones directly under root (see localrepos.Clones) that hold
+// an agent worktree directory. A clone reached through a symlink is left out, so a
+// clone the root also holds itself is never swept twice; its recorded launches still
+// bring it in.
 func agentCloneDirs(root string) []string {
-	entries, err := os.ReadDir(root)
+	clones, err := localrepos.Clones(root)
 	if err != nil {
 		return nil
 	}
 
 	var dirs []string
 
-	for _, e := range entries {
-		dir := filepath.Join(root, e.Name())
-		if e.IsDir() && !strings.HasPrefix(e.Name(), ".") && hasAgentWorktrees(dir) {
+	for dir := range clones {
+		if info, statErr := os.Lstat(dir); statErr == nil && info.IsDir() && hasAgentWorktrees(dir) {
 			dirs = append(dirs, dir)
 		}
 	}
@@ -199,20 +239,16 @@ func hasAgentWorktrees(dir string) bool {
 // this counts the same entries. Clones of one repository (one a linked worktree of
 // another, or one clone reached through a symlink) count its worktrees once.
 func countWorktrees(root string) int {
-	entries, err := os.ReadDir(root)
+	clones, err := localrepos.Clones(root)
 	if err != nil {
 		return 0
 	}
 
-	seen := make(map[string]bool, len(entries))
+	seen := map[string]bool{}
 	count := 0
 
-	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), ".") {
-			continue
-		}
-
-		common := commonDir(filepath.Join(root, e.Name()))
+	for dir := range clones {
+		common := commonDir(dir)
 		if common == "" || seen[common] {
 			continue
 		}
@@ -297,7 +333,7 @@ func readGitPointer(file, base, prefix string) (string, bool) {
 // pruneLaunches forgets the launch records whose worktree is gone: its clone is no
 // longer a directory, or was listed without the worktree. A clone that could not be
 // listed keeps its records.
-func (s *Service) pruneLaunches(ctx context.Context, root string, launches []launchlog.Launch, snap Snapshot) {
+func (s *Service) pruneLaunches(ctx context.Context, root string, launches []worklog.Launch, snap Snapshot) {
 	if s.launches == nil {
 		return
 	}
@@ -309,7 +345,7 @@ func (s *Service) pruneLaunches(ctx context.Context, root string, launches []lau
 			continue
 		}
 
-		if err := s.launches.Forget(ctx, l.ClonePath, l.Worktree); err != nil {
+		if err := s.launches.ForgetLaunch(ctx, l.ClonePath, l.Worktree); err != nil {
 			s.logger.WarnContext(ctx, "could not forget a worktree launch", "error", err)
 		}
 	}
@@ -334,7 +370,7 @@ func listedPaths(snap Snapshot) (worktrees, repos map[string]bool) {
 }
 
 // launchGone reports a recorded launch whose worktree is certainly gone.
-func (s *Service) launchGone(l launchlog.Launch, root string, listed map[string]bool) bool {
+func (s *Service) launchGone(l worklog.Launch, root string, listed map[string]bool) bool {
 	info, err := os.Stat(l.ClonePath)
 
 	switch {
@@ -352,27 +388,18 @@ func (s *Service) launchGone(l launchlog.Launch, root string, listed map[string]
 // Sweeper runs a Service's sweeps on a timer. It is kept apart from Service, every
 // exported method of which the window binds.
 type Sweeper struct {
-	svc *Service
+	svc      *Service
+	interval time.Duration
 }
 
-// NewSweeper returns a Sweeper over svc.
-func NewSweeper(svc *Service) Sweeper {
-	return Sweeper{svc: svc}
+// NewSweeper returns a Sweeper over svc that sweeps every interval.
+func NewSweeper(svc *Service, interval time.Duration) Sweeper {
+	return Sweeper{svc: svc, interval: interval}
 }
 
-// Run sweeps now and then every interval until ctx is canceled. A panicking sweep is
-// logged and the next one still runs.
-func (sw Sweeper) Run(ctx context.Context, interval time.Duration) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	for {
-		sw.svc.safeSweep(ctx)
-
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
-	}
+// Run sweeps now and then every interval until ctx is canceled, and returns once the
+// sweep in flight has. A failed sweep is logged, and a panicking one is recovered and
+// logged; the next one still runs.
+func (sw Sweeper) Run(ctx context.Context) {
+	periodic.Run(ctx, sw.interval, sweepJob, sw.svc.sweepOnce, sw.svc.logger)
 }

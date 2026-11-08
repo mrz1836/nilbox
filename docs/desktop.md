@@ -46,10 +46,10 @@ pins.
 |---|---|
 | `magex frontend:install` | Installs the frontend dependencies exactly as `pnpm-lock.yaml` pins them |
 | `magex frontend:build` | Type-checks the frontend and builds it into `frontend/dist` |
-| `magex frontend:gate` | The frontend gate: frozen-lockfile install, format check, lint, typecheck, and tests with coverage (`frontend/scripts/gate.sh`, the script CI runs) |
+| `magex frontend:gate` | The frontend gate: frozen-lockfile install, format check, lint, typecheck, tests with coverage, and the render profile through the React Compiler (`frontend/scripts/gate.sh`, the script CI runs) |
 | `magex brand:generate` | Regenerates the theme tokens, frontend brand constants, `build/darwin/Info.plist`, and the icon artwork (the app icon `build/appicon.svg` and the menu bar icon `build/trayicon.svg`) from `internal/brand` |
 | `magex brand:icons` | Renders `build/appicon.svg` into the bundle's icon set `build/darwin/icons.icns` and the development Dock icon `cmd/nilbox/appicon.png`, and `build/trayicon.svg` into the menu bar icon `cmd/nilbox/trayicon.png` (needs `rsvg-convert`: `brew install librsvg`); run it after changing the mark or the artwork |
-| `magex app:bindings` | Regenerates the committed TypeScript bindings in `frontend/bindings` |
+| `magex app:bindings` | Regenerates the committed TypeScript bindings in `frontend/bindings`, writing each Go string type with constants as a union of its values |
 | `magex app:bindingsCheck` | Regenerates the bindings into a temporary directory and fails on any drift |
 | `magex app:lint` | Lints the desktop-tagged Go code (the desktop shell and the frontend embed) |
 | `magex app:dev` | Runs the app against the Vite dev server with hot reload |
@@ -57,6 +57,8 @@ pins.
 | `magex app:open` | Opens `bin/Nilbox.app` as it is, building it first when it is missing; a running copy is only brought to the front |
 | `magex app:run` | Builds `bin/Nilbox.app`, quits the copy already running, and opens the fresh build: the one command after a change |
 | `magex app:check` | Runs `app:bindingsCheck`, `app:lint`, and `app:build` |
+| `magex db:generate` | Regenerates each table owner's typed queries from its `queries/*.sql` and the migrations, with the sqlc version `.github/env/90-project.env` pins |
+| `magex db:check` | Fails when the generated queries are stale or a query does not prepare against the schema the migrations build |
 | `magex measure:startup` | Startup to the first frame on screen, over six launches |
 | `magex measure:refresh` | Five live, read-only inbox refreshes and the API budget they imply |
 | `magex measure:launch` | One real launch in iTerm2, timed until the agent runs in the clone |
@@ -70,12 +72,13 @@ cd ~/projects/nilbox
 magex app:run
 ```
 
-Before opening a pull request, run the Go gate, then the frontend gate, then (on a Mac) the
-desktop checks:
+Before opening a pull request, run the Go gate, then the frontend gate and the query check,
+then (on a Mac) the desktop checks:
 
 ```bash
 magex format:fix && magex lint && magex test:race && go-pre-commit run --all-files
 magex frontend:gate
+magex db:check
 magex app:check
 ```
 
@@ -111,11 +114,14 @@ and it sits behind the `desktop` build tag:
 
 - `cmd/nilbox/main.go` (`//go:build !desktop`) is the headless build, which prints the product
   identity. `magex build` and every untagged `go build ./...` build it.
-- `cmd/nilbox/main_desktop.go` (`//go:build desktop`) is the Wails app. The menu bar icon is
-  `tray_desktop.go`, and the notification banners `banners_darwin_desktop.go`. macOS window
-  options live in `window_darwin.go` (`desktop && darwin`). What the menu bar shows and every
-  notification are decided in plain Go (`internal/menubar` and `internal/notify`), so the
-  desktop files only draw and post them.
+- `cmd/nilbox/main_desktop.go` (`//go:build desktop`) is the Wails app. The window and its
+  page are `ui_desktop.go`, the menu bar icon `tray_desktop.go`, and the notification banners
+  `banners_darwin_desktop.go`. macOS window options live in `window_darwin.go`
+  (`desktop && darwin`). Everything the shell decides is plain Go: what it does with each of
+  the services' events (`internal/event`), when the menu bar is redrawn, the background work
+  it runs and the order it shuts down in (`internal/desktop`), what the menu bar shows
+  (`internal/menubar`), and every notification (`internal/notify`). The desktop files only
+  draw and post what those packages decide.
 - `frontend/assets_desktop.go` (`//go:build desktop`) embeds `frontend/dist`, so no untagged
   build needs a built frontend.
 - MAGE-X discovers build tags and tests them in one combined pass, which would compile the
@@ -129,8 +135,9 @@ and it sits behind the `desktop` build tag:
   assembly and icon rendering steps too. On a Mac, the same tests also run `app:open`,
   `app:run`, and `app:check` end to end against those fakes.
 
-CI runs the fortress workflows on ubuntu for the Go code, and `.github/workflows/frontend.yml`
-on ubuntu for the frontend gate. No macOS runner is used, so `magex app:check` is a local step.
+CI runs the fortress workflows on ubuntu for the Go code, `.github/workflows/frontend.yml` for
+the frontend gate, and `.github/workflows/sqlc.yml` for `magex db:check`. No macOS runner is
+used, so `magex app:check` is a local step.
 
 <br>
 
@@ -147,8 +154,28 @@ and readable only by you:
 
 The database is `nilbox.db` (SQLite, WAL mode). Before a schema migration changes an existing
 database, a copy of it is saved next to it, and the three newest copies are kept. GitHub tokens are never
-stored there, nor anywhere else: the app borrows the token from `gh auth token` for each
-refresh and keeps it in memory only.
+stored there, nor anywhere else: the app borrows the token from `gh auth token` and keeps it in
+memory only. It reuses the token for up to ten minutes, and asks `gh` again sooner when GitHub
+refuses it or `gh`'s account changes (`gh auth switch`, `login`, or `logout`).
+
+**Logs.** The app logs to `logs/nilbox.log` in the same directory, one JSON record per line,
+and writes the same records as text to stderr, which you see when you start the binary from a
+terminal (`bin/Nilbox.app/Contents/MacOS/nilbox`). When the file would pass 5 MB it is renamed
+to `nilbox.log.1`, the earlier `nilbox.log.1` becomes `nilbox.log.2`, and the oldest is
+deleted, so at most three files (about 15 MB) are kept. The log keeps Info records and up;
+start the binary with `--debug`, or with `NILBOX_DEBUG=1` in its environment, to keep Debug
+records too. A log file that can't be written never stops the app: it logs to stderr alone and
+says why there. The startup timing lines go to `logs/timing.log`. Neither file holds your
+GitHub token.
+
+If the database can't be read at startup, because the file is damaged, isn't a database, or
+wasn't set up by this app's migrations, the app renames it (with its `-wal` and `-shm` files)
+to `nilbox.db.broken-<UTC time>`, starts with an empty database, and says so in the window. A
+database saved by a newer version of the app is left as it is: a dialog asks you to update,
+and the app quits. A database another process has open, such as an older copy of the app
+that is still running, or one that can't be written, is never moved. Like anything else that
+stops the app from starting, it is shown in an error dialog, which says what to do where that
+is known, and the app quits once you dismiss it.
 
 <br>
 

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -50,6 +50,42 @@ describe('ConfirmDialog', () => {
     expect(dialog).toHaveAttribute('aria-modal', 'true')
     expect(dialog).toHaveAccessibleDescription('This cannot be undone.')
     expect(screen.getByRole('button', { name: 'Remove' })).toHaveClass('bg-danger/14')
+  })
+
+  it('opens as a native modal, and closes it when it goes', () => {
+    const close = vi.spyOn(HTMLDialogElement.prototype, 'close')
+    const { unmount } = render(
+      <ConfirmDialog title="Remove it?" confirmLabel="Remove" onConfirm={vi.fn()} onCancel={vi.fn()}>
+        This cannot be undone.
+      </ConfirmDialog>,
+    )
+
+    const dialog = screen.getByRole('dialog', { name: 'Remove it?' })
+    expect(dialog.tagName).toBe('DIALOG')
+    expect(dialog).toHaveAttribute('open')
+
+    unmount()
+
+    expect(close).toHaveBeenCalledOnce()
+  })
+
+  it('cancels on any other close request, leaving the closing to its owner', () => {
+    const onCancel = vi.fn()
+    render(
+      <ConfirmDialog title="Remove it?" confirmLabel="Remove" onConfirm={vi.fn()} onCancel={onCancel}>
+        This cannot be undone.
+      </ConfirmDialog>,
+    )
+    const dialog = screen.getByRole('dialog', { name: 'Remove it?' })
+    const request = new Event('cancel', { cancelable: true })
+
+    act(() => {
+      dialog.dispatchEvent(request)
+    })
+
+    expect(onCancel).toHaveBeenCalledOnce()
+    expect(request.defaultPrevented).toBe(true)
+    expect(dialog).toHaveAttribute('open')
   })
 
   it('starts on Cancel and returns focus to the opener when it closes', async () => {

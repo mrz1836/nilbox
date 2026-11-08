@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
@@ -33,7 +35,7 @@ func fullProfile() profiles.Profile {
 func baseRequest() Request {
 	return Request{
 		Item: Item{
-			Kind:    KindPR,
+			Kind:    item.KindPR,
 			Number:  7,
 			URL:     "https://github.com/acme-org/example-repo/pull/7",
 			Title:   "Fix the widget",
@@ -68,6 +70,8 @@ func flagValue(args []string, flag string) (string, bool) {
 }
 
 func TestPermissionPrecedence(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		trusted  bool
@@ -142,6 +146,8 @@ func TestPermissionPrecedence(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			p := fullProfile()
 			p.PermissionMode = tt.mode
 			p.PlanMode = tt.plan
@@ -155,8 +161,12 @@ func TestPermissionPrecedence(t *testing.T) {
 }
 
 func TestPermissionModesAccepted(t *testing.T) {
+	t.Parallel()
+
 	for _, mode := range append(permissionModes(), "", profiles.PermissionFull) {
 		t.Run("mode "+mode, func(t *testing.T) {
+			t.Parallel()
+
 			p := fullProfile()
 			p.PermissionMode = mode
 
@@ -237,6 +247,8 @@ func expectPermission(c trustCase) wantPermission {
 }
 
 func TestTrustOverrideMatrix(t *testing.T) {
+	t.Parallel()
+
 	bools := []bool{false, true}
 
 	cases := expand([]trustCase{{}}, []string{
@@ -252,6 +264,8 @@ func TestTrustOverrideMatrix(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name(), func(t *testing.T) {
+			t.Parallel()
+
 			checkTrustCase(t, c)
 		})
 	}
@@ -287,8 +301,12 @@ func checkTrustCase(t *testing.T, c trustCase) {
 }
 
 func TestUntrustedLaunchIsPlanMode(t *testing.T) {
+	t.Parallel()
+
 	for _, plan := range []bool{false, true} {
 		t.Run("profile plan="+strconv.FormatBool(plan), func(t *testing.T) {
+			t.Parallel()
+
 			req := baseRequest()
 			req.Item.Trusted = trust.NewPolicy(nil).Trusted(trust.Author{Association: "CONTRIBUTOR"}, true, true)
 			req.Profile.PlanMode = plan
@@ -304,12 +322,14 @@ func TestUntrustedLaunchIsPlanMode(t *testing.T) {
 
 	// A bot's issue is untrusted too.
 	req := baseRequest()
-	req.Item = Item{Kind: KindIssue, Number: 3, Trusted: trust.NewPolicy(nil).Trusted(trust.Author{Association: "NONE"}, false, false)}
+	req.Item = Item{Kind: item.KindIssue, Number: 3, Trusted: trust.NewPolicy(nil).Trusted(trust.Author{Association: "NONE"}, false, false)}
 
 	assert.Equal(t, []string{flagPermissionMode, modePlan}, buildArgs(t, req))
 }
 
 func TestBuildPlanFlagMatrix(t *testing.T) {
+	t.Parallel()
+
 	dirA, dirB := absPath("shared"), absPath("with space", "docs")
 
 	tests := []struct {
@@ -371,6 +391,8 @@ func TestBuildPlanFlagMatrix(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			req := baseRequest()
 			tt.edit(&req.Profile)
 			req.Worktree = tt.worktree
@@ -379,8 +401,10 @@ func TestBuildPlanFlagMatrix(t *testing.T) {
 		})
 	}
 
-	for _, effort := range effortLevels() {
+	for _, effort := range agent.EffortLevels() {
 		t.Run("effort "+effort, func(t *testing.T) {
+			t.Parallel()
+
 			req := baseRequest()
 			req.Profile.Effort = effort
 
@@ -392,13 +416,15 @@ func TestBuildPlanFlagMatrix(t *testing.T) {
 }
 
 func TestBuildPlanFields(t *testing.T) {
+	t.Parallel()
+
 	req := baseRequest()
 	req.PromptFile = absPath("launch", "pr-7.prompt.md")
 	req.Worktree = true
 
 	got, err := BuildPlan(req)
 	require.NoError(t, err)
-	assert.Equal(t, KindPR, got.Kind)
+	assert.Equal(t, item.KindPR, got.Kind)
 	assert.Equal(t, 7, got.Number)
 	assert.Equal(t, req.Clone.Dir, got.Dir)
 	assert.Equal(t, req.ClaudePath, got.Binary)
@@ -409,20 +435,22 @@ func TestBuildPlanFields(t *testing.T) {
 }
 
 func TestBuildPlanRejectsInvalidInput(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		edit func(r *Request)
 		want error
 	}{
-		{name: "unknown kind", edit: func(r *Request) { r.Item.Kind = "discussion" }, want: ErrInvalidKind},
+		{name: "unknown kind", edit: func(r *Request) { r.Item.Kind = "discussion" }, want: item.ErrInvalidKind},
 		{name: "zero number", edit: func(r *Request) { r.Item.Number = 0 }, want: ErrInvalidNumber},
 		{name: "negative number", edit: func(r *Request) { r.Item.Number = -4 }, want: ErrInvalidNumber},
 		{name: "relative clone dir", edit: func(r *Request) { r.Clone.Dir = "projects/example-repo" }, want: ErrRelativePath},
 		{name: "empty clone dir", edit: func(r *Request) { r.Clone.Dir = "" }, want: ErrRelativePath},
 		{name: "relative agent path", edit: func(r *Request) { r.ClaudePath = "claude" }, want: ErrRelativePath},
 		{name: "relative prompt file", edit: func(r *Request) { r.PromptFile = "pr-7.prompt.md" }, want: ErrRelativePath},
-		{name: "unknown effort", edit: func(r *Request) { r.Profile.Effort = "extreme" }, want: ErrInvalidEffort},
-		{name: "model that looks like a flag", edit: func(r *Request) { r.Profile.Model = "--help" }, want: ErrInvalidModel},
+		{name: "unknown effort", edit: func(r *Request) { r.Profile.Effort = "extreme" }, want: agent.ErrInvalidEffort},
+		{name: "model that looks like a flag", edit: func(r *Request) { r.Profile.Model = "--help" }, want: agent.ErrInvalidModel},
 		{
 			name: "unknown permission mode", edit: func(r *Request) { r.Profile.PermissionMode = "yolo" },
 			want: ErrInvalidPermissionMode,
@@ -449,6 +477,8 @@ func TestBuildPlanRejectsInvalidInput(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			req := baseRequest()
 			tt.edit(&req)
 
@@ -460,9 +490,11 @@ func TestBuildPlanRejectsInvalidInput(t *testing.T) {
 }
 
 func TestWorktreeFlag(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
-		kind     string
+		kind     item.Kind
 		number   int
 		origin   bool
 		worktree bool
@@ -470,18 +502,20 @@ func TestWorktreeFlag(t *testing.T) {
 		onHead   bool
 	}{
 		{
-			name: "pr from origin uses the head form", kind: KindPR, number: 7, origin: true, worktree: true,
+			name: "pr from origin uses the head form", kind: item.KindPR, number: 7, origin: true, worktree: true,
 			want: "#7", onHead: true,
 		},
-		{name: "pr from another remote", kind: KindPR, number: 7, worktree: true, want: "pr-7"},
-		{name: "issue with origin", kind: KindIssue, number: 12, origin: true, worktree: true, want: "issue-12"},
-		{name: "issue without origin", kind: KindIssue, number: 12, worktree: true, want: "issue-12"},
-		{name: "pr with worktree off", kind: KindPR, number: 7, origin: true},
-		{name: "issue with worktree off", kind: KindIssue, number: 12},
+		{name: "pr from another remote", kind: item.KindPR, number: 7, worktree: true, want: "pr-7"},
+		{name: "issue with origin", kind: item.KindIssue, number: 12, origin: true, worktree: true, want: "issue-12"},
+		{name: "issue without origin", kind: item.KindIssue, number: 12, worktree: true, want: "issue-12"},
+		{name: "pr with worktree off", kind: item.KindPR, number: 7, origin: true},
+		{name: "issue with worktree off", kind: item.KindIssue, number: 12},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			req := baseRequest()
 			req.Item.Kind, req.Item.Number = tt.kind, tt.number
 			req.Clone.OriginIsItemRepo = tt.origin
@@ -525,6 +559,8 @@ func countOf(s []string, v string) int {
 }
 
 func TestEnvHandling(t *testing.T) {
+	t.Parallel()
+
 	workDir := absPath("home", ".claude_work")
 
 	tests := []struct {
@@ -556,6 +592,8 @@ func TestEnvHandling(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			req := baseRequest()
 			req.Profile.ConfigDir = tt.configDir
 			req.Profile.Env = tt.env
@@ -569,6 +607,8 @@ func TestEnvHandling(t *testing.T) {
 
 	for _, key := range []string{"", "1BAD", "BAD-KEY", "A B", "A=B", "ÄRGER"} {
 		t.Run("rejects key "+strconv.Quote(key), func(t *testing.T) {
+			t.Parallel()
+
 			req := baseRequest()
 			req.Profile.Env = map[string]string{key: "value"}
 
@@ -579,6 +619,8 @@ func TestEnvHandling(t *testing.T) {
 }
 
 func TestPromptIsFirstArgument(t *testing.T) {
+	t.Parallel()
+
 	req := baseRequest()
 	req.Profile.AddDirs = []string{absPath("shared"), absPath("docs")}
 	req.Profile.ExtraArgs = []string{"--verbose"}
@@ -596,6 +638,8 @@ func TestPromptIsFirstArgument(t *testing.T) {
 }
 
 func TestExtraArgsCannotOverridePermissions(t *testing.T) {
+	t.Parallel()
+
 	forms := map[string][]string{}
 
 	for _, flag := range permissionFlags() {
@@ -608,6 +652,8 @@ func TestExtraArgsCannotOverridePermissions(t *testing.T) {
 	for name, extra := range forms {
 		for _, trusted := range []bool{true, false} {
 			t.Run(name+"/trusted="+strconv.FormatBool(trusted), func(t *testing.T) {
+				t.Parallel()
+
 				req := baseRequest()
 				req.Item.Trusted = trusted
 				req.FullAccessOverride = !trusted
@@ -621,6 +667,8 @@ func TestExtraArgsCannotOverridePermissions(t *testing.T) {
 	}
 
 	t.Run("harmless extra args are kept as separate elements", func(t *testing.T) {
+		t.Parallel()
+
 		req := baseRequest()
 		req.Item.Trusted = false
 		req.Profile.ExtraArgs = []string{
@@ -635,6 +683,8 @@ func TestExtraArgsCannotOverridePermissions(t *testing.T) {
 }
 
 func TestSessionName(t *testing.T) {
+	t.Parallel()
+
 	req := baseRequest()
 	req.Worktree = true
 	req.SessionName = "Review · example-repo#7"

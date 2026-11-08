@@ -11,18 +11,18 @@ numbers with the `magex measure:*` targets.
 
 | Metric | Target | Measured | Result |
 |---|---|---|---|
-| Cold start to first paint | < 1 s | 1013 ms | Not met in the recorded run (13 ms over); an earlier run of the same code measured 922 ms |
-| Inbox refresh | < 3 s | 2.54 s | Met once the inbox's items are known; the first refresh into an empty database takes 6–10 s |
+| Cold start to first paint | < 1 s | 544 ms | Met on the M1 Max; the M4 Pro build host measured 1013 ms with an earlier build, at the target rather than under it |
+| Inbox refresh | < 3 s | 2.30 s | Met once the inbox's items are known; the first refresh into an empty database takes 5–10 s |
 | Launch to prompt loaded | < 3 s | Not recorded yet | Pending: the build host cannot grant the Automation permission unattended, so the number needs a run on the maintainer's Mac |
-| App binary size | < 30 MB | 17.8 MB | Met |
-| API budget at 5-minute cadence | < 2% | 0.72% | Met |
+| App binary size | < 30 MB | 17.0 MB | Met |
+| API budget at 5-minute cadence | < 2% | 1.20% | Met, for an inbox of 43 items |
 
-Measured on the build host: an Apple Silicon Mac (M4 Pro, 24 GB memory) running macOS 15, with
-one 1920×1080 display at 60 Hz, over its regular network connection. The inbox refresh and API
-budget rows were measured again when the inbox cards began showing pull request details, on a
-second Mac (M1 Max, 32 GB memory, macOS 15) over its regular network connection; both numbers
-are set by GitHub's response times rather than by the machine. Each number comes from the
-production bundle that `magex app:build` produces.
+Measured on an Apple Silicon Mac (M1 Max, 32 GB memory) running macOS 15.8, over its regular
+network connection. The first numbers were taken on the build host, a second Mac (M4 Pro,
+24 GB memory, macOS 15, with one 1920×1080 display at 60 Hz), which starts the app more slowly;
+its runs are kept below for comparison. The refresh and API budget numbers are set by GitHub's
+response times and by how many items the inbox holds, not by the machine. Each number comes
+from the production bundle that `magex app:build` produces.
 
 <br>
 
@@ -45,12 +45,24 @@ on its own. The table shows the median of launches 2–6, each a cold start: a n
 the app not running. The target also times each launch from outside the process, spawn to
 timing line, which agrees with the app's own reading to within a few milliseconds. Each launch
 uses the real data directory and starts the usual background refresh, as a normal launch does.
+Run it with the screen unlocked: a window that is not on screen runs no animation frames, so on
+a locked Mac the report never comes and the target gives up after a minute.
 
-**Recorded run.** First launch of the build: 1453 ms. Launches 2–6: 930, 951, 1031, 1013, and
-1057 ms, for a median of 1013 ms. An earlier run of the same code measured 1491 ms for the
-first launch, then 922, 1063, 922, 853, and 833 ms, for a median of 922 ms. Cold start on this
-host is therefore at the 1 s target, not comfortably under it: runs vary by about ±100 ms, and
-4 of these 10 cold starts went over 1 s.
+**Recorded run.** On the M1 Max (2026-11-08), two runs one after the other. The first started
+from a data directory whose database an older schema had written: its first launch, 934 ms,
+also set that database aside and created a fresh one; launches 2–6 took 628, 544, 538, 541, and
+524 ms, for a median of 541 ms. The second run is the table's number: first launch 497 ms;
+launches 2–6 532, 548, 533, 545, and 544 ms, for a median of 544 ms. Those launches opened a
+current database that held no items yet, since a measuring launch quits before its background
+refresh lands. A run of an earlier build the day before, against a database of 90 items,
+measured a median of 541 ms: the database's contents barely move the number, because the app's
+own start-up work takes about 10 ms (see below).
+
+On the M4 Pro build host: first launch 1453 ms; launches 2–6 930, 951, 1031, 1013, and
+1057 ms, for a median of 1013 ms. An earlier run there measured 1491 ms for the first launch,
+then 922, 1063, 922, 853, and 833 ms, for a median of 922 ms. Cold start on that host is
+therefore at the 1 s target, not comfortably under it: runs vary by about ±100 ms, and 4 of
+those 10 cold starts went over 1 s.
 
 **Where the time goes.** A traced build (not committed) of a warm launch, in milliseconds from
 process start:
@@ -74,16 +86,17 @@ reading the stored theme and setting the app's native appearance. Cold start was
 without it on the second Mac (M1 Max, 32 GB memory, macOS 15), three `magex measure:startup`
 runs of each build, alternating, for 15 cold starts each. The medians were 552 ms without it
 and 551 ms with it; single runs ranged from 519 to 584 ms either way, so the step costs nothing
-measurable. This Mac starts the app faster than the build host, so these numbers compare with
-each other, not with the table above.
+measurable. These runs compare with each other and with the M1 Max run above, not with the
+build host's.
 
 ### Inbox refresh
 
-**What is measured.** One refresh as the app runs it: borrowing the token with `gh auth token`
-(about 250 ms); then, concurrently, the REST `/rate_limit` request, the batched GraphQL inbox
-query, and the details query for the items the last refresh listed; then a details query for
-any item new to the lists; then writing the account, repositories, items, details, and rate
-readings in one database transaction.
+**What is measured.** One refresh as the app runs it: the token, which the first refresh
+borrows with `gh auth token` (about 50 ms on the M1 Max, 250 ms on the build host) and later
+ones reuse from memory for up to ten minutes; then, concurrently, the REST `/rate_limit`
+request, the batched GraphQL inbox query, and the details query for the items the last refresh
+listed; then a details query for any item new to the lists; then writing the account,
+repositories, items, details, and rate readings in one database transaction.
 
 **How.** `magex measure:refresh` runs the bundle's binary with `--measure-refresh`. In that mode
 the binary opens no window: it starts the app's core over a scratch data directory, deleted
@@ -91,24 +104,33 @@ afterwards, and times five refreshes one after another, using the GitHub CLI log
 runs it. Every request is a read. Running through the app binary measures the production build,
 and it is also the binary a per-app firewall has to allow.
 
-**Recorded run.** 6414, 2565, 2418, 2543, and 2342 ms, for a median of 2.54 s. The run before it
-measured 10039, 3863, 2282, 2202, and 2391 ms, a median of 2.39 s. Each run starts from an empty
-scratch database, so its first refresh has no listed items to read alongside the inbox query:
-the details of all 20 items wait for the inbox query to answer, which added 3.5 to 7.5 s, once.
-Every later refresh read the listed items' details alongside the inbox query and finished in
-2.2 to 3.9 s. An existing database already lists its items, so its first refresh is no
-slower: refreshing a copy of a real database through the same code took 2.57, 2.33, and
+**Recorded run.** On the M1 Max (2026-11-08), with 43 items in the inbox: 4807, 2316, 2165,
+2149, and 2296 ms, for a median of 2.30 s. Earlier runs on the same Mac, with at most 20 items,
+measured 6935, 1782, 1363, 1490, and 1673 ms (a median of 1.67 s); 6414, 2565, 2418, 2543, and
+2342 ms (2.54 s); and 10039, 3863, 2282, 2202, and 2391 ms (2.39 s). The spread is GitHub's:
+two builds timed alternately in the same hour gave medians of 2.36 and 2.58 s, while the app's
+own work in a refresh of a 100-item inbox, against a fake GitHub that answers at once (reading
+what the last refresh listed, the database write, and the inbox the window and the menu bar
+read back), takes about 16 ms (`BenchmarkRefreshCycle` in `internal/inbox`).
+
+Each run starts from an empty scratch database, so its first refresh has no listed items to
+read alongside the inbox query: the details of all its items wait for the inbox query to
+answer, which added 2.5 to 7.5 s, once. Every later refresh read the listed items' details
+alongside the inbox query. An existing database already lists its items, so its first refresh
+is no slower: refreshing a copy of a real database through the same code took 2.57, 2.33, and
 2.51 s.
 
 Before the inbox cards read details, the build host recorded 2822, 3419, 2693, 2328, and
 2943 ms, a median of 2.82 s, and three earlier runs of five had medians of 2.99, 2.73, and
 2.81 s.
 
-**Where the time goes.** Timed separately with `curl`, GitHub takes 2.6–3.0 s to start answering
-the batched query. Each of its three searches takes 1.2–1.7 s on its own, and GitHub runs them
-partly in parallel. The REST request takes about 0.3 s and overlaps the query, and the database
-write takes a few milliseconds. The margin under 3 s is set by GitHub's search latency, not by
-the app, and it may differ for accounts with more matching items.
+**Where the time goes.** Timed separately with `curl` on the build host, GitHub took 2.6–3.0 s
+to start answering the batched query, and each of its three searches 1.2–1.7 s on its own;
+GitHub runs them partly in parallel, and its latency moves from hour to hour, so later
+refreshes on the M1 Max took anywhere from 1.4 to 3.9 s. The REST request takes about 0.3 s
+and overlaps the query, and the database write takes a few milliseconds. The margin under 3 s
+is set by GitHub's search latency, not by the app, and it may differ for accounts with more
+matching items.
 
 GitHub answers the details query at roughly 150 ms per item, one item after another within a
 request: 20 items in one request took 3.2–4.0 s, while two concurrent requests of 10 took
@@ -143,24 +165,27 @@ number.
 ### App binary size
 
 `magex measure:size` reads the size of the production executable,
-`bin/Nilbox.app/Contents/MacOS/nilbox`: 17,791,344 bytes, or 17.8 MB in decimal megabytes,
-measured again once the menu bar icon and notifications had landed. The whole bundle, the
-executable with its icon set and `Info.plist`, is 19.1 MB. The binary is built with `-tags
-desktop,production -trimpath -ldflags "-s -w"` and embeds the built frontend (about 510 KB,
-without source maps).
+`bin/Nilbox.app/Contents/MacOS/nilbox`: 17,013,376 bytes, or 17.0 MB in decimal megabytes. The
+whole bundle, the executable with its icon set and `Info.plist`, is 18.3 MB. The binary is
+built with `-tags desktop,production -trimpath -ldflags "-s -w"` and embeds the built frontend,
+about 620 KB without source maps: the 420 KB script the first paint needs (135 KB gzipped), the
+Settings, Prompts, and Worktrees pages in scripts of their own (about 150 KB together), loaded
+the first time each opens, and 54 KB of CSS.
 
-The first desktop build, before the card details, the prompt library, snoozing, the app icon,
-worktree cleanup, the sensitive-file check, and the menu bar, measured 16,446,784 bytes
-(16.4 MB), with a 16.4 MB bundle and a frontend of about 280 KB.
+An earlier build of the same features, with an ORM over its database, measured 17,791,344
+bytes (17.8 MB), with a 19.1 MB bundle and a frontend of about 510 KB in one script. The first
+desktop build, before the card details, the prompt library, snoozing, the app icon, worktree
+cleanup, the sensitive-file check, and the menu bar, measured 16,446,784 bytes (16.4 MB), with
+a 16.4 MB bundle and a frontend of about 280 KB.
 
 ### API budget at 5-minute cadence
 
 Every refresh recorded the GraphQL point cost GitHub charged for its queries
-(`rateLimit.cost`, summed): 3 points, 1 for the batched inbox query and 1 for each of the two
-details requests that read the inbox's 20 items. At the scheduler's cadence of one refresh
-every five minutes, that is 12 refreshes, and 36 points, per hour, out of the 5,000-point
-hourly GraphQL budget GitHub reported: 0.72%. The REST `/rate_limit` request does not count
-against GitHub's rate limits.
+(`rateLimit.cost`, summed): 5 points, 1 for the batched inbox query and 1 for each of the four
+details requests that read the inbox's 43 items. At the scheduler's cadence of one refresh
+every five minutes, that is 12 refreshes, and 60 points, per hour, out of the 5,000-point
+hourly GraphQL budget GitHub reported: 1.20%. With 20 items, a refresh cost 3 points, 36 an
+hour (0.72%). The REST `/rate_limit` request does not count against GitHub's rate limits.
 
 The details cost grows with the inbox: one request per 10 items up to 40 items, then four
 larger requests up to 200 items, then requests of 50 items; each costs a point, or two once it

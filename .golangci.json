@@ -93,6 +93,7 @@
             "noctx",
             "nolintlint",
             "nosprintfhostport",
+            "paralleltest",
             "prealloc",
             "predeclared",
             "protogetter",
@@ -104,9 +105,11 @@
             "sqlclosecheck",
             "staticcheck",
             "testifylint",
+            "tparallel",
             "unconvert",
             "unparam",
             "unused",
+            "usetesting",
             "wastedassign",
             "wsl_v5",
             "zerologlint"
@@ -181,6 +184,10 @@
                 "require-explanation": true,
                 "require-specific": true
             },
+            "paralleltest": {
+                "ignore-missing": false,
+                "ignore-missing-subtests": false
+            },
             "prealloc": {
                 "for-loops": false,
                 "range-loops": true,
@@ -204,6 +211,15 @@
             },
             "unparam": {
                 "check-exported": false
+            },
+            "usetesting": {
+                "context-background": true,
+                "context-todo": true,
+                "os-chdir": true,
+                "os-create-temp": true,
+                "os-mkdir-temp": true,
+                "os-setenv": true,
+                "os-temp-dir": true
             },
             "wsl": {
                 "allow-assign-and-call": true,

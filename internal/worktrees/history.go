@@ -3,9 +3,10 @@ package worktrees
 import (
 	"context"
 	"path/filepath"
-	"time"
 
-	"github.com/mrz1836/nilbox/internal/cleanuplog"
+	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/worklog"
 )
 
 // recentLimit is how many cleanups RecentCleanups returns.
@@ -18,7 +19,7 @@ func (s *Service) RecentCleanups(ctx context.Context) ([]Cleanup, error) {
 		return []Cleanup{}, nil
 	}
 
-	records, err := s.history.Recent(ctx, recentLimit)
+	records, err := s.history.RecentCleanups(ctx, recentLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +38,7 @@ func (s *Service) ClearCleanups(ctx context.Context) error {
 		return nil
 	}
 
-	return s.history.Clear(ctx)
+	return s.history.ClearCleanups(ctx)
 }
 
 // recordCleanup adds a removed worktree to the history. The worktree is gone either way,
@@ -47,7 +48,7 @@ func (s *Service) recordCleanup(ctx context.Context, repoPath string, wt Worktre
 		return
 	}
 
-	record := cleanuplog.Cleanup{
+	record := worklog.Cleanup{
 		CleanedAt:     s.clock.Now(),
 		Automatic:     automatic,
 		Repo:          filepath.Base(repoPath),
@@ -58,20 +59,20 @@ func (s *Service) recordCleanup(ctx context.Context, repoPath string, wt Worktre
 	}
 
 	if it := wt.Item; it != nil {
-		record.ItemKind, record.ItemOwner, record.ItemName, record.ItemNumber = it.Kind, it.Owner, it.Name, it.Number
-		record.ItemTitle, record.ItemURL, record.ItemState = it.Title, it.URL, it.State
+		record.ItemKind, record.ItemOwner, record.ItemName, record.ItemNumber = string(it.Kind), it.Owner, it.Name, it.Number
+		record.ItemTitle, record.ItemURL, record.ItemState = it.Title, it.URL, string(it.State)
 	}
 
-	if err := s.history.Record(ctx, record); err != nil {
+	if err := s.history.RecordCleanup(ctx, record); err != nil {
 		s.logger.WarnContext(ctx, "could not record a worktree cleanup", "error", err)
 	}
 }
 
 // cleanupOf converts a stored cleanup for the view.
-func cleanupOf(r cleanuplog.Cleanup) Cleanup {
+func cleanupOf(r worklog.Cleanup) Cleanup {
 	c := Cleanup{
 		ID:            r.ID,
-		CleanedAt:     r.CleanedAt.UTC().Format(time.RFC3339),
+		CleanedAt:     clock.Format(r.CleanedAt),
 		Automatic:     r.Automatic,
 		Repo:          r.Repo,
 		Worktree:      r.Worktree,
@@ -82,8 +83,8 @@ func cleanupOf(r cleanuplog.Cleanup) Cleanup {
 
 	if r.ItemKind != "" {
 		c.Item = &LinkedItem{
-			Kind: r.ItemKind, Owner: r.ItemOwner, Name: r.ItemName, Number: r.ItemNumber, Title: r.ItemTitle,
-			URL: r.ItemURL, State: r.ItemState,
+			Kind: item.Kind(r.ItemKind), Owner: r.ItemOwner, Name: r.ItemName, Number: r.ItemNumber, Title: r.ItemTitle,
+			URL: r.ItemURL, State: ItemStatus(r.ItemState),
 		}
 	}
 

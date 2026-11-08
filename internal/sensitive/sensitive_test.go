@@ -17,6 +17,8 @@ import (
 const prURL = "https://github.com/acme-org/example-repo/pull/7"
 
 func TestDefaultsFlagTheFilesThatMatter(t *testing.T) {
+	t.Parallel()
+
 	m := sensitive.NewMatcher(sensitive.DefaultConfig())
 
 	cases := map[string]string{
@@ -74,6 +76,8 @@ func TestDefaultsFlagTheFilesThatMatter(t *testing.T) {
 }
 
 func TestMatchingIgnoresCase(t *testing.T) {
+	t.Parallel()
+
 	m := sensitive.NewMatcher(sensitive.DefaultConfig())
 
 	// A case-insensitive file system opens these for .claude/settings.json and friends.
@@ -84,6 +88,8 @@ func TestMatchingIgnoresCase(t *testing.T) {
 }
 
 func TestPatternSyntax(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		pattern string
 		match   []string
@@ -156,6 +162,8 @@ func TestPatternSyntax(t *testing.T) {
 }
 
 func TestNormalizePatterns(t *testing.T) {
+	t.Parallel()
+
 	got, err := sensitive.NormalizePatterns([]string{"  deploy/ ", "", "*.TF", "*.tf", "deploy/"})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"deploy/", "*.TF"}, got)
@@ -167,6 +175,8 @@ func TestNormalizePatterns(t *testing.T) {
 }
 
 func TestNormalizePatternsRefusesUnusablePatterns(t *testing.T) {
+	t.Parallel()
+
 	for pattern, why := range map[string]string{
 		"*":                      "matches every file",
 		"**":                     "matches every file",
@@ -194,6 +204,8 @@ func TestNormalizePatternsRefusesUnusablePatterns(t *testing.T) {
 }
 
 func TestSetCategory(t *testing.T) {
+	t.Parallel()
+
 	off, err := sensitive.SetCategory(nil, sensitive.CategoryDependencies, false)
 	require.NoError(t, err)
 	assert.Equal(t, []string{sensitive.CategoryDependencies}, off)
@@ -217,6 +229,8 @@ func TestSetCategory(t *testing.T) {
 }
 
 func TestOffCategoriesAreNotMatched(t *testing.T) {
+	t.Parallel()
+
 	cfg := sensitive.DefaultConfig()
 	cfg.Off = []string{sensitive.CategoryDependencies}
 
@@ -225,10 +239,12 @@ func TestOffCategoriesAreNotMatched(t *testing.T) {
 }
 
 func TestDecodeConfig(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, sensitive.DefaultConfig(), sensitive.DecodeConfig(nil))
 
 	cfg := sensitive.DecodeConfig(map[string]string{
-		sensitive.PrefScope:    sensitive.ScopeOutside,
+		sensitive.PrefScope:    string(sensitive.ScopeOutside),
 		sensitive.PrefOff:      `["review","agent","nope","dependencies","review"]`,
 		sensitive.PrefPatterns: `["deploy/","*","*.tf"]`,
 	})
@@ -246,14 +262,21 @@ func TestDecodeConfig(t *testing.T) {
 }
 
 func TestEncodeList(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, "[]", sensitive.EncodeList(nil))
 	assert.Equal(t, `["a","b"]`, sensitive.EncodeList([]string{"a", "b"}))
 }
 
 func TestChecked(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
-		scope, class, assoc string
-		mine, want          bool
+		scope sensitive.Scope
+		class trust.Class
+		assoc string
+		mine  bool
+		want  bool
 	}{
 		{sensitive.ScopeOutside, trust.ClassOutside, "NONE", false, true},
 		{sensitive.ScopeOutside, trust.ClassOutside, "COLLABORATOR", false, true}, // a fork
@@ -273,6 +296,8 @@ func TestChecked(t *testing.T) {
 }
 
 func TestEvaluate(t *testing.T) {
+	t.Parallel()
+
 	m := sensitive.NewMatcher(sensitive.DefaultConfig())
 	at := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
 
@@ -281,10 +306,10 @@ func TestEvaluate(t *testing.T) {
 	flagged := &sensitive.Result{
 		Head: "abc", Total: 4, Complete: true, CheckedAt: at,
 		Files: []sensitive.File{
-			{Path: "README.md", Change: sensitive.ChangeModified},
-			{Path: ".github/workflows/ci.yml", Change: sensitive.ChangeModified},
-			{Path: ".claude/settings.json", Change: sensitive.ChangeAdded},
-			{Path: ".claude/agents/x.md", Change: sensitive.ChangeAdded},
+			{Path: "README.md", Change: "modified"},
+			{Path: ".github/workflows/ci.yml", Change: "modified"},
+			{Path: ".claude/settings.json", Change: "added"},
+			{Path: ".claude/agents/x.md", Change: "added"},
 		},
 	}
 
@@ -329,13 +354,15 @@ func TestEvaluate(t *testing.T) {
 }
 
 func TestRenamesMatchEitherPath(t *testing.T) {
+	t.Parallel()
+
 	m := sensitive.NewMatcher(sensitive.DefaultConfig())
 
 	r := &sensitive.Result{Head: "abc", Total: 2, Complete: true, Files: []sensitive.File{
 		// Moving a workflow away disables it.
-		{Path: "docs/old-codeql.yml", PreviousPath: ".github/workflows/codeql.yml", Change: sensitive.ChangeRenamed},
+		{Path: "docs/old-codeql.yml", PreviousPath: ".github/workflows/codeql.yml", Change: "renamed"},
 		// A tooling file moved into the agent's folder counts as the agent's.
-		{Path: ".claude/hooks/x.sh", PreviousPath: "scripts/x.sh", Change: sensitive.ChangeRenamed},
+		{Path: ".claude/hooks/x.sh", PreviousPath: "scripts/x.sh", Change: "renamed"},
 	}}
 
 	c := m.Evaluate(r, "abc", prURL)
@@ -347,12 +374,14 @@ func TestRenamesMatchEitherPath(t *testing.T) {
 }
 
 func TestSummary(t *testing.T) {
+	t.Parallel()
+
 	m := sensitive.NewMatcher(sensitive.DefaultConfig())
 
 	c := m.Evaluate(&sensitive.Result{Head: "abc", Total: 3, Complete: true, Files: []sensitive.File{
-		{Path: "docs/old.yml", PreviousPath: ".github/workflows/ci.yml", Change: sensitive.ChangeRenamed},
-		{Path: ".claude/settings.json", Change: sensitive.ChangeAdded},
-		{Path: "README.md", Change: sensitive.ChangeModified},
+		{Path: "docs/old.yml", PreviousPath: ".github/workflows/ci.yml", Change: "renamed"},
+		{Path: ".claude/settings.json", Change: "added"},
+		{Path: "README.md", Change: "modified"},
 	}}, "abc", prURL)
 
 	assert.Equal(t, ".claude/settings.json (Agent config), docs/old.yml (Workflows, moved from "+
@@ -369,15 +398,9 @@ func TestSummary(t *testing.T) {
 	assert.True(t, strings.HasSuffix(many.Summary(), "s19.sh (Build tooling), and 3 more"), many.Summary())
 }
 
-func TestDiffURL(t *testing.T) {
-	assert.Equal(t,
-		prURL+"/files#diff-b803fcb7f17ed9235f1e5cb1fcd2f5d3b2838429d4368ae4c57ce4436577f03f",
-		sensitive.DiffURL(prURL+"/", ".github/workflows/ci.yml"))
-	assert.Empty(t, sensitive.DiffURL("http://example.com/pull/7", "x"))
-	assert.Empty(t, sensitive.DiffURL(prURL, ""))
-}
-
 func TestLookup(t *testing.T) {
+	t.Parallel()
+
 	cfg := sensitive.DefaultConfig()
 	cfg.Patterns = []string{"*.tf"}
 
@@ -392,6 +415,8 @@ func TestLookup(t *testing.T) {
 }
 
 func TestCategoriesAreWellFormed(t *testing.T) {
+	t.Parallel()
+
 	seen := map[string]bool{}
 
 	for _, c := range sensitive.Categories() {
@@ -401,7 +426,7 @@ func TestCategoriesAreWellFormed(t *testing.T) {
 		assert.NotEmpty(t, c.Label, c.ID)
 		assert.NotEmpty(t, c.Short, c.ID)
 		assert.NotEmpty(t, c.Description, c.ID)
-		assert.Contains(t, []string{sensitive.LevelDanger, sensitive.LevelWarning}, c.Level, c.ID)
+		assert.Contains(t, []sensitive.Level{sensitive.LevelDanger, sensitive.LevelWarning}, c.Level, c.ID)
 		assert.NotEmpty(t, c.Patterns, c.ID)
 
 		// Every built-in pattern is one a user could enter.
@@ -426,7 +451,7 @@ func BenchmarkEvaluateLargePullRequest(b *testing.B) {
 	files := make([]sensitive.File, 3000)
 
 	for i := range files {
-		files[i] = sensitive.File{Path: "internal/pkg" + strings.Repeat("x", i%7) + "/sub/file.go", Change: sensitive.ChangeModified}
+		files[i] = sensitive.File{Path: "internal/pkg" + strings.Repeat("x", i%7) + "/sub/file.go", Change: "modified"}
 	}
 
 	r := &sensitive.Result{Head: "abc", Total: len(files), Files: files, Complete: true}

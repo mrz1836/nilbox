@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useEffectEvent, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 
 import { brand, palettes } from '../generated/brand'
 import { prefersReducedMotion } from '../lib/motion'
@@ -7,30 +7,32 @@ import {
   earnedBurst,
   earnedQuip,
   nextQuip,
-  nilStats,
   pickQuip,
   replayBurst,
   replayLabel,
+  type NilStats,
 } from '../lib/nil'
-import { formatWhen } from '../lib/triage'
-import type { InboxSnapshot } from '../platform'
+import { formatWhen } from '../lib/time'
+import { useNowAs } from '../lib/useNow'
 import { Confetti, useConfetti, type Point } from './Confetti'
 import { PlayIcon, TrophyIcon } from './icons'
 import { LogoMark } from './Logo'
 
 export interface InboxNilProps {
-  snapshot: InboxSnapshot
-  now: Date
+  // stats are what was set aside to get there, from the inbox's triage.
+  stats: NilStats
   // earned is true when the inbox emptied while the page was open, which throws the full
   // party; opening the page at nil only sprinkles.
   earned: boolean
 }
 
 // terminalTokens set the terminal in the dark palette in either theme, as terminals are.
-// Every utility inside reads the brand tokens, so overriding them here is enough.
+// Every utility and style inside reads the theme's --color-* tokens, so overriding them
+// here is enough. color-scheme alone would not do: the bundle's tokens resolve once, on
+// the root, for the page's theme.
 const terminalTokens = {
   colorScheme: 'dark',
-  ...Object.fromEntries(Object.entries(palettes.dark).map(([token, value]) => [`--brand-${token}`, value])),
+  ...Object.fromEntries(Object.entries(palettes.dark).map(([token, value]) => [`--color-${token}`, value])),
 } as CSSProperties
 
 // lists are what the terminal checks off, by the names the inbox gives them.
@@ -81,7 +83,7 @@ function center(el: Element | null): Point {
 // do; and a button that runs the party again, a little harder each time. Confetti flies on
 // arrival, and far more of it when the inbox empties while you watch. With reduced motion
 // everything holds still and no confetti flies.
-export function InboxNil({ snapshot, now, earned }: InboxNilProps) {
+export function InboxNil({ stats, earned }: InboxNilProps) {
   const headingId = useId()
   // word is where the party goes off, and button where a replay does.
   const word = useRef<HTMLSpanElement>(null)
@@ -89,28 +91,30 @@ export function InboxNil({ snapshot, now, earned }: InboxNilProps) {
   const { bursts, fire, land } = useConfetti()
   const [runs, setRuns] = useState(0)
   const [quip, setQuip] = useState(() => (earned ? earnedQuip : pickQuip()))
-  const stats = useMemo(() => nilStats(snapshot, now), [snapshot, now])
+  const { nextBack } = stats
+  const comeback = useNowAs((now) => (nextBack === null ? '' : formatWhen(now, nextBack)))
 
-  const throwConfetti = useCallback(
-    (from: Element | null, count: number, flash: boolean) => {
-      if (!prefersReducedMotion()) {
-        fire(center(from), count, flash)
-      }
-    },
-    [fire],
-  )
+  const throwConfetti = (from: Element | null, count: number, flash: boolean) => {
+    if (!prefersReducedMotion()) {
+      fire(center(from), count, flash)
+    }
+  }
 
   // The party starts once, as the page reaches nil; a remount in development does not
   // start it twice.
   const started = useRef(false)
+  const start = useEffectEvent(() => {
+    throwConfetti(word.current, earned ? earnedBurst : arrivalBurst, earned)
+  })
+
   useEffect(() => {
     if (started.current) {
       return
     }
 
     started.current = true
-    throwConfetti(word.current, earned ? earnedBurst : arrivalBurst, earned)
-  }, [earned, throwConfetti])
+    start()
+  }, [])
 
   const replay = () => {
     const next = runs + 1
@@ -120,7 +124,6 @@ export function InboxNil({ snapshot, now, earned }: InboxNilProps) {
     throwConfetti(button.current, replayBurst(next), next >= 3)
   }
 
-  const comeback = stats.nextBack === null ? '' : formatWhen(now, stats.nextBack)
   // Each line's place in the entrance: the lists, what was set aside, then, after a beat,
   // the panic.
   let at = lists.length

@@ -3,33 +3,36 @@
 // every service the window binds to.
 //
 // Core is plain Go with no desktop dependency, so the whole startup path is tested on any
-// OS. The desktop shell only adds the window, binds Services, and runs the scheduler.
+// OS. The desktop shell only adds the window, binds Services, hears the services' events,
+// and runs the scheduler and the sweeper.
 package core
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
-	"time"
-
-	"gorm.io/gorm"
 
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/appinfo"
-	"github.com/mrz1836/nilbox/internal/cleanuplog"
+	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/launcher"
-	"github.com/mrz1836/nilbox/internal/launchlog"
+	"github.com/mrz1836/nilbox/internal/launcher/terminal"
+	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/notify"
+	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/timing"
+	"github.com/mrz1836/nilbox/internal/worklog"
 	"github.com/mrz1836/nilbox/internal/worktrees"
 )
 
@@ -40,18 +43,6 @@ var (
 	// ErrNoHomeDir is returned when Options.Home is empty.
 	ErrNoHomeDir = errors.New("the home directory is not set")
 )
-
-// Runner runs a program as an argv, never through a shell. execpath.Runner implements it;
-// the GitHub token source, the clone scan, the confirmed clone of a missing repository,
-// the terminal drivers, and the worktree service all run their programs through it.
-type Runner interface {
-	Run(ctx context.Context, name string, args ...string) (stdout, stderr []byte, err error)
-}
-
-// Clock tells the time.
-type Clock interface {
-	Now() time.Time
-}
 
 // Options configure Bootstrap. Paths and Home are required; the rest are optional.
 type Options struct {
@@ -73,41 +64,32 @@ type Options struct {
 
 	// Clock stamps refreshes, launches, and worktree listings. It defaults to the system
 	// clock.
-	Clock Clock
+	Clock clock.Clock
 
-	// Notifier is told when the stored inbox changed.
-	Notifier inbox.Notifier
-
-	// WorktreeNotifier is told when an automatic worktree sweep changed something.
-	WorktreeNotifier worktrees.Notifier
-
-	// ThemeNotifier is told when the theme was changed and stored.
-	ThemeNotifier settings.ThemeNotifier
-
-	// MenuBarNotifier is told when the menu bar setting was changed and stored.
-	MenuBarNotifier settings.MenuBarNotifier
+	// Events hears every service's events: the inbox, the worktree sweep, and the
+	// notification log changed; the theme or the menu bar setting was stored; the window
+	// painted its first frame. Without it they are dropped.
+	Events event.Sink
 
 	// Banners shows native notifications; without it the notification log is still kept.
 	Banners notify.Poster
 
-	// NotificationsNotifier is told when the notification log changed.
-	NotificationsNotifier notify.Notifier
+	// Runner runs external programs: the GitHub token source, the clone scan, the
+	// confirmed clone of a missing repository, the terminal drivers, and the worktree
+	// service all run theirs through it. It defaults to an execpath.Exec whose search
+	// covers the well-known directories under Home.
+	Runner execpath.Runner
 
-	// Runner runs external programs. It defaults to an execpath.Runner whose finder
-	// searches the well-known directories under Home.
-	Runner Runner
-
-	// Logger receives scheduler and timing records. It defaults to slog.Default().
+	// Logger receives every service's log records. Without it they are not logged.
 	Logger *slog.Logger
-
-	// OnFirstPaint is called once when the frontend reports its first paint.
-	OnFirstPaint func(timing.Measurement)
 }
 
 // Core is the assembled app: the database and every service.
 type Core struct {
-	// DB is the open, migrated database.
-	DB *gorm.DB
+	// DB is the open, migrated database's connection pool, which every service shares.
+	// It is not bound; code that seeds the database, such as the launch measurement,
+	// writes through it.
+	DB *sql.DB
 
 	// The services bound to the frontend.
 	Settings       *settings.Service
@@ -120,19 +102,33 @@ type Core struct {
 	Notifications  *notify.Service
 	AppInfo        *appinfo.Service
 
-	// Scheduler refreshes the inbox on start and every five minutes once Run is called.
-	// A worktrees.Sweeper over Worktrees does the same for the automatic worktree
-	// cleanup.
+	// ShellSettings are the settings the desktop shell reads when the app launches. They
+	// are not bound.
+	ShellSettings ShellSettings
+
+	// ProfileStore holds the stored agent profiles that Profiles lists. It is not bound;
+	// code that seeds the database, such as the launch measurement, writes through it.
+	ProfileStore *profiles.Store
+
+	// Scheduler refreshes the inbox on start and every five minutes once Run is called,
+	// and Sweeper does the same for the automatic worktree cleanup. Each runs until its
+	// context is canceled; the desktop shell runs both while the app is open.
 	Scheduler *inbox.Scheduler
+	Sweeper   worktrees.Sweeper
 
 	// Timing records the first paint.
 	Timing *timing.Recorder
+
+	// tokens holds the GitHub token the inbox and the worktree service borrow, until
+	// Close forgets it.
+	tokens *github.TokenSource
 }
 
 // Bootstrap prepares the data directory, opens the database (backing it up and applying
-// any pending migrations), syncs the agent profiles found under the home directory, adds
-// any starter prompt not added before, and builds every service. It contacts no network;
-// the scheduler does that once started.
+// any pending migrations, or setting it aside for a fresh one when it cannot be used),
+// syncs the agent profiles found under the home directory, adds any starter prompt not
+// added before, and builds every service. It contacts no network; the scheduler does that
+// once started.
 func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 	if opts.Paths.Root == "" {
 		return nil, ErrNoDataDir
@@ -146,29 +142,29 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 		return nil, err
 	}
 
-	db, err := store.Open(ctx, opts.Paths.DB)
+	logger := logging.Or(opts.Logger)
+
+	opened, err := store.Open(ctx, opts.Paths.DB)
 	if err != nil {
 		return nil, err
 	}
 
-	logger := opts.Logger
-	if logger == nil {
-		logger = slog.Default()
-	}
+	pool := opened.DB
+	reset := dataReset(ctx, opened.Reset, opts.Home, logger)
 
-	if err = syncProfiles(ctx, db, opts.Home, logger); err != nil {
-		_ = store.Close(db)
+	if err = syncProfiles(ctx, profiles.NewStore(pool, opts.Clock), opts.Home, logger); err != nil {
+		_ = pool.Close()
 
 		return nil, err
 	}
 
-	if err = prompts.Seed(ctx, db); err != nil {
-		_ = store.Close(db)
+	if err = prompts.Seed(ctx, prompts.NewStore(pool, opts.Clock)); err != nil {
+		_ = pool.Close()
 
 		return nil, fmt.Errorf("add the starter prompts: %w", err)
 	}
 
-	return assemble(db, opts, logger), nil
+	return assemble(pool, reset, opts, logger), nil
 }
 
 // Services returns the services the frontend binds to, in a stable order.
@@ -179,9 +175,15 @@ func (c *Core) Services() []any {
 	}
 }
 
-// Close closes the database.
+// Close forgets the GitHub token held in memory and closes the database.
 func (c *Core) Close() error {
-	return store.Close(c.DB)
+	c.tokens.Clear()
+
+	if err := c.DB.Close(); err != nil {
+		return fmt.Errorf("close database: %w", err)
+	}
+
+	return nil
 }
 
 // syncProfiles brings the stored agent profiles in line with home. It first removes
@@ -192,8 +194,8 @@ func (c *Core) Close() error {
 // by the directory that now owns it. A home directory that cannot be read only skips
 // discovery, with a warning: the profiles already stored still work, and the inbox does
 // not need them.
-func syncProfiles(ctx context.Context, db *gorm.DB, home string, logger *slog.Logger) error {
-	removed, err := profiles.Prune(ctx, db)
+func syncProfiles(ctx context.Context, stored *profiles.Store, home string, logger *slog.Logger) error {
+	removed, err := stored.Prune(ctx, logger)
 	if err != nil {
 		return fmt.Errorf("prune profiles: %w", err)
 	}
@@ -202,110 +204,128 @@ func syncProfiles(ctx context.Context, db *gorm.DB, home string, logger *slog.Lo
 		logger.InfoContext(ctx, "removed profiles whose directory holds no agent config", "profiles", removed)
 	}
 
-	found, err := profiles.Discover(home)
+	found, err := profiles.Discover(home, logger)
 	if err != nil {
 		logger.WarnContext(ctx, "profile discovery skipped", "error", err)
 
 		return nil
 	}
 
-	if err = profiles.Sync(ctx, db, found); err != nil {
+	if err = stored.Sync(ctx, found); err != nil {
 		return fmt.Errorf("sync profiles: %w", err)
 	}
 
 	return nil
 }
 
-// assemble builds every service over the open database.
-func assemble(db *gorm.DB, opts Options, logger *slog.Logger) *Core {
-	finder := execpath.Finder{Home: opts.Home}
+// dataReset logs a database Open set aside, and returns what the window tells the user
+// about it, or nil when there was none.
+func dataReset(ctx context.Context, reset *store.Reset, home string, logger *slog.Logger) *appinfo.DataReset {
+	if reset == nil {
+		return nil
+	}
+
+	logger.WarnContext(ctx, "the database could not be used; it was set aside and a fresh one started",
+		"path", reset.Path, "reason", reset.Reason, "error", reset.Err)
+
+	return &appinfo.DataReset{Path: paths.Tilde(reset.Path, home), Reason: appinfo.ResetReason(reset.Reason)}
+}
+
+// assemble builds every service over the open database's connection pool. reset, when
+// set, tells the window the database was set aside at startup.
+func assemble(pool *sql.DB, reset *appinfo.DataReset, opts Options, logger *slog.Logger) *Core {
+	search := execpath.Search{Home: opts.Home}
 
 	runner := opts.Runner
 	if runner == nil {
-		runner = execpath.Runner{Finder: finder}
+		runner = execpath.Exec{Search: search}
 	}
 
-	prefs := settings.NewService(db, opts.Home,
-		settings.WithThemeNotifier(opts.ThemeNotifier), settings.WithMenuBarNotifier(opts.MenuBarNotifier))
-	tokens := github.NewTokenSource(runner, finder)
+	profileStore := profiles.NewStore(pool, opts.Clock)
+	promptStore := prompts.NewStore(pool, opts.Clock)
+	defaultsStore := launchdefaults.NewStore(pool, opts.Clock)
+	inboxStore := inbox.NewStore(pool, opts.Clock)
+	prefs := settings.NewService(pool, profileStore, opts.Home, settings.WithClock(opts.Clock),
+		settings.WithEvents(opts.Events), settings.WithLogger(logger))
+	tokens := github.NewTokenSource(runner, search,
+		github.WithTokenClock(opts.Clock), github.WithHostsFile(github.GHHostsFile(opts.Home)))
 	client := github.NewClient(opts.Version)
-	launches := launchlog.NewStore(db)
+	workLog := worklog.New(pool)
 
 	notices := notify.Config{
-		DB: db, Poster: opts.Banners, Notifier: opts.NotificationsNotifier, Clock: opts.Clock, Logger: logger,
+		Pool: pool, Poster: opts.Banners, Events: opts.Events, Clock: opts.Clock, Logger: logger,
 	}
 
 	inboxSvc := inbox.NewService(inbox.Config{
-		DB:       db,
+		Pool:     pool,
 		Tokens:   tokens,
 		Client:   client,
 		Clock:    opts.Clock,
-		Notifier: opts.Notifier,
+		Events:   opts.Events,
 		Arrivals: notify.NewDispatcher(notices),
+		Logger:   logger,
 	})
 
 	recorder := timing.NewRecorder(timing.Config{Logger: logger, LogsDir: opts.Paths.Logs})
 
 	launch := launcher.NewService(launcher.Config{
-		DB:       db,
-		Settings: prefs,
+		Items:    launchItems{Store: inboxStore},
+		Settings: settingsView[launcher.LaunchSettings]{settings: prefs, part: launchSettings},
+		Profiles: profileStore,
+		Prompts:  promptStore,
+		Defaults: defaultsStore,
 		Git:      runner,
 		GH:       runner,
-		Finder:   finder,
-		Registry: launcher.DefaultRegistry(runner),
+		Finder:   search,
+		Registry: terminal.DefaultRegistry(runner),
 		Paths:    opts.Paths,
 		Home:     opts.Home,
 		Clock:    opts.Clock,
-		Launches: launches,
+		Launches: workLog,
 		Files:    inboxSvc,
+		Logger:   logger,
+	})
+
+	sweeps := worktrees.NewService(worktrees.Config{
+		Settings: settingsView[worktrees.SweepSettings]{settings: prefs, part: sweepSettings},
+		Git:      runner,
+		Finder:   search,
+		Home:     opts.Home,
+		Clock:    opts.Clock,
+		GitHub:   itemStates{tokens: tokens, client: client},
+		Launches: workLog,
+		History:  workLog,
+		Events:   opts.Events,
+		Logger:   logger,
 	})
 
 	return &Core{
-		DB:             db,
-		Settings:       prefs,
-		Profiles:       profiles.NewService(db, opts.Home),
-		Prompts:        prompts.NewService(prompts.Config{DB: db, Source: launcher.NewPromptSource(launch)}),
-		LaunchDefaults: launchdefaults.NewService(db),
-		Inbox:          inboxSvc,
-		Launcher:       launch,
-		Worktrees: worktrees.NewService(worktrees.Config{
-			Settings: prefs,
-			Git:      runner,
-			Finder:   finder,
-			Home:     opts.Home,
-			Clock:    opts.Clock,
-			GitHub:   itemStates{tokens: tokens, client: client},
-			Launches: launches,
-			History:  cleanuplog.NewStore(db),
-			Notifier: opts.WorktreeNotifier,
-			Logger:   logger,
+		DB:       pool,
+		Settings: prefs,
+		Profiles: profiles.NewService(profileStore, opts.Home),
+		Prompts: prompts.NewService(prompts.Config{
+			Store: promptStore, Usage: defaultsStore, Source: launcher.NewPromptSource(launch),
 		}),
+		LaunchDefaults: launchdefaults.NewService(launchdefaults.Config{
+			Store: defaultsStore, Profiles: profileStore, Prompts: promptStore, Repos: inboxRepos{store: inboxStore},
+		}),
+		Inbox:         inboxSvc,
+		Launcher:      launch,
+		Worktrees:     sweeps,
 		Notifications: notify.NewService(notices),
 		AppInfo: appinfo.NewService(appinfo.Config{
-			Version:      opts.Version,
-			Release:      opts.Release,
-			Build:        opts.Build,
-			Recorder:     recorder,
-			OnFirstPaint: opts.OnFirstPaint,
+			Version:   opts.Version,
+			Release:   opts.Release,
+			Build:     opts.Build,
+			Recorder:  recorder,
+			Events:    opts.Events,
+			DataReset: reset,
 		}),
-		Scheduler: inbox.NewScheduler(inboxSvc, inbox.WithLogger(logger)),
-		Timing:    recorder,
+		ShellSettings: newShellSettings(prefs, pool, opts.Clock),
+		ProfileStore:  profileStore,
+		Scheduler:     inbox.NewScheduler(inboxSvc, logger),
+		Sweeper:       worktrees.NewSweeper(sweeps, worktrees.DefaultSweepInterval),
+		Timing:        recorder,
+		tokens:        tokens,
 	}
-}
-
-// itemStates reads the state of the pull requests and issues worktrees are linked to,
-// with the GitHub CLI's token, for the worktree service.
-type itemStates struct {
-	tokens *github.TokenSource
-	client *github.Client
-}
-
-// ItemStates asks GitHub about refs.
-func (s itemStates) ItemStates(ctx context.Context, refs []github.ItemRef) (map[github.ItemRef]github.ItemState, error) {
-	tok, err := s.tokens.Token(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	return s.client.FetchItemStates(ctx, tok, refs)
 }

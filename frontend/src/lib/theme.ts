@@ -1,15 +1,17 @@
 // The theme: the user's choice of palette, and switching the page to it.
 //
-// The generated theme.css sets every brand token for the light palette, and again for the
-// dark one under prefers-color-scheme: dark, so the first paint follows the web view's
-// appearance before any script runs. On macOS the desktop shell pins that appearance to a
-// Light or Dark theme before the window opens, and leaves it to the system for System, so
-// the first frame already shows the chosen palette. From then on the page pins the palette
-// it shows on <html> (data-theme wins over the media query) and cross-fades on a switch.
+// The generated theme.css gives every theme token both palettes' values, light-dark(), and
+// the root's color-scheme picks one: the dark palette under prefers-color-scheme: dark, so
+// the first paint follows the web view's appearance before any script runs. On macOS the
+// desktop shell pins that appearance to a Light or Dark theme before the window opens, and
+// leaves it to the system for System, so the first frame already shows the chosen palette.
+// From then on the page pins the palette it shows on <html> (data-theme wins over the
+// media query) and cross-fades on a switch.
 
+import type { Theme } from '../platform'
 import { prefersReducedMotion } from './motion'
 
-export type Theme = 'system' | 'light' | 'dark'
+export type { Theme }
 
 // themes are the choices, in the order Settings offers them.
 export const themes: readonly Theme[] = ['system', 'light', 'dark']
@@ -18,14 +20,9 @@ export const themes: readonly Theme[] = ['system', 'light', 'dark']
 // has loaded.
 export const defaultTheme: Theme = 'system'
 
-// toTheme reads a theme as stored, taking anything that is not a choice for the default.
-export function toTheme(value: string): Theme {
-  return themes.find((theme) => theme === value) ?? defaultTheme
-}
-
 // darkQuery matches while the web view's appearance is dark: the system's, or the one the
 // desktop shell pinned for a Light or Dark theme.
-const darkQuery = '(prefers-color-scheme: dark)'
+export const darkQuery = '(prefers-color-scheme: dark)'
 
 // resolveDark reports whether a theme shows the dark palette while the appearance is dark
 // or light.
@@ -40,36 +37,12 @@ export function resolveDark(theme: Theme, appearanceDark: boolean): boolean {
   }
 }
 
-// appearanceIsDark reports whether the web view's appearance is dark. Without matchMedia
-// it reports false, matching the tokens' light default.
-export function appearanceIsDark(win: Window = window): boolean {
-  return typeof win.matchMedia === 'function' && win.matchMedia(darkQuery).matches
-}
-
-// onAppearanceChange calls listener with whether the appearance is dark each time it
-// changes, and returns a function that stops listening. Without matchMedia it never
-// changes.
-export function onAppearanceChange(listener: (dark: boolean) => void, win: Window = window): () => void {
-  if (typeof win.matchMedia !== 'function') {
-    return () => undefined
-  }
-
-  const query = win.matchMedia(darkQuery)
-  const changed = () => {
-    listener(query.matches)
-  }
-
-  query.addEventListener('change', changed)
-
-  return () => {
-    query.removeEventListener('change', changed)
-  }
-}
-
 type Scheme = 'light' | 'dark'
 
-// pin shows a palette: data-theme selects the matching block of the theme tokens, and
-// color-scheme draws native controls and scrollbars to match.
+// pin shows a palette. color-scheme picks each token's side of light-dark() and draws
+// native controls and scrollbars to match. data-theme sets the same color-scheme from the
+// stylesheet, which is what switches the tokens in the bundle: its CSS stands in for
+// light-dark() on WebKit releases without it, and only a stylesheet rule can drive that.
 function pin(root: HTMLElement, scheme: Scheme): void {
   root.dataset.theme = scheme
   root.style.colorScheme = scheme

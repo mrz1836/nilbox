@@ -12,6 +12,10 @@ import (
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/brand"
+	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/textutil"
+	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
 const (
@@ -30,6 +34,9 @@ const (
 
 	// scopesHeader carries a classic OAuth token's granted scopes.
 	scopesHeader = "X-OAuth-Scopes"
+
+	// unreachableMessage is what the user is told about a request GitHub never answered.
+	unreachableMessage = "Could not reach GitHub. Check your internet connection, then try again."
 
 	typePullRequest = "PullRequest"
 	typeIssue       = "Issue"
@@ -125,29 +132,11 @@ func (c *Client) FetchRateLimits(ctx context.Context, tok Token) (*RateLimits, e
 	return limits, Redact(err, tok)
 }
 
-// fetchInbox sends the query and decodes the response.
+// fetchInbox sends the query and decodes the response. Any GraphQL error fails it.
 func (c *Client) fetchInbox(ctx context.Context, tok Token) (*Inbox, error) {
-	body, err := json.Marshal(graphQLRequest{Query: inboxQuery})
-	if err != nil {
-		return nil, fmt.Errorf("encode the inbox query: %w", err)
-	}
-
-	data, header, err := c.do(ctx, tok, http.MethodPost, "/graphql", body)
+	resp, header, err := postGraphQL[graphQLData](ctx, c, tok, "inbox", graphQLRequest{Query: inboxQuery}, anyError)
 	if err != nil {
 		return nil, err
-	}
-
-	var resp graphQLResponse
-	if err = json.Unmarshal(data, &resp); err != nil {
-		return nil, fmt.Errorf("%w: decode the inbox response: %w", ErrMalformedResponse, err)
-	}
-
-	if len(resp.Errors) > 0 {
-		return nil, resp.err()
-	}
-
-	if resp.Data == nil {
-		return nil, fmt.Errorf("%w: the inbox response has no data", ErrMalformedResponse)
 	}
 
 	inbox := resp.Data.inbox()
@@ -156,10 +145,60 @@ func (c *Client) fetchInbox(ctx context.Context, tok Token) (*Inbox, error) {
 	return inbox, nil
 }
 
+// fatalError decides whether one GraphQL error fails a query, given whether the response
+// carried data too.
+type fatalError func(e graphQLError, hasData bool) bool
+
+// anyError fails a query on any GraphQL error.
+func anyError(graphQLError, bool) bool { return true }
+
+// unlessData fails a query on GraphQL errors only when no data came back: errors with
+// data are about single nodes, which come back null.
+func unlessData(_ graphQLError, hasData bool) bool { return !hasData }
+
+// unlessNotFound fails a query on any GraphQL error but GitHub's not-found, which only
+// leaves the node it is about unanswered.
+func unlessNotFound(e graphQLError, _ bool) bool { return e.Type != errorNotFound }
+
+// postGraphQL sends one GraphQL query, named name in errors, and decodes its response
+// into data of type T. The query fails when the response cannot be read, when fatal says
+// one of its errors does, and otherwise when it has no data. The returned response keeps
+// the errors fatal let through.
+func postGraphQL[T any](
+	ctx context.Context, c *Client, tok Token, name string, req graphQLRequest, fatal fatalError,
+) (*graphQLResponse[T], http.Header, error) {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, nil, fmt.Errorf("encode the %s query: %w", name, err)
+	}
+
+	raw, header, err := c.do(ctx, tok, http.MethodPost, "/graphql", body)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var resp graphQLResponse[T]
+	if err = json.Unmarshal(raw, &resp); err != nil {
+		return nil, nil, fmt.Errorf("%w: decode the %s response: %w", ErrMalformedResponse, name, err)
+	}
+
+	for _, e := range resp.Errors {
+		if fatal(e, resp.Data != nil) {
+			return nil, nil, graphQLErr(resp.Errors)
+		}
+	}
+
+	if resp.Data == nil {
+		return nil, nil, fmt.Errorf("%w: the %s response has no data", ErrMalformedResponse, name)
+	}
+
+	return &resp, header, nil
+}
+
 // do sends one authenticated request and returns the body of a 2xx response.
 func (c *Client) do(ctx context.Context, tok Token, method, path string, body []byte) ([]byte, http.Header, error) {
 	if tok.IsZero() {
-		return nil, nil, ErrNotLoggedIn
+		return nil, nil, errLoggedOut()
 	}
 
 	var reader io.Reader
@@ -182,7 +221,7 @@ func (c *Client) do(ctx context.Context, tok Token, method, path string, body []
 
 	resp, err := c.httpClient().Do(req)
 	if err != nil {
-		return nil, nil, fmt.Errorf("call the GitHub API: %w", err)
+		return nil, nil, unreachable(ctx, fmt.Errorf("call the GitHub API: %w", err))
 	}
 
 	defer func() { _ = resp.Body.Close() }()
@@ -197,6 +236,16 @@ func (c *Client) do(ctx context.Context, tok Token, method, path string, body []
 	}
 
 	return data, resp.Header, nil
+}
+
+// unreachable gives err, a request that got no answer, a message for the user, unless
+// ctx ended: a caller that gave up is not told GitHub is down.
+func unreachable(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return err
+	}
+
+	return uierr.New(unreachableMessage, err)
 }
 
 // baseURL returns the configured API root without a trailing slash.
@@ -244,14 +293,10 @@ func apiMessage(data []byte) string {
 	return truncate(body.Message)
 }
 
-// truncate collapses whitespace and caps a message at maxMessageRunes.
+// truncate collapses whitespace and keeps at most maxMessageRunes of a message, ending
+// one that was cut with an ellipsis.
 func truncate(msg string) string {
-	msg = strings.Join(strings.Fields(msg), " ")
-	if runes := []rune(msg); len(runes) > maxMessageRunes {
-		return string(runes[:maxMessageRunes]) + "…"
-	}
-
-	return msg
+	return textutil.Truncate(strings.Join(strings.Fields(msg), " "), maxMessageRunes+1)
 }
 
 // Inbox is the decoded result of the batched inbox query.
@@ -329,6 +374,16 @@ type Item struct {
 	Repo Repository
 }
 
+// Ref names the item: its repository, number, and kind.
+func (i Item) Ref() item.Ref {
+	kind := item.KindIssue
+	if i.IsPR {
+		kind = item.KindPR
+	}
+
+	return item.Ref{Repo: repo.Name{Owner: i.RepoOwner, Repo: i.RepoName}, Number: i.Number, Kind: kind}
+}
+
 // Repository is what the inbox query reads about an item's repository: its identity, its
 // state, its merge settings, and the viewer's access to it.
 type Repository struct {
@@ -402,16 +457,17 @@ type graphQLRequest struct {
 	Variables map[string]any `json:"variables,omitempty"`
 }
 
-// graphQLResponse is the inbox query's response body.
-type graphQLResponse struct {
-	Data   *graphQLData   `json:"data"`
+// graphQLResponse is a GraphQL response body: the query's data object, null when the
+// query failed, and its errors.
+type graphQLResponse[T any] struct {
+	Data   *T             `json:"data"`
 	Errors []graphQLError `json:"errors"`
 }
 
-// err joins the response's error messages under ErrGraphQL.
-func (r *graphQLResponse) err() error {
-	msgs := make([]string, 0, len(r.Errors))
-	for _, e := range r.Errors {
+// graphQLErr joins a response's error messages under ErrGraphQL.
+func graphQLErr(errs []graphQLError) error {
+	msgs := make([]string, 0, len(errs))
+	for _, e := range errs {
 		msgs = append(msgs, e.Message)
 	}
 

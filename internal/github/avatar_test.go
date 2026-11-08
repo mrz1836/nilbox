@@ -30,6 +30,8 @@ func newAvatarServer(t *testing.T, handler http.HandlerFunc) (*Client, string) {
 }
 
 func TestFetchAvatarDownloadsTheImage(t *testing.T) {
+	t.Parallel()
+
 	client, base := newAvatarServer(t, func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		assert.Equal(t, "/u/101", r.URL.Path)
@@ -52,6 +54,8 @@ func TestFetchAvatarDownloadsTheImage(t *testing.T) {
 }
 
 func TestFetchAvatarFollowsRedirectsOnTheHost(t *testing.T) {
+	t.Parallel()
+
 	client, base := newAvatarServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/old" {
 			http.Redirect(w, r, "/new", http.StatusFound)
@@ -67,6 +71,8 @@ func TestFetchAvatarFollowsRedirectsOnTheHost(t *testing.T) {
 }
 
 func TestFetchAvatarRefusesURLsOffTheHost(t *testing.T) {
+	t.Parallel()
+
 	var requests atomic.Int32
 
 	client, base := newAvatarServer(t, func(w http.ResponseWriter, _ *http.Request) {
@@ -89,15 +95,20 @@ func TestFetchAvatarRefusesURLsOffTheHost(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			_, err := client.FetchAvatar(t.Context(), tt.url)
 			require.ErrorIs(t, err, ErrAvatarURL)
+
+			// Every case is refused, so none of them has sent a request by now.
+			assert.Zero(t, requests.Load(), "nothing is requested for a refused URL")
 		})
 	}
-
-	assert.Zero(t, requests.Load(), "nothing is requested for a refused URL")
 }
 
 func TestFetchAvatarRefusesRedirectsOffTheHost(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		location string
@@ -108,6 +119,8 @@ func TestFetchAvatarRefusesRedirectsOffTheHost(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			client, base := newAvatarServer(t, func(w http.ResponseWriter, r *http.Request) {
 				http.Redirect(w, r, tt.location, http.StatusFound)
 			})
@@ -119,6 +132,8 @@ func TestFetchAvatarRefusesRedirectsOffTheHost(t *testing.T) {
 }
 
 func TestFetchAvatarRefusesWhatIsNotAnImage(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		status  int
@@ -143,6 +158,8 @@ func TestFetchAvatarRefusesWhatIsNotAnImage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			client, base := newAvatarServer(t, func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(tt.status)
 				_, _ = w.Write(tt.body)
@@ -155,6 +172,8 @@ func TestFetchAvatarRefusesWhatIsNotAnImage(t *testing.T) {
 }
 
 func TestFetchAvatarStopsWithTheContext(t *testing.T) {
+	t.Parallel()
+
 	client, base := newAvatarServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(pngHeader))
 	})
@@ -167,6 +186,8 @@ func TestFetchAvatarStopsWithTheContext(t *testing.T) {
 }
 
 func TestAvatarHostDefaultsToGitHub(t *testing.T) {
+	t.Parallel()
+
 	client := &Client{}
 	assert.Equal(t, DefaultAvatarHost, client.avatarHost())
 

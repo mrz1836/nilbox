@@ -1,8 +1,10 @@
 import js from '@eslint/js'
+import vitest from '@vitest/eslint-plugin'
 import { defineConfig, globalIgnores } from 'eslint/config'
 import jsxA11y from 'eslint-plugin-jsx-a11y'
 import react from 'eslint-plugin-react'
 import reactHooks from 'eslint-plugin-react-hooks'
+import testingLibrary from 'eslint-plugin-testing-library'
 import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
@@ -87,5 +89,27 @@ export default defineConfig([
   {
     files: ['src/platform/**'],
     rules: { 'no-restricted-imports': 'off' },
+  },
+
+  // Tests: Vitest's and Testing Library's rules catch tests that pass without checking
+  // anything, focused or skipped tests, and queries that don't reflect what a user sees.
+  {
+    files: ['src/**/*.test.{ts,tsx}', 'src/test/**'],
+    extends: [vitest.configs.recommended, testingLibrary.configs['flat/react']],
+    rules: {
+      // Helpers such as row() and section() return within() queries, which the rule
+      // only recognizes when within() is called at the query site.
+      'testing-library/prefer-screen-queries': 'off',
+      // Tests also pin decorative, aria-hidden markup (the brand mark, icons, hover-reveal
+      // wrappers) that no accessible query can reach.
+      'testing-library/no-container': 'off',
+      'testing-library/no-node-access': 'off',
+    },
+  },
+  {
+    // Vitest runs without globals, so Testing Library cannot register its own cleanup;
+    // the shared setup file unmounts each test's render by hand.
+    files: ['src/test/setup.ts'],
+    rules: { 'testing-library/no-manual-cleanup': 'off' },
   },
 ])

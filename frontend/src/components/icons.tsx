@@ -25,9 +25,9 @@ function Icon({ className = 'size-4', children }: IconProps & { children: ReactN
 }
 
 // SlidersIcon stands for settings.
-export function SlidersIcon({ className }: IconProps) {
+export function SlidersIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1" />
       <circle cx="15" cy="6" r="2" />
       <circle cx="9" cy="12" r="2" />
@@ -37,18 +37,18 @@ export function SlidersIcon({ className }: IconProps) {
 }
 
 // ExternalIcon marks a link that opens in the browser.
-export function ExternalIcon({ className }: IconProps) {
+export function ExternalIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <path d="M14 4h6v6M20 4l-8.5 8.5M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
     </Icon>
   )
 }
 
 // PersonIcon stands in for an account with no login yet.
-export function PersonIcon({ className }: IconProps) {
+export function PersonIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <circle cx="12" cy="9" r="3.5" />
       <path d="M5.5 19.5a6.5 6.5 0 0 1 13 0" />
     </Icon>
@@ -56,27 +56,27 @@ export function PersonIcon({ className }: IconProps) {
 }
 
 // ChevronLeftIcon stands for going back.
-export function ChevronLeftIcon({ className }: IconProps) {
+export function ChevronLeftIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <path d="M15 5l-7 7 7 7" />
     </Icon>
   )
 }
 
 // ChevronDownIcon marks a control that opens a menu.
-export function ChevronDownIcon({ className }: IconProps) {
+export function ChevronDownIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <path d="M7 10l5 5 5-5" />
     </Icon>
   )
 }
 
 // PullRequestIcon stands for a pull request: two commits and a branch merging back.
-export function PullRequestIcon({ className }: IconProps) {
+export function PullRequestIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <circle cx="6" cy="6" r="2.25" />
       <circle cx="6" cy="18" r="2.25" />
       <circle cx="18" cy="18" r="2.25" />
@@ -86,9 +86,9 @@ export function PullRequestIcon({ className }: IconProps) {
 }
 
 // IssueIcon stands for an issue.
-export function IssueIcon({ className }: IconProps) {
+export function IssueIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <circle cx="12" cy="12" r="8.25" />
       <circle cx="12" cy="12" r="1.75" fill="currentColor" />
     </Icon>
@@ -96,45 +96,45 @@ export function IssueIcon({ className }: IconProps) {
 }
 
 // CheckIcon marks something that passed.
-export function CheckIcon({ className }: IconProps) {
+export function CheckIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <path d="M5 12.5l4.5 4.5L19 7.5" />
     </Icon>
   )
 }
 
 // XIcon marks something that failed.
-export function XIcon({ className }: IconProps) {
+export function XIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <path d="M6.5 6.5l11 11M17.5 6.5l-11 11" />
     </Icon>
   )
 }
 
 // DotIcon marks something still running.
-export function DotIcon({ className }: IconProps) {
+export function DotIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <circle cx="12" cy="12" r="4" fill="currentColor" stroke="none" />
     </Icon>
   )
 }
 
 // RingIcon marks something absent, such as a commit without checks.
-export function RingIcon({ className }: IconProps) {
+export function RingIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <circle cx="12" cy="12" r="5" />
     </Icon>
   )
 }
 
 // EyeIcon stands for reviews.
-export function EyeIcon({ className }: IconProps) {
+export function EyeIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" />
       <circle cx="12" cy="12" r="2.75" />
     </Icon>
@@ -142,36 +142,36 @@ export function EyeIcon({ className }: IconProps) {
 }
 
 // CommentIcon stands for comments.
-export function CommentIcon({ className }: IconProps) {
+export function CommentIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <path d="M6.5 4.5h11a2 2 0 0 1 2 2V14a2 2 0 0 1-2 2H11l-4.5 3.5V16a2 2 0 0 1-2-2V6.5a2 2 0 0 1 2-2z" />
     </Icon>
   )
 }
 
 // TerminalIcon stands for opening a session in the terminal.
-export function TerminalIcon({ className }: IconProps) {
+export function TerminalIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <path d="M5 7.5l4.5 4.5L5 16.5M12.5 16.5H19" />
     </Icon>
   )
 }
 
 // PlusIcon stands for adding something.
-export function PlusIcon({ className }: IconProps) {
+export function PlusIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <path d="M12 5v14M5 12h14" />
     </Icon>
   )
 }
 
 // SearchIcon marks a search field.
-export function SearchIcon({ className }: IconProps) {
+export function SearchIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <circle cx="11" cy="11" r="6" />
       <path d="M20 20l-4.5-4.5" />
     </Icon>
@@ -179,9 +179,9 @@ export function SearchIcon({ className }: IconProps) {
 }
 
 // MoreIcon opens a menu of further actions.
-export function MoreIcon({ className }: IconProps) {
+export function MoreIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <circle cx="6" cy="12" r="1.25" fill="currentColor" stroke="none" />
       <circle cx="12" cy="12" r="1.25" fill="currentColor" stroke="none" />
       <circle cx="18" cy="12" r="1.25" fill="currentColor" stroke="none" />
@@ -190,9 +190,9 @@ export function MoreIcon({ className }: IconProps) {
 }
 
 // CopyIcon stands for duplicating something.
-export function CopyIcon({ className }: IconProps) {
+export function CopyIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <rect x="8.5" y="8.5" width="11" height="11" rx="2" />
       <path d="M15.5 8.5V6.5a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2" />
     </Icon>
@@ -200,45 +200,45 @@ export function CopyIcon({ className }: IconProps) {
 }
 
 // TrashIcon stands for deleting something.
-export function TrashIcon({ className }: IconProps) {
+export function TrashIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <path d="M4.5 7h15M10 7V5h4v2M6.5 7l1 12a1.5 1.5 0 0 0 1.5 1.5h6a1.5 1.5 0 0 0 1.5-1.5l1-12M10 11v6M14 11v6" />
     </Icon>
   )
 }
 
 // ResetIcon stands for restoring an original.
-export function ResetIcon({ className }: IconProps) {
+export function ResetIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <path d="M4.5 9.5A8 8 0 1 1 4 13M4.5 4.5v5h5" />
     </Icon>
   )
 }
 
 // RefreshIcon stands for reading something from GitHub again.
-export function RefreshIcon({ className }: IconProps) {
+export function RefreshIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <path d="M19.5 9.5A8 8 0 1 0 20 13M19.5 4.5v5h-5" />
     </Icon>
   )
 }
 
 // StarIcon marks a default.
-export function StarIcon({ className }: IconProps) {
+export function StarIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <path d="M12 4.5l2.3 4.7 5.2.75-3.75 3.65.9 5.15L12 16.35l-4.65 2.4.9-5.15L4.5 9.95l5.2-.75z" />
     </Icon>
   )
 }
 
 // AlertIcon marks an error or a warning.
-export function AlertIcon({ className }: IconProps) {
+export function AlertIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <path d="M12 4.5l8.5 15h-17z" />
       <path d="M12 10v4M12 16.75v.25" />
     </Icon>
@@ -246,9 +246,9 @@ export function AlertIcon({ className }: IconProps) {
 }
 
 // CircleCheckIcon marks something that checked out fine.
-export function CircleCheckIcon({ className }: IconProps) {
+export function CircleCheckIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <circle cx="12" cy="12" r="8.25" />
       <path d="M8.5 12.25l2.5 2.5 4.5-5" />
     </Icon>
@@ -256,27 +256,18 @@ export function CircleCheckIcon({ className }: IconProps) {
 }
 
 // ChevronRightIcon marks a section that opens.
-export function ChevronRightIcon({ className }: IconProps) {
+export function ChevronRightIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <path d="M10 6l6 6-6 6" />
     </Icon>
   )
 }
 
-// BracesIcon stands for template variables.
-export function BracesIcon({ className }: IconProps) {
-  return (
-    <Icon className={className}>
-      <path d="M9 4.5H8a2 2 0 0 0-2 2V10a2 2 0 0 1-2 2 2 2 0 0 1 2 2v3.5a2 2 0 0 0 2 2h1M15 4.5h1a2 2 0 0 1 2 2V10a2 2 0 0 0 2 2 2 2 0 0 0-2 2v3.5a2 2 0 0 1-2 2h-1" />
-    </Icon>
-  )
-}
-
 // DocumentIcon stands for a prompt.
-export function DocumentIcon({ className }: IconProps) {
+export function DocumentIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <path d="M7 3.5h7l4.5 4.5v11a1.5 1.5 0 0 1-1.5 1.5H7a1.5 1.5 0 0 1-1.5-1.5V5A1.5 1.5 0 0 1 7 3.5z" />
       <path d="M14 3.5V8h4.5M9 12.5h6M9 16h4" />
     </Icon>
@@ -284,9 +275,9 @@ export function DocumentIcon({ className }: IconProps) {
 }
 
 // ClockIcon stands for a snooze.
-export function ClockIcon({ className }: IconProps) {
+export function ClockIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <circle cx="12" cy="12" r="8.5" />
       <path d="M12 7.5V12l3 2" />
     </Icon>
@@ -294,9 +285,9 @@ export function ClockIcon({ className }: IconProps) {
 }
 
 // ArchiveIcon stands for dismissing an item out of the inbox.
-export function ArchiveIcon({ className }: IconProps) {
+export function ArchiveIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <rect x="3.5" y="4" width="17" height="4.5" rx="1" />
       <path d="M5 8.5V18a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 18V8.5M10 12.5h4" />
     </Icon>
@@ -304,9 +295,9 @@ export function ArchiveIcon({ className }: IconProps) {
 }
 
 // PinIcon stands for pinning an item to the top of its list; filled, it marks one pinned.
-export function PinIcon({ className, filled = false }: IconProps & { filled?: boolean }) {
+export function PinIcon({ filled = false, ...props }: IconProps & { filled?: boolean }) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <path d="M9.5 3.5h5v5L18 13H6l3.5-4.5z" fill={filled ? 'currentColor' : 'none'} />
       <path d="M8 3.5h8M12 13v7.5" />
     </Icon>
@@ -314,9 +305,9 @@ export function PinIcon({ className, filled = false }: IconProps & { filled?: bo
 }
 
 // ShieldAlertIcon marks files that deserve a closer look before a review or a launch.
-export function ShieldAlertIcon({ className }: IconProps) {
+export function ShieldAlertIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <path d="M12 3.5l7 2.75v5.5c0 4.25-2.85 7.6-7 8.75-4.15-1.15-7-4.5-7-8.75v-5.5z" />
       <path d="M12 8.5v4M12 15.25v.25" />
     </Icon>
@@ -324,9 +315,9 @@ export function ShieldAlertIcon({ className }: IconProps) {
 }
 
 // ShieldCheckIcon marks files that were checked and found nothing to point out.
-export function ShieldCheckIcon({ className }: IconProps) {
+export function ShieldCheckIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <path d="M12 3.5l7 2.75v5.5c0 4.25-2.85 7.6-7 8.75-4.15-1.15-7-4.5-7-8.75v-5.5z" />
       <path d="M9 12.25l2.25 2.25 4-4.25" />
     </Icon>
@@ -334,27 +325,27 @@ export function ShieldCheckIcon({ className }: IconProps) {
 }
 
 // PlayIcon stands for running something.
-export function PlayIcon({ className }: IconProps) {
+export function PlayIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <path d="M7 4.5v15a.5.5 0 0 0 .77.42l11.5-7.5a.5.5 0 0 0 0-.84L7.77 4.08A.5.5 0 0 0 7 4.5Z" />
     </Icon>
   )
 }
 
 // TrophyIcon stands for an achievement.
-export function TrophyIcon({ className }: IconProps) {
+export function TrophyIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <path d="M8 4h8v5a4 4 0 0 1-8 0V4ZM8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M8.5 20h7M10 17h4" />
     </Icon>
   )
 }
 
 // SunIcon stands for the light theme.
-export function SunIcon({ className }: IconProps) {
+export function SunIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <circle cx="12" cy="12" r="4" />
       <path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4" />
     </Icon>
@@ -362,18 +353,18 @@ export function SunIcon({ className }: IconProps) {
 }
 
 // MoonIcon stands for the dark theme.
-export function MoonIcon({ className }: IconProps) {
+export function MoonIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <path d="M20.5 13.6A8.5 8.5 0 1 1 10.4 3.5a6.6 6.6 0 0 0 10.1 10.1Z" />
     </Icon>
   )
 }
 
 // DisplayIcon stands for following the system, as the System theme does.
-export function DisplayIcon({ className }: IconProps) {
+export function DisplayIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <rect x="3" y="4" width="18" height="12.5" rx="2" />
       <path d="M8.5 20.5h7M12 16.5v4" />
     </Icon>
@@ -381,9 +372,9 @@ export function DisplayIcon({ className }: IconProps) {
 }
 
 // BellIcon stands for notifications.
-export function BellIcon({ className }: IconProps) {
+export function BellIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2H4.5z" />
       <path d="M10 20.5a2 2 0 0 0 4 0" />
     </Icon>
@@ -391,9 +382,9 @@ export function BellIcon({ className }: IconProps) {
 }
 
 // AssignIcon stands for an item assigned to the user.
-export function AssignIcon({ className }: IconProps) {
+export function AssignIcon(props: IconProps) {
   return (
-    <Icon className={className}>
+    <Icon {...props}>
       <circle cx="10" cy="8.5" r="3.5" />
       <path d="M3.5 19.5a6.5 6.5 0 0 1 10.5-5.1M16 17.5l2 2 3.5-4" />
     </Icon>

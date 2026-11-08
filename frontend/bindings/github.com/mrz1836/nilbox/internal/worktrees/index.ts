@@ -6,6 +6,11 @@ export {
     Service
 };
 
+export {
+    ItemStatus,
+    Stage
+} from "./models.js";
+
 export type {
     Cleanup,
     LinkedItem,

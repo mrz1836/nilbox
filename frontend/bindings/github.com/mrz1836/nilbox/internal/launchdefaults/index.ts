@@ -8,7 +8,6 @@ export {
 
 export type {
     Defaults,
-    FieldError,
     Input,
     Target
 } from "./models.js";

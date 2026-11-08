@@ -4,10 +4,10 @@
 //
 //  1. BuildPlan turns an item, a profile, and a local clone into an OS-independent Plan:
 //     the working directory, the agent binary and its arguments, and the environment.
-//  2. A ScriptRenderer writes that plan as a script (POSIX sh today). The prompt is kept
-//     in its own file and read by the script at run time, so prompt text never appears
-//     on a command line and needs no shell quoting.
-//  3. A terminal driver opens the script in the user's terminal app.
+//  2. A terminal.ScriptRenderer writes that plan as a script (POSIX sh today). The prompt
+//     is kept in its own file and read by the script at run time, so prompt text never
+//     appears on a command line and needs no shell quoting.
+//  3. A terminal.Driver opens the script in the user's terminal app.
 //
 // Everything up to the terminal driver is pure and tested on every OS. The launcher
 // never runs a state-changing git command in the clone: worktree launches use the
@@ -19,12 +19,13 @@ import (
 	"fmt"
 	"maps"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 
-	"github.com/mrz1836/nilbox/internal/agentflags"
+	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/profiles"
 )
 
@@ -48,37 +49,17 @@ const (
 	envConfigDir = "CLAUDE_CONFIG_DIR"
 )
 
-// Item kinds, matching the inbox's stored kinds.
-const (
-	KindPR    = "pr"
-	KindIssue = "issue"
-)
-
-// Worktree name prefixes. A pull request launched against a clone whose origin is the
-// item's repository uses the agent's "#<n>" form instead, which the agent names
-// "pr-<n>" and bases on the pull request's head.
-const (
-	worktreePRPrefix    = "pr-"
-	worktreeIssuePrefix = "issue-"
-	worktreePRHeadForm  = "#"
-)
+// worktreePRHeadForm starts the --worktree argument of a pull request launched against a
+// clone whose origin is the item's repository: "#<n>", which the agent names "pr-<n>"
+// and bases on the pull request's head.
+const worktreePRHeadForm = "#"
 
 var (
-	// ErrInvalidKind is returned for an item that is neither a pull request nor an issue.
-	ErrInvalidKind = errors.New("item kind must be pr or issue")
-
 	// ErrInvalidNumber is returned for an item number that is not positive.
 	ErrInvalidNumber = errors.New("item number must be positive")
 
 	// ErrRelativePath is returned when a path that must be absolute is not.
 	ErrRelativePath = errors.New("path must be absolute")
-
-	// ErrInvalidEffort is returned for an effort level the agent does not accept.
-	ErrInvalidEffort = agentflags.ErrInvalidEffort
-
-	// ErrInvalidModel is returned for a model name the agent could misread, such as one
-	// that looks like a flag.
-	ErrInvalidModel = agentflags.ErrInvalidModel
 
 	// ErrInvalidPermissionMode is returned for a profile permission mode the agent does
 	// not accept.
@@ -100,16 +81,6 @@ var (
 	ErrConflictingExtraArg = errors.New("extra argument conflicts with the launch permission policy")
 )
 
-// envKeyPattern is what an environment variable name must look like.
-func envKeyPattern() *regexp.Regexp {
-	return regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-}
-
-// effortLevels returns the values the agent accepts for --effort.
-func effortLevels() []string {
-	return agentflags.EffortLevels()
-}
-
 // permissionFlags returns the switches only resolvePermission may set.
 func permissionFlags() []string {
 	return []string{flagPermissionMode, flagSkipPermissions, flagAllowSkipPermissions}
@@ -117,8 +88,8 @@ func permissionFlags() []string {
 
 // Item is the pull request or issue a session is launched on.
 type Item struct {
-	// Kind is KindPR or KindIssue.
-	Kind string
+	// Kind is the kind of item.
+	Kind item.Kind
 
 	// Number is the pull request or issue number.
 	Number int
@@ -184,7 +155,7 @@ type Request struct {
 // first argument after Binary, read from PromptFile when the script runs.
 type Plan struct {
 	// Kind and Number identify the item, for naming the launch files.
-	Kind   string
+	Kind   item.Kind
 	Number int
 
 	// Dir is the directory the session starts in.
@@ -269,7 +240,7 @@ func BuildPlan(req Request) (Plan, error) {
 	}
 
 	if req.Worktree {
-		plan.Worktree = WorktreeName(req.Item, req.Clone.OriginIsItemRepo)
+		plan.Worktree = worktreeArg(req.Item, req.Clone.OriginIsItemRepo)
 		plan.WorktreeOnPRHead = strings.HasPrefix(plan.Worktree, worktreePRHeadForm)
 		args = append(args, flagWorktree, plan.Worktree)
 	}
@@ -283,30 +254,41 @@ func BuildPlan(req Request) (Plan, error) {
 	return plan, nil
 }
 
-// WorktreeName returns the --worktree argument for an item. The same item always gets
-// the same name, so launching again resumes the existing worktree:
+// worktreeArg returns the --worktree argument for an item. The same item always gets the
+// same worktree, so launching again resumes it:
 //
 //   - a pull request whose repository is the clone's origin: "#<n>" (the agent names
 //     the worktree "pr-<n>" and bases it on the pull request's head)
-//   - any other pull request: "pr-<n>"
-//   - an issue: "issue-<n>"
-func WorktreeName(item Item, originIsItemRepo bool) string {
-	n := strconv.Itoa(item.Number)
-
-	switch {
-	case item.Kind == KindPR && originIsItemRepo:
-		return worktreePRHeadForm + n
-	case item.Kind == KindPR:
-		return worktreePRPrefix + n
-	default:
-		return worktreeIssuePrefix + n
+//   - any other item: its item.WorktreeName, "pr-<n>" or "issue-<n>"
+func worktreeArg(it Item, originIsItemRepo bool) string {
+	if it.Kind == item.KindPR && originIsItemRepo {
+		return worktreePRHeadForm + strconv.Itoa(it.Number)
 	}
+
+	return item.WorktreeName(it.Kind, it.Number)
+}
+
+// script is what the plan's launch script runs, for a terminal.ScriptRenderer.
+func (p Plan) script() terminal.Script {
+	return terminal.Script{
+		Dir: p.Dir, Binary: p.Binary, Args: p.Args, Env: p.Env, Unset: p.Unset, PromptFile: p.PromptFile,
+	}
+}
+
+// worktreeDir is the name of the worktree directory the agent uses for the plan's
+// --worktree argument (the "#<n>" form becomes "pr-<n>"), or "" without a worktree.
+func (p Plan) worktreeDir() string {
+	if p.Worktree == "" {
+		return ""
+	}
+
+	return item.WorktreeName(p.Kind, p.Number)
 }
 
 // validateRequest checks the request's item and paths.
 func validateRequest(req Request) error {
-	if req.Item.Kind != KindPR && req.Item.Kind != KindIssue {
-		return fmt.Errorf("%w: %q", ErrInvalidKind, req.Item.Kind)
+	if !req.Item.Kind.Valid() {
+		return fmt.Errorf("%w: %q", item.ErrInvalidKind, req.Item.Kind)
 	}
 
 	if req.Item.Number <= 0 {
@@ -354,7 +336,7 @@ func profileArgs(p profiles.Profile, permArgs []string) ([]string, error) {
 func modelEffortArgs(p profiles.Profile) ([]string, error) {
 	var args []string
 
-	if err := agentflags.ValidateModel(p.Model); err != nil {
+	if err := agent.ValidateModel(p.Model); err != nil {
 		return nil, err
 	}
 
@@ -362,7 +344,7 @@ func modelEffortArgs(p profiles.Profile) ([]string, error) {
 		args = append(args, flagModel, p.Model)
 	}
 
-	if err := agentflags.ValidateEffort(p.Effort); err != nil {
+	if err := agent.ValidateEffort(p.Effort); err != nil {
 		return nil, err
 	}
 
@@ -421,10 +403,8 @@ func conflictsWithPermissions(arg string) bool {
 // profile unsets CLAUDE_CONFIG_DIR so the agent's own default login is used.
 func planEnv(p profiles.Profile) (map[string]string, []string, error) {
 	env := make(map[string]string, len(p.Env)+1)
-	pattern := envKeyPattern()
-
 	for key, value := range p.Env {
-		if !pattern.MatchString(key) {
+		if !terminal.ValidEnvName(key) {
 			return nil, nil, fmt.Errorf("%w: %q", ErrInvalidEnvKey, key)
 		}
 

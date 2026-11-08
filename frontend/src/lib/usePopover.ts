@@ -1,4 +1,23 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type RefObject } from 'react'
+
+// Placement is where a panel opens against its button: always below it ('below'); below
+// unless it does not fit there and there is more room above ('flip'); or flipped the same
+// way and kept within the area it scrolls in, scrolling inside itself when it runs longer
+// ('fit'), for a panel inside a scrolling list that would otherwise be cut off.
+export type Placement = 'below' | 'flip' | 'fit'
+
+// Side is the side of its button a panel opened on.
+export type Side = 'above' | 'below'
+
+// PopoverFocus is where focus goes as a panel opens: onto the panel itself, so Escape and
+// Tab work from there, or onto the control a function picks inside it. Without one, focus
+// stays on the button.
+export type PopoverFocus<P extends HTMLElement> = 'panel' | ((panel: P) => HTMLElement | null | undefined)
+
+export interface PopoverOptions<P extends HTMLElement> {
+  placement?: Placement
+  focus?: PopoverFocus<P>
+}
 
 // Popover is the state of a button that opens a floating panel.
 export interface Popover<T extends HTMLElement, P extends HTMLElement> {
@@ -7,36 +26,131 @@ export interface Popover<T extends HTMLElement, P extends HTMLElement> {
   // either keep the panel open.
   triggerRef: RefObject<T | null>
   panelRef: RefObject<P | null>
+  // side is the side of the button the panel opened on.
+  side: Side
+  // maxHeight is the most the panel may grow to, with the 'fit' placement, or undefined.
+  maxHeight: number | undefined
   toggle: () => void
   show: () => void
   // close hides the panel, moving focus back to the button when restoreFocus is set.
   close: (restoreFocus?: boolean) => void
 }
 
+// panelGap is the room kept between a panel and the edge of the area it opens in, and
+// minPanelHeight the least height a fitted panel keeps however little room there is.
+const panelGap = 12
+const minPanelHeight = 160
+
+interface Bounds {
+  top: number
+  bottom: number
+}
+
+// scrollBounds returns the top and bottom of the nearest ancestor that scrolls, which clips
+// a panel inside it, or of the window.
+function scrollBounds(el: HTMLElement): Bounds {
+  for (let node = el.parentElement; node !== null; node = node.parentElement) {
+    const overflow = getComputedStyle(node).overflowY
+
+    if (overflow === 'auto' || overflow === 'scroll') {
+      const rect = node.getBoundingClientRect()
+
+      return { top: rect.top, bottom: rect.bottom }
+    }
+  }
+
+  return { top: 0, bottom: window.innerHeight }
+}
+
+// place works out the side a panel opens on, and with 'fit' the height it keeps within: it
+// opens above when it does not fit below and there is more room above.
+function place(trigger: HTMLElement, panel: HTMLElement, placement: Placement): { side: Side; maxHeight?: number } {
+  const bounds = placement === 'fit' ? scrollBounds(trigger) : { top: 0, bottom: window.innerHeight }
+  const rect = trigger.getBoundingClientRect()
+  const below = bounds.bottom - rect.bottom - panelGap
+  const above = rect.top - bounds.top - panelGap
+  // The panel's full height, whether it scrolls inside itself or not.
+  const height = Math.max(panel.offsetHeight, panel.scrollHeight)
+  const up = height > below && above > below
+
+  if (placement !== 'fit') {
+    return { side: up ? 'above' : 'below' }
+  }
+
+  return { side: up ? 'above' : 'below', maxHeight: Math.max(minPanelHeight, up ? above : below) }
+}
+
 // usePopover opens and closes a floating panel the way a desktop menu behaves: a click or
 // focus anywhere outside the button and the panel closes it, and Escape closes it and
 // puts focus back on the button. Escape is taken in the capture phase and marked handled
-// (defaultPrevented), so a page-level Escape handler can tell it was used.
-export function usePopover<T extends HTMLElement, P extends HTMLElement>(): Popover<T, P> {
+// (defaultPrevented), so a page-level Escape handler can tell it was used. As the panel
+// opens, it is placed (see Placement) and focus moves as asked (see PopoverFocus).
+export function usePopover<T extends HTMLElement, P extends HTMLElement>({
+  placement = 'below',
+  focus,
+}: PopoverOptions<P> = {}): Popover<T, P> {
   const [open, setOpen] = useState(false)
+  const [side, setSide] = useState<Side>('below')
+  const [maxHeight, setMaxHeight] = useState<number | undefined>(undefined)
   const triggerRef = useRef<T>(null)
   const panelRef = useRef<P>(null)
 
-  const close = useCallback((restoreFocus = false) => {
+  const close = (restoreFocus = false) => {
     setOpen(false)
 
     if (restoreFocus) {
       triggerRef.current?.focus()
     }
-  }, [])
+  }
 
-  const show = useCallback(() => {
+  const show = () => {
     setOpen(true)
-  }, [])
+  }
 
-  const toggle = useCallback(() => {
+  const toggle = () => {
     setOpen((was) => !was)
-  }, [])
+  }
+
+  // Place the panel before it paints, so it never shows on the wrong side first.
+  useLayoutEffect(() => {
+    const trigger = triggerRef.current
+    const panel = panelRef.current
+
+    if (!open || placement === 'below' || trigger === null || panel === null) {
+      return
+    }
+
+    const placed = place(trigger, panel, placement)
+
+    setSide(placed.side)
+    setMaxHeight(placed.maxHeight)
+  }, [open, placement])
+
+  // Focus moves as the latest options ask, without opening the panel again when they change.
+  const moveFocus = useEffectEvent(() => {
+    const panel = panelRef.current
+
+    if (panel === null || focus === undefined) {
+      return
+    }
+
+    if (focus === 'panel') {
+      panel.focus()
+    } else {
+      focus(panel)?.focus()
+    }
+  })
+
+  useEffect(() => {
+    if (open) {
+      moveFocus()
+    }
+  }, [open])
+
+  // The listeners close with the latest close, so they are added once per opening.
+  const dismiss = useEffectEvent((restoreFocus: boolean) => {
+    close(restoreFocus)
+  })
 
   useEffect(() => {
     if (!open) {
@@ -48,20 +162,20 @@ export function usePopover<T extends HTMLElement, P extends HTMLElement>(): Popo
 
     const onPointer = (e: MouseEvent) => {
       if (!inside(e.target)) {
-        close()
+        dismiss(false)
       }
     }
 
     const onFocus = (e: FocusEvent) => {
       if (!inside(e.target)) {
-        close()
+        dismiss(false)
       }
     }
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault()
-        close(true)
+        dismiss(true)
       }
     }
 
@@ -74,7 +188,7 @@ export function usePopover<T extends HTMLElement, P extends HTMLElement>(): Popo
       document.removeEventListener('focusin', onFocus)
       document.removeEventListener('keydown', onKeyDown, true)
     }
-  }, [open, close])
+  }, [open])
 
-  return { open, triggerRef, panelRef, toggle, show, close }
+  return { open, triggerRef, panelRef, side, maxHeight, toggle, show, close }
 }

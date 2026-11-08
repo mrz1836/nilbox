@@ -7,15 +7,29 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
+
+	"golang.org/x/sync/errgroup"
+
+	"github.com/mrz1836/nilbox/internal/item"
 )
 
 // The REST API lists a pull request's files 100 to a page, and at most 3,000 of them.
 const (
 	filesPerPage   = 100
 	maxListedFiles = 3000
+	maxFilePages   = maxListedFiles / filesPerPage
 )
+
+// filesParallel is how many pages of files are read at once once the first page has
+// said how many there are.
+const filesParallel = 4
+
+// lastPageLink finds the last page's link in a Link header, as GitHub sends it with
+// every page of a list longer than one.
+var lastPageLink = regexp.MustCompile(`<([^>]*)>;\s*rel="last"`)
 
 // fileReadAttempts is how many times FetchChangedFiles reads the files before giving up
 // on a pull request that keeps being pushed to.
@@ -67,7 +81,7 @@ type ChangedFile struct {
 
 // FetchPullHead reads a pull request's head commit and size as of now, with one REST
 // request.
-func (c *Client) FetchPullHead(ctx context.Context, tok Token, ref ItemRef) (*PullHead, error) {
+func (c *Client) FetchPullHead(ctx context.Context, tok Token, ref item.Ref) (*PullHead, error) {
 	head, err := c.fetchPullHead(ctx, tok, ref)
 
 	return head, Redact(err, tok)
@@ -81,15 +95,15 @@ func (c *Client) FetchPullHead(ctx context.Context, tok Token, ref ItemRef) (*Pu
 // already known, or "" to read it first.
 //
 // It costs one REST request per 100 files, plus one or two for the head.
-func (c *Client) FetchChangedFiles(ctx context.Context, tok Token, ref ItemRef, head string) (*ChangedFiles, error) {
+func (c *Client) FetchChangedFiles(ctx context.Context, tok Token, ref item.Ref, head string) (*ChangedFiles, error) {
 	files, err := c.fetchChangedFiles(ctx, tok, ref, head)
 
 	return files, Redact(err, tok)
 }
 
 // fetchChangedFiles is FetchChangedFiles without the redaction.
-func (c *Client) fetchChangedFiles(ctx context.Context, tok Token, ref ItemRef, head string) (*ChangedFiles, error) {
-	if err := ref.validate(); err != nil {
+func (c *Client) fetchChangedFiles(ctx context.Context, tok Token, ref item.Ref, head string) (*ChangedFiles, error) {
+	if err := validateRef(ref); err != nil {
 		return nil, err
 	}
 
@@ -108,7 +122,7 @@ func (c *Client) fetchChangedFiles(ctx context.Context, tok Token, ref ItemRef, 
 // readFilesAt lists the files and reads the head again. When the head is still head
 // (read first when it is ""), it returns the list; otherwise it returns no list and the
 // head as it is now.
-func (c *Client) readFilesAt(ctx context.Context, tok Token, ref ItemRef, head string) (*ChangedFiles, string, error) {
+func (c *Client) readFilesAt(ctx context.Context, tok Token, ref item.Ref, head string) (*ChangedFiles, string, error) {
 	if head == "" {
 		before, err := c.fetchPullHead(ctx, tok, ref)
 		if err != nil {
@@ -138,8 +152,8 @@ func (c *Client) readFilesAt(ctx context.Context, tok Token, ref ItemRef, head s
 }
 
 // fetchPullHead sends GET /repos/{owner}/{name}/pulls/{number}.
-func (c *Client) fetchPullHead(ctx context.Context, tok Token, ref ItemRef) (*PullHead, error) {
-	if err := ref.validate(); err != nil {
+func (c *Client) fetchPullHead(ctx context.Context, tok Token, ref item.Ref) (*PullHead, error) {
+	if err := validateRef(ref); err != nil {
 		return nil, err
 	}
 
@@ -168,19 +182,46 @@ func (c *Client) fetchPullHead(ctx context.Context, tok Token, ref ItemRef) (*Pu
 }
 
 // listFiles reads every page of GET /repos/{owner}/{name}/pulls/{number}/files, up to
-// the 3,000 files GitHub lists.
-func (c *Client) listFiles(ctx context.Context, tok Token, ref ItemRef) ([]ChangedFile, error) {
+// the 3,000 files GitHub lists. The first page's Link header says how many pages there
+// are, and the rest are read a few at a time; without one, they are read in turn.
+func (c *Client) listFiles(ctx context.Context, tok Token, ref item.Ref) ([]ChangedFile, error) {
+	first, err := c.listFilesPage(ctx, tok, ref, 1)
+	if err != nil || !first.full {
+		return first.files, err
+	}
+
+	last := min(first.last, maxFilePages)
+	if last < 2 {
+		return c.listFilesInTurn(ctx, tok, ref, first.files)
+	}
+
+	pages := make([]filesPage, last+1)
+	pages[1] = first
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(filesParallel)
+
+	for page := 2; page <= last; page++ {
+		g.Go(func() error {
+			var pageErr error
+
+			pages[page], pageErr = c.listFilesPage(gctx, tok, ref, page)
+
+			return pageErr
+		})
+	}
+
+	if err = g.Wait(); err != nil {
+		return nil, err
+	}
+
 	var out []ChangedFile
 
-	for page := 1; page <= maxListedFiles/filesPerPage; page++ {
-		files, full, err := c.listFilesPage(ctx, tok, ref, page)
-		if err != nil {
-			return nil, err
-		}
+	// The list ends at the first page that is not full, as it does when read in turn.
+	for _, p := range pages[1:] {
+		out = append(out, p.files...)
 
-		out = append(out, files...)
-
-		if !full {
+		if !p.full {
 			break
 		}
 	}
@@ -188,14 +229,40 @@ func (c *Client) listFiles(ctx context.Context, tok Token, ref ItemRef) ([]Chang
 	return out, nil
 }
 
-// listFilesPage reads one page of a pull request's files, and reports whether it was
-// full, so another may follow.
-func (c *Client) listFilesPage(ctx context.Context, tok Token, ref ItemRef, page int) ([]ChangedFile, bool, error) {
+// listFilesInTurn reads the pages after the first one at a time, for a list whose first
+// page did not say how many there are, until one is not full.
+func (c *Client) listFilesInTurn(ctx context.Context, tok Token, ref item.Ref, out []ChangedFile) ([]ChangedFile, error) {
+	for page := 2; page <= maxFilePages; page++ {
+		p, err := c.listFilesPage(ctx, tok, ref, page)
+		if err != nil {
+			return nil, err
+		}
+
+		out = append(out, p.files...)
+
+		if !p.full {
+			break
+		}
+	}
+
+	return out, nil
+}
+
+// filesPage is one page of a pull request's files: the files, whether the page was full,
+// so another may follow, and the number of the last page, or 0 when GitHub did not say.
+type filesPage struct {
+	files []ChangedFile
+	full  bool
+	last  int
+}
+
+// listFilesPage reads one page of a pull request's files.
+func (c *Client) listFilesPage(ctx context.Context, tok Token, ref item.Ref, page int) (filesPage, error) {
 	query := url.Values{"per_page": {strconv.Itoa(filesPerPage)}, "page": {strconv.Itoa(page)}}
 
-	raw, _, err := c.do(ctx, tok, http.MethodGet, pullPath(ref)+"/files?"+query.Encode(), nil)
+	raw, header, err := c.do(ctx, tok, http.MethodGet, pullPath(ref)+"/files?"+query.Encode(), nil)
 	if err != nil {
-		return nil, false, fmt.Errorf("list the files of %s: %w", ref, err)
+		return filesPage{}, fmt.Errorf("list the files of %s: %w", ref, err)
 	}
 
 	var batch []struct {
@@ -205,7 +272,7 @@ func (c *Client) listFilesPage(ctx context.Context, tok Token, ref ItemRef, page
 	}
 
 	if err = json.Unmarshal(raw, &batch); err != nil {
-		return nil, false, fmt.Errorf("%w: decode the files of %s: %w", ErrMalformedResponse, ref, err)
+		return filesPage{}, fmt.Errorf("%w: decode the files of %s: %w", ErrMalformedResponse, ref, err)
 	}
 
 	files := make([]ChangedFile, 0, len(batch))
@@ -216,25 +283,42 @@ func (c *Client) listFilesPage(ctx context.Context, tok Token, ref ItemRef, page
 		}
 	}
 
-	return files, len(batch) == filesPerPage, nil
+	return filesPage{files: files, full: len(batch) == filesPerPage, last: lastPage(header)}, nil
+}
+
+// lastPage reads the number of the last page from a Link header, or returns 0 when it
+// names none.
+func lastPage(header http.Header) int {
+	m := lastPageLink.FindStringSubmatch(header.Get("Link"))
+	if m == nil {
+		return 0
+	}
+
+	link, err := url.Parse(m[1])
+	if err != nil {
+		return 0
+	}
+
+	n, err := strconv.Atoi(link.Query().Get("page"))
+	if err != nil || n < 1 {
+		return 0
+	}
+
+	return n
 }
 
 // pullPath is a pull request's REST path, with its owner and name escaped.
-func pullPath(ref ItemRef) string {
-	return "/repos/" + url.PathEscape(ref.Owner) + "/" + url.PathEscape(ref.Name) + "/pulls/" + strconv.Itoa(ref.Number)
+func pullPath(ref item.Ref) string {
+	return "/repos/" + url.PathEscape(ref.Repo.Owner) + "/" + url.PathEscape(ref.Repo.Repo) + "/pulls/" +
+		strconv.Itoa(ref.Number)
 }
 
-// validate rejects a reference that names no pull request: a missing owner or name, or a
-// number that is not positive.
-func (r ItemRef) validate() error {
-	if r.Owner == "" || r.Name == "" || r.Number <= 0 {
-		return fmt.Errorf("%w: %q/%q#%d", ErrInvalidItemRef, r.Owner, r.Name, r.Number)
+// validateRef rejects a reference that names no pull request: a missing owner or name, or
+// a number that is not positive.
+func validateRef(ref item.Ref) error {
+	if ref.Repo.Owner == "" || ref.Repo.Repo == "" || ref.Number <= 0 {
+		return fmt.Errorf("%w: %q/%q#%d", ErrInvalidItemRef, ref.Repo.Owner, ref.Repo.Repo, ref.Number)
 	}
 
 	return nil
-}
-
-// String names the pull request as owner/name#number.
-func (r ItemRef) String() string {
-	return r.Owner + "/" + r.Name + "#" + strconv.Itoa(r.Number)
 }

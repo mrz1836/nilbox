@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/mrz1836/nilbox/internal/execpath"
 )
 
 const (
@@ -36,12 +38,6 @@ var errParseCount = errors.New("unexpected commit count")
 // objectIDPattern is a full commit ID, SHA-1 or SHA-256.
 var objectIDPattern = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
 
-// Runner runs a program with arguments and returns what it wrote. Implementations run the
-// argv directly, never through a shell; execpath.Runner is the app's.
-type Runner interface {
-	Run(ctx context.Context, name string, args ...string) (stdout, stderr []byte, err error)
-}
-
 // allowedFixedCommands are the complete argument lists, after `-C <dir>`, that git may
 // run with. `worktree remove`, `worktree unlock`, and `update-ref -d` are checked
 // separately because they take a path or a branch.
@@ -65,12 +61,19 @@ func statusArgs() []string {
 
 func lastCommitArgs() []string { return []string{"log", "-1", "--format=%ct"} }
 
+// commitTimesCmd starts the argument list that prints the commit time of each commit
+// named after it, each once, without walking their history.
+func commitTimesCmd() []string { return []string{"log", "--no-walk=unsorted", "--format=%H %ct"} }
+
+// commitTimesArgs reads the commit times of oids in one run.
+func commitTimesArgs(oids []string) []string { return append(commitTimesCmd(), oids...) }
+
 // unpushedArgs counts the commits on HEAD that no remote-tracking branch has.
 func unpushedArgs() []string { return []string{"rev-list", "--count", "HEAD", "--not", "--remotes"} }
 
 // git runs allowlisted git commands as `git -C <dir> <args>`.
 type git struct {
-	run Runner
+	run execpath.Runner
 	bin string
 }
 
@@ -160,6 +163,34 @@ func (g git) dirtyCount(ctx context.Context, dir string) (int, []byte, error) {
 	return countStatusEntries(stdout), nil, nil
 }
 
+// commitTimes returns the commit time of each of oids, in Unix seconds, by commit ID, read
+// in the repository at dir with one git run. oids must be full commit IDs; a commit git
+// cannot read fails the whole run.
+func (g git) commitTimes(ctx context.Context, dir string, oids []string) (map[string]int64, error) {
+	stdout, _, err := g.do(ctx, dir, commitTimesArgs(oids)...)
+	if err != nil {
+		return nil, err
+	}
+
+	times := make(map[string]int64, len(oids))
+
+	for line := range strings.Lines(string(stdout)) {
+		oid, unix, ok := strings.Cut(strings.TrimSpace(line), " ")
+		if !ok {
+			return nil, fmt.Errorf("%w %q", errParseCommitTime, line)
+		}
+
+		at, parseErr := strconv.ParseInt(unix, 10, 64)
+		if parseErr != nil {
+			return nil, fmt.Errorf("%w %q: %w", errParseCommitTime, line, parseErr)
+		}
+
+		times[oid] = at
+	}
+
+	return times, nil
+}
+
 // lastCommit returns the commit time of HEAD in the worktree at dir, in Unix seconds.
 func (g git) lastCommit(ctx context.Context, dir string) (int64, error) {
 	stdout, _, err := g.do(ctx, dir, lastCommitArgs()...)
@@ -182,6 +213,10 @@ func allowed(args []string) bool {
 		return true
 	}
 
+	if allowedCommitTimes(args) {
+		return true
+	}
+
 	if len(args) < 3 {
 		return false
 	}
@@ -196,6 +231,23 @@ func allowed(args []string) bool {
 	default:
 		return false
 	}
+}
+
+// allowedCommitTimes reports a commit-times run: the fixed words, then one or more full
+// commit IDs and nothing else.
+func allowedCommitTimes(args []string) bool {
+	head := commitTimesCmd()
+	if len(args) <= len(head) || joinArgs(args[:len(head)]) != joinArgs(head) {
+		return false
+	}
+
+	for _, oid := range args[len(head):] {
+		if !isCommitID(oid) {
+			return false
+		}
+	}
+
+	return true
 }
 
 // allowedRemove reports the arguments after `worktree remove` that may run: a path, with
@@ -240,7 +292,7 @@ func countStatusEntries(out []byte) int {
 	count := 0
 	skip := false
 
-	for _, field := range bytes.Split(out, []byte{0}) {
+	for field := range bytes.SplitSeq(out, []byte{0}) {
 		switch {
 		case skip:
 			skip = false
@@ -255,29 +307,8 @@ func countStatusEntries(out []byte) int {
 	return count
 }
 
-// exitCode reports whether err is a process exit with a non-zero status (git ran and
+// gitRefused reports whether err is a process exit with a non-zero status (git ran and
 // refused), as opposed to a failure to run git at all or a canceled context.
-func exitCode(ctx context.Context, err error) bool {
-	var exit interface{ ExitCode() int }
-
-	return ctx.Err() == nil && errors.As(err, &exit) && exit.ExitCode() > 0
-}
-
-// firstLine returns git's first non-empty stderr line without its "fatal: " or
-// "error: " prefix.
-func firstLine(stderr []byte) string {
-	for _, line := range strings.Split(string(stderr), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		for _, prefix := range []string{"fatal: ", "error: "} {
-			line = strings.TrimPrefix(line, prefix)
-		}
-
-		return line
-	}
-
-	return ""
+func gitRefused(ctx context.Context, err error) bool {
+	return ctx.Err() == nil && execpath.ExitCode(err) > 0
 }

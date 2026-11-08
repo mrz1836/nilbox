@@ -1,0 +1,84 @@
+# ------------------------------------------------------------------------------------
+#  sqlc
+#
+#  Purpose: Check the typed queries sqlc generates on an ubuntu runner: the committed
+#  code must match what the queries and migrations generate, and every query must
+#  prepare against the schema the migrations build.
+#
+#  The check itself is the local `magex db:check` target, which runs the sqlc version
+#  .github/env/90-project.env pins, so CI and local checks cannot drift apart.
+# ------------------------------------------------------------------------------------
+
+name: sqlc
+
+on:
+  pull_request:
+    paths:
+      - "sqlc.yaml"
+      - "internal/**/queries/**"
+      - "internal/store/migrate/migrations/**"
+      - ".github/env/90-project.env"
+      - "magefiles/db.go"
+      - ".github/workflows/sqlc.yml"
+  push:
+    branches:
+      - master
+    paths:
+      - "sqlc.yaml"
+      - "internal/**/queries/**"
+      - "internal/store/migrate/migrations/**"
+      - ".github/env/90-project.env"
+      - "magefiles/db.go"
+      - ".github/workflows/sqlc.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sqlc-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Generated queries
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go (version from go.mod)
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Read the MAGE-X version from .github/env
+        run: |
+          # Sourced as a condition, as the shared load-env action does, so the loader's
+          # own strict mode cannot end this step early.
+          if ! source .github/env/load-env.sh; then
+            echo "::error::could not load the .github/env files"
+            exit 1
+          fi
+          echo "MAGE_X_VERSION=$MAGE_X_VERSION" >> "$GITHUB_ENV"
+
+      - name: Set up MAGE-X
+        uses: ./.github/actions/setup-magex
+        with:
+          magex-version: ${{ env.MAGE_X_VERSION }}
+          runner-os: ${{ runner.os }}
+
+      # magex runs this repository's own targets (magefiles/) through the mage binary.
+      # Without mage on PATH it falls back to `go run` on magefiles/, which has no main
+      # function until mage generates one, so the build fails. Install the mage version
+      # go.mod pins.
+      - name: Install mage (version from go.mod)
+        run: |
+          mage_version="$(go list -m -f '{{.Version}}' github.com/magefile/mage)"
+          go install "github.com/magefile/mage@${mage_version}"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Check the generated queries
+        run: magex db:check

@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react'
+import { useId, useState } from 'react'
 
 import type { PromptVariable } from '../platform'
 import { SearchIcon } from './icons'
@@ -58,16 +58,13 @@ export function VariablesPanel({
   const searchId = useId()
   const [query, setQuery] = useState('')
 
-  const groups = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    const shown = variables.filter(
-      (v) => q === '' || v.name.toLowerCase().includes(q) || v.description.toLowerCase().includes(q),
-    )
-
-    return groupOrder
-      .map((group) => ({ group, vars: shown.filter((v) => v.group === group) }))
-      .filter((g) => g.vars.length > 0)
-  }, [variables, query])
+  const q = query.trim().toLowerCase()
+  const shown = variables.filter(
+    (v) => q === '' || v.name.toLowerCase().includes(q) || v.description.toLowerCase().includes(q),
+  )
+  const groups = groupOrder
+    .map((group) => ({ group, vars: shown.filter((v) => v.group === group) }))
+    .filter((g) => g.vars.length > 0)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

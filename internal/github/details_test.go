@@ -37,6 +37,8 @@ func readDetailsRequest(t *testing.T, r *http.Request) detailsRequest {
 }
 
 func TestFetchDetailsReadsEachItem(t *testing.T) {
+	t.Parallel()
+
 	body := fixture(t, "details_response.json")
 	ids := []string{"PR_fakeNodeIdPassing", "PR_fakeNodeIdFailing", "PR_fakeNodeIdNoChecks", "I_fakeNodeIdIssue", "PR_fakeNodeIdGone"}
 
@@ -107,6 +109,8 @@ func TestFetchDetailsReadsEachItem(t *testing.T) {
 }
 
 func TestFetchDetailsBatchesTheIDsSideBySide(t *testing.T) {
+	t.Parallel()
+
 	var (
 		mu       sync.Mutex
 		requests atomic.Int32
@@ -148,6 +152,8 @@ func TestFetchDetailsBatchesTheIDsSideBySide(t *testing.T) {
 }
 
 func TestDetailsBatches(t *testing.T) {
+	t.Parallel()
+
 	ids := func(n int) []string {
 		out := make([]string, n)
 		for i := range out {
@@ -180,12 +186,16 @@ func TestDetailsBatches(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(fmt.Sprint(tt.items), func(t *testing.T) {
+			t.Parallel()
+
 			assert.Equal(t, tt.want, sizes(detailsBatches(ids(tt.items))))
 		})
 	}
 }
 
 func TestDetailsAdd(t *testing.T) {
+	t.Parallel()
+
 	first := &Details{
 		Items:     map[string]ItemDetails{"I_a": {Comments: 1}},
 		RateLimit: QueryRate{Cost: 1, Limit: 5000, Remaining: 4990},
@@ -215,6 +225,8 @@ func TestDetailsAdd(t *testing.T) {
 }
 
 func TestFetchDetailsWithoutIDs(t *testing.T) {
+	t.Parallel()
+
 	client := newTestClient(t, func(http.ResponseWriter, *http.Request) {
 		t.Error("nothing is requested without IDs")
 	})
@@ -226,6 +238,8 @@ func TestFetchDetailsWithoutIDs(t *testing.T) {
 }
 
 func TestFetchDetailsFailures(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		status  int
@@ -240,6 +254,8 @@ func TestFetchDetailsFailures(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(tt.status)
 				_, _ = io.WriteString(w, tt.body)
@@ -251,20 +267,9 @@ func TestFetchDetailsFailures(t *testing.T) {
 	}
 }
 
-func TestFetchDetailsKeepsTheTokenOutOfErrors(t *testing.T) {
-	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = fmt.Fprintf(w, `{"errors":[{"message":"bad token %s"}]}`, fakeToken)
-	})
-
-	_, err := client.FetchDetails(t.Context(), NewToken(fakeToken), []string{"I_fakeNodeId1"})
-	require.ErrorIs(t, err, ErrGraphQL)
-	assert.NotContains(t, err.Error(), fakeToken)
-
-	_, err = client.FetchDetails(t.Context(), Token{}, []string{"I_fakeNodeId1"})
-	require.ErrorIs(t, err, ErrNotLoggedIn)
-}
-
 func TestCheckOutcomes(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		state string
 		run   outcome
@@ -290,6 +295,8 @@ func TestCheckOutcomes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.state, func(t *testing.T) {
+			t.Parallel()
+
 			assert.Equal(t, tt.run, checkRunOutcome(tt.state), "check run")
 			assert.Equal(t, tt.other, statusOutcome(tt.state), "commit status")
 		})
@@ -297,6 +304,8 @@ func TestCheckOutcomes(t *testing.T) {
 }
 
 func TestLabelColor(t *testing.T) {
+	t.Parallel()
+
 	tests := map[string]string{
 		"0e8a16":  "#0e8a16",
 		"FBCA04":  "#fbca04",
@@ -312,6 +321,8 @@ func TestLabelColor(t *testing.T) {
 }
 
 func TestDetailsNodeSkipsWhatIsNotAnItem(t *testing.T) {
+	t.Parallel()
+
 	for _, n := range []*detailsNode{nil, {TypeName: typePullRequest}, {TypeName: "Discussion", ID: "D_fakeNodeId"}} {
 		_, _, ok := n.details()
 		assert.False(t, ok)
@@ -319,6 +330,8 @@ func TestDetailsNodeSkipsWhatIsNotAnItem(t *testing.T) {
 }
 
 func TestReviewerKey(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, "user:octo-user", reviewerKey("User", "Octo-User", ""))
 	assert.Equal(t, "user:octo-bot", reviewerKey("Bot", "octo-bot", ""))
 	assert.Equal(t, "team:reviewers", reviewerKey("Team", "", "Reviewers"))

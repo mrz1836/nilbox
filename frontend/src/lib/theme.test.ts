@@ -1,44 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import {
-  appearanceIsDark,
-  defaultTheme,
-  onAppearanceChange,
-  resolveDark,
-  schemeSwitch,
-  themes,
-  toTheme,
-  type Theme,
-} from './theme'
+import { defaultTheme, resolveDark, schemeSwitch, themes, type Theme } from './theme'
 
-// fakeAppearance is a window whose appearance (dark or light) and reduced-motion setting
-// the test controls, over a document of its own.
-function fakeAppearance({ dark = false, reducedMotion = false } = {}) {
-  const listeners = new Set<() => void>()
-  const darkQuery = {
-    matches: dark,
-    addEventListener: vi.fn((_type: string, listener: () => void) => listeners.add(listener)),
-    removeEventListener: vi.fn((_type: string, listener: () => void) => listeners.delete(listener)),
-  }
-  const matchMedia = vi.fn((query: string) =>
-    query === '(prefers-color-scheme: dark)' ? darkQuery : { matches: reducedMotion },
-  )
+// fakeAppearance is a window whose reduced-motion setting the test controls, over a
+// document of its own.
+function fakeAppearance({ reducedMotion = false } = {}) {
+  const matchMedia = vi.fn(() => ({ matches: reducedMotion }))
   const doc = document.implementation.createHTMLDocument('')
   const win = { document: doc, matchMedia } as unknown as Window
 
-  return {
-    win,
-    doc,
-    root: doc.documentElement,
-    matchMedia,
-    listeners,
-    setDark(next: boolean) {
-      darkQuery.matches = next
-      for (const listener of listeners) {
-        listener()
-      }
-    },
-  }
+  return { win, doc, root: doc.documentElement }
 }
 
 // withTransitions gives a document view transitions whose update callbacks the test runs,
@@ -56,16 +27,8 @@ function withTransitions(doc: Document, ready: () => Promise<void> = () => Promi
   return { startViewTransition, updates }
 }
 
-describe('toTheme', () => {
-  it('reads each choice and takes anything else for the default', () => {
-    for (const theme of themes) {
-      expect(toTheme(theme)).toBe(theme)
-    }
-
-    for (const stored of ['', 'auto', 'Dark', ' light']) {
-      expect(toTheme(stored)).toBe(defaultTheme)
-    }
-
+describe('themes', () => {
+  it('offers the choices in order, System first and by default', () => {
     expect(defaultTheme).toBe('system')
     expect(themes).toEqual(['system', 'light', 'dark'])
   })
@@ -88,54 +51,6 @@ describe('resolveDark', () => {
     for (const [theme, appearanceDark, want] of cases) {
       expect(resolveDark(theme, appearanceDark)).toBe(want)
     }
-  })
-})
-
-describe('appearanceIsDark', () => {
-  it('asks the prefers-color-scheme query', () => {
-    const appearance = fakeAppearance({ dark: true })
-
-    expect(appearanceIsDark(appearance.win)).toBe(true)
-    expect(appearance.matchMedia).toHaveBeenCalledWith('(prefers-color-scheme: dark)')
-
-    appearance.setDark(false)
-    expect(appearanceIsDark(appearance.win)).toBe(false)
-  })
-
-  it('reports light without matchMedia', () => {
-    expect(appearanceIsDark({ document } as unknown as Window)).toBe(false)
-  })
-})
-
-describe('onAppearanceChange', () => {
-  it('reports each change until stopped', () => {
-    const appearance = fakeAppearance()
-    const seen: boolean[] = []
-
-    const stop = onAppearanceChange((dark) => seen.push(dark), appearance.win)
-
-    appearance.setDark(true)
-    appearance.setDark(false)
-    expect(seen).toEqual([true, false])
-
-    stop()
-    expect(appearance.listeners.size).toBe(0)
-
-    appearance.setDark(true)
-    expect(seen).toEqual([true, false])
-  })
-
-  it('never reports without matchMedia', () => {
-    const stop = onAppearanceChange(
-      () => {
-        throw new Error('no appearance to change')
-      },
-      { document } as unknown as Window,
-    )
-
-    expect(() => {
-      stop()
-    }).not.toThrow()
   })
 })
 

@@ -18,6 +18,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/brand"
+	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
 // testUserAgent is the user agent test clients send.
@@ -81,6 +83,8 @@ func byNumber(inbox *Inbox) map[int]Item {
 }
 
 func TestFetchInboxSingleBatchedRequest(t *testing.T) {
+	t.Parallel()
+
 	var requests atomic.Int32
 
 	body := fixture(t, "inbox_response.json")
@@ -147,6 +151,8 @@ func TestFetchInboxSingleBatchedRequest(t *testing.T) {
 }
 
 func TestFetchInboxParsesTrustFields(t *testing.T) {
+	t.Parallel()
+
 	items := byNumber(fetchFixtureInbox(t))
 
 	fork := items[12]
@@ -194,6 +200,8 @@ func TestFetchInboxParsesTrustFields(t *testing.T) {
 }
 
 func TestFetchInboxParsesRepositories(t *testing.T) {
+	t.Parallel()
+
 	items := byNumber(fetchFixtureInbox(t))
 
 	assert.Equal(t, Repository{
@@ -229,6 +237,8 @@ func TestFetchInboxParsesRepositories(t *testing.T) {
 }
 
 func TestFetchInboxParsesAnArchivedRepository(t *testing.T) {
+	t.Parallel()
+
 	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"data":{"viewer":{"login":"octo-user"},
 			"reviewRequested":{"issueCount":1,"nodes":[{"__typename":"Issue","id":"I_fakeNodeId1","number":1,
@@ -249,6 +259,8 @@ func TestFetchInboxParsesAnArchivedRepository(t *testing.T) {
 }
 
 func TestFetchInboxGraphQLErrors(t *testing.T) {
+	t.Parallel()
+
 	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"data":null,"errors":[{"message":"Something went wrong"},{"message":"Try again"}]}`))
 	})
@@ -260,6 +272,8 @@ func TestFetchInboxGraphQLErrors(t *testing.T) {
 }
 
 func TestFetchInboxStatusErrors(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name    string
 		status  int
@@ -281,6 +295,8 @@ func TestFetchInboxStatusErrors(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(tc.status)
 				_, _ = w.Write([]byte(tc.body))
@@ -303,6 +319,8 @@ func TestFetchInboxStatusErrors(t *testing.T) {
 }
 
 func TestFetchInboxMalformedResponses(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]string{
 		"not json": "this is not json",
 		"no data":  `{}`,
@@ -311,6 +329,8 @@ func TestFetchInboxMalformedResponses(t *testing.T) {
 
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
 			client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
 				_, _ = w.Write([]byte(body))
 			})
@@ -322,6 +342,8 @@ func TestFetchInboxMalformedResponses(t *testing.T) {
 }
 
 func TestFetchInboxSkipsOtherNodes(t *testing.T) {
+	t.Parallel()
+
 	body := `{"data":{"viewer":{"login":"octo-user"},
 	"reviewRequested":{"issueCount":4,"nodes":[
 		{"__typename":"Repository"},
@@ -353,18 +375,127 @@ func TestFetchInboxSkipsOtherNodes(t *testing.T) {
 	assert.Empty(t, inbox.OAuthScopes, "a token without a scopes header")
 }
 
-func TestFetchInboxRequiresToken(t *testing.T) {
-	var requests atomic.Int32
+// fetchCall is one exported fetch that sends a request with a token.
+type fetchCall struct {
+	name string
 
-	client := newTestClient(t, func(http.ResponseWriter, *http.Request) { requests.Add(1) })
+	// graphQL is set for a GraphQL query, whose errors come in a successful response's
+	// body rather than as a failed status.
+	graphQL bool
 
-	_, err := client.FetchInbox(t.Context(), Token{})
-	require.ErrorIs(t, err, ErrNotLoggedIn)
-	assert.Zero(t, requests.Load())
+	call func(ctx context.Context, c *Client, tok Token) error
+}
+
+// everyFetch lists every exported fetch that sends a request with a token, each with
+// arguments that make it send one.
+func everyFetch() []fetchCall {
+	return []fetchCall{
+		{name: "FetchInbox", graphQL: true, call: func(ctx context.Context, c *Client, tok Token) error {
+			_, err := c.FetchInbox(ctx, tok)
+			return err
+		}},
+		{name: "FetchRateLimits", call: func(ctx context.Context, c *Client, tok Token) error {
+			_, err := c.FetchRateLimits(ctx, tok)
+			return err
+		}},
+		{name: "FetchDetails", graphQL: true, call: func(ctx context.Context, c *Client, tok Token) error {
+			_, err := c.FetchDetails(ctx, tok, []string{"I_fakeNodeId1"})
+			return err
+		}},
+		{name: "FetchItem", graphQL: true, call: func(ctx context.Context, c *Client, tok Token) error {
+			_, err := c.FetchItem(ctx, tok, "I_fakeNodeId1")
+			return err
+		}},
+		{name: "FetchPullHead", call: func(ctx context.Context, c *Client, tok Token) error {
+			_, err := c.FetchPullHead(ctx, tok, pullRef())
+			return err
+		}},
+		{name: "FetchChangedFiles", call: func(ctx context.Context, c *Client, tok Token) error {
+			_, err := c.FetchChangedFiles(ctx, tok, pullRef(), "aaa")
+			return err
+		}},
+		{name: "FetchItemStates", graphQL: true, call: func(ctx context.Context, c *Client, tok Token) error {
+			_, err := c.FetchItemStates(ctx, tok, []item.Ref{pullRef()})
+			return err
+		}},
+	}
+}
+
+func TestEveryFetchNeedsAToken(t *testing.T) {
+	t.Parallel()
+
+	for _, fetch := range everyFetch() {
+		t.Run(fetch.name, func(t *testing.T) {
+			t.Parallel()
+
+			var requests atomic.Int32
+
+			client := newTestClient(t, func(http.ResponseWriter, *http.Request) { requests.Add(1) })
+
+			err := fetch.call(t.Context(), client, Token{})
+			require.ErrorIs(t, err, ErrNotLoggedIn)
+			assert.Equal(t, loggedOutMessage, uierr.Message(err), "the user is told to sign the GitHub CLI in")
+			assert.Zero(t, requests.Load(), "no request is sent without a token")
+		})
+	}
+}
+
+func TestEveryFetchScrubsTheTokenFromItsErrors(t *testing.T) {
+	t.Parallel()
+
+	// Every answer is an error whose message echoes the token back.
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"message":"upstream saw ` + fakeToken + `"}`))
+	})
+	tok := NewToken(fakeToken)
+
+	for _, fetch := range everyFetch() {
+		t.Run(fetch.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := fetch.call(t.Context(), client, tok)
+			require.ErrorIs(t, err, ErrUnexpectedStatus)
+			assert.Contains(t, err.Error(), "[redacted]")
+			assert.NotContains(t, err.Error(), fakeToken)
+			assert.NotContains(t, uierr.Message(err), fakeToken)
+			assert.NotContains(t, fmt.Sprintf("%+v", err), fakeToken)
+		})
+	}
+}
+
+func TestEveryQueryScrubsTheTokenFromGraphQLErrors(t *testing.T) {
+	t.Parallel()
+
+	// Every answer succeeds with only a GraphQL error that echoes the token back.
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprintf(w, `{"errors":[{"message":"bad token %s"}]}`, fakeToken)
+	})
+	tok := NewToken(fakeToken)
+
+	for _, fetch := range everyFetch() {
+		if !fetch.graphQL {
+			continue
+		}
+
+		t.Run(fetch.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := fetch.call(t.Context(), client, tok)
+			require.ErrorIs(t, err, ErrGraphQL)
+			assert.NotContains(t, err.Error(), fakeToken)
+			assert.NotContains(t, uierr.Message(err), fakeToken)
+			assert.NotContains(t, fmt.Sprintf("%+v", err), fakeToken)
+		})
+	}
 }
 
 func TestFetchInboxTransportErrors(t *testing.T) {
+	t.Parallel()
+
 	t.Run("server unreachable", func(t *testing.T) {
+		t.Parallel()
+
 		srv := httptest.NewServer(http.NotFoundHandler())
 		client := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
 		srv.Close()
@@ -372,9 +503,12 @@ func TestFetchInboxTransportErrors(t *testing.T) {
 		_, err := client.FetchInbox(t.Context(), NewToken(fakeToken))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "call the GitHub API")
+		assert.Equal(t, unreachableMessage, uierr.Message(err), "the user is told GitHub could not be reached")
 	})
 
 	t.Run("canceled", func(t *testing.T) {
+		t.Parallel()
+
 		client := newTestClient(t, serveFixture(t, "inbox_response.json", ""))
 
 		ctx, cancel := context.WithCancel(t.Context())
@@ -382,9 +516,12 @@ func TestFetchInboxTransportErrors(t *testing.T) {
 
 		_, err := client.FetchInbox(ctx, NewToken(fakeToken))
 		require.ErrorIs(t, err, context.Canceled)
+		assert.NotEqual(t, unreachableMessage, uierr.Message(err), "a caller that gave up is not told GitHub is down")
 	})
 
 	t.Run("bad base URL", func(t *testing.T) {
+		t.Parallel()
+
 		client := &Client{BaseURL: "http://bad host"}
 
 		_, err := client.FetchInbox(t.Context(), NewToken(fakeToken))
@@ -394,6 +531,8 @@ func TestFetchInboxTransportErrors(t *testing.T) {
 }
 
 func TestNewClientDefaults(t *testing.T) {
+	t.Parallel()
+
 	client := NewClient("1.2.3")
 
 	assert.Equal(t, DefaultBaseURL, client.BaseURL)
@@ -406,6 +545,8 @@ func TestNewClientDefaults(t *testing.T) {
 }
 
 func TestClientFallbacks(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, DefaultBaseURL, (&Client{}).baseURL())
 	assert.Equal(t, "http://127.0.0.1:9", (&Client{BaseURL: "http://127.0.0.1:9/"}).baseURL())
 	assert.Equal(t, defaultTimeout, (&Client{}).httpClient().Timeout)
@@ -420,17 +561,22 @@ func TestClientFallbacks(t *testing.T) {
 }
 
 func TestStatusErrorMessages(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, "the GitHub API returned HTTP 500", (&StatusError{StatusCode: 500}).Error())
 	assert.Equal(t, "the GitHub API returned HTTP 401: Bad credentials (run gh auth login)",
 		(&StatusError{StatusCode: 401, Message: "Bad credentials"}).Error())
 }
 
 func TestTruncateCapsMessages(t *testing.T) {
-	long := strings.Repeat("word ", 200)
+	t.Parallel()
 
-	got := truncate(long)
-	assert.Len(t, []rune(got), maxMessageRunes+1)
+	got := truncate(strings.Repeat("abcdef ", 100))
+	assert.Len(t, []rune(got), maxMessageRunes+1, "the kept text, then the ellipsis")
 	assert.True(t, strings.HasSuffix(got, "…"))
+
+	got = truncate(strings.Repeat("word ", 200))
+	assert.True(t, strings.HasSuffix(got, "word…"), "space before the ellipsis is dropped: %q", got)
 	assert.Equal(t, "a b", truncate(" a \n\t b "))
 	assert.Empty(t, apiMessage([]byte("not json")))
 	assert.Equal(t, "Not Found", apiMessage([]byte(fmt.Sprintf(`{"message":%q}`, "Not Found"))))

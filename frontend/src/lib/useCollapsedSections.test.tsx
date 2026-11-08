@@ -1,34 +1,22 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
+import type { ListKey, Settings } from '../platform'
+import { settings } from '../test/fixtures'
+import { platform } from '../test/platform'
 import { useCollapsedSections } from './useCollapsedSections'
 
-const platform = vi.hoisted(() => ({
-  getCollapsedSections: vi.fn(),
-  setSectionCollapsed: vi.fn(),
-}))
-
-vi.mock('../platform', () => platform)
-
-beforeEach(() => {
-  vi.clearAllMocks()
-  platform.getCollapsedSections.mockResolvedValue([])
-  platform.setSectionCollapsed.mockResolvedValue(undefined)
-})
-
-afterEach(() => {
-  vi.restoreAllMocks()
-})
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 // loaded renders the hook and waits for the stored state.
 async function loaded() {
-  const hook = renderHook(() => useCollapsedSections())
+  const view = renderHook(() => useCollapsedSections())
 
   await waitFor(() => {
-    expect(hook.result.current.collapsed).not.toBeNull()
+    expect(view.result.current.collapsed).not.toBeNull()
   })
 
-  return hook
+  return view
 }
 
 describe('useCollapsedSections', () => {
@@ -77,11 +65,13 @@ describe('useCollapsedSections', () => {
     const finish: (() => void)[] = []
     const started: [string, boolean][] = []
 
-    platform.setSectionCollapsed.mockImplementation((section: string, on: boolean) => {
+    platform.setSectionCollapsed.mockImplementation((section, on) => {
       started.push([section, on])
 
-      return new Promise<void>((resolve) => {
-        finish.push(resolve)
+      return new Promise<Settings>((resolve) => {
+        finish.push(() => {
+          resolve(settings())
+        })
       })
     })
 
@@ -138,9 +128,9 @@ describe('useCollapsedSections', () => {
   })
 
   it('ignores a load that finishes after unmounting', async () => {
-    let resolve: (sections: string[]) => void = () => undefined
+    let resolve: (sections: ListKey[]) => void = () => undefined
     platform.getCollapsedSections.mockReturnValue(
-      new Promise<string[]>((r) => {
+      new Promise<ListKey[]>((r) => {
         resolve = r
       }),
     )
@@ -160,7 +150,7 @@ describe('useCollapsedSections', () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
     let reject: (err: Error) => void = () => undefined
     platform.getCollapsedSections.mockReturnValue(
-      new Promise<string[]>((_, r) => {
+      new Promise<ListKey[]>((_, r) => {
         reject = r
       }),
     )

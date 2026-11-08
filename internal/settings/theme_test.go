@@ -2,37 +2,28 @@ package settings
 
 import (
 	"path/filepath"
-	"slices"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/event"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
-// themeLog records the themes a ThemeNotifier was told about, in order.
-type themeLog struct {
-	mu     sync.Mutex
-	themes []string
-}
+// themeEvents returns the theme changes for themes, in order.
+func themeEvents(themes ...Theme) []event.Event {
+	out := make([]event.Event, 0, len(themes))
+	for _, theme := range themes {
+		out = append(out, event.ThemeChanged{Theme: string(theme)})
+	}
 
-func (l *themeLog) ThemeChanged(theme string) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	l.themes = append(l.themes, theme)
-}
-
-func (l *themeLog) got() []string {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	return slices.Clone(l.themes)
+	return out
 }
 
 func TestThemeIsSystemOnAFreshDatabase(t *testing.T) {
+	t.Parallel()
+
 	svc, _, _ := newTestService(t)
 
 	got, err := svc.Theme(t.Context())
@@ -42,11 +33,13 @@ func TestThemeIsSystemOnAFreshDatabase(t *testing.T) {
 }
 
 func TestThemePersists(t *testing.T) {
+	t.Parallel()
+
 	svc, _, _ := newTestService(t)
 	ctx := t.Context()
 
-	for _, theme := range []string{ThemeDark, ThemeLight, ThemeSystem, ThemeDark} {
-		require.NoError(t, svc.SetTheme(ctx, theme))
+	for _, theme := range []Theme{ThemeDark, ThemeLight, ThemeSystem, ThemeDark} {
+		require.NoError(t, testutil.ErrOf(svc.SetTheme(ctx, theme)))
 
 		got, err := svc.Theme(ctx)
 		require.NoError(t, err)
@@ -55,42 +48,47 @@ func TestThemePersists(t *testing.T) {
 }
 
 func TestThemeSurvivesARestart(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	home := t.TempDir()
 	path := filepath.Join(t.TempDir(), "app.db")
 
-	db, err := store.Open(ctx, path)
-	require.NoError(t, err)
-	require.NoError(t, NewService(db, home).SetTheme(ctx, ThemeLight))
-	require.NoError(t, store.Close(db))
+	db := testutil.DBAt(t, path)
+	require.NoError(t, testutil.ErrOf(serviceOver(t, db, home).SetTheme(ctx, ThemeLight)))
+	require.NoError(t, db.Close())
 
-	got, err := NewService(openDB(t, path), home).Theme(ctx)
+	got, err := serviceOver(t, testutil.DBAt(t, path), home).Theme(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, ThemeLight, got)
 }
 
 func TestSetThemeRejectsAnUnknownTheme(t *testing.T) {
-	log := &themeLog{}
+	t.Parallel()
+
+	events := &testutil.Events{}
 	home := t.TempDir()
-	svc := NewService(openDB(t, filepath.Join(t.TempDir(), "app.db")), home, WithThemeNotifier(log))
+	svc := serviceOver(t, testutil.DB(t), home, WithEvents(events))
 	ctx := t.Context()
 
-	require.NoError(t, svc.SetTheme(ctx, ThemeDark))
+	require.NoError(t, testutil.ErrOf(svc.SetTheme(ctx, ThemeDark)))
 
-	for _, theme := range []string{"", "Dark", " dark", "auto", "sepia", "ui.theme"} {
-		require.ErrorIs(t, svc.SetTheme(ctx, theme), ErrInvalidTheme, theme)
+	for _, theme := range []Theme{"", "Dark", " dark", "auto", "sepia", "ui.theme"} {
+		require.ErrorIs(t, testutil.ErrOf(svc.SetTheme(ctx, theme)), ErrInvalidTheme, string(theme))
 	}
 
-	err := svc.SetTheme(ctx, "dim")
+	_, err := svc.SetTheme(ctx, "dim")
 	require.ErrorContains(t, err, `"dim": choose one of system, light, dark`)
 
 	got, err := svc.Theme(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, ThemeDark, got, "a rejected theme must not be stored")
-	assert.Equal(t, []string{ThemeDark}, log.got(), "a rejected theme must not be announced")
+	assert.Equal(t, themeEvents(ThemeDark), events.All(), "a rejected theme must not be announced")
 }
 
 func TestThemeIgnoresABadStoredValue(t *testing.T) {
+	t.Parallel()
+
 	svc, db, _ := newTestService(t)
 
 	for _, stored := range []string{"", "auto", "DARK", "light "} {
@@ -103,56 +101,56 @@ func TestThemeIgnoresABadStoredValue(t *testing.T) {
 }
 
 func TestThemeReportsAClosedDatabase(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "app.db")
+	t.Parallel()
 
-	db, err := store.Open(t.Context(), path)
-	require.NoError(t, err)
-	require.NoError(t, store.Close(db))
+	svc := serviceOver(t, closedDB(t), t.TempDir())
 
-	svc := NewService(db, t.TempDir())
-
-	_, err = svc.Theme(t.Context())
+	_, err := svc.Theme(t.Context())
 	require.ErrorContains(t, err, "read the theme")
 
-	require.ErrorContains(t, svc.SetTheme(t.Context(), ThemeDark), "save setting "+KeyTheme)
+	require.ErrorContains(t, testutil.ErrOf(svc.SetTheme(t.Context(), ThemeDark)), "begin transaction")
 }
 
-func TestSetThemeTellsTheNotifierOnceStored(t *testing.T) {
-	log := &themeLog{}
-	db := openDB(t, filepath.Join(t.TempDir(), "app.db"))
-	svc := NewService(db, t.TempDir(), WithThemeNotifier(log))
+func TestSetThemeEmitsOnceStored(t *testing.T) {
+	t.Parallel()
+
+	events := &testutil.Events{}
+	db := testutil.DB(t)
+	svc := serviceOver(t, db, t.TempDir(), WithEvents(events))
 	ctx := t.Context()
 
-	require.NoError(t, svc.SetTheme(ctx, ThemeLight))
-	require.NoError(t, svc.SetTheme(ctx, ThemeLight))
-	require.NoError(t, svc.SetTheme(ctx, ThemeSystem))
+	require.NoError(t, testutil.ErrOf(svc.SetTheme(ctx, ThemeLight)))
+	require.NoError(t, testutil.ErrOf(svc.SetTheme(ctx, ThemeLight)))
+	require.NoError(t, testutil.ErrOf(svc.SetTheme(ctx, ThemeSystem)))
 
-	assert.Equal(t, []string{ThemeLight, ThemeLight, ThemeSystem}, log.got(), "every stored choice, in order")
+	assert.Equal(t, themeEvents(ThemeLight, ThemeLight, ThemeSystem), events.All(), "every stored choice, in order")
 }
 
-func TestSetThemeWithoutANotifier(t *testing.T) {
+func TestSetThemeWithoutAnEventSink(t *testing.T) {
+	t.Parallel()
+
 	svc, _, _ := newTestService(t)
 
-	require.NoError(t, svc.SetTheme(t.Context(), ThemeDark))
+	require.NoError(t, testutil.ErrOf(svc.SetTheme(t.Context(), ThemeDark)))
 }
 
 func TestThemesAreTheChoicesInOrder(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, []string{"system", "light", "dark"}, Themes())
+	assert.Equal(t, []Theme{"system", "light", "dark"}, themes())
 
-	for _, theme := range Themes() {
-		assert.True(t, ValidTheme(theme), theme)
+	for _, theme := range themes() {
+		assert.True(t, validTheme(theme), string(theme))
 	}
 
-	assert.False(t, ValidTheme("auto"))
+	assert.False(t, validTheme("auto"))
 }
 
 func TestIsDark(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
-		theme      string
+		theme      Theme
 		systemDark bool
 		want       bool
 	}{

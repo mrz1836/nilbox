@@ -7,18 +7,20 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mrz1836/nilbox/internal/inbox/model"
+	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/settings"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // promptID returns the ID of the stored prompt with nickname.
 func (h *launchHarness) promptID(t *testing.T, nickname string) int64 {
 	t.Helper()
 
-	all, err := prompts.All(t.Context(), h.db)
+	all, err := h.prompts.All(t.Context())
 	require.NoError(t, err)
 
 	for _, p := range all {
@@ -36,11 +38,56 @@ func (h *launchHarness) promptID(t *testing.T, nickname string) int64 {
 func (h *launchHarness) saveDefaults(t *testing.T, in launchdefaults.Input) {
 	t.Helper()
 
-	_, err := launchdefaults.NewService(h.db).Save(t.Context(), in)
+	svc := launchdefaults.NewService(launchdefaults.Config{Store: h.defaults, Profiles: h.profiles, Prompts: h.prompts})
+
+	_, err := svc.Save(t.Context(), in)
 	require.NoError(t, err)
 }
 
+func TestResolveReportsUnreadableProfiles(t *testing.T) {
+	t.Parallel()
+
+	h := newLaunchHarness(t)
+	h.cfg.Profiles = failingProfiles{}
+
+	_, err := h.service().Resolve(t.Context(), LaunchRequest{ItemID: h.trustedPR})
+	require.ErrorIs(t, err, errFakeProfiles)
+}
+
+func TestResolveReportsAnUnreadablePromptLibrary(t *testing.T) {
+	t.Parallel()
+
+	h := newLaunchHarness(t)
+	h.cfg.Prompts = failingPrompts{}
+
+	_, err := h.service().Resolve(t.Context(), LaunchRequest{ItemID: h.trustedPR})
+	require.ErrorIs(t, err, errFakePrompts)
+}
+
+func TestResolveReportsUnreadableLaunchDefaults(t *testing.T) {
+	t.Parallel()
+
+	h := newLaunchHarness(t)
+	h.cfg.Defaults = failingDefaults{}
+
+	_, err := h.service().Resolve(t.Context(), LaunchRequest{ItemID: h.trustedPR})
+	require.ErrorIs(t, err, errFakeDefaults)
+}
+
+func TestLaunchReadsThePromptLibraryOnce(t *testing.T) {
+	t.Parallel()
+
+	h := newLaunchHarness(t)
+	library := &countingPrompts{library: h.prompts}
+	h.cfg.Prompts = library
+
+	h.launch(t, LaunchRequest{ItemID: h.trustedPR})
+	assert.Equal(t, 1, library.count(), "the prompts and the default prompts come from one read")
+}
+
 func TestResolveService(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	h.saveDefaults(t, launchdefaults.Input{Owner: acmeOrg, Profile: "work"})
 
@@ -54,10 +101,12 @@ func TestResolveService(t *testing.T) {
 	assert.Empty(t, h.launchFiles(t), "and writes nothing")
 
 	_, err = h.service().Resolve(t.Context(), LaunchRequest{ItemID: 9999})
-	require.ErrorIs(t, err, ErrItemNotFound)
+	require.ErrorIs(t, err, item.ErrNotFound)
 }
 
 func TestResolveItems(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	ctx := t.Context()
 
@@ -81,8 +130,8 @@ func TestResolveItems(t *testing.T) {
 	assert.Empty(t, byID[h.trustedPR].Problem)
 
 	// With no prompt for issues at all, issues report why instead of failing the list.
-	require.NoError(t, h.db.Exec("DELETE FROM prefs WHERE key LIKE 'prompts.default.%'").Error)
-	require.NoError(t, h.db.Exec("DELETE FROM prompts WHERE applies_to <> 'pr'").Error)
+	h.exec(t, "DELETE FROM prefs WHERE key LIKE 'prompts.default.%'")
+	h.exec(t, "DELETE FROM prompts WHERE applies_to <> 'pr'")
 
 	got, err = h.service().ResolveItems(ctx, []int64{h.issue, h.trustedPR})
 	require.NoError(t, err)
@@ -92,6 +141,11 @@ func TestResolveItems(t *testing.T) {
 		if r.ItemID == h.issue {
 			assert.Contains(t, r.Problem, "No prompt applies to this kind of item")
 			assert.Equal(t, "acme-org/example-repo", r.Repo)
+			assert.Equal(t, item.KindIssue, r.Kind)
+			assert.NotNil(t, r.ExtraArgs, "the window gets [] rather than null")
+			assert.NotNil(t, r.Warnings, "the window gets [] rather than null")
+			assert.Equal(t, SourceNone, r.AgentSource)
+			assert.Equal(t, Setting{Source: SourceNone, InheritedSource: SourceNone}, r.Profile)
 		} else {
 			assert.Empty(t, r.Problem)
 		}
@@ -100,8 +154,10 @@ func TestResolveItems(t *testing.T) {
 
 // TestPreviewMatchesLaunch checks that a preview shows exactly what the launch sends.
 func TestPreviewMatchesLaunch(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
-	req := LaunchRequest{ItemID: h.trustedPR, Profile: "work", Model: ptr(strOpus)}
+	req := LaunchRequest{ItemID: h.trustedPR, Profile: "work", Model: new(strOpus)}
 
 	preview, err := h.service().Preview(t.Context(), req)
 	require.NoError(t, err)
@@ -120,7 +176,7 @@ func TestPreviewMatchesLaunch(t *testing.T) {
 	assert.Equal(t, settings.TerminalITerm2, preview.Terminal)
 	assert.Equal(t, SourceLaunch, preview.Resolution.Model.Source)
 
-	preview, err = h.service().Preview(t.Context(), LaunchRequest{ItemID: h.issue, Worktree: ptr(false)})
+	preview, err = h.service().Preview(t.Context(), LaunchRequest{ItemID: h.issue, Worktree: new(false)})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"unset CLAUDE_CONFIG_DIR"}, preview.Env)
 	assert.Empty(t, preview.Worktree)
@@ -128,6 +184,8 @@ func TestPreviewMatchesLaunch(t *testing.T) {
 }
 
 func TestLaunchUsesPromptSettings(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	quick := h.promptID(t, "Quick look")
 
@@ -139,7 +197,7 @@ func TestLaunchUsesPromptSettings(t *testing.T) {
 	assert.Contains(t, promptFor(t, res.ScriptPath), "Take a quick look at pull request #7")
 
 	// The launch's own choices win over the prompt's.
-	_, script = h.launch(t, LaunchRequest{ItemID: h.trustedPR, PromptID: quick, Model: ptr(strOpus), Worktree: ptr(true)})
+	_, script = h.launch(t, LaunchRequest{ItemID: h.trustedPR, PromptID: quick, Model: new(strOpus), Worktree: new(true)})
 	assert.Contains(t, script, "'--model' 'opus' '--effort' 'low'")
 	assert.Contains(t, script, "'--worktree' '#7'")
 
@@ -148,12 +206,14 @@ func TestLaunchUsesPromptSettings(t *testing.T) {
 }
 
 func TestLaunchUsesLaunchDefaults(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
-	fix := h.promptID(t, "Fix checks")
+	fix := new(h.promptID(t, "Fix checks"))
 
 	h.saveDefaults(t, launchdefaults.Input{Owner: acmeOrg, Profile: "work", ExtraFlags: "--advisor fable"})
 	h.saveDefaults(t, launchdefaults.Input{
-		Owner: acmeOrg, Name: "example-repo", PRPromptID: &fix, Effort: "max", PlanMode: ptr(true),
+		Owner: acmeOrg, Name: "example-repo", PRPromptID: fix, Effort: "max", PlanMode: new(true),
 	})
 
 	res, script := h.launch(t, LaunchRequest{ItemID: h.trustedPR})
@@ -171,6 +231,8 @@ func TestLaunchUsesLaunchDefaults(t *testing.T) {
 }
 
 func TestLaunchAddsTheNoticeForOutsideContributors(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 
 	res, _ := h.launch(t, LaunchRequest{ItemID: h.outsidePR})
@@ -183,16 +245,18 @@ func TestLaunchAddsTheNoticeForOutsideContributors(t *testing.T) {
 }
 
 func TestLaunchRefusesAPromptThatStartsWithADash(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 
-	svc := prompts.NewService(prompts.Config{DB: h.db})
+	svc := prompts.NewService(prompts.Config{Store: h.prompts})
 	leading, err := svc.Create(t.Context(), prompts.Input{
 		Name: "Leading title", Nickname: "Leading", AppliesTo: prompts.AppliesToPR, Body: "{{.Title}} needs a look",
 	})
 	require.NoError(t, err)
 
-	require.NoError(t, h.db.Exec("UPDATE items SET title = ? WHERE id = ?", "--dangerously-skip-permissions",
-		h.trustedPR).Error)
+	h.exec(t, "UPDATE items SET title = ? WHERE id = ?", "--dangerously-skip-permissions",
+		h.trustedPR)
 
 	_, err = h.service().Launch(t.Context(), LaunchRequest{ItemID: h.trustedPR, PromptID: leading.ID})
 	require.ErrorIs(t, err, prompts.ErrLeadingDash)
@@ -201,8 +265,10 @@ func TestLaunchRefusesAPromptThatStartsWithADash(t *testing.T) {
 }
 
 func TestLaunchRefusesABrokenStoredPrompt(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
-	require.NoError(t, h.db.Exec("UPDATE prompts SET body = '{{.Nope}}' WHERE nickname = 'Review'").Error)
+	h.exec(t, "UPDATE prompts SET body = '{{.Nope}}' WHERE nickname = 'Review'")
 
 	_, err := h.service().Launch(t.Context(), LaunchRequest{ItemID: h.trustedPR})
 	require.ErrorIs(t, err, prompts.ErrInvalidTemplate)
@@ -210,16 +276,17 @@ func TestLaunchRefusesABrokenStoredPrompt(t *testing.T) {
 }
 
 func TestPromptSourceFillsInAnItem(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 
-	require.NoError(t, h.db.Exec("UPDATE repos SET default_branch = 'main' WHERE name = 'example-repo'").Error)
-	require.NoError(t, h.db.Create(&model.ItemDetails{
-		ItemID: h.trustedPR, Labels: model.Labels{{Name: "bug"}, {Name: "size/L"}}, Additions: 12, Deletions: 3,
-		ChangedFiles: 2, Commits: 1, Mergeable: "CONFLICTING", ChecksState: "FAILURE", ReviewDecision: "APPROVED",
-		FetchedAt: now,
-	}).Error)
-	require.NoError(t, h.db.Exec(`INSERT INTO prefs (key, value, updated_at) VALUES ('inbox.viewer', 'octo-user', ?)`, now).Error)
+	h.exec(t, "UPDATE repos SET default_branch = 'main' WHERE name = 'example-repo'")
+	h.exec(t, `INSERT INTO item_details (item_id, labels, additions, deletions, changed_files, commits, mergeable,
+    checks_state, review_decision, fetched_at)
+VALUES (?, '[{"name":"bug","color":""},{"name":"size/L","color":""}]', 12, 3, 2, 1, 'CONFLICTING', 'FAILURE',
+    'APPROVED', ?)`, h.trustedPR, now)
+	h.exec(t, `INSERT INTO prefs (key, value, updated_at) VALUES ('inbox.viewer', 'octo-user', ?)`, now)
 	h.saveDefaults(t, launchdefaults.Input{Owner: acmeOrg, Profile: "work"})
 
 	source := NewPromptSource(h.service())
@@ -243,10 +310,12 @@ func TestPromptSourceFillsInAnItem(t *testing.T) {
 	assert.True(t, outside.OutsideContributor)
 
 	_, err = source.PreviewData(t.Context(), 9999)
-	require.ErrorIs(t, err, ErrItemNotFound)
+	require.ErrorIs(t, err, item.ErrNotFound)
 }
 
 func TestLaunchKeepsTheDefaultProfileForLaunchesWithoutDefaults(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 
 	res, _ := h.launch(t, LaunchRequest{ItemID: h.issue})
@@ -255,24 +324,18 @@ func TestLaunchKeepsTheDefaultProfileForLaunchesWithoutDefaults(t *testing.T) {
 }
 
 func TestLaunchTrustsTheTrustedBots(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 
-	var repo model.Repo
-	require.NoError(t, h.db.Where("name = ?", "example-repo").First(&repo).Error)
+	bot := h.store(t, github.Item{
+		IsPR: true, Number: 30, Title: "Bump the widget library", URL: "https://github.com/acme-org/example-repo/pull/30",
+		CreatedAt: now, UpdatedAt: now, HeadRef: "dependabot/go_modules/widget-1.2.3", AuthorLogin: "dependabot",
+		AuthorType: "Bot", AuthorAssociation: "NONE", RepoOwner: "acme-org", RepoName: "example-repo",
+	})[0]
 
-	var account model.Account
-	require.NoError(t, h.db.First(&account).Error)
-
-	bot := model.Item{
-		AccountID: account.ID, RepoID: repo.ID, Kind: model.KindPR, Number: 30, Title: "Bump the widget library",
-		URL: "https://github.com/acme-org/example-repo/pull/30", AuthorLogin: "dependabot", AuthorType: "Bot",
-		AuthorAssociation: "NONE", HeadRef: "dependabot/go_modules/widget-1.2.3",
-		ItemCreatedAt: now, ItemUpdatedAt: now, FetchedAt: now,
-	}
-	require.NoError(t, h.db.Create(&bot).Error)
-
-	res, script := h.launch(t, LaunchRequest{ItemID: bot.ID})
+	res, script := h.launch(t, LaunchRequest{ItemID: bot})
 	assert.Equal(t, "full access", res.Permission, "Dependabot is a trusted bot by default")
 	assert.Contains(t, script, "'--dangerously-skip-permissions'")
 
@@ -280,19 +343,19 @@ func TestLaunchTrustsTheTrustedBots(t *testing.T) {
 	assert.Contains(t, prompt, "This pull request was opened by dependabot, a bot.")
 	assert.NotContains(t, prompt, "outside contributor")
 
-	resolved, err := h.service().Resolve(t.Context(), LaunchRequest{ItemID: bot.ID})
+	resolved, err := h.service().Resolve(t.Context(), LaunchRequest{ItemID: bot})
 	require.NoError(t, err)
 	assert.True(t, resolved.Trusted)
 
 	// Taking it off the trusted list puts it back in plan mode.
-	require.NoError(t, h.settings.SetTrustedBots(t.Context(), []string{"renovate"}))
+	require.NoError(t, testutil.ErrOf(h.settings.SetTrustedBots(t.Context(), []string{"renovate"})))
 
-	res, script = h.launch(t, LaunchRequest{ItemID: bot.ID})
+	res, script = h.launch(t, LaunchRequest{ItemID: bot})
 	assert.Equal(t, "plan mode (outside contributor)", res.Permission)
 	assert.NotContains(t, script, "dangerously")
 	assert.Contains(t, promptFor(t, res.ScriptPath), "This pull request comes from an outside contributor.")
 
-	data, err := NewPromptSource(h.service()).PreviewData(t.Context(), bot.ID)
+	data, err := NewPromptSource(h.service()).PreviewData(t.Context(), bot)
 	require.NoError(t, err)
 	assert.True(t, data.IsBot)
 	assert.True(t, data.OutsideContributor)

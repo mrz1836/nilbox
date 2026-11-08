@@ -1,7 +1,14 @@
 // The choices the launch menu makes for one launch, and how they turn into a launch
 // request and into launch defaults.
 
-import type { LaunchDefaults, LaunchDefaultsInput, LaunchRequest, Resolution } from '../platform'
+import type {
+  ItemKind,
+  LaunchDefaults,
+  LaunchDefaultsInput,
+  LaunchRequest,
+  LaunchSource,
+  Resolution,
+} from '../platform'
 
 // Choices are the launch menu's own choices. Each is unset (0, '', or null) until the
 // user picks something other than what the item's settings resolve to.
@@ -104,7 +111,7 @@ export function findDefaults(all: readonly LaunchDefaults[], owner: string, name
 
 // withChoices returns launch defaults with the menu's choices for an item of kind
 // written over them; settings the menu did not change stay as they were.
-export function withChoices(base: LaunchDefaultsInput, c: Choices, kind: string): LaunchDefaultsInput {
+export function withChoices(base: LaunchDefaultsInput, c: Choices, kind: ItemKind): LaunchDefaultsInput {
   const next = { ...base }
 
   if (c.profile !== '') {
@@ -152,7 +159,7 @@ export interface Shadowed {
 export function shadowedChoices(c: Choices, r: Resolution, scope: 'repo' | 'org'): Shadowed {
   const out: Shadowed = { byPrompt: [], byRepo: [] }
 
-  const check = (chosen: boolean, label: string, source: string) => {
+  const check = (chosen: boolean, label: string, source: LaunchSource) => {
     if (!chosen) {
       return
     }

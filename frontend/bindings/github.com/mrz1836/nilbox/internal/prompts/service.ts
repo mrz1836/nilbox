@@ -12,6 +12,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as item$0 from "../item/models.js";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
 /**
@@ -70,10 +74,10 @@ export function Reset(id: number): $CancellablePromise<$models.Prompt> {
 }
 
 /**
- * SetDefault makes a prompt the app's default for kind ("pr" or "issue"). The prompt
- * must apply to that kind.
+ * SetDefault makes a prompt the app's default for kind. The prompt must apply to that
+ * kind.
  */
-export function SetDefault(kind: string, id: number): $CancellablePromise<void> {
+export function SetDefault(kind: item$0.Kind, id: number): $CancellablePromise<void> {
     return $Call.ByID(1389029626, kind, id);
 }
 

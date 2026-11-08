@@ -3,17 +3,12 @@
 package main
 
 import (
-	"context"
 	_ "embed"
-	"fmt"
-	"io"
-	"sync"
-	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"github.com/mrz1836/nilbox/internal/brand"
-	"github.com/mrz1836/nilbox/internal/inbox"
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/menubar"
 )
 
@@ -23,112 +18,77 @@ import (
 //go:embed trayicon.png
 var trayIcon []byte
 
-// trayActions is what the menu bar's menu does in the rest of the shell.
-type trayActions interface {
-	// showWindow brings the window forward.
-	showWindow()
-
-	// reveal brings the window forward with an item in view.
-	reveal(itemID int64, url string)
-
-	// refreshInbox refreshes the inbox from GitHub now.
-	refreshInbox()
-
-	// quit quits the app.
-	quit()
-}
-
 // tray is the menu bar icon: the mark, with how many items need the user beside it, and a
-// menu that opens the window, lists the items by list, refreshes, and quits. It is drawn
-// from the stored inbox, again whenever the inbox changes and whenever a snooze ends.
+// menu that opens the window, lists the items by list, refreshes, and quits. The shell
+// decides when it shows and what it says; its clicks go back to the shell.
+//
+// Every change runs on the main thread, in the order it was asked for, so its fields
+// need no lock, and the shell never waits for the main thread, which its shutdown can
+// hold. A change the main thread reaches once the app is shutting down is dropped.
 type tray struct {
-	app     *application.App
-	inbox   *inbox.Service
-	actions trayActions
-	stderr  io.Writer
+	ui *desktopUI
 
-	// mu guards the fields below and serializes updates, so menus are built one at a time.
-	mu    sync.Mutex
-	item  *application.SystemTray
-	menu  *application.Menu
-	timer *time.Timer
+	item *application.SystemTray
+	menu *application.Menu
 }
 
-// newTray returns a tray that is not shown yet.
-func newTray(app *application.App, svc *inbox.Service, actions trayActions, stderr io.Writer) *tray {
-	return &tray{app: app, inbox: svc, actions: actions, stderr: stderr}
-}
-
-// show puts the icon in the menu bar, if it is not there, and draws it.
-func (t *tray) show() {
-	t.mu.Lock()
-
-	if t.item == nil {
-		t.menu = application.NewMenu()
-		t.item = t.app.SystemTray.New()
-		t.item.SetTemplateIcon(trayIcon)
-		t.item.SetMenu(t.menu)
-	}
-
-	t.mu.Unlock()
-
-	t.update()
-}
-
-// hide takes the icon out of the menu bar.
-func (t *tray) hide() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	t.stopTimer()
-
-	if t.item != nil {
-		t.item.Destroy()
-		t.item, t.menu = nil, nil
-	}
-}
-
-// update draws the icon's count and menu from the stored inbox, and sets a timer for the
-// soonest snooze to end, which changes the count with nothing stored.
-func (t *tray) update() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	if t.item == nil {
-		return
-	}
-
-	ctx := t.app.Context()
-
-	snap, err := t.inbox.Snapshot(ctx)
-	if err != nil {
-		if ctx.Err() == nil {
-			_, _ = fmt.Fprintln(t.stderr, "read the inbox for the menu bar:", err)
+// Show puts the icon in the menu bar, if it is not there.
+func (t *tray) Show() {
+	t.onMain(func(app *application.App) {
+		if t.item != nil {
+			return
 		}
 
-		return
-	}
-
-	now := time.Now()
-	sum := menubar.Summarize(snap, now)
-
-	t.build(sum)
-	t.item.SetLabel(sum.Label)
-
-	t.stopTimer()
-
-	if !sum.NextChange.IsZero() {
-		// A second past the end, so the snooze has ended when the count is taken again.
-		t.timer = time.AfterFunc(sum.NextChange.Sub(now)+time.Second, t.update)
-	}
+		t.menu = application.NewMenu()
+		t.item = app.SystemTray.New()
+		t.item.SetTemplateIcon(trayIcon)
+		t.item.SetMenu(t.menu)
+	})
 }
 
-// build fills the menu from a summary. The caller holds t.mu.
+// Hide takes the icon out of the menu bar.
+func (t *tray) Hide() {
+	t.onMain(func(*application.App) {
+		if t.item == nil {
+			return
+		}
+
+		t.item.Destroy()
+		t.item, t.menu = nil, nil
+	})
+}
+
+// Draw sets the icon's count and fills its menu from sum.
+func (t *tray) Draw(sum menubar.Summary) {
+	t.onMain(func(*application.App) {
+		if t.item == nil {
+			return
+		}
+
+		t.build(sum)
+		t.item.SetLabel(sum.Label)
+	})
+}
+
+// onMain runs fn on the main thread, unless the app is shutting down by then.
+func (t *tray) onMain(fn func(app *application.App)) {
+	application.InvokeAsync(func() {
+		app := t.ui.app.Load()
+		if app == nil || t.ui.shell.Stopping() {
+			return
+		}
+
+		fn(app)
+	})
+}
+
+// build fills the menu from a summary.
 func (t *tray) build(sum menubar.Summary) {
+	shell := t.ui.shell
 	m := t.menu
 	m.Clear()
 
-	m.Add("Open " + brand.Name).OnClick(func(*application.Context) { t.actions.showWindow() })
+	m.Add("Open " + brand.Name).OnClick(func(*application.Context) { shell.ShowWindow() })
 	m.AddSeparator()
 
 	if len(sum.Sections) == 0 {
@@ -140,18 +100,18 @@ func (t *tray) build(sum menubar.Summary) {
 		addSectionHeader(m, section.Title)
 
 		for _, e := range section.Entries {
-			id := e.ItemID
-			m.Add(e.Label).SetTooltip(e.Tooltip).OnClick(func(*application.Context) { t.actions.reveal(id, "") })
+			reveal := event.RevealItem{ItemID: e.ItemID}
+			m.Add(e.Label).SetTooltip(e.Tooltip).OnClick(func(*application.Context) { shell.Emit(reveal) })
 		}
 
 		if section.More > 0 {
-			m.Add(menubar.MoreLabel(section.More)).OnClick(func(*application.Context) { t.actions.showWindow() })
+			m.Add(menubar.MoreLabel(section.More)).OnClick(func(*application.Context) { shell.ShowWindow() })
 		}
 
 		m.AddSeparator()
 	}
 
-	m.Add("Refresh Now").OnClick(func(*application.Context) { t.actions.refreshInbox() })
+	m.Add("Refresh Now").OnClick(func(*application.Context) { shell.RefreshNow() })
 
 	status := m.Add(sum.Status).SetEnabled(false)
 	if sum.Failed {
@@ -159,35 +119,7 @@ func (t *tray) build(sum menubar.Summary) {
 	}
 
 	m.AddSeparator()
-	m.Add("Quit " + brand.Name).SetAccelerator("CmdOrCtrl+Q").OnClick(func(*application.Context) { t.actions.quit() })
+	m.Add("Quit " + brand.Name).SetAccelerator("CmdOrCtrl+Q").OnClick(func(*application.Context) { shell.Quit() })
 
 	m.Update()
-}
-
-// stopTimer stops the snooze timer, if one is set. The caller holds t.mu.
-func (t *tray) stopTimer() {
-	if t.timer != nil {
-		t.timer.Stop()
-		t.timer = nil
-	}
-}
-
-// refreshInbox refreshes the inbox now, in the background; the refresh tells the window and
-// the menu bar when it is stored, and records a failure for both to show.
-func (s *shell) refreshInbox() {
-	app := s.app.Load()
-	if app == nil || s.stopping.Load() {
-		return
-	}
-
-	go func(ctx context.Context) {
-		_, _ = s.core.Inbox.Refresh(ctx)
-	}(app.Context())
-}
-
-// quit quits the app.
-func (s *shell) quit() {
-	if app := s.app.Load(); app != nil {
-		app.Quit()
-	}
 }

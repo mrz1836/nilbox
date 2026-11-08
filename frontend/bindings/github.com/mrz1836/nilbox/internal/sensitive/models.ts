@@ -24,7 +24,7 @@ export interface Category {
     /**
      * Level is LevelDanger or LevelWarning.
      */
-    "level": string;
+    "level": Level;
 
     /**
      * Locked reports a category that cannot be turned off.
@@ -42,10 +42,7 @@ export interface Category {
  * field is a plain value.
  */
 export interface Check {
-    /**
-     * Status is one of the Status* values.
-     */
-    "status": string;
+    "status": Status;
 
     /**
      * Head is the head commit the files were checked at, or "" before any check.
@@ -84,7 +81,7 @@ export interface Config {
     /**
      * Scope is ScopeOutside or ScopeCollaborators.
      */
-    "scope": string;
+    "scope": Scope;
 
     /**
      * Off lists the built-in categories turned off, sorted. A locked category is never
@@ -135,9 +132,37 @@ export interface Group {
     "label": string;
     "short": string;
     "description": string;
-    "level": string;
+    "level": Level;
     "files": Finding[] | null;
 }
+
+/**
+ * Level says how closely a category's files deserve a look.
+ */
+export type Level = "danger" | "warning" | "";
+
+/**
+ * The values of Level, by the names of their Go constants.
+ */
+export const Level = {
+    /**
+     * Levels, from the most pressing.
+     *
+     * LevelDanger is for files that run, or steer an agent, without anyone choosing to
+     * run them.
+     */
+    LevelDanger: "danger",
+
+    /**
+     * LevelWarning is for files that change what the project trusts or depends on.
+     */
+    LevelWarning: "warning",
+
+    /**
+     * LevelNone is the level of a path that matched no category.
+     */
+    LevelNone: "",
+} as const;
 
 /**
  * PathMatch says whether a path is sensitive under a configuration, and why. Every field
@@ -151,10 +176,79 @@ export interface PathMatch {
 
     /**
      * Category, Label, and Level describe the category it matched, and Pattern the
-     * pattern; all are "" when it matched none.
+     * pattern; all are "" (Level is LevelNone) when it matched none.
      */
     "category": string;
     "label": string;
-    "level": string;
+    "level": Level;
     "pattern": string;
 }
+
+/**
+ * Scope says whose pull requests are checked.
+ */
+export type Scope = "outside" | "collaborators";
+
+/**
+ * The values of Scope, by the names of their Go constants.
+ */
+export const Scope = {
+    /**
+     * Scopes, from the narrowest.
+     *
+     * ScopeOutside checks every pull request from a fork, from outside contributors, and
+     * from bots not on the trusted list.
+     */
+    ScopeOutside: "outside",
+
+    /**
+     * ScopeCollaborators also checks collaborators' pull requests: people with access to
+     * the repository who are not its owner or members of its org.
+     */
+    ScopeCollaborators: "collaborators",
+
+    /**
+     * DefaultScope is the scope of a fresh database.
+     */
+    DefaultScope: "collaborators",
+} as const;
+
+/**
+ * Status is where checking a pull request's changed files stands.
+ */
+export type Status = "pending" | "failed" | "flagged" | "partial" | "clear";
+
+/**
+ * The values of Status, by the names of their Go constants.
+ */
+export const Status = {
+    /**
+     * Check statuses.
+     *
+     * StatusPending is a pull request not checked since its last push: new to the inbox,
+     * newly in scope, or pushed since its last check.
+     */
+    StatusPending: "pending",
+
+    /**
+     * StatusFailed is a check that could not finish; the next refresh tries again.
+     */
+    StatusFailed: "failed",
+
+    /**
+     * StatusFlagged is a pull request that changes sensitive files.
+     */
+    StatusFlagged: "flagged",
+
+    /**
+     * StatusPartial is a pull request GitHub listed only some of the changed files of,
+     * none of them sensitive.
+     */
+    StatusPartial: "partial",
+
+    /**
+     * StatusClear is a pull request whose every changed file was checked, none of them
+     * sensitive.
+     */
+    StatusClear: "clear",
+} as const;

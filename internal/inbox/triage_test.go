@@ -9,8 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/snooze"
-	"github.com/mrz1836/nilbox/internal/store"
 )
 
 // triageHarness refreshes an inbox where #1 is in two lists and #2 in one, and returns
@@ -27,12 +28,14 @@ func triageHarness(t *testing.T) (h *harness, first, second int64) {
 }
 
 func TestDismissUntilRestored(t *testing.T) {
+	t.Parallel()
+
 	h, id, other := triageHarness(t)
-	notified := h.notifier.calls
+	notified := h.events.Count()
 
 	snap, err := h.svc.Dismiss(t.Context(), id)
 	require.NoError(t, err)
-	assert.Equal(t, notified+1, h.notifier.calls)
+	assert.Equal(t, notified+1, h.events.Count())
 
 	// The item stays in both its lists, marked; the UI sets it apart.
 	for _, l := range []List{snap.ReviewRequested, snap.Assigned} {
@@ -44,7 +47,7 @@ func TestDismissUntilRestored(t *testing.T) {
 	assert.Empty(t, itemByNumber(t, snap.ReviewRequested, 2).DismissedAt, "other items are untouched")
 
 	// A refresh leaves it dismissed, however much later.
-	h.clock.now = h.clock.now.Add(30 * 24 * time.Hour)
+	h.clock.Advance(30 * 24 * time.Hour)
 	snap = h.refresh(t)
 	assert.Equal(t, "2026-01-10T12:00:00Z", itemByNumber(t, snap.ReviewRequested, 1).DismissedAt)
 
@@ -59,8 +62,10 @@ func TestDismissUntilRestored(t *testing.T) {
 }
 
 func TestSnoozeForDays(t *testing.T) {
+	t.Parallel()
+
 	h, id, _ := triageHarness(t)
-	h.clock.now = time.Date(2026, 1, 10, 12, 0, 0, 500, time.UTC)
+	h.clock.Set(time.Date(2026, 1, 10, 12, 0, 0, 500, time.UTC))
 
 	snap, err := h.svc.Snooze(t.Context(), id, 3)
 	require.NoError(t, err)
@@ -84,20 +89,22 @@ func TestSnoozeForDays(t *testing.T) {
 
 	// Once the snooze has passed, the item still says it was snoozed, so the UI can mark
 	// it as back.
-	h.clock.now = h.clock.now.Add(48 * time.Hour)
+	h.clock.Advance(48 * time.Hour)
 	snap = h.refresh(t)
 	assert.Equal(t, "2026-01-11T12:00:00Z", itemByNumber(t, snap.Assigned, 1).SnoozedUntil)
 	assert.Equal(t, int64(1), h.count(t, "item_local_state"))
 }
 
 func TestSnoozeKeepsTheWallClockTime(t *testing.T) {
+	t.Parallel()
+
 	h, id, _ := triageHarness(t)
 
 	newYork, err := time.LoadLocation("America/New_York")
 	require.NoError(t, err)
 
 	// Noon on the Saturday before the clocks go forward: noon on Sunday is 23 hours on.
-	h.clock.now = time.Date(2026, 3, 7, 12, 0, 0, 0, newYork)
+	h.clock.Set(time.Date(2026, 3, 7, 12, 0, 0, 0, newYork))
 
 	snap, err := h.svc.Snooze(t.Context(), id, 1)
 	require.NoError(t, err)
@@ -105,12 +112,14 @@ func TestSnoozeKeepsTheWallClockTime(t *testing.T) {
 	until, err := time.Parse(time.RFC3339, itemByNumber(t, snap.ReviewRequested, 1).SnoozedUntil)
 	require.NoError(t, err)
 	assert.Equal(t, time.Date(2026, 3, 8, 12, 0, 0, 0, newYork).UTC(), until)
-	assert.Equal(t, 23*time.Hour, until.Sub(h.clock.now))
+	assert.Equal(t, 23*time.Hour, until.Sub(h.clock.Now()))
 }
 
 func TestSnoozeRejectsInvalidLengths(t *testing.T) {
+	t.Parallel()
+
 	h, id, _ := triageHarness(t)
-	notified := h.notifier.calls
+	notified := h.events.Count()
 
 	for _, days := range []int{0, -1, snooze.MaxDays + 1} {
 		_, err := h.svc.Snooze(t.Context(), id, days)
@@ -123,12 +132,14 @@ func TestSnoozeRejectsInvalidLengths(t *testing.T) {
 	_, err = h.svc.Snooze(t.Context(), id, snooze.MaxDays)
 	require.NoError(t, err, "a year is the longest snooze")
 
-	assert.Equal(t, notified+1, h.notifier.calls, "only the valid snooze notifies")
+	assert.Equal(t, notified+1, h.events.Count(), "only the valid snooze notifies")
 }
 
 func TestPinKeepsAnItemOnTop(t *testing.T) {
+	t.Parallel()
+
 	h, first, second := triageHarness(t)
-	notified := h.notifier.calls
+	notified := h.events.Count()
 
 	// #2 moved last, so it leads until #1 is pinned.
 	snap, err := h.svc.Snapshot(t.Context())
@@ -137,19 +148,19 @@ func TestPinKeepsAnItemOnTop(t *testing.T) {
 
 	snap, err = h.svc.Pin(t.Context(), first)
 	require.NoError(t, err)
-	assert.Equal(t, notified+1, h.notifier.calls)
+	assert.Equal(t, notified+1, h.events.Count())
 	assert.Equal(t, []int{1, 2}, numbers(snap.ReviewRequested))
 	assert.Equal(t, "2026-01-10T12:00:00Z", itemByNumber(t, snap.Assigned, 1).PinnedAt, "pinned in every list")
 	assert.Empty(t, itemByNumber(t, snap.ReviewRequested, 2).PinnedAt)
 
 	// The most recently pinned comes first, even within the same second.
-	h.clock.now = h.clock.now.Add(500 * time.Millisecond)
+	h.clock.Advance(500 * time.Millisecond)
 	snap, err = h.svc.Pin(t.Context(), second)
 	require.NoError(t, err)
 	assert.Equal(t, []int{2, 1}, numbers(snap.ReviewRequested))
 
 	// Pinning a pinned item does not move it.
-	h.clock.now = h.clock.now.Add(time.Minute)
+	h.clock.Advance(time.Minute)
 	snap, err = h.svc.Pin(t.Context(), first)
 	require.NoError(t, err)
 	assert.Equal(t, []int{2, 1}, numbers(snap.ReviewRequested))
@@ -176,6 +187,8 @@ func TestPinKeepsAnItemOnTop(t *testing.T) {
 }
 
 func TestAPinOutlastsSnoozesAndDismissals(t *testing.T) {
+	t.Parallel()
+
 	h, id, _ := triageHarness(t)
 
 	_, err := h.svc.Pin(t.Context(), id)
@@ -216,26 +229,30 @@ func TestAPinOutlastsSnoozesAndDismissals(t *testing.T) {
 }
 
 func TestTriageUnknownItem(t *testing.T) {
+	t.Parallel()
+
 	h, _, _ := triageHarness(t)
-	notified := h.notifier.calls
+	notified := h.events.Count()
 
 	_, err := h.svc.Dismiss(t.Context(), 999)
-	require.ErrorIs(t, err, ErrItemNotFound)
+	require.ErrorIs(t, err, item.ErrNotFound)
 	require.ErrorContains(t, err, "(id 999)")
 
 	_, err = h.svc.Snooze(t.Context(), 999, 3)
-	require.ErrorIs(t, err, ErrItemNotFound)
+	require.ErrorIs(t, err, item.ErrNotFound)
 
 	_, err = h.svc.Pin(t.Context(), 999)
-	require.ErrorIs(t, err, ErrItemNotFound)
+	require.ErrorIs(t, err, item.ErrNotFound)
 
 	assert.Zero(t, h.count(t, "item_local_state"))
-	assert.Equal(t, notified, h.notifier.calls)
+	assert.Equal(t, notified, h.events.Count())
 }
 
 func TestTriageDatabaseErrors(t *testing.T) {
+	t.Parallel()
+
 	h, id, _ := triageHarness(t)
-	require.NoError(t, store.Close(h.db))
+	require.NoError(t, h.pool.Close())
 
 	_, err := h.svc.Dismiss(t.Context(), id)
 	require.ErrorContains(t, err, "dismiss the item")
@@ -274,36 +291,49 @@ func wakeHarness(t *testing.T) (h *harness, id int64, details github.ItemDetails
 func (h *harness) later(t *testing.T, details github.ItemDetails) Item {
 	t.Helper()
 
-	h.clock.now = h.clock.now.Add(time.Hour)
+	h.clock.Advance(time.Hour)
 	h.client.details = map[string]github.ItemDetails{nodeID(1): details}
 
 	return itemByNumber(t, h.refresh(t).ReviewRequested, 1)
 }
 
-// setPrefs writes raw prefs, as the settings service would.
-func (h *harness) setPrefs(t *testing.T, prefs map[string]string) {
+// baseline reads the activity an item's snooze compares with, or nil when none is
+// recorded.
+func (h *harness) baseline(t *testing.T, id int64) *string {
 	t.Helper()
 
-	for k, v := range prefs {
-		require.NoError(t, h.db.Exec(upsertPrefSQL, k, v, h.clock.now).Error)
-	}
+	var baseline *string
+	require.NoError(t, h.pool.QueryRowContext(t.Context(),
+		"SELECT snooze_baseline FROM item_local_state WHERE item_id = ?", id).Scan(&baseline))
+
+	return baseline
+}
+
+// setPrefs writes raw prefs, as the settings service would.
+func (h *harness) setPrefs(t *testing.T, values map[string]string) {
+	t.Helper()
+
+	require.NoError(t, prefs.New(h.pool, h.clock).SetMany(t.Context(), values))
 }
 
 func TestSnoozeRecordsTheItemsActivity(t *testing.T) {
+	t.Parallel()
+
 	h, id, details := wakeHarness(t)
 
 	_, err := h.svc.Snooze(t.Context(), id, 3)
 	require.NoError(t, err)
 
-	var baseline []string
-	require.NoError(t, h.db.Raw("SELECT snooze_baseline FROM item_local_state WHERE item_id = ?", id).Scan(&baseline).Error)
-	require.Len(t, baseline, 1)
+	baseline := h.baseline(t, id)
+	require.NotNil(t, baseline)
 	assert.JSONEq(t, `{"head":"1111111111111111111111111111111111111111","commits":3,"comments":4,
-		"decision":"REVIEW_REQUIRED","reviewed":0,"approvals":0,"changesRequested":0}`, baseline[0])
+		"decision":"REVIEW_REQUIRED","reviewed":0,"approvals":0,"changesRequested":0}`, *baseline)
 	assert.Equal(t, 3, details.Commits)
 }
 
 func TestNewCommitsWakeASnooze(t *testing.T) {
+	t.Parallel()
+
 	h, id, details := wakeHarness(t)
 
 	_, err := h.svc.Snooze(t.Context(), id, 3)
@@ -335,10 +365,12 @@ func TestNewCommitsWakeASnooze(t *testing.T) {
 }
 
 func TestTheWakeRulesComeFromThePrefs(t *testing.T) {
+	t.Parallel()
+
 	h, id, details := wakeHarness(t)
 	h.setPrefs(t, map[string]string{
 		snooze.PrefWakeCommits:  "0",
-		snooze.PrefWakeReviews:  snooze.ReviewsNever,
+		snooze.PrefWakeReviews:  string(snooze.ReviewsNever),
 		snooze.PrefWakeComments: "3",
 	})
 
@@ -361,6 +393,8 @@ func TestTheWakeRulesComeFromThePrefs(t *testing.T) {
 }
 
 func TestAReviewWakesASnooze(t *testing.T) {
+	t.Parallel()
+
 	h, id, details := wakeHarness(t)
 
 	_, err := h.svc.Snooze(t.Context(), id, 3)
@@ -375,6 +409,8 @@ func TestAReviewWakesASnooze(t *testing.T) {
 }
 
 func TestABotsForcePushDoesNotWakeASnooze(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	details := prDetails()
 	details.HeadOID = "1111111111111111111111111111111111111111"
@@ -400,25 +436,21 @@ func TestABotsForcePushDoesNotWakeASnooze(t *testing.T) {
 }
 
 func TestASnoozeBeforeTheDetailsTakesItsBaselineLater(t *testing.T) {
+	t.Parallel()
+
 	h, id, _ := triageHarness(t)
 
 	_, err := h.svc.Snooze(t.Context(), id, 3)
 	require.NoError(t, err)
 
-	var baseline []struct {
-		Value *string `gorm:"column:snooze_baseline"`
-	}
-	require.NoError(t, h.db.Raw("SELECT snooze_baseline FROM item_local_state WHERE item_id = ?", id).Scan(&baseline).Error)
-	require.Len(t, baseline, 1)
-	assert.Nil(t, baseline[0].Value, "no details are known yet")
+	assert.Nil(t, h.baseline(t, id), "no details are known yet")
 
 	details := prDetails()
 	h.client.details = map[string]github.ItemDetails{nodeID(1): details}
 	snap := h.refresh(t)
 	assert.Nil(t, itemByNumber(t, snap.ReviewRequested, 1).WokeBy, "the first details are the baseline, not news")
 
-	require.NoError(t, h.db.Raw("SELECT snooze_baseline FROM item_local_state WHERE item_id = ?", id).Scan(&baseline).Error)
-	require.NotNil(t, baseline[0].Value)
+	require.NotNil(t, h.baseline(t, id))
 
 	details.Commits += 2
 	h.client.details = map[string]github.ItemDetails{nodeID(1): details}
@@ -427,6 +459,8 @@ func TestASnoozeBeforeTheDetailsTakesItsBaselineLater(t *testing.T) {
 }
 
 func TestDismissedItemsNeverWake(t *testing.T) {
+	t.Parallel()
+
 	h, id, details := wakeHarness(t)
 
 	_, err := h.svc.Dismiss(t.Context(), id)
@@ -439,25 +473,30 @@ func TestDismissedItemsNeverWake(t *testing.T) {
 }
 
 func TestUnreadableWakeReasonsShowNone(t *testing.T) {
+	t.Parallel()
+
 	assert.Nil(t, decodeReasons(nil))
 
-	empty := "{}"
-	assert.Nil(t, decodeReasons(&empty))
+	assert.Nil(t, decodeReasons(new("{}")))
+	assert.Nil(t, decodeReasons(new("[1]")))
+	assert.Equal(t, &snooze.Reasons{Commits: 2}, decodeReasons(new(`{"commits":2}`)))
 
-	broken := "[1]"
-	assert.Nil(t, decodeReasons(&broken))
+	// A review outcome a different build stored reads as none.
+	assert.Equal(t, &snooze.Reasons{Commits: 2, Review: snooze.ReviewNone},
+		decodeReasons(new(`{"commits":2,"review":"praised"}`)))
 
-	ok := `{"commits":2}`
-	assert.Equal(t, &snooze.Reasons{Commits: 2}, decodeReasons(&ok))
+	assert.Nil(t, decodeReasons(new(`{"review":"praised"}`)), "nothing this build knows woke it")
 }
 
 func TestWakeRulesDatabaseError(t *testing.T) {
-	h, _, _ := triageHarness(t)
-	require.NoError(t, store.Close(h.db))
+	t.Parallel()
 
-	_, err := wakeRules(h.db)
+	h, _, _ := triageHarness(t)
+	require.NoError(t, h.pool.Close())
+
+	_, err := wakeRules(t.Context(), h.svc.prefs)
 	require.ErrorContains(t, err, "read the snooze rules")
 
-	_, err = activityBaseline(h.db, 1)
+	_, err = activityBaseline(t.Context(), h.svc.q, 1)
 	require.ErrorContains(t, err, "read the item's activity")
 }

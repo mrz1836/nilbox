@@ -6,12 +6,16 @@ export {
     Service
 };
 
+export {
+    AppliesTo,
+    Severity
+} from "./models.js";
+
 export type {
     CheckRequest,
     CheckResult,
     DefaultPrompts,
     Diagnostic,
-    FieldError,
     Input,
     Prompt,
     Usage,

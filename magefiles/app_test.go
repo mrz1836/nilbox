@@ -38,18 +38,12 @@ printf '/**\n * Doc. \n */\nexport const a = 1;\n' > "$out/models/a.ts"`
 
 // fakeGo puts a go on an isolated PATH that logs each call's arguments, answers
 // `go list` with fakeWailsVersion, and runs body for every other command. It returns
-// the log's path.
+// the log's path, which body can append to through $log.
 func fakeGo(t *testing.T, body string) string {
 	t.Helper()
 
-	log := filepath.Join(t.TempDir(), "go.log")
-	t.Setenv("GO_LOG", log)
-
-	fakeTool(t, isolatedPath(t), "go", `printf '%s\n' "$*" >> "$GO_LOG"
-if [ "$1" = list ]; then echo "`+fakeWailsVersion+`"; exit 0; fi
+	return fakeLoggedTool(t, isolatedPath(t), "go", `if [ "$1" = list ]; then echo "`+fakeWailsVersion+`"; exit 0; fi
 `+body)
-
-	return log
 }
 
 // fakeLint puts a golangci-lint at version 2.15.0 on an isolated PATH that logs each
@@ -75,12 +69,7 @@ printf '%s\n' "$*" >> "$LINT_LOG"`)
 func fakeOpen(t *testing.T, body string) string {
 	t.Helper()
 
-	log := filepath.Join(t.TempDir(), "open.log")
-	t.Setenv("OPEN_LOG", log)
-
-	fakeTool(t, isolatedPath(t), "open", `printf '%s\n' "$*" >> "$OPEN_LOG"`+"\n"+body)
-
-	return log
+	return fakeLoggedTool(t, isolatedPath(t), "open", body)
 }
 
 // appTools puts a fake of every tool the app targets run on an isolated PATH, each
@@ -141,12 +130,11 @@ func checkout(t *testing.T, dir string) {
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, frontendDir), 0o750))
 }
 
-// startSleeper starts a process of the test's own that sleeps until it is stopped and
-// returns its ID. The test reaps it when it ends.
-func startSleeper(t *testing.T) int {
+// startProcess starts cmd, a process of the test's own, and returns its ID and a channel
+// that is closed once it has exited. The test kills and reaps it when it ends.
+func startProcess(t *testing.T, cmd *exec.Cmd) (int, <-chan struct{}) {
 	t.Helper()
 
-	cmd := exec.CommandContext(t.Context(), requireTool(t, "sleep"), "30") //nolint:gosec // the test's own process, fixed arguments
 	require.NoError(t, cmd.Start())
 
 	done := make(chan struct{})
@@ -163,7 +151,28 @@ func startSleeper(t *testing.T) int {
 		<-done
 	})
 
-	return cmd.Process.Pid
+	return cmd.Process.Pid, done
+}
+
+// startSleeper starts a process of the test's own that sleeps until it is stopped and
+// returns its ID. The test reaps it when it ends.
+func startSleeper(t *testing.T) int {
+	t.Helper()
+
+	pid, _ := startProcess(t, exec.CommandContext(t.Context(), requireTool(t, "sleep"), "30")) //nolint:gosec // the test's own process, fixed arguments
+
+	return pid
+}
+
+// requireProcessList skips a test that needs pgrep to see real processes when pgrep
+// cannot list any, as inside a sandbox that hides the process table. A pattern that
+// matches every command line finds at least the go command running the tests.
+func requireProcessList(t *testing.T) {
+	t.Helper()
+
+	if err := exec.CommandContext(t.Context(), requireTool(t, "pgrep"), "-f", ".").Run(); err != nil { //nolint:gosec // fixed arguments
+		t.Skipf("pgrep cannot list processes here: %v", err)
+	}
 }
 
 // packageVars returns the names of the package-level variables declared in the Go file
@@ -193,7 +202,11 @@ func packageVars(t *testing.T, path string) []string {
 }
 
 func TestTreeFiles(t *testing.T) {
+	t.Parallel()
+
 	t.Run("missing root is an empty tree", func(t *testing.T) {
+		t.Parallel()
+
 		files, err := treeFiles(filepath.Join(t.TempDir(), "missing"))
 
 		require.NoError(t, err)
@@ -201,6 +214,8 @@ func TestTreeFiles(t *testing.T) {
 	})
 
 	t.Run("regular files keyed by slash-separated path", func(t *testing.T) {
+		t.Parallel()
+
 		root := t.TempDir()
 		writeFile(t, filepath.Join(root, "a.ts"), "a")
 		writeFile(t, filepath.Join(root, "nested", "b.ts"), "b")
@@ -213,6 +228,8 @@ func TestTreeFiles(t *testing.T) {
 	})
 
 	t.Run("unreadable file", func(t *testing.T) {
+		t.Parallel()
+
 		skipAsRoot(t)
 
 		root := t.TempDir()
@@ -227,7 +244,11 @@ func TestTreeFiles(t *testing.T) {
 }
 
 func TestTreeDiff(t *testing.T) {
+	t.Parallel()
+
 	t.Run("reports each difference, sorted", func(t *testing.T) {
+		t.Parallel()
+
 		want, got := t.TempDir(), t.TempDir()
 		writeFile(t, filepath.Join(want, "same.ts"), "x")
 		writeFile(t, filepath.Join(got, "same.ts"), "x")
@@ -243,6 +264,8 @@ func TestTreeDiff(t *testing.T) {
 	})
 
 	t.Run("identical trees", func(t *testing.T) {
+		t.Parallel()
+
 		want, got := t.TempDir(), t.TempDir()
 		writeFile(t, filepath.Join(want, "a.ts"), "a")
 		writeFile(t, filepath.Join(got, "a.ts"), "a")
@@ -254,6 +277,8 @@ func TestTreeDiff(t *testing.T) {
 	})
 
 	t.Run("unreadable tree", func(t *testing.T) {
+		t.Parallel()
+
 		skipAsRoot(t)
 
 		bad := t.TempDir()
@@ -268,32 +293,43 @@ func TestTreeDiff(t *testing.T) {
 	})
 }
 
-func TestTrimTrailingSpace(t *testing.T) {
-	t.Run("trims spaces and tabs, leaving clean files alone", func(t *testing.T) {
+func TestTidyBindings(t *testing.T) {
+	t.Parallel()
+
+	t.Run("tidies changed files, leaving tidy files alone", func(t *testing.T) {
+		t.Parallel()
+
 		root := t.TempDir()
 		dirty := filepath.Join(root, "models", "a.ts")
+		enum := filepath.Join(root, "item", "models.ts")
 		clean := filepath.Join(root, "b.ts")
 
 		writeFile(t, dirty, "/**\n * Doc. \n *\t\n */\nexport const a = 1;  \n")
+		writeFile(t, enum, "export enum Kind {\n    KindPR = \"pr\",\n};\n")
 		writeFile(t, clean, "export const b = 2;\n")
 
 		past := time.Date(2020, time.January, 1, 0, 0, 0, 0, time.UTC)
 		require.NoError(t, os.Chtimes(clean, past, past))
 
-		require.NoError(t, trimTrailingSpace(root))
+		require.NoError(t, tidyBindings(root))
 
 		assert.Equal(t, "/**\n * Doc.\n *\n */\nexport const a = 1;\n", readFile(t, dirty))
+		assert.Contains(t, readFile(t, enum), `export type Kind = "pr";`)
 
 		info, err := os.Stat(clean)
 		require.NoError(t, err)
-		assert.True(t, info.ModTime().Equal(past), "a clean file is not rewritten")
+		assert.True(t, info.ModTime().Equal(past), "a tidy file is not rewritten")
 	})
 
 	t.Run("missing root", func(t *testing.T) {
-		require.NoError(t, trimTrailingSpace(filepath.Join(t.TempDir(), "missing")))
+		t.Parallel()
+
+		require.NoError(t, tidyBindings(filepath.Join(t.TempDir(), "missing")))
 	})
 
 	t.Run("read-only file", func(t *testing.T) {
+		t.Parallel()
+
 		skipAsRoot(t)
 
 		root := t.TempDir()
@@ -301,23 +337,129 @@ func TestTrimTrailingSpace(t *testing.T) {
 		writeFile(t, path, "a \n")
 		require.NoError(t, os.Chmod(path, 0o400))
 
-		err := trimTrailingSpace(root)
+		err := tidyBindings(root)
 
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "trim a.ts")
+		assert.Contains(t, err.Error(), "tidy a.ts")
 	})
 
 	t.Run("unreadable file", func(t *testing.T) {
+		t.Parallel()
+
 		skipAsRoot(t)
 
 		root := t.TempDir()
 		writeFile(t, filepath.Join(root, "a.ts"), "a \n")
 		require.NoError(t, os.Chmod(filepath.Join(root, "a.ts"), 0o000))
 
-		require.Error(t, trimTrailingSpace(root))
+		require.Error(t, tidyBindings(root))
 	})
 }
 
+func TestTrimTrailingSpace(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "/**\n * Doc.\n *\n */\nexport const a = 1;\n",
+		string(trimTrailingSpace([]byte("/**\n * Doc. \n *\t\n */\nexport const a = 1;  \n"))))
+}
+
+// generatedEnum is an enum as the binding generator writes one for a Go string type with
+// constants: a $zero member first, then each constant, with a blank line between
+// declaration groups.
+const generatedEnum = `// This file is automatically generated. DO NOT EDIT
+
+/**
+ * Theme is the palette the app shows.
+ */
+export enum Theme {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    /**
+     * Theme choices.
+     */
+    ThemeSystem = "system",
+    ThemeLight = "light",
+
+    /**
+     * DefaultTheme is the theme of a fresh database.
+     */
+    DefaultTheme = "system",
+};
+
+export interface Settings {
+    "theme": Theme;
+}
+`
+
+func TestUnionEnums(t *testing.T) {
+	t.Parallel()
+
+	t.Run("rewrites an enum as a union and a const object", func(t *testing.T) {
+		t.Parallel()
+
+		want := `// This file is automatically generated. DO NOT EDIT
+
+/**
+ * Theme is the palette the app shows.
+ */
+export type Theme = "system" | "light";
+
+/**
+ * The values of Theme, by the names of their Go constants.
+ */
+export const Theme = {
+    /**
+     * Theme choices.
+     */
+    ThemeSystem: "system",
+    ThemeLight: "light",
+
+    /**
+     * DefaultTheme is the theme of a fresh database.
+     */
+    DefaultTheme: "system",
+} as const;
+
+export interface Settings {
+    "theme": Theme;
+}
+`
+
+		assert.Equal(t, want, string(unionEnums([]byte(generatedEnum))))
+	})
+
+	t.Run("keeps a constant whose value is the zero value", func(t *testing.T) {
+		t.Parallel()
+
+		got := string(unionEnums([]byte("export enum Stage {\n    $zero = \"\",\n    StageNone = \"\",\n" +
+			"    StageActive = \"active\",\n};\n")))
+
+		assert.Equal(t, "export type Stage = \"\" | \"active\";\n\n/**\n"+
+			" * The values of Stage, by the names of their Go constants.\n */\nexport const Stage = {\n"+
+			"    StageNone: \"\",\n    StageActive: \"active\",\n} as const;\n", got)
+	})
+
+	t.Run("leaves a file without enums alone", func(t *testing.T) {
+		t.Parallel()
+
+		body := "export interface A {\n    \"a\": string;\n}\n"
+
+		assert.Equal(t, body, string(unionEnums([]byte(body))))
+	})
+
+	t.Run("leaves an enum that never closes alone", func(t *testing.T) {
+		t.Parallel()
+
+		body := "export enum Kind {\n    KindPR = \"pr\",\n"
+
+		assert.Equal(t, body, string(unionEnums([]byte(body))))
+	})
+}
+
+//nolint:paralleltest // changes the process's working directory
 func TestEnsureDist(t *testing.T) {
 	t.Run("writes a placeholder when the frontend is not built", func(t *testing.T) {
 		inTempDir(t)
@@ -401,7 +543,7 @@ func TestLintVersion(t *testing.T) {
 		{
 			name:    "no pin",
 			env:     "MAGE_X_GOFUMPT_VERSION=v0.11.0\n",
-			wantErr: "the golangci-lint version is not pinned: " + mageXEnvFile + " has no " + lintVersionKey,
+			wantErr: "the tool version is not pinned: " + mageXEnvFile + " has no " + lintVersionKey,
 		},
 		{
 			name:    "unreadable line",
@@ -440,6 +582,7 @@ func TestLintVersionReadsTheRepositoryPin(t *testing.T) {
 	assert.Regexp(t, `^v\d+\.\d+\.\d+$`, got)
 }
 
+//nolint:paralleltest // changes the process's PATH
 func TestLintOnPath(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -466,6 +609,7 @@ func TestLintOnPath(t *testing.T) {
 	})
 }
 
+//nolint:paralleltest // changes the process's working directory and PATH
 func TestAppLint(t *testing.T) {
 	t.Run("lints the desktop code with the pinned version on PATH", func(t *testing.T) {
 		inTempDir(t)
@@ -506,6 +650,7 @@ func TestAppLint(t *testing.T) {
 	})
 }
 
+//nolint:paralleltest // changes the process's working directory and PATH
 func TestAppBindings(t *testing.T) {
 	t.Run("generates trimmed bindings with the pinned wails CLI", func(t *testing.T) {
 		inTempDir(t)
@@ -549,6 +694,7 @@ func TestAppBindings(t *testing.T) {
 	})
 }
 
+//nolint:paralleltest // changes the process's working directory, PATH, and standard output
 func TestAppBindingsCheck(t *testing.T) {
 	t.Run("passes when the committed bindings match", func(t *testing.T) {
 		inTempDir(t)
@@ -599,6 +745,8 @@ func TestAppBindingsCheck(t *testing.T) {
 }
 
 func TestWailsCLIUsesTheVersionGoModPins(t *testing.T) {
+	t.Parallel()
+
 	requireTool(t, "go")
 
 	cli, err := wailsCLI()
@@ -607,6 +755,7 @@ func TestWailsCLIUsesTheVersionGoModPins(t *testing.T) {
 	assert.Regexp(t, "^"+regexp.QuoteMeta(wailsModule+"/cmd/wails3@")+`v3\.`, cli)
 }
 
+//nolint:paralleltest // changes the process's working directory and PATH
 func TestAppDevStopsTheDevServerWhenTheAppFails(t *testing.T) {
 	dir := inTempDir(t)
 	require.NoError(t, os.Mkdir(filepath.Join(dir, frontendDir), 0o750))
@@ -622,6 +771,7 @@ func TestAppDevStopsTheDevServerWhenTheAppFails(t *testing.T) {
 	assert.FileExists(t, distIndex)
 }
 
+//nolint:paralleltest // changes the process's working directory and PATH
 func TestAppDevNeedsPNPM(t *testing.T) {
 	inTempDir(t)
 	isolatedPath(t)
@@ -629,6 +779,7 @@ func TestAppDevNeedsPNPM(t *testing.T) {
 	require.ErrorIs(t, App{}.Dev(), errPNPMMissing)
 }
 
+//nolint:paralleltest // changes the process's working directory
 func TestMacOSTargetsRefuseOtherSystems(t *testing.T) {
 	skipOnMacOS(t)
 	inTempDir(t)
@@ -655,6 +806,7 @@ func TestMacOSTargetsRefuseOtherSystems(t *testing.T) {
 	}
 }
 
+//nolint:paralleltest // changes the process's working directory
 func TestAppBundleOnMacOS(t *testing.T) {
 	onlyOnMacOS(t)
 
@@ -673,6 +825,7 @@ func TestAppBundleOnMacOS(t *testing.T) {
 	assert.True(t, strings.HasSuffix(exe, filepath.Join(bundle, "Contents", "MacOS", brand.Slug)))
 }
 
+//nolint:paralleltest // changes the process's PATH
 func TestAppProcesses(t *testing.T) {
 	const exe = "/Applications/Example.app/Contents/MacOS/example"
 
@@ -707,9 +860,7 @@ func TestAppProcesses(t *testing.T) {
 	}
 
 	t.Run("matches the whole executable path at the start of the command line", func(t *testing.T) {
-		log := filepath.Join(t.TempDir(), "pgrep.log")
-		t.Setenv("PGREP_LOG", log)
-		fakeTool(t, isolatedPath(t), "pgrep", `printf '%s\n' "$*" >> "$PGREP_LOG"; exit 1`)
+		log := fakeLoggedTool(t, isolatedPath(t), "pgrep", "exit 1")
 
 		_, err := appProcesses(exe)
 
@@ -718,35 +869,21 @@ func TestAppProcesses(t *testing.T) {
 	})
 }
 
+//nolint:paralleltest // changes the process's standard output
 func TestAppProcessesFindsARealProcess(t *testing.T) {
-	requireTool(t, "pgrep")
+	requireProcessList(t)
 	requireTool(t, "sleep")
 
 	bash := requireTool(t, "bash")
 	exe := filepath.Join(t.TempDir(), brand.Name+".app", "Contents", "MacOS", brand.Slug)
 
 	// bash replaces itself with sleep, run under the app's path as its command name.
-	cmd := exec.CommandContext(t.Context(), bash, "-c", `exec -a "$0" sleep 30`, exe) //nolint:gosec // the test's own process, fixed arguments
-	require.NoError(t, cmd.Start())
-
-	done := make(chan struct{})
-
-	go func() {
-		_ = cmd.Wait()
-
-		close(done)
-	}()
-
-	t.Cleanup(func() {
-		_ = cmd.Process.Kill()
-
-		<-done
-	})
+	pid, done := startProcess(t, exec.CommandContext(t.Context(), bash, "-c", `exec -a "$0" sleep 30`, exe)) //nolint:gosec // the test's own process, fixed arguments
 
 	assert.Eventually(t, func() bool {
 		pids, err := appProcesses(exe)
 
-		return err == nil && slices.Equal(pids, []int{cmd.Process.Pid})
+		return err == nil && slices.Equal(pids, []int{pid})
 	}, 5*time.Second, 20*time.Millisecond)
 
 	var (
@@ -766,6 +903,7 @@ func TestAppProcessesFindsARealProcess(t *testing.T) {
 	}
 }
 
+//nolint:paralleltest // changes the process's PATH, environment, and standard output
 func TestQuitRunningApp(t *testing.T) {
 	const exe = "/Applications/Example.app/Contents/MacOS/example"
 
@@ -822,6 +960,7 @@ echo "$FAKE_PID"`)
 	})
 }
 
+//nolint:paralleltest // changes the process's environment
 func TestOpenAfterQuit(t *testing.T) {
 	const bundle = "bin/Example.app"
 
@@ -857,11 +996,17 @@ exit 1`)
 }
 
 func TestStopProcessGroup(t *testing.T) {
+	t.Parallel()
+
 	t.Run("not started", func(t *testing.T) {
+		t.Parallel()
+
 		assert.NotPanics(t, func() { stopProcessGroup(&exec.Cmd{}) })
 	})
 
 	t.Run("stops the group and waits for it", func(t *testing.T) {
+		t.Parallel()
+
 		cmd := exec.CommandContext(t.Context(), requireTool(t, "sleep"), "30") //nolint:gosec // the test's own process, fixed arguments
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 		require.NoError(t, cmd.Start())
@@ -874,6 +1019,8 @@ func TestStopProcessGroup(t *testing.T) {
 }
 
 func TestVersionFlags(t *testing.T) {
+	t.Parallel()
+
 	meta := buildMeta{
 		version:       "v1.2.3-4-gabc1234",
 		commit:        "abc1234",
@@ -888,6 +1035,7 @@ func TestVersionFlags(t *testing.T) {
 		versionFlags(meta))
 }
 
+//nolint:paralleltest // changes the process's working directory
 func TestVersionFlagsStampDeclaredVariables(t *testing.T) {
 	inRepoRoot(t)
 
@@ -902,9 +1050,12 @@ func TestVersionFlagsStampDeclaredVariables(t *testing.T) {
 }
 
 func TestMacOSMinimumMatchesTheInfoPlist(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, brandgen.MinimumMacOS, macOSMinVersion, "the binary and the Info.plist name the same oldest macOS")
 }
 
+//nolint:paralleltest // changes the process's working directory and environment
 func TestReadBuildMeta(t *testing.T) {
 	t.Run("outside a git checkout", func(t *testing.T) {
 		isolateGit(t)
@@ -968,6 +1119,7 @@ func TestReadBuildMeta(t *testing.T) {
 	})
 }
 
+//nolint:paralleltest // changes the process's PATH
 func TestBuildDesktopBinary(t *testing.T) {
 	meta := buildMeta{
 		version:       "v1.0.0",
@@ -978,7 +1130,7 @@ func TestBuildDesktopBinary(t *testing.T) {
 	}
 
 	t.Run("builds the tagged production binary for the oldest supported macOS", func(t *testing.T) {
-		log := fakeGo(t, `printf '%s|%s|%s|%s\n' "$CGO_ENABLED" "$CGO_CFLAGS" "$CGO_LDFLAGS" "$MACOSX_DEPLOYMENT_TARGET" >> "$GO_LOG"`)
+		log := fakeGo(t, `printf '%s|%s|%s|%s\n' "$CGO_ENABLED" "$CGO_CFLAGS" "$CGO_LDFLAGS" "$MACOSX_DEPLOYMENT_TARGET" >> "$log"`)
 		minVersion := "-mmacosx-version-min=" + macOSMinVersion
 
 		require.NoError(t, buildDesktopBinary("bin/app", meta))
@@ -1000,6 +1152,7 @@ func TestBuildDesktopBinary(t *testing.T) {
 	})
 }
 
+//nolint:paralleltest // changes the process's working directory and PATH
 func TestWriteInfoPlist(t *testing.T) {
 	meta := buildMeta{bundleVersion: "1.2.3", bundleBuild: "42"}
 
@@ -1007,9 +1160,7 @@ func TestWriteInfoPlist(t *testing.T) {
 		dir := inTempDir(t)
 		writeFile(t, filepath.FromSlash(brandgen.InfoPlistPath), "<plist/>")
 
-		log := filepath.Join(t.TempDir(), "plutil.log")
-		t.Setenv("PLUTIL_LOG", log)
-		fakeTool(t, isolatedPath(t), "plutil", `printf '%s\n' "$*" >> "$PLUTIL_LOG"`)
+		log := fakeLoggedTool(t, isolatedPath(t), "plutil", "")
 
 		dst := filepath.Join(dir, "Info.plist")
 
@@ -1053,6 +1204,7 @@ func TestWriteInfoPlist(t *testing.T) {
 	})
 }
 
+//nolint:paralleltest // changes the process's working directory
 func TestCheckBrandFiles(t *testing.T) {
 	t.Run("the committed files are current", func(t *testing.T) {
 		inRepoRoot(t)
@@ -1080,6 +1232,7 @@ func TestCheckBrandFiles(t *testing.T) {
 	})
 }
 
+//nolint:paralleltest // changes the process's working directory
 func TestCopyIconSet(t *testing.T) {
 	t.Run("copies the icon set under the name the Info.plist gives it", func(t *testing.T) {
 		dir := inTempDir(t)
@@ -1128,6 +1281,7 @@ func TestCopyIconSet(t *testing.T) {
 	})
 }
 
+//nolint:paralleltest // changes the process's standard output
 func TestReportSize(t *testing.T) {
 	t.Run("prints the bundle and its binary's size", func(t *testing.T) {
 		exe := filepath.Join(t.TempDir(), "app")
@@ -1149,6 +1303,7 @@ func TestReportSize(t *testing.T) {
 	})
 }
 
+//nolint:paralleltest // changes the process's working directory, PATH, and standard output
 func TestBuildBundle(t *testing.T) {
 	bundle := filepath.Join("bin", "Example.app")
 	exe := filepath.Join(bundle, "Contents", "MacOS", brand.Slug)
@@ -1229,6 +1384,7 @@ func TestBuildBundle(t *testing.T) {
 	})
 }
 
+//nolint:paralleltest // changes the process's working directory, PATH, and standard output
 func TestAppTargetsOnMacOS(t *testing.T) {
 	onlyOnMacOS(t)
 

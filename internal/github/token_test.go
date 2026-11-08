@@ -13,6 +13,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/testutil"
+	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
 // fakeToken is a placeholder that matches no real token format.
@@ -26,86 +29,79 @@ var (
 	errFakeNotFound = errors.New("gh: executable file not found")
 )
 
-// fakeFinder resolves every name to path, or fails with err.
-type fakeFinder struct {
-	path string
-	err  error
-}
-
-func (f *fakeFinder) Find(string) (string, error) {
-	return f.path, f.err
-}
-
-// fakeRunner returns canned output and records each argv.
-type fakeRunner struct {
-	stdout, stderr string
-	err            error
-	calls          [][]string
-}
-
-func (r *fakeRunner) Run(_ context.Context, name string, args ...string) ([]byte, []byte, error) {
-	r.calls = append(r.calls, append([]string{name}, args...))
-
-	return []byte(r.stdout), []byte(r.stderr), r.err
-}
-
 func TestTokenSourceErrors(t *testing.T) {
-	found := &fakeFinder{path: fakeGHPath}
+	t.Parallel()
+
+	found := testutil.Finder{Path: fakeGHPath}
 
 	cases := []struct {
 		name    string
-		finder  *fakeFinder
-		runner  *fakeRunner
+		finder  testutil.Finder
+		runner  *testutil.Runner
 		wantErr error
 		want    string
 	}{
-		{name: "gh missing", finder: &fakeFinder{err: errFakeNotFound}, runner: &fakeRunner{}, wantErr: ErrGHNotFound},
+		{name: "gh missing", finder: testutil.Finder{Err: errFakeNotFound}, runner: &testutil.Runner{}, wantErr: ErrGHNotFound},
 		{
 			name:    "not logged in",
 			finder:  found,
-			runner:  &fakeRunner{stderr: "no oauth token found for github.com", err: errFakeExit},
+			runner:  &testutil.Runner{Stderr: "no oauth token found for github.com", Err: errFakeExit},
 			wantErr: ErrNotLoggedIn,
 		},
-		{name: "empty output", finder: found, runner: &fakeRunner{stdout: "\n"}, wantErr: ErrNotLoggedIn},
-		{name: "output is not a token", finder: found, runner: &fakeRunner{stdout: "not a token"}, wantErr: ErrNotLoggedIn},
-		{name: "gh vanished after lookup", finder: found, runner: &fakeRunner{err: exec.ErrNotFound}, wantErr: ErrGHNotFound},
-		{name: "success", finder: found, runner: &fakeRunner{stdout: fakeToken + "\n"}, want: fakeToken},
+		{name: "empty output", finder: found, runner: &testutil.Runner{Stdout: "\n"}, wantErr: ErrNotLoggedIn},
+		{name: "output is not a token", finder: found, runner: &testutil.Runner{Stdout: "not a token"}, wantErr: ErrNotLoggedIn},
+		{name: "gh vanished after lookup", finder: found, runner: &testutil.Runner{Err: exec.ErrNotFound}, wantErr: ErrGHNotFound},
+		{name: "success", finder: found, runner: &testutil.Runner{Stdout: fakeToken + "\n"}, want: fakeToken},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			tok, err := NewTokenSource(tc.runner, tc.finder).Token(t.Context())
 
 			if tc.wantErr != nil {
 				require.ErrorIs(t, err, tc.wantErr)
 				assert.True(t, tok.IsZero())
 
+				// The user is told what to do, in a sentence, while the error keeps the
+				// sentinel's text for the logs.
+				want := map[error]string{ErrGHNotFound: ghMissingMessage, ErrNotLoggedIn: loggedOutMessage}[tc.wantErr]
+				assert.Equal(t, want, uierr.Message(err))
+				assert.Contains(t, err.Error(), tc.wantErr.Error())
+
 				return
 			}
 
 			require.NoError(t, err)
 			assert.Equal(t, tc.want, tok.Reveal())
-			require.Len(t, tc.runner.calls, 1)
-			assert.Equal(t, []string{fakeGHPath, "auth", "token", "--hostname", "github.com"}, tc.runner.calls[0])
+			require.Len(t, tc.runner.Calls(), 1)
+			assert.Equal(t, []string{fakeGHPath, "auth", "token", "--hostname", "github.com"}, tc.runner.Calls()[0])
 		})
 	}
 }
 
 func TestTokenSourceHints(t *testing.T) {
+	t.Parallel()
+
 	assert.Contains(t, ErrGHNotFound.Error(), "https://cli.github.com")
 	assert.Contains(t, ErrGHNotFound.Error(), "gh auth login")
 	assert.Contains(t, ErrNotLoggedIn.Error(), "gh auth login")
 }
 
 func TestTokenSourceCanceled(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	_, err := NewTokenSource(&fakeRunner{err: errFakeExit}, &fakeFinder{path: fakeGHPath}).Token(ctx)
+	_, err := NewTokenSource(&testutil.Runner{Err: errFakeExit}, testutil.Finder{Path: fakeGHPath}).Token(ctx)
 	require.ErrorIs(t, err, context.Canceled)
 }
 
 func TestTokenZeroValue(t *testing.T) {
+	t.Parallel()
+
 	var tok Token
 
 	assert.True(t, tok.IsZero())
@@ -140,15 +136,21 @@ func formatted(tok Token) []string {
 }
 
 func TestTokenNeverAppearsInErrorsOrLogs(t *testing.T) {
+	t.Parallel()
+
 	tok := NewToken(fakeToken)
 
 	t.Run("fmt", func(t *testing.T) {
+		t.Parallel()
+
 		for _, s := range formatted(tok) {
 			assert.NotContains(t, s, fakeToken)
 		}
 	})
 
 	t.Run("json", func(t *testing.T) {
+		t.Parallel()
+
 		b, err := json.Marshal(holder{Tok: tok, tok: tok})
 		require.NoError(t, err)
 		assert.JSONEq(t, `{"Tok":"[redacted]"}`, string(b))
@@ -159,6 +161,8 @@ func TestTokenNeverAppearsInErrorsOrLogs(t *testing.T) {
 	})
 
 	t.Run("slog", func(t *testing.T) {
+		t.Parallel()
+
 		var buf bytes.Buffer
 
 		for _, handler := range []slog.Handler{slog.NewJSONHandler(&buf, nil), slog.NewTextHandler(&buf, nil)} {
@@ -171,14 +175,18 @@ func TestTokenNeverAppearsInErrorsOrLogs(t *testing.T) {
 	})
 
 	t.Run("failing gh run", func(t *testing.T) {
-		runner := &fakeRunner{stdout: fakeToken, stderr: "error: " + fakeToken, err: errFakeExit}
+		t.Parallel()
 
-		_, err := NewTokenSource(runner, &fakeFinder{path: fakeGHPath}).Token(t.Context())
+		runner := &testutil.Runner{Stdout: fakeToken, Stderr: "error: " + fakeToken, Err: errFakeExit}
+
+		_, err := NewTokenSource(runner, testutil.Finder{Path: fakeGHPath}).Token(t.Context())
 		require.Error(t, err)
 		assert.NotContains(t, err.Error(), fakeToken)
 	})
 
 	t.Run("redact", func(t *testing.T) {
+		t.Parallel()
+
 		inner := fmt.Errorf("%w: server said %s", ErrUnexpectedStatus, fakeToken)
 		err := Redact(inner, tok)
 
@@ -189,6 +197,8 @@ func TestTokenNeverAppearsInErrorsOrLogs(t *testing.T) {
 	})
 
 	t.Run("api error echoing the token", func(t *testing.T) {
+		t.Parallel()
+
 		client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "Bearer "+fakeToken, r.Header.Get("Authorization"))
 			w.WriteHeader(http.StatusUnauthorized)
@@ -203,19 +213,11 @@ func TestTokenNeverAppearsInErrorsOrLogs(t *testing.T) {
 		require.Error(t, err)
 		assert.NotContains(t, err.Error(), fakeToken)
 	})
-
-	t.Run("graphql error echoing the token", func(t *testing.T) {
-		client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
-			_, _ = fmt.Fprintf(w, `{"errors":[{"message":"bad token %s"}]}`, fakeToken)
-		})
-
-		_, err := client.FetchInbox(t.Context(), tok)
-		require.ErrorIs(t, err, ErrGraphQL)
-		assert.NotContains(t, err.Error(), fakeToken)
-	})
 }
 
 func TestRedactPassThrough(t *testing.T) {
+	t.Parallel()
+
 	require.NoError(t, Redact(nil, NewToken(fakeToken)))
 
 	err := fmt.Errorf("wrapped: %w", errFakeExit)
@@ -223,6 +225,8 @@ func TestRedactPassThrough(t *testing.T) {
 }
 
 func TestRedactKeepsErrorsAs(t *testing.T) {
+	t.Parallel()
+
 	err := Redact(fmt.Errorf("check: %w", &MissingScopesError{Missing: []string{scopeRepo}}), NewToken(fakeToken))
 
 	var missing *MissingScopesError

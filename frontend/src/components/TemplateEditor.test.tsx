@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createRef, useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -29,7 +29,7 @@ function Harness({ initial, diagnostics = [], onChange, handle }: HarnessProps) 
       }}
       variables={variables()}
       diagnostics={diagnostics}
-      ref={handle}
+      ref={handle ?? null}
     />
   )
 }
@@ -111,16 +111,15 @@ describe('TemplateEditor', () => {
     document.removeEventListener('keydown', onKeyDown)
   })
 
-  it('inserts a variable with a click and keeps an open action open', () => {
+  it('inserts a variable with a click and keeps an open action open', async () => {
     render(<Harness initial="{{if .In}}x{{end}}" />)
 
     const area = textarea()
-    area.setSelectionRange(8, 8)
-    fireEvent.click(area)
+    await userEvent.pointer({ target: area, offset: 8, keys: '[MouseLeft]' })
 
     const option = screen.getByRole('option', { name: /InWorktree/ })
 
-    fireEvent.mouseDown(option)
+    await userEvent.click(option)
 
     expect(area).toHaveValue('{{if .InWorktree}}x{{end}}')
   })
@@ -162,7 +161,8 @@ describe('TemplateEditor', () => {
     await userEvent.type(textarea(), '{{{{')
     expect(screen.getByRole('listbox')).toBeInTheDocument()
 
-    fireEvent.blur(textarea())
+    await userEvent.click(document.body)
+    expect(textarea()).not.toHaveFocus()
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
   })
 })

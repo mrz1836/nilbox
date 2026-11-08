@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
+import type { WakeReview } from '../platform'
+import { FIXED_NOW, fromNow } from '../test/clock'
 import { item, list, snapshot } from '../test/fixtures'
 import {
-  capitalize,
+  applyTriage,
   findItem,
-  formatFull,
-  formatWhen,
-  inboxCount,
   isBackFromSnooze,
   isDismissed,
   isSnoozed,
@@ -15,22 +14,18 @@ import {
   snoozeLength,
   snoozeShort,
   tabOf,
+  triageInbox,
   triageList,
+  triageTime,
   wakeParts,
   wakeSummary,
 } from './triage'
 
-// Tests run in UTC (vitest.config.ts); now is a Monday.
-const now = new Date('2026-06-15T12:00:00Z')
-
-// plain folds the narrow and no-break spaces some locales put in times into plain ones.
-function plain(text: string): string {
-  return text.replace(/\s/g, ' ')
-}
+// Tests run in UTC (vitest.config.ts); FIXED_NOW is a Monday.
 
 // at returns the RFC 3339 time hours after now (before, when negative).
 function at(hours: number): string {
-  return new Date(now.getTime() + hours * 3_600_000).toISOString()
+  return fromNow(hours * 3_600_000).toISOString()
 }
 
 describe('triage state', () => {
@@ -44,23 +39,23 @@ describe('triage state', () => {
     expect(isDismissed(dismissed)).toBe(true)
     expect(isDismissed(snoozed)).toBe(false)
 
-    expect(isSnoozed(snoozed, now)).toBe(true)
-    expect(isSnoozed(back, now)).toBe(false)
-    expect(isSnoozed(plainItem, now)).toBe(false)
+    expect(isSnoozed(snoozed, FIXED_NOW)).toBe(true)
+    expect(isSnoozed(back, FIXED_NOW)).toBe(false)
+    expect(isSnoozed(plainItem, FIXED_NOW)).toBe(false)
 
-    expect(isBackFromSnooze(back, now)).toBe(true)
-    expect(isBackFromSnooze(longBack, now)).toBe(false)
-    expect(isBackFromSnooze(snoozed, now)).toBe(false)
-    expect(isBackFromSnooze(plainItem, now)).toBe(false)
-    expect(isBackFromSnooze(item({ snoozedUntil: at(-1), dismissedAt: at(-1) }), now)).toBe(false)
+    expect(isBackFromSnooze(back, FIXED_NOW)).toBe(true)
+    expect(isBackFromSnooze(longBack, FIXED_NOW)).toBe(false)
+    expect(isBackFromSnooze(snoozed, FIXED_NOW)).toBe(false)
+    expect(isBackFromSnooze(plainItem, FIXED_NOW)).toBe(false)
+    expect(isBackFromSnooze(item({ snoozedUntil: at(-1), dismissedAt: at(-1) }), FIXED_NOW)).toBe(false)
   })
 
   it('ends a snooze exactly when its time comes', () => {
-    const snoozed = item({ snoozedUntil: now.toISOString() })
+    const snoozed = item({ snoozedUntil: FIXED_NOW.toISOString() })
 
-    expect(isSnoozed(snoozed, new Date(now.getTime() - 1))).toBe(true)
-    expect(isSnoozed(snoozed, now)).toBe(false)
-    expect(isBackFromSnooze(snoozed, now)).toBe(true)
+    expect(isSnoozed(snoozed, fromNow(-1))).toBe(true)
+    expect(isSnoozed(snoozed, FIXED_NOW)).toBe(false)
+    expect(isBackFromSnooze(snoozed, FIXED_NOW)).toBe(true)
   })
 })
 
@@ -73,7 +68,7 @@ describe('triageList', () => {
     const e = item({ id: 5, dismissedAt: at(-1) })
     const f = item({ id: 6, snoozedUntil: at(-2) })
 
-    const triaged = triageList(list([a, b, c, d, e, f], 40), now)
+    const triaged = triageList(list([a, b, c, d, e, f], 40), FIXED_NOW)
 
     expect(triaged.inbox.map((i) => i.id)).toEqual([1, 6])
     expect(triaged.snoozed.map((i) => i.id)).toEqual([4, 2])
@@ -81,40 +76,78 @@ describe('triageList', () => {
     expect(triaged.total).toBe(36)
   })
 
-  it('never counts fewer than the inbox tab shows, and reads a missing list as empty', () => {
-    const triaged = triageList(list([item({ id: 1 }), item({ id: 2, dismissedAt: at(-1) })], 0), now)
+  it('never counts fewer than the inbox tab shows', () => {
+    const triaged = triageList(list([item({ id: 1 }), item({ id: 2, dismissedAt: at(-1) })], 0), FIXED_NOW)
 
     expect(triaged.total).toBe(1)
-    expect(triageList({ items: null, shown: 0, total: 0 }, now)).toEqual({
-      inbox: [],
-      snoozed: [],
-      dismissed: [],
-      total: 0,
-    })
   })
 })
 
-describe('inboxCount', () => {
-  it('counts what is in the inbox, each item once, leaving out what is snoozed or dismissed', () => {
+describe('triageInbox', () => {
+  it('sorts every list, and counts what is in the inbox once each, leaving out what is set aside', () => {
     const mine = item({ id: 1 })
     const review = item({ id: 2 })
     const back = item({ id: 3, snoozedUntil: at(-2) })
+    const later = item({ id: 4, snoozedUntil: at(5) })
+    const gone = item({ id: 5, dismissedAt: at(-1) })
+    const inbox = snapshot({
+      reviewRequested: list([review, later]),
+      authored: list([mine, back, gone], 40),
+      assigned: list([mine, later]),
+    })
 
-    const counted = inboxCount(
-      snapshot({
-        reviewRequested: list([review, item({ id: 4, snoozedUntil: at(5) })]),
-        authored: list([mine, back, item({ id: 5, dismissedAt: at(-1) })], 40),
-        assigned: list([mine]),
-      }),
-      now,
-    )
+    const triaged = triageInbox(inbox, FIXED_NOW)
 
-    expect(counted).toBe(3)
+    expect(triaged.lists.reviewRequested).toEqual(triageList(inbox.reviewRequested, FIXED_NOW))
+    expect(triaged.lists.authored).toEqual(triageList(inbox.authored, FIXED_NOW))
+    expect(triaged.lists.assigned.inbox).toEqual([mine])
+    expect(triaged.count).toBe(3)
+    // An item set aside in two lists counts once.
+    expect(triaged.snoozed).toBe(1)
+    expect(triaged.dismissed).toBe(1)
+    expect(triaged.nextBack).toEqual(new Date(at(5)))
   })
 
-  it('is 0 for an empty inbox, and reads a missing list as empty', () => {
-    expect(inboxCount(snapshot(), now)).toBe(0)
-    expect(inboxCount(snapshot({ authored: { items: null, shown: 0, total: 0 } }), now)).toBe(0)
+  it('finds the soonest snooze among several', () => {
+    const triaged = triageInbox(
+      snapshot({
+        reviewRequested: list([item({ id: 1, snoozedUntil: at(48) })]),
+        authored: list([item({ id: 2, snoozedUntil: at(3) })]),
+      }),
+      FIXED_NOW,
+    )
+
+    expect(triaged.snoozed).toBe(2)
+    expect(triaged.nextBack).toEqual(new Date(at(3)))
+  })
+
+  it('is empty for an empty inbox', () => {
+    expect(triageInbox(snapshot(), FIXED_NOW)).toMatchObject({ count: 0, snoozed: 0, dismissed: 0, nextBack: null })
+  })
+})
+
+describe('triageTime', () => {
+  const inbox = snapshot({
+    reviewRequested: list([item({ id: 1, snoozedUntil: at(-3) }), item({ id: 2, snoozedUntil: at(-1) })]),
+    authored: list([item({ id: 3, snoozedUntil: at(2) }), item({ id: 4 })]),
+  })
+
+  it('is the latest snooze end already passed, which sorts the inbox as now does', () => {
+    expect(triageTime(inbox, FIXED_NOW)).toBe(Date.parse(at(-1)))
+    expect(triageInbox(inbox, new Date(triageTime(inbox, FIXED_NOW)))).toEqual(triageInbox(inbox, FIXED_NOW))
+  })
+
+  it('stays put until the clock passes the next snooze end', () => {
+    const soon = fromNow(3_600_000)
+    const past = new Date(Date.parse(at(2)))
+
+    expect(triageTime(inbox, soon)).toBe(triageTime(inbox, FIXED_NOW))
+    expect(triageTime(inbox, past)).toBe(Date.parse(at(2)))
+  })
+
+  it('is 0 when no snooze has ended', () => {
+    expect(triageTime(inbox, new Date(at(-5)))).toBe(0)
+    expect(triageTime(snapshot(), FIXED_NOW)).toBe(0)
   })
 })
 
@@ -125,34 +158,8 @@ describe('snooze lengths', () => {
   })
 
   it('ends a snooze at the same time of day', () => {
-    expect(snoozeEnd(now, 3).toISOString()).toBe('2026-06-18T12:00:00.000Z')
-    expect(now.toISOString()).toBe('2026-06-15T12:00:00.000Z')
-  })
-})
-
-describe('formatWhen', () => {
-  it('names a time the way people say it', () => {
-    expect(plain(formatWhen(now, new Date('2026-06-15T18:30:00Z'), 'en-US'))).toBe('today, 6:30 PM')
-    expect(plain(formatWhen(now, new Date('2026-06-16T09:00:00Z'), 'en-US'))).toBe('tomorrow, 9:00 AM')
-    expect(plain(formatWhen(now, new Date('2026-06-18T12:00:00Z'), 'en-US'))).toBe('Thu, 12:00 PM')
-    expect(formatWhen(now, new Date('2026-06-22T12:00:00Z'), 'en-US')).toBe('Mon, Jun 22')
-    expect(formatWhen(now, new Date('2027-01-04T12:00:00Z'), 'en-US')).toBe('Mon, Jan 4, 2027')
-  })
-
-  it('counts calendar days, not 24-hour spans', () => {
-    const late = new Date('2026-06-15T23:30:00Z')
-
-    expect(plain(formatWhen(late, new Date('2026-06-16T00:30:00Z'), 'en-US'))).toBe('tomorrow, 12:30 AM')
-  })
-
-  it('names a time in full for a tooltip', () => {
-    expect(plain(formatFull('2026-06-18T12:00:00Z', 'en-US'))).toBe('Thursday, June 18, 2026 at 12:00 PM')
-    expect(formatFull('', 'en-US')).toBe('')
-  })
-
-  it('capitalizes a phrase', () => {
-    expect(capitalize('tomorrow, 9:00 AM')).toBe('Tomorrow, 9:00 AM')
-    expect(capitalize('')).toBe('')
+    expect(snoozeEnd(FIXED_NOW, 3).toISOString()).toBe('2026-06-18T12:00:00.000Z')
+    expect(FIXED_NOW.toISOString()).toBe('2026-06-15T12:00:00.000Z')
   })
 })
 
@@ -173,7 +180,57 @@ describe('wake reasons', () => {
 
   it('says nothing when nothing woke it', () => {
     expect(wakeSummary(null)).toBe('')
-    expect(wakeSummary({ commits: 0, forcePushed: false, review: 'unknown', comments: 0 })).toBe('')
+    expect(wakeSummary({ commits: 0, forcePushed: false, review: '', comments: 0 })).toBe('')
+  })
+
+  it('names nothing for a review it does not know', () => {
+    // A review another build stored, outside the ones this build knows.
+    const praised = 'praised' as unknown as WakeReview
+
+    expect(wakeSummary({ commits: 2, forcePushed: false, review: praised, comments: 0 })).toBe('2 new commits')
+  })
+})
+
+describe('applyTriage', () => {
+  const pinned = item({ id: 1, title: 'Pinned', pinnedAt: '2026-06-14T12:00:00Z', updatedAt: '2026-06-10T12:00:00Z' })
+  const newest = item({ id: 2, title: 'Newest', updatedAt: '2026-06-15T11:00:00Z' })
+  const older = item({ id: 3, title: 'Older', updatedAt: '2026-06-15T09:00:00Z' })
+  const oldest = item({ id: 4, title: 'Oldest', updatedAt: '2026-06-15T09:00:00Z' })
+  const ids = (list: { items: { id: number }[] }) => list.items.map((i) => i.id)
+
+  it('changes the item in every list that holds it, keeping its place', () => {
+    const inbox = snapshot({ reviewRequested: list([newest, older]), assigned: list([older]) })
+
+    const next = applyTriage(inbox, { id: 3, set: { dismissedAt: FIXED_NOW.toISOString() } })
+
+    expect(ids(next.reviewRequested)).toEqual([2, 3])
+    expect(findItem(next, 3)?.dismissedAt).toBe(FIXED_NOW.toISOString())
+    expect(next.assigned.items[0]?.dismissedAt).toBe(FIXED_NOW.toISOString())
+    expect(next.authored).toBe(inbox.authored)
+  })
+
+  it('moves a newly pinned item to the top, as the most recently pinned', () => {
+    const inbox = snapshot({ reviewRequested: list([pinned, newest, older]) })
+
+    const next = applyTriage(inbox, { id: 3, set: { pinnedAt: FIXED_NOW.toISOString() } })
+
+    expect(ids(next.reviewRequested)).toEqual([3, 1, 2])
+  })
+
+  it('puts an unpinned item back among the rest by its activity, then its ID', () => {
+    const inbox = snapshot({ reviewRequested: list([pinned, newest, oldest]) })
+
+    expect(ids(applyTriage(inbox, { id: 1, set: { pinnedAt: '' } }).reviewRequested)).toEqual([2, 4, 1])
+
+    const tied = snapshot({ reviewRequested: list([{ ...older, pinnedAt: FIXED_NOW.toISOString() }, newest, oldest]) })
+
+    expect(ids(applyTriage(tied, { id: 3, set: { pinnedAt: '' } }).reviewRequested)).toEqual([2, 4, 3])
+  })
+
+  it('puts an unpinned item last when everything else lists before it', () => {
+    const inbox = snapshot({ reviewRequested: list([{ ...oldest, id: 9, pinnedAt: FIXED_NOW.toISOString() }, newest]) })
+
+    expect(ids(applyTriage(inbox, { id: 9, set: { pinnedAt: '' } }).reviewRequested)).toEqual([2, 9])
   })
 })
 
@@ -188,11 +245,10 @@ describe('findItem and tabOf', () => {
     expect(findItem(snap, 2)).toBe(snoozed)
     expect(findItem(snap, 1)).toBe(fresh)
     expect(findItem(snap, 9)).toBeUndefined()
-    expect(findItem(snapshot({ assigned: { items: null, shown: 0, total: 0 } }), 1)).toBeUndefined()
   })
 
   it('finds the tab that holds an item', () => {
-    const triaged = triageList(list([fresh, snoozed, dismissed]), now)
+    const triaged = triageList(list([fresh, snoozed, dismissed]), FIXED_NOW)
 
     expect(tabOf(triaged, 1)).toBe('inbox')
     expect(tabOf(triaged, 2)).toBe('snoozed')

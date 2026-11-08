@@ -1,10 +1,10 @@
-import type { AppNotification } from '../platform'
+import type { AppNotification, BannerStatus, NotificationKind } from '../platform'
 
 // The kinds of notification, as the backend names them (internal/notify), with what the
 // history calls each one and how Settings describes its banners.
 
-export interface NotificationKind {
-  kind: string
+export interface KindDescription {
+  kind: NotificationKind
   // title heads an entry in the history, as it heads its banner.
   title: string
   // label and description are the kind's switch in Settings.
@@ -12,7 +12,7 @@ export interface NotificationKind {
   description: string
 }
 
-export const notificationKinds: readonly NotificationKind[] = [
+export const notificationKinds: readonly KindDescription[] = [
   {
     kind: 'review_requested',
     title: 'Review requested',
@@ -34,7 +34,7 @@ export const notificationKinds: readonly NotificationKind[] = [
 ]
 
 // kindTitle heads an entry of a kind in the history.
-export function kindTitle(kind: string): string {
+export function kindTitle(kind: NotificationKind): string {
   return notificationKinds.find((k) => k.kind === kind)?.title ?? 'Notification'
 }
 
@@ -46,7 +46,8 @@ export function entryRef(entry: AppNotification): string {
 }
 
 // bannerStatusText explains the state of the banners in Settings, or '' when they show.
-export function bannerStatusText(status: string): string {
+// The status is '' until it has been read.
+export function bannerStatusText(status: BannerStatus | ''): string {
   switch (status) {
     case 'on':
       return ''

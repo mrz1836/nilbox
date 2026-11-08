@@ -27,6 +27,8 @@
 // through a shell.
 package worktrees
 
+import "github.com/mrz1836/nilbox/internal/item"
+
 // Snapshot is every repository under the clone root that has linked worktrees, as the
 // Worktrees view shows it. Every field is a plain value.
 type Snapshot struct {
@@ -58,35 +60,43 @@ type Snapshot struct {
 	ListedAt string `json:"listedAt"`
 }
 
+// Stage is where a worktree stands with its pull request or issue.
+type Stage string
+
 // Stages of a worktree's pull request or issue, as Worktree.Stage reports them.
 const (
+	// StageNone is a worktree with no item, or one locked by hand.
+	StageNone Stage = ""
+
 	// StageInUse is a worktree a running agent session holds.
-	StageInUse = "in-use"
+	StageInUse Stage = "in-use"
 
 	// StageActive is a worktree whose pull request or issue is still open.
-	StageActive = "active"
+	StageActive Stage = "active"
 
 	// StageFinished is a worktree whose item is done and that CleanUp removes without
 	// losing anything.
-	StageFinished = "finished"
+	StageFinished Stage = "finished"
 
 	// StageNeedsReview is a worktree whose item is done but that holds uncommitted
 	// changes or commits that are not on GitHub, or whose state could not be read.
-	StageNeedsReview = "needs-review"
+	StageNeedsReview Stage = "needs-review"
 )
+
+// ItemStatus is whether a pull request or issue is open, merged, or closed.
+type ItemStatus string
 
 // Item states, as LinkedItem.State reports them.
 const (
-	ItemOpen   = "open"
-	ItemMerged = "merged"
-	ItemClosed = "closed"
+	ItemOpen   ItemStatus = "open"
+	ItemMerged ItemStatus = "merged"
+	ItemClosed ItemStatus = "closed"
 )
 
 // LinkedItem is the pull request or issue a worktree was made for, as GitHub reports it
 // now.
 type LinkedItem struct {
-	// Kind is "pr" or "issue".
-	Kind string `json:"kind"`
+	Kind item.Kind `json:"kind"`
 
 	// Owner and Name are the item's repository.
 	Owner string `json:"owner"`
@@ -99,7 +109,7 @@ type LinkedItem struct {
 	URL   string `json:"url"`
 
 	// State is ItemOpen, ItemMerged, or ItemClosed.
-	State string `json:"state"`
+	State ItemStatus `json:"state"`
 
 	// ClosedAt is when the item was merged or closed, in RFC 3339, or "" while open.
 	ClosedAt string `json:"closedAt"`
@@ -203,9 +213,8 @@ type Worktree struct {
 	// Item is the pull request or issue the worktree was made for, or nil.
 	Item *LinkedItem `json:"item"`
 
-	// Stage is where the worktree stands (one of the Stage constants), or "" for a
-	// worktree with no item or one locked by hand.
-	Stage string `json:"stage"`
+	// Stage is where the worktree stands.
+	Stage Stage `json:"stage"`
 
 	// OwnBranch reports that the checked-out branch is the agent's worktree-<name> branch
 	// for this worktree, which CleanUp deletes with it.

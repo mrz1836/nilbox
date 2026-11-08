@@ -1,57 +1,75 @@
 package settings
 
 import (
+	"bytes"
+	"context"
+	"database/sql"
 	"errors"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 
-	"github.com/mrz1836/nilbox/internal/localrepos"
-	"github.com/mrz1836/nilbox/internal/notify"
+	"github.com/mrz1836/nilbox/internal/event"
+	"github.com/mrz1836/nilbox/internal/notifyprefs"
+	"github.com/mrz1836/nilbox/internal/paths"
+	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/snooze"
-	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
 
-// errRefused is what a test's database callback fails with.
-var errRefused = errors.New("refused by the test")
-
-// openDB opens the database at path, closing it when the test ends.
-func openDB(t *testing.T, path string) *gorm.DB {
+// newTestService returns a Service over a fresh database and a temp home directory.
+func newTestService(t *testing.T) (*Service, *sql.DB, string) {
 	t.Helper()
 
-	db, err := store.Open(t.Context(), path)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = store.Close(db) })
+	home := t.TempDir()
+	db := testutil.DB(t)
+
+	return serviceOver(t, db, home), db, home
+}
+
+// serviceOver returns a Service over db, which also holds the profiles it looks up.
+func serviceOver(t *testing.T, db *sql.DB, home string, opts ...Option) *Service {
+	t.Helper()
+
+	return NewService(db, profiles.NewStore(db, nil), home, opts...)
+}
+
+// closedDB returns a migrated database that is already closed.
+func closedDB(t *testing.T) *sql.DB {
+	t.Helper()
+
+	db := testutil.DB(t)
+	require.NoError(t, db.Close())
 
 	return db
 }
 
-// newTestService returns a Service over a fresh database and a temp home directory.
-func newTestService(t *testing.T) (*Service, *gorm.DB, string) {
+// setPref writes a raw preference value, bypassing validation.
+func setPref(t *testing.T, db *sql.DB, key, value string) {
 	t.Helper()
 
-	home := t.TempDir()
-	db := openDB(t, filepath.Join(t.TempDir(), "app.db"))
-
-	return NewService(db, home), db, home
+	require.NoError(t, prefs.New(db, nil).Set(t.Context(), key, value))
 }
 
-// setPref writes a raw preference value, bypassing validation.
-func setPref(t *testing.T, db *gorm.DB, key, value string) {
+// storeProfiles stores profiles as discovery would.
+func storeProfiles(t *testing.T, db *sql.DB, found ...profiles.Profile) {
 	t.Helper()
 
-	require.NoError(t, db.Exec(upsertPrefSQL, key, value, "2026-01-10T12:00:00Z").Error)
+	require.NoError(t, profiles.NewStore(db, nil).Sync(t.Context(), found))
 }
 
 func TestPrefDefaults(t *testing.T) {
+	t.Parallel()
+
 	svc, _, _ := newTestService(t)
 
 	got, err := svc.Get(t.Context())
@@ -71,29 +89,33 @@ func TestPrefDefaults(t *testing.T) {
 		SensitiveFiles:      sensitive.Config{Scope: "collaborators", Off: []string{}, Patterns: []string{}},
 		SensitiveCategories: sensitive.Categories(),
 		MenuBar:             DefaultMenuBar,
-		BannersOff:          []string{},
+		BannersOff:          []notifyprefs.Kind{},
+		Theme:               ThemeSystem,
+		CollapsedSections:   []ListKey{},
 	}, got)
 }
 
 func TestTrustedBots(t *testing.T) {
+	t.Parallel()
+
 	svc, db, _ := newTestService(t)
 	ctx := t.Context()
 
-	require.NoError(t, svc.SetTrustedBots(ctx, []string{"Renovate[bot]", "app/my-release-bot", " ", "renovate"}))
+	require.NoError(t, testutil.ErrOf(svc.SetTrustedBots(ctx, []string{"Renovate[bot]", "app/my-release-bot", " ", "renovate"})))
 
 	got, err := svc.Get(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"my-release-bot", "renovate"}, got.TrustedBots, "normalized, deduplicated, and sorted")
 
-	require.NoError(t, svc.SetTrustedBots(ctx, nil))
+	require.NoError(t, testutil.ErrOf(svc.SetTrustedBots(ctx, nil)))
 
 	got, err = svc.Get(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, []string{}, got.TrustedBots, "an emptied list trusts no bot")
 
-	require.ErrorIs(t, svc.SetTrustedBots(ctx, []string{"not a login"}), trust.ErrInvalidBot)
+	require.ErrorIs(t, testutil.ErrOf(svc.SetTrustedBots(ctx, []string{"not a login"})), trust.ErrInvalidBot)
 
-	require.NoError(t, svc.ResetTrustedBots(ctx))
+	require.NoError(t, testutil.ErrOf(svc.ResetTrustedBots(ctx)))
 
 	got, err = svc.Get(ctx)
 	require.NoError(t, err)
@@ -107,34 +129,52 @@ func TestTrustedBots(t *testing.T) {
 }
 
 func TestTerminalPrefPersists(t *testing.T) {
+	t.Parallel()
+
 	path := filepath.Join(t.TempDir(), "app.db")
 	home := t.TempDir()
 
-	db, err := store.Open(t.Context(), path)
-	require.NoError(t, err)
-	require.NoError(t, NewService(db, home).SetTerminal(t.Context(), TerminalApp))
-	require.NoError(t, store.Close(db))
+	db := testutil.DBAt(t, path)
+	require.NoError(t, testutil.ErrOf(serviceOver(t, db, home).SetTerminal(t.Context(), TerminalApp)))
+	require.NoError(t, db.Close())
 
-	got, err := NewService(openDB(t, path), home).Get(t.Context())
+	got, err := serviceOver(t, testutil.DBAt(t, path), home).Get(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, TerminalApp, got.Terminal)
 }
 
+func TestWithClockStampsTheStoredSettings(t *testing.T) {
+	t.Parallel()
+
+	pool := testutil.DB(t)
+	at := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+	svc := serviceOver(t, pool, t.TempDir(), WithClock(testutil.NewClock(at)))
+
+	require.NoError(t, testutil.ErrOf(svc.SetTerminal(t.Context(), TerminalApp)))
+
+	var stamp string
+	require.NoError(t, pool.QueryRowContext(t.Context(),
+		"SELECT CAST(updated_at AS TEXT) FROM prefs WHERE key = ?", KeyTerminal).Scan(&stamp))
+	assert.Equal(t, "2026-01-10 12:00:00+00:00", stamp)
+}
+
 func TestSettersPersist(t *testing.T) {
+	t.Parallel()
+
 	svc, db, home := newTestService(t)
-	require.NoError(t, profiles.Sync(t.Context(), db, []profiles.Profile{{Name: "work", ConfigDir: "/opt/profiles/work"}}))
+	storeProfiles(t, db, profiles.Profile{Name: "work", ConfigDir: "/opt/profiles/work"})
 	require.NoError(t, os.MkdirAll(filepath.Join(home, "code", "clones"), 0o700))
 
-	require.NoError(t, svc.SetDefaultProfile(t.Context(), "work"))
-	require.NoError(t, svc.SetWorktreeDefault(t.Context(), false))
-	require.NoError(t, svc.SetWorktreeAutoCleanup(t.Context(), false))
-	require.NoError(t, svc.SetTerminal(t.Context(), TerminalApp))
-	require.NoError(t, svc.SetTerminal(t.Context(), TerminalITerm2))
-	require.NoError(t, svc.SetCloneRoot(t.Context(), " ~/code/clones/ "))
-	require.NoError(t, svc.SetSnoozeDays(t.Context(), 7))
-	require.NoError(t, svc.SetSnoozeWake(t.Context(), snooze.Rules{Commits: 3, Reviews: snooze.ReviewsAny, Comments: 5}))
-	require.NoError(t, svc.SetMenuBar(t.Context(), false))
-	require.NoError(t, svc.SetNotificationBanner(t.Context(), notify.KindWoke, false))
+	require.NoError(t, testutil.ErrOf(svc.SetDefaultProfile(t.Context(), "work")))
+	require.NoError(t, testutil.ErrOf(svc.SetWorktreeDefault(t.Context(), false)))
+	require.NoError(t, testutil.ErrOf(svc.SetWorktreeAutoCleanup(t.Context(), false)))
+	require.NoError(t, testutil.ErrOf(svc.SetTerminal(t.Context(), TerminalApp)))
+	require.NoError(t, testutil.ErrOf(svc.SetTerminal(t.Context(), TerminalITerm2)))
+	require.NoError(t, testutil.ErrOf(svc.SetCloneRoot(t.Context(), " ~/code/clones/ ")))
+	require.NoError(t, testutil.ErrOf(svc.SetSnoozeDays(t.Context(), 7)))
+	require.NoError(t, testutil.ErrOf(svc.SetSnoozeWake(t.Context(), snooze.Rules{Commits: 3, Reviews: snooze.ReviewsAny, Comments: 5})))
+	require.NoError(t, testutil.ErrOf(svc.SetMenuBar(t.Context(), false)))
+	require.NoError(t, testutil.ErrOf(svc.SetNotificationBanner(t.Context(), notifyprefs.KindWoke, false)))
 
 	got, err := svc.Get(t.Context())
 	require.NoError(t, err)
@@ -153,13 +193,15 @@ func TestSettersPersist(t *testing.T) {
 		SensitiveFiles:      sensitive.DefaultConfig(),
 		SensitiveCategories: sensitive.Categories(),
 		MenuBar:             false,
-		BannersOff:          []string{notify.KindWoke},
+		BannersOff:          []notifyprefs.Kind{notifyprefs.KindWoke},
+		Theme:               DefaultTheme,
+		CollapsedSections:   []ListKey{},
 	}, got)
 
 	abs := t.TempDir()
-	require.NoError(t, svc.SetCloneRoot(t.Context(), abs))
-	require.NoError(t, svc.SetWorktreeDefault(t.Context(), true))
-	require.NoError(t, svc.SetWorktreeAutoCleanup(t.Context(), true))
+	require.NoError(t, testutil.ErrOf(svc.SetCloneRoot(t.Context(), abs)))
+	require.NoError(t, testutil.ErrOf(svc.SetWorktreeDefault(t.Context(), true)))
+	require.NoError(t, testutil.ErrOf(svc.SetWorktreeAutoCleanup(t.Context(), true)))
 
 	got, err = svc.Get(t.Context())
 	require.NoError(t, err)
@@ -169,8 +211,10 @@ func TestSettersPersist(t *testing.T) {
 }
 
 func TestSetRejectsInvalid(t *testing.T) {
+	t.Parallel()
+
 	svc, db, home := newTestService(t)
-	require.NoError(t, profiles.Sync(t.Context(), db, []profiles.Profile{{Name: "default"}}))
+	storeProfiles(t, db, profiles.Profile{Name: "default"})
 
 	file := filepath.Join(home, "notes.txt")
 	require.NoError(t, os.WriteFile(file, []byte("x"), 0o600))
@@ -181,48 +225,57 @@ func TestSetRejectsInvalid(t *testing.T) {
 		wantErr error
 		wantMsg string
 	}{
-		{name: "unknown terminal", set: func() error { return svc.SetTerminal(t.Context(), "warp") }, wantErr: ErrInvalidTerminal, wantMsg: `"warp"`},
-		{name: "empty terminal", set: func() error { return svc.SetTerminal(t.Context(), "") }, wantErr: ErrInvalidTerminal},
-		{name: "terminal in the wrong case", set: func() error { return svc.SetTerminal(t.Context(), "ITERM2") }, wantErr: ErrInvalidTerminal},
-		{name: "unknown profile", set: func() error { return svc.SetDefaultProfile(t.Context(), "missing") }, wantErr: ErrUnknownProfile, wantMsg: `"missing"`},
-		{name: "empty profile", set: func() error { return svc.SetDefaultProfile(t.Context(), "") }, wantErr: ErrUnknownProfile},
-		{name: "empty clone root", set: func() error { return svc.SetCloneRoot(t.Context(), "  ") }, wantErr: localrepos.ErrEmptyRoot},
-		{name: "relative clone root", set: func() error { return svc.SetCloneRoot(t.Context(), "projects") }, wantErr: localrepos.ErrRelativeRoot},
-		{name: "missing clone root", set: func() error { return svc.SetCloneRoot(t.Context(), "~/missing") }, wantErr: fs.ErrNotExist},
-		{name: "clone root is a file", set: func() error { return svc.SetCloneRoot(t.Context(), file) }, wantErr: ErrInvalidCloneRoot, wantMsg: "~/notes.txt is not a directory"},
-		{name: "no snooze", set: func() error { return svc.SetSnoozeDays(t.Context(), 0) }, wantErr: snooze.ErrInvalidDays, wantMsg: "0 days; choose 1 to 365"},
-		{name: "snooze past a year", set: func() error { return svc.SetSnoozeDays(t.Context(), 366) }, wantErr: snooze.ErrInvalidDays},
-		{name: "unknown review rule", set: func() error { return svc.SetSnoozeWake(t.Context(), snooze.Rules{Reviews: "sometimes"}) }, wantErr: snooze.ErrInvalidRules, wantMsg: `"sometimes"`},
+		{name: "unknown terminal", set: func() error { return testutil.ErrOf(svc.SetTerminal(t.Context(), "warp")) }, wantErr: ErrInvalidTerminal, wantMsg: `"warp"`},
+		{name: "empty terminal", set: func() error { return testutil.ErrOf(svc.SetTerminal(t.Context(), "")) }, wantErr: ErrInvalidTerminal},
+		{name: "terminal in the wrong case", set: func() error { return testutil.ErrOf(svc.SetTerminal(t.Context(), "ITERM2")) }, wantErr: ErrInvalidTerminal},
+		{name: "unknown profile", set: func() error { return testutil.ErrOf(svc.SetDefaultProfile(t.Context(), "missing")) }, wantErr: ErrUnknownProfile, wantMsg: `"missing"`},
+		{name: "empty profile", set: func() error { return testutil.ErrOf(svc.SetDefaultProfile(t.Context(), "")) }, wantErr: ErrUnknownProfile},
+		{name: "empty clone root", set: func() error { return testutil.ErrOf(svc.SetCloneRoot(t.Context(), "  ")) }, wantErr: paths.ErrEmpty},
+		{name: "relative clone root", set: func() error { return testutil.ErrOf(svc.SetCloneRoot(t.Context(), "projects")) }, wantErr: paths.ErrRelative},
+		{name: "missing clone root", set: func() error { return testutil.ErrOf(svc.SetCloneRoot(t.Context(), "~/missing")) }, wantErr: fs.ErrNotExist},
+		{name: "clone root is a file", set: func() error { return testutil.ErrOf(svc.SetCloneRoot(t.Context(), file)) }, wantErr: ErrInvalidCloneRoot, wantMsg: "~/notes.txt is not a directory"},
+		{name: "no snooze", set: func() error { return testutil.ErrOf(svc.SetSnoozeDays(t.Context(), 0)) }, wantErr: snooze.ErrInvalidDays, wantMsg: "0 days; choose 1 to 365"},
+		{name: "snooze past a year", set: func() error { return testutil.ErrOf(svc.SetSnoozeDays(t.Context(), 366)) }, wantErr: snooze.ErrInvalidDays},
+		{name: "unknown review rule", set: func() error {
+			return testutil.ErrOf(svc.SetSnoozeWake(t.Context(), snooze.Rules{Reviews: "sometimes"}))
+		}, wantErr: snooze.ErrInvalidRules, wantMsg: `"sometimes"`},
 		{name: "negative comment rule", set: func() error {
-			return svc.SetSnoozeWake(t.Context(), snooze.Rules{Reviews: snooze.ReviewsAny, Comments: -1})
+			return testutil.ErrOf(svc.SetSnoozeWake(t.Context(), snooze.Rules{Reviews: snooze.ReviewsAny, Comments: -1}))
 		}, wantErr: snooze.ErrInvalidRules},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			err := tt.set()
 			require.ErrorIs(t, err, tt.wantErr)
 
 			if tt.wantMsg != "" {
 				assert.Contains(t, err.Error(), tt.wantMsg)
 			}
+
+			// Every case is rejected, so nothing has been stored by any of them.
+			got, err := svc.Get(t.Context())
+			require.NoError(t, err)
+			assert.Equal(t, fromStored(nil), got, "rejected values must not be stored")
 		})
 	}
-
-	got, err := svc.Get(t.Context())
-	require.NoError(t, err)
-	assert.Equal(t, fromStored(nil), got, "rejected values must not be stored")
 }
 
 func TestCloneRootErrorsAreInvalidCloneRoot(t *testing.T) {
+	t.Parallel()
+
 	svc, _, _ := newTestService(t)
 
 	for _, root := range []string{"", "projects", "~/missing"} {
-		require.ErrorIs(t, svc.SetCloneRoot(t.Context(), root), ErrInvalidCloneRoot, root)
+		require.ErrorIs(t, testutil.ErrOf(svc.SetCloneRoot(t.Context(), root)), ErrInvalidCloneRoot, root)
 	}
 }
 
 func TestGetFallsBackOnBadStoredValues(t *testing.T) {
+	t.Parallel()
+
 	svc, db, _ := newTestService(t)
 	setPref(t, db, KeyDefaultProfile, "")
 	setPref(t, db, KeyWorktreeDefault, "maybe")
@@ -245,12 +298,15 @@ func TestGetFallsBackOnBadStoredValues(t *testing.T) {
 }
 
 func TestGetFallsBackWhenTheDefaultProfileIsGone(t *testing.T) {
+	t.Parallel()
+
 	svc, db, _ := newTestService(t)
-	require.NoError(t, profiles.Sync(t.Context(), db, []profiles.Profile{{Name: "work", ConfigDir: "/opt/profiles/work"}}))
-	require.NoError(t, svc.SetDefaultProfile(t.Context(), "work"))
+	storeProfiles(t, db, profiles.Profile{Name: "work", ConfigDir: "/opt/profiles/work"})
+	require.NoError(t, testutil.ErrOf(svc.SetDefaultProfile(t.Context(), "work")))
 
 	// The profile is removed, say because its folder turned out to be another tool's.
-	require.NoError(t, db.Exec("DELETE FROM claude_profiles WHERE name = 'work'").Error)
+	_, err := db.ExecContext(t.Context(), "DELETE FROM claude_profiles WHERE name = 'work'")
+	require.NoError(t, err)
 
 	got, err := svc.Get(t.Context())
 	require.NoError(t, err)
@@ -258,43 +314,93 @@ func TestGetFallsBackWhenTheDefaultProfileIsGone(t *testing.T) {
 }
 
 func TestGetReportsAProfileLookupError(t *testing.T) {
+	t.Parallel()
+
 	svc, db, _ := newTestService(t)
 	setPref(t, db, KeyDefaultProfile, "work")
 
-	require.NoError(t, db.Callback().Query().Before("gorm:query").Register("test:refuse", func(tx *gorm.DB) {
-		_ = tx.AddError(errRefused)
-	}))
+	// The preferences still read; only the profile lookup fails.
+	_, err := db.ExecContext(t.Context(), "DROP TABLE claude_profiles")
+	require.NoError(t, err)
 
-	_, err := svc.Get(t.Context())
-	require.ErrorIs(t, err, errRefused)
-	require.ErrorContains(t, err, "read settings")
+	_, err = svc.Get(t.Context())
+	require.ErrorContains(t, err, "read settings: look up profile")
+	require.NotErrorIs(t, err, profiles.ErrProfileNotFound)
 }
 
 func TestDatabaseErrors(t *testing.T) {
+	t.Parallel()
+
 	svc, db, _ := newTestService(t)
-	require.NoError(t, store.Close(db))
+	require.NoError(t, db.Close())
 
 	_, err := svc.Get(t.Context())
 	require.ErrorContains(t, err, "read settings")
 
-	require.ErrorContains(t, svc.SetTerminal(t.Context(), TerminalApp), "save setting launch.terminal")
+	require.ErrorContains(t, testutil.ErrOf(svc.SetTerminal(t.Context(), TerminalApp)), "begin transaction")
 
-	err = svc.SetDefaultProfile(t.Context(), "default")
+	_, err = svc.SetDefaultProfile(t.Context(), "default")
 	require.Error(t, err)
 	require.NotErrorIs(t, err, ErrUnknownProfile)
 
-	require.ErrorContains(t, svc.SetSnoozeWake(t.Context(), snooze.DefaultRules()), "save the snooze rules")
+	require.Error(t, testutil.ErrOf(svc.SetSnoozeWake(t.Context(), snooze.DefaultRules())))
 }
 
-func TestSensitiveFiles(t *testing.T) {
+// refusePrefs makes every write to the prefs table fail, the way a full disk would.
+const refusePrefs = `CREATE TRIGGER refuse_prefs BEFORE INSERT ON prefs
+BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`
+
+func TestASetterThatCannotWriteStoresNothing(t *testing.T) {
+	t.Parallel()
+
 	svc, db, _ := newTestService(t)
 	ctx := t.Context()
 
-	require.NoError(t, svc.SetSensitiveScope(ctx, sensitive.ScopeOutside))
-	require.NoError(t, svc.SetSensitiveCategory(ctx, sensitive.CategoryDependencies, false))
-	require.NoError(t, svc.SetSensitiveCategory(ctx, sensitive.CategoryReview, false))
-	require.NoError(t, svc.SetSensitiveCategory(ctx, sensitive.CategoryReview, true))
-	require.NoError(t, svc.SetSensitivePatterns(ctx, []string{" infra/ ", "*.tf", "", "INFRA/"}))
+	_, err := db.ExecContext(ctx, refusePrefs)
+	require.NoError(t, err)
+
+	got, err := svc.SetTerminal(ctx, TerminalApp)
+	require.ErrorContains(t, err, "save setting launch.terminal")
+	assert.Equal(t, Settings{}, got)
+
+	_, err = svc.SetSnoozeWake(ctx, snooze.Rules{Commits: 5, Reviews: snooze.ReviewsAny, Comments: 5})
+	require.ErrorContains(t, err, "save the snooze rules")
+
+	stored, err := svc.Get(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, DefaultTerminal, stored.Terminal)
+	assert.Equal(t, snooze.DefaultRules(), stored.SnoozeWake, "no rule of the refused save is stored")
+}
+
+func TestASaveThatFailsPartWayStoresNothing(t *testing.T) {
+	t.Parallel()
+
+	svc, _, _ := newTestService(t)
+	ctx := t.Context()
+
+	_, err := svc.save(ctx, func(ctx context.Context, p *prefs.Store) error {
+		require.NoError(t, p.Set(ctx, KeyTheme, string(ThemeDark)))
+
+		return errLookup
+	})
+	require.ErrorIs(t, err, errLookup)
+
+	got, err := svc.Theme(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, DefaultTheme, got, "the write before the failure is rolled back")
+}
+
+func TestSensitiveFiles(t *testing.T) {
+	t.Parallel()
+
+	svc, db, _ := newTestService(t)
+	ctx := t.Context()
+
+	require.NoError(t, testutil.ErrOf(svc.SetSensitiveScope(ctx, sensitive.ScopeOutside)))
+	require.NoError(t, testutil.ErrOf(svc.SetSensitiveCategory(ctx, sensitive.CategoryDependencies, false)))
+	require.NoError(t, testutil.ErrOf(svc.SetSensitiveCategory(ctx, sensitive.CategoryReview, false)))
+	require.NoError(t, testutil.ErrOf(svc.SetSensitiveCategory(ctx, sensitive.CategoryReview, true)))
+	require.NoError(t, testutil.ErrOf(svc.SetSensitivePatterns(ctx, []string{" infra/ ", "*.tf", "", "INFRA/"})))
 
 	got, err := svc.Get(ctx)
 	require.NoError(t, err)
@@ -312,29 +418,174 @@ func TestSensitiveFiles(t *testing.T) {
 	assert.False(t, match.Sensitive, "dependencies are off")
 
 	// Refused changes leave the settings as they were.
-	require.ErrorIs(t, svc.SetSensitiveScope(ctx, "everyone"), sensitive.ErrInvalidScope)
-	require.ErrorIs(t, svc.SetSensitiveCategory(ctx, sensitive.CategoryAgent, false), sensitive.ErrLockedCategory)
-	require.ErrorIs(t, svc.SetSensitiveCategory(ctx, "nope", false), sensitive.ErrUnknownCategory)
-	require.ErrorIs(t, svc.SetSensitivePatterns(ctx, []string{"ok/", "*"}), sensitive.ErrInvalidPattern)
+	require.ErrorIs(t, testutil.ErrOf(svc.SetSensitiveScope(ctx, "everyone")), sensitive.ErrInvalidScope)
+	require.ErrorIs(t, testutil.ErrOf(svc.SetSensitiveCategory(ctx, sensitive.CategoryAgent, false)), sensitive.ErrLockedCategory)
+	require.ErrorIs(t, testutil.ErrOf(svc.SetSensitiveCategory(ctx, "nope", false)), sensitive.ErrUnknownCategory)
+	require.ErrorIs(t, testutil.ErrOf(svc.SetSensitivePatterns(ctx, []string{"ok/", "*"})), sensitive.ErrInvalidPattern)
 
 	again, err := svc.Get(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, got.SensitiveFiles, again.SensitiveFiles)
 
 	// Clearing the patterns stores an empty list.
-	require.NoError(t, svc.SetSensitivePatterns(ctx, nil))
+	require.NoError(t, testutil.ErrOf(svc.SetSensitivePatterns(ctx, nil)))
 
 	var value string
-	require.NoError(t, db.Raw("SELECT value FROM prefs WHERE key = ?", sensitive.PrefPatterns).Scan(&value).Error)
+	require.NoError(t, db.QueryRowContext(ctx, "SELECT value FROM prefs WHERE key = ?", sensitive.PrefPatterns).Scan(&value))
 	assert.Equal(t, "[]", value)
 }
 
 func TestSensitiveFilesDatabaseErrors(t *testing.T) {
-	svc, db, _ := newTestService(t)
-	require.NoError(t, store.Close(db))
+	t.Parallel()
 
-	require.Error(t, svc.SetSensitiveCategory(t.Context(), sensitive.CategoryReview, false))
+	svc, db, _ := newTestService(t)
+	require.NoError(t, db.Close())
+
+	require.Error(t, testutil.ErrOf(svc.SetSensitiveCategory(t.Context(), sensitive.CategoryReview, false)))
 
 	_, err := svc.MatchSensitivePath(t.Context(), "go.mod")
 	require.Error(t, err)
+}
+
+func TestSettersReturnTheStoredSettings(t *testing.T) {
+	t.Parallel()
+
+	svc, db, home := newTestService(t)
+	storeProfiles(t, db, profiles.Profile{Name: "work", ConfigDir: "/opt/profiles/work"})
+	require.NoError(t, os.MkdirAll(filepath.Join(home, "code"), 0o700))
+
+	ctx := t.Context()
+	wake := snooze.Rules{Commits: 2, Reviews: snooze.ReviewsAny, Comments: 4}
+	size := WindowSize{Width: 1024, Height: 700}
+
+	for _, tc := range []struct {
+		name  string
+		set   func() (Settings, error)
+		field func(Settings) any
+		want  any
+	}{
+		{
+			"terminal", func() (Settings, error) { return svc.SetTerminal(ctx, TerminalApp) },
+			func(s Settings) any { return s.Terminal }, TerminalApp,
+		},
+		{
+			"default profile", func() (Settings, error) { return svc.SetDefaultProfile(ctx, "work") },
+			func(s Settings) any { return s.DefaultProfile }, "work",
+		},
+		{
+			"worktree default", func() (Settings, error) { return svc.SetWorktreeDefault(ctx, false) },
+			func(s Settings) any { return s.WorktreeDefault }, false,
+		},
+		{
+			"worktree cleanup", func() (Settings, error) { return svc.SetWorktreeAutoCleanup(ctx, false) },
+			func(s Settings) any { return s.WorktreeAutoCleanup }, false,
+		},
+		{
+			"clone root", func() (Settings, error) { return svc.SetCloneRoot(ctx, "~/code") },
+			func(s Settings) any { return s.CloneRoot }, "~/code",
+		},
+		{
+			"trusted bots", func() (Settings, error) { return svc.SetTrustedBots(ctx, []string{"renovate"}) },
+			func(s Settings) any { return s.TrustedBots },
+			[]string{"renovate"},
+		},
+		{
+			"reset trusted bots", func() (Settings, error) { return svc.ResetTrustedBots(ctx) },
+			func(s Settings) any { return s.TrustedBots }, trust.DefaultBots(),
+		},
+		{
+			"snooze days", func() (Settings, error) { return svc.SetSnoozeDays(ctx, 9) },
+			func(s Settings) any { return s.SnoozeDays }, 9,
+		},
+		{
+			"snooze wake", func() (Settings, error) { return svc.SetSnoozeWake(ctx, wake) },
+			func(s Settings) any { return s.SnoozeWake }, wake,
+		},
+		{
+			"sensitive scope", func() (Settings, error) { return svc.SetSensitiveScope(ctx, sensitive.ScopeOutside) },
+			func(s Settings) any { return s.SensitiveFiles.Scope }, sensitive.ScopeOutside,
+		},
+		{
+			"sensitive category",
+			func() (Settings, error) { return svc.SetSensitiveCategory(ctx, sensitive.CategoryReview, false) },
+			func(s Settings) any { return s.SensitiveFiles.Off },
+			[]string{sensitive.CategoryReview},
+		},
+		{
+			"sensitive patterns", func() (Settings, error) { return svc.SetSensitivePatterns(ctx, []string{"*.pem"}) },
+			func(s Settings) any { return s.SensitiveFiles.Patterns },
+			[]string{"*.pem"},
+		},
+		{
+			"menu bar", func() (Settings, error) { return svc.SetMenuBar(ctx, false) },
+			func(s Settings) any { return s.MenuBar }, false,
+		},
+		{
+			"notification banner",
+			func() (Settings, error) { return svc.SetNotificationBanner(ctx, notifyprefs.KindAssigned, false) },
+			func(s Settings) any { return s.BannersOff },
+			[]notifyprefs.Kind{notifyprefs.KindAssigned},
+		},
+		{
+			"collapsed section", func() (Settings, error) { return svc.SetSectionCollapsed(ctx, ListAuthored, true) },
+			func(s Settings) any { return s.CollapsedSections },
+			[]ListKey{ListAuthored},
+		},
+		{
+			"theme", func() (Settings, error) { return svc.SetTheme(ctx, ThemeDark) },
+			func(s Settings) any { return s.Theme }, ThemeDark,
+		},
+		{
+			"window size", func() (Settings, error) { return svc.SetWindowSize(ctx, size) },
+			func(s Settings) any { return s.WindowSize }, size,
+		},
+	} {
+		got, err := tc.set()
+		require.NoError(t, err, tc.name)
+		assert.Equal(t, tc.want, tc.field(got), tc.name)
+
+		stored, err := svc.Get(ctx)
+		require.NoError(t, err, tc.name)
+		assert.Equal(t, stored, got, "%s returns the settings as stored", tc.name)
+	}
+}
+
+// failingLookup is a ProfileLookup whose every lookup fails.
+type failingLookup struct{}
+
+func (failingLookup) Lookup(context.Context, string) (profiles.Profile, error) {
+	return profiles.Profile{}, errLookup
+}
+
+// errLookup is failingLookup's error.
+var errLookup = errors.New("lookup failed")
+
+func TestASaveStandsWhenTheDefaultProfileCannotBeChecked(t *testing.T) {
+	t.Parallel()
+
+	db := testutil.DB(t)
+	setPref(t, db, KeyDefaultProfile, "work")
+
+	// The change is stored, but the stored default profile cannot be looked up once it is.
+	var logs bytes.Buffer
+
+	events := &testutil.Events{}
+	svc := NewService(db, failingLookup{}, t.TempDir(), WithEvents(events),
+		WithLogger(slog.New(slog.NewTextHandler(&logs, nil))))
+
+	got, err := svc.SetMenuBar(t.Context(), false)
+	require.NoError(t, err, "the change happened, so the save is not reported as failed")
+	assert.False(t, got.MenuBar)
+	assert.Equal(t, "work", got.DefaultProfile, "the stored profile is named as it is")
+	assert.Equal(t, []event.Event{event.MenuBarChanged{On: false}}, events.All())
+	assert.Contains(t, logs.String(), "lookup failed")
+
+	got, err = svc.SetTheme(t.Context(), ThemeDark)
+	require.NoError(t, err)
+	assert.Equal(t, ThemeDark, got.Theme)
+
+	stored, err := serviceOver(t, db, t.TempDir()).Get(t.Context())
+	require.NoError(t, err)
+	assert.False(t, stored.MenuBar)
+	assert.Equal(t, ThemeDark, stored.Theme)
 }

@@ -1,17 +1,12 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { agentGroup, launchHold } from '../test/fixtures'
+import { platform } from '../test/platform'
 import { LaunchHoldDialog } from './LaunchHoldDialog'
 
-const platform = vi.hoisted(() => ({ openInBrowser: vi.fn() }))
-
-vi.mock('../platform', () => platform)
-
-beforeEach(() => {
-  vi.clearAllMocks()
-})
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 describe('LaunchHoldDialog', () => {
   it('confirms or cancels', async () => {
@@ -26,12 +21,9 @@ describe('LaunchHoldDialog', () => {
     expect(onCancel).toHaveBeenCalledOnce()
   })
 
-  it('lists a file it cannot link without a link, and says so when a link fails to open', async () => {
-    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    platform.openInBrowser.mockRejectedValue(new Error('no browser'))
-
+  it('opens each file’s diff, and lists a file it cannot link without a link', async () => {
     const files = [
-      ...(agentGroup().files ?? []),
+      ...agentGroup().files,
       { path: 'CLAUDE.md', previousPath: '', change: 'modified', pattern: 'CLAUDE.md', url: '' },
     ]
     render(<LaunchHoldDialog hold={launchHold({ files })} agentName="Claude" onConfirm={vi.fn()} onCancel={vi.fn()} />)
@@ -40,10 +32,8 @@ describe('LaunchHoldDialog', () => {
     expect(list.getByRole('button', { name: 'CLAUDE.md' })).toBeDisabled()
 
     await userEvent.click(list.getByRole('button', { name: /\.claude\/settings\.json/ }))
-
-    await waitFor(() => {
-      expect(logged).toHaveBeenCalledWith('could not open the file in the browser', expect.any(Error))
-    })
-    logged.mockRestore()
+    expect(platform.openExternal).toHaveBeenCalledWith(
+      'https://github.com/acme-org/example-repo/pull/7/files#diff-aaaa',
+    )
   })
 })

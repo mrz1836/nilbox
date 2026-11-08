@@ -32,22 +32,26 @@ const (
 	AssociationCollaborator = "COLLABORATOR"
 )
 
+// Class is how far an item's author is trusted.
+type Class string
+
 // Trust classes.
 const (
 	// ClassMember is an item from the repository's owner, an org member, or a collaborator.
-	ClassMember = "member"
+	ClassMember Class = "member"
 
 	// ClassBot is an item from a trusted bot.
-	ClassBot = "bot"
+	ClassBot Class = "bot"
 
 	// ClassOutside is an item from an outside contributor, an untrusted bot, or a fork.
-	ClassOutside = "outside"
+	ClassOutside Class = "outside"
 )
 
 // TypeBot is the GraphQL type GitHub reports for a bot or GitHub App author.
 const TypeBot = "Bot"
 
-// PrefBots is the preference that lists the trusted bots, as a JSON array of logins.
+// PrefBots is the preference that lists the trusted bots, as a JSON array of logins. The
+// settings package writes it.
 const PrefBots = "trust.bots"
 
 // maxBots caps the trusted list.
@@ -62,9 +66,7 @@ var (
 )
 
 // botPattern is what a bot login (a GitHub App's slug) looks like once normalized.
-func botPattern() *regexp.Regexp {
-	return regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,38})$`)
-}
+var botPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,38})$`)
 
 // DefaultBots returns the bots trusted until the user changes the list: GitHub's
 // Dependabot and Actions, and Renovate.
@@ -110,7 +112,7 @@ func NewPolicy(bots []string) Policy {
 
 // Classify returns an item's trust class: ClassMember, ClassBot, or ClassOutside. A pull
 // request from a fork (crossRepo) is always outside.
-func (p Policy) Classify(a Author, isPR, crossRepo bool) string {
+func (p Policy) Classify(a Author, isPR, crossRepo bool) Class {
 	if isPR && crossRepo {
 		return ClassOutside
 	}
@@ -138,7 +140,6 @@ func (p Policy) Trusted(a Author, isPR, crossRepo bool) bool {
 // an ErrInvalidBot.
 func NormalizeBots(logins []string) ([]string, error) {
 	out := make([]string, 0, len(logins))
-	pattern := botPattern()
 
 	for _, login := range logins {
 		b := foldBot(login)
@@ -146,7 +147,7 @@ func NormalizeBots(logins []string) ([]string, error) {
 			continue
 		}
 
-		if !pattern.MatchString(b) {
+		if !botPattern.MatchString(b) {
 			return nil, fmt.Errorf("%w: %q", ErrInvalidBot, strings.TrimSpace(login))
 		}
 

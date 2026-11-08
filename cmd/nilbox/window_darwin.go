@@ -31,7 +31,7 @@ func windowOptions(dark bool, size settings.WindowSize) application.WebviewWindo
 // applyAppearance pins the app's native appearance to a light or dark theme, or lets it
 // follow the system, on the main thread. Before the window opens, this is what makes its
 // first frame match the theme: the page's prefers-color-scheme already answers for it.
-func applyAppearance(theme string) {
+func applyAppearance(theme settings.Theme) {
 	application.InvokeSync(func() { setNativeAppearance(theme) })
 }
 

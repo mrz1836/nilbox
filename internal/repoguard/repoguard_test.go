@@ -80,7 +80,7 @@ func repoFiles(t *testing.T, root string) []string {
 
 	var files []string
 
-	for _, f := range strings.Split(string(out), "\x00") {
+	for f := range strings.SplitSeq(string(out), "\x00") {
 		if f != "" {
 			files = append(files, f)
 		}
@@ -123,18 +123,29 @@ func walkFiles(t *testing.T, root string) []string {
 func readText(t *testing.T, root, rel string) (string, bool) {
 	t.Helper()
 
-	body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel))) //nolint:gosec // paths come from this repo's file list
-	if errors.Is(err, fs.ErrNotExist) {
-		return "", false // deleted in the working tree but still in the index
-	}
-
+	text, ok, err := readTextFile(root, rel)
 	require.NoError(t, err)
 
-	if bytes.IndexByte(body, 0) >= 0 {
-		return "", false
+	return text, ok
+}
+
+// readTextFile is readText for a caller that is not on the test's goroutine: it returns
+// the error a test would fail with.
+func readTextFile(root, rel string) (string, bool, error) {
+	body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel))) //nolint:gosec // paths come from this repo's file list
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", false, nil // deleted in the working tree but still in the index
 	}
 
-	return string(body), true
+	if err != nil {
+		return "", false, fmt.Errorf("read %s: %w", rel, err)
+	}
+
+	if bytes.IndexByte(body, 0) >= 0 {
+		return "", false, nil
+	}
+
+	return string(body), true, nil
 }
 
 // goFiles returns the repository's Go files.
@@ -167,26 +178,9 @@ func hits(rel, text string, match func(line string) bool) []string {
 	return found
 }
 
-func TestNoAutoMigrateInProductionCode(t *testing.T) {
-	root := moduleRoot(t)
-	needle := "Auto" + "Migrate("
-
-	var found []string
-
-	for _, rel := range goFiles(t, root) {
-		if strings.HasSuffix(rel, "_test.go") {
-			continue
-		}
-
-		if text, ok := readText(t, root, rel); ok {
-			found = append(found, hits(rel, text, func(line string) bool { return strings.Contains(line, needle) })...)
-		}
-	}
-
-	assert.Empty(t, found, "the schema comes from SQL migrations only; never create it from models")
-}
-
 func TestDataLayerBuildsWithoutCGO(t *testing.T) {
+	t.Parallel()
+
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("the go command is not available")
 	}
@@ -215,6 +209,8 @@ func TestDataLayerBuildsWithoutCGO(t *testing.T) {
 }
 
 func TestNoAbsoluteHomePaths(t *testing.T) {
+	t.Parallel()
+
 	root := moduleRoot(t)
 
 	// Built from parts so this file does not match itself. The look-behind-style prefix
@@ -268,6 +264,8 @@ func frontendBrandFile(rel string) bool {
 }
 
 func TestFrontendBrandFile(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]bool{
 		"frontend/index.html":                   true,
 		"frontend/src/App.tsx":                  true,
@@ -314,6 +312,8 @@ func productNameText(t *testing.T, root, module, rel string) (string, bool) {
 }
 
 func TestNoHardcodedProductName(t *testing.T) {
+	t.Parallel()
+
 	root := moduleRoot(t)
 	module := modulePath(t, root)
 	cmdDir := "cmd/" + brand.Slug + "/"
@@ -337,6 +337,8 @@ func TestNoHardcodedProductName(t *testing.T) {
 }
 
 func TestNoLiveGitHubCallsInTests(t *testing.T) {
+	t.Parallel()
+
 	root := moduleRoot(t)
 
 	// Built from parts so this file does not match itself.
@@ -390,6 +392,8 @@ func containsAny(line string, needles []string) bool {
 }
 
 func TestNoBranchDeletion(t *testing.T) {
+	t.Parallel()
+
 	root := moduleRoot(t)
 	needles := branchDeleteNeedles()
 
@@ -445,6 +449,8 @@ func productionGoHits(t *testing.T, root string, pattern *regexp.Regexp, exempt 
 }
 
 func TestOnlyTheLauncherCreatesClones(t *testing.T) {
+	t.Parallel()
+
 	root := moduleRoot(t)
 
 	// Built from parts so this file does not match itself. "clone" is the argv word of
@@ -470,6 +476,8 @@ func cloneChangingVerbs() []string {
 }
 
 func TestNoGitCommandChangesAClone(t *testing.T) {
+	t.Parallel()
+
 	root := moduleRoot(t)
 	verbs := argvLiteral(cloneChangingVerbs()...)
 	worktreeAdd := regexp.MustCompile(`"work` + `tree",\s*"add"`)
@@ -563,6 +571,8 @@ func fileRunners(rel, text string) []string {
 }
 
 func TestNoMacOSRunners(t *testing.T) {
+	t.Parallel()
+
 	root := moduleRoot(t)
 
 	var found []string
@@ -608,6 +618,27 @@ func TestRunnerValues(t *testing.T) {
 	}, runnerValues("w.yml", workflow))
 }
 
+// fileImports returns the import paths of the Go file rel, whatever its build tags, or
+// none for a file that cannot be read as text.
+func fileImports(t *testing.T, root, rel string) []string {
+	t.Helper()
+
+	src, ok := readText(t, root, rel)
+	if !ok {
+		return nil
+	}
+
+	file, err := parser.ParseFile(token.NewFileSet(), rel, src, parser.ImportsOnly)
+	require.NoError(t, err, rel)
+
+	paths := make([]string, 0, len(file.Imports))
+	for _, imp := range file.Imports {
+		paths = append(paths, strings.Trim(imp.Path.Value, `"`))
+	}
+
+	return paths
+}
+
 // wailsBootstrapFiles are the only files allowed to import the desktop runtime: the
 // desktop shell (the desktop main, the menu bar icon, and the notification banners, each
 // in a *_desktop.go file), its per-OS window options, and the desktop-tagged frontend
@@ -630,6 +661,8 @@ func wailsAllowed(rel string) bool {
 }
 
 func TestOnlyDesktopBootstrapImportsWails(t *testing.T) {
+	t.Parallel()
+
 	root := moduleRoot(t)
 
 	// Built from parts so the needle reads as data, not as an import path.
@@ -644,17 +677,9 @@ func TestOnlyDesktopBootstrapImportsWails(t *testing.T) {
 			continue
 		}
 
-		src, ok := readText(t, root, rel)
-		if !ok {
-			continue
-		}
-
-		file, err := parser.ParseFile(token.NewFileSet(), rel, src, parser.ImportsOnly)
-		require.NoError(t, err, rel)
-
-		for _, imp := range file.Imports {
-			if strings.HasPrefix(strings.Trim(imp.Path.Value, `"`), runtimePrefix) {
-				found = append(found, rel+": "+imp.Path.Value)
+		for _, imp := range fileImports(t, root, rel) {
+			if strings.HasPrefix(imp, runtimePrefix) {
+				found = append(found, rel+": "+imp)
 			}
 		}
 	}
@@ -680,4 +705,36 @@ func TestWailsAllowed(t *testing.T) {
 	} {
 		assert.Equal(t, want, wailsAllowed(rel), rel)
 	}
+}
+
+// testSupportDir holds the test-support package: helpers and fakes the test suites share,
+// which must never reach the app.
+const testSupportDir = "internal/testutil"
+
+func TestOnlyTestsImportTestSupport(t *testing.T) {
+	t.Parallel()
+
+	root := moduleRoot(t)
+	testSupport := modulePath(t, root) + "/" + testSupportDir
+
+	require.DirExists(t, filepath.Join(root, filepath.FromSlash(testSupportDir)),
+		"%s is gone; update this guard", testSupportDir)
+
+	var found []string
+
+	// Every Go file is parsed whatever its build tags, so a tagged file cannot hide an
+	// import from this check.
+	for _, rel := range goFiles(t, root) {
+		if strings.HasSuffix(rel, "_test.go") {
+			continue
+		}
+
+		for _, imp := range fileImports(t, root, rel) {
+			if imp == testSupport || strings.HasPrefix(imp, testSupport+"/") {
+				found = append(found, rel+": "+imp)
+			}
+		}
+	}
+
+	assert.Empty(t, found, "only _test.go files may import the test-support package")
 }

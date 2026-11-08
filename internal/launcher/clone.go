@@ -7,22 +7,27 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 
+	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/localrepos"
+	"github.com/mrz1836/nilbox/internal/paths"
+	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
-// ghBin is the command the GitHub CLI runs as.
-const ghBin = "gh"
+const (
+	// ghBin is the command the GitHub CLI runs as.
+	ghBin = "gh"
+
+	// maxErrDetail caps how much of the GitHub CLI's error output a failed clone's error
+	// carries.
+	maxErrDetail = 200
+)
 
 var (
 	// ErrCloneTargetExists is returned when the directory a clone would be created in
 	// already exists. Clone never writes into an existing directory.
 	ErrCloneTargetExists = errors.New("it already exists")
-
-	// ErrInvalidRepoName is returned when a stored repository's owner or name cannot be a
-	// GitHub name, so it cannot safely name a directory or a gh argument.
-	ErrInvalidRepoName = errors.New("not a valid GitHub repository name")
 
 	// ErrCloneUnavailable is returned when the Service was built without a GH runner.
 	ErrCloneUnavailable = errors.New("cloning is not available")
@@ -69,7 +74,7 @@ func (s *Service) Clone(ctx context.Context, itemID int64) (CloneTarget, error) 
 	s.cloneMu.Lock()
 	defer s.cloneMu.Unlock()
 
-	t, repo, err := s.cloneTarget(ctx, itemID)
+	t, target, err := s.cloneTarget(ctx, itemID)
 	if err != nil || t.Cloned {
 		return t, err
 	}
@@ -78,17 +83,17 @@ func (s *Service) Clone(ctx context.Context, itemID int64) (CloneTarget, error) 
 		return CloneTarget{}, fmt.Errorf("clone %s into %s: %w", t.Repo, t.Dir, ErrCloneTargetExists)
 	}
 
-	dir := repo.localPath
+	dir := target.localPath
 
 	if _, stderr, runErr := s.gh.Run(ctx, ghBin, "repo", "clone", t.Repo, dir); runErr != nil {
-		if line := cloneDetail(stderr); line != "" && ctx.Err() == nil {
+		if line := textutil.Clip(execpath.GitMessage(stderr), maxErrDetail); line != "" && ctx.Err() == nil {
 			return CloneTarget{}, fmt.Errorf("clone %s: %s: %w", t.Repo, line, runErr)
 		}
 
 		return CloneTarget{}, fmt.Errorf("clone %s: %w", t.Repo, runErr)
 	}
 
-	s.cacheClonePath(ctx, repo.id, dir)
+	s.cacheClonePath(ctx, target.id, dir)
 
 	t.Cloned, t.Taken = true, false
 
@@ -96,7 +101,9 @@ func (s *Service) Clone(ctx context.Context, itemID int64) (CloneTarget, error) 
 }
 
 // cloneTarget finds an item's clone, or works out where Clone would create one. For a
-// repository without a clone, the returned repoRef's localPath is that absolute path.
+// repository without a clone, the returned repoRef's localPath is that absolute path. A
+// stored owner or name that breaks GitHub's rules is a repo.ErrInvalid, so no name that
+// could escape the clone root or read as a flag ever names a directory or a gh argument.
 func (s *Service) cloneTarget(ctx context.Context, itemID int64) (CloneTarget, repoRef, error) {
 	prefs, err := s.settings.Get(ctx)
 	if err != nil {
@@ -108,37 +115,37 @@ func (s *Service) cloneTarget(ctx context.Context, itemID int64) (CloneTarget, r
 		return CloneTarget{}, repoRef{}, err
 	}
 
-	repo := row.repoRef()
-	if !localrepos.ValidName(repo.owner) || strings.HasPrefix(repo.owner, "-") || !localrepos.ValidName(repo.name) {
-		return CloneTarget{}, repoRef{}, fmt.Errorf("%w: %q", ErrInvalidRepoName, repo.owner+"/"+repo.name)
+	ref := row.repoRef()
+	if _, err = repo.New(ref.name.Owner, ref.name.Repo); err != nil {
+		return CloneTarget{}, repoRef{}, err
 	}
 
-	t := CloneTarget{Repo: repo.owner + "/" + repo.name}
+	t := CloneTarget{Repo: ref.name.String()}
 
-	clone, err := s.resolveClone(ctx, repo, prefs.CloneRoot)
+	clone, err := s.resolveClone(ctx, ref, prefs.CloneRoot)
 	if err == nil {
-		t.Cloned, t.Dir = true, localrepos.TildePath(clone.Dir, s.home)
+		t.Cloned, t.Dir = true, paths.Tilde(clone.Dir, s.home)
 
-		return t, repoRef{id: repo.id, owner: repo.owner, name: repo.name, localPath: clone.Dir}, nil
+		return t, repoRef{id: ref.id, name: ref.name, localPath: clone.Dir}, nil
 	}
 
 	if !errors.Is(err, localrepos.ErrCloneNotFound) {
 		return CloneTarget{}, repoRef{}, err
 	}
 
-	root, err := localrepos.ExpandRoot(prefs.CloneRoot, s.home)
+	root, err := paths.ExpandHome(prefs.CloneRoot, s.home)
 	if err != nil {
-		return CloneTarget{}, repoRef{}, err
+		return CloneTarget{}, repoRef{}, fmt.Errorf("clone root: %w", err)
 	}
 
-	dir := filepath.Join(root, repo.name)
-	t.Dir = localrepos.TildePath(dir, s.home)
+	dir := filepath.Join(root, ref.name.Repo)
+	t.Dir = paths.Tilde(dir, s.home)
 
 	if t.Taken, err = exists(dir); err != nil {
 		return CloneTarget{}, repoRef{}, err
 	}
 
-	return t, repoRef{id: repo.id, owner: repo.owner, name: repo.name, localPath: dir}, nil
+	return t, repoRef{id: ref.id, name: ref.name, localPath: dir}, nil
 }
 
 // exists reports whether anything, even a dangling symlink, is at path.
@@ -153,16 +160,4 @@ func exists(path string) (bool, error) {
 	default:
 		return false, fmt.Errorf("check %s: %w", path, err)
 	}
-}
-
-// cloneDetail is the first line of a failed clone's error output, without git's
-// "fatal: " or "error: " prefix.
-func cloneDetail(stderr []byte) string {
-	line := firstLine(string(stderr))
-
-	for _, prefix := range []string{"fatal: ", "error: "} {
-		line = strings.TrimPrefix(line, prefix)
-	}
-
-	return line
 }

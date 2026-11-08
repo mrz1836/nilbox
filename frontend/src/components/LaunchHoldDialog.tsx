@@ -1,7 +1,7 @@
 import { brand } from '../generated/brand'
 import { counted, formatCount } from '../lib/format'
 import { changeText } from '../lib/sensitive'
-import { openInBrowser, type LaunchHold } from '../platform'
+import { openExternal, type LaunchHold } from '../platform'
 import { ConfirmDialog } from './ConfirmDialog'
 import { ExternalIcon } from './icons'
 
@@ -11,12 +11,6 @@ export interface LaunchHoldDialogProps {
   agentName: string
   onConfirm: () => void
   onCancel: () => void
-}
-
-function openDiff(url: string) {
-  openInBrowser(url).catch((err: unknown) => {
-    console.error('could not open the file in the browser', err)
-  })
 }
 
 // where says when the agent would load the pull request's files: at once in a worktree at
@@ -32,7 +26,7 @@ function where(hold: LaunchHold, agentName: string): string {
 // AgentFilesBody explains a pull request that changes agent configuration, listing the
 // files, each opening its diff on GitHub.
 function AgentFilesBody({ hold, agentName }: { hold: LaunchHold; agentName: string }) {
-  const files = hold.files ?? []
+  const files = hold.files
 
   return (
     <div className="flex flex-col gap-3">
@@ -51,7 +45,7 @@ function AgentFilesBody({ hold, agentName }: { hold: LaunchHold; agentName: stri
               disabled={file.url === ''}
               title={`Open the diff of ${file.path} on GitHub`}
               onClick={() => {
-                openDiff(file.url)
+                openExternal(file.url)
               }}
               className="inline-flex min-w-0 items-baseline gap-1 text-left font-mono text-xs text-text enabled:hover:text-accent enabled:hover:underline"
             >

@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useEffectEvent, useId, useRef, useState } from 'react'
 
-import { errorMessage } from '../lib/format'
 import { kindPlural, promptApplies, usageCount, usagePlaces } from '../lib/launch'
+import { useMutation } from '../lib/useMutation'
+import { useDebouncedQuery } from '../lib/useQuery'
 import {
   checkPrompt,
   createPrompt,
@@ -14,16 +15,17 @@ import {
   type Diagnostic,
   type InboxItem,
   type Prompt,
-  type PromptCheckResult,
   type PromptInput,
   type PromptVariable,
 } from '../platform'
-import { ConfirmDialog } from './ConfirmDialog'
-import { buttonClass, primaryButtonClass, quietButtonClass } from './controls'
-import { CopyIcon, DocumentIcon, MoreIcon, PlusIcon, ResetIcon, SearchIcon, StarIcon, TrashIcon } from './icons'
+import { ConfirmDialog, type ConfirmDialogProps } from './ConfirmDialog'
+import { buttonClass, primaryButtonClass } from './controls'
+import { CopyIcon, DocumentIcon, MoreIcon, PlusIcon, ResetIcon, StarIcon, TrashIcon } from './icons'
 import { MenuButton, type MenuItem } from './Menu'
 import { PromptEditor } from './PromptEditor'
+import { PromptLibrary, type Selection } from './PromptLibrary'
 import { PromptPreview } from './PromptPreview'
+import { TabPanel, Tabs } from './Tabs'
 import type { TemplateEditorHandle } from './TemplateEditor'
 import { VariablesPanel } from './VariablesPanel'
 
@@ -33,15 +35,10 @@ export interface PromptsViewProps {
   variables: readonly PromptVariable[]
   // items are the inbox's items, offered to preview a prompt with.
   items: readonly InboxItem[]
-  // active reports whether the page is showing, so ⌘S only saves here.
-  active: boolean
   // onChanged reloads the prompts and everything that depends on them; it resolves
   // once they are loaded again.
   onChanged: () => Promise<void>
 }
-
-// Selection is the prompt being edited: a stored one by ID, or a new one.
-type Selection = { kind: 'prompt'; id: number } | { kind: 'new' }
 
 // Pending is a question the page is asking before it acts.
 type Pending =
@@ -49,6 +46,16 @@ type Pending =
   | { kind: 'delete'; prompt: Prompt }
   | { kind: 'in-use'; prompt: Prompt }
   | { kind: 'reset'; prompt: Prompt }
+
+// Question is what the page asks before acting on a Pending: the confirm dialog's words,
+// and what confirming does.
+type Question = Omit<ConfirmDialogProps, 'onCancel'>
+
+// sidePanels are the tabs beside the editor.
+const sidePanels = [
+  { value: 'preview', label: 'Preview' },
+  { value: 'variables', label: 'Variables' },
+] as const
 
 // newPromptBody starts a new prompt with the item's address, so the variables show at
 // work from the first keystroke.
@@ -96,12 +103,6 @@ function sameInput(a: PromptInput, b: PromptInput): boolean {
   )
 }
 
-const groups: readonly { appliesTo: string; title: string }[] = [
-  { appliesTo: 'pr', title: 'Pull requests' },
-  { appliesTo: 'issue', title: 'Issues' },
-  { appliesTo: 'any', title: 'Both' },
-]
-
 // touchedField reports whether a field of the draft was edited away from its start.
 function touchedField(field: string, draft: PromptInput, start: PromptInput): boolean {
   const key = field as keyof PromptInput
@@ -109,46 +110,64 @@ function touchedField(field: string, draft: PromptInput, start: PromptInput): bo
   return key in draft && draft[key] !== start[key]
 }
 
-// isAppDefault reports whether a prompt is the app's default for a kind.
-function isAppDefault(p: Prompt): boolean {
-  return (p.usage.defaults?.length ?? 0) > 0
-}
-
 // PromptsView is the Prompts page: the prompt library on the left, the selected prompt's
 // editor in the middle, and its live preview and the variables cheat sheet on the right.
 // Edits are checked by the backend as you type and saved with Save (or ⌘S). Leaving a
 // prompt with unsaved changes asks first.
-export function PromptsView({ prompts, defaults, variables, items, active, onChanged }: PromptsViewProps) {
+export function PromptsView({ prompts, defaults, variables, items, onChanged }: PromptsViewProps) {
   const id = useId()
   const editorRef = useRef<TemplateEditorHandle>(null)
   const [selection, setSelection] = useState<Selection | null>(null)
   const [baseline, setBaseline] = useState<PromptInput>(blankInput)
   const [draft, setDraft] = useState<PromptInput>(blankInput)
-  const [check, setCheck] = useState<PromptCheckResult | null>(null)
+  // opened counts the prompts opened in the editor, so a check made for one never shows
+  // on the next.
+  const [opened, setOpened] = useState(0)
   // pickedItem is the preview item picked in the panel, or null to pick automatically.
   const [pickedItem, setPickedItem] = useState<number | null>(null)
   const [inWorktree, setInWorktree] = useState(true)
   const [atPrHead, setAtPrHead] = useState(true)
   const [panel, setPanel] = useState<'preview' | 'variables'>('preview')
-  const [query, setQuery] = useState('')
-  const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState<{ tone: 'error' | 'success'; text: string } | null>(null)
   const [pending, setPending] = useState<Pending | null>(null)
-  const checkSeq = useRef(0)
+
+  // applicableItems are the inbox items the draft applies to, which it can be previewed
+  // with.
+  const applicableItems = items.filter((item) => promptApplies({ appliesTo: draft.appliesTo }, item.kind))
+
+  // previewItem is the item chosen to preview with: the one picked while the prompt
+  // applies to it (0 for the sample), else the first item it applies to.
+  const previewItem =
+    pickedItem !== null && (pickedItem === 0 || applicableItems.some((item) => item.id === pickedItem))
+      ? pickedItem
+      : (applicableItems[0]?.id ?? 0)
+
+  // The draft is checked, once typing rests, whenever it or the preview changes.
+  const checked = useDebouncedQuery(
+    () =>
+      checkPrompt({
+        id: selection?.kind === 'prompt' ? selection.id : 0,
+        input: draft,
+        itemId: previewItem,
+        inWorktree,
+        atPrHead,
+      }).then((result) => ({ opened, result })),
+    [selection, draft, previewItem, inWorktree, atPrHead, opened],
+    150,
+    { enabled: selection !== null },
+  )
+  const check = checked.data?.opened === opened ? checked.data.result : null
+  const checkError = !checked.pending && checked.error !== '' ? `Could not check the prompt: ${checked.error}` : ''
 
   const saved = selection?.kind === 'prompt' ? (prompts.find((p) => p.id === selection.id) ?? null) : null
   const dirty = selection !== null && !sameInput(draft, baseline)
   // A new prompt's empty fields are not problems to point at until they are edited.
-  const shownFields = useMemo(
-    () => (check?.fields ?? []).filter((f) => selection?.kind !== 'new' || touchedField(f.field, draft, blankInput)),
-    [check, selection, draft],
+  const shownFields = (check?.fields ?? []).filter(
+    (f) => selection?.kind !== 'new' || touchedField(f.field, draft, blankInput),
   )
-  const fieldErrors = useMemo(
-    () => Object.fromEntries(shownFields.map((f) => [f.field, f.message])) as Record<string, string>,
-    [shownFields],
-  )
+  const fieldErrors = Object.fromEntries(shownFields.map((f) => [f.field, f.message])) as Record<string, string>
   const diagnostics = check?.diagnostics ?? []
-  const hiddenProblems = (check?.fields?.length ?? 0) - shownFields.length
+  const hiddenProblems = (check?.fields.length ?? 0) - shownFields.length
   const problemCount = shownFields.length + diagnostics.filter((d: Diagnostic) => d.severity === 'error').length
 
   // open shows a prompt from list (or a new one) in the editor, and reports whether it
@@ -165,7 +184,7 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
     setSelection(next)
     setBaseline(input)
     setDraft(input)
-    setCheck(null)
+    setOpened((n) => n + 1)
 
     return true
   }
@@ -207,94 +226,64 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
     }
   }
 
-  const applicableItems = useMemo(
-    () => items.filter((item) => promptApplies({ appliesTo: draft.appliesTo }, item.kind)),
-    [items, draft.appliesTo],
-  )
+  // saver stores the draft as a new prompt or over the open one, then reloads the library.
+  const saver = useMutation(async (at: Selection, input: PromptInput) => {
+    const stored = await (at.kind === 'new' ? createPrompt(input) : updatePrompt(at.id, input))
 
-  // previewItem is the item chosen to preview with: the one picked while the prompt
-  // applies to it (0 for the sample), else the first item it applies to.
-  const previewItem =
-    pickedItem !== null && (pickedItem === 0 || applicableItems.some((item) => item.id === pickedItem))
-      ? pickedItem
-      : (applicableItems[0]?.id ?? 0)
+    await onChanged()
 
-  // Check the draft (debounced) whenever it or the preview changes.
-  useEffect(() => {
-    if (selection === null) {
-      return undefined
-    }
+    return stored
+  })
+  // runner performs an action on the library and reloads it, opening the prompt the
+  // action names, if any, once the reload brings it in.
+  const runner = useMutation(async (action: () => Promise<Selection | null>) => {
+    setAfterReload(await action())
+    await onChanged()
+  })
+  const busy = saver.pending || runner.pending
 
-    const seq = ++checkSeq.current
-    const timer = window.setTimeout(() => {
-      checkPrompt({
-        id: selection.kind === 'prompt' ? selection.id : 0,
-        input: draft,
-        itemId: previewItem,
-        inWorktree,
-        atPrHead,
-      })
-        .then((result) => {
-          if (seq === checkSeq.current) {
-            setCheck(result)
-          }
-        })
-        .catch((err: unknown) => {
-          if (seq === checkSeq.current) {
-            setStatus({ tone: 'error', text: `Could not check the prompt: ${errorMessage(err)}` })
-          }
-        })
-    }, 150)
-
-    return () => {
-      window.clearTimeout(timer)
-    }
-  }, [selection, draft, previewItem, inWorktree, atPrHead])
-
-  const save = useCallback(() => {
+  const save = async () => {
     if (selection === null || busy) {
       return
     }
 
-    setBusy(true)
     setStatus(null)
 
     // submitted is what is being saved; edits typed while it saves are kept.
     const submitted = draft
-    const call = selection.kind === 'new' ? createPrompt(submitted) : updatePrompt(selection.id, submitted)
+    const result = await saver.run(selection, submitted)
 
-    call
-      .then(async (stored) => {
-        await onChanged()
-        setSelection({ kind: 'prompt', id: stored.id })
-        setBaseline(toInput(stored))
-        setDraft((current) => (sameInput(current, submitted) ? toInput(stored) : current))
-        setStatus({ tone: 'success', text: selection.kind === 'new' ? 'Prompt created.' : 'Saved.' })
-      })
-      .catch((err: unknown) => {
-        setStatus({ tone: 'error', text: errorMessage(err) })
-      })
-      .finally(() => {
-        setBusy(false)
-      })
-  }, [selection, busy, draft, onChanged])
+    if (!result.ok) {
+      setStatus({ tone: 'error', text: result.error })
+
+      return
+    }
+
+    const stored = result.data
+
+    setSelection({ kind: 'prompt', id: stored.id })
+    setBaseline(toInput(stored))
+    setDraft((current) => (sameInput(current, submitted) ? toInput(stored) : current))
+    setStatus({ tone: 'success', text: selection.kind === 'new' ? 'Prompt created.' : 'Saved.' })
+  }
 
   const canSave = dirty && problemCount === 0 && hiddenProblems === 0 && !busy
 
-  // ⌘S saves while the page is showing.
-  useEffect(() => {
-    if (!active) {
-      return undefined
-    }
+  // ⌘S saves while the page is showing: a page hidden behind another runs no effects,
+  // so it stops listening.
+  const saveOnKey = useEffectEvent((e: globalThis.KeyboardEvent) => {
+    if (e.metaKey && e.key === 's') {
+      e.preventDefault()
 
-    const onKeyDown = (e: globalThis.KeyboardEvent) => {
-      if (e.metaKey && e.key === 's') {
-        e.preventDefault()
-
-        if (canSave) {
-          save()
-        }
+      if (canSave) {
+        void save()
       }
+    }
+  })
+
+  useEffect(() => {
+    const onKeyDown = (e: globalThis.KeyboardEvent) => {
+      saveOnKey(e)
     }
 
     document.addEventListener('keydown', onKeyDown)
@@ -302,41 +291,30 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
     return () => {
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [active, canSave, save])
+  }, [])
 
-  // run performs an action on the library, reloads it, and opens the prompt the action
-  // names, if any, once the reload brings it in.
-  const run = (action: () => Promise<Selection | null>, done: string) => {
-    setBusy(true)
+  // run performs an action on the library and says how it went.
+  const run = async (action: () => Promise<Selection | null>, done: string) => {
     setStatus(null)
 
-    action()
-      .then(async (next) => {
-        setAfterReload(next)
-        await onChanged()
-        setStatus({ tone: 'success', text: done })
-      })
-      .catch((err: unknown) => {
-        setAfterReload(null)
-        setStatus({ tone: 'error', text: errorMessage(err) })
-      })
-      .finally(() => {
-        setBusy(false)
-      })
+    const result = await runner.run(action)
+
+    if (result.ok) {
+      setStatus({ tone: 'success', text: done })
+    } else {
+      setAfterReload(null)
+      setStatus({ tone: 'error', text: result.error })
+    }
   }
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-
-    return q === ''
-      ? prompts
-      : prompts.filter((p) => p.nickname.toLowerCase().includes(q) || p.name.toLowerCase().includes(q))
-  }, [prompts, query])
+  // shown is the status the footer shows: a failed action, then a failed check, then how
+  // the last action went.
+  const shown = status?.tone === 'error' || checkError === '' ? status : { tone: 'error' as const, text: checkError }
 
   const menuItems = (p: Prompt): MenuItem[] => {
     const items: MenuItem[] = []
 
-    for (const kind of ['pr', 'issue']) {
+    for (const kind of ['pr', 'issue'] as const) {
       const isDefault = (kind === 'pr' ? defaults?.pr : defaults?.issue) === p.id
 
       if (promptApplies(p, kind) && !isDefault) {
@@ -344,7 +322,7 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
           label: `Make the default for ${kindPlural(kind)}`,
           icon: <StarIcon className="size-4 text-muted" />,
           onSelect: () => {
-            run(
+            void run(
               async () => {
                 await setDefaultPrompt(kind, p.id)
 
@@ -363,7 +341,7 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
       disabled: dirty,
       title: dirty ? 'Save or discard your changes first.' : undefined,
       onSelect: () => {
-        run(async () => {
+        void run(async () => {
           const copy = await duplicatePrompt(p.id)
 
           return { kind: 'prompt', id: copy.id }
@@ -393,12 +371,79 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
     return items
   }
 
-  const onPanelKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-      e.preventDefault()
-      setPanel((p) => (p === 'preview' ? 'variables' : 'preview'))
+  // question words the dialog for a pending question, and what confirming it does.
+  const question = (asked: Pending): Question => {
+    switch (asked.kind) {
+      case 'discard':
+        return {
+          title: 'Discard your changes?',
+          confirmLabel: 'Discard changes',
+          cancelLabel: 'Keep editing',
+          children:
+            selection?.kind === 'new'
+              ? 'The new prompt hasn’t been created yet.'
+              : `“${baseline.nickname}” has changes that aren’t saved.`,
+          onConfirm: () => {
+            select(asked.then)
+          },
+        }
+      case 'delete':
+        return {
+          title: `Delete “${asked.prompt.nickname}”?`,
+          confirmLabel: 'Delete prompt',
+          children:
+            asked.prompt.starterKey !== ''
+              ? 'It’s a starter prompt, and it won’t be added back.'
+              : 'This can’t be undone.',
+          onConfirm: () => {
+            void run(async () => {
+              await deletePrompt(asked.prompt.id)
+
+              return null
+            }, `Deleted “${asked.prompt.nickname}”.`)
+          },
+        }
+      case 'in-use':
+        return {
+          title: `“${asked.prompt.nickname}” is still in use`,
+          confirmLabel: 'Got it',
+          tone: 'primary',
+          cancelLabel: null,
+          children: (
+            <>
+              <p>A prompt can be deleted once nothing uses it as a default. Choose another default here first:</p>
+              <ul className="mt-2 list-disc pl-5 text-text">
+                {usagePlaces(asked.prompt.usage).map((place) => (
+                  <li key={place}>{place}</li>
+                ))}
+              </ul>
+              <p className="mt-2">
+                App defaults are in Settings → Launching; org and repo defaults in Settings → Repositories.
+              </p>
+            </>
+          ),
+          onConfirm: () => {
+            // Acknowledging is all there is to do.
+          },
+        }
+      default:
+        return {
+          title: `Reset “${asked.prompt.nickname}”?`,
+          confirmLabel: 'Reset to original',
+          tone: 'primary',
+          children: `Its title, text, and launch settings go back to how the app ships them.${dirty ? ' Your unsaved changes are discarded too.' : ''}`,
+          onConfirm: () => {
+            void run(async () => {
+              await resetPrompt(asked.prompt.id)
+
+              return { kind: 'prompt', id: asked.prompt.id }
+            }, `Reset “${asked.prompt.nickname}” to its original text and settings.`)
+          },
+        }
     }
   }
+
+  const asking = pending === null ? null : question(pending)
 
   const previewFor = (() => {
     const item = items.find((i) => i.id === previewItem)
@@ -414,104 +459,7 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
 
   return (
     <div className="flex h-full min-h-0">
-      <aside aria-label="Prompt library" className="flex w-60 shrink-0 flex-col border-r border-border">
-        <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-2">
-          <h2 className="text-sm font-semibold">Prompts</h2>
-          <button
-            type="button"
-            onClick={() => {
-              ask({ kind: 'new' })
-            }}
-            className={`${quietButtonClass} text-text`}
-          >
-            <PlusIcon className="size-3.5" />
-            New
-          </button>
-        </div>
-        <div className="px-3 pb-2">
-          <label htmlFor={`${id}-search`} className="sr-only">
-            Search prompts
-          </label>
-          <div className="flex items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5 focus-within:border-accent/60">
-            <SearchIcon className="size-3.5 shrink-0 text-muted" />
-            <input
-              id={`${id}-search`}
-              type="search"
-              value={query}
-              placeholder="Search"
-              onChange={(e) => {
-                setQuery(e.target.value)
-              }}
-              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted/70"
-            />
-          </div>
-        </div>
-        <nav aria-label="Prompts" className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
-          {selection?.kind === 'new' && (
-            <div className="mb-1 rounded-md bg-raised px-2.5 py-2">
-              <p className="text-sm font-medium italic">
-                {draft.nickname.trim() === '' ? 'New prompt' : draft.nickname}
-              </p>
-              <p className="text-xs text-muted">Not saved yet</p>
-            </div>
-          )}
-          {filtered.length === 0 && <p className="px-2.5 py-2 text-sm text-muted">No prompt matches “{query}”.</p>}
-          {groups.map((g) => {
-            const list = filtered.filter((p) => p.appliesTo === g.appliesTo)
-
-            if (list.length === 0) {
-              return null
-            }
-
-            return (
-              <section key={g.appliesTo} aria-label={g.title} className="mt-2 first:mt-0">
-                <h3 className="px-2.5 pt-2 pb-1 text-[11px] font-semibold tracking-wide text-muted uppercase">
-                  {g.title}
-                </h3>
-                <ul>
-                  {list.map((p) => {
-                    const current = selection?.kind === 'prompt' && selection.id === p.id
-                    const places = (p.usage.orgs?.length ?? 0) + (p.usage.repos?.length ?? 0)
-
-                    return (
-                      <li key={p.id}>
-                        <button
-                          type="button"
-                          aria-current={current ? 'true' : undefined}
-                          onClick={() => {
-                            if (!current) {
-                              ask({ kind: 'prompt', id: p.id })
-                            }
-                          }}
-                          title={usagePlaces(p.usage).join('\n') || undefined}
-                          className="flex w-full flex-col rounded-md px-2.5 py-1.5 text-left transition-colors hover:bg-raised aria-[current=true]:bg-raised"
-                        >
-                          <span className="flex w-full items-center gap-1.5">
-                            <span className="truncate text-sm font-medium">{p.nickname}</span>
-                            {isAppDefault(p) && <StarIcon className="size-3 shrink-0 text-accent" />}
-                            {current && dirty && (
-                              <span
-                                aria-label="Unsaved changes"
-                                className="ml-auto size-1.5 shrink-0 rounded-full bg-warning"
-                              />
-                            )}
-                          </span>
-                          <span className="truncate text-xs text-muted">{p.name}</span>
-                          {places > 0 && (
-                            <span className="text-[11px] text-muted">
-                              Default in {places} {places === 1 ? 'place' : 'places'}
-                            </span>
-                          )}
-                        </button>
-                      </li>
-                    )
-                  })}
-                </ul>
-              </section>
-            )
-          })}
-        </nav>
-      </aside>
+      <PromptLibrary prompts={prompts} selection={selection} newNickname={draft.nickname} dirty={dirty} onAsk={ask} />
 
       <section aria-label="Prompt editor" className="flex min-w-0 flex-1 flex-col">
         {selection === null ? (
@@ -566,12 +514,12 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
             />
             <footer className="flex items-center justify-end gap-2 border-t border-border px-6 py-3">
               <p
-                role={status?.tone === 'error' ? 'alert' : 'status'}
-                className={`mr-auto min-w-0 truncate text-xs ${status?.tone === 'error' ? 'text-danger' : status?.tone === 'success' && !dirty ? 'text-success' : 'text-muted'}`}
-                title={status?.text}
+                role={shown?.tone === 'error' ? 'alert' : 'status'}
+                className={`mr-auto min-w-0 truncate text-xs ${shown?.tone === 'error' ? 'text-danger' : shown?.tone === 'success' && !dirty ? 'text-success' : 'text-muted'}`}
+                title={shown?.text}
               >
-                {status?.tone === 'error'
-                  ? status.text
+                {shown?.tone === 'error'
+                  ? shown.text
                   : busy
                     ? 'Saving…'
                     : dirty && problemCount > 0
@@ -580,7 +528,7 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
                         ? 'Give the prompt a title and a nickname to create it.'
                         : dirty
                           ? 'Unsaved changes'
-                          : (status?.text ?? '')}
+                          : (shown?.text ?? '')}
               </p>
               {dirty && (
                 <button
@@ -602,7 +550,15 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
                   {selection.kind === 'new' ? 'Cancel' : 'Discard'}
                 </button>
               )}
-              <button type="button" disabled={!canSave} onClick={save} title="Save (⌘S)" className={primaryButtonClass}>
+              <button
+                type="button"
+                disabled={!canSave}
+                onClick={() => {
+                  void save()
+                }}
+                title="Save (⌘S)"
+                className={primaryButtonClass}
+              >
                 {selection.kind === 'new' ? 'Create prompt' : 'Save'}
               </button>
             </footer>
@@ -615,37 +571,15 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
           aria-label="Preview and variables"
           className="hidden w-80 shrink-0 flex-col border-l border-border lg:flex"
         >
-          <div
-            role="tablist"
-            aria-label="Side panel"
-            tabIndex={-1}
-            onKeyDown={onPanelKeyDown}
+          <Tabs
+            baseId={id}
+            label="Side panel"
+            tabs={sidePanels}
+            value={panel}
+            onChange={setPanel}
             className="flex gap-1 border-b border-border px-3 pt-3"
-          >
-            {(['preview', 'variables'] as const).map((tab) => (
-              <button
-                key={tab}
-                id={`${id}-tab-${tab}`}
-                type="button"
-                role="tab"
-                aria-selected={panel === tab}
-                aria-controls={`${id}-panel`}
-                tabIndex={panel === tab ? 0 : -1}
-                onClick={() => {
-                  setPanel(tab)
-                }}
-                className="-mb-px border-b-2 border-transparent px-2.5 pb-2 text-sm font-medium text-muted transition-colors hover:text-text aria-selected:border-accent aria-selected:text-text"
-              >
-                {tab === 'preview' ? 'Preview' : 'Variables'}
-              </button>
-            ))}
-          </div>
-          <div
-            id={`${id}-panel`}
-            role="tabpanel"
-            aria-labelledby={`${id}-tab-${panel}`}
-            className="flex min-h-0 flex-1 flex-col"
-          >
+          />
+          <TabPanel baseId={id} value={panel} className="flex min-h-0 flex-1 flex-col">
             {panel === 'preview' ? (
               <PromptPreview
                 items={applicableItems}
@@ -673,99 +607,21 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
                 }}
               />
             )}
-          </div>
+          </TabPanel>
         </aside>
       )}
 
-      {pending?.kind === 'discard' && (
+      {asking !== null && (
         <ConfirmDialog
-          title="Discard your changes?"
-          confirmLabel="Discard changes"
-          cancelLabel="Keep editing"
-          onCancel={() => {
-            setPending(null)
-          }}
-          onConfirm={() => {
-            const next = pending.then
-
-            setPending(null)
-            select(next)
-          }}
-        >
-          {selection?.kind === 'new'
-            ? 'The new prompt hasn’t been created yet.'
-            : `“${baseline.nickname}” has changes that aren’t saved.`}
-        </ConfirmDialog>
-      )}
-      {pending?.kind === 'delete' && (
-        <ConfirmDialog
-          title={`Delete “${pending.prompt.nickname}”?`}
-          confirmLabel="Delete prompt"
-          onCancel={() => {
-            setPending(null)
-          }}
-          onConfirm={() => {
-            const doomed = pending.prompt
-
-            setPending(null)
-            run(async () => {
-              await deletePrompt(doomed.id)
-
-              return null
-            }, `Deleted “${doomed.nickname}”.`)
-          }}
-        >
-          {pending.prompt.starterKey !== ''
-            ? 'It’s a starter prompt, and it won’t be added back.'
-            : 'This can’t be undone.'}
-        </ConfirmDialog>
-      )}
-      {pending?.kind === 'in-use' && (
-        <ConfirmDialog
-          title={`“${pending.prompt.nickname}” is still in use`}
-          confirmLabel="Got it"
-          tone="primary"
-          cancelLabel={null}
+          {...asking}
           onCancel={() => {
             setPending(null)
           }}
           onConfirm={() => {
             setPending(null)
+            asking.onConfirm()
           }}
-        >
-          <p>A prompt can be deleted once nothing uses it as a default. Choose another default here first:</p>
-          <ul className="mt-2 list-disc pl-5 text-text">
-            {usagePlaces(pending.prompt.usage).map((place) => (
-              <li key={place}>{place}</li>
-            ))}
-          </ul>
-          <p className="mt-2">
-            App defaults are in Settings → Launching; org and repo defaults in Settings → Repositories.
-          </p>
-        </ConfirmDialog>
-      )}
-      {pending?.kind === 'reset' && (
-        <ConfirmDialog
-          title={`Reset “${pending.prompt.nickname}”?`}
-          confirmLabel="Reset to original"
-          tone="primary"
-          onCancel={() => {
-            setPending(null)
-          }}
-          onConfirm={() => {
-            const target = pending.prompt
-
-            setPending(null)
-            run(async () => {
-              await resetPrompt(target.id)
-
-              return { kind: 'prompt', id: target.id }
-            }, `Reset “${target.nickname}” to its original text and settings.`)
-          }}
-        >
-          Its title, text, and launch settings go back to how the app ships them.
-          {dirty ? ' Your unsaved changes are discarded too.' : ''}
-        </ConfirmDialog>
+        />
       )}
     </div>
   )

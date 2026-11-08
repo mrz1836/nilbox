@@ -31,8 +31,8 @@ export function LogoMark({ className = 'h-[18px] w-auto' }: LogoProps) {
     <svg aria-hidden="true" viewBox={`0 0 ${String(width)} ${String(height)}`} className={className}>
       <defs>
         <linearGradient id={fill} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" style={{ stopColor: `color-mix(in oklab, var(--brand-accent) 60%, ${highlight})` }} />
-          <stop offset="1" style={{ stopColor: 'var(--brand-accent)' }} />
+          <stop offset="0" style={{ stopColor: `color-mix(in oklab, var(--color-accent) 60%, ${highlight})` }} />
+          <stop offset="1" style={{ stopColor: 'var(--color-accent)' }} />
         </linearGradient>
       </defs>
       <path d={path} fill={`url(#${fill})`} />

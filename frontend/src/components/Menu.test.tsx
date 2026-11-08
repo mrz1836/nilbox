@@ -13,6 +13,22 @@ function items(onSelect = vi.fn()): MenuItem[] {
 }
 
 describe('MenuButton', () => {
+  it('builds its items only while open, when given a function', async () => {
+    const build = vi.fn(() => items())
+    render(
+      <MenuButton label="More actions" items={build}>
+        ⋯
+      </MenuButton>,
+    )
+
+    expect(build).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'More actions' }))
+
+    expect(build).toHaveBeenCalled()
+    expect(screen.getByRole('menuitem', { name: 'Duplicate' })).toHaveFocus()
+  })
+
   it('opens a menu that focuses its first enabled item', async () => {
     render(
       <MenuButton label="More actions" items={items()}>
@@ -30,6 +46,55 @@ describe('MenuButton', () => {
     expect(screen.getByRole('menuitem', { name: 'Duplicate' })).toHaveFocus()
     expect(screen.getByRole('menuitem', { name: 'Locked' })).toBeDisabled()
     expect(screen.getByRole('menuitem', { name: 'Delete…' })).toHaveClass('text-danger')
+  })
+
+  it('opens from its button with the arrow keys, at the first or the last enabled item', async () => {
+    render(
+      <MenuButton label="More actions" items={items()}>
+        ⋯
+      </MenuButton>,
+    )
+    const button = screen.getByRole('button', { name: 'More actions' })
+    button.focus()
+
+    // Other keys leave it closed.
+    await userEvent.keyboard('x')
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+
+    await userEvent.keyboard('{ArrowDown}')
+    expect(screen.getByRole('menuitem', { name: 'Duplicate' })).toHaveFocus()
+
+    await userEvent.keyboard('{Escape}')
+    expect(button).toHaveFocus()
+
+    await userEvent.keyboard('{ArrowUp}')
+    expect(screen.getByRole('menuitem', { name: 'Delete…' })).toHaveFocus()
+  })
+
+  it('moves to the first or last item from its button while open, and opens at the first next time', async () => {
+    render(
+      <MenuButton label="More actions" items={items()}>
+        ⋯
+      </MenuButton>,
+    )
+    const button = screen.getByRole('button', { name: 'More actions' })
+
+    await userEvent.click(button)
+    button.focus()
+
+    await userEvent.keyboard('{ArrowUp}')
+    expect(screen.getByRole('menuitem', { name: 'Delete…' })).toHaveFocus()
+
+    button.focus()
+    await userEvent.keyboard('{ArrowDown}')
+    expect(screen.getByRole('menuitem', { name: 'Duplicate' })).toHaveFocus()
+
+    button.focus()
+    await userEvent.keyboard('{ArrowUp}{Escape}')
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+
+    await userEvent.click(button)
+    expect(screen.getByRole('menuitem', { name: 'Duplicate' })).toHaveFocus()
   })
 
   it('moves with the arrows past disabled items, and runs the chosen one', async () => {

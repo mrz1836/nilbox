@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import type { NotificationKind } from '../platform'
 import { notification } from '../test/fixtures'
 import { bannerStatusText, entryRef, kindTitle, notificationKinds } from './notifications'
 
@@ -12,7 +13,8 @@ describe('notifications', () => {
     expect(kindTitle('review_requested')).toBe('Review requested')
     expect(kindTitle('assigned')).toBe('Assigned to you')
     expect(kindTitle('woke')).toBe('Back from snooze')
-    expect(kindTitle('mentions')).toBe('Notification')
+    // A kind another build stored, outside the ones this build knows.
+    expect(kindTitle('mentions' as unknown as NotificationKind)).toBe('Notification')
   })
 
   it('names an entry’s item by repository and number', () => {

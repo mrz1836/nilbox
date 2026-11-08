@@ -2,6 +2,7 @@ package brand
 
 import (
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -29,9 +30,9 @@ func markPoints(t *testing.T) (xs, ys []float64) {
 		case "M", "L", "C":
 			require.Zerof(t, len(args)%2, "%s takes x,y pairs, got %v", command, args)
 
-			for i := 0; i < len(args); i += 2 {
-				xs = append(xs, args[i])
-				ys = append(ys, args[i+1])
+			for pair := range slices.Chunk(args, 2) {
+				xs = append(xs, pair[0])
+				ys = append(ys, pair[1])
 			}
 		case "H":
 			require.Lenf(t, args, 1, "H takes one x")

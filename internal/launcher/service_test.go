@@ -2,6 +2,7 @@ package launcher
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,16 +17,20 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 
+	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/appdata"
-	"github.com/mrz1836/nilbox/internal/inbox/model"
-	"github.com/mrz1836/nilbox/internal/launchlog"
+	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/inbox"
+	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/launchdefaults"
+	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/settings"
-	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/testutil"
+	"github.com/mrz1836/nilbox/internal/worklog"
 	"github.com/mrz1836/nilbox/internal/workspacetrust"
 )
 
@@ -36,7 +41,26 @@ var (
 	errGitNotAllowed = errors.New("git command not allowed in a launch")
 	errFakeNoClaude  = errors.New("claude is not installed")
 	errFakeSettings  = errors.New("settings unreadable")
+	errFakeProfiles  = errors.New("profiles unreadable")
+	errFakePrompts   = errors.New("prompts unreadable")
+	errFakeDefaults  = errors.New("launch defaults unreadable")
+	errFakeOpen      = errors.New("fake open failed")
 )
+
+// fakeDriver is a terminal driver that records the scripts it was asked to open.
+type fakeDriver struct {
+	id     terminal.ID
+	err    error
+	opened []string
+}
+
+func (d *fakeDriver) ID() terminal.ID { return d.id }
+
+func (d *fakeDriver) Open(_ context.Context, scriptPath string) error {
+	d.opened = append(d.opened, scriptPath)
+
+	return d.err
+}
 
 // fakeGit answers the read-only remote lookup from a map of clone directory to
 // `git config --get-regexp` output, and refuses every other git command.
@@ -89,40 +113,102 @@ func allowedGitArgv(argv []string) bool {
 		argv[3] == "config" && argv[4] == "--get-regexp" && argv[5] == remoteLookupPattern
 }
 
-// fakeFinder resolves claude to a fixed path, or fails.
-type fakeFinder struct {
-	path string
-	err  error
+// failingPrompts cannot read the prompt library.
+type failingPrompts struct{}
+
+func (failingPrompts) Library(context.Context) (prompts.Library, error) {
+	return prompts.Library{}, errFakePrompts
 }
 
-func (f fakeFinder) Find(name string) (string, error) {
-	if f.err != nil {
-		return "", f.err
-	}
+// countingPrompts reads a prompt library and counts the reads.
+type countingPrompts struct {
+	library PromptReader
 
-	if name != claudeBin {
-		return "", fmt.Errorf("%w: %s", errGitNotAllowed, name)
-	}
-
-	return f.path, nil
+	mu    sync.Mutex
+	reads int
 }
 
-// fixedClock always returns the same time.
-type fixedClock struct{ now time.Time }
+func (c *countingPrompts) Library(ctx context.Context) (prompts.Library, error) {
+	c.mu.Lock()
+	c.reads++
+	c.mu.Unlock()
 
-func (c fixedClock) Now() time.Time { return c.now }
+	return c.library.Library(ctx)
+}
+
+// count returns how many times the library was read.
+func (c *countingPrompts) count() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.reads
+}
 
 // failingSettings cannot read the settings.
 type failingSettings struct{}
 
-func (failingSettings) Get(context.Context) (settings.Settings, error) {
-	return settings.Settings{}, errFakeSettings
+func (failingSettings) Get(context.Context) (LaunchSettings, error) {
+	return LaunchSettings{}, errFakeSettings
+}
+
+// launchSettings reads the launch settings from the settings service, as the app does.
+type launchSettings struct {
+	prefs *settings.Service
+}
+
+func (s launchSettings) Get(ctx context.Context) (LaunchSettings, error) {
+	all, err := s.prefs.Get(ctx)
+	if err != nil {
+		return LaunchSettings{}, err
+	}
+
+	return LaunchSettings{
+		DefaultProfile: all.DefaultProfile, WorktreeDefault: all.WorktreeDefault, Terminal: all.Terminal,
+		CloneRoot: all.CloneRoot, TrustedBots: all.TrustedBots,
+	}, nil
+}
+
+// inboxItems reads the launch items from the inbox's store, as the app does.
+type inboxItems struct {
+	*inbox.Store
+}
+
+func (s inboxItems) LaunchItems(ctx context.Context, ids []int64) ([]StoredItem, error) {
+	stored, err := s.Store.LaunchItems(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]StoredItem, 0, len(stored))
+	for _, it := range stored {
+		items = append(items, StoredItem(it))
+	}
+
+	return items, nil
+}
+
+// failingProfiles cannot read the stored profiles.
+type failingProfiles struct{}
+
+func (failingProfiles) All(context.Context) ([]profiles.Profile, error) {
+	return nil, errFakeProfiles
+}
+
+// failingDefaults cannot read the launch defaults.
+type failingDefaults struct{}
+
+func (failingDefaults) All(context.Context) ([]launchdefaults.Defaults, error) {
+	return nil, errFakeDefaults
 }
 
 // launchHarness is a launch Service over a temp database, a temp home with one clone,
 // and fakes for git, the agent lookup, and the terminals.
 type launchHarness struct {
-	db       *gorm.DB
+	pool     *sql.DB
+	items    *inbox.Store
+	profiles *profiles.Store
+	prompts  *prompts.Store
+	defaults *launchdefaults.Store
 	home     string
 	root     string
 	clone    string
@@ -145,8 +231,8 @@ func newLaunchHarness(t *testing.T) *launchHarness {
 	h := &launchHarness{
 		home:     filepath.Join(tmp, "home"),
 		paths:    appdata.NewPaths(filepath.Join(tmp, "data")),
-		iterm:    &fakeDriver{id: settings.TerminalITerm2},
-		terminal: &fakeDriver{id: settings.TerminalApp},
+		iterm:    &fakeDriver{id: terminal.ITerm2},
+		terminal: &fakeDriver{id: terminal.TerminalApp},
 	}
 	h.root = filepath.Join(h.home, "projects")
 	h.clone = filepath.Join(h.root, "example-repo")
@@ -156,23 +242,27 @@ func newLaunchHarness(t *testing.T) *launchHarness {
 
 	makeRepoDir(t, h.clone)
 
-	db, err := store.Open(t.Context(), h.paths.DB)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = store.Close(db) })
-
-	h.db = db
+	pool := testutil.DBAt(t, h.paths.DB)
+	h.pool = pool
+	h.items = inbox.NewStore(pool, testutil.NewClock(fixedNow()))
+	h.profiles = profiles.NewStore(pool, nil)
+	h.prompts = prompts.NewStore(pool, nil)
+	h.defaults = launchdefaults.NewStore(pool, nil)
 	h.seed(t)
 
-	h.settings = settings.NewService(db, h.home)
+	h.settings = settings.NewService(pool, h.profiles, h.home)
 	h.cfg = Config{
-		DB:       db,
-		Settings: h.settings,
+		Items:    inboxItems{Store: h.items},
+		Settings: launchSettings{prefs: h.settings},
+		Profiles: h.profiles,
+		Prompts:  h.prompts,
+		Defaults: h.defaults,
 		Git:      h.git,
-		Finder:   fakeFinder{path: filepath.Join(tmp, "bin", "claude")},
-		Registry: NewRegistry(h.iterm, h.terminal),
+		Finder:   testutil.Finder{Paths: map[string]string{claudeBin: filepath.Join(tmp, "bin", "claude")}},
+		Registry: terminal.NewRegistry(h.iterm, h.terminal),
 		Paths:    h.paths,
 		Home:     h.home,
-		Clock:    fixedClock{now: fixedNow()},
+		Clock:    testutil.NewClock(fixedNow()),
 	}
 
 	return h
@@ -189,32 +279,13 @@ func makeRepoDir(t *testing.T, dir string) {
 func (h *launchHarness) seed(t *testing.T) {
 	t.Helper()
 
-	now := fixedNow()
-	account := model.Account{Login: "octo-user", CreatedAt: now, UpdatedAt: now}
-	require.NoError(t, h.db.Create(&account).Error)
-
-	repo := model.Repo{Owner: "acme-org", Name: "example-repo", CreatedAt: now, UpdatedAt: now}
-	require.NoError(t, h.db.Create(&repo).Error)
-
-	orphan := model.Repo{Owner: "acme-org", Name: "missing-repo", CreatedAt: now, UpdatedAt: now}
-	require.NoError(t, h.db.Create(&orphan).Error)
-
-	item := func(repoID int64, kind string, number int, assoc string, cross bool) int64 {
-		row := model.Item{
-			AccountID: account.ID, RepoID: repoID, Kind: kind, Number: number,
-			Title: fmt.Sprintf("Change %d", number), URL: fmt.Sprintf("https://github.com/acme-org/x/%d", number),
-			AuthorLogin: "octo-user", AuthorAssociation: assoc, IsCrossRepository: cross, HeadRef: "feature-branch",
-			ItemCreatedAt: now, ItemUpdatedAt: now, FetchedAt: now,
-		}
-		require.NoError(t, h.db.Create(&row).Error)
-
-		return row.ID
-	}
-
-	h.trustedPR = item(repo.ID, model.KindPR, 7, "OWNER", false)
-	h.outsidePR = item(repo.ID, model.KindPR, 8, "CONTRIBUTOR", true)
-	h.issue = item(repo.ID, model.KindIssue, 3, "MEMBER", false)
-	h.orphanPR = item(orphan.ID, model.KindPR, 9, "OWNER", false)
+	stored := h.store(t,
+		storedItem("example-repo", item.KindPR, 7, "OWNER", false),
+		storedItem("example-repo", item.KindPR, 8, "CONTRIBUTOR", true),
+		storedItem("example-repo", item.KindIssue, 3, "MEMBER", false),
+		storedItem("missing-repo", item.KindPR, 9, "OWNER", false),
+	)
+	h.trustedPR, h.outsidePR, h.issue, h.orphanPR = stored[0], stored[1], stored[2], stored[3]
 
 	work := profiles.Profile{
 		Name: "work", ConfigDir: filepath.Join(h.home, ".claude_work"), PermissionMode: "acceptEdits",
@@ -224,8 +295,42 @@ func (h *launchHarness) seed(t *testing.T) {
 		Name: profiles.DefaultName, PermissionMode: profiles.PermissionFull,
 		AddDirs: []string{}, ExtraArgs: []string{}, Env: map[string]string{},
 	}
-	require.NoError(t, profiles.Sync(t.Context(), h.db, []profiles.Profile{full, work}))
-	require.NoError(t, prompts.Seed(t.Context(), h.db))
+	require.NoError(t, h.profiles.Sync(t.Context(), []profiles.Profile{full, work}))
+	require.NoError(t, prompts.Seed(t.Context(), h.prompts))
+}
+
+// storedItem is a pull request or issue by octo-user in an acme-org repository, as the
+// inbox stores it.
+func storedItem(repoName string, kind item.Kind, number int, assoc string, cross bool) github.Item {
+	return github.Item{
+		IsPR: kind == item.KindPR, Number: number, Title: fmt.Sprintf("Change %d", number),
+		URL: fmt.Sprintf("https://github.com/acme-org/x/%d", number), CreatedAt: fixedNow(), UpdatedAt: fixedNow(),
+		HeadRef: "feature-branch", AuthorLogin: "octo-user", AuthorAssociation: assoc, IsCrossRepository: cross,
+		RepoOwner: "acme-org", RepoName: repoName,
+	}
+}
+
+// store stores items for octo-user, in no list, and returns their ids.
+func (h *launchHarness) store(t *testing.T, items ...github.Item) []int64 {
+	t.Helper()
+
+	fixture := inbox.Fixture{Viewer: "octo-user", At: fixedNow()}
+	for _, it := range items {
+		fixture.Items = append(fixture.Items, inbox.FixtureItem{Item: it})
+	}
+
+	ids, err := inbox.StoreFixture(t.Context(), h.pool, fixture)
+	require.NoError(t, err)
+
+	return ids
+}
+
+// exec runs a statement on the harness's database.
+func (h *launchHarness) exec(t *testing.T, query string, args ...any) {
+	t.Helper()
+
+	_, err := h.pool.ExecContext(t.Context(), query, args...)
+	require.NoError(t, err)
 }
 
 // service returns a launch Service over the harness's current config.
@@ -250,10 +355,11 @@ func (h *launchHarness) launch(t *testing.T, req LaunchRequest) (LaunchResult, s
 func (h *launchHarness) cachedPath(t *testing.T, name string) string {
 	t.Helper()
 
-	var repo model.Repo
-	require.NoError(t, h.db.Where("name = ?", name).First(&repo).Error)
+	var path string
+	require.NoError(t, h.pool.QueryRowContext(t.Context(), "SELECT local_path FROM repos WHERE name = ?", name).
+		Scan(&path))
 
-	return repo.LocalPath
+	return path
 }
 
 // launchFiles lists the files in the launch directory.
@@ -285,9 +391,9 @@ func promptFor(t *testing.T, scriptPath string) string {
 	return string(prompt)
 }
 
-func boolPtr(b bool) *bool { return &b }
-
 func TestLaunchWritesFilesAndOpensDriver(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 
 	res, script := h.launch(t, LaunchRequest{ItemID: h.trustedPR})
@@ -317,6 +423,8 @@ func TestLaunchWritesFilesAndOpensDriver(t *testing.T) {
 }
 
 func TestWorktreePrefDefaultAndUntick(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		pref bool
@@ -324,17 +432,19 @@ func TestWorktreePrefDefaultAndUntick(t *testing.T) {
 		want bool
 	}{
 		{name: "pref on, request unset", pref: true, req: nil, want: true},
-		{name: "pref on, request on", pref: true, req: boolPtr(true), want: true},
-		{name: "pref on, request unticked", pref: true, req: boolPtr(false), want: false},
+		{name: "pref on, request on", pref: true, req: new(true), want: true},
+		{name: "pref on, request unticked", pref: true, req: new(false), want: false},
 		{name: "pref off, request unset", pref: false, req: nil, want: false},
-		{name: "pref off, request on", pref: false, req: boolPtr(true), want: true},
-		{name: "pref off, request off", pref: false, req: boolPtr(false), want: false},
+		{name: "pref off, request on", pref: false, req: new(true), want: true},
+		{name: "pref off, request off", pref: false, req: new(false), want: false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			h := newLaunchHarness(t)
-			require.NoError(t, h.settings.SetWorktreeDefault(t.Context(), tt.pref))
+			require.NoError(t, testutil.ErrOf(h.settings.SetWorktreeDefault(t.Context(), tt.pref)))
 
 			res, script := h.launch(t, LaunchRequest{ItemID: h.issue, Worktree: tt.req})
 			prompt := promptFor(t, res.ScriptPath)
@@ -356,7 +466,7 @@ func TestWorktreePrefDefaultAndUntick(t *testing.T) {
 	// Unticking applies to one launch only: the next launch follows the pref again.
 	h := newLaunchHarness(t)
 
-	res, _ := h.launch(t, LaunchRequest{ItemID: h.issue, Worktree: boolPtr(false)})
+	res, _ := h.launch(t, LaunchRequest{ItemID: h.issue, Worktree: new(false)})
 	assert.Empty(t, res.Worktree)
 
 	res, _ = h.launch(t, LaunchRequest{ItemID: h.issue})
@@ -364,6 +474,8 @@ func TestWorktreePrefDefaultAndUntick(t *testing.T) {
 }
 
 func TestLauncherRunsNoGitCommands(t *testing.T) {
+	t.Parallel()
+
 	forbidden := [][]string{
 		{"git", "-C", "/tmp/clone", "checkout", "feature-branch"},
 		{"git", "-C", "/tmp/clone", "stash"},
@@ -409,6 +521,8 @@ func TestLauncherRunsNoGitCommands(t *testing.T) {
 }
 
 func TestLaunchCloneNotFound(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 
 	_, err := h.service().Launch(t.Context(), LaunchRequest{ItemID: h.orphanPR})
@@ -439,6 +553,8 @@ func trustedIn(t *testing.T, path, dir string) bool {
 }
 
 func TestLaunchTrustsTheCloneForTheAgent(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	defaultConfig := filepath.Join(h.home, ".claude.json")
 	workDir := filepath.Join(h.home, ".claude_work")
@@ -458,18 +574,18 @@ func TestLaunchTrustsTheCloneForTheAgent(t *testing.T) {
 	assert.NoDirExists(t, workDir)
 
 	require.NoError(t, os.Mkdir(workDir, 0o700))
-	h.launch(t, LaunchRequest{ItemID: h.outsidePR, Profile: profileWork, Worktree: boolPtr(false)})
+	h.launch(t, LaunchRequest{ItemID: h.outsidePR, Profile: profileWork, Worktree: new(false)})
 	assert.True(t, trustedIn(t, filepath.Join(workDir, ".claude.json"), key),
 		"the profile's own config trusts the clone, for every item and with or without a worktree")
 }
 
 // recordingLaunches keeps the launches the launcher records, or fails.
 type recordingLaunches struct {
-	launches []launchlog.Launch
+	launches []worklog.Launch
 	err      error
 }
 
-func (r *recordingLaunches) Record(_ context.Context, l launchlog.Launch) error {
+func (r *recordingLaunches) RecordLaunch(_ context.Context, l worklog.Launch) error {
 	if r.err != nil {
 		return r.err
 	}
@@ -480,15 +596,17 @@ func (r *recordingLaunches) Record(_ context.Context, l launchlog.Launch) error 
 }
 
 func TestLaunchRecordsTheWorktree(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	rec := &recordingLaunches{}
 	h.cfg.Launches = rec
 
 	h.launch(t, LaunchRequest{ItemID: h.trustedPR})
 	h.launch(t, LaunchRequest{ItemID: h.issue})
-	h.launch(t, LaunchRequest{ItemID: h.trustedPR, Worktree: boolPtr(false)})
+	h.launch(t, LaunchRequest{ItemID: h.trustedPR, Worktree: new(false)})
 
-	assert.Equal(t, []launchlog.Launch{
+	assert.Equal(t, []worklog.Launch{
 		{
 			ClonePath: h.clone, Worktree: "pr-7", Owner: "acme-org", Name: "example-repo", Kind: "pr", Number: 7,
 			LaunchedAt: fixedNow(),
@@ -504,8 +622,10 @@ func TestLaunchRecordsTheWorktree(t *testing.T) {
 }
 
 func TestLaunchUsesTerminalPref(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
-	require.NoError(t, h.settings.SetTerminal(t.Context(), settings.TerminalApp))
+	require.NoError(t, testutil.ErrOf(h.settings.SetTerminal(t.Context(), settings.TerminalApp)))
 
 	res, _ := h.launch(t, LaunchRequest{ItemID: h.trustedPR})
 
@@ -515,6 +635,8 @@ func TestLaunchUsesTerminalPref(t *testing.T) {
 }
 
 func TestLaunchOutsideContributorIsPlanMode(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 
 	res, script := h.launch(t, LaunchRequest{ItemID: h.outsidePR})
@@ -533,6 +655,8 @@ func TestLaunchOutsideContributorIsPlanMode(t *testing.T) {
 }
 
 func TestLaunchProfileSelection(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	workDir := filepath.Join(h.home, ".claude_work")
 
@@ -540,7 +664,7 @@ func TestLaunchProfileSelection(t *testing.T) {
 	assert.Equal(t, "work", res.Profile)
 	assert.Contains(t, script, "export CLAUDE_CONFIG_DIR="+shQuote(workDir)+"\n")
 
-	require.NoError(t, h.settings.SetDefaultProfile(t.Context(), "work"))
+	require.NoError(t, testutil.ErrOf(h.settings.SetDefaultProfile(t.Context(), "work")))
 
 	res, _ = h.launch(t, LaunchRequest{ItemID: h.trustedPR})
 	assert.Equal(t, "work", res.Profile, "an empty profile uses the default profile setting")
@@ -554,10 +678,12 @@ func TestLaunchProfileSelection(t *testing.T) {
 }
 
 func TestLaunchRevalidatesTheCachedClone(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 
 	stale := filepath.Join(h.root, "gone")
-	require.NoError(t, h.db.Exec("UPDATE repos SET local_path = ? WHERE name = ?", stale, "example-repo").Error)
+	h.exec(t, "UPDATE repos SET local_path = ? WHERE name = ?", stale, "example-repo")
 
 	res, _ := h.launch(t, LaunchRequest{ItemID: h.trustedPR})
 	assert.Equal(t, "~/projects/example-repo", res.ClonePath, "a vanished cached clone is found again")
@@ -567,7 +693,7 @@ func TestLaunchRevalidatesTheCachedClone(t *testing.T) {
 	other := filepath.Join(h.root, "other-repo")
 	makeRepoDir(t, other)
 	h.git.remotes[other] = "remote.origin.url git@github.com:acme-org/other-repo.git\n"
-	require.NoError(t, h.db.Exec("UPDATE repos SET local_path = ? WHERE name = ?", other, "example-repo").Error)
+	h.exec(t, "UPDATE repos SET local_path = ? WHERE name = ?", other, "example-repo")
 
 	res, _ = h.launch(t, LaunchRequest{ItemID: h.trustedPR})
 	assert.Equal(t, "~/projects/example-repo", res.ClonePath)
@@ -577,7 +703,7 @@ func TestLaunchRevalidatesTheCachedClone(t *testing.T) {
 	elsewhere := filepath.Join(h.home, "elsewhere", "example-repo")
 	makeRepoDir(t, elsewhere)
 	h.git.remotes[elsewhere] = "remote.origin.url https://github.com/acme-org/example-repo\n"
-	require.NoError(t, h.db.Exec("UPDATE repos SET local_path = ? WHERE name = ?", elsewhere, "example-repo").Error)
+	h.exec(t, "UPDATE repos SET local_path = ? WHERE name = ?", elsewhere, "example-repo")
 
 	before := len(h.git.recorded())
 	res, _ = h.launch(t, LaunchRequest{ItemID: h.trustedPR})
@@ -586,6 +712,8 @@ func TestLaunchRevalidatesTheCachedClone(t *testing.T) {
 }
 
 func TestLaunchForkOriginUsesNamedPRWorktree(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	h.git.remotes[h.clone] = "remote.origin.url git@github.com:octo-user/example-repo.git\n" +
 		"remote.upstream.url https://github.com/acme-org/example-repo.git\n"
@@ -598,6 +726,8 @@ func TestLaunchForkOriginUsesNamedPRWorktree(t *testing.T) {
 }
 
 func TestLaunchFailures(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		mutate  func(t *testing.T, h *launchHarness)
@@ -608,7 +738,7 @@ func TestLaunchFailures(t *testing.T) {
 		{
 			name:    "unknown item",
 			item:    func(*launchHarness) int64 { return 9999 },
-			wantErr: ErrItemNotFound,
+			wantErr: item.ErrNotFound,
 		},
 		{
 			name:    "unreadable settings",
@@ -617,13 +747,13 @@ func TestLaunchFailures(t *testing.T) {
 		},
 		{
 			name:    "agent not installed",
-			mutate:  func(_ *testing.T, h *launchHarness) { h.cfg.Finder = fakeFinder{err: errFakeNoClaude} },
+			mutate:  func(_ *testing.T, h *launchHarness) { h.cfg.Finder = testutil.Finder{Err: errFakeNoClaude} },
 			wantErr: errFakeNoClaude,
 		},
 		{
 			name:    "no terminal support on this OS",
-			mutate:  func(_ *testing.T, h *launchHarness) { h.cfg.Registry = NewRegistry() },
-			wantErr: ErrUnsupportedOS,
+			mutate:  func(_ *testing.T, h *launchHarness) { h.cfg.Registry = terminal.NewRegistry() },
+			wantErr: terminal.ErrUnsupportedOS,
 		},
 		{
 			name:    "terminal fails to open",
@@ -635,9 +765,9 @@ func TestLaunchFailures(t *testing.T) {
 			name: "invalid profile",
 			mutate: func(t *testing.T, h *launchHarness) {
 				t.Helper()
-				require.NoError(t, h.db.Exec("UPDATE claude_profiles SET effort = 'turbo' WHERE name = 'default'").Error)
+				h.exec(t, "UPDATE claude_profiles SET effort = 'turbo' WHERE name = 'default'")
 			},
-			wantErr: ErrInvalidEffort,
+			wantErr: agent.ErrInvalidEffort,
 		},
 		{
 			name: "agent config unreadable",
@@ -651,6 +781,8 @@ func TestLaunchFailures(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			h := newLaunchHarness(t)
 			if tt.mutate != nil {
 				tt.mutate(t, h)
@@ -672,8 +804,10 @@ func TestLaunchFailures(t *testing.T) {
 }
 
 func TestLaunchStopsWhenCancelled(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
-	require.NoError(t, h.db.Exec("UPDATE repos SET local_path = ? WHERE name = ?", h.clone, "example-repo").Error)
+	h.exec(t, "UPDATE repos SET local_path = ? WHERE name = ?", h.clone, "example-repo")
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
@@ -683,14 +817,18 @@ func TestLaunchStopsWhenCancelled(t *testing.T) {
 	assert.Empty(t, h.iterm.opened)
 }
 
-func TestWorktreeDirName(t *testing.T) {
-	assert.Equal(t, "pr-7", worktreeDirName("#7"))
-	assert.Equal(t, "pr-7", worktreeDirName("pr-7"))
-	assert.Equal(t, "issue-3", worktreeDirName("issue-3"))
-	assert.Empty(t, worktreeDirName(""))
+func TestPlanWorktreeDir(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "pr-7", Plan{Kind: item.KindPR, Number: 7, Worktree: "#7"}.worktreeDir())
+	assert.Equal(t, "pr-7", Plan{Kind: item.KindPR, Number: 7, Worktree: "pr-7"}.worktreeDir())
+	assert.Equal(t, "issue-3", Plan{Kind: item.KindIssue, Number: 3, Worktree: "issue-3"}.worktreeDir())
+	assert.Empty(t, Plan{Kind: item.KindPR, Number: 7}.worktreeDir())
 }
 
 func TestNewServiceDefaultsTheClock(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	h.cfg.Clock = nil
 

@@ -1,38 +1,19 @@
 package settings
 
 import (
-	"slices"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mrz1836/nilbox/internal/notify"
-	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/event"
+	"github.com/mrz1836/nilbox/internal/notifyprefs"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
-// menuBarLog records the menu bar settings a MenuBarNotifier was told about, in order.
-type menuBarLog struct {
-	mu  sync.Mutex
-	got []bool
-}
-
-func (l *menuBarLog) MenuBarChanged(on bool) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	l.got = append(l.got, on)
-}
-
-func (l *menuBarLog) changes() []bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	return slices.Clone(l.got)
-}
-
 func TestTheMenuBarIsOnByDefault(t *testing.T) {
+	t.Parallel()
+
 	svc, _, _ := newTestService(t)
 
 	on, err := svc.MenuBar(t.Context())
@@ -40,19 +21,21 @@ func TestTheMenuBarIsOnByDefault(t *testing.T) {
 	assert.True(t, on)
 }
 
-func TestSetMenuBarTellsTheNotifier(t *testing.T) {
-	_, db, home := newTestService(t)
-	log := &menuBarLog{}
-	svc := NewService(db, home, WithMenuBarNotifier(log))
+func TestSetMenuBarEmitsOnceStored(t *testing.T) {
+	t.Parallel()
 
-	require.NoError(t, svc.SetMenuBar(t.Context(), false))
+	_, db, home := newTestService(t)
+	events := &testutil.Events{}
+	svc := serviceOver(t, db, home, WithEvents(events))
+
+	require.NoError(t, testutil.ErrOf(svc.SetMenuBar(t.Context(), false)))
 
 	on, err := svc.MenuBar(t.Context())
 	require.NoError(t, err)
 	assert.False(t, on)
 
-	require.NoError(t, svc.SetMenuBar(t.Context(), true))
-	assert.Equal(t, []bool{false, true}, log.changes())
+	require.NoError(t, testutil.ErrOf(svc.SetMenuBar(t.Context(), true)))
+	assert.Equal(t, []event.Event{event.MenuBarChanged{On: false}, event.MenuBarChanged{On: true}}, events.All())
 
 	got, err := svc.Get(t.Context())
 	require.NoError(t, err)
@@ -60,6 +43,8 @@ func TestSetMenuBarTellsTheNotifier(t *testing.T) {
 }
 
 func TestAnUnreadableMenuBarSettingIsOn(t *testing.T) {
+	t.Parallel()
+
 	svc, db, _ := newTestService(t)
 	setPref(t, db, KeyMenuBar, "sometimes")
 
@@ -73,48 +58,56 @@ func TestAnUnreadableMenuBarSettingIsOn(t *testing.T) {
 }
 
 func TestTheMenuBarSettingFailsOnAClosedDatabase(t *testing.T) {
-	svc, db, _ := newTestService(t)
-	log := &menuBarLog{}
-	svc.menuBar = log
+	t.Parallel()
 
-	require.NoError(t, store.Close(db))
+	svc, db, _ := newTestService(t)
+	events := &testutil.Events{}
+	svc.events = events
+
+	require.NoError(t, db.Close())
 
 	on, err := svc.MenuBar(t.Context())
 	require.Error(t, err)
 	assert.Equal(t, DefaultMenuBar, on)
 
-	require.Error(t, svc.SetMenuBar(t.Context(), false))
-	assert.Empty(t, log.changes(), "a change that was not stored is not told")
+	require.Error(t, testutil.ErrOf(svc.SetMenuBar(t.Context(), false)))
+	assert.Empty(t, events.All(), "a change that was not stored is not told")
 }
 
 func TestSetNotificationBanner(t *testing.T) {
+	t.Parallel()
+
 	svc, _, _ := newTestService(t)
 
-	require.NoError(t, svc.SetNotificationBanner(t.Context(), notify.KindWoke, false))
-	require.NoError(t, svc.SetNotificationBanner(t.Context(), notify.KindReviewRequested, false))
+	require.NoError(t, testutil.ErrOf(svc.SetNotificationBanner(t.Context(), notifyprefs.KindWoke, false)))
+	require.NoError(t, testutil.ErrOf(svc.SetNotificationBanner(t.Context(), notifyprefs.KindReviewRequested, false)))
 
 	got, err := svc.Get(t.Context())
 	require.NoError(t, err)
-	assert.Equal(t, []string{notify.KindReviewRequested, notify.KindWoke}, got.BannersOff)
+	assert.Equal(t, []notifyprefs.Kind{notifyprefs.KindReviewRequested, notifyprefs.KindWoke}, got.BannersOff)
 
-	require.NoError(t, svc.SetNotificationBanner(t.Context(), notify.KindReviewRequested, true))
+	require.NoError(t, testutil.ErrOf(svc.SetNotificationBanner(t.Context(), notifyprefs.KindReviewRequested, true)))
 
 	got, err = svc.Get(t.Context())
 	require.NoError(t, err)
-	assert.Equal(t, []string{notify.KindWoke}, got.BannersOff)
+	assert.Equal(t, []notifyprefs.Kind{notifyprefs.KindWoke}, got.BannersOff)
 }
 
 func TestSetNotificationBannerRejectsAnUnknownKind(t *testing.T) {
+	t.Parallel()
+
 	svc, _, _ := newTestService(t)
 
-	err := svc.SetNotificationBanner(t.Context(), "mentions", false)
-	require.ErrorIs(t, err, notify.ErrUnknownKind)
+	_, err := svc.SetNotificationBanner(t.Context(), "mentions", false)
+	require.ErrorIs(t, err, notifyprefs.ErrUnknownKind)
 	assert.Contains(t, err.Error(), `"mentions"`)
 }
 
 func TestSetNotificationBannerFailsOnAClosedDatabase(t *testing.T) {
-	svc, db, _ := newTestService(t)
-	require.NoError(t, store.Close(db))
+	t.Parallel()
 
-	require.Error(t, svc.SetNotificationBanner(t.Context(), notify.KindWoke, false))
+	svc, db, _ := newTestService(t)
+	require.NoError(t, db.Close())
+
+	require.Error(t, testutil.ErrOf(svc.SetNotificationBanner(t.Context(), notifyprefs.KindWoke, false)))
 }

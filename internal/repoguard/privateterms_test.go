@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"unicode"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 )
 
 // privateTermsFile is where a contributor lists the names this public repository must
@@ -41,7 +44,7 @@ func privateTermsPath(t *testing.T, root string) (string, bool) {
 func parsePrivateTerms(text string) []string {
 	var terms []string
 
-	for _, line := range strings.Split(text, "\n") {
+	for line := range strings.SplitSeq(text, "\n") {
 		line = strings.TrimSpace(line)
 		if line != "" && !strings.HasPrefix(line, "#") {
 			terms = append(terms, line)
@@ -117,24 +120,87 @@ func loadPrivateTerms(t *testing.T, root string) (string, []string) {
 	return termsPath, terms
 }
 
-// privateTermsInFiles returns every repository file whose path pattern matches, and
-// every line of a text file that it matches.
-func privateTermsInFiles(t *testing.T, root string, pattern *regexp.Regexp) []string {
-	t.Helper()
+// foldRune returns the smallest rune that matches r when case is ignored: the least of
+// r's case-folding orbit, the set of runes an (?i) pattern accepts for r.
+func foldRune(r rune) rune {
+	least := r
 
-	var found []string
-
-	for _, rel := range repoFiles(t, root) {
-		if pattern.MatchString(rel) {
-			found = append(found, rel+": (the path)")
-		}
-
-		if text, ok := readText(t, root, rel); ok && pattern.MatchString(text) {
-			found = append(found, hits(rel, text, pattern.MatchString)...)
-		}
+	for f := unicode.SimpleFold(r); f != r; f = unicode.SimpleFold(f) {
+		least = min(least, f)
 	}
 
-	return found
+	return least
+}
+
+// foldCase maps every rune of s to foldRune's. Two strings an (?i) pattern takes as equal
+// fold to the same string, so a text that does not contain a folded term cannot match
+// the term either.
+func foldCase(s string) string {
+	return strings.Map(foldRune, s)
+}
+
+// mayHoldATerm reports whether text contains any of the folded terms, ignoring case as
+// privateTermsPattern does. It never says no for a text the pattern matches, and it is
+// far cheaper than the pattern, which then runs only on the few texts it lets through.
+func mayHoldATerm(text string, folded []string) bool {
+	text = foldCase(text)
+
+	return slices.ContainsFunc(folded, func(term string) bool { return strings.Contains(text, term) })
+}
+
+// privateTermsInFiles returns every repository file whose path pattern matches, and
+// every line of a text file that it matches, in file order. folded is terms, the terms
+// pattern was built from, each through foldCase. The files are scanned side by side, and
+// a file whose text holds no term in any case is not matched line by line.
+func privateTermsInFiles(t *testing.T, root string, pattern *regexp.Regexp, terms []string) []string {
+	t.Helper()
+
+	folded := make([]string, 0, len(terms))
+	for _, term := range terms {
+		folded = append(folded, foldCase(term))
+	}
+
+	files := repoFiles(t, root)
+	found := make([][]string, len(files))
+
+	var g errgroup.Group
+
+	g.SetLimit(runtime.GOMAXPROCS(0))
+
+	for i, rel := range files {
+		g.Go(func() error {
+			var err error
+
+			found[i], err = privateTermsInFile(root, rel, pattern, folded)
+
+			return err
+		})
+	}
+
+	require.NoError(t, g.Wait())
+
+	return slices.Concat(found...)
+}
+
+// privateTermsInFile returns rel's path when pattern matches it, and every line of its
+// text that pattern matches.
+func privateTermsInFile(root, rel string, pattern *regexp.Regexp, folded []string) ([]string, error) {
+	var found []string
+
+	if pattern.MatchString(rel) {
+		found = append(found, rel+": (the path)")
+	}
+
+	text, ok, err := readTextFile(root, rel)
+	if err != nil {
+		return nil, err
+	}
+
+	if ok && mayHoldATerm(text, folded) && pattern.MatchString(text) {
+		found = append(found, hits(rel, text, pattern.MatchString)...)
+	}
+
+	return found, nil
 }
 
 // privateTermsInGit returns the current branch name if pattern matches it, and every
@@ -153,7 +219,7 @@ func privateTermsInGit(t *testing.T, root string, pattern *regexp.Regexp) []stri
 	// separator.
 	log := gitText(t, root, "log", "HEAD", "--not", "--remotes", "--format=%h%x00%B%x1e")
 
-	for _, record := range strings.Split(log, "\x1e") {
+	for record := range strings.SplitSeq(log, "\x1e") {
 		hash, message, ok := strings.Cut(strings.TrimSpace(record), "\x00")
 		if ok && pattern.MatchString(message) {
 			found = append(found, hits("commit "+hash, message, pattern.MatchString)...)
@@ -178,16 +244,22 @@ func reportPrivateTerms(t *testing.T, found []string, advice string) {
 // yet. Without the file (as in CI) it skips. See README.md, "Keep private names out of the
 // repository".
 func TestNoPrivateTerms(t *testing.T) {
+	t.Parallel()
+
 	root := moduleRoot(t)
 	termsPath, terms := loadPrivateTerms(t, root)
 	pattern := privateTermsPattern(terms)
 
 	t.Run("files", func(t *testing.T) {
-		reportPrivateTerms(t, privateTermsInFiles(t, root, pattern), "a term from "+termsPath+
+		t.Parallel()
+
+		reportPrivateTerms(t, privateTermsInFiles(t, root, pattern, terms), "a term from "+termsPath+
 			" is in these files; replace it with a neutral placeholder such as acme-org or example-repo")
 	})
 
 	t.Run("git metadata", func(t *testing.T) {
+		t.Parallel()
+
 		reportPrivateTerms(t, privateTermsInGit(t, root, pattern), "a term from "+termsPath+
 			" is in the branch name or an unpushed commit message; rename the branch or reword "+
 			"the commit before you push")
@@ -195,6 +267,8 @@ func TestNoPrivateTerms(t *testing.T) {
 }
 
 func TestParsePrivateTerms(t *testing.T) {
+	t.Parallel()
+
 	text := "# employers and clients\n\n  acme-corp  \n\t# an indented comment\nWidget Works\r\nwidget\n"
 
 	assert.Equal(t, []string{"acme-corp", "Widget Works", "widget"}, parsePrivateTerms(text))
@@ -202,6 +276,8 @@ func TestParsePrivateTerms(t *testing.T) {
 }
 
 func TestPrivateTermsPattern(t *testing.T) {
+	t.Parallel()
+
 	pattern := privateTermsPattern([]string{"acme-corp", "widget", "@secret-org", "ex.co", "team42", "Zürich"})
 
 	cases := map[string]bool{
@@ -229,4 +305,37 @@ func TestPrivateTermsPattern(t *testing.T) {
 	for text, want := range cases {
 		assert.Equal(t, want, pattern.MatchString(text), "%q", text)
 	}
+}
+
+func TestMayHoldATermLetsEveryMatchThrough(t *testing.T) {
+	t.Parallel()
+
+	terms := []string{"acme-corp", "widget", "Zürich", "kelvin", "class"}
+	pattern := privateTermsPattern(terms)
+
+	folded := make([]string, 0, len(terms))
+	for _, term := range terms {
+		folded = append(folded, foldCase(term))
+	}
+
+	texts := []string{
+		"built for ACME-CORP.",
+		"WiDgEt_api",
+		"office in ZÜRICH",
+		"\u212Aelvin",           // the Kelvin sign folds with k
+		"cla\u017Fs of its own", // the long s folds with s
+		"\xffwidget\xfe",
+		"nothing private in this sentence",
+		"widgets and acme-corporation",
+		"",
+	}
+
+	for _, text := range texts {
+		if pattern.MatchString(text) {
+			assert.True(t, mayHoldATerm(text, folded), "the prefilter must let %q through", text)
+		}
+	}
+
+	assert.False(t, mayHoldATerm("nothing private in this sentence", folded))
+	assert.True(t, pattern.MatchString("\u212Aelvin"), "the pattern ignores case the way Go folds it")
 }

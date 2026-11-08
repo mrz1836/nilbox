@@ -21,7 +21,7 @@ func windowOptions(dark bool, size settings.WindowSize) application.WebviewWindo
 
 // applyAppearance has no native appearance to set off macOS; a port sets this OS's here.
 // The page still shows the theme, which the frontend applies.
-func applyAppearance(string) {}
+func applyAppearance(settings.Theme) {}
 
 // activateApp has nothing to do off macOS, where showing the window brings it forward; a
 // port activates the app here if its OS needs it.

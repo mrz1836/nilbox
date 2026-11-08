@@ -5,26 +5,53 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/prefs"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 func TestWindowSizePersists(t *testing.T) {
-	svc, _, _ := newTestService(t)
+	t.Parallel()
+
+	svc, db, _ := newTestService(t)
 
 	for _, size := range []WindowSize{
 		{Width: 1440, Height: 900},
 		{Width: MinWindowWidth, Height: MinWindowHeight},
 		{Width: MaxWindowWidth, Height: MaxWindowHeight},
 	} {
-		require.NoError(t, svc.SetWindowSize(t.Context(), size))
+		require.NoError(t, testutil.ErrOf(svc.SetWindowSize(t.Context(), size)))
 
 		got, err := svc.Get(t.Context())
 		require.NoError(t, err)
 		assert.Equal(t, size, got.WindowSize)
 		assert.Equal(t, DefaultWindowSize(), got.DefaultWindowSize, "the default never changes")
+
+		alone, err := ReadWindowSize(t.Context(), prefs.New(db, nil))
+		require.NoError(t, err)
+		assert.Equal(t, size, alone, "the size alone reads the same")
 	}
 }
 
+func TestReadWindowSizeIsTheDefaultOnAFreshDatabase(t *testing.T) {
+	t.Parallel()
+
+	got, err := ReadWindowSize(t.Context(), prefs.New(testutil.DB(t), nil))
+	require.NoError(t, err)
+	assert.Equal(t, DefaultWindowSize(), got)
+}
+
+func TestReadWindowSizeReportsAClosedDatabase(t *testing.T) {
+	t.Parallel()
+
+	got, err := ReadWindowSize(t.Context(), prefs.New(closedDB(t), nil))
+	require.ErrorContains(t, err, "read the window size")
+	assert.Equal(t, DefaultWindowSize(), got, "the default still comes back")
+}
+
 func TestSetWindowSizeRejectsOutOfBounds(t *testing.T) {
+	t.Parallel()
+
 	svc, _, _ := newTestService(t)
 
 	for _, size := range []WindowSize{
@@ -35,11 +62,11 @@ func TestSetWindowSizeRejectsOutOfBounds(t *testing.T) {
 		{Width: 1280, Height: MaxWindowHeight + 1},
 		{Width: -1280, Height: -800},
 	} {
-		err := svc.SetWindowSize(t.Context(), size)
+		_, err := svc.SetWindowSize(t.Context(), size)
 		require.ErrorIs(t, err, ErrInvalidWindowSize, size)
 	}
 
-	err := svc.SetWindowSize(t.Context(), WindowSize{Width: 640, Height: 480})
+	_, err := svc.SetWindowSize(t.Context(), WindowSize{Width: 640, Height: 480})
 	require.ErrorContains(t, err, "640 x 480; choose 800 x 520 up to 7680 x 4320")
 
 	got, err := svc.Get(t.Context())
@@ -48,6 +75,8 @@ func TestSetWindowSizeRejectsOutOfBounds(t *testing.T) {
 }
 
 func TestGetFallsBackOnABadStoredWindowSize(t *testing.T) {
+	t.Parallel()
+
 	svc, db, _ := newTestService(t)
 
 	for _, stored := range []string{"", "1280", "1280x", "x800", "widexhigh", "1280x800x2", "100x100", "99999x800"} {
@@ -56,6 +85,10 @@ func TestGetFallsBackOnABadStoredWindowSize(t *testing.T) {
 		got, err := svc.Get(t.Context())
 		require.NoError(t, err)
 		assert.Equalf(t, DefaultWindowSize(), got.WindowSize, "stored %q", stored)
+
+		alone, err := ReadWindowSize(t.Context(), prefs.New(db, nil))
+		require.NoError(t, err)
+		assert.Equalf(t, DefaultWindowSize(), alone, "stored %q, read alone", stored)
 	}
 }
 

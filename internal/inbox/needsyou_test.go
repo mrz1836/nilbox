@@ -11,6 +11,8 @@ import (
 var needsYouNow = time.Date(2026, 3, 4, 12, 0, 0, 0, time.UTC) //nolint:gochecknoglobals // a fixed test time
 
 func TestItemTriageAtATime(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name      string
 		item      Item
@@ -32,6 +34,8 @@ func TestItemTriageAtATime(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			assert.Equal(t, tt.dismissed, tt.item.Dismissed())
 			assert.Equal(t, tt.snoozed, tt.item.Snoozed(needsYouNow))
 			assert.Equal(t, !tt.dismissed && !tt.snoozed, tt.item.NeedsYou(needsYouNow))
@@ -40,6 +44,8 @@ func TestItemTriageAtATime(t *testing.T) {
 }
 
 func TestNeedsYouCountsEachItemOnce(t *testing.T) {
+	t.Parallel()
+
 	shared := Item{ID: 1}
 	snap := Snapshot{
 		ReviewRequested: List{Items: []Item{shared, {ID: 2}, {ID: 3, DismissedAt: "2026-03-01T00:00:00Z"}}},
@@ -53,6 +59,8 @@ func TestNeedsYouCountsEachItemOnce(t *testing.T) {
 }
 
 func TestWaitingKeepsTheListsOrder(t *testing.T) {
+	t.Parallel()
+
 	l := List{Items: []Item{{ID: 9}, {ID: 3, DismissedAt: "2026-03-01T00:00:00Z"}, {ID: 7}, {ID: 1}}}
 
 	got := l.Waiting(needsYouNow)
@@ -67,6 +75,8 @@ func TestWaitingKeepsTheListsOrder(t *testing.T) {
 }
 
 func TestNextSnoozeEnd(t *testing.T) {
+	t.Parallel()
+
 	snap := Snapshot{
 		ReviewRequested: List{Items: []Item{{ID: 1, SnoozedUntil: "2026-03-07T00:00:00Z"}}},
 		Authored: List{Items: []Item{

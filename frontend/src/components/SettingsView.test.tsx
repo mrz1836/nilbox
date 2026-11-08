@@ -1,65 +1,47 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
-import type { Account, LaunchDefaults, Profile, Settings } from '../platform'
-import { account, launchDefaults, profile, prompts, settings, signedOut } from '../test/fixtures'
+import type { Result } from '../lib/call'
 import type { Theme } from '../lib/theme'
-import { SettingsView, type SettingsSection } from './SettingsView'
+import type { Account, LaunchDefaults, NotificationKind, Profile, Settings } from '../platform'
+import { account, appInfo, launchDefaults, profile, prompts, settings, signedOut } from '../test/fixtures'
+import { platform } from '../test/platform'
+import { SettingsView, type SettingsSection, type SettingsViewProps } from './SettingsView'
 
-const platform = vi.hoisted(() => ({
-  getAppInfo: vi.fn(),
-  openInBrowser: vi.fn(),
-  setCloneRoot: vi.fn(),
-  setDefaultProfile: vi.fn(),
-  setTerminal: vi.fn(),
-  setWorktreeDefault: vi.fn(),
-  setWorktreeAutoCleanup: vi.fn(),
-  sweepWorktrees: vi.fn(),
-  setSnoozeDays: vi.fn(),
-  setSnoozeWake: vi.fn(),
-  setWindowSize: vi.fn(),
-  setDefaultPrompt: vi.fn(),
-  getSettings: vi.fn(),
-  setTrustedBots: vi.fn(),
-  resetTrustedBots: vi.fn(),
-  listLaunchTargets: vi.fn(),
-  checkLaunchDefaults: vi.fn(),
-  saveLaunchDefaults: vi.fn(),
-  removeLaunchDefaults: vi.fn(),
-  setSensitiveScope: vi.fn(),
-  setSensitiveCategory: vi.fn(),
-  setSensitivePatterns: vi.fn(),
-  matchSensitivePath: vi.fn(),
-  refreshInbox: vi.fn(),
-  setMenuBar: vi.fn(),
-  setNotificationBanner: vi.fn(),
-  notificationBannerStatus: vi.fn(),
-  sendTestNotification: vi.fn(),
-}))
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
-vi.mock('../platform', () => platform)
-
+// A release build, which About describes.
 beforeEach(() => {
-  for (const mock of Object.values(platform)) {
-    mock.mockReset().mockResolvedValue(undefined)
-  }
-
-  platform.getAppInfo.mockResolvedValue({
-    name: brand.name,
-    tagline: brand.tagline,
-    version: 'v1.4.0-2-gabc1234-dirty',
-    release: '1.4.0',
-    build: '42',
-    system: 'macOS 15.1 (24B83)',
-    arch: 'arm64',
-    bugReportUrl: 'https://github.com/acme-org/example-repo/issues/new?template=bug_report.yml',
-  })
-  platform.listLaunchTargets.mockResolvedValue([])
-  platform.checkLaunchDefaults.mockResolvedValue([])
-  platform.notificationBannerStatus.mockResolvedValue('on')
+  platform.getAppInfo.mockResolvedValue(
+    appInfo({
+      version: 'v1.4.0-2-gabc1234-dirty',
+      release: '1.4.0',
+      build: '42',
+      bugReportUrl: 'https://github.com/acme-org/example-repo/issues/new?template=bug_report.yml',
+    }),
+  )
 })
+
+// StoredSettings keeps the settings each save returns and shows the page with them, as App
+// does, so a second change starts from the first.
+function StoredSettings(props: SettingsViewProps) {
+  const { settings: initial, onSaved } = props
+  const [current, setCurrent] = useState(initial)
+
+  return (
+    <SettingsView
+      {...props}
+      settings={current}
+      onSaved={(next) => {
+        onSaved(next)
+        setCurrent(next)
+      }}
+    />
+  )
+}
 
 interface Options {
   section?: SettingsSection
@@ -68,7 +50,7 @@ interface Options {
   who?: Account | null
   defaults?: LaunchDefaults[]
   theme?: Theme
-  onThemeChange?: (theme: Theme) => Promise<void>
+  onThemeChange?: (theme: Theme) => Promise<Result<void>>
 }
 
 function renderSettings({
@@ -78,15 +60,15 @@ function renderSettings({
   who = account(),
   defaults = [],
   theme = 'system',
-  onThemeChange = vi.fn(() => Promise.resolve()),
+  onThemeChange = vi.fn(() => Promise.resolve<Result<void>>({ ok: true, data: undefined })),
 }: Options = {}) {
   const onSaved = vi.fn()
   const onClose = vi.fn()
   const onLaunchChanged = vi.fn(() => Promise.resolve())
 
   render(
-    <SettingsView
-      initialSection={section}
+    <StoredSettings
+      {...(section === undefined ? {} : { initialSection: section })}
       settings={current}
       profiles={profiles}
       prompts={prompts()}
@@ -110,6 +92,32 @@ async function openSection(name: string) {
 }
 
 describe('SettingsView', () => {
+  it('turns to the section asked for at each opening, and keeps its place in between', async () => {
+    const props: SettingsViewProps = {
+      settings: settings(),
+      profiles: [profile()],
+      prompts: prompts(),
+      defaultPrompts: { pr: 1, issue: 4 },
+      launchDefaults: [],
+      account: account(),
+      theme: 'system',
+      onThemeChange: () => Promise.resolve({ ok: true, data: undefined }),
+      onSaved: vi.fn(),
+      onLaunchChanged: () => Promise.resolve(),
+      onClose: vi.fn(),
+    }
+    const { rerender } = render(<SettingsView {...props} initialSection="snoozing" opened={1} />)
+
+    expect(screen.getByRole('region', { name: 'Snoozing' })).toBeInTheDocument()
+
+    await openSection('Trust')
+    rerender(<SettingsView {...props} initialSection="snoozing" opened={1} />)
+    expect(screen.getByRole('region', { name: 'Trust' })).toBeInTheDocument()
+
+    rerender(<SettingsView {...props} initialSection="snoozing" opened={2} />)
+    expect(screen.getByRole('region', { name: 'Snoozing' })).toBeInTheDocument()
+  })
+
   it('opens on the account, with a sidebar of sections', () => {
     renderSettings()
 
@@ -128,21 +136,13 @@ describe('SettingsView', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'View on GitHub' }))
 
-    expect(platform.openInBrowser).toHaveBeenCalledWith('https://github.com/octo-user')
+    expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/octo-user')
   })
 
-  it('logs a profile that could not be opened', async () => {
-    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    platform.openInBrowser.mockRejectedValue(new Error('no browser'))
+  it('shows the login for an account with no name', () => {
     renderSettings({ who: account({ name: '' }) })
 
     expect(screen.getByText('octo-user')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'View on GitHub' }))
-
-    await waitFor(() => {
-      expect(logged).toHaveBeenCalled()
-    })
-    logged.mockRestore()
   })
 
   it('says when no one is signed in yet', () => {
@@ -164,6 +164,7 @@ describe('SettingsView', () => {
     await openSection('Snoozing')
 
     const lengths = screen.getByRole('radiogroup', { name: 'Snooze for' })
+    expect(lengths).not.toHaveAttribute('aria-describedby')
     expect(within(lengths).getByRole('radio', { name: '3d' })).toBeChecked()
     expect(within(lengths).getAllByRole('radio')).toHaveLength(6)
     expect(screen.getByText(/never comes back on its own/)).toBeInTheDocument()
@@ -204,11 +205,15 @@ describe('SettingsView', () => {
       expect(onSaved).toHaveBeenCalledWith(settings({ snoozeWake: { commits: 1, reviews: 'decisions', comments: 5 } }))
     })
 
+    // Each rule changes from the settings the last change stored.
     await userEvent.click(within(reviews).getByRole('radio', { name: 'Never' }))
-    expect(platform.setSnoozeWake).toHaveBeenLastCalledWith({ commits: 1, reviews: 'never', comments: 0 })
+    expect(platform.setSnoozeWake).toHaveBeenLastCalledWith({ commits: 1, reviews: 'never', comments: 5 })
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledTimes(2)
+    })
 
     await userEvent.click(within(commits).getByRole('radio', { name: 'Never' }))
-    expect(platform.setSnoozeWake).toHaveBeenLastCalledWith({ commits: 0, reviews: 'decisions', comments: 0 })
+    expect(platform.setSnoozeWake).toHaveBeenLastCalledWith({ commits: 0, reviews: 'never', comments: 5 })
   })
 
   it('shows wake rules the backend refused', async () => {
@@ -222,6 +227,13 @@ describe('SettingsView', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('invalid snooze wake rules')
     expect(onSaved).not.toHaveBeenCalled()
+    // Each choice is read with why the last one was refused.
+    expect(screen.getByRole('radiogroup', { name: 'Wake on reviews' })).toHaveAccessibleDescription(
+      'invalid snooze wake rules',
+    )
+    expect(screen.getByRole('radiogroup', { name: 'Snooze for' })).toHaveAccessibleDescription(
+      'invalid snooze wake rules',
+    )
   })
 
   it('shows a snooze length the backend refused', async () => {
@@ -233,6 +245,7 @@ describe('SettingsView', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('invalid snooze length')
     expect(onSaved).not.toHaveBeenCalled()
+    expect(screen.getByRole('radiogroup', { name: 'Snooze for' })).toHaveAccessibleDescription('invalid snooze length')
   })
 
   it('waits for the settings before showing the snooze length', async () => {
@@ -270,6 +283,7 @@ describe('SettingsView', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('invalid window size')
     expect(onSaved).not.toHaveBeenCalled()
+    expect(screen.getByRole('radiogroup', { name: 'Window size' })).toHaveAccessibleDescription('invalid window size')
   })
 
   it('selects no preset for a size that matches none', async () => {
@@ -326,16 +340,18 @@ describe('SettingsView', () => {
     expect(icon('Light')).toHaveClass('motion-safe:animate-sun-in')
     expect(icon('Dark')?.getAttribute('class')).not.toMatch(/animate-/)
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(themes).not.toHaveAttribute('aria-describedby')
   })
 
   it('shows a theme that could not be stored', async () => {
-    const onThemeChange = vi.fn(() => Promise.reject(new Error('unknown theme "dim"')))
+    const onThemeChange = vi.fn(() => Promise.resolve<Result<void>>({ ok: false, error: 'unknown theme "dim"' }))
     renderSettings({ onThemeChange })
     await openSection('Appearance')
 
     await userEvent.click(screen.getByRole('radio', { name: 'Dark' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('unknown theme "dim"')
+    expect(screen.getByRole('radiogroup', { name: 'Theme' })).toHaveAccessibleDescription('unknown theme "dim"')
   })
 
   it('persists the terminal choice', async () => {
@@ -349,7 +365,9 @@ describe('SettingsView', () => {
     await userEvent.selectOptions(terminal, 'terminal')
 
     expect(platform.setTerminal).toHaveBeenCalledWith('terminal')
-    expect(onSaved).toHaveBeenCalledWith(settings({ terminal: 'terminal' }))
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(settings({ terminal: 'terminal' }))
+    })
   })
 
   it('shows a terminal the backend refused', async () => {
@@ -361,6 +379,10 @@ describe('SettingsView', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('unknown terminal')
     expect(onSaved).not.toHaveBeenCalled()
+    // The menu is read with its help, then why the change was refused.
+    expect(screen.getByRole('combobox', { name: 'Terminal' })).toHaveAccessibleDescription(
+      'The app new sessions open in. unknown terminal',
+    )
   })
 
   it('persists the default profile', async () => {
@@ -370,7 +392,21 @@ describe('SettingsView', () => {
     await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Default profile' }), 'work')
 
     expect(platform.setDefaultProfile).toHaveBeenCalledWith('work')
-    expect(onSaved).toHaveBeenCalledWith(settings({ defaultProfile: 'work' }))
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(settings({ defaultProfile: 'work' }))
+    })
+  })
+
+  it('shows a default profile the backend refused', async () => {
+    platform.setDefaultProfile.mockRejectedValue(new Error('no profile named work'))
+    renderSettings()
+    await openSection('Launching')
+
+    const select = screen.getByRole('combobox', { name: 'Default profile' })
+    await userEvent.selectOptions(select, 'work')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('no profile named work')
+    expect(select).toHaveAccessibleDescription("Preselected in each row's profile menu. no profile named work")
   })
 
   it('cannot pick a default profile when none were found', async () => {
@@ -392,17 +428,35 @@ describe('SettingsView', () => {
     await userEvent.click(toggle)
 
     expect(platform.setWorktreeDefault).toHaveBeenCalledWith(false)
-    expect(onSaved).toHaveBeenCalledWith(settings({ worktreeDefault: false }))
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(settings({ worktreeDefault: false }))
+    })
+    expect(toggle).not.toBeChecked()
   })
 
-  it('shows a worktree default the backend refused', async () => {
-    platform.setWorktreeDefault.mockRejectedValue(new Error('database is locked'))
+  it('shows a worktree default the backend refused, and switches it back', async () => {
+    let refuse: (err: Error) => void = () => undefined
+    platform.setWorktreeDefault.mockReturnValue(
+      new Promise((_, reject) => {
+        refuse = reject
+      }),
+    )
     renderSettings()
     await openSection('Launching')
 
-    await userEvent.click(screen.getByRole('switch', { name: 'Start in a worktree' }))
+    const toggle = screen.getByRole('switch', { name: 'Start in a worktree' })
+    await userEvent.click(toggle)
+
+    // The switch moves before the backend answers.
+    expect(toggle).not.toBeChecked()
+
+    refuse(new Error('database is locked'))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('database is locked')
+    await waitFor(() => {
+      expect(toggle).toBeChecked()
+    })
+    expect(toggle).toHaveAccessibleDescription(/You can still change it per launch\. database is locked$/)
   })
 
   it('turns the automatic worktree cleanup off and on, sweeping at once when turned on', async () => {
@@ -444,6 +498,9 @@ describe('SettingsView', () => {
     await userEvent.click(screen.getByRole('switch', { name: 'Clean up after merging' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('database is locked')
+    expect(screen.getByRole('switch', { name: 'Clean up after merging' })).toHaveAccessibleDescription(
+      /ignored files in it go with it\. database is locked$/,
+    )
   })
 
   it('persists the clone root', async () => {
@@ -458,7 +515,9 @@ describe('SettingsView', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     expect(platform.setCloneRoot).toHaveBeenCalledWith('~/code')
-    expect(onSaved).toHaveBeenCalledWith(settings({ cloneRoot: '~/code' }))
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(settings({ cloneRoot: '~/code' }))
+    })
     expect(await screen.findByRole('status')).toHaveTextContent('Saved.')
 
     // Editing again clears the confirmation.
@@ -477,6 +536,7 @@ describe('SettingsView', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('clone root ~/missing is not a directory')
     expect(onSaved).not.toHaveBeenCalled()
+    expect(field).toHaveAccessibleDescription(/look one level inside it\. clone root ~\/missing is not a directory$/)
   })
 
   it('waits for the settings to load', async () => {
@@ -487,6 +547,11 @@ describe('SettingsView', () => {
 
     await openSection('Repositories')
     expect(screen.getByText('Loading the settings…')).toBeInTheDocument()
+
+    for (const name of ['Notifications', 'Trust', 'Sensitive files']) {
+      await openSection(name)
+      expect(screen.getByText('Loading the settings…')).toBeInTheDocument()
+    }
   })
 
   it('shows the product and its version', async () => {
@@ -517,23 +582,9 @@ describe('SettingsView', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Report a bug' }))
 
-    expect(platform.openInBrowser).toHaveBeenCalledWith(
+    expect(platform.openExternal).toHaveBeenCalledWith(
       'https://github.com/acme-org/example-repo/issues/new?template=bug_report.yml',
     )
-  })
-
-  it('logs a bug report that could not be opened', async () => {
-    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    platform.openInBrowser.mockRejectedValue(new Error('no browser'))
-    renderSettings()
-    await openSection('About')
-
-    await userEvent.click(await screen.findByRole('button', { name: 'Report a bug' }))
-
-    await waitFor(() => {
-      expect(logged).toHaveBeenCalled()
-    })
-    logged.mockRestore()
   })
 
   it('shows a placeholder while the version loads', async () => {
@@ -579,7 +630,7 @@ describe('SettingsView', () => {
           env: { EXAMPLE_FLAG: '1' },
         }),
         profile({ name: 'old', folder: '~/.claude_old', missing: true, permissionMode: '' }),
-        profile({ name: 'bare', folder: '~/.claude_bare', addDirs: null, extraArgs: null, env: null }),
+        profile({ name: 'bare', folder: '~/.claude_bare', addDirs: [], extraArgs: [], env: {} }),
       ],
     })
     await openSection('Profiles')
@@ -666,12 +717,18 @@ describe('SettingsView', () => {
     await userEvent.keyboard('{Escape}')
     expect(onClose).not.toHaveBeenCalled()
 
-    const used = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
-    used.preventDefault()
-    fireEvent(document.body, used)
+    // Whatever handles Escape before the page, as an open menu does, marks it used.
+    await userEvent.click(document.body)
+    const useEscape = (e: KeyboardEvent) => {
+      e.preventDefault()
+    }
+    document.addEventListener('keydown', useEscape, true)
+    await userEvent.keyboard('{Escape}')
+    document.removeEventListener('keydown', useEscape, true)
     expect(onClose).not.toHaveBeenCalled()
 
-    // An input method composing text owns the key too.
+    // An input method composing text owns the key too. user-event cannot compose text, so
+    // the composing key is sent by hand.
     fireEvent.keyDown(document.body, { key: 'Escape', isComposing: true })
     expect(onClose).not.toHaveBeenCalled()
   })
@@ -715,6 +772,12 @@ describe('SettingsView launch defaults', () => {
     await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Prompt for issues' }), '5')
 
     expect(await screen.findByRole('alert')).toHaveTextContent('doesn’t apply to that kind of item')
+    expect(screen.getByRole('combobox', { name: 'Prompt for issues' })).toHaveAccessibleDescription(
+      /Edit prompts on the Prompts tab\. the prompt doesn’t apply to that kind of item$/,
+    )
+    expect(screen.getByRole('combobox', { name: 'Prompt for pull requests' })).toHaveAccessibleDescription(
+      /Edit prompts on the Prompts tab\.$/,
+    )
   })
 
   it('lists the org and repository launch defaults under Repositories', async () => {
@@ -822,7 +885,16 @@ describe('SettingsView notifications', () => {
   })
 
   it('switches each kind’s banners, saving the kinds that are off', async () => {
-    const { onSaved } = renderSettings({ section: 'notifications', current: settings({ bannersOff: ['woke'] }) })
+    let stored = settings({ bannersOff: ['woke'] })
+    platform.setNotificationBanner.mockImplementation((kind: NotificationKind, on: boolean) => {
+      stored = {
+        ...stored,
+        bannersOff: on ? stored.bannersOff.filter((k) => k !== kind) : [...stored.bannersOff, kind],
+      }
+
+      return Promise.resolve(stored)
+    })
+    const { onSaved } = renderSettings({ section: 'notifications', current: stored })
 
     expect(banner('Review requests')).toBeChecked()
     expect(banner('Assignments')).toBeChecked()
@@ -837,8 +909,10 @@ describe('SettingsView notifications', () => {
     await userEvent.click(banner('Snoozes ending early'))
     expect(platform.setNotificationBanner).toHaveBeenCalledWith('woke', true)
     await waitFor(() => {
-      expect(onSaved).toHaveBeenLastCalledWith(expect.objectContaining({ bannersOff: [] }))
+      expect(onSaved).toHaveBeenLastCalledWith(expect.objectContaining({ bannersOff: ['review_requested'] }))
     })
+    expect(banner('Review requests')).not.toBeChecked()
+    expect(banner('Snoozes ending early')).toBeChecked()
   })
 
   it('shows a setting that could not be saved', async () => {
@@ -848,7 +922,15 @@ describe('SettingsView notifications', () => {
     await userEvent.click(screen.getByRole('switch', { name: 'Show in the menu bar' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('database is locked')
+    await waitFor(() => {
+      expect(screen.getByRole('switch', { name: 'Show in the menu bar' })).toBeChecked()
+    })
     expect(onSaved).not.toHaveBeenCalled()
+    // Every switch is read with why the last change was refused.
+    expect(screen.getByRole('switch', { name: 'Show in the menu bar' })).toHaveAccessibleDescription(
+      /quit from its menu or with ⌘Q\. database is locked$/,
+    )
+    expect(banner('Review requests')).toHaveAccessibleDescription(/ database is locked$/)
   })
 
   it('sends a test banner, and says how it went', async () => {
@@ -859,11 +941,15 @@ describe('SettingsView notifications', () => {
 
     expect(platform.sendTestNotification).toHaveBeenCalledOnce()
     expect(await screen.findByText(/^Sent\./)).toBeInTheDocument()
+    expect(test).toHaveAccessibleDescription(/^Sent\. If no banner showed/)
 
     platform.sendTestNotification.mockRejectedValue(new Error('notifications are off for this app in System Settings'))
     await userEvent.click(test)
 
     expect(await screen.findByRole('alert')).toHaveTextContent('notifications are off')
+    expect(test).toHaveAccessibleDescription(
+      'Show a sample banner, asking for permission first if you have not been asked. notifications are off for this app in System Settings',
+    )
     // Asking may have changed whether they are allowed, so the state is read again.
     expect(platform.notificationBannerStatus).toHaveBeenCalledTimes(3)
   })

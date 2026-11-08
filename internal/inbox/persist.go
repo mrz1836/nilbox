@@ -5,95 +5,22 @@ import (
 	"fmt"
 	"time"
 
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
-
 	"github.com/mrz1836/nilbox/internal/github"
-	"github.com/mrz1836/nilbox/internal/inbox/model"
+	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
+	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/snooze"
+	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/trust"
-)
-
-// The upserts below key on each table's unique columns. RETURNING id gives back the row's
-// id whether it was inserted or updated.
-const (
-	upsertAccountSQL = `INSERT INTO accounts (login, created_at, updated_at) VALUES (?, ?, ?)
-ON CONFLICT (login) DO UPDATE SET login = excluded.login, updated_at = excluded.updated_at
-RETURNING id`
-
-	// upsertRepoSQL rewrites what GitHub says about a repository; the local columns
-	// (muted, pinned, local_path) are left as they are.
-	upsertRepoSQL = `INSERT INTO repos (
-    owner, name, node_id, description, visibility, is_archived, archived_at, is_disabled, is_locked,
-    lock_reason, is_fork, parent, default_branch, viewer_permission, viewer_merge_method,
-    merge_commit_allowed, squash_merge_allowed, rebase_merge_allowed, auto_merge_allowed,
-    delete_branch_on_merge, allow_update_branch, language, language_color, pushed_at, fetched_at,
-    created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT (owner, name) DO UPDATE SET
-    owner = excluded.owner,
-    name = excluded.name,
-    node_id = excluded.node_id,
-    description = excluded.description,
-    visibility = excluded.visibility,
-    is_archived = excluded.is_archived,
-    archived_at = excluded.archived_at,
-    is_disabled = excluded.is_disabled,
-    is_locked = excluded.is_locked,
-    lock_reason = excluded.lock_reason,
-    is_fork = excluded.is_fork,
-    parent = excluded.parent,
-    default_branch = excluded.default_branch,
-    viewer_permission = excluded.viewer_permission,
-    viewer_merge_method = excluded.viewer_merge_method,
-    merge_commit_allowed = excluded.merge_commit_allowed,
-    squash_merge_allowed = excluded.squash_merge_allowed,
-    rebase_merge_allowed = excluded.rebase_merge_allowed,
-    auto_merge_allowed = excluded.auto_merge_allowed,
-    delete_branch_on_merge = excluded.delete_branch_on_merge,
-    allow_update_branch = excluded.allow_update_branch,
-    language = excluded.language,
-    language_color = excluded.language_color,
-    pushed_at = excluded.pushed_at,
-    fetched_at = excluded.fetched_at,
-    updated_at = excluded.updated_at
-RETURNING id`
-
-	clearReasonsSQL = `UPDATE items
-SET reason_review_requested = 0, reason_authored = 0, reason_assigned = 0
-WHERE account_id = ?`
-
-	upsertItemSQL = `INSERT INTO items (
-    account_id, repo_id, kind, number, node_id, title, url, author_login, author_type, author_association,
-    is_cross_repository, is_draft, head_ref, item_created_at, item_updated_at,
-    reason_review_requested, reason_authored, reason_assigned, fetched_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT (account_id, repo_id, kind, number) DO UPDATE SET
-    node_id = excluded.node_id,
-    title = excluded.title,
-    url = excluded.url,
-    author_login = excluded.author_login,
-    author_type = excluded.author_type,
-    author_association = excluded.author_association,
-    is_cross_repository = excluded.is_cross_repository,
-    is_draft = excluded.is_draft,
-    head_ref = excluded.head_ref,
-    item_created_at = excluded.item_created_at,
-    item_updated_at = excluded.item_updated_at,
-    reason_review_requested = excluded.reason_review_requested,
-    reason_authored = excluded.reason_authored,
-    reason_assigned = excluded.reason_assigned,
-    fetched_at = excluded.fetched_at
-RETURNING id`
-
-	upsertPrefSQL = `INSERT INTO prefs (key, value, updated_at) VALUES (?, ?, ?)
-ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
 )
 
 // writer stores one refresh inside a transaction.
 type writer struct {
-	tx        *gorm.DB
+	// q and prefs run in the transaction, so everything written commits or rolls back
+	// together.
+	q     *queries.Queries
+	prefs *prefs.Store
+
 	now       time.Time
 	accountID int64
 	repos     map[string]int64
@@ -110,50 +37,67 @@ type writer struct {
 	// snoozes new activity ended early, with what ended them, for telling arrivals.
 	saved []savedEntry
 	woke  map[int64]snooze.Reasons
+
+	// checked holds the items whose file check was stored.
+	checked map[int64]bool
+
+	// keep holds the items whose details and file check a newer write stored, which the
+	// writer leaves as they are.
+	keep map[int64]bool
+}
+
+// newWriter returns a writer that stores through q and p, which run in one transaction,
+// and stamps what it stores with now.
+func newWriter(q *queries.Queries, p *prefs.Store, now time.Time) *writer {
+	return &writer{q: q, prefs: p, now: now, repos: make(map[string]int64)}
 }
 
 // saveAccount upserts the signed-in account and remembers its id.
-func (w *writer) saveAccount(login string) error {
-	if err := w.tx.Raw(upsertAccountSQL, login, w.now, w.now).Scan(&w.accountID).Error; err != nil {
+func (w *writer) saveAccount(ctx context.Context, login string) error {
+	id, err := w.q.UpsertAccount(ctx, queries.UpsertAccountParams{Login: login, CreatedAt: w.now, UpdatedAt: w.now})
+	if err != nil {
 		return fmt.Errorf("save the account: %w", err)
 	}
+
+	w.accountID = id
 
 	return nil
 }
 
 // saveItems clears every reason flag for the account, then upserts each fetched item with
-// the flags of the lists that returned it, its details, and its file check. Items no
-// longer returned keep their row (local state may reference it) with all three flags off,
-// and lose their file check. Last, it ends the snoozes that the new details give cause
-// to, so no snapshot shows new activity on an item still snoozed.
-func (w *writer) saveItems(inbox *github.Inbox) error {
-	if err := w.tx.Exec(clearReasonsSQL, w.accountID).Error; err != nil {
+// the flags of the lists that returned it, its details, and its file check (an item to
+// keep keeps the details and check stored). Items no longer returned keep their row
+// (local state may reference it) with all three flags off, and lose their file check.
+// Last, it ends the snoozes that the details stored give cause to, so no snapshot shows
+// new activity on an item still snoozed.
+func (w *writer) saveItems(ctx context.Context, inbox *github.Inbox) error {
+	if err := w.q.ClearReasons(ctx, w.accountID); err != nil {
 		return fmt.Errorf("clear the reason flags: %w", err)
 	}
 
 	for _, e := range mergeLists(inbox) {
-		repoID, err := w.repoID(e.item)
+		repoID, err := w.repoID(ctx, e.item)
 		if err != nil {
 			return err
 		}
 
-		if err = w.saveItem(repoID, e); err != nil {
+		if err = w.saveItem(ctx, repoID, e); err != nil {
 			return err
 		}
 	}
 
-	if err := w.pruneFiles(); err != nil {
+	if err := w.pruneFiles(ctx); err != nil {
 		return err
 	}
 
-	return w.wakeSnoozed()
+	return w.wakeSnoozed(ctx)
 }
 
 // saveRepos records the repositories of items that were left out, so an archived
 // repository is known as one.
-func (w *writer) saveRepos(items []github.Item) error {
+func (w *writer) saveRepos(ctx context.Context, items []github.Item) error {
 	for _, it := range items {
-		if _, err := w.repoID(it); err != nil {
+		if _, err := w.repoID(ctx, it); err != nil {
 			return err
 		}
 	}
@@ -163,25 +107,27 @@ func (w *writer) saveRepos(items []github.Item) error {
 
 // repoID upserts an item's repository, with what GitHub says about it, once per refresh
 // and returns its id.
-func (w *writer) repoID(it github.Item) (int64, error) {
-	key := repoKey(it.RepoOwner, it.RepoName)
+func (w *writer) repoID(ctx context.Context, it github.Item) (int64, error) {
+	key := it.Ref().Repo.Key()
 	if id, ok := w.repos[key]; ok {
 		return id, nil
 	}
 
 	r := it.Repo
 
-	var id int64
-
-	err := w.tx.Raw(upsertRepoSQL,
-		it.RepoOwner, it.RepoName, r.NodeID, r.Description, r.Visibility, r.IsArchived, timeOrNil(r.ArchivedAt),
-		r.IsDisabled, r.IsLocked, r.LockReason, r.IsFork, r.Parent, r.DefaultBranch, r.ViewerPermission,
-		r.ViewerMergeMethod, r.MergeCommitAllowed, r.SquashMergeAllowed, r.RebaseMergeAllowed, r.AutoMergeAllowed,
-		r.DeleteBranchOnMerge, r.AllowUpdateBranch, r.Language, r.LanguageColor, timeOrNil(r.PushedAt), w.now,
-		w.now, w.now,
-	).Scan(&id).Error
+	id, err := w.q.UpsertRepo(ctx, queries.UpsertRepoParams{
+		Owner: it.RepoOwner, Name: it.RepoName, NodeID: r.NodeID, Description: r.Description,
+		Visibility: r.Visibility, IsArchived: r.IsArchived, ArchivedAt: timeOrNil(r.ArchivedAt),
+		IsDisabled: r.IsDisabled, IsLocked: r.IsLocked, LockReason: r.LockReason, IsFork: r.IsFork,
+		Parent: r.Parent, DefaultBranch: r.DefaultBranch, ViewerPermission: r.ViewerPermission,
+		ViewerMergeMethod: r.ViewerMergeMethod, MergeCommitAllowed: r.MergeCommitAllowed,
+		SquashMergeAllowed: r.SquashMergeAllowed, RebaseMergeAllowed: r.RebaseMergeAllowed,
+		AutoMergeAllowed: r.AutoMergeAllowed, DeleteBranchOnMerge: r.DeleteBranchOnMerge,
+		AllowUpdateBranch: r.AllowUpdateBranch, Language: r.Language, LanguageColor: r.LanguageColor,
+		PushedAt: timeOrNil(r.PushedAt), FetchedAt: new(w.now), CreatedAt: w.now, UpdatedAt: w.now,
+	})
 	if err != nil {
-		return 0, fmt.Errorf("save the repository %s/%s: %w", it.RepoOwner, it.RepoName, err)
+		return 0, fmt.Errorf("save the repository %s: %w", it.Ref().Repo, err)
 	}
 
 	w.repos[key] = id
@@ -195,99 +141,113 @@ func timeOrNil(t time.Time) *time.Time {
 		return nil
 	}
 
-	t = t.UTC()
-
-	return &t
+	return new(t.UTC())
 }
 
 // saveItem upserts one item, then its details and file check when this refresh read
 // them.
-func (w *writer) saveItem(repoID int64, e *entry) error {
+func (w *writer) saveItem(ctx context.Context, repoID int64, e *entry) error {
 	it := e.item
 
-	var id int64
-
-	err := w.tx.Raw(upsertItemSQL,
-		w.accountID, repoID, kindOf(it), it.Number, it.NodeID, it.Title, it.URL, it.AuthorLogin, it.AuthorType,
-		it.AuthorAssociation, it.IsCrossRepository, it.IsDraft, it.HeadRef, it.CreatedAt.UTC(), it.UpdatedAt.UTC(),
-		e.reviewRequested, e.authored, e.assigned, w.now,
-	).Scan(&id).Error
+	id, err := w.q.UpsertItem(ctx, queries.UpsertItemParams{
+		AccountID: w.accountID, RepoID: repoID, Kind: string(it.Ref().Kind), Number: int64(it.Number),
+		NodeID: it.NodeID, Title: it.Title, URL: it.URL, AuthorLogin: it.AuthorLogin, AuthorType: it.AuthorType,
+		AuthorAssociation: it.AuthorAssociation, IsCrossRepository: it.IsCrossRepository, IsDraft: it.IsDraft,
+		HeadRef: it.HeadRef, ItemCreatedAt: it.CreatedAt.UTC(), ItemUpdatedAt: it.UpdatedAt.UTC(),
+		ReasonReviewRequested: e.reviewRequested, ReasonAuthored: e.authored, ReasonAssigned: e.assigned,
+		FetchedAt: w.now,
+	})
 	if err != nil {
-		return fmt.Errorf("save the item %s/%s#%d: %w", it.RepoOwner, it.RepoName, it.Number, err)
+		return fmt.Errorf("save the item %s: %w", it.Ref(), err)
 	}
 
 	w.saved = append(w.saved, savedEntry{id: id, entry: e})
 
-	if err = w.saveDetails(id, it); err != nil {
+	if err = w.saveDetails(ctx, id, it); err != nil {
 		return err
 	}
 
-	return w.saveFiles(id, it)
+	return w.saveFiles(ctx, id, it)
 }
 
-// saveDetails stores an item's details when this refresh read them.
-func (w *writer) saveDetails(id int64, it github.Item) error {
+// saveDetails stores an item's details when this refresh read them, unless the item is
+// one to keep.
+func (w *writer) saveDetails(ctx context.Context, id int64, it github.Item) error {
 	d, ok := w.details[it.NodeID]
-	if !ok {
+	if !ok || w.keep[id] {
 		return nil
 	}
 
-	row := detailsRow(id, d, w.now)
+	row, err := detailsRow(id, d, w.now)
+	if err == nil {
+		err = w.q.UpsertDetails(ctx, row)
+	}
 
-	err := w.tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "item_id"}}, UpdateAll: true}).Create(&row).Error
 	if err != nil {
-		return fmt.Errorf("save the details of %s/%s#%d: %w", it.RepoOwner, it.RepoName, it.Number, err)
+		return fmt.Errorf("save the details of %s: %w", it.Ref(), err)
 	}
 
 	return nil
 }
 
+// storedLabel is one label as the labels column of item_details stores it.
+type storedLabel struct {
+	Name  string `json:"name"`
+	Color string `json:"color"`
+}
+
 // detailsRow converts fetched details to their row.
-func detailsRow(itemID int64, d github.ItemDetails, now time.Time) model.ItemDetails {
-	labels := make(model.Labels, 0, len(d.Labels))
+func detailsRow(itemID int64, d github.ItemDetails, now time.Time) (queries.UpsertDetailsParams, error) {
+	labels := make([]storedLabel, 0, len(d.Labels))
 	for _, l := range d.Labels {
-		labels = append(labels, model.Label{Name: l.Name, Color: l.Color})
+		labels = append(labels, storedLabel{Name: l.Name, Color: l.Color})
 	}
 
-	return model.ItemDetails{
+	encoded, err := store.EncodeJSON(labels)
+	if err != nil {
+		return queries.UpsertDetailsParams{}, err
+	}
+
+	return queries.UpsertDetailsParams{
 		ItemID:           itemID,
-		Labels:           labels,
-		Comments:         d.Comments,
-		Additions:        d.Additions,
-		Deletions:        d.Deletions,
-		ChangedFiles:     d.ChangedFiles,
-		Commits:          d.Commits,
+		Labels:           encoded,
+		Comments:         int64(d.Comments),
+		Additions:        int64(d.Additions),
+		Deletions:        int64(d.Deletions),
+		ChangedFiles:     int64(d.ChangedFiles),
+		Commits:          int64(d.Commits),
 		HeadOID:          d.HeadOID,
 		Mergeable:        d.Mergeable,
 		ChecksState:      d.Checks.State,
-		ChecksPassed:     d.Checks.Passed,
-		ChecksFailed:     d.Checks.Failed,
-		ChecksPending:    d.Checks.Pending,
-		ChecksSkipped:    d.Checks.Skipped,
+		ChecksPassed:     int64(d.Checks.Passed),
+		ChecksFailed:     int64(d.Checks.Failed),
+		ChecksPending:    int64(d.Checks.Pending),
+		ChecksSkipped:    int64(d.Checks.Skipped),
 		ReviewDecision:   d.Reviews.Decision,
-		Reviewers:        d.Reviews.Reviewers,
-		Reviewed:         d.Reviews.Reviewed,
-		Approvals:        d.Reviews.Approvals,
-		ChangesRequested: d.Reviews.ChangesRequested,
+		Reviewers:        int64(d.Reviews.Reviewers),
+		Reviewed:         int64(d.Reviews.Reviewed),
+		Approvals:        int64(d.Reviews.Approvals),
+		ChangesRequested: int64(d.Reviews.ChangesRequested),
 		FetchedAt:        now,
-	}
+	}, nil
 }
 
 // saveRates records one snapshot per resource and prunes snapshots past the retention
 // window. The GraphQL row comes from the query itself, so it carries the query's cost.
-func (w *writer) saveRates(query github.QueryRate, limits *github.RateLimits) error {
-	rows := []model.RateSnapshot{
+func (w *writer) saveRates(ctx context.Context, query github.QueryRate, limits *github.RateLimits) error {
+	for _, row := range []queries.InsertRateParams{
 		w.graphQLSnapshot(query),
 		w.restSnapshot(resourceCore, limits.Core),
 		w.restSnapshot(resourceSearch, limits.Search),
+	} {
+		if err := w.q.InsertRate(ctx, row); err != nil {
+			return fmt.Errorf("save the rate limits: %w", err)
+		}
 	}
 
-	if err := w.tx.Create(&rows).Error; err != nil {
-		return fmt.Errorf("save the rate limits: %w", err)
-	}
-
-	err := w.tx.Where("taken_at < ?", w.now.Add(-snapshotRetention)).Delete(&model.RateSnapshot{}).Error
-	if err != nil {
+	// The cutoff is in UTC, as every stored time is, so it compares with taken_at as
+	// text in the same format.
+	if err := w.q.PruneRates(ctx, w.now.Add(-snapshotRetention)); err != nil {
 		return fmt.Errorf("prune old rate limits: %w", err)
 	}
 
@@ -296,10 +256,8 @@ func (w *writer) saveRates(query github.QueryRate, limits *github.RateLimits) er
 
 // saveGraphQLRate records the GraphQL budget a single query left, with its cost. The REST
 // budgets keep their last readings.
-func (w *writer) saveGraphQLRate(query github.QueryRate) error {
-	row := w.graphQLSnapshot(query)
-
-	if err := w.tx.Create(&row).Error; err != nil {
+func (w *writer) saveGraphQLRate(ctx context.Context, query github.QueryRate) error {
+	if err := w.q.InsertRate(ctx, w.graphQLSnapshot(query)); err != nil {
 		return fmt.Errorf("save the rate limit: %w", err)
 	}
 
@@ -307,94 +265,49 @@ func (w *writer) saveGraphQLRate(query github.QueryRate) error {
 }
 
 // graphQLSnapshot builds a snapshot row from a query's own budget reading.
-func (w *writer) graphQLSnapshot(query github.QueryRate) model.RateSnapshot {
-	return model.RateSnapshot{
-		AccountID: w.accountID, Resource: resourceGraphQL, LimitTotal: query.Limit, Remaining: query.Remaining,
-		Used: query.Used, Cost: query.Cost, ResetAt: query.ResetAt.UTC(), TakenAt: w.now,
+func (w *writer) graphQLSnapshot(query github.QueryRate) queries.InsertRateParams {
+	return queries.InsertRateParams{
+		AccountID: w.accountID, Resource: resourceGraphQL, LimitTotal: int64(query.Limit),
+		Remaining: int64(query.Remaining), Used: int64(query.Used), Cost: int64(query.Cost),
+		ResetAt: query.ResetAt.UTC(), TakenAt: w.now,
 	}
 }
 
 // restSnapshot builds a snapshot row from a REST budget.
-func (w *writer) restSnapshot(resource string, r github.Rate) model.RateSnapshot {
-	return model.RateSnapshot{
-		AccountID: w.accountID, Resource: resource, LimitTotal: r.Limit, Remaining: r.Remaining,
-		Used: r.Used, ResetAt: r.ResetAt.UTC(), TakenAt: w.now,
+func (w *writer) restSnapshot(resource string, r github.Rate) queries.InsertRateParams {
+	return queries.InsertRateParams{
+		AccountID: w.accountID, Resource: resource, LimitTotal: int64(r.Limit), Remaining: int64(r.Remaining),
+		Used: int64(r.Used), ResetAt: r.ResetAt.UTC(), TakenAt: w.now,
 	}
 }
 
-// pref is one key/value pair for the prefs table.
-type pref struct {
-	key, value string
-}
-
-// listedNodeIDsSQL reads the node IDs of the signed-in account's listed items, newest
-// activity first.
-const listedNodeIDsSQL = `SELECT i.node_id
-FROM items i
-JOIN accounts a ON a.id = i.account_id
-WHERE a.login = (SELECT value FROM prefs WHERE key = ?)
-  AND i.node_id <> ''
-  AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1)
-ORDER BY i.item_updated_at DESC, i.id DESC`
-
 // listedNodeIDs returns the node IDs of the items the last refresh listed.
-func listedNodeIDs(db *gorm.DB) ([]string, error) {
-	var ids []string
-	if err := db.Raw(listedNodeIDsSQL, prefViewer).Scan(&ids).Error; err != nil {
+func (s *Service) listedNodeIDs(ctx context.Context) ([]string, error) {
+	viewer, _, err := s.prefs.Get(ctx, prefViewer)
+	if err != nil {
+		return nil, fmt.Errorf("read the listed items: %w", err)
+	}
+
+	ids, err := s.q.ListListedNodeIDs(ctx, viewer)
+	if err != nil {
 		return nil, fmt.Errorf("read the listed items: %w", err)
 	}
 
 	return ids, nil
 }
 
-// setPrefs upserts prefs, in order.
-func setPrefs(db *gorm.DB, now time.Time, prefs []pref) error {
-	for _, p := range prefs {
-		if err := db.Exec(upsertPrefSQL, p.key, p.value, now).Error; err != nil {
-			return fmt.Errorf("save the %s pref: %w", p.key, err)
-		}
-	}
-
-	return nil
-}
-
-// readPrefs returns the inbox status prefs that are set.
-func readPrefs(db *gorm.DB) (map[string]string, error) {
-	keys := []string{
+// readStatus returns the stored inbox status, and the settings the inbox reads with it,
+// that are set.
+func readStatus(ctx context.Context, p *prefs.Store) (map[string]string, error) {
+	status, err := p.GetMany(ctx,
 		prefViewer, prefViewerName, prefViewerURL, prefViewerAvatarURL, prefAvatar, prefAvatarSource,
 		prefTotalReviewRequested, prefTotalAuthored, prefTotalAssigned,
 		prefLastRefreshAt, prefLastError, prefScopeWarning, trust.PrefBots,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns,
-	}
-
-	var rows []struct {
-		Key   string `gorm:"column:key"`
-		Value string `gorm:"column:value"`
-	}
-
-	if err := db.Raw("SELECT key, value FROM prefs WHERE key IN ?", keys).Scan(&rows).Error; err != nil {
+	)
+	if err != nil {
 		return nil, fmt.Errorf("read the inbox status: %w", err)
 	}
 
-	prefs := make(map[string]string, len(rows))
-	for _, r := range rows {
-		prefs[r.Key] = r.Value
-	}
-
-	return prefs, nil
-}
-
-// ViewerLogin returns the signed-in account's login as the last refresh recorded it, or ""
-// before the first refresh.
-func ViewerLogin(ctx context.Context, db *gorm.DB) (string, error) {
-	var values []string
-	if err := db.WithContext(ctx).Raw("SELECT value FROM prefs WHERE key = ?", prefViewer).Scan(&values).Error; err != nil {
-		return "", fmt.Errorf("read the signed-in account: %w", err)
-	}
-
-	if len(values) == 0 {
-		return "", nil
-	}
-
-	return values[0], nil
+	return status, nil
 }

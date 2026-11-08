@@ -1,14 +1,12 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
+import type { Settings, Theme } from '../platform'
+import { platform } from '../test/platform'
+import type { Result } from './call'
 import { useTheme } from './useTheme'
 
-const platform = vi.hoisted(() => ({
-  getTheme: vi.fn<() => Promise<string>>(),
-  setTheme: vi.fn<(theme: string) => Promise<void>>(),
-}))
-
-vi.mock('../platform', () => platform)
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 // deferred is a promise the test settles.
 function deferred<T>() {
@@ -57,14 +55,9 @@ function fakeWindow(dark = false) {
   }
 }
 
-beforeEach(() => {
-  platform.getTheme.mockReset().mockResolvedValue('system')
-  platform.setTheme.mockReset().mockResolvedValue(undefined)
-})
-
 describe('useTheme', () => {
   it('pins the appearance before the stored theme loads, without a cross-fade', async () => {
-    const stored = deferred<string>()
+    const stored = deferred<Theme>()
     platform.getTheme.mockReturnValue(stored.promise)
     const appearance = fakeWindow(true)
 
@@ -124,8 +117,12 @@ describe('useTheme', () => {
       expect(platform.getTheme).toHaveBeenCalledOnce()
     })
 
-    await act(() => result.current.chooseTheme('dark'))
+    let stored: Result<void> | undefined
+    await act(async () => {
+      stored = await result.current.chooseTheme('dark')
+    })
 
+    expect(stored).toEqual({ ok: true, data: undefined })
     expect(result.current.theme).toBe('dark')
     expect(appearance.root.dataset.theme).toBe('dark')
     expect(appearance.root.style.colorScheme).toBe('dark')
@@ -142,30 +139,30 @@ describe('useTheme', () => {
       expect(result.current.theme).toBe('light')
     })
 
-    let failure: unknown
+    let failure: Result<void> | undefined
     await act(async () => {
-      failure = await result.current.chooseTheme('dark').catch((err: unknown) => err)
+      failure = await result.current.chooseTheme('dark')
     })
 
-    expect(failure).toEqual(new Error('database is locked'))
+    expect(failure).toEqual({ ok: false, error: 'database is locked' })
     expect(result.current.theme).toBe('light')
     expect(appearance.root.dataset.theme).toBe('light')
   })
 
   it('keeps a newer choice when an older one fails to store, and stores them in order', async () => {
-    const first = deferred<undefined>()
-    platform.setTheme.mockReturnValueOnce(first.promise).mockResolvedValueOnce(undefined)
+    const first = deferred<Settings>()
+    platform.setTheme.mockReturnValueOnce(first.promise)
     const appearance = fakeWindow(false)
     const { result } = renderHook(() => useTheme(appearance.win))
     await waitFor(() => {
       expect(platform.getTheme).toHaveBeenCalledOnce()
     })
 
-    let dark: Promise<void> = Promise.resolve()
+    let dark: Promise<Result<void>> | undefined
     act(() => {
       dark = result.current.chooseTheme('dark')
     })
-    let light: Promise<void> = Promise.resolve()
+    let light: Promise<Result<void>> | undefined
     act(() => {
       light = result.current.chooseTheme('light')
     })
@@ -179,8 +176,8 @@ describe('useTheme', () => {
 
     await act(async () => {
       first.reject(new Error('database is locked'))
-      await expect(dark).rejects.toThrow('database is locked')
-      await light
+      expect(await dark).toEqual({ ok: false, error: 'database is locked' })
+      expect(await light).toEqual({ ok: true, data: undefined })
     })
 
     expect(platform.setTheme).toHaveBeenLastCalledWith('light')
@@ -189,7 +186,7 @@ describe('useTheme', () => {
   })
 
   it('never lets a stored theme that loads late override a choice', async () => {
-    const stored = deferred<string>()
+    const stored = deferred<Theme>()
     platform.getTheme.mockReturnValue(stored.promise)
     const appearance = fakeWindow(false)
     const { result } = renderHook(() => useTheme(appearance.win))
@@ -201,18 +198,6 @@ describe('useTheme', () => {
     })
 
     expect(result.current.theme).toBe('dark')
-    expect(appearance.root.dataset.theme).toBe('dark')
-  })
-
-  it('takes an unknown stored theme for System', async () => {
-    platform.getTheme.mockResolvedValue('sepia')
-    const appearance = fakeWindow(true)
-    const { result } = renderHook(() => useTheme(appearance.win))
-    await waitFor(() => {
-      expect(platform.getTheme).toHaveBeenCalledOnce()
-    })
-
-    expect(result.current.theme).toBe('system')
     expect(appearance.root.dataset.theme).toBe('dark')
   })
 

@@ -1,70 +1,55 @@
 package localrepos
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/paths"
+	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 const (
-	exampleOwner    = "acme-org"
-	exampleName     = "example-repo"
-	exampleHTTPS    = "https://github.com/acme-org/example-repo.git"
-	exampleRepoSlug = "acme-org/example-repo"
+	exampleOwner = "acme-org"
+	exampleName  = "example-repo"
+	exampleHTTPS = "https://github.com/acme-org/example-repo.git"
 )
+
+// exampleRepo is the repository the example remotes point at.
+func exampleRepo() repo.Name {
+	return repo.Name{Owner: exampleOwner, Repo: exampleName}
+}
 
 var errFakeLaunch = errors.New("fake: cannot start git")
 
-// isolateGit keeps the user's and the system's git configuration out of the test.
-func isolateGit(t *testing.T) {
+// isolatedGit returns a runner for real git that reads none of the user's or the
+// system's configuration, which could list remotes of its own. It isolates git through
+// the runner's environment, not the process's, so the test can run in parallel.
+func isolatedGit(t *testing.T) execpath.Runner {
 	t.Helper()
 
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git is not installed")
-	}
-
-	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
-	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
-	t.Setenv("GIT_AUTHOR_NAME", "Octo User")
-	t.Setenv("GIT_AUTHOR_EMAIL", "octo-user@example.com")
-	t.Setenv("GIT_COMMITTER_NAME", "Octo User")
-	t.Setenv("GIT_COMMITTER_EMAIL", "octo-user@example.com")
-}
-
-// git runs a git command in the test and fails on error.
-func git(t *testing.T, args ...string) {
-	t.Helper()
-
-	out, err := exec.CommandContext(t.Context(), "git", args...).CombinedOutput() //nolint:gosec // test fixture setup with fixed arguments
-	require.NoError(t, err, "git %s: %s", strings.Join(args, " "), out)
+	return execpath.Exec{Env: testutil.Git(t)}
 }
 
 // initRepo creates a git repository at dir with the given remotes (name, url pairs).
 func initRepo(t *testing.T, dir string, remotes ...string) {
 	t.Helper()
 
-	git(t, "-c", "init.defaultBranch=main", "init", "-q", dir)
+	testutil.InitRepo(t, dir)
 
 	for i := 0; i+1 < len(remotes); i += 2 {
-		git(t, "-C", dir, "remote", "add", remotes[i], remotes[i+1])
+		testutil.RunGit(t, dir, "remote", "add", remotes[i], remotes[i+1])
 	}
-}
-
-// realGit runs the real git binary.
-func realGit() Runner {
-	return execpath.Runner{}
 }
 
 // exitError is a fake process exit with a status.
@@ -74,46 +59,34 @@ func (e exitError) Error() string { return fmt.Sprintf("exit status %d", e.code)
 
 func (e exitError) ExitCode() int { return e.code }
 
-// recordingGit records every call and answers with fixed output or error.
-type recordingGit struct {
-	mu     sync.Mutex
-	calls  [][]string
-	stdout string
-	err    error
-}
-
-func (g *recordingGit) Run(_ context.Context, name string, args ...string) (stdout, stderr []byte, err error) {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-
-	g.calls = append(g.calls, append([]string{name}, args...))
-
-	return []byte(g.stdout), nil, g.err
-}
-
 func TestParseRemoteURL(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		raw   string
-		owner string
-		name  string
-		ok    bool
+		raw  string
+		want repo.Name
+		ok   bool
 	}{
-		{raw: exampleHTTPS, owner: exampleOwner, name: exampleName, ok: true},
-		{raw: "https://github.com/acme-org/example-repo", owner: exampleOwner, name: exampleName, ok: true},
-		{raw: "https://github.com/acme-org/example-repo/", owner: exampleOwner, name: exampleName, ok: true},
-		{raw: "https://github.com/acme-org/example-repo.git/", owner: exampleOwner, name: exampleName, ok: true},
-		{raw: "  https://github.com/acme-org/example-repo.git\n", owner: exampleOwner, name: exampleName, ok: true},
-		{raw: "HTTPS://GitHub.COM/Acme-Org/Example-Repo.GIT", owner: exampleOwner, name: exampleName, ok: true},
-		{raw: "https://octo-user@github.com/acme-org/example-repo.git", owner: exampleOwner, name: exampleName, ok: true},
-		{raw: "http://github.com/acme-org/example-repo", owner: exampleOwner, name: exampleName, ok: true},
-		{raw: "https://www.github.com/acme-org/example-repo", owner: exampleOwner, name: exampleName, ok: true},
-		{raw: "ssh://git@github.com/acme-org/example-repo.git", owner: exampleOwner, name: exampleName, ok: true},
-		{raw: "ssh://git@ssh.github.com:443/acme-org/example-repo.git", owner: exampleOwner, name: exampleName, ok: true},
-		{raw: "git://github.com/acme-org/example-repo.git", owner: exampleOwner, name: exampleName, ok: true},
-		{raw: "git@github.com:acme-org/example-repo.git", owner: exampleOwner, name: exampleName, ok: true},
-		{raw: "git@github.com:acme-org/example-repo", owner: exampleOwner, name: exampleName, ok: true},
-		{raw: "git@github.com:/acme-org/example-repo.git/", owner: exampleOwner, name: exampleName, ok: true},
-		{raw: "github.com:Acme-Org/Example.Repo_2.git", owner: "acme-org", name: "example.repo_2", ok: true},
+		{raw: exampleHTTPS, want: exampleRepo(), ok: true},
+		{raw: "https://github.com/acme-org/example-repo", want: exampleRepo(), ok: true},
+		{raw: "https://github.com/acme-org/example-repo/", want: exampleRepo(), ok: true},
+		{raw: "https://github.com/acme-org/example-repo.git/", want: exampleRepo(), ok: true},
+		{raw: "  https://github.com/acme-org/example-repo.git\n", want: exampleRepo(), ok: true},
+		{raw: "HTTPS://GitHub.COM/Acme-Org/Example-Repo.GIT", want: repo.Name{Owner: "Acme-Org", Repo: "Example-Repo"}, ok: true},
+		{raw: "https://octo-user@github.com/acme-org/example-repo.git", want: exampleRepo(), ok: true},
+		{raw: "http://github.com/acme-org/example-repo", want: exampleRepo(), ok: true},
+		{raw: "https://www.github.com/acme-org/example-repo", want: exampleRepo(), ok: true},
+		{raw: "ssh://git@github.com/acme-org/example-repo.git", want: exampleRepo(), ok: true},
+		{raw: "ssh://git@ssh.github.com:443/acme-org/example-repo.git", want: exampleRepo(), ok: true},
+		{raw: "git://github.com/acme-org/example-repo.git", want: exampleRepo(), ok: true},
+		{raw: "git@github.com:acme-org/example-repo.git", want: exampleRepo(), ok: true},
+		{raw: "git@github.com:acme-org/example-repo", want: exampleRepo(), ok: true},
+		{raw: "git@github.com:/acme-org/example-repo.git/", want: exampleRepo(), ok: true},
+		{raw: "github.com:Acme-Org/Example.Repo_2.git", want: repo.Name{Owner: "Acme-Org", Repo: "Example.Repo_2"}, ok: true},
+		{raw: "https://github.com/octo_acme/example-repo", want: repo.Name{Owner: "octo_acme", Repo: "example-repo"}, ok: true},
+		{raw: "https://github.com/acme.org/example-repo"},
+		{raw: "https://github.com/-acme/example-repo"},
+		{raw: "https://github.com/acme-org/-example-repo"},
 		{raw: "https://gitlab.com/acme-org/example-repo.git"},
 		{raw: "git@gitlab.com:acme-org/example-repo.git"},
 		{raw: "https://github.com/acme-org"},
@@ -131,15 +104,18 @@ func TestParseRemoteURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.raw, func(t *testing.T) {
-			owner, name, ok := ParseRemoteURL(tt.raw)
+			t.Parallel()
+
+			got, ok := parseRemoteURL(tt.raw)
 			assert.Equal(t, tt.ok, ok)
-			assert.Equal(t, tt.owner, owner)
-			assert.Equal(t, tt.name, name)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
 func TestParseRemotes(t *testing.T) {
+	t.Parallel()
+
 	out := strings.Join([]string{
 		"remote.origin.url " + exampleHTTPS,
 		"remote.origin.url https://github.com/acme-org/second-url.git",
@@ -152,15 +128,17 @@ func TestParseRemotes(t *testing.T) {
 		"",
 	}, "\n")
 
-	assert.Equal(t, map[string]string{
-		"origin":   exampleRepoSlug,
-		"my.fork":  "octo-user/example-repo",
-		"Upstream": exampleRepoSlug,
+	assert.Equal(t, map[string]repo.Name{
+		"origin":   exampleRepo(),
+		"my.fork":  {Owner: "octo-user", Repo: exampleName},
+		"Upstream": {Owner: "Acme-Org", Repo: "Example-Repo"},
 	}, parseRemotes(out))
 }
 
 func TestScanFindsReposOneLevelDeep(t *testing.T) {
-	isolateGit(t)
+	t.Parallel()
+
+	git := isolatedGit(t)
 
 	root := t.TempDir()
 	initRepo(t, filepath.Join(root, "alpha"), "origin", exampleHTTPS, "upstream", "git@github.com:octo-user/example-repo.git")
@@ -175,40 +153,46 @@ func TestScanFindsReposOneLevelDeep(t *testing.T) {
 	require.NoError(t, os.Symlink(outside, filepath.Join(root, "linked")))
 	require.NoError(t, os.Symlink(filepath.Join(root, "missing"), filepath.Join(root, "dangling")))
 
-	repos, err := Scan(t.Context(), root, realGit())
+	repos, err := Scan(t.Context(), root, git)
 	require.NoError(t, err)
 
 	assert.Equal(t, []LocalRepo{
-		{Path: filepath.Join(root, "alpha"), Remotes: map[string]string{
-			"origin":   exampleRepoSlug,
-			"upstream": "octo-user/example-repo",
+		{Path: filepath.Join(root, "alpha"), Remotes: map[string]repo.Name{
+			"origin":   exampleRepo(),
+			"upstream": {Owner: "octo-user", Repo: exampleName},
 		}},
-		{Path: filepath.Join(root, "beta"), Remotes: map[string]string{}},
-		{Path: filepath.Join(root, "linked"), Remotes: map[string]string{"origin": "acme-org/linked-repo"}},
+		{Path: filepath.Join(root, "beta"), Remotes: map[string]repo.Name{}},
+		{Path: filepath.Join(root, "linked"), Remotes: map[string]repo.Name{"origin": {Owner: exampleOwner, Repo: "linked-repo"}}},
 	}, repos)
 }
 
 func TestScanRunsReadOnlyGitArgv(t *testing.T) {
-	root := t.TempDir()
-	repo := filepath.Join(root, "example-repo")
-	require.NoError(t, os.MkdirAll(filepath.Join(repo, ".git"), 0o700))
+	t.Parallel()
 
-	fake := &recordingGit{stdout: "remote.origin.url " + exampleHTTPS + "\n"}
+	root := t.TempDir()
+	dir := filepath.Join(root, "example-repo")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o700))
+
+	fake := &testutil.Runner{Stdout: "remote.origin.url " + exampleHTTPS + "\n"}
 
 	repos, err := Scan(t.Context(), root, fake)
 	require.NoError(t, err)
 	require.Len(t, repos, 1)
-	assert.Equal(t, map[string]string{"origin": exampleRepoSlug}, repos[0].Remotes)
-	assert.Equal(t, [][]string{{"git", "-C", repo, "config", "--get-regexp", `^remote\..*\.url$`}}, fake.calls)
+	assert.Equal(t, map[string]repo.Name{"origin": exampleRepo()}, repos[0].Remotes)
+	assert.Equal(t, [][]string{{"git", "-C", dir, "config", "--get-regexp", `^remote\..*\.url$`}}, fake.Calls())
 }
 
 func TestScanToleratesGitExitStatus(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "example-repo", ".git"), 0o700))
 
 	for _, code := range []int{1, 128} {
 		t.Run(fmt.Sprint(code), func(t *testing.T) {
-			repos, err := Scan(t.Context(), root, &recordingGit{err: exitError{code: code}})
+			t.Parallel()
+
+			repos, err := Scan(t.Context(), root, &testutil.Runner{Err: exitError{code: code}})
 			require.NoError(t, err)
 			require.Len(t, repos, 1)
 			assert.Empty(t, repos[0].Remotes)
@@ -217,58 +201,68 @@ func TestScanToleratesGitExitStatus(t *testing.T) {
 }
 
 func TestScanFailsWhenGitCannotRun(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "example-repo", ".git"), 0o700))
 
-	_, err := Scan(t.Context(), root, &recordingGit{err: errFakeLaunch})
+	_, err := Scan(t.Context(), root, &testutil.Runner{Err: errFakeLaunch})
 	require.ErrorIs(t, err, errFakeLaunch)
 
-	_, err = Scan(t.Context(), root, &recordingGit{err: exitError{code: -1}})
+	_, err = Scan(t.Context(), root, &testutil.Runner{Err: exitError{code: -1}})
 	require.Error(t, err)
 }
 
 func TestScanMissingRoot(t *testing.T) {
-	_, err := Scan(t.Context(), filepath.Join(t.TempDir(), "missing"), &recordingGit{})
+	t.Parallel()
+
+	_, err := Scan(t.Context(), filepath.Join(t.TempDir(), "missing"), &testutil.Runner{})
 	require.ErrorIs(t, err, fs.ErrNotExist)
 }
 
 func TestScanEmptyRoot(t *testing.T) {
-	repos, err := Scan(t.Context(), t.TempDir(), &recordingGit{})
+	t.Parallel()
+
+	repos, err := Scan(t.Context(), t.TempDir(), &testutil.Runner{})
 	require.NoError(t, err)
 	assert.Empty(t, repos)
 }
 
 func TestResolvePrefersOrigin(t *testing.T) {
-	isolateGit(t)
+	t.Parallel()
+
+	git := isolatedGit(t)
 
 	home := t.TempDir()
 	root := filepath.Join(home, "projects")
 	initRepo(t, filepath.Join(root, "a-fork"), "origin", "git@github.com:octo-user/example-repo.git", "upstream", exampleHTTPS)
 	initRepo(t, filepath.Join(root, "z-main"), "origin", exampleHTTPS)
 
-	r := Resolver{Root: "~/projects", Home: home, Git: realGit()}
+	r := Resolver{Root: "~/projects", Home: home, Git: git}
 
-	got, err := r.Resolve(t.Context(), "Acme-Org", "Example-Repo")
+	got, err := r.Resolve(t.Context(), repo.Name{Owner: "Acme-Org", Repo: "Example-Repo"})
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(root, "z-main"), got.Repo.Path)
 	assert.Equal(t, "origin", got.MatchedRemote)
 	assert.True(t, got.OriginMatched())
 
-	fork, err := r.Resolve(t.Context(), "octo-user", "example-repo")
+	fork, err := r.Resolve(t.Context(), repo.Name{Owner: "octo-user", Repo: exampleName})
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(root, "a-fork"), fork.Repo.Path)
 	assert.True(t, fork.OriginMatched())
 }
 
 func TestResolveFallsBackToOtherRemote(t *testing.T) {
-	isolateGit(t)
+	t.Parallel()
+
+	git := isolatedGit(t)
 
 	home := t.TempDir()
 	root := filepath.Join(home, "projects")
 	initRepo(t, filepath.Join(root, "b-fork"), "origin", "git@github.com:octo-user/example-repo.git", "upstream", exampleHTTPS)
 	initRepo(t, filepath.Join(root, "c-fork"), "origin", "git@github.com:octo-user/example-repo.git", "acme", exampleHTTPS)
 
-	got, err := Resolver{Root: root, Home: home, Git: realGit()}.Resolve(t.Context(), exampleOwner, exampleName)
+	got, err := Resolver{Root: root, Home: home, Git: git}.Resolve(t.Context(), exampleRepo())
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(root, "b-fork"), got.Repo.Path)
 	assert.Equal(t, "upstream", got.MatchedRemote)
@@ -276,114 +270,88 @@ func TestResolveFallsBackToOtherRemote(t *testing.T) {
 }
 
 func TestResolveUnknownRepoError(t *testing.T) {
-	isolateGit(t)
+	t.Parallel()
+
+	git := isolatedGit(t)
 
 	home := t.TempDir()
 	initRepo(t, filepath.Join(home, "projects", "example-repo"), "origin", exampleHTTPS)
 
-	_, err := Resolver{Root: "~/projects", Home: home, Git: realGit()}.Resolve(t.Context(), "acme-org", "missing-repo")
+	_, err := Resolver{Root: "~/projects", Home: home, Git: git}.Resolve(t.Context(), repo.Name{Owner: exampleOwner, Repo: "missing-repo"})
 	require.ErrorIs(t, err, ErrCloneNotFound)
 	assert.Equal(t, "no local clone of acme-org/missing-repo under ~/projects", err.Error())
 }
 
 func TestResolveRootErrors(t *testing.T) {
-	_, err := Resolver{Root: "", Git: &recordingGit{}}.Resolve(t.Context(), exampleOwner, exampleName)
-	require.ErrorIs(t, err, ErrEmptyRoot)
+	t.Parallel()
 
-	_, err = Resolver{Root: filepath.Join(t.TempDir(), "missing"), Git: &recordingGit{}}.Resolve(t.Context(), exampleOwner, exampleName)
+	_, err := Resolver{Root: "", Git: &testutil.Runner{}}.Resolve(t.Context(), exampleRepo())
+	require.ErrorIs(t, err, paths.ErrEmpty)
+
+	_, err = Resolver{Root: filepath.Join(t.TempDir(), "missing"), Git: &testutil.Runner{}}.Resolve(t.Context(), exampleRepo())
 	require.ErrorIs(t, err, fs.ErrNotExist)
 }
 
 func TestRemoteFor(t *testing.T) {
-	repo := LocalRepo{Remotes: map[string]string{
-		"zeta":   exampleRepoSlug,
-		"beta":   exampleRepoSlug,
-		"origin": "octo-user/example-repo",
+	t.Parallel()
+
+	clone := LocalRepo{Remotes: map[string]repo.Name{
+		"zeta":   exampleRepo(),
+		"beta":   exampleRepo(),
+		"origin": {Owner: "octo-user", Repo: exampleName},
 	}}
 
-	remote, ok := repo.RemoteFor("ACME-ORG", "example-repo")
+	remote, ok := clone.RemoteFor(repo.Name{Owner: "ACME-ORG", Repo: exampleName})
 	assert.True(t, ok)
 	assert.Equal(t, "beta", remote)
 
-	remote, ok = repo.RemoteFor("octo-user", "example-repo")
+	remote, ok = clone.RemoteFor(repo.Name{Owner: "octo-user", Repo: exampleName})
 	assert.True(t, ok)
 	assert.Equal(t, "origin", remote)
 
-	_, ok = repo.RemoteFor("acme-org", "other-repo")
+	_, ok = clone.RemoteFor(repo.Name{Owner: exampleOwner, Repo: "other-repo"})
 	assert.False(t, ok)
 }
 
 func TestInspect(t *testing.T) {
-	isolateGit(t)
+	t.Parallel()
+
+	git := isolatedGit(t)
 
 	dir := filepath.Join(t.TempDir(), "example-repo")
 	initRepo(t, dir, "origin", exampleHTTPS)
 
-	got, err := Inspect(t.Context(), dir, realGit())
+	got, err := Inspect(t.Context(), dir, git)
 	require.NoError(t, err)
-	assert.Equal(t, LocalRepo{Path: dir, Remotes: map[string]string{"origin": exampleRepoSlug}}, got)
+	assert.Equal(t, LocalRepo{Path: dir, Remotes: map[string]repo.Name{"origin": exampleRepo()}}, got)
 
-	_, err = Inspect(t.Context(), t.TempDir(), realGit())
+	_, err = Inspect(t.Context(), t.TempDir(), git)
 	require.ErrorIs(t, err, ErrNotARepo)
 
-	_, err = Inspect(t.Context(), dir, &recordingGit{err: errFakeLaunch})
+	_, err = Inspect(t.Context(), dir, &testutil.Runner{Err: errFakeLaunch})
 	require.ErrorIs(t, err, errFakeLaunch)
 }
 
-func TestExpandRoot(t *testing.T) {
-	home := filepath.Join(string(filepath.Separator)+"home", "octo-user")
-	abs := filepath.Join(string(filepath.Separator)+"srv", "clones")
+func TestClonesListsReposAndStopsWhenAsked(t *testing.T) {
+	t.Parallel()
 
-	tests := []struct {
-		name    string
-		root    string
-		home    string
-		want    string
-		wantErr error
-	}{
-		{name: "tilde path", root: "~/projects", home: home, want: filepath.Join(home, "projects")},
-		{name: "tilde path with trailing slash", root: " ~/projects/ ", home: home, want: filepath.Join(home, "projects")},
-		{name: "tilde alone", root: "~", home: home, want: home},
-		{name: "absolute", root: abs + string(filepath.Separator), home: home, want: abs},
-		{name: "absolute without home", root: abs, want: abs},
-		{name: "empty", root: "  ", home: home, wantErr: ErrEmptyRoot},
-		{name: "tilde without home", root: "~/projects", wantErr: ErrNoHome},
-		{name: "relative", root: "projects", home: home, wantErr: ErrRelativeRoot},
-		{name: "other user's tilde", root: "~octo-user/projects", home: home, wantErr: ErrRelativeRoot},
+	root := t.TempDir()
+	for _, name := range []string{"alpha", "beta", ".hidden"} {
+		require.NoError(t, os.MkdirAll(filepath.Join(root, name, ".git"), 0o700))
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := ExpandRoot(tt.root, tt.home)
-			if tt.wantErr != nil {
-				require.ErrorIs(t, err, tt.wantErr)
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "plain-dir"), 0o700))
 
-				return
-			}
+	clones, err := Clones(root)
+	require.NoError(t, err)
+	assert.Equal(t, []string{filepath.Join(root, "alpha"), filepath.Join(root, "beta")}, slices.Collect(clones))
 
-			require.NoError(t, err)
-			assert.Equal(t, tt.want, got)
-		})
-	}
-}
+	for dir := range clones {
+		assert.Equal(t, filepath.Join(root, "alpha"), dir)
 
-func TestTildePath(t *testing.T) {
-	home := filepath.Join(string(filepath.Separator)+"home", "octo-user")
-	other := filepath.Join(string(filepath.Separator)+"srv", "clones")
-
-	assert.Equal(t, "~/projects/example-repo", TildePath(filepath.Join(home, "projects", "example-repo"), home))
-	assert.Equal(t, "~", TildePath(home, home))
-	assert.Equal(t, other, TildePath(other, home))
-	assert.Equal(t, home+"-other", TildePath(home+"-other", home))
-	assert.Equal(t, other, TildePath(other, ""))
-}
-
-func TestValidName(t *testing.T) {
-	for _, s := range []string{"acme-org", "example-repo", "example_repo", "example.repo", ".github", "a", "Repo-2"} {
-		assert.True(t, ValidName(s), s)
+		break
 	}
 
-	for _, s := range []string{"", ".", "..", "acme/org", `acme\org`, "acme org", "acme~", "repo$", "ré"} {
-		assert.False(t, ValidName(s), s)
-	}
+	_, err = Clones(filepath.Join(root, "missing"))
+	require.ErrorIs(t, err, fs.ErrNotExist)
 }

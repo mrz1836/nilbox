@@ -1,28 +1,53 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Activity, lazy, Suspense, useEffect, useEffectEvent, useReducer, useRef, useState } from 'react'
 
 import { AppHeader, type View } from './components/AppHeader'
+import { DataResetNotice } from './components/DataResetNotice'
+import { ErrorBanner } from './components/ErrorBanner'
 import { InboxView, type LaunchOptions, type Reveal } from './components/InboxView'
-import { PromptsView } from './components/PromptsView'
-import { SettingsView, type SettingsSection } from './components/SettingsView'
+import type { SettingsSection } from './components/SettingsView'
 import { Toast, type ToastMessage } from './components/Toast'
-import { WorktreesView } from './components/WorktreesView'
-import { defaultSnoozeDays, findItem, inboxCount } from './lib/triage'
+import { defaultSnoozeDays, findItem } from './lib/triage'
 import { useCollapsedSections } from './lib/useCollapsedSections'
 import { useInbox } from './lib/useInbox'
 import { useLaunchConfig } from './lib/useLaunchConfig'
 import { useNotifications } from './lib/useNotifications'
+import { useQuery } from './lib/useQuery'
 import { useTheme } from './lib/useTheme'
+import { useTriage } from './lib/useTriage'
 import {
   lastWorktreeSweep,
-  onRevealItem,
-  onWorktreesUpdated,
-  openInBrowser,
+  on,
+  openExternal,
   type AppNotification,
   type InboxSnapshot,
   type RemoveResult,
   type Settings,
+  type SweepReport,
   type WorktreesSnapshot,
 } from './platform'
+
+// The pages besides the inbox load on their first visit, so the code the window runs
+// before its first paint is the inbox's alone. The inbox itself is never behind a lazy
+// boundary: main.tsx reports the first paint once it has rendered.
+const PromptsView = lazy(() => import('./components/PromptsView').then((m) => ({ default: m.PromptsView })))
+const SettingsView = lazy(() => import('./components/SettingsView').then((m) => ({ default: m.SettingsView })))
+const WorktreesView = lazy(() => import('./components/WorktreesView').then((m) => ({ default: m.WorktreesView })))
+
+// PageLoading stands in for a page while its code loads, the first time it opens.
+function PageLoading() {
+  return (
+    <p role="status" className="p-4 text-sm text-muted">
+      Loading…
+    </p>
+  )
+}
+
+// inboxKey is the part of the settings the stored inbox shows (internal/inbox's
+// settingsKey): the trusted bots decide each card's trust, and the sensitive-file
+// settings what each card points out.
+function inboxKey(settings: Settings): string {
+  return JSON.stringify([settings.trustedBots, settings.sensitiveFiles])
+}
 
 // cleanedToast tells what an automatic sweep cleaned up.
 function cleanedToast(seq: number, cleaned: readonly RemoveResult[]): ToastMessage {
@@ -40,58 +65,44 @@ function cleanedToast(seq: number, cleaned: readonly RemoveResult[]): ToastMessa
 // something (so an open Worktrees view lists again), and a toast for each sweep that
 // removed a worktree.
 function useWorktreeSweeps() {
-  const [count, setCount] = useState(0)
-  const [attention, setAttention] = useState(0)
-  const [seq, setSeq] = useState(0)
+  const sweep = useQuery(() => lastWorktreeSweep(), [], { log: 'could not read the latest worktree sweep' })
+  const readOnUpdate = useEffectEvent(() => {
+    void sweep.refetch()
+  })
+
+  useEffect(
+    () =>
+      on('worktrees:updated', () => {
+        readOnUpdate()
+      }),
+    [],
+  )
+
+  const [counts, setCounts] = useState({ count: 0, attention: 0 })
+  // reported is the latest sweep reported, so each one is reported once.
+  const [reported, setReported] = useState<SweepReport | null>(null)
   const [toast, setToast] = useState<ToastMessage | null>(null)
-  // seen is the latest sweep read, so each one is reported once.
-  const seen = useRef(0)
+  const report = sweep.data
 
-  useEffect(() => {
-    let active = true
+  if (report !== undefined && report.seq > (reported?.seq ?? 0)) {
+    setReported(report)
+    setCounts({ count: report.worktreeCount, attention: report.leftover })
 
-    const read = () => {
-      lastWorktreeSweep()
-        .then((report) => {
-          if (!active || report.seq <= seen.current) {
-            return
-          }
-
-          seen.current = report.seq
-          setCount(report.worktreeCount)
-          setAttention(report.leftover)
-          setSeq(report.seq)
-
-          const cleaned = report.cleaned ?? []
-          if (cleaned.length > 0) {
-            setToast(cleanedToast(report.seq, cleaned))
-          }
-        })
-        .catch((err: unknown) => {
-          console.error('could not read the latest worktree sweep', err)
-        })
+    if (report.cleaned.length > 0) {
+      setToast(cleanedToast(report.seq, report.cleaned))
     }
-
-    read()
-    const stop = onWorktreesUpdated(read)
-
-    return () => {
-      active = false
-      stop()
-    }
-  }, [])
+  }
 
   // listed counts from a listing of the Worktrees view, which sees the same worktrees.
-  const listed = useCallback((snapshot: WorktreesSnapshot) => {
-    setCount(snapshot.worktreeCount)
-    setAttention(snapshot.finishedCount + snapshot.reviewCount)
-  }, [])
+  const listed = (snapshot: WorktreesSnapshot) => {
+    setCounts({ count: snapshot.worktreeCount, attention: snapshot.finishedCount + snapshot.reviewCount })
+  }
 
-  const closeToast = useCallback(() => {
+  const closeToast = () => {
     setToast(null)
-  }, [])
+  }
 
-  return { count, attention, seq, toast, listed, closeToast }
+  return { ...counts, seq: reported?.seq ?? 0, toast, listed, closeToast }
 }
 
 // useReveal shows an item in the inbox when asked: by the menu bar, a notification, or an
@@ -100,166 +111,191 @@ function useWorktreeSweeps() {
 // follows; clear drops it once another view opens.
 function useReveal(snapshot: InboxSnapshot | null, openInbox: () => void) {
   const [reveal, setReveal] = useState<Reveal | null>(null)
-  const seq = useRef(0)
-  // latest is the snapshot as last shown, read when a request arrives.
-  const latest = useRef(snapshot)
+  // requests numbers the requests, so asking for the same item again shows it again.
+  const requests = useRef(0)
 
-  useEffect(() => {
-    latest.current = snapshot
-  }, [snapshot])
+  const show = (itemId: number, url: string) => {
+    if (itemId > 0 && snapshot !== null && findItem(snapshot, itemId) !== undefined) {
+      requests.current += 1
+      openInbox()
+      setReveal({ id: itemId, seq: requests.current })
 
-  const show = useCallback(
-    (itemId: number, url: string) => {
-      const current = latest.current
+      return
+    }
 
-      if (itemId > 0 && current !== null && findItem(current, itemId) !== undefined) {
-        seq.current += 1
-        openInbox()
-        setReveal({ id: itemId, seq: seq.current })
+    if (url !== '') {
+      openExternal(url)
+    }
+  }
 
-        return
-      }
-
-      if (url !== '') {
-        openInBrowser(url).catch((err: unknown) => {
-          console.error('could not open the item in the browser', err)
-        })
-      }
-    },
-    [openInbox],
-  )
+  // The menu bar's request is read against the inbox as shown when it arrives.
+  const showOnRequest = useEffectEvent((itemId: number, url: string) => {
+    show(itemId, url)
+  })
 
   useEffect(
     () =>
-      onRevealItem(({ itemId, url }) => {
-        show(itemId, url)
+      on('inbox:reveal', ({ itemId, url }) => {
+        showOnRequest(itemId, url)
       }),
-    [show],
+    [],
   )
 
-  const clear = useCallback(() => {
+  const clear = () => {
     setReveal(null)
-  }, [])
+  }
 
   return { reveal, show, clear }
 }
 
+// Nav is where the window is: the page it shows, and the pages visited so far, each of
+// which stays mounted once visited; where closing the settings goes back to; the section
+// the settings open at, with a count of their openings, so each opening turns to its
+// section; and whether the Worktrees view opens at its recently cleaned-up list, as a
+// cleanup toast's View asks.
+interface Nav {
+  view: View
+  visited: ReadonlySet<View>
+  returnView: View
+  settingsSection: SettingsSection
+  settingsOpened: number
+  historyFocus: boolean
+}
+
+type NavAction =
+  | { type: 'show'; view: View }
+  | { type: 'settings'; section: SettingsSection }
+  | { type: 'closeSettings' }
+  | { type: 'cleanups' }
+
+const startNav: Nav = {
+  view: 'inbox',
+  visited: new Set(['inbox']),
+  returnView: 'inbox',
+  settingsSection: 'account',
+  settingsOpened: 0,
+  historyFocus: false,
+}
+
+// visit shows a page, with any other change to where the window is.
+function visit(nav: Nav, view: View, change: Partial<Nav> = {}): Nav {
+  const visited = nav.visited.has(view) ? nav.visited : new Set([...nav.visited, view])
+
+  return { ...nav, ...change, view, visited }
+}
+
+// navigate moves the window: show opens a page (and drops the cleaned-up list's focus);
+// settings opens the settings at a section, remembering the page to go back to, unless
+// they are open already; closeSettings goes back; cleanups opens the Worktrees view at
+// its recently cleaned-up list.
+function navigate(nav: Nav, action: NavAction): Nav {
+  switch (action.type) {
+    case 'show':
+      return visit(nav, action.view, { historyFocus: false })
+    case 'settings':
+      return nav.view === 'settings'
+        ? nav
+        : visit(nav, 'settings', {
+            returnView: nav.view,
+            settingsSection: action.section,
+            settingsOpened: nav.settingsOpened + 1,
+          })
+    case 'closeSettings':
+      return visit(nav, nav.returnView)
+    case 'cleanups':
+      return visit(nav, 'worktrees', { historyFocus: true })
+  }
+}
+
 // App is the window's root: the toolbar over the active page. It holds the state the
-// pages share: the theme, the inbox (the lists, the account, and the API budget), the
-// launch configuration (settings, profiles, prompts, launch defaults, and each item's
-// resolved launch settings) that the rows, the Prompts page, and the settings page use,
-// which inbox lists are collapsed, the automatic worktree cleanup's latest news, the
-// notification history, and the item the menu bar or a notification last asked to show.
+// pages share: the theme, the inbox (the lists, the account, and the API budget) and its
+// triage, the launch configuration (settings, profiles, prompts, launch defaults, and
+// each item's resolved launch settings) that the rows, the Prompts page, and the settings
+// page use, which inbox lists are collapsed, the automatic worktree cleanup's latest
+// news, the notification history, and the item the menu bar or a notification last
+// asked to show.
+//
+// Each page stays mounted once visited, hidden while another shows (Activity), so it
+// comes back as it was left: a list's tab, an unsaved prompt draft. A hidden page runs no
+// effects, so its listeners stop and the worktrees are listed again each time their view
+// opens. The settings turn to the section asked for at every opening.
 export function App() {
   const theme = useTheme()
   const inbox = useInbox()
+  const triaged = useTriage(inbox.snapshot)
   const config = useLaunchConfig(inbox.snapshot)
   const sweeps = useWorktreeSweeps()
   const notifications = useNotifications()
-  // sections lives here rather than in the inbox page, so leaving the page and coming
-  // back keeps the lists as they were without reading them again.
+  // sections lives here rather than in the inbox page, so the lists stay as they were
+  // left without reading them again.
   const sections = useCollapsedSections()
-  const [view, setView] = useState<View>('inbox')
-  // returnView is where closing the settings page goes back to.
-  const [returnView, setReturnView] = useState<View>('inbox')
-  // settingsSection is the section the settings page opens at.
-  const [settingsSection, setSettingsSection] = useState<SettingsSection>('account')
-  // promptsOpened keeps the Prompts page mounted once opened, so an unsaved draft
-  // survives switching tabs.
-  const [promptsOpened, setPromptsOpened] = useState(false)
-  // historyFocus opens the Worktrees view at its recently cleaned-up list, as a cleanup
-  // toast's View asks; switching views clears it.
-  const [historyFocus, setHistoryFocus] = useState(false)
+  const [nav, go] = useReducer(navigate, startNav)
+  const { view } = nav
 
-  const openInbox = useCallback(() => {
-    setHistoryFocus(false)
-    setView('inbox')
-  }, [])
+  const openInbox = () => {
+    go({ type: 'show', view: 'inbox' })
+  }
   const revealer = useReveal(inbox.snapshot, openInbox)
-  const { clear: clearReveal } = revealer
+  const { clear: clearReveal, show: showItem } = revealer
 
-  const changeView = useCallback(
-    (next: View) => {
-      if (next === 'prompts') {
-        setPromptsOpened(true)
-      }
-
-      setHistoryFocus(false)
-      clearReveal()
-      setView(next)
-    },
-    [clearReveal],
-  )
+  const changeView = (next: View) => {
+    clearReveal()
+    go({ type: 'show', view: next })
+  }
 
   const { closeToast: closeSweepToast } = sweeps
 
   // viewCleanups opens the Worktrees view at the recently cleaned-up list.
-  const viewCleanups = useCallback(() => {
+  const viewCleanups = () => {
     closeSweepToast()
-    setHistoryFocus(true)
-    setView('worktrees')
-  }, [closeSweepToast])
+    go({ type: 'cleanups' })
+  }
 
   // sweepToast offers View on a cleanup toast, unless the Worktrees view is already open.
-  const sweepToast = useMemo(
-    () =>
-      sweeps.toast === null || view === 'worktrees'
-        ? sweeps.toast
-        : { ...sweeps.toast, action: { label: 'View', onClick: viewCleanups } },
-    [sweeps.toast, view, viewCleanups],
-  )
+  const sweepToast =
+    sweeps.toast === null || view === 'worktrees'
+      ? sweeps.toast
+      : { ...sweeps.toast, action: { label: 'View', onClick: viewCleanups } }
 
-  const openSettingsAt = useCallback(
-    (section: SettingsSection) => {
-      if (view !== 'settings') {
-        setSettingsSection(section)
-        setReturnView(view)
-        setView('settings')
-      }
-    },
-    [view],
-  )
-
-  const openSettings = useCallback(() => {
-    openSettingsAt('account')
-  }, [openSettingsAt])
+  const openSettings = () => {
+    go({ type: 'settings', section: 'account' })
+  }
 
   // openSnoozeSettings opens the setting for the Snooze button's length.
-  const openSnoozeSettings = useCallback(() => {
-    openSettingsAt('snoozing')
-  }, [openSettingsAt])
+  const openSnoozeSettings = () => {
+    go({ type: 'settings', section: 'snoozing' })
+  }
 
   // openFilesSettings opens what counts as a sensitive file.
-  const openFilesSettings = useCallback(() => {
-    openSettingsAt('files')
-  }, [openSettingsAt])
+  const openFilesSettings = () => {
+    go({ type: 'settings', section: 'files' })
+  }
 
   // openNotificationSettings opens the menu bar and notification settings.
-  const openNotificationSettings = useCallback(() => {
-    openSettingsAt('notifications')
-  }, [openSettingsAt])
-
-  const { show: showItem } = revealer
+  const openNotificationSettings = () => {
+    go({ type: 'settings', section: 'notifications' })
+  }
 
   // openNotification shows a history entry's item.
-  const openNotification = useCallback(
-    (entry: AppNotification) => {
-      showItem(entry.itemId, entry.url)
-    },
-    [showItem],
-  )
+  const openNotification = (entry: AppNotification) => {
+    showItem(entry.itemId, entry.url)
+  }
 
-  const closeSettings = useCallback(() => {
-    setView(returnView)
-  }, [returnView])
+  const closeSettings = () => {
+    go({ type: 'closeSettings' })
+  }
 
   // ⌘, opens the settings page, as in every Mac app.
+  const openSettingsOnKey = useEffectEvent((e: KeyboardEvent) => {
+    if (e.metaKey && e.key === ',') {
+      e.preventDefault()
+      openSettings()
+    }
+  })
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.metaKey && e.key === ',') {
-        e.preventDefault()
-        openSettings()
-      }
+      openSettingsOnKey(e)
     }
 
     document.addEventListener('keydown', onKeyDown)
@@ -267,46 +303,40 @@ export function App() {
     return () => {
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [openSettings])
+  }, [])
 
   const { reload, setSettings } = config
   const { reload: reloadInbox } = inbox
 
-  // saveSettings records changed settings: every row's launch settings resolve again, and
-  // the stored inbox is read again, since the trusted bots decide each card's trust and the
-  // sensitive-file settings what each card points out.
-  const saveSettings = useCallback(
-    (next: Settings) => {
-      setSettings(next)
+  // saveSettings records the settings a setter stored and returned. The stored inbox is
+  // read again only when a setting it shows changed.
+  const saveSettings = (next: Settings) => {
+    const was = config.settings
+
+    setSettings(next)
+
+    if (was === null || inboxKey(was) !== inboxKey(next)) {
       reloadInbox()
-    },
-    [setSettings, reloadInbox],
-  )
+    }
+  }
 
-  const openPrompts = useCallback(() => {
+  const openPrompts = () => {
     changeView('prompts')
-  }, [changeView])
+  }
 
-  const launch = useMemo<LaunchOptions | null>(
-    () =>
-      config.settings === null
-        ? null
-        : {
-            profiles: config.profiles,
-            prompts: config.prompts,
-            launchDefaults: config.launchDefaults,
-            resolutions: config.resolutions,
-            onDefaultsSaved: reload,
-            onManagePrompts: openPrompts,
-          },
-    [config.settings, config.profiles, config.prompts, config.launchDefaults, config.resolutions, reload, openPrompts],
-  )
+  const launch: LaunchOptions | null =
+    config.settings === null
+      ? null
+      : {
+          profiles: config.profiles,
+          prompts: config.prompts,
+          launchDefaults: config.launchDefaults,
+          onDefaultsSaved: reload,
+          onManagePrompts: openPrompts,
+        }
 
   const account = inbox.snapshot?.account ?? null
-  const inboxItems = useMemo(
-    () => (inbox.snapshot === null ? 0 : inboxCount(inbox.snapshot, inbox.now)),
-    [inbox.snapshot, inbox.now],
-  )
+  const mode = (page: View) => (view === page ? 'visible' : 'hidden')
 
   return (
     <div className="flex h-screen flex-col bg-background text-text">
@@ -315,8 +345,7 @@ export function App() {
         onViewChange={changeView}
         account={account}
         gauge={inbox.snapshot?.rate ?? null}
-        now={inbox.now}
-        inboxCount={inboxItems}
+        inboxCount={triaged?.count ?? 0}
         worktreeCount={sweeps.count}
         worktreeAttention={sweeps.attention}
         onOpenSettings={openSettings}
@@ -324,56 +353,68 @@ export function App() {
         onOpenNotification={openNotification}
         onNotificationSettings={openNotificationSettings}
       />
+      <DataResetNotice />
       {config.error !== '' && (
-        <p role="alert" className="mx-4 mt-4 rounded-md border border-danger px-3 py-2 text-sm text-danger">
-          Could not load the launch settings: {config.error}
-        </p>
+        <ErrorBanner className="mx-4 mt-4">Could not load the launch settings: {config.error}</ErrorBanner>
       )}
       <main className="min-h-0 flex-1 overflow-y-auto">
-        {/* Only the active page is mounted, so the worktrees are listed when that view opens.
-            The Prompts page stays mounted once opened, hidden, to keep an unsaved draft. */}
-        {view === 'inbox' && (
+        <Activity mode={mode('inbox')}>
           <InboxView
             inbox={inbox}
+            triaged={triaged}
             launch={launch}
+            resolutions={config.resolutions}
             snoozeDays={config.settings?.snoozeDays ?? defaultSnoozeDays}
             onSnoozeSettings={openSnoozeSettings}
             onFilesSettings={openFilesSettings}
             collapsed={sections.collapsed}
             onCollapse={sections.setCollapsed}
             reveal={revealer.reveal}
+            showing={view === 'inbox'}
           />
+        </Activity>
+        {nav.visited.has('worktrees') && (
+          <Activity mode={mode('worktrees')}>
+            <Suspense fallback={<PageLoading />}>
+              <WorktreesView reloadKey={sweeps.seq} onSnapshot={sweeps.listed} focusHistory={nav.historyFocus} />
+            </Suspense>
+          </Activity>
         )}
-        {view === 'worktrees' && (
-          <WorktreesView reloadKey={sweeps.seq} onSnapshot={sweeps.listed} focusHistory={historyFocus} />
+        {nav.visited.has('prompts') && (
+          <Activity mode={mode('prompts')}>
+            <Suspense fallback={<PageLoading />}>
+              <div className="h-full">
+                <PromptsView
+                  prompts={config.prompts}
+                  defaults={config.defaultPrompts}
+                  variables={config.variables}
+                  items={config.items}
+                  onChanged={reload}
+                />
+              </div>
+            </Suspense>
+          </Activity>
         )}
-        {promptsOpened && (
-          <div hidden={view !== 'prompts'} className="h-full">
-            <PromptsView
-              prompts={config.prompts}
-              defaults={config.defaultPrompts}
-              variables={config.variables}
-              items={config.items}
-              active={view === 'prompts'}
-              onChanged={reload}
-            />
-          </div>
-        )}
-        {view === 'settings' && (
-          <SettingsView
-            initialSection={settingsSection}
-            settings={config.settings}
-            profiles={config.profiles}
-            prompts={config.prompts}
-            defaultPrompts={config.defaultPrompts}
-            launchDefaults={config.launchDefaults}
-            account={account}
-            theme={theme.theme}
-            onThemeChange={theme.chooseTheme}
-            onSaved={saveSettings}
-            onLaunchChanged={reload}
-            onClose={closeSettings}
-          />
+        {nav.visited.has('settings') && (
+          <Activity mode={mode('settings')}>
+            <Suspense fallback={<PageLoading />}>
+              <SettingsView
+                initialSection={nav.settingsSection}
+                opened={nav.settingsOpened}
+                settings={config.settings}
+                profiles={config.profiles}
+                prompts={config.prompts}
+                defaultPrompts={config.defaultPrompts}
+                launchDefaults={config.launchDefaults}
+                account={account}
+                theme={theme.theme}
+                onThemeChange={theme.chooseTheme}
+                onSaved={saveSettings}
+                onLaunchChanged={reload}
+                onClose={closeSettings}
+              />
+            </Suspense>
+          </Activity>
         )}
       </main>
       <Toast toast={sweepToast} onClose={closeSweepToast} />

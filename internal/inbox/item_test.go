@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/snooze"
 )
 
@@ -23,7 +24,7 @@ func itemHarness(t *testing.T) (h *harness, id int64) {
 
 	snap := h.refresh(t)
 
-	h.clock.now = h.clock.now.Add(10 * time.Minute)
+	h.clock.Advance(10 * time.Minute)
 	h.client.detailsIDs = nil
 
 	return h, itemByNumber(t, snap.ReviewRequested, 1).ID
@@ -37,14 +38,16 @@ func itemRate() github.QueryRate {
 }
 
 func TestRefreshItemRewritesAnOpenItem(t *testing.T) {
+	t.Parallel()
+
 	h, id := itemHarness(t)
-	calls := h.notifier.calls
+	calls := h.events.Count()
 
 	now := pr(1, "OWNER", false)
 	now.State = github.StateOpen
 	now.Title = "Item 1, retitled"
 	now.IsDraft = true
-	now.UpdatedAt = h.clock.now
+	now.UpdatedAt = h.clock.Now()
 
 	details := prDetails()
 	details.Checks = github.Checks{State: "FAILURE", Passed: 10, Failed: 2}
@@ -75,10 +78,12 @@ func TestRefreshItemRewritesAnOpenItem(t *testing.T) {
 	assert.Equal(t, 1, snap.Rate.GraphQL.Cost)
 	assert.Equal(t, 4980, snap.Rate.Core.Remaining, "the REST budgets keep their readings")
 	assert.Equal(t, "2026-01-10T12:00:00Z", snap.LastRefreshedAt, "a single item is not a whole refresh")
-	assert.Equal(t, calls+1, h.notifier.calls)
+	assert.Equal(t, calls+1, h.events.Count())
 }
 
 func TestRefreshItemTakesAnItemThatIsNoLongerOpenOutOfTheLists(t *testing.T) {
+	t.Parallel()
+
 	merged := pr(1, "OWNER", false)
 	merged.State = github.StateMerged
 
@@ -101,6 +106,8 @@ func TestRefreshItemTakesAnItemThatIsNoLongerOpenOutOfTheLists(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			h, id := itemHarness(t)
 			tt.update.RateLimit = itemRate()
 			h.client.items = map[string]*github.ItemUpdate{nodeID(1): &tt.update}
@@ -117,6 +124,8 @@ func TestRefreshItemTakesAnItemThatIsNoLongerOpenOutOfTheLists(t *testing.T) {
 }
 
 func TestRefreshItemRecordsAnArchivedRepository(t *testing.T) {
+	t.Parallel()
+
 	h, id := itemHarness(t)
 
 	archived := pr(1, "OWNER", false)
@@ -130,6 +139,8 @@ func TestRefreshItemRecordsAnArchivedRepository(t *testing.T) {
 }
 
 func TestARefreshDoesNotBringBackAnItemMergedSinceIndexed(t *testing.T) {
+	t.Parallel()
+
 	h, id := itemHarness(t)
 
 	merged := pr(1, "OWNER", false)
@@ -151,12 +162,15 @@ func TestARefreshDoesNotBringBackAnItemMergedSinceIndexed(t *testing.T) {
 }
 
 func TestRefreshItemCanEndASnooze(t *testing.T) {
+	t.Parallel()
+
 	h, id, details := wakeHarness(t)
 
 	_, err := h.svc.Snooze(t.Context(), id, 3)
 	require.NoError(t, err)
 
-	h.clock.now = h.clock.now.Add(time.Hour)
+	h.clock.Advance(time.Hour)
+
 	details.Commits = 5
 	details.HeadOID = "2222222222222222222222222222222222222222"
 
@@ -174,6 +188,8 @@ func TestRefreshItemCanEndASnooze(t *testing.T) {
 }
 
 func TestRefreshItemFailuresKeepTheStoredInbox(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		id      func(id int64) int64
@@ -184,7 +200,7 @@ func TestRefreshItemFailuresKeepTheStoredInbox(t *testing.T) {
 			name:    "unknown item",
 			id:      func(id int64) int64 { return id + 100 },
 			prepare: func(*harness) {},
-			wantErr: ErrItemNotFound,
+			wantErr: item.ErrNotFound,
 		},
 		{
 			name:    "no token",
@@ -208,8 +224,10 @@ func TestRefreshItemFailuresKeepTheStoredInbox(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			h, id := itemHarness(t)
-			calls := h.notifier.calls
+			calls := h.events.Count()
 			tt.prepare(h)
 
 			_, err := h.svc.RefreshItem(t.Context(), tt.id(id))
@@ -221,23 +239,27 @@ func TestRefreshItemFailuresKeepTheStoredInbox(t *testing.T) {
 			assert.Empty(t, snap.LastError, "a single item's failure is not the inbox's last error")
 			assert.Equal(t, "Item 1", itemByNumber(t, snap.ReviewRequested, 1).Title)
 			assert.Equal(t, [3]bool{true, false, true}, h.reasons(t, 1))
-			assert.Equal(t, calls, h.notifier.calls)
+			assert.Equal(t, calls, h.events.Count())
 		})
 	}
 }
 
 func TestRefreshItemNeedsANodeID(t *testing.T) {
+	t.Parallel()
+
 	h, id := itemHarness(t)
-	require.NoError(t, h.db.Exec("UPDATE items SET node_id = '' WHERE id = ?", id).Error)
+	h.exec(t, "UPDATE items SET node_id = '' WHERE id = ?", id)
 
 	_, err := h.svc.RefreshItem(t.Context(), id)
-	require.ErrorIs(t, err, ErrItemNotFound)
+	require.ErrorIs(t, err, item.ErrNotFound)
 	assert.Empty(t, h.client.itemIDs, "GitHub was not asked")
 }
 
 func TestRefreshItemDatabaseErrors(t *testing.T) {
+	t.Parallel()
+
 	h, id := itemHarness(t)
-	require.NoError(t, h.db.Exec("DROP TABLE rate_snapshots").Error)
+	h.exec(t, "DROP TABLE rate_snapshots")
 
 	now := pr(1, "OWNER", false)
 	h.client.items = map[string]*github.ItemUpdate{nodeID(1): {Found: true, Item: now}}
@@ -251,14 +273,15 @@ func TestRefreshItemDatabaseErrors(t *testing.T) {
 func (h *harness) itemTitle(t *testing.T, id int64) string {
 	t.Helper()
 
-	var titles []string
-	require.NoError(t, h.db.Raw("SELECT title FROM items WHERE id = ?", id).Scan(&titles).Error)
+	titles := h.column(t, "SELECT title FROM items WHERE id = ?", id)
 	require.Len(t, titles, 1)
 
 	return titles[0]
 }
 
 func TestDropClosed(t *testing.T) {
+	t.Parallel()
+
 	open := pr(1, "OWNER", false)
 	open.State = github.StateOpen
 
@@ -278,4 +301,59 @@ func TestDropClosed(t *testing.T) {
 	assert.Equal(t, []github.Item{unknown}, inbox.Authored.Items, "an item whose state is unknown stays")
 	assert.Equal(t, []github.Item{open}, inbox.Assigned.Items)
 	assert.Equal(t, 2, inbox.ReviewRequested.IssueCount, "totals stay as GitHub counted them")
+}
+
+func TestRefreshItemThatCannotBeSavedKeepsTheItem(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name   string
+		update func(it github.Item) *github.ItemUpdate
+		event  string
+		want   string
+	}{
+		{
+			name:   "item",
+			update: func(it github.Item) *github.ItemUpdate { return &github.ItemUpdate{Found: true, Item: it} },
+			event:  "BEFORE UPDATE OF title ON items", want: "update the item",
+		},
+		{
+			name: "details",
+			update: func(it github.Item) *github.ItemUpdate {
+				return &github.ItemUpdate{Found: true, Item: it, Details: prDetails()}
+			},
+			event: "BEFORE UPDATE ON item_details", want: "save the details of acme-org/example-repo#1",
+		},
+		{
+			name:   "unlisted",
+			update: func(github.Item) *github.ItemUpdate { return &github.ItemUpdate{} },
+			event:  "BEFORE UPDATE OF reason_review_requested ON items", want: "take the item out of the lists",
+		},
+		{
+			name: "archived repository",
+			update: func(it github.Item) *github.ItemUpdate {
+				it.Repo.IsArchived = true
+
+				return &github.ItemUpdate{Found: true, Item: it}
+			},
+			event: "BEFORE UPDATE ON repos", want: "save the repository acme-org/example-repo",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			h, id := itemHarness(t)
+
+			now := pr(1, "OWNER", false)
+			now.Title = "Item 1, retitled"
+			h.client.items = map[string]*github.ItemUpdate{nodeID(1): tt.update(now)}
+
+			refuse(t, h, tt.event, "")
+
+			_, err := h.svc.RefreshItem(t.Context(), id)
+			require.ErrorContains(t, err, tt.want)
+			assert.Equal(t, "Item 1", h.itemTitle(t, id), "the transaction left the item as it was")
+			assert.Equal(t, [3]bool{true, false, true}, h.reasons(t, 1))
+		})
+	}
 }

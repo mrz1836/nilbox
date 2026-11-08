@@ -37,14 +37,16 @@ describe('burst', () => {
 
     for (const p of particles) {
       expect(confettiColors).toContain(p.color)
+    }
 
-      if (p.kind === 'glyph') {
-        expect(confettiGlyphs).toContain(p.glyph)
-        expect(p.height).toBeGreaterThanOrEqual(12)
-      } else {
-        expect(p.glyph).toBe('')
-        expect(p.width).toBeGreaterThan(0)
-      }
+    for (const p of particles.filter((q) => q.kind === 'glyph')) {
+      expect(confettiGlyphs).toContain(p.glyph)
+      expect(p.height).toBeGreaterThanOrEqual(12)
+    }
+
+    for (const p of particles.filter((q) => q.kind !== 'glyph')) {
+      expect(p.glyph).toBe('')
+      expect(p.width).toBeGreaterThan(0)
     }
   })
 

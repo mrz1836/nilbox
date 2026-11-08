@@ -12,7 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestParseClaudeLock(t *testing.T) {
+func TestParseAgentLockReadsThePID(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		reason string
 		pid    int
@@ -35,14 +37,18 @@ func TestParseClaudeLock(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.reason, func(t *testing.T) {
-			pid, ok := ParseClaudeLock(tt.reason)
+			t.Parallel()
+
+			lock, ok := parseAgentLock(tt.reason)
 			assert.Equal(t, tt.ok, ok)
-			assert.Equal(t, tt.pid, pid)
+			assert.Equal(t, tt.pid, lock.pid)
 		})
 	}
 }
 
 func TestParseAgentLockKeepsTheStart(t *testing.T) {
+	t.Parallel()
+
 	lock, ok := parseAgentLock("claude session pr-184 (pid 78068 start Fri Nov  6 17:14:26 2026)")
 	require.True(t, ok)
 	assert.Equal(t, agentLock{pid: 78068, start: "Fri Nov  6 17:14:26 2026"}, lock)
@@ -53,6 +59,8 @@ func TestParseAgentLockKeepsTheStart(t *testing.T) {
 }
 
 func TestLatestStartReadsTheLaterOfUTCAndLocal(t *testing.T) {
+	t.Parallel()
+
 	lock := agentLock{start: "Fri Nov  6 17:14:26 2026"}
 
 	// The machine two hours behind UTC: "17:14" in its zone is later than in UTC.
@@ -90,6 +98,8 @@ func (f fakeProcesses) lookup(pid int) (liveness, time.Time) {
 }
 
 func TestSessionEnded(t *testing.T) {
+	t.Parallel()
+
 	start := "Fri Nov  6 17:14:26 2026"
 	at := time.Date(2026, 11, 6, 17, 14, 26, 0, time.UTC)
 
@@ -140,12 +150,16 @@ func TestSessionEnded(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			assert.Equal(t, tt.ended, sessionEnded(tt.lock, tt.procs, time.UTC))
 		})
 	}
 }
 
 func TestEndedAgentLock(t *testing.T) {
+	t.Parallel()
+
 	procs := fakeProcesses{7: {state: livenessAlive}}
 
 	assert.True(t, endedAgentLock("claude session pr-7 (pid 8)", procs, time.UTC), "an ended session's lock")
@@ -170,6 +184,8 @@ func deadPID(t *testing.T) int {
 }
 
 func TestOSProcesses(t *testing.T) {
+	t.Parallel()
+
 	if processLiveness(os.Getpid()) == livenessUnknown {
 		t.Skip("process liveness is not supported on this OS")
 	}

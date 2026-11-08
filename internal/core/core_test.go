@@ -7,72 +7,47 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
-	"sync"
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/appdata"
+	"github.com/mrz1836/nilbox/internal/appinfo"
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
+	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/settings"
+	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/timing"
 )
 
 var errNoPrograms = errors.New("tests run no external programs")
 
-// recordingRunner records every program it is asked to run and runs none.
-type recordingRunner struct {
-	mu    sync.Mutex
-	calls []string
+// noPrograms returns a runner that records every program it is asked to run and runs
+// none.
+func noPrograms() *testutil.Runner {
+	return &testutil.Runner{Stderr: "not run", Err: errNoPrograms}
 }
 
-func (r *recordingRunner) Run(_ context.Context, name string, _ ...string) (stdout, stderr []byte, err error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+// programNames returns the base name of every program r was asked to run.
+func programNames(r *testutil.Runner) []string {
+	calls := r.Calls()
+	names := make([]string, 0, len(calls))
 
-	r.calls = append(r.calls, filepath.Base(name))
-
-	return nil, []byte("not run"), errNoPrograms
-}
-
-func (r *recordingRunner) names() []string {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	return append([]string(nil), r.calls...)
-}
-
-// tempHome returns a home directory holding the given entries as directories. Each
-// ~/.claude_<name> or ~/.claude-<name> one is an agent config directory, holding the
-// state file the agent writes on its first run with it.
-func tempHome(t *testing.T, dirs ...string) string {
-	t.Helper()
-
-	home := t.TempDir()
-	for _, d := range dirs {
-		makeDir(t, home, d)
+	for _, argv := range calls {
+		names = append(names, filepath.Base(argv[0]))
 	}
 
-	return home
-}
-
-// makeDir creates dir under home, as an agent config directory when its name is a
-// named profile's.
-func makeDir(t *testing.T, home, dir string) {
-	t.Helper()
-
-	path := filepath.Join(home, dir)
-	require.NoError(t, os.Mkdir(path, 0o700))
-
-	if strings.HasPrefix(dir, ".claude_") || strings.HasPrefix(dir, ".claude-") {
-		require.NoError(t, os.WriteFile(filepath.Join(path, ".claude.json"), []byte("{}"), 0o600))
-	}
+	return names
 }
 
 // bootstrap starts a Core over a fresh data directory and closes it when the test ends.
@@ -102,9 +77,11 @@ func profileNames(t *testing.T, c *Core) []string {
 }
 
 func TestBootstrapTempHome(t *testing.T) {
-	home := tempHome(t, ".claude", ".claude_work")
+	t.Parallel()
+
+	home := testutil.ClaudeHome(t, ".claude", ".claude_work")
 	paths := appdata.NewPaths(filepath.Join(t.TempDir(), "data"))
-	runner := &recordingRunner{}
+	runner := noPrograms()
 
 	c := bootstrap(t, Options{Paths: paths, Home: home, Version: "test", Runner: runner})
 
@@ -120,36 +97,41 @@ func TestBootstrapTempHome(t *testing.T) {
 	require.NoError(t, err, "the database file exists")
 
 	var mode string
-	require.NoError(t, c.DB.Raw("PRAGMA journal_mode").Scan(&mode).Error)
+	require.NoError(t, c.DB.QueryRowContext(t.Context(), "PRAGMA journal_mode").Scan(&mode))
 	assert.Equal(t, "wal", mode)
 
-	assert.Empty(t, runner.names(), "startup runs no external program")
+	assert.Empty(t, programNames(runner), "startup runs no external program")
 }
 
 func TestBootstrapKeepsExistingProfiles(t *testing.T) {
-	home := tempHome(t, ".claude", ".claude_work")
+	t.Parallel()
+
+	home := testutil.ClaudeHome(t, ".claude", ".claude_work")
 	paths := appdata.NewPaths(filepath.Join(t.TempDir(), "data"))
 
-	first, err := Bootstrap(t.Context(), Options{Paths: paths, Home: home, Runner: &recordingRunner{}})
+	first, err := Bootstrap(t.Context(), Options{Paths: paths, Home: home, Runner: noPrograms()})
 	require.NoError(t, err)
-	require.NoError(t, first.DB.Exec("UPDATE claude_profiles SET model = 'opus' WHERE name = 'work'").Error)
+	_, err = first.DB.ExecContext(t.Context(), "UPDATE claude_profiles SET model = 'opus' WHERE name = 'work'")
+	require.NoError(t, err)
 	require.NoError(t, first.Close())
 
 	// The work profile's directory is gone and a new one appeared.
 	require.NoError(t, os.RemoveAll(filepath.Join(home, ".claude_work")))
-	makeDir(t, home, ".claude-alt")
+	testutil.MakeClaudeDirs(t, home, ".claude-alt")
 
-	c := bootstrap(t, Options{Paths: paths, Home: home, Runner: &recordingRunner{}})
+	c := bootstrap(t, Options{Paths: paths, Home: home, Runner: noPrograms()})
 
 	assert.ElementsMatch(t, []string{profiles.DefaultName, "work", "alt"}, profileNames(t, c))
 
-	work, err := profiles.Lookup(t.Context(), c.DB, "work")
+	work, err := c.ProfileStore.Lookup(t.Context(), "work")
 	require.NoError(t, err)
 	assert.Equal(t, "opus", work.Model, "an edited row is never overwritten")
 }
 
 func TestBootstrapRemovesProfilesForOtherToolsFolders(t *testing.T) {
-	home := tempHome(t, ".claude", ".claude_work", ".claude-dup")
+	t.Parallel()
+
+	home := testutil.ClaudeHome(t, ".claude", ".claude_work", ".claude-dup")
 	paths := appdata.NewPaths(filepath.Join(t.TempDir(), "data"))
 
 	// Folders other tools name ~/.claude-<name>, and an empty twin of a real profile.
@@ -160,13 +142,14 @@ func TestBootstrapRemovesProfilesForOtherToolsFolders(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(home, ".claude-squad", "state.json"), []byte("{}"), 0o600))
 
 	// An older version stored a profile for each of them.
-	first := bootstrap(t, Options{Paths: paths, Home: home, Runner: &recordingRunner{}})
-	require.NoError(t, profiles.Sync(t.Context(), first.DB, []profiles.Profile{
+	first := bootstrap(t, Options{Paths: paths, Home: home, Runner: noPrograms()})
+	require.NoError(t, first.ProfileStore.Sync(t.Context(), []profiles.Profile{
 		{Name: "squad", ConfigDir: filepath.Join(home, ".claude-squad"), PermissionMode: profiles.PermissionFull},
 		{Name: "monitor", ConfigDir: filepath.Join(home, ".claude-monitor"), PermissionMode: profiles.PermissionFull},
 	}))
-	require.NoError(t, first.DB.Exec("UPDATE claude_profiles SET config_dir = ? WHERE name = 'dup'",
-		filepath.Join(home, ".claude_dup")).Error)
+	_, err := first.DB.ExecContext(t.Context(), "UPDATE claude_profiles SET config_dir = ? WHERE name = 'dup'",
+		filepath.Join(home, ".claude_dup"))
+	require.NoError(t, err)
 	require.NoError(t, first.Close())
 
 	var logs bytes.Buffer
@@ -174,7 +157,7 @@ func TestBootstrapRemovesProfilesForOtherToolsFolders(t *testing.T) {
 	c := bootstrap(t, Options{
 		Paths:  paths,
 		Home:   home,
-		Runner: &recordingRunner{},
+		Runner: noPrograms(),
 		Logger: slog.New(slog.NewTextHandler(&logs, nil)),
 	})
 
@@ -183,7 +166,7 @@ func TestBootstrapRemovesProfilesForOtherToolsFolders(t *testing.T) {
 	assert.Contains(t, logs.String(), "profiles=\"[dup monitor squad]\"")
 
 	// The freed name went to the directory that holds the config.
-	dup, err := profiles.Lookup(t.Context(), c.DB, "dup")
+	dup, err := c.ProfileStore.Lookup(t.Context(), "dup")
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(home, ".claude-dup"), dup.ConfigDir)
 
@@ -192,25 +175,15 @@ func TestBootstrapRemovesProfilesForOtherToolsFolders(t *testing.T) {
 	assert.DirExists(t, filepath.Join(home, ".claude-monitor"))
 }
 
-func TestBootstrapStopsWhenProfilesCannotBePruned(t *testing.T) {
-	paths := appdata.NewPaths(filepath.Join(t.TempDir(), "data"))
-	home := tempHome(t, ".claude")
-
-	first := bootstrap(t, Options{Paths: paths, Home: home, Runner: &recordingRunner{}})
-	require.NoError(t, first.DB.Exec("DROP TABLE claude_profiles").Error)
-	require.NoError(t, first.Close())
-
-	_, err := Bootstrap(t.Context(), Options{Paths: paths, Home: home, Runner: &recordingRunner{}})
-	require.ErrorContains(t, err, "prune profiles")
-}
-
 func TestBootstrapUnreadableHomeSkipsDiscovery(t *testing.T) {
+	t.Parallel()
+
 	var logs bytes.Buffer
 
 	c := bootstrap(t, Options{
 		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
 		Home:   filepath.Join(t.TempDir(), "missing-home"),
-		Runner: &recordingRunner{},
+		Runner: noPrograms(),
 		Logger: slog.New(slog.NewTextHandler(&logs, nil)),
 	})
 
@@ -218,35 +191,13 @@ func TestBootstrapUnreadableHomeSkipsDiscovery(t *testing.T) {
 	assert.Contains(t, logs.String(), "profile discovery skipped")
 }
 
-func TestBootstrapRequiresDataDirAndHome(t *testing.T) {
-	_, err := Bootstrap(t.Context(), Options{Home: t.TempDir()})
-	require.ErrorIs(t, err, ErrNoDataDir)
-
-	_, err = Bootstrap(t.Context(), Options{Paths: appdata.NewPaths(t.TempDir())})
-	require.ErrorIs(t, err, ErrNoHomeDir)
-}
-
-func TestBootstrapDataDirError(t *testing.T) {
-	file := filepath.Join(t.TempDir(), "file")
-	require.NoError(t, os.WriteFile(file, nil, 0o600))
-
-	_, err := Bootstrap(t.Context(), Options{Paths: appdata.NewPaths(filepath.Join(file, "data")), Home: t.TempDir()})
-	require.ErrorContains(t, err, "create data directory")
-}
-
-func TestBootstrapDatabaseError(t *testing.T) {
-	paths := appdata.NewPaths(t.TempDir())
-	paths.DB = filepath.Join(paths.Root, "bad?name.db")
-
-	_, err := Bootstrap(t.Context(), Options{Paths: paths, Home: t.TempDir()})
-	require.Error(t, err)
-}
-
 func TestServicesListsBoundServices(t *testing.T) {
+	t.Parallel()
+
 	c := bootstrap(t, Options{
 		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:   tempHome(t, ".claude"),
-		Runner: &recordingRunner{},
+		Home:   testutil.ClaudeHome(t, ".claude"),
+		Runner: noPrograms(),
 	})
 
 	services := c.Services()
@@ -264,61 +215,65 @@ func TestServicesListsBoundServices(t *testing.T) {
 	assert.NotNil(t, c.Timing)
 }
 
-func TestFirstPaintHookAndTimingLog(t *testing.T) {
-	paths := appdata.NewPaths(filepath.Join(t.TempDir(), "data"))
-
-	var got []timing.Measurement
+func TestTheSweeperSweepsTheWorktreeService(t *testing.T) {
+	t.Parallel()
 
 	c := bootstrap(t, Options{
-		Paths:        paths,
-		Home:         tempHome(t),
-		Runner:       &recordingRunner{},
-		Logger:       slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
-		OnFirstPaint: func(m timing.Measurement) { got = append(got, m) },
+		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
+		Home:   testutil.ClaudeHome(t),
+		Runner: noPrograms(),
+	})
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	// A canceled context still gets the first sweep, which Run makes before it waits.
+	c.Sweeper.Run(ctx)
+	assert.Equal(t, 1, c.Worktrees.LastSweep().Seq)
+}
+
+func TestFirstPaintEventAndTimingLog(t *testing.T) {
+	t.Parallel()
+
+	paths := appdata.NewPaths(filepath.Join(t.TempDir(), "data"))
+	events := &testutil.Events{}
+
+	c := bootstrap(t, Options{
+		Paths:  paths,
+		Home:   testutil.ClaudeHome(t),
+		Runner: noPrograms(),
+		Logger: slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
+		Events: events,
 	})
 
 	require.NoError(t, c.AppInfo.ReportFirstPaint())
 	require.NoError(t, c.AppInfo.ReportFirstPaint())
 
+	got := events.All()
 	require.Len(t, got, 1)
+	assert.IsType(t, event.FirstPaint{}, got[0])
 
 	data, err := os.ReadFile(filepath.Join(paths.Logs, timing.LogFileName))
 	require.NoError(t, err)
 	assert.Contains(t, string(data), timing.FirstPaintKey+"=")
 }
 
-// themeRecorder records the themes the settings service announces.
-type themeRecorder struct {
-	themes []string
-}
+func TestThemeChangesReachTheEvents(t *testing.T) {
+	t.Parallel()
 
-func (r *themeRecorder) ThemeChanged(theme string) {
-	r.themes = append(r.themes, theme)
-}
-
-func TestThemeChangesReachTheThemeNotifier(t *testing.T) {
-	recorder := &themeRecorder{}
+	events := &testutil.Events{}
 
 	c := bootstrap(t, Options{
-		Paths:         appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:          tempHome(t),
-		Runner:        &recordingRunner{},
-		ThemeNotifier: recorder,
+		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
+		Home:   testutil.ClaudeHome(t),
+		Runner: noPrograms(),
+		Events: events,
 	})
 
-	require.NoError(t, c.Settings.SetTheme(t.Context(), settings.ThemeDark))
-	require.Error(t, c.Settings.SetTheme(t.Context(), "sepia"))
+	require.NoError(t, testutil.ErrOf(c.Settings.SetTheme(t.Context(), settings.ThemeDark)))
+	require.Error(t, testutil.ErrOf(c.Settings.SetTheme(t.Context(), "sepia")))
 
-	assert.Equal(t, []string{settings.ThemeDark}, recorder.themes)
-}
-
-// menuBarRecorder records the menu bar settings the settings service announces.
-type menuBarRecorder struct {
-	changes []bool
-}
-
-func (r *menuBarRecorder) MenuBarChanged(on bool) {
-	r.changes = append(r.changes, on)
+	assert.Equal(t, []event.Event{event.ThemeChanged{Theme: string(settings.ThemeDark)}}, events.All())
 }
 
 // posterStub is a notification center that shows every banner.
@@ -332,24 +287,26 @@ func (p *posterStub) Post(b notify.Banner) error {
 	return nil
 }
 
-func (p *posterStub) Status() string { return notify.StatusOn }
+func (p *posterStub) Status() notify.BannerStatus { return notify.StatusOn }
 
 func (p *posterStub) Authorize() (bool, error) { return true, nil }
 
 func TestMenuBarAndNotificationsReachTheShell(t *testing.T) {
-	menuBar := &menuBarRecorder{}
+	t.Parallel()
+
+	events := &testutil.Events{}
 	poster := &posterStub{}
 
 	c := bootstrap(t, Options{
-		Paths:           appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:            tempHome(t),
-		Runner:          &recordingRunner{},
-		MenuBarNotifier: menuBar,
-		Banners:         poster,
+		Paths:   appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
+		Home:    testutil.ClaudeHome(t),
+		Runner:  noPrograms(),
+		Events:  events,
+		Banners: poster,
 	})
 
-	require.NoError(t, c.Settings.SetMenuBar(t.Context(), false))
-	assert.Equal(t, []bool{false}, menuBar.changes)
+	require.NoError(t, testutil.ErrOf(c.Settings.SetMenuBar(t.Context(), false)))
+	assert.Equal(t, []event.Event{event.MenuBarChanged{On: false}}, events.All())
 
 	assert.Equal(t, notify.StatusOn, c.Notifications.BannerStatus())
 	require.NoError(t, c.Notifications.SendTest())
@@ -360,14 +317,49 @@ func TestMenuBarAndNotificationsReachTheShell(t *testing.T) {
 	assert.Empty(t, log.Items)
 }
 
-func TestThemeWithoutAThemeNotifier(t *testing.T) {
+func TestTheShellReadsItsSettingsOffTheBoundService(t *testing.T) {
+	t.Parallel()
+
 	c := bootstrap(t, Options{
 		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:   tempHome(t),
-		Runner: &recordingRunner{},
+		Home:   testutil.ClaudeHome(t),
+		Runner: noPrograms(),
 	})
 
-	require.NoError(t, c.Settings.SetTheme(t.Context(), settings.ThemeLight))
+	for _, s := range c.Services() {
+		assert.NotEqual(t, c.ShellSettings, s, "the shell's settings are not bound")
+	}
+
+	ctx := t.Context()
+	size := settings.WindowSize{Width: 1440, Height: 900}
+
+	require.NoError(t, testutil.ErrOf(c.Settings.SetTheme(ctx, settings.ThemeDark)))
+	require.NoError(t, testutil.ErrOf(c.Settings.SetMenuBar(ctx, false)))
+	require.NoError(t, testutil.ErrOf(c.Settings.SetWindowSize(ctx, size)))
+
+	theme, err := c.ShellSettings.Theme(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, settings.ThemeDark, theme)
+
+	on, err := c.ShellSettings.MenuBar(ctx)
+	require.NoError(t, err)
+	assert.False(t, on)
+
+	got, err := c.ShellSettings.WindowSize(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, size, got)
+}
+
+func TestThemeWithoutAnEventSink(t *testing.T) {
+	t.Parallel()
+
+	c := bootstrap(t, Options{
+		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
+		Home:   testutil.ClaudeHome(t),
+		Runner: noPrograms(),
+	})
+
+	require.NoError(t, testutil.ErrOf(c.Settings.SetTheme(t.Context(), settings.ThemeLight)))
 
 	got, err := c.Settings.Theme(t.Context())
 	require.NoError(t, err)
@@ -375,27 +367,97 @@ func TestThemeWithoutAThemeNotifier(t *testing.T) {
 }
 
 func TestAppInfoReportsVersion(t *testing.T) {
+	t.Parallel()
+
 	c := bootstrap(t, Options{
 		Paths:   appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:    tempHome(t),
+		Home:    testutil.ClaudeHome(t),
 		Version: "v1.2.3",
 		Release: "1.2.3",
 		Build:   "42",
-		Runner:  &recordingRunner{},
+		Runner:  noPrograms(),
 	})
 
 	info := c.AppInfo.Info()
 	assert.Equal(t, "v1.2.3", info.Version)
 	assert.Equal(t, "1.2.3", info.Release)
 	assert.Equal(t, "42", info.Build)
+	assert.Nil(t, info.DataReset, "a database that opens is not reset")
+}
+
+func TestTheWindowShowsEveryReasonTheStoreSetsADatabaseAside(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.DiscardHandler)
+
+	for stored, shown := range map[store.ResetReason]appinfo.ResetReason{
+		store.ResetCorrupt:   appinfo.ResetCorrupt,
+		store.ResetUnmanaged: appinfo.ResetUnmanaged,
+		store.ResetHistory:   appinfo.ResetHistory,
+	} {
+		got := dataReset(t.Context(), &store.Reset{Path: "/data/app.db.broken", Reason: stored}, "/home", logger)
+		require.NotNil(t, got)
+		assert.Equal(t, shown, got.Reason, string(stored))
+	}
+}
+
+func TestBootstrapStartsFreshWhenTheDatabaseCannotBeRead(t *testing.T) {
+	t.Parallel()
+
+	home := testutil.ClaudeHome(t, ".claude")
+	paths := appdata.NewPaths(filepath.Join(home, "data"))
+	testutil.WriteFile(t, paths.DB, "this is not a database file, just text long enough to have a header")
+
+	var logs bytes.Buffer
+
+	c := bootstrap(t, Options{
+		Paths:  paths,
+		Home:   home,
+		Runner: noPrograms(),
+		Logger: slog.New(slog.NewTextHandler(&logs, nil)),
+	})
+
+	reset := c.AppInfo.Info().DataReset
+	require.NotNil(t, reset, "the window is told the data was reset")
+	assert.Equal(t, appinfo.ResetCorrupt, reset.Reason)
+	assert.Regexp(t, `^~/data/`+regexp.QuoteMeta(filepath.Base(paths.DB))+`\.broken-\d{8}T\d{6}Z$`, reset.Path,
+		"the path is shown with ~ for the home directory")
+	assert.Contains(t, logs.String(), "set aside")
+
+	// The fresh database is set up like any new one.
+	all, err := c.Prompts.List(t.Context())
+	require.NoError(t, err)
+	assert.Len(t, all, len(prompts.Starters()))
+	assert.Equal(t, []string{profiles.DefaultName}, profileNames(t, c))
+}
+
+func TestBootstrapRefusesADatabaseFromANewerBuild(t *testing.T) {
+	t.Parallel()
+
+	opts := Options{
+		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
+		Home:   testutil.ClaudeHome(t),
+		Runner: noPrograms(),
+	}
+
+	c := bootstrap(t, opts)
+	_, err := c.DB.ExecContext(t.Context(), `INSERT INTO schema_migrations (version, name, checksum, applied_at)
+VALUES (9999, 'from_the_future', 'abc', '2026-01-01T00:00:00Z')`)
+	require.NoError(t, err)
+	require.NoError(t, c.Close())
+
+	_, err = Bootstrap(t.Context(), opts)
+	require.ErrorIs(t, err, store.ErrNewerSchema)
 }
 
 func TestInboxRefreshUsesInjectedRunner(t *testing.T) {
-	runner := &recordingRunner{}
+	t.Parallel()
+
+	runner := noPrograms()
 
 	c := bootstrap(t, Options{
 		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:   tempHome(t),
+		Home:   testutil.ClaudeHome(t),
 		Runner: runner,
 	})
 
@@ -406,9 +468,9 @@ func TestInboxRefreshUsesInjectedRunner(t *testing.T) {
 
 	switch {
 	case errors.Is(err, github.ErrNotLoggedIn):
-		assert.Equal(t, []string{"gh"}, runner.names())
+		assert.Equal(t, []string{"gh"}, programNames(runner))
 	case errors.Is(err, github.ErrGHNotFound):
-		assert.Empty(t, runner.names())
+		assert.Empty(t, programNames(runner))
 	default:
 		t.Fatalf("unexpected refresh error: %v", err)
 	}
@@ -419,19 +481,21 @@ func TestInboxRefreshUsesInjectedRunner(t *testing.T) {
 }
 
 func TestWorktreeItemStatesBorrowTheToken(t *testing.T) {
-	runner := &recordingRunner{}
+	t.Parallel()
+
+	runner := noPrograms()
 
 	c := bootstrap(t, Options{
 		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:   tempHome(t),
+		Home:   testutil.ClaudeHome(t),
 		Runner: runner,
 	})
 
-	states := itemStates{tokens: github.NewTokenSource(runner, execpath.Finder{Home: tempHome(t)}), client: github.NewClient("test")}
+	states := itemStates{tokens: github.NewTokenSource(runner, execpath.Search{Home: testutil.ClaudeHome(t)}), client: github.NewClient("test")}
 
 	// The token is borrowed through the injected runner, which runs nothing, so no
 	// request is made.
-	_, err := states.ItemStates(t.Context(), []github.ItemRef{{Owner: "acme-org", Name: "example-repo", Number: 1}})
+	_, err := states.ItemStates(t.Context(), []item.Ref{{Repo: repo.Name{Owner: "acme-org", Repo: "example-repo"}, Number: 1}})
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, github.ErrNotLoggedIn) || errors.Is(err, github.ErrGHNotFound), err)
 
@@ -439,10 +503,12 @@ func TestWorktreeItemStatesBorrowTheToken(t *testing.T) {
 }
 
 func TestBootstrapAddsTheStarterPrompts(t *testing.T) {
+	t.Parallel()
+
 	opts := Options{
 		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:   tempHome(t, ".claude"),
-		Runner: &recordingRunner{},
+		Home:   testutil.ClaudeHome(t, ".claude"),
+		Runner: noPrograms(),
 	}
 
 	c := bootstrap(t, opts)
@@ -464,6 +530,12 @@ func TestBootstrapAddsTheStarterPrompts(t *testing.T) {
 			quick = p.ID
 		}
 	}
+
+	// While a launch default names it, deleting it is refused, saying where it is used.
+	_, err = c.LaunchDefaults.Save(t.Context(), launchdefaults.Input{Owner: "acme-org", PRPromptID: &quick})
+	require.NoError(t, err)
+	require.ErrorContains(t, c.Prompts.Delete(t.Context(), quick), "while it's a default for acme-org;")
+	require.NoError(t, c.LaunchDefaults.Remove(t.Context(), "acme-org", ""))
 
 	require.NoError(t, c.Prompts.Delete(t.Context(), quick))
 	require.NoError(t, c.Close())

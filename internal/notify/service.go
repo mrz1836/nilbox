@@ -2,14 +2,17 @@ package notify
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
-	"time"
 
-	"gorm.io/gorm"
-
+	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/inbox"
+	"github.com/mrz1836/nilbox/internal/logging"
+	"github.com/mrz1836/nilbox/internal/notifyprefs"
+	"github.com/mrz1836/nilbox/internal/prefs"
 )
 
 var (
@@ -20,60 +23,57 @@ var (
 	ErrBannersOff = errors.New("notifications are off for this app in System Settings")
 )
 
-// Notifier is told when the log changed, so the window reads it again.
-type Notifier interface {
-	NotificationsUpdated()
-}
-
-// Clock tells the time.
-type Clock interface {
-	Now() time.Time
-}
-
-// Config holds the dependencies of a Dispatcher and a Service. Poster, Notifier, Clock,
-// and Logger are optional: without a Poster no banner is shown, and the log is still
-// kept.
+// Config holds the dependencies of a Dispatcher and a Service. Pool is required; Poster,
+// Events, Clock, and Logger are optional: without a Poster no banner is shown, and the
+// log is still kept.
 type Config struct {
-	DB       *gorm.DB
-	Poster   Poster
-	Notifier Notifier
-	Clock    Clock
-	Logger   *slog.Logger
+	// Pool is the database's connection pool. It holds the log, and the prefs the
+	// Dispatcher reads which banners are on from.
+	Pool *sql.DB
+
+	Poster Poster
+
+	// Events hears an event.NotificationsUpdated whenever the log changed, so the window
+	// reads it again.
+	Events event.Sink
+
+	Clock  clock.Clock
+	Logger *slog.Logger
 }
 
 // base is what the Dispatcher and the Service share.
 type base struct {
-	store    *Store
-	db       *gorm.DB
-	poster   Poster
-	notifier Notifier
-	clock    Clock
-	logger   *slog.Logger
+	store  *Store
+	prefs  *prefs.Store
+	poster Poster
+	events event.Sink
+	clock  clock.Clock
+	logger *slog.Logger
 }
 
 // newBase fills in the defaults.
 func newBase(cfg Config) base {
 	b := base{
-		store: NewStore(cfg.DB), db: cfg.DB, poster: cfg.Poster, notifier: cfg.Notifier, clock: cfg.Clock,
-		logger: cfg.Logger,
-	}
-
-	if b.clock == nil {
-		b.clock = systemClock{}
-	}
-
-	if b.logger == nil {
-		b.logger = slog.Default()
+		store: NewStore(cfg.Pool), prefs: prefs.New(cfg.Pool, cfg.Clock), poster: cfg.Poster, events: event.Or(cfg.Events),
+		clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger),
 	}
 
 	return b
 }
 
-// notify tells the notifier the log changed.
+// notify says the log changed.
 func (b base) notify() {
-	if b.notifier != nil {
-		b.notifier.NotificationsUpdated()
+	b.events.Emit(event.NotificationsUpdated{})
+}
+
+// bannersOff reads the kinds whose banners are off.
+func (b base) bannersOff(ctx context.Context) ([]notifyprefs.Kind, error) {
+	stored, _, err := b.prefs.Get(ctx, notifyprefs.KeyBannersOff)
+	if err != nil {
+		return nil, fmt.Errorf("read the notification settings: %w", err)
 	}
+
+	return notifyprefs.DecodeBannersOff(stored), nil
 }
 
 // Dispatcher records the inbox's arrivals and shows their banners. It is the inbox's
@@ -108,7 +108,7 @@ func (d *Dispatcher) Arrived(ctx context.Context, arrivals []inbox.Arrival) {
 		return
 	}
 
-	off, err := bannersOff(d.db.WithContext(ctx))
+	off, err := d.bannersOff(ctx)
 	if err != nil {
 		d.logger.WarnContext(ctx, "could not read which banners are on", "error", err)
 
@@ -161,7 +161,7 @@ func (s *Service) Clear(ctx context.Context) error {
 
 // BannerStatus reports whether banners are shown: StatusOn, StatusOff when the user has
 // not allowed them, or StatusUnavailable when this build cannot show them.
-func (s *Service) BannerStatus() string {
+func (s *Service) BannerStatus() BannerStatus {
 	if s.poster == nil {
 		return StatusUnavailable
 	}
@@ -191,24 +191,3 @@ func (s *Service) SendTest() error {
 
 	return nil
 }
-
-// bannersOff reads the kinds whose banners are off.
-func bannersOff(db *gorm.DB) ([]string, error) {
-	var stored []string
-	if err := db.Raw("SELECT value FROM prefs WHERE key = ?", PrefBannersOff).Scan(&stored).Error; err != nil {
-		return nil, fmt.Errorf("read the notification settings: %w", err)
-	}
-
-	prefs := map[string]string{}
-	if len(stored) == 1 {
-		prefs[PrefBannersOff] = stored[0]
-	}
-
-	return DecodeBannersOff(prefs), nil
-}
-
-// systemClock is the real clock.
-type systemClock struct{}
-
-// Now returns the current time.
-func (systemClock) Now() time.Time { return time.Now() }

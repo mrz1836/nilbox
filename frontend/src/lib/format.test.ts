@@ -22,6 +22,21 @@ describe('errorMessage', () => {
     expect(errorMessage(new Error('run gh auth login'))).toBe('run gh auth login')
   })
 
+  it('prefers the message the backend worded for the user', () => {
+    const err = new Error('refresh the inbox: call the GitHub API: dial tcp: no such host', {
+      cause: { message: 'Could not reach GitHub.' },
+    })
+    expect(errorMessage(err)).toBe('Could not reach GitHub.')
+  })
+
+  it('ignores a cause without a message', () => {
+    expect(errorMessage(new Error('no local clone', { cause: {} }))).toBe('no local clone')
+    expect(errorMessage(new Error('no local clone', { cause: { message: '' } }))).toBe('no local clone')
+    expect(errorMessage(new Error('no local clone', { cause: { message: 7 } }))).toBe('no local clone')
+    expect(errorMessage(new Error('no local clone', { cause: 'text' }))).toBe('no local clone')
+    expect(errorMessage(new Error('', { cause: null }))).toBe('Something went wrong.')
+  })
+
   it('uses a string error as is', () => {
     expect(errorMessage('no local clone')).toBe('no local clone')
   })

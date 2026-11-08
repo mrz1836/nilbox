@@ -7,37 +7,32 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mrz1836/nilbox/internal/clock"
 )
+
+// Status is where checking a pull request's changed files stands.
+type Status string
 
 // Check statuses.
 const (
 	// StatusPending is a pull request not checked since its last push: new to the inbox,
 	// newly in scope, or pushed since its last check.
-	StatusPending = "pending"
+	StatusPending Status = "pending"
 
 	// StatusFailed is a check that could not finish; the next refresh tries again.
-	StatusFailed = "failed"
+	StatusFailed Status = "failed"
 
 	// StatusFlagged is a pull request that changes sensitive files.
-	StatusFlagged = "flagged"
+	StatusFlagged Status = "flagged"
 
 	// StatusPartial is a pull request GitHub listed only some of the changed files of,
 	// none of them sensitive.
-	StatusPartial = "partial"
+	StatusPartial Status = "partial"
 
 	// StatusClear is a pull request whose every changed file was checked, none of them
 	// sensitive.
-	StatusClear = "clear"
-)
-
-// File changes, as GitHub's REST API names them.
-const (
-	ChangeAdded    = "added"
-	ChangeRemoved  = "removed"
-	ChangeModified = "modified"
-	ChangeRenamed  = "renamed"
-	ChangeCopied   = "copied"
-	ChangeChanged  = "changed"
+	StatusClear Status = "clear"
 )
 
 // File is one changed file of a pull request.
@@ -48,7 +43,8 @@ type File struct {
 	// PreviousPath is a renamed or copied file's path before the change, or "".
 	PreviousPath string
 
-	// Change is one of the Change* values.
+	// Change is how the file changed, as GitHub's REST API names it: added, removed,
+	// modified, renamed, copied, or changed.
 	Change string
 }
 
@@ -98,15 +94,14 @@ type Group struct {
 	Label       string    `json:"label"`
 	Short       string    `json:"short"`
 	Description string    `json:"description"`
-	Level       string    `json:"level"`
+	Level       Level     `json:"level"`
 	Files       []Finding `json:"files"`
 }
 
 // Check is what checking a pull request's changed files found, as the UI shows it. Every
 // field is a plain value.
 type Check struct {
-	// Status is one of the Status* values.
-	Status string `json:"status"`
+	Status Status `json:"status"`
 
 	// Head is the head commit the files were checked at, or "" before any check.
 	Head string `json:"head"`
@@ -234,7 +229,7 @@ func (m *Matcher) Evaluate(r *Result, head, prURL string) Check {
 	}
 
 	if !r.CheckedAt.IsZero() {
-		c.CheckedAt = r.CheckedAt.UTC().Format(time.RFC3339)
+		c.CheckedAt = clock.Format(r.CheckedAt)
 	}
 
 	switch {
@@ -266,7 +261,7 @@ func (m *Matcher) match(names []string) (Category, string, bool) {
 }
 
 // status names a finished check's outcome.
-func status(groups []Group, complete bool) string {
+func status(groups []Group, complete bool) Status {
 	switch {
 	case len(groups) > 0:
 		return StatusFlagged
@@ -300,7 +295,7 @@ func (m *Matcher) groups(files []File, prURL string) []Group {
 		}
 
 		g.Files = append(g.Files, Finding{
-			Path: f.Path, PreviousPath: f.PreviousPath, Change: f.Change, Pattern: raw, URL: DiffURL(prURL, f.Path),
+			Path: f.Path, PreviousPath: f.PreviousPath, Change: f.Change, Pattern: raw, URL: diffURL(prURL, f.Path),
 		})
 	}
 
@@ -349,10 +344,10 @@ func (m *Matcher) rank(id string) int {
 	return slices.IndexFunc(m.rules, func(r rule) bool { return r.category.ID == id })
 }
 
-// DiffURL returns the address of a file's diff in a pull request on GitHub: the files
+// diffURL returns the address of a file's diff in a pull request on GitHub: the files
 // page, at the anchor GitHub names after the SHA-256 of the file's path. It is "" for a
 // page that is not on GitHub.
-func DiffURL(prURL, filePath string) string {
+func diffURL(prURL, filePath string) string {
 	if !strings.HasPrefix(prURL, "https://github.com/") || filePath == "" {
 		return ""
 	}
@@ -369,10 +364,10 @@ type PathMatch struct {
 	Sensitive bool `json:"sensitive"`
 
 	// Category, Label, and Level describe the category it matched, and Pattern the
-	// pattern; all are "" when it matched none.
+	// pattern; all are "" (Level is LevelNone) when it matched none.
 	Category string `json:"category"`
 	Label    string `json:"label"`
-	Level    string `json:"level"`
+	Level    Level  `json:"level"`
 	Pattern  string `json:"pattern"`
 }
 

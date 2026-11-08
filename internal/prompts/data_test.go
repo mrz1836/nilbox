@@ -6,11 +6,15 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/item"
 )
 
 // TestVariablesMatchData keeps the cheat sheet and Data in step: every field has exactly
 // one variable of the matching type, in the same order.
 func TestVariablesMatchData(t *testing.T) {
+	t.Parallel()
+
 	typ := reflect.TypeFor[Data]()
 	vars := Variables()
 	require.Len(t, vars, typ.NumField())
@@ -28,13 +32,15 @@ func TestVariablesMatchData(t *testing.T) {
 }
 
 func TestSampleData(t *testing.T) {
-	pr := Sample(KindPR)
+	t.Parallel()
+
+	pr := Sample(item.KindPR)
 	assert.True(t, pr.IsPR)
 	assert.Equal(t, "pull request", pr.Kind)
 	assert.Equal(t, "widget-cache", pr.Branch)
 	assert.False(t, pr.InWorktree)
 
-	issue := Sample(KindIssue)
+	issue := Sample(item.KindIssue)
 	assert.False(t, issue.IsPR)
 	assert.Equal(t, "issue", issue.Kind)
 	assert.Empty(t, issue.Branch, "an issue has no pull request facts")
@@ -42,7 +48,9 @@ func TestSampleData(t *testing.T) {
 }
 
 func TestWithSession(t *testing.T) {
-	pr := Sample(KindPR)
+	t.Parallel()
+
+	pr := Sample(item.KindPR)
 
 	got := pr.WithSession(true, true)
 	assert.True(t, got.InWorktree)
@@ -53,13 +61,15 @@ func TestWithSession(t *testing.T) {
 	assert.False(t, got.WorktreeOnPRHead, "no worktree, so nothing is at the head")
 	assert.Empty(t, got.Worktree)
 
-	got = Sample(KindIssue).WithSession(true, true)
+	got = Sample(item.KindIssue).WithSession(true, true)
 	assert.False(t, got.WorktreeOnPRHead, "an issue has no pull request head")
 	assert.Equal(t, "issue-12", got.Worktree)
 }
 
 func TestValues(t *testing.T) {
-	d := Sample(KindPR).WithSession(true, false)
+	t.Parallel()
+
+	d := Sample(item.KindPR).WithSession(true, false)
 	d.Title = "Fix\nthe widget"
 
 	got := d.Values()
@@ -71,13 +81,13 @@ func TestValues(t *testing.T) {
 	assert.Equal(t, "pr-7", got["Worktree"])
 }
 
-func TestAppliesTo(t *testing.T) {
-	assert.True(t, AppliesTo(AppliesToAny, KindPR))
-	assert.True(t, AppliesTo(AppliesToAny, KindIssue))
-	assert.True(t, AppliesTo(AppliesToPR, KindPR))
-	assert.False(t, AppliesTo(AppliesToPR, KindIssue))
-	assert.False(t, AppliesTo(AppliesToIssue, KindPR))
+func TestAppliesToCovers(t *testing.T) {
+	t.Parallel()
 
-	assert.Equal(t, "pull request", KindName(KindPR))
-	assert.Equal(t, "issue", KindName(KindIssue))
+	assert.True(t, AppliesToAny.Covers(item.KindPR))
+	assert.True(t, AppliesToAny.Covers(item.KindIssue))
+	assert.True(t, AppliesToPR.Covers(item.KindPR))
+	assert.False(t, AppliesToPR.Covers(item.KindIssue))
+	assert.False(t, AppliesToIssue.Covers(item.KindPR))
+	assert.False(t, AppliesTo("").Covers(item.KindPR))
 }

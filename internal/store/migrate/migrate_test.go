@@ -6,21 +6,25 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
 
-	_ "github.com/glebarez/go-sqlite" // registers the "sqlite" database/sql driver
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite" // registers the "sqlite" database/sql driver
 
+	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/store/migrate"
 )
 
 const (
+	// firstFile is the first synthetic migration's file name.
+	firstFile = "0001_first.sql"
+
 	firstSQL  = "CREATE TABLE alpha (id INTEGER PRIMARY KEY, label TEXT NOT NULL);\nCREATE INDEX alpha_label ON alpha (label);\n"
 	secondSQL = "CREATE TABLE beta (id INTEGER PRIMARY KEY);\n"
 	thirdSQL  = "CREATE TABLE gamma (id INTEGER PRIMARY KEY);\n"
@@ -41,7 +45,7 @@ func source(files map[string]string) fstest.MapFS {
 // firstN returns the first n synthetic migrations.
 func firstN(n int) fstest.MapFS {
 	all := []struct{ name, body string }{
-		{"0001_first.sql", firstSQL},
+		{firstFile, firstSQL},
 		{"0002_second.sql", secondSQL},
 		{"0003_third.sql", thirdSQL},
 		{"0004_fourth.sql", fourthSQL},
@@ -132,6 +136,8 @@ func apply(t *testing.T, db *sql.DB, path string, src fstest.MapFS, now func() t
 }
 
 func TestMigrateFreshDatabase(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 
 	res, err := migrate.Apply(t.Context(), db, path, migrate.Options{})
@@ -141,7 +147,7 @@ func TestMigrateFreshDatabase(t *testing.T) {
 	files, err := filepath.Glob(filepath.Join("migrations", "*.sql"))
 	require.NoError(t, err)
 	require.NotEmpty(t, files)
-	sort.Strings(files)
+	slices.Sort(files)
 
 	applied := make([]int, 0, len(files))
 	for i := range files {
@@ -196,6 +202,8 @@ func TestMigrateFreshDatabase(t *testing.T) {
 }
 
 func TestMigrateIsIdempotent(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 	now := clock()
 
@@ -211,6 +219,8 @@ func TestMigrateIsIdempotent(t *testing.T) {
 }
 
 func TestMigrateRefusesUnmanagedSchema(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 
 	_, err := db.ExecContext(t.Context(), `CREATE TABLE legacy (id INTEGER PRIMARY KEY)`)
@@ -225,42 +235,67 @@ func TestMigrateRefusesUnmanagedSchema(t *testing.T) {
 }
 
 func TestMigrateRefusesChecksumMismatch(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 	now := clock()
 
 	apply(t, db, path, firstN(1), now)
 
 	edited := source(map[string]string{
-		"0001_first.sql":  firstSQL + "-- an edit after the fact\n",
+		firstFile:         firstSQL + "-- an edit after the fact\n",
 		"0002_second.sql": secondSQL,
 	})
 
 	_, err := migrate.Apply(t.Context(), db, path, migrate.Options{Source: edited, Now: now})
 	require.ErrorIs(t, err, migrate.ErrChecksumMismatch)
-	assert.Contains(t, err.Error(), "0001_first.sql")
+	assert.Contains(t, err.Error(), firstFile)
 
 	// The pending migration was not applied and no backup was taken.
 	assert.NotContains(t, tables(t, db), "beta")
 	assert.Empty(t, backups(t, path))
 }
 
-func TestMigrateRefusesUnknownVersion(t *testing.T) {
+func TestMigrateRefusesANewerSchema(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 	now := clock()
 
 	apply(t, db, path, firstN(2), now)
 
 	_, err := migrate.Apply(t.Context(), db, path, migrate.Options{Source: firstN(1), Now: now})
-	require.ErrorIs(t, err, migrate.ErrUnknownVersion)
+	require.ErrorIs(t, err, migrate.ErrNewerSchema)
 	assert.Contains(t, err.Error(), "version 2")
+	assert.Contains(t, err.Error(), "update "+brand.Name, "the message tells the user what to do")
+}
+
+func TestMigrateReportsAChangedMigrationBeforeANewerSchema(t *testing.T) {
+	t.Parallel()
+
+	db, path := openDB(t)
+	now := clock()
+
+	// Two migrations ran; this build has the first, edited, and not the second, as when
+	// a build combines earlier migrations into one file.
+	apply(t, db, path, firstN(2), now)
+
+	combined := source(map[string]string{firstFile: firstSQL + secondSQL})
+
+	_, err := migrate.Apply(t.Context(), db, path, migrate.Options{Source: combined, Now: now})
+	require.ErrorIs(t, err, migrate.ErrChecksumMismatch)
+	require.NotErrorIs(t, err, migrate.ErrNewerSchema)
+	assert.Contains(t, err.Error(), firstFile)
 }
 
 func TestMigrateRefusesOutOfOrder(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 	now := clock()
 
 	apply(t, db, path, source(map[string]string{
-		"0001_first.sql": firstSQL,
+		firstFile:        firstSQL,
 		"0003_third.sql": thirdSQL,
 	}), now)
 
@@ -271,6 +306,8 @@ func TestMigrateRefusesOutOfOrder(t *testing.T) {
 }
 
 func TestMigrateBacksUpBeforeApplying(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 	now := clock()
 
@@ -308,6 +345,8 @@ func TestMigrateBacksUpBeforeApplying(t *testing.T) {
 }
 
 func TestMigrateNoBackupWhenNothingPending(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 	now := clock()
 
@@ -320,6 +359,8 @@ func TestMigrateNoBackupWhenNothingPending(t *testing.T) {
 }
 
 func TestMigrateKeepsNewestBackups(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 	now := clock()
 
@@ -339,7 +380,7 @@ func TestMigrateKeepsNewestBackups(t *testing.T) {
 
 	// A smaller keep count prunes further on the next backup.
 	more := source(map[string]string{
-		"0001_first.sql":  firstSQL,
+		firstFile:         firstSQL,
 		"0002_second.sql": secondSQL,
 		"0003_third.sql":  thirdSQL,
 		"0004_fourth.sql": fourthSQL,
@@ -353,6 +394,8 @@ func TestMigrateKeepsNewestBackups(t *testing.T) {
 }
 
 func TestMigrateBackupNameCollision(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 	fixed := func() time.Time { return time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC) }
 
@@ -371,6 +414,8 @@ func TestMigrateBackupNameCollision(t *testing.T) {
 }
 
 func TestMigrateBackupRequiresPath(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 	now := clock()
 
@@ -382,18 +427,20 @@ func TestMigrateBackupRequiresPath(t *testing.T) {
 }
 
 func TestMigrateFailedMigrationRollsBack(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 	now := clock()
 
 	apply(t, db, path, firstN(1), now)
 
 	broken := source(map[string]string{
-		"0001_first.sql":  firstSQL,
+		firstFile:         firstSQL,
 		"0002_broken.sql": "CREATE TABLE half (id INTEGER PRIMARY KEY);\nINSERT INTO missing_table VALUES (1);\n",
 	})
 
 	_, err := migrate.Apply(t.Context(), db, path, migrate.Options{Source: broken, Now: now})
-	require.Error(t, err)
+	require.ErrorIs(t, err, migrate.ErrMigrationFailed)
 	assert.Contains(t, err.Error(), "0002_broken.sql")
 
 	// Neither the half-created table nor a history row survived.
@@ -405,6 +452,8 @@ func TestMigrateFailedMigrationRollsBack(t *testing.T) {
 }
 
 func TestLoadRejectsInvalidFiles(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name  string
 		files map[string]string
@@ -413,16 +462,18 @@ func TestLoadRejectsInvalidFiles(t *testing.T) {
 		{name: "bad name", files: map[string]string{"1_first.sql": firstSQL}, want: "1_first.sql"},
 		{name: "uppercase name", files: map[string]string{"0001_First.sql": firstSQL}, want: "0001_First.sql"},
 		{name: "version zero", files: map[string]string{"0000_first.sql": firstSQL}, want: "0001 or higher"},
-		{name: "empty file", files: map[string]string{"0001_first.sql": " \n\t"}, want: "empty"},
+		{name: "empty file", files: map[string]string{firstFile: " \n\t"}, want: "empty"},
 		{
 			name:  "duplicate version",
-			files: map[string]string{"0001_first.sql": firstSQL, "0001_again.sql": secondSQL},
+			files: map[string]string{firstFile: firstSQL, "0001_again.sql": secondSQL},
 			want:  "share version 1",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			_, err := migrate.Load(source(tt.files))
 			require.ErrorIs(t, err, migrate.ErrInvalidMigration)
 			assert.Contains(t, err.Error(), tt.want)
@@ -431,9 +482,11 @@ func TestLoadRejectsInvalidFiles(t *testing.T) {
 }
 
 func TestLoadSortsAndSkipsNonMigrations(t *testing.T) {
+	t.Parallel()
+
 	fsys := source(map[string]string{
 		"0002_second.sql": secondSQL,
-		"0001_first.sql":  firstSQL,
+		firstFile:         firstSQL,
 		"README.md":       "notes",
 	})
 	fsys["archive/0009_old.sql"] = &fstest.MapFile{Data: []byte(thirdSQL)}
@@ -443,18 +496,22 @@ func TestLoadSortsAndSkipsNonMigrations(t *testing.T) {
 	require.Len(t, migrations, 2)
 	assert.Equal(t, 1, migrations[0].Version)
 	assert.Equal(t, "first", migrations[0].Name)
-	assert.Equal(t, "0001_first.sql", migrations[0].File)
+	assert.Equal(t, firstFile, migrations[0].File)
 	assert.Equal(t, firstSQL, migrations[0].SQL)
 	assert.Equal(t, 2, migrations[1].Version)
 }
 
 func TestLoadReportsUnreadableSource(t *testing.T) {
+	t.Parallel()
+
 	_, err := migrate.Load(os.DirFS(filepath.Join(t.TempDir(), "missing")))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "read migrations")
 }
 
 func TestEmbeddedMigrations(t *testing.T) {
+	t.Parallel()
+
 	migrations, err := migrate.Load(migrate.Embedded())
 	require.NoError(t, err)
 	require.NotEmpty(t, migrations)
@@ -468,6 +525,8 @@ func TestEmbeddedMigrations(t *testing.T) {
 }
 
 func TestMigrateReportsInvalidSource(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 
 	_, err := migrate.Apply(t.Context(), db, path, migrate.Options{Source: source(map[string]string{"bad.sql": firstSQL})})
@@ -476,6 +535,8 @@ func TestMigrateReportsInvalidSource(t *testing.T) {
 }
 
 func TestMigrateReportsClosedDatabase(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 	require.NoError(t, db.Close())
 
@@ -485,6 +546,8 @@ func TestMigrateReportsClosedDatabase(t *testing.T) {
 }
 
 func TestMigrateReportsMalformedHistory(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name  string
 		setup []string
@@ -504,6 +567,8 @@ func TestMigrateReportsMalformedHistory(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			db, path := openDB(t)
 
 			for _, stmt := range tt.setup {
@@ -519,6 +584,8 @@ func TestMigrateReportsMalformedHistory(t *testing.T) {
 }
 
 func TestMigrateReportsReadOnlyDatabase(t *testing.T) {
+	t.Parallel()
+
 	path := filepath.Join(t.TempDir(), "readonly.db")
 	require.NoError(t, os.WriteFile(path, nil, 0o600))
 
@@ -532,6 +599,8 @@ func TestMigrateReportsReadOnlyDatabase(t *testing.T) {
 }
 
 func TestMigrateReportsBackupFailures(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name   string
 		dbPath func(t *testing.T) string
@@ -574,6 +643,8 @@ func TestMigrateReportsBackupFailures(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			db, path := openDB(t)
 			apply(t, db, path, firstN(1), fixed)
 
@@ -586,14 +657,99 @@ func TestMigrateReportsBackupFailures(t *testing.T) {
 }
 
 func TestMigrateCannotEraseHistory(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 
 	_, err := migrate.Apply(t.Context(), db, path, migrate.Options{Source: source(map[string]string{
 		"0001_erase.sql": "DROP TABLE schema_migrations;\n",
 	})})
-	require.Error(t, err)
+	require.ErrorIs(t, err, migrate.ErrMigrationFailed)
 	assert.Contains(t, err.Error(), "record 0001_erase.sql")
 
 	// The drop was rolled back together with the failed history insert.
 	assert.Equal(t, []string{"schema_migrations"}, tables(t, db))
+}
+
+func TestCheckReportsWhatApplyWouldRefuse(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// setup prepares the database; Check then runs with firstN(3).
+		setup func(t *testing.T, db *sql.DB, path string)
+		want  error
+	}{
+		{name: "new and empty", setup: func(*testing.T, *sql.DB, string) {}},
+		{
+			name:  "up to date",
+			setup: func(t *testing.T, db *sql.DB, path string) { apply(t, db, path, firstN(3), clock()) },
+		},
+		{
+			name:  "migrations pending",
+			setup: func(t *testing.T, db *sql.DB, path string) { apply(t, db, path, firstN(1), clock()) },
+		},
+		{
+			name: "unmanaged",
+			setup: func(t *testing.T, db *sql.DB, _ string) {
+				_, err := db.ExecContext(t.Context(), `CREATE TABLE legacy (id INTEGER PRIMARY KEY)`)
+				require.NoError(t, err)
+			},
+			want: migrate.ErrUnmanagedSchema,
+		},
+		{
+			name: "changed",
+			setup: func(t *testing.T, db *sql.DB, path string) {
+				apply(t, db, path, source(map[string]string{firstFile: firstSQL + "-- edited\n"}), clock())
+			},
+			want: migrate.ErrChecksumMismatch,
+		},
+		{
+			name:  "newer",
+			setup: func(t *testing.T, db *sql.DB, path string) { apply(t, db, path, firstN(4), clock()) },
+			want:  migrate.ErrNewerSchema,
+		},
+		{
+			name: "out of order",
+			setup: func(t *testing.T, db *sql.DB, path string) {
+				apply(t, db, path, source(map[string]string{firstFile: firstSQL, "0003_third.sql": thirdSQL}), clock())
+			},
+			want: migrate.ErrOutOfOrder,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			db, path := openDB(t)
+			tt.setup(t, db, path)
+			before := tables(t, db)
+
+			err := migrate.Check(t.Context(), db, migrate.Options{Source: firstN(3)})
+			if tt.want == nil {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, tt.want)
+			}
+
+			assert.Equal(t, before, tables(t, db), "Check creates nothing")
+		})
+	}
+}
+
+func TestCheckReportsWhatItCannotRead(t *testing.T) {
+	t.Parallel()
+
+	db, _ := openDB(t)
+
+	require.ErrorIs(t, migrate.Check(t.Context(), db, migrate.Options{Source: source(map[string]string{"bad.sql": firstSQL})}),
+		migrate.ErrInvalidMigration)
+
+	_, err := db.ExecContext(t.Context(), `CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY)`)
+	require.NoError(t, err)
+	require.ErrorContains(t, migrate.Check(t.Context(), db, migrate.Options{Source: firstN(1)}), "read migration history")
+
+	require.NoError(t, db.Close())
+	require.ErrorContains(t, migrate.Check(t.Context(), db, migrate.Options{Source: firstN(1)}), "inspect schema")
 }

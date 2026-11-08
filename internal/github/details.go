@@ -2,10 +2,8 @@ package github
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"maps"
-	"net/http"
+	"slices"
 	"strings"
 
 	"golang.org/x/sync/errgroup"
@@ -195,12 +193,7 @@ func (d *Details) Add(other *Details) {
 func detailsBatches(ids []string) [][]string {
 	size := min(detailsMaxBatch, max(detailsMinBatch, (len(ids)+detailsParallel-1)/detailsParallel))
 
-	var batches [][]string
-	for start := 0; start < len(ids); start += size {
-		batches = append(batches, ids[start:min(start+size, len(ids))])
-	}
-
-	return batches
+	return slices.Collect(slices.Chunk(ids, size))
 }
 
 // fetchDetails sends the batches side by side and merges the answers in batch order.
@@ -236,40 +229,18 @@ func (c *Client) fetchDetails(ctx context.Context, tok Token, ids []string) (*De
 	return out, nil
 }
 
-// fetchDetailsBatch sends the details query for one batch of IDs.
+// fetchDetailsBatch sends the details query for one batch of IDs. Errors with data are
+// about single items (one deleted or hidden since the inbox query), and their nodes come
+// back null. Errors without data are a real failure.
 func (c *Client) fetchDetailsBatch(ctx context.Context, tok Token, ids []string) (*detailsData, error) {
-	body, err := json.Marshal(graphQLRequest{Query: detailsQuery, Variables: map[string]any{"ids": ids}})
-	if err != nil {
-		return nil, fmt.Errorf("encode the details query: %w", err)
-	}
+	req := graphQLRequest{Query: detailsQuery, Variables: map[string]any{"ids": ids}}
 
-	raw, _, err := c.do(ctx, tok, http.MethodPost, "/graphql", body)
+	resp, _, err := postGraphQL[detailsData](ctx, c, tok, "details", req, unlessData)
 	if err != nil {
 		return nil, err
 	}
 
-	var resp detailsResponse
-	if err = json.Unmarshal(raw, &resp); err != nil {
-		return nil, fmt.Errorf("%w: decode the details response: %w", ErrMalformedResponse, err)
-	}
-
-	// Errors with data are about single items (one deleted or hidden since the inbox
-	// query), and their nodes come back null. Errors without data are a real failure.
-	if resp.Data == nil {
-		if len(resp.Errors) > 0 {
-			return nil, (&graphQLResponse{Errors: resp.Errors}).err()
-		}
-
-		return nil, fmt.Errorf("%w: the details response has no data", ErrMalformedResponse)
-	}
-
 	return resp.Data, nil
-}
-
-// detailsResponse is the details query's response body.
-type detailsResponse struct {
-	Data   *detailsData   `json:"data"`
-	Errors []graphQLError `json:"errors"`
 }
 
 // detailsData is the details query's data object.

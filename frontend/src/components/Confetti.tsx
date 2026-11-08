@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useEffectEvent, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 
 import { brand } from '../generated/brand'
@@ -33,24 +33,21 @@ export function useConfetti(random: () => number = Math.random) {
   const [bursts, setBursts] = useState<ConfettiBurst[]>([])
   const seq = useRef(0)
 
-  const fire = useCallback(
-    (origin: Point, count: number, flash = false) => {
-      seq.current += 1
-      const next: ConfettiBurst = {
-        id: seq.current,
-        origin,
-        particles: burst(count, roomAround(origin), random),
-        flash,
-      }
+  const fire = (origin: Point, count: number, flash = false) => {
+    seq.current += 1
+    const next: ConfettiBurst = {
+      id: seq.current,
+      origin,
+      particles: burst(count, roomAround(origin), random),
+      flash,
+    }
 
-      setBursts((current) => [...current, next])
-    },
-    [random],
-  )
+    setBursts((current) => [...current, next])
+  }
 
-  const land = useCallback((id: number) => {
+  const land = (id: number) => {
     setBursts((current) => current.filter((b) => b.id !== id))
-  }, [])
+  }
 
   return { bursts, fire, land }
 }
@@ -84,10 +81,15 @@ interface BurstViewProps {
 
 // BurstView draws one burst and removes it once its last particle has landed.
 function BurstView({ burst: b, onLand }: BurstViewProps) {
+  // The burst lands with the latest onLand, so a new one never restarts its flight.
+  const landed = useEffectEvent(() => {
+    onLand(b.id)
+  })
+
   useEffect(() => {
     const timer = setTimeout(
       () => {
-        onLand(b.id)
+        landed()
       },
       lifetime(b.particles) + settleMs,
     )
@@ -95,7 +97,7 @@ function BurstView({ burst: b, onLand }: BurstViewProps) {
     return () => {
       clearTimeout(timer)
     }
-  }, [b, onLand])
+  }, [b])
 
   const { x, y } = b.origin
 

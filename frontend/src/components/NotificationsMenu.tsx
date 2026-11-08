@@ -1,25 +1,28 @@
-import { useEffect, useId, useState, type ReactNode } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 
-import { formatAgo } from '../lib/age'
-import { errorMessage, formatCount } from '../lib/format'
+import { formatAgo } from '../lib/time'
+import { formatCount } from '../lib/format'
 import { entryRef, kindTitle } from '../lib/notifications'
+import { useMutation } from '../lib/useMutation'
 import type { NotificationsState } from '../lib/useNotifications'
 import { usePopover } from '../lib/usePopover'
-import type { AppNotification } from '../platform'
+import type { AppNotification, NotificationKind } from '../platform'
 import { quietButtonClass } from './controls'
 import { AssignIcon, BellIcon, ClockIcon, EyeIcon, SlidersIcon } from './icons'
+import { PopoverPanel } from './PopoverPanel'
+import { RelativeTime } from './RelativeTime'
 
 export interface NotificationsMenuProps {
   notifications: NotificationsState
-  now: Date
   // onOpen shows an entry's item: in the inbox while it is there, on GitHub after.
   onOpen: (entry: AppNotification) => void
   // onSettings opens the notification settings.
   onSettings: () => void
 }
 
-// kindIcons are each kind's icon in the history.
-const kindIcons: Readonly<Record<string, (props: { className?: string }) => ReactNode>> = {
+// kindIcons are each kind's icon in the history. A kind this build does not know, as
+// another build may have stored, shows the bell.
+const kindIcons: Readonly<Partial<Record<NotificationKind, (props: { className?: string }) => ReactNode>>> = {
   review_requested: EyeIcon,
   assigned: AssignIcon,
   woke: ClockIcon,
@@ -32,14 +35,13 @@ function bellLabel(unread: number): string {
 
 interface EntryProps {
   entry: AppNotification
-  now: Date
   // fresh marks an entry that was unread when the history opened.
   fresh: boolean
   onOpen: () => void
 }
 
 // Entry is one notification in the history: what happened, to which item, and when.
-function Entry({ entry, now, fresh, onOpen }: EntryProps) {
+function Entry({ entry, fresh, onOpen }: EntryProps) {
   const Icon = kindIcons[entry.kind] ?? BellIcon
   const where = entry.detail === '' ? entryRef(entry) : `${entryRef(entry)} · ${entry.detail}`
 
@@ -67,9 +69,11 @@ function Entry({ entry, now, fresh, onOpen }: EntryProps) {
               {fresh && <span className="sr-only">Unread: </span>}
               {kindTitle(entry.kind)}
             </span>
-            <time dateTime={entry.createdAt} className="shrink-0 text-[11px] text-muted tabular-nums">
-              {formatAgo(now, entry.createdAt)}
-            </time>
+            <RelativeTime
+              iso={entry.createdAt}
+              show={formatAgo}
+              className="shrink-0 text-[11px] text-muted tabular-nums"
+            />
           </span>
           <span className="mt-0.5 block truncate text-sm font-medium">{entry.title}</span>
           <span className="block truncate text-xs text-muted">{where}</span>
@@ -82,25 +86,19 @@ function Entry({ entry, now, fresh, onOpen }: EntryProps) {
 // NotificationsMenu is the toolbar's bell: how many notifications are unread, and a click
 // opens the history, newest first. Opening it marks everything read, while the entries
 // that were unread stay marked until it closes. An entry opens its item.
-export function NotificationsMenu({ notifications, now, onOpen, onSettings }: NotificationsMenuProps) {
+export function NotificationsMenu({ notifications, onOpen, onSettings }: NotificationsMenuProps) {
   const id = useId()
-  const { open, toggle, close, triggerRef, panelRef } = usePopover<HTMLButtonElement, HTMLDivElement>()
-  const { log, error, markRead, clear } = notifications
-  const items = log.items ?? []
+  const popover = usePopover<HTMLButtonElement, HTMLDivElement>({ focus: 'panel' })
+  const { open, toggle, close, triggerRef } = popover
+  const { log, error, markRead, markError, clear } = notifications
+  const items = log.items
   const [fresh, setFresh] = useState<ReadonlySet<number>>(new Set())
-  const [clearError, setClearError] = useState('')
-
-  // Focus moves into the panel, so Escape and Tab behave from there.
-  useEffect(() => {
-    if (open) {
-      panelRef.current?.focus()
-    }
-  }, [open, panelRef])
+  const clearing = useMutation(clear)
 
   const onToggle = () => {
     if (!open) {
       setFresh(new Set(items.filter((n) => !n.read).map((n) => n.id)))
-      setClearError('')
+      clearing.reset()
 
       if (log.unread > 0) {
         markRead()
@@ -110,13 +108,15 @@ export function NotificationsMenu({ notifications, now, onOpen, onSettings }: No
     toggle()
   }
 
-  const onClear = () => {
-    clear().catch((err: unknown) => {
-      setClearError(errorMessage(err))
-    })
-  }
-
   const label = bellLabel(log.unread)
+  const failure =
+    clearing.error !== ''
+      ? `Could not clear: ${clearing.error}`
+      : markError !== ''
+        ? `Could not mark them read: ${markError}`
+        : error !== ''
+          ? `Could not load the notifications: ${error}`
+          : ''
 
   return (
     <div className="relative">
@@ -142,68 +142,72 @@ export function NotificationsMenu({ notifications, now, onOpen, onSettings }: No
           </span>
         )}
       </button>
-      {open && (
-        <div
-          ref={panelRef}
-          id={id}
-          role="dialog"
-          aria-labelledby={`${id}-title`}
-          tabIndex={-1}
-          className="absolute top-full right-0 z-40 mt-2 flex max-h-[min(32rem,calc(100vh-5rem))] w-96 origin-top-right flex-col rounded-lg border border-border bg-surface shadow-xl shadow-black/20 outline-none motion-safe:animate-pop-in"
-        >
-          <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-            <h2 id={`${id}-title`} className="text-sm font-semibold">
-              Notifications
-            </h2>
-            {items.length > 0 && (
-              <button type="button" onClick={onClear} className={`ml-auto ${quietButtonClass}`}>
-                Clear
-              </button>
-            )}
-          </div>
-          {(error !== '' || clearError !== '') && (
-            <p role="alert" className="border-b border-border px-4 py-2 text-xs text-danger">
-              {clearError === '' ? `Could not load the notifications: ${error}` : `Could not clear: ${clearError}`}
-            </p>
-          )}
-          {items.length === 0 ? (
-            <div className="px-4 py-6 text-center">
-              <p className="text-sm font-medium">No notifications yet</p>
-              <p className="mt-1 text-xs text-muted">
-                New review requests, assignments, and snoozes that end early show up here.
-              </p>
-            </div>
-          ) : (
-            <ul aria-label="Notification history" className="min-h-0 flex-1 divide-y divide-border overflow-y-auto">
-              {items.map((entry) => (
-                <Entry
-                  key={entry.id}
-                  entry={entry}
-                  now={now}
-                  fresh={fresh.has(entry.id) || !entry.read}
-                  onOpen={() => {
-                    close()
-                    onOpen(entry)
-                  }}
-                />
-              ))}
-            </ul>
-          )}
-          <div className="border-t border-border px-2 py-1.5">
+      <PopoverPanel
+        state={popover}
+        align="right"
+        id={id}
+        role="dialog"
+        aria-labelledby={`${id}-title`}
+        tabIndex={-1}
+        className="z-40 flex max-h-[min(32rem,calc(100vh-5rem))] w-96 flex-col shadow-black/20 outline-none"
+      >
+        <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
+          <h2 id={`${id}-title`} className="text-sm font-semibold">
+            Notifications
+          </h2>
+          {items.length > 0 && (
             <button
               type="button"
               onClick={() => {
-                close()
-                onSettings()
+                void clearing.run()
               }}
-              className={quietButtonClass}
+              className={`ml-auto ${quietButtonClass}`}
             >
-              <SlidersIcon className="size-3.5" />
-              Notification settings
+              Clear
             </button>
-          </div>
+          )}
         </div>
-      )}
+        {failure !== '' && (
+          <p role="alert" className="border-b border-border px-4 py-2 text-xs text-danger">
+            {failure}
+          </p>
+        )}
+        {items.length === 0 ? (
+          <div className="px-4 py-6 text-center">
+            <p className="text-sm font-medium">No notifications yet</p>
+            <p className="mt-1 text-xs text-muted">
+              New review requests, assignments, and snoozes that end early show up here.
+            </p>
+          </div>
+        ) : (
+          <ul aria-label="Notification history" className="min-h-0 flex-1 divide-y divide-border overflow-y-auto">
+            {items.map((entry) => (
+              <Entry
+                key={entry.id}
+                entry={entry}
+                fresh={fresh.has(entry.id) || !entry.read}
+                onOpen={() => {
+                  close()
+                  onOpen(entry)
+                }}
+              />
+            ))}
+          </ul>
+        )}
+        <div className="border-t border-border px-2 py-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              close()
+              onSettings()
+            }}
+            className={quietButtonClass}
+          >
+            <SlidersIcon className="size-3.5" />
+            Notification settings
+          </button>
+        </div>
+      </PopoverPanel>
     </div>
   )
 }

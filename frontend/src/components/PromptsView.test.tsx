@@ -5,19 +5,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Prompt, PromptCheckRequest } from '../platform'
 import { checkResult, item, prompt, prompts, variables } from '../test/fixtures'
+import { platform } from '../test/platform'
 import { PromptsView } from './PromptsView'
 
-const platform = vi.hoisted(() => ({
-  checkPrompt: vi.fn(),
-  createPrompt: vi.fn(),
-  updatePrompt: vi.fn(),
-  deletePrompt: vi.fn(),
-  duplicatePrompt: vi.fn(),
-  resetPrompt: vi.fn(),
-  setDefaultPrompt: vi.fn(),
-}))
-
-vi.mock('../platform', () => platform)
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 // next is the library the next reload brings in, when a test changes it.
 let next: Prompt[] | null = null
@@ -37,7 +28,6 @@ function Harness({ initial = prompts(), onChanged }: HarnessProps) {
       defaults={{ pr: 1, issue: 4 }}
       variables={variables()}
       items={[item(), item({ id: 2, kind: 'issue', number: 12, title: 'Crash on start' })]}
-      active
       onChanged={() => {
         onChanged?.()
 
@@ -58,7 +48,7 @@ function library() {
 
 // lastCheck returns the request of the latest check.
 function lastCheck(): PromptCheckRequest {
-  const call = platform.checkPrompt.mock.lastCall as [PromptCheckRequest] | undefined
+  const call = platform.checkPrompt.mock.lastCall
 
   if (call === undefined) {
     throw new Error('no check yet')
@@ -75,23 +65,7 @@ async function waitForCheck() {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
   next = null
-  platform.checkPrompt.mockResolvedValue(checkResult())
-
-  for (const fn of [platform.createPrompt, platform.updatePrompt, platform.duplicatePrompt, platform.resetPrompt]) {
-    fn.mockImplementation((idOrInput: unknown, input?: Record<string, unknown>) =>
-      Promise.resolve(
-        prompt({
-          ...(input ?? (idOrInput as Record<string, unknown>)),
-          id: typeof idOrInput === 'number' ? idOrInput : 9,
-        }),
-      ),
-    )
-  }
-
-  platform.deletePrompt.mockResolvedValue(undefined)
-  platform.setDefaultPrompt.mockResolvedValue(undefined)
 })
 
 describe('PromptsView', () => {
@@ -162,6 +136,26 @@ describe('PromptsView', () => {
     expect(await screen.findByText('Saved.')).toBeInTheDocument()
     expect(onChanged).toHaveBeenCalledOnce()
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+  })
+
+  it('keeps the draft and says why when a save is refused', async () => {
+    platform.updatePrompt.mockRejectedValue(new Error('a prompt named Fix CI already exists'))
+    const onChanged = vi.fn()
+    render(<Harness onChanged={onChanged} />)
+    await waitForCheck()
+
+    const nickname = screen.getByRole('textbox', { name: 'Nickname' })
+    await userEvent.clear(nickname)
+    await userEvent.type(nickname, 'Fix CI')
+    await waitFor(() => {
+      expect(lastCheck().input.nickname).toBe('Fix CI')
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('a prompt named Fix CI already exists')
+    expect(nickname).toHaveValue('Fix CI')
+    expect(onChanged).not.toHaveBeenCalled()
   })
 
   it('edits the launch settings a prompt sets', async () => {

@@ -4,6 +4,11 @@ import (
 	"context"
 	"errors"
 	"unicode/utf8"
+
+	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/textutil"
+	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
 // CheckRequest asks to check a prompt being edited and to fill it in for a preview.
@@ -27,7 +32,7 @@ type CheckRequest struct {
 // CheckResult is what the editor shows for a prompt being edited.
 type CheckResult struct {
 	// Fields lists problems with the title, nickname, kind, model, effort, and flags.
-	Fields []FieldError `json:"fields"`
+	Fields []agent.FieldError `json:"fields"`
 
 	// Diagnostics lists problems in the text, placed for the editor.
 	Diagnostics []Diagnostic `json:"diagnostics"`
@@ -62,12 +67,11 @@ type CheckResult struct {
 // could not run.
 func (s *Service) Check(ctx context.Context, req CheckRequest) (CheckResult, error) {
 	in := req.Input.normalized()
-	db := s.db.WithContext(ctx)
 
 	var usage Usage
 
 	if req.ID != 0 {
-		u, err := usageOf(db, req.ID)
+		u, err := s.usageOf(ctx, req.ID)
 		if err != nil {
 			return CheckResult{}, err
 		}
@@ -75,12 +79,12 @@ func (s *Service) Check(ctx context.Context, req CheckRequest) (CheckResult, err
 		usage = u
 	}
 
-	_, fields := validateFields(db, req.ID, in, usage)
+	_, fields := validateFields(ctx, s.store, req.ID, in, usage)
 	tmpl, diags := Parse(in.Body, appliesToOrAny(in.AppliesTo))
 
 	data, note := s.previewData(ctx, req, appliesToOrAny(in.AppliesTo))
 	result := CheckResult{
-		Fields: nonNil(fields), Diagnostics: nonNil(diags), Values: data.Values(),
+		Fields: textutil.NonNil(fields), Diagnostics: textutil.NonNil(diags), Values: data.Values(),
 		PreviewNote: note, Sample: note != "" || req.ItemID == 0,
 	}
 
@@ -90,7 +94,7 @@ func (s *Service) Check(ctx context.Context, req CheckRequest) (CheckResult, err
 
 	out, err := tmpl.Execute(data)
 	if err != nil {
-		result.PreviewError = sentence(previewMessage(err))
+		result.PreviewError = previewMessage(err)
 
 		return result, nil
 	}
@@ -107,10 +111,10 @@ func (s *Service) Check(ctx context.Context, req CheckRequest) (CheckResult, err
 
 // previewData returns the data to preview with and, when it had to fall back to sample
 // data for an item that was asked for, why.
-func (s *Service) previewData(ctx context.Context, req CheckRequest, appliesTo string) (Data, string) {
-	sample := Sample(KindPR)
+func (s *Service) previewData(ctx context.Context, req CheckRequest, appliesTo AppliesTo) (Data, string) {
+	sample := Sample(item.KindPR)
 	if appliesTo == AppliesToIssue {
-		sample = Sample(KindIssue)
+		sample = Sample(item.KindIssue)
 	}
 
 	sample = sample.WithSession(req.InWorktree, req.AtPRHead)
@@ -124,13 +128,8 @@ func (s *Service) previewData(ctx context.Context, req CheckRequest, appliesTo s
 		return sample, "That item is no longer in the inbox, so the preview uses a sample."
 	}
 
-	kind := KindIssue
-	if data.IsPR {
-		kind = KindPR
-	}
-
-	if !AppliesTo(appliesTo, kind) {
-		return sample, "This prompt isn't for " + plural(kind) + ", so the preview uses a sample."
+	if kind := data.kind(); !appliesTo.Covers(kind) {
+		return sample, "This prompt isn't for " + kind.Plural() + ", so the preview uses a sample."
 	}
 
 	return data.WithSession(req.InWorktree, req.AtPRHead), ""
@@ -140,19 +139,10 @@ func (s *Service) previewData(ctx context.Context, req CheckRequest, appliesTo s
 func previewMessage(err error) string {
 	switch {
 	case errors.Is(err, ErrLeadingDash):
-		return `for this item the prompt starts with "-", so a launch would be refused. Start it with a word`
+		return `For this item the prompt starts with "-", so a launch would be refused. Start it with a word.`
 	case errors.Is(err, ErrEmptyPrompt):
-		return "for this item the prompt is empty"
+		return "For this item the prompt is empty."
 	default:
-		return err.Error()
+		return uierr.Message(err)
 	}
-}
-
-// nonNil returns list, or an empty list for nil, so the UI always gets an array.
-func nonNil[T any](list []T) []T {
-	if list == nil {
-		return []T{}
-	}
-
-	return list
 }

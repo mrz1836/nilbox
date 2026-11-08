@@ -82,8 +82,8 @@ var (
 	// errBindingsDrift is returned when the committed bindings differ from the generated ones.
 	errBindingsDrift = errors.New("frontend/bindings is out of date; run magex app:bindings")
 
-	// errNoLintVersion is returned when the golangci-lint pin cannot be found.
-	errNoLintVersion = errors.New("the golangci-lint version is not pinned")
+	// errNotPinned is returned when a tool's version pin cannot be found.
+	errNotPinned = errors.New("the tool version is not pinned")
 
 	// errStillRunning is returned when a running copy of the app does not quit in time.
 	errStillRunning = errors.New("the running app did not quit; quit it and run the target again")
@@ -368,8 +368,7 @@ func appProcesses(exe string) ([]int, error) {
 
 	out, err := exec.CommandContext(context.Background(), "pgrep", "-f", pattern).Output() //nolint:gosec // argv only, no shell
 	if err != nil {
-		var exit *exec.ExitError
-		if errors.As(err, &exit) && exit.ExitCode() == 1 { // pgrep exits 1 when nothing matches
+		if exit, ok := errors.AsType[*exec.ExitError](err); ok && exit.ExitCode() == 1 { // pgrep exits 1 when nothing matches
 			return nil, nil
 		}
 
@@ -378,7 +377,7 @@ func appProcesses(exe string) ([]int, error) {
 
 	var pids []int
 
-	for _, field := range strings.Fields(string(out)) {
+	for field := range strings.FieldsSeq(string(out)) {
 		pid, convErr := strconv.Atoi(field)
 		if convErr != nil {
 			return nil, fmt.Errorf("parse the pgrep output %q: %w", field, convErr)
@@ -424,36 +423,135 @@ func generateBindings(out string) error {
 		return fmt.Errorf("generate bindings: %w", err)
 	}
 
-	return trimTrailingSpace(out)
+	return tidyBindings(out)
 }
 
-// trimTrailingSpace strips trailing spaces and tabs from every line of the files under
-// root. The generator leaves them on blank doc-comment lines, which the repository's
-// whitespace check rejects; trimming here keeps the committed bindings, a fresh
-// generation, and the drift check identical.
-func trimTrailingSpace(root string) error {
+// tidyBindings rewrites each generated file under root the way the repository keeps it
+// (see trimTrailingSpace and unionEnums), so the committed bindings, a fresh generation,
+// and the drift check stay identical. A file that is already tidy is left untouched.
+func tidyBindings(root string) error {
 	files, err := treeFiles(root)
 	if err != nil {
 		return err
 	}
 
 	for rel, body := range files {
-		lines := bytes.Split(body, []byte("\n"))
-		for i, line := range lines {
-			lines[i] = bytes.TrimRight(line, " \t")
-		}
-
-		trimmed := bytes.Join(lines, []byte("\n"))
-		if bytes.Equal(trimmed, body) {
+		tidy := unionEnums(trimTrailingSpace(body))
+		if bytes.Equal(tidy, body) {
 			continue
 		}
 
-		if err = os.WriteFile(filepath.Join(root, filepath.FromSlash(rel)), trimmed, 0o644); err != nil { //nolint:gosec // generated sources, world-readable
-			return fmt.Errorf("trim %s: %w", rel, err)
+		if err = os.WriteFile(filepath.Join(root, filepath.FromSlash(rel)), tidy, 0o644); err != nil { //nolint:gosec // generated sources, world-readable
+			return fmt.Errorf("tidy %s: %w", rel, err)
 		}
 	}
 
 	return nil
+}
+
+// trimTrailingSpace strips trailing spaces and tabs from every line of body. The
+// generator leaves them on blank doc-comment lines, which the repository's whitespace
+// check rejects.
+func trimTrailingSpace(body []byte) []byte {
+	lines := bytes.Split(body, []byte("\n"))
+	for i, line := range lines {
+		lines[i] = bytes.TrimRight(line, " \t")
+	}
+
+	return bytes.Join(lines, []byte("\n"))
+}
+
+// enumZero is the member the generator adds to every enum for the Go zero value.
+const enumZero = "$zero"
+
+var (
+	// enumStart matches the first line of a generated enum, capturing its name.
+	enumStart = regexp.MustCompile(`^export enum ([\w$]+) \{$`)
+
+	// enumMember matches one member of a generated enum, capturing its indent, name,
+	// and value.
+	enumMember = regexp.MustCompile(`^(\s+)([\w$]+) = (.+),$`)
+)
+
+// unionEnums rewrites each enum in a generated file as a type that is the union of its
+// values, and a const object of the same name that maps each Go constant's name to its
+// value. The generator renders a Go string type with constants as a TypeScript enum,
+// which the frontend's erasableSyntaxOnly rejects and which a plain 'pr' is not
+// assignable to; the union keeps the values checked while literals still type-check.
+// The enum's $zero member is left out: it is not one of the constants, and a type whose
+// zero value means something declares a constant for it.
+func unionEnums(body []byte) []byte {
+	lines := strings.Split(string(body), "\n")
+	out := make([]string, 0, len(lines))
+
+	for i := 0; i < len(lines); i++ {
+		start := enumStart.FindStringSubmatch(lines[i])
+		if start == nil {
+			out = append(out, lines[i])
+
+			continue
+		}
+
+		end := slices.Index(lines[i+1:], "};")
+		if end < 0 {
+			// Not an enum as the generator writes one: leave the rest as it is.
+			out = append(out, lines[i:]...)
+
+			break
+		}
+
+		out = append(out, unionEnum(start[1], lines[i+1:i+1+end])...)
+		i += end + 1
+	}
+
+	return []byte(strings.Join(out, "\n"))
+}
+
+// unionEnum returns the union type and the const object for the enum named name whose
+// body (the lines between its braces) is given. Each member keeps the comments above
+// it; the $zero member goes with its comment and the blank lines after it.
+func unionEnum(name string, body []string) []string {
+	var (
+		members, pending []string
+		values           []string
+		afterZero        bool
+	)
+
+	for _, line := range body {
+		member := enumMember.FindStringSubmatch(line)
+
+		switch {
+		case member == nil && afterZero && strings.TrimSpace(line) == "":
+			continue
+		case member == nil:
+			pending = append(pending, line)
+		case member[2] == enumZero:
+			pending, afterZero = nil, true
+		default:
+			members = append(members, pending...)
+			members = append(members, member[1]+member[2]+": "+member[3]+",")
+			pending, afterZero = nil, false
+
+			if !slices.Contains(values, member[3]) {
+				values = append(values, member[3])
+			}
+		}
+	}
+
+	members = append(members, pending...)
+
+	out := make([]string, 0, len(members)+8)
+	out = append(out,
+		"export type "+name+" = "+strings.Join(values, " | ")+";",
+		"",
+		"/**",
+		" * The values of "+name+", by the names of their Go constants.",
+		" */",
+		"export const "+name+" = {",
+	)
+	out = append(out, members...)
+
+	return append(out, "} as const;")
 }
 
 // wailsCLI returns the go-run package path of the wails3 CLI at the pinned version.
@@ -560,31 +658,36 @@ func treeFiles(root string) (map[string][]byte, error) {
 	return files, nil
 }
 
-// lintVersion returns the pinned golangci-lint version: the environment's value when set,
-// else the MAGE-X env file's.
+// lintVersion returns the golangci-lint version MAGE-X pins.
 func lintVersion() (string, error) {
-	if v := os.Getenv(lintVersionKey); v != "" {
+	return pinnedVersion(mageXEnvFile, lintVersionKey)
+}
+
+// pinnedVersion returns the tool version that key pins: the environment's value when set,
+// else the first non-empty value file assigns it.
+func pinnedVersion(file, key string) (string, error) {
+	if v := os.Getenv(key); v != "" {
 		return v, nil
 	}
 
-	f, err := os.Open(mageXEnvFile)
+	f, err := os.Open(file) //nolint:gosec // one of this repository's own env files
 	if err != nil {
-		return "", fmt.Errorf("read %s: %w", mageXEnvFile, err)
+		return "", fmt.Errorf("read %s: %w", file, err)
 	}
 	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
-		if v, ok := strings.CutPrefix(strings.TrimSpace(scanner.Text()), lintVersionKey+"="); ok && v != "" {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(scanner.Text()), key+"="); ok && v != "" {
 			return v, nil
 		}
 	}
 
 	if err = scanner.Err(); err != nil {
-		return "", fmt.Errorf("read %s: %w", mageXEnvFile, err)
+		return "", fmt.Errorf("read %s: %w", file, err)
 	}
 
-	return "", fmt.Errorf("%w: %s has no %s", errNoLintVersion, mageXEnvFile, lintVersionKey)
+	return "", fmt.Errorf("%w: %s has no %s", errNotPinned, file, key)
 }
 
 // lintOnPath reports whether golangci-lint on PATH is the pinned version, so it can run

@@ -75,7 +75,7 @@ type Starter struct {
 	Key       string
 	Name      string
 	Nickname  string
-	AppliesTo string
+	AppliesTo AppliesTo
 	Body      string
 	Model     string
 	Effort    string
@@ -86,8 +86,6 @@ type Starter struct {
 
 // Starters returns every starter prompt, in the order they are added.
 func Starters() []Starter {
-	off := false
-
 	return []Starter{
 		{
 			Key: StarterReviewPR, Name: "Review a pull request", Nickname: "Review",
@@ -99,7 +97,7 @@ func Starters() []Starter {
 		},
 		{
 			Key: StarterQuickLook, Name: "Take a quick look for blockers", Nickname: "Quick look",
-			AppliesTo: AppliesToPR, Body: quickLookBody, Model: "sonnet", Effort: "low", Worktree: &off,
+			AppliesTo: AppliesToPR, Body: quickLookBody, Model: "sonnet", Effort: "low", Worktree: new(false),
 		},
 		{
 			Key: StarterFixChecks, Name: "Fix a pull request's failing checks", Nickname: "Fix checks",

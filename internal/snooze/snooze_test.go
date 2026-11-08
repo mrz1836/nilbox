@@ -21,6 +21,8 @@ func all() Rules {
 }
 
 func TestDefaults(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, Rules{Commits: 1, Reviews: ReviewsDecisions, Comments: 0}, DefaultRules())
 	require.NoError(t, DefaultRules().Validate())
 	assert.Equal(t, 3, DecodeDays(nil))
@@ -28,6 +30,8 @@ func TestDefaults(t *testing.T) {
 }
 
 func TestDecodeRoundTrips(t *testing.T) {
+	t.Parallel()
+
 	rules := Rules{Commits: 5, Reviews: ReviewsNever, Comments: 10}
 
 	assert.Equal(t, rules, DecodeRules(rules.Encode()))
@@ -35,6 +39,8 @@ func TestDecodeRoundTrips(t *testing.T) {
 }
 
 func TestDecodeFallsBackPerRule(t *testing.T) {
+	t.Parallel()
+
 	got := DecodeRules(map[string]string{
 		PrefWakeCommits:  "-1",
 		PrefWakeReviews:  "sometimes",
@@ -51,6 +57,8 @@ func TestDecodeFallsBackPerRule(t *testing.T) {
 }
 
 func TestValidate(t *testing.T) {
+	t.Parallel()
+
 	for _, bad := range []Rules{
 		{Commits: -1, Reviews: ReviewsAny},
 		{Commits: MaxThreshold + 1, Reviews: ReviewsAny},
@@ -72,6 +80,8 @@ func TestValidate(t *testing.T) {
 }
 
 func TestNothingNewKeepsTheSnooze(t *testing.T) {
+	t.Parallel()
+
 	got := Wake(all(), before(), before(), false)
 
 	assert.False(t, got.Woke())
@@ -79,6 +89,8 @@ func TestNothingNewKeepsTheSnooze(t *testing.T) {
 }
 
 func TestNewCommits(t *testing.T) {
+	t.Parallel()
+
 	now := before()
 	now.Commits = 5
 	now.Head = "2222222222222222222222222222222222222222"
@@ -91,6 +103,8 @@ func TestNewCommits(t *testing.T) {
 }
 
 func TestForcePush(t *testing.T) {
+	t.Parallel()
+
 	now := before()
 	now.Head = "2222222222222222222222222222222222222222"
 
@@ -114,6 +128,8 @@ func TestForcePush(t *testing.T) {
 }
 
 func TestReviews(t *testing.T) {
+	t.Parallel()
+
 	approved := before()
 	approved.Approvals = 1
 	approved.Reviewed = 2
@@ -133,9 +149,9 @@ func TestReviews(t *testing.T) {
 
 	tests := []struct {
 		name string
-		rule string
+		rule ReviewRule
 		now  State
-		want string
+		want ReviewOutcome
 	}{
 		{"approval, decisions", ReviewsDecisions, approved, ReviewApproved},
 		{"changes, decisions", ReviewsDecisions, changes, ReviewChangesRequested},
@@ -148,6 +164,8 @@ func TestReviews(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got := Wake(Rules{Reviews: tt.rule}, before(), tt.now, false)
 			assert.Equal(t, Reasons{Review: tt.want}, got)
 		})
@@ -165,7 +183,19 @@ func TestReviews(t *testing.T) {
 	assert.Empty(t, Wake(Rules{Reviews: ReviewsAny}, was, was, false).Review)
 }
 
+func TestReviewOutcomesAreValid(t *testing.T) {
+	t.Parallel()
+
+	for _, o := range []ReviewOutcome{ReviewApproved, ReviewChangesRequested, ReviewNew, ReviewNone} {
+		assert.True(t, o.Valid(), o)
+	}
+
+	assert.False(t, ReviewOutcome("praised").Valid())
+}
+
 func TestComments(t *testing.T) {
+	t.Parallel()
+
 	now := before()
 	now.Comments = 7
 
@@ -180,6 +210,8 @@ func TestComments(t *testing.T) {
 }
 
 func TestEveryReasonAtOnce(t *testing.T) {
+	t.Parallel()
+
 	now := before()
 	now.Commits = 4
 	now.Head = "2222222222222222222222222222222222222222"

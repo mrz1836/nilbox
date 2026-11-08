@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -15,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/execpath"
-	"github.com/mrz1836/nilbox/internal/settings"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 const cloneRoot = "~/projects"
@@ -28,11 +27,6 @@ var (
 // listedAt is the fixed time snapshots are stamped with.
 func listedAt() time.Time { return time.Date(2026, 11, 5, 9, 30, 0, 0, time.UTC) }
 
-// fixedClock always reports listedAt.
-type fixedClock struct{}
-
-func (fixedClock) Now() time.Time { return listedAt() }
-
 // fakeSettings serves a clone root and the automatic cleanup setting.
 type fakeSettings struct {
 	root string
@@ -40,17 +34,9 @@ type fakeSettings struct {
 	err  error
 }
 
-func (f fakeSettings) Get(context.Context) (settings.Settings, error) {
-	return settings.Settings{CloneRoot: f.root, WorktreeAutoCleanup: f.auto}, f.err
+func (f fakeSettings) Get(context.Context) (SweepSettings, error) {
+	return SweepSettings{CloneRoot: f.root, AutoCleanup: f.auto}, f.err
 }
-
-// fakeFinder resolves git to a fixed path or fails.
-type fakeFinder struct {
-	path string
-	err  error
-}
-
-func (f fakeFinder) Find(string) (string, error) { return f.path, f.err }
 
 // reply is a scripted git answer.
 type reply struct {
@@ -59,23 +45,21 @@ type reply struct {
 	err    error
 }
 
-// scriptedRunner answers some git commands itself and runs the rest with real git.
-type scriptedRunner struct {
-	real      Runner
-	intercept func(sub []string) (reply, bool)
-}
+// scriptedGit answers the git commands intercept accepts itself, matching them by their
+// words after any leading -C <dir>, and runs the rest with realGit.
+func scriptedGit(realGit execpath.Runner, intercept func(sub []string) (reply, bool)) *testutil.Runner {
+	return &testutil.Runner{Script: func(ctx context.Context, argv []string) ([]byte, []byte, error) {
+		sub := argv[1:]
+		if len(sub) >= 2 && sub[0] == "-C" {
+			sub = sub[2:]
+		}
 
-func (r scriptedRunner) Run(ctx context.Context, name string, args ...string) (stdout, stderr []byte, err error) {
-	sub := args
-	if len(args) >= 2 && args[0] == "-C" {
-		sub = args[2:]
-	}
+		if answer, ok := intercept(sub); ok {
+			return []byte(answer.stdout), []byte(answer.stderr), answer.err
+		}
 
-	if answer, ok := r.intercept(sub); ok {
-		return []byte(answer.stdout), []byte(answer.stderr), answer.err
-	}
-
-	return r.real.Run(ctx, name, args...)
+		return realGit.Run(ctx, argv[0], argv[1:]...)
+	}}
 }
 
 // startsWith reports whether sub begins with the space-separated words of prefix.
@@ -90,77 +74,62 @@ type env struct {
 	home string
 	root string
 	svc  *Service
+
+	// git runs real git isolated from the user's and the system's configuration.
+	git execpath.Exec
 }
 
-// newEnv isolates git, creates home/projects, and builds a Service using real git.
-func newEnv(t *testing.T) *env {
+// newEnv creates home/projects and builds a Service using real git, isolated through
+// the runner's environment rather than the process's, so tests can run in parallel.
+func newEnv(t testing.TB) *env {
 	t.Helper()
 
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git is not installed")
-	}
-
-	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
-	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
-	t.Setenv("GIT_AUTHOR_NAME", "Octo User")
-	t.Setenv("GIT_AUTHOR_EMAIL", "octo-user@example.com")
-	t.Setenv("GIT_COMMITTER_NAME", "Octo User")
-	t.Setenv("GIT_COMMITTER_EMAIL", "octo-user@example.com")
+	testutil.RequireGit(t)
 
 	home := t.TempDir()
 	root := filepath.Join(home, "projects")
 	require.NoError(t, os.MkdirAll(root, 0o700))
 
-	e := &env{home: home, root: root}
-	e.svc = e.service(execpath.Runner{})
+	e := &env{home: home, root: root, git: execpath.Exec{Env: testutil.GitEnv(home)}}
+	e.svc = e.service(e.git)
 
 	return e
 }
 
 // service builds a Service over the env with the given git runner.
-func (e *env) service(run Runner) *Service {
+func (e *env) service(run execpath.Runner) *Service {
 	return NewService(Config{
 		Settings: fakeSettings{root: cloneRoot},
 		Git:      run,
-		Finder:   execpath.Finder{},
+		Finder:   execpath.Search{},
 		Home:     e.home,
-		Clock:    fixedClock{},
+		Clock:    testutil.NewClock(listedAt()),
 	})
 }
 
 // scripted builds a Service whose git runner answers some commands itself.
 func (e *env) scripted(intercept func(sub []string) (reply, bool)) *Service {
-	return e.service(scriptedRunner{real: execpath.Runner{}, intercept: intercept})
-}
-
-// gitOut runs git in the test and returns its output, failing on error.
-func gitOut(t *testing.T, args ...string) string {
-	t.Helper()
-
-	out, err := exec.CommandContext(t.Context(), "git", args...).CombinedOutput() //nolint:gosec // test fixture setup with fixed arguments
-	require.NoError(t, err, "git %s: %s", strings.Join(args, " "), out)
-
-	return string(out)
+	return e.service(scriptedGit(e.git, intercept))
 }
 
 // newRepo creates a repository under the clone root with one commit and returns its path.
-func (e *env) newRepo(t *testing.T, name string) string {
+func (e *env) newRepo(t testing.TB, name string) string {
 	t.Helper()
 
 	dir := filepath.Join(e.root, name)
-	gitOut(t, "-c", "init.defaultBranch=main", "init", "-q", dir)
+	testutil.InitRepo(t, dir)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "README.md"), []byte("example\n"), 0o600))
-	gitOut(t, "-C", dir, "add", "README.md")
-	gitOut(t, "-C", dir, "commit", "-q", "-m", "init")
+	testutil.RunGit(t, dir, "add", "README.md")
+	testutil.RunGit(t, dir, "commit", "-q", "-m", "init")
 
 	return dir
 }
 
 // addWorktree adds a linked worktree on a new branch at path.
-func addWorktree(t *testing.T, repo, path, branch string) string {
+func addWorktree(t testing.TB, repo, path, branch string) string {
 	t.Helper()
 
-	gitOut(t, append([]string{"-C", repo}, argv("worktree add -q -b", branch, path)...)...)
+	testutil.RunGit(t, repo, argv("worktree add -q -b", branch, path)...)
 
 	return path
 }
@@ -169,8 +138,7 @@ func addWorktree(t *testing.T, repo, path, branch string) string {
 func lock(t *testing.T, repo, path, reason string) {
 	t.Helper()
 
-	args := append([]string{"-C", repo}, argv("worktree lock --reason")...)
-	gitOut(t, append(args, reason, path)...)
+	testutil.RunGit(t, repo, append(argv("worktree lock --reason"), reason, path)...)
 }
 
 // dirty modifies a tracked file and adds an untracked one.
@@ -185,14 +153,14 @@ func dirty(t *testing.T, path string) {
 func branches(t *testing.T, repo string) []string {
 	t.Helper()
 
-	return strings.Fields(gitOut(t, "-C", repo, "branch", "--list", "--format=%(refname:short)"))
+	return strings.Fields(testutil.RunGit(t, repo, "branch", "--list", "--format=%(refname:short)"))
 }
 
 // gitWorktreePaths lists the resolved paths git knows as worktrees of repo.
 func gitWorktreePaths(t *testing.T, repo string) []string {
 	t.Helper()
 
-	entries, err := ParsePorcelain([]byte(gitOut(t, append([]string{"-C", repo}, listArgs()...)...)))
+	entries, err := ParsePorcelain([]byte(testutil.RunGit(t, repo, listArgs()...)))
 	require.NoError(t, err)
 
 	paths := make([]string, 0, len(entries))
@@ -258,6 +226,8 @@ func repoNames(snap Snapshot) []string {
 }
 
 func TestListScansAllReposUnderRoot(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	wt := filepath.Join(e.home, "wt")
 
@@ -265,7 +235,7 @@ func TestListScansAllReposUnderRoot(t *testing.T) {
 	feature := addWorktree(t, alpha, filepath.Join(wt, "alpha-feature"), "feature")
 	changed := addWorktree(t, alpha, filepath.Join(wt, "alpha-dirty"), "dirty-work")
 	dirty(t, changed)
-	gitOut(t, append([]string{"-C", alpha}, argv("worktree add -q --detach", filepath.Join(wt, "alpha-detached"))...)...)
+	testutil.RunGit(t, alpha, argv("worktree add -q --detach", filepath.Join(wt, "alpha-detached"))...)
 	claude := addWorktree(t, alpha, filepath.Join(alpha, ".claude", "worktrees", "pr-7"), "worktree-pr-7")
 	lock(t, alpha, claude, "claude session pr-7 (pid 1 start Wed Nov 5 09:00:00 2026)")
 	stale := addWorktree(t, alpha, filepath.Join(wt, "alpha-stale"), "stale-session")
@@ -280,10 +250,10 @@ func TestListScansAllReposUnderRoot(t *testing.T) {
 
 	nested := filepath.Join(e.root, "group", "nested")
 	require.NoError(t, os.MkdirAll(filepath.Dir(nested), 0o700))
-	gitOut(t, "-c", "init.defaultBranch=main", "init", "-q", nested)
+	testutil.InitRepo(t, nested)
 	require.NoError(t, os.WriteFile(filepath.Join(nested, "x"), []byte("x"), 0o600))
-	gitOut(t, "-C", nested, "add", "x")
-	gitOut(t, "-C", nested, "commit", "-q", "-m", "x")
+	testutil.RunGit(t, nested, "add", "x")
+	testutil.RunGit(t, nested, "commit", "-q", "-m", "x")
 	addWorktree(t, nested, filepath.Join(wt, "nested-wt"), "nested-feature") // two levels down: ignored
 
 	broken := filepath.Join(e.root, "broken")
@@ -360,6 +330,8 @@ func TestListScansAllReposUnderRoot(t *testing.T) {
 }
 
 func TestRemoveClean(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	alpha := e.newRepo(t, "alpha")
 	feature := addWorktree(t, alpha, filepath.Join(e.home, "wt", "feature"), "feature")
@@ -372,6 +344,8 @@ func TestRemoveClean(t *testing.T) {
 }
 
 func TestRemoveRefusesDirty(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	alpha := e.newRepo(t, "alpha")
 	changed := addWorktree(t, alpha, filepath.Join(e.home, "wt", "changed"), "changed")
@@ -392,6 +366,8 @@ func TestRemoveRefusesDirty(t *testing.T) {
 }
 
 func TestForceRemoveDirty(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	alpha := e.newRepo(t, "alpha")
 	changed := addWorktree(t, alpha, filepath.Join(e.home, "wt", "changed"), "changed")
@@ -406,6 +382,8 @@ func TestForceRemoveDirty(t *testing.T) {
 }
 
 func TestLockedRefusedEvenWithForce(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	alpha := e.newRepo(t, "alpha")
 	held := addWorktree(t, alpha, filepath.Join(e.home, "wt", "held"), "held")
@@ -428,6 +406,8 @@ func TestLockedRefusedEvenWithForce(t *testing.T) {
 }
 
 func TestMainWorktreeRefused(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	alpha := e.newRepo(t, "alpha")
 	addWorktree(t, alpha, filepath.Join(e.home, "wt", "feature"), "feature")
@@ -441,7 +421,7 @@ func TestMainWorktreeRefused(t *testing.T) {
 	require.ErrorIs(t, e.svc.Remove(t.Context(), alpha, other), ErrNotAWorktree)
 
 	outside := filepath.Join(e.home, "outside")
-	gitOut(t, "-c", "init.defaultBranch=main", "init", "-q", outside)
+	testutil.InitRepo(t, outside)
 	require.ErrorIs(t, e.svc.Remove(t.Context(), outside, outside), ErrOutsideCloneRoot)
 	require.ErrorIs(t, e.svc.Prune(t.Context(), outside), ErrOutsideCloneRoot)
 	require.ErrorIs(t, e.svc.Remove(t.Context(), "projects/alpha", alpha), ErrOutsideCloneRoot)
@@ -449,6 +429,8 @@ func TestMainWorktreeRefused(t *testing.T) {
 }
 
 func TestBranchesSurviveRemoval(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	alpha := e.newRepo(t, "alpha")
 	wt := filepath.Join(e.home, "wt")
@@ -476,6 +458,8 @@ func TestBranchesSurviveRemoval(t *testing.T) {
 }
 
 func TestPruneClearsStaleEntries(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	alpha := e.newRepo(t, "alpha")
 	gone := addWorktree(t, alpha, filepath.Join(e.home, "wt", "gone"), "gone")
@@ -503,6 +487,8 @@ func TestPruneClearsStaleEntries(t *testing.T) {
 }
 
 func TestRemoveAllClean(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	wt := filepath.Join(e.home, "wt")
 	alpha := e.newRepo(t, "alpha")
@@ -537,6 +523,8 @@ func TestRemoveAllClean(t *testing.T) {
 }
 
 func TestRemoveAllCleanReportsRefusals(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	alpha := e.newRepo(t, "alpha")
 	feature := addWorktree(t, alpha, filepath.Join(e.home, "wt", "feature"), "feature")
@@ -562,6 +550,8 @@ func TestRemoveAllCleanReportsRefusals(t *testing.T) {
 }
 
 func TestServiceErrors(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	alpha := e.newRepo(t, "alpha")
 	feature := addWorktree(t, alpha, filepath.Join(e.home, "wt", "feature"), "feature")
@@ -574,27 +564,35 @@ func TestServiceErrors(t *testing.T) {
 	}
 
 	t.Run("git not found", func(t *testing.T) {
-		svc := NewService(Config{Settings: fakeSettings{root: cloneRoot}, Git: execpath.Runner{}, Finder: fakeFinder{err: errFakeFind}, Home: e.home})
+		t.Parallel()
+
+		svc := NewService(Config{Settings: fakeSettings{root: cloneRoot}, Git: e.git, Finder: testutil.Finder{Err: errFakeFind}, Home: e.home})
 		_, err := svc.List(ctx)
 		require.ErrorIs(t, err, errFakeFind)
 		require.ErrorIs(t, svc.Prune(ctx, alpha), errFakeFind)
 	})
 
 	t.Run("settings unavailable", func(t *testing.T) {
-		svc := NewService(Config{Settings: fakeSettings{err: errFakeSettings}, Git: execpath.Runner{}, Home: e.home})
+		t.Parallel()
+
+		svc := NewService(Config{Settings: fakeSettings{err: errFakeSettings}, Git: e.git, Home: e.home})
 		_, err := svc.List(ctx)
 		require.ErrorIs(t, err, errFakeSettings)
 	})
 
 	t.Run("bad clone roots", func(t *testing.T) {
+		t.Parallel()
+
 		for _, root := range []string{"projects", "~/missing"} {
-			svc := NewService(Config{Settings: fakeSettings{root: root}, Git: execpath.Runner{}, Home: e.home})
+			svc := NewService(Config{Settings: fakeSettings{root: root}, Git: e.git, Home: e.home})
 			_, err := svc.List(ctx)
 			require.Error(t, err, root)
 		}
 	})
 
 	t.Run("list cannot run git", func(t *testing.T) {
+		t.Parallel()
+
 		svc := fail("worktree list")
 		_, err := svc.List(ctx)
 		require.ErrorIs(t, err, errFakeStart)
@@ -605,6 +603,8 @@ func TestServiceErrors(t *testing.T) {
 	})
 
 	t.Run("status cannot run git", func(t *testing.T) {
+		t.Parallel()
+
 		svc := fail("status")
 		_, err := svc.List(ctx)
 		require.ErrorIs(t, err, errFakeStart)
@@ -612,11 +612,15 @@ func TestServiceErrors(t *testing.T) {
 	})
 
 	t.Run("last commit cannot run git", func(t *testing.T) {
+		t.Parallel()
+
 		_, err := fail("log").List(ctx)
 		require.ErrorIs(t, err, errFakeStart)
 	})
 
 	t.Run("remove and prune cannot run git", func(t *testing.T) {
+		t.Parallel()
+
 		err := fail("worktree remove").Remove(ctx, alpha, feature)
 		require.ErrorIs(t, err, errFakeStart)
 		require.NotErrorIs(t, err, ErrRemovalRefused)
@@ -625,6 +629,8 @@ func TestServiceErrors(t *testing.T) {
 	})
 
 	t.Run("bulk remove cannot run git", func(t *testing.T) {
+		t.Parallel()
+
 		results, err := fail("worktree remove").RemoveAllClean(ctx)
 		require.NoError(t, err)
 		require.Len(t, results, 1)
@@ -633,6 +639,8 @@ func TestServiceErrors(t *testing.T) {
 	})
 
 	t.Run("git refuses status and log", func(t *testing.T) {
+		t.Parallel()
+
 		svc := e.scripted(func(sub []string) (reply, bool) {
 			if startsWith(sub, "status") || startsWith(sub, "log") {
 				return reply{stderr: "fatal: unreadable index", err: exitError{code: 128}}, true
@@ -651,7 +659,78 @@ func TestServiceErrors(t *testing.T) {
 	})
 }
 
+// gitCalls counts the git runs a runner recorded by their first words after -C <dir>.
+func gitCalls(run *testutil.Runner, prefixes ...string) map[string]int {
+	counts := make(map[string]int, len(prefixes))
+
+	for _, argv := range run.Calls() {
+		sub := argv[1:]
+		if len(sub) >= 2 && sub[0] == "-C" {
+			sub = sub[2:]
+		}
+
+		for _, prefix := range prefixes {
+			if startsWith(sub, prefix) {
+				counts[prefix]++
+			}
+		}
+	}
+
+	return counts
+}
+
+func TestListReadsAClonesCommitTimesInOneRun(t *testing.T) {
+	t.Parallel()
+
+	e := newEnv(t)
+	alpha := e.newRepo(t, "alpha")
+	first := addWorktree(t, alpha, filepath.Join(e.home, "wt", "first"), "first")
+	second := addWorktree(t, alpha, filepath.Join(e.home, "wt", "second"), "second")
+
+	run := scriptedGit(e.git, func([]string) (reply, bool) { return reply{}, false })
+
+	snap, err := e.service(run).List(t.Context())
+	require.NoError(t, err)
+
+	want, err := strconv.ParseInt(strings.TrimSpace(testutil.RunGit(t, alpha, "log", "-1", "--format=%ct")), 10, 64)
+	require.NoError(t, err)
+
+	for _, path := range []string{alpha, first, second} {
+		assert.Equal(t, want, mustRow(t, snap, path).LastCommitUnix, path)
+	}
+
+	assert.Equal(t, map[string]int{
+		"worktree list": 1, "log --no-walk=unsorted": 1, "status": 3, "rev-list": 2,
+	}, gitCalls(run, "worktree list", "log --no-walk=unsorted", "log -1", "status", "rev-list"),
+		"one list and one commit-times run for the clone; a status for each worktree, and an unpushed count for each linked one")
+}
+
+func TestListReadsEachCommitTimeAloneWhenGitRefusesThemTogether(t *testing.T) {
+	t.Parallel()
+
+	e := newEnv(t)
+	alpha := e.newRepo(t, "alpha")
+	feature := addWorktree(t, alpha, filepath.Join(e.home, "wt", "feature"), "feature")
+
+	run := scriptedGit(e.git, func(sub []string) (reply, bool) {
+		if startsWith(sub, "log --no-walk=unsorted") {
+			return reply{stderr: "fatal: bad object", err: exitError{code: 128}}, true
+		}
+
+		return reply{}, false
+	})
+
+	snap, err := e.service(run).List(t.Context())
+	require.NoError(t, err)
+
+	assert.Positive(t, mustRow(t, snap, alpha).LastCommitUnix)
+	assert.Positive(t, mustRow(t, snap, feature).LastCommitUnix)
+	assert.Equal(t, 2, gitCalls(run, "log -1")["log -1"], "each worktree's time is read on its own")
+}
+
 func TestResolvedPathThroughALink(t *testing.T) {
+	t.Parallel()
+
 	target := t.TempDir()
 	link := filepath.Join(t.TempDir(), "link")
 	require.NoError(t, os.Symlink(target, link))
@@ -673,6 +752,8 @@ func TestResolvedPathThroughALink(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			assert.Equal(t, tt.want, resolvedPath(tt.path))
 		})
 	}

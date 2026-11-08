@@ -1,10 +1,15 @@
 <div align="center">
 
-# 📭&nbsp;&nbsp;Nilbox
+<br/>
+
+<a href="https://github.com/mrz1836/nilbox"><img src="build/appicon.svg" alt="Nilbox app icon" width="160" height="160"></a>
+
+# Nilbox
 
 **Your GitHub inbox, set to nil.**
 
-One inbox for every repository you touch. One click to hand any pull request or issue to a coding agent.
+One inbox for every repository you touch.<br/>
+One click to hand any pull request or issue to a coding agent.
 
 <br/>
 
@@ -204,7 +209,8 @@ gh auth login      # Nilbox borrows this login; it needs the repo and read:org s
 gh auth status     # confirm you're signed in
 ```
 
-Nilbox reads the token with `gh auth token` on each refresh and keeps it in memory only.
+Nilbox reads the token with `gh auth token` and keeps it in memory only, for up to ten minutes; it
+asks `gh` again sooner when GitHub refuses the token or you switch accounts with `gh auth switch`.
 
 <br>
 
@@ -445,9 +451,9 @@ More in [The window](docs/desktop.md#the-window).
 |-------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **Desktop shell** | [Wails v3](https://wails.io): a Go backend in the native macOS webview. Everything but the window is plain Go, built and tested on Linux without CGO                                                     |
 | **Frontend**      | React, TypeScript, Vite, and Tailwind, reaching Go only through generated bindings                                                                                                                       |
-| **GitHub access** | Your [GitHub CLI](https://cli.github.com) token, read on each refresh and held in memory only. One GraphQL request carries all three searches; card details load by node ID in concurrent batches       |
-| **API budget**    | A 20-item inbox refreshed every five minutes spends under 1% of the hourly GraphQL budget                                                                                                                |
-| **Storage**       | SQLite through a pure-Go driver, with forward-only, checksummed migrations and a backup before each one                                                                                                  |
+| **GitHub access** | Your [GitHub CLI](https://cli.github.com) token, held in memory only, for up to ten minutes. One GraphQL request carries all three searches; card details load by node ID in concurrent batches          |
+| **API budget**    | A 43-item inbox refreshed every five minutes spends 1.2% of the hourly GraphQL budget                                                                                                                    |
+| **Storage**       | SQLite through a pure-Go driver, with sqlc-generated queries and forward-only, checksummed migrations, each after a backup                                                                               |
 | **Agents**        | The Claude Code CLI you already use, with your own profiles. Nilbox never stores model credentials                                                                                                       |
 
 <br>
@@ -539,6 +545,7 @@ magex test           # run the Go test suite
 magex lint           # run golangci-lint
 magex format:fix     # format the code
 magex frontend:gate  # format check, lint, typecheck, and test the frontend
+magex db:generate    # regenerate the typed queries after changing a query or migration
 ```
 
 Before opening a pull request, run the full gate:
@@ -546,6 +553,7 @@ Before opening a pull request, run the full gate:
 ```bash
 magex format:fix && magex lint && magex test:race && go-pre-commit run --all-files
 magex frontend:gate
+magex db:check       # the generated queries are current and every query prepares
 magex app:check      # macOS: bindings drift check, desktop lint, and bundle build
 ```
 
@@ -562,7 +570,7 @@ magex app:check      # macOS: bindings drift check, desktop lint, and bundle bui
 | `internal/`       | The bound services (inbox, launcher, prompts, launch defaults, settings, profiles, worktrees, notifications) and their building blocks |
 | `frontend/`       | The React + TypeScript frontend and its generated Go bindings                                                                   |
 | `build/`          | App and menu bar icon artwork, and the macOS bundle's `Info.plist` and icon set                                                 |
-| `magefiles/`      | Custom `magex` targets for the brand, the frontend, the app, and measurements                                                   |
+| `magefiles/`      | Custom `magex` targets for the brand, the frontend, the app, the database queries, and measurements                             |
 | `docs/`           | The Desktop Guide and measured performance                                                                                      |
 | `.github/`        | CI workflows, community docs, and engineering conventions                                                                       |
 
@@ -603,7 +611,8 @@ Nilbox uses the **Fortress** workflow system for its Go CI/CD, plus a dedicated 
 - **fortress-security-scans.yml** — Security scanning with gitleaks, govulncheck, and Nancy
 - **fortress-coverage.yml** — Code coverage reporting to Codecov
 - **fortress-release.yml** — Automated releases via GoReleaser
-- **frontend.yml** — The frontend gate: install, format check, lint, typecheck, and tests
+- **frontend.yml** — The frontend gate: install, format check, lint, typecheck, tests, and the render check
+- **sqlc.yml** — Checks that the generated queries match their SQL and that every query prepares
 
 The desktop shell needs macOS, so `magex app:check` runs locally. See all workflows in
 [`.github/workflows/`](.github/workflows/).
@@ -647,7 +656,7 @@ Run all Go tests with race detector (slower):
 magex test:race
 ```
 
-Run the frontend gate (format check, lint, typecheck, and tests with coverage):
+Run the frontend gate (format check, lint, typecheck, tests with coverage, and the render check):
 
 ```bash
 magex frontend:gate
@@ -670,15 +679,15 @@ every commit.
 
 ### Performance
 
-Measured on Apple Silicon Macs running macOS 15, against the production bundle `magex app:build`
-produces:
+Measured on an Apple Silicon Mac (M1 Max) running macOS 15, against the production bundle
+`magex app:build` produces:
 
 | Metric                         | Target  | Measured |
 |--------------------------------|--------:|---------:|
-| Cold start to first paint      |   < 1 s |   1.01 s |
-| Inbox refresh                  |   < 3 s |   2.54 s |
-| App binary size                | < 30 MB |  17.8 MB |
-| API budget at 5-minute cadence |   < 2 % |   0.72 % |
+| Cold start to first paint      |   < 1 s |   0.54 s |
+| Inbox refresh                  |   < 3 s |   2.30 s |
+| App binary size                | < 30 MB |  17.0 MB |
+| API budget at 5-minute cadence |   < 2 % |   1.20 % |
 
 Re-measure everything (size, startup, live read-only refreshes, and a real launch in iTerm2):
 

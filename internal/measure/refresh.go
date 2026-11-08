@@ -12,6 +12,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/core"
+	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/inbox"
 )
 
@@ -144,9 +145,9 @@ type RefreshOptions struct {
 	TempDir string
 
 	// Runner runs external programs (the GitHub CLI); nil uses the app's default.
-	Runner core.Runner
+	Runner execpath.Runner
 
-	// Logger receives the app's log records; nil uses slog.Default().
+	// Logger receives the app's log records; nil discards them.
 	Logger *slog.Logger
 }
 
@@ -174,7 +175,7 @@ func RunRefresh(ctx context.Context, opts RefreshOptions) (RefreshReport, error)
 		Logger:  opts.Logger,
 	})
 	if err != nil {
-		return RefreshReport{}, err
+		return RefreshReport{}, fmt.Errorf("start the app on the scratch database: %w", err)
 	}
 
 	defer func() { _ = c.Close() }()

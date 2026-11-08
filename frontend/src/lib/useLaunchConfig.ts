@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useRef } from 'react'
 
 import {
   getDefaultPrompts,
@@ -18,7 +18,9 @@ import {
   type PromptVariable,
   type Settings,
 } from '../platform'
-import { errorMessage } from './format'
+import { all } from './call'
+import { shareResolutions } from './share'
+import { useQuery } from './useQuery'
 
 // LaunchConfig is everything launching reads: the settings, profiles, prompts, default
 // prompts, variables, and launch defaults, and each inbox item's resolved settings.
@@ -30,7 +32,8 @@ export interface LaunchConfig {
   defaultPrompts: DefaultPrompts | null
   variables: PromptVariable[]
   launchDefaults: LaunchDefaults[]
-  // resolutions holds each listed item's resolved launch settings by item ID.
+  // resolutions holds each listed item's resolved launch settings by item ID. Resolving
+  // again keeps the map, and each resolution in it, while nothing in them changed.
   resolutions: ReadonlyMap<number, ItemResolution>
   // items are the inbox's items, each once, newest first.
   items: InboxItem[]
@@ -40,7 +43,8 @@ export interface LaunchConfig {
   // reload loads everything again and re-resolves every item; it resolves once the
   // new values are in.
   reload: () => Promise<void>
-  // setSettings records settings saved elsewhere, and re-resolves every item.
+  // setSettings records the settings a setter stored and returned. Items are resolved
+  // again only when a setting launches read changed.
   setSettings: (settings: Settings) => void
 }
 
@@ -57,9 +61,13 @@ interface Loaded {
 // noResolutions is the empty resolution map, shared so it stays the same object.
 const noResolutions: ReadonlyMap<number, ItemResolution> = new Map()
 
-// loadAll reads the whole launch configuration.
-async function loadAll(): Promise<Loaded> {
-  const [settings, profiles, prompts, defaultPrompts, variables, launchDefaults] = await Promise.all([
+// noList is the empty list each part of the configuration shows until it loads, shared
+// so it stays the same object.
+const noList: never[] = []
+
+// loadAll reads the whole launch configuration; cancelling it cancels every read.
+function loadAll(): PromiseLike<Loaded> {
+  const reads = all([
     getSettings(),
     listProfiles(),
     listPrompts(),
@@ -67,8 +75,30 @@ async function loadAll(): Promise<Loaded> {
     listPromptVariables(),
     listLaunchDefaults(),
   ])
+  const loaded = reads.then(([settings, profiles, prompts, defaultPrompts, variables, launchDefaults]) => ({
+    settings,
+    profiles,
+    prompts,
+    defaultPrompts,
+    variables,
+    launchDefaults,
+  }))
 
-  return { settings, profiles, prompts, defaultPrompts, variables, launchDefaults }
+  return Object.assign(loaded, { cancel: reads.cancel })
+}
+
+// launchKey is the part of the settings a launch reads (internal/launcher's
+// LaunchSettings), so a change to anything else resolves nothing again.
+function launchKey(settings: Settings | undefined): string {
+  return settings === undefined
+    ? ''
+    : JSON.stringify([
+        settings.defaultProfile,
+        settings.worktreeDefault,
+        settings.terminal,
+        settings.cloneRoot,
+        settings.trustedBots,
+      ])
 }
 
 // uniqueItems returns the snapshot's items, each once, in list order.
@@ -81,7 +111,7 @@ function uniqueItems(snapshot: InboxSnapshot | null): InboxItem[] {
   const out: InboxItem[] = []
 
   for (const list of [snapshot.reviewRequested, snapshot.authored, snapshot.assigned]) {
-    for (const item of list.items ?? []) {
+    for (const item of list.items) {
       if (!seen.has(item.id)) {
         seen.add(item.id)
         out.push(item)
@@ -95,110 +125,46 @@ function uniqueItems(snapshot: InboxSnapshot | null): InboxItem[] {
 // useLaunchConfig loads the launch configuration once, and resolves the launch settings
 // of every item in snapshot, again whenever the items or the configuration change.
 export function useLaunchConfig(snapshot: InboxSnapshot | null): LaunchConfig {
-  const [settings, setSettingsState] = useState<Settings | null>(null)
-  const [profiles, setProfiles] = useState<Profile[]>([])
-  const [prompts, setPrompts] = useState<Prompt[]>([])
-  const [defaultPrompts, setDefaultPrompts] = useState<DefaultPrompts | null>(null)
-  const [variables, setVariables] = useState<PromptVariable[]>([])
-  const [launchDefaults, setLaunchDefaults] = useState<LaunchDefaults[]>([])
-  const [loaded, setLoaded] = useState(false)
-  const [error, setError] = useState('')
-  const [version, setVersion] = useState(0)
-  // apply records a loaded configuration and re-resolves every item.
-  const apply = useCallback((loaded: Loaded) => {
-    setSettingsState(loaded.settings)
-    setProfiles(loaded.profiles)
-    setPrompts(loaded.prompts)
-    setDefaultPrompts(loaded.defaultPrompts)
-    setVariables(loaded.variables)
-    setLaunchDefaults(loaded.launchDefaults)
-    setError('')
-    setVersion((n) => n + 1)
-  }, [])
+  const config = useQuery(loadAll, [])
+  const loaded = config.data !== undefined || config.error !== ''
+  const data = config.data
+  const items = uniqueItems(snapshot)
+  const ids = items.map((i) => i.id).join(',')
+  // last is the latest resolution map, whose map and entries the next one keeps where
+  // nothing changed.
+  const last = useRef(noResolutions)
 
-  useEffect(() => {
-    let active = true
+  // Resolutions are read again when the items change, when a reload brings any part of
+  // the configuration anew, and when a setting launches read is saved.
+  const resolved = useQuery(
+    () =>
+      resolveLaunches(ids.split(',').map(Number)).then((list) => {
+        last.current = shareResolutions(last.current, list)
 
-    loadAll()
-      .then((next) => {
-        if (active) {
-          apply(next)
-        }
-      })
-      .catch((err: unknown) => {
-        if (active) {
-          setError(errorMessage(err))
-        }
-      })
-      .finally(() => {
-        if (active) {
-          setLoaded(true)
-        }
-      })
-
-    return () => {
-      active = false
-    }
-  }, [apply])
-
-  const reload = useCallback(async () => {
-    try {
-      apply(await loadAll())
-    } catch (err: unknown) {
-      setError(errorMessage(err))
-    }
-  }, [apply])
-
-  const items = useMemo(() => uniqueItems(snapshot), [snapshot])
-  const ids = useMemo(() => items.map((i) => i.id).join(','), [items])
-  // resolved is the latest resolution of the listed items.
-  const [resolved, setResolved] = useState<ReadonlyMap<number, ItemResolution>>(noResolutions)
-
-  useEffect(() => {
-    if (!loaded || ids === '') {
-      return undefined
-    }
-
-    let current = true
-
-    resolveLaunches(ids.split(',').map(Number))
-      .then((list) => {
-        if (current) {
-          setResolved(new Map(list.map((r) => [r.itemId, r])))
-        }
-      })
-      .catch((err: unknown) => {
-        if (current) {
-          setError(errorMessage(err))
-        }
-      })
-
-    return () => {
-      current = false
-    }
-  }, [loaded, ids, version])
+        return last.current
+      }),
+    [ids, data?.profiles, data?.prompts, data?.defaultPrompts, data?.launchDefaults, launchKey(data?.settings)],
+    { enabled: loaded && ids !== '' },
+  )
 
   // Until the current items resolve, keep showing the last resolution for the items it
   // covers, so the launch buttons do not flicker on every refresh.
-  const resolutions = ids === '' ? noResolutions : resolved
-
-  const setSettings = useCallback((next: Settings) => {
-    setSettingsState(next)
-    setVersion((n) => n + 1)
-  }, [])
+  const resolutions = ids === '' ? noResolutions : (resolved.data ?? noResolutions)
 
   return {
-    settings,
-    profiles,
-    prompts,
-    defaultPrompts,
-    variables,
-    launchDefaults,
+    settings: data?.settings ?? null,
+    profiles: data?.profiles ?? noList,
+    prompts: data?.prompts ?? noList,
+    defaultPrompts: data?.defaultPrompts ?? null,
+    variables: data?.variables ?? noList,
+    launchDefaults: data?.launchDefaults ?? noList,
     resolutions,
     items,
     loaded,
-    error,
-    reload,
-    setSettings,
+    error: config.error !== '' ? config.error : resolved.error,
+    reload: config.refetch,
+    setSettings: (settings) => {
+      config.set((was) => (was === undefined ? was : { ...was, settings }))
+    },
   }
 }

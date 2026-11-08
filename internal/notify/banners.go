@@ -1,38 +1,34 @@
 package notify
 
 import (
-	"encoding/json"
-	"fmt"
 	"slices"
 	"strconv"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/mrz1836/nilbox/internal/brand"
-	"github.com/mrz1836/nilbox/internal/notify/model"
+	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/snooze"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
-
-// PrefBannersOff is the prefs key listing, as a JSON array, the kinds of notification
-// whose banners are off. Kinds are on unless listed, so a kind added later starts on.
-const PrefBannersOff = "notify.bannersOff"
 
 // MaxBanners is how many banners one refresh shows one by one; more are summed up in one.
 const MaxBanners = 3
 
+// BannerStatus says whether banners are shown.
+type BannerStatus string
+
 // Banner states, as Poster.Status reports them.
 const (
 	// StatusOn means banners are shown.
-	StatusOn = "on"
+	StatusOn BannerStatus = "on"
 
 	// StatusOff means the user has not allowed the app's banners, or turned them off in
 	// the system's settings.
-	StatusOff = "off"
+	StatusOff BannerStatus = "off"
 
 	// StatusUnavailable means this build cannot show banners: a development run, which has
 	// no app bundle to own them, or an OS the shell does not post to yet.
-	StatusUnavailable = "unavailable"
+	StatusUnavailable BannerStatus = "unavailable"
 )
 
 // Banner is one native notification.
@@ -61,7 +57,7 @@ type Poster interface {
 	Post(b Banner) error
 
 	// Status reports StatusOn, StatusOff, or StatusUnavailable.
-	Status() string
+	Status() BannerStatus
 
 	// Authorize asks the user to allow banners, if they have not been asked, and reports
 	// whether banners are allowed. It may wait for the user's answer.
@@ -71,7 +67,7 @@ type Poster interface {
 // kindTitles are each kind's banner title.
 //
 //nolint:gochecknoglobals // a fixed table
-var kindTitles = map[string]string{
+var kindTitles = map[notifyprefs.Kind]string{
 	KindReviewRequested: "Review requested",
 	KindAssigned:        "Assigned to you",
 	KindWoke:            "Back from snooze",
@@ -80,7 +76,7 @@ var kindTitles = map[string]string{
 // summaryNouns name each kind in a summary banner, singular and plural.
 //
 //nolint:gochecknoglobals // a fixed table
-var summaryNouns = map[string][2]string{
+var summaryNouns = map[notifyprefs.Kind][2]string{
 	KindReviewRequested: {"review request", "review requests"},
 	KindAssigned:        {"assignment", "assignments"},
 	KindWoke:            {"back from snooze", "back from snooze"},
@@ -90,39 +86,34 @@ var summaryNouns = map[string][2]string{
 const maxTitleRunes = 160
 
 // banner is the banner for one recorded notification.
-func banner(n model.Notification) Banner {
-	body := truncate(n.Title, maxTitleRunes)
+func banner(n Notification) Banner {
+	body := textutil.Truncate(n.Title, maxTitleRunes)
 	if n.Detail != "" {
-		body += "\n" + capitalize(n.Detail)
-	}
-
-	itemID := int64(0)
-	if n.ItemID != nil {
-		itemID = *n.ItemID
+		body += "\n" + textutil.Capitalize(n.Detail)
 	}
 
 	return Banner{
 		ID:       brand.Slug + "-" + strconv.FormatInt(n.ID, 10),
 		Title:    kindTitles[n.Kind],
-		Subtitle: repoName(n.RepoOwner, n.RepoName) + " #" + strconv.Itoa(n.Number),
+		Subtitle: n.Repo + " #" + strconv.Itoa(n.Number),
 		Body:     body,
-		Thread:   n.Kind,
-		ItemID:   itemID,
+		Thread:   string(n.Kind),
+		ItemID:   n.ItemID,
 		URL:      n.URL,
 	}
 }
 
 // summary is the one banner that stands for many: "5 new in your inbox", with how many of
 // each kind.
-func summary(rows []model.Notification) Banner {
-	counts := make(map[string]int)
+func summary(rows []Notification) Banner {
+	counts := make(map[notifyprefs.Kind]int)
 	for _, r := range rows {
 		counts[r.Kind]++
 	}
 
 	var parts []string
 
-	for _, kind := range Kinds() {
+	for _, kind := range notifyprefs.Kinds() {
 		if n := counts[kind]; n > 0 {
 			noun := summaryNouns[kind]
 			if n == 1 {
@@ -143,8 +134,8 @@ func summary(rows []model.Notification) Banner {
 
 // Banners returns what to show for recorded notifications: one banner each, or a single
 // summary when there are more than MaxBanners. It shows none of the kinds in off.
-func Banners(rows []model.Notification, off []string) []Banner {
-	shown := slices.DeleteFunc(slices.Clone(rows), func(r model.Notification) bool {
+func Banners(rows []Notification, off []notifyprefs.Kind) []Banner {
+	shown := slices.DeleteFunc(slices.Clone(rows), func(r Notification) bool {
 		return slices.Contains(off, r.Kind)
 	})
 
@@ -185,6 +176,7 @@ func WakeDetail(r snooze.Reasons) string {
 		parts = append(parts, "approved")
 	case snooze.ReviewNew:
 		parts = append(parts, "new review")
+	case snooze.ReviewNone:
 	}
 
 	switch {
@@ -201,59 +193,6 @@ func WakeDetail(r snooze.Reasons) string {
 	return strings.Join(parts, ", ")
 }
 
-// DecodeBannersOff reads the kinds whose banners are off from the stored prefs. A value
-// that cannot be read turns none off, and kinds that are not known are dropped.
-func DecodeBannersOff(stored map[string]string) []string {
-	var listed []string
-	if json.Unmarshal([]byte(stored[PrefBannersOff]), &listed) != nil {
-		return []string{}
-	}
-
-	off := []string{}
-
-	for _, kind := range Kinds() {
-		if slices.Contains(listed, kind) {
-			off = append(off, kind)
-		}
-	}
-
-	return off
-}
-
-// SetBanner turns a kind's banners on or off in off, the kinds whose banners are off, and
-// returns the new list in the order of Kinds.
-func SetBanner(off []string, kind string, on bool) ([]string, error) {
-	if !slices.Contains(Kinds(), kind) {
-		return nil, fmt.Errorf("%w %q", ErrUnknownKind, kind)
-	}
-
-	out := []string{}
-
-	for _, k := range Kinds() {
-		isOff := slices.Contains(off, k)
-		if k == kind {
-			isOff = !on
-		}
-
-		if isOff {
-			out = append(out, k)
-		}
-	}
-
-	return out, nil
-}
-
-// EncodeBannersOff writes the kinds whose banners are off for the prefs table.
-func EncodeBannersOff(off []string) string {
-	if off == nil {
-		off = []string{}
-	}
-
-	b, _ := json.Marshal(off) //nolint:errchkjson // a []string always encodes
-
-	return string(b)
-}
-
 // counted is "1 thing" or "N things".
 func counted(n int, one, many string) string {
 	if n == 1 {
@@ -261,25 +200,4 @@ func counted(n int, one, many string) string {
 	}
 
 	return strconv.Itoa(n) + " " + many
-}
-
-// capitalize upper-cases the first letter of s.
-func capitalize(s string) string {
-	r, size := utf8.DecodeRuneInString(s)
-	if size == 0 {
-		return s
-	}
-
-	return string(unicode.ToUpper(r)) + s[size:]
-}
-
-// truncate cuts s to at most n runes, ending it with an ellipsis when it was cut.
-func truncate(s string, n int) string {
-	if utf8.RuneCountInString(s) <= n {
-		return s
-	}
-
-	runes := []rune(s)
-
-	return strings.TrimRightFunc(string(runes[:n-1]), unicode.IsSpace) + "…"
 }

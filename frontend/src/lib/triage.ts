@@ -1,4 +1,4 @@
-import type { InboxItem, InboxList, InboxSnapshot, WakeReasons } from '../platform'
+import type { InboxItem, InboxList, InboxSnapshot, ListKey, WakeReasons, WakeReview } from '../platform'
 import { counted } from './format'
 
 // Triage as the inbox shows it. The snapshot keeps every item in its lists with its
@@ -23,8 +23,9 @@ export const commentThresholds: readonly number[] = [0, 1, 3, 5, 10]
 // reviewWakes are the choices for which reviews end a snooze early.
 export const reviewWakes = ['never', 'decisions', 'any'] as const
 
-// reviewText names the review that ended a snooze.
-const reviewText: Readonly<Record<string, string>> = {
+// reviewText names the review that ended a snooze. None, or one this build does not
+// know, as another build may have stored, names nothing.
+const reviewText: Readonly<Partial<Record<WakeReview, string>>> = {
   changes_requested: 'changes requested',
   approved: 'approved',
   reviewed: 'new review',
@@ -61,8 +62,6 @@ export function wakeSummary(reasons: WakeReasons | null): string {
 
 // backMarkMs is how long an item back from a snooze is marked as such.
 const backMarkMs = 24 * 60 * 60 * 1000
-
-const dayMs = 24 * 60 * 60 * 1000
 
 // TriageTab is one of a list's tabs: the items in the list, those snoozed, and those
 // dismissed.
@@ -117,7 +116,7 @@ export function triageList(list: InboxList, now: Date): TriagedList {
   const snoozed: InboxItem[] = []
   const dismissed: InboxItem[] = []
 
-  for (const item of list.items ?? []) {
+  for (const item of list.items) {
     if (isDismissed(item)) {
       dismissed.push(item)
     } else if (isSnoozed(item, now)) {
@@ -138,7 +137,7 @@ export function triageList(list: InboxList, now: Date): TriagedList {
 // findItem looks an item up in a snapshot's lists.
 export function findItem(snapshot: InboxSnapshot, id: number): InboxItem | undefined {
   for (const list of [snapshot.reviewRequested, snapshot.authored, snapshot.assigned]) {
-    const found = list.items?.find((item) => item.id === id)
+    const found = list.items.find((item) => item.id === id)
 
     if (found !== undefined) {
       return found
@@ -148,6 +147,63 @@ export function findItem(snapshot: InboxSnapshot, id: number): InboxItem | undef
   return undefined
 }
 
+// TriageChange is a triage action as the inbox shows it at once, before the backend's
+// answer: the triage fields it gives an item.
+export interface TriageChange {
+  id: number
+  set: Partial<Pick<InboxItem, 'dismissedAt' | 'snoozedUntil' | 'wokeBy' | 'pinnedAt'>>
+}
+
+// listsNewer reports whether a lists before b among the items not pinned: newest activity
+// first, then the higher ID, as the backend orders them.
+function listsNewer(a: InboxItem, b: InboxItem): boolean {
+  const at = timeOf(a.updatedAt)
+  const bt = timeOf(b.updatedAt)
+
+  return at === bt ? a.id > b.id : at > bt
+}
+
+// placeItem puts an item back into a list it was taken out of at index. A newly pinned
+// item goes first, as the most recently pinned; a newly unpinned one goes among the items
+// not pinned, by its activity; any other keeps its place.
+function placeItem(rest: readonly InboxItem[], next: InboxItem, was: InboxItem, index: number): InboxItem[] {
+  let at = index
+
+  if (isPinned(next) && !isPinned(was)) {
+    at = 0
+  } else if (!isPinned(next) && isPinned(was)) {
+    const after = rest.findIndex((other) => !isPinned(other) && listsNewer(next, other))
+
+    at = after < 0 ? rest.length : after
+  }
+
+  return [...rest.slice(0, at), next, ...rest.slice(at)]
+}
+
+// applyTriage returns the snapshot with a triage change made to the item in every list
+// that holds it, ordered as the backend will order it.
+export function applyTriage(snapshot: InboxSnapshot, change: TriageChange): InboxSnapshot {
+  const apply = (list: InboxList): InboxList => {
+    const index = list.items.findIndex((item) => item.id === change.id)
+    const was = list.items[index]
+
+    if (was === undefined) {
+      return list
+    }
+
+    const rest = list.items.filter((_, i) => i !== index)
+
+    return { ...list, items: placeItem(rest, { ...was, ...change.set }, was, index) }
+  }
+
+  return {
+    ...snapshot,
+    reviewRequested: apply(snapshot.reviewRequested),
+    authored: apply(snapshot.authored),
+    assigned: apply(snapshot.assigned),
+  }
+}
+
 // tabOf is the tab of a sorted list that holds an item, or null when none does.
 export function tabOf(triaged: TriagedList, id: number): TriageTab | null {
   const tabs: readonly TriageTab[] = ['inbox', 'snoozed', 'dismissed']
@@ -155,21 +211,76 @@ export function tabOf(triaged: TriagedList, id: number): TriageTab | null {
   return tabs.find((tab) => triaged[tab].some((item) => item.id === id)) ?? null
 }
 
-// inboxCount counts the items in the inbox at now: those in any list's own tab, neither
-// snoozed nor dismissed. An item in more than one list, such as a pull request you wrote
-// and are assigned, counts once.
-export function inboxCount(snapshot: InboxSnapshot, now: Date): number {
-  const ids = new Set<number>()
+// TriagedInbox is the whole inbox sorted into its tabs at one time. Everything in the
+// window that shows triage (the lists, the Inbox tab's count, the party at nil) reads
+// this one sorting.
+export interface TriagedInbox {
+  lists: Readonly<Record<ListKey, TriagedList>>
+  // count is how many items are in the inbox: in any list's own tab, neither snoozed nor
+  // dismissed. An item in more than one list, such as a pull request you wrote and are
+  // assigned, counts once.
+  count: number
+  // snoozed and dismissed count the items set aside, each once however many lists it
+  // is in.
+  snoozed: number
+  dismissed: number
+  // nextBack is when the soonest snooze ends, or null when nothing is snoozed.
+  nextBack: Date | null
+}
+
+// triageInbox sorts every list of a snapshot into its tabs at now, and counts the inbox.
+export function triageInbox(snapshot: InboxSnapshot, now: Date): TriagedInbox {
+  const lists = {
+    reviewRequested: triageList(snapshot.reviewRequested, now),
+    authored: triageList(snapshot.authored, now),
+    assigned: triageList(snapshot.assigned, now),
+  }
+  const inbox = new Set<number>()
+  const snoozed = new Map<number, number>()
+  const dismissed = new Set<number>()
+
+  for (const triaged of Object.values(lists)) {
+    for (const item of triaged.inbox) {
+      inbox.add(item.id)
+    }
+
+    for (const item of triaged.snoozed) {
+      snoozed.set(item.id, timeOf(item.snoozedUntil))
+    }
+
+    for (const item of triaged.dismissed) {
+      dismissed.add(item.id)
+    }
+  }
+
+  return {
+    lists,
+    count: inbox.size,
+    snoozed: snoozed.size,
+    dismissed: dismissed.size,
+    nextBack: snoozed.size === 0 ? null : new Date(Math.min(...snoozed.values())),
+  }
+}
+
+// triageTime is a time the inbox sorts into the same tabs at as at now: the latest
+// snooze end that now has passed, or 0 when none has. The sorting changes only as the
+// clock passes the end of a snooze, so a tick that passes none leaves this time, and
+// the sorting, as they were.
+export function triageTime(snapshot: InboxSnapshot, now: Date): number {
+  const at = now.getTime()
+  let passed = 0
 
   for (const list of [snapshot.reviewRequested, snapshot.authored, snapshot.assigned]) {
-    for (const item of list.items ?? []) {
-      if (!isDismissed(item) && !isSnoozed(item, now)) {
-        ids.add(item.id)
+    for (const item of list.items) {
+      const end = timeOf(item.snoozedUntil)
+
+      if (end <= at && end > passed) {
+        passed = end
       }
     }
   }
 
-  return ids.size
+  return passed
 }
 
 // snoozeLength names a snooze length: "1 day", "3 days", "1 week", "2 weeks".
@@ -195,46 +306,4 @@ export function snoozeEnd(now: Date, days: number): Date {
   end.setDate(end.getDate() + days)
 
   return end
-}
-
-// startOfDay is the local midnight that starts d's day.
-function startOfDay(d: Date): number {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
-}
-
-// formatWhen names a time from now on the way people say it: "today, 3:42 PM",
-// "tomorrow, 9:00 AM", "Sat, 3:42 PM" within the week, then "Thu, Nov 19", with the year
-// when it is not this one. locale is for tests; the app uses the system's.
-export function formatWhen(now: Date, when: Date, locale?: string): string {
-  // Rounding absorbs the 23- and 25-hour days around a change of the clocks.
-  const days = Math.round((startOfDay(when) - startOfDay(now)) / dayMs)
-  const time = new Intl.DateTimeFormat(locale, { hour: 'numeric', minute: '2-digit' }).format(when)
-
-  if (days <= 0) {
-    return `today, ${time}`
-  }
-
-  if (days === 1) {
-    return `tomorrow, ${time}`
-  }
-
-  if (days < 7) {
-    return `${new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(when)}, ${time}`
-  }
-
-  const year = when.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' as const }
-
-  return new Intl.DateTimeFormat(locale, { weekday: 'short', month: 'short', day: 'numeric', ...year }).format(when)
-}
-
-// formatFull names a time in full, for a tooltip: "Saturday, November 8, 2026 at 3:42 PM".
-export function formatFull(iso: string, locale?: string): string {
-  const ms = timeOf(iso)
-
-  return Number.isNaN(ms) ? '' : new Intl.DateTimeFormat(locale, { dateStyle: 'full', timeStyle: 'short' }).format(ms)
-}
-
-// capitalize starts a phrase with a capital, for formatWhen at the start of a line.
-export function capitalize(phrase: string): string {
-  return phrase.charAt(0).toUpperCase() + phrase.slice(1)
 }

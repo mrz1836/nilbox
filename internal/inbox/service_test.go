@@ -2,6 +2,7 @@ package inbox
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -12,12 +13,13 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/github"
-	"github.com/mrz1836/nilbox/internal/inbox/model"
-	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/trust"
+	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
 // fakeToken is a placeholder that matches no real token format.
@@ -29,13 +31,20 @@ var (
 	errNotParallel = errors.New("the inbox query waited for a details request that never started")
 )
 
-// fakeTokens hands out a fixed token, or fails.
+// fakeTokens hands out a fixed token, or fails, and records the tokens it is told to
+// forget. It is safe for concurrent use; a test reads its fields once the calls it made
+// have returned.
 type fakeTokens struct {
-	err   error
-	calls int
+	mu     sync.Mutex
+	err    error
+	calls  int
+	forgot []string
 }
 
 func (f *fakeTokens) Token(ctx context.Context) (github.Token, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	f.calls++
 
 	if err := ctx.Err(); err != nil {
@@ -49,7 +58,16 @@ func (f *fakeTokens) Token(ctx context.Context) (github.Token, error) {
 	return github.NewToken(fakeToken), nil
 }
 
+func (f *fakeTokens) Forget(tok github.Token) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.forgot = append(f.forgot, tok.Reveal())
+}
+
 // fakeClient returns canned results. The inbox and rate-limit fetches run concurrently.
+// Like the real client, it scrubs the token out of every error it returns, so a canned
+// error that names the token checks that nothing past the client puts it back.
 type fakeClient struct {
 	mu          sync.Mutex
 	inbox       *github.Inbox
@@ -95,7 +113,7 @@ func (c *fakeClient) FetchInbox(_ context.Context, tok github.Token) (*github.In
 
 	c.gotTokens = append(c.gotTokens, tok.Reveal())
 
-	return c.inbox, c.inboxErr
+	return c.inbox, github.Redact(c.inboxErr, tok)
 }
 
 func (c *fakeClient) FetchRateLimits(_ context.Context, tok github.Token) (*github.RateLimits, error) {
@@ -104,7 +122,7 @@ func (c *fakeClient) FetchRateLimits(_ context.Context, tok github.Token) (*gith
 
 	c.gotTokens = append(c.gotTokens, tok.Reveal())
 
-	return c.limits, c.limitsErr
+	return c.limits, github.Redact(c.limitsErr, tok)
 }
 
 // FetchDetails answers with the canned details of the IDs asked for, as one request.
@@ -120,7 +138,7 @@ func (c *fakeClient) FetchDetails(_ context.Context, tok github.Token, ids []str
 	c.detailsIDs = append(c.detailsIDs, ids)
 
 	if c.detailsErr != nil {
-		return nil, c.detailsErr
+		return nil, github.Redact(c.detailsErr, tok)
 	}
 
 	out := &github.Details{Items: map[string]github.ItemDetails{}, RateLimit: c.detailsRate}
@@ -146,7 +164,7 @@ func (c *fakeClient) FetchItem(_ context.Context, tok github.Token, id string) (
 	c.itemIDs = append(c.itemIDs, id)
 
 	if c.itemErr != nil {
-		return nil, c.itemErr
+		return nil, github.Redact(c.itemErr, tok)
 	}
 
 	if update, ok := c.items[id]; ok {
@@ -157,7 +175,7 @@ func (c *fakeClient) FetchItem(_ context.Context, tok github.Token, id string) (
 }
 
 // FetchPullHead answers with the head of the canned files.
-func (c *fakeClient) FetchPullHead(_ context.Context, tok github.Token, ref github.ItemRef) (*github.PullHead, error) {
+func (c *fakeClient) FetchPullHead(_ context.Context, tok github.Token, ref item.Ref) (*github.PullHead, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -165,7 +183,7 @@ func (c *fakeClient) FetchPullHead(_ context.Context, tok github.Token, ref gith
 	c.headReads = append(c.headReads, ref.String())
 
 	if c.filesErr != nil {
-		return nil, c.filesErr
+		return nil, github.Redact(c.filesErr, tok)
 	}
 
 	files, ok := c.files[ref.String()]
@@ -178,7 +196,7 @@ func (c *fakeClient) FetchPullHead(_ context.Context, tok github.Token, ref gith
 
 // FetchChangedFiles answers with the canned files, whatever head was asked for.
 func (c *fakeClient) FetchChangedFiles(
-	_ context.Context, tok github.Token, ref github.ItemRef, _ string,
+	_ context.Context, tok github.Token, ref item.Ref, _ string,
 ) (*github.ChangedFiles, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -187,7 +205,7 @@ func (c *fakeClient) FetchChangedFiles(
 	c.fileReads = append(c.fileReads, ref.String())
 
 	if c.filesErr != nil {
-		return nil, c.filesErr
+		return nil, github.Redact(c.filesErr, tok)
 	}
 
 	files, ok := c.files[ref.String()]
@@ -207,29 +225,16 @@ func (c *fakeClient) FetchAvatar(_ context.Context, url string) (*github.Avatar,
 	return c.avatar, c.avatarErr
 }
 
-// fakeClock returns a settable time.
-type fakeClock struct {
-	now time.Time
-}
-
-func (c *fakeClock) Now() time.Time { return c.now }
-
-// fakeNotifier counts notifications.
-type fakeNotifier struct {
-	calls int
-}
-
-func (n *fakeNotifier) InboxUpdated() { n.calls++ }
-
 // harness is a Service over a temp database with fakes for everything else.
 type harness struct {
-	svc      *Service
-	db       *gorm.DB
-	path     string
-	tokens   *fakeTokens
-	client   *fakeClient
-	clock    *fakeClock
-	notifier *fakeNotifier
+	svc    *Service
+	pool   *sql.DB
+	path   string
+	tokens *fakeTokens
+	client *fakeClient
+	clock  *testutil.Clock
+	events *testutil.Events
+	logs   *testutil.Logs
 }
 
 // newHarness opens a fresh database and a Service over it.
@@ -238,17 +243,14 @@ func newHarness(t *testing.T) *harness {
 
 	path := filepath.Join(t.TempDir(), "app.db")
 
-	db, err := store.Open(t.Context(), path)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = store.Close(db) })
-
 	h := &harness{
-		db:       db,
-		path:     path,
-		tokens:   &fakeTokens{},
-		client:   &fakeClient{limits: restLimits(), avatar: fakeAvatar()},
-		clock:    &fakeClock{now: time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)},
-		notifier: &fakeNotifier{},
+		pool:   testutil.DBAt(t, path),
+		path:   path,
+		tokens: &fakeTokens{},
+		client: &fakeClient{limits: restLimits(), avatar: fakeAvatar()},
+		clock:  testutil.NewClock(time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)),
+		events: &testutil.Events{},
+		logs:   &testutil.Logs{},
 	}
 
 	h.svc = h.service()
@@ -258,7 +260,9 @@ func newHarness(t *testing.T) *harness {
 
 // service builds a Service over the harness's database and fakes.
 func (h *harness) service() *Service {
-	return NewService(Config{DB: h.db, Tokens: h.tokens, Client: h.client, Clock: h.clock, Notifier: h.notifier})
+	return NewService(Config{
+		Pool: h.pool, Tokens: h.tokens, Client: h.client, Clock: h.clock, Events: h.events, Logger: h.logs.Logger(),
+	})
 }
 
 // refresh runs a refresh that must succeed.
@@ -271,15 +275,83 @@ func (h *harness) refresh(t *testing.T) Snapshot {
 	return snap
 }
 
+// exec runs a statement on the harness's database. The statement writes past the
+// service, so it also empties the service's snapshot cache, as the service's own writes
+// do.
+func (h *harness) exec(t *testing.T, query string, args ...any) {
+	t.Helper()
+
+	_, err := h.pool.ExecContext(t.Context(), query, args...)
+	require.NoError(t, err)
+
+	h.svc.snapshots.empty()
+}
+
+// storedItem is a stored item's row, as the tests read it.
+type storedItem struct {
+	ID                    int64
+	Number                int
+	Kind                  item.Kind
+	AuthorLogin           string
+	AuthorType            string
+	AuthorAssociation     string
+	HeadRef               string
+	IsCrossRepository     bool
+	ReasonReviewRequested bool
+	ReasonAuthored        bool
+	ReasonAssigned        bool
+}
+
+// storedItems returns every stored item, by number.
+func (h *harness) storedItems(t *testing.T) []storedItem {
+	t.Helper()
+
+	rows, err := h.pool.QueryContext(t.Context(), `SELECT id, number, kind, author_login, author_type,
+    author_association, head_ref, is_cross_repository, reason_review_requested, reason_authored, reason_assigned
+FROM items ORDER BY number`)
+	require.NoError(t, err)
+
+	defer func() { _ = rows.Close() }()
+
+	var items []storedItem
+
+	for rows.Next() {
+		var it storedItem
+		require.NoError(t, rows.Scan(&it.ID, &it.Number, &it.Kind, &it.AuthorLogin, &it.AuthorType,
+			&it.AuthorAssociation, &it.HeadRef, &it.IsCrossRepository, &it.ReasonReviewRequested, &it.ReasonAuthored,
+			&it.ReasonAssigned))
+		items = append(items, it)
+	}
+
+	require.NoError(t, rows.Err())
+
+	return items
+}
+
+// storedItemNumbered returns the one stored item with a number.
+func (h *harness) storedItemNumbered(t *testing.T, number int) storedItem {
+	t.Helper()
+
+	var found []storedItem
+
+	for _, it := range h.storedItems(t) {
+		if it.Number == number {
+			found = append(found, it)
+		}
+	}
+
+	require.Len(t, found, 1)
+
+	return found[0]
+}
+
 // reasons returns an item's three reason flags by number.
 func (h *harness) reasons(t *testing.T, number int) [3]bool {
 	t.Helper()
 
-	var rows []model.Item
-	require.NoError(t, h.db.Where("number = ?", number).Find(&rows).Error)
-	require.Len(t, rows, 1)
+	it := h.storedItemNumbered(t, number)
 
-	return [3]bool{rows[0].ReasonReviewRequested, rows[0].ReasonAuthored, rows[0].ReasonAssigned}
+	return [3]bool{it.ReasonReviewRequested, it.ReasonAuthored, it.ReasonAssigned}
 }
 
 // count returns the number of rows in a table.
@@ -287,19 +359,87 @@ func (h *harness) count(t *testing.T, table string) int64 {
 	t.Helper()
 
 	var n int64
-	require.NoError(t, h.db.Table(table).Count(&n).Error)
+	require.NoError(t, h.pool.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM "+table).Scan(&n))
 
 	return n
 }
 
+// column returns the text of the first column of every row a query returns.
+func (h *harness) column(t *testing.T, query string, args ...any) []string {
+	t.Helper()
+
+	var out []string
+
+	for _, row := range h.rows(t, query, args...) {
+		for _, v := range row {
+			out = append(out, fmt.Sprint(v))
+		}
+	}
+
+	return out
+}
+
+// rows returns every row a query returns, each as a map of column to value.
+func (h *harness) rows(t *testing.T, query string, args ...any) []map[string]any {
+	t.Helper()
+
+	rows, err := h.pool.QueryContext(t.Context(), query, args...)
+	require.NoError(t, err)
+
+	defer func() { _ = rows.Close() }()
+
+	cols, err := rows.Columns()
+	require.NoError(t, err)
+
+	var out []map[string]any
+
+	for rows.Next() {
+		values := make([]any, len(cols))
+		dest := make([]any, len(cols))
+
+		for i := range values {
+			dest[i] = &values[i]
+		}
+
+		require.NoError(t, rows.Scan(dest...))
+
+		row := make(map[string]any, len(cols))
+		for i, col := range cols {
+			row[col] = values[i]
+		}
+
+		out = append(out, row)
+	}
+
+	require.NoError(t, rows.Err())
+
+	return out
+}
+
+// insertRate stores a core rate reading for the stored account, taken at takenAt, and
+// returns its id.
+func (h *harness) insertRate(t *testing.T, limit int, takenAt time.Time) int64 {
+	t.Helper()
+
+	var id int64
+
+	require.NoError(t, h.pool.QueryRowContext(t.Context(), `INSERT INTO rate_snapshots
+(account_id, resource, limit_total, remaining, used, cost, reset_at, taken_at)
+SELECT id, ?, ?, 0, 0, 0, ?, ? FROM accounts RETURNING id`, resourceCore, limit, takenAt, takenAt).Scan(&id))
+
+	h.svc.snapshots.empty()
+
+	return id
+}
+
 // pr builds a fetched pull request in example-repo.
 func pr(number int, assoc string, crossRepo bool) github.Item {
-	return item("example-repo", number, assoc, true, crossRepo)
+	return githubItem("example-repo", number, assoc, true, crossRepo)
 }
 
 // issue builds a fetched issue.
 func issue(repo string, number int, assoc string) github.Item {
-	return item(repo, number, assoc, false, false)
+	return githubItem(repo, number, assoc, false, false)
 }
 
 // nodeID is the fake node ID of the item with a number.
@@ -307,8 +447,8 @@ func nodeID(number int) string {
 	return fmt.Sprintf("NODE_%d", number)
 }
 
-// item builds a fetched item in acme-org.
-func item(repo string, number int, assoc string, isPR, crossRepo bool) github.Item {
+// githubItem builds a fetched item in acme-org.
+func githubItem(repo string, number int, assoc string, isPR, crossRepo bool) github.Item {
 	updated := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(number) * time.Hour)
 
 	it := github.Item{
@@ -319,7 +459,7 @@ func item(repo string, number int, assoc string, isPR, crossRepo bool) github.It
 		URL:               fmt.Sprintf("https://github.com/acme-org/%s/pull/%d", repo, number),
 		CreatedAt:         updated.Add(-time.Hour),
 		UpdatedAt:         updated,
-		AuthorLogin:       "octo-user",
+		AuthorLogin:       octoUser,
 		AuthorAssociation: assoc,
 		IsCrossRepository: crossRepo,
 		RepoOwner:         "acme-org",
@@ -332,6 +472,9 @@ func item(repo string, number int, assoc string, isPR, crossRepo bool) github.It
 
 	return it
 }
+
+// octoUser is the signed-in account's login in the fake inbox.
+const octoUser = "octo-user"
 
 // Avatar URLs on GitHub's avatar host for the fake accounts.
 const (
@@ -348,7 +491,7 @@ func fakeAvatar() *github.Avatar {
 func fetched(review, authored, assigned []github.Item) *github.Inbox {
 	return &github.Inbox{
 		Viewer: github.Viewer{
-			Login:     "octo-user",
+			Login:     octoUser,
 			Name:      "Octo User",
 			URL:       "https://github.com/octo-user",
 			AvatarURL: octoUserAvatar,
@@ -386,6 +529,8 @@ func numbers(l List) []int {
 }
 
 func TestRefreshUpsertsItemsWithReasonFlags(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 
 	a := pr(1, "OWNER", false)
@@ -405,13 +550,13 @@ func TestRefreshUpsertsItemsWithReasonFlags(t *testing.T) {
 	assert.Equal(t, int64(2), h.count(t, "repos"))
 
 	// Local state keeps B's row alive after it drops out of every list.
-	var bRow model.Item
-	require.NoError(t, h.db.Where("number = ?", 2).First(&bRow).Error)
-	require.NoError(t, h.db.Create(&model.ItemLocalState{ItemID: bRow.ID, UpdatedAt: h.clock.now}).Error)
+	h.exec(t, "INSERT INTO item_local_state (item_id, updated_at) VALUES (?, ?)", h.storedItemNumbered(t, 2).ID,
+		h.clock.Now())
 
 	// Next refresh: A is only review-requested (retitled), B is gone, C is still assigned.
 	a.Title = "Item 1, retitled"
-	h.clock.now = h.clock.now.Add(DefaultInterval)
+
+	h.clock.Advance(DefaultInterval)
 	h.client.inbox = fetched([]github.Item{a}, nil, []github.Item{c})
 	snap = h.refresh(t)
 
@@ -429,6 +574,8 @@ func TestRefreshUpsertsItemsWithReasonFlags(t *testing.T) {
 }
 
 func TestRefreshStoresTrustFields(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 
 	fork := pr(12, "CONTRIBUTOR", true)
@@ -446,11 +593,10 @@ func TestRefreshStoresTrustFields(t *testing.T) {
 		[]github.Item{memberIssue})
 	snap := h.refresh(t)
 
-	var stored []model.Item
-	require.NoError(t, h.db.Order("number").Find(&stored).Error)
+	stored := h.storedItems(t)
 	require.Len(t, stored, 7)
 
-	got := make(map[int]model.Item)
+	got := make(map[int]storedItem)
 	for _, it := range stored {
 		got[it.Number] = it
 	}
@@ -463,10 +609,10 @@ func TestRefreshStoresTrustFields(t *testing.T) {
 	assert.Equal(t, "User", got[16].AuthorType)
 	assert.Equal(t, "OWNER", got[7].AuthorAssociation)
 	assert.False(t, got[7].IsCrossRepository)
-	assert.Equal(t, model.KindIssue, got[21].Kind)
+	assert.Equal(t, item.KindIssue, got[21].Kind)
 	assert.Equal(t, "branch-7", got[7].HeadRef)
 
-	classes := make(map[int]string)
+	classes := make(map[int]trust.Class)
 	trusted := make(map[int]bool)
 	bots := make(map[int]bool)
 
@@ -476,7 +622,7 @@ func TestRefreshStoresTrustFields(t *testing.T) {
 		}
 	}
 
-	assert.Equal(t, map[int]string{
+	assert.Equal(t, map[int]trust.Class{
 		12: trust.ClassOutside, 15: trust.ClassBot, 16: trust.ClassOutside, 17: trust.ClassOutside,
 		8: trust.ClassOutside, 7: trust.ClassMember, 21: trust.ClassMember,
 	}, classes, "Dependabot is a trusted bot by default; a person named like it and an unlisted bot are not")
@@ -487,16 +633,15 @@ func TestRefreshStoresTrustFields(t *testing.T) {
 
 	fromFork := snap.ReviewRequested.Items[3]
 	assert.Equal(t, Item{
-		ID: fromFork.ID, Kind: model.KindPR, Number: 12, Title: "Item 12",
+		ID: fromFork.ID, Kind: item.KindPR, Number: 12, Title: "Item 12",
 		URL:  "https://github.com/acme-org/example-repo/pull/12",
-		Repo: "acme-org/example-repo", Author: "octo-user", UpdatedAt: "2026-01-01T12:00:00Z",
+		Repo: "acme-org/example-repo", Author: octoUser, UpdatedAt: "2026-01-01T12:00:00Z",
 		Trust: trust.ClassOutside, Trusted: false, IsCrossRepository: true, AuthorAssociation: "CONTRIBUTOR",
 		Branch: "branch-12",
 	}, fromFork)
 
 	// The trusted list is the user's: with it emptied, Dependabot is an outside contributor.
-	require.NoError(t, h.db.Exec(`INSERT INTO prefs (key, value, updated_at) VALUES (?, '[]', ?)`, trust.PrefBots,
-		h.clock.now).Error)
+	h.setPrefs(t, map[string]string{trust.PrefBots: "[]"})
 
 	snap, err := h.svc.Snapshot(t.Context())
 	require.NoError(t, err)
@@ -510,38 +655,65 @@ func TestRefreshStoresTrustFields(t *testing.T) {
 }
 
 func TestRefreshWritesRateSnapshot(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched(nil, nil, nil)
 	h.refresh(t)
 
-	var acct model.Account
-	require.NoError(t, h.db.First(&acct).Error)
-
 	// Readings older than the retention window are pruned on the next refresh.
-	old := model.RateSnapshot{AccountID: acct.ID, Resource: resourceCore, LimitTotal: 1, TakenAt: h.clock.now.Add(-8 * 24 * time.Hour)}
-	recent := model.RateSnapshot{AccountID: acct.ID, Resource: resourceCore, LimitTotal: 2, TakenAt: h.clock.now.Add(-6 * 24 * time.Hour)}
-	require.NoError(t, h.db.Create(&old).Error)
-	require.NoError(t, h.db.Create(&recent).Error)
+	old := h.insertRate(t, 1, h.clock.Now().Add(-8*24*time.Hour))
+	recent := h.insertRate(t, 2, h.clock.Now().Add(-6*24*time.Hour))
 
-	h.clock.now = h.clock.now.Add(DefaultInterval)
+	h.clock.Advance(DefaultInterval)
 	snap := h.refresh(t)
 
-	var rows []model.RateSnapshot
-	require.NoError(t, h.db.Where("taken_at = ?", h.clock.now).Order("resource").Find(&rows).Error)
-	require.Len(t, rows, 3, "one row per resource per refresh")
+	rows, err := h.pool.QueryContext(t.Context(),
+		"SELECT resource, limit_total, remaining, cost FROM rate_snapshots WHERE taken_at = ? ORDER BY resource",
+		h.clock.Now())
+	require.NoError(t, err)
 
-	assert.Equal(t, resourceCore, rows[0].Resource)
-	assert.Equal(t, 4980, rows[0].Remaining)
-	assert.Equal(t, resourceGraphQL, rows[1].Resource)
-	assert.Equal(t, 1, rows[1].Cost, "the GraphQL row carries the query cost")
-	assert.Equal(t, 4990, rows[1].Remaining)
-	assert.Equal(t, resourceSearch, rows[2].Resource)
-	assert.Equal(t, 30, rows[2].LimitTotal)
+	defer func() { _ = rows.Close() }()
 
-	var kept []model.RateSnapshot
-	require.NoError(t, h.db.Where("id IN ?", []int64{old.ID, recent.ID}).Find(&kept).Error)
-	require.Len(t, kept, 1)
-	assert.Equal(t, recent.ID, kept[0].ID)
+	type reading struct {
+		resource                    string
+		limitTotal, remaining, cost int
+	}
+
+	var readings []reading
+
+	for rows.Next() {
+		var r reading
+		require.NoError(t, rows.Scan(&r.resource, &r.limitTotal, &r.remaining, &r.cost))
+		readings = append(readings, r)
+	}
+
+	require.NoError(t, rows.Err())
+	require.Len(t, readings, 3, "one row per resource per refresh")
+
+	assert.Equal(t, resourceCore, readings[0].resource)
+	assert.Equal(t, 4980, readings[0].remaining)
+	assert.Equal(t, resourceGraphQL, readings[1].resource)
+	assert.Equal(t, 1, readings[1].cost, "the GraphQL row carries the query cost")
+	assert.Equal(t, 4990, readings[1].remaining)
+	assert.Equal(t, resourceSearch, readings[2].resource)
+	assert.Equal(t, 30, readings[2].limitTotal)
+
+	var kept []int64
+
+	keptRows, err := h.pool.QueryContext(t.Context(), "SELECT id FROM rate_snapshots WHERE id IN (?, ?)", old, recent)
+	require.NoError(t, err)
+
+	defer func() { _ = keptRows.Close() }()
+
+	for keptRows.Next() {
+		var id int64
+		require.NoError(t, keptRows.Scan(&id))
+		kept = append(kept, id)
+	}
+
+	require.NoError(t, keptRows.Err())
+	assert.Equal(t, []int64{recent}, kept)
 
 	assert.Equal(t, Rate{
 		Known: true, Limit: 5000, Remaining: 4990, Used: 10, Cost: 1,
@@ -553,6 +725,8 @@ func TestRefreshWritesRateSnapshot(t *testing.T) {
 }
 
 func TestRefreshMissingScopesError(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
 	h.client.inbox.OAuthScopes = "gist"
@@ -561,7 +735,7 @@ func TestRefreshMissingScopesError(t *testing.T) {
 	require.ErrorIs(t, err, github.ErrMissingScopes)
 	assert.Contains(t, snap.LastError, "gh auth refresh -s repo,read:org")
 	assert.Equal(t, int64(0), h.count(t, "items"), "nothing is stored without the needed scopes")
-	assert.Equal(t, 1, h.notifier.calls, "the UI hears about the failure")
+	assert.Equal(t, []event.Event{event.InboxUpdated{}}, h.events.All(), "the UI hears about the failure")
 
 	// A restart still shows the error.
 	snap, err = h.service().Snapshot(t.Context())
@@ -576,6 +750,8 @@ func TestRefreshMissingScopesError(t *testing.T) {
 }
 
 func TestRefreshScopeWarning(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched(nil, nil, nil)
 	h.client.inbox.OAuthScopes = ""
@@ -586,6 +762,8 @@ func TestRefreshScopeWarning(t *testing.T) {
 }
 
 func TestSnapshotReportsNofM(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 
 	review := []github.Item{pr(1, "OWNER", false), pr(2, "OWNER", false)}
@@ -605,10 +783,12 @@ func TestSnapshotReportsNofM(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, snap, again)
 	assert.Equal(t, "2026-01-10T12:00:00Z", again.LastRefreshedAt)
-	assert.Equal(t, "octo-user", again.Account.Login)
+	assert.Equal(t, octoUser, again.Account.Login)
 }
 
 func TestRefreshNeverPersistsToken(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, []github.Item{issue("other-repo", 2, "MEMBER")})
 	h.refresh(t)
@@ -621,16 +801,17 @@ func TestRefreshNeverPersistsToken(t *testing.T) {
 	_, err := h.svc.Refresh(t.Context())
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), fakeToken)
+	assert.NotContains(t, uierr.Message(err), fakeToken)
 
-	var tables []string
-	require.NoError(t, h.db.Raw("SELECT name FROM sqlite_master WHERE type = 'table'").Scan(&tables).Error)
+	// Nor is it logged, by the service or by a caller that logs the error.
+	h.logs.Logger().Warn("inbox refresh failed", "error", err)
+	assert.NotContains(t, h.logs.String(), fakeToken)
+
+	tables := h.column(t, "SELECT name FROM sqlite_master WHERE type = 'table'")
 	require.NotEmpty(t, tables)
 
 	for _, table := range tables {
-		var rows []map[string]any
-		require.NoError(t, h.db.Table(table).Find(&rows).Error)
-
-		for _, row := range rows {
+		for _, row := range h.rows(t, "SELECT * FROM "+table) {
 			for col, v := range row {
 				assert.NotContains(t, fmt.Sprint(v), fakeToken, "%s.%s", table, col)
 			}
@@ -650,33 +831,43 @@ func TestRefreshNeverPersistsToken(t *testing.T) {
 }
 
 func TestRefreshRecordsTokenErrors(t *testing.T) {
-	h := newHarness(t)
-	h.tokens.err = github.ErrGHNotFound
+	t.Parallel()
 
+	h := newHarness(t)
+	h.tokens.err = uierr.New("Install the GitHub CLI.", github.ErrGHNotFound)
+
+	// The error keeps its whole chain for the logs; the snapshot keeps what the user is
+	// told.
 	snap, err := h.svc.Refresh(t.Context())
 	require.ErrorIs(t, err, github.ErrGHNotFound)
-	assert.Equal(t, github.ErrGHNotFound.Error(), snap.LastError)
+	assert.Equal(t, "refresh the inbox: "+github.ErrGHNotFound.Error(), err.Error())
+	assert.Equal(t, "Install the GitHub CLI.", snap.LastError)
 	assert.Empty(t, h.client.gotTokens, "nothing is fetched without a token")
 	assert.Empty(t, snap.ReviewRequested.Items)
 	assert.Empty(t, snap.LastRefreshedAt)
 }
 
 func TestRefreshFetchErrorsKeepTheStoredInbox(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
 	h.refresh(t)
 
 	h.client.limitsErr = errFakeNetwork
-	h.clock.now = h.clock.now.Add(DefaultInterval)
+	h.clock.Advance(DefaultInterval)
 
+	// An error with no message for the user is shown as its own text, as a sentence.
 	snap, err := h.svc.Refresh(t.Context())
 	require.ErrorIs(t, err, errFakeNetwork)
-	assert.Equal(t, errFakeNetwork.Error(), snap.LastError)
+	assert.Equal(t, "Refresh the inbox: network unreachable.", snap.LastError)
 	assert.Equal(t, []int{1}, numbers(snap.ReviewRequested), "the last good inbox is still shown")
 	assert.Equal(t, "2026-01-10T12:00:00Z", snap.LastRefreshedAt)
 }
 
 func TestRefreshRequiresViewer(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched(nil, nil, nil)
 	h.client.inbox.Viewer.Login = ""
@@ -686,6 +877,8 @@ func TestRefreshRequiresViewer(t *testing.T) {
 }
 
 func TestRefreshCanceledIsNotRecorded(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -693,7 +886,7 @@ func TestRefreshCanceledIsNotRecorded(t *testing.T) {
 
 	_, err := h.svc.Refresh(ctx)
 	require.ErrorIs(t, err, context.Canceled)
-	assert.Zero(t, h.notifier.calls)
+	assert.Zero(t, h.events.Count())
 
 	snap, err := h.svc.Snapshot(t.Context())
 	require.NoError(t, err)
@@ -701,18 +894,22 @@ func TestRefreshCanceledIsNotRecorded(t *testing.T) {
 }
 
 func TestRefreshNotifies(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched(nil, nil, nil)
 	h.refresh(t)
-	assert.Equal(t, 1, h.notifier.calls)
+	assert.Equal(t, 1, h.events.Count())
 	assert.Equal(t, 1, h.tokens.calls, "the token is borrowed on every refresh")
 
 	h.refresh(t)
-	assert.Equal(t, 2, h.notifier.calls)
+	assert.Equal(t, 2, h.events.Count())
 	assert.Equal(t, 2, h.tokens.calls)
 }
 
 func TestSnapshotBeforeFirstRefresh(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 
 	snap, err := h.svc.Snapshot(t.Context())
@@ -725,6 +922,8 @@ func TestSnapshotBeforeFirstRefresh(t *testing.T) {
 }
 
 func TestSnapshotSwitchesWithTheViewer(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
 	h.refresh(t)
@@ -741,13 +940,15 @@ func TestSnapshotSwitchesWithTheViewer(t *testing.T) {
 }
 
 func TestRefreshStoresTheAccount(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched(nil, nil, nil)
 
 	snap := h.refresh(t)
 
 	assert.Equal(t, Account{
-		Login:      "octo-user",
+		Login:      octoUser,
 		Name:       "Octo User",
 		ProfileURL: "https://github.com/octo-user",
 		Avatar:     "data:image/png;base64,bm90LXJlYWxseS1hLXBuZw==",
@@ -761,6 +962,8 @@ func TestRefreshStoresTheAccount(t *testing.T) {
 }
 
 func TestRefreshDownloadsTheAvatarOnlyWhenItChanges(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched(nil, nil, nil)
 
@@ -781,6 +984,8 @@ func TestRefreshDownloadsTheAvatarOnlyWhenItChanges(t *testing.T) {
 }
 
 func TestRefreshAvatarFailureIsBestEffort(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
 	h.client.avatarErr = errFakeNetwork
@@ -788,8 +993,9 @@ func TestRefreshAvatarFailureIsBestEffort(t *testing.T) {
 	snap := h.refresh(t)
 	assert.Empty(t, snap.LastError, "a missing picture is not a refresh failure")
 	assert.Equal(t, []int{1}, numbers(snap.ReviewRequested))
-	assert.Equal(t, "octo-user", snap.Account.Login)
+	assert.Equal(t, octoUser, snap.Account.Login)
 	assert.Empty(t, snap.Account.Avatar)
+	assert.Contains(t, h.logs.String(), `level=DEBUG msg="could not download the avatar" error="network unreachable"`)
 
 	// The next refresh tries again.
 	h.client.avatarErr = nil
@@ -800,6 +1006,8 @@ func TestRefreshAvatarFailureIsBestEffort(t *testing.T) {
 }
 
 func TestRefreshWithoutAnAvatarURL(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched(nil, nil, nil)
 	h.client.inbox.Viewer.AvatarURL = ""
@@ -811,6 +1019,8 @@ func TestRefreshWithoutAnAvatarURL(t *testing.T) {
 }
 
 func TestSnapshotNeverShowsAnotherAccountsAvatar(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched(nil, nil, nil)
 	require.NotEmpty(t, h.refresh(t).Account.Avatar)
@@ -826,6 +1036,8 @@ func TestSnapshotNeverShowsAnotherAccountsAvatar(t *testing.T) {
 }
 
 func TestSnapshotFallsBackToTheGitHubProfileURL(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched(nil, nil, nil)
 	h.client.inbox.Viewer.URL = ""
@@ -836,10 +1048,12 @@ func TestSnapshotFallsBackToTheGitHubProfileURL(t *testing.T) {
 }
 
 func TestSnapshotDatabaseErrors(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched(nil, nil, nil)
 	h.refresh(t)
-	require.NoError(t, store.Close(h.db))
+	require.NoError(t, h.pool.Close())
 
 	_, err := h.svc.Snapshot(t.Context())
 	require.Error(t, err)
@@ -849,8 +1063,10 @@ func TestSnapshotDatabaseErrors(t *testing.T) {
 }
 
 func TestNewServiceUsesTheSystemClock(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
-	svc := NewService(Config{DB: h.db, Tokens: h.tokens, Client: h.client})
+	svc := NewService(Config{Pool: h.pool, Tokens: h.tokens, Client: h.client})
 	h.client.inbox = fetched(nil, nil, nil)
 
 	before := time.Now().UTC().Truncate(time.Second)
@@ -894,6 +1110,8 @@ func itemByNumber(t *testing.T, l List, number int) Item {
 }
 
 func TestRefreshStoresEachItemsDetails(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 
 	a := pr(1, "OWNER", false)
@@ -934,6 +1152,8 @@ func TestRefreshStoresEachItemsDetails(t *testing.T) {
 }
 
 func TestRefreshReplacesTheDetails(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false), pr(2, "OWNER", false)}, nil, nil)
 	h.client.details = map[string]github.ItemDetails{nodeID(1): prDetails(), nodeID(2): prDetails()}
@@ -944,7 +1164,7 @@ func TestRefreshReplacesTheDetails(t *testing.T) {
 	failing.Labels = nil
 	failing.Checks = github.Checks{State: "FAILURE", Passed: 10, Failed: 2}
 	h.client.details = map[string]github.ItemDetails{nodeID(1): failing}
-	h.clock.now = h.clock.now.Add(DefaultInterval)
+	h.clock.Advance(DefaultInterval)
 
 	snap := h.refresh(t)
 
@@ -962,6 +1182,8 @@ func TestRefreshReplacesTheDetails(t *testing.T) {
 }
 
 func TestRefreshDetailsFailureKeepsTheStoredInbox(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
 	h.client.details = map[string]github.ItemDetails{nodeID(1): prDetails()}
@@ -969,7 +1191,7 @@ func TestRefreshDetailsFailureKeepsTheStoredInbox(t *testing.T) {
 
 	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false), pr(2, "OWNER", false)}, nil, nil)
 	h.client.detailsErr = fmt.Errorf("%w: upstream said: %s", errFakeNetwork, fakeToken)
-	h.clock.now = h.clock.now.Add(DefaultInterval)
+	h.clock.Advance(DefaultInterval)
 
 	snap, err := h.svc.Refresh(t.Context())
 	require.ErrorIs(t, err, errFakeNetwork)
@@ -984,6 +1206,8 @@ func TestRefreshDetailsFailureKeepsTheStoredInbox(t *testing.T) {
 }
 
 func TestRefreshRecordsTheCostOfBothQueries(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
 	h.client.detailsRate = github.QueryRate{
@@ -997,6 +1221,8 @@ func TestRefreshRecordsTheCostOfBothQueries(t *testing.T) {
 }
 
 func TestGraphQLReading(t *testing.T) {
+	t.Parallel()
+
 	inbox := github.QueryRate{Cost: 1, Limit: 5000, Remaining: 4990}
 	later := github.QueryRate{Cost: 2, Limit: 5000, Remaining: 4988}
 
@@ -1017,16 +1243,20 @@ func TestGraphQLReading(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			assert.Equal(t, tt.want, graphQLReading(inbox, tt.details))
 		})
 	}
 }
 
 func TestSaveWithoutDetails(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
 
-	_, err := h.svc.save(t.Context(), refreshed{inbox: h.client.inbox, limits: restLimits()}, "")
+	_, err := h.svc.save(t.Context(), h.svc.startRefresh(), refreshed{inbox: h.client.inbox, limits: restLimits()})
 	require.NoError(t, err)
 
 	snap, err := h.svc.Snapshot(t.Context())
@@ -1035,6 +1265,8 @@ func TestSaveWithoutDetails(t *testing.T) {
 }
 
 func TestRefreshReadsTheListedDetailsAlongsideTheInbox(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
 	h.refresh(t)
@@ -1049,6 +1281,8 @@ func TestRefreshReadsTheListedDetailsAlongsideTheInbox(t *testing.T) {
 }
 
 func TestRefreshAsksAfterTheInboxOnlyAboutNewItems(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	a := pr(1, "OWNER", false)
 	b := pr(2, "OWNER", false)
@@ -1075,6 +1309,8 @@ func TestRefreshAsksAfterTheInboxOnlyAboutNewItems(t *testing.T) {
 }
 
 func TestRefreshNewItemDetailsFailure(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
 	h.client.detailsErr = errFakeNetwork
@@ -1087,10 +1323,12 @@ func TestRefreshNewItemDetailsFailure(t *testing.T) {
 }
 
 func TestListedNodeIDsError(t *testing.T) {
-	h := newHarness(t)
-	require.NoError(t, h.db.Exec("DROP TABLE items").Error)
+	t.Parallel()
 
-	_, err := listedNodeIDs(h.db)
+	h := newHarness(t)
+	h.exec(t, "DROP TABLE items")
+
+	_, err := h.svc.listedNodeIDs(t.Context())
 	require.ErrorContains(t, err, "read the listed items")
 
 	_, err = h.svc.Refresh(t.Context())
@@ -1098,23 +1336,62 @@ func TestListedNodeIDsError(t *testing.T) {
 }
 
 func TestNewIDs(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, []string{"c"}, newIDs([]string{"a", "c", "b"}, []string{"b", "a"}))
 	assert.Empty(t, newIDs([]string{"a"}, []string{"a"}))
 	assert.Equal(t, []string{"a"}, newIDs([]string{"a"}, nil))
 }
 
+// storedRepo is a stored repository's row, as the tests read it.
+type storedRepo struct {
+	ID                 int64
+	NodeID             string
+	Description        string
+	Visibility         string
+	IsArchived         bool
+	ArchivedAt         *time.Time
+	IsFork             bool
+	Parent             string
+	DefaultBranch      string
+	ViewerPermission   string
+	ViewerMergeMethod  string
+	MergeCommitAllowed bool
+	SquashMergeAllowed bool
+	AutoMergeAllowed   bool
+	AllowUpdateBranch  bool
+	Language           string
+	LanguageColor      string
+	PushedAt           *time.Time
+	FetchedAt          *time.Time
+	Pinned             bool
+	Muted              bool
+	LocalPath          string
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+}
+
 // repoRow reads a stored repository by name.
-func (h *harness) repoRow(t *testing.T, name string) model.Repo {
+func (h *harness) repoRow(t *testing.T, name string) storedRepo {
 	t.Helper()
 
-	var rows []model.Repo
-	require.NoError(t, h.db.Where("name = ?", name).Find(&rows).Error)
-	require.Len(t, rows, 1)
+	var r storedRepo
 
-	return rows[0]
+	require.NoError(t, h.pool.QueryRowContext(t.Context(), `SELECT id, node_id, description, visibility,
+    is_archived, archived_at, is_fork, parent, default_branch, viewer_permission, viewer_merge_method,
+    merge_commit_allowed, squash_merge_allowed, auto_merge_allowed, allow_update_branch, language, language_color,
+    pushed_at, fetched_at, pinned, muted, local_path, created_at, updated_at
+FROM repos WHERE name = ?`, name).Scan(&r.ID, &r.NodeID, &r.Description, &r.Visibility, &r.IsArchived,
+		&r.ArchivedAt, &r.IsFork, &r.Parent, &r.DefaultBranch, &r.ViewerPermission, &r.ViewerMergeMethod,
+		&r.MergeCommitAllowed, &r.SquashMergeAllowed, &r.AutoMergeAllowed, &r.AllowUpdateBranch, &r.Language,
+		&r.LanguageColor, &r.PushedAt, &r.FetchedAt, &r.Pinned, &r.Muted, &r.LocalPath, &r.CreatedAt, &r.UpdatedAt))
+
+	return r
 }
 
 func TestRefreshStoresWhatGitHubSaysAboutEachRepository(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 
 	a := pr(1, "OWNER", false)
@@ -1146,12 +1423,12 @@ func TestRefreshStoresWhatGitHubSaysAboutEachRepository(t *testing.T) {
 	assert.True(t, a.Repo.PushedAt.Equal(*repo.PushedAt))
 	assert.Nil(t, repo.ArchivedAt)
 	require.NotNil(t, repo.FetchedAt)
-	assert.True(t, h.clock.now.Equal(*repo.FetchedAt))
+	assert.True(t, h.clock.Now().Equal(*repo.FetchedAt))
 
 	// The local columns are the user's, and a refresh leaves them alone while it rewrites
 	// GitHub's.
-	require.NoError(t, h.db.Model(&model.Repo{}).Where("id = ?", repo.ID).
-		Updates(map[string]any{"pinned": true, "muted": true, "local_path": "~/projects/example-repo"}).Error)
+	h.exec(t, "UPDATE repos SET pinned = 1, muted = 1, local_path = ? WHERE id = ?", "~/projects/example-repo",
+		repo.ID)
 
 	a.Repo.Description = "Renamed description"
 	a.Repo.PushedAt = time.Time{}
@@ -1167,6 +1444,8 @@ func TestRefreshStoresWhatGitHubSaysAboutEachRepository(t *testing.T) {
 }
 
 func TestRefreshLeavesArchivedRepositoriesOut(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 
 	live := pr(1, "OWNER", false)
@@ -1203,6 +1482,8 @@ func TestRefreshLeavesArchivedRepositoriesOut(t *testing.T) {
 }
 
 func TestDropArchived(t *testing.T) {
+	t.Parallel()
+
 	keep := pr(1, "OWNER", false)
 	gone := pr(2, "OWNER", false)
 	gone.Repo.IsArchived = true

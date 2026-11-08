@@ -3,8 +3,10 @@
 // The product name and tagline come from internal/brand, so the frontend never hard-codes
 // them. Info also carries what a bug report needs, the build's versions and the system it
 // runs on, and a link that opens a new bug report with those details filled in. When the
-// window has painted its first frame, the frontend calls ReportFirstPaint, which records
-// the startup time once.
+// database could not be read at startup and was set aside, Info says so, so the window
+// can tell the user once it loads: the window does not exist yet when that happens, so
+// an event would be lost. When the window has painted its first frame, the frontend calls
+// ReportFirstPaint, which records the startup time once.
 package appinfo
 
 import (
@@ -13,6 +15,7 @@ import (
 	"runtime"
 
 	"github.com/mrz1836/nilbox/internal/brand"
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/timing"
 )
 
@@ -26,8 +29,8 @@ const (
 	environmentField = "environment"
 )
 
-// Info is the app's identity, its versions, and the system it runs on. Every field is a
-// plain value.
+// Info is the app's identity, its versions, the system it runs on, and whether its data
+// was reset at startup.
 type Info struct {
 	// Name is the product name.
 	Name string `json:"name"`
@@ -56,7 +59,36 @@ type Info struct {
 	// BugReportURL opens a new bug report on GitHub with the versions and system filled
 	// in.
 	BugReportURL string `json:"bugReportUrl"`
+
+	// DataReset is set when the database could not be read at startup, so it was set
+	// aside and the app started with an empty one; it is nil otherwise.
+	DataReset *DataReset `json:"dataReset,omitempty"`
 }
+
+// DataReset says where a database that could not be read was set aside, and why.
+type DataReset struct {
+	// Path is where the database was moved, with ~ for the home directory.
+	Path string `json:"path"`
+
+	// Reason says why it could not be read.
+	Reason ResetReason `json:"reason"`
+}
+
+// ResetReason says why the database could not be read. The values are the store
+// package's reasons for setting a database aside.
+type ResetReason string
+
+// Why the database could not be read.
+const (
+	// ResetCorrupt is a file that is not a database, or is damaged.
+	ResetCorrupt ResetReason = "corrupt"
+
+	// ResetUnmanaged is a database with tables the app did not create.
+	ResetUnmanaged ResetReason = "unmanaged"
+
+	// ResetHistory is a migration history this build disagrees with.
+	ResetHistory ResetReason = "history"
+)
 
 // FirstPaintRecorder records the first paint once. *timing.Recorder implements it.
 type FirstPaintRecorder interface {
@@ -82,16 +114,19 @@ type Config struct {
 	// Recorder records the first paint.
 	Recorder FirstPaintRecorder
 
-	// OnFirstPaint is called once, with the measurement, after the first paint is
-	// recorded. The startup measurement mode uses it to quit after one frame.
-	OnFirstPaint func(timing.Measurement)
+	// Events hears an event.FirstPaint, once, after the first paint is recorded. The
+	// startup measurement mode uses it to quit after one frame.
+	Events event.Sink
+
+	// DataReset is set when the database was set aside at startup.
+	DataReset *DataReset
 }
 
 // Service serves the app's identity and records its first paint.
 type Service struct {
-	info         Info
-	recorder     FirstPaintRecorder
-	onFirstPaint func(timing.Measurement)
+	info     Info
+	recorder FirstPaintRecorder
+	events   event.Sink
 }
 
 // NewService returns a Service over cfg.
@@ -102,20 +137,22 @@ func NewService(cfg Config) *Service {
 	}
 
 	info := Info{
-		Name:    brand.Name,
-		Tagline: brand.Tagline,
-		Version: cfg.Version,
-		Release: cfg.Release,
-		Build:   cfg.Build,
-		System:  system,
-		Arch:    runtime.GOARCH,
+		Name:      brand.Name,
+		Tagline:   brand.Tagline,
+		Version:   cfg.Version,
+		Release:   cfg.Release,
+		Build:     cfg.Build,
+		System:    system,
+		Arch:      runtime.GOARCH,
+		DataReset: cfg.DataReset,
 	}
 	info.BugReportURL = bugReportURL(info)
 
-	return &Service{info: info, recorder: cfg.Recorder, onFirstPaint: cfg.OnFirstPaint}
+	return &Service{info: info, recorder: cfg.Recorder, events: event.Or(cfg.Events)}
 }
 
-// Info returns the product's identity, its versions, and the system it runs on.
+// Info returns the product's identity, its versions, the system it runs on, and whether
+// its data was reset at startup.
 func (s *Service) Info() Info {
 	return s.info
 }
@@ -146,8 +183,8 @@ func (s *Service) ReportFirstPaint() error {
 	}
 
 	m, first, err := s.recorder.FirstPaint()
-	if first && s.onFirstPaint != nil {
-		s.onFirstPaint(m)
+	if first {
+		s.events.Emit(event.FirstPaint{Measurement: m})
 	}
 
 	if err != nil {

@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/snooze"
 )
 
@@ -29,16 +31,6 @@ const (
 // to count as arriving, so a clock a little behind GitHub's does not lose one.
 const truncationSlack = 5 * time.Minute
 
-// listedFlagsSQL reads which items were in the review-requested and assigned lists before
-// a refresh rewrites the flags.
-const listedFlagsSQL = `SELECT id, reason_review_requested, reason_assigned FROM items
-WHERE account_id = ? AND (reason_review_requested = 1 OR reason_assigned = 1)`
-
-// setAsideSQL reads which of some items the user has set aside at a time: dismissed, or
-// snoozed past it.
-const setAsideSQL = `SELECT item_id FROM item_local_state
-WHERE item_id IN ? AND (dismissed_at IS NOT NULL OR snoozed_until > ?)`
-
 // Arrival is an item that newly needs the user after a whole refresh: a review request
 // or an assignment that was not there at the last refresh, or a snooze that new activity
 // ended early. A refresh reports none the first time it stores an account, since
@@ -51,8 +43,8 @@ type Arrival struct {
 	// ItemID is the item's id in the snapshot.
 	ItemID int64
 
-	// ItemKind is "pr" or "issue".
-	ItemKind string
+	// ItemKind is the kind of item.
+	ItemKind item.Kind
 
 	// RepoOwner and RepoName name the item's repository.
 	RepoOwner string
@@ -102,34 +94,29 @@ type savedEntry struct {
 // watchArrivals reads the lists as they are before the refresh rewrites them with inbox.
 // It returns nil, so no arrival is told, when the account was never refreshed or another
 // account was refreshed last: everything in the lists would be new.
-func (w *writer) watchArrivals(inbox *github.Inbox) (*arrivalWatch, error) {
-	prefs, err := readPrefs(w.tx)
+func (w *writer) watchArrivals(ctx context.Context, inbox *github.Inbox) (*arrivalWatch, error) {
+	status, err := readStatus(ctx, w.prefs)
 	if err != nil {
 		return nil, err
 	}
 
 	viewer := inbox.Viewer.Login
 
-	last, refreshed := lastRefresh(prefs)
-	if !refreshed || prefs[prefViewer] != viewer {
+	last, refreshed := lastRefresh(status)
+	if !refreshed || status[prefViewer] != viewer {
 		return nil, nil //nolint:nilnil // no watch is the answer for a first refresh
 	}
 
-	var rows []struct {
-		ID              int64 `gorm:"column:id"`
-		ReviewRequested bool  `gorm:"column:reason_review_requested"`
-		Assigned        bool  `gorm:"column:reason_assigned"`
-	}
-
-	if err = w.tx.Raw(listedFlagsSQL, w.accountID).Scan(&rows).Error; err != nil {
+	rows, err := w.q.ListListedFlags(ctx, w.accountID)
+	if err != nil {
 		return nil, fmt.Errorf("read the listed items: %w", err)
 	}
 
 	before := listedFlags{reviewRequested: make(map[int64]bool), assigned: make(map[int64]bool)}
 
 	for _, r := range rows {
-		before.reviewRequested[r.ID] = r.ReviewRequested
-		before.assigned[r.ID] = r.Assigned
+		before.reviewRequested[r.ID] = r.ReasonReviewRequested
+		before.assigned[r.ID] = r.ReasonAssigned
 	}
 
 	return &arrivalWatch{
@@ -140,8 +127,8 @@ func (w *writer) watchArrivals(inbox *github.Inbox) (*arrivalWatch, error) {
 }
 
 // lastRefresh reads when the last successful refresh was, and whether there was one.
-func lastRefresh(prefs map[string]string) (time.Time, bool) {
-	at, err := time.Parse(time.RFC3339, prefs[prefLastRefreshAt])
+func lastRefresh(status map[string]string) (time.Time, bool) {
+	at, err := time.Parse(time.RFC3339, status[prefLastRefreshAt])
 
 	return at, err == nil
 }
@@ -187,7 +174,7 @@ func (l *arrivalList) add(kind string, s savedEntry, woke snooze.Reasons) {
 	l.told[s.id] = true
 	it := s.entry.item
 	l.items = append(l.items, Arrival{
-		Kind: kind, ItemID: s.id, ItemKind: kindOf(it), RepoOwner: it.RepoOwner, RepoName: it.RepoName,
+		Kind: kind, ItemID: s.id, ItemKind: it.Ref().Kind, RepoOwner: it.RepoOwner, RepoName: it.RepoName,
 		Number: it.Number, Title: it.Title, URL: it.URL, Author: it.AuthorLogin, Woke: woke,
 	})
 }
@@ -195,7 +182,7 @@ func (l *arrivalList) add(kind string, s savedEntry, woke snooze.Reasons) {
 // arrivals tells what newly needs the user once the refresh's items are stored and its
 // snoozes woken: in the order the lists returned them, review requests and assignments
 // that were not there before, then the snoozes woken early. Each item arrives once.
-func (w *writer) arrivals(watch *arrivalWatch) ([]Arrival, error) {
+func (w *writer) arrivals(ctx context.Context, watch *arrivalWatch) ([]Arrival, error) {
 	if watch == nil {
 		return nil, nil
 	}
@@ -208,7 +195,7 @@ func (w *writer) arrivals(watch *arrivalWatch) ([]Arrival, error) {
 		}
 	}
 
-	if err := w.dropSetAside(&list.items); err != nil {
+	if err := w.dropSetAside(ctx, &list.items); err != nil {
 		return nil, err
 	}
 
@@ -223,7 +210,7 @@ func (w *writer) arrivals(watch *arrivalWatch) ([]Arrival, error) {
 
 // dropSetAside removes the arrivals of items the user dismissed or that are still
 // snoozed after the refresh's wake-ups.
-func (w *writer) dropSetAside(arrivals *[]Arrival) error {
+func (w *writer) dropSetAside(ctx context.Context, arrivals *[]Arrival) error {
 	if len(*arrivals) == 0 {
 		return nil
 	}
@@ -233,8 +220,10 @@ func (w *writer) dropSetAside(arrivals *[]Arrival) error {
 		ids = append(ids, a.ItemID)
 	}
 
-	var setAside []int64
-	if err := w.tx.Raw(setAsideSQL, ids, w.now).Scan(&setAside).Error; err != nil {
+	// w.now is in UTC, as every stored time is, so it compares with snoozed_until as text
+	// in the same format.
+	setAside, err := w.q.ListSetAside(ctx, queries.ListSetAsideParams{Now: new(w.now), Ids: ids})
+	if err != nil {
 		return fmt.Errorf("read the triage of the new items: %w", err)
 	}
 

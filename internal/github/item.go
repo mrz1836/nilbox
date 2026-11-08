@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 )
 
 // errorNotFound is GitHub's error type for an ID it cannot resolve: the node was deleted,
@@ -45,52 +44,33 @@ func (c *Client) FetchItem(ctx context.Context, tok Token, id string) (*ItemUpda
 
 // fetchItem sends the item query and decodes the response.
 func (c *Client) fetchItem(ctx context.Context, tok Token, id string) (*ItemUpdate, error) {
-	body, err := json.Marshal(graphQLRequest{Query: itemQuery, Variables: map[string]any{"id": id}})
-	if err != nil {
-		return nil, fmt.Errorf("encode the item query: %w", err)
-	}
+	req := graphQLRequest{Query: itemQuery, Variables: map[string]any{"id": id}}
 
-	raw, _, err := c.do(ctx, tok, http.MethodPost, "/graphql", body)
+	resp, _, err := postGraphQL[itemData](ctx, c, tok, "item", req, unlessData)
 	if err != nil {
 		return nil, err
 	}
 
-	var resp itemResponse
-	if err = json.Unmarshal(raw, &resp); err != nil {
-		return nil, fmt.Errorf("%w: decode the item response: %w", ErrMalformedResponse, err)
-	}
-
-	if resp.Data == nil {
-		if len(resp.Errors) > 0 {
-			return nil, (&graphQLResponse{Errors: resp.Errors}).err()
-		}
-
-		return nil, fmt.Errorf("%w: the item response has no data", ErrMalformedResponse)
-	}
-
-	return resp.update()
+	return itemUpdate(resp)
 }
 
-// itemResponse is the item query's response body. The node is kept raw, because the
-// inbox's item fields and the details decode from the same object.
-type itemResponse struct {
-	Data *struct {
-		Node      json.RawMessage  `json:"node"`
-		RateLimit graphQLRateLimit `json:"rateLimit"`
-	} `json:"data"`
-	Errors []graphQLError `json:"errors"`
+// itemData is the item query's data object. The node is kept raw, because the inbox's
+// item fields and the details decode from the same object.
+type itemData struct {
+	Node      json.RawMessage  `json:"node"`
+	RateLimit graphQLRateLimit `json:"rateLimit"`
 }
 
-// update converts the response. A null node is an item that is gone only when GitHub
+// itemUpdate converts the response. A null node is an item that is gone only when GitHub
 // says it could not find it; a null node for any other error is a failure, so a passing
 // problem never takes an item out of the inbox.
-func (r *itemResponse) update() (*ItemUpdate, error) {
+func itemUpdate(r *graphQLResponse[itemData]) (*ItemUpdate, error) {
 	update := &ItemUpdate{RateLimit: r.Data.RateLimit.queryRate()}
 
 	if isNull(r.Data.Node) {
 		for _, e := range r.Errors {
 			if e.Type != errorNotFound {
-				return nil, (&graphQLResponse{Errors: r.Errors}).err()
+				return nil, graphQLErr(r.Errors)
 			}
 		}
 

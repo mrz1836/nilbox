@@ -1,52 +1,92 @@
 package launchdefaults_test
 
 import (
-	"path/filepath"
+	"context"
+	"database/sql"
+	"errors"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 
-	inboxmodel "github.com/mrz1836/nilbox/internal/inbox/model"
+	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
-	profilesmodel "github.com/mrz1836/nilbox/internal/profiles/model"
+	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
-	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // acme is the fake org most tests use.
 const acme = "acme-org"
 
+// errFakeRepos is what failingRepos returns.
+var errFakeRepos = errors.New("repositories unreadable")
+
+// fakeRepos lists fixed repositories, as the inbox would.
+type fakeRepos []launchdefaults.Target
+
+func (f fakeRepos) Repos(context.Context) ([]launchdefaults.Target, error) {
+	return f, nil
+}
+
+// failingRepos cannot list the repositories.
+type failingRepos struct{}
+
+func (failingRepos) Repos(context.Context) ([]launchdefaults.Target, error) {
+	return nil, errFakeRepos
+}
+
 // harness is a launch defaults Service over a database with the starter prompts and a
-// "work" profile.
+// "work" profile, and a prompt Service whose usage comes from the launch defaults.
 type harness struct {
-	db     *gorm.DB
-	svc    *launchdefaults.Service
-	review int64 // the review starter, for pull requests
-	work   int64 // the work-on-issue starter, for issues
+	db      *sql.DB
+	store   *launchdefaults.Store
+	known   *profiles.Store
+	library *prompts.Store
+	svc     *launchdefaults.Service
+	prompts *prompts.Service
+	review  int64 // the review starter, for pull requests
+	work    int64 // the work-on-issue starter, for issues
 }
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
 
-	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "app.db"))
+	db := testutil.DB(t)
+	known := profiles.NewStore(db, nil)
+	library := prompts.NewStore(db, nil)
+	stored := launchdefaults.NewStore(db, nil)
+
+	require.NoError(t, prompts.Seed(t.Context(), library))
+	require.NoError(t, known.Sync(t.Context(), []profiles.Profile{{Name: "work", ConfigDir: "/tmp/work"}}))
+
+	defaults, err := library.Defaults(t.Context())
 	require.NoError(t, err)
 
-	t.Cleanup(func() { _ = store.Close(db) })
+	return &harness{
+		db:      db,
+		store:   stored,
+		known:   known,
+		library: library,
+		svc:     launchdefaults.NewService(launchdefaults.Config{Store: stored, Profiles: known, Prompts: library}),
+		prompts: prompts.NewService(prompts.Config{Store: library, Usage: stored}),
+		review:  defaults.PR,
+		work:    defaults.Issue,
+	}
+}
 
-	require.NoError(t, prompts.Seed(t.Context(), db))
-	require.NoError(t, db.Create(&profilesmodel.ClaudeProfile{Name: "work", ConfigDir: "/tmp/work"}).Error)
-
-	defaults, err := prompts.LoadDefaults(t.Context(), db)
-	require.NoError(t, err)
-
-	return &harness{db: db, svc: launchdefaults.NewService(db), review: defaults.PR, work: defaults.Issue}
+// withRepos returns a Service over the harness's stores that lists repos as the
+// repositories the inbox has seen.
+func (h *harness) withRepos(repos launchdefaults.RepoSource) *launchdefaults.Service {
+	return launchdefaults.NewService(launchdefaults.Config{
+		Store: h.store, Profiles: h.known, Prompts: h.library, Repos: repos,
+	})
 }
 
 // fields maps a ValidationError's fields to their messages.
-func fields(list []launchdefaults.FieldError) map[string]string {
+func fields(list []agent.FieldError) map[string]string {
 	out := map[string]string{}
 	for _, f := range list {
 		out[f.Field] = f.Message
@@ -56,9 +96,10 @@ func fields(list []launchdefaults.FieldError) map[string]string {
 }
 
 func TestSaveAndList(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	ctx := t.Context()
-	off := false
 
 	org, err := h.svc.Save(ctx, launchdefaults.Input{
 		Owner: " acme-org ", Profile: "work", PRPromptID: &h.review, ExtraFlags: "--advisor fable",
@@ -73,7 +114,7 @@ func TestSaveAndList(t *testing.T) {
 	assert.NotEmpty(t, org.UpdatedAt)
 
 	repo, err := h.svc.Save(ctx, launchdefaults.Input{
-		Owner: acme, Name: "example-repo", IssuePromptID: &h.work, Model: "sonnet", Effort: "low", Worktree: &off,
+		Owner: acme, Name: "example-repo", IssuePromptID: &h.work, Model: "sonnet", Effort: "low", Worktree: new(false),
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "acme-org/example-repo", repo.Target())
@@ -97,6 +138,8 @@ func TestSaveAndList(t *testing.T) {
 }
 
 func TestSaveWithNothingSetRemoves(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	ctx := t.Context()
 
@@ -117,8 +160,10 @@ func TestSaveWithNothingSetRemoves(t *testing.T) {
 }
 
 func TestValidation(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
-	gone := int64(9999)
+	gone := new(int64(9999))
 
 	tests := []struct {
 		name  string
@@ -131,7 +176,7 @@ func TestValidation(t *testing.T) {
 		{name: "bad name", in: launchdefaults.Input{Owner: acme, Name: "a b", Model: "opus"}, field: launchdefaults.FieldName},
 		{name: "agent", in: launchdefaults.Input{Owner: acme, Agent: "codex"}, field: launchdefaults.FieldAgent, want: `There's no coding tool called "codex".`},
 		{name: "profile", in: launchdefaults.Input{Owner: acme, Profile: "nope"}, field: launchdefaults.FieldProfile, want: `There's no profile called "nope".`},
-		{name: "missing prompt", in: launchdefaults.Input{Owner: acme, PRPromptID: &gone}, field: launchdefaults.FieldPRPromptID, want: "no longer exists"},
+		{name: "missing prompt", in: launchdefaults.Input{Owner: acme, PRPromptID: gone}, field: launchdefaults.FieldPRPromptID, want: "no longer exists"},
 		{name: "issue prompt for PRs", in: launchdefaults.Input{Owner: acme, PRPromptID: &h.work}, field: launchdefaults.FieldPRPromptID, want: `"Work on it" isn't a prompt for pull requests.`},
 		{name: "PR prompt for issues", in: launchdefaults.Input{Owner: acme, IssuePromptID: &h.review}, field: launchdefaults.FieldIssuePromptID, want: `"Review" isn't a prompt for issues.`},
 		{name: "model", in: launchdefaults.Input{Owner: acme, Model: "-x"}, field: launchdefaults.FieldModel},
@@ -143,6 +188,8 @@ func TestValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got, err := h.svc.Check(t.Context(), tt.in)
 			require.NoError(t, err)
 
@@ -163,6 +210,8 @@ func TestValidation(t *testing.T) {
 }
 
 func TestRemove(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	ctx := t.Context()
 
@@ -178,9 +227,11 @@ func TestRemove(t *testing.T) {
 }
 
 func TestDefaultPromptsCannotBeDeletedWhileUsed(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	ctx := t.Context()
-	svc := prompts.NewService(prompts.Config{DB: h.db})
+	svc := h.prompts
 
 	all, err := svc.List(ctx)
 	require.NoError(t, err)
@@ -195,37 +246,64 @@ func TestDefaultPromptsCannotBeDeletedWhileUsed(t *testing.T) {
 
 	_, err = h.svc.Save(ctx, launchdefaults.Input{Owner: acme, Name: "example-repo", PRPromptID: &fix.ID})
 	require.NoError(t, err)
-	require.ErrorIs(t, svc.Delete(ctx, fix.ID), prompts.ErrPromptInUse)
+	_, err = h.svc.Save(ctx, launchdefaults.Input{Owner: acme, PRPromptID: &fix.ID})
+	require.NoError(t, err)
+
+	// The launch defaults' foreign keys refuse the delete, and their rows say where.
+	var inUse *prompts.InUseError
+
+	err = svc.Delete(ctx, fix.ID)
+	require.ErrorIs(t, err, prompts.ErrPromptInUse)
+	require.ErrorAs(t, err, &inUse)
+	assert.Equal(t, `"Fix checks" can't be deleted while it's a default for acme-org and acme-org/example-repo; `+
+		"choose other defaults there first", err.Error())
+
+	all, err = svc.List(ctx)
+	require.NoError(t, err)
+
+	fix.Usage = prompts.Usage{
+		Defaults: []item.Kind{}, Orgs: []string{acme}, Repos: []string{"acme-org/example-repo"},
+		Kinds: []item.Kind{item.KindPR},
+	}
+	require.Contains(t, all, fix, "the prompt is still there, with where it is used")
 
 	require.NoError(t, h.svc.Remove(ctx, acme, "example-repo"))
+	require.NoError(t, h.svc.Remove(ctx, acme, ""))
 	require.NoError(t, svc.Delete(ctx, fix.ID))
 }
 
-func TestTargets(t *testing.T) {
+func TestPromptUses(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
-	at := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	ctx := t.Context()
 
-	account := inboxmodel.Account{Login: "octo-user"}
-	require.NoError(t, h.db.Create(&account).Error)
+	_, err := h.svc.Save(ctx, launchdefaults.Input{Owner: acme, PRPromptID: &h.review, IssuePromptID: &h.work})
+	require.NoError(t, err)
+	_, err = h.svc.Save(ctx, launchdefaults.Input{Owner: acme, Name: "example-repo", IssuePromptID: &h.work})
+	require.NoError(t, err)
+	_, err = h.svc.Save(ctx, launchdefaults.Input{Owner: "beta-org", Effort: "high"})
+	require.NoError(t, err)
 
-	repos := []inboxmodel.Repo{
-		{Owner: acme, Name: "web"},
-		{Owner: acme, Name: "api"},
+	uses, err := h.store.PromptUses(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []prompts.Use{
+		{PromptID: h.review, Kind: item.KindPR, Target: repo.Name{Owner: acme}},
+		{PromptID: h.work, Kind: item.KindIssue, Target: repo.Name{Owner: acme}},
+		{PromptID: h.work, Kind: item.KindIssue, Target: repo.Name{Owner: acme, Repo: "example-repo"}},
+	}, uses, "every org's and repository's default prompt, and nothing for defaults that name none")
+}
+
+func TestTargets(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+
+	got, err := h.withRepos(fakeRepos{
+		{Owner: acme, Name: "api", Items: 2},
+		{Owner: acme, Name: "web", Items: 1},
 		{Owner: "beta-org", Name: "tools"},
-		{Owner: acme, Name: "old", IsArchived: true},
-	}
-	for i := range repos {
-		require.NoError(t, h.db.Create(&repos[i]).Error)
-	}
-
-	for n, repo := range []int64{repos[1].ID, repos[1].ID, repos[0].ID, repos[2].ID} {
-		require.NoError(t, h.db.Create(&inboxmodel.Item{
-			AccountID: account.ID, RepoID: repo, Kind: inboxmodel.KindPR, Number: n + 1,
-			ItemCreatedAt: at, ItemUpdatedAt: at, FetchedAt: at, ReasonAssigned: n != 3,
-		}).Error)
-	}
-
-	got, err := h.svc.Targets(t.Context())
+	}).Targets(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, []launchdefaults.Target{
 		{Owner: acme, Items: 3},
@@ -236,31 +314,59 @@ func TestTargets(t *testing.T) {
 	}, got)
 }
 
+func TestTargetsGroupAnOwnerIgnoringCase(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+
+	got, err := h.withRepos(fakeRepos{
+		{Owner: "Acme-Org", Name: "api", Items: 2},
+		{Owner: acme, Name: "web", Items: 1},
+	}).Targets(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, []launchdefaults.Target{
+		{Owner: "Acme-Org", Items: 3},
+		{Owner: "Acme-Org", Name: "api", Items: 2},
+		{Owner: acme, Name: "web", Items: 1},
+	}, got, "one owner, named as its first repository spells it")
+}
+
+func TestTargetsWithNoRepositories(t *testing.T) {
+	t.Parallel()
+
+	got, err := newHarness(t).withRepos(fakeRepos{}).Targets(t.Context())
+	require.NoError(t, err)
+	assert.NotNil(t, got, "the UI always gets a list")
+	assert.Empty(t, got)
+}
+
 func TestIndex(t *testing.T) {
+	t.Parallel()
+
 	idx := launchdefaults.NewIndex([]launchdefaults.Defaults{
 		{Owner: acme, Model: "opus"},
 		{Owner: acme, Name: "api", Effort: "high"},
 	})
 
-	org, repo := idx.For("ACME-ORG", "Api")
+	org, own := idx.For(repo.Name{Owner: "ACME-ORG", Repo: "Api"})
 	require.NotNil(t, org)
-	require.NotNil(t, repo)
+	require.NotNil(t, own)
 	assert.Equal(t, "opus", org.Model)
-	assert.Equal(t, "high", repo.Effort)
+	assert.Equal(t, "high", own.Effort)
 
-	org, repo = idx.For(acme, "web")
+	org, own = idx.For(repo.Name{Owner: acme, Repo: "web"})
 	require.NotNil(t, org)
-	assert.Nil(t, repo)
+	assert.Nil(t, own)
 
-	org, repo = idx.For("other-org", "")
+	org, own = idx.For(repo.Name{Owner: "other-org"})
 	assert.Nil(t, org)
-	assert.Nil(t, repo)
+	assert.Nil(t, own)
 }
 
 func TestInputEmpty(t *testing.T) {
-	on := true
+	t.Parallel()
 
 	assert.True(t, launchdefaults.Input{Owner: acme, ExtraFlags: " "}.Empty())
-	assert.False(t, launchdefaults.Input{Owner: acme, Worktree: &on}.Empty())
+	assert.False(t, launchdefaults.Input{Owner: acme, Worktree: new(true)}.Empty())
 	assert.False(t, launchdefaults.Input{Owner: acme, Agent: "claude"}.Empty())
 }

@@ -5,12 +5,16 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/repo"
 )
 
 // statesBody is a states response: a merged pull request, a closed issue, an open pull
@@ -29,11 +33,13 @@ const statesBody = `{
 }`
 
 func TestFetchItemStatesReadsEachRef(t *testing.T) {
-	refs := []ItemRef{
-		{Owner: "acme-org", Name: "example-repo", Number: 184},
-		{Owner: "acme-org", Name: "example-repo", Number: 7},
-		{Owner: "acme-org", Name: "other-repo", Number: 3},
-		{Owner: "acme-org", Name: "gone", Number: 1},
+	t.Parallel()
+
+	refs := []item.Ref{
+		{Repo: repo.Name{Owner: "acme-org", Repo: "example-repo"}, Number: 184},
+		{Repo: repo.Name{Owner: "acme-org", Repo: "example-repo"}, Number: 7},
+		{Repo: repo.Name{Owner: "acme-org", Repo: "other-repo"}, Number: 3},
+		{Repo: repo.Name{Owner: "acme-org", Repo: "gone"}, Number: 1},
 	}
 
 	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
@@ -63,21 +69,23 @@ func TestFetchItemStatesReadsEachRef(t *testing.T) {
 		State:       StateMerged,
 		ClosedAt:    time.Date(2026, 11, 6, 18, 0, 5, 0, time.UTC),
 		HeadOID:     "fc1c3975011e66491785ace891c893e4fc716587",
-	}, states[refs[0]], "a merged pull request is dated by its merge")
+	}, states[refs[0].Key()], "a merged pull request is dated by its merge")
 
 	assert.Equal(t, ItemState{
 		Title:    "Crash on start",
 		URL:      "https://github.com/acme-org/example-repo/issues/7",
 		State:    StateClosed,
 		ClosedAt: time.Date(2026, 11, 5, 10, 0, 0, 0, time.UTC),
-	}, states[refs[1]])
+	}, states[refs[1].Key()])
 
-	assert.Equal(t, StateOpen, states[refs[2]].State)
-	assert.True(t, states[refs[2]].ClosedAt.IsZero())
-	assert.NotContains(t, states, refs[3], "a ref GitHub cannot find is left out")
+	assert.Equal(t, StateOpen, states[refs[2].Key()].State)
+	assert.True(t, states[refs[2].Key()].ClosedAt.IsZero())
+	assert.NotContains(t, states, refs[3].Key(), "a ref GitHub cannot find is left out")
 }
 
 func TestFetchItemStatesBatchesLargeRequests(t *testing.T) {
+	t.Parallel()
+
 	var requests atomic.Int32
 
 	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
@@ -86,9 +94,9 @@ func TestFetchItemStatesBatchesLargeRequests(t *testing.T) {
 		_, _ = io.WriteString(w, `{"data": {}}`)
 	})
 
-	refs := make([]ItemRef, statesBatch+1)
+	refs := make([]item.Ref, statesBatch+1)
 	for i := range refs {
-		refs[i] = ItemRef{Owner: "acme-org", Name: "example-repo", Number: i + 1}
+		refs[i] = item.Ref{Repo: repo.Name{Owner: "acme-org", Repo: "example-repo"}, Number: i + 1}
 	}
 
 	states, err := client.FetchItemStates(t.Context(), NewToken(fakeToken), refs)
@@ -97,12 +105,92 @@ func TestFetchItemStatesBatchesLargeRequests(t *testing.T) {
 	assert.Equal(t, int32(2), requests.Load())
 }
 
+// statesRefs returns n refs in the files tests' repository, numbered from 1.
+func statesRefs(n int) []item.Ref {
+	refs := make([]item.Ref, n)
+	for i := range refs {
+		refs[i] = item.Ref{Repo: pullRef().Repo, Number: i + 1}
+	}
+
+	return refs
+}
+
+func TestFetchItemStatesSendsTheBatchesSideBySide(t *testing.T) {
+	t.Parallel()
+
+	// Each request waits until both have arrived, which only happens when they are in
+	// flight together; sent one after another, the first gives up and fails the call.
+	var arrived sync.WaitGroup
+
+	arrived.Add(2)
+
+	both := make(chan struct{})
+
+	go func() {
+		arrived.Wait()
+		close(both)
+	}()
+
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		arrived.Done()
+
+		select {
+		case <-both:
+			_, _ = io.WriteString(w, `{"data": {}}`)
+		case <-time.After(waitTimeout):
+			w.WriteHeader(http.StatusGatewayTimeout)
+		}
+	})
+
+	states, err := client.FetchItemStates(t.Context(), NewToken(fakeToken), statesRefs(statesBatch+1))
+	require.NoError(t, err)
+	assert.Empty(t, states)
+}
+
+func TestFetchItemStatesRefusesABadRefBeforeSendingAnything(t *testing.T) {
+	t.Parallel()
+
+	var requests atomic.Int32
+
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+
+		_, _ = io.WriteString(w, `{"data": {}}`)
+	})
+
+	refs := statesRefs(statesBatch + 1)
+	refs[statesBatch].Number = 0
+
+	_, err := client.FetchItemStates(t.Context(), NewToken(fakeToken), refs)
+	require.ErrorIs(t, err, ErrInvalidItemRef)
+	assert.Zero(t, requests.Load(), "the first batch is not sent either")
+}
+
+func TestFetchItemStatesFailsWhenOneBatchFails(t *testing.T) {
+	t.Parallel()
+
+	var requests atomic.Int32
+
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		if requests.Add(1) == 2 {
+			w.WriteHeader(http.StatusBadGateway)
+		}
+
+		_, _ = io.WriteString(w, `{"data": {}}`)
+	})
+
+	_, err := client.FetchItemStates(t.Context(), NewToken(fakeToken), statesRefs(statesBatch+1))
+	require.ErrorIs(t, err, ErrUnexpectedStatus)
+}
+
 func TestFetchItemStatesFailures(t *testing.T) {
-	ref := []ItemRef{{Owner: "acme-org", Name: "example-repo", Number: 1}}
+	t.Parallel()
+
+	ref := []item.Ref{{Repo: repo.Name{Owner: "acme-org", Repo: "example-repo"}, Number: 1}}
 
 	tests := []struct {
 		name    string
-		refs    []ItemRef
+		refs    []item.Ref
 		body    string
 		status  int
 		wantErr error
@@ -136,13 +224,15 @@ func TestFetchItemStatesFailures(t *testing.T) {
 		},
 		{
 			name:    "a number that is not positive is never sent",
-			refs:    []ItemRef{{Owner: "acme-org", Name: "example-repo", Number: 0}},
+			refs:    []item.Ref{{Repo: repo.Name{Owner: "acme-org", Repo: "example-repo"}, Number: 0}},
 			wantErr: ErrInvalidItemRef,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
 				if tt.status != 0 {
 					w.WriteHeader(tt.status)
@@ -158,23 +248,18 @@ func TestFetchItemStatesFailures(t *testing.T) {
 	}
 }
 
-func TestFetchItemStatesNeedsAToken(t *testing.T) {
-	client := newTestClient(t, func(http.ResponseWriter, *http.Request) {
-		t.Error("no request is sent without a token")
-	})
-
-	_, err := client.FetchItemStates(t.Context(), Token{}, []ItemRef{{Owner: "acme-org", Name: "example-repo", Number: 1}})
-	require.ErrorIs(t, err, ErrNotLoggedIn)
-}
-
 func TestStatesQueryQuotesNames(t *testing.T) {
-	query, err := statesQuery([]ItemRef{{Owner: `acme"org`, Name: "example-repo", Number: 9}})
+	t.Parallel()
+
+	query, err := statesQuery([]item.Ref{{Repo: repo.Name{Owner: `acme"org`, Repo: "example-repo"}, Number: 9}})
 	require.NoError(t, err)
 	assert.Contains(t, query, `owner: "acme\"org"`)
 	assert.Equal(t, 1, strings.Count(query, "repository("))
 }
 
 func TestStatesNodeIgnoresOtherTypes(t *testing.T) {
+	t.Parallel()
+
 	_, ok := (&statesRepo{Item: &statesNode{TypeName: "Discussion", Title: "x"}}).state()
 	assert.False(t, ok)
 

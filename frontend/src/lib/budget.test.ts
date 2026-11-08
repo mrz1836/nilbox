@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
+import { FIXED_NOW } from '../test/clock'
 import { rate, unknownRate } from '../test/fixtures'
 import { levelFor, readBudget, summarize, summaryText, type BudgetLevel } from './budget'
-
-const now = new Date('2026-06-15T12:00:00Z')
 
 describe('levelFor', () => {
   it.each<[number, BudgetLevel]>([
@@ -22,7 +21,7 @@ describe('levelFor', () => {
 
 describe('readBudget', () => {
   it('reads what is left as a share of the limit', () => {
-    expect(readBudget(rate({ remaining: 1000 }), now)).toEqual({
+    expect(readBudget(rate({ remaining: 1000 }), FIXED_NOW)).toEqual({
       known: true,
       limit: 5000,
       remaining: 1000,
@@ -33,26 +32,33 @@ describe('readBudget', () => {
   })
 
   it('counts a budget whose reset has passed as full again', () => {
-    const budget = readBudget(rate({ remaining: 3, resetAt: '2026-06-15T11:30:00Z' }), now)
+    const budget = readBudget(rate({ remaining: 3, resetAt: '2026-06-15T11:30:00Z' }), FIXED_NOW)
 
     expect(budget).toMatchObject({ remaining: 5000, percent: 100, level: 'healthy', refilled: true })
   })
 
   it('treats a reset at exactly now as passed', () => {
-    expect(readBudget(rate({ remaining: 0, resetAt: now.toISOString() }), now).refilled).toBe(true)
+    expect(readBudget(rate({ remaining: 0, resetAt: FIXED_NOW.toISOString() }), FIXED_NOW).refilled).toBe(true)
   })
 
   it('keeps a reading with no usable reset time as read', () => {
-    expect(readBudget(rate({ remaining: 0, resetAt: '' }), now)).toMatchObject({ level: 'critical', refilled: false })
+    expect(readBudget(rate({ remaining: 0, resetAt: '' }), FIXED_NOW)).toMatchObject({
+      level: 'critical',
+      refilled: false,
+    })
   })
 
   it('is unknown before the first reading', () => {
-    expect(readBudget(unknownRate, now)).toMatchObject({ known: false, level: 'unknown', percent: 0 })
+    expect(readBudget(unknownRate, FIXED_NOW)).toMatchObject({ known: false, level: 'unknown', percent: 0 })
   })
 
   it('never goes below zero or divides by a zero limit', () => {
-    expect(readBudget(rate({ remaining: -5 }), now)).toMatchObject({ remaining: 0, percent: 0, level: 'critical' })
-    expect(readBudget(rate({ limit: 0, remaining: 0 }), now)).toMatchObject({ percent: 0, refilled: false })
+    expect(readBudget(rate({ remaining: -5 }), FIXED_NOW)).toMatchObject({
+      remaining: 0,
+      percent: 0,
+      level: 'critical',
+    })
+    expect(readBudget(rate({ limit: 0, remaining: 0 }), FIXED_NOW)).toMatchObject({ percent: 0, refilled: false })
   })
 })
 
@@ -60,7 +66,7 @@ describe('summarize', () => {
   it('follows the budget with the least left', () => {
     const summary = summarize(
       { graphql: rate(), core: rate({ remaining: 900 }), search: rate({ limit: 30, remaining: 12 }) },
-      now,
+      FIXED_NOW,
     )
 
     expect(summary).toEqual({ level: 'low', percent: 18, lowest: 'REST' })
@@ -68,7 +74,7 @@ describe('summarize', () => {
   })
 
   it('skips budgets that were never read', () => {
-    const summary = summarize({ graphql: rate({ remaining: 2600 }), core: unknownRate, search: unknownRate }, now)
+    const summary = summarize({ graphql: rate({ remaining: 2600 }), core: unknownRate, search: unknownRate }, FIXED_NOW)
 
     expect(summary).toEqual({ level: 'healthy', percent: 52, lowest: 'GraphQL' })
     expect(summaryText(summary)).toBe('API budget: Healthy, 52% left')
@@ -77,8 +83,8 @@ describe('summarize', () => {
   it('is unknown before the inbox loads or anything was read', () => {
     const unread = { level: 'unknown', percent: 0, lowest: '' }
 
-    expect(summarize(null, now)).toEqual(unread)
-    expect(summarize({ graphql: unknownRate, core: unknownRate, search: unknownRate }, now)).toEqual(unread)
-    expect(summaryText(summarize(null, now))).toBe('API budget: not read yet')
+    expect(summarize(null, FIXED_NOW)).toEqual(unread)
+    expect(summarize({ graphql: unknownRate, core: unknownRate, search: unknownRate }, FIXED_NOW)).toEqual(unread)
+    expect(summaryText(summarize(null, FIXED_NOW))).toBe('API budget: not read yet')
   })
 })

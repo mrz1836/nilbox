@@ -13,13 +13,14 @@ import (
 	"strings"
 	"time"
 
-	"gorm.io/gorm"
-
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/core"
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/launcher"
+	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/settings"
 )
@@ -35,7 +36,6 @@ const (
 	fixtureBranch = "feature"
 	fixtureTitle  = "Measure launch latency"
 	fixtureNumber = 1
-	fixtureID     = 1
 )
 
 // agentBin is the coding agent a launch runs.
@@ -56,16 +56,6 @@ const (
 
 	// defaultPoll is how often the process list is checked for the agent.
 	defaultPoll = 100 * time.Millisecond
-)
-
-// The fixture's account, repository, and pull request.
-const (
-	seedAccountSQL = `INSERT INTO accounts (id, login, created_at, updated_at) VALUES (?, ?, ?, ?)`
-	seedRepoSQL    = `INSERT INTO repos (id, owner, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`
-	seedItemSQL    = `INSERT INTO items (id, account_id, repo_id, kind, number, title, url, author_login,
-	author_association, is_cross_repository, head_ref, item_created_at, item_updated_at,
-	reason_review_requested, fetched_at)
-VALUES (?, ?, ?, 'pr', ?, ?, ?, ?, 'CONTRIBUTOR', 1, ?, ?, ?, 1, ?)`
 )
 
 // ErrAgentNotStarted is returned when the terminal accepted the launch but no agent
@@ -92,9 +82,9 @@ type LaunchOptions struct {
 
 	// Runner runs external programs: git, the terminal driver, ps, lsof, and kill. nil
 	// uses the app's default.
-	Runner core.Runner
+	Runner execpath.Runner
 
-	// Logger receives the app's log records; nil uses slog.Default().
+	// Logger receives the app's log records; nil discards them.
 	Logger *slog.Logger
 }
 
@@ -108,7 +98,7 @@ type LaunchReport struct {
 	PID int
 
 	// Terminal is the terminal the launch opened in.
-	Terminal string
+	Terminal terminal.ID
 
 	// Permission summarizes the session's permissions.
 	Permission string
@@ -129,7 +119,7 @@ func (r LaunchReport) Lines() []string {
 
 	return []string{
 		fmt.Sprintf("launch.ms=%s s=%s", milliseconds(r.Elapsed), seconds(r.Elapsed)),
-		"launch.terminal=" + r.Terminal,
+		"launch.terminal=" + string(r.Terminal),
 		"launch.permission=" + r.Permission,
 		fmt.Sprintf("launch.pid=%d (stopped)", r.PID),
 	}
@@ -143,7 +133,7 @@ func (r LaunchReport) Lines() []string {
 func RunLaunch(ctx context.Context, opts LaunchOptions) (LaunchReport, error) {
 	runner := deadlineRunner{inner: opts.Runner}
 	if opts.Runner == nil {
-		runner.inner = execpath.Runner{Finder: execpath.Finder{Home: opts.Home}}
+		runner.inner = execpath.Exec{Search: execpath.Search{Home: opts.Home}}
 	}
 
 	dir, err := os.MkdirTemp(opts.TempDir, brand.Slug+"-measure-")
@@ -160,7 +150,7 @@ func RunLaunch(ctx context.Context, opts LaunchOptions) (LaunchReport, error) {
 
 	defer fx.close()
 
-	agent, err := execpath.Finder{Home: opts.Home}.Find(agentBin)
+	agent, err := execpath.Search{Home: opts.Home}.Find(agentBin)
 	if err != nil {
 		return LaunchReport{}, fmt.Errorf("find the agent: %w", err)
 	}
@@ -192,11 +182,14 @@ func cmpOr(v, fallback time.Duration) time.Duration {
 type launchFixture struct {
 	core  *core.Core
 	clone string
+
+	// itemID is the fixture item's id.
+	itemID int64
 }
 
 // newLaunchFixture creates the clone, starts the app over a scratch data directory, and
 // stores the fixture item, the clone root, and iTerm2 as the terminal.
-func newLaunchFixture(ctx context.Context, dir string, opts LaunchOptions, runner core.Runner) (*launchFixture, error) {
+func newLaunchFixture(ctx context.Context, dir string, opts LaunchOptions, runner execpath.Runner) (*launchFixture, error) {
 	root := filepath.Join(dir, "clones")
 	clone := filepath.Join(root, fixtureName)
 
@@ -212,10 +205,11 @@ func newLaunchFixture(ctx context.Context, dir string, opts LaunchOptions, runne
 		Logger:  opts.Logger,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("start the app on the scratch database: %w", err)
 	}
 
-	if err = seed(ctx, c, root); err != nil {
+	itemID, err := seed(ctx, c, root)
+	if err != nil {
 		_ = c.Close()
 
 		return nil, err
@@ -227,7 +221,7 @@ func newLaunchFixture(ctx context.Context, dir string, opts LaunchOptions, runne
 		clone = resolved
 	}
 
-	return &launchFixture{core: c, clone: clone}, nil
+	return &launchFixture{core: c, clone: clone, itemID: itemID}, nil
 }
 
 // launch starts a session on the fixture item in the clone itself, with no worktree. A
@@ -236,8 +230,7 @@ func newLaunchFixture(ctx context.Context, dir string, opts LaunchOptions, runne
 // unchecked pull request's is. It confirms that at once, as a user would, so the time
 // includes both launch requests.
 func (f *launchFixture) launch(ctx context.Context) (launcher.LaunchResult, error) {
-	noWorktree := false
-	req := launcher.LaunchRequest{ItemID: fixtureID, Worktree: &noWorktree}
+	req := launcher.LaunchRequest{ItemID: f.itemID, Worktree: new(false)}
 
 	res, err := f.core.Launcher.Launch(ctx, req)
 	if err != nil || res.Hold == nil {
@@ -256,8 +249,8 @@ func (f *launchFixture) close() {
 
 // initClone creates an empty git repository at clone whose origin is the placeholder
 // repository. Nothing is fetched.
-func initClone(ctx context.Context, runner core.Runner, clone string) error {
-	if err := os.MkdirAll(clone, 0o700); err != nil {
+func initClone(ctx context.Context, runner execpath.Runner, clone string) error {
+	if err := os.MkdirAll(clone, appdata.PrivateDirPerm); err != nil {
 		return fmt.Errorf("create the scratch clone: %w", err)
 	}
 
@@ -274,14 +267,15 @@ func initClone(ctx context.Context, runner core.Runner, clone string) error {
 }
 
 // seed stores the launch settings, makes sure the default profile exists (it does when the
-// home directory has the agent's default config), and inserts the fixture item.
-func seed(ctx context.Context, c *core.Core, root string) error {
-	if err := c.Settings.SetCloneRoot(ctx, root); err != nil {
-		return err
+// home directory has the agent's default config), and stores the fixture item, whose id
+// it returns.
+func seed(ctx context.Context, c *core.Core, root string) (int64, error) {
+	if _, err := c.Settings.SetCloneRoot(ctx, root); err != nil {
+		return 0, err
 	}
 
-	if err := c.Settings.SetTerminal(ctx, settings.TerminalITerm2); err != nil {
-		return err
+	if _, err := c.Settings.SetTerminal(ctx, settings.TerminalITerm2); err != nil {
+		return 0, err
 	}
 
 	defaultProfile := profiles.Profile{
@@ -292,30 +286,30 @@ func seed(ctx context.Context, c *core.Core, root string) error {
 		Env:            map[string]string{},
 	}
 
-	if err := profiles.Sync(ctx, c.DB, []profiles.Profile{defaultProfile}); err != nil {
-		return fmt.Errorf("store the default profile: %w", err)
+	if err := c.ProfileStore.Sync(ctx, []profiles.Profile{defaultProfile}); err != nil {
+		return 0, fmt.Errorf("store the default profile: %w", err)
 	}
 
 	now := time.Now().UTC()
-	url := fmt.Sprintf("https://github.com/%s/%s/pull/%d", fixtureOwner, fixtureName, fixtureNumber)
 
-	err := c.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Exec(seedAccountSQL, fixtureID, fixtureViewer, now, now).Error; err != nil {
-			return err
-		}
-
-		if err := tx.Exec(seedRepoSQL, fixtureID, fixtureOwner, fixtureName, now, now).Error; err != nil {
-			return err
-		}
-
-		return tx.Exec(seedItemSQL, fixtureID, fixtureID, fixtureID, fixtureNumber, fixtureTitle, url,
-			fixtureAuthor, fixtureBranch, now, now, now).Error
+	ids, err := inbox.StoreFixture(ctx, c.DB, inbox.Fixture{
+		Viewer: fixtureViewer,
+		Items: []inbox.FixtureItem{{
+			Item: github.Item{
+				IsPR: true, Number: fixtureNumber, Title: fixtureTitle,
+				URL:       fmt.Sprintf("https://github.com/%s/%s/pull/%d", fixtureOwner, fixtureName, fixtureNumber),
+				CreatedAt: now, UpdatedAt: now, HeadRef: fixtureBranch, AuthorLogin: fixtureAuthor,
+				AuthorAssociation: "CONTRIBUTOR", IsCrossRepository: true, RepoOwner: fixtureOwner, RepoName: fixtureName,
+			},
+			ReviewRequested: true,
+		}},
+		At: now,
 	})
 	if err != nil {
-		return fmt.Errorf("store the fixture item: %w", err)
+		return 0, fmt.Errorf("store the fixture item: %w", err)
 	}
 
-	return nil
+	return ids[0], nil
 }
 
 // agentProbe finds and stops agent processes.
@@ -449,17 +443,17 @@ func inClone(dir, clone string) bool {
 // process control the terminal: refused outright, or a permission dialog left unanswered
 // until the terminal driver gave up.
 func needsAutomation(err error) bool {
-	if errors.Is(err, launcher.ErrAutomationDenied) {
+	if errors.Is(err, terminal.ErrAutomationDenied) {
 		return true
 	}
 
-	return errors.Is(err, launcher.ErrTerminalOpen) && errors.Is(err, context.DeadlineExceeded)
+	return errors.Is(err, terminal.ErrTerminalOpen) && errors.Is(err, context.DeadlineExceeded)
 }
 
 // deadlineRunner adds the context's error to a program's failure once its context has
 // ended, so a terminal app that never answered is told apart from one that failed.
 type deadlineRunner struct {
-	inner core.Runner
+	inner execpath.Runner
 }
 
 // Run runs the program with the inner runner.
@@ -474,7 +468,7 @@ func (r deadlineRunner) Run(ctx context.Context, name string, args ...string) (s
 
 // processProbe inspects processes with ps and lsof, and stops one with kill.
 type processProbe struct {
-	run core.Runner
+	run execpath.Runner
 }
 
 // PIDs lists the processes whose command line starts with the agent binary.
@@ -497,8 +491,7 @@ func (p processProbe) Cwds(ctx context.Context, pids []int) (map[int]string, err
 
 	out, _, err := p.run.Run(ctx, lsofBin, "-a", "-p", strings.Join(list, ","), "-d", "cwd", "-Fn")
 
-	var exitErr *exec.ExitError
-	if err != nil && !errors.As(err, &exitErr) {
+	if _, exited := errors.AsType[*exec.ExitError](err); err != nil && !exited {
 		return nil, fmt.Errorf("read working directories: %w", err)
 	}
 

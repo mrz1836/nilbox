@@ -1,0 +1,3 @@
+// Package paths turns the paths a user types into absolute ones and back: a leading ~
+// expands to the home directory, and a path under home is shown as ~/....
+package paths
