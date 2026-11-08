@@ -154,7 +154,9 @@ func statesQuery(refs []item.Ref) (string, error) {
 			statesAlias(i), owner, name, strconv.Itoa(ref.Number))
 	}
 
-	b.WriteString("}\n")
+	// The query's own cost, so the API budget counts it; the key is not an alias, so no ref
+	// looks it up.
+	b.WriteString("  rateLimit { cost }\n}\n")
 	b.WriteString(stateFieldsFragment)
 
 	return b.String(), nil

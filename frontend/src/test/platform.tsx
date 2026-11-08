@@ -15,6 +15,7 @@ import type * as real from '../platform'
 import { clockAt, FIXED_NOW, withClock } from './clock'
 import {
   appInfo,
+  budgetGauge,
   checkResult,
   cloneTarget,
   fileCheck,
@@ -75,6 +76,9 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
   return {
     getAppInfo: () => Promise.resolve(appInfo()),
     reportFirstPaint: done,
+
+    getBudget: () => Promise.resolve(budgetGauge()),
+    checkBudget: () => Promise.resolve(budgetGauge()),
 
     getInboxSnapshot: inbox,
     refreshInbox: inbox,

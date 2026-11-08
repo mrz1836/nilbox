@@ -68,6 +68,7 @@ func TestTheWindowHearsOnlyTheWindowEvents(t *testing.T) {
 
 	assert.Equal(t, []string{
 		event.NameInboxUpdated, event.NameRevealItem, event.NameWorktreesUpdated, event.NameNotificationsUpdated,
+		event.NameBudgetUpdated,
 	}, names)
 
 	for _, e := range []event.Event{event.ThemeChanged{}, event.MenuBarChanged{}, event.FirstPaint{}} {

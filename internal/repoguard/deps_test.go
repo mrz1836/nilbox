@@ -50,6 +50,11 @@ func boundaries() []boundary {
 			why: "every service emits events, so the event types depend on none of them",
 		},
 		{
+			pkg:       "internal/budget",
+			forbidden: []string{"internal/core", "internal/inbox", "internal/worktrees", "internal/settings", "internal/store"},
+			why:       "the budget hears the GitHub client's readings and the inbox's refreshes, and keeps its state, through interfaces",
+		},
+		{
 			pkg:       "internal/desktop",
 			forbidden: []string{"internal/core"},
 			why:       "the shell reaches the services through the interfaces it declares; the desktop bootstrap wires the core into it",

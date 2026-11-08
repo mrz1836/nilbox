@@ -103,6 +103,10 @@ type Client struct {
 	// AvatarHost is the only host FetchAvatar downloads from, as host or host:port. It
 	// defaults to DefaultAvatarHost; tests point it at a local server.
 	AvatarHost string
+
+	// Rates hears the budget reading every API response carries, and what its request
+	// spent, so the app's view of the budgets follows every call it makes. Nil hears none.
+	Rates RateObserver
 }
 
 // NewClient returns a client for GitHub's public API that identifies itself with the
@@ -176,10 +180,12 @@ func postGraphQL[T any](
 		return nil, nil, fmt.Errorf("encode the %s query: %w", name, err)
 	}
 
-	raw, header, err := c.do(ctx, tok, http.MethodPost, "/graphql", body)
+	raw, header, err := c.do(ctx, tok, http.MethodPost, graphQLPath, body)
 	if err != nil {
 		return nil, nil, err
 	}
+
+	c.observe(header, queryCost(raw))
 
 	var resp graphQLResponse[T]
 	if err = json.Unmarshal(raw, &resp); err != nil {
@@ -229,6 +235,9 @@ func (c *Client) do(ctx context.Context, tok Token, method, path string, body []
 	}
 
 	defer func() { _ = resp.Body.Close() }()
+
+	// Every answer counts against a budget, a refusal included, and says what is left.
+	c.observe(resp.Header, restSpend(path))
 
 	data, err := readBody(resp.Body)
 	if err != nil {
@@ -453,6 +462,18 @@ type QueryRate struct {
 	Remaining int
 	Used      int
 	ResetAt   time.Time
+}
+
+// Later reports whether r was read after o: in a later window, or in the same window with
+// more used (or, used alike, less left), since used only grows within a window. Requests
+// sent side by side answer in any order, so the last to answer is not always the latest
+// reading.
+func (r QueryRate) Later(o QueryRate) bool {
+	if !r.ResetAt.Equal(o.ResetAt) {
+		return r.ResetAt.After(o.ResetAt)
+	}
+
+	return r.Used > o.Used || (r.Used == o.Used && r.Remaining < o.Remaining)
 }
 
 // graphQLRequest is a GraphQL request body.

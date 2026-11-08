@@ -17,6 +17,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/appinfo"
+	"github.com/mrz1836/nilbox/internal/budget"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
@@ -102,6 +103,7 @@ type Core struct {
 	Worktrees      *worktrees.Service
 	Notifications  *notify.Service
 	AppInfo        *appinfo.Service
+	Budget         *budget.Service
 
 	// ShellSettings are the settings the desktop shell reads when the app launches. They
 	// are not bound.
@@ -117,12 +119,26 @@ type Core struct {
 	Scheduler *inbox.Scheduler
 	Sweeper   worktrees.Sweeper
 
+	// BudgetSaver keeps the API budget across runs: it saves it soon after each change
+	// once Run is called, and once more as Run's context ends. The desktop shell runs it
+	// with the other work, which it stops before it closes the database.
+	BudgetSaver *budget.Saver
+
 	// Timing records the first paint.
 	Timing *timing.Recorder
 
 	// tokens holds the GitHub token the inbox and the worktree service borrow, until
 	// Close forgets it.
 	tokens *github.TokenSource
+
+	// client is the one GitHub client every service shares, which tells budget about
+	// every response it gets.
+	client *github.Client
+
+	// budget hears every GitHub response's budget reading, and each inbox refresh's cost,
+	// and budgetKeeper keeps its state between runs.
+	budget       *budget.Tracker
+	budgetKeeper budget.Keeper
 }
 
 // Bootstrap prepares the data directory, opens the database (backing it up and applying
@@ -174,14 +190,17 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 
 	info := startup{reset: reset, restored: restored.info(opts.Home), kept: keeper}
 
-	return assemble(pool, info, opts, logger), nil
+	c := assemble(pool, info, opts, logger)
+	c.restoreBudget(ctx, logger)
+
+	return c, nil
 }
 
 // Services returns the services the frontend binds to, in a stable order.
 func (c *Core) Services() []any {
 	return []any{
 		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.Notifications,
-		c.AppInfo,
+		c.AppInfo, c.Budget,
 	}
 }
 
@@ -194,6 +213,32 @@ func (c *Core) Close() error {
 	}
 
 	return nil
+}
+
+// restoreBudget starts the API budget where the last run left it: its readings and what
+// the app spent from each budget, as the BudgetSaver kept them. Without a kept state, as
+// on the first run of a build that keeps one, it starts from the readings the last
+// refresh stored. Failures are only logged: the first response reads the budgets anyway.
+func (c *Core) restoreBudget(ctx context.Context, logger *slog.Logger) {
+	state, err := c.budgetKeeper.Load(ctx)
+	if err == nil && state != "" {
+		if err = c.budget.Restore(state); err == nil {
+			return
+		}
+	}
+
+	if err != nil {
+		logger.WarnContext(ctx, "could not read the kept API budget", "error", err)
+	}
+
+	snap, err := c.Inbox.Snapshot(ctx)
+	if err != nil {
+		logger.WarnContext(ctx, "could not read the stored API budget", "error", err)
+
+		return
+	}
+
+	c.budget.Seed(storedRates(snap.Rate))
 }
 
 // syncProfiles brings the stored agent profiles in line with home. It first removes
@@ -271,7 +316,11 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		settings.WithEvents(opts.Events), settings.WithLogger(logger))
 	tokens := github.NewTokenSource(runner, search,
 		github.WithTokenClock(opts.Clock), github.WithHostsFile(github.GHHostsFile(opts.Home)))
+	// One tracker hears every response the shared client gets, whichever service asked.
+	tracker := budget.NewTracker(opts.Clock, opts.Events)
+	keeper := newBudgetKeeper(pool, opts.Clock)
 	client := github.NewClient(opts.Version)
+	client.Rates = tracker
 	workLog := worklog.New(pool)
 
 	notices := notify.Config{
@@ -285,6 +334,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Clock:    opts.Clock,
 		Events:   opts.Events,
 		Arrivals: notify.NewDispatcher(notices),
+		Usage:    tracker,
 		Logger:   logger,
 	})
 
@@ -347,11 +397,19 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 			DataReset: info.reset,
 			Restored:  info.restored,
 		}),
+		Budget: budget.NewService(budget.Config{
+			Tracker: tracker, Reader: rateReader{tokens: tokens, client: client}, Clock: opts.Clock,
+			RefreshInterval: inbox.DefaultInterval,
+		}),
 		ShellSettings: newShellSettings(prefs, pool, opts.Clock),
 		ProfileStore:  profileStore,
 		Scheduler:     inbox.NewScheduler(inboxSvc, logger),
 		Sweeper:       worktrees.NewSweeper(sweeps, worktrees.DefaultSweepInterval),
 		Timing:        recorder,
 		tokens:        tokens,
+		BudgetSaver:   budget.NewSaver(tracker, keeper, logger),
+		client:        client,
+		budget:        tracker,
+		budgetKeeper:  keeper,
 	}
 }

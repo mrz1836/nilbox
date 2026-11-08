@@ -10,6 +10,7 @@ import { Browser, Clipboard, Dialogs, Events, Window, type CancellablePromise } 
 import '../../bindings/events'
 import type * as agent from '../../bindings/github.com/mrz1836/nilbox/internal/agent'
 import * as appinfo from '../../bindings/github.com/mrz1836/nilbox/internal/appinfo'
+import * as budget from '../../bindings/github.com/mrz1836/nilbox/internal/budget'
 import * as inbox from '../../bindings/github.com/mrz1836/nilbox/internal/inbox'
 import type * as item from '../../bindings/github.com/mrz1836/nilbox/internal/item'
 import * as launchdefaults from '../../bindings/github.com/mrz1836/nilbox/internal/launchdefaults'
@@ -64,6 +65,10 @@ function narrow<S>(service: S): Narrowed<S> {
 // string literals. Callers use these and never declare their own copies.
 
 export type Agent = NonNullLists<agent.Agent>
+
+export type BudgetGauge = NonNullLists<budget.Gauge>
+export type BudgetReading = NonNullLists<budget.Reading>
+export type BudgetRefresh = NonNullLists<budget.Refresh>
 
 export type DataReset = NonNullLists<appinfo.DataReset>
 export type Info = NonNullLists<appinfo.Info>
@@ -156,6 +161,8 @@ export type WorktreeStage = worktrees.Stage
 // method's doc comment, which the generated service carries.
 
 export const { Info: getAppInfo, ReportFirstPaint: reportFirstPaint } = narrow(appinfo.Service)
+
+export const { Gauge: getBudget, Check: checkBudget } = narrow(budget.Service)
 
 export const {
   Snapshot: getInboxSnapshot,

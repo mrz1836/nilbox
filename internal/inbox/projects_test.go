@@ -1,6 +1,8 @@
 package inbox
 
 import (
+	"errors"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -249,4 +251,41 @@ func TestDecodeProjectAccess(t *testing.T) {
 	} {
 		assert.Equal(t, want, decodeProjectAccess(stored), stored)
 	}
+}
+
+// errProjectsOffline is a refresh that never reached GitHub.
+var errProjectsOffline = errors.New("offline")
+
+// recordUsage is a RefreshUsage that keeps what each refresh reported.
+type recordUsage struct {
+	mu  sync.Mutex
+	got [][2]int
+}
+
+func (r *recordUsage) Refreshed(points, items int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.got = append(r.got, [2]int{points, items})
+}
+
+func TestARefreshReportsWhatItCostAndHowManyItemsItTracked(t *testing.T) {
+	t.Parallel()
+
+	h := projectsHarness(t, scopesWithProjects)
+	usage := &recordUsage{}
+	h.svc = NewService(Config{
+		Pool: h.pool, Tokens: h.tokens, Client: h.client, Clock: h.clock, Events: h.events, Usage: usage,
+	})
+	h.client.detailsRate = github.QueryRate{Cost: 4, Limit: 5000, Remaining: 4900, Used: 100}
+
+	h.refresh(t)
+
+	// The inbox query costs one point (see fetched); the details request four.
+	assert.Equal(t, [][2]int{{5, 2}}, usage.got)
+
+	h.client.inboxErr = errProjectsOffline
+	_, err := h.svc.Refresh(t.Context())
+	require.Error(t, err)
+	assert.Len(t, usage.got, 1, "a failed refresh reports nothing")
 }

@@ -290,7 +290,7 @@ func (c *Client) FetchDetails(ctx context.Context, tok Token, ids []string, opts
 }
 
 // Add merges other into d: its items, its requests, and its cost. The budget reading
-// kept is the one with the least remaining, the latest of requests that ran side by side.
+// kept is the latest of the two (see QueryRate.Later).
 func (d *Details) Add(other *Details) {
 	if other == nil {
 		return
@@ -303,7 +303,7 @@ func (d *Details) Add(other *Details) {
 	maps.Copy(d.Items, other.Items)
 
 	cost := d.RateLimit.Cost + other.RateLimit.Cost
-	if d.Requests == 0 || (other.Requests > 0 && other.RateLimit.Remaining < d.RateLimit.Remaining) {
+	if d.Requests == 0 || (other.Requests > 0 && other.RateLimit.Later(d.RateLimit)) {
 		d.RateLimit = other.RateLimit
 	}
 

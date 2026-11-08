@@ -1,8 +1,13 @@
 // API budget levels for the toolbar gauge and its details. GitHub's budgets refill in
 // full at their reset time, so a reading whose reset has passed counts as full again: a
 // budget that ran low an hour ago does not keep the gauge red.
+//
+// Every GitHub response the app gets says what is left of its budget, so the readings are
+// as of the app's latest call; the gauge's panel also reads them from GitHub while open.
+// Each reading says what the app itself spent since the budget last refilled, which tells
+// the app's share from everything else signed in as the same account.
 
-import type { Rate, RateGauge } from '../platform'
+import type { BudgetGauge, BudgetReading } from '../platform'
 
 // BudgetLevel grades the share of a budget left: healthy (green), moderate (yellow), low
 // (orange), and critical (red). Unknown means it was never read.
@@ -13,7 +18,7 @@ const healthyAbove = 50
 const moderateAbove = 25
 const lowAbove = 10
 
-export type BudgetKey = keyof RateGauge
+export type BudgetKey = 'graphql' | 'core' | 'search'
 
 // budgets lists the budgets in display order. The inbox spends GraphQL; gh and the
 // agents spend REST and search, which share the same account.
@@ -81,14 +86,14 @@ export function levelFor(percent: number): BudgetLevel {
 }
 
 // hasReset reports whether a reading's reset time is at or before now.
-function hasReset(rate: Rate, now: Date): boolean {
+function hasReset(rate: BudgetReading, now: Date): boolean {
   const reset = Date.parse(rate.resetAt)
 
   return !Number.isNaN(reset) && reset <= now.getTime()
 }
 
 // readBudget grades one reading as of now.
-export function readBudget(rate: Rate, now: Date): Budget {
+export function readBudget(rate: BudgetReading, now: Date): Budget {
   if (!rate.known) {
     return { known: false, limit: 0, remaining: 0, percent: 0, level: 'unknown', refilled: false }
   }
@@ -109,7 +114,7 @@ export interface BudgetSummary {
 }
 
 // summarize finds the budget with the smallest share left, which sets the gauge.
-export function summarize(gauge: RateGauge | null, now: Date): BudgetSummary {
+export function summarize(gauge: BudgetGauge | null, now: Date): BudgetSummary {
   let summary: BudgetSummary = { level: 'unknown', percent: 0, lowest: '' }
 
   if (gauge === null) {
@@ -138,4 +143,66 @@ export function summaryText(summary: BudgetSummary): string {
   const which = summary.level === 'healthy' ? '' : ` (${summary.lowest})`
 
   return `API budget: ${levelLabels[summary.level]}, ${left}${which}`
+}
+
+// Share is who used a budget since it last refilled: the app, and everything else signed
+// in as the same account (gh, coding agents).
+export interface Share {
+  app: number
+  others: number
+  // complete is false when the app opened after the budget last refilled, so others may
+  // hold some of what the app spent before.
+  complete: boolean
+}
+
+// shareOf splits what a budget used between the app and everything else, or returns null
+// when there is nothing to split: the budget is unread, refilled since, or untouched.
+export function shareOf(rate: BudgetReading, now: Date): Share | null {
+  if (!rate.known || hasReset(rate, now) || (rate.used === 0 && rate.spent === 0)) {
+    return null
+  }
+
+  return { app: rate.spent, others: Math.max(0, rate.used - rate.spent), complete: rate.complete }
+}
+
+// Pace is what the inbox's own refreshes spend of the GraphQL budget: what the last cost,
+// for how many items, and what that comes to in an hour of refreshes.
+export interface Pace {
+  points: number
+  items: number
+  perHour: number
+  // percent is perHour as a share of the GraphQL budget, 0 when its size is unknown.
+  percent: number
+}
+
+// paceOf works out the refreshes' pace from the last refresh, or returns null before one.
+// Each refresh reads every tracked item, so the pace follows the number of items.
+export function paceOf(gauge: BudgetGauge): Pace | null {
+  const { refresh, refreshesPerHour, graphql } = gauge
+
+  if (!refresh.known) {
+    return null
+  }
+
+  const perHour = refresh.points * refreshesPerHour
+
+  return {
+    points: refresh.points,
+    items: refresh.items,
+    perHour,
+    percent: graphql.limit > 0 ? (perHour / graphql.limit) * 100 : 0,
+  }
+}
+
+// newestRead is when the newest reading was taken, as RFC 3339, or '' before any.
+export function newestRead(gauge: BudgetGauge | null): string {
+  if (gauge === null) {
+    return ''
+  }
+
+  return budgets
+    .map(({ key }) => gauge[key])
+    .filter((r) => r.known)
+    .map((r) => r.takenAt)
+    .reduce((newest, at) => (Date.parse(at) > Date.parse(newest || '0') ? at : newest), '')
 }

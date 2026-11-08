@@ -221,9 +221,32 @@ color follows the share left:
 | Orange | More than 10%, up to 25% |
 | Red | 10% or less |
 
-Click it for each budget's remaining points, when it resets, and what the last refresh cost.
-The readings are taken on each refresh, and a budget whose reset time has passed counts as full
-again.
+Click it for each budget's remaining points, when it resets, and who used it, and for what the
+inbox's own refreshes cost.
+
+**How the readings stay current.** GitHub says what is left of a budget on every response it
+sends, so the gauge follows every request the app makes, without making one of its own: an inbox
+refresh, a single card's refresh, a check of a pull request's files, and a worktree sweep alike.
+While the panel is open, it also reads every budget from GitHub's rate limit endpoint, which
+costs nothing, as it opens and every 30 seconds after, so what `gh` and your agents spend shows
+as you watch. **Live · read just now** says the newest reading is fresh. A budget whose reset
+time has passed counts as full again.
+
+**Who used it.** Each budget's row says what the app itself spent from it since it last
+refilled, and what everything else signed in as you did, such as **Nilbox 45 · everything else
+62**. When the app opened after the budget last refilled, it can't know what an earlier copy of
+itself spent, and says **Nilbox 3 since it opened** instead.
+
+**What the refreshes cost.** **Inbox refresh** shows what the last whole refresh spent of the
+GraphQL budget and how many items it tracked, and what that comes to in an hour at one refresh
+every five minutes, as a share of the budget. Each refresh reads every tracked item, so more
+items, or issues read with their [project fields](#issue-projects), cost more.
+
+**Kept across restarts.** The readings and what the app spent are saved a second after each
+change, and once more as the app quits, and come back when it opens. The app spends nothing
+while it is closed, so the count it picks up still covers all it spent. Every GitHub request the
+app makes goes through the one function that reports to the gauge; a repository test fails the
+build for any code that would send one another way, or run `gh api`.
 
 **Theme.** Settings → Appearance offers **System**, **Light**, and **Dark**. System follows
 your Mac's appearance and switches when it does; Light and Dark stay put whatever the Mac does.

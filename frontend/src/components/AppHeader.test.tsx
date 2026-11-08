@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
 import { at } from '../test/clock'
-import { account, notification, rate, unknownRate } from '../test/fixtures'
+import { account, budgetGauge, notification, reading } from '../test/fixtures'
 import { AppHeader, type AppHeaderProps } from './AppHeader'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
@@ -14,7 +14,7 @@ function renderHeader(overrides: Partial<AppHeaderProps> = {}) {
     view: 'inbox',
     onViewChange: vi.fn(),
     account: account(),
-    gauge: { graphql: rate(), core: unknownRate, search: unknownRate },
+    gauge: budgetGauge({ graphql: reading() }),
     onOpenSettings: vi.fn(),
     ...overrides,
   }

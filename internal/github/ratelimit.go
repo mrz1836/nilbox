@@ -43,7 +43,10 @@ func (c *Client) fetchRateLimits(ctx context.Context, tok Token) (*RateLimits, e
 		return nil, fmt.Errorf("%w: the rate limit response is missing a resource", ErrMalformedResponse)
 	}
 
-	return &RateLimits{Core: res.Core.rate(), GraphQL: res.GraphQL.rate(), Search: res.Search.rate()}, nil
+	limits := &RateLimits{Core: res.Core.rate(), GraphQL: res.GraphQL.rate(), Search: res.Search.rate()}
+	c.observeRates(limits)
+
+	return limits, nil
 }
 
 // restRateLimitResponse is the GET /rate_limit body.

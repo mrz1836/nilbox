@@ -131,7 +131,14 @@ type Client interface {
 	FetchAvatar(ctx context.Context, url string) (*github.Avatar, error)
 }
 
-// Config holds a Service's dependencies. Clock, Events, Arrivals, and Logger are
+// RefreshUsage hears what each whole refresh spent of the GraphQL budget, in points, and
+// how many pull requests and issues it tracked, for the API budget the window shows.
+// *budget.Tracker implements it.
+type RefreshUsage interface {
+	Refreshed(points, items int)
+}
+
+// Config holds a Service's dependencies. Clock, Events, Arrivals, Usage, and Logger are
 // optional.
 type Config struct {
 	// Pool is the database's connection pool. It holds the inbox's tables, and the prefs
@@ -147,6 +154,9 @@ type Config struct {
 
 	// Arrivals is told about the items that newly need the user after each refresh.
 	Arrivals ArrivalSink
+
+	// Usage is told what each refresh it stores cost, and how many items it tracked.
+	Usage RefreshUsage
 
 	// Logger receives what a call cannot report as its error, at Debug: an avatar that
 	// could not be downloaded, and a snapshot that could not be read after a write.
@@ -165,6 +175,7 @@ type Service struct {
 	clock    clock.Clock
 	events   event.Sink
 	arrivals ArrivalSink
+	usage    RefreshUsage
 	logger   *slog.Logger
 
 	// refreshes runs one whole refresh at a time; a refresh asked for while one runs
@@ -187,7 +198,7 @@ func NewService(cfg Config) *Service {
 
 	return &Service{
 		db: cfg.Pool, q: queries.New(cfg.Pool), prefs: prefs.New(cfg.Pool, c), tokens: cfg.Tokens,
-		client: cfg.Client, clock: c, events: event.Or(cfg.Events), arrivals: cfg.Arrivals,
+		client: cfg.Client, clock: c, events: event.Or(cfg.Events), arrivals: cfg.Arrivals, usage: cfg.Usage,
 		logger: logging.Or(cfg.Logger),
 	}
 }
@@ -276,7 +287,12 @@ func (s *Service) refresh(ctx context.Context) ([]Arrival, error) {
 		return nil, err
 	}
 
-	return s.save(ctx, seq, got)
+	arrivals, err := s.save(ctx, seq, got)
+	if err == nil && s.usage != nil {
+		s.usage.Refreshed(graphQLReading(got.inbox.RateLimit, got.details).Cost, len(nodeIDs(got.inbox)))
+	}
+
+	return arrivals, err
 }
 
 // fetchAll reads everything one refresh stores, with tok. The details of the items
@@ -708,16 +724,22 @@ func nodeIDs(inbox *github.Inbox) []string {
 	return ids
 }
 
-// graphQLReading is the GraphQL budget a refresh leaves: the details query's reading,
-// since it ran last, with the cost of both queries; or the inbox query's alone when no
-// details were asked for or GitHub sent no budget with them.
+// graphQLReading is the GraphQL budget a refresh leaves, with the cost of every query it
+// sent: the latest reading of the inbox query's and the details requests' (see
+// QueryRate.Later), since the inbox query runs alongside the first details requests and
+// can answer after them; or the inbox query's alone when no details were asked for or
+// GitHub sent no budget with them.
 func graphQLReading(inbox github.QueryRate, details *github.Details) github.QueryRate {
 	if details == nil || details.Requests == 0 || details.RateLimit.Limit == 0 {
 		return inbox
 	}
 
 	reading := details.RateLimit
-	reading.Cost += inbox.Cost
+	if inbox.Later(reading) {
+		reading = inbox
+	}
+
+	reading.Cost = inbox.Cost + details.RateLimit.Cost
 
 	return reading
 }

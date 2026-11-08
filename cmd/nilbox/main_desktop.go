@@ -34,6 +34,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/appinfo"
 	"github.com/mrz1836/nilbox/internal/brand"
+	"github.com/mrz1836/nilbox/internal/budget"
 	"github.com/mrz1836/nilbox/internal/core"
 	"github.com/mrz1836/nilbox/internal/desktop"
 	"github.com/mrz1836/nilbox/internal/event"
@@ -154,7 +155,7 @@ func assemble(
 		App:            ui,
 		Inbox:          c.Inbox,
 		Settings:       c.ShellSettings,
-		Workers:        []desktop.Worker{c.Scheduler, c.Sweeper},
+		Workers:        []desktop.Worker{c.Scheduler, c.Sweeper, c.BudgetSaver},
 		Data:           c,
 		Banners:        banners.poster(),
 		Stdout:         stdout,
@@ -209,6 +210,7 @@ func registerEvents() {
 	application.RegisterEvent[event.RevealItem](event.NameRevealItem)
 	application.RegisterEvent[event.WorktreesUpdated](event.NameWorktreesUpdated)
 	application.RegisterEvent[event.NotificationsUpdated](event.NameNotificationsUpdated)
+	application.RegisterEvent[event.BudgetUpdated](event.NameBudgetUpdated)
 }
 
 // services wraps every service the core binds, in the core's order. A service no binder
@@ -249,7 +251,7 @@ func binders() []func(svc any) (application.Service, bool) {
 	return []func(svc any) (application.Service, bool){
 		binder[settings.Service], binder[profiles.Service], binder[prompts.Service],
 		binder[launchdefaults.Service], binder[inbox.Service], binder[launcher.Service],
-		binder[worktrees.Service], binder[notify.Service], binder[appinfo.Service],
+		binder[worktrees.Service], binder[notify.Service], binder[appinfo.Service], binder[budget.Service],
 	}
 }
 

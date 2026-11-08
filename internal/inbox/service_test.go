@@ -1282,6 +1282,13 @@ func TestGraphQLReading(t *testing.T) {
 			details: &github.Details{Requests: 2, RateLimit: later},
 			want:    github.QueryRate{Cost: 3, Limit: 5000, Remaining: 4988},
 		},
+		{
+			// The inbox query runs alongside the first details requests and can answer
+			// after them.
+			name:    "an inbox query that answered last",
+			details: &github.Details{Requests: 1, RateLimit: github.QueryRate{Cost: 2, Limit: 5000, Remaining: 4995}},
+			want:    github.QueryRate{Cost: 3, Limit: 5000, Remaining: 4990},
+		},
 	}
 
 	for _, tt := range tests {

@@ -6,17 +6,17 @@ import { brand } from './generated/brand'
 import type { Settings, TerminalID } from './platform'
 import {
   appInfo,
+  budgetGauge,
   fileCheck,
   item,
   notification,
   itemResolution,
   list,
   profile,
-  rate,
+  reading,
   settings,
   snapshot,
   sweepReport,
-  unknownRate,
   worktreeCleanup,
   worktreesSnapshot,
 } from './test/fixtures'
@@ -75,11 +75,9 @@ describe('App', () => {
     expect(screen.getByText(brand.tagline)).toBeInTheDocument()
   })
 
-  it('shows the account and the API budget from the inbox in the toolbar', async () => {
+  it('shows the account and the live API budget in the toolbar', async () => {
     // The readings reset at 12:42, after the clock's noon, so they stand as read.
-    platform.getInboxSnapshot.mockResolvedValue(
-      snapshot({ rate: { graphql: rate(), core: rate({ remaining: 400 }), search: unknownRate } }),
-    )
+    platform.getBudget.mockResolvedValue(budgetGauge({ graphql: reading(), core: reading({ remaining: 400 }) }))
     await renderApp()
 
     expect(await screen.findByRole('button', { name: 'Account: octo-user' })).toBeInTheDocument()

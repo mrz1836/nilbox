@@ -10,6 +10,7 @@ import { attempt } from './lib/call'
 import { offersProjects } from './lib/projects'
 import { defaultSnoozeDays, findItem } from './lib/triage'
 import { useCollapsedSections } from './lib/useCollapsedSections'
+import { useBudget } from './lib/useBudget'
 import { useInbox } from './lib/useInbox'
 import { useInboxOrder } from './lib/useInboxOrder'
 import { useLaunchConfig } from './lib/useLaunchConfig'
@@ -226,6 +227,7 @@ function navigate(nav: Nav, action: NavAction): Nav {
 export function App() {
   const theme = useTheme()
   const inbox = useInbox()
+  const budget = useBudget()
   const triaged = useTriage(inbox.snapshot)
   const config = useLaunchConfig(inbox.snapshot)
   const sweeps = useWorktreeSweeps()
@@ -362,7 +364,8 @@ export function App() {
         view={view}
         onViewChange={changeView}
         account={account}
-        gauge={inbox.snapshot?.rate ?? null}
+        gauge={budget.gauge}
+        onBudgetCheck={budget.check}
         inboxCount={triaged?.count ?? 0}
         worktreeCount={sweeps.count}
         worktreeAttention={sweeps.attention}

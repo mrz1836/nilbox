@@ -270,7 +270,7 @@ merges or the issue closes.
 - **Trust guardrails** — outside contributors launch in plan mode, and changes to sensitive files are flagged
 - **Safe worktree cleanup** — finished worktrees are removed only when nothing would be lost
 - **Menu bar and notifications** — a live count in the menu bar and native banners for what's new
-- **API budget gauge** — an always-visible dial for the GitHub budget closest to running out
+- **API budget gauge** — an always-visible, live dial for the GitHub budget closest to running out, counting every request the app makes
 - **Inbox nil** — empty every list and the inbox throws you a party
 
 <br/>
@@ -437,8 +437,11 @@ More in [Menu bar and notifications](docs/desktop.md#menu-bar-and-notifications)
 <br/>
 
 - **API budget gauge:** an always-visible dial that follows whichever GitHub budget has the least
-  left (GraphQL, REST core, or search), since every tool on your machine shares them. Click it for
-  each budget's remaining points, its reset time, and the last refresh's cost.
+  left (GraphQL, REST core, or search), since every tool on your machine shares them. It updates
+  with every GitHub response the app gets, at no extra cost, and the open panel re-reads the
+  budgets every 30 seconds for free. Click it for each budget's remaining points, its reset time,
+  how much Nilbox spent versus everything else signed in as you, and what a refresh costs for
+  the items you track. The counts survive a restart.
 - **Themes:** follow the system, or pin Light or Dark. The native window frame and menus follow.
 - **Settings** covers your account, appearance, notifications, snoozing, launching, profiles,
   repositories, trust, and sensitive files.

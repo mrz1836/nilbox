@@ -4,6 +4,8 @@ import { brand } from '../generated/brand'
 import type {
   Account,
   AppNotification,
+  BudgetGauge,
+  BudgetReading,
   BundlePrompt,
   CloneTarget,
   FileCheck,
@@ -528,6 +530,48 @@ export function rate(overrides: Partial<Rate> = {}): Rate {
     cost: 1,
     resetAt: '2026-06-15T12:42:00Z',
     takenAt: '2026-06-15T11:59:00Z',
+    ...overrides,
+  }
+}
+
+// unreadBudget is a budget GitHub has not reported yet.
+export const unreadBudget: BudgetReading = {
+  known: false,
+  limit: 0,
+  remaining: 0,
+  used: 0,
+  resetAt: '',
+  takenAt: '',
+  spent: 0,
+  requests: 0,
+  complete: false,
+}
+
+// reading is a GraphQL-sized budget reading, taken a minute before the tests' noon and
+// refilling 42 minutes after it, with nothing the app spent from it.
+export function reading(overrides: Partial<BudgetReading> = {}): BudgetReading {
+  return {
+    known: true,
+    limit: 5000,
+    remaining: 4980,
+    used: 20,
+    resetAt: '2026-06-15T12:42:00Z',
+    takenAt: '2026-06-15T11:59:00Z',
+    spent: 0,
+    requests: 0,
+    complete: true,
+    ...overrides,
+  }
+}
+
+// budgetGauge is every budget unread, before any refresh, refreshing every five minutes.
+export function budgetGauge(overrides: Partial<BudgetGauge> = {}): BudgetGauge {
+  return {
+    graphql: unreadBudget,
+    core: unreadBudget,
+    search: unreadBudget,
+    refresh: { known: false, at: '', points: 0, items: 0 },
+    refreshesPerHour: 12,
     ...overrides,
   }
 }
