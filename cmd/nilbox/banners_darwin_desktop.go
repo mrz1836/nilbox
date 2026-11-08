@@ -5,7 +5,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
+	"log/slog"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/services/notifications"
@@ -24,21 +24,21 @@ type banners struct {
 
 // newBanners prepares the notification center, emitting an event.RevealItem into events
 // for every click on a banner: the item it was for, or none for a banner that stands for
-// many. It returns nil, and prints why, when this build cannot show banners. It must run
+// many. It returns nil, and logs why, when this build cannot show banners. It must run
 // before the app finishes launching, so a click on a banner that launched the app is
 // still delivered.
-func newBanners(stderr io.Writer, events event.Sink) *banners {
+func newBanners(logger *slog.Logger, events event.Sink) *banners {
 	center := notifications.New()
 
 	if err := center.ServiceStartup(context.Background(), application.ServiceOptions{}); err != nil {
-		_, _ = fmt.Fprintln(stderr, "notifications are off for this run:", err)
+		logger.Info("notifications are off for this run", "error", err)
 
 		return nil
 	}
 
 	center.OnNotificationResponse(func(result notifications.NotificationResult) {
 		if result.Error != nil {
-			_, _ = fmt.Fprintln(stderr, "read a notification click:", result.Error)
+			logger.Warn("could not read a notification click", "error", result.Error)
 
 			return
 		}

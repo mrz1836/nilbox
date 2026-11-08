@@ -3,6 +3,7 @@ package profiles
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -46,7 +47,7 @@ func TestDiscoverProfiles(t *testing.T) {
 		".claude_work", ".claude-alt", ".claude_", ".claude-", ".claude_-bad", ".claude_two words")
 	touch(t, home, ".claude.json", ".claude.json.backup", ".claude_file")
 
-	got, err := Discover(home)
+	got, err := Discover(home, nil)
 	require.NoError(t, err)
 
 	abs, err := filepath.Abs(home)
@@ -77,7 +78,9 @@ func TestDiscoverDuplicateNames(t *testing.T) {
 
 	home := testutil.ClaudeHome(t, ".claude", ".claude_default", ".claude-default", ".claude-dup", ".claude_dup")
 
-	got, err := Discover(home)
+	var logs testutil.Logs
+
+	got, err := Discover(home, logs.Logger())
 	require.NoError(t, err)
 
 	abs, err := filepath.Abs(home)
@@ -87,6 +90,11 @@ func TestDiscoverDuplicateNames(t *testing.T) {
 		newDiscovered(DefaultName, ""),
 		newDiscovered("dup", filepath.Join(abs, ".claude_dup")),
 	}, got)
+
+	// Each directory that lost its name is logged once, naming the one that kept it.
+	warned := strings.Count(logs.String(), `level=WARN msg="skipping a duplicate profile directory"`)
+	assert.Equal(t, 3, warned, logs.String())
+	assert.Contains(t, logs.String(), "skipped="+filepath.Join(abs, ".claude-dup"))
 }
 
 func TestDiscoverFollowsSymlinks(t *testing.T) {
@@ -99,7 +107,7 @@ func TestDiscoverFollowsSymlinks(t *testing.T) {
 	require.NoError(t, os.Symlink(target, filepath.Join(home, ".claude_shared")))
 	require.NoError(t, os.Symlink(filepath.Join(home, "missing"), filepath.Join(home, ".claude_gone")))
 
-	got, err := Discover(home)
+	got, err := Discover(home, nil)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"shared"}, names(got))
 }
@@ -107,11 +115,11 @@ func TestDiscoverFollowsSymlinks(t *testing.T) {
 func TestDiscoverWithoutProfiles(t *testing.T) {
 	t.Parallel()
 
-	got, err := Discover(t.TempDir())
+	got, err := Discover(t.TempDir(), nil)
 	require.NoError(t, err)
 	assert.Empty(t, got)
 
-	_, err = Discover(filepath.Join(t.TempDir(), "missing"))
+	_, err = Discover(filepath.Join(t.TempDir(), "missing"), nil)
 	require.Error(t, err)
 }
 
@@ -121,7 +129,7 @@ func TestSyncDoesNotOverwriteOrDelete(t *testing.T) {
 	s, db := openStore(t)
 	home := testutil.ClaudeHome(t, ".claude", ".claude_work", ".claude-alt")
 
-	found, err := Discover(home)
+	found, err := Discover(home, nil)
 	require.NoError(t, err)
 	require.NoError(t, s.Sync(t.Context(), found))
 
@@ -133,7 +141,7 @@ func TestSyncDoesNotOverwriteOrDelete(t *testing.T) {
 	require.NoError(t, os.RemoveAll(filepath.Join(home, ".claude-alt")))
 	testutil.MakeClaudeDirs(t, home, ".claude_new")
 
-	found, err = Discover(home)
+	found, err = Discover(home, nil)
 	require.NoError(t, err)
 	require.NoError(t, s.Sync(t.Context(), found))
 	require.NoError(t, s.Sync(t.Context(), found))
@@ -306,7 +314,7 @@ func TestDiscoverNeedsAnAgentConfig(t *testing.T) {
 			mkdirs(t, home, ".claude", ".claude-candidate")
 			tt.setup(t, filepath.Join(home, ".claude-candidate"))
 
-			got, err := Discover(home)
+			got, err := Discover(home, nil)
 			require.NoError(t, err)
 
 			if tt.want {
@@ -325,7 +333,7 @@ func TestDiscoverSkipsUnreadableFolders(t *testing.T) {
 	home := testutil.ClaudeHome(t, ".claude_locked")
 	lockDir(t, filepath.Join(home, ".claude_locked"))
 
-	got, err := Discover(home)
+	got, err := Discover(home, nil)
 	require.NoError(t, err)
 	assert.Empty(t, got)
 }
@@ -337,7 +345,7 @@ func TestDiscoverPrefersAConfigOverAnEmptyTwin(t *testing.T) {
 	mkdirs(t, home, ".claude_dup")
 	testutil.MakeClaudeDirs(t, home, ".claude-dup")
 
-	got, err := Discover(home)
+	got, err := Discover(home, nil)
 	require.NoError(t, err)
 
 	require.Len(t, got, 1)
@@ -368,9 +376,13 @@ func TestPruneRemovesUneditedProfilesWithNoAgentConfig(t *testing.T) {
 	}))
 	exec(t, db, "UPDATE claude_profiles SET model = 'opus' WHERE name = 'edited'")
 
-	removed, err := s.Prune(t.Context())
+	var logs testutil.Logs
+
+	removed, err := s.Prune(t.Context(), logs.Logger())
 	require.NoError(t, err)
 	assert.Equal(t, []string{"empty", "monitor", "squad"}, removed)
+	assert.Contains(t, logs.String(),
+		`level=WARN msg="keeping an edited profile whose directory holds no agent config" profile=edited`)
 
 	list, err := NewService(s, home).List(t.Context())
 	require.NoError(t, err)
@@ -381,7 +393,7 @@ func TestPruneRemovesUneditedProfilesWithNoAgentConfig(t *testing.T) {
 		assert.DirExists(t, dir(name))
 	}
 
-	removed, err = s.Prune(t.Context())
+	removed, err = s.Prune(t.Context(), nil)
 	require.NoError(t, err)
 	assert.Empty(t, removed, "pruning again finds nothing")
 }
@@ -400,7 +412,7 @@ func TestPruneKeepsTheDefaultAndWhatItCannotRead(t *testing.T) {
 		newDiscovered("locked", filepath.Join(home, ".claude-locked")),
 	}))
 
-	removed, err := s.Prune(t.Context())
+	removed, err := s.Prune(t.Context(), nil)
 	require.NoError(t, err)
 	assert.Empty(t, removed)
 
@@ -418,7 +430,7 @@ func TestPruneErrors(t *testing.T) {
 		s, db := openStore(t)
 		require.NoError(t, db.Close())
 
-		_, err := s.Prune(t.Context())
+		_, err := s.Prune(t.Context(), nil)
 		require.ErrorContains(t, err, "read profiles to prune")
 	})
 
@@ -431,7 +443,7 @@ func TestPruneErrors(t *testing.T) {
 		require.NoError(t, s.Sync(t.Context(), []Profile{newDiscovered("stray", filepath.Join(home, ".claude-stray"))}))
 		exec(t, db, refuseRemoval)
 
-		_, err := s.Prune(t.Context())
+		_, err := s.Prune(t.Context(), nil)
 		require.ErrorContains(t, err, "refused by the test")
 		require.ErrorContains(t, err, "remove profiles with no agent config")
 

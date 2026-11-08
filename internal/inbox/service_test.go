@@ -19,6 +19,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/trust"
+	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
 // fakeToken is a placeholder that matches no real token format.
@@ -65,6 +66,8 @@ func (f *fakeTokens) Forget(tok github.Token) {
 }
 
 // fakeClient returns canned results. The inbox and rate-limit fetches run concurrently.
+// Like the real client, it scrubs the token out of every error it returns, so a canned
+// error that names the token checks that nothing past the client puts it back.
 type fakeClient struct {
 	mu          sync.Mutex
 	inbox       *github.Inbox
@@ -110,7 +113,7 @@ func (c *fakeClient) FetchInbox(_ context.Context, tok github.Token) (*github.In
 
 	c.gotTokens = append(c.gotTokens, tok.Reveal())
 
-	return c.inbox, c.inboxErr
+	return c.inbox, github.Redact(c.inboxErr, tok)
 }
 
 func (c *fakeClient) FetchRateLimits(_ context.Context, tok github.Token) (*github.RateLimits, error) {
@@ -119,7 +122,7 @@ func (c *fakeClient) FetchRateLimits(_ context.Context, tok github.Token) (*gith
 
 	c.gotTokens = append(c.gotTokens, tok.Reveal())
 
-	return c.limits, c.limitsErr
+	return c.limits, github.Redact(c.limitsErr, tok)
 }
 
 // FetchDetails answers with the canned details of the IDs asked for, as one request.
@@ -135,7 +138,7 @@ func (c *fakeClient) FetchDetails(_ context.Context, tok github.Token, ids []str
 	c.detailsIDs = append(c.detailsIDs, ids)
 
 	if c.detailsErr != nil {
-		return nil, c.detailsErr
+		return nil, github.Redact(c.detailsErr, tok)
 	}
 
 	out := &github.Details{Items: map[string]github.ItemDetails{}, RateLimit: c.detailsRate}
@@ -161,7 +164,7 @@ func (c *fakeClient) FetchItem(_ context.Context, tok github.Token, id string) (
 	c.itemIDs = append(c.itemIDs, id)
 
 	if c.itemErr != nil {
-		return nil, c.itemErr
+		return nil, github.Redact(c.itemErr, tok)
 	}
 
 	if update, ok := c.items[id]; ok {
@@ -180,7 +183,7 @@ func (c *fakeClient) FetchPullHead(_ context.Context, tok github.Token, ref item
 	c.headReads = append(c.headReads, ref.String())
 
 	if c.filesErr != nil {
-		return nil, c.filesErr
+		return nil, github.Redact(c.filesErr, tok)
 	}
 
 	files, ok := c.files[ref.String()]
@@ -202,7 +205,7 @@ func (c *fakeClient) FetchChangedFiles(
 	c.fileReads = append(c.fileReads, ref.String())
 
 	if c.filesErr != nil {
-		return nil, c.filesErr
+		return nil, github.Redact(c.filesErr, tok)
 	}
 
 	files, ok := c.files[ref.String()]
@@ -231,6 +234,7 @@ type harness struct {
 	client *fakeClient
 	clock  *testutil.Clock
 	events *testutil.Events
+	logs   *testutil.Logs
 }
 
 // newHarness opens a fresh database and a Service over it.
@@ -246,6 +250,7 @@ func newHarness(t *testing.T) *harness {
 		client: &fakeClient{limits: restLimits(), avatar: fakeAvatar()},
 		clock:  testutil.NewClock(time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)),
 		events: &testutil.Events{},
+		logs:   &testutil.Logs{},
 	}
 
 	h.svc = h.service()
@@ -256,7 +261,7 @@ func newHarness(t *testing.T) *harness {
 // service builds a Service over the harness's database and fakes.
 func (h *harness) service() *Service {
 	return NewService(Config{
-		Pool: h.pool, Tokens: h.tokens, Client: h.client, Clock: h.clock, Events: h.events,
+		Pool: h.pool, Tokens: h.tokens, Client: h.client, Clock: h.clock, Events: h.events, Logger: h.logs.Logger(),
 	})
 }
 
@@ -782,6 +787,11 @@ func TestRefreshNeverPersistsToken(t *testing.T) {
 	_, err := h.svc.Refresh(t.Context())
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), fakeToken)
+	assert.NotContains(t, uierr.Message(err), fakeToken)
+
+	// Nor is it logged, by the service or by a caller that logs the error.
+	h.logs.Logger().Warn("inbox refresh failed", "error", err)
+	assert.NotContains(t, h.logs.String(), fakeToken)
 
 	tables := h.column(t, "SELECT name FROM sqlite_master WHERE type = 'table'")
 	require.NotEmpty(t, tables)
@@ -808,11 +818,14 @@ func TestRefreshNeverPersistsToken(t *testing.T) {
 
 func TestRefreshRecordsTokenErrors(t *testing.T) {
 	h := newHarness(t)
-	h.tokens.err = github.ErrGHNotFound
+	h.tokens.err = uierr.New("Install the GitHub CLI.", github.ErrGHNotFound)
 
+	// The error keeps its whole chain for the logs; the snapshot keeps what the user is
+	// told.
 	snap, err := h.svc.Refresh(t.Context())
 	require.ErrorIs(t, err, github.ErrGHNotFound)
-	assert.Equal(t, github.ErrGHNotFound.Error(), snap.LastError)
+	assert.Equal(t, "refresh the inbox: "+github.ErrGHNotFound.Error(), err.Error())
+	assert.Equal(t, "Install the GitHub CLI.", snap.LastError)
 	assert.Empty(t, h.client.gotTokens, "nothing is fetched without a token")
 	assert.Empty(t, snap.ReviewRequested.Items)
 	assert.Empty(t, snap.LastRefreshedAt)
@@ -826,9 +839,10 @@ func TestRefreshFetchErrorsKeepTheStoredInbox(t *testing.T) {
 	h.client.limitsErr = errFakeNetwork
 	h.clock.Advance(DefaultInterval)
 
+	// An error with no message for the user is shown as its own text, as a sentence.
 	snap, err := h.svc.Refresh(t.Context())
 	require.ErrorIs(t, err, errFakeNetwork)
-	assert.Equal(t, errFakeNetwork.Error(), snap.LastError)
+	assert.Equal(t, "Refresh the inbox: network unreachable.", snap.LastError)
 	assert.Equal(t, []int{1}, numbers(snap.ReviewRequested), "the last good inbox is still shown")
 	assert.Equal(t, "2026-01-10T12:00:00Z", snap.LastRefreshedAt)
 }
@@ -947,6 +961,7 @@ func TestRefreshAvatarFailureIsBestEffort(t *testing.T) {
 	assert.Equal(t, []int{1}, numbers(snap.ReviewRequested))
 	assert.Equal(t, octoUser, snap.Account.Login)
 	assert.Empty(t, snap.Account.Avatar)
+	assert.Contains(t, h.logs.String(), `level=DEBUG msg="could not download the avatar" error="network unreachable"`)
 
 	// The next refresh tries again.
 	h.client.avatarErr = nil

@@ -2,6 +2,7 @@ package worktrees
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/uierr"
 	"github.com/mrz1836/nilbox/internal/worklog"
 )
 
@@ -54,7 +56,10 @@ func (s *Service) link(ctx context.Context, repos []Repo, remotes map[string]map
 
 	states, err := s.github.ItemStates(ctx, uniqueRefs(targets))
 	if err != nil {
-		return "Could not read the pull requests and issues from GitHub: " + err.Error()
+		err = fmt.Errorf("could not read the pull requests and issues from GitHub: %w", err)
+		s.logger.DebugContext(ctx, "worktrees are listed without their pull requests and issues", "error", err)
+
+		return uierr.Message(err)
 	}
 
 	for _, t := range targets {

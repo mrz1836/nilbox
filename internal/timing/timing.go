@@ -16,6 +16,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/logging"
 )
 
 // Sources of the process start time.
@@ -66,7 +67,7 @@ func (m Measurement) String() string {
 
 // Config holds a Recorder's settings. Every field is optional.
 type Config struct {
-	// Logger receives the timing record. It defaults to slog.Default().
+	// Logger receives the timing record. Without it the record is not logged.
 	Logger *slog.Logger
 
 	// LogsDir is the directory whose timing.log gets the timing line. Empty skips the
@@ -98,10 +99,8 @@ type Recorder struct {
 
 // NewRecorder returns a Recorder for the current process.
 func NewRecorder(cfg Config) *Recorder {
-	r := &Recorder{logger: cfg.Logger, logsDir: cfg.LogsDir, start: cfg.Start, source: cfg.Source, now: cfg.Now}
-
-	if r.logger == nil {
-		r.logger = slog.Default()
+	r := &Recorder{
+		logger: logging.Or(cfg.Logger), logsDir: cfg.LogsDir, start: cfg.Start, source: cfg.Source, now: cfg.Now,
 	}
 
 	if r.start.IsZero() {

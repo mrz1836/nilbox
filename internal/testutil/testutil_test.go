@@ -381,3 +381,16 @@ func TestEventsRecordsEveryEventInOrder(t *testing.T) {
 
 	assert.Equal(t, event.InboxUpdated{}, events.All()[0], "All returns a copy")
 }
+
+func TestLogsCollectsRecords(t *testing.T) {
+	t.Parallel()
+
+	var logs testutil.Logs
+
+	logger := logs.Logger()
+	logger.Debug("debug kept", "n", 1)
+	logger.Warn("warning kept")
+
+	assert.Contains(t, logs.String(), `level=DEBUG msg="debug kept" n=1`)
+	assert.Contains(t, logs.String(), `level=WARN msg="warning kept"`)
+}

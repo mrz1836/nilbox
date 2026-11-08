@@ -3,6 +3,7 @@ package launcher
 import (
 	"bytes"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
+	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -61,6 +63,12 @@ func perm(t *testing.T, path string) os.FileMode {
 	return info.Mode().Perm()
 }
 
+// posixDeps returns what writeLaunchFiles uses for a POSIX script named from random,
+// logging nowhere.
+func posixDeps(random io.Reader) launchFileDeps {
+	return launchFileDeps{renderer: terminal.POSIXRenderer{}, random: random, log: logging.Or(nil)}
+}
+
 // touchLaunchFile creates an empty file in the launch directory.
 func touchLaunchFile(t *testing.T, paths appdata.Paths, name string) string {
 	t.Helper()
@@ -75,7 +83,7 @@ func TestWriteLaunchFiles(t *testing.T) {
 	paths := testPaths(t)
 	plan := testPlan(t)
 
-	files, err := WriteLaunchFiles(paths, plan, "Review pull request #7", fixedNow())
+	files, err := WriteLaunchFiles(paths, plan, "Review pull request #7", fixedNow(), nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, os.FileMode(0o700), perm(t, paths.Launch), "the launch directory is private")
@@ -102,7 +110,7 @@ func TestWriteLaunchFiles(t *testing.T) {
 	assert.Equal(t, string(terminal.POSIXRenderer{}.Render(plan.script())), string(script), "the script reads the written prompt file")
 
 	t.Run("a second launch in the same second gets new files", func(t *testing.T) {
-		again, err := WriteLaunchFiles(paths, plan, "Review again", fixedNow())
+		again, err := WriteLaunchFiles(paths, plan, "Review again", fixedNow(), nil)
 		require.NoError(t, err)
 		assert.NotEqual(t, files, again)
 		assert.FileExists(t, files.Prompt)
@@ -116,7 +124,7 @@ func TestWriteLaunchFiles(t *testing.T) {
 		issuePlan, err := BuildPlan(req)
 		require.NoError(t, err)
 
-		got, err := WriteLaunchFiles(paths, issuePlan, "Work on issue #12", fixedNow())
+		got, err := WriteLaunchFiles(paths, issuePlan, "Work on issue #12", fixedNow(), nil)
 		require.NoError(t, err)
 		assert.True(t, strings.HasPrefix(filepath.Base(got.Script), "issue-12-20260314T150926Z-"))
 	})
@@ -127,7 +135,7 @@ func TestWriteLaunchFilesRestrictsAnExistingDir(t *testing.T) {
 	require.NoError(t, os.MkdirAll(paths.Launch, 0o750))
 	require.NoError(t, os.Chmod(paths.Launch, 0o755)) //nolint:gosec // the test widens its own temp dir on purpose
 
-	_, err := WriteLaunchFiles(paths, testPlan(t), "Review", fixedNow())
+	_, err := WriteLaunchFiles(paths, testPlan(t), "Review", fixedNow(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0o700), perm(t, paths.Launch))
 }
@@ -155,7 +163,7 @@ func TestWriteLaunchFilesPrunesOldFiles(t *testing.T) {
 	oldDir := filepath.Join(paths.Launch, "pr-2-20250101T000000Z-00000000.command")
 	require.NoError(t, os.Mkdir(oldDir, 0o700))
 
-	files, err := WriteLaunchFiles(paths, testPlan(t), "Review", fixedNow())
+	files, err := WriteLaunchFiles(paths, testPlan(t), "Review", fixedNow(), nil)
 	require.NoError(t, err)
 
 	for _, path := range old {
@@ -167,6 +175,14 @@ func TestWriteLaunchFilesPrunesOldFiles(t *testing.T) {
 	}
 
 	assert.DirExists(t, oldDir, "only regular files are pruned")
+}
+
+func TestPruneLaunchFilesLogsWhatItCannotList(t *testing.T) {
+	var logs testutil.Logs
+
+	pruneLaunchFiles(filepath.Join(t.TempDir(), "missing"), fixedNow(), ".command", logs.Logger())
+
+	assert.Contains(t, logs.String(), `level=WARN msg="could not list old launch files"`)
 }
 
 func TestWriteLaunchFilesRejectsInvalidInput(t *testing.T) {
@@ -187,7 +203,7 @@ func TestWriteLaunchFilesRejectsInvalidInput(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			paths := testPaths(t)
 
-			got, err := WriteLaunchFiles(paths, tt.plan(), tt.prompt, fixedNow())
+			got, err := WriteLaunchFiles(paths, tt.plan(), tt.prompt, fixedNow(), nil)
 			require.ErrorIs(t, err, tt.want)
 			assert.Equal(t, LaunchFiles{}, got)
 			assert.NoDirExists(t, paths.Launch, "nothing is written")
@@ -199,7 +215,7 @@ func TestWriteLaunchFilesFailures(t *testing.T) {
 	plan := testPlan(t)
 
 	t.Run("no randomness", func(t *testing.T) {
-		_, err := writeLaunchFiles(testPaths(t), plan, "p", fixedNow(), terminal.POSIXRenderer{}, failingReader{})
+		_, err := writeLaunchFiles(testPaths(t), plan, "p", fixedNow(), posixDeps(failingReader{}))
 		require.ErrorIs(t, err, errReader)
 	})
 
@@ -208,7 +224,7 @@ func TestWriteLaunchFilesFailures(t *testing.T) {
 		blocker := filepath.Join(root, "data")
 		require.NoError(t, os.WriteFile(blocker, nil, 0o600))
 
-		_, err := WriteLaunchFiles(appdata.NewPaths(blocker), plan, "p", fixedNow())
+		_, err := WriteLaunchFiles(appdata.NewPaths(blocker), plan, "p", fixedNow(), nil)
 		require.Error(t, err)
 	})
 
@@ -216,10 +232,10 @@ func TestWriteLaunchFilesFailures(t *testing.T) {
 		paths := testPaths(t)
 		suffix := bytes.Repeat([]byte{0xab}, suffixBytes)
 
-		first, err := writeLaunchFiles(paths, plan, "first", fixedNow(), terminal.POSIXRenderer{}, bytes.NewReader(suffix))
+		first, err := writeLaunchFiles(paths, plan, "first", fixedNow(), posixDeps(bytes.NewReader(suffix)))
 		require.NoError(t, err)
 
-		_, err = writeLaunchFiles(paths, plan, "second", fixedNow(), terminal.POSIXRenderer{}, bytes.NewReader(suffix))
+		_, err = writeLaunchFiles(paths, plan, "second", fixedNow(), posixDeps(bytes.NewReader(suffix)))
 		require.ErrorIs(t, err, os.ErrExist)
 
 		stored, err := os.ReadFile(first.Prompt)
@@ -231,11 +247,11 @@ func TestWriteLaunchFilesFailures(t *testing.T) {
 		paths := testPaths(t)
 		suffix := bytes.Repeat([]byte{0xcd}, suffixBytes)
 
-		planned, err := writeLaunchFiles(paths, plan, "first", fixedNow(), terminal.POSIXRenderer{}, bytes.NewReader(suffix))
+		planned, err := writeLaunchFiles(paths, plan, "first", fixedNow(), posixDeps(bytes.NewReader(suffix)))
 		require.NoError(t, err)
 		require.NoError(t, os.Remove(planned.Prompt))
 
-		_, err = writeLaunchFiles(paths, plan, "second", fixedNow(), terminal.POSIXRenderer{}, bytes.NewReader(suffix))
+		_, err = writeLaunchFiles(paths, plan, "second", fixedNow(), posixDeps(bytes.NewReader(suffix)))
 		require.ErrorIs(t, err, os.ErrExist)
 		assert.NoFileExists(t, planned.Prompt, "the orphaned prompt file is cleaned up")
 	})
@@ -284,7 +300,7 @@ func TestPromptNeverOnCommandLine(t *testing.T) {
 	plan, err := BuildPlan(req)
 	require.NoError(t, err)
 
-	files, err := WriteLaunchFiles(testPaths(t), plan, prompt, fixedNow())
+	files, err := WriteLaunchFiles(testPaths(t), plan, prompt, fixedNow(), nil)
 	require.NoError(t, err)
 
 	script, err := os.ReadFile(files.Script)
@@ -324,7 +340,7 @@ func TestRenderedScriptRunsWithExactArgv(t *testing.T) {
 
 	prompt := "Review #7: it's `id` $(id) \"q\"\n\nwith café 🚀\n"
 
-	files, err := WriteLaunchFiles(testPaths(t), plan, prompt, fixedNow())
+	files, err := WriteLaunchFiles(testPaths(t), plan, prompt, fixedNow(), nil)
 	require.NoError(t, err)
 
 	env := append(os.Environ(), "CLAUDE_CONFIG_DIR="+filepath.Join(root, "inherited"))
@@ -361,7 +377,7 @@ func TestRenderedScriptStopsWhenTheCloneIsMissing(t *testing.T) {
 	plan, err := BuildPlan(req)
 	require.NoError(t, err)
 
-	files, err := WriteLaunchFiles(testPaths(t), plan, "Review", fixedNow())
+	files, err := WriteLaunchFiles(testPaths(t), plan, "Review", fixedNow(), nil)
 	require.NoError(t, err)
 
 	_, err = runSh(t, os.Environ(), files.Script)

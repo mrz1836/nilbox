@@ -18,6 +18,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/brand"
+	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
 // testUserAgent is the user agent test clients send.
@@ -360,7 +362,51 @@ func TestFetchInboxRequiresToken(t *testing.T) {
 
 	_, err := client.FetchInbox(t.Context(), Token{})
 	require.ErrorIs(t, err, ErrNotLoggedIn)
+	assert.Equal(t, loggedOutMessage, uierr.Message(err))
 	assert.Zero(t, requests.Load())
+}
+
+func TestEveryFetchScrubsTheTokenFromItsErrors(t *testing.T) {
+	t.Parallel()
+
+	// Every answer is an error whose message echoes the token back.
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"message":"upstream saw ` + fakeToken + `"}`))
+	})
+	tok := NewToken(fakeToken)
+
+	fetches := map[string]func(ctx context.Context) error{
+		"FetchInbox":      func(ctx context.Context) error { _, err := client.FetchInbox(ctx, tok); return err },
+		"FetchRateLimits": func(ctx context.Context) error { _, err := client.FetchRateLimits(ctx, tok); return err },
+		"FetchDetails": func(ctx context.Context) error {
+			_, err := client.FetchDetails(ctx, tok, []string{"I_fakeNodeId1"})
+			return err
+		},
+		"FetchItem":     func(ctx context.Context) error { _, err := client.FetchItem(ctx, tok, "I_fakeNodeId1"); return err },
+		"FetchPullHead": func(ctx context.Context) error { _, err := client.FetchPullHead(ctx, tok, pullRef()); return err },
+		"FetchChangedFiles": func(ctx context.Context) error {
+			_, err := client.FetchChangedFiles(ctx, tok, pullRef(), "aaa")
+			return err
+		},
+		"FetchItemStates": func(ctx context.Context) error {
+			_, err := client.FetchItemStates(ctx, tok, []item.Ref{pullRef()})
+			return err
+		},
+	}
+
+	for name, fetch := range fetches {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			err := fetch(t.Context())
+			require.ErrorIs(t, err, ErrUnexpectedStatus)
+			assert.Contains(t, err.Error(), "[redacted]")
+			assert.NotContains(t, err.Error(), fakeToken)
+			assert.NotContains(t, uierr.Message(err), fakeToken)
+			assert.NotContains(t, fmt.Sprintf("%+v", err), fakeToken)
+		})
+	}
 }
 
 func TestFetchInboxTransportErrors(t *testing.T) {
@@ -372,6 +418,7 @@ func TestFetchInboxTransportErrors(t *testing.T) {
 		_, err := client.FetchInbox(t.Context(), NewToken(fakeToken))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "call the GitHub API")
+		assert.Equal(t, unreachableMessage, uierr.Message(err), "the user is told GitHub could not be reached")
 	})
 
 	t.Run("canceled", func(t *testing.T) {
@@ -382,6 +429,7 @@ func TestFetchInboxTransportErrors(t *testing.T) {
 
 		_, err := client.FetchInbox(ctx, NewToken(fakeToken))
 		require.ErrorIs(t, err, context.Canceled)
+		assert.NotEqual(t, unreachableMessage, uierr.Message(err), "a caller that gave up is not told GitHub is down")
 	})
 
 	t.Run("bad base URL", func(t *testing.T) {

@@ -12,6 +12,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/periodic"
+	"github.com/mrz1836/nilbox/internal/uierr"
 	"github.com/mrz1836/nilbox/internal/worklog"
 )
 
@@ -29,7 +30,23 @@ const DefaultSweepInterval = 5 * time.Minute
 // git. The report is kept for LastSweep, and an event.WorktreesUpdated is emitted when a
 // worktree was removed or either count changed.
 func (s *Service) Sweep(ctx context.Context) SweepReport {
-	report := s.sweepLocked(ctx)
+	report, _ := s.sweepAndKeep(ctx) // the report says what failed, as the user is told
+
+	return report
+}
+
+// LastSweep returns the latest sweep's report; its Seq is 0 before the first sweep.
+func (s *Service) LastSweep() SweepReport {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.last
+}
+
+// sweepAndKeep runs Sweep and also returns the error that stopped the sweep early, if
+// any, which the report's Error words for the user.
+func (s *Service) sweepAndKeep(ctx context.Context) (SweepReport, error) {
+	report, err := s.sweepLocked(ctx)
 	report.At = clock.Format(s.clock.Now())
 
 	s.mu.Lock()
@@ -43,15 +60,7 @@ func (s *Service) Sweep(ctx context.Context) SweepReport {
 		s.events.Emit(event.WorktreesUpdated{})
 	}
 
-	return report
-}
-
-// LastSweep returns the latest sweep's report; its Seq is 0 before the first sweep.
-func (s *Service) LastSweep() SweepReport {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	return s.last
+	return report, err
 }
 
 // emptyReport is a report of a sweep that found nothing, with empty lists rather than nil
@@ -63,15 +72,22 @@ func emptyReport() SweepReport {
 // sweepJob names the automatic sweeps in log entries.
 const sweepJob = "worktree sweep"
 
-// sweepError is a sweep's report error, for logging.
+// sweepError is a report's error that has no Go error behind it: GitHub could not be
+// read, which the sweep goes on without.
 type sweepError string
 
 // Error returns the report's error.
 func (e sweepError) Error() string { return string(e) }
 
-// sweepOnce runs one sweep for a Sweeper, failing with the report's error.
+// sweepOnce runs one sweep for a Sweeper, failing with the error that stopped it, or else
+// with the report's.
 func (s *Service) sweepOnce(ctx context.Context) error {
-	if report := s.Sweep(ctx); report.Error != "" {
+	report, err := s.sweepAndKeep(ctx)
+	if err != nil {
+		return err
+	}
+
+	if report.Error != "" {
 		return sweepError(report.Error)
 	}
 
@@ -79,50 +95,52 @@ func (s *Service) sweepOnce(ctx context.Context) error {
 }
 
 // sweepLocked runs sweep while holding act, which a panicking sweep releases too.
-func (s *Service) sweepLocked(ctx context.Context) SweepReport {
+func (s *Service) sweepLocked(ctx context.Context) (SweepReport, error) {
 	s.act.Lock()
 	defer s.act.Unlock()
 
 	return s.sweep(ctx)
 }
 
-// sweep does the work of Sweep without the bookkeeping.
-func (s *Service) sweep(ctx context.Context) SweepReport {
+// sweep does the work of Sweep without the bookkeeping. It returns the error that stopped
+// it early, if any, which the report's Error words for the user.
+func (s *Service) sweep(ctx context.Context) (SweepReport, error) {
 	report := emptyReport()
 
 	g, root, prefs, err := s.prepare(ctx)
 	if err != nil {
-		report.Error = err.Error()
+		report.Error = uierr.Message(err)
 
-		return report
+		return report, err
 	}
 
 	report.Enabled = prefs.AutoCleanup
-	s.sweepAgentWork(ctx, g, root, &report)
+	err = s.sweepAgentWork(ctx, g, root, &report)
 
 	// Counted last, so the worktrees the sweep removed are not.
 	report.WorktreeCount = countWorktrees(root)
 
-	return report
+	return report, err
 }
 
 // sweepAgentWork checks the clones with agent worktrees or recorded launches, cleans up
-// what it may, and forgets the launches whose worktree is gone.
-func (s *Service) sweepAgentWork(ctx context.Context, g git, root string, report *SweepReport) {
+// what it may, and forgets the launches whose worktree is gone. It returns the error that
+// stopped it before it could clean up anything, which it also words in the report.
+func (s *Service) sweepAgentWork(ctx context.Context, g git, root string, report *SweepReport) error {
 	launches := s.launchRecords(ctx)
 
 	clones := s.sweepClones(ctx, root, launches)
 	if len(clones) == 0 {
 		s.pruneLaunches(ctx, root, launches, Snapshot{})
 
-		return
+		return nil
 	}
 
 	snap, err := s.assessClones(ctx, g, root, clones)
 	if err != nil {
-		report.Error = err.Error()
+		report.Error = uierr.Message(err)
 
-		return
+		return err
 	}
 
 	s.pruneLaunches(ctx, root, launches, snap)
@@ -131,6 +149,8 @@ func (s *Service) sweepAgentWork(ctx context.Context, g git, root string, report
 	for repo, wt := range rows(snap.Repos) {
 		s.sweepRow(ctx, g, repo.Path, *wt, report)
 	}
+
+	return nil
 }
 
 // sweepRow cleans up one worktree when the sweep may, and counts it when it is left for

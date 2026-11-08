@@ -22,6 +22,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
+	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/prefs"
@@ -184,10 +185,7 @@ func NewService(pool *sql.DB, known ProfileLookup, home string, opts ...Option) 
 
 	s.prefs = prefs.New(pool, s.clock)
 	s.events = event.Or(s.events)
-
-	if s.logger == nil {
-		s.logger = slog.Default()
-	}
+	s.logger = logging.Or(s.logger)
 
 	return s
 }
@@ -205,8 +203,8 @@ func WithEvents(sink event.Sink) Option {
 	return func(s *Service) { s.events = sink }
 }
 
-// WithLogger logs to logger what a setter cannot report as its error; nil is
-// slog.Default.
+// WithLogger logs to logger what a setter cannot report as its error. Without it, or
+// with nil, that is not logged.
 func WithLogger(logger *slog.Logger) Option {
 	return func(s *Service) { s.logger = logger }
 }

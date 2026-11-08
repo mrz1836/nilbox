@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/testutil"
+	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
 // fakeToken is a placeholder that matches no real token format.
@@ -58,6 +59,12 @@ func TestTokenSourceErrors(t *testing.T) {
 			if tc.wantErr != nil {
 				require.ErrorIs(t, err, tc.wantErr)
 				assert.True(t, tok.IsZero())
+
+				// The user is told what to do, in a sentence, while the error keeps the
+				// sentinel's text for the logs.
+				want := map[error]string{ErrGHNotFound: ghMissingMessage, ErrNotLoggedIn: loggedOutMessage}[tc.wantErr]
+				assert.Equal(t, want, uierr.Message(err))
+				assert.Contains(t, err.Error(), tc.wantErr.Error())
 
 				return
 			}

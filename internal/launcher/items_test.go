@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 var (
@@ -89,10 +91,15 @@ func TestLaunchesFailWhenTheSignedInAccountCannotBeRead(t *testing.T) {
 func TestALaunchGoesOnWhenItsCloneCannotBeRemembered(t *testing.T) {
 	t.Parallel()
 
+	var logs testutil.Logs
+
 	h := newLaunchHarness(t)
 	h.cfg.Items = failingItems{ItemStore: h.cfg.Items, rememberErr: errFakeRemember}
+	h.cfg.Logger = logs.Logger()
 
 	res, _ := h.launch(t, LaunchRequest{ItemID: h.trustedPR})
 	assert.Equal(t, "~/projects/example-repo", res.ClonePath)
 	assert.Empty(t, h.cachedPath(t, "example-repo"), "the next launch scans for the clone again")
+	assert.Contains(t, logs.String(), `level=WARN msg="could not remember a repository's local clone"`)
+	assert.Contains(t, logs.String(), errFakeRemember.Error())
 }

@@ -46,6 +46,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strconv"
 	"time"
@@ -58,8 +59,10 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
 // snapshotRetention is how long rate-limit snapshots are kept.
@@ -106,7 +109,9 @@ type TokenSource interface {
 }
 
 // Client fetches the inbox, its items' details, a single item, a pull request's head and
-// changed files, the rate limits, and the viewer's avatar from GitHub.
+// changed files, the rate limits, and the viewer's avatar from GitHub. *github.Client
+// implements it. No error it returns holds the token's text, so the inbox stores and
+// shows them as they are.
 type Client interface {
 	FetchInbox(ctx context.Context, tok github.Token) (*github.Inbox, error)
 	FetchDetails(ctx context.Context, tok github.Token, ids []string) (*github.Details, error)
@@ -117,7 +122,8 @@ type Client interface {
 	FetchAvatar(ctx context.Context, url string) (*github.Avatar, error)
 }
 
-// Config holds a Service's dependencies. Clock, Events, and Arrivals are optional.
+// Config holds a Service's dependencies. Clock, Events, Arrivals, and Logger are
+// optional.
 type Config struct {
 	// Pool is the database's connection pool. It holds the inbox's tables, and the prefs
 	// that keep the inbox status and the settings the inbox reads.
@@ -132,6 +138,11 @@ type Config struct {
 
 	// Arrivals is told about the items that newly need the user after each refresh.
 	Arrivals ArrivalSink
+
+	// Logger receives what a call cannot report as its error, at Debug: an avatar that
+	// could not be downloaded, and a snapshot that could not be read after a write.
+	// Without it they are not logged.
+	Logger *slog.Logger
 }
 
 // Service refreshes the inbox from GitHub and serves snapshots of it. It is safe for
@@ -145,6 +156,7 @@ type Service struct {
 	clock    clock.Clock
 	events   event.Sink
 	arrivals ArrivalSink
+	logger   *slog.Logger
 
 	// refreshes runs one whole refresh at a time; a refresh asked for while one runs
 	// joins it.
@@ -167,12 +179,14 @@ func NewService(cfg Config) *Service {
 	return &Service{
 		db: cfg.Pool, q: queries.New(cfg.Pool), prefs: prefs.New(cfg.Pool, c), tokens: cfg.Tokens,
 		client: cfg.Client, clock: c, events: event.Or(cfg.Events), arrivals: cfg.Arrivals,
+		logger: logging.Or(cfg.Logger),
 	}
 }
 
 // Refresh fetches the inbox from GitHub, stores it, and returns the new snapshot. On
-// failure the error is recorded as the snapshot's last error (unless ctx was canceled)
-// and the stored inbox is left as it was; the returned snapshot then shows that error.
+// failure what the user is told about the error (see uierr.Message) is recorded as the
+// snapshot's last error, unless ctx was canceled, and the stored inbox is left as it
+// was; the returned snapshot then shows it.
 //
 // A call made while a refresh runs joins it and returns its result, so a manual refresh
 // and a scheduled one never run side by side. A caller whose ctx ends stops waiting; the
@@ -188,13 +202,18 @@ func (s *Service) Refresh(ctx context.Context) (Snapshot, error) {
 func (s *Service) runRefresh(ctx context.Context) (Snapshot, error) {
 	arrivals, err := s.refresh(ctx)
 	if err != nil {
+		err = fmt.Errorf("refresh the inbox: %w", err)
 		if ctx.Err() != nil {
-			return Snapshot{}, fmt.Errorf("refresh the inbox: %w", err)
+			return Snapshot{}, err
 		}
 
 		recordErr := s.recordFailure(ctx, err)
 
-		snap, _ := s.changed(ctx) // best effort; the refresh error is what matters
+		// The refresh error is what the caller needs; the snapshot read is best effort.
+		snap, readErr := s.changed(ctx)
+		if readErr != nil {
+			s.logger.DebugContext(ctx, "could not read the inbox after a failed refresh", "error", readErr)
+		}
 
 		return snap, errors.Join(err, recordErr)
 	}
@@ -237,9 +256,7 @@ func (s *Service) refresh(ctx context.Context) ([]Arrival, error) {
 		// it started, not by when the refused try did.
 		seq = s.startRefresh()
 
-		got, fetchErr := s.fetchAll(ctx, tok, listed)
-
-		return got, github.Redact(fetchErr, tok)
+		return s.fetchAll(ctx, tok, listed)
 	})
 	if err != nil {
 		return nil, err
@@ -515,15 +532,21 @@ func (w *writer) saveRefresh(ctx context.Context, got refreshed) ([]Arrival, err
 
 // downloadAvatar downloads the viewer's avatar from avatarURL, unless the one cached
 // already came from there. It is best effort: the picture is cosmetic, so a failed
-// download returns nil, the cache stays as it was, the UI shows the account's initial
-// instead, and the next refresh tries again.
+// download is logged at Debug and returns nil, the cache stays as it was, the UI shows
+// the account's initial instead, and the next refresh tries again.
 func (s *Service) downloadAvatar(ctx context.Context, avatarURL string) *downloadedAvatar {
 	if avatarURL == "" {
 		return nil
 	}
 
 	source, _, err := s.prefs.Get(ctx, prefAvatarSource)
-	if err != nil || source == avatarURL {
+	if err != nil {
+		s.logger.DebugContext(ctx, "could not read where the cached avatar came from", "error", err)
+
+		return nil
+	}
+
+	if source == avatarURL {
 		return nil
 	}
 
@@ -532,15 +555,17 @@ func (s *Service) downloadAvatar(ctx context.Context, avatarURL string) *downloa
 
 	avatar, err := s.client.FetchAvatar(fetchCtx, avatarURL)
 	if err != nil {
+		s.logger.DebugContext(ctx, "could not download the avatar", "error", err)
+
 		return nil
 	}
 
 	return &downloadedAvatar{dataURL: avatar.DataURL(), source: avatarURL}
 }
 
-// recordFailure stores a failed refresh's message as the last error.
+// recordFailure stores what the user is told about a failed refresh as the last error.
 func (s *Service) recordFailure(ctx context.Context, err error) error {
-	if recErr := s.prefs.Set(ctx, prefLastError, err.Error()); recErr != nil {
+	if recErr := s.prefs.Set(ctx, prefLastError, uierr.Message(err)); recErr != nil {
 		return fmt.Errorf("record the refresh error: %w", recErr)
 	}
 

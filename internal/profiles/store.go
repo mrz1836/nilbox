@@ -5,10 +5,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/profiles/internal/queries"
 	"github.com/mrz1836/nilbox/internal/store"
 )
@@ -107,8 +109,11 @@ func (s *Store) Sync(ctx context.Context, found []Profile) error {
 // ones discovery gave them, so nobody edited them. Removing such a row loses nothing,
 // and discovery adds it back if the directory later becomes an agent config. The default
 // profile, edited profiles, and profiles whose directory is gone or cannot be read are
-// kept. It returns the names it removed, sorted.
-func (s *Store) Prune(ctx context.Context) ([]string, error) {
+// kept; an edited one is logged to log (nil discards it) as a warning. It returns the
+// names it removed, sorted.
+func (s *Store) Prune(ctx context.Context, log *slog.Logger) ([]string, error) {
+	log = logging.Or(log)
+
 	rows, err := s.q.ListProfiles(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("read profiles to prune: %w", err)
@@ -125,7 +130,7 @@ func (s *Store) Prune(ctx context.Context) ([]string, error) {
 			return nil, fmt.Errorf("read profiles to prune: %w", decodeErr)
 		}
 
-		if prunable(p) {
+		if prunable(ctx, p, log) {
 			ids = append(ids, row.ID)
 			removed = append(removed, row.Name)
 		}

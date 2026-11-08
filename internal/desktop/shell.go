@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/inbox"
+	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/menubar"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/timing"
@@ -133,10 +135,13 @@ type Config struct {
 	// Clock times the menu bar's snooze ends. It defaults to the system clock.
 	Clock clock.Clock
 
-	// Stdout gets a startup measurement's timing line, and Stderr the shell's
-	// diagnostics. Both default to discarding.
+	// Stdout gets a startup measurement's timing line. It defaults to discarding.
 	Stdout io.Writer
-	Stderr io.Writer
+
+	// Logger receives what the shell cannot report as an error: a setting it could not
+	// read and fell back from, a failed refresh or menu bar redraw, and a startup
+	// measurement that never painted. Without it they are not logged.
+	Logger *slog.Logger
 
 	// MeasureStartup makes this run a startup measurement: the first paint is printed to
 	// Stdout and quits the app, a run that never paints quits failing after
@@ -169,7 +174,7 @@ type Shell struct {
 	banners  Authorizer
 	clock    clock.Clock
 	stdout   io.Writer
-	stderr   io.Writer
+	logger   *slog.Logger
 	measure  bool
 
 	stopTimeout    time.Duration
@@ -208,7 +213,7 @@ func New(cfg Config) *Shell {
 	s := &Shell{
 		frontend: cfg.Frontend, window: cfg.Window, tray: cfg.Tray, app: cfg.App,
 		inbox: cfg.Inbox, settings: cfg.Settings, workers: cfg.Workers, data: cfg.Data, banners: cfg.Banners,
-		clock: clock.Or(cfg.Clock), stdout: orDiscard(cfg.Stdout), stderr: orDiscard(cfg.Stderr),
+		clock: clock.Or(cfg.Clock), stdout: orDiscard(cfg.Stdout), logger: logging.Or(cfg.Logger),
 		measure: cfg.MeasureStartup, stopTimeout: cfg.StopTimeout, measureTimeout: cfg.MeasureTimeout,
 		lifetime: lifetime, cancel: cancel, redraw: make(chan struct{}, 1),
 	}
@@ -337,10 +342,12 @@ func (s *Shell) ShowWindow() {
 
 // RefreshNow refreshes the inbox from GitHub in the background, as the menu bar's Refresh
 // Now asks; Stop waits for it. The refresh says when it is stored, and records a failure
-// for the window and the menu bar to show.
+// for the window and the menu bar to show, which is also logged.
 func (s *Shell) RefreshNow() {
 	s.goTracked(func(ctx context.Context) {
-		_, _ = s.inbox.Refresh(ctx)
+		if _, err := s.inbox.Refresh(ctx); err != nil && ctx.Err() == nil {
+			s.logger.WarnContext(ctx, "the menu bar's inbox refresh failed", "error", err)
+		}
 	})
 }
 
@@ -422,7 +429,7 @@ func (s *Shell) reveal(r event.RevealItem) {
 func (s *Shell) storedTheme() settings.Theme {
 	theme, err := s.settings.Theme(s.lifetime)
 	if err != nil {
-		s.warn("read the theme, following the system:", err)
+		s.logger.Warn("could not read the theme; following the system", "error", err)
 
 		return settings.DefaultTheme
 	}
@@ -434,7 +441,7 @@ func (s *Shell) storedTheme() settings.Theme {
 func (s *Shell) storedWindowSize() settings.WindowSize {
 	size, err := s.settings.WindowSize(s.lifetime)
 	if err != nil {
-		s.warn("read the window size, opening at the default:", err)
+		s.logger.Warn("could not read the window size; opening at the default", "error", err)
 
 		return settings.DefaultWindowSize()
 	}
@@ -446,7 +453,7 @@ func (s *Shell) storedWindowSize() settings.WindowSize {
 func (s *Shell) storedMenuBar() bool {
 	on, err := s.settings.MenuBar(s.lifetime)
 	if err != nil {
-		s.warn("read the menu bar setting, showing the icon:", err)
+		s.logger.Warn("could not read the menu bar setting; showing the icon", "error", err)
 
 		return settings.DefaultMenuBar
 	}
@@ -457,7 +464,7 @@ func (s *Shell) storedMenuBar() bool {
 // askForBanners asks the user, the first time, to allow notifications.
 func (s *Shell) askForBanners() {
 	if _, err := s.banners.Authorize(); err != nil {
-		s.warn(err)
+		s.logger.Warn("could not ask to show notifications", "error", err)
 	}
 }
 
@@ -480,7 +487,7 @@ func (s *Shell) measureTimedOut() {
 	}
 
 	s.timedOut.Store(true)
-	s.warn(ErrNoFirstPaint)
+	s.logger.Error("the startup measurement failed", "error", ErrNoFirstPaint)
 	s.app.Quit()
 }
 
@@ -493,11 +500,6 @@ func (s *Shell) firstPaint(m timing.Measurement) {
 	_, _ = fmt.Fprintln(s.stdout, m)
 
 	s.app.Quit()
-}
-
-// warn writes a diagnostic line to Stderr.
-func (s *Shell) warn(parts ...any) {
-	_, _ = fmt.Fprintln(s.stderr, parts...)
 }
 
 // stopTimer stops the timer *t, if one is set, and clears it.

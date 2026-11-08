@@ -63,6 +63,16 @@ exception is a test that changes process-wide state: one that uses `t.Setenv` or
 
 <br>
 
+## Logging and errors
+
+Log only through the `*slog.Logger` a service is given (`cmd/nilbox` builds the one logger
+with `internal/logging` and passes it down; nil means discard, never `slog.Default`, and
+`internal/repoguard` bans the global loggers), and turn an error into text for the window only
+with `uierr.Message`, attaching a worded sentence with `uierr.New` where the error's own text
+would not help the user.
+
+<br>
+
 ## Synced files
 
 Shared tooling is synced from [go-broadcast](https://github.com/mrz1836/go-broadcast), and every

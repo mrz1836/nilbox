@@ -455,7 +455,11 @@ func (s *Service) CheckFiles(ctx context.Context, itemID int64) (*sensitive.Chec
 	}
 
 	if wrote {
-		_, _ = s.changed(ctx) // the check is what the caller needs; a failed read shows on the next
+		// The check is what the caller needs; a snapshot that cannot be read now is read
+		// again after the next change.
+		if _, readErr := s.changed(ctx); readErr != nil {
+			s.logger.DebugContext(ctx, "could not read the inbox after a file check", "error", readErr)
+		}
 	}
 
 	evaluated := scope.matcher.Evaluate(stored.result(), stored.head, row.URL)
@@ -495,7 +499,7 @@ func (s *Service) checkItemFiles(ctx context.Context, row checkItemRow) (fileChe
 func (s *Service) readItemFiles(ctx context.Context, tok github.Token, ref item.Ref, prev *sensitive.Result) fileCheck {
 	pull, err := s.client.FetchPullHead(ctx, tok, ref)
 	if err != nil {
-		return fileCheck{err: github.Redact(err, tok)}
+		return fileCheck{err: err}
 	}
 
 	if prev != nil && prev.Error == "" && strings.EqualFold(prev.Head, pull.Head) {
@@ -504,7 +508,7 @@ func (s *Service) readItemFiles(ctx context.Context, tok github.Token, ref item.
 
 	files, err := s.client.FetchChangedFiles(ctx, tok, ref, pull.Head)
 
-	return fileCheck{files: files, err: github.Redact(err, tok)}
+	return fileCheck{files: files, err: err}
 }
 
 // storedChangedFiles turns a stored check back into the list GitHub returned.

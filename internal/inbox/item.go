@@ -64,9 +64,7 @@ func (s *Service) refreshItem(ctx context.Context, id int64) (bool, error) {
 	update, err := github.WithToken(ctx, s.tokens, func(tok github.Token) (itemUpdate, error) {
 		seq = s.startFetch() // each try numbers its own fetch
 
-		update, fetchErr := s.fetchItem(ctx, tok, id, stored.NodeID)
-
-		return update, github.Redact(fetchErr, tok)
+		return s.fetchItem(ctx, tok, id, stored.NodeID)
 	})
 	if err != nil {
 		return false, err

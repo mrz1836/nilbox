@@ -28,6 +28,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/paths"
 )
 
@@ -144,9 +145,12 @@ func (s *Service) describeFolder(p *Profile) {
 // is profile <name>. Files, names that do not match the name pattern, and directories
 // with no agent config (another tool's folder, or one the agent has never run with) are
 // ignored. When two directories map to the same name, ~/.claude beats ~/.claude_<name>,
-// which beats ~/.claude-<name>; the loser is skipped with a warning. Discovered profiles
-// start with full access, no model or effort flag, and plan mode off.
-func Discover(home string) ([]Profile, error) {
+// which beats ~/.claude-<name>; the loser is skipped with a warning logged to log (nil
+// discards it). Discovered profiles start with full access, no model or effort flag, and
+// plan mode off.
+func Discover(home string, log *slog.Logger) ([]Profile, error) {
+	log = logging.Or(log)
+
 	home, err := filepath.Abs(home)
 	if err != nil {
 		return nil, fmt.Errorf("discover profiles: %w", err)
@@ -160,8 +164,8 @@ func Discover(home string) ([]Profile, error) {
 	found := map[string]candidate{}
 
 	for _, entry := range entries {
-		if c, ok := discoverable(home, entry.Name()); ok {
-			keep(found, c)
+		if c, ok := discoverable(home, entry.Name(), log); ok {
+			keep(found, c, log)
 		}
 	}
 
@@ -186,7 +190,7 @@ type candidate struct {
 
 // discoverable returns the profile candidate a home-directory entry makes, if any: the
 // default ~/.claude directory, or a named profile directory that holds an agent config.
-func discoverable(home, entry string) (candidate, bool) {
+func discoverable(home, entry string, log *slog.Logger) (candidate, bool) {
 	c, ok := classify(home, entry)
 	if !ok || !isDir(c.dir) {
 		return candidate{}, false
@@ -194,7 +198,7 @@ func discoverable(home, entry string) (candidate, bool) {
 
 	if c.configDir != "" {
 		if config, _ := inspectConfigDir(c.dir); !config {
-			slog.Debug("skipping a profile directory with no agent config", "dir", c.dir)
+			log.Debug("skipping a profile directory with no agent config", "dir", c.dir)
 
 			return candidate{}, false
 		}
@@ -206,7 +210,7 @@ func discoverable(home, entry string) (candidate, bool) {
 // prunable reports whether Prune removes a stored profile: a named profile whose
 // directory can be read but holds no agent config, and that nobody edited. An edited one
 // is kept with a warning, since its settings would be lost.
-func prunable(p Profile) bool {
+func prunable(ctx context.Context, p Profile, log *slog.Logger) bool {
 	if p.ConfigDir == "" || p.Name == DefaultName {
 		return false
 	}
@@ -217,7 +221,7 @@ func prunable(p Profile) bool {
 	}
 
 	if !untouched(p) {
-		slog.Warn("keeping an edited profile whose directory holds no agent config",
+		log.WarnContext(ctx, "keeping an edited profile whose directory holds no agent config",
 			"profile", p.Name, "dir", p.ConfigDir)
 
 		return false
@@ -244,16 +248,16 @@ func classify(home, entry string) (candidate, bool) {
 }
 
 // keep records c unless a higher-precedence directory already claimed its name.
-func keep(found map[string]candidate, c candidate) {
+func keep(found map[string]candidate, c candidate, log *slog.Logger) {
 	prev, seen := found[c.name]
 	if seen && prev.rank <= c.rank {
-		slog.Warn("skipping a duplicate profile directory", "profile", c.name, "kept", prev.dir, "skipped", c.dir)
+		log.Warn("skipping a duplicate profile directory", "profile", c.name, "kept", prev.dir, "skipped", c.dir)
 
 		return
 	}
 
 	if seen {
-		slog.Warn("skipping a duplicate profile directory", "profile", c.name, "kept", c.dir, "skipped", prev.dir)
+		log.Warn("skipping a duplicate profile directory", "profile", c.name, "kept", c.dir, "skipped", prev.dir)
 	}
 
 	found[c.name] = c

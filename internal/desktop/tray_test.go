@@ -174,7 +174,8 @@ func TestAnInboxThatCannotBeReadIsNoted(t *testing.T) {
 		synctest.Wait()
 
 		assert.Empty(t, r.tray.drawn())
-		assert.Equal(t, "read the inbox for the menu bar: "+errFakeInbox.Error()+"\n", r.stderr.String())
+		assert.Contains(t, r.logs.String(),
+			`level=WARN msg="could not read the inbox for the menu bar" error="`+errFakeInbox.Error()+`"`)
 
 		require.NoError(t, s.Stop())
 	})
@@ -195,6 +196,6 @@ func TestARedrawCutShortByStopIsNotNoted(t *testing.T) {
 		require.NoError(t, s.Stop())
 
 		assert.Empty(t, r.tray.drawn())
-		assert.Empty(t, r.stderr.String(), "a read the shutdown canceled is not a failure")
+		assert.Empty(t, r.logs.String(), "a read the shutdown canceled is not a failure")
 	})
 }

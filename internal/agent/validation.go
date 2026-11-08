@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/mrz1836/nilbox/internal/textutil"
+	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
 // Fields a FieldError from CheckOverrides names, matching the editors' JSON names.
@@ -86,5 +86,5 @@ func flagMessage(err error) string {
 		return "Remove the empty flag ('')."
 	}
 
-	return textutil.Sentence(err.Error())
+	return uierr.Message(err)
 }

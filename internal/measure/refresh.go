@@ -147,7 +147,7 @@ type RefreshOptions struct {
 	// Runner runs external programs (the GitHub CLI); nil uses the app's default.
 	Runner execpath.Runner
 
-	// Logger receives the app's log records; nil uses slog.Default().
+	// Logger receives the app's log records; nil discards them.
 	Logger *slog.Logger
 }
 
@@ -175,7 +175,7 @@ func RunRefresh(ctx context.Context, opts RefreshOptions) (RefreshReport, error)
 		Logger:  opts.Logger,
 	})
 	if err != nil {
-		return RefreshReport{}, err
+		return RefreshReport{}, fmt.Errorf("start the app on the scratch database: %w", err)
 	}
 
 	defer func() { _ = c.Close() }()

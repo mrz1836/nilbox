@@ -103,7 +103,7 @@ func TestLaunchedOpensTheWindowFromTheSettings(t *testing.T) {
 		assert.Len(t, r.tray.drawn(), 1, "a shown icon is drawn at once")
 		assert.Equal(t, []string{"banners asked"}, r.lines("banners"))
 		assert.True(t, s.HidesOnClose(), "with the icon on, closing the window hides it")
-		assert.Empty(t, r.stderr.String())
+		assert.Empty(t, r.logs.String())
 
 		require.NoError(t, s.Stop())
 	})
@@ -145,11 +145,30 @@ func TestLaunchedFallsBackWhenTheSettingsCannotBeRead(t *testing.T) {
 		assert.Equal(t, []opening{{theme: settings.DefaultTheme, size: settings.DefaultWindowSize()}}, r.window.openings())
 		assert.Equal(t, []string{"tray shown"}, r.lines("tray shown"), "the icon shows by default")
 
-		notes := r.stderr.String()
-		assert.Contains(t, notes, "read the theme, following the system: "+errFakeSettings.Error())
-		assert.Contains(t, notes, "read the window size, opening at the default: "+errFakeSettings.Error())
-		assert.Contains(t, notes, "read the menu bar setting, showing the icon: "+errFakeSettings.Error())
+		notes := r.logs.String()
+		wantErr := `error="` + errFakeSettings.Error() + `"`
+		assert.Contains(t, notes, `level=WARN msg="could not read the theme; following the system" `+wantErr)
+		assert.Contains(t, notes, `level=WARN msg="could not read the window size; opening at the default" `+wantErr)
+		assert.Contains(t, notes, `level=WARN msg="could not read the menu bar setting; showing the icon" `+wantErr)
 
+		require.NoError(t, s.Stop())
+	})
+}
+
+func TestAFailedRefreshFromTheMenuBarIsLogged(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig()
+		r.inbox.refreshErr = errFakeInbox
+		s := r.shell()
+
+		s.Start(t.Context())
+		s.RefreshNow()
+		synctest.Wait()
+
+		assert.Contains(t, r.logs.String(),
+			`level=WARN msg="the menu bar's inbox refresh failed" error="`+errFakeInbox.Error()+`"`)
 		require.NoError(t, s.Stop())
 	})
 }
@@ -164,7 +183,8 @@ func TestTheBannerQuestionIsNotedWhenItFails(t *testing.T) {
 		s.Launched()
 		synctest.Wait()
 
-		assert.Contains(t, r.stderr.String(), errFakeBanners.Error())
+		assert.Contains(t, r.logs.String(), `msg="could not ask to show notifications"`)
+		assert.Contains(t, r.logs.String(), errFakeBanners.Error())
 		require.NoError(t, s.Stop())
 	})
 }
@@ -433,7 +453,8 @@ func TestAStartupMeasurementThatNeverPaintsTimesOut(t *testing.T) {
 		synctest.Wait()
 
 		assert.True(t, s.TimedOut())
-		assert.Equal(t, desktop.ErrNoFirstPaint.Error()+"\n", r.stderr.String())
+		assert.Contains(t, r.logs.String(),
+			`level=ERROR msg="the startup measurement failed" error="`+desktop.ErrNoFirstPaint.Error()+`"`)
 		assert.Equal(t, 1, r.app.quitCount(), "one timeout, however often the app launched")
 
 		require.NoError(t, s.Stop())
@@ -460,7 +481,7 @@ func TestNewFillsInTheDefaults(t *testing.T) {
 		r := newRig()
 		r.settings.err = errFakeSettings
 		s := r.shell(func(c *desktop.Config) {
-			c.Stdout, c.Stderr, c.Clock = nil, nil, nil
+			c.Stdout, c.Logger, c.Clock = nil, nil, nil
 		})
 
 		s.Start(t.Context())

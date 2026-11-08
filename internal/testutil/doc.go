@@ -1,6 +1,7 @@
 // Package testutil holds the helpers and fakes the test suites share: a fresh database,
-// an isolated git, temporary files and agent homes, and fakes for the small interfaces
-// services take (a program runner, a program finder, a clock, and a change notifier).
+// an isolated git, temporary files and agent homes, fakes for the small interfaces
+// services take (a program runner, a program finder, a clock, and a change notifier), and
+// an in-memory log.
 //
 // It is test support only. Only _test.go files may import it, which a repoguard test
 // enforces, so none of it reaches the app. It imports the store to open databases, so

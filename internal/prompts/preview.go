@@ -8,6 +8,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/textutil"
+	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
 // CheckRequest asks to check a prompt being edited and to fill it in for a preview.
@@ -93,7 +94,7 @@ func (s *Service) Check(ctx context.Context, req CheckRequest) (CheckResult, err
 
 	out, err := tmpl.Execute(data)
 	if err != nil {
-		result.PreviewError = textutil.Sentence(previewMessage(err))
+		result.PreviewError = previewMessage(err)
 
 		return result, nil
 	}
@@ -138,10 +139,10 @@ func (s *Service) previewData(ctx context.Context, req CheckRequest, appliesTo A
 func previewMessage(err error) string {
 	switch {
 	case errors.Is(err, ErrLeadingDash):
-		return `for this item the prompt starts with "-", so a launch would be refused. Start it with a word`
+		return `For this item the prompt starts with "-", so a launch would be refused. Start it with a word.`
 	case errors.Is(err, ErrEmptyPrompt):
-		return "for this item the prompt is empty"
+		return "For this item the prompt is empty."
 	default:
-		return err.Error()
+		return uierr.Message(err)
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/inbox"
+	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/prefs"
 )
@@ -54,11 +55,7 @@ type base struct {
 func newBase(cfg Config) base {
 	b := base{
 		store: NewStore(cfg.Pool), prefs: prefs.New(cfg.Pool, cfg.Clock), poster: cfg.Poster, events: event.Or(cfg.Events),
-		clock: clock.Or(cfg.Clock), logger: cfg.Logger,
-	}
-
-	if b.logger == nil {
-		b.logger = slog.Default()
+		clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger),
 	}
 
 	return b

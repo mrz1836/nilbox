@@ -18,6 +18,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
+	"github.com/mrz1836/nilbox/internal/logging"
 )
 
 const (
@@ -59,15 +60,27 @@ type LaunchFiles struct {
 // prompt file, whatever plan.PromptFile said.
 //
 // Afterwards it prunes launch files older than seven days, judged by the timestamp in
-// their names. Pruning never touches other files, and a pruning failure is logged
-// rather than failing the launch.
-func WriteLaunchFiles(paths appdata.Paths, plan Plan, prompt string, now time.Time) (LaunchFiles, error) {
-	return writeLaunchFiles(paths, plan, prompt, now, terminal.DefaultRenderer(), rand.Reader)
+// their names. Pruning never touches other files, and a pruning failure is logged to log
+// (nil discards it) rather than failing the launch.
+func WriteLaunchFiles(
+	paths appdata.Paths, plan Plan, prompt string, now time.Time, log *slog.Logger,
+) (LaunchFiles, error) {
+	return writeLaunchFiles(paths, plan, prompt, now, launchFileDeps{
+		renderer: terminal.DefaultRenderer(), random: rand.Reader, log: logging.Or(log),
+	})
 }
 
-// writeLaunchFiles is WriteLaunchFiles with the renderer and randomness injected.
+// launchFileDeps are what writeLaunchFiles uses besides its inputs: the script renderer,
+// the randomness that names the files, and the logger pruning failures go to.
+type launchFileDeps struct {
+	renderer terminal.ScriptRenderer
+	random   io.Reader
+	log      *slog.Logger
+}
+
+// writeLaunchFiles is WriteLaunchFiles with its dependencies injected.
 func writeLaunchFiles(
-	paths appdata.Paths, plan Plan, prompt string, now time.Time, renderer terminal.ScriptRenderer, random io.Reader,
+	paths appdata.Paths, plan Plan, prompt string, now time.Time, deps launchFileDeps,
 ) (LaunchFiles, error) {
 	if err := validateLaunchFiles(plan, prompt); err != nil {
 		return LaunchFiles{}, err
@@ -78,13 +91,13 @@ func writeLaunchFiles(
 	}
 
 	suffix := make([]byte, suffixBytes)
-	if _, err := io.ReadFull(random, suffix); err != nil {
+	if _, err := io.ReadFull(deps.random, suffix); err != nil {
 		return LaunchFiles{}, fmt.Errorf("name launch files: %w", err)
 	}
 
 	base := filepath.Join(paths.Launch, string(plan.Kind)+"-"+strconv.Itoa(plan.Number)+"-"+
 		clock.Stamp(now)+"-"+hex.EncodeToString(suffix))
-	files := LaunchFiles{Prompt: base + promptFileSuffix, Script: base + renderer.Extension()}
+	files := LaunchFiles{Prompt: base + promptFileSuffix, Script: base + deps.renderer.Extension()}
 
 	if err := writeNewFile(files.Prompt, []byte(prompt), appdata.PrivateFilePerm); err != nil {
 		return LaunchFiles{}, err
@@ -92,13 +105,13 @@ func writeLaunchFiles(
 
 	plan.PromptFile = files.Prompt
 
-	if err := writeNewFile(files.Script, renderer.Render(plan.script()), scriptFilePerm); err != nil {
+	if err := writeNewFile(files.Script, deps.renderer.Render(plan.script()), scriptFilePerm); err != nil {
 		_ = os.Remove(files.Prompt)
 
 		return LaunchFiles{}, err
 	}
 
-	pruneLaunchFiles(paths.Launch, now, renderer.Extension())
+	pruneLaunchFiles(paths.Launch, now, deps.renderer.Extension(), deps.log)
 
 	return files, nil
 }
@@ -162,10 +175,10 @@ func writeNewFile(path string, data []byte, perm os.FileMode) error {
 // pruneLaunchFiles removes the regular files in dir that are launch files, prompts or
 // scripts with the extension ext, and whose name stamp is more than launchFileMaxAge
 // before now. The files just written carry now's stamp, so they are always kept.
-func pruneLaunchFiles(dir string, now time.Time, ext string) {
+func pruneLaunchFiles(dir string, now time.Time, ext string, log *slog.Logger) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		slog.Warn("could not list old launch files", "error", err)
+		log.Warn("could not list old launch files", "error", err)
 
 		return
 	}
@@ -178,7 +191,7 @@ func pruneLaunchFiles(dir string, now time.Time, ext string) {
 		}
 
 		if err = os.Remove(filepath.Join(dir, entry.Name())); err != nil {
-			slog.Warn("could not remove an old launch file", "file", entry.Name(), "error", err)
+			log.Warn("could not remove an old launch file", "file", entry.Name(), "error", err)
 		}
 	}
 }

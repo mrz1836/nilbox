@@ -160,7 +160,7 @@ func TestReadsReportARowTheyCannotDecode(t *testing.T) {
 			require.ErrorContains(t, err, tt.want)
 			require.NotErrorIs(t, err, ErrProfileNotFound)
 
-			_, err = s.Prune(t.Context())
+			_, err = s.Prune(t.Context(), nil)
 			require.ErrorContains(t, err, "read profiles to prune")
 			require.ErrorContains(t, err, tt.want)
 		})
@@ -172,7 +172,7 @@ func TestPruneWithNothingStored(t *testing.T) {
 
 	s, _ := openStore(t)
 
-	removed, err := s.Prune(t.Context())
+	removed, err := s.Prune(t.Context(), nil)
 	require.NoError(t, err)
 	assert.Nil(t, removed)
 }

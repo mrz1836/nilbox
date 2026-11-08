@@ -12,6 +12,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/textutil"
+	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
 // allowedFuncs are the template functions a prompt may use, in the order help text
@@ -162,7 +163,7 @@ func (c *checker) lineSpan(line int) (start, end int) {
 func (c *checker) parseError(err error) {
 	m := parseErrorPattern.FindStringSubmatch(err.Error())
 	if m == nil {
-		c.addWhole(textutil.Sentence(err.Error()))
+		c.addWhole(uierr.Message(err))
 
 		return
 	}
@@ -270,7 +271,7 @@ func (c *checker) execError(err error, hint string) {
 
 	m := execErrorPattern.FindStringSubmatch(err.Error())
 	if m == nil {
-		c.addWhole(textutil.Sentence(err.Error()))
+		c.addWhole(uierr.Message(err))
 
 		return
 	}

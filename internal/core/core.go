@@ -24,6 +24,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
+	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/profiles"
@@ -79,7 +80,7 @@ type Options struct {
 	// covers the well-known directories under Home.
 	Runner execpath.Runner
 
-	// Logger receives scheduler and timing records. It defaults to slog.Default().
+	// Logger receives every service's log records. Without it they are not logged.
 	Logger *slog.Logger
 }
 
@@ -141,10 +142,7 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 		return nil, err
 	}
 
-	logger := opts.Logger
-	if logger == nil {
-		logger = slog.Default()
-	}
+	logger := logging.Or(opts.Logger)
 
 	opened, err := store.Open(ctx, opts.Paths.DB)
 	if err != nil {
@@ -197,7 +195,7 @@ func (c *Core) Close() error {
 // discovery, with a warning: the profiles already stored still work, and the inbox does
 // not need them.
 func syncProfiles(ctx context.Context, stored *profiles.Store, home string, logger *slog.Logger) error {
-	removed, err := stored.Prune(ctx)
+	removed, err := stored.Prune(ctx, logger)
 	if err != nil {
 		return fmt.Errorf("prune profiles: %w", err)
 	}
@@ -206,7 +204,7 @@ func syncProfiles(ctx context.Context, stored *profiles.Store, home string, logg
 		logger.InfoContext(ctx, "removed profiles whose directory holds no agent config", "profiles", removed)
 	}
 
-	found, err := profiles.Discover(home)
+	found, err := profiles.Discover(home, logger)
 	if err != nil {
 		logger.WarnContext(ctx, "profile discovery skipped", "error", err)
 
@@ -265,6 +263,7 @@ func assemble(pool *sql.DB, reset *appinfo.DataReset, opts Options, logger *slog
 		Clock:    opts.Clock,
 		Events:   opts.Events,
 		Arrivals: notify.NewDispatcher(notices),
+		Logger:   logger,
 	})
 
 	recorder := timing.NewRecorder(timing.Config{Logger: logger, LogsDir: opts.Paths.Logs})
@@ -284,6 +283,7 @@ func assemble(pool *sql.DB, reset *appinfo.DataReset, opts Options, logger *slog
 		Clock:    opts.Clock,
 		Launches: workLog,
 		Files:    inboxSvc,
+		Logger:   logger,
 	})
 
 	sweeps := worktrees.NewService(worktrees.Config{

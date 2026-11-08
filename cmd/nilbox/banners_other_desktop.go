@@ -3,7 +3,7 @@
 package main
 
 import (
-	"io"
+	"log/slog"
 
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/notify"
@@ -14,7 +14,7 @@ import (
 type banners struct{}
 
 // newBanners returns nil: this OS shows no banners yet.
-func newBanners(io.Writer, event.Sink) *banners {
+func newBanners(*slog.Logger, event.Sink) *banners {
 	return nil
 }
 

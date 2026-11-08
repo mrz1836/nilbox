@@ -11,6 +11,9 @@
 // Two flags measure the app for docs/performance.md: --measure-startup quits right after
 // the first paint and prints the startup timing line, and --measure-refresh opens no
 // window, times live inbox refreshes against a scratch database, and prints the report.
+// Those lines are the only output on stdout. Everything else the app has to say goes to
+// its one logger (internal/logging): text on stderr, and JSON in the log file. --debug
+// keeps Debug records too.
 package main
 
 import (
@@ -18,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/signal"
 	"slices"
@@ -36,6 +40,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/launcher"
+	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/measure"
 	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/profiles"
@@ -59,31 +64,50 @@ var (
 var errUnbound = errors.New("the desktop bootstrap has no binder for a core service; add one to binders")
 
 func main() {
-	os.Exit(exitStatus(run(os.Args[1:], os.Stdout, os.Stderr), os.Stderr))
+	os.Exit(run(os.Args[1:], os.Stdout))
 }
 
-// run assembles the core and the shell, then runs the window until the app quits. On
+// run builds the app's logger, then starts the app and runs it until it quits. It returns
+// the status the process exits with: 0, or 1 once the error that ended the run is logged.
+// Without a data directory there is no log file, so that failure reaches stderr alone.
+func run(args []string, stdout io.Writer) int {
+	paths, err := appdata.Resolve()
+
+	logger, logs := logging.New(paths, logging.Level(args, os.Getenv))
+	defer func() { _ = logs.Close() }()
+
+	if err != nil {
+		err = startFailed(args, logger, fmt.Errorf("find the data directory: %w", err))
+	} else {
+		err = start(args, stdout, paths, logger)
+	}
+
+	if err != nil {
+		logger.Error("the app stopped with an error", "error", err)
+
+		return 1
+	}
+
+	return 0
+}
+
+// start assembles the core and the shell, then runs the window until the app quits. On
 // macOS the app exits from inside Run once it terminates, so the shell stops in the
 // runtime's shutdown hook. An error that stops the app from starting is shown in a
 // native dialog first, except in a measurement run.
-func run(args []string, stdout, stderr io.Writer) error {
-	paths, err := appdata.Resolve()
-	if err != nil {
-		return startFailed(args, stderr, fmt.Errorf("find the data directory: %w", err))
-	}
-
+func start(args []string, stdout io.Writer, paths appdata.Paths, logger *slog.Logger) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return startFailed(args, stderr, fmt.Errorf("find the home directory: %w", err))
+		return startFailed(args, logger, fmt.Errorf("find the home directory: %w", err))
 	}
 
 	if slices.Contains(args, measure.RefreshFlag) {
-		return measureRefresh(stdout, home)
+		return measureRefresh(stdout, home, logger)
 	}
 
-	app, shell, err := assemble(paths, home, stdout, stderr, slices.Contains(args, measure.StartupFlag))
+	app, shell, err := assemble(paths, home, stdout, logger, slices.Contains(args, measure.StartupFlag))
 	if err != nil {
-		return startFailed(args, stderr, err)
+		return startFailed(args, logger, err)
 	}
 
 	runErr := app.Run()
@@ -94,12 +118,12 @@ func run(args []string, stdout, stderr io.Writer) error {
 // assemble bootstraps the core, builds the shell over it, and creates the app, which
 // starts and stops the shell with its own lifecycle.
 func assemble(
-	paths appdata.Paths, home string, stdout, stderr io.Writer, measureStartup bool,
+	paths appdata.Paths, home string, stdout io.Writer, logger *slog.Logger, measureStartup bool,
 ) (*application.App, *desktop.Shell, error) {
 	// The services are built before the shell that hears their events, which needs them;
 	// the relay carries the events once the shell is connected.
 	relay := &event.Relay{}
-	banners := newBanners(stderr, relay)
+	banners := newBanners(logger, relay)
 
 	c, err := core.Bootstrap(context.Background(), core.Options{
 		Paths:   paths,
@@ -109,6 +133,7 @@ func assemble(
 		Build:   buildNumber,
 		Events:  relay,
 		Banners: banners.poster(),
+		Logger:  logger,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -133,7 +158,7 @@ func assemble(
 		Data:           c,
 		Banners:        banners.poster(),
 		Stdout:         stdout,
-		Stderr:         stderr,
+		Logger:         logger,
 		MeasureStartup: measureStartup,
 	})
 	relay.Connect(shell)
@@ -147,6 +172,8 @@ func assemble(
 		Services:    append(bound, application.NewService(&lifecycle{of: shell})),
 		Assets:      application.AssetOptions{Handler: application.AssetFileServerFS(frontend.Assets)},
 		Mac:         macAppOptions(),
+		// A bound method's error reaches the page with what the user is told about it.
+		MarshalError: desktop.MarshalError,
 		// A timed-out measurement run exits with a failure status. On macOS the app exits
 		// from inside Run, with a success status unless this hook exits first.
 		PostShutdown: func() {
@@ -236,25 +263,26 @@ func binder[T any](svc any) (application.Service, bool) {
 	return application.NewService(s), true
 }
 
-// startFailed reports err, which stopped the app from starting, and returns it with the
-// build's details. Outside a measurement run it also shows the error in a native dialog
-// and exits with a failure status once the dialog is dismissed.
-func startFailed(args []string, stderr io.Writer, err error) error {
+// startFailed returns err, which stopped the app from starting, with the build's details.
+// Outside a measurement run it first logs the error, shows it in a native dialog, and
+// exits with a failure status once the dialog is dismissed.
+func startFailed(args []string, logger *slog.Logger, err error) error {
 	wrapped := fmt.Errorf("start the app (%s, commit %s, built %s): %w", version, commit, buildDate, err)
 
 	if !slices.Contains(args, measure.StartupFlag) && !slices.Contains(args, measure.RefreshFlag) {
-		failStartup(stderr, wrapped, desktop.StartupFailure(err))
+		failStartup(logger, wrapped, desktop.StartupFailure(err))
 	}
 
 	return wrapped
 }
 
-// failStartup prints err to stderr, shows failure in a native error dialog, since nobody
-// sees stderr when the app is launched from Finder, and exits with a failure status once
-// the dialog is dismissed. The dialog needs a running app, so a bare one, with no window
-// and no services, runs just to show it.
-func failStartup(stderr io.Writer, err error, failure desktop.Failure) {
-	_, _ = fmt.Fprintln(stderr, err)
+// failStartup logs err, shows failure in a native error dialog, since nobody sees stderr
+// when the app is launched from Finder, and exits with a failure status once the dialog
+// is dismissed. The log file is written unbuffered, so exiting without closing it loses
+// nothing. The dialog needs a running app, so a bare one, with no window and no services,
+// runs just to show it.
+func failStartup(logger *slog.Logger, err error, failure desktop.Failure) {
+	logger.Error("the app could not start", "error", err)
 
 	app := application.New(application.Options{
 		Name:        brand.Name,
@@ -278,11 +306,11 @@ func failStartup(stderr io.Writer, err error, failure desktop.Failure) {
 
 // measureRefresh times live inbox refreshes the way the app makes them, against a scratch
 // database that is deleted afterwards, and prints the report. It opens no window.
-func measureRefresh(stdout io.Writer, home string) error {
+func measureRefresh(stdout io.Writer, home string, logger *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	report, err := measure.RunRefresh(ctx, measure.RefreshOptions{Home: home, Version: version})
+	report, err := measure.RunRefresh(ctx, measure.RefreshOptions{Home: home, Version: version, Logger: logger})
 	if err != nil {
 		return fmt.Errorf("measure the inbox refresh: %w", err)
 	}

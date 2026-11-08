@@ -58,8 +58,9 @@ export function Pin(id: number): $CancellablePromise<$models.Snapshot> {
 
 /**
  * Refresh fetches the inbox from GitHub, stores it, and returns the new snapshot. On
- * failure the error is recorded as the snapshot's last error (unless ctx was canceled)
- * and the stored inbox is left as it was; the returned snapshot then shows that error.
+ * failure what the user is told about the error (see uierr.Message) is recorded as the
+ * snapshot's last error, unless ctx was canceled, and the stored inbox is left as it
+ * was; the returned snapshot then shows it.
  *
  * A call made while a refresh runs joins it and returns its result, so a manual refresh
  * and a scheduled one never run side by side. A caller whose ctx ends stops waiting; the

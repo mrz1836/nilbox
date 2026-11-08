@@ -15,6 +15,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/textutil"
+	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
 const (
@@ -33,6 +34,9 @@ const (
 
 	// scopesHeader carries a classic OAuth token's granted scopes.
 	scopesHeader = "X-OAuth-Scopes"
+
+	// unreachableMessage is what the user is told about a request GitHub never answered.
+	unreachableMessage = "Could not reach GitHub. Check your internet connection, then try again."
 
 	typePullRequest = "PullRequest"
 	typeIssue       = "Issue"
@@ -194,7 +198,7 @@ func postGraphQL[T any](
 // do sends one authenticated request and returns the body of a 2xx response.
 func (c *Client) do(ctx context.Context, tok Token, method, path string, body []byte) ([]byte, http.Header, error) {
 	if tok.IsZero() {
-		return nil, nil, ErrNotLoggedIn
+		return nil, nil, errLoggedOut()
 	}
 
 	var reader io.Reader
@@ -217,7 +221,7 @@ func (c *Client) do(ctx context.Context, tok Token, method, path string, body []
 
 	resp, err := c.httpClient().Do(req)
 	if err != nil {
-		return nil, nil, fmt.Errorf("call the GitHub API: %w", err)
+		return nil, nil, unreachable(ctx, fmt.Errorf("call the GitHub API: %w", err))
 	}
 
 	defer func() { _ = resp.Body.Close() }()
@@ -232,6 +236,16 @@ func (c *Client) do(ctx context.Context, tok Token, method, path string, body []
 	}
 
 	return data, resp.Header, nil
+}
+
+// unreachable gives err, a request that got no answer, a message for the user, unless
+// ctx ended: a caller that gave up is not told GitHub is down.
+func unreachable(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return err
+	}
+
+	return uierr.New(unreachableMessage, err)
 }
 
 // baseURL returns the configured API root without a trailing slash.

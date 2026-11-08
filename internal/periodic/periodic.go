@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"time"
+
+	"github.com/mrz1836/nilbox/internal/logging"
 )
 
 // Run calls fn now and then every interval until ctx is canceled, and returns once the
@@ -16,9 +18,7 @@ import (
 // panicked". A nil logger discards them. A non-positive interval panics, as
 // time.NewTicker does.
 func Run(ctx context.Context, interval time.Duration, name string, fn func(context.Context) error, log *slog.Logger) {
-	if log == nil {
-		log = slog.New(slog.DiscardHandler)
-	}
+	log = logging.Or(log)
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()

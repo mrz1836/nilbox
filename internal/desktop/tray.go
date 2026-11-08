@@ -69,7 +69,7 @@ func (s *Shell) drawTray(ctx context.Context) {
 	snap, err := s.inbox.Snapshot(ctx)
 	if err != nil {
 		if ctx.Err() == nil {
-			s.warn("read the inbox for the menu bar:", err)
+			s.logger.WarnContext(ctx, "could not read the inbox for the menu bar", "error", err)
 		}
 
 		return

@@ -19,6 +19,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/testutil"
+	"github.com/mrz1836/nilbox/internal/uierr"
 	"github.com/mrz1836/nilbox/internal/worklog"
 )
 
@@ -287,7 +288,7 @@ func TestSweepErrors(t *testing.T) {
 	svc.settings = fakeSettings{err: errFakeSettings}
 
 	report = svc.Sweep(t.Context())
-	assert.Equal(t, errFakeSettings.Error(), report.Error)
+	assert.Equal(t, uierr.Message(errFakeSettings), report.Error, "the report says what the user is told")
 	assert.NotEmpty(t, report.At)
 
 	svc.settings = fakeSettings{root: cloneRoot, auto: true}
@@ -404,9 +405,10 @@ func TestSweeperSurvivesAPanicAndLogsFailures(t *testing.T) {
 	cancel()
 	<-done
 
+	// The log gets the error itself; the report, what the user is told about it.
 	svc = NewService(Config{Settings: fakeSettings{err: errFakeSettings}, Git: execpath.Exec{}, Logger: logger})
-	require.EqualError(t, svc.sweepOnce(t.Context()), errFakeSettings.Error())
-	assert.Equal(t, errFakeSettings.Error(), svc.LastSweep().Error)
+	require.ErrorIs(t, svc.sweepOnce(t.Context()), errFakeSettings)
+	assert.Equal(t, uierr.Message(errFakeSettings), svc.LastSweep().Error)
 }
 
 // lockedWriter serializes writes to w.

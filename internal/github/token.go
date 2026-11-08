@@ -38,6 +38,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/flight"
+	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
 // redactedText replaces the token wherever it would otherwise be printed.
@@ -52,6 +53,13 @@ const TokenTTL = 10 * time.Minute
 
 // tokenKey names the one gh run callers share.
 const tokenKey = "token"
+
+// What the user is told when the GitHub CLI cannot lend a token.
+const (
+	ghMissingMessage = "The GitHub CLI (gh) was not found. Install it from https://cli.github.com, " +
+		"then run gh auth login."
+	loggedOutMessage = "The GitHub CLI is not signed in to github.com. Run gh auth login, then try again."
+)
 
 var (
 	// ErrGHNotFound is returned when the GitHub CLI is not installed or not on the search path.
@@ -178,8 +186,8 @@ func GHHostsFile(home string) string {
 // Token returns the token borrowed last while it is younger than TokenTTL and gh's
 // account has not changed since; otherwise it runs gh auth token, once for every caller
 // asking meanwhile, and keeps what gh prints. It returns ErrGHNotFound when gh is missing
-// and ErrNotLoggedIn when gh has no token. The command's output is never included in an
-// error.
+// and ErrNotLoggedIn when gh has no token, each with a message for the user (see
+// uierr.Message). The command's output is never included in an error.
 func (s *TokenSource) Token(ctx context.Context) (Token, error) {
 	if tok, ok := s.cached(); ok {
 		return tok, nil
@@ -253,7 +261,7 @@ func (s *TokenSource) borrow(ctx context.Context) (Token, error) {
 func (s *TokenSource) run(ctx context.Context) (Token, error) {
 	path, err := s.finder.Find("gh")
 	if err != nil {
-		return Token{}, fmt.Errorf("%w: %w", ErrGHNotFound, err)
+		return Token{}, uierr.New(ghMissingMessage, fmt.Errorf("%w: %w", ErrGHNotFound, err))
 	}
 
 	stdout, _, err := s.runner.Run(ctx, path, "auth", "token", "--hostname", ghHost)
@@ -263,7 +271,7 @@ func (s *TokenSource) run(ctx context.Context) (Token, error) {
 
 	value := strings.TrimSpace(string(stdout))
 	if value == "" || strings.ContainsAny(value, " \t\r\n") {
-		return Token{}, ErrNotLoggedIn
+		return Token{}, errLoggedOut()
 	}
 
 	return NewToken(value), nil
@@ -339,10 +347,15 @@ func tokenRunError(ctx context.Context, err error) error {
 	case ctx.Err() != nil:
 		return fmt.Errorf("borrow the GitHub CLI token: %w", ctx.Err())
 	case errors.Is(err, exec.ErrNotFound), errors.Is(err, fs.ErrNotExist):
-		return ErrGHNotFound
+		return uierr.New(ghMissingMessage, ErrGHNotFound)
 	default:
-		return ErrNotLoggedIn
+		return errLoggedOut()
 	}
+}
+
+// errLoggedOut is ErrNotLoggedIn with a message for the user.
+func errLoggedOut() error {
+	return uierr.New(loggedOutMessage, ErrNotLoggedIn)
 }
 
 // Redact returns err with every occurrence of the token's text replaced by [redacted].

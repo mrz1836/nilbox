@@ -15,6 +15,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/menubar"
 	"github.com/mrz1836/nilbox/internal/settings"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 var (
@@ -198,6 +199,10 @@ type fakeInbox struct {
 	err   error
 	gate  chan struct{}
 	reads int
+
+	// refreshErr, when set, fails a refresh at once; otherwise a refresh runs until its
+	// context ends.
+	refreshErr error
 }
 
 func (f *fakeInbox) Snapshot(ctx context.Context) (inbox.Snapshot, error) {
@@ -222,6 +227,15 @@ func (f *fakeInbox) Snapshot(ctx context.Context) (inbox.Snapshot, error) {
 
 func (f *fakeInbox) Refresh(ctx context.Context) (inbox.Snapshot, error) {
 	f.log.add("refresh started")
+
+	f.mu.Lock()
+	refreshErr := f.refreshErr
+	f.mu.Unlock()
+
+	if refreshErr != nil {
+		return inbox.Snapshot{}, refreshErr
+	}
+
 	<-ctx.Done()
 	f.log.add("refresh returned")
 
@@ -340,7 +354,7 @@ type rig struct {
 	settings fakeSettings
 	data     *fakeData
 	stdout   *buffer
-	stderr   *buffer
+	logs     *testutil.Logs
 }
 
 func newRig() *rig {
@@ -356,7 +370,7 @@ func newRig() *rig {
 		settings: fakeSettings{theme: settings.ThemeDark, menuBar: true, size: settings.WindowSize{Width: 1440, Height: 900}},
 		data:     &fakeData{log: log},
 		stdout:   &buffer{},
-		stderr:   &buffer{},
+		logs:     &testutil.Logs{},
 	}
 }
 
@@ -371,7 +385,7 @@ func (r *rig) config() desktop.Config {
 		Settings: r.settings,
 		Data:     r.data,
 		Stdout:   r.stdout,
-		Stderr:   r.stderr,
+		Logger:   r.logs.Logger(),
 	}
 }
 

@@ -1,3 +1,5 @@
+//go:build !desktop
+
 package main
 
 import (
@@ -5,8 +7,8 @@ import (
 	"io"
 )
 
-// exitStatus prints err, if any, to stderr and returns the status the process exits
-// with: 0 without an error, 1 with one.
+// exitStatus prints err, if any, to stderr and returns the status the headless build
+// exits with: 0 without an error, 1 with one. The desktop build logs its error instead.
 func exitStatus(err error, stderr io.Writer) int {
 	if err == nil {
 		return 0

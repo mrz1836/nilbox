@@ -84,7 +84,7 @@ type LaunchOptions struct {
 	// uses the app's default.
 	Runner execpath.Runner
 
-	// Logger receives the app's log records; nil uses slog.Default().
+	// Logger receives the app's log records; nil discards them.
 	Logger *slog.Logger
 }
 
@@ -205,7 +205,7 @@ func newLaunchFixture(ctx context.Context, dir string, opts LaunchOptions, runne
 		Logger:  opts.Logger,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("start the app on the scratch database: %w", err)
 	}
 
 	itemID, err := seed(ctx, c, root)

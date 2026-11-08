@@ -19,8 +19,10 @@ import (
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/localrepos"
+	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/uierr"
 	"github.com/mrz1836/nilbox/internal/worklog"
 )
 
@@ -201,7 +203,8 @@ type Config struct {
 	// how many need the user's attention.
 	Events event.Sink
 
-	// Logger receives sweep failures. It defaults to slog.Default().
+	// Logger receives sweep failures and, at Debug, why GitHub could not say which pull
+	// requests and issues the worktrees belong to. Without it they are not logged.
 	Logger *slog.Logger
 }
 
@@ -239,11 +242,6 @@ func NewService(cfg Config) *Service {
 		realHome = resolvedPath(cfg.Home)
 	}
 
-	logger := cfg.Logger
-	if logger == nil {
-		logger = slog.Default()
-	}
-
 	return &Service{
 		settings: cfg.Settings,
 		run:      cfg.Git,
@@ -255,7 +253,7 @@ func NewService(cfg Config) *Service {
 		launches: cfg.Launches,
 		history:  cfg.History,
 		events:   event.Or(cfg.Events),
-		logger:   logger,
+		logger:   logging.Or(cfg.Logger),
 		procs:    osProcesses{},
 		zone:     time.Local, //nolint:gosmopolitan // the agent writes a session's start in the machine's zone or in UTC
 		last:     emptyReport(),
@@ -622,7 +620,7 @@ func (s *Service) listRepo(ctx context.Context, g git, dir string) (cloneListing
 	switch {
 	case err == nil:
 	case gitRefused(ctx, err):
-		listed.repo.Error = gitError(err, stderr).Error()
+		listed.repo.Error = uierr.Message(gitError(err, stderr))
 
 		return cloneListing{repo: listed}, nil
 	default:
@@ -755,7 +753,7 @@ func (s *Service) readState(ctx context.Context, g git, wt *Worktree, times map[
 	case err == nil:
 		wt.Dirty, wt.DirtyCount = count > 0, count
 	case gitRefused(ctx, err):
-		wt.Error = "could not read the status: " + gitError(err, stderr).Error()
+		wt.Error = uierr.Message(fmt.Errorf("could not read the status: %w", gitError(err, stderr)))
 	default:
 		return fmt.Errorf("read the status of %s: %w", wt.DisplayPath, err)
 	}

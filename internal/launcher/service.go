@@ -17,11 +17,12 @@ import (
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/localrepos"
+	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/sensitive"
-	"github.com/mrz1836/nilbox/internal/textutil"
+	"github.com/mrz1836/nilbox/internal/uierr"
 	"github.com/mrz1836/nilbox/internal/worklog"
 	"github.com/mrz1836/nilbox/internal/workspacetrust"
 )
@@ -146,6 +147,11 @@ type Config struct {
 	// launch on one that changes agent files waits for the user to confirm, and its
 	// prompt names its sensitive files. Without it, no launch is held back.
 	Files FileChecker
+
+	// Logger receives what a launch cannot report as its error: a launch record or a
+	// clone path that could not be stored, and old launch files that could not be
+	// pruned. Without it they are not logged.
+	Logger *slog.Logger
 }
 
 // LaunchRequest asks to start a session on one inbox item. Every choice is optional:
@@ -256,6 +262,7 @@ type Service struct {
 	clock    clock.Clock
 	launches LaunchRecorder
 	files    FileChecker
+	logger   *slog.Logger
 
 	// cloneMu runs one Clone at a time.
 	cloneMu sync.Mutex
@@ -278,6 +285,7 @@ func NewService(cfg Config) *Service {
 		clock:    clock.Or(cfg.Clock),
 		launches: cfg.Launches,
 		files:    cfg.Files,
+		logger:   logging.Or(cfg.Logger),
 	}
 }
 
@@ -323,7 +331,7 @@ func (s *Service) ResolveItems(ctx context.Context, ids []int64) ([]ItemResoluti
 	for _, row := range rows {
 		res, _, _, resolveErr := resolve(w, row.subject(w.policy), LaunchRequest{ItemID: row.ID})
 		if resolveErr != nil {
-			out = append(out, ItemResolution{Resolution: row.unresolved(), Problem: textutil.Sentence(resolveErr.Error())})
+			out = append(out, ItemResolution{Resolution: row.unresolved(), Problem: uierr.Message(resolveErr)})
 
 			continue
 		}
@@ -391,7 +399,7 @@ func (s *Service) Launch(ctx context.Context, req LaunchRequest) (LaunchResult, 
 		return LaunchResult{}, err
 	}
 
-	files, err := WriteLaunchFiles(s.paths, p.plan, p.prompt, s.clock.Now())
+	files, err := WriteLaunchFiles(s.paths, p.plan, p.prompt, s.clock.Now(), s.logger)
 	if err != nil {
 		return LaunchResult{}, err
 	}
@@ -541,7 +549,7 @@ func (s *Service) recordLaunch(ctx context.Context, p planned) {
 		Kind: p.row.Kind, Number: p.row.Number, LaunchedAt: s.clock.Now(),
 	})
 	if err != nil {
-		slog.WarnContext(ctx, "could not record the worktree launch", "error", err)
+		s.logger.WarnContext(ctx, "could not record the worktree launch", "error", err)
 	}
 }
 
@@ -677,6 +685,6 @@ func (s *Service) cachedClone(ctx context.Context, ref repoRef) (Clone, bool) {
 // time, so it is logged rather than failing the launch.
 func (s *Service) cacheClonePath(ctx context.Context, repoID int64, path string) {
 	if err := s.items.RememberClone(ctx, repoID, path); err != nil {
-		slog.Warn("could not remember a repository's local clone", "error", err)
+		s.logger.WarnContext(ctx, "could not remember a repository's local clone", "error", err)
 	}
 }
