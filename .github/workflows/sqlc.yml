@@ -70,5 +70,15 @@ jobs:
           magex-version: ${{ env.MAGE_X_VERSION }}
           runner-os: ${{ runner.os }}
 
+      # magex runs this repository's own targets (magefiles/) through the mage binary.
+      # Without mage on PATH it falls back to `go run` on magefiles/, which has no main
+      # function until mage generates one, so the build fails. Install the mage version
+      # go.mod pins.
+      - name: Install mage (version from go.mod)
+        run: |
+          mage_version="$(go list -m -f '{{.Version}}' github.com/magefile/mage)"
+          go install "github.com/magefile/mage@${mage_version}"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
       - name: Check the generated queries
         run: magex db:check
