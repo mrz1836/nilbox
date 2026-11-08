@@ -8,31 +8,13 @@ import { useCollapsedSections } from '../lib/useCollapsedSections'
 import { useInbox } from '../lib/useInbox'
 import { ClockContext } from '../lib/useNow'
 import { useTriage } from '../lib/useTriage'
-import { clockAt } from '../test/clock'
-import { sendEvent } from '../test/events'
-import { item, itemResolution, launchResult, list, profile, prompts, snapshot } from '../test/fixtures'
+import type { InboxSnapshot, ListKey } from '../platform'
+import { clockAt, FIXED_NOW, fixedNow, fromNow } from '../test/clock'
+import { item, itemResolution, list, profile, prompts, snapshot } from '../test/fixtures'
+import { emit, listening, platform } from '../test/platform'
 import { InboxView, type LaunchOptions, type Reveal } from './InboxView'
 
-const platform = vi.hoisted(() => ({
-  getInboxSnapshot: vi.fn(),
-  refreshInbox: vi.fn(),
-  on: vi.fn(),
-  openExternal: vi.fn(),
-  launch: vi.fn(),
-  dismissItem: vi.fn(),
-  snoozeItem: vi.fn(),
-  restoreItem: vi.fn(),
-  pinItem: vi.fn(),
-  unpinItem: vi.fn(),
-  refreshItem: vi.fn(),
-  getCollapsedSections: vi.fn(),
-  setSectionCollapsed: vi.fn(),
-}))
-
-vi.mock('../platform', () => platform)
-
-const now = new Date('2026-06-15T12:00:00Z')
-const clock = () => now
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 const launchOptions: LaunchOptions = {
   profiles: [profile()],
@@ -43,8 +25,6 @@ const launchOptions: LaunchOptions = {
 }
 
 const resolutions = new Map([[1, itemResolution()]])
-
-const stopListening = vi.fn()
 
 const openSnoozeSettings = vi.fn()
 
@@ -93,14 +73,6 @@ async function section(title: string) {
   return within(await screen.findByRole('region', { name: title }))
 }
 
-beforeEach(() => {
-  platform.getInboxSnapshot.mockResolvedValue(snapshot())
-  platform.on.mockReturnValue(stopListening)
-  platform.launch.mockResolvedValue(launchResult())
-  platform.getCollapsedSections.mockResolvedValue([])
-  platform.setSectionCollapsed.mockResolvedValue(undefined)
-})
-
 afterEach(() => {
   vi.useRealTimers()
 })
@@ -127,7 +99,7 @@ describe('InboxView', () => {
       }),
     )
 
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const review = await section('Review requested')
     expect(review.getByRole('button', { name: 'Add the widget cache' })).toBeInTheDocument()
@@ -159,7 +131,7 @@ describe('InboxView', () => {
       }),
     )
 
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     expect((await section('Review requested')).getByText('2 of 250')).toBeInTheDocument()
     expect((await section('Authored')).getByText('1')).toBeInTheDocument()
@@ -168,7 +140,7 @@ describe('InboxView', () => {
   })
 
   it('says when the inbox has not been refreshed yet', async () => {
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     expect((await section('Authored')).getByText('Nothing here.')).toBeInTheDocument()
     expect(screen.getByText('Not refreshed yet')).toBeInTheDocument()
@@ -177,19 +149,19 @@ describe('InboxView', () => {
   it('shows launch controls only once the launch options are loaded', async () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([item()]) }))
 
-    const { rerender } = render(<Harness launch={null} clock={clock} />)
+    const { rerender } = render(<Harness launch={null} clock={fixedNow} />)
 
     expect(await screen.findByRole('button', { name: 'Add the widget cache' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Open in Claude' })).not.toBeInTheDocument()
 
-    rerender(<Harness launch={launchOptions} clock={clock} />)
+    rerender(<Harness launch={launchOptions} clock={fixedNow} />)
 
     expect(screen.getByRole('button', { name: 'Open in Claude' })).toBeInTheDocument()
   })
 
   it('opens an item in the browser', async () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([item()]) }))
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     await userEvent.click(await screen.findByRole('button', { name: 'Add the widget cache' }))
 
@@ -197,19 +169,21 @@ describe('InboxView', () => {
   })
 
   it('refreshes on click and shows the new snapshot', async () => {
-    let finish: (value: unknown) => void = () => undefined
+    let finish: (value: InboxSnapshot) => void = () => undefined
     platform.refreshInbox.mockReturnValue(
       new Promise((resolve) => {
         finish = resolve
       }),
     )
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     await userEvent.click(await screen.findByRole('button', { name: 'Refresh' }))
     expect(screen.getByRole('button', { name: 'Refreshing…' })).toBeDisabled()
 
     await act(async () => {
-      finish(snapshot({ authored: list([item({ title: 'Fresh from GitHub' })]), lastRefreshedAt: now.toISOString() }))
+      finish(
+        snapshot({ authored: list([item({ title: 'Fresh from GitHub' })]), lastRefreshedAt: FIXED_NOW.toISOString() }),
+      )
       await Promise.resolve()
     })
 
@@ -222,7 +196,7 @@ describe('InboxView', () => {
     const message =
       'borrow the GitHub token: gh not found: install the GitHub CLI from https://cli.github.com, then run gh auth login'
     platform.refreshInbox.mockRejectedValue(new Error(message))
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     await userEvent.click(await screen.findByRole('button', { name: 'Refresh' }))
 
@@ -236,7 +210,7 @@ describe('InboxView', () => {
         scopeWarning: 'the token reports no scopes, so they could not be verified',
       }),
     )
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent('run gh auth refresh -s repo,read:org')
     expect(screen.getByText('the token reports no scopes, so they could not be verified')).toBeInTheDocument()
@@ -244,7 +218,7 @@ describe('InboxView', () => {
 
   it('shows an inbox that could not be loaded', async () => {
     platform.getInboxSnapshot.mockRejectedValue(new Error('open the database: locked'))
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent('open the database: locked')
     expect(screen.queryByText('Loading the inbox…')).not.toBeInTheDocument()
@@ -255,26 +229,27 @@ describe('InboxView', () => {
       .mockResolvedValueOnce(snapshot())
       .mockResolvedValueOnce(snapshot({ assigned: list([item({ title: 'Updated in the background' })]) }))
 
-    const { unmount } = render(<Harness launch={launchOptions} clock={clock} />)
+    const { unmount } = render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     expect(await screen.findAllByText('Nothing here.')).toHaveLength(3)
     expect(platform.on).toHaveBeenCalledExactlyOnceWith('inbox:updated', expect.any(Function))
 
     act(() => {
-      sendEvent(platform.on, 'inbox:updated')
+      emit('inbox:updated')
     })
 
     expect(await screen.findByRole('button', { name: 'Updated in the background' })).toBeInTheDocument()
     expect(platform.getInboxSnapshot).toHaveBeenCalledTimes(2)
 
+    expect(listening('inbox:updated')).toBe(1)
     unmount()
-    expect(stopListening).toHaveBeenCalledOnce()
+    expect(listening('inbox:updated')).toBe(0)
   })
 
   it('brings the ages up to date every minute', async () => {
     // Only the minute ticker is faked, so the loads and the queries' own waits still run.
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
-    let current = now
+    let current = FIXED_NOW
     const ticking = () => current
 
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: '2026-06-15T11:55:00Z' }))
@@ -282,7 +257,7 @@ describe('InboxView', () => {
 
     expect(await screen.findByText('5m ago')).toBeInTheDocument()
 
-    current = new Date(now.getTime() + 60_000)
+    current = fromNow(60_000)
     act(() => {
       vi.advanceTimersByTime(60_000)
     })
@@ -301,7 +276,7 @@ describe('InboxView collapsing', () => {
 
   it('collapses a list from its header to just its tabs, and opens it again', async () => {
     platform.getInboxSnapshot.mockResolvedValue(authored)
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const list = await section('Authored')
     expect(list.getByRole('button', { name: 'Fix the parser' })).toBeInTheDocument()
@@ -334,7 +309,7 @@ describe('InboxView collapsing', () => {
   it('opens with the lists collapsed the way they were left', async () => {
     platform.getInboxSnapshot.mockResolvedValue(authored)
     platform.getCollapsedSections.mockResolvedValue(['authored', 'assigned'])
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const list = await section('Authored')
     expect(list.getByRole('button', { name: 'Expand Authored' })).toHaveAttribute('aria-expanded', 'false')
@@ -345,14 +320,14 @@ describe('InboxView collapsing', () => {
   })
 
   it('waits for the collapsed lists before showing any, so none flashes open', async () => {
-    let resolve: (sections: string[]) => void = () => undefined
+    let resolve: (sections: ListKey[]) => void = () => undefined
     platform.getInboxSnapshot.mockResolvedValue(authored)
     platform.getCollapsedSections.mockReturnValue(
-      new Promise<string[]>((r) => {
+      new Promise<ListKey[]>((r) => {
         resolve = r
       }),
     )
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     await waitFor(() => {
       expect(platform.getInboxSnapshot).toHaveBeenCalled()
@@ -371,7 +346,7 @@ describe('InboxView collapsing', () => {
   it('opens a collapsed list when one of its tabs is chosen', async () => {
     platform.getInboxSnapshot.mockResolvedValue(authored)
     platform.getCollapsedSections.mockResolvedValue(['authored'])
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const list = await section('Authored')
     await userEvent.click(list.getByRole('tab', { name: 'Snoozed 1' }))
@@ -397,7 +372,7 @@ describe('InboxView triage', () => {
     platform.getInboxSnapshot.mockResolvedValue(
       snapshot({ reviewRequested: list([fresh, snoozed, dismissed], 40), assigned: list([fresh]) }),
     )
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const review = await section('Review requested')
     expect(review.getByRole('tab', { name: 'Review requested 1 of 38' })).toHaveAttribute('aria-selected', 'true')
@@ -428,7 +403,7 @@ describe('InboxView triage', () => {
   })
 
   it('explains empty tabs', async () => {
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
     const review = await section('Review requested')
 
     await userEvent.click(review.getByRole('tab', { name: 'Snoozed' }))
@@ -439,7 +414,7 @@ describe('InboxView triage', () => {
   })
 
   it('moves between tabs with the arrow keys', async () => {
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
     const review = await section('Review requested')
     const inbox = review.getByRole('tab', { name: 'Review requested 0' })
 
@@ -471,10 +446,10 @@ describe('InboxView triage', () => {
   it('dismisses an item, and undoes it from the toast', async () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     platform.dismissItem.mockResolvedValue(
-      snapshot({ reviewRequested: list([{ ...fresh, dismissedAt: now.toISOString() }]) }),
+      snapshot({ reviewRequested: list([{ ...fresh, dismissedAt: FIXED_NOW.toISOString() }]) }),
     )
     platform.restoreItem.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const review = await section('Review requested')
     await userEvent.click(review.getByRole('button', { name: 'Dismiss' }))
@@ -496,7 +471,7 @@ describe('InboxView triage', () => {
     platform.snoozeItem.mockResolvedValue(
       snapshot({ reviewRequested: list([{ ...fresh, snoozedUntil: '2026-06-22T12:00:00Z' }]) }),
     )
-    render(<Harness launch={launchOptions} clock={clock} snoozeDays={7} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} snoozeDays={7} />)
 
     const review = await section('Review requested')
     const button = review.getByRole('button', { name: 'Snooze for 1 week' })
@@ -519,7 +494,7 @@ describe('InboxView triage', () => {
     platform.snoozeItem.mockResolvedValue(
       snapshot({ reviewRequested: list([{ ...fresh, snoozedUntil: '2026-06-16T12:00:00Z' }]) }),
     )
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const review = await section('Review requested')
     await userEvent.click(review.getByRole('button', { name: 'Snooze for…' }))
@@ -554,7 +529,7 @@ describe('InboxView triage', () => {
   it('unsnoozes and restores from their tabs', async () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([snoozed, dismissed]) }))
     platform.restoreItem.mockResolvedValue(snapshot({ reviewRequested: list([{ ...snoozed, snoozedUntil: '' }]) }))
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const review = await section('Review requested')
     await userEvent.click(review.getByRole('tab', { name: 'Snoozed 1' }))
@@ -568,7 +543,7 @@ describe('InboxView triage', () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([dismissed]) }))
     platform.restoreItem.mockResolvedValue(snapshot({ reviewRequested: list([{ ...dismissed, dismissedAt: '' }]) }))
     act(() => {
-      sendEvent(platform.on, 'inbox:updated')
+      emit('inbox:updated')
     })
     await userEvent.click(await review.findByRole('tab', { name: 'Dismissed 1' }))
     await userEvent.click(review.getByRole('button', { name: 'Restore' }))
@@ -581,10 +556,10 @@ describe('InboxView triage', () => {
     const other = item({ id: 4, number: 10, title: 'Tidy the docs' })
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh, other]) }))
     platform.pinItem.mockResolvedValue(
-      snapshot({ reviewRequested: list([{ ...other, pinnedAt: now.toISOString() }, fresh]) }),
+      snapshot({ reviewRequested: list([{ ...other, pinnedAt: FIXED_NOW.toISOString() }, fresh]) }),
     )
     platform.unpinItem.mockResolvedValue(snapshot({ reviewRequested: list([fresh, other]) }))
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const review = await section('Review requested')
     const titles = () => review.getAllByRole('listitem').map((row) => within(row).getAllByRole('button')[0]?.title)
@@ -617,7 +592,7 @@ describe('InboxView triage', () => {
     const pinned = { ...snoozed, pinnedAt: '2026-06-14T12:00:00Z' }
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([pinned, dismissed]) }))
     platform.unpinItem.mockResolvedValue(snapshot({ reviewRequested: list([snoozed, dismissed]) }))
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const review = await section('Review requested')
     await userEvent.click(review.getByRole('tab', { name: 'Snoozed 1' }))
@@ -639,12 +614,12 @@ describe('InboxView triage', () => {
   it('says why a pin failed', async () => {
     platform.getInboxSnapshot.mockResolvedValue(
       snapshot({
-        reviewRequested: list([fresh, { ...dismissed, id: 5, dismissedAt: '', pinnedAt: now.toISOString() }]),
+        reviewRequested: list([fresh, { ...dismissed, id: 5, dismissedAt: '', pinnedAt: FIXED_NOW.toISOString() }]),
       }),
     )
     platform.pinItem.mockRejectedValue(new Error('database is locked'))
     platform.unpinItem.mockRejectedValue(new Error('database is locked'))
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const review = await section('Review requested')
     await userEvent.click(review.getByRole('button', { name: 'Pin to top' }))
@@ -671,7 +646,7 @@ describe('InboxView triage', () => {
         refuse = reject
       }),
     )
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const review = await section('Review requested')
     const titles = () => review.getAllByRole('listitem').map((row) => within(row).getAllByRole('button')[0]?.title)
@@ -694,15 +669,15 @@ describe('InboxView triage', () => {
   })
 
   it('sets a dismissed item aside at once, before the backend answers', async () => {
-    let answer: (value: unknown) => void = () => undefined
-    const dismissedNow = snapshot({ reviewRequested: list([{ ...fresh, dismissedAt: now.toISOString() }]) })
+    let answer: (value: InboxSnapshot) => void = () => undefined
+    const dismissedNow = snapshot({ reviewRequested: list([{ ...fresh, dismissedAt: FIXED_NOW.toISOString() }]) })
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     platform.dismissItem.mockReturnValue(
       new Promise((resolve) => {
         answer = resolve
       }),
     )
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const review = await section('Review requested')
     await userEvent.click(review.getByRole('button', { name: 'Dismiss' }))
@@ -721,7 +696,7 @@ describe('InboxView triage', () => {
   it('says why a triage action failed', async () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     platform.dismissItem.mockRejectedValue(new Error('item not found; refresh the inbox and try again'))
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     await userEvent.click((await section('Review requested')).getByRole('button', { name: 'Dismiss' }))
 
@@ -740,7 +715,7 @@ describe('InboxView triage', () => {
     platform.snoozeItem.mockRejectedValue(new Error('database is locked'))
     platform.dismissItem.mockResolvedValue(snapshot({ reviewRequested: list([{ ...fresh, dismissedAt: '' }]) }))
     platform.restoreItem.mockRejectedValue(new Error('database is locked'))
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const review = await section('Review requested')
     await userEvent.click(review.getByRole('button', { name: 'Snooze for 3 days' }))
@@ -758,7 +733,7 @@ describe('InboxView triage', () => {
   it('says a snooze without a stored end was snoozed', async () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     platform.snoozeItem.mockResolvedValue(snapshot())
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     await userEvent.click((await section('Review requested')).getByRole('button', { name: 'Snooze for 3 days' }))
 
@@ -770,7 +745,7 @@ describe('InboxView triage', () => {
     platform.refreshItem.mockResolvedValue(
       snapshot({ reviewRequested: list([{ ...fresh, title: 'Add the widget cache, take two' }, snoozed]) }),
     )
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const review = await section('Review requested')
     const button = review.getByRole('button', { name: 'Refresh from GitHub' })
@@ -787,7 +762,7 @@ describe('InboxView triage', () => {
   it('says why a refreshed item left the inbox', async () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     platform.refreshItem.mockResolvedValue(snapshot())
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const review = await section('Review requested')
     await userEvent.click(review.getByRole('button', { name: 'Refresh from GitHub' }))
@@ -805,7 +780,7 @@ describe('InboxView triage', () => {
         fail = reject
       }),
     )
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const review = await section('Review requested')
     const button = review.getByRole('button', { name: 'Refresh from GitHub' })
@@ -834,7 +809,7 @@ describe('InboxView triage', () => {
 
   it('brings an item back when its snooze ends, marked as back', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
-    let current = now
+    let current = FIXED_NOW
     const ticking = () => current
 
     platform.getInboxSnapshot.mockResolvedValue(
@@ -845,7 +820,7 @@ describe('InboxView triage', () => {
     const review = await section('Review requested')
     expect(review.getByRole('tab', { name: 'Snoozed 1' })).toBeInTheDocument()
 
-    current = new Date(now.getTime() + 60_000)
+    current = fromNow(60_000)
     act(() => {
       vi.advanceTimersByTime(60_000)
     })
@@ -867,7 +842,7 @@ describe('InboxView triage', () => {
         ]),
       }),
     )
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const review = await section('Review requested')
     const chip = review.getByText('Back early: approved, 2 new commits')
@@ -882,24 +857,24 @@ describe('InboxView triage', () => {
   })
 
   it('never lets an older answer replace a newer one', async () => {
-    let finishDismiss: (value: unknown) => void = () => undefined
+    let finishDismiss: (value: InboxSnapshot) => void = () => undefined
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     platform.dismissItem.mockReturnValue(
       new Promise((resolve) => {
         finishDismiss = resolve
       }),
     )
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const review = await section('Review requested')
     await userEvent.click(review.getByRole('button', { name: 'Dismiss' }))
 
     // The shell's update after the dismissal is read first, and already has it.
     platform.getInboxSnapshot.mockResolvedValue(
-      snapshot({ reviewRequested: list([{ ...fresh, title: 'Read later', dismissedAt: now.toISOString() }]) }),
+      snapshot({ reviewRequested: list([{ ...fresh, title: 'Read later', dismissedAt: FIXED_NOW.toISOString() }]) }),
     )
     act(() => {
-      sendEvent(platform.on, 'inbox:updated')
+      emit('inbox:updated')
     })
     expect(await review.findByRole('tab', { name: 'Dismissed 1' })).toBeInTheDocument()
 
@@ -924,7 +899,7 @@ describe('InboxView at nil', () => {
 
   it('throws a party over the lists once a refresh finds every list empty', async () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: refreshed }))
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     expect(await screen.findByRole('region', { name: 'inbox == nil' })).toBeInTheDocument()
     // Opening the page at nil sprinkles; the achievement is for emptying it.
@@ -936,19 +911,19 @@ describe('InboxView at nil', () => {
 
   it('throws no party before the first refresh, after an error, or while anything is left', async () => {
     platform.getInboxSnapshot.mockResolvedValueOnce(snapshot())
-    const { unmount } = render(<Harness launch={launchOptions} clock={clock} />)
+    const { unmount } = render(<Harness launch={launchOptions} clock={fixedNow} />)
     expect(await screen.findAllByText('Nothing here.')).toHaveLength(3)
     expect(party()).not.toBeInTheDocument()
     unmount()
 
     platform.getInboxSnapshot.mockResolvedValueOnce(snapshot({ lastRefreshedAt: refreshed, lastError: 'rate limited' }))
-    const view = render(<Harness launch={launchOptions} clock={clock} />)
+    const view = render(<Harness launch={launchOptions} clock={fixedNow} />)
     expect(await screen.findByRole('alert')).toHaveTextContent('rate limited')
     expect(party()).not.toBeInTheDocument()
     view.unmount()
 
     platform.getInboxSnapshot.mockResolvedValueOnce(snapshot({ lastRefreshedAt: refreshed, assigned: list([last]) }))
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
     expect(await screen.findByRole('button', { name: 'Add the widget cache' })).toBeInTheDocument()
     expect(party()).not.toBeInTheDocument()
   })
@@ -956,10 +931,13 @@ describe('InboxView at nil', () => {
   it('unlocks the achievement when the last item is dismissed, and leaves with an undo', async () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: refreshed, reviewRequested: list([last]) }))
     platform.dismissItem.mockResolvedValue(
-      snapshot({ lastRefreshedAt: refreshed, reviewRequested: list([{ ...last, dismissedAt: now.toISOString() }]) }),
+      snapshot({
+        lastRefreshedAt: refreshed,
+        reviewRequested: list([{ ...last, dismissedAt: FIXED_NOW.toISOString() }]),
+      }),
     )
     platform.restoreItem.mockResolvedValue(snapshot({ lastRefreshedAt: refreshed, reviewRequested: list([last]) }))
-    render(<Harness launch={launchOptions} clock={clock} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const review = await section('Review requested')
     expect(party()).not.toBeInTheDocument()
@@ -1010,7 +988,7 @@ describe('InboxView reveal', () => {
     // Fake time runs along with real time, so the queries' own waits still pass.
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: true })
 
-    render(<Harness launch={launchOptions} clock={clock} reveal={{ id: 2, seq: 1 }} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} reveal={{ id: 2, seq: 1 }} />)
 
     const review = await section('Review requested')
     await waitFor(() => {
@@ -1037,7 +1015,7 @@ describe('InboxView reveal', () => {
       snapshot({ reviewRequested: list([fresh]), assigned: list([assigned, fresh]) }),
     )
 
-    const { rerender } = render(<Harness launch={launchOptions} clock={clock} reveal={{ id: 1, seq: 1 }} />)
+    const { rerender } = render(<Harness launch={launchOptions} clock={fixedNow} reveal={{ id: 1, seq: 1 }} />)
 
     const review = await section('Review requested')
     await waitFor(() => {
@@ -1047,11 +1025,11 @@ describe('InboxView reveal', () => {
 
     // Collapsing the list after the reveal keeps it collapsed.
     await userEvent.click(review.getByRole('button', { name: 'Collapse Review requested' }))
-    rerender(<Harness launch={launchOptions} clock={clock} reveal={{ id: 1, seq: 1 }} />)
+    rerender(<Harness launch={launchOptions} clock={fixedNow} reveal={{ id: 1, seq: 1 }} />)
     expect(review.getByRole('button', { name: 'Expand Review requested' })).toBeInTheDocument()
 
     // Asking again opens it again.
-    rerender(<Harness launch={launchOptions} clock={clock} reveal={{ id: 1, seq: 2 }} />)
+    rerender(<Harness launch={launchOptions} clock={fixedNow} reveal={{ id: 1, seq: 2 }} />)
     await waitFor(() => {
       expect(review.getByRole('button', { name: 'Collapse Review requested' })).toBeInTheDocument()
     })
@@ -1060,7 +1038,7 @@ describe('InboxView reveal', () => {
   it('ignores an item that is in no list', async () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
 
-    render(<Harness launch={launchOptions} clock={clock} reveal={{ id: 99, seq: 1 }} />)
+    render(<Harness launch={launchOptions} clock={fixedNow} reveal={{ id: 99, seq: 1 }} />)
 
     const review = await section('Review requested')
     expect(rowOf(review, 'Add the widget cache')).not.toHaveAttribute('data-highlighted')

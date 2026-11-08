@@ -2,28 +2,13 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { InboxSnapshot } from '../platform'
-import { item, itemResolution, list, profile, prompts, settings, snapshot, variables } from '../test/fixtures'
+import { item, itemResolution, list, prompts, settings, snapshot } from '../test/fixtures'
+import { platform } from '../test/platform'
 import { useLaunchConfig } from './useLaunchConfig'
 
-const platform = vi.hoisted(() => ({
-  getSettings: vi.fn(),
-  listProfiles: vi.fn(),
-  listPrompts: vi.fn(),
-  getDefaultPrompts: vi.fn(),
-  listPromptVariables: vi.fn(),
-  listLaunchDefaults: vi.fn(),
-  resolveLaunches: vi.fn(),
-}))
-
-vi.mock('../platform', () => platform)
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 beforeEach(() => {
-  platform.getSettings.mockResolvedValue(settings())
-  platform.listProfiles.mockResolvedValue([profile()])
-  platform.listPrompts.mockResolvedValue(prompts())
-  platform.getDefaultPrompts.mockResolvedValue({ pr: 1, issue: 4 })
-  platform.listPromptVariables.mockResolvedValue(variables())
-  platform.listLaunchDefaults.mockResolvedValue([])
   platform.resolveLaunches.mockResolvedValue([itemResolution()])
 })
 

@@ -23,7 +23,7 @@ HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
 }
 
 // Unmount everything rendered by a test before the next one starts. Mocks are reset by
-// clearMocks and restoreMocks in vitest.config.ts.
+// mockReset and restoreMocks in vitest.config.ts.
 afterEach(() => {
   cleanup()
 })

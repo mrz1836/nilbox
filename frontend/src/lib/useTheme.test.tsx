@@ -1,15 +1,12 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
+import type { Settings, Theme } from '../platform'
+import { platform } from '../test/platform'
 import type { Result } from './call'
 import { useTheme } from './useTheme'
 
-const platform = vi.hoisted(() => ({
-  getTheme: vi.fn<() => Promise<string>>(),
-  setTheme: vi.fn<(theme: string) => Promise<void>>(),
-}))
-
-vi.mock('../platform', () => platform)
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 // deferred is a promise the test settles.
 function deferred<T>() {
@@ -58,14 +55,9 @@ function fakeWindow(dark = false) {
   }
 }
 
-beforeEach(() => {
-  platform.getTheme.mockReset().mockResolvedValue('system')
-  platform.setTheme.mockReset().mockResolvedValue(undefined)
-})
-
 describe('useTheme', () => {
   it('pins the appearance before the stored theme loads, without a cross-fade', async () => {
-    const stored = deferred<string>()
+    const stored = deferred<Theme>()
     platform.getTheme.mockReturnValue(stored.promise)
     const appearance = fakeWindow(true)
 
@@ -158,8 +150,8 @@ describe('useTheme', () => {
   })
 
   it('keeps a newer choice when an older one fails to store, and stores them in order', async () => {
-    const first = deferred<undefined>()
-    platform.setTheme.mockReturnValueOnce(first.promise).mockResolvedValueOnce(undefined)
+    const first = deferred<Settings>()
+    platform.setTheme.mockReturnValueOnce(first.promise)
     const appearance = fakeWindow(false)
     const { result } = renderHook(() => useTheme(appearance.win))
     await waitFor(() => {
@@ -194,7 +186,7 @@ describe('useTheme', () => {
   })
 
   it('never lets a stored theme that loads late override a choice', async () => {
-    const stored = deferred<string>()
+    const stored = deferred<Theme>()
     platform.getTheme.mockReturnValue(stored.promise)
     const appearance = fakeWindow(false)
     const { result } = renderHook(() => useTheme(appearance.win))

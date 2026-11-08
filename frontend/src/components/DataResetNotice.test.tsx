@@ -5,13 +5,10 @@ import { describe, expect, it, vi } from 'vitest'
 import { brand } from '../generated/brand'
 import type { DataReset, Info } from '../platform'
 import { appInfo } from '../test/fixtures'
+import { platform } from '../test/platform'
 import { DataResetNotice } from './DataResetNotice'
 
-const platform = vi.hoisted(() => ({
-  getAppInfo: vi.fn(),
-}))
-
-vi.mock('../platform', () => platform)
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 // info is the app info the shell reports, with the data reset given, or none at all.
 function info(dataReset?: DataReset | null): Info {

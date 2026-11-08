@@ -7,9 +7,10 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   plugins: [react()],
   test: {
-    // Every test starts with fresh mocks: call history is cleared and vi.spyOn spies are
-    // put back, so no test depends on what an earlier one left behind.
-    clearMocks: true,
+    // Every test starts with fresh mocks: call history is cleared, every mock answers as
+    // it was made to again (the platform fake's defaults, in src/test/platform.tsx), and
+    // vi.spyOn spies are put back, so no test depends on what an earlier one left behind.
+    mockReset: true,
     restoreMocks: true,
     projects: [
       {
@@ -33,7 +34,7 @@ export default defineConfig({
       reportsDirectory: 'coverage',
       // The floor is the measured coverage rounded down, so a change that leaves new code
       // untested fails the gate. Raise it as coverage grows.
-      thresholds: { statements: 98, branches: 93, functions: 98, lines: 98 },
+      thresholds: { statements: 99, branches: 96, functions: 99, lines: 99 },
     },
   },
 })

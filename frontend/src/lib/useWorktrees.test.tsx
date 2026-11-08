@@ -1,28 +1,11 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { mainWorktree, worktreeRepo, worktreesSnapshot } from '../test/fixtures'
+import { platform } from '../test/platform'
 import { useWorktrees } from './useWorktrees'
 
-const platform = vi.hoisted(() => ({
-  listWorktrees: vi.fn(),
-  recentCleanups: vi.fn(),
-  clearCleanups: vi.fn(),
-  removeWorktree: vi.fn(),
-  forceRemoveWorktree: vi.fn(),
-  unlockWorktree: vi.fn(),
-  cleanUpWorktree: vi.fn(),
-  pruneWorktrees: vi.fn(),
-  removeAllCleanWorktrees: vi.fn(),
-  cleanUpFinishedWorktrees: vi.fn(),
-}))
-
-vi.mock('../platform', () => platform)
-
-beforeEach(() => {
-  platform.listWorktrees.mockResolvedValue(worktreesSnapshot())
-  platform.recentCleanups.mockResolvedValue([])
-})
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 describe('useWorktrees', () => {
   it('does nothing when confirmed with nothing waiting', async () => {

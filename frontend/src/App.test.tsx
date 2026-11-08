@@ -1,82 +1,28 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { App } from './App'
 import { brand } from './generated/brand'
 import type { Settings, TerminalID } from './platform'
-import { sendEvent } from './test/events'
 import {
   appInfo,
-  checkResult,
   fileCheck,
   item,
   notification,
   itemResolution,
   list,
   profile,
-  prompts,
   rate,
-  resolution,
   settings,
   snapshot,
   sweepReport,
   unknownRate,
   worktreeCleanup,
-  variables,
   worktreesSnapshot,
 } from './test/fixtures'
+import { emit, listening, platform, renderApp } from './test/platform'
 
-const platform = vi.hoisted(() => ({
-  getAppInfo: vi.fn(),
-  getSettings: vi.fn(),
-  listProfiles: vi.fn(),
-  setTerminal: vi.fn(),
-  setCloneRoot: vi.fn(),
-  setDefaultProfile: vi.fn(),
-  setWorktreeDefault: vi.fn(),
-  getInboxSnapshot: vi.fn(),
-  refreshInbox: vi.fn(),
-  on: vi.fn(),
-  openExternal: vi.fn(),
-  launch: vi.fn(),
-  listWorktrees: vi.fn(),
-  listPrompts: vi.fn(),
-  getDefaultPrompts: vi.fn(),
-  listPromptVariables: vi.fn(),
-  listLaunchDefaults: vi.fn(),
-  resolveLaunches: vi.fn(),
-  resolveLaunch: vi.fn(),
-  previewLaunch: vi.fn(),
-  checkPrompt: vi.fn(),
-  setDefaultPrompt: vi.fn(),
-  listLaunchTargets: vi.fn(),
-  checkLaunchDefaults: vi.fn(),
-  setTrustedBots: vi.fn(),
-  resetTrustedBots: vi.fn(),
-  setSnoozeDays: vi.fn(),
-  snoozeItem: vi.fn(),
-  lastWorktreeSweep: vi.fn(),
-  recentCleanups: vi.fn(),
-  getCollapsedSections: vi.fn(),
-  setSectionCollapsed: vi.fn(),
-  getTheme: vi.fn(),
-  setTheme: vi.fn(),
-  checkItemFiles: vi.fn(),
-  setSensitiveScope: vi.fn(),
-  setSensitiveCategory: vi.fn(),
-  setSensitivePatterns: vi.fn(),
-  matchSensitivePath: vi.fn(),
-  listNotifications: vi.fn(),
-  markNotificationsRead: vi.fn(),
-  clearNotifications: vi.fn(),
-  notificationBannerStatus: vi.fn(),
-  sendTestNotification: vi.fn(),
-  setMenuBar: vi.fn(),
-  setNotificationBanner: vi.fn(),
-}))
-
-vi.mock('./platform', () => platform)
+vi.mock('./platform', () => import('./test/platform').then((fake) => fake.platform))
 
 // stored is every setting as the backend stores it after a change, as each setter returns
 // them.
@@ -84,44 +30,22 @@ function stored(change: Partial<Settings> = {}): Promise<Settings> {
   return Promise.resolve(settings({ defaultProfile: 'work', worktreeDefault: false, ...change }))
 }
 
+// The platform fake answers every call. These answers are the app tests' own: settings
+// that launch with the work profile and outside a worktree, and an inbox of one item.
 beforeEach(() => {
   platform.getSettings.mockImplementation(() => stored())
   platform.listProfiles.mockResolvedValue([profile(), profile({ name: 'work' })])
   platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([item()]) }))
-  platform.on.mockReturnValue(() => undefined)
   platform.setTerminal.mockImplementation((terminal: TerminalID) => stored({ terminal }))
   platform.setDefaultProfile.mockImplementation((defaultProfile: string) => stored({ defaultProfile }))
   platform.setWorktreeDefault.mockImplementation((worktreeDefault: boolean) => stored({ worktreeDefault }))
-  platform.listWorktrees.mockResolvedValue(worktreesSnapshot())
-  platform.getCollapsedSections.mockResolvedValue([])
-  platform.setSectionCollapsed.mockResolvedValue(settings())
-  platform.getTheme.mockResolvedValue('system')
-  platform.setTheme.mockResolvedValue(settings())
-  platform.getAppInfo.mockResolvedValue(appInfo())
-  platform.listPrompts.mockResolvedValue(prompts())
-  platform.getDefaultPrompts.mockResolvedValue({ pr: 1, issue: 4 })
-  platform.listPromptVariables.mockResolvedValue(variables())
-  platform.listLaunchDefaults.mockResolvedValue([])
+  platform.setMenuBar.mockImplementation((menuBar: boolean) => stored({ menuBar }))
   platform.resolveLaunches.mockResolvedValue([
     itemResolution({
       profile: { value: 'work', source: 'app', inherited: 'work', inheritedSource: 'app' },
       worktree: { value: false, source: 'app', inherited: false, inheritedSource: 'app' },
     }),
   ])
-  platform.resolveLaunch.mockResolvedValue(resolution())
-  platform.checkPrompt.mockResolvedValue(checkResult())
-  platform.listLaunchTargets.mockResolvedValue([])
-  platform.checkLaunchDefaults.mockResolvedValue([])
-  platform.setTrustedBots.mockResolvedValue(settings())
-  platform.lastWorktreeSweep.mockResolvedValue(sweepReport({ seq: 0 }))
-  platform.recentCleanups.mockResolvedValue([])
-  platform.listNotifications.mockResolvedValue({ items: [], unread: 0 })
-  platform.markNotificationsRead.mockResolvedValue(undefined)
-  platform.clearNotifications.mockResolvedValue(undefined)
-  platform.notificationBannerStatus.mockResolvedValue('on')
-  platform.sendTestNotification.mockResolvedValue(undefined)
-  platform.setMenuBar.mockImplementation((menuBar: boolean) => stored({ menuBar }))
-  platform.setNotificationBanner.mockResolvedValue(settings())
 })
 
 // rowOptions opens the inbox row's launch options and returns queries scoped to them.
@@ -141,7 +65,7 @@ async function openSettingsFromMenu() {
 
 describe('App', () => {
   it('shows the product name in the toolbar and the tagline under About', async () => {
-    render(<App />)
+    await renderApp()
 
     expect(screen.getByRole('heading', { level: 1, name: brand.name })).toBeInTheDocument()
 
@@ -152,19 +76,18 @@ describe('App', () => {
   })
 
   it('shows the account and the API budget from the inbox in the toolbar', async () => {
-    // The app runs on the real clock, so the reading must reset in the future.
-    const resetAt = new Date(Date.now() + 30 * 60_000).toISOString()
+    // The readings reset at 12:42, after the clock's noon, so they stand as read.
     platform.getInboxSnapshot.mockResolvedValue(
-      snapshot({ rate: { graphql: rate({ resetAt }), core: rate({ remaining: 400, resetAt }), search: unknownRate } }),
+      snapshot({ rate: { graphql: rate(), core: rate({ remaining: 400 }), search: unknownRate } }),
     )
-    render(<App />)
+    await renderApp()
 
     expect(await screen.findByRole('button', { name: 'Account: octo-user' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^API budget: Critical, 8% left \(REST\)/ })).toHaveClass('text-danger')
   })
 
   it('opens on the inbox with launch controls from the settings', async () => {
-    render(<App />)
+    await renderApp()
 
     expect(await screen.findByRole('button', { name: 'Launch options: Review · work' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Open in Claude' })).toBeEnabled()
@@ -176,7 +99,7 @@ describe('App', () => {
   })
 
   it('switches between the inbox and the worktrees view', async () => {
-    render(<App />)
+    await renderApp()
 
     await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
 
@@ -191,7 +114,7 @@ describe('App', () => {
 
   it('keeps the inbox lists collapsed the way they were left, across views', async () => {
     platform.getCollapsedSections.mockResolvedValue(['assigned'])
-    render(<App />)
+    await renderApp()
 
     const review = within(await screen.findByRole('region', { name: 'Review requested' }))
     const assigned = within(screen.getByRole('region', { name: 'Assigned' }))
@@ -220,7 +143,7 @@ describe('App', () => {
         ]),
       }),
     )
-    render(<App />)
+    await renderApp()
 
     const review = within(await screen.findByRole('region', { name: 'Review requested' }))
     await userEvent.click(review.getByRole('tab', { name: 'Dismissed 1' }))
@@ -241,7 +164,7 @@ describe('App', () => {
     platform.getInboxSnapshot.mockResolvedValue(
       snapshot({ reviewRequested: list([item()]), lastRefreshedAt: '2026-06-15T11:55:00Z' }),
     )
-    render(<App />)
+    await renderApp()
     await screen.findByRole('button', { name: 'Add the widget cache' })
 
     await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
@@ -249,7 +172,7 @@ describe('App', () => {
 
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: '2026-06-15T11:58:00Z' }))
     act(() => {
-      sendEvent(platform.on, 'inbox:updated')
+      emit('inbox:updated')
     })
     await vi.waitFor(() => {
       expect(platform.getInboxSnapshot).toHaveBeenCalledTimes(2)
@@ -261,24 +184,28 @@ describe('App', () => {
     expect(screen.queryByText('Achievement unlocked')).not.toBeInTheDocument()
   })
 
-  it('lists the worktrees again each time their view opens', async () => {
-    render(<App />)
+  it('lists the worktrees only once their view opens, and again each time it opens', async () => {
+    await renderApp()
+    await screen.findByRole('region', { name: 'Review requested' })
+
+    expect(platform.listWorktrees).not.toHaveBeenCalled()
 
     await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
-    await screen.findByRole('region', { name: 'example-repo' })
+
+    expect(await screen.findByRole('region', { name: 'example-repo' })).toBeInTheDocument()
     expect(platform.listWorktrees).toHaveBeenCalledOnce()
 
     await userEvent.click(screen.getByRole('button', { name: 'Inbox' }))
+    await screen.findByRole('region', { name: 'Review requested' })
     expect(platform.listWorktrees).toHaveBeenCalledOnce()
 
     await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
-    await vi.waitFor(() => {
-      expect(platform.listWorktrees).toHaveBeenCalledTimes(2)
-    })
+    await screen.findByRole('region', { name: 'example-repo' })
+    expect(platform.listWorktrees).toHaveBeenCalledTimes(2)
   })
 
   it('opens the settings page from the account menu and keeps a saved change', async () => {
-    render(<App />)
+    await renderApp()
     await screen.findByRole('button', { name: 'Open in Claude' })
 
     await openSettingsFromMenu()
@@ -302,7 +229,7 @@ describe('App', () => {
 
   it('shows the stored theme and switches it from Settings → Appearance, without reading the inbox again', async () => {
     platform.getTheme.mockResolvedValue('dark')
-    render(<App />)
+    await renderApp()
     await screen.findByRole('button', { name: 'Open in Claude' })
 
     await vi.waitFor(() => {
@@ -329,7 +256,7 @@ describe('App', () => {
   it('opens Settings → Sensitive files from a card’s sensitive files, and comes back', async () => {
     const outside = item({ trusted: false, trust: 'outside', files: fileCheck() })
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([outside]) }))
-    render(<App />)
+    await renderApp()
 
     await userEvent.click(await screen.findByRole('button', { name: /^Changes sensitive files/ }))
     await userEvent.click(screen.getByRole('button', { name: 'What counts as sensitive' }))
@@ -344,7 +271,7 @@ describe('App', () => {
   it('snoozes for the length chosen in Settings, reached from the snooze menu', async () => {
     platform.setSnoozeDays.mockImplementation((snoozeDays: number) => stored({ snoozeDays }))
     platform.snoozeItem.mockResolvedValue(snapshot({ reviewRequested: list([item()]) }))
-    render(<App />)
+    await renderApp()
 
     expect(await screen.findByRole('button', { name: 'Snooze for 3 days' })).toBeInTheDocument()
 
@@ -367,7 +294,7 @@ describe('App', () => {
   })
 
   it('re-resolves the inbox rows after a settings change', async () => {
-    render(<App />)
+    await renderApp()
     await screen.findByRole('button', { name: 'Launch options: Review · work' })
     expect(platform.resolveLaunches).toHaveBeenCalledOnce()
 
@@ -384,7 +311,7 @@ describe('App', () => {
 
   it('keeps a saved setting that neither launches nor the inbox read, reading nothing again', async () => {
     platform.setSnoozeDays.mockImplementation((snoozeDays: number) => stored({ snoozeDays }))
-    render(<App />)
+    await renderApp()
     await screen.findByRole('button', { name: 'Launch options: Review · work' })
 
     const inboxReads = platform.getInboxSnapshot.mock.calls.length
@@ -405,7 +332,7 @@ describe('App', () => {
     const bot = item({ author: 'dependabot', trust: 'outside', trusted: false, authorIsBot: true })
     platform.getSettings.mockResolvedValue(settings({ trustedBots: [] }))
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([bot]) }))
-    render(<App />)
+    await renderApp()
 
     expect(await screen.findByText('untrusted bot')).toBeInTheDocument()
 
@@ -426,7 +353,7 @@ describe('App', () => {
   })
 
   it('opens the Prompts page and keeps it while switching tabs', async () => {
-    render(<App />)
+    await renderApp()
 
     await userEvent.click(screen.getByRole('button', { name: 'Prompts' }))
 
@@ -444,7 +371,7 @@ describe('App', () => {
   })
 
   it('opens the Prompts page from a row’s launch menu', async () => {
-    render(<App />)
+    await renderApp()
 
     await userEvent.click((await rowOptions()).getByRole('button', { name: 'Manage' }))
 
@@ -453,7 +380,7 @@ describe('App', () => {
   })
 
   it('opens the settings with ⌘, and returns to the view it came from', async () => {
-    render(<App />)
+    await renderApp()
 
     await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
     await userEvent.keyboard('{Meta>},{/Meta}')
@@ -472,11 +399,9 @@ describe('App', () => {
   })
 
   it('counts the worktrees on the Worktrees tab, marks those worth a look, and toasts an automatic cleanup', async () => {
-    const stop = vi.fn()
-    platform.on.mockImplementation((event: string) => (event === 'worktrees:updated' ? stop : () => undefined))
     platform.lastWorktreeSweep.mockResolvedValue(sweepReport({ seq: 1, leftover: 2, worktreeCount: 5 }))
 
-    const { unmount } = render(<App />)
+    const { unmount } = await renderApp()
 
     const tab = screen.getByRole('button', { name: 'Worktrees' })
     await vi.waitFor(() => {
@@ -515,7 +440,7 @@ describe('App', () => {
       }),
     )
     await act(async () => {
-      sendEvent(platform.on, 'worktrees:updated')
+      emit('worktrees:updated')
       await Promise.resolve()
     })
 
@@ -529,7 +454,7 @@ describe('App', () => {
     // An event for a sweep already read changes nothing; a later one with one cleaned
     // worktree says so.
     await act(async () => {
-      sendEvent(platform.on, 'worktrees:updated')
+      emit('worktrees:updated')
       await Promise.resolve()
     })
 
@@ -551,7 +476,7 @@ describe('App', () => {
       }),
     )
     await act(async () => {
-      sendEvent(platform.on, 'worktrees:updated')
+      emit('worktrees:updated')
       await Promise.resolve()
     })
 
@@ -563,14 +488,15 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Close' }))
     expect(screen.queryByText('Cleaned up a finished worktree')).not.toBeInTheDocument()
 
+    expect(listening('worktrees:updated')).toBe(1)
     unmount()
-    expect(stop).toHaveBeenCalledOnce()
+    expect(listening('worktrees:updated')).toBe(0)
   })
 
   it('counts from the Worktrees view and lists again after a sweep', async () => {
     platform.listWorktrees.mockResolvedValue(worktreesSnapshot({ worktreeCount: 6, finishedCount: 2, reviewCount: 1 }))
 
-    render(<App />)
+    await renderApp()
     const tab = screen.getByRole('button', { name: 'Worktrees' })
     await userEvent.click(tab)
 
@@ -583,7 +509,7 @@ describe('App', () => {
     platform.lastWorktreeSweep.mockResolvedValue(sweepReport({ seq: 4, leftover: 0, worktreeCount: 0 }))
     platform.listWorktrees.mockResolvedValue(worktreesSnapshot({ worktreeCount: 0, repos: [] }))
     await act(async () => {
-      sendEvent(platform.on, 'worktrees:updated')
+      emit('worktrees:updated')
       await Promise.resolve()
     })
 
@@ -602,7 +528,7 @@ describe('App', () => {
       snapshot({ reviewRequested: list([item()]), authored: list([mine]), assigned: list([mine]) }),
     )
 
-    render(<App />)
+    await renderApp()
     const tab = screen.getByRole('button', { name: 'Inbox' })
 
     await vi.waitFor(() => {
@@ -615,7 +541,7 @@ describe('App', () => {
       snapshot({ reviewRequested: list([item()]), authored: list([dismissed]), assigned: list([dismissed]) }),
     )
     await act(async () => {
-      sendEvent(platform.on, 'inbox:updated')
+      emit('inbox:updated')
       await Promise.resolve()
     })
 
@@ -639,7 +565,7 @@ describe('App', () => {
     platform.lastWorktreeSweep.mockResolvedValue(sweepReport({ seq: 1, cleaned: [cleaned] }))
     platform.recentCleanups.mockResolvedValue([worktreeCleanup()])
 
-    render(<App />)
+    await renderApp()
 
     expect(await screen.findByText('Cleaned up a finished worktree')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'View' }))
@@ -659,7 +585,7 @@ describe('App', () => {
   })
 
   it('offers no View on a cleanup toast while the Worktrees view is open', async () => {
-    render(<App />)
+    await renderApp()
     await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
     await screen.findByRole('region', { name: 'example-repo' })
 
@@ -680,7 +606,7 @@ describe('App', () => {
       }),
     )
     await act(async () => {
-      sendEvent(platform.on, 'worktrees:updated')
+      emit('worktrees:updated')
       await Promise.resolve()
     })
 
@@ -692,7 +618,7 @@ describe('App', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     platform.lastWorktreeSweep.mockRejectedValue(new Error('backend gone'))
 
-    render(<App />)
+    await renderApp()
 
     await vi.waitFor(() => {
       expect(error).toHaveBeenCalledWith('could not read the latest worktree sweep', expect.any(Error))
@@ -704,7 +630,7 @@ describe('App', () => {
     platform.getAppInfo.mockResolvedValue(
       appInfo({ dataReset: { path: '~/data/app.db.broken-20260102T030405Z', reason: 'corrupt' } }),
     )
-    render(<App />)
+    await renderApp()
 
     expect(
       await screen.findByText(
@@ -722,7 +648,7 @@ describe('App', () => {
 
   it('shows settings that could not be loaded', async () => {
     platform.getSettings.mockRejectedValue(new Error('read the preferences: database is locked'))
-    render(<App />)
+    await renderApp()
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Could not load the launch settings: read the preferences: database is locked',
@@ -735,7 +661,7 @@ describe('App', () => {
     // bar or on a notification.
     function reveal(itemId: number, url = '') {
       act(() => {
-        sendEvent(platform.on, 'inbox:reveal', { itemId, url })
+        emit('inbox:reveal', { itemId, url })
       })
     }
 
@@ -747,7 +673,7 @@ describe('App', () => {
     }
 
     it('opens the inbox at an item the shell asks for, from any view', async () => {
-      render(<App />)
+      await renderApp()
       await screen.findByRole('region', { name: 'Review requested' })
 
       await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
@@ -761,7 +687,7 @@ describe('App', () => {
     })
 
     it('opens an item no longer in the inbox on GitHub, and ignores one it cannot find', async () => {
-      render(<App />)
+      await renderApp()
       await screen.findByRole('region', { name: 'Review requested' })
 
       reveal(99, 'https://github.com/acme-org/example-repo/pull/99')
@@ -772,7 +698,7 @@ describe('App', () => {
     })
 
     it('does not show the item again when the inbox is opened later', async () => {
-      render(<App />)
+      await renderApp()
       await screen.findByRole('region', { name: 'Review requested' })
 
       reveal(1)
@@ -786,7 +712,7 @@ describe('App', () => {
 
     it('opens an entry of the notification history', async () => {
       platform.listNotifications.mockResolvedValue({ items: [notification({ itemId: 1 })], unread: 1 })
-      render(<App />)
+      await renderApp()
       await screen.findByRole('region', { name: 'Review requested' })
 
       await userEvent.click(await screen.findByRole('button', { name: 'Notifications, 1 unread' }))
@@ -799,7 +725,7 @@ describe('App', () => {
     })
 
     it('opens the notification settings from the bell', async () => {
-      render(<App />)
+      await renderApp()
       await screen.findByRole('region', { name: 'Review requested' })
 
       await userEvent.click(screen.getByRole('button', { name: 'Notifications' }))

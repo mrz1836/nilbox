@@ -7,7 +7,7 @@ import { at } from '../test/clock'
 import { account, notification, rate, unknownRate } from '../test/fixtures'
 import { AppHeader, type AppHeaderProps } from './AppHeader'
 
-vi.mock('../platform', () => ({ openExternal: vi.fn() }))
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 function renderHeader(overrides: Partial<AppHeaderProps> = {}) {
   const props: AppHeaderProps = {
@@ -19,7 +19,7 @@ function renderHeader(overrides: Partial<AppHeaderProps> = {}) {
     ...overrides,
   }
 
-  render(<AppHeader {...props} />, { wrapper: at(new Date('2026-06-15T12:00:00Z')) })
+  render(<AppHeader {...props} />, { wrapper: at() })
 
   return props
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { InboxSnapshot } from '../platform'
+import { FIXED_NOW } from '../test/clock'
 import { item, list, snapshot } from '../test/fixtures'
 import {
   earnedQuip,
@@ -15,12 +16,11 @@ import {
 } from './nil'
 import { triageInbox } from './triage'
 
-const now = new Date('2026-06-15T12:00:00Z')
 const refreshed = '2026-06-15T11:55:00Z'
 
 // nil reports whether the inbox is nil as it sorts at now.
 function nil(inbox: InboxSnapshot): boolean {
-  return isInboxNil(inbox, triageInbox(inbox, now))
+  return isInboxNil(inbox, triageInbox(inbox, FIXED_NOW))
 }
 
 describe('isInboxNil', () => {

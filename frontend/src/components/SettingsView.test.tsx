@@ -6,82 +6,23 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { brand } from '../generated/brand'
 import type { Result } from '../lib/call'
 import type { Theme } from '../lib/theme'
-import type {
-  Account,
-  LaunchDefaults,
-  NotificationKind,
-  Profile,
-  Settings,
-  SnoozeRules,
-  TerminalID,
-  WindowSize,
-} from '../platform'
-import { account, launchDefaults, profile, prompts, settings, signedOut } from '../test/fixtures'
+import type { Account, LaunchDefaults, NotificationKind, Profile, Settings } from '../platform'
+import { account, appInfo, launchDefaults, profile, prompts, settings, signedOut } from '../test/fixtures'
+import { platform } from '../test/platform'
 import { SettingsView, type SettingsSection, type SettingsViewProps } from './SettingsView'
 
-const platform = vi.hoisted(() => ({
-  getAppInfo: vi.fn(),
-  openExternal: vi.fn(),
-  setCloneRoot: vi.fn(),
-  setDefaultProfile: vi.fn(),
-  setTerminal: vi.fn(),
-  setWorktreeDefault: vi.fn(),
-  setWorktreeAutoCleanup: vi.fn(),
-  sweepWorktrees: vi.fn(),
-  setSnoozeDays: vi.fn(),
-  setSnoozeWake: vi.fn(),
-  setWindowSize: vi.fn(),
-  setDefaultPrompt: vi.fn(),
-  getSettings: vi.fn(),
-  setTrustedBots: vi.fn(),
-  resetTrustedBots: vi.fn(),
-  listLaunchTargets: vi.fn(),
-  checkLaunchDefaults: vi.fn(),
-  saveLaunchDefaults: vi.fn(),
-  removeLaunchDefaults: vi.fn(),
-  setSensitiveScope: vi.fn(),
-  setSensitiveCategory: vi.fn(),
-  setSensitivePatterns: vi.fn(),
-  matchSensitivePath: vi.fn(),
-  refreshInbox: vi.fn(),
-  setMenuBar: vi.fn(),
-  setNotificationBanner: vi.fn(),
-  notificationBannerStatus: vi.fn(),
-  sendTestNotification: vi.fn(),
-}))
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
-vi.mock('../platform', () => platform)
-
+// A release build, which About describes.
 beforeEach(() => {
-  for (const mock of Object.values(platform)) {
-    mock.mockReset().mockResolvedValue(undefined)
-  }
-
-  platform.getAppInfo.mockResolvedValue({
-    name: brand.name,
-    tagline: brand.tagline,
-    version: 'v1.4.0-2-gabc1234-dirty',
-    release: '1.4.0',
-    build: '42',
-    system: 'macOS 15.1 (24B83)',
-    arch: 'arm64',
-    bugReportUrl: 'https://github.com/acme-org/example-repo/issues/new?template=bug_report.yml',
-  })
-  platform.listLaunchTargets.mockResolvedValue([])
-  platform.checkLaunchDefaults.mockResolvedValue([])
-  platform.notificationBannerStatus.mockResolvedValue('on')
-
-  // Each setter comes back with every setting as stored after its change.
-  const stored = (change: Partial<Settings>) => Promise.resolve(settings(change))
-  platform.setSnoozeDays.mockImplementation((snoozeDays: number) => stored({ snoozeDays }))
-  platform.setSnoozeWake.mockImplementation((snoozeWake: SnoozeRules) => stored({ snoozeWake }))
-  platform.setWindowSize.mockImplementation((windowSize: WindowSize) => stored({ windowSize }))
-  platform.setTerminal.mockImplementation((terminal: TerminalID) => stored({ terminal }))
-  platform.setDefaultProfile.mockImplementation((defaultProfile: string) => stored({ defaultProfile }))
-  platform.setWorktreeDefault.mockImplementation((worktreeDefault: boolean) => stored({ worktreeDefault }))
-  platform.setWorktreeAutoCleanup.mockImplementation((worktreeAutoCleanup: boolean) => stored({ worktreeAutoCleanup }))
-  platform.setCloneRoot.mockImplementation((cloneRoot: string) => stored({ cloneRoot }))
-  platform.setMenuBar.mockImplementation((menuBar: boolean) => stored({ menuBar }))
+  platform.getAppInfo.mockResolvedValue(
+    appInfo({
+      version: 'v1.4.0-2-gabc1234-dirty',
+      release: '1.4.0',
+      build: '42',
+      bugReportUrl: 'https://github.com/acme-org/example-repo/issues/new?template=bug_report.yml',
+    }),
+  )
 })
 
 // StoredSettings keeps the settings each save returns and shows the page with them, as App
@@ -776,12 +717,18 @@ describe('SettingsView', () => {
     await userEvent.keyboard('{Escape}')
     expect(onClose).not.toHaveBeenCalled()
 
-    const used = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
-    used.preventDefault()
-    fireEvent(document.body, used)
+    // Whatever handles Escape before the page, as an open menu does, marks it used.
+    await userEvent.click(document.body)
+    const useEscape = (e: KeyboardEvent) => {
+      e.preventDefault()
+    }
+    document.addEventListener('keydown', useEscape, true)
+    await userEvent.keyboard('{Escape}')
+    document.removeEventListener('keydown', useEscape, true)
     expect(onClose).not.toHaveBeenCalled()
 
-    // An input method composing text owns the key too.
+    // An input method composing text owns the key too. user-event cannot compose text, so
+    // the composing key is sent by hand.
     fireEvent.keyDown(document.body, { key: 'Escape', isComposing: true })
     expect(onClose).not.toHaveBeenCalled()
   })

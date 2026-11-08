@@ -9,11 +9,9 @@ import { at } from '../test/clock'
 import { notification } from '../test/fixtures'
 import { NotificationsMenu } from './NotificationsMenu'
 
-const now = new Date('2026-06-15T12:00:00Z')
-
 // render renders on a clock that stands at now.
 function render(ui: ReactElement) {
-  return renderPlain(ui, { wrapper: at(now) })
+  return renderPlain(ui, { wrapper: at() })
 }
 
 const onOpen = vi.fn()

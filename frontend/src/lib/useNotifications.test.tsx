@@ -1,20 +1,12 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { sendEvent } from '../test/events'
+import type { NotificationLog } from '../platform'
 import { notification } from '../test/fixtures'
+import { emit, listening, platform } from '../test/platform'
 import { useNotifications } from './useNotifications'
 
-const platform = vi.hoisted(() => ({
-  listNotifications: vi.fn(),
-  markNotificationsRead: vi.fn(),
-  clearNotifications: vi.fn(),
-  on: vi.fn(),
-}))
-
-vi.mock('../platform', () => platform)
-
-const stopListening = vi.fn()
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 // deferred is a call the test settles.
 function deferred() {
@@ -30,9 +22,6 @@ function deferred() {
 
 beforeEach(() => {
   platform.listNotifications.mockResolvedValue({ items: [notification()], unread: 1 })
-  platform.markNotificationsRead.mockResolvedValue(undefined)
-  platform.clearNotifications.mockResolvedValue(undefined)
-  platform.on.mockReturnValue(stopListening)
 })
 
 describe('useNotifications', () => {
@@ -48,19 +37,20 @@ describe('useNotifications', () => {
       unread: 1,
     })
     act(() => {
-      sendEvent(platform.on, 'notifications:updated')
+      emit('notifications:updated')
     })
 
     await waitFor(() => {
       expect(result.current.log.items).toHaveLength(2)
     })
 
+    expect(listening('notifications:updated')).toBe(1)
     unmount()
-    expect(stopListening).toHaveBeenCalledOnce()
+    expect(listening('notifications:updated')).toBe(0)
   })
 
   it('shows only the latest load’s answer', async () => {
-    let answerFirst: (log: unknown) => void = () => undefined
+    let answerFirst: (log: NotificationLog) => void = () => undefined
     platform.listNotifications.mockReturnValueOnce(
       new Promise((resolve) => {
         answerFirst = resolve
@@ -70,7 +60,7 @@ describe('useNotifications', () => {
     const { result } = renderHook(() => useNotifications())
     platform.listNotifications.mockResolvedValue({ items: [], unread: 0 })
     act(() => {
-      sendEvent(platform.on, 'notifications:updated')
+      emit('notifications:updated')
     })
 
     await act(async () => {

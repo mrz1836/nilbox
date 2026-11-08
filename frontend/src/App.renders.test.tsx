@@ -1,30 +1,14 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Profiler, type ComponentType } from 'react'
-import { afterAll, describe, expect, it, vi } from 'vitest'
+import { Profiler, type ComponentType, type ReactNode } from 'react'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { App } from './App'
 import type { ItemRowProps } from './components/ItemRow'
 import { triageList } from './lib/triage'
-import type { InboxItem, InboxSnapshot, ItemResolution } from './platform'
-import { sendEvent } from './test/events'
-import {
-  appInfo,
-  checkResult,
-  details,
-  fileCheck,
-  item,
-  itemResolution,
-  list,
-  profile,
-  prompts,
-  rate,
-  settings,
-  snapshot,
-  sweepReport,
-  variables,
-  worktreesSnapshot,
-} from './test/fixtures'
+import type { InboxItem, InboxSnapshot } from './platform'
+import { FIXED_NOW, fromNow } from './test/clock'
+import { details, fileCheck, item, list, rate, snapshot } from './test/fixtures'
+import { emit, platform, renderApp } from './test/platform'
 
 // The render profile: a 300-item inbox, and how much of it renders again for a minute
 // tick, a background update that changes one item, collapsing a list, and leaving the
@@ -36,16 +20,6 @@ import {
 // compiled reports a run through the React Compiler.
 const compiled = import.meta.env.REACT_COMPILER === '1'
 
-// The window's clock is faked before anything is imported, so the shared clock and the
-// fixture agree on the time, and the minute tick can be stepped.
-const base = vi.hoisted(() => {
-  const at = new Date('2026-06-15T12:00:00Z')
-
-  vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'], now: at })
-
-  return at.getTime()
-})
-
 // counts are what the profile records: the rows rendered, the rows mounted, the commits,
 // and the time React spent rendering.
 const counts = vi.hoisted(() => ({ rows: 0, mounts: 0, commits: 0, ms: 0 }))
@@ -56,11 +30,17 @@ vi.mock('./components/ItemRow', async (importOriginal) => {
   const { createElement, memo, useState } = await import('react')
   const Row = (actual.ItemRow as unknown as { type: ComponentType<ItemRowProps> }).type
 
+  // counted records a render of a row. The count is kept outside React on purpose: it is
+  // how often React renders the row.
+  const counted = () => {
+    counts.rows += 1
+  }
+
   function CountedRow(props: ItemRowProps) {
     useState(() => {
       counts.mounts += 1
     })
-    counts.rows += 1
+    counted()
 
     return createElement(Row, props)
   }
@@ -68,31 +48,14 @@ vi.mock('./components/ItemRow', async (importOriginal) => {
   return { ...actual, ItemRow: memo(CountedRow) }
 })
 
-const platform = vi.hoisted(() => ({
-  getAppInfo: vi.fn(),
-  getSettings: vi.fn(),
-  listProfiles: vi.fn(),
-  getInboxSnapshot: vi.fn(),
-  refreshInbox: vi.fn(),
-  on: vi.fn(),
-  openExternal: vi.fn(),
-  listWorktrees: vi.fn(),
-  listPrompts: vi.fn(),
-  getDefaultPrompts: vi.fn(),
-  listPromptVariables: vi.fn(),
-  listLaunchDefaults: vi.fn(),
-  resolveLaunches: vi.fn(),
-  checkPrompt: vi.fn(),
-  lastWorktreeSweep: vi.fn(),
-  recentCleanups: vi.fn(),
-  getCollapsedSections: vi.fn(),
-  setSectionCollapsed: vi.fn(),
-  getTheme: vi.fn(),
-  listNotifications: vi.fn(),
-  notificationBannerStatus: vi.fn(),
-}))
+vi.mock('./platform', () => import('./test/platform').then((fake) => fake.platform))
 
-vi.mock('./platform', () => platform)
+// The window's clock reads a faked time, starting at the fixtures' FIXED_NOW, so the
+// minute tick can be stepped. renderApp makes the clock as the window renders, once the
+// timers are faked.
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'], now: FIXED_NOW })
+})
 
 afterAll(() => {
   vi.useRealTimers()
@@ -100,9 +63,9 @@ afterAll(() => {
 
 const minute = 60_000
 
-// ago is a time minutes before the fixture's now.
+// ago is a time minutes before FIXED_NOW.
 function ago(minutes: number): string {
-  return new Date(base - minutes * minute).toISOString()
+  return fromNow(-minutes * minute).toISOString()
 }
 
 // row is one of the inbox's items. About one in ten moved within the hour, so a minute
@@ -140,7 +103,7 @@ function inbox(change: (item: InboxItem) => InboxItem = (i) => i): InboxSnapshot
 
 // shown counts the rows a list shows in its own tab.
 function shown(key: 'reviewRequested' | 'authored' | 'assigned'): number {
-  return triageList(inbox()[key], new Date(base)).inbox.length
+  return triageList(inbox()[key], FIXED_NOW).inbox.length
 }
 
 // mountedRows counts the inbox rows in the document, showing or hidden.
@@ -178,36 +141,31 @@ async function measure(run: () => Promise<void> | void): Promise<Measure> {
   return { rows: counts.rows, mounts: counts.mounts, commits: counts.commits, ms: Math.round(counts.ms) }
 }
 
-// setUp answers every call the window makes, and returns a way to change the inbox the
-// next read returns.
+// setUp answers the window's reads of the inbox with a 300-item inbox, and returns a way
+// to change the inbox the next read returns. The platform fake answers everything else.
 function setUp() {
   // Each answer is a fresh copy, as a bound call returns freshly decoded JSON.
   let current = inbox()
   platform.getInboxSnapshot.mockImplementation(() => Promise.resolve(structuredClone(current)))
-  platform.resolveLaunches.mockImplementation((ids: number[]) =>
-    Promise.resolve(ids.map((itemId): ItemResolution => itemResolution({ itemId }))),
-  )
-  platform.getSettings.mockResolvedValue(settings())
-  platform.listProfiles.mockResolvedValue([profile()])
-  platform.on.mockReturnValue(() => undefined)
-  platform.listWorktrees.mockResolvedValue(worktreesSnapshot())
-  platform.getCollapsedSections.mockResolvedValue([])
-  platform.setSectionCollapsed.mockResolvedValue(settings())
-  platform.getTheme.mockResolvedValue('system')
-  platform.getAppInfo.mockResolvedValue(appInfo())
-  platform.listPrompts.mockResolvedValue(prompts())
-  platform.getDefaultPrompts.mockResolvedValue({ pr: 1, issue: 4 })
-  platform.listPromptVariables.mockResolvedValue(variables())
-  platform.listLaunchDefaults.mockResolvedValue([])
-  platform.checkPrompt.mockResolvedValue(checkResult())
-  platform.lastWorktreeSweep.mockResolvedValue(sweepReport({ seq: 0 }))
-  platform.recentCleanups.mockResolvedValue([])
-  platform.listNotifications.mockResolvedValue({ items: [], unread: 0 })
-  platform.notificationBannerStatus.mockResolvedValue('on')
 
   return (next: InboxSnapshot) => {
     current = next
   }
+}
+
+// Profiled records each commit of the window, and the time React spent rendering it.
+function Profiled({ children }: { children: ReactNode }) {
+  return (
+    <Profiler
+      id="app"
+      onRender={(_id, _phase, duration) => {
+        counts.commits += 1
+        counts.ms += duration
+      }}
+    >
+      {children}
+    </Profiler>
+  )
 }
 
 // wait is how long a step may take: rendering hundreds of rows is slow in jsdom, more so
@@ -222,17 +180,7 @@ describe('App rendering', () => {
     const rows = shown('reviewRequested') + shown('authored') + shown('assigned')
 
     const mounted = await measure(async () => {
-      render(
-        <Profiler
-          id="app"
-          onRender={(_id, _phase, duration) => {
-            counts.commits += 1
-            counts.ms += duration
-          }}
-        >
-          <App />
-        </Profiler>,
-      )
+      await renderApp({ now: () => new Date(), wrapper: Profiled })
       await screen.findByText('Item 1', {}, wait)
     })
 
@@ -252,7 +200,7 @@ describe('App rendering', () => {
     answer(inbox((i) => (i.id === 50 ? { ...i, title: 'Item 50, renamed' } : i)))
     const update = await measure(async () => {
       act(() => {
-        sendEvent(platform.on, 'inbox:updated')
+        emit('inbox:updated')
       })
       await screen.findByText('Item 50, renamed', {}, wait)
     })

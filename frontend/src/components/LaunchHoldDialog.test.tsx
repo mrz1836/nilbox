@@ -3,11 +3,10 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { agentGroup, launchHold } from '../test/fixtures'
+import { platform } from '../test/platform'
 import { LaunchHoldDialog } from './LaunchHoldDialog'
 
-const platform = vi.hoisted(() => ({ openExternal: vi.fn() }))
-
-vi.mock('../platform', () => platform)
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 describe('LaunchHoldDialog', () => {
   it('confirms or cancels', async () => {

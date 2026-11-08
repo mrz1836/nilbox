@@ -4,14 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Settings } from '../../platform'
 import { settings } from '../../test/fixtures'
+import { platform } from '../../test/platform'
 import { TrustSection } from './TrustSection'
 
-const platform = vi.hoisted(() => ({
-  setTrustedBots: vi.fn(),
-  resetTrustedBots: vi.fn(),
-}))
-
-vi.mock('../../platform', () => platform)
+vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
 
 function renderTrust(current: Settings = settings()) {
   const onSaved = vi.fn()
@@ -28,7 +24,6 @@ function bots() {
 beforeEach(() => {
   // Each change comes back with the settings as stored.
   platform.setTrustedBots.mockResolvedValue(settings({ trustedBots: ['dependabot', 'my-release-bot'] }))
-  platform.resetTrustedBots.mockResolvedValue(settings())
 })
 
 describe('TrustSection', () => {

@@ -4,11 +4,10 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { Account } from '../platform'
 import { account, signedOut } from '../test/fixtures'
+import { platform } from '../test/platform'
 import { AccountMenu } from './AccountMenu'
 
-const platform = vi.hoisted(() => ({ openExternal: vi.fn() }))
-
-vi.mock('../platform', () => platform)
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 function renderMenu(who: Account | null = account()) {
   const onOpenSettings = vi.fn()

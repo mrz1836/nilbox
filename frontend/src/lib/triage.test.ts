@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { WakeReview } from '../platform'
+import { FIXED_NOW, fromNow } from '../test/clock'
 import { item, list, snapshot } from '../test/fixtures'
 import {
   applyTriage,
@@ -20,12 +21,11 @@ import {
   wakeSummary,
 } from './triage'
 
-// Tests run in UTC (vitest.config.ts); now is a Monday.
-const now = new Date('2026-06-15T12:00:00Z')
+// Tests run in UTC (vitest.config.ts); FIXED_NOW is a Monday.
 
 // at returns the RFC 3339 time hours after now (before, when negative).
 function at(hours: number): string {
-  return new Date(now.getTime() + hours * 3_600_000).toISOString()
+  return fromNow(hours * 3_600_000).toISOString()
 }
 
 describe('triage state', () => {
@@ -39,23 +39,23 @@ describe('triage state', () => {
     expect(isDismissed(dismissed)).toBe(true)
     expect(isDismissed(snoozed)).toBe(false)
 
-    expect(isSnoozed(snoozed, now)).toBe(true)
-    expect(isSnoozed(back, now)).toBe(false)
-    expect(isSnoozed(plainItem, now)).toBe(false)
+    expect(isSnoozed(snoozed, FIXED_NOW)).toBe(true)
+    expect(isSnoozed(back, FIXED_NOW)).toBe(false)
+    expect(isSnoozed(plainItem, FIXED_NOW)).toBe(false)
 
-    expect(isBackFromSnooze(back, now)).toBe(true)
-    expect(isBackFromSnooze(longBack, now)).toBe(false)
-    expect(isBackFromSnooze(snoozed, now)).toBe(false)
-    expect(isBackFromSnooze(plainItem, now)).toBe(false)
-    expect(isBackFromSnooze(item({ snoozedUntil: at(-1), dismissedAt: at(-1) }), now)).toBe(false)
+    expect(isBackFromSnooze(back, FIXED_NOW)).toBe(true)
+    expect(isBackFromSnooze(longBack, FIXED_NOW)).toBe(false)
+    expect(isBackFromSnooze(snoozed, FIXED_NOW)).toBe(false)
+    expect(isBackFromSnooze(plainItem, FIXED_NOW)).toBe(false)
+    expect(isBackFromSnooze(item({ snoozedUntil: at(-1), dismissedAt: at(-1) }), FIXED_NOW)).toBe(false)
   })
 
   it('ends a snooze exactly when its time comes', () => {
-    const snoozed = item({ snoozedUntil: now.toISOString() })
+    const snoozed = item({ snoozedUntil: FIXED_NOW.toISOString() })
 
-    expect(isSnoozed(snoozed, new Date(now.getTime() - 1))).toBe(true)
-    expect(isSnoozed(snoozed, now)).toBe(false)
-    expect(isBackFromSnooze(snoozed, now)).toBe(true)
+    expect(isSnoozed(snoozed, fromNow(-1))).toBe(true)
+    expect(isSnoozed(snoozed, FIXED_NOW)).toBe(false)
+    expect(isBackFromSnooze(snoozed, FIXED_NOW)).toBe(true)
   })
 })
 
@@ -68,7 +68,7 @@ describe('triageList', () => {
     const e = item({ id: 5, dismissedAt: at(-1) })
     const f = item({ id: 6, snoozedUntil: at(-2) })
 
-    const triaged = triageList(list([a, b, c, d, e, f], 40), now)
+    const triaged = triageList(list([a, b, c, d, e, f], 40), FIXED_NOW)
 
     expect(triaged.inbox.map((i) => i.id)).toEqual([1, 6])
     expect(triaged.snoozed.map((i) => i.id)).toEqual([4, 2])
@@ -77,7 +77,7 @@ describe('triageList', () => {
   })
 
   it('never counts fewer than the inbox tab shows', () => {
-    const triaged = triageList(list([item({ id: 1 }), item({ id: 2, dismissedAt: at(-1) })], 0), now)
+    const triaged = triageList(list([item({ id: 1 }), item({ id: 2, dismissedAt: at(-1) })], 0), FIXED_NOW)
 
     expect(triaged.total).toBe(1)
   })
@@ -96,10 +96,10 @@ describe('triageInbox', () => {
       assigned: list([mine, later]),
     })
 
-    const triaged = triageInbox(inbox, now)
+    const triaged = triageInbox(inbox, FIXED_NOW)
 
-    expect(triaged.lists.reviewRequested).toEqual(triageList(inbox.reviewRequested, now))
-    expect(triaged.lists.authored).toEqual(triageList(inbox.authored, now))
+    expect(triaged.lists.reviewRequested).toEqual(triageList(inbox.reviewRequested, FIXED_NOW))
+    expect(triaged.lists.authored).toEqual(triageList(inbox.authored, FIXED_NOW))
     expect(triaged.lists.assigned.inbox).toEqual([mine])
     expect(triaged.count).toBe(3)
     // An item set aside in two lists counts once.
@@ -114,7 +114,7 @@ describe('triageInbox', () => {
         reviewRequested: list([item({ id: 1, snoozedUntil: at(48) })]),
         authored: list([item({ id: 2, snoozedUntil: at(3) })]),
       }),
-      now,
+      FIXED_NOW,
     )
 
     expect(triaged.snoozed).toBe(2)
@@ -122,7 +122,7 @@ describe('triageInbox', () => {
   })
 
   it('is empty for an empty inbox', () => {
-    expect(triageInbox(snapshot(), now)).toMatchObject({ count: 0, snoozed: 0, dismissed: 0, nextBack: null })
+    expect(triageInbox(snapshot(), FIXED_NOW)).toMatchObject({ count: 0, snoozed: 0, dismissed: 0, nextBack: null })
   })
 })
 
@@ -133,21 +133,21 @@ describe('triageTime', () => {
   })
 
   it('is the latest snooze end already passed, which sorts the inbox as now does', () => {
-    expect(triageTime(inbox, now)).toBe(Date.parse(at(-1)))
-    expect(triageInbox(inbox, new Date(triageTime(inbox, now)))).toEqual(triageInbox(inbox, now))
+    expect(triageTime(inbox, FIXED_NOW)).toBe(Date.parse(at(-1)))
+    expect(triageInbox(inbox, new Date(triageTime(inbox, FIXED_NOW)))).toEqual(triageInbox(inbox, FIXED_NOW))
   })
 
   it('stays put until the clock passes the next snooze end', () => {
-    const soon = new Date(now.getTime() + 3_600_000)
+    const soon = fromNow(3_600_000)
     const past = new Date(Date.parse(at(2)))
 
-    expect(triageTime(inbox, soon)).toBe(triageTime(inbox, now))
+    expect(triageTime(inbox, soon)).toBe(triageTime(inbox, FIXED_NOW))
     expect(triageTime(inbox, past)).toBe(Date.parse(at(2)))
   })
 
   it('is 0 when no snooze has ended', () => {
     expect(triageTime(inbox, new Date(at(-5)))).toBe(0)
-    expect(triageTime(snapshot(), now)).toBe(0)
+    expect(triageTime(snapshot(), FIXED_NOW)).toBe(0)
   })
 })
 
@@ -158,8 +158,8 @@ describe('snooze lengths', () => {
   })
 
   it('ends a snooze at the same time of day', () => {
-    expect(snoozeEnd(now, 3).toISOString()).toBe('2026-06-18T12:00:00.000Z')
-    expect(now.toISOString()).toBe('2026-06-15T12:00:00.000Z')
+    expect(snoozeEnd(FIXED_NOW, 3).toISOString()).toBe('2026-06-18T12:00:00.000Z')
+    expect(FIXED_NOW.toISOString()).toBe('2026-06-15T12:00:00.000Z')
   })
 })
 
@@ -201,18 +201,18 @@ describe('applyTriage', () => {
   it('changes the item in every list that holds it, keeping its place', () => {
     const inbox = snapshot({ reviewRequested: list([newest, older]), assigned: list([older]) })
 
-    const next = applyTriage(inbox, { id: 3, set: { dismissedAt: now.toISOString() } })
+    const next = applyTriage(inbox, { id: 3, set: { dismissedAt: FIXED_NOW.toISOString() } })
 
     expect(ids(next.reviewRequested)).toEqual([2, 3])
-    expect(findItem(next, 3)?.dismissedAt).toBe(now.toISOString())
-    expect(next.assigned.items[0]?.dismissedAt).toBe(now.toISOString())
+    expect(findItem(next, 3)?.dismissedAt).toBe(FIXED_NOW.toISOString())
+    expect(next.assigned.items[0]?.dismissedAt).toBe(FIXED_NOW.toISOString())
     expect(next.authored).toBe(inbox.authored)
   })
 
   it('moves a newly pinned item to the top, as the most recently pinned', () => {
     const inbox = snapshot({ reviewRequested: list([pinned, newest, older]) })
 
-    const next = applyTriage(inbox, { id: 3, set: { pinnedAt: now.toISOString() } })
+    const next = applyTriage(inbox, { id: 3, set: { pinnedAt: FIXED_NOW.toISOString() } })
 
     expect(ids(next.reviewRequested)).toEqual([3, 1, 2])
   })
@@ -222,13 +222,13 @@ describe('applyTriage', () => {
 
     expect(ids(applyTriage(inbox, { id: 1, set: { pinnedAt: '' } }).reviewRequested)).toEqual([2, 4, 1])
 
-    const tied = snapshot({ reviewRequested: list([{ ...older, pinnedAt: now.toISOString() }, newest, oldest]) })
+    const tied = snapshot({ reviewRequested: list([{ ...older, pinnedAt: FIXED_NOW.toISOString() }, newest, oldest]) })
 
     expect(ids(applyTriage(tied, { id: 3, set: { pinnedAt: '' } }).reviewRequested)).toEqual([2, 4, 3])
   })
 
   it('puts an unpinned item last when everything else lists before it', () => {
-    const inbox = snapshot({ reviewRequested: list([{ ...oldest, id: 9, pinnedAt: now.toISOString() }, newest]) })
+    const inbox = snapshot({ reviewRequested: list([{ ...oldest, id: 9, pinnedAt: FIXED_NOW.toISOString() }, newest]) })
 
     expect(ids(applyTriage(inbox, { id: 9, set: { pinnedAt: '' } }).reviewRequested)).toEqual([2, 9])
   })
@@ -248,7 +248,7 @@ describe('findItem and tabOf', () => {
   })
 
   it('finds the tab that holds an item', () => {
-    const triaged = triageList(list([fresh, snoozed, dismissed]), now)
+    const triaged = triageList(list([fresh, snoozed, dismissed]), FIXED_NOW)
 
     expect(tabOf(triaged, 1)).toBe('inbox')
     expect(tabOf(triaged, 2)).toBe('snoozed')

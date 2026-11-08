@@ -4,17 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Settings } from '../../platform'
 import { settings } from '../../test/fixtures'
+import { platform } from '../../test/platform'
 import { SensitiveFilesSection } from './SensitiveFilesSection'
 
-const platform = vi.hoisted(() => ({
-  setSensitiveScope: vi.fn(),
-  setSensitiveCategory: vi.fn(),
-  setSensitivePatterns: vi.fn(),
-  matchSensitivePath: vi.fn(),
-  refreshInbox: vi.fn(),
-}))
-
-vi.mock('../../platform', () => platform)
+vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
 
 // withFiles returns the settings with the sensitive-file choices changed.
 function withFiles(change: Partial<Settings['sensitiveFiles']>): Settings {
@@ -40,8 +33,6 @@ beforeEach(() => {
   platform.setSensitiveScope.mockResolvedValue(settings())
   platform.setSensitiveCategory.mockResolvedValue(settings())
   platform.setSensitivePatterns.mockResolvedValue(settings())
-  platform.refreshInbox.mockResolvedValue(undefined)
-  platform.matchSensitivePath.mockResolvedValue({ sensitive: false, category: '', label: '', level: '', pattern: '' })
 })
 
 describe('SensitiveFilesSection', () => {

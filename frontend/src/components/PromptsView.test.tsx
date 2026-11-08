@@ -5,19 +5,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Prompt, PromptCheckRequest } from '../platform'
 import { checkResult, item, prompt, prompts, variables } from '../test/fixtures'
+import { platform } from '../test/platform'
 import { PromptsView } from './PromptsView'
 
-const platform = vi.hoisted(() => ({
-  checkPrompt: vi.fn(),
-  createPrompt: vi.fn(),
-  updatePrompt: vi.fn(),
-  deletePrompt: vi.fn(),
-  duplicatePrompt: vi.fn(),
-  resetPrompt: vi.fn(),
-  setDefaultPrompt: vi.fn(),
-}))
-
-vi.mock('../platform', () => platform)
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 // next is the library the next reload brings in, when a test changes it.
 let next: Prompt[] | null = null
@@ -57,7 +48,7 @@ function library() {
 
 // lastCheck returns the request of the latest check.
 function lastCheck(): PromptCheckRequest {
-  const call = platform.checkPrompt.mock.lastCall as [PromptCheckRequest] | undefined
+  const call = platform.checkPrompt.mock.lastCall
 
   if (call === undefined) {
     throw new Error('no check yet')
@@ -75,21 +66,6 @@ async function waitForCheck() {
 
 beforeEach(() => {
   next = null
-  platform.checkPrompt.mockResolvedValue(checkResult())
-
-  for (const fn of [platform.createPrompt, platform.updatePrompt, platform.duplicatePrompt, platform.resetPrompt]) {
-    fn.mockImplementation((idOrInput: unknown, input?: Record<string, unknown>) =>
-      Promise.resolve(
-        prompt({
-          ...(input ?? (idOrInput as Record<string, unknown>)),
-          id: typeof idOrInput === 'number' ? idOrInput : 9,
-        }),
-      ),
-    )
-  }
-
-  platform.deletePrompt.mockResolvedValue(undefined)
-  platform.setDefaultPrompt.mockResolvedValue(undefined)
 })
 
 describe('PromptsView', () => {

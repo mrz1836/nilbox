@@ -1,9 +1,10 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { LaunchPreview } from '../platform'
 import {
+  cloneTarget,
   item,
   itemResolution,
   launchDefaults,
@@ -14,19 +15,10 @@ import {
   prompts,
   resolution,
 } from '../test/fixtures'
+import { platform } from '../test/platform'
 import { LaunchControls, type LaunchControlsProps } from './LaunchControls'
 
-const platform = vi.hoisted(() => ({
-  launch: vi.fn(),
-  resolveLaunch: vi.fn(),
-  previewLaunch: vi.fn(),
-  saveLaunchDefaults: vi.fn(),
-  cloneTarget: vi.fn(),
-  cloneRepo: vi.fn(),
-  openExternal: vi.fn(),
-}))
-
-vi.mock('../platform', () => platform)
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 const profiles = [profile(), profile({ name: 'work', configDir: '~/.claude_work', folder: '~/.claude_work' })]
 
@@ -68,20 +60,8 @@ async function openMenu() {
   return within(screen.getByRole('dialog', { name: 'Launch options' }))
 }
 
-beforeEach(() => {
-  platform.launch.mockResolvedValue(launchResult())
-  platform.resolveLaunch.mockResolvedValue(resolution())
-  platform.previewLaunch.mockResolvedValue(launchPreview())
-  platform.saveLaunchDefaults.mockResolvedValue(launchDefaults())
-  platform.cloneTarget.mockResolvedValue(cloned)
-  platform.cloneRepo.mockResolvedValue(cloned)
-})
-
 // missingClone is where a repository with no local clone would be cloned.
-const missingClone = { repo: 'acme-org/example-repo', cloned: false, dir: '~/projects/example-repo', taken: false }
-
-// cloned is the same repository once it has a clone.
-const cloned = { ...missingClone, cloned: true }
+const missingClone = cloneTarget({ cloned: false })
 
 // noCloneError is how a launch with no local clone fails.
 const noCloneError = new Error('no local clone of acme-org/example-repo under ~/projects')

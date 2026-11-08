@@ -4,16 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { LaunchDefaults } from '../../platform'
 import { launchDefaults, profile, prompts, settings } from '../../test/fixtures'
+import { platform } from '../../test/platform'
 import { LaunchDefaultsSection } from './LaunchDefaultsSection'
 
-const platform = vi.hoisted(() => ({
-  listLaunchTargets: vi.fn(),
-  checkLaunchDefaults: vi.fn(),
-  saveLaunchDefaults: vi.fn(),
-  removeLaunchDefaults: vi.fn(),
-}))
-
-vi.mock('../../platform', () => platform)
+vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
 
 // nth returns the i-th element of a query's results, failing when there is none.
 function nth(list: HTMLElement[], i: number): HTMLElement {
@@ -46,9 +40,6 @@ beforeEach(() => {
     { owner: 'acme-org', name: '', items: 3 },
     { owner: 'acme-org', name: 'api', items: 2 },
   ])
-  platform.checkLaunchDefaults.mockResolvedValue([])
-  platform.saveLaunchDefaults.mockResolvedValue(launchDefaults())
-  platform.removeLaunchDefaults.mockResolvedValue(undefined)
 })
 
 describe('LaunchDefaultsSection', () => {

@@ -7,8 +7,6 @@ import { at } from '../test/clock'
 import { rate, unknownRate } from '../test/fixtures'
 import { BudgetMenu } from './BudgetMenu'
 
-const now = new Date('2026-06-15T12:00:00Z')
-
 const healthy: Gauge = { graphql: rate(), core: rate({ remaining: 4990 }), search: rate({ limit: 30, remaining: 30 }) }
 
 function renderMenu(gauge: Gauge | null) {
@@ -17,7 +15,7 @@ function renderMenu(gauge: Gauge | null) {
       <BudgetMenu gauge={gauge} />
       <button type="button">Elsewhere</button>
     </>,
-    { wrapper: at(now) },
+    { wrapper: at() },
   )
 }
 

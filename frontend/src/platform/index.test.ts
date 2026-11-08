@@ -8,7 +8,7 @@ import * as platform from './index'
 const mocks = vi.hoisted(() => ({
   inbox: { CheckFiles: vi.fn() },
   settings: { SetWindowSize: vi.fn() },
-  events: { On: vi.fn() },
+  events: { On: vi.fn<(name: string, callback: (event: { data: unknown }) => void) => () => void>() },
   browser: { OpenURL: vi.fn() },
   window: { SetSize: vi.fn() },
 }))
@@ -29,13 +29,17 @@ const url = 'https://github.com/acme-org/example-repo/pull/7'
 describe('on', () => {
   it('passes each event’s data on, and returns the function that stops listening', () => {
     const unsubscribe = vi.fn()
-    mocks.events.On.mockReturnValue(unsubscribe)
+    let handler: (event: { data: unknown }) => void = () => undefined
+    mocks.events.On.mockImplementation((_name, callback) => {
+      handler = callback
+
+      return unsubscribe
+    })
     const listener = vi.fn()
 
     const stop = platform.on('inbox:reveal', listener)
 
     expect(mocks.events.On).toHaveBeenCalledExactlyOnceWith('inbox:reveal', expect.any(Function))
-    const handler = mocks.events.On.mock.calls[0]?.[1] as (event: { data: unknown }) => void
     handler({ data: { itemId: 7, url } })
     handler({ data: { itemId: 0, url } })
 

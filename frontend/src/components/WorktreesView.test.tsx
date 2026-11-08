@@ -1,57 +1,21 @@
 import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { App } from '../App'
+import { fixedNow } from '../test/clock'
 import {
-  appInfo,
   finishedWorktree,
   linkedItem,
   mainWorktree,
-  profile,
-  settings,
-  snapshot,
-  sweepReport,
   worktree,
   worktreeCleanup,
   worktreeRepo,
   worktreesSnapshot,
 } from '../test/fixtures'
+import { platform } from '../test/platform'
 import { WorktreesView } from './WorktreesView'
 
-const platform = vi.hoisted(() => ({
-  getAppInfo: vi.fn(),
-  getSettings: vi.fn(),
-  listProfiles: vi.fn(),
-  setTerminal: vi.fn(),
-  setCloneRoot: vi.fn(),
-  getInboxSnapshot: vi.fn(),
-  refreshInbox: vi.fn(),
-  on: vi.fn(),
-  openExternal: vi.fn(),
-  launch: vi.fn(),
-  listWorktrees: vi.fn(),
-  removeWorktree: vi.fn(),
-  forceRemoveWorktree: vi.fn(),
-  removeAllCleanWorktrees: vi.fn(),
-  pruneWorktrees: vi.fn(),
-  unlockWorktree: vi.fn(),
-  cleanUpWorktree: vi.fn(),
-  cleanUpFinishedWorktrees: vi.fn(),
-  lastWorktreeSweep: vi.fn(),
-  recentCleanups: vi.fn(),
-  clearCleanups: vi.fn(),
-  getCollapsedSections: vi.fn(),
-  setSectionCollapsed: vi.fn(),
-  getTheme: vi.fn(),
-  setTheme: vi.fn(),
-  listNotifications: vi.fn(),
-}))
-
-vi.mock('../platform', () => platform)
-
-const now = new Date('2026-06-15T12:00:00Z')
-const clock = () => now
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 const repoPath = '/home/user/projects/example-repo'
 const linkedPath = '/home/user/projects/example-repo/.claude/worktrees/pr-7'
@@ -72,56 +36,13 @@ async function repo(name: string) {
   return within(await screen.findByRole('region', { name }))
 }
 
-beforeEach(() => {
-  platform.getAppInfo.mockResolvedValue(appInfo())
-  platform.getSettings.mockResolvedValue(settings())
-  platform.listProfiles.mockResolvedValue([profile()])
-  platform.getInboxSnapshot.mockResolvedValue(snapshot())
-  platform.on.mockReturnValue(() => undefined)
-  platform.listWorktrees.mockResolvedValue(worktreesSnapshot())
-  platform.getCollapsedSections.mockResolvedValue([])
-  platform.getTheme.mockResolvedValue('system')
-  platform.setSectionCollapsed.mockResolvedValue(undefined)
-  platform.removeWorktree.mockResolvedValue(undefined)
-  platform.forceRemoveWorktree.mockResolvedValue(undefined)
-  platform.removeAllCleanWorktrees.mockResolvedValue([])
-  platform.pruneWorktrees.mockResolvedValue(undefined)
-  platform.unlockWorktree.mockResolvedValue(undefined)
-  platform.cleanUpFinishedWorktrees.mockResolvedValue([])
-  platform.lastWorktreeSweep.mockResolvedValue(sweepReport({ seq: 0 }))
-  platform.recentCleanups.mockResolvedValue([])
-  platform.clearCleanups.mockResolvedValue(undefined)
-  platform.listNotifications.mockResolvedValue({ items: [], unread: 0 })
-})
-
 afterEach(() => {
   vi.useRealTimers()
 })
 
 describe('WorktreesView', () => {
-  it('loads only when opened', async () => {
-    render(<App />)
-    await screen.findByRole('region', { name: 'Review requested' })
-
-    expect(platform.listWorktrees).not.toHaveBeenCalled()
-
-    await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
-
-    expect(await screen.findByRole('region', { name: 'example-repo' })).toBeInTheDocument()
-    expect(platform.listWorktrees).toHaveBeenCalledOnce()
-
-    // Leaving the view unmounts it; opening it again lists afresh.
-    await userEvent.click(screen.getByRole('button', { name: 'Inbox' }))
-    await screen.findByRole('region', { name: 'Review requested' })
-    expect(platform.listWorktrees).toHaveBeenCalledOnce()
-
-    await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
-    await screen.findByRole('region', { name: 'example-repo' })
-    expect(platform.listWorktrees).toHaveBeenCalledTimes(2)
-  })
-
   it('lists again only when Refresh is clicked, never on a timer', async () => {
-    render(<WorktreesView clock={clock} />)
+    render(<WorktreesView clock={fixedNow} />)
     await screen.findByRole('region', { name: 'example-repo' })
 
     vi.useFakeTimers()
@@ -179,7 +100,7 @@ describe('WorktreesView', () => {
         ],
       }),
     )
-    render(<WorktreesView clock={clock} />)
+    render(<WorktreesView clock={fixedNow} />)
 
     const example = await repo('example-repo')
     expect(example.getByText('4 worktrees')).toBeInTheDocument()
@@ -225,7 +146,7 @@ describe('WorktreesView', () => {
         ],
       }),
     )
-    render(<WorktreesView clock={clock} />)
+    render(<WorktreesView clock={fixedNow} />)
     await repo('example-repo')
 
     const linked = row(linkedDisplay)
@@ -234,7 +155,7 @@ describe('WorktreesView', () => {
   })
 
   it('main worktree has no remove button', async () => {
-    render(<WorktreesView clock={clock} />)
+    render(<WorktreesView clock={fixedNow} />)
     await repo('example-repo')
 
     const main = row('~/projects/example-repo')
@@ -280,7 +201,7 @@ describe('WorktreesView', () => {
         cleanCount: 0,
       }),
     )
-    render(<WorktreesView clock={clock} />)
+    render(<WorktreesView clock={fixedNow} />)
     await repo('example-repo')
 
     const ended = row(linkedDisplay)
@@ -319,7 +240,7 @@ describe('WorktreesView', () => {
     platform.listWorktrees.mockResolvedValue(
       worktreesSnapshot({ repos: [worktreeRepo({ worktrees: [mainWorktree(), stale] })], cleanCount: 0 }),
     )
-    render(<WorktreesView clock={clock} />)
+    render(<WorktreesView clock={fixedNow} />)
     await repo('example-repo')
 
     platform.listWorktrees.mockResolvedValue(worktreesSnapshot())
@@ -388,7 +309,7 @@ describe('WorktreesView', () => {
         reviewCount: 1,
       }),
     )
-    render(<WorktreesView clock={clock} />)
+    render(<WorktreesView clock={fixedNow} />)
     await repo('example-repo')
 
     const finished = row(linkedDisplay)
@@ -457,7 +378,7 @@ describe('WorktreesView', () => {
       item: 'acme-org/example-repo#7',
       reason: '',
     })
-    render(<WorktreesView clock={clock} />)
+    render(<WorktreesView clock={fixedNow} />)
     await repo('example-repo')
 
     const finished = row(linkedDisplay)
@@ -492,7 +413,7 @@ describe('WorktreesView', () => {
       reason: '',
     }
     platform.cleanUpWorktree.mockResolvedValueOnce(result)
-    render(<WorktreesView clock={clock} />)
+    render(<WorktreesView clock={fixedNow} />)
     await repo('example-repo')
 
     expect(row(linkedDisplay).getByRole('button', { name: 'Clean up' })).toHaveAttribute(
@@ -542,7 +463,7 @@ describe('WorktreesView', () => {
         reason: 'the worktree changed since it was checked; refresh and try again',
       },
     ])
-    render(<WorktreesView clock={clock} />)
+    render(<WorktreesView clock={fixedNow} />)
     await repo('example-repo')
 
     await userEvent.click(screen.getByRole('button', { name: 'Clean up finished (2)' }))
@@ -568,7 +489,7 @@ describe('WorktreesView', () => {
 
   it('reports a clean up finished that had nothing to do or failed', async () => {
     platform.listWorktrees.mockResolvedValue(worktreesSnapshot({ finishedCount: 1 }))
-    render(<WorktreesView clock={clock} />)
+    render(<WorktreesView clock={fixedNow} />)
     await repo('example-repo')
 
     await userEvent.click(screen.getByRole('button', { name: 'Clean up finished (1)' }))
@@ -587,7 +508,7 @@ describe('WorktreesView', () => {
     platform.listWorktrees.mockResolvedValue(
       worktreesSnapshot({ linkError: 'Could not read the pull requests and issues from GitHub: offline.' }),
     )
-    render(<WorktreesView clock={clock} />)
+    render(<WorktreesView clock={fixedNow} />)
     await repo('example-repo')
 
     expect(
@@ -602,17 +523,17 @@ describe('WorktreesView', () => {
     const onSnapshot = vi.fn()
     const listing = worktreesSnapshot({ finishedCount: 1 })
     platform.listWorktrees.mockResolvedValue(listing)
-    const { rerender } = render(<WorktreesView clock={clock} reloadKey={1} onSnapshot={onSnapshot} />)
+    const { rerender } = render(<WorktreesView clock={fixedNow} reloadKey={1} onSnapshot={onSnapshot} />)
     await repo('example-repo')
 
     await vi.waitFor(() => {
       expect(onSnapshot).toHaveBeenCalledWith(listing)
     })
 
-    rerender(<WorktreesView clock={clock} reloadKey={1} onSnapshot={vi.fn()} />)
+    rerender(<WorktreesView clock={fixedNow} reloadKey={1} onSnapshot={vi.fn()} />)
     expect(platform.listWorktrees).toHaveBeenCalledOnce()
 
-    rerender(<WorktreesView clock={clock} reloadKey={2} onSnapshot={onSnapshot} />)
+    rerender(<WorktreesView clock={fixedNow} reloadKey={2} onSnapshot={onSnapshot} />)
     await vi.waitFor(() => {
       expect(platform.listWorktrees).toHaveBeenCalledTimes(2)
     })
@@ -622,7 +543,7 @@ describe('WorktreesView', () => {
   })
 
   it('removes a clean worktree without asking, then lists again', async () => {
-    render(<WorktreesView clock={clock} />)
+    render(<WorktreesView clock={fixedNow} />)
     await repo('example-repo')
     platform.listWorktrees.mockResolvedValue(
       worktreesSnapshot({ repos: [worktreeRepo({ worktrees: [mainWorktree()] })], cleanCount: 0 }),
@@ -642,7 +563,7 @@ describe('WorktreesView', () => {
     platform.removeWorktree.mockRejectedValue(
       new Error(`git refused to remove ${linkedDisplay}: has uncommitted changes`),
     )
-    render(<WorktreesView clock={clock} />)
+    render(<WorktreesView clock={fixedNow} />)
     await repo('example-repo')
 
     await userEvent.click(row(linkedDisplay).getByRole('button', { name: 'Remove' }))
@@ -668,7 +589,7 @@ describe('WorktreesView', () => {
         cleanCount: 0,
       }),
     )
-    render(<WorktreesView clock={clock} />)
+    render(<WorktreesView clock={fixedNow} />)
     await repo('example-repo')
 
     await userEvent.click(row(linkedDisplay).getByRole('button', { name: 'Force remove' }))
@@ -713,7 +634,7 @@ describe('WorktreesView', () => {
         reason: 'has uncommitted changes',
       },
     ])
-    render(<WorktreesView clock={clock} />)
+    render(<WorktreesView clock={fixedNow} />)
     await repo('example-repo')
 
     await userEvent.click(screen.getByRole('button', { name: 'Remove all clean (2)' }))
@@ -735,7 +656,7 @@ describe('WorktreesView', () => {
   })
 
   it('reports a remove all clean that had nothing to do or failed', async () => {
-    render(<WorktreesView clock={clock} />)
+    render(<WorktreesView clock={fixedNow} />)
     await repo('example-repo')
 
     await userEvent.click(screen.getByRole('button', { name: 'Remove all clean (1)' }))
@@ -762,7 +683,7 @@ describe('WorktreesView', () => {
         reason: '',
       },
     ])
-    render(<WorktreesView clock={clock} />)
+    render(<WorktreesView clock={fixedNow} />)
     await repo('example-repo')
 
     await userEvent.click(screen.getByRole('button', { name: 'Remove all clean (1)' }))
@@ -796,7 +717,7 @@ describe('WorktreesView', () => {
         ],
       }),
     )
-    render(<WorktreesView clock={clock} />)
+    render(<WorktreesView clock={fixedNow} />)
 
     expect((await repo('example-repo')).queryByRole('button', { name: 'Prune' })).not.toBeInTheDocument()
 
@@ -810,7 +731,7 @@ describe('WorktreesView', () => {
   it('shows a prune failure on its repository', async () => {
     platform.listWorktrees.mockResolvedValue(worktreesSnapshot({ repos: [worktreeRepo({ hasStale: true })] }))
     platform.pruneWorktrees.mockRejectedValue(new Error('prune ~/projects/example-repo: exit status 128'))
-    render(<WorktreesView clock={clock} />)
+    render(<WorktreesView clock={fixedNow} />)
 
     await userEvent.click((await repo('example-repo')).getByRole('button', { name: 'Prune' }))
 
@@ -822,7 +743,7 @@ describe('WorktreesView', () => {
 
   it('shows a listing failure and recovers on Refresh', async () => {
     platform.listWorktrees.mockRejectedValue(new Error('scan the clone root: no such directory'))
-    render(<WorktreesView clock={clock} />)
+    render(<WorktreesView clock={fixedNow} />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent('scan the clone root: no such directory')
     expect(screen.queryByText('Listing the worktrees…')).not.toBeInTheDocument()
@@ -835,7 +756,7 @@ describe('WorktreesView', () => {
   })
 
   it('lists quietly after a background sweep, holding nothing', async () => {
-    const { rerender } = render(<WorktreesView clock={clock} reloadKey={1} />)
+    const { rerender } = render(<WorktreesView clock={fixedNow} reloadKey={1} />)
     await repo('example-repo')
 
     let finish: (snap: ReturnType<typeof worktreesSnapshot>) => void = () => undefined
@@ -844,7 +765,7 @@ describe('WorktreesView', () => {
         finish = resolve
       }),
     )
-    rerender(<WorktreesView clock={clock} reloadKey={2} />)
+    rerender(<WorktreesView clock={fixedNow} reloadKey={2} />)
 
     await vi.waitFor(() => {
       expect(platform.listWorktrees).toHaveBeenCalledTimes(2)
@@ -859,7 +780,7 @@ describe('WorktreesView', () => {
   })
 
   it('holds the actions while a listing it was asked for runs', async () => {
-    render(<WorktreesView clock={clock} />)
+    render(<WorktreesView clock={fixedNow} />)
     await repo('example-repo')
 
     let finish: (snap: ReturnType<typeof worktreesSnapshot>) => void = () => undefined
@@ -888,7 +809,7 @@ describe('WorktreesView', () => {
         finish = resolve
       }),
     )
-    render(<WorktreesView clock={clock} />)
+    render(<WorktreesView clock={fixedNow} />)
 
     expect(screen.getByText('Listing the worktrees…')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Refreshing…' })).toBeDisabled()
@@ -931,7 +852,7 @@ describe('WorktreesView history', () => {
       }),
       worktreeCleanup({ id: 3, worktree: 'scratch', item: null }),
     ])
-    render(<WorktreesView clock={clock} />)
+    render(<WorktreesView clock={fixedNow} />)
 
     const list = await history()
     expect(list.getByText('Everything in them was on GitHub')).toBeInTheDocument()
@@ -970,7 +891,7 @@ describe('WorktreesView history', () => {
     platform.recentCleanups.mockResolvedValue(
       Array.from({ length: 7 }, (_, i) => worktreeCleanup({ id: i + 1, worktree: `pr-${String(i + 1)}` })),
     )
-    render(<WorktreesView clock={clock} />)
+    render(<WorktreesView clock={fixedNow} />)
 
     const list = await history()
     expect(list.getAllByRole('listitem')).toHaveLength(5)
@@ -987,7 +908,7 @@ describe('WorktreesView history', () => {
   })
 
   it('is left out when nothing was cleaned up', async () => {
-    render(<WorktreesView clock={clock} />)
+    render(<WorktreesView clock={fixedNow} />)
     await repo('example-repo')
 
     expect(platform.recentCleanups).toHaveBeenCalledOnce()
@@ -997,7 +918,7 @@ describe('WorktreesView history', () => {
   it('clears the list, and shows a clear that failed', async () => {
     platform.recentCleanups.mockResolvedValue([worktreeCleanup()])
     platform.clearCleanups.mockRejectedValueOnce(new Error('database is locked'))
-    render(<WorktreesView clock={clock} />)
+    render(<WorktreesView clock={fixedNow} />)
 
     await userEvent.click((await history()).getByRole('button', { name: 'Clear' }))
     expect(await (await history()).findByRole('alert')).toHaveTextContent('database is locked')
@@ -1023,7 +944,7 @@ describe('WorktreesView history', () => {
       item: 'acme-org/example-repo#7',
       reason: '',
     })
-    render(<WorktreesView clock={clock} />)
+    render(<WorktreesView clock={fixedNow} />)
     await repo('example-repo')
 
     platform.recentCleanups.mockResolvedValue([worktreeCleanup({ automatic: false })])
@@ -1035,14 +956,14 @@ describe('WorktreesView history', () => {
   it('scrolls to the list once when asked to', async () => {
     const scroll = vi.spyOn(Element.prototype, 'scrollIntoView')
     platform.recentCleanups.mockResolvedValue([worktreeCleanup()])
-    const { rerender } = render(<WorktreesView clock={clock} focusHistory />)
+    const { rerender } = render(<WorktreesView clock={fixedNow} focusHistory />)
 
     await history()
     await vi.waitFor(() => {
       expect(scroll).toHaveBeenCalledExactlyOnceWith({ block: 'start' })
     })
 
-    rerender(<WorktreesView clock={clock} focusHistory reloadKey={1} />)
+    rerender(<WorktreesView clock={fixedNow} focusHistory reloadKey={1} />)
     await vi.waitFor(() => {
       expect(platform.recentCleanups).toHaveBeenCalledTimes(2)
     })
@@ -1052,15 +973,15 @@ describe('WorktreesView history', () => {
   it('scrolls to the list again when asked again, as a page kept between visits is', async () => {
     const scroll = vi.spyOn(Element.prototype, 'scrollIntoView')
     platform.recentCleanups.mockResolvedValue([worktreeCleanup()])
-    const { rerender } = render(<WorktreesView clock={clock} focusHistory />)
+    const { rerender } = render(<WorktreesView clock={fixedNow} focusHistory />)
 
     await history()
     await vi.waitFor(() => {
       expect(scroll).toHaveBeenCalledOnce()
     })
 
-    rerender(<WorktreesView clock={clock} />)
-    rerender(<WorktreesView clock={clock} focusHistory />)
+    rerender(<WorktreesView clock={fixedNow} />)
+    rerender(<WorktreesView clock={fixedNow} focusHistory />)
 
     expect(scroll).toHaveBeenCalledTimes(2)
   })
@@ -1068,7 +989,7 @@ describe('WorktreesView history', () => {
   it('does not scroll when not asked to', async () => {
     const scroll = vi.spyOn(Element.prototype, 'scrollIntoView')
     platform.recentCleanups.mockResolvedValue([worktreeCleanup()])
-    render(<WorktreesView clock={clock} />)
+    render(<WorktreesView clock={fixedNow} />)
 
     await history()
     expect(scroll).not.toHaveBeenCalled()
@@ -1077,7 +998,7 @@ describe('WorktreesView history', () => {
   it('logs a list that could not be read and still lists the worktrees', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     platform.recentCleanups.mockRejectedValue(new Error('database is locked'))
-    render(<WorktreesView clock={clock} />)
+    render(<WorktreesView clock={fixedNow} />)
 
     await repo('example-repo')
     await vi.waitFor(() => {

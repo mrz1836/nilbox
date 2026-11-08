@@ -6,13 +6,11 @@ import { describe, expect, it, vi } from 'vitest'
 import type { InboxItem } from '../platform'
 import { at } from '../test/clock'
 import { details, fileCheck, item, itemResolution, profile, prompts } from '../test/fixtures'
+import { platform } from '../test/platform'
 import { ItemRow, type LaunchOptions } from './ItemRow'
 
-const platform = vi.hoisted(() => ({ openExternal: vi.fn(), launch: vi.fn(), checkItemFiles: vi.fn() }))
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
-vi.mock('../platform', () => platform)
-
-const now = new Date('2026-06-15T12:00:00Z')
 const launch: LaunchOptions = {
   profiles: [profile()],
   prompts: prompts(),
@@ -23,7 +21,7 @@ const launch: LaunchOptions = {
 
 // render renders on a clock that stands at now.
 function render(ui: ReactElement) {
-  return renderPlain(ui, { wrapper: at(now) })
+  return renderPlain(ui, { wrapper: at() })
 }
 
 function renderRow(it: InboxItem, options: LaunchOptions | null = launch) {

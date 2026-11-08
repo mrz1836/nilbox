@@ -1,7 +1,7 @@
 import { act, render, renderHook, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { withClock } from '../test/clock'
+import { FIXED_NOW, fromNow, withClock } from '../test/clock'
 import { createClock, useClock, useNow, useNowAs } from './useNow'
 
 afterEach(() => {
@@ -15,7 +15,7 @@ function Reading({ label }: { label: string }) {
 
 describe('useNow', () => {
   it('moves on every interval, rendering only what reads it', () => {
-    vi.useFakeTimers({ now: new Date('2026-06-15T12:00:00Z') })
+    vi.useFakeTimers({ now: FIXED_NOW })
     const clock = createClock(() => new Date(), 60_000)
     const { result } = renderHook(() => useNow(), { wrapper: withClock(clock) })
 
@@ -35,7 +35,7 @@ describe('useNow', () => {
   })
 
   it('shares one interval among every reader, and stops it once none is left', () => {
-    vi.useFakeTimers({ now: new Date('2026-06-15T12:00:00Z') })
+    vi.useFakeTimers({ now: FIXED_NOW })
     const started = vi.spyOn(globalThis, 'setInterval')
     const stopped = vi.spyOn(globalThis, 'clearInterval')
     const clock = createClock(() => new Date(), 60_000)
@@ -64,24 +64,24 @@ describe('useNow', () => {
   })
 
   it('reads the time afresh for the first reader after a pause, and not for a shorter one', () => {
-    vi.useFakeTimers({ now: new Date('2026-06-15T12:00:00Z') })
+    vi.useFakeTimers({ now: FIXED_NOW })
     const clock = createClock(() => new Date(), 60_000)
     const wrapper = withClock(clock)
 
     renderHook(() => useNow(), { wrapper }).unmount()
 
-    vi.setSystemTime(new Date('2026-06-15T12:00:30Z'))
+    vi.setSystemTime(fromNow(30_000))
     const { result: soon, unmount } = renderHook(() => useNow(), { wrapper })
     expect(soon.current.toISOString()).toBe('2026-06-15T12:00:00.000Z')
     unmount()
 
-    vi.setSystemTime(new Date('2026-06-15T13:00:00Z'))
+    vi.setSystemTime(fromNow(3_600_000))
     const { result: later } = renderHook(() => useNow(), { wrapper })
     expect(later.current.toISOString()).toBe('2026-06-15T13:00:00.000Z')
   })
 
   it('moves on when the time is read afresh, and stays put when it has not changed', () => {
-    vi.useFakeTimers({ now: new Date('2026-06-15T12:00:00Z') })
+    vi.useFakeTimers({ now: FIXED_NOW })
     const clock = createClock(() => new Date(), 60_000)
     const { result } = renderHook(() => ({ now: useNow(), clock: useClock() }), { wrapper: withClock(clock) })
     const first = result.current.now
@@ -91,7 +91,7 @@ describe('useNow', () => {
     })
     expect(result.current.now).toBe(first)
 
-    vi.setSystemTime(new Date('2026-06-15T12:00:20Z'))
+    vi.setSystemTime(fromNow(20_000))
     act(() => {
       result.current.clock.read()
     })
@@ -108,7 +108,7 @@ describe('useNow', () => {
 
 describe('useNowAs', () => {
   it('renders again only when what it shows changes', () => {
-    vi.useFakeTimers({ now: new Date('2026-06-15T12:00:00Z') })
+    vi.useFakeTimers({ now: FIXED_NOW })
     const clock = createClock(() => new Date(), 60_000)
     let times = 0
 

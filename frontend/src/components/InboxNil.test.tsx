@@ -7,16 +7,15 @@ import { brand } from '../generated/brand'
 import { arrivalBurst, earnedBurst, earnedQuip, quips, replayBurst } from '../lib/nil'
 import { triageInbox } from '../lib/triage'
 import type { InboxSnapshot } from '../platform'
-import { at } from '../test/clock'
+import { at, FIXED_NOW } from '../test/clock'
 import { item, list, snapshot } from '../test/fixtures'
 import { InboxNil } from './InboxNil'
 
-const now = new Date('2026-06-15T12:00:00Z')
 const empty = snapshot({ lastRefreshedAt: '2026-06-15T11:55:00Z' })
 
 // renderNil throws the party for an inbox, as triaged at now, on a clock that stands at now.
 function renderNil(inbox: InboxSnapshot, earned: boolean) {
-  return render(<InboxNil stats={triageInbox(inbox, now)} earned={earned} />, { wrapper: at(now) })
+  return render(<InboxNil stats={triageInbox(inbox, FIXED_NOW)} earned={earned} />, { wrapper: at() })
 }
 
 // party returns the party's region.
@@ -88,9 +87,9 @@ describe('InboxNil', () => {
   it('starts the party once when development mounts it twice', () => {
     render(
       <StrictMode>
-        <InboxNil stats={triageInbox(empty, now)} earned={false} />
+        <InboxNil stats={triageInbox(empty, FIXED_NOW)} earned={false} />
       </StrictMode>,
-      { wrapper: at(now) },
+      { wrapper: at() },
     )
 
     expect(confetti()).toBe(arrivalBurst)

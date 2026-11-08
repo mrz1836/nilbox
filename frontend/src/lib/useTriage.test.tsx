@@ -2,7 +2,7 @@ import { act, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { InboxSnapshot } from '../platform'
-import { withClock } from '../test/clock'
+import { FIXED_NOW, withClock } from '../test/clock'
 import { item, list, snapshot } from '../test/fixtures'
 import { createClock } from './useNow'
 import { useTriage } from './useTriage'
@@ -17,7 +17,7 @@ const inbox = snapshot({
 
 // triage renders useTriage over a clock that starts at noon, counting its renders.
 function triage(initial: InboxSnapshot | null) {
-  vi.useFakeTimers({ now: new Date('2026-06-15T12:00:00Z'), toFake: ['Date', 'setInterval', 'clearInterval'] })
+  vi.useFakeTimers({ now: FIXED_NOW, toFake: ['Date', 'setInterval', 'clearInterval'] })
   const renders = { count: 0 }
   const view = renderHook(
     ({ snapshot: current }: { snapshot: InboxSnapshot | null }) => {
