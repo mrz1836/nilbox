@@ -67,6 +67,10 @@ func TestSchemaRejectsInvalidInboxRows(t *testing.T) {
 			VALUES (1, '{"not": "an array"}', '2026-01-01 00:00:00')`,
 		"projects that are not JSON": `INSERT INTO item_details (item_id, projects, fetched_at)
 			VALUES (1, 'Roadmap', '2026-01-01 00:00:00')`,
+		"more sub-issues done than there are": `INSERT INTO item_details (item_id, sub_issues_total,
+			sub_issues_completed, fetched_at) VALUES (1, 2, 3, '2026-01-01 00:00:00')`,
+		"a negative sub-issue count": `INSERT INTO item_details (item_id, sub_issues_total, fetched_at)
+			VALUES (1, -1, '2026-01-01 00:00:00')`,
 		"a negative count": `INSERT INTO item_details (item_id, comments, fetched_at)
 			VALUES (1, -1, '2026-01-01 00:00:00')`,
 		"more reviewed than reviewers": `INSERT INTO item_details (item_id, reviewers, reviewed, fetched_at)

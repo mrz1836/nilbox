@@ -115,7 +115,7 @@ SELECT
     d.item_id AS details_item_id, d.labels, d.projects, d.comments, d.additions, d.deletions,
     d.changed_files, d.commits, d.mergeable, d.checks_state, d.checks_passed, d.checks_failed,
     d.checks_pending, d.checks_skipped, d.review_decision, d.reviewers, d.reviewed, d.approvals,
-    d.changes_requested,
+    d.changes_requested, d.sub_issues_total, d.sub_issues_completed,
     d.fetched_at AS details_fetched_at, d.head_oid,
     f.item_id AS files_item_id, f.head_oid AS files_head_oid, f.total AS files_total, f.files,
     f.complete AS files_complete, f.error AS files_error, f.checked_at AS files_checked_at,
@@ -167,6 +167,8 @@ type ListItemsRow struct {
 	Reviewed              *int64
 	Approvals             *int64
 	ChangesRequested      *int64
+	SubIssuesTotal        *int64
+	SubIssuesCompleted    *int64
 	DetailsFetchedAt      *time.Time
 	HeadOID               *string
 	FilesItemID           *int64
@@ -232,6 +234,8 @@ func (q *Queries) ListItems(ctx context.Context, accountID int64) ([]ListItemsRo
 			&i.Reviewed,
 			&i.Approvals,
 			&i.ChangesRequested,
+			&i.SubIssuesTotal,
+			&i.SubIssuesCompleted,
 			&i.DetailsFetchedAt,
 			&i.HeadOID,
 			&i.FilesItemID,

@@ -12,6 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// issueID is the node ID of the issue the project tests ask about.
+const issueID = "I_fakeNodeIdIssue"
+
 // refusedProjects is GitHub's answer to a query that asks for projects with a token
 // that lacks the read:project scope: errors, and no data.
 const refusedProjects = `{"errors":[{"type":"INSUFFICIENT_SCOPES","locations":[{"line":44,"column":5}],` +
@@ -57,7 +60,7 @@ func TestFetchDetailsReadsAnIssuesProjectsWhenAsked(t *testing.T) {
 		_, _ = io.WriteString(w, issueWithProjects)
 	})
 
-	details, err := client.FetchDetails(t.Context(), NewToken(fakeToken), []string{"I_fakeNodeIdIssue"},
+	details, err := client.FetchDetails(t.Context(), NewToken(fakeToken), []string{issueID},
 		DetailOptions{Projects: true})
 	require.NoError(t, err)
 
@@ -69,7 +72,7 @@ func TestFetchDetailsReadsAnIssuesProjectsWhenAsked(t *testing.T) {
 		},
 		{Title: "Sprint", URL: "https://github.com/users/octo-user/projects/3"},
 		{Title: "Triage", URL: "https://github.com/orgs/acme-org/projects/4", Status: "New"},
-	}, details.Items["I_fakeNodeIdIssue"].Projects,
+	}, details.Items[issueID].Projects,
 		"a closed project, one the token cannot see, and a null item are left out; an unknown color is none")
 }
 
@@ -82,13 +85,13 @@ func TestFetchDetailsLeavesTheProjectsOutUnlessAsked(t *testing.T) {
 		_, _ = io.WriteString(w, plainIssue)
 	})
 
-	details, err := client.FetchDetails(t.Context(), NewToken(fakeToken), []string{"I_fakeNodeIdIssue"},
+	details, err := client.FetchDetails(t.Context(), NewToken(fakeToken), []string{issueID},
 		DetailOptions{})
 	require.NoError(t, err)
 
 	assert.False(t, details.ProjectsRefused)
-	assert.Nil(t, details.Items["I_fakeNodeIdIssue"].Projects)
-	assert.Equal(t, 3, details.Items["I_fakeNodeIdIssue"].Comments)
+	assert.Nil(t, details.Items[issueID].Projects)
+	assert.Equal(t, 3, details.Items[issueID].Comments)
 }
 
 func TestFetchDetailsAsksAgainWithoutTheProjectsWhenTheScopeIsMissing(t *testing.T) {
@@ -110,15 +113,15 @@ func TestFetchDetailsAsksAgainWithoutTheProjectsWhenTheScopeIsMissing(t *testing
 		_, _ = io.WriteString(w, plainIssue)
 	})
 
-	details, err := client.FetchDetails(t.Context(), NewToken(fakeToken), []string{"I_fakeNodeIdIssue"},
+	details, err := client.FetchDetails(t.Context(), NewToken(fakeToken), []string{issueID},
 		DetailOptions{Projects: true})
 	require.NoError(t, err, "a missing read:project scope never fails the details")
 
 	assert.True(t, details.ProjectsRefused)
 	assert.Equal(t, int32(1), withProjects.Load())
 	assert.Equal(t, int32(1), without.Load(), "asked once more, without the projects")
-	assert.Equal(t, 3, details.Items["I_fakeNodeIdIssue"].Comments)
-	assert.Nil(t, details.Items["I_fakeNodeIdIssue"].Projects)
+	assert.Equal(t, 3, details.Items[issueID].Comments)
+	assert.Nil(t, details.Items[issueID].Projects)
 }
 
 func TestFetchDetailsKeepsTheDataGitHubSendsWithARefusal(t *testing.T) {
@@ -133,13 +136,13 @@ func TestFetchDetailsKeepsTheDataGitHubSendsWithARefusal(t *testing.T) {
 			`"errors":[{"type":"INSUFFICIENT_SCOPES","message":"read:project"}],"data"`, 1))
 	})
 
-	details, err := client.FetchDetails(t.Context(), NewToken(fakeToken), []string{"I_fakeNodeIdIssue"},
+	details, err := client.FetchDetails(t.Context(), NewToken(fakeToken), []string{issueID},
 		DetailOptions{Projects: true})
 	require.NoError(t, err)
 
 	assert.True(t, details.ProjectsRefused)
 	assert.Equal(t, int32(1), requests.Load(), "the data came with the refusal, so nothing is asked again")
-	assert.Equal(t, 3, details.Items["I_fakeNodeIdIssue"].Comments)
+	assert.Equal(t, 3, details.Items[issueID].Comments)
 }
 
 func TestFetchDetailsFailsOnAScopeRefusalItDidNotAskFor(t *testing.T) {
@@ -153,7 +156,7 @@ func TestFetchDetailsFailsOnAScopeRefusalItDidNotAskFor(t *testing.T) {
 		_, _ = io.WriteString(w, refusedProjects)
 	})
 
-	_, err := client.FetchDetails(t.Context(), NewToken(fakeToken), []string{"I_fakeNodeIdIssue"},
+	_, err := client.FetchDetails(t.Context(), NewToken(fakeToken), []string{issueID},
 		DetailOptions{})
 	require.ErrorIs(t, err, ErrGraphQL)
 	assert.Contains(t, err.Error(), "read:project")
@@ -174,7 +177,7 @@ func TestFetchDetailsFailsWhenTheSecondTryFails(t *testing.T) {
 		_, _ = io.WriteString(w, `{"message":"bad gateway"}`)
 	})
 
-	_, err := client.FetchDetails(t.Context(), NewToken(fakeToken), []string{"I_fakeNodeIdIssue"},
+	_, err := client.FetchDetails(t.Context(), NewToken(fakeToken), []string{issueID},
 		DetailOptions{Projects: true})
 	require.ErrorIs(t, err, ErrUnexpectedStatus)
 }
@@ -188,7 +191,7 @@ func TestFetchItemReadsAnIssuesProjectsWhenAsked(t *testing.T) {
 		_, _ = io.WriteString(w, issueItem(projectsJSON))
 	})
 
-	update, err := client.FetchItem(t.Context(), NewToken(fakeToken), "I_fakeNodeIdIssue", DetailOptions{Projects: true})
+	update, err := client.FetchItem(t.Context(), NewToken(fakeToken), issueID, DetailOptions{Projects: true})
 	require.NoError(t, err)
 
 	assert.False(t, update.ProjectsRefused)
@@ -214,7 +217,7 @@ func TestFetchItemAsksAgainWithoutTheProjectsWhenTheScopeIsMissing(t *testing.T)
 		_, _ = io.WriteString(w, issueItem(""))
 	})
 
-	update, err := client.FetchItem(t.Context(), NewToken(fakeToken), "I_fakeNodeIdIssue", DetailOptions{Projects: true})
+	update, err := client.FetchItem(t.Context(), NewToken(fakeToken), issueID, DetailOptions{Projects: true})
 	require.NoError(t, err)
 
 	assert.True(t, update.ProjectsRefused)
@@ -249,4 +252,106 @@ func issueItem(projects string) string {
   "repository":{"id":"R_fakeRepoId","name":"example-repo","owner":{"login":"acme-org"}},
   "comments":{"totalCount":2},"labels":{"nodes":[]}%s
 },"rateLimit":{"cost":1,"limit":5000,"remaining":4990,"used":10,"resetAt":"2026-01-10T13:00:00Z"}}}`, projects)
+}
+
+// issueWithFields is the details answer for one issue in a project with a value in each
+// kind of field, GitHub's built-in fields, and sub-issues.
+const issueWithFields = `{"data":{"nodes":[{
+  "__typename":"Issue","id":"I_fakeNodeIdIssue","comments":{"totalCount":0},"labels":{"nodes":[]},
+  "subIssuesSummary":{"total":8,"completed":6},
+  "projectItems":{"nodes":[{
+    "project":{"title":"Roadmap","url":"https://github.com/orgs/acme-org/projects/1","closed":false},
+    "status":{"name":"In progress","color":"YELLOW"},
+    "fieldValues":{"nodes":[
+      {"__typename":"ProjectV2ItemFieldRepositoryValue"},
+      {"__typename":"ProjectV2ItemFieldTextValue","text":"Fix it","field":{"name":"Title","dataType":"TITLE"}},
+      {"__typename":"ProjectV2ItemFieldSingleSelectValue","name":"In progress","color":"YELLOW",
+       "field":{"name":"Status","dataType":"SINGLE_SELECT"}},
+      {"__typename":"ProjectV2ItemFieldSingleSelectValue","name":"High","color":"RED",
+       "field":{"name":"Priority","dataType":"SINGLE_SELECT"}},
+      {"__typename":"ProjectV2ItemFieldSingleSelectValue","name":"XL","color":"MAUVE",
+       "field":{"name":"Size","dataType":"SINGLE_SELECT"}},
+      {"__typename":"ProjectV2ItemFieldNumberValue","number":2.5,"field":{"name":"Estimate","dataType":"NUMBER"}},
+      {"__typename":"ProjectV2ItemFieldNumberValue","number":null,"field":{"name":"Points","dataType":"NUMBER"}},
+      {"__typename":"ProjectV2ItemFieldTextValue","text":"  Design\n  team ","field":{"name":"Waiting on","dataType":"TEXT"}},
+      {"__typename":"ProjectV2ItemFieldDateValue","date":"2026-06-27","field":{"name":"Target","dataType":"DATE"}},
+      {"__typename":"ProjectV2ItemFieldDateValue","date":"someday","field":{"name":"Start","dataType":"DATE"}},
+      {"__typename":"ProjectV2ItemFieldIterationValue","title":"Sprint 4","field":{"name":"Iteration","dataType":"ITERATION"}},
+      {"__typename":"ProjectV2ItemFieldSingleSelectValue","name":"Beta","color":"BLUE","field":null},
+      {"__typename":"ProjectV2ItemFieldTextValue","text":"","field":{"name":"Notes","dataType":"TEXT"}},
+      null
+    ]}
+  }]}
+}],"rateLimit":{"cost":4,"limit":5000,"remaining":4990,"used":10,"resetAt":"2026-01-10T13:00:00Z"}}}`
+
+func TestFetchDetailsReadsAnIssuesProjectFieldsAndSubIssues(t *testing.T) {
+	t.Parallel()
+
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		query := readDetailsRequest(t, r).Query
+		assert.Contains(t, query, "fieldValues(first: 20)")
+		assert.Contains(t, query, "fragment ProjectFieldName on ProjectV2FieldConfiguration")
+		assert.Contains(t, query, "subIssuesSummary { total completed }")
+
+		_, _ = io.WriteString(w, issueWithFields)
+	})
+
+	details, err := client.FetchDetails(t.Context(), NewToken(fakeToken), []string{issueID},
+		DetailOptions{Projects: true})
+	require.NoError(t, err)
+
+	issue := details.Items[issueID]
+	assert.Equal(t, SubIssues{Total: 8, Completed: 6}, issue.SubIssues)
+	require.Len(t, issue.Projects, 1)
+	assert.Equal(t, []ProjectField{
+		{Name: "Priority", Value: "High", Color: "#fa4549"},
+		{Name: "Size", Value: "XL"},
+		{Name: "Estimate", Value: "2.5"},
+		{Name: "Waiting on", Value: "Design team"},
+		{Name: "Target", Value: "Jun 27, 2026"},
+		{Name: "Start", Value: "someday"},
+		{Name: "Iteration", Value: "Sprint 4"},
+	}, issue.Projects[0].Fields, "the title, Status, built-in, empty, and fieldless values are left out")
+}
+
+func TestTheSubIssuesQueryNeedsNoProjects(t *testing.T) {
+	t.Parallel()
+
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		query := readDetailsRequest(t, r).Query
+		assert.Contains(t, query, "subIssuesSummary { total completed }")
+		assert.NotContains(t, query, "ProjectFieldName")
+
+		_, _ = io.WriteString(w, strings.Replace(plainIssue, `"labels":{"nodes":[]}`,
+			`"labels":{"nodes":[]},"subIssuesSummary":{"total":3,"completed":9}`, 1))
+	})
+
+	details, err := client.FetchDetails(t.Context(), NewToken(fakeToken), []string{issueID},
+		DetailOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, SubIssues{Total: 3, Completed: 3}, details.Items[issueID].SubIssues,
+		"completed never passes the total")
+}
+
+func TestSubIssueCountsStayInBounds(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, SubIssues{}, graphQLSubIssues{Total: -1, Completed: -4}.subIssues())
+	assert.Equal(t, SubIssues{Total: 2, Completed: 0}, graphQLSubIssues{Total: 2, Completed: -1}.subIssues())
+}
+
+func TestALongTextFieldIsCut(t *testing.T) {
+	t.Parallel()
+
+	long := strings.Repeat("word ", 60)
+	field, ok := (&graphQLFieldValue{
+		TypeName: "ProjectV2ItemFieldTextValue", Text: long,
+		Field: &struct {
+			Name     string `json:"name"`
+			DataType string `json:"dataType"`
+		}{Name: "Notes", DataType: "TEXT"},
+	}).field()
+
+	require.True(t, ok)
+	assert.LessOrEqual(t, len([]rune(field.Value)), maxFieldRunes)
 }

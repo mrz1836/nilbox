@@ -143,6 +143,10 @@ type Details struct {
 	// snapshot's ProjectAccess is not ProjectAccessOn.
 	Projects []Project `json:"projects"`
 
+	// SubIssues counts an issue's sub-issues, and those done. Both are 0 for a pull
+	// request and an issue without sub-issues.
+	SubIssues SubIssues `json:"subIssues"`
+
 	// Comments counts the conversation's comments, review comments included for a pull
 	// request.
 	Comments int `json:"comments"`
@@ -182,6 +186,31 @@ type Project struct {
 
 	// StatusColor is the status's color as "#rrggbb", or "" when it has none.
 	StatusColor string `json:"statusColor"`
+
+	// Fields are the issue's values in the project's other fields, such as Priority or
+	// Size, in GitHub's order.
+	Fields []ProjectField `json:"fields"`
+}
+
+// ProjectField is an issue's value in one project field.
+type ProjectField struct {
+	// Name is the field's name, such as "Priority".
+	Name string `json:"name"`
+
+	// Value is the value as the project shows it: an option's name, a number, text, a date
+	// such as "Jun 27, 2026", or an iteration's title.
+	Value string `json:"value"`
+
+	// Color is a single-select option's color as "#rrggbb", and "" for any other value.
+	Color string `json:"color"`
+}
+
+// SubIssues counts an issue's sub-issues.
+type SubIssues struct {
+	Total int `json:"total"`
+
+	// Completed is how many are closed as done; never more than Total.
+	Completed int `json:"completed"`
 }
 
 // Checks counts the head commit's check runs and commit statuses by outcome.
@@ -408,6 +437,7 @@ type itemRow struct {
 	Reviewed         int
 	Approvals        int
 	ChangesRequested int
+	SubIssues        SubIssues
 	DetailsFetchedAt *time.Time
 	HeadOID          string
 
@@ -456,7 +486,8 @@ func itemRowOf(r queries.ListItemsRow) (itemRow, error) {
 		ChecksSkipped: int(value(r.ChecksSkipped)), ReviewDecision: value(r.ReviewDecision),
 		Reviewers: int(value(r.Reviewers)), Reviewed: int(value(r.Reviewed)), Approvals: int(value(r.Approvals)),
 		ChangesRequested: int(value(r.ChangesRequested)), DetailsFetchedAt: r.DetailsFetchedAt,
-		HeadOID: value(r.HeadOID),
+		SubIssues: SubIssues{Total: int(value(r.SubIssuesTotal)), Completed: int(value(r.SubIssuesCompleted))},
+		HeadOID:   value(r.HeadOID),
 
 		Stored: stored,
 
@@ -506,6 +537,17 @@ func (r *itemRow) checkedFiles(scope fileScope, isPR bool, author trust.Author) 
 	return new(scope.matcher.Evaluate(r.Stored, r.HeadOID, r.URL))
 }
 
+// project converts a stored project. Its fields are never nil, even when a build before
+// them stored it.
+func (p storedProject) project() Project {
+	fields := make([]ProjectField, 0, len(p.Fields))
+	for _, f := range p.Fields {
+		fields = append(fields, ProjectField(f))
+	}
+
+	return Project{Title: p.Title, URL: p.URL, Status: p.Status, StatusColor: p.StatusColor, Fields: fields}
+}
+
 // decodeColumn reads a nullable JSON array column, nil when it is NULL.
 func decodeColumn[T any](raw *string) ([]T, error) {
 	if raw == nil {
@@ -553,7 +595,7 @@ func (r *itemRow) details() *Details {
 
 	projects := make([]Project, 0, len(r.Projects))
 	for _, p := range r.Projects {
-		projects = append(projects, Project(p))
+		projects = append(projects, p.project())
 	}
 
 	return &Details{
@@ -573,6 +615,7 @@ func (r *itemRow) details() *Details {
 			Decision: r.ReviewDecision, Reviewers: r.Reviewers, Reviewed: r.Reviewed,
 			Approvals: r.Approvals, ChangesRequested: r.ChangesRequested,
 		},
+		SubIssues: r.SubIssues,
 		FetchedAt: formatOptionalTime(r.DetailsFetchedAt),
 	}
 }

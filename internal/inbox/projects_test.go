@@ -15,10 +15,11 @@ const (
 	scopesWithoutProjects = "repo, read:org"
 )
 
-// roadmap is a project an issue is in, with its status there.
+// roadmap is a project an issue is in, with its status and two other fields there.
 func roadmap() github.ProjectItem {
 	return github.ProjectItem{
 		Title: "Roadmap", URL: "https://github.com/orgs/acme-org/projects/1", Status: "In progress", StatusColor: "#bf8700",
+		Fields: []github.ProjectField{{Name: "Priority", Value: "High", Color: "#fa4549"}, {Name: "Estimate", Value: "3"}},
 	}
 }
 
@@ -50,6 +51,7 @@ func issueProjects(t *testing.T, snap Snapshot) []Project {
 func wantRoadmap() []Project {
 	return []Project{{
 		Title: "Roadmap", URL: "https://github.com/orgs/acme-org/projects/1", Status: "In progress", StatusColor: "#bf8700",
+		Fields: []ProjectField{{Name: "Priority", Value: "High", Color: "#fa4549"}, {Name: "Estimate", Value: "3"}},
 	}}
 }
 
@@ -209,6 +211,34 @@ func TestRefreshItemReadsTheProjectsTheLastRefreshCould(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRefreshStoresAnIssuesSubIssues(t *testing.T) {
+	t.Parallel()
+
+	h := projectsHarness(t, scopesWithoutProjects)
+	h.client.details[nodeID(2)] = github.ItemDetails{Comments: 1, SubIssues: github.SubIssues{Total: 8, Completed: 6}}
+
+	snap := h.refresh(t)
+	assert.Equal(t, SubIssues{Total: 8, Completed: 6}, itemByNumber(t, snap.Assigned, 2).Details.SubIssues,
+		"sub-issues need no projects scope")
+	assert.Equal(t, SubIssues{}, itemByNumber(t, snap.ReviewRequested, 1).Details.SubIssues)
+}
+
+func TestSnapshotReadsProjectsStoredBeforeTheirFields(t *testing.T) {
+	t.Parallel()
+
+	h := projectsHarness(t, scopesWithProjects)
+	h.refresh(t)
+	h.exec(t, `UPDATE item_details SET projects = '[{"title":"Roadmap","url":"https://github.com/orgs/acme-org/projects/1",`+
+		`"status":"Ready","statusColor":"#218bff"}]'`)
+
+	snap, err := h.svc.Snapshot(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, []Project{{
+		Title: "Roadmap", URL: "https://github.com/orgs/acme-org/projects/1", Status: "Ready", StatusColor: "#218bff",
+		Fields: []ProjectField{},
+	}}, issueProjects(t, snap))
 }
 
 func TestDecodeProjectAccess(t *testing.T) {

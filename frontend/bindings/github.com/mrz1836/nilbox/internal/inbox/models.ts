@@ -70,6 +70,12 @@ export interface Details {
     "projects": Project[] | null;
 
     /**
+     * SubIssues counts an issue's sub-issues, and those done. Both are 0 for a pull
+     * request and an issue without sub-issues.
+     */
+    "subIssues": SubIssues;
+
+    /**
      * Comments counts the conversation's comments, review comments included for a pull
      * request.
      */
@@ -220,6 +226,12 @@ export interface Project {
      * StatusColor is the status's color as "#rrggbb", or "" when it has none.
      */
     "statusColor": string;
+
+    /**
+     * Fields are the issue's values in the project's other fields, such as Priority or
+     * Size, in GitHub's order.
+     */
+    "fields": ProjectField[] | null;
 }
 
 /**
@@ -250,6 +262,27 @@ export const ProjectAccess = {
      */
     ProjectAccessNeedsScope: "needs_scope",
 } as const;
+
+/**
+ * ProjectField is an issue's value in one project field.
+ */
+export interface ProjectField {
+    /**
+     * Name is the field's name, such as "Priority".
+     */
+    "name": string;
+
+    /**
+     * Value is the value as the project shows it: an option's name, a number, text, a date
+     * such as "Jun 27, 2026", or an iteration's title.
+     */
+    "value": string;
+
+    /**
+     * Color is a single-select option's color as "#rrggbb", and "" for any other value.
+     */
+    "color": string;
+}
 
 /**
  * Rate is one budget reading. Known is false until the first refresh records one.
@@ -334,4 +367,16 @@ export interface Snapshot {
      * in, which needs the token's optional read:project scope.
      */
     "projectAccess": ProjectAccess;
+}
+
+/**
+ * SubIssues counts an issue's sub-issues.
+ */
+export interface SubIssues {
+    "total": number;
+
+    /**
+     * Completed is how many are closed as done; never more than Total.
+     */
+    "completed": number;
 }

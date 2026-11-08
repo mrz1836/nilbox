@@ -18,8 +18,10 @@ export type {
     Label,
     List,
     Project,
+    ProjectField,
     Rate,
     RateGauge,
     Reviews,
-    Snapshot
+    Snapshot,
+    SubIssues
 } from "./models.js";

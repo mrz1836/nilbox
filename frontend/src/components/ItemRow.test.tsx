@@ -227,6 +227,47 @@ describe('ItemRow', () => {
     expect(rest).toHaveTextContent('+2')
   })
 
+  it('shows an issue’s priority and size beside its status, and every field in the tooltip', () => {
+    const fields = [
+      { name: 'Phase', value: 'Beta', color: '' },
+      { name: 'Size', value: 'XL', color: '' },
+      { name: 'Priority', value: 'High', color: '#fa4549' },
+    ]
+    renderRow(item({ kind: 'issue', details: details({ projects: [project({ fields })] }) }))
+
+    const link = signals().getByRole('button', {
+      name: 'Project Roadmap: In progress, Priority High, Size XL. Open it on GitHub',
+    })
+    expect(link).toHaveAttribute(
+      'title',
+      'Roadmap: In progress\nPhase: Beta\nSize: XL\nPriority: High\nOpen the project on GitHub',
+    )
+    expect(within(link).getByText('High').parentElement).toHaveStyle({ borderColor: '#fa4549b3' })
+    expect(within(link).getByText('XL').parentElement).toHaveClass('border-border')
+    expect(within(link).queryByText('Beta')).not.toBeInTheDocument()
+  })
+
+  it('shows how far along an issue’s sub-issues are', () => {
+    renderRow(item({ kind: 'issue', details: details({ subIssues: { total: 8, completed: 6 } }) }))
+
+    const progress = slot('Sub-issues: 6 of 8 sub-issues done (75%)')
+    expect(progress).toHaveTextContent('6/8')
+    expect(progress).not.toHaveClass('text-success')
+    expect(progress.querySelector('.bg-success')).toHaveStyle({ width: '75%' })
+  })
+
+  it('marks an issue whose sub-issues are all done', () => {
+    renderRow(item({ kind: 'issue', details: details({ subIssues: { total: 2, completed: 2 } }) }))
+
+    expect(slot('Sub-issues: 2 of 2 sub-issues done (100%)')).toHaveClass('text-success')
+  })
+
+  it('shows no sub-issue progress for an issue without sub-issues', () => {
+    renderRow(item({ kind: 'issue', details: details() }))
+
+    expect(screen.queryByTitle(/^Sub-issues/)).not.toBeInTheDocument()
+  })
+
   it('shows no project on a pull request', () => {
     renderRow(item({ details: details({ projects: [project()] }) }))
 

@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest'
 
 import { item, list, project, settings, snapshot } from '../test/fixtures'
-import { grantProjectsCommand, hasIssues, offersProjects, projectText } from './projects'
+import {
+  featuredFields,
+  grantProjectsCommand,
+  hasIssues,
+  offersProjects,
+  projectText,
+  projectTooltip,
+  subIssuesText,
+} from './projects'
 
 const withIssue = (overrides: Parameters<typeof snapshot>[0] = {}) =>
   snapshot({ assigned: list([item({ id: 2, kind: 'issue' })]), ...overrides })
@@ -19,6 +27,51 @@ describe('projectText', () => {
 
   it('names the project alone when the issue has no status there', () => {
     expect(projectText(project({ status: '' }))).toBe('Roadmap')
+  })
+})
+
+describe('featuredFields', () => {
+  const priority = { name: 'Priority', value: 'High', color: '#fa4549' }
+  const size = { name: 'T-shirt size', value: 'XL', color: '' }
+
+  it('features how urgent and how big an issue is, in that order, whatever the project’s order', () => {
+    const fields = [
+      { name: 'Phase', value: 'Beta', color: '' },
+      size,
+      { name: 'Estimate', value: '3', color: '' },
+      priority,
+    ]
+
+    expect(featuredFields(project({ fields }))).toEqual([priority, size])
+  })
+
+  it('features the first field named like each, and nothing when none is', () => {
+    const second = { name: 'Priority (old)', value: 'Low', color: '' }
+
+    expect(featuredFields(project({ fields: [priority, second] }))).toEqual([priority])
+    expect(featuredFields(project({ fields: [{ name: 'Phase', value: 'Beta', color: '' }] }))).toEqual([])
+    expect(featuredFields(project())).toEqual([])
+  })
+})
+
+describe('projectTooltip', () => {
+  it('lists where the issue stands, every field, and that a click opens it', () => {
+    const fields = [
+      { name: 'Priority', value: 'High', color: '#fa4549' },
+      { name: 'Target', value: 'Jun 27, 2026', color: '' },
+    ]
+
+    expect(projectTooltip(project({ fields }))).toBe(
+      'Roadmap: In progress\nPriority: High\nTarget: Jun 27, 2026\nOpen the project on GitHub',
+    )
+  })
+})
+
+describe('subIssuesText', () => {
+  it('says how many are done, of how many, as a share', () => {
+    expect(subIssuesText({ total: 8, completed: 6 })).toBe('6 of 8 sub-issues done (75%)')
+    expect(subIssuesText({ total: 1, completed: 0 })).toBe('0 of 1 sub-issue done (0%)')
+    expect(subIssuesText({ total: 3, completed: 2 })).toBe('2 of 3 sub-issues done (67%)')
   })
 })
 

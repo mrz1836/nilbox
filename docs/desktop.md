@@ -268,10 +268,12 @@ Each pull request or issue in the inbox is a card three lines high:
 | Reviews | Reviewers who have reviewed, out of everyone asked or who reviewed. The author's own replies don't count, and a reviewer asked again owes a new review. | Green once approved, red when changes were requested |
 | Comments | The conversation's comments, review comments included | None |
 | Size | XS (under 10 changed lines), S (under 30), M (under 100), L (under 500), XL (under 1,000), or XXL; then the lines added and removed, the files, and the commits | Added lines green, removed lines red |
-| Projects | On an issue, the first GitHub project it is in and its status there, then how many more. Click it to open the project. See [Issue projects](#issue-projects). | The status in its project color |
+| Sub-issues | On an issue with sub-issues, how many are done out of all of them, with a small bar | Green once all are done |
+| Projects | On an issue, the first GitHub project it is in, its status there, and its priority and size, then how many more projects. Click it to open the project. See [Issue projects](#issue-projects). | The status and fields in their project colors |
 | Labels | The first three labels with their GitHub colors, then how many more | None |
 
-An issue shows its comments, its projects, and its labels.
+An issue shows its comments, its sub-issues, its projects, and its labels. Sub-issue progress
+needs no extra scope, so it shows for every issue that has sub-issues.
 
 **Archived repositories are left out.** Each of the inbox's three searches asks GitHub for
 `archived:false`, so an archived repository's pull requests and issues never appear, never
@@ -344,10 +346,15 @@ says why.
 
 An issue's card names the GitHub project it is in, such as **Roadmap**, with the issue's
 **Status** there as a pill in the color the project gives it, such as **In progress** in
-yellow. Click it to open the project on GitHub. An issue in more than one project shows the
-first, in GitHub's order, then **+N**; hover the count for the others and their statuses. A
-closed project, and an item archived from its project, are left out. A project whose Status
-field was renamed or deleted shows its name alone. Pull requests show no projects.
+yellow. Beside it, the issue's priority and size show as outlined pills in their option
+colors, such as **High** and **XL**: the first field named like *Priority* (or *Prio*) and
+the first named like *Size* (or *Effort*), whatever their order in the project. Hover the
+project for every field it has a value in, such as **Estimate**, **Phase**, a date, or an
+iteration, and click it to open the project on GitHub. An issue in more than one project
+shows the first, in GitHub's order, then **+N**; hover the count for the others and their
+statuses. A closed project, and an item archived from its project, are left out, and the
+first five projects an issue is in are read. A project whose Status field was renamed or
+deleted shows its name alone. Pull requests show no projects.
 
 **Sorting by status.** A list whose issues are in projects, **Assigned** in practice, has a
 **Recent | Status** toggle at the right of its header. **Recent** is the usual order: pinned
@@ -383,8 +390,11 @@ Once a refresh finds access, the tip says the projects are on. Close the tip wit
 it stays away; **Settings → Account → Projects on issues** keeps the command, and says
 **On** once the projects show.
 
-**How they are read.** The projects come with each issue's other details, in the same
-requests, at about one point per hundred issues. A token that reports its scopes is asked for
+**How they are read.** The projects and their fields come with each issue's other details, in
+the same requests, so they never add one. GitHub prices the field values per project an issue
+is in, so with them a batch of 50 issues costs about four points of the GraphQL budget instead
+of one; only a token with the scope pays it. Sub-issue counts cost nothing extra. A token that
+reports its scopes is asked for
 projects only when it has the scope. The details of the items already listed are asked for
 before this refresh knows the token's scopes, the way the last refresh read them. When the
 scope was just granted, every item's details are read again once the scopes are known, so the

@@ -4,9 +4,13 @@ import (
 	"context"
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 
 	"golang.org/x/sync/errgroup"
+
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // Details requests are sent in batches, side by side. GitHub resolves the items of one
@@ -50,7 +54,7 @@ const detailsQueryHead = `query Details($ids: [ID!]!) {
 // detailFieldsProjectsFragment is the same with the projects an issue is in.
 const (
 	detailFieldsFragment         = detailFieldsHead + detailFieldsTail
-	detailFieldsProjectsFragment = detailFieldsHead + issueProjectFields + detailFieldsTail
+	detailFieldsProjectsFragment = detailFieldsHead + issueProjectFields + detailFieldsTail + projectFieldNameFragment
 )
 
 // detailFieldsHead is the DetailFields fragment up to the end of an issue's fields, which
@@ -86,7 +90,8 @@ fragment DetailFields on Node {
   ... on Issue {
     id
     comments { totalCount }
-    labels(first: 50) { nodes { name color } }`
+    labels(first: 50) { nodes { name color } }
+    subIssuesSummary { total completed }`
 
 // detailFieldsTail closes detailFieldsHead.
 const detailFieldsTail = `
@@ -95,19 +100,43 @@ const detailFieldsTail = `
 `
 
 // issueProjectFields reads the projects an issue is in, with its option in each one's
-// Status field, the field every project starts with. GitHub answers them only for a token
-// with the read:project scope. Items archived from a project are left out; a closed
-// project is dropped when the answer is read. A project whose Status field was renamed
-// or deleted answers no status. The list prices at one point per hundred issues.
+// Status field, the field every project starts with, and its values in the project's
+// other fields: single select, number, text, date, and iteration. GitHub answers them only
+// for a token with the read:project scope. Items archived from a project are left out; a
+// closed project is dropped when the answer is read. A project whose Status field was
+// renamed or deleted answers no status.
+//
+// GitHub prices the field values once per project item, so the first five projects are
+// read, which covers an issue in practice: a batch of 50 issues costs four points, where
+// it costs one without the projects. Each value names its field and the field's type, so
+// the built-in fields (the title, labels, assignees, and so on) can be told apart.
 const issueProjectFields = `
-    projectItems(first: 10, includeArchived: false) {
+    projectItems(first: 5, includeArchived: false) {
       nodes {
         project { title url closed }
         status: fieldValueByName(name: "Status") {
           ... on ProjectV2ItemFieldSingleSelectValue { name color }
         }
+        fieldValues(first: 20) {
+          nodes {
+            __typename
+            ... on ProjectV2ItemFieldSingleSelectValue { name color field { ...ProjectFieldName } }
+            ... on ProjectV2ItemFieldNumberValue { number field { ...ProjectFieldName } }
+            ... on ProjectV2ItemFieldTextValue { text field { ...ProjectFieldName } }
+            ... on ProjectV2ItemFieldDateValue { date field { ...ProjectFieldName } }
+            ... on ProjectV2ItemFieldIterationValue { title field { ...ProjectFieldName } }
+          }
+        }
       }
     }`
+
+// projectFieldNameFragment names a project field and its type. Only the query that reads
+// projects spreads it.
+const projectFieldNameFragment = `
+fragment ProjectFieldName on ProjectV2FieldConfiguration {
+  ... on ProjectV2FieldCommon { name dataType }
+}
+`
 
 // Review states a reviewer can leave; DISMISSED and PENDING reviews do not count.
 const (
@@ -169,6 +198,18 @@ type ItemDetails struct {
 	// read (see DetailOptions). It is nil when they were not, when the issue is in none,
 	// and for a pull request.
 	Projects []ProjectItem
+
+	// SubIssues counts an issue's sub-issues, and those closed as done. It is zero for a
+	// pull request and for an issue without sub-issues.
+	SubIssues SubIssues
+}
+
+// SubIssues counts an issue's sub-issues.
+type SubIssues struct {
+	Total int
+
+	// Completed is how many are closed as done; never more than Total.
+	Completed int
 }
 
 // ProjectItem is an issue's place in one GitHub project.
@@ -182,6 +223,24 @@ type ProjectItem struct {
 
 	// StatusColor is the status option's color as "#rrggbb", "" when it has none.
 	StatusColor string
+
+	// Fields are the issue's values in the project's other fields, such as Priority or
+	// Size, in GitHub's order. Fields without a value, the Status field, and GitHub's
+	// built-in fields are left out.
+	Fields []ProjectField
+}
+
+// ProjectField is an issue's value in one of a project's fields.
+type ProjectField struct {
+	// Name is the field's name, such as "Priority".
+	Name string
+
+	// Value is the value as the project shows it: an option's name, a number, text, a date
+	// such as "Jun 27, 2026", or an iteration's title.
+	Value string
+
+	// Color is a single-select option's color as "#rrggbb", and "" for any other value.
+	Color string
 }
 
 // Label is one label on an item.
@@ -369,23 +428,37 @@ func (r graphQLRateLimit) queryRate() QueryRate {
 // detailsNode is one node of the details query: a pull request, an issue, or null.
 // GitHub's nulls decode to zero values.
 type detailsNode struct {
-	TypeName           string          `json:"__typename"`
-	ID                 string          `json:"id"`
-	Additions          int             `json:"additions"`
-	Deletions          int             `json:"deletions"`
-	ChangedFiles       int             `json:"changedFiles"`
-	TotalCommentsCount int             `json:"totalCommentsCount"`
-	ReviewDecision     string          `json:"reviewDecision"`
-	Mergeable          string          `json:"mergeable"`
-	HeadRefOID         string          `json:"headRefOid"`
-	Author             *graphQLActor   `json:"author"`
-	Commits            graphQLCount    `json:"commits"`
-	Comments           graphQLCount    `json:"comments"`
-	Labels             graphQLLabels   `json:"labels"`
-	ReviewRequests     graphQLRequests `json:"reviewRequests"`
-	LatestReviews      graphQLReviews  `json:"latestReviews"`
-	StatusCheckRollup  *graphQLRollup  `json:"statusCheckRollup"`
-	ProjectItems       graphQLProjects `json:"projectItems"`
+	TypeName           string           `json:"__typename"`
+	ID                 string           `json:"id"`
+	Additions          int              `json:"additions"`
+	Deletions          int              `json:"deletions"`
+	ChangedFiles       int              `json:"changedFiles"`
+	TotalCommentsCount int              `json:"totalCommentsCount"`
+	ReviewDecision     string           `json:"reviewDecision"`
+	Mergeable          string           `json:"mergeable"`
+	HeadRefOID         string           `json:"headRefOid"`
+	Author             *graphQLActor    `json:"author"`
+	Commits            graphQLCount     `json:"commits"`
+	Comments           graphQLCount     `json:"comments"`
+	Labels             graphQLLabels    `json:"labels"`
+	ReviewRequests     graphQLRequests  `json:"reviewRequests"`
+	LatestReviews      graphQLReviews   `json:"latestReviews"`
+	StatusCheckRollup  *graphQLRollup   `json:"statusCheckRollup"`
+	ProjectItems       graphQLProjects  `json:"projectItems"`
+	SubIssuesSummary   graphQLSubIssues `json:"subIssuesSummary"`
+}
+
+// graphQLSubIssues is an issue's sub-issue counts.
+type graphQLSubIssues struct {
+	Total     int `json:"total"`
+	Completed int `json:"completed"`
+}
+
+// subIssues converts the counts, keeping them in bounds.
+func (s graphQLSubIssues) subIssues() SubIssues {
+	total := max(s.Total, 0)
+
+	return SubIssues{Total: total, Completed: min(max(s.Completed, 0), total)}
 }
 
 // graphQLCount is a connection asked only for its size.
@@ -401,20 +474,42 @@ type graphQLLabels struct {
 	} `json:"nodes"`
 }
 
-// graphQLProjects is an issue's places in projects. A project the token cannot see
-// comes back null.
+// graphQLProjects is an issue's places in projects.
 type graphQLProjects struct {
-	Nodes []*struct {
-		Project *struct {
-			Title  string `json:"title"`
-			URL    string `json:"url"`
-			Closed bool   `json:"closed"`
-		} `json:"project"`
-		Status *struct {
-			Name  string `json:"name"`
-			Color string `json:"color"`
-		} `json:"status"`
-	} `json:"nodes"`
+	Nodes []*graphQLProjectItem `json:"nodes"`
+}
+
+// graphQLProjectItem is an issue's place in one project. A project the token cannot see
+// comes back null.
+type graphQLProjectItem struct {
+	Project *struct {
+		Title  string `json:"title"`
+		URL    string `json:"url"`
+		Closed bool   `json:"closed"`
+	} `json:"project"`
+	Status *struct {
+		Name  string `json:"name"`
+		Color string `json:"color"`
+	} `json:"status"`
+	FieldValues struct {
+		Nodes []*graphQLFieldValue `json:"nodes"`
+	} `json:"fieldValues"`
+}
+
+// graphQLFieldValue is an item's value in one project field. Which value field is set
+// depends on the type; the others decode to zero values.
+type graphQLFieldValue struct {
+	TypeName string   `json:"__typename"`
+	Name     string   `json:"name"`
+	Color    string   `json:"color"`
+	Number   *float64 `json:"number"`
+	Text     string   `json:"text"`
+	Date     string   `json:"date"`
+	Title    string   `json:"title"`
+	Field    *struct {
+		Name     string `json:"name"`
+		DataType string `json:"dataType"`
+	} `json:"field"`
 }
 
 // graphQLRequests is a pull request's pending review requests.
@@ -461,6 +556,7 @@ func (n *detailsNode) details() (id string, item ItemDetails, ok bool) {
 	case typeIssue:
 		return n.ID, ItemDetails{
 			Labels: n.Labels.labels(), Comments: n.Comments.TotalCount, Projects: n.ProjectItems.projects(),
+			SubIssues: n.SubIssuesSummary.subIssues(),
 		}, true
 	case typePullRequest:
 		author := ""
@@ -504,19 +600,100 @@ func (p graphQLProjects) projects() []ProjectItem {
 	var out []ProjectItem
 
 	for _, n := range p.Nodes {
-		if n == nil || n.Project == nil || n.Project.Closed || n.Project.Title == "" {
-			continue
+		if place, ok := n.place(); ok {
+			out = append(out, place)
 		}
-
-		place := ProjectItem{Title: n.Project.Title, URL: n.Project.URL}
-		if n.Status != nil && n.Status.Name != "" {
-			place.Status, place.StatusColor = n.Status.Name, projectColor(n.Status.Color)
-		}
-
-		out = append(out, place)
 	}
 
 	return out
+}
+
+// place converts one project item; ok is false for null, a project the token cannot see,
+// and a closed project.
+func (n *graphQLProjectItem) place() (ProjectItem, bool) {
+	if n == nil || n.Project == nil || n.Project.Closed || n.Project.Title == "" {
+		return ProjectItem{}, false
+	}
+
+	place := ProjectItem{Title: n.Project.Title, URL: n.Project.URL}
+	if n.Status != nil && n.Status.Name != "" {
+		place.Status, place.StatusColor = n.Status.Name, projectColor(n.Status.Color)
+	}
+
+	for _, v := range n.FieldValues.Nodes {
+		if field, ok := v.field(); ok {
+			place.Fields = append(place.Fields, field)
+		}
+	}
+
+	return place, true
+}
+
+// Project field data types the inbox leaves out of an item's fields: the Status field,
+// which it reads on its own, and the title, which the card shows already.
+const (
+	fieldTypeTitle        = "TITLE"
+	fieldTypeSingleSelect = "SINGLE_SELECT"
+	statusFieldName       = "Status"
+)
+
+// maxFieldRunes caps a text field's value, which a project lets run long.
+const maxFieldRunes = 120
+
+// field converts one field value; ok is false for a null value, one without a field or
+// value, the title, the Status field, and the built-in fields this build does not read.
+func (v *graphQLFieldValue) field() (ProjectField, bool) {
+	if !v.kept() {
+		return ProjectField{}, false
+	}
+
+	value, color := v.value()
+
+	return ProjectField{Name: v.Field.Name, Value: value, Color: color}, value != ""
+}
+
+// kept reports whether the value is one of a field the inbox shows: one with a name, and
+// neither the title nor the Status field.
+func (v *graphQLFieldValue) kept() bool {
+	if v == nil || v.Field == nil || v.Field.Name == "" || v.Field.DataType == fieldTypeTitle {
+		return false
+	}
+
+	return v.Field.DataType != fieldTypeSingleSelect || v.Field.Name != statusFieldName
+}
+
+// value is the value as the project shows it, and a single-select option's color; both ""
+// for a type this build does not read.
+func (v *graphQLFieldValue) value() (value, color string) {
+	switch v.TypeName {
+	case "ProjectV2ItemFieldSingleSelectValue":
+		return v.Name, projectColor(v.Color)
+	case "ProjectV2ItemFieldNumberValue":
+		if v.Number == nil {
+			return "", ""
+		}
+
+		return strconv.FormatFloat(*v.Number, 'f', -1, 64), ""
+	case "ProjectV2ItemFieldTextValue":
+		return textutil.Truncate(strings.Join(strings.Fields(v.Text), " "), maxFieldRunes), ""
+	case "ProjectV2ItemFieldDateValue":
+		return fieldDate(v.Date), ""
+	case "ProjectV2ItemFieldIterationValue":
+		return v.Title, ""
+	default:
+		return "", ""
+	}
+}
+
+// fieldDate writes a date field's "2026-06-27" as "Jun 27, 2026", or keeps a value it
+// cannot read as it is.
+func fieldDate(date string) string {
+	day, err := time.Parse(time.DateOnly, date)
+	if err != nil {
+		return date
+	}
+
+	return day.Format("Jan 2, 2006")
 }
 
 // projectColor turns a project option's color, such as BLUE, into "#rrggbb", or "" for

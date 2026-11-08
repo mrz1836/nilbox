@@ -106,6 +106,7 @@ export function project(overrides: Partial<Project> = {}): Project {
     url: 'https://github.com/orgs/acme-org/projects/1',
     status: 'In progress',
     statusColor: '#bf8700',
+    fields: [],
     ...overrides,
   }
 }
@@ -119,6 +120,7 @@ export function details(overrides: Partial<ItemDetails> = {}): ItemDetails {
       { name: 'needs-docs', color: '' },
     ],
     projects: [],
+    subIssues: { total: 0, completed: 0 },
     comments: 4,
     additions: 120,
     deletions: 30,
