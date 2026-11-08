@@ -1,10 +1,15 @@
 <div align="center">
 
-# 📭&nbsp;&nbsp;Nilbox
+<br/>
+
+<a href="https://github.com/mrz1836/nilbox"><img src="build/appicon.svg" alt="Nilbox app icon" width="160" height="160"></a>
+
+# Nilbox
 
 **Your GitHub inbox, set to nil.**
 
-One inbox for every repository you touch. One click to hand any pull request or issue to a coding agent.
+One inbox for every repository you touch.<br/>
+One click to hand any pull request or issue to a coding agent.
 
 <br/>
 
