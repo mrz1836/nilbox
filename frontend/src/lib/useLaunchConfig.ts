@@ -3,11 +3,13 @@ import { useRef } from 'react'
 import {
   getDefaultPrompts,
   getSettings,
+  listAgents,
   listLaunchDefaults,
   listProfiles,
   listPrompts,
   listPromptVariables,
   resolveLaunches,
+  type AgentInfo,
   type DefaultPrompts,
   type InboxItem,
   type InboxSnapshot,
@@ -22,11 +24,14 @@ import { all } from './call'
 import { shareResolutions } from './share'
 import { useQuery } from './useQuery'
 
-// LaunchConfig is everything launching reads: the settings, profiles, prompts, default
-// prompts, variables, and launch defaults, and each inbox item's resolved settings.
+// LaunchConfig is everything launching reads: the settings, the coding agents and their
+// profiles, prompts, default prompts, variables, and launch defaults, and each inbox
+// item's resolved settings.
 export interface LaunchConfig {
   // settings is null until the first load finishes.
   settings: Settings | null
+  // agents are the coding agents, the default first, each with whether it is installed.
+  agents: AgentInfo[]
   profiles: Profile[]
   prompts: Prompt[]
   defaultPrompts: DefaultPrompts | null
@@ -51,6 +56,7 @@ export interface LaunchConfig {
 // Loaded is the launch configuration as the services return it.
 interface Loaded {
   settings: Settings
+  agents: AgentInfo[]
   profiles: Profile[]
   prompts: Prompt[]
   defaultPrompts: DefaultPrompts
@@ -69,14 +75,16 @@ const noList: never[] = []
 function loadAll(): PromiseLike<Loaded> {
   const reads = all([
     getSettings(),
+    listAgents(),
     listProfiles(),
     listPrompts(),
     getDefaultPrompts(),
     listPromptVariables(),
     listLaunchDefaults(),
   ])
-  const loaded = reads.then(([settings, profiles, prompts, defaultPrompts, variables, launchDefaults]) => ({
+  const loaded = reads.then(([settings, agents, profiles, prompts, defaultPrompts, variables, launchDefaults]) => ({
     settings,
+    agents,
     profiles,
     prompts,
     defaultPrompts,
@@ -93,7 +101,8 @@ function launchKey(settings: Settings | undefined): string {
   return settings === undefined
     ? ''
     : JSON.stringify([
-        settings.defaultProfile,
+        settings.defaultAgent,
+        settings.defaultProfiles,
         settings.worktreeDefault,
         settings.terminal,
         settings.cloneRoot,
@@ -153,6 +162,7 @@ export function useLaunchConfig(snapshot: InboxSnapshot | null): LaunchConfig {
 
   return {
     settings: data?.settings ?? null,
+    agents: data?.agents ?? noList,
     profiles: data?.profiles ?? noList,
     prompts: data?.prompts ?? noList,
     defaultPrompts: data?.defaultPrompts ?? null,

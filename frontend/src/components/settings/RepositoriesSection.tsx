@@ -1,13 +1,21 @@
 import { startTransition, useActionState, useId, useState, type SubmitEvent } from 'react'
 
 import { useSettingsSave } from '../../lib/useSettingsSave'
-import { setCloneRoot, type DefaultPrompts, type LaunchDefaults, type Profile, type Prompt } from '../../platform'
+import {
+  setCloneRoot,
+  type DefaultPrompts,
+  type LaunchDefaults,
+  type AgentInfo,
+  type Profile,
+  type Prompt,
+} from '../../platform'
 import { buttonClass, fieldClass } from '../controls'
 import { LaunchDefaultsSection } from './LaunchDefaultsSection'
 import { Group, rowDescribedBy, SettingRow } from './rows'
 import type { SectionProps } from './types'
 
 interface RepositoriesSectionProps extends SectionProps {
+  agents: readonly AgentInfo[]
   profiles: readonly Profile[]
   prompts: readonly Prompt[]
   // defaultPrompts is null until it has loaded.
@@ -30,6 +38,7 @@ interface CloneRootSave {
 export function RepositoriesSection({
   settings: stored,
   onSaved,
+  agents,
   profiles,
   prompts,
   defaultPrompts,
@@ -93,6 +102,7 @@ export function RepositoriesSection({
       </Group>
       <LaunchDefaultsSection
         settings={settings}
+        agents={agents}
         profiles={profiles}
         prompts={prompts}
         defaultPrompts={defaultPrompts}

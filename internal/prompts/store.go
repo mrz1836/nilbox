@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"slices"
 	"strconv"
 	"time"
 	"unicode/utf8"
@@ -147,7 +146,7 @@ func (s *Store) inTx(ctx context.Context, fn func(*Store) error) error {
 // insert stores p as a new prompt, with its starter key, stamped now, and returns its
 // ID.
 func (s *Store) insert(ctx context.Context, p Prompt) (int64, error) {
-	args, err := store.EncodeJSON(p.ExtraArgs)
+	models, args, err := encodeSettings(p)
 	if err != nil {
 		return 0, err
 	}
@@ -155,24 +154,38 @@ func (s *Store) insert(ctx context.Context, p Prompt) (int64, error) {
 	now := s.now()
 
 	return s.q.InsertPrompt(ctx, queries.InsertPromptParams{
-		Name: p.Name, Nickname: p.Nickname, AppliesTo: string(p.AppliesTo), Body: p.Body, Model: p.Model,
-		Effort: p.Effort, PlanMode: p.PlanMode, Worktree: p.Worktree, ExtraArgs: args, StarterKey: p.StarterKey,
+		Name: p.Name, Nickname: p.Nickname, AppliesTo: string(p.AppliesTo), Body: p.Body, Models: models,
+		Effort: p.Effort, PlanMode: p.PlanMode, Worktree: p.Worktree, AgentArgs: args, StarterKey: p.StarterKey,
 		CreatedAt: now, UpdatedAt: now,
 	})
+}
+
+// encodeSettings returns a prompt's models and extra arguments as stored, as JSON objects
+// keyed by agent.
+func encodeSettings(p Prompt) (models, args string, err error) {
+	if models, err = store.EncodeJSON(agent.CloneModels(p.Models)); err != nil {
+		return "", "", err
+	}
+
+	if args, err = store.EncodeJSON(agent.CloneArgs(p.ExtraArgs)); err != nil {
+		return "", "", err
+	}
+
+	return models, args, nil
 }
 
 // update replaces the title, nickname, text, and settings of the prompt with id with
 // p's, stamped now. Its starter key stays. It returns ErrPromptNotFound when no prompt
 // has id.
 func (s *Store) update(ctx context.Context, id int64, p Prompt) error {
-	args, err := store.EncodeJSON(p.ExtraArgs)
+	models, args, err := encodeSettings(p)
 	if err != nil {
 		return err
 	}
 
 	n, err := s.q.UpdatePrompt(ctx, queries.UpdatePromptParams{
-		Name: p.Name, Nickname: p.Nickname, AppliesTo: string(p.AppliesTo), Body: p.Body, Model: p.Model,
-		Effort: p.Effort, PlanMode: p.PlanMode, Worktree: p.Worktree, ExtraArgs: args, UpdatedAt: s.now(), ID: id,
+		Name: p.Name, Nickname: p.Nickname, AppliesTo: string(p.AppliesTo), Body: p.Body, Models: models,
+		Effort: p.Effort, PlanMode: p.PlanMode, Worktree: p.Worktree, AgentArgs: args, UpdatedAt: s.now(), ID: id,
 	})
 
 	switch {
@@ -349,19 +362,24 @@ func defaultPrefKey(kind item.Kind) string {
 	return prefDefaultIssue
 }
 
-// fromRow converts a stored row to a Prompt with no usage. Its lists are never nil: the
-// schema only accepts a JSON array in extra_args, and an empty one decodes to an empty
-// list.
+// fromRow converts a stored row to a Prompt with no usage. Its maps are never nil: the
+// schema only accepts a JSON object in models and agent_args, and an empty one decodes to
+// an empty map.
 func fromRow(row queries.Prompt) (Prompt, error) {
-	args, err := store.DecodeJSON[[]string](row.ExtraArgs)
+	models, err := store.DecodeJSON[map[agent.ID]string](row.Models)
+	if err != nil {
+		return Prompt{}, fmt.Errorf("prompt %q: models: %w", row.Nickname, err)
+	}
+
+	args, err := store.DecodeJSON[map[agent.ID][]string](row.AgentArgs)
 	if err != nil {
 		return Prompt{}, fmt.Errorf("prompt %q: extra arguments: %w", row.Nickname, err)
 	}
 
 	p := Prompt{
 		ID: row.ID, Name: row.Name, Nickname: row.Nickname, AppliesTo: AppliesTo(row.AppliesTo), Body: row.Body,
-		Model: row.Model, Effort: row.Effort, PlanMode: row.PlanMode, Worktree: row.Worktree,
-		ExtraArgs: args, ExtraFlags: agent.Join(args), StarterKey: row.StarterKey,
+		Models: agent.CloneModels(models), Effort: row.Effort, PlanMode: row.PlanMode, Worktree: row.Worktree,
+		ExtraArgs: agent.CloneArgs(args), ExtraFlags: agent.JoinArgs(args), StarterKey: row.StarterKey,
 		Usage:     normalizeUsage(Usage{}),
 		CreatedAt: clock.Format(row.CreatedAt),
 		UpdatedAt: clock.Format(row.UpdatedAt),
@@ -378,8 +396,8 @@ func fromRow(row queries.Prompt) (Prompt, error) {
 // settings. The nickname may differ: Reset keeps it when another prompt took it.
 func matchesStarter(p Prompt, st Starter) bool {
 	return p.Name == st.Name && p.AppliesTo == st.AppliesTo && p.Body == st.Body &&
-		p.Model == st.Model && p.Effort == st.Effort && sameBool(p.PlanMode, st.PlanMode) &&
-		sameBool(p.Worktree, st.Worktree) && slices.Equal(p.ExtraArgs, st.ExtraArgs)
+		agent.EqualModels(p.Models, st.Models) && p.Effort == st.Effort && sameBool(p.PlanMode, st.PlanMode) &&
+		sameBool(p.Worktree, st.Worktree) && agent.EqualArgs(p.ExtraArgs, st.ExtraArgs)
 }
 
 // sameBool reports whether two optional settings are equal.

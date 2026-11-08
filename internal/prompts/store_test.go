@@ -490,7 +490,7 @@ func TestStoreReportsAMissingPrompt(t *testing.T) {
 	_, err := s.store.Lookup(ctx, 9999)
 	require.ErrorIs(t, err, ErrPromptNotFound)
 
-	require.ErrorIs(t, s.store.update(ctx, 9999, fromInput(validInput(), nil)), ErrPromptNotFound)
+	require.ErrorIs(t, s.store.update(ctx, 9999, fromInput(validInput(), agent.Checked{})), ErrPromptNotFound)
 	require.ErrorIs(t, s.store.remove(ctx, 9999), ErrPromptNotFound)
 
 	// A stored default naming a prompt that is gone does not make it in use.
@@ -505,14 +505,19 @@ func TestStoreRefusesUnreadableExtraArguments(t *testing.T) {
 	ctx := t.Context()
 	review := idOf(t, s, "Review")
 
-	// The schema takes any JSON array; the library only stores arrays of strings.
-	exec(t, db, "UPDATE prompts SET extra_args = '[1]' WHERE id = ?", review)
+	// The schema takes any JSON object; the library only stores lists of strings in it.
+	exec(t, db, `UPDATE prompts SET agent_args = '{"claude": [1]}' WHERE id = ?`, review)
 
 	_, err := s.store.Lookup(ctx, review)
 	require.ErrorContains(t, err, `read the prompt: prompt "Review": extra arguments`)
 
+	exec(t, db, `UPDATE prompts SET agent_args = '{}', models = '{"claude": 1}' WHERE id = ?`, review)
+
+	_, err = s.store.Lookup(ctx, review)
+	require.ErrorContains(t, err, `read the prompt: prompt "Review": models`)
+
 	_, err = s.store.All(ctx)
-	require.ErrorContains(t, err, `read the prompts: prompt "Review": extra arguments`)
+	require.ErrorContains(t, err, `read the prompts: prompt "Review": models`)
 
 	_, err = s.store.Library(ctx)
 	require.ErrorContains(t, err, "read the prompts")

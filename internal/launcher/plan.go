@@ -1,17 +1,22 @@
-// Package launcher starts a coding-agent session on a pull request or issue.
+// Package launcher starts a coding-agent session (Claude Code or Codex) on a pull
+// request or issue.
 //
 // A launch is built in layers so each OS-specific piece stays small:
 //
-//  1. BuildPlan turns an item, a profile, and a local clone into an OS-independent Plan:
-//     the working directory, the agent binary and its arguments, and the environment.
-//  2. A terminal.ScriptRenderer writes that plan as a script (POSIX sh today). The prompt
+//  1. Resolve works out the launch settings, the agent among them, from the launch menu's
+//     choices, the prompt, the repository's and its owner's launch defaults, the profile,
+//     and the app's settings.
+//  2. A WorktreeMaker finds or makes the item's worktree (in Go, never in the script), and
+//     BuildPlan turns the item, the profile, and the directory into an OS-independent
+//     Plan: the agent binary and its arguments, and the environment.
+//  3. A terminal.ScriptRenderer writes that plan as a script (POSIX sh today). The prompt
 //     is kept in its own file and read by the script at run time, so prompt text never
 //     appears on a command line and needs no shell quoting.
-//  3. A terminal.Driver opens the script in the user's terminal app.
+//  4. A terminal.Driver opens the script in the user's terminal app.
 //
 // Everything up to the terminal driver is pure and tested on every OS. The launcher
-// never runs a state-changing git command in the clone: worktree launches use the
-// agent's own --worktree flag, and the agent creates and owns the worktree.
+// itself never changes a clone: the script only changes into the directory and runs the
+// agent, and only the worktrees package fetches and adds worktrees.
 package launcher
 
 import (
@@ -20,7 +25,6 @@ import (
 	"maps"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/agent"
@@ -28,31 +32,6 @@ import (
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/profiles"
 )
-
-// Agent command-line flags and environment names. Every flag the launcher passes is
-// spelled here.
-const (
-	flagModel                = "--model"
-	flagEffort               = "--effort"
-	flagSkipPermissions      = "--dangerously-skip-permissions"
-	flagAllowSkipPermissions = "--allow-dangerously-skip-permissions"
-	flagPermissionMode       = "--permission-mode"
-	flagAddDirPrefix         = "--add-dir="
-	flagWorktree             = "--worktree"
-	flagNamePrefix           = "--name="
-
-	// modePlan is the --permission-mode value that starts a session in plan mode.
-	modePlan = "plan"
-
-	// envConfigDir points the agent at a profile's config directory. It is unset for
-	// the default profile so the agent's own default login is used.
-	envConfigDir = "CLAUDE_CONFIG_DIR"
-)
-
-// worktreePRHeadForm starts the --worktree argument of a pull request launched against a
-// clone whose origin is the item's repository: "#<n>", which the agent names "pr-<n>"
-// and bases on the pull request's head.
-const worktreePRHeadForm = "#"
 
 var (
 	// ErrInvalidNumber is returned for an item number that is not positive.
@@ -63,7 +42,7 @@ var (
 
 	// ErrInvalidPermissionMode is returned for a profile permission mode the agent does
 	// not accept.
-	ErrInvalidPermissionMode = errors.New("unknown permission mode")
+	ErrInvalidPermissionMode = agent.ErrInvalidPermissionMode
 
 	// ErrInvalidEnvKey is returned for a profile environment variable with an unusable name.
 	ErrInvalidEnvKey = errors.New("invalid environment variable name")
@@ -80,11 +59,6 @@ var (
 	// outside contributor's item can never be launched with more access than it allows.
 	ErrConflictingExtraArg = errors.New("extra argument conflicts with the launch permission policy")
 )
-
-// permissionFlags returns the switches only resolvePermission may set.
-func permissionFlags() []string {
-	return []string{flagPermissionMode, flagSkipPermissions, flagAllowSkipPermissions}
-}
 
 // Item is the pull request or issue a session is launched on.
 type Item struct {
@@ -110,14 +84,14 @@ type Item struct {
 	Trusted bool
 }
 
-// Clone is the local working tree a session starts in.
+// Clone is the local working tree a session starts in, or whose worktree it starts in.
 type Clone struct {
 	// Dir is the clone's absolute directory.
 	Dir string
 
-	// OriginIsItemRepo reports whether the clone's origin remote is the item's
-	// repository. Only then can the agent fetch a pull request's head from origin.
-	OriginIsItemRepo bool
+	// Remote is the clone's remote for the item's repository, such as "origin", or
+	// "upstream" in a fork's clone.
+	Remote string
 }
 
 // Request is everything BuildPlan needs to plan one launch.
@@ -125,38 +99,44 @@ type Request struct {
 	// Item is the pull request or issue to launch on.
 	Item Item
 
+	// Agent is the coding agent to start.
+	Agent agent.ID
+
 	// Profile supplies the model, effort, permissions, extra directories, extra
 	// arguments, and environment.
 	Profile profiles.Profile
 
-	// Clone is the working tree to start in.
-	Clone Clone
-
-	// Worktree starts the session in an agent-created worktree.
-	Worktree bool
+	// Dir is the absolute directory the session starts in: the item's worktree, or the
+	// clone.
+	Dir string
 
 	// FullAccessOverride lifts the outside-contributor restriction for this launch. The
 	// profile's own plan and permission settings still apply.
 	FullAccessOverride bool
 
-	// ClaudePath is the agent binary's absolute path.
-	ClaudePath string
+	// BinaryPath is the agent binary's absolute path.
+	BinaryPath string
 
 	// PromptFile is the prompt file's absolute path, or "" when WriteLaunchFiles will
 	// choose it.
 	PromptFile string
 
 	// SessionName names the session in the agent's prompt box, its resume list, and the
-	// terminal's title, or "" to leave it unnamed.
+	// terminal's title, or "" to leave it unnamed. An agent that cannot name sessions
+	// ignores it.
 	SessionName string
 }
 
-// Plan is an OS-independent description of one launch. The prompt is passed as the
-// first argument after Binary, read from PromptFile when the script runs.
+// Plan is an OS-independent description of one launch. The prompt is passed first, or
+// last for an agent whose prompt follows its flags, read from PromptFile when the script
+// runs.
 type Plan struct {
 	// Kind and Number identify the item, for naming the launch files.
 	Kind   item.Kind
 	Number int
+
+	// Agent is the agent the plan starts.
+	Agent agent.ID
 
 	// Dir is the directory the session starts in.
 	Dir string
@@ -164,8 +144,12 @@ type Plan struct {
 	// Binary is the agent binary's absolute path.
 	Binary string
 
-	// Args are the arguments that follow the prompt, one argv element each.
+	// Args are the agent's arguments besides the prompt, one argv element each.
 	Args []string
+
+	// PromptLast reports that the prompt follows Args (which then end with "--") rather
+	// than coming first.
+	PromptLast bool
 
 	// Env holds the environment variables to set.
 	Env map[string]string
@@ -173,53 +157,71 @@ type Plan struct {
 	// Unset lists environment variables to remove.
 	Unset []string
 
-	// PromptFile holds the prompt text the script passes as the first argument.
+	// PromptFile holds the prompt text the script passes to the agent.
 	PromptFile string
-
-	// Worktree is the --worktree argument, or "" when the session starts in the clone.
-	Worktree string
-
-	// WorktreeOnPRHead reports whether the agent bases the worktree on the pull
-	// request's head, so the session does not need to check the branch out.
-	WorktreeOnPRHead bool
 
 	// Permission is a short summary of the session's permissions, for the UI.
 	Permission string
 }
 
-// Argv returns the full command line: the binary, the prompt, then Args. The prompt
-// comes first because some agent flags (such as --add-dir) take several values and
-// would otherwise swallow it.
+// Argv returns the full command line: the binary, then the prompt and Args, the prompt
+// first unless PromptLast. Claude's prompt comes first because some of its flags (such as
+// --add-dir) take several values and would otherwise swallow it; Codex's comes last,
+// after "--", so it is never read as a flag or a subcommand.
 func (p Plan) Argv(prompt string) []string {
 	argv := make([]string, 0, len(p.Args)+2)
-	argv = append(argv, p.Binary, prompt)
+	argv = append(argv, p.Binary)
+
+	if p.PromptLast {
+		return append(append(argv, p.Args...), prompt)
+	}
+
+	argv = append(argv, prompt)
 
 	return append(argv, p.Args...)
 }
 
 // BuildPlan plans a launch. It is pure: it reads no files and runs nothing.
 //
-// The arguments are, in order: --model, --effort, the permission flags chosen by the
-// trust policy, one --add-dir=<dir> per extra directory, the profile's extra arguments
-// verbatim, --name=<session name>, and --worktree <name> last. Extra arguments that try
-// to set a permission switch are rejected with ErrConflictingExtraArg, and no plan is
-// returned.
+// The agent spec writes the arguments, in order: the model, the effort, the permission
+// flags the trust policy chose, one --add-dir=<dir> per extra directory, the profile's
+// extra arguments verbatim, and the session name where the agent takes one. Extra
+// arguments that try to set a permission switch are rejected with ErrConflictingExtraArg,
+// and no plan is returned.
 func BuildPlan(req Request) (Plan, error) {
-	if err := validateRequest(req); err != nil {
-		return Plan{}, err
-	}
-
-	perm, err := resolvePermission(req.Item.Trusted, req.FullAccessOverride, req.Profile)
+	a, err := validateRequest(req)
 	if err != nil {
 		return Plan{}, err
 	}
 
-	args, err := profileArgs(req.Profile, perm.args)
+	perm, err := resolvePermission(a, req.Item.Trusted, req.FullAccessOverride, req.Profile)
 	if err != nil {
 		return Plan{}, err
 	}
 
-	env, unset, err := planEnv(req.Profile)
+	dirs, err := addDirs(req.Profile.AddDirs)
+	if err != nil {
+		return Plan{}, err
+	}
+
+	if err = agent.CheckAccess(a.ID, req.Profile.ExtraArgs); err != nil {
+		return Plan{}, fmt.Errorf("%w: %w", ErrConflictingExtraArg, err)
+	}
+
+	opts := agent.Options{
+		Model: req.Profile.Model, Effort: req.Profile.Effort, Access: perm.access, AddDirs: dirs,
+		Extra: req.Profile.ExtraArgs,
+	}
+	if a.SessionNames {
+		opts.SessionName = req.SessionName
+	}
+
+	args, err := agent.Args(a.ID, opts)
+	if err != nil {
+		return Plan{}, err
+	}
+
+	env, unset, err := planEnv(a, req.Profile)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -227,25 +229,16 @@ func BuildPlan(req Request) (Plan, error) {
 	plan := Plan{
 		Kind:       req.Item.Kind,
 		Number:     req.Item.Number,
-		Dir:        req.Clone.Dir,
-		Binary:     req.ClaudePath,
+		Agent:      a.ID,
+		Dir:        req.Dir,
+		Binary:     req.BinaryPath,
+		Args:       args,
+		PromptLast: agent.PromptLast(a.ID),
 		Env:        env,
 		Unset:      unset,
 		PromptFile: req.PromptFile,
 		Permission: perm.summary,
 	}
-
-	if req.SessionName != "" {
-		args = append(args, flagNamePrefix+req.SessionName)
-	}
-
-	if req.Worktree {
-		plan.Worktree = worktreeArg(req.Item, req.Clone.OriginIsItemRepo)
-		plan.WorktreeOnPRHead = strings.HasPrefix(plan.Worktree, worktreePRHeadForm)
-		args = append(args, flagWorktree, plan.Worktree)
-	}
-
-	plan.Args = args
 
 	if err = checkNUL(plan); err != nil {
 		return Plan{}, err
@@ -254,112 +247,45 @@ func BuildPlan(req Request) (Plan, error) {
 	return plan, nil
 }
 
-// worktreeArg returns the --worktree argument for an item. The same item always gets the
-// same worktree, so launching again resumes it:
-//
-//   - a pull request whose repository is the clone's origin: "#<n>" (the agent names
-//     the worktree "pr-<n>" and bases it on the pull request's head)
-//   - any other item: its item.WorktreeName, "pr-<n>" or "issue-<n>"
-func worktreeArg(it Item, originIsItemRepo bool) string {
-	if it.Kind == item.KindPR && originIsItemRepo {
-		return worktreePRHeadForm + strconv.Itoa(it.Number)
-	}
-
-	return item.WorktreeName(it.Kind, it.Number)
-}
-
 // script is what the plan's launch script runs, for a terminal.ScriptRenderer.
 func (p Plan) script() terminal.Script {
 	return terminal.Script{
 		Dir: p.Dir, Binary: p.Binary, Args: p.Args, Env: p.Env, Unset: p.Unset, PromptFile: p.PromptFile,
+		PromptLast: p.PromptLast,
 	}
 }
 
-// worktreeDir is the name of the worktree directory the agent uses for the plan's
-// --worktree argument (the "#<n>" form becomes "pr-<n>"), or "" without a worktree.
-func (p Plan) worktreeDir() string {
-	if p.Worktree == "" {
-		return ""
-	}
-
-	return item.WorktreeName(p.Kind, p.Number)
-}
-
-// validateRequest checks the request's item and paths.
-func validateRequest(req Request) error {
+// validateRequest checks the request's item, agent, and paths, and returns the agent.
+func validateRequest(req Request) (agent.Agent, error) {
 	if !req.Item.Kind.Valid() {
-		return fmt.Errorf("%w: %q", item.ErrInvalidKind, req.Item.Kind)
+		return agent.Agent{}, fmt.Errorf("%w: %q", item.ErrInvalidKind, req.Item.Kind)
 	}
 
 	if req.Item.Number <= 0 {
-		return fmt.Errorf("%w: %d", ErrInvalidNumber, req.Item.Number)
+		return agent.Agent{}, fmt.Errorf("%w: %d", ErrInvalidNumber, req.Item.Number)
 	}
 
-	paths := map[string]string{"clone directory": req.Clone.Dir, "agent binary": req.ClaudePath}
+	a, err := agent.Lookup(req.Agent)
+	if err != nil {
+		return agent.Agent{}, err
+	}
+
+	paths := map[string]string{"session directory": req.Dir, "agent binary": req.BinaryPath}
 	if req.PromptFile != "" {
 		paths["prompt file"] = req.PromptFile
 	}
 
 	for _, label := range slices.Sorted(maps.Keys(paths)) {
 		if !filepath.IsAbs(paths[label]) {
-			return fmt.Errorf("%w: %s %q", ErrRelativePath, label, paths[label])
+			return agent.Agent{}, fmt.Errorf("%w: %s %q", ErrRelativePath, label, paths[label])
 		}
 	}
 
-	return nil
+	return a, nil
 }
 
-// profileArgs returns the model, effort, permission, add-dir, and extra arguments.
-func profileArgs(p profiles.Profile, permArgs []string) ([]string, error) {
-	args, err := modelEffortArgs(p)
-	if err != nil {
-		return nil, err
-	}
-
-	args = append(args, permArgs...)
-
-	dirs, err := addDirArgs(p.AddDirs)
-	if err != nil {
-		return nil, err
-	}
-
-	if err = checkExtraArgs(p.ExtraArgs); err != nil {
-		return nil, err
-	}
-
-	args = append(args, dirs...)
-
-	return append(args, p.ExtraArgs...), nil
-}
-
-// modelEffortArgs returns the --model and --effort flags a profile asks for.
-func modelEffortArgs(p profiles.Profile) ([]string, error) {
-	var args []string
-
-	if err := agent.ValidateModel(p.Model); err != nil {
-		return nil, err
-	}
-
-	if p.Model != "" {
-		args = append(args, flagModel, p.Model)
-	}
-
-	if err := agent.ValidateEffort(p.Effort); err != nil {
-		return nil, err
-	}
-
-	if p.Effort == "" {
-		return args, nil
-	}
-
-	return append(args, flagEffort, p.Effort), nil
-}
-
-// addDirArgs returns one --add-dir=<dir> argument per directory. The "=" form keeps the
-// flag from consuming the arguments after it.
-func addDirArgs(dirs []string) ([]string, error) {
-	args := make([]string, 0, len(dirs))
-
+// addDirs checks a profile's extra directories: each must be a non-empty absolute path.
+func addDirs(dirs []string) ([]string, error) {
 	for _, dir := range dirs {
 		if dir == "" {
 			return nil, fmt.Errorf("%w: add-dir entry", ErrEmptyArg)
@@ -368,40 +294,16 @@ func addDirArgs(dirs []string) ([]string, error) {
 		if !filepath.IsAbs(dir) {
 			return nil, fmt.Errorf("%w: add-dir %q", ErrRelativePath, dir)
 		}
-
-		args = append(args, flagAddDirPrefix+dir)
 	}
 
-	return args, nil
-}
-
-// checkExtraArgs rejects extra arguments that set a permission switch.
-func checkExtraArgs(extra []string) error {
-	for _, arg := range extra {
-		if conflictsWithPermissions(arg) {
-			return fmt.Errorf("%w: %q", ErrConflictingExtraArg, arg)
-		}
-	}
-
-	return nil
-}
-
-// conflictsWithPermissions reports whether arg sets a permission switch, in either the
-// "--flag value" or the "--flag=value" form.
-func conflictsWithPermissions(arg string) bool {
-	for _, flag := range permissionFlags() {
-		if arg == flag || strings.HasPrefix(arg, flag+"=") {
-			return true
-		}
-	}
-
-	return false
+	return slices.Clone(dirs), nil
 }
 
 // planEnv returns the variables to set and to unset. A profile with a config directory
-// sets CLAUDE_CONFIG_DIR to it, overriding any value in the profile's env; the default
-// profile unsets CLAUDE_CONFIG_DIR so the agent's own default login is used.
-func planEnv(p profiles.Profile) (map[string]string, []string, error) {
+// sets the agent's config variable (CLAUDE_CONFIG_DIR, CODEX_HOME) to it, overriding any
+// value in the profile's env; the default profile unsets it so the agent's own default
+// login is used.
+func planEnv(a agent.Agent, p profiles.Profile) (map[string]string, []string, error) {
 	env := make(map[string]string, len(p.Env)+1)
 	for key, value := range p.Env {
 		if !terminal.ValidEnvName(key) {
@@ -412,16 +314,16 @@ func planEnv(p profiles.Profile) (map[string]string, []string, error) {
 	}
 
 	if p.ConfigDir == "" {
-		delete(env, envConfigDir)
+		delete(env, a.ConfigEnv)
 
-		return env, []string{envConfigDir}, nil
+		return env, []string{a.ConfigEnv}, nil
 	}
 
 	if !filepath.IsAbs(p.ConfigDir) {
 		return nil, nil, fmt.Errorf("%w: profile config directory %q", ErrRelativePath, p.ConfigDir)
 	}
 
-	env[envConfigDir] = p.ConfigDir
+	env[a.ConfigEnv] = p.ConfigDir
 
 	return env, nil, nil
 }

@@ -15,8 +15,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/procs"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/worklog"
@@ -72,23 +74,49 @@ func refKeys(refs []item.Ref) []string {
 	return keys
 }
 
-// fakeLaunches is an in-memory launch log.
+// fakeLaunches is an in-memory worktree record.
 type fakeLaunches struct {
 	mu        sync.Mutex
-	records   []worklog.Launch
+	records   []worklog.Record
 	forgotten []string
+	recorded  []string
 	listErr   error
 	forgetErr error
+	recordErr error
 }
 
-func (f *fakeLaunches) Launches(context.Context) ([]worklog.Launch, error) {
+func (f *fakeLaunches) Worktrees(context.Context) ([]worklog.Record, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	return append([]worklog.Launch(nil), f.records...), f.listErr
+	return append([]worklog.Record(nil), f.records...), f.listErr
 }
 
-func (f *fakeLaunches) ForgetLaunch(_ context.Context, clonePath, worktree string) error {
+func (f *fakeLaunches) Record(_ context.Context, r worklog.Record) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if f.recordErr != nil {
+		return f.recordErr
+	}
+
+	f.recorded = append(f.recorded, filepath.Base(r.ClonePath)+"/"+r.Worktree)
+
+	for i, old := range f.records {
+		if old.ClonePath == r.ClonePath && old.Worktree == r.Worktree {
+			r.CreatedAt, r.Agent, r.LastAgentAt, r.Launches = old.CreatedAt, old.Agent, old.LastAgentAt, old.Launches
+			f.records[i] = r
+
+			return nil
+		}
+	}
+
+	f.records = append(f.records, r)
+
+	return nil
+}
+
+func (f *fakeLaunches) Forget(_ context.Context, clonePath, worktree string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -110,6 +138,14 @@ func (f *fakeLaunches) ForgetLaunch(_ context.Context, clonePath, worktree strin
 	return nil
 }
 
+// all returns a copy of the records.
+func (f *fakeLaunches) all() []worklog.Record {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return append([]worklog.Record(nil), f.records...)
+}
+
 // linkDeps are the optional dependencies of a linking Service.
 type linkDeps struct {
 	gh       *fakeGitHub
@@ -118,6 +154,7 @@ type linkDeps struct {
 	events   *testutil.Events
 	auto     bool
 	procs    processTable
+	running  procs.Lister
 }
 
 // linked builds a Service over the env that links worktrees through deps. Agent locks
@@ -137,7 +174,11 @@ func (e *env) linked(deps linkDeps) *Service {
 	}
 
 	if deps.launches != nil {
-		cfg.Launches = deps.launches
+		cfg.Records = deps.launches
+	}
+
+	if deps.running != nil {
+		cfg.Procs = deps.running
 	}
 
 	if deps.events != nil {
@@ -208,9 +249,13 @@ func closedIssue() ItemState {
 	}
 }
 
-// launchOf records a launch of the agent worktree at path for kind and number.
-func launchOf(repo, name string, kind item.Kind, number int) worklog.Launch {
-	return worklog.Launch{ClonePath: repo, Worktree: name, Owner: "acme-org", Name: filepath.Base(repo), Kind: kind, Number: number}
+// launchOf is the record of a launch in the worktree Claude Code made under the clone's
+// .claude/worktrees for kind and number, as one kept before the app made worktrees.
+func launchOf(repo, name string, kind item.Kind, number int) worklog.Record {
+	return worklog.Record{
+		ClonePath: repo, Worktree: name, Branch: ownBranchPrefix + name, Owner: "acme-org", Name: filepath.Base(repo),
+		Kind: kind, Number: number, Agent: agent.Claude, CreatedAt: listedAt(), LastAgentAt: listedAt(), Launches: 1,
+	}
 }
 
 func TestListLinksAndStagesAgentWorktrees(t *testing.T) {
@@ -361,7 +406,7 @@ func TestListLinksByLaunchRecord(t *testing.T) {
 
 	record := launchOf(repo, "pr-3", item.KindIssue, 12)
 	record.Owner = "Upstream-Org"
-	launches := &fakeLaunches{records: []worklog.Launch{record}}
+	launches := &fakeLaunches{records: []worklog.Record{record}}
 
 	snap, err := e.linked(linkDeps{gh: gh, launches: launches}).List(t.Context())
 	require.NoError(t, err)
@@ -483,7 +528,7 @@ func TestCleanUpRemovesAFinishedWorktreeAndItsBranch(t *testing.T) {
 	gh := &fakeGitHub{}
 	gh.set("example-repo", 184, pr(ItemMerged, head))
 
-	launches := &fakeLaunches{records: []worklog.Launch{launchOf(repo, "pr-184", item.KindPR, 184)}}
+	launches := &fakeLaunches{records: []worklog.Record{launchOf(repo, "pr-184", item.KindPR, 184)}}
 	svc := e.linked(linkDeps{gh: gh, launches: launches})
 
 	res, err := svc.CleanUp(t.Context(), repo, path)

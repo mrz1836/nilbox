@@ -62,6 +62,16 @@ func NonNil[T any](list []T) []T {
 	return list
 }
 
+// NonNilMap returns m, or an empty map for nil, so JSON carries {} rather than null and
+// the UI always gets an object.
+func NonNilMap[K comparable, V any](m map[K]V) map[K]V {
+	if m == nil {
+		return map[K]V{}
+	}
+
+	return m
+}
+
 // Join joins string-typed values with sep, as strings.Join joins strings, for listing the
 // choices of a named string type in a message.
 func Join[S ~string](elems []S, sep string) string {

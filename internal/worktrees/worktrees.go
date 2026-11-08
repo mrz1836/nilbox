@@ -1,7 +1,16 @@
-// Package worktrees lists the git worktrees of the user's local clones and removes them
-// safely.
+// Package worktrees makes the worktrees coding sessions run in, keeps track of them, lists
+// the git worktrees of the user's local clones, and removes them safely.
 //
-// It covers every git repository directly under the clone root (the same scan clone
+// The app makes one worktree per pull request or issue per clone, shared by every coding
+// agent, in a hidden directory beside the clone (see ManagedRoot), on the item's own
+// branch (worktree-pr-<n> or worktree-issue-<n>). A Maker makes or resumes it for a
+// launch, and records it (see the worklog package). Every listing and sweep checks the
+// records against git: a record whose worktree is gone is dropped, one whose worktree
+// moved follows it, and a worktree on an item's branch with no record is recorded.
+// Worktrees Claude Code made under a clone's .claude/worktrees before the app made them
+// itself are found the same way and resumed where they are.
+//
+// Listing covers every git repository directly under the clone root (the same scan clone
 // resolution uses), so worktrees left by sessions started elsewhere show up too. Removal
 // is deliberately narrow:
 //
@@ -10,24 +19,29 @@
 //   - ForceRemove passes a single --force and only for an unlocked worktree with
 //     uncommitted changes, so a locked worktree (usually a live agent session) is never
 //     removed;
-//   - Unlock releases only a lock the coding agent wrote for a session that has certainly
+//   - a worktree a running process works in, whatever agent or tool it is, is never
+//     removed (see the procs package);
+//   - Unlock releases only a lock Claude Code wrote for a session that has certainly
 //     ended, never a lock set by hand or one whose session may still run;
 //   - the main worktree is never removed.
 //
-// A worktree the agent made for a pull request or issue (pr-<n> or issue-<n> under the
-// clone's .claude/worktrees) is linked to that item, and GitHub says whether it is done.
-// GitHub decides when a worktree is finished; git alone decides whether removing it is
-// safe. CleanUp, CleanUpFinished, and the automatic Sweep remove a worktree only when its
-// item is merged or closed, it has no uncommitted changes, every commit it has is on
-// GitHub, and no session runs in it. Then they also delete the agent's own
+// A worktree made for a pull request or issue is linked to that item, and GitHub says
+// whether it is done. GitHub decides when a worktree is finished; git alone decides
+// whether removing it is safe. CleanUp, CleanUpFinished, and the automatic Sweep remove a
+// worktree only when its item is merged or closed, it has no uncommitted changes, every
+// commit it has is on GitHub, and no session runs in it. Then they also delete its own
 // worktree-<name> branch, and only while it still points at the commit checked. No other
 // branch is ever deleted, and nothing on GitHub is touched.
 //
 // Every git command runs as an argv `git -C <dir> ...` from a short allowlist, never
-// through a shell.
+// through a shell. Only create.go fetches and adds worktrees; nothing changes a clone's
+// own checkout.
 package worktrees
 
-import "github.com/mrz1836/nilbox/internal/item"
+import (
+	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/item"
+)
 
 // Snapshot is every repository under the clone root that has linked worktrees, as the
 // Worktrees view shows it. Every field is a plain value.
@@ -56,6 +70,10 @@ type Snapshot struct {
 	// or is "". The worktrees are listed without their items then.
 	LinkError string `json:"linkError"`
 
+	// SessionsUnknown reports that the running processes could not be listed, so no
+	// worktree shows a session, and the automatic cleanup removes none.
+	SessionsUnknown bool `json:"sessionsUnknown"`
+
 	// ListedAt is when the snapshot was taken, in RFC 3339.
 	ListedAt string `json:"listedAt"`
 }
@@ -68,7 +86,8 @@ const (
 	// StageNone is a worktree with no item, or one locked by hand.
 	StageNone Stage = ""
 
-	// StageInUse is a worktree a running agent session holds.
+	// StageInUse is a worktree a running process works in, or a running agent session
+	// holds by its lock.
 	StageInUse Stage = "in-use"
 
 	// StageActive is a worktree whose pull request or issue is still open.
@@ -117,9 +136,18 @@ type LinkedItem struct {
 	// HeadOID is a pull request's head commit, or "".
 	HeadOID string `json:"headOid"`
 
-	// Launched reports a worktree the app launched the session in, which the automatic
-	// cleanup looks after. Others are linked by their name alone.
+	// Launched reports a worktree the app launched a session in, which the automatic
+	// cleanup looks after. Others are linked by their name or branch alone.
 	Launched bool `json:"launched"`
+}
+
+// Session is a running process that works in a worktree.
+type Session struct {
+	// PID is the process's ID.
+	PID int `json:"pid"`
+
+	// Command is its program's name, such as "codex".
+	Command string `json:"command"`
 }
 
 // done reports a merged or closed item.
@@ -216,13 +244,29 @@ type Worktree struct {
 	// Stage is where the worktree stands.
 	Stage Stage `json:"stage"`
 
-	// OwnBranch reports that the checked-out branch is the agent's worktree-<name> branch
-	// for this worktree, which CleanUp deletes with it.
+	// OwnBranch reports that the checked-out branch is the worktree's own
+	// worktree-<name> branch, which CleanUp deletes with it.
 	OwnBranch bool `json:"ownBranch"`
 
-	// ClaudeCreated reports a worktree under the repository's .claude/worktrees
-	// directory, where the coding agent creates its worktrees.
-	ClaudeCreated bool `json:"claudeCreated"`
+	// Managed reports a worktree the app looks after: one it made (under the clone's
+	// managed root), one Claude Code made under the clone's .claude/worktrees, or one the
+	// app recorded.
+	Managed bool `json:"managed"`
+
+	// Legacy reports a worktree Claude Code made under the clone's .claude/worktrees.
+	Legacy bool `json:"legacy"`
+
+	// Agent is the agent of the latest session the app launched there, or "".
+	Agent agent.ID `json:"agent"`
+
+	// LastLaunchedAt is when that session started, in RFC 3339, or "".
+	LastLaunchedAt string `json:"lastLaunchedAt"`
+
+	// Launches counts the sessions the app launched there.
+	Launches int `json:"launches"`
+
+	// InUse lists the running processes that work in the worktree.
+	InUse []Session `json:"inUse"`
 
 	// CanRemove reports a clean, unlocked linked worktree that Remove accepts.
 	CanRemove bool `json:"canRemove"`

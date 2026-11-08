@@ -475,6 +475,12 @@ func cloneChangingVerbs() []string {
 	}
 }
 
+// worktreeMakerFile is the only production file allowed to fetch and to add a worktree:
+// the worktrees package's Maker, which fetches a pull request's head or a default branch
+// into the item's own refs and adds the item's worktree. Nothing changes a clone's own
+// checkout.
+const worktreeMakerFile = "internal/worktrees/create.go"
+
 func TestNoGitCommandChangesAClone(t *testing.T) {
 	t.Parallel()
 
@@ -482,11 +488,25 @@ func TestNoGitCommandChangesAClone(t *testing.T) {
 	verbs := argvLiteral(cloneChangingVerbs()...)
 	worktreeAdd := regexp.MustCompile(`"work` + `tree",\s*"add"`)
 
-	found := productionGoHits(t, root, verbs)
-	found = append(found, productionGoHits(t, root, worktreeAdd)...)
+	// Built from parts so this file does not match itself.
+	fetch := argvLiteral("fet" + "ch")
+	changing := slices.DeleteFunc(cloneChangingVerbs(), func(v string) bool { return v == "fet"+"ch" })
 
-	assert.Empty(t, found, "the app never changes an existing clone: no checkout, stash, fetch, branch "+
-		"switch, pull, reset, merge, rebase, commit, push, restore, cherry-pick, clean, or worktree creation")
+	maker, ok := readText(t, root, worktreeMakerFile)
+	require.True(t, ok, "%s is gone; update this guard", worktreeMakerFile)
+	assert.NotEmpty(t, hits(worktreeMakerFile, maker, fetch.MatchString),
+		"%s no longer fetches; update this guard", worktreeMakerFile)
+	assert.NotEmpty(t, hits(worktreeMakerFile, maker, worktreeAdd.MatchString),
+		"%s no longer adds worktrees; update this guard", worktreeMakerFile)
+	assert.Empty(t, hits(worktreeMakerFile, maker, argvLiteral(changing...).MatchString),
+		"%s only fetches and adds worktrees", worktreeMakerFile)
+
+	found := productionGoHits(t, root, verbs, worktreeMakerFile)
+	found = append(found, productionGoHits(t, root, worktreeAdd, worktreeMakerFile)...)
+
+	assert.Empty(t, found, "nothing changes a clone's own checkout: no checkout, stash, branch switch, pull, reset, "+
+		"merge, rebase, commit, push, restore, cherry-pick, or clean anywhere, and only worktree creation ("+
+		worktreeMakerFile+") fetches and adds worktrees")
 }
 
 func TestArgvLiteral(t *testing.T) {

@@ -4,12 +4,15 @@ import { attempt } from '../../lib/call'
 import { kindPlural, promptApplies } from '../../lib/launch'
 import { useSettingsSave } from '../../lib/useSettingsSave'
 import {
+  setDefaultAgent,
   setDefaultProfile,
   setDefaultPrompt,
   setTerminal,
   setWorktreeAutoCleanup,
   setWorktreeDefault,
   sweepWorktrees,
+  type AgentID,
+  type AgentInfo,
   type DefaultPrompts,
   type Profile,
   type Prompt,
@@ -26,6 +29,8 @@ const terminals: readonly { id: TerminalID; label: string }[] = [
 ]
 
 interface LaunchingSectionProps extends SectionProps {
+  // agents are the coding agents, each with whether it is installed.
+  agents: readonly AgentInfo[]
   profiles: readonly Profile[]
   prompts: readonly Prompt[]
   // defaultPrompts is null until it has loaded.
@@ -36,10 +41,12 @@ interface LaunchingSectionProps extends SectionProps {
 }
 
 // LaunchingSection holds the app defaults every launch starts from: the terminal, the
-// profile, the prompt for each kind of item, and the worktree a session runs in. Each is
-// saved as soon as it changes, with why a change was refused shown under its row.
+// coding agent and each agent's profile, the prompt for each kind of item, and the
+// worktree a session runs in. Each is saved as soon as it changes, with why a change was
+// refused shown under its row.
 export function LaunchingSection({
   settings: stored,
+  agents,
   profiles,
   prompts,
   defaultPrompts,
@@ -48,15 +55,18 @@ export function LaunchingSection({
 }: LaunchingSectionProps) {
   const id = useId()
   const { settings, save } = useSettingsSave(stored, onSaved)
-  const [errors, setErrors] = useState({ terminal: '', profile: '', worktree: '', cleanup: '', pr: '', issue: '' })
+  const [errors, setErrors] = useState<Record<string, string>>({})
 
   // shows sets the message under one field: why its change was refused, or ''.
-  const shows = (field: keyof typeof errors, message: string) => {
+  const shows = (field: string, message: string) => {
     setErrors((was) => ({ ...was, [field]: message }))
   }
 
+  // errorOf is the message under one field, or ''.
+  const errorOf = (field: string) => errors[field] ?? ''
+
   // store saves one change, showing why it was refused under its field.
-  const store = async (field: keyof typeof errors, change: Partial<Settings>, call: () => PromiseLike<Settings>) => {
+  const store = async (field: string, change: Partial<Settings>, call: () => PromiseLike<Settings>) => {
     shows(field, '')
 
     const result = await save(change, call)
@@ -86,11 +96,11 @@ export function LaunchingSection({
         label="Terminal"
         controlId={`${id}-terminal`}
         description="The app new sessions open in."
-        error={errors.terminal}
+        error={errorOf('terminal')}
       >
         <select
           id={`${id}-terminal`}
-          aria-describedby={rowDescribedBy(`${id}-terminal`, errors.terminal)}
+          aria-describedby={rowDescribedBy(`${id}-terminal`, errorOf('terminal'))}
           value={settings.terminal}
           onChange={(e) => {
             const terminal = terminals.find((t) => t.id === e.target.value)?.id
@@ -109,45 +119,81 @@ export function LaunchingSection({
         </select>
       </SettingRow>
       <SettingRow
-        label="Default profile"
-        controlId={`${id}-profile`}
-        description={
-          profiles.length === 0
-            ? 'No agent profiles were found in your home directory.'
-            : "Preselected in each row's profile menu."
-        }
-        error={errors.profile}
+        label="Default agent"
+        controlId={`${id}-agent`}
+        description="The coding agent a launch starts, unless an org or repository chooses another. Each launch can switch."
+        error={errorOf('agent')}
       >
         <select
-          id={`${id}-profile`}
-          aria-describedby={rowDescribedBy(`${id}-profile`, errors.profile)}
-          value={settings.defaultProfile}
-          disabled={profiles.length === 0}
+          id={`${id}-agent`}
+          aria-describedby={rowDescribedBy(`${id}-agent`, errorOf('agent'))}
+          value={settings.defaultAgent}
           onChange={(e) => {
-            const defaultProfile = e.target.value
+            const defaultAgent = agents.find((a) => a.id === e.target.value)?.id
 
-            void store('profile', { defaultProfile }, () => setDefaultProfile(defaultProfile))
+            if (defaultAgent !== undefined) {
+              void store('agent', { defaultAgent }, () => setDefaultAgent(defaultAgent))
+            }
           }}
           className={fieldClass}
         >
-          {profiles.map((p) => (
-            <option key={p.name} value={p.name}>
-              {p.name}
+          {agents.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.installed ? a.name : `${a.name} (not installed)`}
             </option>
           ))}
         </select>
       </SettingRow>
+      {agents.map((a) => {
+        const key = a.id as Exclude<AgentID, ''>
+        const own = profiles.filter((p) => p.agent === a.id)
+        const field = `profile-${key}`
+
+        return (
+          <SettingRow
+            key={a.id}
+            label={`${a.name} profile`}
+            controlId={`${id}-${field}`}
+            description={
+              own.length === 0
+                ? `No ${a.name} profiles were found: run ${a.command} once so it makes ~/${a.configDir}.`
+                : `The ${a.name} profile a launch uses, unless an org or repository chooses another.`
+            }
+            error={errorOf(field)}
+          >
+            <select
+              id={`${id}-${field}`}
+              aria-describedby={rowDescribedBy(`${id}-${field}`, errorOf(field))}
+              value={settings.defaultProfiles[key] ?? ''}
+              disabled={own.length === 0}
+              onChange={(e) => {
+                const name = e.target.value
+                const defaultProfiles = { ...settings.defaultProfiles, [key]: name }
+
+                void store(field, { defaultProfiles }, () => setDefaultProfile(key, name))
+              }}
+              className={fieldClass}
+            >
+              {own.map((p) => (
+                <option key={p.name} value={p.name}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </SettingRow>
+        )
+      })}
       {(['pr', 'issue'] as const).map((kind) => (
         <SettingRow
           key={kind}
           label={kind === 'pr' ? 'Prompt for pull requests' : 'Prompt for issues'}
           controlId={`${id}-prompt-${kind}`}
           description={`What a launch on ${kindPlural(kind)} asks, unless an org or repository chooses another. Edit prompts on the Prompts tab.`}
-          error={errors[kind]}
+          error={errorOf(kind)}
         >
           <select
             id={`${id}-prompt-${kind}`}
-            aria-describedby={rowDescribedBy(`${id}-prompt-${kind}`, errors[kind])}
+            aria-describedby={rowDescribedBy(`${id}-prompt-${kind}`, errorOf(kind))}
             value={defaultPrompts === null ? 0 : defaultPrompts[kind]}
             disabled={defaultPrompts === null}
             onChange={(e) => {
@@ -169,7 +215,7 @@ export function LaunchingSection({
         label="Start in a worktree"
         controlId={`${id}-worktree`}
         description="Presets each row's “Start in a worktree” box. You can still change it per launch."
-        error={errors.worktree}
+        error={errorOf('worktree')}
         checked={settings.worktreeDefault}
         onChange={(worktreeDefault) => {
           void store('worktree', { worktreeDefault }, () => setWorktreeDefault(worktreeDefault))
@@ -179,7 +225,7 @@ export function LaunchingSection({
         label="Clean up after merging"
         controlId={`${id}-cleanup`}
         description="Removes a session's worktree, with its own worktree-… branch, once its pull request merges or its issue closes, if it has no uncommitted changes, all its commits are on GitHub, and no session runs in it. Checked every few minutes; ignored files in it go with it."
-        error={errors.cleanup}
+        error={errorOf('cleanup')}
         checked={settings.worktreeAutoCleanup}
         onChange={(worktreeAutoCleanup) => {
           // Turned on, it sweeps at once rather than at the next check.

@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -54,9 +55,9 @@ func TestDiscoverProfiles(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, []Profile{
-		newDiscovered(DefaultName, ""),
-		newDiscovered("alt", filepath.Join(abs, ".claude-alt")),
-		newDiscovered("work", filepath.Join(abs, ".claude_work")),
+		newDiscovered(agent.Claude, DefaultName, ""),
+		newDiscovered(agent.Claude, "alt", filepath.Join(abs, ".claude-alt")),
+		newDiscovered(agent.Claude, "work", filepath.Join(abs, ".claude_work")),
 	}, got)
 
 	for _, p := range got {
@@ -87,8 +88,8 @@ func TestDiscoverDuplicateNames(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, []Profile{
-		newDiscovered(DefaultName, ""),
-		newDiscovered("dup", filepath.Join(abs, ".claude_dup")),
+		newDiscovered(agent.Claude, DefaultName, ""),
+		newDiscovered(agent.Claude, "dup", filepath.Join(abs, ".claude_dup")),
 	}, got)
 
 	// Each directory that lost its name is logged once, naming the one that kept it.
@@ -134,7 +135,7 @@ func TestSyncDoesNotOverwriteOrDelete(t *testing.T) {
 	require.NoError(t, s.Sync(t.Context(), found))
 
 	// The user edits a profile by hand.
-	exec(t, db, `UPDATE claude_profiles SET model = 'opus', effort = 'high', permission_mode = 'acceptEdits',
+	exec(t, db, `UPDATE agent_profiles SET model = 'opus', effort = 'high', permission_mode = 'acceptEdits',
 		plan_mode = 1, add_dirs = '["~/projects/shared"]' WHERE name = 'work'`)
 
 	// A directory disappears and a new one appears; discovery runs again.
@@ -146,11 +147,11 @@ func TestSyncDoesNotOverwriteOrDelete(t *testing.T) {
 	require.NoError(t, s.Sync(t.Context(), found))
 	require.NoError(t, s.Sync(t.Context(), found))
 
-	list, err := NewService(s, home).List(t.Context())
+	list, err := NewService(s, home, nil).List(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, []string{DefaultName, "alt", "new", "work"}, names(list))
 
-	work, err := s.Lookup(t.Context(), "work")
+	work, err := s.Lookup(t.Context(), agent.Claude, "work")
 	require.NoError(t, err)
 	assert.Equal(t, "opus", work.Model)
 	assert.Equal(t, "high", work.Effort)
@@ -158,7 +159,7 @@ func TestSyncDoesNotOverwriteOrDelete(t *testing.T) {
 	assert.True(t, work.PlanMode)
 	assert.Equal(t, []string{"~/projects/shared"}, work.AddDirs)
 
-	alt, err := s.Lookup(t.Context(), "alt")
+	alt, err := s.Lookup(t.Context(), agent.Claude, "alt")
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(home, ".claude-alt"), alt.ConfigDir)
 }
@@ -169,7 +170,7 @@ func TestSyncNothingFound(t *testing.T) {
 	s, _ := openStore(t)
 	require.NoError(t, s.Sync(t.Context(), nil))
 
-	list, err := NewService(s, t.TempDir()).List(t.Context())
+	list, err := NewService(s, t.TempDir(), nil).List(t.Context())
 	require.NoError(t, err)
 	assert.NotNil(t, list, "no profiles is an empty list")
 	assert.Empty(t, list)
@@ -181,7 +182,7 @@ func TestSyncError(t *testing.T) {
 	s, db := openStore(t)
 	require.NoError(t, db.Close())
 
-	err := s.Sync(t.Context(), []Profile{newDiscovered(DefaultName, "")})
+	err := s.Sync(t.Context(), []Profile{newDiscovered(agent.Claude, DefaultName, "")})
 	require.ErrorContains(t, err, "store discovered profiles")
 }
 
@@ -191,13 +192,13 @@ func TestListOrdersDefaultFirst(t *testing.T) {
 	s, _ := openStore(t)
 
 	require.NoError(t, s.Sync(t.Context(), []Profile{
-		newDiscovered("zeta", "/opt/profiles/zeta"),
-		newDiscovered("alpha", "/opt/profiles/alpha"),
-		newDiscovered(DefaultName, ""),
-		newDiscovered("Beta", "/opt/profiles/beta"),
+		newDiscovered(agent.Claude, "zeta", "/opt/profiles/zeta"),
+		newDiscovered(agent.Claude, "alpha", "/opt/profiles/alpha"),
+		newDiscovered(agent.Claude, DefaultName, ""),
+		newDiscovered(agent.Claude, "Beta", "/opt/profiles/beta"),
 	}))
 
-	list, err := NewService(s, t.TempDir()).List(t.Context())
+	list, err := NewService(s, t.TempDir(), nil).List(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, []string{DefaultName, "Beta", "alpha", "zeta"}, names(list))
 	assert.Equal(t, DefaultName, list[0].Name)
@@ -210,7 +211,7 @@ func TestListError(t *testing.T) {
 	s, db := openStore(t)
 	require.NoError(t, db.Close())
 
-	_, err := NewService(s, t.TempDir()).List(t.Context())
+	_, err := NewService(s, t.TempDir(), nil).List(t.Context())
 	require.ErrorContains(t, err, "list profiles")
 }
 
@@ -219,15 +220,17 @@ func TestLookup(t *testing.T) {
 
 	s, db := openStore(t)
 	require.NoError(t, s.Sync(t.Context(), []Profile{{
+		Agent:     agent.Claude,
 		Name:      "work",
 		ConfigDir: "/opt/profiles/work",
 		Env:       map[string]string{"EXAMPLE_FLAG": "1"},
 		ExtraArgs: []string{"--verbose"},
 	}}))
 
-	got, err := s.Lookup(t.Context(), "work")
+	got, err := s.Lookup(t.Context(), agent.Claude, "work")
 	require.NoError(t, err)
 	assert.Equal(t, Profile{
+		Agent:     agent.Claude,
 		Name:      "work",
 		ConfigDir: "/opt/profiles/work",
 		AddDirs:   []string{},
@@ -235,16 +238,20 @@ func TestLookup(t *testing.T) {
 		Env:       map[string]string{"EXAMPLE_FLAG": "1"},
 	}, got)
 
-	_, err = s.Lookup(t.Context(), "missing")
+	_, err = s.Lookup(t.Context(), agent.Claude, "missing")
 	require.ErrorIs(t, err, ErrProfileNotFound)
 	require.ErrorContains(t, err, `"missing"`)
 
-	_, err = s.Lookup(t.Context(), "Work")
+	_, err = s.Lookup(t.Context(), agent.Claude, "Work")
 	require.ErrorIs(t, err, ErrProfileNotFound, "names match exactly, case included")
+
+	_, err = s.Lookup(t.Context(), agent.Codex, "work")
+	require.ErrorIs(t, err, ErrProfileNotFound, "each agent has its own profiles")
+	require.ErrorContains(t, err, `Codex "work"`)
 
 	require.NoError(t, db.Close())
 
-	_, err = s.Lookup(t.Context(), "work")
+	_, err = s.Lookup(t.Context(), agent.Claude, "work")
 	require.ErrorContains(t, err, "look up profile")
 	require.NotErrorIs(t, err, ErrProfileNotFound)
 }
@@ -366,25 +373,25 @@ func TestPruneRemovesUneditedProfilesWithNoAgentConfig(t *testing.T) {
 
 	// Rows an older discovery stored for every folder, and one whose folder is gone.
 	require.NoError(t, s.Sync(t.Context(), []Profile{
-		newDiscovered(DefaultName, ""),
-		newDiscovered("real", dir(".claude_real")),
-		newDiscovered("squad", dir(".claude-squad")),
-		newDiscovered("monitor", dir(".claude-monitor")),
-		newDiscovered("edited", dir(".claude-edited")),
-		newDiscovered("empty", dir(".claude-empty")),
-		newDiscovered("gone", dir(".claude-gone")),
+		newDiscovered(agent.Claude, DefaultName, ""),
+		newDiscovered(agent.Claude, "real", dir(".claude_real")),
+		newDiscovered(agent.Claude, "squad", dir(".claude-squad")),
+		newDiscovered(agent.Claude, "monitor", dir(".claude-monitor")),
+		newDiscovered(agent.Claude, "edited", dir(".claude-edited")),
+		newDiscovered(agent.Claude, "empty", dir(".claude-empty")),
+		newDiscovered(agent.Claude, "gone", dir(".claude-gone")),
 	}))
-	exec(t, db, "UPDATE claude_profiles SET model = 'opus' WHERE name = 'edited'")
+	exec(t, db, "UPDATE agent_profiles SET model = 'opus' WHERE name = 'edited'")
 
 	var logs testutil.Logs
 
 	removed, err := s.Prune(t.Context(), logs.Logger())
 	require.NoError(t, err)
-	assert.Equal(t, []string{"empty", "monitor", "squad"}, removed)
+	assert.Equal(t, []string{"claude/empty", "claude/monitor", "claude/squad"}, removed)
 	assert.Contains(t, logs.String(),
-		`level=WARN msg="keeping an edited profile whose directory holds no agent config" profile=edited`)
+		`level=WARN msg="keeping an edited profile whose directory holds no agent config" agent=claude profile=edited`)
 
-	list, err := NewService(s, home).List(t.Context())
+	list, err := NewService(s, home, nil).List(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, []string{DefaultName, "edited", "gone", "real"}, names(list))
 
@@ -408,15 +415,15 @@ func TestPruneKeepsTheDefaultAndWhatItCannotRead(t *testing.T) {
 	lockDir(t, filepath.Join(home, ".claude-locked"))
 
 	require.NoError(t, s.Sync(t.Context(), []Profile{
-		newDiscovered(DefaultName, ""),
-		newDiscovered("locked", filepath.Join(home, ".claude-locked")),
+		newDiscovered(agent.Claude, DefaultName, ""),
+		newDiscovered(agent.Claude, "locked", filepath.Join(home, ".claude-locked")),
 	}))
 
 	removed, err := s.Prune(t.Context(), nil)
 	require.NoError(t, err)
 	assert.Empty(t, removed)
 
-	list, err := NewService(s, home).List(t.Context())
+	list, err := NewService(s, home, nil).List(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, []string{DefaultName, "locked"}, names(list))
 }
@@ -440,14 +447,14 @@ func TestPruneErrors(t *testing.T) {
 		s, db := openStore(t)
 		home := t.TempDir()
 		mkdirs(t, home, ".claude-stray")
-		require.NoError(t, s.Sync(t.Context(), []Profile{newDiscovered("stray", filepath.Join(home, ".claude-stray"))}))
+		require.NoError(t, s.Sync(t.Context(), []Profile{newDiscovered(agent.Claude, "stray", filepath.Join(home, ".claude-stray"))}))
 		exec(t, db, refuseRemoval)
 
 		_, err := s.Prune(t.Context(), nil)
 		require.ErrorContains(t, err, "refused by the test")
 		require.ErrorContains(t, err, "remove profiles with no agent config")
 
-		_, err = s.Lookup(t.Context(), "stray")
+		_, err = s.Lookup(t.Context(), agent.Claude, "stray")
 		require.NoError(t, err, "the row is kept")
 	})
 }
@@ -455,7 +462,7 @@ func TestPruneErrors(t *testing.T) {
 func TestUntouched(t *testing.T) {
 	t.Parallel()
 
-	assert.True(t, untouched(newDiscovered("work", "/opt/profiles/work")))
+	assert.True(t, untouched(newDiscovered(agent.Claude, "work", "/opt/profiles/work")))
 
 	tests := []struct {
 		name string
@@ -475,7 +482,7 @@ func TestUntouched(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			p := newDiscovered("work", "/opt/profiles/work")
+			p := newDiscovered(agent.Claude, "work", "/opt/profiles/work")
 			tt.edit(&p)
 			assert.False(t, untouched(p))
 		})
@@ -492,13 +499,13 @@ func TestListDescribesEachFolder(t *testing.T) {
 	testutil.MakeClaudeDirs(t, home, ".claude_work")
 
 	require.NoError(t, s.Sync(t.Context(), []Profile{
-		newDiscovered(DefaultName, ""),
-		newDiscovered("work", filepath.Join(home, ".claude_work")),
-		newDiscovered("gone", filepath.Join(home, ".claude-gone")),
-		newDiscovered("shared", outside),
+		newDiscovered(agent.Claude, DefaultName, ""),
+		newDiscovered(agent.Claude, "work", filepath.Join(home, ".claude_work")),
+		newDiscovered(agent.Claude, "gone", filepath.Join(home, ".claude-gone")),
+		newDiscovered(agent.Claude, "shared", outside),
 	}))
 
-	list, err := NewService(s, home).List(t.Context())
+	list, err := NewService(s, home, nil).List(t.Context())
 	require.NoError(t, err)
 
 	folders := make(map[string][2]any, len(list))
@@ -514,7 +521,7 @@ func TestListDescribesEachFolder(t *testing.T) {
 	}, folders)
 
 	// Without ~/.claude, the default profile's folder is missing too.
-	list, err = NewService(s, t.TempDir()).List(t.Context())
+	list, err = NewService(s, t.TempDir(), nil).List(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, "~/.claude", list[0].Folder)
 	assert.True(t, list[0].Missing)

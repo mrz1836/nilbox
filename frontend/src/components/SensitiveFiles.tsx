@@ -193,7 +193,7 @@ export function SensitiveFiles({ itemId, check, onSettings }: SensitiveFilesProp
         {agent && (
           <p className="rounded-md border border-danger/30 bg-danger/8 px-2.5 py-2 text-xs leading-relaxed text-text">
             Opening a session on it asks first: hooks in agent settings run commands on your Mac as soon as a session
-            starts, even in plan mode.
+            starts, even in plan or read-only mode.
           </p>
         )}
         <div className="flex items-center justify-between gap-3 border-t border-border pt-2.5">

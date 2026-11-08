@@ -62,10 +62,10 @@ func tableOwners() map[string]string {
 		"item_local_state":  "inbox",
 		"rate_snapshots":    "inbox",
 		"prefs":             "prefs",
-		"claude_profiles":   "profiles",
+		"agent_profiles":    "profiles",
 		"prompts":           "prompts",
 		"launch_defaults":   "launchdefaults",
-		"worktree_launches": "worklog",
+		"worktree_records":  "worklog",
 		"worktree_cleanups": "worklog",
 		"notifications":     "notify",
 	}
@@ -595,8 +595,8 @@ func TestSQLTables(t *testing.T) {
 		},
 		"comments, strings, and parameters are not tables": {
 			sql: "-- reads the items' prefs\n/* notifications */ SELECT 'repos', sqlc.arg(accounts), @prompts " +
-				"FROM claude_profiles WHERE name IN (sqlc.slice('items'))",
-			want: []string{"claude_profiles"},
+				"FROM agent_profiles WHERE name IN (sqlc.slice('items'))",
+			want: []string{"agent_profiles"},
 		},
 		"a quote in a comment does not open a string": {
 			sql:  "-- the item's state\nSELECT 1 FROM item_local_state",

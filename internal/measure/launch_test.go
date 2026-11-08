@@ -16,9 +16,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
+	"github.com/mrz1836/nilbox/internal/procs"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -218,6 +220,9 @@ func TestInClone(t *testing.T) {
 
 	assert.True(t, inClone(clone, clone))
 	assert.True(t, inClone(filepath.Join(clone, ".claude", "worktrees", "issue-3"), clone))
+	assert.True(t, inClone(filepath.Join(filepath.Dir(clone), "."+brand.Slug, "worktrees", filepath.Base(clone), "pr-7"), clone),
+		"the managed worktree beside the clone")
+	assert.False(t, inClone(filepath.Join(filepath.Dir(clone), "."+brand.Slug, "worktrees", "other-repo", "pr-7"), clone))
 	assert.False(t, inClone(filepath.Join(clone, "sub"), clone))
 	assert.False(t, inClone(clone+"-other", clone))
 	assert.False(t, inClone("", clone))
@@ -247,8 +252,8 @@ func TestParseLsofCwds(t *testing.T) {
 
 	out := "p101\nfcwd\nn/tmp/one\np102\nfcwd\nn/tmp/two\nn/tmp/ignored-second-name\n"
 
-	assert.Equal(t, map[int]string{101: "/tmp/one", 102: "/tmp/two"}, parseLsofCwds(out))
-	assert.Equal(t, map[int]string{}, parseLsofCwds("nno-process\n"))
+	assert.Equal(t, map[int]string{101: "/tmp/one", 102: "/tmp/two"}, procs.CwdsOf(procs.ParseLsof(out)))
+	assert.Equal(t, map[int]string{}, procs.CwdsOf(procs.ParseLsof("nno-process\n")))
 }
 
 // answers maps a program's base name to its scripted answer, given the arguments.
@@ -352,7 +357,7 @@ func fakeAgent(t *testing.T) string {
 	t.Helper()
 
 	bin := t.TempDir()
-	agent := filepath.Join(bin, agentBin)
+	agent := filepath.Join(bin, "claude")
 	require.NoError(t, os.WriteFile(agent, []byte("#!/bin/sh\n"), 0o700)) //nolint:gosec // a test executable
 
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))

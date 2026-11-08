@@ -4,6 +4,7 @@ go 1.26.0
 
 require (
 	github.com/magefile/mage v1.17.2
+	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/stretchr/testify v1.12.1
 	github.com/wailsapp/wails/v3 v3.2.0-nightly.20261103
 	go.uber.org/goleak v1.3.0

@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { attempt } from '../lib/call'
+import { noWorktrees } from '../lib/itemWorktrees'
 import { isInboxNil } from '../lib/nil'
 import { formatAgo, formatWhen } from '../lib/time'
 import { findItem, isDismissed, type TriagedInbox } from '../lib/triage'
 import type { InboxState } from '../lib/useInbox'
 import type { InboxOrderState } from '../lib/useInboxOrder'
 import { useClock } from '../lib/useNow'
-import { copyText, type InboxItem, type ItemResolution, type ListKey } from '../platform'
+import { copyText, type InboxItem, type ItemResolution, type ListKey, type Worktree } from '../platform'
 import { ErrorBanner } from './ErrorBanner'
 import { InboxNil } from './InboxNil'
 import { teamsText, type EditActions } from './ItemMenu'
@@ -31,6 +32,9 @@ export interface InboxViewProps {
   launch: LaunchOptions | null
   // resolutions holds each item's resolved launch settings by item ID, as they load.
   resolutions: ReadonlyMap<number, ItemResolution>
+  // worktrees holds each item's worktree, from the Worktrees view's latest listing (see
+  // itemWorktrees); empty until the view has listed.
+  worktrees?: ReadonlyMap<string, Worktree>
   // snoozeDays is how long a row's Snooze button hides an item.
   snoozeDays: number
   // onSnoozeSettings opens the setting for the Snooze button's length.
@@ -77,6 +81,7 @@ export function InboxView({
   triaged,
   launch,
   resolutions,
+  worktrees = noWorktrees,
   snoozeDays,
   onSnoozeSettings,
   onFilesSettings,
@@ -337,6 +342,7 @@ export function InboxView({
               triaged={triaged.lists[key]}
               launch={launch}
               resolutions={resolutions}
+              worktrees={worktrees}
               triage={triage}
               edits={edits}
               collapsed={collapsed.has(key)}

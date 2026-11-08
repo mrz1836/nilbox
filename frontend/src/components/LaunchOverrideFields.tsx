@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 
-import { effortChoices, modelChoices } from '../lib/launch'
+import { agentName, anyEffortChoices, modelChoices } from '../lib/launch'
+import type { AgentID, AgentInfo, PerAgent } from '../platform'
 import {
   describedBy,
   Field,
@@ -13,31 +14,39 @@ import {
 } from './controls'
 
 // LaunchOverrides are the launch settings a prompt or a set of launch defaults can set
-// over the layers below it: each left empty (or null) inherits.
+// over the layers below it: each left empty (or null, or with no entry for an agent)
+// inherits. The model and the extra flags are each agent's own; the effort, plan mode,
+// and worktree are shared by every agent.
 export interface LaunchOverrides {
-  model: string
+  models: PerAgent<string>
   effort: string
   planMode: boolean | null
   worktree: boolean | null
-  extraFlags: string
+  extraFlags: PerAgent<string>
 }
 
 // Inherited names what each setting falls back to when left on Inherit, such as
-// "Opus (org)" or "the profile’s".
+// "Opus (org)" or "the profile’s"; the model's, per agent.
 export interface Inherited {
-  model: string
+  models: PerAgent<string>
   effort: string
   planMode: string
   worktree: string
 }
 
+// AgentKey is a real agent's ID, as per-agent settings are keyed.
+type AgentKey = Exclude<AgentID, ''>
+
 export interface LaunchOverrideFieldsProps {
   // id prefixes the controls' ids; give each form its own (useId).
   id: string
+  // agents are the coding agents, whose models and flags the form sets one at a time.
+  agents: readonly AgentInfo[]
   values: LaunchOverrides
   // onChange receives the one setting that changed.
   onChange: (patch: Partial<LaunchOverrides>) => void
-  // errors maps a setting to the reason it was refused, by field name.
+  // errors maps a setting to the reason it was refused, by field name: "effort", or for
+  // one agent's model or flags, "models.codex" and "extraFlags.codex".
   errors: Readonly<Record<string, string | undefined>>
   // inherited, when known, is shown on every setting left on Inherit.
   inherited?: Inherited
@@ -83,11 +92,18 @@ function TriField({ label, value, onChange, inherited }: TriFieldProps) {
   )
 }
 
+// agentError is the reason one agent's model or flags were refused, or the field's own.
+function agentError(errors: LaunchOverrideFieldsProps['errors'], field: string, agent: AgentKey): string | undefined {
+  return errors[`${field}.${agent}`] ?? errors[field]
+}
+
 // LaunchOverrideFields are the model, effort, plan mode, worktree, and extra flags a
-// prompt or a set of launch defaults sets for its launches. They render as cells of the
-// form's two-column grid, the flags spanning both columns.
+// prompt or a set of launch defaults sets for its launches. The model and the flags are
+// set per agent, under a tab for each; the rest apply to every agent. They render as cells
+// of the form's two-column grid, the per-agent fields spanning both columns.
 export function LaunchOverrideFields({
   id,
+  agents,
   values,
   onChange,
   errors,
@@ -95,50 +111,92 @@ export function LaunchOverrideFields({
   modelHint,
   flagsHint,
 }: LaunchOverrideFieldsProps) {
-  const failed = (field: keyof LaunchOverrides) => (errors[field] ?? '') !== ''
+  // tabbed are the agents with a tab each; the form shows one agent's fields at a time.
+  const tabbed = agents.filter((a): a is AgentInfo & { id: AgentKey } => a.id !== '')
+  const [tab, setTab] = useState<AgentKey>(tabbed[0]?.id ?? 'claude')
+  const name = agentName(agents, tab)
+  const modelError = agentError(errors, 'models', tab)
+  const flagsError = agentError(errors, 'extraFlags', tab)
+  // tabs marks an agent whose model or flags are set, or refused.
+  const tabs: SegmentOption<AgentKey>[] = tabbed.map((a) => {
+    const refused =
+      agentError(errors, 'models', a.id) !== undefined || agentError(errors, 'extraFlags', a.id) !== undefined
+    const set = Boolean(values.models[a.id]) || Boolean(values.extraFlags[a.id]?.trim())
+    const label = refused ? `${a.name} !` : set ? `${a.name} •` : a.name
+
+    return { value: a.id, label, title: `${a.name}'s model and flags` }
+  })
 
   return (
     <>
-      <Field label="Model" controlId={`${id}-model`} error={errors.model} hint={modelHint}>
-        <input
-          id={`${id}-model`}
-          list={`${id}-models`}
-          value={values.model}
-          placeholder={inheritLabel(inherited?.model)}
-          spellCheck={false}
-          aria-invalid={failed('model')}
-          aria-describedby={describedBy(`${id}-model`, errors.model, modelHint !== undefined)}
-          onChange={(e) => {
-            onChange({ model: e.target.value })
-          }}
-          className={`${fieldClass} w-full`}
-        />
-        <datalist id={`${id}-models`}>
-          {modelChoices.map((c) => (
-            <option key={c.value} value={c.value}>
-              {c.label}
-            </option>
-          ))}
-        </datalist>
-      </Field>
-      <Field label="Effort" controlId={`${id}-effort`} error={errors.effort}>
+      <div className="col-span-2 flex flex-col gap-3 rounded-md border border-border p-3">
+        {tabbed.length > 1 && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-muted">Per agent</span>
+            <Segmented label="Agent" size="sm" value={tab} options={tabs} onChange={setTab} />
+          </div>
+        )}
+        <Field label={`${name} model`} controlId={`${id}-model`} error={modelError} hint={modelHint}>
+          <input
+            id={`${id}-model`}
+            list={`${id}-models`}
+            value={values.models[tab] ?? ''}
+            placeholder={inheritLabel(inherited?.models[tab])}
+            spellCheck={false}
+            aria-invalid={modelError !== undefined}
+            aria-describedby={describedBy(`${id}-model`, modelError, modelHint !== undefined)}
+            onChange={(e) => {
+              onChange({ models: { ...values.models, [tab]: e.target.value } })
+            }}
+            className={`${fieldClass} w-full`}
+          />
+          <datalist id={`${id}-models`}>
+            {modelChoices(agents, tab).map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+          </datalist>
+        </Field>
+        <Field label={`${name} extra flags`} controlId={`${id}-flags`} error={flagsError} hint={flagsHint}>
+          <input
+            id={`${id}-flags`}
+            value={values.extraFlags[tab] ?? ''}
+            placeholder="None"
+            spellCheck={false}
+            aria-invalid={flagsError !== undefined}
+            aria-describedby={describedBy(`${id}-flags`, flagsError, true)}
+            onChange={(e) => {
+              onChange({ extraFlags: { ...values.extraFlags, [tab]: e.target.value } })
+            }}
+            className={`${fieldClass} w-full font-mono text-[13px]`}
+          />
+        </Field>
+      </div>
+      <Field
+        label="Effort"
+        controlId={`${id}-effort`}
+        error={errors.effort}
+        hint="Shared by every agent; one an agent lacks uses its default."
+      >
         <select
           id={`${id}-effort`}
           value={values.effort}
-          aria-describedby={describedBy(`${id}-effort`, errors.effort, false)}
+          aria-describedby={describedBy(`${id}-effort`, errors.effort, true)}
           onChange={(e) => {
             onChange({ effort: e.target.value })
           }}
           className={`${fieldClass} w-full`}
         >
           <option value="">{inheritLabel(inherited?.effort)}</option>
-          {effortChoices.map((c) => (
+          {anyEffortChoices(agents).map((c) => (
             <option key={c.value} value={c.value}>
               {c.label}
             </option>
           ))}
         </select>
       </Field>
+      <div />
       <TriField
         label="Plan mode"
         value={values.planMode}
@@ -155,22 +213,6 @@ export function LaunchOverrideFields({
         }}
         inherited={inherited?.worktree}
       />
-      <div className="col-span-2">
-        <Field label="Extra flags" controlId={`${id}-flags`} error={errors.extraFlags} hint={flagsHint}>
-          <input
-            id={`${id}-flags`}
-            value={values.extraFlags}
-            placeholder="None"
-            spellCheck={false}
-            aria-invalid={failed('extraFlags')}
-            aria-describedby={describedBy(`${id}-flags`, errors.extraFlags, true)}
-            onChange={(e) => {
-              onChange({ extraFlags: e.target.value })
-            }}
-            className={`${fieldClass} w-full font-mono text-[13px]`}
-          />
-        </Field>
-      </div>
     </>
   )
 }

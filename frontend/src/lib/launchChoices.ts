@@ -2,6 +2,7 @@
 // request and into launch defaults.
 
 import type {
+  AgentID,
   ItemKind,
   LaunchDefaults,
   LaunchDefaultsInput,
@@ -11,8 +12,10 @@ import type {
 } from '../platform'
 
 // Choices are the launch menu's own choices. Each is unset (0, '', or null) until the
-// user picks something other than what the item's settings resolve to.
+// user picks something other than what the item's settings resolve to. agent is the
+// coding agent this launch starts; profile and model are that agent's.
 export interface Choices {
+  agent: AgentID
   promptId: number
   profile: string
   model: string | null
@@ -24,6 +27,7 @@ export interface Choices {
 }
 
 export const noChoices: Choices = {
+  agent: '',
   promptId: 0,
   profile: '',
   model: null,
@@ -36,6 +40,7 @@ export const noChoices: Choices = {
 // hasChoices reports whether any choice differs from the resolved settings.
 export function hasChoices(c: Choices): boolean {
   return (
+    c.agent !== '' ||
     c.promptId !== 0 ||
     c.profile !== '' ||
     c.model !== null ||
@@ -57,6 +62,7 @@ export function savableChoices(c: Choices): boolean {
 export function launchRequest(itemId: number, c: Choices, untrusted: boolean): LaunchRequest {
   return {
     itemId,
+    agent: c.agent,
     profile: c.profile,
     promptId: c.promptId,
     model: c.model,
@@ -68,20 +74,26 @@ export function launchRequest(itemId: number, c: Choices, untrusted: boolean): L
   }
 }
 
+// withAgent returns the choices with another agent chosen: the profile and model, which
+// are each agent's own, go back to what the new agent resolves to.
+export function withAgent(c: Choices, agent: AgentID): Choices {
+  return { ...c, agent, profile: '', model: null }
+}
+
 // defaultsInput returns stored launch defaults as an editable input.
 export function defaultsInput(d: LaunchDefaults): LaunchDefaultsInput {
   return {
     owner: d.owner,
     name: d.name,
     agent: d.agent,
-    profile: d.profile,
+    profiles: { ...d.profiles },
     prPromptId: d.prPromptId,
     issuePromptId: d.issuePromptId,
-    model: d.model,
+    models: { ...d.models },
     effort: d.effort,
     planMode: d.planMode,
     worktree: d.worktree,
-    extraFlags: d.extraFlags,
+    extraFlags: { ...d.extraFlags },
   }
 }
 
@@ -92,14 +104,14 @@ export function emptyDefaults(owner: string, name: string): LaunchDefaultsInput 
     owner,
     name,
     agent: '',
-    profile: '',
+    profiles: {},
     prPromptId: null,
     issuePromptId: null,
-    model: '',
+    models: {},
     effort: '',
     planMode: null,
     worktree: null,
-    extraFlags: '',
+    extraFlags: {},
   }
 }
 
@@ -110,12 +122,22 @@ export function findDefaults(all: readonly LaunchDefaults[], owner: string, name
 }
 
 // withChoices returns launch defaults with the menu's choices for an item of kind
-// written over them; settings the menu did not change stay as they were.
-export function withChoices(base: LaunchDefaultsInput, c: Choices, kind: ItemKind): LaunchDefaultsInput {
-  const next = { ...base }
+// written over them; settings the menu did not change stay as they were. agent is the
+// agent the choices are for, whose own profile and model they set.
+export function withChoices(
+  base: LaunchDefaultsInput,
+  c: Choices,
+  kind: ItemKind,
+  agent: AgentID,
+): LaunchDefaultsInput {
+  const next = { ...base, profiles: { ...base.profiles }, models: { ...base.models } }
 
-  if (c.profile !== '') {
-    next.profile = c.profile
+  if (c.agent !== '') {
+    next.agent = c.agent
+  }
+
+  if (c.profile !== '' && agent !== '') {
+    next.profiles[agent] = c.profile
   }
 
   if (c.promptId !== 0) {
@@ -126,8 +148,8 @@ export function withChoices(base: LaunchDefaultsInput, c: Choices, kind: ItemKin
     }
   }
 
-  if (c.model !== null) {
-    next.model = c.model
+  if (c.model !== null && agent !== '') {
+    next.models[agent] = c.model
   }
 
   if (c.effort !== null) {
@@ -171,6 +193,7 @@ export function shadowedChoices(c: Choices, r: Resolution, scope: 'repo' | 'org'
     }
   }
 
+  check(c.agent !== '', 'agent', r.agentInheritedSource)
   check(c.profile !== '', 'profile', r.profile.inheritedSource)
   check(c.promptId !== 0, 'prompt', r.prompt.inheritedSource)
   check(c.model !== null, 'model', r.model.inheritedSource)

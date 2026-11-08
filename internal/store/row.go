@@ -89,3 +89,36 @@ func (r Row) Time(column string) string {
 		return ""
 	}
 }
+
+// StringMap returns a JSON object of strings, or an empty map when the column holds none.
+func (r Row) StringMap(column string) map[string]string {
+	return decodeObject[string](r.Text(column))
+}
+
+// StringLists returns a JSON object of string arrays, or an empty map when the column
+// holds none.
+func (r Row) StringLists(column string) map[string][]string {
+	return decodeObject[[]string](r.Text(column))
+}
+
+// Has reports whether the row holds column: whether the table it was read from has it.
+func (r Row) Has(column string) bool {
+	_, ok := r[column]
+
+	return ok
+}
+
+// decodeObject decodes a JSON object of V values, or returns an empty map when raw is
+// not one.
+func decodeObject[V any](raw string) map[string]V {
+	if raw == "" {
+		return map[string]V{}
+	}
+
+	m, err := DecodeJSON[map[string]V](raw)
+	if err != nil || m == nil {
+		return map[string]V{}
+	}
+
+	return m
+}

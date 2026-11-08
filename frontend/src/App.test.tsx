@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { brand } from './generated/brand'
-import type { Settings, TerminalID } from './platform'
+import type { Settings, TerminalID, AgentID } from './platform'
 import {
   appInfo,
   budgetGauge,
@@ -11,13 +11,17 @@ import {
   item,
   notification,
   itemResolution,
+  linkedItem,
   list,
+  mainWorktree,
   profile,
   reading,
   settings,
   snapshot,
   sweepReport,
+  worktree,
   worktreeCleanup,
+  worktreeRepo,
   worktreesSnapshot,
 } from './test/fixtures'
 import { emit, listening, platform, renderApp } from './test/platform'
@@ -27,7 +31,9 @@ vi.mock('./platform', () => import('./test/platform').then((fake) => fake.platfo
 // stored is every setting as the backend stores it after a change, as each setter returns
 // them.
 function stored(change: Partial<Settings> = {}): Promise<Settings> {
-  return Promise.resolve(settings({ defaultProfile: 'work', worktreeDefault: false, ...change }))
+  return Promise.resolve(
+    settings({ defaultProfiles: { claude: 'work', codex: 'default' }, worktreeDefault: false, ...change }),
+  )
 }
 
 // The platform fake answers every call. These answers are the app tests' own: settings
@@ -37,7 +43,9 @@ beforeEach(() => {
   platform.listProfiles.mockResolvedValue([profile(), profile({ name: 'work' })])
   platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([item()]) }))
   platform.setTerminal.mockImplementation((terminal: TerminalID) => stored({ terminal }))
-  platform.setDefaultProfile.mockImplementation((defaultProfile: string) => stored({ defaultProfile }))
+  platform.setDefaultProfile.mockImplementation((agent: AgentID, name: string) =>
+    stored({ defaultProfiles: { claude: 'work', codex: 'default', [agent]: name } }),
+  )
   platform.setWorktreeDefault.mockImplementation((worktreeDefault: boolean) => stored({ worktreeDefault }))
   platform.setMenuBar.mockImplementation((menuBar: boolean) => stored({ menuBar }))
   platform.resolveLaunches.mockResolvedValue([
@@ -489,6 +497,53 @@ describe('App', () => {
     expect(listening('worktrees:updated')).toBe(1)
     unmount()
     expect(listening('worktrees:updated')).toBe(0)
+  })
+
+  it('opens an inbox item’s worktree from the Worktrees view, and tags the item’s card with it', async () => {
+    platform.listWorktrees.mockResolvedValue(
+      worktreesSnapshot({
+        repos: [
+          worktreeRepo({
+            worktrees: [
+              mainWorktree(),
+              worktree({
+                item: linkedItem({ state: 'open' }),
+                agent: 'codex',
+                lastLaunchedAt: '2026-06-15T09:00:00Z',
+                launches: 1,
+              }),
+              worktree({
+                path: '/home/user/projects/example-repo/.claude/worktrees/pr-8',
+                displayPath: '~/projects/example-repo/.claude/worktrees/pr-8',
+                item: linkedItem({ number: 8 }),
+              }),
+            ],
+          }),
+        ],
+      }),
+    )
+    await renderApp()
+    await screen.findByRole('button', { name: 'Launch options: Review · work' })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
+
+    const repo = within(await screen.findByRole('region', { name: 'example-repo' }))
+    const row = (path: string) => within(repo.getByText(path).closest('li') ?? document.body)
+    const listed = row('~/projects/example-repo/.claude/worktrees/pr-7')
+
+    expect(listed.getByText(/Codex/)).toHaveTextContent(/Codex \S+ ago$/)
+    // Pull request #8 is not in the inbox, so its worktree has no launch control.
+    expect(row('~/projects/example-repo/.claude/worktrees/pr-8').queryByRole('button', { name: /^Open/ })).toBeNull()
+
+    await userEvent.click(listed.getByRole('button', { name: 'Open in Claude' }))
+
+    expect(platform.launch).toHaveBeenCalledWith(expect.objectContaining({ itemId: 1, worktree: true }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Inbox' }))
+
+    expect(await screen.findByTitle('~/projects/example-repo/.claude/worktrees/pr-7')).toHaveTextContent(
+      /^worktree · Codex \S+ ago$/,
+    )
   })
 
   it('counts from the Worktrees view and lists again after a sweep', async () => {

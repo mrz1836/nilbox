@@ -3,16 +3,24 @@ package core
 import (
 	"context"
 	"database/sql"
+	"log/slog"
+	"maps"
+	"os"
+	"slices"
+	"strings"
 	"time"
 
+	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/budget"
 	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/settings"
+	"github.com/mrz1836/nilbox/internal/workspacetrust"
 	"github.com/mrz1836/nilbox/internal/worktrees"
 )
 
@@ -68,12 +76,67 @@ func (s ShellSettings) WindowSize(ctx context.Context) (settings.WindowSize, err
 // launchSettings is the part of the settings a launch reads.
 func launchSettings(s settings.Settings) launcher.LaunchSettings {
 	return launcher.LaunchSettings{
-		DefaultProfile:  s.DefaultProfile,
+		DefaultAgent:    s.DefaultAgent,
+		DefaultProfiles: maps.Clone(s.DefaultProfiles),
 		WorktreeDefault: s.WorktreeDefault,
 		Terminal:        s.Terminal,
 		CloneRoot:       s.CloneRoot,
 		TrustedBots:     s.TrustedBots,
 	}
+}
+
+// worktreeMaker hands the launcher the worktrees package's Maker. It implements
+// launcher.WorktreeMaker.
+type worktreeMaker struct {
+	maker *worktrees.Maker
+}
+
+// PlanWorktree says what EnsureWorktree would do.
+func (m worktreeMaker) PlanWorktree(ctx context.Context, req launcher.WorktreeRequest) (launcher.Worktree, error) {
+	got, err := m.maker.Plan(ctx, ensureRequest(req))
+
+	return launcherWorktree(got), err
+}
+
+// EnsureWorktree finds or makes the item's worktree.
+func (m worktreeMaker) EnsureWorktree(ctx context.Context, req launcher.WorktreeRequest) (launcher.Worktree, error) {
+	got, err := m.maker.Ensure(ctx, ensureRequest(req))
+
+	return launcherWorktree(got), err
+}
+
+// ensureRequest converts the launcher's request for the worktrees package.
+func ensureRequest(req launcher.WorktreeRequest) worktrees.EnsureRequest {
+	return worktrees.EnsureRequest{
+		Clone: req.Clone, Remote: req.Remote, Owner: req.Owner, Name: req.Name, Kind: req.Kind, Number: req.Number,
+		DefaultBranch: req.DefaultBranch,
+	}
+}
+
+// launcherWorktree converts the worktrees package's answer for the launcher.
+func launcherWorktree(e worktrees.Ensured) launcher.Worktree {
+	return launcher.Worktree{
+		Path: e.Path, Branch: e.Branch, Action: launcher.WorktreeAction(e.Action), Base: e.Base, Dirty: e.Dirty,
+		Notice: e.Notice,
+	}
+}
+
+// trusters returns each agent's Truster, which marks the folder a session starts in
+// trusted in that agent's config.
+func trusters(home string, logger *slog.Logger) map[agent.ID]launcher.Truster {
+	return map[agent.ID]launcher.Truster{
+		agent.Claude: workspacetrust.Claude{Home: home},
+		agent.Codex:  workspacetrust.Codex{Home: home, Logger: logger},
+	}
+}
+
+// worktreeRunner returns the runner the worktree service runs git with: search's
+// execpath.Exec with git's terminal prompts off, so a fetch that needs a password fails at
+// once rather than waiting for an answer no one can give.
+func worktreeRunner(search execpath.Search) execpath.Exec {
+	env := slices.DeleteFunc(os.Environ(), func(kv string) bool { return strings.HasPrefix(kv, "GIT_TERMINAL_PROMPT=") })
+
+	return execpath.Exec{Search: search, Env: append(env, "GIT_TERMINAL_PROMPT=0")}
 }
 
 // sweepSettings is the part of the settings the worktree service reads.

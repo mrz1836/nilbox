@@ -2,8 +2,8 @@
 -- ListLaunchDefaults returns every org's and repository's launch defaults, by owner and
 -- then name ignoring case, so each owner's own defaults (name '') come before its
 -- repositories'.
-SELECT id, owner, name, agent, profile, pr_prompt_id, issue_prompt_id, model, effort, plan_mode, worktree,
-    extra_args, created_at, updated_at
+SELECT id, owner, name, agent, pr_prompt_id, issue_prompt_id, effort, plan_mode, worktree, created_at, updated_at,
+    profiles, models, agent_args
 FROM launch_defaults
 ORDER BY owner COLLATE NOCASE, name COLLATE NOCASE;
 
@@ -21,22 +21,22 @@ ORDER BY owner COLLATE NOCASE, name COLLATE NOCASE;
 -- case since both columns are declared COLLATE NOCASE, have every setting replaced and
 -- updated_at stamped; their owner, name, and created_at stay as first saved.
 INSERT INTO launch_defaults (
-    owner, name, agent, profile, pr_prompt_id, issue_prompt_id, model, effort, plan_mode, worktree, extra_args,
+    owner, name, agent, profiles, pr_prompt_id, issue_prompt_id, models, effort, plan_mode, worktree, agent_args,
     created_at, updated_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (owner, name) DO UPDATE SET
     agent = excluded.agent,
-    profile = excluded.profile,
+    profiles = excluded.profiles,
     pr_prompt_id = excluded.pr_prompt_id,
     issue_prompt_id = excluded.issue_prompt_id,
-    model = excluded.model,
+    models = excluded.models,
     effort = excluded.effort,
     plan_mode = excluded.plan_mode,
     worktree = excluded.worktree,
-    extra_args = excluded.extra_args,
+    agent_args = excluded.agent_args,
     updated_at = excluded.updated_at
-RETURNING id, owner, name, agent, profile, pr_prompt_id, issue_prompt_id, model, effort, plan_mode, worktree,
-    extra_args, created_at, updated_at;
+RETURNING id, owner, name, agent, pr_prompt_id, issue_prompt_id, effort, plan_mode, worktree, created_at, updated_at,
+    profiles, models, agent_args;
 
 -- name: DeleteLaunchDefaults :execrows
 -- DeleteLaunchDefaults removes an org's (name '') or a repository's launch defaults,

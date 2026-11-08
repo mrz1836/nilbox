@@ -1,5 +1,15 @@
+import { useState, type ReactNode } from 'react'
+
+import { brand } from '../../generated/brand'
 import { formatAge } from '../../lib/time'
-import { openExternal, type LinkedItem, type Worktree, type WorktreeStage } from '../../platform'
+import {
+  copyText,
+  openExternal,
+  type AgentID,
+  type LinkedItem,
+  type Worktree,
+  type WorktreeStage,
+} from '../../platform'
 import { buttonBase, plainButton, plural } from './shared'
 
 // badge is a status marker: weight and color mark it, with no pill around it.
@@ -17,6 +27,11 @@ export interface WorktreeRowProps {
   now: Date
   disabled: boolean
   error: string
+  // agentName names a coding agent for people, as in "Codex".
+  agentName?: ((id: AgentID) => string) | undefined
+  // launch is the "Open in Claude" or "Open in Codex" control for the worktree's item,
+  // when the inbox lists it, which resumes this worktree; or undefined.
+  launch?: ReactNode
   onRemove: () => void
   onForceRemove: () => void
   onUnlock: () => void
@@ -76,8 +91,73 @@ function ItemLink({ item, now }: { item: LinkedItem; now: Date }) {
   )
 }
 
+// origin says who made a worktree: the app, or Claude Code before the app made them.
+function origin(worktree: Worktree): string {
+  if (worktree.legacy) {
+    return 'made by Claude (legacy)'
+  }
+
+  return worktree.managed ? `made by ${brand.name}` : ''
+}
+
+// sessionsText names the processes working in a worktree, as in "codex (pid 4242)".
+function sessionsText(worktree: Worktree): string {
+  return worktree.inUse.map((s) => `${s.command} (pid ${String(s.pid)})`).join(', ')
+}
+
+// LastSession is the agent and age of the latest session the app launched in a worktree.
+function LastSession({
+  worktree,
+  now,
+  agentName,
+}: {
+  worktree: Worktree
+  now: Date
+  agentName: (id: AgentID) => string
+}) {
+  if (worktree.agent === '' || worktree.lastLaunchedAt === '') {
+    return null
+  }
+
+  const age = formatAge(now, worktree.lastLaunchedAt)
+
+  return (
+    <>
+      {' · '}
+      {agentName(worktree.agent)}{' '}
+      <time dateTime={worktree.lastLaunchedAt}>{age === 'just now' ? age : `${age} ago`}</time>
+    </>
+  )
+}
+
+// CopyPath copies the worktree's path, to open it elsewhere.
+function CopyPath({ path }: { path: string }) {
+  const [copied, setCopied] = useState(false)
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        copyText(path).then(
+          () => {
+            setCopied(true)
+          },
+          (err: unknown) => {
+            console.error('could not copy the worktree path', err)
+          },
+        )
+      }}
+      title={path}
+      className={plainButton}
+    >
+      {copied ? 'Copied' : 'Copy path'}
+    </button>
+  )
+}
+
 // WorktreeStatus is the row's clean, dirty, locked, prunable, origin, and stage markers.
 function WorktreeStatus({ worktree }: { worktree: Worktree }) {
+  const made = origin(worktree)
   const stage = stageLabels[worktree.stage]
   const notOnGitHub = !worktree.main && !worktree.onGitHub && worktree.unpushed > 0
 
@@ -94,8 +174,14 @@ function WorktreeStatus({ worktree }: { worktree: Worktree }) {
         <span className={`${badge} text-warning`}>{plural(worktree.unpushed, 'commit')} not on GitHub</span>
       )}
       {worktree.locked && <span className={`${badge} text-danger`}>locked</span>}
-      {worktree.claudeCreated && <span className={`${badge} text-muted`}>created by Claude</span>}
-      {stage !== undefined && <span className={`${badge} ${stage.className}`}>{stage.text}</span>}
+      {made !== '' && <span className={`${badge} text-muted`}>{made}</span>}
+      {worktree.inUse.length > 0 ? (
+        <span title={sessionsText(worktree)} className={`${badge} text-info`}>
+          in use · {sessionsText(worktree)}
+        </span>
+      ) : (
+        stage !== undefined && <span className={`${badge} ${stage.className}`}>{stage.text}</span>
+      )}
     </>
   )
 }
@@ -156,7 +242,7 @@ function WorktreeActions({
   onForceRemove,
   onUnlock,
   onCleanUp,
-}: Omit<WorktreeRowProps, 'now' | 'error'>) {
+}: Omit<WorktreeRowProps, 'now' | 'error' | 'agentName' | 'launch'>) {
   if (worktree.main) {
     return <span className="text-xs text-muted">main worktree</span>
   }
@@ -204,7 +290,15 @@ function WorktreeActions({
 
 // WorktreeRow is one worktree: its branch, status, actions, where it is, what it was made
 // for, and why it cannot simply be removed, with the failure of an action taken on it.
-export function WorktreeRow({ worktree, now, disabled, error, ...actions }: WorktreeRowProps) {
+export function WorktreeRow({
+  worktree,
+  now,
+  disabled,
+  error,
+  agentName = (id) => id,
+  launch,
+  ...actions
+}: WorktreeRowProps) {
   return (
     <li className="flex flex-col gap-1.5 border-b border-border px-3 py-2.5 last:border-b-0">
       <div className="flex flex-wrap items-center gap-2">
@@ -213,6 +307,7 @@ export function WorktreeRow({ worktree, now, disabled, error, ...actions }: Work
         </span>
         <WorktreeStatus worktree={worktree} />
         <span className="ml-auto flex items-center gap-2">
+          {!worktree.main && !worktree.prunable && <CopyPath path={worktree.path} />}
           <WorktreeActions worktree={worktree} disabled={disabled} {...actions} />
         </span>
       </div>
@@ -220,7 +315,11 @@ export function WorktreeRow({ worktree, now, disabled, error, ...actions }: Work
         <span>{worktree.displayPath}</span>
         <LastCommit unix={worktree.lastCommitUnix} now={now} />
         {worktree.item !== null && <ItemLink item={worktree.item} now={now} />}
+        <LastSession worktree={worktree} now={now} agentName={agentName} />
       </p>
+      {launch !== undefined && launch !== null && (
+        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3">{launch}</div>
+      )}
       <WorktreeNotes worktree={worktree} />
       {worktree.error !== '' && <p className="text-xs text-danger">{worktree.error}</p>}
       {error !== '' && (

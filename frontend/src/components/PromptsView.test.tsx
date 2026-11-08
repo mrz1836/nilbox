@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
 import type { Prompt, PromptCheckRequest } from '../platform'
-import { checkResult, importEntry, item, prompt, prompts, variables } from '../test/fixtures'
+import { agents, checkResult, importEntry, item, prompt, prompts, variables } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { PromptsView } from './PromptsView'
 
@@ -25,6 +25,7 @@ function Harness({ initial = prompts(), onChanged }: HarnessProps) {
 
   return (
     <PromptsView
+      agents={agents()}
       prompts={list}
       defaults={{ pr: 1, issue: 4 }}
       variables={variables()}
@@ -55,7 +56,7 @@ function lastCheck(): PromptCheckRequest {
     throw new Error('no check yet')
   }
 
-  return call[0]
+  return call[0] as PromptCheckRequest
 }
 
 // waitForCheck waits for the debounced check of the current draft.
@@ -169,7 +170,7 @@ describe('PromptsView', () => {
 
     await userEvent.click(toggle)
 
-    await userEvent.type(screen.getByRole('combobox', { name: 'Model' }), 'opus')
+    await userEvent.type(screen.getByRole('combobox', { name: 'Claude model' }), 'opus')
     await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Effort' }), 'max')
     await userEvent.click(
       within(screen.getByRole('radiogroup', { name: 'Plan mode' })).getByRole('radio', { name: 'On' }),
@@ -177,34 +178,40 @@ describe('PromptsView', () => {
     await userEvent.click(
       within(screen.getByRole('radiogroup', { name: 'Start in a worktree' })).getByRole('radio', { name: 'Off' }),
     )
-    await userEvent.type(screen.getByRole('textbox', { name: 'Extra flags' }), '--advisor fable')
+    await userEvent.type(screen.getByRole('textbox', { name: 'Claude extra flags' }), '--advisor fable')
+    await userEvent.click(
+      within(screen.getByRole('radiogroup', { name: 'Agent' })).getByRole('radio', { name: 'Codex' }),
+    )
+    await userEvent.type(screen.getByRole('combobox', { name: 'Codex model' }), 'gpt-6-sol')
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Effort' }), 'ultra')
 
-    expect(toggle).toHaveTextContent('Opus')
-    expect(toggle).toHaveTextContent('max effort')
+    expect(toggle).toHaveTextContent('Claude: Opus')
+    expect(toggle).toHaveTextContent('Codex: GPT-6-Sol')
+    expect(toggle).toHaveTextContent('ultra effort')
     expect(toggle).toHaveTextContent('plan mode')
     expect(toggle).toHaveTextContent('no worktree')
     expect(toggle).toHaveTextContent('2 flags')
 
     await waitFor(() => {
-      expect(lastCheck().input.extraFlags).toBe('--advisor fable')
+      expect(lastCheck().input.extraFlags).toEqual({ claude: '--advisor fable' })
     })
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     expect(platform.updatePrompt).toHaveBeenCalledWith(
       3,
       expect.objectContaining({
-        model: 'opus',
-        effort: 'max',
+        models: { claude: 'opus', codex: 'gpt-6-sol' },
+        effort: 'ultra',
         planMode: true,
         worktree: false,
-        extraFlags: '--advisor fable',
+        extraFlags: { claude: '--advisor fable' },
       }),
     )
   })
 
   it('shows a problem with the launch settings', async () => {
     platform.checkPrompt.mockResolvedValue(
-      checkResult({ fields: [{ field: 'extraFlags', message: '--model is set by the Model setting.' }] }),
+      checkResult({ fields: [{ field: 'extraFlags.claude', message: '--model is set by the Model setting.' }] }),
     )
     render(<Harness />)
 
@@ -212,9 +219,13 @@ describe('PromptsView', () => {
 
     await userEvent.click(toggle)
 
-    expect(screen.getByRole('textbox', { name: 'Extra flags' })).toHaveAccessibleDescription(
+    expect(screen.getByRole('textbox', { name: 'Claude extra flags' })).toHaveAccessibleDescription(
       '--model is set by the Model setting.',
     )
+    // The refused agent's tab is marked, so a problem under another tab is not missed.
+    expect(
+      within(screen.getByRole('radiogroup', { name: 'Agent' })).getByRole('radio', { name: 'Claude !' }),
+    ).toBeChecked()
 
     await userEvent.click(
       within(screen.getByRole('radiogroup', { name: 'Plan mode' })).getByRole('radio', { name: 'Inherit' }),

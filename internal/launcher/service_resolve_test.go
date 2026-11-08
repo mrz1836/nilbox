@@ -7,6 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
@@ -89,7 +91,7 @@ func TestResolveService(t *testing.T) {
 	t.Parallel()
 
 	h := newLaunchHarness(t)
-	h.saveDefaults(t, launchdefaults.Input{Owner: acmeOrg, Profile: "work"})
+	h.saveDefaults(t, launchdefaults.Input{Owner: acmeOrg, Profiles: claudeOnly("work")})
 
 	res, err := h.service().Resolve(t.Context(), LaunchRequest{ItemID: h.trustedPR})
 	require.NoError(t, err)
@@ -145,6 +147,7 @@ func TestResolveItems(t *testing.T) {
 			assert.NotNil(t, r.ExtraArgs, "the window gets [] rather than null")
 			assert.NotNil(t, r.Warnings, "the window gets [] rather than null")
 			assert.Equal(t, SourceNone, r.AgentSource)
+			assert.Equal(t, agent.Claude, r.Agent.ID, "the agent the item would start, for its button")
 			assert.Equal(t, Setting{Source: SourceNone, InheritedSource: SourceNone}, r.Profile)
 		} else {
 			assert.Empty(t, r.Problem)
@@ -167,20 +170,34 @@ func TestPreviewMatchesLaunch(t *testing.T) {
 	res, _ := h.launch(t, req)
 	assert.Equal(t, promptFor(t, res.ScriptPath), preview.Prompt, "the previewed prompt is the prompt sent")
 
-	assert.Equal(t, "~/projects/example-repo", preview.Dir)
-	assert.Equal(t, "pr-7", preview.Worktree)
-	assert.Equal(t, "claude <prompt> --model opus --permission-mode acceptEdits '--name=Review · example-repo#7' "+
-		"--worktree '#7'", preview.Command)
+	assert.Equal(t, "~/projects/."+brand.Slug+"/worktrees/example-repo/pr-7", preview.Dir)
+	assert.Equal(t, &WorktreePlan{
+		Name: "pr-7", Path: "~/projects/." + brand.Slug + "/worktrees/example-repo/pr-7", Branch: "worktree-pr-7",
+		Action: WorktreeCreate, Base: "the pull request's head",
+	}, preview.Worktree, "a preview says the worktree would be made, and from what")
+	assert.Equal(t, "claude <prompt> --model opus --permission-mode acceptEdits '--name=Review · example-repo#7'",
+		preview.Command)
 	assert.Equal(t, []string{"CLAUDE_CONFIG_DIR=~/.claude_work"}, preview.Env)
 	assert.Equal(t, "permission mode acceptEdits", preview.Permission)
 	assert.Equal(t, settings.TerminalITerm2, preview.Terminal)
 	assert.Equal(t, SourceLaunch, preview.Resolution.Model.Source)
 
+	again, err := h.service().Preview(t.Context(), req)
+	require.NoError(t, err)
+	assert.Equal(t, WorktreeResume, again.Worktree.Action, "once made, a launch resumes it")
+
 	preview, err = h.service().Preview(t.Context(), LaunchRequest{ItemID: h.issue, Worktree: new(false)})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"unset CLAUDE_CONFIG_DIR"}, preview.Env)
-	assert.Empty(t, preview.Worktree)
+	assert.Nil(t, preview.Worktree)
+	assert.Equal(t, "~/projects/example-repo", preview.Dir)
 	assert.Contains(t, preview.Prompt, "Work on issue #3")
+
+	codex, err := h.service().Preview(t.Context(), LaunchRequest{ItemID: h.issue, Agent: agent.Codex, Profile: "work"})
+	require.NoError(t, err)
+	assert.Equal(t, "codex --sandbox workspace-write -- <prompt>", codex.Command, "Codex's prompt comes last")
+	assert.Equal(t, []string{"CODEX_HOME=~/.codex_work"}, codex.Env)
+	assert.Equal(t, "origin/main", codex.Worktree.Base)
 }
 
 func TestLaunchUsesPromptSettings(t *testing.T) {
@@ -197,9 +214,14 @@ func TestLaunchUsesPromptSettings(t *testing.T) {
 	assert.Contains(t, promptFor(t, res.ScriptPath), "Take a quick look at pull request #7")
 
 	// The launch's own choices win over the prompt's.
-	_, script = h.launch(t, LaunchRequest{ItemID: h.trustedPR, PromptID: quick, Model: new(strOpus), Worktree: new(true)})
+	res, script = h.launch(t, LaunchRequest{ItemID: h.trustedPR, PromptID: quick, Model: new(strOpus), Worktree: new(true)})
 	assert.Contains(t, script, "'--model' 'opus' '--effort' 'low'")
-	assert.Contains(t, script, "'--worktree' '#7'")
+	assert.Equal(t, "pr-7", res.Worktree)
+
+	// The prompt's model is Claude's; Codex keeps its own default.
+	_, script = h.launch(t, LaunchRequest{ItemID: h.trustedPR, PromptID: quick, Agent: agent.Codex})
+	assert.NotContains(t, script, "sonnet")
+	assert.Contains(t, script, `'--config' 'model_reasoning_effort="low"'`, "the effort is shared")
 
 	_, err := h.service().Launch(t.Context(), LaunchRequest{ItemID: h.issue, PromptID: quick})
 	require.ErrorIs(t, err, prompts.ErrWrongKind)
@@ -211,7 +233,7 @@ func TestLaunchUsesLaunchDefaults(t *testing.T) {
 	h := newLaunchHarness(t)
 	fix := new(h.promptID(t, "Fix checks"))
 
-	h.saveDefaults(t, launchdefaults.Input{Owner: acmeOrg, Profile: "work", ExtraFlags: "--advisor fable"})
+	h.saveDefaults(t, launchdefaults.Input{Owner: acmeOrg, Profiles: claudeOnly("work"), ExtraFlags: claudeOnly("--advisor fable")})
 	h.saveDefaults(t, launchdefaults.Input{
 		Owner: acmeOrg, Name: "example-repo", PRPromptID: fix, Effort: "max", PlanMode: new(true),
 	})
@@ -221,7 +243,7 @@ func TestLaunchUsesLaunchDefaults(t *testing.T) {
 	assert.Equal(t, "work", res.Profile)
 	assert.Equal(t, "plan mode", res.Permission, "the work profile asks first, so plan mode adds no bypass")
 	assert.Contains(t, script, "'--effort' 'max' '--permission-mode' 'plan' '--advisor' 'fable' "+
-		"'--name=Fix checks · example-repo#7' '--worktree' '#7'\n")
+		"'--name=Fix checks · example-repo#7'\n")
 	assert.Contains(t, promptFor(t, res.ScriptPath), "Fix the failing checks on pull request #7")
 
 	// The outside contributor rule still wins over every default.
@@ -287,7 +309,7 @@ func TestPromptSourceFillsInAnItem(t *testing.T) {
 VALUES (?, '[{"name":"bug","color":""},{"name":"size/L","color":""}]', 12, 3, 2, 1, 'CONFLICTING', 'FAILURE',
     'APPROVED', ?)`, h.trustedPR, now)
 	h.exec(t, `INSERT INTO prefs (key, value, updated_at) VALUES ('inbox.viewer', 'octo-user', ?)`, now)
-	h.saveDefaults(t, launchdefaults.Input{Owner: acmeOrg, Profile: "work"})
+	h.saveDefaults(t, launchdefaults.Input{Owner: acmeOrg, Profiles: claudeOnly("work")})
 
 	source := NewPromptSource(h.service())
 

@@ -295,8 +295,9 @@ export function SensitiveFilesSection({ settings: stored, onSaved }: SectionProp
           </li>
           <li>
             Opening a session on one that changes agent configuration, or whose files couldn’t all be checked, asks you
-            first: hooks in <code className="font-mono">.claude/settings.json</code> run commands on your Mac as soon as
-            Claude Code starts, even in plan mode. Its files are checked again at that moment.
+            first: hooks in agent configuration, such as <code className="font-mono">.claude/settings.json</code>, run
+            commands on your Mac as soon as the agent starts, even in plan or read-only mode. Its files are checked
+            again at that moment.
           </li>
           <li>The session’s prompt names the sensitive files, so its review starts with them.</li>
           <li>

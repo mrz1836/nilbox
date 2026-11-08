@@ -14,6 +14,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/localrepos"
@@ -23,12 +24,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/uierr"
-	"github.com/mrz1836/nilbox/internal/worklog"
-	"github.com/mrz1836/nilbox/internal/workspacetrust"
 )
-
-// claudeBin is the command Claude Code runs as.
-const claudeBin = "claude"
 
 // ItemStore reads the stored inbox items a launch is for, with their repositories and
 // details, names the signed-in account, and remembers the clone each repository resolved
@@ -48,9 +44,12 @@ type ItemStore interface {
 // LaunchSettings is the part of the user's preferences a launch reads. Every field is a
 // plain value.
 type LaunchSettings struct {
-	// DefaultProfile is the profile a launch runs with when nothing more specific names
-	// one.
-	DefaultProfile string
+	// DefaultAgent is the agent a launch starts when nothing more specific names one.
+	DefaultAgent agent.ID
+
+	// DefaultProfiles is each agent's profile a launch runs with when nothing more
+	// specific names one.
+	DefaultProfiles map[agent.ID]string
 
 	// WorktreeDefault starts a launch in a worktree when nothing more specific decides.
 	WorktreeDefault bool
@@ -91,12 +90,6 @@ type DefaultsReader interface {
 	All(ctx context.Context) ([]launchdefaults.Defaults, error)
 }
 
-// LaunchRecorder records the worktrees sessions are launched in. *worklog.Store
-// implements it.
-type LaunchRecorder interface {
-	RecordLaunch(ctx context.Context, l worklog.Launch) error
-}
-
 // Config holds a Service's dependencies. Clock and Launches are optional.
 type Config struct {
 	// Items reads the items launched on and the signed-in account, and remembers each
@@ -117,14 +110,15 @@ type Config struct {
 	Defaults DefaultsReader
 
 	// Git runs the read-only `git config --get-regexp` remote lookup that finds and
-	// validates clones. The launcher runs no other git command.
+	// validates clones. The launcher runs no other git command; the Worktrees maker runs
+	// its own.
 	Git execpath.Runner
 
 	// GH runs `gh repo clone owner/name <dir>` when the user confirms cloning a
 	// repository that has no local clone. It runs nothing else; without it, Clone fails.
 	GH execpath.Runner
 
-	// Finder finds the agent binary.
+	// Finder finds the agent's binary.
 	Finder execpath.Finder
 
 	// Registry holds the terminal drivers for this OS.
@@ -139,16 +133,23 @@ type Config struct {
 	// Clock stamps launch files. It defaults to the system clock.
 	Clock clock.Clock
 
-	// Launches records each worktree a session is launched in, and the item it is for,
-	// so the Worktrees view links it and its cleanup finds it.
-	Launches LaunchRecorder
+	// Worktrees finds or makes the item's worktree a session starts in. Without it, a
+	// launch in a worktree fails with ErrNoWorktrees.
+	Worktrees WorktreeMaker
+
+	// Sessions records each session started in a worktree, with its agent. Optional.
+	Sessions SessionRecorder
+
+	// Trust holds each agent's Truster. An agent without one is started without its
+	// workspace trusted first.
+	Trust map[agent.ID]Truster
 
 	// Files checks the changed files of pull requests from outside the repository, so a
 	// launch on one that changes agent files waits for the user to confirm, and its
 	// prompt names its sensitive files. Without it, no launch is held back.
 	Files FileChecker
 
-	// Logger receives what a launch cannot report as its error: a launch record or a
+	// Logger receives what a launch cannot report as its error: a session record or a
 	// clone path that could not be stored, and old launch files that could not be
 	// pruned. Without it they are not logged.
 	Logger *slog.Logger
@@ -160,13 +161,16 @@ type LaunchRequest struct {
 	// ItemID is the item's local ID from the inbox snapshot.
 	ItemID int64 `json:"itemId"`
 
-	// Profile names the profile to launch with; "" keeps the resolved profile.
+	// Agent is the coding agent to start; agent.Inherit keeps the resolved agent.
+	Agent agent.ID `json:"agent"`
+
+	// Profile names the agent's profile to launch with; "" keeps the resolved profile.
 	Profile string `json:"profile"`
 
 	// PromptID is the prompt to fill in; 0 keeps the resolved prompt.
 	PromptID int64 `json:"promptId"`
 
-	// Model and Effort replace the resolved --model and --effort; "" asks for the
+	// Model and Effort replace the resolved model and effort level; "" asks for the
 	// agent's own default. nil keeps the resolved value.
 	Model  *string `json:"model"`
 	Effort *string `json:"effort"`
@@ -174,7 +178,7 @@ type LaunchRequest struct {
 	// PlanMode starts the session in plan mode, or not; nil keeps the resolved setting.
 	PlanMode *bool `json:"planMode"`
 
-	// Worktree starts the session in an agent-created worktree, or not; nil keeps the
+	// Worktree starts the session in the item's worktree, or in the clone; nil keeps the
 	// resolved setting.
 	Worktree *bool `json:"worktree"`
 
@@ -197,12 +201,24 @@ type LaunchResult struct {
 	// ScriptPath is the launch script the terminal was asked to run.
 	ScriptPath string `json:"scriptPath"`
 
-	// ClonePath is the clone the session starts in, shown relative to home with ~.
+	// ClonePath is the clone the session starts in, or whose worktree it starts in,
+	// shown relative to home with ~.
 	ClonePath string `json:"clonePath"`
 
-	// Worktree is the name of the worktree the agent creates or resumes under the
-	// clone's .claude/worktrees directory, or "" when the session starts in the clone.
-	Worktree string `json:"worktree"`
+	// Dir is the directory the session starts in, shown relative to home with ~.
+	Dir string `json:"dir"`
+
+	// Worktree is the name of the item's worktree the session starts in, or "" when it
+	// starts in the clone, and WorktreeAction what the launch did to it.
+	Worktree       string         `json:"worktree"`
+	WorktreeAction WorktreeAction `json:"worktreeAction"`
+
+	// Notice says what the launch worked around, such as a worktree started from the
+	// last fetched default branch, or "".
+	Notice string `json:"notice"`
+
+	// Agent is the agent the session runs.
+	Agent agent.ID `json:"agent"`
 
 	// Prompt is the nickname of the prompt the session was started with.
 	Prompt string `json:"prompt"`
@@ -225,14 +241,15 @@ type Preview struct {
 	// Dir is the directory the session starts in, with ~ for home.
 	Dir string `json:"dir"`
 
-	// Worktree is the worktree the agent creates or resumes, or "".
-	Worktree string `json:"worktree"`
+	// Worktree is the item's worktree the session starts in, and what the launch would do
+	// to it, or nil when it starts in the clone.
+	Worktree *WorktreePlan `json:"worktree"`
 
 	// Command is the agent's command line, quoted as a shell would read it, with the
 	// prompt shown as <prompt> and home as ~.
 	Command string `json:"command"`
 
-	// Env lists the environment changes, such as "CLAUDE_CONFIG_DIR=~/.claude_work" or
+	// Env lists the environment changes, such as "CODEX_HOME=~/.codex_work" or
 	// "unset CLAUDE_CONFIG_DIR".
 	Env []string `json:"env"`
 
@@ -248,21 +265,23 @@ type Preview struct {
 
 // Service launches coding-agent sessions on inbox items.
 type Service struct {
-	items    ItemStore
-	settings SettingsReader
-	profiles ProfileReader
-	prompts  PromptReader
-	defaults DefaultsReader
-	git      execpath.Runner
-	gh       execpath.Runner
-	finder   execpath.Finder
-	registry terminal.Registry
-	paths    appdata.Paths
-	home     string
-	clock    clock.Clock
-	launches LaunchRecorder
-	files    FileChecker
-	logger   *slog.Logger
+	items     ItemStore
+	settings  SettingsReader
+	profiles  ProfileReader
+	prompts   PromptReader
+	defaults  DefaultsReader
+	git       execpath.Runner
+	gh        execpath.Runner
+	finder    execpath.Finder
+	registry  terminal.Registry
+	paths     appdata.Paths
+	home      string
+	clock     clock.Clock
+	worktrees WorktreeMaker
+	sessions  SessionRecorder
+	trust     map[agent.ID]Truster
+	files     FileChecker
+	logger    *slog.Logger
 
 	// cloneMu runs one Clone at a time.
 	cloneMu sync.Mutex
@@ -271,21 +290,23 @@ type Service struct {
 // NewService returns a launch Service over cfg.
 func NewService(cfg Config) *Service {
 	return &Service{
-		items:    cfg.Items,
-		settings: cfg.Settings,
-		profiles: cfg.Profiles,
-		prompts:  cfg.Prompts,
-		defaults: cfg.Defaults,
-		git:      cfg.Git,
-		gh:       cfg.GH,
-		finder:   cfg.Finder,
-		registry: cfg.Registry,
-		paths:    cfg.Paths,
-		home:     cfg.Home,
-		clock:    clock.Or(cfg.Clock),
-		launches: cfg.Launches,
-		files:    cfg.Files,
-		logger:   logging.Or(cfg.Logger),
+		items:     cfg.Items,
+		settings:  cfg.Settings,
+		profiles:  cfg.Profiles,
+		prompts:   cfg.Prompts,
+		defaults:  cfg.Defaults,
+		git:       cfg.Git,
+		gh:        cfg.GH,
+		finder:    cfg.Finder,
+		registry:  cfg.Registry,
+		paths:     cfg.Paths,
+		home:      cfg.Home,
+		clock:     clock.Or(cfg.Clock),
+		worktrees: cfg.Worktrees,
+		sessions:  cfg.Sessions,
+		trust:     cfg.Trust,
+		files:     cfg.Files,
+		logger:    logging.Or(cfg.Logger),
 	}
 }
 
@@ -331,7 +352,9 @@ func (s *Service) ResolveItems(ctx context.Context, ids []int64) ([]ItemResoluti
 	for _, row := range rows {
 		res, _, _, resolveErr := resolve(w, row.subject(w.policy), LaunchRequest{ItemID: row.ID})
 		if resolveErr != nil {
-			out = append(out, ItemResolution{Resolution: row.unresolved(), Problem: uierr.Message(resolveErr)})
+			out = append(out, ItemResolution{
+				Resolution: row.unresolved(inheritedAgent(w, row.subject(w.policy))), Problem: uierr.Message(resolveErr),
+			})
 
 			continue
 		}
@@ -365,37 +388,44 @@ func (s *Service) Preview(ctx context.Context, req LaunchRequest) (Preview, erro
 
 // Launch starts a session on an inbox item:
 //
-//  1. load the item (computing its trust) and resolve its launch settings: the
-//     request's choices, then the prompt's, the repository's and its owner's launch
-//     defaults, the profile's, and the app's settings;
+//  1. load the item (computing its trust) and resolve its launch settings: the agent
+//     first, then the request's choices, the prompt's, the repository's and its owner's
+//     launch defaults, the profile's, and the app's settings;
 //  2. find the item's local clone: the cached path when it still is a clone of the
 //     repository, otherwise a scan of the clone root, whose result is cached;
-//  3. find the agent and build the plan;
+//  3. find the agent and, for a worktree launch, what its worktree would be, and build
+//     the plan;
 //  4. for a pull request whose files are checked, check them against GitHub as of now,
 //     and fill in the prompt, which names its sensitive files;
 //  5. hold the launch back, starting nothing, when the pull request changes agent files
 //     or its files could not all be checked, unless the request confirms that hold;
-//  6. mark the clone trusted in the agent config the session runs with, since a
-//     worktree session cannot show the agent's workspace trust dialog;
-//  7. write the prompt file and launch script;
-//  8. open the script in the terminal chosen in settings;
-//  9. record the worktree, if the session starts in one, with the item it is for.
+//  6. find or make the item's worktree, which fetches the pull request's head, or the
+//     default branch for an issue, only when there is none yet (see WorktreeMaker);
+//  7. mark the directory trusted in the agent config the session runs with, since the
+//     agent would otherwise stop at its workspace trust question;
+//  8. write the prompt file and launch script;
+//  9. open the script in the terminal chosen in settings;
+//  10. record the session in the worktree, with its agent.
 //
-// The only git command it runs is the read-only `git -C <clone> config --get-regexp`
-// remote lookup. The script only changes into the clone and runs the agent; it never
-// checks out, stashes, fetches, switches branches, or creates worktrees.
+// The launcher itself runs only the read-only `git -C <clone> config --get-regexp` remote
+// lookup. The script only changes into the directory and runs the agent; it never checks
+// out, stashes, fetches, switches branches, or creates worktrees.
 func (s *Service) Launch(ctx context.Context, req LaunchRequest) (LaunchResult, error) {
 	p, err := s.plan(ctx, req, true)
 	if err != nil {
 		return LaunchResult{}, err
 	}
 
-	if hold := holdFor(p.check, p.plan, paths.Tilde(p.clone.Dir, s.home)); hold != nil &&
+	if hold := holdFor(p.check, p.atHead(), paths.Tilde(p.plan.Dir, s.home), p.worktreeName()); hold != nil &&
 		hold.Key != req.Confirmed {
 		return LaunchResult{Hold: hold}, nil
 	}
 
-	if err = s.trustClone(ctx, p); err != nil {
+	if err = s.ensureWorktree(ctx, &p); err != nil {
+		return LaunchResult{}, err
+	}
+
+	if err = s.trustDir(ctx, p); err != nil {
 		return LaunchResult{}, err
 	}
 
@@ -408,17 +438,25 @@ func (s *Service) Launch(ctx context.Context, req LaunchRequest) (LaunchResult, 
 		return LaunchResult{}, err
 	}
 
-	s.recordLaunch(ctx, p)
+	s.recordSession(ctx, p)
 
-	return LaunchResult{
+	res := LaunchResult{
 		ScriptPath: files.Script,
 		ClonePath:  paths.Tilde(p.clone.Dir, s.home),
-		Worktree:   p.plan.worktreeDir(),
+		Dir:        paths.Tilde(p.plan.Dir, s.home),
+		Worktree:   p.worktreeName(),
 		Prompt:     p.res.Prompt.Nickname,
 		Profile:    p.res.Profile.Value,
 		Permission: p.plan.Permission,
 		Terminal:   p.driver.ID(),
-	}, nil
+		Agent:      p.res.Agent.ID,
+	}
+
+	if p.worktree != nil {
+		res.WorktreeAction, res.Notice = p.worktree.Action, p.worktree.Notice
+	}
+
+	return res, nil
 }
 
 // planned is a launch worked out but not started.
@@ -430,8 +468,35 @@ type planned struct {
 	clone  Clone
 	driver terminal.Driver
 
+	// worktree is the item's worktree the session starts in, or would, or nil when it
+	// starts in the clone.
+	worktree *Worktree
+
 	// check is the pull request's file check, or nil when its files are not checked.
 	check *sensitive.Check
+}
+
+// worktreeName is the item's worktree name, or "" when the session starts in the clone.
+func (p planned) worktreeName() string {
+	if p.worktree == nil {
+		return ""
+	}
+
+	return item.WorktreeName(p.row.Kind, p.row.Number)
+}
+
+// atHead reports a session that starts in a pull request's worktree, which holds its
+// files from the moment it starts.
+func (p planned) atHead() bool {
+	return p.worktree != nil && p.row.Kind == item.KindPR
+}
+
+// worktreeRequest asks for the item's worktree in the launch's clone.
+func (p planned) worktreeRequest() WorktreeRequest {
+	return WorktreeRequest{
+		Clone: p.clone.Dir, Remote: p.clone.Remote, Owner: p.row.Owner, Name: p.row.Name, Kind: p.row.Kind,
+		Number: p.row.Number, DefaultBranch: p.row.DefaultBranch,
+	}
 }
 
 // plan works out a launch. The terminal driver is chosen before the clone is resolved,
@@ -460,7 +525,7 @@ func (s *Service) plan(ctx context.Context, req LaunchRequest, fresh bool) (plan
 	}
 
 	p, err := s.place(ctx, w, row, res, Request{
-		Item: row.item(w.policy), Profile: effectiveProfile(profile, res), Worktree: res.Worktree.Value,
+		Item: row.item(w.policy), Agent: res.Agent.ID, Profile: effectiveProfile(profile, res),
 		FullAccessOverride: req.FullAccessOverride, SessionName: sessionName(prompt.Nickname, row),
 	})
 	if err != nil {
@@ -472,15 +537,17 @@ func (s *Service) plan(ctx context.Context, req LaunchRequest, fresh bool) (plan
 	}
 
 	data := row.promptData(w.policy, profile.Name, "", p.check)
-	if p.prompt, err = s.fillIn(ctx, data, prompt.Nickname, tmpl, p.plan); err != nil {
+	if p.prompt, err = s.fillIn(ctx, data, prompt.Nickname, tmpl, p); err != nil {
 		return planned{}, err
 	}
 
 	return p, nil
 }
 
-// place works out where and how a launch runs: the terminal driver, the clone, the agent
-// binary, and the plan for req, which needs only its clone and agent filled in.
+// place works out where and how a launch runs: the terminal driver, the clone, the
+// item's worktree when the launch uses one, the agent binary, and the plan for req, which
+// needs only its directory and binary filled in. The worktree is only planned here; Launch
+// makes it once the launch is not held back.
 func (s *Service) place(ctx context.Context, w world, row launchItemRow, res Resolution, req Request) (planned, error) {
 	p := planned{row: row, res: res}
 
@@ -494,17 +561,48 @@ func (s *Service) place(ctx context.Context, w world, row launchItemRow, res Res
 		return planned{}, err
 	}
 
-	if req.ClaudePath, err = s.finder.Find(res.Agent.Command); err != nil {
-		return planned{}, fmt.Errorf("find the agent: %w", err)
+	if req.BinaryPath, err = s.finder.Find(res.Agent.Command); err != nil {
+		return planned{}, uierr.New(fmt.Sprintf("%s isn't installed (%s wasn't found).", res.Agent.Name,
+			res.Agent.Command), fmt.Errorf("find %s: %w", res.Agent.Command, err))
 	}
 
-	req.Clone = p.clone
+	req.Dir = p.clone.Dir
+
+	if res.Worktree.Value {
+		if s.worktrees == nil {
+			return planned{}, ErrNoWorktrees
+		}
+
+		wt, planErr := s.worktrees.PlanWorktree(ctx, p.worktreeRequest())
+		if planErr != nil {
+			return planned{}, planErr
+		}
+
+		p.worktree, req.Dir = &wt, wt.Path
+	}
 
 	if p.plan, err = BuildPlan(req); err != nil {
 		return planned{}, fmt.Errorf("plan the launch: %w", err)
 	}
 
 	return p, nil
+}
+
+// ensureWorktree finds or makes the item's worktree the planned launch starts in, and
+// starts the plan there. A launch in the clone has nothing to make.
+func (s *Service) ensureWorktree(ctx context.Context, p *planned) error {
+	if p.worktree == nil {
+		return nil
+	}
+
+	wt, err := s.worktrees.EnsureWorktree(ctx, p.worktreeRequest())
+	if err != nil {
+		return err
+	}
+
+	p.worktree, p.plan.Dir = &wt, wt.Path
+
+	return nil
 }
 
 // fileCheck returns an item's file check: as of now when fresh is set, else the last
@@ -536,36 +634,38 @@ func (s *Service) fileCheck(ctx context.Context, itemID int64, fresh bool) (*sen
 	}
 }
 
-// recordLaunch records the worktree a session was launched in, with its item. The launch
-// has started by then, and a missing record only means the worktree is linked by its
-// name, so a failure is logged rather than returned.
-func (s *Service) recordLaunch(ctx context.Context, p planned) {
-	if s.launches == nil || p.plan.Worktree == "" {
+// recordSession records the session started in the item's worktree, with its agent. The
+// launch has started by then, and a missing record only means the Worktrees view shows
+// an older session, so a failure is logged rather than returned.
+func (s *Service) recordSession(ctx context.Context, p planned) {
+	if s.sessions == nil || p.worktree == nil {
 		return
 	}
 
-	err := s.launches.RecordLaunch(ctx, worklog.Launch{
-		ClonePath: p.clone.Dir, Worktree: p.plan.worktreeDir(), Owner: p.row.Owner, Name: p.row.Name,
-		Kind: p.row.Kind, Number: p.row.Number, LaunchedAt: s.clock.Now(),
-	})
+	err := s.sessions.Touch(ctx, p.clone.Dir, p.worktreeName(), p.res.Agent.ID, s.clock.Now())
 	if err != nil {
-		s.logger.WarnContext(ctx, "could not record the worktree launch", "error", err)
+		s.logger.WarnContext(ctx, "could not record the session", "error", err)
 	}
 }
 
-// trustClone marks the clone trusted in the agent config the session reads (the
-// profile's CLAUDE_CONFIG_DIR, or home for the default profile), so the agent starts
-// without its workspace trust dialog. A --worktree session cannot show that dialog: it
-// exits with "Workspace trust not yet accepted" in a repository not trusted yet.
-func (s *Service) trustClone(ctx context.Context, p planned) error {
-	if p.res.Agent.ID != agent.Claude {
+// trustDir marks the directory the session starts in trusted in the agent config the
+// session reads (the profile's config directory, or the agent's default), with the clone
+// too when that is a worktree, since an agent may judge a worktree by its repository. The
+// agent would otherwise stop at its workspace trust question, or start with less access
+// than the launch chose.
+func (s *Service) trustDir(ctx context.Context, p planned) error {
+	truster, ok := s.trust[p.res.Agent.ID]
+	if !ok || truster == nil {
 		return nil
 	}
 
-	file := workspacetrust.ConfigFile(p.plan.Env[envConfigDir], s.home)
+	dirs := []string{p.plan.Dir}
+	if p.plan.Dir != p.clone.Dir {
+		dirs = append(dirs, p.clone.Dir)
+	}
 
-	if _, err := workspacetrust.Grant(ctx, file, p.clone.Dir); err != nil {
-		return fmt.Errorf("trust %s for the agent: %w", paths.Tilde(p.clone.Dir, s.home), err)
+	if err := truster.Trust(ctx, p.plan.Env[p.res.Agent.ConfigEnv], dirs); err != nil {
+		return fmt.Errorf("trust %s for %s: %w", paths.Tilde(p.plan.Dir, s.home), p.res.Agent.Name, err)
 	}
 
 	return nil
@@ -574,7 +674,7 @@ func (s *Service) trustClone(ctx context.Context, p planned) error {
 // fillIn fills in a launch's prompt from the item's data, adding the signed-in account
 // and the planned session.
 func (s *Service) fillIn(ctx context.Context, data prompts.Data, nickname string, tmpl *prompts.Template,
-	plan Plan,
+	p planned,
 ) (string, error) {
 	viewer, err := s.items.ViewerLogin(ctx)
 	if err != nil {
@@ -582,7 +682,7 @@ func (s *Service) fillIn(ctx context.Context, data prompts.Data, nickname string
 	}
 
 	data.Me = viewer
-	data = data.WithSession(plan.Worktree != "", plan.WorktreeOnPRHead)
+	data = data.WithSession(p.worktree != nil, p.atHead())
 
 	text, err := tmpl.Render(data)
 	if err != nil {
@@ -608,16 +708,29 @@ func (p planned) preview(home string) Preview {
 		env = append(env, name+"="+tildeIn(p.plan.Env[name], home))
 	}
 
-	return Preview{
+	command := p.res.Agent.Command + " <prompt> " + agent.Join(args)
+	if p.plan.PromptLast {
+		command = p.res.Agent.Command + " " + agent.Join(args) + " <prompt>"
+	}
+
+	preview := Preview{
 		Resolution: p.res,
-		Dir:        paths.Tilde(p.clone.Dir, home),
-		Worktree:   p.plan.worktreeDir(),
-		Command:    strings.TrimSpace(p.res.Agent.Command + " <prompt> " + agent.Join(args)),
+		Dir:        paths.Tilde(p.plan.Dir, home),
+		Command:    strings.Join(strings.Fields(command), " "),
 		Env:        env,
 		Permission: p.plan.Permission,
 		Prompt:     p.prompt,
 		Terminal:   p.driver.ID(),
 	}
+
+	if wt := p.worktree; wt != nil {
+		preview.Worktree = &WorktreePlan{
+			Name: p.worktreeName(), Path: paths.Tilde(wt.Path, home), Branch: wt.Branch, Action: wt.Action,
+			Base: wt.Base, Dirty: wt.Dirty,
+		}
+	}
+
+	return preview
 }
 
 // tildeIn writes home as ~ wherever it appears in s, for display.
@@ -656,7 +769,7 @@ func (s *Service) resolveClone(ctx context.Context, ref repoRef, root string) (C
 		s.cacheClonePath(ctx, ref.id, match.Repo.Path)
 	}
 
-	return Clone{Dir: match.Repo.Path, OriginIsItemRepo: match.OriginMatched()}, nil
+	return Clone{Dir: match.Repo.Path, Remote: match.MatchedRemote}, nil
 }
 
 // cachedClone validates the cached clone path: it must still be a git working tree with
@@ -676,9 +789,7 @@ func (s *Service) cachedClone(ctx context.Context, ref repoRef) (Clone, bool) {
 		return Clone{}, false
 	}
 
-	match := localrepos.Match{Repo: local, MatchedRemote: remote}
-
-	return Clone{Dir: local.Path, OriginIsItemRepo: match.OriginMatched()}, true
+	return Clone{Dir: local.Path, Remote: remote}, true
 }
 
 // cacheClonePath remembers a repository's clone. A failure only costs a rescan next

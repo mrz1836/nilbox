@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/appinfo"
 	"github.com/mrz1836/nilbox/internal/event"
@@ -111,7 +112,7 @@ func TestBootstrapKeepsExistingProfiles(t *testing.T) {
 
 	first, err := Bootstrap(t.Context(), Options{Paths: paths, Home: home, Runner: noPrograms()})
 	require.NoError(t, err)
-	_, err = first.DB.ExecContext(t.Context(), "UPDATE claude_profiles SET model = 'opus' WHERE name = 'work'")
+	_, err = first.DB.ExecContext(t.Context(), "UPDATE agent_profiles SET model = 'opus' WHERE name = 'work'")
 	require.NoError(t, err)
 	require.NoError(t, first.Close())
 
@@ -123,7 +124,7 @@ func TestBootstrapKeepsExistingProfiles(t *testing.T) {
 
 	assert.ElementsMatch(t, []string{profiles.DefaultName, "work", "alt"}, profileNames(t, c))
 
-	work, err := c.ProfileStore.Lookup(t.Context(), "work")
+	work, err := c.ProfileStore.Lookup(t.Context(), agent.Claude, "work")
 	require.NoError(t, err)
 	assert.Equal(t, "opus", work.Model, "an edited row is never overwritten")
 }
@@ -144,10 +145,10 @@ func TestBootstrapRemovesProfilesForOtherToolsFolders(t *testing.T) {
 	// An older version stored a profile for each of them.
 	first := bootstrap(t, Options{Paths: paths, Home: home, Runner: noPrograms()})
 	require.NoError(t, first.ProfileStore.Sync(t.Context(), []profiles.Profile{
-		{Name: "squad", ConfigDir: filepath.Join(home, ".claude-squad"), PermissionMode: profiles.PermissionFull},
-		{Name: "monitor", ConfigDir: filepath.Join(home, ".claude-monitor"), PermissionMode: profiles.PermissionFull},
+		{Agent: agent.Claude, Name: "squad", ConfigDir: filepath.Join(home, ".claude-squad"), PermissionMode: profiles.PermissionFull},
+		{Agent: agent.Claude, Name: "monitor", ConfigDir: filepath.Join(home, ".claude-monitor"), PermissionMode: profiles.PermissionFull},
 	}))
-	_, err := first.DB.ExecContext(t.Context(), "UPDATE claude_profiles SET config_dir = ? WHERE name = 'dup'",
+	_, err := first.DB.ExecContext(t.Context(), "UPDATE agent_profiles SET config_dir = ? WHERE name = 'dup'",
 		filepath.Join(home, ".claude_dup"))
 	require.NoError(t, err)
 	require.NoError(t, first.Close())
@@ -163,10 +164,10 @@ func TestBootstrapRemovesProfilesForOtherToolsFolders(t *testing.T) {
 
 	assert.Equal(t, []string{profiles.DefaultName, "dup", "work"}, profileNames(t, c))
 	assert.Contains(t, logs.String(), "removed profiles whose directory holds no agent config")
-	assert.Contains(t, logs.String(), "profiles=\"[dup monitor squad]\"")
+	assert.Contains(t, logs.String(), "profiles=\"[claude/dup claude/monitor claude/squad]\"")
 
 	// The freed name went to the directory that holds the config.
-	dup, err := c.ProfileStore.Lookup(t.Context(), "dup")
+	dup, err := c.ProfileStore.Lookup(t.Context(), agent.Claude, "dup")
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(home, ".claude-dup"), dup.ConfigDir)
 

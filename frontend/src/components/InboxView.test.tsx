@@ -12,13 +12,25 @@ import { ClockContext } from '../lib/useNow'
 import { useTriage } from '../lib/useTriage'
 import type { InboxSnapshot, ListKey } from '../platform'
 import { clockAt, FIXED_NOW, fixedNow, fromNow } from '../test/clock'
-import { details, item, itemResolution, list, profile, project, prompts, settings, snapshot } from '../test/fixtures'
+import {
+  agents,
+  details,
+  item,
+  itemResolution,
+  list,
+  profile,
+  project,
+  prompts,
+  settings,
+  snapshot,
+} from '../test/fixtures'
 import { emit, listening, platform } from '../test/platform'
 import { InboxView, type LaunchOptions, type Reveal } from './InboxView'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 const launchOptions: LaunchOptions = {
+  agents: agents(),
   profiles: [profile()],
   prompts: prompts(),
   launchDefaults: [],

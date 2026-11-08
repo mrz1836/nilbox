@@ -35,27 +35,47 @@ func resolveErr(w world, item subject, req LaunchRequest) error {
 	return err
 }
 
-// testWorld is a world with two profiles, four prompts, and no launch defaults: the app
-// default profile is "default", and the worktree default is on.
+// claudeOnly is a per-agent setting only Claude has.
+func claudeOnly[V any](v V) map[agent.ID]V {
+	return map[agent.ID]V{agent.Claude: v}
+}
+
+// testWorld is a world with two Claude profiles and two Codex profiles, four prompts, and
+// no launch defaults: the app's default agent is Claude, each agent's default profile is
+// "default", and the worktree default is on.
 func testWorld() world {
 	full := fullProfile()
 	work := fullProfile()
 	work.Name, work.Model, work.Effort, work.ExtraArgs = profileWork, strOpus, "high", []string{"--advisor", "fable"}
 
+	codexFull, codexWork := full, work
+	codexFull.Agent = agent.Codex
+	codexWork.Agent, codexWork.Model, codexWork.Effort, codexWork.ExtraArgs = agent.Codex, "gpt-6-sol", "ultra",
+		[]string{"--search"}
+
 	return world{
-		settings: LaunchSettings{DefaultProfile: profiles.DefaultName, WorktreeDefault: true},
+		settings: LaunchSettings{
+			DefaultAgent:    agent.Claude,
+			DefaultProfiles: map[agent.ID]string{agent.Claude: profiles.DefaultName, agent.Codex: profiles.DefaultName},
+			WorktreeDefault: true,
+		},
 		defaults: prompts.DefaultPrompts{PR: reviewID, Issue: workID},
 		prompts: map[int64]prompts.Prompt{
 			reviewID: {ID: reviewID, Nickname: "Review", Name: "Review a pull request", AppliesTo: prompts.AppliesToPR},
 			quickID: {
-				ID: quickID, Nickname: "Quick look", AppliesTo: prompts.AppliesToPR, Model: strSonnet, Effort: "low",
-				Worktree: new(false), ExtraArgs: []string{flagDebug},
+				ID: quickID, Nickname: "Quick look", AppliesTo: prompts.AppliesToPR, Models: claudeOnly(strSonnet),
+				Effort: "low", Worktree: new(false), ExtraArgs: claudeOnly([]string{flagDebug}),
 			},
 			workID: {ID: workID, Nickname: "Work on it", AppliesTo: prompts.AppliesToIssue},
 			bothID: {ID: bothID, Nickname: "Both", AppliesTo: prompts.AppliesToAny, PlanMode: new(true)},
 		},
-		profiles: map[string]profiles.Profile{profiles.DefaultName: full, profileWork: work},
-		rules:    launchdefaults.NewIndex(nil),
+		profiles: map[profileKey]profiles.Profile{
+			{agent: agent.Claude, name: profiles.DefaultName}: full,
+			{agent: agent.Claude, name: profileWork}:          work,
+			{agent: agent.Codex, name: profiles.DefaultName}:  codexFull,
+			{agent: agent.Codex, name: profileWork}:           codexWork,
+		},
+		rules: launchdefaults.NewIndex(nil),
 	}
 }
 
@@ -74,6 +94,8 @@ func TestResolveAppDefaults(t *testing.T) {
 	assert.Equal(t, reviewID, prompt.ID)
 	assert.Equal(t, agent.Default(), res.Agent)
 	assert.Equal(t, SourceApp, res.AgentSource)
+	assert.Equal(t, agent.Claude, res.AgentInherited)
+	assert.Equal(t, SourceApp, res.AgentInheritedSource)
 	assert.Equal(t, Setting{Value: "default", Source: SourceApp, Inherited: "default", InheritedSource: SourceApp}, res.Profile)
 	assert.Equal(t, PromptChoice{
 		ID: reviewID, Nickname: "Review", Name: "Review a pull request", Source: SourceApp,
@@ -99,8 +121,14 @@ func TestResolvePrecedence(t *testing.T) {
 
 	w := testWorld()
 	w.rules = launchdefaults.NewIndex([]launchdefaults.Defaults{
-		{Owner: acmeOrg, Profile: profileWork, Model: "haiku", PlanMode: new(true), ExtraArgs: []string{"--org"}},
-		{Owner: acmeOrg, Name: "example-repo", Model: strSonnet, Worktree: new(false), ExtraArgs: []string{"--repo"}},
+		{
+			Owner: acmeOrg, Profiles: claudeOnly(profileWork), Models: claudeOnly("haiku"), PlanMode: new(true),
+			ExtraArgs: claudeOnly([]string{"--org"}),
+		},
+		{
+			Owner: acmeOrg, Name: "example-repo", Models: claudeOnly(strSonnet), Worktree: new(false),
+			ExtraArgs: claudeOnly([]string{"--repo"}),
+		},
 	})
 
 	res, profile, _, err := resolve(w, prSubject(), LaunchRequest{})
@@ -184,7 +212,7 @@ func TestResolveSkipsDefaultsThatAreGone(t *testing.T) {
 
 	w := testWorld()
 	w.rules = launchdefaults.NewIndex([]launchdefaults.Defaults{
-		{Owner: acmeOrg, Name: "example-repo", Profile: "pruned", Agent: "codex"},
+		{Owner: acmeOrg, Name: "example-repo", Profiles: claudeOnly("pruned"), Agent: "example-agent"},
 	})
 
 	res, profile, _, err := resolve(w, prSubject(), LaunchRequest{})
@@ -192,28 +220,126 @@ func TestResolveSkipsDefaultsThatAreGone(t *testing.T) {
 	assert.Equal(t, profiles.DefaultName, profile.Name)
 	assert.Equal(t, agent.Default(), res.Agent)
 	assert.Equal(t, []string{
-		`The repo default names a coding tool this version doesn't know ("codex"), so Claude is used.`,
-		`The repo default profile "pruned" no longer exists, so it was skipped.`,
+		`The repo default names a coding agent this version doesn't know ("example-agent"), so it was skipped.`,
+		`The repo default Claude profile "pruned" no longer exists, so it was skipped.`,
 	}, res.Warnings)
+}
+
+func TestResolveTheAgent(t *testing.T) {
+	t.Parallel()
+
+	w := testWorld()
+	w.settings.DefaultAgent = agent.Codex
+
+	res, profile, _, err := resolve(w, prSubject(), LaunchRequest{})
+	require.NoError(t, err)
+	assert.Equal(t, agent.Codex, res.Agent.ID, "the app's default agent")
+	assert.Equal(t, SourceApp, res.AgentSource)
+	assert.Equal(t, agent.Codex, profile.Agent, "with one of its own profiles")
+
+	w.rules = launchdefaults.NewIndex([]launchdefaults.Defaults{
+		{Owner: acmeOrg, Agent: agent.Claude},
+		{Owner: acmeOrg, Name: "example-repo", Agent: agent.Codex},
+	})
+
+	res, _, _, err = resolve(w, prSubject(), LaunchRequest{})
+	require.NoError(t, err)
+	assert.Equal(t, agent.Codex, res.Agent.ID)
+	assert.Equal(t, SourceRepo, res.AgentSource, "the repository wins over its org")
+
+	other := prSubject()
+	other.repo.Repo = "other-repo"
+	res, _, _, err = resolve(w, other, LaunchRequest{})
+	require.NoError(t, err)
+	assert.Equal(t, agent.Claude, res.Agent.ID)
+	assert.Equal(t, SourceOrg, res.AgentSource, "the org wins over the app")
+
+	res, _, _, err = resolve(w, prSubject(), LaunchRequest{Agent: agent.Claude})
+	require.NoError(t, err)
+	assert.Equal(t, agent.Claude, res.Agent.ID, "the launch's own switch wins over everything")
+	assert.Equal(t, SourceLaunch, res.AgentSource)
+	assert.Equal(t, agent.Codex, res.AgentInherited, "and remembers what it replaced")
+	assert.Equal(t, SourceRepo, res.AgentInheritedSource)
+
+	require.ErrorIs(t, resolveErr(w, prSubject(), LaunchRequest{Agent: "example-agent"}), agent.ErrUnknownAgent)
+}
+
+func TestResolveEachAgentsOwnSettings(t *testing.T) {
+	t.Parallel()
+
+	w := testWorld()
+	w.rules = launchdefaults.NewIndex([]launchdefaults.Defaults{
+		{
+			Owner: acmeOrg, Effort: "ultra",
+			Profiles:  map[agent.ID]string{agent.Claude: profiles.DefaultName, agent.Codex: profileWork},
+			Models:    map[agent.ID]string{agent.Claude: "haiku", agent.Codex: "gpt-6-luna"},
+			ExtraArgs: map[agent.ID][]string{agent.Claude: {"--org-claude"}, agent.Codex: {"--org-codex"}},
+		},
+	})
+
+	claude, profile, _, err := resolve(w, prSubject(), LaunchRequest{PromptID: quickID})
+	require.NoError(t, err)
+	assert.Equal(t, profiles.DefaultName, profile.Name)
+	assert.Equal(t, strSonnet, claude.Model.Value, "the prompt's Claude model")
+	assert.Equal(t, []string{"--org-claude", flagDebug}, claude.ExtraArgs)
+	assert.Equal(t, Setting{Value: "low", Source: SourcePrompt, Inherited: "low", InheritedSource: SourcePrompt}, claude.Effort,
+		"the prompt's effort wins")
+
+	codex, profile, _, err := resolve(w, prSubject(), LaunchRequest{PromptID: quickID, Agent: agent.Codex})
+	require.NoError(t, err)
+	assert.Equal(t, profileWork, profile.Name, "the org's Codex profile")
+	assert.Equal(t, agent.Codex, profile.Agent)
+	assert.Equal(t, "gpt-6-luna", codex.Model.Value, "the prompt sets no Codex model, so the org's is used")
+	assert.Equal(t, []string{"--search", "--org-codex"}, codex.ExtraArgs, "only Codex's flags")
+	assert.Equal(t, "low", codex.Effort.Value, "the prompt's effort is shared by every agent")
+
+	codex, _, _, err = resolve(w, prSubject(), LaunchRequest{Agent: agent.Codex})
+	require.NoError(t, err)
+	assert.Equal(t, "ultra", codex.Effort.Value, "Codex takes ultra")
+	assert.Empty(t, codex.Warnings)
+}
+
+func TestResolveSkipsAnEffortTheAgentLacks(t *testing.T) {
+	t.Parallel()
+
+	w := testWorld()
+	w.rules = launchdefaults.NewIndex([]launchdefaults.Defaults{{Owner: acmeOrg, Effort: "ultra"}})
+
+	res, _, _, err := resolve(w, prSubject(), LaunchRequest{})
+	require.NoError(t, err)
+	assert.Equal(t, Setting{Source: SourceAgent, InheritedSource: SourceAgent}, res.Effort)
+	assert.Equal(t, []string{`Claude doesn't take the "ultra" effort level, so its default is used.`}, res.Warnings)
+
+	res, _, _, err = resolve(w, prSubject(), LaunchRequest{Effort: new("ultra")})
+	require.NoError(t, err)
+	assert.Equal(t, Setting{Source: SourceAgent, InheritedSource: SourceAgent}, res.Effort, "a launch's choice too")
+
+	res, _, _, err = resolve(w, prSubject(), LaunchRequest{Effort: new("max")})
+	require.NoError(t, err)
+	assert.Equal(t, Setting{Value: "max", Source: SourceLaunch, InheritedSource: SourceAgent}, res.Effort)
 }
 
 func TestResolveProfileFallbacks(t *testing.T) {
 	t.Parallel()
 
 	w := testWorld()
-	w.settings.DefaultProfile = "pruned"
+	w.settings.DefaultProfiles[agent.Claude] = "pruned"
 
 	res, _, _, err := resolve(w, prSubject(), LaunchRequest{})
 	require.NoError(t, err)
 	assert.Equal(t, profiles.DefaultName, res.Profile.Value, "a missing app default falls back to default")
 
-	delete(w.profiles, profiles.DefaultName)
+	delete(w.profiles, profileKey{agent: agent.Claude, name: profiles.DefaultName})
 	res, _, _, err = resolve(w, prSubject(), LaunchRequest{})
 	require.NoError(t, err)
 	assert.Equal(t, profileWork, res.Profile.Value, "then to the first profile by name")
 
-	w.profiles = map[string]profiles.Profile{}
-	require.ErrorIs(t, resolveErr(w, prSubject(), LaunchRequest{}), ErrNoProfile)
+	delete(w.profiles, profileKey{agent: agent.Codex, name: profiles.DefaultName})
+	delete(w.profiles, profileKey{agent: agent.Codex, name: profileWork})
+
+	err = resolveErr(w, prSubject(), LaunchRequest{Agent: agent.Codex})
+	require.ErrorIs(t, err, ErrNoProfile, "another agent's profiles never stand in")
+	assert.Contains(t, err.Error(), "no Codex profile was found; run codex once so it creates ~/.codex")
 }
 
 func TestResolveRejectsBadChoices(t *testing.T) {
@@ -239,21 +365,22 @@ func TestResolveRechecksStoredFlags(t *testing.T) {
 
 	w := testWorld()
 	w.rules = launchdefaults.NewIndex([]launchdefaults.Defaults{
-		{Owner: acmeOrg, ExtraArgs: []string{"--dangerously-skip-permissions"}},
+		{Owner: acmeOrg, ExtraArgs: claudeOnly([]string{"--dangerously-skip-permissions"})},
 	})
 
 	err := resolveErr(w, prSubject(), LaunchRequest{})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "the org launch defaults' flags")
+	assert.Contains(t, err.Error(), "the org launch defaults' Claude flags")
+	require.NoError(t, resolveErr(w, prSubject(), LaunchRequest{Agent: agent.Codex}), "only the agent's own flags count")
 
 	w = testWorld()
 	quick := w.prompts[quickID]
-	quick.ExtraArgs = []string{"--model=opus"}
+	quick.ExtraArgs = map[agent.ID][]string{agent.Codex: {"--yolo"}}
 	w.prompts[quickID] = quick
 
-	err = resolveErr(w, prSubject(), LaunchRequest{PromptID: quickID})
+	err = resolveErr(w, prSubject(), LaunchRequest{PromptID: quickID, Agent: agent.Codex})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), `the "Quick look" prompt's flags`)
+	assert.Contains(t, err.Error(), `the "Quick look" prompt's Codex flags`)
 }
 
 func TestEffectiveProfile(t *testing.T) {

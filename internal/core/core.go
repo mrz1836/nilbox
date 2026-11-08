@@ -29,6 +29,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/paths"
+	"github.com/mrz1836/nilbox/internal/procs"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/settings"
@@ -304,8 +305,10 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	search := execpath.Search{Home: opts.Home}
 
 	runner := opts.Runner
+	gitRunner := opts.Runner
+
 	if runner == nil {
-		runner = execpath.Exec{Search: search}
+		runner, gitRunner = execpath.Exec{Search: search}, worktreeRunner(search)
 	}
 
 	profileStore := profiles.NewStore(pool, opts.Clock)
@@ -342,41 +345,44 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 
 	recorder := timing.NewRecorder(timing.Config{Logger: logger, LogsDir: opts.Paths.Logs})
 
-	launch := launcher.NewService(launcher.Config{
-		Items:    launchItems{Store: inboxStore},
-		Settings: settingsView[launcher.LaunchSettings]{settings: prefs, part: launchSettings},
-		Profiles: profileStore,
-		Prompts:  promptStore,
-		Defaults: defaultsStore,
-		Git:      runner,
-		GH:       runner,
-		Finder:   search,
-		Registry: terminal.DefaultRegistry(runner),
-		Paths:    opts.Paths,
-		Home:     opts.Home,
-		Clock:    opts.Clock,
-		Launches: workLog,
-		Files:    inboxSvc,
-		Logger:   logger,
-	})
-
 	sweeps := worktrees.NewService(worktrees.Config{
 		Settings: settingsView[worktrees.SweepSettings]{settings: prefs, part: sweepSettings},
-		Git:      runner,
+		Git:      gitRunner,
 		Finder:   search,
 		Home:     opts.Home,
 		Clock:    opts.Clock,
 		GitHub:   itemStates{tokens: tokens, client: client},
-		Launches: workLog,
+		Records:  workLog,
+		Procs:    procs.System{Run: runner},
 		History:  workLog,
 		Events:   opts.Events,
 		Logger:   logger,
 	})
 
+	launch := launcher.NewService(launcher.Config{
+		Items:     launchItems{Store: inboxStore},
+		Settings:  settingsView[launcher.LaunchSettings]{settings: prefs, part: launchSettings},
+		Profiles:  profileStore,
+		Prompts:   promptStore,
+		Defaults:  defaultsStore,
+		Git:       runner,
+		GH:        runner,
+		Finder:    search,
+		Registry:  terminal.DefaultRegistry(runner),
+		Paths:     opts.Paths,
+		Home:      opts.Home,
+		Clock:     opts.Clock,
+		Worktrees: worktreeMaker{maker: worktrees.NewMaker(sweeps)},
+		Sessions:  workLog,
+		Trust:     trusters(opts.Home, logger),
+		Files:     inboxSvc,
+		Logger:    logger,
+	})
+
 	return &Core{
 		DB:       pool,
 		Settings: prefs,
-		Profiles: profiles.NewService(profileStore, opts.Home),
+		Profiles: profiles.NewService(profileStore, opts.Home, search),
 		Prompts: prompts.NewService(prompts.Config{
 			Store: promptStore, Usage: defaultsStore, Source: launcher.NewPromptSource(launch),
 			File: info.kept.promptFile, Database: opts.Paths.DB, App: opts.Version, Clock: opts.Clock, Logger: logger,

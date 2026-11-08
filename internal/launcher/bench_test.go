@@ -18,8 +18,8 @@ func benchWorld() world {
 	w := testWorld()
 	w.policy = trust.NewPolicy(trust.DefaultBots())
 	w.rules = launchdefaults.NewIndex([]launchdefaults.Defaults{
-		{Owner: name.Owner, Profile: profileWork, PlanMode: new(true), ExtraArgs: []string{"--org"}},
-		{Owner: name.Owner, Name: name.Repo, Model: strSonnet, ExtraArgs: []string{"--repo"}},
+		{Owner: name.Owner, Profiles: claudeOnly(profileWork), PlanMode: new(true), ExtraArgs: claudeOnly([]string{"--org"})},
+		{Owner: name.Owner, Name: name.Repo, Models: claudeOnly(strSonnet), ExtraArgs: claudeOnly([]string{"--repo"})},
 	})
 
 	return w
@@ -55,14 +55,14 @@ func BenchmarkResolveAndPlan(b *testing.B) {
 		}
 
 		return BuildPlan(Request{
-			Item: row.item(w.policy), Profile: effectiveProfile(profile, res), Worktree: res.Worktree.Value,
-			Clone: base.Clone, ClaudePath: base.ClaudePath, SessionName: sessionName(prompt.Nickname, row),
+			Item: row.item(w.policy), Agent: res.Agent.ID, Profile: effectiveProfile(profile, res), Dir: base.Dir,
+			BinaryPath: base.BinaryPath, SessionName: sessionName(prompt.Nickname, row),
 		})
 	}
 
 	p, err := plan()
 	require.NoError(b, err)
-	require.Equal(b, "#7", p.Worktree)
+	require.Equal(b, base.Dir, p.Dir)
 
 	b.ReportAllocs()
 

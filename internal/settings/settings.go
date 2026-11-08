@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
@@ -35,8 +36,12 @@ import (
 
 // Preference keys.
 const (
-	// KeyDefaultProfile names the profile the launch dropdown preselects.
-	KeyDefaultProfile = "profile.default"
+	// KeyDefaultAgent is the coding agent launches use when no launch default names one.
+	KeyDefaultAgent = "agent.default"
+
+	// keyDefaultProfilePrefix starts each agent's default profile key (see
+	// KeyDefaultProfile).
+	keyDefaultProfilePrefix = "profile.default."
 
 	// KeyWorktreeDefault is whether launches start in a worktree unless unticked.
 	KeyWorktreeDefault = "launch.worktree"
@@ -70,6 +75,7 @@ const (
 
 // Defaults for a fresh database.
 const (
+	DefaultAgent           = agent.Claude
 	DefaultProfile         = profiles.DefaultName
 	DefaultWorktreeDefault = true
 	DefaultAutoCleanup     = true
@@ -81,8 +87,11 @@ var (
 	// ErrInvalidTerminal is returned for a terminal that is not one of the choices.
 	ErrInvalidTerminal = errors.New("unknown terminal")
 
-	// ErrUnknownProfile is returned when the default profile names no stored profile.
+	// ErrUnknownProfile is returned when a default profile names no stored profile.
 	ErrUnknownProfile = errors.New("unknown profile")
+
+	// ErrUnknownAgent is returned for a default agent this build does not know.
+	ErrUnknownAgent = errors.New("unknown coding agent")
 
 	// ErrInvalidCloneRoot is returned for a clone root that is not an existing directory.
 	ErrInvalidCloneRoot = errors.New("invalid clone root")
@@ -91,8 +100,12 @@ var (
 // Settings is the full set of preferences as the UI shows them. Every field is a plain
 // value.
 type Settings struct {
-	// DefaultProfile is the profile the launch dropdown preselects.
-	DefaultProfile string `json:"defaultProfile"`
+	// DefaultAgent is the coding agent launches use when no launch default names one.
+	DefaultAgent agent.ID `json:"defaultAgent"`
+
+	// DefaultProfiles is each agent's profile launches use when no launch default names
+	// one. It has an entry for every agent.
+	DefaultProfiles map[agent.ID]string `json:"defaultProfiles"`
 
 	// WorktreeDefault presets each row's "Start in a worktree" checkbox.
 	WorktreeDefault bool `json:"worktreeDefault"`
@@ -160,18 +173,19 @@ type Settings struct {
 	InboxOrder InboxOrder `json:"inboxOrder"`
 }
 
-// ProfileLookup finds a stored profile by name, or returns profiles.ErrProfileNotFound.
-// *profiles.Store implements it.
+// ProfileLookup finds an agent's stored profile by name, or returns
+// profiles.ErrProfileNotFound. *profiles.Store implements it.
 type ProfileLookup interface {
-	Lookup(ctx context.Context, name string) (profiles.Profile, error)
+	Lookup(ctx context.Context, id agent.ID, name string) (profiles.Profile, error)
 }
 
 // Service reads and writes the preferences.
 //
 // Each setter stores its change and reads the preferences back in one transaction, then
 // returns the settings with the change, so a setter that fails has stored nothing. Only
-// the check that the default profile is still stored runs after the change is committed,
-// and a failure there is logged rather than reported, since the change has happened.
+// the check that the default profiles are still stored runs after the change is
+// committed, and a failure there is logged rather than reported, since the change has
+// happened.
 type Service struct {
 	pool     *sql.DB
 	prefs    *prefs.Store
@@ -227,7 +241,7 @@ func (s *Service) Get(ctx context.Context) (Settings, error) {
 
 	out := fromStored(stored)
 
-	if err = s.checkDefaultProfile(ctx, &out); err != nil {
+	if err = s.checkDefaultProfiles(ctx, &out); err != nil {
 		return Settings{}, fmt.Errorf("read settings: %w", err)
 	}
 
@@ -244,10 +258,24 @@ func (s *Service) SetTerminal(ctx context.Context, id terminal.ID) (Settings, er
 	return s.save(ctx, setting(KeyTerminal, string(id)))
 }
 
-// SetDefaultProfile stores the profile the launch dropdown preselects, and returns the
-// settings with it. It must name a stored profile.
-func (s *Service) SetDefaultProfile(ctx context.Context, name string) (Settings, error) {
-	if _, err := s.profiles.Lookup(ctx, name); err != nil {
+// SetDefaultAgent stores the coding agent launches use when no launch default names one,
+// and returns the settings with it.
+func (s *Service) SetDefaultAgent(ctx context.Context, id agent.ID) (Settings, error) {
+	if !agent.Known(id) {
+		return Settings{}, fmt.Errorf("%w %q", ErrUnknownAgent, id)
+	}
+
+	return s.save(ctx, setting(KeyDefaultAgent, string(id)))
+}
+
+// SetDefaultProfile stores the agent's profile launches use when no launch default names
+// one, and returns the settings with it. It must name one of the agent's stored profiles.
+func (s *Service) SetDefaultProfile(ctx context.Context, id agent.ID, name string) (Settings, error) {
+	if !agent.Known(id) {
+		return Settings{}, fmt.Errorf("%w %q", ErrUnknownAgent, id)
+	}
+
+	if _, err := s.profiles.Lookup(ctx, id, name); err != nil {
 		if errors.Is(err, profiles.ErrProfileNotFound) {
 			return Settings{}, fmt.Errorf("%w %q", ErrUnknownProfile, name)
 		}
@@ -255,7 +283,12 @@ func (s *Service) SetDefaultProfile(ctx context.Context, name string) (Settings,
 		return Settings{}, err
 	}
 
-	return s.save(ctx, setting(KeyDefaultProfile, name))
+	return s.save(ctx, setting(KeyDefaultProfile(id), name))
+}
+
+// KeyDefaultProfile is the key of the agent's default profile, profile.default.<agent>.
+func KeyDefaultProfile(id agent.ID) string {
+	return keyDefaultProfilePrefix + string(id)
 }
 
 // SetWorktreeDefault stores whether launches start in a worktree unless unticked, and
@@ -409,7 +442,8 @@ func fromStored(stored map[string]string) Settings {
 	rawBots, hasBots := stored[KeyTrustedBots]
 
 	out := Settings{
-		DefaultProfile:      DefaultProfile,
+		DefaultAgent:        DefaultAgent,
+		DefaultProfiles:     map[agent.ID]string{},
 		WorktreeDefault:     DefaultWorktreeDefault,
 		WorktreeAutoCleanup: DefaultAutoCleanup,
 		Terminal:            DefaultTerminal,
@@ -431,8 +465,16 @@ func fromStored(stored map[string]string) Settings {
 		InboxOrder:           decodeInboxOrder(stored),
 	}
 
-	if v := stored[KeyDefaultProfile]; v != "" {
-		out.DefaultProfile = v
+	if v := agent.ID(stored[KeyDefaultAgent]); agent.Known(v) {
+		out.DefaultAgent = v
+	}
+
+	for _, id := range agent.IDs() {
+		out.DefaultProfiles[id] = DefaultProfile
+
+		if v := stored[KeyDefaultProfile(id)]; v != "" {
+			out.DefaultProfiles[id] = v
+		}
 	}
 
 	if v, err := strconv.ParseBool(stored[KeyWorktreeDefault]); err == nil {
@@ -487,8 +529,8 @@ func (s *Service) save(ctx context.Context, write func(context.Context, *prefs.S
 
 	out := fromStored(stored)
 
-	if err = s.checkDefaultProfile(ctx, &out); err != nil {
-		s.logger.WarnContext(ctx, "the setting was saved, but the default profile could not be checked", "error", err)
+	if err = s.checkDefaultProfiles(ctx, &out); err != nil {
+		s.logger.WarnContext(ctx, "the setting was saved, but the default profiles could not be checked", "error", err)
 	}
 
 	return out, nil
@@ -501,31 +543,41 @@ func setting(key, value string) func(context.Context, *prefs.Store) error {
 	}
 }
 
-// checkDefaultProfile falls back to DefaultProfile when the settings name a profile that
-// is no longer stored (pruned, say), so they never name one the launch dropdown cannot
-// offer.
-func (s *Service) checkDefaultProfile(ctx context.Context, out *Settings) error {
-	if out.DefaultProfile == DefaultProfile {
-		return nil
+// checkDefaultProfiles falls back to DefaultProfile for each agent whose default names a
+// profile that is no longer stored (pruned, say), so the settings never name one the
+// launch menu cannot offer.
+func (s *Service) checkDefaultProfiles(ctx context.Context, out *Settings) error {
+	for _, id := range agent.IDs() {
+		name := out.DefaultProfiles[id]
+		if name == DefaultProfile {
+			continue
+		}
+
+		_, err := s.profiles.Lookup(ctx, id, name)
+
+		switch {
+		case errors.Is(err, profiles.ErrProfileNotFound):
+			out.DefaultProfiles[id] = DefaultProfile
+		case err != nil:
+			return err
+		}
 	}
 
-	_, err := s.profiles.Lookup(ctx, out.DefaultProfile)
-	if errors.Is(err, profiles.ErrProfileNotFound) {
-		out.DefaultProfile = DefaultProfile
-
-		return nil
-	}
-
-	return err
+	return nil
 }
 
 // settingKeys returns every preference key the settings read.
 func settingKeys() []string {
-	return append([]string{
-		KeyDefaultProfile, KeyWorktreeDefault, KeyWorktreeAutoCleanup, KeyTerminal, KeyCloneRoot, KeyTrustedBots,
+	keys := []string{KeyDefaultAgent}
+	for _, id := range agent.IDs() {
+		keys = append(keys, KeyDefaultProfile(id))
+	}
+
+	return append(append(keys,
+		KeyWorktreeDefault, KeyWorktreeAutoCleanup, KeyTerminal, KeyCloneRoot, KeyTrustedBots,
 		KeySnoozeDays, KeyWindowSize,
 		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, KeyTheme,
 		KeyProjectsTipDismissed,
-	}, append(collapsedKeys(), orderKeys()...)...)
+	), append(collapsedKeys(), orderKeys()...)...)
 }

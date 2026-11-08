@@ -132,12 +132,15 @@ func nicknames(t *testing.T, s *Service) []string {
 	return out
 }
 
+// lookAtURL is a prompt text that fills in cleanly.
+const lookAtURL = "Look at {{.URL}}"
+
 // validInput returns a prompt Input that saves cleanly.
 func validInput() Input {
 	return Input{
 		Name: "Address review feedback", Nickname: "Feedback", AppliesTo: AppliesToPR,
-		Body: "Address the review comments on {{.URL}}", Model: "opus", Effort: "high",
-		ExtraFlags: "--advisor fable",
+		Body: "Address the review comments on {{.URL}}", Models: map[agent.ID]string{agent.Claude: "opus"},
+		Effort: "high", ExtraFlags: map[agent.ID]string{agent.Claude: "--advisor fable"},
 	}
 }
 
@@ -185,7 +188,7 @@ func TestSeed(t *testing.T) {
 	assert.Equal(t, DefaultPrompts{PR: review.ID, Issue: work.ID}, defaults)
 
 	quick := byNickname(t, s, "Quick look")
-	assert.Equal(t, "sonnet", quick.Model)
+	assert.Equal(t, map[agent.ID]string{agent.Claude: "sonnet"}, quick.Models)
 	require.NotNil(t, quick.Worktree)
 	assert.False(t, *quick.Worktree)
 	assert.Empty(t, quick.Usage.Defaults)
@@ -202,7 +205,7 @@ func TestSeedFindsAFreeNickname(t *testing.T) {
 
 	s, _ := empty(t, nil)
 
-	mine, err := s.Create(t.Context(), Input{Name: "Mine", Nickname: "review", AppliesTo: AppliesToAny, Body: "Look at {{.URL}}"})
+	mine, err := s.Create(t.Context(), Input{Name: "Mine", Nickname: "review", AppliesTo: AppliesToAny, Body: lookAtURL})
 	require.NoError(t, err)
 
 	require.NoError(t, Seed(t.Context(), s.store))
@@ -232,8 +235,9 @@ func TestCreateAndUpdate(t *testing.T) {
 	assert.Equal(t, "Address review feedback", created.Name, "trimmed")
 	assert.Equal(t, "Feedback", created.Nickname)
 	assert.Equal(t, "Address the review comments on {{.URL}}\nThanks", created.Body, "newlines normalized")
-	assert.Equal(t, []string{"--advisor", "fable"}, created.ExtraArgs)
-	assert.Equal(t, "--advisor fable", created.ExtraFlags)
+	assert.Equal(t, map[agent.ID][]string{agent.Claude: {"--advisor", "fable"}}, created.ExtraArgs)
+	assert.Equal(t, map[agent.ID]string{agent.Claude: "--advisor fable"}, created.ExtraFlags)
+	assert.Equal(t, map[agent.ID]string{agent.Claude: "opus"}, created.Models)
 	require.NotNil(t, created.PlanMode)
 	assert.True(t, *created.PlanMode)
 	assert.Nil(t, created.Worktree)
@@ -243,17 +247,21 @@ func TestCreateAndUpdate(t *testing.T) {
 	assert.NotEmpty(t, created.UpdatedAt)
 
 	in = validInput()
-	in.Nickname, in.AppliesTo, in.Model, in.ExtraFlags = "Feedback 2", AppliesToAny, "", `--note 'two words'`
+	in.Nickname, in.AppliesTo = "Feedback 2", AppliesToAny
+	in.Models = map[agent.ID]string{agent.Claude: " ", agent.Codex: " gpt-6-sol "}
+	in.ExtraFlags = map[agent.ID]string{agent.Codex: `--note 'two words'`, agent.Claude: "  "}
+	in.Effort = "ultra"
 
 	updated, err := s.Update(ctx, created.ID, in)
 	require.NoError(t, err)
 	assert.Equal(t, created.ID, updated.ID)
 	assert.Equal(t, "Feedback 2", updated.Nickname)
 	assert.Equal(t, AppliesToAny, updated.AppliesTo)
-	assert.Empty(t, updated.Model)
+	assert.Equal(t, map[agent.ID]string{agent.Codex: "gpt-6-sol"}, updated.Models, "blank models inherit")
+	assert.Equal(t, "ultra", updated.Effort, "an effort only some agents take is kept")
 	assert.Nil(t, updated.PlanMode)
-	assert.Equal(t, []string{"--note", "two words"}, updated.ExtraArgs)
-	assert.Equal(t, `--note 'two words'`, updated.ExtraFlags)
+	assert.Equal(t, map[agent.ID][]string{agent.Codex: {"--note", "two words"}}, updated.ExtraArgs)
+	assert.Equal(t, map[agent.ID]string{agent.Codex: `--note 'two words'`}, updated.ExtraFlags)
 
 	_, err = s.Update(ctx, 9999, validInput())
 	require.ErrorIs(t, err, ErrPromptNotFound)
@@ -280,12 +288,17 @@ func TestValidation(t *testing.T) {
 		},
 		{name: "taken nickname", edit: func(in *Input) { in.Nickname = "REVIEW" }, field: FieldNickname, want: `Another prompt is already called "REVIEW".`},
 		{name: "kind", edit: func(in *Input) { in.AppliesTo = "discussion" }, field: FieldAppliesTo, want: "Choose what the prompt is for"},
-		{name: "model", edit: func(in *Input) { in.Model = "-x" }, field: FieldModel, want: `doesn't start with "-"`},
+		{name: "model", edit: func(in *Input) { in.Models = map[agent.ID]string{agent.Claude: "-x"} }, field: "models.claude", want: `doesn't start with "-"`},
+		{name: "codex model", edit: func(in *Input) { in.Models = map[agent.ID]string{agent.Codex: "a b"} }, field: "models.codex", want: `"gpt-6-sol"`},
+		{name: "unknown agent's model", edit: func(in *Input) { in.Models = map[agent.ID]string{"example-agent": "x"} }, field: FieldModels, want: `no coding agent called "example-agent"`},
 		{name: "effort", edit: func(in *Input) { in.Effort = "huge" }, field: FieldEffort, want: "Choose an effort level from the list."},
-		{name: "reserved flag", edit: func(in *Input) { in.ExtraFlags = "--model opus" }, field: FieldExtraFlags, want: "--model is set by the Model setting."},
-		{name: "open quote", edit: func(in *Input) { in.ExtraFlags = "--x 'y" }, field: FieldExtraFlags, want: "A quote in the flags is never closed."},
-		{name: "empty flag", edit: func(in *Input) { in.ExtraFlags = "''" }, field: FieldExtraFlags, want: "Remove the empty flag"},
-		{name: "tilde", edit: func(in *Input) { in.ExtraFlags = "--add-dir ~/x" }, field: FieldExtraFlags, want: "write the full path"},
+		{name: "reserved flag", edit: func(in *Input) { in.ExtraFlags = map[agent.ID]string{agent.Claude: "--model opus"} }, field: "extraFlags.claude", want: "--model is set by the Model setting."},
+		{name: "codex reserved flag", edit: func(in *Input) {
+			in.ExtraFlags = map[agent.ID]string{agent.Codex: "-c sandbox_mode=danger-full-access"}
+		}, field: "extraFlags.codex", want: "permissions come from"},
+		{name: "open quote", edit: func(in *Input) { in.ExtraFlags = map[agent.ID]string{agent.Claude: "--x 'y"} }, field: "extraFlags.claude", want: "A quote in the flags is never closed."},
+		{name: "empty flag", edit: func(in *Input) { in.ExtraFlags = map[agent.ID]string{agent.Claude: "''"} }, field: "extraFlags.claude", want: "Remove the empty flag"},
+		{name: "tilde", edit: func(in *Input) { in.ExtraFlags = map[agent.ID]string{agent.Claude: "--add-dir ~/x"} }, field: "extraFlags.claude", want: "write the full path"},
 		{name: "text", edit: func(in *Input) { in.Body = "{{.Nope}}" }, field: FieldBody, want: "Fix the problems in the prompt's text."},
 	}
 
@@ -406,7 +419,7 @@ func TestReset(t *testing.T) {
 	assert.False(t, reset.Modified)
 	assert.Equal(t, "Review", reset.Nickname)
 	assert.Equal(t, reviewPRBody, reset.Body)
-	assert.Empty(t, reset.Model)
+	assert.Empty(t, reset.Models)
 	assert.Empty(t, reset.ExtraArgs)
 
 	// When another prompt took the starter's nickname, the reset keeps its own.

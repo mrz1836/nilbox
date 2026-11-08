@@ -258,6 +258,19 @@ func TestClaudeHomeMakesProfiles(t *testing.T) {
 	assert.NoFileExists(t, filepath.Join(home, ".claude-squad", "worktrees", ".claude.json"))
 }
 
+func TestAgentHomeMakesEveryAgentsProfiles(t *testing.T) {
+	t.Parallel()
+
+	home := testutil.AgentHome(t, ".claude_work", ".codex", ".codex_work", ".codex-alt", ".codexbar")
+
+	assert.FileExists(t, filepath.Join(home, ".claude_work", ".claude.json"))
+	assert.NoFileExists(t, filepath.Join(home, ".codex", "auth.json"), "the default config is not a named profile")
+	assert.FileExists(t, filepath.Join(home, ".codex_work", "auth.json"))
+	assert.FileExists(t, filepath.Join(home, ".codex-alt", "auth.json"))
+	assert.DirExists(t, filepath.Join(home, ".codexbar"))
+	assert.NoFileExists(t, filepath.Join(home, ".codexbar", "auth.json"), "another tool's folder is no profile")
+}
+
 func TestRunnerAnswersAndRecords(t *testing.T) {
 	t.Parallel()
 

@@ -14,6 +14,7 @@ import { vi, type Mock } from 'vitest'
 import type * as real from '../platform'
 import { clockAt, FIXED_NOW, withClock } from './clock'
 import {
+  agents,
   appInfo,
   budgetGauge,
   checkResult,
@@ -67,6 +68,11 @@ function sensitiveFiles(change: Partial<real.Settings['sensitiveFiles']>): Parti
   return { sensitiveFiles: { ...settings().sensitiveFiles, ...change } }
 }
 
+// fromInput is a prompt the editor saves, as the library lists it once stored.
+function fromInput(input: Parameters<Platform['createPrompt']>[0]): Partial<real.Prompt> {
+  return { ...input, models: input.models ?? {}, extraFlags: input.extraFlags ?? {} }
+}
+
 // answers are the fake's defaults: every read answers with the shared fixtures, every
 // write succeeds, and on() subscribes through subscribe.
 function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loose<Platform[K]> } {
@@ -92,7 +98,8 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     removeReviewRequest: inbox,
     checkItemFiles: () => Promise.resolve(fileCheck()),
 
-    listProfiles: () => Promise.resolve([profile()]),
+    listProfiles: () => Promise.resolve([profile(), profile({ agent: 'codex', folder: '~/.codex' })]),
+    listAgents: () => Promise.resolve(agents()),
 
     launch: () => Promise.resolve(launchResult()),
     resolveLaunch: () => Promise.resolve(resolution()),
@@ -102,8 +109,8 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     cloneRepo: () => Promise.resolve(cloneTarget()),
 
     listPrompts: () => Promise.resolve(prompts()),
-    createPrompt: (input) => Promise.resolve(prompt({ ...input, id: 9 })),
-    updatePrompt: (id, input) => Promise.resolve(prompt({ ...input, id })),
+    createPrompt: (input) => Promise.resolve(prompt({ ...fromInput(input), id: 9 })),
+    updatePrompt: (id, input) => Promise.resolve(prompt({ ...fromInput(input), id })),
     deletePrompt: done,
     duplicatePrompt: (id) => Promise.resolve(prompt({ id })),
     resetPrompt: (id) => Promise.resolve(prompt({ id })),
@@ -127,7 +134,8 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     getSettings: () => stored(),
     setTerminal: (terminal) => stored({ terminal }),
     setCloneRoot: (cloneRoot) => stored({ cloneRoot }),
-    setDefaultProfile: (defaultProfile) => stored({ defaultProfile }),
+    setDefaultAgent: (defaultAgent) => stored({ defaultAgent }),
+    setDefaultProfile: (agent, name) => stored({ defaultProfiles: { ...settings().defaultProfiles, [agent]: name } }),
     setWorktreeDefault: (worktreeDefault) => stored({ worktreeDefault }),
     setWorktreeAutoCleanup: (worktreeAutoCleanup) => stored({ worktreeAutoCleanup }),
     setMenuBar: (menuBar) => stored({ menuBar }),

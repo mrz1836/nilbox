@@ -12,7 +12,7 @@ import (
 )
 
 const deleteProfiles = `-- name: DeleteProfiles :exec
-DELETE FROM claude_profiles WHERE id IN (/*SLICE:ids*/?)
+DELETE FROM agent_profiles WHERE id IN (/*SLICE:ids*/?)
 `
 
 // DeleteProfiles removes the profiles with the given ids. An empty ids matches nothing.
@@ -32,19 +32,25 @@ func (q *Queries) DeleteProfiles(ctx context.Context, ids []int64) error {
 }
 
 const getProfile = `-- name: GetProfile :one
-SELECT id, name, config_dir, model, effort, permission_mode, plan_mode, add_dirs, extra_args, env,
+SELECT id, agent, name, config_dir, model, effort, permission_mode, plan_mode, add_dirs, extra_args, env,
     created_at, updated_at
-FROM claude_profiles
-WHERE name = ?
+FROM agent_profiles
+WHERE agent = ? AND name = ?
 `
 
-// GetProfile returns the profile named name, matched exactly, case included, or
+type GetProfileParams struct {
+	Agent string
+	Name  string
+}
+
+// GetProfile returns the agent's profile named name, matched exactly, case included, or
 // sql.ErrNoRows when there is none.
-func (q *Queries) GetProfile(ctx context.Context, name string) (ClaudeProfile, error) {
-	row := q.db.QueryRowContext(ctx, getProfile, name)
-	var i ClaudeProfile
+func (q *Queries) GetProfile(ctx context.Context, arg GetProfileParams) (AgentProfile, error) {
+	row := q.db.QueryRowContext(ctx, getProfile, arg.Agent, arg.Name)
+	var i AgentProfile
 	err := row.Scan(
 		&i.ID,
+		&i.Agent,
 		&i.Name,
 		&i.ConfigDir,
 		&i.Model,
@@ -61,14 +67,15 @@ func (q *Queries) GetProfile(ctx context.Context, name string) (ClaudeProfile, e
 }
 
 const insertProfile = `-- name: InsertProfile :exec
-INSERT INTO claude_profiles (
-    name, config_dir, model, effort, permission_mode, plan_mode, add_dirs, extra_args, env, created_at,
+INSERT INTO agent_profiles (
+    agent, name, config_dir, model, effort, permission_mode, plan_mode, add_dirs, extra_args, env, created_at,
     updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT (name) DO NOTHING
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (agent, name) DO NOTHING
 `
 
 type InsertProfileParams struct {
+	Agent          string
 	Name           string
 	ConfigDir      string
 	Model          string
@@ -82,10 +89,11 @@ type InsertProfileParams struct {
 	UpdatedAt      time.Time
 }
 
-// InsertProfile stores a profile, unless one with its name is stored already: that one is
-// left exactly as it is.
+// InsertProfile stores a profile, unless the agent has one with its name stored already:
+// that one is left exactly as it is.
 func (q *Queries) InsertProfile(ctx context.Context, arg InsertProfileParams) error {
 	_, err := q.db.ExecContext(ctx, insertProfile,
+		arg.Agent,
 		arg.Name,
 		arg.ConfigDir,
 		arg.Model,
@@ -102,24 +110,25 @@ func (q *Queries) InsertProfile(ctx context.Context, arg InsertProfileParams) er
 }
 
 const listProfiles = `-- name: ListProfiles :many
-SELECT id, name, config_dir, model, effort, permission_mode, plan_mode, add_dirs, extra_args, env,
+SELECT id, agent, name, config_dir, model, effort, permission_mode, plan_mode, add_dirs, extra_args, env,
     created_at, updated_at
-FROM claude_profiles
+FROM agent_profiles
 ORDER BY id
 `
 
-// ListProfiles returns every stored profile, in the order they were stored.
-func (q *Queries) ListProfiles(ctx context.Context) ([]ClaudeProfile, error) {
+// ListProfiles returns every stored profile of every agent, in the order they were stored.
+func (q *Queries) ListProfiles(ctx context.Context) ([]AgentProfile, error) {
 	rows, err := q.db.QueryContext(ctx, listProfiles)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ClaudeProfile{}
+	items := []AgentProfile{}
 	for rows.Next() {
-		var i ClaudeProfile
+		var i AgentProfile
 		if err := rows.Scan(
 			&i.ID,
+			&i.Agent,
 			&i.Name,
 			&i.ConfigDir,
 			&i.Model,

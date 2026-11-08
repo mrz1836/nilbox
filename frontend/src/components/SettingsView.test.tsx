@@ -6,8 +6,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { brand } from '../generated/brand'
 import type { Result } from '../lib/call'
 import type { Theme } from '../lib/theme'
-import type { Account, LaunchDefaults, NotificationKind, Profile, ProjectAccess, Settings } from '../platform'
-import { account, appInfo, launchDefaults, profile, prompts, settings, signedOut } from '../test/fixtures'
+import type {
+  Account,
+  AgentInfo,
+  LaunchDefaults,
+  NotificationKind,
+  Profile,
+  ProjectAccess,
+  Settings,
+} from '../platform'
+import { account, agents, appInfo, launchDefaults, profile, prompts, settings, signedOut } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { SettingsView, type SettingsSection, type SettingsViewProps } from './SettingsView'
 
@@ -45,6 +53,7 @@ function StoredSettings(props: SettingsViewProps) {
 
 interface Options {
   section?: SettingsSection
+  agents?: AgentInfo[]
   current?: Settings | null
   profiles?: Profile[]
   who?: Account | null
@@ -56,6 +65,7 @@ interface Options {
 
 function renderSettings({
   section,
+  agents: coding = agents(),
   current = settings(),
   profiles = [profile(), profile({ name: 'work' })],
   who = account(),
@@ -72,6 +82,7 @@ function renderSettings({
     <StoredSettings
       {...(section === undefined ? {} : { initialSection: section })}
       settings={current}
+      agents={coding}
       profiles={profiles}
       prompts={prompts()}
       defaultPrompts={{ pr: 1, issue: 4 }}
@@ -98,6 +109,7 @@ describe('SettingsView', () => {
   it('turns to the section asked for at each opening, and keeps its place in between', async () => {
     const props: SettingsViewProps = {
       settings: settings(),
+      agents: agents(),
       profiles: [profile()],
       prompts: prompts(),
       defaultPrompts: { pr: 1, issue: 4 },
@@ -416,15 +428,58 @@ describe('SettingsView', () => {
     )
   })
 
-  it('persists the default profile', async () => {
+  it('persists the default agent', async () => {
     const { onSaved } = renderSettings()
     await openSection('Launching')
 
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Default profile' }), 'work')
+    const select = screen.getByRole('combobox', { name: 'Default agent' })
+    expect(
+      within(select)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['Claude', 'Codex'])
 
-    expect(platform.setDefaultProfile).toHaveBeenCalledWith('work')
+    await userEvent.selectOptions(select, 'codex')
+
+    expect(platform.setDefaultAgent).toHaveBeenCalledWith('codex')
     await waitFor(() => {
-      expect(onSaved).toHaveBeenCalledWith(settings({ defaultProfile: 'work' }))
+      expect(onSaved).toHaveBeenCalledWith(settings({ defaultAgent: 'codex' }))
+    })
+  })
+
+  // bothAgents are a Claude and a Codex profile each, beside each agent's default.
+  const bothAgents = [
+    profile(),
+    profile({ name: 'work' }),
+    profile({ agent: 'codex', folder: '~/.codex' }),
+    profile({ agent: 'codex', name: 'side', folder: '~/.codex_side' }),
+  ]
+
+  it('offers each agent only its own profiles as its default', async () => {
+    renderSettings({ profiles: bothAgents })
+    await openSection('Launching')
+
+    const options = (name: string) =>
+      within(screen.getByRole('combobox', { name }))
+        .getAllByRole('option')
+        .map((o) => o.textContent)
+
+    expect(options('Claude profile')).toEqual(['default', 'work'])
+    expect(options('Codex profile')).toEqual(['default', 'side'])
+  })
+
+  it.each([
+    { agent: 'claude', label: 'Claude profile', name: 'work', saved: { claude: 'work', codex: 'default' } },
+    { agent: 'codex', label: 'Codex profile', name: 'side', saved: { claude: 'default', codex: 'side' } },
+  ] as const)('persists $agent’s default profile', async ({ agent, label, name, saved }) => {
+    const { onSaved } = renderSettings({ profiles: bothAgents })
+    await openSection('Launching')
+
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: label }), name)
+
+    expect(platform.setDefaultProfile).toHaveBeenCalledWith(agent, name)
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(settings({ defaultProfiles: saved }))
     })
   })
 
@@ -433,20 +488,22 @@ describe('SettingsView', () => {
     renderSettings()
     await openSection('Launching')
 
-    const select = screen.getByRole('combobox', { name: 'Default profile' })
+    const select = screen.getByRole('combobox', { name: 'Claude profile' })
     await userEvent.selectOptions(select, 'work')
 
     expect(await screen.findByRole('alert')).toHaveTextContent('no profile named work')
-    expect(select).toHaveAccessibleDescription("Preselected in each row's profile menu. no profile named work")
+    expect(select).toHaveAccessibleDescription(
+      'The Claude profile a launch uses, unless an org or repository chooses another. no profile named work',
+    )
   })
 
-  it('cannot pick a default profile when none were found', async () => {
-    renderSettings({ profiles: [] })
+  it('cannot pick a default profile for an agent with none', async () => {
+    renderSettings({ current: settings({ defaultProfiles: { claude: 'default' } }) })
     await openSection('Launching')
 
-    const select = screen.getByRole('combobox', { name: 'Default profile' })
+    const select = screen.getByRole('combobox', { name: 'Codex profile' })
     expect(select).toBeDisabled()
-    expect(select).toHaveAccessibleDescription('No agent profiles were found in your home directory.')
+    expect(select).toHaveAccessibleDescription('No Codex profiles were found: run codex once so it makes ~/.codex.')
   })
 
   it('persists the worktree default with a switch', async () => {
@@ -674,7 +731,7 @@ describe('SettingsView', () => {
         .getAllByRole('listitem')
         .map((chip) => chip.textContent)
 
-    const rows = within(screen.getByRole('list', { name: 'Profiles' }))
+    const rows = within(screen.getByRole('list', { name: 'Claude profiles' }))
     expect(rows.getByText('~/.claude')).toHaveAttribute('title', '~/.claude')
     expect(rows.getByText('~/.claude_work')).toBeInTheDocument()
 
@@ -693,21 +750,90 @@ describe('SettingsView', () => {
     expect(traits('bare')).toEqual(['Full access'])
   })
 
-  it('explains where profiles come from and what counts as one', async () => {
+  it('explains where each agent’s profiles come from and what counts as one', async () => {
     renderSettings()
     await openSection('Profiles')
 
-    const note = screen.getByText(/looks for profiles in your home folder each time it starts/)
-    expect(note).toHaveTextContent('each ~/.claude_<name> or ~/.claude-<name> folder the agent has run with')
-    expect(note).toHaveTextContent('.claude.json, settings.json, or projects/')
+    expect(screen.getByText(/looks for profiles in your home folder each time it starts/)).toBeInTheDocument()
+
+    const claude = within(screen.getByRole('region', { name: 'Claude profiles' }))
+    const claudeNote = claude.getByText(/default profile, and each/)
+    expect(claudeNote).toHaveTextContent('each ~/.claude_<name> or ~/.claude-<name> folder becomes profile <name>')
+    expect(claudeNote).toHaveTextContent('run with CLAUDE_CONFIG_DIR set to it')
+    expect(claudeNote).toHaveTextContent('.claude.json, settings.json, or projects/')
+
+    const codexNote = within(screen.getByRole('region', { name: 'Codex profiles' })).getByText(
+      /default profile, and each/,
+    )
+    expect(codexNote).toHaveTextContent('each ~/.codex_<name> or ~/.codex-<name> folder becomes profile <name>')
+    expect(codexNote).toHaveTextContent('run with CODEX_HOME set to it')
+    expect(codexNote).toHaveTextContent('auth.json, config.toml, or sessions/')
   })
 
-  it('says when no profiles were found', async () => {
+  it('groups profiles by agent, and says how to sign one in', async () => {
+    renderSettings({
+      profiles: [
+        profile(),
+        profile({ agent: 'codex', folder: '~/.codex', permissionMode: 'workspace-write' }),
+        profile({ agent: 'codex', name: 'side', configDir: '~/.codex_side', folder: '~/.codex_side', signedIn: false }),
+      ],
+    })
+    await openSection('Profiles')
+
+    const codex = within(screen.getByRole('list', { name: 'Codex profiles' }))
+    expect(codex.getByText('~/.codex_side')).toBeInTheDocument()
+    expect(codex.getByText(/Not signed in: run/)).toHaveTextContent(
+      'Not signed in: run CODEX_HOME=~/.codex_side codex login',
+    )
+    expect(
+      within(codex.getByRole('list', { name: 'default settings' }))
+        .getAllByRole('listitem')
+        .map((chip) => chip.textContent),
+    ).toEqual(['Writes in the workspace'])
+    expect(
+      within(codex.getByRole('list', { name: 'side settings' }))
+        .getAllByRole('listitem')
+        .map((chip) => chip.textContent),
+    ).toEqual(['Not signed in', 'Full access'])
+
+    expect(
+      within(screen.getByRole('list', { name: 'Claude profiles' })).queryByText('~/.codex'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('says how to sign in to an agent’s default profile, and when an agent is not installed', async () => {
+    renderSettings({
+      agents: agents().map((a) => (a.id === 'codex' ? { ...a, installed: false, path: '' } : a)),
+      profiles: [profile(), profile({ agent: 'codex', folder: '~/.codex', signedIn: false })],
+    })
+    await openSection('Profiles')
+
+    const codex = within(screen.getByRole('region', { name: 'Codex profiles' }))
+    expect(codex.getByRole('heading', { name: /Codex/ })).toHaveTextContent('codex isn’t installed')
+    expect(codex.getByText(/Not signed in: run/)).toHaveTextContent('Not signed in: run codex login')
+    expect(
+      within(screen.getByRole('region', { name: 'Claude profiles' })).getByRole('heading', { name: /Claude/ }),
+    ).toHaveTextContent('/opt/bin/claude')
+  })
+
+  it('marks an agent that is not installed among the default agents', async () => {
+    renderSettings({ agents: agents().map((a) => (a.id === 'codex' ? { ...a, installed: false, path: '' } : a)) })
+    await openSection('Launching')
+
+    expect(
+      within(screen.getByRole('combobox', { name: 'Default agent' }))
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['Claude', 'Codex (not installed)'])
+  })
+
+  it('says when an agent has no profiles', async () => {
     renderSettings({ profiles: [] })
     await openSection('Profiles')
 
-    expect(screen.getByText('No agent profiles were found in your home folder.')).toBeInTheDocument()
-    expect(screen.queryByRole('list', { name: 'Profiles' })).not.toBeInTheDocument()
+    expect(screen.getByText(/No Claude profiles were found in your home folder/)).toBeInTheDocument()
+    expect(screen.getByText(/No Codex profiles were found in your home folder/)).toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'Claude profiles' })).not.toBeInTheDocument()
   })
 
   it('closes from the back button and on Escape', async () => {
@@ -815,7 +941,7 @@ describe('SettingsView launch defaults', () => {
     renderSettings({
       defaults: [
         launchDefaults({ prPromptId: 2, effort: 'max' }),
-        launchDefaults({ name: 'api', profile: '', worktree: false }),
+        launchDefaults({ name: 'api', agent: 'codex', profiles: {}, models: { codex: 'gpt-6-sol' }, worktree: false }),
       ],
     })
 
@@ -825,10 +951,12 @@ describe('SettingsView launch defaults', () => {
 
     expect(list.getByText('acme-org')).toBeInTheDocument()
     expect(list.getByText('All repositories')).toBeInTheDocument()
-    expect(list.getByText('profile work')).toBeInTheDocument()
+    expect(list.getByText('Claude profile work')).toBeInTheDocument()
     expect(list.getByText('Quick look for PRs')).toBeInTheDocument()
     expect(list.getByText('max effort')).toBeInTheDocument()
     expect(list.getByText('acme-org/api')).toBeInTheDocument()
+    expect(list.getByText('starts Codex')).toBeInTheDocument()
+    expect(list.getByText('Codex: GPT-6-Sol')).toBeInTheDocument()
     expect(list.getByText('no worktree')).toBeInTheDocument()
   })
 })

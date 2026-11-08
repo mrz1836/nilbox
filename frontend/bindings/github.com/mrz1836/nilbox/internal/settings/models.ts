@@ -3,6 +3,9 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as agent$0 from "../agent/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as terminal$0 from "../launcher/terminal/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -56,9 +59,15 @@ export const ListKey = {
  */
 export interface Settings {
     /**
-     * DefaultProfile is the profile the launch dropdown preselects.
+     * DefaultAgent is the coding agent launches use when no launch default names one.
      */
-    "defaultProfile": string;
+    "defaultAgent": agent$0.ID;
+
+    /**
+     * DefaultProfiles is each agent's profile launches use when no launch default names
+     * one. It has an entry for every agent.
+     */
+    "defaultProfiles": { [_ in agent$0.ID]?: string } | null;
 
     /**
      * WorktreeDefault presets each row's "Start in a worktree" checkbox.

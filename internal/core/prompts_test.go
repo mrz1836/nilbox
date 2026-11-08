@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/appinfo"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
@@ -137,12 +138,12 @@ func TestAnUpdateThatSetsTheDatabaseAsideKeepsThePrompts(t *testing.T) {
 
 	security := lib["Security"]
 	assert.Equal(t, "Look for security problems in {{.URL}}", security.Body)
-	assert.Equal(t, "opus", security.Model)
+	assert.Equal(t, map[agent.ID]string{agent.Claude: "opus"}, security.Models, "an older build's model was Claude's")
 	assert.Equal(t, "high", security.Effort)
 	require.NotNil(t, security.PlanMode)
 	assert.True(t, *security.PlanMode)
 	assert.Nil(t, security.Worktree)
-	assert.Equal(t, []string{"--verbose"}, security.ExtraArgs)
+	assert.Equal(t, map[agent.ID][]string{agent.Claude: {"--verbose"}}, security.ExtraArgs)
 
 	assert.NotContains(t, lib, "Fix checks", "a starter the user deleted stays deleted")
 	assert.NotContains(t, lib, "Work on it", "a starter the user deleted stays deleted")
@@ -164,15 +165,16 @@ func TestAnUpdateThatSetsTheDatabaseAsideKeepsThePrompts(t *testing.T) {
 	require.NotNil(t, org.IssuePromptID)
 	assert.Equal(t, lib["Review"].ID, *org.PRPromptID)
 	assert.Equal(t, security.ID, *org.IssuePromptID)
-	assert.Equal(t, "work", org.Profile, "a profile is kept by name, even one this Mac doesn't have")
-	assert.Equal(t, "opus", org.Model)
+	assert.Equal(t, map[agent.ID]string{agent.Claude: "work"}, org.Profiles,
+		"a profile is kept by name, even one this Mac doesn't have")
+	assert.Equal(t, map[agent.ID]string{agent.Claude: "opus"}, org.Models)
 	assert.Equal(t, "xhigh", org.Effort)
 	require.NotNil(t, org.Worktree)
 	assert.True(t, *org.Worktree)
 	require.NotNil(t, org.PlanMode)
 	assert.False(t, *org.PlanMode)
 
-	assert.Equal(t, "sonnet", byTarget["acme-org/example-repo"].Model)
+	assert.Equal(t, map[agent.ID]string{agent.Claude: "sonnet"}, byTarget["acme-org/example-repo"].Models)
 	assert.NotContains(t, byTarget, "other-org", "a row whose only setting named a missing prompt sets nothing")
 
 	keptDefaults, err := launchdefaults.NewFile(paths.LaunchDefaults, "", nil).Load()

@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
@@ -42,7 +43,7 @@ func TestSettingsViewsReadTheSettingsAsTheyAreNow(t *testing.T) {
 	got, err := launch.Get(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, launcher.LaunchSettings{
-		DefaultProfile: all.DefaultProfile, WorktreeDefault: true, Terminal: terminal.ITerm2,
+		DefaultAgent: agent.Claude, DefaultProfiles: all.DefaultProfiles, WorktreeDefault: true, Terminal: terminal.ITerm2,
 		CloneRoot: settings.DefaultCloneRoot, TrustedBots: all.TrustedBots,
 	}, got)
 
@@ -61,7 +62,8 @@ func TestSettingsViewsReadTheSettingsAsTheyAreNow(t *testing.T) {
 	got, err = launch.Get(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, launcher.LaunchSettings{
-		DefaultProfile: all.DefaultProfile, Terminal: terminal.TerminalApp, CloneRoot: root, TrustedBots: []string{"renovate"},
+		DefaultAgent: agent.Claude, DefaultProfiles: all.DefaultProfiles, Terminal: terminal.TerminalApp, CloneRoot: root,
+		TrustedBots: []string{"renovate"},
 	}, got)
 
 	swept, err = sweep.Get(ctx)

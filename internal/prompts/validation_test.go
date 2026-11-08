@@ -17,7 +17,10 @@ func TestValidationErrorListsEveryProblemInOrder(t *testing.T) {
 
 	s, _ := empty(t, nil)
 
-	_, err := s.Create(t.Context(), Input{Model: "-x", Effort: "huge", ExtraFlags: "--model opus"})
+	_, err := s.Create(t.Context(), Input{
+		Models: map[agent.ID]string{agent.Claude: "-x"}, Effort: "huge",
+		ExtraFlags: map[agent.ID]string{agent.Claude: "--model opus"},
+	})
 
 	var verr *agent.ValidationError
 	require.ErrorAs(t, err, &verr)
@@ -26,9 +29,9 @@ func TestValidationErrorListsEveryProblemInOrder(t *testing.T) {
 		{Field: FieldName, Message: "Give the prompt a title."},
 		{Field: FieldNickname, Message: "Give the prompt a nickname for the launch menu."},
 		{Field: FieldAppliesTo, Message: "Choose what the prompt is for: pull requests, issues, or both."},
-		{Field: FieldModel, Message: `A model is one word, such as "opus" or "sonnet", that doesn't start with "-".`},
+		{Field: "models.claude", Message: `A model is one word, such as "opus" or "sonnet", that doesn't start with "-".`},
 		{Field: FieldEffort, Message: "Choose an effort level from the list."},
-		{Field: FieldExtraFlags, Message: "--model is set by the Model setting."},
+		{Field: "extraFlags.claude", Message: "--model is set by the Model setting."},
 		{Field: FieldBody, Message: "Fix the problems in the prompt's text."},
 	}, verr.Fields)
 	assert.Equal(t, "the prompt can't be saved: Give the prompt a title. "+

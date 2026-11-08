@@ -3,6 +3,7 @@ package prompts
 import (
 	"context"
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"strconv"
@@ -99,8 +100,8 @@ type planned struct {
 func (p planned) stored() Prompt {
 	out := Prompt{
 		Name: p.Prompt.Name, Nickname: p.Nickname, AppliesTo: p.Prompt.AppliesTo, Body: p.Prompt.Body,
-		Model: p.Prompt.Model, Effort: p.Prompt.Effort, PlanMode: p.Prompt.PlanMode, Worktree: p.Prompt.Worktree,
-		ExtraArgs: slices.Clone(textutil.NonNil(p.Prompt.ExtraArgs)),
+		Models: agent.CloneModels(p.Prompt.Models), Effort: p.Prompt.Effort, PlanMode: p.Prompt.PlanMode,
+		Worktree: p.Prompt.Worktree, ExtraArgs: agent.CloneArgs(p.Prompt.ExtraArgs),
 	}
 
 	if p.keepStarter {
@@ -255,9 +256,7 @@ func cleanImport(in BundlePrompt) (BundlePrompt, []string) {
 	p := in
 	p.Name, p.Nickname = oneLine(p.Name), oneLine(p.Nickname)
 	p.Body = strings.ReplaceAll(p.Body, "\r\n", "\n")
-	p.Model = strings.TrimSpace(p.Model)
 	p.Effort = strings.TrimSpace(p.Effort)
-	p.ExtraArgs = slices.Clone(textutil.NonNil(p.ExtraArgs))
 
 	if p.StarterKey = strings.TrimSpace(p.StarterKey); !starterKeyPattern.MatchString(p.StarterKey) {
 		p.StarterKey = ""
@@ -274,19 +273,14 @@ func cleanImport(in BundlePrompt) (BundlePrompt, []string) {
 		notes = append(notes, "It didn’t say what it’s for, so it applies to both pull requests and issues.")
 	}
 
-	if agent.ValidateModel(p.Model) != nil {
-		notes = append(notes, fmt.Sprintf("Its model, %q, was left out: a model is one word, such as \"opus\".", p.Model))
-		p.Model = ""
-	}
+	var settingNotes []string
 
-	if agent.ValidateEffort(p.Effort) != nil {
+	p.Models, p.ExtraArgs, settingNotes = cleanAgentSettings(p.Models, p.ExtraArgs)
+	notes = append(notes, settingNotes...)
+
+	if agent.ValidateEffortAny(p.Effort) != nil {
 		notes = append(notes, fmt.Sprintf("Its effort, %q, was left out: it isn’t one of the levels.", p.Effort))
 		p.Effort = ""
-	}
-
-	if _, fields := agent.CheckOverrides("", "", agent.Join(p.ExtraArgs)); len(fields) > 0 {
-		notes = append(notes, "Its extra flags were left out. "+fields[0].Message)
-		p.ExtraArgs = []string{}
 	}
 
 	if t, _ := Parse(p.Body, p.AppliesTo); t == nil {
@@ -294,6 +288,70 @@ func cleanImport(in BundlePrompt) (BundlePrompt, []string) {
 	}
 
 	return p, notes
+}
+
+// cleanAgentSettings returns each agent's model and extra arguments as this build would
+// store them, with a note for each one it left out: an agent this build does not know, a
+// model the agent would misread, and flags the editor would refuse.
+func cleanAgentSettings(models map[agent.ID]string, args map[agent.ID][]string) (map[agent.ID]string, map[agent.ID][]string, []string) {
+	outModels, notes := cleanModels(models)
+	outArgs, argNotes := cleanArgs(args)
+
+	return outModels, outArgs, append(notes, argNotes...)
+}
+
+// cleanModels keeps each model an agent this build knows would take.
+func cleanModels(models map[agent.ID]string) (map[agent.ID]string, []string) {
+	var notes []string
+
+	out := map[agent.ID]string{}
+
+	for _, id := range slices.Sorted(maps.Keys(models)) {
+		model := strings.TrimSpace(models[id])
+
+		switch a, err := agent.Lookup(id); {
+		case model == "":
+		case err != nil || id == agent.Inherit:
+			notes = append(notes, fmt.Sprintf("Its model for %q was left out: this version doesn’t know that agent.", id))
+		case agent.ValidateModel(model) != nil:
+			notes = append(notes, fmt.Sprintf("Its %s model, %q, was left out: a model is one word.", a.Name, model))
+		default:
+			out[id] = model
+		}
+	}
+
+	return out, notes
+}
+
+// cleanArgs keeps each agent's extra arguments the editor would accept.
+func cleanArgs(args map[agent.ID][]string) (map[agent.ID][]string, []string) {
+	var notes []string
+
+	out := map[agent.ID][]string{}
+
+	for _, id := range slices.Sorted(maps.Keys(args)) {
+		list := textutil.NonNil(args[id])
+		if len(list) == 0 {
+			continue
+		}
+
+		a, err := agent.Lookup(id)
+		if err != nil || id == agent.Inherit {
+			notes = append(notes, fmt.Sprintf("Its extra flags for %q were left out: this version doesn’t know that agent.", id))
+
+			continue
+		}
+
+		if _, fields := agent.CheckOverrides(id, "", "", agent.Join(list)); len(fields) > 0 {
+			notes = append(notes, fmt.Sprintf("Its %s flags were left out. %s", a.Name, fields[0].Message))
+
+			continue
+		}
+
+		out[id] = slices.Clone(list)
+	}
+
+	return out, notes
 }
 
 // oneLine trims s and turns every run of spaces and control characters in it into one
@@ -333,16 +391,17 @@ func untouchedStored(p Prompt) bool {
 // sameContent reports whether a stored prompt and an imported one have the same title,
 // text, and settings, whatever their nicknames.
 func sameContent(q Prompt, p BundlePrompt) bool {
-	return q.Name == p.Name && q.AppliesTo == p.AppliesTo && q.Body == p.Body && q.Model == p.Model &&
-		q.Effort == p.Effort && sameBool(q.PlanMode, p.PlanMode) && sameBool(q.Worktree, p.Worktree) &&
-		slices.Equal(textutil.NonNil(q.ExtraArgs), textutil.NonNil(p.ExtraArgs))
+	return q.Name == p.Name && q.AppliesTo == p.AppliesTo && q.Body == p.Body &&
+		agent.EqualModels(q.Models, p.Models) && q.Effort == p.Effort && sameBool(q.PlanMode, p.PlanMode) &&
+		sameBool(q.Worktree, p.Worktree) && agent.EqualArgs(q.ExtraArgs, p.ExtraArgs)
 }
 
 // bundledAsPrompt returns a portable prompt as a Prompt, for comparing with a starter.
 func bundledAsPrompt(p BundlePrompt) Prompt {
 	return Prompt{
-		Name: p.Name, Nickname: p.Nickname, AppliesTo: p.AppliesTo, Body: p.Body, Model: p.Model, Effort: p.Effort,
-		PlanMode: p.PlanMode, Worktree: p.Worktree, ExtraArgs: textutil.NonNil(p.ExtraArgs), StarterKey: p.StarterKey,
+		Name: p.Name, Nickname: p.Nickname, AppliesTo: p.AppliesTo, Body: p.Body, Models: agent.CloneModels(p.Models),
+		Effort: p.Effort, PlanMode: p.PlanMode, Worktree: p.Worktree, ExtraArgs: agent.CloneArgs(p.ExtraArgs),
+		StarterKey: p.StarterKey,
 	}
 }
 
@@ -438,8 +497,8 @@ func recordStarters(ctx context.Context, st *Store, keys []string) error {
 // wrote may lack some, and each one missing takes its default.
 func promptColumns() []string {
 	return []string{
-		"id", "name", "nickname", "applies_to", "body", "model", "effort", "plan_mode", "worktree", "extra_args",
-		"starter_key", "created_at", "updated_at",
+		"id", "name", "nickname", "applies_to", "body", "model", "models", "effort", "plan_mode", "worktree",
+		"extra_args", "agent_args", "starter_key", "created_at", "updated_at",
 	}
 }
 
@@ -471,10 +530,11 @@ func readSnapshot(ctx context.Context, path string) (Bundle, map[int64]string, e
 	nicknames := map[int64]string{}
 
 	for _, row := range rows {
+		models, args := snapshotSettings(row)
 		p := BundlePrompt{
 			Name: row.Text("name"), Nickname: row.Text("nickname"), AppliesTo: AppliesTo(row.Text("applies_to")),
-			Body: row.Text("body"), Model: row.Text("model"), Effort: row.Text("effort"),
-			PlanMode: row.Bool("plan_mode"), Worktree: row.Bool("worktree"), ExtraArgs: row.Strings("extra_args"),
+			Body: row.Text("body"), Models: models, Effort: row.Text("effort"),
+			PlanMode: row.Bool("plan_mode"), Worktree: row.Bool("worktree"), ExtraArgs: args,
 			StarterKey: row.Text("starter_key"), CreatedAt: row.Time("created_at"), UpdatedAt: row.Time("updated_at"),
 		}
 
@@ -497,6 +557,43 @@ func readSnapshot(ctx context.Context, path string) (Bundle, map[int64]string, e
 	}
 
 	return b, nicknames, nil
+}
+
+// snapshotSettings reads a backed-up prompt's models and extra arguments: the per-agent
+// columns where the backup has them, and otherwise the single model and list an older build
+// kept, which were Claude's.
+func snapshotSettings(row store.Row) (map[agent.ID]string, map[agent.ID][]string) {
+	return SnapshotModels(row, "models", "model"), SnapshotArgs(row, "agent_args", "extra_args")
+}
+
+// SnapshotModels reads each agent's model from a backup's row: from the per-agent column
+// where the backup has it, else the older single column, which was Claude's.
+func SnapshotModels(row store.Row, perAgent, single string) map[agent.ID]string {
+	if row.Has(perAgent) {
+		out := map[agent.ID]string{}
+		for id, model := range row.StringMap(perAgent) {
+			out[agent.ID(id)] = model
+		}
+
+		return agent.CloneModels(out)
+	}
+
+	return agent.CloneModels(map[agent.ID]string{agent.Claude: row.Text(single)})
+}
+
+// SnapshotArgs reads each agent's extra arguments from a backup's row, as SnapshotModels
+// reads its models.
+func SnapshotArgs(row store.Row, perAgent, single string) map[agent.ID][]string {
+	if row.Has(perAgent) {
+		out := map[agent.ID][]string{}
+		for id, args := range row.StringLists(perAgent) {
+			out[agent.ID(id)] = args
+		}
+
+		return agent.CloneArgs(out)
+	}
+
+	return agent.CloneArgs(map[agent.ID][]string{agent.Claude: row.Strings(single)})
 }
 
 // idText reads a stored prompt ID, or 0.

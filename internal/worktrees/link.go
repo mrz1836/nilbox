@@ -28,29 +28,26 @@ type linkTarget struct {
 	// refs are the items it may be, most likely first.
 	refs []item.Ref
 
-	// launched reports a launch record, which names the one item exactly.
+	// launched reports a worktree the app launched a session in, whose record names the
+	// one item exactly.
 	launched bool
 }
 
-// launchKey identifies a recorded launch by its worktree's directory.
-func launchKey(clonePath, worktree string) string {
-	return resolvedPath(filepath.Join(clonePath, ".claude", "worktrees", worktree))
-}
-
-// link fills in the item of each worktree the agent made for a pull request or issue,
-// and returns why GitHub could not be asked, or "". A launch record names the item
-// exactly; otherwise the worktree's name gives the kind and number, and the clone's
-// GitHub remotes the repositories it may be in. One request reads them all.
+// link fills in the item of each worktree made for a pull request or issue, and returns
+// why GitHub could not be asked, or "". A record names the item exactly; otherwise the
+// worktree's name, or its branch, gives the kind and number, and the clone's GitHub
+// remotes the repositories it may be in. One request reads them all.
 //
-// remotes maps each repository's Path to its remotes (remote name to repository).
+// remotes maps each repository's Path to its remotes (remote name to repository), and
+// recorded holds the live records by their worktree's resolved path.
 func (s *Service) link(ctx context.Context, repos []Repo, remotes map[string]map[string]repo.Name,
-	launches []worklog.Launch,
+	recorded map[string]worklog.Record,
 ) string {
 	if s.github == nil {
 		return ""
 	}
 
-	targets := linkTargets(repos, remotes, launches)
+	targets := linkTargets(repos, remotes, recorded)
 	if len(targets) == 0 {
 		return ""
 	}
@@ -71,12 +68,7 @@ func (s *Service) link(ctx context.Context, repos []Repo, remotes map[string]map
 }
 
 // linkTargets lists the worktrees of repos that may belong to a pull request or issue.
-func linkTargets(repos []Repo, remotes map[string]map[string]repo.Name, launches []worklog.Launch) []linkTarget {
-	recorded := make(map[string]worklog.Launch, len(launches))
-	for _, l := range launches {
-		recorded[launchKey(l.ClonePath, l.Worktree)] = l
-	}
-
+func linkTargets(repos []Repo, remotes map[string]map[string]repo.Name, recorded map[string]worklog.Record) []linkTarget {
 	var targets []linkTarget
 
 	for r, wt := range rows(repos) {
@@ -88,21 +80,21 @@ func linkTargets(repos []Repo, remotes map[string]map[string]repo.Name, launches
 	return targets
 }
 
-// linkTargetFor works out which items a worktree may be for. Only a worktree the agent
-// made (under .claude/worktrees) is linked, and only when a launch record or its name
-// says which item.
-func linkTargetFor(wt *Worktree, remotes map[string]repo.Name, recorded map[string]worklog.Launch) (linkTarget, bool) {
-	if wt.Main || !wt.ClaudeCreated {
+// linkTargetFor works out which items a worktree may be for: the one its record names, or
+// for a worktree the app or Claude Code made, or one on an item's own branch, the one its
+// name or branch names.
+func linkTargetFor(wt *Worktree, remotes map[string]repo.Name, recorded map[string]worklog.Record) (linkTarget, bool) {
+	if wt.Main {
 		return linkTarget{}, false
 	}
 
-	if l, ok := recorded[resolvedPath(wt.Path)]; ok {
-		ref := item.Ref{Repo: repo.Name{Owner: l.Owner, Repo: l.Name}, Number: l.Number, Kind: l.Kind}
+	if r, ok := recorded[resolvedPath(wt.Path)]; ok {
+		ref := item.Ref{Repo: repo.Name{Owner: r.Owner, Repo: r.Name}, Number: r.Number, Kind: r.Kind}
 
-		return linkTarget{wt: wt, kind: l.Kind, refs: []item.Ref{ref}, launched: true}, true
+		return linkTarget{wt: wt, kind: r.Kind, refs: []item.Ref{ref}, launched: r.Launches > 0}, true
 	}
 
-	kind, number, ok := item.ParseWorktreeName(filepath.Base(wt.Path))
+	kind, number, ok := worktreeItem(wt)
 	if !ok {
 		return linkTarget{}, false
 	}
@@ -113,6 +105,23 @@ func linkTargetFor(wt *Worktree, remotes map[string]repo.Name, recorded map[stri
 	}
 
 	return linkTarget{wt: wt, kind: kind, refs: refs}, true
+}
+
+// worktreeItem reads the kind and number of the item an unrecorded worktree is for: from
+// its directory's name when the app or Claude Code made it, else from its branch when it
+// is an item's own, worktree-pr-<n> or worktree-issue-<n>.
+func worktreeItem(wt *Worktree) (item.Kind, int, bool) {
+	if wt.Managed {
+		if kind, number, ok := item.ParseWorktreeName(filepath.Base(wt.Path)); ok {
+			return kind, number, true
+		}
+	}
+
+	if name, ok := strings.CutPrefix(wt.Branch, ownBranchPrefix); ok && !wt.Detached {
+		return item.ParseWorktreeName(name)
+	}
+
+	return "", 0, false
 }
 
 // remoteRefs lists item number in each GitHub repository the clone has a remote for:
@@ -212,13 +221,18 @@ func linkedItem(t linkTarget, ref item.Ref, state ItemState) *LinkedItem {
 	return linked
 }
 
-// assess works out a linked worktree's stage and whether CleanUp may remove it. GitHub
-// decides when the work is done; whether removing the worktree is safe rests on git
-// alone: no uncommitted changes, every commit on GitHub, and no session running in it.
+// assess works out a linked worktree's stage and whether it may be removed. GitHub
+// decides when the work is done; whether removing the worktree is safe rests on git and
+// the running processes alone: no uncommitted changes, every commit on GitHub, no lock,
+// and no session running in it.
 func assess(wt *Worktree) {
 	if wt.Main {
 		return
 	}
+
+	free := !wt.Locked && !wt.Prunable && len(wt.InUse) == 0
+	wt.CanRemove = free && !wt.Dirty
+	wt.CanForceRemove = free && wt.Dirty
 
 	wt.OnGitHub = wt.Unpushed == 0 || headIsItemHead(wt)
 	wt.Stage = stageOf(wt)
@@ -230,10 +244,13 @@ func headIsItemHead(wt *Worktree) bool {
 	return wt.Item != nil && wt.Item.HeadOID != "" && wt.Item.HeadOID == wt.Head
 }
 
-// stageOf is a linked worktree's stage. Prune clears a worktree whose directory is gone,
-// and one with no item, or locked by hand, has no stage.
+// stageOf is a linked worktree's stage. A worktree a running process works in is in use;
+// Prune clears a worktree whose directory is gone, and one with no item, or locked by
+// hand, has no stage.
 func stageOf(wt *Worktree) Stage {
 	switch {
+	case len(wt.InUse) > 0 && !wt.Prunable:
+		return StageInUse
 	case wt.Locked && !wt.StaleLock:
 		return lockedStage(wt)
 	case wt.Prunable, wt.Item == nil:
@@ -258,9 +275,9 @@ func lockedStage(wt *Worktree) Stage {
 }
 
 // autoCleanable reports a finished worktree the automatic sweep may remove: its pull
-// request merged, or its issue closed. A worktree the app did not launch counts only when
-// it is linked by commit too, its HEAD being the merged pull request's head, so a name that
-// only looks like an item's is never enough.
+// request merged, or its issue closed. A worktree the app did not launch a session in
+// counts only when it is linked by commit too, its HEAD being the merged pull request's
+// head, so a name or branch that only looks like an item's is never enough.
 func autoCleanable(wt Worktree) bool {
 	it := wt.Item
 

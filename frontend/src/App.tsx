@@ -4,9 +4,12 @@ import { AppHeader, type View } from './components/AppHeader'
 import { DataResetNotice } from './components/DataResetNotice'
 import { ErrorBanner } from './components/ErrorBanner'
 import { InboxView, type LaunchOptions, type Reveal } from './components/InboxView'
+import { LaunchControls } from './components/LaunchControls'
 import type { SettingsSection } from './components/SettingsView'
 import { Toast, type ToastMessage } from './components/Toast'
 import { attempt } from './lib/call'
+import { itemWorktrees } from './lib/itemWorktrees'
+import { agentName } from './lib/launch'
 import { offersProjects } from './lib/projects'
 import { defaultSnoozeDays, findItem } from './lib/triage'
 import { useCollapsedSections } from './lib/useCollapsedSections'
@@ -25,6 +28,7 @@ import {
   setProjectsTipDismissed,
   type AppNotification,
   type InboxSnapshot,
+  type LinkedItem,
   type RemoveResult,
   type Settings,
   type SweepReport,
@@ -98,8 +102,13 @@ function useWorktreeSweeps() {
     }
   }
 
+  // snapshot is the Worktrees view's latest listing, which the inbox's rows read their
+  // worktrees from; null until the view has listed. Nothing lists for the inbox alone.
+  const [snapshot, setSnapshot] = useState<WorktreesSnapshot | null>(null)
+
   // listed counts from a listing of the Worktrees view, which sees the same worktrees.
   const listed = (snapshot: WorktreesSnapshot) => {
+    setSnapshot(snapshot)
     setCounts({ count: snapshot.worktreeCount, attention: snapshot.finishedCount + snapshot.reviewCount })
   }
 
@@ -107,7 +116,7 @@ function useWorktreeSweeps() {
     setToast(null)
   }
 
-  return { ...counts, seq: reported?.seq ?? 0, toast, listed, closeToast }
+  return { ...counts, seq: reported?.seq ?? 0, toast, listed, closeToast, snapshot }
 }
 
 // useReveal shows an item in the inbox when asked: by the menu bar, a notification, or an
@@ -348,12 +357,43 @@ export function App() {
     config.settings === null
       ? null
       : {
+          agents: config.agents,
           profiles: config.profiles,
           prompts: config.prompts,
           launchDefaults: config.launchDefaults,
           onDefaultsSaved: reload,
           onManagePrompts: openPrompts,
         }
+  // worktrees are the inbox items' worktrees, as the Worktrees view last listed them, apart
+  // from launch so a listing renders only the rows whose worktree it lists.
+  const worktrees = itemWorktrees(sweeps.snapshot)
+
+  // launchFor is the launch control for a worktree's item, when the inbox lists it: it
+  // launches in the item's worktree, which resumes it.
+  const launchFor = (linked: LinkedItem) => {
+    const target = `${linked.owner}/${linked.name}`.toLowerCase()
+    const found = config.items.find(
+      (i) => i.kind === linked.kind && i.number === linked.number && i.repo.toLowerCase() === target,
+    )
+
+    if (launch === null || found === undefined) {
+      return null
+    }
+
+    return (
+      <LaunchControls
+        item={found}
+        resolution={config.resolutions.get(found.id) ?? null}
+        agents={launch.agents}
+        profiles={launch.profiles}
+        prompts={launch.prompts}
+        launchDefaults={launch.launchDefaults}
+        onDefaultsSaved={launch.onDefaultsSaved}
+        onManagePrompts={launch.onManagePrompts}
+        initial={{ worktree: true }}
+      />
+    )
+  }
 
   const account = inbox.snapshot?.account ?? null
   const mode = (page: View) => (view === page ? 'visible' : 'hidden')
@@ -385,6 +425,7 @@ export function App() {
             triaged={triaged}
             launch={launch}
             resolutions={config.resolutions}
+            worktrees={worktrees}
             snoozeDays={config.settings?.snoozeDays ?? defaultSnoozeDays}
             onSnoozeSettings={openSnoozeSettings}
             onFilesSettings={openFilesSettings}
@@ -400,7 +441,13 @@ export function App() {
         {nav.visited.has('worktrees') && (
           <Activity mode={mode('worktrees')}>
             <Suspense fallback={<PageLoading />}>
-              <WorktreesView reloadKey={sweeps.seq} onSnapshot={sweeps.listed} focusHistory={nav.historyFocus} />
+              <WorktreesView
+                reloadKey={sweeps.seq}
+                onSnapshot={sweeps.listed}
+                focusHistory={nav.historyFocus}
+                agentName={(id) => agentName(config.agents, id)}
+                launchFor={launchFor}
+              />
             </Suspense>
           </Activity>
         )}
@@ -409,6 +456,7 @@ export function App() {
             <Suspense fallback={<PageLoading />}>
               <div className="h-full">
                 <PromptsView
+                  agents={config.agents}
                   prompts={config.prompts}
                   defaults={config.defaultPrompts}
                   variables={config.variables}
@@ -426,6 +474,7 @@ export function App() {
                 initialSection={nav.settingsSection}
                 opened={nav.settingsOpened}
                 settings={config.settings}
+                agents={config.agents}
                 profiles={config.profiles}
                 prompts={config.prompts}
                 defaultPrompts={config.defaultPrompts}

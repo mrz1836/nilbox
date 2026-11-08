@@ -20,6 +20,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/appdata"
+	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/item"
@@ -30,8 +31,14 @@ import (
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/testutil"
-	"github.com/mrz1836/nilbox/internal/worklog"
+	"github.com/mrz1836/nilbox/internal/uierr"
 	"github.com/mrz1836/nilbox/internal/workspacetrust"
+)
+
+// The programs the fake finder knows.
+const (
+	claudeBin = "claude"
+	codexBin  = "codex"
 )
 
 // remoteLookupPattern is the only git config pattern the launcher may pass.
@@ -163,9 +170,103 @@ func (s launchSettings) Get(ctx context.Context) (LaunchSettings, error) {
 	}
 
 	return LaunchSettings{
-		DefaultProfile: all.DefaultProfile, WorktreeDefault: all.WorktreeDefault, Terminal: all.Terminal,
-		CloneRoot: all.CloneRoot, TrustedBots: all.TrustedBots,
+		DefaultAgent: all.DefaultAgent, DefaultProfiles: all.DefaultProfiles, WorktreeDefault: all.WorktreeDefault,
+		Terminal: all.Terminal, CloneRoot: all.CloneRoot, TrustedBots: all.TrustedBots,
 	}, nil
+}
+
+// fakeMaker stands in for the worktrees package's Maker: it makes each item's worktree
+// directory beside the clone the first time and resumes it after, and records what it
+// was asked.
+type fakeMaker struct {
+	mu      sync.Mutex
+	planned []WorktreeRequest
+	ensured []WorktreeRequest
+	err     error
+}
+
+// worktreeOf is where the fake makes a request's worktree.
+func worktreeOf(req WorktreeRequest) string {
+	return filepath.Join(filepath.Dir(req.Clone), "."+brand.Slug, "worktrees", filepath.Base(req.Clone),
+		item.WorktreeName(req.Kind, req.Number))
+}
+
+func (m *fakeMaker) PlanWorktree(_ context.Context, req WorktreeRequest) (Worktree, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.planned = append(m.planned, req)
+
+	return m.answer(req), nil
+}
+
+func (m *fakeMaker) EnsureWorktree(_ context.Context, req WorktreeRequest) (Worktree, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.err != nil {
+		return Worktree{}, m.err
+	}
+
+	m.ensured = append(m.ensured, req)
+	wt := m.answer(req)
+
+	if err := os.MkdirAll(wt.Path, 0o700); err != nil {
+		return Worktree{}, err
+	}
+
+	return wt, nil
+}
+
+// answer is what the fake finds or would make for req.
+func (m *fakeMaker) answer(req WorktreeRequest) Worktree {
+	path := worktreeOf(req)
+	wt := Worktree{Path: path, Branch: "worktree-" + filepath.Base(path), Action: WorktreeCreate, Dirty: 0}
+
+	if _, err := os.Stat(path); err == nil {
+		wt.Action = WorktreeResume
+	} else if req.Kind == item.KindPR {
+		wt.Base = "the pull request's head"
+	} else {
+		wt.Base = req.Remote + "/main"
+	}
+
+	return wt
+}
+
+// ensures returns a copy of the requests EnsureWorktree was asked.
+func (m *fakeMaker) ensures() []WorktreeRequest {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return slices.Clone(m.ensured)
+}
+
+// session is one session a launch recorded.
+type session struct {
+	clone, worktree string
+	agent           agent.ID
+	at              time.Time
+}
+
+// fakeSessions records the sessions launches start, or fails.
+type fakeSessions struct {
+	mu       sync.Mutex
+	sessions []session
+	err      error
+}
+
+func (f *fakeSessions) Touch(_ context.Context, clonePath, worktree string, id agent.ID, at time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if f.err != nil {
+		return f.err
+	}
+
+	f.sessions = append(f.sessions, session{clone: clonePath, worktree: worktree, agent: id, at: at})
+
+	return nil
 }
 
 // inboxItems reads the launch items from the inbox's store, as the app does.
@@ -217,6 +318,8 @@ type launchHarness struct {
 	iterm    *fakeDriver
 	terminal *fakeDriver
 	settings *settings.Service
+	maker    *fakeMaker
+	sessions *fakeSessions
 	cfg      Config
 
 	// Item IDs: a trusted PR, an outside contributor's PR, a trusted issue, and a PR in a
@@ -233,6 +336,8 @@ func newLaunchHarness(t *testing.T) *launchHarness {
 		paths:    appdata.NewPaths(filepath.Join(tmp, "data")),
 		iterm:    &fakeDriver{id: terminal.ITerm2},
 		terminal: &fakeDriver{id: terminal.TerminalApp},
+		maker:    &fakeMaker{},
+		sessions: &fakeSessions{},
 	}
 	h.root = filepath.Join(h.home, "projects")
 	h.clone = filepath.Join(h.root, "example-repo")
@@ -258,11 +363,19 @@ func newLaunchHarness(t *testing.T) *launchHarness {
 		Prompts:  h.prompts,
 		Defaults: h.defaults,
 		Git:      h.git,
-		Finder:   testutil.Finder{Paths: map[string]string{claudeBin: filepath.Join(tmp, "bin", "claude")}},
-		Registry: terminal.NewRegistry(h.iterm, h.terminal),
-		Paths:    h.paths,
-		Home:     h.home,
-		Clock:    testutil.NewClock(fixedNow()),
+		Finder: testutil.Finder{Paths: map[string]string{
+			claudeBin: filepath.Join(tmp, "bin", "claude"), codexBin: filepath.Join(tmp, "bin", "codex"),
+		}},
+		Registry:  terminal.NewRegistry(h.iterm, h.terminal),
+		Paths:     h.paths,
+		Home:      h.home,
+		Clock:     testutil.NewClock(fixedNow()),
+		Worktrees: h.maker,
+		Sessions:  h.sessions,
+		Trust: map[agent.ID]Truster{
+			agent.Claude: workspacetrust.Claude{Home: h.home},
+			agent.Codex:  workspacetrust.Codex{Home: h.home},
+		},
 	}
 
 	return h
@@ -288,14 +401,18 @@ func (h *launchHarness) seed(t *testing.T) {
 	h.trustedPR, h.outsidePR, h.issue, h.orphanPR = stored[0], stored[1], stored[2], stored[3]
 
 	work := profiles.Profile{
-		Name: "work", ConfigDir: filepath.Join(h.home, ".claude_work"), PermissionMode: "acceptEdits",
+		Agent: agent.Claude, Name: "work", ConfigDir: filepath.Join(h.home, ".claude_work"), PermissionMode: "acceptEdits",
 		AddDirs: []string{}, ExtraArgs: []string{}, Env: map[string]string{},
 	}
 	full := profiles.Profile{
-		Name: profiles.DefaultName, PermissionMode: profiles.PermissionFull,
+		Agent: agent.Claude, Name: profiles.DefaultName, PermissionMode: profiles.PermissionFull,
 		AddDirs: []string{}, ExtraArgs: []string{}, Env: map[string]string{},
 	}
-	require.NoError(t, h.profiles.Sync(t.Context(), []profiles.Profile{full, work}))
+	codexFull, codexWork := full, work
+	codexFull.Agent = agent.Codex
+	codexWork.Agent, codexWork.ConfigDir, codexWork.PermissionMode = agent.Codex, filepath.Join(h.home, ".codex_work"),
+		"workspace-write"
+	require.NoError(t, h.profiles.Sync(t.Context(), []profiles.Profile{full, work, codexFull, codexWork}))
 	require.NoError(t, prompts.Seed(t.Context(), h.prompts))
 }
 
@@ -404,18 +521,27 @@ func TestLaunchWritesFilesAndOpensDriver(t *testing.T) {
 	assert.Equal(t, h.paths.Launch, filepath.Dir(res.ScriptPath))
 	assert.True(t, strings.HasSuffix(res.ScriptPath, ".command"))
 	assert.Equal(t, LaunchResult{
-		ScriptPath: res.ScriptPath,
-		ClonePath:  "~/projects/example-repo",
-		Worktree:   "pr-7",
-		Prompt:     "Review",
-		Profile:    profiles.DefaultName,
-		Permission: "full access",
-		Terminal:   settings.TerminalITerm2,
+		ScriptPath:     res.ScriptPath,
+		ClonePath:      "~/projects/example-repo",
+		Dir:            "~/projects/." + brand.Slug + "/worktrees/example-repo/pr-7",
+		Worktree:       "pr-7",
+		WorktreeAction: WorktreeCreate,
+		Prompt:         "Review",
+		Profile:        profiles.DefaultName,
+		Permission:     "full access",
+		Terminal:       settings.TerminalITerm2,
+		Agent:          agent.Claude,
 	}, res)
 
-	assert.Contains(t, script, "cd -- "+shQuote(h.clone)+" || exit 1\n")
+	worktree := filepath.Join(h.root, "."+brand.Slug, "worktrees", "example-repo", "pr-7")
+	assert.Contains(t, script, "cd -- "+shQuote(worktree)+" || exit 1\n", "the session starts in the item's worktree")
 	assert.Contains(t, script, "unset CLAUDE_CONFIG_DIR\n")
-	assert.Contains(t, script, "'--dangerously-skip-permissions' '--name=Review · example-repo#7' '--worktree' '#7'\n")
+	assert.Contains(t, script, `exec '`+filepath.Join(filepath.Dir(h.home), "bin", "claude")+`' "$prompt" `+
+		"'--dangerously-skip-permissions' '--name=Review · example-repo#7'\n", "no agent worktree flag")
+	assert.NotContains(t, script, "--worktree")
+	assert.Equal(t, []WorktreeRequest{{
+		Clone: h.clone, Remote: "origin", Owner: "acme-org", Name: "example-repo", Kind: item.KindPR, Number: 7,
+	}}, h.maker.ensures())
 	assert.Contains(t, promptFor(t, res.ScriptPath), "Review pull request #7 in acme-org/example-repo: Change 7")
 	assert.Len(t, h.launchFiles(t), 2, "one script and one prompt file")
 
@@ -451,14 +577,15 @@ func TestWorktreePrefDefaultAndUntick(t *testing.T) {
 
 			if !tt.want {
 				assert.Empty(t, res.Worktree)
-				assert.NotContains(t, script, "--worktree")
+				assert.Contains(t, script, "cd -- "+shQuote(h.clone)+" || exit 1\n", "the session starts in the clone")
 				assert.NotContains(t, prompt, "fresh worktree")
+				assert.Empty(t, h.maker.ensures(), "no worktree is made")
 
 				return
 			}
 
 			assert.Equal(t, "issue-3", res.Worktree)
-			assert.Contains(t, script, "'--worktree' 'issue-3'")
+			assert.Contains(t, script, "cd -- "+shQuote(filepath.Join(h.root, "."+brand.Slug, "worktrees", "example-repo", "issue-3")))
 			assert.Contains(t, prompt, "fresh worktree")
 		})
 	}
@@ -552,14 +679,14 @@ func trustedIn(t *testing.T, path, dir string) bool {
 	return config.Projects[dir].HasTrustDialogAccepted
 }
 
-func TestLaunchTrustsTheCloneForTheAgent(t *testing.T) {
+func TestLaunchTrustsTheFolderForTheAgent(t *testing.T) {
 	t.Parallel()
 
 	h := newLaunchHarness(t)
 	defaultConfig := filepath.Join(h.home, ".claude.json")
 	workDir := filepath.Join(h.home, ".claude_work")
 
-	key, err := filepath.EvalSymlinks(h.clone)
+	clone, err := filepath.EvalSymlinks(h.clone)
 	require.NoError(t, err)
 
 	_, err = h.service().Preview(t.Context(), LaunchRequest{ItemID: h.trustedPR})
@@ -567,7 +694,11 @@ func TestLaunchTrustsTheCloneForTheAgent(t *testing.T) {
 	assert.NoFileExists(t, defaultConfig, "a preview trusts nothing")
 
 	h.launch(t, LaunchRequest{ItemID: h.trustedPR})
-	assert.True(t, trustedIn(t, defaultConfig, key), "the default profile's config, in home, trusts the clone")
+
+	worktree, err := filepath.EvalSymlinks(filepath.Join(h.root, "."+brand.Slug, "worktrees", "example-repo", "pr-7"))
+	require.NoError(t, err)
+	assert.True(t, trustedIn(t, defaultConfig, worktree), "the default profile's config, in home, trusts the worktree")
+	assert.True(t, trustedIn(t, defaultConfig, clone), "and the clone it belongs to")
 
 	// A profile the agent has never run with is left for the agent to set up.
 	h.launch(t, LaunchRequest{ItemID: h.trustedPR, Profile: profileWork})
@@ -575,50 +706,106 @@ func TestLaunchTrustsTheCloneForTheAgent(t *testing.T) {
 
 	require.NoError(t, os.Mkdir(workDir, 0o700))
 	h.launch(t, LaunchRequest{ItemID: h.outsidePR, Profile: profileWork, Worktree: new(false)})
-	assert.True(t, trustedIn(t, filepath.Join(workDir, ".claude.json"), key),
+	assert.True(t, trustedIn(t, filepath.Join(workDir, ".claude.json"), clone),
 		"the profile's own config trusts the clone, for every item and with or without a worktree")
 }
 
-// recordingLaunches keeps the launches the launcher records, or fails.
-type recordingLaunches struct {
-	launches []worklog.Launch
-	err      error
-}
-
-func (r *recordingLaunches) RecordLaunch(_ context.Context, l worklog.Launch) error {
-	if r.err != nil {
-		return r.err
-	}
-
-	r.launches = append(r.launches, l)
-
-	return nil
-}
-
-func TestLaunchRecordsTheWorktree(t *testing.T) {
+func TestLaunchRecordsTheSession(t *testing.T) {
 	t.Parallel()
 
 	h := newLaunchHarness(t)
-	rec := &recordingLaunches{}
-	h.cfg.Launches = rec
 
 	h.launch(t, LaunchRequest{ItemID: h.trustedPR})
-	h.launch(t, LaunchRequest{ItemID: h.issue})
+	h.launch(t, LaunchRequest{ItemID: h.issue, Agent: agent.Codex})
 	h.launch(t, LaunchRequest{ItemID: h.trustedPR, Worktree: new(false)})
 
-	assert.Equal(t, []worklog.Launch{
-		{
-			ClonePath: h.clone, Worktree: "pr-7", Owner: "acme-org", Name: "example-repo", Kind: "pr", Number: 7,
-			LaunchedAt: fixedNow(),
-		},
-		{
-			ClonePath: h.clone, Worktree: "issue-3", Owner: "acme-org", Name: "example-repo", Kind: "issue", Number: 3,
-			LaunchedAt: fixedNow(),
-		},
-	}, rec.launches, "the worktree's directory name, for launches in a worktree only")
+	assert.Equal(t, []session{
+		{clone: h.clone, worktree: "pr-7", agent: agent.Claude, at: fixedNow()},
+		{clone: h.clone, worktree: "issue-3", agent: agent.Codex, at: fixedNow()},
+	}, h.sessions.sessions, "each session in a worktree, with its agent; none for a launch in the clone")
 
-	h.cfg.Launches = &recordingLaunches{err: errFakeSettings}
+	// A session that cannot be recorded has still started.
+	h.cfg.Sessions = &fakeSessions{err: errFakeSettings}
 	h.launch(t, LaunchRequest{ItemID: h.trustedPR})
+}
+
+func TestLaunchMakesTheWorktreeOnlyOnceItIsNotHeldBack(t *testing.T) {
+	t.Parallel()
+
+	h := newLaunchHarness(t)
+	h.maker.err = errFakeOpen
+
+	_, err := h.service().Launch(t.Context(), LaunchRequest{ItemID: h.trustedPR})
+	require.ErrorIs(t, err, errFakeOpen, "a worktree that cannot be made stops the launch")
+	assert.Empty(t, h.launchFiles(t), "nothing is written")
+	assert.Empty(t, h.iterm.opened)
+	assert.NoFileExists(t, filepath.Join(h.home, ".claude.json"), "nothing is trusted")
+}
+
+func TestLaunchCodex(t *testing.T) {
+	t.Parallel()
+
+	h := newLaunchHarness(t)
+	codexHome := filepath.Join(h.home, ".codex_work")
+	require.NoError(t, os.MkdirAll(codexHome, 0o700))
+
+	res, script := h.launch(t, LaunchRequest{ItemID: h.trustedPR, Agent: agent.Codex, Profile: profileWork})
+	assert.Equal(t, agent.Codex, res.Agent)
+	assert.Equal(t, "permission mode workspace-write", res.Permission)
+
+	worktree := filepath.Join(h.root, "."+brand.Slug, "worktrees", "example-repo", "pr-7")
+	assert.Contains(t, script, "cd -- "+shQuote(worktree)+" || exit 1\n")
+	assert.Contains(t, script, "export CODEX_HOME="+shQuote(codexHome)+"\n")
+	assert.Regexp(t, `exec '[^']*/codex' '--sandbox' 'workspace-write' '--' "\$prompt"\n$`, script,
+		"the prompt comes last, after --, and Codex names no session")
+	assert.NotContains(t, script, "--name=")
+
+	data, err := os.ReadFile(filepath.Join(codexHome, "config.toml")) //nolint:gosec // the test's own file
+	require.NoError(t, err)
+
+	resolved, err := filepath.EvalSymlinks(worktree)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "[projects.\""+resolved+"\"]\ntrust_level = \"trusted\"\n",
+		"the worktree is trusted in the profile's Codex config")
+
+	// An outside contributor's pull request gets Codex's read-only sandbox.
+	res, script = h.launch(t, LaunchRequest{ItemID: h.outsidePR, Agent: agent.Codex})
+	assert.Equal(t, "read-only (outside contributor)", res.Permission)
+	assert.Contains(t, script, "'--sandbox' 'read-only' '--ask-for-approval' 'on-request' '--' \"$prompt\"")
+	assert.Contains(t, script, "unset CODEX_HOME\n")
+	assert.NotContains(t, script, "dangerously")
+}
+
+func TestLaunchFollowsTheDefaultAgent(t *testing.T) {
+	t.Parallel()
+
+	h := newLaunchHarness(t)
+	require.NoError(t, testutil.ErrOf(h.settings.SetDefaultAgent(t.Context(), agent.Codex)))
+	require.NoError(t, testutil.ErrOf(h.settings.SetDefaultProfile(t.Context(), agent.Codex, profileWork)))
+
+	res, script := h.launch(t, LaunchRequest{ItemID: h.trustedPR})
+	assert.Equal(t, agent.Codex, res.Agent, "the app's default agent")
+	assert.Equal(t, profileWork, res.Profile, "with the app's default profile for that agent")
+	assert.Contains(t, script, "CODEX_HOME")
+
+	res, _ = h.launch(t, LaunchRequest{ItemID: h.trustedPR, Agent: agent.Claude})
+	assert.Equal(t, agent.Claude, res.Agent, "the launch menu's switch picks the agent for one launch")
+	assert.Equal(t, profiles.DefaultName, res.Profile, "Claude's own default profile")
+
+	_, err := h.service().Launch(t.Context(), LaunchRequest{ItemID: h.trustedPR, Agent: "example-agent"})
+	require.ErrorIs(t, err, agent.ErrUnknownAgent)
+}
+
+func TestLaunchSaysWhichAgentIsNotInstalled(t *testing.T) {
+	t.Parallel()
+
+	h := newLaunchHarness(t)
+	h.cfg.Finder = testutil.Finder{Paths: map[string]string{claudeBin: "/opt/bin/claude"}}
+
+	_, err := h.service().Launch(t.Context(), LaunchRequest{ItemID: h.trustedPR, Agent: agent.Codex})
+	require.ErrorIs(t, err, testutil.ErrNotFound)
+	assert.Equal(t, "Codex isn't installed (codex wasn't found).", uierr.Message(err))
+	assert.Empty(t, h.maker.ensures())
 }
 
 func TestLaunchUsesTerminalPref(t *testing.T) {
@@ -664,7 +851,7 @@ func TestLaunchProfileSelection(t *testing.T) {
 	assert.Equal(t, "work", res.Profile)
 	assert.Contains(t, script, "export CLAUDE_CONFIG_DIR="+shQuote(workDir)+"\n")
 
-	require.NoError(t, testutil.ErrOf(h.settings.SetDefaultProfile(t.Context(), "work")))
+	require.NoError(t, testutil.ErrOf(h.settings.SetDefaultProfile(t.Context(), agent.Claude, "work")))
 
 	res, _ = h.launch(t, LaunchRequest{ItemID: h.trustedPR})
 	assert.Equal(t, "work", res.Profile, "an empty profile uses the default profile setting")
@@ -711,18 +898,19 @@ func TestLaunchRevalidatesTheCachedClone(t *testing.T) {
 	assert.Len(t, h.git.recorded()[before:], 1, "only the cached clone's remotes are read")
 }
 
-func TestLaunchForkOriginUsesNamedPRWorktree(t *testing.T) {
+func TestLaunchFromAForkFetchesTheItemsRemote(t *testing.T) {
 	t.Parallel()
 
 	h := newLaunchHarness(t)
 	h.git.remotes[h.clone] = "remote.origin.url git@github.com:octo-user/example-repo.git\n" +
 		"remote.upstream.url https://github.com/acme-org/example-repo.git\n"
 
-	res, script := h.launch(t, LaunchRequest{ItemID: h.trustedPR})
+	res, _ := h.launch(t, LaunchRequest{ItemID: h.trustedPR})
 
 	assert.Equal(t, "pr-7", res.Worktree)
-	assert.Contains(t, script, "'--worktree' 'pr-7'")
-	assert.Contains(t, promptFor(t, res.ScriptPath), "First run `gh pr checkout 7 --repo acme-org/example-repo` inside this worktree")
+	require.Len(t, h.maker.ensures(), 1)
+	assert.Equal(t, "upstream", h.maker.ensures()[0].Remote, "the pull request's head comes from the item's repository")
+	assert.Contains(t, promptFor(t, res.ScriptPath), "This worktree is already at the pull request's head commit")
 }
 
 func TestLaunchFailures(t *testing.T) {
@@ -751,6 +939,11 @@ func TestLaunchFailures(t *testing.T) {
 			wantErr: errFakeNoClaude,
 		},
 		{
+			name:    "no worktrees",
+			mutate:  func(_ *testing.T, h *launchHarness) { h.cfg.Worktrees = nil },
+			wantErr: ErrNoWorktrees,
+		},
+		{
 			name:    "no terminal support on this OS",
 			mutate:  func(_ *testing.T, h *launchHarness) { h.cfg.Registry = terminal.NewRegistry() },
 			wantErr: terminal.ErrUnsupportedOS,
@@ -765,9 +958,9 @@ func TestLaunchFailures(t *testing.T) {
 			name: "invalid profile",
 			mutate: func(t *testing.T, h *launchHarness) {
 				t.Helper()
-				h.exec(t, "UPDATE claude_profiles SET effort = 'turbo' WHERE name = 'default'")
+				h.exec(t, "UPDATE agent_profiles SET permission_mode = 'yolo' WHERE agent = 'claude' AND name = 'default'")
 			},
-			wantErr: agent.ErrInvalidEffort,
+			wantErr: ErrInvalidPermissionMode,
 		},
 		{
 			name: "agent config unreadable",
@@ -815,15 +1008,6 @@ func TestLaunchStopsWhenCancelled(t *testing.T) {
 	_, err := h.service().Launch(ctx, LaunchRequest{ItemID: h.trustedPR})
 	require.ErrorIs(t, err, context.Canceled)
 	assert.Empty(t, h.iterm.opened)
-}
-
-func TestPlanWorktreeDir(t *testing.T) {
-	t.Parallel()
-
-	assert.Equal(t, "pr-7", Plan{Kind: item.KindPR, Number: 7, Worktree: "#7"}.worktreeDir())
-	assert.Equal(t, "pr-7", Plan{Kind: item.KindPR, Number: 7, Worktree: "pr-7"}.worktreeDir())
-	assert.Equal(t, "issue-3", Plan{Kind: item.KindIssue, Number: 3, Worktree: "issue-3"}.worktreeDir())
-	assert.Empty(t, Plan{Kind: item.KindPR, Number: 7}.worktreeDir())
 }
 
 func TestNewServiceDefaultsTheClock(t *testing.T) {

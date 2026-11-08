@@ -1,12 +1,12 @@
 // Package launchdefaults stores launch defaults for orgs and repositories: the coding
-// tool, profile, default prompt for each kind of item, model, effort, plan mode,
-// worktree, and extra flags that launches on their items start from.
+// agent, each agent's profile, model, and extra flags, the default prompt for each kind of
+// item, and the effort, plan mode, and worktree that launches on their items start from.
 //
 // An owner's defaults (Name "") apply to every repository of that owner, and a
-// repository's own defaults win over them. Every setting inherits when it is "" or nil,
-// so a row only holds what differs. The launcher resolves the full order: the app's
-// settings, then the owner's defaults, the repository's, the chosen prompt's, and last
-// the launch menu's.
+// repository's own defaults win over them. Every setting inherits when it is "", nil, or
+// has no entry for the agent, so a row only holds what differs. The launcher resolves the
+// full order: the app's settings, then the owner's defaults, the repository's, the chosen
+// prompt's, and last the launch menu's.
 package launchdefaults
 
 import (
@@ -14,6 +14,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/agent"
@@ -25,15 +27,16 @@ import (
 	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
-// Fields an agent.FieldError can name, matching Input's JSON names.
+// Fields an agent.FieldError can name, matching Input's JSON names. A per-agent field's
+// error for one agent names it with agent.FieldFor, as in "profiles.codex".
 const (
 	FieldOwner         = "owner"
 	FieldName          = "name"
 	FieldAgent         = "agent"
-	FieldProfile       = "profile"
+	FieldProfiles      = "profiles"
 	FieldPRPromptID    = "prPromptId"
 	FieldIssuePromptID = "issuePromptId"
-	FieldModel         = agent.FieldModel
+	FieldModels        = agent.FieldModels
 	FieldEffort        = agent.FieldEffort
 	FieldExtraFlags    = agent.FieldExtraFlags
 )
@@ -53,28 +56,31 @@ type Defaults struct {
 	Owner string `json:"owner"`
 	Name  string `json:"name"`
 
-	// Agent is the coding tool's ID; "" inherits (the app's tool, Claude).
-	Agent string `json:"agent"`
+	// Agent is the coding agent; agent.Inherit uses the app's default agent.
+	Agent agent.ID `json:"agent"`
 
-	// Profile names the profile; "" inherits.
-	Profile string `json:"profile"`
+	// Profiles names each agent's profile; an agent with no entry inherits.
+	Profiles map[agent.ID]string `json:"profiles"`
 
 	// PRPromptID and IssuePromptID are the default prompts; nil inherits.
 	PRPromptID    *int64 `json:"prPromptId"`
 	IssuePromptID *int64 `json:"issuePromptId"`
 
-	// Model and Effort set --model and --effort; "" inherits.
-	Model  string `json:"model"`
+	// Models is each agent's model; an agent with no entry inherits.
+	Models map[agent.ID]string `json:"models"`
+
+	// Effort is the effort level of every agent; "" inherits. An agent that lacks the
+	// level launches with its own default.
 	Effort string `json:"effort"`
 
 	// PlanMode and Worktree turn plan mode and the worktree on or off; nil inherits.
 	PlanMode *bool `json:"planMode"`
 	Worktree *bool `json:"worktree"`
 
-	// ExtraArgs are added after the profile's arguments (an owner's before its
-	// repository's), and ExtraFlags is them on one line, quoted.
-	ExtraArgs  []string `json:"extraArgs"`
-	ExtraFlags string   `json:"extraFlags"`
+	// ExtraArgs is each agent's extra arguments, added after its profile's (an owner's
+	// before its repository's), and ExtraFlags is them on one line, quoted.
+	ExtraArgs  map[agent.ID][]string `json:"extraArgs"`
+	ExtraFlags map[agent.ID]string   `json:"extraFlags"`
 
 	// UpdatedAt is when the defaults were last saved, as RFC 3339.
 	UpdatedAt string `json:"updatedAt"`
@@ -88,26 +94,36 @@ func (d Defaults) Target() string {
 
 // Input is launch defaults as the editor saves them.
 type Input struct {
-	Owner         string `json:"owner"`
-	Name          string `json:"name"`
-	Agent         string `json:"agent"`
-	Profile       string `json:"profile"`
-	PRPromptID    *int64 `json:"prPromptId"`
-	IssuePromptID *int64 `json:"issuePromptId"`
-	Model         string `json:"model"`
-	Effort        string `json:"effort"`
-	PlanMode      *bool  `json:"planMode"`
-	Worktree      *bool  `json:"worktree"`
+	Owner         string              `json:"owner"`
+	Name          string              `json:"name"`
+	Agent         agent.ID            `json:"agent"`
+	Profiles      map[agent.ID]string `json:"profiles"`
+	PRPromptID    *int64              `json:"prPromptId"`
+	IssuePromptID *int64              `json:"issuePromptId"`
+	Models        map[agent.ID]string `json:"models"`
+	Effort        string              `json:"effort"`
+	PlanMode      *bool               `json:"planMode"`
+	Worktree      *bool               `json:"worktree"`
 
-	// ExtraFlags are the extra arguments typed on one line, quoted as in a shell.
-	ExtraFlags string `json:"extraFlags"`
+	// ExtraFlags is each agent's extra arguments typed on one line, quoted as in a shell.
+	ExtraFlags map[agent.ID]string `json:"extraFlags"`
 }
 
 // Empty reports whether every setting inherits.
 func (in Input) Empty() bool {
-	return in.Agent == "" && in.Profile == "" && in.PRPromptID == nil && in.IssuePromptID == nil &&
-		in.Model == "" && in.Effort == "" && in.PlanMode == nil && in.Worktree == nil &&
-		strings.TrimSpace(in.ExtraFlags) == ""
+	return in.Agent == agent.Inherit && !anySet(in.Profiles) && in.PRPromptID == nil && in.IssuePromptID == nil &&
+		!anySet(in.Models) && in.Effort == "" && in.PlanMode == nil && in.Worktree == nil && !anySet(in.ExtraFlags)
+}
+
+// anySet reports whether any agent has a value that is not blank.
+func anySet(m map[agent.ID]string) bool {
+	for _, v := range m {
+		if strings.TrimSpace(v) != "" {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Target is an org or repository the inbox has seen, offered when adding defaults.
@@ -120,10 +136,10 @@ type Target struct {
 	Items int `json:"items"`
 }
 
-// ProfileLookup finds a stored profile by name, or returns profiles.ErrProfileNotFound.
-// *profiles.Store implements it.
+// ProfileLookup finds an agent's stored profile by name, or returns
+// profiles.ErrProfileNotFound. *profiles.Store implements it.
 type ProfileLookup interface {
-	Lookup(ctx context.Context, name string) (profiles.Profile, error)
+	Lookup(ctx context.Context, id agent.ID, name string) (profiles.Profile, error)
 }
 
 // PromptLookup finds a stored prompt by ID, or returns prompts.ErrPromptNotFound.
@@ -199,7 +215,7 @@ func (s *Service) Check(ctx context.Context, in Input) ([]agent.FieldError, erro
 func (s *Service) Save(ctx context.Context, in Input) (Defaults, error) {
 	in = in.normalized()
 
-	args, fields, err := validate(ctx, s.profiles, s.prompts, in)
+	checked, fields, err := validate(ctx, s.profiles, s.prompts, in)
 	if err != nil {
 		return Defaults{}, err
 	}
@@ -215,10 +231,10 @@ func (s *Service) Save(ctx context.Context, in Input) (Defaults, error) {
 
 		s.saved(ctx)
 
-		return Defaults{Owner: in.Owner, Name: in.Name, ExtraArgs: []string{}}, nil
+		return emptyDefaults(in.Owner, in.Name), nil
 	}
 
-	stored, err := s.store.save(ctx, in, args)
+	stored, err := s.store.save(ctx, in, checked)
 	if err != nil {
 		return Defaults{}, err
 	}
@@ -306,20 +322,43 @@ func (idx Index) For(name repo.Name) (org, own *Defaults) {
 	return org, own
 }
 
-// normalized trims every text field.
+// emptyDefaults returns the defaults of a target that sets nothing.
+func emptyDefaults(owner, name string) Defaults {
+	return Defaults{
+		Owner: owner, Name: name, Profiles: map[agent.ID]string{}, Models: map[agent.ID]string{},
+		ExtraArgs: map[agent.ID][]string{}, ExtraFlags: map[agent.ID]string{},
+	}
+}
+
+// normalized trims every text field, and leaves out each agent's entry that is blank.
 func (in Input) normalized() Input {
 	in.Owner = strings.TrimSpace(in.Owner)
 	in.Name = strings.TrimSpace(in.Name)
-	in.Agent = strings.TrimSpace(in.Agent)
-	in.Profile = strings.TrimSpace(in.Profile)
-	in.Model = strings.TrimSpace(in.Model)
+	in.Agent = agent.ID(strings.TrimSpace(string(in.Agent)))
+	in.Profiles = trimmed(in.Profiles)
+	in.Models = trimmed(in.Models)
+	in.ExtraFlags = trimmed(in.ExtraFlags)
 
 	return in
 }
 
-// validate checks an Input and returns its extra arguments, or the problems that stop it
-// being saved. An error means the checks themselves could not run.
-func validate(ctx context.Context, known ProfileLookup, library PromptLookup, in Input) ([]string, []agent.FieldError, error) {
+// trimmed returns m with each value trimmed and blank ones left out; never nil.
+func trimmed(m map[agent.ID]string) map[agent.ID]string {
+	out := make(map[agent.ID]string, len(m))
+
+	for id, v := range m {
+		if v = strings.TrimSpace(v); v != "" {
+			out[agent.ID(strings.TrimSpace(string(id)))] = v
+		}
+	}
+
+	return out
+}
+
+// validate checks an Input and returns its models and extra arguments ready to store, or
+// the problems that stop it being saved. An error means the checks themselves could not
+// run.
+func validate(ctx context.Context, known ProfileLookup, library PromptLookup, in Input) (agent.Checked, []agent.FieldError, error) {
 	var fields []agent.FieldError
 
 	add := func(field, message string) {
@@ -332,12 +371,12 @@ func validate(ctx context.Context, known ProfileLookup, library PromptLookup, in
 	add(FieldName, checkName(in.Name))
 	add(FieldAgent, checkAgent(in.Agent))
 
-	profileMsg, err := checkProfile(ctx, known, in.Profile)
+	profileFields, err := checkProfiles(ctx, known, in.Profiles)
 	if err != nil {
-		return nil, nil, err
+		return agent.Checked{}, nil, err
 	}
 
-	add(FieldProfile, profileMsg)
+	fields = append(fields, profileFields...)
 
 	for _, p := range []struct {
 		field string
@@ -346,15 +385,17 @@ func validate(ctx context.Context, known ProfileLookup, library PromptLookup, in
 	}{{FieldPRPromptID, item.KindPR, in.PRPromptID}, {FieldIssuePromptID, item.KindIssue, in.IssuePromptID}} {
 		msg, promptErr := checkPrompt(ctx, library, p.id, p.kind)
 		if promptErr != nil {
-			return nil, nil, promptErr
+			return agent.Checked{}, nil, promptErr
 		}
 
 		add(p.field, msg)
 	}
 
-	args, flagFields := agent.CheckOverrides(in.Model, in.Effort, in.ExtraFlags)
+	checked, settingFields := agent.CheckSettings(agent.Settings{
+		Models: in.Models, Effort: in.Effort, ExtraFlags: in.ExtraFlags,
+	})
 
-	return args, append(fields, flagFields...), nil
+	return checked, append(fields, settingFields...), nil
 }
 
 // checkOwner checks an org or user name.
@@ -375,31 +416,43 @@ func checkName(name string) string {
 	return ""
 }
 
-// checkAgent checks the coding tool, which may be "" to inherit.
-func checkAgent(id string) string {
-	if _, err := agent.Lookup(id); err != nil {
-		return fmt.Sprintf("There's no coding tool called %q.", id)
+// checkAgent checks the coding agent, which may be agent.Inherit.
+func checkAgent(id agent.ID) string {
+	if id != agent.Inherit && !agent.Known(id) {
+		return fmt.Sprintf("There's no coding agent called %q.", id)
 	}
 
 	return ""
 }
 
-// checkProfile checks the profile, which may be "" to inherit.
-func checkProfile(ctx context.Context, known ProfileLookup, profile string) (string, error) {
-	if profile == "" {
-		return "", nil
+// checkProfiles checks each agent's profile, in the agents' order.
+func checkProfiles(ctx context.Context, known ProfileLookup, names map[agent.ID]string) ([]agent.FieldError, error) {
+	var fields []agent.FieldError
+
+	for _, id := range slices.Sorted(maps.Keys(names)) {
+		a, err := agent.Lookup(id)
+		if err != nil || id == agent.Inherit {
+			fields = append(fields, agent.FieldError{
+				Field: FieldProfiles, Message: fmt.Sprintf("There's no coding agent called %q.", id),
+			})
+
+			continue
+		}
+
+		_, err = known.Lookup(ctx, id, names[id])
+
+		switch {
+		case errors.Is(err, profiles.ErrProfileNotFound):
+			fields = append(fields, agent.FieldError{
+				Field:   agent.FieldFor(FieldProfiles, id),
+				Message: fmt.Sprintf("There's no %s profile called %q.", a.Name, names[id]),
+			})
+		case err != nil:
+			return nil, err
+		}
 	}
 
-	_, err := known.Lookup(ctx, profile)
-
-	switch {
-	case errors.Is(err, profiles.ErrProfileNotFound):
-		return fmt.Sprintf("There's no profile called %q.", profile), nil
-	case err != nil:
-		return "", err
-	default:
-		return "", nil
-	}
+	return fields, nil
 }
 
 // checkPrompt checks a default prompt for kind, which may be nil to inherit.

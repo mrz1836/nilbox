@@ -3,7 +3,8 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { prefersReducedMotion } from '../lib/motion'
 import { sortByStatus, statusesOf, statusOrder } from '../lib/statusOrder'
 import { tabOf, type TriagedList, type TriageTab } from '../lib/triage'
-import type { ItemResolution } from '../platform'
+import { worktreeOf } from '../lib/itemWorktrees'
+import type { ItemResolution, Worktree } from '../platform'
 import { ArchiveIcon, ChevronDownIcon, ClockIcon } from './icons'
 import type { EditActions } from './ItemMenu'
 import { ItemRow, type LaunchOptions } from './ItemRow'
@@ -56,6 +57,9 @@ export interface ListSectionProps {
   launch: LaunchOptions | null
   // resolutions holds each item's resolved launch settings by item ID, as they load.
   resolutions: ReadonlyMap<number, ItemResolution>
+  // worktrees holds each item's worktree, from the Worktrees view's latest listing (see
+  // itemWorktrees).
+  worktrees: ReadonlyMap<string, Worktree>
   triage: TriageActions
   // edits is what each row's menu does beyond triage (see ItemMenu).
   edits?: EditActions
@@ -78,6 +82,7 @@ export function ListSection({
   triaged,
   launch,
   resolutions,
+  worktrees,
   triage,
   edits,
   collapsed,
@@ -210,6 +215,7 @@ export function ListSection({
                 item={item}
                 launch={launch}
                 resolution={resolutions.get(item.id) ?? null}
+                worktree={worktreeOf(worktrees, item)}
                 tab={tab}
                 triage={triage}
                 edits={edits}

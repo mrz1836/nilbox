@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/core"
@@ -21,8 +22,11 @@ import (
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
+	"github.com/mrz1836/nilbox/internal/procs"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/settings"
+	"github.com/mrz1836/nilbox/internal/worklog"
+	"github.com/mrz1836/nilbox/internal/worktrees"
 )
 
 // The launch fixture: a throwaway clone of a placeholder repository, and one pull request
@@ -37,9 +41,6 @@ const (
 	fixtureTitle  = "Measure launch latency"
 	fixtureNumber = 1
 )
-
-// agentBin is the coding agent a launch runs.
-const agentBin = "claude"
 
 // Process inspection programs, at their macOS paths: some shells and the PATH of an app
 // started from the Finder leave /usr/sbin out.
@@ -66,6 +67,9 @@ var ErrAgentNotStarted = errors.New("the agent did not start in the clone in tim
 type LaunchOptions struct {
 	// Home is the user's home directory: the agent and its default profile are found there.
 	Home string
+
+	// Agent is the coding agent to launch; agent.Inherit is the default, Claude.
+	Agent agent.ID
 
 	// Version is the build's version.
 	Version string
@@ -150,15 +154,22 @@ func RunLaunch(ctx context.Context, opts LaunchOptions) (LaunchReport, error) {
 
 	defer fx.close()
 
-	agent, err := execpath.Search{Home: opts.Home}.Find(agentBin)
+	a, err := agent.Lookup(opts.Agent)
 	if err != nil {
-		return LaunchReport{}, fmt.Errorf("find the agent: %w", err)
+		return LaunchReport{}, err
 	}
+
+	binary, err := execpath.Search{Home: opts.Home}.Find(a.Command)
+	if err != nil {
+		return LaunchReport{}, fmt.Errorf("find %s: %w", a.Name, err)
+	}
+
+	fx.agent = a.ID
 
 	timer := launchTimer{
 		launch:  fx.launch,
 		probe:   processProbe{run: runner},
-		agent:   agent,
+		agent:   binary,
 		clone:   fx.clone,
 		timeout: cmpOr(opts.AgentTimeout, defaultAgentTimeout),
 		poll:    cmpOr(opts.Poll, defaultPoll),
@@ -182,6 +193,9 @@ func cmpOr(v, fallback time.Duration) time.Duration {
 type launchFixture struct {
 	core  *core.Core
 	clone string
+
+	// agent is the agent the launch starts.
+	agent agent.ID
 
 	// itemID is the fixture item's id.
 	itemID int64
@@ -230,7 +244,7 @@ func newLaunchFixture(ctx context.Context, dir string, opts LaunchOptions, runne
 // unchecked pull request's is. It confirms that at once, as a user would, so the time
 // includes both launch requests.
 func (f *launchFixture) launch(ctx context.Context) (launcher.LaunchResult, error) {
-	req := launcher.LaunchRequest{ItemID: f.itemID, Worktree: new(false)}
+	req := launcher.LaunchRequest{ItemID: f.itemID, Agent: f.agent, Worktree: new(false)}
 
 	res, err := f.core.Launcher.Launch(ctx, req)
 	if err != nil || res.Hold == nil {
@@ -266,9 +280,9 @@ func initClone(ctx context.Context, runner execpath.Runner, clone string) error 
 	return nil
 }
 
-// seed stores the launch settings, makes sure the default profile exists (it does when the
-// home directory has the agent's default config), and stores the fixture item, whose id
-// it returns.
+// seed stores the launch settings, makes sure every agent's default profile exists (it
+// does when the home directory has the agent's default config), and stores the fixture
+// item, whose id it returns.
 func seed(ctx context.Context, c *core.Core, root string) (int64, error) {
 	if _, err := c.Settings.SetCloneRoot(ctx, root); err != nil {
 		return 0, err
@@ -278,16 +292,20 @@ func seed(ctx context.Context, c *core.Core, root string) (int64, error) {
 		return 0, err
 	}
 
-	defaultProfile := profiles.Profile{
-		Name:           profiles.DefaultName,
-		PermissionMode: profiles.PermissionFull,
-		AddDirs:        []string{},
-		ExtraArgs:      []string{},
-		Env:            map[string]string{},
+	defaults := make([]profiles.Profile, 0, len(agent.IDs()))
+	for _, id := range agent.IDs() {
+		defaults = append(defaults, profiles.Profile{
+			Agent:          id,
+			Name:           profiles.DefaultName,
+			PermissionMode: profiles.PermissionFull,
+			AddDirs:        []string{},
+			ExtraArgs:      []string{},
+			Env:            map[string]string{},
+		})
 	}
 
-	if err := c.ProfileStore.Sync(ctx, []profiles.Profile{defaultProfile}); err != nil {
-		return 0, fmt.Errorf("store the default profile: %w", err)
+	if err := c.ProfileStore.Sync(ctx, defaults); err != nil {
+		return 0, fmt.Errorf("store the default profiles: %w", err)
 	}
 
 	now := time.Now().UTC()
@@ -396,7 +414,7 @@ func (t launchTimer) waitForAgent(ctx context.Context, before []int) (int, error
 }
 
 // findAgent returns a new agent process whose working directory is the clone or one of
-// its agent worktrees.
+// its worktrees.
 func (t launchTimer) findAgent(ctx context.Context, before []int) (int, bool, error) {
 	pids, err := t.probe.PIDs(ctx, t.agent)
 	if err != nil {
@@ -422,9 +440,10 @@ func (t launchTimer) findAgent(ctx context.Context, before []int) (int, bool, er
 	return 0, false, nil
 }
 
-// inClone reports whether dir is the clone or under its agent worktree directory. clone
-// must already have its symbolic links resolved, as newLaunchFixture does; dir is resolved
-// here.
+// inClone reports whether dir is the clone, or under one of its worktree directories: the
+// managed root the app makes its worktrees in, or the .claude/worktrees Claude Code made
+// them in before. clone must already have its symbolic links resolved, as
+// newLaunchFixture does; dir is resolved here.
 func inClone(dir, clone string) bool {
 	if dir == "" {
 		return false
@@ -434,9 +453,13 @@ func inClone(dir, clone string) bool {
 		dir = resolved
 	}
 
-	worktrees := filepath.Join(clone, ".claude", "worktrees") + string(filepath.Separator)
+	for _, root := range []string{worktrees.ManagedRoot(clone), filepath.Join(clone, filepath.FromSlash(worklog.LegacyDir))} {
+		if strings.HasPrefix(dir, root+string(filepath.Separator)) {
+			return true
+		}
+	}
 
-	return dir == clone || strings.HasPrefix(dir, worktrees)
+	return dir == clone
 }
 
 // needsAutomation reports whether a launch failed because macOS would not let this
@@ -495,7 +518,7 @@ func (p processProbe) Cwds(ctx context.Context, pids []int) (map[int]string, err
 		return nil, fmt.Errorf("read working directories: %w", err)
 	}
 
-	return parseLsofCwds(string(out)), nil
+	return procs.CwdsOf(procs.ParseLsof(string(out))), nil
 }
 
 // Stop sends the process SIGTERM.
@@ -531,24 +554,4 @@ func parsePS(out, agent string) []int {
 	}
 
 	return pids
-}
-
-// parseLsofCwds reads `lsof -d cwd -Fn` output: a "p<pid>" line starts each process and
-// its first "n<path>" line names the working directory.
-func parseLsofCwds(out string) map[int]string {
-	cwds := map[int]string{}
-	pid := 0
-
-	for line := range strings.SplitSeq(out, "\n") {
-		switch {
-		case strings.HasPrefix(line, "p"):
-			pid, _ = strconv.Atoi(line[1:])
-		case strings.HasPrefix(line, "n") && pid > 0:
-			if _, seen := cwds[pid]; !seen {
-				cwds[pid] = line[1:]
-			}
-		}
-	}
-
-	return cwds
 }

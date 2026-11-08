@@ -2,6 +2,7 @@ import { useId, useState } from 'react'
 
 import { brand } from '../generated/brand'
 import { counted } from '../lib/format'
+import { agentName, modelChoices, modelLabel, perAgentEntries } from '../lib/launch'
 import { formatDateTime, formatFull } from '../lib/time'
 import { useMutation } from '../lib/useMutation'
 import { useQuery } from '../lib/useQuery'
@@ -9,6 +10,7 @@ import {
   importPrompts,
   listPromptBackups,
   previewPromptImport,
+  type AgentInfo,
   type BundlePrompt,
   type ImportEntry,
   type ImportResult,
@@ -26,6 +28,8 @@ export type ImportStart = { kind: 'file'; path: string } | { kind: 'backups' }
 
 export interface ImportPromptsDialogProps {
   start: ImportStart
+  // agents are the coding agents, which name each prompt's per-agent settings.
+  agents: readonly AgentInfo[]
   // onImported is told what the import did, once the library holds it.
   onImported: (result: ImportResult) => void
   onCancel: () => void
@@ -60,12 +64,14 @@ function fileName(path: string): string {
 }
 
 // settingsText lists a prompt's launch settings that are not inherited, as in "For pull
-// requests · opus · high effort · plan mode".
-function settingsText(p: BundlePrompt): string {
+// requests · Claude: Opus · high effort · plan mode".
+function settingsText(p: BundlePrompt, agents: readonly AgentInfo[]): string {
   const parts = [appliesText[p.appliesTo]]
 
-  if (p.model !== '') {
-    parts.push(p.model)
+  for (const [id, model] of perAgentEntries(p.models, agents)) {
+    if (model !== '') {
+      parts.push(`${agentName(agents, id)}: ${modelLabel(model, modelChoices(agents, id))}`)
+    }
   }
 
   if (p.effort !== '') {
@@ -122,7 +128,7 @@ function usable(b: PromptBackup): boolean {
 // taken before updates). It first shows every prompt the source holds and what importing
 // it does, all chosen but those already in the library, so nothing changes until the user
 // says so. Importing never changes a prompt the user wrote or edited.
-export function ImportPromptsDialog({ start, onImported, onCancel }: ImportPromptsDialogProps) {
+export function ImportPromptsDialog({ start, agents, onImported, onCancel }: ImportPromptsDialogProps) {
   const id = useId()
   const [source, setSource] = useState<ImportSource | null>(
     start.kind === 'file' ? { kind: 'file', path: start.path } : null,
@@ -191,6 +197,7 @@ export function ImportPromptsDialog({ start, onImported, onCancel }: ImportPromp
       }}
     >
       <EntryList
+        agents={agents}
         entries={shown}
         pending={entries.pending}
         error={entries.error}
@@ -286,6 +293,7 @@ function BackupList({ id, backups, pending, error, choice, onPick }: BackupListP
 }
 
 interface EntryListProps {
+  agents: readonly AgentInfo[]
   entries: readonly ImportEntry[]
   pending: boolean
   error: string
@@ -296,7 +304,7 @@ interface EntryListProps {
 // EntryList shows each prompt a source holds, what importing it does, its launch
 // settings, and anything changed to import it, each with a box to leave it out. A prompt
 // the library already holds is shown, unchecked, for the record.
-function EntryList({ entries, pending, error, unchosen, onToggle }: EntryListProps) {
+function EntryList({ agents, entries, pending, error, unchosen, onToggle }: EntryListProps) {
   if (error !== '') {
     return <p role="alert">Couldn’t read the prompts: {error}</p>
   }
@@ -321,7 +329,10 @@ function EntryList({ entries, pending, error, unchosen, onToggle }: EntryListPro
       <ul aria-label="Prompts" className="mt-3 flex max-h-80 flex-col gap-1 overflow-y-auto">
         {entries.map((e, i) => {
           const skip = e.outcome === 'skip'
-          const flags = e.prompt.extraArgs.join(' ')
+          const flags = perAgentEntries(e.prompt.extraArgs, agents)
+            .filter(([, args]) => (args ?? []).length > 0)
+            .map(([id, args]) => `${agentName(agents, id)}: ${(args ?? []).join(' ')}`)
+            .join(' · ')
 
           return (
             // The prompts in a file have no IDs; the list never reorders.
@@ -344,7 +355,7 @@ function EntryList({ entries, pending, error, unchosen, onToggle }: EntryListPro
                     <span className="min-w-0 truncate text-xs">{e.prompt.name}</span>
                     <span className={`${chipClass} ml-auto`}>{outcomeText(e)}</span>
                   </span>
-                  <span className="text-xs">{settingsText(e.prompt)}</span>
+                  <span className="text-xs">{settingsText(e.prompt, agents)}</span>
                   {flags !== '' && (
                     <span className="text-xs">
                       Adds flags: <code className="font-mono text-text">{flags}</code>

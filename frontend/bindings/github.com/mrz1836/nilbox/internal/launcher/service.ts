@@ -39,25 +39,28 @@ export function CloneTarget(itemID: number): $CancellablePromise<$models.CloneTa
 /**
  * Launch starts a session on an inbox item:
  *
- *  1. load the item (computing its trust) and resolve its launch settings: the
- *     request's choices, then the prompt's, the repository's and its owner's launch
- *     defaults, the profile's, and the app's settings;
+ *  1. load the item (computing its trust) and resolve its launch settings: the agent
+ *     first, then the request's choices, the prompt's, the repository's and its owner's
+ *     launch defaults, the profile's, and the app's settings;
  *  2. find the item's local clone: the cached path when it still is a clone of the
  *     repository, otherwise a scan of the clone root, whose result is cached;
- *  3. find the agent and build the plan;
+ *  3. find the agent and, for a worktree launch, what its worktree would be, and build
+ *     the plan;
  *  4. for a pull request whose files are checked, check them against GitHub as of now,
  *     and fill in the prompt, which names its sensitive files;
  *  5. hold the launch back, starting nothing, when the pull request changes agent files
  *     or its files could not all be checked, unless the request confirms that hold;
- *  6. mark the clone trusted in the agent config the session runs with, since a
- *     worktree session cannot show the agent's workspace trust dialog;
- *  7. write the prompt file and launch script;
- *  8. open the script in the terminal chosen in settings;
- *  9. record the worktree, if the session starts in one, with the item it is for.
+ *  6. find or make the item's worktree, which fetches the pull request's head, or the
+ *     default branch for an issue, only when there is none yet (see WorktreeMaker);
+ *  7. mark the directory trusted in the agent config the session runs with, since the
+ *     agent would otherwise stop at its workspace trust question;
+ *  8. write the prompt file and launch script;
+ *  9. open the script in the terminal chosen in settings;
+ *  10. record the session in the worktree, with its agent.
  *
- * The only git command it runs is the read-only `git -C <clone> config --get-regexp`
- * remote lookup. The script only changes into the clone and runs the agent; it never
- * checks out, stashes, fetches, switches branches, or creates worktrees.
+ * The launcher itself runs only the read-only `git -C <clone> config --get-regexp` remote
+ * lookup. The script only changes into the directory and runs the agent; it never checks
+ * out, stashes, fetches, switches branches, or creates worktrees.
  */
 export function Launch(req: $models.LaunchRequest): $CancellablePromise<$models.LaunchResult> {
     return $Call.ByID(3088047411, req);

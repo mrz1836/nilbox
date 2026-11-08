@@ -8,7 +8,8 @@ export {
 
 export {
     HoldReason,
-    Source
+    Source,
+    WorktreeAction
 } from "./models.js";
 
 export type {
@@ -21,5 +22,6 @@ export type {
     PromptChoice,
     Resolution,
     Setting,
-    Toggle
+    Toggle,
+    WorktreePlan
 } from "./models.js";

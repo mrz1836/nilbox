@@ -3,6 +3,9 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as agent$0 from "../agent/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as item$0 from "../item/models.js";
 
 /**
@@ -108,8 +111,8 @@ export interface LinkedItem {
     "headOid": string;
 
     /**
-     * Launched reports a worktree the app launched the session in, which the automatic
-     * cleanup looks after. Others are linked by their name alone.
+     * Launched reports a worktree the app launched a session in, which the automatic
+     * cleanup looks after. Others are linked by their name or branch alone.
      */
     "launched": boolean;
 }
@@ -192,6 +195,21 @@ export interface Repo {
 }
 
 /**
+ * Session is a running process that works in a worktree.
+ */
+export interface Session {
+    /**
+     * PID is the process's ID.
+     */
+    "pid": number;
+
+    /**
+     * Command is its program's name, such as "codex".
+     */
+    "command": string;
+}
+
+/**
  * Snapshot is every repository under the clone root that has linked worktrees, as the
  * Worktrees view shows it. Every field is a plain value.
  */
@@ -235,6 +253,12 @@ export interface Snapshot {
     "linkError": string;
 
     /**
+     * SessionsUnknown reports that the running processes could not be listed, so no
+     * worktree shows a session, and the automatic cleanup removes none.
+     */
+    "sessionsUnknown": boolean;
+
+    /**
      * ListedAt is when the snapshot was taken, in RFC 3339.
      */
     "listedAt": string;
@@ -257,7 +281,8 @@ export const Stage = {
     StageNone: "",
 
     /**
-     * StageInUse is a worktree a running agent session holds.
+     * StageInUse is a worktree a running process works in, or a running agent session
+     * holds by its lock.
      */
     StageInUse: "in-use",
 
@@ -437,16 +462,42 @@ export interface Worktree {
     "stage": Stage;
 
     /**
-     * OwnBranch reports that the checked-out branch is the agent's worktree-<name> branch
-     * for this worktree, which CleanUp deletes with it.
+     * OwnBranch reports that the checked-out branch is the worktree's own
+     * worktree-<name> branch, which CleanUp deletes with it.
      */
     "ownBranch": boolean;
 
     /**
-     * ClaudeCreated reports a worktree under the repository's .claude/worktrees
-     * directory, where the coding agent creates its worktrees.
+     * Managed reports a worktree the app looks after: one it made (under the clone's
+     * managed root), one Claude Code made under the clone's .claude/worktrees, or one the
+     * app recorded.
      */
-    "claudeCreated": boolean;
+    "managed": boolean;
+
+    /**
+     * Legacy reports a worktree Claude Code made under the clone's .claude/worktrees.
+     */
+    "legacy": boolean;
+
+    /**
+     * Agent is the agent of the latest session the app launched there, or "".
+     */
+    "agent": agent$0.ID;
+
+    /**
+     * LastLaunchedAt is when that session started, in RFC 3339, or "".
+     */
+    "lastLaunchedAt": string;
+
+    /**
+     * Launches counts the sessions the app launched there.
+     */
+    "launches": number;
+
+    /**
+     * InUse lists the running processes that work in the worktree.
+     */
+    "inUse": Session[] | null;
 
     /**
      * CanRemove reports a clean, unlocked linked worktree that Remove accepts.

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"iter"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -21,6 +22,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/paths"
+	"github.com/mrz1836/nilbox/internal/procs"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/uierr"
 	"github.com/mrz1836/nilbox/internal/worklog"
@@ -42,6 +44,14 @@ var (
 	// ErrLocked is returned for a locked worktree, which is never removed: a running
 	// session usually holds the lock.
 	ErrLocked = errors.New("the worktree is locked, usually by a running session; unlock it with git worktree unlock first")
+
+	// ErrInUse is returned for a worktree a running process works in, which is never
+	// removed (see InUseError).
+	ErrInUse = errors.New("a session is running in the worktree")
+
+	// ErrSessionsUnknown is returned when the automatic cleanup cannot tell whether a
+	// session runs in a worktree, so it leaves it.
+	ErrSessionsUnknown = errors.New("can't tell whether a session is running in the worktree")
 
 	// ErrNotLocked is returned when unlocking a worktree that has no lock.
 	ErrNotLocked = errors.New("the worktree is not locked")
@@ -91,6 +101,28 @@ var (
 	// errGit marks an error that carries git's own message.
 	errGit = errors.New("git")
 )
+
+// InUseError is returned for a worktree running processes work in. It matches ErrInUse.
+type InUseError struct {
+	// Sessions are the processes, by PID.
+	Sessions []Session
+}
+
+// Error names the processes, as in "a session is running in the worktree: codex (pid
+// 4242)".
+func (e *InUseError) Error() string {
+	names := make([]string, 0, len(e.Sessions))
+	for _, s := range e.Sessions {
+		names = append(names, fmt.Sprintf("%s (pid %d)", s.Command, s.PID))
+	}
+
+	return ErrInUse.Error() + ": " + strings.Join(names, ", ")
+}
+
+// Is makes an InUseError match ErrInUse.
+func (e *InUseError) Is(target error) bool {
+	return target == ErrInUse
+}
 
 // RefusedError is git's refusal to remove a worktree, with a short reason such as "has
 // uncommitted changes". It matches ErrRemovalRefused.
@@ -156,11 +188,12 @@ type GitHub interface {
 	ItemStates(ctx context.Context, refs []item.Ref) (map[string]ItemState, error)
 }
 
-// Launches reads and prunes the record of the worktrees the app launched sessions in.
-// *worklog.Store implements it.
-type Launches interface {
-	Launches(ctx context.Context) ([]worklog.Launch, error)
-	ForgetLaunch(ctx context.Context, clonePath, worktree string) error
+// Records reads, writes, and prunes the record of the worktrees the app made or found for
+// pull requests and issues. *worklog.Store implements it.
+type Records interface {
+	Worktrees(ctx context.Context) ([]worklog.Record, error)
+	Record(ctx context.Context, r worklog.Record) error
+	Forget(ctx context.Context, clonePath, worktree string) error
 }
 
 // History records the worktrees the app cleaned up. *worklog.Store implements it.
@@ -193,8 +226,13 @@ type Config struct {
 	// worktree is linked, so none is ever finished.
 	GitHub GitHub
 
-	// Launches holds the worktrees the app launched sessions in.
-	Launches Launches
+	// Records holds the worktrees the app made or found for pull requests and issues.
+	Records Records
+
+	// Procs lists the running processes, to tell the worktrees a session works in.
+	// Without it no worktree counts as in use by a process; a lock Claude Code holds
+	// still counts.
+	Procs procs.Lister
 
 	// History records each cleanup, for the view's list of recent ones.
 	History History
@@ -217,7 +255,8 @@ type Service struct {
 	realHome string
 	clock    clock.Clock
 	github   GitHub
-	launches Launches
+	launches Records
+	lister   procs.Lister
 	history  History
 	events   event.Sink
 	logger   *slog.Logger
@@ -226,9 +265,10 @@ type Service struct {
 	// zone is the machine's time zone, which an agent lock's start may be written in.
 	zone *time.Location
 
-	// act serializes every change, so a sweep and a click never work on the same
-	// worktree at once.
-	act sync.Mutex
+	// act serializes every removal, so a sweep and a click never work on the same
+	// worktree at once. A Maker holds it shared while it makes or resumes a worktree, so
+	// neither runs then either.
+	act sync.RWMutex
 
 	// mu guards last.
 	mu   sync.Mutex
@@ -250,7 +290,8 @@ func NewService(cfg Config) *Service {
 		realHome: realHome,
 		clock:    clock.Or(cfg.Clock),
 		github:   cfg.GitHub,
-		launches: cfg.Launches,
+		launches: cfg.Records,
+		lister:   cfg.Procs,
 		history:  cfg.History,
 		events:   event.Or(cfg.Events),
 		logger:   logging.Or(cfg.Logger),
@@ -290,13 +331,14 @@ func (s *Service) Remove(ctx context.Context, repoPath, path string) error {
 }
 
 // ForceRemove removes one unlocked linked worktree that has uncommitted changes,
-// discarding them, with a single --force. Locked worktrees are refused even here, so a
-// running session's worktree is never pulled out from under it.
+// discarding them, with a single --force. Locked worktrees, and ones a running process
+// works in, are refused even here, so a running session's worktree is never pulled out
+// from under it.
 func (s *Service) ForceRemove(ctx context.Context, repoPath, path string) error {
 	s.act.Lock()
 	defer s.act.Unlock()
 
-	g, e, err := s.removable(ctx, repoPath, path, "")
+	g, e, err := s.removable(ctx, repoPath, path, "", false)
 	if err != nil {
 		return err
 	}
@@ -369,7 +411,7 @@ func (s *Service) Prune(ctx context.Context, repoPath string) error {
 
 // remove is Remove without taking the action lock.
 func (s *Service) remove(ctx context.Context, repoPath, path string) error {
-	g, e, err := s.removable(ctx, repoPath, path, "")
+	g, e, err := s.removable(ctx, repoPath, path, "", false)
 	if err != nil {
 		return err
 	}
@@ -377,10 +419,18 @@ func (s *Service) remove(ctx context.Context, repoPath, path string) error {
 	return s.removeEntry(ctx, g, repoPath, e, false)
 }
 
-// assessClones lists the given clones' worktrees, links them to their items, and works
-// out each one's stage. The clones are listed a few at a time, then every worktree's
-// state is read under the same limit, whichever clone it is in.
+// assessClones lists the given clones' worktrees, checks the records against them, links
+// them to their items, finds the sessions working in them, and works out each one's
+// stage. The clones are listed a few at a time, then every worktree's state is read under
+// the same limit, whichever clone it is in.
+//
+// The records and the running processes are read before git lists anything: a worktree
+// made after the listing then has no record yet rather than a record that seems to name a
+// worktree gone, and the git commands the listing runs are not mistaken for sessions.
 func (s *Service) assessClones(ctx context.Context, g git, root string, clones []localrepos.LocalRepo) (Snapshot, error) {
+	records := s.records(ctx)
+	running, known := s.processes(ctx)
+
 	listings := make([]cloneListing, len(clones))
 	remotes := make(map[string]map[string]repo.Name, len(clones))
 
@@ -407,31 +457,97 @@ func (s *Service) assessClones(ctx context.Context, g git, root string, clones [
 		return Snapshot{}, err
 	}
 
+	recorded := s.reconcile(ctx, listings, records)
+
 	listed := make([]listedRepo, 0, len(listings))
 	for _, l := range listings {
 		listed = append(listed, l.withRows())
 	}
 
 	snap := s.snapshot(root, listed)
-	snap.LinkError = s.link(ctx, snap.Repos, remotes, s.launchRecords(ctx))
+	snap.LinkError = s.link(ctx, snap.Repos, remotes, recorded)
+	s.adopt(ctx, snap.Repos, recorded)
+	markSessions(snap.Repos, running)
+	snap.SessionsUnknown = !known
 	s.tally(&snap)
 
 	return snap, nil
 }
 
-// launchRecords reads the launch records. Without them worktrees are still linked by
-// name, so a failure is only logged.
-func (s *Service) launchRecords(ctx context.Context) []worklog.Launch {
+// records reads the worktree records. Without them worktrees are still found by their
+// branch and linked by their name, so a failure is only logged.
+func (s *Service) records(ctx context.Context) []worklog.Record {
 	if s.launches == nil {
 		return nil
 	}
 
-	records, err := s.launches.Launches(ctx)
+	records, err := s.launches.Worktrees(ctx)
 	if err != nil {
-		s.logger.WarnContext(ctx, "could not read the worktree launches", "error", err)
+		s.logger.WarnContext(ctx, "could not read the worktree records", "error", err)
 	}
 
 	return records
+}
+
+// processes lists the running processes other than this app and the commands it runs,
+// and reports whether they could be listed. Without a lister none is listed, and that is
+// known.
+func (s *Service) processes(ctx context.Context) ([]procs.Process, bool) {
+	if s.lister == nil {
+		return nil, true
+	}
+
+	list, err := s.lister.Processes(ctx)
+	if err != nil {
+		s.logger.DebugContext(ctx, "the running processes could not be listed", "error", err)
+
+		return nil, false
+	}
+
+	return procs.Others(list, os.Getpid()), true
+}
+
+// sessionsIn returns the sessions working in dir, and whether the processes could be
+// listed.
+func (s *Service) sessionsIn(ctx context.Context, dir string) ([]Session, bool) {
+	running, known := s.processes(ctx)
+
+	return sessionsOf(procs.Within(running, dir)), known
+}
+
+// checkSessions refuses a worktree a running process works in. strict refuses it as well
+// when the processes cannot be listed, as the automatic cleanup does; a removal the user
+// asks for goes ahead then, since git and the locks still guard it.
+func (s *Service) checkSessions(ctx context.Context, dir string, strict bool) error {
+	sessions, known := s.sessionsIn(ctx, dir)
+
+	switch {
+	case len(sessions) > 0:
+		return &InUseError{Sessions: sessions}
+	case !known && strict:
+		return ErrSessionsUnknown
+	default:
+		return nil
+	}
+}
+
+// markSessions fills in the sessions working in each linked worktree.
+func markSessions(repos []Repo, running []procs.Process) {
+	for _, wt := range rows(repos) {
+		if !wt.Main && !wt.Prunable {
+			wt.InUse = sessionsOf(procs.Within(running, wt.Path))
+		}
+	}
+}
+
+// sessionsOf returns processes as sessions, never nil.
+func sessionsOf(list []procs.Process) []Session {
+	out := make([]Session, 0, len(list))
+	for _, p := range list {
+		out = append(out, Session{PID: p.PID, Command: p.Command})
+	}
+
+	return out
 }
 
 // tally works out each worktree's stage, counts what the bulk actions would remove, and
@@ -541,9 +657,10 @@ func (s *Service) entryOf(ctx context.Context, g git, repoPath, path string) (En
 }
 
 // removable re-lists the repository and returns path's entry when it is a linked,
-// unlocked worktree of it. When head is not "", the worktree must still have that commit
-// checked out.
-func (s *Service) removable(ctx context.Context, repoPath, path, head string) (git, Entry, error) {
+// unlocked worktree of it that no running process works in. When head is not "", the
+// worktree must still have that commit checked out. strict also refuses it when the
+// processes cannot be listed.
+func (s *Service) removable(ctx context.Context, repoPath, path, head string, strict bool) (git, Entry, error) {
 	g, err := s.checkedGit(ctx, repoPath)
 	if err != nil {
 		return git{}, Entry{}, err
@@ -558,9 +675,15 @@ func (s *Service) removable(ctx context.Context, repoPath, path, head string) (g
 		return git{}, Entry{}, ErrLocked
 	case head != "" && e.HEAD != head:
 		return git{}, Entry{}, ErrChanged
-	default:
-		return g, e, nil
 	}
+
+	if !e.Prunable {
+		if err = s.checkSessions(ctx, e.Path, strict); err != nil {
+			return git{}, Entry{}, err
+		}
+	}
+
+	return g, e, nil
 }
 
 // removeEntry runs `git worktree remove` for a checked entry and turns a refusal into a
@@ -582,10 +705,11 @@ func (s *Service) removeEntry(ctx context.Context, g git, repoPath string, e Ent
 type cloneListing struct {
 	repo listedRepo
 
-	// entries are the worktrees listed, the bare repository left out, and claudeDir is
-	// where the agent creates its worktrees in this clone.
-	entries   []Entry
-	claudeDir string
+	// entries are the worktrees listed, the bare repository left out; managedDir is where
+	// the app makes this clone's worktrees, and legacyDir where Claude Code made them.
+	entries    []Entry
+	managedDir string
+	legacyDir  string
 
 	// times holds the commit time of each listed HEAD, or is nil when git could not read
 	// them together, so each worktree's is read on its own.
@@ -639,7 +763,8 @@ func (s *Service) listRepo(ctx context.Context, g git, dir string) (cloneListing
 	}
 
 	return cloneListing{
-		repo: listed, entries: entries, claudeDir: filepath.Join(listed.key, ".claude", "worktrees"), times: times,
+		repo: listed, entries: entries, managedDir: resolvedPath(ManagedRoot(listed.key)),
+		legacyDir: resolvedPath(legacyRoot(listed.key)), times: times,
 	}, nil
 }
 
@@ -688,7 +813,7 @@ func (s *Service) readRows(ctx context.Context, g git, listings []cloneListing) 
 			eg.Go(func() error {
 				var rowErr error
 
-				l.rows[j], rowErr = s.row(ectx, g, e, l.claudeDir, l.times)
+				l.rows[j], rowErr = s.row(ectx, g, e, l.managedDir, l.legacyDir, l.times)
 
 				return rowErr
 			})
@@ -699,8 +824,11 @@ func (s *Service) readRows(ctx context.Context, g git, listings []cloneListing) 
 }
 
 // row builds a worktree's view row, reading its status, unless its directory is gone.
-// times holds its clone's commit times (see cloneListing).
-func (s *Service) row(ctx context.Context, g git, e Entry, claudeDir string, times map[string]int64) (Worktree, error) {
+// managedDir and legacyDir are where its clone's worktrees are made, and times holds its
+// clone's commit times (see cloneListing).
+func (s *Service) row(ctx context.Context, g git, e Entry, managedDir, legacyDir string, times map[string]int64) (Worktree, error) {
+	path := resolvedPath(e.Path)
+
 	wt := Worktree{
 		Path:           e.Path,
 		DisplayPath:    s.display(e.Path),
@@ -711,23 +839,22 @@ func (s *Service) row(ctx context.Context, g git, e Entry, claudeDir string, tim
 		LockReason:     e.LockReason,
 		Prunable:       e.Prunable,
 		PrunableReason: e.PrunableReason,
-		ClaudeCreated:  within(claudeDir, resolvedPath(e.Path)),
+		Legacy:         within(legacyDir, path),
 		Head:           e.HEAD,
 		Unpushed:       -1,
+		InUse:          []Session{},
 	}
 
+	wt.Managed = wt.Legacy || within(managedDir, path)
+
 	s.judgeLock(&wt)
-	wt.OwnBranch = wt.ClaudeCreated && !e.Detached && e.Branch == ownBranchPrefix+filepath.Base(e.Path)
+	wt.OwnBranch = wt.Managed && !e.Detached && e.Branch == ownBranchPrefix+filepath.Base(e.Path)
 
 	if !e.Prunable {
 		if err := s.readState(ctx, g, &wt, times); err != nil {
 			return Worktree{}, err
 		}
 	}
-
-	linked := !e.Main && !e.Locked && !e.Prunable
-	wt.CanRemove = linked && !wt.Dirty
-	wt.CanForceRemove = linked && wt.Dirty
 
 	return wt, nil
 }

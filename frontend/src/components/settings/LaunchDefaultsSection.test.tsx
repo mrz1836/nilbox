@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { LaunchDefaults } from '../../platform'
-import { launchDefaults, profile, prompts, settings } from '../../test/fixtures'
+import { agents, launchDefaults, profile, prompts, settings } from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { LaunchDefaultsSection } from './LaunchDefaultsSection'
 
@@ -23,8 +23,14 @@ function nth(list: HTMLElement[], i: number): HTMLElement {
 function renderSection(stored: LaunchDefaults[] = [], onChanged = vi.fn(() => Promise.resolve())) {
   render(
     <LaunchDefaultsSection
-      settings={settings({ defaultProfile: 'default', worktreeDefault: true })}
-      profiles={[profile(), profile({ name: 'work' })]}
+      settings={settings({ worktreeDefault: true })}
+      agents={agents()}
+      profiles={[
+        profile(),
+        profile({ name: 'work' }),
+        profile({ agent: 'codex' }),
+        profile({ agent: 'codex', name: 'alt' }),
+      ]}
       prompts={prompts()}
       defaultPrompts={{ pr: 1, issue: 4 }}
       launchDefaults={stored}
@@ -56,23 +62,27 @@ describe('LaunchDefaultsSection', () => {
 
     const form = within(screen.getByRole('form', { name: 'New launch defaults' }))
 
-    expect(form.getByRole('option', { name: 'Inherit · default (app)' })).toBeInTheDocument()
+    expect(form.getByRole('option', { name: 'Inherit · Claude (app)' })).toBeInTheDocument()
+    expect(form.getAllByRole('option', { name: 'Inherit · default (app)' })).toHaveLength(2)
     expect(form.getByRole('option', { name: 'Inherit · Review (app)' })).toBeInTheDocument()
     expect(form.getByRole('option', { name: 'Inherit · Work on it (app)' })).toBeInTheDocument()
     expect(form.getByText('Inherits on (app)')).toBeInTheDocument()
     expect(form.getByRole('button', { name: 'Save defaults' })).toBeDisabled()
 
     await userEvent.type(form.getByRole('combobox', { name: 'Defaults for' }), 'acme-org')
-    await userEvent.selectOptions(form.getByRole('combobox', { name: 'Profile' }), 'work')
+    await userEvent.selectOptions(form.getByRole('combobox', { name: 'Claude profile' }), 'work')
+    await userEvent.selectOptions(form.getByRole('combobox', { name: 'Codex profile' }), 'alt')
     await userEvent.selectOptions(form.getByRole('combobox', { name: 'Prompt for pull requests' }), '2')
     await userEvent.click(
       within(form.getByRole('radiogroup', { name: 'Start in a worktree' })).getByRole('radio', { name: 'Off' }),
     )
-    await userEvent.type(form.getByRole('textbox', { name: 'Extra flags' }), '--advisor fable')
+    await userEvent.type(form.getByRole('textbox', { name: 'Claude extra flags' }), '--advisor fable')
+    await userEvent.click(within(form.getByRole('radiogroup', { name: 'Agent' })).getByRole('radio', { name: 'Codex' }))
+    await userEvent.type(form.getByRole('combobox', { name: 'Codex model' }), 'gpt-6-sol')
 
     await waitFor(() => {
       expect(platform.checkLaunchDefaults).toHaveBeenLastCalledWith(
-        expect.objectContaining({ owner: 'acme-org', extraFlags: '--advisor fable' }),
+        expect.objectContaining({ owner: 'acme-org', extraFlags: { claude: '--advisor fable' } }),
       )
     })
     await userEvent.click(form.getByRole('button', { name: 'Save defaults' }))
@@ -81,21 +91,21 @@ describe('LaunchDefaultsSection', () => {
       owner: 'acme-org',
       name: '',
       agent: '',
-      profile: 'work',
+      profiles: { claude: 'work', codex: 'alt' },
       prPromptId: 2,
       issuePromptId: null,
-      model: '',
+      models: { codex: 'gpt-6-sol' },
       effort: '',
       planMode: null,
       worktree: false,
-      extraFlags: '--advisor fable',
+      extraFlags: { claude: '--advisor fable' },
     })
     expect(onChanged).toHaveBeenCalledOnce()
     expect(await screen.findByText('Saved the defaults for acme-org.')).toBeInTheDocument()
   })
 
   it('shows a repository what it inherits from its org', async () => {
-    renderSection([launchDefaults({ prPromptId: 2, worktree: false, model: 'opus' })])
+    renderSection([launchDefaults({ prPromptId: 2, worktree: false, models: { claude: 'opus' } })])
 
     await userEvent.click(screen.getByRole('button', { name: 'Add defaults' }))
 
@@ -104,8 +114,42 @@ describe('LaunchDefaultsSection', () => {
 
     expect(form.getByRole('option', { name: 'Inherit · work (org)' })).toBeInTheDocument()
     expect(form.getByRole('option', { name: 'Inherit · Quick look (org)' })).toBeInTheDocument()
-    expect(form.getByRole('combobox', { name: 'Model' })).toHaveAttribute('placeholder', 'Inherit · Opus (org)')
+    expect(form.getByRole('combobox', { name: 'Claude model' })).toHaveAttribute('placeholder', 'Inherit · Opus (org)')
     expect(form.getByText('Inherits off (org)')).toBeInTheDocument()
+  })
+
+  it('chooses the agent, and puts an agent’s profile back to inherit', async () => {
+    renderSection([launchDefaults({ agent: 'codex', issuePromptId: 4 })])
+
+    const rows = within(screen.getByRole('list', { name: 'Launch defaults' }))
+    expect(rows.getByText('starts Codex')).toBeInTheDocument()
+    expect(rows.getByText('Claude profile work')).toBeInTheDocument()
+    expect(rows.getByText('Work on it for issues')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add defaults' }))
+
+    const form = within(screen.getByRole('form', { name: 'New launch defaults' }))
+    await userEvent.type(form.getByRole('combobox', { name: 'Defaults for' }), 'acme-org/api')
+
+    expect(form.getByRole('option', { name: 'Inherit · Codex (org)' })).toBeInTheDocument()
+
+    await userEvent.selectOptions(form.getByRole('combobox', { name: 'Agent' }), 'claude')
+    await userEvent.selectOptions(form.getByRole('combobox', { name: 'Claude profile' }), 'default')
+    await userEvent.selectOptions(form.getByRole('combobox', { name: 'Codex profile' }), 'alt')
+    await userEvent.selectOptions(form.getByRole('combobox', { name: 'Claude profile' }), '')
+    await userEvent.selectOptions(form.getByRole('combobox', { name: 'Prompt for issues' }), '5')
+    await userEvent.selectOptions(form.getByRole('combobox', { name: 'Prompt for issues' }), '0')
+    await userEvent.click(form.getByRole('button', { name: 'Save defaults' }))
+
+    expect(platform.saveLaunchDefaults).toHaveBeenCalledWith(
+      expect.objectContaining({
+        owner: 'acme-org',
+        name: 'api',
+        agent: 'claude',
+        profiles: { codex: 'alt' },
+        issuePromptId: null,
+      }),
+    )
   })
 
   it('shows the check’s problems and refuses a target that already has defaults', async () => {
@@ -122,7 +166,7 @@ describe('LaunchDefaultsSection', () => {
     expect(form.getByText('It already has defaults; edit them in the list.')).toBeInTheDocument()
 
     await userEvent.type(form.getByRole('combobox', { name: 'Defaults for' }), '/api')
-    await userEvent.type(form.getByRole('textbox', { name: 'Extra flags' }), '--model opus')
+    await userEvent.type(form.getByRole('textbox', { name: 'Claude extra flags' }), '--model opus')
 
     expect(await form.findByText('--model is set by the Model setting.')).toBeInTheDocument()
     expect(form.getByRole('button', { name: 'Save defaults' })).toBeDisabled()
@@ -133,7 +177,7 @@ describe('LaunchDefaultsSection', () => {
 
   it('describes each select with its problem', async () => {
     platform.checkLaunchDefaults.mockResolvedValue([
-      { field: 'profile', message: 'No profile named gone.' },
+      { field: 'profiles.claude', message: 'No profile named gone.' },
       { field: 'prPromptId', message: 'That prompt is for issues.' },
       { field: 'issuePromptId', message: 'That prompt was deleted.' },
       { field: 'effort', message: 'Effort must be one of the levels.' },
@@ -146,7 +190,7 @@ describe('LaunchDefaultsSection', () => {
     await userEvent.type(form.getByRole('combobox', { name: 'Defaults for' }), 'acme-org')
 
     expect(await form.findByText('No profile named gone.')).toBeInTheDocument()
-    expect(form.getByRole('combobox', { name: 'Profile' })).toHaveAccessibleDescription('No profile named gone.')
+    expect(form.getByRole('combobox', { name: 'Claude profile' })).toHaveAccessibleDescription('No profile named gone.')
     expect(form.getByRole('combobox', { name: 'Prompt for pull requests' })).toHaveAccessibleDescription(
       'That prompt is for issues.',
     )
@@ -161,7 +205,7 @@ describe('LaunchDefaultsSection', () => {
   it('edits and removes stored defaults', async () => {
     const { onChanged } = renderSection([
       launchDefaults({ effort: 'max' }),
-      launchDefaults({ name: 'api', profile: '' }),
+      launchDefaults({ name: 'api', profiles: {} }),
     ])
 
     const rows = within(screen.getByRole('list', { name: 'Launch defaults' }))

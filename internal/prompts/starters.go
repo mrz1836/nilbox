@@ -1,5 +1,7 @@
 package prompts
 
+import "github.com/mrz1836/nilbox/internal/agent"
+
 // Starter keys, stored in prompts.starter_key.
 const (
 	StarterReviewPR    = "review-pr"
@@ -77,11 +79,11 @@ type Starter struct {
 	Nickname  string
 	AppliesTo AppliesTo
 	Body      string
-	Model     string
+	Models    map[agent.ID]string
 	Effort    string
 	PlanMode  *bool
 	Worktree  *bool
-	ExtraArgs []string
+	ExtraArgs map[agent.ID][]string
 }
 
 // Starters returns every starter prompt, in the order they are added.
@@ -97,7 +99,8 @@ func Starters() []Starter {
 		},
 		{
 			Key: StarterQuickLook, Name: "Take a quick look for blockers", Nickname: "Quick look",
-			AppliesTo: AppliesToPR, Body: quickLookBody, Model: "sonnet", Effort: "low", Worktree: new(false),
+			AppliesTo: AppliesToPR, Body: quickLookBody, Models: map[agent.ID]string{agent.Claude: "sonnet"},
+			Effort: "low", Worktree: new(false),
 		},
 		{
 			Key: StarterFixChecks, Name: "Fix a pull request's failing checks", Nickname: "Fix checks",

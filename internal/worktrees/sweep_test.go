@@ -119,7 +119,17 @@ func TestSweepCleansUpMergedAndClosedWork(t *testing.T) {
 	}
 
 	assert.NotContains(t, branches(t, f.repo), "worktree-pr-1")
-	assert.ElementsMatch(t, []string{"example-repo/pr-1", "example-repo/issue-5"}, f.launches.forgotten)
+	assert.ElementsMatch(t, []string{"example-repo/pr-1", "example-repo/pr-2", "example-repo/issue-5"}, f.launches.forgotten,
+		"pr-2, linked by its commit, was recorded when found and forgotten when cleaned up")
+
+	for _, r := range f.launches.all() {
+		assert.NotContains(t, []string{"pr-1", "pr-2", "issue-5"}, r.Worktree, "no record names a removed worktree")
+
+		if r.Worktree != "pr-6" {
+			assert.Zero(t, r.Launches, "a worktree recorded when found counts no launch, so the sweep stays careful with it")
+		}
+	}
+
 	assert.Equal(t, []event.Event{event.WorktreesUpdated{}}, events.All())
 	assert.Equal(t, report, svc.LastSweep())
 
@@ -253,7 +263,7 @@ func TestSweepForgetsLaunchesWhoseWorktreeIsGone(t *testing.T) {
 	elsewhere := filepath.Join(e.home, "elsewhere", "example-repo")
 	require.NoError(t, os.MkdirAll(elsewhere, 0o700))
 
-	launches := &fakeLaunches{records: []worklog.Launch{
+	launches := &fakeLaunches{records: []worklog.Record{
 		launchOf(repo, "pr-1", item.KindPR, 1),
 		launchOf(repo, "pr-2", item.KindPR, 2),
 		launchOf(filepath.Join(e.root, "deleted-clone"), "pr-3", item.KindPR, 3),
@@ -274,14 +284,14 @@ func TestSweepForgetsLaunchesWhenNoCloneIsLeft(t *testing.T) {
 	t.Parallel()
 
 	e := newEnv(t)
-	launches := &fakeLaunches{records: []worklog.Launch{launchOf(filepath.Join(e.root, "gone"), "pr-1", item.KindPR, 1)}}
+	launches := &fakeLaunches{records: []worklog.Record{launchOf(filepath.Join(e.root, "gone"), "pr-1", item.KindPR, 1)}}
 
 	report := e.linked(linkDeps{gh: &fakeGitHub{}, launches: launches, auto: true}).Sweep(t.Context())
 	assert.Empty(t, report.Error)
 	assert.Zero(t, report.Leftover)
 	assert.Equal(t, []string{"gone/pr-1"}, launches.forgotten)
 
-	launches = &fakeLaunches{records: []worklog.Launch{launchOf(filepath.Join(e.root, "gone"), "pr-1", item.KindPR, 1)}, forgetErr: errFakeLaunches}
+	launches = &fakeLaunches{records: []worklog.Record{launchOf(filepath.Join(e.root, "gone"), "pr-1", item.KindPR, 1)}, forgetErr: errFakeLaunches}
 	e.linked(linkDeps{gh: &fakeGitHub{}, launches: launches}).Sweep(t.Context())
 	assert.Empty(t, launches.forgotten, "a failure to forget is only logged")
 }
@@ -344,7 +354,7 @@ func TestSweepClones(t *testing.T) {
 
 	require.NoError(t, os.WriteFile(filepath.Join(e.root, "file.txt"), []byte("x"), 0o600))
 
-	launches := []worklog.Launch{
+	launches := []worklog.Record{
 		launchOf(recorded, "pr-9", item.KindPR, 9),
 		launchOf(agent, "pr-1", item.KindPR, 1),
 		launchOf(filepath.Join(e.home, "outside"), "pr-2", item.KindPR, 2),

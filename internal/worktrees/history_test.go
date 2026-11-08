@@ -49,7 +49,7 @@ func TestCleanUpsAreRecorded(t *testing.T) {
 	pushed(t, repo, "two", autoHead)
 	gh.set("example-repo", 2, closedIssue())
 
-	launches := &fakeLaunches{records: []worklog.Launch{launchOf(repo, "issue-2", item.KindIssue, 2)}}
+	launches := &fakeLaunches{records: []worklog.Record{launchOf(repo, "issue-2", item.KindIssue, 2)}}
 	svc := e.linked(linkDeps{gh: gh, launches: launches, history: history, auto: true})
 
 	none, err := svc.RecentCleanups(t.Context())

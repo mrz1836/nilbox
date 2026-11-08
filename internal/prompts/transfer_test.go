@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/testutil"
@@ -93,9 +94,9 @@ func starterAsBundled(t *testing.T, key string, edit func(*BundlePrompt)) Bundle
 	require.True(t, ok, key)
 
 	p := BundlePrompt{
-		Name: st.Name, Nickname: st.Nickname, AppliesTo: st.AppliesTo, Body: st.Body, Model: st.Model,
-		Effort: st.Effort, PlanMode: st.PlanMode, Worktree: st.Worktree, ExtraArgs: textutilNonNil(st.ExtraArgs),
-		StarterKey: key,
+		Name: st.Name, Nickname: st.Nickname, AppliesTo: st.AppliesTo, Body: st.Body,
+		Models: agent.CloneModels(st.Models), Effort: st.Effort, PlanMode: st.PlanMode, Worktree: st.Worktree,
+		ExtraArgs: agent.CloneArgs(st.ExtraArgs), StarterKey: key,
 	}
 
 	if edit != nil {
@@ -108,25 +109,16 @@ func starterAsBundled(t *testing.T, key string, edit func(*BundlePrompt)) Bundle
 // toInput returns a stored prompt as the editor would save it unchanged.
 func toInput(p Prompt) Input {
 	return Input{
-		Name: p.Name, Nickname: p.Nickname, AppliesTo: p.AppliesTo, Body: p.Body, Model: p.Model, Effort: p.Effort,
+		Name: p.Name, Nickname: p.Nickname, AppliesTo: p.AppliesTo, Body: p.Body, Models: p.Models, Effort: p.Effort,
 		PlanMode: p.PlanMode, Worktree: p.Worktree, ExtraFlags: p.ExtraFlags,
 	}
-}
-
-// textutilNonNil returns list, or an empty list for nil.
-func textutilNonNil(list []string) []string {
-	if list == nil {
-		return []string{}
-	}
-
-	return list
 }
 
 // mine is a prompt the user wrote.
 func mine(nickname string) BundlePrompt {
 	return BundlePrompt{
 		Name: nickname + " prompt", Nickname: nickname, AppliesTo: AppliesToAny, Body: "Look at {{.URL}} for " + nickname,
-		ExtraArgs: []string{},
+		Models: map[agent.ID]string{}, ExtraArgs: map[agent.ID][]string{},
 	}
 }
 
@@ -136,7 +128,8 @@ func TestBundleRoundTrips(t *testing.T) {
 	on := true
 	b := bundleOf(BundlePrompt{
 		Name: "Security <pass> & more", Nickname: "Security", AppliesTo: AppliesToAny, Body: "Check {{.URL}} for <script>",
-		Model: "opus", Effort: "high", PlanMode: &on, ExtraArgs: []string{"--verbose"}, StarterKey: "",
+		Models: map[agent.ID]string{agent.Claude: "opus", agent.Codex: "gpt-6-sol"}, Effort: "high", PlanMode: &on,
+		ExtraArgs: map[agent.ID][]string{agent.Claude: {"--verbose"}, agent.Codex: {"--search"}}, StarterKey: "",
 		CreatedAt: "2026-11-07T09:00:00Z", UpdatedAt: "2026-11-07T09:30:00Z",
 	})
 	b.ExportedAt, b.App = "2026-11-08T17:00:00Z", "v1.2.3"
@@ -168,7 +161,8 @@ func TestDecodeBundleRefusesWhatItCannotRead(t *testing.T) {
 		"a list":            {data: `[{"name":"x"}]`, want: ErrNotBundle},
 		"another format":    {data: `{"format":"other.prompts","version":1,"prompts":[]}`, want: ErrNotBundle},
 		"no version":        {data: `{"format":"` + BundleFormat + `","prompts":[]}`, want: ErrNotBundle},
-		"a newer version":   {data: `{"format":"` + BundleFormat + `","version":2,"prompts":[]}`, want: ErrNewerBundle},
+		"a newer version":   {data: `{"format":"` + BundleFormat + `","version":3,"prompts":[]}`, want: ErrNewerBundle},
+		"bad extra args":    {data: `{"format":"` + BundleFormat + `","version":2,"prompts":[{"extraArgs":"--x"}]}`, want: ErrNotBundle},
 		"too many prompts":  {data: `{"format":"` + BundleFormat + `","version":1,"prompts":[` + strings.Join(many, ",") + `]}`, want: ErrBundleTooLarge},
 		"too large to read": {data: strings.Repeat(" ", maxBundleBytes+1), want: ErrBundleTooLarge},
 	} {
@@ -187,7 +181,8 @@ func TestDecodeBundleReadsAFileItDoesNotKnowEveryFieldOf(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got.Prompts, 1)
 	assert.Equal(t, "Hand written", got.Prompts[0].Name)
-	assert.Equal(t, []string{}, got.Prompts[0].ExtraArgs, "a list left out reads as empty")
+	assert.Equal(t, map[agent.ID][]string{}, got.Prompts[0].ExtraArgs, "a list left out reads as empty")
+	assert.Equal(t, map[agent.ID]string{}, got.Prompts[0].Models)
 	assert.Equal(t, []string{}, got.StartersAdded)
 }
 
@@ -410,13 +405,15 @@ func TestImportKeepsWhatTheUserWroteAndLeavesOutWhatTheEditorWouldRefuse(t *test
 	s, _, _ := keeping(t)
 
 	entries := preview(t, s, bundleOf(BundlePrompt{
-		Name:       "  A title\nthat runs on and on, far past the eighty characters a prompt's title may hold in all  ",
-		Nickname:   "",
-		AppliesTo:  "everything",
-		Body:       "Broken {{.Nope}}\r\nsecond line",
-		Model:      "--not-a-model",
-		Effort:     "huge",
-		ExtraArgs:  []string{"--dangerously-skip-permissions"},
+		Name:      "  A title\nthat runs on and on, far past the eighty characters a prompt's title may hold in all  ",
+		Nickname:  "",
+		AppliesTo: "everything",
+		Body:      "Broken {{.Nope}}\r\nsecond line",
+		Models:    map[agent.ID]string{agent.Claude: "--not-a-model", "example-agent": "x"},
+		Effort:    "huge",
+		ExtraArgs: map[agent.ID][]string{
+			agent.Claude: {"--dangerously-skip-permissions"}, agent.Codex: {"--search"}, "example-agent": {"--x"},
+		},
 		StarterKey: "Not A Key",
 	}))
 	require.Len(t, entries, 1)
@@ -426,13 +423,17 @@ func TestImportKeepsWhatTheUserWroteAndLeavesOutWhatTheEditorWouldRefuse(t *test
 	assert.Equal(t, "A title that runs on", p.Nickname, "a missing nickname comes from the title")
 	assert.Equal(t, AppliesToAny, p.AppliesTo)
 	assert.Equal(t, "Broken {{.Nope}}\nsecond line", p.Body, "a text with problems is kept to be fixed")
-	assert.Empty(t, p.Model)
+	assert.Empty(t, p.Models)
 	assert.Empty(t, p.Effort)
-	assert.Empty(t, p.ExtraArgs, "a file can never pass a flag the editor would refuse")
+	assert.Equal(t, map[agent.ID][]string{agent.Codex: {"--search"}}, p.ExtraArgs,
+		"a file can never pass a flag the editor would refuse, and only an agent this version knows gets flags")
 	assert.Empty(t, p.StarterKey)
 
 	notes := strings.Join(entries[0].Notes, "\n")
-	for _, want := range []string{"applies to both", "model", "effort", "extra flags were left out", "problems to fix"} {
+	for _, want := range []string{
+		"applies to both", "Claude model", `model for "example-agent"`, "effort", "Claude flags were left out",
+		`extra flags for "example-agent"`, "problems to fix",
+	} {
 		assert.Contains(t, notes, want)
 	}
 
@@ -446,7 +447,7 @@ func TestImportNamesAPromptThatHasNone(t *testing.T) {
 
 	s, _, _ := keeping(t)
 
-	entries := preview(t, s, bundleOf(BundlePrompt{Body: "Look at {{.URL}}", AppliesTo: AppliesToPR}))
+	entries := preview(t, s, bundleOf(BundlePrompt{Body: lookAtURL, AppliesTo: AppliesToPR}))
 	require.Len(t, entries, 1)
 	assert.Equal(t, untitledName, entries[0].Prompt.Name)
 	assert.Equal(t, untitledNickname, entries[0].Nickname)
@@ -464,7 +465,7 @@ func TestBackupsListsEveryCopyNewestFirst(t *testing.T) {
 	writeLibraryDB(t, old, mine("Security"), mine("Review"))
 	testutil.WriteFile(t, db+".backup-20261106T201810Z-v10", "not a database at all, only text long enough")
 
-	_, err := s.Create(t.Context(), Input{Name: mineName, Nickname: mineName, AppliesTo: AppliesToAny, Body: "Look at {{.URL}}"})
+	_, err := s.Create(t.Context(), Input{Name: mineName, Nickname: mineName, AppliesTo: AppliesToAny, Body: lookAtURL})
 	require.NoError(t, err)
 
 	backups, err := s.Backups(t.Context())
@@ -565,7 +566,7 @@ func TestEveryChangeRewritesTheLibraryFile(t *testing.T) {
 		return out
 	}
 
-	created, err := s.Create(ctx, Input{Name: mineName, Nickname: mineName, AppliesTo: AppliesToAny, Body: "Look at {{.URL}}"})
+	created, err := s.Create(ctx, Input{Name: mineName, Nickname: mineName, AppliesTo: AppliesToAny, Body: lookAtURL})
 	require.NoError(t, err)
 	assert.Contains(t, savedNicknames(), mineName, "create")
 
@@ -620,7 +621,7 @@ func TestALibraryFileThatCannotBeWrittenIsLoggedNotFailed(t *testing.T) {
 
 	s := NewService(Config{Store: st, File: NewLibraryFile(blocked, "", nil), Logger: logs.Logger()})
 
-	_, err := s.Create(t.Context(), Input{Name: mineName, Nickname: mineName, AppliesTo: AppliesToAny, Body: "Look at {{.URL}}"})
+	_, err := s.Create(t.Context(), Input{Name: mineName, Nickname: mineName, AppliesTo: AppliesToAny, Body: lookAtURL})
 	require.NoError(t, err, "the prompt is stored even when its copy cannot be written")
 	assert.Contains(t, logs.String(), "could not save the copy of the prompt library")
 }
@@ -637,7 +638,7 @@ func TestRestoreBringsBackTheLibraryFromTheDatabaseSetAside(t *testing.T) {
 
 	oldService := NewService(Config{Store: oldStore})
 	security, err := oldService.Create(t.Context(), Input{
-		Name: "Security", Nickname: "Security", AppliesTo: AppliesToAny, Body: "Look at {{.URL}}",
+		Name: "Security", Nickname: "Security", AppliesTo: AppliesToAny, Body: lookAtURL,
 	})
 	require.NoError(t, err)
 	require.NoError(t, oldService.SetDefault(t.Context(), item.KindIssue, security.ID))
@@ -700,7 +701,7 @@ func TestRestoreLeavesALibraryThatExists(t *testing.T) {
 
 	// A library with a prompt but no record of starters exists too.
 	other, _ := empty(t, nil)
-	_, err = other.Create(t.Context(), Input{Name: mineName, Nickname: mineName, AppliesTo: AppliesToAny, Body: "Look at {{.URL}}"})
+	_, err = other.Create(t.Context(), Input{Name: mineName, Nickname: mineName, AppliesTo: AppliesToAny, Body: lookAtURL})
 	require.NoError(t, err)
 
 	restored, err = Restore(t.Context(), other.store, "", NewLibraryFile(filepath.Join(dir, "prompts.json"), "", nil))
@@ -753,6 +754,87 @@ func TestRestoreReportsALibraryFileItCannotRead(t *testing.T) {
 	assert.Equal(t, Restored{}, restored)
 }
 
+func TestDecodeBundleReadsVersionOne(t *testing.T) {
+	t.Parallel()
+
+	got, err := DecodeBundle([]byte(`{
+		"format": "` + BundleFormat + `", "version": 1,
+		"prompts": [
+			{"name": "Old", "nickname": "Old", "appliesTo": "pr", "body": "x", "model": "opus", "extraArgs": ["--verbose"]},
+			{"name": "Bare", "nickname": "Bare", "appliesTo": "pr", "body": "x", "model": "", "extraArgs": []},
+			{"name": "Null", "nickname": "Null", "appliesTo": "pr", "body": "x", "extraArgs": null}
+		]
+	}`))
+	require.NoError(t, err)
+	require.Len(t, got.Prompts, 3)
+	assert.Equal(t, map[agent.ID]string{agent.Claude: "opus"}, got.Prompts[0].Models, "a version 1 model was Claude's")
+	assert.Equal(t, map[agent.ID][]string{agent.Claude: {"--verbose"}}, got.Prompts[0].ExtraArgs)
+	assert.Equal(t, map[agent.ID]string{}, got.Prompts[1].Models)
+	assert.Equal(t, map[agent.ID][]string{}, got.Prompts[1].ExtraArgs)
+	assert.Equal(t, map[agent.ID][]string{}, got.Prompts[2].ExtraArgs)
+
+	data, err := encodeBundle(got)
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), `"model"`, "the file is written as version 2")
+	assert.Contains(t, string(data), `"models": {`)
+}
+
+func TestReadSnapshotBundleReadsEitherSchema(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "pre-agents.db")
+
+	raw, err := sql.Open("sqlite", path)
+	require.NoError(t, err)
+
+	for _, stmt := range []string{
+		// The prompts table before the agents migration: one model and list, Claude's.
+		`CREATE TABLE prompts (id INTEGER PRIMARY KEY, name TEXT, nickname TEXT, applies_to TEXT, body TEXT,
+			model TEXT, effort TEXT, extra_args TEXT, created_at DATETIME, updated_at DATETIME)`,
+		`INSERT INTO prompts VALUES (1, 'Old', 'Old', 'pr', 'x', 'opus', 'high', '["--verbose"]',
+			'2026-01-01 10:00:00+00:00', '2026-01-02 10:00:00+00:00')`,
+	} {
+		_, err = raw.ExecContext(t.Context(), stmt)
+		require.NoError(t, err, stmt)
+	}
+
+	require.NoError(t, raw.Close())
+
+	got, err := readSnapshotBundle(t.Context(), path)
+	require.NoError(t, err)
+	require.Len(t, got.Prompts, 1)
+	assert.Equal(t, map[agent.ID]string{agent.Claude: "opus"}, got.Prompts[0].Models)
+	assert.Equal(t, map[agent.ID][]string{agent.Claude: {"--verbose"}}, got.Prompts[0].ExtraArgs)
+
+	// A backup this build took holds the per-agent columns.
+	s, db, _ := keeping(t)
+	_, err = s.Create(t.Context(), Input{
+		Name: "New", Nickname: "New", AppliesTo: AppliesToPR, Body: lookAtURL,
+		Models:     map[agent.ID]string{agent.Codex: "gpt-6-sol"},
+		ExtraFlags: map[agent.ID]string{agent.Codex: "--search", agent.Claude: "--verbose"},
+	})
+	require.NoError(t, err)
+
+	backup := filepath.Join(t.TempDir(), "backup.db")
+	_, err = db.ExecContext(t.Context(), "VACUUM INTO ?", backup)
+	require.NoError(t, err)
+
+	got, err = readSnapshotBundle(t.Context(), backup)
+	require.NoError(t, err)
+
+	var found *BundlePrompt
+
+	for i := range got.Prompts {
+		if got.Prompts[i].Nickname == "New" {
+			found = &got.Prompts[i]
+		}
+	}
+
+	require.NotNil(t, found)
+	assert.Equal(t, map[agent.ID]string{agent.Codex: "gpt-6-sol"}, found.Models)
+	assert.Equal(t, map[agent.ID][]string{agent.Claude: {"--verbose"}, agent.Codex: {"--search"}}, found.ExtraArgs)
+}
+
 func TestReadSnapshotBundleReadsAnOlderSchema(t *testing.T) {
 	t.Parallel()
 
@@ -777,7 +859,8 @@ func TestReadSnapshotBundleReadsAnOlderSchema(t *testing.T) {
 	got, err := readSnapshotBundle(t.Context(), path)
 	require.NoError(t, err)
 	assert.Equal(t, []BundlePrompt{{
-		Name: "Early", Nickname: "Early", AppliesTo: AppliesToPR, Body: "Look at {{.URL}}", ExtraArgs: []string{},
+		Name: "Early", Nickname: "Early", AppliesTo: AppliesToPR, Body: lookAtURL,
+		Models: map[agent.ID]string{}, ExtraArgs: map[agent.ID][]string{},
 		CreatedAt: "2026-01-01T10:00:00Z", UpdatedAt: "2026-01-02T10:00:00Z",
 	}}, got.Prompts)
 	assert.Equal(t, []string{}, got.StartersAdded)
@@ -792,7 +875,8 @@ func TestImportEntriesHoldNoNullLists(t *testing.T) {
 	data, err := json.Marshal(preview(t, s, bundleOf(BundlePrompt{Name: "x", Nickname: "x", AppliesTo: AppliesToAny, Body: "{{.URL}}"})))
 	require.NoError(t, err)
 	assert.Contains(t, string(data), `"notes":[]`)
-	assert.Contains(t, string(data), `"extraArgs":[]`)
+	assert.Contains(t, string(data), `"extraArgs":{}`)
+	assert.Contains(t, string(data), `"models":{}`)
 }
 
 func TestEveryChangeTellsChanged(t *testing.T) {
@@ -806,7 +890,7 @@ func TestEveryChangeTellsChanged(t *testing.T) {
 	s := NewService(Config{Store: st, Changed: func(context.Context) { told++ }})
 	ctx := t.Context()
 
-	created, err := s.Create(ctx, Input{Name: mineName, Nickname: mineName, AppliesTo: AppliesToAny, Body: "Look at {{.URL}}"})
+	created, err := s.Create(ctx, Input{Name: mineName, Nickname: mineName, AppliesTo: AppliesToAny, Body: lookAtURL})
 	require.NoError(t, err)
 
 	in := toInput(created)

@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 )
 
@@ -113,12 +114,13 @@ func TestLaunchHoldsBackAPullRequestThatChangesAgentFiles(t *testing.T) {
 	assert.Equal(t, ".claude/settings.json", res.Hold.Files[0].Path)
 	assert.True(t, res.Hold.AtHead, "the worktree starts at the pull request's head")
 	assert.Equal(t, "pr-8", res.Hold.Worktree)
-	assert.Equal(t, "~/projects/example-repo", res.Hold.Dir)
+	assert.Equal(t, "~/projects/."+brand.Slug+"/worktrees/example-repo/pr-8", res.Hold.Dir)
 	assert.Empty(t, res.ScriptPath)
 
 	assert.Empty(t, h.iterm.opened, "nothing is started")
 	assert.Empty(t, h.launchFiles(t), "nothing is written")
 	assert.False(t, h.trusted(t), "the clone is not marked trusted")
+	assert.Empty(t, h.maker.ensures(), "no worktree is made, so the pull request's files are not checked out")
 
 	// Confirming that hold launches, with the files named in the prompt.
 	res, err = h.service().Launch(t.Context(), LaunchRequest{ItemID: h.outsidePR, Confirmed: res.Hold.Key})

@@ -2,7 +2,16 @@ import { useEffect, useEffectEvent, useId, useState } from 'react'
 
 import type { Result } from '../lib/call'
 import type { Theme } from '../lib/theme'
-import type { Account, DefaultPrompts, LaunchDefaults, Profile, ProjectAccess, Prompt, Settings } from '../platform'
+import type {
+  Account,
+  AgentInfo,
+  DefaultPrompts,
+  LaunchDefaults,
+  Profile,
+  ProjectAccess,
+  Prompt,
+  Settings,
+} from '../platform'
 import { ChevronLeftIcon } from './icons'
 import { AboutSection } from './settings/AboutSection'
 import { AccountSection } from './settings/AccountSection'
@@ -60,7 +69,7 @@ const sections: Readonly<Record<SectionId, { label: string; description: string 
   },
   launching: {
     label: 'Launching',
-    description: 'How Open in Claude starts a coding session: the app defaults every launch starts from.',
+    description: 'How a launch starts a coding agent: the app defaults every launch starts from.',
   },
   profiles: {
     label: 'Profiles',
@@ -90,6 +99,8 @@ export interface SettingsViewProps {
   opened?: number
   // settings is null until it has loaded; the launch and clone sections wait for it.
   settings: Settings | null
+  // agents are the coding agents, each with whether it is installed.
+  agents: readonly AgentInfo[]
   profiles: readonly Profile[]
   prompts: readonly Prompt[]
   // defaultPrompts is null until it has loaded.
@@ -137,6 +148,7 @@ export function SettingsView({
   initialSection = 'account',
   opened = 0,
   settings,
+  agents,
   profiles,
   prompts,
   defaultPrompts,
@@ -232,6 +244,7 @@ export function SettingsView({
               ) : (
                 <LaunchingSection
                   settings={settings}
+                  agents={agents}
                   profiles={profiles}
                   prompts={prompts}
                   defaultPrompts={defaultPrompts}
@@ -239,7 +252,7 @@ export function SettingsView({
                   onLaunchChanged={onLaunchChanged}
                 />
               ))}
-            {section === 'profiles' && <ProfilesSection profiles={profiles} />}
+            {section === 'profiles' && <ProfilesSection agents={agents} profiles={profiles} />}
             {section === 'repositories' &&
               (settings === null ? (
                 loading
@@ -247,6 +260,7 @@ export function SettingsView({
                 <RepositoriesSection
                   settings={settings}
                   onSaved={onSaved}
+                  agents={agents}
                   profiles={profiles}
                   prompts={prompts}
                   defaultPrompts={defaultPrompts}

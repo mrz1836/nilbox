@@ -1,7 +1,7 @@
 import { useId, useState, type Ref } from 'react'
 
 import { appliesToLabels, pinSummary, usagePlaces, usageSummary } from '../lib/launch'
-import type { Diagnostic, Prompt, PromptAppliesTo, PromptInput, PromptVariable } from '../platform'
+import type { AgentInfo, Diagnostic, Prompt, PromptAppliesTo, PromptInput, PromptVariable } from '../platform'
 import { chipClass, describedBy, Field, fieldClass, Segmented, type SegmentOption } from './controls'
 import { AlertIcon, ChevronRightIcon, CircleCheckIcon, StarIcon } from './icons'
 import { LaunchOverrideFields } from './LaunchOverrideFields'
@@ -18,6 +18,8 @@ const appliesToOptions: readonly SegmentOption<PromptAppliesTo>[] = [
 ]
 
 export interface PromptEditorProps {
+  // agents are the coding agents, whose models and flags a prompt can set.
+  agents: readonly AgentInfo[]
   draft: PromptInput
   onChange: (draft: PromptInput) => void
   // saved is the stored prompt being edited, or null for a new one.
@@ -57,6 +59,7 @@ function whereText(d: Diagnostic): string {
 // menu, what it is for, its text in the template editor with the problems found in it,
 // and the launch settings it sets.
 export function PromptEditor({
+  agents,
   draft,
   onChange,
   saved,
@@ -73,8 +76,18 @@ export function PromptEditor({
     onChange({ ...draft, ...patch })
   }
 
-  const pins = pinSummary({ ...draft, extraArgs: draft.extraFlags.trim() === '' ? [] : draft.extraFlags.split(/\s+/) })
-  const settingsError = ['model', 'effort', 'extraFlags'].some((f) => (fieldErrors[f] ?? '') !== '')
+  const pins = pinSummary(
+    {
+      ...draft,
+      extraArgs: Object.fromEntries(
+        Object.entries(draft.extraFlags).map(([k, v]) => [k, v.trim() === '' ? [] : v.trim().split(/\s+/)]),
+      ),
+    },
+    agents,
+  )
+  const settingsError = Object.keys(fieldErrors).some(
+    (f) => ['models', 'effort', 'extraFlags'].includes(f.split('.')[0] ?? '') && (fieldErrors[f] ?? '') !== '',
+  )
   const errors = diagnostics.filter((d) => d.severity === 'error')
   const warnings = diagnostics.filter((d) => d.severity !== 'error')
 
@@ -234,6 +247,7 @@ export function PromptEditor({
             </p>
             <LaunchOverrideFields
               id={id}
+              agents={agents}
               values={draft}
               onChange={set}
               errors={fieldErrors}

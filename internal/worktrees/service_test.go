@@ -286,7 +286,7 @@ func TestListScansAllReposUnderRoot(t *testing.T) {
 	assert.Equal(t, "feature", row.Branch)
 	assert.False(t, row.Dirty)
 	assert.Positive(t, row.LastCommitUnix)
-	assert.False(t, row.ClaudeCreated)
+	assert.False(t, row.Managed)
 	assert.True(t, row.CanRemove)
 	assert.False(t, row.CanForceRemove)
 
@@ -302,7 +302,7 @@ func TestListScansAllReposUnderRoot(t *testing.T) {
 	assert.True(t, row.CanRemove)
 
 	row = mustRow(t, snap, claude)
-	assert.True(t, row.ClaudeCreated)
+	assert.True(t, row.Managed)
 	assert.True(t, row.Locked)
 	assert.Equal(t, "claude session pr-7 (pid 1 start Wed Nov 5 09:00:00 2026)", row.LockReason)
 	assert.False(t, row.StaleLock, "PID 1 is always running")

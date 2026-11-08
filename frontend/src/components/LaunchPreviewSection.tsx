@@ -2,7 +2,8 @@ import { useId, useState } from 'react'
 
 import { launchRequest, type Choices } from '../lib/launchChoices'
 import { useDebouncedQuery } from '../lib/useQuery'
-import { previewLaunch, type InboxItem, type LaunchPreview } from '../platform'
+import { counted } from '../lib/format'
+import { previewLaunch, type InboxItem, type LaunchPreview, type WorktreePlan } from '../platform'
 import { ChevronRightIcon } from './icons'
 
 export interface LaunchPreviewSectionProps {
@@ -18,9 +19,27 @@ export interface LaunchPreviewSectionProps {
 type PreviewState =
   { kind: 'loading' } | { kind: 'ready'; preview: LaunchPreview } | { kind: 'failed'; message: string }
 
+// worktreeLine says what the launch does to the item's worktree: "Creates … from the pull
+// request's head", or "Resumes … · 2 uncommitted files".
+export function worktreeLine(wt: WorktreePlan): string {
+  const from = wt.base === '' ? '' : ` from ${wt.base}`
+  const dirty = wt.dirty > 0 ? ` · ${counted(wt.dirty, 'uncommitted file', 'uncommitted files')}` : ''
+
+  switch (wt.action) {
+    case 'create':
+      return `Creates ${wt.path}${from}`
+    case 'attach':
+      return `Makes ${wt.path} again on ${wt.branch}, keeping its commits`
+    case 'adopt':
+      return `Takes over ${wt.path}${dirty}`
+    default:
+      return `Resumes ${wt.path}${dirty}`
+  }
+}
+
 // LaunchPreviewSection is the launch menu's Preview: on request, it shows exactly what the
-// launch would run, which is the filled-in prompt, where it starts, and the command. It
-// reloads as the choices change.
+// launch would run, which is the filled-in prompt, the worktree it makes or resumes, where
+// it starts, and the command. It reloads as the choices change.
 export function LaunchPreviewSection({ item, choices, untrusted }: LaunchPreviewSectionProps) {
   const id = useId()
   const [open, setOpen] = useState(false)
@@ -68,16 +87,15 @@ export function LaunchPreviewSection({ item, choices, untrusted }: LaunchPreview
               <pre className="max-h-44 overflow-y-auto rounded-md border border-border bg-background p-2.5 font-mono text-[11px] leading-[1.35rem] break-words whitespace-pre-wrap">
                 {state.preview.prompt}
               </pre>
+              {state.preview.worktree !== null && (
+                <p className="text-xs text-text">{worktreeLine(state.preview.worktree)}</p>
+              )}
               <p className="text-xs text-muted">
-                In <span className="font-mono text-text">{state.preview.dir}</span>
-                {state.preview.worktree !== '' && (
-                  <>
-                    {' '}
-                    · worktree <span className="font-mono text-text">{state.preview.worktree}</span>
-                  </>
-                )}{' '}
-                · {state.preview.permission}
+                In <span className="font-mono text-text">{state.preview.dir}</span> · {state.preview.permission}
               </p>
+              {state.preview.env.length > 0 && (
+                <p className="font-mono text-[11px] break-all text-muted">{state.preview.env.join(' · ')}</p>
+              )}
               <code className="block rounded-md bg-raised px-2 py-1.5 font-mono text-[11px] leading-snug break-all text-text">
                 {state.preview.command}
               </code>

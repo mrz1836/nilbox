@@ -1,6 +1,7 @@
 import { useId, useState } from 'react'
 
 import { attempt } from '../lib/call'
+import { agentName as agentLabel } from '../lib/launch'
 import {
   defaultsInput,
   emptyDefaults,
@@ -24,6 +25,7 @@ import {
   launch,
   resolveLaunch,
   saveLaunchDefaults,
+  type AgentInfo,
   type CloneTarget,
   type InboxItem,
   type ItemResolution,
@@ -46,6 +48,8 @@ export interface LaunchControlsProps {
   item: InboxItem
   // resolution is the item's default launch settings, or null while they load.
   resolution: ItemResolution | null
+  // agents are the coding agents a launch can start, each with whether it is installed.
+  agents: readonly AgentInfo[]
   profiles: readonly Profile[]
   prompts: readonly Prompt[]
   // launchDefaults are every saved org and repo default, for saving this launch's choices.
@@ -54,6 +58,9 @@ export interface LaunchControlsProps {
   onDefaultsSaved: () => Promise<void>
   // onManagePrompts opens the Prompts page.
   onManagePrompts: () => void
+  // initial are the choices every launch from here starts with, such as the worktree on
+  // for a launch from the Worktrees view; none by default.
+  initial?: Partial<Choices>
 }
 
 // LaunchState is where the row's launch stands. A launch that finds no local clone ends
@@ -68,22 +75,34 @@ type LaunchState =
   | { kind: 'failed'; message: string }
   | { kind: 'noClone'; target: CloneTarget; request: LaunchRequest }
 
-// launchedText summarizes a started launch for the row.
-function launchedText(result: LaunchResult): string {
-  const where = result.worktree === '' ? result.clonePath : `${result.clonePath} (worktree ${result.worktree})`
-
-  return `Opened “${result.prompt}” in ${result.terminal}: ${where} · ${result.profile} · ${result.permission}`
+// worktreeActions word what a launch did to its item's worktree.
+const worktreeActions: Readonly<Record<string, string>> = {
+  create: 'made',
+  resume: 'resumed',
+  adopt: 'taken over',
+  attach: 'made again',
 }
 
-// LaunchControls is one row's "Open in Claude" split button. The button launches with
-// the item's resolved settings: the prompt and profile its org's and repository's
-// defaults choose, named on the arrow beside it ("Review · default"). The arrow opens the
-// launch menu, where this launch can use another prompt, profile, model, effort,
-// worktree, or plan mode, preview exactly what it runs, or save those choices as the
-// repository's or the org's defaults. Choices apply to the next launch only, and the
-// arrow shows a dot while any differs from the defaults. A launch that finds no local
-// clone offers to clone the repository into the clone root and, once confirmed, continues
-// with the same choices.
+// launchedText summarizes a started launch for the row.
+function launchedText(result: LaunchResult, agent: string): string {
+  const where =
+    result.worktree === ''
+      ? result.clonePath
+      : `${result.dir} (worktree ${worktreeActions[result.worktreeAction] ?? result.worktreeAction})`
+  const notice = result.notice === '' ? '' : ` · ${result.notice}`
+
+  return `Opened “${result.prompt}” in ${agent} in ${result.terminal}: ${where} · ${result.profile} · ${result.permission}${notice}`
+}
+
+// LaunchControls is one row's "Open in Claude" or "Open in Codex" split button. The
+// button launches with the item's resolved settings: the agent, prompt, and profile its
+// org's and repository's defaults choose, the prompt and profile named on the arrow beside
+// it ("Review · default"). The arrow opens the launch menu, where this launch can use
+// another agent, prompt, profile, model, effort, worktree, or plan mode, preview exactly
+// what it runs, or save those choices as the repository's or the org's defaults. Choices
+// apply to the next launch only, and the arrow shows a dot while any differs from the
+// defaults. A launch that finds no local clone offers to clone the repository into the
+// clone root and, once confirmed, continues with the same choices.
 //
 // It renders two grid children: the button, and below the row's content, the launch's
 // outcome, which runs to the card's right edge. The inbox row is the grid that places
@@ -91,37 +110,45 @@ function launchedText(result: LaunchResult): string {
 export function LaunchControls({
   item,
   resolution,
+  agents,
   profiles,
   prompts,
   launchDefaults,
   onDefaultsSaved,
   onManagePrompts,
+  initial,
 }: LaunchControlsProps) {
+  // start is the choices a launch starts from, and goes back to after it.
+  const start: Choices = { ...noChoices, ...initial }
   const id = useId()
   // The menu opens upward when there is not enough room below the button, and focus goes
   // to the chosen prompt.
   const popover = usePopover<HTMLButtonElement, HTMLDivElement>({
     placement: 'flip',
-    focus: (panel) => panel.querySelector<HTMLInputElement>('input:checked') ?? panel.querySelector('input'),
+    focus: (panel) =>
+      panel.querySelector<HTMLInputElement>('[data-initial-focus] input:checked') ??
+      panel.querySelector<HTMLInputElement>('input:checked') ??
+      panel.querySelector('input'),
   })
   const { open, toggle, close, triggerRef } = popover
-  const [choices, setChoices] = useState<Choices>(noChoices)
+  const [choices, setChoices] = useState<Choices>(start)
   const [state, setState] = useState<LaunchState>({ kind: 'idle' })
   const [confirmingClone, setConfirmingClone] = useState(false)
   const [status, setStatus] = useState<SaveStatus | null>(null)
 
   const untrusted = !item.trusted
   const problem = resolution?.problem ?? ''
-  const chosen = choices.promptId !== 0 || choices.profile !== ''
-  const key = `${String(choices.promptId)}:${choices.profile}`
-  // Re-resolve under the chosen prompt and profile, so every other setting's default
-  // (a prompt's model, a profile's effort) is shown as it would really apply. The answer
-  // carries the resolution it was made over and the choices it was made for, so one made
-  // for anything else never shows.
+  const chosen = choices.agent !== '' || choices.promptId !== 0 || choices.profile !== ''
+  const key = `${choices.agent}:${String(choices.promptId)}:${choices.profile}`
+  // Re-resolve under the chosen agent, prompt, and profile, so every other setting's
+  // default (a prompt's model, a profile's effort) is shown as it would really apply. The
+  // answer carries the resolution it was made over and the choices it was made for, so one
+  // made for anything else never shows.
   const reresolved = useQuery(
     () =>
       resolveLaunch({
         ...launchRequest(item.id, noChoices, false),
+        agent: choices.agent,
         promptId: choices.promptId,
         profile: choices.profile,
       }).then((value) => ({ base: resolution, key, value })),
@@ -137,8 +164,16 @@ export function LaunchControls({
   // worked out.
   const resolveError = failed ? reresolved.error : ''
   const base: Resolution | null = resolution === null || problem !== '' ? null : (resolved ?? resolution)
-  const changed = hasChoices(choices)
-  const agentName = resolution === null || resolution.agent.name === '' ? 'Claude' : resolution.agent.name
+  // changed reports a choice that differs from where launches from here start.
+  const changed = hasChoices(choices) && JSON.stringify(choices) !== JSON.stringify(start)
+  // agentName names the agent the button starts: the one chosen for this launch, else the
+  // one the item's settings resolve to.
+  const agentName =
+    choices.agent !== ''
+      ? (agents.find((a) => a.id === choices.agent)?.name ?? choices.agent)
+      : (base?.agent.name ?? resolution?.agent.name ?? '')
+  // openLabel is the button's label, plain "Open" until the agent is known.
+  const openLabel = agentName === '' ? 'Open' : `Open in ${agentName}`
   // saver stores this launch's choices as launch defaults, then reloads every row's.
   const saver = useMutation(async (input: LaunchDefaultsInput) => {
     await saveLaunchDefaults(input)
@@ -174,11 +209,11 @@ export function LaunchControls({
     }
 
     setState({ kind: 'launched', result })
-    setChoices(noChoices)
+    setChoices(start)
     setStatus(null)
   }
 
-  const start = () => {
+  const launchNow = () => {
     close()
     void run(launchRequest(item.id, choices, untrusted))
   }
@@ -213,6 +248,7 @@ export function LaunchControls({
       stored === undefined ? emptyDefaults(base.owner, name) : defaultsInput(stored),
       choices,
       item.kind,
+      base.agent.id,
     )
     const target = scope === 'org' ? `every ${base.owner} repository` : base.repo
     const report = saveStatus(target, base.prompt.nickname, base.repo, shadowedChoices(choices, base, scope))
@@ -220,7 +256,7 @@ export function LaunchControls({
     const result = await saver.run(input)
 
     if (result.ok) {
-      setChoices({ ...noChoices, override: choices.override })
+      setChoices({ ...start, override: choices.override })
       setStatus(report)
     } else {
       setStatus({ tone: 'error', text: result.error })
@@ -241,12 +277,18 @@ export function LaunchControls({
           <button
             type="button"
             disabled={busy || base === null}
-            onClick={start}
-            title={problem !== '' ? problem : `Open in ${agentName} with “${promptName}” as ${profileName}`}
+            onClick={launchNow}
+            title={
+              problem !== ''
+                ? problem
+                : base === null
+                  ? openLabel
+                  : `${openLabel} with “${promptName}” as ${profileName}`
+            }
             className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent"
           >
             <TerminalIcon className="size-3.5 text-accent" />
-            {state.kind === 'launching' ? 'Opening…' : state.kind === 'cloning' ? 'Cloning…' : `Open in ${agentName}`}
+            {state.kind === 'launching' ? 'Opening…' : state.kind === 'cloning' ? 'Cloning…' : openLabel}
           </button>
           <button
             ref={triggerRef}
@@ -302,10 +344,11 @@ export function LaunchControls({
                 setChoices(next)
                 setStatus(null)
               }}
+              agents={agents}
               profiles={profiles}
               prompts={prompts}
               agentName={agentName}
-              onLaunch={start}
+              onLaunch={launchNow}
               onSave={(scope) => {
                 void save(scope)
               }}
@@ -321,8 +364,12 @@ export function LaunchControls({
         </PopoverPanel>
       </div>
       {state.kind === 'launched' && (
-        <p role="status" title={launchedText(state.result)} className="col-[2/-1] mt-1.5 truncate text-xs text-success">
-          {launchedText(state.result)}
+        <p
+          role="status"
+          title={launchedText(state.result, agentLabel(agents, state.result.agent))}
+          className="col-[2/-1] mt-1.5 truncate text-xs text-success"
+        >
+          {launchedText(state.result, agentLabel(agents, state.result.agent))}
         </p>
       )}
       {state.kind === 'failed' && (

@@ -46,13 +46,13 @@ func TestParsePorcelain(t *testing.T) {
 		{
 			name: "main only",
 			data: porcelain(mainAttrs()),
-			want: []Entry{{Path: mainPath, HEAD: sha, Branch: "main", Main: true}},
+			want: []Entry{{Path: mainPath, HEAD: sha, Branch: mainBranch, Main: true}},
 		},
 		{
 			name: "main and linked",
 			data: porcelain(mainAttrs(), []string{"worktree /srv/wt/feature", "HEAD " + sha, "branch refs/heads/feature/x"}),
 			want: []Entry{
-				{Path: mainPath, HEAD: sha, Branch: "main", Main: true},
+				{Path: mainPath, HEAD: sha, Branch: mainBranch, Main: true},
 				{Path: "/srv/wt/feature", HEAD: sha, Branch: "feature/x"},
 			},
 		},
@@ -60,7 +60,7 @@ func TestParsePorcelain(t *testing.T) {
 			name: "detached",
 			data: porcelain(mainAttrs(), []string{"worktree /srv/wt/detached", "HEAD " + sha, "detached"}),
 			want: []Entry{
-				{Path: mainPath, HEAD: sha, Branch: "main", Main: true},
+				{Path: mainPath, HEAD: sha, Branch: mainBranch, Main: true},
 				{Path: "/srv/wt/detached", HEAD: sha, Detached: true},
 			},
 		},
@@ -68,7 +68,7 @@ func TestParsePorcelain(t *testing.T) {
 			name: "locked with a reason",
 			data: porcelain(mainAttrs(), []string{"worktree /srv/wt/pr-7", "HEAD " + sha, "branch refs/heads/worktree-pr-7", "locked " + claudeArg}),
 			want: []Entry{
-				{Path: mainPath, HEAD: sha, Branch: "main", Main: true},
+				{Path: mainPath, HEAD: sha, Branch: mainBranch, Main: true},
 				{Path: "/srv/wt/pr-7", HEAD: sha, Branch: "worktree-pr-7", Locked: true, LockReason: claudeArg},
 			},
 		},
@@ -76,7 +76,7 @@ func TestParsePorcelain(t *testing.T) {
 			name: "locked without a reason",
 			data: porcelain(mainAttrs(), []string{"worktree /srv/wt/held", "HEAD " + sha, "branch refs/heads/held", "locked"}),
 			want: []Entry{
-				{Path: mainPath, HEAD: sha, Branch: "main", Main: true},
+				{Path: mainPath, HEAD: sha, Branch: mainBranch, Main: true},
 				{Path: "/srv/wt/held", HEAD: sha, Branch: "held", Locked: true},
 			},
 		},
@@ -87,7 +87,7 @@ func TestParsePorcelain(t *testing.T) {
 				"prunable gitdir file points to non-existent location",
 			}),
 			want: []Entry{
-				{Path: mainPath, HEAD: sha, Branch: "main", Main: true},
+				{Path: mainPath, HEAD: sha, Branch: mainBranch, Main: true},
 				{
 					Path: "/srv/wt/gone", HEAD: sha, Branch: "gone",
 					Prunable: true, PrunableReason: "gitdir file points to non-existent location",
@@ -98,7 +98,7 @@ func TestParsePorcelain(t *testing.T) {
 			name: "prunable without a reason",
 			data: porcelain(mainAttrs(), []string{"worktree /srv/wt/gone", "HEAD " + sha, "detached", "prunable"}),
 			want: []Entry{
-				{Path: mainPath, HEAD: sha, Branch: "main", Main: true},
+				{Path: mainPath, HEAD: sha, Branch: mainBranch, Main: true},
 				{Path: "/srv/wt/gone", HEAD: sha, Detached: true, Prunable: true},
 			},
 		},
@@ -118,7 +118,7 @@ func TestParsePorcelain(t *testing.T) {
 				[]string{"worktree /srv/wt/b", "HEAD " + sha, "branch refs/heads/b"},
 			),
 			want: []Entry{
-				{Path: mainPath, HEAD: sha, Branch: "main", Main: true},
+				{Path: mainPath, HEAD: sha, Branch: mainBranch, Main: true},
 				{Path: "/srv/wt/with space", HEAD: sha, Branch: "refs/remotes/origin/x"},
 				{Path: "/srv/wt/b", HEAD: sha, Branch: "b"},
 			},

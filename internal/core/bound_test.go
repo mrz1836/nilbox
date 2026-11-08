@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
@@ -74,7 +75,13 @@ func boundCalls(t *testing.T) map[string]boundCall {
 			return c.Settings.SetTerminal(ctx, settings.TerminalApp)
 		},
 		"settings.Service.SetDefaultProfile": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
-			return c.Settings.SetDefaultProfile(ctx, settings.DefaultProfile)
+			return c.Settings.SetDefaultProfile(ctx, agent.Claude, settings.DefaultProfile)
+		},
+		"settings.Service.SetDefaultAgent": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetDefaultAgent(ctx, agent.Codex)
+		},
+		"profiles.Service.Agents": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Profiles.Agents(ctx)
 		},
 		"settings.Service.SetWorktreeDefault": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetWorktreeDefault(ctx, false)
@@ -269,7 +276,7 @@ func firstInput(ctx context.Context, t *testing.T, c *Core) prompts.Input {
 	p := firstPrompt(ctx, t, c)
 
 	return prompts.Input{
-		Name: p.Name, Nickname: p.Nickname, AppliesTo: p.AppliesTo, Body: p.Body, Model: p.Model, Effort: p.Effort,
+		Name: p.Name, Nickname: p.Nickname, AppliesTo: p.AppliesTo, Body: p.Body, Models: p.Models, Effort: p.Effort,
 		PlanMode: p.PlanMode, Worktree: p.Worktree, ExtraFlags: p.ExtraFlags,
 	}
 }
@@ -339,8 +346,8 @@ func seedBound(t *testing.T) (*Core, seededItems) {
 
 	// Launch defaults edited by hand into a flag the agent refuses, so the issue in that
 	// repository cannot resolve.
-	_, err = c.DB.ExecContext(ctx, `INSERT INTO launch_defaults (owner, name, extra_args, created_at, updated_at)
-		VALUES ('acme-org', 'stuck-repo', '["--model"]', ?, ?)`, now, now)
+	_, err = c.DB.ExecContext(ctx, `INSERT INTO launch_defaults (owner, name, agent_args, created_at, updated_at)
+		VALUES ('acme-org', 'stuck-repo', '{"claude": ["--model"]}', ?, ?)`, now, now)
 	require.NoError(t, err)
 
 	_, err = notify.NewStore(c.DB).Record(ctx, now, []inbox.Arrival{{

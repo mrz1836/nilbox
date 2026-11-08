@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
@@ -18,6 +19,11 @@ const acmeOrg = "acme-org"
 
 // errRollback makes a test transaction roll back.
 var errRollback = errors.New("roll back")
+
+// claudeOpus is checked settings that pin Claude's model to opus.
+func claudeOpus() agent.Checked {
+	return agent.Checked{Models: map[agent.ID]string{agent.Claude: "opus"}, Args: map[agent.ID][]string{}}
+}
 
 // stamps returns the stored created_at and updated_at of an org's (name "") or a
 // repository's launch defaults as the database holds them.
@@ -52,7 +58,7 @@ func TestSaveStampsTheRowFromTheClock(t *testing.T) {
 	s := NewStore(db, clk)
 	ctx := t.Context()
 
-	saved, err := s.save(ctx, Input{Owner: "Acme-Org", Name: "Example-Repo", Model: "opus"}, nil)
+	saved, err := s.save(ctx, Input{Owner: "Acme-Org", Name: "Example-Repo"}, claudeOpus())
 	require.NoError(t, err)
 	assert.Equal(t, "2026-01-10T12:00:00Z", saved.UpdatedAt)
 
@@ -62,7 +68,7 @@ func TestSaveStampsTheRowFromTheClock(t *testing.T) {
 
 	clk.Advance(time.Hour)
 
-	saved, err = s.save(ctx, Input{Owner: "acme-org", Name: "example-repo", Effort: "low"}, nil)
+	saved, err = s.save(ctx, Input{Owner: "acme-org", Name: "example-repo", Effort: "low"}, agent.Checked{})
 	require.NoError(t, err)
 	assert.Equal(t, "2026-01-10T13:00:00Z", saved.UpdatedAt)
 	assert.Equal(t, "Acme-Org", saved.Owner, "the row keeps the casing it was first saved with")
@@ -105,10 +111,10 @@ func TestSaveRoundTripsInheritedToggles(t *testing.T) {
 			ctx := t.Context()
 
 			// Stored defaults that set both first show a later save replacing them.
-			_, err := s.save(ctx, Input{Owner: acmeOrg, Model: "opus", PlanMode: new(true), Worktree: new(true)}, nil)
+			_, err := s.save(ctx, Input{Owner: acmeOrg, PlanMode: new(true), Worktree: new(true)}, claudeOpus())
 			require.NoError(t, err)
 
-			saved, err := s.save(ctx, Input{Owner: acmeOrg, Model: "opus", PlanMode: tt.planMode, Worktree: tt.worktree}, nil)
+			saved, err := s.save(ctx, Input{Owner: acmeOrg, PlanMode: tt.planMode, Worktree: tt.worktree}, claudeOpus())
 			require.NoError(t, err)
 			assert.Equal(t, tt.planMode, saved.PlanMode)
 			assert.Equal(t, tt.worktree, saved.Worktree)
@@ -132,7 +138,7 @@ func TestStoreRemovesIgnoringCase(t *testing.T) {
 	s := NewStore(testutil.DB(t), nil)
 	ctx := t.Context()
 
-	_, err := s.save(ctx, Input{Owner: "Acme-Org", Name: "Example-Repo", Model: "opus"}, nil)
+	_, err := s.save(ctx, Input{Owner: "Acme-Org", Name: "Example-Repo"}, claudeOpus())
 	require.NoError(t, err)
 
 	err = s.remove(ctx, acmeOrg, "")
@@ -158,9 +164,9 @@ func TestStoreJoinsATransaction(t *testing.T) {
 	err := store.InTx(ctx, db, func(tx *sql.Tx) error {
 		joined := s.WithTx(tx)
 
-		saved, saveErr := joined.save(ctx, Input{Owner: acmeOrg, Model: "opus"}, []string{"--verbose"})
+		saved, saveErr := joined.save(ctx, Input{Owner: acmeOrg}, agent.Checked{Args: map[agent.ID][]string{agent.Claude: {"--verbose"}}})
 		require.NoError(t, saveErr)
-		assert.Equal(t, []string{"--verbose"}, saved.ExtraArgs)
+		assert.Equal(t, map[agent.ID][]string{agent.Claude: {"--verbose"}}, saved.ExtraArgs)
 
 		all, allErr := joined.All(ctx)
 		require.NoError(t, allErr)
@@ -175,7 +181,7 @@ func TestStoreJoinsATransaction(t *testing.T) {
 	assert.Empty(t, all, "the save rolled back with the transaction")
 
 	require.NoError(t, store.InTx(ctx, db, func(tx *sql.Tx) error {
-		_, saveErr := s.WithTx(tx).save(ctx, Input{Owner: acmeOrg, Model: "opus"}, nil)
+		_, saveErr := s.WithTx(tx).save(ctx, Input{Owner: acmeOrg}, claudeOpus())
 
 		return saveErr
 	}))
@@ -191,13 +197,33 @@ func TestStoreReportsUnreadableExtraArguments(t *testing.T) {
 	db := testutil.DB(t)
 	s := NewStore(db, nil)
 
-	// A JSON array the schema accepts, but not a list of strings.
-	_, err := db.ExecContext(t.Context(), `INSERT INTO launch_defaults (owner, extra_args, created_at, updated_at)
-		VALUES ('acme-org', '[1]', '2026-01-01 00:00:00', '2026-01-01 00:00:00')`)
+	// A JSON object the schema accepts, but not lists of strings.
+	_, err := db.ExecContext(t.Context(), `INSERT INTO launch_defaults (owner, agent_args, created_at, updated_at)
+		VALUES ('acme-org', '{"claude": [1]}', '2026-01-01 00:00:00', '2026-01-01 00:00:00')`)
 	require.NoError(t, err)
 
 	_, err = s.All(t.Context())
 	require.ErrorContains(t, err, "read the launch defaults: acme-org: extra arguments")
+
+	for _, tc := range []struct{ spoil, mend, want string }{
+		{
+			spoil: `UPDATE launch_defaults SET agent_args = '{}', profiles = '{"claude": 1}'`,
+			mend:  `UPDATE launch_defaults SET profiles = '{}'`, want: "profiles",
+		},
+		{
+			spoil: `UPDATE launch_defaults SET agent_args = '{}', models = '{"claude": 1}'`,
+			mend:  `UPDATE launch_defaults SET models = '{}'`, want: "models",
+		},
+	} {
+		_, err = db.ExecContext(t.Context(), tc.spoil)
+		require.NoError(t, err)
+
+		_, err = s.All(t.Context())
+		require.ErrorContains(t, err, "read the launch defaults: acme-org: "+tc.want)
+
+		_, err = db.ExecContext(t.Context(), tc.mend)
+		require.NoError(t, err)
+	}
 }
 
 func TestSaveReportsARefusedWrite(t *testing.T) {
@@ -211,7 +237,7 @@ func TestSaveReportsARefusedWrite(t *testing.T) {
 BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`)
 	require.NoError(t, err)
 
-	_, err = s.save(ctx, Input{Owner: acmeOrg, Name: "example-repo", Model: "opus"}, nil)
+	_, err = s.save(ctx, Input{Owner: acmeOrg, Name: "example-repo"}, claudeOpus())
 	require.ErrorContains(t, err, "save the launch defaults for acme-org/example-repo")
 	require.ErrorContains(t, err, "refused by the test")
 }

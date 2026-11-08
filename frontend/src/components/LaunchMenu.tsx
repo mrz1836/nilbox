@@ -1,8 +1,8 @@
 import { useId } from 'react'
 
-import { effortChoices, effortLabel, modelChoices, modelLabel, promptApplies, sourceLabel } from '../lib/launch'
-import type { Choices, SaveStatus } from '../lib/launchChoices'
-import type { InboxItem, LaunchSetting, Profile, Prompt, Resolution } from '../platform'
+import { agentOf, effortLabel, modelLabel, planToggleLabel, promptApplies, sourceLabel } from '../lib/launch'
+import { withAgent, type Choices, type SaveStatus } from '../lib/launchChoices'
+import type { AgentInfo, InboxItem, LaunchSetting, Profile, Prompt, Resolution } from '../platform'
 import { primaryButtonClass, quietButtonClass } from './controls'
 import { AlertIcon, TerminalIcon } from './icons'
 import { LaunchPreviewSection } from './LaunchPreviewSection'
@@ -14,9 +14,11 @@ export interface LaunchMenuProps {
   resolved: Resolution
   choices: Choices
   onChoices: (c: Choices) => void
+  // agents are the coding agents a launch can start, each with whether it is installed.
+  agents: readonly AgentInfo[]
   profiles: readonly Profile[]
   prompts: readonly Prompt[]
-  // agentName names the coding tool, as in "Claude".
+  // agentName names the coding agent the launch starts, as in "Claude".
   agentName: string
   onLaunch: () => void
   // onSave saves the choices as defaults for the repository, or for its whole owner.
@@ -42,15 +44,17 @@ function defaultLabel(s: LaunchSetting, label: (v: string) => string): string {
   return `Default · ${label(s.inherited)} (${sourceLabel(s.inheritedSource)})`
 }
 
-// LaunchMenu is the launch button's panel: the prompt, the profile, the model, effort,
-// worktree, and plan mode for this launch, a preview of what it runs, and buttons to
-// save the choices as defaults or to launch. Every choice starts at what the item's
-// settings resolve to, each showing where that comes from.
+// LaunchMenu is the launch button's panel: the coding agent, the prompt, the agent's
+// profile, its model and effort, the worktree, and plan mode for this launch, a preview of
+// what it runs, and buttons to save the choices as defaults or to launch. Every choice
+// starts at what the item's settings resolve to, each showing where that comes from; the
+// profiles, models, and effort levels offered are the chosen agent's.
 export function LaunchMenu({
   item,
   resolved,
   choices,
   onChoices,
+  agents,
   profiles,
   prompts,
   agentName,
@@ -63,6 +67,11 @@ export function LaunchMenu({
 }: LaunchMenuProps) {
   const id = useId()
   const untrusted = !item.trusted
+  // agent is the agent this launch starts, as resolved under the choices, with the models
+  // its cache lists when the app read one.
+  const agent = agentOf(agents, resolved.agent.id) ?? { ...resolved.agent, installed: true, path: '' }
+  const agentProfiles = profiles.filter((p) => p.agent === agent.id)
+  const agentId = choices.agent === '' ? resolved.agentInherited : choices.agent
   const applicable = prompts.filter((p) => promptApplies(p, item.kind))
   const promptId = choices.promptId === 0 ? resolved.prompt.id : choices.promptId
   const profile = choices.profile === '' ? resolved.profile.value : choices.profile
@@ -77,7 +86,43 @@ export function LaunchMenu({
 
   return (
     <div className="flex flex-col text-sm">
-      <div className="px-1.5 pt-2">
+      {agents.length > 1 && (
+        <div className="px-1.5 pt-2">
+          <p id={`${id}-agent-title`} className={sectionTitle}>
+            Agent
+          </p>
+          <div role="radiogroup" aria-labelledby={`${id}-agent-title`} className="flex gap-1.5 px-2 pb-1">
+            {agents.map((a) => (
+              <label
+                key={a.id}
+                title={
+                  !a.installed
+                    ? `${a.name} isn’t installed (${a.command} wasn’t found)`
+                    : a.id === resolved.agentInherited
+                      ? sourceLabel(resolved.agentInheritedSource)
+                      : a.path
+                }
+                className="flex-1 cursor-pointer rounded-md border border-border px-2.5 py-1 text-center text-[13px] text-muted transition-colors select-none hover:text-text has-checked:border-accent has-checked:bg-accent/10 has-checked:text-text has-focus-visible:outline-2 has-focus-visible:outline-accent has-disabled:cursor-not-allowed has-disabled:opacity-50"
+              >
+                <input
+                  type="radio"
+                  name={`${id}-agent`}
+                  value={a.id}
+                  checked={agentId === a.id}
+                  disabled={!a.installed}
+                  onChange={() => {
+                    onChoices(withAgent(choices, a.id === resolved.agentInherited ? '' : a.id))
+                  }}
+                  className="sr-only"
+                />
+                {a.name}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className={`px-1.5 pt-2 ${agents.length > 1 ? 'mt-1 border-t border-border' : ''}`}>
         <div className="flex items-baseline justify-between">
           <p id={`${id}-prompt-title`} className={sectionTitle}>
             Prompt
@@ -86,7 +131,13 @@ export function LaunchMenu({
             Manage
           </button>
         </div>
-        <div role="radiogroup" aria-labelledby={`${id}-prompt-title`} className="max-h-48 overflow-y-auto">
+        {/* The menu opens with focus on the chosen prompt, the choice most often changed. */}
+        <div
+          role="radiogroup"
+          aria-labelledby={`${id}-prompt-title`}
+          data-initial-focus
+          className="max-h-48 overflow-y-auto"
+        >
           {applicable.map((p) => (
             <label
               key={p.id}
@@ -117,10 +168,19 @@ export function LaunchMenu({
           Profile
         </p>
         <div role="radiogroup" aria-labelledby={`${id}-profile-title`} className="flex flex-wrap gap-1.5 px-2 pb-1">
-          {profiles.map((p) => (
+          {agentProfiles.length === 0 && (
+            <p className="text-xs text-muted">{`No ${agent.name} profiles: run ${agent.command} once to make ~/${agent.configDir}.`}</p>
+          )}
+          {agentProfiles.map((p) => (
             <label
               key={p.name}
-              title={p.name === resolved.profile.inherited ? sourceLabel(resolved.profile.inheritedSource) : p.folder}
+              title={
+                !p.signedIn
+                  ? `Not signed in: run ${p.configDir === '' ? '' : `${agent.configEnv}=${p.folder} `}${agent.command} login`
+                  : p.name === resolved.profile.inherited
+                    ? sourceLabel(resolved.profile.inheritedSource)
+                    : p.folder
+              }
               className="cursor-pointer rounded-full border border-border px-2.5 py-0.5 text-[13px] text-muted transition-colors select-none hover:text-text has-checked:border-accent has-checked:bg-accent/10 has-checked:text-text has-focus-visible:outline-2 has-focus-visible:outline-accent"
             >
               <input
@@ -134,6 +194,7 @@ export function LaunchMenu({
                 className="sr-only"
               />
               {p.name}
+              {!p.signedIn && <span className="ml-1 text-[11px] text-warning">· not signed in</span>}
             </label>
           ))}
         </div>
@@ -154,8 +215,11 @@ export function LaunchMenu({
             }}
             className="w-full truncate rounded-md border border-border bg-surface px-2 py-1 text-[13px]"
           >
-            <option value="">{defaultLabel(resolved.model, modelLabel)}</option>
-            {modelChoices.map((c) => (
+            <option value="">{defaultLabel(resolved.model, (v) => modelLabel(v, agent.models))}</option>
+            {choices.model !== null && !agent.models.some((c) => c.value === choices.model) && (
+              <option value={choices.model}>{choices.model}</option>
+            )}
+            {agent.models.map((c) => (
               <option key={c.value} value={c.value}>
                 {c.label}
               </option>
@@ -174,8 +238,8 @@ export function LaunchMenu({
             }}
             className="w-full truncate rounded-md border border-border bg-surface px-2 py-1 text-[13px]"
           >
-            <option value="">{defaultLabel(resolved.effort, effortLabel)}</option>
-            {effortChoices.map((c) => (
+            <option value="">{defaultLabel(resolved.effort, (v) => effortLabel(v, agent.effortLevels))}</option>
+            {agent.effortLevels.map((c) => (
               <option key={c.value} value={c.value}>
                 {c.label}
               </option>
@@ -206,7 +270,7 @@ export function LaunchMenu({
             }}
             className="accent-accent"
           />
-          <span className={forcedPlan ? 'text-muted' : ''}>Start in plan mode</span>
+          <span className={forcedPlan ? 'text-muted' : ''}>{planToggleLabel(agent)}</span>
           <span className="ml-auto text-[11px] text-muted">
             {forcedPlan
               ? 'outside contributor'

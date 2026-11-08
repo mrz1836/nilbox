@@ -31,8 +31,8 @@ function AgentFilesBody({ hold, agentName }: { hold: LaunchHold; agentName: stri
   return (
     <div className="flex flex-col gap-3">
       <p>
-        {where(hold, agentName)} Hooks in them run commands on your Mac, even in plan mode, and instructions in them
-        steer the session.
+        {where(hold, agentName)} Hooks in them run commands on your Mac, even in plan or read-only mode, and
+        instructions in them steer the session.
       </p>
       <ul
         aria-label="Agent configuration it changes"
@@ -72,7 +72,7 @@ function UncheckedBody({ hold, agentName }: { hold: LaunchHold; agentName: strin
     <div className="flex flex-col gap-3">
       <p>
         {why} So {brand.name} can’t tell whether it changes agent configuration, such as hooks that run commands on your
-        Mac as soon as {agentName} starts, even in plan mode.
+        Mac as soon as {agentName} starts, even in plan or read-only mode.
       </p>
       <p>Look over its files on GitHub first, and open the session only if they’re safe.</p>
     </div>

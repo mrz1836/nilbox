@@ -1,4 +1,7 @@
+import type { ReactNode } from 'react'
+
 import { useWorktrees, type WorktreesOptions } from '../lib/useWorktrees'
+import type { AgentID, LinkedItem } from '../platform'
 import { ErrorBanner } from './ErrorBanner'
 import { BulkResults } from './worktrees/BulkResults'
 import { CleanupHistory } from './worktrees/CleanupHistory'
@@ -6,15 +9,22 @@ import { ConfirmationDialog } from './worktrees/ConfirmationDialog'
 import { RepoSection } from './worktrees/RepoSection'
 import { plainButton } from './worktrees/shared'
 
-// WorktreesViewProps are useWorktrees' options, which the view passes straight through.
-export type WorktreesViewProps = WorktreesOptions
+// WorktreesViewProps are useWorktrees' options, which the view passes straight through,
+// with how to name an agent and how to launch on a worktree's item.
+export type WorktreesViewProps = WorktreesOptions & {
+  // agentName names a coding agent for people, as in "Codex".
+  agentName?: ((id: AgentID) => string) | undefined
+  // launchFor is the "Open in Claude" or "Open in Codex" control for a worktree's item,
+  // when the inbox lists it, or null.
+  launchFor?: ((item: LinkedItem) => ReactNode) | undefined
+}
 
 // WorktreesView lists the git worktrees of every clone under the clone root and removes
 // them safely. It loads when it opens, when its Refresh button is clicked, and when
 // reloadKey changes, never on a timer of its own: a listing runs git in every clone.
 // Removal follows what the backend allows, and the destructive actions (force remove and
 // the bulk actions) ask first.
-export function WorktreesView(props: WorktreesViewProps) {
+export function WorktreesView({ agentName, launchFor, ...props }: WorktreesViewProps) {
   const {
     snapshot,
     repos,
@@ -62,6 +72,12 @@ export function WorktreesView(props: WorktreesViewProps) {
         </span>
       </div>
       {error !== '' && <ErrorBanner>{error}</ErrorBanner>}
+      {snapshot?.sessionsUnknown === true && (
+        <p className="text-sm text-muted">
+          This system can&apos;t list the running processes, so no worktree shows a session, and the automatic cleanup
+          removes none.
+        </p>
+      )}
       {snapshot !== null && snapshot.linkError !== '' && (
         <p className="text-sm text-warning">
           {snapshot.linkError} Worktrees are shown without their pull requests and issues, so none counts as finished.
@@ -90,6 +106,8 @@ export function WorktreesView(props: WorktreesViewProps) {
           onForceRemove={actions.askForceRemove}
           onUnlock={actions.unlock}
           onCleanUp={actions.cleanUp}
+          agentName={agentName}
+          launchFor={launchFor}
         />
       ))}
       {history !== null && history.length > 0 && (

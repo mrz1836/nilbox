@@ -17,7 +17,7 @@ import (
 
 // refuseNewProfiles makes every insert into the profile table fail, the way a full disk
 // would.
-const refuseNewProfiles = `CREATE TRIGGER refuse_new_profiles BEFORE INSERT ON claude_profiles
+const refuseNewProfiles = `CREATE TRIGGER refuse_new_profiles BEFORE INSERT ON agent_profiles
 BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`
 
 // execOn runs a statement on db, failing the test when it fails.
@@ -64,7 +64,7 @@ func TestBootstrapStopsWhenAStartupStepFails(t *testing.T) {
 			damage: func(t *testing.T, db *sql.DB, _ string) {
 				t.Helper()
 
-				execOn(t, db, "DROP TABLE claude_profiles")
+				execOn(t, db, "DROP TABLE agent_profiles")
 			},
 			want: "prune profiles",
 		},

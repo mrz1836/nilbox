@@ -65,6 +65,12 @@ function narrow<S>(service: S): Narrowed<S> {
 // string literals. Callers use these and never declare their own copies.
 
 export type Agent = NonNullLists<agent.Agent>
+export type AgentID = agent.ID
+export type AgentInfo = NonNullLists<profiles.AgentInfo>
+export type Choice = NonNullLists<agent.Choice>
+// PerAgent is a setting each agent has its own value of, as launch defaults and prompts
+// store their profiles, models, and extra flags: an agent with no entry inherits.
+export type PerAgent<T> = Partial<Record<Exclude<AgentID, ''>, T>>
 
 export type BudgetGauge = NonNullLists<budget.Gauge>
 export type BudgetReading = NonNullLists<budget.Reading>
@@ -106,6 +112,8 @@ export type LaunchPreview = NonNullLists<launcher.Preview>
 export type Resolution = NonNullLists<launcher.Resolution>
 export type LaunchSetting = NonNullLists<launcher.Setting>
 export type LaunchSource = launcher.Source
+export type WorktreeAction = launcher.WorktreeAction
+export type WorktreePlan = NonNullLists<launcher.WorktreePlan>
 export type TerminalID = terminal.ID
 
 export type AppNotification = NonNullLists<notify.Notification>
@@ -158,6 +166,7 @@ export type WorktreesSnapshot = NonNullLists<worktrees.Snapshot>
 export type SweepReport = NonNullLists<worktrees.SweepReport>
 export type Worktree = NonNullLists<worktrees.Worktree>
 export type WorktreeStage = worktrees.Stage
+export type WorktreeSession = NonNullLists<worktrees.Session>
 
 // The bound calls, under the names the app knows them by. What each one does is the Go
 // method's doc comment, which the generated service carries.
@@ -179,7 +188,7 @@ export const {
   RemoveReviewRequest: removeReviewRequest,
 } = narrow(inbox.Service)
 
-export const { List: listProfiles } = narrow(profiles.Service)
+export const { List: listProfiles, Agents: listAgents } = narrow(profiles.Service)
 
 export const {
   Launch: launch,
@@ -220,6 +229,7 @@ export const {
   Get: getSettings,
   SetTerminal: setTerminal,
   SetCloneRoot: setCloneRoot,
+  SetDefaultAgent: setDefaultAgent,
   SetDefaultProfile: setDefaultProfile,
   SetWorktreeDefault: setWorktreeDefault,
   SetWorktreeAutoCleanup: setWorktreeAutoCleanup,

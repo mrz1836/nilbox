@@ -2,6 +2,8 @@ import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { brand } from '../generated/brand'
+import type { LinkedItem } from '../platform'
 import { fixedNow } from '../test/clock'
 import {
   finishedWorktree,
@@ -76,7 +78,8 @@ describe('WorktreesView', () => {
                 detached: true,
                 dirty: true,
                 dirtyCount: 1,
-                claudeCreated: false,
+                managed: false,
+                legacy: false,
                 canRemove: false,
                 canForceRemove: true,
               }),
@@ -109,12 +112,12 @@ describe('WorktreesView', () => {
     expect(main.getByText('main')).toBeInTheDocument()
     expect(main.getByText('clean')).toBeInTheDocument()
     expect(main.getByText('3d ago')).toHaveAttribute('dateTime', '2026-06-12T12:00:00.000Z')
-    expect(main.queryByText('created by Claude')).not.toBeInTheDocument()
+    expect(main.queryByText(/made by/)).not.toBeInTheDocument()
 
     const linked = row(linkedDisplay)
     expect(linked.getByText('worktree-pr-7')).toBeInTheDocument()
     expect(linked.getByText('clean')).toBeInTheDocument()
-    expect(linked.getByText('created by Claude')).toBeInTheDocument()
+    expect(linked.getByText('made by Claude (legacy)')).toBeInTheDocument()
     expect(linked.getByText('3h ago')).toBeInTheDocument()
     expect(linked.getByRole('button', { name: 'Remove' })).toBeInTheDocument()
     expect(linked.queryByRole('button', { name: 'Force remove' })).not.toBeInTheDocument()
@@ -218,14 +221,15 @@ describe('WorktreesView', () => {
     const running = row('~/projects/example-repo/.claude/worktrees/pr-8')
     expect(running.getByText('in use')).toBeInTheDocument()
     expect(running.getByText(/An agent session is running in this worktree \(claude session pr-8/)).toBeInTheDocument()
-    expect(running.queryByRole('button')).not.toBeInTheDocument()
+    // A worktree a session runs in can only have its path copied.
+    expect(running.getAllByRole('button').map((b) => b.textContent)).toEqual(['Copy path'])
 
     const byHand = row('~/projects/example-repo/.claude/worktrees/issue-9')
     expect(byHand.getByText(/^Locked\. It was locked by hand/)).toBeInTheDocument()
     expect(
       byHand.getByText('git worktree unlock ~/projects/example-repo/.claude/worktrees/issue-9'),
     ).toBeInTheDocument()
-    expect(byHand.queryByRole('button')).not.toBeInTheDocument()
+    expect(byHand.getAllByRole('button').map((b) => b.textContent)).toEqual(['Copy path'])
   })
 
   it('unlocks a worktree whose session has ended, then lists again', async () => {
@@ -822,6 +826,81 @@ describe('WorktreesView', () => {
     expect(await screen.findByText('No clone under ~/projects has linked worktrees.')).toBeInTheDocument()
     expect(screen.getByText('Worktrees of the clones under ~/projects')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Refresh' })).toBeEnabled()
+  })
+})
+
+describe('WorktreesView sessions and origin', () => {
+  const managedPath = `/home/user/projects/.${brand.slug}/worktrees/example-repo/pr-7`
+  const managedDisplay = `~/projects/.${brand.slug}/worktrees/example-repo/pr-7`
+
+  it('shows who made a worktree, the session working in it, and the last launch', async () => {
+    platform.listWorktrees.mockResolvedValue(
+      worktreesSnapshot({
+        repos: [
+          worktreeRepo({
+            worktrees: [
+              mainWorktree(),
+              worktree({
+                path: managedPath,
+                displayPath: managedDisplay,
+                legacy: false,
+                agent: 'codex',
+                lastLaunchedAt: '2026-06-15T09:00:00Z',
+                launches: 2,
+                inUse: [{ pid: 4242, command: 'codex' }],
+                stage: 'in-use',
+                canRemove: false,
+              }),
+            ],
+          }),
+        ],
+      }),
+    )
+    render(<WorktreesView clock={fixedNow} agentName={(id) => (id === 'codex' ? 'Codex' : 'Claude')} />)
+    await repo('example-repo')
+
+    const managed = row(managedDisplay)
+    expect(managed.getByText(`made by ${brand.name}`)).toBeInTheDocument()
+    expect(managed.getByText('in use · codex (pid 4242)')).toBeInTheDocument()
+    // The process names the session, so the stage's own "in use" is not shown twice.
+    expect(managed.queryByText('in use')).not.toBeInTheDocument()
+    expect(managed.getByText(/Codex/)).toHaveTextContent('Codex 3h ago')
+    expect(managed.getByText('3h ago', { selector: 'time' })).toHaveAttribute('dateTime', '2026-06-15T09:00:00Z')
+  })
+
+  it('copies a worktree’s path', async () => {
+    render(<WorktreesView clock={fixedNow} />)
+    await repo('example-repo')
+
+    const linked = row(linkedDisplay)
+    await userEvent.click(linked.getByRole('button', { name: 'Copy path' }))
+
+    expect(platform.copyText).toHaveBeenCalledWith(linkedPath)
+    expect(await linked.findByRole('button', { name: 'Copied' })).toBeInTheDocument()
+    expect(row('~/projects/example-repo').queryByRole('button', { name: 'Copy path' })).not.toBeInTheDocument()
+  })
+
+  it('puts the launch control on a worktree whose item the inbox lists', async () => {
+    platform.listWorktrees.mockResolvedValue(
+      worktreesSnapshot({
+        repos: [worktreeRepo({ worktrees: [mainWorktree(), worktree({ item: linkedItem({ state: 'open' }) })] })],
+      }),
+    )
+    const launchFor = vi.fn((item: LinkedItem) => <button type="button">Open #{item.number}</button>)
+    render(<WorktreesView clock={fixedNow} launchFor={launchFor} />)
+    await repo('example-repo')
+
+    expect(row(linkedDisplay).getByRole('button', { name: 'Open #7' })).toBeInTheDocument()
+    expect(launchFor).toHaveBeenCalledWith(expect.objectContaining({ number: 7 }))
+    expect(row('~/projects/example-repo').queryByRole('button', { name: /Open/ })).not.toBeInTheDocument()
+  })
+
+  it('says when the system cannot list the running processes', async () => {
+    platform.listWorktrees.mockResolvedValue(worktreesSnapshot({ sessionsUnknown: true }))
+    render(<WorktreesView clock={fixedNow} />)
+    await repo('example-repo')
+
+    expect(screen.getByText(/can't list the running processes/)).toBeInTheDocument()
   })
 })
 

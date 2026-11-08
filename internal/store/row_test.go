@@ -54,3 +54,23 @@ func TestRowReadsEachValueAsItsType(t *testing.T) {
 	assert.Empty(t, row.Time("not a time"))
 	assert.Empty(t, row.Time("int"))
 }
+
+func TestRowReadsJSONObjects(t *testing.T) {
+	t.Parallel()
+
+	row := store.Row{
+		"names": `{"claude":"work","codex":"alt"}`, "lists": `{"claude":["--a","b"]}`, "array": `["a"]`,
+		"bad": "not json", "null": nil, "json null": "null",
+	}
+
+	assert.Equal(t, map[string]string{"claude": "work", "codex": "alt"}, row.StringMap("names"))
+	assert.Equal(t, map[string][]string{"claude": {"--a", "b"}}, row.StringLists("lists"))
+
+	for _, column := range []string{"array", "bad", "null", "json null", "missing"} {
+		assert.Equal(t, map[string]string{}, row.StringMap(column), column)
+		assert.Equal(t, map[string][]string{}, row.StringLists(column), column)
+	}
+
+	assert.True(t, row.Has("null"), "a NULL column is still there")
+	assert.False(t, row.Has("missing"))
+}

@@ -16,7 +16,8 @@ import * as $models from "./models.js";
 
 /**
  * CleanUp removes one finished worktree: its pull request merged or its issue closed, it
- * has no uncommitted changes, every commit it has is on GitHub, and no session runs in it.
+ * has no uncommitted changes, every commit it has is on GitHub, and no session runs in it,
+ * by its lock or as a running process.
  * The worktree is assessed again first, GitHub included. It releases the lock of an agent
  * session that has ended, removes the worktree without --force, and deletes its own
  * worktree-<name> branch while that still points at the commit checked.
@@ -42,8 +43,9 @@ export function ClearCleanups(): $CancellablePromise<void> {
 
 /**
  * ForceRemove removes one unlocked linked worktree that has uncommitted changes,
- * discarding them, with a single --force. Locked worktrees are refused even here, so a
- * running session's worktree is never pulled out from under it.
+ * discarding them, with a single --force. Locked worktrees, and ones a running process
+ * works in, are refused even here, so a running session's worktree is never pulled out
+ * from under it.
  */
 export function ForceRemove(repoPath: string, path: string): $CancellablePromise<void> {
     return $Call.ByID(4169835063, repoPath, path);
@@ -102,13 +104,14 @@ export function RemoveAllClean(): $CancellablePromise<$models.RemoveResult[] | n
 }
 
 /**
- * Sweep checks the worktrees the agent made for pull requests and issues and, when
- * automatic cleanup is on, cleans up each finished one whose pull request merged or whose
- * issue closed (see autoCleanable for which count). It never lists every clone: it looks
- * only in clones with an agent worktree directory or a recorded launch, so it is cheap to
- * run on a timer. It also drops the launch records of worktrees that are gone, and counts
- * the linked worktrees of every clone from their git directories, again without running
- * git. The report is kept for LastSweep, and an event.WorktreesUpdated is emitted when a
+ * Sweep checks the worktrees made for pull requests and issues and, when automatic
+ * cleanup is on, cleans up each finished one whose pull request merged or whose issue
+ * closed (see autoCleanable for which count), and that no running process works in; when
+ * the processes cannot be listed, it cleans up none. It never lists every clone: it looks
+ * only in clones with worktrees the app or Claude Code made, or with records, so it is
+ * cheap to run on a timer. It also checks the records against git (see reconcile), and
+ * counts the linked worktrees of every clone from their git directories, again without
+ * running git. The report is kept for LastSweep, and an event.WorktreesUpdated is emitted when a
  * worktree was removed or either count changed.
  */
 export function Sweep(): $CancellablePromise<$models.SweepReport> {

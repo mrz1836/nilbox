@@ -20,8 +20,9 @@ const (
 	// worktreeCmd is git's worktree subcommand.
 	worktreeCmd = "worktree"
 
-	// ownBranchPrefix starts the name of the branch the agent creates with a worktree:
-	// "worktree-<name>". It is the only kind of branch ever deleted.
+	// ownBranchPrefix starts the name of the branch an item's worktree is made on:
+	// "worktree-<name>". It is the only kind of branch ever deleted, and the only kind a
+	// worktree is ever made on.
 	ownBranchPrefix = "worktree-"
 )
 
@@ -70,6 +71,17 @@ func commitTimesArgs(oids []string) []string { return append(commitTimesCmd(), o
 
 // unpushedArgs counts the commits on HEAD that no remote-tracking branch has.
 func unpushedArgs() []string { return []string{"rev-list", "--count", "HEAD", "--not", "--remotes"} }
+
+// revParseArgs checks that ref names a commit, printing it.
+func revParseArgs(ref string) []string { return []string{"rev-parse", "--verify", "--quiet", ref} }
+
+// symbolicRefArgs prints the branch the clone last learned remote's HEAD points at.
+func symbolicRefArgs(remote string) []string {
+	return []string{"symbolic-ref", "--quiet", remotesRef + remote + "/HEAD"}
+}
+
+// lsRemoteArgs asks remote which branch its HEAD points at.
+func lsRemoteArgs(remote string) []string { return []string{"ls-remote", "--symref", remote, "HEAD"} }
 
 // git runs allowlisted git commands as `git -C <dir> <args>`.
 type git struct {
@@ -213,10 +225,12 @@ func allowed(args []string) bool {
 		return true
 	}
 
-	if allowedCommitTimes(args) {
-		return true
-	}
+	return allowedCommitTimes(args) || allowedLookup(args) || allowedCreate(args) || allowedChange(args)
+}
 
+// allowedChange reports a removal command with arguments it may run with: removing or
+// unlocking a worktree at a path, and deleting an item's own branch at a commit.
+func allowedChange(args []string) bool {
 	if len(args) < 3 {
 		return false
 	}
@@ -248,6 +262,45 @@ func allowedCommitTimes(args []string) bool {
 	}
 
 	return true
+}
+
+// allowedLookup reports a read-only lookup Ensure makes: whether an item's branch or a
+// remote-tracking branch exists, and which branch a remote's HEAD points at.
+func allowedLookup(args []string) bool {
+	switch {
+	case len(args) == 4 && joinArgs(args[:3]) == joinArgs(revParseArgs("")[:3]):
+		return isOwnBranchRef(args[3]) || isTrackingRef(args[3])
+	case len(args) == 3 && joinArgs(args[:2]) == joinArgs(symbolicRefArgs("")[:2]):
+		return isRemoteHead(args[2])
+	case len(args) == 4 && joinArgs(args) == joinArgs(lsRemoteArgs(args[2])):
+		return remotePattern.MatchString(args[2])
+	default:
+		return false
+	}
+}
+
+// isRemoteHead reports refs/remotes/<remote>/HEAD with a plain remote.
+func isRemoteHead(ref string) bool {
+	rest, ok := strings.CutPrefix(ref, remotesRef)
+	if !ok {
+		return false
+	}
+
+	remote, ok := strings.CutSuffix(rest, "/HEAD")
+
+	return ok && remotePattern.MatchString(remote)
+}
+
+// isTrackingRef reports refs/remotes/<remote>/<branch> with a plain remote and branch.
+func isTrackingRef(ref string) bool {
+	rest, ok := strings.CutPrefix(ref, remotesRef)
+	if !ok {
+		return false
+	}
+
+	remote, branch, ok := strings.Cut(rest, "/")
+
+	return ok && remotePattern.MatchString(remote) && validBranch(branch)
 }
 
 // allowedRemove reports the arguments after `worktree remove` that may run: a path, with

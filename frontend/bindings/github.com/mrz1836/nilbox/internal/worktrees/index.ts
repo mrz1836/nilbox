@@ -16,6 +16,7 @@ export type {
     LinkedItem,
     RemoveResult,
     Repo,
+    Session,
     Snapshot,
     SweepReport,
     Worktree
