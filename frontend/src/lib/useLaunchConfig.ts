@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useRef } from 'react'
 
 import {
   getDefaultPrompts,
@@ -19,6 +19,7 @@ import {
   type Settings,
 } from '../platform'
 import { all } from './call'
+import { shareResolutions } from './share'
 import { useQuery } from './useQuery'
 
 // LaunchConfig is everything launching reads: the settings, profiles, prompts, default
@@ -31,7 +32,8 @@ export interface LaunchConfig {
   defaultPrompts: DefaultPrompts | null
   variables: PromptVariable[]
   launchDefaults: LaunchDefaults[]
-  // resolutions holds each listed item's resolved launch settings by item ID.
+  // resolutions holds each listed item's resolved launch settings by item ID. Resolving
+  // again keeps the map, and each resolution in it, while nothing in them changed.
   resolutions: ReadonlyMap<number, ItemResolution>
   // items are the inbox's items, each once, newest first.
   items: InboxItem[]
@@ -126,13 +128,21 @@ export function useLaunchConfig(snapshot: InboxSnapshot | null): LaunchConfig {
   const config = useQuery(loadAll, [])
   const loaded = config.data !== undefined || config.error !== ''
   const data = config.data
-  const items = useMemo(() => uniqueItems(snapshot), [snapshot])
-  const ids = useMemo(() => items.map((i) => i.id).join(','), [items])
+  const items = uniqueItems(snapshot)
+  const ids = items.map((i) => i.id).join(',')
+  // last is the latest resolution map, whose map and entries the next one keeps where
+  // nothing changed.
+  const last = useRef(noResolutions)
 
   // Resolutions are read again when the items change, when a reload brings any part of
   // the configuration anew, and when a setting launches read is saved.
   const resolved = useQuery(
-    () => resolveLaunches(ids.split(',').map(Number)).then((list) => new Map(list.map((r) => [r.itemId, r]))),
+    () =>
+      resolveLaunches(ids.split(',').map(Number)).then((list) => {
+        last.current = shareResolutions(last.current, list)
+
+        return last.current
+      }),
     [ids, data?.profiles, data?.prompts, data?.defaultPrompts, data?.launchDefaults, launchKey(data?.settings)],
     { enabled: loaded && ids !== '' },
   )

@@ -1,35 +1,41 @@
 import { describe, expect, it } from 'vitest'
 
+import type { InboxSnapshot } from '../platform'
 import { item, list, snapshot } from '../test/fixtures'
 import {
   earnedQuip,
   isInboxNil,
   maxBurst,
   nextQuip,
-  nilStats,
   pickQuip,
   quips,
   replayBurst,
   replayLabel,
   replayLabels,
 } from './nil'
+import { triageInbox } from './triage'
 
 const now = new Date('2026-06-15T12:00:00Z')
 const refreshed = '2026-06-15T11:55:00Z'
 
+// nil reports whether the inbox is nil as it sorts at now.
+function nil(inbox: InboxSnapshot): boolean {
+  return isInboxNil(inbox, triageInbox(inbox, now))
+}
+
 describe('isInboxNil', () => {
   it('is nil once refreshed with every list empty', () => {
-    expect(isInboxNil(snapshot({ lastRefreshedAt: refreshed }), now)).toBe(true)
+    expect(nil(snapshot({ lastRefreshedAt: refreshed }))).toBe(true)
   })
 
   it('is not nil before the first refresh, or after a failed one', () => {
-    expect(isInboxNil(snapshot(), now)).toBe(false)
-    expect(isInboxNil(snapshot({ lastRefreshedAt: refreshed, lastError: 'rate limited' }), now)).toBe(false)
+    expect(nil(snapshot())).toBe(false)
+    expect(nil(snapshot({ lastRefreshedAt: refreshed, lastError: 'rate limited' }))).toBe(false)
   })
 
   it('is not nil while any list holds an item', () => {
     for (const key of ['reviewRequested', 'authored', 'assigned'] as const) {
-      expect(isInboxNil(snapshot({ lastRefreshedAt: refreshed, [key]: list([item()]) }), now)).toBe(false)
+      expect(nil(snapshot({ lastRefreshedAt: refreshed, [key]: list([item()]) }))).toBe(false)
     }
   })
 
@@ -39,43 +45,19 @@ describe('isInboxNil', () => {
       authored: list([item({ id: 2, snoozedUntil: '2026-06-16T09:00:00Z' })]),
     }
 
-    expect(isInboxNil(snapshot({ lastRefreshedAt: refreshed, ...lists }), now)).toBe(true)
+    expect(nil(snapshot({ lastRefreshedAt: refreshed, ...lists }))).toBe(true)
   })
 
   it('is not nil once a snooze has run out', () => {
     const back = list([item({ snoozedUntil: '2026-06-15T11:00:00Z' })])
 
-    expect(isInboxNil(snapshot({ lastRefreshedAt: refreshed, authored: back }), now)).toBe(false)
+    expect(nil(snapshot({ lastRefreshedAt: refreshed, authored: back }))).toBe(false)
   })
 
   it('is not nil while GitHub matched more than it returned', () => {
     const partial = list([item({ dismissedAt: '2026-06-14T09:00:00Z' })], 250)
 
-    expect(isInboxNil(snapshot({ lastRefreshedAt: refreshed, assigned: partial }), now)).toBe(false)
-  })
-})
-
-describe('nilStats', () => {
-  it('counts what was set aside once each, and finds the soonest snooze', () => {
-    const later = item({ id: 1, snoozedUntil: '2026-06-18T09:00:00Z' })
-    const sooner = item({ id: 2, snoozedUntil: '2026-06-16T09:00:00Z' })
-    const gone = item({ id: 3, dismissedAt: '2026-06-14T09:00:00Z' })
-
-    const stats = nilStats(
-      snapshot({
-        reviewRequested: list([later, gone]),
-        // The same items again, in another list, count once.
-        authored: list([later, sooner]),
-        assigned: list([gone]),
-      }),
-      now,
-    )
-
-    expect(stats).toEqual({ snoozed: 2, dismissed: 1, nextBack: new Date('2026-06-16T09:00:00Z') })
-  })
-
-  it('has no comeback when nothing is snoozed', () => {
-    expect(nilStats(snapshot(), now)).toEqual({ snoozed: 0, dismissed: 0, nextBack: null })
+    expect(nil(snapshot({ lastRefreshedAt: refreshed, assigned: partial }))).toBe(false)
   })
 })
 

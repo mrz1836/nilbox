@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
+import { at } from '../test/clock'
 import { account, notification, rate, unknownRate } from '../test/fixtures'
 import { AppHeader, type AppHeaderProps } from './AppHeader'
 
@@ -14,12 +15,11 @@ function renderHeader(overrides: Partial<AppHeaderProps> = {}) {
     onViewChange: vi.fn(),
     account: account(),
     gauge: { graphql: rate(), core: unknownRate, search: unknownRate },
-    now: new Date('2026-06-15T12:00:00Z'),
     onOpenSettings: vi.fn(),
     ...overrides,
   }
 
-  render(<AppHeader {...props} />)
+  render(<AppHeader {...props} />, { wrapper: at(new Date('2026-06-15T12:00:00Z')) })
 
   return props
 }

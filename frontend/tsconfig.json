@@ -25,5 +25,5 @@
     "erasableSyntaxOnly": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src", "bindings", "vite.config.ts", "vitest.config.ts"]
+  "include": ["src", "bindings", "vite.config.ts", "vitest.config.ts", "vitest.renders.config.ts"]
 }

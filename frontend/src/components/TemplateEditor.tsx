@@ -1,4 +1,4 @@
-import { useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type Ref } from 'react'
+import { useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent, type Ref } from 'react'
 
 import { caretPosition } from '../lib/caret'
 import { completionAt, highlight, matchVariables, offsetOf, type Completion, type TokenKind } from '../lib/template'
@@ -108,13 +108,10 @@ export function TemplateEditor({
   const [active, setActive] = useState(0)
   const [popup, setPopup] = useState({ top: 0, left: 0 })
 
-  const names = useMemo(() => variables.map((v) => v.name), [variables])
-  const known = useMemo(() => new Set(names), [names])
-  const segments = useMemo(() => highlight(value, known, diagnostics), [value, known, diagnostics])
-  const matches = useMemo(
-    () => (completion === null ? [] : matchVariables(names, completion.prefix)),
-    [completion, names],
-  )
+  const names = variables.map((v) => v.name)
+  const known = new Set(names)
+  const segments = highlight(value, known, diagnostics)
+  const matches = completion === null ? [] : matchVariables(names, completion.prefix)
   const open = completion !== null && matches.length > 0
   const listId = `${id}-variables`
 

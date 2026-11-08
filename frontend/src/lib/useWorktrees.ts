@@ -28,7 +28,8 @@ export interface WorktreesOptions {
   // onSnapshot is told about each listing, so the window can count what needs a look.
   onSnapshot?: (snapshot: WorktreesSnapshot) => void
   // focusHistory scrolls to the recently cleaned-up list once it loads, as when a
-  // cleanup toast's View opens the view.
+  // cleanup toast's View opens the view. Each time it is set again, the list is scrolled
+  // to again.
   focusHistory?: boolean
 }
 
@@ -205,7 +206,8 @@ export function useWorktrees({
   const bulker = useMutation((action: () => Promise<RemoveResult[]>) => action())
   const clearer = useMutation(() => clearCleanups())
   const historyRef = useRef<HTMLElement>(null)
-  // focused records that focusHistory has scrolled once, so later listings stay put.
+  // focused records that focusHistory has scrolled since it was set, so later listings
+  // stay put.
   const focused = useRef(false)
   const snapshot = listing.data?.snapshot ?? null
   const history = cleanups.data ?? null
@@ -225,7 +227,13 @@ export function useWorktrees({
   }, [listing.data])
 
   useEffect(() => {
-    if (focusHistory && !focused.current && history !== null && history.length > 0) {
+    if (!focusHistory) {
+      focused.current = false
+
+      return
+    }
+
+    if (!focused.current && history !== null && history.length > 0) {
       focused.current = true
       historyRef.current?.scrollIntoView({ block: 'start' })
     }

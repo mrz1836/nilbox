@@ -1049,6 +1049,22 @@ describe('WorktreesView history', () => {
     expect(scroll).toHaveBeenCalledExactlyOnceWith({ block: 'start' })
   })
 
+  it('scrolls to the list again when asked again, as a page kept between visits is', async () => {
+    const scroll = vi.spyOn(Element.prototype, 'scrollIntoView')
+    platform.recentCleanups.mockResolvedValue([worktreeCleanup()])
+    const { rerender } = render(<WorktreesView clock={clock} focusHistory />)
+
+    await history()
+    await vi.waitFor(() => {
+      expect(scroll).toHaveBeenCalledOnce()
+    })
+
+    rerender(<WorktreesView clock={clock} />)
+    rerender(<WorktreesView clock={clock} focusHistory />)
+
+    expect(scroll).toHaveBeenCalledTimes(2)
+  })
+
   it('does not scroll when not asked to', async () => {
     const scroll = vi.spyOn(Element.prototype, 'scrollIntoView')
     platform.recentCleanups.mockResolvedValue([worktreeCleanup()])

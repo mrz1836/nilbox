@@ -13,25 +13,18 @@ import {
   type InboxSnapshot,
 } from '../platform'
 import { attempt, type Result } from './call'
+import { shareSnapshot } from './share'
 import { applyTriage, snoozeEnd, type TriageChange } from './triage'
 import { useMutation } from './useMutation'
+import { useClock } from './useNow'
 import { useQuery } from './useQuery'
-
-// tickMs is how often now moves on, so relative times, the budget levels, and snoozes
-// stay current.
-const tickMs = 60_000
-
-function systemClock(): Date {
-  return new Date()
-}
 
 // InboxState is the stored inbox and what the window is doing with it.
 export interface InboxState {
   // snapshot is null until the first load finishes. A triage action under way shows in
-  // it at once.
+  // it at once. Each answer keeps the objects of the one before wherever nothing changed
+  // (shareSnapshot), so only the rows whose items changed render again.
   snapshot: InboxSnapshot | null
-  // now is the time relative ages, budget levels, and snoozes are measured against.
-  now: Date
   loadError: string
   refreshError: string
   refreshing: boolean
@@ -55,11 +48,10 @@ export interface InboxState {
   refreshItem: (id: number) => Promise<Result<InboxSnapshot>>
 }
 
-// Answer is a request's inbox, with the request's number and when it arrived.
+// Answer is a request's inbox, with the request's number.
 interface Answer {
   n: number
   snapshot: InboxSnapshot
-  at: Date
 }
 
 // newer returns the answer of the later request; either may be missing.
@@ -71,11 +63,6 @@ function newer(a: Answer | null | undefined, b: Answer | null | undefined): Answ
   return b === null || b === undefined || a.n > b.n ? a : b
 }
 
-// later returns the later of two times.
-function later(a: Date, b: Date | undefined): Date {
-  return b === undefined || a.getTime() >= b.getTime() ? a : b
-}
-
 // showTriage applies a triage change still under way to the inbox shown.
 function showTriage(snapshot: InboxSnapshot | null, change: TriageChange): InboxSnapshot | null {
   return snapshot === null ? null : applyTriage(snapshot, change)
@@ -83,27 +70,39 @@ function showTriage(snapshot: InboxSnapshot | null, change: TriageChange): Inbox
 
 // useInbox loads the stored inbox, loads it again whenever the shell reports a change
 // (the background refresh), and refreshes from GitHub when asked. The whole window shares
-// one InboxState: the inbox lists, the account menu, and the budget gauge. clock returns
-// the current time; keep it stable across renders.
+// one InboxState: the inbox lists, the account menu, and the budget gauge. Each answer
+// moves the window's clock (useClock) on to the moment it arrived, so the ages and the
+// snoozes it shows are measured from then.
 //
 // Loads, refreshes, and triage can overlap, and their answers can arrive out of order.
 // Each request is numbered as it starts, and the inbox shown is the answer of the latest
 // request answered, so an older inbox never replaces a newer one. A load that a newer load
 // replaces is cancelled. Every change to the stored inbox is followed by an update from
 // the shell, whose load is the latest.
-export function useInbox(clock: () => Date = systemClock): InboxState {
+export function useInbox(): InboxState {
+  const clock = useClock()
   // started numbers the requests as they start.
   const started = useRef(0)
+  // known is the latest inbox answered, whose objects the next answer keeps where its
+  // data is the same.
+  const known = useRef<InboxSnapshot | null>(null)
   // answered is the latest answer of a refresh or a triage action.
   const [answered, setAnswered] = useState<Answer | null>(null)
-  const [tick, setTick] = useState(clock)
   // refreshFrom is the number of the latest refresh: a load numbered after it shows the
   // inbox as stored since, so its failure is no longer news.
   const [refreshFrom, setRefreshFrom] = useState(0)
 
-  // ask numbers a request for the inbox, and tags its answer with the number and the time.
+  // ask numbers a request for the inbox and tags its answer with the number, sharing what
+  // it has in common with the inbox answered before.
   const ask = (n: number, call: PromiseLike<InboxSnapshot>): PromiseLike<Answer> =>
-    call.then((snapshot) => ({ n, snapshot, at: clock() }))
+    call.then((answer) => {
+      const snapshot = shareSnapshot(known.current, answer)
+
+      known.current = snapshot
+      clock.read()
+
+      return { n, snapshot }
+    })
 
   const next = () => {
     started.current += 1
@@ -138,16 +137,6 @@ export function useInbox(clock: () => Date = systemClock): InboxState {
     [],
   )
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setTick(clock())
-    }, tickMs)
-
-    return () => {
-      clearInterval(timer)
-    }
-  }, [clock])
-
   const shown = newer(loaded.data, answered)
   const [snapshot, showChange] = useOptimistic(shown?.snapshot ?? null, showTriage)
   const refresher = useMutation((n: number) => record(n, refreshInbox()))
@@ -181,11 +170,10 @@ export function useInbox(clock: () => Date = systemClock): InboxState {
       })
     })
 
-  const stamp = () => clock().toISOString()
+  const stamp = () => clock.read().toISOString()
 
   return {
     snapshot,
-    now: later(tick, shown?.at),
     loadError: loaded.error,
     refreshError: lastLoad > refreshFrom ? '' : refresher.error,
     refreshing: refresher.pending,
@@ -195,7 +183,7 @@ export function useInbox(clock: () => Date = systemClock): InboxState {
     },
     dismiss: (id) => triage({ id, set: { dismissedAt: stamp(), snoozedUntil: '' } }, () => dismissItem(id)),
     snooze: (id, days) =>
-      triage({ id, set: { snoozedUntil: snoozeEnd(clock(), days).toISOString(), dismissedAt: '' } }, () =>
+      triage({ id, set: { snoozedUntil: snoozeEnd(clock.read(), days).toISOString(), dismissedAt: '' } }, () =>
         snoozeItem(id, days),
       ),
     restore: (id) => triage({ id, set: { dismissedAt: '', snoozedUntil: '', wokeBy: null } }, () => restoreItem(id)),

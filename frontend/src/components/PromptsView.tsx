@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useId, useRef, useState } from 'react'
 
 import { kindPlural, promptApplies, usageCount, usagePlaces } from '../lib/launch'
 import { useMutation } from '../lib/useMutation'
@@ -35,8 +35,6 @@ export interface PromptsViewProps {
   variables: readonly PromptVariable[]
   // items are the inbox's items, offered to preview a prompt with.
   items: readonly InboxItem[]
-  // active reports whether the page is showing, so ⌘S only saves here.
-  active: boolean
   // onChanged reloads the prompts and everything that depends on them; it resolves
   // once they are loaded again.
   onChanged: () => Promise<void>
@@ -116,7 +114,7 @@ function touchedField(field: string, draft: PromptInput, start: PromptInput): bo
 // editor in the middle, and its live preview and the variables cheat sheet on the right.
 // Edits are checked by the backend as you type and saved with Save (or ⌘S). Leaving a
 // prompt with unsaved changes asks first.
-export function PromptsView({ prompts, defaults, variables, items, active, onChanged }: PromptsViewProps) {
+export function PromptsView({ prompts, defaults, variables, items, onChanged }: PromptsViewProps) {
   const id = useId()
   const editorRef = useRef<TemplateEditorHandle>(null)
   const [selection, setSelection] = useState<Selection | null>(null)
@@ -135,10 +133,7 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
 
   // applicableItems are the inbox items the draft applies to, which it can be previewed
   // with.
-  const applicableItems = useMemo(
-    () => items.filter((item) => promptApplies({ appliesTo: draft.appliesTo }, item.kind)),
-    [items, draft.appliesTo],
-  )
+  const applicableItems = items.filter((item) => promptApplies({ appliesTo: draft.appliesTo }, item.kind))
 
   // previewItem is the item chosen to preview with: the one picked while the prompt
   // applies to it (0 for the sample), else the first item it applies to.
@@ -167,14 +162,10 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
   const saved = selection?.kind === 'prompt' ? (prompts.find((p) => p.id === selection.id) ?? null) : null
   const dirty = selection !== null && !sameInput(draft, baseline)
   // A new prompt's empty fields are not problems to point at until they are edited.
-  const shownFields = useMemo(
-    () => (check?.fields ?? []).filter((f) => selection?.kind !== 'new' || touchedField(f.field, draft, blankInput)),
-    [check, selection, draft],
+  const shownFields = (check?.fields ?? []).filter(
+    (f) => selection?.kind !== 'new' || touchedField(f.field, draft, blankInput),
   )
-  const fieldErrors = useMemo(
-    () => Object.fromEntries(shownFields.map((f) => [f.field, f.message])) as Record<string, string>,
-    [shownFields],
-  )
+  const fieldErrors = Object.fromEntries(shownFields.map((f) => [f.field, f.message])) as Record<string, string>
   const diagnostics = check?.diagnostics ?? []
   const hiddenProblems = (check?.fields.length ?? 0) - shownFields.length
   const problemCount = shownFields.length + diagnostics.filter((d: Diagnostic) => d.severity === 'error').length
@@ -278,7 +269,8 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
 
   const canSave = dirty && problemCount === 0 && hiddenProblems === 0 && !busy
 
-  // ⌘S saves while the page is showing.
+  // ⌘S saves while the page is showing: a page hidden behind another runs no effects,
+  // so it stops listening.
   const saveOnKey = useEffectEvent((e: globalThis.KeyboardEvent) => {
     if (e.metaKey && e.key === 's') {
       e.preventDefault()
@@ -290,10 +282,6 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
   })
 
   useEffect(() => {
-    if (!active) {
-      return undefined
-    }
-
     const onKeyDown = (e: globalThis.KeyboardEvent) => {
       saveOnKey(e)
     }
@@ -303,7 +291,7 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
     return () => {
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [active])
+  }, [])
 
   // run performs an action on the library and says how it went.
   const run = async (action: () => Promise<Selection | null>, done: string) => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type RefObject } from 'react'
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 
 // Placement is where a panel opens against its button: always below it ('below'); below
 // unless it does not fit there and there is more room above ('flip'); or flipped the same
@@ -95,21 +95,21 @@ export function usePopover<T extends HTMLElement, P extends HTMLElement>({
   const triggerRef = useRef<T>(null)
   const panelRef = useRef<P>(null)
 
-  const close = useCallback((restoreFocus = false) => {
+  const close = (restoreFocus = false) => {
     setOpen(false)
 
     if (restoreFocus) {
       triggerRef.current?.focus()
     }
-  }, [])
+  }
 
-  const show = useCallback(() => {
+  const show = () => {
     setOpen(true)
-  }, [])
+  }
 
-  const toggle = useCallback(() => {
+  const toggle = () => {
     setOpen((was) => !was)
-  }, [])
+  }
 
   // Place the panel before it paints, so it never shows on the wrong side first.
   useLayoutEffect(() => {
@@ -147,6 +147,11 @@ export function usePopover<T extends HTMLElement, P extends HTMLElement>({
     }
   }, [open])
 
+  // The listeners close with the latest close, so they are added once per opening.
+  const dismiss = useEffectEvent((restoreFocus: boolean) => {
+    close(restoreFocus)
+  })
+
   useEffect(() => {
     if (!open) {
       return undefined
@@ -157,20 +162,20 @@ export function usePopover<T extends HTMLElement, P extends HTMLElement>({
 
     const onPointer = (e: MouseEvent) => {
       if (!inside(e.target)) {
-        close()
+        dismiss(false)
       }
     }
 
     const onFocus = (e: FocusEvent) => {
       if (!inside(e.target)) {
-        close()
+        dismiss(false)
       }
     }
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault()
-        close(true)
+        dismiss(true)
       }
     }
 
@@ -183,7 +188,7 @@ export function usePopover<T extends HTMLElement, P extends HTMLElement>({
       document.removeEventListener('focusin', onFocus)
       document.removeEventListener('keydown', onKeyDown, true)
     }
-  }, [open, close])
+  }, [open])
 
   return { open, triggerRef, panelRef, side, maxHeight, toggle, show, close }
 }

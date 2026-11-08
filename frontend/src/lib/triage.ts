@@ -1,4 +1,4 @@
-import type { InboxItem, InboxList, InboxSnapshot, WakeReasons, WakeReview } from '../platform'
+import type { InboxItem, InboxList, InboxSnapshot, ListKey, WakeReasons, WakeReview } from '../platform'
 import { counted } from './format'
 
 // Triage as the inbox shows it. The snapshot keeps every item in its lists with its
@@ -211,21 +211,76 @@ export function tabOf(triaged: TriagedList, id: number): TriageTab | null {
   return tabs.find((tab) => triaged[tab].some((item) => item.id === id)) ?? null
 }
 
-// inboxCount counts the items in the inbox at now: those in any list's own tab, neither
-// snoozed nor dismissed. An item in more than one list, such as a pull request you wrote
-// and are assigned, counts once.
-export function inboxCount(snapshot: InboxSnapshot, now: Date): number {
-  const ids = new Set<number>()
+// TriagedInbox is the whole inbox sorted into its tabs at one time. Everything in the
+// window that shows triage (the lists, the Inbox tab's count, the party at nil) reads
+// this one sorting.
+export interface TriagedInbox {
+  lists: Readonly<Record<ListKey, TriagedList>>
+  // count is how many items are in the inbox: in any list's own tab, neither snoozed nor
+  // dismissed. An item in more than one list, such as a pull request you wrote and are
+  // assigned, counts once.
+  count: number
+  // snoozed and dismissed count the items set aside, each once however many lists it
+  // is in.
+  snoozed: number
+  dismissed: number
+  // nextBack is when the soonest snooze ends, or null when nothing is snoozed.
+  nextBack: Date | null
+}
+
+// triageInbox sorts every list of a snapshot into its tabs at now, and counts the inbox.
+export function triageInbox(snapshot: InboxSnapshot, now: Date): TriagedInbox {
+  const lists = {
+    reviewRequested: triageList(snapshot.reviewRequested, now),
+    authored: triageList(snapshot.authored, now),
+    assigned: triageList(snapshot.assigned, now),
+  }
+  const inbox = new Set<number>()
+  const snoozed = new Map<number, number>()
+  const dismissed = new Set<number>()
+
+  for (const triaged of Object.values(lists)) {
+    for (const item of triaged.inbox) {
+      inbox.add(item.id)
+    }
+
+    for (const item of triaged.snoozed) {
+      snoozed.set(item.id, timeOf(item.snoozedUntil))
+    }
+
+    for (const item of triaged.dismissed) {
+      dismissed.add(item.id)
+    }
+  }
+
+  return {
+    lists,
+    count: inbox.size,
+    snoozed: snoozed.size,
+    dismissed: dismissed.size,
+    nextBack: snoozed.size === 0 ? null : new Date(Math.min(...snoozed.values())),
+  }
+}
+
+// triageTime is a time the inbox sorts into the same tabs at as at now: the latest
+// snooze end that now has passed, or 0 when none has. The sorting changes only as the
+// clock passes the end of a snooze, so a tick that passes none leaves this time, and
+// the sorting, as they were.
+export function triageTime(snapshot: InboxSnapshot, now: Date): number {
+  const at = now.getTime()
+  let passed = 0
 
   for (const list of [snapshot.reviewRequested, snapshot.authored, snapshot.assigned]) {
     for (const item of list.items) {
-      if (!isDismissed(item) && !isSnoozed(item, now)) {
-        ids.add(item.id)
+      const end = timeOf(item.snoozedUntil)
+
+      if (end <= at && end > passed) {
+        passed = end
       }
     }
   }
 
-  return ids.size
+  return passed
 }
 
 // snoozeLength names a snooze length: "1 day", "3 days", "1 week", "2 weeks".

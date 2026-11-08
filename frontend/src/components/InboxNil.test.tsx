@@ -1,14 +1,23 @@
 import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { StrictMode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
 import { arrivalBurst, earnedBurst, earnedQuip, quips, replayBurst } from '../lib/nil'
+import { triageInbox } from '../lib/triage'
+import type { InboxSnapshot } from '../platform'
+import { at } from '../test/clock'
 import { item, list, snapshot } from '../test/fixtures'
 import { InboxNil } from './InboxNil'
 
 const now = new Date('2026-06-15T12:00:00Z')
 const empty = snapshot({ lastRefreshedAt: '2026-06-15T11:55:00Z' })
+
+// renderNil throws the party for an inbox, as triaged at now, on a clock that stands at now.
+function renderNil(inbox: InboxSnapshot, earned: boolean) {
+  return render(<InboxNil stats={triageInbox(inbox, now)} earned={earned} />, { wrapper: at(now) })
+}
 
 // party returns the party's region.
 function party() {
@@ -32,7 +41,7 @@ afterEach(() => {
 describe('InboxNil', () => {
   it('announces the inbox at nil with the badge, a quip, and the terminal', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0)
-    render(<InboxNil snapshot={empty} now={now} earned={false} />)
+    renderNil(empty, false)
 
     expect(screen.getByRole('heading', { name: 'inbox == nil' })).toBeInTheDocument()
     expect(within(party()).getByTestId('nil-badge')).toHaveTextContent('inboxnil')
@@ -61,7 +70,7 @@ describe('InboxNil', () => {
         item({ id: 3, dismissedAt: '2026-06-14T09:00:00Z' }),
       ]),
     })
-    render(<InboxNil snapshot={setAside} now={now} earned={false} />)
+    renderNil(setAside, false)
 
     const terminal = within(screen.getByRole('figure', { name: 'Terminal' }))
     expect(terminal.getByText('snoozed').parentElement).toHaveTextContent(/snoozed2\/\/ they’ll be back/)
@@ -70,14 +79,25 @@ describe('InboxNil', () => {
   })
 
   it('sprinkles confetti on arrival', () => {
-    render(<InboxNil snapshot={empty} now={now} earned={false} />)
+    renderNil(empty, false)
 
     expect(confetti()).toBe(arrivalBurst)
     expect(flashes()).toBe(0)
   })
 
+  it('starts the party once when development mounts it twice', () => {
+    render(
+      <StrictMode>
+        <InboxNil stats={triageInbox(empty, now)} earned={false} />
+      </StrictMode>,
+      { wrapper: at(now) },
+    )
+
+    expect(confetti()).toBe(arrivalBurst)
+  })
+
   it('throws the full party, flash and all, when the inbox was emptied', () => {
-    render(<InboxNil snapshot={empty} now={now} earned />)
+    renderNil(empty, true)
 
     expect(screen.getByText('Achievement unlocked')).toBeInTheDocument()
     expect(screen.queryByTestId('nil-badge')).not.toBeInTheDocument()
@@ -91,7 +111,7 @@ describe('InboxNil', () => {
 
   it('runs the party again, harder each time, with a new quip', async () => {
     vi.spyOn(Math, 'random').mockReturnValue(0)
-    render(<InboxNil snapshot={empty} now={now} earned={false} />)
+    renderNil(empty, false)
 
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: 'go run ./party' }))
@@ -111,7 +131,7 @@ describe('InboxNil', () => {
   it('throws nothing with reduced motion, but the replay still changes the quip', async () => {
     vi.spyOn(Math, 'random').mockReturnValue(0)
     vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(prefers-reduced-motion: reduce)' }))
-    render(<InboxNil snapshot={empty} now={now} earned />)
+    renderNil(empty, true)
 
     expect(confetti()).toBe(0)
 
@@ -123,7 +143,7 @@ describe('InboxNil', () => {
 
   it('clears the confetti once it lands', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    render(<InboxNil snapshot={empty} now={now} earned />)
+    renderNil(empty, true)
 
     expect(confetti()).toBe(earnedBurst)
 

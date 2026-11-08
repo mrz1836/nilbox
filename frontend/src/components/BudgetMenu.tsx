@@ -1,6 +1,7 @@
 import { useId } from 'react'
 
 import { levelText, summarize, summaryText } from '../lib/budget'
+import { useNow } from '../lib/useNow'
 import { usePopover } from '../lib/usePopover'
 import type { RateGauge as Gauge } from '../platform'
 import { GaugeIcon } from './GaugeIcon'
@@ -10,14 +11,14 @@ import { RateGauge } from './RateGauge'
 export interface BudgetMenuProps {
   // gauge is null until the inbox has loaded.
   gauge: Gauge | null
-  now: Date
 }
 
 // BudgetMenu is the toolbar's API budget gauge. The dial's color and needle show the
 // budget with the least left at a glance (green, yellow, orange, red), and a click opens
-// the details.
-export function BudgetMenu({ gauge, now }: BudgetMenuProps) {
+// the details. It reads the clock itself, since a budget refills as its reset passes.
+export function BudgetMenu({ gauge }: BudgetMenuProps) {
   const id = useId()
+  const now = useNow()
   const popover = usePopover<HTMLButtonElement, HTMLDivElement>({ focus: 'panel' })
   const { open, toggle, triggerRef } = popover
   const summary = summarize(gauge, now)

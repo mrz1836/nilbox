@@ -34,8 +34,10 @@ export default defineConfig({
     // The oldest supported macOS (LSMinimumSystemVersion in build/darwin/Info.plist) is
     // 13, whose WebKit is Safari 16, so the bundle targets that engine.
     target: 'safari16',
-    // The bundle loads from the app binary, not over a network, so one chunk is fine. The
-    // limit stays as a tripwire for unexpected growth.
+    // The bundle loads from the app binary, not over a network. The inbox's chunk is all
+    // the window loads before its first paint; the other pages are chunks of their own,
+    // loaded on their first visit (App.tsx). The limit stays as a tripwire for unexpected
+    // growth of any chunk.
     chunkSizeWarningLimit: 700,
   },
 })

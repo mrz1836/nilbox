@@ -82,6 +82,9 @@ const sections: Readonly<Record<SectionId, { label: string; description: string 
 export interface SettingsViewProps {
   // initialSection is the section the page opens at; it defaults to the account.
   initialSection?: SettingsSection
+  // opened counts the openings of a page that stays mounted between them: each new
+  // count turns to initialSection, as a page opened afresh would.
+  opened?: number
   // settings is null until it has loaded; the launch and clone sections wait for it.
   settings: Settings | null
   profiles: readonly Profile[]
@@ -126,6 +129,7 @@ function isTyping(e: KeyboardEvent): boolean {
 // back button, returns to the view it was opened from.
 export function SettingsView({
   initialSection = 'account',
+  opened = 0,
   settings,
   profiles,
   prompts,
@@ -140,7 +144,14 @@ export function SettingsView({
 }: SettingsViewProps) {
   const headingId = useId()
   const [section, setSection] = useState<SectionId>(initialSection)
+  // openedAt is the opening the page last turned to its section for.
+  const [openedAt, setOpenedAt] = useState(opened)
   const current = sections[section]
+
+  if (opened !== openedAt) {
+    setOpenedAt(opened)
+    setSection(initialSection)
+  }
 
   const closeOnEscape = useEffectEvent((e: KeyboardEvent) => {
     if (e.key === 'Escape' && !e.defaultPrevented && !isTyping(e)) {

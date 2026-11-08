@@ -132,9 +132,11 @@ async function rowOptions() {
 }
 
 // openSettingsFromMenu opens the settings page the way a person would: the account menu.
+// The page's code loads on its first opening, so this waits for the page.
 async function openSettingsFromMenu() {
   await userEvent.click(await screen.findByRole('button', { name: 'Account: octo-user' }))
   await userEvent.click(screen.getByRole('menuitem', { name: /Settings/ }))
+  await screen.findByRole('navigation', { name: 'Settings sections' })
 }
 
 describe('App', () => {
@@ -178,7 +180,7 @@ describe('App', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
 
-    expect(screen.getByRole('region', { name: 'Worktrees' })).toBeInTheDocument()
+    expect(await screen.findByRole('region', { name: 'Worktrees' })).toBeInTheDocument()
     expect(await screen.findByRole('region', { name: 'example-repo' })).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Review requested' })).not.toBeInTheDocument()
 
@@ -207,6 +209,72 @@ describe('App', () => {
       within(screen.getByRole('region', { name: 'Assigned' })).getByRole('button', { name: 'Expand Assigned' }),
     ).toBeInTheDocument()
     expect(platform.getCollapsedSections).toHaveBeenCalledOnce()
+  })
+
+  it('keeps the inbox as it was left, a list’s tab included, while another view shows', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({
+        reviewRequested: list([
+          item(),
+          item({ id: 2, number: 8, title: 'Bump the parser', dismissedAt: '2026-06-14T09:00:00Z' }),
+        ]),
+      }),
+    )
+    render(<App />)
+
+    const review = within(await screen.findByRole('region', { name: 'Review requested' }))
+    await userEvent.click(review.getByRole('tab', { name: 'Dismissed 1' }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
+    expect(await screen.findByRole('region', { name: 'Worktrees' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Review requested' })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Inbox' }))
+
+    const back = within(screen.getByRole('region', { name: 'Review requested' }))
+    expect(back.getByRole('tab', { name: 'Dismissed 1' })).toHaveAttribute('aria-selected', 'true')
+    expect(back.getByRole('button', { name: 'Bump the parser' })).toBeInTheDocument()
+    expect(platform.getInboxSnapshot).toHaveBeenCalledOnce()
+  })
+
+  it('finds an inbox emptied while another view showed at nil, without the party for emptying it', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ reviewRequested: list([item()]), lastRefreshedAt: '2026-06-15T11:55:00Z' }),
+    )
+    render(<App />)
+    await screen.findByRole('button', { name: 'Add the widget cache' })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
+    await screen.findByRole('region', { name: 'Worktrees' })
+
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: '2026-06-15T11:58:00Z' }))
+    act(() => {
+      sendEvent(platform.on, 'inbox:updated')
+    })
+    await vi.waitFor(() => {
+      expect(platform.getInboxSnapshot).toHaveBeenCalledTimes(2)
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Inbox' }))
+
+    expect(await screen.findByTestId('nil-badge')).toBeInTheDocument()
+    expect(screen.queryByText('Achievement unlocked')).not.toBeInTheDocument()
+  })
+
+  it('lists the worktrees again each time their view opens', async () => {
+    render(<App />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
+    await screen.findByRole('region', { name: 'example-repo' })
+    expect(platform.listWorktrees).toHaveBeenCalledOnce()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Inbox' }))
+    expect(platform.listWorktrees).toHaveBeenCalledOnce()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
+    await vi.waitFor(() => {
+      expect(platform.listWorktrees).toHaveBeenCalledTimes(2)
+    })
   })
 
   it('opens the settings page from the account menu and keeps a saved change', async () => {

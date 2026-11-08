@@ -37,7 +37,6 @@ function Harness({ initial = prompts(), onChanged }: HarnessProps) {
       defaults={{ pr: 1, issue: 4 }}
       variables={variables()}
       items={[item(), item({ id: 2, kind: 'issue', number: 12, title: 'Crash on start' })]}
-      active
       onChanged={() => {
         onChanged?.()
 

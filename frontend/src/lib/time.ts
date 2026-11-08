@@ -75,6 +75,24 @@ export function formatAgo(now: Date, iso: string): string {
   return age === 'just now' || age === '' ? age : `${age} ago`
 }
 
+// formats holds every date format made so far, by locale and options. Making one is far
+// slower than formatting with it, and the inbox formats a time for each row on every
+// render, so each is made once.
+const formats = new Map<string, Intl.DateTimeFormat>()
+
+// dateFormat returns the format for a locale (the system's when undefined) and options.
+function dateFormat(locale: string | undefined, options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+  const key = JSON.stringify([locale ?? '', options])
+  let format = formats.get(key)
+
+  if (format === undefined) {
+    format = new Intl.DateTimeFormat(locale, options)
+    formats.set(key, format)
+  }
+
+  return format
+}
+
 // startOfDay is the local midnight that starts d's day.
 function startOfDay(d: Date): number {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
@@ -86,7 +104,7 @@ function startOfDay(d: Date): number {
 export function formatWhen(now: Date, when: Date, locale?: string): string {
   // Rounding absorbs the 23- and 25-hour days around a change of the clocks.
   const days = Math.round((startOfDay(when) - startOfDay(now)) / dayMs)
-  const time = new Intl.DateTimeFormat(locale, { hour: 'numeric', minute: '2-digit' }).format(when)
+  const time = dateFormat(locale, { hour: 'numeric', minute: '2-digit' }).format(when)
 
   if (days <= 0) {
     return `today, ${time}`
@@ -97,19 +115,19 @@ export function formatWhen(now: Date, when: Date, locale?: string): string {
   }
 
   if (days < 7) {
-    return `${new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(when)}, ${time}`
+    return `${dateFormat(locale, { weekday: 'short' }).format(when)}, ${time}`
   }
 
   const year = when.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' as const }
 
-  return new Intl.DateTimeFormat(locale, { weekday: 'short', month: 'short', day: 'numeric', ...year }).format(when)
+  return dateFormat(locale, { weekday: 'short', month: 'short', day: 'numeric', ...year }).format(when)
 }
 
 // formatFull names a time in full, for a tooltip: "Saturday, November 8, 2026 at 3:42 PM".
 export function formatFull(iso: string, locale?: string): string {
   const ms = parseTime(iso)
 
-  return ms === undefined ? '' : new Intl.DateTimeFormat(locale, { dateStyle: 'full', timeStyle: 'short' }).format(ms)
+  return ms === undefined ? '' : dateFormat(locale, { dateStyle: 'full', timeStyle: 'short' }).format(ms)
 }
 
 // capitalize starts a phrase with a capital, for formatWhen at the start of a line.

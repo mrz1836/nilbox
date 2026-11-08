@@ -1,5 +1,8 @@
+import { memo } from 'react'
+
 import { formatAge, formatAgo, formatFull, formatWhen } from '../lib/time'
 import { isBackFromSnooze, wakeSummary, type TriageTab } from '../lib/triage'
+import { useNowAs } from '../lib/useNow'
 import {
   openExternal,
   type InboxItem,
@@ -11,27 +14,28 @@ import {
 import { ArchiveIcon, ClockIcon, IssueIcon, PullRequestIcon } from './icons'
 import { ItemSignals } from './ItemSignals'
 import { LaunchControls } from './LaunchControls'
+import { RelativeTime } from './RelativeTime'
 import { SensitiveFiles } from './SensitiveFiles'
 import { TriageControls, type TriageActions } from './TriageControls'
 
-// LaunchOptions are what each row's launch controls need: the profiles and prompts to
-// choose from, each item's resolved launch settings, and the saved launch defaults.
+// LaunchOptions are what every row's launch controls share: the profiles and prompts to
+// choose from, and the saved launch defaults. Each row's own resolved settings come
+// apart from them, so resolving one item again renders only its row.
 export interface LaunchOptions {
   profiles: readonly Profile[]
   prompts: readonly Prompt[]
   launchDefaults: readonly LaunchDefaults[]
-  // resolutions holds each item's resolved launch settings by item ID, as they load.
-  resolutions: ReadonlyMap<number, ItemResolution>
   onDefaultsSaved: () => Promise<void>
   onManagePrompts: () => void
 }
 
 export interface ItemRowProps {
   item: InboxItem
-  now: Date
   // launch is null until the launch settings have loaded; the row has no launch button
   // until then.
   launch: LaunchOptions | null
+  // resolution is the item's resolved launch settings, or null while they load.
+  resolution?: ItemResolution | null
   // tab is the list tab the row is in: the inbox, Snoozed, or Dismissed.
   tab?: TriageTab
   // triage is what the row's snooze, dismiss, and restore buttons do; without it the row
@@ -96,49 +100,71 @@ function TrustTag({ item }: { item: InboxItem }) {
   )
 }
 
+// SnoozedTag says when a snoozed item comes back.
+function SnoozedTag({ item, className }: { item: InboxItem; className: string }) {
+  const back = useNowAs((now) => formatWhen(now, new Date(item.snoozedUntil)))
+
+  return (
+    <span title={`Snoozed until ${formatFull(item.snoozedUntil)}`} className={className}>
+      <ClockIcon className="size-3" />
+      Back {back}
+    </span>
+  )
+}
+
+// DismissedTag says how long ago an item was dismissed.
+function DismissedTag({ item, className }: { item: InboxItem; className: string }) {
+  const ago = useNowAs((now) => formatAgo(now, item.dismissedAt))
+
+  return (
+    <span title={`Dismissed ${formatFull(item.dismissedAt)}`} className={className}>
+      <ArchiveIcon className="size-3" />
+      Dismissed {ago}
+    </span>
+  )
+}
+
+// BackTag marks an item back from a snooze within the last day; a snooze that new
+// activity ended early says what was new.
+function BackTag({ item }: { item: InboxItem }) {
+  const back = useNowAs((now) => isBackFromSnooze(item, now))
+
+  if (!back) {
+    return null
+  }
+
+  const woke = wakeSummary(item.wokeBy)
+
+  return (
+    <span
+      title={
+        woke === ''
+          ? `Snoozed until ${formatFull(item.snoozedUntil)}`
+          : `Back early, ${formatFull(item.snoozedUntil)}: ${woke} since you snoozed it`
+      }
+      className="inline-flex min-w-0 items-center gap-1 text-[11px] leading-4 font-medium text-info"
+    >
+      <ClockIcon className="size-3 shrink-0" />
+      <span className="truncate">{woke === '' ? 'Back from snooze' : `Back early: ${woke}`}</span>
+    </span>
+  )
+}
+
 // TriageTag says where a snoozed or dismissed item stands, and marks an item just back
-// from a snooze, so it is easy to spot among the rest.
-function TriageTag({ item, tab, now }: { item: InboxItem; tab: TriageTab; now: Date }) {
+// from a snooze, so it is easy to spot among the rest. Each tag reads the clock itself,
+// so a tick renders a tag only when its words change.
+function TriageTag({ item, tab }: { item: InboxItem; tab: TriageTab }) {
   const quiet = `${tagClass} inline-flex items-center gap-1 text-muted`
 
-  if (tab === 'snoozed') {
-    return (
-      <span title={`Snoozed until ${formatFull(item.snoozedUntil)}`} className={quiet}>
-        <ClockIcon className="size-3" />
-        Back {formatWhen(now, new Date(item.snoozedUntil))}
-      </span>
-    )
+  switch (tab) {
+    case 'snoozed':
+      return <SnoozedTag item={item} className={quiet} />
+    case 'dismissed':
+      return <DismissedTag item={item} className={quiet} />
+    default:
+      // An item never snoozed has nothing to mark, nor any reason to follow the clock.
+      return item.snoozedUntil === '' ? null : <BackTag item={item} />
   }
-
-  if (tab === 'dismissed') {
-    return (
-      <span title={`Dismissed ${formatFull(item.dismissedAt)}`} className={quiet}>
-        <ArchiveIcon className="size-3" />
-        Dismissed {formatAgo(now, item.dismissedAt)}
-      </span>
-    )
-  }
-
-  if (isBackFromSnooze(item, now)) {
-    // A snooze that new activity ended early says what was new.
-    const woke = wakeSummary(item.wokeBy)
-
-    return (
-      <span
-        title={
-          woke === ''
-            ? `Snoozed until ${formatFull(item.snoozedUntil)}`
-            : `Back early, ${formatFull(item.snoozedUntil)}: ${woke} since you snoozed it`
-        }
-        className="inline-flex min-w-0 items-center gap-1 text-[11px] leading-4 font-medium text-info"
-      >
-        <ClockIcon className="size-3 shrink-0" />
-        <span className="truncate">{woke === '' ? 'Back from snooze' : `Back early: ${woke}`}</span>
-      </span>
-    )
-  }
-
-  return null
 }
 
 // ItemRow is one inbox card, three lines high: the title with its draft and conflict
@@ -146,11 +172,16 @@ function TriageTag({ item, tab, now }: { item: InboxItem; tab: TriageTab; now: D
 // outside the repository, the sensitive files it changes; and its signals (checks,
 // reviews, comments, size, labels). The triage buttons and the launch button sit on the
 // right, and a launch's outcome spans the card below. Long titles are cut short with an
-// ellipsis, so every card keeps the same shape.
-export function ItemRow({
+// ellipsis, so every card keeps the same shape. A card off screen is not rendered until
+// it scrolls near (item-row in index.css).
+//
+// The row is wrapped in memo: the inbox renders its rows in a loop, where the React
+// Compiler can't keep each row's element from one render to the next, so without memo a
+// change to one item would render every row in its list again.
+export const ItemRow = memo(function ItemRow({
   item,
-  now,
   launch,
+  resolution = null,
   tab = 'inbox',
   triage,
   onFilesSettings,
@@ -162,7 +193,7 @@ export function ItemRow({
     <li
       data-item-id={item.id}
       data-highlighted={highlighted || undefined}
-      className="group grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-start gap-x-3 border-b border-border px-4 py-3 transition-colors last:border-b-0 hover:bg-raised/40 data-highlighted:bg-accent/10"
+      className="item-row group grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-start gap-x-3 border-b border-border px-4 py-3 transition-colors last:border-b-0 hover:bg-raised/40 data-highlighted:bg-accent/10"
     >
       <KindIcon item={item} />
       <div className="min-w-0">
@@ -186,22 +217,19 @@ export function ItemRow({
         </div>
         <div className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-muted">
           <span className="truncate">
-            {item.repo} #{item.number} · {item.author} ·{' '}
-            <time dateTime={item.updatedAt}>{formatAge(now, item.updatedAt)}</time>
+            {item.repo} #{item.number} · {item.author} · <RelativeTime iso={item.updatedAt} show={formatAge} />
           </span>
           <TrustTag item={item} />
-          {item.files !== null && (
-            <SensitiveFiles itemId={item.id} check={item.files} now={now} onSettings={onFilesSettings} />
-          )}
-          <TriageTag item={item} tab={tab} now={now} />
+          {item.files !== null && <SensitiveFiles itemId={item.id} check={item.files} onSettings={onFilesSettings} />}
+          <TriageTag item={item} tab={tab} />
         </div>
         <ItemSignals item={item} />
       </div>
-      {triage !== undefined && <TriageControls item={item} tab={tab} now={now} actions={triage} />}
+      {triage !== undefined && <TriageControls item={item} tab={tab} actions={triage} />}
       {launch !== null && (
         <LaunchControls
           item={item}
-          resolution={launch.resolutions.get(item.id) ?? null}
+          resolution={resolution}
           profiles={launch.profiles}
           prompts={launch.prompts}
           launchDefaults={launch.launchDefaults}
@@ -211,4 +239,4 @@ export function ItemRow({
       )}
     </li>
   )
-}
+})

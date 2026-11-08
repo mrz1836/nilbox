@@ -99,3 +99,20 @@
     outline-offset: 2px;
   }
 }
+
+@layer components {
+  /* An inbox row off screen skips rendering until it scrolls near, so a long list costs
+     little more than the rows in view. Until a row has been laid out once it holds a
+     typical row's height, so the scrollbar stays steady; after that it holds its own.
+     The containment this brings clips anything drawn outside the row, so a row with a
+     menu or panel open (its button aria-expanded) renders in full. WebKit before Safari
+     18 ignores both rules. */
+  .item-row {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 5.25rem;
+  }
+
+  .item-row:has([aria-expanded='true']) {
+    content-visibility: visible;
+  }
+}

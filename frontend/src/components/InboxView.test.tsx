@@ -2,8 +2,13 @@ import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { useState } from 'react'
+
 import { useCollapsedSections } from '../lib/useCollapsedSections'
 import { useInbox } from '../lib/useInbox'
+import { ClockContext } from '../lib/useNow'
+import { useTriage } from '../lib/useTriage'
+import { clockAt } from '../test/clock'
 import { sendEvent } from '../test/events'
 import { item, itemResolution, launchResult, list, profile, prompts, snapshot } from '../test/fixtures'
 import { InboxView, type LaunchOptions, type Reveal } from './InboxView'
@@ -33,10 +38,11 @@ const launchOptions: LaunchOptions = {
   profiles: [profile()],
   prompts: prompts(),
   launchDefaults: [],
-  resolutions: new Map([[1, itemResolution()]]),
   onDefaultsSaved: () => Promise.resolve(),
   onManagePrompts: () => undefined,
 }
+
+const resolutions = new Map([[1, itemResolution()]])
 
 const stopListening = vi.fn()
 
@@ -44,20 +50,35 @@ const openSnoozeSettings = vi.fn()
 
 interface HarnessProps {
   launch: LaunchOptions | null
+  // clock reads the time the window's clock moves on to.
   clock: () => Date
   snoozeDays?: number
   reveal?: Reveal | null
 }
 
-// Harness renders the view over the real inbox state and collapsed lists, the way App does.
-function Harness({ launch, clock, snoozeDays = 3, reveal = null }: HarnessProps) {
-  const inbox = useInbox(clock)
+// Harness renders the view over the real inbox state, triage, and collapsed lists, the
+// way App does, on a clock that reads its time from clock.
+function Harness({ clock, ...props }: HarnessProps) {
+  const [shared] = useState(() => clockAt(clock))
+
+  return (
+    <ClockContext value={shared}>
+      <Inbox {...props} />
+    </ClockContext>
+  )
+}
+
+function Inbox({ launch, snoozeDays = 3, reveal = null }: Omit<HarnessProps, 'clock'>) {
+  const inbox = useInbox()
+  const triaged = useTriage(inbox.snapshot)
   const sections = useCollapsedSections()
 
   return (
     <InboxView
       inbox={inbox}
+      triaged={triaged}
       launch={launch}
+      resolutions={resolutions}
       snoozeDays={snoozeDays}
       onSnoozeSettings={openSnoozeSettings}
       collapsed={sections.collapsed}
@@ -480,6 +501,9 @@ describe('InboxView triage', () => {
     const review = await section('Review requested')
     const button = review.getByRole('button', { name: 'Snooze for 1 week' })
     expect(button).toHaveTextContent('1w')
+    // The tooltip works out when the snooze would end once the pointer reaches it.
+    expect(button).toHaveAttribute('title', 'Snooze for 1 week')
+    await userEvent.hover(button)
     expect(button).toHaveAttribute('title', expect.stringMatching(/^Snooze for 1 week: back Mon, Jun 22$/))
 
     await userEvent.click(button)

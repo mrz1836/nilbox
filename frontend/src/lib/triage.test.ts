@@ -5,7 +5,6 @@ import { item, list, snapshot } from '../test/fixtures'
 import {
   applyTriage,
   findItem,
-  inboxCount,
   isBackFromSnooze,
   isDismissed,
   isSnoozed,
@@ -14,7 +13,9 @@ import {
   snoozeLength,
   snoozeShort,
   tabOf,
+  triageInbox,
   triageList,
+  triageTime,
   wakeParts,
   wakeSummary,
 } from './triage'
@@ -82,26 +83,71 @@ describe('triageList', () => {
   })
 })
 
-describe('inboxCount', () => {
-  it('counts what is in the inbox, each item once, leaving out what is snoozed or dismissed', () => {
+describe('triageInbox', () => {
+  it('sorts every list, and counts what is in the inbox once each, leaving out what is set aside', () => {
     const mine = item({ id: 1 })
     const review = item({ id: 2 })
     const back = item({ id: 3, snoozedUntil: at(-2) })
+    const later = item({ id: 4, snoozedUntil: at(5) })
+    const gone = item({ id: 5, dismissedAt: at(-1) })
+    const inbox = snapshot({
+      reviewRequested: list([review, later]),
+      authored: list([mine, back, gone], 40),
+      assigned: list([mine, later]),
+    })
 
-    const counted = inboxCount(
+    const triaged = triageInbox(inbox, now)
+
+    expect(triaged.lists.reviewRequested).toEqual(triageList(inbox.reviewRequested, now))
+    expect(triaged.lists.authored).toEqual(triageList(inbox.authored, now))
+    expect(triaged.lists.assigned.inbox).toEqual([mine])
+    expect(triaged.count).toBe(3)
+    // An item set aside in two lists counts once.
+    expect(triaged.snoozed).toBe(1)
+    expect(triaged.dismissed).toBe(1)
+    expect(triaged.nextBack).toEqual(new Date(at(5)))
+  })
+
+  it('finds the soonest snooze among several', () => {
+    const triaged = triageInbox(
       snapshot({
-        reviewRequested: list([review, item({ id: 4, snoozedUntil: at(5) })]),
-        authored: list([mine, back, item({ id: 5, dismissedAt: at(-1) })], 40),
-        assigned: list([mine]),
+        reviewRequested: list([item({ id: 1, snoozedUntil: at(48) })]),
+        authored: list([item({ id: 2, snoozedUntil: at(3) })]),
       }),
       now,
     )
 
-    expect(counted).toBe(3)
+    expect(triaged.snoozed).toBe(2)
+    expect(triaged.nextBack).toEqual(new Date(at(3)))
   })
 
-  it('is 0 for an empty inbox', () => {
-    expect(inboxCount(snapshot(), now)).toBe(0)
+  it('is empty for an empty inbox', () => {
+    expect(triageInbox(snapshot(), now)).toMatchObject({ count: 0, snoozed: 0, dismissed: 0, nextBack: null })
+  })
+})
+
+describe('triageTime', () => {
+  const inbox = snapshot({
+    reviewRequested: list([item({ id: 1, snoozedUntil: at(-3) }), item({ id: 2, snoozedUntil: at(-1) })]),
+    authored: list([item({ id: 3, snoozedUntil: at(2) }), item({ id: 4 })]),
+  })
+
+  it('is the latest snooze end already passed, which sorts the inbox as now does', () => {
+    expect(triageTime(inbox, now)).toBe(Date.parse(at(-1)))
+    expect(triageInbox(inbox, new Date(triageTime(inbox, now)))).toEqual(triageInbox(inbox, now))
+  })
+
+  it('stays put until the clock passes the next snooze end', () => {
+    const soon = new Date(now.getTime() + 3_600_000)
+    const past = new Date(Date.parse(at(2)))
+
+    expect(triageTime(inbox, soon)).toBe(triageTime(inbox, now))
+    expect(triageTime(inbox, past)).toBe(Date.parse(at(2)))
+  })
+
+  it('is 0 when no snooze has ended', () => {
+    expect(triageTime(inbox, new Date(at(-5)))).toBe(0)
+    expect(triageTime(snapshot(), now)).toBe(0)
   })
 })
 

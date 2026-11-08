@@ -10,10 +10,10 @@ import type { AppNotification, NotificationKind } from '../platform'
 import { quietButtonClass } from './controls'
 import { AssignIcon, BellIcon, ClockIcon, EyeIcon, SlidersIcon } from './icons'
 import { PopoverPanel } from './PopoverPanel'
+import { RelativeTime } from './RelativeTime'
 
 export interface NotificationsMenuProps {
   notifications: NotificationsState
-  now: Date
   // onOpen shows an entry's item: in the inbox while it is there, on GitHub after.
   onOpen: (entry: AppNotification) => void
   // onSettings opens the notification settings.
@@ -35,14 +35,13 @@ function bellLabel(unread: number): string {
 
 interface EntryProps {
   entry: AppNotification
-  now: Date
   // fresh marks an entry that was unread when the history opened.
   fresh: boolean
   onOpen: () => void
 }
 
 // Entry is one notification in the history: what happened, to which item, and when.
-function Entry({ entry, now, fresh, onOpen }: EntryProps) {
+function Entry({ entry, fresh, onOpen }: EntryProps) {
   const Icon = kindIcons[entry.kind] ?? BellIcon
   const where = entry.detail === '' ? entryRef(entry) : `${entryRef(entry)} · ${entry.detail}`
 
@@ -70,9 +69,11 @@ function Entry({ entry, now, fresh, onOpen }: EntryProps) {
               {fresh && <span className="sr-only">Unread: </span>}
               {kindTitle(entry.kind)}
             </span>
-            <time dateTime={entry.createdAt} className="shrink-0 text-[11px] text-muted tabular-nums">
-              {formatAgo(now, entry.createdAt)}
-            </time>
+            <RelativeTime
+              iso={entry.createdAt}
+              show={formatAgo}
+              className="shrink-0 text-[11px] text-muted tabular-nums"
+            />
           </span>
           <span className="mt-0.5 block truncate text-sm font-medium">{entry.title}</span>
           <span className="block truncate text-xs text-muted">{where}</span>
@@ -85,7 +86,7 @@ function Entry({ entry, now, fresh, onOpen }: EntryProps) {
 // NotificationsMenu is the toolbar's bell: how many notifications are unread, and a click
 // opens the history, newest first. Opening it marks everything read, while the entries
 // that were unread stay marked until it closes. An entry opens its item.
-export function NotificationsMenu({ notifications, now, onOpen, onSettings }: NotificationsMenuProps) {
+export function NotificationsMenu({ notifications, onOpen, onSettings }: NotificationsMenuProps) {
   const id = useId()
   const popover = usePopover<HTMLButtonElement, HTMLDivElement>({ focus: 'panel' })
   const { open, toggle, close, triggerRef } = popover
@@ -184,7 +185,6 @@ export function NotificationsMenu({ notifications, now, onOpen, onSettings }: No
               <Entry
                 key={entry.id}
                 entry={entry}
-                now={now}
                 fresh={fresh.has(entry.id) || !entry.read}
                 onOpen={() => {
                   close()

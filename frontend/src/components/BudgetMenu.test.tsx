@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 
 import type { RateGauge as Gauge } from '../platform'
+import { at } from '../test/clock'
 import { rate, unknownRate } from '../test/fixtures'
 import { BudgetMenu } from './BudgetMenu'
 
@@ -13,9 +14,10 @@ const healthy: Gauge = { graphql: rate(), core: rate({ remaining: 4990 }), searc
 function renderMenu(gauge: Gauge | null) {
   return render(
     <>
-      <BudgetMenu gauge={gauge} now={now} />
+      <BudgetMenu gauge={gauge} />
       <button type="button">Elsewhere</button>
     </>,
+    { wrapper: at(now) },
   )
 }
 

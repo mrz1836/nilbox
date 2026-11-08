@@ -13,6 +13,22 @@ function items(onSelect = vi.fn()): MenuItem[] {
 }
 
 describe('MenuButton', () => {
+  it('builds its items only while open, when given a function', async () => {
+    const build = vi.fn(() => items())
+    render(
+      <MenuButton label="More actions" items={build}>
+        ⋯
+      </MenuButton>,
+    )
+
+    expect(build).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'More actions' }))
+
+    expect(build).toHaveBeenCalled()
+    expect(screen.getByRole('menuitem', { name: 'Duplicate' })).toHaveFocus()
+  })
+
   it('opens a menu that focuses its first enabled item', async () => {
     render(
       <MenuButton label="More actions" items={items()}>

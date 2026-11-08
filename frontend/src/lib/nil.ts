@@ -1,53 +1,22 @@
 import type { InboxSnapshot } from '../platform'
-import { isDismissed, isSnoozed, triageList } from './triage'
+import type { TriagedInbox } from './triage'
 
 // Inbox nil: the moment every list is empty, and the party the inbox throws for it.
 
-// isInboxNil reports whether the inbox is truly empty at now: refreshed at least once
-// without an error, and nothing left in any list, counting what GitHub matched beyond the
-// items it returned. A fresh install or a failed refresh is not nil, it is just unknown.
-export function isInboxNil(snapshot: InboxSnapshot, now: Date): boolean {
+// isInboxNil reports whether the inbox is truly empty, as triaged sorts it: refreshed at
+// least once without an error, and nothing left in any list, counting what GitHub
+// matched beyond the items it returned. A fresh install or a failed refresh is not nil,
+// it is just unknown.
+export function isInboxNil(snapshot: InboxSnapshot, triaged: TriagedInbox): boolean {
   if (snapshot.lastRefreshedAt === '' || snapshot.lastError !== '') {
     return false
   }
 
-  return [snapshot.reviewRequested, snapshot.authored, snapshot.assigned].every(
-    (list) => triageList(list, now).total === 0,
-  )
+  return Object.values(triaged.lists).every((list) => list.total === 0)
 }
 
 // NilStats is what the party reports was set aside to get there.
-export interface NilStats {
-  snoozed: number
-  dismissed: number
-  // nextBack is when the soonest snooze ends, or null when nothing is snoozed.
-  nextBack: Date | null
-}
-
-// nilStats counts the items snoozed and dismissed at now, each once however many lists it
-// is in, and finds when the first snooze ends.
-export function nilStats(snapshot: InboxSnapshot, now: Date): NilStats {
-  const snoozed = new Map<number, number>()
-  const dismissed = new Set<number>()
-
-  for (const list of [snapshot.reviewRequested, snapshot.authored, snapshot.assigned]) {
-    for (const item of list.items) {
-      if (isDismissed(item)) {
-        dismissed.add(item.id)
-      } else if (isSnoozed(item, now)) {
-        snoozed.set(item.id, Date.parse(item.snoozedUntil))
-      }
-    }
-  }
-
-  const soonest = Math.min(...snoozed.values())
-
-  return {
-    snoozed: snoozed.size,
-    dismissed: dismissed.size,
-    nextBack: snoozed.size === 0 ? null : new Date(soonest),
-  }
-}
+export type NilStats = Pick<TriagedInbox, 'snoozed' | 'dismissed' | 'nextBack'>
 
 // earnedQuip greets an inbox emptied while you watched.
 export const earnedQuip = 'Inbox zero is for amateurs. You hit nil.'

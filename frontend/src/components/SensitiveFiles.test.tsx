@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { FileCheck } from '../platform'
+import { at } from '../test/clock'
 import { agentGroup, fileCheck } from '../test/fixtures'
 import { SensitiveFiles } from './SensitiveFiles'
 
@@ -16,7 +17,7 @@ vi.mock('../platform', () => platform)
 const now = new Date('2026-06-15T12:00:00Z')
 
 function renderChip(check: FileCheck = fileCheck(), onSettings?: () => void) {
-  render(<SensitiveFiles itemId={7} check={check} now={now} onSettings={onSettings} />)
+  render(<SensitiveFiles itemId={7} check={check} onSettings={onSettings} />, { wrapper: at(now) })
 }
 
 async function openPanel(name: RegExp) {
@@ -148,8 +149,9 @@ describe('SensitiveFiles', () => {
   it('fits the panel inside the area it scrolls in', async () => {
     render(
       <div style={{ overflowY: 'auto' }}>
-        <SensitiveFiles itemId={7} check={fileCheck()} now={now} />
+        <SensitiveFiles itemId={7} check={fileCheck()} />
       </div>,
+      { wrapper: at(now) },
     )
 
     await userEvent.click(screen.getByRole('button', { name: /^Changes sensitive files/ }))

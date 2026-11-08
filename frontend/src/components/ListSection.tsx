@@ -1,8 +1,8 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 
 import { prefersReducedMotion } from '../lib/motion'
-import { tabOf, triageList, type TriageTab } from '../lib/triage'
-import type { InboxList } from '../platform'
+import { tabOf, type TriagedList, type TriageTab } from '../lib/triage'
+import type { ItemResolution } from '../platform'
 import { ArchiveIcon, ChevronDownIcon, ClockIcon } from './icons'
 import { ItemRow, type LaunchOptions } from './ItemRow'
 import { TabPanel, tabPanelId, Tabs } from './Tabs'
@@ -38,9 +38,11 @@ function emptyText(tab: TriageTab, title: string): string {
 
 export interface ListSectionProps {
   title: string
-  list: InboxList
-  now: Date
+  // triaged is the list sorted into its tabs.
+  triaged: TriagedList
   launch: LaunchOptions | null
+  // resolutions holds each item's resolved launch settings by item ID, as they load.
+  resolutions: ReadonlyMap<number, ItemResolution>
   triage: TriageActions
   collapsed: boolean
   onCollapse: (collapsed: boolean) => void
@@ -51,12 +53,13 @@ export interface ListSectionProps {
 
 // ListSection is one inbox list as tabs: the list itself, then what was snoozed and
 // what was dismissed from it, each with its count. The toggle at the right of its header
-// collapses it to just the tabs, which keep their counts.
+// collapses it to just the tabs, which keep their counts; a collapsed list's rows are not
+// rendered at all.
 export function ListSection({
   title,
-  list,
-  now,
+  triaged,
   launch,
+  resolutions,
   triage,
   collapsed,
   onCollapse,
@@ -65,7 +68,6 @@ export function ListSection({
 }: ListSectionProps) {
   const id = useId()
   const [tab, setTab] = useState<TriageTab>('inbox')
-  const triaged = useMemo(() => triageList(list, now), [list, now])
   const items = triaged[tab]
   const panelRef = useRef<HTMLDivElement>(null)
   // revealed is the last reveal request handled, and highlight the row it highlights.
@@ -73,11 +75,14 @@ export function ListSection({
   const [highlight, setHighlight] = useState<number | null>(null)
 
   // A new request to show an item turns to the tab that holds it; the list itself is
-  // opened by the inbox view.
+  // opened by the inbox view. A request withdrawn, as leaving the inbox withdraws it, ends
+  // its highlight, so coming back to the list, kept as it was left, shows nothing again.
   if (reveal !== null && reveal.seq !== revealed) {
     setRevealed(reveal.seq)
     setTab(tabOf(triaged, reveal.id) ?? 'inbox')
     setHighlight(reveal.id)
+  } else if (reveal === null && highlight !== null) {
+    setHighlight(null)
   }
 
   // Once the list is open, the highlighted row scrolls into view, and the highlight fades.
@@ -153,7 +158,7 @@ export function ListSection({
         </button>
       </div>
       <TabPanel ref={panelRef} baseId={id} value={tab} hidden={collapsed}>
-        {items.length === 0 ? (
+        {collapsed ? null : items.length === 0 ? (
           <p className="px-4 py-3 text-sm text-muted">{emptyText(tab, title)}</p>
         ) : (
           <ul>
@@ -161,8 +166,8 @@ export function ListSection({
               <ItemRow
                 key={item.id}
                 item={item}
-                now={now}
                 launch={launch}
+                resolution={resolutions.get(item.id) ?? null}
                 tab={tab}
                 triage={triage}
                 onFilesSettings={onFilesSettings}

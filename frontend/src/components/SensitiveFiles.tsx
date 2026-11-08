@@ -17,12 +17,12 @@ import {
 import { quietButtonClass } from './controls'
 import { ExternalIcon, RefreshIcon, ShieldAlertIcon, ShieldCheckIcon } from './icons'
 import { PopoverPanel } from './PopoverPanel'
+import { RelativeTime } from './RelativeTime'
 
 export interface SensitiveFilesProps {
   // itemId is the pull request the check is for, for checking it again.
   itemId: number
   check: FileCheck
-  now: Date
   // onSettings opens Settings → Sensitive files; without it, the panel names the page.
   onSettings?: (() => void) | undefined
 }
@@ -119,7 +119,7 @@ function summary(check: FileCheck): string {
 // files it changes, or that its files were checked and none is, or that they could not
 // all be checked. It opens a panel listing each file by category, each opening its diff
 // on GitHub, with a button to check the files again now.
-export function SensitiveFiles({ itemId, check, now, onSettings }: SensitiveFilesProps) {
+export function SensitiveFiles({ itemId, check, onSettings }: SensitiveFilesProps) {
   const id = useId()
   // The panel opens upward when it fits better above the chip, and keeps within the area it
   // scrolls in, scrolling inside itself when the files run longer.
@@ -175,7 +175,12 @@ export function SensitiveFiles({ itemId, check, now, onSettings }: SensitiveFile
           {check.head !== '' && (
             <p className="mt-0.5 text-[11px] text-muted">
               At commit <span className="font-mono">{shortHead(check.head)}</span>
-              {check.checkedAt !== '' && ` · checked ${formatAgo(now, check.checkedAt)}`}
+              {check.checkedAt !== '' && (
+                <>
+                  {' · checked '}
+                  <RelativeTime iso={check.checkedAt} show={formatAgo} />
+                </>
+              )}
             </p>
           )}
         </div>

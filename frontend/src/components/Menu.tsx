@@ -27,7 +27,9 @@ export interface MenuButtonProps {
   // it defaults to label.
   menuLabel?: string
   title?: string
-  items: readonly MenuItem[]
+  // items are the menu's actions, or a function that builds them, called only while the
+  // menu is open: for a menu repeated on every row, whose items cost something to build.
+  items: readonly MenuItem[] | (() => readonly MenuItem[])
   children: ReactNode
   className?: string
   // align puts the menu's right or left edge under the button's.
@@ -40,6 +42,9 @@ export interface MenuButtonProps {
   // panelClassName sizes the menu: by default it is at least 13rem wide.
   panelClassName?: string
 }
+
+// noItems is a closed menu's items.
+const noItems: readonly MenuItem[] = []
 
 const itemClass =
   'flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm whitespace-nowrap hover:bg-raised focus:bg-raised focus-visible:outline-none disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent'
@@ -100,6 +105,7 @@ export function MenuButton({
     },
   })
   const { open, toggle, show, close, triggerRef } = popover
+  const shown = !open ? noItems : typeof items === 'function' ? items() : items
 
   // A menu that closes before its focus moved, or that was asked for the last item while
   // open, starts at the first item next time.
@@ -175,7 +181,7 @@ export function MenuButton({
           onKeyDown={onKeyDown}
           className={`outline-none ${header === undefined ? '' : 'border-t border-border p-1.5'}`}
         >
-          {items.map((item) => (
+          {shown.map((item) => (
             <Fragment key={item.label}>
               {item.divided === true && <hr className="mx-1 my-1.5 border-border" />}
               <button

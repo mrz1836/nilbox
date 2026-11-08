@@ -46,7 +46,7 @@ pins.
 |---|---|
 | `magex frontend:install` | Installs the frontend dependencies exactly as `pnpm-lock.yaml` pins them |
 | `magex frontend:build` | Type-checks the frontend and builds it into `frontend/dist` |
-| `magex frontend:gate` | The frontend gate: frozen-lockfile install, format check, lint, typecheck, and tests with coverage (`frontend/scripts/gate.sh`, the script CI runs) |
+| `magex frontend:gate` | The frontend gate: frozen-lockfile install, format check, lint, typecheck, tests with coverage, and the render profile through the React Compiler (`frontend/scripts/gate.sh`, the script CI runs) |
 | `magex brand:generate` | Regenerates the theme tokens, frontend brand constants, `build/darwin/Info.plist`, and the icon artwork (the app icon `build/appicon.svg` and the menu bar icon `build/trayicon.svg`) from `internal/brand` |
 | `magex brand:icons` | Renders `build/appicon.svg` into the bundle's icon set `build/darwin/icons.icns` and the development Dock icon `cmd/nilbox/appicon.png`, and `build/trayicon.svg` into the menu bar icon `cmd/nilbox/trayicon.png` (needs `rsvg-convert`: `brew install librsvg`); run it after changing the mark or the artwork |
 | `magex app:bindings` | Regenerates the committed TypeScript bindings in `frontend/bindings`, writing each Go string type with constants as a union of its values |

@@ -1,13 +1,20 @@
-import { render, screen, within } from '@testing-library/react'
+import { render as renderPlain, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ReactElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { NotificationsState } from '../lib/useNotifications'
 import type { NotificationKind } from '../platform'
+import { at } from '../test/clock'
 import { notification } from '../test/fixtures'
 import { NotificationsMenu } from './NotificationsMenu'
 
 const now = new Date('2026-06-15T12:00:00Z')
+
+// render renders on a clock that stands at now.
+function render(ui: ReactElement) {
+  return renderPlain(ui, { wrapper: at(now) })
+}
 
 const onOpen = vi.fn()
 const onSettings = vi.fn()
@@ -47,7 +54,6 @@ describe('NotificationsMenu', () => {
     render(
       <NotificationsMenu
         notifications={state({ log: { items: [review, woke], unread: 1 } })}
-        now={now}
         onOpen={onOpen}
         onSettings={onSettings}
       />,
@@ -61,7 +67,6 @@ describe('NotificationsMenu', () => {
     render(
       <NotificationsMenu
         notifications={state({ log: { items: [review], unread: 140 } })}
-        now={now}
         onOpen={onOpen}
         onSettings={onSettings}
       />,
@@ -76,7 +81,6 @@ describe('NotificationsMenu', () => {
     render(
       <NotificationsMenu
         notifications={state({ log: { items: [mentions], unread: 1 } })}
-        now={now}
         onOpen={onOpen}
         onSettings={onSettings}
       />,
@@ -88,7 +92,7 @@ describe('NotificationsMenu', () => {
   })
 
   it('shows no count when everything is read', () => {
-    render(<NotificationsMenu notifications={state()} now={now} onOpen={onOpen} onSettings={onSettings} />)
+    render(<NotificationsMenu notifications={state()} onOpen={onOpen} onSettings={onSettings} />)
 
     expect(screen.getByRole('button', { name: 'Notifications' })).toBeInTheDocument()
     expect(screen.queryByTestId('notifications-unread')).not.toBeInTheDocument()
@@ -97,7 +101,7 @@ describe('NotificationsMenu', () => {
   it('lists the history newest first, marks it read, and keeps the new entries marked while open', async () => {
     const notifications = state({ log: { items: [review, woke], unread: 1 } })
     const { rerender } = render(
-      <NotificationsMenu notifications={notifications} now={now} onOpen={onOpen} onSettings={onSettings} />,
+      <NotificationsMenu notifications={notifications} onOpen={onOpen} onSettings={onSettings} />,
     )
 
     const panel = await open()
@@ -117,7 +121,6 @@ describe('NotificationsMenu', () => {
     rerender(
       <NotificationsMenu
         notifications={{ ...notifications, log: { items: [{ ...review, read: true }, woke], unread: 0 } }}
-        now={now}
         onOpen={onOpen}
         onSettings={onSettings}
       />,
@@ -127,7 +130,7 @@ describe('NotificationsMenu', () => {
 
   it('does not mark an all-read history again', async () => {
     const notifications = state({ log: { items: [woke], unread: 0 } })
-    render(<NotificationsMenu notifications={notifications} now={now} onOpen={onOpen} onSettings={onSettings} />)
+    render(<NotificationsMenu notifications={notifications} onOpen={onOpen} onSettings={onSettings} />)
 
     await open()
 
@@ -138,7 +141,6 @@ describe('NotificationsMenu', () => {
     render(
       <NotificationsMenu
         notifications={state({ log: { items: [review], unread: 0 } })}
-        now={now}
         onOpen={onOpen}
         onSettings={onSettings}
       />,
@@ -152,7 +154,7 @@ describe('NotificationsMenu', () => {
   })
 
   it('says when there is nothing yet, and opens the settings', async () => {
-    render(<NotificationsMenu notifications={state()} now={now} onOpen={onOpen} onSettings={onSettings} />)
+    render(<NotificationsMenu notifications={state()} onOpen={onOpen} onSettings={onSettings} />)
 
     const panel = await open()
 
@@ -167,7 +169,7 @@ describe('NotificationsMenu', () => {
 
   it('clears the history, and says when it could not', async () => {
     const notifications = state({ log: { items: [review], unread: 0 } })
-    render(<NotificationsMenu notifications={notifications} now={now} onOpen={onOpen} onSettings={onSettings} />)
+    render(<NotificationsMenu notifications={notifications} onOpen={onOpen} onSettings={onSettings} />)
 
     let panel = await open()
     await userEvent.click(panel.getByRole('button', { name: 'Clear' }))
@@ -187,7 +189,6 @@ describe('NotificationsMenu', () => {
     render(
       <NotificationsMenu
         notifications={state({ log: { items: [review], unread: 1 }, markError: 'database is locked' })}
-        now={now}
         onOpen={onOpen}
         onSettings={onSettings}
       />,
@@ -202,7 +203,6 @@ describe('NotificationsMenu', () => {
     render(
       <NotificationsMenu
         notifications={state({ error: 'database is locked' })}
-        now={now}
         onOpen={onOpen}
         onSettings={onSettings}
       />,

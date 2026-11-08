@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { capitalize, formatAge, formatAgo, formatFull, formatUntil, formatWhen } from './time'
 
@@ -89,6 +89,15 @@ describe('formatWhen', () => {
   it('names a time in full for a tooltip', () => {
     expect(plain(formatFull('2026-06-18T12:00:00Z', 'en-US'))).toBe('Thursday, June 18, 2026 at 12:00 PM')
     expect(formatFull('', 'en-US')).toBe('')
+  })
+
+  it('makes each date format once, however many times it formats', () => {
+    const made = vi.spyOn(Intl, 'DateTimeFormat')
+
+    formatFull('2026-06-18T12:00:00Z', 'en-GB')
+    formatFull('2026-06-19T12:00:00Z', 'en-GB')
+
+    expect(made).toHaveBeenCalledOnce()
   })
 
   it('capitalizes a phrase', () => {

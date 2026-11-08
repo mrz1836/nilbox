@@ -15,7 +15,8 @@
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:renders": "vitest run --config vitest.renders.config.ts"
   },
   "dependencies": {
     "@wailsio/runtime": "3.1.0",

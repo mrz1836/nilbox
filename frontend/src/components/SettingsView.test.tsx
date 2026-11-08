@@ -151,6 +151,32 @@ async function openSection(name: string) {
 }
 
 describe('SettingsView', () => {
+  it('turns to the section asked for at each opening, and keeps its place in between', async () => {
+    const props: SettingsViewProps = {
+      settings: settings(),
+      profiles: [profile()],
+      prompts: prompts(),
+      defaultPrompts: { pr: 1, issue: 4 },
+      launchDefaults: [],
+      account: account(),
+      theme: 'system',
+      onThemeChange: () => Promise.resolve({ ok: true, data: undefined }),
+      onSaved: vi.fn(),
+      onLaunchChanged: () => Promise.resolve(),
+      onClose: vi.fn(),
+    }
+    const { rerender } = render(<SettingsView {...props} initialSection="snoozing" opened={1} />)
+
+    expect(screen.getByRole('region', { name: 'Snoozing' })).toBeInTheDocument()
+
+    await openSection('Trust')
+    rerender(<SettingsView {...props} initialSection="snoozing" opened={1} />)
+    expect(screen.getByRole('region', { name: 'Trust' })).toBeInTheDocument()
+
+    rerender(<SettingsView {...props} initialSection="snoozing" opened={2} />)
+    expect(screen.getByRole('region', { name: 'Snoozing' })).toBeInTheDocument()
+  })
+
   it('opens on the account, with a sidebar of sections', () => {
     renderSettings()
 
