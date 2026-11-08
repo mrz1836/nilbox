@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
@@ -131,7 +132,38 @@ type Item struct {
 	// items come first in each list, the most recently pinned first. A pin outlasts a
 	// snooze or a dismissal.
 	PinnedAt string `json:"pinnedAt"`
+
+	// Assigned reports that the item is in the Assigned list: it is assigned to the
+	// signed-in user, who can take themselves off it (Unassign).
+	Assigned bool `json:"assigned"`
+
+	// ReviewRequest says how a pull request in the Review requested list asks for the
+	// signed-in user's review, which decides whether they can take themselves off it
+	// (RemoveReviewRequest).
+	ReviewRequest ReviewRequest `json:"reviewRequest"`
+
+	// ReviewTeams are the slugs of the teams a pull request asks to review, in GitHub's
+	// order. It is empty for an issue, and until a refresh has read them.
+	ReviewTeams []string `json:"reviewTeams"`
 }
+
+// ReviewRequest says how a pull request asks the signed-in user to review it.
+type ReviewRequest string
+
+const (
+	// ReviewRequestNone is an item not in the Review requested list.
+	ReviewRequestNone ReviewRequest = "none"
+
+	// ReviewRequestYou is a pull request that asks the user by name, which the user can
+	// take themselves off. A pull request whose requests no refresh has read yet counts
+	// as one, and GitHub's answer to the edit says otherwise.
+	ReviewRequestYou ReviewRequest = "you"
+
+	// ReviewRequestTeam is a pull request that asks only teams, one of them the user's:
+	// GitHub takes a team's request off for every member or for none, so the user cannot
+	// take themselves off it.
+	ReviewRequestTeam ReviewRequest = "team"
+)
 
 // Details is what an item's inbox card shows beyond its title. The pull request fields
 // are zero, or "", for an issue.
@@ -314,7 +346,7 @@ func (s *Service) buildSnapshot(ctx context.Context) (Snapshot, settingsKey, err
 		return Snapshot{}, settingsKey{}, err
 	}
 
-	snap.addItems(rows, s.scopes.scope(status))
+	snap.addItems(rows, s.scopes.scope(status), status[prefViewer])
 	snap.applyTotals(status)
 
 	if snap.Rate, err = loadRates(ctx, s.q, accountID); err != nil {
@@ -360,10 +392,11 @@ func accountFromPrefs(prefs map[string]string) Account {
 }
 
 // addItems sorts rows into the lists whose flags they carry, deciding each item's trust,
-// and whether its files are checked, with scope.
-func (s *Snapshot) addItems(rows []itemRow, scope fileScope) {
+// and whether its files are checked, with scope, and how it asks viewer, the signed-in
+// account, to review it.
+func (s *Snapshot) addItems(rows []itemRow, scope fileScope, viewer string) {
 	for _, r := range rows {
-		item := r.item(scope)
+		item := r.item(scope, viewer)
 
 		if r.ReasonReviewRequested {
 			s.ReviewRequested.Items = append(s.ReviewRequested.Items, item)
@@ -441,6 +474,11 @@ type itemRow struct {
 	DetailsFetchedAt *time.Time
 	HeadOID          string
 
+	// ReviewUsers and ReviewTeams are who a pull request asks to review: the logins of
+	// the people and the slugs of the teams. Both are nil until a refresh reads them.
+	ReviewUsers []string
+	ReviewTeams []string
+
 	// Stored is the item's last file check, or nil when there is none.
 	Stored *sensitive.Result
 
@@ -461,6 +499,16 @@ func itemRowOf(r queries.ListItemsRow) (itemRow, error) {
 	projects, err := decodeColumn[storedProject](r.Projects)
 	if err != nil {
 		return itemRow{}, fmt.Errorf("read the projects of item %d: %w", r.ID, err)
+	}
+
+	reviewUsers, err := decodeColumn[string](r.ReviewUsers)
+	if err != nil {
+		return itemRow{}, fmt.Errorf("read the requested reviewers of item %d: %w", r.ID, err)
+	}
+
+	reviewTeams, err := decodeColumn[string](r.ReviewTeams)
+	if err != nil {
+		return itemRow{}, fmt.Errorf("read the requested teams of item %d: %w", r.ID, err)
 	}
 
 	stored, err := filesColumns{
@@ -487,7 +535,7 @@ func itemRowOf(r queries.ListItemsRow) (itemRow, error) {
 		Reviewers: int(value(r.Reviewers)), Reviewed: int(value(r.Reviewed)), Approvals: int(value(r.Approvals)),
 		ChangesRequested: int(value(r.ChangesRequested)), DetailsFetchedAt: r.DetailsFetchedAt,
 		SubIssues: SubIssues{Total: int(value(r.SubIssuesTotal)), Completed: int(value(r.SubIssuesCompleted))},
-		HeadOID:   value(r.HeadOID),
+		HeadOID:   value(r.HeadOID), ReviewUsers: reviewUsers, ReviewTeams: reviewTeams,
 
 		Stored: stored,
 
@@ -496,8 +544,8 @@ func itemRowOf(r queries.ListItemsRow) (itemRow, error) {
 }
 
 // item converts a row to its DTO, deciding its trust, and whether its files are
-// checked, with scope.
-func (r *itemRow) item(scope fileScope) Item {
+// checked, with scope, and how it asks viewer to review it.
+func (r *itemRow) item(scope fileScope, viewer string) Item {
 	isPR := r.Kind == item.KindPR
 	author := trust.Author{Login: r.AuthorLogin, Type: r.AuthorType, Association: r.AuthorAssociation}
 	class := scope.policy.Classify(author, isPR, r.IsCrossRepository)
@@ -524,7 +572,27 @@ func (r *itemRow) item(scope fileScope) Item {
 		SnoozedUntil:      formatOptionalTime(r.SnoozedUntil),
 		WokeBy:            decodeReasons(r.WakeReasons),
 		PinnedAt:          formatOptionalTime(r.PinnedAt),
+		Assigned:          r.ReasonAssigned,
+		ReviewRequest:     r.reviewRequest(viewer),
+		ReviewTeams:       nonNil(r.ReviewTeams),
 	}
+}
+
+// reviewRequest says how the row asks viewer to review it: by name, or only through
+// teams, when it is in the Review requested list. A row whose requests are not known, or
+// that names neither viewer nor a team, as GitHub's search can still list it for a while
+// after a change, counts as asking by name, and the edit's answer says otherwise.
+func (r *itemRow) reviewRequest(viewer string) ReviewRequest {
+	if !r.ReasonReviewRequested {
+		return ReviewRequestNone
+	}
+
+	asks := github.ReviewRequests{Users: r.ReviewUsers, Teams: r.ReviewTeams}
+	if len(asks.Teams) > 0 && !asks.Asks(viewer) {
+		return ReviewRequestTeam
+	}
+
+	return ReviewRequestYou
 }
 
 // checkedFiles evaluates the row's last file check with scope's categories, or returns nil

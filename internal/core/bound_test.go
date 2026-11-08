@@ -240,12 +240,14 @@ func boundCalls(t *testing.T) map[string]boundCall {
 // the tests do not have. Their results come from the same code as a method that is called.
 func unreachedBound() map[string]string {
 	return map[string]string{
-		"inbox.Service.Refresh":     "reads GitHub; its snapshot is built as Snapshot's",
-		"inbox.Service.RefreshItem": "reads GitHub; its snapshot is built as Snapshot's",
-		"inbox.Service.CheckFiles":  "reads GitHub; nil for an item whose files are not checked",
-		"inbox.Service.StoredFiles": "nil for an item whose files are not checked",
-		"launcher.Service.Preview":  "needs a clone; its resolution is built as Resolve's",
-		"launcher.Service.Launch":   "opens a terminal",
+		"inbox.Service.Refresh":             "reads GitHub; its snapshot is built as Snapshot's",
+		"inbox.Service.RefreshItem":         "reads GitHub; its snapshot is built as Snapshot's",
+		"inbox.Service.Unassign":            "edits GitHub; its snapshot is built as Snapshot's",
+		"inbox.Service.RemoveReviewRequest": "edits GitHub; its snapshot is built as Snapshot's",
+		"inbox.Service.CheckFiles":          "reads GitHub; nil for an item whose files are not checked",
+		"inbox.Service.StoredFiles":         "nil for an item whose files are not checked",
+		"launcher.Service.Preview":          "needs a clone; its resolution is built as Resolve's",
+		"launcher.Service.Launch":           "opens a terminal",
 	}
 }
 

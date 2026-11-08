@@ -4,8 +4,9 @@
 INSERT INTO item_details (
     item_id, labels, projects, comments, additions, deletions, changed_files, commits, head_oid, mergeable,
     checks_state, checks_passed, checks_failed, checks_pending, checks_skipped, review_decision,
-    reviewers, reviewed, approvals, changes_requested, sub_issues_total, sub_issues_completed, fetched_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    reviewers, reviewed, approvals, changes_requested, sub_issues_total, sub_issues_completed,
+    review_users, review_teams, fetched_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (item_id) DO UPDATE SET
     labels = excluded.labels,
     projects = excluded.projects,
@@ -28,6 +29,8 @@ ON CONFLICT (item_id) DO UPDATE SET
     changes_requested = excluded.changes_requested,
     sub_issues_total = excluded.sub_issues_total,
     sub_issues_completed = excluded.sub_issues_completed,
+    review_users = excluded.review_users,
+    review_teams = excluded.review_teams,
     fetched_at = excluded.fetched_at;
 
 -- name: GetActivity :one
@@ -36,3 +39,9 @@ ON CONFLICT (item_id) DO UPDATE SET
 SELECT head_oid, commits, comments, review_decision, reviewed, approvals, changes_requested
 FROM item_details
 WHERE item_id = ?;
+
+-- name: SetReviewRequests :exec
+-- SetReviewRequests rewrites who the pull request with item_id asks to review, as GitHub
+-- answered an edit to its review requests. Nothing changes when no refresh has read its
+-- details.
+UPDATE item_details SET review_users = ?, review_teams = ? WHERE item_id = ?;
