@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -68,6 +69,10 @@ var (
 type StatusError struct {
 	StatusCode int
 	Message    string
+
+	// RetryAfter is how long GitHub asked the app to wait before trying again (its
+	// Retry-After header), or 0 when it did not say.
+	RetryAfter time.Duration
 }
 
 // Error describes the status, GitHub's message, and a hint for a rejected token.
@@ -107,6 +112,10 @@ type Client struct {
 	// Rates hears the budget reading every API response carries, and what its request
 	// spent, so the app's view of the budgets follows every call it makes. Nil hears none.
 	Rates RateObserver
+
+	// Writes paces the edits the client sends GitHub (see edits.go). Nil lets every edit
+	// go.
+	Writes WriteGate
 }
 
 // NewClient returns a client for GitHub's public API that identifies itself with the
@@ -245,10 +254,23 @@ func (c *Client) do(ctx context.Context, tok Token, method, path string, body []
 	}
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, nil, &StatusError{StatusCode: resp.StatusCode, Message: apiMessage(data)}
+		return nil, nil, &StatusError{
+			StatusCode: resp.StatusCode, Message: apiMessage(data), RetryAfter: retryAfter(resp.Header),
+		}
 	}
 
 	return data, resp.Header, nil
+}
+
+// retryAfter reads a response's Retry-After header, which GitHub sends in whole seconds,
+// or returns 0 when there is none it can read.
+func retryAfter(h http.Header) time.Duration {
+	seconds, err := strconv.Atoi(strings.TrimSpace(h.Get("Retry-After")))
+	if err != nil || seconds <= 0 {
+		return 0
+	}
+
+	return time.Duration(seconds) * time.Second
 }
 
 // unreachable gives err, a request that got no answer, a message for the user, unless

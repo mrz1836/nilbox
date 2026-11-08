@@ -194,6 +194,10 @@ type ItemDetails struct {
 	Checks  Checks
 	Reviews Reviews
 
+	// ReviewRequests is who a pull request asks to review, as of the read; empty for an
+	// issue.
+	ReviewRequests ReviewRequests
+
 	// Projects lists the open projects an issue is in, in GitHub's order, when they were
 	// read (see DetailOptions). It is nil when they were not, when the issue is in none,
 	// and for a pull request.
@@ -565,16 +569,17 @@ func (n *detailsNode) details() (id string, item ItemDetails, ok bool) {
 		}
 
 		return n.ID, ItemDetails{
-			Labels:       n.Labels.labels(),
-			Comments:     n.TotalCommentsCount,
-			Additions:    n.Additions,
-			Deletions:    n.Deletions,
-			ChangedFiles: n.ChangedFiles,
-			Commits:      n.Commits.TotalCount,
-			HeadOID:      n.HeadRefOID,
-			Mergeable:    n.Mergeable,
-			Checks:       n.StatusCheckRollup.checks(),
-			Reviews:      n.reviews(author),
+			Labels:         n.Labels.labels(),
+			Comments:       n.TotalCommentsCount,
+			Additions:      n.Additions,
+			Deletions:      n.Deletions,
+			ChangedFiles:   n.ChangedFiles,
+			Commits:        n.Commits.TotalCount,
+			HeadOID:        n.HeadRefOID,
+			Mergeable:      n.Mergeable,
+			Checks:         n.StatusCheckRollup.checks(),
+			Reviews:        n.reviews(author),
+			ReviewRequests: n.ReviewRequests.requests(),
 		}, true
 	default:
 		return "", ItemDetails{}, false
@@ -827,6 +832,36 @@ func (n *detailsNode) reviews(author string) Reviews {
 	}
 
 	return r
+}
+
+// requests lists who the pull request asks to review: the people and bots by login, and
+// the teams by slug, each once, in GitHub's order.
+func (q graphQLRequests) requests() ReviewRequests {
+	out := ReviewRequests{Users: []string{}, Teams: []string{}}
+	seen := make(map[string]bool, len(q.Nodes))
+
+	for _, req := range q.Nodes {
+		if req == nil || req.RequestedReviewer == nil {
+			continue
+		}
+
+		who := req.RequestedReviewer
+
+		key := reviewerKey(who.TypeName, who.Login, who.Slug)
+		if key == "" || seen[key] {
+			continue
+		}
+
+		seen[key] = true
+
+		if who.TypeName == "Team" {
+			out.Teams = append(out.Teams, who.Slug)
+		} else {
+			out.Users = append(out.Users, who.Login)
+		}
+	}
+
+	return out
 }
 
 // reviewers is everyone with a pending review request, by reviewerKey.
