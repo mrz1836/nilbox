@@ -13,10 +13,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/repo"
@@ -152,6 +154,13 @@ type Config struct {
 
 	// Repos lists the repositories offered when adding defaults.
 	Repos RepoSource
+
+	// File is the copy of the launch defaults kept beside the database, written after
+	// every change to them. Optional.
+	File *File
+
+	// Logger hears a copy that could not be written. Nil discards.
+	Logger *slog.Logger
 }
 
 // Service manages the launch defaults.
@@ -160,11 +169,16 @@ type Service struct {
 	profiles ProfileLookup
 	prompts  PromptLookup
 	repos    RepoSource
+	file     *File
+	logger   *slog.Logger
 }
 
 // NewService returns a Service over cfg.
 func NewService(cfg Config) *Service {
-	return &Service{store: cfg.Store, profiles: cfg.Profiles, prompts: cfg.Prompts, repos: cfg.Repos}
+	return &Service{
+		store: cfg.Store, profiles: cfg.Profiles, prompts: cfg.Prompts, repos: cfg.Repos, file: cfg.File,
+		logger: logging.Or(cfg.Logger),
+	}
 }
 
 // List returns every stored launch default, by owner and then repository, each owner's
@@ -199,15 +213,30 @@ func (s *Service) Save(ctx context.Context, in Input) (Defaults, error) {
 			return Defaults{}, err
 		}
 
+		s.saved(ctx)
+
 		return Defaults{Owner: in.Owner, Name: in.Name, ExtraArgs: []string{}}, nil
 	}
 
-	return s.store.save(ctx, in, args)
+	stored, err := s.store.save(ctx, in, args)
+	if err != nil {
+		return Defaults{}, err
+	}
+
+	s.saved(ctx)
+
+	return stored, nil
 }
 
 // Remove deletes an org's (name "") or a repository's launch defaults.
 func (s *Service) Remove(ctx context.Context, owner, name string) error {
-	return s.store.remove(ctx, strings.TrimSpace(owner), strings.TrimSpace(name))
+	if err := s.store.remove(ctx, strings.TrimSpace(owner), strings.TrimSpace(name)); err != nil {
+		return err
+	}
+
+	s.saved(ctx)
+
+	return nil
 }
 
 // Targets lists the owners and repositories the inbox has seen, each owner before its
@@ -233,6 +262,22 @@ func (s *Service) Targets(ctx context.Context) ([]Target, error) {
 	}
 
 	return out, nil
+}
+
+// saved writes the copy of the launch defaults after a change to them, or to a prompt
+// they name. A failure is logged, not returned: the change is stored, and the copy is
+// written again after the next one. The change is made whether or not the caller still
+// waits, so the copy is too.
+func (s *Service) saved(ctx context.Context) {
+	if s.file == nil {
+		return
+	}
+
+	ctx = context.WithoutCancel(ctx)
+
+	if err := s.file.Save(ctx, s.store, s.prompts); err != nil {
+		s.logger.WarnContext(ctx, "could not save the copy of the launch defaults", "path", s.file.Path(), "error", err)
+	}
 }
 
 // Index holds launch defaults by org and repository, matched ignoring case.

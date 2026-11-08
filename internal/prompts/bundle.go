@@ -5,10 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/appdata"
@@ -219,85 +216,16 @@ func DecodeBundle(data []byte) (Bundle, error) {
 
 // readBundleFile reads the prompt file at path.
 func readBundleFile(path string) (Bundle, error) {
-	data, err := readCapped(path)
-	if err != nil {
+	data, err := appdata.ReadFile(path, maxBundleBytes)
+
+	switch {
+	case errors.Is(err, appdata.ErrTooLarge):
+		return Bundle{}, ErrBundleTooLarge
+	case errors.Is(err, appdata.ErrNotAFile):
+		return Bundle{}, fmt.Errorf("%w: %w", ErrNotBundle, err)
+	case err != nil:
 		return Bundle{}, err
 	}
 
 	return DecodeBundle(data)
-}
-
-// readCapped reads the file at path, refusing one larger than a prompt file may be
-// before reading all of it.
-func readCapped(path string) ([]byte, error) {
-	f, err := os.Open(path) //nolint:gosec // a file the user chose, or the app's own
-	if err != nil {
-		return nil, fmt.Errorf("read the file: %w", err)
-	}
-
-	defer func() { _ = f.Close() }()
-
-	info, err := f.Stat()
-	if err != nil {
-		return nil, fmt.Errorf("read the file: %w", err)
-	}
-
-	if !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("read the file: %w", ErrNotBundle)
-	}
-
-	if info.Size() > maxBundleBytes {
-		return nil, ErrBundleTooLarge
-	}
-
-	var buf bytes.Buffer
-	if _, err = buf.ReadFrom(f); err != nil {
-		return nil, fmt.Errorf("read the file: %w", err)
-	}
-
-	return buf.Bytes(), nil
-}
-
-// writeFileAtomic writes data to a user-only file at path: to a temporary file beside it
-// first, flushed to disk, then renamed over path, so a reader sees the old file or the
-// new one whole, never part of either, whatever stops the write.
-func writeFileAtomic(path string, data []byte) error {
-	dir, base := filepath.Split(path)
-	dir = strings.TrimSuffix(dir, string(filepath.Separator))
-
-	if dir == "" {
-		dir = "."
-	}
-
-	tmp, err := os.CreateTemp(dir, "."+base+".*.tmp")
-	if err != nil {
-		return fmt.Errorf("write %s: %w", base, err)
-	}
-
-	name := tmp.Name()
-	cleanup := func(err error) error {
-		return errors.Join(fmt.Errorf("write %s: %w", base, err), tmp.Close(), os.Remove(name))
-	}
-
-	if err = tmp.Chmod(appdata.PrivateFilePerm); err != nil {
-		return cleanup(err)
-	}
-
-	if _, err = tmp.Write(data); err != nil {
-		return cleanup(err)
-	}
-
-	if err = tmp.Sync(); err != nil {
-		return cleanup(err)
-	}
-
-	if err = tmp.Close(); err != nil {
-		return errors.Join(fmt.Errorf("write %s: %w", base, err), os.Remove(name))
-	}
-
-	if err = os.Rename(name, path); err != nil {
-		return errors.Join(fmt.Errorf("write %s: %w", base, err), os.Remove(name))
-	}
-
-	return nil
 }

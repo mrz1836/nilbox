@@ -82,9 +82,10 @@ func TestSnapshotReadsTheColumnsItHas(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, rows, 2)
 
-	assert.Equal(t, map[string]any{"nickname": "Review", "plan_mode": int64(1), "body": "Review {{.URL}}"}, rows[0],
+	assert.Equal(t, store.Row{"nickname": "Review", "plan_mode": int64(1), "body": "Review {{.URL}}"}, rows[0],
 		"a column the table lacks is left out of the row")
-	assert.Equal(t, map[string]any{"nickname": "Triage", "plan_mode": nil, "body": "Triage {{.URL}}"}, rows[1])
+	assert.Equal(t, store.Row{"nickname": "Triage", "plan_mode": nil, "body": "Triage {{.URL}}"}, rows[1])
+	assert.Empty(t, rows[0].Text("model"), "and reads as empty")
 }
 
 func TestSnapshotReadsDatetimeColumnsAsTimes(t *testing.T) {
@@ -110,7 +111,7 @@ func TestSnapshotCountsRowsWhenNoColumnAskedForExists(t *testing.T) {
 
 	rows, err := openSnapshot(t, path).Rows(t.Context(), "prompts", "starter_key")
 	require.NoError(t, err)
-	assert.Equal(t, []map[string]any{{}, {}}, rows)
+	assert.Equal(t, []store.Row{{}, {}}, rows)
 }
 
 func TestSnapshotReportsAMissingTable(t *testing.T) {
@@ -190,7 +191,7 @@ func TestSnapshotReadsTheWritesStillInItsLog(t *testing.T) {
 
 	rows, err := snap.Rows(t.Context(), "prompts", "nickname")
 	require.NoError(t, err)
-	assert.Equal(t, []map[string]any{{"nickname": "Logged"}}, rows)
+	assert.Equal(t, []store.Row{{"nickname": "Logged"}}, rows)
 	require.NoError(t, snap.Close())
 
 	assert.True(t, sameBytes(t, keptBefore, kept), "the database is left as it was")

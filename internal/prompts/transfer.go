@@ -11,6 +11,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/store"
@@ -139,7 +140,7 @@ func (s *Service) Export(ctx context.Context, path string, ids []int64) (int, er
 		return 0, err
 	}
 
-	if err = writeFileAtomic(path, data); err != nil {
+	if err = appdata.WriteFile(path, data); err != nil {
 		return 0, fmt.Errorf("export the prompts: %w", err)
 	}
 

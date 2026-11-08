@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"sync"
 
+	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/item"
 )
@@ -58,7 +59,7 @@ func (f *LibraryFile) Save(ctx context.Context, st *Store) error {
 		return err
 	}
 
-	return writeFileAtomic(f.path, data)
+	return appdata.WriteFile(f.path, data)
 }
 
 // Load reads the file. A file that is not there is an error matching fs.ErrNotExist.
@@ -74,6 +75,15 @@ type Restored struct {
 	// From is the file they came from: the database set aside, or the library file. It is
 	// "" when nothing was restored.
 	From string
+
+	// IDs maps each nickname the source gave a prompt to the ID it was restored under, so
+	// what names prompts by nickname, such as the launch defaults' copy, can find them.
+	IDs map[string]int64
+
+	// Nicknames maps each prompt's ID in the database set aside to its nickname there, so
+	// what that database names by ID can be matched to IDs; it is nil when the prompts
+	// came from the library file.
+	Nicknames map[int64]string
 }
 
 // Restore brings back a library the app lost. It runs only on a library that is new,
@@ -93,9 +103,12 @@ func Restore(ctx context.Context, st *Store, setAside string, file *LibraryFile)
 	var errs []error
 
 	if setAside != "" {
-		b, readErr := readSnapshotBundle(ctx, setAside)
+		b, nicknames, readErr := readSnapshot(ctx, setAside)
 		if readErr == nil {
-			return restoreBundle(ctx, st, b, setAside)
+			restored, restoreErr := restoreBundle(ctx, st, b, setAside)
+			restored.Nicknames = nicknames
+
+			return restored, restoreErr
 		}
 
 		errs = append(errs, fmt.Errorf("read the prompts in the database set aside: %w", readErr))
@@ -123,15 +136,17 @@ func Restore(ctx context.Context, st *Store, setAside string, file *LibraryFile)
 // prompts and its record of the starters added, all of it or, when a write fails,
 // none. from is the file b was read from.
 func restoreBundle(ctx context.Context, st *Store, b Bundle, from string) (Restored, error) {
-	count := 0
+	var ids map[string]int64
 
 	err := st.inTx(ctx, func(tx *Store) error {
-		ids, added, err := restorePrompts(ctx, tx, b)
-		if err != nil {
+		var (
+			added []string
+			err   error
+		)
+
+		if ids, added, err = restorePrompts(ctx, tx, b); err != nil {
 			return err
 		}
-
-		count = len(b.Prompts)
 
 		if err = tx.setSeeded(ctx, added); err != nil {
 			return err
@@ -143,7 +158,7 @@ func restoreBundle(ctx context.Context, st *Store, b Bundle, from string) (Resto
 		return Restored{}, fmt.Errorf("restore the prompts: %w", err)
 	}
 
-	return Restored{Count: count, From: from}, nil
+	return Restored{Count: len(b.Prompts), From: from, IDs: ids}, nil
 }
 
 // restorePrompts adds every prompt in b, as it was, under a free nickname where two

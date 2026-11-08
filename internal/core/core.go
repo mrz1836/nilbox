@@ -1,6 +1,7 @@
 // Package core assembles the app: it prepares the data directory, opens and migrates the
-// database, syncs the discovered agent profiles, brings back a prompt library the
-// database lost, adds the starter prompts, and builds every service the window binds to.
+// database, syncs the discovered agent profiles, brings back the prompt library and
+// launch defaults the database lost, adds the starter prompts, and builds every service
+// the window binds to.
 //
 // Core is plain Go with no desktop dependency, so the whole startup path is tested on any
 // OS. The desktop shell only adds the window, binds Services, hears the services' events,
@@ -12,9 +13,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"io/fs"
 	"log/slog"
-	"os"
 
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/appinfo"
@@ -129,9 +128,9 @@ type Core struct {
 // Bootstrap prepares the data directory, opens the database (backing it up and applying
 // any pending migrations, or setting it aside for a fresh one when it cannot be used),
 // syncs the agent profiles found under the home directory, brings back the prompt
-// library when the database holds a new one (from the database set aside, or else from
-// the copy kept beside it), adds any starter prompt not added before, and builds every
-// service. It contacts no network; the scheduler does that
+// library and the launch defaults when the database holds a new library (from the
+// database set aside, or else from the copies kept beside it), adds any starter prompt
+// not added before, and builds every service. It contacts no network; the scheduler does that
 // once started.
 func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 	if opts.Paths.Root == "" {
@@ -162,19 +161,18 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 		return nil, err
 	}
 
-	library := prompts.NewStore(pool, opts.Clock)
-	file := prompts.NewLibraryFile(opts.Paths.Prompts, opts.Version, opts.Clock)
-	restored := restorePrompts(ctx, library, opened.Reset, file, logger)
+	keeper := newKept(pool, opts, logger)
+	restored := keeper.restore(ctx, opened.Reset)
 
-	if err = prompts.Seed(ctx, library); err != nil {
+	if err = prompts.Seed(ctx, keeper.prompts); err != nil {
 		_ = pool.Close()
 
 		return nil, fmt.Errorf("add the starter prompts: %w", err)
 	}
 
-	keepLibraryFile(ctx, library, file, restored.From != "", logger)
+	keeper.keep(ctx, restored.prompts.From != "")
 
-	info := startup{reset: reset, restored: promptsRestored(restored, opts.Home), file: file}
+	info := startup{reset: reset, restored: restored.info(opts.Home), kept: keeper}
 
 	return assemble(pool, info, opts, logger), nil
 }
@@ -230,74 +228,15 @@ func syncProfiles(ctx context.Context, stored *profiles.Store, home string, logg
 	return nil
 }
 
-// restorePrompts brings back the prompt library when the database holds a new one, as
-// after the database was set aside, damaged, or deleted: from the database set aside, when
-// reset says one was, or else from the library file. A library that cannot be brought
-// back is logged, never fatal: the app starts with the starters, and the user can still
-// import the prompts from a backup by hand.
-func restorePrompts(
-	ctx context.Context, library *prompts.Store, reset *store.Reset, file *prompts.LibraryFile, logger *slog.Logger,
-) prompts.Restored {
-	setAside := ""
-	if reset != nil {
-		setAside = reset.Path
-	}
-
-	restored, err := prompts.Restore(ctx, library, setAside, file)
-	if err != nil {
-		logger.WarnContext(ctx, "could not bring back all of the prompt library", "error", err)
-	}
-
-	if restored.From != "" {
-		logger.InfoContext(ctx, "brought back the prompt library", "prompts", restored.Count, "from", restored.From)
-	}
-
-	return restored
-}
-
-// keepLibraryFile writes the library file when it is missing, as on the first start of
-// a build that keeps one, or when the library was just restored. It is otherwise left as
-// the last change to the library wrote it, so a database that came back without its
-// prompts never overwrites the copy that still holds them. A failure is logged: the file
-// is written again after the next change.
-func keepLibraryFile(
-	ctx context.Context, library *prompts.Store, file *prompts.LibraryFile, restored bool, logger *slog.Logger,
-) {
-	_, err := os.Stat(file.Path())
-	if err == nil && !restored {
-		return
-	}
-
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		logger.WarnContext(ctx, "could not check the copy of the prompt library", "path", file.Path(), "error", err)
-
-		return
-	}
-
-	if err = file.Save(ctx, library); err != nil {
-		logger.WarnContext(ctx, "could not save the copy of the prompt library", "path", file.Path(), "error", err)
-	}
-}
-
-// promptsRestored returns what the window tells the user about a prompt library brought
-// back at startup, or nil when none was.
-func promptsRestored(restored prompts.Restored, home string) *appinfo.PromptsRestored {
-	if restored.From == "" || restored.Count == 0 {
-		return nil
-	}
-
-	return &appinfo.PromptsRestored{Count: restored.Count, From: paths.Tilde(restored.From, home)}
-}
-
 // startup is what Bootstrap learned before the services were built.
 type startup struct {
 	// reset is set when the database was set aside, and restored when the prompt library
-	// was brought back.
+	// and launch defaults were brought back.
 	reset    *appinfo.DataReset
-	restored *appinfo.PromptsRestored
+	restored *appinfo.Restored
 
-	// file is the copy of the prompt library kept beside the database.
-	file *prompts.LibraryFile
+	// kept holds the stores whose data is kept outside the database, with their copies.
+	kept *kept
 }
 
 // dataReset logs a database Open set aside, and returns what the window tells the user
@@ -314,7 +253,8 @@ func dataReset(ctx context.Context, reset *store.Reset, home string, logger *slo
 }
 
 // assemble builds every service over the open database's connection pool. info says
-// what happened at startup, which the window is told, and holds the library file.
+// what happened at startup, which the window is told, and holds the stores whose data is
+// kept outside the database, with their copies.
 func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Core {
 	search := execpath.Search{Home: opts.Home}
 
@@ -324,8 +264,8 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	}
 
 	profileStore := profiles.NewStore(pool, opts.Clock)
-	promptStore := prompts.NewStore(pool, opts.Clock)
-	defaultsStore := launchdefaults.NewStore(pool, opts.Clock)
+	promptStore := info.kept.prompts
+	defaultsStore := info.kept.defaults
 	inboxStore := inbox.NewStore(pool, opts.Clock)
 	prefs := settings.NewService(pool, profileStore, opts.Home, settings.WithClock(opts.Clock),
 		settings.WithEvents(opts.Events), settings.WithLogger(logger))
@@ -387,23 +327,25 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Profiles: profiles.NewService(profileStore, opts.Home),
 		Prompts: prompts.NewService(prompts.Config{
 			Store: promptStore, Usage: defaultsStore, Source: launcher.NewPromptSource(launch),
-			File: info.file, Database: opts.Paths.DB, App: opts.Version, Clock: opts.Clock, Logger: logger,
+			File: info.kept.promptFile, Database: opts.Paths.DB, App: opts.Version, Clock: opts.Clock, Logger: logger,
+			Changed: info.kept.saveDefaults,
 		}),
 		LaunchDefaults: launchdefaults.NewService(launchdefaults.Config{
 			Store: defaultsStore, Profiles: profileStore, Prompts: promptStore, Repos: inboxRepos{store: inboxStore},
+			File: info.kept.defaultsFile, Logger: logger,
 		}),
 		Inbox:         inboxSvc,
 		Launcher:      launch,
 		Worktrees:     sweeps,
 		Notifications: notify.NewService(notices),
 		AppInfo: appinfo.NewService(appinfo.Config{
-			Version:         opts.Version,
-			Release:         opts.Release,
-			Build:           opts.Build,
-			Recorder:        recorder,
-			Events:          opts.Events,
-			DataReset:       info.reset,
-			PromptsRestored: info.restored,
+			Version:   opts.Version,
+			Release:   opts.Release,
+			Build:     opts.Build,
+			Recorder:  recorder,
+			Events:    opts.Events,
+			DataReset: info.reset,
+			Restored:  info.restored,
 		}),
 		ShellSettings: newShellSettings(prefs, pool, opts.Clock),
 		ProfileStore:  profileStore,

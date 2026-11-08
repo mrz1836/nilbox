@@ -67,7 +67,7 @@ export type Agent = NonNullLists<agent.Agent>
 
 export type DataReset = NonNullLists<appinfo.DataReset>
 export type Info = NonNullLists<appinfo.Info>
-export type PromptsRestored = NonNullLists<appinfo.PromptsRestored>
+export type Restored = NonNullLists<appinfo.Restored>
 
 export type Account = NonNullLists<inbox.Account>
 export type Checks = NonNullLists<inbox.Checks>

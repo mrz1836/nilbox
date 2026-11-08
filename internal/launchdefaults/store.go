@@ -23,6 +23,9 @@ import (
 // A Store from NewStore runs each call on the pool. One joined to a transaction with
 // WithTx runs every call inside it.
 type Store struct {
+	// db is the pool a Store from NewStore runs on. It is nil for a Store joined to a
+	// transaction, whose queries run on that transaction.
+	db    *sql.DB
 	q     *queries.Queries
 	clock clock.Clock
 }
@@ -30,7 +33,7 @@ type Store struct {
 // NewStore returns a Store over the pool db. Saves stamp the rows from c; a nil c is the
 // system clock.
 func NewStore(db *sql.DB, c clock.Clock) *Store {
-	return &Store{q: queries.New(db), clock: clock.Or(c)}
+	return &Store{db: db, q: queries.New(db), clock: clock.Or(c)}
 }
 
 // WithTx returns a Store that runs every call inside tx, a transaction on the same
@@ -85,6 +88,18 @@ func (s *Store) PromptUses(ctx context.Context) ([]prompts.Use, error) {
 	}
 
 	return uses, nil
+}
+
+// inTx runs fn with a Store on the transaction s joined, or else on a transaction of its
+// own that commits when fn returns nil.
+func (s *Store) inTx(ctx context.Context, fn func(*Store) error) error {
+	if s.db == nil {
+		return fn(s)
+	}
+
+	return store.InTx(ctx, s.db, func(tx *sql.Tx) error {
+		return fn(s.WithTx(tx))
+	})
 }
 
 // save stores a validated Input with its extra arguments, replacing every setting of

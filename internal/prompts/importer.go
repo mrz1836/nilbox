@@ -7,12 +7,10 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/mrz1836/nilbox/internal/agent"
-	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/store"
@@ -449,16 +447,24 @@ func promptColumns() []string {
 // build wrote it, as a Bundle: the prompts, and, where the backup still has them, the
 // app's default prompts and the starters it had added. The file is never changed.
 func readSnapshotBundle(ctx context.Context, path string) (Bundle, error) {
+	b, _, err := readSnapshot(ctx, path)
+
+	return b, err
+}
+
+// readSnapshot is readSnapshotBundle that also returns each prompt's nickname by its ID
+// in the backup, for what in the backup names prompts by ID.
+func readSnapshot(ctx context.Context, path string) (Bundle, map[int64]string, error) {
 	snap, err := store.OpenSnapshot(ctx, path)
 	if err != nil {
-		return Bundle{}, err
+		return Bundle{}, nil, err
 	}
 
 	defer func() { _ = snap.Close() }()
 
 	rows, err := snap.Rows(ctx, promptsTable, promptColumns()...)
 	if err != nil {
-		return Bundle{}, err
+		return Bundle{}, nil, err
 	}
 
 	b := Bundle{Format: BundleFormat, Version: BundleVersion, StartersAdded: []string{}, Prompts: []BundlePrompt{}}
@@ -466,13 +472,13 @@ func readSnapshotBundle(ctx context.Context, path string) (Bundle, error) {
 
 	for _, row := range rows {
 		p := BundlePrompt{
-			Name: valueText(row["name"]), Nickname: valueText(row["nickname"]), AppliesTo: AppliesTo(valueText(row["applies_to"])),
-			Body: valueText(row["body"]), Model: valueText(row["model"]), Effort: valueText(row["effort"]),
-			PlanMode: optionalBool(row["plan_mode"]), Worktree: optionalBool(row["worktree"]), ExtraArgs: stringList(row["extra_args"]),
-			StarterKey: valueText(row["starter_key"]), CreatedAt: timeText(row["created_at"]), UpdatedAt: timeText(row["updated_at"]),
+			Name: row.Text("name"), Nickname: row.Text("nickname"), AppliesTo: AppliesTo(row.Text("applies_to")),
+			Body: row.Text("body"), Model: row.Text("model"), Effort: row.Text("effort"),
+			PlanMode: row.Bool("plan_mode"), Worktree: row.Bool("worktree"), ExtraArgs: row.Strings("extra_args"),
+			StarterKey: row.Text("starter_key"), CreatedAt: row.Time("created_at"), UpdatedAt: row.Time("updated_at"),
 		}
 
-		if id, ok := row["id"].(int64); ok {
+		if id, ok := row.Int("id"); ok {
 			nicknames[id] = p.Nickname
 		}
 
@@ -482,75 +488,15 @@ func readSnapshotBundle(ctx context.Context, path string) (Bundle, error) {
 	// The library's own records come back too where the backup has them; the prompts come
 	// back without them.
 	if values, prefsErr := prefs.New(snap.DB(), nil).GetMany(ctx, prefSeeded, prefDefaultPR, prefDefaultIssue); prefsErr == nil {
-		b.StartersAdded = stringList(values[prefSeeded])
+		if added, decodeErr := store.DecodeJSON[[]string](values[prefSeeded]); decodeErr == nil && added != nil {
+			b.StartersAdded = added
+		}
+
 		b.Defaults.PR = nicknames[idText(values[prefDefaultPR])]
 		b.Defaults.Issue = nicknames[idText(values[prefDefaultIssue])]
 	}
 
-	return b, nil
-}
-
-// valueText reads a backup's value as text.
-func valueText(v any) string {
-	switch v := v.(type) {
-	case string:
-		return v
-	case []byte:
-		return string(v)
-	case int64:
-		return strconv.FormatInt(v, 10)
-	case time.Time:
-		return clock.Format(v)
-	default:
-		return ""
-	}
-}
-
-// optionalBool reads a backup's optional boolean: nil when it is NULL or missing.
-func optionalBool(v any) *bool {
-	switch v := v.(type) {
-	case int64:
-		on := v != 0
-
-		return &on
-	case bool:
-		return &v
-	default:
-		return nil
-	}
-}
-
-// stringList reads a backup's JSON array of strings, or an empty list when it holds none.
-func stringList(v any) []string {
-	raw := valueText(v)
-	if raw == "" {
-		return []string{}
-	}
-
-	out, err := store.DecodeJSON[[]string](raw)
-	if err != nil {
-		return []string{}
-	}
-
-	return textutil.NonNil(out)
-}
-
-// timeText reads a backup's time as RFC 3339, or "" when it holds none.
-func timeText(v any) string {
-	switch v := v.(type) {
-	case time.Time:
-		return clock.Format(v)
-	case string:
-		for _, layout := range []string{time.RFC3339Nano, "2006-01-02 15:04:05.999999999-07:00", time.DateTime} {
-			if t, err := time.Parse(layout, v); err == nil {
-				return clock.Format(t)
-			}
-		}
-
-		return ""
-	default:
-		return ""
-	}
+	return b, nicknames, nil
 }
 
 // idText reads a stored prompt ID, or 0.

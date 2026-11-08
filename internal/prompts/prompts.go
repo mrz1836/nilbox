@@ -242,6 +242,11 @@ type Config struct {
 
 	// Logger hears a library file that could not be written. Nil discards.
 	Logger *slog.Logger
+
+	// Changed is told after every change to the library, once the library file is
+	// written. What names prompts by nickname outside the database, such as the launch
+	// defaults' copy, rewrites itself there, so a renamed prompt is never lost. Optional.
+	Changed func(context.Context)
 }
 
 // Service manages the prompt library.
@@ -254,13 +259,14 @@ type Service struct {
 	app      string
 	clock    clock.Clock
 	logger   *slog.Logger
+	changed  func(context.Context)
 }
 
 // NewService returns a Service over cfg.
 func NewService(cfg Config) *Service {
 	return &Service{
 		store: cfg.Store, usage: cfg.Usage, source: cfg.Source, file: cfg.File, database: cfg.Database, app: cfg.App,
-		clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger),
+		clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger), changed: cfg.Changed,
 	}
 }
 
@@ -486,18 +492,21 @@ func (s *Service) get(ctx context.Context, id int64) (Prompt, error) {
 	return p, nil
 }
 
-// saved writes the library file after a change to the library. A failure is logged,
-// not returned: the change is stored, and the file is written again after the next one.
-// The change is made whether or not the caller still waits, so the file is too.
+// saved writes the library file after a change to the library, then tells Changed. A
+// failure is logged, not returned: the change is stored, and the file is written again
+// after the next one. The change is made whether or not the caller still waits, so the
+// file is too.
 func (s *Service) saved(ctx context.Context) {
-	if s.file == nil {
-		return
-	}
-
 	ctx = context.WithoutCancel(ctx)
 
-	if err := s.file.Save(ctx, s.store); err != nil {
-		s.logger.WarnContext(ctx, "could not save the copy of the prompt library", "path", s.file.Path(), "error", err)
+	if s.file != nil {
+		if err := s.file.Save(ctx, s.store); err != nil {
+			s.logger.WarnContext(ctx, "could not save the copy of the prompt library", "path", s.file.Path(), "error", err)
+		}
+	}
+
+	if s.changed != nil {
+		s.changed(ctx)
 	}
 }
 

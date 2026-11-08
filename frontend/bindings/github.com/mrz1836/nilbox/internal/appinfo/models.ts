@@ -72,27 +72,11 @@ export interface Info {
     "dataReset"?: DataReset | null;
 
     /**
-     * PromptsRestored is set when the prompt library was lost at startup, with the
-     * database it was in, and was brought back; it is nil otherwise.
+     * Restored is set when the prompt library and the launch defaults were lost at
+     * startup, with the database they were in, and were brought back; it is nil
+     * otherwise.
      */
-    "promptsRestored"?: PromptsRestored | null;
-}
-
-/**
- * PromptsRestored says that the prompt library was brought back at startup, and from
- * where.
- */
-export interface PromptsRestored {
-    /**
-     * Count is how many prompts came back.
-     */
-    "count": number;
-
-    /**
-     * From is the file they came from, with ~ for the home directory: the database set
-     * aside, or the copy of the library kept beside the database.
-     */
-    "from": string;
+    "restored"?: Restored | null;
 }
 
 /**
@@ -122,3 +106,21 @@ export const ResetReason = {
      */
     ResetHistory: "history",
 } as const;
+
+/**
+ * Restored says what of the user's own was brought back at startup, and from where.
+ */
+export interface Restored {
+    /**
+     * Prompts and LaunchDefaults count the prompts and the org and repository launch
+     * defaults that came back.
+     */
+    "prompts": number;
+    "launchDefaults": number;
+
+    /**
+     * From is the file they came from, with ~ for the home directory: the database set
+     * aside, or the copy of the prompt library kept beside the database.
+     */
+    "from": string;
+}

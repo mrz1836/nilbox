@@ -207,12 +207,10 @@ func (s *Snapshot) DB() *sql.DB {
 	return s.db
 }
 
-// Rows reads every row of table, each as a map from column name to value, holding only
-// the columns named in columns that the table has: a column a build before or after
-// this one lacks is left out of every row, so the caller supplies its default. A table
-// the snapshot does not have is ErrNoTable. Values are as the driver reads them: int64,
-// float64, string, []byte, time.Time for a DATETIME column, or nil.
-func (s *Snapshot) Rows(ctx context.Context, table string, columns ...string) ([]map[string]any, error) {
+// Rows reads every row of table, holding only the columns named in columns that the
+// table has: a column a build before or after this one lacks is left out of every row,
+// and reads as its empty value. A table the snapshot does not have is ErrNoTable.
+func (s *Snapshot) Rows(ctx context.Context, table string, columns ...string) ([]Row, error) {
 	if err := checkIdentifiers(append([]string{table}, columns...)); err != nil {
 		return nil, err
 	}
@@ -235,7 +233,7 @@ func (s *Snapshot) Rows(ctx context.Context, table string, columns ...string) ([
 
 	defer func() { _ = rows.Close() }()
 
-	out := []map[string]any{}
+	out := []Row{}
 
 	for rows.Next() {
 		row, scanErr := scanRow(rows, picked)
@@ -327,8 +325,8 @@ func (s *Snapshot) removeScratch() error {
 	return nil
 }
 
-// scanRow reads the current row's values into a map keyed by columns.
-func scanRow(rows *sql.Rows, columns []string) (map[string]any, error) {
+// scanRow reads the current row's values into a Row keyed by columns.
+func scanRow(rows *sql.Rows, columns []string) (Row, error) {
 	values := make([]any, len(columns))
 	ptrs := make([]any, len(columns))
 
@@ -347,7 +345,7 @@ func scanRow(rows *sql.Rows, columns []string) (map[string]any, error) {
 		}
 	}
 
-	row := make(map[string]any, len(columns))
+	row := make(Row, len(columns))
 	for i, name := range columns {
 		row[name] = values[i]
 	}

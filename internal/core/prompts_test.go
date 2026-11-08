@@ -14,13 +14,14 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/appinfo"
+	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // olderBuild is a database as a build whose migrations were later combined into fewer
 // files left it: a history this build disagrees with, so it is set aside, holding the
-// prompt library the user built in it.
+// prompt library and launch defaults the user built in it.
 func olderBuild() []string {
 	return []string{
 		`CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, checksum TEXT NOT NULL, applied_at TEXT NOT NULL)`,
@@ -45,6 +46,20 @@ func olderBuild() []string {
 		'2026-11-07 09:00:00+00:00', '2026-11-07 09:30:00+00:00')`,
 		`INSERT INTO prefs VALUES ('prompts.seeded', '["review-pr","work-on-issue","quick-look","fix-checks"]', '2026-11-05 22:14:47+00:00')`,
 		`INSERT INTO prefs VALUES ('prompts.default.pr', '7', '2026-11-07 09:31:00+00:00')`,
+		// An org's defaults name the review and security prompts by their IDs here, a
+		// repository's set only the model, and one names a prompt that is gone.
+		`CREATE TABLE launch_defaults (
+		id INTEGER PRIMARY KEY, owner TEXT NOT NULL COLLATE NOCASE, name TEXT NOT NULL DEFAULT '' COLLATE NOCASE,
+		agent TEXT NOT NULL DEFAULT '', profile TEXT NOT NULL DEFAULT '', pr_prompt_id INTEGER, issue_prompt_id INTEGER,
+		model TEXT NOT NULL DEFAULT '', effort TEXT NOT NULL DEFAULT '', plan_mode INTEGER, worktree INTEGER,
+		extra_args TEXT NOT NULL DEFAULT '[]', created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL,
+		UNIQUE (owner, name))`,
+		`INSERT INTO launch_defaults VALUES (1, 'acme-org', '', '', 'work', 1, 7, 'opus', 'xhigh', 0, 1, '[]',
+		'2026-11-06 10:00:00+00:00', '2026-11-06 10:00:00+00:00')`,
+		`INSERT INTO launch_defaults VALUES (2, 'acme-org', 'example-repo', '', '', NULL, NULL, 'sonnet', '', NULL, NULL,
+		'[]', '2026-11-06 11:00:00+00:00', '2026-11-06 11:00:00+00:00')`,
+		`INSERT INTO launch_defaults VALUES (3, 'other-org', '', '', '', 99, NULL, '', '', NULL, NULL, '[]',
+		'2026-11-06 12:00:00+00:00', '2026-11-06 12:00:00+00:00')`,
 	}
 }
 
@@ -80,6 +95,21 @@ func libraryByNickname(t *testing.T, c *Core) map[string]prompts.Prompt {
 	return out
 }
 
+// launchDefaultsByTarget returns the stored launch defaults by target.
+func launchDefaultsByTarget(t *testing.T, c *Core) map[string]launchdefaults.Defaults {
+	t.Helper()
+
+	all, err := c.LaunchDefaults.List(t.Context())
+	require.NoError(t, err)
+
+	out := map[string]launchdefaults.Defaults{}
+	for _, d := range all {
+		out[d.Target()] = d
+	}
+
+	return out
+}
+
 func TestAnUpdateThatSetsTheDatabaseAsideKeepsThePrompts(t *testing.T) {
 	t.Parallel()
 
@@ -93,10 +123,11 @@ func TestAnUpdateThatSetsTheDatabaseAsideKeepsThePrompts(t *testing.T) {
 	require.NotNil(t, info.DataReset, "the database is set aside")
 	assert.Equal(t, appinfo.ResetHistory, info.DataReset.Reason)
 
-	require.NotNil(t, info.PromptsRestored, "the window is told the prompts came back")
-	assert.Equal(t, 3, info.PromptsRestored.Count)
-	assert.Equal(t, info.DataReset.Path, info.PromptsRestored.From, "they came from the database set aside")
-	assert.Regexp(t, `^~/data/`+regexp.QuoteMeta(filepath.Base(paths.DB))+`\.broken-`, info.PromptsRestored.From)
+	require.NotNil(t, info.Restored, "the window is told what came back")
+	assert.Equal(t, 3, info.Restored.Prompts)
+	assert.Equal(t, 2, info.Restored.LaunchDefaults, "the org's and the repository's; the third set nothing left")
+	assert.Equal(t, info.DataReset.Path, info.Restored.From, "they came from the database set aside")
+	assert.Regexp(t, `^~/data/`+regexp.QuoteMeta(filepath.Base(paths.DB))+`\.broken-`, info.Restored.From)
 
 	lib := libraryByNickname(t, c)
 	assert.Len(t, lib, 3, "the three prompts, and no starter the user deleted")
@@ -123,6 +154,30 @@ func TestAnUpdateThatSetsTheDatabaseAsideKeepsThePrompts(t *testing.T) {
 	saved, err := prompts.NewLibraryFile(paths.Prompts, "", nil).Load()
 	require.NoError(t, err, "the restored library is saved beside the database")
 	assert.Len(t, saved.Prompts, 3)
+
+	// The launch defaults come back pointing at the restored prompts, which have new IDs.
+	byTarget := launchDefaultsByTarget(t, c)
+	require.Len(t, byTarget, 2)
+
+	org := byTarget["acme-org"]
+	require.NotNil(t, org.PRPromptID)
+	require.NotNil(t, org.IssuePromptID)
+	assert.Equal(t, lib["Review"].ID, *org.PRPromptID)
+	assert.Equal(t, security.ID, *org.IssuePromptID)
+	assert.Equal(t, "work", org.Profile, "a profile is kept by name, even one this Mac doesn't have")
+	assert.Equal(t, "opus", org.Model)
+	assert.Equal(t, "xhigh", org.Effort)
+	require.NotNil(t, org.Worktree)
+	assert.True(t, *org.Worktree)
+	require.NotNil(t, org.PlanMode)
+	assert.False(t, *org.PlanMode)
+
+	assert.Equal(t, "sonnet", byTarget["acme-org/example-repo"].Model)
+	assert.NotContains(t, byTarget, "other-org", "a row whose only setting named a missing prompt sets nothing")
+
+	keptDefaults, err := launchdefaults.NewFile(paths.LaunchDefaults, "", nil).Load()
+	require.NoError(t, err, "the restored launch defaults are saved beside the database")
+	assert.Len(t, keptDefaults, 2)
 }
 
 func TestBootstrapBringsThePromptsBackFromTheLibraryFile(t *testing.T) {
@@ -138,6 +193,14 @@ func TestBootstrapBringsThePromptsBackFromTheLibraryFile(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NoError(t, c.Prompts.SetDefault(t.Context(), "issue", mine.ID))
+
+	_, err = c.LaunchDefaults.Save(t.Context(), launchdefaults.Input{Owner: "acme-org", IssuePromptID: &mine.ID, Effort: "high"})
+	require.NoError(t, err)
+
+	// Renaming the prompt rewrites the launch defaults' copy, which names it by nickname.
+	in := prompts.Input{Name: mine.Name, Nickname: "Triage it", AppliesTo: mine.AppliesTo, Body: mine.Body}
+	_, err = c.Prompts.Update(t.Context(), mine.ID, in)
+	require.NoError(t, err)
 	require.NoError(t, c.Close())
 
 	// The database is lost: deleted, or never copied to a new Mac.
@@ -149,17 +212,23 @@ func TestBootstrapBringsThePromptsBackFromTheLibraryFile(t *testing.T) {
 	info := again.AppInfo.Info()
 
 	assert.Nil(t, info.DataReset, "nothing was set aside")
-	require.NotNil(t, info.PromptsRestored)
-	assert.Equal(t, "~/data/prompts.json", info.PromptsRestored.From)
-	assert.Equal(t, len(prompts.Starters())+1, info.PromptsRestored.Count)
+	require.NotNil(t, info.Restored)
+	assert.Equal(t, "~/data/prompts.json", info.Restored.From)
+	assert.Equal(t, len(prompts.Starters())+1, info.Restored.Prompts)
+	assert.Equal(t, 1, info.Restored.LaunchDefaults)
 
 	lib := libraryByNickname(t, again)
-	require.Contains(t, lib, "Triage")
+	require.Contains(t, lib, "Triage it")
 	assert.Len(t, lib, len(prompts.Starters())+1, "the starters are not added a second time")
 
 	defaults, err := again.Prompts.Defaults(t.Context())
 	require.NoError(t, err)
-	assert.Equal(t, lib["Triage"].ID, defaults.Issue)
+	assert.Equal(t, lib["Triage it"].ID, defaults.Issue)
+
+	org := launchDefaultsByTarget(t, again)["acme-org"]
+	require.NotNil(t, org.IssuePromptID, "the renamed prompt is still the org's default")
+	assert.Equal(t, lib["Triage it"].ID, *org.IssuePromptID)
+	assert.Equal(t, "high", org.Effort)
 }
 
 func TestBootstrapLeavesTheLibraryFileAsTheLastChangeWroteIt(t *testing.T) {
@@ -210,7 +279,7 @@ func TestBootstrapStartsWhenNoPromptsCanBeBroughtBack(t *testing.T) {
 
 	info := c.AppInfo.Info()
 	require.NotNil(t, info.DataReset)
-	assert.Nil(t, info.PromptsRestored)
+	assert.Nil(t, info.Restored)
 	assert.Contains(t, logs.String(), "could not bring back all of the prompt library")
 
 	assert.Len(t, libraryByNickname(t, c), len(prompts.Starters()), "the app starts with the starters")

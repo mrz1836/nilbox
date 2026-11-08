@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { brand } from '../generated/brand'
 import { counted } from '../lib/format'
 import { useQuery } from '../lib/useQuery'
-import { getAppInfo, type DataReset, type PromptsRestored } from '../platform'
+import { getAppInfo, type DataReset, type Restored } from '../platform'
 import { AlertIcon, CheckIcon, XIcon } from './icons'
 
 // Path shows a file's path in the notice.
@@ -11,17 +11,27 @@ function Path({ path }: { path: string }) {
   return <code className="font-mono text-xs break-all">{path}</code>
 }
 
-// yourPrompts is "your prompt" or "your 4 prompts".
-function yourPrompts(n: number): string {
-  return n === 1 ? 'your prompt' : `your ${counted(n, 'prompt', 'prompts')}`
+// cameBack names what was brought back: "your prompt", or "your 4 prompts and 2 launch
+// defaults".
+function cameBack(r: Restored): string {
+  if (r.prompts + r.launchDefaults === 1) {
+    return r.prompts === 1 ? 'your prompt' : 'your launch default'
+  }
+
+  const parts = [
+    ...(r.prompts > 0 ? [counted(r.prompts, 'prompt', 'prompts')] : []),
+    ...(r.launchDefaults > 0 ? [counted(r.launchDefaults, 'launch default', 'launch defaults')] : []),
+  ]
+
+  return `your ${parts.join(' and ')}`
 }
 
 // Message words what happened to the data at startup.
-function Message({ reset, restored }: { reset: DataReset | null; restored: PromptsRestored | null }) {
+function Message({ reset, restored }: { reset: DataReset | null; restored: Restored | null }) {
   if (reset === null) {
     return restored === null ? null : (
       <>
-        {brand.name} started with a new database and brought back {yourPrompts(restored.count)} from its saved copy at{' '}
+        {brand.name} started with a new database and brought back {cameBack(restored)} from its saved copy at{' '}
         <Path path={restored.from} />.
       </>
     )
@@ -32,23 +42,23 @@ function Message({ reset, restored }: { reset: DataReset | null; restored: Promp
       {brand.name} couldn’t read its data, so it set it aside at <Path path={reset.path} /> and started fresh.{' '}
       {restored === null
         ? 'To bring back prompts from it, choose Restore from a backup on the Prompts page.'
-        : `It brought back ${yourPrompts(restored.count)}.`}
+        : `It brought back ${cameBack(restored)}.`}
     </>
   )
 }
 
 // DataResetNotice tells the user, once the window loads, what happened to their data at
 // startup: that the database could not be read, so it was set aside and the app started
-// with an empty one, and whether their prompts were brought back, from the database set
-// aside or from the copy kept beside it. The shell reports it through the app info, since
-// it happens before the window exists. The notice stays until it is dismissed, and only
-// for this run: the next start reads a working database. The live region stays mounted,
-// so the notice is announced when it appears.
+// with an empty one, and whether their prompts and launch defaults were brought back,
+// from the database set aside or from the copies kept beside it. The shell reports it
+// through the app info, since it happens before the window exists. The notice stays until
+// it is dismissed, and only for this run: the next start reads a working database. The
+// live region stays mounted, so the notice is announced when it appears.
 export function DataResetNotice() {
   const info = useQuery(() => getAppInfo(), [], { log: 'could not read the app info' })
   const [dismissed, setDismissed] = useState(false)
   const reset = dismissed ? null : (info.data?.dataReset ?? null)
-  const restored = dismissed ? null : (info.data?.promptsRestored ?? null)
+  const restored = dismissed ? null : (info.data?.restored ?? null)
   // A reset that brought nothing back warns; prompts brought back on their own reassure.
   const warning = reset !== null && restored === null
 

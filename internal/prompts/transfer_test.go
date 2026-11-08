@@ -1,6 +1,7 @@
 package prompts
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"os"
@@ -648,11 +649,15 @@ func TestRestoreBringsBackTheLibraryFromTheDatabaseSetAside(t *testing.T) {
 
 	restored, err := Restore(t.Context(), s.store, old, file)
 	require.NoError(t, err)
-	assert.Equal(t, Restored{Count: len(Starters()), From: old}, restored)
+	assert.Equal(t, len(Starters()), restored.Count)
+	assert.Equal(t, old, restored.From)
+	assert.Equal(t, "Security", restored.Nicknames[security.ID], "what the database set aside names by ID can be matched")
+	assert.Len(t, restored.Nicknames, len(Starters()))
 
 	require.NoError(t, Seed(t.Context(), s.store))
 	assert.ElementsMatch(t, []string{"Quick look", "Review", "Security", "Work on it"}, nicknames(t, s),
 		"the deleted starter stays deleted")
+	assert.Equal(t, byNickname(t, s, "Security").ID, restored.IDs["Security"], "each nickname finds its restored prompt")
 
 	defaults, err := s.Defaults(t.Context())
 	require.NoError(t, err)
@@ -673,7 +678,11 @@ func TestRestoreFallsBackToTheLibraryFile(t *testing.T) {
 
 	restored, err := Restore(t.Context(), s.store, broken, NewLibraryFile(path, "", nil))
 	require.ErrorContains(t, err, "read the prompts in the database set aside", "the source that failed is named")
-	assert.Equal(t, Restored{Count: 2, From: path}, restored)
+	assert.Equal(t, 2, restored.Count)
+	assert.Equal(t, path, restored.From)
+	assert.Nil(t, restored.Nicknames, "a file names prompts by nickname alone")
+	assert.Equal(t, map[string]int64{"Security": byNickname(t, s, "Security").ID}, restored.IDs,
+		"a nickname two prompts shared finds the first")
 	assert.Equal(t, []string{"Security", "Security 2"}, nicknames(t, s), "a restore keeps every prompt")
 }
 
@@ -775,28 +784,6 @@ func TestReadSnapshotBundleReadsAnOlderSchema(t *testing.T) {
 	assert.Equal(t, BundleDefaults{}, got.Defaults)
 }
 
-func TestBackupValuesReadAsTheirTypes(t *testing.T) {
-	t.Parallel()
-
-	on, off := true, false
-
-	assert.Equal(t, "7", valueText(int64(7)))
-	assert.Equal(t, "x", valueText([]byte("x")))
-	assert.Empty(t, valueText(3.5))
-	assert.Equal(t, &on, optionalBool(int64(1)))
-	assert.Equal(t, &off, optionalBool(int64(0)))
-	assert.Equal(t, &on, optionalBool(true))
-	assert.Nil(t, optionalBool("yes"))
-	assert.Equal(t, []string{}, stringList("not json"))
-	assert.Equal(t, []string{}, stringList(nil))
-	assert.Equal(t, []string{"a"}, stringList(`["a"]`))
-	assert.Equal(t, "2026-01-02T03:04:05Z", timeText("2026-01-02T03:04:05Z"))
-	assert.Equal(t, "2026-01-02T03:04:05Z", timeText("2026-01-02 03:04:05"))
-	assert.Empty(t, timeText("yesterday"))
-	assert.Empty(t, timeText(int64(5)))
-	assert.Zero(t, idText("seven"))
-}
-
 func TestImportEntriesHoldNoNullLists(t *testing.T) {
 	t.Parallel()
 
@@ -806,4 +793,30 @@ func TestImportEntriesHoldNoNullLists(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(data), `"notes":[]`)
 	assert.Contains(t, string(data), `"extraArgs":[]`)
+}
+
+func TestEveryChangeTellsChanged(t *testing.T) {
+	t.Parallel()
+
+	db := testutil.DB(t)
+	st := NewStore(db, nil)
+	require.NoError(t, Seed(t.Context(), st))
+
+	told := 0
+	s := NewService(Config{Store: st, Changed: func(context.Context) { told++ }})
+	ctx := t.Context()
+
+	created, err := s.Create(ctx, Input{Name: mineName, Nickname: mineName, AppliesTo: AppliesToAny, Body: "Look at {{.URL}}"})
+	require.NoError(t, err)
+
+	in := toInput(created)
+	in.Nickname = "Renamed"
+	_, err = s.Update(ctx, created.ID, in)
+	require.NoError(t, err)
+
+	_, err = s.Create(ctx, Input{Name: "", Nickname: "", AppliesTo: AppliesToAny, Body: "x"})
+	require.Error(t, err, "a refused change tells nothing")
+
+	require.NoError(t, s.Delete(ctx, created.ID))
+	assert.Equal(t, 3, told)
 }
