@@ -16,7 +16,6 @@ vi.mock('../platform', () => platform)
 const stopListening = vi.fn()
 
 beforeEach(() => {
-  vi.clearAllMocks()
   platform.listNotifications.mockResolvedValue({ items: [notification()], unread: 1 })
   platform.markNotificationsRead.mockResolvedValue(undefined)
   platform.clearNotifications.mockResolvedValue(undefined)

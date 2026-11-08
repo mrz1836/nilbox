@@ -32,7 +32,7 @@ describe('AppHeader', () => {
 
   it('opens a notification and the notification settings from the bell', async () => {
     const entry = notification()
-    const props = renderHeader({
+    const { onOpenNotification, onNotificationSettings } = renderHeader({
       notifications: { log: { items: [entry], unread: 1 }, error: '', markRead: vi.fn(), clear: vi.fn() },
       onOpenNotification: vi.fn(),
       onNotificationSettings: vi.fn(),
@@ -40,21 +40,21 @@ describe('AppHeader', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Notifications, 1 unread' }))
     await userEvent.click(screen.getByRole('button', { name: /Add the widget cache/ }))
-    expect(props.onOpenNotification).toHaveBeenCalledWith(entry)
+    expect(onOpenNotification).toHaveBeenCalledWith(entry)
 
     await userEvent.click(screen.getByRole('button', { name: /^Notifications/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Notification settings' }))
-    expect(props.onNotificationSettings).toHaveBeenCalledOnce()
+    expect(onNotificationSettings).toHaveBeenCalledOnce()
   })
 
   it('opens the general settings from the bell when given no notification settings', async () => {
-    const props = renderHeader({
+    const { onOpenSettings } = renderHeader({
       notifications: { log: { items: [], unread: 0 }, error: '', markRead: vi.fn(), clear: vi.fn() },
     })
 
     await userEvent.click(screen.getByRole('button', { name: 'Notifications' }))
     await userEvent.click(screen.getByRole('button', { name: 'Notification settings' }))
-    expect(props.onOpenSettings).toHaveBeenCalledOnce()
+    expect(onOpenSettings).toHaveBeenCalledOnce()
   })
 
   it('is one toolbar: the product name, the views, the budget gauge, and the account', () => {
@@ -123,14 +123,14 @@ describe('AppHeader', () => {
   })
 
   it('marks the active view and switches views on click', async () => {
-    const props = renderHeader({ view: 'inbox' })
+    const { onViewChange } = renderHeader({ view: 'inbox' })
 
     expect(screen.getByRole('button', { name: 'Inbox' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: 'Worktrees' })).toHaveAttribute('aria-pressed', 'false')
 
     await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
 
-    expect(props.onViewChange).toHaveBeenCalledWith('worktrees')
+    expect(onViewChange).toHaveBeenCalledWith('worktrees')
   })
 
   it('marks no tab on the settings page', () => {
@@ -141,12 +141,12 @@ describe('AppHeader', () => {
   })
 
   it('opens the settings from the account menu', async () => {
-    const props = renderHeader()
+    const { onOpenSettings } = renderHeader()
 
     await userEvent.click(screen.getByRole('button', { name: 'Account: octo-user' }))
     await userEvent.click(screen.getByRole('menuitem', { name: /Settings/ }))
 
-    expect(props.onOpenSettings).toHaveBeenCalledOnce()
+    expect(onOpenSettings).toHaveBeenCalledOnce()
   })
 
   it('renders before the inbox has loaded', () => {

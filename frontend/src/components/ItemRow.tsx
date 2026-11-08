@@ -38,7 +38,7 @@ export interface ItemRowProps {
   // has none.
   triage?: TriageActions
   // onFilesSettings opens Settings → Sensitive files from the sensitive-file panel.
-  onFilesSettings?: () => void
+  onFilesSettings?: (() => void) | undefined
   // highlighted marks the row the menu bar or a notification just asked to show.
   highlighted?: boolean
 }

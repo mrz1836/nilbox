@@ -31,7 +31,7 @@ export interface SensitiveFilesProps {
   check: FileCheck
   now: Date
   // onSettings opens Settings → Sensitive files; without it, the panel names the page.
-  onSettings?: () => void
+  onSettings?: (() => void) | undefined
 }
 
 // chipClass is each tone's chip: a tinted pill for a finding, a bare word otherwise.

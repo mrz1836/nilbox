@@ -19,7 +19,7 @@ export interface MenuItem {
   onSelect: () => void
   disabled?: boolean
   // title explains the item, such as why it is disabled.
-  title?: string
+  title?: string | undefined
   danger?: boolean
   // divided draws a line above the item, setting it apart from those before it.
   divided?: boolean

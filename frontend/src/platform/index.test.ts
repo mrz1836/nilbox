@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import * as platform from './index'
 
@@ -111,10 +111,6 @@ const snapshot: platform.InboxSnapshot = {
   lastError: '',
   scopeWarning: '',
 }
-
-beforeEach(() => {
-  vi.clearAllMocks()
-})
 
 describe('app', () => {
   it('reads the app info', async () => {

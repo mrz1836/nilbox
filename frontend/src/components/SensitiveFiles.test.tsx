@@ -26,7 +26,6 @@ async function openPanel(name: RegExp) {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
   platform.checkItemFiles.mockResolvedValue(fileCheck())
   platform.openInBrowser.mockResolvedValue(undefined)
 })

@@ -42,7 +42,6 @@ function renderSection(stored: LaunchDefaults[] = [], onChanged = vi.fn(() => Pr
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
   platform.listLaunchTargets.mockResolvedValue([
     { owner: 'acme-org', name: '', items: 3 },
     { owner: 'acme-org', name: 'api', items: 2 },

@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useCollapsedSections } from './useCollapsedSections'
 
@@ -11,24 +11,19 @@ const platform = vi.hoisted(() => ({
 vi.mock('../platform', () => platform)
 
 beforeEach(() => {
-  vi.clearAllMocks()
   platform.getCollapsedSections.mockResolvedValue([])
   platform.setSectionCollapsed.mockResolvedValue(undefined)
 })
 
-afterEach(() => {
-  vi.restoreAllMocks()
-})
-
 // loaded renders the hook and waits for the stored state.
 async function loaded() {
-  const hook = renderHook(() => useCollapsedSections())
+  const view = renderHook(() => useCollapsedSections())
 
   await waitFor(() => {
-    expect(hook.result.current.collapsed).not.toBeNull()
+    expect(view.result.current.collapsed).not.toBeNull()
   })
 
-  return hook
+  return view
 }
 
 describe('useCollapsedSections', () => {

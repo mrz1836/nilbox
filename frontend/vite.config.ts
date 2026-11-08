@@ -1,5 +1,6 @@
+import babel from '@rolldown/plugin-babel'
 import tailwindcss from '@tailwindcss/vite'
-import react from '@vitejs/plugin-react'
+import react, { reactCompilerPreset } from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
 
 import identity from './src/generated/brand.json' with { type: 'json' }
@@ -18,7 +19,9 @@ function brandTitle(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), brandTitle()],
+  // React Compiler, run through Babel, memoizes components and hooks, so render
+  // performance needs no hand-written useMemo or useCallback.
+  plugins: [react(), babel({ presets: [reactCompilerPreset()] }), tailwindcss(), brandTitle()],
   server: {
     host: '127.0.0.1',
     port: 9245,
@@ -28,5 +31,11 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     sourcemap: false,
+    // The oldest supported macOS (LSMinimumSystemVersion in build/darwin/Info.plist) is
+    // 13, whose WebKit is Safari 16, so the bundle targets that engine.
+    target: 'safari16',
+    // The bundle loads from the app binary, not over a network, so one chunk is fine. The
+    // limit stays as a tripwire for unexpected growth.
+    chunkSizeWarningLimit: 700,
   },
 })

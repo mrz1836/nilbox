@@ -76,7 +76,6 @@ async function repo(name: string) {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
   platform.getAppInfo.mockResolvedValue(appInfo())
   platform.getSettings.mockResolvedValue(settings())
   platform.listProfiles.mockResolvedValue([profile()])
@@ -1017,15 +1016,14 @@ describe('WorktreesView history', () => {
 
     await history()
     await vi.waitFor(() => {
-      expect(scroll).toHaveBeenCalledOnce()
+      expect(scroll).toHaveBeenCalledExactlyOnceWith({ block: 'start' })
     })
-    expect(scroll).toHaveBeenCalledWith({ block: 'start' })
 
     rerender(<WorktreesView clock={clock} focusHistory reloadKey={1} />)
     await vi.waitFor(() => {
       expect(platform.recentCleanups).toHaveBeenCalledTimes(2)
     })
-    expect(scroll).toHaveBeenCalledOnce()
+    expect(scroll).toHaveBeenCalledExactlyOnceWith({ block: 'start' })
   })
 
   it('does not scroll when not asked to', async () => {

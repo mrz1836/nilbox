@@ -36,7 +36,6 @@ function category(name: string) {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
   // Each change comes back with the settings as stored.
   platform.setSensitiveScope.mockResolvedValue(settings())
   platform.setSensitiveCategory.mockResolvedValue(settings())

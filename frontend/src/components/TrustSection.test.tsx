@@ -26,7 +26,6 @@ function bots() {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
   // Each change comes back with the settings as stored.
   platform.setTrustedBots.mockResolvedValue(settings({ trustedBots: ['dependabot', 'my-release-bot'] }))
   platform.resetTrustedBots.mockResolvedValue(settings())

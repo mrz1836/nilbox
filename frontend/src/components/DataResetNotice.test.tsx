@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
 import type { DataReset, Info } from '../platform'
@@ -21,10 +21,6 @@ function info(dataReset?: DataReset | null): Info {
 const reset: DataReset = { path: '~/data/app.db.broken-20260102T030405Z', reason: 'corrupt' }
 
 const message = `${brand.name} couldn’t read its data, so it set it aside at ${reset.path} and started fresh.`
-
-beforeEach(() => {
-  vi.clearAllMocks()
-})
 
 describe('DataResetNotice', () => {
   it('says the data was set aside, where, and that the app started fresh', async () => {

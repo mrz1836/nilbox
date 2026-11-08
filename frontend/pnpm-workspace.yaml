@@ -6,10 +6,12 @@
 minimumReleaseAge: 10080
 
 minimumReleaseAgeExclude:
-  # The desktop runtime ships in lockstep with the pinned Go module
-  # (github.com/wailsapp/wails/v3 v3.1.0), and 3.1.0 was published inside the
-  # release-age window. The exclusion names that exact version, and package.json
-  # pins it exactly, so no other release can slip through.
+  # @wailsio/runtime is the frontend half of the desktop runtime. package.json pins
+  # 3.1.0 exactly, its newest stable release, while go.mod pins the Go module
+  # (github.com/wailsapp/wails/v3) at v3.2.0-nightly.20261103. 3.1.0 was published on
+  # 2026-11-01, inside the release-age window, so the exclusion names that exact
+  # version and no other release can slip through. It is unneeded once 3.1.0 is older
+  # than the window (from 2026-11-08); drop it then.
   - '@wailsio/runtime@3.1.0'
 
 # Each override closes a published advisory in a transitive dependency that its parent

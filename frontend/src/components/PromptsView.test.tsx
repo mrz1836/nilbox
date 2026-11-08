@@ -75,7 +75,6 @@ async function waitForCheck() {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
   next = null
   platform.checkPrompt.mockResolvedValue(checkResult())
 

@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { agentGroup, launchHold } from '../test/fixtures'
 import { LaunchHoldDialog } from './LaunchHoldDialog'
@@ -8,10 +8,6 @@ import { LaunchHoldDialog } from './LaunchHoldDialog'
 const platform = vi.hoisted(() => ({ openInBrowser: vi.fn() }))
 
 vi.mock('../platform', () => platform)
-
-beforeEach(() => {
-  vi.clearAllMocks()
-})
 
 describe('LaunchHoldDialog', () => {
   it('confirms or cancels', async () => {

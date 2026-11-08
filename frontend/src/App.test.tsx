@@ -80,7 +80,6 @@ const platform = vi.hoisted(() => ({
 vi.mock('./platform', () => platform)
 
 beforeEach(() => {
-  vi.clearAllMocks()
   platform.getSettings.mockResolvedValue(settings({ defaultProfile: 'work', worktreeDefault: false }))
   platform.listProfiles.mockResolvedValue([profile(), profile({ name: 'work' })])
   platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([item()]) }))
@@ -704,10 +703,10 @@ describe('App', () => {
       await screen.findByRole('region', { name: 'Review requested' })
 
       reveal(99, 'https://github.com/acme-org/example-repo/pull/99')
-      expect(platform.openInBrowser).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/pull/99')
+      expect(platform.openInBrowser).toHaveBeenCalledExactlyOnceWith('https://github.com/acme-org/example-repo/pull/99')
 
       reveal(98)
-      expect(platform.openInBrowser).toHaveBeenCalledOnce()
+      expect(platform.openInBrowser).toHaveBeenCalledExactlyOnceWith('https://github.com/acme-org/example-repo/pull/99')
     })
 
     it('does not show the item again when the inbox is opened later', async () => {

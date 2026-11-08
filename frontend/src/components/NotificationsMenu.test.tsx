@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { NotificationsState } from '../lib/useNotifications'
 import type { NotificationKind } from '../platform'
@@ -29,10 +29,6 @@ async function open() {
 
   return within(screen.getByRole('dialog', { name: 'Notifications' }))
 }
-
-beforeEach(() => {
-  vi.clearAllMocks()
-})
 
 describe('NotificationsMenu', () => {
   const review = notification({ id: 3 })

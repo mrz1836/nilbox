@@ -127,7 +127,7 @@ interface ListSectionProps {
   triage: TriageActions
   collapsed: boolean
   onCollapse: (collapsed: boolean) => void
-  onFilesSettings?: () => void
+  onFilesSettings?: (() => void) | undefined
   // reveal is an item in this list to show, or null.
   reveal: Reveal | null
 }

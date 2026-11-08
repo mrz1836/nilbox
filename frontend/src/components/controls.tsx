@@ -126,7 +126,7 @@ export interface FieldProps {
   controlId: string
   // hint is help shown under the control while there is no error.
   hint?: ReactNode
-  error?: string
+  error?: string | undefined
   // aside sits at the end of the label line, such as a character count.
   aside?: ReactNode
   children: ReactNode

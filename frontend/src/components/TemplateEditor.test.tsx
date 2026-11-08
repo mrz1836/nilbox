@@ -29,7 +29,7 @@ function Harness({ initial, diagnostics = [], onChange, handle }: HarnessProps) 
       }}
       variables={variables()}
       diagnostics={diagnostics}
-      ref={handle}
+      ref={handle ?? null}
     />
   )
 }

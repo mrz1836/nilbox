@@ -72,7 +72,6 @@ async function section(title: string) {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
   platform.getInboxSnapshot.mockResolvedValue(snapshot())
   platform.onInboxUpdated.mockReturnValue(stopListening)
   platform.openInBrowser.mockResolvedValue(undefined)
@@ -376,11 +375,11 @@ describe('InboxView collapsing', () => {
     expect(list.getByRole('button', { name: 'Collapse Authored' })).toHaveAttribute('aria-expanded', 'true')
     expect(list.getByRole('tabpanel')).toHaveAccessibleName('Snoozed 1')
     expect(list.getByRole('button', { name: 'Bump the parser' })).toBeInTheDocument()
-    expect(platform.setSectionCollapsed).toHaveBeenCalledWith('authored', false)
+    expect(platform.setSectionCollapsed).toHaveBeenCalledExactlyOnceWith('authored', false)
 
     // Choosing a tab of an open list leaves it as it is.
     await userEvent.click(list.getByRole('tab', { name: 'Authored 1' }))
-    expect(platform.setSectionCollapsed).toHaveBeenCalledOnce()
+    expect(platform.setSectionCollapsed).toHaveBeenCalledExactlyOnceWith('authored', false)
   })
 })
 
@@ -875,10 +874,10 @@ describe('InboxView at nil', () => {
     unmount()
 
     platform.getInboxSnapshot.mockResolvedValueOnce(snapshot({ lastRefreshedAt: refreshed, lastError: 'rate limited' }))
-    const failed = render(<Harness launch={launchOptions} clock={clock} />)
+    const view = render(<Harness launch={launchOptions} clock={clock} />)
     expect(await screen.findByRole('alert')).toHaveTextContent('rate limited')
     expect(party()).not.toBeInTheDocument()
-    failed.unmount()
+    view.unmount()
 
     platform.getInboxSnapshot.mockResolvedValueOnce(snapshot({ lastRefreshedAt: refreshed, assigned: list([last]) }))
     render(<Harness launch={launchOptions} clock={clock} />)

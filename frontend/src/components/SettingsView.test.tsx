@@ -86,7 +86,7 @@ function renderSettings({
 
   render(
     <SettingsView
-      initialSection={section}
+      {...(section === undefined ? {} : { initialSection: section })}
       settings={current}
       profiles={profiles}
       prompts={prompts()}

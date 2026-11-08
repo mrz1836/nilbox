@@ -68,7 +68,6 @@ async function openMenu() {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
   platform.launch.mockResolvedValue(launchResult())
   platform.resolveLaunch.mockResolvedValue(resolution())
   platform.previewLaunch.mockResolvedValue(launchPreview())

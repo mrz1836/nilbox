@@ -18,7 +18,6 @@ const platform = vi.hoisted(() => ({
 vi.mock('../platform', () => platform)
 
 beforeEach(() => {
-  vi.clearAllMocks()
   platform.getSettings.mockResolvedValue(settings())
   platform.listProfiles.mockResolvedValue([profile()])
   platform.listPrompts.mockResolvedValue(prompts())
