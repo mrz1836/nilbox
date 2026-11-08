@@ -10,6 +10,8 @@ import (
 )
 
 func TestSizes(t *testing.T) {
+	t.Parallel()
+
 	bundle := filepath.Join(t.TempDir(), "App.app")
 	exe := filepath.Join(bundle, "Contents", "MacOS", "app")
 
@@ -30,6 +32,8 @@ func TestSizes(t *testing.T) {
 }
 
 func TestSizesErrors(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 
 	_, err := Sizes(dir, filepath.Join(dir, "missing"))

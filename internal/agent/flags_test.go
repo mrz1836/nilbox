@@ -12,6 +12,8 @@ import (
 )
 
 func TestValidateEffort(t *testing.T) {
+	t.Parallel()
+
 	for _, effort := range append([]string{""}, agent.EffortLevels()...) {
 		require.NoError(t, agent.ValidateEffort(effort), effort)
 	}
@@ -22,6 +24,8 @@ func TestValidateEffort(t *testing.T) {
 }
 
 func TestValidateModel(t *testing.T) {
+	t.Parallel()
+
 	for _, model := range []string{"", "opus", "sonnet", "claude-fable-5-1", "claude-opus-5-5[1m]"} {
 		require.NoError(t, agent.ValidateModel(model), model)
 	}
@@ -34,12 +38,16 @@ func TestValidateModel(t *testing.T) {
 		"over 100 letters": strings.Repeat("a", 101),
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
 			require.ErrorIs(t, agent.ValidateModel(model), agent.ErrInvalidModel)
 		})
 	}
 }
 
 func TestCheckExtra(t *testing.T) {
+	t.Parallel()
+
 	require.NoError(t, agent.CheckExtra(nil))
 	require.NoError(t, agent.CheckExtra([]string{"--advisor", "fable", "--add-dir=/srv/shared", "--agent", "reviewer"}))
 
@@ -69,6 +77,8 @@ func TestCheckExtra(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			err := agent.CheckExtra(tt.args)
 			require.ErrorIs(t, err, tt.want)
 			assert.Contains(t, err.Error(), tt.text)
@@ -77,6 +87,8 @@ func TestCheckExtra(t *testing.T) {
 }
 
 func TestReservedFlagErrorAs(t *testing.T) {
+	t.Parallel()
+
 	var reserved *agent.ReservedFlagError
 
 	require.ErrorAs(t, agent.CheckExtra([]string{"--model=opus"}), &reserved)
@@ -84,6 +96,8 @@ func TestReservedFlagErrorAs(t *testing.T) {
 }
 
 func TestSplit(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		line string
 		want []string
@@ -103,6 +117,8 @@ func TestSplit(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.line, func(t *testing.T) {
+			t.Parallel()
+
 			got, err := agent.Split(tt.line)
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
@@ -111,6 +127,8 @@ func TestSplit(t *testing.T) {
 }
 
 func TestSplitUnterminated(t *testing.T) {
+	t.Parallel()
+
 	for _, line := range []string{`'open`, `"open`, `a "b\"`} {
 		_, err := agent.Split(line)
 		require.ErrorIs(t, err, agent.ErrUnterminatedQuote, line)
@@ -118,6 +136,8 @@ func TestSplitUnterminated(t *testing.T) {
 }
 
 func TestJoin(t *testing.T) {
+	t.Parallel()
+
 	assert.Empty(t, agent.Join(nil))
 	assert.Equal(t, "--advisor fable --add-dir=/srv/x", agent.Join([]string{"--advisor", "fable", "--add-dir=/srv/x"}))
 	assert.Equal(t, `--note 'two words' '' 'it'\''s' 'é'`, agent.Join([]string{"--note", "two words", "", "it's", "é"}))

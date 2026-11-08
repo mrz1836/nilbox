@@ -39,6 +39,8 @@ func labels(s Section) []string {
 }
 
 func TestSummarize(t *testing.T) {
+	t.Parallel()
+
 	shared := it(1, 101, "Fix the login redirect")
 	snoozed := it(3, 103, "Snoozed")
 	snoozed.SnoozedUntil = "2026-03-05T09:00:00Z"
@@ -74,6 +76,8 @@ func TestSummarize(t *testing.T) {
 }
 
 func TestSummarizeAnEmptyInbox(t *testing.T) {
+	t.Parallel()
+
 	got := Summarize(inbox.Snapshot{}, now)
 
 	assert.Zero(t, got.Count)
@@ -88,6 +92,8 @@ func TestSummarizeAnEmptyInbox(t *testing.T) {
 }
 
 func TestALongListShowsHowManyMore(t *testing.T) {
+	t.Parallel()
+
 	items := make([]inbox.Item, 0, PerSection+3)
 	for i := range PerSection + 3 {
 		items = append(items, it(int64(i+1), i+1, "Item"))
@@ -103,6 +109,8 @@ func TestALongListShowsHowManyMore(t *testing.T) {
 }
 
 func TestTheStatus(t *testing.T) {
+	t.Parallel()
+
 	failed := Summarize(inbox.Snapshot{LastRefreshedAt: "2026-03-04T11:00:00Z", LastError: "network down"}, now)
 	assert.Equal(t, "Last refresh failed", failed.Status)
 	assert.True(t, failed.Failed)
@@ -113,6 +121,8 @@ func TestTheStatus(t *testing.T) {
 }
 
 func TestLabel(t *testing.T) {
+	t.Parallel()
+
 	assert.Empty(t, label(0))
 	assert.Empty(t, label(-1))
 	assert.Equal(t, "1", label(1))
@@ -121,6 +131,8 @@ func TestLabel(t *testing.T) {
 }
 
 func TestAnEntryIsTidied(t *testing.T) {
+	t.Parallel()
+
 	long := it(9, 12, "  A   title\twith "+strings.Repeat("many words ", 10))
 	long.Repo = "no-owner"
 

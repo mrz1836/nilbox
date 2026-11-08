@@ -64,6 +64,8 @@ func filesHarness(t *testing.T, items ...github.Item) *harness {
 }
 
 func TestRefreshChecksAnOutsideContributorsFiles(t *testing.T) {
+	t.Parallel()
+
 	h := filesHarness(t, from(1, "outsider", "NONE", false), from(2, "forker", "CONTRIBUTOR", true))
 
 	snap := h.refresh(t)
@@ -92,6 +94,8 @@ func TestRefreshChecksAnOutsideContributorsFiles(t *testing.T) {
 }
 
 func TestRefreshChecksAgainAfterAPush(t *testing.T) {
+	t.Parallel()
+
 	h := filesHarness(t, from(1, "outsider", "NONE", false))
 	h.refresh(t)
 
@@ -116,6 +120,8 @@ func TestRefreshChecksAgainAfterAPush(t *testing.T) {
 }
 
 func TestRefreshOnlyChecksPullRequestsFromOutside(t *testing.T) {
+	t.Parallel()
+
 	bot := from(4, "dependabot", "NONE", false)
 	bot.AuthorType = trust.TypeBot
 
@@ -149,6 +155,8 @@ func TestRefreshOnlyChecksPullRequestsFromOutside(t *testing.T) {
 }
 
 func TestSnapshotAppliesTheCategoriesAsTheyAreNow(t *testing.T) {
+	t.Parallel()
+
 	h := filesHarness(t, from(1, "outsider", "NONE", false))
 	h.refresh(t)
 
@@ -169,6 +177,8 @@ func TestSnapshotAppliesTheCategoriesAsTheyAreNow(t *testing.T) {
 }
 
 func TestAFailedCheckShowsAndIsTriedAgain(t *testing.T) {
+	t.Parallel()
+
 	h := filesHarness(t, from(1, "outsider", "NONE", false))
 	h.client.filesErr = &github.StatusError{StatusCode: 502, Message: "Bad Gateway"}
 
@@ -189,6 +199,8 @@ func TestAFailedCheckShowsAndIsTriedAgain(t *testing.T) {
 }
 
 func TestAPullRequestNotCheckedYetIsPending(t *testing.T) {
+	t.Parallel()
+
 	var items []github.Item
 	for n := 1; n <= maxFileChecks+3; n++ {
 		items = append(items, from(n, "outsider", "NONE", false))
@@ -217,6 +229,8 @@ func TestAPullRequestNotCheckedYetIsPending(t *testing.T) {
 }
 
 func TestChecksLeaveWithTheirItems(t *testing.T) {
+	t.Parallel()
+
 	h := filesHarness(t, from(1, "outsider", "NONE", false))
 	h.refresh(t)
 	assert.Equal(t, int64(1), h.count(t, "item_files"))
@@ -227,6 +241,8 @@ func TestChecksLeaveWithTheirItems(t *testing.T) {
 }
 
 func TestCheckFilesReusesAListForTheSameHead(t *testing.T) {
+	t.Parallel()
+
 	h := filesHarness(t, from(1, "outsider", "NONE", false))
 	id := itemByNumber(t, h.refresh(t).ReviewRequested, 1).ID
 	h.client.fileReads, h.client.headReads = nil, nil
@@ -244,6 +260,8 @@ func TestCheckFilesReusesAListForTheSameHead(t *testing.T) {
 }
 
 func TestCheckFilesListsAgainAfterAPush(t *testing.T) {
+	t.Parallel()
+
 	h := filesHarness(t, from(1, "outsider", "NONE", false))
 	id := itemByNumber(t, h.refresh(t).ReviewRequested, 1).ID
 	h.client.fileReads = nil
@@ -266,6 +284,8 @@ func TestCheckFilesListsAgainAfterAPush(t *testing.T) {
 }
 
 func TestCheckFilesReportsAFailureAsAStatus(t *testing.T) {
+	t.Parallel()
+
 	h := filesHarness(t, from(1, "outsider", "NONE", false))
 	id := itemByNumber(t, h.refresh(t).ReviewRequested, 1).ID
 	h.client.filesErr = &github.StatusError{StatusCode: 500, Message: "Server Error " + fakeToken}
@@ -283,6 +303,8 @@ func TestCheckFilesReportsAFailureAsAStatus(t *testing.T) {
 }
 
 func TestCheckFilesWithoutAToken(t *testing.T) {
+	t.Parallel()
+
 	h := filesHarness(t, from(1, "outsider", "NONE", false))
 	id := itemByNumber(t, h.refresh(t).ReviewRequested, 1).ID
 	h.tokens.err = errFakeNetwork
@@ -293,6 +315,8 @@ func TestCheckFilesWithoutAToken(t *testing.T) {
 }
 
 func TestCheckFilesIgnoresItemsThatAreNotChecked(t *testing.T) {
+	t.Parallel()
+
 	h := filesHarness(t, from(1, "teammate", "MEMBER", false))
 	id := itemByNumber(t, h.refresh(t).ReviewRequested, 1).ID
 
@@ -311,6 +335,8 @@ func TestCheckFilesIgnoresItemsThatAreNotChecked(t *testing.T) {
 }
 
 func TestCheckFilesHonorsCancellation(t *testing.T) {
+	t.Parallel()
+
 	h := filesHarness(t, from(1, "outsider", "NONE", false))
 	id := itemByNumber(t, h.refresh(t).ReviewRequested, 1).ID
 
@@ -322,6 +348,8 @@ func TestCheckFilesHonorsCancellation(t *testing.T) {
 }
 
 func TestRefreshItemChecksTheFilesOfAPushedPullRequest(t *testing.T) {
+	t.Parallel()
+
 	outside := from(1, "outsider", "NONE", false)
 	h := filesHarness(t, outside)
 	id := itemByNumber(t, h.refresh(t).ReviewRequested, 1).ID
@@ -347,6 +375,8 @@ func TestRefreshItemChecksTheFilesOfAPushedPullRequest(t *testing.T) {
 }
 
 func TestFileErrorMessage(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, "GitHub did not list the files", fileErrorMessage(nil))
 	assert.Equal(t, "GitHub took too long to list the files", fileErrorMessage(context.DeadlineExceeded))
 	assert.Equal(t, "a b", fileErrorMessage(fmt.Errorf("a \n b"))) //nolint:err113 // a one-off message

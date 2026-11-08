@@ -1,10 +1,13 @@
 package github
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -29,6 +32,31 @@ func benchClient(b *testing.B, handler http.HandlerFunc) *Client {
 	b.Cleanup(srv.Close)
 
 	return &Client{BaseURL: srv.URL, HTTP: srv.Client(), UserAgent: testUserAgent}
+}
+
+// BenchmarkDecodeInbox decodes the recorded inbox response into an Inbox, the way every
+// inbox refresh decodes the one GraphQL response it gets: the JSON decoding and the
+// conversion to items, without the request around them.
+func BenchmarkDecodeInbox(b *testing.B) {
+	raw, err := os.ReadFile(filepath.Join("testdata", "inbox_response.json"))
+	require.NoError(b, err)
+
+	var recorded graphQLResponse[graphQLData]
+	require.NoError(b, json.Unmarshal(raw, &recorded))
+	require.NotNil(b, recorded.Data)
+	require.NotEmpty(b, recorded.Data.inbox().ReviewRequested.Items)
+
+	b.ReportAllocs()
+	b.SetBytes(int64(len(raw)))
+
+	for b.Loop() {
+		var resp graphQLResponse[graphQLData]
+		if err = json.Unmarshal(raw, &resp); err != nil {
+			b.Fatal(err)
+		}
+
+		_ = resp.Data.inbox()
+	}
 }
 
 // BenchmarkFetchItemStates asks about 200 items, four requests' worth, as a sweep of a

@@ -35,8 +35,8 @@ func RequireGit(t testing.TB) string {
 // GIT_ variable inherited from the test process is dropped, so a test run from a git hook,
 // which sets GIT_DIR and GIT_INDEX_FILE, cannot reach the repository the hook runs in.
 //
-// It is meant for cmd.Env, so a test can isolate its own git commands without changing
-// the process environment and still run in parallel.
+// It is meant for cmd.Env, or execpath.Exec's Env when the code under test runs git, so a
+// test can isolate git without changing the process environment and still run in parallel.
 func GitEnv(home string) []string {
 	inherited := os.Environ()
 	env := make([]string, 0, len(inherited)+9)

@@ -65,6 +65,8 @@ func prSubject() subject {
 }
 
 func TestResolveAppDefaults(t *testing.T) {
+	t.Parallel()
+
 	res, profile, prompt, err := resolve(testWorld(), prSubject(), LaunchRequest{ItemID: 7})
 	require.NoError(t, err)
 
@@ -93,6 +95,8 @@ func TestResolveAppDefaults(t *testing.T) {
 }
 
 func TestResolvePrecedence(t *testing.T) {
+	t.Parallel()
+
 	w := testWorld()
 	w.rules = launchdefaults.NewIndex([]launchdefaults.Defaults{
 		{Owner: acmeOrg, Profile: profileWork, Model: "haiku", PlanMode: new(true), ExtraArgs: []string{"--org"}},
@@ -139,6 +143,8 @@ func TestResolvePrecedence(t *testing.T) {
 }
 
 func TestResolveDefaultPrompts(t *testing.T) {
+	t.Parallel()
+
 	w := testWorld()
 	w.rules = launchdefaults.NewIndex([]launchdefaults.Defaults{
 		{Owner: acmeOrg, PRPromptID: new(bothID)},
@@ -174,6 +180,8 @@ func TestResolveDefaultPrompts(t *testing.T) {
 }
 
 func TestResolveSkipsDefaultsThatAreGone(t *testing.T) {
+	t.Parallel()
+
 	w := testWorld()
 	w.rules = launchdefaults.NewIndex([]launchdefaults.Defaults{
 		{Owner: acmeOrg, Name: "example-repo", Profile: "pruned", Agent: "codex"},
@@ -190,6 +198,8 @@ func TestResolveSkipsDefaultsThatAreGone(t *testing.T) {
 }
 
 func TestResolveProfileFallbacks(t *testing.T) {
+	t.Parallel()
+
 	w := testWorld()
 	w.settings.DefaultProfile = "pruned"
 
@@ -207,6 +217,8 @@ func TestResolveProfileFallbacks(t *testing.T) {
 }
 
 func TestResolveRejectsBadChoices(t *testing.T) {
+	t.Parallel()
+
 	require.ErrorIs(t, resolveErr(testWorld(), prSubject(), LaunchRequest{Profile: "nope"}), profiles.ErrProfileNotFound)
 	require.ErrorIs(t, resolveErr(testWorld(), prSubject(), LaunchRequest{PromptID: missingID}), prompts.ErrPromptNotFound)
 
@@ -223,6 +235,8 @@ func TestResolveRejectsBadChoices(t *testing.T) {
 }
 
 func TestResolveRechecksStoredFlags(t *testing.T) {
+	t.Parallel()
+
 	w := testWorld()
 	w.rules = launchdefaults.NewIndex([]launchdefaults.Defaults{
 		{Owner: acmeOrg, ExtraArgs: []string{"--dangerously-skip-permissions"}},
@@ -243,6 +257,8 @@ func TestResolveRechecksStoredFlags(t *testing.T) {
 }
 
 func TestEffectiveProfile(t *testing.T) {
+	t.Parallel()
+
 	p := fullProfile()
 	p.Model, p.ExtraArgs = strOpus, []string{"--a"}
 
@@ -260,6 +276,8 @@ func TestEffectiveProfile(t *testing.T) {
 }
 
 func TestChecksAndReviewWords(t *testing.T) {
+	t.Parallel()
+
 	for state, want := range map[string]string{
 		"SUCCESS": "passing", "FAILURE": "failing", "ERROR": "failing", "PENDING": "pending", "EXPECTED": "pending", "": "",
 	} {

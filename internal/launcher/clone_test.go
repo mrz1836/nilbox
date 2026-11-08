@@ -90,7 +90,11 @@ func (h *launchHarness) withGH() *fakeGH {
 }
 
 func TestCloneTarget(t *testing.T) {
+	t.Parallel()
+
 	t.Run("a repository with a clone", func(t *testing.T) {
+		t.Parallel()
+
 		h := newLaunchHarness(t)
 		gh := h.withGH()
 
@@ -101,6 +105,8 @@ func TestCloneTarget(t *testing.T) {
 	})
 
 	t.Run("a repository without one", func(t *testing.T) {
+		t.Parallel()
+
 		h := newLaunchHarness(t)
 		gh := h.withGH()
 
@@ -112,6 +118,8 @@ func TestCloneTarget(t *testing.T) {
 	})
 
 	t.Run("a target already taken", func(t *testing.T) {
+		t.Parallel()
+
 		h := newLaunchHarness(t)
 		require.NoError(t, os.Mkdir(filepath.Join(h.root, "missing-repo"), 0o700))
 
@@ -121,6 +129,8 @@ func TestCloneTarget(t *testing.T) {
 	})
 
 	t.Run("a target taken by a dangling symlink", func(t *testing.T) {
+		t.Parallel()
+
 		h := newLaunchHarness(t)
 		require.NoError(t, os.Symlink(filepath.Join(h.home, "gone"), filepath.Join(h.root, "missing-repo")))
 
@@ -130,6 +140,8 @@ func TestCloneTarget(t *testing.T) {
 	})
 
 	t.Run("the configured clone root", func(t *testing.T) {
+		t.Parallel()
+
 		h := newLaunchHarness(t)
 		other := filepath.Join(h.home, "code")
 		require.NoError(t, os.Mkdir(other, 0o700))
@@ -142,6 +154,8 @@ func TestCloneTarget(t *testing.T) {
 }
 
 func TestCloneThenLaunch(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	gh := h.withGH()
 	svc := h.service()
@@ -173,6 +187,8 @@ func TestCloneThenLaunch(t *testing.T) {
 }
 
 func TestCloneLeavesAnExistingCloneAlone(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	gh := h.withGH()
 
@@ -183,6 +199,8 @@ func TestCloneLeavesAnExistingCloneAlone(t *testing.T) {
 }
 
 func TestCloneRefusesAnExistingTarget(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		make func(t *testing.T, target string)
@@ -212,6 +230,8 @@ func TestCloneRefusesAnExistingTarget(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			h := newLaunchHarness(t)
 			gh := h.withGH()
 			target := filepath.Join(h.root, "missing-repo")
@@ -235,7 +255,11 @@ func TestCloneRefusesAnExistingTarget(t *testing.T) {
 }
 
 func TestCloneFailures(t *testing.T) {
+	t.Parallel()
+
 	t.Run("gh fails", func(t *testing.T) {
+		t.Parallel()
+
 		h := newLaunchHarness(t)
 		gh := h.withGH()
 		gh.stderr, gh.err = "\nGraphQL: Could not resolve to a Repository with the name 'acme-org/missing-repo'.\n", errFakeClone
@@ -248,6 +272,8 @@ func TestCloneFailures(t *testing.T) {
 	})
 
 	t.Run("gh fails silently", func(t *testing.T) {
+		t.Parallel()
+
 		h := newLaunchHarness(t)
 		gh := h.withGH()
 		gh.err = errFakeClone
@@ -258,6 +284,8 @@ func TestCloneFailures(t *testing.T) {
 	})
 
 	t.Run("git's own prefix is dropped", func(t *testing.T) {
+		t.Parallel()
+
 		h := newLaunchHarness(t)
 		gh := h.withGH()
 		gh.stderr, gh.err = "fatal: could not create work tree dir: Permission denied\n", errFakeClone
@@ -268,6 +296,8 @@ func TestCloneFailures(t *testing.T) {
 	})
 
 	t.Run("no GH runner", func(t *testing.T) {
+		t.Parallel()
+
 		h := newLaunchHarness(t)
 
 		_, err := h.service().Clone(t.Context(), h.orphanPR)
@@ -275,6 +305,8 @@ func TestCloneFailures(t *testing.T) {
 	})
 
 	t.Run("unknown item", func(t *testing.T) {
+		t.Parallel()
+
 		h := newLaunchHarness(t)
 		gh := h.withGH()
 
@@ -284,6 +316,8 @@ func TestCloneFailures(t *testing.T) {
 	})
 
 	t.Run("unreadable settings", func(t *testing.T) {
+		t.Parallel()
+
 		h := newLaunchHarness(t)
 		h.cfg.Settings = failingSettings{}
 
@@ -292,6 +326,8 @@ func TestCloneFailures(t *testing.T) {
 	})
 
 	t.Run("missing clone root", func(t *testing.T) {
+		t.Parallel()
+
 		h := newLaunchHarness(t)
 		gh := h.withGH()
 		require.NoError(t, os.RemoveAll(h.root))
@@ -303,6 +339,8 @@ func TestCloneFailures(t *testing.T) {
 }
 
 func TestCloneRefusesInvalidNames(t *testing.T) {
+	t.Parallel()
+
 	for _, tt := range []struct{ owner, name string }{
 		{owner: "acme-org", name: ".."},
 		{owner: "acme-org", name: "../escape"},
@@ -310,6 +348,8 @@ func TestCloneRefusesInvalidNames(t *testing.T) {
 		{owner: "acme org", name: "missing-repo"},
 	} {
 		t.Run(tt.owner+"/"+tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			h := newLaunchHarness(t)
 			gh := h.withGH()
 			h.exec(t, "UPDATE repos SET owner = ?, name = ? WHERE name = ?",
@@ -323,6 +363,8 @@ func TestCloneRefusesInvalidNames(t *testing.T) {
 }
 
 func TestClonesRunOneAtATime(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	gh := h.withGH()
 	svc := h.service()

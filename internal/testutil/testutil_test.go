@@ -107,9 +107,8 @@ func TestDBAtFailsWhenTheDatabaseWasSetAside(t *testing.T) {
 	assert.Len(t, aside, 1, "the database opened by setting the file aside, so the failure is the set-aside check")
 }
 
+//nolint:paralleltest // the test checks what its subtest left behind once that subtest ended
 func TestDatabasesCloseWhenTheTestEnds(t *testing.T) {
-	t.Parallel()
-
 	var db, at *sql.DB
 
 	t.Run("open", func(t *testing.T) {
@@ -232,9 +231,8 @@ func TestRealTempDirHasNoSymlinks(t *testing.T) {
 	assert.DirExists(t, dir)
 }
 
+//nolint:paralleltest // the test checks what its subtest did once that subtest ended
 func TestSkipAsRoot(t *testing.T) {
-	t.Parallel()
-
 	ran := false
 
 	t.Run("skips only as root", func(t *testing.T) {

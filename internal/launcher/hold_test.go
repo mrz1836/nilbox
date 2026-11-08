@@ -96,6 +96,8 @@ func (h *launchHarness) trusted(t *testing.T) bool {
 }
 
 func TestLaunchHoldsBackAPullRequestThatChangesAgentFiles(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	files := h.withFiles(checkOf(holdHeadA, true, ".claude/settings.json", ".github/workflows/ci.yml", "main.go"))
 
@@ -131,6 +133,8 @@ func TestLaunchHoldsBackAPullRequestThatChangesAgentFiles(t *testing.T) {
 }
 
 func TestAConfirmationDoesNotCarryOverToANewPush(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	h.withFiles(checkOf(holdHeadA, true, ".mcp.json"))
 
@@ -150,6 +154,8 @@ func TestAConfirmationDoesNotCarryOverToANewPush(t *testing.T) {
 }
 
 func TestLaunchHoldsBackAPullRequestWhoseFilesWereNotAllChecked(t *testing.T) {
+	t.Parallel()
+
 	failed := &sensitive.Check{Status: sensitive.StatusFailed, Error: "GitHub answered 502", Groups: []sensitive.Group{}}
 
 	for name, check := range map[string]*sensitive.Check{
@@ -158,6 +164,8 @@ func TestLaunchHoldsBackAPullRequestWhoseFilesWereNotAllChecked(t *testing.T) {
 		"flagged but partial": checkOf(holdHeadA, false, ".github/workflows/ci.yml"),
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
 			h := newLaunchHarness(t)
 			h.withFiles(check)
 
@@ -179,6 +187,8 @@ func TestLaunchHoldsBackAPullRequestWhoseFilesWereNotAllChecked(t *testing.T) {
 }
 
 func TestLaunchGoesAheadWithoutAgentFiles(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	h.withFiles(checkOf(holdHeadA, true, ".github/workflows/ci.yml", "go.mod"))
 
@@ -203,6 +213,8 @@ func TestLaunchGoesAheadWithoutAgentFiles(t *testing.T) {
 }
 
 func TestAHeldLaunchOutsideAWorktreeSaysSo(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	h.withFiles(checkOf(holdHeadA, true, "CLAUDE.md"))
 
@@ -214,6 +226,8 @@ func TestAHeldLaunchOutsideAWorktreeSaysSo(t *testing.T) {
 }
 
 func TestPreviewUsesTheLastCheck(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	files := h.withFiles(checkOf(holdHeadA, true, ".claude/settings.json"))
 
@@ -230,6 +244,8 @@ func TestPreviewUsesTheLastCheck(t *testing.T) {
 }
 
 func TestLaunchFailsWhenTheFilesCannotBeRead(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	files := h.withFiles(checkOf(holdHeadA, true))
 	files.err = errFakeFiles
@@ -246,6 +262,8 @@ func TestLaunchFailsWhenTheFilesCannotBeRead(t *testing.T) {
 }
 
 func TestALaunchThatCannotBePlannedAsksGitHubNothing(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	files := h.withFiles(checkOf(holdHeadA, true, ".claude/settings.json"))
 

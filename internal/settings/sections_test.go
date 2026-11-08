@@ -11,6 +11,8 @@ import (
 )
 
 func TestNoSectionIsCollapsedOnAFreshDatabase(t *testing.T) {
+	t.Parallel()
+
 	svc, _, _ := newTestService(t)
 
 	got, err := svc.CollapsedSections(t.Context())
@@ -20,6 +22,8 @@ func TestNoSectionIsCollapsedOnAFreshDatabase(t *testing.T) {
 }
 
 func TestCollapsedSectionsPersist(t *testing.T) {
+	t.Parallel()
+
 	svc, _, _ := newTestService(t)
 	ctx := t.Context()
 
@@ -40,6 +44,8 @@ func TestCollapsedSectionsPersist(t *testing.T) {
 }
 
 func TestCollapsedSectionsSurviveARestart(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	home := t.TempDir()
 	path := filepath.Join(t.TempDir(), "app.db")
@@ -54,6 +60,8 @@ func TestCollapsedSectionsSurviveARestart(t *testing.T) {
 }
 
 func TestSetSectionCollapsedRejectsAnUnknownSection(t *testing.T) {
+	t.Parallel()
+
 	svc, _, _ := newTestService(t)
 
 	for _, section := range []ListKey{"", "Authored", "snoozed", "ui.collapsed.authored", " authored"} {
@@ -70,6 +78,8 @@ func TestSetSectionCollapsedRejectsAnUnknownSection(t *testing.T) {
 }
 
 func TestCollapsedSectionsIgnoreBadStoredValues(t *testing.T) {
+	t.Parallel()
+
 	svc, db, _ := newTestService(t)
 
 	setPref(t, db, collapsedKey(ListReviewRequested), "yes please")
@@ -83,6 +93,8 @@ func TestCollapsedSectionsIgnoreBadStoredValues(t *testing.T) {
 }
 
 func TestCollapsedSectionsDatabaseErrors(t *testing.T) {
+	t.Parallel()
+
 	svc, db, _ := newTestService(t)
 	require.NoError(t, db.Close())
 

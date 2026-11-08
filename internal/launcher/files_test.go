@@ -80,6 +80,8 @@ func touchLaunchFile(t *testing.T, paths appdata.Paths, name string) string {
 }
 
 func TestWriteLaunchFiles(t *testing.T) {
+	t.Parallel()
+
 	paths := testPaths(t)
 	plan := testPlan(t)
 
@@ -110,6 +112,8 @@ func TestWriteLaunchFiles(t *testing.T) {
 	assert.Equal(t, string(terminal.POSIXRenderer{}.Render(plan.script())), string(script), "the script reads the written prompt file")
 
 	t.Run("a second launch in the same second gets new files", func(t *testing.T) {
+		t.Parallel()
+
 		again, err := WriteLaunchFiles(paths, plan, "Review again", fixedNow(), nil)
 		require.NoError(t, err)
 		assert.NotEqual(t, files, again)
@@ -118,6 +122,8 @@ func TestWriteLaunchFiles(t *testing.T) {
 	})
 
 	t.Run("issues are named by kind", func(t *testing.T) {
+		t.Parallel()
+
 		req := baseRequest()
 		req.Item.Kind, req.Item.Number = item.KindIssue, 12
 
@@ -131,6 +137,8 @@ func TestWriteLaunchFiles(t *testing.T) {
 }
 
 func TestWriteLaunchFilesRestrictsAnExistingDir(t *testing.T) {
+	t.Parallel()
+
 	paths := testPaths(t)
 	require.NoError(t, os.MkdirAll(paths.Launch, 0o750))
 	require.NoError(t, os.Chmod(paths.Launch, 0o755)) //nolint:gosec // the test widens its own temp dir on purpose
@@ -141,6 +149,8 @@ func TestWriteLaunchFilesRestrictsAnExistingDir(t *testing.T) {
 }
 
 func TestWriteLaunchFilesPrunesOldFiles(t *testing.T) {
+	t.Parallel()
+
 	paths := testPaths(t)
 	require.NoError(t, os.MkdirAll(paths.Launch, 0o700))
 
@@ -178,6 +188,8 @@ func TestWriteLaunchFilesPrunesOldFiles(t *testing.T) {
 }
 
 func TestPruneLaunchFilesLogsWhatItCannotList(t *testing.T) {
+	t.Parallel()
+
 	var logs testutil.Logs
 
 	pruneLaunchFiles(filepath.Join(t.TempDir(), "missing"), fixedNow(), ".command", logs.Logger())
@@ -186,6 +198,8 @@ func TestPruneLaunchFilesLogsWhatItCannotList(t *testing.T) {
 }
 
 func TestWriteLaunchFilesRejectsInvalidInput(t *testing.T) {
+	t.Parallel()
+
 	valid := testPlan(t)
 
 	tests := []struct {
@@ -201,6 +215,8 @@ func TestWriteLaunchFilesRejectsInvalidInput(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			paths := testPaths(t)
 
 			got, err := WriteLaunchFiles(paths, tt.plan(), tt.prompt, fixedNow(), nil)
@@ -212,14 +228,20 @@ func TestWriteLaunchFilesRejectsInvalidInput(t *testing.T) {
 }
 
 func TestWriteLaunchFilesFailures(t *testing.T) {
+	t.Parallel()
+
 	plan := testPlan(t)
 
 	t.Run("no randomness", func(t *testing.T) {
+		t.Parallel()
+
 		_, err := writeLaunchFiles(testPaths(t), plan, "p", fixedNow(), posixDeps(failingReader{}))
 		require.ErrorIs(t, err, errReader)
 	})
 
 	t.Run("launch directory cannot be created", func(t *testing.T) {
+		t.Parallel()
+
 		root := t.TempDir()
 		blocker := filepath.Join(root, "data")
 		require.NoError(t, os.WriteFile(blocker, nil, 0o600))
@@ -229,6 +251,8 @@ func TestWriteLaunchFilesFailures(t *testing.T) {
 	})
 
 	t.Run("an existing prompt file is never overwritten", func(t *testing.T) {
+		t.Parallel()
+
 		paths := testPaths(t)
 		suffix := bytes.Repeat([]byte{0xab}, suffixBytes)
 
@@ -244,6 +268,8 @@ func TestWriteLaunchFilesFailures(t *testing.T) {
 	})
 
 	t.Run("a failed script write removes its prompt file", func(t *testing.T) {
+		t.Parallel()
+
 		paths := testPaths(t)
 		suffix := bytes.Repeat([]byte{0xcd}, suffixBytes)
 
@@ -292,6 +318,8 @@ func shQuote(s string) string {
 }
 
 func TestPromptNeverOnCommandLine(t *testing.T) {
+	t.Parallel()
+
 	prompt := "Review pull request #7: it's `rm -rf ~` $(curl evil) \"quoted\"\nsecond line"
 
 	req := baseRequest()
@@ -319,6 +347,8 @@ func TestPromptNeverOnCommandLine(t *testing.T) {
 }
 
 func TestRenderedScriptRunsWithExactArgv(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	clone := filepath.Join(root, "clone dir 'quoted' $x")
 	require.NoError(t, os.MkdirAll(clone, 0o700))
@@ -365,6 +395,8 @@ func TestRenderedScriptRunsWithExactArgv(t *testing.T) {
 }
 
 func TestRenderedScriptStopsWhenTheCloneIsMissing(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	marker := filepath.Join(root, "agent-ran")
 	agent := filepath.Join(root, "claude")

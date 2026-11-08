@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -64,44 +65,46 @@ func TestTokenSourceKeepsTheTokenForTheTTL(t *testing.T) {
 func TestTokenSourceSharesOneGHRun(t *testing.T) {
 	t.Parallel()
 
-	started := make(chan struct{}, 8)
-	release := make(chan struct{})
-	runner := &testutil.Runner{Script: func(context.Context, []string) ([]byte, []byte, error) {
-		started <- struct{}{}
+	synctest.Test(t, func(t *testing.T) {
+		started := make(chan struct{}, 8)
+		release := make(chan struct{})
+		runner := &testutil.Runner{Script: func(context.Context, []string) ([]byte, []byte, error) {
+			started <- struct{}{}
 
-		<-release
+			<-release
 
-		return []byte(fakeToken + "\n"), nil, nil
-	}}
-	src := NewTokenSource(runner, testutil.Finder{Path: fakeGHPath})
+			return []byte(fakeToken + "\n"), nil, nil
+		}}
+		src := NewTokenSource(runner, testutil.Finder{Path: fakeGHPath})
 
-	const callers = 5
+		const callers = 5
 
-	var wg sync.WaitGroup
+		var wg sync.WaitGroup
 
-	tokens := make([]Token, callers)
-	errs := make([]error, callers)
+		tokens := make([]Token, callers)
+		errs := make([]error, callers)
 
-	for i := range callers {
-		wg.Go(func() { tokens[i], errs[i] = src.Token(t.Context()) })
-	}
+		for i := range callers {
+			wg.Go(func() { tokens[i], errs[i] = src.Token(t.Context()) })
+		}
 
-	select {
-	case <-started:
-	case <-time.After(waitTimeout):
-		require.FailNow(t, "gh never ran")
-	}
+		select {
+		case <-started:
+		case <-time.After(waitTimeout):
+			require.FailNow(t, "gh never ran")
+		}
 
-	time.Sleep(50 * time.Millisecond) // the other callers join the run in flight
-	close(release)
-	wg.Wait()
+		synctest.Wait() // every other caller has joined the run in flight and is waiting on it
+		close(release)
+		wg.Wait()
 
-	for i := range callers {
-		require.NoError(t, errs[i])
-		assert.Equal(t, fakeToken, tokens[i].Reveal())
-	}
+		for i := range callers {
+			require.NoError(t, errs[i])
+			assert.Equal(t, fakeToken, tokens[i].Reveal())
+		}
 
-	assert.Len(t, runner.Calls(), 1, "every caller shared one gh run")
+		assert.Len(t, runner.Calls(), 1, "every caller shared one gh run")
+	})
 }
 
 func TestTokenSourceForgetsOnlyTheTokenRefused(t *testing.T) {

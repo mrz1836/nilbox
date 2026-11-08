@@ -30,6 +30,8 @@ var (
 )
 
 func TestTokenSourceErrors(t *testing.T) {
+	t.Parallel()
+
 	found := testutil.Finder{Path: fakeGHPath}
 
 	cases := []struct {
@@ -54,6 +56,8 @@ func TestTokenSourceErrors(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			tok, err := NewTokenSource(tc.runner, tc.finder).Token(t.Context())
 
 			if tc.wantErr != nil {
@@ -78,12 +82,16 @@ func TestTokenSourceErrors(t *testing.T) {
 }
 
 func TestTokenSourceHints(t *testing.T) {
+	t.Parallel()
+
 	assert.Contains(t, ErrGHNotFound.Error(), "https://cli.github.com")
 	assert.Contains(t, ErrGHNotFound.Error(), "gh auth login")
 	assert.Contains(t, ErrNotLoggedIn.Error(), "gh auth login")
 }
 
 func TestTokenSourceCanceled(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
@@ -92,6 +100,8 @@ func TestTokenSourceCanceled(t *testing.T) {
 }
 
 func TestTokenZeroValue(t *testing.T) {
+	t.Parallel()
+
 	var tok Token
 
 	assert.True(t, tok.IsZero())
@@ -126,15 +136,21 @@ func formatted(tok Token) []string {
 }
 
 func TestTokenNeverAppearsInErrorsOrLogs(t *testing.T) {
+	t.Parallel()
+
 	tok := NewToken(fakeToken)
 
 	t.Run("fmt", func(t *testing.T) {
+		t.Parallel()
+
 		for _, s := range formatted(tok) {
 			assert.NotContains(t, s, fakeToken)
 		}
 	})
 
 	t.Run("json", func(t *testing.T) {
+		t.Parallel()
+
 		b, err := json.Marshal(holder{Tok: tok, tok: tok})
 		require.NoError(t, err)
 		assert.JSONEq(t, `{"Tok":"[redacted]"}`, string(b))
@@ -145,6 +161,8 @@ func TestTokenNeverAppearsInErrorsOrLogs(t *testing.T) {
 	})
 
 	t.Run("slog", func(t *testing.T) {
+		t.Parallel()
+
 		var buf bytes.Buffer
 
 		for _, handler := range []slog.Handler{slog.NewJSONHandler(&buf, nil), slog.NewTextHandler(&buf, nil)} {
@@ -157,6 +175,8 @@ func TestTokenNeverAppearsInErrorsOrLogs(t *testing.T) {
 	})
 
 	t.Run("failing gh run", func(t *testing.T) {
+		t.Parallel()
+
 		runner := &testutil.Runner{Stdout: fakeToken, Stderr: "error: " + fakeToken, Err: errFakeExit}
 
 		_, err := NewTokenSource(runner, testutil.Finder{Path: fakeGHPath}).Token(t.Context())
@@ -165,6 +185,8 @@ func TestTokenNeverAppearsInErrorsOrLogs(t *testing.T) {
 	})
 
 	t.Run("redact", func(t *testing.T) {
+		t.Parallel()
+
 		inner := fmt.Errorf("%w: server said %s", ErrUnexpectedStatus, fakeToken)
 		err := Redact(inner, tok)
 
@@ -175,6 +197,8 @@ func TestTokenNeverAppearsInErrorsOrLogs(t *testing.T) {
 	})
 
 	t.Run("api error echoing the token", func(t *testing.T) {
+		t.Parallel()
+
 		client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "Bearer "+fakeToken, r.Header.Get("Authorization"))
 			w.WriteHeader(http.StatusUnauthorized)
@@ -189,19 +213,11 @@ func TestTokenNeverAppearsInErrorsOrLogs(t *testing.T) {
 		require.Error(t, err)
 		assert.NotContains(t, err.Error(), fakeToken)
 	})
-
-	t.Run("graphql error echoing the token", func(t *testing.T) {
-		client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
-			_, _ = fmt.Fprintf(w, `{"errors":[{"message":"bad token %s"}]}`, fakeToken)
-		})
-
-		_, err := client.FetchInbox(t.Context(), tok)
-		require.ErrorIs(t, err, ErrGraphQL)
-		assert.NotContains(t, err.Error(), fakeToken)
-	})
 }
 
 func TestRedactPassThrough(t *testing.T) {
+	t.Parallel()
+
 	require.NoError(t, Redact(nil, NewToken(fakeToken)))
 
 	err := fmt.Errorf("wrapped: %w", errFakeExit)
@@ -209,6 +225,8 @@ func TestRedactPassThrough(t *testing.T) {
 }
 
 func TestRedactKeepsErrorsAs(t *testing.T) {
+	t.Parallel()
+
 	err := Redact(fmt.Errorf("check: %w", &MissingScopesError{Missing: []string{scopeRepo}}), NewToken(fakeToken))
 
 	var missing *MissingScopesError

@@ -15,6 +15,8 @@ import (
 var errLaunchFailed = errors.New("launch failed")
 
 func TestMedian(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name   string
 		values []int64
@@ -28,6 +30,8 @@ func TestMedian(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			original := append([]int64(nil), tt.values...)
 
 			assert.Equal(t, tt.want, Median(tt.values))
@@ -39,6 +43,8 @@ func TestMedian(t *testing.T) {
 }
 
 func TestParseFirstPaint(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		line string
 		want Startup
@@ -55,6 +61,8 @@ func TestParseFirstPaint(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.line, func(t *testing.T) {
+			t.Parallel()
+
 			got, ok := ParseFirstPaint(tt.line)
 
 			assert.Equal(t, tt.ok, ok)
@@ -74,7 +82,11 @@ func fakeApp(t *testing.T, body string) string {
 }
 
 func TestLaunchApp(t *testing.T) {
+	t.Parallel()
+
 	t.Run("reads the timing line", func(t *testing.T) {
+		t.Parallel()
+
 		exe := fakeApp(t, `test "$1" = "--measure-startup" || exit 9
 echo "starting"
 echo "startup.first_paint_ms=640 source=os"
@@ -90,6 +102,8 @@ echo "startup.first_paint_ms=999 source=os"
 	})
 
 	t.Run("no timing line", func(t *testing.T) {
+		t.Parallel()
+
 		exe := fakeApp(t, "echo starting\necho 'the window did not paint' >&2\n")
 
 		_, err := LaunchApp(t.Context(), exe)
@@ -98,6 +112,8 @@ echo "startup.first_paint_ms=999 source=os"
 	})
 
 	t.Run("app fails", func(t *testing.T) {
+		t.Parallel()
+
 		exe := fakeApp(t, "echo 'startup.first_paint_ms=1 source=os'\necho boom >&2\nexit 3\n")
 
 		_, err := LaunchApp(t.Context(), exe)
@@ -106,12 +122,16 @@ echo "startup.first_paint_ms=999 source=os"
 	})
 
 	t.Run("missing binary", func(t *testing.T) {
+		t.Parallel()
+
 		_, err := LaunchApp(t.Context(), filepath.Join(t.TempDir(), "missing"))
 		require.Error(t, err)
 	})
 }
 
 func TestTimeStartups(t *testing.T) {
+	t.Parallel()
+
 	readings := []int64{1700, 950, 900, 1000, 920, 940}
 	calls := 0
 
@@ -143,6 +163,8 @@ func TestTimeStartups(t *testing.T) {
 }
 
 func TestTimeStartupsErrors(t *testing.T) {
+	t.Parallel()
+
 	_, err := TimeStartups(t.Context(), 1, nil)
 	require.ErrorIs(t, err, ErrTooFewRuns)
 
@@ -161,6 +183,8 @@ func TestTimeStartupsErrors(t *testing.T) {
 }
 
 func TestStartupReportEmpty(t *testing.T) {
+	t.Parallel()
+
 	var report StartupReport
 
 	assert.Equal(t, Startup{}, report.First())

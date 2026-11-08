@@ -6,6 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -95,30 +96,29 @@ func receive(t *testing.T, ch <-chan result) result {
 	}
 }
 
-// waitForCaller gives a caller just started time to join the call in flight. Joining
-// leaves no trace a test can wait for, so a short pause stands in; a caller that has not
-// joined yet only makes the test pass for the wrong reason, never fail.
-func waitForCaller() {
-	time.Sleep(20 * time.Millisecond)
-}
+// The tests that start a second caller run in a synctest bubble: synctest.Wait returns
+// once every goroutine in it is blocked, which is when the second caller has joined the
+// call in flight, so no pause has to stand in for that.
 
 func TestCallersJoinTheCallInFlight(t *testing.T) {
 	t.Parallel()
 
-	var g flight.Group[int]
+	synctest.Test(t, func(t *testing.T) {
+		var g flight.Group[int]
 
-	calls := newGate()
-	first := doAsync(t.Context(), &g, calls.call(1))
-	calls.waitStarted(t)
+		calls := newGate()
+		first := doAsync(t.Context(), &g, calls.call(1))
+		calls.waitStarted(t)
 
-	second := doAsync(t.Context(), &g, calls.call(2))
+		second := doAsync(t.Context(), &g, calls.call(2))
 
-	waitForCaller()
-	close(calls.release)
+		synctest.Wait()
+		close(calls.release)
 
-	assert.Equal(t, result{n: 1}, receive(t, first))
-	assert.Equal(t, result{n: 1}, receive(t, second), "the second caller shares the first call's result")
-	assert.Equal(t, int32(1), calls.calls.Load())
+		assert.Equal(t, result{n: 1}, receive(t, first))
+		assert.Equal(t, result{n: 1}, receive(t, second), "the second caller shares the first call's result")
+		assert.Equal(t, int32(1), calls.calls.Load())
+	})
 }
 
 func TestACallAfterTheLastRunsAgain(t *testing.T) {
@@ -141,124 +141,132 @@ func TestACallAfterTheLastRunsAgain(t *testing.T) {
 func TestACallerStopsWaitingWhenItsContextEnds(t *testing.T) {
 	t.Parallel()
 
-	var g flight.Group[int]
+	synctest.Test(t, func(t *testing.T) {
+		var g flight.Group[int]
 
-	calls := newGate()
-	first := doAsync(t.Context(), &g, calls.call(1))
-	calls.waitStarted(t)
+		calls := newGate()
+		first := doAsync(t.Context(), &g, calls.call(1))
+		calls.waitStarted(t)
 
-	ctx, cancel := context.WithCancel(t.Context())
-	second := doAsync(ctx, &g, calls.call(2))
+		ctx, cancel := context.WithCancel(t.Context())
+		second := doAsync(ctx, &g, calls.call(2))
 
-	waitForCaller()
-	cancel()
+		synctest.Wait()
+		cancel()
 
-	require.ErrorIs(t, receive(t, second).err, context.Canceled)
+		require.ErrorIs(t, receive(t, second).err, context.Canceled)
 
-	close(calls.release)
-	assert.Equal(t, result{n: 1}, receive(t, first), "the call goes on for the caller that started it")
+		close(calls.release)
+		assert.Equal(t, result{n: 1}, receive(t, first), "the call goes on for the caller that started it")
+	})
 }
 
 func TestAWaitingCallerStartsAgainWhenTheFirstCallerLeaves(t *testing.T) {
 	t.Parallel()
 
-	var g flight.Group[int]
+	synctest.Test(t, func(t *testing.T) {
+		var g flight.Group[int]
 
-	calls := newGate()
-	ctx, cancel := context.WithCancel(t.Context())
-	first := doAsync(ctx, &g, calls.call(1))
-	calls.waitStarted(t)
+		calls := newGate()
+		ctx, cancel := context.WithCancel(t.Context())
+		first := doAsync(ctx, &g, calls.call(1))
+		calls.waitStarted(t)
 
-	second := doAsync(t.Context(), &g, calls.call(2))
+		second := doAsync(t.Context(), &g, calls.call(2))
 
-	waitForCaller()
-	cancel()
+		synctest.Wait()
+		cancel()
 
-	require.ErrorIs(t, receive(t, first).err, context.Canceled)
+		require.ErrorIs(t, receive(t, first).err, context.Canceled)
 
-	calls.waitStarted(t)
-	close(calls.release)
+		calls.waitStarted(t)
+		close(calls.release)
 
-	assert.Equal(t, result{n: 2}, receive(t, second), "the second caller ran the call under its own context")
-	assert.Equal(t, int32(2), calls.calls.Load())
+		assert.Equal(t, result{n: 2}, receive(t, second), "the second caller ran the call under its own context")
+		assert.Equal(t, int32(2), calls.calls.Load())
+	})
 }
 
 func TestAFailureIsSharedWithEveryCaller(t *testing.T) {
 	t.Parallel()
 
-	var g flight.Group[int]
+	synctest.Test(t, func(t *testing.T) {
+		var g flight.Group[int]
 
-	started := make(chan struct{})
-	release := make(chan struct{})
-	fail := func(context.Context) (int, error) {
-		close(started)
-		<-release
+		started := make(chan struct{})
+		release := make(chan struct{})
+		fail := func(context.Context) (int, error) {
+			close(started)
+			<-release
 
-		return 0, errFake
-	}
+			return 0, errFake
+		}
 
-	first := doAsync(t.Context(), &g, fail)
+		first := doAsync(t.Context(), &g, fail)
 
-	<-started
+		<-started
 
-	second := doAsync(t.Context(), &g, fail)
+		second := doAsync(t.Context(), &g, fail)
 
-	waitForCaller()
-	close(release)
+		synctest.Wait()
+		close(release)
 
-	require.ErrorIs(t, receive(t, first).err, errFake)
-	require.ErrorIs(t, receive(t, second).err, errFake)
+		require.ErrorIs(t, receive(t, first).err, errFake)
+		require.ErrorIs(t, receive(t, second).err, errFake)
+	})
 }
 
 func TestAPanicReachesEveryCaller(t *testing.T) {
 	t.Parallel()
 
-	var g flight.Group[int]
+	synctest.Test(t, func(t *testing.T) {
+		var g flight.Group[int]
 
-	started := make(chan struct{})
-	release := make(chan struct{})
-	boom := func(context.Context) (int, error) {
-		close(started)
-		<-release
+		started := make(chan struct{})
+		release := make(chan struct{})
+		boom := func(context.Context) (int, error) {
+			close(started)
+			<-release
 
-		panic(errFake)
-	}
+			panic(errFake)
+		}
 
-	var wg sync.WaitGroup
+		var wg sync.WaitGroup
 
-	caught := make(chan any, 2)
+		caught := make(chan any, 2)
 
-	catch := func() {
-		defer wg.Done()
-		defer func() { caught <- recover() }()
+		catch := func() {
+			defer wg.Done()
+			defer func() { caught <- recover() }()
 
-		_, _ = g.Do(t.Context(), "key", boom)
-	}
+			_, _ = g.Do(t.Context(), "key", boom)
+		}
 
-	wg.Add(1)
+		wg.Add(1)
 
-	go catch()
+		go catch()
 
-	<-started
-	wg.Add(1)
+		<-started
+		wg.Add(1)
 
-	go catch()
+		go catch()
 
-	waitForCaller()
-	close(release)
-	wg.Wait()
-	close(caught)
+		synctest.Wait()
+		close(release)
+		wg.Wait()
+		close(caught)
 
-	require.Len(t, caught, 2)
+		require.Len(t, caught, 2)
 
-	for v := range caught {
-		var p *flight.PanicError
+		for v := range caught {
+			var p *flight.PanicError
 
-		require.ErrorAs(t, v.(error), &p) //nolint:forcetypeassert // a panic from Do is always a *PanicError
-		require.ErrorIs(t, p, errFake)
-		assert.Contains(t, p.Error(), errFake.Error())
-		assert.Contains(t, string(p.Stack), "flight_test")
-	}
+			require.ErrorAs(t, v.(error), &p) //nolint:forcetypeassert // a panic from Do is always a *PanicError
+			require.ErrorIs(t, p, errFake)
+			assert.Contains(t, p.Error(), errFake.Error())
+			assert.Contains(t, string(p.Stack), "flight_test")
+		}
+	})
 }
 
 func TestPanicErrorWithAValueThatIsNotAnError(t *testing.T) {

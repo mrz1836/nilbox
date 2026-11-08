@@ -13,6 +13,8 @@ import (
 // TestVariablesMatchData keeps the cheat sheet and Data in step: every field has exactly
 // one variable of the matching type, in the same order.
 func TestVariablesMatchData(t *testing.T) {
+	t.Parallel()
+
 	typ := reflect.TypeFor[Data]()
 	vars := Variables()
 	require.Len(t, vars, typ.NumField())
@@ -30,6 +32,8 @@ func TestVariablesMatchData(t *testing.T) {
 }
 
 func TestSampleData(t *testing.T) {
+	t.Parallel()
+
 	pr := Sample(item.KindPR)
 	assert.True(t, pr.IsPR)
 	assert.Equal(t, "pull request", pr.Kind)
@@ -44,6 +48,8 @@ func TestSampleData(t *testing.T) {
 }
 
 func TestWithSession(t *testing.T) {
+	t.Parallel()
+
 	pr := Sample(item.KindPR)
 
 	got := pr.WithSession(true, true)
@@ -61,6 +67,8 @@ func TestWithSession(t *testing.T) {
 }
 
 func TestValues(t *testing.T) {
+	t.Parallel()
+
 	d := Sample(item.KindPR).WithSession(true, false)
 	d.Title = "Fix\nthe widget"
 
@@ -74,6 +82,8 @@ func TestValues(t *testing.T) {
 }
 
 func TestAppliesToCovers(t *testing.T) {
+	t.Parallel()
+
 	assert.True(t, AppliesToAny.Covers(item.KindPR))
 	assert.True(t, AppliesToAny.Covers(item.KindIssue))
 	assert.True(t, AppliesToPR.Covers(item.KindPR))

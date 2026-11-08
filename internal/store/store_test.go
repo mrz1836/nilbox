@@ -194,6 +194,8 @@ func TestTimestampsReadBackInUTC(t *testing.T) {
 }
 
 func TestOpenCreatesParentDir(t *testing.T) {
+	t.Parallel()
+
 	dir := filepath.Join(t.TempDir(), "nested", "data")
 	path := filepath.Join(dir, "app.db")
 
@@ -247,6 +249,8 @@ VALUES ('example.key', 'kept', CURRENT_TIMESTAMP)`)
 }
 
 func TestOpenRejectsInvalidPath(t *testing.T) {
+	t.Parallel()
+
 	_, err := store.Open(t.Context(), "")
 	require.ErrorIs(t, err, store.ErrEmptyPath)
 
@@ -255,6 +259,8 @@ func TestOpenRejectsInvalidPath(t *testing.T) {
 }
 
 func TestOpenReportsUnusablePaths(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		path func(t *testing.T) string
@@ -290,6 +296,8 @@ func TestOpenReportsUnusablePaths(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			if tt.name == "directory is not writable" {
 				testutil.SkipAsRoot(t)
 			}

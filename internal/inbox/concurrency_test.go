@@ -6,6 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -16,6 +17,9 @@ import (
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
+
+// waitTimeout bounds every wait in these tests.
+const waitTimeout = 5 * time.Second
 
 // gate holds the calls that reach it until it opens, and says when each one arrives.
 type gate struct {
@@ -203,12 +207,6 @@ func bounded(t *testing.T) context.Context {
 	return ctx
 }
 
-// waitForCaller gives a caller just started time to join the refresh in flight. Joining
-// leaves no trace a test can wait for, so a short pause stands in.
-func waitForCaller() {
-	time.Sleep(50 * time.Millisecond)
-}
-
 // refreshUntilGate starts a refresh that waits at the gate in its inbox query, and returns
 // where its outcome arrives once the gate opens.
 func refreshUntilGate(t *testing.T, h *harness, c *gatedClient) <-chan outcome {
@@ -223,25 +221,33 @@ func refreshUntilGate(t *testing.T, h *harness, c *gatedClient) <-chan outcome {
 }
 
 func TestRefreshNowJoinsTheRefreshInFlight(t *testing.T) {
-	h, _ := itemHarness(t)
-	c := h.gated()
-	tokens := h.tokens.calls
+	t.Parallel()
 
-	first := refreshUntilGate(t, h, c)
-	second := async(func() (Snapshot, error) { return h.svc.Refresh(t.Context()) })
+	// In a synctest bubble, synctest.Wait returns once every goroutine in it is blocked,
+	// which is when the second caller has joined the refresh in flight.
+	synctest.Test(t, func(t *testing.T) {
+		h, _ := itemHarness(t)
+		c := h.gated()
+		tokens := h.tokens.calls
 
-	waitForCaller()
-	c.inboxGate.release()
+		first := refreshUntilGate(t, h, c)
+		second := async(func() (Snapshot, error) { return h.svc.Refresh(t.Context()) })
 
-	a, b := await(t, first), await(t, second)
-	require.NoError(t, a.err)
-	require.NoError(t, b.err)
-	assert.Equal(t, a.snap, b.snap, "both callers get the one refresh's snapshot")
-	assert.Equal(t, int32(1), c.inboxCalls.Load(), "GitHub was asked once")
-	assert.Equal(t, tokens+1, h.tokens.calls, "the token was borrowed once")
+		synctest.Wait()
+		c.inboxGate.release()
+
+		a, b := await(t, first), await(t, second)
+		require.NoError(t, a.err)
+		require.NoError(t, b.err)
+		assert.Equal(t, a.snap, b.snap, "both callers get the one refresh's snapshot")
+		assert.Equal(t, int32(1), c.inboxCalls.Load(), "GitHub was asked once")
+		assert.Equal(t, tokens+1, h.tokens.calls, "the token was borrowed once")
+	})
 }
 
 func TestRefreshItemDoesNotWaitForARefresh(t *testing.T) {
+	t.Parallel()
+
 	h, id := itemHarness(t)
 	c := h.gated()
 
@@ -262,6 +268,8 @@ func TestRefreshItemDoesNotWaitForARefresh(t *testing.T) {
 }
 
 func TestCheckFilesDoesNotWaitForARefresh(t *testing.T) {
+	t.Parallel()
+
 	h := filesHarness(t, from(1, "octo-outsider", "NONE", true))
 	snap := h.refresh(t)
 	c := h.gated()
@@ -277,6 +285,8 @@ func TestCheckFilesDoesNotWaitForARefresh(t *testing.T) {
 }
 
 func TestARefreshDoesNotBringBackAnItemMergedWhileItFetched(t *testing.T) {
+	t.Parallel()
+
 	h, id := itemHarness(t)
 	c := h.gated()
 
@@ -304,6 +314,8 @@ func TestARefreshDoesNotBringBackAnItemMergedWhileItFetched(t *testing.T) {
 }
 
 func TestARefreshKeepsWhatAnItemRefreshStoredWhileItFetched(t *testing.T) {
+	t.Parallel()
+
 	h, id := itemHarness(t)
 	c := h.gated()
 
@@ -335,6 +347,8 @@ func TestARefreshKeepsWhatAnItemRefreshStoredWhileItFetched(t *testing.T) {
 }
 
 func TestAnItemRefreshOlderThanAStoredRefreshStoresNothing(t *testing.T) {
+	t.Parallel()
+
 	h, id := itemHarness(t)
 	c := h.gated()
 	c.itemGate = newGate(t)
@@ -364,6 +378,8 @@ func TestAnItemRefreshOlderThanAStoredRefreshStoresNothing(t *testing.T) {
 }
 
 func TestTriageDuringARefreshHolds(t *testing.T) {
+	t.Parallel()
+
 	h, id := itemHarness(t)
 	c := h.gated()
 
@@ -390,6 +406,8 @@ func TestTriageDuringARefreshHolds(t *testing.T) {
 }
 
 func TestARefreshDoesNotAnnounceAnItemMergedWhileItFetched(t *testing.T) {
+	t.Parallel()
+
 	h, sink := arrivalHarness(t)
 	h.client.inbox = fetched([]github.Item{byOther(pr(2, "OWNER", false))}, nil, []github.Item{byOther(pr(1, "OWNER", false))})
 	snap := h.refresh(t)
@@ -416,6 +434,8 @@ func TestARefreshDoesNotAnnounceAnItemMergedWhileItFetched(t *testing.T) {
 }
 
 func TestARefreshBorrowsTheTokenAgainWhenGitHubRefusesIt(t *testing.T) {
+	t.Parallel()
+
 	h, _ := itemHarness(t)
 	c := h.gated()
 	c.refusals.Store(1)
@@ -430,6 +450,8 @@ func TestARefreshBorrowsTheTokenAgainWhenGitHubRefusesIt(t *testing.T) {
 }
 
 func TestARefreshRefusedTwiceFails(t *testing.T) {
+	t.Parallel()
+
 	h, _ := itemHarness(t)
 	c := h.gated()
 	c.refusals.Store(2)
@@ -443,6 +465,8 @@ func TestARefreshRefusedTwiceFails(t *testing.T) {
 }
 
 func TestRefreshItemBorrowsTheTokenAgainWhenGitHubRefusesIt(t *testing.T) {
+	t.Parallel()
+
 	h, id := itemHarness(t)
 	h.client.itemErr = &github.StatusError{StatusCode: http.StatusUnauthorized, Message: "Bad credentials"}
 
@@ -453,6 +477,8 @@ func TestRefreshItemBorrowsTheTokenAgainWhenGitHubRefusesIt(t *testing.T) {
 }
 
 func TestTheSnapshotIsKeptUntilTheInboxChanges(t *testing.T) {
+	t.Parallel()
+
 	h, id := itemHarness(t)
 
 	before, err := h.svc.Snapshot(t.Context())
@@ -478,6 +504,8 @@ func TestTheSnapshotIsKeptUntilTheInboxChanges(t *testing.T) {
 }
 
 func TestTheSnapshotFollowsTheTrustedBots(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 
 	bot := pr(1, "NONE", false)
@@ -560,6 +588,8 @@ func TestItemLocksHoldOneItemAtATime(t *testing.T) {
 }
 
 func TestARefreshDoesNotWakeASnoozeSetAfterANewerItemRefresh(t *testing.T) {
+	t.Parallel()
+
 	h, sink := arrivalHarness(t)
 
 	before := prDetails()
@@ -602,6 +632,8 @@ func TestARefreshDoesNotWakeASnoozeSetAfterANewerItemRefresh(t *testing.T) {
 }
 
 func TestAFileCheckOlderThanAnEarlierRefreshIsNotStored(t *testing.T) {
+	t.Parallel()
+
 	h := filesHarness(t, from(1, "octo-outsider", "NONE", true))
 	snap := h.refresh(t)
 	id := itemByNumber(t, snap.ReviewRequested, 1).ID

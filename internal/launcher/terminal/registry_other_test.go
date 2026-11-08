@@ -10,6 +10,8 @@ import (
 )
 
 func TestDefaultRegistryEmptyOffDarwin(t *testing.T) {
+	t.Parallel()
+
 	r := DefaultRegistry(nil)
 
 	assert.Empty(t, r.IDs())

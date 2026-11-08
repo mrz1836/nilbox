@@ -7,14 +7,11 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
-
-// waitTimeout bounds every wait in these tests.
-const waitTimeout = 5 * time.Second
 
 // countingRefresher counts its refreshes and fails the first one.
 type countingRefresher struct {
@@ -52,31 +49,35 @@ func (b *syncBuffer) String() string {
 func TestSchedulerRefreshesAndLogsUntilCanceled(t *testing.T) {
 	t.Parallel()
 
-	r := &countingRefresher{}
-	logs := &syncBuffer{}
-	s := NewScheduler(r, slog.New(slog.NewTextHandler(logs, nil)))
-	s.interval = time.Millisecond
+	// The bubble's clock moves only when every goroutine in it is blocked, so the real
+	// interval takes no real time and the count of refreshes is exact.
+	synctest.Test(t, func(t *testing.T) {
+		r := &countingRefresher{}
+		logs := &syncBuffer{}
+		s := NewScheduler(r, slog.New(slog.NewTextHandler(logs, nil)))
 
-	ctx, cancel := context.WithCancel(t.Context())
-	done := make(chan struct{})
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan struct{})
 
-	go func() {
-		defer close(done)
+		go func() {
+			defer close(done)
 
-		s.Run(ctx)
-	}()
+			s.Run(ctx)
+		}()
 
-	require.Eventually(t, func() bool { return r.count.Load() >= 3 }, waitTimeout, time.Millisecond)
-	cancel()
+		synctest.Wait()
+		assert.Equal(t, int32(1), r.count.Load(), "the inbox is refreshed at once")
 
-	select {
-	case <-done:
-	case <-time.After(waitTimeout):
-		t.Fatal("the scheduler did not stop")
-	}
+		time.Sleep(2*DefaultInterval + time.Second)
+		synctest.Wait()
+		assert.Equal(t, int32(3), r.count.Load(), "and again on every tick, after a failure too")
 
-	assert.Contains(t, logs.String(), "inbox refresh failed")
-	assert.Contains(t, logs.String(), errFakeBroken.Error())
+		cancel()
+		<-done
+
+		assert.Contains(t, logs.String(), "inbox refresh failed")
+		assert.Contains(t, logs.String(), errFakeBroken.Error())
+	})
 }
 
 func TestNewSchedulerDefaults(t *testing.T) {

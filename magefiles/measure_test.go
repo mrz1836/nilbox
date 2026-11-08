@@ -26,6 +26,7 @@ func fakeBundle(t *testing.T, body string) string {
 	return exe
 }
 
+//nolint:paralleltest // changes the process's standard output
 func TestPrintLines(t *testing.T) {
 	t.Run("prints each line", func(t *testing.T) {
 		var err error
@@ -53,10 +54,12 @@ func TestPrintLines(t *testing.T) {
 	})
 }
 
+//nolint:paralleltest // changes the process's standard output
 func TestSay(t *testing.T) {
 	assert.Equal(t, "hello\n", captureStdout(t, func() { say("hello") }))
 }
 
+//nolint:paralleltest // changes the process's working directory, environment, and standard output
 func TestMeasureOnMacOS(t *testing.T) {
 	onlyOnMacOS(t)
 

@@ -19,6 +19,8 @@ func env(vars map[string]string) func(string) string {
 }
 
 func TestDirDarwin(t *testing.T) {
+	t.Parallel()
+
 	home := filepath.Join("/", "tmp", "home-darwin")
 
 	got, err := appdata.Dir("darwin", home, env(nil))
@@ -30,6 +32,8 @@ func TestDirDarwin(t *testing.T) {
 }
 
 func TestDirLinuxXDG(t *testing.T) {
+	t.Parallel()
+
 	xdg := filepath.Join("/", "tmp", "xdg-data")
 	home := filepath.Join("/", "tmp", "home-linux")
 
@@ -44,6 +48,8 @@ func TestDirLinuxXDG(t *testing.T) {
 }
 
 func TestDirLinuxDefault(t *testing.T) {
+	t.Parallel()
+
 	home := filepath.Join("/", "tmp", "home-linux")
 
 	tests := []struct {
@@ -57,6 +63,8 @@ func TestDirLinuxDefault(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got, err := appdata.Dir("linux", home, env(tt.vars))
 			require.NoError(t, err)
 			assert.Equal(t, filepath.Join(home, ".local", "share", brand.Slug), got)
@@ -68,6 +76,8 @@ func TestDirLinuxDefault(t *testing.T) {
 }
 
 func TestDirWindows(t *testing.T) {
+	t.Parallel()
+
 	appData := filepath.Join("C:", "Users", "example", "AppData", "Roaming")
 
 	got, err := appdata.Dir("windows", "", env(map[string]string{"APPDATA": appData}))
@@ -79,8 +89,12 @@ func TestDirWindows(t *testing.T) {
 }
 
 func TestDirUnsupported(t *testing.T) {
+	t.Parallel()
+
 	for _, goos := range []string{"plan9", "js", ""} {
 		t.Run("goos="+goos, func(t *testing.T) {
+			t.Parallel()
+
 			_, err := appdata.Dir(goos, filepath.Join("/", "tmp", "home"), env(nil))
 			require.ErrorIs(t, err, appdata.ErrUnsupportedOS)
 		})
@@ -88,6 +102,8 @@ func TestDirUnsupported(t *testing.T) {
 }
 
 func TestNewPaths(t *testing.T) {
+	t.Parallel()
+
 	root := filepath.Join("/", "tmp", "data-root")
 	p := appdata.NewPaths(root)
 
@@ -133,6 +149,8 @@ func TestResolveWithoutHome(t *testing.T) {
 }
 
 func TestEnsureCreatesDirectories(t *testing.T) {
+	t.Parallel()
+
 	p := appdata.NewPaths(filepath.Join(t.TempDir(), "nested", "data"))
 
 	require.NoError(t, p.Ensure())
@@ -153,6 +171,8 @@ func TestEnsureCreatesDirectories(t *testing.T) {
 }
 
 func TestEnsureReportsBlockedPath(t *testing.T) {
+	t.Parallel()
+
 	parent := t.TempDir()
 	blocked := filepath.Join(parent, "data")
 

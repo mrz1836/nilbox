@@ -10,6 +10,8 @@ import (
 )
 
 func TestLookup(t *testing.T) {
+	t.Parallel()
+
 	got, err := agent.Lookup("")
 	require.NoError(t, err)
 	assert.Equal(t, agent.Default(), got)
@@ -23,6 +25,8 @@ func TestLookup(t *testing.T) {
 }
 
 func TestAllHasUniqueIDs(t *testing.T) {
+	t.Parallel()
+
 	seen := map[string]bool{}
 
 	for _, a := range agent.All() {

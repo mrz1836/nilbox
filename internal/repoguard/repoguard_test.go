@@ -123,18 +123,29 @@ func walkFiles(t *testing.T, root string) []string {
 func readText(t *testing.T, root, rel string) (string, bool) {
 	t.Helper()
 
-	body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel))) //nolint:gosec // paths come from this repo's file list
-	if errors.Is(err, fs.ErrNotExist) {
-		return "", false // deleted in the working tree but still in the index
-	}
-
+	text, ok, err := readTextFile(root, rel)
 	require.NoError(t, err)
 
-	if bytes.IndexByte(body, 0) >= 0 {
-		return "", false
+	return text, ok
+}
+
+// readTextFile is readText for a caller that is not on the test's goroutine: it returns
+// the error a test would fail with.
+func readTextFile(root, rel string) (string, bool, error) {
+	body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel))) //nolint:gosec // paths come from this repo's file list
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", false, nil // deleted in the working tree but still in the index
 	}
 
-	return string(body), true
+	if err != nil {
+		return "", false, fmt.Errorf("read %s: %w", rel, err)
+	}
+
+	if bytes.IndexByte(body, 0) >= 0 {
+		return "", false, nil
+	}
+
+	return string(body), true, nil
 }
 
 // goFiles returns the repository's Go files.
@@ -168,6 +179,8 @@ func hits(rel, text string, match func(line string) bool) []string {
 }
 
 func TestDataLayerBuildsWithoutCGO(t *testing.T) {
+	t.Parallel()
+
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("the go command is not available")
 	}
@@ -196,6 +209,8 @@ func TestDataLayerBuildsWithoutCGO(t *testing.T) {
 }
 
 func TestNoAbsoluteHomePaths(t *testing.T) {
+	t.Parallel()
+
 	root := moduleRoot(t)
 
 	// Built from parts so this file does not match itself. The look-behind-style prefix
@@ -249,6 +264,8 @@ func frontendBrandFile(rel string) bool {
 }
 
 func TestFrontendBrandFile(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]bool{
 		"frontend/index.html":                   true,
 		"frontend/src/App.tsx":                  true,
@@ -295,6 +312,8 @@ func productNameText(t *testing.T, root, module, rel string) (string, bool) {
 }
 
 func TestNoHardcodedProductName(t *testing.T) {
+	t.Parallel()
+
 	root := moduleRoot(t)
 	module := modulePath(t, root)
 	cmdDir := "cmd/" + brand.Slug + "/"
@@ -318,6 +337,8 @@ func TestNoHardcodedProductName(t *testing.T) {
 }
 
 func TestNoLiveGitHubCallsInTests(t *testing.T) {
+	t.Parallel()
+
 	root := moduleRoot(t)
 
 	// Built from parts so this file does not match itself.
@@ -371,6 +392,8 @@ func containsAny(line string, needles []string) bool {
 }
 
 func TestNoBranchDeletion(t *testing.T) {
+	t.Parallel()
+
 	root := moduleRoot(t)
 	needles := branchDeleteNeedles()
 
@@ -426,6 +449,8 @@ func productionGoHits(t *testing.T, root string, pattern *regexp.Regexp, exempt 
 }
 
 func TestOnlyTheLauncherCreatesClones(t *testing.T) {
+	t.Parallel()
+
 	root := moduleRoot(t)
 
 	// Built from parts so this file does not match itself. "clone" is the argv word of
@@ -451,6 +476,8 @@ func cloneChangingVerbs() []string {
 }
 
 func TestNoGitCommandChangesAClone(t *testing.T) {
+	t.Parallel()
+
 	root := moduleRoot(t)
 	verbs := argvLiteral(cloneChangingVerbs()...)
 	worktreeAdd := regexp.MustCompile(`"work` + `tree",\s*"add"`)
@@ -544,6 +571,8 @@ func fileRunners(rel, text string) []string {
 }
 
 func TestNoMacOSRunners(t *testing.T) {
+	t.Parallel()
+
 	root := moduleRoot(t)
 
 	var found []string
@@ -632,6 +661,8 @@ func wailsAllowed(rel string) bool {
 }
 
 func TestOnlyDesktopBootstrapImportsWails(t *testing.T) {
+	t.Parallel()
+
 	root := moduleRoot(t)
 
 	// Built from parts so the needle reads as data, not as an import path.
@@ -681,6 +712,8 @@ func TestWailsAllowed(t *testing.T) {
 const testSupportDir = "internal/testutil"
 
 func TestOnlyTestsImportTestSupport(t *testing.T) {
+	t.Parallel()
+
 	root := moduleRoot(t)
 	testSupport := modulePath(t, root) + "/" + testSupportDir
 

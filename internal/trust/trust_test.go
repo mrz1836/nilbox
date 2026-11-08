@@ -11,6 +11,8 @@ import (
 )
 
 func TestClassifyPeople(t *testing.T) {
+	t.Parallel()
+
 	associations := map[string]bool{
 		"OWNER":                  true,
 		"MEMBER":                 true,
@@ -54,6 +56,8 @@ func checkPerson(t *testing.T, p trust.Policy, assoc string, trustedAssoc, isPR,
 }
 
 func TestClassifyNormalizesTheAssociation(t *testing.T) {
+	t.Parallel()
+
 	p := trust.NewPolicy(nil)
 
 	assert.True(t, p.Trusted(trust.Author{Association: " owner "}, true, false))
@@ -62,6 +66,8 @@ func TestClassifyNormalizesTheAssociation(t *testing.T) {
 }
 
 func TestClassifyBots(t *testing.T) {
+	t.Parallel()
+
 	p := trust.NewPolicy([]string{"dependabot", "Renovate[bot]"})
 
 	tests := []struct {
@@ -84,6 +90,8 @@ func TestClassifyBots(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			assert.Equal(t, tt.want, p.Classify(tt.author, true, tt.cross))
 			assert.Equal(t, tt.want != trust.ClassOutside, p.Trusted(tt.author, true, tt.cross))
 		})
@@ -96,6 +104,8 @@ func TestClassifyBots(t *testing.T) {
 }
 
 func TestNormalizeBots(t *testing.T) {
+	t.Parallel()
+
 	got, err := trust.NormalizeBots([]string{" Renovate[bot] ", "app/dependabot", "", "dependabot", "github-actions"})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"dependabot", "github-actions", "renovate"}, got)
@@ -120,6 +130,8 @@ func TestNormalizeBots(t *testing.T) {
 }
 
 func TestEncodeAndDecodeBots(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, trust.DefaultBots(), trust.DecodeBots("", false), "unset means the defaults")
 	assert.Equal(t, trust.DefaultBots(), trust.DecodeBots("not json", true), "unreadable means the defaults")
 	assert.Equal(t, []string{}, trust.DecodeBots(trust.EncodeBots(nil), true), "an emptied list stays empty")

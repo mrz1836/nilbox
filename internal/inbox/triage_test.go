@@ -28,6 +28,8 @@ func triageHarness(t *testing.T) (h *harness, first, second int64) {
 }
 
 func TestDismissUntilRestored(t *testing.T) {
+	t.Parallel()
+
 	h, id, other := triageHarness(t)
 	notified := h.events.Count()
 
@@ -60,6 +62,8 @@ func TestDismissUntilRestored(t *testing.T) {
 }
 
 func TestSnoozeForDays(t *testing.T) {
+	t.Parallel()
+
 	h, id, _ := triageHarness(t)
 	h.clock.Set(time.Date(2026, 1, 10, 12, 0, 0, 500, time.UTC))
 
@@ -92,6 +96,8 @@ func TestSnoozeForDays(t *testing.T) {
 }
 
 func TestSnoozeKeepsTheWallClockTime(t *testing.T) {
+	t.Parallel()
+
 	h, id, _ := triageHarness(t)
 
 	newYork, err := time.LoadLocation("America/New_York")
@@ -110,6 +116,8 @@ func TestSnoozeKeepsTheWallClockTime(t *testing.T) {
 }
 
 func TestSnoozeRejectsInvalidLengths(t *testing.T) {
+	t.Parallel()
+
 	h, id, _ := triageHarness(t)
 	notified := h.events.Count()
 
@@ -128,6 +136,8 @@ func TestSnoozeRejectsInvalidLengths(t *testing.T) {
 }
 
 func TestPinKeepsAnItemOnTop(t *testing.T) {
+	t.Parallel()
+
 	h, first, second := triageHarness(t)
 	notified := h.events.Count()
 
@@ -177,6 +187,8 @@ func TestPinKeepsAnItemOnTop(t *testing.T) {
 }
 
 func TestAPinOutlastsSnoozesAndDismissals(t *testing.T) {
+	t.Parallel()
+
 	h, id, _ := triageHarness(t)
 
 	_, err := h.svc.Pin(t.Context(), id)
@@ -217,6 +229,8 @@ func TestAPinOutlastsSnoozesAndDismissals(t *testing.T) {
 }
 
 func TestTriageUnknownItem(t *testing.T) {
+	t.Parallel()
+
 	h, _, _ := triageHarness(t)
 	notified := h.events.Count()
 
@@ -235,6 +249,8 @@ func TestTriageUnknownItem(t *testing.T) {
 }
 
 func TestTriageDatabaseErrors(t *testing.T) {
+	t.Parallel()
+
 	h, id, _ := triageHarness(t)
 	require.NoError(t, h.pool.Close())
 
@@ -301,6 +317,8 @@ func (h *harness) setPrefs(t *testing.T, values map[string]string) {
 }
 
 func TestSnoozeRecordsTheItemsActivity(t *testing.T) {
+	t.Parallel()
+
 	h, id, details := wakeHarness(t)
 
 	_, err := h.svc.Snooze(t.Context(), id, 3)
@@ -314,6 +332,8 @@ func TestSnoozeRecordsTheItemsActivity(t *testing.T) {
 }
 
 func TestNewCommitsWakeASnooze(t *testing.T) {
+	t.Parallel()
+
 	h, id, details := wakeHarness(t)
 
 	_, err := h.svc.Snooze(t.Context(), id, 3)
@@ -345,6 +365,8 @@ func TestNewCommitsWakeASnooze(t *testing.T) {
 }
 
 func TestTheWakeRulesComeFromThePrefs(t *testing.T) {
+	t.Parallel()
+
 	h, id, details := wakeHarness(t)
 	h.setPrefs(t, map[string]string{
 		snooze.PrefWakeCommits:  "0",
@@ -371,6 +393,8 @@ func TestTheWakeRulesComeFromThePrefs(t *testing.T) {
 }
 
 func TestAReviewWakesASnooze(t *testing.T) {
+	t.Parallel()
+
 	h, id, details := wakeHarness(t)
 
 	_, err := h.svc.Snooze(t.Context(), id, 3)
@@ -385,6 +409,8 @@ func TestAReviewWakesASnooze(t *testing.T) {
 }
 
 func TestABotsForcePushDoesNotWakeASnooze(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	details := prDetails()
 	details.HeadOID = "1111111111111111111111111111111111111111"
@@ -410,6 +436,8 @@ func TestABotsForcePushDoesNotWakeASnooze(t *testing.T) {
 }
 
 func TestASnoozeBeforeTheDetailsTakesItsBaselineLater(t *testing.T) {
+	t.Parallel()
+
 	h, id, _ := triageHarness(t)
 
 	_, err := h.svc.Snooze(t.Context(), id, 3)
@@ -431,6 +459,8 @@ func TestASnoozeBeforeTheDetailsTakesItsBaselineLater(t *testing.T) {
 }
 
 func TestDismissedItemsNeverWake(t *testing.T) {
+	t.Parallel()
+
 	h, id, details := wakeHarness(t)
 
 	_, err := h.svc.Dismiss(t.Context(), id)
@@ -443,6 +473,8 @@ func TestDismissedItemsNeverWake(t *testing.T) {
 }
 
 func TestUnreadableWakeReasonsShowNone(t *testing.T) {
+	t.Parallel()
+
 	assert.Nil(t, decodeReasons(nil))
 
 	assert.Nil(t, decodeReasons(new("{}")))
@@ -457,6 +489,8 @@ func TestUnreadableWakeReasonsShowNone(t *testing.T) {
 }
 
 func TestWakeRulesDatabaseError(t *testing.T) {
+	t.Parallel()
+
 	h, _, _ := triageHarness(t)
 	require.NoError(t, h.pool.Close())
 

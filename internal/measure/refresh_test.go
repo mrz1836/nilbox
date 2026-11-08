@@ -60,6 +60,8 @@ func (c *steppingClock) Now() time.Time {
 }
 
 func TestTimeRefreshes(t *testing.T) {
+	t.Parallel()
+
 	clock := &steppingClock{
 		now:   time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 		steps: []time.Duration{900 * time.Millisecond, 700 * time.Millisecond, 800 * time.Millisecond, 650 * time.Millisecond, 1200 * time.Millisecond},
@@ -90,6 +92,8 @@ func TestTimeRefreshes(t *testing.T) {
 }
 
 func TestRefreshReportBudget(t *testing.T) {
+	t.Parallel()
+
 	report := RefreshReport{Cost: 1}
 
 	assert.Equal(t, 5000, report.HourlyBudget(), "GitHub's standard budget when none was recorded")
@@ -100,6 +104,8 @@ func TestRefreshReportBudget(t *testing.T) {
 }
 
 func TestTimeRefreshesErrors(t *testing.T) {
+	t.Parallel()
+
 	_, err := TimeRefreshes(t.Context(), &fakeRefresher{costs: []int{1}}, 0, time.Now)
 	require.ErrorIs(t, err, ErrTooFewRuns)
 
@@ -113,6 +119,8 @@ func TestTimeRefreshesErrors(t *testing.T) {
 }
 
 func TestRunRefreshUsesAScratchDatabase(t *testing.T) {
+	t.Parallel()
+
 	tmp := t.TempDir()
 
 	// No token can be borrowed, so the first refresh fails before any request is made.
@@ -126,6 +134,8 @@ func TestRunRefreshUsesAScratchDatabase(t *testing.T) {
 }
 
 func TestRunRefreshBootstrapFails(t *testing.T) {
+	t.Parallel()
+
 	_, err := RunRefresh(t.Context(), RefreshOptions{TempDir: t.TempDir(), Runner: &testutil.Runner{Stderr: "not run", Err: errNotRun}})
 	require.Error(t, err, "a home directory is required")
 

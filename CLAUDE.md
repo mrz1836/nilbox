@@ -53,13 +53,23 @@ macOS runner, so this check is local.
 
 ## Tests
 
-Tests call `t.Parallel()` wherever it is safe, in top-level tests and subtests alike. The
+Tests call `t.Parallel()` wherever it is safe, in top-level tests and subtests alike, and
+`.golangci.json` enforces it with `paralleltest`, `tparallel`, and `usetesting` (`t.Context()`,
+`t.TempDir()`, `t.Setenv()`, and `t.Chdir()` over their `os` and `context` counterparts). The
 exception is a test that changes process-wide state: one that uses `t.Setenv` or `t.Chdir`
-(Go refuses both in a parallel test) or swaps a package-level variable. Once the
-`paralleltest` linter is enabled in `.golangci.json`, each such test carries a
-`//nolint:paralleltest` comment that says why. This deliberately overrides the synced
+(Go refuses both in a parallel test), swaps `os.Stdout`, or reads what its own subtests left
+behind. `paralleltest` already skips a test that calls `t.Setenv` itself; any other serial
+test carries a `//nolint:paralleltest // <reason>` comment that names the process-wide state.
+This deliberately overrides the synced
 [`testing-standards.md`](.github/tech-conventions/testing-standards.md), which says to avoid
 `t.Parallel()` outside concurrency tests; for this project, this file wins.
+
+A test that runs real git isolates it through the runner, not the process: hand the service
+under test `execpath.Exec{Env: testutil.GitEnv(home)}` (or `testutil.Git(t)` for a fresh home),
+which reads none of the user's git configuration, and run fixture commands with
+`testutil.RunGit`. Timer tests run in a `testing/synctest` bubble instead of sleeping or
+polling, fuzz tests seed their corpus with `f.Add` (`testdata/fuzz/` is ignored), and golden
+files are rewritten with the test's `-update` flag.
 
 <br>
 

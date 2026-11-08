@@ -28,18 +28,26 @@ func writeExecutable(t *testing.T, dir string) string {
 	return path
 }
 
+// requireNotOnPath fails the test when the fake tool is already on the inherited search
+// path, which would let Find succeed without looking where the test means it to.
+func requireNotOnPath(t *testing.T) {
+	t.Helper()
+
+	_, err := exec.LookPath(fakeTool)
+	require.Error(t, err, "the search path must not already contain the fake tool")
+}
+
 func TestFindAugmentsGUIPath(t *testing.T) {
+	t.Parallel()
+
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake tool is a POSIX script")
 	}
 
-	t.Setenv("PATH", "/usr/bin:/bin")
+	requireNotOnPath(t)
 
 	extra := t.TempDir()
 	want := writeExecutable(t, extra)
-
-	_, err := exec.LookPath(fakeTool)
-	require.Error(t, err, "the minimal PATH must not already contain the fake tool")
 
 	got, err := Search{Home: t.TempDir(), Extra: []string{"", extra}}.Find(fakeTool)
 	require.NoError(t, err)
@@ -65,11 +73,13 @@ func TestFindPrefersSearchPath(t *testing.T) {
 }
 
 func TestFindHomeWellKnownDir(t *testing.T) {
+	t.Parallel()
+
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake tool is a POSIX script")
 	}
 
-	t.Setenv("PATH", "/usr/bin:/bin")
+	requireNotOnPath(t)
 
 	home := t.TempDir()
 	want := writeExecutable(t, filepath.Join(home, ".local", "bin"))
@@ -86,7 +96,9 @@ func TestFindHomeWellKnownDir(t *testing.T) {
 }
 
 func TestFindNotFoundNamesProgramAndDirs(t *testing.T) {
-	t.Setenv("PATH", "/usr/bin:/bin")
+	t.Parallel()
+
+	requireNotOnPath(t)
 
 	extra := t.TempDir()
 
@@ -97,11 +109,13 @@ func TestFindNotFoundNamesProgramAndDirs(t *testing.T) {
 }
 
 func TestFindSkipsNonExecutable(t *testing.T) {
+	t.Parallel()
+
 	if runtime.GOOS == "windows" {
 		t.Skip("execute permission is a POSIX concept")
 	}
 
-	t.Setenv("PATH", "/usr/bin:/bin")
+	requireNotOnPath(t)
 
 	extra := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(extra, fakeTool), []byte("data"), 0o600))
@@ -111,6 +125,8 @@ func TestFindSkipsNonExecutable(t *testing.T) {
 }
 
 func TestWellKnownDirs(t *testing.T) {
+	t.Parallel()
+
 	home := filepath.Join(string(filepath.Separator)+"home", "octo-user")
 
 	switch runtime.GOOS {
@@ -128,55 +144,129 @@ func TestWellKnownDirs(t *testing.T) {
 	}
 }
 
+// writeScript creates the fake tool in a fresh directory, off the search path, as a shell
+// script running body, and returns its absolute path.
+func writeScript(t *testing.T, body string) string {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), fakeTool)
+	testutil.WriteExecutable(t, path, "#!/bin/sh\n"+body+"\n")
+
+	return path
+}
+
 func TestExecRun(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake tools are POSIX scripts")
+	}
+
 	testutil.RequireGit(t)
 
-	runner := Exec{Search: Search{}}
+	tests := []struct {
+		name string
+		exec Exec
+		argv []string
 
-	stdout, stderr, err := runner.Run(t.Context(), "git", "--version")
-	require.NoError(t, err)
-	assert.Contains(t, string(stdout), "git version")
-	assert.Empty(t, stderr)
-}
+		// canceled runs the program under a context canceled beforehand.
+		canceled bool
 
-func TestExecRunAbsolutePath(t *testing.T) {
-	abs, err := filepath.Abs(testutil.RequireGit(t))
-	require.NoError(t, err)
+		// check asserts what the run returned.
+		check func(t *testing.T, stdout, stderr []byte, err error)
+	}{
+		{
+			name: "a program on the search path",
+			argv: []string{"git", "--version"},
+			check: func(t *testing.T, stdout, stderr []byte, err error) {
+				t.Helper()
 
-	t.Setenv("PATH", "")
+				require.NoError(t, err)
+				assert.Contains(t, string(stdout), "git version")
+				assert.Empty(t, stderr)
+			},
+		},
+		{
+			name: "an absolute path runs without a search",
+			argv: []string{writeScript(t, "echo ran")},
+			check: func(t *testing.T, stdout, _ []byte, err error) {
+				t.Helper()
 
-	stdout, _, err := Exec{}.Run(t.Context(), abs, "--version")
-	require.NoError(t, err)
-	assert.Contains(t, string(stdout), "git version")
-}
+				require.NoError(t, err)
+				assert.Equal(t, "ran\n", string(stdout))
+			},
+		},
+		{
+			name: "a non-zero exit keeps its status and output",
+			argv: []string{"git", "-C", t.TempDir(), "rev-parse", "--git-dir"},
+			check: func(t *testing.T, _, stderr []byte, err error) {
+				t.Helper()
 
-func TestExecRunExitError(t *testing.T) {
-	testutil.RequireGit(t)
+				var exitErr *exec.ExitError
+				require.ErrorAs(t, err, &exitErr)
+				assert.NotZero(t, exitErr.ExitCode())
+				assert.Positive(t, ExitCode(err))
+				assert.NotEmpty(t, stderr)
+			},
+		},
+		{
+			name: "a program found nowhere",
+			exec: Exec{Search: Search{Extra: []string{t.TempDir()}}},
+			argv: []string{fakeTool},
+			check: func(t *testing.T, _, _ []byte, err error) {
+				t.Helper()
 
-	_, stderr, err := Exec{}.Run(t.Context(), "git", "-C", t.TempDir(), "rev-parse", "--git-dir")
-	require.Error(t, err)
+				require.ErrorIs(t, err, ErrNotFound)
+			},
+		},
+		{
+			name:     "a canceled context",
+			argv:     []string{"git", "--version"},
+			canceled: true,
+			check: func(t *testing.T, _, _ []byte, err error) {
+				t.Helper()
 
-	var exitErr *exec.ExitError
-	require.ErrorAs(t, err, &exitErr)
-	assert.NotZero(t, exitErr.ExitCode())
-	assert.NotEmpty(t, stderr)
-}
+				require.ErrorIs(t, err, context.Canceled)
+			},
+		},
+		{
+			name: "the given environment replaces the process's",
+			exec: Exec{Env: []string{"EXAMPLE_SETTING=example-value"}},
+			argv: []string{writeScript(t, `printf '%s|%s' "$EXAMPLE_SETTING" "$HOME"`)},
+			check: func(t *testing.T, stdout, _ []byte, err error) {
+				t.Helper()
 
-func TestExecRunNotFound(t *testing.T) {
-	t.Setenv("PATH", "/usr/bin:/bin")
+				require.NoError(t, err)
+				assert.Equal(t, "example-value|", string(stdout))
+			},
+		},
+		{
+			name: "no environment inherits the process's",
+			argv: []string{writeScript(t, `printf '%s' "$HOME"`)},
+			check: func(t *testing.T, stdout, _ []byte, err error) {
+				t.Helper()
 
-	_, _, err := Exec{Search: Search{Extra: []string{t.TempDir()}}}.Run(t.Context(), fakeTool)
-	require.ErrorIs(t, err, ErrNotFound)
-}
+				require.NoError(t, err)
+				assert.Equal(t, os.Getenv("HOME"), string(stdout))
+			},
+		},
+	}
 
-func TestExecRunCanceled(t *testing.T) {
-	testutil.RequireGit(t)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
 
-	_, _, err := Exec{}.Run(ctx, "git", "--version")
-	require.ErrorIs(t, err, context.Canceled)
+			if tt.canceled {
+				cancel()
+			}
+
+			stdout, stderr, err := tt.exec.Run(ctx, tt.argv[0], tt.argv[1:]...)
+			tt.check(t, stdout, stderr, err)
+		})
+	}
 }
 
 // fakeExitError is a fake process exit with a status.
@@ -208,13 +298,6 @@ func TestExitCode(t *testing.T) {
 			assert.Equal(t, tt.want, ExitCode(tt.err))
 		})
 	}
-}
-
-func TestExitCodeOfARealExit(t *testing.T) {
-	testutil.RequireGit(t)
-
-	_, _, err := Exec{}.Run(t.Context(), "git", "-C", t.TempDir(), "rev-parse", "--git-dir")
-	assert.Positive(t, ExitCode(err))
 }
 
 func TestFirstLineAndGitMessage(t *testing.T) {

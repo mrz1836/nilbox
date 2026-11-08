@@ -8,6 +8,8 @@ import (
 )
 
 func TestCheckScopes(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name        string
 		header      string
@@ -27,6 +29,8 @@ func TestCheckScopes(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			warning, err := CheckScopes(tc.header)
 			assert.Equal(t, tc.wantWarning, warning)
 
@@ -51,6 +55,8 @@ func TestCheckScopes(t *testing.T) {
 }
 
 func TestMissingScopesErrorIsOnlyMissingScopes(t *testing.T) {
+	t.Parallel()
+
 	err := &MissingScopesError{Missing: []string{scopeRepo}}
 
 	require.ErrorIs(t, err, ErrMissingScopes)

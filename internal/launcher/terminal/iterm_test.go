@@ -18,6 +18,8 @@ func unescapeAppleScript(s string) string {
 }
 
 func TestITermAppleScript(t *testing.T) {
+	t.Parallel()
+
 	want := `set wasRunning to application "iTerm" is running
 tell application "iTerm"
 	activate
@@ -40,6 +42,8 @@ end tell
 }
 
 func TestITermAppleScriptTypesTheQuotedPath(t *testing.T) {
+	t.Parallel()
+
 	paths := []string{
 		awkwardScriptPath,
 		"/tmp/data/Library/Application Support/App/launch/pr-7-20260110T120000Z-0a1b2c3d.command",
@@ -49,6 +53,8 @@ func TestITermAppleScriptTypesTheQuotedPath(t *testing.T) {
 
 	for _, path := range paths {
 		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+
 			script := itermAppleScript(path)
 
 			const prefix = `write text "`
@@ -71,6 +77,8 @@ func TestITermAppleScriptTypesTheQuotedPath(t *testing.T) {
 }
 
 func TestAppleScriptString(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		input string
 		want  string
@@ -84,6 +92,8 @@ func TestAppleScriptString(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
+			t.Parallel()
+
 			got := appleScriptString(tt.input)
 			assert.Equal(t, tt.want, got)
 			assert.Equal(t, tt.input, unescapeAppleScript(got))

@@ -35,6 +35,8 @@ func (e *fakeExecutor) Run(ctx context.Context, name string, args ...string) (st
 }
 
 func TestDefaultRegistryOnDarwin(t *testing.T) {
+	t.Parallel()
+
 	r := DefaultRegistry(&fakeExecutor{})
 
 	assert.Equal(t, []ID{ITerm2, TerminalApp}, r.IDs())
@@ -49,6 +51,8 @@ func TestDefaultRegistryOnDarwin(t *testing.T) {
 }
 
 func TestITermDriverRunsOsascript(t *testing.T) {
+	t.Parallel()
+
 	ex := &fakeExecutor{}
 
 	d, err := DefaultRegistry(ex).Get("iterm2")
@@ -63,6 +67,8 @@ func TestITermDriverRunsOsascript(t *testing.T) {
 }
 
 func TestTerminalAppDriverRunsOpen(t *testing.T) {
+	t.Parallel()
+
 	ex := &fakeExecutor{}
 
 	d, err := DefaultRegistry(ex).Get("terminal")
@@ -75,6 +81,8 @@ func TestTerminalAppDriverRunsOpen(t *testing.T) {
 }
 
 func TestDriverReportsAutomationDenied(t *testing.T) {
+	t.Parallel()
+
 	ex := &fakeExecutor{
 		stderr: "execution error: Not authorized to send Apple events to iTerm. (-1743)",
 		err:    &exec.ExitError{},
@@ -88,6 +96,8 @@ func TestDriverReportsAutomationDenied(t *testing.T) {
 }
 
 func TestDriverReportsOpenFailure(t *testing.T) {
+	t.Parallel()
+
 	ex := &fakeExecutor{stderr: "LSOpenURLsWithRole() failed", err: &exec.ExitError{}}
 
 	d, err := DefaultRegistry(ex).Get("terminal")
@@ -99,8 +109,12 @@ func TestDriverReportsOpenFailure(t *testing.T) {
 }
 
 func TestDriversRejectUnsafePaths(t *testing.T) {
+	t.Parallel()
+
 	for _, id := range []ID{ITerm2, TerminalApp} {
 		t.Run(string(id), func(t *testing.T) {
+			t.Parallel()
+
 			ex := &fakeExecutor{}
 
 			d, err := DefaultRegistry(ex).Get(id)

@@ -96,6 +96,8 @@ func fields(list []agent.FieldError) map[string]string {
 }
 
 func TestSaveAndList(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	ctx := t.Context()
 
@@ -136,6 +138,8 @@ func TestSaveAndList(t *testing.T) {
 }
 
 func TestSaveWithNothingSetRemoves(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	ctx := t.Context()
 
@@ -156,6 +160,8 @@ func TestSaveWithNothingSetRemoves(t *testing.T) {
 }
 
 func TestValidation(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	gone := new(int64(9999))
 
@@ -182,6 +188,8 @@ func TestValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got, err := h.svc.Check(t.Context(), tt.in)
 			require.NoError(t, err)
 
@@ -202,6 +210,8 @@ func TestValidation(t *testing.T) {
 }
 
 func TestRemove(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	ctx := t.Context()
 
@@ -217,6 +227,8 @@ func TestRemove(t *testing.T) {
 }
 
 func TestDefaultPromptsCannotBeDeletedWhileUsed(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	ctx := t.Context()
 	svc := h.prompts
@@ -329,6 +341,8 @@ func TestTargetsWithNoRepositories(t *testing.T) {
 }
 
 func TestIndex(t *testing.T) {
+	t.Parallel()
+
 	idx := launchdefaults.NewIndex([]launchdefaults.Defaults{
 		{Owner: acme, Model: "opus"},
 		{Owner: acme, Name: "api", Effort: "high"},
@@ -350,6 +364,8 @@ func TestIndex(t *testing.T) {
 }
 
 func TestInputEmpty(t *testing.T) {
+	t.Parallel()
+
 	assert.True(t, launchdefaults.Input{Owner: acme, ExtraFlags: " "}.Empty())
 	assert.False(t, launchdefaults.Input{Owner: acme, Worktree: new(true)}.Empty())
 	assert.False(t, launchdefaults.Input{Owner: acme, Agent: "claude"}.Empty())

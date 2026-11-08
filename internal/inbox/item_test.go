@@ -38,6 +38,8 @@ func itemRate() github.QueryRate {
 }
 
 func TestRefreshItemRewritesAnOpenItem(t *testing.T) {
+	t.Parallel()
+
 	h, id := itemHarness(t)
 	calls := h.events.Count()
 
@@ -80,6 +82,8 @@ func TestRefreshItemRewritesAnOpenItem(t *testing.T) {
 }
 
 func TestRefreshItemTakesAnItemThatIsNoLongerOpenOutOfTheLists(t *testing.T) {
+	t.Parallel()
+
 	merged := pr(1, "OWNER", false)
 	merged.State = github.StateMerged
 
@@ -102,6 +106,8 @@ func TestRefreshItemTakesAnItemThatIsNoLongerOpenOutOfTheLists(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			h, id := itemHarness(t)
 			tt.update.RateLimit = itemRate()
 			h.client.items = map[string]*github.ItemUpdate{nodeID(1): &tt.update}
@@ -118,6 +124,8 @@ func TestRefreshItemTakesAnItemThatIsNoLongerOpenOutOfTheLists(t *testing.T) {
 }
 
 func TestRefreshItemRecordsAnArchivedRepository(t *testing.T) {
+	t.Parallel()
+
 	h, id := itemHarness(t)
 
 	archived := pr(1, "OWNER", false)
@@ -131,6 +139,8 @@ func TestRefreshItemRecordsAnArchivedRepository(t *testing.T) {
 }
 
 func TestARefreshDoesNotBringBackAnItemMergedSinceIndexed(t *testing.T) {
+	t.Parallel()
+
 	h, id := itemHarness(t)
 
 	merged := pr(1, "OWNER", false)
@@ -152,6 +162,8 @@ func TestARefreshDoesNotBringBackAnItemMergedSinceIndexed(t *testing.T) {
 }
 
 func TestRefreshItemCanEndASnooze(t *testing.T) {
+	t.Parallel()
+
 	h, id, details := wakeHarness(t)
 
 	_, err := h.svc.Snooze(t.Context(), id, 3)
@@ -176,6 +188,8 @@ func TestRefreshItemCanEndASnooze(t *testing.T) {
 }
 
 func TestRefreshItemFailuresKeepTheStoredInbox(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		id      func(id int64) int64
@@ -210,6 +224,8 @@ func TestRefreshItemFailuresKeepTheStoredInbox(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			h, id := itemHarness(t)
 			calls := h.events.Count()
 			tt.prepare(h)
@@ -229,6 +245,8 @@ func TestRefreshItemFailuresKeepTheStoredInbox(t *testing.T) {
 }
 
 func TestRefreshItemNeedsANodeID(t *testing.T) {
+	t.Parallel()
+
 	h, id := itemHarness(t)
 	h.exec(t, "UPDATE items SET node_id = '' WHERE id = ?", id)
 
@@ -238,6 +256,8 @@ func TestRefreshItemNeedsANodeID(t *testing.T) {
 }
 
 func TestRefreshItemDatabaseErrors(t *testing.T) {
+	t.Parallel()
+
 	h, id := itemHarness(t)
 	h.exec(t, "DROP TABLE rate_snapshots")
 
@@ -260,6 +280,8 @@ func (h *harness) itemTitle(t *testing.T, id int64) string {
 }
 
 func TestDropClosed(t *testing.T) {
+	t.Parallel()
+
 	open := pr(1, "OWNER", false)
 	open.State = github.StateOpen
 

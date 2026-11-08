@@ -61,6 +61,8 @@ func dirNames(t *testing.T, dir string) []string {
 }
 
 func TestConfigFile(t *testing.T) {
+	t.Parallel()
+
 	home := testutil.RealTempDir(t)
 	work := makeDir(t, filepath.Join(home, ".claude_work"))
 	makeDir(t, filepath.Join(home, ".claude"))
@@ -83,6 +85,8 @@ func TestConfigFile(t *testing.T) {
 }
 
 func TestGrantTrustsTheCloneAndKeepsEverythingElse(t *testing.T) {
+	t.Parallel()
+
 	home := testutil.RealTempDir(t)
 	clone := makeDir(t, filepath.Join(home, "projects", "example-repo"))
 	file := filepath.Join(home, ".claude.json")
@@ -127,6 +131,8 @@ func TestGrantTrustsTheCloneAndKeepsEverythingElse(t *testing.T) {
 }
 
 func TestGrantLeavesATrustedCloneAlone(t *testing.T) {
+	t.Parallel()
+
 	home := testutil.RealTempDir(t)
 	clone := makeDir(t, filepath.Join(home, "example-repo"))
 	file := filepath.Join(home, ".claude.json")
@@ -144,6 +150,8 @@ func TestGrantLeavesATrustedCloneAlone(t *testing.T) {
 }
 
 func TestGrantCreatesAMissingConfigFile(t *testing.T) {
+	t.Parallel()
+
 	home := testutil.RealTempDir(t)
 	clone := makeDir(t, filepath.Join(home, "example-repo"))
 	file := filepath.Join(home, ".claude.json")
@@ -168,6 +176,8 @@ func TestGrantCreatesAMissingConfigFile(t *testing.T) {
 }
 
 func TestGrantSkipsAConfigDirectoryThatDoesNotExist(t *testing.T) {
+	t.Parallel()
+
 	home := testutil.RealTempDir(t)
 	clone := makeDir(t, filepath.Join(home, "example-repo"))
 	configDir := filepath.Join(home, ".claude_new")
@@ -179,6 +189,8 @@ func TestGrantSkipsAConfigDirectoryThatDoesNotExist(t *testing.T) {
 }
 
 func TestGrantKeysTheCloneByItsRealPath(t *testing.T) {
+	t.Parallel()
+
 	home := testutil.RealTempDir(t)
 	clone := makeDir(t, filepath.Join(home, "elsewhere", "example-repo"))
 	link := filepath.Join(home, "linked-repo")
@@ -195,6 +207,8 @@ func TestGrantKeysTheCloneByItsRealPath(t *testing.T) {
 }
 
 func TestGrantKeysTheCloneInNFC(t *testing.T) {
+	t.Parallel()
+
 	home := testutil.RealTempDir(t)
 	// The same name with "é" as one code point (NFC) and as "e" plus a combining accent.
 	composed, decomposed := "caf\u00e9-repo", "cafe\u0301-repo"
@@ -210,6 +224,8 @@ func TestGrantKeysTheCloneInNFC(t *testing.T) {
 }
 
 func TestGrantWritesThroughASymlinkedConfigFile(t *testing.T) {
+	t.Parallel()
+
 	home := testutil.RealTempDir(t)
 	clone := makeDir(t, filepath.Join(home, "example-repo"))
 	dotfiles := makeDir(t, filepath.Join(home, "dotfiles"))
@@ -233,6 +249,8 @@ func TestGrantWritesThroughASymlinkedConfigFile(t *testing.T) {
 }
 
 func TestGrantRefusesAConfigItCannotRead(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		content func(clone string) string
@@ -252,6 +270,8 @@ func TestGrantRefusesAConfigItCannotRead(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			home := testutil.RealTempDir(t)
 			clone := makeDir(t, filepath.Join(home, "example-repo"))
 			file := filepath.Join(home, ".claude.json")
@@ -277,6 +297,8 @@ func TestGrantRefusesAConfigItCannotRead(t *testing.T) {
 }
 
 func TestGrantNeedsAbsolutePathsAndAClone(t *testing.T) {
+	t.Parallel()
+
 	home := testutil.RealTempDir(t)
 	clone := makeDir(t, filepath.Join(home, "example-repo"))
 

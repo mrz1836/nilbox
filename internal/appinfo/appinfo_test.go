@@ -41,6 +41,8 @@ func (r *stubRecorder) FirstPaint() (timing.Measurement, bool, error) {
 }
 
 func TestInfo(t *testing.T) {
+	t.Parallel()
+
 	s := NewService(Config{Version: "v1.2.3-4-gabc1234-dirty", Release: "1.2.3", Build: "42", System: "macOS 15.1 (24B83)"})
 
 	info := s.Info()
@@ -54,6 +56,8 @@ func TestInfo(t *testing.T) {
 }
 
 func TestInfoReportsADataReset(t *testing.T) {
+	t.Parallel()
+
 	assert.Nil(t, NewService(Config{Version: "dev"}).Info().DataReset, "no reset by default")
 
 	reset := &DataReset{Path: "~/data/app.db.broken-20260102T030405Z", Reason: "corrupt"}
@@ -62,6 +66,8 @@ func TestInfoReportsADataReset(t *testing.T) {
 }
 
 func TestInfoLeavesOutAMissingDataReset(t *testing.T) {
+	t.Parallel()
+
 	without, err := json.Marshal(NewService(Config{Version: "dev", System: "macOS"}).Info())
 	require.NoError(t, err)
 	assert.NotContains(t, string(without), "dataReset")
@@ -77,6 +83,8 @@ func TestInfoLeavesOutAMissingDataReset(t *testing.T) {
 }
 
 func TestInfoDetectsTheSystem(t *testing.T) {
+	t.Parallel()
+
 	info := NewService(Config{Version: "dev"}).Info()
 
 	assert.NotEmpty(t, info.System)
@@ -87,6 +95,8 @@ func TestInfoDetectsTheSystem(t *testing.T) {
 }
 
 func TestBugReportURLFillsInTheEnvironment(t *testing.T) {
+	t.Parallel()
+
 	info := NewService(Config{Version: "abc1234-dirty", Release: "0.0.0", Build: "16", System: "macOS 15.1 (24B83)"}).Info()
 
 	u, err := url.Parse(info.BugReportURL)
@@ -102,6 +112,8 @@ func TestBugReportURLFillsInTheEnvironment(t *testing.T) {
 // TestBugReportFormHasTheEnvironmentField guards the link against a renamed issue form or
 // field: GitHub ignores a prefill for a field the form does not have.
 func TestBugReportFormHasTheEnvironmentField(t *testing.T) {
+	t.Parallel()
+
 	form, err := os.ReadFile(filepath.Join("..", "..", ".github", "ISSUE_TEMPLATE", bugReportTemplate))
 	require.NoError(t, err)
 
@@ -109,6 +121,8 @@ func TestBugReportFormHasTheEnvironmentField(t *testing.T) {
 }
 
 func TestReportFirstPaintEmitsOnce(t *testing.T) {
+	t.Parallel()
+
 	rec := &stubRecorder{m: timing.Measurement{FirstPaintMS: 321, Source: timing.SourceOS}}
 	events := &testutil.Events{}
 
@@ -122,6 +136,8 @@ func TestReportFirstPaintEmitsOnce(t *testing.T) {
 }
 
 func TestReportFirstPaintReturnsLogErrorAfterTheEvent(t *testing.T) {
+	t.Parallel()
+
 	rec := &stubRecorder{m: timing.Measurement{FirstPaintMS: 12, Source: timing.SourceRuntime}, err: errLog}
 	events := &testutil.Events{}
 
@@ -132,6 +148,8 @@ func TestReportFirstPaintReturnsLogErrorAfterTheEvent(t *testing.T) {
 }
 
 func TestReportFirstPaintWithoutRecorderOrSink(t *testing.T) {
+	t.Parallel()
+
 	require.NoError(t, NewService(Config{}).ReportFirstPaint())
 
 	rec := &stubRecorder{}
@@ -140,6 +158,8 @@ func TestReportFirstPaintWithoutRecorderOrSink(t *testing.T) {
 }
 
 func TestReportFirstPaintWithTimingRecorder(t *testing.T) {
+	t.Parallel()
+
 	var buf bytes.Buffer
 
 	start := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)

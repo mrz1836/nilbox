@@ -85,6 +85,8 @@ func launched(context.Context) (launcher.LaunchResult, error) {
 }
 
 func TestLaunchTimerFindsTheAgent(t *testing.T) {
+	t.Parallel()
+
 	clone := testutil.RealTempDir(t)
 
 	tests := []struct {
@@ -97,6 +99,8 @@ func TestLaunchTimerFindsTheAgent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			probe := &fakeProbe{
 				pids: [][]int{{10}, {10}, {10, 20, 30}},
 				cwds: map[int]string{10: clone, 20: tt.cwd, 30: t.TempDir()},
@@ -119,6 +123,8 @@ func TestLaunchTimerFindsTheAgent(t *testing.T) {
 }
 
 func TestLaunchTimerAutomation(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		err  error
@@ -129,6 +135,8 @@ func TestLaunchTimerAutomation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			probe := &fakeProbe{pids: [][]int{{}}}
 			launch := func(context.Context) (launcher.LaunchResult, error) { return launcher.LaunchResult{}, tt.err }
 
@@ -143,9 +151,13 @@ func TestLaunchTimerAutomation(t *testing.T) {
 }
 
 func TestLaunchTimerErrors(t *testing.T) {
+	t.Parallel()
+
 	clone := testutil.RealTempDir(t)
 
 	t.Run("launch fails", func(t *testing.T) {
+		t.Parallel()
+
 		launch := func(context.Context) (launcher.LaunchResult, error) {
 			return launcher.LaunchResult{}, fmt.Errorf("%w iTerm2: %w", terminal.ErrTerminalOpen, errTerminal)
 		}
@@ -155,6 +167,8 @@ func TestLaunchTimerErrors(t *testing.T) {
 	})
 
 	t.Run("agent never starts", func(t *testing.T) {
+		t.Parallel()
+
 		probe := &fakeProbe{pids: [][]int{{}, {40}}, cwds: map[int]string{40: t.TempDir()}}
 
 		_, err := newTimer(probe, clone, launched).run(t.Context())
@@ -162,11 +176,15 @@ func TestLaunchTimerErrors(t *testing.T) {
 	})
 
 	t.Run("process list fails before the launch", func(t *testing.T) {
+		t.Parallel()
+
 		_, err := newTimer(&fakeProbe{pidsErr: errProbe, pidsErrAt: 1}, clone, launched).run(t.Context())
 		require.ErrorIs(t, err, errProbe)
 	})
 
 	t.Run("process list fails while waiting", func(t *testing.T) {
+		t.Parallel()
+
 		probe := &fakeProbe{pids: [][]int{{}}, pidsErr: errProbe, pidsErrAt: 2}
 
 		_, err := newTimer(probe, clone, launched).run(t.Context())
@@ -174,6 +192,8 @@ func TestLaunchTimerErrors(t *testing.T) {
 	})
 
 	t.Run("working directories fail", func(t *testing.T) {
+		t.Parallel()
+
 		probe := &fakeProbe{pids: [][]int{{}, {50}}, cwdsErr: errProbe}
 
 		_, err := newTimer(probe, clone, launched).run(t.Context())
@@ -181,6 +201,8 @@ func TestLaunchTimerErrors(t *testing.T) {
 	})
 
 	t.Run("stopping the agent fails", func(t *testing.T) {
+		t.Parallel()
+
 		probe := &fakeProbe{pids: [][]int{{}, {60}}, cwds: map[int]string{60: clone}, stopErr: errProbe}
 
 		report, err := newTimer(probe, clone, launched).run(t.Context())
@@ -190,6 +212,8 @@ func TestLaunchTimerErrors(t *testing.T) {
 }
 
 func TestInClone(t *testing.T) {
+	t.Parallel()
+
 	clone := testutil.RealTempDir(t)
 
 	assert.True(t, inClone(clone, clone))
@@ -200,6 +224,8 @@ func TestInClone(t *testing.T) {
 }
 
 func TestParsePS(t *testing.T) {
+	t.Parallel()
+
 	agent := "/opt/agent/claude"
 	out := strings.Join([]string{
 		"    1 /sbin/launchd",
@@ -217,6 +243,8 @@ func TestParsePS(t *testing.T) {
 }
 
 func TestParseLsofCwds(t *testing.T) {
+	t.Parallel()
+
 	out := "p101\nfcwd\nn/tmp/one\np102\nfcwd\nn/tmp/two\nn/tmp/ignored-second-name\n"
 
 	assert.Equal(t, map[int]string{101: "/tmp/one", 102: "/tmp/two"}, parseLsofCwds(out))
@@ -261,6 +289,8 @@ func exitError(t *testing.T) error {
 }
 
 func TestProcessProbe(t *testing.T) {
+	t.Parallel()
+
 	runner := scripted(answers{
 		"ps":   func([]string) ([]byte, []byte, error) { return []byte(" 7 /opt/agent/claude go\n"), nil, nil },
 		"lsof": func([]string) ([]byte, []byte, error) { return []byte("p7\nfcwd\nn/tmp/clone\n"), nil, exitError(t) },
@@ -282,6 +312,8 @@ func TestProcessProbe(t *testing.T) {
 }
 
 func TestProcessProbeErrors(t *testing.T) {
+	t.Parallel()
+
 	probe := processProbe{run: scripted(nil)}
 
 	_, err := probe.PIDs(t.Context(), "/opt/agent/claude")
@@ -294,6 +326,8 @@ func TestProcessProbeErrors(t *testing.T) {
 }
 
 func TestDeadlineRunner(t *testing.T) {
+	t.Parallel()
+
 	inner := scripted(answers{
 		"osascript": func([]string) ([]byte, []byte, error) { return nil, nil, errExecFailed },
 	})
@@ -326,17 +360,8 @@ func fakeAgent(t *testing.T) string {
 	return agent
 }
 
-// isolateGit keeps the user's and the system's git configuration out of the test.
-func isolateGit(t *testing.T) {
-	t.Helper()
-
-	// The launch runs git itself, inheriting the test process's environment.
-	testutil.RequireGit(t)
-	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
-	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
-}
-
-// launchRunner runs git for real and scripts the terminal and the process tools: the agent
+// launchRunner runs git for real, isolated from the user's and the system's configuration
+// through its own environment, and scripts the terminal and the process tools: the agent
 // appears in the clone once the terminal was asked to open the launch script.
 func launchRunner(t *testing.T, agent string, osascript func() ([]byte, []byte, error)) *testutil.Runner {
 	t.Helper()
@@ -347,7 +372,7 @@ func launchRunner(t *testing.T, agent string, osascript func() ([]byte, []byte, 
 		opened bool
 	)
 
-	git := execpath.Exec{}
+	git := execpath.Exec{Env: testutil.Git(t)}
 
 	return scripted(answers{
 		"git": func(args []string) ([]byte, []byte, error) {
@@ -388,9 +413,8 @@ func launchRunner(t *testing.T, agent string, osascript func() ([]byte, []byte, 
 	})
 }
 
+//nolint:paralleltest // fakeAgent puts the agent on the process's PATH, where the launch looks it up
 func TestRunLaunch(t *testing.T) {
-	isolateGit(t)
-
 	agent := fakeAgent(t)
 	tmp := t.TempDir()
 	runner := launchRunner(t, agent, func() ([]byte, []byte, error) { return nil, nil, nil })
@@ -418,12 +442,11 @@ func TestRunLaunch(t *testing.T) {
 	assert.Contains(t, ran(runner), "kill -TERM 4242")
 }
 
+//nolint:paralleltest // fakeAgent puts the agent on the process's PATH, where the launch looks it up
 func TestRunLaunchAutomationDenied(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("terminal drivers exist only on macOS")
 	}
-
-	isolateGit(t)
 
 	agent := fakeAgent(t)
 	runner := launchRunner(t, agent, func() ([]byte, []byte, error) {
@@ -436,33 +459,39 @@ func TestRunLaunchAutomationDenied(t *testing.T) {
 }
 
 func TestRunLaunchSetupErrors(t *testing.T) {
+	t.Parallel()
+
 	t.Run("scratch directory", func(t *testing.T) {
+		t.Parallel()
+
 		// With no runner the app's own is used; the missing scratch parent fails first.
 		_, err := RunLaunch(t.Context(), LaunchOptions{Home: t.TempDir(), TempDir: "/nonexistent-scratch-parent"})
 		require.Error(t, err)
 	})
 
 	t.Run("git fails", func(t *testing.T) {
+		t.Parallel()
+
 		_, err := RunLaunch(t.Context(), LaunchOptions{Home: t.TempDir(), TempDir: t.TempDir(), Runner: scripted(nil)})
 		require.ErrorIs(t, err, errNotRun)
 	})
 
 	t.Run("no home directory", func(t *testing.T) {
-		isolateGit(t)
+		t.Parallel()
 
 		runner := launchRunner(t, "/opt/agent/claude", func() ([]byte, []byte, error) { return nil, nil, nil })
 
 		_, err := RunLaunch(t.Context(), LaunchOptions{TempDir: t.TempDir(), Runner: runner})
 		require.Error(t, err)
 	})
+}
 
-	t.Run("no agent", func(t *testing.T) {
-		isolateGit(t)
-		t.Setenv("PATH", filepath.Dir(testutil.RequireGit(t)))
+func TestRunLaunchWithoutAnAgent(t *testing.T) {
+	// The launch looks the agent up on the process's search path, so only that can hide it.
+	t.Setenv("PATH", filepath.Dir(testutil.RequireGit(t)))
 
-		runner := launchRunner(t, "/opt/agent/claude", func() ([]byte, []byte, error) { return nil, nil, nil })
+	runner := launchRunner(t, "/opt/agent/claude", func() ([]byte, []byte, error) { return nil, nil, nil })
 
-		_, err := RunLaunch(t.Context(), LaunchOptions{Home: t.TempDir(), TempDir: t.TempDir(), Runner: runner})
-		require.ErrorIs(t, err, execpath.ErrNotFound)
-	})
+	_, err := RunLaunch(t.Context(), LaunchOptions{Home: t.TempDir(), TempDir: t.TempDir(), Runner: runner})
+	require.ErrorIs(t, err, execpath.ErrNotFound)
 }

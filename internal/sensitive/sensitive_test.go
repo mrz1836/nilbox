@@ -17,6 +17,8 @@ import (
 const prURL = "https://github.com/acme-org/example-repo/pull/7"
 
 func TestDefaultsFlagTheFilesThatMatter(t *testing.T) {
+	t.Parallel()
+
 	m := sensitive.NewMatcher(sensitive.DefaultConfig())
 
 	cases := map[string]string{
@@ -74,6 +76,8 @@ func TestDefaultsFlagTheFilesThatMatter(t *testing.T) {
 }
 
 func TestMatchingIgnoresCase(t *testing.T) {
+	t.Parallel()
+
 	m := sensitive.NewMatcher(sensitive.DefaultConfig())
 
 	// A case-insensitive file system opens these for .claude/settings.json and friends.
@@ -84,6 +88,8 @@ func TestMatchingIgnoresCase(t *testing.T) {
 }
 
 func TestPatternSyntax(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		pattern string
 		match   []string
@@ -156,6 +162,8 @@ func TestPatternSyntax(t *testing.T) {
 }
 
 func TestNormalizePatterns(t *testing.T) {
+	t.Parallel()
+
 	got, err := sensitive.NormalizePatterns([]string{"  deploy/ ", "", "*.TF", "*.tf", "deploy/"})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"deploy/", "*.TF"}, got)
@@ -167,6 +175,8 @@ func TestNormalizePatterns(t *testing.T) {
 }
 
 func TestNormalizePatternsRefusesUnusablePatterns(t *testing.T) {
+	t.Parallel()
+
 	for pattern, why := range map[string]string{
 		"*":                      "matches every file",
 		"**":                     "matches every file",
@@ -194,6 +204,8 @@ func TestNormalizePatternsRefusesUnusablePatterns(t *testing.T) {
 }
 
 func TestSetCategory(t *testing.T) {
+	t.Parallel()
+
 	off, err := sensitive.SetCategory(nil, sensitive.CategoryDependencies, false)
 	require.NoError(t, err)
 	assert.Equal(t, []string{sensitive.CategoryDependencies}, off)
@@ -217,6 +229,8 @@ func TestSetCategory(t *testing.T) {
 }
 
 func TestOffCategoriesAreNotMatched(t *testing.T) {
+	t.Parallel()
+
 	cfg := sensitive.DefaultConfig()
 	cfg.Off = []string{sensitive.CategoryDependencies}
 
@@ -225,6 +239,8 @@ func TestOffCategoriesAreNotMatched(t *testing.T) {
 }
 
 func TestDecodeConfig(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, sensitive.DefaultConfig(), sensitive.DecodeConfig(nil))
 
 	cfg := sensitive.DecodeConfig(map[string]string{
@@ -246,11 +262,15 @@ func TestDecodeConfig(t *testing.T) {
 }
 
 func TestEncodeList(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, "[]", sensitive.EncodeList(nil))
 	assert.Equal(t, `["a","b"]`, sensitive.EncodeList([]string{"a", "b"}))
 }
 
 func TestChecked(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		scope sensitive.Scope
 		class trust.Class
@@ -276,6 +296,8 @@ func TestChecked(t *testing.T) {
 }
 
 func TestEvaluate(t *testing.T) {
+	t.Parallel()
+
 	m := sensitive.NewMatcher(sensitive.DefaultConfig())
 	at := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
 
@@ -332,6 +354,8 @@ func TestEvaluate(t *testing.T) {
 }
 
 func TestRenamesMatchEitherPath(t *testing.T) {
+	t.Parallel()
+
 	m := sensitive.NewMatcher(sensitive.DefaultConfig())
 
 	r := &sensitive.Result{Head: "abc", Total: 2, Complete: true, Files: []sensitive.File{
@@ -350,6 +374,8 @@ func TestRenamesMatchEitherPath(t *testing.T) {
 }
 
 func TestSummary(t *testing.T) {
+	t.Parallel()
+
 	m := sensitive.NewMatcher(sensitive.DefaultConfig())
 
 	c := m.Evaluate(&sensitive.Result{Head: "abc", Total: 3, Complete: true, Files: []sensitive.File{
@@ -373,6 +399,8 @@ func TestSummary(t *testing.T) {
 }
 
 func TestLookup(t *testing.T) {
+	t.Parallel()
+
 	cfg := sensitive.DefaultConfig()
 	cfg.Patterns = []string{"*.tf"}
 
@@ -387,6 +415,8 @@ func TestLookup(t *testing.T) {
 }
 
 func TestCategoriesAreWellFormed(t *testing.T) {
+	t.Parallel()
+
 	seen := map[string]bool{}
 
 	for _, c := range sensitive.Categories() {

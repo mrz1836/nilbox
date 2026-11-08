@@ -21,6 +21,8 @@ func row(id int64, kind notifyprefs.Kind, number int) Notification {
 }
 
 func TestABannerPerNotification(t *testing.T) {
+	t.Parallel()
+
 	woke := row(2, KindWoke, 8)
 	woke.Detail = "approved, 2 new commits"
 
@@ -37,6 +39,8 @@ func TestABannerPerNotification(t *testing.T) {
 }
 
 func TestABannerForAnItemNoLongerStored(t *testing.T) {
+	t.Parallel()
+
 	r := row(1, KindAssigned, 7)
 	r.ItemID = 0
 
@@ -47,6 +51,8 @@ func TestABannerForAnItemNoLongerStored(t *testing.T) {
 }
 
 func TestManyBannersAreSummedUp(t *testing.T) {
+	t.Parallel()
+
 	rows := []Notification{
 		row(4, KindReviewRequested, 1), row(5, KindReviewRequested, 2), row(6, KindAssigned, 3),
 		row(7, KindWoke, 4), row(8, KindReviewRequested, 5),
@@ -74,11 +80,15 @@ func TestManyBannersAreSummedUp(t *testing.T) {
 }
 
 func TestNoBannersWhenEveryKindIsOff(t *testing.T) {
+	t.Parallel()
+
 	assert.Empty(t, Banners([]Notification{row(1, KindReviewRequested, 1)}, notifyprefs.Kinds()))
 	assert.Empty(t, Banners(nil, nil))
 }
 
 func TestALongTitleIsCut(t *testing.T) {
+	t.Parallel()
+
 	r := row(1, KindReviewRequested, 7)
 	r.Title = strings.Repeat("word ", 60)
 
@@ -89,12 +99,16 @@ func TestALongTitleIsCut(t *testing.T) {
 }
 
 func TestTheTestBannerNamesTheApp(t *testing.T) {
+	t.Parallel()
+
 	b := TestBanner()
 	assert.Equal(t, brand.Slug+"-test", b.ID)
 	assert.Contains(t, b.Body, brand.Name)
 }
 
 func TestWakeDetail(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		reasons snooze.Reasons
 		want    string
@@ -109,6 +123,8 @@ func TestWakeDetail(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
+			t.Parallel()
+
 			assert.Equal(t, tt.want, WakeDetail(tt.reasons))
 		})
 	}

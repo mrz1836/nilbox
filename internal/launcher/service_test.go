@@ -392,6 +392,8 @@ func promptFor(t *testing.T, scriptPath string) string {
 }
 
 func TestLaunchWritesFilesAndOpensDriver(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 
 	res, script := h.launch(t, LaunchRequest{ItemID: h.trustedPR})
@@ -421,6 +423,8 @@ func TestLaunchWritesFilesAndOpensDriver(t *testing.T) {
 }
 
 func TestWorktreePrefDefaultAndUntick(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		pref bool
@@ -437,6 +441,8 @@ func TestWorktreePrefDefaultAndUntick(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			h := newLaunchHarness(t)
 			require.NoError(t, testutil.ErrOf(h.settings.SetWorktreeDefault(t.Context(), tt.pref)))
 
@@ -468,6 +474,8 @@ func TestWorktreePrefDefaultAndUntick(t *testing.T) {
 }
 
 func TestLauncherRunsNoGitCommands(t *testing.T) {
+	t.Parallel()
+
 	forbidden := [][]string{
 		{"git", "-C", "/tmp/clone", "checkout", "feature-branch"},
 		{"git", "-C", "/tmp/clone", "stash"},
@@ -513,6 +521,8 @@ func TestLauncherRunsNoGitCommands(t *testing.T) {
 }
 
 func TestLaunchCloneNotFound(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 
 	_, err := h.service().Launch(t.Context(), LaunchRequest{ItemID: h.orphanPR})
@@ -543,6 +553,8 @@ func trustedIn(t *testing.T, path, dir string) bool {
 }
 
 func TestLaunchTrustsTheCloneForTheAgent(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	defaultConfig := filepath.Join(h.home, ".claude.json")
 	workDir := filepath.Join(h.home, ".claude_work")
@@ -584,6 +596,8 @@ func (r *recordingLaunches) RecordLaunch(_ context.Context, l worklog.Launch) er
 }
 
 func TestLaunchRecordsTheWorktree(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	rec := &recordingLaunches{}
 	h.cfg.Launches = rec
@@ -608,6 +622,8 @@ func TestLaunchRecordsTheWorktree(t *testing.T) {
 }
 
 func TestLaunchUsesTerminalPref(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	require.NoError(t, testutil.ErrOf(h.settings.SetTerminal(t.Context(), settings.TerminalApp)))
 
@@ -619,6 +635,8 @@ func TestLaunchUsesTerminalPref(t *testing.T) {
 }
 
 func TestLaunchOutsideContributorIsPlanMode(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 
 	res, script := h.launch(t, LaunchRequest{ItemID: h.outsidePR})
@@ -637,6 +655,8 @@ func TestLaunchOutsideContributorIsPlanMode(t *testing.T) {
 }
 
 func TestLaunchProfileSelection(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	workDir := filepath.Join(h.home, ".claude_work")
 
@@ -658,6 +678,8 @@ func TestLaunchProfileSelection(t *testing.T) {
 }
 
 func TestLaunchRevalidatesTheCachedClone(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 
 	stale := filepath.Join(h.root, "gone")
@@ -690,6 +712,8 @@ func TestLaunchRevalidatesTheCachedClone(t *testing.T) {
 }
 
 func TestLaunchForkOriginUsesNamedPRWorktree(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	h.git.remotes[h.clone] = "remote.origin.url git@github.com:octo-user/example-repo.git\n" +
 		"remote.upstream.url https://github.com/acme-org/example-repo.git\n"
@@ -702,6 +726,8 @@ func TestLaunchForkOriginUsesNamedPRWorktree(t *testing.T) {
 }
 
 func TestLaunchFailures(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		mutate  func(t *testing.T, h *launchHarness)
@@ -755,6 +781,8 @@ func TestLaunchFailures(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			h := newLaunchHarness(t)
 			if tt.mutate != nil {
 				tt.mutate(t, h)
@@ -776,6 +804,8 @@ func TestLaunchFailures(t *testing.T) {
 }
 
 func TestLaunchStopsWhenCancelled(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	h.exec(t, "UPDATE repos SET local_path = ? WHERE name = ?", h.clone, "example-repo")
 
@@ -797,6 +827,8 @@ func TestPlanWorktreeDir(t *testing.T) {
 }
 
 func TestNewServiceDefaultsTheClock(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	h.cfg.Clock = nil
 

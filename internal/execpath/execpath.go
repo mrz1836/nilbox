@@ -82,6 +82,13 @@ type Runner interface {
 // path is resolved with Search first.
 type Exec struct {
 	Search Search
+
+	// Env, when non-nil, is the whole environment each program runs with, as in
+	// exec.Cmd.Env; nil runs it with this process's environment. It lets a caller, such
+	// as a test isolating git from the user's configuration, set a program's environment
+	// without changing the process's, which every other goroutine shares. Search still
+	// looks a program up on this process's search path, not on a PATH in Env.
+	Env []string
 }
 
 // Run runs name with args and returns what it wrote to stdout and stderr. The error is the
@@ -98,6 +105,7 @@ func (r Exec) Run(ctx context.Context, name string, args ...string) (stdout, std
 	var outBuf, errBuf bytes.Buffer
 
 	cmd := exec.CommandContext(ctx, path, args...) //nolint:gosec // argv only, no shell
+	cmd.Env = r.Env
 	cmd.Stdout = &outBuf
 	cmd.Stderr = &errBuf
 

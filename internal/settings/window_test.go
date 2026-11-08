@@ -11,6 +11,8 @@ import (
 )
 
 func TestWindowSizePersists(t *testing.T) {
+	t.Parallel()
+
 	svc, db, _ := newTestService(t)
 
 	for _, size := range []WindowSize{
@@ -32,18 +34,24 @@ func TestWindowSizePersists(t *testing.T) {
 }
 
 func TestReadWindowSizeIsTheDefaultOnAFreshDatabase(t *testing.T) {
+	t.Parallel()
+
 	got, err := ReadWindowSize(t.Context(), prefs.New(testutil.DB(t), nil))
 	require.NoError(t, err)
 	assert.Equal(t, DefaultWindowSize(), got)
 }
 
 func TestReadWindowSizeReportsAClosedDatabase(t *testing.T) {
+	t.Parallel()
+
 	got, err := ReadWindowSize(t.Context(), prefs.New(closedDB(t), nil))
 	require.ErrorContains(t, err, "read the window size")
 	assert.Equal(t, DefaultWindowSize(), got, "the default still comes back")
 }
 
 func TestSetWindowSizeRejectsOutOfBounds(t *testing.T) {
+	t.Parallel()
+
 	svc, _, _ := newTestService(t)
 
 	for _, size := range []WindowSize{
@@ -67,6 +75,8 @@ func TestSetWindowSizeRejectsOutOfBounds(t *testing.T) {
 }
 
 func TestGetFallsBackOnABadStoredWindowSize(t *testing.T) {
+	t.Parallel()
+
 	svc, db, _ := newTestService(t)
 
 	for _, stored := range []string{"", "1280", "1280x", "x800", "widexhigh", "1280x800x2", "100x100", "99999x800"} {

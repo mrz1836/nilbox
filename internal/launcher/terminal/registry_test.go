@@ -19,6 +19,8 @@ func (d *fakeDriver) ID() ID { return d.id }
 func (*fakeDriver) Open(context.Context, string) error { return nil }
 
 func TestUnsupportedOS(t *testing.T) {
+	t.Parallel()
+
 	r := NewRegistry()
 
 	for _, id := range []ID{"iterm2", "terminal", ""} {
@@ -32,6 +34,8 @@ func TestUnsupportedOS(t *testing.T) {
 }
 
 func TestRegistryGet(t *testing.T) {
+	t.Parallel()
+
 	iterm := &fakeDriver{id: "iterm2"}
 	terminal := &fakeDriver{id: "terminal"}
 	r := NewRegistry(terminal, iterm)
@@ -53,6 +57,8 @@ func TestRegistryGet(t *testing.T) {
 }
 
 func TestRegistryLaterDriverWins(t *testing.T) {
+	t.Parallel()
+
 	first := &fakeDriver{id: "iterm2"}
 	second := &fakeDriver{id: "iterm2"}
 
@@ -62,6 +68,8 @@ func TestRegistryLaterDriverWins(t *testing.T) {
 }
 
 func TestValidateScriptPath(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		path string
@@ -80,6 +88,8 @@ func TestValidateScriptPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			err := validateScriptPath(tt.path)
 			if tt.ok {
 				require.NoError(t, err)
@@ -93,6 +103,8 @@ func TestValidateScriptPath(t *testing.T) {
 }
 
 func TestOpenError(t *testing.T) {
+	t.Parallel()
+
 	exitErr := &exec.ExitError{}
 
 	tests := []struct {
@@ -116,6 +128,8 @@ func TestOpenError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			err := openError(appITerm2, []byte(tt.stderr), exitErr)
 			if tt.denied {
 				require.ErrorIs(t, err, ErrAutomationDenied)
@@ -134,6 +148,8 @@ func TestOpenError(t *testing.T) {
 }
 
 func TestErrDetailCapsLength(t *testing.T) {
+	t.Parallel()
+
 	long := make([]rune, maxErrDetail+50)
 	for i := range long {
 		long[i] = 'x'

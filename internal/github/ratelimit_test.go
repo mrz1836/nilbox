@@ -10,6 +10,8 @@ import (
 )
 
 func TestFetchRateLimits(t *testing.T) {
+	t.Parallel()
+
 	body := fixture(t, "rate_limit_response.json")
 
 	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
@@ -31,6 +33,8 @@ func TestFetchRateLimits(t *testing.T) {
 }
 
 func TestFetchRateLimitsErrors(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name    string
 		status  int
@@ -44,6 +48,8 @@ func TestFetchRateLimitsErrors(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(tc.status)
 				_, _ = w.Write([]byte(tc.body))

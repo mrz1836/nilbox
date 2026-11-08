@@ -105,6 +105,8 @@ func (f *fakePull) page(page int) []byte {
 }
 
 func TestFetchChangedFilesReadsEveryPage(t *testing.T) {
+	t.Parallel()
+
 	fake := &fakePull{t: t, heads: []string{"aaa"}, total: 205, n: 205}
 	c := newTestClient(t, fake.ServeHTTP)
 
@@ -122,6 +124,8 @@ func TestFetchChangedFilesReadsEveryPage(t *testing.T) {
 }
 
 func TestFetchChangedFilesWithAKnownHeadSkipsTheFirstRead(t *testing.T) {
+	t.Parallel()
+
 	fake := &fakePull{t: t, heads: []string{"aaa"}, total: 3, n: 3}
 	c := newTestClient(t, fake.ServeHTTP)
 
@@ -134,6 +138,8 @@ func TestFetchChangedFilesWithAKnownHeadSkipsTheFirstRead(t *testing.T) {
 }
 
 func TestFetchChangedFilesReadsAgainWhenTheHeadMoves(t *testing.T) {
+	t.Parallel()
+
 	fake := &fakePull{t: t, heads: []string{"aaa", "bbb", "bbb"}, total: 2, n: 2}
 	c := newTestClient(t, fake.ServeHTTP)
 
@@ -146,6 +152,8 @@ func TestFetchChangedFilesReadsAgainWhenTheHeadMoves(t *testing.T) {
 }
 
 func TestFetchChangedFilesGivesUpOnAHeadThatKeepsMoving(t *testing.T) {
+	t.Parallel()
+
 	fake := &fakePull{t: t, heads: []string{"a", "b", "c", "d"}, total: 1, n: 1}
 	c := newTestClient(t, fake.ServeHTTP)
 
@@ -154,6 +162,8 @@ func TestFetchChangedFilesGivesUpOnAHeadThatKeepsMoving(t *testing.T) {
 }
 
 func TestFetchChangedFilesStopsAtGitHubsLimit(t *testing.T) {
+	t.Parallel()
+
 	fake := &fakePull{t: t, heads: []string{"aaa"}, total: 3500, n: 3500}
 	c := newTestClient(t, fake.ServeHTTP)
 
@@ -167,6 +177,8 @@ func TestFetchChangedFilesStopsAtGitHubsLimit(t *testing.T) {
 }
 
 func TestFetchChangedFilesReadsTheLinkedPagesInOrder(t *testing.T) {
+	t.Parallel()
+
 	fake := &fakePull{t: t, heads: []string{"aaa"}, total: 1050, n: 1050, link: true}
 	c := newTestClient(t, fake.ServeHTTP)
 
@@ -184,6 +196,8 @@ func TestFetchChangedFilesReadsTheLinkedPagesInOrder(t *testing.T) {
 }
 
 func TestFetchChangedFilesReadsTheLinkedPagesSideBySide(t *testing.T) {
+	t.Parallel()
+
 	// Pages 2 and 3 each wait until the other has arrived, which only happens when they
 	// are read side by side; read one after another, the first gives up and fails.
 	var arrived sync.WaitGroup
@@ -220,6 +234,8 @@ func TestFetchChangedFilesReadsTheLinkedPagesSideBySide(t *testing.T) {
 }
 
 func TestFetchChangedFilesStopsAtGitHubsLimitWhenLinked(t *testing.T) {
+	t.Parallel()
+
 	fake := &fakePull{t: t, heads: []string{"aaa"}, total: 3500, n: 3500, link: true}
 	c := newTestClient(t, fake.ServeHTTP)
 
@@ -232,6 +248,8 @@ func TestFetchChangedFilesStopsAtGitHubsLimitWhenLinked(t *testing.T) {
 }
 
 func TestFetchChangedFilesEndsAtAPageThatIsNotFull(t *testing.T) {
+	t.Parallel()
+
 	// GitHub's last page says 3, but page 2 comes back short, so the list ends there, as
 	// it would read in turn.
 	fake := &fakePull{t: t, heads: []string{"aaa"}, total: 300, n: 300, link: true}
@@ -253,6 +271,8 @@ func TestFetchChangedFilesEndsAtAPageThatIsNotFull(t *testing.T) {
 }
 
 func TestFetchChangedFilesFailsWhenALinkedPageFails(t *testing.T) {
+	t.Parallel()
+
 	fake := &fakePull{t: t, heads: []string{"aaa"}, total: 300, n: 300, link: true}
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("page") == "3" {
@@ -269,6 +289,8 @@ func TestFetchChangedFilesFailsWhenALinkedPageFails(t *testing.T) {
 }
 
 func TestLastPage(t *testing.T) {
+	t.Parallel()
+
 	tests := map[string]int{
 		"": 0,
 		`<https://api.example.test/x?per_page=100&page=2>; rel="next", <https://api.example.test/x?per_page=100&page=7>; rel="last"`: 7,
@@ -289,7 +311,9 @@ func TestLastPage(t *testing.T) {
 	}
 }
 
-func TestFetchChangedFilesRedactsErrors(t *testing.T) {
+func TestFetchChangedFilesErrorsNameThePullRequest(t *testing.T) {
+	t.Parallel()
+
 	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = w.Write([]byte(`{"message":"Not Found for ` + fakeToken + `"}`))
@@ -302,6 +326,8 @@ func TestFetchChangedFilesRedactsErrors(t *testing.T) {
 }
 
 func TestFetchChangedFilesRefusesABadReference(t *testing.T) {
+	t.Parallel()
+
 	// The handler runs on the server's goroutine, where t.Fatal must not be called, so it
 	// only counts the requests and the test checks the count.
 	var requests atomic.Int32
@@ -322,6 +348,8 @@ func TestFetchChangedFilesRefusesABadReference(t *testing.T) {
 }
 
 func TestFetchPullHead(t *testing.T) {
+	t.Parallel()
+
 	fake := &fakePull{t: t, heads: []string{"abc123"}, total: 12, n: 12}
 	c := newTestClient(t, fake.ServeHTTP)
 
@@ -331,6 +359,8 @@ func TestFetchPullHead(t *testing.T) {
 }
 
 func TestFetchPullHeadRefusesAnswersWithoutAHead(t *testing.T) {
+	t.Parallel()
+
 	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"state":"open","head":{}}`))
 	})
@@ -340,5 +370,7 @@ func TestFetchPullHeadRefusesAnswersWithoutAHead(t *testing.T) {
 }
 
 func TestPullPathEscapesItsParts(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, "/repos/a%2Fb/c%3Fd/pulls/3", pullPath(item.Ref{Repo: repo.Name{Owner: "a/b", Repo: "c?d"}, Number: 3}))
 }

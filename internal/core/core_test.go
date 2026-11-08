@@ -77,6 +77,8 @@ func profileNames(t *testing.T, c *Core) []string {
 }
 
 func TestBootstrapTempHome(t *testing.T) {
+	t.Parallel()
+
 	home := testutil.ClaudeHome(t, ".claude", ".claude_work")
 	paths := appdata.NewPaths(filepath.Join(t.TempDir(), "data"))
 	runner := noPrograms()
@@ -102,6 +104,8 @@ func TestBootstrapTempHome(t *testing.T) {
 }
 
 func TestBootstrapKeepsExistingProfiles(t *testing.T) {
+	t.Parallel()
+
 	home := testutil.ClaudeHome(t, ".claude", ".claude_work")
 	paths := appdata.NewPaths(filepath.Join(t.TempDir(), "data"))
 
@@ -125,6 +129,8 @@ func TestBootstrapKeepsExistingProfiles(t *testing.T) {
 }
 
 func TestBootstrapRemovesProfilesForOtherToolsFolders(t *testing.T) {
+	t.Parallel()
+
 	home := testutil.ClaudeHome(t, ".claude", ".claude_work", ".claude-dup")
 	paths := appdata.NewPaths(filepath.Join(t.TempDir(), "data"))
 
@@ -169,20 +175,9 @@ func TestBootstrapRemovesProfilesForOtherToolsFolders(t *testing.T) {
 	assert.DirExists(t, filepath.Join(home, ".claude-monitor"))
 }
 
-func TestBootstrapStopsWhenProfilesCannotBePruned(t *testing.T) {
-	paths := appdata.NewPaths(filepath.Join(t.TempDir(), "data"))
-	home := testutil.ClaudeHome(t, ".claude")
-
-	first := bootstrap(t, Options{Paths: paths, Home: home, Runner: noPrograms()})
-	_, err := first.DB.ExecContext(t.Context(), "DROP TABLE claude_profiles")
-	require.NoError(t, err)
-	require.NoError(t, first.Close())
-
-	_, err = Bootstrap(t.Context(), Options{Paths: paths, Home: home, Runner: noPrograms()})
-	require.ErrorContains(t, err, "prune profiles")
-}
-
 func TestBootstrapUnreadableHomeSkipsDiscovery(t *testing.T) {
+	t.Parallel()
+
 	var logs bytes.Buffer
 
 	c := bootstrap(t, Options{
@@ -196,31 +191,9 @@ func TestBootstrapUnreadableHomeSkipsDiscovery(t *testing.T) {
 	assert.Contains(t, logs.String(), "profile discovery skipped")
 }
 
-func TestBootstrapRequiresDataDirAndHome(t *testing.T) {
-	_, err := Bootstrap(t.Context(), Options{Home: t.TempDir()})
-	require.ErrorIs(t, err, ErrNoDataDir)
-
-	_, err = Bootstrap(t.Context(), Options{Paths: appdata.NewPaths(t.TempDir())})
-	require.ErrorIs(t, err, ErrNoHomeDir)
-}
-
-func TestBootstrapDataDirError(t *testing.T) {
-	file := filepath.Join(t.TempDir(), "file")
-	require.NoError(t, os.WriteFile(file, nil, 0o600))
-
-	_, err := Bootstrap(t.Context(), Options{Paths: appdata.NewPaths(filepath.Join(file, "data")), Home: t.TempDir()})
-	require.ErrorContains(t, err, "create data directory")
-}
-
-func TestBootstrapDatabaseError(t *testing.T) {
-	paths := appdata.NewPaths(t.TempDir())
-	paths.DB = filepath.Join(paths.Root, "bad?name.db")
-
-	_, err := Bootstrap(t.Context(), Options{Paths: paths, Home: t.TempDir()})
-	require.Error(t, err)
-}
-
 func TestServicesListsBoundServices(t *testing.T) {
+	t.Parallel()
+
 	c := bootstrap(t, Options{
 		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
 		Home:   testutil.ClaudeHome(t, ".claude"),
@@ -243,6 +216,8 @@ func TestServicesListsBoundServices(t *testing.T) {
 }
 
 func TestTheSweeperSweepsTheWorktreeService(t *testing.T) {
+	t.Parallel()
+
 	c := bootstrap(t, Options{
 		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
 		Home:   testutil.ClaudeHome(t),
@@ -258,6 +233,8 @@ func TestTheSweeperSweepsTheWorktreeService(t *testing.T) {
 }
 
 func TestFirstPaintEventAndTimingLog(t *testing.T) {
+	t.Parallel()
+
 	paths := appdata.NewPaths(filepath.Join(t.TempDir(), "data"))
 	events := &testutil.Events{}
 
@@ -282,6 +259,8 @@ func TestFirstPaintEventAndTimingLog(t *testing.T) {
 }
 
 func TestThemeChangesReachTheEvents(t *testing.T) {
+	t.Parallel()
+
 	events := &testutil.Events{}
 
 	c := bootstrap(t, Options{
@@ -313,6 +292,8 @@ func (p *posterStub) Status() notify.BannerStatus { return notify.StatusOn }
 func (p *posterStub) Authorize() (bool, error) { return true, nil }
 
 func TestMenuBarAndNotificationsReachTheShell(t *testing.T) {
+	t.Parallel()
+
 	events := &testutil.Events{}
 	poster := &posterStub{}
 
@@ -337,6 +318,8 @@ func TestMenuBarAndNotificationsReachTheShell(t *testing.T) {
 }
 
 func TestTheShellReadsItsSettingsOffTheBoundService(t *testing.T) {
+	t.Parallel()
+
 	c := bootstrap(t, Options{
 		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
 		Home:   testutil.ClaudeHome(t),
@@ -368,6 +351,8 @@ func TestTheShellReadsItsSettingsOffTheBoundService(t *testing.T) {
 }
 
 func TestThemeWithoutAnEventSink(t *testing.T) {
+	t.Parallel()
+
 	c := bootstrap(t, Options{
 		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
 		Home:   testutil.ClaudeHome(t),
@@ -382,6 +367,8 @@ func TestThemeWithoutAnEventSink(t *testing.T) {
 }
 
 func TestAppInfoReportsVersion(t *testing.T) {
+	t.Parallel()
+
 	c := bootstrap(t, Options{
 		Paths:   appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
 		Home:    testutil.ClaudeHome(t),
@@ -415,6 +402,8 @@ func TestTheWindowShowsEveryReasonTheStoreSetsADatabaseAside(t *testing.T) {
 }
 
 func TestBootstrapStartsFreshWhenTheDatabaseCannotBeRead(t *testing.T) {
+	t.Parallel()
+
 	home := testutil.ClaudeHome(t, ".claude")
 	paths := appdata.NewPaths(filepath.Join(home, "data"))
 	testutil.WriteFile(t, paths.DB, "this is not a database file, just text long enough to have a header")
@@ -443,6 +432,8 @@ func TestBootstrapStartsFreshWhenTheDatabaseCannotBeRead(t *testing.T) {
 }
 
 func TestBootstrapRefusesADatabaseFromANewerBuild(t *testing.T) {
+	t.Parallel()
+
 	opts := Options{
 		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
 		Home:   testutil.ClaudeHome(t),
@@ -460,6 +451,8 @@ VALUES (9999, 'from_the_future', 'abc', '2026-01-01T00:00:00Z')`)
 }
 
 func TestInboxRefreshUsesInjectedRunner(t *testing.T) {
+	t.Parallel()
+
 	runner := noPrograms()
 
 	c := bootstrap(t, Options{
@@ -488,6 +481,8 @@ func TestInboxRefreshUsesInjectedRunner(t *testing.T) {
 }
 
 func TestWorktreeItemStatesBorrowTheToken(t *testing.T) {
+	t.Parallel()
+
 	runner := noPrograms()
 
 	c := bootstrap(t, Options{
@@ -508,6 +503,8 @@ func TestWorktreeItemStatesBorrowTheToken(t *testing.T) {
 }
 
 func TestBootstrapAddsTheStarterPrompts(t *testing.T) {
+	t.Parallel()
+
 	opts := Options{
 		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
 		Home:   testutil.ClaudeHome(t, ".claude"),

@@ -34,6 +34,7 @@ func sqlcTools(t *testing.T, env, body string) string {
 // pinnedEnv is a project env file that pins fakeSQLCVersion among other settings.
 const pinnedEnv = "# Tool pins\nGO_PRIMARY_VERSION=1.26.x\n" + sqlcVersionKey + "=" + fakeSQLCVersion + "\n"
 
+//nolint:paralleltest // changes the process's PATH
 func TestDBGenerate(t *testing.T) {
 	t.Run("runs sqlc generate at the pinned version", func(t *testing.T) {
 		log := sqlcTools(t, pinnedEnv, "")
@@ -73,6 +74,7 @@ func TestDBGenerate(t *testing.T) {
 	})
 }
 
+//nolint:paralleltest // changes the process's working directory, PATH, and standard output
 func TestDBCheck(t *testing.T) {
 	t.Run("diffs, then vets, at the pinned version", func(t *testing.T) {
 		log := sqlcTools(t, pinnedEnv, "")

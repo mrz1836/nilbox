@@ -8,16 +8,18 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/periodic"
 )
 
-// waitTimeout bounds every wait in these tests.
-const waitTimeout = 5 * time.Second
+// interval is how often the job runs in these tests. They run in a synctest bubble,
+// whose clock moves only when every goroutine in it is blocked, so a realistic interval
+// takes no real time and every count is exact.
+const interval = time.Minute
 
 var errFakeJob = errors.New("fake: the job broke")
 
@@ -46,9 +48,9 @@ func logger(logs *logBuffer) *slog.Logger {
 	return slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 }
 
-// start runs fn every interval in the background; stop cancels it and waits for Run to
-// return.
-func start(t *testing.T, interval time.Duration, fn func(context.Context) error, log *slog.Logger) (stop func()) {
+// start runs fn every interval in the background, inside the caller's synctest bubble,
+// and waits until the first run has settled; stop cancels Run and waits for it to return.
+func start(t *testing.T, fn func(context.Context) error, log *slog.Logger) (stop func()) {
 	t.Helper()
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -60,129 +62,149 @@ func start(t *testing.T, interval time.Duration, fn func(context.Context) error,
 		periodic.Run(ctx, interval, "fake job", fn, log)
 	}()
 
-	stop = func() {
+	synctest.Wait()
+
+	return func() {
 		cancel()
-
-		select {
-		case <-done:
-		case <-time.After(waitTimeout):
-			t.Fatal("Run did not return once canceled")
-		}
+		<-done
 	}
+}
 
-	t.Cleanup(stop)
-
-	return stop
+// after moves the bubble's clock on by d and waits until every run that started has
+// settled.
+func after(d time.Duration) {
+	time.Sleep(d)
+	synctest.Wait()
 }
 
 func TestRunRunsAtOnceAndOnEveryTick(t *testing.T) {
 	t.Parallel()
 
-	var runs atomic.Int32
+	synctest.Test(t, func(t *testing.T) {
+		var runs atomic.Int32
 
-	stop := start(t, time.Millisecond, func(context.Context) error {
-		runs.Add(1)
+		stop := start(t, func(context.Context) error {
+			runs.Add(1)
 
-		return nil
-	}, nil)
+			return nil
+		}, nil)
 
-	require.Eventually(t, func() bool { return runs.Load() >= 3 }, waitTimeout, time.Millisecond)
-	stop()
+		assert.Equal(t, int32(1), runs.Load(), "the first run starts at once")
 
-	after := runs.Load()
+		after(3*interval + time.Second)
+		assert.Equal(t, int32(4), runs.Load(), "one run on each of the three ticks")
 
-	time.Sleep(10 * time.Millisecond)
-	assert.Equal(t, after, runs.Load(), "nothing runs once Run has returned")
+		stop()
+		after(10 * interval)
+		assert.Equal(t, int32(4), runs.Load(), "nothing runs once Run has returned")
+	})
 }
 
 func TestRunStartsWithoutWaitingForATick(t *testing.T) {
 	t.Parallel()
 
-	ran := make(chan struct{}, 1)
+	synctest.Test(t, func(t *testing.T) {
+		began := time.Now()
+		ran := make(chan time.Time, 1)
 
-	start(t, time.Hour, func(context.Context) error {
-		ran <- struct{}{}
+		stop := start(t, func(context.Context) error {
+			ran <- time.Now()
 
-		return nil
-	}, nil)
+			return nil
+		}, nil)
+		defer stop()
 
-	select {
-	case <-ran:
-	case <-time.After(waitTimeout):
-		t.Fatal("the first run did not start at once")
-	}
+		select {
+		case at := <-ran:
+			assert.Equal(t, began, at, "the first run starts at once, before any tick")
+		default:
+			t.Fatal("the first run did not start at once")
+		}
+	})
 }
 
 func TestRunLogsFailuresAndPanicsAndKeepsGoing(t *testing.T) {
 	t.Parallel()
 
-	var runs atomic.Int32
+	synctest.Test(t, func(t *testing.T) {
+		var runs atomic.Int32
 
-	logs := &logBuffer{}
-	stop := start(t, time.Millisecond, func(context.Context) error {
-		switch runs.Add(1) {
-		case 1:
-			return errFakeJob
-		case 2:
-			panic("the job exploded")
-		default:
-			return nil
-		}
-	}, logger(logs))
+		logs := &logBuffer{}
+		stop := start(t, func(context.Context) error {
+			switch runs.Add(1) {
+			case 1:
+				return errFakeJob
+			case 2:
+				panic("the job exploded")
+			default:
+				return nil
+			}
+		}, logger(logs))
 
-	require.Eventually(t, func() bool { return runs.Load() >= 3 }, waitTimeout, time.Millisecond)
-	stop()
+		after(2*interval + time.Second)
+		stop()
 
-	out := logs.String()
-	assert.Contains(t, out, "fake job failed")
-	assert.Contains(t, out, errFakeJob.Error())
-	assert.Contains(t, out, "fake job panicked")
-	assert.Contains(t, out, "the job exploded")
+		assert.Equal(t, int32(3), runs.Load(), "a failure and a panic do not stop the runs")
+
+		out := logs.String()
+		assert.Contains(t, out, "fake job failed")
+		assert.Contains(t, out, errFakeJob.Error())
+		assert.Contains(t, out, "fake job panicked")
+		assert.Contains(t, out, "the job exploded")
+	})
 }
 
 func TestRunWaitsForTheRunInFlightAndDoesNotLogItsCancellation(t *testing.T) {
 	t.Parallel()
 
-	started := make(chan struct{})
-	sawCancel := make(chan struct{})
+	synctest.Test(t, func(t *testing.T) {
+		sawCancel := make(chan struct{})
 
-	logs := &logBuffer{}
-	stop := start(t, time.Hour, func(ctx context.Context) error {
-		close(started)
-		<-ctx.Done()
-		close(sawCancel)
+		logs := &logBuffer{}
+		stop := start(t, func(ctx context.Context) error {
+			<-ctx.Done()
+			close(sawCancel)
 
-		return ctx.Err()
-	}, logger(logs))
+			return ctx.Err()
+		}, logger(logs))
 
-	<-started
-	stop()
+		stop()
 
-	select {
-	case <-sawCancel:
-	default:
-		t.Fatal("Run returned before the run in flight did")
-	}
+		select {
+		case <-sawCancel:
+		default:
+			t.Fatal("Run returned before the run in flight did")
+		}
 
-	assert.NotContains(t, logs.String(), "fake job failed", "a canceled run is not a failure")
+		assert.NotContains(t, logs.String(), "fake job failed", "a canceled run is not a failure")
+	})
 }
 
 func TestRunSkipsTicksThatComeWhileRunning(t *testing.T) {
 	t.Parallel()
 
-	var runs atomic.Int32
+	synctest.Test(t, func(t *testing.T) {
+		var runs atomic.Int32
 
-	logs := &logBuffer{}
-	stop := start(t, time.Millisecond, func(context.Context) error {
-		if runs.Add(1) == 1 {
-			time.Sleep(20 * time.Millisecond)
-		}
+		// The first run outlasts two ticks.
+		const long = 2*interval + interval/2
 
-		return nil
-	}, logger(logs))
+		logs := &logBuffer{}
+		stop := start(t, func(context.Context) error {
+			if runs.Add(1) == 1 {
+				time.Sleep(long)
+			}
 
-	require.Eventually(t, func() bool { return runs.Load() >= 2 }, waitTimeout, time.Millisecond)
-	stop()
+			return nil
+		}, logger(logs))
 
-	assert.Contains(t, logs.String(), "fake job skipped", "the ticks during the long first run were skipped")
+		after(long + time.Second)
+		assert.Equal(t, int32(1), runs.Load(), "a run that outlasts the interval is not followed by one straight away")
+		assert.Contains(t, logs.String(), "fake job skipped", "the ticks during the long first run were skipped")
+
+		after(interval / 2)
+		assert.Equal(t, int32(2), runs.Load(), "the next tick runs the job again")
+
+		stop()
+	})
 }

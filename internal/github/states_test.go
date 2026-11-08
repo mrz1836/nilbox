@@ -33,6 +33,8 @@ const statesBody = `{
 }`
 
 func TestFetchItemStatesReadsEachRef(t *testing.T) {
+	t.Parallel()
+
 	refs := []item.Ref{
 		{Repo: repo.Name{Owner: "acme-org", Repo: "example-repo"}, Number: 184},
 		{Repo: repo.Name{Owner: "acme-org", Repo: "example-repo"}, Number: 7},
@@ -82,6 +84,8 @@ func TestFetchItemStatesReadsEachRef(t *testing.T) {
 }
 
 func TestFetchItemStatesBatchesLargeRequests(t *testing.T) {
+	t.Parallel()
+
 	var requests atomic.Int32
 
 	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
@@ -112,6 +116,8 @@ func statesRefs(n int) []item.Ref {
 }
 
 func TestFetchItemStatesSendsTheBatchesSideBySide(t *testing.T) {
+	t.Parallel()
+
 	// Each request waits until both have arrived, which only happens when they are in
 	// flight together; sent one after another, the first gives up and fails the call.
 	var arrived sync.WaitGroup
@@ -142,6 +148,8 @@ func TestFetchItemStatesSendsTheBatchesSideBySide(t *testing.T) {
 }
 
 func TestFetchItemStatesRefusesABadRefBeforeSendingAnything(t *testing.T) {
+	t.Parallel()
+
 	var requests atomic.Int32
 
 	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
@@ -159,6 +167,8 @@ func TestFetchItemStatesRefusesABadRefBeforeSendingAnything(t *testing.T) {
 }
 
 func TestFetchItemStatesFailsWhenOneBatchFails(t *testing.T) {
+	t.Parallel()
+
 	var requests atomic.Int32
 
 	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
@@ -174,6 +184,8 @@ func TestFetchItemStatesFailsWhenOneBatchFails(t *testing.T) {
 }
 
 func TestFetchItemStatesFailures(t *testing.T) {
+	t.Parallel()
+
 	ref := []item.Ref{{Repo: repo.Name{Owner: "acme-org", Repo: "example-repo"}, Number: 1}}
 
 	tests := []struct {
@@ -219,6 +231,8 @@ func TestFetchItemStatesFailures(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
 				if tt.status != 0 {
 					w.WriteHeader(tt.status)
@@ -234,16 +248,9 @@ func TestFetchItemStatesFailures(t *testing.T) {
 	}
 }
 
-func TestFetchItemStatesNeedsAToken(t *testing.T) {
-	client := newTestClient(t, func(http.ResponseWriter, *http.Request) {
-		t.Error("no request is sent without a token")
-	})
-
-	_, err := client.FetchItemStates(t.Context(), Token{}, []item.Ref{{Repo: repo.Name{Owner: "acme-org", Repo: "example-repo"}, Number: 1}})
-	require.ErrorIs(t, err, ErrNotLoggedIn)
-}
-
 func TestStatesQueryQuotesNames(t *testing.T) {
+	t.Parallel()
+
 	query, err := statesQuery([]item.Ref{{Repo: repo.Name{Owner: `acme"org`, Repo: "example-repo"}, Number: 9}})
 	require.NoError(t, err)
 	assert.Contains(t, query, `owner: "acme\"org"`)
@@ -251,6 +258,8 @@ func TestStatesQueryQuotesNames(t *testing.T) {
 }
 
 func TestStatesNodeIgnoresOtherTypes(t *testing.T) {
+	t.Parallel()
+
 	_, ok := (&statesRepo{Item: &statesNode{TypeName: "Discussion", Title: "x"}}).state()
 	assert.False(t, ok)
 

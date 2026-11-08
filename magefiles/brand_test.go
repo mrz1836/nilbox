@@ -30,6 +30,7 @@ func fakeRenderer(t *testing.T, dir, body string) string {
 	return fakeLoggedTool(t, dir, svgRenderer, body)
 }
 
+//nolint:paralleltest // changes the process's working directory
 func TestBrandGenerate(t *testing.T) {
 	dir := inTempDir(t)
 
@@ -38,6 +39,7 @@ func TestBrandGenerate(t *testing.T) {
 	require.NoError(t, brandgen.Check(dir), "every generated file is written and current")
 }
 
+//nolint:paralleltest // changes the process's PATH
 func TestRenderSVG(t *testing.T) {
 	t.Run("renders a square PNG of the given side", func(t *testing.T) {
 		log := fakeRenderer(t, isolatedPath(t), outputWriter)
@@ -61,6 +63,7 @@ func TestRenderSVG(t *testing.T) {
 	})
 }
 
+//nolint:paralleltest // changes the process's PATH
 func TestRenderIconSet(t *testing.T) {
 	t.Run("renders every size at 1x and 2x under the names iconutil expects", func(t *testing.T) {
 		log := fakeRenderer(t, isolatedPath(t), outputWriter)
@@ -115,6 +118,7 @@ func TestRenderIconSet(t *testing.T) {
 	})
 }
 
+//nolint:paralleltest // changes the process's working directory, PATH, and standard output
 func TestBrandIconsOnMacOS(t *testing.T) {
 	onlyOnMacOS(t)
 
@@ -143,6 +147,7 @@ func TestBrandIconsOnMacOS(t *testing.T) {
 	})
 }
 
+//nolint:paralleltest // changes the process's working directory, PATH, environment, and standard output
 func TestRenderIcons(t *testing.T) {
 	// artwork writes the brand files, the icon artwork among them, into a fresh working
 	// directory, with the directory the development icons go to.

@@ -108,6 +108,8 @@ func TestTextTokensCoversEveryTextField(t *testing.T) {
 }
 
 func TestRGB(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		hex              string
 		red, green, blue uint8
@@ -120,6 +122,8 @@ func TestRGB(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.hex, func(t *testing.T) {
+			t.Parallel()
+
 			r, g, b, err := RGB(tt.hex)
 			require.NoError(t, err)
 			assert.Equal(t, [3]uint8{tt.red, tt.green, tt.blue}, [3]uint8{r, g, b})

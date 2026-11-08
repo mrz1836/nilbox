@@ -7,6 +7,8 @@ import (
 )
 
 func TestTerminalAppArgs(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		path string
@@ -17,6 +19,8 @@ func TestTerminalAppArgs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got := terminalAppArgs(tt.path)
 			assert.Equal(t, []string{"-a", "Terminal", tt.path}, got, "the path is one argv element, never quoted")
 		})

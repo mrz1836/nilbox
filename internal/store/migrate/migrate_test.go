@@ -136,6 +136,8 @@ func apply(t *testing.T, db *sql.DB, path string, src fstest.MapFS, now func() t
 }
 
 func TestMigrateFreshDatabase(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 
 	res, err := migrate.Apply(t.Context(), db, path, migrate.Options{})
@@ -200,6 +202,8 @@ func TestMigrateFreshDatabase(t *testing.T) {
 }
 
 func TestMigrateIsIdempotent(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 	now := clock()
 
@@ -215,6 +219,8 @@ func TestMigrateIsIdempotent(t *testing.T) {
 }
 
 func TestMigrateRefusesUnmanagedSchema(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 
 	_, err := db.ExecContext(t.Context(), `CREATE TABLE legacy (id INTEGER PRIMARY KEY)`)
@@ -229,6 +235,8 @@ func TestMigrateRefusesUnmanagedSchema(t *testing.T) {
 }
 
 func TestMigrateRefusesChecksumMismatch(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 	now := clock()
 
@@ -249,6 +257,8 @@ func TestMigrateRefusesChecksumMismatch(t *testing.T) {
 }
 
 func TestMigrateRefusesANewerSchema(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 	now := clock()
 
@@ -261,6 +271,8 @@ func TestMigrateRefusesANewerSchema(t *testing.T) {
 }
 
 func TestMigrateReportsAChangedMigrationBeforeANewerSchema(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 	now := clock()
 
@@ -277,6 +289,8 @@ func TestMigrateReportsAChangedMigrationBeforeANewerSchema(t *testing.T) {
 }
 
 func TestMigrateRefusesOutOfOrder(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 	now := clock()
 
@@ -292,6 +306,8 @@ func TestMigrateRefusesOutOfOrder(t *testing.T) {
 }
 
 func TestMigrateBacksUpBeforeApplying(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 	now := clock()
 
@@ -329,6 +345,8 @@ func TestMigrateBacksUpBeforeApplying(t *testing.T) {
 }
 
 func TestMigrateNoBackupWhenNothingPending(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 	now := clock()
 
@@ -341,6 +359,8 @@ func TestMigrateNoBackupWhenNothingPending(t *testing.T) {
 }
 
 func TestMigrateKeepsNewestBackups(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 	now := clock()
 
@@ -374,6 +394,8 @@ func TestMigrateKeepsNewestBackups(t *testing.T) {
 }
 
 func TestMigrateBackupNameCollision(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 	fixed := func() time.Time { return time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC) }
 
@@ -392,6 +414,8 @@ func TestMigrateBackupNameCollision(t *testing.T) {
 }
 
 func TestMigrateBackupRequiresPath(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 	now := clock()
 
@@ -403,6 +427,8 @@ func TestMigrateBackupRequiresPath(t *testing.T) {
 }
 
 func TestMigrateFailedMigrationRollsBack(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 	now := clock()
 
@@ -426,6 +452,8 @@ func TestMigrateFailedMigrationRollsBack(t *testing.T) {
 }
 
 func TestLoadRejectsInvalidFiles(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name  string
 		files map[string]string
@@ -444,6 +472,8 @@ func TestLoadRejectsInvalidFiles(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			_, err := migrate.Load(source(tt.files))
 			require.ErrorIs(t, err, migrate.ErrInvalidMigration)
 			assert.Contains(t, err.Error(), tt.want)
@@ -452,6 +482,8 @@ func TestLoadRejectsInvalidFiles(t *testing.T) {
 }
 
 func TestLoadSortsAndSkipsNonMigrations(t *testing.T) {
+	t.Parallel()
+
 	fsys := source(map[string]string{
 		"0002_second.sql": secondSQL,
 		firstFile:         firstSQL,
@@ -470,12 +502,16 @@ func TestLoadSortsAndSkipsNonMigrations(t *testing.T) {
 }
 
 func TestLoadReportsUnreadableSource(t *testing.T) {
+	t.Parallel()
+
 	_, err := migrate.Load(os.DirFS(filepath.Join(t.TempDir(), "missing")))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "read migrations")
 }
 
 func TestEmbeddedMigrations(t *testing.T) {
+	t.Parallel()
+
 	migrations, err := migrate.Load(migrate.Embedded())
 	require.NoError(t, err)
 	require.NotEmpty(t, migrations)
@@ -489,6 +525,8 @@ func TestEmbeddedMigrations(t *testing.T) {
 }
 
 func TestMigrateReportsInvalidSource(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 
 	_, err := migrate.Apply(t.Context(), db, path, migrate.Options{Source: source(map[string]string{"bad.sql": firstSQL})})
@@ -497,6 +535,8 @@ func TestMigrateReportsInvalidSource(t *testing.T) {
 }
 
 func TestMigrateReportsClosedDatabase(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 	require.NoError(t, db.Close())
 
@@ -506,6 +546,8 @@ func TestMigrateReportsClosedDatabase(t *testing.T) {
 }
 
 func TestMigrateReportsMalformedHistory(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name  string
 		setup []string
@@ -525,6 +567,8 @@ func TestMigrateReportsMalformedHistory(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			db, path := openDB(t)
 
 			for _, stmt := range tt.setup {
@@ -540,6 +584,8 @@ func TestMigrateReportsMalformedHistory(t *testing.T) {
 }
 
 func TestMigrateReportsReadOnlyDatabase(t *testing.T) {
+	t.Parallel()
+
 	path := filepath.Join(t.TempDir(), "readonly.db")
 	require.NoError(t, os.WriteFile(path, nil, 0o600))
 
@@ -553,6 +599,8 @@ func TestMigrateReportsReadOnlyDatabase(t *testing.T) {
 }
 
 func TestMigrateReportsBackupFailures(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name   string
 		dbPath func(t *testing.T) string
@@ -595,6 +643,8 @@ func TestMigrateReportsBackupFailures(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			db, path := openDB(t)
 			apply(t, db, path, firstN(1), fixed)
 
@@ -607,6 +657,8 @@ func TestMigrateReportsBackupFailures(t *testing.T) {
 }
 
 func TestMigrateCannotEraseHistory(t *testing.T) {
+	t.Parallel()
+
 	db, path := openDB(t)
 
 	_, err := migrate.Apply(t.Context(), db, path, migrate.Options{Source: source(map[string]string{
@@ -620,6 +672,8 @@ func TestMigrateCannotEraseHistory(t *testing.T) {
 }
 
 func TestCheckReportsWhatApplyWouldRefuse(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		// setup prepares the database; Check then runs with firstN(3).
@@ -666,6 +720,8 @@ func TestCheckReportsWhatApplyWouldRefuse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			db, path := openDB(t)
 			tt.setup(t, db, path)
 			before := tables(t, db)
@@ -683,6 +739,8 @@ func TestCheckReportsWhatApplyWouldRefuse(t *testing.T) {
 }
 
 func TestCheckReportsWhatItCannotRead(t *testing.T) {
+	t.Parallel()
+
 	db, _ := openDB(t)
 
 	require.ErrorIs(t, migrate.Check(t.Context(), db, migrate.Options{Source: source(map[string]string{"bad.sql": firstSQL})}),

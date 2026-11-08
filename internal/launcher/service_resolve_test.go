@@ -45,6 +45,8 @@ func (h *launchHarness) saveDefaults(t *testing.T, in launchdefaults.Input) {
 }
 
 func TestResolveReportsUnreadableProfiles(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	h.cfg.Profiles = failingProfiles{}
 
@@ -53,6 +55,8 @@ func TestResolveReportsUnreadableProfiles(t *testing.T) {
 }
 
 func TestResolveReportsAnUnreadablePromptLibrary(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	h.cfg.Prompts = failingPrompts{}
 
@@ -61,6 +65,8 @@ func TestResolveReportsAnUnreadablePromptLibrary(t *testing.T) {
 }
 
 func TestResolveReportsUnreadableLaunchDefaults(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	h.cfg.Defaults = failingDefaults{}
 
@@ -69,6 +75,8 @@ func TestResolveReportsUnreadableLaunchDefaults(t *testing.T) {
 }
 
 func TestLaunchReadsThePromptLibraryOnce(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	library := &countingPrompts{library: h.prompts}
 	h.cfg.Prompts = library
@@ -78,6 +86,8 @@ func TestLaunchReadsThePromptLibraryOnce(t *testing.T) {
 }
 
 func TestResolveService(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	h.saveDefaults(t, launchdefaults.Input{Owner: acmeOrg, Profile: "work"})
 
@@ -95,6 +105,8 @@ func TestResolveService(t *testing.T) {
 }
 
 func TestResolveItems(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	ctx := t.Context()
 
@@ -142,6 +154,8 @@ func TestResolveItems(t *testing.T) {
 
 // TestPreviewMatchesLaunch checks that a preview shows exactly what the launch sends.
 func TestPreviewMatchesLaunch(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	req := LaunchRequest{ItemID: h.trustedPR, Profile: "work", Model: new(strOpus)}
 
@@ -170,6 +184,8 @@ func TestPreviewMatchesLaunch(t *testing.T) {
 }
 
 func TestLaunchUsesPromptSettings(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	quick := h.promptID(t, "Quick look")
 
@@ -190,6 +206,8 @@ func TestLaunchUsesPromptSettings(t *testing.T) {
 }
 
 func TestLaunchUsesLaunchDefaults(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	fix := new(h.promptID(t, "Fix checks"))
 
@@ -213,6 +231,8 @@ func TestLaunchUsesLaunchDefaults(t *testing.T) {
 }
 
 func TestLaunchAddsTheNoticeForOutsideContributors(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 
 	res, _ := h.launch(t, LaunchRequest{ItemID: h.outsidePR})
@@ -225,6 +245,8 @@ func TestLaunchAddsTheNoticeForOutsideContributors(t *testing.T) {
 }
 
 func TestLaunchRefusesAPromptThatStartsWithADash(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 
 	svc := prompts.NewService(prompts.Config{Store: h.prompts})
@@ -243,6 +265,8 @@ func TestLaunchRefusesAPromptThatStartsWithADash(t *testing.T) {
 }
 
 func TestLaunchRefusesABrokenStoredPrompt(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	h.exec(t, "UPDATE prompts SET body = '{{.Nope}}' WHERE nickname = 'Review'")
 
@@ -252,6 +276,8 @@ func TestLaunchRefusesABrokenStoredPrompt(t *testing.T) {
 }
 
 func TestPromptSourceFillsInAnItem(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 
@@ -288,6 +314,8 @@ VALUES (?, '[{"name":"bug","color":""},{"name":"size/L","color":""}]', 12, 3, 2,
 }
 
 func TestLaunchKeepsTheDefaultProfileForLaunchesWithoutDefaults(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 
 	res, _ := h.launch(t, LaunchRequest{ItemID: h.issue})
@@ -296,6 +324,8 @@ func TestLaunchKeepsTheDefaultProfileForLaunchesWithoutDefaults(t *testing.T) {
 }
 
 func TestLaunchTrustsTheTrustedBots(t *testing.T) {
+	t.Parallel()
+
 	h := newLaunchHarness(t)
 	now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 

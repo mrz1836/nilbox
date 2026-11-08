@@ -68,6 +68,8 @@ func storeProfiles(t *testing.T, db *sql.DB, found ...profiles.Profile) {
 }
 
 func TestPrefDefaults(t *testing.T) {
+	t.Parallel()
+
 	svc, _, _ := newTestService(t)
 
 	got, err := svc.Get(t.Context())
@@ -94,6 +96,8 @@ func TestPrefDefaults(t *testing.T) {
 }
 
 func TestTrustedBots(t *testing.T) {
+	t.Parallel()
+
 	svc, db, _ := newTestService(t)
 	ctx := t.Context()
 
@@ -125,6 +129,8 @@ func TestTrustedBots(t *testing.T) {
 }
 
 func TestTerminalPrefPersists(t *testing.T) {
+	t.Parallel()
+
 	path := filepath.Join(t.TempDir(), "app.db")
 	home := t.TempDir()
 
@@ -153,6 +159,8 @@ func TestWithClockStampsTheStoredSettings(t *testing.T) {
 }
 
 func TestSettersPersist(t *testing.T) {
+	t.Parallel()
+
 	svc, db, home := newTestService(t)
 	storeProfiles(t, db, profiles.Profile{Name: "work", ConfigDir: "/opt/profiles/work"})
 	require.NoError(t, os.MkdirAll(filepath.Join(home, "code", "clones"), 0o700))
@@ -203,6 +211,8 @@ func TestSettersPersist(t *testing.T) {
 }
 
 func TestSetRejectsInvalid(t *testing.T) {
+	t.Parallel()
+
 	svc, db, home := newTestService(t)
 	storeProfiles(t, db, profiles.Profile{Name: "default"})
 
@@ -236,21 +246,26 @@ func TestSetRejectsInvalid(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			err := tt.set()
 			require.ErrorIs(t, err, tt.wantErr)
 
 			if tt.wantMsg != "" {
 				assert.Contains(t, err.Error(), tt.wantMsg)
 			}
+
+			// Every case is rejected, so nothing has been stored by any of them.
+			got, err := svc.Get(t.Context())
+			require.NoError(t, err)
+			assert.Equal(t, fromStored(nil), got, "rejected values must not be stored")
 		})
 	}
-
-	got, err := svc.Get(t.Context())
-	require.NoError(t, err)
-	assert.Equal(t, fromStored(nil), got, "rejected values must not be stored")
 }
 
 func TestCloneRootErrorsAreInvalidCloneRoot(t *testing.T) {
+	t.Parallel()
+
 	svc, _, _ := newTestService(t)
 
 	for _, root := range []string{"", "projects", "~/missing"} {
@@ -259,6 +274,8 @@ func TestCloneRootErrorsAreInvalidCloneRoot(t *testing.T) {
 }
 
 func TestGetFallsBackOnBadStoredValues(t *testing.T) {
+	t.Parallel()
+
 	svc, db, _ := newTestService(t)
 	setPref(t, db, KeyDefaultProfile, "")
 	setPref(t, db, KeyWorktreeDefault, "maybe")
@@ -281,6 +298,8 @@ func TestGetFallsBackOnBadStoredValues(t *testing.T) {
 }
 
 func TestGetFallsBackWhenTheDefaultProfileIsGone(t *testing.T) {
+	t.Parallel()
+
 	svc, db, _ := newTestService(t)
 	storeProfiles(t, db, profiles.Profile{Name: "work", ConfigDir: "/opt/profiles/work"})
 	require.NoError(t, testutil.ErrOf(svc.SetDefaultProfile(t.Context(), "work")))
@@ -295,6 +314,8 @@ func TestGetFallsBackWhenTheDefaultProfileIsGone(t *testing.T) {
 }
 
 func TestGetReportsAProfileLookupError(t *testing.T) {
+	t.Parallel()
+
 	svc, db, _ := newTestService(t)
 	setPref(t, db, KeyDefaultProfile, "work")
 
@@ -308,6 +329,8 @@ func TestGetReportsAProfileLookupError(t *testing.T) {
 }
 
 func TestDatabaseErrors(t *testing.T) {
+	t.Parallel()
+
 	svc, db, _ := newTestService(t)
 	require.NoError(t, db.Close())
 
@@ -328,6 +351,8 @@ const refusePrefs = `CREATE TRIGGER refuse_prefs BEFORE INSERT ON prefs
 BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`
 
 func TestASetterThatCannotWriteStoresNothing(t *testing.T) {
+	t.Parallel()
+
 	svc, db, _ := newTestService(t)
 	ctx := t.Context()
 
@@ -348,6 +373,8 @@ func TestASetterThatCannotWriteStoresNothing(t *testing.T) {
 }
 
 func TestASaveThatFailsPartWayStoresNothing(t *testing.T) {
+	t.Parallel()
+
 	svc, _, _ := newTestService(t)
 	ctx := t.Context()
 
@@ -364,6 +391,8 @@ func TestASaveThatFailsPartWayStoresNothing(t *testing.T) {
 }
 
 func TestSensitiveFiles(t *testing.T) {
+	t.Parallel()
+
 	svc, db, _ := newTestService(t)
 	ctx := t.Context()
 
@@ -407,6 +436,8 @@ func TestSensitiveFiles(t *testing.T) {
 }
 
 func TestSensitiveFilesDatabaseErrors(t *testing.T) {
+	t.Parallel()
+
 	svc, db, _ := newTestService(t)
 	require.NoError(t, db.Close())
 
@@ -417,6 +448,8 @@ func TestSensitiveFilesDatabaseErrors(t *testing.T) {
 }
 
 func TestSettersReturnTheStoredSettings(t *testing.T) {
+	t.Parallel()
+
 	svc, db, home := newTestService(t)
 	storeProfiles(t, db, profiles.Profile{Name: "work", ConfigDir: "/opt/profiles/work"})
 	require.NoError(t, os.MkdirAll(filepath.Join(home, "code"), 0o700))
@@ -528,6 +561,8 @@ func (failingLookup) Lookup(context.Context, string) (profiles.Profile, error) {
 var errLookup = errors.New("lookup failed")
 
 func TestASaveStandsWhenTheDefaultProfileCannotBeChecked(t *testing.T) {
+	t.Parallel()
+
 	db := testutil.DB(t)
 	setPref(t, db, KeyDefaultProfile, "work")
 

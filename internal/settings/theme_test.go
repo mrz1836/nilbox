@@ -22,6 +22,8 @@ func themeEvents(themes ...Theme) []event.Event {
 }
 
 func TestThemeIsSystemOnAFreshDatabase(t *testing.T) {
+	t.Parallel()
+
 	svc, _, _ := newTestService(t)
 
 	got, err := svc.Theme(t.Context())
@@ -31,6 +33,8 @@ func TestThemeIsSystemOnAFreshDatabase(t *testing.T) {
 }
 
 func TestThemePersists(t *testing.T) {
+	t.Parallel()
+
 	svc, _, _ := newTestService(t)
 	ctx := t.Context()
 
@@ -44,6 +48,8 @@ func TestThemePersists(t *testing.T) {
 }
 
 func TestThemeSurvivesARestart(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	home := t.TempDir()
 	path := filepath.Join(t.TempDir(), "app.db")
@@ -58,6 +64,8 @@ func TestThemeSurvivesARestart(t *testing.T) {
 }
 
 func TestSetThemeRejectsAnUnknownTheme(t *testing.T) {
+	t.Parallel()
+
 	events := &testutil.Events{}
 	home := t.TempDir()
 	svc := serviceOver(t, testutil.DB(t), home, WithEvents(events))
@@ -79,6 +87,8 @@ func TestSetThemeRejectsAnUnknownTheme(t *testing.T) {
 }
 
 func TestThemeIgnoresABadStoredValue(t *testing.T) {
+	t.Parallel()
+
 	svc, db, _ := newTestService(t)
 
 	for _, stored := range []string{"", "auto", "DARK", "light "} {
@@ -91,6 +101,8 @@ func TestThemeIgnoresABadStoredValue(t *testing.T) {
 }
 
 func TestThemeReportsAClosedDatabase(t *testing.T) {
+	t.Parallel()
+
 	svc := serviceOver(t, closedDB(t), t.TempDir())
 
 	_, err := svc.Theme(t.Context())
@@ -100,6 +112,8 @@ func TestThemeReportsAClosedDatabase(t *testing.T) {
 }
 
 func TestSetThemeEmitsOnceStored(t *testing.T) {
+	t.Parallel()
+
 	events := &testutil.Events{}
 	db := testutil.DB(t)
 	svc := serviceOver(t, db, t.TempDir(), WithEvents(events))
@@ -113,6 +127,8 @@ func TestSetThemeEmitsOnceStored(t *testing.T) {
 }
 
 func TestSetThemeWithoutAnEventSink(t *testing.T) {
+	t.Parallel()
+
 	svc, _, _ := newTestService(t)
 
 	require.NoError(t, testutil.ErrOf(svc.SetTheme(t.Context(), ThemeDark)))

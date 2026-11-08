@@ -167,6 +167,8 @@ func addLaunchDefault(t *testing.T, db *sql.DB, owner, name string, pr int64) {
 }
 
 func TestSeed(t *testing.T) {
+	t.Parallel()
+
 	s, _ := seeded(t, nil)
 	ctx := t.Context()
 
@@ -196,6 +198,8 @@ func TestSeed(t *testing.T) {
 }
 
 func TestSeedFindsAFreeNickname(t *testing.T) {
+	t.Parallel()
+
 	s, _ := empty(t, nil)
 
 	mine, err := s.Create(t.Context(), Input{Name: "Mine", Nickname: "review", AppliesTo: AppliesToAny, Body: "Look at {{.URL}}"})
@@ -212,6 +216,8 @@ func TestSeedFindsAFreeNickname(t *testing.T) {
 }
 
 func TestCreateAndUpdate(t *testing.T) {
+	t.Parallel()
+
 	s, _ := seeded(t, nil)
 	ctx := t.Context()
 
@@ -254,6 +260,8 @@ func TestCreateAndUpdate(t *testing.T) {
 }
 
 func TestValidation(t *testing.T) {
+	t.Parallel()
+
 	s, _ := seeded(t, nil)
 
 	tests := []struct {
@@ -283,6 +291,8 @@ func TestValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			in := validInput()
 			tt.edit(&in)
 
@@ -296,6 +306,8 @@ func TestValidation(t *testing.T) {
 }
 
 func TestUpdateKeepsTheKindsAPromptIsADefaultFor(t *testing.T) {
+	t.Parallel()
+
 	s, db := seeded(t, nil)
 	ctx := t.Context()
 	fix := byNickname(t, s, "Fix checks")
@@ -316,6 +328,8 @@ func TestUpdateKeepsTheKindsAPromptIsADefaultFor(t *testing.T) {
 }
 
 func TestDeleteRefusesAPromptInUse(t *testing.T) {
+	t.Parallel()
+
 	s, db := seeded(t, nil)
 	ctx := t.Context()
 
@@ -351,6 +365,8 @@ func TestDeleteRefusesAPromptInUse(t *testing.T) {
 }
 
 func TestDuplicate(t *testing.T) {
+	t.Parallel()
+
 	s, _ := seeded(t, nil)
 	ctx := t.Context()
 	review := byNickname(t, s, "Review")
@@ -372,6 +388,8 @@ func TestDuplicate(t *testing.T) {
 }
 
 func TestReset(t *testing.T) {
+	t.Parallel()
+
 	s, _ := seeded(t, nil)
 	ctx := t.Context()
 	review := byNickname(t, s, "Review")
@@ -413,6 +431,8 @@ func TestReset(t *testing.T) {
 }
 
 func TestSetDefault(t *testing.T) {
+	t.Parallel()
+
 	s, _ := seeded(t, nil)
 	ctx := t.Context()
 	fix, work := byNickname(t, s, "Fix checks"), byNickname(t, s, "Work on it")
@@ -434,6 +454,8 @@ func TestSetDefault(t *testing.T) {
 }
 
 func TestDefaultsFallBack(t *testing.T) {
+	t.Parallel()
+
 	s, _ := empty(t, nil)
 	ctx := t.Context()
 
@@ -452,6 +474,8 @@ func TestDefaultsFallBack(t *testing.T) {
 }
 
 func TestLookupAndAll(t *testing.T) {
+	t.Parallel()
+
 	s, _ := seeded(t, nil)
 	ctx := t.Context()
 	review := byNickname(t, s, "Review")
@@ -492,6 +516,8 @@ func (f fakeSource) PreviewData(_ context.Context, itemID int64) (Data, error) {
 }
 
 func TestCheck(t *testing.T) {
+	t.Parallel()
+
 	outside := Sample(item.KindPR)
 	outside.Number, outside.Title, outside.OutsideContributor = 41, "Speed up the cache", true
 
@@ -506,6 +532,8 @@ func TestCheck(t *testing.T) {
 	in.Nickname, in.Body = review.Nickname, review.Body
 
 	t.Run("a starter previews cleanly against an item", func(t *testing.T) {
+		t.Parallel()
+
 		got, err := s.Check(ctx, CheckRequest{ID: review.ID, Input: in, ItemID: 1, InWorktree: true, AtPRHead: true})
 		require.NoError(t, err)
 		assert.Empty(t, got.Fields, "its own nickname is not taken")
@@ -519,6 +547,8 @@ func TestCheck(t *testing.T) {
 	})
 
 	t.Run("a new prompt's nickname must be free", func(t *testing.T) {
+		t.Parallel()
+
 		got, err := s.Check(ctx, CheckRequest{Input: in})
 		require.NoError(t, err)
 		require.Len(t, got.Fields, 1)
@@ -528,6 +558,8 @@ func TestCheck(t *testing.T) {
 	})
 
 	t.Run("an outside contributor's item adds the notice", func(t *testing.T) {
+		t.Parallel()
+
 		got, err := s.Check(ctx, CheckRequest{ID: review.ID, Input: in, ItemID: 2})
 		require.NoError(t, err)
 		assert.Contains(t, got.Preview, "Speed up the cache")
@@ -536,6 +568,8 @@ func TestCheck(t *testing.T) {
 	})
 
 	t.Run("an item the prompt is not for falls back to a sample", func(t *testing.T) {
+		t.Parallel()
+
 		got, err := s.Check(ctx, CheckRequest{ID: review.ID, Input: in, ItemID: 3})
 		require.NoError(t, err)
 		assert.True(t, got.Sample)
@@ -544,6 +578,8 @@ func TestCheck(t *testing.T) {
 	})
 
 	t.Run("a missing item falls back to a sample", func(t *testing.T) {
+		t.Parallel()
+
 		got, err := s.Check(ctx, CheckRequest{ID: review.ID, Input: in, ItemID: 99})
 		require.NoError(t, err)
 		assert.True(t, got.Sample)
@@ -551,6 +587,8 @@ func TestCheck(t *testing.T) {
 	})
 
 	t.Run("text errors leave no preview", func(t *testing.T) {
+		t.Parallel()
+
 		broken := in
 		broken.Body = "Review {{.Titel}}"
 
@@ -563,6 +601,8 @@ func TestCheck(t *testing.T) {
 	})
 
 	t.Run("an item that would start the prompt with a dash", func(t *testing.T) {
+		t.Parallel()
+
 		leading := in
 		leading.Body = "{{.Title}} needs a review"
 
@@ -574,6 +614,8 @@ func TestCheck(t *testing.T) {
 }
 
 func TestDescribeUsage(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, "not used anywhere", describeUsage(Usage{}))
 	assert.Equal(t, "the default for pull requests, and the default for issues",
 		describeUsage(Usage{Defaults: []item.Kind{item.KindPR, item.KindIssue}}))
@@ -582,6 +624,8 @@ func TestDescribeUsage(t *testing.T) {
 }
 
 func TestVariablesService(t *testing.T) {
+	t.Parallel()
+
 	s, _ := seeded(t, nil)
 	assert.Equal(t, Variables(), s.Variables())
 }

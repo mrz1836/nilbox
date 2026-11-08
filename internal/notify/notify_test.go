@@ -1,7 +1,6 @@
 package notify
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -134,6 +133,8 @@ func TestKindsAreTheInboxArrivals(t *testing.T) {
 }
 
 func TestTheLogKeepsWhatWasRecorded(t *testing.T) {
+	t.Parallel()
+
 	f := newFixture(t, 2)
 	s := NewStore(f.pool)
 
@@ -169,6 +170,8 @@ func TestTheLogKeepsWhatWasRecorded(t *testing.T) {
 }
 
 func TestTheLogLeavesOutKindsItDoesNotKnow(t *testing.T) {
+	t.Parallel()
+
 	f := newFixture(t, 1)
 	s := NewStore(f.pool)
 
@@ -188,6 +191,8 @@ func TestTheLogLeavesOutKindsItDoesNotKnow(t *testing.T) {
 }
 
 func TestRecordingNothingStoresNothing(t *testing.T) {
+	t.Parallel()
+
 	f := newFixture(t, 0)
 
 	rows, err := NewStore(f.pool).Record(t.Context(), testNow, nil)
@@ -196,6 +201,8 @@ func TestRecordingNothingStoresNothing(t *testing.T) {
 }
 
 func TestTheLogKeepsOnlyTheNewest(t *testing.T) {
+	t.Parallel()
+
 	f := newFixture(t, 1)
 	s := NewStore(f.pool)
 
@@ -219,6 +226,8 @@ func TestTheLogKeepsOnlyTheNewest(t *testing.T) {
 }
 
 func TestMarkAllReadAndClear(t *testing.T) {
+	t.Parallel()
+
 	f := newFixture(t, 1)
 	s := NewStore(f.pool)
 
@@ -240,6 +249,8 @@ func TestMarkAllReadAndClear(t *testing.T) {
 }
 
 func TestAnEntryOutlivesItsItem(t *testing.T) {
+	t.Parallel()
+
 	f := newFixture(t, 1)
 	s := NewStore(f.pool)
 
@@ -271,6 +282,8 @@ func TestAnEntryWithoutARepository(t *testing.T) {
 }
 
 func TestTheStoreFailsOnAClosedDatabase(t *testing.T) {
+	t.Parallel()
+
 	f := newFixture(t, 1)
 	s := NewStore(f.pool)
 	require.NoError(t, f.pool.Close())
@@ -441,6 +454,8 @@ func TestTimesAreStoredInUTC(t *testing.T) {
 }
 
 func TestTheDispatcherRecordsAndShowsBanners(t *testing.T) {
+	t.Parallel()
+
 	f := newFixture(t, 2)
 	d := NewDispatcher(f.config())
 
@@ -461,46 +476,92 @@ func TestTheDispatcherRecordsAndShowsBanners(t *testing.T) {
 	assert.Equal(t, "Assigned to you", banners[1].Title)
 }
 
-func TestTheDispatcherLeavesOutBannersThatAreOff(t *testing.T) {
-	f := newFixture(t, 2)
-	require.NoError(t, prefs.New(f.pool, f.clock).Set(t.Context(), notifyprefs.KeyBannersOff, `["review_requested"]`))
+func TestTheDispatcherKeepsTheLogWhateverHappensToTheBanners(t *testing.T) {
+	t.Parallel()
 
-	NewDispatcher(f.config()).Arrived(t.Context(),
-		[]inbox.Arrival{f.arrival(0, KindReviewRequested), f.arrival(1, KindAssigned)})
+	tests := []struct {
+		name string
 
-	banners := f.poster.posted()
-	require.Len(t, banners, 1)
-	assert.Equal(t, "Assigned to you", banners[0].Title)
+		// setup changes the fixture or the dispatcher's config before the arrivals come.
+		setup func(t *testing.T, f *fixture, cfg *Config)
 
-	log, err := NewStore(f.pool).Log(t.Context())
-	require.NoError(t, err)
-	assert.Len(t, log.Items, 2, "the log keeps every kind")
-}
+		banners []string
+		why     string
+	}{
+		{
+			name: "a kind whose banners are off",
+			setup: func(t *testing.T, f *fixture, _ *Config) {
+				t.Helper()
 
-func TestTheDispatcherKeepsTheLogWithoutAPoster(t *testing.T) {
-	f := newFixture(t, 1)
-	cfg := f.config()
-	cfg.Poster = nil
+				require.NoError(t, prefs.New(f.pool, f.clock).Set(t.Context(), notifyprefs.KeyBannersOff, `["review_requested"]`))
+			},
+			banners: []string{"Assigned to you"},
+			why:     "only the banners the user left on are shown",
+		},
+		{
+			name: "no poster",
+			setup: func(_ *testing.T, _ *fixture, cfg *Config) {
+				cfg.Poster = nil
+			},
+			why: "without a poster, nothing can be shown",
+		},
+		{
+			name: "banners the user has not allowed",
+			setup: func(_ *testing.T, f *fixture, _ *Config) {
+				f.poster.status = StatusOff
+			},
+			why: "the system's setting is respected",
+		},
+		{
+			name: "settings that cannot be read",
+			setup: func(t *testing.T, f *fixture, _ *Config) {
+				t.Helper()
 
-	NewDispatcher(cfg).Arrived(t.Context(), []inbox.Arrival{f.arrival(0, KindReviewRequested)})
+				_, err := f.pool.ExecContext(t.Context(), "DROP TABLE prefs")
+				require.NoError(t, err)
+			},
+			why: "without the settings, no banner the user may have turned off is shown",
+		},
+		{
+			name: "banners that fail to post",
+			setup: func(_ *testing.T, f *fixture, _ *Config) {
+				f.poster.err = errPostFailed
+			},
+			why: "a failed banner is not shown",
+		},
+	}
 
-	log, err := NewStore(f.pool).Log(t.Context())
-	require.NoError(t, err)
-	assert.Len(t, log.Items, 1)
-	assert.Equal(t, 1, f.events.Count())
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-func TestTheDispatcherShowsNoBannersTheUserHasNotAllowed(t *testing.T) {
-	f := newFixture(t, 1)
-	f.poster.status = StatusOff
+			f := newFixture(t, 2)
+			cfg := f.config()
+			tt.setup(t, f, &cfg)
 
-	NewDispatcher(f.config()).Arrived(t.Context(), []inbox.Arrival{f.arrival(0, KindReviewRequested)})
+			NewDispatcher(cfg).Arrived(t.Context(),
+				[]inbox.Arrival{f.arrival(0, KindReviewRequested), f.arrival(1, KindAssigned)})
 
-	assert.Empty(t, f.poster.posted())
-	assert.Equal(t, 1, f.events.Count(), "the log still has it")
+			posted := f.poster.posted()
+			titles := make([]string, 0, len(posted))
+
+			for _, b := range posted {
+				titles = append(titles, b.Title)
+			}
+
+			assert.ElementsMatch(t, tt.banners, titles, tt.why)
+			assert.Equal(t, 1, f.events.Count(), "the log changed, and the window is told once")
+
+			log, err := NewStore(f.pool).Log(t.Context())
+			require.NoError(t, err)
+			assert.Len(t, log.Items, 2, "the log keeps every arrival")
+		})
+	}
 }
 
 func TestTheDispatcherSurvivesFailures(t *testing.T) {
+	t.Parallel()
+
 	f := newFixture(t, 1)
 	f.poster.err = errPostFailed
 
@@ -512,24 +573,13 @@ func TestTheDispatcherSurvivesFailures(t *testing.T) {
 	assert.Equal(t, 1, f.events.Count(), "nothing new, nothing told")
 
 	require.NoError(t, f.pool.Close())
-	d.Arrived(context.Background(), []inbox.Arrival{f.arrival(0, KindReviewRequested)})
+	d.Arrived(t.Context(), []inbox.Arrival{f.arrival(0, KindReviewRequested)})
 	assert.Equal(t, 1, f.events.Count(), "nothing was recorded")
 }
 
-func TestTheDispatcherShowsNoBannersWhenTheSettingsCannotBeRead(t *testing.T) {
+func TestTheServiceServesTheLog(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, 1)
-	_, err := f.pool.ExecContext(t.Context(), "DROP TABLE prefs")
-	require.NoError(t, err)
-
-	NewDispatcher(f.config()).Arrived(t.Context(), []inbox.Arrival{f.arrival(0, KindReviewRequested)})
-
-	assert.Empty(t, f.poster.posted(), "without the settings, no banner the user may have turned off is shown")
-	assert.Equal(t, 1, f.events.Count(), "the log still has it")
-}
-
-func TestTheServiceServesTheLog(t *testing.T) {
 	f := newFixture(t, 1)
 	svc := NewService(f.config())
 
@@ -561,6 +611,8 @@ func TestTheServiceServesTheLog(t *testing.T) {
 }
 
 func TestBannerStatusAndTest(t *testing.T) {
+	t.Parallel()
+
 	f := newFixture(t, 0)
 
 	svc := NewService(f.config())
@@ -593,6 +645,8 @@ func TestBannerStatusAndTest(t *testing.T) {
 }
 
 func TestTheDefaultsFillIn(t *testing.T) {
+	t.Parallel()
+
 	f := newFixture(t, 0)
 	svc := NewService(Config{Pool: f.pool})
 

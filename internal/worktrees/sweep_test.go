@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -81,6 +82,8 @@ func newSweepFixture(t *testing.T, e *env) *sweepFixture {
 }
 
 func TestSweepCleansUpMergedAndClosedWork(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	f := newSweepFixture(t, e)
 	events := &testutil.Events{}
@@ -128,6 +131,8 @@ func TestSweepCleansUpMergedAndClosedWork(t *testing.T) {
 }
 
 func TestSweepOnlyCountsWhenAutomaticCleanupIsOff(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	f := newSweepFixture(t, e)
 	svc := e.linked(linkDeps{gh: f.gh, launches: f.launches})
@@ -141,6 +146,8 @@ func TestSweepOnlyCountsWhenAutomaticCleanupIsOff(t *testing.T) {
 }
 
 func TestSweepCountsTheWorktreesOfEveryClone(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	plain := e.newRepo(t, "plain")
 	feature := addWorktree(t, plain, filepath.Join(e.home, "wt", "feature"), "feature")
@@ -165,6 +172,8 @@ func TestSweepCountsTheWorktreesOfEveryClone(t *testing.T) {
 }
 
 func TestCountWorktrees(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	wt := filepath.Join(e.home, "wt")
 
@@ -206,6 +215,8 @@ func TestCountWorktrees(t *testing.T) {
 }
 
 func TestSweepReportsWhatItCouldNotRemove(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	repo := e.newGitHubRepo(t, "example-repo")
 	path, head := agentWorktree(t, repo, "pr-1")
@@ -215,7 +226,7 @@ func TestSweepReportsWhatItCouldNotRemove(t *testing.T) {
 	// git reports the worktree's commit as of the listing; a commit made by the time it
 	// is removed keeps it.
 	svc := e.linked(linkDeps{gh: gh, auto: true})
-	svc.run = scriptedGit(func(sub []string) (reply, bool) {
+	svc.run = scriptedGit(e.git, func(sub []string) (reply, bool) {
 		if startsWith(sub, "worktree remove") {
 			return reply{stderr: "fatal: '" + path + "' contains modified or untracked files, use --force to delete it", err: exitError{code: 128}}, true
 		}
@@ -230,6 +241,8 @@ func TestSweepReportsWhatItCouldNotRemove(t *testing.T) {
 }
 
 func TestSweepForgetsLaunchesWhoseWorktreeIsGone(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	repo := e.newGitHubRepo(t, "example-repo")
 	kept, head := agentWorktree(t, repo, "pr-1")
@@ -258,6 +271,8 @@ func TestSweepForgetsLaunchesWhoseWorktreeIsGone(t *testing.T) {
 }
 
 func TestSweepForgetsLaunchesWhenNoCloneIsLeft(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	launches := &fakeLaunches{records: []worklog.Launch{launchOf(filepath.Join(e.root, "gone"), "pr-1", item.KindPR, 1)}}
 
@@ -272,6 +287,8 @@ func TestSweepForgetsLaunchesWhenNoCloneIsLeft(t *testing.T) {
 }
 
 func TestSweepErrors(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	repo := e.newGitHubRepo(t, "example-repo")
 	agentWorktree(t, repo, "pr-1")
@@ -292,7 +309,7 @@ func TestSweepErrors(t *testing.T) {
 	assert.NotEmpty(t, report.At)
 
 	svc.settings = fakeSettings{root: cloneRoot, auto: true}
-	svc.run = scriptedGit(func(sub []string) (reply, bool) {
+	svc.run = scriptedGit(e.git, func(sub []string) (reply, bool) {
 		if startsWith(sub, "worktree list") {
 			return reply{err: errFakeStart}, true
 		}
@@ -305,6 +322,8 @@ func TestSweepErrors(t *testing.T) {
 }
 
 func TestSweepClones(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	agent := e.newGitHubRepo(t, "agent")
 	agentWorktree(t, agent, "pr-1")
@@ -349,28 +368,33 @@ func TestSweepClones(t *testing.T) {
 }
 
 func TestSweeperRunsUntilCanceled(t *testing.T) {
-	e := newEnv(t)
-	svc := e.linked(linkDeps{gh: &fakeGitHub{}})
+	t.Parallel()
 
-	ctx, cancel := context.WithCancel(t.Context())
-	done := make(chan struct{})
+	// The bubble's clock moves only when every goroutine in it is blocked, so an hour's
+	// interval takes no real time and the count of sweeps is exact.
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv(t)
+		svc := e.linked(linkDeps{gh: &fakeGitHub{}})
 
-	go func() {
-		defer close(done)
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan struct{})
 
-		NewSweeper(svc, time.Millisecond).Run(ctx)
-	}()
+		go func() {
+			defer close(done)
 
-	require.Eventually(t, func() bool { return svc.LastSweep().Seq >= 2 }, 5*time.Second, time.Millisecond,
-		"it sweeps at once and then on every tick")
+			NewSweeper(svc, time.Hour).Run(ctx)
+		}()
 
-	cancel()
+		synctest.Wait()
+		assert.Equal(t, 1, svc.LastSweep().Seq, "it sweeps at once")
 
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("the sweeper did not return once canceled")
-	}
+		time.Sleep(2*time.Hour + time.Second)
+		synctest.Wait()
+		assert.Equal(t, 3, svc.LastSweep().Seq, "and then on every tick")
+
+		cancel()
+		<-done
+	})
 }
 
 // panickingSettings panics when read.
@@ -379,34 +403,38 @@ type panickingSettings struct{}
 func (panickingSettings) Get(context.Context) (SweepSettings, error) { panic("settings exploded") }
 
 func TestSweeperSurvivesAPanicAndLogsFailures(t *testing.T) {
+	t.Parallel()
+
 	var logs bytes.Buffer
 
 	var mu sync.Mutex
 
 	logger := slog.New(slog.NewTextHandler(lockedWriter{w: &logs, mu: &mu}, nil))
-	svc := NewService(Config{Settings: panickingSettings{}, Git: execpath.Exec{}, Logger: logger})
 
-	ctx, cancel := context.WithCancel(t.Context())
-	done := make(chan struct{})
+	synctest.Test(t, func(t *testing.T) {
+		svc := NewService(Config{Settings: panickingSettings{}, Git: execpath.Exec{}, Logger: logger})
 
-	go func() {
-		defer close(done)
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan struct{})
 
-		NewSweeper(svc, time.Millisecond).Run(ctx)
-	}()
+		go func() {
+			defer close(done)
 
-	require.Eventually(t, func() bool {
-		mu.Lock()
-		defer mu.Unlock()
+			NewSweeper(svc, time.Hour).Run(ctx)
+		}()
 
-		return strings.Count(logs.String(), "worktree sweep panicked") >= 2
-	}, 5*time.Second, time.Millisecond, "a panicking sweep is logged and the next one still runs")
+		time.Sleep(time.Hour + time.Second)
+		synctest.Wait()
+		cancel()
+		<-done
+	})
 
-	cancel()
-	<-done
+	mu.Lock()
+	assert.Equal(t, 2, strings.Count(logs.String(), "worktree sweep panicked"), "a panicking sweep is logged and the next one still runs")
+	mu.Unlock()
 
 	// The log gets the error itself; the report, what the user is told about it.
-	svc = NewService(Config{Settings: fakeSettings{err: errFakeSettings}, Git: execpath.Exec{}, Logger: logger})
+	svc := NewService(Config{Settings: fakeSettings{err: errFakeSettings}, Git: execpath.Exec{}, Logger: logger})
 	require.ErrorIs(t, svc.sweepOnce(t.Context()), errFakeSettings)
 	assert.Equal(t, uierr.Message(errFakeSettings), svc.LastSweep().Error)
 }

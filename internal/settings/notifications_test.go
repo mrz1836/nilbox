@@ -12,6 +12,8 @@ import (
 )
 
 func TestTheMenuBarIsOnByDefault(t *testing.T) {
+	t.Parallel()
+
 	svc, _, _ := newTestService(t)
 
 	on, err := svc.MenuBar(t.Context())
@@ -20,6 +22,8 @@ func TestTheMenuBarIsOnByDefault(t *testing.T) {
 }
 
 func TestSetMenuBarEmitsOnceStored(t *testing.T) {
+	t.Parallel()
+
 	_, db, home := newTestService(t)
 	events := &testutil.Events{}
 	svc := serviceOver(t, db, home, WithEvents(events))
@@ -39,6 +43,8 @@ func TestSetMenuBarEmitsOnceStored(t *testing.T) {
 }
 
 func TestAnUnreadableMenuBarSettingIsOn(t *testing.T) {
+	t.Parallel()
+
 	svc, db, _ := newTestService(t)
 	setPref(t, db, KeyMenuBar, "sometimes")
 
@@ -52,6 +58,8 @@ func TestAnUnreadableMenuBarSettingIsOn(t *testing.T) {
 }
 
 func TestTheMenuBarSettingFailsOnAClosedDatabase(t *testing.T) {
+	t.Parallel()
+
 	svc, db, _ := newTestService(t)
 	events := &testutil.Events{}
 	svc.events = events
@@ -67,6 +75,8 @@ func TestTheMenuBarSettingFailsOnAClosedDatabase(t *testing.T) {
 }
 
 func TestSetNotificationBanner(t *testing.T) {
+	t.Parallel()
+
 	svc, _, _ := newTestService(t)
 
 	require.NoError(t, testutil.ErrOf(svc.SetNotificationBanner(t.Context(), notifyprefs.KindWoke, false)))
@@ -84,6 +94,8 @@ func TestSetNotificationBanner(t *testing.T) {
 }
 
 func TestSetNotificationBannerRejectsAnUnknownKind(t *testing.T) {
+	t.Parallel()
+
 	svc, _, _ := newTestService(t)
 
 	_, err := svc.SetNotificationBanner(t.Context(), "mentions", false)
@@ -92,6 +104,8 @@ func TestSetNotificationBannerRejectsAnUnknownKind(t *testing.T) {
 }
 
 func TestSetNotificationBannerFailsOnAClosedDatabase(t *testing.T) {
+	t.Parallel()
+
 	svc, db, _ := newTestService(t)
 	require.NoError(t, db.Close())
 

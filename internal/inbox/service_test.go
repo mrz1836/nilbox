@@ -529,6 +529,8 @@ func numbers(l List) []int {
 }
 
 func TestRefreshUpsertsItemsWithReasonFlags(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 
 	a := pr(1, "OWNER", false)
@@ -572,6 +574,8 @@ func TestRefreshUpsertsItemsWithReasonFlags(t *testing.T) {
 }
 
 func TestRefreshStoresTrustFields(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 
 	fork := pr(12, "CONTRIBUTOR", true)
@@ -651,6 +655,8 @@ func TestRefreshStoresTrustFields(t *testing.T) {
 }
 
 func TestRefreshWritesRateSnapshot(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched(nil, nil, nil)
 	h.refresh(t)
@@ -719,6 +725,8 @@ func TestRefreshWritesRateSnapshot(t *testing.T) {
 }
 
 func TestRefreshMissingScopesError(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
 	h.client.inbox.OAuthScopes = "gist"
@@ -742,6 +750,8 @@ func TestRefreshMissingScopesError(t *testing.T) {
 }
 
 func TestRefreshScopeWarning(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched(nil, nil, nil)
 	h.client.inbox.OAuthScopes = ""
@@ -752,6 +762,8 @@ func TestRefreshScopeWarning(t *testing.T) {
 }
 
 func TestSnapshotReportsNofM(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 
 	review := []github.Item{pr(1, "OWNER", false), pr(2, "OWNER", false)}
@@ -775,6 +787,8 @@ func TestSnapshotReportsNofM(t *testing.T) {
 }
 
 func TestRefreshNeverPersistsToken(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, []github.Item{issue("other-repo", 2, "MEMBER")})
 	h.refresh(t)
@@ -817,6 +831,8 @@ func TestRefreshNeverPersistsToken(t *testing.T) {
 }
 
 func TestRefreshRecordsTokenErrors(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.tokens.err = uierr.New("Install the GitHub CLI.", github.ErrGHNotFound)
 
@@ -832,6 +848,8 @@ func TestRefreshRecordsTokenErrors(t *testing.T) {
 }
 
 func TestRefreshFetchErrorsKeepTheStoredInbox(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
 	h.refresh(t)
@@ -848,6 +866,8 @@ func TestRefreshFetchErrorsKeepTheStoredInbox(t *testing.T) {
 }
 
 func TestRefreshRequiresViewer(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched(nil, nil, nil)
 	h.client.inbox.Viewer.Login = ""
@@ -857,6 +877,8 @@ func TestRefreshRequiresViewer(t *testing.T) {
 }
 
 func TestRefreshCanceledIsNotRecorded(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -872,6 +894,8 @@ func TestRefreshCanceledIsNotRecorded(t *testing.T) {
 }
 
 func TestRefreshNotifies(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched(nil, nil, nil)
 	h.refresh(t)
@@ -884,6 +908,8 @@ func TestRefreshNotifies(t *testing.T) {
 }
 
 func TestSnapshotBeforeFirstRefresh(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 
 	snap, err := h.svc.Snapshot(t.Context())
@@ -896,6 +922,8 @@ func TestSnapshotBeforeFirstRefresh(t *testing.T) {
 }
 
 func TestSnapshotSwitchesWithTheViewer(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
 	h.refresh(t)
@@ -912,6 +940,8 @@ func TestSnapshotSwitchesWithTheViewer(t *testing.T) {
 }
 
 func TestRefreshStoresTheAccount(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched(nil, nil, nil)
 
@@ -932,6 +962,8 @@ func TestRefreshStoresTheAccount(t *testing.T) {
 }
 
 func TestRefreshDownloadsTheAvatarOnlyWhenItChanges(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched(nil, nil, nil)
 
@@ -952,6 +984,8 @@ func TestRefreshDownloadsTheAvatarOnlyWhenItChanges(t *testing.T) {
 }
 
 func TestRefreshAvatarFailureIsBestEffort(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
 	h.client.avatarErr = errFakeNetwork
@@ -972,6 +1006,8 @@ func TestRefreshAvatarFailureIsBestEffort(t *testing.T) {
 }
 
 func TestRefreshWithoutAnAvatarURL(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched(nil, nil, nil)
 	h.client.inbox.Viewer.AvatarURL = ""
@@ -983,6 +1019,8 @@ func TestRefreshWithoutAnAvatarURL(t *testing.T) {
 }
 
 func TestSnapshotNeverShowsAnotherAccountsAvatar(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched(nil, nil, nil)
 	require.NotEmpty(t, h.refresh(t).Account.Avatar)
@@ -998,6 +1036,8 @@ func TestSnapshotNeverShowsAnotherAccountsAvatar(t *testing.T) {
 }
 
 func TestSnapshotFallsBackToTheGitHubProfileURL(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched(nil, nil, nil)
 	h.client.inbox.Viewer.URL = ""
@@ -1008,6 +1048,8 @@ func TestSnapshotFallsBackToTheGitHubProfileURL(t *testing.T) {
 }
 
 func TestSnapshotDatabaseErrors(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched(nil, nil, nil)
 	h.refresh(t)
@@ -1021,6 +1063,8 @@ func TestSnapshotDatabaseErrors(t *testing.T) {
 }
 
 func TestNewServiceUsesTheSystemClock(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	svc := NewService(Config{Pool: h.pool, Tokens: h.tokens, Client: h.client})
 	h.client.inbox = fetched(nil, nil, nil)
@@ -1066,6 +1110,8 @@ func itemByNumber(t *testing.T, l List, number int) Item {
 }
 
 func TestRefreshStoresEachItemsDetails(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 
 	a := pr(1, "OWNER", false)
@@ -1106,6 +1152,8 @@ func TestRefreshStoresEachItemsDetails(t *testing.T) {
 }
 
 func TestRefreshReplacesTheDetails(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false), pr(2, "OWNER", false)}, nil, nil)
 	h.client.details = map[string]github.ItemDetails{nodeID(1): prDetails(), nodeID(2): prDetails()}
@@ -1134,6 +1182,8 @@ func TestRefreshReplacesTheDetails(t *testing.T) {
 }
 
 func TestRefreshDetailsFailureKeepsTheStoredInbox(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
 	h.client.details = map[string]github.ItemDetails{nodeID(1): prDetails()}
@@ -1156,6 +1206,8 @@ func TestRefreshDetailsFailureKeepsTheStoredInbox(t *testing.T) {
 }
 
 func TestRefreshRecordsTheCostOfBothQueries(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
 	h.client.detailsRate = github.QueryRate{
@@ -1169,6 +1221,8 @@ func TestRefreshRecordsTheCostOfBothQueries(t *testing.T) {
 }
 
 func TestGraphQLReading(t *testing.T) {
+	t.Parallel()
+
 	inbox := github.QueryRate{Cost: 1, Limit: 5000, Remaining: 4990}
 	later := github.QueryRate{Cost: 2, Limit: 5000, Remaining: 4988}
 
@@ -1189,12 +1243,16 @@ func TestGraphQLReading(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			assert.Equal(t, tt.want, graphQLReading(inbox, tt.details))
 		})
 	}
 }
 
 func TestSaveWithoutDetails(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
 
@@ -1207,6 +1265,8 @@ func TestSaveWithoutDetails(t *testing.T) {
 }
 
 func TestRefreshReadsTheListedDetailsAlongsideTheInbox(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
 	h.refresh(t)
@@ -1221,6 +1281,8 @@ func TestRefreshReadsTheListedDetailsAlongsideTheInbox(t *testing.T) {
 }
 
 func TestRefreshAsksAfterTheInboxOnlyAboutNewItems(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	a := pr(1, "OWNER", false)
 	b := pr(2, "OWNER", false)
@@ -1247,6 +1309,8 @@ func TestRefreshAsksAfterTheInboxOnlyAboutNewItems(t *testing.T) {
 }
 
 func TestRefreshNewItemDetailsFailure(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
 	h.client.detailsErr = errFakeNetwork
@@ -1259,6 +1323,8 @@ func TestRefreshNewItemDetailsFailure(t *testing.T) {
 }
 
 func TestListedNodeIDsError(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.exec(t, "DROP TABLE items")
 
@@ -1270,6 +1336,8 @@ func TestListedNodeIDsError(t *testing.T) {
 }
 
 func TestNewIDs(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, []string{"c"}, newIDs([]string{"a", "c", "b"}, []string{"b", "a"}))
 	assert.Empty(t, newIDs([]string{"a"}, []string{"a"}))
 	assert.Equal(t, []string{"a"}, newIDs([]string{"a"}, nil))
@@ -1322,6 +1390,8 @@ FROM repos WHERE name = ?`, name).Scan(&r.ID, &r.NodeID, &r.Description, &r.Visi
 }
 
 func TestRefreshStoresWhatGitHubSaysAboutEachRepository(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 
 	a := pr(1, "OWNER", false)
@@ -1374,6 +1444,8 @@ func TestRefreshStoresWhatGitHubSaysAboutEachRepository(t *testing.T) {
 }
 
 func TestRefreshLeavesArchivedRepositoriesOut(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 
 	live := pr(1, "OWNER", false)
@@ -1410,6 +1482,8 @@ func TestRefreshLeavesArchivedRepositoriesOut(t *testing.T) {
 }
 
 func TestDropArchived(t *testing.T) {
+	t.Parallel()
+
 	keep := pr(1, "OWNER", false)
 	gone := pr(2, "OWNER", false)
 	gone.Repo.IsArchived = true

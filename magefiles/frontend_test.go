@@ -19,6 +19,7 @@ func fakePNPM(t *testing.T, body string) string {
 	return fakeLoggedTool(t, isolatedPath(t), "pnpm", body)
 }
 
+//nolint:paralleltest // changes the process's working directory and PATH
 func TestRequirePNPM(t *testing.T) {
 	t.Run("pnpm on PATH", func(t *testing.T) {
 		fakeTool(t, isolatedPath(t), "pnpm", "exit 0")
@@ -69,6 +70,7 @@ func TestRequirePNPM(t *testing.T) {
 	}
 }
 
+//nolint:paralleltest // changes the process's working directory and PATH
 func TestRequirePNPMNamesTheRepositoryPin(t *testing.T) {
 	inRepoRoot(t)
 	isolatedPath(t)
@@ -80,6 +82,8 @@ func TestRequirePNPMNamesTheRepositoryPin(t *testing.T) {
 }
 
 func TestShebangless(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		content []byte
@@ -99,6 +103,8 @@ func TestShebangless(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			path := filepath.Join(t.TempDir(), "pnpm")
 			require.NoError(t, os.WriteFile(path, tt.content, 0o600))
 
@@ -107,10 +113,13 @@ func TestShebangless(t *testing.T) {
 	}
 
 	t.Run("missing file", func(t *testing.T) {
+		t.Parallel()
+
 		assert.False(t, shebangless(filepath.Join(t.TempDir(), "missing")))
 	})
 }
 
+//nolint:paralleltest // changes the process's working directory and PATH
 func TestPnpmCommand(t *testing.T) {
 	t.Run("runs a native launcher directly", func(t *testing.T) {
 		pnpm := fakeTool(t, isolatedPath(t), "pnpm", "exit 0")
@@ -144,6 +153,7 @@ func TestPnpmCommand(t *testing.T) {
 	})
 }
 
+//nolint:paralleltest // changes the process's working directory and PATH
 func TestRunPNPM(t *testing.T) {
 	t.Run("passes the arguments", func(t *testing.T) {
 		log := fakePNPM(t, "exit 0")
@@ -170,6 +180,7 @@ func TestRunPNPM(t *testing.T) {
 	})
 }
 
+//nolint:paralleltest // changes the process's working directory and PATH
 func TestFrontendInstall(t *testing.T) {
 	t.Run("installs from the lockfile", func(t *testing.T) {
 		dir := inTempDir(t)
@@ -190,6 +201,7 @@ func TestFrontendInstall(t *testing.T) {
 	})
 }
 
+//nolint:paralleltest // changes the process's working directory and PATH
 func TestFrontendBuild(t *testing.T) {
 	t.Run("installs, then builds", func(t *testing.T) {
 		dir := inTempDir(t)
@@ -214,6 +226,7 @@ func TestFrontendBuild(t *testing.T) {
 	})
 }
 
+//nolint:paralleltest // changes the process's working directory
 func TestFrontendGate(t *testing.T) {
 	requireTool(t, "bash")
 
@@ -232,6 +245,7 @@ func TestFrontendGate(t *testing.T) {
 	})
 }
 
+//nolint:paralleltest // changes the process's working directory
 func TestFrontendGateScriptExists(t *testing.T) {
 	inRepoRoot(t)
 

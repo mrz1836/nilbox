@@ -39,6 +39,8 @@ func underlined(body string, d Diagnostic) string {
 }
 
 func TestParseAcceptsGoodPrompts(t *testing.T) {
+	t.Parallel()
+
 	for _, body := range []string{
 		"Review {{.URL}}",
 		"Review {{ .Title }} in {{.Repo}}{{if .IsPR}} on {{.Branch}}{{end}}.",
@@ -51,6 +53,8 @@ func TestParseAcceptsGoodPrompts(t *testing.T) {
 		"\n\nReview {{.URL}}",
 	} {
 		t.Run(body, func(t *testing.T) {
+			t.Parallel()
+
 			tmpl, diags := Parse(body, AppliesToAny)
 			require.NotNil(t, tmpl)
 			assert.Empty(t, diags)
@@ -59,6 +63,8 @@ func TestParseAcceptsGoodPrompts(t *testing.T) {
 }
 
 func TestParseUnknownVariable(t *testing.T) {
+	t.Parallel()
+
 	body := "Fix it\nReview {{.Titel}} now"
 	d := only(t, body, AppliesToAny)
 
@@ -70,6 +76,8 @@ func TestParseUnknownVariable(t *testing.T) {
 }
 
 func TestParseVariableSuggestions(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		body string
 		want string
@@ -84,12 +92,16 @@ func TestParseVariableSuggestions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.body, func(t *testing.T) {
+			t.Parallel()
+
 			assert.Equal(t, tt.want, only(t, tt.body, AppliesToAny).Message)
 		})
 	}
 }
 
 func TestParseRefusesWhatPromptsCannotUse(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name      string
 		body      string
@@ -121,6 +133,8 @@ func TestParseRefusesWhatPromptsCannotUse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			d := only(t, tt.body, AppliesToAny)
 			assert.Equal(t, SeverityError, d.Severity)
 			assert.Contains(t, d.Message, tt.want)
@@ -130,6 +144,8 @@ func TestParseRefusesWhatPromptsCannotUse(t *testing.T) {
 }
 
 func TestParseSyntaxErrors(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name      string
 		body      string
@@ -171,6 +187,8 @@ func TestParseSyntaxErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			tmpl, diags := Parse(tt.body, AppliesToAny)
 			assert.Nil(t, tmpl)
 			require.Len(t, diags, 1, "%+v", diags)
@@ -188,6 +206,8 @@ func TestParseSyntaxErrors(t *testing.T) {
 }
 
 func TestParseRuntimeErrorsArePlaced(t *testing.T) {
+	t.Parallel()
+
 	body := "One\nTwo {{if gt .Title 3}}x{{end}}"
 	d := only(t, body, AppliesToAny)
 
@@ -198,6 +218,8 @@ func TestParseRuntimeErrorsArePlaced(t *testing.T) {
 }
 
 func TestParseFindsErrorsInEveryBranch(t *testing.T) {
+	t.Parallel()
+
 	// Only the flipped sample (an outside contributor) reaches the bad comparison.
 	d := only(t, "Review {{.URL}}{{if .OutsideContributor}}{{if lt .Repo 1}}x{{end}}{{end}}", AppliesToAny)
 	assert.Contains(t, d.Message, "incompatible types")
@@ -208,6 +230,8 @@ func TestParseFindsErrorsInEveryBranch(t *testing.T) {
 }
 
 func TestParseWholePromptProblems(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name      string
 		body      string
@@ -230,6 +254,8 @@ func TestParseWholePromptProblems(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			tmpl, diags := Parse(tt.body, tt.appliesTo)
 			assert.Nil(t, tmpl)
 			require.NotEmpty(t, diags)
@@ -268,6 +294,8 @@ func TestParseReportsAWholePromptProblemOnce(t *testing.T) {
 }
 
 func TestParseStart(t *testing.T) {
+	t.Parallel()
+
 	d := only(t, "\n  \n- do this {{.URL}}", AppliesToAny)
 	assert.Equal(t, SeverityError, d.Severity)
 	assert.Equal(t, Diagnostic{Severity: SeverityError, Line: 3, Column: 1, Length: 1, Message: d.Message}, d)
@@ -298,6 +326,8 @@ func TestParseStart(t *testing.T) {
 }
 
 func TestParseWarnsAboutPullRequestVariablesInIssuePrompts(t *testing.T) {
+	t.Parallel()
+
 	body := "Work on {{.URL}} from {{.Branch}}"
 
 	tmpl, diags := Parse(body, AppliesToIssue)
@@ -312,6 +342,8 @@ func TestParseWarnsAboutPullRequestVariablesInIssuePrompts(t *testing.T) {
 }
 
 func TestParseColumnsCountUTF16(t *testing.T) {
+	t.Parallel()
+
 	// The emoji is two UTF-16 code units, as the editor counts them.
 	d := only(t, "🚀 é {{.Nope}}", AppliesToAny)
 	assert.Equal(t, 1, d.Line)
@@ -320,6 +352,8 @@ func TestParseColumnsCountUTF16(t *testing.T) {
 }
 
 func TestExecute(t *testing.T) {
+	t.Parallel()
+
 	tmpl := mustParse(t, "Review {{.Title}}   \n\n\n\n{{if .Branch}}On {{.Branch}}{{end}}\n\n\n", AppliesToAny)
 
 	out, err := tmpl.Execute(Data{Title: "x"})
@@ -332,6 +366,8 @@ func TestExecute(t *testing.T) {
 }
 
 func TestExecuteRefusesALeadingDash(t *testing.T) {
+	t.Parallel()
+
 	tmpl := mustParse(t, "{{.Title}} needs work", AppliesToAny)
 
 	_, err := tmpl.Execute(Data{Title: "--dangerously-skip-permissions"})
@@ -343,6 +379,8 @@ func TestExecuteRefusesALeadingDash(t *testing.T) {
 }
 
 func TestExecuteCapsTheOutput(t *testing.T) {
+	t.Parallel()
+
 	body := strings.Repeat("{{.Title}}{{.Title}}{{.Title}}{{.Title}}{{.Title}}", 70)
 	tmpl := mustParse(t, "Review "+body, AppliesToAny)
 
@@ -351,6 +389,8 @@ func TestExecuteCapsTheOutput(t *testing.T) {
 }
 
 func TestRenderAddsTheNoticeForOutsideContributors(t *testing.T) {
+	t.Parallel()
+
 	tmpl := mustParse(t, "Review {{.URL}}", AppliesToAny)
 
 	out, err := tmpl.Render(Data{URL: "u", IsPR: true})
@@ -368,6 +408,8 @@ func TestRenderAddsTheNoticeForOutsideContributors(t *testing.T) {
 }
 
 func TestScanActions(t *testing.T) {
+	t.Parallel()
+
 	body := "a {{if .X}} b {{- /* c }} */ -}} {{end}} {{ .Y"
 
 	got := scanActions(body)
@@ -406,6 +448,8 @@ func FuzzParse(f *testing.F) {
 }
 
 func TestPrintfWidthsAreBounded(t *testing.T) {
+	t.Parallel()
+
 	tmpl := mustParse(t, `Review {{printf "%5d|%-3s|%.2f|%%|%x" .Number .Repo 1.5 255}}`, AppliesToAny)
 
 	out, err := tmpl.Execute(Data{Number: 7, Repo: "ab"})
@@ -414,6 +458,8 @@ func TestPrintfWidthsAreBounded(t *testing.T) {
 
 	for _, format := range []string{"%1000d", "%.1000f", "%*d", "%-01000s", "%999999999999999999999d"} {
 		t.Run(format, func(t *testing.T) {
+			t.Parallel()
+
 			_, diags := Parse(`Review {{printf "`+format+`" .Number}}`, AppliesToAny)
 			require.Len(t, diags, 1)
 			assert.Contains(t, diags[0].Message, "printf widths and precisions can be at most 999")
@@ -422,6 +468,8 @@ func TestPrintfWidthsAreBounded(t *testing.T) {
 }
 
 func TestNoticeForSensitiveFiles(t *testing.T) {
+	t.Parallel()
+
 	tmpl := mustParse(t, "Review {{.URL}}", AppliesToAny)
 	files := ".claude/settings.json (Agent config), .github/workflows/ci.yml (Workflows)"
 
@@ -449,6 +497,8 @@ func TestNoticeForSensitiveFiles(t *testing.T) {
 }
 
 func TestSensitiveFilesAreAVariable(t *testing.T) {
+	t.Parallel()
+
 	tmpl := mustParse(t, "{{if .SensitiveFiles}}Start with {{.SensitiveFiles}}.{{else}}Nothing sensitive.{{end}}", AppliesToPR)
 
 	out, err := tmpl.Execute(Data{IsPR: true, SensitiveFiles: "go.mod (Dependencies)\nmore"})
@@ -461,6 +511,8 @@ func TestSensitiveFilesAreAVariable(t *testing.T) {
 }
 
 func TestNoticeForBots(t *testing.T) {
+	t.Parallel()
+
 	tmpl := mustParse(t, "Review {{.URL}}{{if .IsBot}} (a dependency update){{end}}", AppliesToAny)
 
 	out, err := tmpl.Render(Data{URL: "u", IsPR: true, IsBot: true, Author: "dependabot"})
@@ -480,6 +532,8 @@ func TestNoticeForBots(t *testing.T) {
 }
 
 func TestParsePlacesDottedNames(t *testing.T) {
+	t.Parallel()
+
 	for body, want := range map[string]string{
 		"Hi {{.Title.Foo.Bar}}":       ".Title.Foo.Bar",
 		"Hi {{$.Title.Foo}}":          "$.Title.Foo",
@@ -498,6 +552,8 @@ func TestParsePlacesDottedNames(t *testing.T) {
 }
 
 func TestParseRefusesPromptsThatGrowWithoutLimit(t *testing.T) {
+	t.Parallel()
+
 	// Each level makes its text ten times longer; without a cap on every printed value,
 	// a few levels would need gigabytes.
 	level := `{{with printf "%s%s%s%s%s%s%s%s%s%s" . . . . . . . . . .}}`

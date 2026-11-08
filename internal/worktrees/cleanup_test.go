@@ -125,7 +125,7 @@ type linkDeps struct {
 func (e *env) linked(deps linkDeps) *Service {
 	cfg := Config{
 		Settings: fakeSettings{root: cloneRoot, auto: deps.auto},
-		Git:      execpath.Exec{},
+		Git:      e.git,
 		Finder:   execpath.Search{},
 		Home:     e.home,
 		Clock:    testutil.NewClock(listedAt()),
@@ -214,6 +214,8 @@ func launchOf(repo, name string, kind item.Kind, number int) worklog.Launch {
 }
 
 func TestListLinksAndStagesAgentWorktrees(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	repo := e.newGitHubRepo(t, "example-repo")
 	gh := &fakeGitHub{}
@@ -344,6 +346,8 @@ func TestListLinksAndStagesAgentWorktrees(t *testing.T) {
 }
 
 func TestListLinksByLaunchRecord(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	repo := e.newGitHubRepo(t, "example-repo")
 	testutil.RunGit(t, repo, "remote", "add", "upstream", "https://github.com/upstream-org/example-repo.git")
@@ -375,6 +379,8 @@ func TestListLinksByLaunchRecord(t *testing.T) {
 }
 
 func TestListPicksTheRightRemote(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	repo := e.newGitHubRepo(t, "example-repo")
 	testutil.RunGit(t, repo, "remote", "add", "upstream", "https://github.com/upstream-org/example-repo.git")
@@ -408,6 +414,8 @@ func TestListPicksTheRightRemote(t *testing.T) {
 }
 
 func TestListWithoutGitHub(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	repo := e.newGitHubRepo(t, "example-repo")
 	path, head := agentWorktree(t, repo, "pr-1")
@@ -430,6 +438,8 @@ func TestListWithoutGitHub(t *testing.T) {
 }
 
 func TestUnlock(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	repo := e.newRepo(t, "example-repo")
 	alive := os.Getpid()
@@ -462,6 +472,8 @@ func TestUnlock(t *testing.T) {
 }
 
 func TestCleanUpRemovesAFinishedWorktreeAndItsBranch(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	repo := e.newGitHubRepo(t, "example-repo")
 	path, head := agentWorktree(t, repo, "pr-184")
@@ -489,6 +501,8 @@ func TestCleanUpRemovesAFinishedWorktreeAndItsBranch(t *testing.T) {
 }
 
 func TestCleanUpKeepsABranchThatIsNotItsOwn(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	repo := e.newGitHubRepo(t, "example-repo")
 	path := addWorktree(t, repo, filepath.Join(repo, ".claude", "worktrees", "pr-5"), "feat/five")
@@ -506,6 +520,8 @@ func TestCleanUpKeepsABranchThatIsNotItsOwn(t *testing.T) {
 }
 
 func TestCleanUpRefusesWhatIsNotFinished(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	repo := e.newGitHubRepo(t, "example-repo")
 	alive := os.Getpid()
@@ -538,6 +554,20 @@ func TestCleanUpRefusesWhatIsNotFinished(t *testing.T) {
 
 	svc := e.linked(linkDeps{gh: gh, procs: fakeProcesses{alive: {state: livenessAlive}}})
 
+	_, err := svc.CleanUp(t.Context(), repo, repo)
+	require.ErrorIs(t, err, ErrMainWorktree)
+
+	_, err = svc.CleanUp(t.Context(), repo, filepath.Join(e.home, "nowhere"))
+	require.ErrorIs(t, err, ErrNotAWorktree)
+
+	_, err = svc.CleanUp(t.Context(), e.home, open)
+	require.ErrorIs(t, err, ErrOutsideCloneRoot)
+
+	offline := e.linked(linkDeps{gh: &fakeGitHub{err: errFakeGitHub}, procs: fakeProcesses{alive: {state: livenessAlive}}})
+
+	_, err = offline.CleanUp(t.Context(), repo, open)
+	require.ErrorIs(t, err, ErrGitHubUnavailable)
+
 	tests := []struct {
 		name string
 		path string
@@ -553,37 +583,37 @@ func TestCleanUpRefusesWhatIsNotFinished(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			_, err := svc.CleanUp(t.Context(), repo, tt.path)
 			require.ErrorIs(t, err, ErrNotFinished)
 			assert.Contains(t, err.Error(), tt.want)
 			assert.Contains(t, gitWorktreePaths(t, repo), resolvedPath(tt.path), "nothing is removed")
 		})
 	}
-
-	_, err := svc.CleanUp(t.Context(), repo, repo)
-	require.ErrorIs(t, err, ErrMainWorktree)
-
-	_, err = svc.CleanUp(t.Context(), repo, filepath.Join(e.home, "nowhere"))
-	require.ErrorIs(t, err, ErrNotAWorktree)
-
-	_, err = svc.CleanUp(t.Context(), e.home, open)
-	require.ErrorIs(t, err, ErrOutsideCloneRoot)
-
-	gh.err = errFakeGitHub
-
-	_, err = svc.CleanUp(t.Context(), repo, open)
-	require.ErrorIs(t, err, ErrGitHubUnavailable)
 }
 
 func TestCleanUpRowChecksAgainBeforeEachStep(t *testing.T) {
-	e := newEnv(t)
-	repo := e.newGitHubRepo(t, "example-repo")
-	svc := e.linked(linkDeps{})
+	t.Parallel()
 
-	g, err := svc.git()
-	require.NoError(t, err)
+	// Each case changes its repository, so each gets a clone root of its own.
+	setup := func(t *testing.T) (*env, string, *Service, git) {
+		t.Helper()
+
+		e := newEnv(t)
+		repo := e.newGitHubRepo(t, "example-repo")
+		svc := e.linked(linkDeps{})
+
+		g, err := svc.git()
+		require.NoError(t, err)
+
+		return e, repo, svc, g
+	}
 
 	t.Run("a worktree whose commit moved is kept", func(t *testing.T) {
+		t.Parallel()
+
+		_, repo, svc, g := setup(t)
 		path, head := agentWorktree(t, repo, "pr-1")
 		res := svc.cleanUpRow(t.Context(), g, repo, Worktree{Path: path, DisplayPath: "pr-1", Head: head + "x"}, false)
 		assert.False(t, res.Removed)
@@ -592,6 +622,9 @@ func TestCleanUpRowChecksAgainBeforeEachStep(t *testing.T) {
 	})
 
 	t.Run("a lock that changed is kept", func(t *testing.T) {
+		t.Parallel()
+
+		e, repo, svc, g := setup(t)
 		path, head := agentWorktree(t, repo, "pr-2")
 		lock(t, repo, path, "claude session pr-2 (pid 999998)")
 
@@ -604,6 +637,9 @@ func TestCleanUpRowChecksAgainBeforeEachStep(t *testing.T) {
 	})
 
 	t.Run("its own branch goes with it", func(t *testing.T) {
+		t.Parallel()
+
+		_, repo, svc, g := setup(t)
 		path, head := agentWorktree(t, repo, "pr-3")
 		res := svc.cleanUpRow(t.Context(), g, repo, Worktree{
 			Path: path, Head: head, Branch: "worktree-pr-3", OwnBranch: true,
@@ -615,6 +651,9 @@ func TestCleanUpRowChecksAgainBeforeEachStep(t *testing.T) {
 	})
 
 	t.Run("a branch checked out or moved is kept", func(t *testing.T) {
+		t.Parallel()
+
+		_, repo, svc, g := setup(t)
 		other, otherHead := agentWorktree(t, repo, "pr-4")
 		require.ErrorIs(t, svc.deleteOwnBranch(t.Context(), g, repo, "worktree-pr-4", otherHead), ErrBranchInUse)
 
@@ -635,6 +674,9 @@ func TestCleanUpRowChecksAgainBeforeEachStep(t *testing.T) {
 	})
 
 	t.Run("a removed worktree whose branch git keeps says why", func(t *testing.T) {
+		t.Parallel()
+
+		_, repo, svc, g := setup(t)
 		path, head := agentWorktree(t, repo, "pr-5")
 		res := svc.cleanUpRow(t.Context(), g, repo, Worktree{Path: path, Head: head, Branch: "worktree-pr-5x", OwnBranch: true}, false)
 		assert.True(t, res.Removed)
@@ -644,6 +686,8 @@ func TestCleanUpRowChecksAgainBeforeEachStep(t *testing.T) {
 }
 
 func TestCleanUpFinished(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	alpha := e.newGitHubRepo(t, "alpha")
 	beta := e.newGitHubRepo(t, "beta")

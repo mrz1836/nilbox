@@ -34,6 +34,8 @@ func (failingHistory) RecentCleanups(context.Context, int) ([]worklog.Cleanup, e
 func (failingHistory) ClearCleanups(context.Context) error { return errFakeHistory }
 
 func TestCleanUpsAreRecorded(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	repo := e.newGitHubRepo(t, "example-repo")
 	history := openHistory(t)
@@ -99,12 +101,16 @@ func TestCleanUpsAreRecorded(t *testing.T) {
 }
 
 func TestCleanupOfAnUnlinkedRecord(t *testing.T) {
+	t.Parallel()
+
 	c := cleanupOf(worklog.Cleanup{ID: 3, Repo: "example-repo", Worktree: "scratch"})
 	assert.Nil(t, c.Item, "a record without an item has none")
 	assert.Equal(t, "scratch", c.Worktree)
 }
 
 func TestHistoryFailuresAndAbsence(t *testing.T) {
+	t.Parallel()
+
 	e := newEnv(t)
 	repo := e.newGitHubRepo(t, "example-repo")
 	path, head := agentWorktree(t, repo, "pr-1")
