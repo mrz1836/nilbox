@@ -146,7 +146,7 @@ touches GitHub.
   │  └───────────────▲──────────────┘                                       │
   │                  │                                                      │
   └──────────────────┼──────────────────────────────────────────────────────┘
-                     │  read-only GraphQL + REST
+                     │  GraphQL + REST reads, and the edits you ask for
                      │  your gh CLI token, held in memory
             ┌────────┴─────────┐
             │  api.github.com  │
@@ -225,7 +225,9 @@ Account** shows whether projects are on.
 
 The **Inbox** tab shows three lists: **Review requested**, **Authored**, and **Assigned**, drawn
 from every repository your account can see and refreshed every five minutes. **Snooze** an item
-(3 days by default), **dismiss** it, or **pin** it to the top.
+(3 days by default), **dismiss** it, or **pin** it to the top. Each card's **⋯** menu gathers
+those, opens or copies the item's link, and, when you're assigned or asked to review, takes you
+off it on GitHub.
 
 <br>
 
@@ -264,6 +266,7 @@ merges or the issue closes.
 - **Cards that answer "is it ready?"** — checks, reviews, comments, size grade, labels, and Draft and Conflicts tags
 - **Issue projects** — each issue's GitHub project, its status and priority and size there, and its sub-issue progress, one click from the board, plus a status sort in your own order
 - **Local triage** — snooze, dismiss, or pin; wake rules end a snooze early when something changes
+- **Edits when you ask** — take yourself off an item's assignees or a pull request's reviewers from the card's menu, paced within your API budget
 - **One-click agent launch** — Claude Code in iTerm2 or Terminal.app, in the right clone and its own worktree
 - **Profiles per repo or org** — every `~/.claude-<name>` config directory is a profile, so each repo launches on its own account
 - **Prompt library** — Go templates with highlighting, autocomplete, error checking, and a live preview
@@ -320,6 +323,29 @@ More in [Inbox cards](docs/desktop.md#inbox-cards) and [Issue projects](docs/des
 - Snoozes, dismissals, and pins live in the local database. GitHub never hears about them.
 
 More in [Snooze, dismiss, and pin](docs/desktop.md#snooze-dismiss-and-pin).
+
+</details>
+
+<details>
+<summary><strong><code>The item menu and edits on GitHub</code></strong></summary>
+<br/>
+
+- **One menu per card:** the **⋯** beside the triage buttons opens the item on GitHub, copies its
+  link, gathers the triage actions under **Inbox actions** (with a submenu of snooze lengths), and
+  holds the edits below. The hover buttons stay for one-click triage, and the menu works from the
+  keyboard like any Mac menu.
+- **Unassign me** takes you off an item assigned to you, and **Remove me as reviewer** takes back
+  a pull request's request for your review. A request made only to a team says so instead, since
+  GitHub removes a team's request for every member or none.
+- **Checked, then shown:** each edit is one REST request, and the card changes only once GitHub's
+  answer confirms it. The item stays out of that list while GitHub's search catches up.
+- **Your account only:** an edit goes out only with the token of the account whose inbox you
+  see, so a `gh auth switch` never sends one for the wrong person.
+- **Within your budget:** edits are counted in the API budget, paced well under GitHub's limits
+  on writes (30 a minute, 200 an hour), held while REST is down to its last hundredth, and paused
+  as long as GitHub asks.
+
+More in [The item menu and edits on GitHub](docs/desktop.md#the-item-menu-and-edits-on-github).
 
 </details>
 
@@ -440,8 +466,8 @@ More in [Menu bar and notifications](docs/desktop.md#menu-bar-and-notifications)
   left (GraphQL, REST core, or search), since every tool on your machine shares them. It updates
   with every GitHub response the app gets, at no extra cost, and the open panel re-reads the
   budgets every 30 seconds for free. Click it for each budget's remaining points, its reset time,
-  how much Nilbox spent versus everything else signed in as you, and what a refresh costs for
-  the items you track. The counts survive a restart.
+  how much Nilbox spent versus everything else signed in as you, what a refresh costs for the
+  items you track, and the edits it made for you in the last hour. The counts survive a restart.
 - **Themes:** follow the system, or pin Light or Dark. The native window frame and menus follow.
 - **Settings** covers your account, appearance, notifications, snoozing, launching, profiles,
   repositories, trust, and sensitive files.
@@ -484,8 +510,9 @@ More in [The window](docs/desktop.md#the-window).
 <br>
 
 > **Your data stays on your Mac.** Nilbox talks only to GitHub: `api.github.com`, and
-> `avatars.githubusercontent.com` once for your profile picture. It only reads from GitHub, and your
-> preferences, triage state, and cache never leave your machine.
+> `avatars.githubusercontent.com` once for your profile picture. It reads from GitHub, and changes
+> something there only when you ask it to take you off an item. Your preferences, triage state, and
+> cache never leave your machine.
 
 <br/>
 
