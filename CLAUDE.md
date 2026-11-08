@@ -36,7 +36,7 @@ magex format:fix
 magex lint
 magex test:race
 go-pre-commit run --all-files
-magex frontend:gate   # the frontend gate; CI runs the same script
+magex frontend:gate   # format, lint, typecheck, tests, compiled render check; CI runs it too
 magex db:check        # the generated queries are current and every query prepares; CI runs it too
 ```
 
@@ -95,7 +95,8 @@ lost, so keep project rules in this file and project CI and tooling settings in
   `.github/tech-conventions/`, `.github/ISSUE_TEMPLATE/`, `.github/docs/`, and `.vscode/`
 - `.github/env/`, except `20-guardian.env`, `90-project.env`, and `99-local.env`
 
-Files the shared source doesn't have, such as `.github/workflows/frontend.yml`, are left alone.
+Files the shared source doesn't have, such as `.github/workflows/frontend.yml` and
+`.github/workflows/sqlc.yml`, are left alone.
 
 Settings → About's **Report a bug** opens `.github/ISSUE_TEMPLATE/bug_report.yml` and fills in its
 `environment` field. The form is synced, so if a sync renames that field, the button stops filling
@@ -119,30 +120,44 @@ app:lint` reads.
 - `build/` holds that generated artwork and `build/appicon.svg.sha256`, the stamp of which
   artwork the icons were rendered from. `build/darwin/` holds the bundle's generated
   `Info.plist` and the rendered icon set, `icons.icns`.
-- `internal/core/` assembles the app; the other `internal/*` packages are the services it binds
-  (inbox, launcher, prompts, launch defaults, settings, profiles, worktrees, notifications) and
-  their building blocks, `internal/menubar` among them. All of them are plain Go, built and
-  tested on Linux without CGO.
+- `internal/core/` assembles the app and builds every service the window binds: settings,
+  profiles, prompts, launch defaults, inbox, launcher, worktrees, notifications, and app info.
+  Every `internal/*` package is plain Go, built and tested on Linux without CGO.
+- Services share their building blocks rather than keep copies: `internal/repo` and
+  `internal/item` name repositories, pull requests and issues, and their worktrees;
+  `internal/agent` knows the coding tools and checks the options a launch passes them;
+  `internal/execpath` finds and runs external programs (`Finder`, `Runner`); and
+  `internal/clock`, `internal/periodic`, `internal/flight`, `internal/paths`, and
+  `internal/textutil` hold the clock, the interval runner, one call per key at a time, `~`
+  paths, and text helpers. `internal/testutil` holds the fakes and fixtures the test suites
+  share (a fresh database, an isolated git, a runner, finder, clock, event sink, and log);
+  only tests may import it.
 - `internal/event/` holds the app's events, one Go type each with its name; services emit them
   into the one `event.Sink` they are given. `internal/desktop/` is the shell's logic: it hears
-  those events, keeps the menu bar current, runs the scheduler and the sweeper as tracked
-  work, and shuts down in order (timers, then the work, then the database). It declares small
-  interfaces that the Wails glue in `cmd/nilbox` implements, and imports no Wails. A window
-  event is registered in `main_desktop.go` with `application.RegisterEvent`, which generates
-  its TypeScript type and name in `frontend/bindings`; a repository test checks that every
-  window event is registered.
+  those events, keeps the menu bar current with what `internal/menubar` works out, runs the
+  scheduler and the sweeper as tracked work, and shuts down in order (timers, then the work,
+  then the database). It declares small interfaces that the Wails glue in `cmd/nilbox`
+  implements, and imports no Wails. A window event is registered in `main_desktop.go` with
+  `application.RegisterEvent`, which generates its TypeScript type and name in
+  `frontend/bindings`; a repository test checks that every window event is registered.
 - When a service needs another, prefer a narrow interface or value type declared where it is
   used (the launcher's `ItemStore` and `LaunchSettings`, the worktree service's
-  `SweepSettings` and `GitHub`) over importing the other service; `internal/core` adapts the
-  real services to them. The repoguard boundary test (`internal/repoguard/deps_test.go`)
-  keeps the cuts it lists.
+  `SweepSettings` and `GitHub`) over importing the other service; `internal/core/adapters.go`
+  adapts the real services to them. The repoguard boundary test
+  (`internal/repoguard/deps_test.go`) keeps the cuts it lists.
 - `internal/launcher/` plans a launch and writes its files; `internal/launcher/terminal/`
   renders the launch script and opens it in the user's terminal app, one driver per terminal
-  and OS.
+  and OS. `internal/worklog` records the worktrees launches start and the cleanups that
+  remove them, which the worktrees service reads.
 - `internal/measure/` and `magefiles/measure.go` take the numbers in
   [`docs/performance.md`](docs/performance.md).
 - `frontend/` is the React + TypeScript + Vite + Tailwind app. It reaches Go only through the
   generated bindings in `frontend/bindings/`, funneled through `frontend/src/platform/`.
+  The React Compiler memoizes the build, so components hold no hand-written `useMemo` or
+  `useCallback`, and the gate's render check (`pnpm test:renders`) profiles the compiled
+  inbox. Tests stand in for Go only with the shared fake in `frontend/src/test/platform.tsx`.
+  Theme colors come from the `--color-*` tokens `internal/brandgen` writes to
+  `frontend/src/generated/theme.css`.
 - The bound API's shapes: a closed set of string values is a named Go string type with
   constants (`item.Kind`, `settings.Theme`, `sensitive.Scope`, ...), which `magex
   app:bindings` writes as a TypeScript union of its values plus a const object of the same

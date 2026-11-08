@@ -57,6 +57,8 @@ pins.
 | `magex app:open` | Opens `bin/Nilbox.app` as it is, building it first when it is missing; a running copy is only brought to the front |
 | `magex app:run` | Builds `bin/Nilbox.app`, quits the copy already running, and opens the fresh build: the one command after a change |
 | `magex app:check` | Runs `app:bindingsCheck`, `app:lint`, and `app:build` |
+| `magex db:generate` | Regenerates each table owner's typed queries from its `queries/*.sql` and the migrations, with the sqlc version `.github/env/90-project.env` pins |
+| `magex db:check` | Fails when the generated queries are stale or a query does not prepare against the schema the migrations build |
 | `magex measure:startup` | Startup to the first frame on screen, over six launches |
 | `magex measure:refresh` | Five live, read-only inbox refreshes and the API budget they imply |
 | `magex measure:launch` | One real launch in iTerm2, timed until the agent runs in the clone |
@@ -70,12 +72,13 @@ cd ~/projects/nilbox
 magex app:run
 ```
 
-Before opening a pull request, run the Go gate, then the frontend gate, then (on a Mac) the
-desktop checks:
+Before opening a pull request, run the Go gate, then the frontend gate and the query check,
+then (on a Mac) the desktop checks:
 
 ```bash
 magex format:fix && magex lint && magex test:race && go-pre-commit run --all-files
 magex frontend:gate
+magex db:check
 magex app:check
 ```
 
@@ -132,8 +135,9 @@ and it sits behind the `desktop` build tag:
   assembly and icon rendering steps too. On a Mac, the same tests also run `app:open`,
   `app:run`, and `app:check` end to end against those fakes.
 
-CI runs the fortress workflows on ubuntu for the Go code, and `.github/workflows/frontend.yml`
-on ubuntu for the frontend gate. No macOS runner is used, so `magex app:check` is a local step.
+CI runs the fortress workflows on ubuntu for the Go code, `.github/workflows/frontend.yml` for
+the frontend gate, and `.github/workflows/sqlc.yml` for `magex db:check`. No macOS runner is
+used, so `magex app:check` is a local step.
 
 <br>
 
