@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -390,7 +391,9 @@ func TestConcurrentWritersNeverSplitARecord(t *testing.T) {
 
 	dir := t.TempDir()
 
-	// About 45 KB of records over 20 KB files rotates twice, so every record is kept.
+	// The 400 records come to 40–45 KB, depending on how long the local time zone makes
+	// each timestamp. Over 20 KB files that rotates once or twice: always at least once,
+	// and never so often that a record falls out of the kept files.
 	logger, closer := newLogger(&bytes.Buffer{}, dir, slog.LevelInfo, 20<<10)
 
 	var wg sync.WaitGroup
@@ -408,18 +411,35 @@ func TestConcurrentWritersNeverSplitARecord(t *testing.T) {
 
 	seen := map[string]bool{}
 
+	for _, rec := range keptRecords(t, dir) {
+		seen[fmt.Sprint(rec["writer"], "/", rec["n"])] = true
+	}
+
+	assert.Len(t, seen, writers*each)
+}
+
+// keptRecords reads the records in every kept log file in dir, newest file first. The
+// current file and the first rotated one must exist; an older one is read when there is
+// one.
+func keptRecords(t *testing.T, dir string) []map[string]any {
+	t.Helper()
+
+	var out []map[string]any
+
 	for i := range KeptFiles {
 		name := filepath.Join(dir, FileName)
 		if i > 0 {
 			name += fmt.Sprintf(".%d", i)
 		}
 
-		for _, rec := range records(t, name) {
-			seen[fmt.Sprint(rec["writer"], "/", rec["n"])] = true
+		if _, err := os.Stat(name); i > 1 && errors.Is(err, fs.ErrNotExist) {
+			continue
 		}
+
+		out = append(out, records(t, name)...)
 	}
 
-	assert.Len(t, seen, writers*each)
+	return out
 }
 
 func TestOr(t *testing.T) {
