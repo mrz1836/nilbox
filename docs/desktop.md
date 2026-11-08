@@ -154,8 +154,10 @@ and readable only by you:
 
 The database is `nilbox.db` (SQLite, WAL mode). Before a schema migration changes an existing
 database, a copy of it is saved next to it, and the three newest copies are kept. Beside it,
-`prompts.json` holds a copy of your prompt library in plain JSON, rewritten after every change
-to it (see [Keeping your prompts](#keeping-your-prompts)). GitHub tokens are never
+`prompts.json` and `launch-defaults.json` hold copies of your prompt library and your launch
+defaults in plain JSON, each rewritten after every change (see
+[Keeping your prompts](#keeping-your-prompts)). Agent profiles need no copy: they are found in
+your home directory on every start. GitHub tokens are never
 stored there, nor anywhere else: the app borrows the token from `gh auth token` and keeps it in
 memory only. It reuses the token for up to ten minutes, and asks `gh` again sooner when GitHub
 refuses it or `gh`'s account changes (`gh auth switch`, `login`, or `logout`).
@@ -173,8 +175,9 @@ GitHub token.
 If the database can't be read at startup, because the file is damaged, isn't a database, or
 wasn't set up by this app's migrations, the app renames it (with its `-wal` and `-shm` files)
 to `nilbox.db.broken-<UTC time>`, starts with an empty database, and says so in the window.
-Your prompts come back on their own: they are read out of the database set aside, or from
-`prompts.json` when that fails, before the starters are added. The set-aside file is kept
+Your prompts and launch defaults come back on their own: they are read out of the database
+set aside, or from `prompts.json` and `launch-defaults.json` when that fails, before the
+starters are added. The set-aside file is kept
 until you delete it, and **Restore from a backup** on the Prompts page can read it again. A
 database saved by a newer version of the app is left as it is: a dialog asks you to update,
 and the app quits. A database another process has open, such as an older copy of the app
@@ -600,6 +603,14 @@ them in more than one place and brings them back on its own when it can.
   it is missing or the library was just brought back. A database that came back without its
   prompts, for whatever reason, can't replace the copy that still has them. Only a change you
   make rewrites it.
+- **Launch defaults come back with them.** Your org and repository
+  [launch defaults](#launch-defaults) are kept the same way, in `launch-defaults.json`, and
+  come back from the same place as the prompts, still pointing at the right prompts even
+  though restored prompts are stored anew. The copy names prompts by nickname and is rewritten
+  whenever you change a launch default or a prompt, so renaming a prompt never breaks it. A
+  default whose profile isn't on this Mac yet keeps it: the launch menu warns that it is
+  missing, and it works again once the profile is back. Agent profiles themselves need no
+  copy: they are found in your home directory on every start.
 
 **Export and import.** The library menu (**⋯** beside **New**) holds **Export all prompts…**,
 **Import from a file…**, and **Restore from a backup…**; a prompt's own **⋯** menu holds

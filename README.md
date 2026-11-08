@@ -188,9 +188,9 @@ Wails CLI is never installed: the build runs it with `go run` at the version `go
   swaps your profile picture for your initial.
 - **Data:** everything lives in `~/Library/Application Support/Nilbox`, readable only by you. The
   database is `nilbox.db` (SQLite, WAL mode), and a copy is saved before each schema migration
-  (the three newest are kept). Your prompts are also kept in `prompts.json` beside it, rewritten
-  after every change, so they survive an update or a damaged database. GitHub tokens are never
-  stored there or anywhere else.
+  (the three newest are kept). Your prompts and launch defaults are also kept in `prompts.json`
+  and `launch-defaults.json` beside it, rewritten after every change, so they survive an update
+  or a damaged database. GitHub tokens are never stored there or anywhere else.
 
 Full setup and every build target: [docs/desktop.md](docs/desktop.md#build-targets).
 

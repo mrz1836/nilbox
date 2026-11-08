@@ -229,12 +229,16 @@ package imports the driver, and nothing imports an ORM (`internal/repoguard` enf
   place, and `Opened.Reset` reaches the window as a notice. A database from a newer build is
   refused with `store.ErrNewerSchema` and left untouched. Any other failure (a lock, a
   permission, a full disk, a failed migration) is a plain error, and nothing is moved.
-- **Prompts outlive the database.** The user's prompts are the one thing GitHub can't give back.
-  `prompts.LibraryFile` rewrites `prompts.json` beside the database after every change to the
-  library. At startup, when the library is new, `prompts.Restore` brings it back before `Seed`
-  runs: from the database set aside, or else from `prompts.json`. Core writes `prompts.json`
-  at startup only when it is missing or the library was just restored, so a loss in the
-  database never overwrites the copy. `store.OpenSnapshot` reads a kept database of any
+- **Prompts and launch defaults outlive the database.** They are what the user made, which
+  GitHub can't give back. `prompts.LibraryFile` rewrites `prompts.json` beside the database
+  after every change to the library, and `launchdefaults.File` rewrites
+  `launch-defaults.json` after every change to the launch defaults or the library, since it
+  names prompts by nickname. At startup, when the library is new, `prompts.Restore` brings it
+  back before `Seed` runs, from the database set aside or else from `prompts.json`, and core
+  (`internal/core/kept.go`) restores the launch defaults from the same place, matched to the
+  restored prompts. Core writes each copy at startup only when it is missing or the data was
+  just restored, so a loss in the database never overwrites a copy. Agent profiles need no
+  copy: discovery finds them on every start, and nothing in the app edits one. `store.OpenSnapshot` reads a kept database of any
   schema, read-only and tolerant of missing columns, for the restore and for **Restore from a
   backup**. Import and restore go through one planner (`internal/prompts/importer.go`), which
   never changes a prompt the user wrote or edited, and checks every imported setting the way
