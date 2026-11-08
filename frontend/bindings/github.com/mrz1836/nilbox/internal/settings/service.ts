@@ -109,6 +109,14 @@ export function SetNotificationBanner(kind: notifyprefs$0.Kind, on: boolean): $C
 }
 
 /**
+ * SetProjectsTipDismissed stores whether the inbox's tip about showing issue projects is
+ * put away, and returns the settings with it.
+ */
+export function SetProjectsTipDismissed(dismissed: boolean): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(407794393, dismissed);
+}
+
+/**
  * SetSectionCollapsed stores whether an inbox section is collapsed, so the inbox opens the
  * same way at the next launch, and returns the settings with it.
  */

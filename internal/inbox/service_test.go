@@ -86,6 +86,15 @@ type fakeClient struct {
 	detailsIDs  [][]string
 	itemIDs     []string
 
+	// projects holds each issue's projects by node ID, answered only when a request asks
+	// for them. refuseProjects answers such a request as the real client does once GitHub
+	// refused them for want of a scope: without them, saying so. detailsOpts and itemOpts
+	// record what each request asked for.
+	projects       map[string][]github.ProjectItem
+	refuseProjects bool
+	detailsOpts    []github.DetailOptions
+	itemOpts       []github.DetailOptions
+
 	// files holds each pull request's changed files by "owner/name#number"; its Head is
 	// also what FetchPullHead reports. filesErr fails every file and head request.
 	files     map[string]*github.ChangedFiles
@@ -125,8 +134,11 @@ func (c *fakeClient) FetchRateLimits(_ context.Context, tok github.Token) (*gith
 	return c.limits, github.Redact(c.limitsErr, tok)
 }
 
-// FetchDetails answers with the canned details of the IDs asked for, as one request.
-func (c *fakeClient) FetchDetails(_ context.Context, tok github.Token, ids []string) (*github.Details, error) {
+// FetchDetails answers with the canned details of the IDs asked for, as one request, with
+// their canned projects when opts asks for them.
+func (c *fakeClient) FetchDetails(
+	_ context.Context, tok github.Token, ids []string, opts github.DetailOptions,
+) (*github.Details, error) {
 	if c.inboxGate != nil {
 		c.gateOpened.Do(func() { close(c.inboxGate) })
 	}
@@ -136,18 +148,23 @@ func (c *fakeClient) FetchDetails(_ context.Context, tok github.Token, ids []str
 
 	c.gotTokens = append(c.gotTokens, tok.Reveal())
 	c.detailsIDs = append(c.detailsIDs, ids)
+	c.detailsOpts = append(c.detailsOpts, opts)
 
 	if c.detailsErr != nil {
 		return nil, github.Redact(c.detailsErr, tok)
 	}
 
-	out := &github.Details{Items: map[string]github.ItemDetails{}, RateLimit: c.detailsRate}
+	out := &github.Details{
+		Items: map[string]github.ItemDetails{}, RateLimit: c.detailsRate,
+		ProjectsRefused: opts.Projects && c.refuseProjects,
+	}
 	if len(ids) > 0 {
 		out.Requests = 1
 	}
 
 	for _, id := range ids {
 		if d, ok := c.details[id]; ok {
+			d.Projects = c.projectsOf(id, opts)
 			out.Items[id] = d
 		}
 	}
@@ -155,23 +172,37 @@ func (c *fakeClient) FetchDetails(_ context.Context, tok github.Token, ids []str
 	return out, nil
 }
 
-// FetchItem answers with the canned update for the ID, or with one that did not find it.
-func (c *fakeClient) FetchItem(_ context.Context, tok github.Token, id string) (*github.ItemUpdate, error) {
+// FetchItem answers with the canned update for the ID, with its canned projects when
+// opts asks for them, or with one that did not find it.
+func (c *fakeClient) FetchItem(
+	_ context.Context, tok github.Token, id string, opts github.DetailOptions,
+) (*github.ItemUpdate, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	c.gotTokens = append(c.gotTokens, tok.Reveal())
 	c.itemIDs = append(c.itemIDs, id)
+	c.itemOpts = append(c.itemOpts, opts)
 
 	if c.itemErr != nil {
 		return nil, github.Redact(c.itemErr, tok)
 	}
 
-	if update, ok := c.items[id]; ok {
+	update, ok := c.items[id]
+	if !ok {
+		return &github.ItemUpdate{}, nil
+	}
+
+	// A canned nil is an answer with nothing in it.
+	if update == nil {
 		return update, nil
 	}
 
-	return &github.ItemUpdate{}, nil
+	answer := *update
+	answer.Details.Projects = c.projectsOf(id, opts)
+	answer.ProjectsRefused = opts.Projects && c.refuseProjects
+
+	return &answer, nil
 }
 
 // FetchPullHead answers with the head of the canned files.
@@ -223,6 +254,16 @@ func (c *fakeClient) FetchAvatar(_ context.Context, url string) (*github.Avatar,
 	c.avatarURLs = append(c.avatarURLs, url)
 
 	return c.avatar, c.avatarErr
+}
+
+// projectsOf returns the canned projects of the item with id when opts asks for them and
+// they are not refused. The caller holds mu.
+func (c *fakeClient) projectsOf(id string, opts github.DetailOptions) []github.ProjectItem {
+	if !opts.Projects || c.refuseProjects {
+		return nil
+	}
+
+	return c.projects[id]
 }
 
 // harness is a Service over a temp database with fakes for everything else.
@@ -1130,6 +1171,7 @@ func TestRefreshStoresEachItemsDetails(t *testing.T) {
 
 	assert.Equal(t, &Details{
 		Labels:       []Label{{Name: "enhancement", Color: "#a2eeef"}},
+		Projects:     []Project{},
 		Comments:     4,
 		Additions:    120,
 		Deletions:    30,
@@ -1144,6 +1186,7 @@ func TestRefreshStoresEachItemsDetails(t *testing.T) {
 
 	assert.Equal(t, &Details{
 		Labels:    []Label{{Name: "bug", Color: "#d73a4a"}},
+		Projects:  []Project{},
 		Comments:  7,
 		FetchedAt: "2026-01-10T12:00:00Z",
 	}, itemByNumber(t, snap.Assigned, 3).Details)

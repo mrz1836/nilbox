@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   settings: { SetWindowSize: vi.fn() },
   events: { On: vi.fn<(name: string, callback: (event: { data: unknown }) => void) => () => void>() },
   browser: { OpenURL: vi.fn() },
+  clipboard: { SetText: vi.fn() },
   window: { SetSize: vi.fn() },
   dialogs: { OpenFile: vi.fn(), SaveFile: vi.fn() },
 }))
@@ -19,6 +20,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@wailsio/runtime', () => ({
   Events: mocks.events,
   Browser: mocks.browser,
+  Clipboard: mocks.clipboard,
   Window: mocks.window,
   Dialogs: mocks.dialogs,
   Create: { Events: {} },
@@ -71,6 +73,23 @@ describe('openExternal', () => {
     await vi.waitFor(() => {
       expect(logged).toHaveBeenCalledExactlyOnceWith(`could not open ${url} in the browser`, failure)
     })
+  })
+})
+
+describe('copyText', () => {
+  it('puts the text on the clipboard', async () => {
+    mocks.clipboard.SetText.mockResolvedValue(undefined)
+
+    await platform.copyText('gh auth refresh -s read:project')
+
+    expect(mocks.clipboard.SetText).toHaveBeenCalledExactlyOnceWith('gh auth refresh -s read:project')
+  })
+
+  it('rejects when the clipboard refuses the text', async () => {
+    const failure = new Error('no clipboard')
+    mocks.clipboard.SetText.mockRejectedValue(failure)
+
+    await expect(platform.copyText('gh auth refresh -s read:project')).rejects.toBe(failure)
   })
 })
 

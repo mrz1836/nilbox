@@ -150,6 +150,10 @@ type Settings struct {
 	// CollapsedSections lists the inbox sections the user collapsed, in the order the
 	// inbox shows them.
 	CollapsedSections []ListKey `json:"collapsedSections"`
+
+	// ProjectsTipDismissed is set once the user puts away the inbox's tip about showing
+	// the GitHub projects an issue is in.
+	ProjectsTipDismissed bool `json:"projectsTipDismissed"`
 }
 
 // ProfileLookup finds a stored profile by name, or returns profiles.ErrProfileNotFound.
@@ -418,6 +422,8 @@ func fromStored(stored map[string]string) Settings {
 		BannersOff:          notifyprefs.DecodeBannersOff(stored[notifyprefs.KeyBannersOff]),
 		Theme:               decodeTheme(stored[KeyTheme]),
 		CollapsedSections:   decodeCollapsed(stored),
+
+		ProjectsTipDismissed: decodeProjectsTipDismissed(stored[KeyProjectsTipDismissed]),
 	}
 
 	if v := stored[KeyDefaultProfile]; v != "" {
@@ -515,5 +521,6 @@ func settingKeys() []string {
 		KeySnoozeDays, KeyWindowSize,
 		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, KeyTheme,
+		KeyProjectsTipDismissed,
 	}, collapsedKeys()...)
 }

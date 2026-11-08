@@ -417,3 +417,13 @@ export function HistoryIcon(props: IconProps) {
     </Icon>
   )
 }
+
+// ProjectIcon stands for a GitHub project: a board with columns of cards.
+export function ProjectIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="3.5" y="3.5" width="17" height="17" rx="2.5" />
+      <path d="M8 7.5v9M12 7.5v5M16 7.5v7" />
+    </Icon>
+  )
+}

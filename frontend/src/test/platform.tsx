@@ -138,6 +138,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     setTheme: (theme) => stored({ theme }),
     getCollapsedSections: () => Promise.resolve([]),
     setSectionCollapsed: (section, collapsed) => stored({ collapsedSections: collapsed ? [section] : [] }),
+    setProjectsTipDismissed: (projectsTipDismissed) => stored({ projectsTipDismissed }),
     setWindowSize: (windowSize) => stored({ windowSize }),
 
     listWorktrees: () => Promise.resolve(worktreesSnapshot()),
@@ -160,6 +161,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     sendTestNotification: done,
 
     openExternal: () => undefined,
+    copyText: done,
     on: subscribe,
   }
 }

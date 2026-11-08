@@ -96,14 +96,16 @@ func (c *gatedClient) FetchInbox(ctx context.Context, tok github.Token) (*github
 	return c.fakeClient.FetchInbox(ctx, tok)
 }
 
-func (c *gatedClient) FetchItem(ctx context.Context, tok github.Token, id string) (*github.ItemUpdate, error) {
+func (c *gatedClient) FetchItem(
+	ctx context.Context, tok github.Token, id string, opts github.DetailOptions,
+) (*github.ItemUpdate, error) {
 	if c.itemGate != nil {
 		if err := c.itemGate.pass(ctx); err != nil {
 			return nil, err
 		}
 	}
 
-	return c.fakeClient.FetchItem(ctx, tok, id)
+	return c.fakeClient.FetchItem(ctx, tok, id, opts)
 }
 
 func (c *gatedClient) FetchPullHead(ctx context.Context, tok github.Token, ref item.Ref) (*github.PullHead, error) {

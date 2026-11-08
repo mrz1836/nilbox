@@ -536,6 +536,10 @@ func TestSettersReturnTheStoredSettings(t *testing.T) {
 			func(s Settings) any { return s.Theme }, ThemeDark,
 		},
 		{
+			"projects tip", func() (Settings, error) { return svc.SetProjectsTipDismissed(ctx, true) },
+			func(s Settings) any { return s.ProjectsTipDismissed }, true,
+		},
+		{
 			"window size", func() (Settings, error) { return svc.SetWindowSize(ctx, size) },
 			func(s Settings) any { return s.WindowSize }, size,
 		},

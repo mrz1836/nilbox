@@ -40,6 +40,10 @@ const (
 
 	typePullRequest = "PullRequest"
 	typeIssue       = "Issue"
+
+	// errorInsufficientScopes is GitHub's error type for a field the token's scopes do
+	// not reach, such as an issue's projects without the read:project scope.
+	errorInsufficientScopes = "INSUFFICIENT_SCOPES"
 )
 
 // An item's state, as GitHub reports it. MERGED is for pull requests only.
@@ -471,7 +475,46 @@ func graphQLErr(errs []graphQLError) error {
 		msgs = append(msgs, e.Message)
 	}
 
-	return fmt.Errorf("%w: %s", ErrGraphQL, truncate(strings.Join(msgs, "; ")))
+	return &queryError{message: truncate(strings.Join(msgs, "; ")), scopes: scopeRefused(errs)}
+}
+
+// queryError is the errors a GraphQL response failed a query with. It matches ErrGraphQL.
+type queryError struct {
+	// message is the errors' messages, joined.
+	message string
+
+	// scopes reports that one of the errors is GitHub refusing a field the token's scopes
+	// do not reach.
+	scopes bool
+}
+
+// Error says the query failed, and GitHub's messages.
+func (e *queryError) Error() string {
+	return ErrGraphQL.Error() + ": " + e.message
+}
+
+// Is reports whether target is ErrGraphQL.
+func (e *queryError) Is(target error) bool {
+	return target == ErrGraphQL
+}
+
+// refusedForScope reports a query that failed because the token lacks a scope one of its
+// fields needs.
+func refusedForScope(err error) bool {
+	failed, ok := errors.AsType[*queryError](err)
+
+	return ok && failed.scopes
+}
+
+// scopeRefused reports whether any of errs is GitHub refusing a field for want of a scope.
+func scopeRefused(errs []graphQLError) bool {
+	for _, e := range errs {
+		if e.Type == errorInsufficientScopes {
+			return true
+		}
+	}
+
+	return false
 }
 
 // graphQLError is one entry of a GraphQL errors array. Type is GitHub's error type,

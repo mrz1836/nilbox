@@ -35,10 +35,18 @@
 // recently pinned first, until Unpin; it is stored in the same row, apart from a snooze or
 // a dismissal, so it outlasts both and Restore leaves it as it is.
 //
+// An issue's details include the GitHub projects it is in, with its status in each, when
+// the token has the optional read:project scope. Without it the details are read without
+// them and the snapshot says so (ProjectAccess), so a missing scope never fails a refresh.
+// The details of the items already listed are asked for before the token's scopes are
+// known, the way the last refresh read them; when this refresh reads projects otherwise,
+// every item's details are read again once the scopes are known, so they all agree.
+//
 // Inbox status that has no column of its own (each list's total match count, the
 // account's profile, the time of the last successful refresh, the last error, a scope
-// warning, and the cached avatar) is kept in the prefs table, so it survives a restart,
-// under internal inbox.* keys that only this package writes.
+// warning, whether projects can be read, and the cached avatar) is kept in the prefs
+// table, so it survives a restart, under internal inbox.* keys that only this package
+// writes.
 package inbox
 
 import (
@@ -96,6 +104,7 @@ const (
 	prefLastRefreshAt        = "inbox.last_refresh_at"
 	prefLastError            = "inbox.last_error"
 	prefScopeWarning         = "inbox.scope_warning"
+	prefProjects             = "inbox.projects"
 )
 
 // ErrIncompleteFetch is returned when GitHub's answer lacks the signed-in account.
@@ -114,8 +123,8 @@ type TokenSource interface {
 // shows them as they are.
 type Client interface {
 	FetchInbox(ctx context.Context, tok github.Token) (*github.Inbox, error)
-	FetchDetails(ctx context.Context, tok github.Token, ids []string) (*github.Details, error)
-	FetchItem(ctx context.Context, tok github.Token, id string) (*github.ItemUpdate, error)
+	FetchDetails(ctx context.Context, tok github.Token, ids []string, opts github.DetailOptions) (*github.Details, error)
+	FetchItem(ctx context.Context, tok github.Token, id string, opts github.DetailOptions) (*github.ItemUpdate, error)
 	FetchPullHead(ctx context.Context, tok github.Token, ref item.Ref) (*github.PullHead, error)
 	FetchChangedFiles(ctx context.Context, tok github.Token, ref item.Ref, head string) (*github.ChangedFiles, error)
 	FetchRateLimits(ctx context.Context, tok github.Token) (*github.RateLimits, error)
@@ -247,6 +256,11 @@ func (s *Service) refresh(ctx context.Context) ([]Arrival, error) {
 		return nil, err
 	}
 
+	last, err := s.projectAccess(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	var seq uint64
 
 	defer func() { s.endRefresh(seq) }()
@@ -256,7 +270,7 @@ func (s *Service) refresh(ctx context.Context) ([]Arrival, error) {
 		// it started, not by when the refused try did.
 		seq = s.startRefresh()
 
-		return s.fetchAll(ctx, tok, listed)
+		return s.fetchAll(ctx, tok, listed, last)
 	})
 	if err != nil {
 		return nil, err
@@ -266,11 +280,14 @@ func (s *Service) refresh(ctx context.Context) ([]Arrival, error) {
 }
 
 // fetchAll reads everything one refresh stores, with tok. The details of the items
-// already listed are read alongside the inbox query, which takes as long; only items new
-// since the last refresh wait for a second details request after it. The file checks and
-// the avatar download then run side by side.
-func (s *Service) fetchAll(ctx context.Context, tok github.Token, listed []string) (refreshed, error) {
-	got, err := s.fetch(ctx, tok, listed)
+// already listed are read alongside the inbox query, which takes as long, with the
+// projects the last refresh could read (last); only items new since the last refresh wait
+// for a second details request after it (see readMoreDetails). The file checks and the
+// avatar download then run side by side.
+func (s *Service) fetchAll(ctx context.Context, tok github.Token, listed []string, last ProjectAccess) (refreshed, error) {
+	asked := readOptions(last)
+
+	got, err := s.fetch(ctx, tok, listed, asked)
 	if err != nil {
 		return refreshed{}, err
 	}
@@ -279,13 +296,8 @@ func (s *Service) fetchAll(ctx context.Context, tok github.Token, listed []strin
 		return refreshed{}, err
 	}
 
-	if added := newIDs(nodeIDs(got.inbox), listed); len(added) > 0 {
-		more, detailsErr := s.client.FetchDetails(ctx, tok, added)
-		if detailsErr != nil {
-			return refreshed{}, fmt.Errorf("read the item details: %w", detailsErr)
-		}
-
-		got.details.Add(more)
+	if err = s.readMoreDetails(ctx, tok, &got, listed, asked, last); err != nil {
+		return refreshed{}, err
 	}
 
 	var (
@@ -317,6 +329,40 @@ func (s *Service) fetchAll(ctx context.Context, tok github.Token, listed []strin
 	return got, nil
 }
 
+// readMoreDetails reads, once the token's scopes are known, the details the first
+// request left out: those of the items new to the lists. When this refresh reads projects
+// and the listed items' details were read without them, or the other way round, as when
+// the read:project scope was just granted, it reads every item's details again, so all of
+// them agree. It records in got whether the projects were read.
+func (s *Service) readMoreDetails(
+	ctx context.Context, tok github.Token, got *refreshed, listed []string, asked github.DetailOptions, last ProjectAccess,
+) error {
+	listedRead := asked.Projects && !got.details.ProjectsRefused
+	read := github.DetailOptions{
+		Projects: readsProjects(github.ProjectsScope(got.inbox.OAuthScopes), last) && !got.details.ProjectsRefused,
+	}
+
+	ids := nodeIDs(got.inbox)
+
+	pending := newIDs(ids, listed)
+	if read.Projects != listedRead {
+		pending = ids
+	}
+
+	if len(pending) > 0 {
+		more, err := s.client.FetchDetails(ctx, tok, pending, read)
+		if err != nil {
+			return fmt.Errorf("read the item details: %w", err)
+		}
+
+		got.details.Add(more)
+	}
+
+	got.projects = accessOf(read, got.details.ProjectsRefused)
+
+	return nil
+}
+
 // refreshed is what one refresh read from GitHub.
 type refreshed struct {
 	inbox   *github.Inbox
@@ -325,6 +371,9 @@ type refreshed struct {
 
 	// warning is set when the token's scopes could not be verified.
 	warning github.ScopeWarning
+
+	// projects is whether the details include the projects each issue is in.
+	projects ProjectAccess
 
 	// archived holds the items left out because their repository is archived.
 	archived []github.Item
@@ -343,9 +392,9 @@ type downloadedAvatar struct {
 	source  string
 }
 
-// fetch gets the inbox, the rate limits, and the details of the listed items
-// concurrently. details is never nil.
-func (s *Service) fetch(ctx context.Context, tok github.Token, listed []string) (refreshed, error) {
+// fetch gets the inbox, the rate limits, and the details of the listed items, with what
+// opts adds, concurrently. details is never nil.
+func (s *Service) fetch(ctx context.Context, tok github.Token, listed []string, opts github.DetailOptions) (refreshed, error) {
 	got := refreshed{details: &github.Details{}}
 
 	g, gctx := errgroup.WithContext(ctx)
@@ -368,7 +417,7 @@ func (s *Service) fetch(ctx context.Context, tok github.Token, listed []string) 
 
 	if len(listed) > 0 {
 		g.Go(func() error {
-			details, err := s.client.FetchDetails(gctx, tok, listed)
+			details, err := s.client.FetchDetails(gctx, tok, listed, opts)
 			if err != nil {
 				return fmt.Errorf("read the item details: %w", err)
 			}
@@ -520,6 +569,7 @@ func (w *writer) saveRefresh(ctx context.Context, got refreshed) ([]Arrival, err
 		prefLastRefreshAt:        clock.Format(w.now),
 		prefLastError:            "",
 		prefScopeWarning:         string(got.warning),
+		prefProjects:             string(got.projects),
 	}
 
 	// The source is written with the picture, so it never names a picture not stored.

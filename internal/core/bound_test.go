@@ -103,6 +103,9 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.SetNotificationBanner": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetNotificationBanner(ctx, notifyprefs.KindWoke, true)
 		},
+		"settings.Service.SetProjectsTipDismissed": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetProjectsTipDismissed(ctx, true)
+		},
 		"settings.Service.SetSectionCollapsed": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetSectionCollapsed(ctx, settings.ListAuthored, false)
 		},

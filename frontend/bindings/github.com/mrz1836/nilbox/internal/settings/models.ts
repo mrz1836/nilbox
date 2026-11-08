@@ -130,6 +130,12 @@ export interface Settings {
      * inbox shows them.
      */
     "collapsedSections": ListKey[] | null;
+
+    /**
+     * ProjectsTipDismissed is set once the user puts away the inbox's tip about showing
+     * the GitHub projects an issue is in.
+     */
+    "projectsTipDismissed": boolean;
 }
 
 /**

@@ -20,6 +20,7 @@ import type {
   LaunchResult,
   LinkedItem,
   Profile,
+  Project,
   Prompt,
   PromptBackup,
   PromptCheckResult,
@@ -98,6 +99,17 @@ export function notification(overrides: Partial<AppNotification> = {}): AppNotif
   }
 }
 
+// project is an issue's place in the roadmap project, with its status there.
+export function project(overrides: Partial<Project> = {}): Project {
+  return {
+    title: 'Roadmap',
+    url: 'https://github.com/orgs/acme-org/projects/1',
+    status: 'In progress',
+    statusColor: '#bf8700',
+    ...overrides,
+  }
+}
+
 // details are a pull request's details: passing checks, an approval out of two
 // reviewers, a few comments, and two labels.
 export function details(overrides: Partial<ItemDetails> = {}): ItemDetails {
@@ -106,6 +118,7 @@ export function details(overrides: Partial<ItemDetails> = {}): ItemDetails {
       { name: 'enhancement', color: '#a2eeef' },
       { name: 'needs-docs', color: '' },
     ],
+    projects: [],
     comments: 4,
     additions: 120,
     deletions: 30,
@@ -155,6 +168,7 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     bannersOff: [],
     theme: 'system',
     collapsedSections: [],
+    projectsTipDismissed: false,
     ...overrides,
   }
 }
@@ -545,6 +559,7 @@ export function snapshot(overrides: Partial<InboxSnapshot> = {}): InboxSnapshot 
     lastRefreshedAt: '',
     lastError: '',
     scopeWarning: '',
+    projectAccess: 'on',
     ...overrides,
   }
 }

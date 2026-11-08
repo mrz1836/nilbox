@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 import { counted, formatCount } from '../lib/format'
+import { projectText } from '../lib/projects'
 import {
   checksSignal,
   reviewsSignal,
@@ -11,11 +12,16 @@ import {
   type ReviewsKind,
   type Signal,
 } from '../lib/signals'
-import type { InboxItem, Label } from '../platform'
-import { CheckIcon, CommentIcon, DotIcon, EyeIcon, RingIcon, XIcon } from './icons'
+import { openExternal, type InboxItem, type Label, type Project } from '../platform'
+import { CheckIcon, CommentIcon, DotIcon, EyeIcon, ProjectIcon, RingIcon, XIcon } from './icons'
 
 // shownLabels is how many labels a card shows before folding the rest into "+N".
 const shownLabels = 3
+
+// statusTint is how strongly a project status's color tints its pill: an alpha byte
+// appended to its "#rrggbb", light enough that the ink on it keeps its contrast in both
+// themes.
+const statusTint = '29'
 
 const iconClass = 'size-3.5 shrink-0'
 
@@ -120,14 +126,74 @@ function Labels({ labels }: { labels: Label[] }) {
   )
 }
 
+// ProjectLink names the project an issue is in, with its status there as a pill in the
+// status's color, and opens the project on GitHub.
+function ProjectLink({ project }: { project: Project }) {
+  const where = projectText(project)
+
+  return (
+    <button
+      type="button"
+      title={`${where}\nOpen the project on GitHub`}
+      aria-label={`Project ${where}. Open it on GitHub`}
+      onClick={() => {
+        openExternal(project.url)
+      }}
+      className="group/project inline-flex min-w-0 items-center gap-1.5 rounded-sm text-muted transition-colors hover:text-text"
+    >
+      <ProjectIcon className={iconClass} />
+      <span className="max-w-40 min-w-0 truncate group-hover/project:underline">{project.title}</span>
+      {project.status !== '' && (
+        <span
+          className={`inline-flex max-w-36 shrink-0 items-center gap-1 rounded-full px-1.5 py-px text-[11px] font-medium text-text ${project.statusColor === '' ? 'bg-raised' : ''}`}
+          style={project.statusColor === '' ? undefined : { backgroundColor: project.statusColor + statusTint }}
+        >
+          <span
+            aria-hidden="true"
+            className={`size-1.5 shrink-0 rounded-full ${project.statusColor === '' ? 'bg-muted' : ''}`}
+            style={project.statusColor === '' ? undefined : { backgroundColor: project.statusColor }}
+          />
+          <span className="truncate">{project.status}</span>
+        </span>
+      )}
+    </button>
+  )
+}
+
+// Projects shows the first project an issue is in, and the count of the rest, named in
+// its tooltip with their statuses. An issue is rarely in more than one.
+function Projects({ projects }: { projects: Project[] }) {
+  const [first, ...rest] = projects
+
+  if (first === undefined) {
+    return null
+  }
+
+  const others = rest.map(projectText)
+
+  return (
+    <li className="flex min-w-0 items-center gap-1">
+      <span className="sr-only">Projects:</span>
+      <ProjectLink project={first} />
+      {rest.length > 0 && (
+        <span title={others.join('\n')} className="shrink-0 text-[11px]">
+          +{rest.length}
+          <span className="sr-only"> more: {others.join(', ')}</span>
+        </span>
+      )}
+    </li>
+  )
+}
+
 export interface ItemSignalsProps {
   item: InboxItem
 }
 
 // ItemSignals is the card's line of facts about an item. For a pull request: its checks,
 // its reviews, its comments, and its size (lines added and removed, files, commits);
-// for an issue, its comments. Labels close the line. Every value before the labels keeps
-// a fixed width, so the values line up from card to card.
+// for an issue, its comments and the GitHub projects it is in, with its status in each.
+// Labels close the line. Every value before the projects and labels keeps a fixed width,
+// so the values line up from card to card.
 export function ItemSignals({ item }: ItemSignalsProps) {
   const details = item.details
 
@@ -164,6 +230,7 @@ export function ItemSignals({ item }: ItemSignalsProps) {
           <span className={columns.commits}>{counted(commits, 'commit', 'commits')}</span>
         </Slot>
       )}
+      {!isPR && <Projects projects={details.projects} />}
       <Labels labels={details.labels} />
     </ul>
   )

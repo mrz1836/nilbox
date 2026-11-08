@@ -4,13 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useState } from 'react'
 
+import { offersProjects } from '../lib/projects'
 import { useCollapsedSections } from '../lib/useCollapsedSections'
 import { useInbox } from '../lib/useInbox'
 import { ClockContext } from '../lib/useNow'
 import { useTriage } from '../lib/useTriage'
 import type { InboxSnapshot, ListKey } from '../platform'
 import { clockAt, FIXED_NOW, fixedNow, fromNow } from '../test/clock'
-import { item, itemResolution, list, profile, prompts, snapshot } from '../test/fixtures'
+import { details, item, itemResolution, list, profile, project, prompts, settings, snapshot } from '../test/fixtures'
 import { emit, listening, platform } from '../test/platform'
 import { InboxView, type LaunchOptions, type Reveal } from './InboxView'
 
@@ -27,6 +28,7 @@ const launchOptions: LaunchOptions = {
 const resolutions = new Map([[1, itemResolution()]])
 
 const openSnoozeSettings = vi.fn()
+const dismissProjects = vi.fn()
 
 interface HarnessProps {
   launch: LaunchOptions | null
@@ -52,6 +54,8 @@ function Inbox({ launch, snoozeDays = 3, reveal = null }: Omit<HarnessProps, 'cl
   const inbox = useInbox()
   const triaged = useTriage(inbox.snapshot)
   const sections = useCollapsedSections()
+  // tipDismissed stands in for the stored setting, as App keeps it.
+  const [tipDismissed, setTipDismissed] = useState(false)
 
   return (
     <InboxView
@@ -64,6 +68,11 @@ function Inbox({ launch, snoozeDays = 3, reveal = null }: Omit<HarnessProps, 'cl
       collapsed={sections.collapsed}
       onCollapse={sections.setCollapsed}
       reveal={reveal}
+      offerProjects={offersProjects(inbox.snapshot, settings({ projectsTipDismissed: tipDismissed }))}
+      onDismissProjects={() => {
+        dismissProjects()
+        setTipDismissed(true)
+      }}
     />
   )
 }
@@ -1043,5 +1052,67 @@ describe('InboxView reveal', () => {
     const review = await section('Review requested')
     expect(rowOf(review, 'Add the widget cache')).not.toHaveAttribute('data-highlighted')
     expect(scrolled).not.toHaveBeenCalled()
+  })
+})
+
+describe('InboxView’s projects tip', () => {
+  // needsScope is an inbox with an issue whose token can't read projects.
+  const needsScope = () =>
+    snapshot({
+      assigned: list([item({ id: 2, kind: 'issue', title: 'Fix the login page', details: details() })]),
+      projectAccess: 'needs_scope',
+    })
+
+  it('offers to show issue projects while the token cannot read them', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(needsScope())
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    expect(
+      await screen.findByRole('region', { name: 'See where your issues stand in their projects' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('gh auth refresh -s read:project')).toBeInTheDocument()
+  })
+
+  it('offers nothing when the token reads projects', async () => {
+    platform.getInboxSnapshot.mockResolvedValue({ ...needsScope(), projectAccess: 'on' })
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    await section('Assigned')
+    expect(screen.queryByRole('region', { name: /projects/ })).not.toBeInTheDocument()
+  })
+
+  it('checks again with a refresh, then says the projects are on and shows them', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(needsScope())
+    platform.refreshInbox.mockResolvedValue(
+      snapshot({
+        assigned: list([
+          item({ id: 2, kind: 'issue', title: 'Fix the login page', details: details({ projects: [project()] }) }),
+        ]),
+        projectAccess: 'on',
+      }),
+    )
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Check again' }))
+
+    expect(platform.refreshInbox).toHaveBeenCalled()
+    expect(await screen.findByRole('region', { name: 'Projects are on.' })).toBeInTheDocument()
+    expect(
+      (await section('Assigned')).getByRole('button', { name: 'Project Roadmap: In progress. Open it on GitHub' }),
+    ).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('region', { name: 'Projects are on.' })).not.toBeInTheDocument()
+    expect(dismissProjects).not.toHaveBeenCalled()
+  })
+
+  it('puts the offer away for good', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(needsScope())
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Don’t show this again' }))
+
+    expect(dismissProjects).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('region', { name: /projects/ })).not.toBeInTheDocument()
   })
 })

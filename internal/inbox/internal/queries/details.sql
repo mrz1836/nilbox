@@ -2,12 +2,13 @@
 -- UpsertDetails stores an item's details, replacing every column of details stored
 -- before.
 INSERT INTO item_details (
-    item_id, labels, comments, additions, deletions, changed_files, commits, head_oid, mergeable,
+    item_id, labels, projects, comments, additions, deletions, changed_files, commits, head_oid, mergeable,
     checks_state, checks_passed, checks_failed, checks_pending, checks_skipped, review_decision,
     reviewers, reviewed, approvals, changes_requested, fetched_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (item_id) DO UPDATE SET
     labels = excluded.labels,
+    projects = excluded.projects,
     comments = excluded.comments,
     additions = excluded.additions,
     deletions = excluded.deletions,

@@ -16,7 +16,9 @@ import (
 // as a pull request they just merged, shows without refreshing the whole inbox.
 //
 // An item still open gets its card and details rewritten and stays in the lists it is
-// in; only the searches of a whole refresh can tell which lists those are. A pull request
+// in; only the searches of a whole refresh can tell which lists those are. An issue's
+// projects are read when the last whole refresh could read them; only a whole refresh
+// changes what the snapshot says about that. A pull request
 // whose files are checked has them checked again when its head moved. An item
 // merged, closed, or deleted since, or whose repository was archived, leaves every list,
 // as a whole refresh would have it. New activity on a snoozed item can end the snooze.
@@ -59,12 +61,17 @@ func (s *Service) refreshItem(ctx context.Context, id int64) (bool, error) {
 		return false, fmt.Errorf("read the item: %w", err)
 	}
 
+	last, err := s.projectAccess(ctx)
+	if err != nil {
+		return false, err
+	}
+
 	var seq uint64
 
 	update, err := github.WithToken(ctx, s.tokens, func(tok github.Token) (itemUpdate, error) {
 		seq = s.startFetch() // each try numbers its own fetch
 
-		return s.fetchItem(ctx, tok, id, stored.NodeID)
+		return s.fetchItem(ctx, tok, id, stored.NodeID, readOptions(last))
 	})
 	if err != nil {
 		return false, err
@@ -80,10 +87,12 @@ func (s *Service) refreshItem(ctx context.Context, id int64) (bool, error) {
 	return wrote, nil
 }
 
-// fetchItem asks GitHub about the item with id and nodeID, and checks its files when a
-// check is due.
-func (s *Service) fetchItem(ctx context.Context, tok github.Token, id int64, nodeID string) (itemUpdate, error) {
-	update, err := s.client.FetchItem(ctx, tok, nodeID)
+// fetchItem asks GitHub about the item with id and nodeID, with what opts adds to its
+// details, and checks its files when a check is due.
+func (s *Service) fetchItem(
+	ctx context.Context, tok github.Token, id int64, nodeID string, opts github.DetailOptions,
+) (itemUpdate, error) {
+	update, err := s.client.FetchItem(ctx, tok, nodeID, opts)
 	if err != nil {
 		return itemUpdate{}, err
 	}

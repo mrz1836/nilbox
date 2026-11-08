@@ -62,3 +62,29 @@ func TestMissingScopesErrorIsOnlyMissingScopes(t *testing.T) {
 	require.ErrorIs(t, err, ErrMissingScopes)
 	require.NotErrorIs(t, err, ErrNotLoggedIn)
 }
+
+func TestProjectsScope(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name   string
+		header string
+		want   ProjectScope
+	}{
+		{name: "read:project", header: "gist, read:org, read:project, repo", want: ProjectScopeGranted},
+		{name: "project covers read:project", header: "project,repo,read:org", want: ProjectScopeGranted},
+		{name: "spaces around it", header: " repo ,  read:project ", want: ProjectScopeGranted},
+		{name: "neither", header: "repo, read:org, workflow", want: ProjectScopeMissing},
+		{name: "a lookalike is not it", header: "repo, read:projects, write:project", want: ProjectScopeMissing},
+		{name: "no header", header: "", want: ProjectScopeUnverified},
+		{name: "blank header", header: "  ", want: ProjectScopeUnverified},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tc.want, ProjectsScope(tc.header))
+		})
+	}
+}

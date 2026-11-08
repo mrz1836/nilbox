@@ -737,3 +737,41 @@ describe('App', () => {
     })
   })
 })
+
+describe('App’s projects tip', () => {
+  const needsScope = () =>
+    snapshot({
+      assigned: list([item({ id: 2, kind: 'issue', title: 'Fix the login page' })]),
+      projectAccess: 'needs_scope',
+    })
+
+  it('offers to show issue projects, and stores that the offer was put away', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(needsScope())
+    platform.setProjectsTipDismissed.mockResolvedValue(settings({ projectsTipDismissed: true }))
+    await renderApp()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Don’t show this again' }))
+
+    expect(platform.setProjectsTipDismissed).toHaveBeenCalledWith(true)
+    expect(screen.queryByRole('region', { name: /stand in their projects/ })).not.toBeInTheDocument()
+  })
+
+  it('offers nothing once the offer was put away', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(needsScope())
+    platform.getSettings.mockResolvedValue(settings({ projectsTipDismissed: true }))
+    await renderApp()
+
+    expect(await screen.findByText('Fix the login page')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: /stand in their projects/ })).not.toBeInTheDocument()
+  })
+
+  it('keeps the command in Settings → Account', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(needsScope())
+    await renderApp()
+
+    await openSettingsFromMenu()
+
+    const projects = screen.getByRole('region', { name: 'Projects on issues' })
+    expect(within(projects).getByText('gh auth refresh -s read:project')).toBeInTheDocument()
+  })
+})

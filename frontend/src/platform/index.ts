@@ -3,7 +3,7 @@
 // here (an ESLint rule enforces it), so another shell or an OS port replaces this module's
 // implementation and never its callers.
 
-import { Browser, Dialogs, Events, Window, type CancellablePromise } from '@wailsio/runtime'
+import { Browser, Clipboard, Dialogs, Events, Window, type CancellablePromise } from '@wailsio/runtime'
 
 // The generated event bindings register the events' data with the runtime, and declare
 // each event's name and payload type for Events.On.
@@ -75,6 +75,8 @@ export type ItemDetails = NonNullLists<inbox.Details>
 export type InboxItem = NonNullLists<inbox.Item>
 export type Label = NonNullLists<inbox.Label>
 export type InboxList = NonNullLists<inbox.List>
+export type Project = NonNullLists<inbox.Project>
+export type ProjectAccess = inbox.ProjectAccess
 export type Rate = NonNullLists<inbox.Rate>
 export type RateGauge = NonNullLists<inbox.RateGauge>
 export type Reviews = NonNullLists<inbox.Reviews>
@@ -221,6 +223,7 @@ export const {
   SetTheme: setTheme,
   CollapsedSections: getCollapsedSections,
   SetSectionCollapsed: setSectionCollapsed,
+  SetProjectsTipDismissed: setProjectsTipDismissed,
 } = narrow(settings.Service)
 
 export const {
@@ -279,6 +282,11 @@ export function openExternal(url: string): void {
   Browser.OpenURL(url).catch((err: unknown) => {
     console.error(`could not open ${url} in the browser`, err)
   })
+}
+
+// copyText puts text on the system clipboard. It rejects when the clipboard refuses it.
+export async function copyText(text: string): Promise<void> {
+  await Clipboard.SetText(text)
 }
 
 // FileChoice is what a native file dialog asks for: its title, the button that confirms

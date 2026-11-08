@@ -196,6 +196,15 @@ type storedLabel struct {
 	Color string `json:"color"`
 }
 
+// storedProject is an issue's place in one project as the projects column of
+// item_details stores it.
+type storedProject struct {
+	Title       string `json:"title"`
+	URL         string `json:"url"`
+	Status      string `json:"status"`
+	StatusColor string `json:"statusColor"`
+}
+
 // detailsRow converts fetched details to their row.
 func detailsRow(itemID int64, d github.ItemDetails, now time.Time) (queries.UpsertDetailsParams, error) {
 	labels := make([]storedLabel, 0, len(d.Labels))
@@ -203,14 +212,25 @@ func detailsRow(itemID int64, d github.ItemDetails, now time.Time) (queries.Upse
 		labels = append(labels, storedLabel{Name: l.Name, Color: l.Color})
 	}
 
-	encoded, err := store.EncodeJSON(labels)
+	encodedLabels, err := store.EncodeJSON(labels)
+	if err != nil {
+		return queries.UpsertDetailsParams{}, err
+	}
+
+	projects := make([]storedProject, 0, len(d.Projects))
+	for _, p := range d.Projects {
+		projects = append(projects, storedProject(p))
+	}
+
+	encodedProjects, err := store.EncodeJSON(projects)
 	if err != nil {
 		return queries.UpsertDetailsParams{}, err
 	}
 
 	return queries.UpsertDetailsParams{
 		ItemID:           itemID,
-		Labels:           encoded,
+		Labels:           encodedLabels,
+		Projects:         encodedProjects,
 		Comments:         int64(d.Comments),
 		Additions:        int64(d.Additions),
 		Deletions:        int64(d.Deletions),
@@ -302,7 +322,7 @@ func readStatus(ctx context.Context, p *prefs.Store) (map[string]string, error) 
 	status, err := p.GetMany(ctx,
 		prefViewer, prefViewerName, prefViewerURL, prefViewerAvatarURL, prefAvatar, prefAvatarSource,
 		prefTotalReviewRequested, prefTotalAuthored, prefTotalAssigned,
-		prefLastRefreshAt, prefLastError, prefScopeWarning, trust.PrefBots,
+		prefLastRefreshAt, prefLastError, prefScopeWarning, prefProjects, trust.PrefBots,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns,
 	)
 	if err != nil {

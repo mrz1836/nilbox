@@ -45,12 +45,13 @@ func (q *Queries) GetActivity(ctx context.Context, itemID int64) (GetActivityRow
 
 const upsertDetails = `-- name: UpsertDetails :exec
 INSERT INTO item_details (
-    item_id, labels, comments, additions, deletions, changed_files, commits, head_oid, mergeable,
+    item_id, labels, projects, comments, additions, deletions, changed_files, commits, head_oid, mergeable,
     checks_state, checks_passed, checks_failed, checks_pending, checks_skipped, review_decision,
     reviewers, reviewed, approvals, changes_requested, fetched_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (item_id) DO UPDATE SET
     labels = excluded.labels,
+    projects = excluded.projects,
     comments = excluded.comments,
     additions = excluded.additions,
     deletions = excluded.deletions,
@@ -74,6 +75,7 @@ ON CONFLICT (item_id) DO UPDATE SET
 type UpsertDetailsParams struct {
 	ItemID           int64
 	Labels           string
+	Projects         string
 	Comments         int64
 	Additions        int64
 	Deletions        int64
@@ -100,6 +102,7 @@ func (q *Queries) UpsertDetails(ctx context.Context, arg UpsertDetailsParams) er
 	_, err := q.db.ExecContext(ctx, upsertDetails,
 		arg.ItemID,
 		arg.Labels,
+		arg.Projects,
 		arg.Comments,
 		arg.Additions,
 		arg.Deletions,

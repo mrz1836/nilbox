@@ -33,14 +33,29 @@ const (
 // head commit's SHA tells a snooze when a pull request was pushed, force-pushes included.
 // The fields are a fragment the item query spreads too, so a card refreshed on its own
 // reads exactly what a whole refresh reads.
-const detailsQuery = `query Details($ids: [ID!]!) {
+const detailsQuery = detailsQueryHead + detailFieldsFragment
+
+// detailsProjectsQuery is detailsQuery that also reads the projects each issue is in
+// (see issueProjectFields).
+const detailsProjectsQuery = detailsQueryHead + detailFieldsProjectsFragment
+
+// detailsQueryHead is the details query without its fragment.
+const detailsQueryHead = `query Details($ids: [ID!]!) {
   nodes(ids: $ids) { ...DetailFields }
   rateLimit { cost remaining resetAt limit used }
 }
-` + detailFieldsFragment
+`
 
-// detailFieldsFragment is what an inbox card shows about one pull request or issue.
-const detailFieldsFragment = `
+// detailFieldsFragment is what an inbox card shows about one pull request or issue, and
+// detailFieldsProjectsFragment is the same with the projects an issue is in.
+const (
+	detailFieldsFragment         = detailFieldsHead + detailFieldsTail
+	detailFieldsProjectsFragment = detailFieldsHead + issueProjectFields + detailFieldsTail
+)
+
+// detailFieldsHead is the DetailFields fragment up to the end of an issue's fields, which
+// detailFieldsTail closes.
+const detailFieldsHead = `
 fragment DetailFields on Node {
   __typename
   ... on PullRequest {
@@ -71,10 +86,28 @@ fragment DetailFields on Node {
   ... on Issue {
     id
     comments { totalCount }
-    labels(first: 50) { nodes { name color } }
+    labels(first: 50) { nodes { name color } }`
+
+// detailFieldsTail closes detailFieldsHead.
+const detailFieldsTail = `
   }
 }
 `
+
+// issueProjectFields reads the projects an issue is in, with its option in each one's
+// Status field, the field every project starts with. GitHub answers them only for a token
+// with the read:project scope. Items archived from a project are left out; a closed
+// project is dropped when the answer is read. A project whose Status field was renamed
+// or deleted answers no status. The list prices at one point per hundred issues.
+const issueProjectFields = `
+    projectItems(first: 10, includeArchived: false) {
+      nodes {
+        project { title url closed }
+        status: fieldValueByName(name: "Status") {
+          ... on ProjectV2ItemFieldSingleSelectValue { name color }
+        }
+      }
+    }`
 
 // Review states a reviewer can leave; DISMISSED and PENDING reviews do not count.
 const (
@@ -82,6 +115,14 @@ const (
 	reviewChangesRequested = "CHANGES_REQUESTED"
 	reviewCommented        = "COMMENTED"
 )
+
+// DetailOptions choose what a details request reads beyond the fields it always reads.
+type DetailOptions struct {
+	// Projects reads the projects each issue is in, with its status in each, which needs
+	// the token's read:project scope. When GitHub refuses them for want of a scope, the
+	// request is sent again without them, and the answer says so.
+	Projects bool
+}
 
 // Details is what FetchDetails learned.
 type Details struct {
@@ -95,6 +136,10 @@ type Details struct {
 
 	// Requests is how many requests were made: 0 when there were no IDs.
 	Requests int
+
+	// ProjectsRefused reports that GitHub refused the projects for want of a scope, so
+	// the details were read without them.
+	ProjectsRefused bool
 }
 
 // ItemDetails is what an inbox card shows about one pull request or issue. The pull
@@ -119,6 +164,24 @@ type ItemDetails struct {
 
 	Checks  Checks
 	Reviews Reviews
+
+	// Projects lists the open projects an issue is in, in GitHub's order, when they were
+	// read (see DetailOptions). It is nil when they were not, when the issue is in none,
+	// and for a pull request.
+	Projects []ProjectItem
+}
+
+// ProjectItem is an issue's place in one GitHub project.
+type ProjectItem struct {
+	// Title is the project's title, and URL its page on GitHub.
+	Title string
+	URL   string
+
+	// Status is the issue's option in the project's Status field, "" when it has none.
+	Status string
+
+	// StatusColor is the status option's color as "#rrggbb", "" when it has none.
+	StatusColor string
 }
 
 // Label is one label on an item.
@@ -159,10 +222,10 @@ type Reviews struct {
 }
 
 // FetchDetails reads the details of the items with the given node IDs, in concurrent
-// batches. GitHub's errors about single items it cannot resolve are not failures: those
-// items are simply left out.
-func (c *Client) FetchDetails(ctx context.Context, tok Token, ids []string) (*Details, error) {
-	details, err := c.fetchDetails(ctx, tok, ids)
+// batches, with what opts adds. GitHub's errors about single items it cannot resolve are
+// not failures: those items are simply left out.
+func (c *Client) FetchDetails(ctx context.Context, tok Token, ids []string, opts DetailOptions) (*Details, error) {
+	details, err := c.fetchDetails(ctx, tok, ids, opts)
 
 	return details, Redact(err, tok)
 }
@@ -187,6 +250,7 @@ func (d *Details) Add(other *Details) {
 
 	d.RateLimit.Cost = cost
 	d.Requests += other.Requests
+	d.ProjectsRefused = d.ProjectsRefused || other.ProjectsRefused
 }
 
 // detailsBatches splits ids into the batches FetchDetails sends.
@@ -197,7 +261,7 @@ func detailsBatches(ids []string) [][]string {
 }
 
 // fetchDetails sends the batches side by side and merges the answers in batch order.
-func (c *Client) fetchDetails(ctx context.Context, tok Token, ids []string) (*Details, error) {
+func (c *Client) fetchDetails(ctx context.Context, tok Token, ids []string, opts DetailOptions) (*Details, error) {
 	batches := detailsBatches(ids)
 	answers := make([]*Details, len(batches))
 
@@ -206,14 +270,10 @@ func (c *Client) fetchDetails(ctx context.Context, tok Token, ids []string) (*De
 
 	for i, batch := range batches {
 		g.Go(func() error {
-			data, err := c.fetchDetailsBatch(gctx, tok, batch)
-			if err != nil {
-				return err
-			}
+			answer, err := c.fetchDetailsBatch(gctx, tok, batch, opts)
+			answers[i] = answer
 
-			answers[i] = data.details()
-
-			return nil
+			return err
 		})
 	}
 
@@ -229,18 +289,57 @@ func (c *Client) fetchDetails(ctx context.Context, tok Token, ids []string) (*De
 	return out, nil
 }
 
-// fetchDetailsBatch sends the details query for one batch of IDs. Errors with data are
-// about single items (one deleted or hidden since the inbox query), and their nodes come
-// back null. Errors without data are a real failure.
-func (c *Client) fetchDetailsBatch(ctx context.Context, tok Token, ids []string) (*detailsData, error) {
-	req := graphQLRequest{Query: detailsQuery, Variables: map[string]any{"ids": ids}}
+// fetchDetailsBatch sends the details query for one batch of IDs. When GitHub refuses
+// the projects opts asks for, for want of a scope, it sends the batch again without them.
+func (c *Client) fetchDetailsBatch(ctx context.Context, tok Token, ids []string, opts DetailOptions) (*Details, error) {
+	answer, err := c.sendDetails(ctx, tok, ids, opts)
+	if !opts.Projects || !refusedForScope(err) {
+		return answer, err
+	}
+
+	if answer, err = c.sendDetails(ctx, tok, ids, DetailOptions{}); err != nil {
+		return nil, err
+	}
+
+	answer.ProjectsRefused = true
+
+	return answer, nil
+}
+
+// sendDetails sends the details query for one batch of IDs, with what opts adds. Errors
+// with data are about single items (one deleted or hidden since the inbox query), and
+// their nodes come back null; GitHub refusing the projects with the rest of the data
+// counts as a refusal. Errors without data are a real failure.
+func (c *Client) sendDetails(ctx context.Context, tok Token, ids []string, opts DetailOptions) (*Details, error) {
+	req := graphQLRequest{Query: opts.detailsQuery(), Variables: map[string]any{"ids": ids}}
 
 	resp, _, err := postGraphQL[detailsData](ctx, c, tok, "details", req, unlessData)
 	if err != nil {
 		return nil, err
 	}
 
-	return resp.Data, nil
+	answer := resp.Data.details()
+	answer.ProjectsRefused = opts.Projects && scopeRefused(resp.Errors)
+
+	return answer, nil
+}
+
+// detailsQuery returns the details query that reads what o asks for.
+func (o DetailOptions) detailsQuery() string {
+	if o.Projects {
+		return detailsProjectsQuery
+	}
+
+	return detailsQuery
+}
+
+// itemQuery returns the item query that reads what o asks for.
+func (o DetailOptions) itemQuery() string {
+	if o.Projects {
+		return itemProjectsQuery
+	}
+
+	return itemQuery
 }
 
 // detailsData is the details query's data object.
@@ -286,6 +385,7 @@ type detailsNode struct {
 	ReviewRequests     graphQLRequests `json:"reviewRequests"`
 	LatestReviews      graphQLReviews  `json:"latestReviews"`
 	StatusCheckRollup  *graphQLRollup  `json:"statusCheckRollup"`
+	ProjectItems       graphQLProjects `json:"projectItems"`
 }
 
 // graphQLCount is a connection asked only for its size.
@@ -298,6 +398,22 @@ type graphQLLabels struct {
 	Nodes []*struct {
 		Name  string `json:"name"`
 		Color string `json:"color"`
+	} `json:"nodes"`
+}
+
+// graphQLProjects is an issue's places in projects. A project the token cannot see
+// comes back null.
+type graphQLProjects struct {
+	Nodes []*struct {
+		Project *struct {
+			Title  string `json:"title"`
+			URL    string `json:"url"`
+			Closed bool   `json:"closed"`
+		} `json:"project"`
+		Status *struct {
+			Name  string `json:"name"`
+			Color string `json:"color"`
+		} `json:"status"`
 	} `json:"nodes"`
 }
 
@@ -343,7 +459,9 @@ func (n *detailsNode) details() (id string, item ItemDetails, ok bool) {
 
 	switch n.TypeName {
 	case typeIssue:
-		return n.ID, ItemDetails{Labels: n.Labels.labels(), Comments: n.Comments.TotalCount}, true
+		return n.ID, ItemDetails{
+			Labels: n.Labels.labels(), Comments: n.Comments.TotalCount, Projects: n.ProjectItems.projects(),
+		}, true
 	case typePullRequest:
 		author := ""
 		if n.Author != nil {
@@ -378,6 +496,53 @@ func (l graphQLLabels) labels() []Label {
 	}
 
 	return out
+}
+
+// projects converts the project items, skipping nulls, the projects the token cannot
+// see, and closed projects. It returns nil when none are left.
+func (p graphQLProjects) projects() []ProjectItem {
+	var out []ProjectItem
+
+	for _, n := range p.Nodes {
+		if n == nil || n.Project == nil || n.Project.Closed || n.Project.Title == "" {
+			continue
+		}
+
+		place := ProjectItem{Title: n.Project.Title, URL: n.Project.URL}
+		if n.Status != nil && n.Status.Name != "" {
+			place.Status, place.StatusColor = n.Status.Name, projectColor(n.Status.Color)
+		}
+
+		out = append(out, place)
+	}
+
+	return out
+}
+
+// projectColor turns a project option's color, such as BLUE, into "#rrggbb", or "" for
+// a color this build does not know. The shades are GitHub's mid-tones, which read on a
+// light and a dark background alike.
+func projectColor(color string) string {
+	switch color {
+	case "GRAY":
+		return "#8c959f"
+	case "BLUE":
+		return "#218bff"
+	case "GREEN":
+		return "#2da44e"
+	case "YELLOW":
+		return "#bf8700"
+	case "ORANGE":
+		return "#e16f24"
+	case "RED":
+		return "#fa4549"
+	case "PINK":
+		return "#e85aad"
+	case "PURPLE":
+		return "#a475f9"
+	default:
+		return ""
+	}
 }
 
 // labelColor turns GitHub's "0e8a16" into "#0e8a16", or "" when it is not a color.
