@@ -94,6 +94,10 @@ type Gauge struct {
 
 	// RefreshesPerHour is how many times an hour the inbox refreshes on its own.
 	RefreshesPerHour int `json:"refreshesPerHour"`
+
+	// Writes is what the app changed on GitHub for the user lately, and how it paces
+	// its edits.
+	Writes Writes `json:"writes"`
 }
 
 // Reading is one budget as GitHub last reported it, and what the app spent from it since
@@ -142,6 +146,7 @@ func (t *Tracker) gauge(perHour int) Gauge {
 		Core:             t.readingLocked(github.ResourceCore),
 		Search:           t.readingLocked(github.ResourceSearch),
 		RefreshesPerHour: perHour,
+		Writes:           t.writesLocked(t.clock.Now().UTC()),
 	}
 
 	if !t.last.at.IsZero() {

@@ -42,6 +42,12 @@ type savedState struct {
 
 	Budgets []savedBudget `json:"budgets"`
 	Refresh *savedRefresh `json:"refresh,omitempty"`
+
+	// Writes are when the app sent the edits of the last hour, oldest first, and
+	// HeldUntil when GitHub's request to wait before the next edit ends. A state saved
+	// before edits has neither.
+	Writes    []time.Time `json:"writes,omitempty"`
+	HeldUntil *time.Time  `json:"heldUntil,omitempty"`
 }
 
 // savedBudget is one budget's newest reading and what the app spent from its window.
@@ -84,6 +90,13 @@ func (t *Tracker) state() (string, error) {
 		out.Refresh = &savedRefresh{At: t.last.at, Points: t.last.points, Items: t.last.items}
 	}
 
+	t.pruneWritesLocked(t.clock.Now().UTC())
+	out.Writes = append(out.Writes, t.writes...)
+
+	if !t.heldUntil.IsZero() {
+		out.HeldUntil = new(t.heldUntil)
+	}
+
 	t.mu.Unlock()
 
 	raw, err := json.Marshal(out)
@@ -95,8 +108,8 @@ func (t *Tracker) state() (string, error) {
 }
 
 // Restore starts the Tracker from a state an earlier run kept: each budget's reading
-// and what the app spent from its window, the last refresh, and when the app began
-// counting. It is meant for startup, before any response; a budget already read in this
+// and what the app spent from its window, the last refresh, the edits of the last hour
+// and any wait GitHub asked for, and when the app began counting. It is meant for startup, before any response; a budget already read in this
 // run keeps its reading. A state that cannot be read changes nothing.
 func (t *Tracker) Restore(state string) error {
 	var saved savedState
@@ -123,6 +136,8 @@ func (t *Tracker) Restore(state string) error {
 	if saved.Refresh != nil && t.last.at.IsZero() {
 		t.last = refresh{at: saved.Refresh.At.UTC(), points: saved.Refresh.Points, items: saved.Refresh.Items}
 	}
+
+	t.restoreWritesLocked(saved.Writes, saved.HeldUntil)
 
 	return nil
 }
