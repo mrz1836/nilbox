@@ -35,13 +35,13 @@ export interface Particle {
 // confettiColors are the brand's festive colors. --nil-highlight is the logo mark's warm
 // highlight, which the confetti layer defines.
 export const confettiColors: readonly string[] = [
-  'var(--brand-accent)',
+  'var(--color-accent)',
   'var(--nil-highlight)',
-  'var(--brand-success)',
-  'var(--brand-info)',
-  'var(--brand-warning)',
-  'var(--brand-caution)',
-  'var(--brand-danger)',
+  'var(--color-success)',
+  'var(--color-info)',
+  'var(--color-warning)',
+  'var(--color-caution)',
+  'var(--color-danger)',
 ]
 
 // confettiGlyphs are the bits of code mixed in with the paper.

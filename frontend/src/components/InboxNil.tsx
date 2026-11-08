@@ -27,10 +27,12 @@ export interface InboxNilProps {
 }
 
 // terminalTokens set the terminal in the dark palette in either theme, as terminals are.
-// Every utility inside reads the brand tokens, so overriding them here is enough.
+// Every utility and style inside reads the theme's --color-* tokens, so overriding them
+// here is enough. color-scheme alone would not do: the bundle's tokens resolve once, on
+// the root, for the page's theme.
 const terminalTokens = {
   colorScheme: 'dark',
-  ...Object.fromEntries(Object.entries(palettes.dark).map(([token, value]) => [`--brand-${token}`, value])),
+  ...Object.fromEntries(Object.entries(palettes.dark).map(([token, value]) => [`--color-${token}`, value])),
 } as CSSProperties
 
 // lists are what the terminal checks off, by the names the inbox gives them.

@@ -2,18 +2,19 @@ import { useId } from 'react'
 
 import { formatAgo } from '../lib/time'
 import { counted, formatCount } from '../lib/format'
-import { changeText, changeTone, filesChip, sensitiveCount, shortHead, type FilesChip } from '../lib/sensitive'
+import {
+  changeText,
+  changeTone,
+  filesChip,
+  levelDot,
+  sensitiveCount,
+  shortHead,
+  type FilesChip,
+} from '../lib/sensitive'
 import { toneText } from '../lib/signals'
 import { useMutation } from '../lib/useMutation'
 import { usePopover } from '../lib/usePopover'
-import {
-  checkItemFiles,
-  openExternal,
-  type FileCheck,
-  type SensitiveFile,
-  type SensitiveGroup,
-  type SensitiveLevel,
-} from '../platform'
+import { checkItemFiles, openExternal, type FileCheck, type SensitiveFile, type SensitiveGroup } from '../platform'
 import { quietButtonClass } from './controls'
 import { ExternalIcon, RefreshIcon, ShieldAlertIcon, ShieldCheckIcon } from './icons'
 import { PopoverPanel } from './PopoverPanel'
@@ -33,13 +34,6 @@ const chipClass: Readonly<Record<FilesChip['tone'], string>> = {
   warning: 'rounded-full border border-warning/45 bg-warning/10 px-1.5 text-warning hover:bg-warning/18',
   success: 'rounded-full px-1 text-success hover:bg-raised',
   muted: 'rounded-full px-1 text-muted hover:bg-raised hover:text-text',
-}
-
-// levelDot is a category's level, as a dot beside its name.
-const levelDot: Readonly<Record<SensitiveLevel, string>> = {
-  danger: 'bg-danger',
-  warning: 'bg-warning',
-  '': 'bg-muted',
 }
 
 // FileRow is one sensitive file: its path, which opens its diff on GitHub, and how it

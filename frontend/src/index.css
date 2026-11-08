@@ -2,23 +2,14 @@
 @import './generated/theme.css';
 @import './nil.css';
 
-/* Expose every brand token as a Tailwind color (bg-surface, text-muted, border-border, …).
-   The values stay CSS variables, so the generated light/dark blocks switch them before the
-   first paint and on every appearance change. */
-@theme inline {
-  --color-background: var(--brand-background);
-  --color-surface: var(--brand-surface);
-  --color-raised: var(--brand-raised);
-  --color-border: var(--brand-border);
-  --color-text: var(--brand-text);
-  --color-muted: var(--brand-muted);
-  --color-accent: var(--brand-accent);
-  --color-info: var(--brand-info);
-  --color-success: var(--brand-success);
-  --color-warning: var(--brand-warning);
-  --color-caution: var(--brand-caution);
-  --color-danger: var(--brand-danger);
+/* Tailwind finds class names by scanning the project's files. Tests, their fixtures, and the
+   generated bindings never render, so words in them that look like classes (a worktree
+   named pr-8) must not land in the stylesheet. */
+@source not './**/*.test.{ts,tsx}';
+@source not './test';
+@source not '../bindings';
 
+@theme inline {
   /* Popovers and menus grow out of their trigger. */
   --animate-pop-in: pop-in 120ms ease-out;
 

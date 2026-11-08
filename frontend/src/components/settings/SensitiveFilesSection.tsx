@@ -2,6 +2,7 @@ import { startTransition, useActionState, useId, useState } from 'react'
 
 import { brand } from '../../generated/brand'
 import { counted } from '../../lib/format'
+import { levelDot } from '../../lib/sensitive'
 import { useSettingsSave } from '../../lib/useSettingsSave'
 import {
   refreshInbox,
@@ -9,7 +10,6 @@ import {
   setSensitivePatterns,
   setSensitiveScope,
   type SensitiveCategory,
-  type SensitiveLevel,
   type SensitiveScope,
   type Settings,
 } from '../../platform'
@@ -56,13 +56,6 @@ const scopeOptions: readonly { value: SensitiveScope; label: string; title: stri
     title: 'Collaborators’ pull requests too: people with access who aren’t the owner or org members',
   },
 ]
-
-// levelDot is a category's level, as a dot beside its name.
-const levelDot: Readonly<Record<SensitiveLevel, string>> = {
-  danger: 'bg-danger',
-  warning: 'bg-warning',
-  '': 'bg-muted',
-}
 
 interface CategoryRowProps {
   category: SensitiveCategory

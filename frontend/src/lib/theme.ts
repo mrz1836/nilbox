@@ -1,11 +1,12 @@
 // The theme: the user's choice of palette, and switching the page to it.
 //
-// The generated theme.css sets every brand token for the light palette, and again for the
-// dark one under prefers-color-scheme: dark, so the first paint follows the web view's
-// appearance before any script runs. On macOS the desktop shell pins that appearance to a
-// Light or Dark theme before the window opens, and leaves it to the system for System, so
-// the first frame already shows the chosen palette. From then on the page pins the palette
-// it shows on <html> (data-theme wins over the media query) and cross-fades on a switch.
+// The generated theme.css gives every theme token both palettes' values, light-dark(), and
+// the root's color-scheme picks one: the dark palette under prefers-color-scheme: dark, so
+// the first paint follows the web view's appearance before any script runs. On macOS the
+// desktop shell pins that appearance to a Light or Dark theme before the window opens, and
+// leaves it to the system for System, so the first frame already shows the chosen palette.
+// From then on the page pins the palette it shows on <html> (data-theme wins over the
+// media query) and cross-fades on a switch.
 
 import type { Theme } from '../platform'
 import { prefersReducedMotion } from './motion'
@@ -38,8 +39,10 @@ export function resolveDark(theme: Theme, appearanceDark: boolean): boolean {
 
 type Scheme = 'light' | 'dark'
 
-// pin shows a palette: data-theme selects the matching block of the theme tokens, and
-// color-scheme draws native controls and scrollbars to match.
+// pin shows a palette. color-scheme picks each token's side of light-dark() and draws
+// native controls and scrollbars to match. data-theme sets the same color-scheme from the
+// stylesheet, which is what switches the tokens in the bundle: its CSS stands in for
+// light-dark() on WebKit releases without it, and only a stylesheet rule can drive that.
 function pin(root: HTMLElement, scheme: Scheme): void {
   root.dataset.theme = scheme
   root.style.colorScheme = scheme

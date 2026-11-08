@@ -54,32 +54,87 @@ func TestGeneratedFilesAreCurrent(t *testing.T) {
 	require.NoError(t, Check(filepath.Join("..", "..")), "run magex brand:generate")
 }
 
-func TestThemeCSSCoversBothPalettes(t *testing.T) {
+// themeTokens parses the generated @theme block into each token's light and dark value,
+// keyed by the token's CSS name, failing on any line that is not a light-dark() token.
+func themeTokens(t *testing.T, css string) map[string][2]string {
+	t.Helper()
+
+	body := cssRule(t, css, "@theme static")
+	tokens := map[string][2]string{}
+
+	for line := range strings.SplitSeq(strings.TrimSpace(body), "\n") {
+		name, value, ok := strings.Cut(strings.TrimSpace(line), ": ")
+		require.Truef(t, ok, "malformed theme line %q", line)
+		require.Truef(t, strings.HasPrefix(name, themeVarPrefix), "%s is not a theme color", name)
+
+		inner, ok := strings.CutPrefix(value, "light-dark(")
+		require.Truef(t, ok, "%s is not light-dark(): %s", name, value)
+
+		inner, ok = strings.CutSuffix(inner, ");")
+		require.Truef(t, ok, "%s is not light-dark(): %s", name, value)
+
+		light, dark, ok := strings.Cut(inner, ", ")
+		require.Truef(t, ok, "%s has no dark value: %s", name, value)
+
+		key := strings.TrimPrefix(name, themeVarPrefix)
+		require.NotContainsf(t, tokens, key, "%s is declared twice", name)
+
+		tokens[key] = [2]string{light, dark}
+	}
+
+	return tokens
+}
+
+func TestThemeCSSPairsBothPalettes(t *testing.T) {
 	t.Parallel()
 
 	css := fileContent(t, ThemeCSSPath)
-	lightDefault := cssRule(t, css, ":root")
-	darkSystem := cssRule(t, css, "@media (prefers-color-scheme: dark) {\n  :root")
-	lightExplicit := cssRule(t, css, ":root[data-theme='light']")
-	darkExplicit := cssRule(t, css, ":root[data-theme='dark']")
-
-	assert.Contains(t, lightDefault, "color-scheme: light;")
-	assert.Contains(t, darkSystem, "color-scheme: dark;")
-	assert.Contains(t, lightExplicit, "color-scheme: light;")
-	assert.Contains(t, darkExplicit, "color-scheme: dark;")
+	tokens := themeTokens(t, css)
 
 	light := reflect.ValueOf(brand.Light)
 	dark := reflect.ValueOf(brand.Dark)
 
-	for i := range light.NumField() {
-		prop := "--brand-" + kebab(light.Type().Field(i).Name) + ": "
-		lightWant := prop + light.Field(i).String() + ";"
-		darkWant := prop + dark.Field(i).String() + ";"
+	require.Len(t, tokens, light.NumField(), "one theme color per palette field")
 
-		assert.Containsf(t, lightDefault, lightWant, "default light rule is missing %s", lightWant)
-		assert.Containsf(t, lightExplicit, lightWant, "explicit light rule is missing %s", lightWant)
-		assert.Containsf(t, darkSystem, darkWant, "system dark rule is missing %s", darkWant)
-		assert.Containsf(t, darkExplicit, darkWant, "explicit dark rule is missing %s", darkWant)
+	for i := range light.NumField() {
+		name := kebab(light.Type().Field(i).Name)
+
+		assert.Equalf(t, [2]string{light.Field(i).String(), dark.Field(i).String()}, tokens[name],
+			"%s%s must be light-dark(Light, Dark)", themeVarPrefix, name)
+	}
+
+	// The root follows the appearance, and data-theme pins a theme. The pins are
+	// stylesheet rules because the bundle's stand-in for light-dark() switches on them.
+	assert.Equal(t, "  color-scheme: light dark;\n", cssRule(t, css, ":root"))
+	assert.Equal(t, "  color-scheme: light;\n", cssRule(t, css, ":root[data-theme='light']"))
+	assert.Equal(t, "  color-scheme: dark;\n", cssRule(t, css, ":root[data-theme='dark']"))
+	assert.NotContains(t, css, "@media", "light-dark() replaces the per-appearance blocks")
+}
+
+// TestThemeCSSTextContrast enforces WCAG AA on the generated theme itself: every text
+// token, in each theme, against both background layers it can sit on.
+func TestThemeCSSTextContrast(t *testing.T) {
+	t.Parallel()
+
+	tokens := themeTokens(t, fileContent(t, ThemeCSSPath))
+	themes := []struct {
+		name string
+		side int
+	}{{"light", 0}, {"dark", 1}}
+
+	for _, theme := range themes {
+		for field := range brand.Light.TextTokens() {
+			fg := tokens[kebab(field)][theme.side]
+
+			for _, layer := range []string{"Background", "Surface"} {
+				bg := tokens[kebab(layer)][theme.side]
+
+				ratio, err := brand.ContrastRatio(fg, bg)
+				require.NoErrorf(t, err, "%s %s on %s", theme.name, field, layer)
+				assert.GreaterOrEqualf(t, ratio, brand.MinTextContrast,
+					"%s %s %s on %s %s is %.2f:1", theme.name, field, fg, layer, bg, ratio)
+			}
+		}
 	}
 }
 

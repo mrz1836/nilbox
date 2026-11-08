@@ -1,10 +1,19 @@
 // What an inbox card says about the sensitive files a pull request changes: the chip on
-// the card, and the words for each file's change. The check itself (which files count,
-// whose pull requests are checked) happens in the backend; this only words its outcome.
+// the card, the words for each file's change, and the dot for each category's level. The
+// check itself (which files count, whose pull requests are checked) happens in the
+// backend; this only words its outcome.
 
-import type { FileCheck, SensitiveFile } from '../platform'
+import type { FileCheck, SensitiveFile, SensitiveLevel } from '../platform'
 import { counted, formatCount } from './format'
 import type { Tone } from './signals'
+
+// levelDot is a category's level as the color of the dot beside its name, on the card's
+// panel and in Settings.
+export const levelDot: Readonly<Record<SensitiveLevel, string>> = {
+  danger: 'bg-danger',
+  warning: 'bg-warning',
+  '': 'bg-muted',
+}
 
 // FilesChipIcon picks the chip's icon: a warning shield, a checked shield, or none.
 export type FilesChipIcon = 'alert' | 'clear' | 'none'
