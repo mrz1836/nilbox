@@ -5,6 +5,7 @@ package main
 import (
 	"io"
 
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/notify"
 )
 
@@ -13,7 +14,7 @@ import (
 type banners struct{}
 
 // newBanners returns nil: this OS shows no banners yet.
-func newBanners(io.Writer, func(itemID int64, url string)) *banners {
+func newBanners(io.Writer, event.Sink) *banners {
 	return nil
 }
 

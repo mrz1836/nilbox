@@ -10,6 +10,8 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 
+	"github.com/mrz1836/nilbox/internal/desktop"
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/notify"
 )
 
@@ -20,11 +22,12 @@ type banners struct {
 	center *notifications.NotificationService
 }
 
-// newBanners prepares the notification center, telling open about every click on a banner:
-// the item it was for, or 0 for none. It returns nil, and prints why, when this build
-// cannot show banners. It must run before the app finishes launching, so a click on a
-// banner that launched the app is still delivered.
-func newBanners(stderr io.Writer, open func(itemID int64, url string)) *banners {
+// newBanners prepares the notification center, emitting an event.RevealItem into events
+// for every click on a banner: the item it was for, or none for a banner that stands for
+// many. It returns nil, and prints why, when this build cannot show banners. It must run
+// before the app finishes launching, so a click on a banner that launched the app is
+// still delivered.
+func newBanners(stderr io.Writer, events event.Sink) *banners {
 	center := notifications.New()
 
 	if err := center.ServiceStartup(context.Background(), application.ServiceOptions{}); err != nil {
@@ -44,8 +47,7 @@ func newBanners(stderr io.Writer, open func(itemID int64, url string)) *banners 
 			return
 		}
 
-		itemID, url := bannerTarget(result.Response.UserInfo)
-		open(itemID, url)
+		events.Emit(desktop.BannerClicked(result.Response.UserInfo))
 	})
 
 	return &banners{center: center}
@@ -68,7 +70,7 @@ func (b *banners) Post(banner notify.Banner) error {
 		Subtitle: banner.Subtitle,
 		Body:     banner.Body,
 		ThreadID: banner.Thread,
-		Data:     map[string]any{bannerItemKey: banner.ItemID, bannerURLKey: banner.URL},
+		Data:     desktop.BannerData(banner),
 	})
 	if err != nil {
 		return fmt.Errorf("post the notification: %w", err)

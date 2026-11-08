@@ -4,8 +4,9 @@
 //
 // This file is the desktop build: one window whose frontend is embedded from
 // frontend/dist and talks to the core services through generated bindings. Everything
-// except the window itself is assembled by internal/core, which builds and is tested on
-// any OS; this file only adds the desktop runtime.
+// except the window itself is assembled by internal/core, and everything the shell
+// decides is in internal/desktop, both of which build and are tested on any OS; the
+// files here only connect them to the desktop runtime.
 //
 // Two flags measure the app for docs/performance.md: --measure-startup quits right after
 // the first paint and prints the startup timing line, and --measure-refresh opens no
@@ -20,23 +21,26 @@ import (
 	"os"
 	"os/signal"
 	"slices"
-	"sync"
-	"sync/atomic"
 	"syscall"
-	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"github.com/mrz1836/nilbox/frontend"
 	"github.com/mrz1836/nilbox/internal/appdata"
+	"github.com/mrz1836/nilbox/internal/appinfo"
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/core"
+	"github.com/mrz1836/nilbox/internal/desktop"
+	"github.com/mrz1836/nilbox/internal/event"
+	"github.com/mrz1836/nilbox/internal/inbox"
+	"github.com/mrz1836/nilbox/internal/launchdefaults"
+	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/measure"
+	"github.com/mrz1836/nilbox/internal/notify"
+	"github.com/mrz1836/nilbox/internal/profiles"
+	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/settings"
-	"github.com/mrz1836/nilbox/internal/store"
-	"github.com/mrz1836/nilbox/internal/textutil"
-	"github.com/mrz1836/nilbox/internal/timing"
 	"github.com/mrz1836/nilbox/internal/worktrees"
 )
 
@@ -51,136 +55,205 @@ var (
 	buildNumber = "0"
 )
 
-const (
-	// inboxUpdatedEvent tells the frontend the stored inbox changed.
-	inboxUpdatedEvent = "inbox:updated"
-
-	// worktreesUpdatedEvent tells the frontend an automatic worktree sweep removed a
-	// worktree or changed how many need attention.
-	worktreesUpdatedEvent = "worktrees:updated"
-
-	// notificationsUpdatedEvent tells the frontend the notification log changed.
-	notificationsUpdatedEvent = "notifications:updated"
-
-	// revealItemEvent asks the frontend to show an item in the inbox, for a click on it in
-	// the menu bar or on its notification. Its data is a revealRequest.
-	revealItemEvent = "inbox:reveal"
-
-	// measureTimeout bounds a measurement run whose window never reports a first paint.
-	measureTimeout = time.Minute
-
-	// schedulerStopTimeout bounds how long shutdown waits for an in-flight refresh.
-	schedulerStopTimeout = 5 * time.Second
-)
-
-var (
-	// errNoFirstPaint is reported when a measurement run timed out.
-	errNoFirstPaint = errors.New("the window did not report its first paint in time")
-
-	// errServicesUnbound guards against a core service that is not bound to the window.
-	errServicesUnbound = errors.New("every core service must be bound to the window")
-)
+// errUnbound is returned for a core service no binder wraps.
+var errUnbound = errors.New("the desktop bootstrap has no binder for a core service; add one to binders")
 
 func main() {
-	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, err)
-
-		os.Exit(1)
-	}
+	os.Exit(exitStatus(run(os.Args[1:], os.Stdout, os.Stderr), os.Stderr))
 }
 
-// run assembles the core, then runs the window until the app quits. On macOS the app
-// exits from inside Run once it terminates, so cleanup happens in the shutdown hook.
+// run assembles the core and the shell, then runs the window until the app quits. On
+// macOS the app exits from inside Run once it terminates, so the shell stops in the
+// runtime's shutdown hook. An error that stops the app from starting is shown in a
+// native dialog first, except in a measurement run.
 func run(args []string, stdout, stderr io.Writer) error {
 	paths, err := appdata.Resolve()
 	if err != nil {
-		return fmt.Errorf("find the data directory: %w", err)
+		return startFailed(args, stderr, fmt.Errorf("find the data directory: %w", err))
 	}
 
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return fmt.Errorf("find the home directory: %w", err)
+		return startFailed(args, stderr, fmt.Errorf("find the home directory: %w", err))
 	}
 
 	if slices.Contains(args, measure.RefreshFlag) {
 		return measureRefresh(stdout, home)
 	}
 
-	s := &shell{stdout: stdout, stderr: stderr, measureStartup: slices.Contains(args, measure.StartupFlag)}
-	s.banners = newBanners(stderr, s.openFromBanner)
+	app, shell, err := assemble(paths, home, stdout, stderr, slices.Contains(args, measure.StartupFlag))
+	if err != nil {
+		return startFailed(args, stderr, err)
+	}
+
+	runErr := app.Run()
+
+	return errors.Join(runErr, shell.Stop())
+}
+
+// assemble bootstraps the core, builds the shell over it, and creates the app, which
+// starts and stops the shell with its own lifecycle.
+func assemble(
+	paths appdata.Paths, home string, stdout, stderr io.Writer, measureStartup bool,
+) (*application.App, *desktop.Shell, error) {
+	// The services are built before the shell that hears their events, which needs them;
+	// the relay carries the events once the shell is connected.
+	relay := &event.Relay{}
+	banners := newBanners(stderr, relay)
 
 	c, err := core.Bootstrap(context.Background(), core.Options{
-		Paths:                 paths,
-		Home:                  home,
-		Version:               version,
-		Release:               release,
-		Build:                 buildNumber,
-		Notifier:              s,
-		WorktreeNotifier:      s,
-		ThemeNotifier:         s,
-		MenuBarNotifier:       s,
-		Banners:               s.banners.poster(),
-		NotificationsNotifier: s,
-		OnFirstPaint:          s.firstPaint,
+		Paths:   paths,
+		Home:    home,
+		Version: version,
+		Release: release,
+		Build:   buildNumber,
+		Events:  relay,
+		Banners: banners.poster(),
 	})
 	if err != nil {
-		err = fmt.Errorf("start the app (%s, commit %s, built %s): %w", version, commit, buildDate, err)
-
-		if errors.Is(err, store.ErrNewerSchema) && !s.measureStartup {
-			failStartup(stderr, err, brand.Name+" needs an update", textutil.Sentence(store.ErrNewerSchema.Error()))
-		}
-
-		return err
+		return nil, nil, err
 	}
 
-	s.core = c
-
-	bound := services(c)
-	if len(bound) != len(c.Services()) {
+	bound, err := services(c)
+	if err != nil {
 		_ = c.Close()
 
-		return errServicesUnbound
+		return nil, nil, err
 	}
 
-	app := application.New(application.Options{
-		Name:         brand.Name,
-		Description:  brand.Tagline,
-		Icon:         appIcon(),
-		Services:     bound,
-		Assets:       application.AssetOptions{Handler: application.AssetFileServerFS(frontend.Assets)},
-		Mac:          macAppOptions(),
-		OnShutdown:   s.shutdown,
-		PostShutdown: s.postShutdown,
+	ui := &desktopUI{}
+	shell := desktop.New(desktop.Config{
+		Frontend:       ui,
+		Window:         ui,
+		Tray:           &tray{ui: ui},
+		App:            ui,
+		Inbox:          c.Inbox,
+		Settings:       c.ShellSettings,
+		Workers:        []desktop.Worker{c.Scheduler, c.Sweeper},
+		Data:           c,
+		Banners:        banners.poster(),
+		Stdout:         stdout,
+		Stderr:         stderr,
+		MeasureStartup: measureStartup,
 	})
-	s.tray = newTray(app, c.Inbox, s, stderr)
-	s.app.Store(app)
+	relay.Connect(shell)
+
+	registerEvents()
+
+	app := application.New(application.Options{
+		Name:        brand.Name,
+		Description: brand.Tagline,
+		Icon:        appIcon(),
+		Services:    append(bound, application.NewService(&lifecycle{of: shell})),
+		Assets:      application.AssetOptions{Handler: application.AssetFileServerFS(frontend.Assets)},
+		Mac:         macAppOptions(),
+		// A timed-out measurement run exits with a failure status. On macOS the app exits
+		// from inside Run, with a success status unless this hook exits first.
+		PostShutdown: func() {
+			if shell.TimedOut() {
+				os.Exit(1)
+			}
+		},
+	})
+	ui.attach(app, shell)
 
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
-		s.started()
+		shell.Launched()
 	})
 
 	// A click on the Dock icon brings back a window closed into the menu bar.
 	app.Event.OnApplicationEvent(events.Mac.ApplicationShouldHandleReopen, func(*application.ApplicationEvent) {
-		s.showWindow()
+		shell.ShowWindow()
 	})
 
 	app.Event.OnApplicationEvent(events.Common.ThemeChanged, func(*application.ApplicationEvent) {
-		s.systemThemeChanged()
+		ui.systemThemeChanged()
 	})
 
-	runErr := app.Run()
-
-	s.shutdown()
-
-	return errors.Join(runErr, s.closeErr)
+	return app, shell, nil
 }
 
-// failStartup stops an app that could not start for a reason the user can act on. It
-// prints err to stderr, shows title and message in a native error dialog, since nobody
-// sees stderr when the app is launched from Finder, and exits with a failure status
-// once the dialog is dismissed. The dialog needs a running app, so a bare one, with no
-// window and no services, runs just to show it.
-func failStartup(stderr io.Writer, err error, title, message string) {
+// registerEvents registers each window event's data type under its name. The runtime
+// then checks the data of every event the shell emits, and the bindings generator writes
+// the frontend's event types from these calls, which it finds only as direct calls with
+// constant names.
+func registerEvents() {
+	application.RegisterEvent[event.InboxUpdated](event.NameInboxUpdated)
+	application.RegisterEvent[event.RevealItem](event.NameRevealItem)
+	application.RegisterEvent[event.WorktreesUpdated](event.NameWorktreesUpdated)
+	application.RegisterEvent[event.NotificationsUpdated](event.NameNotificationsUpdated)
+}
+
+// services wraps every service the core binds, in the core's order. A service no binder
+// wraps stops the app from starting, naming its type, so a service added to the core is
+// never left unbound.
+func services(c *core.Core) ([]application.Service, error) {
+	all := c.Services()
+	out := make([]application.Service, 0, len(all)+1)
+
+	for _, svc := range all {
+		bound, err := bind(svc)
+		if err != nil {
+			return nil, err
+		}
+
+		out = append(out, bound)
+	}
+
+	return out, nil
+}
+
+// bind wraps svc with the binder for its type.
+func bind(svc any) (application.Service, error) {
+	for _, wrap := range binders() {
+		if bound, ok := wrap(svc); ok {
+			return bound, nil
+		}
+	}
+
+	return application.Service{}, fmt.Errorf("%w: %T", errUnbound, svc)
+}
+
+// binders wraps each type of service the core binds. The bindings generator finds a
+// bound service by its call to application.NewService, which needs the service's
+// concrete type, so each type is named here once; which services are bound, and in what
+// order, is the core's to say.
+func binders() []func(svc any) (application.Service, bool) {
+	return []func(svc any) (application.Service, bool){
+		binder[settings.Service], binder[profiles.Service], binder[prompts.Service],
+		binder[launchdefaults.Service], binder[inbox.Service], binder[launcher.Service],
+		binder[worktrees.Service], binder[notify.Service], binder[appinfo.Service],
+	}
+}
+
+// binder wraps svc for binding when it is a *T.
+func binder[T any](svc any) (application.Service, bool) {
+	s, ok := svc.(*T)
+	if !ok {
+		return application.Service{}, false
+	}
+
+	return application.NewService(s), true
+}
+
+// startFailed reports err, which stopped the app from starting, and returns it with the
+// build's details. Outside a measurement run it also shows the error in a native dialog
+// and exits with a failure status once the dialog is dismissed.
+func startFailed(args []string, stderr io.Writer, err error) error {
+	wrapped := fmt.Errorf("start the app (%s, commit %s, built %s): %w", version, commit, buildDate, err)
+
+	if !slices.Contains(args, measure.StartupFlag) && !slices.Contains(args, measure.RefreshFlag) {
+		failStartup(stderr, wrapped, desktop.StartupFailure(err))
+	}
+
+	return wrapped
+}
+
+// failStartup prints err to stderr, shows failure in a native error dialog, since nobody
+// sees stderr when the app is launched from Finder, and exits with a failure status once
+// the dialog is dismissed. The dialog needs a running app, so a bare one, with no window
+// and no services, runs just to show it.
+func failStartup(stderr io.Writer, err error, failure desktop.Failure) {
 	_, _ = fmt.Fprintln(stderr, err)
 
 	app := application.New(application.Options{
@@ -193,7 +266,7 @@ func failStartup(stderr io.Writer, err error, title, message string) {
 	})
 
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
-		dialog := app.Dialog.Error().SetTitle(title).SetMessage(message)
+		dialog := app.Dialog.Error().SetTitle(failure.Title).SetMessage(failure.Message)
 		dialog.AddButton("Quit").SetAsDefault().OnClick(app.Quit)
 		dialog.Show()
 	})
@@ -223,383 +296,25 @@ func measureRefresh(stdout io.Writer, home string) error {
 	return nil
 }
 
-// services wraps each core service for binding. The bindings generator reads these
-// calls, so every service is named here by its concrete type.
-func services(c *core.Core) []application.Service {
-	return []application.Service{
-		application.NewService(c.Settings),
-		application.NewService(c.Profiles),
-		application.NewService(c.Prompts),
-		application.NewService(c.LaunchDefaults),
-		application.NewService(c.Inbox),
-		application.NewService(c.Launcher),
-		application.NewService(c.Worktrees),
-		application.NewService(c.Notifications),
-		application.NewService(c.AppInfo),
+// lifecycle hands the desktop runtime's service hooks to something with a plain Go
+// lifecycle: Start when the app starts, and Stop when it shuts down. It binds no methods.
+type lifecycle struct {
+	of interface {
+		Start(ctx context.Context)
+		Stop() error
 	}
 }
 
-// baseWindowOptions are the window settings shared by every OS, for a window of the given
-// size in points, on the native background of the dark or light palette, so the frame
-// never flashes a different color before the page paints.
-func baseWindowOptions(dark bool, size settings.WindowSize) application.WebviewWindowOptions {
-	return application.WebviewWindowOptions{
-		Title:            brand.Name,
-		Width:            size.Width,
-		Height:           size.Height,
-		MinWidth:         settings.MinWindowWidth,
-		MinHeight:        settings.MinWindowHeight,
-		URL:              "/",
-		BackgroundColour: backgroundColour(dark),
-	}
+// ServiceStartup starts it with the app's context, which ends when the app shuts down.
+//
+//nolint:unparam // the runtime's hook: its signature is not ours to choose
+func (l *lifecycle) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
+	l.of.Start(ctx)
+
+	return nil
 }
 
-// backgroundColour is the palette's window background for the appearance.
-func backgroundColour(dark bool) application.RGBA {
-	palette := brand.Light
-	if dark {
-		palette = brand.Dark
-	}
-
-	red, green, blue, err := brand.RGB(palette.Background)
-	if err != nil {
-		// Unreachable: the brand tests validate every palette color.
-		return application.NewRGB(0, 0, 0)
-	}
-
-	return application.NewRGB(red, green, blue)
-}
-
-// shell connects the core to the window: it opens the window and starts the inbox
-// scheduler once the app has started, forwards inbox and notification changes as events,
-// keeps the menu bar icon and the native appearance in step with the settings, posts
-// notifications, ends a startup measurement, and closes the core on shutdown.
-type shell struct {
-	app            atomic.Pointer[application.App]
-	core           *core.Core
-	stdout         io.Writer
-	stderr         io.Writer
-	measureStartup bool
-
-	// tray is the menu bar icon, shown while menuBar is set; banners posts notifications,
-	// and is nil when this build cannot.
-	tray    *tray
-	banners *banners
-	menuBar atomic.Bool
-
-	// appearance guards theme and window, so a theme the user chose and a change of the
-	// system appearance are applied one at a time, in order.
-	appearance sync.Mutex
-	theme      string
-	window     *application.WebviewWindow
-
-	scheduler sync.WaitGroup
-	stopping  atomic.Bool
-	timedOut  atomic.Bool
-	stopOnce  sync.Once
-	closeErr  error
-}
-
-// InboxUpdated tells the frontend to reload the inbox, and redraws the menu bar icon. The
-// inbox calls it while it holds its lock, so the icon is redrawn in the background.
-func (s *shell) InboxUpdated() {
-	if s.stopping.Load() {
-		return
-	}
-
-	if app := s.app.Load(); app != nil {
-		app.Event.Emit(inboxUpdatedEvent)
-	}
-
-	if s.tray != nil {
-		go s.tray.update()
-	}
-}
-
-// NotificationsUpdated tells the frontend to reload the notification log.
-func (s *shell) NotificationsUpdated() {
-	if s.stopping.Load() {
-		return
-	}
-
-	if app := s.app.Load(); app != nil {
-		app.Event.Emit(notificationsUpdatedEvent)
-	}
-}
-
-// MenuBarChanged adds or removes the menu bar icon as the user turned it on or off.
-func (s *shell) MenuBarChanged(on bool) {
-	if s.stopping.Load() {
-		return
-	}
-
-	s.menuBar.Store(on)
-
-	if on {
-		s.tray.show()
-	} else {
-		s.tray.hide()
-	}
-}
-
-// WorktreesUpdated tells the frontend to read the latest worktree sweep.
-func (s *shell) WorktreesUpdated() {
-	if s.stopping.Load() {
-		return
-	}
-
-	if app := s.app.Load(); app != nil {
-		app.Event.Emit(worktreesUpdatedEvent)
-	}
-}
-
-// ThemeChanged brings the native appearance and the window background along with a
-// theme the user chose; the page has already switched itself.
-func (s *shell) ThemeChanged(theme string) {
-	if s.stopping.Load() {
-		return
-	}
-
-	s.appearance.Lock()
-	defer s.appearance.Unlock()
-
-	s.theme = theme
-	applyAppearance(theme)
-	s.paintBackground()
-}
-
-// systemThemeChanged repaints the window background when the system appearance changes,
-// which the System theme follows. AppKit and the page follow the system on their own.
-func (s *shell) systemThemeChanged() {
-	if s.stopping.Load() {
-		return
-	}
-
-	s.appearance.Lock()
-	defer s.appearance.Unlock()
-
-	s.paintBackground()
-}
-
-// paintBackground sets the window's native background, which shows while the page has
-// not painted, such as at the edges of a live resize, to the palette the theme shows now.
-// The caller holds s.appearance.
-func (s *shell) paintBackground() {
-	app := s.app.Load()
-	if app == nil || s.window == nil {
-		return
-	}
-
-	s.window.SetBackgroundColour(backgroundColour(settings.IsDark(s.theme, app.Env.IsDarkMode())))
-}
-
-// started opens the window in the theme and at the size the settings hold, and starts
-// refreshing the inbox. The system appearance, which the System theme follows, is known
-// only once the app runs.
-func (s *shell) started() {
-	app := s.app.Load()
-	size := s.windowSize(app)
-
-	s.appearance.Lock()
-	s.theme = s.storedTheme(app)
-	// Pinning the appearance before the window exists is what keeps its first frame from
-	// flashing the other palette: the page's prefers-color-scheme already matches.
-	applyAppearance(s.theme)
-	s.window = app.Window.NewWithOptions(windowOptions(settings.IsDark(s.theme, app.Env.IsDarkMode()), size))
-	window := s.window
-	s.appearance.Unlock()
-
-	window.RegisterHook(events.Common.WindowClosing, s.closing)
-
-	ctx := app.Context()
-
-	s.menuBar.Store(s.storedMenuBar(app))
-
-	if s.menuBar.Load() {
-		go s.tray.show()
-	}
-
-	// Asking for permission once, at start, puts the question where the user expects it;
-	// later starts are answered at once. A measurement run asks nothing.
-	if s.banners != nil && !s.measureStartup {
-		go s.askForBanners()
-	}
-
-	s.scheduler.Go(func() { s.core.Scheduler.Run(ctx) })
-	s.scheduler.Go(func() { worktrees.NewSweeper(s.core.Worktrees).Run(ctx, worktrees.DefaultSweepInterval) })
-
-	if s.measureStartup {
-		time.AfterFunc(measureTimeout, s.measureTimedOut)
-	}
-}
-
-// windowSize is the size the window opens at: the one the settings hold, or the default
-// when they cannot be read, shrunk where needed to fit the primary screen's work area.
-func (s *shell) windowSize(app *application.App) settings.WindowSize {
-	size := settings.DefaultWindowSize()
-
-	prefs, err := s.core.Settings.Get(app.Context())
-	if err == nil {
-		size = prefs.WindowSize
-	} else {
-		_, _ = fmt.Fprintln(s.stderr, "read the window size, opening at the default:", err)
-	}
-
-	if screen := app.Screen.GetPrimary(); screen != nil {
-		size = size.Fit(screen.WorkArea.Width, screen.WorkArea.Height)
-	}
-
-	return size
-}
-
-// storedMenuBar is the menu bar setting, or the default when it cannot be read.
-func (s *shell) storedMenuBar(app *application.App) bool {
-	on, err := s.core.Settings.MenuBar(app.Context())
-	if err != nil {
-		_, _ = fmt.Fprintln(s.stderr, "read the menu bar setting, showing the icon:", err)
-	}
-
-	return on
-}
-
-// askForBanners asks the user, the first time, to allow notifications.
-func (s *shell) askForBanners() {
-	if _, err := s.banners.Authorize(); err != nil {
-		_, _ = fmt.Fprintln(s.stderr, err)
-	}
-}
-
-// closing keeps the app running in the menu bar when its window is closed while the menu
-// bar icon is shown: the window hides, and the icon or the Dock brings it back. Otherwise,
-// and when the app is quitting, the window closes, which quits the app.
-func (s *shell) closing(e *application.WindowEvent) {
-	if s.stopping.Load() || !s.menuBar.Load() {
-		return
-	}
-
-	s.appearance.Lock()
-	window := s.window
-	s.appearance.Unlock()
-
-	if window != nil {
-		window.Hide()
-		e.Cancel()
-	}
-}
-
-// showWindow brings the window forward: shown if it was closed into the menu bar,
-// restored if it was minimized, and the app made active.
-func (s *shell) showWindow() {
-	if s.stopping.Load() {
-		return
-	}
-
-	s.appearance.Lock()
-	window := s.window
-	s.appearance.Unlock()
-
-	if window == nil {
-		return
-	}
-
-	if window.IsMinimised() {
-		window.UnMinimise()
-	}
-
-	window.Show()
-	window.Focus()
-	activateApp()
-}
-
-// revealRequest is revealItemEvent's data: the item to show, and its URL for when it is
-// no longer in the inbox.
-type revealRequest struct {
-	ItemID int64  `json:"itemId"`
-	URL    string `json:"url"`
-}
-
-// reveal brings the window forward with an item in view.
-func (s *shell) reveal(itemID int64, url string) {
-	s.showWindow()
-
-	if app := s.app.Load(); app != nil && !s.stopping.Load() {
-		app.Event.Emit(revealItemEvent, revealRequest{ItemID: itemID, URL: url})
-	}
-}
-
-// openFromBanner answers a click on a notification: it shows the item it was for, or just
-// the window for a banner that stands for many.
-func (s *shell) openFromBanner(itemID int64, url string) {
-	if itemID == 0 && url == "" {
-		s.showWindow()
-
-		return
-	}
-
-	s.reveal(itemID, url)
-}
-
-// storedTheme is the theme the settings hold, or the default when they cannot be read.
-func (s *shell) storedTheme(app *application.App) string {
-	theme, err := s.core.Settings.Theme(app.Context())
-	if err != nil {
-		_, _ = fmt.Fprintln(s.stderr, "read the theme, following the system:", err)
-
-		return settings.DefaultTheme
-	}
-
-	return theme
-}
-
-// firstPaint ends a measurement run: it prints the timing line and quits.
-func (s *shell) firstPaint(m timing.Measurement) {
-	if !s.measureStartup {
-		return
-	}
-
-	_, _ = fmt.Fprintln(s.stdout, m)
-
-	if app := s.app.Load(); app != nil {
-		app.Quit()
-	}
-}
-
-// measureTimedOut quits a measurement run that never painted.
-func (s *shell) measureTimedOut() {
-	s.timedOut.Store(true)
-
-	_, _ = fmt.Fprintln(s.stderr, errNoFirstPaint)
-
-	if app := s.app.Load(); app != nil {
-		app.Quit()
-	}
-}
-
-// shutdown stops the scheduler (the app's context is already canceled) and closes the
-// database. It runs once, whichever of the shutdown hook and Run's return comes first.
-func (s *shell) shutdown() {
-	s.stopOnce.Do(func() {
-		s.stopping.Store(true)
-
-		done := make(chan struct{})
-
-		go func() {
-			s.scheduler.Wait()
-			close(done)
-		}()
-
-		select {
-		case <-done:
-		case <-time.After(schedulerStopTimeout):
-		}
-
-		s.closeErr = s.core.Close()
-	})
-}
-
-// postShutdown makes a timed-out measurement run exit with a failure status.
-func (s *shell) postShutdown() {
-	if s.timedOut.Load() {
-		os.Exit(1)
-	}
+// ServiceShutdown stops it, reporting what Stop returns.
+func (l *lifecycle) ServiceShutdown() error {
+	return l.of.Stop()
 }

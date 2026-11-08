@@ -16,6 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/brand"
+	"github.com/mrz1836/nilbox/internal/event"
+	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/timing"
 )
 
@@ -106,32 +108,30 @@ func TestBugReportFormHasTheEnvironmentField(t *testing.T) {
 	assert.Contains(t, string(form), "id: "+environmentField+"\n")
 }
 
-func TestReportFirstPaintCallsHookOnce(t *testing.T) {
+func TestReportFirstPaintEmitsOnce(t *testing.T) {
 	rec := &stubRecorder{m: timing.Measurement{FirstPaintMS: 321, Source: timing.SourceOS}}
+	events := &testutil.Events{}
 
-	var got []timing.Measurement
-
-	s := NewService(Config{Recorder: rec, OnFirstPaint: func(m timing.Measurement) { got = append(got, m) }})
+	s := NewService(Config{Recorder: rec, Events: events})
 
 	require.NoError(t, s.ReportFirstPaint())
 	require.NoError(t, s.ReportFirstPaint())
 
 	assert.Equal(t, 2, rec.calls)
-	assert.Equal(t, []timing.Measurement{rec.m}, got)
+	assert.Equal(t, []event.Event{event.FirstPaint{Measurement: rec.m}}, events.All())
 }
 
-func TestReportFirstPaintReturnsLogErrorAfterHook(t *testing.T) {
+func TestReportFirstPaintReturnsLogErrorAfterTheEvent(t *testing.T) {
 	rec := &stubRecorder{m: timing.Measurement{FirstPaintMS: 12, Source: timing.SourceRuntime}, err: errLog}
+	events := &testutil.Events{}
 
-	hooked := false
-
-	s := NewService(Config{Recorder: rec, OnFirstPaint: func(timing.Measurement) { hooked = true }})
+	s := NewService(Config{Recorder: rec, Events: events})
 
 	require.ErrorIs(t, s.ReportFirstPaint(), errLog)
-	assert.True(t, hooked, "the measurement is valid even when the timing log fails")
+	assert.Equal(t, 1, events.Count(), "the measurement is valid even when the timing log fails")
 }
 
-func TestReportFirstPaintWithoutRecorderOrHook(t *testing.T) {
+func TestReportFirstPaintWithoutRecorderOrSink(t *testing.T) {
 	require.NoError(t, NewService(Config{}).ReportFirstPaint())
 
 	rec := &stubRecorder{}
@@ -150,11 +150,15 @@ func TestReportFirstPaintWithTimingRecorder(t *testing.T) {
 		Now:    func() time.Time { return start.Add(250 * time.Millisecond) },
 	})
 
-	var got timing.Measurement
+	events := &testutil.Events{}
 
-	s := NewService(Config{Recorder: rec, OnFirstPaint: func(m timing.Measurement) { got = m }})
+	s := NewService(Config{Recorder: rec, Events: events})
 
 	require.NoError(t, s.ReportFirstPaint())
-	assert.Equal(t, "startup.first_paint_ms=250 source=os", got.String())
+	require.Equal(t, 1, events.Count())
+
+	paint, ok := events.All()[0].(event.FirstPaint)
+	require.True(t, ok)
+	assert.Equal(t, "startup.first_paint_ms=250 source=os", paint.Measurement.String())
 	assert.Contains(t, buf.String(), "startup.first_paint_ms=250 source=os")
 }

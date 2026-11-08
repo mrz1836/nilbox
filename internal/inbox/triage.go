@@ -78,8 +78,8 @@ func (s *Service) Unpin(ctx context.Context, id int64) (Snapshot, error) {
 }
 
 // clearState runs unset, which clears some of the local state of the item with id, and
-// deletes the row once nothing is left in it, both in one transaction; then it tells the
-// notifier and returns the new snapshot. what names the action in an error.
+// deletes the row once nothing is left in it, both in one transaction; then it says the
+// inbox changed and returns the new snapshot. what names the action in an error.
 func (s *Service) clearState(
 	ctx context.Context, what string, id int64, unset func(context.Context, *queries.Queries) error,
 ) (Snapshot, error) {
@@ -100,7 +100,7 @@ func (s *Service) clearState(
 	return s.Snapshot(ctx)
 }
 
-// setTriage stores an item's triage state, tells the notifier, and returns the new
+// setTriage stores an item's triage state, says the inbox changed, and returns the new
 // snapshot. verb names the action in an error.
 func (s *Service) setTriage(
 	ctx context.Context, verb string, id int64, dismissedAt, snoozedUntil *time.Time, baseline *string,
@@ -113,8 +113,8 @@ func (s *Service) setTriage(
 }
 
 // setState runs set, which records some of the local state of the item with id and
-// returns how many rows it changed: none for an unknown item. Then it tells the notifier
-// and returns the new snapshot. verb names the action in an error.
+// returns how many rows it changed: none for an unknown item. Then it says the inbox
+// changed and returns the new snapshot. verb names the action in an error.
 func (s *Service) setState(
 	ctx context.Context, verb string, id int64, set func(context.Context) (int64, error),
 ) (Snapshot, error) {

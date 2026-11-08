@@ -15,6 +15,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/mrz1836/nilbox/internal/brand"
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/prefs"
@@ -72,11 +73,11 @@ func (p *fakePoster) posted() []Banner {
 
 // fixture is a database with stored items to notify about.
 type fixture struct {
-	pool     *sql.DB
-	clock    *testutil.Clock
-	poster   *fakePoster
-	notifier *testutil.Notifier
-	items    []int64
+	pool   *sql.DB
+	clock  *testutil.Clock
+	poster *fakePoster
+	events *testutil.Events
+	items  []int64
 }
 
 // newFixture opens a fresh database holding n pull requests in acme-org/example-repo,
@@ -96,7 +97,7 @@ VALUES ('acme-org', 'example-repo', ?, ?) RETURNING id`, testNow, testNow).Scan(
 
 	f := &fixture{
 		pool: pool, clock: testutil.NewClock(testNow), poster: &fakePoster{status: StatusOn},
-		notifier: &testutil.Notifier{},
+		events: &testutil.Events{},
 	}
 
 	for i := 1; i <= n; i++ {
@@ -113,7 +114,7 @@ item_created_at, item_updated_at, fetched_at) VALUES (?, ?, 'pr', ?, ?, ?, ?) RE
 }
 
 func (f *fixture) config() Config {
-	return Config{Pool: f.pool, Poster: f.poster, Notifier: f.notifier, Clock: f.clock}
+	return Config{Pool: f.pool, Poster: f.poster, Events: f.events, Clock: f.clock}
 }
 
 // arrival is the arrival of the fixture's item i (from 0) as kind.
@@ -429,7 +430,7 @@ func TestTheDispatcherRecordsAndShowsBanners(t *testing.T) {
 	log, err := NewStore(f.pool).Log(t.Context())
 	require.NoError(t, err)
 	require.Len(t, log.Items, 2)
-	assert.Equal(t, 1, f.notifier.Calls())
+	assert.Equal(t, []event.Event{event.NotificationsUpdated{}}, f.events.All())
 
 	banners := f.poster.posted()
 	require.Len(t, banners, 2)
@@ -467,7 +468,7 @@ func TestTheDispatcherKeepsTheLogWithoutAPoster(t *testing.T) {
 	log, err := NewStore(f.pool).Log(t.Context())
 	require.NoError(t, err)
 	assert.Len(t, log.Items, 1)
-	assert.Equal(t, 1, f.notifier.Calls())
+	assert.Equal(t, 1, f.events.Count())
 }
 
 func TestTheDispatcherShowsNoBannersTheUserHasNotAllowed(t *testing.T) {
@@ -477,7 +478,7 @@ func TestTheDispatcherShowsNoBannersTheUserHasNotAllowed(t *testing.T) {
 	NewDispatcher(f.config()).Arrived(t.Context(), []inbox.Arrival{f.arrival(0, KindReviewRequested)})
 
 	assert.Empty(t, f.poster.posted())
-	assert.Equal(t, 1, f.notifier.Calls(), "the log still has it")
+	assert.Equal(t, 1, f.events.Count(), "the log still has it")
 }
 
 func TestTheDispatcherSurvivesFailures(t *testing.T) {
@@ -486,14 +487,14 @@ func TestTheDispatcherSurvivesFailures(t *testing.T) {
 
 	d := NewDispatcher(f.config())
 	d.Arrived(t.Context(), []inbox.Arrival{f.arrival(0, KindReviewRequested)})
-	assert.Equal(t, 1, f.notifier.Calls(), "the entry was still recorded")
+	assert.Equal(t, 1, f.events.Count(), "the entry was still recorded")
 
 	d.Arrived(t.Context(), nil)
-	assert.Equal(t, 1, f.notifier.Calls(), "nothing new, nothing told")
+	assert.Equal(t, 1, f.events.Count(), "nothing new, nothing told")
 
 	require.NoError(t, f.pool.Close())
 	d.Arrived(context.Background(), []inbox.Arrival{f.arrival(0, KindReviewRequested)})
-	assert.Equal(t, 1, f.notifier.Calls(), "nothing was recorded")
+	assert.Equal(t, 1, f.events.Count(), "nothing was recorded")
 }
 
 func TestTheDispatcherShowsNoBannersWhenTheSettingsCannotBeRead(t *testing.T) {
@@ -506,7 +507,7 @@ func TestTheDispatcherShowsNoBannersWhenTheSettingsCannotBeRead(t *testing.T) {
 	NewDispatcher(f.config()).Arrived(t.Context(), []inbox.Arrival{f.arrival(0, KindReviewRequested)})
 
 	assert.Empty(t, f.poster.posted(), "without the settings, no banner the user may have turned off is shown")
-	assert.Equal(t, 1, f.notifier.Calls(), "the log still has it")
+	assert.Equal(t, 1, f.events.Count(), "the log still has it")
 }
 
 func TestTheServiceServesTheLog(t *testing.T) {
@@ -521,14 +522,14 @@ func TestTheServiceServesTheLog(t *testing.T) {
 	assert.Equal(t, 1, log.Unread)
 
 	require.NoError(t, svc.MarkAllRead(t.Context()))
-	assert.Equal(t, 1, f.notifier.Calls())
+	assert.Equal(t, 1, f.events.Count())
 
 	log, err = svc.List(t.Context())
 	require.NoError(t, err)
 	assert.Zero(t, log.Unread)
 
 	require.NoError(t, svc.Clear(t.Context()))
-	assert.Equal(t, 2, f.notifier.Calls())
+	assert.Equal(t, 2, f.events.Count())
 
 	log, err = svc.List(t.Context())
 	require.NoError(t, err)
@@ -537,7 +538,7 @@ func TestTheServiceServesTheLog(t *testing.T) {
 	require.NoError(t, f.pool.Close())
 	require.Error(t, svc.MarkAllRead(t.Context()))
 	require.Error(t, svc.Clear(t.Context()))
-	assert.Equal(t, 2, f.notifier.Calls(), "failures are not told")
+	assert.Equal(t, 2, f.events.Count(), "failures are not told")
 }
 
 func TestBannerStatusAndTest(t *testing.T) {
@@ -579,5 +580,6 @@ func TestTheDefaultsFillIn(t *testing.T) {
 	require.NotNil(t, svc.clock)
 	assert.NotNil(t, svc.logger)
 	assert.WithinDuration(t, time.Now(), svc.clock.Now(), time.Minute)
-	svc.notify() // no notifier: nothing to tell
+	assert.Equal(t, event.Discard{}, svc.events, "without a sink, events are dropped")
+	svc.notify()
 }

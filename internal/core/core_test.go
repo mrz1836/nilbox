@@ -2,6 +2,7 @@ package core
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"log/slog"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/appdata"
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
@@ -239,61 +241,59 @@ func TestServicesListsBoundServices(t *testing.T) {
 	assert.NotNil(t, c.Timing)
 }
 
-func TestFirstPaintHookAndTimingLog(t *testing.T) {
-	paths := appdata.NewPaths(filepath.Join(t.TempDir(), "data"))
+func TestTheSweeperSweepsTheWorktreeService(t *testing.T) {
+	c := bootstrap(t, Options{
+		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
+		Home:   testutil.ClaudeHome(t),
+		Runner: noPrograms(),
+	})
 
-	var got []timing.Measurement
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	// A canceled context still gets the first sweep, which Run makes before it waits.
+	c.Sweeper.Run(ctx)
+	assert.Equal(t, 1, c.Worktrees.LastSweep().Seq)
+}
+
+func TestFirstPaintEventAndTimingLog(t *testing.T) {
+	paths := appdata.NewPaths(filepath.Join(t.TempDir(), "data"))
+	events := &testutil.Events{}
 
 	c := bootstrap(t, Options{
-		Paths:        paths,
-		Home:         testutil.ClaudeHome(t),
-		Runner:       noPrograms(),
-		Logger:       slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
-		OnFirstPaint: func(m timing.Measurement) { got = append(got, m) },
+		Paths:  paths,
+		Home:   testutil.ClaudeHome(t),
+		Runner: noPrograms(),
+		Logger: slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
+		Events: events,
 	})
 
 	require.NoError(t, c.AppInfo.ReportFirstPaint())
 	require.NoError(t, c.AppInfo.ReportFirstPaint())
 
+	got := events.All()
 	require.Len(t, got, 1)
+	assert.IsType(t, event.FirstPaint{}, got[0])
 
 	data, err := os.ReadFile(filepath.Join(paths.Logs, timing.LogFileName))
 	require.NoError(t, err)
 	assert.Contains(t, string(data), timing.FirstPaintKey+"=")
 }
 
-// themeRecorder records the themes the settings service announces.
-type themeRecorder struct {
-	themes []string
-}
-
-func (r *themeRecorder) ThemeChanged(theme string) {
-	r.themes = append(r.themes, theme)
-}
-
-func TestThemeChangesReachTheThemeNotifier(t *testing.T) {
-	recorder := &themeRecorder{}
+func TestThemeChangesReachTheEvents(t *testing.T) {
+	events := &testutil.Events{}
 
 	c := bootstrap(t, Options{
-		Paths:         appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:          testutil.ClaudeHome(t),
-		Runner:        noPrograms(),
-		ThemeNotifier: recorder,
+		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
+		Home:   testutil.ClaudeHome(t),
+		Runner: noPrograms(),
+		Events: events,
 	})
 
 	require.NoError(t, c.Settings.SetTheme(t.Context(), settings.ThemeDark))
 	require.Error(t, c.Settings.SetTheme(t.Context(), "sepia"))
 
-	assert.Equal(t, []string{settings.ThemeDark}, recorder.themes)
-}
-
-// menuBarRecorder records the menu bar settings the settings service announces.
-type menuBarRecorder struct {
-	changes []bool
-}
-
-func (r *menuBarRecorder) MenuBarChanged(on bool) {
-	r.changes = append(r.changes, on)
+	assert.Equal(t, []event.Event{event.ThemeChanged{Theme: settings.ThemeDark}}, events.All())
 }
 
 // posterStub is a notification center that shows every banner.
@@ -312,19 +312,19 @@ func (p *posterStub) Status() string { return notify.StatusOn }
 func (p *posterStub) Authorize() (bool, error) { return true, nil }
 
 func TestMenuBarAndNotificationsReachTheShell(t *testing.T) {
-	menuBar := &menuBarRecorder{}
+	events := &testutil.Events{}
 	poster := &posterStub{}
 
 	c := bootstrap(t, Options{
-		Paths:           appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:            testutil.ClaudeHome(t),
-		Runner:          noPrograms(),
-		MenuBarNotifier: menuBar,
-		Banners:         poster,
+		Paths:   appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
+		Home:    testutil.ClaudeHome(t),
+		Runner:  noPrograms(),
+		Events:  events,
+		Banners: poster,
 	})
 
 	require.NoError(t, c.Settings.SetMenuBar(t.Context(), false))
-	assert.Equal(t, []bool{false}, menuBar.changes)
+	assert.Equal(t, []event.Event{event.MenuBarChanged{On: false}}, events.All())
 
 	assert.Equal(t, notify.StatusOn, c.Notifications.BannerStatus())
 	require.NoError(t, c.Notifications.SendTest())
@@ -335,7 +335,38 @@ func TestMenuBarAndNotificationsReachTheShell(t *testing.T) {
 	assert.Empty(t, log.Items)
 }
 
-func TestThemeWithoutAThemeNotifier(t *testing.T) {
+func TestTheShellReadsItsSettingsOffTheBoundService(t *testing.T) {
+	c := bootstrap(t, Options{
+		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
+		Home:   testutil.ClaudeHome(t),
+		Runner: noPrograms(),
+	})
+
+	for _, s := range c.Services() {
+		assert.NotEqual(t, c.ShellSettings, s, "the shell's settings are not bound")
+	}
+
+	ctx := t.Context()
+	size := settings.WindowSize{Width: 1440, Height: 900}
+
+	require.NoError(t, c.Settings.SetTheme(ctx, settings.ThemeDark))
+	require.NoError(t, c.Settings.SetMenuBar(ctx, false))
+	require.NoError(t, c.Settings.SetWindowSize(ctx, size))
+
+	theme, err := c.ShellSettings.Theme(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, settings.ThemeDark, theme)
+
+	on, err := c.ShellSettings.MenuBar(ctx)
+	require.NoError(t, err)
+	assert.False(t, on)
+
+	got, err := c.ShellSettings.WindowSize(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, size, got)
+}
+
+func TestThemeWithoutAnEventSink(t *testing.T) {
 	c := bootstrap(t, Options{
 		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
 		Home:   testutil.ClaudeHome(t),

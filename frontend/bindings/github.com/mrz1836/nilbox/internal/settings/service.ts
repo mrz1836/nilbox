@@ -79,8 +79,8 @@ export function SetDefaultProfile(name: string): $CancellablePromise<void> {
 }
 
 /**
- * SetMenuBar stores whether the app shows its menu bar icon. Once it is stored, the menu
- * bar notifier, if any, is told.
+ * SetMenuBar stores whether the app shows its menu bar icon. Once it is stored, an
+ * event.MenuBarChanged is emitted, so the desktop shell adds or removes the icon.
  */
 export function SetMenuBar(on: boolean): $CancellablePromise<void> {
     return $Call.ByID(1825092391, on);
@@ -152,7 +152,8 @@ export function SetTerminal(terminal: string): $CancellablePromise<void> {
 
 /**
  * SetTheme stores the theme the app shows: ThemeSystem, ThemeLight, or ThemeDark. Once
- * it is stored, the theme notifier, if any, is told.
+ * it is stored, an event.ThemeChanged is emitted, so the desktop shell brings the
+ * window's native appearance along with it.
  */
 export function SetTheme(theme: string): $CancellablePromise<void> {
     return $Call.ByID(3709078766, theme);

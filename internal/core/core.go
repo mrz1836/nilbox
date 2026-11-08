@@ -3,7 +3,8 @@
 // every service the window binds to.
 //
 // Core is plain Go with no desktop dependency, so the whole startup path is tested on any
-// OS. The desktop shell only adds the window, binds Services, and runs the scheduler.
+// OS. The desktop shell only adds the window, binds Services, hears the services' events,
+// and runs the scheduler and the sweeper.
 package core
 
 import (
@@ -16,6 +17,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/appinfo"
 	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
@@ -63,23 +65,13 @@ type Options struct {
 	// clock.
 	Clock clock.Clock
 
-	// Notifier is told when the stored inbox changed.
-	Notifier inbox.Notifier
-
-	// WorktreeNotifier is told when an automatic worktree sweep changed something.
-	WorktreeNotifier worktrees.Notifier
-
-	// ThemeNotifier is told when the theme was changed and stored.
-	ThemeNotifier settings.ThemeNotifier
-
-	// MenuBarNotifier is told when the menu bar setting was changed and stored.
-	MenuBarNotifier settings.MenuBarNotifier
+	// Events hears every service's events: the inbox, the worktree sweep, and the
+	// notification log changed; the theme or the menu bar setting was stored; the window
+	// painted its first frame. Without it they are dropped.
+	Events event.Sink
 
 	// Banners shows native notifications; without it the notification log is still kept.
 	Banners notify.Poster
-
-	// NotificationsNotifier is told when the notification log changed.
-	NotificationsNotifier notify.Notifier
 
 	// Runner runs external programs: the GitHub token source, the clone scan, the
 	// confirmed clone of a missing repository, the terminal drivers, and the worktree
@@ -89,9 +81,6 @@ type Options struct {
 
 	// Logger receives scheduler and timing records. It defaults to slog.Default().
 	Logger *slog.Logger
-
-	// OnFirstPaint is called once when the frontend reports its first paint.
-	OnFirstPaint func(timing.Measurement)
 }
 
 // Core is the assembled app: the database and every service.
@@ -112,14 +101,19 @@ type Core struct {
 	Notifications  *notify.Service
 	AppInfo        *appinfo.Service
 
+	// ShellSettings are the settings the desktop shell reads when the app launches. They
+	// are not bound.
+	ShellSettings ShellSettings
+
 	// ProfileStore holds the stored agent profiles that Profiles lists. It is not bound;
 	// code that seeds the database, such as the launch measurement, writes through it.
 	ProfileStore *profiles.Store
 
-	// Scheduler refreshes the inbox on start and every five minutes once Run is called.
-	// A worktrees.Sweeper over Worktrees does the same for the automatic worktree
-	// cleanup.
+	// Scheduler refreshes the inbox on start and every five minutes once Run is called,
+	// and Sweeper does the same for the automatic worktree cleanup. Each runs until its
+	// context is canceled; the desktop shell runs both while the app is open.
 	Scheduler *inbox.Scheduler
+	Sweeper   worktrees.Sweeper
 
 	// Timing records the first paint.
 	Timing *timing.Recorder
@@ -248,13 +242,13 @@ func assemble(pool *sql.DB, reset *appinfo.DataReset, opts Options, logger *slog
 	defaultsStore := launchdefaults.NewStore(pool, opts.Clock)
 	inboxStore := inbox.NewStore(pool, opts.Clock)
 	prefs := settings.NewService(pool, profileStore, opts.Home, settings.WithClock(opts.Clock),
-		settings.WithThemeNotifier(opts.ThemeNotifier), settings.WithMenuBarNotifier(opts.MenuBarNotifier))
+		settings.WithEvents(opts.Events))
 	tokens := github.NewTokenSource(runner, search)
 	client := github.NewClient(opts.Version)
 	workLog := worklog.New(pool)
 
 	notices := notify.Config{
-		Pool: pool, Poster: opts.Banners, Notifier: opts.NotificationsNotifier, Clock: opts.Clock, Logger: logger,
+		Pool: pool, Poster: opts.Banners, Events: opts.Events, Clock: opts.Clock, Logger: logger,
 	}
 
 	inboxSvc := inbox.NewService(inbox.Config{
@@ -262,7 +256,7 @@ func assemble(pool *sql.DB, reset *appinfo.DataReset, opts Options, logger *slog
 		Tokens:   tokens,
 		Client:   client,
 		Clock:    opts.Clock,
-		Notifier: opts.Notifier,
+		Events:   opts.Events,
 		Arrivals: notify.NewDispatcher(notices),
 	})
 
@@ -285,6 +279,19 @@ func assemble(pool *sql.DB, reset *appinfo.DataReset, opts Options, logger *slog
 		Files:    inboxSvc,
 	})
 
+	sweeps := worktrees.NewService(worktrees.Config{
+		Settings: settingsView[worktrees.SweepSettings]{settings: prefs, part: sweepSettings},
+		Git:      runner,
+		Finder:   search,
+		Home:     opts.Home,
+		Clock:    opts.Clock,
+		GitHub:   itemStates{tokens: tokens, client: client},
+		Launches: workLog,
+		History:  workLog,
+		Events:   opts.Events,
+		Logger:   logger,
+	})
+
 	return &Core{
 		DB:       pool,
 		Settings: prefs,
@@ -295,31 +302,22 @@ func assemble(pool *sql.DB, reset *appinfo.DataReset, opts Options, logger *slog
 		LaunchDefaults: launchdefaults.NewService(launchdefaults.Config{
 			Store: defaultsStore, Profiles: profileStore, Prompts: promptStore, Repos: inboxRepos{store: inboxStore},
 		}),
-		Inbox:    inboxSvc,
-		Launcher: launch,
-		Worktrees: worktrees.NewService(worktrees.Config{
-			Settings: settingsView[worktrees.SweepSettings]{settings: prefs, part: sweepSettings},
-			Git:      runner,
-			Finder:   search,
-			Home:     opts.Home,
-			Clock:    opts.Clock,
-			GitHub:   itemStates{tokens: tokens, client: client},
-			Launches: workLog,
-			History:  workLog,
-			Notifier: opts.WorktreeNotifier,
-			Logger:   logger,
-		}),
+		Inbox:         inboxSvc,
+		Launcher:      launch,
+		Worktrees:     sweeps,
 		Notifications: notify.NewService(notices),
 		AppInfo: appinfo.NewService(appinfo.Config{
-			Version:      opts.Version,
-			Release:      opts.Release,
-			Build:        opts.Build,
-			Recorder:     recorder,
-			OnFirstPaint: opts.OnFirstPaint,
-			DataReset:    reset,
+			Version:   opts.Version,
+			Release:   opts.Release,
+			Build:     opts.Build,
+			Recorder:  recorder,
+			Events:    opts.Events,
+			DataReset: reset,
 		}),
-		ProfileStore: profileStore,
-		Scheduler:    inbox.NewScheduler(inboxSvc, logger),
-		Timing:       recorder,
+		ShellSettings: newShellSettings(prefs, pool, opts.Clock),
+		ProfileStore:  profileStore,
+		Scheduler:     inbox.NewScheduler(inboxSvc, logger),
+		Sweeper:       worktrees.NewSweeper(sweeps, worktrees.DefaultSweepInterval),
+		Timing:        recorder,
 	}
 }

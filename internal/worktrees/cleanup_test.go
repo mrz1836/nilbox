@@ -115,7 +115,7 @@ type linkDeps struct {
 	gh       *fakeGitHub
 	launches *fakeLaunches
 	history  History
-	notifier *testutil.Notifier
+	events   *testutil.Events
 	auto     bool
 	procs    processTable
 }
@@ -140,8 +140,8 @@ func (e *env) linked(deps linkDeps) *Service {
 		cfg.Launches = deps.launches
 	}
 
-	if deps.notifier != nil {
-		cfg.Notifier = deps.notifier
+	if deps.events != nil {
+		cfg.Events = deps.events
 	}
 
 	if deps.history != nil {

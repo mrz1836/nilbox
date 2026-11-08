@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -361,15 +362,22 @@ func TestSteppingClockMovesOnEveryRead(t *testing.T) {
 	assert.Equal(t, start.Add(2*time.Second), clock.Now())
 }
 
-func TestNotifierCountsEveryService(t *testing.T) {
+func TestEventsRecordsEveryEventInOrder(t *testing.T) {
 	t.Parallel()
 
-	n := &testutil.Notifier{}
-	assert.Zero(t, n.Calls())
+	events := &testutil.Events{}
+	assert.Zero(t, events.Count())
+	assert.Empty(t, events.All())
 
-	n.InboxUpdated()
-	n.NotificationsUpdated()
-	n.WorktreesUpdated()
+	events.Emit(event.InboxUpdated{})
+	events.Emit(event.NotificationsUpdated{})
+	events.Emit(event.WorktreesUpdated{})
 
-	assert.Equal(t, 3, n.Calls())
+	got := events.All()
+	assert.Equal(t, []event.Event{event.InboxUpdated{}, event.NotificationsUpdated{}, event.WorktreesUpdated{}}, got)
+	assert.Equal(t, 3, events.Count())
+
+	got[0] = event.MenuBarChanged{}
+
+	assert.Equal(t, event.InboxUpdated{}, events.All()[0], "All returns a copy")
 }

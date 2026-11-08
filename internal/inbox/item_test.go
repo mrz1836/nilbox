@@ -39,7 +39,7 @@ func itemRate() github.QueryRate {
 
 func TestRefreshItemRewritesAnOpenItem(t *testing.T) {
 	h, id := itemHarness(t)
-	calls := h.notifier.Calls()
+	calls := h.events.Count()
 
 	now := pr(1, "OWNER", false)
 	now.State = github.StateOpen
@@ -76,7 +76,7 @@ func TestRefreshItemRewritesAnOpenItem(t *testing.T) {
 	assert.Equal(t, 1, snap.Rate.GraphQL.Cost)
 	assert.Equal(t, 4980, snap.Rate.Core.Remaining, "the REST budgets keep their readings")
 	assert.Equal(t, "2026-01-10T12:00:00Z", snap.LastRefreshedAt, "a single item is not a whole refresh")
-	assert.Equal(t, calls+1, h.notifier.Calls())
+	assert.Equal(t, calls+1, h.events.Count())
 }
 
 func TestRefreshItemTakesAnItemThatIsNoLongerOpenOutOfTheLists(t *testing.T) {
@@ -211,7 +211,7 @@ func TestRefreshItemFailuresKeepTheStoredInbox(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			h, id := itemHarness(t)
-			calls := h.notifier.Calls()
+			calls := h.events.Count()
 			tt.prepare(h)
 
 			_, err := h.svc.RefreshItem(t.Context(), tt.id(id))
@@ -223,7 +223,7 @@ func TestRefreshItemFailuresKeepTheStoredInbox(t *testing.T) {
 			assert.Empty(t, snap.LastError, "a single item's failure is not the inbox's last error")
 			assert.Equal(t, "Item 1", itemByNumber(t, snap.ReviewRequested, 1).Title)
 			assert.Equal(t, [3]bool{true, false, true}, h.reasons(t, 1))
-			assert.Equal(t, calls, h.notifier.Calls())
+			assert.Equal(t, calls, h.events.Count())
 		})
 	}
 }

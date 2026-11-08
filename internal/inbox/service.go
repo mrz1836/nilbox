@@ -44,6 +44,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/item"
@@ -101,21 +102,18 @@ type Client interface {
 	FetchAvatar(ctx context.Context, url string) (*github.Avatar, error)
 }
 
-// Notifier is told when the stored inbox or its status changed.
-type Notifier interface {
-	InboxUpdated()
-}
-
-// Config holds a Service's dependencies. Clock, Notifier, and Arrivals are optional.
+// Config holds a Service's dependencies. Clock, Events, and Arrivals are optional.
 type Config struct {
 	// Pool is the database's connection pool. It holds the inbox's tables, and the prefs
 	// that keep the inbox status and the settings the inbox reads.
 	Pool *sql.DB
 
-	Tokens   TokenSource
-	Client   Client
-	Clock    clock.Clock
-	Notifier Notifier
+	Tokens TokenSource
+	Client Client
+	Clock  clock.Clock
+
+	// Events hears an event.InboxUpdated whenever the stored inbox or its status changed.
+	Events event.Sink
 
 	// Arrivals is told about the items that newly need the user after each refresh.
 	Arrivals ArrivalSink
@@ -129,7 +127,7 @@ type Service struct {
 	tokens   TokenSource
 	client   Client
 	clock    clock.Clock
-	notifier Notifier
+	events   event.Sink
 	arrivals ArrivalSink
 
 	// mu serializes refreshes, so a manual refresh and a scheduled one never interleave.
@@ -142,7 +140,7 @@ func NewService(cfg Config) *Service {
 
 	return &Service{
 		db: cfg.Pool, q: queries.New(cfg.Pool), prefs: prefs.New(cfg.Pool, c), tokens: cfg.Tokens,
-		client: cfg.Client, clock: c, notifier: cfg.Notifier, arrivals: cfg.Arrivals,
+		client: cfg.Client, clock: c, events: event.Or(cfg.Events), arrivals: cfg.Arrivals,
 	}
 }
 
@@ -481,11 +479,9 @@ func (s *Service) newWriter(tx *sql.Tx) *writer {
 	return newWriter(s.q.WithTx(tx), s.prefs.WithTx(tx), s.now())
 }
 
-// notify tells the notifier, if any, that the inbox changed.
+// notify tells the events sink that the inbox changed.
 func (s *Service) notify() {
-	if s.notifier != nil {
-		s.notifier.InboxUpdated()
-	}
+	s.events.Emit(event.InboxUpdated{})
 }
 
 // now returns the current time in UTC, which keeps stored timestamps sortable.

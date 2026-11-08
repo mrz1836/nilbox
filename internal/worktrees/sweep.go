@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/periodic"
 	"github.com/mrz1836/nilbox/internal/worklog"
@@ -25,8 +26,8 @@ const DefaultSweepInterval = 5 * time.Minute
 // only in clones with an agent worktree directory or a recorded launch, so it is cheap to
 // run on a timer. It also drops the launch records of worktrees that are gone, and counts
 // the linked worktrees of every clone from their git directories, again without running
-// git. The report is kept for LastSweep, and the notifier is told when a worktree was
-// removed or either count changed.
+// git. The report is kept for LastSweep, and an event.WorktreesUpdated is emitted when a
+// worktree was removed or either count changed.
 func (s *Service) Sweep(ctx context.Context) SweepReport {
 	report := s.sweepLocked(ctx)
 	report.At = clock.Format(s.clock.Now())
@@ -38,8 +39,8 @@ func (s *Service) Sweep(ctx context.Context) SweepReport {
 	s.last = report
 	s.mu.Unlock()
 
-	if changed && s.notifier != nil {
-		s.notifier.WorktreesUpdated()
+	if changed {
+		s.events.Emit(event.WorktreesUpdated{})
 	}
 
 	return report
@@ -361,16 +362,18 @@ func (s *Service) launchGone(l worklog.Launch, root string, listed map[string]bo
 // Sweeper runs a Service's sweeps on a timer. It is kept apart from Service, every
 // exported method of which the window binds.
 type Sweeper struct {
-	svc *Service
+	svc      *Service
+	interval time.Duration
 }
 
-// NewSweeper returns a Sweeper over svc.
-func NewSweeper(svc *Service) Sweeper {
-	return Sweeper{svc: svc}
+// NewSweeper returns a Sweeper over svc that sweeps every interval.
+func NewSweeper(svc *Service, interval time.Duration) Sweeper {
+	return Sweeper{svc: svc, interval: interval}
 }
 
-// Run sweeps now and then every interval until ctx is canceled. A failed sweep is logged,
-// and a panicking one is recovered and logged; the next one still runs.
-func (sw Sweeper) Run(ctx context.Context, interval time.Duration) {
-	periodic.Run(ctx, interval, sweepJob, sw.svc.sweepOnce, sw.svc.logger)
+// Run sweeps now and then every interval until ctx is canceled, and returns once the
+// sweep in flight has. A failed sweep is logged, and a panicking one is recovered and
+// logged; the next one still runs.
+func (sw Sweeper) Run(ctx context.Context) {
+	periodic.Run(ctx, sw.interval, sweepJob, sw.svc.sweepOnce, sw.svc.logger)
 }

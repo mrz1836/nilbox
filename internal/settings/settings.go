@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/paths"
@@ -153,8 +154,7 @@ type Service struct {
 	profiles ProfileLookup
 	home     string
 	clock    clock.Clock
-	themes   ThemeNotifier
-	menuBar  MenuBarNotifier
+	events   event.Sink
 }
 
 // NewService returns a Service over the preferences in pool. known looks up the stored
@@ -167,13 +167,22 @@ func NewService(pool *sql.DB, known ProfileLookup, home string, opts ...Option) 
 	}
 
 	s.prefs = prefs.New(pool, s.clock)
+	s.events = event.Or(s.events)
 
 	return s
 }
 
+// Option configures a Service.
+type Option func(*Service)
+
 // WithClock stamps the stored preferences from c rather than from the system clock.
 func WithClock(c clock.Clock) Option {
 	return func(s *Service) { s.clock = c }
+}
+
+// WithEvents emits the theme and menu bar changes into sink once they are stored.
+func WithEvents(sink event.Sink) Option {
+	return func(s *Service) { s.events = sink }
 }
 
 // Get returns every preference, with the default for any that is unset or holds a value

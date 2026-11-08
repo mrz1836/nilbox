@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 )
 
@@ -14,18 +15,6 @@ const KeyMenuBar = "ui.menuBar"
 
 // DefaultMenuBar is the menu bar setting of a fresh database.
 const DefaultMenuBar = true
-
-// MenuBarNotifier is told when the menu bar setting was changed and stored, so the desktop
-// shell can add or remove its icon.
-type MenuBarNotifier interface {
-	MenuBarChanged(on bool)
-}
-
-// WithMenuBarNotifier tells n about every change of the menu bar setting once it is
-// stored.
-func WithMenuBarNotifier(n MenuBarNotifier) Option {
-	return func(s *Service) { s.menuBar = n }
-}
 
 // MenuBar returns whether the app shows its menu bar icon: the stored setting, or
 // DefaultMenuBar when none is stored or the stored value cannot be read.
@@ -38,16 +27,14 @@ func (s *Service) MenuBar(ctx context.Context) (bool, error) {
 	return decodeMenuBar(stored), nil
 }
 
-// SetMenuBar stores whether the app shows its menu bar icon. Once it is stored, the menu
-// bar notifier, if any, is told.
+// SetMenuBar stores whether the app shows its menu bar icon. Once it is stored, an
+// event.MenuBarChanged is emitted, so the desktop shell adds or removes the icon.
 func (s *Service) SetMenuBar(ctx context.Context, on bool) error {
 	if err := s.prefs.Set(ctx, KeyMenuBar, strconv.FormatBool(on)); err != nil {
 		return err
 	}
 
-	if s.menuBar != nil {
-		s.menuBar.MenuBarChanged(on)
-	}
+	s.events.Emit(event.MenuBarChanged{On: on})
 
 	return nil
 }

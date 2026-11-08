@@ -41,6 +41,19 @@ func boundaries() []boundary {
 			forbidden: []string{"internal/inbox", "internal/github", "internal/settings"},
 			why:       "the launcher reads items, file checks, and settings through its ItemStore, FileChecker, and SettingsReader interfaces",
 		},
+		{
+			pkg: "internal/event",
+			forbidden: []string{
+				"internal/core", "internal/inbox", "internal/settings", "internal/worktrees", "internal/notify",
+				"internal/appinfo", "internal/store",
+			},
+			why: "every service emits events, so the event types depend on none of them",
+		},
+		{
+			pkg:       "internal/desktop",
+			forbidden: []string{"internal/core"},
+			why:       "the shell reaches the services through the interfaces it declares; the desktop bootstrap wires the core into it",
+		},
 	}
 }
 

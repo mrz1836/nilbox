@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/mrz1836/nilbox/internal/event"
 )
 
 // KeyTheme is the theme the app shows, stored as ThemeSystem, ThemeLight, or ThemeDark.
@@ -28,20 +30,6 @@ const (
 
 // ErrInvalidTheme is returned for a theme that is not one of the choices.
 var ErrInvalidTheme = errors.New("unknown theme")
-
-// ThemeNotifier is told when the theme was changed and stored, so the desktop shell can
-// bring the window's native appearance along with it.
-type ThemeNotifier interface {
-	ThemeChanged(theme string)
-}
-
-// Option configures a Service.
-type Option func(*Service)
-
-// WithThemeNotifier tells n about every theme change once it is stored.
-func WithThemeNotifier(n ThemeNotifier) Option {
-	return func(s *Service) { s.themes = n }
-}
 
 // themeNames returns the theme choices in the order Settings offers them.
 func themeNames() []string {
@@ -83,7 +71,8 @@ func (s *Service) Theme(ctx context.Context) (string, error) {
 }
 
 // SetTheme stores the theme the app shows: ThemeSystem, ThemeLight, or ThemeDark. Once
-// it is stored, the theme notifier, if any, is told.
+// it is stored, an event.ThemeChanged is emitted, so the desktop shell brings the
+// window's native appearance along with it.
 func (s *Service) SetTheme(ctx context.Context, theme string) error {
 	if !validTheme(theme) {
 		return fmt.Errorf("%w %q: choose one of %s", ErrInvalidTheme, theme, strings.Join(themeNames(), ", "))
@@ -93,9 +82,7 @@ func (s *Service) SetTheme(ctx context.Context, theme string) error {
 		return err
 	}
 
-	if s.themes != nil {
-		s.themes.ThemeChanged(theme)
-	}
+	s.events.Emit(event.ThemeChanged{Theme: theme})
 
 	return nil
 }

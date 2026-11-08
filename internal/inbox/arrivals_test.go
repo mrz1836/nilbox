@@ -47,7 +47,7 @@ func arrivalHarness(t *testing.T) (*harness, *fakeSink) {
 	h := newHarness(t)
 	sink := &fakeSink{}
 	h.svc = NewService(Config{
-		Pool: h.pool, Tokens: h.tokens, Client: h.client, Clock: h.clock, Notifier: h.notifier,
+		Pool: h.pool, Tokens: h.tokens, Client: h.client, Clock: h.clock, Events: h.events,
 		Arrivals: sink,
 	})
 
@@ -206,7 +206,7 @@ func TestASnoozeEndedEarlyArrives(t *testing.T) {
 	h, id, details := wakeHarness(t)
 	sink := &fakeSink{}
 	h.svc = NewService(Config{
-		Pool: h.pool, Tokens: h.tokens, Client: h.client, Clock: h.clock, Notifier: h.notifier,
+		Pool: h.pool, Tokens: h.tokens, Client: h.client, Clock: h.clock, Events: h.events,
 		Arrivals: sink,
 	})
 

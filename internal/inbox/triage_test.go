@@ -29,11 +29,11 @@ func triageHarness(t *testing.T) (h *harness, first, second int64) {
 
 func TestDismissUntilRestored(t *testing.T) {
 	h, id, other := triageHarness(t)
-	notified := h.notifier.Calls()
+	notified := h.events.Count()
 
 	snap, err := h.svc.Dismiss(t.Context(), id)
 	require.NoError(t, err)
-	assert.Equal(t, notified+1, h.notifier.Calls())
+	assert.Equal(t, notified+1, h.events.Count())
 
 	// The item stays in both its lists, marked; the UI sets it apart.
 	for _, l := range []List{snap.ReviewRequested, snap.Assigned} {
@@ -111,7 +111,7 @@ func TestSnoozeKeepsTheWallClockTime(t *testing.T) {
 
 func TestSnoozeRejectsInvalidLengths(t *testing.T) {
 	h, id, _ := triageHarness(t)
-	notified := h.notifier.Calls()
+	notified := h.events.Count()
 
 	for _, days := range []int{0, -1, snooze.MaxDays + 1} {
 		_, err := h.svc.Snooze(t.Context(), id, days)
@@ -124,12 +124,12 @@ func TestSnoozeRejectsInvalidLengths(t *testing.T) {
 	_, err = h.svc.Snooze(t.Context(), id, snooze.MaxDays)
 	require.NoError(t, err, "a year is the longest snooze")
 
-	assert.Equal(t, notified+1, h.notifier.Calls(), "only the valid snooze notifies")
+	assert.Equal(t, notified+1, h.events.Count(), "only the valid snooze notifies")
 }
 
 func TestPinKeepsAnItemOnTop(t *testing.T) {
 	h, first, second := triageHarness(t)
-	notified := h.notifier.Calls()
+	notified := h.events.Count()
 
 	// #2 moved last, so it leads until #1 is pinned.
 	snap, err := h.svc.Snapshot(t.Context())
@@ -138,7 +138,7 @@ func TestPinKeepsAnItemOnTop(t *testing.T) {
 
 	snap, err = h.svc.Pin(t.Context(), first)
 	require.NoError(t, err)
-	assert.Equal(t, notified+1, h.notifier.Calls())
+	assert.Equal(t, notified+1, h.events.Count())
 	assert.Equal(t, []int{1, 2}, numbers(snap.ReviewRequested))
 	assert.Equal(t, "2026-01-10T12:00:00Z", itemByNumber(t, snap.Assigned, 1).PinnedAt, "pinned in every list")
 	assert.Empty(t, itemByNumber(t, snap.ReviewRequested, 2).PinnedAt)
@@ -218,7 +218,7 @@ func TestAPinOutlastsSnoozesAndDismissals(t *testing.T) {
 
 func TestTriageUnknownItem(t *testing.T) {
 	h, _, _ := triageHarness(t)
-	notified := h.notifier.Calls()
+	notified := h.events.Count()
 
 	_, err := h.svc.Dismiss(t.Context(), 999)
 	require.ErrorIs(t, err, item.ErrNotFound)
@@ -231,7 +231,7 @@ func TestTriageUnknownItem(t *testing.T) {
 	require.ErrorIs(t, err, item.ErrNotFound)
 
 	assert.Zero(t, h.count(t, "item_local_state"))
-	assert.Equal(t, notified, h.notifier.Calls())
+	assert.Equal(t, notified, h.events.Count())
 }
 
 func TestTriageDatabaseErrors(t *testing.T) {

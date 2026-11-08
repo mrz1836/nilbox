@@ -2,34 +2,23 @@ package settings
 
 import (
 	"path/filepath"
-	"slices"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
-// themeLog records the themes a ThemeNotifier was told about, in order.
-type themeLog struct {
-	mu     sync.Mutex
-	themes []string
-}
+// themeEvents returns the theme changes for themes, in order.
+func themeEvents(themes ...string) []event.Event {
+	out := make([]event.Event, 0, len(themes))
+	for _, theme := range themes {
+		out = append(out, event.ThemeChanged{Theme: theme})
+	}
 
-func (l *themeLog) ThemeChanged(theme string) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	l.themes = append(l.themes, theme)
-}
-
-func (l *themeLog) got() []string {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	return slices.Clone(l.themes)
+	return out
 }
 
 func TestThemeIsSystemOnAFreshDatabase(t *testing.T) {
@@ -69,9 +58,9 @@ func TestThemeSurvivesARestart(t *testing.T) {
 }
 
 func TestSetThemeRejectsAnUnknownTheme(t *testing.T) {
-	log := &themeLog{}
+	events := &testutil.Events{}
 	home := t.TempDir()
-	svc := serviceOver(t, testutil.DB(t), home, WithThemeNotifier(log))
+	svc := serviceOver(t, testutil.DB(t), home, WithEvents(events))
 	ctx := t.Context()
 
 	require.NoError(t, svc.SetTheme(ctx, ThemeDark))
@@ -86,7 +75,7 @@ func TestSetThemeRejectsAnUnknownTheme(t *testing.T) {
 	got, err := svc.Theme(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, ThemeDark, got, "a rejected theme must not be stored")
-	assert.Equal(t, []string{ThemeDark}, log.got(), "a rejected theme must not be announced")
+	assert.Equal(t, themeEvents(ThemeDark), events.All(), "a rejected theme must not be announced")
 }
 
 func TestThemeIgnoresABadStoredValue(t *testing.T) {
@@ -110,20 +99,20 @@ func TestThemeReportsAClosedDatabase(t *testing.T) {
 	require.ErrorContains(t, svc.SetTheme(t.Context(), ThemeDark), "save setting "+KeyTheme)
 }
 
-func TestSetThemeTellsTheNotifierOnceStored(t *testing.T) {
-	log := &themeLog{}
+func TestSetThemeEmitsOnceStored(t *testing.T) {
+	events := &testutil.Events{}
 	db := testutil.DB(t)
-	svc := serviceOver(t, db, t.TempDir(), WithThemeNotifier(log))
+	svc := serviceOver(t, db, t.TempDir(), WithEvents(events))
 	ctx := t.Context()
 
 	require.NoError(t, svc.SetTheme(ctx, ThemeLight))
 	require.NoError(t, svc.SetTheme(ctx, ThemeLight))
 	require.NoError(t, svc.SetTheme(ctx, ThemeSystem))
 
-	assert.Equal(t, []string{ThemeLight, ThemeLight, ThemeSystem}, log.got(), "every stored choice, in order")
+	assert.Equal(t, themeEvents(ThemeLight, ThemeLight, ThemeSystem), events.All(), "every stored choice, in order")
 }
 
-func TestSetThemeWithoutANotifier(t *testing.T) {
+func TestSetThemeWithoutAnEventSink(t *testing.T) {
 	svc, _, _ := newTestService(t)
 
 	require.NoError(t, svc.SetTheme(t.Context(), ThemeDark))

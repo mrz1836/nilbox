@@ -111,11 +111,14 @@ and it sits behind the `desktop` build tag:
 
 - `cmd/nilbox/main.go` (`//go:build !desktop`) is the headless build, which prints the product
   identity. `magex build` and every untagged `go build ./...` build it.
-- `cmd/nilbox/main_desktop.go` (`//go:build desktop`) is the Wails app. The menu bar icon is
-  `tray_desktop.go`, and the notification banners `banners_darwin_desktop.go`. macOS window
-  options live in `window_darwin.go` (`desktop && darwin`). What the menu bar shows and every
-  notification are decided in plain Go (`internal/menubar` and `internal/notify`), so the
-  desktop files only draw and post them.
+- `cmd/nilbox/main_desktop.go` (`//go:build desktop`) is the Wails app. The window and its
+  page are `ui_desktop.go`, the menu bar icon `tray_desktop.go`, and the notification banners
+  `banners_darwin_desktop.go`. macOS window options live in `window_darwin.go`
+  (`desktop && darwin`). Everything the shell decides is plain Go: what it does with each of
+  the services' events (`internal/event`), when the menu bar is redrawn, the background work
+  it runs and the order it shuts down in (`internal/desktop`), what the menu bar shows
+  (`internal/menubar`), and every notification (`internal/notify`). The desktop files only
+  draw and post what those packages decide.
 - `frontend/assets_desktop.go` (`//go:build desktop`) embeds `frontend/dist`, so no untagged
   build needs a built frontend.
 - MAGE-X discovers build tags and tests them in one combined pass, which would compile the
@@ -155,8 +158,9 @@ wasn't set up by this app's migrations, the app renames it (with its `-wal` and 
 to `nilbox.db.broken-<UTC time>`, starts with an empty database, and says so in the window. A
 database saved by a newer version of the app is left as it is: a dialog asks you to update,
 and the app quits. A database another process has open, such as an older copy of the app
-that is still running, or one that can't be written, is never moved; the app exits with the
-error instead.
+that is still running, or one that can't be written, is never moved. Like anything else that
+stops the app from starting, it is shown in an error dialog, which says what to do where that
+is known, and the app quits once you dismiss it.
 
 <br>
 

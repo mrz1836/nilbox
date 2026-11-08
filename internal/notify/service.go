@@ -8,6 +8,7 @@ import (
 	"log/slog"
 
 	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/prefs"
@@ -21,39 +22,38 @@ var (
 	ErrBannersOff = errors.New("notifications are off for this app in System Settings")
 )
 
-// Notifier is told when the log changed, so the window reads it again.
-type Notifier interface {
-	NotificationsUpdated()
-}
-
 // Config holds the dependencies of a Dispatcher and a Service. Pool is required; Poster,
-// Notifier, Clock, and Logger are optional: without a Poster no banner is shown, and the
+// Events, Clock, and Logger are optional: without a Poster no banner is shown, and the
 // log is still kept.
 type Config struct {
 	// Pool is the database's connection pool. It holds the log, and the prefs the
 	// Dispatcher reads which banners are on from.
 	Pool *sql.DB
 
-	Poster   Poster
-	Notifier Notifier
-	Clock    clock.Clock
-	Logger   *slog.Logger
+	Poster Poster
+
+	// Events hears an event.NotificationsUpdated whenever the log changed, so the window
+	// reads it again.
+	Events event.Sink
+
+	Clock  clock.Clock
+	Logger *slog.Logger
 }
 
 // base is what the Dispatcher and the Service share.
 type base struct {
-	store    *Store
-	prefs    *prefs.Store
-	poster   Poster
-	notifier Notifier
-	clock    clock.Clock
-	logger   *slog.Logger
+	store  *Store
+	prefs  *prefs.Store
+	poster Poster
+	events event.Sink
+	clock  clock.Clock
+	logger *slog.Logger
 }
 
 // newBase fills in the defaults.
 func newBase(cfg Config) base {
 	b := base{
-		store: NewStore(cfg.Pool), prefs: prefs.New(cfg.Pool, cfg.Clock), poster: cfg.Poster, notifier: cfg.Notifier,
+		store: NewStore(cfg.Pool), prefs: prefs.New(cfg.Pool, cfg.Clock), poster: cfg.Poster, events: event.Or(cfg.Events),
 		clock: clock.Or(cfg.Clock), logger: cfg.Logger,
 	}
 
@@ -64,11 +64,9 @@ func newBase(cfg Config) base {
 	return b
 }
 
-// notify tells the notifier the log changed.
+// notify says the log changed.
 func (b base) notify() {
-	if b.notifier != nil {
-		b.notifier.NotificationsUpdated()
-	}
+	b.events.Emit(event.NotificationsUpdated{})
 }
 
 // bannersOff reads the kinds whose banners are off.

@@ -5,10 +5,13 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/prefs"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 func TestWindowSizePersists(t *testing.T) {
-	svc, _, _ := newTestService(t)
+	svc, db, _ := newTestService(t)
 
 	for _, size := range []WindowSize{
 		{Width: 1440, Height: 900},
@@ -21,7 +24,23 @@ func TestWindowSizePersists(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, size, got.WindowSize)
 		assert.Equal(t, DefaultWindowSize(), got.DefaultWindowSize, "the default never changes")
+
+		alone, err := ReadWindowSize(t.Context(), prefs.New(db, nil))
+		require.NoError(t, err)
+		assert.Equal(t, size, alone, "the size alone reads the same")
 	}
+}
+
+func TestReadWindowSizeIsTheDefaultOnAFreshDatabase(t *testing.T) {
+	got, err := ReadWindowSize(t.Context(), prefs.New(testutil.DB(t), nil))
+	require.NoError(t, err)
+	assert.Equal(t, DefaultWindowSize(), got)
+}
+
+func TestReadWindowSizeReportsAClosedDatabase(t *testing.T) {
+	got, err := ReadWindowSize(t.Context(), prefs.New(closedDB(t), nil))
+	require.ErrorContains(t, err, "read the window size")
+	assert.Equal(t, DefaultWindowSize(), got, "the default still comes back")
 }
 
 func TestSetWindowSizeRejectsOutOfBounds(t *testing.T) {
@@ -56,6 +75,10 @@ func TestGetFallsBackOnABadStoredWindowSize(t *testing.T) {
 		got, err := svc.Get(t.Context())
 		require.NoError(t, err)
 		assert.Equalf(t, DefaultWindowSize(), got.WindowSize, "stored %q", stored)
+
+		alone, err := ReadWindowSize(t.Context(), prefs.New(db, nil))
+		require.NoError(t, err)
+		assert.Equalf(t, DefaultWindowSize(), alone, "stored %q, read alone", stored)
 	}
 }
 

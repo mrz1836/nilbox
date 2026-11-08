@@ -14,6 +14,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/localrepos"
@@ -166,12 +167,6 @@ type History interface {
 	ClearCleanups(ctx context.Context) error
 }
 
-// Notifier is told when an automatic sweep removed a worktree or changed how many need
-// the user's attention.
-type Notifier interface {
-	WorktreesUpdated()
-}
-
 // Config holds a Service's dependencies. Settings and Git are required; the rest are
 // optional.
 type Config struct {
@@ -201,8 +196,9 @@ type Config struct {
 	// History records each cleanup, for the view's list of recent ones.
 	History History
 
-	// Notifier is told when a sweep changed something.
-	Notifier Notifier
+	// Events hears an event.WorktreesUpdated when a sweep removed a worktree or changed
+	// how many need the user's attention.
+	Events event.Sink
 
 	// Logger receives sweep failures. It defaults to slog.Default().
 	Logger *slog.Logger
@@ -219,7 +215,7 @@ type Service struct {
 	github   GitHub
 	launches Launches
 	history  History
-	notifier Notifier
+	events   event.Sink
 	logger   *slog.Logger
 	procs    processTable
 
@@ -257,7 +253,7 @@ func NewService(cfg Config) *Service {
 		github:   cfg.GitHub,
 		launches: cfg.Launches,
 		history:  cfg.History,
-		notifier: cfg.Notifier,
+		events:   event.Or(cfg.Events),
 		logger:   logger,
 		procs:    osProcesses{},
 		zone:     time.Local, //nolint:gosmopolitan // the agent writes a session's start in the machine's zone or in UTC

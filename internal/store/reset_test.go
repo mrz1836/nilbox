@@ -465,6 +465,7 @@ func TestOpenLeavesADatabaseAnotherConnectionLocks(t *testing.T) {
 	_, err = store.Open(t.Context(), path)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "locked")
+	assert.True(t, store.IsBusy(err), "the startup dialog tells a lock apart: %v", err)
 	assert.Empty(t, setAsideFiles(t, path), "a lock is not mistaken for an unusable file")
 }
 

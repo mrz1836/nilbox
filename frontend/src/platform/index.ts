@@ -5,6 +5,8 @@
 
 import { Browser, Events, Window } from '@wailsio/runtime'
 
+import { InboxReveal, InboxUpdated, NotificationsUpdated, WorktreesUpdated } from '../../bindings/events'
+import type { RevealItem } from '../../bindings/github.com/mrz1836/nilbox/internal/event'
 import { Service as AppInfo } from '../../bindings/github.com/mrz1836/nilbox/internal/appinfo'
 import type { Info } from '../../bindings/github.com/mrz1836/nilbox/internal/appinfo'
 import { Service as Inbox } from '../../bindings/github.com/mrz1836/nilbox/internal/inbox'
@@ -69,6 +71,7 @@ export type {
   Snapshot as InboxSnapshot,
 } from '../../bindings/github.com/mrz1836/nilbox/internal/inbox'
 export type { Agent, FieldError } from '../../bindings/github.com/mrz1836/nilbox/internal/agent'
+export type { RevealItem } from '../../bindings/github.com/mrz1836/nilbox/internal/event'
 export type {
   Defaults as LaunchDefaults,
   Input as LaunchDefaultsInput,
@@ -123,27 +126,6 @@ export type {
   SweepReport,
   Worktree,
 } from '../../bindings/github.com/mrz1836/nilbox/internal/worktrees'
-
-// inboxUpdatedEvent is the event the shell emits whenever the stored inbox changed.
-export const inboxUpdatedEvent = 'inbox:updated'
-
-// worktreesUpdatedEvent is the event the shell emits when an automatic worktree sweep
-// removed a worktree or changed how many need attention.
-export const worktreesUpdatedEvent = 'worktrees:updated'
-
-// notificationsUpdatedEvent is the event the shell emits when the notification log changed.
-export const notificationsUpdatedEvent = 'notifications:updated'
-
-// revealItemEvent is the event the shell emits to show an item in the inbox: a click on it
-// in the menu bar, or on its notification. Its data is a RevealRequest.
-export const revealItemEvent = 'inbox:reveal'
-
-// RevealRequest is an item the shell asks the window to show, and its URL on GitHub for
-// when it is no longer in the inbox.
-export interface RevealRequest {
-  itemId: number
-  url: string
-}
 
 // App
 
@@ -222,7 +204,7 @@ export async function checkItemFiles(id: number): Promise<FileCheck> {
 // onInboxUpdated calls listener whenever the stored inbox changed, and returns a function
 // that stops listening.
 export function onInboxUpdated(listener: () => void): () => void {
-  return Events.On(inboxUpdatedEvent, () => {
+  return Events.On(InboxUpdated, () => {
     listener()
   })
 }
@@ -503,7 +485,7 @@ export function lastWorktreeSweep(): Promise<SweepReport> {
 // onWorktreesUpdated calls listener whenever an automatic sweep changed something, and
 // returns a function that stops listening.
 export function onWorktreesUpdated(listener: () => void): () => void {
-  return Events.On(worktreesUpdatedEvent, () => {
+  return Events.On(WorktreesUpdated, () => {
     listener()
   })
 }
@@ -543,32 +525,17 @@ export function sendTestNotification(): Promise<void> {
 // onNotificationsUpdated calls listener whenever the notification log changed, and returns
 // a function that stops listening.
 export function onNotificationsUpdated(listener: () => void): () => void {
-  return Events.On(notificationsUpdatedEvent, () => {
+  return Events.On(NotificationsUpdated, () => {
     listener()
   })
 }
 
-// onRevealItem calls listener with each item the shell asks the window to show, and returns
-// a function that stops listening. A request with neither an item nor a URL is ignored.
-export function onRevealItem(listener: (request: RevealRequest) => void): () => void {
-  return Events.On(revealItemEvent, (event: { data: unknown }) => {
-    const request = revealRequest(event.data)
-
-    if (request !== null) {
-      listener(request)
-    }
+// onRevealItem calls listener with each item the shell asks the window to show: a click on
+// it in the menu bar, or on its notification. The shell sends only requests that name an
+// item or its URL on GitHub, for when the item is no longer in the inbox. It returns a
+// function that stops listening.
+export function onRevealItem(listener: (request: RevealItem) => void): () => void {
+  return Events.On(InboxReveal, (event) => {
+    listener(event.data)
   })
-}
-
-// revealRequest reads a reveal event's data, or null when it is not one.
-function revealRequest(data: unknown): RevealRequest | null {
-  if (typeof data !== 'object' || data === null) {
-    return null
-  }
-
-  const fields = data as Partial<Record<keyof RevealRequest, unknown>>
-  const itemId = typeof fields.itemId === 'number' && fields.itemId > 0 ? fields.itemId : 0
-  const url = typeof fields.url === 'string' ? fields.url : ''
-
-  return itemId === 0 && url === '' ? null : { itemId, url }
 }

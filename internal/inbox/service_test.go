@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/testutil"
@@ -209,13 +210,13 @@ func (c *fakeClient) FetchAvatar(_ context.Context, url string) (*github.Avatar,
 
 // harness is a Service over a temp database with fakes for everything else.
 type harness struct {
-	svc      *Service
-	pool     *sql.DB
-	path     string
-	tokens   *fakeTokens
-	client   *fakeClient
-	clock    *testutil.Clock
-	notifier *testutil.Notifier
+	svc    *Service
+	pool   *sql.DB
+	path   string
+	tokens *fakeTokens
+	client *fakeClient
+	clock  *testutil.Clock
+	events *testutil.Events
 }
 
 // newHarness opens a fresh database and a Service over it.
@@ -225,12 +226,12 @@ func newHarness(t *testing.T) *harness {
 	path := filepath.Join(t.TempDir(), "app.db")
 
 	h := &harness{
-		pool:     testutil.DBAt(t, path),
-		path:     path,
-		tokens:   &fakeTokens{},
-		client:   &fakeClient{limits: restLimits(), avatar: fakeAvatar()},
-		clock:    testutil.NewClock(time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)),
-		notifier: &testutil.Notifier{},
+		pool:   testutil.DBAt(t, path),
+		path:   path,
+		tokens: &fakeTokens{},
+		client: &fakeClient{limits: restLimits(), avatar: fakeAvatar()},
+		clock:  testutil.NewClock(time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)),
+		events: &testutil.Events{},
 	}
 
 	h.svc = h.service()
@@ -241,7 +242,7 @@ func newHarness(t *testing.T) *harness {
 // service builds a Service over the harness's database and fakes.
 func (h *harness) service() *Service {
 	return NewService(Config{
-		Pool: h.pool, Tokens: h.tokens, Client: h.client, Clock: h.clock, Notifier: h.notifier,
+		Pool: h.pool, Tokens: h.tokens, Client: h.client, Clock: h.clock, Events: h.events,
 	})
 }
 
@@ -701,7 +702,7 @@ func TestRefreshMissingScopesError(t *testing.T) {
 	require.ErrorIs(t, err, github.ErrMissingScopes)
 	assert.Contains(t, snap.LastError, "gh auth refresh -s repo,read:org")
 	assert.Equal(t, int64(0), h.count(t, "items"), "nothing is stored without the needed scopes")
-	assert.Equal(t, 1, h.notifier.Calls(), "the UI hears about the failure")
+	assert.Equal(t, []event.Event{event.InboxUpdated{}}, h.events.All(), "the UI hears about the failure")
 
 	// A restart still shows the error.
 	snap, err = h.service().Snapshot(t.Context())
@@ -829,7 +830,7 @@ func TestRefreshCanceledIsNotRecorded(t *testing.T) {
 
 	_, err := h.svc.Refresh(ctx)
 	require.ErrorIs(t, err, context.Canceled)
-	assert.Zero(t, h.notifier.Calls())
+	assert.Zero(t, h.events.Count())
 
 	snap, err := h.svc.Snapshot(t.Context())
 	require.NoError(t, err)
@@ -840,11 +841,11 @@ func TestRefreshNotifies(t *testing.T) {
 	h := newHarness(t)
 	h.client.inbox = fetched(nil, nil, nil)
 	h.refresh(t)
-	assert.Equal(t, 1, h.notifier.Calls())
+	assert.Equal(t, 1, h.events.Count())
 	assert.Equal(t, 1, h.tokens.calls, "the token is borrowed on every refresh")
 
 	h.refresh(t)
-	assert.Equal(t, 2, h.notifier.Calls())
+	assert.Equal(t, 2, h.events.Count())
 	assert.Equal(t, 2, h.tokens.calls)
 }
 

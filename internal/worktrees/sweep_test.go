@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
@@ -81,8 +82,8 @@ func newSweepFixture(t *testing.T, e *env) *sweepFixture {
 func TestSweepCleansUpMergedAndClosedWork(t *testing.T) {
 	e := newEnv(t)
 	f := newSweepFixture(t, e)
-	notifier := &testutil.Notifier{}
-	svc := e.linked(linkDeps{gh: f.gh, launches: f.launches, notifier: notifier, auto: true})
+	events := &testutil.Events{}
+	svc := e.linked(linkDeps{gh: f.gh, launches: f.launches, events: events, auto: true})
 
 	assert.Zero(t, svc.LastSweep().Seq, "no sweep yet")
 
@@ -115,14 +116,14 @@ func TestSweepCleansUpMergedAndClosedWork(t *testing.T) {
 
 	assert.NotContains(t, branches(t, f.repo), "worktree-pr-1")
 	assert.ElementsMatch(t, []string{"example-repo/pr-1", "example-repo/issue-5"}, f.launches.forgotten)
-	assert.Equal(t, 1, notifier.Calls())
+	assert.Equal(t, []event.Event{event.WorktreesUpdated{}}, events.All())
 	assert.Equal(t, report, svc.LastSweep())
 
 	again := svc.Sweep(t.Context())
 	assert.Equal(t, 2, again.Seq)
 	assert.Empty(t, again.Cleaned)
 	assert.Equal(t, 3, again.Leftover)
-	assert.Equal(t, 1, notifier.Calls(), "nothing changed, so nobody is told")
+	assert.Equal(t, 1, events.Count(), "nothing changed, so nobody is told")
 }
 
 func TestSweepOnlyCountsWhenAutomaticCleanupIsOff(t *testing.T) {
@@ -142,24 +143,24 @@ func TestSweepCountsTheWorktreesOfEveryClone(t *testing.T) {
 	e := newEnv(t)
 	plain := e.newRepo(t, "plain")
 	feature := addWorktree(t, plain, filepath.Join(e.home, "wt", "feature"), "feature")
-	notifier := &testutil.Notifier{}
-	svc := e.linked(linkDeps{gh: &fakeGitHub{}, notifier: notifier, auto: true})
+	events := &testutil.Events{}
+	svc := e.linked(linkDeps{gh: &fakeGitHub{}, events: events, auto: true})
 
 	report := svc.Sweep(t.Context())
 	assert.Empty(t, report.Error)
 	assert.Equal(t, 1, report.WorktreeCount, "a clone without agent worktrees still counts, though git never runs in it")
-	assert.Equal(t, 1, notifier.Calls(), "the first count is news")
+	assert.Equal(t, 1, events.Count(), "the first count is news")
 
 	svc.Sweep(t.Context())
-	assert.Equal(t, 1, notifier.Calls(), "the same count is not")
+	assert.Equal(t, 1, events.Count(), "the same count is not")
 
 	addWorktree(t, plain, filepath.Join(e.home, "wt", "second"), "second")
 	assert.Equal(t, 2, svc.Sweep(t.Context()).WorktreeCount)
-	assert.Equal(t, 2, notifier.Calls(), "a new worktree is news")
+	assert.Equal(t, 2, events.Count(), "a new worktree is news")
 
 	testutil.RunGit(t, plain, "worktree", "remove", feature)
 	assert.Equal(t, 1, svc.Sweep(t.Context()).WorktreeCount)
-	assert.Equal(t, 3, notifier.Calls(), "so is one removed")
+	assert.Equal(t, 3, events.Count(), "so is one removed")
 }
 
 func TestCountWorktrees(t *testing.T) {
@@ -274,14 +275,14 @@ func TestSweepErrors(t *testing.T) {
 	repo := e.newGitHubRepo(t, "example-repo")
 	agentWorktree(t, repo, "pr-1")
 
-	notifier := &testutil.Notifier{}
+	events := &testutil.Events{}
 	gh := &fakeGitHub{err: errFakeGitHub}
-	svc := e.linked(linkDeps{gh: gh, notifier: notifier, auto: true})
+	svc := e.linked(linkDeps{gh: gh, events: events, auto: true})
 
 	report := svc.Sweep(t.Context())
 	assert.Contains(t, report.Error, errFakeGitHub.Error())
 	assert.Empty(t, report.Cleaned)
-	assert.Equal(t, 1, notifier.Calls(), "a new error is news")
+	assert.Equal(t, 1, events.Count(), "a new error is news")
 
 	svc.settings = fakeSettings{err: errFakeSettings}
 
@@ -356,7 +357,7 @@ func TestSweeperRunsUntilCanceled(t *testing.T) {
 	go func() {
 		defer close(done)
 
-		NewSweeper(svc).Run(ctx, time.Millisecond)
+		NewSweeper(svc, time.Millisecond).Run(ctx)
 	}()
 
 	require.Eventually(t, func() bool { return svc.LastSweep().Seq >= 2 }, 5*time.Second, time.Millisecond,
@@ -390,7 +391,7 @@ func TestSweeperSurvivesAPanicAndLogsFailures(t *testing.T) {
 	go func() {
 		defer close(done)
 
-		NewSweeper(svc).Run(ctx, time.Millisecond)
+		NewSweeper(svc, time.Millisecond).Run(ctx)
 	}()
 
 	require.Eventually(t, func() bool {

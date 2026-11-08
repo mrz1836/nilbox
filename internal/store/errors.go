@@ -39,6 +39,17 @@ func IsForeignKeyViolation(err error) bool {
 	}
 }
 
+// IsBusy reports whether err is SQLite finding the database locked by another connection
+// or process, such as another copy of the app, past the wait every connection allows.
+func IsBusy(err error) bool {
+	switch sqliteCode(err) {
+	case sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED:
+		return true
+	default:
+		return false
+	}
+}
+
 // sqliteCode returns the primary SQLite result code of the driver error in err's chain,
 // or SQLITE_OK when it holds none.
 func sqliteCode(err error) int {

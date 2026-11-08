@@ -15,6 +15,7 @@ import (
 	"runtime"
 
 	"github.com/mrz1836/nilbox/internal/brand"
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/timing"
 )
 
@@ -99,9 +100,9 @@ type Config struct {
 	// Recorder records the first paint.
 	Recorder FirstPaintRecorder
 
-	// OnFirstPaint is called once, with the measurement, after the first paint is
-	// recorded. The startup measurement mode uses it to quit after one frame.
-	OnFirstPaint func(timing.Measurement)
+	// Events hears an event.FirstPaint, once, after the first paint is recorded. The
+	// startup measurement mode uses it to quit after one frame.
+	Events event.Sink
 
 	// DataReset is set when the database was set aside at startup.
 	DataReset *DataReset
@@ -109,9 +110,9 @@ type Config struct {
 
 // Service serves the app's identity and records its first paint.
 type Service struct {
-	info         Info
-	recorder     FirstPaintRecorder
-	onFirstPaint func(timing.Measurement)
+	info     Info
+	recorder FirstPaintRecorder
+	events   event.Sink
 }
 
 // NewService returns a Service over cfg.
@@ -133,7 +134,7 @@ func NewService(cfg Config) *Service {
 	}
 	info.BugReportURL = bugReportURL(info)
 
-	return &Service{info: info, recorder: cfg.Recorder, onFirstPaint: cfg.OnFirstPaint}
+	return &Service{info: info, recorder: cfg.Recorder, events: event.Or(cfg.Events)}
 }
 
 // Info returns the product's identity, its versions, the system it runs on, and whether
@@ -168,8 +169,8 @@ func (s *Service) ReportFirstPaint() error {
 	}
 
 	m, first, err := s.recorder.FirstPaint()
-	if first && s.onFirstPaint != nil {
-		s.onFirstPaint(m)
+	if first {
+		s.events.Emit(event.FirstPaint{Measurement: m})
 	}
 
 	if err != nil {

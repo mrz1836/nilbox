@@ -103,6 +103,14 @@ app:lint` reads.
   (inbox, launcher, prompts, launch defaults, settings, profiles, worktrees, notifications) and
   their building blocks, `internal/menubar` among them. All of them are plain Go, built and
   tested on Linux without CGO.
+- `internal/event/` holds the app's events, one Go type each with its name; services emit them
+  into the one `event.Sink` they are given. `internal/desktop/` is the shell's logic: it hears
+  those events, keeps the menu bar current, runs the scheduler and the sweeper as tracked
+  work, and shuts down in order (timers, then the work, then the database). It declares small
+  interfaces that the Wails glue in `cmd/nilbox` implements, and imports no Wails. A window
+  event is registered in `main_desktop.go` with `application.RegisterEvent`, which generates
+  its TypeScript type and name in `frontend/bindings`; a repository test checks that every
+  window event is registered.
 - When a service needs another, prefer a narrow interface or value type declared where it is
   used (the launcher's `ItemStore` and `LaunchSettings`, the worktree service's
   `SweepSettings` and `GitHub`) over importing the other service; `internal/core` adapts the

@@ -2,11 +2,14 @@ package core
 
 import (
 	"context"
+	"database/sql"
 
+	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launcher"
+	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/worktrees"
 )
@@ -29,6 +32,35 @@ func (v settingsView[T]) Get(ctx context.Context) (T, error) {
 	}
 
 	return v.part(all), nil
+}
+
+// ShellSettings are the settings the desktop shell reads when the app launches: the theme,
+// whether the menu bar icon shows, and the window size. It is not bound to the window, so
+// the size, which only the shell reads on its own, stays out of the frontend's API.
+type ShellSettings struct {
+	settings *settings.Service
+	prefs    *prefs.Store
+}
+
+// newShellSettings returns the shell's settings over the settings service and the
+// preferences in pool.
+func newShellSettings(svc *settings.Service, pool *sql.DB, c clock.Clock) ShellSettings {
+	return ShellSettings{settings: svc, prefs: prefs.New(pool, c)}
+}
+
+// Theme returns the stored theme, or the default.
+func (s ShellSettings) Theme(ctx context.Context) (string, error) {
+	return s.settings.Theme(ctx)
+}
+
+// MenuBar returns whether the menu bar icon shows.
+func (s ShellSettings) MenuBar(ctx context.Context) (bool, error) {
+	return s.settings.MenuBar(ctx)
+}
+
+// WindowSize returns the size the window opens at.
+func (s ShellSettings) WindowSize(ctx context.Context) (settings.WindowSize, error) {
+	return settings.ReadWindowSize(ctx, s.prefs)
 }
 
 // launchSettings is the part of the settings a launch reads.

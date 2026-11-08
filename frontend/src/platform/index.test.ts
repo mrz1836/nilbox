@@ -80,7 +80,14 @@ const mocks = vi.hoisted(() => ({
   window: { SetSize: vi.fn() },
 }))
 
-vi.mock('@wailsio/runtime', () => ({ Events: mocks.events, Browser: mocks.browser, Window: mocks.window }))
+// Create stands in for the runtime's registry of event data creators, which the generated
+// event bindings freeze when they load.
+vi.mock('@wailsio/runtime', () => ({
+  Events: mocks.events,
+  Browser: mocks.browser,
+  Window: mocks.window,
+  Create: { Events: {} },
+}))
 vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/appinfo', () => ({ Service: mocks.appInfo }))
 vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/inbox', () => ({ Service: mocks.inbox }))
 vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/launcher', () => ({ Service: mocks.launcher }))
@@ -210,7 +217,7 @@ describe('inbox', () => {
     const listener = vi.fn()
     const stop = platform.onInboxUpdated(listener)
 
-    expect(mocks.events.On).toHaveBeenCalledWith(platform.inboxUpdatedEvent, expect.any(Function))
+    expect(mocks.events.On).toHaveBeenCalledWith('inbox:updated', expect.any(Function))
 
     const handler = mocks.events.On.mock.calls[0]?.[1] as () => void
     handler()
@@ -621,7 +628,7 @@ describe('worktrees', () => {
     const listener = vi.fn()
     const stop = platform.onWorktreesUpdated(listener)
 
-    expect(mocks.events.On).toHaveBeenCalledWith(platform.worktreesUpdatedEvent, expect.any(Function))
+    expect(mocks.events.On).toHaveBeenCalledWith('worktrees:updated', expect.any(Function))
 
     const handler = mocks.events.On.mock.calls.at(-1)?.[1] as () => void
     handler()
@@ -679,7 +686,7 @@ describe('notifications', () => {
 
     const stop = platform.onNotificationsUpdated(listener)
 
-    expect(mocks.events.On).toHaveBeenCalledWith(platform.notificationsUpdatedEvent, expect.any(Function))
+    expect(mocks.events.On).toHaveBeenCalledWith('notifications:updated', expect.any(Function))
 
     const handler = mocks.events.On.mock.calls.at(-1)?.[1] as () => void
     handler()
@@ -689,26 +696,25 @@ describe('notifications', () => {
     expect(unsubscribe).toHaveBeenCalledOnce()
   })
 
-  it('passes on the items the shell asks to show, and ignores requests for nothing', () => {
-    mocks.events.On.mockReturnValue(vi.fn())
+  it('passes on the items the shell asks to show, and returns the unsubscribe function', () => {
+    const unsubscribe = vi.fn()
+    mocks.events.On.mockReturnValue(unsubscribe)
     const listener = vi.fn()
 
-    platform.onRevealItem(listener)
+    const stop = platform.onRevealItem(listener)
 
-    expect(mocks.events.On).toHaveBeenCalledWith(platform.revealItemEvent, expect.any(Function))
+    expect(mocks.events.On).toHaveBeenCalledWith('inbox:reveal', expect.any(Function))
 
-    const handler = mocks.events.On.mock.calls.at(-1)?.[1] as (event: { data: unknown }) => void
+    const handler = mocks.events.On.mock.calls.at(-1)?.[1] as (event: { data: platform.RevealItem }) => void
     handler({ data: { itemId: 7, url: 'https://github.com/acme-org/example-repo/pull/12' } })
-    handler({ data: { itemId: 8 } })
-    handler({ data: { itemId: 0, url: '' } })
-    handler({ data: { url: 'https://github.com/acme-org/example-repo/pull/12' } })
-    handler({ data: null })
-    handler({ data: 'nope' })
+    handler({ data: { itemId: 0, url: 'https://github.com/acme-org/example-repo/pull/12' } })
 
     expect(listener.mock.calls).toEqual([
       [{ itemId: 7, url: 'https://github.com/acme-org/example-repo/pull/12' }],
-      [{ itemId: 8, url: '' }],
       [{ itemId: 0, url: 'https://github.com/acme-org/example-repo/pull/12' }],
     ])
+
+    stop()
+    expect(unsubscribe).toHaveBeenCalledOnce()
   })
 })

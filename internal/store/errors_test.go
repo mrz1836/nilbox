@@ -71,3 +71,16 @@ func TestIsForeignKeyViolation(t *testing.T) {
 		assert.False(t, store.IsForeignKeyViolation(nil))
 	})
 }
+
+func TestIsBusyIsOnlyALock(t *testing.T) {
+	t.Parallel()
+
+	db := parentAndChild(t)
+
+	_, err := db.ExecContext(t.Context(), "DELETE FROM parent WHERE id = 1")
+	require.Error(t, err)
+	assert.False(t, store.IsBusy(err), "a constraint is not a lock")
+
+	assert.False(t, store.IsBusy(errExample), "not a driver error")
+	assert.False(t, store.IsBusy(nil))
+}

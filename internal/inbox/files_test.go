@@ -230,7 +230,7 @@ func TestCheckFilesReusesAListForTheSameHead(t *testing.T) {
 	h := filesHarness(t, from(1, "outsider", "NONE", false))
 	id := itemByNumber(t, h.refresh(t).ReviewRequested, 1).ID
 	h.client.fileReads, h.client.headReads = nil, nil
-	calls := h.notifier.Calls()
+	calls := h.events.Count()
 
 	check, err := h.svc.CheckFiles(t.Context(), id)
 	require.NoError(t, err)
@@ -240,7 +240,7 @@ func TestCheckFilesReusesAListForTheSameHead(t *testing.T) {
 	assert.Empty(t, h.client.fileReads, "the head did not move, so the files are not listed again")
 	assert.Equal(t, sensitive.StatusFlagged, check.Status)
 	assert.Equal(t, headA, check.Head)
-	assert.Equal(t, calls+1, h.notifier.Calls())
+	assert.Equal(t, calls+1, h.events.Count())
 }
 
 func TestCheckFilesListsAgainAfterAPush(t *testing.T) {

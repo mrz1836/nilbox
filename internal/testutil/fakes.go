@@ -6,6 +6,8 @@ import (
 	"slices"
 	"sync"
 	"time"
+
+	"github.com/mrz1836/nilbox/internal/event"
 )
 
 // ErrNotFound is what Finder fails with for a name it does not resolve.
@@ -134,35 +136,33 @@ func (c *Clock) Advance(d time.Duration) time.Time {
 	return c.now
 }
 
-// Notifier counts the change notifications a service sends. It answers to the notifier
-// interface of each service that has one, so one type serves them all. It is safe for
-// concurrent use.
-type Notifier struct {
-	mu    sync.Mutex
-	calls int
+// Events is an event.Sink that records every event a service emits, in order. It is safe
+// for concurrent use.
+type Events struct {
+	mu  sync.Mutex
+	got []event.Event
 }
 
-// InboxUpdated counts a notification from the inbox.
-func (n *Notifier) InboxUpdated() { n.count() }
+// Emit records e.
+func (s *Events) Emit(e event.Event) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-// NotificationsUpdated counts a notification from the notification log.
-func (n *Notifier) NotificationsUpdated() { n.count() }
-
-// WorktreesUpdated counts a notification from the worktree service.
-func (n *Notifier) WorktreesUpdated() { n.count() }
-
-// Calls returns the number of notifications so far.
-func (n *Notifier) Calls() int {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-
-	return n.calls
+	s.got = append(s.got, e)
 }
 
-// count records one notification.
-func (n *Notifier) count() {
-	n.mu.Lock()
-	defer n.mu.Unlock()
+// All returns a copy of the events so far, in order.
+func (s *Events) All() []event.Event {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	n.calls++
+	return slices.Clone(s.got)
+}
+
+// Count returns how many events have been emitted so far.
+func (s *Events) Count() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return len(s.got)
 }
