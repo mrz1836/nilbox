@@ -22,13 +22,16 @@ import (
 	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
-// The terminals launches can open in, by the ID the terminal setting stores.
+// ID names a terminal app, as the terminal setting stores it.
+type ID string
+
+// The terminals launches can open in.
 const (
 	// ITerm2 opens launches in a new iTerm2 tab or window.
-	ITerm2 = "iterm2"
+	ITerm2 ID = "iterm2"
 
 	// TerminalApp opens launches in a new Terminal.app window.
-	TerminalApp = "terminal"
+	TerminalApp ID = "terminal"
 )
 
 // maxErrDetail caps how much of a terminal program's error output an error message carries.
@@ -61,7 +64,7 @@ var (
 // Driver opens a launch script in one terminal app.
 type Driver interface {
 	// ID is the terminal's settings value, such as ITerm2.
-	ID() string
+	ID() ID
 
 	// Open runs the script at scriptPath in a new tab or window of the terminal.
 	Open(ctx context.Context, scriptPath string) error
@@ -70,13 +73,13 @@ type Driver interface {
 // Registry holds the terminal drivers available on this OS, by ID. A port to another OS
 // registers its own drivers; callers only ever ask the registry.
 type Registry struct {
-	drivers map[string]Driver
+	drivers map[ID]Driver
 }
 
 // NewRegistry returns a registry of drivers. A later driver with the same ID replaces an
 // earlier one.
 func NewRegistry(drivers ...Driver) Registry {
-	r := Registry{drivers: make(map[string]Driver, len(drivers))}
+	r := Registry{drivers: make(map[ID]Driver, len(drivers))}
 	for _, d := range drivers {
 		r.drivers[d.ID()] = d
 	}
@@ -86,21 +89,21 @@ func NewRegistry(drivers ...Driver) Registry {
 
 // Get returns the driver registered under id. An empty registry (an OS with no terminal
 // support yet) returns ErrUnsupportedOS; an unknown ID returns ErrUnknownTerminal.
-func (r Registry) Get(id string) (Driver, error) {
+func (r Registry) Get(id ID) (Driver, error) {
 	if len(r.drivers) == 0 {
 		return nil, ErrUnsupportedOS
 	}
 
 	d, ok := r.drivers[id]
 	if !ok {
-		return nil, fmt.Errorf("%w %q: choose one of %s", ErrUnknownTerminal, id, strings.Join(r.IDs(), ", "))
+		return nil, fmt.Errorf("%w %q: choose one of %s", ErrUnknownTerminal, id, textutil.Join(r.IDs(), ", "))
 	}
 
 	return d, nil
 }
 
 // IDs returns the registered terminal IDs in sorted order.
-func (r Registry) IDs() []string {
+func (r Registry) IDs() []ID {
 	return slices.Sorted(maps.Keys(r.drivers))
 }
 

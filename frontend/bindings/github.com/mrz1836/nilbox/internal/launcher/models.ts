@@ -6,6 +6,12 @@
 import * as agent$0 from "../agent/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as item$0 from "../item/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as terminal$0 from "./terminal/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as sensitive$0 from "../sensitive/models.js";
 
 /**
@@ -50,7 +56,7 @@ export interface Hold {
     /**
      * Reason is HoldAgentFiles or HoldUnchecked.
      */
-    "reason": string;
+    "reason": HoldReason;
 
     /**
      * Head is the head commit the files were checked at, or "".
@@ -90,6 +96,32 @@ export interface Hold {
 }
 
 /**
+ * HoldReason is why a launch is held back.
+ */
+export type HoldReason = "agentFiles" | "unchecked";
+
+/**
+ * The values of HoldReason, by the names of their Go constants.
+ */
+export const HoldReason = {
+    /**
+     * Why a launch is held back.
+     *
+     * HoldAgentFiles is a pull request that changes files coding agents load or run:
+     * settings with hooks, MCP servers, and instructions. A session that starts where
+     * they are checked out, or checks them out, loads them, and hooks run commands as
+     * soon as a session starts, in plan mode too.
+     */
+    HoldAgentFiles: "agentFiles",
+
+    /**
+     * HoldUnchecked is a pull request whose files could not all be checked, so it may
+     * change agent files without the app knowing.
+     */
+    HoldUnchecked: "unchecked",
+} as const;
+
+/**
  * ItemResolution is one item's default launch settings, or why they cannot resolve.
  */
 export interface ItemResolution {
@@ -97,7 +129,7 @@ export interface ItemResolution {
      * ItemID and Kind identify the item.
      */
     "itemId": number;
-    "kind": string;
+    "kind": item$0.Kind;
 
     /**
      * Owner and Repo ("owner/name") are where launch defaults for the item are saved.
@@ -114,7 +146,7 @@ export interface ItemResolution {
      * Agent is the coding tool, and AgentSource where it was chosen.
      */
     "agent": agent$0.Agent;
-    "agentSource": string;
+    "agentSource": Source;
     "profile": Setting;
     "prompt": PromptChoice;
     "model": Setting;
@@ -236,7 +268,7 @@ export interface LaunchResult {
     /**
      * Terminal is the terminal the launch opened in.
      */
-    "terminal": string;
+    "terminal": terminal$0.ID;
 }
 
 /**
@@ -281,7 +313,7 @@ export interface Preview {
     /**
      * Terminal is the terminal the launch opens in.
      */
-    "terminal": string;
+    "terminal": terminal$0.ID;
 }
 
 /**
@@ -291,9 +323,9 @@ export interface PromptChoice {
     "id": number;
     "nickname": string;
     "name": string;
-    "source": string;
+    "source": Source;
     "inheritedId": number;
-    "inheritedSource": string;
+    "inheritedSource": Source;
 }
 
 /**
@@ -305,7 +337,7 @@ export interface Resolution {
      * ItemID and Kind identify the item.
      */
     "itemId": number;
-    "kind": string;
+    "kind": item$0.Kind;
 
     /**
      * Owner and Repo ("owner/name") are where launch defaults for the item are saved.
@@ -322,7 +354,7 @@ export interface Resolution {
      * Agent is the coding tool, and AgentSource where it was chosen.
      */
     "agent": agent$0.Agent;
-    "agentSource": string;
+    "agentSource": Source;
     "profile": Setting;
     "prompt": PromptChoice;
     "model": Setting;
@@ -350,17 +382,66 @@ export interface Resolution {
  */
 export interface Setting {
     "value": string;
-    "source": string;
+    "source": Source;
     "inherited": string;
-    "inheritedSource": string;
+    "inheritedSource": Source;
 }
+
+/**
+ * Source is where a resolved launch setting came from.
+ */
+export type Source = "launch" | "prompt" | "repo" | "org" | "profile" | "app" | "agent" | "";
+
+/**
+ * The values of Source, by the names of their Go constants.
+ */
+export const Source = {
+    /**
+     * Sources, from the most specific to the least.
+     *
+     * SourceLaunch is a choice made in the launch menu for this launch only.
+     */
+    SourceLaunch: "launch",
+
+    /**
+     * SourcePrompt is the chosen prompt's own setting.
+     */
+    SourcePrompt: "prompt",
+
+    /**
+     * SourceRepo and SourceOrg are the repository's and its owner's launch defaults.
+     */
+    SourceRepo: "repo",
+    SourceOrg: "org",
+
+    /**
+     * SourceProfile is the profile's own setting.
+     */
+    SourceProfile: "profile",
+
+    /**
+     * SourceApp is the app's settings.
+     */
+    SourceApp: "app",
+
+    /**
+     * SourceAgent means nothing set it, so the agent uses its own default.
+     */
+    SourceAgent: "agent",
+
+    /**
+     * SourceNone is the source of every setting of an item whose settings could not
+     * resolve (see ItemResolution.Problem).
+     */
+    SourceNone: "",
+} as const;
 
 /**
  * Toggle is a resolved on-or-off launch setting, like Setting.
  */
 export interface Toggle {
     "value": boolean;
-    "source": string;
+    "source": Source;
     "inherited": boolean;
-    "inheritedSource": string;
+    "inheritedSource": Source;
 }

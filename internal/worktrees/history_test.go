@@ -80,7 +80,7 @@ func TestCleanUpsAreRecorded(t *testing.T) {
 	assert.Equal(t, "worktree-pr-1", manual.DeletedBranch)
 	assert.Equal(t, byHandHead, manual.Head)
 	assert.Equal(t, &LinkedItem{
-		Kind: string(item.KindPR), Owner: "acme-org", Name: "example-repo", Number: 1, Title: "Fix things",
+		Kind: item.KindPR, Owner: "acme-org", Name: "example-repo", Number: 1, Title: "Fix things",
 		URL: "https://github.com/acme-org/example-repo/pull/1", State: ItemMerged,
 	}, manual.Item)
 
@@ -88,7 +88,7 @@ func TestCleanUpsAreRecorded(t *testing.T) {
 	assert.True(t, swept.Automatic)
 	assert.Equal(t, "worktree-issue-2", swept.DeletedBranch)
 	require.NotNil(t, swept.Item)
-	assert.Equal(t, string(item.KindIssue), swept.Item.Kind)
+	assert.Equal(t, item.KindIssue, swept.Item.Kind)
 	assert.Equal(t, ItemClosed, swept.Item.State)
 
 	require.NoError(t, svc.ClearCleanups(t.Context()))

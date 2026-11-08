@@ -11,17 +11,17 @@ import (
 
 // fakeDriver is a driver registered under id that opens nothing.
 type fakeDriver struct {
-	id string
+	id ID
 }
 
-func (d *fakeDriver) ID() string { return d.id }
+func (d *fakeDriver) ID() ID { return d.id }
 
 func (*fakeDriver) Open(context.Context, string) error { return nil }
 
 func TestUnsupportedOS(t *testing.T) {
 	r := NewRegistry()
 
-	for _, id := range []string{"iterm2", "terminal", ""} {
+	for _, id := range []ID{"iterm2", "terminal", ""} {
 		d, err := r.Get(id)
 		require.ErrorIs(t, err, ErrUnsupportedOS)
 		assert.Nil(t, d)
@@ -49,7 +49,7 @@ func TestRegistryGet(t *testing.T) {
 	require.NotErrorIs(t, err, ErrUnsupportedOS)
 	assert.Contains(t, err.Error(), "iterm2, terminal")
 
-	assert.Equal(t, []string{"iterm2", "terminal"}, r.IDs())
+	assert.Equal(t, []ID{"iterm2", "terminal"}, r.IDs())
 }
 
 func TestRegistryLaterDriverWins(t *testing.T) {

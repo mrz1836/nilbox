@@ -28,7 +28,7 @@ type itermDriver struct {
 }
 
 // ID returns the iTerm2 terminal setting.
-func (itermDriver) ID() string { return ITerm2 }
+func (itermDriver) ID() ID { return ITerm2 }
 
 // Open runs the script in a new iTerm2 tab, or a new window when none is open.
 func (d itermDriver) Open(ctx context.Context, scriptPath string) error {
@@ -46,7 +46,7 @@ type terminalAppDriver struct {
 }
 
 // ID returns the Terminal.app terminal setting.
-func (terminalAppDriver) ID() string { return TerminalApp }
+func (terminalAppDriver) ID() ID { return TerminalApp }
 
 // Open runs the script in a new Terminal.app window.
 func (d terminalAppDriver) Open(ctx context.Context, scriptPath string) error {

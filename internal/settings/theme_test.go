@@ -12,10 +12,10 @@ import (
 )
 
 // themeEvents returns the theme changes for themes, in order.
-func themeEvents(themes ...string) []event.Event {
+func themeEvents(themes ...Theme) []event.Event {
 	out := make([]event.Event, 0, len(themes))
 	for _, theme := range themes {
-		out = append(out, event.ThemeChanged{Theme: theme})
+		out = append(out, event.ThemeChanged{Theme: string(theme)})
 	}
 
 	return out
@@ -34,8 +34,8 @@ func TestThemePersists(t *testing.T) {
 	svc, _, _ := newTestService(t)
 	ctx := t.Context()
 
-	for _, theme := range []string{ThemeDark, ThemeLight, ThemeSystem, ThemeDark} {
-		require.NoError(t, svc.SetTheme(ctx, theme))
+	for _, theme := range []Theme{ThemeDark, ThemeLight, ThemeSystem, ThemeDark} {
+		require.NoError(t, testutil.ErrOf(svc.SetTheme(ctx, theme)))
 
 		got, err := svc.Theme(ctx)
 		require.NoError(t, err)
@@ -49,7 +49,7 @@ func TestThemeSurvivesARestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "app.db")
 
 	db := testutil.DBAt(t, path)
-	require.NoError(t, serviceOver(t, db, home).SetTheme(ctx, ThemeLight))
+	require.NoError(t, testutil.ErrOf(serviceOver(t, db, home).SetTheme(ctx, ThemeLight)))
 	require.NoError(t, db.Close())
 
 	got, err := serviceOver(t, testutil.DBAt(t, path), home).Theme(ctx)
@@ -63,13 +63,13 @@ func TestSetThemeRejectsAnUnknownTheme(t *testing.T) {
 	svc := serviceOver(t, testutil.DB(t), home, WithEvents(events))
 	ctx := t.Context()
 
-	require.NoError(t, svc.SetTheme(ctx, ThemeDark))
+	require.NoError(t, testutil.ErrOf(svc.SetTheme(ctx, ThemeDark)))
 
-	for _, theme := range []string{"", "Dark", " dark", "auto", "sepia", "ui.theme"} {
-		require.ErrorIs(t, svc.SetTheme(ctx, theme), ErrInvalidTheme, theme)
+	for _, theme := range []Theme{"", "Dark", " dark", "auto", "sepia", "ui.theme"} {
+		require.ErrorIs(t, testutil.ErrOf(svc.SetTheme(ctx, theme)), ErrInvalidTheme, string(theme))
 	}
 
-	err := svc.SetTheme(ctx, "dim")
+	_, err := svc.SetTheme(ctx, "dim")
 	require.ErrorContains(t, err, `"dim": choose one of system, light, dark`)
 
 	got, err := svc.Theme(ctx)
@@ -96,7 +96,7 @@ func TestThemeReportsAClosedDatabase(t *testing.T) {
 	_, err := svc.Theme(t.Context())
 	require.ErrorContains(t, err, "read the theme")
 
-	require.ErrorContains(t, svc.SetTheme(t.Context(), ThemeDark), "save setting "+KeyTheme)
+	require.ErrorContains(t, testutil.ErrOf(svc.SetTheme(t.Context(), ThemeDark)), "begin transaction")
 }
 
 func TestSetThemeEmitsOnceStored(t *testing.T) {
@@ -105,9 +105,9 @@ func TestSetThemeEmitsOnceStored(t *testing.T) {
 	svc := serviceOver(t, db, t.TempDir(), WithEvents(events))
 	ctx := t.Context()
 
-	require.NoError(t, svc.SetTheme(ctx, ThemeLight))
-	require.NoError(t, svc.SetTheme(ctx, ThemeLight))
-	require.NoError(t, svc.SetTheme(ctx, ThemeSystem))
+	require.NoError(t, testutil.ErrOf(svc.SetTheme(ctx, ThemeLight)))
+	require.NoError(t, testutil.ErrOf(svc.SetTheme(ctx, ThemeLight)))
+	require.NoError(t, testutil.ErrOf(svc.SetTheme(ctx, ThemeSystem)))
 
 	assert.Equal(t, themeEvents(ThemeLight, ThemeLight, ThemeSystem), events.All(), "every stored choice, in order")
 }
@@ -115,16 +115,16 @@ func TestSetThemeEmitsOnceStored(t *testing.T) {
 func TestSetThemeWithoutAnEventSink(t *testing.T) {
 	svc, _, _ := newTestService(t)
 
-	require.NoError(t, svc.SetTheme(t.Context(), ThemeDark))
+	require.NoError(t, testutil.ErrOf(svc.SetTheme(t.Context(), ThemeDark)))
 }
 
 func TestThemesAreTheChoicesInOrder(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, []string{"system", "light", "dark"}, themeNames())
+	assert.Equal(t, []Theme{"system", "light", "dark"}, themes())
 
-	for _, theme := range themeNames() {
-		assert.True(t, validTheme(theme), theme)
+	for _, theme := range themes() {
+		assert.True(t, validTheme(theme), string(theme))
 	}
 
 	assert.False(t, validTheme("auto"))
@@ -134,7 +134,7 @@ func TestIsDark(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
-		theme      string
+		theme      Theme
 		systemDark bool
 		want       bool
 	}{

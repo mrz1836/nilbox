@@ -14,7 +14,14 @@ import {
 } from '../lib/sensitive'
 import { toneText } from '../lib/signals'
 import { usePopover } from '../lib/usePopover'
-import { checkItemFiles, openInBrowser, type FileCheck, type SensitiveFile, type SensitiveGroup } from '../platform'
+import {
+  checkItemFiles,
+  openInBrowser,
+  type FileCheck,
+  type SensitiveFile,
+  type SensitiveGroup,
+  type SensitiveLevel,
+} from '../platform'
 import { quietButtonClass } from './controls'
 import { ExternalIcon, RefreshIcon, ShieldAlertIcon, ShieldCheckIcon } from './icons'
 
@@ -57,9 +64,10 @@ function scrollBounds(el: HTMLElement): { top: number; bottom: number } {
 }
 
 // levelDot is a category's level, as a dot beside its name.
-const levelDot: Readonly<Record<string, string>> = {
+const levelDot: Readonly<Record<SensitiveLevel, string>> = {
   danger: 'bg-danger',
   warning: 'bg-warning',
+  '': 'bg-muted',
 }
 
 function openDiff(url: string) {
@@ -109,7 +117,7 @@ function GroupSection({ group }: { group: SensitiveGroup }) {
   return (
     <section aria-label={group.label} className="flex flex-col gap-1">
       <h4 className="flex items-center gap-1.5 text-xs font-semibold text-text">
-        <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${levelDot[group.level] ?? 'bg-muted'}`} />
+        <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${levelDot[group.level]}`} />
         {group.label}
         <span className="font-normal text-muted">{formatCount(files.length)}</span>
       </h4>

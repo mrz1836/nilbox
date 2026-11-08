@@ -61,3 +61,14 @@ func NonNil[T any](list []T) []T {
 
 	return list
 }
+
+// Join joins string-typed values with sep, as strings.Join joins strings, for listing the
+// choices of a named string type in a message.
+func Join[S ~string](elems []S, sep string) string {
+	parts := make([]string, len(elems))
+	for i, e := range elems {
+		parts[i] = string(e)
+	}
+
+	return strings.Join(parts, sep)
+}

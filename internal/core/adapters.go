@@ -49,7 +49,7 @@ func newShellSettings(svc *settings.Service, pool *sql.DB, c clock.Clock) ShellS
 }
 
 // Theme returns the stored theme, or the default.
-func (s ShellSettings) Theme(ctx context.Context) (string, error) {
+func (s ShellSettings) Theme(ctx context.Context) (settings.Theme, error) {
 	return s.settings.Theme(ctx)
 }
 

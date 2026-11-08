@@ -3,10 +3,16 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as item$0 from "../item/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as sensitive$0 from "../sensitive/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as snooze$0 from "../snooze/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as trust$0 from "../trust/models.js";
 
 /**
  * Account is the signed-in GitHub account.
@@ -84,7 +90,7 @@ export interface Details {
  */
 export interface Item {
     "id": number;
-    "kind": string;
+    "kind": item$0.Kind;
     "number": number;
     "title": string;
     "url": string;
@@ -105,7 +111,7 @@ export interface Item {
      * repository's owner, org members, and collaborators, "bot" for a trusted bot, and
      * "outside" for everyone else, every untrusted bot, and every fork.
      */
-    "trust": string;
+    "trust": trust$0.Class;
 
     /**
      * Trusted reports whether Trust is anything but "outside".

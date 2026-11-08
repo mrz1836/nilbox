@@ -348,7 +348,7 @@ func TestTheWakeRulesComeFromThePrefs(t *testing.T) {
 	h, id, details := wakeHarness(t)
 	h.setPrefs(t, map[string]string{
 		snooze.PrefWakeCommits:  "0",
-		snooze.PrefWakeReviews:  snooze.ReviewsNever,
+		snooze.PrefWakeReviews:  string(snooze.ReviewsNever),
 		snooze.PrefWakeComments: "3",
 	})
 
@@ -453,6 +453,13 @@ func TestUnreadableWakeReasonsShowNone(t *testing.T) {
 
 	ok := `{"commits":2}`
 	assert.Equal(t, &snooze.Reasons{Commits: 2}, decodeReasons(&ok))
+
+	// A review outcome a different build stored reads as none.
+	praised := `{"commits":2,"review":"praised"}`
+	assert.Equal(t, &snooze.Reasons{Commits: 2, Review: snooze.ReviewNone}, decodeReasons(&praised))
+
+	onlyPraised := `{"review":"praised"}`
+	assert.Nil(t, decodeReasons(&onlyPraised), "nothing this build knows woke it")
 }
 
 func TestWakeRulesDatabaseError(t *testing.T) {

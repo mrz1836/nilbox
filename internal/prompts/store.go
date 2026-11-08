@@ -155,7 +155,7 @@ func (s *Store) insert(ctx context.Context, p Prompt) (int64, error) {
 	now := s.now()
 
 	return s.q.InsertPrompt(ctx, queries.InsertPromptParams{
-		Name: p.Name, Nickname: p.Nickname, AppliesTo: p.AppliesTo, Body: p.Body, Model: p.Model,
+		Name: p.Name, Nickname: p.Nickname, AppliesTo: string(p.AppliesTo), Body: p.Body, Model: p.Model,
 		Effort: p.Effort, PlanMode: p.PlanMode, Worktree: p.Worktree, ExtraArgs: args, StarterKey: p.StarterKey,
 		CreatedAt: now, UpdatedAt: now,
 	})
@@ -171,7 +171,7 @@ func (s *Store) update(ctx context.Context, id int64, p Prompt) error {
 	}
 
 	n, err := s.q.UpdatePrompt(ctx, queries.UpdatePromptParams{
-		Name: p.Name, Nickname: p.Nickname, AppliesTo: p.AppliesTo, Body: p.Body, Model: p.Model,
+		Name: p.Name, Nickname: p.Nickname, AppliesTo: string(p.AppliesTo), Body: p.Body, Model: p.Model,
 		Effort: p.Effort, PlanMode: p.PlanMode, Worktree: p.Worktree, ExtraArgs: args, UpdatedAt: s.now(), ID: id,
 	})
 
@@ -307,7 +307,7 @@ func pickDefault(all []Prompt, kind item.Kind, stored int64) int64 {
 	var first int64
 
 	for _, p := range all {
-		if !AppliesTo(p.AppliesTo, kind) {
+		if !p.AppliesTo.Covers(kind) {
 			continue
 		}
 
@@ -342,7 +342,7 @@ func fromRow(row queries.Prompt) (Prompt, error) {
 	}
 
 	p := Prompt{
-		ID: row.ID, Name: row.Name, Nickname: row.Nickname, AppliesTo: row.AppliesTo, Body: row.Body,
+		ID: row.ID, Name: row.Name, Nickname: row.Nickname, AppliesTo: AppliesTo(row.AppliesTo), Body: row.Body,
 		Model: row.Model, Effort: row.Effort, PlanMode: row.PlanMode, Worktree: row.Worktree,
 		ExtraArgs: args, ExtraFlags: agent.Join(args), StarterKey: row.StarterKey,
 		Usage:     normalizeUsage(Usage{}),

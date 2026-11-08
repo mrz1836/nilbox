@@ -7,7 +7,6 @@ import { settings } from '../test/fixtures'
 import { SensitiveFilesSection } from './SensitiveFilesSection'
 
 const platform = vi.hoisted(() => ({
-  getSettings: vi.fn(),
   setSensitiveScope: vi.fn(),
   setSensitiveCategory: vi.fn(),
   setSensitivePatterns: vi.fn(),
@@ -38,10 +37,10 @@ function category(name: string) {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  platform.getSettings.mockResolvedValue(settings())
-  platform.setSensitiveScope.mockResolvedValue(undefined)
-  platform.setSensitiveCategory.mockResolvedValue(undefined)
-  platform.setSensitivePatterns.mockResolvedValue(undefined)
+  // Each change comes back with the settings as stored.
+  platform.setSensitiveScope.mockResolvedValue(settings())
+  platform.setSensitiveCategory.mockResolvedValue(settings())
+  platform.setSensitivePatterns.mockResolvedValue(settings())
   platform.refreshInbox.mockResolvedValue(undefined)
   platform.matchSensitivePath.mockResolvedValue({ sensitive: false, category: '', label: '', level: '', pattern: '' })
 })

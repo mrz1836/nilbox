@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // Use is one place a launch default names a prompt: an org's (Target.Repo "") or a
@@ -46,8 +46,8 @@ func (s *Service) loadUsage(ctx context.Context) (map[int64]Usage, error) {
 	addDefault := func(id int64, kind item.Kind) {
 		if id != 0 {
 			u := usage[id]
-			u.Defaults = append(u.Defaults, string(kind))
-			u.Kinds = appendUnique(u.Kinds, string(kind))
+			u.Defaults = append(u.Defaults, kind)
+			u.Kinds = appendUnique(u.Kinds, kind)
 			usage[id] = u
 		}
 	}
@@ -81,12 +81,12 @@ func addPlace(usage map[int64]Usage, use Use) {
 		u.Repos = appendUnique(u.Repos, use.Target.String())
 	}
 
-	u.Kinds = appendUnique(u.Kinds, string(use.Kind))
+	u.Kinds = appendUnique(u.Kinds, use.Kind)
 	usage[use.PromptID] = u
 }
 
 // appendUnique appends s unless list already holds it.
-func appendUnique(list []string, s string) []string {
+func appendUnique[S comparable](list []S, s S) []S {
 	if slices.Contains(list, s) {
 		return list
 	}
@@ -96,15 +96,18 @@ func appendUnique(list []string, s string) []string {
 
 // normalizeUsage sorts a usage's lists and turns nil lists into empty ones.
 func normalizeUsage(u Usage) Usage {
-	for _, list := range []*[]string{&u.Defaults, &u.Orgs, &u.Repos, &u.Kinds} {
-		if *list == nil {
-			*list = []string{}
-		}
-
-		sort.Strings(*list)
-	}
+	u.Defaults, u.Kinds = sortedList(u.Defaults), sortedList(u.Kinds)
+	u.Orgs, u.Repos = sortedList(u.Orgs), sortedList(u.Repos)
 
 	return u
+}
+
+// sortedList sorts list in place and returns it, or an empty list for nil.
+func sortedList[S ~string](list []S) []S {
+	list = textutil.NonNil(list)
+	slices.Sort(list)
+
+	return list
 }
 
 // describeUsage says where a prompt is a default, as in "the default for pull requests,
@@ -113,7 +116,7 @@ func describeUsage(u Usage) string {
 	var parts []string
 
 	for _, kind := range u.Defaults {
-		parts = append(parts, "the default for "+item.Kind(kind).Plural())
+		parts = append(parts, "the default for "+kind.Plural())
 	}
 
 	var places []string

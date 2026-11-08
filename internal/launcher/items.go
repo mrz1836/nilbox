@@ -106,13 +106,22 @@ func (r launchItemRow) author() trust.Author {
 }
 
 // class is the item's trust class under policy.
-func (r launchItemRow) class(policy trust.Policy) string {
+func (r launchItemRow) class(policy trust.Policy) trust.Class {
 	return policy.Classify(r.author(), r.Kind == item.KindPR, r.IsCrossRepository)
 }
 
 // subject is what resolving the item's launch settings needs.
 func (r launchItemRow) subject(policy trust.Policy) subject {
 	return subject{id: r.ID, kind: r.Kind, repo: r.repo(), trusted: r.class(policy) != trust.ClassOutside}
+}
+
+// unresolved is the resolution of the item when its settings cannot resolve: the item
+// alone, every setting from SourceNone, and empty lists rather than nil ones.
+func (r launchItemRow) unresolved() Resolution {
+	return Resolution{
+		ItemID: r.ID, Kind: r.Kind, Owner: r.Owner, Repo: r.repo().String(),
+		ExtraArgs: []string{}, Warnings: []string{},
+	}
 }
 
 // item is what planning a launch needs.

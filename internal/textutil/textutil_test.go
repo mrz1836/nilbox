@@ -96,3 +96,12 @@ func TestNonNil(t *testing.T) {
 	assert.Empty(t, textutil.NonNil(none))
 	assert.Equal(t, []int{1, 2}, textutil.NonNil([]int{1, 2}))
 }
+
+func TestJoin(t *testing.T) {
+	t.Parallel()
+
+	type choice string
+
+	assert.Equal(t, "a, b", textutil.Join([]choice{"a", "b"}, ", "))
+	assert.Empty(t, textutil.Join([]choice(nil), ", "))
+}

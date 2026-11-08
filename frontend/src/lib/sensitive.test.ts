@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import type { SensitiveGroup } from '../platform'
 import { agentGroup, fileCheck, workflowsGroup } from '../test/fixtures'
 import { changeText, changeTone, filesChip, groupsOf, sensitiveCount, shortHead } from './sensitive'
 
@@ -14,7 +15,12 @@ describe('filesChip', () => {
   })
 
   it('folds categories past two into a count, and says when not every file was checked', () => {
-    const deps = { ...workflowsGroup(), category: 'dependencies', short: 'Dependencies', level: 'warning' }
+    const deps: SensitiveGroup = {
+      ...workflowsGroup(),
+      category: 'dependencies',
+      short: 'Dependencies',
+      level: 'warning',
+    }
     const review = { ...deps, category: 'review', short: 'Review rules' }
 
     const chip = filesChip(fileCheck({ groups: [agentGroup(), deps, review], complete: false }))
@@ -26,7 +32,12 @@ describe('filesChip', () => {
   })
 
   it('is amber when only warning categories are flagged', () => {
-    const deps = { ...workflowsGroup(), category: 'dependencies', short: 'Dependencies', level: 'warning' }
+    const deps: SensitiveGroup = {
+      ...workflowsGroup(),
+      category: 'dependencies',
+      short: 'Dependencies',
+      level: 'warning',
+    }
 
     expect(filesChip(fileCheck({ groups: [deps] })).tone).toBe('warning')
   })

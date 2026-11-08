@@ -3,6 +3,11 @@
 
 /**
  * Service reads and writes the preferences.
+ *
+ * Each setter stores its change and reads the preferences back in one transaction, then
+ * returns the settings with the change, so a setter that fails has stored nothing. Only
+ * the check that the default profile is still stored runs after the change is committed,
+ * and a failure there is logged rather than reported, since the change has happened.
  * @module
  */
 
@@ -10,6 +15,12 @@
 // @ts-ignore: Unused imports
 import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as terminal$0 from "../launcher/terminal/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as notifyprefs$0 from "../notifyprefs/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as sensitive$0 from "../sensitive/models.js";
@@ -26,7 +37,7 @@ import * as $models from "./models.js";
  * shows them. None is collapsed on a fresh database, and a stored value that is not a
  * boolean counts as open.
  */
-export function CollapsedSections(): $CancellablePromise<string[] | null> {
+export function CollapsedSections(): $CancellablePromise<$models.ListKey[] | null> {
     return $Call.ByID(3963432648);
 }
 
@@ -55,138 +66,149 @@ export function MenuBar(): $CancellablePromise<boolean> {
 }
 
 /**
- * ResetTrustedBots goes back to the default trusted bots.
+ * ResetTrustedBots goes back to the default trusted bots, and returns the settings with
+ * them.
  */
-export function ResetTrustedBots(): $CancellablePromise<void> {
+export function ResetTrustedBots(): $CancellablePromise<$models.Settings> {
     return $Call.ByID(3791295291);
 }
 
 /**
- * SetCloneRoot stores the clone root. It must be an absolute or ~-relative path to an
- * existing directory; it is stored as entered (trimmed and cleaned), so "~/projects"
- * stays portable across machines.
+ * SetCloneRoot stores the clone root, and returns the settings with it. It must be an
+ * absolute or ~-relative path to an existing directory; it is stored as entered (trimmed
+ * and cleaned), so "~/projects" stays portable across machines.
  */
-export function SetCloneRoot(root: string): $CancellablePromise<void> {
+export function SetCloneRoot(root: string): $CancellablePromise<$models.Settings> {
     return $Call.ByID(1113594570, root);
 }
 
 /**
- * SetDefaultProfile stores the profile the launch dropdown preselects. It must name a
- * stored profile.
+ * SetDefaultProfile stores the profile the launch dropdown preselects, and returns the
+ * settings with it. It must name a stored profile.
  */
-export function SetDefaultProfile(name: string): $CancellablePromise<void> {
+export function SetDefaultProfile(name: string): $CancellablePromise<$models.Settings> {
     return $Call.ByID(3789750455, name);
 }
 
 /**
- * SetMenuBar stores whether the app shows its menu bar icon. Once it is stored, an
- * event.MenuBarChanged is emitted, so the desktop shell adds or removes the icon.
+ * SetMenuBar stores whether the app shows its menu bar icon, and returns the settings
+ * with it. Once it is stored, an event.MenuBarChanged is emitted, so the desktop shell
+ * adds or removes the icon.
  */
-export function SetMenuBar(on: boolean): $CancellablePromise<void> {
+export function SetMenuBar(on: boolean): $CancellablePromise<$models.Settings> {
     return $Call.ByID(1825092391, on);
 }
 
 /**
  * SetNotificationBanner turns the banners of one kind of notification on or off (see the
- * notify package for the kinds). The notification history keeps every kind either way.
+ * notify package for the kinds), and returns the settings with it. The notification
+ * history keeps every kind either way.
  */
-export function SetNotificationBanner(kind: string, on: boolean): $CancellablePromise<void> {
+export function SetNotificationBanner(kind: notifyprefs$0.Kind, on: boolean): $CancellablePromise<$models.Settings> {
     return $Call.ByID(515060680, kind, on);
 }
 
 /**
  * SetSectionCollapsed stores whether an inbox section is collapsed, so the inbox opens the
- * same way at the next launch.
+ * same way at the next launch, and returns the settings with it.
  */
-export function SetSectionCollapsed(section: string, collapsed: boolean): $CancellablePromise<void> {
+export function SetSectionCollapsed(section: $models.ListKey, collapsed: boolean): $CancellablePromise<$models.Settings> {
     return $Call.ByID(124774945, section, collapsed);
 }
 
 /**
- * SetSensitiveCategory turns a built-in category of sensitive files on or off. The agent
- * configuration category cannot be turned off, since launches are held back by it.
+ * SetSensitiveCategory turns a built-in category of sensitive files on or off, and returns
+ * the settings with it. The agent configuration category cannot be turned off, since
+ * launches are held back by it.
  */
-export function SetSensitiveCategory(id: string, on: boolean): $CancellablePromise<void> {
+export function SetSensitiveCategory(id: string, on: boolean): $CancellablePromise<$models.Settings> {
     return $Call.ByID(2501737511, id, on);
 }
 
 /**
- * SetSensitivePatterns stores the user's own patterns of sensitive files, in order. Each
- * is trimmed, empty ones and repeats are dropped, and a pattern that cannot be used is
- * refused with the reason (see the sensitive package for the syntax).
+ * SetSensitivePatterns stores the user's own patterns of sensitive files, in order, and
+ * returns the settings with them. Each is trimmed, empty ones and repeats are dropped, and
+ * a pattern that cannot be used is refused with the reason (see the sensitive package for
+ * the syntax).
  */
-export function SetSensitivePatterns(patterns: string[] | null): $CancellablePromise<void> {
+export function SetSensitivePatterns(patterns: string[] | null): $CancellablePromise<$models.Settings> {
     return $Call.ByID(2773765992, patterns);
 }
 
 /**
- * SetSensitiveScope stores whose pull requests have their changed files checked:
- * sensitive.ScopeOutside, or sensitive.ScopeCollaborators to check collaborators' too.
+ * SetSensitiveScope stores whose pull requests have their changed files checked,
+ * sensitive.ScopeOutside or sensitive.ScopeCollaborators to check collaborators' too, and
+ * returns the settings with it.
  */
-export function SetSensitiveScope(scope: string): $CancellablePromise<void> {
+export function SetSensitiveScope(scope: sensitive$0.Scope): $CancellablePromise<$models.Settings> {
     return $Call.ByID(2000338137, scope);
 }
 
 /**
- * SetSnoozeDays stores how many days the Snooze button hides an item:
- * snooze.MinDays to snooze.MaxDays.
+ * SetSnoozeDays stores how many days the Snooze button hides an item, snooze.MinDays to
+ * snooze.MaxDays, and returns the settings with it.
  */
-export function SetSnoozeDays(days: number): $CancellablePromise<void> {
+export function SetSnoozeDays(days: number): $CancellablePromise<$models.Settings> {
     return $Call.ByID(1056409924, days);
 }
 
 /**
- * SetSnoozeWake stores which new activity ends a snooze early. Every rule is stored
- * together, so the rules never mix two saves.
+ * SetSnoozeWake stores which new activity ends a snooze early, and returns the settings
+ * with it. Every rule is stored together, so the rules never mix two saves.
  */
-export function SetSnoozeWake(rules: snooze$0.Rules): $CancellablePromise<void> {
+export function SetSnoozeWake(rules: snooze$0.Rules): $CancellablePromise<$models.Settings> {
     return $Call.ByID(4037306883, rules);
 }
 
 /**
- * SetTerminal stores the terminal launches open in: "iterm2" or "terminal".
+ * SetTerminal stores the terminal launches open in, TerminalITerm2 or TerminalApp, and
+ * returns the settings with it.
  */
-export function SetTerminal(terminal: string): $CancellablePromise<void> {
-    return $Call.ByID(2731649341, terminal);
+export function SetTerminal(id: terminal$0.ID): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(2731649341, id);
 }
 
 /**
- * SetTheme stores the theme the app shows: ThemeSystem, ThemeLight, or ThemeDark. Once
- * it is stored, an event.ThemeChanged is emitted, so the desktop shell brings the
- * window's native appearance along with it.
+ * SetTheme stores the theme the app shows: ThemeSystem, ThemeLight, or ThemeDark, and
+ * returns the settings with it. Once it is stored, an event.ThemeChanged is emitted, so
+ * the desktop shell brings the window's native appearance along with it.
  */
-export function SetTheme(theme: string): $CancellablePromise<void> {
+export function SetTheme(theme: $models.Theme): $CancellablePromise<$models.Settings> {
     return $Call.ByID(3709078766, theme);
 }
 
 /**
- * SetTrustedBots stores the bots whose items are trusted. Each login may be written as
- * GitHub shows it ("dependabot", "dependabot[bot]", or "app/dependabot"); the list is
- * stored normalized and sorted, and may be empty to trust no bot.
+ * SetTrustedBots stores the bots whose items are trusted, and returns the settings with
+ * them. Each login may be written as GitHub shows it ("dependabot", "dependabot[bot]", or
+ * "app/dependabot"); the list is stored normalized and sorted, and may be empty to trust
+ * no bot.
  */
-export function SetTrustedBots(bots: string[] | null): $CancellablePromise<void> {
+export function SetTrustedBots(bots: string[] | null): $CancellablePromise<$models.Settings> {
     return $Call.ByID(2221826650, bots);
 }
 
 /**
  * SetWindowSize stores the size the window opens at, which takes effect at the next
- * launch: MinWindowWidth by MinWindowHeight up to MaxWindowWidth by MaxWindowHeight.
+ * launch: MinWindowWidth by MinWindowHeight up to MaxWindowWidth by MaxWindowHeight. It
+ * returns the settings with it.
  */
-export function SetWindowSize(size: $models.WindowSize): $CancellablePromise<void> {
+export function SetWindowSize(size: $models.WindowSize): $CancellablePromise<$models.Settings> {
     return $Call.ByID(4072565640, size);
 }
 
 /**
- * SetWorktreeAutoCleanup stores whether finished worktrees are cleaned up on their own.
+ * SetWorktreeAutoCleanup stores whether finished worktrees are cleaned up on their own,
+ * and returns the settings with it.
  */
-export function SetWorktreeAutoCleanup(on: boolean): $CancellablePromise<void> {
+export function SetWorktreeAutoCleanup(on: boolean): $CancellablePromise<$models.Settings> {
     return $Call.ByID(514380997, on);
 }
 
 /**
- * SetWorktreeDefault stores whether launches start in a worktree unless unticked.
+ * SetWorktreeDefault stores whether launches start in a worktree unless unticked, and
+ * returns the settings with it.
  */
-export function SetWorktreeDefault(on: boolean): $CancellablePromise<void> {
+export function SetWorktreeDefault(on: boolean): $CancellablePromise<$models.Settings> {
     return $Call.ByID(2809427945, on);
 }
 
@@ -194,6 +216,6 @@ export function SetWorktreeDefault(on: boolean): $CancellablePromise<void> {
  * Theme returns the stored theme, or DefaultTheme when none is stored or the stored
  * value is no longer a choice.
  */
-export function Theme(): $CancellablePromise<string> {
+export function Theme(): $CancellablePromise<$models.Theme> {
     return $Call.ByID(2166540932);
 }

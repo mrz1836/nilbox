@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { NotificationsState } from '../lib/useNotifications'
+import type { NotificationKind } from '../platform'
 import { notification } from '../test/fixtures'
 import { NotificationsMenu } from './NotificationsMenu'
 
@@ -70,6 +71,23 @@ describe('NotificationsMenu', () => {
     )
 
     expect(screen.getByTestId('notifications-unread')).toHaveTextContent('99+')
+  })
+
+  it('shows a kind it does not know with the bell, titled plainly', async () => {
+    // A kind another build stored, outside the ones this build knows.
+    const mentions = notification({ id: 4, kind: 'mentions' as unknown as NotificationKind, title: 'Ping' })
+    render(
+      <NotificationsMenu
+        notifications={state({ log: { items: [mentions], unread: 1 } })}
+        now={now}
+        onOpen={onOpen}
+        onSettings={onSettings}
+      />,
+    )
+
+    const history = await open()
+
+    expect(history.getByRole('button', { name: /Notification.*Ping/ })).toBeInTheDocument()
   })
 
   it('shows no count when everything is read', () => {

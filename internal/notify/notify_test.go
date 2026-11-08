@@ -32,7 +32,7 @@ var testNow = time.Date(2026, 3, 4, 12, 0, 0, 0, time.UTC) //nolint:gochecknoglo
 // authErr are the answer to Authorize.
 type fakePoster struct {
 	mu      sync.Mutex
-	status  string
+	status  BannerStatus
 	err     error
 	denied  bool
 	authErr error
@@ -62,7 +62,7 @@ func (p *fakePoster) Post(b Banner) error {
 	return nil
 }
 
-func (p *fakePoster) Status() string { return p.status }
+func (p *fakePoster) Status() BannerStatus { return p.status }
 
 func (p *fakePoster) posted() []Banner {
 	p.mu.Lock()
@@ -118,9 +118,9 @@ func (f *fixture) config() Config {
 }
 
 // arrival is the arrival of the fixture's item i (from 0) as kind.
-func (f *fixture) arrival(i int, kind string) inbox.Arrival {
+func (f *fixture) arrival(i int, kind notifyprefs.Kind) inbox.Arrival {
 	return inbox.Arrival{
-		Kind: kind, ItemID: f.items[i], ItemKind: "pr", RepoOwner: "acme-org", RepoName: "example-repo",
+		Kind: string(kind), ItemID: f.items[i], ItemKind: "pr", RepoOwner: "acme-org", RepoName: "example-repo",
 		Number: i + 1, Title: fmt.Sprintf("Item %d", i+1),
 		URL: fmt.Sprintf("https://github.com/acme-org/example-repo/pull/%d", i+1), Author: "octo-other",
 	}
@@ -129,7 +129,7 @@ func (f *fixture) arrival(i int, kind string) inbox.Arrival {
 func TestKindsAreTheInboxArrivals(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, []string{KindReviewRequested, KindAssigned, KindWoke}, notifyprefs.Kinds(),
+	assert.Equal(t, []notifyprefs.Kind{KindReviewRequested, KindAssigned, KindWoke}, notifyprefs.Kinds(),
 		"the kinds the settings list are the inbox's kinds of arrival, in order")
 }
 
@@ -166,6 +166,25 @@ func TestTheLogKeepsWhatWasRecorded(t *testing.T) {
 		Detail: "approved, 2 new commits",
 	}, got)
 	assert.Equal(t, rows[1], got, "Record returns what the log reads back")
+}
+
+func TestTheLogLeavesOutKindsItDoesNotKnow(t *testing.T) {
+	f := newFixture(t, 1)
+	s := NewStore(f.pool)
+
+	_, err := s.Record(t.Context(), testNow, []inbox.Arrival{f.arrival(0, KindAssigned)})
+	require.NoError(t, err)
+
+	// A kind of notification a different build wrote.
+	_, err = f.pool.ExecContext(t.Context(),
+		"INSERT INTO notifications (kind, created_at, item_kind) VALUES ('mentions', ?, 'pr')", testNow)
+	require.NoError(t, err)
+
+	log, err := s.Log(t.Context())
+	require.NoError(t, err)
+	require.Len(t, log.Items, 1)
+	assert.Equal(t, KindAssigned, log.Items[0].Kind)
+	assert.Equal(t, 1, log.Unread, "only what the log shows counts as unread")
 }
 
 func TestRecordingNothingStoresNothing(t *testing.T) {
@@ -436,7 +455,7 @@ func TestTheDispatcherRecordsAndShowsBanners(t *testing.T) {
 	require.Len(t, banners, 2)
 	assert.Equal(t, Banner{
 		ID: brand.Slug + "-" + strconv.FormatInt(log.Items[1].ID, 10), Title: "Review requested",
-		Subtitle: "acme-org/example-repo #1", Body: "Item 1", Thread: KindReviewRequested, ItemID: f.items[0],
+		Subtitle: "acme-org/example-repo #1", Body: "Item 1", Thread: string(KindReviewRequested), ItemID: f.items[0],
 		URL: "https://github.com/acme-org/example-repo/pull/1",
 	}, banners[0])
 	assert.Equal(t, "Assigned to you", banners[1].Title)

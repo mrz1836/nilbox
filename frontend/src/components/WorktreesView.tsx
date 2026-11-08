@@ -21,6 +21,7 @@ import {
   type WorktreeCleanup,
   type WorktreeRepo,
   type WorktreesSnapshot,
+  type WorktreeStage,
 } from '../platform'
 import { ConfirmDialog } from './ConfirmDialog'
 import { quietButtonClass } from './controls'
@@ -79,7 +80,7 @@ const buttonBase = 'rounded-md border px-3 py-1 text-sm font-medium disabled:opa
 const plainButton = `${buttonBase} border-border bg-surface hover:bg-raised`
 
 // stageLabels name each stage the backend reports, with its color.
-const stageLabels: Readonly<Record<string, { text: string; className: string }>> = {
+const stageLabels: Readonly<Partial<Record<WorktreeStage, { text: string; className: string }>>> = {
   'in-use': { text: 'in use', className: 'text-info' },
   finished: { text: 'ready to clean up', className: 'text-success' },
   'needs-review': { text: 'needs a look', className: 'text-warning' },

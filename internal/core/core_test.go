@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/appdata"
+	"github.com/mrz1836/nilbox/internal/appinfo"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
@@ -290,10 +291,10 @@ func TestThemeChangesReachTheEvents(t *testing.T) {
 		Events: events,
 	})
 
-	require.NoError(t, c.Settings.SetTheme(t.Context(), settings.ThemeDark))
-	require.Error(t, c.Settings.SetTheme(t.Context(), "sepia"))
+	require.NoError(t, testutil.ErrOf(c.Settings.SetTheme(t.Context(), settings.ThemeDark)))
+	require.Error(t, testutil.ErrOf(c.Settings.SetTheme(t.Context(), "sepia")))
 
-	assert.Equal(t, []event.Event{event.ThemeChanged{Theme: settings.ThemeDark}}, events.All())
+	assert.Equal(t, []event.Event{event.ThemeChanged{Theme: string(settings.ThemeDark)}}, events.All())
 }
 
 // posterStub is a notification center that shows every banner.
@@ -307,7 +308,7 @@ func (p *posterStub) Post(b notify.Banner) error {
 	return nil
 }
 
-func (p *posterStub) Status() string { return notify.StatusOn }
+func (p *posterStub) Status() notify.BannerStatus { return notify.StatusOn }
 
 func (p *posterStub) Authorize() (bool, error) { return true, nil }
 
@@ -323,7 +324,7 @@ func TestMenuBarAndNotificationsReachTheShell(t *testing.T) {
 		Banners: poster,
 	})
 
-	require.NoError(t, c.Settings.SetMenuBar(t.Context(), false))
+	require.NoError(t, testutil.ErrOf(c.Settings.SetMenuBar(t.Context(), false)))
 	assert.Equal(t, []event.Event{event.MenuBarChanged{On: false}}, events.All())
 
 	assert.Equal(t, notify.StatusOn, c.Notifications.BannerStatus())
@@ -349,9 +350,9 @@ func TestTheShellReadsItsSettingsOffTheBoundService(t *testing.T) {
 	ctx := t.Context()
 	size := settings.WindowSize{Width: 1440, Height: 900}
 
-	require.NoError(t, c.Settings.SetTheme(ctx, settings.ThemeDark))
-	require.NoError(t, c.Settings.SetMenuBar(ctx, false))
-	require.NoError(t, c.Settings.SetWindowSize(ctx, size))
+	require.NoError(t, testutil.ErrOf(c.Settings.SetTheme(ctx, settings.ThemeDark)))
+	require.NoError(t, testutil.ErrOf(c.Settings.SetMenuBar(ctx, false)))
+	require.NoError(t, testutil.ErrOf(c.Settings.SetWindowSize(ctx, size)))
 
 	theme, err := c.ShellSettings.Theme(ctx)
 	require.NoError(t, err)
@@ -373,7 +374,7 @@ func TestThemeWithoutAnEventSink(t *testing.T) {
 		Runner: noPrograms(),
 	})
 
-	require.NoError(t, c.Settings.SetTheme(t.Context(), settings.ThemeLight))
+	require.NoError(t, testutil.ErrOf(c.Settings.SetTheme(t.Context(), settings.ThemeLight)))
 
 	got, err := c.Settings.Theme(t.Context())
 	require.NoError(t, err)
@@ -397,6 +398,22 @@ func TestAppInfoReportsVersion(t *testing.T) {
 	assert.Nil(t, info.DataReset, "a database that opens is not reset")
 }
 
+func TestTheWindowShowsEveryReasonTheStoreSetsADatabaseAside(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.DiscardHandler)
+
+	for stored, shown := range map[store.ResetReason]appinfo.ResetReason{
+		store.ResetCorrupt:   appinfo.ResetCorrupt,
+		store.ResetUnmanaged: appinfo.ResetUnmanaged,
+		store.ResetHistory:   appinfo.ResetHistory,
+	} {
+		got := dataReset(t.Context(), &store.Reset{Path: "/data/app.db.broken", Reason: stored}, "/home", logger)
+		require.NotNil(t, got)
+		assert.Equal(t, shown, got.Reason, string(stored))
+	}
+}
+
 func TestBootstrapStartsFreshWhenTheDatabaseCannotBeRead(t *testing.T) {
 	home := testutil.ClaudeHome(t, ".claude")
 	paths := appdata.NewPaths(filepath.Join(home, "data"))
@@ -413,7 +430,7 @@ func TestBootstrapStartsFreshWhenTheDatabaseCannotBeRead(t *testing.T) {
 
 	reset := c.AppInfo.Info().DataReset
 	require.NotNil(t, reset, "the window is told the data was reset")
-	assert.Equal(t, string(store.ResetCorrupt), reset.Reason)
+	assert.Equal(t, appinfo.ResetCorrupt, reset.Reason)
 	assert.Regexp(t, `^~/data/`+regexp.QuoteMeta(filepath.Base(paths.DB))+`\.broken-\d{8}T\d{6}Z$`, reset.Path,
 		"the path is shown with ~ for the home directory")
 	assert.Contains(t, logs.String(), "set aside")

@@ -23,7 +23,9 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/inbox"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/notify/internal/queries"
+	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/store"
 )
@@ -32,13 +34,13 @@ import (
 // for the settings.
 const (
 	// KindReviewRequested is a pull request that newly asks for the user's review.
-	KindReviewRequested = inbox.ArrivalReviewRequested
+	KindReviewRequested = notifyprefs.Kind(inbox.ArrivalReviewRequested)
 
 	// KindAssigned is an issue or pull request newly assigned to the user.
-	KindAssigned = inbox.ArrivalAssigned
+	KindAssigned = notifyprefs.Kind(inbox.ArrivalAssigned)
 
 	// KindWoke is a snoozed item that new activity brought back early.
-	KindWoke = inbox.ArrivalWoke
+	KindWoke = notifyprefs.Kind(inbox.ArrivalWoke)
 )
 
 // Keep is how many notifications the log keeps; recording more drops the oldest.
@@ -50,7 +52,7 @@ type Notification struct {
 	ID int64 `json:"id"`
 
 	// Kind is KindReviewRequested, KindAssigned, or KindWoke.
-	Kind string `json:"kind"`
+	Kind notifyprefs.Kind `json:"kind"`
 
 	// CreatedAt is when it was recorded, as RFC 3339.
 	CreatedAt string `json:"createdAt"`
@@ -62,8 +64,7 @@ type Notification struct {
 	// stored.
 	ItemID int64 `json:"itemId"`
 
-	// ItemKind is "pr" or "issue".
-	ItemKind string `json:"itemKind"`
+	ItemKind item.Kind `json:"itemKind"`
 
 	// Repo is "owner/name".
 	Repo   string `json:"repo"`
@@ -131,7 +132,9 @@ func (s *Store) Record(ctx context.Context, now time.Time, arrivals []inbox.Arri
 	return out, nil
 }
 
-// Log returns the stored notifications, newest first, and how many are unread.
+// Log returns the stored notifications, newest first, and how many are unread. A
+// notification of a kind this build does not know, as another build may have written, is
+// left out.
 func (s *Store) Log(ctx context.Context) (Log, error) {
 	rows, err := s.q.ListNotifications(ctx, Keep)
 	if err != nil {
@@ -142,6 +145,10 @@ func (s *Store) Log(ctx context.Context) (Log, error) {
 
 	for _, r := range rows {
 		n := fromRow(r)
+		if !n.Kind.Valid() {
+			continue
+		}
+
 		if !n.Read {
 			out.Unread++
 		}
@@ -179,8 +186,8 @@ func fromRow(r queries.Notification) Notification {
 	}
 
 	return Notification{
-		ID: r.ID, Kind: r.Kind, CreatedAt: clock.Format(r.CreatedAt), Read: r.ReadAt != nil,
-		ItemID: itemID, ItemKind: r.ItemKind, Repo: repoName(r.RepoOwner, r.RepoName), Number: int(r.Number),
+		ID: r.ID, Kind: notifyprefs.Kind(r.Kind), CreatedAt: clock.Format(r.CreatedAt), Read: r.ReadAt != nil,
+		ItemID: itemID, ItemKind: item.Kind(r.ItemKind), Repo: repoName(r.RepoOwner, r.RepoName), Number: int(r.Number),
 		Title: r.Title, URL: r.URL, Author: r.Author, Detail: r.Detail,
 	}
 }

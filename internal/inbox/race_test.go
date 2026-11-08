@@ -18,6 +18,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/settings"
@@ -204,23 +205,23 @@ func toggle(ctx context.Context, id int64, on, off triageStep) func() error {
 }
 
 // terminals are the terminals the settings job alternates between, by round.
-func terminals() []string {
-	return []string{settings.TerminalApp, settings.TerminalITerm2}
+func terminals() []terminal.ID {
+	return []terminal.ID{settings.TerminalApp, settings.TerminalITerm2}
 }
 
 // writeSettings returns a job that writes settings the inbox reads in a refresh (the
 // trusted bots and the wake rules) and one it does not, a different value each round.
 func writeSettings(ctx context.Context, s *settings.Service) func() error {
 	return repeat(func(round int) error {
-		if err := s.SetTerminal(ctx, terminals()[round%2]); err != nil {
+		if err := errOnly(s.SetTerminal(ctx, terminals()[round%2])); err != nil {
 			return err
 		}
 
-		if err := s.SetTrustedBots(ctx, []string{"dependabot", fmt.Sprintf("helper-%d", round)}); err != nil {
+		if err := errOnly(s.SetTrustedBots(ctx, []string{"dependabot", fmt.Sprintf("helper-%d", round)})); err != nil {
 			return err
 		}
 
-		return s.SetSnoozeWake(ctx, snooze.Rules{Commits: 1 + round%3, Reviews: snooze.ReviewsAny})
+		return errOnly(s.SetSnoozeWake(ctx, snooze.Rules{Commits: 1 + round%3, Reviews: snooze.ReviewsAny}))
 	})
 }
 

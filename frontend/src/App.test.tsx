@@ -85,14 +85,14 @@ beforeEach(() => {
   platform.listProfiles.mockResolvedValue([profile(), profile({ name: 'work' })])
   platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([item()]) }))
   platform.onInboxUpdated.mockReturnValue(() => undefined)
-  platform.setTerminal.mockResolvedValue(undefined)
-  platform.setDefaultProfile.mockResolvedValue(undefined)
-  platform.setWorktreeDefault.mockResolvedValue(undefined)
+  platform.setTerminal.mockResolvedValue(settings())
+  platform.setDefaultProfile.mockResolvedValue(settings())
+  platform.setWorktreeDefault.mockResolvedValue(settings())
   platform.listWorktrees.mockResolvedValue(worktreesSnapshot())
   platform.getCollapsedSections.mockResolvedValue([])
-  platform.setSectionCollapsed.mockResolvedValue(undefined)
+  platform.setSectionCollapsed.mockResolvedValue(settings())
   platform.getTheme.mockResolvedValue('system')
-  platform.setTheme.mockResolvedValue(undefined)
+  platform.setTheme.mockResolvedValue(settings())
   platform.getAppInfo.mockResolvedValue(appInfo())
   platform.listPrompts.mockResolvedValue(prompts())
   platform.getDefaultPrompts.mockResolvedValue({ pr: 1, issue: 4 })
@@ -108,7 +108,7 @@ beforeEach(() => {
   platform.checkPrompt.mockResolvedValue(checkResult())
   platform.listLaunchTargets.mockResolvedValue([])
   platform.checkLaunchDefaults.mockResolvedValue([])
-  platform.setTrustedBots.mockResolvedValue(undefined)
+  platform.setTrustedBots.mockResolvedValue(settings())
   platform.lastWorktreeSweep.mockResolvedValue(sweepReport({ seq: 0 }))
   platform.onWorktreesUpdated.mockReturnValue(() => undefined)
   platform.recentCleanups.mockResolvedValue([])
@@ -119,8 +119,8 @@ beforeEach(() => {
   platform.onRevealItem.mockReturnValue(() => undefined)
   platform.notificationBannerStatus.mockResolvedValue('on')
   platform.sendTestNotification.mockResolvedValue(undefined)
-  platform.setMenuBar.mockResolvedValue(undefined)
-  platform.setNotificationBanner.mockResolvedValue(undefined)
+  platform.setMenuBar.mockResolvedValue(settings())
+  platform.setNotificationBanner.mockResolvedValue(settings())
 })
 
 // rowOptions opens the inbox row's launch options and returns queries scoped to them.
@@ -324,7 +324,7 @@ describe('App', () => {
     await openSettingsFromMenu()
     await userEvent.click(screen.getByRole('button', { name: 'Trust' }))
 
-    platform.getSettings.mockResolvedValue(settings({ trustedBots: ['dependabot'] }))
+    platform.setTrustedBots.mockResolvedValue(settings({ trustedBots: ['dependabot'] }))
     platform.getInboxSnapshot.mockResolvedValue(
       snapshot({ reviewRequested: list([{ ...bot, trust: 'bot', trusted: true }]) }),
     )

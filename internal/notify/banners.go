@@ -14,18 +14,21 @@ import (
 // MaxBanners is how many banners one refresh shows one by one; more are summed up in one.
 const MaxBanners = 3
 
+// BannerStatus says whether banners are shown.
+type BannerStatus string
+
 // Banner states, as Poster.Status reports them.
 const (
 	// StatusOn means banners are shown.
-	StatusOn = "on"
+	StatusOn BannerStatus = "on"
 
 	// StatusOff means the user has not allowed the app's banners, or turned them off in
 	// the system's settings.
-	StatusOff = "off"
+	StatusOff BannerStatus = "off"
 
 	// StatusUnavailable means this build cannot show banners: a development run, which has
 	// no app bundle to own them, or an OS the shell does not post to yet.
-	StatusUnavailable = "unavailable"
+	StatusUnavailable BannerStatus = "unavailable"
 )
 
 // Banner is one native notification.
@@ -54,7 +57,7 @@ type Poster interface {
 	Post(b Banner) error
 
 	// Status reports StatusOn, StatusOff, or StatusUnavailable.
-	Status() string
+	Status() BannerStatus
 
 	// Authorize asks the user to allow banners, if they have not been asked, and reports
 	// whether banners are allowed. It may wait for the user's answer.
@@ -64,7 +67,7 @@ type Poster interface {
 // kindTitles are each kind's banner title.
 //
 //nolint:gochecknoglobals // a fixed table
-var kindTitles = map[string]string{
+var kindTitles = map[notifyprefs.Kind]string{
 	KindReviewRequested: "Review requested",
 	KindAssigned:        "Assigned to you",
 	KindWoke:            "Back from snooze",
@@ -73,7 +76,7 @@ var kindTitles = map[string]string{
 // summaryNouns name each kind in a summary banner, singular and plural.
 //
 //nolint:gochecknoglobals // a fixed table
-var summaryNouns = map[string][2]string{
+var summaryNouns = map[notifyprefs.Kind][2]string{
 	KindReviewRequested: {"review request", "review requests"},
 	KindAssigned:        {"assignment", "assignments"},
 	KindWoke:            {"back from snooze", "back from snooze"},
@@ -94,7 +97,7 @@ func banner(n Notification) Banner {
 		Title:    kindTitles[n.Kind],
 		Subtitle: n.Repo + " #" + strconv.Itoa(n.Number),
 		Body:     body,
-		Thread:   n.Kind,
+		Thread:   string(n.Kind),
 		ItemID:   n.ItemID,
 		URL:      n.URL,
 	}
@@ -103,7 +106,7 @@ func banner(n Notification) Banner {
 // summary is the one banner that stands for many: "5 new in your inbox", with how many of
 // each kind.
 func summary(rows []Notification) Banner {
-	counts := make(map[string]int)
+	counts := make(map[notifyprefs.Kind]int)
 	for _, r := range rows {
 		counts[r.Kind]++
 	}
@@ -131,7 +134,7 @@ func summary(rows []Notification) Banner {
 
 // Banners returns what to show for recorded notifications: one banner each, or a single
 // summary when there are more than MaxBanners. It shows none of the kinds in off.
-func Banners(rows []Notification, off []string) []Banner {
+func Banners(rows []Notification, off []notifyprefs.Kind) []Banner {
 	shown := slices.DeleteFunc(slices.Clone(rows), func(r Notification) bool {
 		return slices.Contains(off, r.Kind)
 	})
@@ -173,6 +176,7 @@ func WakeDetail(r snooze.Reasons) string {
 		parts = append(parts, "approved")
 	case snooze.ReviewNew:
 		parts = append(parts, "new review")
+	case snooze.ReviewNone:
 	}
 
 	switch {

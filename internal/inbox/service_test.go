@@ -583,7 +583,7 @@ func TestRefreshStoresTrustFields(t *testing.T) {
 	assert.Equal(t, item.KindIssue, got[21].Kind)
 	assert.Equal(t, "branch-7", got[7].HeadRef)
 
-	classes := make(map[int]string)
+	classes := make(map[int]trust.Class)
 	trusted := make(map[int]bool)
 	bots := make(map[int]bool)
 
@@ -593,7 +593,7 @@ func TestRefreshStoresTrustFields(t *testing.T) {
 		}
 	}
 
-	assert.Equal(t, map[int]string{
+	assert.Equal(t, map[int]trust.Class{
 		12: trust.ClassOutside, 15: trust.ClassBot, 16: trust.ClassOutside, 17: trust.ClassOutside,
 		8: trust.ClassOutside, 7: trust.ClassMember, 21: trust.ClassMember,
 	}, classes, "Dependabot is a trusted bot by default; a person named like it and an unlisted bot are not")
@@ -604,7 +604,7 @@ func TestRefreshStoresTrustFields(t *testing.T) {
 
 	fromFork := snap.ReviewRequested.Items[3]
 	assert.Equal(t, Item{
-		ID: fromFork.ID, Kind: string(item.KindPR), Number: 12, Title: "Item 12",
+		ID: fromFork.ID, Kind: item.KindPR, Number: 12, Title: "Item 12",
 		URL:  "https://github.com/acme-org/example-repo/pull/12",
 		Repo: "acme-org/example-repo", Author: octoUser, UpdatedAt: "2026-01-01T12:00:00Z",
 		Trust: trust.ClassOutside, Trusted: false, IsCrossRepository: true, AuthorAssociation: "CONTRIBUTOR",

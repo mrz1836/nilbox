@@ -1,15 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { getTheme, setTheme } from '../platform'
-import {
-  appearanceIsDark,
-  defaultTheme,
-  onAppearanceChange,
-  resolveDark,
-  schemeSwitch,
-  toTheme,
-  type Theme,
-} from './theme'
+import { appearanceIsDark, defaultTheme, onAppearanceChange, resolveDark, schemeSwitch, type Theme } from './theme'
 
 // ThemeState is the chosen theme and the palette it shows.
 export interface ThemeState {
@@ -36,7 +28,7 @@ export function useTheme(win: Window = window): ThemeState {
   const picks = useRef(0)
   // saving chains the stores, so they reach the database, and the native appearance, in
   // the order they were made.
-  const saving = useRef<Promise<void>>(Promise.resolve())
+  const saving = useRef<Promise<unknown>>(Promise.resolve())
   // painted is whether the first palette is pinned; only later switches cross-fade.
   const painted = useRef(false)
 
@@ -48,7 +40,7 @@ export function useTheme(win: Window = window): ThemeState {
     getTheme()
       .then((stored) => {
         if (active && picks.current === 0) {
-          setThemeState(toTheme(stored))
+          setThemeState(stored)
         }
       })
       .catch((err: unknown) => {

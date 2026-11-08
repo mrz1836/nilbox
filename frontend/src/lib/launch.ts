@@ -1,11 +1,11 @@
 // Shared wording and choices for launch settings: where a resolved setting came from,
 // the models and effort levels the agent offers, and short summaries of prompts.
 
-import type { Prompt, PromptUsage } from '../platform'
+import type { ItemKind, LaunchSource, Prompt, PromptAppliesTo, PromptUsage } from '../platform'
 import { counted } from './format'
 
 // sourceLabels name where a resolved launch setting came from.
-const sourceLabels: Readonly<Record<string, string>> = {
+const sourceLabels: Readonly<Record<LaunchSource, string>> = {
   launch: 'this launch',
   prompt: 'prompt',
   repo: 'repo default',
@@ -13,11 +13,13 @@ const sourceLabels: Readonly<Record<string, string>> = {
   profile: 'profile',
   app: 'app default',
   agent: 'agent default',
+  // The settings of an item that cannot resolve come from nowhere.
+  '': '',
 }
 
 // sourceLabel names a setting's source for people, as in "repo default".
-export function sourceLabel(source: string): string {
-  return sourceLabels[source] ?? source
+export function sourceLabel(source: LaunchSource): string {
+  return sourceLabels[source]
 }
 
 export interface Choice {
@@ -62,19 +64,19 @@ export function effortLabel(value: string): string {
 }
 
 // appliesToLabels name what a prompt is for.
-export const appliesToLabels: Readonly<Record<string, string>> = {
+export const appliesToLabels: Readonly<Record<PromptAppliesTo, string>> = {
   pr: 'Pull requests',
   issue: 'Issues',
   any: 'Both',
 }
 
-// promptApplies reports whether a prompt can launch an item of kind ("pr" or "issue").
-export function promptApplies(prompt: Pick<Prompt, 'appliesTo'>, kind: string): boolean {
+// promptApplies reports whether a prompt can launch an item of kind.
+export function promptApplies(prompt: Pick<Prompt, 'appliesTo'>, kind: ItemKind): boolean {
   return prompt.appliesTo === 'any' || prompt.appliesTo === kind
 }
 
 // kindPlural names a kind of item in the plural.
-export function kindPlural(kind: string): string {
+export function kindPlural(kind: ItemKind): string {
   return kind === 'pr' ? 'pull requests' : 'issues'
 }
 

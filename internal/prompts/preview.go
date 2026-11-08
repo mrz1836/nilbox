@@ -110,7 +110,7 @@ func (s *Service) Check(ctx context.Context, req CheckRequest) (CheckResult, err
 
 // previewData returns the data to preview with and, when it had to fall back to sample
 // data for an item that was asked for, why.
-func (s *Service) previewData(ctx context.Context, req CheckRequest, appliesTo string) (Data, string) {
+func (s *Service) previewData(ctx context.Context, req CheckRequest, appliesTo AppliesTo) (Data, string) {
 	sample := Sample(item.KindPR)
 	if appliesTo == AppliesToIssue {
 		sample = Sample(item.KindIssue)
@@ -127,7 +127,7 @@ func (s *Service) previewData(ctx context.Context, req CheckRequest, appliesTo s
 		return sample, "That item is no longer in the inbox, so the preview uses a sample."
 	}
 
-	if kind := data.kind(); !AppliesTo(appliesTo, kind) {
+	if kind := data.kind(); !appliesTo.Covers(kind) {
 		return sample, "This prompt isn't for " + kind.Plural() + ", so the preview uses a sample."
 	}
 

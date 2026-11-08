@@ -217,7 +217,7 @@ func TestEveryStarterIsClean(t *testing.T) {
 			assert.Empty(t, checkAppliesTo(st.AppliesTo, Usage{}))
 
 			for _, data := range sampleVariants(item.KindPR) {
-				if !AppliesTo(st.AppliesTo, item.KindPR) {
+				if !st.AppliesTo.Covers(item.KindPR) {
 					break
 				}
 

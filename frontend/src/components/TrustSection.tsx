@@ -1,7 +1,7 @@
 import { useId, useState, type SubmitEvent } from 'react'
 
 import { errorMessage } from '../lib/format'
-import { getSettings, resetTrustedBots, setTrustedBots, type Settings } from '../platform'
+import { resetTrustedBots, setTrustedBots, type Settings } from '../platform'
 import { buttonClass, fieldClass, quietButtonClass } from './controls'
 import { XIcon } from './icons'
 
@@ -41,12 +41,11 @@ export function TrustSection({ settings, onSaved }: TrustSectionProps) {
   const changed = !sameList(bots, defaults)
 
   // save stores a change, then reports the settings as stored.
-  const save = (call: Promise<void>) => {
+  const save = (call: Promise<Settings>) => {
     setBusy(true)
     setError('')
 
     call
-      .then(getSettings)
       .then((next) => {
         onSaved(next)
         setDraft('')

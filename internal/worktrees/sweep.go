@@ -54,6 +54,12 @@ func (s *Service) LastSweep() SweepReport {
 	return s.last
 }
 
+// emptyReport is a report of a sweep that found nothing, with empty lists rather than nil
+// ones, so the window always receives arrays.
+func emptyReport() SweepReport {
+	return SweepReport{Cleaned: []RemoveResult{}, Failed: []RemoveResult{}}
+}
+
 // sweepJob names the automatic sweeps in log entries.
 const sweepJob = "worktree sweep"
 
@@ -82,7 +88,7 @@ func (s *Service) sweepLocked(ctx context.Context) SweepReport {
 
 // sweep does the work of Sweep without the bookkeeping.
 func (s *Service) sweep(ctx context.Context) SweepReport {
-	report := SweepReport{Cleaned: []RemoveResult{}, Failed: []RemoveResult{}}
+	report := emptyReport()
 
 	g, root, prefs, err := s.prepare(ctx)
 	if err != nil {

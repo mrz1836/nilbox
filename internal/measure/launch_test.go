@@ -412,7 +412,7 @@ func TestRunLaunch(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, 4242, report.PID)
-	assert.Equal(t, "iterm2", report.Terminal)
+	assert.Equal(t, terminal.ITerm2, report.Terminal)
 	assert.Contains(t, report.Permission, "plan", "an outside contributor's pull request launches in plan mode")
 	assert.Positive(t, report.Elapsed)
 	assert.Contains(t, ran(runner), "kill -TERM 4242")

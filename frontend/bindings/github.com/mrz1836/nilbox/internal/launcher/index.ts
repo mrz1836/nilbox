@@ -6,6 +6,11 @@ export {
     Service
 };
 
+export {
+    HoldReason,
+    Source
+} from "./models.js";
+
 export type {
     CloneTarget,
     Hold,

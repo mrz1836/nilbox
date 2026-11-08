@@ -1,24 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { getCollapsedSections, setSectionCollapsed } from '../platform'
+import { getCollapsedSections, setSectionCollapsed, type ListKey } from '../platform'
 
 // CollapsedSections is which inbox sections are collapsed, as the inbox was last left.
 export interface CollapsedSections {
   // collapsed holds the collapsed sections' list names. It is null until the stored state
   // loads, so a collapsed section never shows open first.
-  collapsed: ReadonlySet<string> | null
+  collapsed: ReadonlySet<ListKey> | null
   // setCollapsed collapses or opens a section, and stores the change for the next launch.
-  setCollapsed: (section: string, collapsed: boolean) => void
+  setCollapsed: (section: ListKey, collapsed: boolean) => void
 }
 
 // useCollapsedSections loads which inbox sections are collapsed once, and stores each
 // change. A section that cannot be read or stored still collapses for this session; the
 // failure is only logged, since nothing else depends on it.
 export function useCollapsedSections(): CollapsedSections {
-  const [collapsed, setState] = useState<ReadonlySet<string> | null>(null)
+  const [collapsed, setState] = useState<ReadonlySet<ListKey> | null>(null)
   // saving chains the stores, so they reach the database in the order they were made and
   // a quick collapse and reopen never ends stored the wrong way round.
-  const saving = useRef<Promise<void>>(Promise.resolve())
+  const saving = useRef<Promise<unknown>>(Promise.resolve())
 
   useEffect(() => {
     let active = true
@@ -42,7 +42,7 @@ export function useCollapsedSections(): CollapsedSections {
     }
   }, [])
 
-  const setCollapsed = useCallback((section: string, on: boolean) => {
+  const setCollapsed = useCallback((section: ListKey, on: boolean) => {
     setState((prev) => {
       const next = new Set(prev)
 

@@ -98,7 +98,7 @@ type LaunchReport struct {
 	PID int
 
 	// Terminal is the terminal the launch opened in.
-	Terminal string
+	Terminal terminal.ID
 
 	// Permission summarizes the session's permissions.
 	Permission string
@@ -119,7 +119,7 @@ func (r LaunchReport) Lines() []string {
 
 	return []string{
 		fmt.Sprintf("launch.ms=%s s=%s", milliseconds(r.Elapsed), seconds(r.Elapsed)),
-		"launch.terminal=" + r.Terminal,
+		"launch.terminal=" + string(r.Terminal),
 		"launch.permission=" + r.Permission,
 		fmt.Sprintf("launch.pid=%d (stopped)", r.PID),
 	}
@@ -271,11 +271,11 @@ func initClone(ctx context.Context, runner execpath.Runner, clone string) error 
 // home directory has the agent's default config), and stores the fixture item, whose id
 // it returns.
 func seed(ctx context.Context, c *core.Core, root string) (int64, error) {
-	if err := c.Settings.SetCloneRoot(ctx, root); err != nil {
+	if _, err := c.Settings.SetCloneRoot(ctx, root); err != nil {
 		return 0, err
 	}
 
-	if err := c.Settings.SetTerminal(ctx, settings.TerminalITerm2); err != nil {
+	if _, err := c.Settings.SetTerminal(ctx, settings.TerminalITerm2); err != nil {
 		return 0, err
 	}
 

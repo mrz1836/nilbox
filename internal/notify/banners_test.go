@@ -13,7 +13,7 @@ import (
 )
 
 // row is a recorded notification of kind about pull request number in example-repo.
-func row(id int64, kind string, number int) Notification {
+func row(id int64, kind notifyprefs.Kind, number int) Notification {
 	return Notification{
 		ID: id, Kind: kind, ItemID: id * 10, ItemKind: "pr", Repo: "acme-org/example-repo", Number: number,
 		Title: "Fix the login redirect", URL: "https://github.com/acme-org/example-repo/pull/7",
@@ -29,7 +29,7 @@ func TestABannerPerNotification(t *testing.T) {
 	require.Len(t, got, 2)
 	assert.Equal(t, Banner{
 		ID: brand.Slug + "-1", Title: "Review requested", Subtitle: "acme-org/example-repo #7",
-		Body: "Fix the login redirect", Thread: KindReviewRequested, ItemID: 10,
+		Body: "Fix the login redirect", Thread: string(KindReviewRequested), ItemID: 10,
 		URL: "https://github.com/acme-org/example-repo/pull/7",
 	}, got[0])
 	assert.Equal(t, "Back from snooze", got[1].Title)
@@ -64,10 +64,10 @@ func TestManyBannersAreSummedUp(t *testing.T) {
 	assert.Len(t, Banners(rows[:MaxBanners], nil), MaxBanners)
 
 	// Plural nouns, and kinds that are off are not counted.
-	got = Banners(append(rows, row(9, KindAssigned, 6)), []string{KindReviewRequested})
+	got = Banners(append(rows, row(9, KindAssigned, 6)), []notifyprefs.Kind{KindReviewRequested})
 	require.Len(t, got, 3, "three are left once review requests are off")
 
-	got = Banners(append(rows, row(9, KindAssigned, 6), row(10, KindWoke, 7)), []string{KindReviewRequested})
+	got = Banners(append(rows, row(9, KindAssigned, 6), row(10, KindWoke, 7)), []notifyprefs.Kind{KindReviewRequested})
 	require.Len(t, got, 1)
 	assert.Equal(t, "4 new in your inbox", got[0].Title)
 	assert.Equal(t, "2 assignments, 2 back from snooze", got[0].Body)

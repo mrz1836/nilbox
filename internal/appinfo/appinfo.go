@@ -70,11 +70,25 @@ type DataReset struct {
 	// Path is where the database was moved, with ~ for the home directory.
 	Path string `json:"path"`
 
-	// Reason says why it could not be read: "corrupt" for a file that is not a database
-	// or is damaged, "unmanaged" for tables the app did not create, and "history" for a
-	// migration history this build disagrees with.
-	Reason string `json:"reason"`
+	// Reason says why it could not be read.
+	Reason ResetReason `json:"reason"`
 }
+
+// ResetReason says why the database could not be read. The values are the store
+// package's reasons for setting a database aside.
+type ResetReason string
+
+// Why the database could not be read.
+const (
+	// ResetCorrupt is a file that is not a database, or is damaged.
+	ResetCorrupt ResetReason = "corrupt"
+
+	// ResetUnmanaged is a database with tables the app did not create.
+	ResetUnmanaged ResetReason = "unmanaged"
+
+	// ResetHistory is a migration history this build disagrees with.
+	ResetHistory ResetReason = "history"
+)
 
 // FirstPaintRecorder records the first paint once. *timing.Recorder implements it.
 type FirstPaintRecorder interface {

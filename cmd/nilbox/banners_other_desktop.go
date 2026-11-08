@@ -22,7 +22,7 @@ func newBanners(io.Writer, event.Sink) *banners {
 func (*banners) Post(notify.Banner) error { return notify.ErrBannersUnavailable }
 
 // Status reports that banners are unavailable.
-func (*banners) Status() string { return notify.StatusUnavailable }
+func (*banners) Status() notify.BannerStatus { return notify.StatusUnavailable }
 
 // Authorize reports that banners are not allowed.
 func (*banners) Authorize() (bool, error) { return false, notify.ErrBannersUnavailable }

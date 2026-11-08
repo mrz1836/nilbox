@@ -14,6 +14,7 @@ import {
   type Diagnostic,
   type InboxItem,
   type Prompt,
+  type PromptAppliesTo,
   type PromptCheckResult,
   type PromptInput,
   type PromptVariable,
@@ -96,7 +97,7 @@ function sameInput(a: PromptInput, b: PromptInput): boolean {
   )
 }
 
-const groups: readonly { appliesTo: string; title: string }[] = [
+const groups: readonly { appliesTo: PromptAppliesTo; title: string }[] = [
   { appliesTo: 'pr', title: 'Pull requests' },
   { appliesTo: 'issue', title: 'Issues' },
   { appliesTo: 'any', title: 'Both' },
@@ -336,7 +337,7 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
   const menuItems = (p: Prompt): MenuItem[] => {
     const items: MenuItem[] = []
 
-    for (const kind of ['pr', 'issue']) {
+    for (const kind of ['pr', 'issue'] as const) {
       const isDefault = (kind === 'pr' ? defaults?.pr : defaults?.issue) === p.id
 
       if (promptApplies(p, kind) && !isDefault) {

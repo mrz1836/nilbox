@@ -32,16 +32,19 @@ const (
 	AssociationCollaborator = "COLLABORATOR"
 )
 
+// Class is how far an item's author is trusted.
+type Class string
+
 // Trust classes.
 const (
 	// ClassMember is an item from the repository's owner, an org member, or a collaborator.
-	ClassMember = "member"
+	ClassMember Class = "member"
 
 	// ClassBot is an item from a trusted bot.
-	ClassBot = "bot"
+	ClassBot Class = "bot"
 
 	// ClassOutside is an item from an outside contributor, an untrusted bot, or a fork.
-	ClassOutside = "outside"
+	ClassOutside Class = "outside"
 )
 
 // TypeBot is the GraphQL type GitHub reports for a bot or GitHub App author.
@@ -109,7 +112,7 @@ func NewPolicy(bots []string) Policy {
 
 // Classify returns an item's trust class: ClassMember, ClassBot, or ClassOutside. A pull
 // request from a fork (crossRepo) is always outside.
-func (p Policy) Classify(a Author, isPR, crossRepo bool) string {
+func (p Policy) Classify(a Author, isPR, crossRepo bool) Class {
 	if isPR && crossRepo {
 		return ClassOutside
 	}

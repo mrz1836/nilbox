@@ -11,25 +11,28 @@ import (
 	"github.com/mrz1836/nilbox/internal/clock"
 )
 
+// Status is where checking a pull request's changed files stands.
+type Status string
+
 // Check statuses.
 const (
 	// StatusPending is a pull request not checked since its last push: new to the inbox,
 	// newly in scope, or pushed since its last check.
-	StatusPending = "pending"
+	StatusPending Status = "pending"
 
 	// StatusFailed is a check that could not finish; the next refresh tries again.
-	StatusFailed = "failed"
+	StatusFailed Status = "failed"
 
 	// StatusFlagged is a pull request that changes sensitive files.
-	StatusFlagged = "flagged"
+	StatusFlagged Status = "flagged"
 
 	// StatusPartial is a pull request GitHub listed only some of the changed files of,
 	// none of them sensitive.
-	StatusPartial = "partial"
+	StatusPartial Status = "partial"
 
 	// StatusClear is a pull request whose every changed file was checked, none of them
 	// sensitive.
-	StatusClear = "clear"
+	StatusClear Status = "clear"
 )
 
 // File is one changed file of a pull request.
@@ -91,15 +94,14 @@ type Group struct {
 	Label       string    `json:"label"`
 	Short       string    `json:"short"`
 	Description string    `json:"description"`
-	Level       string    `json:"level"`
+	Level       Level     `json:"level"`
 	Files       []Finding `json:"files"`
 }
 
 // Check is what checking a pull request's changed files found, as the UI shows it. Every
 // field is a plain value.
 type Check struct {
-	// Status is one of the Status* values.
-	Status string `json:"status"`
+	Status Status `json:"status"`
 
 	// Head is the head commit the files were checked at, or "" before any check.
 	Head string `json:"head"`
@@ -259,7 +261,7 @@ func (m *Matcher) match(names []string) (Category, string, bool) {
 }
 
 // status names a finished check's outcome.
-func status(groups []Group, complete bool) string {
+func status(groups []Group, complete bool) Status {
 	switch {
 	case len(groups) > 0:
 		return StatusFlagged
@@ -362,10 +364,10 @@ type PathMatch struct {
 	Sensitive bool `json:"sensitive"`
 
 	// Category, Label, and Level describe the category it matched, and Pattern the
-	// pattern; all are "" when it matched none.
+	// pattern; all are "" (Level is LevelNone) when it matched none.
 	Category string `json:"category"`
 	Label    string `json:"label"`
-	Level    string `json:"level"`
+	Level    Level  `json:"level"`
 	Pattern  string `json:"pattern"`
 }
 

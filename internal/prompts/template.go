@@ -22,13 +22,16 @@ const (
 	templateName = "prompt"
 )
 
+// Severity says how much a Diagnostic matters.
+type Severity string
+
 // Diagnostic severities.
 const (
 	// SeverityError marks a problem that stops the prompt from being saved or launched.
-	SeverityError = "error"
+	SeverityError Severity = "error"
 
 	// SeverityWarning marks something that works but is probably not what was meant.
-	SeverityWarning = "warning"
+	SeverityWarning Severity = "warning"
 )
 
 var (
@@ -53,8 +56,7 @@ var (
 // are 1-based, and Column and Length count UTF-16 code units, the way the editor indexes
 // text; all three are 0 when the problem concerns the whole prompt.
 type Diagnostic struct {
-	// Severity is "error" or "warning".
-	Severity string `json:"severity"`
+	Severity Severity `json:"severity"`
 
 	Line   int `json:"line"`
 	Column int `json:"column"`
@@ -79,7 +81,7 @@ type Template struct {
 // prompt always finishes. It then fills the prompt in with sample data for every kind
 // and session it applies to, so errors that only show when a prompt runs are caught, and
 // a prompt that is empty or starts with "-" once filled in is an error too.
-func Parse(body, appliesTo string) (*Template, []Diagnostic) {
+func Parse(body string, appliesTo AppliesTo) (*Template, []Diagnostic) {
 	c := newChecker(body, appliesTo)
 
 	return c.check(), c.diags

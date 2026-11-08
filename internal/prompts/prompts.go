@@ -75,8 +75,8 @@ type Prompt struct {
 	// Nickname is the short label the launch menu shows.
 	Nickname string `json:"nickname"`
 
-	// AppliesTo is "pr", "issue", or "any".
-	AppliesTo string `json:"appliesTo"`
+	// AppliesTo is AppliesToPR, AppliesToIssue, or AppliesToAny.
+	AppliesTo AppliesTo `json:"appliesTo"`
 
 	// Body is the Go text/template.
 	Body string `json:"body"`
@@ -111,8 +111,8 @@ type Prompt struct {
 
 // Usage says where a prompt is a default. A prompt in use cannot be deleted.
 type Usage struct {
-	// Defaults lists the kinds ("pr", "issue") the prompt is the app's default for.
-	Defaults []string `json:"defaults"`
+	// Defaults lists the kinds the prompt is the app's default for.
+	Defaults []item.Kind `json:"defaults"`
 
 	// Orgs and Repos list the owners and "owner/name" repositories whose launch
 	// defaults use it, sorted.
@@ -120,7 +120,7 @@ type Usage struct {
 	Repos []string `json:"repos"`
 
 	// Kinds lists every kind the prompt is a default for, anywhere.
-	Kinds []string `json:"kinds"`
+	Kinds []item.Kind `json:"kinds"`
 }
 
 // InUse reports whether the prompt is a default anywhere.
@@ -130,14 +130,14 @@ func (u Usage) InUse() bool {
 
 // Input is a prompt as the editor saves it.
 type Input struct {
-	Name      string `json:"name"`
-	Nickname  string `json:"nickname"`
-	AppliesTo string `json:"appliesTo"`
-	Body      string `json:"body"`
-	Model     string `json:"model"`
-	Effort    string `json:"effort"`
-	PlanMode  *bool  `json:"planMode"`
-	Worktree  *bool  `json:"worktree"`
+	Name      string    `json:"name"`
+	Nickname  string    `json:"nickname"`
+	AppliesTo AppliesTo `json:"appliesTo"`
+	Body      string    `json:"body"`
+	Model     string    `json:"model"`
+	Effort    string    `json:"effort"`
+	PlanMode  *bool     `json:"planMode"`
+	Worktree  *bool     `json:"worktree"`
 
 	// ExtraFlags are the extra arguments typed on one line, quoted as in a shell.
 	ExtraFlags string `json:"extraFlags"`
@@ -394,10 +394,10 @@ func (s *Service) Defaults(ctx context.Context) (DefaultPrompts, error) {
 	return s.store.Defaults(ctx)
 }
 
-// SetDefault makes a prompt the app's default for kind ("pr" or "issue"). The prompt
-// must apply to that kind.
-func (s *Service) SetDefault(ctx context.Context, kind string, id int64) error {
-	k, err := item.ParseKind(kind)
+// SetDefault makes a prompt the app's default for kind. The prompt must apply to that
+// kind.
+func (s *Service) SetDefault(ctx context.Context, kind item.Kind, id int64) error {
+	k, err := item.ParseKind(string(kind))
 	if err != nil {
 		return err
 	}
@@ -407,7 +407,7 @@ func (s *Service) SetDefault(ctx context.Context, kind string, id int64) error {
 		return err
 	}
 
-	if !AppliesTo(p.AppliesTo, k) {
+	if !p.AppliesTo.Covers(k) {
 		return fmt.Errorf("%w: %q doesn't apply to %s", ErrWrongKind, p.Nickname, k.Plural())
 	}
 
@@ -550,7 +550,7 @@ func checkNickname(ctx context.Context, st *Store, id int64, nickname string) st
 
 // checkAppliesTo checks what a prompt applies to: one of the three choices, covering
 // every kind it is a default for.
-func checkAppliesTo(appliesTo string, usage Usage) string {
+func checkAppliesTo(appliesTo AppliesTo, usage Usage) string {
 	switch appliesTo {
 	case AppliesToPR, AppliesToIssue, AppliesToAny:
 	default:
@@ -558,9 +558,9 @@ func checkAppliesTo(appliesTo string, usage Usage) string {
 	}
 
 	for _, kind := range usage.Kinds {
-		if k := item.Kind(kind); !AppliesTo(appliesTo, k) {
+		if !appliesTo.Covers(kind) {
 			return fmt.Sprintf("It's a default for %s (%s), so it has to apply to them.",
-				k.Plural(), describeUsage(usage))
+				kind.Plural(), describeUsage(usage))
 		}
 	}
 
@@ -569,7 +569,7 @@ func checkAppliesTo(appliesTo string, usage Usage) string {
 
 // appliesToOrAny returns appliesTo when it is valid, else "any", so a prompt's text can
 // be checked while its kind is still being chosen.
-func appliesToOrAny(appliesTo string) string {
+func appliesToOrAny(appliesTo AppliesTo) AppliesTo {
 	if appliesTo == AppliesToPR || appliesTo == AppliesToIssue {
 		return appliesTo
 	}

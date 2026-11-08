@@ -34,13 +34,13 @@ var execErrorPattern = regexp.MustCompile(`template: ` + templateName + `:(\d+):
 // checker collects the diagnostics for one prompt text.
 type checker struct {
 	body      string
-	appliesTo string
+	appliesTo AppliesTo
 	known     map[string]Variable
 	diags     []Diagnostic
 }
 
 // newChecker returns a checker for body, a prompt that applies to appliesTo.
-func newChecker(body, appliesTo string) *checker {
+func newChecker(body string, appliesTo AppliesTo) *checker {
 	known := make(map[string]Variable)
 	for _, v := range Variables() {
 		known[v.Name] = v
@@ -99,7 +99,7 @@ func (c *checker) add(d Diagnostic) {
 }
 
 // addAt records a problem with the text from byte offset start, length bytes long.
-func (c *checker) addAt(severity string, start, length int, message string) {
+func (c *checker) addAt(severity Severity, start, length int, message string) {
 	start = min(max(start, 0), len(c.body))
 	end := min(start+max(length, 0), len(c.body))
 	lineStart := strings.LastIndexByte(c.body[:start], '\n') + 1
@@ -286,7 +286,7 @@ func (c *checker) execError(err error, hint string) {
 // optional text empty, so errors in conditional text show up too.
 func (c *checker) trySamples(t *Template) {
 	for _, kind := range item.Kinds() {
-		if !AppliesTo(c.appliesTo, kind) {
+		if !c.appliesTo.Covers(kind) {
 			continue
 		}
 

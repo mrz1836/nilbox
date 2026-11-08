@@ -224,7 +224,7 @@ func dataReset(ctx context.Context, reset *store.Reset, home string, logger *slo
 	logger.WarnContext(ctx, "the database could not be used; it was set aside and a fresh one started",
 		"path", reset.Path, "reason", reset.Reason, "error", reset.Err)
 
-	return &appinfo.DataReset{Path: paths.Tilde(reset.Path, home), Reason: string(reset.Reason)}
+	return &appinfo.DataReset{Path: paths.Tilde(reset.Path, home), Reason: appinfo.ResetReason(reset.Reason)}
 }
 
 // assemble builds every service over the open database's connection pool. reset, when
@@ -242,7 +242,7 @@ func assemble(pool *sql.DB, reset *appinfo.DataReset, opts Options, logger *slog
 	defaultsStore := launchdefaults.NewStore(pool, opts.Clock)
 	inboxStore := inbox.NewStore(pool, opts.Clock)
 	prefs := settings.NewService(pool, profileStore, opts.Home, settings.WithClock(opts.Clock),
-		settings.WithEvents(opts.Events))
+		settings.WithEvents(opts.Events), settings.WithLogger(logger))
 	tokens := github.NewTokenSource(runner, search)
 	client := github.NewClient(opts.Version)
 	workLog := worklog.New(pool)

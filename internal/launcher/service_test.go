@@ -49,12 +49,12 @@ var (
 
 // fakeDriver is a terminal driver that records the scripts it was asked to open.
 type fakeDriver struct {
-	id     string
+	id     terminal.ID
 	err    error
 	opened []string
 }
 
-func (d *fakeDriver) ID() string { return d.id }
+func (d *fakeDriver) ID() terminal.ID { return d.id }
 
 func (d *fakeDriver) Open(_ context.Context, scriptPath string) error {
 	d.opened = append(d.opened, scriptPath)
@@ -440,7 +440,7 @@ func TestWorktreePrefDefaultAndUntick(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			h := newLaunchHarness(t)
-			require.NoError(t, h.settings.SetWorktreeDefault(t.Context(), tt.pref))
+			require.NoError(t, testutil.ErrOf(h.settings.SetWorktreeDefault(t.Context(), tt.pref)))
 
 			res, script := h.launch(t, LaunchRequest{ItemID: h.issue, Worktree: tt.req})
 			prompt := promptFor(t, res.ScriptPath)
@@ -611,7 +611,7 @@ func TestLaunchRecordsTheWorktree(t *testing.T) {
 
 func TestLaunchUsesTerminalPref(t *testing.T) {
 	h := newLaunchHarness(t)
-	require.NoError(t, h.settings.SetTerminal(t.Context(), settings.TerminalApp))
+	require.NoError(t, testutil.ErrOf(h.settings.SetTerminal(t.Context(), settings.TerminalApp)))
 
 	res, _ := h.launch(t, LaunchRequest{ItemID: h.trustedPR})
 
@@ -646,7 +646,7 @@ func TestLaunchProfileSelection(t *testing.T) {
 	assert.Equal(t, "work", res.Profile)
 	assert.Contains(t, script, "export CLAUDE_CONFIG_DIR="+shQuote(workDir)+"\n")
 
-	require.NoError(t, h.settings.SetDefaultProfile(t.Context(), "work"))
+	require.NoError(t, testutil.ErrOf(h.settings.SetDefaultProfile(t.Context(), "work")))
 
 	res, _ = h.launch(t, LaunchRequest{ItemID: h.trustedPR})
 	assert.Equal(t, "work", res.Profile, "an empty profile uses the default profile setting")

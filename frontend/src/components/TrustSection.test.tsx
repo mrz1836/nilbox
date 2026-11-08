@@ -7,7 +7,6 @@ import { settings } from '../test/fixtures'
 import { TrustSection } from './TrustSection'
 
 const platform = vi.hoisted(() => ({
-  getSettings: vi.fn(),
   setTrustedBots: vi.fn(),
   resetTrustedBots: vi.fn(),
 }))
@@ -28,9 +27,9 @@ function bots() {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  platform.setTrustedBots.mockResolvedValue(undefined)
-  platform.resetTrustedBots.mockResolvedValue(undefined)
-  platform.getSettings.mockResolvedValue(settings({ trustedBots: ['dependabot', 'my-release-bot'] }))
+  // Each change comes back with the settings as stored.
+  platform.setTrustedBots.mockResolvedValue(settings({ trustedBots: ['dependabot', 'my-release-bot'] }))
+  platform.resetTrustedBots.mockResolvedValue(settings())
 })
 
 describe('TrustSection', () => {

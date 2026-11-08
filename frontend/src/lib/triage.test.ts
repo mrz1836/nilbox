@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import type { WakeReview } from '../platform'
 import { item, list, snapshot } from '../test/fixtures'
 import {
   capitalize,
@@ -173,7 +174,14 @@ describe('wake reasons', () => {
 
   it('says nothing when nothing woke it', () => {
     expect(wakeSummary(null)).toBe('')
-    expect(wakeSummary({ commits: 0, forcePushed: false, review: 'unknown', comments: 0 })).toBe('')
+    expect(wakeSummary({ commits: 0, forcePushed: false, review: '', comments: 0 })).toBe('')
+  })
+
+  it('names nothing for a review it does not know', () => {
+    // A review another build stored, outside the ones this build knows.
+    const praised = 'praised' as unknown as WakeReview
+
+    expect(wakeSummary({ commits: 2, forcePushed: false, review: praised, comments: 0 })).toBe('2 new commits')
   })
 })
 

@@ -25,7 +25,7 @@ type desktopUI struct {
 	// appearance guards theme and window, so a theme the user chose and a change of the
 	// system appearance are applied one at a time, in order.
 	appearance sync.Mutex
-	theme      string
+	theme      settings.Theme
 	window     *application.WebviewWindow
 }
 
@@ -39,7 +39,7 @@ func (u *desktopUI) Emit(e event.WindowEvent) {
 
 // Open opens the window in theme and at size, shrunk where needed to fit the primary
 // screen's work area.
-func (u *desktopUI) Open(theme string, size settings.WindowSize) {
+func (u *desktopUI) Open(theme settings.Theme, size settings.WindowSize) {
 	app := u.app.Load()
 	if app == nil {
 		return
@@ -83,7 +83,7 @@ func (u *desktopUI) Show() {
 
 // SetTheme brings the native appearance and the window background along with a theme
 // the user chose; the page has already switched itself.
-func (u *desktopUI) SetTheme(theme string) {
+func (u *desktopUI) SetTheme(theme settings.Theme) {
 	u.appearance.Lock()
 	defer u.appearance.Unlock()
 

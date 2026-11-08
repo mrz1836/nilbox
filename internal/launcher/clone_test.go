@@ -16,6 +16,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 var (
@@ -132,7 +133,7 @@ func TestCloneTarget(t *testing.T) {
 		h := newLaunchHarness(t)
 		other := filepath.Join(h.home, "code")
 		require.NoError(t, os.Mkdir(other, 0o700))
-		require.NoError(t, h.settings.SetCloneRoot(t.Context(), "~/code"))
+		require.NoError(t, testutil.ErrOf(h.settings.SetCloneRoot(t.Context(), "~/code")))
 
 		got, err := h.service().CloneTarget(t.Context(), h.orphanPR)
 		require.NoError(t, err)

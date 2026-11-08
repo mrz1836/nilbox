@@ -175,8 +175,8 @@ func TestSeed(t *testing.T) {
 	review, work := byNickname(t, s, "Review"), byNickname(t, s, "Work on it")
 	assert.Equal(t, StarterReviewPR, review.StarterKey)
 	assert.False(t, review.Modified)
-	assert.Equal(t, []string{string(item.KindPR)}, review.Usage.Defaults)
-	assert.Equal(t, []string{string(item.KindIssue)}, work.Usage.Defaults)
+	assert.Equal(t, []item.Kind{item.KindPR}, review.Usage.Defaults)
+	assert.Equal(t, []item.Kind{item.KindIssue}, work.Usage.Defaults)
 
 	defaults, err := s.Defaults(ctx)
 	require.NoError(t, err)
@@ -333,8 +333,8 @@ func TestDeleteRefusesAPromptInUse(t *testing.T) {
 
 	fix = byNickname(t, s, "Fix checks")
 	assert.Equal(t, Usage{
-		Defaults: []string{}, Orgs: []string{"acme-org"}, Repos: []string{"acme-org/api", "other-org/web"},
-		Kinds: []string{string(item.KindPR)},
+		Defaults: []item.Kind{}, Orgs: []string{"acme-org"}, Repos: []string{"acme-org/api", "other-org/web"},
+		Kinds: []item.Kind{item.KindPR},
 	}, fix.Usage)
 
 	var inUse *InUseError
@@ -418,11 +418,11 @@ func TestSetDefault(t *testing.T) {
 	ctx := t.Context()
 	fix, work := byNickname(t, s, "Fix checks"), byNickname(t, s, "Work on it")
 
-	require.ErrorIs(t, s.SetDefault(ctx, string(item.KindIssue), fix.ID), ErrWrongKind)
+	require.ErrorIs(t, s.SetDefault(ctx, item.KindIssue, fix.ID), ErrWrongKind)
 	require.ErrorIs(t, s.SetDefault(ctx, "discussion", fix.ID), item.ErrInvalidKind)
-	require.ErrorIs(t, s.SetDefault(ctx, string(item.KindPR), 9999), ErrPromptNotFound)
+	require.ErrorIs(t, s.SetDefault(ctx, item.KindPR, 9999), ErrPromptNotFound)
 
-	require.NoError(t, s.SetDefault(ctx, string(item.KindPR), fix.ID))
+	require.NoError(t, s.SetDefault(ctx, item.KindPR, fix.ID))
 
 	defaults, err := s.store.Defaults(ctx)
 	require.NoError(t, err)
@@ -577,7 +577,7 @@ func TestCheck(t *testing.T) {
 func TestDescribeUsage(t *testing.T) {
 	assert.Equal(t, "not used anywhere", describeUsage(Usage{}))
 	assert.Equal(t, "the default for pull requests, and the default for issues",
-		describeUsage(Usage{Defaults: []string{string(item.KindPR), string(item.KindIssue)}}))
+		describeUsage(Usage{Defaults: []item.Kind{item.KindPR, item.KindIssue}}))
 	assert.Equal(t, "a default for 2 orgs and acme-org/api",
 		describeUsage(Usage{Orgs: []string{"a", "b"}, Repos: []string{"acme-org/api"}}))
 }

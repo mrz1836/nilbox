@@ -70,7 +70,7 @@ func (b base) notify() {
 }
 
 // bannersOff reads the kinds whose banners are off.
-func (b base) bannersOff(ctx context.Context) ([]string, error) {
+func (b base) bannersOff(ctx context.Context) ([]notifyprefs.Kind, error) {
 	stored, _, err := b.prefs.Get(ctx, notifyprefs.KeyBannersOff)
 	if err != nil {
 		return nil, fmt.Errorf("read the notification settings: %w", err)
@@ -164,7 +164,7 @@ func (s *Service) Clear(ctx context.Context) error {
 
 // BannerStatus reports whether banners are shown: StatusOn, StatusOff when the user has
 // not allowed them, or StatusUnavailable when this build cannot show them.
-func (s *Service) BannerStatus() string {
+func (s *Service) BannerStatus() BannerStatus {
 	if s.poster == nil {
 		return StatusUnavailable
 	}

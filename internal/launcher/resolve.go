@@ -16,26 +16,33 @@ import (
 	"github.com/mrz1836/nilbox/internal/trust"
 )
 
-// Where a resolved launch setting came from, from the most specific to the least.
+// Source is where a resolved launch setting came from.
+type Source string
+
+// Sources, from the most specific to the least.
 const (
 	// SourceLaunch is a choice made in the launch menu for this launch only.
-	SourceLaunch = "launch"
+	SourceLaunch Source = "launch"
 
 	// SourcePrompt is the chosen prompt's own setting.
-	SourcePrompt = "prompt"
+	SourcePrompt Source = "prompt"
 
 	// SourceRepo and SourceOrg are the repository's and its owner's launch defaults.
-	SourceRepo = "repo"
-	SourceOrg  = "org"
+	SourceRepo Source = "repo"
+	SourceOrg  Source = "org"
 
 	// SourceProfile is the profile's own setting.
-	SourceProfile = "profile"
+	SourceProfile Source = "profile"
 
 	// SourceApp is the app's settings.
-	SourceApp = "app"
+	SourceApp Source = "app"
 
 	// SourceAgent means nothing set it, so the agent uses its own default.
-	SourceAgent = "agent"
+	SourceAgent Source = "agent"
+
+	// SourceNone is the source of every setting of an item whose settings could not
+	// resolve (see ItemResolution.Problem).
+	SourceNone Source = ""
 )
 
 var (
@@ -51,17 +58,17 @@ var (
 // the default.
 type Setting struct {
 	Value           string `json:"value"`
-	Source          string `json:"source"`
+	Source          Source `json:"source"`
 	Inherited       string `json:"inherited"`
-	InheritedSource string `json:"inheritedSource"`
+	InheritedSource Source `json:"inheritedSource"`
 }
 
 // Toggle is a resolved on-or-off launch setting, like Setting.
 type Toggle struct {
 	Value           bool   `json:"value"`
-	Source          string `json:"source"`
+	Source          Source `json:"source"`
 	Inherited       bool   `json:"inherited"`
-	InheritedSource string `json:"inheritedSource"`
+	InheritedSource Source `json:"inheritedSource"`
 }
 
 // PromptChoice is the resolved prompt, like Setting.
@@ -69,17 +76,17 @@ type PromptChoice struct {
 	ID              int64  `json:"id"`
 	Nickname        string `json:"nickname"`
 	Name            string `json:"name"`
-	Source          string `json:"source"`
+	Source          Source `json:"source"`
 	InheritedID     int64  `json:"inheritedId"`
-	InheritedSource string `json:"inheritedSource"`
+	InheritedSource Source `json:"inheritedSource"`
 }
 
 // Resolution is what a launch on one item resolves to, each setting with where it came
 // from. Every field is a plain value.
 type Resolution struct {
 	// ItemID and Kind identify the item.
-	ItemID int64  `json:"itemId"`
-	Kind   string `json:"kind"`
+	ItemID int64     `json:"itemId"`
+	Kind   item.Kind `json:"kind"`
 
 	// Owner and Repo ("owner/name") are where launch defaults for the item are saved.
 	Owner string `json:"owner"`
@@ -90,7 +97,7 @@ type Resolution struct {
 
 	// Agent is the coding tool, and AgentSource where it was chosen.
 	Agent       agent.Agent `json:"agent"`
-	AgentSource string      `json:"agentSource"`
+	AgentSource Source      `json:"agentSource"`
 
 	Profile  Setting      `json:"profile"`
 	Prompt   PromptChoice `json:"prompt"`
@@ -189,7 +196,7 @@ func resolve(w world, it subject, req LaunchRequest) (Resolution, profiles.Profi
 	r.org, r.repo = w.rules.For(it.repo)
 
 	res := Resolution{
-		ItemID: it.id, Kind: string(it.kind), Owner: it.repo.Owner, Repo: it.repo.String(), Trusted: it.trusted,
+		ItemID: it.id, Kind: it.kind, Owner: it.repo.Owner, Repo: it.repo.String(), Trusted: it.trusted,
 	}
 	res.Agent, res.AgentSource = r.agent()
 
@@ -240,11 +247,11 @@ func (r *resolver) layers() []sourced {
 // sourced is a set of launch defaults with where it comes from.
 type sourced struct {
 	defaults *launchdefaults.Defaults
-	source   string
+	source   Source
 }
 
 // agent resolves the coding tool: the repository's, else the org's, else the app's.
-func (r *resolver) agent() (agent.Agent, string) {
+func (r *resolver) agent() (agent.Agent, Source) {
 	for _, l := range r.layers() {
 		if l.defaults.Agent == "" {
 			continue
@@ -287,7 +294,7 @@ func (r *resolver) profile(requested string, res *Resolution) (profiles.Profile,
 }
 
 // inheritedProfile resolves the profile without the request's choice.
-func (r *resolver) inheritedProfile() (profiles.Profile, string, error) {
+func (r *resolver) inheritedProfile() (profiles.Profile, Source, error) {
 	for _, c := range r.layers() {
 		if name := c.defaults.Profile; name != "" {
 			if p, ok := r.w.profiles[name]; ok {
@@ -342,7 +349,7 @@ func (r *resolver) prompt(requested int64, res *Resolution) (prompts.Prompt, err
 		return prompts.Prompt{}, fmt.Errorf("%w (id %d)", prompts.ErrPromptNotFound, requested)
 	}
 
-	if !prompts.AppliesTo(p.AppliesTo, r.item.kind) {
+	if !p.AppliesTo.Covers(r.item.kind) {
 		return prompts.Prompt{}, fmt.Errorf("%w: %q isn't for %s", prompts.ErrWrongKind, p.Nickname,
 			r.item.kind.Plural())
 	}
@@ -353,7 +360,7 @@ func (r *resolver) prompt(requested int64, res *Resolution) (prompts.Prompt, err
 }
 
 // inheritedPrompt resolves the prompt without the request's choice.
-func (r *resolver) inheritedPrompt() (prompts.Prompt, string, error) {
+func (r *resolver) inheritedPrompt() (prompts.Prompt, Source, error) {
 	for _, l := range r.layers() {
 		id := l.defaults.PRPromptID
 		if r.item.kind == item.KindIssue {
@@ -364,7 +371,7 @@ func (r *resolver) inheritedPrompt() (prompts.Prompt, string, error) {
 			continue
 		}
 
-		if p, ok := r.w.prompts[*id]; ok && prompts.AppliesTo(p.AppliesTo, r.item.kind) {
+		if p, ok := r.w.prompts[*id]; ok && p.AppliesTo.Covers(r.item.kind) {
 			return p, l.source, nil
 		}
 
@@ -382,7 +389,7 @@ func (r *resolver) inheritedPrompt() (prompts.Prompt, string, error) {
 // text resolves a text setting: the request's, else the prompt's, the repository's, the
 // org's, else base (from baseSource), else "" for the agent's default.
 func (r *resolver) text(requested *string, fromPrompt string, pick func(*launchdefaults.Defaults) string,
-	base, baseSource string,
+	base string, baseSource Source,
 ) Setting {
 	value, source := base, baseSource
 
@@ -411,7 +418,7 @@ func (r *resolver) text(requested *string, fromPrompt string, pick func(*launchd
 // toggle resolves an on-or-off setting the way text resolves text, with base as the
 // value nothing else set.
 func (r *resolver) toggle(requested, fromPrompt *bool, pick func(*launchdefaults.Defaults) *bool,
-	base bool, baseSource string,
+	base bool, baseSource Source,
 ) Toggle {
 	value, source := base, baseSource
 

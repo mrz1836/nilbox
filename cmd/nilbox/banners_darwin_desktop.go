@@ -80,7 +80,7 @@ func (b *banners) Post(banner notify.Banner) error {
 }
 
 // Status reports whether the user has allowed banners.
-func (b *banners) Status() string {
+func (b *banners) Status() notify.BannerStatus {
 	allowed, err := b.center.CheckNotificationAuthorization()
 	if err != nil || !allowed {
 		return notify.StatusOff

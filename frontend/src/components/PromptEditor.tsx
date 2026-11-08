@@ -1,7 +1,7 @@
 import { useId, useState, type Ref } from 'react'
 
 import { appliesToLabels, effortChoices, modelChoices, pinSummary, usagePlaces, usageSummary } from '../lib/launch'
-import type { Diagnostic, Prompt, PromptInput, PromptVariable } from '../platform'
+import type { Diagnostic, Prompt, PromptAppliesTo, PromptInput, PromptVariable } from '../platform'
 import {
   chipClass,
   describedBy,
@@ -20,10 +20,10 @@ import { TemplateEditor, type TemplateEditorHandle } from './TemplateEditor'
 export const maxNameLength = 80
 export const maxNicknameLength = 20
 
-const appliesToOptions: readonly SegmentOption<string>[] = [
-  { value: 'pr', label: appliesToLabels.pr ?? 'Pull requests' },
-  { value: 'issue', label: appliesToLabels.issue ?? 'Issues' },
-  { value: 'any', label: appliesToLabels.any ?? 'Both', title: 'Pull requests and issues' },
+const appliesToOptions: readonly SegmentOption<PromptAppliesTo>[] = [
+  { value: 'pr', label: appliesToLabels.pr },
+  { value: 'issue', label: appliesToLabels.issue },
+  { value: 'any', label: appliesToLabels.any, title: 'Pull requests and issues' },
 ]
 
 const triOptions: readonly SegmentOption<TriState>[] = [

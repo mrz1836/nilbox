@@ -18,7 +18,7 @@ import * as $models from "./models.js";
  * BannerStatus reports whether banners are shown: StatusOn, StatusOff when the user has
  * not allowed them, or StatusUnavailable when this build cannot show them.
  */
-export function BannerStatus(): $CancellablePromise<string> {
+export function BannerStatus(): $CancellablePromise<$models.BannerStatus> {
     return $Call.ByID(2680367183);
 }
 

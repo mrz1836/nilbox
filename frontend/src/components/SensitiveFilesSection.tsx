@@ -3,14 +3,15 @@ import { useEffect, useId, useState, type SubmitEvent } from 'react'
 import { brand } from '../generated/brand'
 import { counted, errorMessage } from '../lib/format'
 import {
-  getSettings,
   matchSensitivePath,
   refreshInbox,
   setSensitiveCategory,
   setSensitivePatterns,
   setSensitiveScope,
   type SensitiveCategory,
+  type SensitiveLevel,
   type SensitivePathMatch,
+  type SensitiveScope,
   type Settings,
 } from '../platform'
 import { buttonClass, fieldClass, Segmented, switchClass } from './controls'
@@ -25,9 +26,7 @@ export interface SensitiveFilesSectionProps {
 // tryDelay is how long the path tester waits after a keystroke before asking.
 const tryDelay = 200
 
-type Scope = 'outside' | 'collaborators'
-
-const scopeOptions: readonly { value: Scope; label: string; title: string }[] = [
+const scopeOptions: readonly { value: SensitiveScope; label: string; title: string }[] = [
   {
     value: 'outside',
     label: 'Outside contributors',
@@ -41,14 +40,16 @@ const scopeOptions: readonly { value: Scope; label: string; title: string }[] = 
 ]
 
 // levelDot is a category's level, as a dot beside its name.
-const levelDot: Readonly<Record<string, string>> = {
+const levelDot: Readonly<Record<SensitiveLevel, string>> = {
   danger: 'bg-danger',
   warning: 'bg-warning',
+  '': 'bg-muted',
 }
 
-const levelText: Readonly<Record<string, string>> = {
+const levelText: Readonly<Record<SensitiveLevel, string>> = {
   danger: 'text-danger',
   warning: 'text-warning',
+  '': 'text-text',
 }
 
 interface CategoryRowProps {
@@ -68,10 +69,7 @@ function CategoryRow({ category, on, busy, onChange }: CategoryRowProps) {
     <li className="flex items-start gap-4 px-4 py-3.5">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span
-            aria-hidden="true"
-            className={`size-2 shrink-0 rounded-full ${levelDot[category.level] ?? 'bg-muted'}`}
-          />
+          <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${levelDot[category.level]}`} />
           <label htmlFor={id} className="text-sm font-medium">
             {category.label}
           </label>
@@ -191,7 +189,7 @@ function TryResult({ result }: { result: { match: SensitivePathMatch | null; err
   }
 
   return (
-    <span className={levelText[match.level] ?? 'text-text'}>
+    <span className={levelText[match.level]}>
       Sensitive: {match.label}, matched by <code className="font-mono">{match.pattern}</code>.
     </span>
   )
@@ -214,13 +212,12 @@ export function SensitiveFilesSection({ settings, onSaved }: SensitiveFilesSecti
 
   // save stores a change, then reports the settings as stored; onError shows why it was
   // refused.
-  const save = (call: Promise<void>, onError: (message: string) => void, after?: () => void) => {
+  const save = (call: Promise<Settings>, onError: (message: string) => void, after?: () => void) => {
     setBusy(true)
     setError('')
     setPatternError('')
 
     call
-      .then(getSettings)
       .then((next) => {
         onSaved(next)
         after?.()
@@ -233,7 +230,7 @@ export function SensitiveFilesSection({ settings, onSaved }: SensitiveFilesSecti
       })
   }
 
-  const chooseScope = (scope: Scope) => {
+  const chooseScope = (scope: SensitiveScope) => {
     save(setSensitiveScope(scope), setError, () => {
       // Collaborators' pull requests are checked by a refresh: run one now rather than
       // wait for the next.

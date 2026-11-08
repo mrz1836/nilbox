@@ -52,14 +52,14 @@ type Frontend interface {
 type Window interface {
 	// Open opens the window at size, shrunk to fit the screen, in the native appearance
 	// and on the background of theme.
-	Open(theme string, size settings.WindowSize)
+	Open(theme settings.Theme, size settings.WindowSize)
 
 	// Show brings the window forward: shown if it was closed into the menu bar, restored
 	// if it was minimized, and the app made active.
 	Show()
 
 	// SetTheme pins the native appearance to theme and repaints the window's background.
-	SetTheme(theme string)
+	SetTheme(theme settings.Theme)
 }
 
 // Tray is the menu bar icon. Its methods must not wait for anything Stop waits for:
@@ -91,7 +91,7 @@ type Inbox interface {
 // Settings are the settings the shell reads when the app launches. core.ShellSettings
 // implements it.
 type Settings interface {
-	Theme(ctx context.Context) (string, error)
+	Theme(ctx context.Context) (settings.Theme, error)
 	MenuBar(ctx context.Context) (bool, error)
 	WindowSize(ctx context.Context) (settings.WindowSize, error)
 }
@@ -289,7 +289,7 @@ func (s *Shell) Emit(e event.Event) {
 	case event.RevealItem:
 		s.reveal(e)
 	case event.ThemeChanged:
-		s.window.SetTheme(e.Theme)
+		s.window.SetTheme(settings.Theme(e.Theme))
 	case event.MenuBarChanged:
 		s.setMenuBar(e.On)
 	case event.FirstPaint:
@@ -419,7 +419,7 @@ func (s *Shell) reveal(r event.RevealItem) {
 }
 
 // storedTheme is the stored theme, or the default when it cannot be read.
-func (s *Shell) storedTheme() string {
+func (s *Shell) storedTheme() settings.Theme {
 	theme, err := s.settings.Theme(s.lifetime)
 	if err != nil {
 		s.warn("read the theme, following the system:", err)

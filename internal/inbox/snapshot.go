@@ -69,11 +69,11 @@ type List struct {
 
 // Item is one pull request or issue in a list.
 type Item struct {
-	ID     int64  `json:"id"`
-	Kind   string `json:"kind"`
-	Number int    `json:"number"`
-	Title  string `json:"title"`
-	URL    string `json:"url"`
+	ID     int64     `json:"id"`
+	Kind   item.Kind `json:"kind"`
+	Number int       `json:"number"`
+	Title  string    `json:"title"`
+	URL    string    `json:"url"`
 
 	// Repo is "owner/name".
 	Repo   string `json:"repo"`
@@ -85,7 +85,7 @@ type Item struct {
 	// Trust is the item's trust class (see the trust package): "member" for the
 	// repository's owner, org members, and collaborators, "bot" for a trusted bot, and
 	// "outside" for everyone else, every untrusted bot, and every fork.
-	Trust string `json:"trust"`
+	Trust trust.Class `json:"trust"`
 
 	// Trusted reports whether Trust is anything but "outside".
 	Trusted bool `json:"trusted"`
@@ -386,7 +386,7 @@ func (r *itemRow) item(scope fileScope) Item {
 
 	return Item{
 		ID:                r.ID,
-		Kind:              string(r.Kind),
+		Kind:              r.Kind,
 		Number:            r.Number,
 		Title:             r.Title,
 		URL:               r.URL,
@@ -429,7 +429,17 @@ func decodeReasons(raw *string) *snooze.Reasons {
 	}
 
 	var reasons snooze.Reasons
-	if json.Unmarshal([]byte(*raw), &reasons) != nil || !reasons.Woke() {
+	if json.Unmarshal([]byte(*raw), &reasons) != nil {
+		return nil
+	}
+
+	// A review outcome this build does not know, as another build may have stored, is
+	// read as none.
+	if !reasons.Review.Valid() {
+		reasons.Review = snooze.ReviewNone
+	}
+
+	if !reasons.Woke() {
 		return nil
 	}
 

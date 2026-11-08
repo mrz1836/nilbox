@@ -22,11 +22,14 @@ const (
 	maxSensitiveRunes = 1000
 )
 
+// AppliesTo is which kinds of item a prompt can launch.
+type AppliesTo string
+
 // What a prompt applies to.
 const (
-	AppliesToPR    = string(item.KindPR)
-	AppliesToIssue = string(item.KindIssue)
-	AppliesToAny   = "any"
+	AppliesToPR              = AppliesTo(item.KindPR)
+	AppliesToIssue           = AppliesTo(item.KindIssue)
+	AppliesToAny   AppliesTo = "any"
 )
 
 // Variable types, as the cheat sheet names them.
@@ -279,10 +282,9 @@ func (d Data) sanitized() Data {
 	return d
 }
 
-// AppliesTo reports whether a prompt that applies to appliesTo ("pr", "issue", or "any")
-// can launch an item of kind.
-func AppliesTo(appliesTo string, kind item.Kind) bool {
-	return appliesTo == AppliesToAny || appliesTo == string(kind)
+// Covers reports whether a prompt that applies to a can launch an item of kind.
+func (a AppliesTo) Covers(kind item.Kind) bool {
+	return a == AppliesToAny || a == AppliesTo(kind)
 }
 
 // sanitizeLine turns s into a single line of plain text: control characters (including

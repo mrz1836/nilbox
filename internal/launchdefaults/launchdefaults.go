@@ -370,7 +370,7 @@ func checkPrompt(ctx context.Context, library PromptLookup, id *int64, kind item
 		return "That prompt no longer exists; choose another.", nil
 	case err != nil:
 		return "", err
-	case !prompts.AppliesTo(p.AppliesTo, kind):
+	case !p.AppliesTo.Covers(kind):
 		return fmt.Sprintf("%q isn't a prompt for %s.", p.Nickname, kind.Plural()), nil
 	default:
 		return "", nil

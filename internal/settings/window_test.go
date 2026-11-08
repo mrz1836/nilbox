@@ -18,7 +18,7 @@ func TestWindowSizePersists(t *testing.T) {
 		{Width: MinWindowWidth, Height: MinWindowHeight},
 		{Width: MaxWindowWidth, Height: MaxWindowHeight},
 	} {
-		require.NoError(t, svc.SetWindowSize(t.Context(), size))
+		require.NoError(t, testutil.ErrOf(svc.SetWindowSize(t.Context(), size)))
 
 		got, err := svc.Get(t.Context())
 		require.NoError(t, err)
@@ -54,11 +54,11 @@ func TestSetWindowSizeRejectsOutOfBounds(t *testing.T) {
 		{Width: 1280, Height: MaxWindowHeight + 1},
 		{Width: -1280, Height: -800},
 	} {
-		err := svc.SetWindowSize(t.Context(), size)
+		_, err := svc.SetWindowSize(t.Context(), size)
 		require.ErrorIs(t, err, ErrInvalidWindowSize, size)
 	}
 
-	err := svc.SetWindowSize(t.Context(), WindowSize{Width: 640, Height: 480})
+	_, err := svc.SetWindowSize(t.Context(), WindowSize{Width: 640, Height: 480})
 	require.ErrorContains(t, err, "640 x 480; choose 800 x 520 up to 7680 x 4320")
 
 	got, err := svc.Get(t.Context())

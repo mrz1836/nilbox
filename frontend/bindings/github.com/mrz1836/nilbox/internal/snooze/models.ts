@@ -16,15 +16,71 @@ export interface Reasons {
     "forcePushed": boolean;
 
     /**
-     * Review is ReviewApproved, ReviewChangesRequested, ReviewNew, or "".
+     * Review is ReviewApproved, ReviewChangesRequested, ReviewNew, or ReviewNone.
      */
-    "review": string;
+    "review": ReviewOutcome;
 
     /**
      * Comments is how many comments were added since the snooze began.
      */
     "comments": number;
 }
+
+/**
+ * ReviewOutcome is the review that ended a snooze early.
+ */
+export type ReviewOutcome = "approved" | "changes_requested" | "reviewed" | "";
+
+/**
+ * The values of ReviewOutcome, by the names of their Go constants.
+ */
+export const ReviewOutcome = {
+    /**
+     * Review outcomes a wake reports, most decisive first.
+     */
+    ReviewApproved: "approved",
+    ReviewChangesRequested: "changes_requested",
+    ReviewNew: "reviewed",
+
+    /**
+     * ReviewNone is a wake that no review caused.
+     */
+    ReviewNone: "",
+} as const;
+
+/**
+ * ReviewRule is which reviews wake a snooze.
+ */
+export type ReviewRule = "never" | "decisions" | "any";
+
+/**
+ * The values of ReviewRule, by the names of their Go constants.
+ */
+export const ReviewRule = {
+    /**
+     * Which reviews wake a snooze.
+     *
+     * ReviewsNever ignores reviews.
+     */
+    ReviewsNever: "never",
+
+    /**
+     * ReviewsDecisions wakes on a new approval or request for changes, or a change of
+     * the review decision to either.
+     */
+    ReviewsDecisions: "decisions",
+
+    /**
+     * ReviewsAny also wakes on a review that only comments.
+     */
+    ReviewsAny: "any",
+
+    /**
+     * Defaults for a fresh database: three days, waking on any push or a review decision,
+     * and not on comments, which bots post as often as people do.
+     */
+    DefaultWakeReviews: "decisions",
+} as const;
 
 /**
  * Rules decide which new activity ends a snooze early. Every field is a plain value.
@@ -40,7 +96,7 @@ export interface Rules {
     /**
      * Reviews is ReviewsNever, ReviewsDecisions, or ReviewsAny.
      */
-    "reviews": string;
+    "reviews": ReviewRule;
 
     /**
      * Comments is how many new comments wake a snooze; 0 is never. Review comments

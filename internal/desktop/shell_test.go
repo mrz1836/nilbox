@@ -32,7 +32,7 @@ func TestWindowEventsGoOnToThePage(t *testing.T) {
 		s.Emit(e)
 	}
 
-	s.Emit(event.ThemeChanged{Theme: settings.ThemeLight})
+	s.Emit(event.ThemeChanged{Theme: string(settings.ThemeLight)})
 	s.Emit(event.MenuBarChanged{On: false})
 	s.Emit(event.FirstPaint{})
 
@@ -66,10 +66,10 @@ func TestAThemeChangeReachesTheWindow(t *testing.T) {
 	r := newRig()
 	s := r.shell()
 
-	s.Emit(event.ThemeChanged{Theme: settings.ThemeLight})
-	s.Emit(event.ThemeChanged{Theme: settings.ThemeSystem})
+	s.Emit(event.ThemeChanged{Theme: string(settings.ThemeLight)})
+	s.Emit(event.ThemeChanged{Theme: string(settings.ThemeSystem)})
 
-	assert.Equal(t, []string{settings.ThemeLight, settings.ThemeSystem}, r.window.themesSet())
+	assert.Equal(t, []settings.Theme{settings.ThemeLight, settings.ThemeSystem}, r.window.themesSet())
 	assert.Empty(t, r.page.events())
 }
 
@@ -325,7 +325,7 @@ func TestAStoppedShellDoesNothing(t *testing.T) {
 		for _, e := range []event.Event{
 			event.InboxUpdated{},
 			event.RevealItem{ItemID: 7},
-			event.ThemeChanged{Theme: settings.ThemeDark},
+			event.ThemeChanged{Theme: string(settings.ThemeDark)},
 			event.MenuBarChanged{On: true},
 			event.FirstPaint{},
 		} {

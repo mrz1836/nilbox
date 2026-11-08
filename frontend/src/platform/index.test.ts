@@ -375,38 +375,38 @@ describe('launch defaults', () => {
 })
 
 describe('settings', () => {
-  it('reads and writes settings', async () => {
-    const settings: platform.Settings = {
-      defaultProfile: 'default',
-      worktreeDefault: true,
-      worktreeAutoCleanup: true,
-      terminal: 'iterm2',
-      cloneRoot: '~/projects',
-      trustedBots: ['dependabot'],
-      defaultTrustedBots: ['dependabot'],
-      snoozeDays: 3,
-      snoozeWake: { commits: 1, reviews: 'decisions', comments: 0 },
-      windowSize: { width: 1280, height: 800 },
-      defaultWindowSize: { width: 1280, height: 800 },
-      sensitiveFiles: { scope: 'collaborators', off: [], patterns: [] },
-      sensitiveCategories: [],
-      menuBar: true,
-      bannersOff: [],
+  const settings: platform.Settings = {
+    defaultProfile: 'default',
+    worktreeDefault: true,
+    worktreeAutoCleanup: true,
+    terminal: 'iterm2',
+    cloneRoot: '~/projects',
+    trustedBots: ['dependabot'],
+    defaultTrustedBots: ['dependabot'],
+    snoozeDays: 3,
+    snoozeWake: { commits: 1, reviews: 'decisions', comments: 0 },
+    windowSize: { width: 1280, height: 800 },
+    defaultWindowSize: { width: 1280, height: 800 },
+    sensitiveFiles: { scope: 'collaborators', off: [], patterns: [] },
+    sensitiveCategories: [],
+    menuBar: true,
+    bannersOff: [],
+    theme: 'system',
+    collapsedSections: [],
+  }
+
+  it('reads settings, and every setter returns them as stored', async () => {
+    for (const setter of Object.values(mocks.settings)) {
+      setter.mockResolvedValue(settings)
     }
-    mocks.settings.Get.mockResolvedValue(settings)
-    mocks.settings.SetTerminal.mockResolvedValue(undefined)
-    mocks.settings.SetCloneRoot.mockResolvedValue(undefined)
-    mocks.settings.SetDefaultProfile.mockResolvedValue(undefined)
-    mocks.settings.SetWorktreeDefault.mockResolvedValue(undefined)
-    mocks.settings.SetWorktreeAutoCleanup.mockResolvedValue(undefined)
 
     await expect(platform.getSettings()).resolves.toBe(settings)
 
-    await platform.setTerminal('terminal')
-    await platform.setCloneRoot('~/code')
-    await platform.setDefaultProfile('work')
-    await platform.setWorktreeDefault(false)
-    await platform.setWorktreeAutoCleanup(false)
+    await expect(platform.setTerminal('terminal')).resolves.toBe(settings)
+    await expect(platform.setCloneRoot('~/code')).resolves.toBe(settings)
+    await expect(platform.setDefaultProfile('work')).resolves.toBe(settings)
+    await expect(platform.setWorktreeDefault(false)).resolves.toBe(settings)
+    await expect(platform.setWorktreeAutoCleanup(false)).resolves.toBe(settings)
 
     expect(mocks.settings.SetTerminal).toHaveBeenCalledWith('terminal')
     expect(mocks.settings.SetCloneRoot).toHaveBeenCalledWith('~/code')
@@ -414,38 +414,32 @@ describe('settings', () => {
     expect(mocks.settings.SetWorktreeDefault).toHaveBeenCalledWith(false)
     expect(mocks.settings.SetWorktreeAutoCleanup).toHaveBeenCalledWith(false)
 
-    mocks.settings.SetTrustedBots.mockResolvedValue(undefined)
-    mocks.settings.ResetTrustedBots.mockResolvedValue(undefined)
-    await platform.setTrustedBots(['renovate'])
-    await platform.resetTrustedBots()
+    await expect(platform.setTrustedBots(['renovate'])).resolves.toBe(settings)
+    await expect(platform.resetTrustedBots()).resolves.toBe(settings)
 
     expect(mocks.settings.SetTrustedBots).toHaveBeenCalledWith(['renovate'])
     expect(mocks.settings.ResetTrustedBots).toHaveBeenCalledOnce()
 
-    mocks.settings.SetMenuBar.mockResolvedValue(undefined)
-    mocks.settings.SetNotificationBanner.mockResolvedValue(undefined)
-    await platform.setMenuBar(false)
-    await platform.setNotificationBanner('woke', false)
+    await expect(platform.setMenuBar(false)).resolves.toBe(settings)
+    await expect(platform.setNotificationBanner('woke', false)).resolves.toBe(settings)
 
     expect(mocks.settings.SetMenuBar).toHaveBeenCalledWith(false)
     expect(mocks.settings.SetNotificationBanner).toHaveBeenCalledWith('woke', false)
 
-    mocks.settings.SetSnoozeDays.mockResolvedValue(undefined)
-    await platform.setSnoozeDays(7)
+    await expect(platform.setSnoozeDays(7)).resolves.toBe(settings)
 
     expect(mocks.settings.SetSnoozeDays).toHaveBeenCalledWith(7)
 
     const rules: platform.SnoozeRules = { commits: 3, reviews: 'any', comments: 5 }
-    mocks.settings.SetSnoozeWake.mockResolvedValue(undefined)
-    await platform.setSnoozeWake(rules)
+    await expect(platform.setSnoozeWake(rules)).resolves.toBe(settings)
 
     expect(mocks.settings.SetSnoozeWake).toHaveBeenCalledWith(rules)
   })
 
   it('stores the sensitive file settings and tries a path', async () => {
-    mocks.settings.SetSensitiveScope.mockResolvedValue(undefined)
-    mocks.settings.SetSensitiveCategory.mockResolvedValue(undefined)
-    mocks.settings.SetSensitivePatterns.mockResolvedValue(undefined)
+    mocks.settings.SetSensitiveScope.mockResolvedValue(settings)
+    mocks.settings.SetSensitiveCategory.mockResolvedValue(settings)
+    mocks.settings.SetSensitivePatterns.mockResolvedValue(settings)
 
     const match: platform.SensitivePathMatch = {
       sensitive: true,
@@ -456,9 +450,9 @@ describe('settings', () => {
     }
     mocks.settings.MatchSensitivePath.mockResolvedValue(match)
 
-    await platform.setSensitiveScope('outside')
-    await platform.setSensitiveCategory('dependencies', false)
-    await platform.setSensitivePatterns(['infra/'])
+    await expect(platform.setSensitiveScope('outside')).resolves.toBe(settings)
+    await expect(platform.setSensitiveCategory('dependencies', false)).resolves.toBe(settings)
+    await expect(platform.setSensitivePatterns(['infra/'])).resolves.toBe(settings)
 
     expect(mocks.settings.SetSensitiveScope).toHaveBeenCalledWith('outside')
     expect(mocks.settings.SetSensitiveCategory).toHaveBeenCalledWith('dependencies', false)
@@ -473,8 +467,8 @@ describe('settings', () => {
     mocks.settings.CollapsedSections.mockResolvedValue(null)
     await expect(platform.getCollapsedSections()).resolves.toEqual([])
 
-    mocks.settings.SetSectionCollapsed.mockResolvedValue(undefined)
-    await platform.setSectionCollapsed('assigned', true)
+    mocks.settings.SetSectionCollapsed.mockResolvedValue(settings)
+    await expect(platform.setSectionCollapsed('assigned', true)).resolves.toBe(settings)
 
     expect(mocks.settings.SetSectionCollapsed).toHaveBeenCalledWith('assigned', true)
   })
@@ -483,8 +477,8 @@ describe('settings', () => {
     mocks.settings.Theme.mockResolvedValue('dark')
     await expect(platform.getTheme()).resolves.toBe('dark')
 
-    mocks.settings.SetTheme.mockResolvedValue(undefined)
-    await platform.setTheme('light')
+    mocks.settings.SetTheme.mockResolvedValue(settings)
+    await expect(platform.setTheme('light')).resolves.toBe(settings)
 
     expect(mocks.settings.SetTheme).toHaveBeenCalledWith('light')
   })
@@ -493,14 +487,14 @@ describe('settings', () => {
     const calls: string[] = []
     mocks.settings.SetWindowSize.mockImplementation(() => {
       calls.push('store')
-      return Promise.resolve()
+      return Promise.resolve(settings)
     })
     mocks.window.SetSize.mockImplementation(() => {
       calls.push('resize')
       return Promise.resolve()
     })
 
-    await platform.setWindowSize({ width: 1440, height: 900 })
+    await expect(platform.setWindowSize({ width: 1440, height: 900 })).resolves.toBe(settings)
 
     expect(mocks.settings.SetWindowSize).toHaveBeenCalledWith({ width: 1440, height: 900 })
     expect(mocks.window.SetSize).toHaveBeenCalledWith(1440, 900)

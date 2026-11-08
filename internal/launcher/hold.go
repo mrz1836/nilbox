@@ -7,17 +7,20 @@ import (
 	"github.com/mrz1836/nilbox/internal/sensitive"
 )
 
+// HoldReason is why a launch is held back.
+type HoldReason string
+
 // Why a launch is held back.
 const (
 	// HoldAgentFiles is a pull request that changes files coding agents load or run:
 	// settings with hooks, MCP servers, and instructions. A session that starts where
 	// they are checked out, or checks them out, loads them, and hooks run commands as
 	// soon as a session starts, in plan mode too.
-	HoldAgentFiles = "agentFiles"
+	HoldAgentFiles HoldReason = "agentFiles"
 
 	// HoldUnchecked is a pull request whose files could not all be checked, so it may
 	// change agent files without the app knowing.
-	HoldUnchecked = "unchecked"
+	HoldUnchecked HoldReason = "unchecked"
 )
 
 // FileChecker checks the files of the pull requests the inbox checks. *inbox.Service
@@ -42,7 +45,7 @@ type Hold struct {
 	Key string `json:"key"`
 
 	// Reason is HoldAgentFiles or HoldUnchecked.
-	Reason string `json:"reason"`
+	Reason HoldReason `json:"reason"`
 
 	// Head is the head commit the files were checked at, or "".
 	Head string `json:"head"`
@@ -85,7 +88,7 @@ func holdFor(check *sensitive.Check, p Plan, dir string) *Hold {
 
 	if g, ok := check.Category(sensitive.CategoryAgent); ok {
 		hold.Reason, hold.Files = HoldAgentFiles, g.Files
-		hold.Key = HoldAgentFiles + ":" + strings.ToLower(check.Head)
+		hold.Key = string(HoldAgentFiles) + ":" + strings.ToLower(check.Head)
 
 		return hold
 	}
@@ -95,7 +98,7 @@ func holdFor(check *sensitive.Check, p Plan, dir string) *Hold {
 	}
 
 	hold.Reason = HoldUnchecked
-	hold.Key = HoldUnchecked + ":" + check.Status + ":" + strings.ToLower(check.Head)
+	hold.Key = string(HoldUnchecked) + ":" + string(check.Status) + ":" + strings.ToLower(check.Head)
 
 	return hold
 }

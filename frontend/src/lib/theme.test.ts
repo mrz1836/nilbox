@@ -7,7 +7,6 @@ import {
   resolveDark,
   schemeSwitch,
   themes,
-  toTheme,
   type Theme,
 } from './theme'
 
@@ -56,16 +55,8 @@ function withTransitions(doc: Document, ready: () => Promise<void> = () => Promi
   return { startViewTransition, updates }
 }
 
-describe('toTheme', () => {
-  it('reads each choice and takes anything else for the default', () => {
-    for (const theme of themes) {
-      expect(toTheme(theme)).toBe(theme)
-    }
-
-    for (const stored of ['', 'auto', 'Dark', ' light']) {
-      expect(toTheme(stored)).toBe(defaultTheme)
-    }
-
+describe('themes', () => {
+  it('offers the choices in order, System first and by default', () => {
     expect(defaultTheme).toBe('system')
     expect(themes).toEqual(['system', 'light', 'dark'])
   })

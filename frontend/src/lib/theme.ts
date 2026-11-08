@@ -7,9 +7,10 @@
 // the first frame already shows the chosen palette. From then on the page pins the palette
 // it shows on <html> (data-theme wins over the media query) and cross-fades on a switch.
 
+import type { Theme } from '../platform'
 import { prefersReducedMotion } from './motion'
 
-export type Theme = 'system' | 'light' | 'dark'
+export type { Theme }
 
 // themes are the choices, in the order Settings offers them.
 export const themes: readonly Theme[] = ['system', 'light', 'dark']
@@ -17,11 +18,6 @@ export const themes: readonly Theme[] = ['system', 'light', 'dark']
 // defaultTheme is the theme of a fresh install, and the one shown until the stored theme
 // has loaded.
 export const defaultTheme: Theme = 'system'
-
-// toTheme reads a theme as stored, taking anything that is not a choice for the default.
-export function toTheme(value: string): Theme {
-  return themes.find((theme) => theme === value) ?? defaultTheme
-}
 
 // darkQuery matches while the web view's appearance is dark: the system's, or the one the
 // desktop shell pinned for a Light or Dark theme.

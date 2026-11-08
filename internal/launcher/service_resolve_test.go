@@ -13,6 +13,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/settings"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // promptID returns the ID of the stored prompt with nickname.
@@ -128,6 +129,11 @@ func TestResolveItems(t *testing.T) {
 		if r.ItemID == h.issue {
 			assert.Contains(t, r.Problem, "No prompt applies to this kind of item")
 			assert.Equal(t, "acme-org/example-repo", r.Repo)
+			assert.Equal(t, item.KindIssue, r.Kind)
+			assert.NotNil(t, r.ExtraArgs, "the window gets [] rather than null")
+			assert.NotNil(t, r.Warnings, "the window gets [] rather than null")
+			assert.Equal(t, SourceNone, r.AgentSource)
+			assert.Equal(t, Setting{Source: SourceNone, InheritedSource: SourceNone}, r.Profile)
 		} else {
 			assert.Empty(t, r.Problem)
 		}
@@ -312,7 +318,7 @@ func TestLaunchTrustsTheTrustedBots(t *testing.T) {
 	assert.True(t, resolved.Trusted)
 
 	// Taking it off the trusted list puts it back in plan mode.
-	require.NoError(t, h.settings.SetTrustedBots(t.Context(), []string{"renovate"}))
+	require.NoError(t, testutil.ErrOf(h.settings.SetTrustedBots(t.Context(), []string{"renovate"})))
 
 	res, script = h.launch(t, LaunchRequest{ItemID: bot})
 	assert.Equal(t, "plan mode (outside contributor)", res.Permission)

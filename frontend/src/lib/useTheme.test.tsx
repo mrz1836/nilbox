@@ -204,18 +204,6 @@ describe('useTheme', () => {
     expect(appearance.root.dataset.theme).toBe('dark')
   })
 
-  it('takes an unknown stored theme for System', async () => {
-    platform.getTheme.mockResolvedValue('sepia')
-    const appearance = fakeWindow(true)
-    const { result } = renderHook(() => useTheme(appearance.win))
-    await waitFor(() => {
-      expect(platform.getTheme).toHaveBeenCalledOnce()
-    })
-
-    expect(result.current.theme).toBe('system')
-    expect(appearance.root.dataset.theme).toBe('dark')
-  })
-
   it('logs a theme that could not be read and follows the appearance', async () => {
     const failure = new Error('database is locked')
     platform.getTheme.mockRejectedValue(failure)

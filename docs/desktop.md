@@ -49,7 +49,7 @@ pins.
 | `magex frontend:gate` | The frontend gate: frozen-lockfile install, format check, lint, typecheck, and tests with coverage (`frontend/scripts/gate.sh`, the script CI runs) |
 | `magex brand:generate` | Regenerates the theme tokens, frontend brand constants, `build/darwin/Info.plist`, and the icon artwork (the app icon `build/appicon.svg` and the menu bar icon `build/trayicon.svg`) from `internal/brand` |
 | `magex brand:icons` | Renders `build/appicon.svg` into the bundle's icon set `build/darwin/icons.icns` and the development Dock icon `cmd/nilbox/appicon.png`, and `build/trayicon.svg` into the menu bar icon `cmd/nilbox/trayicon.png` (needs `rsvg-convert`: `brew install librsvg`); run it after changing the mark or the artwork |
-| `magex app:bindings` | Regenerates the committed TypeScript bindings in `frontend/bindings` |
+| `magex app:bindings` | Regenerates the committed TypeScript bindings in `frontend/bindings`, writing each Go string type with constants as a union of its values |
 | `magex app:bindingsCheck` | Regenerates the bindings into a temporary directory and fails on any drift |
 | `magex app:lint` | Lints the desktop-tagged Go code (the desktop shell and the frontend embed) |
 | `magex app:dev` | Runs the app against the Vite dev server with hot reload |

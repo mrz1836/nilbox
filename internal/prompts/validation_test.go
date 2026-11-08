@@ -71,7 +71,7 @@ func TestResetRefusesToDropAKindThePromptIsADefaultFor(t *testing.T) {
 	in.Nickname, in.AppliesTo = review.Nickname, AppliesToAny
 	_, err := s.Update(ctx, review.ID, in)
 	require.NoError(t, err)
-	require.NoError(t, s.SetDefault(ctx, string(item.KindIssue), review.ID))
+	require.NoError(t, s.SetDefault(ctx, item.KindIssue, review.ID))
 
 	_, err = s.Reset(ctx, review.ID)
 	fields := fieldErrors(t, err)

@@ -228,7 +228,7 @@ func TestDecodeConfig(t *testing.T) {
 	assert.Equal(t, sensitive.DefaultConfig(), sensitive.DecodeConfig(nil))
 
 	cfg := sensitive.DecodeConfig(map[string]string{
-		sensitive.PrefScope:    sensitive.ScopeOutside,
+		sensitive.PrefScope:    string(sensitive.ScopeOutside),
 		sensitive.PrefOff:      `["review","agent","nope","dependencies","review"]`,
 		sensitive.PrefPatterns: `["deploy/","*","*.tf"]`,
 	})
@@ -252,8 +252,11 @@ func TestEncodeList(t *testing.T) {
 
 func TestChecked(t *testing.T) {
 	cases := []struct {
-		scope, class, assoc string
-		mine, want          bool
+		scope sensitive.Scope
+		class trust.Class
+		assoc string
+		mine  bool
+		want  bool
 	}{
 		{sensitive.ScopeOutside, trust.ClassOutside, "NONE", false, true},
 		{sensitive.ScopeOutside, trust.ClassOutside, "COLLABORATOR", false, true}, // a fork
@@ -393,7 +396,7 @@ func TestCategoriesAreWellFormed(t *testing.T) {
 		assert.NotEmpty(t, c.Label, c.ID)
 		assert.NotEmpty(t, c.Short, c.ID)
 		assert.NotEmpty(t, c.Description, c.ID)
-		assert.Contains(t, []string{sensitive.LevelDanger, sensitive.LevelWarning}, c.Level, c.ID)
+		assert.Contains(t, []sensitive.Level{sensitive.LevelDanger, sensitive.LevelWarning}, c.Level, c.ID)
 		assert.NotEmpty(t, c.Patterns, c.ID)
 
 		// Every built-in pattern is one a user could enter.

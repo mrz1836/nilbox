@@ -32,13 +32,16 @@ import {
   setWorktreeDefault,
   sweepWorktrees,
   type Account,
+  type BannerStatus,
   type DefaultPrompts,
   type Info,
   type LaunchDefaults,
+  type NotificationKind,
   type Profile,
   type Prompt,
   type Settings,
   type SnoozeRules,
+  type TerminalID,
 } from '../platform'
 import { Avatar } from './Avatar'
 import { Segmented, switchClass } from './controls'
@@ -123,7 +126,7 @@ const permissionLabels: Readonly<Record<string, string>> = {
   plan: 'Plans only',
 }
 
-const terminals: readonly { id: string; label: string }[] = [
+const terminals: readonly { id: TerminalID; label: string }[] = [
   { id: 'iterm2', label: 'iTerm2' },
   { id: 'terminal', label: 'Terminal' },
 ]
@@ -313,7 +316,7 @@ function SnoozingSection({ settings, onSaved }: SettingsSectionProps) {
   const [error, setError] = useState('')
   const wake = settings.snoozeWake
 
-  const save = (call: Promise<void>, next: Settings) => {
+  const save = (call: Promise<Settings>, next: Settings) => {
     setError('')
     call
       .then(() => {
@@ -429,7 +432,7 @@ type TestState = { state: 'idle' | 'sending' | 'sent' } | { state: 'failed'; err
 function NotificationsSection({ settings, onSaved }: SettingsSectionProps) {
   const id = useId()
   const [error, setError] = useState('')
-  const [status, setStatus] = useState('')
+  const [status, setStatus] = useState<BannerStatus | ''>('')
   const [test, setTest] = useState<TestState>({ state: 'idle' })
   const off = settings.bannersOff ?? []
 
@@ -443,7 +446,7 @@ function NotificationsSection({ settings, onSaved }: SettingsSectionProps) {
 
   useEffect(readStatus, [])
 
-  const save = (call: Promise<void>, next: Settings) => {
+  const save = (call: Promise<Settings>, next: Settings) => {
     setError('')
     call
       .then(() => {
@@ -454,7 +457,7 @@ function NotificationsSection({ settings, onSaved }: SettingsSectionProps) {
       })
   }
 
-  const switchBanner = (kind: string, on: boolean) => {
+  const switchBanner = (kind: NotificationKind, on: boolean) => {
     const bannersOff = on ? off.filter((k) => k !== kind) : [...off, kind]
 
     save(setNotificationBanner(kind, on), { ...settings, bannersOff })
@@ -734,7 +737,7 @@ function LaunchingSection({
   const [errors, setErrors] = useState({ terminal: '', profile: '', worktree: '', cleanup: '', pr: '', issue: '' })
 
   // save stores one change, then reports the new settings, or shows why it was refused.
-  const save = (field: keyof typeof errors, call: Promise<void>, next: Settings) => {
+  const save = (field: keyof typeof errors, call: Promise<Settings>, next: Settings) => {
     setErrors((was) => ({ ...was, [field]: '' }))
 
     call
@@ -770,8 +773,11 @@ function LaunchingSection({
           aria-describedby={`${id}-terminal-help`}
           value={settings.terminal}
           onChange={(e) => {
-            const terminal = e.target.value
-            save('terminal', setTerminal(terminal), { ...settings, terminal })
+            const terminal = terminals.find((t) => t.id === e.target.value)?.id
+
+            if (terminal !== undefined) {
+              save('terminal', setTerminal(terminal), { ...settings, terminal })
+            }
           }}
           className={fieldClass}
         >
@@ -872,12 +878,14 @@ function LaunchingSection({
           onChange={(e) => {
             const worktreeAutoCleanup = e.target.checked
             // Turned on, it sweeps at once rather than at the next check.
-            const call = setWorktreeAutoCleanup(worktreeAutoCleanup).then(() => {
+            const call = setWorktreeAutoCleanup(worktreeAutoCleanup).then((stored) => {
               if (worktreeAutoCleanup) {
                 sweepWorktrees().catch((err: unknown) => {
                   console.error('could not sweep the worktrees', err)
                 })
               }
+
+              return stored
             })
             save('cleanup', call, { ...settings, worktreeAutoCleanup })
           }}

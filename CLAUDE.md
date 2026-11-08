@@ -123,6 +123,13 @@ app:lint` reads.
   [`docs/performance.md`](docs/performance.md).
 - `frontend/` is the React + TypeScript + Vite + Tailwind app. It reaches Go only through the
   generated bindings in `frontend/bindings/`, funneled through `frontend/src/platform/`.
+- The bound API's shapes: a closed set of string values is a named Go string type with
+  constants (`item.Kind`, `settings.Theme`, `sensitive.Scope`, ...), which `magex
+  app:bindings` writes as a TypeScript union of its values plus a const object of the same
+  name, so a plain `'pr'` still type-checks. A bound result never holds a nil slice or map,
+  so the window gets `[]`, never `null` (`internal/core/bound_test.go` checks every bound
+  method). Each settings setter writes and reads the settings back in one transaction and
+  returns them, so a setter that fails has stored nothing.
 - `magefiles/` holds the custom `magex` targets: `brand:*`, `frontend:*`, `app:*`, `db:*`,
   and `measure:*`. Its tests build with the `mage` tag and run the real target code against fake
   tools on an isolated `PATH` (`fakeTool` in `magefiles/helpers_test.go`). Keep new targets

@@ -73,10 +73,11 @@ func TestValues(t *testing.T) {
 	assert.Equal(t, "pr-7", got["Worktree"])
 }
 
-func TestAppliesTo(t *testing.T) {
-	assert.True(t, AppliesTo(AppliesToAny, item.KindPR))
-	assert.True(t, AppliesTo(AppliesToAny, item.KindIssue))
-	assert.True(t, AppliesTo(AppliesToPR, item.KindPR))
-	assert.False(t, AppliesTo(AppliesToPR, item.KindIssue))
-	assert.False(t, AppliesTo(AppliesToIssue, item.KindPR))
+func TestAppliesToCovers(t *testing.T) {
+	assert.True(t, AppliesToAny.Covers(item.KindPR))
+	assert.True(t, AppliesToAny.Covers(item.KindIssue))
+	assert.True(t, AppliesToPR.Covers(item.KindPR))
+	assert.False(t, AppliesToPR.Covers(item.KindIssue))
+	assert.False(t, AppliesToIssue.Covers(item.KindPR))
+	assert.False(t, AppliesTo("").Covers(item.KindPR))
 }

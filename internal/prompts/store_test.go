@@ -71,7 +71,7 @@ func TestSetDefaultStoresThePromptID(t *testing.T) {
 	s, db := seeded(t, nil)
 	fix, work := byNickname(t, s, "Fix checks"), byNickname(t, s, "Work on it")
 
-	require.NoError(t, s.SetDefault(t.Context(), string(item.KindPR), fix.ID))
+	require.NoError(t, s.SetDefault(t.Context(), item.KindPR, fix.ID))
 
 	stored := promptPrefs(t, db)
 	assert.Equal(t, strconv.FormatInt(fix.ID, 10), stored["prompts.default.pr"])
@@ -164,7 +164,7 @@ func TestWritesReportWhatFailed(t *testing.T) {
 		{
 			name: "set a default", trigger: refusePrefInserts, want: "save setting " + prefDefaultPR,
 			run: func(t *testing.T, s *Service) error {
-				return s.SetDefault(t.Context(), string(item.KindPR), byNickname(t, s, "Fix checks").ID)
+				return s.SetDefault(t.Context(), item.KindPR, byNickname(t, s, "Fix checks").ID)
 			},
 		},
 	}
@@ -267,7 +267,7 @@ func TestAClosedDatabaseIsReported(t *testing.T) {
 	_, err = s.store.Lookup(ctx, 1)
 	require.ErrorContains(t, err, "read the prompt")
 
-	require.ErrorContains(t, s.SetDefault(ctx, string(item.KindPR), 1), "read the prompt")
+	require.ErrorContains(t, s.SetDefault(ctx, item.KindPR, 1), "read the prompt")
 
 	_, err = s.Check(ctx, CheckRequest{ID: 1, Input: validInput()})
 	require.ErrorContains(t, err, "read setting "+prefDefaultPR)

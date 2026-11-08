@@ -46,11 +46,11 @@ func TestSettingsViewsReadTheSettingsAsTheyAreNow(t *testing.T) {
 
 	// A change the user makes reaches the next read, with no restart.
 	root := t.TempDir()
-	require.NoError(t, c.Settings.SetWorktreeDefault(ctx, false))
-	require.NoError(t, c.Settings.SetWorktreeAutoCleanup(ctx, false))
-	require.NoError(t, c.Settings.SetTerminal(ctx, settings.TerminalApp))
-	require.NoError(t, c.Settings.SetCloneRoot(ctx, root))
-	require.NoError(t, c.Settings.SetTrustedBots(ctx, []string{"renovate"}))
+	require.NoError(t, testutil.ErrOf(c.Settings.SetWorktreeDefault(ctx, false)))
+	require.NoError(t, testutil.ErrOf(c.Settings.SetWorktreeAutoCleanup(ctx, false)))
+	require.NoError(t, testutil.ErrOf(c.Settings.SetTerminal(ctx, settings.TerminalApp)))
+	require.NoError(t, testutil.ErrOf(c.Settings.SetCloneRoot(ctx, root)))
+	require.NoError(t, testutil.ErrOf(c.Settings.SetTrustedBots(ctx, []string{"renovate"})))
 
 	got, err = launch.Get(ctx)
 	require.NoError(t, err)
@@ -116,7 +116,7 @@ func TestWorktreeStateReadsGitHubsWords(t *testing.T) {
 
 	closed := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
 
-	for state, want := range map[string]string{
+	for state, want := range map[string]worktrees.ItemStatus{
 		github.StateMerged: worktrees.ItemMerged,
 		github.StateClosed: worktrees.ItemClosed,
 		github.StateOpen:   worktrees.ItemOpen,

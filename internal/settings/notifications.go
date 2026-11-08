@@ -7,6 +7,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
+	"github.com/mrz1836/nilbox/internal/prefs"
 )
 
 // KeyMenuBar is whether the app shows its icon, with how many items need the user, in the
@@ -27,34 +28,39 @@ func (s *Service) MenuBar(ctx context.Context) (bool, error) {
 	return decodeMenuBar(stored), nil
 }
 
-// SetMenuBar stores whether the app shows its menu bar icon. Once it is stored, an
-// event.MenuBarChanged is emitted, so the desktop shell adds or removes the icon.
-func (s *Service) SetMenuBar(ctx context.Context, on bool) error {
-	if err := s.prefs.Set(ctx, KeyMenuBar, strconv.FormatBool(on)); err != nil {
-		return err
+// SetMenuBar stores whether the app shows its menu bar icon, and returns the settings
+// with it. Once it is stored, an event.MenuBarChanged is emitted, so the desktop shell
+// adds or removes the icon.
+func (s *Service) SetMenuBar(ctx context.Context, on bool) (Settings, error) {
+	out, err := s.save(ctx, setting(KeyMenuBar, strconv.FormatBool(on)))
+	if err != nil {
+		return Settings{}, err
 	}
 
 	s.events.Emit(event.MenuBarChanged{On: on})
 
-	return nil
+	return out, nil
 }
 
 // SetNotificationBanner turns the banners of one kind of notification on or off (see the
-// notify package for the kinds). The notification history keeps every kind either way.
-func (s *Service) SetNotificationBanner(ctx context.Context, kind string, on bool) error {
-	err := s.prefs.Update(ctx, notifyprefs.KeyBannersOff, func(stored string, _ bool) (string, error) {
-		off, err := notifyprefs.SetBanner(notifyprefs.DecodeBannersOff(stored), kind, on)
+// notify package for the kinds), and returns the settings with it. The notification
+// history keeps every kind either way.
+func (s *Service) SetNotificationBanner(ctx context.Context, kind notifyprefs.Kind, on bool) (Settings, error) {
+	return s.save(ctx, func(ctx context.Context, p *prefs.Store) error {
+		err := p.Update(ctx, notifyprefs.KeyBannersOff, func(stored string, _ bool) (string, error) {
+			off, err := notifyprefs.SetBanner(notifyprefs.DecodeBannersOff(stored), kind, on)
+			if err != nil {
+				return "", err
+			}
+
+			return notifyprefs.EncodeBannersOff(off), nil
+		})
 		if err != nil {
-			return "", err
+			return fmt.Errorf("save the notification settings: %w", err)
 		}
 
-		return notifyprefs.EncodeBannersOff(off), nil
+		return nil
 	})
-	if err != nil {
-		return fmt.Errorf("save the notification settings: %w", err)
-	}
-
-	return nil
 }
 
 // decodeMenuBar reads a stored menu bar setting, falling back to the default for one

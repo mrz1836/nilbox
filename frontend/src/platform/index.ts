@@ -28,7 +28,7 @@ import type {
   Resolution,
 } from '../../bindings/github.com/mrz1836/nilbox/internal/launcher'
 import { Service as Notifications } from '../../bindings/github.com/mrz1836/nilbox/internal/notify'
-import type { Log as NotificationLog } from '../../bindings/github.com/mrz1836/nilbox/internal/notify'
+import type { BannerStatus, Log as NotificationLog } from '../../bindings/github.com/mrz1836/nilbox/internal/notify'
 import { Service as Profiles } from '../../bindings/github.com/mrz1836/nilbox/internal/profiles'
 import type { Profile } from '../../bindings/github.com/mrz1836/nilbox/internal/profiles'
 import { Service as PromptsService } from '../../bindings/github.com/mrz1836/nilbox/internal/prompts'
@@ -40,11 +40,15 @@ import type {
   Prompt,
   Variable as PromptVariable,
 } from '../../bindings/github.com/mrz1836/nilbox/internal/prompts'
+import type { Kind as ItemKind } from '../../bindings/github.com/mrz1836/nilbox/internal/item'
+import type { ID as TerminalID } from '../../bindings/github.com/mrz1836/nilbox/internal/launcher/terminal'
+import type { Kind as NotificationKind } from '../../bindings/github.com/mrz1836/nilbox/internal/notifyprefs'
 import { Service as SettingsService } from '../../bindings/github.com/mrz1836/nilbox/internal/settings'
-import type { Settings, WindowSize } from '../../bindings/github.com/mrz1836/nilbox/internal/settings'
+import type { ListKey, Settings, Theme, WindowSize } from '../../bindings/github.com/mrz1836/nilbox/internal/settings'
 import type {
   Check as FileCheck,
   PathMatch as SensitivePathMatch,
+  Scope as SensitiveScope,
 } from '../../bindings/github.com/mrz1836/nilbox/internal/sensitive'
 import type { Rules as SnoozeRules } from '../../bindings/github.com/mrz1836/nilbox/internal/snooze'
 import { Service as Worktrees } from '../../bindings/github.com/mrz1836/nilbox/internal/worktrees'
@@ -55,9 +59,10 @@ import type {
   SweepReport,
 } from '../../bindings/github.com/mrz1836/nilbox/internal/worktrees'
 
-// The bound services' data types, generated from the Go structs. Callers use these and
-// never declare their own copies.
-export type { DataReset, Info } from '../../bindings/github.com/mrz1836/nilbox/internal/appinfo'
+// The bound services' data types, generated from the Go structs, and the closed sets of
+// values their fields take, generated from the Go constants as unions of string literals.
+// Callers use these and never declare their own copies.
+export type { DataReset, Info, ResetReason } from '../../bindings/github.com/mrz1836/nilbox/internal/appinfo'
 export type {
   Account,
   Checks,
@@ -72,6 +77,8 @@ export type {
 } from '../../bindings/github.com/mrz1836/nilbox/internal/inbox'
 export type { Agent, FieldError } from '../../bindings/github.com/mrz1836/nilbox/internal/agent'
 export type { RevealItem } from '../../bindings/github.com/mrz1836/nilbox/internal/event'
+export type { Kind as ItemKind } from '../../bindings/github.com/mrz1836/nilbox/internal/item'
+export type { Class as TrustClass } from '../../bindings/github.com/mrz1836/nilbox/internal/trust'
 export type {
   Defaults as LaunchDefaults,
   Input as LaunchDefaultsInput,
@@ -80,6 +87,7 @@ export type {
 export type {
   CloneTarget,
   Hold as LaunchHold,
+  HoldReason,
   ItemResolution,
   LaunchRequest,
   LaunchResult,
@@ -87,12 +95,16 @@ export type {
   PromptChoice,
   Resolution,
   Setting as LaunchSetting,
+  Source as LaunchSource,
   Toggle as LaunchToggle,
 } from '../../bindings/github.com/mrz1836/nilbox/internal/launcher'
+export type { ID as TerminalID } from '../../bindings/github.com/mrz1836/nilbox/internal/launcher/terminal'
 export type {
+  BannerStatus,
   Log as NotificationLog,
   Notification as AppNotification,
 } from '../../bindings/github.com/mrz1836/nilbox/internal/notify'
+export type { Kind as NotificationKind } from '../../bindings/github.com/mrz1836/nilbox/internal/notifyprefs'
 export type { Profile } from '../../bindings/github.com/mrz1836/nilbox/internal/profiles'
 export type {
   Category as SensitiveCategory,
@@ -100,29 +112,38 @@ export type {
   Config as SensitiveConfig,
   Finding as SensitiveFile,
   Group as SensitiveGroup,
+  Level as SensitiveLevel,
   PathMatch as SensitivePathMatch,
+  Scope as SensitiveScope,
+  Status as FileCheckStatus,
 } from '../../bindings/github.com/mrz1836/nilbox/internal/sensitive'
 export type {
+  AppliesTo as PromptAppliesTo,
   CheckRequest as PromptCheckRequest,
   CheckResult as PromptCheckResult,
   DefaultPrompts,
   Diagnostic,
   Input as PromptInput,
   Prompt,
+  Severity as DiagnosticSeverity,
   Usage as PromptUsage,
   Variable as PromptVariable,
 } from '../../bindings/github.com/mrz1836/nilbox/internal/prompts'
-export type { Settings, WindowSize } from '../../bindings/github.com/mrz1836/nilbox/internal/settings'
+export type { ListKey, Settings, Theme, WindowSize } from '../../bindings/github.com/mrz1836/nilbox/internal/settings'
 export type {
   Reasons as WakeReasons,
+  ReviewOutcome as WakeReview,
+  ReviewRule as WakeReviewRule,
   Rules as SnoozeRules,
 } from '../../bindings/github.com/mrz1836/nilbox/internal/snooze'
 export type {
   Cleanup as WorktreeCleanup,
+  ItemStatus as LinkedItemStatus,
   LinkedItem,
   RemoveResult,
   Repo as WorktreeRepo,
   Snapshot as WorktreesSnapshot,
+  Stage as WorktreeStage,
   SweepReport,
   Worktree,
 } from '../../bindings/github.com/mrz1836/nilbox/internal/worktrees'
@@ -285,7 +306,7 @@ export function getDefaultPrompts(): Promise<DefaultPrompts> {
   return PromptsService.Defaults()
 }
 
-export function setDefaultPrompt(kind: string, id: number): Promise<void> {
+export function setDefaultPrompt(kind: ItemKind, id: number): Promise<void> {
   return PromptsService.SetDefault(kind, id)
 }
 
@@ -318,79 +339,83 @@ export function getSettings(): Promise<Settings> {
   return SettingsService.Get()
 }
 
-export function setTerminal(terminal: string): Promise<void> {
+// The settings setters store one change and return every setting as stored after it.
+
+export function setTerminal(terminal: TerminalID): Promise<Settings> {
   return SettingsService.SetTerminal(terminal)
 }
 
-export function setCloneRoot(root: string): Promise<void> {
+export function setCloneRoot(root: string): Promise<Settings> {
   return SettingsService.SetCloneRoot(root)
 }
 
-export function setDefaultProfile(name: string): Promise<void> {
+export function setDefaultProfile(name: string): Promise<Settings> {
   return SettingsService.SetDefaultProfile(name)
 }
 
-export function setWorktreeDefault(on: boolean): Promise<void> {
+export function setWorktreeDefault(on: boolean): Promise<Settings> {
   return SettingsService.SetWorktreeDefault(on)
 }
 
 // setWorktreeAutoCleanup stores whether finished worktrees are cleaned up on their own once
 // their pull request merges or their issue closes.
-export function setWorktreeAutoCleanup(on: boolean): Promise<void> {
+export function setWorktreeAutoCleanup(on: boolean): Promise<Settings> {
   return SettingsService.SetWorktreeAutoCleanup(on)
 }
 
 // setMenuBar shows or hides the menu bar icon. While it shows, closing the window keeps the
 // app running there.
-export function setMenuBar(on: boolean): Promise<void> {
+export function setMenuBar(on: boolean): Promise<Settings> {
   return SettingsService.SetMenuBar(on)
 }
 
 // setNotificationBanner turns the banners of one kind of notification on or off. The
 // notification history keeps every kind either way.
-export function setNotificationBanner(kind: string, on: boolean): Promise<void> {
+export function setNotificationBanner(kind: NotificationKind, on: boolean): Promise<Settings> {
   return SettingsService.SetNotificationBanner(kind, on)
 }
 
 // setSnoozeDays stores how many days an inbox row's Snooze button hides an item.
-export function setSnoozeDays(days: number): Promise<void> {
+export function setSnoozeDays(days: number): Promise<Settings> {
   return SettingsService.SetSnoozeDays(days)
 }
 
 // setSnoozeWake stores which new activity ends a snooze early.
-export function setSnoozeWake(rules: SnoozeRules): Promise<void> {
+export function setSnoozeWake(rules: SnoozeRules): Promise<Settings> {
   return SettingsService.SetSnoozeWake(rules)
 }
 
 // setWindowSize stores the size the window opens at, then resizes the open window to it.
-export async function setWindowSize(size: WindowSize): Promise<void> {
-  await SettingsService.SetWindowSize(size)
+export async function setWindowSize(size: WindowSize): Promise<Settings> {
+  const settings = await SettingsService.SetWindowSize(size)
   await Window.SetSize(size.width, size.height)
+
+  return settings
 }
 
 // setTrustedBots stores the bots whose items are trusted like a collaborator's.
-export function setTrustedBots(bots: string[]): Promise<void> {
+export function setTrustedBots(bots: string[]): Promise<Settings> {
   return SettingsService.SetTrustedBots(bots)
 }
 
 // resetTrustedBots goes back to the default trusted bots.
-export function resetTrustedBots(): Promise<void> {
+export function resetTrustedBots(): Promise<Settings> {
   return SettingsService.ResetTrustedBots()
 }
 
 // setSensitiveScope stores whose pull requests have their changed files checked:
 // "outside" for outside contributors, or "collaborators" for collaborators' too.
-export function setSensitiveScope(scope: string): Promise<void> {
+export function setSensitiveScope(scope: SensitiveScope): Promise<Settings> {
   return SettingsService.SetSensitiveScope(scope)
 }
 
 // setSensitiveCategory turns a built-in category of sensitive files on or off.
-export function setSensitiveCategory(id: string, on: boolean): Promise<void> {
+export function setSensitiveCategory(id: string, on: boolean): Promise<Settings> {
   return SettingsService.SetSensitiveCategory(id, on)
 }
 
 // setSensitivePatterns stores the user's own patterns of sensitive files, in order.
-export function setSensitivePatterns(patterns: string[]): Promise<void> {
+export function setSensitivePatterns(patterns: string[]): Promise<Settings> {
   return SettingsService.SetSensitivePatterns(patterns)
 }
 
@@ -400,26 +425,25 @@ export function matchSensitivePath(path: string): Promise<SensitivePathMatch> {
   return SettingsService.MatchSensitivePath(path)
 }
 
-// getTheme reads the stored theme: "system", "light", or "dark".
-export function getTheme(): Promise<string> {
+// getTheme reads the stored theme.
+export function getTheme(): Promise<Theme> {
   return SettingsService.Theme()
 }
 
 // setTheme stores the theme, and the desktop shell brings the window's native appearance
 // along with it. The page switches itself.
-export function setTheme(theme: string): Promise<void> {
+export function setTheme(theme: Theme): Promise<Settings> {
   return SettingsService.SetTheme(theme)
 }
 
-// getCollapsedSections lists the inbox sections the user collapsed, by list name
-// ("reviewRequested", "authored", "assigned"), in the inbox's order.
-export async function getCollapsedSections(): Promise<string[]> {
+// getCollapsedSections lists the inbox sections the user collapsed, in the inbox's order.
+export async function getCollapsedSections(): Promise<ListKey[]> {
   return (await SettingsService.CollapsedSections()) ?? []
 }
 
 // setSectionCollapsed stores whether an inbox section is collapsed, so the inbox opens the
 // same way at the next launch.
-export function setSectionCollapsed(section: string, collapsed: boolean): Promise<void> {
+export function setSectionCollapsed(section: ListKey, collapsed: boolean): Promise<Settings> {
   return SettingsService.SetSectionCollapsed(section, collapsed)
 }
 
@@ -512,7 +536,7 @@ export function clearNotifications(): Promise<void> {
 
 // notificationBannerStatus reports whether banners are shown: 'on', 'off' when the user has
 // not allowed them, or 'unavailable' when this build cannot show them.
-export function notificationBannerStatus(): Promise<string> {
+export function notificationBannerStatus(): Promise<BannerStatus> {
   return Notifications.BannerStatus()
 }
 

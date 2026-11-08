@@ -37,15 +37,15 @@ func (e *fakeExecutor) Run(ctx context.Context, name string, args ...string) (st
 func TestDefaultRegistryOnDarwin(t *testing.T) {
 	r := DefaultRegistry(&fakeExecutor{})
 
-	assert.Equal(t, []string{"iterm2", "terminal"}, r.IDs())
+	assert.Equal(t, []ID{ITerm2, TerminalApp}, r.IDs())
 
 	d, err := r.Get("iterm2")
 	require.NoError(t, err)
-	assert.Equal(t, "iterm2", d.ID())
+	assert.Equal(t, ITerm2, d.ID())
 
 	d, err = r.Get("terminal")
 	require.NoError(t, err)
-	assert.Equal(t, "terminal", d.ID())
+	assert.Equal(t, TerminalApp, d.ID())
 }
 
 func TestITermDriverRunsOsascript(t *testing.T) {
@@ -99,8 +99,8 @@ func TestDriverReportsOpenFailure(t *testing.T) {
 }
 
 func TestDriversRejectUnsafePaths(t *testing.T) {
-	for _, id := range []string{"iterm2", "terminal"} {
-		t.Run(id, func(t *testing.T) {
+	for _, id := range []ID{ITerm2, TerminalApp} {
+		t.Run(string(id), func(t *testing.T) {
 			ex := &fakeExecutor{}
 
 			d, err := DefaultRegistry(ex).Get(id)

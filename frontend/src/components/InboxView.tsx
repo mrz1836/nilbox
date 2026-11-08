@@ -6,7 +6,7 @@ import { isInboxNil } from '../lib/nil'
 import { prefersReducedMotion } from '../lib/motion'
 import { findItem, formatWhen, inboxCount, isDismissed, tabOf, triageList, type TriageTab } from '../lib/triage'
 import type { InboxState } from '../lib/useInbox'
-import type { InboxItem, InboxList } from '../platform'
+import type { InboxItem, InboxList, ListKey } from '../platform'
 import { ArchiveIcon, ChevronDownIcon, ClockIcon } from './icons'
 import { InboxNil } from './InboxNil'
 import { ItemRow, type LaunchOptions } from './ItemRow'
@@ -29,7 +29,7 @@ export interface InboxViewProps {
   onFilesSettings?: () => void
   // collapsed holds the list names of the collapsed lists. It is null until the stored
   // state loads; the lists wait for it, so a collapsed list never shows open first.
-  collapsed: ReadonlySet<string> | null
+  collapsed: ReadonlySet<ListKey> | null
   // onCollapse collapses or opens a list.
   onCollapse: (section: ListKey, collapsed: boolean) => void
   // reveal is the item the menu bar or a notification last asked to show, or null.
@@ -46,9 +46,6 @@ export interface Reveal {
 
 // highlightMs is how long a revealed row stays highlighted.
 const highlightMs = 2400
-
-// ListKey names an inbox list, as the snapshot does.
-type ListKey = 'reviewRequested' | 'authored' | 'assigned'
 
 const sections: readonly { key: ListKey; title: string }[] = [
   { key: 'reviewRequested', title: 'Review requested' },

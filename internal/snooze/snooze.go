@@ -42,24 +42,33 @@ const (
 	PrefWakeComments = "snooze.wake_comments"
 )
 
+// ReviewRule is which reviews wake a snooze.
+type ReviewRule string
+
 // Which reviews wake a snooze.
 const (
 	// ReviewsNever ignores reviews.
-	ReviewsNever = "never"
+	ReviewsNever ReviewRule = "never"
 
 	// ReviewsDecisions wakes on a new approval or request for changes, or a change of
 	// the review decision to either.
-	ReviewsDecisions = "decisions"
+	ReviewsDecisions ReviewRule = "decisions"
 
 	// ReviewsAny also wakes on a review that only comments.
-	ReviewsAny = "any"
+	ReviewsAny ReviewRule = "any"
 )
+
+// ReviewOutcome is the review that ended a snooze early.
+type ReviewOutcome string
 
 // Review outcomes a wake reports, most decisive first.
 const (
-	ReviewApproved         = "approved"
-	ReviewChangesRequested = "changes_requested"
-	ReviewNew              = "reviewed"
+	ReviewApproved         ReviewOutcome = "approved"
+	ReviewChangesRequested ReviewOutcome = "changes_requested"
+	ReviewNew              ReviewOutcome = "reviewed"
+
+	// ReviewNone is a wake that no review caused.
+	ReviewNone ReviewOutcome = ""
 )
 
 // GitHub's review decisions a State records.
@@ -93,7 +102,7 @@ type Rules struct {
 	Commits int `json:"commits"`
 
 	// Reviews is ReviewsNever, ReviewsDecisions, or ReviewsAny.
-	Reviews string `json:"reviews"`
+	Reviews ReviewRule `json:"reviews"`
 
 	// Comments is how many new comments wake a snooze; 0 is never. Review comments
 	// count, and so do bots'.
@@ -143,7 +152,7 @@ func DecodeRules(prefs map[string]string) Rules {
 		rules.Commits = v
 	}
 
-	if v := prefs[PrefWakeReviews]; validReviews(v) {
+	if v := ReviewRule(prefs[PrefWakeReviews]); validReviews(v) {
 		rules.Reviews = v
 	}
 
@@ -158,13 +167,13 @@ func DecodeRules(prefs map[string]string) Rules {
 func (r Rules) Encode() map[string]string {
 	return map[string]string{
 		PrefWakeCommits:  strconv.Itoa(r.Commits),
-		PrefWakeReviews:  r.Reviews,
+		PrefWakeReviews:  string(r.Reviews),
 		PrefWakeComments: strconv.Itoa(r.Comments),
 	}
 }
 
 // validReviews reports whether v is one of the review rules.
-func validReviews(v string) bool {
+func validReviews(v ReviewRule) bool {
 	return v == ReviewsNever || v == ReviewsDecisions || v == ReviewsAny
 }
 
@@ -185,6 +194,16 @@ type State struct {
 	ChangesRequested int `json:"changesRequested"`
 }
 
+// Valid reports whether o is one of the outcomes a wake reports, or ReviewNone.
+func (o ReviewOutcome) Valid() bool {
+	switch o {
+	case ReviewApproved, ReviewChangesRequested, ReviewNew, ReviewNone:
+		return true
+	default:
+		return false
+	}
+}
+
 // Reasons say what new activity ended a snooze early. Every field is a plain value.
 type Reasons struct {
 	// Commits is how many commits were added since the snooze began.
@@ -193,8 +212,8 @@ type Reasons struct {
 	// ForcePushed is set when the pull request was pushed without adding commits.
 	ForcePushed bool `json:"forcePushed"`
 
-	// Review is ReviewApproved, ReviewChangesRequested, ReviewNew, or "".
-	Review string `json:"review"`
+	// Review is ReviewApproved, ReviewChangesRequested, ReviewNew, or ReviewNone.
+	Review ReviewOutcome `json:"review"`
 
 	// Comments is how many comments were added since the snooze began.
 	Comments int `json:"comments"`
@@ -202,7 +221,7 @@ type Reasons struct {
 
 // Woke reports whether any reason is set.
 func (r Reasons) Woke() bool {
-	return r.Commits > 0 || r.ForcePushed || r.Review != "" || r.Comments > 0
+	return r.Commits > 0 || r.ForcePushed || r.Review != ReviewNone || r.Comments > 0
 }
 
 // Wake compares an item's State when it was snoozed with its State now, under rules,
@@ -232,10 +251,11 @@ func Wake(rules Rules, then, now State, botAuthor bool) Reasons {
 	return out
 }
 
-// reviewWake returns the review outcome that should end a snooze under rule, or "".
-func reviewWake(rule string, then, now State) string {
+// reviewWake returns the review outcome that should end a snooze under rule, or
+// ReviewNone.
+func reviewWake(rule ReviewRule, then, now State) ReviewOutcome {
 	if rule != ReviewsDecisions && rule != ReviewsAny {
-		return ""
+		return ReviewNone
 	}
 
 	switch {
@@ -246,7 +266,7 @@ func reviewWake(rule string, then, now State) string {
 	case rule == ReviewsAny && now.Reviewed > then.Reviewed:
 		return ReviewNew
 	default:
-		return ""
+		return ReviewNone
 	}
 }
 

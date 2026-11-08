@@ -11,7 +11,7 @@ import (
 )
 
 // mustParse parses a prompt the test knows is valid, failing otherwise.
-func mustParse(t *testing.T, body, appliesTo string) *Template {
+func mustParse(t *testing.T, body string, appliesTo AppliesTo) *Template {
 	t.Helper()
 
 	tmpl, diags := Parse(body, appliesTo)
@@ -21,7 +21,7 @@ func mustParse(t *testing.T, body, appliesTo string) *Template {
 }
 
 // only returns the single diagnostic Parse found, failing otherwise.
-func only(t *testing.T, body, appliesTo string) Diagnostic {
+func only(t *testing.T, body string, appliesTo AppliesTo) Diagnostic {
 	t.Helper()
 
 	_, diags := Parse(body, appliesTo)
@@ -211,7 +211,7 @@ func TestParseWholePromptProblems(t *testing.T) {
 	tests := []struct {
 		name      string
 		body      string
-		appliesTo string
+		appliesTo AppliesTo
 		want      string
 	}{
 		{name: "empty", body: "  \n ", appliesTo: AppliesToAny, want: "Write what the agent should do."},
@@ -249,13 +249,13 @@ func TestParseReportsAWholePromptProblemOnce(t *testing.T) {
 
 	// A comment fills in empty in every sample variant: six for pull requests and four
 	// for issues. Each kind's problem is reported once.
-	for appliesTo, want := range map[string][]string{
+	for appliesTo, want := range map[AppliesTo][]string{
 		AppliesToPR:    {forPRs},
 		AppliesToIssue: {forIssues},
 		AppliesToAny:   {forPRs, forIssues},
 	} {
 		tmpl, diags := Parse("{{/* comment */}}", appliesTo)
-		assert.Nil(t, tmpl, appliesTo)
+		assert.Nil(t, tmpl, string(appliesTo))
 
 		messages := make([]string, 0, len(diags))
 		for _, d := range diags {
@@ -263,7 +263,7 @@ func TestParseReportsAWholePromptProblemOnce(t *testing.T) {
 			messages = append(messages, d.Message)
 		}
 
-		assert.Equal(t, want, messages, appliesTo)
+		assert.Equal(t, want, messages, string(appliesTo))
 	}
 }
 

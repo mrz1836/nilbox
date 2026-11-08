@@ -13,6 +13,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -27,6 +28,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/snooze"
+	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
 
@@ -98,8 +100,8 @@ type Settings struct {
 	// merges or its issue closes.
 	WorktreeAutoCleanup bool `json:"worktreeAutoCleanup"`
 
-	// Terminal is "iterm2" or "terminal".
-	Terminal string `json:"terminal"`
+	// Terminal is TerminalITerm2 or TerminalApp.
+	Terminal terminal.ID `json:"terminal"`
 
 	// CloneRoot is the clone root as entered, e.g. "~/projects".
 	CloneRoot string `json:"cloneRoot"`
@@ -139,7 +141,14 @@ type Settings struct {
 
 	// BannersOff lists the kinds of notification (see the notify package) whose banners
 	// are off. The notification history keeps every kind either way.
-	BannersOff []string `json:"bannersOff"`
+	BannersOff []notifyprefs.Kind `json:"bannersOff"`
+
+	// Theme is the palette the app shows.
+	Theme Theme `json:"theme"`
+
+	// CollapsedSections lists the inbox sections the user collapsed, in the order the
+	// inbox shows them.
+	CollapsedSections []ListKey `json:"collapsedSections"`
 }
 
 // ProfileLookup finds a stored profile by name, or returns profiles.ErrProfileNotFound.
@@ -149,18 +158,25 @@ type ProfileLookup interface {
 }
 
 // Service reads and writes the preferences.
+//
+// Each setter stores its change and reads the preferences back in one transaction, then
+// returns the settings with the change, so a setter that fails has stored nothing. Only
+// the check that the default profile is still stored runs after the change is committed,
+// and a failure there is logged rather than reported, since the change has happened.
 type Service struct {
+	pool     *sql.DB
 	prefs    *prefs.Store
 	profiles ProfileLookup
 	home     string
 	clock    clock.Clock
 	events   event.Sink
+	logger   *slog.Logger
 }
 
 // NewService returns a Service over the preferences in pool. known looks up the stored
 // profiles the default profile must name, and home expands a ~ clone root.
 func NewService(pool *sql.DB, known ProfileLookup, home string, opts ...Option) *Service {
-	s := &Service{profiles: known, home: home}
+	s := &Service{pool: pool, profiles: known, home: home}
 
 	for _, opt := range opts {
 		opt(s)
@@ -168,6 +184,10 @@ func NewService(pool *sql.DB, known ProfileLookup, home string, opts ...Option) 
 
 	s.prefs = prefs.New(pool, s.clock)
 	s.events = event.Or(s.events)
+
+	if s.logger == nil {
+		s.logger = slog.Default()
+	}
 
 	return s
 }
@@ -185,177 +205,186 @@ func WithEvents(sink event.Sink) Option {
 	return func(s *Service) { s.events = sink }
 }
 
+// WithLogger logs to logger what a setter cannot report as its error; nil is
+// slog.Default.
+func WithLogger(logger *slog.Logger) Option {
+	return func(s *Service) { s.logger = logger }
+}
+
 // Get returns every preference, with the default for any that is unset or holds a value
 // that is no longer valid.
 func (s *Service) Get(ctx context.Context) (Settings, error) {
-	stored, err := s.prefs.GetMany(ctx,
-		KeyDefaultProfile, KeyWorktreeDefault, KeyWorktreeAutoCleanup, KeyTerminal, KeyCloneRoot, KeyTrustedBots,
-		KeySnoozeDays, KeyWindowSize,
-		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments,
-		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff,
-	)
+	stored, err := s.prefs.GetMany(ctx, settingKeys()...)
 	if err != nil {
 		return Settings{}, err
 	}
 
 	out := fromStored(stored)
 
-	// A default profile that is no longer stored (pruned, say) falls back too, so the
-	// settings never name a profile the launch dropdown cannot offer.
-	if out.DefaultProfile != DefaultProfile {
-		_, err := s.profiles.Lookup(ctx, out.DefaultProfile)
-		if errors.Is(err, profiles.ErrProfileNotFound) {
-			out.DefaultProfile = DefaultProfile
-		} else if err != nil {
-			return Settings{}, fmt.Errorf("read settings: %w", err)
-		}
+	if err = s.checkDefaultProfile(ctx, &out); err != nil {
+		return Settings{}, fmt.Errorf("read settings: %w", err)
 	}
 
 	return out, nil
 }
 
-// SetTerminal stores the terminal launches open in: "iterm2" or "terminal".
-func (s *Service) SetTerminal(ctx context.Context, terminal string) error {
-	if !validTerminal(terminal) {
-		return fmt.Errorf("%w %q: choose %q or %q", ErrInvalidTerminal, terminal, TerminalITerm2, TerminalApp)
+// SetTerminal stores the terminal launches open in, TerminalITerm2 or TerminalApp, and
+// returns the settings with it.
+func (s *Service) SetTerminal(ctx context.Context, id terminal.ID) (Settings, error) {
+	if !validTerminal(id) {
+		return Settings{}, fmt.Errorf("%w %q: choose %q or %q", ErrInvalidTerminal, id, TerminalITerm2, TerminalApp)
 	}
 
-	return s.prefs.Set(ctx, KeyTerminal, terminal)
+	return s.save(ctx, setting(KeyTerminal, string(id)))
 }
 
-// SetDefaultProfile stores the profile the launch dropdown preselects. It must name a
-// stored profile.
-func (s *Service) SetDefaultProfile(ctx context.Context, name string) error {
+// SetDefaultProfile stores the profile the launch dropdown preselects, and returns the
+// settings with it. It must name a stored profile.
+func (s *Service) SetDefaultProfile(ctx context.Context, name string) (Settings, error) {
 	if _, err := s.profiles.Lookup(ctx, name); err != nil {
 		if errors.Is(err, profiles.ErrProfileNotFound) {
-			return fmt.Errorf("%w %q", ErrUnknownProfile, name)
+			return Settings{}, fmt.Errorf("%w %q", ErrUnknownProfile, name)
 		}
 
-		return err
+		return Settings{}, err
 	}
 
-	return s.prefs.Set(ctx, KeyDefaultProfile, name)
+	return s.save(ctx, setting(KeyDefaultProfile, name))
 }
 
-// SetWorktreeDefault stores whether launches start in a worktree unless unticked.
-func (s *Service) SetWorktreeDefault(ctx context.Context, on bool) error {
-	return s.prefs.Set(ctx, KeyWorktreeDefault, strconv.FormatBool(on))
+// SetWorktreeDefault stores whether launches start in a worktree unless unticked, and
+// returns the settings with it.
+func (s *Service) SetWorktreeDefault(ctx context.Context, on bool) (Settings, error) {
+	return s.save(ctx, setting(KeyWorktreeDefault, strconv.FormatBool(on)))
 }
 
-// SetWorktreeAutoCleanup stores whether finished worktrees are cleaned up on their own.
-func (s *Service) SetWorktreeAutoCleanup(ctx context.Context, on bool) error {
-	return s.prefs.Set(ctx, KeyWorktreeAutoCleanup, strconv.FormatBool(on))
+// SetWorktreeAutoCleanup stores whether finished worktrees are cleaned up on their own,
+// and returns the settings with it.
+func (s *Service) SetWorktreeAutoCleanup(ctx context.Context, on bool) (Settings, error) {
+	return s.save(ctx, setting(KeyWorktreeAutoCleanup, strconv.FormatBool(on)))
 }
 
-// SetCloneRoot stores the clone root. It must be an absolute or ~-relative path to an
-// existing directory; it is stored as entered (trimmed and cleaned), so "~/projects"
-// stays portable across machines.
-func (s *Service) SetCloneRoot(ctx context.Context, root string) error {
+// SetCloneRoot stores the clone root, and returns the settings with it. It must be an
+// absolute or ~-relative path to an existing directory; it is stored as entered (trimmed
+// and cleaned), so "~/projects" stays portable across machines.
+func (s *Service) SetCloneRoot(ctx context.Context, root string) (Settings, error) {
 	root = strings.TrimSpace(root)
 
 	dir, err := paths.ExpandHome(root, s.home)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrInvalidCloneRoot, err)
+		return Settings{}, fmt.Errorf("%w: %w", ErrInvalidCloneRoot, err)
 	}
 
 	info, err := os.Stat(dir)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrInvalidCloneRoot, err)
+		return Settings{}, fmt.Errorf("%w: %w", ErrInvalidCloneRoot, err)
 	}
 
 	if !info.IsDir() {
-		return fmt.Errorf("%w: %s is not a directory", ErrInvalidCloneRoot, paths.Tilde(dir, s.home))
+		return Settings{}, fmt.Errorf("%w: %s is not a directory", ErrInvalidCloneRoot, paths.Tilde(dir, s.home))
 	}
 
-	return s.prefs.Set(ctx, KeyCloneRoot, filepath.Clean(root))
+	return s.save(ctx, setting(KeyCloneRoot, filepath.Clean(root)))
 }
 
-// SetTrustedBots stores the bots whose items are trusted. Each login may be written as
-// GitHub shows it ("dependabot", "dependabot[bot]", or "app/dependabot"); the list is
-// stored normalized and sorted, and may be empty to trust no bot.
-func (s *Service) SetTrustedBots(ctx context.Context, bots []string) error {
+// SetTrustedBots stores the bots whose items are trusted, and returns the settings with
+// them. Each login may be written as GitHub shows it ("dependabot", "dependabot[bot]", or
+// "app/dependabot"); the list is stored normalized and sorted, and may be empty to trust
+// no bot.
+func (s *Service) SetTrustedBots(ctx context.Context, bots []string) (Settings, error) {
 	normalized, err := trust.NormalizeBots(bots)
 	if err != nil {
-		return err
+		return Settings{}, err
 	}
 
-	return s.prefs.Set(ctx, KeyTrustedBots, trust.EncodeBots(normalized))
+	return s.save(ctx, setting(KeyTrustedBots, trust.EncodeBots(normalized)))
 }
 
-// ResetTrustedBots goes back to the default trusted bots.
-func (s *Service) ResetTrustedBots(ctx context.Context) error {
-	if err := s.prefs.Delete(ctx, KeyTrustedBots); err != nil {
-		return fmt.Errorf("reset the trusted bots: %w", err)
-	}
+// ResetTrustedBots goes back to the default trusted bots, and returns the settings with
+// them.
+func (s *Service) ResetTrustedBots(ctx context.Context) (Settings, error) {
+	return s.save(ctx, func(ctx context.Context, p *prefs.Store) error {
+		if err := p.Delete(ctx, KeyTrustedBots); err != nil {
+			return fmt.Errorf("reset the trusted bots: %w", err)
+		}
 
-	return nil
+		return nil
+	})
 }
 
-// SetSnoozeDays stores how many days the Snooze button hides an item:
-// snooze.MinDays to snooze.MaxDays.
-func (s *Service) SetSnoozeDays(ctx context.Context, days int) error {
+// SetSnoozeDays stores how many days the Snooze button hides an item, snooze.MinDays to
+// snooze.MaxDays, and returns the settings with it.
+func (s *Service) SetSnoozeDays(ctx context.Context, days int) (Settings, error) {
 	if !snooze.ValidDays(days) {
-		return fmt.Errorf("%w: %d days; choose %d to %d", snooze.ErrInvalidDays, days, snooze.MinDays, snooze.MaxDays)
+		return Settings{}, fmt.Errorf("%w: %d days; choose %d to %d", snooze.ErrInvalidDays, days, snooze.MinDays,
+			snooze.MaxDays)
 	}
 
-	return s.prefs.Set(ctx, KeySnoozeDays, strconv.Itoa(days))
+	return s.save(ctx, setting(KeySnoozeDays, strconv.Itoa(days)))
 }
 
-// SetSnoozeWake stores which new activity ends a snooze early. Every rule is stored
-// together, so the rules never mix two saves.
-func (s *Service) SetSnoozeWake(ctx context.Context, rules snooze.Rules) error {
+// SetSnoozeWake stores which new activity ends a snooze early, and returns the settings
+// with it. Every rule is stored together, so the rules never mix two saves.
+func (s *Service) SetSnoozeWake(ctx context.Context, rules snooze.Rules) (Settings, error) {
 	if err := rules.Validate(); err != nil {
-		return err
+		return Settings{}, err
 	}
 
-	if err := s.prefs.SetMany(ctx, rules.Encode()); err != nil {
-		return fmt.Errorf("save the snooze rules: %w", err)
-	}
+	return s.save(ctx, func(ctx context.Context, p *prefs.Store) error {
+		if err := p.SetMany(ctx, rules.Encode()); err != nil {
+			return fmt.Errorf("save the snooze rules: %w", err)
+		}
 
-	return nil
+		return nil
+	})
 }
 
-// SetSensitiveScope stores whose pull requests have their changed files checked:
-// sensitive.ScopeOutside, or sensitive.ScopeCollaborators to check collaborators' too.
-func (s *Service) SetSensitiveScope(ctx context.Context, scope string) error {
-	if !sensitive.ValidScope(scope) {
-		return fmt.Errorf("%w %q: choose %q or %q", sensitive.ErrInvalidScope, scope, sensitive.ScopeOutside,
+// SetSensitiveScope stores whose pull requests have their changed files checked,
+// sensitive.ScopeOutside or sensitive.ScopeCollaborators to check collaborators' too, and
+// returns the settings with it.
+func (s *Service) SetSensitiveScope(ctx context.Context, scope sensitive.Scope) (Settings, error) {
+	if !scope.Valid() {
+		return Settings{}, fmt.Errorf("%w %q: choose %q or %q", sensitive.ErrInvalidScope, scope, sensitive.ScopeOutside,
 			sensitive.ScopeCollaborators)
 	}
 
-	return s.prefs.Set(ctx, sensitive.PrefScope, scope)
+	return s.save(ctx, setting(sensitive.PrefScope, string(scope)))
 }
 
-// SetSensitiveCategory turns a built-in category of sensitive files on or off. The agent
-// configuration category cannot be turned off, since launches are held back by it.
-func (s *Service) SetSensitiveCategory(ctx context.Context, id string, on bool) error {
-	err := s.prefs.Update(ctx, sensitive.PrefOff, func(stored string, _ bool) (string, error) {
-		cfg := sensitive.DecodeConfig(map[string]string{sensitive.PrefOff: stored})
+// SetSensitiveCategory turns a built-in category of sensitive files on or off, and returns
+// the settings with it. The agent configuration category cannot be turned off, since
+// launches are held back by it.
+func (s *Service) SetSensitiveCategory(ctx context.Context, id string, on bool) (Settings, error) {
+	return s.save(ctx, func(ctx context.Context, p *prefs.Store) error {
+		err := p.Update(ctx, sensitive.PrefOff, func(stored string, _ bool) (string, error) {
+			cfg := sensitive.DecodeConfig(map[string]string{sensitive.PrefOff: stored})
 
-		off, err := sensitive.SetCategory(cfg.Off, id, on)
+			off, err := sensitive.SetCategory(cfg.Off, id, on)
+			if err != nil {
+				return "", err
+			}
+
+			return sensitive.EncodeList(off), nil
+		})
 		if err != nil {
-			return "", err
+			return fmt.Errorf("save the sensitive file categories: %w", err)
 		}
 
-		return sensitive.EncodeList(off), nil
+		return nil
 	})
-	if err != nil {
-		return fmt.Errorf("save the sensitive file categories: %w", err)
-	}
-
-	return nil
 }
 
-// SetSensitivePatterns stores the user's own patterns of sensitive files, in order. Each
-// is trimmed, empty ones and repeats are dropped, and a pattern that cannot be used is
-// refused with the reason (see the sensitive package for the syntax).
-func (s *Service) SetSensitivePatterns(ctx context.Context, patterns []string) error {
+// SetSensitivePatterns stores the user's own patterns of sensitive files, in order, and
+// returns the settings with them. Each is trimmed, empty ones and repeats are dropped, and
+// a pattern that cannot be used is refused with the reason (see the sensitive package for
+// the syntax).
+func (s *Service) SetSensitivePatterns(ctx context.Context, patterns []string) (Settings, error) {
 	normalized, err := sensitive.NormalizePatterns(patterns)
 	if err != nil {
-		return err
+		return Settings{}, err
 	}
 
-	return s.prefs.Set(ctx, sensitive.PrefPatterns, sensitive.EncodeList(normalized))
+	return s.save(ctx, setting(sensitive.PrefPatterns, sensitive.EncodeList(normalized)))
 }
 
 // MatchSensitivePath reports whether a path would count as sensitive under the stored
@@ -389,6 +418,8 @@ func fromStored(stored map[string]string) Settings {
 		SensitiveCategories: sensitive.Categories(),
 		MenuBar:             decodeMenuBar(stored[KeyMenuBar]),
 		BannersOff:          notifyprefs.DecodeBannersOff(stored[notifyprefs.KeyBannersOff]),
+		Theme:               decodeTheme(stored[KeyTheme]),
+		CollapsedSections:   decodeCollapsed(stored),
 	}
 
 	if v := stored[KeyDefaultProfile]; v != "" {
@@ -403,7 +434,7 @@ func fromStored(stored map[string]string) Settings {
 		out.WorktreeAutoCleanup = v
 	}
 
-	if v := stored[KeyTerminal]; validTerminal(v) {
+	if v := terminal.ID(stored[KeyTerminal]); validTerminal(v) {
 		out.Terminal = v
 	}
 
@@ -418,7 +449,73 @@ func fromStored(stored map[string]string) Settings {
 	return out
 }
 
-// validTerminal reports whether terminal is one of the choices.
-func validTerminal(terminal string) bool {
-	return terminal == TerminalITerm2 || terminal == TerminalApp
+// validTerminal reports whether id is one of the choices.
+func validTerminal(id terminal.ID) bool {
+	return id == TerminalITerm2 || id == TerminalApp
+}
+
+// save runs write and reads every preference back in one transaction, and returns the
+// settings as stored. When either fails, the transaction rolls back and nothing is
+// stored. The default profile is checked once the change is committed; a failure there
+// is logged, and the settings name the stored profile.
+func (s *Service) save(ctx context.Context, write func(context.Context, *prefs.Store) error) (Settings, error) {
+	var stored map[string]string
+
+	err := store.InTx(ctx, s.pool, func(tx *sql.Tx) error {
+		inTx := s.prefs.WithTx(tx)
+		if err := write(ctx, inTx); err != nil {
+			return err
+		}
+
+		read, err := inTx.GetMany(ctx, settingKeys()...)
+		stored = read
+
+		return err
+	})
+	if err != nil {
+		return Settings{}, err
+	}
+
+	out := fromStored(stored)
+
+	if err = s.checkDefaultProfile(ctx, &out); err != nil {
+		s.logger.WarnContext(ctx, "the setting was saved, but the default profile could not be checked", "error", err)
+	}
+
+	return out, nil
+}
+
+// setting returns a write that stores value under key.
+func setting(key, value string) func(context.Context, *prefs.Store) error {
+	return func(ctx context.Context, p *prefs.Store) error {
+		return p.Set(ctx, key, value)
+	}
+}
+
+// checkDefaultProfile falls back to DefaultProfile when the settings name a profile that
+// is no longer stored (pruned, say), so they never name one the launch dropdown cannot
+// offer.
+func (s *Service) checkDefaultProfile(ctx context.Context, out *Settings) error {
+	if out.DefaultProfile == DefaultProfile {
+		return nil
+	}
+
+	_, err := s.profiles.Lookup(ctx, out.DefaultProfile)
+	if errors.Is(err, profiles.ErrProfileNotFound) {
+		out.DefaultProfile = DefaultProfile
+
+		return nil
+	}
+
+	return err
+}
+
+// settingKeys returns every preference key the settings read.
+func settingKeys() []string {
+	return append([]string{
+		KeyDefaultProfile, KeyWorktreeDefault, KeyWorktreeAutoCleanup, KeyTerminal, KeyCloneRoot, KeyTrustedBots,
+		KeySnoozeDays, KeyWindowSize,
+		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments,
+		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, KeyTheme,
+	}, collapsedKeys()...)
 }

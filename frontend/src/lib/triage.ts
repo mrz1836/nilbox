@@ -1,4 +1,4 @@
-import type { InboxItem, InboxList, InboxSnapshot, WakeReasons } from '../platform'
+import type { InboxItem, InboxList, InboxSnapshot, WakeReasons, WakeReview } from '../platform'
 import { counted } from './format'
 
 // Triage as the inbox shows it. The snapshot keeps every item in its lists with its
@@ -23,8 +23,9 @@ export const commentThresholds: readonly number[] = [0, 1, 3, 5, 10]
 // reviewWakes are the choices for which reviews end a snooze early.
 export const reviewWakes = ['never', 'decisions', 'any'] as const
 
-// reviewText names the review that ended a snooze.
-const reviewText: Readonly<Record<string, string>> = {
+// reviewText names the review that ended a snooze. None, or one this build does not
+// know, as another build may have stored, names nothing.
+const reviewText: Readonly<Partial<Record<WakeReview, string>>> = {
   changes_requested: 'changes requested',
   approved: 'approved',
   reviewed: 'new review',

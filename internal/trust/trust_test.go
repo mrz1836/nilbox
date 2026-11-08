@@ -68,7 +68,7 @@ func TestClassifyBots(t *testing.T) {
 		name   string
 		author trust.Author
 		cross  bool
-		want   string
+		want   trust.Class
 	}{
 		{name: "a trusted bot", author: trust.Author{Login: "dependabot", Type: "Bot", Association: "NONE"}, want: trust.ClassBot},
 		{name: "matched ignoring case and suffix", author: trust.Author{Login: "renovate", Type: "Bot"}, want: trust.ClassBot},

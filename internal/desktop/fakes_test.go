@@ -87,7 +87,7 @@ func (p *fakePage) events() []event.WindowEvent {
 
 // opening is one call to Window.Open.
 type opening struct {
-	theme string
+	theme settings.Theme
 	size  settings.WindowSize
 }
 
@@ -96,10 +96,10 @@ type fakeWindow struct {
 	mu     sync.Mutex
 	opened []opening
 	shows  int
-	themes []string
+	themes []settings.Theme
 }
 
-func (w *fakeWindow) Open(theme string, size settings.WindowSize) {
+func (w *fakeWindow) Open(theme settings.Theme, size settings.WindowSize) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -113,7 +113,7 @@ func (w *fakeWindow) Show() {
 	w.shows++
 }
 
-func (w *fakeWindow) SetTheme(theme string) {
+func (w *fakeWindow) SetTheme(theme settings.Theme) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -134,7 +134,7 @@ func (w *fakeWindow) shown() int {
 	return w.shows
 }
 
-func (w *fakeWindow) themesSet() []string {
+func (w *fakeWindow) themesSet() []settings.Theme {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -251,13 +251,13 @@ func (f *fakeInbox) readCount() int {
 
 // fakeSettings serves fixed settings, or fails every read with err.
 type fakeSettings struct {
-	theme   string
+	theme   settings.Theme
 	menuBar bool
 	size    settings.WindowSize
 	err     error
 }
 
-func (f fakeSettings) Theme(context.Context) (string, error) {
+func (f fakeSettings) Theme(context.Context) (settings.Theme, error) {
 	if f.err != nil {
 		return "", f.err
 	}

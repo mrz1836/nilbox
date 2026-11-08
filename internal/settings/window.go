@@ -70,14 +70,15 @@ func ReadWindowSize(ctx context.Context, store *prefs.Store) (WindowSize, error)
 }
 
 // SetWindowSize stores the size the window opens at, which takes effect at the next
-// launch: MinWindowWidth by MinWindowHeight up to MaxWindowWidth by MaxWindowHeight.
-func (s *Service) SetWindowSize(ctx context.Context, size WindowSize) error {
+// launch: MinWindowWidth by MinWindowHeight up to MaxWindowWidth by MaxWindowHeight. It
+// returns the settings with it.
+func (s *Service) SetWindowSize(ctx context.Context, size WindowSize) (Settings, error) {
 	if !size.valid() {
-		return fmt.Errorf("%w: %d x %d; choose %d x %d up to %d x %d", ErrInvalidWindowSize, size.Width, size.Height,
-			MinWindowWidth, MinWindowHeight, MaxWindowWidth, MaxWindowHeight)
+		return Settings{}, fmt.Errorf("%w: %d x %d; choose %d x %d up to %d x %d", ErrInvalidWindowSize, size.Width,
+			size.Height, MinWindowWidth, MinWindowHeight, MaxWindowWidth, MaxWindowHeight)
 	}
 
-	return s.prefs.Set(ctx, KeyWindowSize, size.encode())
+	return s.save(ctx, setting(KeyWindowSize, size.encode()))
 }
 
 // valid reports whether the size is within the bounds.

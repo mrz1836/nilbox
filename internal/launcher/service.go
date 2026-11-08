@@ -55,7 +55,7 @@ type LaunchSettings struct {
 	WorktreeDefault bool
 
 	// Terminal is the ID of the terminal a launch opens in, such as terminal.ITerm2.
-	Terminal string
+	Terminal terminal.ID
 
 	// CloneRoot is the directory whose children are the user's local clones, as entered,
 	// e.g. "~/projects".
@@ -208,7 +208,7 @@ type LaunchResult struct {
 	Permission string `json:"permission"`
 
 	// Terminal is the terminal the launch opened in.
-	Terminal string `json:"terminal"`
+	Terminal terminal.ID `json:"terminal"`
 }
 
 // Preview is a launch planned but not started: what it resolved to, where it runs, the
@@ -237,7 +237,7 @@ type Preview struct {
 	Prompt string `json:"prompt"`
 
 	// Terminal is the terminal the launch opens in.
-	Terminal string `json:"terminal"`
+	Terminal terminal.ID `json:"terminal"`
 }
 
 // Service launches coding-agent sessions on inbox items.
@@ -323,8 +323,7 @@ func (s *Service) ResolveItems(ctx context.Context, ids []int64) ([]ItemResoluti
 	for _, row := range rows {
 		res, _, _, resolveErr := resolve(w, row.subject(w.policy), LaunchRequest{ItemID: row.ID})
 		if resolveErr != nil {
-			res = Resolution{ItemID: row.ID, Kind: string(row.Kind), Owner: row.Owner, Repo: row.repo().String()}
-			out = append(out, ItemResolution{Resolution: res, Problem: textutil.Sentence(resolveErr.Error())})
+			out = append(out, ItemResolution{Resolution: row.unresolved(), Problem: textutil.Sentence(resolveErr.Error())})
 
 			continue
 		}

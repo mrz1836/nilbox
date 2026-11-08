@@ -11,11 +11,9 @@ export interface DataReset {
     "path": string;
 
     /**
-     * Reason says why it could not be read: "corrupt" for a file that is not a database
-     * or is damaged, "unmanaged" for tables the app did not create, and "history" for a
-     * migration history this build disagrees with.
+     * Reason says why it could not be read.
      */
-    "reason": string;
+    "reason": ResetReason;
 }
 
 /**
@@ -73,3 +71,31 @@ export interface Info {
      */
     "dataReset"?: DataReset | null;
 }
+
+/**
+ * ResetReason says why the database could not be read. The values are the store
+ * package's reasons for setting a database aside.
+ */
+export type ResetReason = "corrupt" | "unmanaged" | "history";
+
+/**
+ * The values of ResetReason, by the names of their Go constants.
+ */
+export const ResetReason = {
+    /**
+     * Why the database could not be read.
+     *
+     * ResetCorrupt is a file that is not a database, or is damaged.
+     */
+    ResetCorrupt: "corrupt",
+
+    /**
+     * ResetUnmanaged is a database with tables the app did not create.
+     */
+    ResetUnmanaged: "unmanaged",
+
+    /**
+     * ResetHistory is a migration history this build disagrees with.
+     */
+    ResetHistory: "history",
+} as const;

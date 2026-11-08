@@ -6,6 +6,11 @@ export {
     Service
 };
 
+export {
+    AppliesTo,
+    Severity
+} from "./models.js";
+
 export type {
     CheckRequest,
     CheckResult,

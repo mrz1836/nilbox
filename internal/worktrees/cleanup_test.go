@@ -191,7 +191,7 @@ func pushed(t *testing.T, repo, branch, head string) {
 }
 
 // pr is a pull request's state on GitHub.
-func pr(state, head string) ItemState {
+func pr(state ItemStatus, head string) ItemState {
 	s := ItemState{PullRequest: true, Title: "Fix things", URL: "https://github.com/acme-org/example-repo/pull/1", State: state, HeadOID: head}
 	if state != ItemOpen {
 		s.ClosedAt = mergedAt()
@@ -274,7 +274,7 @@ func TestListLinksAndStagesAgentWorktrees(t *testing.T) {
 	row := mustRow(t, snap, finished)
 	require.NotNil(t, row.Item)
 	assert.Equal(t, LinkedItem{
-		Kind: string(item.KindPR), Owner: "acme-org", Name: "example-repo", Number: 1, Title: "Fix things",
+		Kind: item.KindPR, Owner: "acme-org", Name: "example-repo", Number: 1, Title: "Fix things",
 		URL: "https://github.com/acme-org/example-repo/pull/1", State: ItemMerged, ClosedAt: "2026-11-06T18:00:00Z",
 		HeadOID: finishedHead,
 	}, *row.Item)
@@ -304,7 +304,7 @@ func TestListLinksAndStagesAgentWorktrees(t *testing.T) {
 	assert.False(t, row.CanCleanUp)
 
 	row = mustRow(t, snap, changed)
-	assert.Equal(t, string(item.KindIssue), row.Item.Kind)
+	assert.Equal(t, item.KindIssue, row.Item.Kind)
 	assert.Equal(t, ItemClosed, row.Item.State)
 	assert.Equal(t, StageNeedsReview, row.Stage, "done, but it has uncommitted changes")
 
@@ -368,7 +368,7 @@ func TestListLinksByLaunchRecord(t *testing.T) {
 
 	row := mustRow(t, snap, path)
 	require.NotNil(t, row.Item)
-	assert.Equal(t, string(item.KindIssue), row.Item.Kind)
+	assert.Equal(t, item.KindIssue, row.Item.Kind)
 	assert.Equal(t, 12, row.Item.Number)
 	assert.True(t, row.Item.Launched)
 	assert.Equal(t, StageFinished, row.Stage)

@@ -141,7 +141,7 @@ func TestRefreshOnlyChecksPullRequestsFromOutside(t *testing.T) {
 
 	// Narrowed to outside contributors, a collaborator's pull request is no longer shown
 	// as checked, at once.
-	h.setPrefs(t, map[string]string{sensitive.PrefScope: sensitive.ScopeOutside})
+	h.setPrefs(t, map[string]string{sensitive.PrefScope: string(sensitive.ScopeOutside)})
 
 	snap, err := h.svc.Snapshot(t.Context())
 	require.NoError(t, err)

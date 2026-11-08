@@ -136,7 +136,7 @@ type ItemState struct {
 	URL   string
 
 	// State is ItemOpen, ItemMerged, or ItemClosed; any other value reads as ItemOpen.
-	State string
+	State ItemStatus
 
 	// ClosedAt is when the item was merged or closed, or zero while it is open.
 	ClosedAt time.Time
@@ -257,6 +257,7 @@ func NewService(cfg Config) *Service {
 		logger:   logger,
 		procs:    osProcesses{},
 		zone:     time.Local, //nolint:gosmopolitan // the agent writes a session's start in the machine's zone or in UTC
+		last:     emptyReport(),
 	}
 }
 

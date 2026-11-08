@@ -69,25 +69,34 @@ const (
 	CategoryCustom = "custom"
 )
 
-// Levels say how closely a category's files deserve a look.
+// Level says how closely a category's files deserve a look.
+type Level string
+
+// Levels, from the most pressing.
 const (
 	// LevelDanger is for files that run, or steer an agent, without anyone choosing to
 	// run them.
-	LevelDanger = "danger"
+	LevelDanger Level = "danger"
 
 	// LevelWarning is for files that change what the project trusts or depends on.
-	LevelWarning = "warning"
+	LevelWarning Level = "warning"
+
+	// LevelNone is the level of a path that matched no category.
+	LevelNone Level = ""
 )
 
-// Scopes say whose pull requests are checked.
+// Scope says whose pull requests are checked.
+type Scope string
+
+// Scopes, from the narrowest.
 const (
 	// ScopeOutside checks every pull request from a fork, from outside contributors, and
 	// from bots not on the trusted list.
-	ScopeOutside = "outside"
+	ScopeOutside Scope = "outside"
 
 	// ScopeCollaborators also checks collaborators' pull requests: people with access to
 	// the repository who are not its owner or members of its org.
-	ScopeCollaborators = "collaborators"
+	ScopeCollaborators Scope = "collaborators"
 )
 
 // DefaultScope is the scope of a fresh database.
@@ -152,7 +161,7 @@ type Category struct {
 	Description string `json:"description"`
 
 	// Level is LevelDanger or LevelWarning.
-	Level string `json:"level"`
+	Level Level `json:"level"`
 
 	// Locked reports a category that cannot be turned off.
 	Locked bool `json:"locked"`
@@ -232,7 +241,7 @@ func customCategory(patterns []string) Category {
 // Config is what the user chose. Every field is a plain value.
 type Config struct {
 	// Scope is ScopeOutside or ScopeCollaborators.
-	Scope string `json:"scope"`
+	Scope Scope `json:"scope"`
 
 	// Off lists the built-in categories turned off, sorted. A locked category is never
 	// in it.
@@ -259,7 +268,7 @@ func (c Config) Enabled(id string) bool {
 func DecodeConfig(prefs map[string]string) Config {
 	cfg := DefaultConfig()
 
-	if v := prefs[PrefScope]; ValidScope(v) {
+	if v := Scope(prefs[PrefScope]); v.Valid() {
 		cfg.Scope = v
 	}
 
@@ -307,9 +316,9 @@ func decodePatterns(raw string) []string {
 	return patterns
 }
 
-// ValidScope reports whether scope is one of the choices.
-func ValidScope(scope string) bool {
-	return scope == ScopeOutside || scope == ScopeCollaborators
+// Valid reports whether the scope is one of the choices.
+func (s Scope) Valid() bool {
+	return s == ScopeOutside || s == ScopeCollaborators
 }
 
 // SetCategory returns off with a built-in category turned on or off, sorted, for PrefOff.
@@ -381,7 +390,7 @@ func EncodeList(list []string) string {
 // Checked reports whether a pull request's files are checked under scope: every pull
 // request whose trust class is trust.ClassOutside, and a collaborator's under
 // ScopeCollaborators, but never one the signed-in user opened (mine).
-func Checked(scope, class, association string, mine bool) bool {
+func Checked(scope Scope, class trust.Class, association string, mine bool) bool {
 	if mine {
 		return false
 	}

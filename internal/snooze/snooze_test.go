@@ -133,9 +133,9 @@ func TestReviews(t *testing.T) {
 
 	tests := []struct {
 		name string
-		rule string
+		rule ReviewRule
 		now  State
-		want string
+		want ReviewOutcome
 	}{
 		{"approval, decisions", ReviewsDecisions, approved, ReviewApproved},
 		{"changes, decisions", ReviewsDecisions, changes, ReviewChangesRequested},
@@ -163,6 +163,14 @@ func TestReviews(t *testing.T) {
 	was := before()
 	was.Decision = "APPROVED"
 	assert.Empty(t, Wake(Rules{Reviews: ReviewsAny}, was, was, false).Review)
+}
+
+func TestReviewOutcomesAreValid(t *testing.T) {
+	for _, o := range []ReviewOutcome{ReviewApproved, ReviewChangesRequested, ReviewNew, ReviewNone} {
+		assert.True(t, o.Valid(), o)
+	}
+
+	assert.False(t, ReviewOutcome("praised").Valid())
 }
 
 func TestComments(t *testing.T) {

@@ -75,7 +75,7 @@ type Starter struct {
 	Key       string
 	Name      string
 	Nickname  string
-	AppliesTo string
+	AppliesTo AppliesTo
 	Body      string
 	Model     string
 	Effort    string

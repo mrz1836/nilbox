@@ -148,6 +148,8 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     sensitiveCategories: sensitiveCategories(),
     menuBar: true,
     bannersOff: [],
+    theme: 'system',
+    collapsedSections: [],
     ...overrides,
   }
 }

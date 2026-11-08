@@ -190,14 +190,17 @@ func pickItem(t linkTarget, states map[string]ItemState) *LinkedItem {
 // linkedItem converts GitHub's answer for ref.
 func linkedItem(t linkTarget, ref item.Ref, state ItemState) *LinkedItem {
 	linked := &LinkedItem{
-		Kind: string(t.kind), Owner: ref.Repo.Owner, Name: ref.Repo.Repo, Number: ref.Number, Title: state.Title,
+		Kind: t.kind, Owner: ref.Repo.Owner, Name: ref.Repo.Repo, Number: ref.Number, Title: state.Title,
 		URL: state.URL, HeadOID: state.HeadOID, Launched: t.launched,
 	}
 
 	switch state.State {
 	case ItemMerged, ItemClosed:
 		linked.State = state.State
+	case ItemOpen:
+		linked.State = ItemOpen
 	default:
+		// GitHub's answer reads as open unless it says merged or closed.
 		linked.State = ItemOpen
 	}
 
@@ -228,12 +231,12 @@ func headIsItemHead(wt *Worktree) bool {
 
 // stageOf is a linked worktree's stage. Prune clears a worktree whose directory is gone,
 // and one with no item, or locked by hand, has no stage.
-func stageOf(wt *Worktree) string {
+func stageOf(wt *Worktree) Stage {
 	switch {
 	case wt.Locked && !wt.StaleLock:
 		return lockedStage(wt)
 	case wt.Prunable, wt.Item == nil:
-		return ""
+		return StageNone
 	case !wt.Item.done():
 		return StageActive
 	case !wt.Dirty && wt.Error == "" && wt.OnGitHub:
@@ -245,12 +248,12 @@ func stageOf(wt *Worktree) string {
 
 // lockedStage is the stage of a worktree under a live lock: in use when an agent session
 // holds it, and none when it was locked by hand.
-func lockedStage(wt *Worktree) string {
+func lockedStage(wt *Worktree) Stage {
 	if wt.AgentLock {
 		return StageInUse
 	}
 
-	return ""
+	return StageNone
 }
 
 // autoCleanable reports a finished worktree the automatic sweep may remove: its pull
@@ -263,7 +266,7 @@ func autoCleanable(wt Worktree) bool {
 	switch {
 	case !wt.CanCleanUp || it == nil:
 		return false
-	case item.Kind(it.Kind) == item.KindPR:
+	case it.Kind == item.KindPR:
 		return it.State == ItemMerged && (it.Launched || it.HeadOID == wt.Head)
 	default:
 		return it.State == ItemClosed && it.Launched

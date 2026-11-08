@@ -35,7 +35,7 @@ import "github.com/mrz1836/nilbox/internal/settings"
 // its menus (a <select>'s popup among them), and the web view's prefers-color-scheme
 // all take the pinned light or dark appearance, or follow the system for ThemeSystem.
 // It must run on the main thread.
-func setNativeAppearance(theme string) {
+func setNativeAppearance(theme settings.Theme) {
 	appearance := C.appearanceSystem
 
 	switch theme {
@@ -43,6 +43,7 @@ func setNativeAppearance(theme string) {
 		appearance = C.appearanceLight
 	case settings.ThemeDark:
 		appearance = C.appearanceDark
+	case settings.ThemeSystem:
 	}
 
 	C.setAppAppearance(C.int(appearance))

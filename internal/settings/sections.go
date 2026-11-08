@@ -6,18 +6,23 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
-	"strings"
+
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
-// Inbox sections, named as the inbox snapshot names its lists.
+// ListKey names an inbox list, as the inbox snapshot names it: each list is a section of
+// the inbox the user can collapse.
+type ListKey string
+
+// The inbox lists, in the order the inbox shows them.
 const (
-	SectionReviewRequested = "reviewRequested"
-	SectionAuthored        = "authored"
-	SectionAssigned        = "assigned"
+	ListReviewRequested ListKey = "reviewRequested"
+	ListAuthored        ListKey = "authored"
+	ListAssigned        ListKey = "assigned"
 )
 
 // keyCollapsedPrefix starts the key that stores whether an inbox section is collapsed:
-// "ui.collapsed.<section>", holding "true" or "false". Each section has its own key, so
+// "ui.collapsed.<list key>", holding "true" or "false". Each section has its own key, so
 // collapsing one never rewrites another. The keys are the user's, so they sit under ui.*
 // with the other window settings rather than under the inbox's own inbox.* keys.
 const keyCollapsedPrefix = "ui.collapsed."
@@ -25,44 +30,60 @@ const keyCollapsedPrefix = "ui.collapsed."
 // ErrUnknownSection is returned for a section that is not one of the inbox lists.
 var ErrUnknownSection = errors.New("unknown inbox section")
 
-// sectionNames returns the inbox sections in the order the inbox shows them.
-func sectionNames() []string {
-	return []string{SectionReviewRequested, SectionAuthored, SectionAssigned}
+// listKeys returns the inbox lists in the order the inbox shows them.
+func listKeys() []ListKey {
+	return []ListKey{ListReviewRequested, ListAuthored, ListAssigned}
+}
+
+// collapsedKey is the preference that stores whether the section for list is collapsed.
+func collapsedKey(list ListKey) string {
+	return keyCollapsedPrefix + string(list)
+}
+
+// collapsedKeys returns the preference of every section, in the order the inbox shows
+// them.
+func collapsedKeys() []string {
+	keys := make([]string, 0, len(listKeys()))
+	for _, list := range listKeys() {
+		keys = append(keys, collapsedKey(list))
+	}
+
+	return keys
+}
+
+// decodeCollapsed reads the collapsed sections from the stored preferences, in the order
+// the inbox shows them. A stored value that is not a boolean counts as open.
+func decodeCollapsed(stored map[string]string) []ListKey {
+	out := []ListKey{}
+
+	for _, list := range listKeys() {
+		if collapsed, err := strconv.ParseBool(stored[collapsedKey(list)]); err == nil && collapsed {
+			out = append(out, list)
+		}
+	}
+
+	return out
 }
 
 // CollapsedSections returns the inbox sections the user collapsed, in the order the inbox
 // shows them. None is collapsed on a fresh database, and a stored value that is not a
 // boolean counts as open.
-func (s *Service) CollapsedSections(ctx context.Context) ([]string, error) {
-	sections := sectionNames()
-
-	keys := make([]string, len(sections))
-	for i, section := range sections {
-		keys[i] = keyCollapsedPrefix + section
-	}
-
-	stored, err := s.prefs.GetMany(ctx, keys...)
+func (s *Service) CollapsedSections(ctx context.Context) ([]ListKey, error) {
+	stored, err := s.prefs.GetMany(ctx, collapsedKeys()...)
 	if err != nil {
 		return nil, fmt.Errorf("read the collapsed inbox sections: %w", err)
 	}
 
-	// A non-nil slice, so the UI receives [] rather than null.
-	out := make([]string, 0, len(sections))
-	for _, section := range sections {
-		if collapsed, err := strconv.ParseBool(stored[keyCollapsedPrefix+section]); err == nil && collapsed {
-			out = append(out, section)
-		}
-	}
-
-	return out, nil
+	return decodeCollapsed(stored), nil
 }
 
 // SetSectionCollapsed stores whether an inbox section is collapsed, so the inbox opens the
-// same way at the next launch.
-func (s *Service) SetSectionCollapsed(ctx context.Context, section string, collapsed bool) error {
-	if !slices.Contains(sectionNames(), section) {
-		return fmt.Errorf("%w %q: choose one of %s", ErrUnknownSection, section, strings.Join(sectionNames(), ", "))
+// same way at the next launch, and returns the settings with it.
+func (s *Service) SetSectionCollapsed(ctx context.Context, section ListKey, collapsed bool) (Settings, error) {
+	if !slices.Contains(listKeys(), section) {
+		return Settings{}, fmt.Errorf("%w %q: choose one of %s", ErrUnknownSection, section,
+			textutil.Join(listKeys(), ", "))
 	}
 
-	return s.prefs.Set(ctx, keyCollapsedPrefix+section, strconv.FormatBool(collapsed))
+	return s.save(ctx, setting(collapsedKey(section), strconv.FormatBool(collapsed)))
 }

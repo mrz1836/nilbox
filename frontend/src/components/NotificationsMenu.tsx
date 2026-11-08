@@ -5,7 +5,7 @@ import { errorMessage, formatCount } from '../lib/format'
 import { entryRef, kindTitle } from '../lib/notifications'
 import type { NotificationsState } from '../lib/useNotifications'
 import { usePopover } from '../lib/usePopover'
-import type { AppNotification } from '../platform'
+import type { AppNotification, NotificationKind } from '../platform'
 import { quietButtonClass } from './controls'
 import { AssignIcon, BellIcon, ClockIcon, EyeIcon, SlidersIcon } from './icons'
 
@@ -18,8 +18,9 @@ export interface NotificationsMenuProps {
   onSettings: () => void
 }
 
-// kindIcons are each kind's icon in the history.
-const kindIcons: Readonly<Record<string, (props: { className?: string }) => ReactNode>> = {
+// kindIcons are each kind's icon in the history. A kind this build does not know, as
+// another build may have stored, shows the bell.
+const kindIcons: Readonly<Partial<Record<NotificationKind, (props: { className?: string }) => ReactNode>>> = {
   review_requested: EyeIcon,
   assigned: AssignIcon,
   woke: ClockIcon,

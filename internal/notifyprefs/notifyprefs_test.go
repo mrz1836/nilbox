@@ -12,7 +12,14 @@ import (
 func TestKinds(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, []string{"review_requested", "assigned", "woke"}, notifyprefs.Kinds())
+	assert.Equal(t, []notifyprefs.Kind{"review_requested", "assigned", "woke"}, notifyprefs.Kinds())
+
+	for _, kind := range notifyprefs.Kinds() {
+		assert.True(t, kind.Valid(), kind)
+	}
+
+	assert.False(t, notifyprefs.Kind("mentions").Valid())
+	assert.False(t, notifyprefs.Kind("").Valid())
 }
 
 func TestDecodeBannersOff(t *testing.T) {
@@ -21,15 +28,15 @@ func TestDecodeBannersOff(t *testing.T) {
 	tests := []struct {
 		name   string
 		stored string
-		want   []string
+		want   []notifyprefs.Kind
 	}{
-		{name: "nothing stored: every kind is on", stored: "", want: []string{}},
-		{name: "not JSON", stored: "not json", want: []string{}},
-		{name: "not a list", stored: `{"woke":true}`, want: []string{}},
-		{name: "an empty list", stored: `[]`, want: []string{}},
+		{name: "nothing stored: every kind is on", stored: "", want: []notifyprefs.Kind{}},
+		{name: "not JSON", stored: "not json", want: []notifyprefs.Kind{}},
+		{name: "not a list", stored: `{"woke":true}`, want: []notifyprefs.Kind{}},
+		{name: "an empty list", stored: `[]`, want: []notifyprefs.Kind{}},
 		{
 			name: "known kinds in the order of Kinds, unknown ones dropped", stored: `["woke","mentions","review_requested"]`,
-			want: []string{notifyprefs.KindReviewRequested, notifyprefs.KindWoke},
+			want: []notifyprefs.Kind{notifyprefs.KindReviewRequested, notifyprefs.KindWoke},
 		},
 	}
 
@@ -47,25 +54,25 @@ func TestSetBanner(t *testing.T) {
 
 	tests := []struct {
 		name string
-		off  []string
-		kind string
+		off  []notifyprefs.Kind
+		kind notifyprefs.Kind
 		on   bool
-		want []string
+		want []notifyprefs.Kind
 	}{
-		{name: "turn one off", off: nil, kind: notifyprefs.KindWoke, on: false, want: []string{notifyprefs.KindWoke}},
+		{name: "turn one off", off: nil, kind: notifyprefs.KindWoke, on: false, want: []notifyprefs.Kind{notifyprefs.KindWoke}},
 		{
-			name: "turn another off, in the order of Kinds", off: []string{notifyprefs.KindWoke},
+			name: "turn another off, in the order of Kinds", off: []notifyprefs.Kind{notifyprefs.KindWoke},
 			kind: notifyprefs.KindReviewRequested, on: false,
-			want: []string{notifyprefs.KindReviewRequested, notifyprefs.KindWoke},
+			want: []notifyprefs.Kind{notifyprefs.KindReviewRequested, notifyprefs.KindWoke},
 		},
 		{
-			name: "turn one back on", off: []string{notifyprefs.KindReviewRequested, notifyprefs.KindWoke},
-			kind: notifyprefs.KindWoke, on: true, want: []string{notifyprefs.KindReviewRequested},
+			name: "turn one back on", off: []notifyprefs.Kind{notifyprefs.KindReviewRequested, notifyprefs.KindWoke},
+			kind: notifyprefs.KindWoke, on: true, want: []notifyprefs.Kind{notifyprefs.KindReviewRequested},
 		},
-		{name: "on that was on", off: []string{}, kind: notifyprefs.KindAssigned, on: true, want: []string{}},
+		{name: "on that was on", off: []notifyprefs.Kind{}, kind: notifyprefs.KindAssigned, on: true, want: []notifyprefs.Kind{}},
 		{
-			name: "off that was off", off: []string{notifyprefs.KindAssigned}, kind: notifyprefs.KindAssigned,
-			on: false, want: []string{notifyprefs.KindAssigned},
+			name: "off that was off", off: []notifyprefs.Kind{notifyprefs.KindAssigned}, kind: notifyprefs.KindAssigned,
+			on: false, want: []notifyprefs.Kind{notifyprefs.KindAssigned},
 		},
 	}
 
@@ -91,10 +98,10 @@ func TestSetBannerRejectsAnUnknownKind(t *testing.T) {
 func TestBannersOffRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	assert.JSONEq(t, `["review_requested"]`, notifyprefs.EncodeBannersOff([]string{notifyprefs.KindReviewRequested}))
+	assert.JSONEq(t, `["review_requested"]`, notifyprefs.EncodeBannersOff([]notifyprefs.Kind{notifyprefs.KindReviewRequested}))
 	assert.JSONEq(t, `[]`, notifyprefs.EncodeBannersOff(nil))
 
-	for _, off := range [][]string{{}, {notifyprefs.KindWoke}, notifyprefs.Kinds()} {
+	for _, off := range [][]notifyprefs.Kind{{}, {notifyprefs.KindWoke}, notifyprefs.Kinds()} {
 		assert.Equal(t, off, notifyprefs.DecodeBannersOff(notifyprefs.EncodeBannersOff(off)))
 	}
 }

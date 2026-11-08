@@ -16,36 +16,45 @@ import (
 // settings package writes it.
 const KeyBannersOff = "notify.bannersOff"
 
-// Kinds of notification. They are the inbox's kinds of arrival (see inbox.Arrival).
+// Kind is a kind of notification. The kinds are the inbox's kinds of arrival (see
+// inbox.Arrival).
+type Kind string
+
+// Kinds of notification.
 const (
 	// KindReviewRequested is a pull request that newly asks for the user's review.
-	KindReviewRequested = "review_requested"
+	KindReviewRequested Kind = "review_requested"
 
 	// KindAssigned is an issue or pull request newly assigned to the user.
-	KindAssigned = "assigned"
+	KindAssigned Kind = "assigned"
 
 	// KindWoke is a snoozed item that new activity brought back early.
-	KindWoke = "woke"
+	KindWoke Kind = "woke"
 )
 
 // ErrUnknownKind is returned for a kind of notification that is not one of Kinds.
 var ErrUnknownKind = errors.New("unknown kind of notification")
 
 // Kinds returns the kinds of notification in the order the settings list them.
-func Kinds() []string {
-	return []string{KindReviewRequested, KindAssigned, KindWoke}
+func Kinds() []Kind {
+	return []Kind{KindReviewRequested, KindAssigned, KindWoke}
+}
+
+// Valid reports whether k is one of Kinds.
+func (k Kind) Valid() bool {
+	return slices.Contains(Kinds(), k)
 }
 
 // DecodeBannersOff reads the kinds whose banners are off from the stored value of
 // KeyBannersOff, in the order of Kinds. A value that is unset ("") or cannot be read
 // turns none off, and kinds that are not known are dropped.
-func DecodeBannersOff(stored string) []string {
-	var listed []string
+func DecodeBannersOff(stored string) []Kind {
+	var listed []Kind
 	if json.Unmarshal([]byte(stored), &listed) != nil {
-		return []string{}
+		return []Kind{}
 	}
 
-	off := []string{}
+	off := []Kind{}
 
 	for _, kind := range Kinds() {
 		if slices.Contains(listed, kind) {
@@ -58,12 +67,12 @@ func DecodeBannersOff(stored string) []string {
 
 // SetBanner turns a kind's banners on or off in off, the kinds whose banners are off, and
 // returns the new list in the order of Kinds.
-func SetBanner(off []string, kind string, on bool) ([]string, error) {
+func SetBanner(off []Kind, kind Kind, on bool) ([]Kind, error) {
 	if !slices.Contains(Kinds(), kind) {
 		return nil, fmt.Errorf("%w %q", ErrUnknownKind, kind)
 	}
 
-	out := []string{}
+	out := []Kind{}
 
 	for _, k := range Kinds() {
 		isOff := slices.Contains(off, k)
@@ -80,12 +89,12 @@ func SetBanner(off []string, kind string, on bool) ([]string, error) {
 }
 
 // EncodeBannersOff writes the kinds whose banners are off as the value of KeyBannersOff.
-func EncodeBannersOff(off []string) string {
+func EncodeBannersOff(off []Kind) string {
 	if off == nil {
-		off = []string{}
+		off = []Kind{}
 	}
 
-	b, _ := json.Marshal(off) //nolint:errchkjson // a []string always encodes
+	b, _ := json.Marshal(off) //nolint:errchkjson // a []Kind always encodes
 
 	return string(b)
 }
