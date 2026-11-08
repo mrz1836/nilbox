@@ -1,15 +1,32 @@
-import { useId, useState, type SubmitEvent } from 'react'
+import { startTransition, useActionState, useId, useState, type SubmitEvent } from 'react'
 
-import { errorMessage } from '../lib/format'
+import { useSettingsSave } from '../lib/useSettingsSave'
 import { resetTrustedBots, setTrustedBots, type Settings } from '../platform'
 import { buttonClass, fieldClass, quietButtonClass } from './controls'
 import { XIcon } from './icons'
 
 export interface TrustSectionProps {
   settings: Settings
-  // onSaved receives the settings after the trusted bots changed.
+  // onSaved receives every setting as stored after the trusted bots changed.
   onSaved: (settings: Settings) => void
 }
+
+// Refusal is why a change was refused, with the draft typed when it was, since typing
+// again clears it.
+interface Refusal {
+  draft: string
+  message: string
+}
+
+// Change is a change to the trusted bots: the list it leaves, the call that stores it,
+// and the draft typed when it was made.
+interface Change {
+  bots: string[]
+  call: () => PromiseLike<Settings>
+  draft: string
+}
+
+const noRefusal: Refusal = { draft: '', message: '' }
 
 // foldBot writes a bot's login the way the trusted list keeps it: lowercase, without an
 // "app/" prefix or "[bot]" suffix.
@@ -30,32 +47,38 @@ function sameList(a: readonly string[], b: readonly string[]): boolean {
 // TrustSection is the settings page's Trust section: who launches trust, and the list of
 // bots and apps (GitHub Apps) trusted like a collaborator, which the user can add to,
 // remove from, or restore.
-export function TrustSection({ settings, onSaved }: TrustSectionProps) {
+export function TrustSection({ settings: stored, onSaved }: TrustSectionProps) {
   const id = useId()
+  const { settings, save } = useSettingsSave(stored, onSaved)
   const [draft, setDraft] = useState('')
-  const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
+  // invalid is why the draft cannot be added, found before asking the backend.
+  const [invalid, setInvalid] = useState<Refusal>(noRefusal)
+  // Every change, the form's and the list's, runs through one action: one at a time, with
+  // the controls held while it runs, and the draft cleared once it is stored.
+  const [refused, change, busy] = useActionState(async (_: Refusal, next: Change): Promise<Refusal> => {
+    const result = await save({ trustedBots: next.bots }, next.call)
+
+    if (!result.ok) {
+      return { draft: next.draft, message: result.error }
+    }
+
+    setDraft('')
+
+    return noRefusal
+  }, noRefusal)
 
   const bots = settings.trustedBots
   const defaults = settings.defaultTrustedBots
   const changed = !sameList(bots, defaults)
+  const refusal = invalid.message !== '' ? invalid : busy ? noRefusal : refused
+  const error = refusal.draft === draft ? refusal.message : ''
 
-  // save stores a change, then reports the settings as stored.
-  const save = (call: Promise<Settings>) => {
-    setBusy(true)
-    setError('')
-
-    call
-      .then((next) => {
-        onSaved(next)
-        setDraft('')
-      })
-      .catch((err: unknown) => {
-        setError(errorMessage(err))
-      })
-      .finally(() => {
-        setBusy(false)
-      })
+  // store makes a change through the action.
+  const store = (next: Omit<Change, 'draft'>) => {
+    setInvalid(noRefusal)
+    startTransition(() => {
+      change({ ...next, draft })
+    })
   }
 
   const add = (e: SubmitEvent<HTMLFormElement>) => {
@@ -64,18 +87,20 @@ export function TrustSection({ settings, onSaved }: TrustSectionProps) {
     const login = foldBot(draft)
 
     if (login === '') {
-      setError('Enter a bot’s login, such as renovate.')
+      setInvalid({ draft, message: 'Enter a bot’s login, such as renovate.' })
 
       return
     }
 
     if (bots.includes(login)) {
-      setError(`${login} is already trusted.`)
+      setInvalid({ draft, message: `${login} is already trusted.` })
 
       return
     }
 
-    save(setTrustedBots([...bots, login]))
+    const next = [...bots, login]
+
+    store({ bots: next, call: () => setTrustedBots(next) })
   }
 
   return (
@@ -96,7 +121,7 @@ export function TrustSection({ settings, onSaved }: TrustSectionProps) {
               type="button"
               disabled={busy}
               onClick={() => {
-                save(resetTrustedBots())
+                store({ bots: defaults, call: () => resetTrustedBots() })
               }}
               className={`${quietButtonClass} shrink-0`}
             >
@@ -121,7 +146,9 @@ export function TrustSection({ settings, onSaved }: TrustSectionProps) {
                     aria-label={`Stop trusting ${bot}`}
                     title={`Stop trusting ${bot}`}
                     onClick={() => {
-                      save(setTrustedBots(bots.filter((b) => b !== bot)))
+                      const next = bots.filter((b) => b !== bot)
+
+                      store({ bots: next, call: () => setTrustedBots(next) })
                     }}
                     className="ml-auto flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-danger disabled:opacity-50"
                   >
@@ -146,7 +173,6 @@ export function TrustSection({ settings, onSaved }: TrustSectionProps) {
                 aria-describedby={error === '' ? undefined : `${id}-error`}
                 onChange={(e) => {
                   setDraft(e.target.value)
-                  setError('')
                 }}
                 className={`${fieldClass} w-full font-mono text-[13px]`}
               />

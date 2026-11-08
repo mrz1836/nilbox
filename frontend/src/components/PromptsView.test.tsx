@@ -163,6 +163,26 @@ describe('PromptsView', () => {
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
   })
 
+  it('keeps the draft and says why when a save is refused', async () => {
+    platform.updatePrompt.mockRejectedValue(new Error('a prompt named Fix CI already exists'))
+    const onChanged = vi.fn()
+    render(<Harness onChanged={onChanged} />)
+    await waitForCheck()
+
+    const nickname = screen.getByRole('textbox', { name: 'Nickname' })
+    await userEvent.clear(nickname)
+    await userEvent.type(nickname, 'Fix CI')
+    await waitFor(() => {
+      expect(lastCheck().input.nickname).toBe('Fix CI')
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('a prompt named Fix CI already exists')
+    expect(nickname).toHaveValue('Fix CI')
+    expect(onChanged).not.toHaveBeenCalled()
+  })
+
   it('edits the launch settings a prompt sets', async () => {
     render(<Harness />)
     await waitForCheck()

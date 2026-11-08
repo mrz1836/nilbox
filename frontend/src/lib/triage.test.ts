@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { WakeReview } from '../platform'
 import { item, list, snapshot } from '../test/fixtures'
 import {
+  applyTriage,
   capitalize,
   findItem,
   formatFull,
@@ -175,6 +176,49 @@ describe('wake reasons', () => {
     const praised = 'praised' as unknown as WakeReview
 
     expect(wakeSummary({ commits: 2, forcePushed: false, review: praised, comments: 0 })).toBe('2 new commits')
+  })
+})
+
+describe('applyTriage', () => {
+  const pinned = item({ id: 1, title: 'Pinned', pinnedAt: '2026-06-14T12:00:00Z', updatedAt: '2026-06-10T12:00:00Z' })
+  const newest = item({ id: 2, title: 'Newest', updatedAt: '2026-06-15T11:00:00Z' })
+  const older = item({ id: 3, title: 'Older', updatedAt: '2026-06-15T09:00:00Z' })
+  const oldest = item({ id: 4, title: 'Oldest', updatedAt: '2026-06-15T09:00:00Z' })
+  const ids = (list: { items: { id: number }[] }) => list.items.map((i) => i.id)
+
+  it('changes the item in every list that holds it, keeping its place', () => {
+    const inbox = snapshot({ reviewRequested: list([newest, older]), assigned: list([older]) })
+
+    const next = applyTriage(inbox, { id: 3, set: { dismissedAt: now.toISOString() } })
+
+    expect(ids(next.reviewRequested)).toEqual([2, 3])
+    expect(findItem(next, 3)?.dismissedAt).toBe(now.toISOString())
+    expect(next.assigned.items[0]?.dismissedAt).toBe(now.toISOString())
+    expect(next.authored).toBe(inbox.authored)
+  })
+
+  it('moves a newly pinned item to the top, as the most recently pinned', () => {
+    const inbox = snapshot({ reviewRequested: list([pinned, newest, older]) })
+
+    const next = applyTriage(inbox, { id: 3, set: { pinnedAt: now.toISOString() } })
+
+    expect(ids(next.reviewRequested)).toEqual([3, 1, 2])
+  })
+
+  it('puts an unpinned item back among the rest by its activity, then its ID', () => {
+    const inbox = snapshot({ reviewRequested: list([pinned, newest, oldest]) })
+
+    expect(ids(applyTriage(inbox, { id: 1, set: { pinnedAt: '' } }).reviewRequested)).toEqual([2, 4, 1])
+
+    const tied = snapshot({ reviewRequested: list([{ ...older, pinnedAt: now.toISOString() }, newest, oldest]) })
+
+    expect(ids(applyTriage(tied, { id: 3, set: { pinnedAt: '' } }).reviewRequested)).toEqual([2, 4, 3])
+  })
+
+  it('puts an unpinned item last when everything else lists before it', () => {
+    const inbox = snapshot({ reviewRequested: list([{ ...oldest, id: 9, pinnedAt: now.toISOString() }, newest]) })
+
+    expect(ids(applyTriage(inbox, { id: 9, set: { pinnedAt: '' } }).reviewRequested)).toEqual([2, 9])
   })
 })
 

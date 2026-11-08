@@ -176,6 +176,17 @@ describe('LaunchDefaultsSection', () => {
     expect(await screen.findByText('Removed the defaults for acme-org/api.')).toBeInTheDocument()
   })
 
+  it('says why defaults could not be removed', async () => {
+    platform.removeLaunchDefaults.mockRejectedValue(new Error('database is locked'))
+    const { onChanged } = renderSection([launchDefaults()])
+
+    await userEvent.click(screen.getByRole('button', { name: 'Remove' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Remove defaults' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent('database is locked')
+    expect(onChanged).not.toHaveBeenCalled()
+  })
+
   it('shows a save that failed', async () => {
     platform.saveLaunchDefaults.mockRejectedValue(new Error('database is locked'))
     renderSection([launchDefaults()])

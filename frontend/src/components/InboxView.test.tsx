@@ -628,10 +628,70 @@ describe('InboxView triage', () => {
       'Could not pin “Add the widget cache” · database is locked',
     )
 
+    // The refused pin goes, leaving the pin the item already had.
+    await waitFor(() => {
+      expect(review.getAllByRole('button', { name: 'Unpin' })).toHaveLength(1)
+    })
     await userEvent.click(review.getByRole('button', { name: 'Unpin' }))
     expect(await screen.findByRole('status')).toHaveTextContent(
       'Could not unpin “Rename the flag” · database is locked',
     )
+  })
+
+  it('shows a pin at once, and puts the item back with the reason when it is refused', async () => {
+    let refuse: (err: Error) => void = () => undefined
+    const other = item({ id: 4, number: 10, title: 'Tidy the docs', updatedAt: '2026-06-15T08:00:00Z' })
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh, other]) }))
+    platform.pinItem.mockReturnValue(
+      new Promise((_, reject) => {
+        refuse = reject
+      }),
+    )
+    render(<Harness launch={launchOptions} clock={clock} />)
+
+    const review = await section('Review requested')
+    const titles = () => review.getAllByRole('listitem').map((row) => within(row).getAllByRole('button')[0]?.title)
+    await userEvent.click(review.getAllByRole('button', { name: 'Pin to top' })[1] as HTMLElement)
+
+    // Pinned before the backend answers: at the top, with its pin filled.
+    expect(review.getByRole('button', { name: 'Unpin' })).toBeInTheDocument()
+    expect(titles()).toEqual(['Tidy the docs', 'Add the widget cache'])
+
+    await act(async () => {
+      refuse(new Error('database is locked'))
+      await Promise.resolve()
+    })
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Could not pin “Tidy the docs” · database is locked')
+    await waitFor(() => {
+      expect(review.queryByRole('button', { name: 'Unpin' })).not.toBeInTheDocument()
+    })
+    expect(titles()).toEqual(['Add the widget cache', 'Tidy the docs'])
+  })
+
+  it('sets a dismissed item aside at once, before the backend answers', async () => {
+    let answer: (value: unknown) => void = () => undefined
+    const dismissedNow = snapshot({ reviewRequested: list([{ ...fresh, dismissedAt: now.toISOString() }]) })
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
+    platform.dismissItem.mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve
+      }),
+    )
+    render(<Harness launch={launchOptions} clock={clock} />)
+
+    const review = await section('Review requested')
+    await userEvent.click(review.getByRole('button', { name: 'Dismiss' }))
+
+    expect(review.getByRole('tab', { name: 'Dismissed 1' })).toBeInTheDocument()
+    expect(review.queryByRole('button', { name: 'Add the widget cache' })).not.toBeInTheDocument()
+
+    await act(async () => {
+      answer(dismissedNow)
+      await Promise.resolve()
+    })
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Dismissed · Add the widget cache')
   })
 
   it('says why a triage action failed', async () => {
@@ -662,7 +722,8 @@ describe('InboxView triage', () => {
     await userEvent.click(review.getByRole('button', { name: 'Snooze for 3 days' }))
     expect(await screen.findByRole('status')).toHaveTextContent('Could not snooze')
 
-    await userEvent.click(review.getByRole('button', { name: 'Dismiss' }))
+    // The refused snooze puts the item back in the list.
+    await userEvent.click(await review.findByRole('button', { name: 'Dismiss' }))
     await userEvent.click(await screen.findByRole('button', { name: 'Undo' }))
 
     expect(await screen.findByRole('status')).toHaveTextContent(

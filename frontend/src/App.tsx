@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 
 import { AppHeader, type View } from './components/AppHeader'
 import { DataResetNotice } from './components/DataResetNotice'
@@ -12,6 +12,7 @@ import { useCollapsedSections } from './lib/useCollapsedSections'
 import { useInbox } from './lib/useInbox'
 import { useLaunchConfig } from './lib/useLaunchConfig'
 import { useNotifications } from './lib/useNotifications'
+import { useQuery } from './lib/useQuery'
 import { useTheme } from './lib/useTheme'
 import {
   lastWorktreeSweep,
@@ -21,8 +22,16 @@ import {
   type InboxSnapshot,
   type RemoveResult,
   type Settings,
+  type SweepReport,
   type WorktreesSnapshot,
 } from './platform'
+
+// inboxKey is the part of the settings the stored inbox shows (internal/inbox's
+// settingsKey): the trusted bots decide each card's trust, and the sensitive-file
+// settings what each card points out.
+function inboxKey(settings: Settings): string {
+  return JSON.stringify([settings.trustedBots, settings.sensitiveFiles])
+}
 
 // cleanedToast tells what an automatic sweep cleaned up.
 function cleanedToast(seq: number, cleaned: readonly RemoveResult[]): ToastMessage {
@@ -40,57 +49,44 @@ function cleanedToast(seq: number, cleaned: readonly RemoveResult[]): ToastMessa
 // something (so an open Worktrees view lists again), and a toast for each sweep that
 // removed a worktree.
 function useWorktreeSweeps() {
-  const [count, setCount] = useState(0)
-  const [attention, setAttention] = useState(0)
-  const [seq, setSeq] = useState(0)
+  const sweep = useQuery(() => lastWorktreeSweep(), [], { log: 'could not read the latest worktree sweep' })
+  const readOnUpdate = useEffectEvent(() => {
+    void sweep.refetch()
+  })
+
+  useEffect(
+    () =>
+      on('worktrees:updated', () => {
+        readOnUpdate()
+      }),
+    [],
+  )
+
+  const [counts, setCounts] = useState({ count: 0, attention: 0 })
+  // reported is the latest sweep reported, so each one is reported once.
+  const [reported, setReported] = useState<SweepReport | null>(null)
   const [toast, setToast] = useState<ToastMessage | null>(null)
-  // seen is the latest sweep read, so each one is reported once.
-  const seen = useRef(0)
+  const report = sweep.data
 
-  useEffect(() => {
-    let active = true
+  if (report !== undefined && report.seq > (reported?.seq ?? 0)) {
+    setReported(report)
+    setCounts({ count: report.worktreeCount, attention: report.leftover })
 
-    const read = () => {
-      lastWorktreeSweep()
-        .then((report) => {
-          if (!active || report.seq <= seen.current) {
-            return
-          }
-
-          seen.current = report.seq
-          setCount(report.worktreeCount)
-          setAttention(report.leftover)
-          setSeq(report.seq)
-
-          if (report.cleaned.length > 0) {
-            setToast(cleanedToast(report.seq, report.cleaned))
-          }
-        })
-        .catch((err: unknown) => {
-          console.error('could not read the latest worktree sweep', err)
-        })
+    if (report.cleaned.length > 0) {
+      setToast(cleanedToast(report.seq, report.cleaned))
     }
-
-    read()
-    const stop = on('worktrees:updated', read)
-
-    return () => {
-      active = false
-      stop()
-    }
-  }, [])
+  }
 
   // listed counts from a listing of the Worktrees view, which sees the same worktrees.
   const listed = useCallback((snapshot: WorktreesSnapshot) => {
-    setCount(snapshot.worktreeCount)
-    setAttention(snapshot.finishedCount + snapshot.reviewCount)
+    setCounts({ count: snapshot.worktreeCount, attention: snapshot.finishedCount + snapshot.reviewCount })
   }, [])
 
   const closeToast = useCallback(() => {
     setToast(null)
   }, [])
 
-  return { count, attention, seq, toast, listed, closeToast }
+  return { ...counts, seq: reported?.seq ?? 0, toast, listed, closeToast }
 }
 
 // useReveal shows an item in the inbox when asked: by the menu bar, a notification, or an
@@ -99,39 +95,34 @@ function useWorktreeSweeps() {
 // follows; clear drops it once another view opens.
 function useReveal(snapshot: InboxSnapshot | null, openInbox: () => void) {
   const [reveal, setReveal] = useState<Reveal | null>(null)
-  const seq = useRef(0)
-  // latest is the snapshot as last shown, read when a request arrives.
-  const latest = useRef(snapshot)
+  // requests numbers the requests, so asking for the same item again shows it again.
+  const requests = useRef(0)
 
-  useEffect(() => {
-    latest.current = snapshot
-  }, [snapshot])
+  const show = (itemId: number, url: string) => {
+    if (itemId > 0 && snapshot !== null && findItem(snapshot, itemId) !== undefined) {
+      requests.current += 1
+      openInbox()
+      setReveal({ id: itemId, seq: requests.current })
 
-  const show = useCallback(
-    (itemId: number, url: string) => {
-      const current = latest.current
+      return
+    }
 
-      if (itemId > 0 && current !== null && findItem(current, itemId) !== undefined) {
-        seq.current += 1
-        openInbox()
-        setReveal({ id: itemId, seq: seq.current })
+    if (url !== '') {
+      openExternal(url)
+    }
+  }
 
-        return
-      }
-
-      if (url !== '') {
-        openExternal(url)
-      }
-    },
-    [openInbox],
-  )
+  // The menu bar's request is read against the inbox as shown when it arrives.
+  const showOnRequest = useEffectEvent((itemId: number, url: string) => {
+    show(itemId, url)
+  })
 
   useEffect(
     () =>
       on('inbox:reveal', ({ itemId, url }) => {
-        show(itemId, url)
+        showOnRequest(itemId, url)
       }),
-    [show],
+    [],
   )
 
   const clear = useCallback(() => {
@@ -251,12 +242,16 @@ export function App() {
   }, [returnView])
 
   // ⌘, opens the settings page, as in every Mac app.
+  const openSettingsOnKey = useEffectEvent((e: KeyboardEvent) => {
+    if (e.metaKey && e.key === ',') {
+      e.preventDefault()
+      openSettings()
+    }
+  })
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.metaKey && e.key === ',') {
-        e.preventDefault()
-        openSettings()
-      }
+      openSettingsOnKey(e)
     }
 
     document.addEventListener('keydown', onKeyDown)
@@ -264,21 +259,22 @@ export function App() {
     return () => {
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [openSettings])
+  }, [])
 
   const { reload, setSettings } = config
   const { reload: reloadInbox } = inbox
 
-  // saveSettings records changed settings: every row's launch settings resolve again, and
-  // the stored inbox is read again, since the trusted bots decide each card's trust and the
-  // sensitive-file settings what each card points out.
-  const saveSettings = useCallback(
-    (next: Settings) => {
-      setSettings(next)
+  // saveSettings records the settings a setter stored and returned. The stored inbox is
+  // read again only when a setting it shows changed.
+  const saveSettings = (next: Settings) => {
+    const was = config.settings
+
+    setSettings(next)
+
+    if (was === null || inboxKey(was) !== inboxKey(next)) {
       reloadInbox()
-    },
-    [setSettings, reloadInbox],
-  )
+    }
+  }
 
   const openPrompts = useCallback(() => {
     changeView('prompts')

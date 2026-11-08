@@ -1,8 +1,9 @@
-import { useEffect, useId, useState } from 'react'
+import { startTransition, useActionState, useId, useState } from 'react'
 
-import { errorMessage } from '../lib/format'
+import { attempt } from '../lib/call'
 import { effortChoices, effortLabel, modelChoices, modelLabel, pinSummary, promptApplies } from '../lib/launch'
 import { defaultsInput, emptyDefaults, findDefaults } from '../lib/launchChoices'
+import { useDebouncedQuery, useQuery } from '../lib/useQuery'
 import {
   checkLaunchDefaults,
   listLaunchTargets,
@@ -52,6 +53,9 @@ const triOptions: readonly SegmentOption<TriState>[] = [
   { value: 'off', label: 'Off' },
 ]
 
+// noTargets is the list of targets offered until it loads.
+const noTargets: readonly LaunchTarget[] = []
+
 // targetText writes a target as the editor shows it: "acme-org" or "acme-org/api".
 function targetText(owner: string, name: string): string {
   return name === '' ? owner : `${owner}/${name}`
@@ -100,16 +104,19 @@ export function LaunchDefaultsSection({
   const [status, setStatus] = useState('')
   const [removing, setRemoving] = useState<LaunchDefaults | null>(null)
 
-  const remove = (d: LaunchDefaults) => {
+  const remove = async (d: LaunchDefaults) => {
     setRemoving(null)
-    removeLaunchDefaults(d.owner, d.name)
-      .then(async () => {
-        await onChanged()
-        setStatus(`Removed the defaults for ${targetText(d.owner, d.name)}.`)
-      })
-      .catch((err: unknown) => {
-        setStatus(errorMessage(err))
-      })
+
+    const result = await attempt(removeLaunchDefaults(d.owner, d.name))
+
+    if (!result.ok) {
+      setStatus(result.error)
+
+      return
+    }
+
+    await onChanged()
+    setStatus(`Removed the defaults for ${targetText(d.owner, d.name)}.`)
   }
 
   return (
@@ -242,7 +249,7 @@ export function LaunchDefaultsSection({
             setRemoving(null)
           }}
           onConfirm={() => {
-            remove(removing)
+            void remove(removing)
           }}
         >
           {removing.name === ''
@@ -285,59 +292,32 @@ function DefaultsEditor({
   const [input, setInput] = useState<LaunchDefaultsInput>(
     stored === undefined ? emptyDefaults('', '') : defaultsInput(stored),
   )
-  const [targets, setTargets] = useState<LaunchTarget[]>([])
-  const [checked, setErrors] = useState<Record<string, string>>({})
-  const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState('')
+  // targets are the orgs and repositories offered for new defaults.
+  const targets = useQuery(() => listLaunchTargets(), [], {
+    enabled: editing.kind === 'new',
+    log: 'could not list the repositories',
+  })
 
   const target = editing.kind === 'existing' ? { owner: editing.owner, name: editing.name } : parseTarget(targetDraft)
+  const { owner: targetOwner, name: targetName } = target
+  // Check the form as it changes, once a target is named.
+  const check = useDebouncedQuery(
+    () =>
+      checkLaunchDefaults({ ...input, owner: targetOwner, name: targetName }).then(
+        (list): Record<string, string | undefined> => Object.fromEntries(list.map((f) => [f.field, f.message])),
+      ),
+    [input, targetOwner, targetName],
+    150,
+    { enabled: targetOwner !== '', log: 'could not check the launch defaults' },
+  )
   // errors are the last check's, once a target is named.
-  const errors: Record<string, string | undefined> = target.owner === '' ? {} : checked
+  const errors: Record<string, string | undefined> = targetOwner === '' ? {} : (check.data ?? {})
   const full: LaunchDefaultsInput = { ...input, owner: target.owner, name: target.name }
   const org = target.name === '' ? undefined : findDefaults(launchDefaults, target.owner, '')
   const exists = editing.kind === 'new' && findDefaults(launchDefaults, target.owner, target.name) !== undefined
   const set = (patch: Partial<LaunchDefaultsInput>) => {
     setInput((was) => ({ ...was, ...patch }))
   }
-
-  useEffect(() => {
-    if (editing.kind !== 'new') {
-      return
-    }
-
-    listLaunchTargets()
-      .then(setTargets)
-      .catch((err: unknown) => {
-        console.error('could not list the repositories', err)
-      })
-  }, [editing.kind])
-
-  // Check the form as it changes, once a target is named.
-  const { owner: targetOwner, name: targetName } = target
-
-  useEffect(() => {
-    if (targetOwner === '') {
-      return undefined
-    }
-
-    let current = true
-    const timer = window.setTimeout(() => {
-      checkLaunchDefaults({ ...input, owner: targetOwner, name: targetName })
-        .then((list) => {
-          if (current) {
-            setErrors(Object.fromEntries(list.map((f) => [f.field, f.message])))
-          }
-        })
-        .catch((err: unknown) => {
-          console.error('could not check the launch defaults', err)
-        })
-    }, 150)
-
-    return () => {
-      current = false
-      window.clearTimeout(timer)
-    }
-  }, [input, targetOwner, targetName])
 
   // inherited names what each setting falls back to: the org's defaults for a
   // repository, else the app's settings or the profile's own.
@@ -363,21 +343,21 @@ function DefaultsEditor({
 
   const problems = Object.keys(errors).length > 0 || exists || target.owner === ''
 
-  const save = () => {
-    setSaving(true)
-    setSaveError('')
-    saveLaunchDefaults(full)
-      .then(async () => {
-        await onChanged()
-        onDone(`Saved the defaults for ${targetText(full.owner, full.name)}.`)
-      })
-      .catch((err: unknown) => {
-        setSaveError(errorMessage(err))
-      })
-      .finally(() => {
-        setSaving(false)
-      })
-  }
+  // Save stores the form, loads the launch configuration again, and closes the editor; a
+  // refusal stays on the form.
+  const [refusal, save, saving] = useActionState(async (_: string, defaults: LaunchDefaultsInput) => {
+    const result = await attempt(saveLaunchDefaults(defaults))
+
+    if (!result.ok) {
+      return result.error
+    }
+
+    await onChanged()
+    onDone(`Saved the defaults for ${targetText(defaults.owner, defaults.name)}.`)
+
+    return ''
+  }, '')
+  const saveError = saving ? '' : refusal
 
   const prPrompts = prompts.filter((p) => promptApplies(p, 'pr'))
   const issuePrompts = prompts.filter((p) => promptApplies(p, 'issue'))
@@ -391,7 +371,9 @@ function DefaultsEditor({
         e.preventDefault()
 
         if (!problems && !saving) {
-          save()
+          startTransition(() => {
+            save(full)
+          })
         }
       }}
       className="flex flex-col gap-4 rounded-lg border border-accent/40 bg-surface p-4 shadow-sm"
@@ -418,7 +400,7 @@ function DefaultsEditor({
             className={`${fieldClass} w-full font-mono text-[13px]`}
           />
           <datalist id={`${id}-targets`}>
-            {targets.map((t) => (
+            {(targets.data ?? noTargets).map((t) => (
               <option key={targetText(t.owner, t.name)} value={targetText(t.owner, t.name)}>
                 {t.name === '' ? 'All repositories' : `${String(t.items)} in the inbox`}
               </option>

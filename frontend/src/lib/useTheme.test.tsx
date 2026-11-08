@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { Result } from './call'
 import { useTheme } from './useTheme'
 
 const platform = vi.hoisted(() => ({
@@ -124,8 +125,12 @@ describe('useTheme', () => {
       expect(platform.getTheme).toHaveBeenCalledOnce()
     })
 
-    await act(() => result.current.chooseTheme('dark'))
+    let stored: Result<void> | undefined
+    await act(async () => {
+      stored = await result.current.chooseTheme('dark')
+    })
 
+    expect(stored).toEqual({ ok: true, data: undefined })
     expect(result.current.theme).toBe('dark')
     expect(appearance.root.dataset.theme).toBe('dark')
     expect(appearance.root.style.colorScheme).toBe('dark')
@@ -142,12 +147,12 @@ describe('useTheme', () => {
       expect(result.current.theme).toBe('light')
     })
 
-    let failure: unknown
+    let failure: Result<void> | undefined
     await act(async () => {
-      failure = await result.current.chooseTheme('dark').catch((err: unknown) => err)
+      failure = await result.current.chooseTheme('dark')
     })
 
-    expect(failure).toEqual(new Error('database is locked'))
+    expect(failure).toEqual({ ok: false, error: 'database is locked' })
     expect(result.current.theme).toBe('light')
     expect(appearance.root.dataset.theme).toBe('light')
   })
@@ -161,11 +166,11 @@ describe('useTheme', () => {
       expect(platform.getTheme).toHaveBeenCalledOnce()
     })
 
-    let dark: Promise<void> = Promise.resolve()
+    let dark: Promise<Result<void>> | undefined
     act(() => {
       dark = result.current.chooseTheme('dark')
     })
-    let light: Promise<void> = Promise.resolve()
+    let light: Promise<Result<void>> | undefined
     act(() => {
       light = result.current.chooseTheme('light')
     })
@@ -179,8 +184,8 @@ describe('useTheme', () => {
 
     await act(async () => {
       first.reject(new Error('database is locked'))
-      await expect(dark).rejects.toThrow('database is locked')
-      await light
+      expect(await dark).toEqual({ ok: false, error: 'database is locked' })
+      expect(await light).toEqual({ ok: true, data: undefined })
     })
 
     expect(platform.setTheme).toHaveBeenLastCalledWith('light')

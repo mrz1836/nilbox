@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useState } from 'react'
 
-import { errorMessage } from '../lib/format'
+import { attempt } from '../lib/call'
 import {
   defaultsInput,
   emptyDefaults,
@@ -15,7 +15,9 @@ import {
   type Choices,
   type SaveStatus,
 } from '../lib/launchChoices'
+import { useMutation } from '../lib/useMutation'
 import { usePopover } from '../lib/usePopover'
+import { useQuery } from '../lib/useQuery'
 import {
   cloneRepo,
   cloneTarget,
@@ -26,6 +28,7 @@ import {
   type InboxItem,
   type ItemResolution,
   type LaunchDefaults,
+  type LaunchDefaultsInput,
   type LaunchHold,
   type LaunchRequest,
   type LaunchResult,
@@ -96,51 +99,45 @@ export function LaunchControls({
   const id = useId()
   const { open, toggle, close, triggerRef, panelRef } = usePopover<HTMLButtonElement, HTMLDivElement>()
   const [choices, setChoices] = useState<Choices>(noChoices)
-  // fetched is the resolution under the chosen prompt and profile, with what it was
-  // fetched for, so a stale one is never shown.
-  const [fetched, setFetched] = useState<{ base: ItemResolution; key: string; value: Resolution } | null>(null)
   const [state, setState] = useState<LaunchState>({ kind: 'idle' })
   const [confirmingClone, setConfirmingClone] = useState(false)
-  const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState<SaveStatus | null>(null)
-  // resolveError says why the settings under the chosen prompt and profile could not be
-  // worked out, keyed by those choices.
-  const [resolveError, setResolveError] = useState<{ key: string; message: string } | null>(null)
   const [above, setAbove] = useState(false)
 
   const untrusted = !item.trusted
   const problem = resolution?.problem ?? ''
+  const chosen = choices.promptId !== 0 || choices.profile !== ''
   const key = `${String(choices.promptId)}:${choices.profile}`
-  const resolved = fetched !== null && fetched.base === resolution && fetched.key === key ? fetched.value : null
+  // Re-resolve under the chosen prompt and profile, so every other setting's default
+  // (a prompt's model, a profile's effort) is shown as it would really apply. The answer
+  // carries the resolution it was made over and the choices it was made for, so one made
+  // for anything else never shows.
+  const reresolved = useQuery(
+    () =>
+      resolveLaunch({
+        ...launchRequest(item.id, noChoices, false),
+        promptId: choices.promptId,
+        profile: choices.profile,
+      }).then((value) => ({ base: resolution, key, value })),
+    [item.id, resolution, problem, key],
+    { enabled: resolution !== null && problem === '' && chosen },
+  )
+  // failed is a latest request, made for these choices, that was refused; the settings
+  // under them are then unknown, whatever an earlier answer said.
+  const failed = chosen && !reresolved.pending && reresolved.error !== ''
+  const answer = reresolved.data
+  const resolved = chosen && !failed && answer?.base === resolution && answer.key === key ? answer.value : null
+  // resolveError says why the settings under the chosen prompt and profile could not be
+  // worked out.
+  const resolveError = failed ? reresolved.error : ''
   const base: Resolution | null = resolution === null || problem !== '' ? null : (resolved ?? resolution)
   const changed = hasChoices(choices)
   const agentName = resolution === null || resolution.agent.name === '' ? 'Claude' : resolution.agent.name
-
-  // Re-resolve under the chosen prompt and profile, so every other setting's default
-  // (a prompt's model, a profile's effort) is shown as it would really apply.
-  useEffect(() => {
-    if (resolution === null || problem !== '' || (choices.promptId === 0 && choices.profile === '')) {
-      return undefined
-    }
-
-    let current = true
-
-    resolveLaunch({ ...launchRequest(item.id, noChoices, false), promptId: choices.promptId, profile: choices.profile })
-      .then((value) => {
-        if (current) {
-          setFetched({ base: resolution, key: `${String(choices.promptId)}:${choices.profile}`, value })
-        }
-      })
-      .catch((err: unknown) => {
-        if (current) {
-          setResolveError({ key: `${String(choices.promptId)}:${choices.profile}`, message: errorMessage(err) })
-        }
-      })
-
-    return () => {
-      current = false
-    }
-  }, [item.id, resolution, problem, choices.promptId, choices.profile])
+  // saver stores this launch's choices as launch defaults, then reloads every row's.
+  const saver = useMutation(async (input: LaunchDefaultsInput) => {
+    await saveLaunchDefaults(input)
+    await onDefaultsSaved()
+  })
 
   // Open the menu upward when there is not enough room below the button.
   useLayoutEffect(() => {
@@ -171,52 +168,59 @@ export function LaunchControls({
   // run launches request. A launch the app holds back asks the user to confirm; when the
   // launch fails, it asks whether the repository has a local clone, and offers to clone
   // it when it has none.
-  const run = (request: LaunchRequest) => {
+  const run = async (request: LaunchRequest) => {
     setState({ kind: 'launching' })
 
-    launch(request)
-      .then((result) => {
-        if (result.hold !== null) {
-          setState({ kind: 'held', hold: result.hold, request })
+    const launched = await attempt(launch(request))
 
-          return
-        }
+    if (!launched.ok) {
+      const target = await attempt(cloneTarget(item.id))
 
-        setState({ kind: 'launched', result })
-        setChoices(noChoices)
-        setStatus(null)
-      })
-      .catch(async (err: unknown) => {
-        const message = errorMessage(err)
-        const target = await cloneTarget(item.id).catch(() => null)
+      setState(
+        !target.ok || target.data.cloned
+          ? { kind: 'failed', message: launched.error }
+          : { kind: 'noClone', target: target.data, request },
+      )
 
-        setState(target === null || target.cloned ? { kind: 'failed', message } : { kind: 'noClone', target, request })
-      })
+      return
+    }
+
+    const result = launched.data
+
+    if (result.hold !== null) {
+      setState({ kind: 'held', hold: result.hold, request })
+
+      return
+    }
+
+    setState({ kind: 'launched', result })
+    setChoices(noChoices)
+    setStatus(null)
   }
 
   const start = () => {
     close()
-    run(launchRequest(item.id, choices, untrusted))
+    void run(launchRequest(item.id, choices, untrusted))
   }
 
   // cloneThenLaunch clones the repository a launch found no clone of, then continues that
   // launch.
-  const cloneThenLaunch = (target: CloneTarget, request: LaunchRequest) => {
+  const cloneThenLaunch = async (target: CloneTarget, request: LaunchRequest) => {
     setConfirmingClone(false)
     setState({ kind: 'cloning', target })
 
-    cloneRepo(item.id)
-      .then(() => {
-        run(request)
-      })
-      .catch((err: unknown) => {
-        setState({ kind: 'failed', message: errorMessage(err) })
-      })
+    const cloned = await attempt(cloneRepo(item.id))
+
+    if (cloned.ok) {
+      await run(request)
+    } else {
+      setState({ kind: 'failed', message: cloned.error })
+    }
   }
 
   const busy = state.kind === 'launching' || state.kind === 'cloning'
 
-  const save = (scope: 'repo' | 'org') => {
+  const save = async (scope: 'repo' | 'org') => {
     if (base === null || !savableChoices(choices)) {
       setStatus({ tone: 'warning', text: 'Choose something different first.' })
 
@@ -233,19 +237,14 @@ export function LaunchControls({
     const target = scope === 'org' ? `every ${base.owner} repository` : base.repo
     const report = saveStatus(target, base.prompt.nickname, base.repo, shadowedChoices(choices, base, scope))
 
-    setSaving(true)
-    saveLaunchDefaults(input)
-      .then(async () => {
-        await onDefaultsSaved()
-        setChoices({ ...noChoices, override: choices.override })
-        setStatus(report)
-      })
-      .catch((err: unknown) => {
-        setStatus({ tone: 'error', text: errorMessage(err) })
-      })
-      .finally(() => {
-        setSaving(false)
-      })
+    const result = await saver.run(input)
+
+    if (result.ok) {
+      setChoices({ ...noChoices, override: choices.override })
+      setStatus(report)
+    } else {
+      setStatus({ tone: 'error', text: result.error })
+    }
   }
 
   const promptName =
@@ -327,10 +326,12 @@ export function LaunchControls({
                 prompts={prompts}
                 agentName={agentName}
                 onLaunch={start}
-                onSave={save}
-                saving={saving}
+                onSave={(scope) => {
+                  void save(scope)
+                }}
+                saving={saver.pending}
                 status={status}
-                resolveError={resolveError?.key === key ? resolveError.message : ''}
+                resolveError={resolveError}
                 onManagePrompts={() => {
                   close()
                   onManagePrompts()
@@ -383,7 +384,7 @@ export function LaunchControls({
             setState({ kind: 'idle' })
           }}
           onConfirm={() => {
-            run({ ...state.request, confirmed: state.hold.key })
+            void run({ ...state.request, confirmed: state.hold.key })
           }}
         />
       )}
@@ -396,7 +397,7 @@ export function LaunchControls({
             setConfirmingClone(false)
           }}
           onConfirm={() => {
-            cloneThenLaunch(state.target, state.request)
+            void cloneThenLaunch(state.target, state.request)
           }}
         >
           <p>

@@ -149,6 +149,63 @@ export function findItem(snapshot: InboxSnapshot, id: number): InboxItem | undef
   return undefined
 }
 
+// TriageChange is a triage action as the inbox shows it at once, before the backend's
+// answer: the triage fields it gives an item.
+export interface TriageChange {
+  id: number
+  set: Partial<Pick<InboxItem, 'dismissedAt' | 'snoozedUntil' | 'wokeBy' | 'pinnedAt'>>
+}
+
+// listsNewer reports whether a lists before b among the items not pinned: newest activity
+// first, then the higher ID, as the backend orders them.
+function listsNewer(a: InboxItem, b: InboxItem): boolean {
+  const at = timeOf(a.updatedAt)
+  const bt = timeOf(b.updatedAt)
+
+  return at === bt ? a.id > b.id : at > bt
+}
+
+// placeItem puts an item back into a list it was taken out of at index. A newly pinned
+// item goes first, as the most recently pinned; a newly unpinned one goes among the items
+// not pinned, by its activity; any other keeps its place.
+function placeItem(rest: readonly InboxItem[], next: InboxItem, was: InboxItem, index: number): InboxItem[] {
+  let at = index
+
+  if (isPinned(next) && !isPinned(was)) {
+    at = 0
+  } else if (!isPinned(next) && isPinned(was)) {
+    const after = rest.findIndex((other) => !isPinned(other) && listsNewer(next, other))
+
+    at = after < 0 ? rest.length : after
+  }
+
+  return [...rest.slice(0, at), next, ...rest.slice(at)]
+}
+
+// applyTriage returns the snapshot with a triage change made to the item in every list
+// that holds it, ordered as the backend will order it.
+export function applyTriage(snapshot: InboxSnapshot, change: TriageChange): InboxSnapshot {
+  const apply = (list: InboxList): InboxList => {
+    const index = list.items.findIndex((item) => item.id === change.id)
+    const was = list.items[index]
+
+    if (was === undefined) {
+      return list
+    }
+
+    const rest = list.items.filter((_, i) => i !== index)
+
+    return { ...list, items: placeItem(rest, { ...was, ...change.set }, was, index) }
+  }
+
+  return {
+    ...snapshot,
+    reviewRequested: apply(snapshot.reviewRequested),
+    authored: apply(snapshot.authored),
+    assigned: apply(snapshot.assigned),
+  }
+}
+
 // tabOf is the tab of a sorted list that holds an item, or null when none does.
 export function tabOf(triaged: TriagedList, id: number): TriageTab | null {
   const tabs: readonly TriageTab[] = ['inbox', 'snoozed', 'dismissed']

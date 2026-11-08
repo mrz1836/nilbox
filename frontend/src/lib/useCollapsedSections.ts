@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 
 import { getCollapsedSections, setSectionCollapsed, type ListKey } from '../platform'
+import { serial } from './call'
+import { useQuery } from './useQuery'
 
 // CollapsedSections is which inbox sections are collapsed, as the inbox was last left.
 export interface CollapsedSections {
@@ -11,40 +13,26 @@ export interface CollapsedSections {
   setCollapsed: (section: ListKey, collapsed: boolean) => void
 }
 
+// noneCollapsed is every section open, as a stored state that cannot be read shows.
+const noneCollapsed: ReadonlySet<ListKey> = new Set()
+
 // useCollapsedSections loads which inbox sections are collapsed once, and stores each
 // change. A section that cannot be read or stored still collapses for this session; the
 // failure is only logged, since nothing else depends on it.
 export function useCollapsedSections(): CollapsedSections {
-  const [collapsed, setState] = useState<ReadonlySet<ListKey> | null>(null)
-  // saving chains the stores, so they reach the database in the order they were made and
-  // a quick collapse and reopen never ends stored the wrong way round.
-  const saving = useRef<Promise<unknown>>(Promise.resolve())
+  const stored = useQuery(
+    () => getCollapsedSections().then((sections): ReadonlySet<ListKey> => new Set(sections)),
+    [],
+    { log: 'could not read the collapsed inbox sections' },
+  )
+  // queue stores the changes one at a time, so they reach the database in the order they
+  // were made and a quick collapse and reopen never ends stored the wrong way round.
+  const [queue] = useState(serial)
+  const loaded = stored.data !== undefined || stored.error !== ''
 
-  useEffect(() => {
-    let active = true
-
-    getCollapsedSections()
-      .then((sections) => {
-        if (active) {
-          setState(new Set(sections))
-        }
-      })
-      .catch((err: unknown) => {
-        console.error('could not read the collapsed inbox sections', err)
-
-        if (active) {
-          setState(new Set())
-        }
-      })
-
-    return () => {
-      active = false
-    }
-  }, [])
-
-  const setCollapsed = useCallback((section: ListKey, on: boolean) => {
-    setState((prev) => {
-      const next = new Set(prev)
+  const setCollapsed = (section: ListKey, on: boolean) => {
+    stored.set((was) => {
+      const next = new Set(was ?? noneCollapsed)
 
       if (on) {
         next.add(section)
@@ -55,12 +43,10 @@ export function useCollapsedSections(): CollapsedSections {
       return next
     })
 
-    saving.current = saving.current
-      .then(() => setSectionCollapsed(section, on))
-      .catch((err: unknown) => {
-        console.error(`could not store whether the ${section} section is collapsed`, err)
-      })
-  }, [])
+    queue(() => setSectionCollapsed(section, on)).catch((err: unknown) => {
+      console.error(`could not store whether the ${section} section is collapsed`, err)
+    })
+  }
 
-  return { collapsed, setCollapsed }
+  return { collapsed: loaded ? (stored.data ?? noneCollapsed) : null, setCollapsed }
 }

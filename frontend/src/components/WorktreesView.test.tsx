@@ -834,6 +834,53 @@ describe('WorktreesView', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
+  it('lists quietly after a background sweep, holding nothing', async () => {
+    const { rerender } = render(<WorktreesView clock={clock} reloadKey={1} />)
+    await repo('example-repo')
+
+    let finish: (snap: ReturnType<typeof worktreesSnapshot>) => void = () => undefined
+    platform.listWorktrees.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
+    rerender(<WorktreesView clock={clock} reloadKey={2} />)
+
+    await vi.waitFor(() => {
+      expect(platform.listWorktrees).toHaveBeenCalledTimes(2)
+    })
+    expect(screen.getByRole('button', { name: 'Refresh' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /^Remove all clean/ })).toBeEnabled()
+
+    await act(async () => {
+      finish(worktreesSnapshot())
+      await Promise.resolve()
+    })
+  })
+
+  it('holds the actions while a listing it was asked for runs', async () => {
+    render(<WorktreesView clock={clock} />)
+    await repo('example-repo')
+
+    let finish: (snap: ReturnType<typeof worktreesSnapshot>) => void = () => undefined
+    platform.listWorktrees.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+
+    expect(screen.getByRole('button', { name: 'Refreshing…' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /^Remove all clean/ })).toBeDisabled()
+
+    await act(async () => {
+      finish(worktreesSnapshot())
+      await Promise.resolve()
+    })
+
+    expect(await screen.findByRole('button', { name: 'Refresh' })).toBeEnabled()
+  })
+
   it('says it is listing until the first listing arrives', async () => {
     let finish: (snap: ReturnType<typeof worktreesSnapshot>) => void = () => undefined
     platform.listWorktrees.mockReturnValue(

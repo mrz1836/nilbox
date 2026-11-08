@@ -33,7 +33,13 @@ describe('AppHeader', () => {
   it('opens a notification and the notification settings from the bell', async () => {
     const entry = notification()
     const { onOpenNotification, onNotificationSettings } = renderHeader({
-      notifications: { log: { items: [entry], unread: 1 }, error: '', markRead: vi.fn(), clear: vi.fn() },
+      notifications: {
+        log: { items: [entry], unread: 1 },
+        error: '',
+        markRead: vi.fn(),
+        markError: '',
+        clear: vi.fn(),
+      },
       onOpenNotification: vi.fn(),
       onNotificationSettings: vi.fn(),
     })
@@ -49,7 +55,7 @@ describe('AppHeader', () => {
 
   it('opens the general settings from the bell when given no notification settings', async () => {
     const { onOpenSettings } = renderHeader({
-      notifications: { log: { items: [], unread: 0 }, error: '', markRead: vi.fn(), clear: vi.fn() },
+      notifications: { log: { items: [], unread: 0 }, error: '', markRead: vi.fn(), markError: '', clear: vi.fn() },
     })
 
     await userEvent.click(screen.getByRole('button', { name: 'Notifications' }))

@@ -16,6 +16,18 @@ vi.mock('../platform', () => platform)
 
 const stopListening = vi.fn()
 
+// deferred is a call the test settles.
+function deferred() {
+  let resolve: () => void = () => undefined
+  let reject: (err: unknown) => void = () => undefined
+  const promise = new Promise<void>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+
+  return { promise, resolve, reject }
+}
+
 beforeEach(() => {
   platform.listNotifications.mockResolvedValue({ items: [notification()], unread: 1 })
   platform.markNotificationsRead.mockResolvedValue(undefined)
@@ -79,7 +91,9 @@ describe('useNotifications', () => {
     })
   })
 
-  it('marks everything read at once, and reloads if that fails', async () => {
+  it('marks everything read at once, and keeps it read once stored', async () => {
+    const stored = deferred()
+    platform.markNotificationsRead.mockReturnValue(stored.promise)
     const { result } = renderHook(() => useNotifications())
     await waitFor(() => {
       expect(result.current.log.unread).toBe(1)
@@ -93,18 +107,37 @@ describe('useNotifications', () => {
     expect(result.current.log.items[0]?.read).toBe(true)
     expect(platform.markNotificationsRead).toHaveBeenCalledOnce()
 
-    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    platform.markNotificationsRead.mockRejectedValue(new Error('busy'))
+    await act(async () => {
+      stored.resolve()
+      await stored.promise
+    })
+
+    expect(result.current.log.unread).toBe(0)
+    expect(result.current.markError).toBe('')
+  })
+
+  it('puts the entries back to unread, and says why, when they cannot be marked read', async () => {
+    const stored = deferred()
+    platform.markNotificationsRead.mockReturnValue(stored.promise)
+    const { result } = renderHook(() => useNotifications())
+    await waitFor(() => {
+      expect(result.current.log.unread).toBe(1)
+    })
 
     act(() => {
       result.current.markRead()
     })
 
-    await waitFor(() => {
-      expect(platform.listNotifications).toHaveBeenCalledTimes(2)
+    expect(result.current.log.unread).toBe(0)
+
+    await act(async () => {
+      stored.reject(new Error('database is locked'))
+      await stored.promise.catch(() => undefined)
     })
-    expect(logged).toHaveBeenCalled()
-    logged.mockRestore()
+
+    expect(result.current.log.unread).toBe(1)
+    expect(result.current.log.items[0]?.read).toBe(false)
+    expect(result.current.markError).toBe('database is locked')
   })
 
   it('clears the history', async () => {

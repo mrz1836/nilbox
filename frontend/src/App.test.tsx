@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { App } from './App'
 import { brand } from './generated/brand'
+import type { Settings, TerminalID } from './platform'
 import { sendEvent } from './test/events'
 import {
   appInfo,
@@ -77,14 +78,20 @@ const platform = vi.hoisted(() => ({
 
 vi.mock('./platform', () => platform)
 
+// stored is every setting as the backend stores it after a change, as each setter returns
+// them.
+function stored(change: Partial<Settings> = {}): Promise<Settings> {
+  return Promise.resolve(settings({ defaultProfile: 'work', worktreeDefault: false, ...change }))
+}
+
 beforeEach(() => {
-  platform.getSettings.mockResolvedValue(settings({ defaultProfile: 'work', worktreeDefault: false }))
+  platform.getSettings.mockImplementation(() => stored())
   platform.listProfiles.mockResolvedValue([profile(), profile({ name: 'work' })])
   platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([item()]) }))
   platform.on.mockReturnValue(() => undefined)
-  platform.setTerminal.mockResolvedValue(settings())
-  platform.setDefaultProfile.mockResolvedValue(settings())
-  platform.setWorktreeDefault.mockResolvedValue(settings())
+  platform.setTerminal.mockImplementation((terminal: TerminalID) => stored({ terminal }))
+  platform.setDefaultProfile.mockImplementation((defaultProfile: string) => stored({ defaultProfile }))
+  platform.setWorktreeDefault.mockImplementation((worktreeDefault: boolean) => stored({ worktreeDefault }))
   platform.listWorktrees.mockResolvedValue(worktreesSnapshot())
   platform.getCollapsedSections.mockResolvedValue([])
   platform.setSectionCollapsed.mockResolvedValue(settings())
@@ -113,7 +120,7 @@ beforeEach(() => {
   platform.clearNotifications.mockResolvedValue(undefined)
   platform.notificationBannerStatus.mockResolvedValue('on')
   platform.sendTestNotification.mockResolvedValue(undefined)
-  platform.setMenuBar.mockResolvedValue(settings())
+  platform.setMenuBar.mockImplementation((menuBar: boolean) => stored({ menuBar }))
   platform.setNotificationBanner.mockResolvedValue(settings())
 })
 
@@ -267,7 +274,7 @@ describe('App', () => {
   })
 
   it('snoozes for the length chosen in Settings, reached from the snooze menu', async () => {
-    platform.setSnoozeDays.mockResolvedValue(undefined)
+    platform.setSnoozeDays.mockImplementation((snoozeDays: number) => stored({ snoozeDays }))
     platform.snoozeItem.mockResolvedValue(snapshot({ reviewRequested: list([item()]) }))
     render(<App />)
 
@@ -305,6 +312,25 @@ describe('App', () => {
 
     expect(await screen.findByRole('button', { name: 'Launch options: Review · default' })).toBeInTheDocument()
     expect(platform.resolveLaunches).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps a saved setting that neither launches nor the inbox read, reading nothing again', async () => {
+    platform.setSnoozeDays.mockImplementation((snoozeDays: number) => stored({ snoozeDays }))
+    render(<App />)
+    await screen.findByRole('button', { name: 'Launch options: Review · work' })
+
+    const inboxReads = platform.getInboxSnapshot.mock.calls.length
+    const settingsReads = platform.getSettings.mock.calls.length
+
+    await openSettingsFromMenu()
+    await userEvent.click(screen.getByRole('button', { name: 'Snoozing' }))
+    await userEvent.click(screen.getByRole('radio', { name: '1w' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Close settings' }))
+
+    expect(await screen.findByRole('button', { name: 'Snooze for 1 week' })).toBeInTheDocument()
+    expect(platform.getInboxSnapshot).toHaveBeenCalledTimes(inboxReads)
+    expect(platform.getSettings).toHaveBeenCalledTimes(settingsReads)
+    expect(platform.resolveLaunches).toHaveBeenCalledOnce()
   })
 
   it('reads the inbox again when the trusted bots change, so the cards relabel', async () => {

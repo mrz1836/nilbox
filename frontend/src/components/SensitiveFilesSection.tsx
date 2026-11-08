@@ -1,7 +1,9 @@
-import { useEffect, useId, useState, type SubmitEvent } from 'react'
+import { startTransition, useActionState, useId, useState, type SubmitEvent } from 'react'
 
 import { brand } from '../generated/brand'
-import { counted, errorMessage } from '../lib/format'
+import { counted } from '../lib/format'
+import { useDebouncedQuery } from '../lib/useQuery'
+import { useSettingsSave } from '../lib/useSettingsSave'
 import {
   matchSensitivePath,
   refreshInbox,
@@ -19,9 +21,34 @@ import { XIcon } from './icons'
 
 export interface SensitiveFilesSectionProps {
   settings: Settings
-  // onSaved receives the settings after a change was stored.
+  // onSaved receives every setting as stored after a change.
   onSaved: (settings: Settings) => void
 }
+
+// Field is where a refusal shows: under the settings above the patterns, or under the
+// pattern field.
+type Field = 'settings' | 'patterns'
+
+// Refusal is why a change was refused, where it shows, and the draft typed when it was:
+// typing again clears a refused pattern.
+interface Refusal {
+  field: Field
+  draft: string
+  message: string
+}
+
+// Change is a change to the sensitive-file settings: how it shows at once, the call that
+// stores it, where a refusal shows, the draft typed when it was made, and what to do once
+// it is stored.
+interface Change {
+  shows: Partial<Settings>
+  call: () => PromiseLike<Settings>
+  field: Field
+  draft: string
+  then?: () => void
+}
+
+const noRefusal: Refusal = { field: 'settings', draft: '', message: '' }
 
 // tryDelay is how long the path tester waits after a keystroke before asking.
 const tryDelay = 200
@@ -114,38 +141,22 @@ function CategoryRow({ category, on, busy, onChange }: CategoryRowProps) {
 function PathTester({ settings }: { settings: Settings }) {
   const id = useId()
   const [path, setPath] = useState('')
-  const [result, setResult] = useState<{ path: string; match: SensitivePathMatch | null; error: string } | null>(null)
-
-  // Ask again after typing stops, and whenever the settings change.
-  useEffect(() => {
-    const trimmed = path.trim()
-
-    if (trimmed === '') {
-      return undefined
-    }
-
-    let current = true
-    const timer = setTimeout(() => {
-      matchSensitivePath(trimmed)
-        .then((match) => {
-          if (current) {
-            setResult({ path: trimmed, match, error: '' })
-          }
-        })
-        .catch((err: unknown) => {
-          if (current) {
-            setResult({ path: trimmed, match: null, error: errorMessage(err) })
-          }
-        })
-    }, tryDelay)
-
-    return () => {
-      current = false
-      clearTimeout(timer)
-    }
-  }, [path, settings])
-
-  const shown = result !== null && result.path === path.trim() ? result : null
+  const trimmed = path.trim()
+  // Ask again after typing stops, and whenever the stored settings change.
+  const tried = useDebouncedQuery(
+    () => matchSensitivePath(trimmed).then((match) => ({ path: trimmed, match })),
+    [trimmed, settings],
+    tryDelay,
+    { enabled: trimmed !== '' },
+  )
+  // A failure is shown once the latest ask settles; an answer while it is about the path
+  // in the field.
+  const shown =
+    tried.error !== '' && !tried.pending
+      ? { match: null, error: tried.error }
+      : tried.data?.path === trimmed
+        ? { match: tried.data.match, error: '' }
+        : null
 
   return (
     <section aria-labelledby={`${id}-heading`} className="flex flex-col gap-2">
@@ -171,7 +182,7 @@ function PathTester({ settings }: { settings: Settings }) {
         className={`${fieldClass} w-full font-mono text-[13px]`}
       />
       <p id={`${id}-result`} role="status" className="min-h-4 text-xs">
-        {path.trim() !== '' && shown !== null && <TryResult result={shown} />}
+        {trimmed !== '' && shown !== null && <TryResult result={shown} />}
       </p>
     </section>
   )
@@ -198,47 +209,66 @@ function TryResult({ result }: { result: { match: SensitivePathMatch | null; err
 // SensitiveFilesSection is the settings page's Sensitive files section: whose pull
 // requests are checked, which built-in categories count, the user's own patterns, a path
 // to try them on, and how the check works.
-export function SensitiveFilesSection({ settings, onSaved }: SensitiveFilesSectionProps) {
+export function SensitiveFilesSection({ settings: stored, onSaved }: SensitiveFilesSectionProps) {
   const id = useId()
+  const { settings, save } = useSettingsSave(stored, onSaved)
   const [draft, setDraft] = useState('')
-  const [error, setError] = useState('')
-  const [patternError, setPatternError] = useState('')
-  const [busy, setBusy] = useState(false)
+  // invalid is why the draft cannot be added, found before asking the backend.
+  const [invalid, setInvalid] = useState<Refusal>(noRefusal)
+  // Every change runs through one action: one at a time, with the controls held while it
+  // runs.
+  const [refused, change, busy] = useActionState(async (_: Refusal, next: Change): Promise<Refusal> => {
+    const result = await save(next.shows, next.call)
+
+    if (!result.ok) {
+      return { field: next.field, draft: next.draft, message: result.error }
+    }
+
+    next.then?.()
+
+    return noRefusal
+  }, noRefusal)
 
   const config = settings.sensitiveFiles
   const off = config.off
   const patterns = config.patterns
   const categories = settings.sensitiveCategories
+  const refusal = invalid.message !== '' ? invalid : busy ? noRefusal : refused
+  const error = refusal.field === 'settings' ? refusal.message : ''
+  const patternError = refusal.field === 'patterns' && refusal.draft === draft ? refusal.message : ''
 
-  // save stores a change, then reports the settings as stored; onError shows why it was
-  // refused.
-  const save = (call: Promise<Settings>, onError: (message: string) => void, after?: () => void) => {
-    setBusy(true)
-    setError('')
-    setPatternError('')
+  // store makes a change through the action.
+  const store = (next: Omit<Change, 'draft'>) => {
+    setInvalid(noRefusal)
+    startTransition(() => {
+      change({ ...next, draft })
+    })
+  }
 
-    call
-      .then((next) => {
-        onSaved(next)
-        after?.()
-      })
-      .catch((err: unknown) => {
-        onError(errorMessage(err))
-      })
-      .finally(() => {
-        setBusy(false)
-      })
+  // storePatterns replaces the user's own patterns.
+  const storePatterns = (next: string[], then?: () => void) => {
+    store({
+      shows: { sensitiveFiles: { ...config, patterns: next } },
+      call: () => setSensitivePatterns(next),
+      field: 'patterns',
+      ...(then === undefined ? {} : { then }),
+    })
   }
 
   const chooseScope = (scope: SensitiveScope) => {
-    save(setSensitiveScope(scope), setError, () => {
-      // Collaborators' pull requests are checked by a refresh: run one now rather than
-      // wait for the next.
-      if (scope === 'collaborators') {
-        refreshInbox().catch((err: unknown) => {
-          console.error('could not refresh the inbox', err)
-        })
-      }
+    store({
+      shows: { sensitiveFiles: { ...config, scope } },
+      call: () => setSensitiveScope(scope),
+      field: 'settings',
+      then: () => {
+        // Collaborators' pull requests are checked by a refresh: run one now rather than
+        // wait for the next.
+        if (scope === 'collaborators') {
+          refreshInbox().catch((err: unknown) => {
+            console.error('could not refresh the inbox', err)
+          })
+        }
+      },
     })
   }
 
@@ -249,12 +279,12 @@ export function SensitiveFilesSection({ settings, onSaved }: SensitiveFilesSecti
     const pattern = draft.trim()
 
     if (patterns.some((p) => p.toLowerCase() === pattern.toLowerCase())) {
-      setPatternError(`${pattern} is already on the list.`)
+      setInvalid({ field: 'patterns', draft, message: `${pattern} is already on the list.` })
 
       return
     }
 
-    save(setSensitivePatterns([...patterns, pattern]), setPatternError, () => {
+    storePatterns([...patterns, pattern], () => {
       setDraft('')
     })
   }
@@ -309,7 +339,16 @@ export function SensitiveFilesSection({ settings, onSaved }: SensitiveFilesSecti
               on={!off.includes(category.id)}
               busy={busy}
               onChange={(on) => {
-                save(setSensitiveCategory(category.id, on), setError)
+                store({
+                  shows: {
+                    sensitiveFiles: {
+                      ...config,
+                      off: on ? off.filter((c) => c !== category.id) : [...off, category.id],
+                    },
+                  },
+                  call: () => setSensitiveCategory(category.id, on),
+                  field: 'settings',
+                })
               }}
             />
           ))}
@@ -340,7 +379,7 @@ export function SensitiveFilesSection({ settings, onSaved }: SensitiveFilesSecti
                     aria-label={`Remove ${pattern}`}
                     title={`Remove ${pattern}`}
                     onClick={() => {
-                      save(setSensitivePatterns(patterns.filter((p) => p !== pattern)), setPatternError)
+                      storePatterns(patterns.filter((p) => p !== pattern))
                     }}
                     className="ml-auto flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-danger disabled:opacity-50"
                   >
@@ -365,7 +404,6 @@ export function SensitiveFilesSection({ settings, onSaved }: SensitiveFilesSecti
                 aria-describedby={patternError === '' ? `${id}-syntax` : `${id}-pattern-error ${id}-syntax`}
                 onChange={(e) => {
                   setDraft(e.target.value)
-                  setPatternError('')
                 }}
                 className={`${fieldClass} w-full font-mono text-[13px]`}
               />
@@ -388,7 +426,7 @@ export function SensitiveFilesSection({ settings, onSaved }: SensitiveFilesSecti
         </p>
       </section>
 
-      <PathTester settings={settings} />
+      <PathTester settings={stored} />
 
       <section aria-labelledby={`${id}-how`} className="flex flex-col gap-2">
         <h3 id={`${id}-how`} className="text-sm font-semibold">

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 
 import { formatAgo } from '../lib/age'
-import { errorMessage } from '../lib/format'
 import { isInboxNil } from '../lib/nil'
 import { prefersReducedMotion } from '../lib/motion'
 import { findItem, formatWhen, inboxCount, isDismissed, tabOf, triageList, type TriageTab } from '../lib/triage'
@@ -376,59 +375,81 @@ export function InboxView({
   }, [])
 
   const triage = useMemo<TriageActions>(() => {
-    const failed = (what: string, item: InboxItem) => (err: unknown) => {
-      showToast({ text: `Could not ${what} “${item.title}”`, detail: errorMessage(err), tone: 'error' })
+    // failed reports a triage action the backend refused; the item is back as it was.
+    const failed = (what: string, item: InboxItem, error: string) => {
+      showToast({ text: `Could not ${what} “${item.title}”`, detail: error, tone: 'error' })
     }
 
     // undo puts an item back the way it was before it was snoozed or dismissed.
     const undo = (item: InboxItem) => () => {
       closeToast()
-      restore(item.id).catch(failed('undo the change to', item))
+      void restore(item.id).then((result) => {
+        if (!result.ok) {
+          failed('undo the change to', item, result.error)
+        }
+      })
     }
 
     return {
       snoozeDays,
       onDismiss: (item) => {
-        dismiss(item.id)
-          .then(() => {
+        void dismiss(item.id).then((result) => {
+          if (result.ok) {
             showToast({ text: 'Dismissed', detail: item.title, undo: undo(item) })
-          })
-          .catch(failed('dismiss', item))
+          } else {
+            failed('dismiss', item, result.error)
+          }
+        })
       },
       onSnooze: (item, days) => {
-        snooze(item.id, days)
-          .then((next) => {
-            const until = findItem(next, item.id)?.snoozedUntil ?? ''
-            const text = until === '' ? 'Snoozed' : `Snoozed until ${formatWhen(now, new Date(until))}`
+        void snooze(item.id, days).then((result) => {
+          if (!result.ok) {
+            failed('snooze', item, result.error)
 
-            showToast({ text, detail: item.title, undo: undo(item) })
-          })
-          .catch(failed('snooze', item))
+            return
+          }
+
+          const until = findItem(result.data, item.id)?.snoozedUntil ?? ''
+          const text = until === '' ? 'Snoozed' : `Snoozed until ${formatWhen(now, new Date(until))}`
+
+          showToast({ text, detail: item.title, undo: undo(item) })
+        })
       },
       onRestore: (item) => {
-        restore(item.id)
-          .then(() => {
+        void restore(item.id).then((result) => {
+          if (result.ok) {
             showToast({ text: isDismissed(item) ? 'Restored' : 'Unsnoozed', detail: item.title })
-          })
-          .catch(failed('restore', item))
+          } else {
+            failed('restore', item, result.error)
+          }
+        })
       },
       // A pin shows at once, as the item moves to the top, so it needs no toast.
       onPin: (item) => {
-        pin(item.id).catch(failed('pin', item))
+        void pin(item.id).then((result) => {
+          if (!result.ok) {
+            failed('pin', item, result.error)
+          }
+        })
       },
       onUnpin: (item) => {
-        unpin(item.id).catch(failed('unpin', item))
+        void unpin(item.id).then((result) => {
+          if (!result.ok) {
+            failed('unpin', item, result.error)
+          }
+        })
       },
       // A refreshed item that is still open updates in place; one that is not leaves the
       // inbox, which the toast explains.
-      onRefresh: (item) =>
-        refreshItem(item.id)
-          .then((next) => {
-            if (findItem(next, item.id) === undefined) {
-              showToast({ text: 'No longer open on GitHub', detail: item.title })
-            }
-          })
-          .catch(failed('refresh', item)),
+      onRefresh: async (item) => {
+        const result = await refreshItem(item.id)
+
+        if (!result.ok) {
+          failed('refresh', item, result.error)
+        } else if (findItem(result.data, item.id) === undefined) {
+          showToast({ text: 'No longer open on GitHub', detail: item.title })
+        }
+      },
       onChangeDefault: onSnoozeSettings,
     }
   }, [snoozeDays, now, dismiss, snooze, restore, pin, unpin, refreshItem, showToast, closeToast, onSnoozeSettings])

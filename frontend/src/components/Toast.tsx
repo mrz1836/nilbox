@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 
 import { XIcon } from './icons'
 
@@ -48,17 +48,24 @@ export function Toast({ toast, onClose }: ToastProps) {
   const [focusedId, setFocusedId] = useState<number | null>(null)
   const paused = toast !== null && (hoveredId === toast.id || focusedId === toast.id)
 
+  // The timer closes with the latest onClose, so a new one never restarts it.
+  const close = useEffectEvent(() => {
+    onClose()
+  })
+
   useEffect(() => {
     if (toast === null || paused) {
       return undefined
     }
 
-    const timer = setTimeout(onClose, toastMs)
+    const timer = setTimeout(() => {
+      close()
+    }, toastMs)
 
     return () => {
       clearTimeout(timer)
     }
-  }, [toast, paused, onClose])
+  }, [toast, paused])
 
   const error = toast?.tone === 'error'
 

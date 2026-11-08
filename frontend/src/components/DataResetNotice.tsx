@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 import { brand } from '../generated/brand'
-import { getAppInfo, type DataReset } from '../platform'
+import { useQuery } from '../lib/useQuery'
+import { getAppInfo } from '../platform'
 import { AlertIcon, XIcon } from './icons'
 
 // DataResetNotice tells the user, once the window loads, that their data could not be
@@ -11,25 +12,9 @@ import { AlertIcon, XIcon } from './icons'
 // working database. The live region stays mounted, so the notice is announced when it
 // appears.
 export function DataResetNotice() {
-  const [reset, setReset] = useState<DataReset | null>(null)
-
-  useEffect(() => {
-    let active = true
-
-    getAppInfo()
-      .then((info) => {
-        if (active) {
-          setReset(info.dataReset ?? null)
-        }
-      })
-      .catch((err: unknown) => {
-        console.error('could not read the app info', err)
-      })
-
-    return () => {
-      active = false
-    }
-  }, [])
+  const info = useQuery(() => getAppInfo(), [], { log: 'could not read the app info' })
+  const [dismissed, setDismissed] = useState(false)
+  const reset = dismissed ? null : (info.data?.dataReset ?? null)
 
   return (
     <div role="status" aria-live="polite">
@@ -45,7 +30,7 @@ export function DataResetNotice() {
             aria-label="Dismiss notice"
             title="Dismiss"
             onClick={() => {
-              setReset(null)
+              setDismissed(true)
             }}
             className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface hover:text-text"
           >

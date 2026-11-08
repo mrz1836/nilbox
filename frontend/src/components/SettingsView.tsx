@@ -1,7 +1,17 @@
-import { useEffect, useId, useState, type ReactNode, type SubmitEvent } from 'react'
+import {
+  startTransition,
+  useActionState,
+  useEffect,
+  useEffectEvent,
+  useId,
+  useState,
+  type ReactNode,
+  type SubmitEvent,
+} from 'react'
 
 import { brand } from '../generated/brand'
-import { counted, errorMessage } from '../lib/format'
+import { attempt, type Result } from '../lib/call'
+import { counted } from '../lib/format'
 import { kindPlural, promptApplies } from '../lib/launch'
 import { bannerStatusText, notificationKinds } from '../lib/notifications'
 import type { Theme } from '../lib/theme'
@@ -13,6 +23,9 @@ import {
   snoozeLength,
   snoozeShort,
 } from '../lib/triage'
+import { useMutation } from '../lib/useMutation'
+import { useQuery } from '../lib/useQuery'
+import { useSettingsSave } from '../lib/useSettingsSave'
 import { presetFor, sizeKey, sizeLabel, windowPresets } from '../lib/windowSize'
 import {
   getAppInfo,
@@ -32,7 +45,6 @@ import {
   setWorktreeDefault,
   sweepWorktrees,
   type Account,
-  type BannerStatus,
   type DefaultPrompts,
   type Info,
   type LaunchDefaults,
@@ -147,10 +159,10 @@ export interface SettingsViewProps {
   // account is null until the inbox has loaded.
   account: Account | null
   // theme is the chosen theme, and onThemeChange switches to another and stores it,
-  // rejecting when it could not be stored.
+  // resolving with why it could not be stored, if it could not.
   theme: Theme
-  onThemeChange: (theme: Theme) => Promise<void>
-  // onSaved receives the settings after a change was stored.
+  onThemeChange: (theme: Theme) => Promise<Result<void>>
+  // onSaved receives every setting as stored after a change, as the setter returned it.
   onSaved: (settings: Settings) => void
   // onLaunchChanged reloads the prompts and launch defaults after a change; it resolves
   // once they are in.
@@ -306,31 +318,20 @@ function ChoiceRow({ label, description, children }: ChoiceRowProps) {
 
 // SnoozingSection holds how long the Snooze button sets an item aside and which new
 // activity ends a snooze early, each saved as soon as it is chosen.
-function SnoozingSection({ settings, onSaved }: SettingsSectionProps) {
-  const [error, setError] = useState('')
+function SnoozingSection({ settings: stored, onSaved }: SettingsSectionProps) {
+  const { settings, save, error } = useSettingsSave(stored, onSaved)
   const wake = settings.snoozeWake
-
-  const save = (call: Promise<Settings>, next: Settings) => {
-    setError('')
-    call
-      .then(() => {
-        onSaved(next)
-      })
-      .catch((err: unknown) => {
-        setError(errorMessage(err))
-      })
-  }
 
   const chooseDays = (value: string) => {
     const snoozeDays = Number(value)
 
-    save(setSnoozeDays(snoozeDays), { ...settings, snoozeDays })
+    void save({ snoozeDays }, () => setSnoozeDays(snoozeDays))
   }
 
   const chooseWake = (change: Partial<SnoozeRules>) => {
     const snoozeWake = { ...wake, ...change }
 
-    save(setSnoozeWake(snoozeWake), { ...settings, snoozeWake })
+    void save({ snoozeWake }, () => setSnoozeWake(snoozeWake))
   }
 
   return (
@@ -417,57 +418,32 @@ function SnoozingSection({ settings, onSaved }: SettingsSectionProps) {
   )
 }
 
-// TestState is where a test notification is: not sent, on its way, shown, or failed.
-type TestState = { state: 'idle' | 'sending' | 'sent' } | { state: 'failed'; error: string }
-
 // NotificationsSection holds the menu bar icon and which kinds of notification show a
 // banner, each saved as soon as it is switched, with a test banner and a note when banners
 // cannot show.
-function NotificationsSection({ settings, onSaved }: SettingsSectionProps) {
+function NotificationsSection({ settings: stored, onSaved }: SettingsSectionProps) {
   const id = useId()
-  const [error, setError] = useState('')
-  const [status, setStatus] = useState<BannerStatus | ''>('')
-  const [test, setTest] = useState<TestState>({ state: 'idle' })
+  const { settings, save, error } = useSettingsSave(stored, onSaved)
+  const banners = useQuery(() => notificationBannerStatus(), [], {
+    log: 'could not read whether notifications are allowed',
+  })
+  const tester = useMutation(() => sendTestNotification())
+  // sent is whether the last test was sent; it is false again while the next one sends.
+  const [sent, setSent] = useState(false)
+  const status = banners.data ?? ''
   const off = settings.bannersOff
-
-  const readStatus = () => {
-    notificationBannerStatus()
-      .then(setStatus)
-      .catch((err: unknown) => {
-        console.error('could not read whether notifications are allowed', err)
-      })
-  }
-
-  useEffect(readStatus, [])
-
-  const save = (call: Promise<Settings>, next: Settings) => {
-    setError('')
-    call
-      .then(() => {
-        onSaved(next)
-      })
-      .catch((err: unknown) => {
-        setError(errorMessage(err))
-      })
-  }
 
   const switchBanner = (kind: NotificationKind, on: boolean) => {
     const bannersOff = on ? off.filter((k) => k !== kind) : [...off, kind]
 
-    save(setNotificationBanner(kind, on), { ...settings, bannersOff })
+    void save({ bannersOff }, () => setNotificationBanner(kind, on))
   }
 
-  const sendTest = () => {
-    setTest({ state: 'sending' })
-    sendTestNotification()
-      .then(() => {
-        setTest({ state: 'sent' })
-      })
-      .catch((err: unknown) => {
-        setTest({ state: 'failed', error: errorMessage(err) })
-      })
-      // Asking to show one may have changed whether they are allowed.
-      .finally(readStatus)
+  const sendTest = async () => {
+    setSent(false)
+    setSent((await tester.run()).ok)
+    // Asking to show one may have changed whether they are allowed.
+    void banners.refetch()
   }
 
   const statusText = bannerStatusText(status)
@@ -494,7 +470,7 @@ function NotificationsSection({ settings, onSaved }: SettingsSectionProps) {
             onChange={(e) => {
               const menuBar = e.target.checked
 
-              save(setMenuBar(menuBar), { ...settings, menuBar })
+              void save({ menuBar }, () => setMenuBar(menuBar))
             }}
             className={switchClass}
           />
@@ -532,13 +508,13 @@ function NotificationsSection({ settings, onSaved }: SettingsSectionProps) {
             description={
               <>
                 <span id={`${id}-test-help`}>
-                  {test.state === 'sent'
+                  {sent
                     ? 'Sent. If no banner showed, check Focus and System Settings › Notifications.'
                     : 'Show a sample banner, asking for permission first if you have not been asked.'}
                 </span>
-                {test.state === 'failed' && (
+                {tester.error !== '' && (
                   <span role="alert" className="mt-1 block text-danger">
-                    {test.error}
+                    {tester.error}
                   </span>
                 )}
               </>
@@ -547,11 +523,13 @@ function NotificationsSection({ settings, onSaved }: SettingsSectionProps) {
             <button
               type="button"
               aria-describedby={`${id}-test-help`}
-              disabled={test.state === 'sending' || status === 'unavailable'}
-              onClick={sendTest}
+              disabled={tester.pending || status === 'unavailable'}
+              onClick={() => {
+                void sendTest()
+              }}
               className={buttonClass}
             >
-              {test.state === 'sending' ? 'Sending…' : 'Send a test'}
+              {tester.pending ? 'Sending…' : 'Send a test'}
             </button>
           </ChoiceRow>
         </Group>
@@ -591,7 +569,7 @@ const themeChoices: readonly {
 
 interface ThemeRowProps {
   theme: Theme
-  onThemeChange: (theme: Theme) => Promise<void>
+  onThemeChange: (theme: Theme) => Promise<Result<void>>
 }
 
 // ThemeRow chooses the theme. A choice shows at once, with a short cross-fade, and is
@@ -602,12 +580,15 @@ function ThemeRow({ theme, onThemeChange }: ThemeRowProps) {
   // moves when the page opens.
   const [picked, setPicked] = useState<Theme | null>(null)
 
-  const choose = (next: Theme) => {
+  const choose = async (next: Theme) => {
     setError('')
     setPicked(next)
-    onThemeChange(next).catch((err: unknown) => {
-      setError(errorMessage(err))
-    })
+
+    const result = await onThemeChange(next)
+
+    if (!result.ok) {
+      setError(result.error)
+    }
   }
 
   return (
@@ -630,7 +611,9 @@ function ThemeRow({ theme, onThemeChange }: ThemeRowProps) {
           title,
           icon: <Icon className={`size-3.5 ${picked === value ? turnIn : ''}`} />,
         }))}
-        onChange={choose}
+        onChange={(next) => {
+          void choose(next)
+        }}
       />
     </div>
   )
@@ -638,8 +621,8 @@ function ThemeRow({ theme, onThemeChange }: ThemeRowProps) {
 
 // WindowSizeRow holds the size the window opens at. Choosing a size stores it and resizes
 // the open window to it at once.
-function WindowSizeRow({ settings, onSaved }: SettingsSectionProps) {
-  const [error, setError] = useState('')
+function WindowSizeRow({ settings: stored, onSaved }: SettingsSectionProps) {
+  const { settings, save, error } = useSettingsSave(stored, onSaved)
   const defaultKey = sizeKey(settings.defaultWindowSize)
 
   const choose = (key: string) => {
@@ -648,14 +631,7 @@ function WindowSizeRow({ settings, onSaved }: SettingsSectionProps) {
       return
     }
 
-    setError('')
-    setWindowSize(preset.size)
-      .then(() => {
-        onSaved({ ...settings, windowSize: preset.size })
-      })
-      .catch((err: unknown) => {
-        setError(errorMessage(err))
-      })
+    void save({ windowSize: preset.size }, () => setWindowSize(preset.size))
   }
 
   return (
@@ -720,7 +696,7 @@ interface LaunchingSectionProps extends SettingsSectionProps {
 }
 
 function LaunchingSection({
-  settings,
+  settings: stored,
   profiles,
   prompts,
   defaultPrompts,
@@ -728,30 +704,37 @@ function LaunchingSection({
   onLaunchChanged,
 }: LaunchingSectionProps) {
   const id = useId()
+  const { settings, save } = useSettingsSave(stored, onSaved)
   const [errors, setErrors] = useState({ terminal: '', profile: '', worktree: '', cleanup: '', pr: '', issue: '' })
 
-  // save stores one change, then reports the new settings, or shows why it was refused.
-  const save = (field: keyof typeof errors, call: Promise<Settings>, next: Settings) => {
-    setErrors((was) => ({ ...was, [field]: '' }))
-
-    call
-      .then(() => {
-        onSaved(next)
-      })
-      .catch((err: unknown) => {
-        setErrors((was) => ({ ...was, [field]: errorMessage(err) }))
-      })
+  // shows sets the message under one field: why its change was refused, or ''.
+  const shows = (field: keyof typeof errors, message: string) => {
+    setErrors((was) => ({ ...was, [field]: message }))
   }
 
-  // savePrompt makes a prompt the app's default for a kind of item.
-  const savePrompt = (kind: 'pr' | 'issue', promptId: number) => {
-    setErrors((was) => ({ ...was, [kind]: '' }))
+  // store saves one change, showing why it was refused under its field.
+  const store = async (field: keyof typeof errors, change: Partial<Settings>, call: () => PromiseLike<Settings>) => {
+    shows(field, '')
 
-    setDefaultPrompt(kind, promptId)
-      .then(onLaunchChanged)
-      .catch((err: unknown) => {
-        setErrors((was) => ({ ...was, [kind]: errorMessage(err) }))
-      })
+    const result = await save(change, call)
+
+    if (!result.ok) {
+      shows(field, result.error)
+    }
+  }
+
+  // savePrompt makes a prompt the app's default for a kind of item, then loads the
+  // prompts again, since which one is the default shows in the library.
+  const savePrompt = async (kind: 'pr' | 'issue', promptId: number) => {
+    shows(kind, '')
+
+    const result = await attempt(setDefaultPrompt(kind, promptId))
+
+    if (result.ok) {
+      await onLaunchChanged()
+    } else {
+      shows(kind, result.error)
+    }
   }
 
   return (
@@ -770,7 +753,7 @@ function LaunchingSection({
             const terminal = terminals.find((t) => t.id === e.target.value)?.id
 
             if (terminal !== undefined) {
-              save('terminal', setTerminal(terminal), { ...settings, terminal })
+              void store('terminal', { terminal }, () => setTerminal(terminal))
             }
           }}
           className={fieldClass}
@@ -799,7 +782,8 @@ function LaunchingSection({
           disabled={profiles.length === 0}
           onChange={(e) => {
             const defaultProfile = e.target.value
-            save('profile', setDefaultProfile(defaultProfile), { ...settings, defaultProfile })
+
+            void store('profile', { defaultProfile }, () => setDefaultProfile(defaultProfile))
           }}
           className={fieldClass}
         >
@@ -824,7 +808,7 @@ function LaunchingSection({
             value={defaultPrompts === null ? 0 : defaultPrompts[kind]}
             disabled={defaultPrompts === null}
             onChange={(e) => {
-              savePrompt(kind, Number(e.target.value))
+              void savePrompt(kind, Number(e.target.value))
             }}
             className={fieldClass}
           >
@@ -852,7 +836,8 @@ function LaunchingSection({
           checked={settings.worktreeDefault}
           onChange={(e) => {
             const worktreeDefault = e.target.checked
-            save('worktree', setWorktreeDefault(worktreeDefault), { ...settings, worktreeDefault })
+
+            void store('worktree', { worktreeDefault }, () => setWorktreeDefault(worktreeDefault))
           }}
           className={switchClass}
         />
@@ -872,16 +857,18 @@ function LaunchingSection({
           onChange={(e) => {
             const worktreeAutoCleanup = e.target.checked
             // Turned on, it sweeps at once rather than at the next check.
-            const call = setWorktreeAutoCleanup(worktreeAutoCleanup).then((stored) => {
-              if (worktreeAutoCleanup) {
-                sweepWorktrees().catch((err: unknown) => {
-                  console.error('could not sweep the worktrees', err)
-                })
-              }
+            const call = () =>
+              setWorktreeAutoCleanup(worktreeAutoCleanup).then((saved) => {
+                if (worktreeAutoCleanup) {
+                  sweepWorktrees().catch((err: unknown) => {
+                    console.error('could not sweep the worktrees', err)
+                  })
+                }
 
-              return stored
-            })
-            save('cleanup', call, { ...settings, worktreeAutoCleanup })
+                return saved
+              })
+
+            void store('cleanup', { worktreeAutoCleanup }, call)
           }}
           className={switchClass}
         />
@@ -985,8 +972,15 @@ interface RepositoriesSectionProps extends SettingsSectionProps {
   onLaunchChanged: () => Promise<void>
 }
 
+// CloneRootSave is how the last Save of the clone root went: the draft it saved, or why
+// it was refused.
+interface CloneRootSave {
+  saved: string | null
+  error: string
+}
+
 function RepositoriesSection({
-  settings,
+  settings: stored,
   onSaved,
   profiles,
   prompts,
@@ -995,25 +989,26 @@ function RepositoriesSection({
   onLaunchChanged,
 }: RepositoriesSectionProps) {
   const id = useId()
+  const { settings, save } = useSettingsSave(stored, onSaved)
   const [draft, setDraft] = useState(settings.cloneRoot)
-  const [error, setError] = useState('')
-  const [saved, setSaved] = useState(false)
+  const [outcome, saveCloneRoot, saving] = useActionState(
+    async (_: CloneRootSave, typed: string): Promise<CloneRootSave> => {
+      const cloneRoot = typed.trim()
+      const result = await save({ cloneRoot }, () => setCloneRoot(cloneRoot))
+
+      return result.ok ? { saved: typed, error: '' } : { saved: null, error: result.error }
+    },
+    { saved: null, error: '' },
+  )
+  // Both wait while a save runs; Saved shows until the draft changes.
+  const error = saving ? '' : outcome.error
+  const saved = !saving && outcome.saved === draft
 
   const submit = (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault()
-    setError('')
-    setSaved(false)
-
-    const cloneRoot = draft.trim()
-
-    setCloneRoot(cloneRoot)
-      .then(() => {
-        setSaved(true)
-        onSaved({ ...settings, cloneRoot })
-      })
-      .catch((err: unknown) => {
-        setError(errorMessage(err))
-      })
+    startTransition(() => {
+      saveCloneRoot(draft)
+    })
   }
 
   return (
@@ -1034,7 +1029,6 @@ function RepositoriesSection({
               spellCheck={false}
               onChange={(e) => {
                 setDraft(e.target.value)
-                setSaved(false)
               }}
               className={`${fieldClass} w-56 font-mono text-[13px]`}
             />
@@ -1080,28 +1074,9 @@ function aboutRows(info: Info | null, failure: string): [string, string][] {
 }
 
 function AboutSection() {
-  const [info, setInfo] = useState<Info | null>(null)
-  const [failure, setFailure] = useState('')
-
-  useEffect(() => {
-    let active = true
-
-    getAppInfo()
-      .then((got) => {
-        if (active) {
-          setInfo(got)
-        }
-      })
-      .catch((err: unknown) => {
-        if (active) {
-          setFailure(errorMessage(err))
-        }
-      })
-
-    return () => {
-      active = false
-    }
-  }, [])
+  const about = useQuery(() => getAppInfo(), [])
+  const info = about.data ?? null
+  const failure = about.error
 
   return (
     <div className="flex flex-col gap-5">
@@ -1162,11 +1137,15 @@ export function SettingsView({
   const [section, setSection] = useState<SectionId>(initialSection)
   const current = sections[section]
 
+  const closeOnEscape = useEffectEvent((e: KeyboardEvent) => {
+    if (e.key === 'Escape' && !e.defaultPrevented && !isTyping(e)) {
+      onClose()
+    }
+  })
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !e.defaultPrevented && !isTyping(e)) {
-        onClose()
-      }
+      closeOnEscape(e)
     }
 
     document.addEventListener('keydown', onKeyDown)
@@ -1174,7 +1153,7 @@ export function SettingsView({
     return () => {
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [onClose])
+  }, [])
 
   const loading = <p className="text-sm text-muted">Loading the settings…</p>
 

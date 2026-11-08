@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { startTransition, useLayoutEffect, useOptimistic, useRef, useState } from 'react'
 
 import { getTheme, setTheme } from '../platform'
-import { appearanceIsDark, defaultTheme, onAppearanceChange, resolveDark, schemeSwitch, type Theme } from './theme'
+import { attempt, serial, type Result } from './call'
+import { darkQuery, defaultTheme, resolveDark, schemeSwitch, type Theme } from './theme'
+import { useMediaQuery } from './useMediaQuery'
+import { useQuery } from './useQuery'
 
 // ThemeState is the chosen theme and the palette it shows.
 export interface ThemeState {
@@ -10,9 +13,9 @@ export interface ThemeState {
   // dark reports whether the page shows the dark palette.
   dark: boolean
   // chooseTheme switches to a theme at once, cross-fading the window, and stores it. It
-  // rejects when the theme could not be stored, and the page goes back to the theme it
-  // showed, unless another theme was chosen since.
-  chooseTheme: (theme: Theme) => Promise<void>
+  // resolves with how the store went; when the theme could not be stored, the page goes
+  // back to the theme it showed, unless another theme was chosen since.
+  chooseTheme: (theme: Theme) => Promise<Result<void>>
 }
 
 // useTheme shows the chosen theme for the life of the app: it loads the stored theme once,
@@ -20,37 +23,18 @@ export interface ThemeState {
 // first palette is pinned before the first paint without a cross-fade; every later change,
 // chosen or from the system, cross-fades.
 export function useTheme(win: Window = window): ThemeState {
-  const [theme, setThemeState] = useState<Theme>(defaultTheme)
-  const [appearanceDark, setAppearanceDark] = useState(() => appearanceIsDark(win))
+  const appearanceDark = useMediaQuery(darkQuery, win)
+  const stored = useQuery(() => getTheme(), [], { log: 'could not read the theme' })
+  // chosen is the theme last stored from a choice, which a stored theme that loads late
+  // never overrides.
+  const [chosen, setChosen] = useState<Theme | null>(null)
+  const [theme, showTheme] = useOptimistic<Theme, Theme>(chosen ?? stored.data ?? defaultTheme, (_, next) => next)
   const [switchScheme] = useState(() => schemeSwitch(win))
-  // picks counts the choices made, so a stored theme that loads late never overrides one,
-  // and a failed store only puts back the theme it replaced while it is still the latest.
-  const picks = useRef(0)
-  // saving chains the stores, so they reach the database, and the native appearance, in
-  // the order they were made.
-  const saving = useRef<Promise<unknown>>(Promise.resolve())
+  // queue stores the choices one at a time, so they reach the database, and the native
+  // appearance, in the order they were made.
+  const [queue] = useState(serial)
   // painted is whether the first palette is pinned; only later switches cross-fade.
   const painted = useRef(false)
-
-  useEffect(() => onAppearanceChange(setAppearanceDark, win), [win])
-
-  useEffect(() => {
-    let active = true
-
-    getTheme()
-      .then((stored) => {
-        if (active && picks.current === 0) {
-          setThemeState(stored)
-        }
-      })
-      .catch((err: unknown) => {
-        console.error('could not read the theme', err)
-      })
-
-    return () => {
-      active = false
-    }
-  }, [])
 
   const dark = resolveDark(theme, appearanceDark)
 
@@ -59,28 +43,22 @@ export function useTheme(win: Window = window): ThemeState {
     painted.current = true
   }, [switchScheme, dark])
 
-  const chooseTheme = useCallback(
-    async (next: Theme) => {
-      const pick = ++picks.current
-      const previous = theme
+  const chooseTheme = (next: Theme) =>
+    new Promise<Result<void>>((resolve) => {
+      startTransition(async () => {
+        showTheme(next)
 
-      setThemeState(next)
+        const result = await attempt(queue(() => setTheme(next)))
 
-      const stored = saving.current.catch(() => undefined).then(() => setTheme(next))
-      saving.current = stored
-
-      try {
-        await stored
-      } catch (err: unknown) {
-        if (picks.current === pick) {
-          setThemeState(previous)
+        if (result.ok) {
+          startTransition(() => {
+            setChosen(next)
+          })
         }
 
-        throw err
-      }
-    },
-    [theme],
-  )
+        resolve(result.ok ? { ok: true, data: undefined } : result)
+      })
+    })
 
   return { theme, dark, chooseTheme }
 }

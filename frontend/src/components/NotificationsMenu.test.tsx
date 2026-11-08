@@ -18,6 +18,7 @@ function state(overrides: Partial<NotificationsState> = {}): NotificationsState 
     log: { items: [], unread: 0 },
     error: '',
     markRead: vi.fn(),
+    markError: '',
     clear: vi.fn(() => Promise.resolve()),
     ...overrides,
   }
@@ -180,6 +181,21 @@ describe('NotificationsMenu', () => {
     await userEvent.click(screen.getByRole('button', { name: /^Notifications/ }))
     panel = await open()
     expect(panel.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('says when the entries could not be marked read', async () => {
+    render(
+      <NotificationsMenu
+        notifications={state({ log: { items: [review], unread: 1 }, markError: 'database is locked' })}
+        now={now}
+        onOpen={onOpen}
+        onSettings={onSettings}
+      />,
+    )
+
+    const panel = await open()
+
+    expect(panel.getByRole('alert')).toHaveTextContent('Could not mark them read: database is locked')
   })
 
   it('says when the history could not be loaded', async () => {

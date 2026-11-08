@@ -1,12 +1,23 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
-import type { Account, LaunchDefaults, Profile, Settings } from '../platform'
-import { account, launchDefaults, profile, prompts, settings, signedOut } from '../test/fixtures'
+import type { Result } from '../lib/call'
 import type { Theme } from '../lib/theme'
-import { SettingsView, type SettingsSection } from './SettingsView'
+import type {
+  Account,
+  LaunchDefaults,
+  NotificationKind,
+  Profile,
+  Settings,
+  SnoozeRules,
+  TerminalID,
+  WindowSize,
+} from '../platform'
+import { account, launchDefaults, profile, prompts, settings, signedOut } from '../test/fixtures'
+import { SettingsView, type SettingsSection, type SettingsViewProps } from './SettingsView'
 
 const platform = vi.hoisted(() => ({
   getAppInfo: vi.fn(),
@@ -59,7 +70,37 @@ beforeEach(() => {
   platform.listLaunchTargets.mockResolvedValue([])
   platform.checkLaunchDefaults.mockResolvedValue([])
   platform.notificationBannerStatus.mockResolvedValue('on')
+
+  // Each setter comes back with every setting as stored after its change.
+  const stored = (change: Partial<Settings>) => Promise.resolve(settings(change))
+  platform.setSnoozeDays.mockImplementation((snoozeDays: number) => stored({ snoozeDays }))
+  platform.setSnoozeWake.mockImplementation((snoozeWake: SnoozeRules) => stored({ snoozeWake }))
+  platform.setWindowSize.mockImplementation((windowSize: WindowSize) => stored({ windowSize }))
+  platform.setTerminal.mockImplementation((terminal: TerminalID) => stored({ terminal }))
+  platform.setDefaultProfile.mockImplementation((defaultProfile: string) => stored({ defaultProfile }))
+  platform.setWorktreeDefault.mockImplementation((worktreeDefault: boolean) => stored({ worktreeDefault }))
+  platform.setWorktreeAutoCleanup.mockImplementation((worktreeAutoCleanup: boolean) => stored({ worktreeAutoCleanup }))
+  platform.setCloneRoot.mockImplementation((cloneRoot: string) => stored({ cloneRoot }))
+  platform.setMenuBar.mockImplementation((menuBar: boolean) => stored({ menuBar }))
 })
+
+// StoredSettings keeps the settings each save returns and shows the page with them, as App
+// does, so a second change starts from the first.
+function StoredSettings(props: SettingsViewProps) {
+  const { settings: initial, onSaved } = props
+  const [current, setCurrent] = useState(initial)
+
+  return (
+    <SettingsView
+      {...props}
+      settings={current}
+      onSaved={(next) => {
+        onSaved(next)
+        setCurrent(next)
+      }}
+    />
+  )
+}
 
 interface Options {
   section?: SettingsSection
@@ -68,7 +109,7 @@ interface Options {
   who?: Account | null
   defaults?: LaunchDefaults[]
   theme?: Theme
-  onThemeChange?: (theme: Theme) => Promise<void>
+  onThemeChange?: (theme: Theme) => Promise<Result<void>>
 }
 
 function renderSettings({
@@ -78,14 +119,14 @@ function renderSettings({
   who = account(),
   defaults = [],
   theme = 'system',
-  onThemeChange = vi.fn(() => Promise.resolve()),
+  onThemeChange = vi.fn(() => Promise.resolve<Result<void>>({ ok: true, data: undefined })),
 }: Options = {}) {
   const onSaved = vi.fn()
   const onClose = vi.fn()
   const onLaunchChanged = vi.fn(() => Promise.resolve())
 
   render(
-    <SettingsView
+    <StoredSettings
       {...(section === undefined ? {} : { initialSection: section })}
       settings={current}
       profiles={profiles}
@@ -196,11 +237,15 @@ describe('SettingsView', () => {
       expect(onSaved).toHaveBeenCalledWith(settings({ snoozeWake: { commits: 1, reviews: 'decisions', comments: 5 } }))
     })
 
+    // Each rule changes from the settings the last change stored.
     await userEvent.click(within(reviews).getByRole('radio', { name: 'Never' }))
-    expect(platform.setSnoozeWake).toHaveBeenLastCalledWith({ commits: 1, reviews: 'never', comments: 0 })
+    expect(platform.setSnoozeWake).toHaveBeenLastCalledWith({ commits: 1, reviews: 'never', comments: 5 })
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledTimes(2)
+    })
 
     await userEvent.click(within(commits).getByRole('radio', { name: 'Never' }))
-    expect(platform.setSnoozeWake).toHaveBeenLastCalledWith({ commits: 0, reviews: 'decisions', comments: 0 })
+    expect(platform.setSnoozeWake).toHaveBeenLastCalledWith({ commits: 0, reviews: 'never', comments: 5 })
   })
 
   it('shows wake rules the backend refused', async () => {
@@ -321,7 +366,7 @@ describe('SettingsView', () => {
   })
 
   it('shows a theme that could not be stored', async () => {
-    const onThemeChange = vi.fn(() => Promise.reject(new Error('unknown theme "dim"')))
+    const onThemeChange = vi.fn(() => Promise.resolve<Result<void>>({ ok: false, error: 'unknown theme "dim"' }))
     renderSettings({ onThemeChange })
     await openSection('Appearance')
 
@@ -341,7 +386,9 @@ describe('SettingsView', () => {
     await userEvent.selectOptions(terminal, 'terminal')
 
     expect(platform.setTerminal).toHaveBeenCalledWith('terminal')
-    expect(onSaved).toHaveBeenCalledWith(settings({ terminal: 'terminal' }))
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(settings({ terminal: 'terminal' }))
+    })
   })
 
   it('shows a terminal the backend refused', async () => {
@@ -362,7 +409,9 @@ describe('SettingsView', () => {
     await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Default profile' }), 'work')
 
     expect(platform.setDefaultProfile).toHaveBeenCalledWith('work')
-    expect(onSaved).toHaveBeenCalledWith(settings({ defaultProfile: 'work' }))
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(settings({ defaultProfile: 'work' }))
+    })
   })
 
   it('cannot pick a default profile when none were found', async () => {
@@ -384,17 +433,34 @@ describe('SettingsView', () => {
     await userEvent.click(toggle)
 
     expect(platform.setWorktreeDefault).toHaveBeenCalledWith(false)
-    expect(onSaved).toHaveBeenCalledWith(settings({ worktreeDefault: false }))
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(settings({ worktreeDefault: false }))
+    })
+    expect(toggle).not.toBeChecked()
   })
 
-  it('shows a worktree default the backend refused', async () => {
-    platform.setWorktreeDefault.mockRejectedValue(new Error('database is locked'))
+  it('shows a worktree default the backend refused, and switches it back', async () => {
+    let refuse: (err: Error) => void = () => undefined
+    platform.setWorktreeDefault.mockReturnValue(
+      new Promise((_, reject) => {
+        refuse = reject
+      }),
+    )
     renderSettings()
     await openSection('Launching')
 
-    await userEvent.click(screen.getByRole('switch', { name: 'Start in a worktree' }))
+    const toggle = screen.getByRole('switch', { name: 'Start in a worktree' })
+    await userEvent.click(toggle)
+
+    // The switch moves before the backend answers.
+    expect(toggle).not.toBeChecked()
+
+    refuse(new Error('database is locked'))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('database is locked')
+    await waitFor(() => {
+      expect(toggle).toBeChecked()
+    })
   })
 
   it('turns the automatic worktree cleanup off and on, sweeping at once when turned on', async () => {
@@ -450,7 +516,9 @@ describe('SettingsView', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     expect(platform.setCloneRoot).toHaveBeenCalledWith('~/code')
-    expect(onSaved).toHaveBeenCalledWith(settings({ cloneRoot: '~/code' }))
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(settings({ cloneRoot: '~/code' }))
+    })
     expect(await screen.findByRole('status')).toHaveTextContent('Saved.')
 
     // Editing again clears the confirmation.
@@ -800,7 +868,16 @@ describe('SettingsView notifications', () => {
   })
 
   it('switches each kind’s banners, saving the kinds that are off', async () => {
-    const { onSaved } = renderSettings({ section: 'notifications', current: settings({ bannersOff: ['woke'] }) })
+    let stored = settings({ bannersOff: ['woke'] })
+    platform.setNotificationBanner.mockImplementation((kind: NotificationKind, on: boolean) => {
+      stored = {
+        ...stored,
+        bannersOff: on ? stored.bannersOff.filter((k) => k !== kind) : [...stored.bannersOff, kind],
+      }
+
+      return Promise.resolve(stored)
+    })
+    const { onSaved } = renderSettings({ section: 'notifications', current: stored })
 
     expect(banner('Review requests')).toBeChecked()
     expect(banner('Assignments')).toBeChecked()
@@ -815,8 +892,10 @@ describe('SettingsView notifications', () => {
     await userEvent.click(banner('Snoozes ending early'))
     expect(platform.setNotificationBanner).toHaveBeenCalledWith('woke', true)
     await waitFor(() => {
-      expect(onSaved).toHaveBeenLastCalledWith(expect.objectContaining({ bannersOff: [] }))
+      expect(onSaved).toHaveBeenLastCalledWith(expect.objectContaining({ bannersOff: ['review_requested'] }))
     })
+    expect(banner('Review requests')).not.toBeChecked()
+    expect(banner('Snoozes ending early')).toBeChecked()
   })
 
   it('shows a setting that could not be saved', async () => {
@@ -826,6 +905,9 @@ describe('SettingsView notifications', () => {
     await userEvent.click(screen.getByRole('switch', { name: 'Show in the menu bar' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('database is locked')
+    await waitFor(() => {
+      expect(screen.getByRole('switch', { name: 'Show in the menu bar' })).toBeChecked()
+    })
     expect(onSaved).not.toHaveBeenCalled()
   })
 

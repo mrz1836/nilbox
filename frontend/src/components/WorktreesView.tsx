@@ -1,8 +1,9 @@
-import { useEffect, useId, useRef, useState, type Ref } from 'react'
+import { useEffect, useEffectEvent, useId, useRef, useState, type Ref } from 'react'
 
 import { formatAge, formatAgo } from '../lib/age'
-import { errorMessage } from '../lib/format'
 import { formatFull } from '../lib/triage'
+import { useMutation } from '../lib/useMutation'
+import { useQuery } from '../lib/useQuery'
 import {
   cleanUpFinishedWorktrees,
   cleanUpWorktree,
@@ -632,68 +633,46 @@ export function WorktreesView({
   onSnapshot,
   focusHistory = false,
 }: WorktreesViewProps) {
-  const [snapshot, setSnapshot] = useState<WorktreesSnapshot | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState('')
-  // generation bumps to list again: on Refresh and after a change.
-  const [generation, setGeneration] = useState(0)
-  const [now, setNow] = useState(clock)
-  const [busy, setBusy] = useState(false)
+  // listing is the worktrees as git reports them, with when the listing arrived, which
+  // the ages are measured against.
+  const listing = useQuery(() => listWorktrees().then((snapshot) => ({ snapshot, at: clock() })), [reloadKey])
+  // cleanups are the recently cleaned-up worktrees.
+  const cleanups = useQuery(() => recentCleanups(), [reloadKey], {
+    log: 'could not read the recently cleaned-up worktrees',
+  })
+  const [opened] = useState(clock)
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const [actionError, setActionError] = useState('')
   const [notice, setNotice] = useState('')
   const [bulk, setBulk] = useState<Bulk | null>(null)
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null)
-  // history is the recently cleaned-up worktrees, or null until they have loaded.
-  const [history, setHistory] = useState<WorktreeCleanup[] | null>(null)
-  const [historyError, setHistoryError] = useState('')
+  const changer = useMutation((change: () => Promise<string>) => change())
+  const bulker = useMutation((action: () => Promise<RemoveResult[]>) => action())
+  const clearer = useMutation(() => clearCleanups())
   const historyRef = useRef<HTMLElement>(null)
   // focused records that focusHistory has scrolled once, so later listings stay put.
   const focused = useRef(false)
-  // onSnapshotRef holds the latest onSnapshot, so a new callback never lists again.
-  const onSnapshotRef = useRef(onSnapshot)
+  const snapshot = listing.data?.snapshot ?? null
+  const now = listing.data?.at ?? opened
+  // history is the recently cleaned-up worktrees, or null until they have loaded.
+  const history = cleanups.data ?? null
+  // refreshing is a listing asked for here, by Refresh or after a change, which holds the
+  // actions while it runs, as the first listing does. A listing after a background sweep
+  // (reloadKey) runs quietly.
+  const [refreshing, setRefreshing] = useState(false)
+  const loading = refreshing || (listing.data === undefined && listing.error === '')
+  const busy = changer.pending || bulker.pending
 
-  useEffect(() => {
-    onSnapshotRef.current = onSnapshot
+  // Each listing is reported, to the latest onSnapshot, so a new callback never lists
+  // again.
+  const report = useEffectEvent((next: WorktreesSnapshot) => {
+    onSnapshot?.(next)
   })
 
   useEffect(() => {
-    let active = true
-
-    listWorktrees()
-      .then((next) => {
-        if (active) {
-          setSnapshot(next)
-          setLoadError('')
-          setNow(clock())
-          onSnapshotRef.current?.(next)
-        }
-      })
-      .catch((err: unknown) => {
-        if (active) {
-          setLoadError(errorMessage(err))
-        }
-      })
-      .finally(() => {
-        if (active) {
-          setLoading(false)
-        }
-      })
-
-    recentCleanups()
-      .then((next) => {
-        if (active) {
-          setHistory(next)
-        }
-      })
-      .catch((err: unknown) => {
-        console.error('could not read the recently cleaned-up worktrees', err)
-      })
-
-    return () => {
-      active = false
+    if (listing.data !== undefined) {
+      report(listing.data.snapshot)
     }
-  }, [clock, generation, reloadKey])
+  }, [listing.data])
 
   useEffect(() => {
     if (focusHistory && !focused.current && history !== null && history.length > 0) {
@@ -702,52 +681,46 @@ export function WorktreesView({
     }
   }, [focusHistory, history])
 
-  const reload = () => {
-    setLoading(true)
-    setGeneration((g) => g + 1)
+  const reload = async () => {
+    setRefreshing(true)
+    void cleanups.refetch()
+    await listing.refetch()
+    setRefreshing(false)
   }
 
   const resetMessages = () => {
     setErrors({})
-    setActionError('')
     setNotice('')
     setBulk(null)
-    setHistoryError('')
+    bulker.reset()
+    clearer.reset()
   }
 
-  const clearHistory = () => {
+  const clearHistory = async () => {
     resetMessages()
 
-    clearCleanups()
-      .then(() => {
-        setHistory([])
-      })
-      .catch((err: unknown) => {
-        setHistoryError(errorMessage(err))
-      })
+    if ((await clearer.run()).ok) {
+      cleanups.set(() => [])
+    }
   }
 
   // run performs one change, then lists again so the view shows what git now reports. The
   // change returns the notice to show, and a failure is shown inline under key.
-  const run = (key: string, change: () => Promise<string>) => {
+  const run = async (key: string, change: () => Promise<string>) => {
     resetMessages()
-    setBusy(true)
 
-    change()
-      .then((done) => {
-        setNotice(done)
-        reload()
-      })
-      .catch((err: unknown) => {
-        setErrors({ [key]: errorMessage(err) })
-      })
-      .finally(() => {
-        setBusy(false)
-      })
+    const result = await changer.run(change)
+
+    if (result.ok) {
+      setNotice(result.data)
+      void reload()
+    } else {
+      setErrors({ [key]: result.error })
+    }
   }
 
   const remove = (repo: WorktreeRepo, wt: Worktree) => {
-    run(rowKey(wt.path), async () => {
+    void run(rowKey(wt.path), async () => {
       await removeWorktree(repo.path, wt.path)
 
       return `Removed ${wt.displayPath}.`
@@ -755,7 +728,7 @@ export function WorktreesView({
   }
 
   const forceRemove = (repoPath: string, wt: Worktree) => {
-    run(rowKey(wt.path), async () => {
+    void run(rowKey(wt.path), async () => {
       await forceRemoveWorktree(repoPath, wt.path)
 
       return `Force removed ${wt.displayPath}.`
@@ -763,7 +736,7 @@ export function WorktreesView({
   }
 
   const unlock = (repo: WorktreeRepo, wt: Worktree) => {
-    run(rowKey(wt.path), async () => {
+    void run(rowKey(wt.path), async () => {
       await unlockWorktree(repo.path, wt.path)
 
       return `Unlocked ${wt.displayPath}.`
@@ -771,11 +744,11 @@ export function WorktreesView({
   }
 
   const cleanUp = (repo: WorktreeRepo, wt: Worktree) => {
-    run(rowKey(wt.path), async () => cleanedNotice(wt, await cleanUpWorktree(repo.path, wt.path)))
+    void run(rowKey(wt.path), async () => cleanedNotice(wt, await cleanUpWorktree(repo.path, wt.path)))
   }
 
   const prune = (repo: WorktreeRepo) => {
-    run(repoKey(repo.path), async () => {
+    void run(repoKey(repo.path), async () => {
       await pruneWorktrees(repo.path)
 
       return `Pruned the stale entries of ${repo.displayPath}.`
@@ -783,21 +756,15 @@ export function WorktreesView({
   }
 
   // runBulk performs a bulk action and reports each worktree's outcome.
-  const runBulk = (action: () => Promise<RemoveResult[]>, noun: string, verb: string) => {
+  const runBulk = async (action: () => Promise<RemoveResult[]>, noun: string, verb: string) => {
     resetMessages()
-    setBusy(true)
 
-    action()
-      .then((results) => {
-        setBulk({ results, noun, verb })
-        reload()
-      })
-      .catch((err: unknown) => {
-        setActionError(errorMessage(err))
-      })
-      .finally(() => {
-        setBusy(false)
-      })
+    const result = await bulker.run(action)
+
+    if (result.ok) {
+      setBulk({ results: result.data, noun, verb })
+      void reload()
+    }
   }
 
   const confirm = () => {
@@ -809,10 +776,10 @@ export function WorktreesView({
 
     switch (confirmation.kind) {
       case 'all':
-        runBulk(removeAllCleanWorktrees, 'clean worktree', 'Removed')
+        void runBulk(removeAllCleanWorktrees, 'clean worktree', 'Removed')
         break
       case 'finished':
-        runBulk(cleanUpFinishedWorktrees, 'finished worktree', 'Cleaned up')
+        void runBulk(cleanUpFinishedWorktrees, 'finished worktree', 'Cleaned up')
         break
       default:
         forceRemove(confirmation.repoPath, confirmation.worktree)
@@ -823,7 +790,8 @@ export function WorktreesView({
   const repos = snapshot?.repos ?? []
   const cleanCount = snapshot?.cleanCount ?? 0
   const finishedCount = snapshot?.finishedCount ?? 0
-  const error = actionError !== '' ? actionError : loadError
+  const loadError = listing.error
+  const error = bulker.error !== '' ? bulker.error : loadError
 
   return (
     <section aria-label="Worktrees" className="flex flex-col gap-4 p-4">
@@ -833,7 +801,7 @@ export function WorktreesView({
           disabled={disabled}
           onClick={() => {
             resetMessages()
-            reload()
+            void reload()
           }}
           className={plainButton}
         >
@@ -905,8 +873,10 @@ export function WorktreesView({
           cleanups={history}
           now={now}
           disabled={disabled}
-          error={historyError}
-          onClear={clearHistory}
+          error={clearer.error}
+          onClear={() => {
+            void clearHistory()
+          }}
           sectionRef={historyRef}
         />
       )}

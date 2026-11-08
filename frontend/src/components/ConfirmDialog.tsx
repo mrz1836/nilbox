@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react'
+import { useEffect, useEffectEvent, useId, useRef, type ReactNode } from 'react'
 
 import { buttonClass, dangerButtonClass, primaryButtonClass } from './controls'
 
@@ -79,25 +79,30 @@ export function ConfirmDialog({
     }
   }, [])
 
+  // Escape cancels, with the latest onCancel, and Tab keeps focus inside the dialog.
+  const handleKey = useEffectEvent((e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      onCancel()
+
+      return
+    }
+
+    const dialog = dialogRef.current
+
+    if (e.key === 'Tab' && dialog !== null) {
+      const target = nextFocus(dialog, e.shiftKey)
+
+      if (target !== null) {
+        e.preventDefault()
+        target.focus()
+      }
+    }
+  })
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        onCancel()
-
-        return
-      }
-
-      const dialog = dialogRef.current
-
-      if (e.key === 'Tab' && dialog !== null) {
-        const target = nextFocus(dialog, e.shiftKey)
-
-        if (target !== null) {
-          e.preventDefault()
-          target.focus()
-        }
-      }
+      handleKey(e)
     }
 
     // The capture phase runs this before any page-level Escape handler, which then sees
@@ -107,7 +112,7 @@ export function ConfirmDialog({
     return () => {
       document.removeEventListener('keydown', onKeyDown, true)
     }
-  }, [onCancel])
+  }, [])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">

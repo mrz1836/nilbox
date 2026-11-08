@@ -84,6 +84,17 @@ describe('TrustSection', () => {
     expect(input).toHaveAttribute('aria-invalid', 'true')
   })
 
+  it('asks for a login when only a suffix is typed', async () => {
+    renderTrust()
+
+    // A doubled bracket types one.
+    await userEvent.type(screen.getByRole('textbox', { name: 'Bot to trust' }), '[[bot]')
+    await userEvent.click(screen.getByRole('button', { name: 'Trust bot' }))
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Enter a bot’s login, such as renovate.')
+    expect(platform.setTrustedBots).not.toHaveBeenCalled()
+  })
+
   it('stops trusting a bot, and restores the defaults', async () => {
     const { onSaved } = renderTrust(settings({ trustedBots: ['dependabot', 'my-release-bot'] }))
 

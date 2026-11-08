@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useEffectEvent, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 
-import { errorMessage } from '../lib/format'
 import { kindPlural, promptApplies, usageCount, usagePlaces } from '../lib/launch'
+import { useMutation } from '../lib/useMutation'
+import { useDebouncedQuery } from '../lib/useQuery'
 import {
   checkPrompt,
   createPrompt,
@@ -15,7 +16,6 @@ import {
   type InboxItem,
   type Prompt,
   type PromptAppliesTo,
-  type PromptCheckResult,
   type PromptInput,
   type PromptVariable,
 } from '../platform'
@@ -125,17 +125,48 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
   const [selection, setSelection] = useState<Selection | null>(null)
   const [baseline, setBaseline] = useState<PromptInput>(blankInput)
   const [draft, setDraft] = useState<PromptInput>(blankInput)
-  const [check, setCheck] = useState<PromptCheckResult | null>(null)
+  // opened counts the prompts opened in the editor, so a check made for one never shows
+  // on the next.
+  const [opened, setOpened] = useState(0)
   // pickedItem is the preview item picked in the panel, or null to pick automatically.
   const [pickedItem, setPickedItem] = useState<number | null>(null)
   const [inWorktree, setInWorktree] = useState(true)
   const [atPrHead, setAtPrHead] = useState(true)
   const [panel, setPanel] = useState<'preview' | 'variables'>('preview')
   const [query, setQuery] = useState('')
-  const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState<{ tone: 'error' | 'success'; text: string } | null>(null)
   const [pending, setPending] = useState<Pending | null>(null)
-  const checkSeq = useRef(0)
+
+  // applicableItems are the inbox items the draft applies to, which it can be previewed
+  // with.
+  const applicableItems = useMemo(
+    () => items.filter((item) => promptApplies({ appliesTo: draft.appliesTo }, item.kind)),
+    [items, draft.appliesTo],
+  )
+
+  // previewItem is the item chosen to preview with: the one picked while the prompt
+  // applies to it (0 for the sample), else the first item it applies to.
+  const previewItem =
+    pickedItem !== null && (pickedItem === 0 || applicableItems.some((item) => item.id === pickedItem))
+      ? pickedItem
+      : (applicableItems[0]?.id ?? 0)
+
+  // The draft is checked, once typing rests, whenever it or the preview changes.
+  const checked = useDebouncedQuery(
+    () =>
+      checkPrompt({
+        id: selection?.kind === 'prompt' ? selection.id : 0,
+        input: draft,
+        itemId: previewItem,
+        inWorktree,
+        atPrHead,
+      }).then((result) => ({ opened, result })),
+    [selection, draft, previewItem, inWorktree, atPrHead, opened],
+    150,
+    { enabled: selection !== null },
+  )
+  const check = checked.data?.opened === opened ? checked.data.result : null
+  const checkError = !checked.pending && checked.error !== '' ? `Could not check the prompt: ${checked.error}` : ''
 
   const saved = selection?.kind === 'prompt' ? (prompts.find((p) => p.id === selection.id) ?? null) : null
   const dirty = selection !== null && !sameInput(draft, baseline)
@@ -166,7 +197,7 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
     setSelection(next)
     setBaseline(input)
     setDraft(input)
-    setCheck(null)
+    setOpened((n) => n + 1)
 
     return true
   }
@@ -208,94 +239,67 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
     }
   }
 
-  const applicableItems = useMemo(
-    () => items.filter((item) => promptApplies({ appliesTo: draft.appliesTo }, item.kind)),
-    [items, draft.appliesTo],
-  )
+  // saver stores the draft as a new prompt or over the open one, then reloads the library.
+  const saver = useMutation(async (at: Selection, input: PromptInput) => {
+    const stored = await (at.kind === 'new' ? createPrompt(input) : updatePrompt(at.id, input))
 
-  // previewItem is the item chosen to preview with: the one picked while the prompt
-  // applies to it (0 for the sample), else the first item it applies to.
-  const previewItem =
-    pickedItem !== null && (pickedItem === 0 || applicableItems.some((item) => item.id === pickedItem))
-      ? pickedItem
-      : (applicableItems[0]?.id ?? 0)
+    await onChanged()
 
-  // Check the draft (debounced) whenever it or the preview changes.
-  useEffect(() => {
-    if (selection === null) {
-      return undefined
-    }
+    return stored
+  })
+  // runner performs an action on the library and reloads it, opening the prompt the
+  // action names, if any, once the reload brings it in.
+  const runner = useMutation(async (action: () => Promise<Selection | null>) => {
+    setAfterReload(await action())
+    await onChanged()
+  })
+  const busy = saver.pending || runner.pending
 
-    const seq = ++checkSeq.current
-    const timer = window.setTimeout(() => {
-      checkPrompt({
-        id: selection.kind === 'prompt' ? selection.id : 0,
-        input: draft,
-        itemId: previewItem,
-        inWorktree,
-        atPrHead,
-      })
-        .then((result) => {
-          if (seq === checkSeq.current) {
-            setCheck(result)
-          }
-        })
-        .catch((err: unknown) => {
-          if (seq === checkSeq.current) {
-            setStatus({ tone: 'error', text: `Could not check the prompt: ${errorMessage(err)}` })
-          }
-        })
-    }, 150)
-
-    return () => {
-      window.clearTimeout(timer)
-    }
-  }, [selection, draft, previewItem, inWorktree, atPrHead])
-
-  const save = useCallback(() => {
+  const save = async () => {
     if (selection === null || busy) {
       return
     }
 
-    setBusy(true)
     setStatus(null)
 
     // submitted is what is being saved; edits typed while it saves are kept.
     const submitted = draft
-    const call = selection.kind === 'new' ? createPrompt(submitted) : updatePrompt(selection.id, submitted)
+    const result = await saver.run(selection, submitted)
 
-    call
-      .then(async (stored) => {
-        await onChanged()
-        setSelection({ kind: 'prompt', id: stored.id })
-        setBaseline(toInput(stored))
-        setDraft((current) => (sameInput(current, submitted) ? toInput(stored) : current))
-        setStatus({ tone: 'success', text: selection.kind === 'new' ? 'Prompt created.' : 'Saved.' })
-      })
-      .catch((err: unknown) => {
-        setStatus({ tone: 'error', text: errorMessage(err) })
-      })
-      .finally(() => {
-        setBusy(false)
-      })
-  }, [selection, busy, draft, onChanged])
+    if (!result.ok) {
+      setStatus({ tone: 'error', text: result.error })
+
+      return
+    }
+
+    const stored = result.data
+
+    setSelection({ kind: 'prompt', id: stored.id })
+    setBaseline(toInput(stored))
+    setDraft((current) => (sameInput(current, submitted) ? toInput(stored) : current))
+    setStatus({ tone: 'success', text: selection.kind === 'new' ? 'Prompt created.' : 'Saved.' })
+  }
 
   const canSave = dirty && problemCount === 0 && hiddenProblems === 0 && !busy
 
   // ⌘S saves while the page is showing.
+  const saveOnKey = useEffectEvent((e: globalThis.KeyboardEvent) => {
+    if (e.metaKey && e.key === 's') {
+      e.preventDefault()
+
+      if (canSave) {
+        void save()
+      }
+    }
+  })
+
   useEffect(() => {
     if (!active) {
       return undefined
     }
 
     const onKeyDown = (e: globalThis.KeyboardEvent) => {
-      if (e.metaKey && e.key === 's') {
-        e.preventDefault()
-
-        if (canSave) {
-          save()
-        }
-      }
+      saveOnKey(e)
     }
 
     document.addEventListener('keydown', onKeyDown)
@@ -303,28 +307,25 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
     return () => {
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [active, canSave, save])
+  }, [active])
 
-  // run performs an action on the library, reloads it, and opens the prompt the action
-  // names, if any, once the reload brings it in.
-  const run = (action: () => Promise<Selection | null>, done: string) => {
-    setBusy(true)
+  // run performs an action on the library and says how it went.
+  const run = async (action: () => Promise<Selection | null>, done: string) => {
     setStatus(null)
 
-    action()
-      .then(async (next) => {
-        setAfterReload(next)
-        await onChanged()
-        setStatus({ tone: 'success', text: done })
-      })
-      .catch((err: unknown) => {
-        setAfterReload(null)
-        setStatus({ tone: 'error', text: errorMessage(err) })
-      })
-      .finally(() => {
-        setBusy(false)
-      })
+    const result = await runner.run(action)
+
+    if (result.ok) {
+      setStatus({ tone: 'success', text: done })
+    } else {
+      setAfterReload(null)
+      setStatus({ tone: 'error', text: result.error })
+    }
   }
+
+  // shown is the status the footer shows: a failed action, then a failed check, then how
+  // the last action went.
+  const shown = status?.tone === 'error' || checkError === '' ? status : { tone: 'error' as const, text: checkError }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -345,7 +346,7 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
           label: `Make the default for ${kindPlural(kind)}`,
           icon: <StarIcon className="size-4 text-muted" />,
           onSelect: () => {
-            run(
+            void run(
               async () => {
                 await setDefaultPrompt(kind, p.id)
 
@@ -364,7 +365,7 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
       disabled: dirty,
       title: dirty ? 'Save or discard your changes first.' : undefined,
       onSelect: () => {
-        run(async () => {
+        void run(async () => {
           const copy = await duplicatePrompt(p.id)
 
           return { kind: 'prompt', id: copy.id }
@@ -567,12 +568,12 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
             />
             <footer className="flex items-center justify-end gap-2 border-t border-border px-6 py-3">
               <p
-                role={status?.tone === 'error' ? 'alert' : 'status'}
-                className={`mr-auto min-w-0 truncate text-xs ${status?.tone === 'error' ? 'text-danger' : status?.tone === 'success' && !dirty ? 'text-success' : 'text-muted'}`}
-                title={status?.text}
+                role={shown?.tone === 'error' ? 'alert' : 'status'}
+                className={`mr-auto min-w-0 truncate text-xs ${shown?.tone === 'error' ? 'text-danger' : shown?.tone === 'success' && !dirty ? 'text-success' : 'text-muted'}`}
+                title={shown?.text}
               >
-                {status?.tone === 'error'
-                  ? status.text
+                {shown?.tone === 'error'
+                  ? shown.text
                   : busy
                     ? 'Saving…'
                     : dirty && problemCount > 0
@@ -581,7 +582,7 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
                         ? 'Give the prompt a title and a nickname to create it.'
                         : dirty
                           ? 'Unsaved changes'
-                          : (status?.text ?? '')}
+                          : (shown?.text ?? '')}
               </p>
               {dirty && (
                 <button
@@ -603,7 +604,15 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
                   {selection.kind === 'new' ? 'Cancel' : 'Discard'}
                 </button>
               )}
-              <button type="button" disabled={!canSave} onClick={save} title="Save (⌘S)" className={primaryButtonClass}>
+              <button
+                type="button"
+                disabled={!canSave}
+                onClick={() => {
+                  void save()
+                }}
+                title="Save (⌘S)"
+                className={primaryButtonClass}
+              >
                 {selection.kind === 'new' ? 'Create prompt' : 'Save'}
               </button>
             </footer>
@@ -709,7 +718,7 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
             const doomed = pending.prompt
 
             setPending(null)
-            run(async () => {
+            void run(async () => {
               await deletePrompt(doomed.id)
 
               return null
@@ -757,7 +766,7 @@ export function PromptsView({ prompts, defaults, variables, items, active, onCha
             const target = pending.prompt
 
             setPending(null)
-            run(async () => {
+            void run(async () => {
               await resetPrompt(target.id)
 
               return { kind: 'prompt', id: target.id }

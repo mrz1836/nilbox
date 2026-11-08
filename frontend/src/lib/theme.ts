@@ -21,7 +21,7 @@ export const defaultTheme: Theme = 'system'
 
 // darkQuery matches while the web view's appearance is dark: the system's, or the one the
 // desktop shell pinned for a Light or Dark theme.
-const darkQuery = '(prefers-color-scheme: dark)'
+export const darkQuery = '(prefers-color-scheme: dark)'
 
 // resolveDark reports whether a theme shows the dark palette while the appearance is dark
 // or light.
@@ -33,32 +33,6 @@ export function resolveDark(theme: Theme, appearanceDark: boolean): boolean {
       return false
     case 'system':
       return appearanceDark
-  }
-}
-
-// appearanceIsDark reports whether the web view's appearance is dark. Without matchMedia
-// it reports false, matching the tokens' light default.
-export function appearanceIsDark(win: Window = window): boolean {
-  return typeof win.matchMedia === 'function' && win.matchMedia(darkQuery).matches
-}
-
-// onAppearanceChange calls listener with whether the appearance is dark each time it
-// changes, and returns a function that stops listening. Without matchMedia it never
-// changes.
-export function onAppearanceChange(listener: (dark: boolean) => void, win: Window = window): () => void {
-  if (typeof win.matchMedia !== 'function') {
-    return () => undefined
-  }
-
-  const query = win.matchMedia(darkQuery)
-  const changed = () => {
-    listener(query.matches)
-  }
-
-  query.addEventListener('change', changed)
-
-  return () => {
-    query.removeEventListener('change', changed)
   }
 }
 

@@ -1,8 +1,9 @@
 import { useEffect, useId, useState, type ReactNode } from 'react'
 
 import { formatAgo } from '../lib/age'
-import { errorMessage, formatCount } from '../lib/format'
+import { formatCount } from '../lib/format'
 import { entryRef, kindTitle } from '../lib/notifications'
+import { useMutation } from '../lib/useMutation'
 import type { NotificationsState } from '../lib/useNotifications'
 import { usePopover } from '../lib/usePopover'
 import type { AppNotification, NotificationKind } from '../platform'
@@ -86,10 +87,10 @@ function Entry({ entry, now, fresh, onOpen }: EntryProps) {
 export function NotificationsMenu({ notifications, now, onOpen, onSettings }: NotificationsMenuProps) {
   const id = useId()
   const { open, toggle, close, triggerRef, panelRef } = usePopover<HTMLButtonElement, HTMLDivElement>()
-  const { log, error, markRead, clear } = notifications
+  const { log, error, markRead, markError, clear } = notifications
   const items = log.items
   const [fresh, setFresh] = useState<ReadonlySet<number>>(new Set())
-  const [clearError, setClearError] = useState('')
+  const clearing = useMutation(clear)
 
   // Focus moves into the panel, so Escape and Tab behave from there.
   useEffect(() => {
@@ -101,7 +102,7 @@ export function NotificationsMenu({ notifications, now, onOpen, onSettings }: No
   const onToggle = () => {
     if (!open) {
       setFresh(new Set(items.filter((n) => !n.read).map((n) => n.id)))
-      setClearError('')
+      clearing.reset()
 
       if (log.unread > 0) {
         markRead()
@@ -111,13 +112,15 @@ export function NotificationsMenu({ notifications, now, onOpen, onSettings }: No
     toggle()
   }
 
-  const onClear = () => {
-    clear().catch((err: unknown) => {
-      setClearError(errorMessage(err))
-    })
-  }
-
   const label = bellLabel(log.unread)
+  const failure =
+    clearing.error !== ''
+      ? `Could not clear: ${clearing.error}`
+      : markError !== ''
+        ? `Could not mark them read: ${markError}`
+        : error !== ''
+          ? `Could not load the notifications: ${error}`
+          : ''
 
   return (
     <div className="relative">
@@ -157,14 +160,20 @@ export function NotificationsMenu({ notifications, now, onOpen, onSettings }: No
               Notifications
             </h2>
             {items.length > 0 && (
-              <button type="button" onClick={onClear} className={`ml-auto ${quietButtonClass}`}>
+              <button
+                type="button"
+                onClick={() => {
+                  void clearing.run()
+                }}
+                className={`ml-auto ${quietButtonClass}`}
+              >
                 Clear
               </button>
             )}
           </div>
-          {(error !== '' || clearError !== '') && (
+          {failure !== '' && (
             <p role="alert" className="border-b border-border px-4 py-2 text-xs text-danger">
-              {clearError === '' ? `Could not load the notifications: ${error}` : `Could not clear: ${clearError}`}
+              {failure}
             </p>
           )}
           {items.length === 0 ? (

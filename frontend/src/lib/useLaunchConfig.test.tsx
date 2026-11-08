@@ -27,6 +27,17 @@ beforeEach(() => {
   platform.resolveLaunches.mockResolvedValue([itemResolution()])
 })
 
+// reloaded asks the hook to reload and waits until the new values are in. The reload's
+// request starts once React renders, so it is awaited after the act that asked for it.
+async function reloaded(reload: () => Promise<void>) {
+  let done: Promise<void> = Promise.resolve()
+
+  act(() => {
+    done = reload()
+  })
+  await act(() => done)
+}
+
 describe('useLaunchConfig', () => {
   it('loads the configuration and resolves each listed item once', async () => {
     const shared = item()
@@ -66,9 +77,7 @@ describe('useLaunchConfig', () => {
 
     platform.listPrompts.mockResolvedValue(prompts().slice(0, 2))
 
-    await act(async () => {
-      await result.current.reload()
-    })
+    await reloaded(result.current.reload)
 
     expect(result.current.prompts).toHaveLength(2)
     await waitFor(() => {
@@ -96,9 +105,7 @@ describe('useLaunchConfig', () => {
 
     platform.resolveLaunches.mockRejectedValueOnce(new Error('item not found'))
 
-    await act(async () => {
-      await result.current.reload()
-    })
+    await reloaded(result.current.reload)
 
     await waitFor(() => {
       expect(result.current.error).toBe('item not found')
@@ -106,9 +113,7 @@ describe('useLaunchConfig', () => {
 
     platform.listPrompts.mockRejectedValueOnce(new Error('read the prompts: busy'))
 
-    await act(async () => {
-      await result.current.reload()
-    })
+    await reloaded(result.current.reload)
 
     expect(result.current.error).toBe('read the prompts: busy')
   })

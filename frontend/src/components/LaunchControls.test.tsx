@@ -1,7 +1,8 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { LaunchPreview } from '../platform'
 import {
   item,
   itemResolution,
@@ -439,6 +440,31 @@ describe('LaunchControls', () => {
     ).toBeInTheDocument()
   })
 
+  it('shows no earlier choice’s settings once a later choice cannot be worked out', async () => {
+    platform.resolveLaunch
+      .mockResolvedValueOnce(
+        resolution({
+          prompt: { ...resolution().prompt, id: 2, nickname: 'Quick look', source: 'launch' },
+          model: { value: 'sonnet', source: 'prompt', inherited: 'sonnet', inheritedSource: 'prompt' },
+        }),
+      )
+      .mockRejectedValue(new Error('profile not found: "work"'))
+    render(<LaunchControls {...props()} />)
+
+    const menu = await openMenu()
+
+    await userEvent.click(menu.getByRole('radio', { name: /Quick look/ }))
+    expect(await menu.findByRole('option', { name: 'Default · Sonnet (prompt)' })).toBeInTheDocument()
+
+    await userEvent.click(menu.getByRole('radio', { name: 'work' }))
+
+    expect(
+      await menu.findByText(/Couldn’t work out the settings for this choice: profile not found/),
+    ).toBeInTheDocument()
+    // The menu falls back to the item's own settings, not Quick look's.
+    expect(menu.queryByRole('option', { name: 'Default · Sonnet (prompt)' })).not.toBeInTheDocument()
+  })
+
   it('asks for a choice before saving defaults, and shows a failed save', async () => {
     platform.saveLaunchDefaults.mockRejectedValue(new Error('the launch defaults can’t be saved'))
     render(<LaunchControls {...props()} />)
@@ -471,6 +497,33 @@ describe('LaunchControls', () => {
     await userEvent.click(menu.getByRole('radio', { name: 'work' }))
 
     expect(await menu.findByRole('alert')).toHaveTextContent('no local clone')
+  })
+
+  it('says it is planning while a changed choice is planned, rather than show the last plan', async () => {
+    render(<LaunchControls {...props()} />)
+
+    const menu = await openMenu()
+
+    await userEvent.click(menu.getByRole('button', { name: 'Preview' }))
+    expect(await menu.findByText(/Review pull request #7/)).toBeInTheDocument()
+
+    let finish: (preview: LaunchPreview) => void = () => undefined
+    platform.previewLaunch.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
+    await userEvent.click(menu.getByRole('radio', { name: 'work' }))
+
+    expect(await menu.findByText('Planning the launch…')).toBeInTheDocument()
+    expect(menu.queryByText(/Review pull request #7/)).not.toBeInTheDocument()
+
+    await act(async () => {
+      finish(launchPreview({ prompt: 'Review it as work\n' }))
+      await Promise.resolve()
+    })
+
+    expect(await menu.findByText(/Review it as work/)).toBeInTheDocument()
   })
 
   it('opens the Prompts page from the menu', async () => {

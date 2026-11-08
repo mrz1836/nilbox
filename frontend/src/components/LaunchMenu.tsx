@@ -1,8 +1,8 @@
-import { useEffect, useId, useState } from 'react'
+import { useId, useState } from 'react'
 
-import { errorMessage } from '../lib/format'
 import { effortChoices, effortLabel, modelChoices, modelLabel, promptApplies, sourceLabel } from '../lib/launch'
 import { launchRequest, type Choices, type SaveStatus } from '../lib/launchChoices'
+import { useDebouncedQuery } from '../lib/useQuery'
 import {
   previewLaunch,
   type InboxItem,
@@ -300,45 +300,32 @@ export function LaunchMenu({
   )
 }
 
+// PreviewState is what the preview shows: the plan still on its way, the plan, or why
+// there is none.
 type PreviewState =
-  | { kind: 'closed' }
-  | { kind: 'loading' }
-  | { kind: 'ready'; preview: LaunchPreview }
-  | { kind: 'failed'; message: string }
+  { kind: 'loading' } | { kind: 'ready'; preview: LaunchPreview } | { kind: 'failed'; message: string }
 
 // PreviewSection shows, on request, exactly what the launch would run: the filled-in
 // prompt, where it starts, and the command. It reloads as the choices change.
 function PreviewSection({ item, choices, untrusted }: { item: InboxItem; choices: Choices; untrusted: boolean }) {
   const id = useId()
   const [open, setOpen] = useState(false)
-  const [state, setState] = useState<PreviewState>({ kind: 'closed' })
-
-  useEffect(() => {
-    if (!open) {
-      return undefined
-    }
-
-    let current = true
-    const timer = window.setTimeout(() => {
-      setState({ kind: 'loading' })
-      previewLaunch(launchRequest(item.id, choices, untrusted))
-        .then((preview) => {
-          if (current) {
-            setState({ kind: 'ready', preview })
-          }
-        })
-        .catch((err: unknown) => {
-          if (current) {
-            setState({ kind: 'failed', message: errorMessage(err) })
-          }
-        })
-    }, 120)
-
-    return () => {
-      current = false
-      window.clearTimeout(timer)
-    }
-  }, [open, item.id, choices, untrusted])
+  // The plan is asked for again, once the choices rest, while the preview is open. While
+  // they rest, the preview shows how the last ask went; once asked, it says it is planning.
+  const planned = useDebouncedQuery(
+    () => previewLaunch(launchRequest(item.id, choices, untrusted)),
+    [item.id, choices, untrusted],
+    120,
+    { enabled: open },
+  )
+  const state: PreviewState =
+    planned.pending && !planned.waiting
+      ? { kind: 'loading' }
+      : planned.error !== ''
+        ? { kind: 'failed', message: planned.error }
+        : planned.data === undefined
+          ? { kind: 'loading' }
+          : { kind: 'ready', preview: planned.data }
 
   return (
     <div className="border-t border-border">
@@ -356,7 +343,7 @@ function PreviewSection({ item, choices, untrusted }: { item: InboxItem; choices
       </button>
       {open && (
         <div id={`${id}-preview`} className="flex flex-col gap-2 px-3.5 pb-3">
-          {state.kind === 'loading' || state.kind === 'closed' ? (
+          {state.kind === 'loading' ? (
             <p className="text-xs text-muted">Planning the launch…</p>
           ) : state.kind === 'failed' ? (
             <p role="alert" className="text-xs text-danger">

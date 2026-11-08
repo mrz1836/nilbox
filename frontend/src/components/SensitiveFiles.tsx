@@ -1,9 +1,10 @@
 import { useId, useLayoutEffect, useState } from 'react'
 
 import { formatAgo } from '../lib/age'
-import { counted, errorMessage, formatCount } from '../lib/format'
+import { counted, formatCount } from '../lib/format'
 import { changeText, changeTone, filesChip, sensitiveCount, shortHead, type FilesChip } from '../lib/sensitive'
 import { toneText } from '../lib/signals'
+import { useMutation } from '../lib/useMutation'
 import { usePopover } from '../lib/usePopover'
 import {
   checkItemFiles,
@@ -141,8 +142,7 @@ function summary(check: FileCheck): string {
 export function SensitiveFiles({ itemId, check, now, onSettings }: SensitiveFilesProps) {
   const id = useId()
   const { open, toggle, triggerRef, panelRef } = usePopover<HTMLButtonElement, HTMLDivElement>()
-  const [checking, setChecking] = useState(false)
-  const [error, setError] = useState('')
+  const checker = useMutation(() => checkItemFiles(itemId))
   const [above, setAbove] = useState(false)
   const [maxHeight, setMaxHeight] = useState<number | undefined>(undefined)
 
@@ -171,17 +171,11 @@ export function SensitiveFiles({ itemId, check, now, onSettings }: SensitiveFile
     setMaxHeight(Math.max(minPanelHeight, up ? spaceAbove : spaceBelow))
   }, [open, triggerRef, panelRef])
 
-  const checkNow = () => {
-    setChecking(true)
-    setError('')
+  const checking = checker.pending
+  const error = checker.error
 
-    checkItemFiles(itemId)
-      .catch((err: unknown) => {
-        setError(errorMessage(err))
-      })
-      .finally(() => {
-        setChecking(false)
-      })
+  const checkNow = () => {
+    void checker.run()
   }
 
   const icon =
