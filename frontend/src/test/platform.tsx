@@ -88,6 +88,8 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     restoreItem: inbox,
     pinItem: inbox,
     unpinItem: inbox,
+    unassignItem: inbox,
+    removeReviewRequest: inbox,
     checkItemFiles: () => Promise.resolve(fileCheck()),
 
     listProfiles: () => Promise.resolve([profile()]),

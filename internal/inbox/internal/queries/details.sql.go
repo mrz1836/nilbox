@@ -43,12 +43,31 @@ func (q *Queries) GetActivity(ctx context.Context, itemID int64) (GetActivityRow
 	return i, err
 }
 
+const setReviewRequests = `-- name: SetReviewRequests :exec
+UPDATE item_details SET review_users = ?, review_teams = ? WHERE item_id = ?
+`
+
+type SetReviewRequestsParams struct {
+	ReviewUsers string
+	ReviewTeams string
+	ItemID      int64
+}
+
+// SetReviewRequests rewrites who the pull request with item_id asks to review, as GitHub
+// answered an edit to its review requests. Nothing changes when no refresh has read its
+// details.
+func (q *Queries) SetReviewRequests(ctx context.Context, arg SetReviewRequestsParams) error {
+	_, err := q.db.ExecContext(ctx, setReviewRequests, arg.ReviewUsers, arg.ReviewTeams, arg.ItemID)
+	return err
+}
+
 const upsertDetails = `-- name: UpsertDetails :exec
 INSERT INTO item_details (
     item_id, labels, projects, comments, additions, deletions, changed_files, commits, head_oid, mergeable,
     checks_state, checks_passed, checks_failed, checks_pending, checks_skipped, review_decision,
-    reviewers, reviewed, approvals, changes_requested, sub_issues_total, sub_issues_completed, fetched_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    reviewers, reviewed, approvals, changes_requested, sub_issues_total, sub_issues_completed,
+    review_users, review_teams, fetched_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (item_id) DO UPDATE SET
     labels = excluded.labels,
     projects = excluded.projects,
@@ -71,6 +90,8 @@ ON CONFLICT (item_id) DO UPDATE SET
     changes_requested = excluded.changes_requested,
     sub_issues_total = excluded.sub_issues_total,
     sub_issues_completed = excluded.sub_issues_completed,
+    review_users = excluded.review_users,
+    review_teams = excluded.review_teams,
     fetched_at = excluded.fetched_at
 `
 
@@ -97,6 +118,8 @@ type UpsertDetailsParams struct {
 	ChangesRequested   int64
 	SubIssuesTotal     int64
 	SubIssuesCompleted int64
+	ReviewUsers        string
+	ReviewTeams        string
 	FetchedAt          time.Time
 }
 
@@ -126,6 +149,8 @@ func (q *Queries) UpsertDetails(ctx context.Context, arg UpsertDetailsParams) er
 		arg.ChangesRequested,
 		arg.SubIssuesTotal,
 		arg.SubIssuesCompleted,
+		arg.ReviewUsers,
+		arg.ReviewTeams,
 		arg.FetchedAt,
 	)
 	return err

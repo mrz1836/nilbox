@@ -72,16 +72,17 @@ func TestFetchItemReadsTheItemAndItsDetails(t *testing.T) {
 	assert.Equal(t, "#00add8", it.Repo.LanguageColor)
 
 	assert.Equal(t, ItemDetails{
-		Labels:       []Label{{Name: "enhancement", Color: "#a2eeef"}},
-		Comments:     4,
-		Additions:    120,
-		Deletions:    30,
-		ChangedFiles: 6,
-		Commits:      3,
-		HeadOID:      "1111111111111111111111111111111111111111",
-		Mergeable:    "UNKNOWN",
-		Checks:       Checks{State: "SUCCESS", Passed: 9},
-		Reviews:      Reviews{Decision: "APPROVED", Reviewers: 1, Reviewed: 1, Approvals: 1},
+		Labels:         []Label{{Name: "enhancement", Color: "#a2eeef"}},
+		Comments:       4,
+		Additions:      120,
+		Deletions:      30,
+		ChangedFiles:   6,
+		Commits:        3,
+		HeadOID:        "1111111111111111111111111111111111111111",
+		Mergeable:      "UNKNOWN",
+		Checks:         Checks{State: "SUCCESS", Passed: 9},
+		Reviews:        Reviews{Decision: "APPROVED", Reviewers: 1, Reviewed: 1, Approvals: 1},
+		ReviewRequests: noRequests(),
 	}, update.Details)
 
 	assert.Equal(t, QueryRate{

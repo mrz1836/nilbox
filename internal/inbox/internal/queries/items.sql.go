@@ -88,6 +88,48 @@ func (q *Queries) GetCheckItem(ctx context.Context, id int64) (GetCheckItemRow, 
 	return i, err
 }
 
+const getEditItem = `-- name: GetEditItem :one
+SELECT
+    i.id, i.kind, i.number, i.item_updated_at, i.reason_review_requested, i.reason_assigned,
+    r.owner AS repo_owner, r.name AS repo_name, a.login AS account_login
+FROM items i
+JOIN repos r ON r.id = i.repo_id
+JOIN accounts a ON a.id = i.account_id
+WHERE i.id = ?
+`
+
+type GetEditItemRow struct {
+	ID                    int64
+	Kind                  string
+	Number                int64
+	ItemUpdatedAt         time.Time
+	ReasonReviewRequested bool
+	ReasonAssigned        bool
+	RepoOwner             string
+	RepoName              string
+	AccountLogin          string
+}
+
+// GetEditItem returns what an edit to the item with id on GitHub needs: the item, its
+// repository, the account whose inbox lists it, and the lists the user can leave. It
+// returns sql.ErrNoRows when no item has id.
+func (q *Queries) GetEditItem(ctx context.Context, id int64) (GetEditItemRow, error) {
+	row := q.db.QueryRowContext(ctx, getEditItem, id)
+	var i GetEditItemRow
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Number,
+		&i.ItemUpdatedAt,
+		&i.ReasonReviewRequested,
+		&i.ReasonAssigned,
+		&i.RepoOwner,
+		&i.RepoName,
+		&i.AccountLogin,
+	)
+	return i, err
+}
+
 const getStoredItem = `-- name: GetStoredItem :one
 SELECT account_id, node_id FROM items WHERE id = ? AND node_id <> ''
 `
@@ -107,6 +149,40 @@ func (q *Queries) GetStoredItem(ctx context.Context, id int64) (GetStoredItemRow
 	return i, err
 }
 
+const leaveAssigned = `-- name: LeaveAssigned :exec
+UPDATE items SET reason_assigned = 0, assign_left_at = ? WHERE id = ?
+`
+
+type LeaveAssignedParams struct {
+	AssignLeftAt *time.Time
+	ID           int64
+}
+
+// LeaveAssigned takes the item with id out of the assigned list after the user took
+// themselves off its assignees, stamped with the item's updated_at on GitHub after the
+// edit (see UpsertItem).
+func (q *Queries) LeaveAssigned(ctx context.Context, arg LeaveAssignedParams) error {
+	_, err := q.db.ExecContext(ctx, leaveAssigned, arg.AssignLeftAt, arg.ID)
+	return err
+}
+
+const leaveReview = `-- name: LeaveReview :exec
+UPDATE items SET reason_review_requested = 0, review_left_at = ? WHERE id = ?
+`
+
+type LeaveReviewParams struct {
+	ReviewLeftAt *time.Time
+	ID           int64
+}
+
+// LeaveReview takes the item with id out of the review-requested list after the user took
+// themselves off its requested reviewers, stamped with the item's updated_at on GitHub
+// after the edit (see UpsertItem).
+func (q *Queries) LeaveReview(ctx context.Context, arg LeaveReviewParams) error {
+	_, err := q.db.ExecContext(ctx, leaveReview, arg.ReviewLeftAt, arg.ID)
+	return err
+}
+
 const listItems = `-- name: ListItems :many
 SELECT
     i.id, i.kind, i.number, i.title, i.url, r.owner AS repo_owner, r.name AS repo_name,
@@ -116,7 +192,7 @@ SELECT
     d.changed_files, d.commits, d.mergeable, d.checks_state, d.checks_passed, d.checks_failed,
     d.checks_pending, d.checks_skipped, d.review_decision, d.reviewers, d.reviewed, d.approvals,
     d.changes_requested, d.sub_issues_total, d.sub_issues_completed,
-    d.fetched_at AS details_fetched_at, d.head_oid,
+    d.fetched_at AS details_fetched_at, d.head_oid, d.review_users, d.review_teams,
     f.item_id AS files_item_id, f.head_oid AS files_head_oid, f.total AS files_total, f.files,
     f.complete AS files_complete, f.error AS files_error, f.checked_at AS files_checked_at,
     ls.dismissed_at, ls.snoozed_until, ls.wake_reasons, ls.pinned_at
@@ -171,6 +247,8 @@ type ListItemsRow struct {
 	SubIssuesCompleted    *int64
 	DetailsFetchedAt      *time.Time
 	HeadOID               *string
+	ReviewUsers           *string
+	ReviewTeams           *string
 	FilesItemID           *int64
 	FilesHeadOID          *string
 	FilesTotal            *int64
@@ -238,6 +316,8 @@ func (q *Queries) ListItems(ctx context.Context, accountID int64) ([]ListItemsRo
 			&i.SubIssuesCompleted,
 			&i.DetailsFetchedAt,
 			&i.HeadOID,
+			&i.ReviewUsers,
+			&i.ReviewTeams,
 			&i.FilesItemID,
 			&i.FilesHeadOID,
 			&i.FilesTotal,
@@ -526,11 +606,25 @@ ON CONFLICT (account_id, repo_id, kind, number) DO UPDATE SET
     head_ref = excluded.head_ref,
     item_created_at = excluded.item_created_at,
     item_updated_at = excluded.item_updated_at,
-    reason_review_requested = excluded.reason_review_requested,
+    reason_review_requested = CASE
+        WHEN items.review_left_at IS NOT NULL AND excluded.item_updated_at <= items.review_left_at THEN 0
+        ELSE excluded.reason_review_requested
+    END,
     reason_authored = excluded.reason_authored,
-    reason_assigned = excluded.reason_assigned,
+    reason_assigned = CASE
+        WHEN items.assign_left_at IS NOT NULL AND excluded.item_updated_at <= items.assign_left_at THEN 0
+        ELSE excluded.reason_assigned
+    END,
+    review_left_at = CASE
+        WHEN excluded.item_updated_at > items.review_left_at THEN NULL
+        ELSE items.review_left_at
+    END,
+    assign_left_at = CASE
+        WHEN excluded.item_updated_at > items.assign_left_at THEN NULL
+        ELSE items.assign_left_at
+    END,
     fetched_at = excluded.fetched_at
-RETURNING id
+RETURNING id, reason_review_requested, reason_assigned
 `
 
 type UpsertItemParams struct {
@@ -555,10 +649,20 @@ type UpsertItemParams struct {
 	FetchedAt             time.Time
 }
 
+type UpsertItemRow struct {
+	ID                    int64
+	ReasonReviewRequested bool
+	ReasonAssigned        bool
+}
+
 // UpsertItem stores what GitHub says about an item, with the lists that returned it, and
-// returns its id. An item already stored for the same account, repository, kind, and
-// number has every column but those four rewritten.
-func (q *Queries) UpsertItem(ctx context.Context, arg UpsertItemParams) (int64, error) {
+// returns its id and the two lists the user can leave as stored. An item already stored
+// for the same account, repository, kind, and number has every column but those four
+// rewritten, with one exception: a list the user left from the inbox (assign_left_at,
+// review_left_at) stays left while the item has not moved since, since GitHub's search
+// index trails the edit; once the item moves past the stamp, the search is believed and the
+// stamp cleared.
+func (q *Queries) UpsertItem(ctx context.Context, arg UpsertItemParams) (UpsertItemRow, error) {
 	row := q.db.QueryRowContext(ctx, upsertItem,
 		arg.AccountID,
 		arg.RepoID,
@@ -580,7 +684,7 @@ func (q *Queries) UpsertItem(ctx context.Context, arg UpsertItemParams) (int64, 
 		arg.ReasonAssigned,
 		arg.FetchedAt,
 	)
-	var id int64
-	err := row.Scan(&id)
-	return id, err
+	var i UpsertItemRow
+	err := row.Scan(&i.ID, &i.ReasonReviewRequested, &i.ReasonAssigned)
+	return i, err
 }

@@ -22,6 +22,7 @@ package github
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"io"
@@ -95,6 +96,12 @@ func (t Token) Reveal() string {
 // IsZero reports whether the token is empty.
 func (t Token) IsZero() bool {
 	return t.Reveal() == ""
+}
+
+// Same reports whether t and o hold the same token, comparing in constant time. A zero
+// token is the same as no other.
+func (t Token) Same(o Token) bool {
+	return !t.IsZero() && subtle.ConstantTimeCompare([]byte(t.Reveal()), []byte(o.Reveal())) == 1
 }
 
 // String returns [redacted].

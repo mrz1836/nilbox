@@ -149,7 +149,7 @@ func timeOrNil(t time.Time) *time.Time {
 func (w *writer) saveItem(ctx context.Context, repoID int64, e *entry) error {
 	it := e.item
 
-	id, err := w.q.UpsertItem(ctx, queries.UpsertItemParams{
+	stored, err := w.q.UpsertItem(ctx, queries.UpsertItemParams{
 		AccountID: w.accountID, RepoID: repoID, Kind: string(it.Ref().Kind), Number: int64(it.Number),
 		NodeID: it.NodeID, Title: it.Title, URL: it.URL, AuthorLogin: it.AuthorLogin, AuthorType: it.AuthorType,
 		AuthorAssociation: it.AuthorAssociation, IsCrossRepository: it.IsCrossRepository, IsDraft: it.IsDraft,
@@ -161,6 +161,10 @@ func (w *writer) saveItem(ctx context.Context, repoID int64, e *entry) error {
 		return fmt.Errorf("save the item %s: %w", it.Ref(), err)
 	}
 
+	// A list the user left from the inbox stays left while GitHub's search catches up, so
+	// the entry takes the lists as stored, and the item does not arrive in one again.
+	id := stored.ID
+	e.reviewRequested, e.assigned = stored.ReasonReviewRequested, stored.ReasonAssigned
 	w.saved = append(w.saved, savedEntry{id: id, entry: e})
 
 	if err = w.saveDetails(ctx, id, it); err != nil {
@@ -246,6 +250,11 @@ func detailsRow(itemID int64, d github.ItemDetails, now time.Time) (queries.Upse
 		return queries.UpsertDetailsParams{}, err
 	}
 
+	reviewUsers, reviewTeams, err := encodeReviewRequests(d.ReviewRequests)
+	if err != nil {
+		return queries.UpsertDetailsParams{}, err
+	}
+
 	return queries.UpsertDetailsParams{
 		ItemID:             itemID,
 		Labels:             encodedLabels,
@@ -269,6 +278,8 @@ func detailsRow(itemID int64, d github.ItemDetails, now time.Time) (queries.Upse
 		ChangesRequested:   int64(d.Reviews.ChangesRequested),
 		SubIssuesTotal:     int64(d.SubIssues.Total),
 		SubIssuesCompleted: int64(d.SubIssues.Completed),
+		ReviewUsers:        reviewUsers,
+		ReviewTeams:        reviewTeams,
 		FetchedAt:          now,
 	}, nil
 }

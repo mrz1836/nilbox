@@ -98,6 +98,19 @@ export function RefreshItem(id: number): $CancellablePromise<$models.Snapshot> {
 }
 
 /**
+ * RemoveReviewRequest takes the signed-in user off the reviewers a pull request in the
+ * Review requested list asks, on GitHub, and returns the new snapshot. The pull request
+ * leaves that list, unless it still asks a team for a review: GitHub's search counts a
+ * team the user is in, which only the next refresh can tell. A request made only through
+ * a team is left as it is, since GitHub takes a team's request off for every member or
+ * none. It is one REST request, paced and counted against the API budget, and it waits
+ * for nothing but other work on the same item.
+ */
+export function RemoveReviewRequest(id: number): $CancellablePromise<$models.Snapshot> {
+    return $Call.ByID(3634564963, id);
+}
+
+/**
  * Restore brings a dismissed or snoozed item back to its lists, and returns the new
  * snapshot. A pinned item stays pinned. Restoring an item that is neither does nothing.
  */
@@ -140,6 +153,16 @@ export function Snooze(id: number, days: number): $CancellablePromise<$models.Sn
  */
 export function StoredFiles(itemID: number): $CancellablePromise<sensitive$0.Check | null> {
     return $Call.ByID(4275007344, itemID);
+}
+
+/**
+ * Unassign takes the signed-in user off the assignees of an item in the Assigned list,
+ * on GitHub, and returns the new snapshot, in which the item has left that list. It is
+ * one REST request, paced and counted against the API budget, and it waits for nothing
+ * but other work on the same item.
+ */
+export function Unassign(id: number): $CancellablePromise<$models.Snapshot> {
+    return $Call.ByID(2850417752, id);
 }
 
 /**

@@ -106,6 +106,17 @@ type fakeClient struct {
 	// which only happens when the two run side by side.
 	inboxGate  chan struct{}
 	gateOpened sync.Once
+
+	// viewer is the account FetchViewer reports, octoUser when "", and viewerErr fails
+	// it; viewerReads counts its calls. edited is what an edit answers (an empty answer
+	// when nil), editErr fails every edit, and edits records each as "unassign <ref>
+	// <login>" or "unreview <ref> <login>".
+	viewer      string
+	viewerErr   error
+	viewerReads int
+	edited      *github.Edited
+	editErr     error
+	edits       []string
 }
 
 func (c *fakeClient) FetchInbox(_ context.Context, tok github.Token) (*github.Inbox, error) {
@@ -678,7 +689,7 @@ func TestRefreshStoresTrustFields(t *testing.T) {
 		URL:  "https://github.com/acme-org/example-repo/pull/12",
 		Repo: "acme-org/example-repo", Author: octoUser, UpdatedAt: "2026-01-01T12:00:00Z",
 		Trust: trust.ClassOutside, Trusted: false, IsCrossRepository: true, AuthorAssociation: "CONTRIBUTOR",
-		Branch: "branch-12",
+		Branch: "branch-12", ReviewRequest: ReviewRequestYou, ReviewTeams: []string{},
 	}, fromFork)
 
 	// The trusted list is the user's: with it emptied, Dependabot is an outside contributor.

@@ -7,8 +7,10 @@ import {
   on,
   pinItem,
   refreshInbox,
+  removeReviewRequest as removeItemReviewRequest,
   restoreItem,
   snoozeItem,
+  unassignItem,
   unpinItem,
   type InboxSnapshot,
 } from '../platform'
@@ -46,6 +48,12 @@ export interface InboxState {
   // refreshItem reads one item from GitHub again, without refreshing the rest, and
   // resolves with the new inbox once it is shown.
   refreshItem: (id: number) => Promise<Result<InboxSnapshot>>
+  // unassign takes the user off an item's assignees on GitHub, and removeReviewRequest
+  // off a pull request's requested reviewers. Each changes GitHub first, so nothing shows
+  // until GitHub has made the change; then each resolves with the new inbox once it is
+  // shown, the item gone from that list, or with why it failed.
+  unassign: (id: number) => Promise<Result<InboxSnapshot>>
+  removeReviewRequest: (id: number) => Promise<Result<InboxSnapshot>>
 }
 
 // Answer is a request's inbox, with the request's number.
@@ -190,5 +198,9 @@ export function useInbox(): InboxState {
     pin: (id) => triage({ id, set: { pinnedAt: stamp() } }, () => pinItem(id)),
     unpin: (id) => triage({ id, set: { pinnedAt: '' } }, () => unpinItem(id)),
     refreshItem: (id) => attempt(record(next(), refreshInboxItem(id))),
+    // An edit waits on GitHub, so it is not a transition: it would hold back every other
+    // update while it runs.
+    unassign: (id) => attempt(record(next(), unassignItem(id))),
+    removeReviewRequest: (id) => attempt(record(next(), removeItemReviewRequest(id))),
   }
 }

@@ -242,8 +242,12 @@ GraphQL budget and how many items it tracked, and what that comes to in an hour 
 every five minutes, as a share of the budget. Each refresh reads every tracked item, so more
 items, or issues read with their [project fields](#issue-projects), cost more.
 
-**Kept across restarts.** The readings and what the app spent are saved a second after each
-change, and once more as the app quits, and come back when it opens. The app spends nothing
+**Changes on GitHub.** The panel also counts the [edits](#the-item-menu-and-edits-on-github)
+Nilbox made on GitHub for you in the last hour, says how it paces them, and, while GitHub has
+asked it to pause, when the pause ends.
+
+**Kept across restarts.** The readings, what the app spent, and the last hour's edits are saved
+a second after each change, and once more as the app quits, and come back when it opens. The app spends nothing
 while it is closed, so the count it picks up still covers all it spent. Every GitHub request the
 app makes goes through the one function that reports to the gauge; a repository test fails the
 build for any code that would send one another way, or run `gh api`.
@@ -452,9 +456,10 @@ item moves it out of every list it is in, so the lists only show what still need
   goes back to its place. A pin outlasts a snooze or a dismissal: the item waits in its tab,
   pin showing, and comes back pinned, so **Undo** leaves the pin as it was.
 
-A toast at the bottom of the window confirms each snooze or dismissal, with **Undo**. The
-default length and the wake rules are under **Settings → Snoozing**, which the snooze menu's
-**Snooze settings…** opens. Snoozes, dismissals, and pins are kept in the local database only:
+Every one of these is also in the card's [menu](#the-item-menu-and-edits-on-github), under
+**Inbox actions**. A toast at the bottom of the window confirms each snooze or dismissal, with
+**Undo**. The default length and the wake rules are under **Settings → Snoozing**, which the
+snooze menu's **Snooze settings…** opens. Snoozes, dismissals, and pins are kept in the local database only:
 GitHub never hears about them. The **N of M** count of a list leaves out the items set aside.
 
 ### Waking a snooze early
@@ -480,6 +485,56 @@ first, such as **Back early: approved, 2 new commits** or **Back early: changes 
 force-pushed**. Hover the tag for when it woke. Only the activity that met a rule is named.
 Dismissed items never wake, and a snooze that has ended is not woken again; snoozing an item
 again starts a fresh record.
+
+<br>
+
+## The item menu and edits on GitHub
+
+Every card has a **More actions** menu (**⋯**) at the end of its triage buttons, which shows as
+you hover the card or move focus into it. It gathers everything you can do with the item:
+
+- **Open on GitHub** and **Copy link**.
+- **Inbox actions**, a submenu with the card's triage buttons: **Refresh from GitHub**, **Pin to
+  top** (or **Unpin**), **Snooze**, with a submenu of lengths, and **Dismiss**; on a card in the
+  **Snoozed** or **Dismissed** tab, **Unsnooze** or **Restore** instead. The hover buttons stay,
+  so the everyday ones are still one click away.
+- **On GitHub**, when they apply: **Unassign me** on an item assigned to you, and **Remove me as
+  reviewer** on a pull request that asks for your review.
+
+The keyboard works as in any Mac menu: the arrows move, → opens a submenu and ← leaves it,
+Return chooses, and Escape closes the menu.
+
+**Edits on GitHub.** These are the only changes Nilbox makes on GitHub, and only when you choose
+one. Each is one REST request made with your `gh` token, and GitHub's answer is checked before
+the card changes: once GitHub has taken you off, the item leaves that list (and the inbox, when
+it is in no other), and a toast confirms it. When GitHub refuses, or answers without making the
+change, as it does for an account that may not edit the item, the card stays as it was and the
+toast says why. While an edit runs, the card's **⋯** turns into a spinner and the card's other
+GitHub actions wait for it.
+
+- **Unassign me** takes you, and nobody else, off the item's assignees.
+- **Remove me as reviewer** takes back the request for your review by name. A request made only
+  to a team you are in can't be taken back for one member, since GitHub removes a team's request
+  for every member or for none, so the menu names the team and leaves the item to you: dismiss it
+  to set it aside. When a pull request asked both you and a team, you come off it, and the toast
+  names the team it still asks.
+
+GitHub's search can trail an edit by a minute or so, so the next refresh may still find the item
+where you left it. Nilbox keeps it out of that list until the item changes on GitHub again: if
+someone assigns you again, or asks for your review again, it comes back, with its notification,
+as usual.
+
+**Whose account.** An edit goes out only with the token of the account whose inbox you see. If
+you switched accounts with `gh auth switch` since the last refresh, Nilbox asks you to refresh
+first, so it never takes another account off anything. Checking a token the inbox hasn't used
+yet costs one GraphQL point; after that, it is remembered.
+
+**Within your budget.** Each edit spends one REST point, which the [API budget
+gauge](#the-window) counts like every other request. Nilbox also keeps its own pace well under
+GitHub's limits on writes: at most 30 edits a minute and 200 an hour, and none while the REST
+budget is down to its last hundredth (50 of 5,000 points), which it leaves for `gh` and your
+agents. When GitHub asks it to slow down, it waits as long as GitHub says. An edit held back for
+any of these sends nothing, and the toast says why and when to try again.
 
 <br>
 

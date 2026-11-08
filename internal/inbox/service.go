@@ -35,6 +35,11 @@
 // recently pinned first, until Unpin; it is stored in the same row, apart from a snooze or
 // a dismissal, so it outlasts both and Restore leaves it as it is.
 //
+// The inbox edits GitHub only when the user asks, one item at a time, and only to take the
+// user off it: Unassign and RemoveReviewRequest (see edits.go). Each is one REST request the
+// API budget paces and counts, made only with the token of the account whose inbox is shown,
+// and the item leaves that list once GitHub's answer confirms the edit.
+//
 // An issue's details include the GitHub projects it is in, with its status in each, when
 // the token has the optional read:project scope. Without it the details are read without
 // them and the snapshot says so (ProjectAccess), so a missing scope never fails a refresh.
@@ -118,7 +123,8 @@ type TokenSource interface {
 }
 
 // Client fetches the inbox, its items' details, a single item, a pull request's head and
-// changed files, the rate limits, and the viewer's avatar from GitHub. *github.Client
+// changed files, the rate limits, and the viewer's avatar from GitHub, and makes the few
+// edits the user asks for. *github.Client
 // implements it. No error it returns holds the token's text, so the inbox stores and
 // shows them as they are.
 type Client interface {
@@ -129,6 +135,11 @@ type Client interface {
 	FetchChangedFiles(ctx context.Context, tok github.Token, ref item.Ref, head string) (*github.ChangedFiles, error)
 	FetchRateLimits(ctx context.Context, tok github.Token) (*github.RateLimits, error)
 	FetchAvatar(ctx context.Context, url string) (*github.Avatar, error)
+
+	// FetchViewer, RemoveAssignee, and RemoveReviewRequest serve the edits (edits.go).
+	FetchViewer(ctx context.Context, tok github.Token) (string, error)
+	RemoveAssignee(ctx context.Context, tok github.Token, ref item.Ref, login string) (*github.Edited, error)
+	RemoveReviewRequest(ctx context.Context, tok github.Token, ref item.Ref, login string) (*github.Edited, error)
 }
 
 // RefreshUsage hears what each whole refresh spent of the GraphQL budget, in points, and
@@ -190,6 +201,9 @@ type Service struct {
 
 	snapshots snapshotCache
 	scopes    scopeCache
+
+	// viewers remembers the account the last token used belongs to, for the edits.
+	viewers viewerCache
 }
 
 // NewService returns a Service. A nil Clock uses the system clock.
@@ -451,6 +465,8 @@ func (s *Service) fetch(ctx context.Context, tok github.Token, listed []string, 
 	if got.inbox == nil || got.limits == nil || got.inbox.Viewer.Login == "" {
 		return refreshed{}, ErrIncompleteFetch
 	}
+
+	s.viewers.remember(tok, got.inbox.Viewer.Login)
 
 	got.archived = dropArchived(got.inbox)
 	dropClosed(got.inbox)

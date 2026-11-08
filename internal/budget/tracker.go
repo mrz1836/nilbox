@@ -10,6 +10,11 @@
 // hourly pace. None of this makes a request of its own: Service.Check reads GitHub's free
 // rate limit endpoint, and only when the window asks.
 //
+// The same Tracker paces the edits the app makes on GitHub for the user (github.WriteGate,
+// see writes.go): an edit is refused before it is sent when its budget is down to the
+// reserve left for everything else, when the app has made as many as it makes in a minute
+// or an hour, or while GitHub has asked it to wait.
+//
 // Each change emits an event.BudgetUpdated, and the window reads the budgets again.
 package budget
 
@@ -85,6 +90,11 @@ type Tracker struct {
 	mu      sync.Mutex
 	budgets map[string]*held
 	last    refresh
+
+	// writes are when the app sent the edits of the last hour, oldest first, and
+	// heldUntil when GitHub's request to wait before the next edit ends (see writes.go).
+	writes    []time.Time
+	heldUntil time.Time
 
 	// dirty holds a signal while a change waits to be saved (see Saver).
 	dirty chan struct{}

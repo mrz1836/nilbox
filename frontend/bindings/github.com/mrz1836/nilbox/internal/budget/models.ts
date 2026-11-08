@@ -19,6 +19,12 @@ export interface Gauge {
      * RefreshesPerHour is how many times an hour the inbox refreshes on its own.
      */
     "refreshesPerHour": number;
+
+    /**
+     * Writes is what the app changed on GitHub for the user lately, and how it paces
+     * its edits.
+     */
+    "writes": Writes;
 }
 
 /**
@@ -70,4 +76,34 @@ export interface Refresh {
      */
     "points": number;
     "items": number;
+}
+
+/**
+ * Writes is what the app changed on GitHub for the user lately, and how it paces its
+ * edits. Every field is a plain value.
+ */
+export interface Writes {
+    /**
+     * LastHour and LastMinute count the edits the app sent in the last hour and minute.
+     */
+    "lastHour": number;
+    "lastMinute": number;
+
+    /**
+     * PerHour and PerMinute are the most edits the app sends in an hour and in a minute.
+     */
+    "perHour": number;
+    "perMinute": number;
+
+    /**
+     * Reserve is how much of the REST budget, which edits spend, they leave for
+     * everything else signed in as the user.
+     */
+    "reserve": number;
+
+    /**
+     * HeldUntil is when GitHub's request to wait before the next edit ends, as RFC 3339,
+     * or "" when there is none.
+     */
+    "heldUntil": string;
 }

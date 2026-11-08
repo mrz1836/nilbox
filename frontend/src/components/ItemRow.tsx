@@ -1,5 +1,6 @@
 import { memo } from 'react'
 
+import { useRowWork } from '../lib/rowWork'
 import { formatAge, formatAgo, formatFull, formatWhen } from '../lib/time'
 import { isBackFromSnooze, wakeSummary, type TriageTab } from '../lib/triage'
 import { useNowAs } from '../lib/useNow'
@@ -12,6 +13,7 @@ import {
   type Prompt,
 } from '../platform'
 import { ArchiveIcon, ClockIcon, IssueIcon, PullRequestIcon } from './icons'
+import { ItemMenu, type EditActions } from './ItemMenu'
 import { ItemSignals } from './ItemSignals'
 import { LaunchControls } from './LaunchControls'
 import { RelativeTime } from './RelativeTime'
@@ -41,6 +43,9 @@ export interface ItemRowProps {
   // triage is what the row's snooze, dismiss, and restore buttons do; without it the row
   // has none.
   triage?: TriageActions
+  // edits is what the row's menu does beyond triage: copy the link and the edits on
+  // GitHub. The menu shows with the triage buttons, when the row has both.
+  edits?: EditActions | undefined
   // onFilesSettings opens Settings → Sensitive files from the sensitive-file panel.
   onFilesSettings?: (() => void) | undefined
   // highlighted marks the row the menu bar or a notification just asked to show.
@@ -170,8 +175,10 @@ function TriageTag({ item, tab }: { item: InboxItem; tab: TriageTab }) {
 // ItemRow is one inbox card, three lines high: the title with its draft and conflict
 // tags; where it is, who opened it, when it last moved, and, for a pull request from
 // outside the repository, the sensitive files it changes; and its signals (checks,
-// reviews, comments, size, labels). The triage buttons and the launch button sit on the
-// right, and a launch's outcome spans the card below. Long titles are cut short with an
+// reviews, comments, size, labels). The triage buttons, the menu of everything else (see
+// ItemMenu), and the launch button sit on the right, and a launch's outcome spans the
+// card below. The row does one thing with GitHub at a time, which its buttons and its
+// menu share (useRowWork). Long titles are cut short with an
 // ellipsis, so every card keeps the same shape. A card off screen is not rendered until
 // it scrolls near (item-row in index.css).
 //
@@ -184,10 +191,12 @@ export const ItemRow = memo(function ItemRow({
   resolution = null,
   tab = 'inbox',
   triage,
+  edits,
   onFilesSettings,
   highlighted = false,
 }: ItemRowProps) {
   const conflicting = item.details?.mergeable === 'CONFLICTING'
+  const [work, start] = useRowWork()
 
   return (
     <li
@@ -225,7 +234,14 @@ export const ItemRow = memo(function ItemRow({
         </div>
         <ItemSignals item={item} />
       </div>
-      {triage !== undefined && <TriageControls item={item} tab={tab} actions={triage} />}
+      {triage !== undefined && (
+        <div className="flex items-center gap-0.5 self-center">
+          <TriageControls item={item} tab={tab} actions={triage} work={work} start={start} />
+          {edits !== undefined && (
+            <ItemMenu item={item} tab={tab} triage={triage} edits={edits} work={work} start={start} />
+          )}
+        </div>
+      )}
       {launch !== null && (
         <LaunchControls
           item={item}

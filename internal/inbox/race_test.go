@@ -129,6 +129,18 @@ func (c *raceClient) FetchAvatar(context.Context, string) (*github.Avatar, error
 	return nil, errNotAsked
 }
 
+func (c *raceClient) FetchViewer(context.Context, github.Token) (string, error) {
+	return "", errNotAsked
+}
+
+func (c *raceClient) RemoveAssignee(context.Context, github.Token, item.Ref, string) (*github.Edited, error) {
+	return nil, errNotAsked
+}
+
+func (c *raceClient) RemoveReviewRequest(context.Context, github.Token, item.Ref, string) (*github.Edited, error) {
+	return nil, errNotAsked
+}
+
 // lockedBuffer collects log output written from many goroutines.
 type lockedBuffer struct {
 	mu  sync.Mutex

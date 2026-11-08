@@ -105,7 +105,7 @@ func TestATrackerIgnoresAResponseWithoutABudget(t *testing.T) {
 	tr.ObserveRate(github.RateReading{}, 3)
 	tr.ObserveRate(github.RateReading{Resource: github.ResourceCore}, 1)
 
-	assert.Equal(t, Gauge{RefreshesPerHour: 12}, tr.gauge(12))
+	assert.Equal(t, Gauge{RefreshesPerHour: 12, Writes: noWrites()}, tr.gauge(12))
 	assert.Zero(t, events.Count())
 }
 

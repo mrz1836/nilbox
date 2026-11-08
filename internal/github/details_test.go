@@ -79,33 +79,42 @@ func TestFetchDetailsReadsEachItem(t *testing.T) {
 			// again: octo-second and octo-commenter. The author's own reply, the
 			// dismissed, the pending, and the ghost reviews do not count.
 			Reviews: Reviews{Decision: "APPROVED", Reviewers: 5, Reviewed: 2, Approvals: 2},
+			// Who is asked, in GitHub's order; the null requests are skipped.
+			ReviewRequests: ReviewRequests{Users: []string{"octo-user", "Octo-Approver"}, Teams: []string{"reviewers"}},
 		},
 		"PR_fakeNodeIdFailing": {
-			Labels:       []Label{{Name: "needs-work", Color: "#ffd700"}},
-			Comments:     14,
-			Additions:    937,
-			Deletions:    40,
-			ChangedFiles: 8,
-			Commits:      6,
-			HeadOID:      "2222222222222222222222222222222222222222",
-			Mergeable:    "CONFLICTING",
-			Checks:       Checks{State: "FAILURE", Passed: 18, Failed: 5, Pending: 4},
-			Reviews:      Reviews{Decision: "CHANGES_REQUESTED", Reviewers: 1, Reviewed: 1, ChangesRequested: 1},
+			Labels:         []Label{{Name: "needs-work", Color: "#ffd700"}},
+			Comments:       14,
+			Additions:      937,
+			Deletions:      40,
+			ChangedFiles:   8,
+			Commits:        6,
+			HeadOID:        "2222222222222222222222222222222222222222",
+			Mergeable:      "CONFLICTING",
+			Checks:         Checks{State: "FAILURE", Passed: 18, Failed: 5, Pending: 4},
+			Reviews:        Reviews{Decision: "CHANGES_REQUESTED", Reviewers: 1, Reviewed: 1, ChangesRequested: 1},
+			ReviewRequests: noRequests(),
 		},
 		"PR_fakeNodeIdNoChecks": {
-			Labels:       []Label{},
-			Additions:    2,
-			Deletions:    2,
-			ChangedFiles: 2,
-			Commits:      1,
-			HeadOID:      "3333333333333333333333333333333333333333",
-			Mergeable:    "UNKNOWN",
+			Labels:         []Label{},
+			Additions:      2,
+			Deletions:      2,
+			ChangedFiles:   2,
+			Commits:        1,
+			HeadOID:        "3333333333333333333333333333333333333333",
+			Mergeable:      "UNKNOWN",
+			ReviewRequests: noRequests(),
 		},
 		"I_fakeNodeIdIssue": {
 			Labels:   []Label{{Name: "bug", Color: "#d73a4a"}},
 			Comments: 7,
 		},
 	}, details.Items, "the unresolvable item is left out, not a failure")
+}
+
+// noRequests is a pull request that asks no one to review it.
+func noRequests() ReviewRequests {
+	return ReviewRequests{Users: []string{}, Teams: []string{}}
 }
 
 func TestFetchDetailsBatchesTheIDsSideBySide(t *testing.T) {

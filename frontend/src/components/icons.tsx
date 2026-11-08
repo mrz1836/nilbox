@@ -391,6 +391,46 @@ export function AssignIcon(props: IconProps) {
   )
 }
 
+// UnassignIcon stands for taking the user off an item's assignees: a person with a minus.
+export function UnassignIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="10" cy="8.5" r="3.5" />
+      <path d="M3.5 19.5a6.5 6.5 0 0 1 10.5-5.1M16 17.5h5.5" />
+    </Icon>
+  )
+}
+
+// EyeOffIcon stands for taking the user off a pull request's reviewers: a struck eye.
+export function EyeOffIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M9.9 5.7A9.8 9.8 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a17 17 0 0 1-2.4 3.2M6.3 7.3C3.9 8.9 2.5 12 2.5 12S6 18.5 12 18.5a9.3 9.3 0 0 0 4.7-1.3" />
+      <path d="M10 10.1a2.75 2.75 0 0 0 3.9 3.9M3.5 3.5l17 17" />
+    </Icon>
+  )
+}
+
+// LinkIcon stands for an item's address on the web, such as to copy it.
+export function LinkIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7L11.8 5.2" />
+      <path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" />
+    </Icon>
+  )
+}
+
+// InboxIcon stands for what the inbox does with an item: a tray.
+export function InboxIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 13.5l2.2-7.3A1.5 1.5 0 0 1 7.6 5h8.8a1.5 1.5 0 0 1 1.4 1.2l2.2 7.3" />
+      <path d="M4 13.5V18a1.5 1.5 0 0 0 1.5 1.5h13A1.5 1.5 0 0 0 20 18v-4.5h-4.5l-1 2h-5l-1-2z" />
+    </Icon>
+  )
+}
+
 // ImportIcon stands for bringing prompts in from a file: an arrow into a tray.
 export function ImportIcon(props: IconProps) {
   return (

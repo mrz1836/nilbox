@@ -1187,3 +1187,92 @@ describe('InboxView’s status sort', () => {
     expect(shown.queryByRole('radiogroup', { name: 'Sort Assigned by' })).not.toBeInTheDocument()
   })
 })
+
+describe('InboxView edits on GitHub', () => {
+  const assignedIssue = item({ id: 5, kind: 'issue', number: 9, title: 'Fix the flaky test', assigned: true })
+  const asked = item({ id: 6, number: 11, title: 'Tune the cache', reviewRequest: 'you', reviewTeams: ['backend'] })
+
+  // choose opens the menu of the one row in a list and picks one of its items.
+  async function choose(list: Awaited<ReturnType<typeof section>>, label: string) {
+    await userEvent.click(list.getByRole('button', { name: 'More actions' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: label }))
+  }
+
+  it('unassigns the user on GitHub, and confirms once the item has left the list', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([assignedIssue]) }))
+    platform.unassignItem.mockResolvedValue(snapshot())
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    const assigned = await section('Assigned')
+    await choose(assigned, 'Unassign me')
+
+    expect(platform.unassignItem).toHaveBeenCalledWith(5)
+    expect(await screen.findByRole('status')).toHaveTextContent('Unassigned you on GitHub · Fix the flaky test')
+    expect(assigned.queryByRole('button', { name: 'Fix the flaky test' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
+  })
+
+  it('says why an edit failed, and leaves the item where it was', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([assignedIssue]) }))
+    platform.unassignItem.mockRejectedValue(new Error('GitHub kept you assigned to acme-org/example-repo#9.'))
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    const assigned = await section('Assigned')
+    await choose(assigned, 'Unassign me')
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Could not unassign you from “Fix the flaky test” · GitHub kept you assigned to acme-org/example-repo#9.',
+    )
+    expect(assigned.getByRole('button', { name: 'Fix the flaky test' })).toBeInTheDocument()
+    expect(assigned.getByRole('button', { name: 'More actions' })).toHaveAttribute('title', 'More actions')
+  })
+
+  it('takes the user off a pull request’s reviewers', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([asked]) }))
+    platform.removeReviewRequest.mockResolvedValue(snapshot())
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    const review = await section('Review requested')
+    await choose(review, 'Remove me as reviewer')
+
+    expect(platform.removeReviewRequest).toHaveBeenCalledWith(6)
+    expect(await screen.findByRole('status')).toHaveTextContent('Removed you as a reviewer on GitHub · Tune the cache')
+    expect(review.queryByRole('button', { name: 'Tune the cache' })).not.toBeInTheDocument()
+  })
+
+  it('says which team a pull request still asks once the user is off it', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([asked]) }))
+    platform.removeReviewRequest.mockResolvedValue(
+      snapshot({ reviewRequested: list([{ ...asked, reviewRequest: 'team' }]) }),
+    )
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    const review = await section('Review requested')
+    await choose(review, 'Remove me as reviewer')
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Removed you as a reviewer on GitHub · It still asks the @backend team',
+    )
+    expect(review.getByRole('button', { name: 'Tune the cache' })).toBeInTheDocument()
+
+    await userEvent.click(review.getByRole('button', { name: 'More actions' }))
+    expect(screen.getByRole('menuitem', { name: 'Remove me as reviewer' })).toBeDisabled()
+  })
+
+  it('copies an item’s link, or says why it could not', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([asked]) }))
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    const review = await section('Review requested')
+    await choose(review, 'Copy link')
+
+    expect(platform.copyText).toHaveBeenCalledWith(asked.url)
+    expect(await screen.findByRole('status')).toHaveTextContent(`Link copied · ${asked.url}`)
+
+    platform.copyText.mockRejectedValue(new Error('The clipboard is not available.'))
+    await choose(review, 'Copy link')
+
+    expect(await screen.findByText('Could not copy the link')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('The clipboard is not available.')
+  })
+})

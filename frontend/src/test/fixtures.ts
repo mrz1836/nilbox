@@ -6,6 +6,7 @@ import type {
   AppNotification,
   BudgetGauge,
   BudgetReading,
+  BudgetWrites,
   BundlePrompt,
   CloneTarget,
   FileCheck,
@@ -78,6 +79,9 @@ export function item(overrides: Partial<InboxItem> = {}): InboxItem {
     snoozedUntil: '',
     wokeBy: null,
     pinnedAt: '',
+    assigned: false,
+    reviewRequest: 'none',
+    reviewTeams: [],
     ...overrides,
   }
 }
@@ -572,8 +576,15 @@ export function budgetGauge(overrides: Partial<BudgetGauge> = {}): BudgetGauge {
     search: unreadBudget,
     refresh: { known: false, at: '', points: 0, items: 0 },
     refreshesPerHour: 12,
+    writes: writes(),
     ...overrides,
   }
+}
+
+// writes is the app's edits on GitHub: none lately, paced as the app paces them, with a
+// 5,000-point REST budget's reserve.
+export function writes(overrides: Partial<BudgetWrites> = {}): BudgetWrites {
+  return { lastHour: 0, lastMinute: 0, perHour: 200, perMinute: 30, reserve: 50, heldUntil: '', ...overrides }
 }
 
 // avatarDataURL is a stand-in for a cached avatar; the image never decodes in jsdom.
