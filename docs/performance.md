@@ -11,7 +11,7 @@ numbers with the `magex measure:*` targets.
 
 | Metric | Target | Measured | Result |
 |---|---|---|---|
-| Cold start to first paint | < 1 s | 541 ms | Met on the M1 Max; the M4 Pro build host measured 1013 ms, at the target rather than under it |
+| Cold start to first paint | < 1 s | 544 ms | Met on the M1 Max; the M4 Pro build host measured 1013 ms with an earlier build, at the target rather than under it |
 | Inbox refresh | < 3 s | 2.30 s | Met once the inbox's items are known; the first refresh into an empty database takes 5–10 s |
 | Launch to prompt loaded | < 3 s | Not recorded yet | Pending: the build host cannot grant the Automation permission unattended, so the number needs a run on the maintainer's Mac |
 | App binary size | < 30 MB | 17.0 MB | Met |
@@ -48,9 +48,15 @@ uses the real data directory and starts the usual background refresh, as a norma
 Run it with the screen unlocked: a window that is not on screen runs no animation frames, so on
 a locked Mac the report never comes and the target gives up after a minute.
 
-**Recorded run.** On the M1 Max (2026-11-07, a day before the size and refresh runs below):
-first launch of the build 964 ms; launches 2–6 574, 541, 554, 523, and 537 ms, for a median of
-541 ms.
+**Recorded run.** On the M1 Max (2026-11-08), two runs one after the other. The first started
+from a data directory whose database an older schema had written: its first launch, 934 ms,
+also set that database aside and created a fresh one; launches 2–6 took 628, 544, 538, 541, and
+524 ms, for a median of 541 ms. The second run is the table's number: first launch 497 ms;
+launches 2–6 532, 548, 533, 545, and 544 ms, for a median of 544 ms. Those launches opened a
+current database that held no items yet, since a measuring launch quits before its background
+refresh lands. A run of an earlier build the day before, against a database of 90 items,
+measured a median of 541 ms: the database's contents barely move the number, because the app's
+own start-up work takes about 10 ms (see below).
 
 On the M4 Pro build host: first launch 1453 ms; launches 2–6 930, 951, 1031, 1013, and
 1057 ms, for a median of 1013 ms. An earlier run there measured 1491 ms for the first launch,
