@@ -18,13 +18,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
@@ -105,7 +108,9 @@ type Prompt struct {
 	// Usage says where the prompt is a default.
 	Usage Usage `json:"usage"`
 
-	// UpdatedAt is when the prompt was last saved, as RFC 3339.
+	// CreatedAt is when the prompt was added to this library, and UpdatedAt when it was
+	// last saved, both as RFC 3339.
+	CreatedAt string `json:"createdAt"`
 	UpdatedAt string `json:"updatedAt"`
 }
 
@@ -209,7 +214,8 @@ type PreviewSource interface {
 
 // Config holds a Service's dependencies. Store is required. Usage is optional: without
 // it, a prompt's usage names only the app's default prompts. Source is optional:
-// without it, previews use sample data.
+// without it, previews use sample data. File and Database are optional: without them,
+// the library keeps no copy of itself, and Backups lists only what the other one finds.
 type Config struct {
 	// Store holds the prompts and the app's default prompts.
 	Store *Store
@@ -219,18 +225,43 @@ type Config struct {
 
 	// Source fills in previews with an inbox item's data.
 	Source PreviewSource
+
+	// File is the copy of the library kept beside the database, written after every
+	// change to the library.
+	File *LibraryFile
+
+	// Database is the database file, beside which Backups finds the databases the app
+	// set aside and the backups it took before updates.
+	Database string
+
+	// App is the build's version, which every exported file records.
+	App string
+
+	// Clock stamps exported files. Nil is the system clock.
+	Clock clock.Clock
+
+	// Logger hears a library file that could not be written. Nil discards.
+	Logger *slog.Logger
 }
 
 // Service manages the prompt library.
 type Service struct {
-	store  *Store
-	usage  UsageSource
-	source PreviewSource
+	store    *Store
+	usage    UsageSource
+	source   PreviewSource
+	file     *LibraryFile
+	database string
+	app      string
+	clock    clock.Clock
+	logger   *slog.Logger
 }
 
 // NewService returns a Service over cfg.
 func NewService(cfg Config) *Service {
-	return &Service{store: cfg.Store, usage: cfg.Usage, source: cfg.Source}
+	return &Service{
+		store: cfg.Store, usage: cfg.Usage, source: cfg.Source, file: cfg.File, database: cfg.Database, app: cfg.App,
+		clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger),
+	}
 }
 
 // List returns every prompt with its usage, sorted by nickname.
@@ -275,6 +306,8 @@ func (s *Service) Create(ctx context.Context, in Input) (Prompt, error) {
 		return Prompt{}, err
 	}
 
+	s.saved(ctx)
+
 	return s.get(ctx, id)
 }
 
@@ -308,6 +341,8 @@ func (s *Service) Update(ctx context.Context, id int64, in Input) (Prompt, error
 		return Prompt{}, err
 	}
 
+	s.saved(ctx)
+
 	return s.get(ctx, id)
 }
 
@@ -315,6 +350,11 @@ func (s *Service) Update(ctx context.Context, id int64, in Input) (Prompt, error
 // InUseError that says where.
 func (s *Service) Delete(ctx context.Context, id int64) error {
 	err := s.store.remove(ctx, id)
+	if err == nil {
+		s.saved(ctx)
+
+		return nil
+	}
 
 	inUse, ok := errors.AsType[*InUseError](err)
 	if !ok {
@@ -358,6 +398,8 @@ func (s *Service) Duplicate(ctx context.Context, id int64) (Prompt, error) {
 		return Prompt{}, err
 	}
 
+	s.saved(ctx)
+
 	return s.get(ctx, newID)
 }
 
@@ -386,6 +428,8 @@ func (s *Service) Reset(ctx context.Context, id int64) (Prompt, error) {
 		return Prompt{}, err
 	}
 
+	s.saved(ctx)
+
 	return s.get(ctx, id)
 }
 
@@ -411,7 +455,13 @@ func (s *Service) SetDefault(ctx context.Context, kind item.Kind, id int64) erro
 		return fmt.Errorf("%w: %q doesn't apply to %s", ErrWrongKind, p.Nickname, k.Plural())
 	}
 
-	return s.store.setDefault(ctx, k, id)
+	if err = s.store.setDefault(ctx, k, id); err != nil {
+		return err
+	}
+
+	s.saved(ctx)
+
+	return nil
 }
 
 // Variables returns every variable a prompt can use, for the cheat sheet.
@@ -434,6 +484,21 @@ func (s *Service) get(ctx context.Context, id int64) (Prompt, error) {
 	p.Usage = normalizeUsage(usage)
 
 	return p, nil
+}
+
+// saved writes the library file after a change to the library. A failure is logged,
+// not returned: the change is stored, and the file is written again after the next one.
+// The change is made whether or not the caller still waits, so the file is too.
+func (s *Service) saved(ctx context.Context) {
+	if s.file == nil {
+		return
+	}
+
+	ctx = context.WithoutCancel(ctx)
+
+	if err := s.file.Save(ctx, s.store); err != nil {
+		s.logger.WarnContext(ctx, "could not save the copy of the prompt library", "path", s.file.Path(), "error", err)
+	}
 }
 
 // resetPrompt restores the stored prompt p to its starter, keeping p's nickname when

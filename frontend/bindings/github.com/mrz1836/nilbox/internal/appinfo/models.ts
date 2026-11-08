@@ -70,6 +70,29 @@ export interface Info {
      * aside and the app started with an empty one; it is nil otherwise.
      */
     "dataReset"?: DataReset | null;
+
+    /**
+     * PromptsRestored is set when the prompt library was lost at startup, with the
+     * database it was in, and was brought back; it is nil otherwise.
+     */
+    "promptsRestored"?: PromptsRestored | null;
+}
+
+/**
+ * PromptsRestored says that the prompt library was brought back at startup, and from
+ * where.
+ */
+export interface PromptsRestored {
+    /**
+     * Count is how many prompts came back.
+     */
+    "count": number;
+
+    /**
+     * From is the file they came from, with ~ for the home directory: the database set
+     * aside, or the copy of the library kept beside the database.
+     */
+    "from": string;
 }
 
 /**

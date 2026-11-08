@@ -3,8 +3,9 @@ import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { brand } from '../generated/brand'
 import type { Prompt, PromptCheckRequest } from '../platform'
-import { checkResult, item, prompt, prompts, variables } from '../test/fixtures'
+import { checkResult, importEntry, item, prompt, prompts, variables } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { PromptsView } from './PromptsView'
 
@@ -538,5 +539,138 @@ describe('PromptsView', () => {
     await userEvent.click(screen.getByRole('button', { name: 'New prompt' }))
 
     expect(screen.getByRole('button', { name: 'Create prompt' })).toBeInTheDocument()
+  })
+
+  it('offers to restore prompts when the library is empty', async () => {
+    render(<Harness initial={[]} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Restore from a backup' }))
+
+    expect(await screen.findByRole('heading', { name: 'Restore prompts from a backup' })).toBeInTheDocument()
+  })
+
+  it('exports the whole library, and one prompt', async () => {
+    platform.chooseFileToSave.mockResolvedValue('/exports/all.json')
+    render(<Harness />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Import and export prompts' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Export all prompts…' }))
+
+    const asked = platform.chooseFileToSave.mock.lastCall?.[0]
+    expect(asked?.filename).toMatch(new RegExp(`^${brand.name} prompts \\d{4}-\\d{2}-\\d{2}\\.json$`))
+    expect(asked?.filters).toEqual([{ name: `${brand.name} prompts`, pattern: '*.json' }])
+    expect(platform.exportPrompts).toHaveBeenCalledWith('/exports/all.json', [])
+    expect(await screen.findByText(`Exported ${String(prompts().length)} prompts to “all.json”.`)).toBeInTheDocument()
+
+    platform.chooseFileToSave.mockResolvedValue('/exports/Fix checks.json')
+    await userEvent.click(screen.getByRole('button', { name: 'More actions for Fix checks' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Export…' }))
+
+    expect(platform.chooseFileToSave).toHaveBeenLastCalledWith(expect.objectContaining({ filename: 'Fix checks.json' }))
+    expect(platform.exportPrompts).toHaveBeenLastCalledWith('/exports/Fix checks.json', [3])
+    expect(await screen.findByText('Exported 1 prompt to “Fix checks.json”.')).toBeInTheDocument()
+  })
+
+  it('writes nothing when the save dialog is cancelled', async () => {
+    render(<Harness />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Import and export prompts' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Export all prompts…' }))
+
+    await waitFor(() => {
+      expect(platform.chooseFileToSave).toHaveBeenCalled()
+    })
+    expect(platform.exportPrompts).not.toHaveBeenCalled()
+  })
+
+  it('shows an export that failed', async () => {
+    platform.chooseFileToSave.mockResolvedValue('/Volumes/gone/all.json')
+    platform.exportPrompts.mockRejectedValue(new Error('the disk is gone'))
+    render(<Harness />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Import and export prompts' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Export all prompts…' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('the disk is gone')
+  })
+
+  it('imports prompts from a file and opens the first one', async () => {
+    platform.chooseFileToOpen.mockResolvedValue('/exports/shared.json')
+    platform.previewPromptImport.mockResolvedValue([importEntry()])
+    platform.importPrompts.mockResolvedValue({ added: 1, replaced: 0, skipped: 0, first: 9 })
+    next = [...prompts(), prompt({ id: 9, nickname: 'Security', name: 'Look for security problems', appliesTo: 'any' })]
+    render(<Harness />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Import and export prompts' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Import from a file…' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Import 1 prompt' }))
+
+    expect(platform.chooseFileToOpen.mock.lastCall?.[0].filters).toEqual([
+      { name: `${brand.name} prompts`, pattern: '*.json' },
+      { name: `${brand.name} database`, pattern: '*.db' },
+    ])
+    expect(platform.previewPromptImport).toHaveBeenCalledWith({
+      kind: 'file',
+      path: '/exports/shared.json',
+    })
+    expect(await screen.findByText('Imported 1 prompt.')).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Nickname' })).toHaveValue('Security')
+  })
+
+  it('restores prompts from a backup', async () => {
+    platform.importPrompts.mockResolvedValue({ added: 1, replaced: 2, skipped: 1, first: 1 })
+    render(<Harness />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Import and export prompts' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Restore from a backup…' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Show prompts' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Restore 1 prompt' }))
+
+    expect(await screen.findByText('Restored 3 prompts. One was already in your library.')).toBeInTheDocument()
+  })
+
+  it('cancels an import', async () => {
+    platform.chooseFileToOpen.mockResolvedValue('/exports/shared.json')
+    render(<Harness />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Import and export prompts' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Import from a file…' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(platform.importPrompts).not.toHaveBeenCalled()
+  })
+
+  it('says when the save dialog cannot open', async () => {
+    platform.chooseFileToSave.mockRejectedValue(new Error('no window'))
+    render(<Harness />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Import and export prompts' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Export all prompts…' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Couldn’t open the save dialog: no window')
+    expect(platform.exportPrompts).not.toHaveBeenCalled()
+  })
+
+  it('says when a file dialog cannot open', async () => {
+    platform.chooseFileToOpen.mockRejectedValue(new Error('no window'))
+    render(<Harness />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Import and export prompts' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Import from a file…' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Couldn’t open the file dialog: no window')
+  })
+
+  it('asks for unsaved changes to be dealt with before an import', async () => {
+    render(<Harness />)
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Nickname' }), '!')
+    await userEvent.click(screen.getByRole('button', { name: 'Import and export prompts' }))
+
+    expect(screen.getByRole('menuitem', { name: 'Import from a file…' })).toBeDisabled()
+    expect(screen.getByRole('menuitem', { name: 'Restore from a backup…' })).toBeDisabled()
+    expect(screen.getByRole('menuitem', { name: 'Export all prompts…' })).toBeEnabled()
   })
 })

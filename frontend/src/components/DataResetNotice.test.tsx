@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
-import type { DataReset, Info } from '../platform'
+import type { DataReset, Info, PromptsRestored } from '../platform'
 import { appInfo } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { DataResetNotice } from './DataResetNotice'
@@ -19,7 +19,36 @@ const reset: DataReset = { path: '~/data/app.db.broken-20260102T030405Z', reason
 
 const message = `${brand.name} couldn’t read its data, so it set it aside at ${reset.path} and started fresh.`
 
+const restored: PromptsRestored = { count: 3, from: reset.path }
+
 describe('DataResetNotice', () => {
+  it('says the prompts came back with the data set aside', async () => {
+    platform.getAppInfo.mockResolvedValue(appInfo({ dataReset: reset, promptsRestored: restored }))
+    render(<DataResetNotice />)
+
+    expect(await screen.findByText(reset.path)).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent(`${message} It brought back your 3 prompts.`)
+  })
+
+  it('points to the backups when the prompts did not come back', async () => {
+    platform.getAppInfo.mockResolvedValue(info(reset))
+    render(<DataResetNotice />)
+
+    expect(await screen.findByText(reset.path)).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('choose Restore from a backup on the Prompts page')
+  })
+
+  it('says the prompts came back from the saved copy when the database was gone', async () => {
+    const from = '~/data/prompts.json'
+    platform.getAppInfo.mockResolvedValue(appInfo({ promptsRestored: { count: 1, from } }))
+    render(<DataResetNotice />)
+
+    expect(await screen.findByText(from)).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent(
+      `${brand.name} started with a new database and brought back your prompt from its saved copy at ${from}.`,
+    )
+  })
+
   it('says the data was set aside, where, and that the app started fresh', async () => {
     platform.getAppInfo.mockResolvedValue(info(reset))
     render(<DataResetNotice />)

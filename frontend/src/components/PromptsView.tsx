@@ -1,18 +1,24 @@
 import { useEffect, useEffectEvent, useId, useRef, useState } from 'react'
 
+import { brand } from '../generated/brand'
+import { counted, errorMessage } from '../lib/format'
 import { kindPlural, promptApplies, usageCount, usagePlaces } from '../lib/launch'
 import { useMutation } from '../lib/useMutation'
 import { useDebouncedQuery } from '../lib/useQuery'
 import {
   checkPrompt,
+  chooseFileToOpen,
+  chooseFileToSave,
   createPrompt,
   deletePrompt,
   duplicatePrompt,
+  exportPrompts,
   resetPrompt,
   setDefaultPrompt,
   updatePrompt,
   type DefaultPrompts,
   type Diagnostic,
+  type ImportResult,
   type InboxItem,
   type Prompt,
   type PromptInput,
@@ -20,7 +26,19 @@ import {
 } from '../platform'
 import { ConfirmDialog, type ConfirmDialogProps } from './ConfirmDialog'
 import { buttonClass, primaryButtonClass } from './controls'
-import { CopyIcon, DocumentIcon, MoreIcon, PlusIcon, ResetIcon, StarIcon, TrashIcon } from './icons'
+import {
+  CopyIcon,
+  DocumentIcon,
+  ExportIcon,
+  HistoryIcon,
+  ImportIcon,
+  MoreIcon,
+  PlusIcon,
+  ResetIcon,
+  StarIcon,
+  TrashIcon,
+} from './icons'
+import { ImportPromptsDialog, type ImportStart } from './ImportPromptsDialog'
 import { MenuButton, type MenuItem } from './Menu'
 import { PromptEditor } from './PromptEditor'
 import { PromptLibrary, type Selection } from './PromptLibrary'
@@ -103,6 +121,39 @@ function sameInput(a: PromptInput, b: PromptInput): boolean {
   )
 }
 
+// promptFiles is the type of file prompts are exported to and imported from. An import
+// also reads a copy of the app's database, such as one restored from a backup.
+const promptFiles = [{ name: `${brand.name} prompts`, pattern: '*.json' }]
+const importFiles = [...promptFiles, { name: `${brand.name} database`, pattern: '*.db' }]
+
+// datePart is a date as a file name carries it: 2026-11-08.
+function datePart(now: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+
+  return `${String(now.getFullYear())}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+}
+
+// fileSafe is text with the characters a file name cannot hold replaced.
+function fileSafe(text: string): string {
+  return text.replace(/[/\\:*?"<>|]+/g, '-').trim()
+}
+
+// baseName is the last part of a path.
+function baseName(path: string): string {
+  return path.split(/[\\/]/).at(-1) ?? path
+}
+
+// importedText says what an import, or a restore from a backup, did.
+function importedText(result: ImportResult, restored: boolean): string {
+  const done = `${restored ? 'Restored' : 'Imported'} ${counted(result.added + result.replaced, 'prompt', 'prompts')}.`
+
+  if (result.skipped === 0) {
+    return done
+  }
+
+  return `${done} ${result.skipped === 1 ? 'One was' : `${String(result.skipped)} were`} already in your library.`
+}
+
 // touchedField reports whether a field of the draft was edited away from its start.
 function touchedField(field: string, draft: PromptInput, start: PromptInput): boolean {
   const key = field as keyof PromptInput
@@ -130,6 +181,8 @@ export function PromptsView({ prompts, defaults, variables, items, onChanged }: 
   const [panel, setPanel] = useState<'preview' | 'variables'>('preview')
   const [status, setStatus] = useState<{ tone: 'error' | 'success'; text: string } | null>(null)
   const [pending, setPending] = useState<Pending | null>(null)
+  // importing is the import under way in its dialog, or null.
+  const [importing, setImporting] = useState<ImportStart | null>(null)
 
   // applicableItems are the inbox items the draft applies to, which it can be previewed
   // with.
@@ -307,6 +360,86 @@ export function PromptsView({ prompts, defaults, variables, items, onChanged }: 
     }
   }
 
+  const exporter = useMutation((path: string, ids: number[]) => exportPrompts(path, ids))
+
+  // exportTo asks where to save the prompts with ids (every prompt when ids is empty),
+  // offering filename, then writes them there.
+  const exportTo = async (ids: number[], filename: string) => {
+    setStatus(null)
+
+    let path: string
+
+    try {
+      path = await chooseFileToSave({ title: 'Export prompts', button: 'Export', filters: promptFiles, filename })
+    } catch (err) {
+      setStatus({ tone: 'error', text: `Couldn’t open the save dialog: ${errorMessage(err)}` })
+
+      return
+    }
+
+    if (path === '') {
+      return
+    }
+
+    const result = await exporter.run(path, ids)
+
+    setStatus(
+      result.ok
+        ? { tone: 'success', text: `Exported ${counted(result.data, 'prompt', 'prompts')} to “${baseName(path)}”.` }
+        : { tone: 'error', text: result.error },
+    )
+  }
+
+  // importFile asks for a prompt file, then shows what importing it would do.
+  const importFile = async () => {
+    setStatus(null)
+
+    try {
+      const path = await chooseFileToOpen({ title: 'Import prompts', button: 'Import', filters: importFiles })
+
+      if (path !== '') {
+        setImporting({ kind: 'file', path })
+      }
+    } catch (err) {
+      setStatus({ tone: 'error', text: `Couldn’t open the file dialog: ${errorMessage(err)}` })
+    }
+  }
+
+  // An import opens the prompt it brought in, so unsaved changes are dealt with first.
+  const unsavedTitle = dirty ? 'Save or discard your changes first.' : undefined
+
+  // libraryActions are what can be done with the whole library.
+  const libraryActions: MenuItem[] = [
+    {
+      label: 'Import from a file…',
+      icon: <ImportIcon className="size-4 text-muted" />,
+      disabled: dirty,
+      title: unsavedTitle,
+      onSelect: () => {
+        void importFile()
+      },
+    },
+    {
+      label: 'Restore from a backup…',
+      icon: <HistoryIcon className="size-4 text-muted" />,
+      disabled: dirty,
+      title: unsavedTitle,
+      onSelect: () => {
+        setStatus(null)
+        setImporting({ kind: 'backups' })
+      },
+    },
+    {
+      label: 'Export all prompts…',
+      icon: <ExportIcon className="size-4 text-muted" />,
+      divided: true,
+      disabled: prompts.length === 0,
+      onSelect: () => {
+        void exportTo([], `${brand.name} prompts ${datePart(new Date())}.json`)
+      },
+    },
+  ]
+
   // shown is the status the footer shows: a failed action, then a failed check, then how
   // the last action went.
   const shown = status?.tone === 'error' || checkError === '' ? status : { tone: 'error' as const, text: checkError }
@@ -346,6 +479,15 @@ export function PromptsView({ prompts, defaults, variables, items, onChanged }: 
 
           return { kind: 'prompt', id: copy.id }
         }, `Duplicated “${p.nickname}”.`)
+      },
+    })
+
+    items.push({
+      label: 'Export…',
+      icon: <ExportIcon className="size-4 text-muted" />,
+      title: dirty ? 'Exports it as last saved.' : undefined,
+      onSelect: () => {
+        void exportTo([p.id], `${fileSafe(p.nickname)}.json`)
       },
     })
 
@@ -459,23 +601,42 @@ export function PromptsView({ prompts, defaults, variables, items, onChanged }: 
 
   return (
     <div className="flex h-full min-h-0">
-      <PromptLibrary prompts={prompts} selection={selection} newNickname={draft.nickname} dirty={dirty} onAsk={ask} />
+      <PromptLibrary
+        prompts={prompts}
+        selection={selection}
+        newNickname={draft.nickname}
+        dirty={dirty}
+        onAsk={ask}
+        actions={libraryActions}
+      />
 
       <section aria-label="Prompt editor" className="flex min-w-0 flex-1 flex-col">
         {selection === null ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
             <DocumentIcon className="size-8 text-muted" />
             <p className="text-sm text-muted">No prompts yet.</p>
-            <button
-              type="button"
-              onClick={() => {
-                select({ kind: 'new' })
-              }}
-              className={primaryButtonClass}
-            >
-              <PlusIcon className="size-4" />
-              New prompt
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  select({ kind: 'new' })
+                }}
+                className={primaryButtonClass}
+              >
+                <PlusIcon className="size-4" />
+                New prompt
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setImporting({ kind: 'backups' })
+                }}
+                className={buttonClass}
+              >
+                <HistoryIcon className="size-4" />
+                Restore from a backup
+              </button>
+            </div>
           </div>
         ) : (
           <>
@@ -609,6 +770,24 @@ export function PromptsView({ prompts, defaults, variables, items, onChanged }: 
             )}
           </TabPanel>
         </aside>
+      )}
+
+      {importing !== null && (
+        <ImportPromptsDialog
+          start={importing}
+          onCancel={() => {
+            setImporting(null)
+          }}
+          onImported={(result) => {
+            const restored = importing.kind === 'backups'
+
+            setImporting(null)
+            void run(
+              () => Promise.resolve(result.first === 0 ? null : { kind: 'prompt' as const, id: result.first }),
+              importedText(result, restored),
+            )
+          }}
+        />
       )}
 
       {asking !== null && (

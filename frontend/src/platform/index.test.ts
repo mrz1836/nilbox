@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   events: { On: vi.fn<(name: string, callback: (event: { data: unknown }) => void) => () => void>() },
   browser: { OpenURL: vi.fn() },
   window: { SetSize: vi.fn() },
+  dialogs: { OpenFile: vi.fn(), SaveFile: vi.fn() },
 }))
 
 // Create stands in for the runtime's registry of event data creators, which the generated
@@ -19,6 +20,7 @@ vi.mock('@wailsio/runtime', () => ({
   Events: mocks.events,
   Browser: mocks.browser,
   Window: mocks.window,
+  Dialogs: mocks.dialogs,
   Create: { Events: {} },
 }))
 vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/inbox', () => ({ Service: mocks.inbox }))
@@ -128,5 +130,43 @@ describe('setWindowSize', () => {
 
     await expect(platform.setWindowSize({ width: 100, height: 100 })).rejects.toThrow('invalid window size')
     expect(mocks.window.SetSize).not.toHaveBeenCalled()
+  })
+})
+
+describe('file dialogs', () => {
+  const prompts = [{ name: 'Prompts', pattern: '*.json' }]
+
+  it('asks for one file to open, and resolves with its path', async () => {
+    mocks.dialogs.OpenFile.mockResolvedValue('/exports/shared.json')
+
+    await expect(
+      platform.chooseFileToOpen({ title: 'Import prompts', button: 'Import', filters: prompts }),
+    ).resolves.toBe('/exports/shared.json')
+    expect(mocks.dialogs.OpenFile).toHaveBeenCalledExactlyOnceWith({
+      Title: 'Import prompts',
+      ButtonText: 'Import',
+      Filters: [{ DisplayName: 'Prompts', Pattern: '*.json' }],
+      CanChooseFiles: true,
+      CanChooseDirectories: false,
+      AllowsMultipleSelection: false,
+    })
+  })
+
+  it('asks where to save, suggesting a name, and resolves with the path', async () => {
+    mocks.dialogs.SaveFile.mockResolvedValue('')
+
+    await expect(
+      platform.chooseFileToSave({ title: 'Export prompts', button: 'Export', filters: prompts, filename: 'all.json' }),
+    ).resolves.toBe('')
+    expect(mocks.dialogs.SaveFile).toHaveBeenCalledExactlyOnceWith({
+      Title: 'Export prompts',
+      ButtonText: 'Export',
+      Filters: [{ DisplayName: 'Prompts', Pattern: '*.json' }],
+      Filename: 'all.json',
+      CanCreateDirectories: true,
+    })
+
+    await platform.chooseFileToSave({ title: 'Export prompts', button: 'Export', filters: prompts })
+    expect(mocks.dialogs.SaveFile).toHaveBeenLastCalledWith(expect.objectContaining({ Filename: '' }))
   })
 })

@@ -130,6 +130,14 @@ export function formatFull(iso: string, locale?: string): string {
   return ms === undefined ? '' : dateFormat(locale, { dateStyle: 'full', timeStyle: 'short' }).format(ms)
 }
 
+// formatDateTime names a time with its date, for a list of things made at different
+// times: "Nov 8, 2026, 11:51 AM". locale is for tests; the app uses the system's.
+export function formatDateTime(iso: string, locale?: string): string {
+  const ms = parseTime(iso)
+
+  return ms === undefined ? '' : dateFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(ms)
+}
+
 // capitalize starts a phrase with a capital, for formatWhen at the start of a line.
 export function capitalize(phrase: string): string {
   return phrase.charAt(0).toUpperCase() + phrase.slice(1)

@@ -12,5 +12,6 @@ export {
 
 export type {
     DataReset,
-    Info
+    Info,
+    PromptsRestored
 } from "./models.js";

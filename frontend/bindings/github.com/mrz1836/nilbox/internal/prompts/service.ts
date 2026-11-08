@@ -19,6 +19,16 @@ import * as item$0 from "../item/models.js";
 import * as $models from "./models.js";
 
 /**
+ * Backups lists the copies of the prompt library the app keeps, newest first, with how
+ * many prompts each holds and how many of those the library does not: the library file,
+ * the databases the app set aside, and the backups it took before updates. A copy that
+ * cannot be read is listed with the reason.
+ */
+export function Backups(): $CancellablePromise<$models.Backup[] | null> {
+    return $Call.ByID(2115883454);
+}
+
+/**
  * Check checks a prompt being edited, as Create and Update would, and fills it in for a
  * preview item: an inbox item when one is named and the prompt applies to it, else
  * sample data. Problems are reported in the result; an error means the check itself
@@ -59,10 +69,40 @@ export function Duplicate(id: number): $CancellablePromise<$models.Prompt> {
 }
 
 /**
+ * Export writes the prompts with ids, or every prompt when ids is empty, to a prompt file
+ * at path, replacing any file there, and returns how many it wrote. A whole library is
+ * written with the app's default prompts and the record of the starters it was given, so
+ * importing it on another Mac, or restoring it here, brings back the library as it was.
+ */
+export function Export(path: string, ids: number[] | null): $CancellablePromise<number> {
+    return $Call.ByID(1946062737, path, ids);
+}
+
+/**
+ * Import adds prompts to the library, as PreviewImport said it would, all of them or,
+ * when a write fails, none. It never changes a prompt the user wrote or edited: a prompt
+ * the library already holds is skipped, one whose nickname is taken is added under a free
+ * one, and only a starter still as the app added it is saved over, by the user's own
+ * version of that starter. A text with problems is imported for the user to fix, and a
+ * setting this build would refuse is left out.
+ */
+export function Import(prompts: $models.BundlePrompt[] | null): $CancellablePromise<$models.ImportResult> {
+    return $Call.ByID(3210265186, prompts);
+}
+
+/**
  * List returns every prompt with its usage, sorted by nickname.
  */
 export function List(): $CancellablePromise<$models.Prompt[] | null> {
     return $Call.ByID(2507610851);
+}
+
+/**
+ * PreviewImport reads the prompts a source holds and says what importing each one would
+ * do, changing nothing.
+ */
+export function PreviewImport(source: $models.ImportSource): $CancellablePromise<$models.ImportEntry[] | null> {
+    return $Call.ByID(2022656236, source);
 }
 
 /**

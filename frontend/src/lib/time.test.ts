@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { FIXED_NOW, fromNow } from '../test/clock'
-import { capitalize, formatAge, formatAgo, formatFull, formatUntil, formatWhen } from './time'
+import { capitalize, formatAge, formatAgo, formatDateTime, formatFull, formatUntil, formatWhen } from './time'
 
 // Tests run in UTC (vitest.config.ts); FIXED_NOW is a Monday.
 
@@ -89,6 +89,12 @@ describe('formatWhen', () => {
   it('names a time in full for a tooltip', () => {
     expect(plain(formatFull('2026-06-18T12:00:00Z', 'en-US'))).toBe('Thursday, June 18, 2026 at 12:00 PM')
     expect(formatFull('', 'en-US')).toBe('')
+  })
+
+  it('names a time with its date for a list', () => {
+    expect(plain(formatDateTime('2026-06-18T12:00:00Z', 'en-US'))).toBe('Jun 18, 2026, 12:00 PM')
+    expect(formatDateTime('', 'en-US')).toBe('')
+    expect(formatDateTime('not a time', 'en-US')).toBe('')
   })
 
   it('makes each date format once, however many times it formats', () => {
