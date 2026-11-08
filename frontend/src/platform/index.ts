@@ -69,6 +69,7 @@ export type Agent = NonNullLists<agent.Agent>
 export type BudgetGauge = NonNullLists<budget.Gauge>
 export type BudgetReading = NonNullLists<budget.Reading>
 export type BudgetRefresh = NonNullLists<budget.Refresh>
+export type BudgetWrites = NonNullLists<budget.Writes>
 
 export type DataReset = NonNullLists<appinfo.DataReset>
 export type Info = NonNullLists<appinfo.Info>
@@ -87,6 +88,7 @@ export type ProjectAccess = inbox.ProjectAccess
 export type Rate = NonNullLists<inbox.Rate>
 export type RateGauge = NonNullLists<inbox.RateGauge>
 export type Reviews = NonNullLists<inbox.Reviews>
+export type ReviewRequest = inbox.ReviewRequest
 export type InboxSnapshot = NonNullLists<inbox.Snapshot>
 
 export type ItemKind = item.Kind
@@ -173,6 +175,8 @@ export const {
   Restore: restoreItem,
   Pin: pinItem,
   Unpin: unpinItem,
+  Unassign: unassignItem,
+  RemoveReviewRequest: removeReviewRequest,
 } = narrow(inbox.Service)
 
 export const { List: listProfiles } = narrow(profiles.Service)

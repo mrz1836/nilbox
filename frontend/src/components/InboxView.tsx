@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 
+import { attempt } from '../lib/call'
 import { isInboxNil } from '../lib/nil'
 import { formatAgo, formatWhen } from '../lib/time'
 import { findItem, isDismissed, type TriagedInbox } from '../lib/triage'
 import type { InboxState } from '../lib/useInbox'
 import type { InboxOrderState } from '../lib/useInboxOrder'
 import { useClock } from '../lib/useNow'
-import type { InboxItem, ItemResolution, ListKey } from '../platform'
+import { copyText, type InboxItem, type ItemResolution, type ListKey } from '../platform'
 import { ErrorBanner } from './ErrorBanner'
 import { InboxNil } from './InboxNil'
+import { teamsText, type EditActions } from './ItemMenu'
 import type { LaunchOptions } from './ItemRow'
 import { ListSection, type Reveal } from './ListSection'
 import { ProjectsTip } from './ProjectsTip'
@@ -86,8 +88,21 @@ export function InboxView({
   onDismissProjects,
   inboxOrder,
 }: InboxViewProps) {
-  const { snapshot, loadError, refreshError, refreshing, refresh, dismiss, snooze, restore, pin, unpin, refreshItem } =
-    inbox
+  const {
+    snapshot,
+    loadError,
+    refreshError,
+    refreshing,
+    refresh,
+    dismiss,
+    snooze,
+    restore,
+    pin,
+    unpin,
+    refreshItem,
+    unassign,
+    removeReviewRequest,
+  } = inbox
   const { order, setStatusSort, setStatusOrder } = inboxOrder
   const clock = useClock()
   const error = firstMessage(refreshError, snapshot?.lastError ?? '', loadError)
@@ -233,6 +248,46 @@ export function InboxView({
     onChangeDefault: onSnoozeSettings,
   }
 
+  // edits is what every row's menu does beyond triage. An edit shows once GitHub has
+  // made it, as the item leaves the list, which the toast confirms; a pull request that
+  // still asks a team for a review stays, and the toast says which.
+  const edits: EditActions = {
+    onCopyLink: (item) => {
+      void attempt(copyText(item.url)).then((result) => {
+        showToast(
+          result.ok
+            ? { text: 'Link copied', detail: item.url }
+            : { text: 'Could not copy the link', detail: result.error, tone: 'error' },
+        )
+      })
+    },
+    onUnassign: async (item) => {
+      const result = await unassign(item.id)
+
+      if (result.ok) {
+        showToast({ text: 'Unassigned you on GitHub', detail: item.title })
+      } else {
+        failed('unassign you from', item, result.error)
+      }
+    },
+    onRemoveReview: async (item) => {
+      const result = await removeReviewRequest(item.id)
+
+      if (!result.ok) {
+        failed('remove you as a reviewer of', item, result.error)
+
+        return
+      }
+
+      const after = findItem(result.data, item.id)
+
+      showToast({
+        text: 'Removed you as a reviewer on GitHub',
+        detail: after?.reviewRequest === 'team' ? `It still asks ${teamsText(after.reviewTeams)}` : item.title,
+      })
+    },
+  }
+
   return (
     <div className="flex flex-col gap-4 p-4">
       <div className="flex items-center gap-3 text-sm">
@@ -283,6 +338,7 @@ export function InboxView({
               launch={launch}
               resolutions={resolutions}
               triage={triage}
+              edits={edits}
               collapsed={collapsed.has(key)}
               onCollapse={(on) => {
                 onCollapse(key, on)

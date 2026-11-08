@@ -1,8 +1,18 @@
 import { describe, expect, it } from 'vitest'
 
 import { FIXED_NOW } from '../test/clock'
-import { budgetGauge, reading, unreadBudget } from '../test/fixtures'
-import { levelFor, newestRead, paceOf, readBudget, shareOf, summarize, summaryText, type BudgetLevel } from './budget'
+import { budgetGauge, reading, unreadBudget, writes } from '../test/fixtures'
+import {
+  levelFor,
+  newestRead,
+  paceOf,
+  readBudget,
+  shareOf,
+  summarize,
+  summaryText,
+  writesHeld,
+  type BudgetLevel,
+} from './budget'
 
 describe('levelFor', () => {
   it.each<[number, BudgetLevel]>([
@@ -136,5 +146,14 @@ describe('newestRead', () => {
   it('is empty before any reading', () => {
     expect(newestRead(null)).toBe('')
     expect(newestRead(budgetGauge())).toBe('')
+  })
+})
+
+describe('writesHeld', () => {
+  it('holds while GitHub’s pause runs', () => {
+    expect(writesHeld(writes(), FIXED_NOW)).toBe(false)
+    expect(writesHeld(writes({ heldUntil: '2026-06-15T12:01:00Z' }), FIXED_NOW)).toBe(true)
+    expect(writesHeld(writes({ heldUntil: '2026-06-15T11:59:00Z' }), FIXED_NOW)).toBe(false)
+    expect(writesHeld(writes({ heldUntil: 'not a time' }), FIXED_NOW)).toBe(false)
   })
 })

@@ -7,7 +7,7 @@
 // Each reading says what the app itself spent since the budget last refilled, which tells
 // the app's share from everything else signed in as the same account.
 
-import type { BudgetGauge, BudgetReading } from '../platform'
+import type { BudgetGauge, BudgetReading, BudgetWrites } from '../platform'
 
 // BudgetLevel grades the share of a budget left: healthy (green), moderate (yellow), low
 // (orange), and critical (red). Unknown means it was never read.
@@ -205,4 +205,12 @@ export function newestRead(gauge: BudgetGauge | null): string {
     .filter((r) => r.known)
     .map((r) => r.takenAt)
     .reduce((newest, at) => (Date.parse(at) > Date.parse(newest || '0') ? at : newest), '')
+}
+
+// writesHeld reports whether GitHub's request to pause the app's changes still runs at
+// now.
+export function writesHeld(writes: BudgetWrites, now: Date): boolean {
+  const until = Date.parse(writes.heldUntil)
+
+  return !Number.isNaN(until) && until > now.getTime()
 }

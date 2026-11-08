@@ -183,6 +183,25 @@ export interface Item {
      * snooze or a dismissal.
      */
     "pinnedAt": string;
+
+    /**
+     * Assigned reports that the item is in the Assigned list: it is assigned to the
+     * signed-in user, who can take themselves off it (Unassign).
+     */
+    "assigned": boolean;
+
+    /**
+     * ReviewRequest says how a pull request in the Review requested list asks for the
+     * signed-in user's review, which decides whether they can take themselves off it
+     * (RemoveReviewRequest).
+     */
+    "reviewRequest": ReviewRequest;
+
+    /**
+     * ReviewTeams are the slugs of the teams a pull request asks to review, in GitHub's
+     * order. It is empty for an issue, and until a refresh has read them.
+     */
+    "reviewTeams": string[] | null;
 }
 
 /**
@@ -309,6 +328,35 @@ export interface RateGauge {
     "core": Rate;
     "search": Rate;
 }
+
+/**
+ * ReviewRequest says how a pull request asks the signed-in user to review it.
+ */
+export type ReviewRequest = "none" | "you" | "team";
+
+/**
+ * The values of ReviewRequest, by the names of their Go constants.
+ */
+export const ReviewRequest = {
+    /**
+     * ReviewRequestNone is an item not in the Review requested list.
+     */
+    ReviewRequestNone: "none",
+
+    /**
+     * ReviewRequestYou is a pull request that asks the user by name, which the user can
+     * take themselves off. A pull request whose requests no refresh has read yet counts
+     * as one, and GitHub's answer to the edit says otherwise.
+     */
+    ReviewRequestYou: "you",
+
+    /**
+     * ReviewRequestTeam is a pull request that asks only teams, one of them the user's:
+     * GitHub takes a team's request off for every member or for none, so the user cannot
+     * take themselves off it.
+     */
+    ReviewRequestTeam: "team",
+} as const;
 
 /**
  * Reviews counts who was asked to review a pull request and who has.

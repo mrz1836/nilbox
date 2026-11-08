@@ -5,6 +5,7 @@ import { sortByStatus, statusesOf, statusOrder } from '../lib/statusOrder'
 import { tabOf, type TriagedList, type TriageTab } from '../lib/triage'
 import type { ItemResolution } from '../platform'
 import { ArchiveIcon, ChevronDownIcon, ClockIcon } from './icons'
+import type { EditActions } from './ItemMenu'
 import { ItemRow, type LaunchOptions } from './ItemRow'
 import { StatusSort } from './StatusSort'
 import { TabPanel, tabPanelId, Tabs } from './Tabs'
@@ -56,6 +57,8 @@ export interface ListSectionProps {
   // resolutions holds each item's resolved launch settings by item ID, as they load.
   resolutions: ReadonlyMap<number, ItemResolution>
   triage: TriageActions
+  // edits is what each row's menu does beyond triage (see ItemMenu).
+  edits?: EditActions
   collapsed: boolean
   onCollapse: (collapsed: boolean) => void
   onFilesSettings?: (() => void) | undefined
@@ -76,6 +79,7 @@ export function ListSection({
   launch,
   resolutions,
   triage,
+  edits,
   collapsed,
   onCollapse,
   onFilesSettings,
@@ -208,6 +212,7 @@ export function ListSection({
                 resolution={resolutions.get(item.id) ?? null}
                 tab={tab}
                 triage={triage}
+                edits={edits}
                 onFilesSettings={onFilesSettings}
                 highlighted={item.id === highlight}
               />

@@ -5,7 +5,7 @@ import { brand } from '../generated/brand'
 import { formatCount } from '../lib/format'
 import type { BudgetGauge } from '../platform'
 import { FIXED_NOW } from '../test/clock'
-import { budgetGauge, reading, unreadBudget } from '../test/fixtures'
+import { budgetGauge, reading, unreadBudget, writes } from '../test/fixtures'
 import { RateGauge } from './RateGauge'
 
 function renderGauge(gauge: BudgetGauge | null) {
@@ -168,5 +168,24 @@ describe('RateGauge', () => {
 
     expect(fill('GraphQL')).toHaveStyle({ width: '0%' })
     expect(screen.getByText(/about 36 GraphQL points \(0% of the budget\)/)).toBeInTheDocument()
+  })
+
+  it('counts the changes the app made on GitHub, and how it paces them', () => {
+    renderGauge(budgetGauge({ writes: writes({ lastHour: 3, reserve: 50 }) }))
+
+    expect(screen.getByText('Changes on GitHub')).toBeInTheDocument()
+    expect(screen.getByText('in the last hour').parentElement).toHaveTextContent('3 in the last hour')
+    expect(
+      screen.getByText(
+        `Each spends 1 REST point. ${brand.name} makes at most 30 a minute and 200 an hour, and none while REST is down to its last 50.`,
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/GitHub asked for a pause/)).not.toBeInTheDocument()
+  })
+
+  it('says when GitHub asked the app to pause its changes', () => {
+    renderGauge(budgetGauge({ writes: writes({ heldUntil: '2026-06-15T12:05:00Z' }) }))
+
+    expect(screen.getByText('GitHub asked for a pause: changes resume in 5m')).toHaveClass('text-warning')
   })
 })

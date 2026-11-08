@@ -9,12 +9,13 @@ import {
   readBudget,
   shareOf,
   summarize,
+  writesHeld,
   type Budget,
   type Pace,
 } from '../lib/budget'
 import { counted, formatCount } from '../lib/format'
 import { formatAge, formatUntil } from '../lib/time'
-import type { BudgetGauge, BudgetReading } from '../platform'
+import type { BudgetGauge, BudgetReading, BudgetWrites } from '../platform'
 
 export interface RateGaugeProps {
   // gauge is null until the budgets have loaded.
@@ -170,10 +171,42 @@ function PaceRow({ pace, perHour }: { pace: Pace | null; perHour: number }) {
   )
 }
 
+// WritesRow says what the app changed on GitHub for the user in the last hour, such as
+// taking them off an item's assignees, and how it paces those changes: what each spends,
+// the most it makes, and the reserve it leaves for everything else signed in as the user.
+// While GitHub has asked for a pause, it says until when.
+function WritesRow({ writes, now }: { writes: BudgetWrites; now: Date }) {
+  const held = writesHeld(writes, now)
+  const until = formatUntil(now, writes.heldUntil)
+
+  return (
+    <div className="border-t border-border px-4 py-3">
+      <div className="flex items-baseline justify-between gap-4 text-sm">
+        <span className="font-medium">Changes on GitHub</span>
+        <span className="whitespace-nowrap tabular-nums">
+          {formatCount(writes.lastHour)}
+          <span className="text-muted"> in the last hour</span>
+        </span>
+      </div>
+      <p className="mt-1 text-xs text-muted">
+        {`Each spends 1 REST point. ${brand.name} makes at most ${String(writes.perMinute)} a minute and ${String(writes.perHour)} an hour, and none while REST is down to its last ${formatCount(writes.reserve)}.`}
+      </p>
+      {held && (
+        <p className="mt-1 text-xs font-medium text-warning">
+          {until === 'now' || until === ''
+            ? 'GitHub asked for a pause: changes resume shortly'
+            : `GitHub asked for a pause: changes resume in ${until}`}
+        </p>
+      )}
+    </div>
+  )
+}
+
 // RateGauge details the GitHub API budgets behind the toolbar gauge: an overall level set
 // by the budget with the least left, then each budget's meter, what is left, when it
 // refills, and who used it, then what the inbox's own refreshes cost for the items they
-// track. Every GitHub response the app gets updates it.
+// track, and the changes the app made on GitHub. Every GitHub response the app gets
+// updates it.
 export function RateGauge({ gauge, now, titleId }: RateGaugeProps) {
   const summary = summarize(gauge, now)
 
@@ -195,6 +228,7 @@ export function RateGauge({ gauge, now, titleId }: RateGaugeProps) {
         ))}
       </ul>
       {gauge !== null && <PaceRow pace={paceOf(gauge)} perHour={gauge.refreshesPerHour} />}
+      {gauge !== null && <WritesRow writes={gauge.writes} now={now} />}
       <p className="border-t border-border px-4 py-2.5 text-xs text-muted">
         Shared with gh, your agents, and anything else signed in as you.
       </p>

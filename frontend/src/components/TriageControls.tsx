@@ -1,5 +1,6 @@
 import { useState } from 'react'
 
+import type { RowWork, StartWork } from '../lib/rowWork'
 import { capitalize, formatWhen } from '../lib/time'
 import { isPinned, snoozeChoices, snoozeEnd, snoozeLength, snoozeShort, type TriageTab } from '../lib/triage'
 import { useClock, useNowAs } from '../lib/useNow'
@@ -32,13 +33,24 @@ export interface TriageControlsProps {
   // tab is the list tab the row is in, which decides the controls it gets.
   tab: TriageTab
   actions: TriageActions
+  // work is what the row is doing with GitHub, and start begins more (see rowWork); the
+  // Refresh button shares them with the row's menu.
+  work: RowWork
+  start: StartWork
+}
+
+// hoverClass shows a row's quiet controls while the pointer is on the row or focus is in
+// it, and while the row is busy with GitHub, so a refresh or an edit under way stays in
+// sight. It sits on a wrapper, since the buttons' own transition is for color.
+export function hoverClass(work: RowWork): string {
+  return `flex items-center gap-0.5 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 ${work === null ? 'opacity-0' : 'opacity-100'}`
 }
 
 // ghostShape is a quiet button without its text color, and ghostClass one in the muted
 // color that brightens on hover.
 const ghostShape =
   'inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs font-medium transition-colors hover:bg-raised aria-expanded:bg-raised'
-const ghostClass = `${ghostShape} text-muted hover:text-text aria-expanded:text-text`
+export const ghostClass = `${ghostShape} text-muted hover:text-text aria-expanded:text-text`
 
 // DefaultTag marks the Snooze button's own length in the menu.
 function DefaultTag() {
@@ -56,6 +68,32 @@ function DefaultTag() {
 // menu that shows it is open.
 function SnoozeEnd({ days }: { days: number }) {
   return useNowAs((now) => capitalize(formatWhen(now, snoozeEnd(now, days))))
+}
+
+// snoozeItems are the snooze lengths an item can be snoozed for, each with when it would
+// end and the Snooze button's own length marked, then the snooze settings. They are built
+// only as a menu opens; each one's end follows the clock while it is open.
+export function snoozeItems(item: InboxItem, actions: TriageActions): MenuItem[] {
+  return [
+    ...snoozeChoices.map((days) => ({
+      label: snoozeLength(days),
+      hint: (
+        <>
+          <SnoozeEnd days={days} />
+          {days === actions.snoozeDays && <DefaultTag />}
+        </>
+      ),
+      onSelect: () => {
+        actions.onSnooze(item, days)
+      },
+    })),
+    {
+      label: 'Snooze settings…',
+      icon: <SlidersIcon className="size-3.5 text-muted" />,
+      divided: true,
+      onSelect: actions.onChangeDefault,
+    },
+  ]
 }
 
 // PinButton pins an item to the top of its lists, or, on a pinned item, marks it in the
@@ -89,9 +127,8 @@ function PinButton({ item, actions }: { item: InboxItem; actions: TriageActions 
 // item's pin is always shown, filled, and unpins it. In the Snoozed and Dismissed tabs
 // they are a single Unsnooze or Restore, always shown, since bringing items back is what
 // those tabs are for, with the pin of a pinned item beside it.
-export function TriageControls({ item, tab, actions }: TriageControlsProps) {
+export function TriageControls({ item, tab, actions, work, start }: TriageControlsProps) {
   const clock = useClock()
-  const [refreshing, setRefreshing] = useState(false)
   // pointedAt is when the pointer or focus last reached the Snooze button, whose tooltip
   // says when a snooze from then would end. It is worked out only then, so the rows
   // have nothing to render as the clock moves on.
@@ -129,38 +166,13 @@ export function TriageControls({ item, tab, actions }: TriageControlsProps) {
     setPointedAt(clock.getSnapshot())
   }
 
-  // choices are built only as the menu opens; each one's end follows the clock while open.
-  const choices = (): MenuItem[] => [
-    ...snoozeChoices.map((days) => ({
-      label: snoozeLength(days),
-      hint: (
-        <>
-          <SnoozeEnd days={days} />
-          {days === snoozeDays && <DefaultTag />}
-        </>
-      ),
-      onSelect: () => {
-        actions.onSnooze(item, days)
-      },
-    })),
-    {
-      label: 'Snooze settings…',
-      icon: <SlidersIcon className="size-3.5 text-muted" />,
-      divided: true,
-      onSelect: actions.onChangeDefault,
-    },
-  ]
+  const refreshing = work === 'refresh'
 
   const refresh = () => {
-    setRefreshing(true)
-    void actions.onRefresh(item).finally(() => {
-      setRefreshing(false)
-    })
+    start('refresh', () => actions.onRefresh(item))
   }
 
-  // hover shows controls while the pointer is on the row or focus is in it, and while a
-  // refresh runs. It sits on a wrapper, since the buttons' own transition is for color.
-  const hover = `flex items-center gap-0.5 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 ${refreshing ? 'opacity-100' : 'opacity-0'}`
+  const hover = hoverClass(work)
 
   return (
     <div className="flex items-center gap-0.5 self-center">
@@ -169,7 +181,7 @@ export function TriageControls({ item, tab, actions }: TriageControlsProps) {
           type="button"
           aria-label="Refresh from GitHub"
           title="Refresh this item from GitHub, without refreshing the rest of the inbox"
-          disabled={refreshing}
+          disabled={work !== null}
           onClick={refresh}
           className={`${ghostClass} disabled:cursor-default`}
         >
@@ -194,7 +206,7 @@ export function TriageControls({ item, tab, actions }: TriageControlsProps) {
             label="Snooze for…"
             title="Snooze for another length"
             heading="Snooze until"
-            items={choices}
+            items={() => snoozeItems(item, actions)}
             className={`${ghostClass} rounded-l-none px-1`}
           >
             <ChevronDownIcon className="size-3" />
