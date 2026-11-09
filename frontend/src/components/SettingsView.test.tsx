@@ -730,7 +730,7 @@ describe('SettingsView', () => {
     await openSection('Repositories')
     expect(screen.getByText('Loading the settings…')).toBeInTheDocument()
 
-    for (const name of ['Notifications', 'Trust', 'Sensitive files']) {
+    for (const name of ['Notifications', 'Reviewing', 'Trust', 'Sensitive files']) {
       await openSection(name)
       expect(screen.getByText('Loading the settings…')).toBeInTheDocument()
     }
@@ -1173,6 +1173,19 @@ describe('SettingsView escape and trust', () => {
     expect(screen.getByRole('list', { name: 'Categories' })).toBeInTheDocument()
   })
 
+  it('has a Reviewing section after Snoozing, for the merge method', async () => {
+    renderSettings()
+
+    const nav = within(screen.getByRole('navigation', { name: 'Settings sections' }))
+    const names = nav.getAllByRole('button').map((b) => b.textContent)
+    expect(names.indexOf('Reviewing')).toBe(names.indexOf('Snoozing') + 1)
+
+    await openSection('Reviewing')
+
+    expect(screen.getByRole('region', { name: 'Reviewing' })).toBeInTheDocument()
+    expect(screen.getByRole('radiogroup', { name: 'Merge method' })).toBeInTheDocument()
+  })
+
   it('opens at the Sensitive files section when asked', () => {
     renderSettings({ section: 'files' })
 
@@ -1431,7 +1444,7 @@ describe('SettingsView search', () => {
 
     rerender(<SettingsView {...searchProps('')} />)
 
-    expect(sidebar()).toHaveLength(11)
+    expect(sidebar()).toHaveLength(12)
     expect(sidebar()).toContain('Account')
     expect(screen.getByRole('region', { name: 'Notifications' })).toBeInTheDocument()
     expect(matched()).toEqual([])

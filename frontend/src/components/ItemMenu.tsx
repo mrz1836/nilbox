@@ -5,6 +5,7 @@ import {
   ArchiveIcon,
   ClockIcon,
   ExternalIcon,
+  EyeIcon,
   EyeOffIcon,
   InboxIcon,
   LinkIcon,
@@ -27,6 +28,9 @@ export interface EditActions {
   // and reports its own failures, so it never rejects.
   onUnassign: (item: InboxItem) => Promise<void>
   onRemoveReview: (item: InboxItem) => Promise<void>
+  // onReview opens a pull request in the review sheet, from the row's tab. Without it the
+  // menu offers no review.
+  onReview?: ((item: InboxItem, tab: TriageTab) => void) | undefined
 }
 
 export interface ItemMenuProps {
@@ -188,7 +192,22 @@ function githubEdits(item: InboxItem, edits: EditActions, work: RowWork, start: 
 // controls, and stays in sight, turning to a spinner, while the row is busy with GitHub.
 // Its items are built only as it opens.
 export function ItemMenu({ item, tab, triage, edits, work, start }: ItemMenuProps) {
+  const onReview = edits.onReview
+  const review: MenuItem[] =
+    item.kind === 'pr' && onReview !== undefined
+      ? [
+          {
+            label: 'Review…',
+            icon: <EyeIcon className={iconClass} />,
+            title: 'See its changes and approve, comment, or merge it here',
+            onSelect: () => {
+              onReview(item, tab)
+            },
+          },
+        ]
+      : []
   const items = (): MenuItem[] => [
+    ...review,
     {
       label: 'Open on GitHub',
       icon: <ExternalIcon className={iconClass} />,

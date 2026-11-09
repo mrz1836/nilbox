@@ -1,5 +1,6 @@
-import { useEffect, useEffectEvent, useId, useLayoutEffect, useRef, type ReactNode } from 'react'
+import { useId, useRef, type ReactNode } from 'react'
 
+import { useModalDialog } from '../lib/useModalDialog'
 import { buttonClass, dangerButtonClass, primaryButtonClass } from './controls'
 
 export interface ConfirmDialogProps {
@@ -29,42 +30,11 @@ const sizeClass: Readonly<Record<NonNullable<ConfirmDialogProps['size']>, string
   large: 'max-w-3xl',
 }
 
-// focusableSelector finds the dialog's controls for keeping keyboard focus inside it.
-const focusableSelector = 'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled)'
-
-// nextFocus is the control Tab (or Shift+Tab) should move to so focus wraps around the
-// dialog instead of leaving it, or null when the browser's own move stays inside.
-function nextFocus(dialog: HTMLElement, backwards: boolean): HTMLElement | null {
-  const controls = Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector))
-  const first = controls[0]
-  const last = controls.at(-1)
-
-  if (first === undefined || last === undefined) {
-    return null
-  }
-
-  const current = document.activeElement
-
-  if (!dialog.contains(current)) {
-    return backwards ? last : first
-  }
-
-  if (backwards && current === first) {
-    return last
-  }
-
-  if (!backwards && current === last) {
-    return first
-  }
-
-  return null
-}
-
 // ConfirmDialog asks the user to confirm an action, or to acknowledge a message. It is a
-// native modal <dialog>: the rest of the page is inert and dimmed behind it while it is
-// open. It starts with focus on Cancel (the safe choice) when there is one, keeps Tab
-// inside itself, cancels on Escape, and returns focus to where it was when it closes.
-// Render it only while it is open.
+// native modal <dialog> (see useModalDialog): the rest of the page is inert and dimmed
+// behind it while it is open. It starts with focus on Cancel (the safe choice) when there
+// is one, keeps Tab inside itself, cancels on Escape, and returns focus to where it was
+// when it closes. Render it only while it is open.
 export function ConfirmDialog({
   title,
   children,
@@ -80,61 +50,7 @@ export function ConfirmDialog({
   const dialogRef = useRef<HTMLDialogElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
   const confirmRef = useRef<HTMLButtonElement>(null)
-
-  // Open as a modal on mount and move focus in; close and give focus back to the opener on
-  // unmount. The opener is read before showModal, which moves focus itself.
-  useLayoutEffect(() => {
-    const opener = document.activeElement
-    const dialog = dialogRef.current
-
-    dialog?.showModal()
-    ;(cancelRef.current ?? confirmRef.current)?.focus()
-
-    return () => {
-      dialog?.close()
-
-      if (opener instanceof HTMLElement && opener.isConnected) {
-        opener.focus()
-      }
-    }
-  }, [])
-
-  // Escape cancels, with the latest onCancel, and Tab keeps focus inside the dialog.
-  const handleKey = useEffectEvent((e: KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      e.preventDefault()
-      onCancel()
-
-      return
-    }
-
-    const dialog = dialogRef.current
-
-    if (e.key === 'Tab' && dialog !== null) {
-      const target = nextFocus(dialog, e.shiftKey)
-
-      if (target !== null) {
-        e.preventDefault()
-        target.focus()
-      }
-    }
-  })
-
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      handleKey(e)
-    }
-
-    // The capture phase runs this before any page-level Escape handler, which then sees
-    // the key as handled (defaultPrevented) and leaves the page open. Handling the key
-    // also keeps the browser from closing the dialog itself, which only the owner of the
-    // open state may do.
-    document.addEventListener('keydown', onKeyDown, true)
-
-    return () => {
-      document.removeEventListener('keydown', onKeyDown, true)
-    }
-  }, [])
+  const cancel = useModalDialog(dialogRef, onCancel, () => cancelRef.current ?? confirmRef.current)
 
   return (
     <dialog
@@ -142,11 +58,7 @@ export function ConfirmDialog({
       aria-modal="true"
       aria-labelledby={`${id}-title`}
       aria-describedby={`${id}-body`}
-      onCancel={(e) => {
-        // Any other close request, such as one the system sends, cancels the same way.
-        e.preventDefault()
-        onCancel()
-      }}
+      onCancel={cancel}
       // The backdrop's color is spelled out: before Safari 17.4, ::backdrop sees none of the
       // page's custom properties, so a theme color would leave it clear.
       className={`m-auto w-[calc(100%-2rem)] ${sizeClass[size]} rounded-lg border border-border bg-surface p-4 text-text shadow-lg backdrop:bg-[rgb(0_0_0/0.4)]`}

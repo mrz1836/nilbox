@@ -9,6 +9,7 @@ import { offersProjects } from '../lib/projects'
 import { useCollapsedSections } from '../lib/useCollapsedSections'
 import { useInbox } from '../lib/useInbox'
 import { useInboxOrder } from '../lib/useInboxOrder'
+import { useReviewDrafts } from '../lib/reviewDrafts'
 import { ClockContext } from '../lib/useNow'
 import { useTriage } from '../lib/useTriage'
 import type { InboxSnapshot, ListKey } from '../platform'
@@ -22,6 +23,8 @@ import {
   profile,
   project,
   prompts,
+  review,
+  reviewResult,
   settings,
   snapshot,
 } from '../test/fixtures'
@@ -45,6 +48,7 @@ const openSnoozeSettings = vi.fn()
 const dismissProjects = vi.fn()
 const filterBy = vi.fn<(key: string, value: string) => void>()
 const clearFilter = vi.fn()
+const manageReplies = vi.fn()
 
 interface HarnessProps {
   launch: LaunchOptions | null
@@ -54,6 +58,8 @@ interface HarnessProps {
   reveal?: Reveal | null
   // query filters the inbox, as the toolbar's field does.
   query?: string
+  // reviews turns the review sheet on, as App does.
+  reviews?: boolean
 }
 
 // Harness renders the view over the real inbox state, triage, and collapsed lists, the
@@ -68,8 +74,9 @@ function Harness({ clock, ...props }: HarnessProps) {
   )
 }
 
-function Inbox({ launch, snoozeDays = 3, reveal = null, query = '' }: Omit<HarnessProps, 'clock'>) {
+function Inbox({ launch, snoozeDays = 3, reveal = null, query = '', reviews = false }: Omit<HarnessProps, 'clock'>) {
   const inbox = useInbox()
+  const drafts = useReviewDrafts()
   const triaged = useTriage(inbox.snapshot)
   const filter = triaged === null ? null : filterInbox(triaged, query, inbox.snapshot?.account.login ?? '')
   const sections = useCollapsedSections()
@@ -97,6 +104,7 @@ function Inbox({ launch, snoozeDays = 3, reveal = null, query = '' }: Omit<Harne
       filter={filter}
       onFilterBy={filterBy}
       onClearFilter={clearFilter}
+      {...(reviews ? { drafts, onManageReplies: manageReplies } : {})}
     />
   )
 }
@@ -1428,5 +1436,63 @@ describe('InboxView filtering', () => {
       ['author', 'octo-user'],
       ['label', 'enhancement'],
     ])
+  })
+})
+
+describe('InboxView review sheet', () => {
+  it('opens a pull request from its title, and reports what the action came to', async () => {
+    const pr = item({ id: 1, title: 'Add the widget cache' })
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ assigned: list([pr, item({ id: 2, number: 8, title: 'Second' })]) }),
+    )
+    platform.actOnReview.mockResolvedValue(
+      reviewResult({ outcome: 'approved_not_merged', message: 'Approved, but GitHub won’t merge yet' }),
+    )
+    render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Add the widget cache' }))
+
+    const sheet = await screen.findByRole('dialog', { name: 'Add the widget cache' })
+    expect(within(sheet).getByText('1 of 2 in Assigned')).toBeInTheDocument()
+
+    await userEvent.click(await within(sheet).findByRole('button', { name: 'More review actions' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Approve' }))
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Approve' }))
+
+    expect(await screen.findByText('Approved, but GitHub won’t merge yet')).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Add the widget cache' })).not.toBeInTheDocument()
+  })
+
+  it('opens one from the menu, steps through its list, and closes', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ reviewRequested: list([item({ id: 1 }), item({ id: 2, number: 8, title: 'Second' })]) }),
+    )
+    platform.openReview.mockImplementation((id) =>
+      Promise.resolve(review({ id, title: id === 2 ? 'Second' : 'Add the widget cache' })),
+    )
+    platform.refreshReview.mockImplementation((id) =>
+      Promise.resolve(review({ id, title: id === 2 ? 'Second' : 'Add the widget cache' })),
+    )
+    render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
+
+    const row = (await screen.findAllByRole('listitem')).find((li) => li.textContent.includes('Add the widget cache'))
+    await userEvent.click(within(row as HTMLElement).getByRole('button', { name: 'More actions' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Review…' }))
+
+    expect(await screen.findByText('1 of 2 in Review requested')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Next pull request' }))
+    expect(await screen.findByRole('heading', { name: 'Second' })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('opens GitHub when the sheet is off', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([item()]) }))
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Add the widget cache' }))
+    expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/pull/7')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 })

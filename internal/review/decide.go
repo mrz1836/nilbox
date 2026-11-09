@@ -424,7 +424,7 @@ func mergeLabel(method MergeMethod) string {
 		return "Squash-merge"
 	case MethodRebase:
 		return "Rebase-merge"
-	case MethodMerge:
+	case MethodMerge, MethodNone:
 		return "Merge"
 	default:
 		return "Merge"

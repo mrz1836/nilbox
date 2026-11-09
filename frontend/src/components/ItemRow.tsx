@@ -19,7 +19,7 @@ import {
   type Worktree,
 } from '../platform'
 import { Highlight } from './Highlight'
-import { ArchiveIcon, ClockIcon, IssueIcon, PullRequestIcon } from './icons'
+import { ArchiveIcon, ClockIcon, ExternalIcon, IssueIcon, PullRequestIcon } from './icons'
 import { ItemMenu, type EditActions } from './ItemMenu'
 import { ItemSignals } from './ItemSignals'
 import { LaunchControls } from './LaunchControls'
@@ -70,6 +70,10 @@ export interface ItemRowProps {
   // onFilterBy adds a filter to the inbox's query, or takes it away: the row's
   // repository, author, and labels offer it when clicked. Without it they are plain text.
   onFilterBy?: ((key: string, value: string) => void) | undefined
+  // onReview opens a pull request in the review sheet, from the row's tab: its title does,
+  // and ⌘-click or the ↗ beside it opens GitHub instead. Without it, and for an issue, the
+  // title opens GitHub. It must keep its identity, so the row keeps its own.
+  onReview?: ((id: number, tab: TriageTab) => void) | undefined
 }
 
 // tagClass is a status tag: weight and color mark it, with no pill around it.
@@ -122,7 +126,7 @@ function KindIcon({ item }: { item: InboxItem }) {
 // TrustTag marks an item by who opened it: a trusted bot quietly, and an untrusted bot or
 // an outside contributor as a warning, since their items launch in plan mode. Items from
 // the repository's own people carry no tag.
-function TrustTag({ item }: { item: InboxItem }) {
+export function TrustTag({ item }: { item: InboxItem }) {
   if (item.trust === 'bot') {
     return (
       <span
@@ -155,6 +159,19 @@ function TrustTag({ item }: { item: InboxItem }) {
       className={`${tagClass} text-warning`}
     >
       outside contributor
+    </span>
+  )
+}
+
+// mergeMethodWords names auto-merge's method on a card.
+const mergeMethodWords: Readonly<Record<string, string>> = { SQUASH: 'squash', MERGE: 'merge commit', REBASE: 'rebase' }
+
+// AutoMergeTag marks a pull request GitHub merges on its own once its requirements are
+// met, with the method it uses.
+function AutoMergeTag({ method }: { method: string }) {
+  return (
+    <span title="GitHub merges it once its requirements are met" className={`${tagClass} text-success`}>
+      Auto-merge · {mergeMethodWords[method] ?? method.toLowerCase()}
     </span>
   )
 }
@@ -279,8 +296,11 @@ export const ItemRow = memo(function ItemRow({
   highlighted = false,
   marks = '',
   onFilterBy,
+  onReview,
 }: ItemRowProps) {
   const conflicting = item.details?.mergeable === 'CONFLICTING'
+  const autoMerge = item.details?.autoMerge ?? ''
+  const reviews = item.kind === 'pr' && onReview !== undefined
   const [work, start] = useRowWork()
 
   return (
@@ -294,15 +314,33 @@ export const ItemRow = memo(function ItemRow({
         <div className="flex min-w-0 items-center gap-2">
           <button
             type="button"
-            title={item.title}
-            onClick={() => {
-              openExternal(item.url)
+            title={reviews ? `${item.title}\nReview it here; ⌘-click opens GitHub` : item.title}
+            onClick={(e) => {
+              if (reviews && !e.metaKey) {
+                onReview(item.id, tab)
+              } else {
+                openExternal(item.url)
+              }
             }}
             className="min-w-0 truncate text-left text-sm font-medium text-text hover:text-accent hover:underline"
           >
             <Highlight text={item.title} marks={marks} />
           </button>
+          {reviews && (
+            <button
+              type="button"
+              aria-label="Open on GitHub"
+              title="Open on GitHub"
+              onClick={() => {
+                openExternal(item.url)
+              }}
+              className="shrink-0 rounded-sm text-muted/70 opacity-0 transition-opacity group-hover:opacity-100 hover:text-accent focus-visible:opacity-100"
+            >
+              <ExternalIcon className="size-3" />
+            </button>
+          )}
           {item.isDraft && <span className={`${tagClass} text-muted`}>Draft</span>}
+          {autoMerge !== '' && <AutoMergeTag method={autoMerge} />}
           {conflicting && (
             <span title="Has merge conflicts with its base branch" className={`${tagClass} text-danger`}>
               Conflicts

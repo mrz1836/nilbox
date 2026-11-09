@@ -5,28 +5,45 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
 import type { Prompt, PromptCheckRequest } from '../platform'
-import { agents, checkResult, defaultPrompts, importEntry, item, prompt, prompts, variables } from '../test/fixtures'
+import {
+  agents,
+  checkResult,
+  defaultPrompts,
+  importEntry,
+  item,
+  prompt,
+  prompts,
+  replyPrompt,
+  replyPrompts,
+  variables,
+} from '../test/fixtures'
 import { platform } from '../test/platform'
 import { PromptsView } from './PromptsView'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
-// next is the library the next reload brings in, when a test changes it.
+// next is the library the next reload brings in, and nextReplies its replies, when a
+// test changes them.
 let next: Prompt[] | null = null
+let nextReplies: Prompt[] | null = null
 
 interface HarnessProps {
   initial?: Prompt[]
+  initialReplies?: Prompt[]
   onChanged?: () => void
 }
 
-// Harness holds the library the way App does: a reload brings in `next`, if set.
-function Harness({ initial = prompts(), onChanged }: HarnessProps) {
+// Harness holds the library the way App does: a reload brings in `next` and
+// `nextReplies`, where set.
+function Harness({ initial = prompts(), initialReplies = replyPrompts(), onChanged }: HarnessProps) {
   const [list, setList] = useState(initial)
+  const [replies, setReplies] = useState(initialReplies)
 
   return (
     <PromptsView
       agents={agents()}
       prompts={list}
+      replies={replies}
       defaults={defaultPrompts()}
       variables={variables()}
       items={[item(), item({ id: 2, kind: 'issue', number: 12, title: 'Crash on start' })]}
@@ -36,6 +53,11 @@ function Harness({ initial = prompts(), onChanged }: HarnessProps) {
         if (next !== null) {
           setList(next)
           next = null
+        }
+
+        if (nextReplies !== null) {
+          setReplies(nextReplies)
+          nextReplies = null
         }
 
         return Promise.resolve()
@@ -68,6 +90,7 @@ async function waitForCheck() {
 
 beforeEach(() => {
   next = null
+  nextReplies = null
 })
 
 describe('PromptsView', () => {
@@ -641,6 +664,34 @@ describe('PromptsView', () => {
     expect(await screen.findByText('Restored 3 prompts. One was already in your library.')).toBeInTheDocument()
   })
 
+  it('keeps the open prompt after an import that brings in nothing new', async () => {
+    platform.importPrompts.mockResolvedValue({ added: 0, replaced: 0, skipped: 2, first: 0 })
+    render(<Harness />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Import and export prompts' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Restore from a backup…' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Show prompts' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Restore 1 prompt' }))
+
+    expect(await screen.findByText('Restored 0 prompts. 2 were already in your library.')).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Nickname' })).toHaveValue('Fix checks')
+  })
+
+  it('keeps the open prompt when the one an action names is not in the library', async () => {
+    platform.importPrompts.mockResolvedValue({ added: 1, replaced: 0, skipped: 0, first: 99 })
+    next = prompts()
+    render(<Harness />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Import and export prompts' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Restore from a backup…' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Show prompts' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Restore 1 prompt' }))
+
+    expect(await screen.findByText('Restored 1 prompt.')).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Nickname' })).toHaveValue('Fix checks')
+    expect(screen.getByRole('radio', { name: 'Agent prompts' })).toBeChecked()
+  })
+
   it('cancels an import', async () => {
     platform.chooseFileToOpen.mockResolvedValue('/exports/shared.json')
     render(<Harness />)
@@ -683,5 +734,426 @@ describe('PromptsView', () => {
     expect(screen.getByRole('menuitem', { name: 'Import from a file…' })).toBeDisabled()
     expect(screen.getByRole('menuitem', { name: 'Restore from a backup…' })).toBeDisabled()
     expect(screen.getByRole('menuitem', { name: 'Export all prompts…' })).toBeEnabled()
+  })
+})
+
+describe('PromptsView review replies', () => {
+  // replyLibrary returns the replies part of the library.
+  function replyLibrary() {
+    return within(screen.getByRole('navigation', { name: 'Review replies' }))
+  }
+
+  // showReplies switches the library to the review replies.
+  async function showReplies() {
+    await userEvent.click(screen.getByRole('radio', { name: 'Review replies' }))
+  }
+
+  // menuOf opens the ⋯ menu of the open prompt and lists its items.
+  async function menuOf(nickname: string): Promise<(string | null)[]> {
+    await userEvent.click(screen.getByRole('button', { name: `More actions for ${nickname}` }))
+
+    return screen.getAllByRole('menuitem').map((m) => m.textContent)
+  }
+
+  // editor is the editor's half of the page.
+  function editor() {
+    return within(screen.getByRole('region', { name: 'Prompt editor' }))
+  }
+
+  it('switches to the replies, grouped by review, each marked with the defaults it is', async () => {
+    const [lgtm, updateOk, needsChanges, question] = replyPrompts()
+    render(
+      <Harness
+        initialReplies={[
+          replyPrompt({ ...lgtm }),
+          replyPrompt({ ...updateOk }),
+          replyPrompt({
+            ...needsChanges,
+            usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: ['request_changes'] },
+          }),
+          replyPrompt({ ...question, usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: ['comment'] } }),
+        ]}
+      />,
+    )
+
+    expect(screen.getByRole('radiogroup', { name: 'Kind of prompt' })).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Agent prompts' })).toBeChecked()
+
+    await showReplies()
+
+    expect(screen.getByRole('radio', { name: 'Review replies' })).toBeChecked()
+    expect(screen.queryByRole('navigation', { name: 'Prompts' })).not.toBeInTheDocument()
+    expect(
+      within(replyLibrary().getByRole('region', { name: 'Approvals' }))
+        .getAllByRole('button')
+        .map((b) => b.textContent),
+    ).toEqual([expect.stringContaining('LGTM'), expect.stringContaining('Update OK')])
+    expect(replyLibrary().getByRole('button', { name: /LGTM/ })).toHaveTextContent('Default for approvals')
+    expect(replyLibrary().getByRole('button', { name: /LGTM/ })).toHaveAttribute('title', 'Default for approvals')
+    expect(replyLibrary().getByRole('button', { name: /Update OK/ })).toHaveTextContent('Default for bots')
+    expect(replyLibrary().getByRole('region', { name: 'Requests for changes' })).toHaveTextContent(
+      'Needs changesAsk for changesDefault for changes',
+    )
+    expect(replyLibrary().getByRole('region', { name: 'Comments' })).toHaveTextContent(
+      'QuestionAsk a questionDefault for comments',
+    )
+    expect(replyLibrary().getByRole('button', { name: /LGTM/ })).toHaveAttribute('aria-current', 'true')
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Agent prompts' }))
+
+    expect(library().getByRole('button', { name: /Fix checks/ })).toHaveAttribute('aria-current', 'true')
+    expect(screen.getByRole('textbox', { name: 'Nickname' })).toHaveValue('Fix checks')
+  })
+
+  it('edits a reply with its action in place of what it is for, and no launch settings', async () => {
+    render(<Harness />)
+    await showReplies()
+
+    expect(screen.getByRole('textbox', { name: 'Title' })).toHaveValue('Approve with thanks')
+    expect(screen.getByRole('textbox', { name: 'Nickname' })).toHaveAccessibleDescription(
+      'Shown when you pick a reply.',
+    )
+    expect(
+      within(screen.getByRole('radiogroup', { name: 'Action' }))
+        .getAllByRole('radio')
+        .map((r) => r.parentElement?.textContent),
+    ).toEqual(['Approve', 'Request changes', 'Comment'])
+    expect(screen.getByRole('radio', { name: 'Approve' })).toBeChecked()
+    expect(screen.queryByRole('radiogroup', { name: 'What the prompt is for' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Launch settings/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Reply text' })).toHaveValue('Looks good to me. Thanks, @{{.Author}}!\n')
+    expect(screen.getByText('Starter reply')).toBeInTheDocument()
+    expect(editor().getByText('Default for approvals')).toBeInTheDocument()
+
+    await userEvent.click(replyLibrary().getByRole('button', { name: /Needs changes/ }))
+
+    expect(screen.getByRole('radio', { name: 'Request changes' })).toBeChecked()
+    expect(editor().getByText('Not a default')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Comment' }))
+
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(lastCheck().input.replyAction).toBe('comment')
+    })
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(platform.updatePrompt).toHaveBeenCalledWith(
+      23,
+      expect.objectContaining({ purpose: 'reply', replyAction: 'comment', nickname: 'Needs changes' }),
+    )
+    expect(await screen.findByText('Saved.')).toBeInTheDocument()
+  })
+
+  it('shows why a reply’s action is refused', async () => {
+    platform.checkPrompt.mockResolvedValue(
+      checkResult({
+        fields: [
+          {
+            field: 'replyAction',
+            message: 'It’s the default for approvals, so it has to stay a reply for that review.',
+          },
+        ],
+      }),
+    )
+    render(<Harness />)
+    await showReplies()
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Comment' }))
+
+    expect(
+      await screen.findByText('It’s the default for approvals, so it has to stay a reply for that review.'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Fix 1 problem to save.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+  })
+
+  it('previews a reply with a pull request, and no session', async () => {
+    render(<Harness />)
+    await showReplies()
+    await waitFor(() => {
+      expect(lastCheck().input.purpose).toBe('reply')
+    })
+
+    expect(lastCheck()).toEqual(expect.objectContaining({ id: 21, itemId: 1, inWorktree: false, atPrHead: false }))
+    expect(
+      within(screen.getByRole('combobox', { name: 'Preview with' }))
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['A sample pull request', 'example-repo #7 · Add the widget cache'])
+    expect(screen.queryByRole('checkbox', { name: 'In a worktree' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: /At the PR/ })).not.toBeInTheDocument()
+    expect(await screen.findByText(/Review pull request #7/)).toBeInTheDocument()
+
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Preview with' }), '0')
+    await waitFor(() => {
+      expect(lastCheck().itemId).toBe(0)
+    })
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Preview with' }), '1')
+    await waitFor(() => {
+      expect(lastCheck().itemId).toBe(1)
+    })
+  })
+
+  it('creates a new reply, an approval thanking the author until changed', async () => {
+    nextReplies = [
+      ...replyPrompts(),
+      replyPrompt({ id: 9, name: 'Thank a first-time contributor', nickname: 'Welcome' }),
+    ]
+    render(<Harness />)
+    await showReplies()
+
+    await userEvent.click(screen.getByRole('button', { name: 'New reply' }))
+
+    expect(replyLibrary().getByText('New reply')).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Title' })).toHaveValue('')
+    expect(screen.getByRole('textbox', { name: 'Title' })).toHaveAttribute(
+      'placeholder',
+      'Name this reply, such as “Approve with thanks”',
+    )
+    expect(screen.getByRole('textbox', { name: 'Reply text' })).toHaveValue('Thanks, @{{.Author}}!\n')
+    expect(screen.getByRole('radio', { name: 'Approve' })).toBeChecked()
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Title' }), 'Thank a first-time contributor')
+    await userEvent.type(screen.getByRole('textbox', { name: 'Nickname' }), 'Welcome')
+    await waitFor(() => {
+      expect(lastCheck()).toEqual(expect.objectContaining({ id: 0 }))
+    })
+    await userEvent.click(screen.getByRole('button', { name: 'Create reply' }))
+
+    expect(platform.createPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Thank a first-time contributor',
+        nickname: 'Welcome',
+        purpose: 'reply',
+        replyAction: 'approve',
+        body: 'Thanks, @{{.Author}}!\n',
+      }),
+    )
+    expect(await screen.findByText('Reply created.')).toBeInTheDocument()
+    expect(replyLibrary().getByRole('button', { name: /Welcome/ })).toHaveAttribute('aria-current', 'true')
+  })
+
+  it('asks before leaving a new reply, and points at its empty fields only once edited', async () => {
+    platform.checkPrompt.mockResolvedValue(
+      checkResult({
+        fields: [
+          { field: 'name', message: 'Give the prompt a title.' },
+          { field: 'nickname', message: 'Give the prompt a nickname for the launch menu.' },
+        ],
+      }),
+    )
+    render(<Harness />)
+    await showReplies()
+
+    await userEvent.click(screen.getByRole('button', { name: 'New reply' }))
+
+    expect(await screen.findByText('Give the reply a title and a nickname to create it.')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Comment' }))
+    await userEvent.click(replyLibrary().getByRole('button', { name: /Question/ }))
+
+    const dialog = within(screen.getByRole('dialog', { name: 'Discard your changes?' }))
+    expect(dialog.getByText('The new reply hasn’t been created yet.')).toBeInTheDocument()
+
+    await userEvent.click(dialog.getByRole('button', { name: 'Discard changes' }))
+
+    expect(screen.getByRole('textbox', { name: 'Nickname' })).toHaveValue('Question')
+  })
+
+  it('asks before switching parts of the library with unsaved changes', async () => {
+    render(<Harness />)
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Title' }), ' draft')
+    await showReplies()
+
+    const dialog = within(screen.getByRole('dialog', { name: 'Discard your changes?' }))
+    expect(dialog.getByText('“Fix checks” has changes that aren’t saved.')).toBeInTheDocument()
+
+    await userEvent.click(dialog.getByRole('button', { name: 'Keep editing' }))
+
+    expect(screen.getByRole('radio', { name: 'Agent prompts' })).toBeChecked()
+    expect(screen.getByRole('textbox', { name: 'Title' })).toHaveValue('Fix a pull request’s failing checks draft')
+
+    await showReplies()
+    await userEvent.click(screen.getByRole('button', { name: 'Discard changes' }))
+
+    expect(screen.getByRole('radio', { name: 'Review replies' })).toBeChecked()
+    expect(screen.getByRole('textbox', { name: 'Nickname' })).toHaveValue('LGTM')
+  })
+
+  it('offers only the defaults for a reply’s own review, and makes it one', async () => {
+    render(<Harness />)
+    await showReplies()
+
+    expect(await menuOf('LGTM')).toEqual([
+      'Make the default for approvals on bot pull requests',
+      'Duplicate',
+      'Export…',
+      'Delete…',
+    ])
+
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Make the default for approvals on bot pull requests' }))
+
+    expect(platform.setReplyDefault).toHaveBeenCalledWith('approve_bots', 21)
+    expect(await screen.findByText('“LGTM” is now the default for approvals on bot pull requests.')).toBeInTheDocument()
+
+    await userEvent.click(replyLibrary().getByRole('button', { name: /Needs changes/ }))
+
+    expect(await menuOf('Needs changes')).toEqual([
+      'Make the default for requests for changes',
+      'Duplicate',
+      'Export…',
+      'Delete…',
+    ])
+
+    await userEvent.keyboard('{Escape}')
+    await userEvent.click(replyLibrary().getByRole('button', { name: /Question/ }))
+
+    expect(await menuOf('Question')).toContain('Make the default for comments')
+
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Make the default for comments' }))
+
+    expect(platform.setReplyDefault).toHaveBeenLastCalledWith('comment', 24)
+  })
+
+  it('offers both approval defaults to an approval that is neither', async () => {
+    render(<Harness initialReplies={[replyPrompt({ usage: { ...replyPrompt().usage, replies: [] } })]} />)
+    await showReplies()
+
+    expect((await menuOf('LGTM')).slice(0, 2)).toEqual([
+      'Make the default for approvals',
+      'Make the default for approvals on bot pull requests',
+    ])
+
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Make the default for approvals' }))
+
+    expect(platform.setReplyDefault).toHaveBeenCalledWith('approve', 21)
+  })
+
+  it('deletes a reply that is a default, saying it stops being one', async () => {
+    nextReplies = replyPrompts().filter((p) => p.id !== 21)
+    render(<Harness />)
+    await showReplies()
+
+    await menuOf('LGTM')
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Delete…' }))
+
+    const dialog = within(screen.getByRole('dialog', { name: 'Delete “LGTM”?' }))
+    expect(
+      dialog.getByText('It’s a starter reply, and it won’t be added back. It stops being the default for approvals.'),
+    ).toBeInTheDocument()
+
+    await userEvent.click(dialog.getByRole('button', { name: 'Delete reply' }))
+
+    expect(platform.deletePrompt).toHaveBeenCalledWith(21)
+    expect(await screen.findByText('Deleted “LGTM”.')).toBeInTheDocument()
+    expect(replyLibrary().getByRole('button', { name: /Update OK/ })).toHaveAttribute('aria-current', 'true')
+  })
+
+  it('shows no reply once the last one is deleted, and offers a new one', async () => {
+    const [, , , question] = replyPrompts()
+    nextReplies = []
+    render(<Harness initialReplies={question === undefined ? [] : [question]} />)
+    await showReplies()
+
+    await menuOf('Question')
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Delete…' }))
+
+    expect(screen.getByText('This can’t be undone.')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete reply' }))
+
+    expect(await editor().findByText('No replies yet.')).toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: 'Title' })).not.toBeInTheDocument()
+
+    await userEvent.click(editor().getByRole('button', { name: 'New reply' }))
+
+    expect(screen.getByRole('button', { name: 'Create reply' })).toBeInTheDocument()
+  })
+
+  it('resets a changed starter reply', async () => {
+    render(<Harness initialReplies={[replyPrompt({ modified: true })]} />)
+    await showReplies()
+
+    expect(screen.getByText('Starter reply · changed')).toBeInTheDocument()
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Title' }), '!')
+    await menuOf('LGTM')
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Reset to original' }))
+
+    expect(
+      screen.getByText(
+        'Its title, text, and action go back to how the app ships them. Your unsaved changes are discarded too.',
+      ),
+    ).toBeInTheDocument()
+
+    nextReplies = [replyPrompt()]
+    await userEvent.click(screen.getByRole('button', { name: 'Reset to original' }))
+
+    expect(platform.resetPrompt).toHaveBeenCalledWith(21)
+    expect(await screen.findByText('Reset “LGTM” to its original text and action.')).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Title' })).toHaveValue('Approve with thanks')
+    expect(screen.getByText('Starter reply')).toBeInTheDocument()
+  })
+
+  it('searches the replies', async () => {
+    render(<Harness />)
+    await showReplies()
+
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search replies' }), 'dependency')
+
+    expect(
+      replyLibrary()
+        .getAllByRole('button')
+        .map((b) => b.textContent),
+    ).toEqual([expect.stringContaining('Update OK')])
+
+    await userEvent.clear(screen.getByRole('searchbox', { name: 'Search replies' }))
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search replies' }), 'zzz')
+
+    expect(replyLibrary().getByText('No reply matches “zzz”.')).toBeInTheDocument()
+  })
+
+  it('opens an imported reply in the replies', async () => {
+    platform.chooseFileToOpen.mockResolvedValue('/exports/replies.json')
+    platform.importPrompts.mockResolvedValue({ added: 1, replaced: 0, skipped: 0, first: 9 })
+    nextReplies = [...replyPrompts(), replyPrompt({ id: 9, nickname: 'Ship it', name: 'Approve and say so' })]
+    render(<Harness />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Import and export prompts' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Import from a file…' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Import 1 prompt' }))
+
+    expect(await screen.findByText('Imported 1 prompt.')).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Review replies' })).toBeChecked()
+    expect(screen.getByRole('textbox', { name: 'Nickname' })).toHaveValue('Ship it')
+  })
+
+  it('shows no replies when the page is given none, and cancels a new one back to none', async () => {
+    render(
+      <PromptsView
+        agents={agents()}
+        prompts={prompts()}
+        replies={[]}
+        defaults={defaultPrompts()}
+        variables={variables()}
+        items={[item()]}
+        onChanged={() => Promise.resolve()}
+      />,
+    )
+    await showReplies()
+
+    expect(editor().getByText('No replies yet.')).toBeInTheDocument()
+
+    await userEvent.click(editor().getByRole('button', { name: 'New reply' }))
+    await userEvent.type(screen.getByRole('textbox', { name: 'Title' }), 'x')
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(editor().getByText('No replies yet.')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Agent prompts' }))
+
+    expect(screen.getByRole('textbox', { name: 'Nickname' })).toHaveValue('Fix checks')
   })
 })

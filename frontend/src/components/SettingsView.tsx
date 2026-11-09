@@ -24,6 +24,7 @@ import { SettingMatch } from './settings/match'
 import { NotificationsSection } from './settings/NotificationsSection'
 import { ProfilesSection } from './settings/ProfilesSection'
 import { RepositoriesSection } from './settings/RepositoriesSection'
+import { ReviewingSection } from './settings/ReviewingSection'
 import { SensitiveFilesSection } from './settings/SensitiveFilesSection'
 import { SnoozingSection } from './settings/SnoozingSection'
 import { TrustSection } from './settings/TrustSection'
@@ -205,6 +206,8 @@ export function SettingsView({
                 (settings === null ? loading : <NotificationsSection settings={settings} onSaved={onSaved} />)}
               {section === 'snoozing' &&
                 (settings === null ? loading : <SnoozingSection settings={settings} onSaved={onSaved} />)}
+              {section === 'reviewing' &&
+                (settings === null ? loading : <ReviewingSection settings={settings} onSaved={onSaved} />)}
               {section === 'launching' &&
                 (settings === null ? (
                   loading

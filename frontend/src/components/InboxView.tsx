@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { attempt } from '../lib/call'
 import type { InboxFilter } from '../lib/inboxFilter'
 import { noWorktrees } from '../lib/itemWorktrees'
 import { isInboxNil } from '../lib/nil'
-import { noSessions } from '../lib/sessions'
+import type { ReviewDrafts } from '../lib/reviewDrafts'
+import { noSessions, sessionsOf } from '../lib/sessions'
 import { formatAgo, formatWhen } from '../lib/time'
-import { findItem, isDismissed, type TriagedInbox } from '../lib/triage'
+import { findItem, isDismissed, type TriagedInbox, type TriageTab } from '../lib/triage'
 import type { InboxState } from '../lib/useInbox'
 import type { InboxOrderState } from '../lib/useInboxOrder'
 import { useClock } from '../lib/useNow'
@@ -16,6 +17,7 @@ import {
   type InboxItem,
   type ItemResolution,
   type ListKey,
+  type ReviewResult,
   type Worktree,
 } from '../platform'
 import { ErrorBanner } from './ErrorBanner'
@@ -25,6 +27,7 @@ import type { LaunchOptions } from './ItemRow'
 import { ListSection, type Reveal } from './ListSection'
 import { ProjectsTip } from './ProjectsTip'
 import { RelativeTime } from './RelativeTime'
+import { ReviewSheet } from './review/ReviewSheet'
 import { Toast, type ToastMessage } from './Toast'
 import type { TriageActions } from './TriageControls'
 
@@ -78,6 +81,24 @@ export interface InboxViewProps {
   onFilterBy?: (key: string, value: string) => void
   // onClearFilter empties the query.
   onClearFilter?: () => void
+  // drafts are the review sheet's drafts, which the window keeps for the session; without
+  // them pull requests open on GitHub.
+  drafts?: ReviewDrafts
+  // onManageReplies opens the review replies in the Prompts tab.
+  onManageReplies?: () => void
+}
+
+// Reviewing is the pull request the review sheet shows, and the list and tab it was
+// opened from, which it steps through.
+interface Reviewing {
+  id: number
+  list: ListKey
+  tab: TriageTab
+}
+
+// resultTone is how a review's outcome reads in the toast.
+function resultTone(result: ReviewResult): 'warning' | 'success' {
+  return result.outcome === 'approved_not_merged' ? 'warning' : 'success'
 }
 
 const sections: readonly { key: ListKey; title: string }[] = [
@@ -146,6 +167,8 @@ export function InboxView({
   filter = null,
   onFilterBy,
   onClearFilter,
+  drafts,
+  onManageReplies,
 }: InboxViewProps) {
   const {
     snapshot,
@@ -216,6 +239,32 @@ export function InboxView({
       onCollapse(revealIn, false)
     }
   }, [reveal, revealIn, collapsed, onCollapse])
+
+  const [reviewing, setReviewing] = useState<Reviewing | null>(null)
+  const reviews = drafts !== undefined
+  // shown is the snapshot the lists show, for the menu's review to find an item's list in
+  // when it is chosen, without a new action for every snapshot.
+  const shown = useRef(snapshot)
+
+  useLayoutEffect(() => {
+    shown.current = snapshot
+  }, [snapshot])
+
+  // reviewIn opens a pull request in the sheet from each list, and reviewFromMenu from a
+  // card's menu, in the first list that holds it; each is made once, so the cards, which
+  // take them, keep their identity.
+  const [reviewIn] = useState(() => {
+    const open = (list: ListKey) => (id: number, tab: TriageTab) => {
+      setReviewing({ id, list, tab })
+    }
+
+    return { reviewRequested: open('reviewRequested'), authored: open('authored'), assigned: open('assigned') }
+  })
+  const [reviewFromMenu] = useState(() => (item: InboxItem, tab: TriageTab) => {
+    const list = sections.find(({ key }) => shown.current?.[key].items.some((i) => i.id === item.id))?.key
+
+    setReviewing({ id: item.id, list: list ?? 'reviewRequested', tab })
+  })
 
   const showToast = (message: Omit<ToastMessage, 'id'>) => {
     toastCount.current += 1
@@ -345,7 +394,14 @@ export function InboxView({
         detail: after?.reviewRequest === 'team' ? `It still asks ${teamsText(after.reviewTeams)}` : item.title,
       })
     },
+    onReview: reviews ? reviewFromMenu : undefined,
   }
+
+  const reviewed = reviewing === null || snapshot === null ? undefined : findItem(snapshot, reviewing.id)
+  const siblings =
+    reviewing === null || triaged === null
+      ? []
+      : triaged.lists[reviewing.list][reviewing.tab].filter((i) => i.kind === 'pr')
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -418,8 +474,33 @@ export function InboxView({
               matched={filter?.lists[key]}
               marks={filter?.marks ?? ''}
               onFilterBy={onFilterBy}
+              onReview={reviews ? reviewIn[key] : undefined}
             />
           ))}
+      {reviewing !== null && drafts !== undefined && (
+        <ReviewSheet
+          id={reviewing.id}
+          item={reviewed}
+          siblings={siblings}
+          listTitle={sections.find(({ key }) => key === reviewing.list)?.title ?? ''}
+          drafts={drafts}
+          launch={launch}
+          resolution={resolutions.get(reviewing.id) ?? null}
+          sessions={reviewed === undefined ? undefined : sessionsOf(sessions, reviewed)}
+          onNavigate={(id) => {
+            setReviewing({ ...reviewing, id })
+          }}
+          onClose={() => {
+            setReviewing(null)
+          }}
+          onDone={(result, r) => {
+            setReviewing(null)
+            showToast({ text: result.message, detail: r.title, tone: resultTone(result) })
+          }}
+          onFilesSettings={onFilesSettings}
+          onManageReplies={onManageReplies}
+        />
+      )}
       <Toast toast={toast} onClose={closeToast} />
     </div>
   )

@@ -284,3 +284,36 @@ describe('teamsText', () => {
     expect(teamsText(['backend', 'infra', 'web'])).toBe('the @backend, @infra and @web teams')
   })
 })
+
+describe('ItemMenu review', () => {
+  it('opens a pull request in the review sheet', async () => {
+    const triage = triageActions()
+    const edits = { ...editActions(), onReview: vi.fn() }
+    const it = item()
+
+    render(
+      <ul>
+        <ItemRow item={it} launch={null} tab="inbox" triage={triage} edits={edits} />
+      </ul>,
+      { wrapper: at() },
+    )
+
+    const menu = await openMenu()
+    await userEvent.click(menu.getByRole('menuitem', { name: 'Review…' }))
+    expect(edits.onReview).toHaveBeenCalledWith(it, 'inbox')
+  })
+
+  it('offers no review of an issue', async () => {
+    const edits = { ...editActions(), onReview: vi.fn() }
+
+    render(
+      <ul>
+        <ItemRow item={item({ kind: 'issue' })} launch={null} triage={triageActions()} edits={edits} />
+      </ul>,
+      { wrapper: at() },
+    )
+
+    const menu = await openMenu()
+    expect(menu.queryByRole('menuitem', { name: 'Review…' })).not.toBeInTheDocument()
+  })
+})

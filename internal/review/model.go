@@ -68,6 +68,9 @@ type MergeMethod string
 
 // The merge methods.
 const (
+	// MethodNone is no method: auto-merge off, or an action that merges nothing.
+	MethodNone MergeMethod = ""
+
 	MethodMerge  MergeMethod = "MERGE"
 	MethodSquash MergeMethod = "SQUASH"
 	MethodRebase MergeMethod = "REBASE"

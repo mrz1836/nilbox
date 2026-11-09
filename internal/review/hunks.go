@@ -19,6 +19,9 @@ import (
 type Side string
 
 const (
+	// SideNone is no side: a one-line comment's start side.
+	SideNone Side = ""
+
 	// SideLeft is the base version, where the diff's removed lines are.
 	SideLeft Side = "LEFT"
 
@@ -234,6 +237,8 @@ func (h *patchHunk) side(side Side) patchRange {
 		return h.before
 	case SideRight:
 		return h.after
+	case SideNone:
+		return patchRange{}
 	default:
 		return patchRange{}
 	}

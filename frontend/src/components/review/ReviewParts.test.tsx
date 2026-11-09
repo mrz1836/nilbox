@@ -1,0 +1,375 @@
+import { render as renderPlain, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import type { ReactElement } from 'react'
+import { describe, expect, it, vi } from 'vitest'
+
+import { emptyDraft } from '../../lib/reviewDrafts'
+import { at } from '../../test/clock'
+import { agentSession, agents, fileCheck, item, offer, review } from '../../test/fixtures'
+import { platform } from '../../test/platform'
+import { ActionButton } from './ActionButton'
+import { AgentVerdict } from './AgentVerdict'
+import { DiffView } from './DiffView'
+import { LineComment } from './LineComment'
+import { MergeConfirmDialog, mergeVerb } from './MergeConfirmDialog'
+import { needsText, replyActionOf } from './ReviewComposer'
+import { ReviewHeader } from './ReviewHeader'
+import { areasText, checksText, Readiness, ReviewSummary } from './ReviewSummary'
+
+vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
+
+// render renders on a clock that stands at now.
+function render(ui: ReactElement) {
+  return renderPlain(ui, { wrapper: at() })
+}
+
+describe('ReviewSummary', () => {
+  it('says what a dependency update bumps, and how far', () => {
+    const bump = {
+      name: 'golang.org/x/net',
+      from: '0.30.0',
+      to: '1.0.0',
+      group: '',
+      dir: '',
+      count: 1,
+      level: 'major' as const,
+      security: true,
+    }
+    const { rerender } = render(<ReviewSummary review={review({ bump })} item={undefined} />)
+
+    expect(screen.getByText('golang.org/x/net 0.30.0 → 1.0.0 · major · security')).toHaveClass('text-warning')
+
+    rerender(
+      <ReviewSummary
+        review={review({ bump: { ...bump, from: '', to: 'v9', level: '', security: false } })}
+        item={undefined}
+      />,
+    )
+    expect(screen.getByText('golang.org/x/net v9')).toBeInTheDocument()
+
+    rerender(
+      <ReviewSummary
+        review={review({ bump: { ...bump, name: '', group: 'go-deps', count: 3, level: '', security: false } })}
+        item={undefined}
+      />,
+    )
+    expect(screen.getByText('go-deps group · 3 updates')).toBeInTheDocument()
+
+    rerender(
+      <ReviewSummary
+        review={review({ bump: { ...bump, name: '', group: '', count: 0, level: '', security: false } })}
+        item={undefined}
+      />,
+    )
+    expect(screen.getByText('dependencies')).toBeInTheDocument()
+  })
+
+  it('lists the checks, the failing first, and the reviews', async () => {
+    render(
+      <ReviewSummary
+        review={review({
+          checks: [
+            { name: 'lint', workflow: '', state: 'SUCCESS', outcome: 'passed', url: '', required: false },
+            {
+              name: 'e2e',
+              workflow: '',
+              state: 'FAILURE',
+              outcome: 'failed',
+              url: 'https://example.test/run/1',
+              required: true,
+            },
+            { name: 'build', workflow: '', state: 'IN_PROGRESS', outcome: 'pending', url: '', required: false },
+            { name: 'docs', workflow: '', state: 'SKIPPED', outcome: 'skipped', url: '', required: false },
+            { name: 'other', workflow: '', state: '?', outcome: 'odd', url: '', required: false },
+          ],
+          reviews: [
+            { author: 'a', state: 'CHANGES_REQUESTED', body: '', url: '', submittedAt: '', outdated: false },
+            { author: 'b', state: 'DISMISSED', body: '', url: '', submittedAt: '', outdated: false },
+            { author: 'c', state: 'COMMENTED', body: '', url: '', submittedAt: '', outdated: false },
+          ],
+          change: { kind: 'code', label: 'Code', areas: [] },
+        })}
+        item={item({ files: fileCheck() })}
+      />,
+    )
+
+    expect(screen.getByText('5 checks · 1 failing · 1 running').closest('details')).toHaveAttribute('open')
+    const [ran] = screen.getAllByRole('list')
+    expect(ran).toBeDefined()
+    expect(
+      within(ran as HTMLElement)
+        .getAllByRole('listitem')
+        .map((li) => li.textContent),
+    ).toEqual(['●e2erequired', '●build', '●lint'])
+
+    // The checks skipped, and any GitHub reports otherwise, fold away below the ones that ran.
+    const skipped = screen.getByText('2 skipped').closest('details')
+    expect(skipped).not.toHaveAttribute('open')
+    expect(skipped).toHaveTextContent('docs')
+    expect(skipped).toHaveTextContent('other')
+    await userEvent.click(screen.getByRole('button', { name: 'e2e' }))
+    expect(platform.openExternal).toHaveBeenCalledWith('https://example.test/run/1')
+    expect(screen.getByText('requested changes')).toBeInTheDocument()
+    expect(screen.getByText('dismissed')).toBeInTheDocument()
+    expect(screen.getByText('commented')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Agent config/ })).toBeInTheDocument()
+  })
+
+  it('says when a commit has no checks', () => {
+    render(
+      <ReviewSummary
+        review={review({ checks: [], readiness: { state: 'closed', sentence: 'No longer open', needs: [] } })}
+        item={undefined}
+      />,
+    )
+
+    expect(screen.getByText('No checks on this commit.')).toBeInTheDocument()
+    expect(screen.queryByText('No longer open')).not.toBeInTheDocument()
+    expect(checksText([])).toBe('0 checks')
+  })
+
+  it('says how close it is to merging, in a line of its own', () => {
+    render(<Readiness review={review({ readiness: { state: 'closed', sentence: 'No longer open', needs: [] } })} />)
+
+    expect(screen.getByText('No longer open')).toHaveClass('text-muted')
+  })
+
+  it('names the folders a change touches, and its top level', () => {
+    expect(areasText([])).toBe('')
+    expect(areasText(['.github'])).toBe('.github/')
+    expect(areasText(['wallet', '.'])).toBe('wallet/ and the top level')
+    expect(areasText(['cmd', 'internal', '.'])).toBe('cmd/, internal/ and the top level')
+  })
+})
+
+describe('MergeConfirmDialog', () => {
+  it('words each kind of merge', () => {
+    const cases = [
+      { action: 'merge_now' as const, title: 'Merge #7 into main?', label: 'Squash-merge' },
+      {
+        action: 'approve_auto_merge' as const,
+        title: 'Approve, and merge #7 into main once its requirements are met?',
+        label: 'Approve & auto-merge',
+      },
+      {
+        action: 'auto_merge' as const,
+        title: 'Merge #7 into main automatically once its requirements are met?',
+        label: 'Merge when ready',
+      },
+    ]
+
+    for (const c of cases) {
+      const { unmount } = render(
+        <MergeConfirmDialog
+          review={review({ mergeMethods: ['SQUASH', 'REBASE', ''] })}
+          offer={offer({ action: c.action, confirm: true })}
+          onConfirm={vi.fn()}
+          onCancel={vi.fn()}
+        />,
+      )
+
+      expect(screen.getByRole('dialog', { name: c.title })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: c.label })).toBeEnabled()
+      expect(screen.getByRole('radio', { name: 'Rebase and merge' })).toBeInTheDocument()
+      unmount()
+    }
+
+    expect(mergeVerb('REBASE')).toBe('rebase-merge')
+    expect(mergeVerb('MERGE')).toBe('merge')
+  })
+
+  it('confirms with the method chosen', async () => {
+    const onConfirm = vi.fn()
+    render(
+      <MergeConfirmDialog
+        review={review()}
+        offer={offer({ action: 'merge_now', confirm: true })}
+        onConfirm={onConfirm}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Squash-merge' }))
+    expect(onConfirm).toHaveBeenCalledWith('SQUASH')
+  })
+
+  it('names each rule a merge past them skips, and holds it until accepted', async () => {
+    const onConfirm = vi.fn()
+    render(
+      <MergeConfirmDialog
+        review={review()}
+        offer={offer({
+          action: 'merge_bypass',
+          label: 'Squash-merge past the rules',
+          confirm: true,
+          warnings: ['It needs an approval from someone else.'],
+        })}
+        onConfirm={onConfirm}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    const dialog = screen.getByRole('dialog', { name: 'Merge #7 into main past the repository’s rules?' })
+    expect(dialog).toHaveTextContent('GitHub would hold this merge back:')
+    expect(screen.getByRole('listitem')).toHaveTextContent('It needs an approval from someone else.')
+    expect(dialog).toHaveTextContent(/Nothing else here ever does, and no agent can/)
+
+    const confirm = screen.getByRole('button', { name: 'Merge past the rules' })
+    expect(confirm).toBeDisabled()
+    await userEvent.click(screen.getByRole('checkbox', { name: 'I’m merging past the rules' }))
+    await userEvent.click(confirm)
+    expect(onConfirm).toHaveBeenCalledWith('SQUASH')
+  })
+})
+
+describe('ReviewHeader', () => {
+  it('falls back to the card, and opens GitHub', async () => {
+    const onClose = vi.fn()
+    const { rerender } = render(
+      <ReviewHeader
+        titleId="t"
+        review={null}
+        item={item()}
+        position=""
+        onPrev={null}
+        onNext={null}
+        onClose={onClose}
+        checking={false}
+      />,
+    )
+
+    expect(screen.getByRole('heading', { name: 'Add the widget cache' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Open on GitHub' }))
+    expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/pull/7')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(onClose).toHaveBeenCalledOnce()
+
+    rerender(
+      <ReviewHeader
+        titleId="t"
+        review={null}
+        item={undefined}
+        position=""
+        onPrev={null}
+        onNext={null}
+        onClose={onClose}
+        checking={false}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Open on GitHub' })).toBeDisabled()
+    expect(screen.getByText('#0 ·', { exact: false })).toBeInTheDocument()
+
+    rerender(
+      <ReviewHeader
+        titleId="t"
+        review={review({ headRef: '' })}
+        item={undefined}
+        position=""
+        onPrev={null}
+        onNext={null}
+        onClose={onClose}
+        checking={false}
+      />,
+    )
+    expect(screen.queryByText(/→ main/)).not.toBeInTheDocument()
+  })
+})
+
+describe('AgentVerdict', () => {
+  it('shows nothing without a session, and says when it has said nothing', () => {
+    const { container, rerender } = render(<AgentVerdict sessions={undefined} agents={agents()} onUse={vi.fn()} />)
+    expect(container).toBeEmptyDOMElement()
+
+    rerender(<AgentVerdict sessions={[agentSession({ lastMessage: '' })]} agents={agents()} onUse={vi.fn()} />)
+    expect(screen.getByText('It hasn’t said anything yet.')).toBeInTheDocument()
+  })
+
+  it('says when the whole message could not be read', async () => {
+    platform.sessionLastWords.mockRejectedValue(new Error('No such session'))
+    render(<AgentVerdict sessions={[agentSession()]} agents={agents()} onUse={vi.fn()} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Show all' }))
+    expect(await screen.findByText('No such session')).toBeInTheDocument()
+  })
+})
+
+describe('LineComment', () => {
+  it('suggests a change after what was written', async () => {
+    render(<LineComment where="line 3" side="RIGHT" lines={['x := 1']} initial="" onAdd={vi.fn()} onCancel={vi.fn()} />)
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Comment on line 3' }), 'Try')
+    await userEvent.click(screen.getByRole('button', { name: 'Suggest a change' }))
+
+    expect(screen.getByRole('textbox', { name: 'Comment on line 3' })).toHaveValue('Try\n```suggestion\nx := 1\n```\n')
+  })
+})
+
+describe('ActionButton', () => {
+  it('lists every offer, with why one is off, and runs the one chosen', async () => {
+    const onSelect = vi.fn()
+    const onRun = vi.fn()
+    render(
+      <ActionButton
+        offers={[offer(), offer({ action: 'merge_now', label: 'Merge', enabled: false, reason: 'It’s behind main.' })]}
+        selected="merge_now"
+        onSelect={onSelect}
+        onRun={onRun}
+        busy={false}
+        blocked={() => ''}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Merge' })).toHaveAttribute('title', 'It’s behind main.')
+
+    await userEvent.click(screen.getByRole('button', { name: 'More review actions' }))
+    expect(screen.getByRole('menuitem', { name: 'Merge' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Approve' }))
+    expect(onSelect).toHaveBeenCalledWith('approve')
+  })
+
+  it('says it is working', () => {
+    render(
+      <ActionButton offers={[offer()]} selected="approve" onSelect={vi.fn()} onRun={vi.fn()} busy blocked={() => ''} />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Working…' })).toBeDisabled()
+  })
+})
+
+describe('DiffView', () => {
+  it('says why there are no files', () => {
+    const { rerender } = render(
+      <DiffView
+        review={review({ files: [], stale: true })}
+        draft={emptyDraft}
+        onDraft={vi.fn()}
+        loading={new Set()}
+        onLoad={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('Reading the files from GitHub…')).toBeInTheDocument()
+
+    rerender(
+      <DiffView
+        review={review({ files: [] })}
+        draft={emptyDraft}
+        onDraft={vi.fn()}
+        loading={new Set()}
+        onLoad={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('No files changed.')).toBeInTheDocument()
+  })
+})
+
+describe('ReviewComposer helpers', () => {
+  it('knows which reply goes with an action, and when one needs text', () => {
+    expect(replyActionOf('request_changes')).toBe('request_changes')
+    expect(replyActionOf('comment')).toBe('comment')
+    expect(replyActionOf('merge_now')).toBe('approve')
+    expect(needsText('comment', ' ', 0)).not.toBe('')
+    expect(needsText('comment', '', 1)).toBe('')
+    expect(needsText('approve', '', 0)).toBe('')
+  })
+})

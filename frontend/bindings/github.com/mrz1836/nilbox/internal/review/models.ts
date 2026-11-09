@@ -240,7 +240,7 @@ export interface LineComment {
 /**
  * MergeMethod is how GitHub merges a pull request, as its GraphQL API names it.
  */
-export type MergeMethod = "MERGE" | "SQUASH" | "REBASE";
+export type MergeMethod = "" | "MERGE" | "SQUASH" | "REBASE";
 
 /**
  * The values of MergeMethod, by the names of their Go constants.
@@ -248,7 +248,10 @@ export type MergeMethod = "MERGE" | "SQUASH" | "REBASE";
 export const MergeMethod = {
     /**
      * The merge methods.
+     *
+     * MethodNone is no method: auto-merge off, or an action that merges nothing.
      */
+    MethodNone: "",
     MethodMerge: "MERGE",
     MethodSquash: "SQUASH",
     MethodRebase: "REBASE",
@@ -622,12 +625,17 @@ export interface ReviewEntry {
 /**
  * Side is which version of a file a line comment is on.
  */
-export type Side = "LEFT" | "RIGHT";
+export type Side = "" | "LEFT" | "RIGHT";
 
 /**
  * The values of Side, by the names of their Go constants.
  */
 export const Side = {
+    /**
+     * SideNone is no side: a one-line comment's start side.
+     */
+    SideNone: "",
+
     /**
      * SideLeft is the base version, where the diff's removed lines are.
      */

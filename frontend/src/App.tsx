@@ -34,6 +34,7 @@ import { useCollapsedSections } from './lib/useCollapsedSections'
 import { useBudget } from './lib/useBudget'
 import { useInbox } from './lib/useInbox'
 import { useInboxOrder } from './lib/useInboxOrder'
+import { useReviewDrafts } from './lib/reviewDrafts'
 import { useLaunchConfig } from './lib/useLaunchConfig'
 import { useNotifications } from './lib/useNotifications'
 import { useQuery } from './lib/useQuery'
@@ -303,6 +304,8 @@ export function App() {
   const budget = useBudget()
   const triaged = useTriage(inbox.snapshot)
   const config = useLaunchConfig(inbox.snapshot)
+  // reviewDrafts keeps what the user wrote in the review sheet, for the session.
+  const reviewDrafts = useReviewDrafts()
   // The text size follows the stored settings; until they load, it is the size the
   // window opened at (main.tsx).
   useTextSize(config.settings?.textSize)
@@ -610,6 +613,8 @@ export function App() {
             onClearFilter={() => {
               go({ type: 'search', view: 'inbox', query: '' })
             }}
+            drafts={reviewDrafts}
+            onManageReplies={openPrompts}
           />
         </Activity>
         {nav.visited.has('worktrees') && (
@@ -635,6 +640,7 @@ export function App() {
                 <PromptsView
                   agents={config.agents}
                   prompts={config.prompts}
+                  replies={config.replies}
                   defaults={config.defaultPrompts}
                   variables={config.variables}
                   items={config.items}
