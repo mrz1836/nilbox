@@ -633,6 +633,20 @@ describe('LaunchControls', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Opened “Review”')
   })
 
+  it('names the item a session running in the same clone was started on', async () => {
+    const base = runningHold()
+    const running = base.running.map((r) => ({ ...r, number: 12, worktree: '' }))
+    platform.launch.mockResolvedValueOnce(launchResult({ hold: { ...base, worktree: '', running } }))
+    render(<LaunchControls {...props()} />, { wrapper: at() })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+
+    const dialog = within(await screen.findByRole('dialog', { name: 'A session is already running here' }))
+    expect(dialog.getByRole('list', { name: 'Sessions running here' })).toHaveTextContent(
+      'Claude needs approval on acme-org/example-repo#12',
+    )
+  })
+
   it('confirms a running session and a pull request’s agent files apart', async () => {
     const running = runningHold()
     const files = launchHold()

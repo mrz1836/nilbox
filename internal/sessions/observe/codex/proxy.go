@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
+	"time"
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/execpath"
@@ -83,12 +85,19 @@ func (d ProxyDialer) env(configEnv, codexHome, binDir string) []string {
 	return env
 }
 
+// stopGrace is how long closing a proxy waits for it to stop on SIGTERM before it kills
+// it.
+const stopGrace = time.Second
+
 // procStream is a child process's standard input and output as one stream. Closing it
 // ends the process.
 type procStream struct {
 	cmd *exec.Cmd
 	in  io.WriteCloser
 	out io.ReadCloser
+
+	// grace is how long Close waits for the process to stop on SIGTERM.
+	grace time.Duration
 
 	once sync.Once
 	err  error
@@ -110,29 +119,50 @@ func startStream(cmd *exec.Cmd) (*procStream, error) {
 		return nil, fmt.Errorf("start codex app-server proxy: %w", err)
 	}
 
-	return &procStream{cmd: cmd, in: in, out: out}, nil
+	return &procStream{cmd: cmd, in: in, out: out, grace: stopGrace}, nil
 }
 
 func (s *procStream) Read(p []byte) (int, error)  { return s.out.Read(p) } //nolint:wrapcheck // a stream's own errors
 func (s *procStream) Write(p []byte) (int, error) { return s.in.Write(p) } //nolint:wrapcheck // a stream's own errors
 
-// Close closes the process's input, which ends the proxy, stops it if it has not, and
-// waits for it.
+// Close closes the process's input and stops it, and waits for it.
 func (s *procStream) Close() error {
 	s.once.Do(func() {
 		_ = s.in.Close()
 
-		if s.cmd.Process != nil {
-			_ = s.cmd.Process.Kill()
-		}
-
-		err := s.cmd.Wait()
-
-		var exit *exec.ExitError
-		if err != nil && !errors.As(err, &exit) {
-			s.err = fmt.Errorf("stop codex app-server proxy: %w", err)
-		}
+		s.err = s.stop()
 	})
 
 	return s.err
+}
+
+// stop asks the process to stop with SIGTERM, kills it if it has not stopped within the
+// grace, and waits for it. Codex installed with npm runs its proxy under a launcher that
+// passes SIGTERM on to it, but SIGKILL alone would stop only the launcher and leave the
+// proxy running.
+func (s *procStream) stop() error {
+	exited := make(chan error, 1)
+
+	go func() { exited <- s.cmd.Wait() }()
+
+	_ = s.cmd.Process.Signal(syscall.SIGTERM)
+
+	timer := time.NewTimer(s.grace)
+	defer timer.Stop()
+
+	var err error
+
+	select {
+	case err = <-exited:
+	case <-timer.C:
+		_ = s.cmd.Process.Kill()
+		err = <-exited
+	}
+
+	var exit *exec.ExitError
+	if err != nil && !errors.As(err, &exit) {
+		return fmt.Errorf("stop codex app-server proxy: %w", err)
+	}
+
+	return nil
 }

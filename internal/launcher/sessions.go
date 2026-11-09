@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -105,8 +104,21 @@ type ResumableSession struct {
 	Dir      string
 	Worktree string
 
-	// Live reports a session that has not ended.
-	Live bool
+	// Live reports a session that has not ended, and Carried one whose conversation
+	// another session that has not ended carries on, as one resumed from it does.
+	Live    bool
+	Carried bool
+}
+
+// ResumeRequest asks to resume an ended session. Every field is a plain value.
+type ResumeRequest struct {
+	// SessionID is the app's ID of the session to resume.
+	SessionID string `json:"sessionId"`
+
+	// Alongside and Confirmed carry the keys of the holds the user confirmed, as a
+	// LaunchRequest's do: a session running in the folder, and the pull request's files.
+	Alongside string `json:"alongside"`
+	Confirmed string `json:"confirmed"`
 }
 
 // RunningSession is a session that has not ended, as a launch held back for it shows it.
@@ -126,6 +138,11 @@ type RunningSession struct {
 	Dir      string `json:"dir"`
 	Worktree string `json:"worktree"`
 
+	// Repo is "owner/name" and Number the item the session was started on, which may be
+	// another than the launch's when both run in the clone.
+	Repo   string `json:"repo"`
+	Number int    `json:"number"`
+
 	// CanFocus reports a session whose terminal tab can be brought forward.
 	CanFocus bool `json:"canFocus"`
 }
@@ -139,9 +156,9 @@ type SessionLedger interface {
 	// Resumable returns a recorded session, for resuming it.
 	Resumable(ctx context.Context, id string) (ResumableSession, error)
 
-	// Running returns the item's sessions that have not ended, newest first; none while
-	// the app does not follow sessions.
-	Running(ctx context.Context, owner, name string, number int) ([]RunningSession, error)
+	// Running returns the sessions that have not ended running in the folder dir, whichever
+	// item each was started on, newest first; none while the app does not follow sessions.
+	Running(ctx context.Context, dir string) ([]RunningSession, error)
 }
 
 // newSessionID mints a session's own ID: a random UUID.
@@ -160,14 +177,16 @@ type sessionRef struct {
 // the conversation up where it stopped, in the same folder, with the item's launch
 // settings as they now resolve for the agent and profile the session ran with. The
 // session resumed is recorded as a new session that names the first, and nothing is
-// fetched: the item's worktree must still be there. It returns ErrSessionRunning for a
-// session still running, and ErrNotLinked for one the agent never named.
-func (s *Service) Resume(ctx context.Context, sessionID string) (LaunchResult, error) {
+// fetched: the item's worktree must still be there. It is held back as a launch is, for
+// a session running in the folder and for the pull request's files as last checked, until
+// req confirms each. It returns ErrSessionRunning for a session whose conversation still
+// runs, and ErrNotLinked for one the agent never named.
+func (s *Service) Resume(ctx context.Context, req ResumeRequest) (LaunchResult, error) {
 	if s.ledger == nil {
 		return LaunchResult{}, ErrNoLedger
 	}
 
-	prev, err := s.ledger.Resumable(ctx, sessionID)
+	prev, err := s.ledger.Resumable(ctx, req.SessionID)
 	if err != nil {
 		return LaunchResult{}, err
 	}
@@ -177,10 +196,12 @@ func (s *Service) Resume(ctx context.Context, sessionID string) (LaunchResult, e
 	}
 
 	inWorktree := prev.Worktree != ""
-	req := LaunchRequest{ItemID: prev.ItemID, Agent: prev.Agent, Profile: prev.Profile, Worktree: &inWorktree}
+	launch := LaunchRequest{
+		ItemID: prev.ItemID, Agent: prev.Agent, Profile: prev.Profile, Worktree: &inWorktree, Alongside: req.Alongside,
+	}
 	ref := sessionRef{id: s.newID(), resume: prev.AgentSessionID}
 
-	p, err := s.plan(ctx, req, false, ref)
+	p, err := s.plan(ctx, launch, planResume, ref)
 	if errors.Is(err, item.ErrNotFound) {
 		return LaunchResult{}, uierr.New("This item is no longer in your inbox, so its session can't be resumed "+
 			"from here. Copy the session's ID to resume it yourself.", err)
@@ -190,28 +211,31 @@ func (s *Service) Resume(ctx context.Context, sessionID string) (LaunchResult, e
 		return LaunchResult{}, err
 	}
 
-	if p.worktree != nil && p.worktree.Action != WorktreeResume || filepath.Clean(p.plan.Dir) != filepath.Clean(prev.Dir) {
+	if p.worktree != nil && p.worktree.Action != WorktreeResume || !paths.Same(p.plan.Dir, prev.Dir) {
 		return LaunchResult{}, uierr.New(fmt.Sprintf("The session's folder, %s, is gone, so it can't be resumed.",
 			paths.Tilde(prev.Dir, s.home)), ErrSessionMoved)
 	}
 
-	p.prompt = ""
+	if hold := s.heldBack(p, req.Confirmed); hold != nil {
+		return LaunchResult{Hold: hold}, nil
+	}
 
 	return s.start(ctx, p, ref, prev.ID)
 }
 
 // runningHold holds a planned launch back while a session runs in the folder it would
-// start in, the item's worktree or its clone, unless alongside confirms exactly those
-// sessions. Only a launch is held back, which launching reports; a preview never is. A ledger that cannot be read holds nothing back, with a warning: following
-// sessions never stops a launch.
-func (s *Service) runningHold(ctx context.Context, p planned, alongside string, launching bool) *Hold {
-	if s.ledger == nil || !launching {
+// start in, the item's worktree or its clone, whichever item that session was started
+// on, unless alongside confirms exactly those sessions. Only a launch or a resume is held
+// back, which holds reports; a preview never is. A ledger that cannot be read holds
+// nothing back, with a warning: following sessions never stops a launch.
+func (s *Service) runningHold(ctx context.Context, p planned, alongside string, holds bool) *Hold {
+	if s.ledger == nil || !holds {
 		return nil
 	}
 
-	running, err := s.ledger.Running(ctx, p.row.Owner, p.row.Name, p.row.Number)
+	running, err := s.ledger.Running(ctx, p.plan.Dir)
 	if err != nil {
-		s.logger.WarnContext(ctx, "could not read the item's running sessions", "error", err)
+		s.logger.WarnContext(ctx, "could not read the sessions running in the folder", "error", err)
 
 		return nil
 	}
@@ -219,21 +243,17 @@ func (s *Service) runningHold(ctx context.Context, p planned, alongside string, 
 	return holdRunning(running, p.worktreeName(), alongside)
 }
 
-// holdRunning is the hold for the sessions among running that run in worktree, or the
-// clone for "", or nil when none does or alongside confirms exactly them.
+// holdRunning is the hold for running, the sessions running in the folder a launch would
+// start in, the item's worktree or the clone for "", or nil when none does or alongside
+// confirms exactly them.
 func holdRunning(running []RunningSession, worktree, alongside string) *Hold {
-	here := []RunningSession{}
-	ids := []string{}
-
-	for _, r := range running {
-		if r.Worktree == worktree {
-			here = append(here, r)
-			ids = append(ids, r.SessionID)
-		}
+	if len(running) == 0 {
+		return nil
 	}
 
-	if len(here) == 0 {
-		return nil
+	ids := make([]string, 0, len(running))
+	for _, r := range running {
+		ids = append(ids, r.SessionID)
 	}
 
 	slices.Sort(ids)
@@ -244,7 +264,7 @@ func holdRunning(running []RunningSession, worktree, alongside string) *Hold {
 	}
 
 	return &Hold{
-		Key: key, Reason: HoldRunning, Running: here, Dir: here[0].Dir, Worktree: worktree,
+		Key: key, Reason: HoldRunning, Running: running, Dir: running[0].Dir, Worktree: worktree,
 		Files: []sensitive.Finding{},
 	}
 }
@@ -254,6 +274,9 @@ func resumable(prev ResumableSession) error {
 	switch {
 	case prev.Live:
 		return uierr.New("This session is still running. Use Show in terminal to go to it.", ErrSessionRunning)
+	case prev.Carried:
+		return uierr.New("This conversation is already running in another session. Use Show in terminal on that "+
+			"session to go to it.", ErrSessionRunning)
 	case prev.AgentSessionID == "":
 		return uierr.New("The agent never reported this session's conversation, so there is nothing to resume.",
 			ErrNotLinked)

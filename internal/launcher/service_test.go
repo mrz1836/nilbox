@@ -27,6 +27,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/localrepos"
+	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/settings"
@@ -282,19 +283,33 @@ type fakeLedger struct {
 	mu        sync.Mutex
 	started   []StartedSession
 	resumable map[string]ResumableSession
-	running   []RunningSession
+	running   []runningAt
 	err       error
 	runErr    error
 	asked     []string
 }
 
-func (f *fakeLedger) Running(_ context.Context, owner, name string, number int) ([]RunningSession, error) {
+// runningAt is a session the fake ledger says runs in the folder dir.
+type runningAt struct {
+	dir     string
+	session RunningSession
+}
+
+func (f *fakeLedger) Running(_ context.Context, dir string) ([]RunningSession, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	f.asked = append(f.asked, fmt.Sprintf("%s/%s#%d", owner, name, number))
+	f.asked = append(f.asked, dir)
 
-	return slices.Clone(f.running), f.runErr
+	out := []RunningSession{}
+
+	for _, r := range f.running {
+		if paths.Same(r.dir, dir) {
+			out = append(out, r.session)
+		}
+	}
+
+	return out, f.runErr
 }
 
 func (f *fakeLedger) Started(_ context.Context, s StartedSession) error {
@@ -322,8 +337,8 @@ func (f *fakeLedger) Resumable(_ context.Context, id string) (ResumableSession, 
 	return s, nil
 }
 
-// setRunning replaces the sessions the ledger says run on any item.
-func (f *fakeLedger) setRunning(running ...RunningSession) {
+// setRunning replaces the sessions the ledger says run, each in its folder.
+func (f *fakeLedger) setRunning(running ...runningAt) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 

@@ -150,6 +150,25 @@ func TestFollowSessions(t *testing.T) {
 	assert.Equal(t, DefaultFollowSessions, on)
 }
 
+func TestSetFollowSessionsTellsTheShell(t *testing.T) {
+	t.Parallel()
+
+	_, db, home := newTestService(t)
+	events := &testutil.Events{}
+	svc := serviceOver(t, db, home, WithEvents(events))
+
+	require.NoError(t, testutil.ErrOf(svc.SetFollowSessions(t.Context(), false)))
+	require.NoError(t, testutil.ErrOf(svc.SetFollowSessions(t.Context(), true)))
+	assert.Equal(t, []event.Event{event.SessionsUpdated{}, event.SessionsUpdated{}}, events.All(),
+		"the window and the menu bar show the sessions, or stop, at once")
+
+	require.NoError(t, db.Close())
+
+	_, err := svc.SetFollowSessions(t.Context(), false)
+	require.Error(t, err)
+	assert.Len(t, events.All(), 2, "nothing is said of a switch that was not stored")
+}
+
 func TestSetNotificationBannerRejectsAnUnknownKind(t *testing.T) {
 	t.Parallel()
 

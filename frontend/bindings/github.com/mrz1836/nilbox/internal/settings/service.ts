@@ -149,7 +149,9 @@ export function SetDefaultProfile(id: agent$0.ID, name: string): $CancellablePro
 /**
  * SetFollowSessions stores whether the app follows the agent sessions it launches, and
  * returns the settings with it. While it is off, no agent is asked about its sessions,
- * and the window shows none; launches are still recorded.
+ * and the window shows none; launches are still recorded. Once it is stored, an
+ * event.SessionsUpdated is emitted, so the window and the menu bar show the sessions, or
+ * stop showing them, at once.
  */
 export function SetFollowSessions(on: boolean): $CancellablePromise<$models.Settings> {
     return $Call.ByID(3396426745, on);

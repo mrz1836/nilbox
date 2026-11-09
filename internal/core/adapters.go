@@ -15,6 +15,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/budget"
 	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
@@ -175,6 +176,24 @@ func (r agentRunner) Run(ctx context.Context, name string, args ...string) (stdo
 	return execpath.Exec{Search: r.search, Env: append(env, "PATH="+path)}.Run(ctx, name, args...)
 }
 
+// followSwitch passes the settings service's events on, and wakes the sessions watcher
+// when the user turns following on or off, which the settings service says with an
+// event.SessionsUpdated, so the watcher starts or stops following at once instead of at
+// its next look at the switch. The watcher is set once, before any setting can change.
+type followSwitch struct {
+	sink    event.Sink
+	watcher *sessions.Watcher
+}
+
+// Emit passes e on, waking the watcher first for an event.SessionsUpdated.
+func (f *followSwitch) Emit(e event.Event) {
+	if _, ok := e.(event.SessionsUpdated); ok && f.watcher != nil {
+		f.watcher.Wake()
+	}
+
+	f.sink.Emit(e)
+}
+
 // sessionLedger hands the launcher the sessions ledger, which records each session a
 // launch starts. It implements launcher.SessionLedger.
 type sessionLedger struct {
@@ -198,15 +217,23 @@ func (l sessionLedger) Resumable(ctx context.Context, id string) (launcher.Resum
 		return launcher.ResumableSession{}, err
 	}
 
+	carried := false
+	if !r.State.Live() {
+		if carried, err = l.ledger.ConversationLive(ctx, r.AgentSessionID); err != nil {
+			return launcher.ResumableSession{}, err
+		}
+	}
+
 	return launcher.ResumableSession{
 		ID: r.ID, AgentSessionID: r.AgentSessionID, Agent: r.Agent, Profile: r.Profile, ItemID: r.ItemID, Dir: r.Dir,
-		Worktree: r.Worktree, Live: r.State.Live(),
+		Worktree: r.Worktree, Live: r.State.Live(), Carried: carried,
 	}, nil
 }
 
-// Running returns the item's sessions that have not ended, newest first.
-func (l sessionLedger) Running(ctx context.Context, owner, name string, number int) ([]launcher.RunningSession, error) {
-	running, err := l.ledger.Running(ctx, owner, name, number)
+// Running returns the sessions that have not ended running in the folder dir, newest
+// first.
+func (l sessionLedger) Running(ctx context.Context, dir string) ([]launcher.RunningSession, error) {
+	running, err := l.ledger.Running(ctx, dir)
 	if err != nil {
 		return nil, err
 	}
@@ -215,7 +242,7 @@ func (l sessionLedger) Running(ctx context.Context, owner, name string, number i
 	for _, s := range running {
 		out = append(out, launcher.RunningSession{
 			SessionID: s.ID, Agent: s.Agent, Doing: s.State.Phrase(), Since: s.StateAt, Dir: s.Dir, Worktree: s.Worktree,
-			CanFocus: s.CanFocus,
+			Repo: s.Repo, Number: s.Number, CanFocus: s.CanFocus,
 		})
 	}
 

@@ -356,7 +356,9 @@ export interface Session {
     "command": string;
 
     /**
-     * Agent is the coding agent when the process is a session the app follows, or "".
+     * Agent is the coding agent when the process is a session the app follows, or "". A
+     * followed session stands for the processes folded with it, such as the user's shell
+     * it runs in.
      */
     "agent": agent$0.ID;
 }

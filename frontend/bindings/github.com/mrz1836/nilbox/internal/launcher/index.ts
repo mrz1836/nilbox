@@ -21,6 +21,7 @@ export type {
     Preview,
     PromptChoice,
     Resolution,
+    ResumeRequest,
     RunningSession,
     Setting,
     Toggle,

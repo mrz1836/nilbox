@@ -60,8 +60,8 @@ var (
 // ReservedFlagError is returned for an extra flag the launcher sets itself. Its message
 // says which setting owns the flag.
 type ReservedFlagError struct {
-	// Flag is the argument as written, such as "--model" or "-w", or for a config
-	// override, the option and its key, such as "-c model".
+	// Flag is the option the argument sets, such as "--model" or "-w", without any value,
+	// or for a config override, the option and its key, such as "-c model".
 	Flag string
 
 	// Reason completes the sentence "<flag> ...": what to do instead.
@@ -227,8 +227,8 @@ func accessArg(s spec, args []string, i int) error {
 		return err
 	}
 
-	if flag, ok := reserved(s, args[i]); ok && flag.access {
-		return &ReservedFlagError{Flag: displayFlag(args[i]), Reason: flag.reason, Access: true}
+	if flag, name, ok := reserved(s, args[i]); ok && flag.access {
+		return &ReservedFlagError{Flag: name, Reason: flag.reason, Access: true}
 	}
 
 	err := checkConfig(s, args, i)
@@ -267,25 +267,33 @@ func checkArg(s spec, arg string) error {
 		return ErrEndOfFlags
 	}
 
-	if flag, ok := reserved(s, arg); ok {
-		return &ReservedFlagError{Flag: displayFlag(arg), Reason: flag.reason, Access: flag.access}
+	if flag, name, ok := reserved(s, arg); ok {
+		return &ReservedFlagError{Flag: name, Reason: flag.reason, Access: flag.access}
 	}
 
 	return nil
 }
 
-// reserved returns the reserved flag arg sets, in the "--flag", "--flag=value", "-f", or
-// "-f=value" form, or, for an agent that reads its options the way Codex does, "-fvalue".
-func reserved(s spec, arg string) (reservedFlag, bool) {
-	attached := s.configFlags() != nil
-
-	for _, flag := range s.reserved() {
-		if setsFlag(arg, flag.long) || setsFlag(arg, flag.short) || (attached && attachedShort(arg, flag.short)) {
-			return flag, true
+// reserved returns the reserved flag arg sets, with the option as the error names it: a
+// long option, in the "--flag" or "--flag=value" form, or one of the short options a
+// single-dash argument sets (see shortOptions), as in "-f", "-f=value", "-fvalue", or
+// "-sf" after a switch.
+func reserved(s spec, arg string) (flag reservedFlag, name string, ok bool) {
+	for _, flag = range s.reserved() {
+		if setsFlag(arg, flag.long) {
+			return flag, flag.long, true
 		}
 	}
 
-	return reservedFlag{}, false
+	for _, short := range shortOptions(arg, s.switches()) {
+		for _, flag = range s.reserved() {
+			if flag.short == short {
+				return flag, short, true
+			}
+		}
+	}
+
+	return reservedFlag{}, "", false
 }
 
 // setsFlag reports whether arg is the option name, alone or with "=value".
@@ -293,10 +301,28 @@ func setsFlag(arg, name string) bool {
 	return name != "" && (arg == name || strings.HasPrefix(arg, name+"="))
 }
 
-// attachedShort reports whether arg is the short option with its value attached, as in
-// "-mo3".
-func attachedShort(arg, short string) bool {
-	return short != "" && len(arg) > len(short) && !strings.HasPrefix(arg, "--") && strings.HasPrefix(arg, short)
+// shortOptions returns the short options a single-dash argument sets, in order: its
+// first letter's, then, while the last one is one of switches, the next letter's (see
+// spec.switches). An option that takes a value holds the rest of the argument, so with
+// -c a switch and -r not, "-cr1" sets -c and -r, and "-rc1" sets only -r. An argument
+// that does not start with a single dash sets none.
+func shortOptions(arg string, switches []string) []string {
+	if len(arg) < 2 || arg[0] != '-' || arg[1] == '-' {
+		return nil
+	}
+
+	var set []string
+
+	for _, letter := range arg[1:] {
+		short := "-" + string(letter)
+		set = append(set, short)
+
+		if !slices.Contains(switches, short) {
+			break
+		}
+	}
+
+	return set
 }
 
 // checkConfig checks the config override at args[i], if it is one: "-c key=value",
@@ -340,11 +366,4 @@ func configValue(flags, args []string, i int) (flag, value string, ok bool) {
 	}
 
 	return "", "", false
-}
-
-// displayFlag returns the flag part of an argument, without any "=value".
-func displayFlag(arg string) string {
-	name, _, _ := strings.Cut(arg, "=")
-
-	return name
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/paths"
+	"github.com/mrz1836/nilbox/internal/procs"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/sessions/internal/queries"
 	"github.com/mrz1836/nilbox/internal/store"
@@ -150,6 +151,11 @@ type Observation struct {
 	// Seen reports that the agent itself listed the session as running, rather than its
 	// process or its folder suggesting so.
 	Seen bool
+
+	// Relinked reports that the session's own process moved on to the conversation
+	// AgentSessionID, as Claude Code's /clear starts a new one, so the session follows it
+	// in place of the one it was linked to.
+	Relinked bool
 }
 
 // Change is a session whose record an observation changed: as it was, and as it is.
@@ -237,6 +243,59 @@ func (s *Store) Recent(ctx context.Context, since time.Time) ([]Record, error) {
 	}
 
 	return fromRows(rows), nil
+}
+
+// EndedSince returns the sessions the agent named that ended since a time, the last to
+// end first.
+func (s *Store) EndedSince(ctx context.Context, since time.Time) ([]Record, error) {
+	rows, err := s.q.EndedSince(ctx, queries.EndedSinceParams{Since: new(since.UTC()), RowLimit: maxListed})
+	if err != nil {
+		return nil, fmt.Errorf("read the sessions that ended: %w", err)
+	}
+
+	return fromRows(rows), nil
+}
+
+// ConversationLive reports whether a session that has not ended carries on the agent's
+// conversation agentSessionID. It is false for "".
+func (s *Store) ConversationLive(ctx context.Context, agentSessionID string) (bool, error) {
+	if agentSessionID == "" {
+		return false, nil
+	}
+
+	n, err := s.q.CountLiveConversation(ctx, agentSessionID)
+	if err != nil {
+		return false, fmt.Errorf("read the running sessions: %w", err)
+	}
+
+	return n > 0, nil
+}
+
+// InsertUnlessLive records r, as Insert does, unless a session that has not ended
+// already carries on r's conversation, in one transaction, so two writers never both
+// follow it. It reports whether it recorded r.
+func (s *Store) InsertUnlessLive(ctx context.Context, r Record) (bool, error) {
+	if r.AgentSessionID == "" {
+		return true, s.Insert(ctx, r)
+	}
+
+	inserted := false
+
+	err := store.InTx(ctx, s.db, func(tx *sql.Tx) error {
+		n, err := s.q.WithTx(tx).CountLiveConversation(ctx, r.AgentSessionID)
+		if err != nil || n > 0 {
+			return err //nolint:wrapcheck // InsertUnlessLive says what failed
+		}
+
+		inserted = true
+
+		return (&Store{db: s.db, q: s.q.WithTx(tx)}).Insert(ctx, r)
+	})
+	if err != nil {
+		return false, fmt.Errorf("follow the session: %w", err)
+	}
+
+	return inserted, nil
 }
 
 // Apply stores what was observed at now, in one transaction, and returns the sessions it
@@ -330,11 +389,11 @@ func merge(r Record, o Observation, now time.Time) (Record, bool) {
 
 	before := r
 
-	if o.AgentSessionID != "" && r.AgentSessionID == "" {
+	if links(r, o) {
 		r.AgentSessionID, r.LinkedAt = o.AgentSessionID, now
 	}
 
-	if o.PID > 0 {
+	if procs.ValidPID(o.PID) {
 		r.PID = o.PID
 	}
 
@@ -355,6 +414,16 @@ func merge(r Record, o Observation, now time.Time) (Record, bool) {
 	}
 
 	return r, r != before
+}
+
+// links reports whether o links r to the agent's conversation: the first the agent named
+// for it, or the one its process moved on to.
+func links(r Record, o Observation) bool {
+	if o.AgentSessionID == "" || o.AgentSessionID == r.AgentSessionID {
+		return false
+	}
+
+	return r.AgentSessionID == "" || o.Relinked
 }
 
 // updateParams is the update that stores r.

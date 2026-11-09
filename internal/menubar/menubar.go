@@ -17,7 +17,8 @@ import (
 )
 
 const (
-	// PerSection is how many items each list shows in the menu before "N more".
+	// PerSection is how many items each list, and how many sessions waiting for the user,
+	// the menu shows before "N more".
 	PerSection = 5
 
 	// MaxCount is the highest count the label spells out; more show as "99+".
@@ -35,9 +36,11 @@ type Summary struct {
 	// Label is the text beside the icon: the count, "99+" past MaxCount, or "" for none.
 	Label string
 
-	// Waiting are the agent sessions waiting for the user, the longest waiting first,
-	// which the menu lists before the items under WaitingTitle.
-	Waiting []Waiting
+	// Waiting are the first PerSection agent sessions waiting for the user, the longest
+	// waiting first, which the menu lists before the items under WaitingTitle, and
+	// WaitingMore is how many more wait.
+	Waiting     []Waiting
+	WaitingMore int
 
 	// Sections are the lists with items that need the user, in the inbox's order.
 	Sections []Section
@@ -126,13 +129,19 @@ func Summarize(snap inbox.Snapshot, waiting []sessions.Session, now time.Time) S
 	}
 
 	out.Sections = sections(&snap, now)
-	out.Waiting = waitingEntries(waiting)
+
+	out.Waiting = WaitingEntries(waiting)
+	if len(out.Waiting) > PerSection {
+		out.Waiting, out.WaitingMore = out.Waiting[:PerSection], len(out.Waiting)-PerSection
+	}
 
 	return out
 }
 
-// waitingEntries are the rows of the sessions waiting for the user.
-func waitingEntries(waiting []sessions.Session) []Waiting {
+// WaitingEntries are the rows of every session waiting for the user, in order, before
+// Summarize keeps the first PerSection. The desktop shell compares them with the ones it
+// last drew, so a session that changes nothing they show redraws nothing.
+func WaitingEntries(waiting []sessions.Session) []Waiting {
 	out := make([]Waiting, 0, len(waiting))
 
 	for _, s := range waiting {

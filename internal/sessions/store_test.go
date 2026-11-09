@@ -233,3 +233,98 @@ func TestStates(t *testing.T) {
 	assert.False(t, sessions.State("later").Valid())
 	assert.Equal(t, "needs approval", sessions.StateNeedsApproval.Phrase())
 }
+
+func TestEndedSinceIsMeasuredFromTheEnd(t *testing.T) {
+	t.Parallel()
+
+	store := sessions.NewStore(testutil.DB(t))
+	old, recent, unlinked := record("old", 12), record("recent", 12), record("unlinked", 12)
+	unlinked.AgentSessionID = ""
+
+	for _, r := range []sessions.Record{old, recent, unlinked} {
+		require.NoError(t, store.Insert(t.Context(), r))
+	}
+
+	_, err := store.Apply(t.Context(), launched().Add(time.Hour), []sessions.Observation{{ID: "old", State: sessions.StateEnded}})
+	require.NoError(t, err)
+
+	_, err = store.Apply(t.Context(), launched().Add(48*time.Hour), []sessions.Observation{
+		{ID: "recent", State: sessions.StateEnded}, {ID: "unlinked", State: sessions.StateEnded},
+	})
+	require.NoError(t, err)
+
+	got, err := store.EndedSince(t.Context(), launched().Add(47*time.Hour))
+	require.NoError(t, err)
+	require.Len(t, got, 1, "launched two days ago, ended an hour ago; the one the agent never named is left out")
+	assert.Equal(t, "recent", got[0].ID)
+}
+
+func TestInsertUnlessLive(t *testing.T) {
+	t.Parallel()
+
+	store := sessions.NewStore(testutil.DB(t))
+	require.NoError(t, store.Insert(t.Context(), record("launched", 12)))
+
+	live, err := store.ConversationLive(t.Context(), "launched")
+	require.NoError(t, err)
+	assert.True(t, live)
+
+	live, err = store.ConversationLive(t.Context(), "")
+	require.NoError(t, err)
+	assert.False(t, live, "no conversation has no ID")
+
+	revived := record("revived", 12)
+	revived.AgentSessionID = "launched"
+
+	inserted, err := store.InsertUnlessLive(t.Context(), revived)
+	require.NoError(t, err)
+	assert.False(t, inserted, "a running session already carries on the conversation")
+
+	_, err = store.Get(t.Context(), "revived")
+	require.ErrorIs(t, err, sessions.ErrNotFound)
+
+	_, err = store.Apply(t.Context(), launched(), []sessions.Observation{{ID: "launched", State: sessions.StateEnded}})
+	require.NoError(t, err)
+
+	inserted, err = store.InsertUnlessLive(t.Context(), revived)
+	require.NoError(t, err)
+	assert.True(t, inserted, "once that one ended")
+}
+
+func TestApplyRelinksOnlyWhenTheProcessMovedOn(t *testing.T) {
+	t.Parallel()
+
+	store := sessions.NewStore(testutil.DB(t))
+	require.NoError(t, store.Insert(t.Context(), record("s1", 12)))
+
+	_, err := store.Apply(t.Context(), launched(), []sessions.Observation{{ID: "s1", AgentSessionID: "other"}})
+	require.NoError(t, err)
+
+	got, err := store.Get(t.Context(), "s1")
+	require.NoError(t, err)
+	assert.Equal(t, "s1", got.AgentSessionID, "a linked session keeps its conversation")
+
+	_, err = store.Apply(t.Context(), launched().Add(time.Minute), []sessions.Observation{
+		{ID: "s1", AgentSessionID: "cleared", Relinked: true, State: sessions.StateWorking},
+	})
+	require.NoError(t, err)
+
+	got, err = store.Get(t.Context(), "s1")
+	require.NoError(t, err)
+	assert.Equal(t, "cleared", got.AgentSessionID, "its process moved on to another conversation")
+	assert.Equal(t, launched().Add(time.Minute), got.LinkedAt)
+}
+
+func TestApplyTakesOnlyAProcessIDThatCanBeOne(t *testing.T) {
+	t.Parallel()
+
+	store := sessions.NewStore(testutil.DB(t))
+	require.NoError(t, store.Insert(t.Context(), record("s1", 12)))
+
+	_, err := store.Apply(t.Context(), launched(), []sessions.Observation{{ID: "s1", PID: 1<<32 - 1}})
+	require.NoError(t, err)
+
+	got, err := store.Get(t.Context(), "s1")
+	require.NoError(t, err)
+	assert.Zero(t, got.PID, "a PID the kernel would cut to -1 is not taken")
+}

@@ -10,7 +10,7 @@ import (
 // Alive reports whether a process with pid runs: one the signal 0 reaches, or that
 // exists but is another user's. It sends no signal.
 func Alive(pid int) bool {
-	if pid <= 0 {
+	if !ValidPID(pid) {
 		return false
 	}
 

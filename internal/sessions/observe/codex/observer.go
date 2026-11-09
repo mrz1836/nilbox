@@ -32,6 +32,11 @@ const (
 	// before it is taken for one that never started.
 	Grace = 60 * time.Second
 
+	// dialTimeout bounds connecting to the daemon and initializing the connection, so a
+	// daemon that hangs holds up following only briefly before the observer falls back
+	// to the rollout files.
+	dialTimeout = 3 * time.Second
+
 	// callTimeout bounds one call to the daemon.
 	callTimeout = 10 * time.Second
 
@@ -84,6 +89,9 @@ type home struct {
 
 	// threads are what is known of each linked thread, by ID.
 	threads map[string]*thread
+
+	// rollouts reads the home's rollout files, for when the daemon cannot be reached.
+	rollouts *rollouts
 }
 
 // thread is what is known of one thread.
@@ -91,12 +99,20 @@ type thread struct {
 	status  ThreadStatus
 	updated int64
 
-	// turnAt is the update the latest turn was read at; turnState, turnDetail, and
-	// message are what it showed.
+	// turnAt is the thread's update the latest turn was read at, and turnRead the second
+	// it was read in; turnState, turnDetail, and message are what it showed.
 	turnAt     int64
+	turnRead   int64
 	turnState  sessions.State
 	turnDetail string
 	message    string
+}
+
+// settled reports whether the latest turn read still holds: it ended, and the thread
+// has not changed since. Codex stamps a thread's updates in whole seconds, so a turn read
+// in the second of the thread's last update holds only once read again after it.
+func (t *thread) settled() bool {
+	return t.turnState == sessions.StateIdle && t.turnAt == t.updated && t.turnRead > t.updated
 }
 
 // New returns an Observer over cfg.
@@ -127,7 +143,7 @@ func (o *Observer) Observe(ctx context.Context, now time.Time, live []sessions.R
 		}
 	}
 
-	scan := &processScan{lister: o.cfg.Procs}
+	scan := &processScan{lister: o.cfg.Procs, claimed: claims(live)}
 
 	var out []sessions.Observation
 
@@ -167,7 +183,7 @@ func (o *Observer) home(codexHome string) *home {
 		path = filepath.Join(o.cfg.Home, codexInfo().ConfigDir)
 	}
 
-	h := &home{path: path, threads: map[string]*thread{}}
+	h := &home{path: path, threads: map[string]*thread{}, rollouts: newRollouts(path)}
 	o.homes[codexHome] = h
 
 	return h
@@ -190,7 +206,7 @@ func (o *Observer) refresh(
 		return o.linkRollouts(h, recs, now)
 	}
 
-	linked, err := o.ask(ctx, h, recs)
+	linked, err := o.ask(ctx, h, recs, now)
 	if err != nil {
 		o.drop(ctx, h, now, err)
 
@@ -216,7 +232,7 @@ func (o *Observer) connect(ctx context.Context, h *home, codexHome string, now t
 		return false
 	}
 
-	dialCtx, cancel := context.WithTimeout(ctx, callTimeout)
+	dialCtx, cancel := context.WithTimeout(ctx, dialTimeout)
 	defer cancel()
 
 	client, err := o.cfg.Dialer.Dial(dialCtx, codexHome)
@@ -262,8 +278,8 @@ func (h *home) due(recs []sessions.Record, now time.Time) bool {
 }
 
 // ask links the sessions not yet linked, then reads every linked thread, and its latest
-// turn when it changed. It returns the threads it linked, by the app's ID.
-func (o *Observer) ask(ctx context.Context, h *home, recs []sessions.Record) (map[string]string, error) {
+// turn unless it settled. It returns the threads it linked, by the app's ID.
+func (o *Observer) ask(ctx context.Context, h *home, recs []sessions.Record, now time.Time) (map[string]string, error) {
 	linked, err := o.link(ctx, h, recs)
 	if err != nil {
 		return nil, err
@@ -272,7 +288,7 @@ func (o *Observer) ask(ctx context.Context, h *home, recs []sessions.Record) (ma
 	ids := threadIDs(recs, linked)
 
 	for _, id := range ids {
-		if err = o.read(ctx, h, id); err != nil {
+		if err = o.read(ctx, h, id, now); err != nil {
 			return linked, err
 		}
 	}
@@ -306,7 +322,9 @@ func threadIDs(recs []sessions.Record, linked map[string]string) []string {
 }
 
 // link lists the threads in the folders of the sessions not yet linked, and links each
-// to the thread it started.
+// to the thread it started. Codex lists a thread only by the exact folder it recorded,
+// which has its symbolic links resolved, so each folder is asked for both as the launch
+// named it and resolved.
 func (o *Observer) link(ctx context.Context, h *home, recs []sessions.Record) (map[string]string, error) {
 	var dirs []string
 
@@ -314,7 +332,7 @@ func (o *Observer) link(ctx context.Context, h *home, recs []sessions.Record) (m
 
 	for _, r := range recs {
 		if r.AgentSessionID == "" {
-			dirs = append(dirs, r.Dir)
+			dirs = append(dirs, r.Dir, samePath(r.Dir))
 		} else {
 			taken[r.AgentSessionID] = true
 		}
@@ -339,31 +357,29 @@ func (o *Observer) link(ctx context.Context, h *home, recs []sessions.Record) (m
 }
 
 // linkRollouts links the sessions not yet linked through the rollout files Codex wrote
-// since the earliest of them launched, for when the daemon cannot be reached.
+// since each of them launched, for when the daemon cannot be reached.
 func (o *Observer) linkRollouts(h *home, recs []sessions.Record, now time.Time) map[string]string {
-	from := now
+	var starts []time.Time
+
 	taken := map[string]bool{}
 
 	for _, r := range recs {
-		if r.AgentSessionID == "" && r.LaunchedAt.Before(from) {
-			from = r.LaunchedAt
-		}
-
 		if r.AgentSessionID != "" {
 			taken[r.AgentSessionID] = true
+		} else {
+			starts = append(starts, r.LaunchedAt.Add(-linkSlack))
 		}
 	}
 
-	if from.Equal(now) {
+	if len(starts) == 0 {
 		return nil
 	}
 
-	return linkAll(RolloutThreads(h.path, from.Add(-linkSlack), now), recs, taken)
+	return linkAll(h.rollouts.threads(starts, now), recs, taken)
 }
 
-// read reads one thread, and its latest turn when the thread changed since it was last
-// read.
-func (o *Observer) read(ctx context.Context, h *home, id string) error {
+// read reads one thread, and its latest turn unless the turn read last settled.
+func (o *Observer) read(ctx context.Context, h *home, id string, now time.Time) error {
 	var got struct {
 		Thread Thread `json:"thread"`
 	}
@@ -385,7 +401,7 @@ func (o *Observer) read(ctx context.Context, h *home, id string) error {
 
 	t.status, t.updated = got.Thread.Status, got.Thread.UpdatedAt
 
-	if t.turnAt == t.updated && t.turnState != "" {
+	if t.settled() {
 		return nil
 	}
 
@@ -406,7 +422,7 @@ func (o *Observer) read(ctx context.Context, h *home, id string) error {
 		return nil
 	}
 
-	t.turnAt = t.updated
+	t.turnAt, t.turnRead = t.updated, now.Unix()
 	t.turnState, t.turnDetail = TurnState(turns.Data[0])
 
 	if msg := LastAgentMessage(turns.Data[0]); msg != "" {
@@ -484,7 +500,8 @@ func (o *Observer) unavailable(h *home) string {
 const OutsideServer = "Runs outside Codex's app server, so it can't show when it waits for you"
 
 // state is what a thread shows of its session: its live status when the daemon hosts it,
-// and otherwise its latest turn, and that it shows no more.
+// and otherwise its latest turn, and that it shows no more. Without a turn read, nothing
+// says what the session does.
 func (t *thread) state() (sessions.State, string) {
 	if state, detail, ok := MapStatus(t.status); ok {
 		return state, detail
@@ -495,11 +512,11 @@ func (t *thread) state() (sessions.State, string) {
 		detail = OutsideServer
 	}
 
-	if t.turnState != "" {
-		return t.turnState, detail
+	if t.turnState == "" {
+		return sessions.StateUnknown, detail
 	}
 
-	return sessions.StateWorking, detail
+	return t.turnState, detail
 }
 
 // processState is what is known of a session's process.
@@ -523,7 +540,7 @@ func (o *Observer) running(ctx context.Context, r sessions.Record, now time.Time
 		return o.recheck(ctx, r, now, scan)
 	}
 
-	pid, ok := scan.codexIn(ctx, r.Dir)
+	pid, ok := scan.claim(ctx, r)
 
 	switch {
 	case !ok:
@@ -539,17 +556,18 @@ func (o *Observer) running(ctx context.Context, r sessions.Record, now time.Time
 
 // recheck checks, every Recheck, that a session's running process is still Codex in the
 // session's folder, as its process ID may have gone to another program, and returns it.
+// Another Codex process in the folder is another session's, never this one's.
 func (o *Observer) recheck(ctx context.Context, r sessions.Record, now time.Time, scan *processScan) (processState, int) {
 	if at, ok := o.checked[r.ID]; ok && now.Sub(at) < Recheck {
 		return processRunning, r.PID
 	}
 
-	pid, ok := scan.codexIn(ctx, r.Dir)
+	pids, ok := scan.codexIn(ctx, r.Dir)
 	if !ok {
 		return processRunning, r.PID
 	}
 
-	if pid == 0 {
+	if !slices.Contains(pids, r.PID) {
 		delete(o.checked, r.ID)
 
 		return processGone, r.PID
@@ -557,7 +575,7 @@ func (o *Observer) recheck(ctx context.Context, r sessions.Record, now time.Time
 
 	o.checked[r.ID] = now
 
-	return processRunning, pid
+	return processRunning, r.PID
 }
 
 // close closes a home's connection, if it has one.
@@ -571,15 +589,32 @@ func (h *home) close() {
 }
 
 // linkAll links each session not yet linked to the thread it started, taking each
-// thread once, earliest launch first.
+// thread once. A thread belongs to the latest launch in its folder that came before it,
+// since any later launch came after it: so a launch whose own thread never came never
+// takes a later launch's, nor one a linked session started. Each session then picks among
+// its own threads as Link does.
 func linkAll(threads []Thread, recs []sessions.Record, taken map[string]bool) map[string]string {
-	pending := slices.DeleteFunc(slices.Clone(recs), func(r sessions.Record) bool { return r.AgentSessionID != "" })
-	slices.SortStableFunc(pending, func(a, b sessions.Record) int { return a.LaunchedAt.Compare(b.LaunchedAt) })
+	dirs := make([]string, len(recs))
+	for i, r := range recs {
+		dirs[i] = samePath(r.Dir)
+	}
+
+	own := map[string][]Thread{}
+
+	for _, t := range threads {
+		if i, ok := launchBefore(t, recs, dirs); ok && recs[i].AgentSessionID == "" {
+			own[recs[i].ID] = append(own[recs[i].ID], t)
+		}
+	}
 
 	out := map[string]string{}
 
-	for _, r := range pending {
-		if t, ok := Link(threads, r, taken); ok {
+	for _, r := range recs {
+		if r.AgentSessionID != "" {
+			continue
+		}
+
+		if t, ok := Link(own[r.ID], r, taken); ok {
 			taken[t.ID] = true
 			out[r.ID] = t.ID
 		}
@@ -588,20 +623,56 @@ func linkAll(threads []Thread, recs []sessions.Record, taken map[string]bool) ma
 	return out
 }
 
-// processScan lists the running processes at most once per Observe.
+// launchBefore returns the index of the latest launch in recs whose folder, in dirs, is
+// t's, and which came before t was created, within linkSlack.
+func launchBefore(t Thread, recs []sessions.Record, dirs []string) (int, bool) {
+	dir := samePath(t.Cwd)
+	latest := -1
+
+	for i, r := range recs {
+		if dirs[i] != dir || t.CreatedAt < r.LaunchedAt.Add(-linkSlack).Unix() {
+			continue
+		}
+
+		if latest < 0 || r.LaunchedAt.After(recs[latest].LaunchedAt) {
+			latest = i
+		}
+	}
+
+	return latest, latest >= 0
+}
+
+// processScan lists the running processes at most once per Observe, and knows which
+// session each process found is.
 type processScan struct {
 	lister procs.Lister
 	done   bool
 	list   []procs.Process
 	err    error
+
+	// claimed holds the session each process is, by process ID.
+	claimed map[int]string
 }
 
-// codexIn returns a Codex process working in dir itself, leaving out the daemon, which
-// keeps the folder of the session that started it, or 0 for none, and false when the
-// processes cannot be listed.
-func (s *processScan) codexIn(ctx context.Context, dir string) (int, bool) {
+// claims returns the session each known process is, by process ID.
+func claims(live []sessions.Record) map[int]string {
+	out := map[int]string{}
+
+	for _, r := range live {
+		if r.PID > 0 {
+			out[r.PID] = r.ID
+		}
+	}
+
+	return out
+}
+
+// codexIn returns the Codex processes working in dir itself, leaving out the daemon,
+// which keeps the folder of the session that started it, and false when the processes
+// cannot be listed.
+func (s *processScan) codexIn(ctx context.Context, dir string) ([]int, bool) {
 	if s.lister == nil {
-		return 0, false
+		return nil, false
 	}
 
 	if !s.done {
@@ -612,12 +683,34 @@ func (s *processScan) codexIn(ctx context.Context, dir string) (int, bool) {
 	}
 
 	if s.err != nil {
-		return 0, false
+		return nil, false
 	}
+
+	var pids []int
 
 	for _, p := range procs.In(s.list, dir) {
 		if filepath.Base(p.Command) == codexInfo().Command {
-			return p.PID, true
+			pids = append(pids, p.PID)
+		}
+	}
+
+	return pids, true
+}
+
+// claim finds the process of a session whose process is not known yet: a Codex process
+// in its folder that no other session is, which it then is. It returns 0 for none, and
+// false when the processes cannot be listed.
+func (s *processScan) claim(ctx context.Context, r sessions.Record) (int, bool) {
+	pids, ok := s.codexIn(ctx, r.Dir)
+	if !ok {
+		return 0, false
+	}
+
+	for _, pid := range pids {
+		if _, taken := s.claimed[pid]; !taken {
+			s.claimed[pid] = r.ID
+
+			return pid, true
 		}
 	}
 

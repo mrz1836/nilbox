@@ -1,12 +1,21 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { agentName } from '../lib/launch'
 import { pulses, sinceWhen, stateDot, stateLabel } from '../lib/sessions'
 import { formatAgo, formatFull } from '../lib/time'
 import { useMutation } from '../lib/useMutation'
-import { copyText, focusSession, resumeSession, type AgentInfo, type AgentSession } from '../platform'
+import {
+  copyText,
+  focusSession,
+  resumeSession,
+  type AgentInfo,
+  type AgentSession,
+  type LaunchHold,
+  type ResumeRequest,
+} from '../platform'
 import { quietButtonClass } from './controls'
 import { CheckIcon, CopyIcon, PlayIcon, TerminalIcon } from './icons'
+import { LaunchHoldDialog } from './LaunchHoldDialog'
 import { RelativeTime } from './RelativeTime'
 
 // sessionWhat names what a session ran with: its profile and prompt, or that it resumed
@@ -40,17 +49,79 @@ function StateLine({ session }: { session: AgentSession }) {
   )
 }
 
+// Action is one of a session's buttons.
+type Action = 'focus' | 'resume' | 'copy'
+
+// Held is a resume held back for the user to confirm, with the request to send again,
+// once confirmed.
+interface Held {
+  hold: LaunchHold
+  request: ResumeRequest
+}
+
+// confirmed is request with hold confirmed: a running session's apart from a pull
+// request's files, so a resume held back for both is confirmed for each.
+function confirmed({ hold, request }: Held): ResumeRequest {
+  return hold.reason === 'running' ? { ...request, alongside: hold.key } : { ...request, confirmed: hold.key }
+}
+
 // SessionEntry is one session: who ran it with what, what it is doing, where, what it last
 // said, and what can be done with it from here.
 function SessionEntry({ session, agents }: { session: AgentSession; agents: readonly AgentInfo[] }) {
-  const focus = useMutation(() => focusSession(session.id))
-  const resume = useMutation(() => resumeSession(session.id))
+  const focus = useMutation((id: string) => focusSession(id))
+  const resume = useMutation((request: ResumeRequest) => resumeSession(request))
   const copy = useMutation(() => copyText(session.agentSessionId))
+  const actions = { focus, resume, copy }
   // copied is whether the ID was just copied; it clears on the next copy.
   const [copied, setCopied] = useState(false)
-  const error = focus.error || resume.error || copy.error
+  // last is the button pressed last. Only its outcome shows, so one that works clears
+  // what an earlier one said went wrong.
+  const [last, setLast] = useState<Action | null>(null)
+  // notice is what the latest resume worked around, as a launch reports it, or ''.
+  const [notice, setNotice] = useState('')
+  // held is the resume waiting for the user to confirm a hold, or null.
+  const [held, setHeld] = useState<Held | null>(null)
+  // presses numbers the presses, so a resume that finishes after another press shows no
+  // notice.
+  const presses = useRef(0)
+  const error = last === null ? '' : actions[last].error
+
+  // press starts an action: it becomes the one whose outcome shows. It returns the
+  // press's number.
+  const press = (action: Action) => {
+    presses.current += 1
+    setLast(action)
+    setNotice('')
+
+    return presses.current
+  }
+
+  const showTerminal = () => {
+    press('focus')
+    void focus.run(session.id)
+  }
+
+  // resumeNow resumes the session, or holds it back, as a launch is held, until the user
+  // confirms what the hold asks.
+  const resumeNow = async (request: ResumeRequest) => {
+    const n = press('resume')
+    setHeld(null)
+
+    const resumed = await resume.run(request)
+
+    if (!resumed.ok || n !== presses.current) {
+      return
+    }
+
+    if (resumed.data.hold !== null) {
+      setHeld({ hold: resumed.data.hold, request })
+    } else {
+      setNotice(resumed.data.notice)
+    }
+  }
 
   const copyID = async () => {
+    press('copy')
     setCopied(false)
     setCopied((await copy.run()).ok)
   }
@@ -75,14 +146,7 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
       )}
       <div className="flex flex-wrap items-center gap-1">
         {session.canFocus && (
-          <button
-            type="button"
-            disabled={focus.pending}
-            onClick={() => {
-              void focus.run()
-            }}
-            className={quietButtonClass}
-          >
+          <button type="button" disabled={focus.pending} onClick={showTerminal} className={quietButtonClass}>
             <TerminalIcon className="size-3.5" />
             Show in terminal
           </button>
@@ -92,7 +156,7 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
             type="button"
             disabled={resume.pending}
             onClick={() => {
-              void resume.run()
+              void resumeNow({ sessionId: session.id, alongside: '', confirmed: '' })
             }}
             className={quietButtonClass}
           >
@@ -114,10 +178,34 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
           </button>
         )}
       </div>
+      {notice !== '' && (
+        <p role="status" className="text-xs text-muted">
+          {notice}
+        </p>
+      )}
       {error !== '' && (
         <p role="alert" className="text-xs text-danger">
           {error}
         </p>
+      )}
+      {held !== null && (
+        <LaunchHoldDialog
+          hold={held.hold}
+          agentName={agentName(agents, session.agent)}
+          agents={agents}
+          item={{ repo: session.repo, number: session.number }}
+          onCancel={() => {
+            setHeld(null)
+          }}
+          onConfirm={() => {
+            void resumeNow(confirmed(held))
+          }}
+          onShow={(sessionId) => {
+            setHeld(null)
+            press('focus')
+            void focus.run(sessionId)
+          }}
+        />
       )}
     </li>
   )

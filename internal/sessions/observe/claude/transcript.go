@@ -99,8 +99,19 @@ type tail struct {
 	cut  bool
 }
 
-// readTail reads up to n bytes from the end of the file at path.
+// errNotAFile is returned for a transcript path that is not a regular file, such as a
+// pipe, which opening could block on.
+var errNotAFile = errors.New("the transcript is not a regular file")
+
+// readTail reads up to n bytes from the end of the regular file at path. Anything else
+// there is refused before it is opened, so a pipe never blocks the read.
 func readTail(path string, n int64) (tail, error) {
+	if info, err := os.Lstat(path); err != nil {
+		return tail{}, fmt.Errorf("open the transcript: %w", err)
+	} else if !info.Mode().IsRegular() {
+		return tail{}, errNotAFile
+	}
+
 	f, err := os.Open(path) //nolint:gosec // a transcript under the agent's own config directory
 	if err != nil {
 		return tail{}, fmt.Errorf("open the transcript: %w", err)
@@ -111,6 +122,10 @@ func readTail(path string, n int64) (tail, error) {
 	info, err := f.Stat()
 	if err != nil {
 		return tail{}, fmt.Errorf("read the transcript: %w", err)
+	}
+
+	if !info.Mode().IsRegular() {
+		return tail{}, errNotAFile
 	}
 
 	offset := max(info.Size()-n, 0)

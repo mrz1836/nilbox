@@ -11,6 +11,7 @@ import (
 	"net/textproto"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -35,8 +36,22 @@ type rawServer struct {
 }
 
 // answer reads the client's handshake and answers it with status, and a correct accept
-// value unless badAccept is set. It reports what was wrong with the handshake, or "".
+// value unless badAccept is set, then reads every frame the client sends. It reports what
+// was wrong with the handshake, or "".
 func (s *rawServer) answer(status string, badAccept bool) string {
+	if wrong := s.accept(status, badAccept, ""); wrong != "" {
+		return wrong
+	}
+
+	go s.pump()
+
+	return ""
+}
+
+// accept reads the client's handshake and answers it with status and the header lines in
+// extra, and a correct accept value unless badAccept is set. It reads nothing more. It
+// reports what was wrong with the handshake, or "".
+func (s *rawServer) accept(status string, badAccept bool, extra string) string {
 	reader := textproto.NewReader(s.r)
 
 	line, err := reader.ReadLine()
@@ -57,9 +72,7 @@ func (s *rawServer) answer(status string, badAccept bool) string {
 	}
 
 	_, _ = io.WriteString(s.conn, "HTTP/1.1 "+status+"\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"+
-		"Sec-WebSocket-Accept: "+accept+"\r\n\r\n")
-
-	go s.pump()
+		extra+"Sec-WebSocket-Accept: "+accept+"\r\n\r\n")
 
 	return ""
 }
@@ -175,7 +188,8 @@ func pipeServer(t *testing.T) (net.Conn, *rawServer) {
 	return client, &rawServer{conn: server, r: bufio.NewReader(server), frames: make(chan clientFrame, 16)}
 }
 
-// dialRaw dials a client with limit over a pipe to a rawServer.
+// dialRaw dials a client with limit over a pipe to a rawServer, which reads every frame
+// the client sends.
 func dialRaw(t *testing.T, limit uint64) (*wsConn, *rawServer) {
 	t.Helper()
 
@@ -190,6 +204,67 @@ func dialRaw(t *testing.T, limit uint64) (*wsConn, *rawServer) {
 	require.Empty(t, <-wrong, "the client's handshake")
 
 	return c, s
+}
+
+// dialQuiet dials a client over a pipe to a rawServer that reads nothing after the
+// handshake unless the test does, as a proxy that stopped reading would.
+func dialQuiet(t *testing.T) (*wsConn, *rawServer) {
+	t.Helper()
+
+	client, s := pipeServer(t)
+
+	wrong := make(chan string, 1)
+
+	go func() { wrong <- s.accept("101 Switching Protocols", false, "") }()
+
+	c, err := dialWS(t.Context(), client, 1<<20)
+	require.NoError(t, err)
+	require.Empty(t, <-wrong, "the client's handshake")
+
+	return c, s
+}
+
+func TestWSReadsOnWhileAPongCannotGoOut(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		c, s := dialQuiet(t)
+
+		go func() {
+			s.frame(true, opPing, []byte("are you there"))
+			s.frame(true, opText, []byte("after the ping"))
+		}()
+
+		got, err := c.readMessage()
+		require.NoError(t, err, "the reader never waits on the pong it owes")
+		assert.Equal(t, "after the ping", string(got))
+	})
+}
+
+func TestWSHandshakeRefusesAnOversizedAnswer(t *testing.T) {
+	t.Parallel()
+
+	for name, answer := range map[string]struct {
+		status string
+		extra  string
+	}{
+		"a status line over the cap": {status: "101 " + strings.Repeat("x", 8<<10)},
+		"a header line over the cap": {
+			status: "101 Switching Protocols", extra: "X-Pad: " + strings.Repeat("y", 8<<10) + "\r\n",
+		},
+		"too many header lines": {status: "101 Switching Protocols", extra: strings.Repeat("X-Pad: y\r\n", 100)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			client, s := pipeServer(t)
+
+			go s.accept(answer.status, false, answer.extra)
+
+			_, err := dialWS(t.Context(), client, 1<<20)
+			require.ErrorIs(t, err, errHandshake)
+		})
+	}
 }
 
 func TestWSReadsWholeMessages(t *testing.T) {
@@ -229,7 +304,7 @@ func TestWSWritesMaskedFrames(t *testing.T) {
 
 	for _, n := range []int{5, 300, 70_000} {
 		msg := strings.Repeat("y", n)
-		require.NoError(t, c.writeText([]byte(msg)))
+		require.NoError(t, c.writeText(t.Context(), []byte(msg)))
 
 		f := s.next(t)
 		assert.True(t, f.masked, "a client's frames are masked")
@@ -237,10 +312,10 @@ func TestWSWritesMaskedFrames(t *testing.T) {
 		assert.Equal(t, msg, string(f.payload))
 	}
 
-	err := c.writeText(make([]byte, maxWrite+1))
+	err := c.writeText(t.Context(), make([]byte, maxWrite+1))
 	require.ErrorIs(t, err, errTooLargeToSend, "a frame over the cap is refused")
 
-	require.NoError(t, c.writeText([]byte("after")))
+	require.NoError(t, c.writeText(t.Context(), []byte("after")))
 	assert.Equal(t, "after", string(s.next(t).payload), "the refused frame sent nothing")
 }
 

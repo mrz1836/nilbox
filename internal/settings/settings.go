@@ -308,9 +308,18 @@ func (s *Service) FollowSessions(ctx context.Context) (bool, error) {
 
 // SetFollowSessions stores whether the app follows the agent sessions it launches, and
 // returns the settings with it. While it is off, no agent is asked about its sessions,
-// and the window shows none; launches are still recorded.
+// and the window shows none; launches are still recorded. Once it is stored, an
+// event.SessionsUpdated is emitted, so the window and the menu bar show the sessions, or
+// stop showing them, at once.
 func (s *Service) SetFollowSessions(ctx context.Context, on bool) (Settings, error) {
-	return s.save(ctx, setting(KeyFollowSessions, strconv.FormatBool(on)))
+	saved, err := s.save(ctx, setting(KeyFollowSessions, strconv.FormatBool(on)))
+	if err != nil {
+		return saved, err
+	}
+
+	s.events.Emit(event.SessionsUpdated{})
+
+	return saved, nil
 }
 
 // SetCodexEffort stores whether a Codex launch passes the effort level it resolves to, and

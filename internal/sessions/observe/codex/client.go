@@ -173,7 +173,8 @@ func (c *Client) Done() <-chan struct{} {
 	return c.done
 }
 
-// Close closes the connection and the stream under it, and waits for its reads to end.
+// Close closes the connection and the stream under it, and waits for its reads to end. It
+// never waits on a write: closing the stream first ends any write still going out.
 func (c *Client) Close() error {
 	var err error
 
@@ -214,24 +215,27 @@ func (c *Client) notify(ctx context.Context, method string) error {
 	return c.write(ctx, map[string]any{"method": method})
 }
 
-// write sends one message.
+// write sends one message, waiting to write only as long as ctx allows. A message cut
+// short, or one whose write failed, leaves the connection closed, so the observer
+// connects again.
 func (c *Client) write(ctx context.Context, msg map[string]any) error {
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("write to Codex's app server: %w", err)
 	}
 
-	if err = ctx.Err(); err != nil {
-		return err //nolint:wrapcheck // the caller's own context
-	}
+	err = c.ws.writeText(ctx, data)
 
-	if err = c.ws.writeText(data); err != nil {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, errBroken):
 		c.fail(err)
 
 		return fmt.Errorf("%w: %w", ErrClosed, err)
+	default:
+		return err // the caller's own context, or a message never sent
 	}
-
-	return nil
 }
 
 // read reads every message until the connection ends, answering the calls waiting for
@@ -271,7 +275,8 @@ func (c *Client) handle(data []byte) {
 	}
 }
 
-// answer hands a response to the call waiting for it.
+// answer hands a response to the call waiting for it. It never waits: a second answer to
+// one call, which nobody reads, is dropped.
 func (c *Client) answer(msg message) {
 	var id int64
 	if json.Unmarshal(*msg.ID, &id) != nil {
@@ -291,7 +296,10 @@ func (c *Client) answer(msg message) {
 		r.err = &RPCError{Code: msg.Error.Code, Message: msg.Error.Message}
 	}
 
-	wait <- r
+	select {
+	case wait <- r:
+	default:
+	}
 }
 
 // fail records why the connection is gone, once.

@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { AgentSession } from '../platform'
 import { at } from '../test/clock'
-import { agentSession, agents } from '../test/fixtures'
+import { agentSession, agents, launchHold, launchResult, runningHold } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { SessionTag } from './SessionTag'
 
@@ -82,7 +82,7 @@ describe('SessionTag', () => {
     expect(platform.focusSession).toHaveBeenCalledWith('0f8c1e2a-5b4d-4c3e-9a1f-2b3c4d5e6f70')
 
     await user.click(within(done).getByRole('button', { name: 'Resume' }))
-    expect(platform.resumeSession).toHaveBeenCalledWith('older')
+    expect(platform.resumeSession).toHaveBeenCalledWith({ sessionId: 'older', alongside: '', confirmed: '' })
 
     await user.click(within(running).getByRole('button', { name: 'Copy session ID' }))
     expect(platform.copyText).toHaveBeenCalledWith('0f8c1e2a-5b4d-4c3e-9a1f-2b3c4d5e6f70')
@@ -98,5 +98,112 @@ describe('SessionTag', () => {
     await user.click(screen.getByRole('button', { name: 'Show in terminal' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Couldn’t find the session’s tab.')
+  })
+
+  it('says what a resume worked around', async () => {
+    const user = userEvent.setup()
+    platform.resumeSession.mockResolvedValue(
+      launchResult({ worktreeAction: 'resume', notice: 'started from the last fetched main' }),
+    )
+
+    renderTag([agentSession({ state: 'ended', endedAt: '2026-06-15T10:00:00Z', canFocus: false, canResume: true })])
+    await user.click(screen.getByRole('button', { name: /Claude session/ }))
+    await user.click(screen.getByRole('button', { name: 'Resume' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent('started from the last fetched main')
+    expect(screen.queryByRole('alert')).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Copy session ID' }))
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  it('clears what went wrong once a later action works', async () => {
+    const user = userEvent.setup()
+    platform.focusSession.mockRejectedValueOnce(new Error('Couldn’t find the session’s tab.'))
+    platform.copyText.mockRejectedValueOnce(new Error('The clipboard refused it.'))
+
+    renderTag([agentSession()])
+    await user.click(screen.getByRole('button', { name: /Claude session/ }))
+    await user.click(screen.getByRole('button', { name: 'Show in terminal' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Couldn’t find the session’s tab.')
+
+    await user.click(screen.getByRole('button', { name: 'Copy session ID' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('The clipboard refused it.')
+
+    await user.click(screen.getByRole('button', { name: 'Show in terminal' }))
+    expect(platform.focusSession).toHaveBeenCalledTimes(2)
+    expect(screen.queryByRole('alert')).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Copy session ID' }))
+    expect(screen.getByRole('button', { name: 'Copied' })).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('asks before resuming where a session runs, and confirms each hold apart', async () => {
+    const user = userEvent.setup()
+    const running = runningHold()
+    const files = launchHold()
+    platform.resumeSession
+      .mockResolvedValueOnce(launchResult({ hold: running }))
+      .mockResolvedValueOnce(launchResult({ hold: files }))
+      .mockResolvedValueOnce(launchResult({ worktreeAction: 'resume' }))
+
+    renderTag([
+      agentSession({ id: 'older', state: 'ended', endedAt: '2026-06-15T10:00:00Z', canFocus: false, canResume: true }),
+    ])
+    await user.click(screen.getByRole('button', { name: /Claude session/ }))
+    await user.click(screen.getByRole('button', { name: 'Resume' }))
+
+    await user.click(await screen.findByRole('button', { name: 'Start another' }))
+    await user.click(await screen.findByRole('button', { name: 'Open anyway' }))
+
+    const request = { sessionId: 'older', alongside: '', confirmed: '' }
+    expect(platform.resumeSession).toHaveBeenNthCalledWith(2, { ...request, alongside: running.key })
+    expect(platform.resumeSession).toHaveBeenNthCalledWith(3, {
+      ...request,
+      alongside: running.key,
+      confirmed: files.key,
+    })
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('goes to the running session instead of resuming beside it', async () => {
+    const user = userEvent.setup()
+    const running = runningHold()
+    platform.resumeSession.mockResolvedValueOnce(launchResult({ hold: running }))
+
+    renderTag([
+      agentSession({ id: 'older', state: 'ended', endedAt: '2026-06-15T10:00:00Z', canFocus: false, canResume: true }),
+    ])
+    await user.click(screen.getByRole('button', { name: /Claude session/ }))
+    await user.click(screen.getByRole('button', { name: 'Resume' }))
+
+    const dialog = within(await screen.findByRole('dialog', { name: 'A session is already running here' }))
+    await user.click(dialog.getByRole('button', { name: 'Show in terminal' }))
+
+    expect(platform.focusSession).toHaveBeenCalledWith(running.running[0]?.sessionId)
+    expect(platform.resumeSession).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('dialog', { name: 'A session is already running here' })).toBeNull()
+  })
+
+  it('cancels a held resume, and says why one failed', async () => {
+    const user = userEvent.setup()
+    platform.resumeSession
+      .mockResolvedValueOnce(launchResult({ hold: runningHold() }))
+      .mockRejectedValueOnce(new Error('The session’s folder is gone.'))
+
+    renderTag([
+      agentSession({ id: 'older', state: 'ended', endedAt: '2026-06-15T10:00:00Z', canFocus: false, canResume: true }),
+    ])
+    await user.click(screen.getByRole('button', { name: /Claude session/ }))
+    await user.click(screen.getByRole('button', { name: 'Resume' }))
+    await user.click(await screen.findByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('dialog', { name: 'A session is already running here' })).toBeNull()
+    expect(platform.resumeSession).toHaveBeenCalledOnce()
+
+    await user.click(screen.getByRole('button', { name: 'Resume' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('The session’s folder is gone.')
   })
 })

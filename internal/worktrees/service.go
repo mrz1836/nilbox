@@ -714,12 +714,18 @@ func agentCommands() []string {
 	return out
 }
 
-// sessionsIn returns the sessions working in dir, and whether the processes could be
-// listed.
+// sessionsIn returns the sessions working in dir, naming the agent of each the app
+// follows, and whether the processes could be listed. The followed sessions are read
+// only when some process works in dir.
 func (s *Service) sessionsIn(ctx context.Context, dir string) ([]Session, bool) {
 	running, known := s.processes(ctx)
 
-	return sessionsOf(procs.Within(running, dir), nil), known
+	within := procs.Within(running, dir)
+	if len(within) == 0 {
+		return []Session{}, known
+	}
+
+	return sessionsOf(within, s.agentProcesses(ctx)), known
 }
 
 // AgentProcesses names the processes of the agent sessions the app follows. The app
@@ -774,25 +780,62 @@ func markSessions(repos []Repo, running []procs.Process, agents map[int]agent.ID
 }
 
 // sessionsOf returns processes as sessions, never nil, with agents naming the ones the app
-// follows. A process another in the list started is folded into it: a session's own
-// helpers are part of it.
+// follows. A process another in the list started is folded into the furthest of its
+// ancestors there: a session's own helpers are part of it. A followed agent folded into a
+// process stands for it, with its own PID and program, since it is the process the user
+// would look up or stop, as when the user resumed the session from a shell in the folder,
+// unless that process is a followed agent itself.
 func sessionsOf(list []procs.Process, agents map[int]agent.ID) []Session {
-	listed := make(map[int]bool, len(list))
+	parents := make(map[int]int, len(list))
 	for _, p := range list {
-		listed[p.PID] = true
+		parents[p.PID] = p.PPID
 	}
 
+	roots := make(map[int]int, len(list))
+	kept := make(map[int]int, len(list))
 	out := make([]Session, 0, len(list))
 
 	for _, p := range list {
-		if p.PPID != 0 && p.PPID != p.PID && listed[p.PPID] {
-			continue
-		}
+		root := rootOf(p.PID, parents)
+		roots[p.PID] = root
 
-		out = append(out, Session{PID: p.PID, Command: p.Command, Agent: agents[p.PID]})
+		if root == p.PID {
+			kept[p.PID] = len(out)
+			out = append(out, Session{PID: p.PID, Command: p.Command, Agent: agents[p.PID]})
+		}
+	}
+
+	for _, p := range list {
+		if i, ok := kept[roots[p.PID]]; ok && out[i].Agent == "" && agents[p.PID] != "" {
+			out[i] = Session{PID: p.PID, Command: p.Command, Agent: agents[p.PID]}
+		}
 	}
 
 	return out
+}
+
+// rootOf returns the process pid is folded into: its furthest ancestor among parents,
+// which holds each listed process's parent by PID. Where the chain loops, as a reused PID
+// can make it, it is the lowest PID in the loop, so a loop is still listed once.
+func rootOf(pid int, parents map[int]int) int {
+	path := []int{pid}
+	seen := map[int]int{pid: 0}
+	cur := pid
+
+	for {
+		parent := parents[cur]
+		if _, listed := parents[parent]; parent == 0 || parent == cur || !listed {
+			return cur
+		}
+
+		if i, looped := seen[parent]; looped {
+			return slices.Min(path[i:])
+		}
+
+		seen[parent] = len(path)
+		path = append(path, parent)
+		cur = parent
+	}
 }
 
 // tally works out each worktree's stage, counts what the bulk actions would remove, and

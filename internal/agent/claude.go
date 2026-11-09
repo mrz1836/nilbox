@@ -71,12 +71,20 @@ func (claude) reserved() []reservedFlag {
 		reservedFlag{long: "--continue", short: "-c", reason: reasonSession},
 		reservedFlag{long: "--fork-session", reason: reasonSession},
 		reservedFlag{long: "--from-pr", reason: reasonSession},
+		reservedFlag{long: "--teleport", reason: reasonSession},
+		reservedFlag{long: "--desktop", reason: reasonTerminal},
+		reservedFlag{long: "--cloud", reason: reasonTerminal},
+		reservedFlag{long: "--environment", reason: reasonTerminal},
 	)
 }
 
 func (claude) reservedConfig(string) string { return "" }
 
 func (claude) configFlags() []string { return nil }
+
+// switches lists continue, help, print, and version, Claude Code's short options that
+// take no value; -d, -n, -r, and -w take one.
+func (claude) switches() []string { return []string{"-c", "-h", "-p", "-v"} }
 
 // commands lists none: Claude Code reads its prompt first, so no later word is read as a
 // command.

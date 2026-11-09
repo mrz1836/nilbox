@@ -103,9 +103,11 @@ export function ResolveItems(ids: number[] | null): $CancellablePromise<$models.
  * the conversation up where it stopped, in the same folder, with the item's launch
  * settings as they now resolve for the agent and profile the session ran with. The
  * session resumed is recorded as a new session that names the first, and nothing is
- * fetched: the item's worktree must still be there. It returns ErrSessionRunning for a
- * session still running, and ErrNotLinked for one the agent never named.
+ * fetched: the item's worktree must still be there. It is held back as a launch is, for
+ * a session running in the folder and for the pull request's files as last checked, until
+ * req confirms each. It returns ErrSessionRunning for a session whose conversation still
+ * runs, and ErrNotLinked for one the agent never named.
  */
-export function Resume(sessionID: string): $CancellablePromise<$models.LaunchResult> {
-    return $Call.ByID(2717730259, sessionID);
+export function Resume(req: $models.ResumeRequest): $CancellablePromise<$models.LaunchResult> {
+    return $Call.ByID(2717730259, req);
 }

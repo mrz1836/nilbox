@@ -66,3 +66,20 @@ DELETE FROM agent_sessions WHERE state = 'ended' AND (
         AND (newer.launched_at > agent_sessions.launched_at
             OR (newer.launched_at = agent_sessions.launched_at AND newer.id > agent_sessions.id))
 ) >= CAST(sqlc.arg(keep) AS INTEGER);
+
+-- name: EndedSince :many
+-- EndedSince returns the sessions the agent named that ended since a time, the last to
+-- end first, up to row_limit.
+SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
+    item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
+    state, state_detail, last_message, launched_at, linked_at, state_at, ended_at
+FROM agent_sessions
+WHERE state = 'ended' AND agent_session_id <> '' AND ended_at >= sqlc.arg(since)
+ORDER BY ended_at DESC, id DESC
+LIMIT sqlc.arg(row_limit);
+
+-- name: CountLiveConversation :one
+-- CountLiveConversation counts the sessions not ended that the agent names
+-- agent_session_id: the ones carrying on that conversation.
+SELECT count(*) FROM agent_sessions
+WHERE state <> 'ended' AND agent_session_id = sqlc.arg(agent_session_id) AND agent_session_id <> '';

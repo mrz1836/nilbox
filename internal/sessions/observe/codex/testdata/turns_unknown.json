@@ -1,0 +1,33 @@
+{
+    "data": [
+        {
+            "id": "01a1bec0-1a2b-7c3d-8e4f-5a6b7c8d9e0f",
+            "items": [
+                {
+                    "type": "userMessage",
+                    "id": "u1",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Run the tests.",
+                            "text_elements": []
+                        }
+                    ]
+                },
+                {
+                    "type": "agentMessage",
+                    "id": "msg_1",
+                    "text": "I'll run the tests now.",
+                    "phase": "commentary"
+                }
+            ],
+            "itemsView": "full",
+            "status": "somethingNew",
+            "error": null,
+            "startedAt": 1794201536,
+            "completedAt": 1794201591,
+            "durationMs": 55179
+        }
+    ],
+    "nextCursor": null
+}

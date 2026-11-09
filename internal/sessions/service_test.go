@@ -131,3 +131,25 @@ func TestTTY(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "/dev/ttys001", got)
 }
+
+func TestListOffersNoResumeForAConversationStillRunning(t *testing.T) {
+	t.Parallel()
+
+	store := sessions.NewStore(testutil.DB(t))
+	ended, carried := record("ended", 12), record("carried", 12)
+	carried.AgentSessionID, carried.ResumedFrom = "ended", "ended"
+
+	require.NoError(t, store.Insert(t.Context(), ended))
+	_, err := store.Apply(t.Context(), launched(), []sessions.Observation{{ID: "ended", State: sessions.StateEnded}})
+	require.NoError(t, err)
+	require.NoError(t, store.Insert(t.Context(), carried))
+
+	svc := sessions.NewService(sessions.Config{Store: store, Clock: testutil.NewClock(launched().Add(time.Hour))})
+
+	got, err := svc.List(t.Context())
+	require.NoError(t, err)
+
+	for _, s := range got.Sessions {
+		assert.False(t, s.CanResume, "%s: its conversation runs on in the session resumed from it", s.ID)
+	}
+}

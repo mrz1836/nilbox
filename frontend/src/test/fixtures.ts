@@ -428,6 +428,8 @@ export function runningHold(overrides: Partial<LaunchHold> = {}): LaunchHold {
         since: '2026-06-15T11:58:00Z',
         dir: `~/projects/.${brand.slug}/worktrees/example-repo/pr-7`,
         worktree: 'pr-7',
+        repo: 'acme-org/example-repo',
+        number: 7,
         canFocus: true,
       },
     ],

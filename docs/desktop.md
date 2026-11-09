@@ -899,7 +899,9 @@ next layer's first word as its value. Each agent reserves its own flags:
   `--allow-dangerously-skip-permissions`), `--print` (`-p`), `--background` (`--bg`), and the
   flags that pick the conversation, since each launch starts its own
   [followed session](#following-a-session): `--session-id`, `--resume` (`-r`), `--continue`
-  (`-c`), `--fork-session`, and `--from-pr`.
+  (`-c`), `--fork-session`, `--from-pr`, and `--teleport`; and `--desktop`, `--cloud`, and
+  `--environment`, which move the session out of your terminal. A short option counts wherever
+  Claude Code reads one, so `-r<id>` and the combined `-cw` are refused too.
 - **Codex:** `--model` (`-m`), the permission flags (`--sandbox` (`-s`), `--ask-for-approval`
   (`-a`), `--dangerously-bypass-approvals-and-sandbox`, `--dangerously-bypass-hook-trust`,
   `--approve-for-me`, `--full-auto`, and `--yolo`), `--worktree` (`-w`), `--cd` (`-C`), and
@@ -1234,9 +1236,13 @@ agent last said. Each has its actions:
   device (`ps -o tty=`). iTerm2 uses the Automation permission you gave at the first launch;
   Terminal.app asks for it the first time.
 - **Resume** reopens a session that ended, in the same folder and terminal, with `claude
-  --resume=<id>` or `codex resume <flags> -- <id>`, and the item's launch settings as they now
+  --resume=<id>` or `codex resume <id> <flags> --`, and the item's launch settings as they now
   resolve for the agent and profile it ran with. The item must still be in the inbox and its
-  worktree still on disk; the resumed session is a new one on the card.
+  worktree still on disk; the resumed session is a new one on the card. It asks first, as a
+  launch does, when a session is running in that folder, and when the pull request's
+  [files](#sensitive-files), as last checked, change agent configuration; it asks GitHub
+  nothing. A conversation that already runs again, resumed from the app or outside it, offers
+  no Resume.
 - **Copy session ID** copies the agent's own ID, to resume or look the session up yourself.
 
 **How it is read.** The app asks each agent through the interface it supports for this, and
@@ -1247,8 +1253,11 @@ never the terminal:
   `busy`, `waiting` (for a permission prompt, a sandbox request, input, or a dialog), and
   `idle` become the states above. While Claude sessions run, the app checks the timestamps of
   the config directory's `sessions/` folder every second and asks Claude Code only when one
-  changed, or every 20 seconds. The last message comes from the end of the session's
-  transcript under the config directory's `projects/` folder.
+  changed, or every 20 seconds. One listing that fails leaves the card as it was; only one that
+  keeps failing for 30 seconds shows **Status unavailable**. When a session's own process
+  moves on to another conversation, as `/clear` and `/resume` do inside Claude Code, the card
+  follows the new one. The last message comes from the end of the session's transcript under
+  the config directory's `projects/` folder.
 - **Codex:** the local app-server daemon, through `codex app-server proxy`, the protocol
   Codex's own editor and desktop clients use. The app sends only read methods (`initialize`,
   `thread/list`, `thread/read`, `thread/turns/list`, `thread/loaded/list`); a test holds the
@@ -1264,9 +1273,12 @@ never the terminal:
 Whether a session still runs comes from its process, checked against the agent so a process ID
 macOS has since given another program never keeps a session alive: Claude Code must list the
 session within 30 seconds, and a Codex session's process must still be `codex` in its folder,
-checked every 30 seconds. A Claude session that ended and is resumed outside the app, as with
-`claude --resume <id>` in a terminal, within a day, is followed again from its card as a new
-session resumed from the first. Polling stops while no session runs, and
+checked every 30 seconds. Where Claude Code can't be asked, a session it never listed is taken
+for running only while a Claude Code process works in its folder, never another program's. A
+Claude session resumed outside the app within a day of ending, as with `claude --resume <id>`
+in a terminal, is followed again from its card as a new session resumed from the first; the
+app asks Claude Code about it only when its `sessions/` folder changes, as a session starting
+changes it, never on a timer. Polling stops while no session runs, and
 starts again with the next launch or the next time the app opens: sessions left running when
 the app quit are reconciled then. Nothing is ever sent to a session, no approval is answered,
 and nothing is written into an agent's config or conversation beyond the launch's
@@ -1276,8 +1288,9 @@ and nothing is written into an agent's config or conversation beyond the launch'
 card's button, and its worktree's in the Worktrees view, is **Show in terminal** rather than
 **Open in Claude**: getting back to it is the likely reason to click. Starting another from the
 launch options asks first when one is still running in the same folder (the item's worktree, or
-its clone): two agents working in one folder can undo each other's changes and wait on each
-other's git commands. The question offers **Show in terminal**, or **Start another**, which
+its clone, whichever item that session was started on, since items share their clone): two
+agents working in one folder can undo each other's changes and wait on each other's git
+commands. The question offers **Show in terminal**, or **Start another**, which
 starts it beside exactly the sessions it listed; one that started since asks again. A launch
 waiting on that question asks GitHub nothing, and a pull request whose
 [files](#sensitive-files) also hold it back asks about them next. Only sessions the app follows
@@ -1285,15 +1298,17 @@ count: a shell, an editor, or a dev server in the folder never holds a launch ba
 following is off nothing does.
 
 **The menu bar and banners.** Sessions waiting for your approval or input are listed first in
-the [menu bar](#menu-bar-and-notifications), under **Waiting for you**; click one to bring its
-terminal tab forward, or the item when the tab can't be found. Two banners, **Sessions waiting
+the [menu bar](#menu-bar-and-notifications), under **Waiting for you**, the longest waiting
+first and five at most, then how many more; click one to bring its terminal tab forward, or the
+item when the tab can't be found. The menu is redrawn only when what it lists changes. Two banners, **Sessions waiting
 for you** (once a session has waited five seconds) and **Sessions finishing a turn**, start
 off, since Claude Code and Codex can already notify through your terminal. Turn them on in
 Settings → Notifications.
 
 **Turning it off.** **Follow agent sessions** under Settings → Launching is on by default. Turn
-it off and no agent is asked about its sessions, the cards and the menu show none, and no
-session banner shows. Launches are still recorded, which costs nothing.
+it off and no agent is asked about its sessions, the cards and the menu show none at once, and no
+session banner shows. Launches are still recorded, which costs nothing. Turned on again, the
+sessions still running are followed at once.
 
 **What is kept.** Sessions are recorded in the local database (the `agent_sessions` table):
 every one still running, and each ended one for 30 days, at most the newest 20 per item. The

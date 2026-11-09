@@ -17,6 +17,7 @@
 package codex
 
 import (
+	"cmp"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -109,9 +110,13 @@ type TurnItem struct {
 	Phase *string `json:"phase"`
 }
 
+// UnknownStatus is the detail of a session whose thread Codex reports in a status this
+// build does not know, which says nothing it can trust.
+const UnknownStatus = "Codex reported a state this version of the app doesn't know"
+
 // MapStatus turns a loaded thread's status into a State, with a detail where it says
-// more. It reports false for a thread the daemon does not host, whose status says
-// nothing of it.
+// more, and StateUnknown for a status it does not know. It reports false for a thread the
+// daemon does not host, whose status says nothing of it.
 func MapStatus(s ThreadStatus) (sessions.State, string, bool) {
 	switch s.Type {
 	case statusIdle:
@@ -130,30 +135,30 @@ func MapStatus(s ThreadStatus) (sessions.State, string, bool) {
 	case statusNotLoaded, "":
 		return "", "", false
 	default:
-		return sessions.StateWorking, "", true
+		return sessions.StateUnknown, UnknownStatus, true
 	}
 }
 
 // TurnState says what a thread's latest turn shows of it: working while the turn has not
-// completed, and idle once it has, with why when it did not finish. A turn of a thread
-// the daemon does not host reads as interrupted until it completes, so only its
-// completion counts.
+// completed, and idle once it has, with why when it did not finish, and StateUnknown for
+// a status it does not know. A turn of a thread the daemon does not host reads as
+// interrupted until it completes, so only its completion counts.
 func TurnState(t Turn) (sessions.State, string) {
-	if t.CompletedAt == nil && (t.Status == turnInProgress || t.Status == turnInterrupted) {
+	switch {
+	case t.CompletedAt == nil && (t.Status == turnInProgress || t.Status == turnInterrupted):
 		return sessions.StateWorking, ""
-	}
-
-	switch t.Status {
-	case turnFailed:
+	case t.Status == turnCompleted:
+		return sessions.StateIdle, ""
+	case t.Status == turnFailed:
 		if t.Error != nil && strings.TrimSpace(t.Error.Message) != "" {
 			return sessions.StateIdle, "The last turn failed: " + strings.TrimSpace(t.Error.Message)
 		}
 
 		return sessions.StateIdle, "The last turn failed"
-	case turnInterrupted:
+	case t.Status == turnInterrupted:
 		return sessions.StateIdle, "The last turn was interrupted"
 	default:
-		return sessions.StateIdle, ""
+		return sessions.StateUnknown, ""
 	}
 }
 
@@ -199,7 +204,7 @@ func Link(threads []Thread, r sessions.Record, taken map[string]bool) (Thread, b
 		candidates = append(candidates, t)
 	}
 
-	slices.SortStableFunc(candidates, func(a, b Thread) int { return int(a.CreatedAt - b.CreatedAt) })
+	slices.SortStableFunc(candidates, func(a, b Thread) int { return cmp.Compare(a.CreatedAt, b.CreatedAt) })
 
 	for _, t := range candidates {
 		if samePrompt(t.Preview, r.PromptHead) {

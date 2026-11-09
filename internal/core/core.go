@@ -331,8 +331,9 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	promptStore := info.kept.prompts
 	defaultsStore := info.kept.defaults
 	inboxStore := inbox.NewStore(pool, opts.Clock)
+	followed := &followSwitch{sink: event.Or(opts.Events)}
 	prefs := settings.NewService(pool, profileStore, opts.Home, settings.WithClock(opts.Clock),
-		settings.WithEvents(opts.Events), settings.WithLogger(logger))
+		settings.WithEvents(followed), settings.WithLogger(logger))
 	tokens := github.NewTokenSource(runner, search,
 		github.WithTokenClock(opts.Clock), github.WithHostsFile(github.GHHostsFile(opts.Home)))
 	// One tracker hears every response the shared client gets, whichever service asked.
@@ -363,6 +364,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 
 	registry := terminal.DefaultRegistry(runner)
 	follow := followSessions(pool, prefs, opts, logger, runner, registry, agentRunners)
+	followed.watcher = follow.watcher
 
 	sweeps := worktrees.NewService(worktrees.Config{
 		Settings: settingsView[worktrees.SweepSettings]{settings: prefs, part: sweepSettings},

@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/textproto"
 	"strings"
 	"sync"
 )
@@ -44,6 +43,13 @@ const (
 	// maxHeader is the most a client frame's header takes: two bytes, an eight-byte
 	// length, and the four-byte mask.
 	maxHeader = 14
+
+	// maxLine is the longest line the handshake's answer may have, and the size of the
+	// connection's read buffer, which a line must fit in.
+	maxLine = 4 << 10
+
+	// maxHeaderLines is the most header lines the handshake's answer may have.
+	maxHeaderLines = 64
 )
 
 var (
@@ -58,16 +64,25 @@ var (
 
 	// errTooLargeToSend is returned for a frame over maxWrite.
 	errTooLargeToSend = errors.New("a message too large to send to the app server")
+
+	// errBroken is returned for a frame whose write failed, or was cut short when its
+	// context ended. Either closes the connection, as the stream may hold part of a frame.
+	errBroken = errors.New("the connection to the app server broke")
 )
 
 // wsConn is a client WebSocket over a stream. One goroutine reads; writes may come from
-// any.
+// any, one frame at a time.
 type wsConn struct {
 	stream io.ReadWriteCloser
 	r      *bufio.Reader
 	limit  uint64
 
-	wmu sync.Mutex
+	// turn holds the right to write: a writer holds it for one frame, and waits for it
+	// only as long as its context allows.
+	turn chan struct{}
+
+	closeOnce sync.Once
+	closeErr  error
 }
 
 // dialWS opens a WebSocket over stream, failing when ctx ends first.
@@ -78,7 +93,7 @@ func dialWS(ctx context.Context, stream io.ReadWriteCloser, limit uint64) (*wsCo
 	}
 
 	encoded := base64.StdEncoding.EncodeToString(key)
-	c := &wsConn{stream: stream, r: bufio.NewReader(stream), limit: limit}
+	c := &wsConn{stream: stream, r: bufio.NewReaderSize(stream, maxLine), limit: limit, turn: make(chan struct{}, 1)}
 
 	done := make(chan error, 1)
 
@@ -92,7 +107,7 @@ func dialWS(ctx context.Context, stream io.ReadWriteCloser, limit uint64) (*wsCo
 
 		return c, nil
 	case <-ctx.Done():
-		_ = stream.Close()
+		_ = c.close()
 
 		return nil, fmt.Errorf("WebSocket handshake: %w", errors.Join(ctx.Err(), <-done))
 	}
@@ -109,29 +124,64 @@ func (c *wsConn) handshake(key string) error {
 
 	// The answer is read from the connection's own buffer, which keeps any frame the
 	// daemon sends right after it.
-	reader := textproto.NewReader(c.r)
-
-	status, err := reader.ReadLine()
+	status, err := c.line()
 	if err != nil {
-		return fmt.Errorf("%w: %w", errHandshake, err)
+		return err
 	}
 
 	if fields := strings.Fields(status); len(fields) < 2 || fields[1] != "101" {
 		return fmt.Errorf("%w: %q", errHandshake, status)
 	}
 
-	header, err := reader.ReadMIMEHeader()
+	header, err := c.header()
 	if err != nil {
-		return fmt.Errorf("%w: %w", errHandshake, err)
+		return err
 	}
 
 	sum := sha1.Sum([]byte(key + wsGUID)) //nolint:gosec // the handshake's own derivation
-	if header.Get("Sec-WebSocket-Accept") != base64.StdEncoding.EncodeToString(sum[:]) ||
-		!strings.EqualFold(header.Get("Upgrade"), "websocket") {
+	if header["sec-websocket-accept"] != base64.StdEncoding.EncodeToString(sum[:]) ||
+		!strings.EqualFold(header["upgrade"], "websocket") {
 		return fmt.Errorf("%w: unexpected upgrade headers", errHandshake)
 	}
 
 	return nil
+}
+
+// line reads one line of the handshake's answer, without its line ending. A line that
+// does not fit the read buffer is refused, so the answer can never grow without bound.
+func (c *wsConn) line() (string, error) {
+	line, err := c.r.ReadSlice('\n')
+	if err != nil {
+		return "", fmt.Errorf("%w: %w", errHandshake, err)
+	}
+
+	return strings.TrimRight(string(line), "\r\n"), nil
+}
+
+// header reads the handshake answer's header lines up to the blank line that ends them,
+// by lower-case name, refusing more than maxHeaderLines.
+func (c *wsConn) header() (map[string]string, error) {
+	header := map[string]string{}
+
+	for range maxHeaderLines {
+		line, err := c.line()
+		if err != nil {
+			return nil, err
+		}
+
+		if line == "" {
+			return header, nil
+		}
+
+		name, value, ok := strings.Cut(line, ":")
+		if !ok {
+			return nil, fmt.Errorf("%w: a malformed header %q", errHandshake, line)
+		}
+
+		header[strings.ToLower(strings.TrimSpace(name))] = strings.TrimSpace(value)
+	}
+
+	return nil, fmt.Errorf("%w: more than %d header lines", errHandshake, maxHeaderLines)
 }
 
 // readMessage returns the next whole message, answering pings on the way, or io.EOF once
@@ -185,15 +235,18 @@ func (c *wsConn) take(m *assembly, fin bool, op byte, payload []byte) (bool, err
 }
 
 // control acts on a control frame: a ping is answered, a pong ignored, and a close
-// returned, which ends the connection with io.EOF.
+// answered and returned, which ends the connection with io.EOF. The answers never hold
+// the reader up.
 func (c *wsConn) control(op byte, payload []byte) error {
 	switch op {
 	case opPing:
-		return c.writeFrame(opPong, payload)
+		c.tryWrite(opPong, payload)
+
+		return nil
 	case opPong:
 		return nil
 	case opClose:
-		_ = c.writeFrame(opClose, nil)
+		c.tryWrite(opClose, nil)
 
 		return io.EOF
 	default:
@@ -278,25 +331,86 @@ func (c *wsConn) payloadSize(short byte) (uint64, error) {
 	}
 }
 
-// writeText sends one whole text message.
-func (c *wsConn) writeText(data []byte) error {
-	return c.writeFrame(opText, data)
+// writeText sends one whole text message, as writeFrame does.
+func (c *wsConn) writeText(ctx context.Context, data []byte) error {
+	return c.writeFrame(ctx, opText, data)
 }
 
-// writeFrame sends one final frame, masked as a client must. It refuses a payload over
-// maxWrite with errTooLargeToSend, sending nothing.
-func (c *wsConn) writeFrame(op byte, payload []byte) error {
+// writeFrame sends one final frame. It waits for its turn to write only as long as ctx
+// allows, and then returns ctx's error with nothing sent. Once the frame is going out, an
+// end of ctx closes the connection, which unblocks the write, and so does a write that
+// fails; either returns errBroken. It refuses a payload over maxWrite with
+// errTooLargeToSend, sending nothing.
+func (c *wsConn) writeFrame(ctx context.Context, op byte, payload []byte) error {
+	frame, err := encodeFrame(op, payload)
+	if err != nil {
+		return err
+	}
+
+	if err = ctx.Err(); err != nil {
+		return err //nolint:wrapcheck // the caller's own context
+	}
+
+	select {
+	case c.turn <- struct{}{}:
+	case <-ctx.Done():
+		return ctx.Err() //nolint:wrapcheck // the caller's own context
+	}
+
+	defer func() { <-c.turn }()
+
+	stop := context.AfterFunc(ctx, func() { _ = c.close() })
+
+	_, err = c.stream.Write(frame)
+
+	switch {
+	case !stop():
+		return fmt.Errorf("%w: %w", errBroken, ctx.Err())
+	case err != nil:
+		_ = c.close()
+
+		return fmt.Errorf("%w: %w", errBroken, err)
+	default:
+		return nil
+	}
+}
+
+// tryWrite sends a control frame the reader owes, which must never wait on a write: the
+// frame goes out in the background when no other frame is going out, and is dropped
+// otherwise.
+func (c *wsConn) tryWrite(op byte, payload []byte) {
+	frame, err := encodeFrame(op, payload)
+	if err != nil {
+		return
+	}
+
+	select {
+	case c.turn <- struct{}{}:
+	default:
+		return
+	}
+
+	go func() {
+		defer func() { <-c.turn }()
+
+		_, _ = c.stream.Write(frame)
+	}()
+}
+
+// encodeFrame returns one final frame of op carrying payload, masked as a client must. It
+// refuses a payload over maxWrite with errTooLargeToSend.
+func encodeFrame(op byte, payload []byte) ([]byte, error) {
 	// The check compares len(payload) itself, the form a static analyzer reads as bounding
 	// the payload, so the size below is known not to overflow.
 	if len(payload) > maxWrite {
-		return fmt.Errorf("%w: %d bytes", errTooLargeToSend, len(payload))
+		return nil, fmt.Errorf("%w: %d bytes", errTooLargeToSend, len(payload))
 	}
 
 	n := len(payload)
 
 	var mask [4]byte
 	if _, err := rand.Read(mask[:]); err != nil {
-		return fmt.Errorf("mask a WebSocket frame: %w", err)
+		return nil, fmt.Errorf("mask a WebSocket frame: %w", err)
 	}
 
 	frame := make([]byte, 0, n+maxHeader)
@@ -319,19 +433,14 @@ func (c *wsConn) writeFrame(op byte, payload []byte) error {
 		frame = append(frame, b^mask[i%4])
 	}
 
-	c.wmu.Lock()
-	defer c.wmu.Unlock()
-
-	if _, err := c.stream.Write(frame); err != nil {
-		return err //nolint:wrapcheck // the stream's own end
-	}
-
-	return nil
+	return frame, nil
 }
 
-// close says goodbye, when it still can, and closes the stream.
+// close closes the stream, once, which ends the connection and any write still going
+// out. It sends no close frame first: one could wait on a stream the other end no longer
+// reads, and the proxy ends its own connection to the daemon once its input closes.
 func (c *wsConn) close() error {
-	_ = c.writeFrame(opClose, nil)
+	c.closeOnce.Do(func() { c.closeErr = c.stream.Close() })
 
-	return c.stream.Close() //nolint:wrapcheck // the stream's own error
+	return c.closeErr
 }

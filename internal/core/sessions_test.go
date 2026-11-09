@@ -56,11 +56,12 @@ func TestSessionLedgerRecordsWhatTheLauncherStarted(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	running, err := l.Running(t.Context(), boundOwner, "example-repo", 12)
+	running, err := l.Running(t.Context(), "/srv/wt/example-repo/pr-12")
 	require.NoError(t, err)
 	assert.Equal(t, []launcher.RunningSession{{
 		SessionID: "s1", Agent: agent.Claude, Doing: "needs approval", Since: "2026-11-09T05:12:00Z",
-		Dir: "/srv/wt/example-repo/pr-12", Worktree: "pr-12", CanFocus: true,
+		Dir: "/srv/wt/example-repo/pr-12", Worktree: "pr-12", Repo: boundOwner + "/example-repo", Number: 12,
+		CanFocus: true,
 	}}, running)
 }
 

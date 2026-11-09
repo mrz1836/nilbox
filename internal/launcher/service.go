@@ -414,7 +414,7 @@ type ItemResolution struct {
 // so the prompt shown is the prompt sent, except that Launch checks a pull request's
 // files against GitHub again where Preview uses the last check.
 func (s *Service) Preview(ctx context.Context, req LaunchRequest) (Preview, error) {
-	p, err := s.plan(ctx, req, false, sessionRef{})
+	p, err := s.plan(ctx, req, planPreview, sessionRef{})
 	if err != nil {
 		return Preview{}, err
 	}
@@ -452,17 +452,12 @@ func (s *Service) Preview(ctx context.Context, req LaunchRequest) (Preview, erro
 func (s *Service) Launch(ctx context.Context, req LaunchRequest) (LaunchResult, error) {
 	ref := sessionRef{id: s.newID()}
 
-	p, err := s.plan(ctx, req, true, ref)
+	p, err := s.plan(ctx, req, planLaunch, ref)
 	if err != nil {
 		return LaunchResult{}, err
 	}
 
-	if p.running != nil {
-		return LaunchResult{Hold: p.running}, nil
-	}
-
-	if hold := holdFor(p.check, p.atHead(), paths.Tilde(p.plan.Dir, s.home), p.worktreeName()); hold != nil &&
-		hold.Key != req.Confirmed {
+	if hold := s.heldBack(p, req.Confirmed); hold != nil {
 		return LaunchResult{Hold: hold}, nil
 	}
 
@@ -471,6 +466,21 @@ func (s *Service) Launch(ctx context.Context, req LaunchRequest) (LaunchResult, 
 	}
 
 	return s.start(ctx, p, ref, "")
+}
+
+// heldBack returns what holds a planned launch or resume back: the sessions running where
+// it would start, then the pull request's files unless confirmed names that hold, or nil.
+func (s *Service) heldBack(p planned, confirmed string) *Hold {
+	if p.running != nil {
+		return p.running
+	}
+
+	hold := holdFor(p.check, p.atHead(), paths.Tilde(p.plan.Dir, s.home), p.worktreeName())
+	if hold != nil && hold.Key != confirmed {
+		return hold
+	}
+
+	return nil
 }
 
 // planned is a launch worked out but not started.
@@ -549,11 +559,24 @@ func (p planned) worktreeRequest() WorktreeRequest {
 	}
 }
 
+// planMode is what a plan is for.
+type planMode int
+
+// The plans: a preview, which is never held back and asks GitHub nothing; a launch, held
+// back for a session running where it starts and for the pull request's files as GitHub
+// has them now; and a resume, held back for both too, with the files as last checked, so
+// it asks GitHub nothing either.
+const (
+	planPreview planMode = iota
+	planLaunch
+	planResume
+)
+
 // plan works out a launch of the session ref names. The terminal driver is chosen before
 // the clone is resolved, so an OS without terminal support fails before anything runs or
-// is written. A pull request's files are checked last, against GitHub when fresh is set,
-// so a launch that cannot be planned asks GitHub nothing.
-func (s *Service) plan(ctx context.Context, req LaunchRequest, fresh bool, ref sessionRef) (planned, error) {
+// is written. A pull request's files are checked last, against GitHub for a launch, so a
+// launch that cannot be planned asks GitHub nothing. A resume has no prompt to fill in.
+func (s *Service) plan(ctx context.Context, req LaunchRequest, mode planMode, ref sessionRef) (planned, error) {
 	w, err := s.loadWorld(ctx)
 	if err != nil {
 		return planned{}, err
@@ -584,21 +607,23 @@ func (s *Service) plan(ctx context.Context, req LaunchRequest, fresh bool, ref s
 	}
 
 	// A launch held back for a running session asks GitHub nothing: confirmed, it plans
-	// again and checks the files then. Only a launch, which checks them fresh, is held.
-	if p.running = s.runningHold(ctx, p, req.Alongside, fresh); p.running != nil {
+	// again and checks the files then. A preview is never held.
+	if p.running = s.runningHold(ctx, p, req.Alongside, mode != planPreview); p.running != nil {
 		return p, nil
 	}
 
+	fresh := mode == planLaunch
 	if p.check, err = s.fileCheck(ctx, row.ID, fresh); err != nil && !errors.Is(err, sensitive.ErrNotChecked) {
 		return planned{}, err
 	}
 
-	data := row.promptData(w.policy, profile.Name, "", p.check)
-	if p.prompt, err = s.fillIn(ctx, data, prompt.Nickname, tmpl, p); err != nil {
-		return planned{}, err
+	if p.plan.NoPrompt {
+		return p, nil
 	}
 
-	return p, nil
+	p.prompt, err = s.fillIn(ctx, row.promptData(w.policy, profile.Name, "", p.check), prompt.Nickname, tmpl, p)
+
+	return p, err
 }
 
 // place works out where and how a launch runs: the terminal driver, the clone, the

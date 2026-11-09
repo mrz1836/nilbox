@@ -10,6 +10,88 @@ import (
 	"time"
 )
 
+const countLiveConversation = `-- name: CountLiveConversation :one
+SELECT count(*) FROM agent_sessions
+WHERE state <> 'ended' AND agent_session_id = ?1 AND agent_session_id <> ''
+`
+
+// CountLiveConversation counts the sessions not ended that the agent names
+// agent_session_id: the ones carrying on that conversation.
+func (q *Queries) CountLiveConversation(ctx context.Context, agentSessionID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countLiveConversation, agentSessionID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const endedSince = `-- name: EndedSince :many
+SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
+    item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
+    state, state_detail, last_message, launched_at, linked_at, state_at, ended_at
+FROM agent_sessions
+WHERE state = 'ended' AND agent_session_id <> '' AND ended_at >= ?1
+ORDER BY ended_at DESC, id DESC
+LIMIT ?2
+`
+
+type EndedSinceParams struct {
+	Since    *time.Time
+	RowLimit int64
+}
+
+// EndedSince returns the sessions the agent named that ended since a time, the last to
+// end first, up to row_limit.
+func (q *Queries) EndedSince(ctx context.Context, arg EndedSinceParams) ([]AgentSession, error) {
+	rows, err := q.db.QueryContext(ctx, endedSince, arg.Since, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AgentSession{}
+	for rows.Next() {
+		var i AgentSession
+		if err := rows.Scan(
+			&i.ID,
+			&i.AgentSessionID,
+			&i.ResumedFrom,
+			&i.Agent,
+			&i.Profile,
+			&i.ConfigDir,
+			&i.Prompt,
+			&i.PromptHead,
+			&i.Terminal,
+			&i.ItemID,
+			&i.Owner,
+			&i.Name,
+			&i.Kind,
+			&i.Number,
+			&i.Title,
+			&i.URL,
+			&i.Dir,
+			&i.ClonePath,
+			&i.Worktree,
+			&i.Pid,
+			&i.State,
+			&i.StateDetail,
+			&i.LastMessage,
+			&i.LaunchedAt,
+			&i.LinkedAt,
+			&i.StateAt,
+			&i.EndedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getSession = `-- name: GetSession :one
 SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,

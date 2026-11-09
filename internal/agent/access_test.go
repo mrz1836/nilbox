@@ -138,8 +138,22 @@ func TestArgsStartAndResumeSessions(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, []string{
-		"resume", "--model", "gpt-6-sol", "--sandbox", "read-only", "--ask-for-approval", "on-request", "--search", "--", id,
-	}, got, "Codex resumes with its command first and the session's ID where the prompt would go")
+		"resume", id, "--model", "gpt-6-sol", "--sandbox", "read-only", "--ask-for-approval", "on-request", "--search", "--",
+	}, got, "Codex resumes with its command first and the session's ID right after it")
+}
+
+func TestArgsKeepACodexResumeOnItsSession(t *testing.T) {
+	t.Parallel()
+
+	const id = "01a1bec5-d48c-7092-9332-fb198342b55d"
+
+	got, err := agent.Args(agent.Codex, agent.Options{Extra: []string{"--search", "stray"}, ResumeID: id})
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(got), 2)
+	assert.Equal(t, []string{"resume", id}, got[:2],
+		"the session's ID is the first word after the command, so a word in the extra arguments can't take its place")
+	assert.Equal(t, "--", got[len(got)-1], "and nothing follows the end of the flags to be read as a prompt")
+	assert.Equal(t, 1, strings.Count(strings.Join(got, "\n"), id))
 }
 
 func TestArgsRefusesSessionIDsThatAreNot(t *testing.T) {
@@ -153,16 +167,38 @@ func TestArgsRefusesSessionIDsThatAreNot(t *testing.T) {
 		"both started and kept":  {SessionID: "abc", ResumeID: "def"},
 		"a control character":    {SessionID: "abc\n"},
 		"a character outside ID": {ResumeID: "abc/def"},
+		"a session name":         {ResumeID: "review-pr-7"},
+		"a word":                 {SessionID: "a_b-c"},
+		"no dashes":              {ResumeID: "0f8c1e2a5b4d4c3e9a1f2b3c4d5e6f70"},
+		"braces":                 {ResumeID: "{0f8c1e2a-5b4d-4c3e-9a1f-2b3c4d5e6f70}"},
+		"a URN":                  {ResumeID: "urn:uuid:0f8c1e2a-5b4d-4c3e-9a1f-2b3c4d5e6f70"},
+		"a trailing newline":     {ResumeID: "0f8c1e2a-5b4d-4c3e-9a1f-2b3c4d5e6f70\n"},
+		"no version":             {ResumeID: "0f8c1e2a-5b4d-0c3e-9a1f-2b3c4d5e6f70"},
+		"no variant":             {SessionID: "0f8c1e2a-5b4d-4c3e-7a1f-2b3c4d5e6f70"},
 	} {
 		for _, id := range agent.IDs() {
 			_, err := agent.Args(id, o)
 			require.ErrorIs(t, err, agent.ErrInvalidSessionID, "%s for %s", name, id)
 		}
 	}
+}
 
-	assert.True(t, agent.ValidSessionID("019a1bc2-0000-7000-8000-00000000abcd"))
-	assert.True(t, agent.ValidSessionID("a_b-c"))
-	assert.False(t, agent.ValidSessionID(""))
+func TestValidSessionID(t *testing.T) {
+	t.Parallel()
+
+	for _, id := range []string{
+		"0f8c1e2a-5b4d-4c3e-9a1f-2b3c4d5e6f70", // a Claude session, a version 4 UUID
+		"11111111-2222-4333-8444-555555555555",
+		"01a1bec5-d48c-7092-9332-fb198342b55d", // a Codex thread, a version 7 UUID
+		"019a1bc2-0000-7000-8000-00000000abcd",
+		"0F8C1E2A-5B4D-4C3E-9A1F-2B3C4D5E6F70",
+	} {
+		assert.True(t, agent.ValidSessionID(id), id)
+	}
+
+	for _, id := range []string{"", "a_b-c", "review-pr-7", "00000000-0000-0000-0000-000000000000"} {
+		assert.False(t, agent.ValidSessionID(id), id)
+	}
 }
 
 func TestArgsFastMode(t *testing.T) {

@@ -453,14 +453,14 @@ func TestLedgerRunningAndAgentProcesses(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	running, err := w.ledger.Running(t.Context(), "Acme-Org", "example-repo", 12)
+	running, err := w.ledger.Running(t.Context(), "/srv/wt/example-repo/pr-12/")
 	require.NoError(t, err)
-	require.Len(t, running, 2)
-	assert.Equal(t, "newer", running[0].ID, "newest first, the owner's case aside")
+	require.Len(t, running, 2, "the sessions running in the folder; the one that ended is not")
+	assert.Equal(t, "newer", running[0].ID, "newest first")
 
-	none, err := w.ledger.Running(t.Context(), "acme-org", "example-repo", 13)
+	none, err := w.ledger.Running(t.Context(), "/srv/wt/example-repo/pr-13")
 	require.NoError(t, err)
-	assert.Empty(t, none, "an ended session is not running")
+	assert.Empty(t, none, "nothing runs in another folder")
 	assert.NotNil(t, none)
 
 	pids, err := w.ledger.AgentProcesses(t.Context())
@@ -473,7 +473,129 @@ func TestLedgerRunningAndAgentProcesses(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, pids, "not followed, the processes it knows may be stale")
 
-	running, err = w.ledger.Running(t.Context(), "acme-org", "example-repo", 12)
+	running, err = w.ledger.Running(t.Context(), "/srv/wt/example-repo/pr-12")
 	require.NoError(t, err)
 	assert.Empty(t, running)
+}
+
+func TestWatcherTakesAMomentItCouldNotAskForNoChange(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		w := newWatched(t)
+		w.run(t)
+
+		w.claude.set("s1", sessions.StateNeedsApproval)
+		w.claude.set("s2", sessions.StateWorking)
+		w.start(t, "s1")
+		w.start(t, "s2")
+		synctest.Wait()
+
+		time.Sleep(sessions.DefaultDebounce + sessions.DefaultTick)
+		synctest.Wait()
+
+		needs, _ := w.attention.heard()
+		require.Equal(t, []string{"s1:needs_approval"}, needs)
+
+		w.claude.set("s1", sessions.StateUnknown)
+		w.claude.set("s2", sessions.StateUnknown)
+		time.Sleep(sessions.DefaultTick)
+		synctest.Wait()
+
+		w.claude.set("s1", sessions.StateNeedsApproval)
+		w.claude.set("s2", sessions.StateIdle)
+		time.Sleep(sessions.DefaultTick)
+		synctest.Wait()
+
+		time.Sleep(10 * sessions.DefaultDebounce)
+		synctest.Wait()
+
+		needs, finished := w.attention.heard()
+		assert.Equal(t, []string{"s1:needs_approval"}, needs, "the same prompt is not announced again")
+		assert.Equal(t, []string{"s2"}, finished, "a turn that finished while it could not be asked is announced")
+	})
+}
+
+func TestWatcherRemindsOnceAPromptItCouldNotAskAboutIsKnownAgain(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		w := newWatched(t)
+		w.run(t)
+
+		w.claude.set("s1", sessions.StateWorking)
+		w.start(t, "s1")
+		synctest.Wait()
+
+		w.claude.set("s1", sessions.StateNeedsInput)
+		time.Sleep(sessions.DefaultTick)
+		synctest.Wait()
+
+		w.claude.set("s1", sessions.StateUnknown)
+		time.Sleep(sessions.DefaultDebounce + sessions.DefaultTick)
+		synctest.Wait()
+
+		needs, _ := w.attention.heard()
+		assert.Empty(t, needs, "nothing while the agent cannot be asked")
+
+		w.claude.set("s1", sessions.StateNeedsInput)
+		time.Sleep(sessions.DefaultTick)
+		synctest.Wait()
+
+		needs, _ = w.attention.heard()
+		assert.Equal(t, []string{"s1:needs_input"}, needs, "the wait is announced once it is known again")
+	})
+}
+
+func TestWatcherRevivesASessionLaunchedLongAgoThatEndedRecently(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		w := newWatched(t)
+		w.watcher = sessions.NewWatcher(sessions.WatcherConfig{
+			Store: w.store, Observers: map[agent.ID]sessions.Observer{agent.Claude: w.claude}, Events: w.events,
+			NewID: func() string { return "resumed" },
+		})
+
+		old := record("s1", 12)
+		old.LaunchedAt = time.Now().Add(-3 * 24 * time.Hour)
+		require.NoError(t, w.store.Insert(t.Context(), old))
+
+		_, err := w.store.Apply(t.Context(), time.Now().Add(-time.Hour), []sessions.Observation{
+			{ID: "s1", State: sessions.StateEnded},
+		})
+		require.NoError(t, err)
+
+		w.claude.set("s1", sessions.StateWorking)
+		w.claude.list()
+		w.run(t)
+		synctest.Wait()
+
+		got, err := w.store.Get(t.Context(), "resumed")
+		require.NoError(t, err, "watched for a day after it ended, however long ago it was launched")
+		assert.Equal(t, "s1", got.ResumedFrom)
+	})
+}
+
+func TestLedgerWaitingListsTheLongestWaitingFirst(t *testing.T) {
+	t.Parallel()
+
+	w := newWatched(t)
+	w.start(t, "launched-first")
+	w.start(t, "launched-second")
+
+	_, err := w.store.Apply(t.Context(), launched().Add(time.Hour), []sessions.Observation{
+		{ID: "launched-second", State: sessions.StateNeedsApproval},
+	})
+	require.NoError(t, err)
+
+	_, err = w.store.Apply(t.Context(), launched().Add(2*time.Hour), []sessions.Observation{
+		{ID: "launched-first", State: sessions.StateNeedsInput},
+	})
+	require.NoError(t, err)
+
+	got, err := w.ledger.Waiting(t.Context())
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	assert.Equal(t, "launched-second", got[0].ID, "it has waited an hour longer")
 }

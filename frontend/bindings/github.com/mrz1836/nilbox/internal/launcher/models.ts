@@ -465,6 +465,23 @@ export interface Resolution {
 }
 
 /**
+ * ResumeRequest asks to resume an ended session. Every field is a plain value.
+ */
+export interface ResumeRequest {
+    /**
+     * SessionID is the app's ID of the session to resume.
+     */
+    "sessionId": string;
+
+    /**
+     * Alongside and Confirmed carry the keys of the holds the user confirmed, as a
+     * LaunchRequest's do: a session running in the folder, and the pull request's files.
+     */
+    "alongside": string;
+    "confirmed": string;
+}
+
+/**
  * RunningSession is a session that has not ended, as a launch held back for it shows it.
  * Every field is a plain value.
  */
@@ -488,6 +505,13 @@ export interface RunningSession {
      */
     "dir": string;
     "worktree": string;
+
+    /**
+     * Repo is "owner/name" and Number the item the session was started on, which may be
+     * another than the launch's when both run in the clone.
+     */
+    "repo": string;
+    "number": number;
 
     /**
      * CanFocus reports a session whose terminal tab can be brought forward.

@@ -136,4 +136,16 @@ func TestAlive(t *testing.T) {
 	assert.True(t, procs.Alive(os.Getpid()), "this test runs")
 	assert.False(t, procs.Alive(0))
 	assert.False(t, procs.Alive(-1))
+	assert.False(t, procs.Alive(1<<32-1), "a PID the kernel would cut to -1 reaches no process")
+	assert.False(t, procs.Alive(procs.MaxPID+1))
+}
+
+func TestValidPID(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, procs.ValidPID(1))
+	assert.True(t, procs.ValidPID(procs.MaxPID))
+	assert.False(t, procs.ValidPID(0))
+	assert.False(t, procs.ValidPID(-5))
+	assert.False(t, procs.ValidPID(procs.MaxPID+1))
 }

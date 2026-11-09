@@ -93,7 +93,7 @@ func (t *tray) build(sum menubar.Summary) {
 	m.Add("Open " + brand.Name).OnClick(func(*application.Context) { shell.ShowWindow() })
 	m.AddSeparator()
 
-	addWaiting(m, sum.Waiting, shell)
+	addWaiting(m, sum.Waiting, sum.WaitingMore, shell)
 
 	if len(sum.Sections) == 0 && len(sum.Waiting) == 0 {
 		m.Add(sum.Nothing).SetEnabled(false)
@@ -129,8 +129,9 @@ func (t *tray) build(sum menubar.Summary) {
 }
 
 // addWaiting lists the agent sessions waiting for the user, under their heading, each
-// bringing its terminal tab forward when clicked. It adds nothing when none waits.
-func addWaiting(m *application.Menu, waiting []menubar.Waiting, shell *desktop.Shell) {
+// bringing its terminal tab forward when clicked, and then how many more wait, which
+// opens the window, as a list's items left out do. It adds nothing when none waits.
+func addWaiting(m *application.Menu, waiting []menubar.Waiting, more int, shell *desktop.Shell) {
 	if len(waiting) == 0 {
 		return
 	}
@@ -141,6 +142,10 @@ func addWaiting(m *application.Menu, waiting []menubar.Waiting, shell *desktop.S
 		m.Add(w.Label).SetTooltip(w.Tooltip).OnClick(func(*application.Context) {
 			shell.FocusSession(w.SessionID, w.ItemID, w.URL)
 		})
+	}
+
+	if more > 0 {
+		m.Add(menubar.MoreLabel(more)).OnClick(func(*application.Context) { shell.ShowWindow() })
 	}
 
 	m.AddSeparator()

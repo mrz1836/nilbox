@@ -70,6 +70,8 @@ func TestCheckExtraClaude(t *testing.T) {
 
 	require.NoError(t, agent.CheckExtra(agent.Claude, nil))
 	require.NoError(t, agent.CheckExtra(agent.Claude, []string{flagAdvisor, "fable", "--add-dir=/srv/shared", "--agent", "reviewer"}))
+	require.NoError(t, agent.CheckExtra(agent.Claude, []string{"-dhooks", "--debug=api", "--verbose"}),
+		"an option that takes a value holds the rest of its argument, whatever letters it has")
 
 	tests := []struct {
 		name string
@@ -95,6 +97,17 @@ func TestCheckExtraClaude(t *testing.T) {
 		{name: "short continue", args: []string{"-c"}, want: agent.ErrReservedFlag},
 		{name: "fork session", args: []string{"--fork-session"}, want: agent.ErrReservedFlag},
 		{name: "from pr", args: []string{"--from-pr", "12"}, want: agent.ErrReservedFlag},
+		{name: "teleport", args: []string{"--teleport"}, want: agent.ErrReservedFlag, text: "--teleport can't be added: each launch starts its own session"},
+		{name: "desktop", args: []string{"--desktop"}, want: agent.ErrReservedFlag, text: "--desktop can't be added: sessions run in your terminal"},
+		{name: "cloud", args: []string{"--cloud=fix the widget"}, want: agent.ErrReservedFlag, text: "--cloud can't be added: sessions run in your terminal"},
+		{name: "environment", args: []string{"--environment", "ccpool_1"}, want: agent.ErrReservedFlag, text: "--environment can't be added: sessions run in your terminal"},
+		{name: "attached resume", args: []string{"-r0f8c1e2a-5b4d-4c3e-9a1f-2b3c4d5e6f70"}, want: agent.ErrReservedFlag, text: "-r can't be added: each launch starts its own session"},
+		{name: "continue then resume", args: []string{"-cr0f8c1e2a"}, want: agent.ErrReservedFlag, text: "-c can't be added: each launch starts its own session"},
+		{name: "continue then worktree", args: []string{"-cw"}, want: agent.ErrReservedFlag, text: "-c can't be added"},
+		{name: "attached worktree", args: []string{"-wfeature"}, want: agent.ErrReservedFlag, text: "-w is set by the Worktree setting"},
+		{name: "attached name", args: []string{"-nreview"}, want: agent.ErrReservedFlag, text: "-n can't be added: each session is named for you"},
+		{name: "print after a switch", args: []string{"-vp"}, want: agent.ErrReservedFlag, text: "-p can't be added: sessions run in your terminal"},
+		{name: "worktree after a switch", args: []string{flagAdvisor, "-hw"}, want: agent.ErrReservedFlag, text: "-w is set by the Worktree setting"},
 		{name: "end of flags", args: []string{"--"}, want: agent.ErrEndOfFlags},
 		{name: "empty", args: []string{flagAdvisor, ""}, want: agent.ErrEmptyFlag},
 		{name: "NUL", args: []string{"a\x00b"}, want: agent.ErrNULByte},
@@ -219,6 +232,12 @@ func TestReservedFlagErrorAs(t *testing.T) {
 	require.ErrorAs(t, agent.CheckExtra(agent.Claude, []string{"--model=opus"}), &reserved)
 	assert.Equal(t, "--model", reserved.Flag)
 	assert.False(t, reserved.Access)
+
+	require.ErrorAs(t, agent.CheckExtra(agent.Claude, []string{"-pr0f8c1e2a"}), &reserved)
+	assert.Equal(t, "-p", reserved.Flag, "a short option set within an argument is named alone")
+
+	require.ErrorAs(t, agent.CheckExtra(agent.Codex, []string{"-mo3"}), &reserved)
+	assert.Equal(t, "-m", reserved.Flag)
 }
 
 func TestSplit(t *testing.T) {

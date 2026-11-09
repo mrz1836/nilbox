@@ -111,6 +111,7 @@ export type LaunchHold = NonNullLists<launcher.Hold>
 export type ItemResolution = NonNullLists<launcher.ItemResolution>
 export type LaunchRequest = NonNullLists<launcher.LaunchRequest>
 export type LaunchResult = NonNullLists<launcher.LaunchResult>
+export type ResumeRequest = launcher.ResumeRequest
 export type LaunchPreview = NonNullLists<launcher.Preview>
 export type Resolution = NonNullLists<launcher.Resolution>
 export type LaunchSetting = NonNullLists<launcher.Setting>

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/logging"
+	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -99,12 +101,30 @@ func (s *Service) List(ctx context.Context) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 
-	out := Snapshot{Following: following, Sessions: make([]Session, 0, len(records))}
+	return Snapshot{Following: following, Sessions: shown(records, s.home)}, nil
+}
+
+// shown is records as the window shows them, with home as ~. A conversation a running
+// session carries on, as one resumed does, is not offered for resuming again from a
+// session of it that ended.
+func shown(records []Record, home string) []Session {
+	carried := map[string]bool{}
+
 	for _, r := range records {
-		out.Sessions = append(out.Sessions, r.Session(s.home))
+		if r.State.Live() && r.AgentSessionID != "" {
+			carried[r.AgentSessionID] = true
+		}
 	}
 
-	return out, nil
+	out := make([]Session, 0, len(records))
+
+	for _, r := range records {
+		session := r.Session(home)
+		session.CanResume = session.CanResume && !carried[r.AgentSessionID]
+		out = append(out, session)
+	}
+
+	return out
 }
 
 // Focus brings forward the terminal tab a running session is in.
@@ -205,9 +225,10 @@ func (l *Ledger) AgentProcesses(ctx context.Context) (map[int]agent.ID, error) {
 	return out, nil
 }
 
-// Running returns the item's sessions that have not ended, newest first, or none while
-// the app does not follow sessions.
-func (l *Ledger) Running(ctx context.Context, owner, name string, number int) ([]Session, error) {
+// Running returns the sessions that have not ended running in the folder dir, whichever
+// item each was started on, newest first, or none while the app does not follow sessions.
+// Folders are compared with their symbolic links resolved.
+func (l *Ledger) Running(ctx context.Context, dir string) ([]Session, error) {
 	out := []Session{}
 	if !l.following(ctx) {
 		return out, nil
@@ -219,8 +240,7 @@ func (l *Ledger) Running(ctx context.Context, owner, name string, number int) ([
 	}
 
 	for i := len(live) - 1; i >= 0; i-- {
-		r := live[i]
-		if strings.EqualFold(r.Owner, owner) && strings.EqualFold(r.Name, name) && r.Number == number {
+		if r := live[i]; paths.Same(r.Dir, dir) {
 			out = append(out, r.Session(l.home))
 		}
 	}
@@ -228,8 +248,19 @@ func (l *Ledger) Running(ctx context.Context, owner, name string, number int) ([
 	return out, nil
 }
 
-// Waiting returns the running sessions waiting for the user, oldest first, or none while
-// the app does not follow sessions.
+// ConversationLive reports whether a session that has not ended carries on the agent's
+// conversation agentSessionID, as one resumed does; false while the app does not follow
+// sessions, when what it knows may be stale.
+func (l *Ledger) ConversationLive(ctx context.Context, agentSessionID string) (bool, error) {
+	if !l.following(ctx) {
+		return false, nil
+	}
+
+	return l.store.ConversationLive(ctx, agentSessionID)
+}
+
+// Waiting returns the running sessions waiting for the user, the longest waiting first,
+// or none while the app does not follow sessions.
 func (l *Ledger) Waiting(ctx context.Context) ([]Session, error) {
 	if l.toggle != nil {
 		on, err := l.toggle.FollowSessions(ctx)
@@ -243,12 +274,12 @@ func (l *Ledger) Waiting(ctx context.Context) ([]Session, error) {
 		return nil, err
 	}
 
-	out := []Session{}
+	waiting := slices.DeleteFunc(live, func(r Record) bool { return !r.State.NeedsYou() })
+	slices.SortStableFunc(waiting, func(a, b Record) int { return a.StateAt.Compare(b.StateAt) })
 
-	for _, r := range live {
-		if r.State.NeedsYou() {
-			out = append(out, r.Session(l.home))
-		}
+	out := make([]Session, 0, len(waiting))
+	for _, r := range waiting {
+		out = append(out, r.Session(l.home))
 	}
 
 	return out, nil

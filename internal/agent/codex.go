@@ -17,7 +17,7 @@ const (
 	codexApproveOnAsk   = "on-request"
 	codexProjectsPrefix = "projects."
 
-	// codexResume is the command that resumes a session: `codex resume [flags] -- <id>`.
+	// codexResume is the command that resumes a session: `codex resume <id> [flags] --`.
 	codexResume = "resume"
 )
 
@@ -88,6 +88,9 @@ func (codex) reservedConfig(key string) string {
 
 func (codex) configFlags() []string { return []string{"-c", codexConfig} }
 
+// switches lists help and version, Codex's only short options that take no value.
+func (codex) switches() []string { return []string{"-h", "-V"} }
+
 // commands lists Codex's commands and their aliases, as of codex-cli 0.163, with some
 // earlier versions had. Any of them before the prompt would run that command, which reads
 // none of the session's flags, its sandbox included.
@@ -101,13 +104,16 @@ func (codex) commands() []string {
 }
 
 // args returns Codex's flags. Codex takes no session ID of its own, so SessionID is
-// ignored; a resumed session runs the resume command, with every flag after it, and the
-// session's ID last, after "--", where the prompt would go.
+// ignored. A resumed session runs the resume command with the session's ID right after
+// it, then every flag, and "--" last, with nothing after it. The command reads the first
+// word that is neither a flag nor a flag's value as the session to resume, so with the
+// ID after the extra arguments, a stray word among them would pick the session instead.
+// The ID is a UUID (see ValidSessionID), which is never read as a flag.
 func (codex) args(o Options) []string {
 	var args []string
 
 	if o.ResumeID != "" {
-		args = append(args, codexResume)
+		args = append(args, codexResume, o.ResumeID)
 	}
 
 	if o.Model != "" {
@@ -121,13 +127,7 @@ func (codex) args(o Options) []string {
 		args = append(args, codexAddDirPrefix+dir)
 	}
 
-	args = append(append(args, o.Extra...), endOfFlags)
-
-	if o.ResumeID != "" {
-		args = append(args, o.ResumeID)
-	}
-
-	return args
+	return append(append(args, o.Extra...), endOfFlags)
 }
 
 // codexOverrides returns the config overrides a launch passes: the effort level and Fast

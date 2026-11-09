@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -34,6 +35,9 @@ const (
 	embeddedDir    = "/srv/wt/example-repo/pr-12"
 )
 
+// codexCommand is the command a Codex process runs as.
+const codexCommand = "codex"
+
 // TestMapGolden maps every recorded thread status and turn, and compares the result with
 // testdata/states.golden. After a deliberate change, rewrite it with
 // go test ./internal/sessions/observe/codex -run TestMapGolden -update.
@@ -50,7 +54,9 @@ func TestMapGolden(t *testing.T) {
 		fmt.Fprintf(&b, "status %s %v -> %q %q loaded=%v\n", s.Type, s.ActiveFlags, state, detail, loaded)
 	}
 
-	for _, name := range []string{"turns_in_flight.json", "turns_completed.json", "turns_interrupted.json", "turns_failed.json"} {
+	for _, name := range []string{
+		"turns_in_flight.json", "turns_completed.json", "turns_interrupted.json", "turns_failed.json", "turns_unknown.json",
+	} {
 		var turns struct {
 			Data []codex.Turn `json:"data"`
 		}
@@ -343,7 +349,7 @@ func TestObserveAHostedThreadLive(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.procs.list = []procs.Process{{PID: 700, PPID: 690, Command: "codex", Dir: hostedDir}}
+	h.procs.list = []procs.Process{{PID: 700, PPID: 690, Command: codexCommand, Dir: hostedDir}}
 	h.alive[700] = true
 	h.script.set(hostedThread, thread(hostedThread, hostedDir, `{"type":"active","activeFlags":["waitingOnApproval"]}`, 10),
 		nil)
@@ -387,7 +393,7 @@ func TestObserveAnEmbeddedThreadByItsTurns(t *testing.T) {
 
 	h := newHarness(t)
 	h.alive[701] = true
-	h.procs.list = []procs.Process{{PID: 701, PPID: 600, Command: "codex", Dir: embeddedDir}}
+	h.procs.list = []procs.Process{{PID: 701, PPID: 600, Command: codexCommand, Dir: embeddedDir}}
 
 	r := rec("s2", embeddedDir)
 	r.AgentSessionID, r.PID = embeddedThread, 701
@@ -405,7 +411,7 @@ func TestObserveAnEmbeddedThreadByItsTurns(t *testing.T) {
 
 	h.now = h.now.Add(codex.Poll)
 	h.observe(t, r)
-	assert.Equal(t, turns, d.count("thread/turns/list"), "the thread did not change, so its turns are not read again")
+	assert.Equal(t, turns+1, d.count("thread/turns/list"), "while its turn works, its turns are read every poll")
 
 	h.script.set(embeddedThread, thread(embeddedThread, embeddedDir, `{"type":"notLoaded"}`, 200),
 		fixture(t, "turns_completed.json"))
@@ -415,12 +421,316 @@ func TestObserveAnEmbeddedThreadByItsTurns(t *testing.T) {
 	assert.Equal(t, sessions.StateIdle, got["s2"].State)
 	assert.Equal(t, "The fix is right; one test is missing.", got["s2"].LastMessage)
 
+	turns = d.count("thread/turns/list")
+
+	h.now = h.now.Add(codex.Poll)
+	h.observe(t, r)
+	assert.Equal(t, turns, d.count("thread/turns/list"), "the thread did not change since its turn ended, so its turns are not read again")
+
 	h.script.set(embeddedThread, thread(embeddedThread, embeddedDir, `{"type":"notLoaded"}`, 300),
 		fixture(t, "turns_failed.json"))
 
 	h.now = h.now.Add(codex.Poll)
 	got = h.observe(t, r)
 	assert.Equal(t, "The last turn failed: The model is overloaded.", got["s2"].Detail, "a turn's own detail comes first")
+}
+
+func TestObserveATurnThatEndsInTheSecondItWasRead(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.alive[701] = true
+	h.procs.list = []procs.Process{{PID: 701, PPID: 600, Command: codexCommand, Dir: embeddedDir}}
+
+	r := rec("s2", embeddedDir)
+	r.AgentSessionID, r.PID = embeddedThread, 701
+
+	set := func(updated int64, turns string) {
+		h.script.set(embeddedThread, thread(embeddedThread, embeddedDir, `{"type":"notLoaded"}`, updated), fixture(t, turns))
+	}
+
+	set(100, "turns_in_flight.json")
+	assert.Equal(t, sessions.StateWorking, h.observe(t, r)["s2"].State)
+
+	// Codex stamps updates in whole seconds, so a turn that ends in the second it was read
+	// in leaves the thread's update as it was.
+	set(100, "turns_completed.json")
+
+	h.now = h.now.Add(codex.Poll)
+	assert.Equal(t, sessions.StateIdle, h.observe(t, r)["s2"].State, "a working turn is read again until it ends")
+
+	// A turn read in the second of the thread's last update can change in that second too.
+	h.now = h.now.Add(codex.Poll)
+	set(h.now.Unix(), "turns_completed.json")
+	assert.Equal(t, sessions.StateIdle, h.observe(t, r)["s2"].State)
+
+	set(h.now.Unix(), "turns_in_flight.json")
+
+	h.now = h.now.Add(codex.Poll)
+	assert.Equal(t, sessions.StateWorking, h.observe(t, r)["s2"].State,
+		"a turn read in the second of the last update is read again")
+}
+
+func TestObserveAThreadWhoseTurnsCannotBeRead(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.alive[701] = true
+	h.procs.list = []procs.Process{{PID: 701, PPID: 600, Command: codexCommand, Dir: embeddedDir}}
+
+	r := rec("s2", embeddedDir)
+	r.AgentSessionID, r.PID = embeddedThread, 701
+
+	h.script.set(embeddedThread, thread(embeddedThread, embeddedDir, `{"type":"notLoaded"}`, 100), nil)
+	assert.Equal(t, sessions.StateUnknown, h.observe(t, r)["s2"].State, "its turns can't be read, so nothing says it works")
+
+	h.script.set(embeddedThread, thread(embeddedThread, embeddedDir, `{"type":"notLoaded"}`, 101),
+		json.RawMessage(`{"data":[]}`))
+
+	h.now = h.now.Add(codex.Poll)
+	assert.Equal(t, sessions.StateUnknown, h.observe(t, r)["s2"].State, "a thread with no turn yet")
+}
+
+func TestMapsWhatItDoesNotKnowAsUnknown(t *testing.T) {
+	t.Parallel()
+
+	state, _, loaded := codex.MapStatus(codex.ThreadStatus{Type: "somethingNew"})
+	assert.True(t, loaded)
+	assert.Equal(t, sessions.StateUnknown, state, "a thread status this build doesn't know")
+
+	completed := int64(1794202020)
+
+	state, _ = codex.TurnState(codex.Turn{Status: "somethingNew", CompletedAt: &completed})
+	assert.Equal(t, sessions.StateUnknown, state, "a turn status this build doesn't know")
+
+	state, _ = codex.TurnState(codex.Turn{Status: "somethingNew"})
+	assert.Equal(t, sessions.StateUnknown, state)
+}
+
+func TestObserveTwoSessionsInOneFolderKeepTheirOwnProcesses(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.alive[800], h.alive[801], h.alive[802] = true, true, true
+	h.procs.list = []procs.Process{
+		{PID: 802, PPID: 600, Command: codexCommand, Dir: hostedDir},
+		{PID: 801, PPID: 600, Command: codexCommand, Dir: hostedDir},
+		{PID: 800, PPID: 600, Command: codexCommand, Dir: hostedDir},
+	}
+
+	a, b, c := rec("a", hostedDir), rec("b", hostedDir), rec("c", hostedDir)
+	a.AgentSessionID, a.PID = "t-a", 800
+	b.AgentSessionID, b.PID = "t-b", 801
+
+	h.script.set("t-a", thread("t-a", hostedDir, `{"type":"idle"}`, 10), nil)
+	h.script.set("t-b", thread("t-b", hostedDir, `{"type":"idle"}`, 10), nil)
+
+	got := h.observe(t, a, b, c)
+	assert.Equal(t, 800, got["a"].PID, "a session keeps its own process")
+	assert.Equal(t, 801, got["b"].PID)
+	assert.Equal(t, 802, got["c"].PID, "a process another session has is never taken")
+
+	h.alive[801] = false
+	h.procs.list = slices.DeleteFunc(h.procs.list, func(p procs.Process) bool { return p.PID == 801 })
+
+	h.now = h.now.Add(codex.Recheck)
+	got = h.observe(t, a, b)
+	assert.Equal(t, sessions.StateEnded, got["b"].State)
+	assert.Equal(t, sessions.StateIdle, got["a"].State, "the other session's process still runs")
+	assert.Equal(t, 800, got["a"].PID)
+}
+
+func TestObserveListsThreadsByTheFolderAndWhereItLeads(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+
+	root := t.TempDir()
+	target := filepath.Join(root, "target")
+	link := filepath.Join(root, "link")
+
+	require.NoError(t, os.Mkdir(target, 0o700))
+	require.NoError(t, os.Symlink(target, link))
+
+	resolved, err := filepath.EvalSymlinks(link)
+	require.NoError(t, err)
+
+	h.observe(t, rec("s1", link))
+
+	lists := h.dialer.daemon().requests("thread/list")
+	require.Len(t, lists, 1)
+
+	var params struct {
+		Cwd []string `json:"cwd"`
+	}
+
+	require.NoError(t, json.Unmarshal(lists[0].Params, &params))
+	assert.ElementsMatch(t, []string{link, resolved}, params.Cwd,
+		"Codex filters by the exact folder it recorded, which has its links resolved")
+}
+
+func TestObserveBoundsTheDial(t *testing.T) {
+	t.Parallel()
+
+	d := &deadlineDialer{}
+	obs := codex.New(codex.Config{Dialer: d, Home: t.TempDir()})
+
+	t.Cleanup(obs.Close)
+
+	obs.Observe(t.Context(), launchedAt(), []sessions.Record{rec("s1", hostedDir)})
+
+	require.Len(t, d.left, 1)
+	assert.LessOrEqual(t, d.left[0], 3*time.Second, "a daemon that hangs holds following up only briefly")
+}
+
+// deadlineDialer fails every Dial, recording how long each had left.
+type deadlineDialer struct {
+	left []time.Duration
+}
+
+func (d *deadlineDialer) Dial(ctx context.Context, _ string) (*codex.Client, error) {
+	if deadline, ok := ctx.Deadline(); ok {
+		d.left = append(d.left, time.Until(deadline))
+	}
+
+	return nil, errDialRefused
+}
+
+// rolloutStamp is a session_meta payload's timestamp field for at.
+func rolloutStamp(at time.Time) string {
+	return `,"timestamp":"` + at.UTC().Format(time.RFC3339Nano) + `"`
+}
+
+// writeRollout writes a rollout file for thread id, started at started in dir, into the
+// day folder of written under codexHome, with extra added to its first line's payload, and
+// stamps it written then. It returns the file's path.
+func writeRollout(t *testing.T, codexHome string, started time.Time, id, dir, extra string, written time.Time) string {
+	t.Helper()
+
+	dayDir := filepath.Join(codexHome, "sessions", written.Local().Format("2006/01/02")) //nolint:gosmopolitan // Codex's folders are local days
+	require.NoError(t, os.MkdirAll(dayDir, 0o700))
+
+	name := "rollout-" + started.Local().Format("2006-01-02T15-04-05") + "-" + id + ".jsonl" //nolint:gosmopolitan // as Codex names them
+	path := filepath.Join(dayDir, name)
+	line := `{"type":"session_meta","payload":{"id":"` + id + `","cwd":"` + dir + `"` + extra + `}}` + "\n"
+
+	require.NoError(t, os.WriteFile(path, []byte(line), 0o600))
+	require.NoError(t, os.Chtimes(path, written, written))
+
+	return path
+}
+
+func TestObserveWithoutTheDaemonLinksTheThreadTheLaunchStarted(t *testing.T) {
+	t.Parallel()
+
+	launch := launchedAt()
+	own := launch.Add(3 * time.Second)
+
+	for name, other := range map[string]struct {
+		started time.Time
+		extra   string
+	}{
+		"an older thread still being written": {
+			started: launch.Add(-3 * time.Hour), extra: rolloutStamp(launch.Add(-3*time.Hour)) + `,"source":"cli"`,
+		},
+		"an older thread whose first line has no time": {started: launch.Add(-3 * time.Hour), extra: `,"source":"cli"`},
+		"a subagent's thread": {
+			started: launch.Add(2 * time.Second),
+			extra: rolloutStamp(launch.Add(2*time.Second)) +
+				`,"source":{"subagent":{"thread_spawn":{"parent_thread_id":"own-thread","depth":1}}}`,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			h := newHarness(t)
+			h.dialer.err = errDialRefused
+
+			codexHome := t.TempDir()
+			writeRollout(t, codexHome, other.started, "other-thread", embeddedDir, other.extra, h.now)
+			writeRollout(t, codexHome, own, "own-thread", embeddedDir, rolloutStamp(own)+`,"source":"cli"`, h.now)
+
+			r := rec("s1", embeddedDir)
+			r.ConfigDir = codexHome
+
+			assert.Equal(t, "own-thread", h.observe(t, r)["s1"].AgentSessionID)
+		})
+	}
+}
+
+func TestObserveWithoutTheDaemonLooksInEachLaunchsOwnDays(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.dialer.err = errDialRefused
+
+	codexHome := t.TempDir()
+	own := launchedAt().Add(3 * time.Second)
+	writeRollout(t, codexHome, own, "own-thread", embeddedDir, rolloutStamp(own), h.now)
+
+	old := rec("old", hostedDir)
+	old.ConfigDir, old.LaunchedAt = codexHome, launchedAt().Add(-10*24*time.Hour)
+
+	r := rec("s1", embeddedDir)
+	r.ConfigDir = codexHome
+
+	assert.Equal(t, "own-thread", h.observe(t, old, r)["s1"].AgentSessionID,
+		"a session left unlinked long ago does not move where a new one's thread is looked for")
+}
+
+func TestObserveWithoutTheDaemonReadsEachRolloutOnce(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a whole first line is read once", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		h.dialer.err = errDialRefused
+
+		codexHome := t.TempDir()
+		started := launchedAt().Add(3 * time.Second)
+		path := writeRollout(t, codexHome, started, "elsewhere-thread", "/srv/wt/example-repo/pr-99", rolloutStamp(started), h.now)
+
+		r := rec("s1", embeddedDir)
+		r.ConfigDir = codexHome
+
+		assert.Empty(t, h.observe(t, r)["s1"].AgentSessionID)
+
+		// Codex never rewrites a first line, so a file read again would show it here.
+		line := `{"type":"session_meta","payload":{"id":"elsewhere-thread","cwd":"` + embeddedDir + `"` + rolloutStamp(started) + `}}` + "\n"
+		require.NoError(t, os.WriteFile(path, []byte(line), 0o600))
+		require.NoError(t, os.Chtimes(path, h.now, h.now))
+
+		h.now = h.now.Add(codex.Poll)
+		assert.Empty(t, h.observe(t, r)["s1"].AgentSessionID, "the file was not read again")
+	})
+
+	t.Run("a first line still being written is read again", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		h.dialer.err = errDialRefused
+
+		codexHome := t.TempDir()
+		started := launchedAt().Add(3 * time.Second)
+		path := writeRollout(t, codexHome, started, "own-thread", embeddedDir, rolloutStamp(started), h.now)
+
+		whole, err := os.ReadFile(path) //nolint:gosec // the test's own temp file
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(path, whole[:len(whole)/2], 0o600)) //nolint:gosec // the test's own temp file
+		require.NoError(t, os.Chtimes(path, h.now, h.now))
+
+		r := rec("s1", embeddedDir)
+		r.ConfigDir = codexHome
+
+		assert.Empty(t, h.observe(t, r)["s1"].AgentSessionID)
+
+		require.NoError(t, os.WriteFile(path, whole, 0o600)) //nolint:gosec // the test's own temp file
+		require.NoError(t, os.Chtimes(path, h.now, h.now))
+
+		h.now = h.now.Add(codex.Poll)
+		assert.Equal(t, "own-thread", h.observe(t, r)["s1"].AgentSessionID)
+	})
 }
 
 func TestObserveSessionsEndAndStart(t *testing.T) {
@@ -447,7 +757,7 @@ func TestObserveEndsASessionWhoseProcessIDWentToAnotherProgram(t *testing.T) {
 
 	h := newHarness(t)
 	h.alive[730] = true
-	h.procs.list = []procs.Process{{PID: 730, PPID: 600, Command: "codex", Dir: hostedDir}}
+	h.procs.list = []procs.Process{{PID: 730, PPID: 600, Command: codexCommand, Dir: hostedDir}}
 
 	r := rec("s1", hostedDir)
 	r.AgentSessionID, r.PID = hostedThread, 730
@@ -470,7 +780,7 @@ func TestObserveLeavesTheDaemonAndCodexProcessesApart(t *testing.T) {
 	h := newHarness(t)
 	h.procs.list = []procs.Process{
 		{PID: 1, Command: "launchd", Dir: "/"},
-		{PID: 710, PPID: 1, Command: "codex", Dir: hostedDir},
+		{PID: 710, PPID: 1, Command: codexCommand, Dir: hostedDir},
 		{PID: 711, PPID: 600, Command: "zsh", Dir: hostedDir},
 	}
 
@@ -497,11 +807,12 @@ func TestObserveWithoutTheDaemon(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dayDir, name), data, 0o600)) //nolint:gosec // the test's own temp dir
 	require.NoError(t, os.Chtimes(filepath.Join(dayDir, name), h.now, h.now))
 
-	h.procs.list = []procs.Process{{PID: 720, PPID: 600, Command: "codex", Dir: embeddedDir}}
+	h.procs.list = []procs.Process{{PID: 720, PPID: 600, Command: codexCommand, Dir: embeddedDir}}
 	h.alive[720] = true
 
+	// The rollout's thread started just after this launch, as its first line says.
 	r := rec("s1", embeddedDir)
-	r.ConfigDir = codexHome
+	r.ConfigDir, r.LaunchedAt = codexHome, time.Unix(1794201440, 0)
 
 	got := h.observe(t, r)
 	assert.Equal(t, embeddedThread, got["s1"].AgentSessionID, "linked through its rollout file")
@@ -560,43 +871,6 @@ func waitClosed(d *fakeDaemon) <-chan struct{} {
 	}()
 
 	return done
-}
-
-func TestRolloutThreads(t *testing.T) {
-	t.Parallel()
-
-	home := t.TempDir()
-	now := time.Date(2026, 11, 9, 12, 0, 0, 0, time.Local) //nolint:gosmopolitan // Codex's folders are local days
-	from := now.Add(-time.Hour)
-
-	dir := filepath.Join(home, "sessions", "2026", "11", "09")
-	require.NoError(t, os.MkdirAll(dir, 0o700))
-
-	name := "rollout-2026-11-09T00-17-28-" + embeddedThread + ".jsonl"
-	data, err := os.ReadFile(filepath.Join("testdata", "rollout", name))
-	require.NoError(t, err)
-
-	write := func(file string, content []byte, at time.Time) {
-		path := filepath.Join(dir, file)
-		require.NoError(t, os.WriteFile(path, content, 0o600)) //nolint:gosec // the test's own temp dir
-		require.NoError(t, os.Chtimes(path, at, at))
-	}
-
-	write(name, data, now)
-	write("rollout-old.jsonl", data, now.Add(-2*time.Hour))
-	write("rollout-broken.jsonl", []byte("not json\n"), now)
-	write("notes.txt", data, now)
-	write("rollout-long.jsonl", []byte(`{"type":"session_meta","payload":{"id":"long","cwd":"/srv/x","pad":"`+
-		strings.Repeat("x", 200<<10)+`"}}`+"\n"), now)
-
-	got := codex.RolloutThreads(home, from, now)
-
-	ids := map[string]string{}
-	for _, th := range got {
-		ids[th.ID] = th.Cwd
-	}
-
-	assert.Equal(t, map[string]string{embeddedThread: embeddedDir, "long": "/srv/x"}, ids)
 }
 
 // fakeProcs is a procs.Lister that lists list, or fails with err.

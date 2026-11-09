@@ -221,8 +221,16 @@ type Shell struct {
 	measured *time.Timer
 
 	// redraw holds one pending ask to redraw the menu bar: asks that come while one is
-	// pending fold into it.
+	// pending fold into it. full is set by an ask for a whole redraw, which every ask but
+	// a sessions change is.
 	redraw chan struct{}
+	full   atomic.Bool
+
+	// drawn reports that the menu was drawn, and drawnWaiting are the rows of the sessions
+	// waiting for the user it was drawn with, so a sessions change that leaves them as
+	// they were redraws nothing. Only the redraw loop touches them.
+	drawn        bool
+	drawnWaiting []menubar.Waiting
 
 	timedOut atomic.Bool
 	stopOnce sync.Once
@@ -301,10 +309,11 @@ func (s *Shell) Stop() error {
 	return s.closeErr
 }
 
-// Emit acts on e, until the shell stops: a window event goes on to the page, an inbox or
-// sessions change also redraws the menu bar, a request to reveal an item brings the window
-// forward, a theme or menu bar change reaches the window or the icon, and the first paint
-// ends a startup measurement. It never waits for a redraw.
+// Emit acts on e, until the shell stops: a window event goes on to the page, an inbox
+// change also redraws the menu bar, and a sessions change does when the sessions waiting
+// for the user read otherwise than the menu shows them, a request to reveal an item brings
+// the window forward, a theme or menu bar change reaches the window or the icon, and the
+// first paint ends a startup measurement. It never waits for a redraw.
 func (s *Shell) Emit(e event.Event) {
 	if s.stopping.Load() {
 		return
@@ -316,7 +325,7 @@ func (s *Shell) Emit(e event.Event) {
 		s.askRedraw()
 	case event.SessionsUpdated:
 		s.frontend.Emit(e)
-		s.askRedraw()
+		s.askSessionsRedraw()
 	case event.RevealItem:
 		s.reveal(e)
 	case event.ThemeChanged:

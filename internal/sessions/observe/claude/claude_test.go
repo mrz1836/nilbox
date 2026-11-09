@@ -347,6 +347,165 @@ func TestObserveEndsASessionLeftOutPastTheGraceThoughItsProcessIDRuns(t *testing
 		"left out that long, the process ID belongs to another program")
 }
 
+func TestObserveAsksForSessionsThatEndedOnlyWhenTheFolderChanges(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.runner.out = "[]"
+
+	ended := h.record(idleID)
+	ended.State, ended.LaunchedAt = sessions.StateEnded, h.now.Add(-48*time.Hour)
+
+	assert.Empty(t, h.observe(t, ended), "an ended session not listed has nothing to report")
+	require.Len(t, h.runner.all(), 1, "listed once when it is new")
+
+	for range 3 {
+		h.now = h.now.Add(claude.SafetyPoll)
+		assert.Empty(t, h.observe(t, ended))
+	}
+
+	assert.Len(t, h.runner.all(), 1, "no safety poll for sessions that ended")
+	assert.Zero(t, h.procs.calls, "nor any look at the running processes")
+
+	sessionsDir := filepath.Join(h.home, ".claude", "sessions")
+	testutil.WriteFile(t, filepath.Join(sessionsDir, "41005.json"), "{}")
+	require.NoError(t, os.Chtimes(sessionsDir, h.now, h.now.Add(time.Hour)))
+
+	h.runner.out = string(fixture(t, "agents.json"))
+	h.now = h.now.Add(time.Second)
+
+	got := h.observe(t, ended)
+	assert.Len(t, h.runner.all(), 2, "a session started in the folder lists them again")
+	assert.Equal(t, sessions.Observation{ID: ended.ID, State: sessions.StateIdle, PID: 41005, Seen: true}, got[ended.ID],
+		"resumed outside the app")
+
+	t.Run("without a sessions folder", func(t *testing.T) {
+		t.Parallel()
+
+		blind := newHarness(t)
+		require.NoError(t, os.RemoveAll(filepath.Join(blind.home, ".claude", "sessions")))
+
+		r := blind.record(idleID)
+		r.State = sessions.StateEnded
+
+		blind.observe(t, r)
+		blind.now = blind.now.Add(time.Hour)
+		blind.observe(t, r)
+
+		assert.Len(t, blind.runner.all(), 1, "no blind poll for sessions that ended")
+	})
+}
+
+func TestObserveFollowsTheConversationItsProcessMovedOnTo(t *testing.T) {
+	t.Parallel()
+
+	const cleared = "aaaaaaaa-2222-4333-8444-555555555555"
+
+	h := newHarness(t)
+	h.alive[41002] = true
+
+	r := h.record(cleared)
+	r.PID, r.State = 41002, sessions.StateIdle
+
+	got := h.observe(t, r)
+	assert.Equal(t, sessions.Observation{
+		ID: r.ID, AgentSessionID: busyID, State: sessions.StateWorking, PID: 41002, Seen: true, Relinked: true,
+	}, got[r.ID], "its process lists another conversation in its folder: /clear started it")
+
+	t.Run("not one another session follows", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		h.alive[41002] = true
+
+		moved := h.record(cleared)
+		moved.PID, moved.State = 41002, sessions.StateIdle
+
+		got := h.observe(t, moved, h.record(busyID))
+		assert.Equal(t, sessions.Observation{ID: moved.ID}, got[moved.ID], "kept as it was, briefly unlisted")
+	})
+
+	t.Run("not one in another folder", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		h.alive[41002] = true
+
+		elsewhere := h.record(cleared)
+		elsewhere.PID, elsewhere.State, elsewhere.Dir = 41002, sessions.StateIdle, "/srv/wt/example-repo/pr-99"
+
+		assert.Equal(t, sessions.Observation{ID: elsewhere.ID}, h.observe(t, elsewhere)[elsewhere.ID],
+			"the process ID went to a session in another folder")
+	})
+}
+
+func TestObserveTakesOnlyAClaudeProcessForAnUnlistedSession(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		procs     []procs.Process
+		cannotAsk bool
+		want      sessions.State
+		pid       int
+	}{
+		"another program, Claude Code answering": {
+			procs: []procs.Process{{PID: 600, Command: "node"}}, want: sessions.StateEnded,
+		},
+		"another program, Claude Code not answering": {
+			procs: []procs.Process{{PID: 600, Command: "node"}}, cannotAsk: true, want: sessions.StateUnknown,
+		},
+		"the claude command": {
+			procs: []procs.Process{{PID: 600, Command: "zsh"}, {PID: 601, Command: "/usr/local/bin/claude"}},
+			want:  sessions.StateUnknown, pid: 601,
+		},
+		"a build named for its version": {
+			procs: []procs.Process{{PID: 602, Command: "2.1.319"}}, want: sessions.StateUnknown, pid: 602,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			h := newHarness(t)
+			h.runner.out = "[]"
+
+			if tt.cannotAsk {
+				h.runner.err = assert.AnError
+			}
+
+			r := h.record("99999999-2222-4333-8444-555555555555")
+			r.LaunchedAt = h.now.Add(-claude.Grace - time.Second)
+
+			for _, p := range tt.procs {
+				p.Dir = r.Dir
+				h.procs.list = append(h.procs.list, p)
+			}
+
+			got := h.observe(t, r)[r.ID]
+			assert.Equal(t, tt.want, got.State)
+			assert.Equal(t, tt.pid, got.PID, "another program's process is never taken for the session's")
+		})
+	}
+}
+
+func TestObserveFindsATranscriptUnderAnyConfigDirectoryName(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	work := filepath.Join(h.home, ".claude[work]")
+	testutil.WriteFile(t, filepath.Join(work, "projects", "-srv-wt-example-repo-pr-15", idleID+".jsonl"),
+		string(fixture(t, "transcript.jsonl")))
+	testutil.WriteFile(t, filepath.Join(h.home, ".claudew", "projects", "p", idleID+".jsonl"),
+		`{"type":"assistant","message":{"role":"assistant","content":"a sibling profile's"}}`+"\n")
+
+	r := h.record(idleID)
+	r.ConfigDir = work
+
+	assert.Contains(t, h.observe(t, r)[r.ID].LastMessage, "has no test",
+		"the config directory's name is read as named, not as a pattern")
+}
+
 func TestObserveWhenClaudeCannotBeAsked(t *testing.T) {
 	t.Parallel()
 
@@ -361,9 +520,26 @@ func TestObserveWhenClaudeCannotBeAsked(t *testing.T) {
 	gone.PID = 41005
 
 	got := h.observe(t, running, gone)
+	assert.Empty(t, got[running.ID].State, "one failed listing leaves the session as it was")
+	assert.Equal(t, sessions.StateEnded, got[gone.ID].State)
+
+	h.now = h.now.Add(claude.AbsentGrace)
+
+	got = h.observe(t, running)
 	assert.Equal(t, sessions.StateUnknown, got[running.ID].State, "status unavailable, not a guess")
 	assert.NotEmpty(t, got[running.ID].Detail)
-	assert.Equal(t, sessions.StateEnded, got[gone.ID].State)
+
+	h.runner.err = nil
+	h.now = h.now.Add(claude.SafetyPoll)
+
+	got = h.observe(t, running)
+	assert.Equal(t, sessions.StateWorking, got[running.ID].State, "listed again once Claude Code answers")
+
+	h.runner.err = assert.AnError
+	h.now = h.now.Add(claude.SafetyPoll)
+
+	got = h.observe(t, running)
+	assert.Empty(t, got[running.ID].State, "a failure after an answer gets its grace again")
 
 	h.procs.err = procs.ErrUnsupported
 	unlisted := h.record("99999999-2222-4333-8444-555555555555")
@@ -447,12 +623,15 @@ func (f runnerFunc) Run(ctx context.Context, name string, args ...string) (stdou
 	return f(ctx, name, args...)
 }
 
-// fakeProcs is a procs.Lister that lists list, or fails with err.
+// fakeProcs is a procs.Lister that lists list, or fails with err, and counts its calls.
 type fakeProcs struct {
-	list []procs.Process
-	err  error
+	list  []procs.Process
+	err   error
+	calls int
 }
 
 func (f *fakeProcs) Processes(context.Context) ([]procs.Process, error) {
+	f.calls++
+
 	return f.list, f.err
 }

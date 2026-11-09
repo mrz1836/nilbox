@@ -16,6 +16,9 @@ export interface LaunchHoldDialogProps {
   // agents name the agents of the sessions already running, for a launch held back for
   // them.
   agents?: readonly AgentInfo[]
+  // item is the item the launch is for, so a running session started on another item,
+  // as two can share a clone, is named.
+  item?: { repo: string; number: number } | undefined
   onConfirm: () => void
   onCancel: () => void
   // onShow brings a running session's terminal tab forward, by its ID, instead of
@@ -28,10 +31,12 @@ export interface LaunchHoldDialogProps {
 function RunningBody({
   hold,
   agents,
+  item,
   onShow,
 }: {
   hold: LaunchHold
   agents: readonly AgentInfo[]
+  item?: { repo: string; number: number } | undefined
   onShow?: ((sessionId: string) => void) | undefined
 }) {
   const where = hold.worktree === '' ? hold.dir : `worktree ${hold.worktree}`
@@ -43,6 +48,12 @@ function RunningBody({
         {hold.running.map((r) => (
           <li key={r.sessionId} className="text-text">
             <span className="font-medium">{agentLabel(agents, r.agent)}</span> {r.doing}
+            {item !== undefined && (r.repo !== item.repo || r.number !== item.number) && (
+              <span className="text-muted">
+                {' on '}
+                {r.repo}#{r.number}
+              </span>
+            )}
             {r.since !== '' && (
               <span className="text-muted">
                 {' · '}
@@ -143,7 +154,15 @@ function UncheckedBody({ hold, agentName }: { hold: LaunchHold; agentName: strin
 // checked, or where a session is already running in the folder the launch would start in.
 // Cancel is the default; Open anyway (or Start another) confirms exactly what was shown,
 // so a push, or another session, in the meantime asks again.
-export function LaunchHoldDialog({ hold, agentName, agents = [], onConfirm, onCancel, onShow }: LaunchHoldDialogProps) {
+export function LaunchHoldDialog({
+  hold,
+  agentName,
+  agents = [],
+  item,
+  onConfirm,
+  onCancel,
+  onShow,
+}: LaunchHoldDialogProps) {
   const agent = hold.reason === 'agentFiles'
 
   if (hold.reason === 'running') {
@@ -155,7 +174,7 @@ export function LaunchHoldDialog({ hold, agentName, agents = [], onConfirm, onCa
         onConfirm={onConfirm}
         onCancel={onCancel}
       >
-        <RunningBody hold={hold} agents={agents} onShow={onShow} />
+        <RunningBody hold={hold} agents={agents} item={item} onShow={onShow} />
       </ConfirmDialog>
     )
   }

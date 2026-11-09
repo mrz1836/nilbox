@@ -452,6 +452,7 @@ export function LaunchControls({
           hold={state.hold}
           agentName={agentName}
           agents={agents}
+          item={{ repo: item.repo, number: item.number }}
           onCancel={() => {
             setState({ kind: 'idle' })
           }}

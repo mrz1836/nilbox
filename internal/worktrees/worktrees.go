@@ -154,7 +154,9 @@ type Session struct {
 	// program is named after its version, such as "2.1.319".
 	Command string `json:"command"`
 
-	// Agent is the coding agent when the process is a session the app follows, or "".
+	// Agent is the coding agent when the process is a session the app follows, or "". A
+	// followed session stands for the processes folded with it, such as the user's shell
+	// it runs in.
 	Agent agent.ID `json:"agent"`
 }
 

@@ -103,20 +103,23 @@ func Args(id ID, o Options) ([]string, error) {
 	return s.args(o), nil
 }
 
-// ErrInvalidSessionID is returned for a session ID that could be read as anything but
-// one, or for a launch that both starts a session with an ID and resumes one.
+// ErrInvalidSessionID is returned for a session ID that is not a UUID, or for a launch
+// that both starts a session with an ID and resumes one.
 var ErrInvalidSessionID = errors.New("invalid session ID")
 
-// maxSessionIDLen caps a session ID: UUIDs, which both agents use, are 36 long.
-const maxSessionIDLen = 128
+// sessionIDPattern is what a session ID looks like: a UUID in its 36-character form,
+// with a version (1 to 8) and the standard variant, as Claude Code's sessions (version 4)
+// and Codex's threads (version 7) are. Both agents read anything else they are asked to
+// resume as a session's name, which could pick another session, and none of it can be
+// read as a flag.
+var sessionIDPattern = regexp.MustCompile(
+	`^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[1-8][0-9A-Fa-f]{3}-[89ABab][0-9A-Fa-f]{3}-[0-9A-Fa-f]{12}$`,
+)
 
-// sessionIDPattern is what a session ID looks like: a letter or digit, then up to 127
-// letters, digits, dashes, and underscores, so it is never read as a flag.
-var sessionIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
-
-// ValidSessionID reports whether id can be passed as a session ID (see sessionIDPattern).
+// ValidSessionID reports whether id can be passed as a session ID: a UUID (see
+// sessionIDPattern).
 func ValidSessionID(id string) bool {
-	return len(id) <= maxSessionIDLen && sessionIDPattern.MatchString(id)
+	return sessionIDPattern.MatchString(id)
 }
 
 // validateSessionIDs checks the session a launch starts or resumes.

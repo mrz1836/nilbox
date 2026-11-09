@@ -122,6 +122,12 @@ type spec interface {
 	// configFlags names the option that overrides one config value, such as -c, or nil.
 	configFlags() []string
 
+	// switches lists the agent's short options that take no value, such as -p. A
+	// single-dash argument sets its first letter's option, then, while that option is a
+	// switch, the next letter's, so -cw is -c -w, while an option that takes a value
+	// holds the rest of the argument, so -rabc is -r abc.
+	switches() []string
+
 	// commands lists the words that make the agent run another command instead of a
 	// session, such as Codex's exec, when one comes before the prompt. An agent whose
 	// prompt comes first lists none.

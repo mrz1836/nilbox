@@ -131,6 +131,10 @@ type Watcher struct {
 	// AttentionSink hears of it.
 	waiting map[string]time.Time
 
+	// known holds the last state each running session reported that was not
+	// StateUnknown, so a moment its agent could not be asked is not taken for a change.
+	known map[string]State
+
 	// observing reports whether the observers were asked since they were last closed.
 	observing bool
 
@@ -144,7 +148,7 @@ func NewWatcher(cfg WatcherConfig) *Watcher {
 		store: cfg.Store, observers: cfg.Observers, toggle: cfg.Switch, attention: cfg.Attention,
 		events: event.Or(cfg.Events), clock: clock.Or(cfg.Clock), home: cfg.Home, logger: logging.Or(cfg.Logger),
 		tick: cfg.Tick, debounce: cfg.Debounce, newID: cfg.NewID, wake: make(chan struct{}, 1),
-		waiting: map[string]time.Time{},
+		waiting: map[string]time.Time{}, known: map[string]State{},
 	}
 
 	if w.newID == nil {
@@ -253,15 +257,16 @@ func (w *Watcher) idle(ctx context.Context, live, ended []Record) (time.Duration
 
 	w.closeObserversLocked()
 	clear(w.waiting)
+	clear(w.known)
 
 	return wait, true
 }
 
-// resumable returns the sessions that ended in the last ReviveWindow and could be resumed
-// outside the app under the same ID, as Claude Code's can, newest of each ID, leaving out
-// an ID a running session already has.
+// resumable returns the sessions that ended in the last ReviveWindow, however long ago
+// they were launched, and could be resumed outside the app under the same ID, as Claude
+// Code's can: the last of each ID to end, leaving out an ID a running session already has.
 func (w *Watcher) resumable(ctx context.Context, now time.Time, live []Record) []Record {
-	recent, err := w.store.Recent(ctx, now.Add(-ReviveWindow))
+	ended, err := w.store.EndedSince(ctx, now.Add(-ReviveWindow))
 	if err != nil {
 		return nil
 	}
@@ -273,10 +278,9 @@ func (w *Watcher) resumable(ctx context.Context, now time.Time, live []Record) [
 
 	var out []Record
 
-	for _, r := range recent {
+	for _, r := range ended {
 		a, err := agent.Lookup(r.Agent)
-		if r.State.Live() || r.AgentSessionID == "" || seen[r.AgentSessionID] || err != nil || !a.SessionIDs ||
-			now.Sub(r.EndedAt) > ReviveWindow {
+		if r.AgentSessionID == "" || seen[r.AgentSessionID] || err != nil || !a.SessionIDs {
 			continue
 		}
 
@@ -307,24 +311,34 @@ func (w *Watcher) revive(ctx context.Context, now time.Time, ended []Record, obs
 			continue
 		}
 
-		if !o.Seen || !o.State.Live() {
-			continue
+		if id, ok := w.reviveOne(ctx, now, r, o); ok {
+			o.ID, revived = id, true
+			out = append(out, o)
 		}
-
-		r.ID, r.ResumedFrom, r.Prompt, r.PromptHead, r.PID = w.newID(), r.ID, "", "", 0
-		r.State, r.Detail, r.LastMessage, r.LaunchedAt = StateStarting, "", "", now
-
-		if err := w.store.Insert(ctx, r); err != nil {
-			w.logger.WarnContext(ctx, "could not follow a session resumed outside the app", "error", err)
-
-			continue
-		}
-
-		o.ID, revived = r.ID, true
-		out = append(out, o)
 	}
 
 	return out, revived
+}
+
+// reviveOne records ended, which its agent listed as o, as a new session resumed from it,
+// when o shows it running again, and returns the new session's ID.
+func (w *Watcher) reviveOne(ctx context.Context, now time.Time, ended Record, o Observation) (string, bool) {
+	if !o.Seen || !o.State.Live() {
+		return "", false
+	}
+
+	r := ended
+	r.ID, r.ResumedFrom, r.Prompt, r.PromptHead, r.PID = w.newID(), ended.ID, "", "", 0
+	r.State, r.Detail, r.LastMessage, r.LaunchedAt = StateStarting, "", "", now
+
+	// A launch that resumed the session from the app may have recorded it since the
+	// running sessions were read; then that record follows it, not a second one.
+	inserted, err := w.store.InsertUnlessLive(ctx, r)
+	if err != nil {
+		w.logger.WarnContext(ctx, "could not follow a session resumed outside the app", "error", err)
+	}
+
+	return r.ID, err == nil && inserted
 }
 
 // wait waits until next has passed, or until woken when next is 0, and reports false once
@@ -399,41 +413,63 @@ func (w *Watcher) observe(ctx context.Context, now time.Time, live []Record) []O
 // waited the debounce, and a turn finished at once.
 func (w *Watcher) heed(ctx context.Context, now time.Time, changes []Change) {
 	for _, c := range changes {
-		if !c.StateChanged() {
-			continue
-		}
-
-		switch {
-		case c.After.State.NeedsYou():
-			w.waiting[c.After.ID] = now
-		default:
-			delete(w.waiting, c.After.ID)
-		}
-
-		if w.attention != nil && c.Before.State == StateWorking && c.After.State == StateIdle {
-			w.attention.Finished(ctx, c.After.Session(w.home))
-		}
+		w.heedOne(ctx, now, c)
 	}
 
 	w.remind(ctx, now)
 }
 
+// heedOne takes in one change. A session whose agent could not be asked for a moment,
+// StateUnknown, changes nothing: what it reports next is compared with what it reported
+// before, so a prompt it still waits on is not announced twice, and a turn that finished
+// meanwhile is still announced.
+func (w *Watcher) heedOne(ctx context.Context, now time.Time, c Change) {
+	id, after := c.After.ID, c.After.State
+	if !c.StateChanged() || after == StateUnknown {
+		return
+	}
+
+	before, ok := w.known[id]
+	if !ok {
+		before = c.Before.State
+	}
+
+	if after.Live() {
+		w.known[id] = after
+	} else {
+		delete(w.known, id)
+	}
+
+	switch {
+	case before == after:
+		return
+	case after.NeedsYou():
+		w.waiting[id] = now
+	default:
+		delete(w.waiting, id)
+	}
+
+	if w.attention != nil && before == StateWorking && after == StateIdle {
+		w.attention.Finished(ctx, c.After.Session(w.home))
+	}
+}
+
 // remind hands the AttentionSink each session that has waited for the user the debounce,
-// once.
+// once. One whose agent cannot be asked just now stays waiting until it can.
 func (w *Watcher) remind(ctx context.Context, now time.Time) {
 	for id, since := range w.waiting {
 		if now.Sub(since) < w.debounce {
 			continue
 		}
 
-		delete(w.waiting, id)
-
-		if w.attention == nil {
+		r, err := w.store.Get(ctx, id)
+		if err == nil && r.State == StateUnknown {
 			continue
 		}
 
-		r, err := w.store.Get(ctx, id)
-		if err != nil || !r.State.NeedsYou() {
+		delete(w.waiting, id)
+
+		if w.attention == nil || err != nil || !r.State.NeedsYou() {
 			continue
 		}
 

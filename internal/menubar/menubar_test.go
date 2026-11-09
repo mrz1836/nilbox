@@ -1,6 +1,7 @@
 package menubar
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -173,4 +174,30 @@ func TestSummarizeListsTheSessionsWaitingFirst(t *testing.T) {
 	}, got.Waiting)
 	assert.Zero(t, got.Count, "the count stays the inbox's")
 	assert.Equal(t, "Waiting for you", WaitingTitle)
+}
+
+func TestManySessionsWaitingShowHowManyMore(t *testing.T) {
+	t.Parallel()
+
+	waiting := make([]sessions.Session, 0, PerSection+2)
+	for i := range PerSection + 2 {
+		waiting = append(waiting, sessions.Session{
+			ID: "s" + strconv.Itoa(i+1), Agent: agent.Claude, Repo: "acme-org/example-repo", Number: i + 1,
+			State: sessions.StateNeedsApproval,
+		})
+	}
+
+	got := Summarize(inbox.Snapshot{}, waiting, now)
+
+	require.Len(t, got.Waiting, PerSection)
+	assert.Equal(t, "s1", got.Waiting[0].SessionID, "the first ones, in order")
+	assert.Equal(t, "s"+strconv.Itoa(PerSection), got.Waiting[PerSection-1].SessionID)
+	assert.Equal(t, 2, got.WaitingMore)
+	assert.Equal(t, "2 more…", MoreLabel(got.WaitingMore))
+	assert.Len(t, WaitingEntries(waiting), PerSection+2, "the entries before the cut are every one")
+
+	exactly := Summarize(inbox.Snapshot{}, waiting[:PerSection], now)
+	assert.Len(t, exactly.Waiting, PerSection)
+	assert.Zero(t, exactly.WaitingMore)
+	assert.Empty(t, Summarize(inbox.Snapshot{}, nil, now).Waiting)
 }
