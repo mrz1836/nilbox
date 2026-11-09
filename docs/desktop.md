@@ -94,11 +94,13 @@ part of the build.
 (the latest tag, `0.0.0` before the first release), a build number (the commit count), and the
 `git describe` commit, such as `v0.1.0-3-gabc1234`, or the bare commit hash before the first
 tag, with `-dirty` when the working tree had uncommitted changes. Settings → About shows all
-three, with the macOS version and the processor architecture, and the version of each coding
-agent installed, read with its own `--version` (`claude --version`, `codex --version`). Each
-agent is read once per build of its command and kept until the command changes, as when the
-agent updates itself, so opening About again runs nothing. Its **Report a bug** button opens a
-new GitHub issue with all of it filled in: the agents' versions only, never their paths. The bundle's `Info.plist` carries the
+three, with the macOS version and the processor architecture, the version of each coding
+agent installed, read with its own `--version` (`claude --version`, `codex --version`), and,
+under **Tools**, the GitHub CLI's (`gh --version`), whose sign-in the app borrows. Each is read
+once per build of its command and kept until the command changes, as when it updates itself,
+so opening About again runs nothing; hover a version for where its command is. Its **Report a
+bug** button opens a new GitHub issue with all of it filled in: the versions only, never their
+paths. The bundle's `Info.plist` carries the
 release version and the build number too. macOS caches app icons by that build number, so a
 new commit is what refreshes the icon Stage Manager and Finder show. An icon change you have
 not committed yet keeps the old build number; if a stale icon persists, clear the cache with

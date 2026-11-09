@@ -810,6 +810,28 @@ describe('SettingsView', () => {
     expect(agents.getByText('unknown')).toHaveAttribute('title', 'codex --version failed: boom')
   })
 
+  it('shows the GitHub CLI version with the tools', async () => {
+    renderSettings({ section: 'about' })
+
+    const tools = within(screen.getByRole('region', { name: 'Tools' }))
+    expect(await tools.findByText('2.83.1')).toHaveAttribute('title', '/opt/homebrew/bin/gh')
+    expect(tools.getByText('GitHub CLI')).toBeInTheDocument()
+  })
+
+  it('says why the tools could not be checked', async () => {
+    platform.toolVersions.mockRejectedValue(new Error('the app is closing'))
+    renderSettings({ section: 'about' })
+
+    expect(await screen.findByText("Couldn't check the tools: the app is closing")).toBeInTheDocument()
+  })
+
+  it('says it is checking the tools', async () => {
+    platform.toolVersions.mockReturnValue(new Promise(() => undefined))
+    renderSettings({ section: 'about' })
+
+    expect(await screen.findByText('Checking the tools…')).toBeInTheDocument()
+  })
+
   it('says when a coding agent is not installed', async () => {
     platform.agentVersions.mockResolvedValue([
       { agent: 'claude', name: 'Claude', installed: false, path: '', version: '', error: '' },

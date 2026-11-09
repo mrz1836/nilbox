@@ -7,6 +7,7 @@ import type {
   AgentSession,
   AgentInfo,
   AgentVersion,
+  ToolVersion,
   AppNotification,
   BudgetGauge,
   BudgetReading,
@@ -74,6 +75,14 @@ export function agentVersions(): AgentVersion[] {
   return [
     { agent: 'claude', name: 'Claude', installed: true, path: '~/.local/bin/claude', version: '2.1.319', error: '' },
     { agent: 'codex', name: 'Codex', installed: true, path: '/opt/bin/codex', version: '0.163.0', error: '' },
+  ]
+}
+
+// toolVersions are the tools other than the agents, installed, as their commands report
+// their versions.
+export function toolVersions(): ToolVersion[] {
+  return [
+    { tool: 'gh', name: 'GitHub CLI', installed: true, path: '/opt/homebrew/bin/gh', version: '2.83.1', error: '' },
   ]
 }
 

@@ -15,6 +15,7 @@ import type * as real from '../platform'
 import { clockAt, FIXED_NOW, withClock } from './clock'
 import {
   agentVersions,
+  toolVersions,
   agents,
   appInfo,
   budgetGauge,
@@ -89,6 +90,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     getAppInfo: () => Promise.resolve(appInfo()),
     reportFirstPaint: done,
     agentVersions: () => Promise.resolve(agentVersions()),
+    toolVersions: () => Promise.resolve(toolVersions()),
     bugReportURL: () => Promise.resolve('https://github.com/acme-org/example-repo/issues/new?template=bug_report.yml'),
 
     getBudget: () => Promise.resolve(budgetGauge()),

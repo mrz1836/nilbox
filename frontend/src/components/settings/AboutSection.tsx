@@ -2,7 +2,15 @@ import { useId } from 'react'
 
 import { brand } from '../../generated/brand'
 import { useQuery } from '../../lib/useQuery'
-import { agentVersions, bugReportURL, getAppInfo, openExternal, type AgentVersion, type Info } from '../../platform'
+import {
+  agentVersions,
+  bugReportURL,
+  getAppInfo,
+  openExternal,
+  toolVersions,
+  type AgentVersion,
+  type Info,
+} from '../../platform'
 import { buttonClass } from '../controls'
 import { ExternalIcon } from '../icons'
 import { Logo } from '../Logo'
@@ -27,9 +35,12 @@ function aboutRows(info: Info | null, failure: string): [string, string][] {
   ]
 }
 
-// versionOf is how the About page shows a coding agent's version: the version, with
-// where its command is on hover; "not installed"; or "unknown", with why on hover.
-function versionOf(a: AgentVersion): { text: string; title: string } {
+// Installed is a program whose version the About page shows: a coding agent or a tool.
+type Installed = Pick<AgentVersion, 'name' | 'installed' | 'path' | 'version' | 'error'>
+
+// versionOf is how the About page shows a program's version: the version, with where its
+// command is on hover; "not installed"; or "unknown", with why on hover.
+function versionOf(a: Installed): { text: string; title: string } {
   if (!a.installed) {
     return { text: 'not installed', title: '' }
   }
@@ -56,12 +67,39 @@ function Rows({ rows }: { rows: readonly (readonly [string, string, string?])[] 
   )
 }
 
-// AboutSection shows the product, the build it runs, the coding agents' versions, and a
-// way to report a bug with all of them filled in.
+// Versions lists programs' versions: while they are checked, that it is checking, and
+// why it couldn't when the check failed.
+function Versions({ list, error, what }: { list: readonly Installed[] | undefined; error: string; what: string }) {
+  if (error !== '') {
+    return (
+      <p className="text-sm text-muted">
+        Couldn&apos;t check the {what}: {error}
+      </p>
+    )
+  }
+
+  if (list === undefined) {
+    return <p className="text-sm text-muted">Checking the {what}…</p>
+  }
+
+  return (
+    <Rows
+      rows={list.map((a) => {
+        const { text, title } = versionOf(a)
+
+        return [a.name, text, title] as const
+      })}
+    />
+  )
+}
+
+// AboutSection shows the product, the build it runs, the coding agents' and tools'
+// versions, and a way to report a bug with all of them filled in.
 export function AboutSection() {
   const id = useId()
   const about = useQuery(() => getAppInfo(), [])
   const agents = useQuery(() => agentVersions(), [])
+  const tools = useQuery(() => toolVersions(), [])
   const info = about.data ?? null
   const failure = about.error
   const [marks] = useSetting('Version')
@@ -81,19 +119,13 @@ export function AboutSection() {
         <SectionIntro id={`${id}-agents`} title="Coding agents">
           The versions installed, as each agent&apos;s command reports them.
         </SectionIntro>
-        {agents.error !== '' ? (
-          <p className="text-sm text-muted">Couldn&apos;t check the agents: {agents.error}</p>
-        ) : agents.data === undefined ? (
-          <p className="text-sm text-muted">Checking the agents…</p>
-        ) : (
-          <Rows
-            rows={agents.data.map((a) => {
-              const { text, title } = versionOf(a)
-
-              return [a.name, text, title] as const
-            })}
-          />
-        )}
+        <Versions list={agents.data} error={agents.error} what="agents" />
+      </section>
+      <section aria-labelledby={`${id}-tools`} className="flex flex-col gap-2">
+        <SectionIntro id={`${id}-tools`} title="Tools">
+          The other programs {brand.name} runs, as each reports its version: the GitHub CLI, whose sign-in it borrows.
+        </SectionIntro>
+        <Versions list={tools.data} error={tools.error} what="tools" />
       </section>
       {info !== null && (
         <div className="flex items-center justify-between gap-6">

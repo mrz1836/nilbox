@@ -154,3 +154,36 @@ export interface Restored {
      */
     "from": string;
 }
+
+/**
+ * ToolVersion is the installed version of one tool the app runs, other than the coding
+ * agents, as its command reports it.
+ */
+export interface ToolVersion {
+    /**
+     * Tool is its command, such as gh, and Name its name, such as GitHub CLI.
+     */
+    "tool": string;
+    "name": string;
+
+    /**
+     * Installed reports that its command was found.
+     */
+    "installed": boolean;
+
+    /**
+     * Path is where its command is, with ~ for the home directory, or "".
+     */
+    "path": string;
+
+    /**
+     * Version is the version the command reports, such as 2.83.1, or "" when it could not
+     * be read.
+     */
+    "version": string;
+
+    /**
+     * Error says why the version could not be read, or is "".
+     */
+    "error": string;
+}

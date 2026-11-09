@@ -72,6 +72,7 @@ export type Agent = NonNullLists<agent.Agent>
 export type AgentID = agent.ID
 export type AgentInfo = NonNullLists<profiles.AgentInfo>
 export type AgentVersion = NonNullLists<appinfo.AgentVersion>
+export type ToolVersion = NonNullLists<appinfo.ToolVersion>
 export type Choice = NonNullLists<agent.Choice>
 // PerAgent is a setting each agent has its own value of, as launch defaults and prompts
 // store their profiles, models, and extra flags: an agent with no entry inherits.
@@ -224,6 +225,7 @@ export const {
   Info: getAppInfo,
   ReportFirstPaint: reportFirstPaint,
   AgentVersions: agentVersions,
+  ToolVersions: toolVersions,
   BugReportURL: bugReportURL,
 } = narrow(appinfo.Service)
 

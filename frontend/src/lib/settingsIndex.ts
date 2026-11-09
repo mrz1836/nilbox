@@ -236,6 +236,7 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
       keywords: [brand.name, 'build', 'commit', 'release', 'system', 'update', 'report a bug', 'feedback'],
     },
     { label: 'Coding agents', keywords: ['agent versions', 'installed', ...agentNames] },
+    { label: 'Tools', keywords: ['GitHub CLI', 'gh', 'versions', 'installed'] },
   ],
 }
 

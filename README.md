@@ -563,8 +563,9 @@ More in [Menu bar and notifications](docs/desktop.md#menu-bar-and-notifications)
 - **Settings** covers your account, appearance, notifications, snoozing, reviewing, launching,
   profiles, repositories, trust, and sensitive files. **Find a setting** in the toolbar narrows
   the sections to those with a match and marks the setting.
-- **About** shows the version, build, commit, and system, and each coding agent's installed
-  version, and **Report a bug** opens a GitHub issue with those details filled in.
+- **About** shows the version, build, commit, and system, each coding agent's installed
+  version, and the GitHub CLI's, and **Report a bug** opens a GitHub issue with those details
+  filled in.
 
 More in [The window](docs/desktop.md#the-window).
 
