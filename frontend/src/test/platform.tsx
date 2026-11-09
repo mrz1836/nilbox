@@ -162,8 +162,8 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     setWindowSize: (windowSize) => stored({ windowSize }),
 
     listWorktrees: () => Promise.resolve(worktreesSnapshot()),
-    removeWorktree: done,
-    forceRemoveWorktree: done,
+    removeWorktree: () => Promise.resolve(removeResult()),
+    forceRemoveWorktree: () => Promise.resolve(removeResult()),
     removeAllCleanWorktrees: () => Promise.resolve([]),
     pruneWorktrees: done,
     unlockWorktree: done,

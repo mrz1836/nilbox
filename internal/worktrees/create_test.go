@@ -507,7 +507,7 @@ func TestListReportsSessionsAndRemovalRefusesThem(t *testing.T) {
 	assert.Equal(t, StageInUse, row.Stage, "a session works in it")
 	assert.False(t, row.CanRemove, "a worktree in use is never removed")
 
-	err = svc.Remove(t.Context(), f.clone, got.Path)
+	err = errOf(svc.Remove(t.Context(), f.clone, got.Path))
 	require.ErrorIs(t, err, ErrInUse)
 	require.ErrorContains(t, err, "codex (pid 4242)")
 	assert.DirExists(t, got.Path)
@@ -528,17 +528,125 @@ func TestListReportsSessionsAndRemovalRefusesThem(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, mustRow(t, snap, got.Path).CanForceRemove)
 
-	err = unknown.ForceRemove(t.Context(), f.clone, got.Path)
+	err = errOf(unknown.ForceRemove(t.Context(), f.clone, got.Path))
 	require.ErrorIs(t, err, ErrSessionsUnknown)
 	assert.Contains(t, uierr.Message(err), "won't discard its changes")
 	assert.DirExists(t, got.Path)
 
-	require.Error(t, unknown.Remove(t.Context(), f.clone, got.Path), "git refuses a plain removal of a dirty worktree")
+	require.Error(t, errOf(unknown.Remove(t.Context(), f.clone, got.Path)), "git refuses a plain removal of a dirty worktree")
 	testutil.RunGit(t, got.Path, "checkout", "--", "README.md")
 	require.NoError(t, os.Remove(filepath.Join(got.Path, "notes.txt")))
 
-	require.NoError(t, unknown.Remove(t.Context(), f.clone, got.Path),
+	require.NoError(t, errOf(unknown.Remove(t.Context(), f.clone, got.Path)),
 		"a plain removal the user asks for goes ahead when sessions can't be listed: git and the locks still guard it")
+}
+
+// removeFixture is a clone with an open issue's worktree and an open pull request's,
+// both made by the app, and a service that links them to the items through a GitHub that
+// knows the pull request's head.
+func removeFixture(t *testing.T) (f remoteFixture, svc *Service, issue, pr Ensured) {
+	t.Helper()
+
+	e := newEnv(t)
+	f = newRemoteFixture(t, e)
+	gh := &fakeGitHub{}
+	gh.set("example-repo", 9, ItemState{Title: "Fix the thing", State: ItemOpen})
+	gh.set("example-repo", 7, ItemState{PullRequest: true, Title: "Add the widget", State: ItemOpen, HeadOID: f.prHead})
+	svc = e.linked(linkDeps{gh: gh, launches: &fakeLaunches{}})
+	m := NewMaker(svc)
+
+	issue, err := m.Ensure(t.Context(), f.request(item.KindIssue, 9))
+	require.NoError(t, err)
+
+	pr, err = m.Ensure(t.Context(), f.request(item.KindPR, 7))
+	require.NoError(t, err)
+
+	return f, svc, issue, pr
+}
+
+func TestRemoveTakesTheBranchWhenNothingOnItWouldBeLost(t *testing.T) {
+	t.Parallel()
+
+	f, svc, issue, pr := removeFixture(t)
+
+	// An open issue's worktree with no commits of its own: its branch is the default
+	// branch's commit, which GitHub has.
+	res, err := svc.Remove(t.Context(), f.clone, issue.Path)
+	require.NoError(t, err)
+	assert.True(t, res.Removed)
+	assert.Equal(t, "worktree-issue-9", res.DeletedBranch)
+	assert.Empty(t, res.Reason)
+	assert.Equal(t, "acme-org/example-repo#9", res.Item)
+	assert.NoDirExists(t, issue.Path)
+	assert.NotContains(t, branches(t, f.clone), "worktree-issue-9", "the next launch starts afresh")
+
+	// An open pull request's worktree at its head, which GitHub has as the pull request's.
+	res, err = svc.Remove(t.Context(), f.clone, pr.Path)
+	require.NoError(t, err)
+	assert.Equal(t, "worktree-pr-7", res.DeletedBranch)
+	assert.NotContains(t, branches(t, f.clone), "worktree-pr-7")
+}
+
+func TestRemoveKeepsABranchWithCommitsNotOnGitHub(t *testing.T) {
+	t.Parallel()
+
+	f, svc, issue, _ := removeFixture(t)
+
+	require.NoError(t, os.WriteFile(filepath.Join(issue.Path, "fix.go"), []byte("package fix\n"), 0o600))
+	testutil.RunGit(t, issue.Path, "add", "fix.go")
+	testutil.RunGit(t, issue.Path, "commit", "-q", "-m", "fix the thing")
+	work := strings.TrimSpace(testutil.RunGit(t, issue.Path, "rev-parse", "HEAD"))
+
+	res, err := svc.Remove(t.Context(), f.clone, issue.Path)
+	require.NoError(t, err)
+	assert.True(t, res.Removed)
+	assert.Empty(t, res.DeletedBranch)
+	assert.Equal(t, "kept the branch worktree-issue-9, which has 1 commit not on GitHub", res.Reason)
+	assert.Contains(t, branches(t, f.clone), "worktree-issue-9")
+
+	// The item's next launch picks the work up again.
+	again, err := NewMaker(svc).Ensure(t.Context(), f.request(item.KindIssue, 9))
+	require.NoError(t, err)
+	assert.Equal(t, ActionAttach, again.Action)
+	assert.Equal(t, work, again.Head)
+}
+
+func TestForceRemoveAndRemoveAllCleanTakeTheBranchToo(t *testing.T) {
+	t.Parallel()
+
+	f, svc, issue, pr := removeFixture(t)
+
+	dirty(t, issue.Path)
+
+	res, err := svc.ForceRemove(t.Context(), f.clone, issue.Path)
+	require.NoError(t, err)
+	assert.Equal(t, "worktree-issue-9", res.DeletedBranch, "the changes discarded, nothing on the branch is lost")
+
+	results, err := svc.RemoveAllClean(t.Context())
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, pr.Path, results[0].Path)
+	assert.True(t, results[0].Removed)
+	assert.Equal(t, "worktree-pr-7", results[0].DeletedBranch)
+	assert.Empty(t, branches(t, f.clone)[1:], "only the clone's own branch is left")
+}
+
+func TestRemoveKeepsThePullRequestsBranchWithoutGitHub(t *testing.T) {
+	t.Parallel()
+
+	e := newEnv(t)
+	f := newRemoteFixture(t, e)
+	svc := e.linked(linkDeps{gh: &fakeGitHub{err: errFakeGitHub}, launches: &fakeLaunches{}})
+
+	pr, err := NewMaker(svc).Ensure(t.Context(), f.request(item.KindPR, 7))
+	require.NoError(t, err)
+
+	// Its head is on GitHub only as the pull request's, which only GitHub can say.
+	res, err := svc.Remove(t.Context(), f.clone, pr.Path)
+	require.NoError(t, err)
+	assert.True(t, res.Removed)
+	assert.Equal(t, "kept the branch worktree-pr-7, which has 1 commit not on GitHub", res.Reason)
+	assert.Contains(t, branches(t, f.clone), "worktree-pr-7")
 }
 
 func TestABackgroundServiceLeftInAWorktreeIsNoSession(t *testing.T) {
@@ -577,9 +685,9 @@ func TestABackgroundServiceLeftInAWorktreeIsNoSession(t *testing.T) {
 	snap, err = inEditor.List(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, []Session{{PID: 87508, Command: "codex"}}, mustRow(t, snap, got.Path).InUse)
-	require.ErrorIs(t, inEditor.Remove(t.Context(), f.clone, got.Path), ErrInUse)
+	require.ErrorIs(t, errOf(inEditor.Remove(t.Context(), f.clone, got.Path)), ErrInUse)
 
-	require.NoError(t, svc.Remove(t.Context(), f.clone, got.Path))
+	require.NoError(t, errOf(svc.Remove(t.Context(), f.clone, got.Path)))
 	assert.NoDirExists(t, got.Path)
 }
 

@@ -3,8 +3,6 @@ package worktrees
 import (
 	"context"
 	"fmt"
-
-	"github.com/mrz1836/nilbox/internal/localrepos"
 )
 
 // Unlock releases a lock the coding agent wrote for a session that has certainly ended,
@@ -32,21 +30,7 @@ func (s *Service) CleanUp(ctx context.Context, repoPath, path string) (RemoveRes
 	s.act.Lock()
 	defer s.act.Unlock()
 
-	g, root, _, err := s.prepare(ctx)
-	if err != nil {
-		return RemoveResult{}, err
-	}
-
-	if !s.underRoot(repoPath, root) {
-		return RemoveResult{}, fmt.Errorf("%w: %s", ErrOutsideCloneRoot, s.display(repoPath))
-	}
-
-	clone, err := localrepos.Inspect(ctx, repoPath, s.run)
-	if err != nil {
-		return RemoveResult{}, err
-	}
-
-	snap, err := s.assessClones(ctx, g, root, []localrepos.LocalRepo{clone})
+	g, snap, err := s.assessClone(ctx, repoPath)
 	if err != nil {
 		return RemoveResult{}, err
 	}
@@ -194,7 +178,7 @@ func (s *Service) removeFinished(ctx context.Context, g git, repoPath string, wt
 		}
 	}
 
-	_, e, err := s.removable(ctx, repoPath, wt.Path, wt.Head, automatic)
+	e, err := s.removable(ctx, repoPath, wt.Path, wt.Head, automatic)
 	if err != nil {
 		return err
 	}

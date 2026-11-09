@@ -102,7 +102,7 @@ export function WorktreesView({ agentName, launchFor, ...props }: WorktreesViewP
           disabled={disabled}
           errors={errors}
           onPrune={actions.prune}
-          onRemove={actions.remove}
+          onRemove={actions.askRemove}
           onForceRemove={actions.askForceRemove}
           onUnlock={actions.unlock}
           onCleanUp={actions.cleanUp}

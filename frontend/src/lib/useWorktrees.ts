@@ -35,6 +35,7 @@ export interface WorktreesOptions {
 
 // Confirmation is the destructive action waiting for the user's yes.
 export type Confirmation =
+  | { kind: 'remove'; repoPath: string; worktree: Worktree }
   | { kind: 'force'; repoPath: string; worktree: Worktree }
   | { kind: 'all'; count: number }
   | { kind: 'finished'; count: number }
@@ -94,9 +95,9 @@ export interface WorktreesState {
   finishedCount: number
   // refresh lists again now.
   refresh: () => void
-  // remove, unlock, cleanUp, and prune make one change at once; askForceRemove,
+  // unlock, cleanUp, and prune make one change at once; askRemove, askForceRemove,
   // askRemoveAllClean, and askCleanUpFinished wait for confirm, or cancel.
-  remove: (repo: WorktreeRepo, worktree: Worktree) => void
+  askRemove: (repo: WorktreeRepo, worktree: Worktree) => void
   askForceRemove: (repo: WorktreeRepo, worktree: Worktree) => void
   unlock: (repo: WorktreeRepo, worktree: Worktree) => void
   cleanUp: (repo: WorktreeRepo, worktree: Worktree) => void
@@ -171,6 +172,16 @@ function systemClock(): Date {
 // failureAt is the message of failure when it was on the scope and path given, or ''.
 function failureAt(failure: Failure | null, scope: Failure['scope'], path: string): string {
   return failure !== null && failure.scope === scope && failure.path === path ? failure.message : ''
+}
+
+// removedNotice says what a single removal did, with what became of the worktree's branch:
+// verb is "Removed" or "Force removed".
+function removedNotice(verb: string, wt: Worktree, res: RemoveResult): string {
+  if (res.deletedBranch !== '') {
+    return `${verb} ${wt.displayPath} and its branch ${res.deletedBranch}.`
+  }
+
+  return res.reason === '' ? `${verb} ${wt.displayPath}.` : `${verb} ${wt.displayPath}; ${res.reason}.`
 }
 
 // cleanedNotice says what a single clean-up did.
@@ -275,12 +286,14 @@ export function useWorktrees({
     }
   }
 
-  const forceRemove = (repoPath: string, wt: Worktree) => {
-    void run('worktree', wt.path, async () => {
-      await forceRemoveWorktree(repoPath, wt.path)
+  const remove = (repoPath: string, wt: Worktree) => {
+    void run('worktree', wt.path, async () => removedNotice('Removed', wt, await removeWorktree(repoPath, wt.path)))
+  }
 
-      return `Force removed ${wt.displayPath}.`
-    })
+  const forceRemove = (repoPath: string, wt: Worktree) => {
+    void run('worktree', wt.path, async () =>
+      removedNotice('Force removed', wt, await forceRemoveWorktree(repoPath, wt.path)),
+    )
   }
 
   // runBulk performs a bulk action and reports each worktree's outcome.
@@ -322,12 +335,8 @@ export function useWorktrees({
       resetMessages()
       void reload()
     },
-    remove: (repo, wt) => {
-      void run('worktree', wt.path, async () => {
-        await removeWorktree(repo.path, wt.path)
-
-        return `Removed ${wt.displayPath}.`
-      })
+    askRemove: (repo, wt) => {
+      dispatch({ type: 'ask', confirmation: { kind: 'remove', repoPath: repo.path, worktree: wt } })
     },
     askForceRemove: (repo, wt) => {
       dispatch({ type: 'ask', confirmation: { kind: 'force', repoPath: repo.path, worktree: wt } })
@@ -370,6 +379,9 @@ export function useWorktrees({
           break
         case 'finished':
           void runBulk(cleanUpFinishedWorktrees, 'finished worktree', 'Cleaned up')
+          break
+        case 'remove':
+          remove(confirmation.repoPath, confirmation.worktree)
           break
         default:
           forceRemove(confirmation.repoPath, confirmation.worktree)

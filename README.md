@@ -450,10 +450,11 @@ More in [Outside contributors](docs/desktop.md#outside-contributors) and
 - **Clean up** removes a finished worktree and its `worktree-<name>` branch only when nothing would
   be lost: no uncommitted changes, every commit on GitHub, and no session running in it. A sweep
   every five minutes does the same once a pull request merges or an issue closes (on by default).
-- **Remove**, **Remove all clean**, **Force remove** (for dirty, unlocked worktrees, after a
-  confirmation), **Prune**, and **Unlock** for an agent lock whose session has ended. The main
-  worktree is never removable, a worktree in use is never removed, and a lock you set by hand is
-  never released.
+- **Remove**, **Remove all clean**, **Force remove** (for dirty, unlocked worktrees), **Prune**,
+  and **Unlock** for an agent lock whose session has ended. Each removal asks first and says what
+  becomes of the branch: a worktree's own branch goes with it when every commit on it is on
+  GitHub, and stays, with its work, when some aren't. The main worktree is never removable, a
+  worktree in use is never removed, and a lock you set by hand is never released.
 - **Recently cleaned up** lists each cleanup, by hand or automatic, with the deleted branch and the
   commit the worktree was at.
 

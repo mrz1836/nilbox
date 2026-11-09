@@ -1222,12 +1222,21 @@ session runs in the worktree:
   session did (the ID was reused, after a restart for instance). Anything in doubt counts as a
   running session. A lock you set yourself with `git worktree lock` is never released: the row
   shows the `git worktree unlock` command to run instead.
-- **Remove** runs `git worktree remove` without `--force` and keeps the branch. Git refuses a
-  dirty or locked worktree, and the row shows why. **Remove all clean** removes every clean,
-  unlocked worktree no session runs in, after a confirmation that shows the count.
+- **Remove** asks first, saying what it does to the folder and to the branch, then checks the
+  worktree again and runs `git worktree remove` without `--force`. Git refuses a dirty or
+  locked worktree, and the row shows why. The worktree's own `worktree-<name>` branch goes with
+  it when every commit on it is on GitHub (on a remote-tracking branch, or as the pull
+  request's head), so nothing is lost and the item's next launch starts afresh; it is deleted
+  only while it still points at the commit checked. A branch with commits that aren't on GitHub
+  stays, so the next launch on the item picks them up again, and a branch that isn't the
+  worktree's own always stays. The note after it says which happened. This works for an item
+  still open, such as a session that only answered a question. **Remove all clean** removes
+  every clean, unlocked worktree no session runs in, each with its branch by the same rule,
+  after a confirmation that shows the count.
 - **Force remove** is offered only on dirty, unlocked rows no session runs in, and only while
   the running processes can be listed. It runs `git worktree remove --force` after a
-  confirmation that shows the number of uncommitted files.
+  confirmation that shows the number of uncommitted files and what becomes of the branch, by
+  the same rule as **Remove**.
 - **Prune** appears for a repository with entries whose directory is gone, and runs
   `git worktree prune`.
 - The main worktree is listed for context and is never removable.

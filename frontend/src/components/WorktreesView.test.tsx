@@ -9,6 +9,7 @@ import {
   finishedWorktree,
   linkedItem,
   mainWorktree,
+  removeResult,
   worktree,
   worktreeCleanup,
   worktreeRepo,
@@ -546,7 +547,7 @@ describe('WorktreesView', () => {
     })
   })
 
-  it('removes a clean worktree without asking, then lists again', async () => {
+  it('removes a clean worktree once confirmed, saying what becomes of its branch, then lists again', async () => {
     render(<WorktreesView clock={fixedNow} />)
     await repo('example-repo')
     platform.listWorktrees.mockResolvedValue(
@@ -555,9 +556,22 @@ describe('WorktreesView', () => {
 
     await userEvent.click(row(linkedDisplay).getByRole('button', { name: 'Remove' }))
 
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    const dialog = screen.getByRole('dialog', { name: 'Remove this worktree?' })
+    expect(dialog).toHaveTextContent(
+      `This deletes the folder ${linkedDisplay}, which has no uncommitted changes. Its branch worktree-pr-7 goes with ` +
+        'it: every commit on it is on GitHub, so nothing is lost.',
+    )
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(platform.removeWorktree).not.toHaveBeenCalled()
+
+    await userEvent.click(row(linkedDisplay).getByRole('button', { name: 'Remove' }))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }))
+
     expect(platform.removeWorktree).toHaveBeenCalledWith(repoPath, linkedPath)
-    expect(await screen.findByRole('status')).toHaveTextContent(`Removed ${linkedDisplay}.`)
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      `Removed ${linkedDisplay} and its branch worktree-pr-7.`,
+    )
     expect(platform.listWorktrees).toHaveBeenCalledTimes(2)
     expect(await screen.findByRole('button', { name: 'Remove all clean (0)' })).toBeDisabled()
     expect(screen.queryByText(linkedDisplay)).not.toBeInTheDocument()
@@ -571,12 +585,79 @@ describe('WorktreesView', () => {
     await repo('example-repo')
 
     await userEvent.click(row(linkedDisplay).getByRole('button', { name: 'Remove' }))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }))
 
     expect(await row(linkedDisplay).findByRole('alert')).toHaveTextContent(
       `git refused to remove ${linkedDisplay}: has uncommitted changes`,
     )
     expect(platform.listWorktrees).toHaveBeenCalledOnce()
     expect(row(linkedDisplay).getByRole('button', { name: 'Remove' })).toBeEnabled()
+  })
+
+  it('says a branch with commits not on GitHub stays, and that the removal kept it', async () => {
+    const kept = worktree({
+      onGitHub: false,
+      unpushed: 2,
+      item: linkedItem({ kind: 'issue', number: 202, state: 'open' }),
+    })
+    platform.listWorktrees.mockResolvedValue(
+      worktreesSnapshot({ repos: [worktreeRepo({ worktrees: [mainWorktree(), kept] })] }),
+    )
+    platform.removeWorktree.mockResolvedValue(
+      removeResult({ deletedBranch: '', reason: 'kept the branch worktree-pr-7, which has 2 commits not on GitHub' }),
+    )
+    render(<WorktreesView clock={fixedNow} />)
+    await repo('example-repo')
+
+    await userEvent.click(row(linkedDisplay).getByRole('button', { name: 'Remove' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Remove this worktree?' })
+    expect(dialog).toHaveTextContent(
+      'Its branch worktree-pr-7 stays, with the 2 commits on it that aren’t on GitHub, and the next launch on ' +
+        'issue #202 picks them up again.',
+    )
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Remove' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      `Removed ${linkedDisplay}; kept the branch worktree-pr-7, which has 2 commits not on GitHub.`,
+    )
+  })
+
+  it.each([
+    [
+      'its own branch, with every commit on GitHub, for an item',
+      { item: linkedItem({ state: 'open' }) },
+      'goes with it: every commit on it is on GitHub, so nothing is lost, and the next launch on pull request #7 starts afresh.',
+    ],
+    [
+      'its own branch, with commits it cannot count',
+      { onGitHub: false, unpushed: -1 },
+      'stays, with the commits on it',
+    ],
+    ['a branch it did not make', { branch: 'feature', ownBranch: false }, 'Its branch feature stays.'],
+    ['no branch', { branch: '', detached: true }, 'It has no branch.'],
+  ])('says what removing a worktree with %s does', async (_, overrides, text) => {
+    platform.listWorktrees.mockResolvedValue(
+      worktreesSnapshot({ repos: [worktreeRepo({ worktrees: [mainWorktree(), worktree(overrides)] })] }),
+    )
+    render(<WorktreesView clock={fixedNow} />)
+    await repo('example-repo')
+
+    await userEvent.click(row(linkedDisplay).getByRole('button', { name: 'Remove' }))
+
+    expect(screen.getByRole('dialog', { name: 'Remove this worktree?' })).toHaveTextContent(text)
+  })
+
+  it('reports a removal that deleted no branch', async () => {
+    platform.removeWorktree.mockResolvedValue(removeResult({ deletedBranch: '' }))
+    render(<WorktreesView clock={fixedNow} />)
+    await repo('example-repo')
+
+    await userEvent.click(row(linkedDisplay).getByRole('button', { name: 'Remove' }))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(`Removed ${linkedDisplay}.`)
   })
 
   it('force remove confirms with the uncommitted count', async () => {
@@ -600,7 +681,7 @@ describe('WorktreesView', () => {
 
     const dialog = screen.getByRole('dialog', { name: 'Force remove this worktree?' })
     expect(dialog).toHaveTextContent(`${linkedDisplay} has 3 uncommitted files`)
-    expect(dialog).toHaveTextContent('Its branch is kept.')
+    expect(dialog).toHaveTextContent('Its branch worktree-pr-7 goes with it: every commit on it is on GitHub')
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
 
@@ -612,7 +693,9 @@ describe('WorktreesView', () => {
 
     expect(platform.forceRemoveWorktree).toHaveBeenCalledWith(repoPath, linkedPath)
     expect(platform.removeWorktree).not.toHaveBeenCalled()
-    expect(await screen.findByRole('status')).toHaveTextContent(`Force removed ${linkedDisplay}.`)
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      `Force removed ${linkedDisplay} and its branch worktree-pr-7.`,
+    )
     expect(platform.listWorktrees).toHaveBeenCalledTimes(2)
   })
 
@@ -644,7 +727,10 @@ describe('WorktreesView', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Remove all clean (2)' }))
 
     const dialog = screen.getByRole('dialog', { name: 'Remove all clean worktrees?' })
-    expect(dialog).toHaveTextContent('This removes 2 clean, unlocked worktrees. Their branches are kept.')
+    expect(dialog).toHaveTextContent(
+      'This removes 2 clean, unlocked worktrees. Each one’s own worktree-… branch goes with it when every commit on it ' +
+        'is on GitHub',
+    )
 
     await userEvent.keyboard('{Escape}')
     expect(platform.removeAllCleanWorktrees).not.toHaveBeenCalled()

@@ -43,12 +43,12 @@ export function ClearCleanups(): $CancellablePromise<void> {
 
 /**
  * ForceRemove removes one unlocked linked worktree that has uncommitted changes,
- * discarding them, with a single --force. Locked worktrees, and ones a running process
- * works in, are refused even here, so a running session's worktree is never pulled out
- * from under it; so is every worktree when the running processes cannot be listed, since
- * nothing else would stop it then.
+ * discarding them, with a single --force, and its own branch as Remove does. Locked
+ * worktrees, and ones a running process works in, are refused even here, so a running
+ * session's worktree is never pulled out from under it; so is every worktree when the
+ * running processes cannot be listed, since nothing else would stop it then.
  */
-export function ForceRemove(repoPath: string, path: string): $CancellablePromise<void> {
+export function ForceRemove(repoPath: string, path: string): $CancellablePromise<$models.RemoveResult> {
     return $Call.ByID(4169835063, repoPath, path);
 }
 
@@ -86,19 +86,23 @@ export function RecentCleanups(): $CancellablePromise<$models.Cleanup[] | null> 
 }
 
 /**
- * Remove removes one linked worktree without --force. The repository must be a clone
- * under the clone root and path one of its linked worktrees; the main worktree and
- * locked worktrees are refused before git runs, and git itself refuses a worktree with
- * uncommitted changes, which comes back as a RefusedError.
+ * Remove removes one linked worktree without --force, and with it its own worktree-<name>
+ * branch when nothing on that would be lost: every commit on it is on GitHub. A branch
+ * with commits that are not stays, with them, for the item's next launch. The repository
+ * must be a clone under the clone root and path one of its linked worktrees, which is
+ * assessed again first. The main worktree, a locked one, and one a session works in are
+ * refused before git runs, and git itself refuses one with uncommitted changes, which
+ * comes back as a RefusedError. The result says what became of the branch.
  */
-export function Remove(repoPath: string, path: string): $CancellablePromise<void> {
+export function Remove(repoPath: string, path: string): $CancellablePromise<$models.RemoveResult> {
     return $Call.ByID(3855744896, repoPath, path);
 }
 
 /**
  * RemoveAllClean removes every clean, unlocked, linked worktree whose directory still
- * exists, one at a time, and reports each outcome. Each removal is re-checked against
- * the repository first, and git refuses any worktree that changed in the meantime.
+ * exists, one at a time, each with its own branch as Remove does, and reports each
+ * outcome. Each removal is re-checked against the repository first, and git refuses any
+ * worktree that changed in the meantime.
  */
 export function RemoveAllClean(): $CancellablePromise<$models.RemoveResult[] | null> {
     return $Call.ByID(532446488);
