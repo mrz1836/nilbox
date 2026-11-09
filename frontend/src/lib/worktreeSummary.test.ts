@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest'
 
+import { brand } from '../generated/brand'
 import { removeResult, worktree } from '../test/fixtures'
 import { branchSummary, bulkSummary, failedSummary, shortName, singleSummary } from './worktreeSummary'
 
+// managed is where the app makes a worktree of example-repo.
+const managed = `~/projects/.${brand.slug}/worktrees/example-repo`
+
 describe('shortName', () => {
   it.each([
-    ['~/projects/.nilbox/worktrees/example-repo/pr-7', 'example-repo/pr-7'],
+    [`${managed}/pr-7`, 'example-repo/pr-7'],
     ['~/projects/example-repo/.claude/worktrees/issue-9', 'example-repo/issue-9'],
     ['~/projects/example-repo-scratch', 'projects/example-repo-scratch'],
     ['scratch', 'scratch'],
@@ -15,7 +19,7 @@ describe('shortName', () => {
 })
 
 describe('singleSummary', () => {
-  const wt = worktree({ displayPath: '~/projects/.nilbox/worktrees/example-repo/pr-7' })
+  const wt = worktree({ displayPath: `${managed}/pr-7` })
 
   it('names every branch deleted with the worktree', () => {
     expect(
