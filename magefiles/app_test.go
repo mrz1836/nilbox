@@ -872,13 +872,15 @@ func TestAppProcesses(t *testing.T) {
 //nolint:paralleltest // changes the process's standard output
 func TestAppProcessesFindsARealProcess(t *testing.T) {
 	requireProcessList(t)
-	requireTool(t, "sleep")
 
-	bash := requireTool(t, "bash")
+	sleep := requireTool(t, "sleep")
 	exe := filepath.Join(t.TempDir(), brand.Name+".app", "Contents", "MacOS", brand.Slug)
 
-	// bash replaces itself with sleep, run under the app's path as its command name.
-	pid, done := startProcess(t, exec.CommandContext(t.Context(), bash, "-c", `exec -a "$0" sleep 30`, exe)) //nolint:gosec // the test's own process, fixed arguments
+	// The app's path links to sleep, so sleep runs under the app's path as its command name.
+	require.NoError(t, os.MkdirAll(filepath.Dir(exe), 0o750))
+	require.NoError(t, os.Symlink(sleep, exe))
+
+	pid, done := startProcess(t, exec.CommandContext(t.Context(), exe, "30")) //nolint:gosec // the test's own process, fixed arguments
 
 	assert.Eventually(t, func() bool {
 		pids, err := appProcesses(exe)
