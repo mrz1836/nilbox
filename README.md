@@ -195,7 +195,9 @@ Wails CLI is never installed: the build runs it with `go run` at the version `go
   database is `nilbox.db` (SQLite, WAL mode), and a copy is saved before each schema migration
   (the three newest are kept). Your prompts and launch defaults are also kept in `prompts.json`
   and `launch-defaults.json` beside it, rewritten after every change, so they survive an update
-  or a damaged database. GitHub tokens are never stored there or anywhere else.
+  or a damaged database. The review sheet keeps the diffs of pull requests you open in it there
+  too, capped at 64 MB and dropped after 14 days unused. GitHub tokens are never stored there or
+  anywhere else.
 
 Full setup and every build target: [docs/desktop.md](docs/desktop.md#build-targets).
 
@@ -234,6 +236,10 @@ those, opens or copies the item's link, and, when you're assigned or asked to re
 off it on GitHub. Press **⌘F** to filter the inbox: type a few words, or pick `repo:`, `label:`,
 `author:`, and more from the field's list.
 
+Click a pull request's title to review it without leaving the app: its diff, description, checks,
+and what it still needs to merge, then one button to approve, merge, or ask for changes, pinned to
+the commit you saw. Every merge asks first.
+
 <br>
 
 ### Launch a coding agent
@@ -250,7 +256,8 @@ as the repository's or org's defaults.
 
 The **Prompts** tab starts with **Review**, **Work on it**, **Quick look**, and **Fix checks**.
 Edit them or write your own as Go templates (`{{.Title}}`, `{{.URL}}`, …), with a live preview
-filled in from a real inbox item.
+filled in from a real inbox item. **Review replies** beside them hold the text a review starts
+with, such as **LGTM** for people and **Update OK** for dependency bots.
 
 <br>
 
@@ -271,14 +278,15 @@ requests that merged, never touching `main`, `master`, or any branch you protect
 
 - **One inbox, every repository** — Review requested, Authored, and Assigned, across every repo your account can see
 - **Filter as you type** — one toolbar field narrows the inbox, the worktrees, or the settings at once, without a request to GitHub
-- **Cards that answer "is it ready?"** — checks, reviews, comments, size grade, labels, and Draft and Conflicts tags
+- **Cards that answer "is it ready?"** — checks, reviews, comments, size grade, labels, and Draft, Conflicts, and Auto-merge tags
 - **Issue projects** — each issue's GitHub project, its status and priority and size there, and its sub-issue progress, one click from the board, plus a status sort in your own order
 - **Local triage** — snooze, dismiss, or pin; wake rules end a snooze early when something changes
+- **Review without leaving** — a pull request's diff, checks, and what it still needs in one sheet; approve, merge, request changes with line comments, or update the branch, each pinned to the commit you saw and never going past branch protection unless you choose to
 - **Edits when you ask** — take yourself off an item's assignees or a pull request's reviewers from the card's menu, paced within your API budget
 - **One-click agent launch** — Claude Code or OpenAI Codex in iTerm2 or Terminal.app, in the item's own worktree
 - **Follow every session** — each card shows what its agent is doing (working, waiting for your approval, done) and what it last said, with Show in terminal and Resume, read from the agent on your Mac
 - **Profiles per repo or org** — every `~/.claude-<name>` and `~/.codex-<name>` config directory is a profile, so each repo launches on its own account
-- **Prompt library** — Go templates with highlighting, autocomplete, error checking, and a live preview
+- **Prompt library** — Go templates with highlighting, autocomplete, error checking, and a live preview, plus review replies for the text a review starts with
 - **Trust guardrails** — outside contributors launch in plan mode (Codex: read-only), and changes to sensitive files are flagged
 - **Worktrees Nilbox keeps track of** — one per item, shared by every agent, resumed on the next launch, and removed only when nothing would be lost
 - **Menu bar and notifications** — a live count in the menu bar and native banners for what's new
@@ -297,9 +305,10 @@ requests that merged, never touching `main`, `master`, or any branch you protect
   **Review requested** (open pull requests that ask for your review), **Authored** (your open
   pull requests), and **Assigned** (open issues and pull requests assigned to you). Each shows up
   to 100 items, with **N of M** when GitHub matched more.
-- **Compact cards:** the title with **Draft** and **Conflicts** tags; the repository, author, and
-  age; then checks passed out of those that ran, reviews, comments, a size grade with lines,
-  files, and commits, and the first labels in their GitHub colors.
+- **Compact cards:** the title with **Draft**, **Conflicts**, and **Auto-merge** tags (click a
+  pull request's title to review it, or the **↗** beside it to open GitHub); the repository,
+  author, and age; then checks passed out of those that ran, reviews, comments, a size grade with
+  lines, files, and commits, and the first labels in their GitHub colors.
 - **Issue projects:** an issue's card names the GitHub project it is in, with its status there
   in the project's color and its priority and size beside it; hover it for every other field
   (estimate, phase, dates, iteration), and click it to open the board. An issue with sub-issues
@@ -346,15 +355,15 @@ More in [Snooze, dismiss, and pin](docs/desktop.md#snooze-dismiss-and-pin).
 <summary><strong><code>The item menu and edits on GitHub</code></strong></summary>
 <br/>
 
-- **One menu per card:** the **⋯** beside the triage buttons opens the item on GitHub, copies its
-  link, gathers the triage actions under **Inbox actions** (with a submenu of snooze lengths), and
-  holds the edits below. The hover buttons stay for one-click triage, and the menu works from the
-  keyboard like any Mac menu.
+- **One menu per card:** the **⋯** beside the triage buttons opens a pull request in the review
+  sheet (**Review…**), opens the item on GitHub, copies its link, gathers the triage actions under
+  **Inbox actions** (with a submenu of snooze lengths), and holds the edits below. The hover
+  buttons stay for one-click triage, and the menu works from the keyboard like any Mac menu.
 - **Unassign me** takes you off an item assigned to you, and **Remove me as reviewer** takes back
   a pull request's request for your review. A request made only to a team says so instead, since
   GitHub removes a team's request for every member or none.
-- **Checked, then shown:** each edit is one REST request, and the card changes only once GitHub's
-  answer confirms it. The item stays out of that list while GitHub's search catches up.
+- **Checked, then shown:** each of these edits is one REST request, and the card changes only once
+  GitHub's answer confirms it. The item stays out of that list while GitHub's search catches up.
 - **Your account only:** an edit goes out only with the token of the account whose inbox you
   see, so a `gh auth switch` never sends one for the wrong person.
 - **Within your budget:** edits are counted in the API budget, paced well under GitHub's limits
@@ -362,6 +371,36 @@ More in [Snooze, dismiss, and pin](docs/desktop.md#snooze-dismiss-and-pin).
   as long as GitHub asks.
 
 More in [The item menu and edits on GitHub](docs/desktop.md#the-item-menu-and-edits-on-github).
+
+</details>
+
+<details>
+<summary><strong><code>Reviewing a pull request</code></strong></summary>
+<br/>
+
+- **One sheet:** click a pull request's title for its files and diffs, its description (rendered
+  with no remote images), its checks with the required ones marked, each reviewer's latest review,
+  a one-line readiness sentence such as **An approval · checks running · auto-merge available**,
+  and, for a dependency bot, what it bumps (`golang.org/x/net 0.30.0 → 0.31.0 · minor`). **←**
+  and **→** step through the list it came from.
+- **One button:** it runs the action that fits, and says what it does: **Approve & squash-merge**,
+  **Approve & auto-merge**, **Merge**, **Update branch**, **Ask Dependabot to rebase**, or
+  **Comment** when checks fail. Its menu lists every action, with why one can't run now.
+- **Every merge asks first,** with the methods the repository allows and any warnings to accept.
+  Approve, Comment, Request changes, and Update branch are one click.
+- **Safe by construction:** every write is pinned to the commit you saw: a merge after a push is
+  refused, and an approval checks nothing was pushed before it goes, so you never approve code
+  you didn't see. A fresh merge-state read comes before every merge, so an admin's
+  token never merges past branch protection on its own; **Merge past the rules** does, only
+  from the menu, with each rule it skips to accept. No agent ever approves or merges.
+- **Line comments and suggestions** on the diff, checked against it before GitHub sees them, and
+  a draft per pull request that survives closing the sheet.
+- **Ask Claude** from the sheet, and use the latest session's verdict as your review's text.
+- **Cheap:** opening is instant and free, a refresh with nothing pushed costs one GraphQL point,
+  and each write costs one point, plus one to check the head before an approval and one to three
+  for the merge-state read before a merge.
+
+More in [Reviewing a pull request](docs/desktop.md#reviewing-a-pull-request).
 
 </details>
 
@@ -420,6 +459,10 @@ More in [Coding agents and profiles](docs/desktop.md#coding-agents-and-profiles)
   with the same Go package a launch uses, reporting the line and column with "did you mean"
   suggestions, and previews it filled in for a real inbox item beside a cheat sheet of variables.
 - Set the default prompt for pull requests and for issues app-wide, per org, or per repository.
+- **Review replies** are a second library beside the agent prompts: the text the review sheet
+  starts an approval, a request for changes, or a comment with, filled in for the pull request.
+  Four starters, and a default for approvals, for bots' pull requests, for changes, and for
+  comments. A reply never launches anything.
 - Your prompts outlive updates and damaged databases. After every change the library is copied to
   `prompts.json`, and it comes back on its own whenever the database has to start over.
 - Export the library, or one prompt, to a [prompt file](docs/prompt-files.md), and import one.
@@ -517,9 +560,9 @@ More in [Menu bar and notifications](docs/desktop.md#menu-bar-and-notifications)
 - **Themes:** follow the system, or pin Light or Dark. The native window frame and menus follow.
 - **Text size:** 100%, 115%, or 130%, apart from the window's size. Text and the spacing around
   it scale together, so nothing clips.
-- **Settings** covers your account, appearance, notifications, snoozing, launching, profiles,
-  repositories, trust, and sensitive files. **Find a setting** in the toolbar narrows the sections
-  to those with a match and marks the setting.
+- **Settings** covers your account, appearance, notifications, snoozing, reviewing, launching,
+  profiles, repositories, trust, and sensitive files. **Find a setting** in the toolbar narrows
+  the sections to those with a match and marks the setting.
 - **About** shows the version, build, commit, and system, and each coding agent's installed
   version, and **Report a bug** opens a GitHub issue with those details filled in.
 
@@ -562,8 +605,9 @@ More in [The window](docs/desktop.md#the-window).
 
 > **Your data stays on your Mac.** Nilbox talks only to GitHub: `api.github.com`, and
 > `avatars.githubusercontent.com` once for your profile picture. It reads from GitHub, and changes
-> something there only when you ask it to take you off an item. Your preferences, triage state, and
-> cache never leave your machine.
+> something there only when you ask: taking you off an item, or a review, merge, or branch update
+> you send from the review sheet. Your preferences, triage state, and cache, the diffs of pull
+> requests you review included, never leave your machine.
 
 <br/>
 
@@ -670,7 +714,7 @@ magex app:check      # macOS: bindings drift check, desktop lint, and bundle bui
 |-------------------|---------------------------------------------------------------------------------------------------------------------------------|
 | `cmd/nilbox/`     | Entry point: a headless build by default, and the desktop app (window, menu bar icon, banners) with the `desktop` tag          |
 | `internal/brand/` | Product identity and design tokens; `internal/brandgen/` generates the theme, `Info.plist`, and icon artwork from it            |
-| `internal/`       | The bound services (inbox, launcher, prompts, launch defaults, settings, profiles, worktrees, notifications) and their building blocks |
+| `internal/`       | The bound services (inbox, review, launcher, prompts, launch defaults, settings, profiles, worktrees, notifications) and their building blocks |
 | `frontend/`       | The React + TypeScript frontend and its generated Go bindings                                                                   |
 | `build/`          | App and menu bar icon artwork, and the macOS bundle's `Info.plist` and icon set                                                 |
 | `magefiles/`      | Custom `magex` targets for the brand, the frontend, the app, the database queries, and measurements                             |

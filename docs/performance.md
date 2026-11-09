@@ -205,6 +205,25 @@ of up to 100 files, plus one per further 100. A refresh that finds nothing pushe
 nothing, and one refresh checks at most 20 pull requests. A launch on such a pull request asks
 for its head once more, one request, and lists its files again only if it was pushed since.
 
+The [review sheet](desktop.md#reviewing-a-pull-request) spends nothing on the scheduler's
+budget: it reads only when you open a pull request, and nothing ahead of time.
+
+| What you do | Requests |
+|---|---|
+| Open the sheet | None: it shows what it read last time |
+| Its refresh, nothing pushed since | 1 GraphQL point (none within 20 seconds of the last, unless GitHub was still working out whether it can merge, when it asks up to twice more) |
+| Its first refresh of a pull request of up to 100 files | 1 GraphQL point and 1 REST request |
+| Its refresh after a push | 1 GraphQL point, 1 REST request per 100 files, and 1 more to confirm the head when the file list doesn't name it |
+| Approve | 1 GraphQL point to check nothing was pushed since, then 1 REST request |
+| Request changes, Comment, Update branch, Ask Dependabot to rebase | 1 REST request each |
+| Merge, or merge past the rules | 1 GraphQL point per merge-state read (one, or up to three a second apart while GitHub works it out), then 1 REST request |
+| Turn on auto-merge | 1 GraphQL point |
+| A merged pull request leaving the inbox | None |
+
+GitHub's file list names the commit it listed each file at, so a read whose files all name the
+head the sheet asked for needs no separate request to confirm it, and the same list serves as
+the pull request's sensitive-file check when one is due.
+
 <br>
 
 ## Reproducing

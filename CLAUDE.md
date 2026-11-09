@@ -127,8 +127,8 @@ app:lint` reads.
   artwork the icons were rendered from. `build/darwin/` holds the bundle's generated
   `Info.plist` and the rendered icon set, `icons.icns`.
 - `internal/core/` assembles the app and builds every service the window binds: settings,
-  profiles, prompts, launch defaults, inbox, launcher, worktrees, notifications, app info, and
-  sessions.
+  profiles, prompts, launch defaults, inbox, review, launcher, worktrees, notifications, app
+  info, and sessions.
   Every `internal/*` package is plain Go, built and tested on Linux without CGO.
 - Services share their building blocks rather than keep copies: `internal/repo` and
   `internal/item` name repositories, pull requests and issues, and their worktrees;
@@ -161,7 +161,9 @@ app:lint` reads.
   every response's rate-limit reading, and what the request spent, to its `Tracker`
   (`github.RateObserver`), whose state the `Saver` keeps across runs. Every GitHub request goes
   through `(*github.Client).do`: never build an HTTP request anywhere else, nor run `gh api`;
-  `internal/repoguard/githubrequests_test.go` fails the build if anything does.
+  `internal/repoguard/githubrequests_test.go` fails the build if anything does. Every write goes
+  through the `WriteGate`, a REST one through `edit` and a GraphQL mutation through `mutate`
+  (`postGraphQL` refuses a mutation); `internal/repoguard/githubwrites_test.go` keeps it so.
 - `internal/launcher/` resolves a launch (the agent first, then that agent's profile, model,
   and flags), plans it, and writes its files; `internal/launcher/terminal/` renders the launch
   script, which only changes into the folder and runs the agent, and opens it in the user's
@@ -194,7 +196,24 @@ app:lint` reads.
   a WebSocket it speaks itself, since only `internal/github` speaks HTTP), falling back to the
   rollout files. Each observer degrades to `StateUnknown` rather than guess, and a session's
   process says whether it still runs. Following never sends a session anything, and nothing here
-  reaches the network.
+  reaches the network. `LastWords` reads a session's whole last message from the agent's own
+  files, on demand, for the review sheet.
+- `internal/review/` is the review sheet's service. `Decide` is pure: from a pull request's
+  facts it works out every action's offer and the one primary, and `Act` runs it again before
+  any write. Every write goes through the inbox's `Actor` (the item lock, the account check,
+  and the token retry, never bound, since its methods take funcs), is pinned to the head the
+  user saw (an approval reads the head first, since GitHub takes a review of an older commit),
+  and a merge first reads `mergeStateStatus` fresh and merges only when GitHub says it can, so
+  an admin's token never merges past branch protection on its own: only `merge_bypass`
+  ("merge past the rules") does, offered when GitHub sets `viewerCanMergeAsAdmin`, never the
+  sheet's button, and with each rule it skips to accept. Each step is reported as an
+  `event.ReviewProgress`, which the sheet shows while the user waits. Line comments are checked
+  against the cached diff (`hunks.go`) before anything is sent. It owns `review_diffs` and
+  `review_diff_files`, a bounded cache of the diffs it read (per pull request, in all, and by
+  age), pruned in the same transaction that writes. Nothing here lets an agent approve or merge.
+- `internal/bump/` reads a dependency update from a bot's pull request title (and Dependabot's
+  commit trailer) into an `Update`, for the review sheet and the `.Dependency` prompt variables.
+  It is pure and imports no service.
 - `internal/measure/` and `magefiles/measure.go` take the numbers in
   [`docs/performance.md`](docs/performance.md).
 - `frontend/` is the React + TypeScript + Vite + Tailwind app. It reaches Go only through the
