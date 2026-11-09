@@ -236,6 +236,12 @@ func TestWSWritesMaskedFrames(t *testing.T) {
 		assert.Equal(t, byte(opText), f.op)
 		assert.Equal(t, msg, string(f.payload))
 	}
+
+	err := c.writeText(make([]byte, maxWrite+1))
+	require.ErrorIs(t, err, errTooLargeToSend, "a frame over the cap is refused")
+
+	require.NoError(t, c.writeText([]byte("after")))
+	assert.Equal(t, "after", string(s.next(t).payload), "the refused frame sent nothing")
 }
 
 func TestWSEndsOnClose(t *testing.T) {

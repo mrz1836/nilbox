@@ -35,6 +35,15 @@ const (
 
 	// maxControl is the most a control frame may carry.
 	maxControl = 125
+
+	// maxWrite is the most one frame the client sends may carry. The client sends only
+	// short requests, so a frame anywhere near it is a mistake, and the cap keeps a frame's
+	// size from overflowing.
+	maxWrite = 1 << 20
+
+	// maxHeader is the most a client frame's header takes: two bytes, an eight-byte
+	// length, and the four-byte mask.
+	maxHeader = 14
 )
 
 var (
@@ -46,6 +55,9 @@ var (
 
 	// errTooLarge is returned for a message over the read limit.
 	errTooLarge = errors.New("the app server sent a message too large")
+
+	// errTooLargeToSend is returned for a frame over maxWrite.
+	errTooLargeToSend = errors.New("a message too large to send to the app server")
 )
 
 // wsConn is a client WebSocket over a stream. One goroutine reads; writes may come from
@@ -271,17 +283,23 @@ func (c *wsConn) writeText(data []byte) error {
 	return c.writeFrame(opText, data)
 }
 
-// writeFrame sends one final frame, masked as a client must.
+// writeFrame sends one final frame, masked as a client must. It refuses a payload over
+// maxWrite with errTooLargeToSend, sending nothing.
 func (c *wsConn) writeFrame(op byte, payload []byte) error {
+	n := len(payload)
+	if n > maxWrite {
+		return fmt.Errorf("%w: %d bytes", errTooLargeToSend, n)
+	}
+
 	var mask [4]byte
 	if _, err := rand.Read(mask[:]); err != nil {
 		return fmt.Errorf("mask a WebSocket frame: %w", err)
 	}
 
-	frame := make([]byte, 0, len(payload)+14)
+	frame := make([]byte, 0, n+maxHeader)
 	frame = append(frame, finBit|op)
 
-	switch n := len(payload); {
+	switch {
 	case n <= maxControl:
 		frame = append(frame, maskBit|byte(n))
 	case n <= 0xFFFF:
