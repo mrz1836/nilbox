@@ -11,6 +11,7 @@ export {
 } from "./models.js";
 
 export type {
+    AgentVersion,
     DataReset,
     Info,
     Restored

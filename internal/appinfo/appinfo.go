@@ -2,7 +2,8 @@
 //
 // The product name and tagline come from internal/brand, so the frontend never hard-codes
 // them. Info also carries what a bug report needs, the build's versions and the system it
-// runs on, and a link that opens a new bug report with those details filled in. When the
+// runs on; AgentVersions reads the installed coding agents' versions, and BugReportURL
+// opens a new bug report with all of them filled in. When the
 // database could not be read at startup and was set aside, or the prompt library and
 // launch defaults were brought back into a new one, Info says so, so the window can tell the user once it
 // loads: the window does not exist yet when that happens, so an event would be lost. When the window has painted its first frame, the frontend calls
@@ -10,12 +11,15 @@
 package appinfo
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"runtime"
+	"strings"
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/event"
+	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/timing"
 )
 
@@ -55,10 +59,6 @@ type Info struct {
 
 	// Arch is the processor architecture the app was built for, e.g. arm64.
 	Arch string `json:"arch"`
-
-	// BugReportURL opens a new bug report on GitHub with the versions and system filled
-	// in.
-	BugReportURL string `json:"bugReportUrl"`
 
 	// DataReset is set when the database could not be read at startup, so it was set
 	// aside and the app started with an empty one; it is nil otherwise.
@@ -113,7 +113,7 @@ type FirstPaintRecorder interface {
 }
 
 // Config holds a Service's dependencies. Everything but Version, Release, and Build is
-// optional.
+// optional; without Finder and Runner, no coding agent counts as installed.
 type Config struct {
 	// Version is the build's git version.
 	Version string
@@ -141,13 +141,22 @@ type Config struct {
 	// Restored is set when the prompt library and launch defaults were brought back at
 	// startup.
 	Restored *Restored
+
+	// Finder finds the coding agents' commands, and Runner runs their --version.
+	Finder execpath.Finder
+	Runner execpath.Runner
+
+	// Home is the user's home directory, shown as ~ in a command's path.
+	Home string
 }
 
-// Service serves the app's identity and records its first paint.
+// Service serves the app's identity and the coding agents' versions, and records its
+// first paint.
 type Service struct {
 	info     Info
 	recorder FirstPaintRecorder
 	events   event.Sink
+	versions *versions
 }
 
 // NewService returns a Service over cfg.
@@ -168,9 +177,11 @@ func NewService(cfg Config) *Service {
 		DataReset: cfg.DataReset,
 		Restored:  cfg.Restored,
 	}
-	info.BugReportURL = bugReportURL(info)
 
-	return &Service{info: info, recorder: cfg.Recorder, events: event.Or(cfg.Events)}
+	return &Service{
+		info: info, recorder: cfg.Recorder, events: event.Or(cfg.Events),
+		versions: &versions{finder: cfg.Finder, run: cfg.Runner, home: cfg.Home},
+	}
 }
 
 // Info returns the product's identity, its versions, the system it runs on, and whether
@@ -179,19 +190,41 @@ func (s *Service) Info() Info {
 	return s.info
 }
 
-// environment returns the details a bug report needs about the build and the system, as
-// a Markdown list.
-func environment(info Info) string {
-	return fmt.Sprintf("- Version: %s (%s)\n- Commit: %s\n- System: %s, %s\n",
+// AgentVersions returns each coding agent's installed version, in the agents' order.
+// Each is read with `<command> --version` the first time it is asked for, and again only
+// once its command changes, as when the agent updates itself, so asking again runs
+// nothing. An agent whose version cannot be read says why.
+func (s *Service) AgentVersions(ctx context.Context) []AgentVersion {
+	return s.versions.all(ctx)
+}
+
+// BugReportURL returns the link that opens a new bug report on GitHub with the app's
+// versions, the system, and each coding agent's version filled in.
+func (s *Service) BugReportURL(ctx context.Context) string {
+	return bugReportURL(s.info, s.versions.all(ctx))
+}
+
+// environment returns the details a bug report needs about the build, the system, and the
+// coding agents, as a Markdown list.
+func environment(info Info, agents []AgentVersion) string {
+	var b strings.Builder
+
+	fmt.Fprintf(&b, "- Version: %s (%s)\n- Commit: %s\n- System: %s, %s\n",
 		info.Release, info.Build, info.Version, info.System, info.Arch)
+
+	for _, a := range agents {
+		fmt.Fprintf(&b, "- %s: %s\n", a.Name, versionText(a))
+	}
+
+	return b.String()
 }
 
 // bugReportURL returns the link that opens a new bug report with the environment field
-// filled in from info.
-func bugReportURL(info Info) string {
+// filled in from info and the agents' versions.
+func bugReportURL(info Info, agents []AgentVersion) string {
 	q := url.Values{}
 	q.Set("template", bugReportTemplate)
-	q.Set(environmentField, environment(info))
+	q.Set(environmentField, environment(info, agents))
 
 	return brand.Repository + "/issues/new?" + q.Encode()
 }

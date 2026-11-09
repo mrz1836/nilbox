@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"maps"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -137,6 +138,22 @@ func worktreeRunner(search execpath.Search) execpath.Exec {
 	env := slices.DeleteFunc(os.Environ(), func(kv string) bool { return strings.HasPrefix(kv, "GIT_TERMINAL_PROMPT=") })
 
 	return execpath.Exec{Search: search, Env: append(env, "GIT_TERMINAL_PROMPT=0")}
+}
+
+// agentRunner runs a coding agent's command, for its --version, with the command's own
+// directory first on the search path. An agent installed with npm starts through a script
+// that finds node beside it, and an app started from the Dock has launchd's search path,
+// which lacks that directory.
+type agentRunner struct {
+	search execpath.Search
+}
+
+// Run runs name with args, its directory first on the search path.
+func (r agentRunner) Run(ctx context.Context, name string, args ...string) (stdout, stderr []byte, err error) {
+	path := strings.Join([]string{filepath.Dir(name), os.Getenv("PATH")}, string(os.PathListSeparator))
+	env := slices.DeleteFunc(os.Environ(), func(kv string) bool { return strings.HasPrefix(kv, "PATH=") })
+
+	return execpath.Exec{Search: r.search, Env: append(env, "PATH="+path)}.Run(ctx, name, args...)
 }
 
 // sweepSettings is the part of the settings the worktree service reads.

@@ -4,7 +4,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/appdata"
+	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/item"
@@ -196,4 +199,20 @@ func TestCloseForgetsTheToken(t *testing.T) {
 	_, err = c.tokens.Token(t.Context())
 	require.NoError(t, err)
 	assert.Len(t, runner.Calls(), 2, "the token was forgotten when the app closed")
+}
+
+func TestAgentRunnerPutsTheCommandsDirectoryFirstOnThePath(t *testing.T) {
+	t.Parallel()
+
+	// An npm-installed agent's command is a script that finds node beside it.
+	dir := t.TempDir()
+	command := filepath.Join(dir, "codex")
+	require.NoError(t, os.WriteFile(command, []byte("#!/bin/sh\nprintf '%s' \"$PATH\"\n"), 0o700)) //nolint:gosec // a command must be executable
+
+	stdout, _, err := agentRunner{search: execpath.Search{}}.Run(t.Context(), command, "--version")
+	require.NoError(t, err)
+
+	first, _, _ := strings.Cut(string(stdout), string(os.PathListSeparator))
+	assert.Equal(t, dir, first)
+	assert.Contains(t, string(stdout), os.Getenv("PATH"), "the rest of the search path follows")
 }

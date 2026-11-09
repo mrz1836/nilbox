@@ -1,7 +1,8 @@
 import { brand } from '../../generated/brand'
 import { counted } from '../../lib/format'
 import { planPhrase } from '../../lib/launch'
-import type { AgentInfo, Profile } from '../../platform'
+import { useQuery } from '../../lib/useQuery'
+import { agentVersions, type AgentInfo, type Profile } from '../../platform'
 import { chipClass } from '../controls'
 import { Group, Note } from './rows'
 
@@ -80,13 +81,22 @@ function markerList(agent: AgentInfo) {
   ))
 }
 
+interface AgentProfilesProps {
+  agent: AgentInfo
+  // version is the agent's installed version, or "" while it is checked or unknown.
+  version: string
+  profiles: readonly Profile[]
+}
+
 // AgentProfiles lists one agent's profiles, each with the folder it runs from, what it
-// sets for a session, whether its folder has gone missing, and whether it is signed in.
-function AgentProfiles({ agent, profiles }: { agent: AgentInfo; profiles: readonly Profile[] }) {
+// sets for a session, whether its folder has gone missing, and whether it is signed in,
+// under the agent's version and where its command is.
+function AgentProfiles({ agent, version, profiles }: AgentProfilesProps) {
   return (
     <section aria-label={`${agent.name} profiles`} className="flex flex-col gap-2">
       <h3 className="flex items-baseline gap-2 text-sm font-semibold">
         {agent.name}
+        {version !== '' && <span className="font-mono text-xs font-normal text-muted">{version}</span>}
         <span className={`text-xs font-normal ${agent.installed ? 'text-muted' : 'text-warning'}`}>
           {agent.installed ? agent.path : `${agent.command} isn’t installed`}
         </span>
@@ -150,10 +160,18 @@ function AgentProfiles({ agent, profiles }: { agent: AgentInfo; profiles: readon
 // ProfilesSection lists every coding agent's profiles, grouped by agent, then says how
 // profiles are found.
 export function ProfilesSection({ agents, profiles }: { agents: readonly AgentInfo[]; profiles: readonly Profile[] }) {
+  // The versions come from the agents' commands, read once for each build and then kept.
+  const versions = useQuery(() => agentVersions(), [])
+
   return (
     <div className="flex flex-col gap-6">
       {agents.map((agent) => (
-        <AgentProfiles key={agent.id} agent={agent} profiles={profiles.filter((p) => p.agent === agent.id)} />
+        <AgentProfiles
+          key={agent.id}
+          agent={agent}
+          version={versions.data?.find((v) => v.agent === agent.id)?.version ?? ''}
+          profiles={profiles.filter((p) => p.agent === agent.id)}
+        />
       ))}
       <Note>{brand.name} looks for profiles in your home folder each time it starts.</Note>
     </div>

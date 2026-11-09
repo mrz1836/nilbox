@@ -489,8 +489,8 @@ More in [Menu bar and notifications](docs/desktop.md#menu-bar-and-notifications)
 - **Themes:** follow the system, or pin Light or Dark. The native window frame and menus follow.
 - **Settings** covers your account, appearance, notifications, snoozing, launching, profiles,
   repositories, trust, and sensitive files.
-- **About** shows the version, build, commit, and system, and **Report a bug** opens a GitHub issue
-  with those details filled in.
+- **About** shows the version, build, commit, and system, and each coding agent's installed
+  version, and **Report a bug** opens a GitHub issue with those details filled in.
 
 More in [The window](docs/desktop.md#the-window).
 

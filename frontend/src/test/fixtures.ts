@@ -5,6 +5,7 @@ import type {
   Account,
   Agent,
   AgentInfo,
+  AgentVersion,
   AppNotification,
   BudgetGauge,
   BudgetReading,
@@ -53,9 +54,17 @@ export function appInfo(overrides: Partial<Info> = {}): Info {
     build: '0',
     system: 'macOS 15.1 (24B83)',
     arch: 'arm64',
-    bugReportUrl: 'https://github.com/acme-org/example-repo/issues/new',
     ...overrides,
   }
+}
+
+// agentVersions are both coding agents, installed, as their commands report their
+// versions.
+export function agentVersions(): AgentVersion[] {
+  return [
+    { agent: 'claude', name: 'Claude', installed: true, path: '~/.local/bin/claude', version: '2.1.319', error: '' },
+    { agent: 'codex', name: 'Codex', installed: true, path: '/opt/bin/codex', version: '0.163.0', error: '' },
+  ]
 }
 
 export function item(overrides: Partial<InboxItem> = {}): InboxItem {

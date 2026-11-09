@@ -97,15 +97,22 @@ func TestInfoDetectsTheSystem(t *testing.T) {
 func TestBugReportURLFillsInTheEnvironment(t *testing.T) {
 	t.Parallel()
 
-	info := NewService(Config{Version: "abc1234-dirty", Release: "0.0.0", Build: "16", System: "macOS 15.1 (24B83)"}).Info()
+	home := t.TempDir()
+	claude := agentCommand(t, home, "claude")
+	s := NewService(Config{
+		Version: "abc1234-dirty", Release: "0.0.0", Build: "16", System: "macOS 15.1 (24B83)",
+		Finder: testutil.Finder{Paths: map[string]string{"claude": claude}},
+		Runner: &testutil.Runner{Stdout: "2.1.319 (Claude Code)\n"}, Home: home,
+	})
 
-	u, err := url.Parse(info.BugReportURL)
+	u, err := url.Parse(s.BugReportURL(t.Context()))
 	require.NoError(t, err)
 
 	assert.Equal(t, brand.Repository+"/issues/new", u.Scheme+"://"+u.Host+u.Path)
 	assert.Equal(t, bugReportTemplate, u.Query().Get("template"))
 	assert.Equal(t,
-		"- Version: 0.0.0 (16)\n- Commit: abc1234-dirty\n- System: macOS 15.1 (24B83), "+runtime.GOARCH+"\n",
+		"- Version: 0.0.0 (16)\n- Commit: abc1234-dirty\n- System: macOS 15.1 (24B83), "+runtime.GOARCH+"\n"+
+			"- Claude: 2.1.319\n- Codex: not installed\n",
 		u.Query().Get(environmentField))
 }
 

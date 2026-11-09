@@ -67,6 +67,7 @@ function narrow<S>(service: S): Narrowed<S> {
 export type Agent = NonNullLists<agent.Agent>
 export type AgentID = agent.ID
 export type AgentInfo = NonNullLists<profiles.AgentInfo>
+export type AgentVersion = NonNullLists<appinfo.AgentVersion>
 export type Choice = NonNullLists<agent.Choice>
 // PerAgent is a setting each agent has its own value of, as launch defaults and prompts
 // store their profiles, models, and extra flags: an agent with no entry inherits.
@@ -171,7 +172,12 @@ export type WorktreeSession = NonNullLists<worktrees.Session>
 // The bound calls, under the names the app knows them by. What each one does is the Go
 // method's doc comment, which the generated service carries.
 
-export const { Info: getAppInfo, ReportFirstPaint: reportFirstPaint } = narrow(appinfo.Service)
+export const {
+  Info: getAppInfo,
+  ReportFirstPaint: reportFirstPaint,
+  AgentVersions: agentVersions,
+  BugReportURL: bugReportURL,
+} = narrow(appinfo.Service)
 
 export const { Gauge: getBudget, Check: checkBudget } = narrow(budget.Service)
 

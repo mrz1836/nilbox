@@ -28,7 +28,6 @@ beforeEach(() => {
       version: 'v1.4.0-2-gabc1234-dirty',
       release: '1.4.0',
       build: '42',
-      bugReportUrl: 'https://github.com/acme-org/example-repo/issues/new?template=bug_report.yml',
     }),
   )
 })
@@ -664,15 +663,80 @@ describe('SettingsView', () => {
     expect(within(about).getByText('System')).toBeInTheDocument()
   })
 
-  it('opens a bug report with the details filled in', async () => {
+  it('opens a bug report with the details filled in, made as it opens', async () => {
+    renderSettings()
+    await openSection('About')
+
+    expect(platform.bugReportURL).not.toHaveBeenCalled()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Report a bug' }))
+
+    await waitFor(() => {
+      expect(platform.openExternal).toHaveBeenCalledWith(
+        'https://github.com/acme-org/example-repo/issues/new?template=bug_report.yml',
+      )
+    })
+    expect(platform.bugReportURL).toHaveBeenCalledOnce()
+  })
+
+  it('logs a bug report link that could not be made', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    platform.bugReportURL.mockRejectedValue(new Error('the app is closing'))
     renderSettings()
     await openSection('About')
 
     await userEvent.click(await screen.findByRole('button', { name: 'Report a bug' }))
 
-    expect(platform.openExternal).toHaveBeenCalledWith(
-      'https://github.com/acme-org/example-repo/issues/new?template=bug_report.yml',
-    )
+    await waitFor(() => {
+      expect(error).toHaveBeenCalledWith('could not make the bug report link', expect.any(Error))
+    })
+    expect(platform.openExternal).not.toHaveBeenCalled()
+    error.mockRestore()
+  })
+
+  it('lists each coding agent’s installed version', async () => {
+    platform.agentVersions.mockResolvedValue([
+      { agent: 'claude', name: 'Claude', installed: true, path: '~/.local/bin/claude', version: '2.1.319', error: '' },
+      {
+        agent: 'codex',
+        name: 'Codex',
+        installed: true,
+        path: '/opt/bin/codex',
+        version: '',
+        error: 'codex --version failed: boom',
+      },
+    ])
+    renderSettings()
+    await openSection('About')
+
+    const agents = within(screen.getByRole('region', { name: 'Coding agents' }))
+    expect(await agents.findByText('2.1.319')).toHaveAttribute('title', '~/.local/bin/claude')
+    expect(agents.getByText('Claude')).toBeInTheDocument()
+    expect(agents.getByText('unknown')).toHaveAttribute('title', 'codex --version failed: boom')
+  })
+
+  it('says when a coding agent is not installed', async () => {
+    platform.agentVersions.mockResolvedValue([
+      { agent: 'claude', name: 'Claude', installed: false, path: '', version: '', error: '' },
+    ])
+    renderSettings({ section: 'about' })
+
+    const agents = within(screen.getByRole('region', { name: 'Coding agents' }))
+    expect(await agents.findByText('not installed')).not.toHaveAttribute('title')
+  })
+
+  it('says it is checking the agents', async () => {
+    platform.agentVersions.mockReturnValue(new Promise(() => undefined))
+    renderSettings({ section: 'about' })
+
+    expect(await screen.findByText('Checking the agents…')).toBeInTheDocument()
+  })
+
+  it('says why the agents could not be checked', async () => {
+    platform.agentVersions.mockRejectedValue(new Error('the app is closing'))
+    renderSettings({ section: 'about' })
+
+    expect(await screen.findByText("Couldn't check the agents: the app is closing")).toBeInTheDocument()
   })
 
   it('shows a placeholder while the version loads', async () => {
@@ -799,6 +863,15 @@ describe('SettingsView', () => {
     expect(
       within(screen.getByRole('list', { name: 'Claude profiles' })).queryByText('~/.codex'),
     ).not.toBeInTheDocument()
+  })
+
+  it('shows each agent’s installed version over its profiles', async () => {
+    renderSettings()
+    await openSection('Profiles')
+
+    const claude = within(screen.getByRole('region', { name: 'Claude profiles' }))
+    expect(await claude.findByText('2.1.319')).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Codex profiles' })).getByText('0.163.0')).toBeInTheDocument()
   })
 
   it('says how to sign in to an agent’s default profile, and when an agent is not installed', async () => {

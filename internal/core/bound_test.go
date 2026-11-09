@@ -56,6 +56,9 @@ func boundCalls(t *testing.T) map[string]boundCall {
 	defaults := launchdefaults.Input{Owner: boundOwner}
 
 	return map[string]boundCall{
+		"appinfo.Service.AgentVersions": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.AppInfo.AgentVersions(ctx), nil
+		},
 		"settings.Service.Get": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.Get(ctx)
 		},

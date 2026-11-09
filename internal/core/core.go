@@ -307,8 +307,10 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	runner := opts.Runner
 	gitRunner := opts.Runner
 
+	versionRunner := runner
+
 	if runner == nil {
-		runner, gitRunner = execpath.Exec{Search: search}, worktreeRunner(search)
+		runner, gitRunner, versionRunner = execpath.Exec{Search: search}, worktreeRunner(search), agentRunner{search: search}
 	}
 
 	profileStore := profiles.NewStore(pool, opts.Clock)
@@ -404,6 +406,9 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 			Events:    opts.Events,
 			DataReset: info.reset,
 			Restored:  info.restored,
+			Finder:    search,
+			Runner:    versionRunner,
+			Home:      opts.Home,
 		}),
 		Budget: budget.NewService(budget.Config{
 			Tracker: tracker, Reader: rateReader{tokens: tokens, client: client}, Clock: opts.Clock,

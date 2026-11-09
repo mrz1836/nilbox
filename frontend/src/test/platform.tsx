@@ -14,6 +14,7 @@ import { vi, type Mock } from 'vitest'
 import type * as real from '../platform'
 import { clockAt, FIXED_NOW, withClock } from './clock'
 import {
+  agentVersions,
   agents,
   appInfo,
   budgetGauge,
@@ -82,6 +83,8 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
   return {
     getAppInfo: () => Promise.resolve(appInfo()),
     reportFirstPaint: done,
+    agentVersions: () => Promise.resolve(agentVersions()),
+    bugReportURL: () => Promise.resolve('https://github.com/acme-org/example-repo/issues/new?template=bug_report.yml'),
 
     getBudget: () => Promise.resolve(budgetGauge()),
     checkBudget: () => Promise.resolve(budgetGauge()),
