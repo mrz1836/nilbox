@@ -360,6 +360,17 @@ VALUES (?, '[{"name":"bug","color":""},{"name":"size/L","color":""}]', 12, 3, 2,
 	outside, err := source.PreviewData(t.Context(), h.outsidePR)
 	require.NoError(t, err)
 	assert.True(t, outside.OutsideContributor)
+	assert.Empty(t, outside.Dependency, "a person's pull request is no dependency update")
+
+	h.exec(t, "UPDATE items SET author_type = 'Bot', author_login = 'dependabot', title = ? WHERE id = ?",
+		"chore(deps-dev): bump typescript from 5.9.3 to 6.0.3 in /frontend", h.outsidePR)
+
+	bump, err := source.PreviewData(t.Context(), h.outsidePR)
+	require.NoError(t, err)
+	assert.Equal(t, "typescript", bump.Dependency)
+	assert.Equal(t, "5.9.3", bump.FromVersion)
+	assert.Equal(t, "6.0.3", bump.ToVersion)
+	assert.Equal(t, "major", bump.UpdateType)
 
 	_, err = source.PreviewData(t.Context(), 9999)
 	require.ErrorIs(t, err, item.ErrNotFound)

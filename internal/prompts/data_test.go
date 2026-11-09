@@ -2,6 +2,7 @@ package prompts
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -90,4 +91,42 @@ func TestAppliesToCovers(t *testing.T) {
 	assert.False(t, AppliesToPR.Covers(item.KindIssue))
 	assert.False(t, AppliesToIssue.Covers(item.KindPR))
 	assert.False(t, AppliesTo("").Covers(item.KindPR))
+}
+
+func TestWithUpdateFillsInABotsDependencyUpdate(t *testing.T) {
+	t.Parallel()
+
+	bot := Sample(item.KindPR)
+	bot.IsBot = true
+
+	got := bot.WithUpdate("build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0")
+	assert.Equal(t, "golang.org/x/net", got.Dependency)
+	assert.Equal(t, "0.30.0", got.FromVersion)
+	assert.Equal(t, "0.31.0", got.ToVersion)
+	assert.Equal(t, "minor", got.UpdateType)
+
+	group := bot.WithUpdate("Bump the go-deps group with 3 updates")
+	assert.Empty(t, group.Dependency, "a group names no one dependency")
+	assert.Empty(t, group.UpdateType)
+
+	assert.Equal(t, bot, bot.WithUpdate("Fix the login bug"), "a title that is not an update")
+
+	person := Sample(item.KindPR)
+	assert.Equal(t, person, person.WithUpdate("Bump lodash from 1.0.0 to 2.0.0"), "a person's pull request")
+
+	issue := Sample(item.KindIssue)
+	issue.IsBot = true
+	assert.Equal(t, issue, issue.WithUpdate("Bump lodash from 1.0.0 to 2.0.0"), "an issue")
+}
+
+func TestSanitizedCleansTheDependencyFields(t *testing.T) {
+	t.Parallel()
+
+	d := Data{Dependency: "a\nb\u202e", FromVersion: strings.Repeat("1", 300), ToVersion: " 2 ", UpdateType: "major\t"}
+	clean := d.sanitized()
+
+	assert.Equal(t, "a b", clean.Dependency)
+	assert.Equal(t, "2", clean.ToVersion)
+	assert.Equal(t, "major", clean.UpdateType)
+	assert.LessOrEqual(t, len([]rune(clean.FromVersion)), maxTitleRunes+1)
 }

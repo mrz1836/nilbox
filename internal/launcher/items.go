@@ -170,7 +170,7 @@ func (r launchItemRow) promptData(policy trust.Policy, profile, viewer string, c
 		}
 	}
 
-	return d
+	return d.WithUpdate(r.Title)
 }
 
 // checksWord names GitHub's overall check result the way prompts read it.
