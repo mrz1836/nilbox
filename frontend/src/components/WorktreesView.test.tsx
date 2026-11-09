@@ -1475,14 +1475,18 @@ describe('WorktreesView merged branches', () => {
 
     const results = await screen.findByRole('status')
     expect(results).toHaveAccessibleName('Deleted 1 of 2 branches')
-    expect(results).toHaveTextContent('across 1 clone · 1 kept, as noted below.')
+    expect(results).toHaveTextContent('Across 1 clone · 1 kept, as noted below.')
     expect(within(results).getByRole('list', { name: 'Branches kept' })).toHaveTextContent(
       '~/projects/other-repo: feature-z kept: the branch moved since it was checked; refresh and try again',
     )
     expect(within(results).getByRole('list', { name: 'Branches deleted' })).toHaveTextContent(
       '~/projects/example-repo: feature-x at fc1c397',
     )
-    expect(results).toHaveTextContent('Show the branch deleted, with the commit each pointed at')
+    const disclosure = within(results).getByText('The branch deleted, with the commit each pointed at')
+    const details = disclosure.closest('details')
+    expect(details).not.toHaveAttribute('open')
+    await userEvent.click(disclosure)
+    expect(details).toHaveAttribute('open')
     expect(platform.listWorktrees).toHaveBeenCalledTimes(2)
   })
 
@@ -1567,10 +1571,10 @@ describe('WorktreesView merged branches', () => {
 
     const results = await screen.findByRole('status')
     expect(results).toHaveAccessibleName('Deleted 2 branches')
-    expect(results).toHaveTextContent('across 1 clone.')
+    expect(results).toHaveTextContent('Across 1 clone.')
     expect(results).toHaveClass('border-success/40')
     expect(within(results).queryByRole('list', { name: 'Branches kept' })).not.toBeInTheDocument()
-    expect(results).toHaveTextContent('Show the 2 branches deleted, with the commit each pointed at')
+    expect(results).toHaveTextContent('The 2 branches deleted, with the commit each pointed at')
 
     platform.copyText.mockRejectedValueOnce(new Error('clipboard refused'))
     await userEvent.click(within(results).getByRole('button', { name: 'Copy restore commands' }))
@@ -1690,7 +1694,7 @@ describe('WorktreesView summaries', () => {
     await vi.waitFor(() => {
       expect(onSummary).toHaveBeenLastCalledWith({
         title: 'Deleted 1 branch',
-        detail: 'across 1 clone.',
+        detail: 'Across 1 clone.',
         tone: 'success',
       })
     })

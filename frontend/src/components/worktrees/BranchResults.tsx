@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { branchSummary } from '../../lib/worktreeSummary'
 import { copyText, type BranchResult } from '../../platform'
 import { quietButtonClass } from '../controls'
-import { CopyIcon } from '../icons'
+import { ChevronRightIcon, CopyIcon } from '../icons'
 import { shortCommit } from './BranchChoices'
 import { ResultCard } from './ResultCard'
 
@@ -67,12 +67,13 @@ export function BranchResults({ results, onDismiss }: { results: readonly Branch
       )}
       {deleted.length > 0 && (
         <>
-          <details className="mt-1 text-xs text-muted">
-            <summary className="cursor-pointer select-none hover:text-text">
-              {deleted.length === 1 ? 'Show the branch deleted' : `Show the ${String(deleted.length)} branches deleted`}
-              , with the commit each pointed at
+          <details className="group/deleted mt-1 text-xs text-muted">
+            <summary className="-ml-1 flex w-fit cursor-pointer list-none items-center gap-1 rounded-md py-0.5 pr-1.5 pl-1 select-none hover:bg-raised hover:text-text [&::-webkit-details-marker]:hidden">
+              <ChevronRightIcon className="size-3.5 shrink-0 transition-transform group-open/deleted:rotate-90 motion-reduce:transition-none" />
+              {deleted.length === 1 ? 'The branch deleted' : `The ${String(deleted.length)} branches deleted`}, with the
+              commit each pointed at
             </summary>
-            <ul aria-label="Branches deleted" className="mt-1 max-h-60 list-disc overflow-y-auto pl-5">
+            <ul aria-label="Branches deleted" className="mt-1 ml-1 max-h-60 list-disc overflow-y-auto pl-5">
               {deleted.map((r) => (
                 <li key={`${r.repoPath}\u0000${r.name}`}>
                   {r.displayRepo}: <code className="font-mono text-text">{r.name}</code> at{' '}

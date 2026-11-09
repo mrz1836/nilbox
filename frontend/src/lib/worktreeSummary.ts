@@ -84,7 +84,7 @@ export function branchSummary(results: readonly BranchResult[]): Summary {
   const kept = results.length - deleted.length
   const clones = new Set(deleted.map((r) => r.repoPath)).size
   const detail = [
-    deleted.length > 0 && `across ${counted(clones, 'clone', 'clones')}`,
+    deleted.length > 0 && `Across ${counted(clones, 'clone', 'clones')}`,
     kept > 0 && `${String(kept)} kept, as noted below`,
   ].filter((part) => part !== false)
 
