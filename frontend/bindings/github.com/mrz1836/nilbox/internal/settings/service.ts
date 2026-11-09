@@ -228,7 +228,9 @@ export function SetTerminal(id: terminal$0.ID): $CancellablePromise<$models.Sett
 
 /**
  * SetTextSize stores the size of the app's text: TextSizeDefault, TextSizeLarge, or
- * TextSizeLarger, and returns the settings with it. The page shows the new size itself.
+ * TextSizeLarger, and returns the settings with it. The page shows the new size itself;
+ * once it is stored, an event.TextSizeChanged is emitted, so the desktop shell sets the
+ * window's smallest size to suit it.
  */
 export function SetTextSize(size: $models.TextSize): $CancellablePromise<$models.Settings> {
     return $Call.ByID(2598014963, size);

@@ -125,3 +125,91 @@ func TestDefaultWindowSizeIsInBounds(t *testing.T) {
 	assert.True(t, DefaultWindowSize().valid())
 	assert.Equal(t, "1440x900", DefaultWindowSize().encode())
 }
+
+func TestAtLeast(t *testing.T) {
+	t.Parallel()
+
+	least := WindowSize{Width: 1040, Height: 676}
+
+	assert.Equal(t, WindowSize{Width: 1440, Height: 900}, WindowSize{Width: 1440, Height: 900}.AtLeast(least))
+	assert.Equal(t, least, WindowSize{Width: 800, Height: 520}.AtLeast(least))
+	assert.Equal(t, WindowSize{Width: 1100, Height: 676}, WindowSize{Width: 1100, Height: 600}.AtLeast(least))
+}
+
+func TestMinWindowSizeGrowsWithTheTextSize(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, WindowSize{Width: MinWindowWidth, Height: MinWindowHeight}, MinWindowSizeFor(TextSizeDefault))
+	assert.Equal(t, WindowSize{Width: 920, Height: 598}, MinWindowSizeFor(TextSizeLarge))
+	assert.Equal(t, WindowSize{Width: 1040, Height: 676}, MinWindowSizeFor(TextSizeLarger))
+	assert.Equal(t, MinWindowSizeFor(DefaultTextSize), MinWindowSizeFor("unknown"))
+
+	for _, size := range textSizes() {
+		assert.True(t, MinWindowSizeFor(size).valid(), "the minimum at %s is a size the window can be", size)
+	}
+}
+
+func TestEveryWindowPresetClearsTheLargestMinimum(t *testing.T) {
+	t.Parallel()
+
+	largest := MinWindowSizeFor(TextSizeLarger)
+
+	// The window size presets the settings offer (frontend/src/lib/windowSize.ts), so
+	// choosing one never shrinks a window below the minimum for any text size.
+	for _, preset := range []WindowSize{{1100, 720}, {1280, 800}, {1440, 900}, {1680, 1050}} {
+		assert.Equal(t, preset, preset.AtLeast(largest), "%v", preset)
+	}
+}
+
+func TestWindowBounds(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		stored        WindowSize
+		textSize      TextSize
+		width, height int
+		size, least   WindowSize
+	}{
+		{
+			name: "the default size at the default text size", stored: DefaultWindowSize(), textSize: TextSizeDefault,
+			width: 2560, height: 1415,
+			size: DefaultWindowSize(), least: WindowSize{Width: 800, Height: 520},
+		},
+		{
+			name: "a small window grows to a larger text size's minimum", stored: WindowSize{Width: 800, Height: 520},
+			textSize: TextSizeLarger, width: 2560, height: 1415,
+			size: WindowSize{Width: 1040, Height: 676}, least: WindowSize{Width: 1040, Height: 676},
+		},
+		{
+			name: "a window already large enough keeps its size", stored: WindowSize{Width: 1100, Height: 720},
+			textSize: TextSizeLarge, width: 2560, height: 1415,
+			size: WindowSize{Width: 1100, Height: 720}, least: WindowSize{Width: 920, Height: 598},
+		},
+		{
+			name: "a screen smaller than the minimum caps both", stored: WindowSize{Width: 1440, Height: 900},
+			textSize: TextSizeLarger, width: 1024, height: 640,
+			size: WindowSize{Width: 1024, Height: 640}, least: WindowSize{Width: 1024, Height: 640},
+		},
+		{
+			name: "never below the default minimum", stored: WindowSize{Width: 1440, Height: 900},
+			textSize: TextSizeLarger, width: 640, height: 400,
+			size: WindowSize{Width: 800, Height: 520}, least: WindowSize{Width: 800, Height: 520},
+		},
+		{
+			name: "an unknown screen area fits anything", stored: WindowSize{Width: 800, Height: 520},
+			textSize: TextSizeLarge, width: 0, height: -1,
+			size: WindowSize{Width: 920, Height: 598}, least: WindowSize{Width: 920, Height: 598},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			size, least := WindowBounds(tt.stored, tt.textSize, tt.width, tt.height)
+			assert.Equal(t, tt.size, size, "the size it opens at")
+			assert.Equal(t, tt.least, least, "the smallest it can be")
+		})
+	}
+}

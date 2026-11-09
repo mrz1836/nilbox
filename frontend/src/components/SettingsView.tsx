@@ -61,7 +61,7 @@ const sections: Readonly<Record<SectionId, { label: string; description: string 
     label: 'Account',
     description: 'The GitHub account your inbox comes from, and what it lets the inbox show.',
   },
-  appearance: { label: 'Appearance', description: 'The theme, and the size the window opens at.' },
+  appearance: { label: 'Appearance', description: 'The theme, the text size, and the size the window opens at.' },
   notifications: {
     label: 'Notifications',
     description: 'The menu bar icon, and the banners that tell you when something new needs you.',

@@ -233,7 +233,8 @@ func WithClock(c clock.Clock) Option {
 	return func(s *Service) { s.clock = c }
 }
 
-// WithEvents emits the theme and menu bar changes into sink once they are stored.
+// WithEvents emits the theme, text size, and menu bar changes into sink once they are
+// stored.
 func WithEvents(sink event.Sink) Option {
 	return func(s *Service) { s.events = sink }
 }

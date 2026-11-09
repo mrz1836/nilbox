@@ -13,10 +13,10 @@ func macAppOptions() application.MacOptions {
 	return application.MacOptions{}
 }
 
-// windowOptions returns the shared window settings at the given size and text size, on
-// the background of the dark or light palette; a port adds this OS's options here.
-func windowOptions(dark bool, size settings.WindowSize, textSize settings.TextSize) application.WebviewWindowOptions {
-	return baseWindowOptions(dark, size, textSize)
+// windowOptions returns the shared window settings for the window spec; a port adds this
+// OS's options here.
+func windowOptions(spec windowSpec) application.WebviewWindowOptions {
+	return baseWindowOptions(spec)
 }
 
 // applyAppearance has no native appearance to set off macOS; a port sets this OS's here.

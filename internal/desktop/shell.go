@@ -63,6 +63,10 @@ type Window interface {
 
 	// SetTheme pins the native appearance to theme and repaints the window's background.
 	SetTheme(theme settings.Theme)
+
+	// SetTextSize sets the smallest the window can be to suit textSize, growing the window
+	// if it is smaller; the page shows the size itself.
+	SetTextSize(textSize settings.TextSize)
 }
 
 // Tray is the menu bar icon. Its methods must not wait for anything Stop waits for:
@@ -297,6 +301,8 @@ func (s *Shell) Emit(e event.Event) {
 		s.reveal(e)
 	case event.ThemeChanged:
 		s.window.SetTheme(settings.Theme(e.Theme))
+	case event.TextSizeChanged:
+		s.window.SetTextSize(settings.TextSize(e.Size))
 	case event.MenuBarChanged:
 		s.setMenuBar(e.On)
 	case event.FirstPaint:

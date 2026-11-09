@@ -73,6 +73,19 @@ func TestAThemeChangeReachesTheWindow(t *testing.T) {
 	assert.Empty(t, r.page.events())
 }
 
+func TestATextSizeChangeReachesTheWindow(t *testing.T) {
+	t.Parallel()
+
+	r := newRig()
+	s := r.shell()
+
+	s.Emit(event.TextSizeChanged{Size: string(settings.TextSizeLarger)})
+	s.Emit(event.TextSizeChanged{Size: string(settings.TextSizeDefault)})
+
+	assert.Equal(t, []settings.TextSize{settings.TextSizeLarger, settings.TextSizeDefault}, r.window.textSizesSet())
+	assert.Empty(t, r.page.events(), "the page shows the size itself")
+}
+
 func TestShowWindowAndQuit(t *testing.T) {
 	t.Parallel()
 
@@ -350,6 +363,7 @@ func TestAStoppedShellDoesNothing(t *testing.T) {
 			event.InboxUpdated{},
 			event.RevealItem{ItemID: 7},
 			event.ThemeChanged{Theme: string(settings.ThemeDark)},
+			event.TextSizeChanged{Size: string(settings.TextSizeLarge)},
 			event.MenuBarChanged{On: true},
 			event.FirstPaint{},
 		} {
@@ -363,6 +377,7 @@ func TestAStoppedShellDoesNothing(t *testing.T) {
 		assert.Empty(t, r.window.openings())
 		assert.Zero(t, r.window.shown())
 		assert.Empty(t, r.window.themesSet())
+		assert.Empty(t, r.window.textSizesSet())
 		assert.Zero(t, r.app.quitCount())
 		assert.False(t, s.HidesOnClose(), "a quitting app closes its window")
 		assert.Empty(t, r.stdout.String())

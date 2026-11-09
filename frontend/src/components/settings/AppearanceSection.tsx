@@ -96,7 +96,7 @@ function TextSizeRow({ settings: stored, onSaved }: SectionProps) {
   return (
     <ChoiceRow
       label="Text size"
-      description="Larger sizes scale the text and the spacing around it. The window keeps its size."
+      description="Larger sizes scale the text and the spacing around it, whatever the window's size."
       error={error}
       errorId={errorId}
     >

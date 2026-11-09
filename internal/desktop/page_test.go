@@ -1,6 +1,7 @@
 package desktop_test
 
 import (
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -31,9 +32,29 @@ func TestPageURLCarriesTheTextSize(t *testing.T) {
 func TestThePageReadsTheTextSizeParameter(t *testing.T) {
 	t.Parallel()
 
+	assert.Contains(t, pageTextSizeSource(t), "'"+desktop.TextSizeParam+"'",
+		"the page must read the text size from the parameter the shell sets")
+}
+
+func TestThePageScalesTextAsTheShellSizesTheWindow(t *testing.T) {
+	t.Parallel()
+
+	source := pageTextSizeSource(t)
+
+	// The shell sizes the window's minimum by each text size's scale, so the page must
+	// scale its text by the same.
+	for _, size := range []settings.TextSize{settings.TextSizeDefault, settings.TextSizeLarge, settings.TextSizeLarger} {
+		want := fmt.Sprintf("{ value: '%s', percent: %d }", size, size.Percent())
+		assert.Contains(t, source, want, "frontend/src/lib/textSize.ts must scale %s as settings.TextSize.Percent does", size)
+	}
+}
+
+// pageTextSizeSource returns the frontend's text size module.
+func pageTextSizeSource(t *testing.T) string {
+	t.Helper()
+
 	source, err := os.ReadFile(filepath.Join("..", "..", "frontend", "src", "lib", "textSize.ts"))
 	require.NoError(t, err)
 
-	assert.Contains(t, string(source), "'"+desktop.TextSizeParam+"'",
-		"the page must read the text size from the parameter the shell sets")
+	return string(source)
 }

@@ -266,12 +266,14 @@ that palette, and the window frame, menus, and pop-up lists match the theme rath
 system.
 
 **Text size.** Settings → Appearance offers **100%**, **115%**, and **130%**, apart from the
-window's size, which stays as it is. A larger size scales the text and the spacing around it
-together, the way a browser's font size setting does, so nothing clips or crowds; the toolbar
-beside the window controls keeps its height, and borders stay hairline-thin. A choice shows as
-soon as it is saved, and the app opens at the size you chose: the window's first frame is already
-at it. The frontend sizes all text in rem, never px, so it follows the setting; a repository test
-fails the build for text sized in px.
+window's size. A larger size scales the text and the spacing around it together, the way a
+browser's font size setting does, so nothing clips or crowds; the toolbar beside the window
+controls keeps its height, and borders stay hairline-thin. A choice shows as soon as it is saved,
+and the app opens at the size you chose: the window's first frame is already at it. The
+smallest the window can be grows with the text, from 800 × 520 at 100% to 920 × 598 at 115% and
+1040 × 676 at 130%, so the layout is never narrower than at 100%; picking a larger size grows a
+window smaller than that, and every window size below clears it. The frontend sizes all text in
+rem, never px, so it follows the setting; a repository test fails the build for text sized in px.
 
 **Window size.** Settings → Appearance also sets the size the window opens at: **Compact**
 (1100 × 720), **Standard** (1280 × 800), **Large** (1440 × 900, the default), or **Extra

@@ -95,10 +95,11 @@ type opening struct {
 
 // fakeWindow records what the window was asked to do.
 type fakeWindow struct {
-	mu     sync.Mutex
-	opened []opening
-	shows  int
-	themes []settings.Theme
+	mu        sync.Mutex
+	opened    []opening
+	shows     int
+	themes    []settings.Theme
+	textSizes []settings.TextSize
 }
 
 func (w *fakeWindow) Open(theme settings.Theme, size settings.WindowSize, textSize settings.TextSize) {
@@ -122,6 +123,13 @@ func (w *fakeWindow) SetTheme(theme settings.Theme) {
 	w.themes = append(w.themes, theme)
 }
 
+func (w *fakeWindow) SetTextSize(textSize settings.TextSize) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.textSizes = append(w.textSizes, textSize)
+}
+
 func (w *fakeWindow) openings() []opening {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -141,6 +149,13 @@ func (w *fakeWindow) themesSet() []settings.Theme {
 	defer w.mu.Unlock()
 
 	return slices.Clone(w.themes)
+}
+
+func (w *fakeWindow) textSizesSet() []settings.TextSize {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	return slices.Clone(w.textSizes)
 }
 
 // fakeTray records the menu bar icon's calls, in order, in its journal.

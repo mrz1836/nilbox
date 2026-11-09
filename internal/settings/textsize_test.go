@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -123,4 +124,40 @@ func TestTextSizesAreTheChoicesInOrder(t *testing.T) {
 	}
 
 	assert.False(t, validTextSize("largest"))
+}
+
+func TestTextSizePercent(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, 100, TextSizeDefault.Percent())
+	assert.Equal(t, 115, TextSizeLarge.Percent())
+	assert.Equal(t, 130, TextSizeLarger.Percent())
+	assert.Equal(t, DefaultTextSize.Percent(), TextSize("huge").Percent(), "an unknown size counts as the default")
+}
+
+func TestSetTextSizeEmitsOnceStored(t *testing.T) {
+	t.Parallel()
+
+	events := &testutil.Events{}
+	svc := serviceOver(t, testutil.DB(t), t.TempDir(), WithEvents(events))
+	ctx := t.Context()
+
+	require.NoError(t, testutil.ErrOf(svc.SetTextSize(ctx, TextSizeLarge)))
+	require.ErrorIs(t, testutil.ErrOf(svc.SetTextSize(ctx, "huge")), ErrInvalidTextSize)
+	require.NoError(t, testutil.ErrOf(svc.SetTextSize(ctx, TextSizeDefault)))
+
+	assert.Equal(t, []event.Event{
+		event.TextSizeChanged{Size: string(TextSizeLarge)},
+		event.TextSizeChanged{Size: string(TextSizeDefault)},
+	}, events.All(), "every stored choice, in order, and no refused one")
+}
+
+func TestSetTextSizeDoesNotEmitWhatItCouldNotStore(t *testing.T) {
+	t.Parallel()
+
+	events := &testutil.Events{}
+	svc := serviceOver(t, closedDB(t), t.TempDir(), WithEvents(events))
+
+	require.Error(t, testutil.ErrOf(svc.SetTextSize(t.Context(), TextSizeLarge)))
+	assert.Empty(t, events.All())
 }

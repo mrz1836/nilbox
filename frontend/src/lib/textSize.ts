@@ -23,7 +23,9 @@ export interface TextSizeChoice {
   percent: number
 }
 
-// textSizes are the choices, smallest first, in the order Settings offers them.
+// textSizes are the choices, smallest first, in the order Settings offers them. The shell
+// grows the window's smallest size by the same scales (settings.TextSize.Percent), so the
+// layout is never narrower than at 100%; a Go test holds the two in step.
 export const textSizes: readonly TextSizeChoice[] = [
   { value: 'default', percent: 100 },
   { value: 'large', percent: 115 },

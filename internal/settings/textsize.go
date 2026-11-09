@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
@@ -35,6 +36,22 @@ const DefaultTextSize = TextSizeDefault
 
 // ErrInvalidTextSize is returned for a text size that is not one of the choices.
 var ErrInvalidTextSize = errors.New("unknown text size")
+
+// Percent is the scale the text size sets, as a percent of the size the app is designed
+// at. A size that is not one of the choices counts as DefaultTextSize. The frontend keeps
+// the same scales (frontend/src/lib/textSize.ts), and a test holds the two in step.
+func (t TextSize) Percent() int {
+	switch t {
+	case TextSizeDefault:
+		return 100
+	case TextSizeLarge:
+		return 115
+	case TextSizeLarger:
+		return 130
+	default:
+		return DefaultTextSize.Percent()
+	}
+}
 
 // textSizes returns the text size choices in the order Settings offers them, smallest
 // first.
@@ -70,12 +87,21 @@ func (s *Service) TextSize(ctx context.Context) (TextSize, error) {
 }
 
 // SetTextSize stores the size of the app's text: TextSizeDefault, TextSizeLarge, or
-// TextSizeLarger, and returns the settings with it. The page shows the new size itself.
+// TextSizeLarger, and returns the settings with it. The page shows the new size itself;
+// once it is stored, an event.TextSizeChanged is emitted, so the desktop shell sets the
+// window's smallest size to suit it.
 func (s *Service) SetTextSize(ctx context.Context, size TextSize) (Settings, error) {
 	if !validTextSize(size) {
 		return Settings{}, fmt.Errorf("%w %q: choose one of %s", ErrInvalidTextSize, size,
 			textutil.Join(textSizes(), ", "))
 	}
 
-	return s.save(ctx, setting(KeyTextSize, string(size)))
+	out, err := s.save(ctx, setting(KeyTextSize, string(size)))
+	if err != nil {
+		return Settings{}, err
+	}
+
+	s.events.Emit(event.TextSizeChanged{Size: string(size)})
+
+	return out, nil
 }
