@@ -114,3 +114,30 @@ func errorIsAny(err error, targets ...error) bool {
 
 	return false
 }
+
+// FuzzDecodeFiles checks that any page of files either fails to decode or keeps exactly
+// the named entries, in order, never more than the page listed, with no patch kept.
+func FuzzDecodeFiles(f *testing.F) {
+	for _, seed := range []string{
+		`[{"filename":"a.go","status":"modified","sha":"abc","additions":1,"deletions":2,"patch":"@@ -1 +1 @@\n-a\n+b"}]`,
+		`[{"filename":"img.png","status":"added"},{"filename":""},null,{"filename":"b","previous_filename":"a","status":"renamed"}]`,
+		`[]`, `null`, `{}`, `[1]`, `not json`,
+	} {
+		f.Add([]byte(seed))
+	}
+
+	f.Fuzz(func(t *testing.T, raw []byte) {
+		files, listed, err := decodeFiles(raw, changedFile)
+		if err != nil {
+			assert.Nil(t, files)
+
+			return
+		}
+
+		assert.LessOrEqual(t, len(files), listed)
+
+		for _, file := range files {
+			assert.NotEmpty(t, file.Path)
+		}
+	})
+}

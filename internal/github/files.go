@@ -132,7 +132,7 @@ func (c *Client) readFilesAt(ctx context.Context, tok Token, ref item.Ref, head 
 		head = before.Head
 	}
 
-	files, err := c.listFiles(ctx, tok, ref)
+	files, err := listFiles(ctx, c, tok, ref, changedFile)
 	if err != nil {
 		return nil, "", err
 	}
@@ -181,21 +181,50 @@ func (c *Client) fetchPullHead(ctx context.Context, tok Token, ref item.Ref) (*P
 	return &PullHead{Head: pull.Head.SHA, ChangedFiles: max(pull.ChangedFiles, 0), State: pull.State}, nil
 }
 
+// restFile is one entry of GET /repos/{owner}/{name}/pulls/{number}/files, as GitHub
+// sends it. Patch is the file's diff, which GitHub leaves out (null or missing) for a
+// binary file and one too large to show.
+type restFile struct {
+	Filename         string  `json:"filename"`
+	Status           string  `json:"status"`
+	PreviousFilename string  `json:"previous_filename"`
+	SHA              string  `json:"sha"`
+	Additions        int     `json:"additions"`
+	Deletions        int     `json:"deletions"`
+	Patch            *string `json:"patch"`
+}
+
+// fileConv turns one listed file into what a caller keeps of it; ok is false for an entry
+// to skip, such as one without a name. Each page is converted as it is read, so what a
+// caller does not keep, such as the patches, is dropped page by page.
+type fileConv[F any] func(f restFile) (F, bool)
+
+// changedFile keeps a listed file's paths and status.
+func changedFile(f restFile) (ChangedFile, bool) {
+	if f.Filename == "" {
+		return ChangedFile{}, false
+	}
+
+	return ChangedFile{Path: f.Filename, PreviousPath: f.PreviousFilename, Status: f.Status}, true
+}
+
 // listFiles reads every page of GET /repos/{owner}/{name}/pulls/{number}/files, up to
-// the 3,000 files GitHub lists. The first page's Link header says how many pages there
-// are, and the rest are read a few at a time; without one, they are read in turn.
-func (c *Client) listFiles(ctx context.Context, tok Token, ref item.Ref) ([]ChangedFile, error) {
-	first, err := c.listFilesPage(ctx, tok, ref, 1)
+// the 3,000 files GitHub lists, converting each file with conv. The first page's Link
+// header says how many pages there are, and the rest are read a few at a time; without
+// one, they are read in turn. Go methods cannot take type parameters, so the paging is
+// a set of functions over the client.
+func listFiles[F any](ctx context.Context, c *Client, tok Token, ref item.Ref, conv fileConv[F]) ([]F, error) {
+	first, err := listFilesPage(ctx, c, tok, ref, 1, conv)
 	if err != nil || !first.full {
 		return first.files, err
 	}
 
 	last := min(first.last, maxFilePages)
 	if last < 2 {
-		return c.listFilesInTurn(ctx, tok, ref, first.files)
+		return listFilesInTurn(ctx, c, tok, ref, first.files, conv)
 	}
 
-	pages := make([]filesPage, last+1)
+	pages := make([]filesPage[F], last+1)
 	pages[1] = first
 
 	g, gctx := errgroup.WithContext(ctx)
@@ -205,7 +234,7 @@ func (c *Client) listFiles(ctx context.Context, tok Token, ref item.Ref) ([]Chan
 		g.Go(func() error {
 			var pageErr error
 
-			pages[page], pageErr = c.listFilesPage(gctx, tok, ref, page)
+			pages[page], pageErr = listFilesPage(gctx, c, tok, ref, page, conv)
 
 			return pageErr
 		})
@@ -215,7 +244,7 @@ func (c *Client) listFiles(ctx context.Context, tok Token, ref item.Ref) ([]Chan
 		return nil, err
 	}
 
-	var out []ChangedFile
+	var out []F
 
 	// The list ends at the first page that is not full, as it does when read in turn.
 	for _, p := range pages[1:] {
@@ -231,9 +260,11 @@ func (c *Client) listFiles(ctx context.Context, tok Token, ref item.Ref) ([]Chan
 
 // listFilesInTurn reads the pages after the first one at a time, for a list whose first
 // page did not say how many there are, until one is not full.
-func (c *Client) listFilesInTurn(ctx context.Context, tok Token, ref item.Ref, out []ChangedFile) ([]ChangedFile, error) {
+func listFilesInTurn[F any](
+	ctx context.Context, c *Client, tok Token, ref item.Ref, out []F, conv fileConv[F],
+) ([]F, error) {
 	for page := 2; page <= maxFilePages; page++ {
-		p, err := c.listFilesPage(ctx, tok, ref, page)
+		p, err := listFilesPage(ctx, c, tok, ref, page, conv)
 		if err != nil {
 			return nil, err
 		}
@@ -250,40 +281,49 @@ func (c *Client) listFilesInTurn(ctx context.Context, tok Token, ref item.Ref, o
 
 // filesPage is one page of a pull request's files: the files, whether the page was full,
 // so another may follow, and the number of the last page, or 0 when GitHub did not say.
-type filesPage struct {
-	files []ChangedFile
+type filesPage[F any] struct {
+	files []F
 	full  bool
 	last  int
 }
 
 // listFilesPage reads one page of a pull request's files.
-func (c *Client) listFilesPage(ctx context.Context, tok Token, ref item.Ref, page int) (filesPage, error) {
+func listFilesPage[F any](
+	ctx context.Context, c *Client, tok Token, ref item.Ref, page int, conv fileConv[F],
+) (filesPage[F], error) {
 	query := url.Values{"per_page": {strconv.Itoa(filesPerPage)}, "page": {strconv.Itoa(page)}}
 
 	raw, header, err := c.do(ctx, tok, http.MethodGet, pullPath(ref)+"/files?"+query.Encode(), nil)
 	if err != nil {
-		return filesPage{}, fmt.Errorf("list the files of %s: %w", ref, err)
+		return filesPage[F]{}, fmt.Errorf("list the files of %s: %w", ref, err)
 	}
 
-	var batch []struct {
-		Filename         string `json:"filename"`
-		Status           string `json:"status"`
-		PreviousFilename string `json:"previous_filename"`
+	files, listed, err := decodeFiles(raw, conv)
+	if err != nil {
+		return filesPage[F]{}, fmt.Errorf("%w: decode the files of %s: %w", ErrMalformedResponse, ref, err)
 	}
 
-	if err = json.Unmarshal(raw, &batch); err != nil {
-		return filesPage{}, fmt.Errorf("%w: decode the files of %s: %w", ErrMalformedResponse, ref, err)
+	return filesPage[F]{files: files, full: listed == filesPerPage, last: lastPage(header)}, nil
+}
+
+// decodeFiles decodes one page of files and converts each with conv. It returns what conv
+// kept and how many entries the page listed, which says whether it was full.
+func decodeFiles[F any](raw []byte, conv fileConv[F]) ([]F, int, error) {
+	var batch []restFile
+
+	if err := json.Unmarshal(raw, &batch); err != nil {
+		return nil, 0, err
 	}
 
-	files := make([]ChangedFile, 0, len(batch))
+	files := make([]F, 0, len(batch))
 
 	for _, f := range batch {
-		if f.Filename != "" {
-			files = append(files, ChangedFile{Path: f.Filename, PreviousPath: f.PreviousFilename, Status: f.Status})
+		if kept, ok := conv(f); ok {
+			files = append(files, kept)
 		}
 	}
 
-	return filesPage{files: files, full: len(batch) == filesPerPage, last: lastPage(header)}, nil
+	return files, len(batch), nil
 }
 
 // lastPage reads the number of the last page from a Link header, or returns 0 when it

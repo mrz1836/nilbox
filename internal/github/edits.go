@@ -17,14 +17,25 @@ import (
 )
 
 // The app reads GitHub, and edits it only when the user asks, one item at a time: it takes
-// the user off an item's assignees, or off a pull request's requested reviewers. Each edit
-// is one REST request, which spends one point of the REST budget, and goes through the
-// client's WriteGate first, so the app's edits stay within the user's budget and well
-// clear of GitHub's own limits on writes.
+// the user off an item's assignees, or off a pull request's requested reviewers, and,
+// from the review sheet, reviews, merges, turns on auto-merge, updates a branch, or asks
+// Dependabot to rebase (see review.go). Each edit is one request: a REST edit spends one
+// point of the REST budget, a GraphQL mutation one point of the GraphQL budget. Every edit
+// goes through the client's WriteGate first (edit for REST, mutate for GraphQL), so the
+// app's edits stay within the user's budget and well clear of GitHub's own limits on
+// writes, and an answer that asks the app to slow down holds the next ones.
 
 // secondaryLimitWait is how long GitHub asks a client it slowed down for writing too fast
 // to wait, when the answer does not say: at least a minute.
 const secondaryLimitWait = time.Minute
+
+// mutationCost is what a GraphQL mutation spends of the GraphQL budget: one point. A
+// mutation cannot select rateLimit to report its own cost.
+const mutationCost = 1
+
+// errorRateLimited is GitHub's GraphQL error type for a request refused for its rate
+// limits.
+const errorRateLimited = "RATE_LIMITED"
 
 var (
 	// ErrEditIgnored is returned when GitHub accepted an edit but left the item as it was,
@@ -33,7 +44,63 @@ var (
 
 	// ErrInvalidLogin is returned for an edit about a login GitHub could not have issued.
 	ErrInvalidLogin = errors.New("invalid GitHub login")
+
+	// ErrPushedSince is returned when a pull request was pushed to after the head commit an
+	// edit was pinned to: GitHub refused the edit, and nothing changed.
+	ErrPushedSince = errors.New("the pull request was pushed to since it was read")
+
+	// ErrMergeableNow is returned when GitHub refuses to turn on auto-merge because the pull
+	// request can be merged right now.
+	ErrMergeableNow = errors.New("the pull request can be merged now")
+
+	// ErrNotMergeable matches a *NotMergeableError with errors.Is.
+	ErrNotMergeable = errors.New("GitHub won't merge the pull request yet")
+
+	// ErrOwnPull is returned for an approval or a request for changes on the user's own pull
+	// request, which GitHub refuses.
+	ErrOwnPull = errors.New("GitHub refuses a review of your own pull request")
+
+	// ErrPendingReview is returned when the user already has a pending review on the pull
+	// request, started on GitHub and not submitted, which blocks another.
+	ErrPendingReview = errors.New("you have a pending review on the pull request")
+
+	// ErrLineNotInDiff is returned when GitHub refuses a line comment on a line its diff does
+	// not show.
+	ErrLineNotInDiff = errors.New("a line comment is not on a line of the diff")
 )
+
+// NotMergeableError is GitHub refusing a merge for what the pull request still needs: a
+// required review or check, a conflict, or a merge queue. It matches ErrNotMergeable.
+type NotMergeableError struct {
+	// Reason is GitHub's own words, as in "At least 1 approving review is required by
+	// reviewers with write access."
+	Reason string
+
+	// MergeQueue reports a branch that merges only through its merge queue.
+	MergeQueue bool
+
+	// cause is GitHub's refusal, or nil.
+	cause error
+}
+
+// Error says why GitHub won't merge.
+func (e *NotMergeableError) Error() string {
+	if e.Reason == "" {
+		return ErrNotMergeable.Error()
+	}
+
+	return ErrNotMergeable.Error() + ": " + e.Reason
+}
+
+// Is reports whether target is ErrNotMergeable.
+func (e *NotMergeableError) Is(target error) bool {
+	return target == ErrNotMergeable
+}
+
+// Unwrap returns GitHub's refusal, so its status stays readable.
+func (e *NotMergeableError) Unwrap() error {
+	return e.cause
+}
 
 // WriteGate paces the edits the client sends GitHub. *budget.Tracker implements it. It
 // must return promptly; edits sent side by side call it concurrently.
@@ -254,10 +321,43 @@ func (c *Client) edit(ctx context.Context, tok Token, method, path string, body 
 	return raw, err
 }
 
+// mutate sends one GraphQL mutation, named name in errors, once the client's WriteGate,
+// if any, allows it, and decodes its data into T. It is edit's twin for GraphQL: the gate
+// counts it against the GraphQL budget, it spends one point, and an answer that asks the
+// app to slow down holds the next edits. Any GraphQL error fails it. A mutation with no
+// token is never sent, so it is not counted.
+func mutate[T any](ctx context.Context, c *Client, tok Token, name string, req graphQLRequest) (*T, error) {
+	if !isMutation(req.Query) {
+		return nil, fmt.Errorf("%w: the %s request is not a mutation", ErrMalformedResponse, name)
+	}
+
+	if c.Writes != nil && !tok.IsZero() {
+		if err := c.Writes.AllowWrite(ResourceGraphQL); err != nil {
+			return nil, err
+		}
+	}
+
+	resp, _, err := sendGraphQL[T](ctx, c, tok, name, req, anyError, func([]byte) int { return mutationCost })
+
+	if wait := writeHold(err); wait > 0 && c.Writes != nil {
+		c.Writes.HoldWrites(wait)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.Data, nil
+}
+
 // writeHold is how long GitHub asked the app to send no more edits, from its answer to
 // one: what its Retry-After said, or a minute for a rate limit that did not say; 0 for
 // any other answer.
 func writeHold(err error) time.Duration {
+	if failed, ok := errors.AsType[*queryError](err); ok && failed.limited {
+		return secondaryLimitWait
+	}
+
 	status, ok := errors.AsType[*StatusError](err)
 	if !ok {
 		return 0
@@ -302,6 +402,72 @@ func editError(ref item.Ref, err error) error {
 	default:
 		return err
 	}
+}
+
+// writeError gives a refused review, merge, auto-merge, or branch update of ref a message
+// the user can act on, and the sentinel that says what went wrong, keeping err's chain: a
+// push since the head the write was pinned to (409, or a 422 about the expected head), a
+// merge GitHub won't make yet (405, or a merge queue), a review of the user's own pull
+// request, a pending review that blocks another, and a line comment off the diff. Any
+// other refusal is worded by editError.
+func writeError(ref item.Ref, err error) error {
+	status, ok := errors.AsType[*StatusError](err)
+	if !ok || IsBadCredentials(err) {
+		return err
+	}
+
+	switch status.StatusCode {
+	case http.StatusConflict:
+		return pushedSince(ref, err)
+	case http.StatusMethodNotAllowed:
+		return notMergeable(ref, status.Message, err)
+	case http.StatusUnprocessableEntity:
+		return unprocessable(ref, status.Message, strings.ToLower(status.Message), err)
+	default:
+		return editError(ref, err)
+	}
+}
+
+// unprocessable words a write of ref GitHub refused as unprocessable (422), from its
+// message, and msg, the message in lower case.
+func unprocessable(ref item.Ref, message, msg string, err error) error {
+	switch {
+	case strings.Contains(msg, "expected head"):
+		return pushedSince(ref, err)
+	case strings.Contains(msg, "merge queue"):
+		return notMergeable(ref, message, err)
+	case strings.Contains(msg, "your own pull request"):
+		return uierr.New(fmt.Sprintf("GitHub doesn't let you approve or request changes on your own pull request, %s.", ref),
+			fmt.Errorf("%w: %w", ErrOwnPull, err))
+	case strings.Contains(msg, "pending review"):
+		return uierr.New(fmt.Sprintf("You have a review of %s started on GitHub and not submitted. "+
+			"Submit or discard it there, then try again.", ref), fmt.Errorf("%w: %w", ErrPendingReview, err))
+	case strings.Contains(msg, "part of the diff") || strings.Contains(msg, "could not be resolved"):
+		return uierr.New(fmt.Sprintf("GitHub refused a line comment on %s: a line it names isn't part of the diff.", ref),
+			fmt.Errorf("%w: %w", ErrLineNotInDiff, err))
+	case message != "":
+		return uierr.New(fmt.Sprintf("GitHub refused the change to %s: %s", ref, sentence(message)), err)
+	default:
+		return err
+	}
+}
+
+// pushedSince is a write GitHub refused because ref was pushed to after the head the write
+// was pinned to.
+func pushedSince(ref item.Ref, err error) error {
+	return uierr.New(fmt.Sprintf("%s was pushed to since you opened it, so nothing was changed. "+
+		"Reload it to see the new commits.", ref), fmt.Errorf("%w: %w", ErrPushedSince, err))
+}
+
+// notMergeable is a merge GitHub refused for what ref still needs, in GitHub's own words.
+func notMergeable(ref item.Ref, reason string, err error) error {
+	refused := &NotMergeableError{Reason: reason, MergeQueue: strings.Contains(strings.ToLower(reason), "merge queue"), cause: err}
+
+	if reason == "" {
+		return uierr.New(fmt.Sprintf("GitHub won't merge %s yet.", ref), refused)
+	}
+
+	return uierr.New(fmt.Sprintf("GitHub won't merge %s yet: %s", ref, sentence(reason)), refused)
 }
 
 // sentence ends GitHub's message with a full stop, unless it ends a sentence already.

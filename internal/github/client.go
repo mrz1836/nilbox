@@ -177,12 +177,36 @@ func unlessData(_ graphQLError, hasData bool) bool { return !hasData }
 // leaves the node it is about unanswered.
 func unlessNotFound(e graphQLError, _ bool) bool { return e.Type != errorNotFound }
 
+// ErrMutationAsQuery is returned when a GraphQL mutation is sent as a query: a mutation
+// changes GitHub, so it goes only through mutate, which the WriteGate paces.
+var ErrMutationAsQuery = errors.New("a GraphQL mutation can only be sent as an edit")
+
 // postGraphQL sends one GraphQL query, named name in errors, and decodes its response
 // into data of type T. The query fails when the response cannot be read, when fatal says
 // one of its errors does, and otherwise when it has no data. The returned response keeps
-// the errors fatal let through.
+// the errors fatal let through. It costs what the response's rateLimit reports, and
+// refuses a mutation, which only mutate sends.
 func postGraphQL[T any](
 	ctx context.Context, c *Client, tok Token, name string, req graphQLRequest, fatal fatalError,
+) (*graphQLResponse[T], http.Header, error) {
+	if isMutation(req.Query) {
+		return nil, nil, fmt.Errorf("send the %s query: %w", name, ErrMutationAsQuery)
+	}
+
+	return sendGraphQL[T](ctx, c, tok, name, req, fatal, queryCost)
+}
+
+// isMutation reports whether a GraphQL document is a mutation.
+func isMutation(document string) bool {
+	return strings.HasPrefix(strings.TrimSpace(document), "mutation")
+}
+
+// sendGraphQL sends one GraphQL request, as postGraphQL describes, and counts what it
+// spent with cost, which reads the response: a query reports its own cost, while a
+// mutation cannot select one. Only postGraphQL and mutate call it.
+func sendGraphQL[T any](
+	ctx context.Context, c *Client, tok Token, name string, req graphQLRequest, fatal fatalError,
+	cost func(raw []byte) int,
 ) (*graphQLResponse[T], http.Header, error) {
 	body, err := json.Marshal(req)
 	if err != nil {
@@ -194,7 +218,7 @@ func postGraphQL[T any](
 		return nil, nil, err
 	}
 
-	c.observe(header, queryCost(raw))
+	c.observe(header, cost(raw))
 
 	var resp graphQLResponse[T]
 	if err = json.Unmarshal(raw, &resp); err != nil {
@@ -315,17 +339,64 @@ func readBody(r io.Reader) ([]byte, error) {
 	return data, nil
 }
 
-// apiMessage extracts GitHub's error message from a JSON error body.
+// apiMessage extracts GitHub's error message from a JSON error body, with the messages of
+// its errors array after it: a refused write's useful words are there, as in "Validation
+// Failed: Can not approve your own pull request". An entry is a string, or an object with
+// a message, or else a code and a field.
 func apiMessage(data []byte) string {
 	var body struct {
-		Message string `json:"message"`
+		Message string            `json:"message"`
+		Errors  []json.RawMessage `json:"errors"`
 	}
 
 	if json.Unmarshal(data, &body) != nil {
 		return ""
 	}
 
-	return truncate(body.Message)
+	details := make([]string, 0, len(body.Errors))
+
+	for _, raw := range body.Errors {
+		if detail := errorDetail(raw); detail != "" && !strings.EqualFold(detail, body.Message) {
+			details = append(details, detail)
+		}
+	}
+
+	switch {
+	case len(details) == 0:
+		return truncate(body.Message)
+	case body.Message == "":
+		return truncate(strings.Join(details, "; "))
+	default:
+		return truncate(body.Message + ": " + strings.Join(details, "; "))
+	}
+}
+
+// errorDetail reads one entry of a REST error's errors array: a string, an object's
+// message, or else its code and field, as in "missing_field: body"; "" for anything else.
+func errorDetail(raw json.RawMessage) string {
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		return strings.TrimSpace(text)
+	}
+
+	var entry struct {
+		Message string `json:"message"`
+		Code    string `json:"code"`
+		Field   string `json:"field"`
+	}
+
+	if json.Unmarshal(raw, &entry) != nil {
+		return ""
+	}
+
+	switch {
+	case entry.Message != "":
+		return strings.TrimSpace(entry.Message)
+	case entry.Code != "" && entry.Field != "":
+		return entry.Code + ": " + entry.Field
+	default:
+		return entry.Code
+	}
 }
 
 // truncate collapses whitespace and keeps at most maxMessageRunes of a message, ending
@@ -518,7 +589,20 @@ func graphQLErr(errs []graphQLError) error {
 		msgs = append(msgs, e.Message)
 	}
 
-	return &queryError{message: truncate(strings.Join(msgs, "; ")), scopes: scopeRefused(errs)}
+	return &queryError{
+		message: truncate(strings.Join(msgs, "; ")), scopes: scopeRefused(errs), limited: hasErrorType(errs, errorRateLimited),
+	}
+}
+
+// hasErrorType reports whether any of errs has GitHub's error type kind.
+func hasErrorType(errs []graphQLError, kind string) bool {
+	for _, e := range errs {
+		if e.Type == kind {
+			return true
+		}
+	}
+
+	return false
 }
 
 // queryError is the errors a GraphQL response failed a query with. It matches ErrGraphQL.
@@ -529,6 +613,10 @@ type queryError struct {
 	// scopes reports that one of the errors is GitHub refusing a field the token's scopes
 	// do not reach.
 	scopes bool
+
+	// limited reports that one of the errors is GitHub refusing the request for its rate
+	// limits.
+	limited bool
 }
 
 // Error says the query failed, and GitHub's messages.
@@ -551,13 +639,7 @@ func refusedForScope(err error) bool {
 
 // scopeRefused reports whether any of errs is GitHub refusing a field for want of a scope.
 func scopeRefused(errs []graphQLError) bool {
-	for _, e := range errs {
-		if e.Type == errorInsufficientScopes {
-			return true
-		}
-	}
-
-	return false
+	return hasErrorType(errs, errorInsufficientScopes)
 }
 
 // graphQLError is one entry of a GraphQL errors array. Type is GitHub's error type,

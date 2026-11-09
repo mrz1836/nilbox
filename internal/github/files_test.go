@@ -374,3 +374,29 @@ func TestPullPathEscapesItsParts(t *testing.T) {
 
 	assert.Equal(t, "/repos/a%2Fb/c%3Fd/pulls/3", pullPath(item.Ref{Repo: repo.Name{Owner: "a/b", Repo: "c?d"}, Number: 3}))
 }
+
+func TestFetchChangedFilesKeepsOnlyPathsAndStatus(t *testing.T) {
+	t.Parallel()
+
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/repos/acme-org/example-repo/pulls/7" {
+			_, _ = io.WriteString(w, `{"state":"open","changed_files":2,"head":{"sha":"ccc"}}`)
+
+			return
+		}
+
+		_, _ = io.WriteString(w, `[
+			{"filename":"go.sum","status":"modified","sha":"b1","additions":3,"deletions":1,"patch":"@@ -1 +1,3 @@\n-a\n+b\n+c\n+d"},
+			{"filename":"logo.png","status":"added","sha":"b2","additions":0,"deletions":0},
+			{"filename":"","status":"modified"}
+		]`)
+	})
+
+	got, err := c.FetchChangedFiles(t.Context(), NewToken(fakeToken), pullRef(), "ccc")
+	require.NoError(t, err)
+
+	assert.Equal(t, &ChangedFiles{
+		Head: "ccc", Total: 2, Complete: true,
+		Files: []ChangedFile{{Path: "go.sum", Status: "modified"}, {Path: "logo.png", Status: "added"}},
+	}, got, "the patches GitHub sends with the list are dropped, as before")
+}
