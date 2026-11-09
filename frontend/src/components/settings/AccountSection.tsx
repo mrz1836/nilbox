@@ -7,17 +7,20 @@ import { Avatar } from '../Avatar'
 import { CommandLine } from '../CommandLine'
 import { buttonClass } from '../controls'
 import { CircleCheckIcon, ExternalIcon, ProjectIcon } from '../icons'
+import { cardMatchClass, useSetting } from './match'
 import { Note } from './rows'
 
 // ProjectsAccess says whether issue cards show the GitHub projects each issue is in, and,
 // while the GitHub CLI's token can't read them, the command that lets it.
 function ProjectsAccess({ access }: { access: ProjectAccess }) {
   const headingId = useId()
+  const [marks] = useSetting('Projects on issues')
 
   return (
     <section
+      {...marks}
       aria-labelledby={headingId}
-      className="flex items-start gap-3 rounded-lg border border-border bg-surface px-4 py-3.5"
+      className={`flex items-start gap-3 rounded-lg border border-border bg-surface px-4 py-3.5 ${cardMatchClass}`}
     >
       <ProjectIcon className="mt-0.5 size-4 shrink-0 text-muted" />
       <div className="min-w-0 flex-1">
@@ -70,10 +73,14 @@ export interface AccountSectionProps {
 export function AccountSection({ account, projectAccess }: AccountSectionProps) {
   const signedIn = account !== null && account.login !== ''
   const hasName = signedIn && account.name.trim() !== ''
+  const [marks] = useSetting('GitHub account')
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-4 rounded-lg border border-border bg-surface p-4">
+      <div
+        {...marks}
+        className={`flex items-center gap-4 rounded-lg border border-border bg-surface p-4 ${cardMatchClass}`}
+      >
         <Avatar account={account} size="lg" />
         <div className="min-w-0 flex-1">
           {signedIn ? (

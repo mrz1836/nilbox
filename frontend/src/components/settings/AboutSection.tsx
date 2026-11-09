@@ -6,6 +6,7 @@ import { agentVersions, bugReportURL, getAppInfo, openExternal, type AgentVersio
 import { buttonClass } from '../controls'
 import { ExternalIcon } from '../icons'
 import { Logo } from '../Logo'
+import { cardMatchClass, useSetting } from './match'
 import { Group, Note, SectionIntro } from './rows'
 
 // aboutRows is what the About page lists: the release version and build number, the
@@ -63,6 +64,7 @@ export function AboutSection() {
   const agents = useQuery(() => agentVersions(), [])
   const info = about.data ?? null
   const failure = about.error
+  const [marks] = useSetting('Version')
 
   return (
     <div className="flex flex-col gap-5">
@@ -72,7 +74,9 @@ export function AboutSection() {
         </p>
         <p className="mt-2.5 text-sm text-muted">{brand.tagline}</p>
       </div>
-      <Rows rows={aboutRows(info, failure)} />
+      <div {...marks} className={`rounded-lg ${cardMatchClass}`}>
+        <Rows rows={aboutRows(info, failure)} />
+      </div>
       <section aria-labelledby={`${id}-agents`} className="flex flex-col gap-2">
         <SectionIntro id={`${id}-agents`} title="Coding agents">
           The versions installed, as each agent&apos;s command reports them.

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 import { Switch } from '../controls'
+import { headingMatchClass, rowMatchClass, useSetting } from './match'
 
 // The building blocks every settings section lays itself out with: cards of rows, the
 // heading over a part of a section, the note under one, and the text of a refusal.
@@ -67,29 +68,48 @@ interface SectionIntroProps {
 }
 
 // SectionIntro is the heading over a part of a section, with its help below it and an
-// action at its end, if any.
+// action at its end, if any. "Find a setting" finds it by its title, and colors the
+// heading while it matches.
 export function SectionIntro({ title, id, children, action }: SectionIntroProps) {
+  const [marks, match] = useSetting(title)
+  const headingClass = `text-sm font-semibold ${headingMatchClass(match)}`.trim()
+
+  // The marks go on the intro's outermost element: the heading alone, the heading with
+  // its help, or either beside the action.
+  if (children === undefined && action === undefined) {
+    return (
+      <h3 {...marks} id={id} className={headingClass}>
+        {title}
+      </h3>
+    )
+  }
+
   const heading = (
-    <h3 id={id} className="text-sm font-semibold">
+    <h3 id={id} className={headingClass}>
       {title}
     </h3>
   )
+  const help = children === undefined ? null : <p className="mt-0.5 text-xs text-muted">{children}</p>
 
-  const intro =
-    children === undefined ? (
-      heading
-    ) : (
-      <div>
+  if (action === undefined) {
+    return (
+      <div {...marks}>
         {heading}
-        <p className="mt-0.5 text-xs text-muted">{children}</p>
+        {help}
       </div>
     )
+  }
 
-  return action === undefined ? (
-    intro
-  ) : (
-    <div className="flex items-end justify-between gap-4">
-      {intro}
+  return (
+    <div {...marks} className="flex items-end justify-between gap-4">
+      {help === null ? (
+        heading
+      ) : (
+        <div>
+          {heading}
+          {help}
+        </div>
+      )}
       {action}
     </div>
   )
@@ -107,9 +127,12 @@ interface SettingRowProps {
 }
 
 // SettingRow lays out one setting: its name and help on the left, the control on the right.
+// "Find a setting" finds it by its label, and tints it while it matches.
 export function SettingRow({ label, controlId, description, error = '', children }: SettingRowProps) {
+  const [marks] = useSetting(label)
+
   return (
-    <div className="flex items-center justify-between gap-8 px-4 py-3.5">
+    <div {...marks} className={`flex items-center justify-between gap-8 px-4 py-3.5 ${rowMatchClass}`}>
       <div className="min-w-0">
         <label htmlFor={controlId} className="text-sm font-medium">
           {label}
@@ -163,9 +186,12 @@ interface ChoiceRowProps {
 
 // ChoiceRow lays out one setting chosen with a segmented control: its name and help on
 // the left, the choices on the right. The control carries its own accessible name.
+// "Find a setting" finds it by its label, and tints it while it matches.
 export function ChoiceRow({ label, description, error = '', errorId, children }: ChoiceRowProps) {
+  const [marks] = useSetting(label)
+
   return (
-    <div className="flex items-center justify-between gap-8 px-4 py-3.5">
+    <div {...marks} className={`flex items-center justify-between gap-8 px-4 py-3.5 ${rowMatchClass}`}>
       <div className="min-w-0">
         <p className="text-sm font-medium">{label}</p>
         <p className="mt-0.5 text-xs text-muted">{description}</p>

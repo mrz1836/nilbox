@@ -1,6 +1,9 @@
-import { useEffect, useEffectEvent, useId, useState } from 'react'
+import { useEffect, useEffectEvent, useId, useRef, useState } from 'react'
 
 import type { Result } from '../lib/call'
+import { counted, formatCount } from '../lib/format'
+import { isTyping } from '../lib/keys'
+import { matchSettings, sectionInfo, sectionOrder, type SettingsSection } from '../lib/settingsIndex'
 import type { Theme } from '../lib/theme'
 import type {
   Account,
@@ -17,6 +20,7 @@ import { AboutSection } from './settings/AboutSection'
 import { AccountSection } from './settings/AccountSection'
 import { AppearanceSection } from './settings/AppearanceSection'
 import { LaunchingSection } from './settings/LaunchingSection'
+import { SettingMatch } from './settings/match'
 import { NotificationsSection } from './settings/NotificationsSection'
 import { ProfilesSection } from './settings/ProfilesSection'
 import { RepositoriesSection } from './settings/RepositoriesSection'
@@ -25,79 +29,9 @@ import { SnoozingSection } from './settings/SnoozingSection'
 import { TrustSection } from './settings/TrustSection'
 import { WorktreesSection } from './settings/WorktreesSection'
 
-// SettingsSection is one section of the settings page.
-export type SettingsSection =
-  | 'account'
-  | 'appearance'
-  | 'notifications'
-  | 'snoozing'
-  | 'launching'
-  | 'worktrees'
-  | 'profiles'
-  | 'repositories'
-  | 'trust'
-  | 'files'
-  | 'about'
+export type { SettingsSection }
 
 type SectionId = SettingsSection
-
-// sectionOrder is the sidebar's order; sections holds each one's heading and summary.
-const sectionOrder: readonly SectionId[] = [
-  'account',
-  'appearance',
-  'notifications',
-  'snoozing',
-  'launching',
-  'worktrees',
-  'profiles',
-  'repositories',
-  'trust',
-  'files',
-  'about',
-]
-
-const sections: Readonly<Record<SectionId, { label: string; description: string }>> = {
-  account: {
-    label: 'Account',
-    description: 'The GitHub account your inbox comes from, and what it lets the inbox show.',
-  },
-  appearance: { label: 'Appearance', description: 'The theme, the text size, and the size the window opens at.' },
-  notifications: {
-    label: 'Notifications',
-    description: 'The menu bar icon, and the banners that tell you when something new needs you.',
-  },
-  snoozing: {
-    label: 'Snoozing',
-    description: 'How long a snooze lasts, and what new activity brings an item back early.',
-  },
-  launching: {
-    label: 'Launching',
-    description: 'How a launch starts a coding agent: the app defaults every launch starts from.',
-  },
-  worktrees: {
-    label: 'Worktrees',
-    description:
-      'How the worktrees sessions run in are cleaned up, which branches go with them, and the branches that never go.',
-  },
-  profiles: {
-    label: 'Profiles',
-    description: 'The agent configurations a session can start with, and the folder each one runs from.',
-  },
-  repositories: {
-    label: 'Repositories',
-    description: 'Where your local clones live, and the launch defaults for orgs and repositories.',
-  },
-  trust: {
-    label: 'Trust',
-    description: 'Who launches trust with the profile’s permissions, and which bots count.',
-  },
-  files: {
-    label: 'Sensitive files',
-    description:
-      'The changed files to point out on pull requests from outside the repository, before you review them or open a session on them.',
-  },
-  about: { label: 'About', description: '' },
-}
 
 export interface SettingsViewProps {
   // initialSection is the section the page opens at; it defaults to the account.
@@ -130,28 +64,18 @@ export interface SettingsViewProps {
   onLaunchChanged: () => Promise<void>
   // onClose leaves the settings page for the view it was opened from.
   onClose: () => void
-}
-
-// Input types that take no typing, so Escape in them is free to close the page.
-const untypedInputs = new Set(['checkbox', 'radio', 'button', 'submit', 'reset', 'range', 'color', 'file'])
-
-// isTyping reports whether a key event belongs to editing: a text field or any control in
-// a form, where leaving the page would drop an unsaved draft, or an input method
-// mid-composition.
-function isTyping(e: KeyboardEvent): boolean {
-  const target = e.target
-
-  return (
-    e.isComposing ||
-    target instanceof HTMLTextAreaElement ||
-    (target instanceof HTMLInputElement && !untypedInputs.has(target.type)) ||
-    (target instanceof Element && target.closest('form') !== null)
-  )
+  // query is what "Find a setting" in the toolbar looks for, or '' while it looks for
+  // nothing.
+  query?: string
 }
 
 // SettingsView is the settings page: a sidebar of sections and the chosen section's
 // settings, each saved as soon as it changes (the clone root on Save). Escape, or the
 // back button, returns to the view it was opened from.
+//
+// While "Find a setting" looks for something, the sidebar lists only the sections with a
+// matching setting, each with how many, and turns to the first of them when the open
+// one has none; the matching settings are highlighted, and the first scrolls into view.
 export function SettingsView({
   initialSection = 'account',
   opened = 0,
@@ -168,17 +92,32 @@ export function SettingsView({
   onSaved,
   onLaunchChanged,
   onClose,
+  query = '',
 }: SettingsViewProps) {
   const headingId = useId()
   const [section, setSection] = useState<SectionId>(initialSection)
   // openedAt is the opening the page last turned to its section for.
   const [openedAt, setOpenedAt] = useState(opened)
-  const current = sections[section]
+  const match = matchSettings(query)
+  const listed = match === null ? sectionOrder : sectionOrder.filter((id) => match.sections.has(id))
+  const firstMatch = listed[0]
+  const contentRef = useRef<HTMLDivElement>(null)
 
   if (opened !== openedAt) {
     setOpenedAt(opened)
     setSection(initialSection)
+  } else if (match !== null && firstMatch !== undefined && !match.sections.has(section)) {
+    setSection(firstMatch)
   }
+
+  const current = sectionInfo[section]
+
+  // The first matching setting scrolls into view as the search or the section changes.
+  useEffect(() => {
+    if (query !== '') {
+      contentRef.current?.querySelector('[data-match]')?.scrollIntoView({ block: 'nearest' })
+    }
+  }, [query, section])
 
   const closeOnEscape = useEffectEvent((e: KeyboardEvent) => {
     if (e.key === 'Escape' && !e.defaultPrevented && !isTyping(e)) {
@@ -217,75 +156,96 @@ export function SettingsView({
             Settings
           </button>
         </div>
-        {sectionOrder.map((id) => (
-          <button
-            key={id}
-            type="button"
-            aria-current={id === section ? 'page' : undefined}
-            onClick={() => {
-              setSection(id)
-            }}
-            className="rounded-md px-2.5 py-1.5 text-left text-sm text-muted transition-colors hover:bg-raised hover:text-text aria-[current=page]:bg-raised aria-[current=page]:font-medium aria-[current=page]:text-text"
-          >
-            {sections[id].label}
-          </button>
-        ))}
+        {match !== null && firstMatch === undefined && (
+          <p className="px-2.5 py-1.5 text-sm text-muted">No setting matches “{query.trim()}”.</p>
+        )}
+        {listed.map((id) => {
+          const count = match?.sections.get(id) ?? 0
+
+          return (
+            <button
+              key={id}
+              type="button"
+              aria-current={id === section ? 'page' : undefined}
+              onClick={() => {
+                setSection(id)
+              }}
+              className="flex items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-sm text-muted transition-colors hover:bg-raised hover:text-text aria-[current=page]:bg-raised aria-[current=page]:font-medium aria-[current=page]:text-text"
+            >
+              {sectionInfo[id].label}
+              {count > 0 && (
+                <>
+                  {' '}
+                  <span
+                    aria-hidden="true"
+                    className="rounded-full bg-accent/15 px-1.5 text-[0.6875rem] leading-[1.125rem] font-medium text-text tabular-nums"
+                  >
+                    {formatCount(count)}
+                  </span>
+                  <span className="sr-only">({counted(count, 'match', 'matches')})</span>
+                </>
+              )}
+            </button>
+          )
+        })}
       </nav>
-      <section aria-labelledby={headingId} className="min-w-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-2xl px-8 py-7">
-          <h2 id={headingId} className="text-lg font-semibold">
-            {current.label}
-          </h2>
-          {current.description !== '' && <p className="mt-1 text-sm text-muted">{current.description}</p>}
-          <div className="mt-6">
-            {section === 'account' && <AccountSection account={account} projectAccess={projectAccess} />}
-            {section === 'appearance' && (
-              <AppearanceSection settings={settings} onSaved={onSaved} theme={theme} onThemeChange={onThemeChange} />
-            )}
-            {section === 'notifications' &&
-              (settings === null ? loading : <NotificationsSection settings={settings} onSaved={onSaved} />)}
-            {section === 'snoozing' &&
-              (settings === null ? loading : <SnoozingSection settings={settings} onSaved={onSaved} />)}
-            {section === 'launching' &&
-              (settings === null ? (
-                loading
-              ) : (
-                <LaunchingSection
-                  settings={settings}
-                  agents={agents}
-                  profiles={profiles}
-                  prompts={prompts}
-                  defaultPrompts={defaultPrompts}
-                  onSaved={onSaved}
-                  onLaunchChanged={onLaunchChanged}
-                />
-              ))}
-            {section === 'worktrees' &&
-              (settings === null ? loading : <WorktreesSection settings={settings} onSaved={onSaved} />)}
-            {section === 'profiles' && <ProfilesSection agents={agents} profiles={profiles} />}
-            {section === 'repositories' &&
-              (settings === null ? (
-                loading
-              ) : (
-                <RepositoriesSection
-                  settings={settings}
-                  onSaved={onSaved}
-                  agents={agents}
-                  profiles={profiles}
-                  prompts={prompts}
-                  defaultPrompts={defaultPrompts}
-                  launchDefaults={launchDefaults}
-                  onLaunchChanged={onLaunchChanged}
-                />
-              ))}
-            {section === 'trust' &&
-              (settings === null ? loading : <TrustSection settings={settings} onSaved={onSaved} />)}
-            {section === 'files' &&
-              (settings === null ? loading : <SensitiveFilesSection settings={settings} onSaved={onSaved} />)}
-            {section === 'about' && <AboutSection />}
+      <SettingMatch value={(label) => match?.isMatch(section, label) ?? false}>
+        <section aria-labelledby={headingId} className="min-w-0 flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-2xl px-8 py-7">
+            <h2 id={headingId} className="text-lg font-semibold">
+              {current.label}
+            </h2>
+            {current.description !== '' && <p className="mt-1 text-sm text-muted">{current.description}</p>}
+            <div ref={contentRef} className="mt-6">
+              {section === 'account' && <AccountSection account={account} projectAccess={projectAccess} />}
+              {section === 'appearance' && (
+                <AppearanceSection settings={settings} onSaved={onSaved} theme={theme} onThemeChange={onThemeChange} />
+              )}
+              {section === 'notifications' &&
+                (settings === null ? loading : <NotificationsSection settings={settings} onSaved={onSaved} />)}
+              {section === 'snoozing' &&
+                (settings === null ? loading : <SnoozingSection settings={settings} onSaved={onSaved} />)}
+              {section === 'launching' &&
+                (settings === null ? (
+                  loading
+                ) : (
+                  <LaunchingSection
+                    settings={settings}
+                    agents={agents}
+                    profiles={profiles}
+                    prompts={prompts}
+                    defaultPrompts={defaultPrompts}
+                    onSaved={onSaved}
+                    onLaunchChanged={onLaunchChanged}
+                  />
+                ))}
+              {section === 'worktrees' &&
+                (settings === null ? loading : <WorktreesSection settings={settings} onSaved={onSaved} />)}
+              {section === 'profiles' && <ProfilesSection agents={agents} profiles={profiles} />}
+              {section === 'repositories' &&
+                (settings === null ? (
+                  loading
+                ) : (
+                  <RepositoriesSection
+                    settings={settings}
+                    onSaved={onSaved}
+                    agents={agents}
+                    profiles={profiles}
+                    prompts={prompts}
+                    defaultPrompts={defaultPrompts}
+                    launchDefaults={launchDefaults}
+                    onLaunchChanged={onLaunchChanged}
+                  />
+                ))}
+              {section === 'trust' &&
+                (settings === null ? loading : <TrustSection settings={settings} onSaved={onSaved} />)}
+              {section === 'files' &&
+                (settings === null ? loading : <SensitiveFilesSection settings={settings} onSaved={onSaved} />)}
+              {section === 'about' && <AboutSection />}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </SettingMatch>
     </div>
   )
 }

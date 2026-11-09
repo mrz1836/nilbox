@@ -16,7 +16,7 @@ import {
 import { Segmented, Switch } from '../controls'
 import { ChevronRightIcon } from '../icons'
 import { PathTester } from './PathTester'
-import { ErrorText, Group, joinIds, Note, SectionIntro } from './rows'
+import { ChoiceRow, ErrorText, Group, joinIds, Note, SectionIntro } from './rows'
 import { StringListEditor } from './StringListEditor'
 import type { SectionProps } from './types'
 
@@ -200,14 +200,10 @@ export function SensitiveFilesSection({ settings: stored, onSaved }: SectionProp
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
         <Group>
-          <div className="flex items-center justify-between gap-8 px-4 py-3.5">
-            <div className="min-w-0">
-              <p className="text-sm font-medium">Check pull requests from</p>
-              <p className="mt-0.5 text-xs leading-relaxed text-muted">
-                Forks, outside contributors, and bots you don’t trust always are. Collaborators have access to the
-                repository without being its owner or org members.
-              </p>
-            </div>
+          <ChoiceRow
+            label="Check pull requests from"
+            description="Forks, outside contributors, and bots you don’t trust always are. Collaborators have access to the repository without being its owner or org members."
+          >
             <Segmented
               label="Check pull requests from"
               value={config.scope === 'outside' ? 'outside' : 'collaborators'}
@@ -216,7 +212,7 @@ export function SensitiveFilesSection({ settings: stored, onSaved }: SectionProp
               describedBy={joinIds(errorId)}
               onChange={chooseScope}
             />
-          </div>
+          </ChoiceRow>
         </Group>
         <ErrorText id={`${id}-error`} error={error} />
         <Note>
