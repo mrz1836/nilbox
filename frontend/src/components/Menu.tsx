@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react'
 
+import { remToPx } from '../lib/rem'
 import { usePopover } from '../lib/usePopover'
 import { ChevronRightIcon } from './icons'
 import { PopoverPanel } from './PopoverPanel'
@@ -67,8 +68,8 @@ const itemClass =
   'flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm whitespace-nowrap hover:bg-raised focus:bg-raised focus-visible:outline-none disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent aria-expanded:bg-raised'
 
 // submenuGap is the least room a submenu keeps from the window's edges before it opens
-// the other way.
-const submenuGap = 8
+// the other way, in rem, so it follows the text size.
+const submenuGap = 0.5
 
 // built returns a menu's items, building them when given a function.
 function built(items: readonly MenuItem[] | (() => readonly MenuItem[])): readonly MenuItem[] {
@@ -137,9 +138,11 @@ function Submenu({ id, label, items, focusFirst, onChoose, onBack }: SubmenuProp
     const rect = menuRef.current?.getBoundingClientRect()
 
     if (rect !== undefined) {
+      const gap = remToPx(submenuGap)
+
       setFlip({
-        left: rect.right > window.innerWidth - submenuGap,
-        up: rect.bottom > window.innerHeight - submenuGap,
+        left: rect.right > window.innerWidth - gap,
+        up: rect.bottom > window.innerHeight - gap,
       })
     }
   }, [])

@@ -67,9 +67,10 @@ func (u *desktopUI) Open(theme settings.Theme, size settings.WindowSize, textSiz
 }
 
 // SetTextSize sets the smallest the window can be to the minimum for a text size the user
-// chose, fitted to the work area of the screen the window is on; a window smaller than
-// that grows to it, unless it is maximized or full screen. The page has already shown the
-// size itself.
+// chose, fitted to the work area of the screen the window is on (or the primary screen,
+// when that cannot be told). A window smaller than that grows to it, unless it is
+// maximized or full screen, and moves back inside the work area if it grew past an edge.
+// The page has already shown the size itself.
 func (u *desktopUI) SetTextSize(textSize settings.TextSize) {
 	u.appearance.Lock()
 	window := u.window
@@ -79,24 +80,14 @@ func (u *desktopUI) SetTextSize(textSize settings.TextSize) {
 		return
 	}
 
-	// A screen that cannot be told leaves the minimum as it is: it fits no area.
-	screen, err := window.GetScreen()
-	if err != nil {
-		screen = nil
-	}
-
+	screen := u.screenOf(window)
+	width, height := window.Size()
 	least := settings.MinWindowSizeFor(textSize).Fit(workArea(screen))
 	window.SetMinSize(least.Width, least.Height)
-}
 
-// workArea is the width and height of a screen's work area, or zero for no screen, which
-// fits any size.
-func workArea(screen *application.Screen) (width, height int) {
-	if screen == nil {
-		return 0, 0
+	if grownWidth, grownHeight := window.Size(); grownWidth != width || grownHeight != height {
+		keepInside(window, screen)
 	}
-
-	return screen.WorkArea.Width, screen.WorkArea.Height
 }
 
 // Show brings the window forward: shown if it was closed into the menu bar, restored if
@@ -135,6 +126,20 @@ func (u *desktopUI) Quit() {
 	if app := u.app.Load(); app != nil {
 		app.Quit()
 	}
+}
+
+// screenOf is the screen the window is on, or the primary screen when that cannot be told,
+// or nil when there is neither.
+func (u *desktopUI) screenOf(window *application.WebviewWindow) *application.Screen {
+	if screen, err := window.GetScreen(); err == nil && screen != nil {
+		return screen
+	}
+
+	if app := u.app.Load(); app != nil {
+		return app.Screen.GetPrimary()
+	}
+
+	return nil
 }
 
 // attach connects the UI to the app and to the shell that decides what it does.
@@ -184,6 +189,35 @@ func (u *desktopUI) closing(e *application.WindowEvent) {
 		window.Hide()
 		e.Cancel()
 	}
+}
+
+// keepInside moves the window back inside the screen's work area where it reaches past an
+// edge (see desktop.WithinArea). Without a screen, it leaves the window where it is.
+func keepInside(window *application.WebviewWindow, screen *application.Screen) {
+	if screen == nil {
+		return
+	}
+
+	bounds := window.Bounds()
+	area := screen.WorkArea
+	x, y := desktop.WithinArea(
+		desktop.Rect{X: bounds.X, Y: bounds.Y, Width: bounds.Width, Height: bounds.Height},
+		desktop.Rect{X: area.X, Y: area.Y, Width: area.Width, Height: area.Height},
+	)
+
+	if x != bounds.X || y != bounds.Y {
+		window.SetPosition(x, y)
+	}
+}
+
+// workArea is the width and height of a screen's work area, or zero for no screen, which
+// fits any size.
+func workArea(screen *application.Screen) (width, height int) {
+	if screen == nil {
+		return 0, 0
+	}
+
+	return screen.WorkArea.Width, screen.WorkArea.Height
 }
 
 // windowSpec is what the window opens with: the palette its background is in, its size

@@ -17,8 +17,12 @@ on:
       - "sqlc.yaml"
       - "internal/**/queries/**"
       - "internal/store/migrate/migrations/**"
-      - ".github/env/90-project.env"
-      - "magefiles/db.go"
+      - "magefiles/**"
+      - "go.mod"
+      - "go.sum"
+      - ".github/env/**"
+      - ".github/actions/load-env/**"
+      - ".github/actions/setup-magex/**"
       - ".github/workflows/sqlc.yml"
   push:
     branches:
@@ -27,8 +31,12 @@ on:
       - "sqlc.yaml"
       - "internal/**/queries/**"
       - "internal/store/migrate/migrations/**"
-      - ".github/env/90-project.env"
-      - "magefiles/db.go"
+      - "magefiles/**"
+      - "go.mod"
+      - "go.sum"
+      - ".github/env/**"
+      - ".github/actions/load-env/**"
+      - ".github/actions/setup-magex/**"
       - ".github/workflows/sqlc.yml"
 
 permissions:

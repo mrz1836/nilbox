@@ -1,5 +1,7 @@
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 
+import { remToPx } from './rem'
+
 // Placement is where a panel opens against its button: always below it ('below'); below
 // unless it does not fit there and there is more room above ('flip'); or flipped the same
 // way and kept within the area it scrolls in, scrolling inside itself when it runs longer
@@ -37,9 +39,10 @@ export interface Popover<T extends HTMLElement, P extends HTMLElement> {
 }
 
 // panelGap is the room kept between a panel and the edge of the area it opens in, and
-// minPanelHeight the least height a fitted panel keeps however little room there is.
-const panelGap = 12
-const minPanelHeight = 160
+// minPanelHeight the least height a fitted panel keeps however little room there is. Both
+// are in rem, so they follow the text size as the panels themselves do.
+const panelGap = 0.75
+const minPanelHeight = 10
 
 interface Bounds {
   top: number
@@ -67,8 +70,9 @@ function scrollBounds(el: HTMLElement): Bounds {
 function place(trigger: HTMLElement, panel: HTMLElement, placement: Placement): { side: Side; maxHeight?: number } {
   const bounds = placement === 'fit' ? scrollBounds(trigger) : { top: 0, bottom: window.innerHeight }
   const rect = trigger.getBoundingClientRect()
-  const below = bounds.bottom - rect.bottom - panelGap
-  const above = rect.top - bounds.top - panelGap
+  const gap = remToPx(panelGap, trigger.ownerDocument)
+  const below = bounds.bottom - rect.bottom - gap
+  const above = rect.top - bounds.top - gap
   // The panel's full height, whether it scrolls inside itself or not.
   const height = Math.max(panel.offsetHeight, panel.scrollHeight)
   const up = height > below && above > below
@@ -77,7 +81,10 @@ function place(trigger: HTMLElement, panel: HTMLElement, placement: Placement): 
     return { side: up ? 'above' : 'below' }
   }
 
-  return { side: up ? 'above' : 'below', maxHeight: Math.max(minPanelHeight, up ? above : below) }
+  return {
+    side: up ? 'above' : 'below',
+    maxHeight: Math.max(remToPx(minPanelHeight, trigger.ownerDocument), up ? above : below),
+  }
 }
 
 // usePopover opens and closes a floating panel the way a desktop menu behaves: a click or

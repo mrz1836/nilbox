@@ -2,7 +2,7 @@ import { useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEv
 
 import { caretPosition } from '../lib/caret'
 import { completionAt, highlight, matchVariables, offsetOf, type Completion, type TokenKind } from '../lib/template'
-import { remToPx } from '../lib/textSize'
+import { remToPx } from '../lib/rem'
 import type { Diagnostic, PromptVariable } from '../platform'
 
 // TemplateEditorHandle lets the page around the editor insert text and point at a spot.

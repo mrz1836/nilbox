@@ -13,9 +13,16 @@ name: Frontend
 
 on:
   pull_request:
+    # The gate is a magex target, so the magefiles, the Go module, the .github/env settings,
+    # and the actions that set up MAGE-X decide whether it runs too.
     paths:
       - "frontend/**"
-      - "magefiles/frontend.go"
+      - "magefiles/**"
+      - "go.mod"
+      - "go.sum"
+      - ".github/env/**"
+      - ".github/actions/load-env/**"
+      - ".github/actions/setup-magex/**"
       - ".github/workflows/frontend.yml"
   push:
     branches:
