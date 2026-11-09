@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, render, screen, within, type BoundFunctions, type queries } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -1352,6 +1352,11 @@ describe('WorktreesView merged branches', () => {
     })
   }
 
+  // busy is a merged branch the clone has checked out, so it can't go.
+  const busy = merged('busy', 187, {
+    branch: { ...mergedBranch().branch, name: 'busy', deletable: false, reason: 'it is the clone’s current branch' },
+  })
+
   // result is the outcome of deleting one merged branch.
   function result(name: string, overrides: Partial<BranchResult> = {}): BranchResult {
     return {
@@ -1365,15 +1370,28 @@ describe('WorktreesView merged branches', () => {
     }
   }
 
-  async function openMerged() {
-    render(<WorktreesView clock={fixedNow} />)
+  async function openMerged(branchRules?: BranchRules) {
+    render(<WorktreesView clock={fixedNow} branchRules={branchRules} />)
     await repo('example-repo')
     await userEvent.click(screen.getByRole('button', { name: 'Clean up merged branches…' }))
 
     return within(screen.getByRole('dialog', { name: 'Delete merged branches?' }))
   }
 
-  it('checks the branches against GitHub, groups them by clone, and deletes those ticked', async () => {
+  // clone returns the row of one clone in the dialog: its box, its toggle, and the queries
+  // scoped to it.
+  function clone(dialog: BoundFunctions<typeof queries>, displayRepo: string) {
+    const toggle = dialog.getByRole('button', { name: displayRepo })
+    const li = toggle.closest('li')
+
+    if (li === null) {
+      throw new Error(`no row shows ${displayRepo}`)
+    }
+
+    return { toggle, box: dialog.getByRole('checkbox', { name: `Every branch in ${displayRepo}` }), row: within(li) }
+  }
+
+  it('checks the branches against GitHub, groups them by clone, closed, and deletes those ticked', async () => {
     let answer: (found: MergedBranch[]) => void = () => undefined
     platform.mergedBranches.mockReturnValue(
       new Promise((resolve) => {
@@ -1396,27 +1414,46 @@ describe('WorktreesView merged branches', () => {
 
     act(() => {
       answer([
+        busy,
         mergedBranch(),
-        merged('busy', 187, {
-          branch: { ...mergedBranch().branch, name: 'busy', deletable: false, reason: 'it is checked out in ~/busy' },
-        }),
         merged('feature-y', 185),
         merged('feature-z', 186, { repoPath: otherPath, displayRepo: '~/projects/other-repo' }),
       ])
     })
 
-    const example = within(await dialog.findByRole('region', { name: '~/projects/example-repo' }))
-    const feature = example.getByRole('checkbox', { name: /^Delete branch feature-x/ })
-    expect(feature).toBeChecked()
-    expect(feature).toHaveAccessibleName(/#184 Add locktimes · merged 3d ago · at fc1c397$/)
-    const busy = example.getByRole('checkbox', { name: /^Delete branch busy/ })
-    expect(busy).toBeDisabled()
-    expect(busy).not.toBeChecked()
-    expect(example.getByText('Stays: it is checked out in ~/busy.')).toBeInTheDocument()
-    const other = within(dialog.getByRole('region', { name: '~/projects/other-repo' }))
-    expect(other.getByRole('checkbox', { name: /^Delete branch feature-z/ })).toBeChecked()
+    expect(await dialog.findByText('4 branches in 2 clones · 3 ticked · 1 can’t be deleted')).toBeInTheDocument()
 
-    await userEvent.click(example.getByRole('checkbox', { name: /^Delete branch feature-y/ }))
+    const example = clone(dialog, '~/projects/example-repo')
+    expect(example.toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(example.row.getByText('3 branches · 2 ticked')).toBeInTheDocument()
+    expect(example.row.getByRole('img', { name: '1 branch can’t be deleted' })).toBeInTheDocument()
+    expect(example.box).toBeChecked()
+    expect(dialog.queryByRole('checkbox', { name: /^feature-x/ })).not.toBeInTheDocument()
+
+    const other = clone(dialog, '~/projects/other-repo')
+    expect(other.row.getByText('1 branch · 1 ticked')).toBeInTheDocument()
+    expect(other.row.queryByRole('img')).not.toBeInTheDocument()
+
+    await userEvent.click(example.toggle)
+    expect(example.toggle).toHaveAttribute('aria-expanded', 'true')
+
+    const branches = within(dialog.getByRole('list', { name: 'Branches in ~/projects/example-repo' }))
+    const feature = branches.getByRole('checkbox', { name: /^feature-x/ })
+    expect(feature).toBeChecked()
+    expect(feature).toHaveAccessibleName(/merged 3d ago · at fc1c397#184 Add locktimes$/)
+    const held = branches.getByRole('checkbox', { name: /^busy/ })
+    expect(held).toBeDisabled()
+    expect(held).not.toBeChecked()
+    expect(branches.getByRole('img', { name: 'Can’t be deleted' })).toBeInTheDocument()
+    expect(branches.getByText('Stays: it is the clone’s current branch.')).toBeInTheDocument()
+
+    await userEvent.click(branches.getByRole('checkbox', { name: /^feature-y/ }))
+    expect(example.box).toBePartiallyChecked()
+    expect(example.row.getByText('3 branches · 1 ticked')).toBeInTheDocument()
+
+    await userEvent.click(example.toggle)
+    expect(dialog.queryByRole('list', { name: 'Branches in ~/projects/example-repo' })).not.toBeInTheDocument()
+
     await userEvent.click(dialog.getByRole('button', { name: 'Delete 2 branches' }))
 
     expect(platform.deleteBranches).toHaveBeenCalledExactlyOnceWith([
@@ -1426,29 +1463,52 @@ describe('WorktreesView merged branches', () => {
 
     const results = await screen.findByRole('status')
     expect(results).toHaveTextContent('Deleted 1 of 2 branches.')
-    expect(results).toHaveTextContent('~/projects/example-repo: feature-x deleted, at fc1c397')
-    expect(results).toHaveTextContent(
+    expect(within(results).getByRole('list', { name: 'Branches kept' })).toHaveTextContent(
       '~/projects/other-repo: feature-z kept: the branch moved since it was checked; refresh and try again',
     )
-    expect(results).toHaveTextContent('To bring a branch back, run git branch <name> <commit> in its clone.')
+    expect(within(results).getByRole('list', { name: 'Branches deleted' })).toHaveTextContent(
+      '~/projects/example-repo: feature-x at fc1c397',
+    )
+    expect(results).toHaveTextContent('The branch deleted, and the commits that bring them back')
     expect(platform.listWorktrees).toHaveBeenCalledTimes(2)
   })
 
-  it('starts each box unticked when the rules say so, and ticks them all or none', async () => {
-    platform.mergedBranches.mockResolvedValue([mergedBranch(), merged('feature-y', 185)])
-    render(<WorktreesView clock={fixedNow} branchRules={rules({ merged: false })} />)
-    await repo('example-repo')
-    await userEvent.click(screen.getByRole('button', { name: 'Clean up merged branches…' }))
+  it('ticks and unticks a whole clone, and every branch at once', async () => {
+    platform.mergedBranches.mockResolvedValue([
+      mergedBranch(),
+      merged('feature-y', 185),
+      merged('feature-z', 186, { repoPath: otherPath, displayRepo: '~/projects/other-repo' }),
+    ])
+    const dialog = await openMerged(rules({ merged: false }))
 
-    const dialog = within(screen.getByRole('dialog'))
-    expect(await dialog.findAllByRole('checkbox', { checked: false })).toHaveLength(2)
+    const example = clone(dialog, '~/projects/example-repo')
+    expect(await dialog.findByText('3 branches in 2 clones · 0 ticked')).toBeInTheDocument()
+    expect(example.box).not.toBeChecked()
+
+    await userEvent.click(example.box)
+    expect(example.box).toBeChecked()
+    expect(dialog.getByRole('button', { name: 'Delete 2 branches' })).toBeEnabled()
+
+    await userEvent.click(example.box)
+    expect(dialog.getByRole('button', { name: 'Delete 0 branches' })).toBeDisabled()
 
     await userEvent.click(dialog.getByRole('button', { name: 'Select all' }))
-    expect(dialog.getAllByRole('checkbox', { checked: true })).toHaveLength(2)
-    expect(dialog.getByRole('button', { name: 'Delete 2 branches' })).toBeEnabled()
+    expect(dialog.getByRole('button', { name: 'Delete 3 branches' })).toBeEnabled()
+    expect(clone(dialog, '~/projects/other-repo').box).toBeChecked()
 
     await userEvent.click(dialog.getByRole('button', { name: 'Select none' }))
     expect(dialog.getByRole('button', { name: 'Delete 0 branches' })).toBeDisabled()
+  })
+
+  it('holds the box of a clone none of whose branches can go', async () => {
+    platform.mergedBranches.mockResolvedValue([busy])
+    const dialog = await openMerged()
+
+    const example = clone(dialog, '~/projects/example-repo')
+    expect(await dialog.findByText('1 branch in 1 clone · 0 ticked · 1 can’t be deleted')).toBeInTheDocument()
+    expect(example.box).toBeDisabled()
+    expect(example.box).not.toBeChecked()
+    expect(example.row.getByText('1 branch · 0 ticked')).toBeInTheDocument()
   })
 
   it('says when no branch belongs to a merged pull request', async () => {
@@ -1481,15 +1541,36 @@ describe('WorktreesView merged branches', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('scan the clone root: permission denied')
   })
 
-  it('reports deleting every branch ticked', async () => {
-    platform.mergedBranches.mockResolvedValue([mergedBranch()])
-    platform.deleteBranches.mockResolvedValue([result('feature-x')])
+  it('reports deleting every branch ticked, and copies the commands that bring them back', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    platform.mergedBranches.mockResolvedValue([mergedBranch(), merged("it's-done", 185)])
+    platform.deleteBranches.mockResolvedValue([
+      result('feature-x'),
+      result("it's-done", { head: '1851851851851851851851851851851851851851' }),
+    ])
     await openMerged()
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Delete 1 branch' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete 2 branches' }))
 
     const results = await screen.findByRole('status')
-    expect(results).toHaveTextContent('Deleted 1 of 1 branch.')
+    expect(results).toHaveTextContent('Deleted 2 of 2 branches.')
     expect(results.firstElementChild).toHaveClass('text-success')
+    expect(within(results).queryByRole('list', { name: 'Branches kept' })).not.toBeInTheDocument()
+    expect(results).toHaveTextContent('The 2 branches deleted, and the commits that bring them back')
+
+    platform.copyText.mockRejectedValueOnce(new Error('clipboard refused'))
+    await userEvent.click(within(results).getByRole('button', { name: 'Copy restore commands' }))
+    await vi.waitFor(() => {
+      expect(error).toHaveBeenCalledWith('could not copy the restore commands', expect.any(Error))
+    })
+
+    await userEvent.click(within(results).getByRole('button', { name: 'Copy restore commands' }))
+
+    expect(platform.copyText).toHaveBeenLastCalledWith(
+      `git -C '${repoPath}' branch 'feature-x' fc1c3975011e66491785ace891c893e4fc716587\n` +
+        `git -C '${repoPath}' branch 'it'\\''s-done' 1851851851851851851851851851851851851851`,
+    )
+    expect(await within(results).findByRole('button', { name: 'Copied' })).toBeInTheDocument()
+    error.mockRestore()
   })
 })

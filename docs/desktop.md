@@ -1270,8 +1270,11 @@ ticked as those settings say, and you can change any before you confirm.
   pull request merged. It asks GitHub, in GraphQL requests of up to 50 branch names each across
   every clone, for the merged pull requests whose head branch has each name, in each of the
   clone's GitHub repositories, and only when you click it. A `worktree-pr-<n>` branch left after its worktree went is matched by its
-  number. The dialog groups them by clone, with the pull request, its title, and when it
-  merged. **Tick merged branches** (on by default) sets whether they start ticked.
+  number. The dialog groups them by clone, each closed to start with: a clone's row shows
+  how many branches it has and how many are ticked, a box that ticks or unticks them all,
+  and a warning sign when some of them can't be deleted. Open it to see each branch with its
+  pull request, when it merged, and its commit. **Tick merged branches** (on by default) sets
+  whether they start ticked.
 
 **Protected branches** are never deleted, by any cleanup: `main` and `master` by default, and
 any you add, as a name or a pattern such as `release/*` (`*` matches any run of characters but
@@ -1284,8 +1287,10 @@ deleted), or, for a merged branch, it points at the merged pull request's head o
 before it. A branch that can't go is shown unticked and held, with why, such as "2 commits on it
 aren't on GitHub". Each is checked again as it is deleted, and deleted with `git update-ref -d`
 only while it still points at the commit the dialog showed, so a branch that moved in between is
-kept. The outcome lists each branch with that commit, so `git branch <name> <commit>` brings one
-back. The automatic cleanup deletes only a worktree's own and pull request branches, as the
+kept. The outcome lists why each branch kept stayed and, folded away, each deleted branch with
+that commit, so `git branch <name> <commit>` brings one back; **Copy restore commands** copies
+those commands for every branch deleted. Branches are deleted a few clones at a time, each
+clone's branches read once. The automatic cleanup deletes only a worktree's own and pull request branches, as the
 settings say; merged branches go only through the dialog. Nothing on GitHub is ever changed.
 
 Every git command runs as an argument list with `git -C <repository>`, never through a shell.

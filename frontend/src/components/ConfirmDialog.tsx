@@ -17,8 +17,16 @@ export interface ConfirmDialogProps {
   cancelLabel?: string | null
   // confirmDisabled turns the confirm button off, such as while nothing is chosen.
   confirmDisabled?: boolean
-  // wide gives the dialog room for a list, such as prompts to choose among.
-  wide?: boolean
+  // size gives the dialog room for a list: wide for prompts to choose among, large for a
+  // long list grouped by repository.
+  size?: 'normal' | 'wide' | 'large'
+}
+
+// sizeClass is each size's largest width.
+const sizeClass: Readonly<Record<NonNullable<ConfirmDialogProps['size']>, string>> = {
+  normal: 'max-w-md',
+  wide: 'max-w-xl',
+  large: 'max-w-3xl',
 }
 
 // focusableSelector finds the dialog's controls for keeping keyboard focus inside it.
@@ -66,7 +74,7 @@ export function ConfirmDialog({
   tone = 'danger',
   cancelLabel = 'Cancel',
   confirmDisabled = false,
-  wide = false,
+  size = 'normal',
 }: ConfirmDialogProps) {
   const id = useId()
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -141,7 +149,7 @@ export function ConfirmDialog({
       }}
       // The backdrop's color is spelled out: before Safari 17.4, ::backdrop sees none of the
       // page's custom properties, so a theme color would leave it clear.
-      className={`m-auto w-[calc(100%-2rem)] ${wide ? 'max-w-xl' : 'max-w-md'} rounded-lg border border-border bg-surface p-4 text-text shadow-lg backdrop:bg-[rgb(0_0_0/0.4)]`}
+      className={`m-auto w-[calc(100%-2rem)] ${sizeClass[size]} rounded-lg border border-border bg-surface p-4 text-text shadow-lg backdrop:bg-[rgb(0_0_0/0.4)]`}
     >
       <h2 id={`${id}-title`} className="text-base font-semibold">
         {title}

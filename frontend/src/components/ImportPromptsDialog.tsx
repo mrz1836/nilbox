@@ -154,7 +154,7 @@ export function ImportPromptsDialog({ start, agents, onImported, onCancel }: Imp
         title="Restore prompts from a backup"
         confirmLabel="Show prompts"
         tone="primary"
-        wide
+        size="wide"
         confirmDisabled={choice === null}
         onCancel={onCancel}
         onConfirm={() => {
@@ -185,7 +185,7 @@ export function ImportPromptsDialog({ start, agents, onImported, onCancel }: Imp
       title={`${verb} prompts from ${sourceName}`}
       confirmLabel={importer.pending ? `${verb}ing…` : `${verb} ${counted(chosen.length, 'prompt', 'prompts')}`}
       tone="primary"
-      wide
+      size="wide"
       confirmDisabled={chosen.length === 0 || importer.pending || entries.pending}
       onCancel={onCancel}
       onConfirm={() => {

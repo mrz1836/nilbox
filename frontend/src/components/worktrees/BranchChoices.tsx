@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
 
 import type { BranchKind, BranchRules, Worktree, WorktreeBranch } from '../../platform'
 
@@ -67,19 +67,17 @@ const kindText: Readonly<Record<BranchKind, string>> = {
   merged: 'its pull request merged',
 }
 
-export interface BranchBoxProps {
+interface BranchBoxProps {
   branch: WorktreeBranch
   checked: boolean
   onChange: (on: boolean) => void
   // off holds the box, as while its worktree is unticked.
   off?: boolean
-  // detail replaces the line that says what the branch is, as with a merged pull request.
-  detail?: ReactNode
 }
 
 // BranchBox is a branch's box in a confirmation: what it is, the commit it points at,
 // and, when it can't go, the reason it stays.
-export function BranchBox({ branch, checked, onChange, off = false, detail }: BranchBoxProps) {
+function BranchBox({ branch, checked, onChange, off = false }: BranchBoxProps) {
   const held = !branch.deletable
 
   return (
@@ -100,7 +98,7 @@ export function BranchBox({ branch, checked, onChange, off = false, detail }: Br
           Delete branch <code className="font-mono break-all">{branch.name}</code>
         </span>
         <span className="text-xs">
-          {detail ?? kindText[branch.kind]} · at <code className="font-mono">{shortCommit(branch.head)}</code>
+          {kindText[branch.kind]} · at <code className="font-mono">{shortCommit(branch.head)}</code>
         </span>
         {held && <span className="text-xs text-warning">Stays: {branch.reason}.</span>}
       </span>

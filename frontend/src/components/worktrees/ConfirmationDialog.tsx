@@ -120,7 +120,7 @@ function BulkConfirmation({
       confirmLabel={`${words.verb} ${plural(chosen.length, 'worktree')}`}
       confirmDisabled={chosen.length === 0}
       tone={words.tone}
-      wide
+      size="wide"
       onConfirm={() => {
         onConfirm({
           picks: chosen.map(({ repoPath, worktree: wt }) => ({

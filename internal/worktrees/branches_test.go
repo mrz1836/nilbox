@@ -1,6 +1,7 @@
 package worktrees
 
 import (
+	"context"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -69,6 +70,11 @@ func newMergedFixture(t *testing.T) mergedFixture {
 	heads["pushed-x"] = branchAt(t, clone, "pushed-x", main)
 	pushed(t, clone, "pushed-x", heads["pushed-x"])
 
+	// The clone's own checkout: current shares main's files, so moving HEAD to it changes
+	// none.
+	heads["current"] = branchAt(t, clone, "current", main)
+	testutil.RunGit(t, clone, "symbolic-ref", "HEAD", "refs/heads/current")
+
 	// Protected, never merged, and a worktree's own branch left after its worktree went.
 	heads["release/1"] = branchAt(t, clone, "release/1", main)
 	heads["never-merged"] = branchAt(t, clone, "never-merged", main)
@@ -88,6 +94,7 @@ func newMergedFixture(t *testing.T) mergedFixture {
 		key("extra-work"): merged(186, strings.Repeat("1", 40)),
 		key("busy"):       merged(187, heads["busy"]),
 		key("pushed-x"):   merged(188, strings.Repeat("2", 40)),
+		key("current"):    merged(189, heads["current"]),
 		key("develop"):    merged(1, heads["develop"]),
 		key("release/1"):  merged(2, heads["release/1"]),
 	}}
@@ -129,6 +136,7 @@ func TestMergedBranchesFindsEachBranchWhosePullRequestMerged(t *testing.T) {
 	assert.Equal(t, []row{
 		{"behind", 185, true, ""},
 		{"busy", 187, false, "it is checked out in ~/busy"},
+		{"current", 189, false, "it is the clone's current branch"},
 		{"extra-work", 186, false, "it has commits that aren't in pull request #186 or on GitHub"},
 		{"feature-x", 184, true, ""},
 		{"pushed-x", 188, true, ""},
@@ -138,7 +146,7 @@ func TestMergedBranchesFindsEachBranchWhosePullRequestMerged(t *testing.T) {
 	require.Len(t, f.gh.asked, 1, "one question to GitHub for the clone's branches")
 	require.Len(t, f.gh.asked[0], 1)
 	assert.Equal(t, exampleRepo(), f.gh.asked[0][0].Repo)
-	assert.ElementsMatch(t, []string{"behind", "busy", "extra-work", "feature-x", "never-merged", "pushed-x"},
+	assert.ElementsMatch(t, []string{"behind", "busy", "current", "extra-work", "feature-x", "never-merged", "pushed-x"},
 		f.gh.asked[0][0].Branches, "a worktree-pr-<n> branch is asked about by its number")
 }
 
@@ -173,42 +181,61 @@ func TestDeleteBranchesChecksEachAgain(t *testing.T) {
 		pick("release/1"),
 		pick("develop"),
 		pick("busy"),
+		pick("current"),
+		pick("feature-x"),
 		{RepoPath: f.clone, Name: "gone", Head: f.heads["main"]},
 		{RepoPath: f.clone, Name: "-x", Head: f.heads["main"]},
 		{RepoPath: f.e.home, Name: "feature-x", Head: f.heads["feature-x"]},
 	})
 	require.NoError(t, err)
 
-	outcomes := make(map[string]string, len(got))
+	outcomes := make([]string, 0, len(got))
 	for _, res := range got {
 		outcome := res.Reason
 		if res.Deleted {
 			outcome = "deleted"
 		}
 
-		outcomes[res.RepoPath+" "+res.Name] = outcome
+		outcomes = append(outcomes, res.RepoPath+" "+res.Name+": "+outcome)
 	}
 
-	assert.Equal(t, map[string]string{
-		f.clone + " feature-x":     "deleted",
-		f.clone + " worktree-pr-9": "deleted",
-		f.clone + " behind":        ErrBranchMoved.Error(),
-		f.clone + " release/1":     "the branch is protected: it is protected in Settings",
-		f.clone + " develop":       "the branch is protected: it is the repository's default branch",
-		f.clone + " busy":          ErrBranchInUse.Error(),
-		f.clone + " gone":          ErrBranchGone.Error(),
-		f.clone + " -x":            reasonOf(ErrInvalidRequest) + `: "-x" at "` + f.heads["main"] + `"`,
-		f.e.home + " feature-x":    reasonOf(ErrOutsideCloneRoot) + ": ~",
-	}, outcomes)
+	assert.Equal(t, []string{
+		f.clone + " feature-x: deleted",
+		f.clone + " worktree-pr-9: deleted",
+		f.clone + " behind: " + ErrBranchMoved.Error(),
+		f.clone + " release/1: the branch is protected: it is protected in Settings",
+		f.clone + " develop: the branch is protected: it is the repository's default branch",
+		f.clone + " busy: " + ErrBranchInUse.Error(),
+		f.clone + " current: " + ErrBranchInUse.Error(),
+		f.clone + " feature-x: " + ErrBranchGone.Error(),
+		f.clone + " gone: " + ErrBranchGone.Error(),
+		f.clone + " -x: " + reasonOf(ErrInvalidRequest) + `: "-x" at "` + f.heads["main"] + `"`,
+		f.e.home + " feature-x: " + reasonOf(ErrOutsideCloneRoot) + ": ~",
+	}, outcomes, "each outcome in the order picked, a second pick of a deleted branch finding it gone")
 
 	left := branches(t, f.clone)
 	assert.NotContains(t, left, "feature-x")
 	assert.NotContains(t, left, "worktree-pr-9")
 
-	for _, kept := range []string{"behind", "release/1", "develop", "busy", "main"} {
+	for _, kept := range []string{"behind", "release/1", "develop", "busy", "current", "main"} {
 		assert.Contains(t, left, kept)
 	}
 
 	assert.Equal(t, f.heads["feature-x"], got[0].Head, "the result keeps the commit that restores the branch")
 	assert.Equal(t, "~/projects/example-repo", got[0].DisplayRepo)
+}
+
+func TestDeleteBranchesStopsWhenCancelled(t *testing.T) {
+	t.Parallel()
+
+	f := newMergedFixture(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	got, err := f.svc.DeleteBranches(ctx, []BranchPick{{RepoPath: f.clone, Name: "feature-x", Head: f.heads["feature-x"]}})
+	require.ErrorIs(t, err, context.Canceled)
+	require.Len(t, got, 1)
+	assert.False(t, got[0].Deleted)
+	assert.Equal(t, reasonOf(context.Canceled), got[0].Reason)
+	assert.Contains(t, branches(t, f.clone), "feature-x")
 }

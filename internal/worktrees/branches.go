@@ -86,8 +86,8 @@ func (s *Service) branchesOf(ctx context.Context, g git, repoPath string, wt *Wo
 	default:
 		if lb, ok := findBranch(locals, own); ok {
 			unpushed, onGitHub := s.branchOnGitHub(ctx, g, repoPath, lb.head, wt.Item)
-			out = append(out, s.judge(Branch{Name: own, Head: lb.head, Kind: BranchOwn}, unpushed, onGitHub, lb.worktree,
-				defaults, rules))
+			out = append(out, s.judge(Branch{Name: own, Head: lb.head, Kind: BranchOwn}, unpushed, onGitHub,
+				s.checkedOut(repoPath, lb.worktree), defaults, rules))
 		}
 	}
 
@@ -141,8 +141,8 @@ func (s *Service) branchOnGitHub(ctx context.Context, g git, repoPath, head stri
 }
 
 // judge sets whether b may go, and why not: it is a remote's default branch, the user
-// protects it, a worktree other than the one removed has it checked out (elsewhere), or
-// some commit on it is not on GitHub.
+// protects it, the clone or a worktree other than the one removed has it checked out
+// (elsewhere, the reason checkedOut gives, or ""), or some commit on it is not on GitHub.
 func (s *Service) judge(b Branch, unpushed int, onGitHub bool, elsewhere string, defaults []string,
 	rules branchrules.Rules,
 ) Branch {
@@ -152,7 +152,7 @@ func (s *Service) judge(b Branch, unpushed int, onGitHub bool, elsewhere string,
 	case branchrules.Matches(b.Name, rules.Protected):
 		b.Reason = "it is protected in Settings"
 	case elsewhere != "":
-		b.Reason = "it is checked out in " + s.display(elsewhere)
+		b.Reason = elsewhere
 	case !onGitHub:
 		b.Reason = unpushedText(unpushed) + " on it " + aren(unpushed) + " on GitHub"
 	default:
@@ -160,6 +160,20 @@ func (s *Service) judge(b Branch, unpushed int, onGitHub bool, elsewhere string,
 	}
 
 	return b
+}
+
+// checkedOut says why a branch checked out at where stays: it is the clone's current
+// branch, or a worktree has it. It is "" when where is "", for a branch nothing has
+// checked out.
+func (s *Service) checkedOut(clone, where string) string {
+	switch {
+	case where == "":
+		return ""
+	case samePath(clone, where):
+		return "it is the clone's current branch"
+	default:
+		return "it is checked out in " + s.display(where)
+	}
 }
 
 // aren is "isn't" for one commit and "aren't" otherwise.
@@ -471,7 +485,7 @@ func (s *Service) mergedBranch(ctx context.Context, g git, scan cloneBranches, l
 
 	switch {
 	case lb.worktree != "":
-		out.Branch.Reason = "it is checked out in " + s.display(lb.worktree)
+		out.Branch.Reason = s.checkedOut(scan.clone.Path, lb.worktree)
 	case slices.ContainsFunc(prs, func(pr MergedPR) bool { return s.inMerged(ctx, g, scan.clone.Path, lb.head, pr) }):
 		out.Branch.Deletable = true
 	default:
@@ -532,8 +546,9 @@ func mergedFor(clone localrepos.LocalRepo, name string, answers map[BranchKey][]
 // DeleteBranches deletes the branches the user ticked in the cleanup of merged branches,
 // each checked again first: its clone must be under the clone root, the user must not
 // protect it, it must not be a remote's default branch or checked out in any worktree,
-// and it must still point at the commit it was offered at. It reports each outcome, with
-// the commit that restores a deleted branch.
+// and it must still point at the commit it was offered at. Each clone is read once and its
+// branches deleted in turn, a few clones at a time. It reports each outcome, in the order
+// picked, with the commit that restores a deleted branch.
 func (s *Service) DeleteBranches(ctx context.Context, picks []BranchPick) ([]BranchResult, error) {
 	s.act.Lock()
 	defer s.act.Unlock()
@@ -543,54 +558,130 @@ func (s *Service) DeleteBranches(ctx context.Context, picks []BranchPick) ([]Bra
 		return nil, err
 	}
 
-	out := make([]BranchResult, 0, len(picks))
+	out := make([]BranchResult, len(picks))
+	byClone := map[string][]int{}
 
-	for _, p := range picks {
-		if err = ctx.Err(); err != nil {
-			return out, err
+	var clones []string
+
+	for i, p := range picks {
+		out[i] = BranchResult{RepoPath: p.RepoPath, DisplayRepo: s.display(p.RepoPath), Name: p.Name, Head: p.Head}
+
+		if _, seen := byClone[p.RepoPath]; !seen {
+			clones = append(clones, p.RepoPath)
 		}
 
-		res := BranchResult{RepoPath: p.RepoPath, DisplayRepo: s.display(p.RepoPath), Name: p.Name, Head: p.Head}
-		if err = s.deletePicked(ctx, g, root, p, prefs.Branches); err != nil {
-			res.Reason = reasonOf(err)
-		} else {
-			res.Deleted = true
-		}
-
-		out = append(out, res)
+		byClone[p.RepoPath] = append(byClone[p.RepoPath], i)
 	}
 
-	return out, nil
+	var eg errgroup.Group
+
+	eg.SetLimit(listConcurrency)
+
+	for _, clone := range clones {
+		eg.Go(func() error {
+			s.deleteInClone(ctx, g, root, clone, byClone[clone], picks, out, prefs.Branches)
+
+			return nil
+		})
+	}
+
+	_ = eg.Wait() // deleteInClone never fails: it reports each pick's outcome
+
+	return out, ctx.Err()
 }
 
-// deletePicked checks one ticked branch again and deletes it.
-func (s *Service) deletePicked(ctx context.Context, g git, root string, p BranchPick, rules branchrules.Rules) error {
+// cloneBranchState is what each branch picked in a clone is checked against, read once:
+// the clone's local branches, its remotes' default branches, and the branches any of its
+// worktrees has checked out.
+type cloneBranchState struct {
+	locals   []localBranch
+	defaults []string
+	inUse    map[string]bool
+}
+
+// readCloneBranches reads a clone's branch state, refusing a clone outside the clone root.
+func (s *Service) readCloneBranches(ctx context.Context, g git, root, clone string) (cloneBranchState, error) {
+	if !s.underRoot(clone, root) {
+		return cloneBranchState{}, fmt.Errorf("%w: %s", ErrOutsideCloneRoot, s.display(clone))
+	}
+
+	locals, stderr, err := g.branches(ctx, clone)
+	if err != nil {
+		return cloneBranchState{}, fmt.Errorf("list the branches of %s: %w", s.display(clone), gitError(err, stderr))
+	}
+
+	entries, stderr, err := g.list(ctx, clone)
+	if err != nil {
+		return cloneBranchState{}, fmt.Errorf("list the worktrees of %s: %w", s.display(clone), gitError(err, stderr))
+	}
+
+	inUse := map[string]bool{}
+
+	for _, e := range entries {
+		if e.Branch != "" {
+			inUse[e.Branch] = true
+		}
+	}
+
+	for _, lb := range locals {
+		if lb.worktree != "" {
+			inUse[lb.name] = true
+		}
+	}
+
+	return cloneBranchState{locals: locals, defaults: g.remoteHeads(ctx, clone), inUse: inUse}, nil
+}
+
+// deleteInClone deletes the picks at idx, all in one clone, recording each outcome in out.
+func (s *Service) deleteInClone(ctx context.Context, g git, root, clone string, idx []int, picks []BranchPick,
+	out []BranchResult, rules branchrules.Rules,
+) {
+	state, readErr := s.readCloneBranches(ctx, g, root, clone)
+
+	for _, i := range idx {
+		err := cmp.Or(ctx.Err(), readErr)
+		if err == nil {
+			err = s.deletePicked(ctx, g, clone, picks[i], &state, rules)
+		}
+
+		if err != nil {
+			out[i].Reason = reasonOf(err)
+		} else {
+			out[i].Deleted = true
+		}
+	}
+}
+
+// deletePicked checks one ticked branch again against its clone's state and deletes it,
+// dropping it from the state so a second pick of it finds it gone.
+func (s *Service) deletePicked(ctx context.Context, g git, clone string, p BranchPick, state *cloneBranchState,
+	rules branchrules.Rules,
+) error {
 	switch {
-	case !s.underRoot(p.RepoPath, root):
-		return fmt.Errorf("%w: %s", ErrOutsideCloneRoot, s.display(p.RepoPath))
 	case !validBranch(p.Name) || !isCommitID(p.Head):
 		return fmt.Errorf("%w: %q at %q", ErrInvalidRequest, p.Name, p.Head)
 	case branchrules.Matches(p.Name, rules.Protected):
 		return fmt.Errorf("%w: it is protected in Settings", ErrBranchProtected)
-	case slices.Contains(g.remoteHeads(ctx, p.RepoPath), p.Name):
+	case slices.Contains(state.defaults, p.Name):
 		return fmt.Errorf("%w: it is the repository's default branch", ErrBranchProtected)
 	}
 
-	locals, stderr, err := g.branches(ctx, p.RepoPath)
-	if err != nil {
-		return fmt.Errorf("list the branches of %s: %w", s.display(p.RepoPath), gitError(err, stderr))
-	}
-
-	lb, ok := findBranch(locals, p.Name)
+	lb, ok := findBranch(state.locals, p.Name)
 
 	switch {
 	case !ok:
 		return ErrBranchGone
 	case lb.head != p.Head:
 		return ErrBranchMoved
-	case lb.worktree != "":
+	case state.inUse[p.Name]:
 		return ErrBranchInUse
 	}
 
-	return s.deleteBranchAt(ctx, g, p.RepoPath, p.Name, p.Head)
+	if stderr, err := g.deleteBranch(ctx, clone, p.Name, p.Head); err != nil {
+		return gitError(err, stderr)
+	}
+
+	state.locals = slices.DeleteFunc(state.locals, func(b localBranch) bool { return b.name == p.Name })
+
+	return nil
 }
