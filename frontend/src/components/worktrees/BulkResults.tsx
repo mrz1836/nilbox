@@ -1,29 +1,17 @@
 import type { Bulk } from '../../lib/useWorktrees'
-import { plural } from './shared'
+import { bulkSummary } from '../../lib/worktreeSummary'
+import { ResultCard } from './ResultCard'
 
-// BulkResults reports the outcome of a bulk action, listing every worktree that was not
-// removed, or whose branch was kept, with the reason.
-export function BulkResults({ bulk }: { bulk: Bulk }) {
-  const { results, noun, verb } = bulk
-
-  if (results.length === 0) {
-    return (
-      <p role="status" className="text-sm text-muted">
-        There were no {noun}s to remove.
-      </p>
-    )
-  }
-
-  const removed = results.filter((r) => r.removed).length
-  const notes = results.filter((r) => r.reason !== '')
+// BulkResults reports the outcome of a bulk action: how many worktrees it took and how
+// many branches went with them, listing every worktree left, or whose branch was kept,
+// with the reason.
+export function BulkResults({ bulk, onDismiss }: { bulk: Bulk; onDismiss: () => void }) {
+  const notes = bulk.results.filter((r) => r.reason !== '')
 
   return (
-    <div role="status" className="flex flex-col gap-1 text-sm">
-      <p className={removed === results.length ? 'text-success' : 'text-warning'}>
-        {verb} {String(removed)} of {plural(results.length, noun)}.
-      </p>
+    <ResultCard summary={bulkSummary(bulk.results, bulk.noun, bulk.verb)} onDismiss={onDismiss}>
       {notes.length > 0 && (
-        <ul className="list-disc pl-5 text-xs text-muted">
+        <ul aria-label="Notes" className="mt-1 list-disc pl-5 text-xs text-muted">
           {notes.map((r) => (
             <li key={r.path}>
               {r.displayPath}: {r.reason}
@@ -31,6 +19,6 @@ export function BulkResults({ bulk }: { bulk: Bulk }) {
           ))}
         </ul>
       )}
-    </div>
+    </ResultCard>
   )
 }

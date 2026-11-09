@@ -1,8 +1,9 @@
-import { act, renderHook } from '@testing-library/react'
+import { act, render, renderHook, screen } from '@testing-library/react'
+import { Activity } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { Result } from './call'
-import { useMutation } from './useMutation'
+import { useMutation, type Mutation } from './useMutation'
 
 // deferred is a write the test settles.
 function deferred<T>() {
@@ -124,5 +125,45 @@ describe('useMutation', () => {
 
     expect(await done).toEqual({ ok: true, data: 'stored' })
     expect(result.current.pending).toBe(true)
+  })
+
+  it('records a write that finished while its page was hidden, so it shows done again', async () => {
+    const write = deferred<string>()
+    let mutation: Mutation<[], string> | undefined
+
+    function Page() {
+      mutation = useMutation(() => write.promise)
+
+      return <p>{mutation.pending ? 'saving' : 'saved'}</p>
+    }
+
+    const { rerender } = render(
+      <Activity mode="visible">
+        <Page />
+      </Activity>,
+    )
+
+    let done: Promise<Result<string>> = Promise.resolve({ ok: true, data: '' })
+    act(() => {
+      done = mutation?.run() ?? done
+    })
+    expect(screen.getByText('saving')).toBeInTheDocument()
+
+    rerender(
+      <Activity mode="hidden">
+        <Page />
+      </Activity>,
+    )
+    await act(async () => {
+      write.resolve('stored')
+      await done
+    })
+    rerender(
+      <Activity mode="visible">
+        <Page />
+      </Activity>,
+    )
+
+    expect(await screen.findByText('saved')).toBeVisible()
   })
 })

@@ -1,16 +1,20 @@
-// Package workspacetrust marks a clone trusted in Claude Code's own config, so a session
-// launched there starts without the agent's workspace trust dialog.
+// Package workspacetrust marks the folder a session starts in trusted in the coding
+// agent's own config, so a session launched there starts without the agent's workspace
+// trust question.
 //
-// The agent asks once per repository whether to trust it and keeps the answer in its
-// config file, under projects[<repository root>].hasTrustDialogAccepted. A session started
-// with --worktree cannot ask: it exits with "Workspace trust not yet accepted" until the
-// repository is trusted. The agent has no flag that skips the question; setting that key
-// is how its documentation says to trust a folder by hand.
+// Claude Code asks once per repository whether to trust it and keeps the answer in its
+// config file, under projects[<repository root>].hasTrustDialogAccepted. A session that
+// starts in a worktree the app made cannot be answered for in advance otherwise; the agent
+// has no flag that skips the question, and setting that key is how its documentation says
+// to trust a folder by hand (see Grant and Claude).
 //
-// Every running session shares the file and rewrites it often, so a grant saves the way
-// the agent does: it takes the agent's lock (a "<file>.lock" directory), reads the file
+// Every running Claude session shares the file and rewrites it often, so a grant saves the
+// way the agent does: it takes the agent's lock (a "<file>.lock" directory), reads the file
 // again under it, changes the one project entry, and replaces the file with a single
 // rename. Neither side loses the other's changes.
+//
+// Codex keeps each project's trust in its config.toml instead; Codex appends the entry
+// there, keeping the rest of the file as the user wrote it.
 package workspacetrust
 
 import (

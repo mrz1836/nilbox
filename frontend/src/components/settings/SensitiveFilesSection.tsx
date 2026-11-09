@@ -14,6 +14,7 @@ import {
   type Settings,
 } from '../../platform'
 import { Segmented, Switch } from '../controls'
+import { ChevronRightIcon } from '../icons'
 import { PathTester } from './PathTester'
 import { ErrorText, Group, joinIds, Note, SectionIntro } from './rows'
 import { StringListEditor } from './StringListEditor'
@@ -87,7 +88,8 @@ function CategoryRow({ category, on, busy, onChange, describedBy }: CategoryRowP
           {category.locked && ' A session on a pull request that changes these asks you first.'}
         </p>
         <details className="group/patterns mt-1.5">
-          <summary className="cursor-pointer text-xs font-medium text-muted select-none hover:text-text">
+          <summary className="-ml-1 flex w-fit cursor-pointer list-none items-center gap-1 rounded-md py-0.5 pr-1.5 pl-1 text-xs font-medium text-muted select-none hover:bg-raised hover:text-text [&::-webkit-details-marker]:hidden">
+            <ChevronRightIcon className="size-3.5 shrink-0 transition-transform group-open/patterns:rotate-90 motion-reduce:transition-none" />
             {counted(patterns.length, 'pattern', 'patterns')}
           </summary>
           <ul aria-label={`${category.label} patterns`} className="mt-1.5 flex flex-wrap gap-1">
@@ -295,8 +297,9 @@ export function SensitiveFilesSection({ settings: stored, onSaved }: SectionProp
           </li>
           <li>
             Opening a session on one that changes agent configuration, or whose files couldn’t all be checked, asks you
-            first: hooks in <code className="font-mono">.claude/settings.json</code> run commands on your Mac as soon as
-            Claude Code starts, even in plan mode. Its files are checked again at that moment.
+            first: hooks in agent configuration, such as <code className="font-mono">.claude/settings.json</code>, run
+            commands on your Mac as soon as the agent starts, even in plan or read-only mode. Its files are checked
+            again at that moment.
           </li>
           <li>The session’s prompt names the sensitive files, so its review starts with them.</li>
           <li>

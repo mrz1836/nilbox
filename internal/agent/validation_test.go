@@ -29,7 +29,7 @@ func TestCheckOverrides(t *testing.T) {
 		{name: "all inherit", args: []string{}},
 		{
 			name: "valid", model: "opus", effort: "high", flags: `--advisor fable --add-dir '/srv/a b'`,
-			args: []string{"--advisor", "fable", "--add-dir", "/srv/a b"},
+			args: []string{flagAdvisor, "fable", "--add-dir", "/srv/a b"},
 		},
 		{name: "bad model and effort", model: "-x", effort: "huge", args: []string{}, fields: []agent.FieldError{
 			{Field: agent.FieldModel, Message: modelMsg},
@@ -54,11 +54,64 @@ func TestCheckOverrides(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			args, fields := agent.CheckOverrides(tt.model, tt.effort, tt.flags)
+			args, fields := agent.CheckOverrides(agent.Claude, tt.model, tt.effort, tt.flags)
 			assert.Equal(t, tt.args, args)
 			assert.Equal(t, tt.fields, fields)
 		})
 	}
+}
+
+func TestCheckOverridesCodex(t *testing.T) {
+	t.Parallel()
+
+	args, fields := agent.CheckOverrides(agent.Codex, "gpt-6-sol", "ultra", "--search -c model_verbosity=low")
+	assert.Equal(t, []string{"--search", "-c", "model_verbosity=low"}, args)
+	assert.Empty(t, fields)
+
+	args, fields = agent.CheckOverrides(agent.Codex, "-x", "huge", "-c model=o3")
+	assert.Nil(t, args)
+	assert.Equal(t, []agent.FieldError{
+		{Field: agent.FieldModel, Message: `A model is one word, such as "gpt-6-sol", that doesn't start with "-".`},
+		{Field: agent.FieldEffort, Message: "Choose an effort level from the list."},
+		{Field: agent.FieldExtraFlags, Message: "-c model is set by the Model setting."},
+	}, fields)
+
+	_, fields = agent.CheckOverrides(unknownAgent, "", "", "")
+	assert.Equal(t, []agent.FieldError{{Field: agent.FieldExtraFlags, Message: `There's no coding agent called "example-agent".`}}, fields)
+}
+
+func TestCheckSettings(t *testing.T) {
+	t.Parallel()
+
+	checked, fields := agent.CheckSettings(agent.Settings{
+		Models:     map[agent.ID]string{agent.Claude: " opus ", agent.Codex: ""},
+		Effort:     "ultra",
+		ExtraFlags: map[agent.ID]string{agent.Claude: "--advisor fable", agent.Codex: "  "},
+	})
+	assert.Empty(t, fields)
+	assert.Equal(t, map[agent.ID]string{agent.Claude: "opus"}, checked.Models, "blank models are left out")
+	assert.Equal(t, map[agent.ID][]string{agent.Claude: {flagAdvisor, "fable"}}, checked.Args, "blank flags are left out")
+
+	checked, fields = agent.CheckSettings(agent.Settings{})
+	assert.Empty(t, fields)
+	assert.NotNil(t, checked.Models)
+	assert.NotNil(t, checked.Args)
+
+	_, fields = agent.CheckSettings(agent.Settings{
+		Models:     map[agent.ID]string{agent.Codex: "-x", unknownAgent: "m"},
+		Effort:     "huge",
+		ExtraFlags: map[agent.ID]string{agent.Claude: "--model opus", agent.Codex: "--sandbox read-only", unknownAgent: "--x"},
+	})
+	assert.Equal(t, []agent.FieldError{
+		{Field: "models.codex", Message: `A model is one word, such as "gpt-6-sol", that doesn't start with "-".`},
+		{Field: agent.FieldModels, Message: `There's no coding agent called "example-agent".`},
+		{Field: agent.FieldEffort, Message: "Choose an effort level from the list."},
+		{Field: "extraFlags.claude", Message: "--model is set by the Model setting."},
+		{Field: "extraFlags.codex", Message: "--sandbox can't be added: permissions come from the profile and the outside-contributor rule."},
+		{Field: agent.FieldExtraFlags, Message: `There's no coding agent called "example-agent".`},
+	}, fields)
+
+	assert.Equal(t, "models.codex", agent.FieldFor(agent.FieldModels, agent.Codex))
 }
 
 func TestValidationError(t *testing.T) {

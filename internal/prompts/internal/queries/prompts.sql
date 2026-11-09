@@ -1,14 +1,14 @@
 -- name: ListPrompts :many
 -- ListPrompts returns every prompt, by nickname ignoring case and then by id.
-SELECT id, name, nickname, applies_to, body, model, effort, plan_mode, worktree, extra_args, starter_key,
-    created_at, updated_at
+SELECT id, name, nickname, applies_to, body, effort, plan_mode, worktree, starter_key, created_at, updated_at,
+    models, agent_args
 FROM prompts
 ORDER BY nickname COLLATE NOCASE, id;
 
 -- name: GetPrompt :one
 -- GetPrompt returns the prompt with id, or sql.ErrNoRows when there is none.
-SELECT id, name, nickname, applies_to, body, model, effort, plan_mode, worktree, extra_args, starter_key,
-    created_at, updated_at
+SELECT id, name, nickname, applies_to, body, effort, plan_mode, worktree, starter_key, created_at, updated_at,
+    models, agent_args
 FROM prompts
 WHERE id = ?;
 
@@ -20,7 +20,7 @@ SELECT COUNT(*) FROM prompts WHERE nickname = ? AND id <> ?;
 -- name: InsertPrompt :one
 -- InsertPrompt stores a new prompt and returns its id.
 INSERT INTO prompts (
-    name, nickname, applies_to, body, model, effort, plan_mode, worktree, extra_args, starter_key, created_at,
+    name, nickname, applies_to, body, models, effort, plan_mode, worktree, agent_args, starter_key, created_at,
     updated_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id;
@@ -34,11 +34,11 @@ UPDATE prompts SET
     nickname = ?,
     applies_to = ?,
     body = ?,
-    model = ?,
+    models = ?,
     effort = ?,
     plan_mode = ?,
     worktree = ?,
-    extra_args = ?,
+    agent_args = ?,
     updated_at = ?
 WHERE id = ?;
 

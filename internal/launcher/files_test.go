@@ -322,8 +322,34 @@ func TestPromptNeverOnCommandLine(t *testing.T) {
 
 	prompt := "Review pull request #7: it's `rm -rf ~` $(curl evil) \"quoted\"\nsecond line"
 
+	for _, req := range []Request{baseRequest(), codexRequest()} {
+		plan, err := BuildPlan(req)
+		require.NoError(t, err)
+
+		files, err := WriteLaunchFiles(testPaths(t), plan, prompt, fixedNow(), nil)
+		require.NoError(t, err)
+
+		script, err := os.ReadFile(files.Script)
+		require.NoError(t, err)
+
+		for _, piece := range []string{prompt, "Review pull request", "rm -rf", "curl evil", "second line"} {
+			assert.NotContains(t, string(script), piece)
+		}
+
+		assert.Contains(t, string(script), "prompt=$(cat -- "+shQuote(files.Prompt)+")\n")
+		assert.Contains(t, string(script), `"$prompt"`)
+
+		stored, err := os.ReadFile(files.Prompt)
+		require.NoError(t, err)
+		assert.Equal(t, prompt, string(stored))
+	}
+}
+
+func TestPromptNeverOnCommandLineEvenOnce(t *testing.T) {
+	t.Parallel()
+
+	prompt := "Review"
 	req := baseRequest()
-	req.Worktree = true
 
 	plan, err := BuildPlan(req)
 	require.NoError(t, err)
@@ -334,16 +360,7 @@ func TestPromptNeverOnCommandLine(t *testing.T) {
 	script, err := os.ReadFile(files.Script)
 	require.NoError(t, err)
 
-	for _, piece := range []string{prompt, "Review pull request", "rm -rf", "curl evil", "second line"} {
-		assert.NotContains(t, string(script), piece)
-	}
-
-	assert.Contains(t, string(script), "prompt=$(cat -- "+shQuote(files.Prompt)+")\n")
-	assert.Contains(t, string(script), `"$prompt"`)
-
-	stored, err := os.ReadFile(files.Prompt)
-	require.NoError(t, err)
-	assert.Equal(t, prompt, string(stored))
+	assert.Equal(t, 1, strings.Count(string(script), `"$prompt"`), "the prompt is passed once")
 }
 
 func TestRenderedScriptRunsWithExactArgv(t *testing.T) {
@@ -358,9 +375,8 @@ func TestRenderedScriptRunsWithExactArgv(t *testing.T) {
 	testutil.WriteExecutable(t, agent, fakeAgent)
 
 	req := baseRequest()
-	req.Clone.Dir = clone
-	req.ClaudePath = agent
-	req.Worktree = true
+	req.Dir = clone
+	req.BinaryPath = agent
 	req.Profile.AddDirs = []string{filepath.Join(root, "docs; rm -rf x")}
 	req.Profile.ExtraArgs = []string{"--append-system-prompt", "keep `this` & $that", "--verbose"}
 	req.Profile.Env = map[string]string{"EXTRA_VAR": "it's $HOME\nnext"}
@@ -391,7 +407,26 @@ func TestRenderedScriptRunsWithExactArgv(t *testing.T) {
 	// argument, in front of every flag.
 	wantArgv := plan.Argv(strings.TrimRight(prompt, "\n"))[1:]
 	assert.Equal(t, wantArgv, fields[3:])
-	assert.Equal(t, []string{"--worktree", "#7"}, fields[len(fields)-2:])
+	assert.Equal(t, strings.TrimRight(prompt, "\n"), fields[3])
+
+	// Codex gets its prompt last, after --, as one argument too.
+	codex := codexRequest()
+	codex.Dir, codex.BinaryPath, codex.Profile.AddDirs = clone, agent, req.Profile.AddDirs
+	codex.Profile.ExtraArgs = []string{"-c", "model_verbosity=\"low $x\""}
+
+	plan, err = BuildPlan(codex)
+	require.NoError(t, err)
+
+	files, err = WriteLaunchFiles(testPaths(t), plan, prompt, fixedNow(), nil)
+	require.NoError(t, err)
+
+	out, err = runSh(t, append(os.Environ(), "CODEX_HOME="+filepath.Join(root, "inherited")), files.Script)
+	require.NoError(t, err)
+
+	fields = strings.Split(strings.TrimSuffix(string(out), "\x00"), "\x00")
+	require.GreaterOrEqual(t, len(fields), 5)
+	assert.Equal(t, plan.Argv(strings.TrimRight(prompt, "\n"))[1:], fields[3:])
+	assert.Equal(t, []string{"--", strings.TrimRight(prompt, "\n")}, fields[len(fields)-2:])
 }
 
 func TestRenderedScriptStopsWhenTheCloneIsMissing(t *testing.T) {
@@ -403,8 +438,8 @@ func TestRenderedScriptStopsWhenTheCloneIsMissing(t *testing.T) {
 	testutil.WriteExecutable(t, agent, "#!/bin/sh\ntouch "+shQuote(marker)+"\n")
 
 	req := baseRequest()
-	req.Clone.Dir = filepath.Join(root, "gone")
-	req.ClaudePath = agent
+	req.Dir = filepath.Join(root, "gone")
+	req.BinaryPath = agent
 
 	plan, err := BuildPlan(req)
 	require.NoError(t, err)

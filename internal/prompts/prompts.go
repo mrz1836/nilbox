@@ -19,7 +19,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -37,13 +36,14 @@ const (
 	maxNicknameRunes = 20
 )
 
-// Fields an agent.FieldError can name, matching Input's JSON names.
+// Fields an agent.FieldError can name, matching Input's JSON names. A per-agent field's
+// error for one agent names it with agent.FieldFor, as in "models.codex".
 const (
 	FieldName       = "name"
 	FieldNickname   = "nickname"
 	FieldAppliesTo  = "appliesTo"
 	FieldBody       = "body"
-	FieldModel      = agent.FieldModel
+	FieldModels     = agent.FieldModels
 	FieldEffort     = agent.FieldEffort
 	FieldExtraFlags = agent.FieldExtraFlags
 )
@@ -84,19 +84,23 @@ type Prompt struct {
 	// Body is the Go text/template.
 	Body string `json:"body"`
 
-	// Model and Effort set --model and --effort; "" inherits.
-	Model  string `json:"model"`
+	// Models is each agent's model; an agent with no entry inherits.
+	Models map[agent.ID]string `json:"models"`
+
+	// Effort is the effort level of every agent; "" inherits. An agent that lacks the
+	// level launches with its own default.
 	Effort string `json:"effort"`
 
 	// PlanMode and Worktree turn plan mode and the worktree on or off; nil inherits.
 	PlanMode *bool `json:"planMode"`
 	Worktree *bool `json:"worktree"`
 
-	// ExtraArgs are added after the profile's and the launch defaults' arguments.
-	ExtraArgs []string `json:"extraArgs"`
+	// ExtraArgs is each agent's extra arguments, added after its profile's and the launch
+	// defaults' arguments.
+	ExtraArgs map[agent.ID][]string `json:"extraArgs"`
 
-	// ExtraFlags is ExtraArgs on one line, quoted the way the editor shows them.
-	ExtraFlags string `json:"extraFlags"`
+	// ExtraFlags is ExtraArgs on one line per agent, quoted the way the editor shows them.
+	ExtraFlags map[agent.ID]string `json:"extraFlags"`
 
 	// StarterKey names the starter the prompt came from, or "".
 	StarterKey string `json:"starterKey"`
@@ -135,17 +139,17 @@ func (u Usage) InUse() bool {
 
 // Input is a prompt as the editor saves it.
 type Input struct {
-	Name      string    `json:"name"`
-	Nickname  string    `json:"nickname"`
-	AppliesTo AppliesTo `json:"appliesTo"`
-	Body      string    `json:"body"`
-	Model     string    `json:"model"`
-	Effort    string    `json:"effort"`
-	PlanMode  *bool     `json:"planMode"`
-	Worktree  *bool     `json:"worktree"`
+	Name      string              `json:"name"`
+	Nickname  string              `json:"nickname"`
+	AppliesTo AppliesTo           `json:"appliesTo"`
+	Body      string              `json:"body"`
+	Models    map[agent.ID]string `json:"models"`
+	Effort    string              `json:"effort"`
+	PlanMode  *bool               `json:"planMode"`
+	Worktree  *bool               `json:"worktree"`
 
-	// ExtraFlags are the extra arguments typed on one line, quoted as in a shell.
-	ExtraFlags string `json:"extraFlags"`
+	// ExtraFlags is each agent's extra arguments typed on one line, quoted as in a shell.
+	ExtraFlags map[agent.ID]string `json:"extraFlags"`
 }
 
 // InUseError is returned when deleting a prompt that is a default. It matches
@@ -296,13 +300,13 @@ func (s *Service) Create(ctx context.Context, in Input) (Prompt, error) {
 	var id int64
 
 	err := s.store.inTx(ctx, func(st *Store) error {
-		args, fields := validate(ctx, st, 0, in, Usage{})
+		checked, fields := validate(ctx, st, 0, in, Usage{})
 		if len(fields) > 0 {
 			return invalid(fields)
 		}
 
 		var err error
-		if id, err = st.insert(ctx, fromInput(in, args)); err != nil {
+		if id, err = st.insert(ctx, fromInput(in, checked)); err != nil {
 			return fmt.Errorf("save the prompt: %w", err)
 		}
 
@@ -332,12 +336,12 @@ func (s *Service) Update(ctx context.Context, id int64, in Input) (Prompt, error
 	}
 
 	err = s.store.inTx(ctx, func(st *Store) error {
-		args, fields := validate(ctx, st, id, in, usage)
+		checked, fields := validate(ctx, st, id, in, usage)
 		if len(fields) > 0 {
 			return invalid(fields)
 		}
 
-		if saveErr := st.update(ctx, id, fromInput(in, args)); saveErr != nil {
+		if saveErr := st.update(ctx, id, fromInput(in, checked)); saveErr != nil {
 			return fmt.Errorf("save the prompt: %w", saveErr)
 		}
 
@@ -518,24 +522,31 @@ func resetPrompt(ctx context.Context, st *Store, p Prompt, starter Starter, usag
 		in.Nickname = p.Nickname
 	}
 
-	args, fields := validate(ctx, st, p.ID, in, usage)
+	checked, fields := validate(ctx, st, p.ID, in, usage)
 	if len(fields) > 0 {
 		return invalid(fields)
 	}
 
-	if err := st.update(ctx, p.ID, fromInput(in, args)); err != nil {
+	if err := st.update(ctx, p.ID, fromInput(in, checked)); err != nil {
 		return fmt.Errorf("reset the prompt: %w", err)
 	}
 
 	return nil
 }
 
-// normalized trims the names and model, and turns Windows line endings into newlines.
+// normalized trims the names and each agent's model, and turns Windows line endings into
+// newlines.
 func (in Input) normalized() Input {
 	in.Name = strings.TrimSpace(in.Name)
 	in.Nickname = strings.TrimSpace(in.Nickname)
-	in.Model = strings.TrimSpace(in.Model)
 	in.Body = strings.ReplaceAll(in.Body, "\r\n", "\n")
+
+	models := make(map[agent.ID]string, len(in.Models))
+	for id, model := range in.Models {
+		models[id] = strings.TrimSpace(model)
+	}
+
+	in.Models = models
 
 	return in
 }
@@ -544,25 +555,25 @@ func (in Input) normalized() Input {
 func (st Starter) input() Input {
 	return Input{
 		Name: st.Name, Nickname: st.Nickname, AppliesTo: st.AppliesTo, Body: st.Body,
-		Model: st.Model, Effort: st.Effort, PlanMode: st.PlanMode, Worktree: st.Worktree,
-		ExtraFlags: agent.Join(st.ExtraArgs),
+		Models: agent.CloneModels(st.Models), Effort: st.Effort, PlanMode: st.PlanMode, Worktree: st.Worktree,
+		ExtraFlags: agent.JoinArgs(st.ExtraArgs),
 	}
 }
 
 // validate checks an Input for the prompt with id (0 for a new one) and returns its
-// extra arguments, or the problems that stop it being saved.
-func validate(ctx context.Context, st *Store, id int64, in Input, usage Usage) ([]string, []agent.FieldError) {
-	args, fields := validateFields(ctx, st, id, in, usage)
+// models and extra arguments ready to store, or the problems that stop it being saved.
+func validate(ctx context.Context, st *Store, id int64, in Input, usage Usage) (agent.Checked, []agent.FieldError) {
+	checked, fields := validateFields(ctx, st, id, in, usage)
 
 	if t, _ := Parse(in.Body, appliesToOrAny(in.AppliesTo)); t == nil {
 		fields = append(fields, agent.FieldError{Field: FieldBody, Message: "Fix the problems in the prompt's text."})
 	}
 
-	return args, fields
+	return checked, fields
 }
 
 // validateFields checks every field but the text, which Parse checks.
-func validateFields(ctx context.Context, st *Store, id int64, in Input, usage Usage) ([]string, []agent.FieldError) {
+func validateFields(ctx context.Context, st *Store, id int64, in Input, usage Usage) (agent.Checked, []agent.FieldError) {
 	var fields []agent.FieldError
 
 	add := func(field, message string) {
@@ -575,9 +586,11 @@ func validateFields(ctx context.Context, st *Store, id int64, in Input, usage Us
 	add(FieldNickname, checkNickname(ctx, st, id, in.Nickname))
 	add(FieldAppliesTo, checkAppliesTo(in.AppliesTo, usage))
 
-	args, overrides := agent.CheckOverrides(in.Model, in.Effort, in.ExtraFlags)
+	checked, overrides := agent.CheckSettings(agent.Settings{
+		Models: in.Models, Effort: in.Effort, ExtraFlags: in.ExtraFlags,
+	})
 
-	return args, append(fields, overrides...)
+	return checked, append(fields, overrides...)
 }
 
 // invalid is the error for a prompt that cannot be saved for the reasons in fields.
@@ -651,11 +664,12 @@ func appliesToOrAny(appliesTo AppliesTo) AppliesTo {
 	return AppliesToAny
 }
 
-// fromInput returns a validated Input with its extra arguments as a Prompt to store.
-func fromInput(in Input, args []string) Prompt {
+// fromInput returns a validated Input with its checked models and extra arguments as a
+// Prompt to store.
+func fromInput(in Input, checked agent.Checked) Prompt {
 	return Prompt{
 		Name: in.Name, Nickname: in.Nickname, AppliesTo: in.AppliesTo, Body: in.Body,
-		Model: in.Model, Effort: in.Effort, PlanMode: in.PlanMode, Worktree: in.Worktree,
-		ExtraArgs: slices.Clone(args),
+		Models: agent.CloneModels(checked.Models), Effort: in.Effort, PlanMode: in.PlanMode, Worktree: in.Worktree,
+		ExtraArgs: agent.CloneArgs(checked.Args),
 	}
 }

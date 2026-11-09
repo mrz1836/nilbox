@@ -7,15 +7,23 @@ export {
 };
 
 export {
+    BranchKind,
     ItemStatus,
     Stage
 } from "./models.js";
 
 export type {
+    Branch,
+    BranchPick,
+    BranchResult,
     Cleanup,
     LinkedItem,
+    MergedBranch,
+    MergedPullRequest,
+    Pick,
     RemoveResult,
     Repo,
+    Session,
     Snapshot,
     SweepReport,
     Worktree

@@ -14,7 +14,8 @@ var envNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // Script is what a launch script does: it changes into Dir, unsets the variables in
 // Unset, sets those in Env, reads the prompt from PromptFile, and replaces itself with
-// Binary, passing the prompt first and then Args.
+// Binary, passing the prompt first and then Args, or Args and then the prompt when
+// PromptLast is set.
 type Script struct {
 	// Dir is the directory the session starts in.
 	Dir string
@@ -22,8 +23,11 @@ type Script struct {
 	// Binary is the agent binary's absolute path.
 	Binary string
 
-	// Args are the arguments that follow the prompt, one argv element each.
+	// Args are the agent's arguments besides the prompt, one argv element each.
 	Args []string
+
+	// PromptLast passes the prompt after Args rather than before them.
+	PromptLast bool
 
 	// Env holds the environment variables to set.
 	Env map[string]string
@@ -31,7 +35,7 @@ type Script struct {
 	// Unset lists environment variables to remove.
 	Unset []string
 
-	// PromptFile holds the prompt text the script passes as the first argument.
+	// PromptFile holds the prompt text the script passes to the agent.
 	PromptFile string
 }
 
@@ -75,6 +79,8 @@ func (POSIXRenderer) Extension() string { return ".command" }
 //	export NAME='value'
 //	prompt=$(cat -- '<prompt file>')
 //	exec '<agent>' "$prompt" '<arg>' ...
+//
+// or, with PromptLast, exec '<agent>' '<arg>' ... "$prompt".
 func (POSIXRenderer) Render(s Script) []byte {
 	var b strings.Builder
 
@@ -92,10 +98,18 @@ func (POSIXRenderer) Render(s Script) []byte {
 	}
 
 	b.WriteString("prompt=$(cat -- " + shQuote(s.PromptFile) + ")\n")
-	b.WriteString("exec " + shQuote(s.Binary) + ` "$prompt"`)
+	b.WriteString("exec " + shQuote(s.Binary))
+
+	if !s.PromptLast {
+		b.WriteString(` "$prompt"`)
+	}
 
 	for _, arg := range s.Args {
 		b.WriteString(" " + shQuote(arg))
+	}
+
+	if s.PromptLast {
+		b.WriteString(` "$prompt"`)
 	}
 
 	b.WriteString("\n")

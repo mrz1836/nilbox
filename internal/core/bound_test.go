@@ -14,7 +14,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/appdata"
+	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/item"
@@ -55,6 +57,9 @@ func boundCalls(t *testing.T) map[string]boundCall {
 	defaults := launchdefaults.Input{Owner: boundOwner}
 
 	return map[string]boundCall{
+		"appinfo.Service.AgentVersions": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.AppInfo.AgentVersions(ctx), nil
+		},
 		"settings.Service.Get": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.Get(ctx)
 		},
@@ -74,7 +79,16 @@ func boundCalls(t *testing.T) map[string]boundCall {
 			return c.Settings.SetTerminal(ctx, settings.TerminalApp)
 		},
 		"settings.Service.SetDefaultProfile": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
-			return c.Settings.SetDefaultProfile(ctx, settings.DefaultProfile)
+			return c.Settings.SetDefaultProfile(ctx, agent.Claude, settings.DefaultProfile)
+		},
+		"settings.Service.SetBranchRules": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetBranchRules(ctx, branchrules.Defaults())
+		},
+		"settings.Service.SetDefaultAgent": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetDefaultAgent(ctx, agent.Codex)
+		},
+		"profiles.Service.Agents": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Profiles.Agents(ctx)
 		},
 		"settings.Service.SetWorktreeDefault": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetWorktreeDefault(ctx, false)
@@ -215,10 +229,13 @@ func boundCalls(t *testing.T) map[string]boundCall {
 			return got, err
 		},
 		"worktrees.Service.RemoveAllClean": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
-			return c.Worktrees.RemoveAllClean(ctx)
+			return c.Worktrees.RemoveAllClean(ctx, nil)
 		},
 		"worktrees.Service.CleanUpFinished": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
-			return c.Worktrees.CleanUpFinished(ctx)
+			return c.Worktrees.CleanUpFinished(ctx, nil)
+		},
+		"worktrees.Service.DeleteBranches": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Worktrees.DeleteBranches(ctx, nil)
 		},
 		"worktrees.Service.Sweep": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Worktrees.Sweep(ctx), nil
@@ -248,6 +265,10 @@ func unreachedBound() map[string]string {
 		"inbox.Service.StoredFiles":         "nil for an item whose files are not checked",
 		"launcher.Service.Preview":          "needs a clone; its resolution is built as Resolve's",
 		"launcher.Service.Launch":           "opens a terminal",
+		"worktrees.Service.Remove":          "needs a worktree to remove; its result starts its lists empty, as RemoveAllClean's",
+		"worktrees.Service.ForceRemove":     "needs a dirty worktree; its result is built as Remove's",
+		"worktrees.Service.CleanUp":         "reads GitHub; its result is built as CleanUpFinished's",
+		"worktrees.Service.MergedBranches":  "reads GitHub; it starts its list empty, as DeleteBranches does",
 	}
 }
 
@@ -269,7 +290,7 @@ func firstInput(ctx context.Context, t *testing.T, c *Core) prompts.Input {
 	p := firstPrompt(ctx, t, c)
 
 	return prompts.Input{
-		Name: p.Name, Nickname: p.Nickname, AppliesTo: p.AppliesTo, Body: p.Body, Model: p.Model, Effort: p.Effort,
+		Name: p.Name, Nickname: p.Nickname, AppliesTo: p.AppliesTo, Body: p.Body, Models: p.Models, Effort: p.Effort,
 		PlanMode: p.PlanMode, Worktree: p.Worktree, ExtraFlags: p.ExtraFlags,
 	}
 }
@@ -339,8 +360,8 @@ func seedBound(t *testing.T) (*Core, seededItems) {
 
 	// Launch defaults edited by hand into a flag the agent refuses, so the issue in that
 	// repository cannot resolve.
-	_, err = c.DB.ExecContext(ctx, `INSERT INTO launch_defaults (owner, name, extra_args, created_at, updated_at)
-		VALUES ('acme-org', 'stuck-repo', '["--model"]', ?, ?)`, now, now)
+	_, err = c.DB.ExecContext(ctx, `INSERT INTO launch_defaults (owner, name, agent_args, created_at, updated_at)
+		VALUES ('acme-org', 'stuck-repo', '{"claude": ["--model"]}', ?, ?)`, now, now)
 	require.NoError(t, err)
 
 	_, err = notify.NewStore(c.DB).Record(ctx, now, []inbox.Arrival{{

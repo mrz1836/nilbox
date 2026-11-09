@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/item"
 )
 
@@ -248,7 +249,7 @@ func TestQuickLookPinsAFastModel(t *testing.T) {
 
 	st, ok := starterFor(StarterQuickLook)
 	require.True(t, ok)
-	assert.Equal(t, "sonnet", st.Model)
+	assert.Equal(t, map[agent.ID]string{agent.Claude: "sonnet"}, st.Models)
 	assert.Equal(t, "low", st.Effort)
 	require.NotNil(t, st.Worktree)
 	assert.False(t, *st.Worktree, "a quick look reads the diff and needs no worktree")

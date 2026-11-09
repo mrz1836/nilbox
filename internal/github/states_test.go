@@ -22,7 +22,8 @@ import (
 const statesBody = `{
   "data": {
     "r0": {"item": {"__typename": "PullRequest", "title": "Add locktimes", "url": "https://github.com/acme-org/example-repo/pull/184",
-      "prState": "MERGED", "closedAt": "2026-11-06T18:00:00Z", "mergedAt": "2026-11-06T18:00:05Z", "headRefOid": "fc1c3975011e66491785ace891c893e4fc716587"}},
+      "prState": "MERGED", "closedAt": "2026-11-06T18:00:00Z", "mergedAt": "2026-11-06T18:00:05Z", "headRefOid": "fc1c3975011e66491785ace891c893e4fc716587",
+      "headRefName": "add-locktimes"}},
     "r1": {"item": {"__typename": "Issue", "title": "Crash on start", "url": "https://github.com/acme-org/example-repo/issues/7",
       "issueState": "CLOSED", "closedAt": "2026-11-05T10:00:00Z"}},
     "r2": {"item": {"__typename": "PullRequest", "title": "Still going", "url": "https://github.com/acme-org/other-repo/pull/3",
@@ -69,6 +70,7 @@ func TestFetchItemStatesReadsEachRef(t *testing.T) {
 		State:       StateMerged,
 		ClosedAt:    time.Date(2026, 11, 6, 18, 0, 5, 0, time.UTC),
 		HeadOID:     "fc1c3975011e66491785ace891c893e4fc716587",
+		HeadRef:     "add-locktimes",
 	}, states[refs[0].Key()], "a merged pull request is dated by its merge")
 
 	assert.Equal(t, ItemState{

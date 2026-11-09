@@ -14,12 +14,12 @@ type Prompt struct {
 	Nickname   string
 	AppliesTo  string
 	Body       string
-	Model      string
 	Effort     string
 	PlanMode   *bool
 	Worktree   *bool
-	ExtraArgs  string
 	StarterKey string
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
+	Models     string
+	AgentArgs  string
 }

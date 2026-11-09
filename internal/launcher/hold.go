@@ -61,9 +61,9 @@ type Hold struct {
 	// Error says why the check failed, or is "".
 	Error string `json:"error"`
 
-	// AtHead reports that the session would start in a worktree at the pull request's
-	// head, where the agent loads its files the moment it starts. Otherwise they load
-	// once the session, or a later one in the same folder, checks the pull request out.
+	// AtHead reports that the session would start in the pull request's worktree, where
+	// the agent loads its files the moment it starts. Otherwise they load once the
+	// session, or a later one in the same folder, checks the pull request out.
 	AtHead bool `json:"atHead"`
 
 	// Dir is where the session would start, with ~ for home, and Worktree its worktree,
@@ -75,15 +75,17 @@ type Hold struct {
 // holdFor decides whether a launch on a checked pull request waits for the user to
 // confirm, and returns nil when it does not: when its files are not checked (check is
 // nil), or every one was checked and none is an agent file. Files of the other
-// categories never hold a launch back; the card and the prompt point them out.
-func holdFor(check *sensitive.Check, p Plan, dir string) *Hold {
+// categories never hold a launch back; the card and the prompt point them out. atHead
+// reports a session that would start in the pull request's worktree, dir is where it
+// would start, and worktree the worktree's name, or "".
+func holdFor(check *sensitive.Check, atHead bool, dir, worktree string) *Hold {
 	if check == nil {
 		return nil
 	}
 
 	hold := &Hold{
-		Head: check.Head, Checked: check.Checked, Total: check.Total, Error: check.Error, AtHead: p.WorktreeOnPRHead,
-		Dir: dir, Worktree: p.worktreeDir(), Files: []sensitive.Finding{},
+		Head: check.Head, Checked: check.Checked, Total: check.Total, Error: check.Error, AtHead: atHead,
+		Dir: dir, Worktree: worktree, Files: []sensitive.Finding{},
 	}
 
 	if g, ok := check.Category(sensitive.CategoryAgent); ok {

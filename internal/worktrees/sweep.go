@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/localrepos"
@@ -17,17 +18,18 @@ import (
 )
 
 // DefaultSweepInterval is how often a Sweeper sweeps. A sweep runs git only in clones
-// that have agent worktrees, and asks GitHub once, for one point, only when there are
-// any.
+// that have worktrees the app or Claude Code made, or records, and asks GitHub once, for
+// one point, only when there are any.
 const DefaultSweepInterval = 5 * time.Minute
 
-// Sweep checks the worktrees the agent made for pull requests and issues and, when
-// automatic cleanup is on, cleans up each finished one whose pull request merged or whose
-// issue closed (see autoCleanable for which count). It never lists every clone: it looks
-// only in clones with an agent worktree directory or a recorded launch, so it is cheap to
-// run on a timer. It also drops the launch records of worktrees that are gone, and counts
-// the linked worktrees of every clone from their git directories, again without running
-// git. The report is kept for LastSweep, and an event.WorktreesUpdated is emitted when a
+// Sweep checks the worktrees made for pull requests and issues and, when automatic
+// cleanup is on, cleans up each finished one whose pull request merged or whose issue
+// closed (see autoCleanable for which count), and that no running process works in; when
+// the processes cannot be listed, it cleans up none. It never lists every clone: it looks
+// only in clones with worktrees the app or Claude Code made, or with records, so it is
+// cheap to run on a timer. It also checks the records against git (see reconcile), and
+// counts the linked worktrees of every clone from their git directories, again without
+// running git. The report is kept for LastSweep, and an event.WorktreesUpdated is emitted when a
 // worktree was removed or either count changed.
 func (s *Service) Sweep(ctx context.Context) SweepReport {
 	report, _ := s.sweepAndKeep(ctx) // the report says what failed, as the user is told
@@ -115,7 +117,7 @@ func (s *Service) sweep(ctx context.Context) (SweepReport, error) {
 	}
 
 	report.Enabled = prefs.AutoCleanup
-	err = s.sweepAgentWork(ctx, g, root, &report)
+	err = s.sweepAgentWork(ctx, g, root, prefs.Branches, &report)
 
 	// Counted last, so the worktrees the sweep removed are not.
 	report.WorktreeCount = countWorktrees(root)
@@ -123,41 +125,47 @@ func (s *Service) sweep(ctx context.Context) (SweepReport, error) {
 	return report, err
 }
 
-// sweepAgentWork checks the clones with agent worktrees or recorded launches, cleans up
-// what it may, and forgets the launches whose worktree is gone. It returns the error that
-// stopped it before it could clean up anything, which it also words in the report.
-func (s *Service) sweepAgentWork(ctx context.Context, g git, root string, report *SweepReport) error {
-	launches := s.launchRecords(ctx)
+// sweepAgentWork checks the clones with worktrees the app or Claude Code made, or with
+// records, cleans up what it may, and drops the records whose worktree is gone. It
+// returns the error that stopped it before it could clean up anything, which it also
+// words in the report.
+func (s *Service) sweepAgentWork(ctx context.Context, g git, root string, rules branchrules.Rules,
+	report *SweepReport,
+) error {
+	records := s.records(ctx)
 
-	clones := s.sweepClones(ctx, root, launches)
+	clones := s.sweepClones(ctx, root, records)
 	if len(clones) == 0 {
-		s.pruneLaunches(ctx, root, launches, Snapshot{})
+		// Nothing to list: only the records whose clone is gone can be dropped.
+		s.reconcile(ctx, nil, records)
 
 		return nil
 	}
 
-	snap, err := s.assessClones(ctx, g, root, clones)
+	snap, err := s.assessClones(ctx, g, root, clones, rules)
 	if err != nil {
 		report.Error = uierr.Message(err)
 
 		return err
 	}
 
-	s.pruneLaunches(ctx, root, launches, snap)
 	report.Error = snap.LinkError
 
 	for repo, wt := range rows(snap.Repos) {
-		s.sweepRow(ctx, g, repo.Path, *wt, report)
+		s.sweepRow(ctx, g, repo.Path, *wt, !snap.SessionsUnknown, rules, report)
 	}
 
 	return nil
 }
 
 // sweepRow cleans up one worktree when the sweep may, and counts it when it is left for
-// the user.
-func (s *Service) sweepRow(ctx context.Context, g git, repoPath string, wt Worktree, report *SweepReport) {
-	if report.Enabled && autoCleanable(wt) && ctx.Err() == nil {
-		res := s.cleanUpRow(ctx, g, repoPath, wt, true)
+// the user. sessionsKnown reports that the running processes could be listed; without
+// them, the sweep removes nothing.
+func (s *Service) sweepRow(ctx context.Context, g git, repoPath string, wt Worktree, sessionsKnown bool,
+	rules branchrules.Rules, report *SweepReport,
+) {
+	if report.Enabled && sessionsKnown && autoCleanable(wt) && ctx.Err() == nil {
+		res := s.cleanUpRow(ctx, g, repoPath, wt, true, defaultBranches(wt, rules))
 		if res.Removed {
 			report.Cleaned = append(report.Cleaned, res)
 
@@ -172,15 +180,15 @@ func (s *Service) sweepRow(ctx context.Context, g git, repoPath string, wt Workt
 	}
 }
 
-// sweepClones lists the clones worth checking: those directly under root that hold an
-// agent worktree directory, found without running git, and those with a recorded launch.
-// A directory that is not a git clone is skipped.
-func (s *Service) sweepClones(ctx context.Context, root string, launches []worklog.Launch) []localrepos.LocalRepo {
-	dirs := agentCloneDirs(root)
+// sweepClones lists the clones worth checking: those directly under root with worktrees
+// the app or Claude Code made, found without running git, and those with a record. A
+// directory that is not a git clone is skipped.
+func (s *Service) sweepClones(ctx context.Context, root string, records []worklog.Record) []localrepos.LocalRepo {
+	dirs := managedCloneDirs(root)
 
-	for _, l := range launches {
-		if s.underRoot(l.ClonePath, root) && !slices.ContainsFunc(dirs, func(d string) bool { return samePath(d, l.ClonePath) }) {
-			dirs = append(dirs, filepath.Clean(l.ClonePath))
+	for _, r := range records {
+		if s.underRoot(r.ClonePath, root) && !slices.ContainsFunc(dirs, func(d string) bool { return samePath(d, r.ClonePath) }) {
+			dirs = append(dirs, filepath.Clean(r.ClonePath))
 		}
 	}
 
@@ -197,11 +205,11 @@ func (s *Service) sweepClones(ctx context.Context, root string, launches []workl
 	return clones
 }
 
-// agentCloneDirs lists the clones directly under root (see localrepos.Clones) that hold
-// an agent worktree directory. A clone reached through a symlink is left out, so a
-// clone the root also holds itself is never swept twice; its recorded launches still
-// bring it in.
-func agentCloneDirs(root string) []string {
+// managedCloneDirs lists the clones directly under root (see localrepos.Clones) with
+// worktrees the app or Claude Code made. A clone reached through a symlink is left out,
+// so a clone the root also holds itself is never swept twice; its records still bring it
+// in.
+func managedCloneDirs(root string) []string {
 	clones, err := localrepos.Clones(root)
 	if err != nil {
 		return nil
@@ -210,26 +218,12 @@ func agentCloneDirs(root string) []string {
 	var dirs []string
 
 	for dir := range clones {
-		if info, statErr := os.Lstat(dir); statErr == nil && info.IsDir() && hasAgentWorktrees(dir) {
+		if info, statErr := os.Lstat(dir); statErr == nil && info.IsDir() && managedClone(dir) {
 			dirs = append(dirs, dir)
 		}
 	}
 
 	return dirs
-}
-
-// hasAgentWorktrees reports a .claude/worktrees directory with at least one entry.
-func hasAgentWorktrees(dir string) bool {
-	f, err := os.Open(filepath.Join(dir, ".claude", "worktrees")) //nolint:gosec // a fixed subdirectory of a clone under the clone root
-	if err != nil {
-		return false
-	}
-
-	defer func() { _ = f.Close() }()
-
-	names, err := f.Readdirnames(1)
-
-	return err == nil && len(names) > 0
 }
 
 // countWorktrees counts the linked worktrees of the clones directly under root, not
@@ -328,61 +322,6 @@ func readGitPointer(file, base, prefix string) (string, bool) {
 	}
 
 	return path, true
-}
-
-// pruneLaunches forgets the launch records whose worktree is gone: its clone is no
-// longer a directory, or was listed without the worktree. A clone that could not be
-// listed keeps its records.
-func (s *Service) pruneLaunches(ctx context.Context, root string, launches []worklog.Launch, snap Snapshot) {
-	if s.launches == nil {
-		return
-	}
-
-	present, listed := listedPaths(snap)
-
-	for _, l := range launches {
-		if present[launchKey(l.ClonePath, l.Worktree)] || !s.launchGone(l, root, listed) {
-			continue
-		}
-
-		if err := s.launches.ForgetLaunch(ctx, l.ClonePath, l.Worktree); err != nil {
-			s.logger.WarnContext(ctx, "could not forget a worktree launch", "error", err)
-		}
-	}
-}
-
-// listedPaths returns the resolved paths of a snapshot's worktrees, and of its
-// repositories that were listed without an error.
-func listedPaths(snap Snapshot) (worktrees, repos map[string]bool) {
-	worktrees, repos = make(map[string]bool), make(map[string]bool)
-
-	for _, repo := range snap.Repos {
-		if repo.Error == "" {
-			repos[resolvedPath(repo.Path)] = true
-		}
-	}
-
-	for _, wt := range rows(snap.Repos) {
-		worktrees[resolvedPath(wt.Path)] = true
-	}
-
-	return worktrees, repos
-}
-
-// launchGone reports a recorded launch whose worktree is certainly gone.
-func (s *Service) launchGone(l worklog.Launch, root string, listed map[string]bool) bool {
-	info, err := os.Stat(l.ClonePath)
-
-	switch {
-	case err != nil && os.IsNotExist(err):
-		return true
-	case err != nil || !info.IsDir() || !s.underRoot(l.ClonePath, root):
-		return false
-	default:
-		_, statErr := os.Stat(filepath.Join(l.ClonePath, ".claude", "worktrees", l.Worktree))
-
-		return listed[resolvedPath(l.ClonePath)] || os.IsNotExist(statErr)
-	}
 }
 
 // Sweeper runs a Service's sweeps on a timer. It is kept apart from Service, every

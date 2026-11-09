@@ -102,27 +102,40 @@ func (s *Store) inTx(ctx context.Context, fn func(*Store) error) error {
 	})
 }
 
-// save stores a validated Input with its extra arguments, replacing every setting of
-// the defaults stored for the same target, whose owner and name match ignoring case and
-// keep the casing they were first saved with. It returns the defaults as stored.
-func (s *Store) save(ctx context.Context, in Input, args []string) (Defaults, error) {
-	encoded, err := store.EncodeJSON(args)
+// save stores a validated Input with its checked models and extra arguments, replacing
+// every setting of the defaults stored for the same target, whose owner and name match
+// ignoring case and keep the casing they were first saved with. It returns the defaults as
+// stored.
+func (s *Store) save(ctx context.Context, in Input, checked agent.Checked) (Defaults, error) {
+	params := queries.SaveLaunchDefaultsParams{
+		Owner: in.Owner, Name: in.Name, Agent: string(in.Agent), PRPromptID: in.PRPromptID,
+		IssuePromptID: in.IssuePromptID, Effort: in.Effort, PlanMode: in.PlanMode, Worktree: in.Worktree,
+	}
+
+	var err error
+
+	for _, field := range []struct {
+		dst *string
+		v   any
+	}{
+		{&params.Profiles, textutil.NonNilMap(in.Profiles)},
+		{&params.Models, agent.CloneModels(checked.Models)},
+		{&params.AgentArgs, agent.CloneArgs(checked.Args)},
+	} {
+		if *field.dst, err = store.EncodeJSON(field.v); err != nil {
+			return Defaults{}, fmt.Errorf("save the launch defaults for %s: %w", target(in.Owner, in.Name), err)
+		}
+	}
+
+	params.CreatedAt = s.now()
+	params.UpdatedAt = params.CreatedAt
+
+	row, err := s.q.SaveLaunchDefaults(ctx, params)
 	if err != nil {
 		return Defaults{}, fmt.Errorf("save the launch defaults for %s: %w", target(in.Owner, in.Name), err)
 	}
 
-	now := s.now()
-
-	row, err := s.q.SaveLaunchDefaults(ctx, queries.SaveLaunchDefaultsParams{
-		Owner: in.Owner, Name: in.Name, Agent: in.Agent, Profile: in.Profile,
-		PRPromptID: in.PRPromptID, IssuePromptID: in.IssuePromptID, Model: in.Model, Effort: in.Effort,
-		PlanMode: in.PlanMode, Worktree: in.Worktree, ExtraArgs: encoded, CreatedAt: now, UpdatedAt: now,
-	})
-	if err != nil {
-		return Defaults{}, fmt.Errorf("save the launch defaults for %s: %w", target(in.Owner, in.Name), err)
-	}
-
-	return toDefaults(row, textutil.NonNil(args)), nil
+	return fromRow(row)
 }
 
 // remove deletes an org's (name "") or a repository's launch defaults, matching the
@@ -145,23 +158,31 @@ func (s *Store) now() time.Time {
 	return s.clock.Now().UTC()
 }
 
-// fromRow converts a stored row to Defaults. ExtraArgs is never nil: the schema only
-// accepts a JSON array in extra_args, and an empty one decodes to an empty list.
+// fromRow converts a stored row to Defaults. Its maps are never nil: the schema only
+// accepts a JSON object in each per-agent column, and an empty one decodes to an empty
+// map.
 func fromRow(row queries.LaunchDefault) (Defaults, error) {
-	args, err := store.DecodeJSON[[]string](row.ExtraArgs)
+	where := target(row.Owner, row.Name)
+
+	names, err := store.DecodeJSON[map[agent.ID]string](row.Profiles)
 	if err != nil {
-		return Defaults{}, fmt.Errorf("%s: extra arguments: %w", target(row.Owner, row.Name), err)
+		return Defaults{}, fmt.Errorf("%s: profiles: %w", where, err)
 	}
 
-	return toDefaults(row, args), nil
-}
+	models, err := store.DecodeJSON[map[agent.ID]string](row.Models)
+	if err != nil {
+		return Defaults{}, fmt.Errorf("%s: models: %w", where, err)
+	}
 
-// toDefaults converts a stored row whose extra arguments are args to Defaults.
-func toDefaults(row queries.LaunchDefault, args []string) Defaults {
+	args, err := store.DecodeJSON[map[agent.ID][]string](row.AgentArgs)
+	if err != nil {
+		return Defaults{}, fmt.Errorf("%s: extra arguments: %w", where, err)
+	}
+
 	return Defaults{
-		Owner: row.Owner, Name: row.Name, Agent: row.Agent, Profile: row.Profile,
-		PRPromptID: row.PRPromptID, IssuePromptID: row.IssuePromptID, Model: row.Model, Effort: row.Effort,
-		PlanMode: row.PlanMode, Worktree: row.Worktree, ExtraArgs: args, ExtraFlags: agent.Join(args),
-		UpdatedAt: clock.Format(row.UpdatedAt),
-	}
+		Owner: row.Owner, Name: row.Name, Agent: agent.ID(row.Agent), Profiles: textutil.NonNilMap(names),
+		PRPromptID: row.PRPromptID, IssuePromptID: row.IssuePromptID, Models: textutil.NonNilMap(models),
+		Effort: row.Effort, PlanMode: row.PlanMode, Worktree: row.Worktree, ExtraArgs: agent.CloneArgs(args),
+		ExtraFlags: agent.JoinArgs(args), UpdatedAt: clock.Format(row.UpdatedAt),
+	}, nil
 }

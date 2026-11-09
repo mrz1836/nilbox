@@ -1,7 +1,16 @@
 import { startTransition, useActionState, useId, useState } from 'react'
 
 import { attempt } from '../../lib/call'
-import { effortLabel, modelLabel, pinSummary, promptApplies } from '../../lib/launch'
+import {
+  agentName,
+  anyEffortChoices,
+  effortLabel,
+  modelChoices,
+  modelLabel,
+  perAgentEntries,
+  pinSummary,
+  promptApplies,
+} from '../../lib/launch'
 import { defaultsInput, emptyDefaults, findDefaults } from '../../lib/launchChoices'
 import { useDebouncedQuery, useQuery } from '../../lib/useQuery'
 import {
@@ -9,6 +18,8 @@ import {
   listLaunchTargets,
   removeLaunchDefaults,
   saveLaunchDefaults,
+  type AgentID,
+  type AgentInfo,
   type DefaultPrompts,
   type LaunchDefaults,
   type LaunchDefaultsInput,
@@ -25,6 +36,8 @@ import { ErrorText, SectionIntro } from './rows'
 
 export interface LaunchDefaultsSectionProps {
   settings: Settings
+  // agents are the coding agents, whose profiles, models, and flags the defaults set.
+  agents: readonly AgentInfo[]
   profiles: readonly Profile[]
   prompts: readonly Prompt[]
   defaultPrompts: DefaultPrompts | null
@@ -53,12 +66,16 @@ function parseTarget(text: string): { owner: string; name: string } {
 }
 
 // summary lists what a set of defaults sets, as short chips.
-function summary(d: LaunchDefaults, prompts: readonly Prompt[]): string[] {
+function summary(d: LaunchDefaults, prompts: readonly Prompt[], agents: readonly AgentInfo[]): string[] {
   const out: string[] = []
   const nickname = (id: number | null) => prompts.find((p) => p.id === id)?.nickname ?? 'a deleted prompt'
 
-  if (d.profile !== '') {
-    out.push(`profile ${d.profile}`)
+  if (d.agent !== '') {
+    out.push(`starts ${agentName(agents, d.agent)}`)
+  }
+
+  for (const [id, profile] of perAgentEntries(d.profiles, agents)) {
+    out.push(`${agentName(agents, id)} profile ${profile}`)
   }
 
   if (d.prPromptId !== null) {
@@ -69,15 +86,17 @@ function summary(d: LaunchDefaults, prompts: readonly Prompt[]): string[] {
     out.push(`${nickname(d.issuePromptId)} for issues`)
   }
 
-  return [...out, ...pinSummary(d)]
+  return [...out, ...pinSummary(d, agents)]
 }
 
 // LaunchDefaultsSection lists the launch defaults saved for orgs and repositories, and
-// edits them: the profile, the default prompt for each kind, the model, effort, plan
-// mode, worktree, and extra flags. An org's defaults apply to each of its repositories;
-// a repository's own win over them. Every value left on Inherit shows what it inherits.
+// edits them: the coding agent, each agent's profile, model, and extra flags, the default
+// prompt for each kind, and the effort, plan mode, and worktree. An org's defaults apply to
+// each of its repositories; a repository's own win over them. Every value left on Inherit
+// shows what it inherits.
 export function LaunchDefaultsSection({
   settings,
+  agents,
   profiles,
   prompts,
   defaultPrompts,
@@ -130,6 +149,7 @@ export function LaunchDefaultsSection({
         <DefaultsEditor
           editing={editing}
           settings={settings}
+          agents={agents}
           profiles={profiles}
           prompts={prompts}
           defaultPrompts={defaultPrompts}
@@ -162,6 +182,7 @@ export function LaunchDefaultsSection({
                       <DefaultsEditor
                         editing={editing}
                         settings={settings}
+                        agents={agents}
                         profiles={profiles}
                         prompts={prompts}
                         defaultPrompts={defaultPrompts}
@@ -183,7 +204,7 @@ export function LaunchDefaultsSection({
                           </span>
                         </p>
                         <ul className="mt-1 flex flex-wrap gap-1.5">
-                          {summary(d, prompts).map((chip) => (
+                          {summary(d, prompts, agents).map((chip) => (
                             <li key={chip} className={chipClass}>
                               {chip}
                             </li>
@@ -247,6 +268,7 @@ export function LaunchDefaultsSection({
 interface DefaultsEditorProps {
   editing: Editing
   settings: Settings
+  agents: readonly AgentInfo[]
   profiles: readonly Profile[]
   prompts: readonly Prompt[]
   defaultPrompts: DefaultPrompts | null
@@ -260,6 +282,7 @@ interface DefaultsEditorProps {
 function DefaultsEditor({
   editing,
   settings,
+  agents,
   profiles,
   prompts,
   defaultPrompts,
@@ -303,23 +326,42 @@ function DefaultsEditor({
   }
   // Model names hold no spaces, so a typed one is kept trimmed.
   const setOverride = (patch: Partial<LaunchOverrides>) => {
-    set(patch.model === undefined ? patch : { ...patch, model: patch.model.trim() })
+    set(
+      patch.models === undefined
+        ? patch
+        : { ...patch, models: Object.fromEntries(Object.entries(patch.models).map(([k, v]) => [k, v.trim()])) },
+    )
   }
 
   // inherited names what each setting falls back to: the org's defaults for a
   // repository, else the app's settings or the profile's own.
   const inherited = (() => {
     const promptName = (pid: number | null | undefined) => prompts.find((p) => p.id === pid)?.nickname ?? 'none'
+    const keys = agents.map((a) => a.id).filter((a): a is Exclude<AgentID, ''> => a !== '')
+    const perAgent = (pick: (id: Exclude<AgentID, ''>) => string) => Object.fromEntries(keys.map((k) => [k, pick(k)]))
 
     return {
-      profile: org !== undefined && org.profile !== '' ? `${org.profile} (org)` : `${settings.defaultProfile} (app)`,
+      agent:
+        org !== undefined && org.agent !== ''
+          ? `${agentName(agents, org.agent)} (org)`
+          : `${agentName(agents, settings.defaultAgent)} (app)`,
+      profiles: perAgent((k) =>
+        org?.profiles[k] !== undefined
+          ? `${org.profiles[k]} (org)`
+          : `${settings.defaultProfiles[k] ?? 'default'} (app)`,
+      ),
       pr: org?.prPromptId != null ? `${promptName(org.prPromptId)} (org)` : `${promptName(defaultPrompts?.pr)} (app)`,
       issue:
         org?.issuePromptId != null
           ? `${promptName(org.issuePromptId)} (org)`
           : `${promptName(defaultPrompts?.issue)} (app)`,
-      model: org !== undefined && org.model !== '' ? `${modelLabel(org.model)} (org)` : 'the profile’s',
-      effort: org !== undefined && org.effort !== '' ? `${effortLabel(org.effort)} (org)` : 'the profile’s',
+      models: perAgent((k) =>
+        org?.models[k] !== undefined ? `${modelLabel(org.models[k], modelChoices(agents, k))} (org)` : 'the profile’s',
+      ),
+      effort:
+        org !== undefined && org.effort !== ''
+          ? `${effortLabel(org.effort, anyEffortChoices(agents))} (org)`
+          : 'the profile’s',
       planMode: org?.planMode != null ? `${org.planMode ? 'on' : 'off'} (org)` : 'the profile’s',
       worktree:
         org?.worktree != null
@@ -404,25 +446,57 @@ function DefaultsEditor({
       )}
 
       <div className="grid grid-cols-2 gap-x-5 gap-y-4">
-        <Field label="Profile" controlId={`${id}-profile`} error={errors.profile}>
+        <Field label="Agent" controlId={`${id}-agent`} error={errors.agent}>
           <select
-            id={`${id}-profile`}
-            value={input.profile}
-            aria-describedby={describedBy(`${id}-profile`, errors.profile, false)}
+            id={`${id}-agent`}
+            value={input.agent}
+            aria-describedby={describedBy(`${id}-agent`, errors.agent, false)}
             onChange={(e) => {
-              set({ profile: e.target.value })
+              set({ agent: agents.find((a) => a.id === e.target.value)?.id ?? '' })
             }}
             className={`${fieldClass} w-full`}
           >
-            <option value="">Inherit · {inherited.profile}</option>
-            {profiles.map((p) => (
-              <option key={p.name} value={p.name}>
-                {p.name}
+            <option value="">Inherit · {inherited.agent}</option>
+            {agents.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
               </option>
             ))}
           </select>
         </Field>
         <div />
+        {agents.map((a) => {
+          const key = a.id as Exclude<AgentID, ''>
+          const error = errors[`profiles.${key}`] ?? errors.profiles
+
+          return (
+            <Field key={a.id} label={`${a.name} profile`} controlId={`${id}-profile-${key}`} error={error}>
+              <select
+                id={`${id}-profile-${key}`}
+                value={input.profiles[key] ?? ''}
+                aria-describedby={describedBy(`${id}-profile-${key}`, error, false)}
+                onChange={(e) => {
+                  const value = e.target.value
+                  // Inherit leaves the agent out, rather than storing an empty name.
+                  const others = Object.fromEntries(Object.entries(input.profiles).filter(([k]) => k !== key))
+
+                  set({ profiles: value === '' ? others : { ...others, [key]: value } })
+                }}
+                className={`${fieldClass} w-full`}
+              >
+                <option value="">Inherit · {inherited.profiles[key]}</option>
+                {profiles
+                  .filter((p) => p.agent === a.id)
+                  .map((p) => (
+                    <option key={p.name} value={p.name}>
+                      {p.name}
+                    </option>
+                  ))}
+              </select>
+            </Field>
+          )
+        })}
+        {agents.length % 2 === 1 && <div />}
         <Field label="Prompt for pull requests" controlId={`${id}-pr`} error={errors.prPromptId}>
           <select
             id={`${id}-pr`}
@@ -465,6 +539,7 @@ function DefaultsEditor({
         </Field>
         <LaunchOverrideFields
           id={id}
+          agents={agents}
           values={input}
           onChange={setOverride}
           errors={errors}

@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent, useState } from 'react'
 
-import { XIcon } from './icons'
+import { AlertIcon, CircleCheckIcon, XIcon } from './icons'
 
 // toastMs is how long a toast shows, unless the pointer rests on it.
 export const toastMs = 6000
@@ -16,8 +16,9 @@ export interface ToastMessage {
   text: string
   // detail is quieter text after the message, such as the item's title.
   detail?: string
-  // tone colors the message; an error is red.
-  tone?: 'normal' | 'error'
+  // tone colors the message: an error is red, and a change done in full, or in part,
+  // leads with a green check or an amber warning.
+  tone?: 'normal' | 'success' | 'warning' | 'error'
   // undo, when set, puts an Undo button on the toast.
   undo?: () => void
   // action, when set, puts a button with its label on the toast, such as View.
@@ -97,6 +98,8 @@ export function Toast({ toast, onClose }: ToastProps) {
           }}
           className="pointer-events-auto flex max-w-xl min-w-0 items-center gap-3 rounded-lg border border-border bg-raised py-1.5 pr-1.5 pl-3.5 text-sm shadow-xl shadow-black/30 motion-safe:animate-pop-in"
         >
+          {toast.tone === 'success' && <CircleCheckIcon className="size-4 shrink-0 text-success" />}
+          {toast.tone === 'warning' && <AlertIcon className="size-4 shrink-0 text-warning" />}
           <p className="min-w-0 truncate">
             <span className={`font-medium ${error ? 'text-danger' : 'text-text'}`}>{toast.text}</span>
             {toast.detail !== undefined && toast.detail !== '' && <span className="text-muted"> · {toast.detail}</span>}

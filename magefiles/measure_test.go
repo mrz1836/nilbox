@@ -99,3 +99,13 @@ func TestMeasureOnMacOS(t *testing.T) {
 		require.ErrorIs(t, Measure{}.Startup(), errNoBundle)
 	})
 }
+
+func TestMageArg(t *testing.T) {
+	t.Setenv(mageArgsJSON, `["agent=codex","verbose","other=a=b"]`)
+	assert.Equal(t, "codex", mageArg("agent"))
+	assert.Equal(t, "a=b", mageArg("other"))
+	assert.Empty(t, mageArg("missing"))
+
+	t.Setenv(mageArgsJSON, "not json")
+	assert.Empty(t, mageArg("agent"))
+}

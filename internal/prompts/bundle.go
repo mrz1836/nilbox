@@ -8,6 +8,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/clock"
@@ -21,7 +22,9 @@ const (
 
 	// BundleVersion is the version of the format this build writes, and the newest it
 	// reads. A change that an older build would misread raises it; adding a field does not.
-	BundleVersion = 1
+	// Version 2 keeps a model and extra arguments per agent; a version 1 file's are
+	// Claude's.
+	BundleVersion = 2
 
 	// maxBundleBytes caps the size of a prompt file Import reads.
 	maxBundleBytes = 8 << 20
@@ -52,7 +55,7 @@ var (
 //
 //	{
 //	  "format": "<slug>.prompts",
-//	  "version": 1,
+//	  "version": 2,
 //	  "exportedAt": "2026-11-08T17:00:00Z",
 //	  "app": "v0.4.0",
 //	  "defaults": {"pr": "Review", "issue": "Work on it"},
@@ -100,16 +103,19 @@ type BundlePrompt struct {
 	AppliesTo AppliesTo `json:"appliesTo"`
 	Body      string    `json:"body"`
 
-	// Model and Effort set --model and --effort; "" inherits.
-	Model  string `json:"model"`
+	// Models is each agent's model; an agent with no entry inherits.
+	Models map[agent.ID]string `json:"models"`
+
+	// Effort is the effort level of every agent; "" inherits.
 	Effort string `json:"effort"`
 
 	// PlanMode and Worktree turn plan mode and the worktree on or off; nil inherits.
 	PlanMode *bool `json:"planMode"`
 	Worktree *bool `json:"worktree"`
 
-	// ExtraArgs are added after the profile's and the launch defaults' arguments.
-	ExtraArgs []string `json:"extraArgs"`
+	// ExtraArgs is each agent's extra arguments, added after its profile's and the launch
+	// defaults' arguments.
+	ExtraArgs map[agent.ID][]string `json:"extraArgs"`
 
 	// StarterKey names the starter the prompt came from, or "".
 	StarterKey string `json:"starterKey"`
@@ -159,9 +165,69 @@ func newBundle(lib Library, startersAdded []string, ids []int64, now time.Time, 
 // bundlePrompt returns a stored prompt in portable form.
 func bundlePrompt(p Prompt) BundlePrompt {
 	return BundlePrompt{
-		Name: p.Name, Nickname: p.Nickname, AppliesTo: p.AppliesTo, Body: p.Body, Model: p.Model, Effort: p.Effort,
-		PlanMode: p.PlanMode, Worktree: p.Worktree, ExtraArgs: slices.Clone(textutil.NonNil(p.ExtraArgs)),
+		Name: p.Name, Nickname: p.Nickname, AppliesTo: p.AppliesTo, Body: p.Body, Models: agent.CloneModels(p.Models),
+		Effort: p.Effort, PlanMode: p.PlanMode, Worktree: p.Worktree, ExtraArgs: agent.CloneArgs(p.ExtraArgs),
 		StarterKey: p.StarterKey, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
+	}
+}
+
+// UnmarshalJSON reads a prompt in either version of the format: version 2's models and
+// extraArgs objects, keyed by agent, or version 1's single model and extraArgs list, which
+// were Claude's.
+func (p *BundlePrompt) UnmarshalJSON(data []byte) error {
+	type plain BundlePrompt
+
+	var raw struct {
+		plain
+
+		// Model is version 1's model, and ExtraArgs either version's extra arguments.
+		Model     string          `json:"model"`
+		ExtraArgs json.RawMessage `json:"extraArgs"`
+	}
+
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	*p = BundlePrompt(raw.plain)
+	p.Models = agent.CloneModels(p.Models)
+
+	if model := raw.Model; model != "" && p.Models[agent.Claude] == "" {
+		p.Models[agent.Claude] = model
+	}
+
+	args, err := decodeBundleArgs(raw.ExtraArgs)
+	if err != nil {
+		return fmt.Errorf("extraArgs: %w", err)
+	}
+
+	p.ExtraArgs = args
+
+	return nil
+}
+
+// decodeBundleArgs reads extraArgs: an object of each agent's arguments, or version 1's
+// list, which was Claude's. Missing and null read as none.
+func decodeBundleArgs(raw json.RawMessage) (map[agent.ID][]string, error) {
+	trimmed := bytes.TrimSpace(raw)
+
+	switch {
+	case len(trimmed) == 0 || string(trimmed) == "null":
+		return map[agent.ID][]string{}, nil
+	case trimmed[0] == '[':
+		var list []string
+		if err := json.Unmarshal(trimmed, &list); err != nil {
+			return nil, err
+		}
+
+		return agent.CloneArgs(map[agent.ID][]string{agent.Claude: list}), nil
+	default:
+		var args map[agent.ID][]string
+		if err := json.Unmarshal(trimmed, &args); err != nil {
+			return nil, err
+		}
+
+		return agent.CloneArgs(args), nil
 	}
 }
 
@@ -206,10 +272,6 @@ func DecodeBundle(data []byte) (Bundle, error) {
 
 	b.StartersAdded = textutil.NonNil(b.StartersAdded)
 	b.Prompts = textutil.NonNil(b.Prompts)
-
-	for i := range b.Prompts {
-		b.Prompts[i].ExtraArgs = textutil.NonNil(b.Prompts[i].ExtraArgs)
-	}
 
 	return b, nil
 }

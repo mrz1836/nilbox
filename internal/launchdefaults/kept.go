@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"sync"
 
@@ -17,7 +16,6 @@ import (
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/store"
-	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 const (
@@ -26,7 +24,9 @@ const (
 	KeptFormat = brand.Slug + ".launch-defaults"
 
 	// KeptVersion is the version of the format this build writes, and the newest it reads.
-	KeptVersion = 1
+	// Version 2 keeps a profile, a model, and extra arguments per agent; a version 1
+	// copy's are Claude's.
+	KeptVersion = 2
 
 	// maxKeptBytes caps the size of the copy Load reads.
 	maxKeptBytes = 8 << 20
@@ -48,20 +48,37 @@ var (
 // database. It names its default prompts by nickname, not by ID, so it can be matched to
 // a prompt library brought back from a backup, whose prompts have new IDs.
 type Kept struct {
-	Owner   string `json:"owner"`
-	Name    string `json:"name"`
-	Agent   string `json:"agent"`
-	Profile string `json:"profile"`
+	Owner    string              `json:"owner"`
+	Name     string              `json:"name"`
+	Agent    agent.ID            `json:"agent"`
+	Profiles map[agent.ID]string `json:"profiles"`
 
 	// PRPrompt and IssuePrompt are the nicknames of the default prompts; "" inherits.
 	PRPrompt    string `json:"prPrompt"`
 	IssuePrompt string `json:"issuePrompt"`
 
+	Models    map[agent.ID]string   `json:"models"`
+	Effort    string                `json:"effort"`
+	PlanMode  *bool                 `json:"planMode"`
+	Worktree  *bool                 `json:"worktree"`
+	ExtraArgs map[agent.ID][]string `json:"extraArgs"`
+}
+
+// keptV1 is the part of a version 1 copy that version 2 keeps per agent: one profile,
+// model, and list of extra arguments, all Claude's.
+type keptV1 struct {
+	Profile   string   `json:"profile"`
 	Model     string   `json:"model"`
-	Effort    string   `json:"effort"`
-	PlanMode  *bool    `json:"planMode"`
-	Worktree  *bool    `json:"worktree"`
 	ExtraArgs []string `json:"extraArgs"`
+}
+
+// claudeOnly returns a version 1 copy's settings as version 2 keeps them.
+func (v keptV1) claudeOnly() (profiles, models map[agent.ID]string, args map[agent.ID][]string) {
+	profiles = agent.CloneModels(map[agent.ID]string{agent.Claude: v.Profile})
+	models = agent.CloneModels(map[agent.ID]string{agent.Claude: v.Model})
+	args = agent.CloneArgs(map[agent.ID][]string{agent.Claude: v.ExtraArgs})
+
+	return profiles, models, args
 }
 
 // keptFile is the document File writes.
@@ -71,6 +88,13 @@ type keptFile struct {
 	SavedAt  string `json:"savedAt"`
 	App      string `json:"app"`
 	Defaults []Kept `json:"defaults"`
+}
+
+// keptHeader is the part of the document Load reads before it knows the version.
+type keptHeader struct {
+	Format   string            `json:"format"`
+	Version  int               `json:"version"`
+	Defaults []json.RawMessage `json:"defaults"`
 }
 
 // File is the copy of the launch defaults the app keeps in a plain file beside its
@@ -145,7 +169,7 @@ func (f *File) Load() ([]Kept, error) {
 		return nil, err
 	}
 
-	var doc keptFile
+	var doc keptHeader
 	if err = json.Unmarshal(data, &doc); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrNotKept, err)
 	}
@@ -157,11 +181,60 @@ func (f *File) Load() ([]Kept, error) {
 		return nil, ErrNewerKept
 	}
 
-	for i := range doc.Defaults {
-		doc.Defaults[i].ExtraArgs = textutil.NonNil(doc.Defaults[i].ExtraArgs)
+	out := make([]Kept, 0, len(doc.Defaults))
+
+	for _, raw := range doc.Defaults {
+		k, decodeErr := decodeKept(raw, doc.Version)
+		if decodeErr != nil {
+			return nil, fmt.Errorf("%w: %w", ErrNotKept, decodeErr)
+		}
+
+		out = append(out, k)
 	}
 
-	return textutil.NonNil(doc.Defaults), nil
+	return out, nil
+}
+
+// decodeKept reads one org's or repository's launch defaults from a copy of the given
+// version. Its maps are never nil.
+func decodeKept(raw json.RawMessage, version int) (Kept, error) {
+	var k Kept
+
+	if version == 1 {
+		var old struct {
+			keptV1
+
+			Owner       string `json:"owner"`
+			Name        string `json:"name"`
+			Agent       string `json:"agent"`
+			PRPrompt    string `json:"prPrompt"`
+			IssuePrompt string `json:"issuePrompt"`
+			Effort      string `json:"effort"`
+			PlanMode    *bool  `json:"planMode"`
+			Worktree    *bool  `json:"worktree"`
+		}
+
+		if err := json.Unmarshal(raw, &old); err != nil {
+			return Kept{}, err
+		}
+
+		k = Kept{
+			Owner: old.Owner, Name: old.Name, Agent: agent.ID(old.Agent), PRPrompt: old.PRPrompt,
+			IssuePrompt: old.IssuePrompt, Effort: old.Effort, PlanMode: old.PlanMode, Worktree: old.Worktree,
+		}
+		k.Profiles, k.Models, k.ExtraArgs = old.claudeOnly()
+
+		return k, nil
+	}
+
+	if err := json.Unmarshal(raw, &k); err != nil {
+		return Kept{}, err
+	}
+
+	k.Profiles, k.Models, k.ExtraArgs = agent.CloneModels(k.Profiles), agent.CloneModels(k.Models),
+		agent.CloneArgs(k.ExtraArgs)
+
+	return k, nil
 }
 
 // keep returns stored defaults as Kept, naming their prompts by nickname.
@@ -177,9 +250,9 @@ func keep(ctx context.Context, d Defaults, library PromptLookup) (Kept, error) {
 	}
 
 	return Kept{
-		Owner: d.Owner, Name: d.Name, Agent: d.Agent, Profile: d.Profile, PRPrompt: pr, IssuePrompt: issue,
-		Model: d.Model, Effort: d.Effort, PlanMode: d.PlanMode, Worktree: d.Worktree,
-		ExtraArgs: slices.Clone(textutil.NonNil(d.ExtraArgs)),
+		Owner: d.Owner, Name: d.Name, Agent: d.Agent, Profiles: agent.CloneModels(d.Profiles), PRPrompt: pr,
+		IssuePrompt: issue, Models: agent.CloneModels(d.Models), Effort: d.Effort, PlanMode: d.PlanMode,
+		Worktree: d.Worktree, ExtraArgs: agent.CloneArgs(d.ExtraArgs),
 	}, nil
 }
 
@@ -202,12 +275,13 @@ func nickname(ctx context.Context, library PromptLookup, id *int64) (string, err
 	}
 }
 
-// defaultsColumns are the columns a backup's launch defaults are read from. A backup an
-// older build wrote may lack some, and each one missing inherits.
+// defaultsColumns are the columns a backup's launch defaults are read from: both the
+// per-agent ones and the single ones builds before them kept, which were Claude's. A
+// backup an older build wrote may lack some, and each one missing inherits.
 func defaultsColumns() []string {
 	return []string{
-		"owner", "name", "agent", "profile", "pr_prompt_id", "issue_prompt_id", "model", "effort", "plan_mode",
-		"worktree", "extra_args",
+		"owner", "name", "agent", "profile", "profiles", "pr_prompt_id", "issue_prompt_id", "model", "models",
+		"effort", "plan_mode", "worktree", "extra_args", "agent_args",
 	}
 }
 
@@ -239,10 +313,12 @@ func ReadSnapshot(ctx context.Context, path string, promptNickname func(id int64
 
 	for _, row := range rows {
 		out = append(out, Kept{
-			Owner: row.Text("owner"), Name: row.Text("name"), Agent: row.Text("agent"), Profile: row.Text("profile"),
+			Owner: row.Text("owner"), Name: row.Text("name"), Agent: agent.ID(row.Text("agent")),
+			Profiles: prompts.SnapshotModels(row, "profiles", "profile"),
 			PRPrompt: named(row, "pr_prompt_id"), IssuePrompt: named(row, "issue_prompt_id"),
-			Model: row.Text("model"), Effort: row.Text("effort"), PlanMode: row.Bool("plan_mode"),
-			Worktree: row.Bool("worktree"), ExtraArgs: row.Strings("extra_args"),
+			Models: prompts.SnapshotModels(row, "models", "model"), Effort: row.Text("effort"),
+			PlanMode: row.Bool("plan_mode"), Worktree: row.Bool("worktree"),
+			ExtraArgs: prompts.SnapshotArgs(row, "agent_args", "extra_args"),
 		})
 	}
 
@@ -292,7 +368,7 @@ func storeAll(ctx context.Context, st *Store, inputs []restoring) (int, error) {
 	}
 
 	for _, in := range inputs {
-		if _, err = st.save(ctx, in.input, in.args); err != nil {
+		if _, err = st.save(ctx, in.input, in.checked); err != nil {
 			return 0, err
 		}
 	}
@@ -300,18 +376,19 @@ func storeAll(ctx context.Context, st *Store, inputs []restoring) (int, error) {
 	return len(inputs), nil
 }
 
-// restoring is kept defaults ready to store: the Input and its extra arguments.
+// restoring is kept defaults ready to store: the Input and its checked models and extra
+// arguments.
 type restoring struct {
-	input Input
-	args  []string
+	input   Input
+	checked agent.Checked
 }
 
 // restorable returns kept defaults as this build would store them, and whether there is
 // anything to store: a row for a valid org or repository that sets something.
 func restorable(k Kept, promptID func(nickname string) (int64, bool)) (restoring, bool) {
 	in := Input{
-		Owner: strings.TrimSpace(k.Owner), Name: strings.TrimSpace(k.Name), Agent: strings.TrimSpace(k.Agent),
-		Profile: strings.TrimSpace(k.Profile), Model: strings.TrimSpace(k.Model), Effort: strings.TrimSpace(k.Effort),
+		Owner: strings.TrimSpace(k.Owner), Name: strings.TrimSpace(k.Name),
+		Agent: agent.ID(strings.TrimSpace(string(k.Agent))), Effort: strings.TrimSpace(k.Effort),
 		PlanMode: k.PlanMode, Worktree: k.Worktree,
 	}
 
@@ -319,28 +396,48 @@ func restorable(k Kept, promptID func(nickname string) (int64, bool)) (restoring
 		return restoring{}, false
 	}
 
-	if _, err := agent.Lookup(in.Agent); err != nil {
-		in.Agent = ""
+	if !agent.Known(in.Agent) {
+		in.Agent = agent.Inherit
 	}
 
-	if agent.ValidateModel(in.Model) != nil {
-		in.Model = ""
-	}
-
-	if agent.ValidateEffort(in.Effort) != nil {
+	if agent.ValidateEffortAny(in.Effort) != nil {
 		in.Effort = ""
 	}
 
-	args := slices.Clone(textutil.NonNil(k.ExtraArgs))
-	if agent.CheckExtra(args) != nil {
-		args = []string{}
-	}
+	var checked agent.Checked
 
-	in.ExtraFlags = agent.Join(args)
+	in.Profiles, checked = restorableAgents(k)
+	in.Models, in.ExtraFlags = checked.Models, agent.JoinArgs(checked.Args)
 	in.PRPromptID = idFor(k.PRPrompt, promptID)
 	in.IssuePromptID = idFor(k.IssuePrompt, promptID)
 
-	return restoring{input: in, args: args}, !in.Empty()
+	return restoring{input: in, checked: checked}, !in.Empty()
+}
+
+// restorableAgents returns kept defaults' profiles, models, and extra arguments as this
+// build would store them: only an agent this build knows, a model it would take, and
+// flags the editor would accept.
+func restorableAgents(k Kept) (map[agent.ID]string, agent.Checked) {
+	names := keepKnown(trimmed(k.Profiles), func(agent.ID, string) bool { return true })
+	models := keepKnown(trimmed(k.Models), func(_ agent.ID, model string) bool { return agent.ValidateModel(model) == nil })
+	args := keepKnown(agent.CloneArgs(k.ExtraArgs), func(id agent.ID, list []string) bool {
+		return agent.CheckExtra(id, list) == nil
+	})
+
+	return names, agent.Checked{Models: models, Args: args}
+}
+
+// keepKnown returns the entries of an agent this build knows that ok accepts; never nil.
+func keepKnown[V any](m map[agent.ID]V, ok func(agent.ID, V) bool) map[agent.ID]V {
+	out := make(map[agent.ID]V, len(m))
+
+	for id, v := range m {
+		if agent.Known(id) && ok(id, v) {
+			out[id] = v
+		}
+	}
+
+	return out
 }
 
 // idFor returns the ID promptID finds for a nickname, or nil for "" or one it does not

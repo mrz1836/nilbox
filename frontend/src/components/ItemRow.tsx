@@ -1,16 +1,20 @@
 import { memo } from 'react'
 
+import { counted } from '../lib/format'
+import { agentName } from '../lib/launch'
 import { useRowWork } from '../lib/rowWork'
 import { formatAge, formatAgo, formatFull, formatWhen } from '../lib/time'
 import { isBackFromSnooze, wakeSummary, type TriageTab } from '../lib/triage'
 import { useNowAs } from '../lib/useNow'
 import {
   openExternal,
+  type AgentInfo,
   type InboxItem,
   type ItemResolution,
   type LaunchDefaults,
   type Profile,
   type Prompt,
+  type Worktree,
 } from '../platform'
 import { ArchiveIcon, ClockIcon, IssueIcon, PullRequestIcon } from './icons'
 import { ItemMenu, type EditActions } from './ItemMenu'
@@ -20,10 +24,12 @@ import { RelativeTime } from './RelativeTime'
 import { SensitiveFiles } from './SensitiveFiles'
 import { TriageControls, type TriageActions } from './TriageControls'
 
-// LaunchOptions are what every row's launch controls share: the profiles and prompts to
-// choose from, and the saved launch defaults. Each row's own resolved settings come
-// apart from them, so resolving one item again renders only its row.
+// LaunchOptions are what every row's launch controls share: the coding agents, profiles,
+// and prompts to choose from, and the saved launch defaults. Each row's own resolved
+// settings and worktree come apart from them, so a change to one item's renders only its
+// row.
 export interface LaunchOptions {
+  agents: readonly AgentInfo[]
   profiles: readonly Profile[]
   prompts: readonly Prompt[]
   launchDefaults: readonly LaunchDefaults[]
@@ -38,6 +44,8 @@ export interface ItemRowProps {
   launch: LaunchOptions | null
   // resolution is the item's resolved launch settings, or null while they load.
   resolution?: ItemResolution | null
+  // worktree is the item's worktree, as the Worktrees view last listed it, if it has one.
+  worktree?: Worktree | undefined
   // tab is the list tab the row is in: the inbox, Snoozed, or Dismissed.
   tab?: TriageTab
   // triage is what the row's snooze, dismiss, and restore buttons do; without it the row
@@ -90,7 +98,7 @@ function TrustTag({ item }: { item: InboxItem }) {
   if (item.authorIsBot) {
     return (
       <span
-        title="A bot that isn't trusted, so launches start in plan mode. Add it to your trusted bots in Settings → Trust."
+        title="A bot that isn't trusted, so launches start in plan or read-only mode. Add it to your trusted bots in Settings → Trust."
         className={`${tagClass} text-warning`}
       >
         untrusted bot
@@ -99,7 +107,10 @@ function TrustTag({ item }: { item: InboxItem }) {
   }
 
   return (
-    <span title="Launches in plan mode unless you lift the restriction" className={`${tagClass} text-warning`}>
+    <span
+      title="Launches in plan or read-only mode unless you lift the restriction"
+      className={`${tagClass} text-warning`}
+    >
       outside contributor
     </span>
   )
@@ -172,6 +183,33 @@ function TriageTag({ item, tab }: { item: InboxItem; tab: TriageTab }) {
   }
 }
 
+// WorktreeTag marks an item that has a worktree, as the Worktrees view last listed it: its
+// uncommitted files, and the agent and age of its latest session, as in "worktree · 2
+// changes · Codex 3h ago".
+function WorktreeTag({ wt, agents }: { wt: Worktree; agents: readonly AgentInfo[] }) {
+  const parts = ['worktree']
+
+  if (wt.dirtyCount > 0) {
+    parts.push(counted(wt.dirtyCount, 'change', 'changes'))
+  }
+
+  const busy = wt.inUse.length > 0
+  const last = !busy && wt.agent !== '' && wt.lastLaunchedAt !== ''
+
+  return (
+    <span title={wt.displayPath} className={`${tagClass} shrink-0 text-muted`}>
+      {parts.join(' · ')}
+      {busy && ' · in use'}
+      {last && (
+        <>
+          {` · ${agentName(agents, wt.agent)} `}
+          <RelativeTime iso={wt.lastLaunchedAt} show={formatAgo} />
+        </>
+      )}
+    </span>
+  )
+}
+
 // ItemRow is one inbox card, three lines high: the title with its draft and conflict
 // tags; where it is, who opened it, when it last moved, and, for a pull request from
 // outside the repository, the sensitive files it changes; and its signals (checks,
@@ -189,6 +227,7 @@ export const ItemRow = memo(function ItemRow({
   item,
   launch,
   resolution = null,
+  worktree,
   tab = 'inbox',
   triage,
   edits,
@@ -231,6 +270,7 @@ export const ItemRow = memo(function ItemRow({
           <TrustTag item={item} />
           {item.files !== null && <SensitiveFiles itemId={item.id} check={item.files} onSettings={onFilesSettings} />}
           <TriageTag item={item} tab={tab} />
+          {worktree !== undefined && <WorktreeTag wt={worktree} agents={launch?.agents ?? []} />}
         </div>
         <ItemSignals item={item} />
       </div>
@@ -246,6 +286,7 @@ export const ItemRow = memo(function ItemRow({
         <LaunchControls
           item={item}
           resolution={resolution}
+          agents={launch.agents}
           profiles={launch.profiles}
           prompts={launch.prompts}
           launchDefaults={launch.launchDefaults}

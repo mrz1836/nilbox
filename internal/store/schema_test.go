@@ -88,8 +88,10 @@ func TestSchemaRejectsInvalidInboxRows(t *testing.T) {
 			VALUES (1, '2026-01-02 00:00:00', '[1, 2]', '2026-01-01 00:00:00')`,
 		"wake reasons that are not JSON": `INSERT INTO item_local_state (item_id, snoozed_until, wake_reasons, updated_at)
 			VALUES (1, '2026-01-02 00:00:00', 'not json', '2026-01-01 00:00:00')`,
-		"profile directories that are not an array": `INSERT INTO claude_profiles (name, add_dirs, created_at, updated_at)
-			VALUES ('broken', '{"not": "an array"}', '2026-01-01 00:00:00', '2026-01-01 00:00:00')`,
+		"profile directories that are not an array": `INSERT INTO agent_profiles (agent, name, add_dirs, created_at, updated_at)
+			VALUES ('claude', 'broken', '{"not": "an array"}', '2026-01-01 00:00:00', '2026-01-01 00:00:00')`,
+		"a profile with no agent": `INSERT INTO agent_profiles (agent, name, created_at, updated_at)
+			VALUES ('', 'broken', '2026-01-01 00:00:00', '2026-01-01 00:00:00')`,
 	} {
 		_, err := db.ExecContext(t.Context(), stmt)
 		require.Error(t, err, name)

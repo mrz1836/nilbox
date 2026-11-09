@@ -97,9 +97,13 @@ export interface BundlePrompt {
     "body": string;
 
     /**
-     * Model and Effort set --model and --effort; "" inherits.
+     * Models is each agent's model; an agent with no entry inherits.
      */
-    "model": string;
+    "models": { [_ in agent$0.ID]?: string } | null;
+
+    /**
+     * Effort is the effort level of every agent; "" inherits.
+     */
     "effort": string;
 
     /**
@@ -109,9 +113,10 @@ export interface BundlePrompt {
     "worktree": boolean | null;
 
     /**
-     * ExtraArgs are added after the profile's and the launch defaults' arguments.
+     * ExtraArgs is each agent's extra arguments, added after its profile's and the launch
+     * defaults' arguments.
      */
-    "extraArgs": string[] | null;
+    "extraArgs": { [_ in agent$0.ID]?: string[] | null } | null;
 
     /**
      * StarterKey names the starter the prompt came from, or "".
@@ -338,15 +343,15 @@ export interface Input {
     "nickname": string;
     "appliesTo": AppliesTo;
     "body": string;
-    "model": string;
+    "models": { [_ in agent$0.ID]?: string } | null;
     "effort": string;
     "planMode": boolean | null;
     "worktree": boolean | null;
 
     /**
-     * ExtraFlags are the extra arguments typed on one line, quoted as in a shell.
+     * ExtraFlags is each agent's extra arguments typed on one line, quoted as in a shell.
      */
-    "extraFlags": string;
+    "extraFlags": { [_ in agent$0.ID]?: string } | null;
 }
 
 /**
@@ -376,9 +381,14 @@ export interface Prompt {
     "body": string;
 
     /**
-     * Model and Effort set --model and --effort; "" inherits.
+     * Models is each agent's model; an agent with no entry inherits.
      */
-    "model": string;
+    "models": { [_ in agent$0.ID]?: string } | null;
+
+    /**
+     * Effort is the effort level of every agent; "" inherits. An agent that lacks the
+     * level launches with its own default.
+     */
     "effort": string;
 
     /**
@@ -388,14 +398,15 @@ export interface Prompt {
     "worktree": boolean | null;
 
     /**
-     * ExtraArgs are added after the profile's and the launch defaults' arguments.
+     * ExtraArgs is each agent's extra arguments, added after its profile's and the launch
+     * defaults' arguments.
      */
-    "extraArgs": string[] | null;
+    "extraArgs": { [_ in agent$0.ID]?: string[] | null } | null;
 
     /**
-     * ExtraFlags is ExtraArgs on one line, quoted the way the editor shows them.
+     * ExtraFlags is ExtraArgs on one line per agent, quoted the way the editor shows them.
      */
-    "extraFlags": string;
+    "extraFlags": { [_ in agent$0.ID]?: string } | null;
 
     /**
      * StarterKey names the starter the prompt came from, or "".

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"iter"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -14,6 +15,8 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
@@ -21,6 +24,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/paths"
+	"github.com/mrz1836/nilbox/internal/procs"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/uierr"
 	"github.com/mrz1836/nilbox/internal/worklog"
@@ -43,6 +47,14 @@ var (
 	// session usually holds the lock.
 	ErrLocked = errors.New("the worktree is locked, usually by a running session; unlock it with git worktree unlock first")
 
+	// ErrInUse is returned for a worktree a running process works in, which is never
+	// removed (see InUseError).
+	ErrInUse = errors.New("a session is running in the worktree")
+
+	// ErrSessionsUnknown is returned when the automatic cleanup or a force removal cannot
+	// tell whether a session runs in a worktree, so it leaves it.
+	ErrSessionsUnknown = errors.New("can't tell whether a session is running in the worktree")
+
 	// ErrNotLocked is returned when unlocking a worktree that has no lock.
 	ErrNotLocked = errors.New("the worktree is not locked")
 
@@ -64,6 +76,16 @@ var (
 
 	// ErrBranchInUse is returned when a branch to delete is checked out in a worktree.
 	ErrBranchInUse = errors.New("the branch is checked out in a worktree")
+
+	// ErrBranchProtected is returned for a branch the user protects, or a remote's
+	// default branch, which is never deleted.
+	ErrBranchProtected = errors.New("the branch is protected")
+
+	// ErrBranchGone is returned for a branch to delete that no longer exists.
+	ErrBranchGone = errors.New("the branch is already gone")
+
+	// ErrBranchMoved is returned for a branch to delete that moved since it was checked.
+	ErrBranchMoved = errors.New("the branch moved since it was checked; check again")
 
 	// ErrGitHubUnavailable is returned when GitHub could not say which worktrees are
 	// finished.
@@ -91,6 +113,28 @@ var (
 	// errGit marks an error that carries git's own message.
 	errGit = errors.New("git")
 )
+
+// InUseError is returned for a worktree running processes work in. It matches ErrInUse.
+type InUseError struct {
+	// Sessions are the processes, by PID.
+	Sessions []Session
+}
+
+// Error names the processes, as in "a session is running in the worktree: codex (pid
+// 4242)".
+func (e *InUseError) Error() string {
+	names := make([]string, 0, len(e.Sessions))
+	for _, s := range e.Sessions {
+		names = append(names, fmt.Sprintf("%s (pid %d)", s.Command, s.PID))
+	}
+
+	return ErrInUse.Error() + ": " + strings.Join(names, ", ")
+}
+
+// Is makes an InUseError match ErrInUse.
+func (e *InUseError) Is(target error) bool {
+	return target == ErrInUse
+}
 
 // RefusedError is git's refusal to remove a worktree, with a short reason such as "has
 // uncommitted changes". It matches ErrRemovalRefused.
@@ -122,6 +166,10 @@ type SweepSettings struct {
 	// AutoCleanup lets the automatic sweep clean up a finished worktree once its pull
 	// request merges or its issue closes.
 	AutoCleanup bool
+
+	// Branches are the user's rules for deleting branches: the automatic sweep follows
+	// them, and nothing ever deletes a branch they protect.
+	Branches branchrules.Rules
 }
 
 // SettingsReader reads the sweep settings as they are now, so every listing and sweep
@@ -146,6 +194,9 @@ type ItemState struct {
 
 	// HeadOID is a pull request's head commit SHA; "" for an issue.
 	HeadOID string
+
+	// HeadRef is a pull request's head branch; "" for an issue.
+	HeadRef string
 }
 
 // GitHub reads the current state of pull requests and issues. The app adapts the GitHub
@@ -154,13 +205,43 @@ type GitHub interface {
 	// ItemStates returns the state of each item in refs that GitHub knows, keyed by the
 	// ref's Key.
 	ItemStates(ctx context.Context, refs []item.Ref) (map[string]ItemState, error)
+
+	// MergedPullRequests returns the merged pull requests whose head branch had each
+	// name asked about, newest first, keyed by BranchKey. A name none had is left out.
+	MergedPullRequests(ctx context.Context, queries []BranchQuery) (map[BranchKey][]MergedPR, error)
 }
 
-// Launches reads and prunes the record of the worktrees the app launched sessions in.
-// *worklog.Store implements it.
-type Launches interface {
-	Launches(ctx context.Context) ([]worklog.Launch, error)
-	ForgetLaunch(ctx context.Context, clonePath, worktree string) error
+// BranchQuery asks which of a repository's branch names were the head of a merged pull
+// request.
+type BranchQuery struct {
+	Repo     repo.Name
+	Branches []string
+}
+
+// BranchKey names a repository's branch in the answer to MergedPullRequests: the
+// repository's Key and the branch.
+type BranchKey struct {
+	Repo   string
+	Branch string
+}
+
+// MergedPR is a merged pull request a branch was the head of.
+type MergedPR struct {
+	Number   int
+	Title    string
+	URL      string
+	MergedAt time.Time
+
+	// HeadOID is the commit its head branch was at, which GitHub keeps.
+	HeadOID string
+}
+
+// Records reads, writes, and prunes the record of the worktrees the app made or found for
+// pull requests and issues. *worklog.Store implements it.
+type Records interface {
+	Worktrees(ctx context.Context) ([]worklog.Record, error)
+	Record(ctx context.Context, r worklog.Record) error
+	Forget(ctx context.Context, clonePath, worktree string) error
 }
 
 // History records the worktrees the app cleaned up. *worklog.Store implements it.
@@ -193,8 +274,13 @@ type Config struct {
 	// worktree is linked, so none is ever finished.
 	GitHub GitHub
 
-	// Launches holds the worktrees the app launched sessions in.
-	Launches Launches
+	// Records holds the worktrees the app made or found for pull requests and issues.
+	Records Records
+
+	// Procs lists the running processes, to tell the worktrees a session works in.
+	// Without it no worktree counts as in use by a process; a lock Claude Code holds
+	// still counts.
+	Procs procs.Lister
 
 	// History records each cleanup, for the view's list of recent ones.
 	History History
@@ -217,7 +303,8 @@ type Service struct {
 	realHome string
 	clock    clock.Clock
 	github   GitHub
-	launches Launches
+	launches Records
+	lister   procs.Lister
 	history  History
 	events   event.Sink
 	logger   *slog.Logger
@@ -226,9 +313,17 @@ type Service struct {
 	// zone is the machine's time zone, which an agent lock's start may be written in.
 	zone *time.Location
 
-	// act serializes every change, so a sweep and a click never work on the same
-	// worktree at once.
-	act sync.Mutex
+	// act serializes every removal, so a sweep and a click never work on the same
+	// worktree at once. A Maker holds it shared while it makes or resumes a worktree, so
+	// neither runs then either.
+	act sync.RWMutex
+
+	// clonesMu guards clones, which holds a lock per clone: a Maker holds a clone's while
+	// it finds, makes, and records one of its worktrees, and a listing holds it to forget
+	// a record, so it never forgets one a launch is writing. Whoever needs act takes it
+	// before a clone's lock.
+	clonesMu sync.Mutex
+	clones   map[string]*sync.Mutex
 
 	// mu guards last.
 	mu   sync.Mutex
@@ -250,7 +345,8 @@ func NewService(cfg Config) *Service {
 		realHome: realHome,
 		clock:    clock.Or(cfg.Clock),
 		github:   cfg.GitHub,
-		launches: cfg.Launches,
+		launches: cfg.Records,
+		lister:   cfg.Procs,
 		history:  cfg.History,
 		events:   event.Or(cfg.Events),
 		logger:   logging.Or(cfg.Logger),
@@ -265,7 +361,7 @@ func NewService(cfg Config) *Service {
 // repository that git cannot read is listed with an error rather than hiding the rest. A
 // clone that is itself a linked worktree of another clone is folded into that repository.
 func (s *Service) List(ctx context.Context) (Snapshot, error) {
-	g, root, _, err := s.prepare(ctx)
+	g, root, prefs, err := s.prepare(ctx)
 	if err != nil {
 		return Snapshot{}, err
 	}
@@ -275,52 +371,57 @@ func (s *Service) List(ctx context.Context) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 
-	return s.assessClones(ctx, g, root, clones)
+	return s.assessClones(ctx, g, root, clones, prefs.Branches)
 }
 
-// Remove removes one linked worktree without --force. The repository must be a clone
-// under the clone root and path one of its linked worktrees; the main worktree and
-// locked worktrees are refused before git runs, and git itself refuses a worktree with
-// uncommitted changes, which comes back as a RefusedError.
-func (s *Service) Remove(ctx context.Context, repoPath, path string) error {
+// Remove removes one linked worktree without --force, and with it the branches named,
+// of those it offers (see Worktree.Branches): each goes only when nothing on it would be
+// lost and nothing protects it, and only while it still points at the commit assessed.
+// The repository must be a clone under the clone root and path one of its linked
+// worktrees, which is assessed again first. The main worktree, a locked one, and one a
+// session works in are refused before git runs, and git itself refuses one with
+// uncommitted changes, which comes back as a RefusedError. The result names the branches
+// deleted, and says why any other one named was kept.
+func (s *Service) Remove(ctx context.Context, repoPath, path string, branches []string) (RemoveResult, error) {
 	s.act.Lock()
 	defer s.act.Unlock()
 
-	return s.remove(ctx, repoPath, path)
+	g, wt, err := s.assessOne(ctx, repoPath, path)
+	if err != nil {
+		return RemoveResult{}, err
+	}
+
+	return s.removeRow(ctx, g, repoPath, wt, false, branches)
 }
 
 // ForceRemove removes one unlocked linked worktree that has uncommitted changes,
-// discarding them, with a single --force. Locked worktrees are refused even here, so a
-// running session's worktree is never pulled out from under it.
-func (s *Service) ForceRemove(ctx context.Context, repoPath, path string) error {
+// discarding them, with a single --force, and the branches named as Remove does. Locked
+// worktrees, and ones a running process works in, are refused even here, so a running
+// session's worktree is never pulled out from under it; so is every worktree when the
+// running processes cannot be listed, since nothing else would stop it then.
+func (s *Service) ForceRemove(ctx context.Context, repoPath, path string, branches []string) (RemoveResult, error) {
 	s.act.Lock()
 	defer s.act.Unlock()
 
-	g, e, err := s.removable(ctx, repoPath, path, "")
+	g, wt, err := s.assessOne(ctx, repoPath, path)
 	if err != nil {
-		return err
+		return RemoveResult{}, err
 	}
 
-	if e.Prunable {
-		return ErrPrunable
+	res, err := s.removeRow(ctx, g, repoPath, wt, true, branches)
+	if errors.Is(err, ErrSessionsUnknown) {
+		return res, uierr.New("This system can't list the running processes, so it can't tell whether a session is "+
+			"working in the worktree, and won't discard its changes.", err)
 	}
 
-	count, stderr, err := g.dirtyCount(ctx, e.Path)
-	if err != nil {
-		return fmt.Errorf("read the status of %s: %w", s.display(e.Path), gitError(err, stderr))
-	}
-
-	if count == 0 {
-		return ErrNotDirty
-	}
-
-	return s.removeEntry(ctx, g, repoPath, e, true)
+	return res, err
 }
 
-// RemoveAllClean removes every clean, unlocked, linked worktree whose directory still
-// exists, one at a time, and reports each outcome. Each removal is re-checked against
-// the repository first, and git refuses any worktree that changed in the meantime.
-func (s *Service) RemoveAllClean(ctx context.Context) ([]RemoveResult, error) {
+// RemoveAllClean removes the clean, unlocked, linked worktrees picked, one at a time, each
+// with the branches picked for it as Remove does, and reports each outcome. Each is
+// checked against a fresh listing first: one that is no longer clean and removable is
+// left, with why, and git refuses any worktree that changed in the meantime.
+func (s *Service) RemoveAllClean(ctx context.Context, picks []Pick) ([]RemoveResult, error) {
 	s.act.Lock()
 	defer s.act.Unlock()
 
@@ -329,24 +430,43 @@ func (s *Service) RemoveAllClean(ctx context.Context) ([]RemoveResult, error) {
 		return nil, err
 	}
 
-	targets := cleanTargets(snap)
-	results := make([]RemoveResult, 0, len(targets))
+	g, err := s.git()
+	if err != nil {
+		return nil, err
+	}
 
-	for _, target := range targets {
+	results := make([]RemoveResult, 0, len(picks))
+
+	for _, p := range picks {
 		if err = ctx.Err(); err != nil {
 			return results, err
 		}
 
-		if err = s.remove(ctx, target.RepoPath, target.Path); err != nil {
-			target.Reason = reasonOf(err)
-		} else {
-			target.Removed = true
-		}
+		wt, ok := findWorktree(snap, p.Path)
 
-		results = append(results, target)
+		switch {
+		case !ok:
+			results = append(results, pickRefused(p, s.display(p.Path), ErrNotAWorktree))
+		case !wt.CanRemove:
+			results = append(results, pickRefused(p, wt.DisplayPath, ErrChanged))
+		default:
+			res, removeErr := s.removeRow(ctx, g, p.RepoPath, wt, false, p.Branches)
+			if removeErr != nil {
+				res.Reason = reasonOf(removeErr)
+			}
+
+			results = append(results, res)
+		}
 	}
 
 	return results, nil
+}
+
+// pickRefused is the result for a picked worktree left as it was, with why.
+func pickRefused(p Pick, display string, err error) RemoveResult {
+	return RemoveResult{
+		RepoPath: p.RepoPath, Path: p.Path, DisplayPath: display, DeletedBranches: []string{}, Reason: reasonOf(err),
+	}
 }
 
 // Prune clears the repository's entries for worktrees whose directories are gone. It
@@ -367,20 +487,134 @@ func (s *Service) Prune(ctx context.Context, repoPath string) error {
 	return nil
 }
 
-// remove is Remove without taking the action lock.
-func (s *Service) remove(ctx context.Context, repoPath, path string) error {
-	g, e, err := s.removable(ctx, repoPath, path, "")
+// assessClone assesses the clone at repoPath alone, GitHub included, as a listing would:
+// the clone must be under the clone root.
+func (s *Service) assessClone(ctx context.Context, repoPath string) (git, Snapshot, error) {
+	g, root, prefs, err := s.prepare(ctx)
 	if err != nil {
-		return err
+		return git{}, Snapshot{}, err
 	}
 
-	return s.removeEntry(ctx, g, repoPath, e, false)
+	if !s.underRoot(repoPath, root) {
+		return git{}, Snapshot{}, fmt.Errorf("%w: %s", ErrOutsideCloneRoot, s.display(repoPath))
+	}
+
+	clone, err := localrepos.Inspect(ctx, repoPath, s.run)
+	if err != nil {
+		return git{}, Snapshot{}, err
+	}
+
+	snap, err := s.assessClones(ctx, g, root, []localrepos.LocalRepo{clone}, prefs.Branches)
+	if err != nil {
+		return git{}, Snapshot{}, err
+	}
+
+	return g, snap, nil
 }
 
-// assessClones lists the given clones' worktrees, links them to their items, and works
-// out each one's stage. The clones are listed a few at a time, then every worktree's
-// state is read under the same limit, whichever clone it is in.
-func (s *Service) assessClones(ctx context.Context, g git, root string, clones []localrepos.LocalRepo) (Snapshot, error) {
+// assessOne assesses the clone at repoPath and returns the row of path, one of its
+// linked worktrees.
+func (s *Service) assessOne(ctx context.Context, repoPath, path string) (git, Worktree, error) {
+	g, snap, err := s.assessClone(ctx, repoPath)
+	if err != nil {
+		return git{}, Worktree{}, err
+	}
+
+	wt, ok := findWorktree(snap, path)
+
+	switch {
+	case !ok:
+		return git{}, Worktree{}, fmt.Errorf("%w: %s", ErrNotAWorktree, s.display(path))
+	case wt.Main:
+		return git{}, Worktree{}, ErrMainWorktree
+	default:
+		return g, wt, nil
+	}
+}
+
+// removeRow removes an assessed linked worktree, with --force when force is set, which
+// discards its uncommitted changes: a force removal needs some to discard, and the
+// running processes listed. The worktree must still have the commit assessed checked out.
+// The branches named then go with it, each only when it may (see deleteChosen).
+func (s *Service) removeRow(ctx context.Context, g git, repoPath string, wt Worktree, force bool,
+	branches []string,
+) (RemoveResult, error) {
+	res := RemoveResult{
+		RepoPath: repoPath, Path: wt.Path, DisplayPath: wt.DisplayPath, Item: itemName(wt.Item),
+		DeletedBranches: []string{},
+	}
+
+	e, err := s.removable(ctx, repoPath, wt.Path, wt.Head, force)
+	if err != nil {
+		return res, err
+	}
+
+	if force {
+		if err = s.discardable(ctx, g, e); err != nil {
+			return res, err
+		}
+	}
+
+	if err = s.removeEntry(ctx, g, repoPath, e, force); err != nil {
+		return res, err
+	}
+
+	res.Removed = true
+
+	s.forgetRecord(ctx, wt.Path)
+
+	deleted, kept := s.deleteChosen(ctx, g, repoPath, wt, branches)
+	res.DeletedBranches, res.Reason = deleted, strings.Join(kept, "; ")
+
+	return res, nil
+}
+
+// discardable refuses a force removal of a worktree with nothing to discard, or whose
+// directory is gone.
+func (s *Service) discardable(ctx context.Context, g git, e Entry) error {
+	if e.Prunable {
+		return ErrPrunable
+	}
+
+	count, stderr, err := g.dirtyCount(ctx, e.Path)
+	if err != nil {
+		return fmt.Errorf("read the status of %s: %w", s.display(e.Path), gitError(err, stderr))
+	}
+
+	if count == 0 {
+		return ErrNotDirty
+	}
+
+	return nil
+}
+
+// unpushedText counts the commits a branch has that are not on GitHub, or says "commits"
+// when the count could not be read.
+func unpushedText(n int) string {
+	switch {
+	case n == 1:
+		return "1 commit"
+	case n > 1:
+		return fmt.Sprintf("%d commits", n)
+	default:
+		return "commits"
+	}
+}
+
+// assessClones lists the given clones' worktrees, checks the records against them, links
+// them to their items, finds the sessions working in them, and works out each one's
+// stage. The clones are listed a few at a time, then every worktree's state is read under
+// the same limit, whichever clone it is in.
+//
+// The records and the running processes are read before git lists anything: a worktree
+// made after the listing then has no record yet rather than a record that seems to name a
+// worktree gone, and the git commands the listing runs are not mistaken for sessions.
+func (s *Service) assessClones(ctx context.Context, g git, root string, clones []localrepos.LocalRepo,
+	rules branchrules.Rules,
+) (Snapshot, error) {
+	records := s.records(ctx)
+	running, known := s.processes(ctx)
+
 	listings := make([]cloneListing, len(clones))
 	remotes := make(map[string]map[string]repo.Name, len(clones))
 
@@ -407,31 +641,115 @@ func (s *Service) assessClones(ctx context.Context, g git, root string, clones [
 		return Snapshot{}, err
 	}
 
+	recorded := s.reconcile(ctx, listings, records)
+
 	listed := make([]listedRepo, 0, len(listings))
 	for _, l := range listings {
 		listed = append(listed, l.withRows())
 	}
 
 	snap := s.snapshot(root, listed)
-	snap.LinkError = s.link(ctx, snap.Repos, remotes, s.launchRecords(ctx))
+	snap.LinkError = s.link(ctx, snap.Repos, remotes, recorded)
+	s.adopt(ctx, snap.Repos, recorded)
+	markSessions(snap.Repos, running)
+	snap.SessionsUnknown = !known
 	s.tally(&snap)
+	s.markBranches(ctx, g, snap.Repos, rules)
 
 	return snap, nil
 }
 
-// launchRecords reads the launch records. Without them worktrees are still linked by
-// name, so a failure is only logged.
-func (s *Service) launchRecords(ctx context.Context) []worklog.Launch {
+// records reads the worktree records. Without them worktrees are still found by their
+// branch and linked by their name, so a failure is only logged.
+func (s *Service) records(ctx context.Context) []worklog.Record {
 	if s.launches == nil {
 		return nil
 	}
 
-	records, err := s.launches.Launches(ctx)
+	records, err := s.launches.Worktrees(ctx)
 	if err != nil {
-		s.logger.WarnContext(ctx, "could not read the worktree launches", "error", err)
+		s.logger.WarnContext(ctx, "could not read the worktree records", "error", err)
 	}
 
 	return records
+}
+
+// processes lists the running processes that can be a session: every process but this
+// app and the commands it runs, and a coding agent's background service with everything
+// under it (see procs.WithoutServices). Codex's app-server daemon keeps the folder it was
+// started from as its working directory long after the session that started it ended, so
+// it never counts. It reports whether the processes could be listed; without a lister
+// none is listed, and that is known.
+func (s *Service) processes(ctx context.Context) ([]procs.Process, bool) {
+	if s.lister == nil {
+		return nil, true
+	}
+
+	list, err := s.lister.Processes(ctx)
+	if err != nil {
+		s.logger.DebugContext(ctx, "the running processes could not be listed", "error", err)
+
+		return nil, false
+	}
+
+	return procs.WithoutServices(procs.Others(list, os.Getpid()), agentCommands()), true
+}
+
+// agentCommands are the coding agents' commands, whose background services are no
+// session.
+func agentCommands() []string {
+	agents := agent.All()
+	out := make([]string, 0, len(agents))
+
+	for _, a := range agents {
+		out = append(out, a.Command)
+	}
+
+	return out
+}
+
+// sessionsIn returns the sessions working in dir, and whether the processes could be
+// listed.
+func (s *Service) sessionsIn(ctx context.Context, dir string) ([]Session, bool) {
+	running, known := s.processes(ctx)
+
+	return sessionsOf(procs.Within(running, dir)), known
+}
+
+// checkSessions refuses a worktree a running process works in. strict refuses it as well
+// when the processes cannot be listed, as the automatic cleanup and a force removal do; a
+// plain removal the user asks for goes ahead then, since git refuses a worktree with
+// changes, and the locks still guard it.
+func (s *Service) checkSessions(ctx context.Context, dir string, strict bool) error {
+	sessions, known := s.sessionsIn(ctx, dir)
+
+	switch {
+	case len(sessions) > 0:
+		return &InUseError{Sessions: sessions}
+	case !known && strict:
+		return ErrSessionsUnknown
+	default:
+		return nil
+	}
+}
+
+// markSessions fills in the sessions working in each linked worktree.
+func markSessions(repos []Repo, running []procs.Process) {
+	for _, wt := range rows(repos) {
+		if !wt.Main && !wt.Prunable {
+			wt.InUse = sessionsOf(procs.Within(running, wt.Path))
+		}
+	}
+}
+
+// sessionsOf returns processes as sessions, never nil.
+func sessionsOf(list []procs.Process) []Session {
+	out := make([]Session, 0, len(list))
+	for _, p := range list {
+		out = append(out, Session{PID: p.PID, Command: p.Command})
+	}
+
+	return out
 }
 
 // tally works out each worktree's stage, counts what the bulk actions would remove, and
@@ -440,7 +758,7 @@ func (s *Service) tally(snap *Snapshot) {
 	snap.CleanCount, snap.FinishedCount, snap.ReviewCount, snap.WorktreeCount = 0, 0, 0, 0
 
 	for _, wt := range rows(snap.Repos) {
-		assess(wt)
+		assess(wt, !snap.SessionsUnknown)
 
 		if !wt.Main {
 			snap.WorktreeCount++
@@ -478,6 +796,29 @@ func (s *Service) prepare(ctx context.Context) (git, string, SweepSettings, erro
 	}
 
 	return g, root, prefs, nil
+}
+
+// lockClone takes the clone's lock (see Service.clones), and returns its release.
+func (s *Service) lockClone(clone string) func() {
+	key := resolvedPath(clone)
+
+	s.clonesMu.Lock()
+
+	if s.clones == nil {
+		s.clones = map[string]*sync.Mutex{}
+	}
+
+	mu, ok := s.clones[key]
+	if !ok {
+		mu = &sync.Mutex{}
+		s.clones[key] = mu
+	}
+
+	s.clonesMu.Unlock()
+
+	mu.Lock()
+
+	return mu.Unlock
 }
 
 // git returns the allowlisted git runner, resolving the binary when a Finder is set.
@@ -541,26 +882,33 @@ func (s *Service) entryOf(ctx context.Context, g git, repoPath, path string) (En
 }
 
 // removable re-lists the repository and returns path's entry when it is a linked,
-// unlocked worktree of it. When head is not "", the worktree must still have that commit
-// checked out.
-func (s *Service) removable(ctx context.Context, repoPath, path, head string) (git, Entry, error) {
+// unlocked worktree of it that no running process works in. When head is not "", the
+// worktree must still have that commit checked out. strict also refuses it when the
+// processes cannot be listed.
+func (s *Service) removable(ctx context.Context, repoPath, path, head string, strict bool) (Entry, error) {
 	g, err := s.checkedGit(ctx, repoPath)
 	if err != nil {
-		return git{}, Entry{}, err
+		return Entry{}, err
 	}
 
 	e, err := s.entryOf(ctx, g, repoPath, path)
 
 	switch {
 	case err != nil:
-		return git{}, Entry{}, err
+		return Entry{}, err
 	case e.Locked:
-		return git{}, Entry{}, ErrLocked
+		return Entry{}, ErrLocked
 	case head != "" && e.HEAD != head:
-		return git{}, Entry{}, ErrChanged
-	default:
-		return g, e, nil
+		return Entry{}, ErrChanged
 	}
+
+	if !e.Prunable {
+		if err = s.checkSessions(ctx, e.Path, strict); err != nil {
+			return Entry{}, err
+		}
+	}
+
+	return e, nil
 }
 
 // removeEntry runs `git worktree remove` for a checked entry and turns a refusal into a
@@ -582,10 +930,11 @@ func (s *Service) removeEntry(ctx context.Context, g git, repoPath string, e Ent
 type cloneListing struct {
 	repo listedRepo
 
-	// entries are the worktrees listed, the bare repository left out, and claudeDir is
-	// where the agent creates its worktrees in this clone.
-	entries   []Entry
-	claudeDir string
+	// entries are the worktrees listed, the bare repository left out; managedDir is where
+	// the app makes this clone's worktrees, and legacyDir where Claude Code made them.
+	entries    []Entry
+	managedDir string
+	legacyDir  string
 
 	// times holds the commit time of each listed HEAD, or is nil when git could not read
 	// them together, so each worktree's is read on its own.
@@ -639,7 +988,8 @@ func (s *Service) listRepo(ctx context.Context, g git, dir string) (cloneListing
 	}
 
 	return cloneListing{
-		repo: listed, entries: entries, claudeDir: filepath.Join(listed.key, ".claude", "worktrees"), times: times,
+		repo: listed, entries: entries, managedDir: resolvedPath(ManagedRoot(listed.key)),
+		legacyDir: resolvedPath(legacyRoot(listed.key)), times: times,
 	}, nil
 }
 
@@ -688,7 +1038,7 @@ func (s *Service) readRows(ctx context.Context, g git, listings []cloneListing) 
 			eg.Go(func() error {
 				var rowErr error
 
-				l.rows[j], rowErr = s.row(ectx, g, e, l.claudeDir, l.times)
+				l.rows[j], rowErr = s.row(ectx, g, e, l.managedDir, l.legacyDir, l.times)
 
 				return rowErr
 			})
@@ -699,8 +1049,11 @@ func (s *Service) readRows(ctx context.Context, g git, listings []cloneListing) 
 }
 
 // row builds a worktree's view row, reading its status, unless its directory is gone.
-// times holds its clone's commit times (see cloneListing).
-func (s *Service) row(ctx context.Context, g git, e Entry, claudeDir string, times map[string]int64) (Worktree, error) {
+// managedDir and legacyDir are where its clone's worktrees are made, and times holds its
+// clone's commit times (see cloneListing).
+func (s *Service) row(ctx context.Context, g git, e Entry, managedDir, legacyDir string, times map[string]int64) (Worktree, error) {
+	path := resolvedPath(e.Path)
+
 	wt := Worktree{
 		Path:           e.Path,
 		DisplayPath:    s.display(e.Path),
@@ -711,23 +1064,23 @@ func (s *Service) row(ctx context.Context, g git, e Entry, claudeDir string, tim
 		LockReason:     e.LockReason,
 		Prunable:       e.Prunable,
 		PrunableReason: e.PrunableReason,
-		ClaudeCreated:  within(claudeDir, resolvedPath(e.Path)),
+		Legacy:         within(legacyDir, path),
 		Head:           e.HEAD,
 		Unpushed:       -1,
+		InUse:          []Session{},
+		Branches:       []Branch{},
 	}
 
+	wt.Managed = wt.Legacy || within(managedDir, path)
+
 	s.judgeLock(&wt)
-	wt.OwnBranch = wt.ClaudeCreated && !e.Detached && e.Branch == ownBranchPrefix+filepath.Base(e.Path)
+	wt.OwnBranch = wt.Managed && !e.Detached && e.Branch == ownBranchPrefix+filepath.Base(e.Path)
 
 	if !e.Prunable {
 		if err := s.readState(ctx, g, &wt, times); err != nil {
 			return Worktree{}, err
 		}
 	}
-
-	linked := !e.Main && !e.Locked && !e.Prunable
-	wt.CanRemove = linked && !wt.Dirty
-	wt.CanForceRemove = linked && wt.Dirty
 
 	return wt, nil
 }
@@ -872,21 +1225,6 @@ func rows(repos []Repo) iter.Seq2[*Repo, *Worktree] {
 			}
 		}
 	}
-}
-
-// cleanTargets lists the worktrees "Remove all clean" removes, in snapshot order.
-func cleanTargets(snap Snapshot) []RemoveResult {
-	targets := make([]RemoveResult, 0, snap.CleanCount)
-
-	for _, repo := range snap.Repos {
-		for _, wt := range repo.Worktrees {
-			if wt.CanRemove {
-				targets = append(targets, RemoveResult{RepoPath: repo.Path, Path: wt.Path, DisplayPath: wt.DisplayPath})
-			}
-		}
-	}
-
-	return targets
 }
 
 // gitError turns a git failure into an error carrying git's own message when it gave one.

@@ -97,6 +97,16 @@ func TestNonNil(t *testing.T) {
 	assert.Equal(t, []int{1, 2}, textutil.NonNil([]int{1, 2}))
 }
 
+func TestNonNilMap(t *testing.T) {
+	t.Parallel()
+
+	var none map[string]int
+
+	assert.NotNil(t, textutil.NonNilMap(none))
+	assert.Empty(t, textutil.NonNilMap(none))
+	assert.Equal(t, map[string]int{"a": 1}, textutil.NonNilMap(map[string]int{"a": 1}))
+}
+
 func TestJoin(t *testing.T) {
 	t.Parallel()
 

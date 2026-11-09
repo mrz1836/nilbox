@@ -3,16 +3,25 @@ package core
 import (
 	"context"
 	"database/sql"
+	"log/slog"
+	"maps"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
 	"time"
 
+	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/budget"
 	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/settings"
+	"github.com/mrz1836/nilbox/internal/workspacetrust"
 	"github.com/mrz1836/nilbox/internal/worktrees"
 )
 
@@ -68,7 +77,8 @@ func (s ShellSettings) WindowSize(ctx context.Context) (settings.WindowSize, err
 // launchSettings is the part of the settings a launch reads.
 func launchSettings(s settings.Settings) launcher.LaunchSettings {
 	return launcher.LaunchSettings{
-		DefaultProfile:  s.DefaultProfile,
+		DefaultAgent:    s.DefaultAgent,
+		DefaultProfiles: maps.Clone(s.DefaultProfiles),
 		WorktreeDefault: s.WorktreeDefault,
 		Terminal:        s.Terminal,
 		CloneRoot:       s.CloneRoot,
@@ -76,9 +86,79 @@ func launchSettings(s settings.Settings) launcher.LaunchSettings {
 	}
 }
 
+// worktreeMaker hands the launcher the worktrees package's Maker. It implements
+// launcher.WorktreeMaker.
+type worktreeMaker struct {
+	maker *worktrees.Maker
+}
+
+// PlanWorktree says what EnsureWorktree would do.
+func (m worktreeMaker) PlanWorktree(ctx context.Context, req launcher.WorktreeRequest) (launcher.Worktree, error) {
+	got, err := m.maker.Plan(ctx, ensureRequest(req))
+
+	return launcherWorktree(got), err
+}
+
+// EnsureWorktree finds or makes the item's worktree.
+func (m worktreeMaker) EnsureWorktree(ctx context.Context, req launcher.WorktreeRequest) (launcher.Worktree, error) {
+	got, err := m.maker.Ensure(ctx, ensureRequest(req))
+
+	return launcherWorktree(got), err
+}
+
+// ensureRequest converts the launcher's request for the worktrees package.
+func ensureRequest(req launcher.WorktreeRequest) worktrees.EnsureRequest {
+	return worktrees.EnsureRequest{
+		Clone: req.Clone, Remote: req.Remote, Owner: req.Owner, Name: req.Name, Kind: req.Kind, Number: req.Number,
+		DefaultBranch: req.DefaultBranch, Head: req.Head,
+	}
+}
+
+// launcherWorktree converts the worktrees package's answer for the launcher.
+func launcherWorktree(e worktrees.Ensured) launcher.Worktree {
+	return launcher.Worktree{
+		Path: e.Path, Branch: e.Branch, Action: launcher.WorktreeAction(e.Action), Base: e.Base, Head: e.Head,
+		Dirty: e.Dirty, Notice: e.Notice,
+	}
+}
+
+// trusters returns each agent's Truster, which marks the folder a session starts in
+// trusted in that agent's config.
+func trusters(home string, logger *slog.Logger) map[agent.ID]launcher.Truster {
+	return map[agent.ID]launcher.Truster{
+		agent.Claude: workspacetrust.Claude{Home: home},
+		agent.Codex:  workspacetrust.Codex{Home: home, Logger: logger},
+	}
+}
+
+// worktreeRunner returns the runner the worktree service runs git with: search's
+// execpath.Exec with git's terminal prompts off, so a fetch that needs a password fails at
+// once rather than waiting for an answer no one can give.
+func worktreeRunner(search execpath.Search) execpath.Exec {
+	env := slices.DeleteFunc(os.Environ(), func(kv string) bool { return strings.HasPrefix(kv, "GIT_TERMINAL_PROMPT=") })
+
+	return execpath.Exec{Search: search, Env: append(env, "GIT_TERMINAL_PROMPT=0")}
+}
+
+// agentRunner runs a coding agent's command, for its --version, with the command's own
+// directory first on the search path. An agent installed with npm starts through a script
+// that finds node beside it, and an app started from the Dock has launchd's search path,
+// which lacks that directory.
+type agentRunner struct {
+	search execpath.Search
+}
+
+// Run runs name with args, its directory first on the search path.
+func (r agentRunner) Run(ctx context.Context, name string, args ...string) (stdout, stderr []byte, err error) {
+	path := strings.Join([]string{filepath.Dir(name), os.Getenv("PATH")}, string(os.PathListSeparator))
+	env := slices.DeleteFunc(os.Environ(), func(kv string) bool { return strings.HasPrefix(kv, "PATH=") })
+
+	return execpath.Exec{Search: r.search, Env: append(env, "PATH="+path)}.Run(ctx, name, args...)
+}
+
 // sweepSettings is the part of the settings the worktree service reads.
 func sweepSettings(s settings.Settings) worktrees.SweepSettings {
-	return worktrees.SweepSettings{CloneRoot: s.CloneRoot, AutoCleanup: s.WorktreeAutoCleanup}
+	return worktrees.SweepSettings{CloneRoot: s.CloneRoot, AutoCleanup: s.WorktreeAutoCleanup, Branches: s.Branches}
 }
 
 // launchItems hands the launcher the inbox's stored items, the signed-in account, and
@@ -202,12 +282,53 @@ func (s itemStates) ItemStates(ctx context.Context, refs []item.Ref) (map[string
 	return out, nil
 }
 
+// MergedPullRequests asks GitHub which branch names were the head of a merged pull
+// request. A token GitHub refuses is borrowed again once.
+func (s itemStates) MergedPullRequests(ctx context.Context, queries []worktrees.BranchQuery,
+) (map[worktrees.BranchKey][]worktrees.MergedPR, error) {
+	asks := make([]github.BranchQuery, 0, len(queries))
+	for _, q := range queries {
+		asks = append(asks, github.BranchQuery{Repo: q.Repo, Branches: q.Branches})
+	}
+
+	answers, err := github.WithToken(ctx, s.tokens, func(tok github.Token) (map[string][]github.MergedPR, error) {
+		return s.client.FetchMergedPullRequests(ctx, tok, asks)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	out := map[worktrees.BranchKey][]worktrees.MergedPR{}
+
+	for _, q := range queries {
+		for _, branch := range q.Branches {
+			if prs := answers[github.MergedKey(q.Repo, branch)]; len(prs) > 0 {
+				out[worktrees.BranchKey{Repo: q.Repo.Key(), Branch: branch}] = worktreeMerged(prs)
+			}
+		}
+	}
+
+	return out, nil
+}
+
+// worktreeMerged converts GitHub's merged pull requests for the worktree service.
+func worktreeMerged(prs []github.MergedPR) []worktrees.MergedPR {
+	out := make([]worktrees.MergedPR, 0, len(prs))
+	for _, pr := range prs {
+		out = append(out, worktrees.MergedPR{
+			Number: pr.Number, Title: pr.Title, URL: pr.URL, MergedAt: pr.MergedAt, HeadOID: pr.HeadOID,
+		})
+	}
+
+	return out
+}
+
 // worktreeState converts GitHub's answer about an item for the worktree service. An item
 // GitHub reports neither merged nor closed is open.
 func worktreeState(s github.ItemState) worktrees.ItemState {
 	out := worktrees.ItemState{
 		PullRequest: s.PullRequest, Title: s.Title, URL: s.URL, State: worktrees.ItemOpen, ClosedAt: s.ClosedAt,
-		HeadOID: s.HeadOID,
+		HeadOID: s.HeadOID, HeadRef: s.HeadRef,
 	}
 
 	switch s.State {

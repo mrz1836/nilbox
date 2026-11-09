@@ -2,8 +2,11 @@ import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
+import { brand } from '../generated/brand'
 import type { LaunchPreview } from '../platform'
 import {
+  agents,
+  codexAgent,
   cloneTarget,
   item,
   itemResolution,
@@ -20,11 +23,17 @@ import { LaunchControls, type LaunchControlsProps } from './LaunchControls'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
-const profiles = [profile(), profile({ name: 'work', configDir: '~/.claude_work', folder: '~/.claude_work' })]
+const profiles = [
+  profile(),
+  profile({ name: 'work', configDir: '~/.claude_work', folder: '~/.claude_work' }),
+  profile({ agent: 'codex', folder: '~/.codex' }),
+  profile({ agent: 'codex', name: 'alt', configDir: '~/.codex_alt', folder: '~/.codex_alt', signedIn: false }),
+]
 
 // defaultRequest is a launch with nothing chosen: the item's resolved settings.
 const defaultRequest = {
   itemId: 1,
+  agent: '',
   profile: '',
   promptId: 0,
   model: null,
@@ -39,6 +48,7 @@ function props(overrides: Partial<LaunchControlsProps> = {}): LaunchControlsProp
   return {
     item: item(),
     resolution: itemResolution(),
+    agents: agents(),
     profiles,
     prompts: prompts(),
     launchDefaults: [],
@@ -79,10 +89,24 @@ describe('LaunchControls', () => {
     expect(optionsButton()).toHaveAttribute('aria-expanded', 'false')
   })
 
+  it('opens the menu from the button’s right edge, or its left edge for a button at the left of a row', async () => {
+    const { unmount } = render(<LaunchControls {...props()} />)
+
+    await openMenu()
+    expect(screen.getByRole('dialog', { name: 'Launch options' })).toHaveClass('right-0', 'origin-top-right')
+
+    unmount()
+    render(<LaunchControls {...props({ menuAlign: 'left' })} />)
+
+    await openMenu()
+    expect(screen.getByRole('dialog', { name: 'Launch options' })).toHaveClass('left-0', 'origin-top-left')
+  })
+
   it('waits for the launch settings before it can launch', () => {
     render(<LaunchControls {...props({ resolution: null })} />)
 
-    expect(screen.getByRole('button', { name: 'Open in Claude' })).toBeDisabled()
+    // Until the settings resolve, the agent the button starts is not known.
+    expect(screen.getByRole('button', { name: 'Open' })).toBeDisabled()
     expect(optionsButton()).toBeDisabled()
     expect(optionsButton()).toHaveTextContent('…')
   })
@@ -94,7 +118,7 @@ describe('LaunchControls', () => {
 
     expect(platform.launch).toHaveBeenCalledWith(defaultRequest)
     expect(await screen.findByRole('status')).toHaveTextContent(
-      'Opened “Review” in iterm2: ~/projects/example-repo (worktree pr-7) · default · full access',
+      `Opened “Review” in Claude in iterm2: ~/projects/.${brand.slug}/worktrees/example-repo/pr-7 (worktree made) · default · full access`,
     )
   })
 
@@ -143,7 +167,9 @@ describe('LaunchControls', () => {
     await userEvent.click(dialog.getByRole('button', { name: 'Clone and open' }))
 
     expect(platform.cloneRepo).toHaveBeenCalledWith(1)
-    expect(await screen.findByRole('status')).toHaveTextContent('Opened “Review” in iterm2: ~/projects/example-repo')
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      `Opened “Review” in Claude in iterm2: ~/projects/.${brand.slug}/worktrees/example-repo/pr-7`,
+    )
     expect(platform.launch).toHaveBeenCalledTimes(2)
     expect(platform.launch).toHaveBeenNthCalledWith(1, { ...defaultRequest, profile: 'work' })
     expect(platform.launch).toHaveBeenNthCalledWith(2, { ...defaultRequest, profile: 'work' })
@@ -350,14 +376,14 @@ describe('LaunchControls', () => {
       owner: 'acme-org',
       name: 'example-repo',
       agent: '',
-      profile: 'work',
+      profiles: { claude: 'work' },
       prPromptId: null,
       issuePromptId: null,
-      model: '',
+      models: {},
       effort: '',
       planMode: null,
       worktree: null,
-      extraFlags: '',
+      extraFlags: {},
     })
     expect(await menu.findByText('Saved as the default for acme-org/example-repo.')).toBeInTheDocument()
     expect(onDefaultsSaved).toHaveBeenCalledOnce()
@@ -365,7 +391,11 @@ describe('LaunchControls', () => {
   })
 
   it('saves the choices over the org’s stored defaults', async () => {
-    const stored = launchDefaults({ effort: 'max', extraFlags: '--advisor fable', extraArgs: ['--advisor', 'fable'] })
+    const stored = launchDefaults({
+      effort: 'max',
+      extraFlags: { claude: '--advisor fable' },
+      extraArgs: { claude: ['--advisor', 'fable'] },
+    })
     render(<LaunchControls {...props({ launchDefaults: [stored] })} />)
 
     const menu = await openMenu()
@@ -377,10 +407,10 @@ describe('LaunchControls', () => {
       expect.objectContaining({
         owner: 'acme-org',
         name: '',
-        profile: 'work',
+        profiles: { claude: 'work' },
         prPromptId: 2,
         effort: 'max',
-        extraFlags: '--advisor fable',
+        extraFlags: { claude: '--advisor fable' },
       }),
     )
   })
@@ -470,7 +500,11 @@ describe('LaunchControls', () => {
 
     expect(await menu.findByText(/Review pull request #7/)).toBeInTheDocument()
     expect(platform.previewLaunch).toHaveBeenCalledWith(defaultRequest)
-    expect(menu.getByText('~/projects/example-repo')).toBeInTheDocument()
+    expect(
+      menu.getByText(`Creates ~/projects/.${brand.slug}/worktrees/example-repo/pr-7 from the pull request’s head`),
+    ).toBeInTheDocument()
+    expect(menu.getByText(`~/projects/.${brand.slug}/worktrees/example-repo/pr-7`)).toBeInTheDocument()
+    expect(menu.getByText('unset CLAUDE_CONFIG_DIR')).toBeInTheDocument()
     expect(menu.getByText(/claude <prompt> --dangerously-skip-permissions/)).toBeInTheDocument()
 
     platform.previewLaunch.mockRejectedValue(new Error('no local clone of acme-org/example-repo under ~/projects'))
@@ -543,7 +577,7 @@ describe('LaunchControls', () => {
 
     const dialog = within(await screen.findByRole('dialog', { name: 'This pull request changes agent configuration' }))
     expect(dialog.getByText(/starts in worktree pr-7, at the pull request’s head/)).toBeInTheDocument()
-    expect(dialog.getByText(/run commands on your Mac, even in plan mode/)).toBeInTheDocument()
+    expect(dialog.getByText(/run commands on your Mac, even in plan or read-only mode/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus()
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
 
@@ -618,5 +652,156 @@ describe('LaunchControls', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
 
     expect(await screen.findByText(/GitHub didn’t list its files: GitHub answered 502\./)).toBeInTheDocument()
+  })
+})
+
+describe('LaunchControls with more than one agent', () => {
+  // codexResolution is the item's settings resolved for Codex, as the launch menu's switch
+  // asks for them.
+  const codexResolution = resolution({
+    agent: codexAgent(),
+    agentSource: 'launch',
+    profile: { value: 'default', source: 'app', inherited: 'default', inheritedSource: 'app' },
+  })
+
+  it('switches the agent for one launch, with that agent’s own profiles and models', async () => {
+    platform.resolveLaunch.mockResolvedValue(codexResolution)
+    render(<LaunchControls {...props()} />)
+
+    const menu = await openMenu()
+
+    expect(menu.getByRole('radio', { name: 'Claude' })).toBeChecked()
+    expect(menu.queryByRole('radio', { name: /^alt/ })).not.toBeInTheDocument()
+
+    await userEvent.click(menu.getByRole('radio', { name: 'Codex' }))
+
+    expect(await menu.findByRole('radio', { name: /^alt.*not signed in$/ })).toBeInTheDocument()
+    expect(menu.queryByRole('radio', { name: 'work' })).not.toBeInTheDocument()
+    expect(menu.getByRole('option', { name: 'GPT-6-Sol' })).toBeInTheDocument()
+    expect(menu.getByRole('option', { name: 'Ultra' })).toBeInTheDocument()
+    expect(menu.getByRole('checkbox', { name: /Start read-only/ })).toBeInTheDocument()
+    // The row's button and the menu's own both follow the agent chosen.
+    expect(screen.getByTitle('Open in Codex with “Review” as default')).toBeEnabled()
+
+    await userEvent.click(menu.getByRole('button', { name: 'Open in Codex' }))
+
+    expect(platform.launch).toHaveBeenCalledWith({ ...defaultRequest, agent: 'codex' })
+    expect(platform.resolveLaunch).toHaveBeenCalledWith(expect.objectContaining({ agent: 'codex' }))
+  })
+
+  it('launches with the item’s own agent while the agents are still loading', async () => {
+    render(<LaunchControls {...props({ agents: [] })} />)
+
+    const menu = await openMenu()
+
+    // With no agents to choose from, the menu offers the resolved agent's models alone.
+    expect(menu.queryByRole('radiogroup', { name: 'Agent' })).not.toBeInTheDocument()
+    expect(menu.getByRole('option', { name: 'Opus' })).toBeInTheDocument()
+
+    await userEvent.click(menu.getByRole('button', { name: 'Open in Claude' }))
+
+    expect(platform.launch).toHaveBeenCalledWith(defaultRequest)
+  })
+
+  it('chooses a model for one launch, and none again on picking the default', async () => {
+    render(<LaunchControls {...props()} />)
+
+    const menu = await openMenu()
+    const model = menu.getByRole('combobox', { name: 'Model' })
+
+    await userEvent.selectOptions(model, 'opus')
+    expect(model).toHaveValue('opus')
+
+    await userEvent.selectOptions(model, '')
+    await userEvent.click(menu.getByRole('button', { name: 'Open in Claude' }))
+
+    expect(platform.launch).toHaveBeenLastCalledWith(defaultRequest)
+  })
+
+  it('starts in the agent’s own planning mode, and back to the default when unchecked', async () => {
+    render(<LaunchControls {...props()} />)
+
+    const menu = await openMenu()
+    const plan = menu.getByRole('checkbox', { name: /Start in plan mode/ })
+
+    await userEvent.click(plan)
+    await userEvent.click(menu.getByRole('button', { name: 'Open in Claude' }))
+
+    expect(platform.launch).toHaveBeenLastCalledWith({ ...defaultRequest, planMode: true })
+
+    const again = await openMenu()
+    await userEvent.click(again.getByRole('checkbox', { name: /Start in plan mode/ }))
+    await userEvent.click(again.getByRole('checkbox', { name: /Start in plan mode/ }))
+    await userEvent.click(again.getByRole('button', { name: 'Open in Claude' }))
+
+    // Unchecked again, it is the resolved setting, so nothing is chosen.
+    expect(platform.launch).toHaveBeenLastCalledWith(defaultRequest)
+  })
+
+  it('goes back to the item’s own agent, and clears the other agent’s profile', async () => {
+    platform.resolveLaunch.mockResolvedValue(codexResolution)
+    render(<LaunchControls {...props()} />)
+
+    const menu = await openMenu()
+
+    await userEvent.click(menu.getByRole('radio', { name: 'work' }))
+    await userEvent.click(menu.getByRole('radio', { name: 'Codex' }))
+    await userEvent.click(menu.getByRole('radio', { name: 'Claude' }))
+    await userEvent.click(menu.getByRole('button', { name: 'Open in Claude' }))
+
+    expect(platform.launch).toHaveBeenCalledWith(defaultRequest)
+  })
+
+  it('offers an agent that is not installed only with the reason', async () => {
+    const all = agents().map((a) => (a.id === 'codex' ? { ...a, installed: false, path: '' } : a))
+    render(<LaunchControls {...props({ agents: all })} />)
+
+    const menu = await openMenu()
+    const option = menu.getByRole('radio', { name: 'Codex' })
+
+    expect(option).toBeDisabled()
+    expect(option.closest('label')).toHaveAttribute('title', 'Codex isn’t installed (codex wasn’t found)')
+  })
+
+  it('previews a Codex launch: its own home, a resumed worktree, and the prompt last', async () => {
+    platform.resolveLaunch.mockResolvedValue(codexResolution)
+    platform.previewLaunch.mockResolvedValue(
+      launchPreview({
+        resolution: codexResolution,
+        worktree: {
+          name: 'pr-7',
+          path: `~/projects/.${brand.slug}/worktrees/example-repo/pr-7`,
+          branch: 'worktree-pr-7',
+          action: 'resume',
+          base: '',
+          dirty: 2,
+        },
+        env: ['export CODEX_HOME=~/.codex_alt'],
+        command: 'codex --sandbox read-only --ask-for-approval on-request -- <prompt>',
+        permission: 'read-only',
+      }),
+    )
+    render(<LaunchControls {...props()} />)
+
+    const menu = await openMenu()
+
+    await userEvent.click(menu.getByRole('radio', { name: 'Codex' }))
+    await userEvent.click(menu.getByRole('button', { name: 'Preview' }))
+
+    expect(
+      await menu.findByText(`Resumes ~/projects/.${brand.slug}/worktrees/example-repo/pr-7 · 2 uncommitted files`),
+    ).toBeInTheDocument()
+    expect(menu.getByText('export CODEX_HOME=~/.codex_alt')).toBeInTheDocument()
+    expect(menu.getByText('codex --sandbox read-only --ask-for-approval on-request -- <prompt>')).toBeInTheDocument()
+    expect(platform.previewLaunch).toHaveBeenLastCalledWith({ ...defaultRequest, agent: 'codex' })
+  })
+
+  it('names the agent a launch started', async () => {
+    platform.launch.mockResolvedValue(launchResult({ agent: 'codex', worktreeAction: 'resume' }))
+    render(<LaunchControls {...props()} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/in Codex in iterm2: .*worktree resumed/)
   })
 })

@@ -9,6 +9,7 @@ import {
   joinList,
   launchRequest,
   noChoices,
+  withAgent,
   savableChoices,
   saveStatus,
   shadowedChoices,
@@ -19,6 +20,7 @@ describe('choices', () => {
   it('knows when anything was chosen, and what can be saved', () => {
     expect(hasChoices(noChoices)).toBe(false)
     expect(hasChoices({ ...noChoices, model: 'opus' })).toBe(true)
+    expect(hasChoices({ ...noChoices, agent: 'codex' })).toBe(true)
     expect(hasChoices({ ...noChoices, override: true })).toBe(true)
     expect(savableChoices({ ...noChoices, override: true })).toBe(false)
     expect(savableChoices({ ...noChoices, worktree: false })).toBe(true)
@@ -29,6 +31,7 @@ describe('choices', () => {
 
     expect(launchRequest(7, c, true)).toEqual({
       itemId: 7,
+      agent: '',
       profile: 'work',
       promptId: 2,
       model: null,
@@ -52,17 +55,45 @@ describe('launch defaults', () => {
   })
 
   it('writes the choices over stored defaults, keeping what was not chosen', () => {
-    const base = defaultsInput(launchDefaults({ effort: 'max', extraFlags: '--advisor fable' }))
+    const base = defaultsInput(
+      launchDefaults({ effort: 'max', models: { codex: 'gpt-6-luna' }, extraFlags: { claude: '--advisor fable' } }),
+    )
 
-    expect(withChoices(base, { ...noChoices, promptId: 3, model: 'opus', worktree: false }, 'pr')).toEqual({
+    expect(withChoices(base, { ...noChoices, promptId: 3, model: 'opus', worktree: false }, 'pr', 'claude')).toEqual({
       ...base,
       prPromptId: 3,
-      model: 'opus',
+      models: { claude: 'opus', codex: 'gpt-6-luna' },
       worktree: false,
     })
     expect(
-      withChoices(base, { ...noChoices, promptId: 4, profile: 'alt', effort: 'low', planMode: true }, 'issue'),
-    ).toEqual({ ...base, issuePromptId: 4, profile: 'alt', effort: 'low', planMode: true })
+      withChoices(
+        base,
+        { ...noChoices, promptId: 4, profile: 'alt', effort: 'low', planMode: true },
+        'issue',
+        'claude',
+      ),
+    ).toEqual({ ...base, issuePromptId: 4, profiles: { claude: 'alt' }, effort: 'low', planMode: true })
+  })
+
+  it('saves the agent chosen, with the profile and model as that agent’s own', () => {
+    const base = defaultsInput(launchDefaults())
+    const c = { ...noChoices, agent: 'codex' as const, profile: 'side', model: 'gpt-6-sol' }
+
+    expect(withChoices(base, c, 'pr', 'codex')).toEqual({
+      ...base,
+      agent: 'codex',
+      profiles: { claude: 'work', codex: 'side' },
+      models: { codex: 'gpt-6-sol' },
+    })
+    // The stored defaults are left as they were.
+    expect(base.profiles).toEqual({ claude: 'work' })
+    expect(base.models).toEqual({})
+  })
+
+  it('drops the profile and model chosen for one agent on switching to another', () => {
+    const c = { ...noChoices, promptId: 2, profile: 'work', model: 'opus', effort: 'max', planMode: true }
+
+    expect(withAgent(c, 'codex')).toEqual({ ...c, agent: 'codex', profile: '', model: null })
   })
 
   it('starts empty defaults with nothing set', () => {
@@ -70,14 +101,14 @@ describe('launch defaults', () => {
       owner: 'acme-org',
       name: 'api',
       agent: '',
-      profile: '',
+      profiles: {},
       prPromptId: null,
       issuePromptId: null,
-      model: '',
+      models: {},
       effort: '',
       planMode: null,
       worktree: null,
-      extraFlags: '',
+      extraFlags: {},
     })
   })
 })

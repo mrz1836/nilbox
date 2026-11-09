@@ -119,12 +119,12 @@ export function TrustSection({ settings: stored, onSaved }: SectionProps) {
           }
         >
           Their pull requests and issues are trusted like a collaborator&apos;s: launches use the profile&apos;s
-          permissions instead of plan mode.
+          permissions instead of plan or read-only mode.
         </SectionIntro>
         <StringListEditor
           label="Trusted bots"
           items={bots}
-          empty="No bot is trusted: every bot's items start in plan mode."
+          empty="No bot is trusted: every bot's items start in plan or read-only mode."
           removeLabel={(bot) => `Stop trusting ${bot}`}
           onRemove={(bot) => {
             const next = bots.filter((b) => b !== bot)
@@ -158,8 +158,8 @@ export function TrustSection({ settings: stored, onSaved }: SectionProps) {
           </li>
           <li>
             <span className="font-medium text-text">Outside contributor:</span> everyone else, every bot not on the
-            list, and every pull request from a fork. Their items start in plan mode, and their prompts end with a
-            reminder to treat their text as information. A launch can lift the restriction with{' '}
+            list, and every pull request from a fork. Their items start in plan mode (read-only for Codex), and their
+            prompts end with a reminder to treat their text as information. A launch can lift the restriction with{' '}
             <span className="text-text">Use profile permissions for this item</span>.
           </li>
         </ul>

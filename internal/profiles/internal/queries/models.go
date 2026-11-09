@@ -8,8 +8,9 @@ import (
 	"time"
 )
 
-type ClaudeProfile struct {
+type AgentProfile struct {
 	ID             int64
+	Agent          string
 	Name           string
 	ConfigDir      string
 	Model          string

@@ -4,20 +4,27 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 
 	"github.com/magefile/mage/mg"
 	"github.com/magefile/mage/sh"
 
+	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/measure"
 )
+
+// mageArgsJSON is where magex hands a custom target its key=value arguments, as a JSON
+// list.
+const mageArgsJSON = "MAGE_ARGS_JSON"
 
 // startupRuns is how many launches measure:startup times: the first launch of a build,
 // then five cold starts for the median.
@@ -71,12 +78,19 @@ func (Measure) Refresh() error {
 // Launch times one real launch in iTerm2, from the launch request to the agent running in
 // the right directory with its prompt, on a placeholder pull request in a throwaway clone;
 // the agent is stopped as soon as it is found. When macOS has not allowed this process to
-// control iTerm2, it says so and succeeds without a number.
+// control iTerm2, it says so and succeeds without a number. agent= picks the coding agent,
+// claude (the default) or codex.
 //
 //	magex measure:launch
+//	magex measure:launch agent=codex
 func (Measure) Launch() error {
 	if runtime.GOOS != "darwin" {
 		return errNeedsMacOS
+	}
+
+	id := agent.ID(mageArg("agent"))
+	if _, err := agent.Lookup(id); err != nil {
+		return err
 	}
 
 	home, err := os.UserHomeDir()
@@ -87,7 +101,9 @@ func (Measure) Launch() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	report, err := measure.RunLaunch(ctx, measure.LaunchOptions{Home: home, Version: readBuildMeta().version})
+	report, err := measure.RunLaunch(ctx, measure.LaunchOptions{
+		Home: home, Agent: id, Version: readBuildMeta().version,
+	})
 	if err != nil {
 		return fmt.Errorf("measure the launch: %w", err)
 	}
@@ -168,4 +184,21 @@ func printLines(lines []string) error {
 // say prints one line of target output.
 func say(line string) {
 	_, _ = fmt.Fprintln(os.Stdout, line)
+}
+
+// mageArg returns the value of the key=value argument magex handed the target for key,
+// or "" when there is none.
+func mageArg(key string) string {
+	var args []string
+	if err := json.Unmarshal([]byte(os.Getenv(mageArgsJSON)), &args); err != nil {
+		return ""
+	}
+
+	for _, arg := range args {
+		if value, ok := strings.CutPrefix(arg, key+"="); ok {
+			return value
+		}
+	}
+
+	return ""
 }

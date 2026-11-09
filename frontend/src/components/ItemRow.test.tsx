@@ -3,15 +3,31 @@ import userEvent from '@testing-library/user-event'
 import type { ReactElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { InboxItem } from '../platform'
+import { itemWorktrees, worktreeOf } from '../lib/itemWorktrees'
+import type { InboxItem, Worktree } from '../platform'
 import { at } from '../test/clock'
-import { details, fileCheck, item, itemResolution, profile, project, prompts } from '../test/fixtures'
+import {
+  agents,
+  details,
+  fileCheck,
+  item,
+  itemResolution,
+  linkedItem,
+  mainWorktree,
+  profile,
+  project,
+  prompts,
+  worktree,
+  worktreeRepo,
+  worktreesSnapshot,
+} from '../test/fixtures'
 import { platform } from '../test/platform'
 import { ItemRow, type LaunchOptions } from './ItemRow'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 const launch: LaunchOptions = {
+  agents: agents(),
   profiles: [profile()],
   prompts: prompts(),
   launchDefaults: [],
@@ -323,7 +339,7 @@ describe('ItemRow', () => {
 
     expect(screen.getByText('outside contributor')).toHaveAttribute(
       'title',
-      'Launches in plan mode unless you lift the restriction',
+      'Launches in plan or read-only mode unless you lift the restriction',
     )
   })
 
@@ -365,7 +381,8 @@ describe('ItemRow', () => {
   it('waits for an item’s launch settings to resolve', () => {
     renderRow(item({ id: 99 }))
 
-    expect(screen.getByRole('button', { name: 'Open in Claude' })).toBeDisabled()
+    // Until the settings resolve, the agent the button starts is not known.
+    expect(screen.getByRole('button', { name: 'Open' })).toBeDisabled()
   })
 
   it('opens the item in the browser', async () => {
@@ -412,5 +429,55 @@ describe('ItemRow', () => {
     renderRow(item({ details: details(), files: null }))
 
     expect(screen.queryByRole('button', { name: /sensitive/i })).not.toBeInTheDocument()
+  })
+})
+
+describe('ItemRow worktree tag', () => {
+  // renderWith renders an item's row with its worktree, as the Worktrees view last listed
+  // it, if the listing links one to the item.
+  function renderWith(it: InboxItem, overrides: Partial<Worktree> = {}) {
+    const listed = worktree({ item: linkedItem({ state: 'open' }), ...overrides })
+    const worktrees = itemWorktrees(
+      worktreesSnapshot({ repos: [worktreeRepo({ worktrees: [mainWorktree(), listed] })] }),
+    )
+
+    render(
+      <ul>
+        <ItemRow item={it} launch={launch} worktree={worktreeOf(worktrees, it)} />
+      </ul>,
+    )
+  }
+
+  // tag is the worktree tag, titled with the worktree's path.
+  function tag(): HTMLElement {
+    return screen.getByTitle('~/projects/example-repo/.claude/worktrees/pr-7')
+  }
+
+  it('marks an item with a worktree, its changes, and the last session launched in it', () => {
+    renderWith(item(), { dirty: true, dirtyCount: 2, agent: 'codex', lastLaunchedAt: '2026-06-15T09:00:00Z' })
+
+    expect(tag()).toHaveTextContent('worktree · 2 changes · Codex 3h ago')
+  })
+
+  it('says a session is running in it, rather than when one was launched', () => {
+    renderWith(item(), {
+      inUse: [{ pid: 4242, command: 'claude' }],
+      agent: 'claude',
+      lastLaunchedAt: '2026-06-15T09:00:00Z',
+    })
+
+    expect(tag()).toHaveTextContent(/^worktree · in use$/)
+  })
+
+  it('marks a worktree no session was launched in as just a worktree', () => {
+    renderWith(item())
+
+    expect(tag()).toHaveTextContent(/^worktree$/)
+  })
+
+  it('marks nothing for an item with no worktree', () => {
+    renderWith(item({ number: 8 }))
+
+    expect(screen.queryByText(/^worktree/)).not.toBeInTheDocument()
   })
 })

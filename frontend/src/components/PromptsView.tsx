@@ -16,10 +16,12 @@ import {
   resetPrompt,
   setDefaultPrompt,
   updatePrompt,
+  type AgentInfo,
   type DefaultPrompts,
   type Diagnostic,
   type ImportResult,
   type InboxItem,
+  type PerAgent,
   type Prompt,
   type PromptInput,
   type PromptVariable,
@@ -48,6 +50,8 @@ import type { TemplateEditorHandle } from './TemplateEditor'
 import { VariablesPanel } from './VariablesPanel'
 
 export interface PromptsViewProps {
+  // agents are the coding agents, whose models and flags a prompt can set.
+  agents: readonly AgentInfo[]
   prompts: readonly Prompt[]
   defaults: DefaultPrompts | null
   variables: readonly PromptVariable[]
@@ -84,11 +88,11 @@ const blankInput: PromptInput = {
   nickname: '',
   appliesTo: 'pr',
   body: newPromptBody,
-  model: '',
+  models: {},
   effort: '',
   planMode: null,
   worktree: null,
-  extraFlags: '',
+  extraFlags: {},
 }
 
 // toInput is a stored prompt as the editor holds it.
@@ -98,12 +102,20 @@ function toInput(p: Prompt): PromptInput {
     nickname: p.nickname,
     appliesTo: p.appliesTo,
     body: p.body,
-    model: p.model,
+    models: { ...p.models },
     effort: p.effort,
     planMode: p.planMode,
     worktree: p.worktree,
-    extraFlags: p.extraFlags,
+    extraFlags: { ...p.extraFlags },
   }
+}
+
+// samePerAgent reports whether two per-agent settings are the same, a blank value and no
+// entry being the same.
+function samePerAgent(a: PerAgent<string>, b: PerAgent<string>): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]) as Set<keyof PerAgent<string>>
+
+  return [...keys].every((k) => (a[k] ?? '').trim() === (b[k] ?? '').trim())
 }
 
 // sameInput reports whether two drafts hold the same prompt.
@@ -113,11 +125,11 @@ function sameInput(a: PromptInput, b: PromptInput): boolean {
     a.nickname === b.nickname &&
     a.appliesTo === b.appliesTo &&
     a.body === b.body &&
-    a.model === b.model &&
+    samePerAgent(a.models, b.models) &&
     a.effort === b.effort &&
     a.planMode === b.planMode &&
     a.worktree === b.worktree &&
-    a.extraFlags === b.extraFlags
+    samePerAgent(a.extraFlags, b.extraFlags)
   )
 }
 
@@ -165,7 +177,7 @@ function touchedField(field: string, draft: PromptInput, start: PromptInput): bo
 // editor in the middle, and its live preview and the variables cheat sheet on the right.
 // Edits are checked by the backend as you type and saved with Save (or ⌘S). Leaving a
 // prompt with unsaved changes asks first.
-export function PromptsView({ prompts, defaults, variables, items, onChanged }: PromptsViewProps) {
+export function PromptsView({ agents, prompts, defaults, variables, items, onChanged }: PromptsViewProps) {
   const id = useId()
   const editorRef = useRef<TemplateEditorHandle>(null)
   const [selection, setSelection] = useState<Selection | null>(null)
@@ -658,6 +670,7 @@ export function PromptsView({ prompts, defaults, variables, items, onChanged }: 
               )}
             </div>
             <PromptEditor
+              agents={agents}
               draft={draft}
               onChange={(next) => {
                 setDraft(next)
@@ -775,6 +788,7 @@ export function PromptsView({ prompts, defaults, variables, items, onChanged }: 
       {importing !== null && (
         <ImportPromptsDialog
           start={importing}
+          agents={agents}
           onCancel={() => {
             setImporting(null)
           }}

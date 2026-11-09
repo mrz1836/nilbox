@@ -10,6 +10,7 @@ import { Browser, Clipboard, Dialogs, Events, Window, type CancellablePromise } 
 import '../../bindings/events'
 import type * as agent from '../../bindings/github.com/mrz1836/nilbox/internal/agent'
 import * as appinfo from '../../bindings/github.com/mrz1836/nilbox/internal/appinfo'
+import * as branchrules from '../../bindings/github.com/mrz1836/nilbox/internal/branchrules'
 import * as budget from '../../bindings/github.com/mrz1836/nilbox/internal/budget'
 import * as inbox from '../../bindings/github.com/mrz1836/nilbox/internal/inbox'
 import type * as item from '../../bindings/github.com/mrz1836/nilbox/internal/item'
@@ -65,6 +66,13 @@ function narrow<S>(service: S): Narrowed<S> {
 // string literals. Callers use these and never declare their own copies.
 
 export type Agent = NonNullLists<agent.Agent>
+export type AgentID = agent.ID
+export type AgentInfo = NonNullLists<profiles.AgentInfo>
+export type AgentVersion = NonNullLists<appinfo.AgentVersion>
+export type Choice = NonNullLists<agent.Choice>
+// PerAgent is a setting each agent has its own value of, as launch defaults and prompts
+// store their profiles, models, and extra flags: an agent with no entry inherits.
+export type PerAgent<T> = Partial<Record<Exclude<AgentID, ''>, T>>
 
 export type BudgetGauge = NonNullLists<budget.Gauge>
 export type BudgetReading = NonNullLists<budget.Reading>
@@ -106,6 +114,8 @@ export type LaunchPreview = NonNullLists<launcher.Preview>
 export type Resolution = NonNullLists<launcher.Resolution>
 export type LaunchSetting = NonNullLists<launcher.Setting>
 export type LaunchSource = launcher.Source
+export type WorktreeAction = launcher.WorktreeAction
+export type WorktreePlan = NonNullLists<launcher.WorktreePlan>
 export type TerminalID = terminal.ID
 
 export type AppNotification = NonNullLists<notify.Notification>
@@ -157,12 +167,26 @@ export type WorktreeRepo = NonNullLists<worktrees.Repo>
 export type WorktreesSnapshot = NonNullLists<worktrees.Snapshot>
 export type SweepReport = NonNullLists<worktrees.SweepReport>
 export type Worktree = NonNullLists<worktrees.Worktree>
+export type WorktreeBranch = NonNullLists<worktrees.Branch>
+export type BranchKind = worktrees.BranchKind
+export type WorktreePick = NonNullLists<worktrees.Pick>
+export type MergedBranch = NonNullLists<worktrees.MergedBranch>
+export type MergedPullRequest = NonNullLists<worktrees.MergedPullRequest>
+export type BranchPick = NonNullLists<worktrees.BranchPick>
+export type BranchResult = NonNullLists<worktrees.BranchResult>
+export type BranchRules = NonNullLists<branchrules.Rules>
 export type WorktreeStage = worktrees.Stage
+export type WorktreeSession = NonNullLists<worktrees.Session>
 
 // The bound calls, under the names the app knows them by. What each one does is the Go
 // method's doc comment, which the generated service carries.
 
-export const { Info: getAppInfo, ReportFirstPaint: reportFirstPaint } = narrow(appinfo.Service)
+export const {
+  Info: getAppInfo,
+  ReportFirstPaint: reportFirstPaint,
+  AgentVersions: agentVersions,
+  BugReportURL: bugReportURL,
+} = narrow(appinfo.Service)
 
 export const { Gauge: getBudget, Check: checkBudget } = narrow(budget.Service)
 
@@ -179,7 +203,7 @@ export const {
   RemoveReviewRequest: removeReviewRequest,
 } = narrow(inbox.Service)
 
-export const { List: listProfiles } = narrow(profiles.Service)
+export const { List: listProfiles, Agents: listAgents } = narrow(profiles.Service)
 
 export const {
   Launch: launch,
@@ -220,6 +244,7 @@ export const {
   Get: getSettings,
   SetTerminal: setTerminal,
   SetCloneRoot: setCloneRoot,
+  SetDefaultAgent: setDefaultAgent,
   SetDefaultProfile: setDefaultProfile,
   SetWorktreeDefault: setWorktreeDefault,
   SetWorktreeAutoCleanup: setWorktreeAutoCleanup,
@@ -241,6 +266,7 @@ export const {
   InboxOrder: getInboxOrder,
   SetStatusSort: setStatusSort,
   SetStatusOrder: setStatusOrder,
+  SetBranchRules: setBranchRules,
 } = narrow(settings.Service)
 
 export const {
@@ -252,6 +278,8 @@ export const {
   Unlock: unlockWorktree,
   CleanUp: cleanUpWorktree,
   CleanUpFinished: cleanUpFinishedWorktrees,
+  MergedBranches: mergedBranches,
+  DeleteBranches: deleteBranches,
   Sweep: sweepWorktrees,
   LastSweep: lastWorktreeSweep,
   RecentCleanups: recentCleanups,

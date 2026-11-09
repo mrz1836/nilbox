@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"regexp"
 	"slices"
 	"strconv"
@@ -20,8 +21,8 @@ const (
 	// worktreeCmd is git's worktree subcommand.
 	worktreeCmd = "worktree"
 
-	// ownBranchPrefix starts the name of the branch the agent creates with a worktree:
-	// "worktree-<name>". It is the only kind of branch ever deleted.
+	// ownBranchPrefix starts the name of the branch an item's worktree is made on:
+	// "worktree-<name>". It is the only kind of branch a worktree is ever made on.
 	ownBranchPrefix = "worktree-"
 )
 
@@ -48,8 +49,30 @@ func allowedFixedCommands() []string {
 		joinArgs(statusArgs()),
 		joinArgs(lastCommitArgs()),
 		joinArgs(unpushedArgs()),
+		joinArgs(branchListArgs()),
+		joinArgs(remoteHeadsArgs()),
 	}
 }
+
+// branchListArgs lists the clone's local branches: each one's name, the commit it points
+// at, and the worktree that has it checked out, if any, separated by NULs.
+func branchListArgs() []string {
+	return []string{"for-each-ref", "--format=%(refname:lstrip=2)%00%(objectname)%00%(worktreepath)", headsPrefix}
+}
+
+// remoteHeadsArgs prints the branch each remote's HEAD points at, as the clone last
+// learned it: the repository's default branch.
+func remoteHeadsArgs() []string {
+	return []string{"for-each-ref", "--format=%(symref:lstrip=3)", remotesRef + "*/HEAD"}
+}
+
+// branchUnpushedArgs counts the commits on oid that no remote-tracking branch has.
+func branchUnpushedArgs(oid string) []string {
+	return []string{"rev-list", "--count", oid, "--not", "--remotes"}
+}
+
+// ancestorArgs succeeds when oid is of or one of its ancestors.
+func ancestorArgs(oid, of string) []string { return []string{"merge-base", "--is-ancestor", oid, of} }
 
 func listArgs() []string { return []string{worktreeCmd, "list", "--porcelain", "-z"} }
 
@@ -71,20 +94,48 @@ func commitTimesArgs(oids []string) []string { return append(commitTimesCmd(), o
 // unpushedArgs counts the commits on HEAD that no remote-tracking branch has.
 func unpushedArgs() []string { return []string{"rev-list", "--count", "HEAD", "--not", "--remotes"} }
 
+// revParseArgs checks that ref names a commit, printing it.
+func revParseArgs(ref string) []string { return []string{"rev-parse", "--verify", "--quiet", ref} }
+
+// symbolicRefArgs prints the branch the clone last learned remote's HEAD points at.
+func symbolicRefArgs(remote string) []string {
+	return []string{"symbolic-ref", "--quiet", remotesRef + remote + "/HEAD"}
+}
+
+// lsRemoteArgs asks remote which branch its HEAD points at.
+func lsRemoteArgs(remote string) []string { return []string{"ls-remote", "--symref", remote, "HEAD"} }
+
 // git runs allowlisted git commands as `git -C <dir> <args>`.
 type git struct {
 	run execpath.Runner
 	bin string
 }
 
-// do runs git in dir with args after checking them against the allowlist.
+// hardening are the settings every git command here runs with. Git runs hooks, and the
+// file system monitor, with the worktree as their working directory, and a worktree holds
+// a pull request's own files, which may come from anyone: a hook that runs a tool from
+// the checkout (node_modules/.bin, say) would run the pull request's code before any
+// agent starts, outside every limit a launch sets. None of these commands needs either,
+// nor to recurse into submodules, whose URLs the pull request names.
+func hardening() []string {
+	return []string{
+		"-c", "core.hooksPath=" + os.DevNull,
+		"-c", "core.fsmonitor=false",
+		"-c", "submodule.recurse=false",
+	}
+}
+
+// do runs git in dir with args after checking them against the allowlist, with hooks,
+// the file system monitor, and submodule recursion off (see hardening).
 func (g git) do(ctx context.Context, dir string, args ...string) (stdout, stderr []byte, err error) {
 	if !allowed(args) {
 		return nil, nil, fmt.Errorf("%w: git %s", ErrGitCommandNotAllowed, strings.Join(args, " "))
 	}
 
-	argv := make([]string, 0, len(args)+2)
+	safe := hardening()
+	argv := make([]string, 0, len(safe)+len(args)+2)
 	argv = append(argv, "-C", dir)
+	argv = append(argv, safe...)
 	argv = append(argv, args...)
 
 	return g.run.Run(ctx, g.bin, argv...)
@@ -121,9 +172,83 @@ func (g git) unlock(ctx context.Context, dir, path string) ([]byte, error) {
 	return stderr, err
 }
 
+// localBranch is one of a clone's local branches.
+type localBranch struct {
+	// name is the branch, as in feature-x, and head the commit it points at.
+	name string
+	head string
+
+	// worktree is the worktree that has it checked out, or "".
+	worktree string
+}
+
+// branches lists the local branches of the clone at dir.
+func (g git) branches(ctx context.Context, dir string) ([]localBranch, []byte, error) {
+	stdout, stderr, err := g.do(ctx, dir, branchListArgs()...)
+	if err != nil {
+		return nil, stderr, err
+	}
+
+	var out []localBranch
+
+	for line := range strings.Lines(string(stdout)) {
+		fields := strings.Split(strings.TrimRight(line, "\n"), "\x00")
+		if len(fields) != 3 || fields[0] == "" || !isCommitID(fields[1]) {
+			continue
+		}
+
+		out = append(out, localBranch{name: fields[0], head: fields[1], worktree: fields[2]})
+	}
+
+	return out, nil, nil
+}
+
+// remoteHeads returns the branches the clone's remotes' HEADs point at, as last fetched.
+// A clone that cannot say has none.
+func (g git) remoteHeads(ctx context.Context, dir string) []string {
+	stdout, _, err := g.do(ctx, dir, remoteHeadsArgs()...)
+	if err != nil {
+		return nil
+	}
+
+	var out []string
+
+	for line := range strings.Lines(string(stdout)) {
+		if name := strings.TrimSpace(line); name != "" && !slices.Contains(out, name) {
+			out = append(out, name)
+		}
+	}
+
+	return out
+}
+
+// unpushedOf returns how many commits on oid no remote-tracking branch has, read in the
+// repository at dir.
+func (g git) unpushedOf(ctx context.Context, dir, oid string) (int, error) {
+	stdout, _, err := g.do(ctx, dir, branchUnpushedArgs(oid)...)
+	if err != nil {
+		return 0, err
+	}
+
+	count, err := strconv.Atoi(strings.TrimSpace(string(stdout)))
+	if err != nil || count < 0 {
+		return 0, fmt.Errorf("%w %q", errParseCount, stdout)
+	}
+
+	return count, nil
+}
+
+// isAncestor reports oid as of or one of its ancestors, in the repository at dir. A commit
+// the clone does not have, or a failure, is no.
+func (g git) isAncestor(ctx context.Context, dir, oid, of string) bool {
+	_, _, err := g.do(ctx, dir, ancestorArgs(oid, of)...)
+
+	return err == nil
+}
+
 // deleteBranch deletes the local branch only while it still points at oid, so a commit
-// made after the check keeps it. Only the agent's own worktree-<name> branches and a real
-// commit ID pass the allowlist.
+// made after the check keeps it. Only a well-formed branch and a real commit ID pass the
+// allowlist; the callers decide which branches may go (see deletable).
 func (g git) deleteBranch(ctx context.Context, dir, branch, oid string) ([]byte, error) {
 	_, stderr, err := g.do(ctx, dir, "update-ref", "-d", headsPrefix+branch, oid)
 
@@ -213,10 +338,13 @@ func allowed(args []string) bool {
 		return true
 	}
 
-	if allowedCommitTimes(args) {
-		return true
-	}
+	return allowedCommitTimes(args) || allowedLookup(args) || allowedBranchLookup(args) || allowedCreate(args) ||
+		allowedChange(args)
+}
 
+// allowedChange reports a removal command with arguments it may run with: removing or
+// unlocking a worktree at a path, and deleting an item's own branch at a commit.
+func allowedChange(args []string) bool {
 	if len(args) < 3 {
 		return false
 	}
@@ -227,7 +355,7 @@ func allowed(args []string) bool {
 	case worktreeCmd + " unlock":
 		return len(args) == 3 && isPathArg(args[2])
 	case "update-ref -d":
-		return len(args) == 4 && isOwnBranchRef(args[2]) && isCommitID(args[3])
+		return len(args) == 4 && isBranchRef(args[2]) && isCommitID(args[3])
 	default:
 		return false
 	}
@@ -250,6 +378,45 @@ func allowedCommitTimes(args []string) bool {
 	return true
 }
 
+// allowedLookup reports a read-only lookup Ensure makes: whether an item's branch or a
+// remote-tracking branch exists, and which branch a remote's HEAD points at.
+func allowedLookup(args []string) bool {
+	switch {
+	case len(args) == 4 && joinArgs(args[:3]) == joinArgs(revParseArgs("")[:3]):
+		return isOwnBranchRef(args[3]) || isTrackingRef(args[3])
+	case len(args) == 3 && joinArgs(args[:2]) == joinArgs(symbolicRefArgs("")[:2]):
+		return isRemoteHead(args[2])
+	case len(args) == 4 && joinArgs(args) == joinArgs(lsRemoteArgs(args[2])):
+		return remotePattern.MatchString(args[2])
+	default:
+		return false
+	}
+}
+
+// isRemoteHead reports refs/remotes/<remote>/HEAD with a plain remote.
+func isRemoteHead(ref string) bool {
+	rest, ok := strings.CutPrefix(ref, remotesRef)
+	if !ok {
+		return false
+	}
+
+	remote, ok := strings.CutSuffix(rest, "/HEAD")
+
+	return ok && remotePattern.MatchString(remote)
+}
+
+// isTrackingRef reports refs/remotes/<remote>/<branch> with a plain remote and branch.
+func isTrackingRef(ref string) bool {
+	rest, ok := strings.CutPrefix(ref, remotesRef)
+	if !ok {
+		return false
+	}
+
+	remote, branch, ok := strings.Cut(rest, "/")
+
+	return ok && remotePattern.MatchString(remote) && validBranch(branch)
+}
+
 // allowedRemove reports the arguments after `worktree remove` that may run: a path, with
 // at most a single --force before it.
 func allowedRemove(rest []string) bool {
@@ -270,6 +437,27 @@ func isCommitID(oid string) bool {
 // isPathArg reports a non-empty argument that cannot be read as an option.
 func isPathArg(arg string) bool {
 	return arg != "" && !strings.HasPrefix(arg, "-")
+}
+
+// allowedBranchLookup reports a read-only question about a commit a branch points at: how
+// many of its commits no remote-tracking branch has, and whether it is an ancestor of
+// another commit.
+func allowedBranchLookup(args []string) bool {
+	switch {
+	case len(args) == 5 && args[0] == "rev-list":
+		return isCommitID(args[2]) && joinArgs(args) == joinArgs(branchUnpushedArgs(args[2]))
+	case len(args) == 4 && args[0] == "merge-base":
+		return isCommitID(args[2]) && isCommitID(args[3]) && joinArgs(args) == joinArgs(ancestorArgs(args[2], args[3]))
+	default:
+		return false
+	}
+}
+
+// isBranchRef reports refs/heads/<branch> with a well-formed branch name.
+func isBranchRef(ref string) bool {
+	name, ok := strings.CutPrefix(ref, headsPrefix)
+
+	return ok && validBranch(name)
 }
 
 // isOwnBranchRef reports refs/heads/worktree-<name>, where name is a single plain path

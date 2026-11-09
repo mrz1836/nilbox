@@ -13,14 +13,14 @@ type LaunchDefault struct {
 	Owner         string
 	Name          string
 	Agent         string
-	Profile       string
 	PRPromptID    *int64
 	IssuePromptID *int64
-	Model         string
 	Effort        string
 	PlanMode      *bool
 	Worktree      *bool
-	ExtraArgs     string
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+	Profiles      string
+	Models        string
+	AgentArgs     string
 }

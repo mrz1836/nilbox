@@ -6,8 +6,9 @@
  *
  * Each setter stores its change and reads the preferences back in one transaction, then
  * returns the settings with the change, so a setter that fails has stored nothing. Only
- * the check that the default profile is still stored runs after the change is committed,
- * and a failure there is logged rather than reported, since the change has happened.
+ * the check that the default profiles are still stored runs after the change is
+ * committed, and a failure there is logged rather than reported, since the change has
+ * happened.
  * @module
  */
 
@@ -15,6 +16,12 @@
 // @ts-ignore: Unused imports
 import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as agent$0 from "../agent/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as branchrules$0 from "../branchrules/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as terminal$0 from "../launcher/terminal/models.js";
@@ -82,6 +89,15 @@ export function ResetTrustedBots(): $CancellablePromise<$models.Settings> {
 }
 
 /**
+ * SetBranchRules stores the rules for deleting local branches, and returns the settings
+ * with them. Every rule is stored together, so the rules never mix two saves; a protected
+ * pattern that cannot match a branch is refused, and nothing is stored.
+ */
+export function SetBranchRules(rules: branchrules$0.Rules): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(3664504924, rules);
+}
+
+/**
  * SetCloneRoot stores the clone root, and returns the settings with it. It must be an
  * absolute or ~-relative path to an existing directory; it is stored as entered (trimmed
  * and cleaned), so "~/projects" stays portable across machines.
@@ -91,11 +107,19 @@ export function SetCloneRoot(root: string): $CancellablePromise<$models.Settings
 }
 
 /**
- * SetDefaultProfile stores the profile the launch dropdown preselects, and returns the
- * settings with it. It must name a stored profile.
+ * SetDefaultAgent stores the coding agent launches use when no launch default names one,
+ * and returns the settings with it.
  */
-export function SetDefaultProfile(name: string): $CancellablePromise<$models.Settings> {
-    return $Call.ByID(3789750455, name);
+export function SetDefaultAgent(id: agent$0.ID): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(1351367407, id);
+}
+
+/**
+ * SetDefaultProfile stores the agent's profile launches use when no launch default names
+ * one, and returns the settings with it. It must name one of the agent's stored profiles.
+ */
+export function SetDefaultProfile(id: agent$0.ID, name: string): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(3789750455, id, name);
 }
 
 /**

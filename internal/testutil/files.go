@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/agent"
 )
 
 // WriteFile writes content to path with mode 0600, creating its directory.
@@ -47,36 +49,60 @@ func SkipAsRoot(t testing.TB) {
 	}
 }
 
-// ClaudeHome returns a fresh home directory holding dirs, made as MakeClaudeDirs makes
-// them.
-func ClaudeHome(t testing.TB, dirs ...string) string {
+// AgentHome returns a fresh home directory holding dirs, made as MakeAgentDirs makes them.
+func AgentHome(t testing.TB, dirs ...string) string {
 	t.Helper()
 
 	home := t.TempDir()
-	MakeClaudeDirs(t, home, dirs...)
+	MakeAgentDirs(t, home, dirs...)
 
 	return home
 }
 
-// MakeClaudeDirs creates each of dirs, with its parents, under home. A top-level one
-// named like a named agent profile's config directory, .claude_<name> or .claude-<name>,
-// also holds the state file the agent writes on its first run with it, so profile
-// discovery lists it.
-func MakeClaudeDirs(t testing.TB, home string, dirs ...string) {
+// MakeAgentDirs creates each of dirs, with its parents, under home. A top-level one named
+// like a named profile's config directory of some coding agent, such as .claude_<name>,
+// .claude-<name>, or .codex_<name>, also holds the agent's first config marker (Claude's
+// state file, or Codex's sign-in), as the agent writes it on its first run with the
+// directory, so profile discovery lists it.
+func MakeAgentDirs(t testing.TB, home string, dirs ...string) {
 	t.Helper()
 
 	for _, dir := range dirs {
 		path := filepath.Join(home, dir)
 		require.NoError(t, os.MkdirAll(path, 0o700))
 
-		if isProfileDir(dir) {
-			WriteFile(t, filepath.Join(path, ".claude.json"), "{}")
+		if marker, ok := profileMarker(dir); ok {
+			WriteFile(t, filepath.Join(path, marker), "{}")
 		}
 	}
 }
 
-// isProfileDir reports whether dir, relative to a home directory, is named like a named
-// agent profile's config directory.
-func isProfileDir(dir string) bool {
-	return !strings.ContainsRune(dir, '/') && (strings.HasPrefix(dir, ".claude_") || strings.HasPrefix(dir, ".claude-"))
+// ClaudeHome returns a fresh home directory holding dirs, as AgentHome does.
+func ClaudeHome(t testing.TB, dirs ...string) string {
+	t.Helper()
+
+	return AgentHome(t, dirs...)
+}
+
+// MakeClaudeDirs creates each of dirs under home, as MakeAgentDirs does.
+func MakeClaudeDirs(t testing.TB, home string, dirs ...string) {
+	t.Helper()
+
+	MakeAgentDirs(t, home, dirs...)
+}
+
+// profileMarker returns the first config marker of the agent whose named profile's config
+// directory dir, relative to a home directory, is named like.
+func profileMarker(dir string) (string, bool) {
+	if strings.ContainsRune(dir, '/') {
+		return "", false
+	}
+
+	for _, a := range agent.All() {
+		if strings.HasPrefix(dir, a.ConfigDir+"_") || strings.HasPrefix(dir, a.ConfigDir+"-") {
+			return a.Markers[0].Name, true
+		}
+	}
+
+	return "", false
 }

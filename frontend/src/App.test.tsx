@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { brand } from './generated/brand'
-import type { Settings, TerminalID } from './platform'
+import type { Settings, TerminalID, AgentID, RemoveResult } from './platform'
 import {
   appInfo,
   budgetGauge,
@@ -11,13 +11,18 @@ import {
   item,
   notification,
   itemResolution,
+  linkedItem,
   list,
+  mainWorktree,
   profile,
   reading,
+  removeResult,
   settings,
   snapshot,
   sweepReport,
+  worktree,
   worktreeCleanup,
+  worktreeRepo,
   worktreesSnapshot,
 } from './test/fixtures'
 import { emit, listening, platform, renderApp } from './test/platform'
@@ -27,7 +32,9 @@ vi.mock('./platform', () => import('./test/platform').then((fake) => fake.platfo
 // stored is every setting as the backend stores it after a change, as each setter returns
 // them.
 function stored(change: Partial<Settings> = {}): Promise<Settings> {
-  return Promise.resolve(settings({ defaultProfile: 'work', worktreeDefault: false, ...change }))
+  return Promise.resolve(
+    settings({ defaultProfiles: { claude: 'work', codex: 'default' }, worktreeDefault: false, ...change }),
+  )
 }
 
 // The platform fake answers every call. These answers are the app tests' own: settings
@@ -37,7 +44,9 @@ beforeEach(() => {
   platform.listProfiles.mockResolvedValue([profile(), profile({ name: 'work' })])
   platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([item()]) }))
   platform.setTerminal.mockImplementation((terminal: TerminalID) => stored({ terminal }))
-  platform.setDefaultProfile.mockImplementation((defaultProfile: string) => stored({ defaultProfile }))
+  platform.setDefaultProfile.mockImplementation((agent: AgentID, name: string) =>
+    stored({ defaultProfiles: { claude: 'work', codex: 'default', [agent]: name } }),
+  )
   platform.setWorktreeDefault.mockImplementation((worktreeDefault: boolean) => stored({ worktreeDefault }))
   platform.setMenuBar.mockImplementation((menuBar: boolean) => stored({ menuBar }))
   platform.resolveLaunches.mockResolvedValue([
@@ -421,7 +430,7 @@ describe('App', () => {
             path: '/home/user/projects/example-repo/.claude/worktrees/pr-7',
             displayPath: '~/projects/example-repo/.claude/worktrees/pr-7',
             removed: true,
-            deletedBranch: 'worktree-pr-7',
+            deletedBranches: ['worktree-pr-7'],
             item: 'acme-org/example-repo#7',
             reason: '',
           },
@@ -430,7 +439,7 @@ describe('App', () => {
             path: '/home/user/projects/example-repo/.claude/worktrees/pr-8',
             displayPath: '~/projects/example-repo/.claude/worktrees/pr-8',
             removed: true,
-            deletedBranch: '',
+            deletedBranches: [],
             item: '',
             reason: '',
           },
@@ -466,7 +475,7 @@ describe('App', () => {
             path: '/r/.claude/worktrees/pr-9',
             displayPath: '~/r/.claude/worktrees/pr-9',
             removed: true,
-            deletedBranch: '',
+            deletedBranches: [],
             item: 'acme-org/r#9',
             reason: '',
           },
@@ -489,6 +498,58 @@ describe('App', () => {
     expect(listening('worktrees:updated')).toBe(1)
     unmount()
     expect(listening('worktrees:updated')).toBe(0)
+  })
+
+  it('opens an inbox item’s worktree from the Worktrees view, and tags the item’s card with it', async () => {
+    platform.listWorktrees.mockResolvedValue(
+      worktreesSnapshot({
+        repos: [
+          worktreeRepo({
+            worktrees: [
+              mainWorktree(),
+              worktree({
+                item: linkedItem({ state: 'open' }),
+                agent: 'codex',
+                lastLaunchedAt: '2026-06-15T09:00:00Z',
+                launches: 1,
+              }),
+              worktree({
+                path: '/home/user/projects/example-repo/.claude/worktrees/pr-8',
+                displayPath: '~/projects/example-repo/.claude/worktrees/pr-8',
+                item: linkedItem({ number: 8 }),
+              }),
+            ],
+          }),
+        ],
+      }),
+    )
+    await renderApp()
+    await screen.findByRole('button', { name: 'Launch options: Review · work' })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
+
+    const repo = within(await screen.findByRole('region', { name: 'example-repo' }))
+    const row = (path: string) => within(repo.getByText(path).closest('li') ?? document.body)
+    const listed = row('~/projects/example-repo/.claude/worktrees/pr-7')
+
+    expect(listed.getByText(/Codex/)).toHaveTextContent(/Codex \S+ ago$/)
+    // Pull request #8 is not in the inbox, so its worktree has no launch control.
+    expect(row('~/projects/example-repo/.claude/worktrees/pr-8').queryByRole('button', { name: /^Open/ })).toBeNull()
+
+    // The control sits at the left of the row, so its menu opens from the left edge.
+    await userEvent.click(listed.getByRole('button', { name: /^Launch options/ }))
+    expect(screen.getByRole('dialog', { name: 'Launch options' })).toHaveClass('left-0')
+    await userEvent.keyboard('{Escape}')
+
+    await userEvent.click(listed.getByRole('button', { name: 'Open in Claude' }))
+
+    expect(platform.launch).toHaveBeenCalledWith(expect.objectContaining({ itemId: 1, worktree: true }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Inbox' }))
+
+    expect(await screen.findByTitle('~/projects/example-repo/.claude/worktrees/pr-7')).toHaveTextContent(
+      /^worktree · Codex \S+ ago$/,
+    )
   })
 
   it('counts from the Worktrees view and lists again after a sweep', async () => {
@@ -556,7 +617,7 @@ describe('App', () => {
       path: '/home/user/projects/example-repo/.claude/worktrees/pr-7',
       displayPath: '~/projects/example-repo/.claude/worktrees/pr-7',
       removed: true,
-      deletedBranch: 'worktree-pr-7',
+      deletedBranches: ['worktree-pr-7'],
       item: 'acme-org/example-repo#7',
       reason: '',
     }
@@ -582,6 +643,51 @@ describe('App', () => {
     expect(scroll).toHaveBeenCalledOnce()
   })
 
+  it('confirms a change made in the Worktrees view with a toast, offering View once another view is open', async () => {
+    let finish: (result: RemoveResult) => void = () => undefined
+    platform.removeWorktree.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
+    await renderApp()
+    await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
+
+    const clone = await screen.findByRole('region', { name: 'example-repo' })
+    await userEvent.click(within(clone).getByRole('button', { name: 'Remove' }))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Inbox' }))
+
+    act(() => {
+      finish(removeResult())
+    })
+
+    const toast = await screen.findByRole('group', { name: 'Notification' })
+    expect(toast).toHaveTextContent('Removed example-repo/pr-7 · Its branch worktree-pr-7 was deleted.')
+
+    await userEvent.click(within(toast).getByRole('button', { name: 'View' }))
+    expect(screen.getByRole('button', { name: 'Worktrees' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByRole('group', { name: 'Notification' })).not.toBeInTheDocument()
+
+    // A change finished while the view is open needs no View, and closes like any toast.
+    platform.removeWorktree.mockResolvedValueOnce(removeResult({ deletedBranches: [] }))
+    const remove = within(await screen.findByRole('region', { name: 'example-repo' })).getByRole('button', {
+      name: 'Remove',
+    })
+    await vi.waitFor(() => {
+      expect(remove).toBeEnabled()
+    })
+    await userEvent.click(remove)
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }))
+
+    const again = await screen.findByRole('group', { name: 'Notification' })
+    expect(again).toHaveTextContent('Removed example-repo/pr-7 · No branch was deleted.')
+    expect(within(again).queryByRole('button', { name: 'View' })).not.toBeInTheDocument()
+
+    await userEvent.click(within(again).getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('group', { name: 'Notification' })).not.toBeInTheDocument()
+  })
+
   it('offers no View on a cleanup toast while the Worktrees view is open', async () => {
     await renderApp()
     await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
@@ -596,7 +702,7 @@ describe('App', () => {
             path: '/r/.claude/worktrees/pr-9',
             displayPath: '~/r/.claude/worktrees/pr-9',
             removed: true,
-            deletedBranch: '',
+            deletedBranches: [],
             item: 'acme-org/r#9',
             reason: '',
           },

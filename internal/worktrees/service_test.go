@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
@@ -27,15 +28,22 @@ var (
 // listedAt is the fixed time snapshots are stamped with.
 func listedAt() time.Time { return time.Date(2026, 11, 5, 9, 30, 0, 0, time.UTC) }
 
-// fakeSettings serves a clone root and the automatic cleanup setting.
+// fakeSettings serves a clone root, the automatic cleanup setting, and the branch rules:
+// the defaults unless rules is set.
 type fakeSettings struct {
-	root string
-	auto bool
-	err  error
+	root  string
+	auto  bool
+	rules *branchrules.Rules
+	err   error
 }
 
 func (f fakeSettings) Get(context.Context) (SweepSettings, error) {
-	return SweepSettings{CloneRoot: f.root, AutoCleanup: f.auto}, f.err
+	rules := branchrules.Defaults()
+	if f.rules != nil {
+		rules = *f.rules
+	}
+
+	return SweepSettings{CloneRoot: f.root, AutoCleanup: f.auto, Branches: rules}, f.err
 }
 
 // reply is a scripted git answer.
@@ -45,14 +53,25 @@ type reply struct {
 	err    error
 }
 
+// gitWords returns a git run's words after its leading -C <dir> and -c settings.
+func gitWords(argv []string) []string {
+	sub := argv[1:]
+	if len(sub) >= 2 && sub[0] == "-C" {
+		sub = sub[2:]
+	}
+
+	for len(sub) >= 2 && sub[0] == "-c" {
+		sub = sub[2:]
+	}
+
+	return sub
+}
+
 // scriptedGit answers the git commands intercept accepts itself, matching them by their
-// words after any leading -C <dir>, and runs the rest with realGit.
+// words after any leading -C <dir> and -c settings, and runs the rest with realGit.
 func scriptedGit(realGit execpath.Runner, intercept func(sub []string) (reply, bool)) *testutil.Runner {
 	return &testutil.Runner{Script: func(ctx context.Context, argv []string) ([]byte, []byte, error) {
-		sub := argv[1:]
-		if len(sub) >= 2 && sub[0] == "-C" {
-			sub = sub[2:]
-		}
+		sub := gitWords(argv)
 
 		if answer, ok := intercept(sub); ok {
 			return []byte(answer.stdout), []byte(answer.stderr), answer.err
@@ -147,6 +166,39 @@ func dirty(t *testing.T, path string) {
 
 	require.NoError(t, os.WriteFile(filepath.Join(path, "README.md"), []byte("changed\n"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(path, "notes.txt"), []byte("draft\n"), 0o600))
+}
+
+// cleanPicks picks every clean, removable worktree svc lists, each with the branches the
+// default rules take, as the confirmation of Remove all clean starts.
+func cleanPicks(t *testing.T, svc *Service) []Pick {
+	t.Helper()
+
+	return picksOf(t, svc, func(wt *Worktree) bool { return wt.CanRemove })
+}
+
+// finishedPicks picks every finished worktree svc lists, likewise.
+func finishedPicks(t *testing.T, svc *Service) []Pick {
+	t.Helper()
+
+	return picksOf(t, svc, func(wt *Worktree) bool { return wt.CanCleanUp })
+}
+
+// picksOf picks the worktrees svc lists that take, each with its default branches.
+func picksOf(t *testing.T, svc *Service, take func(*Worktree) bool) []Pick {
+	t.Helper()
+
+	snap, err := svc.List(t.Context())
+	require.NoError(t, err)
+
+	var out []Pick
+
+	for repo, wt := range rows(snap.Repos) {
+		if take(wt) {
+			out = append(out, Pick{RepoPath: repo.Path, Path: wt.Path, Branches: defaultBranches(*wt, branchrules.Defaults())})
+		}
+	}
+
+	return out
 }
 
 // branches lists a repository's local branches.
@@ -286,7 +338,7 @@ func TestListScansAllReposUnderRoot(t *testing.T) {
 	assert.Equal(t, "feature", row.Branch)
 	assert.False(t, row.Dirty)
 	assert.Positive(t, row.LastCommitUnix)
-	assert.False(t, row.ClaudeCreated)
+	assert.False(t, row.Managed)
 	assert.True(t, row.CanRemove)
 	assert.False(t, row.CanForceRemove)
 
@@ -302,7 +354,7 @@ func TestListScansAllReposUnderRoot(t *testing.T) {
 	assert.True(t, row.CanRemove)
 
 	row = mustRow(t, snap, claude)
-	assert.True(t, row.ClaudeCreated)
+	assert.True(t, row.Managed)
 	assert.True(t, row.Locked)
 	assert.Equal(t, "claude session pr-7 (pid 1 start Wed Nov 5 09:00:00 2026)", row.LockReason)
 	assert.False(t, row.StaleLock, "PID 1 is always running")
@@ -336,7 +388,7 @@ func TestRemoveClean(t *testing.T) {
 	alpha := e.newRepo(t, "alpha")
 	feature := addWorktree(t, alpha, filepath.Join(e.home, "wt", "feature"), "feature")
 
-	require.NoError(t, e.svc.Remove(t.Context(), alpha, feature))
+	require.NoError(t, testutil.ErrOf(e.svc.Remove(t.Context(), alpha, feature, nil)))
 
 	assert.NoDirExists(t, feature)
 	assert.NotContains(t, gitWorktreePaths(t, alpha), resolvedPath(feature))
@@ -351,7 +403,7 @@ func TestRemoveRefusesDirty(t *testing.T) {
 	changed := addWorktree(t, alpha, filepath.Join(e.home, "wt", "changed"), "changed")
 	dirty(t, changed)
 
-	err := e.svc.Remove(t.Context(), alpha, changed)
+	err := testutil.ErrOf(e.svc.Remove(t.Context(), alpha, changed, nil))
 	require.ErrorIs(t, err, ErrRemovalRefused)
 
 	var refused *RefusedError
@@ -374,10 +426,10 @@ func TestForceRemoveDirty(t *testing.T) {
 	dirty(t, changed)
 	clean := addWorktree(t, alpha, filepath.Join(e.home, "wt", "clean"), "clean")
 
-	require.NoError(t, e.svc.ForceRemove(t.Context(), alpha, changed))
+	require.NoError(t, testutil.ErrOf(e.svc.ForceRemove(t.Context(), alpha, changed, nil)))
 	assert.NoDirExists(t, changed)
 
-	require.ErrorIs(t, e.svc.ForceRemove(t.Context(), alpha, clean), ErrNotDirty, "force is only for worktrees with changes")
+	require.ErrorIs(t, testutil.ErrOf(e.svc.ForceRemove(t.Context(), alpha, clean, nil)), ErrNotDirty, "force is only for worktrees with changes")
 	assert.DirExists(t, clean)
 }
 
@@ -393,13 +445,13 @@ func TestLockedRefusedEvenWithForce(t *testing.T) {
 	lock(t, alpha, heldDirty, "claude session held-dirty (pid 1 start now)")
 
 	for _, path := range []string{held, heldDirty} {
-		require.ErrorIs(t, e.svc.Remove(t.Context(), alpha, path), ErrLocked)
-		require.ErrorIs(t, e.svc.ForceRemove(t.Context(), alpha, path), ErrLocked)
+		require.ErrorIs(t, testutil.ErrOf(e.svc.Remove(t.Context(), alpha, path, nil)), ErrLocked)
+		require.ErrorIs(t, testutil.ErrOf(e.svc.ForceRemove(t.Context(), alpha, path, nil)), ErrLocked)
 		assert.DirExists(t, path)
 		assert.True(t, mustRow(t, e.list(t), path).Locked)
 	}
 
-	results, err := e.svc.RemoveAllClean(t.Context())
+	results, err := e.svc.RemoveAllClean(t.Context(), cleanPicks(t, e.svc))
 	require.NoError(t, err)
 	assert.Empty(t, results)
 	assert.DirExists(t, held)
@@ -412,20 +464,20 @@ func TestMainWorktreeRefused(t *testing.T) {
 	alpha := e.newRepo(t, "alpha")
 	addWorktree(t, alpha, filepath.Join(e.home, "wt", "feature"), "feature")
 
-	require.ErrorIs(t, e.svc.Remove(t.Context(), alpha, alpha), ErrMainWorktree)
-	require.ErrorIs(t, e.svc.ForceRemove(t.Context(), alpha, alpha), ErrMainWorktree)
+	require.ErrorIs(t, testutil.ErrOf(e.svc.Remove(t.Context(), alpha, alpha, nil)), ErrMainWorktree)
+	require.ErrorIs(t, testutil.ErrOf(e.svc.ForceRemove(t.Context(), alpha, alpha, nil)), ErrMainWorktree)
 	assert.FileExists(t, filepath.Join(alpha, "README.md"))
 
 	other := filepath.Join(e.home, "elsewhere")
 	require.NoError(t, os.MkdirAll(other, 0o700))
-	require.ErrorIs(t, e.svc.Remove(t.Context(), alpha, other), ErrNotAWorktree)
+	require.ErrorIs(t, testutil.ErrOf(e.svc.Remove(t.Context(), alpha, other, nil)), ErrNotAWorktree)
 
 	outside := filepath.Join(e.home, "outside")
 	testutil.InitRepo(t, outside)
-	require.ErrorIs(t, e.svc.Remove(t.Context(), outside, outside), ErrOutsideCloneRoot)
+	require.ErrorIs(t, testutil.ErrOf(e.svc.Remove(t.Context(), outside, outside, nil)), ErrOutsideCloneRoot)
 	require.ErrorIs(t, e.svc.Prune(t.Context(), outside), ErrOutsideCloneRoot)
-	require.ErrorIs(t, e.svc.Remove(t.Context(), "projects/alpha", alpha), ErrOutsideCloneRoot)
-	require.ErrorIs(t, e.svc.Remove(t.Context(), filepath.Join(e.root, ".hidden"), alpha), ErrOutsideCloneRoot)
+	require.ErrorIs(t, testutil.ErrOf(e.svc.Remove(t.Context(), "projects/alpha", alpha, nil)), ErrOutsideCloneRoot)
+	require.ErrorIs(t, testutil.ErrOf(e.svc.Remove(t.Context(), filepath.Join(e.root, ".hidden"), alpha, nil)), ErrOutsideCloneRoot)
 }
 
 func TestBranchesSurviveRemoval(t *testing.T) {
@@ -443,12 +495,12 @@ func TestBranchesSurviveRemoval(t *testing.T) {
 	before := branches(t, alpha)
 	require.Len(t, before, 5)
 
-	require.NoError(t, e.svc.Remove(t.Context(), alpha, clean))
-	require.NoError(t, e.svc.ForceRemove(t.Context(), alpha, changed))
+	require.NoError(t, testutil.ErrOf(e.svc.Remove(t.Context(), alpha, clean, nil)))
+	require.NoError(t, testutil.ErrOf(e.svc.ForceRemove(t.Context(), alpha, changed, nil)))
 	require.NoError(t, os.RemoveAll(gone))
 	require.NoError(t, e.svc.Prune(t.Context(), alpha))
 
-	results, err := e.svc.RemoveAllClean(t.Context())
+	results, err := e.svc.RemoveAllClean(t.Context(), cleanPicks(t, e.svc))
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 	assert.True(t, samePath(bulk, results[0].Path))
@@ -477,7 +529,7 @@ func TestPruneClearsStaleEntries(t *testing.T) {
 	assert.False(t, row.CanForceRemove)
 	assert.Zero(t, snap.CleanCount)
 
-	require.ErrorIs(t, e.svc.ForceRemove(t.Context(), alpha, gone), ErrPrunable)
+	require.ErrorIs(t, testutil.ErrOf(e.svc.ForceRemove(t.Context(), alpha, gone, nil)), ErrPrunable)
 
 	require.NoError(t, e.svc.Prune(t.Context(), alpha))
 
@@ -503,7 +555,7 @@ func TestRemoveAllClean(t *testing.T) {
 
 	assert.Equal(t, 3, e.list(t).CleanCount)
 
-	results, err := e.svc.RemoveAllClean(t.Context())
+	results, err := e.svc.RemoveAllClean(t.Context(), cleanPicks(t, e.svc))
 	require.NoError(t, err)
 	require.Len(t, results, 3)
 
@@ -541,7 +593,7 @@ func TestRemoveAllCleanReportsRefusals(t *testing.T) {
 		return reply{}, false
 	})
 
-	results, err := svc.RemoveAllClean(t.Context())
+	results, err := svc.RemoveAllClean(t.Context(), cleanPicks(t, e.svc))
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 	assert.False(t, results[0].Removed)
@@ -596,9 +648,9 @@ func TestServiceErrors(t *testing.T) {
 		svc := fail("worktree list")
 		_, err := svc.List(ctx)
 		require.ErrorIs(t, err, errFakeStart)
-		require.ErrorIs(t, svc.Remove(ctx, alpha, feature), errFakeStart)
+		require.ErrorIs(t, testutil.ErrOf(svc.Remove(ctx, alpha, feature, nil)), errFakeStart)
 
-		_, err = svc.RemoveAllClean(ctx)
+		_, err = svc.RemoveAllClean(ctx, nil)
 		require.ErrorIs(t, err, errFakeStart)
 	})
 
@@ -608,7 +660,7 @@ func TestServiceErrors(t *testing.T) {
 		svc := fail("status")
 		_, err := svc.List(ctx)
 		require.ErrorIs(t, err, errFakeStart)
-		require.ErrorIs(t, svc.ForceRemove(ctx, alpha, feature), errFakeStart)
+		require.ErrorIs(t, testutil.ErrOf(svc.ForceRemove(ctx, alpha, feature, nil)), errFakeStart)
 	})
 
 	t.Run("last commit cannot run git", func(t *testing.T) {
@@ -621,7 +673,7 @@ func TestServiceErrors(t *testing.T) {
 	t.Run("remove and prune cannot run git", func(t *testing.T) {
 		t.Parallel()
 
-		err := fail("worktree remove").Remove(ctx, alpha, feature)
+		err := testutil.ErrOf(fail("worktree remove").Remove(ctx, alpha, feature, nil))
 		require.ErrorIs(t, err, errFakeStart)
 		require.NotErrorIs(t, err, ErrRemovalRefused)
 		require.ErrorIs(t, fail("worktree prune").Prune(ctx, alpha), errFakeStart)
@@ -631,7 +683,7 @@ func TestServiceErrors(t *testing.T) {
 	t.Run("bulk remove cannot run git", func(t *testing.T) {
 		t.Parallel()
 
-		results, err := fail("worktree remove").RemoveAllClean(ctx)
+		results, err := fail("worktree remove").RemoveAllClean(ctx, []Pick{{RepoPath: alpha, Path: feature}})
 		require.NoError(t, err)
 		require.Len(t, results, 1)
 		assert.False(t, results[0].Removed)
@@ -659,15 +711,13 @@ func TestServiceErrors(t *testing.T) {
 	})
 }
 
-// gitCalls counts the git runs a runner recorded by their first words after -C <dir>.
+// gitCalls counts the git runs a runner recorded by their first words after -C <dir>
+// and the -c settings.
 func gitCalls(run *testutil.Runner, prefixes ...string) map[string]int {
 	counts := make(map[string]int, len(prefixes))
 
 	for _, argv := range run.Calls() {
-		sub := argv[1:]
-		if len(sub) >= 2 && sub[0] == "-C" {
-			sub = sub[2:]
-		}
+		sub := gitWords(argv)
 
 		for _, prefix := range prefixes {
 			if startsWith(sub, prefix) {

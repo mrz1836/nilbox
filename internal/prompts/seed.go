@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/item"
 )
 
@@ -61,7 +62,7 @@ func seedStarter(ctx context.Context, st *Store, starter Starter, defaults Defau
 	in := starter.input()
 	in.Nickname = nickname
 
-	p := fromInput(in, starter.ExtraArgs)
+	p := fromInput(in, agent.Checked{Models: starter.Models, Args: starter.ExtraArgs})
 	p.StarterKey = starter.Key
 
 	id, err := st.insert(ctx, p)

@@ -7,5 +7,6 @@ export {
 };
 
 export type {
+    AgentInfo,
     Profile
 } from "./models.js";

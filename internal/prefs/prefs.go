@@ -4,8 +4,8 @@
 // Any package may read any key, but every key has exactly one writer:
 //
 //   - settings writes the user's settings, among them the rules that the trust, snooze,
-//     sensitive, and notifyprefs packages declare and decode (trust.*, snooze.*, files.*,
-//     and notify.*).
+//     sensitive, notifyprefs, and branchrules packages declare and decode (trust.*,
+//     snooze.*, files.*, notify.*, and branches.*).
 //   - inbox writes inbox.*: the account and status of the last refresh, and the cached
 //     avatar.
 //   - prompts writes prompts.*: the default prompts and the starters already added.

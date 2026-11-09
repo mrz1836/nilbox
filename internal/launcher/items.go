@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/repo"
@@ -64,6 +65,9 @@ type StoredItem struct {
 	Mergeable      string
 	ChecksState    string
 	ReviewDecision string
+
+	// HeadOID is a pull request's head commit as the last refresh read it, or "".
+	HeadOID string
 }
 
 // launchItemRow is a stored item as a launch reads it.
@@ -115,12 +119,13 @@ func (r launchItemRow) subject(policy trust.Policy) subject {
 	return subject{id: r.ID, kind: r.Kind, repo: r.repo(), trusted: r.class(policy) != trust.ClassOutside}
 }
 
-// unresolved is the resolution of the item when its settings cannot resolve: the item
-// alone, every setting from SourceNone, and empty lists rather than nil ones.
-func (r launchItemRow) unresolved() Resolution {
+// unresolved is the resolution of the item when its settings cannot resolve: the item and
+// the agent it would start, every other setting from SourceNone, and empty lists rather
+// than nil ones.
+func (r launchItemRow) unresolved(a agent.Agent) Resolution {
 	return Resolution{
-		ItemID: r.ID, Kind: r.Kind, Owner: r.Owner, Repo: r.repo().String(),
-		ExtraArgs: []string{}, Warnings: []string{},
+		ItemID: r.ID, Kind: r.Kind, Owner: r.Owner, Repo: r.repo().String(), Agent: a,
+		AgentInherited: a.ID, ExtraArgs: []string{}, Warnings: []string{},
 	}
 }
 
@@ -220,11 +225,11 @@ func (p promptSource) PreviewData(ctx context.Context, itemID int64) (prompts.Da
 		return prompts.Data{}, err
 	}
 
-	profile := w.settings.DefaultProfile
-
 	r := &resolver{w: w, item: row.subject(w.policy)}
 	r.org, r.repo = w.rules.For(row.repo())
+	r.agent, _ = r.inheritedAgent()
 
+	profile := w.settings.DefaultProfiles[r.agent.ID]
 	if inherited, _, profileErr := r.inheritedProfile(); profileErr == nil {
 		profile = inherited.Name
 	}

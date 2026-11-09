@@ -1,5 +1,7 @@
 import type { WorktreeErrors } from '../../lib/useWorktrees'
-import type { Worktree, WorktreeRepo } from '../../platform'
+import type { ReactNode } from 'react'
+
+import type { AgentID, LinkedItem, Worktree, WorktreeRepo } from '../../platform'
 import { plainButton, plural } from './shared'
 import { WorktreeRow } from './WorktreeRow'
 
@@ -13,6 +15,10 @@ export interface RepoSectionProps {
   onForceRemove: (repo: WorktreeRepo, worktree: Worktree) => void
   onUnlock: (repo: WorktreeRepo, worktree: Worktree) => void
   onCleanUp: (repo: WorktreeRepo, worktree: Worktree) => void
+  // agentName names a coding agent for people.
+  agentName?: ((id: AgentID) => string) | undefined
+  // launchFor is the launch control for a worktree's item, when the inbox lists it.
+  launchFor?: ((item: LinkedItem) => ReactNode) | undefined
 }
 
 // RepoSection is one clone and its worktrees, with Prune when git holds stale entries for
@@ -27,6 +33,8 @@ export function RepoSection({
   onForceRemove,
   onUnlock,
   onCleanUp,
+  agentName,
+  launchFor,
 }: RepoSectionProps) {
   const worktrees = repo.worktrees
   const pruneError = errors.repo(repo.path)
@@ -64,6 +72,8 @@ export function RepoSection({
               now={now}
               disabled={disabled}
               error={errors.worktree(wt.path)}
+              agentName={agentName}
+              launch={wt.item !== null && !wt.main ? launchFor?.(wt.item) : undefined}
               onRemove={() => {
                 onRemove(repo, wt)
               }}

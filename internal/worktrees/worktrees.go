@@ -1,7 +1,16 @@
-// Package worktrees lists the git worktrees of the user's local clones and removes them
-// safely.
+// Package worktrees makes the worktrees coding sessions run in, keeps track of them, lists
+// the git worktrees of the user's local clones, and removes them safely.
 //
-// It covers every git repository directly under the clone root (the same scan clone
+// The app makes one worktree per pull request or issue per clone, shared by every coding
+// agent, in a hidden directory beside the clone (see ManagedRoot), on the item's own
+// branch (worktree-pr-<n> or worktree-issue-<n>). A Maker makes or resumes it for a
+// launch, and records it (see the worklog package). Every listing and sweep checks the
+// records against git: a record whose worktree is gone is dropped, one whose worktree
+// moved follows it, and a worktree on an item's branch with no record is recorded.
+// Worktrees Claude Code made under a clone's .claude/worktrees before the app made them
+// itself are found the same way and resumed where they are.
+//
+// Listing covers every git repository directly under the clone root (the same scan clone
 // resolution uses), so worktrees left by sessions started elsewhere show up too. Removal
 // is deliberately narrow:
 //
@@ -10,24 +19,29 @@
 //   - ForceRemove passes a single --force and only for an unlocked worktree with
 //     uncommitted changes, so a locked worktree (usually a live agent session) is never
 //     removed;
-//   - Unlock releases only a lock the coding agent wrote for a session that has certainly
+//   - a worktree a running process works in, whatever agent or tool it is, is never
+//     removed (see the procs package);
+//   - Unlock releases only a lock Claude Code wrote for a session that has certainly
 //     ended, never a lock set by hand or one whose session may still run;
 //   - the main worktree is never removed.
 //
-// A worktree the agent made for a pull request or issue (pr-<n> or issue-<n> under the
-// clone's .claude/worktrees) is linked to that item, and GitHub says whether it is done.
-// GitHub decides when a worktree is finished; git alone decides whether removing it is
-// safe. CleanUp, CleanUpFinished, and the automatic Sweep remove a worktree only when its
-// item is merged or closed, it has no uncommitted changes, every commit it has is on
-// GitHub, and no session runs in it. Then they also delete the agent's own
+// A worktree made for a pull request or issue is linked to that item, and GitHub says
+// whether it is done. GitHub decides when a worktree is finished; git alone decides
+// whether removing it is safe. CleanUp, CleanUpFinished, and the automatic Sweep remove a
+// worktree only when its item is merged or closed, it has no uncommitted changes, every
+// commit it has is on GitHub, and no session runs in it. Then they also delete its own
 // worktree-<name> branch, and only while it still points at the commit checked. No other
 // branch is ever deleted, and nothing on GitHub is touched.
 //
 // Every git command runs as an argv `git -C <dir> ...` from a short allowlist, never
-// through a shell.
+// through a shell. Only create.go fetches and adds worktrees; nothing changes a clone's
+// own checkout.
 package worktrees
 
-import "github.com/mrz1836/nilbox/internal/item"
+import (
+	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/item"
+)
 
 // Snapshot is every repository under the clone root that has linked worktrees, as the
 // Worktrees view shows it. Every field is a plain value.
@@ -56,6 +70,10 @@ type Snapshot struct {
 	// or is "". The worktrees are listed without their items then.
 	LinkError string `json:"linkError"`
 
+	// SessionsUnknown reports that the running processes could not be listed, so no
+	// worktree shows a session, and the automatic cleanup removes none.
+	SessionsUnknown bool `json:"sessionsUnknown"`
+
 	// ListedAt is when the snapshot was taken, in RFC 3339.
 	ListedAt string `json:"listedAt"`
 }
@@ -68,7 +86,8 @@ const (
 	// StageNone is a worktree with no item, or one locked by hand.
 	StageNone Stage = ""
 
-	// StageInUse is a worktree a running agent session holds.
+	// StageInUse is a worktree a running process works in, or a running agent session
+	// holds by its lock.
 	StageInUse Stage = "in-use"
 
 	// StageActive is a worktree whose pull request or issue is still open.
@@ -117,9 +136,21 @@ type LinkedItem struct {
 	// HeadOID is a pull request's head commit, or "".
 	HeadOID string `json:"headOid"`
 
-	// Launched reports a worktree the app launched the session in, which the automatic
-	// cleanup looks after. Others are linked by their name alone.
+	// HeadRef is a pull request's head branch, as in feature-x, or "".
+	HeadRef string `json:"headRef"`
+
+	// Launched reports a worktree the app launched a session in, which the automatic
+	// cleanup looks after. Others are linked by their name or branch alone.
 	Launched bool `json:"launched"`
+}
+
+// Session is a running process that works in a worktree.
+type Session struct {
+	// PID is the process's ID.
+	PID int `json:"pid"`
+
+	// Command is its program's name, such as "codex".
+	Command string `json:"command"`
 }
 
 // done reports a merged or closed item.
@@ -216,13 +247,29 @@ type Worktree struct {
 	// Stage is where the worktree stands.
 	Stage Stage `json:"stage"`
 
-	// OwnBranch reports that the checked-out branch is the agent's worktree-<name> branch
-	// for this worktree, which CleanUp deletes with it.
+	// OwnBranch reports that the checked-out branch is the worktree's own
+	// worktree-<name> branch, which CleanUp deletes with it.
 	OwnBranch bool `json:"ownBranch"`
 
-	// ClaudeCreated reports a worktree under the repository's .claude/worktrees
-	// directory, where the coding agent creates its worktrees.
-	ClaudeCreated bool `json:"claudeCreated"`
+	// Managed reports a worktree the app looks after: one it made (under the clone's
+	// managed root), one Claude Code made under the clone's .claude/worktrees, or one the
+	// app recorded.
+	Managed bool `json:"managed"`
+
+	// Legacy reports a worktree Claude Code made under the clone's .claude/worktrees.
+	Legacy bool `json:"legacy"`
+
+	// Agent is the agent of the latest session the app launched there, or "".
+	Agent agent.ID `json:"agent"`
+
+	// LastLaunchedAt is when that session started, in RFC 3339, or "".
+	LastLaunchedAt string `json:"lastLaunchedAt"`
+
+	// Launches counts the sessions the app launched there.
+	Launches int `json:"launches"`
+
+	// InUse lists the running processes that work in the worktree.
+	InUse []Session `json:"inUse"`
 
 	// CanRemove reports a clean, unlocked linked worktree that Remove accepts.
 	CanRemove bool `json:"canRemove"`
@@ -234,8 +281,103 @@ type Worktree struct {
 	// CanCleanUp reports a finished worktree that CleanUp removes, with its own branch.
 	CanCleanUp bool `json:"canCleanUp"`
 
+	// Branches are the local branches a removal of the worktree can take with it: its own
+	// worktree-<name> branch, and its pull request's own branch when the worktree has that
+	// checked out. Each says whether it may go; which do is the user's choice.
+	Branches []Branch `json:"branches"`
+
 	// Error explains why the worktree's status could not be read, or is "".
 	Error string `json:"error"`
+}
+
+// BranchKind is why the app offers to delete a branch.
+type BranchKind string
+
+// Why the app offers to delete a branch.
+const (
+	// BranchOwn is a worktree's own worktree-<name> branch.
+	BranchOwn BranchKind = "own"
+
+	// BranchPullRequest is a pull request's own branch, checked out in its worktree.
+	BranchPullRequest BranchKind = "pullRequest"
+
+	// BranchMerged is a clone's branch whose pull request merged.
+	BranchMerged BranchKind = "merged"
+)
+
+// Branch is a local branch the app offers to delete.
+type Branch struct {
+	// Name is the branch, as in feature-x.
+	Name string `json:"name"`
+
+	// Head is the commit it points at; it is deleted only while it still does.
+	Head string `json:"head"`
+
+	// Kind is why it is offered.
+	Kind BranchKind `json:"kind"`
+
+	// Deletable reports that nothing on it would be lost, every commit on it being on
+	// GitHub, and that nothing protects it.
+	Deletable bool `json:"deletable"`
+
+	// Reason says why it may not go, or is "".
+	Reason string `json:"reason"`
+}
+
+// Pick is one worktree a bulk removal or cleanup takes, as the user ticked it: its clone,
+// its directory, and the branches to delete with it.
+type Pick struct {
+	RepoPath string   `json:"repoPath"`
+	Path     string   `json:"path"`
+	Branches []string `json:"branches"`
+}
+
+// MergedBranch is a clone's local branch whose pull request merged.
+type MergedBranch struct {
+	// RepoPath is the clone, and DisplayRepo it with ~ for the home directory.
+	RepoPath    string `json:"repoPath"`
+	DisplayRepo string `json:"displayRepo"`
+
+	// Branch is the branch, of kind BranchMerged.
+	Branch Branch `json:"branch"`
+
+	// PullRequest is the merged pull request it was the head of.
+	PullRequest MergedPullRequest `json:"pullRequest"`
+}
+
+// MergedPullRequest is a merged pull request, as the cleanup of merged branches shows it.
+type MergedPullRequest struct {
+	// Repo names its repository, as in acme-org/example-repo.
+	Repo   string `json:"repo"`
+	Number int    `json:"number"`
+	Title  string `json:"title"`
+	URL    string `json:"url"`
+
+	// MergedAt is when it merged, in RFC 3339.
+	MergedAt string `json:"mergedAt"`
+}
+
+// BranchPick is one branch the user ticked to delete: its clone, its name, and the commit
+// it pointed at when it was offered.
+type BranchPick struct {
+	RepoPath string `json:"repoPath"`
+	Name     string `json:"name"`
+	Head     string `json:"head"`
+}
+
+// BranchResult is the outcome of deleting one branch.
+type BranchResult struct {
+	// RepoPath is the clone, and DisplayRepo it with ~ for the home directory.
+	RepoPath    string `json:"repoPath"`
+	DisplayRepo string `json:"displayRepo"`
+	Name        string `json:"name"`
+
+	// Head is the commit it pointed at, which restores it: git branch <name> <head>.
+	Head string `json:"head"`
+
+	// Deleted reports whether it was deleted, and Reason why not, or is "".
+	Deleted bool   `json:"deleted"`
+	Reason  string `json:"reason"`
 }
 
 // RemoveResult is the outcome of removing one worktree in a bulk removal.
@@ -252,8 +394,8 @@ type RemoveResult struct {
 	// Removed reports whether the worktree was removed.
 	Removed bool `json:"removed"`
 
-	// DeletedBranch is the branch deleted with the worktree, or "".
-	DeletedBranch string `json:"deletedBranch"`
+	// DeletedBranches are the branches deleted with the worktree.
+	DeletedBranches []string `json:"deletedBranches"`
 
 	// Item names the pull request or issue a cleaned-up worktree was for, e.g.
 	// "acme-org/example-repo#184", or is "".

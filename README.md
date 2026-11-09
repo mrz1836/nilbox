@@ -118,7 +118,8 @@ One click to hand any pull request or issue to a coding agent.
 
 **Nilbox is a local-first macOS app that turns a GitHub account spread across hundreds of
 repositories into one focused inbox. It shows what needs *you*, hides the noise, and opens any
-pull request or issue in Claude Code, already in the right clone, worktree, account, and prompt.**
+pull request or issue in Claude Code or OpenAI Codex, already in the right clone, worktree, account,
+and prompt.**
 
 GitHub's notifications stop scaling after a few dozen repositories. Across 200+ repos in personal
 accounts and organizations, review requests, mentions, assignments, and bot noise land in one
@@ -136,11 +137,11 @@ touches GitHub.
   │  ┌──────────────────────────────┐        ┌───────────────────────────┐  │
   │  │  NILBOX                      │        │  iTerm2 / Terminal.app    │  │
   │  │                              │        │                           │  │
-  │  │  Inbox                       │  Open  │  ~/projects/example-repo  │  │
-  │  │   ├─ Review requested        │   in   │                           │  │
-  │  │   ├─ Authored                │ Claude │  claude --worktree pr-42  │  │
+  │  │  Inbox                       │  Open  │  worktree pr-42 of        │  │
+  │  │   ├─ Review requested        │   in   │  example-repo             │  │
+  │  │   ├─ Authored                │ Claude │  claude  or  codex        │  │
   │  │   └─ Assigned                │───────►│    profile · model ·      │  │
-  │  │                              │        │    effort · your prompt   │  │
+  │  │                              │or Codex│    effort · your prompt   │  │
   │  │  snooze · dismiss · pin      │        │                           │  │
   │  │  (local SQLite, never sent)  │        └───────────────────────────┘  │
   │  └───────────────▲──────────────┘                                       │
@@ -168,7 +169,8 @@ Nilbox is a native macOS app, built from source with one command.
 - **[MAGE-X](https://github.com/mrz1836/mage-x)**: `go install github.com/mrz1836/mage-x/cmd/magex@latest`
 - **[GitHub CLI](https://cli.github.com)**, signed in with the `repo` and `read:org` scopes (add the
   optional `read:project` scope to see the projects your issues are in)
-- To launch sessions: the **Claude Code CLI** (`claude`) and **iTerm2** or Terminal.app
+- To launch sessions: the **Claude Code CLI** (`claude`), the **Codex CLI** (`codex`), or both, and
+  **iTerm2** or Terminal.app
 
 ```bash
 git clone https://github.com/mrz1836/nilbox.git && cd nilbox
@@ -233,10 +235,11 @@ off it on GitHub.
 
 ### Launch a coding agent
 
-Click **Open in Claude** on any card. Nilbox opens a terminal in the item's local clone under
-`~/projects` and starts Claude Code in its own `pr-<n>` or `issue-<n>` worktree with your prompt
-loaded. Use the launch menu instead to pick the prompt, profile, model, effort, and plan mode for
-one launch, and save the choices as the repository's or org's defaults.
+Click **Open in Claude** (or **Open in Codex**) on any card. Nilbox finds the item's local clone
+under `~/projects`, gives the item its own `pr-<n>` or `issue-<n>` worktree beside it, opens a
+terminal there, and starts the agent with your prompt loaded. Use the launch menu instead to switch
+agents for one launch, pick the prompt, profile, model, effort, and plan mode, and save the choices
+as the repository's or org's defaults.
 
 <br>
 
@@ -252,7 +255,8 @@ filled in from a real inbox item.
 
 The **Worktrees** tab lists every linked worktree under your clone root. **Clean up** removes one
 only when nothing would be lost, and a background sweep does it for you once the pull request
-merges or the issue closes.
+merges or the issue closes. **Clean up merged branches…** clears out the local branches of pull
+requests that merged, never touching `main`, `master`, or any branch you protect.
 
 <br/>
 
@@ -267,11 +271,11 @@ merges or the issue closes.
 - **Issue projects** — each issue's GitHub project, its status and priority and size there, and its sub-issue progress, one click from the board, plus a status sort in your own order
 - **Local triage** — snooze, dismiss, or pin; wake rules end a snooze early when something changes
 - **Edits when you ask** — take yourself off an item's assignees or a pull request's reviewers from the card's menu, paced within your API budget
-- **One-click agent launch** — Claude Code in iTerm2 or Terminal.app, in the right clone and its own worktree
-- **Profiles per repo or org** — every `~/.claude-<name>` config directory is a profile, so each repo launches on its own account
+- **One-click agent launch** — Claude Code or OpenAI Codex in iTerm2 or Terminal.app, in the item's own worktree
+- **Profiles per repo or org** — every `~/.claude-<name>` and `~/.codex-<name>` config directory is a profile, so each repo launches on its own account
 - **Prompt library** — Go templates with highlighting, autocomplete, error checking, and a live preview
-- **Trust guardrails** — outside contributors launch in plan mode, and changes to sensitive files are flagged
-- **Safe worktree cleanup** — finished worktrees are removed only when nothing would be lost
+- **Trust guardrails** — outside contributors launch in plan mode (Codex: read-only), and changes to sensitive files are flagged
+- **Worktrees Nilbox keeps track of** — one per item, shared by every agent, resumed on the next launch, and removed only when nothing would be lost
 - **Menu bar and notifications** — a live count in the menu bar and native banners for what's new
 - **API budget gauge** — an always-visible, live dial for the GitHub budget closest to running out, counting every request the app makes
 - **Inbox nil** — empty every list and the inbox throws you a party
@@ -353,25 +357,34 @@ More in [The item menu and edits on GitHub](docs/desktop.md#the-item-menu-and-ed
 <summary><strong><code>Launching a coding agent</code></strong></summary>
 <br/>
 
-- **Open in Claude** starts Claude Code in a new iTerm2 tab (the default) or Terminal.app window,
-  in the item's clone, found by matching git remotes one level under your clone root
+- **Two agents, one button:** **Open in Claude** or **Open in Codex** starts Claude Code or
+  OpenAI Codex in a new iTerm2 tab (the default) or Terminal.app window. The agent comes from the
+  launch menu's switch, else the repository's or org's launch defaults, else **Settings →
+  Launching**, else Claude.
+- **The item's clone,** found by matching git remotes one level under your clone root
   (`~/projects` by default).
-- **Worktrees by default:** Claude Code's own `--worktree` flag creates a worktree named `pr-<n>`
-  or `issue-<n>`, so launching on the same item again resumes it.
-- **Profiles:** `~/.claude` is the `default` profile, and each `~/.claude-<name>` or
-  `~/.claude_<name>` directory becomes profile `<name>`, run with `CLAUDE_CONFIG_DIR`.
-- **The launch menu** picks the prompt, profile, model, effort, worktree, and plan mode for one
-  launch, shows where each default comes from, previews the exact prompt and command, and saves the
-  choices as the repository's or org's defaults.
+- **Worktrees by default:** Nilbox makes the item's worktree itself, in Go, at
+  `~/projects/.nilbox/worktrees/<repo>/pr-<n>` (or `issue-<n>`), on the pull request's head or the
+  default branch. Every agent shares it, so launching on the same item again, with either agent,
+  resumes it. Worktrees Claude Code made under a clone's `.claude/worktrees` are found and resumed
+  too.
+- **Profiles:** `~/.claude` and `~/.codex` are each agent's `default` profile, and each
+  `~/.claude-<name>` or `~/.codex_<name>` directory (either separator) becomes that agent's profile
+  `<name>`, run with `CLAUDE_CONFIG_DIR` or `CODEX_HOME`. Each org and repository can pick a profile
+  per agent, so switching agents still lands on the right account.
+- **The launch menu** switches the agent and picks the prompt, profile, model, effort, worktree,
+  and plan mode for one launch, shows where each default comes from, previews the exact prompt,
+  command, and worktree, and saves the choices as the repository's or org's defaults.
 - **Launch defaults** per org and per repository resolve in a
   [fixed order](docs/desktop.md#launch-defaults).
 - **No clone yet?** The card offers `gh repo clone` into the clone root, then continues the launch.
-  An existing clone is never changed: no checkout, fetch, pull, or reset.
-- **No trust dialog:** before each launch the clone is marked trusted in the profile's Claude Code
-  config, so a `--worktree` session starts straight away.
+  An existing clone's own checkout is never changed: no checkout, pull, or reset.
+- **No trust dialog:** before each launch the worktree and its clone are marked trusted in the
+  profile's own config (Claude Code's `.claude.json`, or Codex's `config.toml`), so the session
+  starts straight away.
 - **No prompt on the command line:** the prompt goes through a file that the launch script reads.
 
-More in [Agent profiles](docs/desktop.md#agent-profiles) and
+More in [Coding agents and profiles](docs/desktop.md#coding-agents-and-profiles) and
 [Launching a session](docs/desktop.md#launching-a-session).
 
 </details>
@@ -404,8 +417,9 @@ More in [Prompts](docs/desktop.md#prompts).
 <br/>
 
 - **Outside contributors:** items from forks, people outside the project, and bots not on your
-  trusted list (`dependabot`, `github-actions`, and `renovate` by default) launch in plan mode,
-  whatever the profile says, unless you opt out for that one launch. Their prompts end with a
+  trusted list (`dependabot`, `github-actions`, and `renovate` by default) launch in plan mode
+  (for Codex, a read-only sandbox that asks first), whatever the profile says, unless you opt out
+  for that one launch. Their prompts end with a
   fixed line telling the agent to treat the item's text as information, not instructions.
 - **Sensitive files:** pull requests from outside contributors and untrusted bots (and from
   collaborators, unless you narrow the check) have their changed files checked against five
@@ -428,14 +442,26 @@ More in [Outside contributors](docs/desktop.md#outside-contributors) and
 - The **Worktrees** tab lists every linked worktree of the clones under your clone root, including
   ones from sessions started outside Nilbox, with the branch, uncommitted files, commits not on
   GitHub, locks, and the age of the last commit.
-- Agent worktrees are linked to their pull request or issue, and GitHub is asked whether it is
-  done, so each shows as **in use**, **ready to clean up**, or **needs a look**.
-- **Clean up** removes a finished worktree and its `worktree-<name>` branch only when nothing would
-  be lost: no uncommitted changes, every commit on GitHub, and no session running in it. A sweep
-  every five minutes does the same once a pull request merges or an issue closes (on by default).
-- **Remove**, **Remove all clean**, **Force remove** (for dirty, unlocked worktrees, after a
-  confirmation), **Prune**, and **Unlock** for an agent lock whose session has ended. The main
-  worktree is never removable, and a lock you set by hand is never released.
+- Nilbox records each worktree it makes, with the agent and time of its latest session, and checks
+  every record against git each time it lists or sweeps: a worktree moved is followed, one removed
+  outside the app is forgotten, and one on an item's `worktree-<item>` branch is picked up.
+- Worktrees made for a pull request or issue are linked to it, and GitHub is asked whether it is
+  done, so each shows as **in use**, **ready to clean up**, or **needs a look**. **In use** means a
+  running process, of any agent or tool, works inside it.
+- **Clean up** removes a finished worktree only when nothing would be lost: no uncommitted
+  changes, every commit on GitHub, and no session running in it. A sweep every five minutes does
+  the same once a pull request merges or an issue closes (on by default).
+- **Remove**, **Remove all clean**, **Force remove** (for dirty, unlocked worktrees), **Prune**,
+  and **Unlock** for an agent lock whose session has ended. The main worktree is never removable, a
+  worktree in use is never removed, and a lock you set by hand is never released.
+- Every removal and cleanup asks first, with a box for each worktree and branch it would take,
+  ticked as **Settings → Worktrees** says: the worktree's own `worktree-<item>` branch, the pull
+  request's branch when a session checked it out, or both. Untick any to keep it. A branch goes
+  only when every commit on it is on GitHub, and only while it still points at the commit shown.
+- **Clean up merged branches…** finds each clone's local branches whose pull request merged, in a
+  few batched GitHub requests, and deletes the ones you tick. Protected branches (`main` and
+  `master` by default, plus names or patterns such as `release/*` you add) and each repository's
+  default branch are never offered.
 - **Recently cleaned up** lists each cleanup, by hand or automatic, with the deleted branch and the
   commit the worktree was at.
 
@@ -471,8 +497,8 @@ More in [Menu bar and notifications](docs/desktop.md#menu-bar-and-notifications)
 - **Themes:** follow the system, or pin Light or Dark. The native window frame and menus follow.
 - **Settings** covers your account, appearance, notifications, snoozing, launching, profiles,
   repositories, trust, and sensitive files.
-- **About** shows the version, build, commit, and system, and **Report a bug** opens a GitHub issue
-  with those details filled in.
+- **About** shows the version, build, commit, and system, and each coding agent's installed
+  version, and **Report a bug** opens a GitHub issue with those details filled in.
 
 More in [The window](docs/desktop.md#the-window).
 
@@ -486,11 +512,12 @@ More in [The window](docs/desktop.md#the-window).
 |--------------------------------------|---------------|---------------------------------------------------------------------|
 | ✅ macOS 13+                          | **Supported** | Native desktop app with a menu bar icon and notification banners    |
 | ✅ Claude Code                        | **Supported** | Your own profiles, models, effort, and flags                        |
+| ✅ OpenAI Codex                       | **Supported** | The same, with a switch on each launch and defaults per repo or org |
 | ✅ iTerm2 and Terminal.app            | **Supported** | iTerm2 by default                                                   |
 | 🚧 First-run setup                   | **Planned**   | A GitHub CLI check, plus agent and terminal preferences             |
 | 🚧 Mute or pin repositories and orgs | **Planned**   | Hide or raise everything from a repository or org at once           |
 | 🚧 Security alert sweeps             | **Planned**   | Sweep security alerts across every repository                       |
-| 🚧 More coding agents and terminals  | **Planned**   | Beyond Claude Code, iTerm2, and Terminal.app                        |
+| 🚧 More coding agents and terminals  | **Planned**   | Beyond Claude Code, Codex, iTerm2, and Terminal.app                 |
 | 🚧 Integrations                      | **Planned**   | Connect Nilbox to the rest of your tools                            |
 | 🚧 Linux and Windows                 | **Planned**   | The core is plain Go and already builds and tests on Linux          |
 
@@ -505,7 +532,8 @@ More in [The window](docs/desktop.md#the-window).
 | **GitHub access** | Your [GitHub CLI](https://cli.github.com) token, held in memory only, for up to ten minutes. One GraphQL request carries all three searches; card details load by node ID in concurrent batches          |
 | **API budget**    | A 43-item inbox refreshed every five minutes spends 1.2% of the hourly GraphQL budget                                                                                                                    |
 | **Storage**       | SQLite through a pure-Go driver, with sqlc-generated queries and forward-only, checksummed migrations, each after a backup                                                                               |
-| **Agents**        | The Claude Code CLI you already use, with your own profiles. Nilbox never stores model credentials                                                                                                       |
+| **Agents**        | The Claude Code and Codex CLIs you already use, with your own profiles. Nilbox never stores model credentials and never reads an agent's sign-in                                                      |
+| **Worktrees**     | Made, resumed, and tracked in Go, one per item per clone and shared by every agent; the launch script only changes into the folder and starts the agent                                                 |
 
 <br>
 
@@ -542,8 +570,8 @@ View the full documentation for Nilbox:
 > - **Agents act on your machine:** a launched coding agent runs with your profile's permissions
 >   and can run commands and change files in your clones.
 > - **Untrusted content stays untrusted:** pull requests and issues from outside contributors can
->   carry prompt injection. Plan mode for outsiders and the sensitive-file checks reduce that risk;
->   they don't remove it.
+>   carry prompt injection. Plan mode (Codex's read-only sandbox) for outsiders and the
+>   sensitive-file checks reduce that risk; they don't remove it.
 > - **No formal audit:** Nilbox has not been professionally audited.
 > - **No liability:** the authors accept no responsibility for lost work, exposed data, or damages.
 >

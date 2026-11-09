@@ -30,8 +30,8 @@ func (q *Queries) DeleteLaunchDefaults(ctx context.Context, arg DeleteLaunchDefa
 }
 
 const listLaunchDefaults = `-- name: ListLaunchDefaults :many
-SELECT id, owner, name, agent, profile, pr_prompt_id, issue_prompt_id, model, effort, plan_mode, worktree,
-    extra_args, created_at, updated_at
+SELECT id, owner, name, agent, pr_prompt_id, issue_prompt_id, effort, plan_mode, worktree, created_at, updated_at,
+    profiles, models, agent_args
 FROM launch_defaults
 ORDER BY owner COLLATE NOCASE, name COLLATE NOCASE
 `
@@ -53,16 +53,16 @@ func (q *Queries) ListLaunchDefaults(ctx context.Context) ([]LaunchDefault, erro
 			&i.Owner,
 			&i.Name,
 			&i.Agent,
-			&i.Profile,
 			&i.PRPromptID,
 			&i.IssuePromptID,
-			&i.Model,
 			&i.Effort,
 			&i.PlanMode,
 			&i.Worktree,
-			&i.ExtraArgs,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Profiles,
+			&i.Models,
+			&i.AgentArgs,
 		); err != nil {
 			return nil, err
 		}
@@ -123,36 +123,36 @@ func (q *Queries) ListPromptUses(ctx context.Context) ([]ListPromptUsesRow, erro
 
 const saveLaunchDefaults = `-- name: SaveLaunchDefaults :one
 INSERT INTO launch_defaults (
-    owner, name, agent, profile, pr_prompt_id, issue_prompt_id, model, effort, plan_mode, worktree, extra_args,
+    owner, name, agent, profiles, pr_prompt_id, issue_prompt_id, models, effort, plan_mode, worktree, agent_args,
     created_at, updated_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (owner, name) DO UPDATE SET
     agent = excluded.agent,
-    profile = excluded.profile,
+    profiles = excluded.profiles,
     pr_prompt_id = excluded.pr_prompt_id,
     issue_prompt_id = excluded.issue_prompt_id,
-    model = excluded.model,
+    models = excluded.models,
     effort = excluded.effort,
     plan_mode = excluded.plan_mode,
     worktree = excluded.worktree,
-    extra_args = excluded.extra_args,
+    agent_args = excluded.agent_args,
     updated_at = excluded.updated_at
-RETURNING id, owner, name, agent, profile, pr_prompt_id, issue_prompt_id, model, effort, plan_mode, worktree,
-    extra_args, created_at, updated_at
+RETURNING id, owner, name, agent, pr_prompt_id, issue_prompt_id, effort, plan_mode, worktree, created_at, updated_at,
+    profiles, models, agent_args
 `
 
 type SaveLaunchDefaultsParams struct {
 	Owner         string
 	Name          string
 	Agent         string
-	Profile       string
+	Profiles      string
 	PRPromptID    *int64
 	IssuePromptID *int64
-	Model         string
+	Models        string
 	Effort        string
 	PlanMode      *bool
 	Worktree      *bool
-	ExtraArgs     string
+	AgentArgs     string
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 }
@@ -166,14 +166,14 @@ func (q *Queries) SaveLaunchDefaults(ctx context.Context, arg SaveLaunchDefaults
 		arg.Owner,
 		arg.Name,
 		arg.Agent,
-		arg.Profile,
+		arg.Profiles,
 		arg.PRPromptID,
 		arg.IssuePromptID,
-		arg.Model,
+		arg.Models,
 		arg.Effort,
 		arg.PlanMode,
 		arg.Worktree,
-		arg.ExtraArgs,
+		arg.AgentArgs,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -183,16 +183,16 @@ func (q *Queries) SaveLaunchDefaults(ctx context.Context, arg SaveLaunchDefaults
 		&i.Owner,
 		&i.Name,
 		&i.Agent,
-		&i.Profile,
 		&i.PRPromptID,
 		&i.IssuePromptID,
-		&i.Model,
 		&i.Effort,
 		&i.PlanMode,
 		&i.Worktree,
-		&i.ExtraArgs,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Profiles,
+		&i.Models,
+		&i.AgentArgs,
 	)
 	return i, err
 }

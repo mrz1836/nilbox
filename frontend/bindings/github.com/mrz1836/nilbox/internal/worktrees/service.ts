@@ -16,21 +16,24 @@ import * as $models from "./models.js";
 
 /**
  * CleanUp removes one finished worktree: its pull request merged or its issue closed, it
- * has no uncommitted changes, every commit it has is on GitHub, and no session runs in it.
+ * has no uncommitted changes, every commit it has is on GitHub, and no session runs in it,
+ * by its lock or as a running process.
  * The worktree is assessed again first, GitHub included. It releases the lock of an agent
- * session that has ended, removes the worktree without --force, and deletes its own
- * worktree-<name> branch while that still points at the commit checked.
+ * session that has ended, removes the worktree without --force, and deletes the branches
+ * named, of those it offers, as Remove does.
  */
-export function CleanUp(repoPath: string, path: string): $CancellablePromise<$models.RemoveResult> {
-    return $Call.ByID(3658666180, repoPath, path);
+export function CleanUp(repoPath: string, path: string, branches: string[] | null): $CancellablePromise<$models.RemoveResult> {
+    return $Call.ByID(3658666180, repoPath, path, branches);
 }
 
 /**
- * CleanUpFinished cleans up every finished worktree under the clone root, one at a time,
- * and reports each outcome. Each is checked again just before it is removed.
+ * CleanUpFinished cleans up the finished worktrees picked, one at a time, each with the
+ * branches picked for it, and reports each outcome. Each is checked against a fresh
+ * listing, GitHub included, and again just before it is removed: one no longer finished
+ * is left, with why.
  */
-export function CleanUpFinished(): $CancellablePromise<$models.RemoveResult[] | null> {
-    return $Call.ByID(3921883602);
+export function CleanUpFinished(picks: $models.Pick[] | null): $CancellablePromise<$models.RemoveResult[] | null> {
+    return $Call.ByID(3921883602, picks);
 }
 
 /**
@@ -41,12 +44,26 @@ export function ClearCleanups(): $CancellablePromise<void> {
 }
 
 /**
- * ForceRemove removes one unlocked linked worktree that has uncommitted changes,
- * discarding them, with a single --force. Locked worktrees are refused even here, so a
- * running session's worktree is never pulled out from under it.
+ * DeleteBranches deletes the branches the user ticked in the cleanup of merged branches,
+ * each checked again first: its clone must be under the clone root, the user must not
+ * protect it, it must not be a remote's default branch or checked out in any worktree,
+ * and it must still point at the commit it was offered at. Each clone is read once and its
+ * branches deleted in turn, a few clones at a time. It reports each outcome, in the order
+ * picked, with the commit that restores a deleted branch.
  */
-export function ForceRemove(repoPath: string, path: string): $CancellablePromise<void> {
-    return $Call.ByID(4169835063, repoPath, path);
+export function DeleteBranches(picks: $models.BranchPick[] | null): $CancellablePromise<$models.BranchResult[] | null> {
+    return $Call.ByID(2936576107, picks);
+}
+
+/**
+ * ForceRemove removes one unlocked linked worktree that has uncommitted changes,
+ * discarding them, with a single --force, and the branches named as Remove does. Locked
+ * worktrees, and ones a running process works in, are refused even here, so a running
+ * session's worktree is never pulled out from under it; so is every worktree when the
+ * running processes cannot be listed, since nothing else would stop it then.
+ */
+export function ForceRemove(repoPath: string, path: string, branches: string[] | null): $CancellablePromise<$models.RemoveResult> {
+    return $Call.ByID(4169835063, repoPath, path, branches);
 }
 
 /**
@@ -67,6 +84,19 @@ export function List(): $CancellablePromise<$models.Snapshot> {
 }
 
 /**
+ * MergedBranches lists the local branches of every clone under the clone root whose pull
+ * request merged on GitHub: each branch that was the head branch of a merged pull request
+ * in one of the clone's GitHub repositories, and each worktree-pr-<n> branch whose pull
+ * request merged. Branches the user protects and each remote's default branch are left
+ * out. Each says whether it may go: its commits are all on GitHub (it is at the merged
+ * head, behind it, or pushed), and no worktree has it checked out. It asks GitHub once per
+ * fifty branch names, only for clones with a branch to ask about, and changes nothing.
+ */
+export function MergedBranches(): $CancellablePromise<$models.MergedBranch[] | null> {
+    return $Call.ByID(3545066020);
+}
+
+/**
  * Prune clears the repository's entries for worktrees whose directories are gone. It
  * never touches a worktree that still exists or any branch.
  */
@@ -83,32 +113,38 @@ export function RecentCleanups(): $CancellablePromise<$models.Cleanup[] | null> 
 }
 
 /**
- * Remove removes one linked worktree without --force. The repository must be a clone
- * under the clone root and path one of its linked worktrees; the main worktree and
- * locked worktrees are refused before git runs, and git itself refuses a worktree with
- * uncommitted changes, which comes back as a RefusedError.
+ * Remove removes one linked worktree without --force, and with it the branches named,
+ * of those it offers (see Worktree.Branches): each goes only when nothing on it would be
+ * lost and nothing protects it, and only while it still points at the commit assessed.
+ * The repository must be a clone under the clone root and path one of its linked
+ * worktrees, which is assessed again first. The main worktree, a locked one, and one a
+ * session works in are refused before git runs, and git itself refuses one with
+ * uncommitted changes, which comes back as a RefusedError. The result names the branches
+ * deleted, and says why any other one named was kept.
  */
-export function Remove(repoPath: string, path: string): $CancellablePromise<void> {
-    return $Call.ByID(3855744896, repoPath, path);
+export function Remove(repoPath: string, path: string, branches: string[] | null): $CancellablePromise<$models.RemoveResult> {
+    return $Call.ByID(3855744896, repoPath, path, branches);
 }
 
 /**
- * RemoveAllClean removes every clean, unlocked, linked worktree whose directory still
- * exists, one at a time, and reports each outcome. Each removal is re-checked against
- * the repository first, and git refuses any worktree that changed in the meantime.
+ * RemoveAllClean removes the clean, unlocked, linked worktrees picked, one at a time, each
+ * with the branches picked for it as Remove does, and reports each outcome. Each is
+ * checked against a fresh listing first: one that is no longer clean and removable is
+ * left, with why, and git refuses any worktree that changed in the meantime.
  */
-export function RemoveAllClean(): $CancellablePromise<$models.RemoveResult[] | null> {
-    return $Call.ByID(532446488);
+export function RemoveAllClean(picks: $models.Pick[] | null): $CancellablePromise<$models.RemoveResult[] | null> {
+    return $Call.ByID(532446488, picks);
 }
 
 /**
- * Sweep checks the worktrees the agent made for pull requests and issues and, when
- * automatic cleanup is on, cleans up each finished one whose pull request merged or whose
- * issue closed (see autoCleanable for which count). It never lists every clone: it looks
- * only in clones with an agent worktree directory or a recorded launch, so it is cheap to
- * run on a timer. It also drops the launch records of worktrees that are gone, and counts
- * the linked worktrees of every clone from their git directories, again without running
- * git. The report is kept for LastSweep, and an event.WorktreesUpdated is emitted when a
+ * Sweep checks the worktrees made for pull requests and issues and, when automatic
+ * cleanup is on, cleans up each finished one whose pull request merged or whose issue
+ * closed (see autoCleanable for which count), and that no running process works in; when
+ * the processes cannot be listed, it cleans up none. It never lists every clone: it looks
+ * only in clones with worktrees the app or Claude Code made, or with records, so it is
+ * cheap to run on a timer. It also checks the records against git (see reconcile), and
+ * counts the linked worktrees of every clone from their git directories, again without
+ * running git. The report is kept for LastSweep, and an event.WorktreesUpdated is emitted when a
  * worktree was removed or either count changed.
  */
 export function Sweep(): $CancellablePromise<$models.SweepReport> {

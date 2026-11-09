@@ -1,23 +1,27 @@
 import { brand } from '../../generated/brand'
 import { counted } from '../../lib/format'
-import type { Profile } from '../../platform'
+import { planPhrase } from '../../lib/launch'
+import { useQuery } from '../../lib/useQuery'
+import { agentVersions, type AgentInfo, type Profile } from '../../platform'
 import { chipClass } from '../controls'
 import { Group, Note } from './rows'
 
-// permissionLabels name a profile's permission mode for people. A mode not listed here
-// shows as stored.
-const permissionLabels: Readonly<Record<string, string>> = {
-  full: 'Full access',
-  bypassPermissions: 'Full access',
-  '': 'Asks first',
-  default: 'Asks first',
-  acceptEdits: 'Accepts edits',
-  plan: 'Plans only',
+// permissionLabel names a profile's permission mode for people, in its agent's words. A
+// mode the agent does not list shows as stored.
+function permissionLabel(agent: AgentInfo, mode: string): string {
+  switch (mode) {
+    case 'full':
+      return 'Full access'
+    case '':
+      return 'Asks first'
+    default:
+      return agent.permissionModes.find((m) => m.value === mode)?.label ?? mode
+  }
 }
 
 // profileTraits lists what a profile sets for a session, in the order a row shows them:
 // model, effort, plan mode, any extras, and its permissions.
-function profileTraits(profile: Profile): string[] {
+function profileTraits(agent: AgentInfo, profile: Profile): string[] {
   const traits: string[] = []
   const addDirs = profile.addDirs.length
   const extraArgs = profile.extraArgs.length
@@ -32,7 +36,7 @@ function profileTraits(profile: Profile): string[] {
   }
 
   if (profile.planMode) {
-    traits.push('Starts in plan mode')
+    traits.push(`Starts ${planPhrase(agent)}`)
   }
 
   if (addDirs > 0) {
@@ -47,22 +51,68 @@ function profileTraits(profile: Profile): string[] {
     traits.push(counted(env, 'environment variable', 'environment variables'))
   }
 
-  traits.push(permissionLabels[profile.permissionMode] ?? profile.permissionMode)
+  traits.push(permissionLabel(agent, profile.permissionMode))
 
   return traits
 }
 
-// ProfilesSection lists every profile with the folder it runs from, what it sets for a
-// session, and whether its folder has gone missing, then says how profiles are found.
-export function ProfilesSection({ profiles }: { profiles: readonly Profile[] }) {
+// loginCommand is the command that signs an agent in with a profile.
+function loginCommand(agent: AgentInfo, profile: Profile): string {
+  return profile.configDir === ''
+    ? `${agent.command} login`
+    : `${agent.configEnv}=${profile.folder} ${agent.command} login`
+}
+
+// Code is a short span of code in a note.
+function Code({ children }: { children: string }) {
+  return <code className="font-mono">{children}</code>
+}
+
+// markerList names an agent's config markers, as in ".claude.json, settings.json, or
+// projects/".
+function markerList(agent: AgentInfo) {
+  const names = agent.markers.map((m) => (m.dir ? `${m.name}/` : m.name))
+
+  return names.map((name, i) => (
+    <span key={name}>
+      {i === 0 ? '' : i === names.length - 1 ? ', or ' : ', '}
+      <Code>{name}</Code>
+    </span>
+  ))
+}
+
+interface AgentProfilesProps {
+  agent: AgentInfo
+  // version is the agent's installed version, or "" while it is checked or unknown.
+  version: string
+  profiles: readonly Profile[]
+}
+
+// AgentProfiles lists one agent's profiles, each with the folder it runs from, what it
+// sets for a session, whether its folder has gone missing, and whether it is signed in,
+// under the agent's version and where its command is.
+function AgentProfiles({ agent, version, profiles }: AgentProfilesProps) {
   return (
-    <div className="flex flex-col gap-3">
+    <section aria-label={`${agent.name} profiles`} className="flex flex-col gap-2">
+      <h3 className="flex items-baseline gap-2 text-sm font-semibold">
+        {agent.name}
+        {version !== '' && <span className="font-mono text-xs font-normal text-muted">{version}</span>}
+        <span className={`text-xs font-normal ${agent.installed ? 'text-muted' : 'text-warning'}`}>
+          {agent.installed ? agent.path : `${agent.command} isn’t installed`}
+        </span>
+      </h3>
       {profiles.length === 0 ? (
         <Group>
-          <p className="px-4 py-3.5 text-sm text-muted">No agent profiles were found in your home folder.</p>
+          <p className="px-4 py-3.5 text-sm text-muted">
+            No {agent.name} profiles were found in your home folder. Run <Code>{agent.command}</Code> once so it makes{' '}
+            <Code>{`~/${agent.configDir}`}</Code>.
+          </p>
         </Group>
       ) : (
-        <ul aria-label="Profiles" className="divide-y divide-border rounded-lg border border-border bg-surface">
+        <ul
+          aria-label={`${agent.name} profiles`}
+          className="divide-y divide-border rounded-lg border border-border bg-surface"
+        >
           {profiles.map((profile) => (
             <li key={profile.name} className="flex items-center justify-between gap-6 px-4 py-3">
               <div className="min-w-0">
@@ -70,6 +120,11 @@ export function ProfilesSection({ profiles }: { profiles: readonly Profile[] }) 
                 <p title={profile.folder} className="truncate font-mono text-xs text-muted">
                   {profile.folder}
                 </p>
+                {!profile.signedIn && (
+                  <p className="mt-0.5 text-xs text-warning">
+                    Not signed in: run <Code>{loginCommand(agent, profile)}</Code>
+                  </p>
+                )}
               </div>
               <ul aria-label={`${profile.name} settings`} className="flex shrink-0 flex-wrap justify-end gap-1.5">
                 {profile.missing && (
@@ -77,7 +132,12 @@ export function ProfilesSection({ profiles }: { profiles: readonly Profile[] }) 
                     Folder missing
                   </li>
                 )}
-                {profileTraits(profile).map((trait) => (
+                {!profile.signedIn && (
+                  <li className="rounded-full border border-warning px-2 py-0.5 text-xs whitespace-nowrap text-warning">
+                    Not signed in
+                  </li>
+                )}
+                {profileTraits(agent, profile).map((trait) => (
                   <li key={trait} className={chipClass}>
                     {trait}
                   </li>
@@ -88,14 +148,32 @@ export function ProfilesSection({ profiles }: { profiles: readonly Profile[] }) 
         </ul>
       )}
       <Note>
-        {brand.name} looks for profiles in your home folder each time it starts.{' '}
-        <code className="font-mono">~/.claude</code> is the default profile, and each{' '}
-        <code className="font-mono">~/.claude_&lt;name&gt;</code> or{' '}
-        <code className="font-mono">~/.claude-&lt;name&gt;</code> folder the agent has run with becomes profile{' '}
-        <code className="font-mono">&lt;name&gt;</code>. A folder counts only when it holds{' '}
-        <code className="font-mono">.claude.json</code>, <code className="font-mono">settings.json</code>, or{' '}
-        <code className="font-mono">projects/</code>, so folders other tools name the same way are left out.
+        <Code>{`~/${agent.configDir}`}</Code> is {agent.name}&apos;s default profile, and each{' '}
+        <Code>{`~/${agent.configDir}_<name>`}</Code> or <Code>{`~/${agent.configDir}-<name>`}</Code> folder becomes
+        profile <Code>{'<name>'}</Code>, run with <Code>{agent.configEnv}</Code> set to it. A folder counts only when it
+        holds {markerList(agent)}, so folders other tools name the same way are left out.
       </Note>
+    </section>
+  )
+}
+
+// ProfilesSection lists every coding agent's profiles, grouped by agent, then says how
+// profiles are found.
+export function ProfilesSection({ agents, profiles }: { agents: readonly AgentInfo[]; profiles: readonly Profile[] }) {
+  // The versions come from the agents' commands, read once for each build and then kept.
+  const versions = useQuery(() => agentVersions(), [])
+
+  return (
+    <div className="flex flex-col gap-6">
+      {agents.map((agent) => (
+        <AgentProfiles
+          key={agent.id}
+          agent={agent}
+          version={versions.data?.find((v) => v.agent === agent.id)?.version ?? ''}
+          profiles={profiles.filter((p) => p.agent === agent.id)}
+        />
+      ))}
+      <Note>{brand.name} looks for profiles in your home folder each time it starts.</Note>
     </div>
   )
 }

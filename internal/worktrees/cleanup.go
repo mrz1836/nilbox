@@ -3,8 +3,7 @@ package worktrees
 import (
 	"context"
 	"fmt"
-
-	"github.com/mrz1836/nilbox/internal/localrepos"
+	"strings"
 )
 
 // Unlock releases a lock the coding agent wrote for a session that has certainly ended,
@@ -23,29 +22,16 @@ func (s *Service) Unlock(ctx context.Context, repoPath, path string) error {
 }
 
 // CleanUp removes one finished worktree: its pull request merged or its issue closed, it
-// has no uncommitted changes, every commit it has is on GitHub, and no session runs in it.
+// has no uncommitted changes, every commit it has is on GitHub, and no session runs in it,
+// by its lock or as a running process.
 // The worktree is assessed again first, GitHub included. It releases the lock of an agent
-// session that has ended, removes the worktree without --force, and deletes its own
-// worktree-<name> branch while that still points at the commit checked.
-func (s *Service) CleanUp(ctx context.Context, repoPath, path string) (RemoveResult, error) {
+// session that has ended, removes the worktree without --force, and deletes the branches
+// named, of those it offers, as Remove does.
+func (s *Service) CleanUp(ctx context.Context, repoPath, path string, branches []string) (RemoveResult, error) {
 	s.act.Lock()
 	defer s.act.Unlock()
 
-	g, root, _, err := s.prepare(ctx)
-	if err != nil {
-		return RemoveResult{}, err
-	}
-
-	if !s.underRoot(repoPath, root) {
-		return RemoveResult{}, fmt.Errorf("%w: %s", ErrOutsideCloneRoot, s.display(repoPath))
-	}
-
-	clone, err := localrepos.Inspect(ctx, repoPath, s.run)
-	if err != nil {
-		return RemoveResult{}, err
-	}
-
-	snap, err := s.assessClones(ctx, g, root, []localrepos.LocalRepo{clone})
+	g, snap, err := s.assessClone(ctx, repoPath)
 	if err != nil {
 		return RemoveResult{}, err
 	}
@@ -55,7 +41,7 @@ func (s *Service) CleanUp(ctx context.Context, repoPath, path string) (RemoveRes
 		return RemoveResult{}, err
 	}
 
-	res := s.cleanUpRow(ctx, g, repoPath, wt, false)
+	res := s.cleanUpRow(ctx, g, repoPath, wt, false, branches)
 	if !res.Removed {
 		return res, fmt.Errorf("%w: %s: %s", ErrCleanUpFailed, wt.DisplayPath, res.Reason)
 	}
@@ -63,9 +49,11 @@ func (s *Service) CleanUp(ctx context.Context, repoPath, path string) (RemoveRes
 	return res, nil
 }
 
-// CleanUpFinished cleans up every finished worktree under the clone root, one at a time,
-// and reports each outcome. Each is checked again just before it is removed.
-func (s *Service) CleanUpFinished(ctx context.Context) ([]RemoveResult, error) {
+// CleanUpFinished cleans up the finished worktrees picked, one at a time, each with the
+// branches picked for it, and reports each outcome. Each is checked against a fresh
+// listing, GitHub included, and again just before it is removed: one no longer finished
+// is left, with why.
+func (s *Service) CleanUpFinished(ctx context.Context, picks []Pick) ([]RemoveResult, error) {
 	s.act.Lock()
 	defer s.act.Unlock()
 
@@ -83,18 +71,24 @@ func (s *Service) CleanUpFinished(ctx context.Context) ([]RemoveResult, error) {
 		return nil, err
 	}
 
-	results := make([]RemoveResult, 0, snap.FinishedCount)
+	results := make([]RemoveResult, 0, len(picks))
 
-	for repo, wt := range rows(snap.Repos) {
-		if !wt.CanCleanUp {
-			continue
-		}
-
+	for _, p := range picks {
 		if err = ctx.Err(); err != nil {
 			return results, err
 		}
 
-		results = append(results, s.cleanUpRow(ctx, g, repo.Path, *wt, false))
+		wt, ok := findWorktree(snap, p.Path)
+
+		switch {
+		case !ok:
+			results = append(results, pickRefused(p, s.display(p.Path), ErrNotAWorktree))
+		case !wt.CanCleanUp:
+			results = append(results, pickRefused(p, wt.DisplayPath, fmt.Errorf("%w: %s", ErrNotFinished,
+				notFinishedReason(wt))))
+		default:
+			results = append(results, s.cleanUpRow(ctx, g, p.RepoPath, wt, false, p.Branches))
+		}
 	}
 
 	return results, nil
@@ -146,16 +140,20 @@ func (s *Service) cleanUpRefusal(wt Worktree, found bool, path, linkError string
 	}
 }
 
-// cleanUpRow removes one worktree assessed as finished, records it in the history, and
-// reports the outcome; automatic tells a sweep from the user. Each step checks git again:
-// the lock must be the one assessed and its session still ended, the worktree must still
-// have the commit assessed checked out, git refuses one with uncommitted changes, and the
-// branch is deleted only while it still points at that commit and no worktree has it
-// checked out.
-func (s *Service) cleanUpRow(ctx context.Context, g git, repoPath string, wt Worktree, automatic bool) RemoveResult {
-	res := RemoveResult{RepoPath: repoPath, Path: wt.Path, DisplayPath: wt.DisplayPath, Item: itemName(wt.Item)}
+// cleanUpRow removes one worktree assessed as finished, with the branches named, records
+// it in the history, and reports the outcome; automatic tells a sweep from the user. Each
+// step checks git again: the lock must be the one assessed and its session still ended,
+// the worktree must still have the commit assessed checked out, git refuses one with
+// uncommitted changes, and a branch is deleted only when it may (see deleteChosen).
+func (s *Service) cleanUpRow(ctx context.Context, g git, repoPath string, wt Worktree, automatic bool,
+	branches []string,
+) RemoveResult {
+	res := RemoveResult{
+		RepoPath: repoPath, Path: wt.Path, DisplayPath: wt.DisplayPath, Item: itemName(wt.Item),
+		DeletedBranches: []string{},
+	}
 
-	if err := s.removeFinished(ctx, g, repoPath, wt); err != nil {
+	if err := s.removeFinished(ctx, g, repoPath, wt, automatic); err != nil {
 		res.Reason = reasonOf(err)
 
 		return res
@@ -163,31 +161,32 @@ func (s *Service) cleanUpRow(ctx context.Context, g git, repoPath string, wt Wor
 
 	res.Removed = true
 
-	s.forgetLaunch(ctx, wt.Path)
+	s.forgetRecord(ctx, wt.Path)
 
-	if wt.OwnBranch {
-		if err := s.deleteOwnBranch(ctx, g, repoPath, wt.Branch, wt.Head); err != nil {
-			res.Reason = "kept the branch " + wt.Branch + ": " + reasonOf(err)
-		} else {
-			res.DeletedBranch = wt.Branch
-		}
-	}
+	deleted, kept := s.deleteChosen(ctx, g, repoPath, wt, branches)
+	res.DeletedBranches, res.Reason = deleted, strings.Join(kept, "; ")
 
-	s.recordCleanup(ctx, repoPath, wt, res.DeletedBranch, automatic)
+	s.recordCleanup(ctx, repoPath, wt, strings.Join(deleted, ", "), automatic)
 
 	return res
 }
 
 // removeFinished releases a finished worktree's stale lock, if it has one, and removes it
-// without --force while it still has the commit assessed checked out.
-func (s *Service) removeFinished(ctx context.Context, g git, repoPath string, wt Worktree) error {
+// without --force while it still has the commit assessed checked out and no running
+// process works in it. automatic also leaves it when the processes cannot be listed.
+func (s *Service) removeFinished(ctx context.Context, g git, repoPath string, wt Worktree, automatic bool) error {
 	if wt.Locked {
+		// Checked before the lock is released, too, so a worktree in use keeps its lock.
+		if err := s.checkSessions(ctx, wt.Path, automatic); err != nil {
+			return err
+		}
+
 		if err := s.unlockEntry(ctx, g, repoPath, wt.Path, wt.LockReason); err != nil {
 			return err
 		}
 	}
 
-	_, e, err := s.removable(ctx, repoPath, wt.Path, wt.Head)
+	e, err := s.removable(ctx, repoPath, wt.Path, wt.Head, automatic)
 	if err != nil {
 		return err
 	}
@@ -195,41 +194,12 @@ func (s *Service) removeFinished(ctx context.Context, g git, repoPath string, wt
 	return s.removeEntry(ctx, g, repoPath, e, false)
 }
 
-// deleteOwnBranch deletes the agent's branch for a removed worktree, refusing while any
-// worktree has it checked out. git deletes it only while it still points at head.
-func (s *Service) deleteOwnBranch(ctx context.Context, g git, repoPath, branch, head string) error {
-	if !isCommitID(head) {
-		return fmt.Errorf("%w: no commit to compare the branch with", ErrChanged)
-	}
-
-	entries, stderr, err := g.list(ctx, repoPath)
-	if err != nil {
-		return fmt.Errorf("list the worktrees of %s: %w", s.display(repoPath), gitError(err, stderr))
-	}
-
-	for _, e := range entries {
-		if e.Branch == branch {
-			return ErrBranchInUse
-		}
-	}
-
-	if stderr, err = g.deleteBranch(ctx, repoPath, branch, head); err != nil {
-		return gitError(err, stderr)
-	}
-
-	return nil
-}
-
-// forgetLaunch removes the launch record of a removed worktree. A record left behind is
-// pruned by the next sweep, so a failure is only logged.
-func (s *Service) forgetLaunch(ctx context.Context, path string) {
-	for _, l := range s.launchRecords(ctx) {
-		if launchKey(l.ClonePath, l.Worktree) != resolvedPath(path) {
-			continue
-		}
-
-		if err := s.launches.ForgetLaunch(ctx, l.ClonePath, l.Worktree); err != nil {
-			s.logger.WarnContext(ctx, "could not forget a worktree launch", "error", err)
+// forgetRecord removes the record of a removed worktree. A record left behind is dropped
+// by the next listing or sweep, so a failure is only logged.
+func (s *Service) forgetRecord(ctx context.Context, path string) {
+	for _, r := range s.records(ctx) {
+		if samePath(r.Dir(), path) {
+			s.forget(ctx, r)
 		}
 	}
 }
@@ -247,6 +217,10 @@ func findWorktree(snap Snapshot, path string) (Worktree, bool) {
 
 // notFinishedReason says why CleanUp refuses a worktree that is not finished.
 func notFinishedReason(wt Worktree) string {
+	if len(wt.InUse) > 0 {
+		return (&InUseError{Sessions: wt.InUse}).Error()
+	}
+
 	if wt.Locked && !wt.StaleLock {
 		return lockedReason(wt)
 	}

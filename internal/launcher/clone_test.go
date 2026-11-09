@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/repo"
@@ -177,7 +178,8 @@ func TestCloneThenLaunch(t *testing.T) {
 	res, script := h.launch(t, LaunchRequest{ItemID: h.orphanPR})
 
 	assert.Equal(t, "~/projects/missing-repo", res.ClonePath)
-	assert.Contains(t, script, "cd -- "+shQuote(target)+" || exit 1\n")
+	assert.Contains(t, script, "cd -- "+shQuote(filepath.Join(filepath.Dir(target), "."+brand.Slug, "worktrees",
+		"missing-repo", "pr-9"))+" || exit 1\n", "the session starts in the new clone's worktree")
 	assert.Len(t, gh.recorded(), 1, "the launch runs no gh command")
 
 	for _, argv := range h.git.recorded()[before:] {

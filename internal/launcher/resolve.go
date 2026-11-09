@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
 	"slices"
 
 	"github.com/mrz1836/nilbox/internal/agent"
@@ -50,9 +49,15 @@ var (
 	// ErrNoPrompt is returned when no prompt applies to the item's kind.
 	ErrNoPrompt = errors.New("no prompt applies to this kind of item; add one on the Prompts tab")
 
-	// ErrNoProfile is returned when no profile is stored to launch with.
-	ErrNoProfile = errors.New("no agent profile was found; run the agent once so it creates ~/.claude")
+	// ErrNoProfile is returned when no profile of the agent is stored to launch with.
+	ErrNoProfile = errors.New("no profile was found")
 )
+
+// noProfile says the agent has no profile, and how to make one.
+func noProfile(a agent.Agent) error {
+	return fmt.Errorf("%w: no %s profile was found; run %s once so it creates ~/%s", ErrNoProfile, a.Name, a.Command,
+		a.ConfigDir)
+}
 
 // Setting is one resolved launch setting: its value and where it came from, and the
 // value it would have without this launch's own choice, which the launch menu offers as
@@ -96,9 +101,13 @@ type Resolution struct {
 	// Trusted reports whether the item's author is trusted.
 	Trusted bool `json:"trusted"`
 
-	// Agent is the coding tool, and AgentSource where it was chosen.
-	Agent       agent.Agent `json:"agent"`
-	AgentSource Source      `json:"agentSource"`
+	// Agent is the coding agent, and AgentSource where it was chosen. AgentInherited is
+	// the agent without this launch's own choice, and AgentInheritedSource where that
+	// came from.
+	Agent                agent.Agent `json:"agent"`
+	AgentSource          Source      `json:"agentSource"`
+	AgentInherited       agent.ID    `json:"agentInherited"`
+	AgentInheritedSource Source      `json:"agentInheritedSource"`
 
 	Profile  Setting      `json:"profile"`
 	Prompt   PromptChoice `json:"prompt"`
@@ -107,8 +116,8 @@ type Resolution struct {
 	PlanMode Toggle       `json:"planMode"`
 	Worktree Toggle       `json:"worktree"`
 
-	// ExtraArgs are every extra argument, in order: the profile's, the org's, the
-	// repository's, and the prompt's.
+	// ExtraArgs are every extra argument for the agent, in order: the profile's, the
+	// org's, the repository's, and the prompt's.
 	ExtraArgs []string `json:"extraArgs"`
 
 	// Warnings explain settings that were skipped, such as a repository default naming
@@ -122,7 +131,7 @@ type world struct {
 	settings LaunchSettings
 	defaults prompts.DefaultPrompts
 	prompts  map[int64]prompts.Prompt
-	profiles map[string]profiles.Profile
+	profiles map[profileKey]profiles.Profile
 	rules    launchdefaults.Index
 
 	// policy decides items' trust with the trusted bots in the settings.
@@ -156,7 +165,7 @@ func (s *Service) loadWorld(ctx context.Context) (world, error) {
 		settings: prefs, defaults: library.Defaults, rules: launchdefaults.NewIndex(rules),
 		policy:   trust.NewPolicy(prefs.TrustedBots),
 		prompts:  make(map[int64]prompts.Prompt, len(library.Prompts)),
-		profiles: make(map[string]profiles.Profile, len(stored)),
+		profiles: make(map[profileKey]profiles.Profile, len(stored)),
 	}
 
 	for _, p := range library.Prompts {
@@ -164,10 +173,38 @@ func (s *Service) loadWorld(ctx context.Context) (world, error) {
 	}
 
 	for _, p := range stored {
-		w.profiles[p.Name] = p
+		w.profiles[profileKey{agent: p.Agent, name: p.Name}] = p
 	}
 
 	return w, nil
+}
+
+// profileKey identifies a stored profile: its agent and its name.
+type profileKey struct {
+	agent agent.ID
+	name  string
+}
+
+// profileOf returns the agent's profile named name.
+func (w world) profileOf(id agent.ID, name string) (profiles.Profile, bool) {
+	p, ok := w.profiles[profileKey{agent: id, name: name}]
+
+	return p, ok
+}
+
+// profileNames returns the names of the agent's profiles, sorted.
+func (w world) profileNames(id agent.ID) []string {
+	var names []string
+
+	for key := range w.profiles {
+		if key.agent == id {
+			names = append(names, key.name)
+		}
+	}
+
+	slices.Sort(names)
+
+	return names
 }
 
 // subject is what resolution needs to know about an item.
@@ -184,14 +221,18 @@ type resolver struct {
 	item     subject
 	org      *launchdefaults.Defaults
 	repo     *launchdefaults.Defaults
+	agent    agent.Agent
 	warnings []string
 }
 
 // resolve works out every launch setting for an item: the request's own choices first,
 // then the chosen prompt's settings, the repository's launch defaults, its owner's, the
-// profile's, and the app's settings. A stored default that no longer makes sense (a
-// profile or prompt that is gone, or a prompt for the other kind of item) is skipped
-// with a warning; a request naming one is an error.
+// profile's, and the app's settings. The agent is resolved first, and every per-agent
+// setting (the profile, the model, and the extra flags) is that agent's. A stored default
+// that no longer makes sense (an agent this build does not know, a profile or prompt that
+// is gone, a prompt for the other kind of item, or an effort level the agent lacks) is
+// skipped with a warning; a request naming an agent, profile, or prompt that does not
+// exist is an error.
 func resolve(w world, it subject, req LaunchRequest) (Resolution, profiles.Profile, prompts.Prompt, error) {
 	r := &resolver{w: w, item: it}
 	r.org, r.repo = w.rules.For(it.repo)
@@ -199,7 +240,10 @@ func resolve(w world, it subject, req LaunchRequest) (Resolution, profiles.Profi
 	res := Resolution{
 		ItemID: it.id, Kind: it.kind, Owner: it.repo.Owner, Repo: it.repo.String(), Trusted: it.trusted,
 	}
-	res.Agent, res.AgentSource = r.agent()
+
+	if err := r.resolveAgent(req.Agent, &res); err != nil {
+		return Resolution{}, profiles.Profile{}, prompts.Prompt{}, err
+	}
 
 	profile, err := r.profile(req.Profile, &res)
 	if err != nil {
@@ -211,10 +255,11 @@ func resolve(w world, it subject, req LaunchRequest) (Resolution, profiles.Profi
 		return Resolution{}, profiles.Profile{}, prompts.Prompt{}, err
 	}
 
-	res.Model = r.text(req.Model, prompt.Model, func(d *launchdefaults.Defaults) string { return d.Model },
+	id := r.agent.ID
+	res.Model = r.text(req.Model, prompt.Models[id], func(d *launchdefaults.Defaults) string { return d.Models[id] },
 		profile.Model, SourceProfile)
-	res.Effort = r.text(req.Effort, prompt.Effort, func(d *launchdefaults.Defaults) string { return d.Effort },
-		profile.Effort, SourceProfile)
+	res.Effort = r.effort(r.text(req.Effort, prompt.Effort, func(d *launchdefaults.Defaults) string { return d.Effort },
+		profile.Effort, SourceProfile))
 	res.PlanMode = r.toggle(req.PlanMode, prompt.PlanMode, func(d *launchdefaults.Defaults) *bool { return d.PlanMode },
 		profile.PlanMode, SourceProfile)
 	res.Worktree = r.toggle(req.Worktree, prompt.Worktree, func(d *launchdefaults.Defaults) *bool { return d.Worktree },
@@ -251,27 +296,86 @@ type sourced struct {
 	source   Source
 }
 
-// agent resolves the coding tool: the repository's, else the org's, else the app's.
-func (r *resolver) agent() (agent.Agent, Source) {
+// resolveAgent resolves the coding agent: the request's, else the repository's, the
+// org's, or the app's default agent, else Claude.
+func (r *resolver) resolveAgent(requested agent.ID, res *Resolution) error {
+	inherited, source := r.inheritedAgent()
+	r.agent, res.AgentSource = inherited, source
+	res.AgentInherited, res.AgentInheritedSource = inherited.ID, source
+
+	if requested != agent.Inherit {
+		a, err := agent.Lookup(requested)
+		if err != nil {
+			return err
+		}
+
+		r.agent, res.AgentSource = a, SourceLaunch
+	}
+
+	res.Agent = r.agent
+
+	return nil
+}
+
+// inheritedAgent returns the agent a launch on the item starts when nothing chooses one.
+func inheritedAgent(w world, it subject) agent.Agent {
+	r := &resolver{w: w, item: it}
+	r.org, r.repo = w.rules.For(it.repo)
+	a, _ := r.inheritedAgent()
+
+	return a
+}
+
+// inheritedAgent resolves the agent without the request's choice.
+func (r *resolver) inheritedAgent() (agent.Agent, Source) {
 	for _, l := range r.layers() {
-		if l.defaults.Agent == "" {
+		if l.defaults.Agent == agent.Inherit {
 			continue
 		}
 
-		a, err := agent.Lookup(l.defaults.Agent)
-		if err == nil {
+		if a, err := agent.Lookup(l.defaults.Agent); err == nil {
 			return a, l.source
 		}
 
-		r.warn("The %s default names a coding tool this version doesn't know (%q), so %s is used.",
-			l.source, l.defaults.Agent, agent.Default().Name)
+		r.warn("The %s default names a coding agent this version doesn't know (%q), so it was skipped.",
+			l.source, l.defaults.Agent)
+	}
+
+	if a, err := agent.Lookup(r.w.settings.DefaultAgent); err == nil && r.w.settings.DefaultAgent != agent.Inherit {
+		return a, SourceApp
 	}
 
 	return agent.Default(), SourceApp
 }
 
-// profile resolves the profile: the request's, else the repository's, the org's, or the
-// app's default profile, else the default profile, else the first one stored.
+// effort keeps a resolved effort level only when the agent takes it. A level it lacks,
+// such as Codex's ultra for Claude, is skipped with a warning, and the agent's own
+// default is used.
+func (r *resolver) effort(s Setting) Setting {
+	check := func(value string, source Source) (string, Source) {
+		if value == "" || agent.ValidateEffort(r.agent.ID, value) == nil {
+			return value, source
+		}
+
+		r.warn("%s doesn't take the %q effort level, so its default is used.", r.agent.Name, value)
+
+		return "", SourceAgent
+	}
+
+	s.Inherited, s.InheritedSource = check(s.Inherited, s.InheritedSource)
+
+	if s.Source == SourceLaunch {
+		s.Value, s.Source = check(s.Value, s.Source)
+	} else {
+		s.Value, s.Source = s.Inherited, s.InheritedSource
+	}
+
+	return s
+}
+
+// profile resolves the agent's profile: the request's, else the repository's, the org's,
+// or the app's default profile for the agent, else the agent's default profile, else its
+// first one stored.
 func (r *resolver) profile(requested string, res *Resolution) (profiles.Profile, error) {
 	inherited, source, err := r.inheritedProfile()
 	if err != nil {
@@ -284,9 +388,9 @@ func (r *resolver) profile(requested string, res *Resolution) (profiles.Profile,
 		return inherited, nil
 	}
 
-	p, ok := r.w.profiles[requested]
+	p, ok := r.w.profileOf(r.agent.ID, requested)
 	if !ok {
-		return profiles.Profile{}, fmt.Errorf("%w: %q", profiles.ErrProfileNotFound, requested)
+		return profiles.Profile{}, fmt.Errorf("%w: %s %q", profiles.ErrProfileNotFound, r.agent.Name, requested)
 	}
 
 	res.Profile.Value, res.Profile.Source = p.Name, SourceLaunch
@@ -294,32 +398,36 @@ func (r *resolver) profile(requested string, res *Resolution) (profiles.Profile,
 	return p, nil
 }
 
-// inheritedProfile resolves the profile without the request's choice.
+// inheritedProfile resolves the agent's profile without the request's choice.
 func (r *resolver) inheritedProfile() (profiles.Profile, Source, error) {
+	id := r.agent.ID
+
 	for _, c := range r.layers() {
-		if name := c.defaults.Profile; name != "" {
-			if p, ok := r.w.profiles[name]; ok {
+		if name := c.defaults.Profiles[id]; name != "" {
+			if p, ok := r.w.profileOf(id, name); ok {
 				return p, c.source, nil
 			}
 
-			r.warn("The %s default profile %q no longer exists, so it was skipped.", c.source, name)
+			r.warn("The %s default %s profile %q no longer exists, so it was skipped.", c.source, r.agent.Name, name)
 		}
 	}
 
-	if p, ok := r.w.profiles[r.w.settings.DefaultProfile]; ok {
+	if p, ok := r.w.profileOf(id, r.w.settings.DefaultProfiles[id]); ok {
 		return p, SourceApp, nil
 	}
 
-	if p, ok := r.w.profiles[profiles.DefaultName]; ok {
+	if p, ok := r.w.profileOf(id, profiles.DefaultName); ok {
 		return p, SourceApp, nil
 	}
 
-	names := slices.Sorted(maps.Keys(r.w.profiles))
+	names := r.w.profileNames(id)
 	if len(names) == 0 {
-		return profiles.Profile{}, "", ErrNoProfile
+		return profiles.Profile{}, "", noProfile(r.agent)
 	}
 
-	return r.w.profiles[names[0]], SourceApp, nil
+	p, _ := r.w.profileOf(id, names[0])
+
+	return p, SourceApp, nil
 }
 
 // prompt resolves the prompt: the request's, else the repository's, the org's, or the
@@ -435,25 +543,34 @@ func (r *resolver) toggle(requested, fromPrompt *bool, pick func(*launchdefaults
 	return t
 }
 
-// extraArgs returns every extra argument in order: the profile's, the org's, the
-// repository's, and the prompt's. The launch defaults' and the prompt's are checked
-// again, in case the database was edited by hand.
+// extraArgs returns every extra argument for the agent, in order: the profile's, the
+// org's, the repository's, and the prompt's. The launch defaults' and the prompt's are
+// checked again, in case the database was edited by hand, and then the whole list, since
+// an option that ends one layer takes the next layer's first argument as its value, as
+// an org's -c would a repository's model=x.
 func (r *resolver) extraArgs(profile profiles.Profile, prompt prompts.Prompt) ([]string, error) {
+	id := r.agent.ID
 	args := slices.Clone(profile.ExtraArgs)
 
 	for _, l := range slices.Backward(r.layers()) {
-		if err := agent.CheckExtra(l.defaults.ExtraArgs); err != nil {
-			return nil, fmt.Errorf("the %s launch defaults' flags: %w", l.source, err)
+		if err := agent.CheckExtra(id, l.defaults.ExtraArgs[id]); err != nil {
+			return nil, fmt.Errorf("the %s launch defaults' %s flags: %w", l.source, r.agent.Name, err)
 		}
 
-		args = append(args, l.defaults.ExtraArgs...)
+		args = append(args, l.defaults.ExtraArgs[id]...)
 	}
 
-	if err := agent.CheckExtra(prompt.ExtraArgs); err != nil {
-		return nil, fmt.Errorf("the %q prompt's flags: %w", prompt.Nickname, err)
+	if err := agent.CheckExtra(id, prompt.ExtraArgs[id]); err != nil {
+		return nil, fmt.Errorf("the %q prompt's %s flags: %w", prompt.Nickname, r.agent.Name, err)
 	}
 
-	return textutil.NonNil(append(args, prompt.ExtraArgs...)), nil
+	args = append(args, prompt.ExtraArgs[id]...)
+	if err := agent.CheckExtra(id, args); err != nil {
+		return nil, fmt.Errorf("the %s flags the profile, the launch defaults, and the prompt add together: %w",
+			r.agent.Name, err)
+	}
+
+	return textutil.NonNil(args), nil
 }
 
 // warn records a warning.

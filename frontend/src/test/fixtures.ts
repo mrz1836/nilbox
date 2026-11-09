@@ -3,6 +3,9 @@
 import { brand } from '../generated/brand'
 import type {
   Account,
+  Agent,
+  AgentInfo,
+  AgentVersion,
   AppNotification,
   BudgetGauge,
   BudgetReading,
@@ -11,17 +14,18 @@ import type {
   CloneTarget,
   FileCheck,
   ImportEntry,
-  Info,
   InboxItem,
-  ItemDetails,
   InboxList,
   InboxSnapshot,
+  Info,
+  ItemDetails,
   ItemResolution,
   LaunchDefaults,
   LaunchHold,
   LaunchPreview,
   LaunchResult,
   LinkedItem,
+  MergedBranch,
   Profile,
   Project,
   Prompt,
@@ -36,6 +40,7 @@ import type {
   Settings,
   SweepReport,
   Worktree,
+  WorktreeBranch,
   WorktreeCleanup,
   WorktreeRepo,
   WorktreesSnapshot,
@@ -51,9 +56,17 @@ export function appInfo(overrides: Partial<Info> = {}): Info {
     build: '0',
     system: 'macOS 15.1 (24B83)',
     arch: 'arm64',
-    bugReportUrl: 'https://github.com/acme-org/example-repo/issues/new',
     ...overrides,
   }
+}
+
+// agentVersions are both coding agents, installed, as their commands report their
+// versions.
+export function agentVersions(): AgentVersion[] {
+  return [
+    { agent: 'claude', name: 'Claude', installed: true, path: '~/.local/bin/claude', version: '2.1.319', error: '' },
+    { agent: 'codex', name: 'Codex', installed: true, path: '/opt/bin/codex', version: '0.163.0', error: '' },
+  ]
 }
 
 export function item(overrides: Partial<InboxItem> = {}): InboxItem {
@@ -140,12 +153,100 @@ export function details(overrides: Partial<ItemDetails> = {}): ItemDetails {
   }
 }
 
+// claudeAgent is Claude Code as the backend describes it.
+export function claudeAgent(overrides: Partial<Agent> = {}): Agent {
+  return {
+    id: 'claude',
+    name: 'Claude',
+    command: 'claude',
+    configEnv: 'CLAUDE_CONFIG_DIR',
+    configDir: '.claude',
+    markers: [
+      { name: '.claude.json', dir: false },
+      { name: 'settings.json', dir: false },
+      { name: 'projects', dir: true },
+    ],
+    effortLevels: [
+      { value: 'low', label: 'Low' },
+      { value: 'medium', label: 'Medium' },
+      { value: 'high', label: 'High' },
+      { value: 'xhigh', label: 'Extra high' },
+      { value: 'max', label: 'Max' },
+    ],
+    models: [
+      { value: 'fable', label: 'Fable' },
+      { value: 'opus', label: 'Opus' },
+      { value: 'sonnet', label: 'Sonnet' },
+      { value: 'haiku', label: 'Haiku' },
+    ],
+    permissionModes: [
+      { value: 'acceptEdits', label: 'Accepts edits' },
+      { value: 'plan', label: 'Plans only' },
+    ],
+    planLabel: 'Plan mode',
+    sessionNames: true,
+    authFile: '',
+    authEnv: [],
+    modelsCache: '',
+    ...overrides,
+  }
+}
+
+// codexAgent is OpenAI Codex as the backend describes it, with two models from its cache.
+export function codexAgent(overrides: Partial<Agent> = {}): Agent {
+  return {
+    id: 'codex',
+    name: 'Codex',
+    command: 'codex',
+    configEnv: 'CODEX_HOME',
+    configDir: '.codex',
+    markers: [
+      { name: 'auth.json', dir: false },
+      { name: 'config.toml', dir: false },
+      { name: 'sessions', dir: true },
+    ],
+    effortLevels: [
+      { value: 'low', label: 'Low' },
+      { value: 'medium', label: 'Medium' },
+      { value: 'high', label: 'High' },
+      { value: 'xhigh', label: 'Extra high' },
+      { value: 'max', label: 'Max' },
+      { value: 'ultra', label: 'Ultra' },
+    ],
+    models: [
+      { value: 'gpt-6-sol', label: 'GPT-6-Sol' },
+      { value: 'gpt-6-luna', label: 'GPT-6-Luna' },
+    ],
+    permissionModes: [
+      { value: 'read-only', label: 'Read-only' },
+      { value: 'workspace-write', label: 'Writes in the workspace' },
+      { value: 'danger-full-access', label: 'Full access, asks first' },
+    ],
+    planLabel: 'Read-only',
+    sessionNames: false,
+    authFile: 'auth.json',
+    authEnv: ['OPENAI_API_KEY', 'CODEX_API_KEY'],
+    modelsCache: 'models_cache.json',
+    ...overrides,
+  }
+}
+
+// agents are both coding agents, installed.
+export function agents(): AgentInfo[] {
+  return [
+    { ...claudeAgent(), installed: true, path: '/opt/bin/claude' },
+    { ...codexAgent(), installed: true, path: '/opt/bin/codex' },
+  ]
+}
+
 export function profile(overrides: Partial<Profile> = {}): Profile {
   return {
+    agent: 'claude',
     name: 'default',
     configDir: '',
     folder: '~/.claude',
     missing: false,
+    signedIn: true,
     model: '',
     effort: '',
     permissionMode: 'full',
@@ -159,7 +260,8 @@ export function profile(overrides: Partial<Profile> = {}): Profile {
 
 export function settings(overrides: Partial<Settings> = {}): Settings {
   return {
-    defaultProfile: 'default',
+    defaultAgent: 'claude',
+    defaultProfiles: { claude: 'default', codex: 'default' },
     worktreeDefault: true,
     worktreeAutoCleanup: true,
     terminal: 'iterm2',
@@ -171,6 +273,8 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     windowSize: { width: 1280, height: 800 },
     defaultWindowSize: { width: 1280, height: 800 },
     sensitiveFiles: { scope: 'collaborators', off: [], patterns: [] },
+    branches: { own: true, pullRequest: true, merged: true, protected: ['main', 'master'] },
+    defaultProtectedBranches: ['main', 'master'],
     sensitiveCategories: sensitiveCategories(),
     menuBar: true,
     bannersOff: [],
@@ -295,7 +399,11 @@ export function launchResult(overrides: Partial<LaunchResult> = {}): LaunchResul
   return {
     scriptPath: '~/launch/pr-7.command',
     clonePath: '~/projects/example-repo',
+    dir: `~/projects/.${brand.slug}/worktrees/example-repo/pr-7`,
     worktree: 'pr-7',
+    worktreeAction: 'create',
+    notice: '',
+    agent: 'claude',
     prompt: 'Review',
     profile: 'default',
     permission: 'full access',
@@ -314,12 +422,12 @@ export function prompt(overrides: Partial<Prompt> = {}): Prompt {
     nickname: 'Review',
     appliesTo: 'pr',
     body: 'Review pull request #{{.Number}} in {{.Repo}}: {{.Title}}\n{{.URL}}\n',
-    model: '',
+    models: {},
     effort: '',
     planMode: null,
     worktree: null,
-    extraArgs: [],
-    extraFlags: '',
+    extraArgs: {},
+    extraFlags: {},
     starterKey: 'review-pr',
     modified: false,
     usage: { defaults: ['pr'], orgs: [], repos: [], kinds: ['pr'] },
@@ -336,11 +444,11 @@ export function bundlePrompt(overrides: Partial<BundlePrompt> = {}): BundlePromp
     nickname: 'Security',
     appliesTo: 'any',
     body: 'Look for security problems in {{.URL}}\n',
-    model: '',
+    models: {},
     effort: '',
     planMode: null,
     worktree: null,
-    extraArgs: [],
+    extraArgs: {},
     starterKey: '',
     createdAt: '2026-11-07T09:00:00Z',
     updatedAt: '2026-11-07T09:30:00Z',
@@ -387,7 +495,7 @@ export function prompts(): Prompt[] {
       id: 2,
       name: 'Take a quick look for blockers',
       nickname: 'Quick look',
-      model: 'sonnet',
+      models: { claude: 'sonnet' },
       effort: 'low',
       worktree: false,
       starterKey: 'quick-look',
@@ -458,8 +566,10 @@ export function resolution(overrides: Partial<Resolution> = {}): Resolution {
     owner: 'acme-org',
     repo: 'acme-org/example-repo',
     trusted: true,
-    agent: { id: 'claude', name: 'Claude', command: 'claude' },
+    agent: claudeAgent(),
     agentSource: 'app',
+    agentInherited: 'claude',
+    agentInheritedSource: 'app',
     profile: { value: 'default', source: 'app', inherited: 'default', inheritedSource: 'app' },
     prompt: {
       id: 1,
@@ -488,15 +598,15 @@ export function launchDefaults(overrides: Partial<LaunchDefaults> = {}): LaunchD
     owner: 'acme-org',
     name: '',
     agent: '',
-    profile: 'work',
+    profiles: { claude: 'work' },
     prPromptId: null,
     issuePromptId: null,
-    model: '',
+    models: {},
     effort: '',
     planMode: null,
     worktree: null,
-    extraArgs: [],
-    extraFlags: '',
+    extraArgs: {},
+    extraFlags: {},
     updatedAt: '2026-06-15T09:00:00Z',
     ...overrides,
   }
@@ -505,9 +615,16 @@ export function launchDefaults(overrides: Partial<LaunchDefaults> = {}): LaunchD
 export function launchPreview(overrides: Partial<LaunchPreview> = {}): LaunchPreview {
   return {
     resolution: resolution(),
-    dir: '~/projects/example-repo',
-    worktree: 'pr-7',
-    command: "claude <prompt> --dangerously-skip-permissions '--name=Review · example-repo#7' --worktree '#7'",
+    dir: `~/projects/.${brand.slug}/worktrees/example-repo/pr-7`,
+    worktree: {
+      name: 'pr-7',
+      path: `~/projects/.${brand.slug}/worktrees/example-repo/pr-7`,
+      branch: 'worktree-pr-7',
+      action: 'create',
+      base: 'the pull request’s head',
+      dirty: 0,
+    },
+    command: "claude <prompt> --dangerously-skip-permissions '--name=Review · example-repo#7'",
     env: ['unset CLAUDE_CONFIG_DIR'],
     permission: 'full access',
     prompt: 'Review pull request #7 in acme-org/example-repo: Add the widget cache\n',
@@ -645,10 +762,16 @@ export function worktree(overrides: Partial<Worktree> = {}): Worktree {
     item: null,
     stage: '',
     ownBranch: true,
-    claudeCreated: true,
+    managed: true,
+    legacy: true,
+    agent: '',
+    lastLaunchedAt: '',
+    launches: 0,
+    inUse: [],
     canRemove: true,
     canForceRemove: false,
     canCleanUp: false,
+    branches: [ownBranch()],
     error: '',
     ...overrides,
   }
@@ -666,6 +789,7 @@ export function linkedItem(overrides: Partial<LinkedItem> = {}): LinkedItem {
     state: 'merged',
     closedAt: '2026-06-15T10:00:00Z',
     headOid: 'fc1c3975011e66491785ace891c893e4fc716587',
+    headRef: '',
     launched: true,
     ...overrides,
   }
@@ -700,9 +824,44 @@ export function removeResult(overrides: Partial<RemoveResult> = {}): RemoveResul
     path: '/home/user/projects/example-repo/.claude/worktrees/pr-7',
     displayPath: '~/projects/example-repo/.claude/worktrees/pr-7',
     removed: true,
-    deletedBranch: 'worktree-pr-7',
+    deletedBranches: ['worktree-pr-7'],
     item: 'acme-org/example-repo#7',
     reason: '',
+    ...overrides,
+  }
+}
+
+// ownBranch is pr-7's own worktree-pr-7 branch, which nothing keeps it from deleting.
+export function ownBranch(overrides: Partial<WorktreeBranch> = {}): WorktreeBranch {
+  return {
+    name: 'worktree-pr-7',
+    head: 'fc1c3975011e66491785ace891c893e4fc716587',
+    kind: 'own',
+    deletable: true,
+    reason: '',
+    ...overrides,
+  }
+}
+
+// mergedBranch is example-repo's feature-x, whose pull request #184 merged, at its head.
+export function mergedBranch(overrides: Partial<MergedBranch> = {}): MergedBranch {
+  return {
+    repoPath: '/home/user/projects/example-repo',
+    displayRepo: '~/projects/example-repo',
+    branch: {
+      name: 'feature-x',
+      head: 'fc1c3975011e66491785ace891c893e4fc716587',
+      kind: 'merged',
+      deletable: true,
+      reason: '',
+    },
+    pullRequest: {
+      repo: 'acme-org/example-repo',
+      number: 184,
+      title: 'Add locktimes',
+      url: 'https://github.com/acme-org/example-repo/pull/184',
+      mergedAt: '2026-06-12T12:00:00Z',
+    },
     ...overrides,
   }
 }
@@ -728,8 +887,10 @@ export function mainWorktree(overrides: Partial<Worktree> = {}): Worktree {
     displayPath: '~/projects/example-repo',
     branch: 'main',
     main: true,
-    claudeCreated: false,
+    managed: false,
+    legacy: false,
     canRemove: false,
+    branches: [],
     ...overrides,
   })
 }
@@ -755,6 +916,7 @@ export function worktreesSnapshot(overrides: Partial<WorktreesSnapshot> = {}): W
     reviewCount: 0,
     worktreeCount: 1,
     linkError: '',
+    sessionsUnknown: false,
     listedAt: '2026-06-15T12:00:00Z',
     ...overrides,
   }

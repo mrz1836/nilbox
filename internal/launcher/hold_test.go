@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 )
 
@@ -95,6 +96,25 @@ func (h *launchHarness) trusted(t *testing.T) bool {
 	return true
 }
 
+func TestLaunchMakesAPullRequestsWorktreeAtTheHeadItChecked(t *testing.T) {
+	t.Parallel()
+
+	h := newLaunchHarness(t)
+	h.withFiles(checkOf(holdHeadA, true, "main.go"))
+
+	res, err := h.service().Launch(t.Context(), LaunchRequest{ItemID: h.outsidePR})
+	require.NoError(t, err)
+	require.Nil(t, res.Hold)
+	require.Len(t, h.maker.ensures(), 1)
+	assert.Equal(t, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", h.maker.ensures()[0].Head,
+		"the worktree must start at the commit whose files were checked")
+
+	// An item whose files are not checked asks for no particular commit.
+	h.launch(t, LaunchRequest{ItemID: h.trustedPR})
+	require.Len(t, h.maker.ensures(), 2)
+	assert.Empty(t, h.maker.ensures()[1].Head)
+}
+
 func TestLaunchHoldsBackAPullRequestThatChangesAgentFiles(t *testing.T) {
 	t.Parallel()
 
@@ -113,12 +133,13 @@ func TestLaunchHoldsBackAPullRequestThatChangesAgentFiles(t *testing.T) {
 	assert.Equal(t, ".claude/settings.json", res.Hold.Files[0].Path)
 	assert.True(t, res.Hold.AtHead, "the worktree starts at the pull request's head")
 	assert.Equal(t, "pr-8", res.Hold.Worktree)
-	assert.Equal(t, "~/projects/example-repo", res.Hold.Dir)
+	assert.Equal(t, "~/projects/."+brand.Slug+"/worktrees/example-repo/pr-8", res.Hold.Dir)
 	assert.Empty(t, res.ScriptPath)
 
 	assert.Empty(t, h.iterm.opened, "nothing is started")
 	assert.Empty(t, h.launchFiles(t), "nothing is written")
 	assert.False(t, h.trusted(t), "the clone is not marked trusted")
+	assert.Empty(t, h.maker.ensures(), "no worktree is made, so the pull request's files are not checked out")
 
 	// Confirming that hold launches, with the files named in the prompt.
 	res, err = h.service().Launch(t.Context(), LaunchRequest{ItemID: h.outsidePR, Confirmed: res.Hold.Key})

@@ -15,8 +15,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/procs"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/worklog"
@@ -37,6 +40,19 @@ type fakeGitHub struct {
 	states map[string]ItemState
 	err    error
 	calls  [][]item.Ref
+
+	// merged answers MergedPullRequests, which records each call's queries in asked.
+	merged map[BranchKey][]MergedPR
+	asked  [][]BranchQuery
+}
+
+func (f *fakeGitHub) MergedPullRequests(_ context.Context, queries []BranchQuery) (map[BranchKey][]MergedPR, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.asked = append(f.asked, queries)
+
+	return f.merged, f.err
 }
 
 func (f *fakeGitHub) ItemStates(_ context.Context, refs []item.Ref) (map[string]ItemState, error) {
@@ -72,23 +88,49 @@ func refKeys(refs []item.Ref) []string {
 	return keys
 }
 
-// fakeLaunches is an in-memory launch log.
+// fakeLaunches is an in-memory worktree record.
 type fakeLaunches struct {
 	mu        sync.Mutex
-	records   []worklog.Launch
+	records   []worklog.Record
 	forgotten []string
+	recorded  []string
 	listErr   error
 	forgetErr error
+	recordErr error
 }
 
-func (f *fakeLaunches) Launches(context.Context) ([]worklog.Launch, error) {
+func (f *fakeLaunches) Worktrees(context.Context) ([]worklog.Record, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	return append([]worklog.Launch(nil), f.records...), f.listErr
+	return append([]worklog.Record(nil), f.records...), f.listErr
 }
 
-func (f *fakeLaunches) ForgetLaunch(_ context.Context, clonePath, worktree string) error {
+func (f *fakeLaunches) Record(_ context.Context, r worklog.Record) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if f.recordErr != nil {
+		return f.recordErr
+	}
+
+	f.recorded = append(f.recorded, filepath.Base(r.ClonePath)+"/"+r.Worktree)
+
+	for i, old := range f.records {
+		if old.ClonePath == r.ClonePath && old.Worktree == r.Worktree {
+			r.CreatedAt, r.Agent, r.LastAgentAt, r.Launches = old.CreatedAt, old.Agent, old.LastAgentAt, old.Launches
+			f.records[i] = r
+
+			return nil
+		}
+	}
+
+	f.records = append(f.records, r)
+
+	return nil
+}
+
+func (f *fakeLaunches) Forget(_ context.Context, clonePath, worktree string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -110,21 +152,31 @@ func (f *fakeLaunches) ForgetLaunch(_ context.Context, clonePath, worktree strin
 	return nil
 }
 
+// all returns a copy of the records.
+func (f *fakeLaunches) all() []worklog.Record {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return append([]worklog.Record(nil), f.records...)
+}
+
 // linkDeps are the optional dependencies of a linking Service.
 type linkDeps struct {
+	rules    *branchrules.Rules
 	gh       *fakeGitHub
 	launches *fakeLaunches
 	history  History
 	events   *testutil.Events
 	auto     bool
 	procs    processTable
+	running  procs.Lister
 }
 
 // linked builds a Service over the env that links worktrees through deps. Agent locks
 // are judged against deps.procs, which by default says every PID is dead.
 func (e *env) linked(deps linkDeps) *Service {
 	cfg := Config{
-		Settings: fakeSettings{root: cloneRoot, auto: deps.auto},
+		Settings: fakeSettings{root: cloneRoot, auto: deps.auto, rules: deps.rules},
 		Git:      e.git,
 		Finder:   execpath.Search{},
 		Home:     e.home,
@@ -137,7 +189,11 @@ func (e *env) linked(deps linkDeps) *Service {
 	}
 
 	if deps.launches != nil {
-		cfg.Launches = deps.launches
+		cfg.Records = deps.launches
+	}
+
+	if deps.running != nil {
+		cfg.Procs = deps.running
 	}
 
 	if deps.events != nil {
@@ -208,9 +264,13 @@ func closedIssue() ItemState {
 	}
 }
 
-// launchOf records a launch of the agent worktree at path for kind and number.
-func launchOf(repo, name string, kind item.Kind, number int) worklog.Launch {
-	return worklog.Launch{ClonePath: repo, Worktree: name, Owner: "acme-org", Name: filepath.Base(repo), Kind: kind, Number: number}
+// launchOf is the record of a launch in the worktree Claude Code made under the clone's
+// .claude/worktrees for kind and number, as one kept before the app made worktrees.
+func launchOf(repo, name string, kind item.Kind, number int) worklog.Record {
+	return worklog.Record{
+		ClonePath: repo, Worktree: name, Branch: ownBranchPrefix + name, Owner: "acme-org", Name: filepath.Base(repo),
+		Kind: kind, Number: number, Agent: agent.Claude, CreatedAt: listedAt(), LastAgentAt: listedAt(), Launches: 1,
+	}
 }
 
 func TestListLinksAndStagesAgentWorktrees(t *testing.T) {
@@ -361,7 +421,7 @@ func TestListLinksByLaunchRecord(t *testing.T) {
 
 	record := launchOf(repo, "pr-3", item.KindIssue, 12)
 	record.Owner = "Upstream-Org"
-	launches := &fakeLaunches{records: []worklog.Launch{record}}
+	launches := &fakeLaunches{records: []worklog.Record{record}}
 
 	snap, err := e.linked(linkDeps{gh: gh, launches: launches}).List(t.Context())
 	require.NoError(t, err)
@@ -483,14 +543,14 @@ func TestCleanUpRemovesAFinishedWorktreeAndItsBranch(t *testing.T) {
 	gh := &fakeGitHub{}
 	gh.set("example-repo", 184, pr(ItemMerged, head))
 
-	launches := &fakeLaunches{records: []worklog.Launch{launchOf(repo, "pr-184", item.KindPR, 184)}}
+	launches := &fakeLaunches{records: []worklog.Record{launchOf(repo, "pr-184", item.KindPR, 184)}}
 	svc := e.linked(linkDeps{gh: gh, launches: launches})
 
-	res, err := svc.CleanUp(t.Context(), repo, path)
+	res, err := svc.CleanUp(t.Context(), repo, path, []string{"worktree-pr-184"})
 	require.NoError(t, err)
 	assert.Equal(t, RemoveResult{
 		RepoPath: repo, Path: mustResolve(t, path), DisplayPath: "~/projects/example-repo/.claude/worktrees/pr-184",
-		Removed: true, DeletedBranch: "worktree-pr-184", Item: "acme-org/example-repo#184",
+		Removed: true, DeletedBranches: []string{"worktree-pr-184"}, Item: "acme-org/example-repo#184",
 	}, normalizeResult(res))
 
 	assert.NotContains(t, gitWorktreePaths(t, repo), resolvedPath(path))
@@ -512,10 +572,12 @@ func TestCleanUpKeepsABranchThatIsNotItsOwn(t *testing.T) {
 	gh := &fakeGitHub{}
 	gh.set("example-repo", 5, pr(ItemMerged, head))
 
-	res, err := e.linked(linkDeps{gh: gh}).CleanUp(t.Context(), repo, path)
+	res, err := e.linked(linkDeps{gh: gh}).CleanUp(t.Context(), repo, path, []string{"feat/five"})
 	require.NoError(t, err)
 	assert.True(t, res.Removed)
-	assert.Empty(t, res.DeletedBranch)
+	assert.Empty(t, res.DeletedBranches)
+	assert.Equal(t, "kept feat/five: it is not this worktree's to delete", res.Reason,
+		"a branch the worktree does not offer is never deleted, whatever is asked")
 	assert.Contains(t, branches(t, repo), "feat/five")
 }
 
@@ -554,18 +616,18 @@ func TestCleanUpRefusesWhatIsNotFinished(t *testing.T) {
 
 	svc := e.linked(linkDeps{gh: gh, procs: fakeProcesses{alive: {state: livenessAlive}}})
 
-	_, err := svc.CleanUp(t.Context(), repo, repo)
+	_, err := svc.CleanUp(t.Context(), repo, repo, nil)
 	require.ErrorIs(t, err, ErrMainWorktree)
 
-	_, err = svc.CleanUp(t.Context(), repo, filepath.Join(e.home, "nowhere"))
+	_, err = svc.CleanUp(t.Context(), repo, filepath.Join(e.home, "nowhere"), nil)
 	require.ErrorIs(t, err, ErrNotAWorktree)
 
-	_, err = svc.CleanUp(t.Context(), e.home, open)
+	_, err = svc.CleanUp(t.Context(), e.home, open, nil)
 	require.ErrorIs(t, err, ErrOutsideCloneRoot)
 
 	offline := e.linked(linkDeps{gh: &fakeGitHub{err: errFakeGitHub}, procs: fakeProcesses{alive: {state: livenessAlive}}})
 
-	_, err = offline.CleanUp(t.Context(), repo, open)
+	_, err = offline.CleanUp(t.Context(), repo, open, nil)
 	require.ErrorIs(t, err, ErrGitHubUnavailable)
 
 	tests := []struct {
@@ -585,7 +647,7 @@ func TestCleanUpRefusesWhatIsNotFinished(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := svc.CleanUp(t.Context(), repo, tt.path)
+			_, err := svc.CleanUp(t.Context(), repo, tt.path, nil)
 			require.ErrorIs(t, err, ErrNotFinished)
 			assert.Contains(t, err.Error(), tt.want)
 			assert.Contains(t, gitWorktreePaths(t, repo), resolvedPath(tt.path), "nothing is removed")
@@ -615,7 +677,7 @@ func TestCleanUpRowChecksAgainBeforeEachStep(t *testing.T) {
 
 		_, repo, svc, g := setup(t)
 		path, head := agentWorktree(t, repo, "pr-1")
-		res := svc.cleanUpRow(t.Context(), g, repo, Worktree{Path: path, DisplayPath: "pr-1", Head: head + "x"}, false)
+		res := svc.cleanUpRow(t.Context(), g, repo, Worktree{Path: path, DisplayPath: "pr-1", Head: head + "x"}, false, nil)
 		assert.False(t, res.Removed)
 		assert.Equal(t, ErrChanged.Error(), res.Reason)
 		assert.Contains(t, gitWorktreePaths(t, repo), resolvedPath(path))
@@ -630,7 +692,7 @@ func TestCleanUpRowChecksAgainBeforeEachStep(t *testing.T) {
 
 		res := svc.cleanUpRow(t.Context(), g, repo, Worktree{
 			Path: path, Head: head, Locked: true, LockReason: "claude session pr-2 (pid 999999)",
-		}, false)
+		}, false, nil)
 		assert.False(t, res.Removed)
 		assert.Equal(t, ErrChanged.Error(), res.Reason)
 		assert.True(t, mustRow(t, e.list(t), path).Locked, "the new lock stays")
@@ -643,9 +705,10 @@ func TestCleanUpRowChecksAgainBeforeEachStep(t *testing.T) {
 		path, head := agentWorktree(t, repo, "pr-3")
 		res := svc.cleanUpRow(t.Context(), g, repo, Worktree{
 			Path: path, Head: head, Branch: "worktree-pr-3", OwnBranch: true,
-		}, false)
+			Branches: []Branch{{Name: "worktree-pr-3", Head: head, Kind: BranchOwn, Deletable: true}},
+		}, false, []string{"worktree-pr-3"})
 		assert.True(t, res.Removed)
-		assert.Equal(t, "worktree-pr-3", res.DeletedBranch)
+		assert.Equal(t, []string{"worktree-pr-3"}, res.DeletedBranches)
 		assert.Empty(t, res.Reason)
 		assert.NotContains(t, branches(t, repo), "worktree-pr-3")
 	})
@@ -655,21 +718,21 @@ func TestCleanUpRowChecksAgainBeforeEachStep(t *testing.T) {
 
 		_, repo, svc, g := setup(t)
 		other, otherHead := agentWorktree(t, repo, "pr-4")
-		require.ErrorIs(t, svc.deleteOwnBranch(t.Context(), g, repo, "worktree-pr-4", otherHead), ErrBranchInUse)
+		require.ErrorIs(t, svc.deleteBranchAt(t.Context(), g, repo, "worktree-pr-4", otherHead), ErrBranchInUse)
 
 		testutil.RunGit(t, repo, "worktree", "remove", other)
 
-		err := svc.deleteOwnBranch(t.Context(), g, repo, "worktree-pr-4", strings.Repeat("1", 40))
+		err := svc.deleteBranchAt(t.Context(), g, repo, "worktree-pr-4", strings.Repeat("1", 40))
 		require.ErrorIs(t, err, errGit, "git refuses: the branch is not at the commit checked")
 
 		for _, head := range []string{"", strings.Repeat("0", 40), strings.Repeat("0", 64)} {
-			require.ErrorIs(t, svc.deleteOwnBranch(t.Context(), g, repo, "worktree-pr-4", head), ErrChanged,
+			require.ErrorIs(t, svc.deleteBranchAt(t.Context(), g, repo, "worktree-pr-4", head), ErrChanged,
 				"the null ID would turn git's comparison off")
 		}
 
 		assert.Contains(t, branches(t, repo), "worktree-pr-4")
 
-		res := svc.cleanUpRow(t.Context(), g, repo, Worktree{Path: other, Head: otherHead, Branch: "worktree-pr-4", OwnBranch: true}, false)
+		res := svc.cleanUpRow(t.Context(), g, repo, Worktree{Path: other, Head: otherHead, Branch: "worktree-pr-4", OwnBranch: true}, false, nil)
 		assert.False(t, res.Removed, "it is no longer a worktree")
 	})
 
@@ -678,10 +741,13 @@ func TestCleanUpRowChecksAgainBeforeEachStep(t *testing.T) {
 
 		_, repo, svc, g := setup(t)
 		path, head := agentWorktree(t, repo, "pr-5")
-		res := svc.cleanUpRow(t.Context(), g, repo, Worktree{Path: path, Head: head, Branch: "worktree-pr-5x", OwnBranch: true}, false)
+		res := svc.cleanUpRow(t.Context(), g, repo, Worktree{
+			Path: path, Head: head, Branch: "worktree-pr-5x", OwnBranch: true,
+			Branches: []Branch{{Name: "worktree-pr-5x", Head: head, Kind: BranchOwn, Deletable: true}},
+		}, false, []string{"worktree-pr-5x"})
 		assert.True(t, res.Removed)
-		assert.Empty(t, res.DeletedBranch)
-		assert.Contains(t, res.Reason, "kept the branch worktree-pr-5x")
+		assert.Empty(t, res.DeletedBranches)
+		assert.Contains(t, res.Reason, "kept worktree-pr-5x")
 	})
 }
 
@@ -707,12 +773,12 @@ func TestCleanUpFinished(t *testing.T) {
 
 	svc := e.linked(linkDeps{gh: gh})
 
-	results, err := svc.CleanUpFinished(t.Context())
+	results, err := svc.CleanUpFinished(t.Context(), finishedPicks(t, svc))
 	require.NoError(t, err)
 	require.Len(t, results, 2)
 	assert.True(t, results[0].Removed)
 	assert.Equal(t, "acme-org/alpha#1", results[0].Item)
-	assert.Equal(t, "worktree-pr-1", results[0].DeletedBranch)
+	assert.Equal(t, []string{"worktree-pr-1"}, results[0].DeletedBranches)
 	assert.True(t, results[1].Removed)
 	assert.Equal(t, "acme-org/beta#2", results[1].Item)
 
@@ -720,19 +786,19 @@ func TestCleanUpFinished(t *testing.T) {
 	assert.NotContains(t, gitWorktreePaths(t, beta), resolvedPath(two))
 	assert.Contains(t, gitWorktreePaths(t, beta), resolvedPath(open), "an open pull request's worktree stays")
 
-	results, err = svc.CleanUpFinished(t.Context())
+	results, err = svc.CleanUpFinished(t.Context(), finishedPicks(t, svc))
 	require.NoError(t, err)
 	assert.Empty(t, results)
 
 	gh.err = errFakeGitHub
 
-	_, err = svc.CleanUpFinished(t.Context())
+	_, err = svc.CleanUpFinished(t.Context(), finishedPicks(t, svc))
 	require.ErrorIs(t, err, ErrGitHubUnavailable)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	_, err = svc.CleanUpFinished(ctx)
+	_, err = svc.CleanUpFinished(ctx, nil)
 	require.Error(t, err)
 }
 

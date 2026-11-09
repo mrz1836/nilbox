@@ -9,14 +9,15 @@ import (
 	"slices"
 	"time"
 
+	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/profiles/internal/queries"
 	"github.com/mrz1836/nilbox/internal/store"
 )
 
-// Store reads and writes the stored profiles: the claude_profiles table, which no other
-// package touches.
+// Store reads and writes the stored profiles of every agent: the agent_profiles table,
+// which no other package touches.
 type Store struct {
 	db    *sql.DB
 	q     *queries.Queries
@@ -29,8 +30,9 @@ func NewStore(db *sql.DB, c clock.Clock) *Store {
 	return &Store{db: db, q: queries.New(db), clock: clock.Or(c)}
 }
 
-// All returns every stored profile, the default first and the rest by name. Folder and
-// Missing are left unset; the Service's List fills them in.
+// All returns every stored profile, grouped by agent in the agents' order, each agent's
+// default first and the rest by name. Folder, Missing, and SignedIn are left unset; the
+// Service's List fills them in.
 func (s *Store) All(ctx context.Context) ([]Profile, error) {
 	rows, err := s.q.ListProfiles(ctx)
 	if err != nil {
@@ -53,13 +55,13 @@ func (s *Store) All(ctx context.Context) ([]Profile, error) {
 	return profiles, nil
 }
 
-// Lookup returns the stored profile named name, or ErrProfileNotFound.
-func (s *Store) Lookup(ctx context.Context, name string) (Profile, error) {
-	row, err := s.q.GetProfile(ctx, name)
+// Lookup returns the agent's stored profile named name, or ErrProfileNotFound.
+func (s *Store) Lookup(ctx context.Context, id agent.ID, name string) (Profile, error) {
+	row, err := s.q.GetProfile(ctx, queries.GetProfileParams{Agent: string(id), Name: name})
 
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		return Profile{}, fmt.Errorf("%w: %q", ErrProfileNotFound, name)
+		return Profile{}, fmt.Errorf("%w: %s %q", ErrProfileNotFound, agentName(id), name)
 	case err != nil:
 		return Profile{}, fmt.Errorf("look up profile: %w", err)
 	}
@@ -72,8 +74,8 @@ func (s *Store) Lookup(ctx context.Context, name string) (Profile, error) {
 	return p, nil
 }
 
-// Sync stores every discovered profile that has no row yet, all of them or none. It never
-// updates or deletes a row.
+// Sync stores every discovered profile its agent has no row for yet, all of them or none.
+// It never updates or deletes a row.
 func (s *Store) Sync(ctx context.Context, found []Profile) error {
 	if len(found) == 0 {
 		return nil
@@ -109,8 +111,9 @@ func (s *Store) Sync(ctx context.Context, found []Profile) error {
 // ones discovery gave them, so nobody edited them. Removing such a row loses nothing,
 // and discovery adds it back if the directory later becomes an agent config. The default
 // profile, edited profiles, and profiles whose directory is gone or cannot be read are
-// kept; an edited one is logged to log (nil discards it) as a warning. It returns the
-// names it removed, sorted.
+// kept, as is every profile of an agent this build does not know; an edited one is logged
+// to log (nil discards it) as a warning. It returns the names it removed, as
+// "<agent>/<name>", sorted.
 func (s *Store) Prune(ctx context.Context, log *slog.Logger) ([]string, error) {
 	log = logging.Or(log)
 
@@ -132,7 +135,7 @@ func (s *Store) Prune(ctx context.Context, log *slog.Logger) ([]string, error) {
 
 		if prunable(ctx, p, log) {
 			ids = append(ids, row.ID)
-			removed = append(removed, row.Name)
+			removed = append(removed, row.Agent+"/"+row.Name)
 		}
 	}
 
@@ -152,7 +155,7 @@ func (s *Store) Prune(ctx context.Context, log *slog.Logger) ([]string, error) {
 // fromRow converts a stored row to a Profile. Its lists and map are never nil: the schema
 // only accepts a JSON array in each list column and an object in env, and an empty one
 // decodes to an empty list or map.
-func fromRow(row queries.ClaudeProfile) (Profile, error) {
+func fromRow(row queries.AgentProfile) (Profile, error) {
 	addDirs, err := store.DecodeJSON[[]string](row.AddDirs)
 	if err != nil {
 		return Profile{}, fmt.Errorf("profile %q: extra directories: %w", row.Name, err)
@@ -169,6 +172,7 @@ func fromRow(row queries.ClaudeProfile) (Profile, error) {
 	}
 
 	return Profile{
+		Agent:          agent.ID(row.Agent),
 		Name:           row.Name,
 		ConfigDir:      row.ConfigDir,
 		Model:          row.Model,
@@ -200,6 +204,7 @@ func insertParams(p Profile, now time.Time) (queries.InsertProfileParams, error)
 	}
 
 	return queries.InsertProfileParams{
+		Agent:          string(p.Agent),
 		Name:           p.Name,
 		ConfigDir:      p.ConfigDir,
 		Model:          p.Model,
@@ -212,4 +217,14 @@ func insertParams(p Profile, now time.Time) (queries.InsertProfileParams, error)
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}, nil
+}
+
+// agentName names an agent for a message: its name, or its ID when this build does not
+// know it.
+func agentName(id agent.ID) string {
+	if a, err := agent.Lookup(id); err == nil && id != agent.Inherit {
+		return a.Name
+	}
+
+	return string(id)
 }

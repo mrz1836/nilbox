@@ -81,9 +81,9 @@ export interface Hold {
     "error": string;
 
     /**
-     * AtHead reports that the session would start in a worktree at the pull request's
-     * head, where the agent loads its files the moment it starts. Otherwise they load
-     * once the session, or a later one in the same folder, checks the pull request out.
+     * AtHead reports that the session would start in the pull request's worktree, where
+     * the agent loads its files the moment it starts. Otherwise they load once the
+     * session, or a later one in the same folder, checks the pull request out.
      */
     "atHead": boolean;
 
@@ -143,10 +143,14 @@ export interface ItemResolution {
     "trusted": boolean;
 
     /**
-     * Agent is the coding tool, and AgentSource where it was chosen.
+     * Agent is the coding agent, and AgentSource where it was chosen. AgentInherited is
+     * the agent without this launch's own choice, and AgentInheritedSource where that
+     * came from.
      */
     "agent": agent$0.Agent;
     "agentSource": Source;
+    "agentInherited": agent$0.ID;
+    "agentInheritedSource": Source;
     "profile": Setting;
     "prompt": PromptChoice;
     "model": Setting;
@@ -155,8 +159,8 @@ export interface ItemResolution {
     "worktree": Toggle;
 
     /**
-     * ExtraArgs are every extra argument, in order: the profile's, the org's, the
-     * repository's, and the prompt's.
+     * ExtraArgs are every extra argument for the agent, in order: the profile's, the
+     * org's, the repository's, and the prompt's.
      */
     "extraArgs": string[] | null;
 
@@ -183,7 +187,12 @@ export interface LaunchRequest {
     "itemId": number;
 
     /**
-     * Profile names the profile to launch with; "" keeps the resolved profile.
+     * Agent is the coding agent to start; agent.Inherit keeps the resolved agent.
+     */
+    "agent": agent$0.ID;
+
+    /**
+     * Profile names the agent's profile to launch with; "" keeps the resolved profile.
      */
     "profile": string;
 
@@ -193,7 +202,7 @@ export interface LaunchRequest {
     "promptId": number;
 
     /**
-     * Model and Effort replace the resolved --model and --effort; "" asks for the
+     * Model and Effort replace the resolved model and effort level; "" asks for the
      * agent's own default. nil keeps the resolved value.
      */
     "model": string | null;
@@ -205,7 +214,7 @@ export interface LaunchRequest {
     "planMode": boolean | null;
 
     /**
-     * Worktree starts the session in an agent-created worktree, or not; nil keeps the
+     * Worktree starts the session in the item's worktree, or in the clone; nil keeps the
      * resolved setting.
      */
     "worktree": boolean | null;
@@ -240,15 +249,33 @@ export interface LaunchResult {
     "scriptPath": string;
 
     /**
-     * ClonePath is the clone the session starts in, shown relative to home with ~.
+     * ClonePath is the clone the session starts in, or whose worktree it starts in,
+     * shown relative to home with ~.
      */
     "clonePath": string;
 
     /**
-     * Worktree is the name of the worktree the agent creates or resumes under the
-     * clone's .claude/worktrees directory, or "" when the session starts in the clone.
+     * Dir is the directory the session starts in, shown relative to home with ~.
+     */
+    "dir": string;
+
+    /**
+     * Worktree is the name of the item's worktree the session starts in, or "" when it
+     * starts in the clone, and WorktreeAction what the launch did to it.
      */
     "worktree": string;
+    "worktreeAction": WorktreeAction;
+
+    /**
+     * Notice says what the launch worked around, such as a worktree started from the
+     * last fetched default branch, or "".
+     */
+    "notice": string;
+
+    /**
+     * Agent is the agent the session runs.
+     */
+    "agent": agent$0.ID;
 
     /**
      * Prompt is the nickname of the prompt the session was started with.
@@ -284,9 +311,10 @@ export interface Preview {
     "dir": string;
 
     /**
-     * Worktree is the worktree the agent creates or resumes, or "".
+     * Worktree is the item's worktree the session starts in, and what the launch would do
+     * to it, or nil when it starts in the clone.
      */
-    "worktree": string;
+    "worktree": WorktreePlan | null;
 
     /**
      * Command is the agent's command line, quoted as a shell would read it, with the
@@ -295,7 +323,7 @@ export interface Preview {
     "command": string;
 
     /**
-     * Env lists the environment changes, such as "CLAUDE_CONFIG_DIR=~/.claude_work" or
+     * Env lists the environment changes, such as "CODEX_HOME=~/.codex_work" or
      * "unset CLAUDE_CONFIG_DIR".
      */
     "env": string[] | null;
@@ -351,10 +379,14 @@ export interface Resolution {
     "trusted": boolean;
 
     /**
-     * Agent is the coding tool, and AgentSource where it was chosen.
+     * Agent is the coding agent, and AgentSource where it was chosen. AgentInherited is
+     * the agent without this launch's own choice, and AgentInheritedSource where that
+     * came from.
      */
     "agent": agent$0.Agent;
     "agentSource": Source;
+    "agentInherited": agent$0.ID;
+    "agentInheritedSource": Source;
     "profile": Setting;
     "prompt": PromptChoice;
     "model": Setting;
@@ -363,8 +395,8 @@ export interface Resolution {
     "worktree": Toggle;
 
     /**
-     * ExtraArgs are every extra argument, in order: the profile's, the org's, the
-     * repository's, and the prompt's.
+     * ExtraArgs are every extra argument for the agent, in order: the profile's, the
+     * org's, the repository's, and the prompt's.
      */
     "extraArgs": string[] | null;
 
@@ -444,4 +476,74 @@ export interface Toggle {
     "source": Source;
     "inherited": boolean;
     "inheritedSource": Source;
+}
+
+/**
+ * WorktreeAction is what a launch does to give its item a worktree.
+ */
+export type WorktreeAction = "resume" | "adopt" | "attach" | "create";
+
+/**
+ * The values of WorktreeAction, by the names of their Go constants.
+ */
+export const WorktreeAction = {
+    /**
+     * What a launch does to give its item a worktree.
+     *
+     * WorktreeResume reuses the item's worktree.
+     */
+    WorktreeResume: "resume",
+
+    /**
+     * WorktreeAdopt takes over a worktree found on the item's branch somewhere else,
+     * such as one Claude Code made under the clone's .claude/worktrees.
+     */
+    WorktreeAdopt: "adopt",
+
+    /**
+     * WorktreeAttach makes a worktree on the item's branch left from an earlier one.
+     */
+    WorktreeAttach: "attach",
+
+    /**
+     * WorktreeCreate fetches the pull request's head, or the default branch for an
+     * issue, and makes a worktree from it.
+     */
+    WorktreeCreate: "create",
+} as const;
+
+/**
+ * WorktreePlan is the worktree a planned launch starts in, as the preview shows it.
+ */
+export interface WorktreePlan {
+    /**
+     * Name is the worktree's name, pr-<n> or issue-<n>.
+     */
+    "name": string;
+
+    /**
+     * Path is its directory, with ~ for home.
+     */
+    "path": string;
+
+    /**
+     * Branch is the branch it has, or will have, checked out.
+     */
+    "branch": string;
+
+    /**
+     * Action is what the launch does: resume, adopt, attach, or create.
+     */
+    "action": WorktreeAction;
+
+    /**
+     * Base names what a created worktree starts from, or "".
+     */
+    "base": string;
+
+    /**
+     * Dirty is how many files have uncommitted changes in an existing worktree, or -1
+     * when unknown.
+     */
+    "dirty": number;
 }

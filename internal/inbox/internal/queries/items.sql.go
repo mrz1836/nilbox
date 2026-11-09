@@ -348,7 +348,7 @@ SELECT
     i.id, i.kind, i.number, i.url, i.title, i.head_ref, i.author_login, i.author_type, i.author_association,
     i.is_cross_repository, i.is_draft, r.id AS repo_id, r.owner, r.name, r.local_path, r.default_branch,
     d.labels, d.additions, d.deletions, d.changed_files, d.commits, d.mergeable, d.checks_state,
-    d.review_decision
+    d.review_decision, d.head_oid
 FROM items i
 JOIN repos r ON r.id = i.repo_id
 LEFT JOIN item_details d ON d.item_id = i.id
@@ -381,6 +381,7 @@ type ListLaunchItemsRow struct {
 	Mergeable         *string
 	ChecksState       *string
 	ReviewDecision    *string
+	HeadOID           *string
 }
 
 // ListLaunchItems returns the stored items among ids, by id, each with its repository,
@@ -430,6 +431,7 @@ func (q *Queries) ListLaunchItems(ctx context.Context, ids []int64) ([]ListLaunc
 			&i.Mergeable,
 			&i.ChecksState,
 			&i.ReviewDecision,
+			&i.HeadOID,
 		); err != nil {
 			return nil, err
 		}

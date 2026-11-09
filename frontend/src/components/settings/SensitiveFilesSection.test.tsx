@@ -226,6 +226,6 @@ describe('SensitiveFilesSection', () => {
 
     expect(screen.getByRole('heading', { name: 'How it works' })).toBeInTheDocument()
     expect(screen.getByText(/never downloads their contents/)).toBeInTheDocument()
-    expect(screen.getByText(/even in plan mode/)).toBeInTheDocument()
+    expect(screen.getByText(/even in plan or read-only mode/)).toBeInTheDocument()
   })
 })

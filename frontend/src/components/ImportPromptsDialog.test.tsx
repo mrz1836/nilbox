@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
-import { bundlePrompt, importEntry, promptBackup } from '../test/fixtures'
+import { agents, bundlePrompt, importEntry, promptBackup } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { ImportPromptsDialog, type ImportStart } from './ImportPromptsDialog'
 
@@ -16,10 +16,20 @@ const file: ImportStart = { kind: 'file', path: '/exports/shared prompts.json' }
 function entries() {
   return [
     importEntry({
-      prompt: bundlePrompt({ model: 'opus', effort: 'high', planMode: true, extraArgs: ['--verbose'] }),
+      prompt: bundlePrompt({
+        models: { codex: 'gpt-6-sol', claude: 'opus' },
+        effort: 'high',
+        planMode: true,
+        extraArgs: { claude: ['--verbose'], codex: null },
+      }),
     }),
     importEntry({
-      prompt: bundlePrompt({ nickname: 'Work on it', name: 'Work on an issue my way', appliesTo: 'issue' }),
+      prompt: bundlePrompt({
+        nickname: 'Work on it',
+        name: 'Work on an issue my way',
+        appliesTo: 'issue',
+        models: { claude: '' },
+      }),
       outcome: 'rename',
       nickname: 'Work on it 2',
       notes: ['Its text has problems to fix before it can launch.'],
@@ -43,7 +53,7 @@ function renderDialog(start: ImportStart) {
   const onImported = vi.fn()
   const onCancel = vi.fn()
 
-  render(<ImportPromptsDialog start={start} onImported={onImported} onCancel={onCancel} />)
+  render(<ImportPromptsDialog start={start} agents={agents()} onImported={onImported} onCancel={onCancel} />)
 
   return { onImported, onCancel }
 }
@@ -60,9 +70,14 @@ describe('ImportPromptsDialog', () => {
     expect(rows).toHaveLength(4)
 
     expect(rows[0]).toHaveTextContent('New')
-    expect(rows[0]).toHaveTextContent('For pull requests and issues · opus · high effort · plan mode')
-    expect(rows[0]).toHaveTextContent('Adds flags: --verbose')
+    // Each agent's settings are named in the agents' order, by the agent's own labels.
+    expect(rows[0]).toHaveTextContent(
+      'For pull requests and issues · Claude: Opus · Codex: GPT-6-Sol · high effort · plan mode',
+    )
+    expect(rows[0]).toHaveTextContent(/Adds flags: Claude: --verbose$/)
     expect(rows[1]).toHaveTextContent('New · saved as “Work on it 2”')
+    // A model left empty inherits, so it is not listed.
+    expect(rows[1]).not.toHaveTextContent('Claude:')
     expect(rows[1]).toHaveTextContent('Its text has problems to fix before it can launch.')
     expect(rows[2]).toHaveTextContent('Updates the starter “Review”')
     expect(rows[3]).toHaveTextContent('Already in your library')

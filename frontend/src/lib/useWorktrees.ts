@@ -4,6 +4,7 @@ import {
   cleanUpFinishedWorktrees,
   cleanUpWorktree,
   clearCleanups,
+  deleteBranches,
   forceRemoveWorktree,
   listWorktrees,
   pruneWorktrees,
@@ -11,14 +12,18 @@ import {
   removeAllCleanWorktrees,
   removeWorktree,
   unlockWorktree,
+  type BranchPick,
+  type BranchResult,
   type RemoveResult,
   type Worktree,
+  type WorktreePick,
   type WorktreeCleanup,
   type WorktreeRepo,
   type WorktreesSnapshot,
 } from '../platform'
 import { useMutation } from './useMutation'
 import { useQuery } from './useQuery'
+import { branchSummary, bulkSummary, failedSummary, shortName, singleSummary, type Summary } from './worktreeSummary'
 
 export interface WorktreesOptions {
   // clock returns the current time for the last-commit ages. Keep it stable across renders.
@@ -31,13 +36,34 @@ export interface WorktreesOptions {
   // cleanup toast's View opens the view. Each time it is set again, the list is scrolled
   // to again.
   focusHistory?: boolean
+  // onSummary is told what each change did, or why it failed, as it finishes, so the
+  // window can confirm it where the user will see it.
+  onSummary?: (summary: Summary) => void
 }
 
-// Confirmation is the destructive action waiting for the user's yes.
+// Target is a worktree a bulk action offers to take, in its repository.
+export interface Target {
+  repoPath: string
+  worktree: Worktree
+}
+
+// Confirmation is the destructive action waiting for the user's yes: removing, force
+// removing, or cleaning up one worktree; removing every clean one or cleaning up every
+// finished one, from the targets listed; or deleting the clones' merged branches, which
+// the dialog looks up itself.
 export type Confirmation =
-  | { kind: 'force'; repoPath: string; worktree: Worktree }
-  | { kind: 'all'; count: number }
-  | { kind: 'finished'; count: number }
+  | { kind: 'remove' | 'force' | 'cleanUp'; repoPath: string; worktree: Worktree }
+  | { kind: 'all' | 'finished'; targets: Target[] }
+  | { kind: 'merged' }
+
+// Choice is what the user ticked in a confirmation: the branches to delete with one
+// worktree, the worktrees a bulk action takes (each with its branches), or the merged
+// branches to delete.
+export interface Choice {
+  branches?: string[]
+  picks?: WorktreePick[]
+  branchPicks?: BranchPick[]
+}
 
 // Bulk is the outcome of a bulk action, with the words to report it in.
 export interface Bulk {
@@ -83,8 +109,8 @@ export interface WorktreesState {
   // clearError is why the history could not be cleared, or ''.
   clearError: string
   errors: WorktreeErrors
-  // notice says what the latest single change did, or ''.
-  notice: string
+  // notice says what the latest single change did, or null.
+  notice: Summary | null
   // bulk is the outcome of the latest bulk action, or null.
   bulk: Bulk | null
   // confirmation is the destructive action waiting for the user's yes, or null.
@@ -94,19 +120,25 @@ export interface WorktreesState {
   finishedCount: number
   // refresh lists again now.
   refresh: () => void
-  // remove, unlock, cleanUp, and prune make one change at once; askForceRemove,
-  // askRemoveAllClean, and askCleanUpFinished wait for confirm, or cancel.
-  remove: (repo: WorktreeRepo, worktree: Worktree) => void
+  // branchResults is the outcome of the latest deletion of merged branches, or null.
+  branchResults: BranchResult[] | null
+  // unlock and prune make one change at once; askRemove, askForceRemove, askCleanUp,
+  // askRemoveAllClean, askCleanUpFinished, and askCleanUpMerged wait for confirm, with
+  // what the user ticked, or cancel.
+  askRemove: (repo: WorktreeRepo, worktree: Worktree) => void
   askForceRemove: (repo: WorktreeRepo, worktree: Worktree) => void
+  askCleanUp: (repo: WorktreeRepo, worktree: Worktree) => void
   unlock: (repo: WorktreeRepo, worktree: Worktree) => void
-  cleanUp: (repo: WorktreeRepo, worktree: Worktree) => void
   prune: (repo: WorktreeRepo) => void
   askRemoveAllClean: () => void
   askCleanUpFinished: () => void
-  confirm: () => void
+  askCleanUpMerged: () => void
+  confirm: (choice: Choice) => void
   cancel: () => void
   // clearHistory forgets the recently cleaned-up worktrees.
   clearHistory: () => void
+  // dismiss puts away what the latest change did.
+  dismiss: () => void
 }
 
 // Failure is a single action that failed, kept with where it failed. A repository's main
@@ -120,8 +152,9 @@ interface Failure {
 // State is what the view reports and holds besides the listings and the writes.
 interface State {
   failure: Failure | null
-  notice: string
+  notice: Summary | null
   bulk: Bulk | null
+  branchResults: BranchResult[] | null
   confirmation: Confirmation | null
   // refreshing is a listing asked for here, by Refresh or after a change, which holds the
   // actions while it runs, as the first listing does. A listing after a background sweep
@@ -131,28 +164,38 @@ interface State {
 
 type Action =
   | { type: 'reset' }
-  | { type: 'changed'; notice: string }
+  | { type: 'changed'; notice: Summary }
   | { type: 'failed'; failure: Failure }
   | { type: 'bulkDone'; bulk: Bulk }
+  | { type: 'branchesDone'; results: BranchResult[] }
   | { type: 'ask'; confirmation: Confirmation }
   | { type: 'cancel' }
   | { type: 'refreshing' }
   | { type: 'refreshed' }
 
-const initialState: State = { failure: null, notice: '', bulk: null, confirmation: null, refreshing: false }
+const initialState: State = {
+  failure: null,
+  notice: null,
+  bulk: null,
+  branchResults: null,
+  confirmation: null,
+  refreshing: false,
+}
 
 // reducer applies an action to the state. Every change, bulk action, and refresh starts
 // with reset, so only the outcome of the latest one shows.
 function reducer(state: State, action: Action): State {
   switch (action.type) {
     case 'reset':
-      return { ...state, failure: null, notice: '', bulk: null }
+      return { ...state, failure: null, notice: null, bulk: null, branchResults: null }
     case 'changed':
       return { ...state, notice: action.notice }
     case 'failed':
       return { ...state, failure: action.failure }
     case 'bulkDone':
       return { ...state, bulk: action.bulk }
+    case 'branchesDone':
+      return { ...state, branchResults: action.results }
     case 'ask':
       return { ...state, confirmation: action.confirmation }
     case 'cancel':
@@ -173,13 +216,9 @@ function failureAt(failure: Failure | null, scope: Failure['scope'], path: strin
   return failure !== null && failure.scope === scope && failure.path === path ? failure.message : ''
 }
 
-// cleanedNotice says what a single clean-up did.
-function cleanedNotice(wt: Worktree, res: RemoveResult): string {
-  if (res.deletedBranch !== '') {
-    return `Cleaned up ${wt.displayPath} and deleted its branch ${res.deletedBranch}.`
-  }
-
-  return res.reason === '' ? `Cleaned up ${wt.displayPath}.` : `Cleaned up ${wt.displayPath}; ${res.reason}.`
+// targetsOf lists the worktrees a bulk action offers to take: those take keeps.
+function targetsOf(repos: readonly WorktreeRepo[], take: (wt: Worktree) => boolean): Target[] {
+  return repos.flatMap((repo) => repo.worktrees.filter(take).map((worktree) => ({ repoPath: repo.path, worktree })))
 }
 
 // useWorktrees lists the git worktrees of every clone under the clone root, with the
@@ -192,6 +231,7 @@ export function useWorktrees({
   reloadKey = 0,
   onSnapshot,
   focusHistory = false,
+  onSummary,
 }: WorktreesOptions = {}): WorktreesState {
   // listing is the worktrees as git reports them, with when the listing arrived, which
   // the ages are measured against.
@@ -202,17 +242,19 @@ export function useWorktrees({
   })
   const [opened] = useState(clock)
   const [state, dispatch] = useReducer(reducer, initialState)
-  const changer = useMutation((change: () => Promise<string>) => change())
+  const changer = useMutation((change: () => Promise<Summary>) => change())
   const bulker = useMutation((action: () => Promise<RemoveResult[]>) => action())
+  const brancher = useMutation((picks: BranchPick[]) => deleteBranches(picks))
   const clearer = useMutation(() => clearCleanups())
   const historyRef = useRef<HTMLElement>(null)
   // focused records that focusHistory has scrolled since it was set, so later listings
   // stay put.
   const focused = useRef(false)
   const snapshot = listing.data?.snapshot ?? null
+  const repos = snapshot?.repos ?? []
   const history = cleanups.data ?? null
   const loading = state.refreshing || (listing.data === undefined && listing.error === '')
-  const busy = changer.pending || bulker.pending
+  const busy = changer.pending || bulker.pending || brancher.pending
 
   // Each listing is reported, to the latest onSnapshot, so a new callback never lists
   // again.
@@ -249,6 +291,7 @@ export function useWorktrees({
   const resetMessages = () => {
     dispatch({ type: 'reset' })
     bulker.reset()
+    brancher.reset()
     clearer.reset()
   }
 
@@ -260,38 +303,68 @@ export function useWorktrees({
     }
   }
 
-  // run performs one change, then lists again. The change returns the notice to show,
-  // and a failure is kept with where it happened.
-  const run = async (scope: Failure['scope'], path: string, change: () => Promise<string>) => {
+  // run performs one change, then lists again. The change returns what it did; a
+  // failure is kept with where it happened, and failed names the change for its report.
+  const run = async (scope: Failure['scope'], path: string, failed: string, change: () => Promise<Summary>) => {
     resetMessages()
 
     const result = await changer.run(change)
 
     if (result.ok) {
       dispatch({ type: 'changed', notice: result.data })
+      onSummary?.(result.data)
       void reload()
     } else {
       dispatch({ type: 'failed', failure: { scope, path, message: result.error } })
+      onSummary?.(failedSummary(failed, result.error))
     }
   }
 
-  const forceRemove = (repoPath: string, wt: Worktree) => {
-    void run('worktree', wt.path, async () => {
-      await forceRemoveWorktree(repoPath, wt.path)
+  // single makes one confirmed change to one worktree, with the branches ticked.
+  const single = (confirmation: Extract<Confirmation, { repoPath: string }>, branches: string[]) => {
+    const { repoPath, worktree: wt } = confirmation
+    const failed = `Couldn’t ${confirmation.kind === 'cleanUp' ? 'clean up' : 'remove'} ${shortName(wt.displayPath)}`
 
-      return `Force removed ${wt.displayPath}.`
+    void run('worktree', wt.path, failed, async () => {
+      switch (confirmation.kind) {
+        case 'remove':
+          return singleSummary('Removed', wt, await removeWorktree(repoPath, wt.path, branches))
+        case 'force':
+          return singleSummary('Force removed', wt, await forceRemoveWorktree(repoPath, wt.path, branches))
+        default:
+          return singleSummary('Cleaned up', wt, await cleanUpWorktree(repoPath, wt.path, branches))
+      }
     })
   }
 
-  // runBulk performs a bulk action and reports each worktree's outcome.
-  const runBulk = async (action: () => Promise<RemoveResult[]>, noun: string, verb: string) => {
+  // runBranches deletes the merged branches ticked, reports each outcome, and lists again.
+  const runBranches = async (picks: BranchPick[]) => {
+    resetMessages()
+
+    const result = await brancher.run(picks)
+
+    if (result.ok) {
+      dispatch({ type: 'branchesDone', results: result.data })
+      onSummary?.(branchSummary(result.data))
+      void reload()
+    } else {
+      onSummary?.(failedSummary('Couldn’t delete the branches', result.error))
+    }
+  }
+
+  // runBulk performs a bulk action and reports each worktree's outcome; failed names the
+  // action for a report of its failure.
+  const runBulk = async (action: () => Promise<RemoveResult[]>, noun: string, verb: string, failed: string) => {
     resetMessages()
 
     const result = await bulker.run(action)
 
     if (result.ok) {
       dispatch({ type: 'bulkDone', bulk: { results: result.data, noun, verb } })
+      onSummary?.(bulkSummary(result.data, noun, verb))
       void reload()
+    } else {
+      onSummary?.(failedSummary(failed, result.error))
     }
   }
 
@@ -300,14 +373,14 @@ export function useWorktrees({
 
   return {
     snapshot,
-    repos: snapshot?.repos ?? [],
+    repos,
     now: listing.data?.at ?? opened,
     history,
     historyRef,
     loading,
     disabled: busy || loading,
     loadError: listing.error,
-    error: bulker.error !== '' ? bulker.error : listing.error,
+    error: bulker.error !== '' ? bulker.error : brancher.error !== '' ? brancher.error : listing.error,
     clearError: clearer.error,
     errors: {
       worktree: (path) => failureAt(state.failure, 'worktree', path),
@@ -315,6 +388,7 @@ export function useWorktrees({
     },
     notice: state.notice,
     bulk: state.bulk,
+    branchResults: state.branchResults,
     confirmation: state.confirmation,
     cleanCount,
     finishedCount,
@@ -322,40 +396,47 @@ export function useWorktrees({
       resetMessages()
       void reload()
     },
-    remove: (repo, wt) => {
-      void run('worktree', wt.path, async () => {
-        await removeWorktree(repo.path, wt.path)
-
-        return `Removed ${wt.displayPath}.`
-      })
+    askRemove: (repo, wt) => {
+      dispatch({ type: 'ask', confirmation: { kind: 'remove', repoPath: repo.path, worktree: wt } })
     },
     askForceRemove: (repo, wt) => {
       dispatch({ type: 'ask', confirmation: { kind: 'force', repoPath: repo.path, worktree: wt } })
     },
+    askCleanUp: (repo, wt) => {
+      dispatch({ type: 'ask', confirmation: { kind: 'cleanUp', repoPath: repo.path, worktree: wt } })
+    },
     unlock: (repo, wt) => {
-      void run('worktree', wt.path, async () => {
+      void run('worktree', wt.path, `Couldn’t unlock ${shortName(wt.displayPath)}`, async () => {
         await unlockWorktree(repo.path, wt.path)
 
-        return `Unlocked ${wt.displayPath}.`
+        return {
+          title: `Unlocked ${shortName(wt.displayPath)}`,
+          detail: 'The lock its ended session left was released, so it can be removed.',
+          tone: 'success',
+        }
       })
     },
-    cleanUp: (repo, wt) => {
-      void run('worktree', wt.path, async () => cleanedNotice(wt, await cleanUpWorktree(repo.path, wt.path)))
-    },
     prune: (repo) => {
-      void run('repo', repo.path, async () => {
+      void run('repo', repo.path, `Couldn’t prune ${repo.displayPath}`, async () => {
         await pruneWorktrees(repo.path)
 
-        return `Pruned the stale entries of ${repo.displayPath}.`
+        return {
+          title: `Pruned ${repo.displayPath}`,
+          detail: 'The entries of worktrees whose folders are gone were cleared.',
+          tone: 'success',
+        }
       })
     },
     askRemoveAllClean: () => {
-      dispatch({ type: 'ask', confirmation: { kind: 'all', count: cleanCount } })
+      dispatch({ type: 'ask', confirmation: { kind: 'all', targets: targetsOf(repos, (wt) => wt.canRemove) } })
     },
     askCleanUpFinished: () => {
-      dispatch({ type: 'ask', confirmation: { kind: 'finished', count: finishedCount } })
+      dispatch({ type: 'ask', confirmation: { kind: 'finished', targets: targetsOf(repos, (wt) => wt.canCleanUp) } })
     },
-    confirm: () => {
+    askCleanUpMerged: () => {
+      dispatch({ type: 'ask', confirmation: { kind: 'merged' } })
+    },
+    confirm: (choice) => {
       const { confirmation } = state
 
       if (confirmation === null) {
@@ -366,13 +447,26 @@ export function useWorktrees({
 
       switch (confirmation.kind) {
         case 'all':
-          void runBulk(removeAllCleanWorktrees, 'clean worktree', 'Removed')
+          void runBulk(
+            () => removeAllCleanWorktrees(choice.picks ?? []),
+            'clean worktree',
+            'Removed',
+            'Couldn’t remove the clean worktrees',
+          )
           break
         case 'finished':
-          void runBulk(cleanUpFinishedWorktrees, 'finished worktree', 'Cleaned up')
+          void runBulk(
+            () => cleanUpFinishedWorktrees(choice.picks ?? []),
+            'finished worktree',
+            'Cleaned up',
+            'Couldn’t clean up the finished worktrees',
+          )
+          break
+        case 'merged':
+          void runBranches(choice.branchPicks ?? [])
           break
         default:
-          forceRemove(confirmation.repoPath, confirmation.worktree)
+          single(confirmation, choice.branches ?? [])
       }
     },
     cancel: () => {
@@ -381,5 +475,6 @@ export function useWorktrees({
     clearHistory: () => {
       void clearHistory()
     },
+    dismiss: resetMessages,
   }
 }
