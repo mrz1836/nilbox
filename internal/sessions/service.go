@@ -59,6 +59,10 @@ type Config struct {
 	// Events hears an event.SessionsUpdated when a launch records a session.
 	Events event.Sink
 
+	// Words reads each agent's sessions' last messages in full, for LastWords; an agent
+	// with none falls back to the start the ledger keeps.
+	Words map[agent.ID]WordsReader
+
 	Clock  clock.Clock
 	Logger *slog.Logger
 }
@@ -70,6 +74,7 @@ type Service struct {
 	focuser Focuser
 	ps      execpath.Runner
 	home    string
+	words   map[agent.ID]WordsReader
 	clock   clock.Clock
 	logger  *slog.Logger
 }
@@ -78,7 +83,7 @@ type Service struct {
 func NewService(cfg Config) *Service {
 	return &Service{
 		store: cfg.Store, toggle: cfg.Switch, focuser: cfg.Focuser, ps: cfg.PS, home: cfg.Home,
-		clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger),
+		words: wordsReaders(cfg.Words), clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger),
 	}
 }
 

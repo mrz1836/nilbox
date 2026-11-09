@@ -8,6 +8,7 @@ export {
 
 export {
     ListKey,
+    MergeMethod,
     TextSize,
     Theme
 } from "./models.js";

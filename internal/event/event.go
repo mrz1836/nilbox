@@ -35,6 +35,9 @@ const (
 	// NameSessionsUpdated is SessionsUpdated's name.
 	NameSessionsUpdated = "sessions:updated"
 
+	// NameReviewProgress is ReviewProgress's name.
+	NameReviewProgress = "review:progress"
+
 	// NameThemeChanged is ThemeChanged's name.
 	NameThemeChanged = "settings:theme"
 
@@ -83,7 +86,13 @@ func Or(s Sink) Sink {
 // the events the desktop bootstrap registers.
 func WindowEvents() []WindowEvent {
 	return []WindowEvent{
-		InboxUpdated{}, RevealItem{}, WorktreesUpdated{}, NotificationsUpdated{}, BudgetUpdated{}, SessionsUpdated{},
+		InboxUpdated{},
+		RevealItem{},
+		WorktreesUpdated{},
+		NotificationsUpdated{},
+		BudgetUpdated{},
+		SessionsUpdated{},
+		ReviewProgress{},
 	}
 }
 
@@ -148,6 +157,22 @@ type SessionsUpdated struct{}
 func (SessionsUpdated) Name() string { return NameSessionsUpdated }
 
 func (SessionsUpdated) window() {}
+
+// ReviewProgress says what the review sheet's action on a pull request is doing now, as
+// in "Approving" or "Checking that GitHub can merge it", so the sheet can show each step
+// while the user waits for GitHub.
+type ReviewProgress struct {
+	// ItemID is the stored pull request the action is on.
+	ItemID int64 `json:"itemId"`
+
+	// Step says what the action is doing now.
+	Step string `json:"step"`
+}
+
+// Name returns NameReviewProgress.
+func (ReviewProgress) Name() string { return NameReviewProgress }
+
+func (ReviewProgress) window() {}
 
 // ThemeChanged says the user chose a theme and it was stored. The shell brings the
 // window's native appearance along with it; the page has already switched itself.

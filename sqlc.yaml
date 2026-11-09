@@ -81,3 +81,9 @@ sql:
       go:
         !!merge <<: *go
         out: internal/sessions/internal/queries
+  - !!merge <<: *owner
+    queries: internal/review/internal/queries
+    gen:
+      go:
+        !!merge <<: *go
+        out: internal/review/internal/queries

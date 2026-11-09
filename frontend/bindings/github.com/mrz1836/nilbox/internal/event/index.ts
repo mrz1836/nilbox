@@ -6,6 +6,7 @@ export type {
     InboxUpdated,
     NotificationsUpdated,
     RevealItem,
+    ReviewProgress,
     SessionsUpdated,
     WorktreesUpdated
 } from "./models.js";

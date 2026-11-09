@@ -150,3 +150,19 @@ export const State = {
      */
     StateUnknown: "unknown",
 } as const;
+
+/**
+ * Words is what an agent session last said, read in full on demand.
+ */
+export interface Words {
+    /**
+     * Text is the message, as the agent wrote it, as markdown.
+     */
+    "text": string;
+
+    /**
+     * Partial reports that Text is not the whole message: it was cut to MaxWordsRunes, or
+     * it is the start the ledger keeps, because the agent's own files could not be read.
+     */
+    "partial": boolean;
+}

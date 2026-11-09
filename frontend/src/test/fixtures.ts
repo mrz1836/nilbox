@@ -296,6 +296,7 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     collapsedSections: [],
     projectsTipDismissed: false,
     inboxOrder: { statusSorted: [], statusOrder: [] },
+    mergeMethod: 'repo',
     ...overrides,
   }
 }
