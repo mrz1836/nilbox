@@ -286,10 +286,13 @@ func (c *wsConn) writeText(data []byte) error {
 // writeFrame sends one final frame, masked as a client must. It refuses a payload over
 // maxWrite with errTooLargeToSend, sending nothing.
 func (c *wsConn) writeFrame(op byte, payload []byte) error {
-	n := len(payload)
-	if n > maxWrite {
-		return fmt.Errorf("%w: %d bytes", errTooLargeToSend, n)
+	// The check compares len(payload) itself, the form a static analyzer reads as bounding
+	// the payload, so the size below is known not to overflow.
+	if len(payload) > maxWrite {
+		return fmt.Errorf("%w: %d bytes", errTooLargeToSend, len(payload))
 	}
+
+	n := len(payload)
 
 	var mask [4]byte
 	if _, err := rand.Read(mask[:]); err != nil {

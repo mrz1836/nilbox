@@ -40,6 +40,18 @@ func TestValidateTTY(t *testing.T) {
 	}
 }
 
+func TestFocusResult(t *testing.T) {
+	t.Parallel()
+
+	require.NoError(t, focusResult("iTerm2", []byte("found\n")), "the tab was found")
+
+	for _, out := range []string{"missing\n", "", "found it"} {
+		err := focusResult("iTerm2", []byte(out))
+		require.ErrorIs(t, err, ErrNoSuchTab, "%q", out)
+		assert.Contains(t, err.Error(), "iTerm2", "the error names the terminal")
+	}
+}
+
 // plainDriver is a Driver that cannot focus.
 type plainDriver struct{}
 
