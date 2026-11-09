@@ -869,29 +869,49 @@ func TestAppProcesses(t *testing.T) {
 	})
 }
 
+// helperSleepEnv, set to "1", makes TestHelperSleep sleep rather than skip.
+const helperSleepEnv = "MAGEFILES_TEST_HELPER_SLEEP"
+
+// TestHelperSleep is not a test of its own: run by TestAppProcessesFindsARealProcess with
+// helperSleepEnv set, it sleeps until it is stopped, as a process of the test's own under
+// a path of the test's choosing. Any other time it skips.
+func TestHelperSleep(t *testing.T) {
+	t.Parallel()
+
+	if os.Getenv(helperSleepEnv) != "1" {
+		t.Skip("a helper process for TestAppProcessesFindsARealProcess")
+	}
+
+	time.Sleep(time.Minute)
+}
+
 //nolint:paralleltest // changes the process's standard output
 func TestAppProcessesFindsARealProcess(t *testing.T) {
 	requireProcessList(t)
 
-	sleep := requireTool(t, "sleep")
+	self, err := os.Executable()
+	require.NoError(t, err)
+
 	exe := filepath.Join(t.TempDir(), brand.Name+".app", "Contents", "MacOS", brand.Slug)
 
-	// The app's path links to sleep, so sleep runs under the app's path as its command name.
+	// The app's path links to this test binary, which runs TestHelperSleep under the app's
+	// path as its command name. A system tool would not do: a multi-call build of sleep
+	// (as on Ubuntu) picks what it does by the name it runs under, and exits at once.
 	require.NoError(t, os.MkdirAll(filepath.Dir(exe), 0o750))
-	require.NoError(t, os.Symlink(sleep, exe))
+	require.NoError(t, os.Symlink(self, exe))
 
-	pid, done := startProcess(t, exec.CommandContext(t.Context(), exe, "30")) //nolint:gosec // the test's own process, fixed arguments
+	helper := exec.CommandContext(t.Context(), exe, "-test.run=^TestHelperSleep$") //nolint:gosec // the test's own binary, fixed arguments
+
+	helper.Env = append(os.Environ(), helperSleepEnv+"=1")
+	pid, done := startProcess(t, helper)
 
 	assert.Eventually(t, func() bool {
-		pids, err := appProcesses(exe)
+		pids, listErr := appProcesses(exe)
 
-		return err == nil && slices.Equal(pids, []int{pid})
+		return listErr == nil && slices.Equal(pids, []int{pid})
 	}, 5*time.Second, 20*time.Millisecond)
 
-	var (
-		quit bool
-		err  error
-	)
+	var quit bool
 
 	captureStdout(t, func() { quit, err = quitRunningApp(exe, 5*time.Second) })
 
