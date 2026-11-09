@@ -601,6 +601,21 @@ describe('renderMarkdown links', () => {
     )
   })
 
+  it('finds the target of every real link', () => {
+    show(Array.from({ length: 300 }, (_, n) => `[l${String(n)}](https://example.test/${String(n)})`).join(' '))
+
+    expect(screen.getAllByRole('button')).toHaveLength(300)
+  })
+
+  it('stops scanning for targets that never close, once the document used its budget', () => {
+    // Each unclosed target scans up to its bound, again and again; once the document has
+    // scanned its budget, a later target is not looked for and shows as written.
+    const { root } = show(`${'[a]('.repeat(1000)} [late](https://example.test/late)`)
+
+    expect(screen.queryByRole('button', { name: 'late' })).toBeNull()
+    expect(root).toHaveTextContent('[late](')
+  })
+
   it('makes no link inside a link', () => {
     show('[outer [inner](https://example.com/in) <https://example.com/auto>](https://example.com/out)')
 

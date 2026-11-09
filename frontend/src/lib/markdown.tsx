@@ -34,6 +34,12 @@ const MAX_TAGS = 32
 // MAX_TARGET bounds how far a link's target is looked for, and MAX_LABEL a reference
 // label's length, so text full of brackets still renders in linear time.
 const MAX_TARGET = 2048
+
+// TARGET_BUDGET bounds the text scanned for link targets in a whole document. A target
+// found ends its link, so real text scans each character about once; only targets that
+// are never closed, as in "[a](" repeated, scan the same text again and again, and once
+// they have used the budget, what is left of such text shows as written.
+const TARGET_BUDGET = 2 * MAX_LENGTH
 const MAX_LABEL = 999
 
 // The classes each element takes. Sizes are in rem, so they follow the text size setting,
@@ -85,7 +91,13 @@ export function renderMarkdown(text: string, options: MarkdownOptions): ReactNod
   const source = (cut ? text.slice(0, MAX_LENGTH) : text).replace(/\r\n?/g, '\n').replaceAll('\u0000', '\ufffd')
   const refs = new Map<string, string>()
   const blocks = parseBlocks(source.split('\n').map(expandTabs), 0, refs)
-  const nodes: ReactNode[] = renderBlocks(blocks, { openLink: options.openLink, inLink: false, flow: false, refs })
+  const nodes: ReactNode[] = renderBlocks(blocks, {
+    openLink: options.openLink,
+    inLink: false,
+    flow: false,
+    refs,
+    targets: { left: TARGET_BUDGET },
+  })
 
   if (cut) {
     nodes.push(
@@ -107,6 +119,9 @@ interface Context {
   // only inline content may (a paragraph, a heading, a link).
   flow: boolean
   refs: ReadonlyMap<string, string>
+  // targets is how much text the whole document may still scan for link targets (see
+  // TARGET_BUDGET); every context made from this one shares it.
+  targets: { left: number }
 }
 
 // ---------------------------------------------------------------------------------------
@@ -775,9 +790,12 @@ class InlineParser {
   private top: Frame = this.root
   private readonly open: Record<Delim, number> = { '*': 0, _: 0, '~': 0 }
   private buf = ''
-  // unmatchedTicks holds backtick run lengths with no closing run left in the text, and
-  // commentsClose is false once a <!-- had no -->, so neither is looked for again.
-  private readonly unmatchedTicks = new Set<number>()
+  // tickRuns lists where each length of backtick run starts, in order, read once the first
+  // code span is looked for, and tickNext how far along each list the search has come,
+  // so closing runs are found in one pass however many openers there are.
+  // commentsClose is false once a <!-- had no -->, so none is looked for again.
+  private tickRuns: Map<number, number[]> | null = null
+  private readonly tickNext = new Map<number, number>()
   private commentsClose = true
 
   constructor(s: string, ctx: Context) {
@@ -802,10 +820,7 @@ class InlineParser {
     }
 
     this.flush()
-
-    while (this.frames.length > 1) {
-      this.flattenTop()
-    }
+    this.flattenAbove(0)
 
     return buildHtml(this.root.items, this.ctx, this.ctx.flow)
   }
@@ -875,7 +890,7 @@ class InlineParser {
   // code reads a code span, closed by the next run of as many backticks.
   private code(i: number): number {
     const n = runLength(this.s, i, '`')
-    const close = this.unmatchedTicks.has(n) ? -1 : this.closingTicks(i + n, n)
+    const close = this.closingTicks(i + n, n)
 
     if (close < 0) {
       this.buf += '`'.repeat(n)
@@ -891,24 +906,21 @@ class InlineParser {
     return close + n
   }
 
+  // closingTicks returns where the first run of n backticks at or after from starts, or -1.
+  // Code spans are read left to right, so each list's position only moves forward.
   private closingTicks(from: number, n: number): number {
-    for (let j = from; ;) {
-      const k = this.s.indexOf('`', j)
+    this.tickRuns ??= backtickRuns(this.s)
 
-      if (k < 0) {
-        this.unmatchedTicks.add(n)
+    const runs = this.tickRuns.get(n) ?? []
+    let at = this.tickNext.get(n) ?? 0
 
-        return -1
-      }
-
-      const m = runLength(this.s, k, '`')
-
-      if (m === n) {
-        return k
-      }
-
-      j = k + m
+    while (at < runs.length && (runs[at] ?? from) < from) {
+      at += 1
     }
+
+    this.tickNext.set(n, at)
+
+    return runs[at] ?? -1
   }
 
   // delimiter reads a run of * _ or ~ (only ~~ strikes through): it closes what it can,
@@ -953,9 +965,8 @@ class InlineParser {
     let count = n
 
     while (count > 0 && this.open[c] > 0) {
-      while (this.top.delim !== c) {
-        this.flattenTop()
-      }
+      // The nearest open run of its kind; the root, below every run, never is one.
+      this.flattenAbove(this.frames.findLastIndex((f, k) => k > 0 && f.delim === c))
 
       const opener = this.top
       const use = Math.min(2, count, opener.count)
@@ -981,16 +992,28 @@ class InlineParser {
     this.top = last(this.frames)
   }
 
-  // flattenTop gives up the innermost open run: its markers become text.
-  private flattenTop(): void {
-    const frame = this.top
+  // flattenAbove gives up every open run above the frame at index m: their markers become
+  // text, followed by what came after each, all moved into frame m in one pass, with
+  // adjacent text joined into one string. Giving them up one by one would move the same
+  // items again for each run, which thousands of unclosed runs make slow.
+  private flattenAbove(m: number): void {
+    const into = this.frames[m]
 
-    this.popFrame()
-    this.top.items.push(frame.delim.repeat(frame.count))
-
-    for (const item of frame.items) {
-      this.top.items.push(item)
+    if (into === undefined || m === this.frames.length - 1) {
+      return
     }
+
+    for (const frame of this.frames.slice(m + 1)) {
+      this.open[frame.delim] -= 1
+      appendItem(into.items, frame.delim.repeat(frame.count))
+
+      for (const item of frame.items) {
+        appendItem(into.items, item)
+      }
+    }
+
+    this.frames.length = m + 1
+    this.top = into
   }
 
   // image reads ![alt](url), which becomes a link to the image labelled with its alt text.
@@ -1045,7 +1068,7 @@ class InlineParser {
     }
 
     if (this.s.charAt(close + 1) === '(') {
-      const inline = destination(this.s, close + 2)
+      const inline = destination(this.s, close + 2, this.ctx.targets)
 
       if (inline !== null) {
         return { close, end: inline.end, url: inline.url }
@@ -1178,6 +1201,38 @@ function emphasis(c: Delim, use: number, children: readonly ReactNode[]): ReactE
   return use === 2 ? <strong className={STRONG}>{keyed(children)}</strong> : <em>{keyed(children)}</em>
 }
 
+// appendItem adds item to items, joined onto the last one when both are text.
+function appendItem(items: Item[], item: Item): void {
+  const end = items.length - 1
+  const prev = items[end]
+
+  if (typeof item === 'string' && typeof prev === 'string') {
+    items[end] = prev + item
+  } else {
+    items.push(item)
+  }
+}
+
+// backtickRuns lists where each run of backticks starts, by its length, in order.
+function backtickRuns(s: string): Map<number, number[]> {
+  const runs = new Map<number, number[]>()
+
+  for (let k = s.indexOf('`'); k >= 0;) {
+    const n = runLength(s, k, '`')
+    const list = runs.get(n)
+
+    if (list === undefined) {
+      runs.set(n, [k])
+    } else {
+      list.push(k)
+    }
+
+    k = s.indexOf('`', k + n)
+  }
+
+  return runs
+}
+
 // matchBrackets pairs each [ with its ], skipping escaped ones, by position.
 function matchBrackets(s: string): Map<number, number> {
   const pairs = new Map<number, number>()
@@ -1204,8 +1259,30 @@ function matchBrackets(s: string): Map<number, number> {
 
 // destination reads a link's (url "title") from just inside its parenthesis, and returns
 // the URL and where the link ends. The title is dropped: a link shows its URL instead.
-function destination(s: string, from: number): { url: string; end: number } | null {
-  const limit = Math.min(s.length, from + MAX_TARGET)
+// What it scans comes out of budget, and with none left it finds nothing.
+function destination(s: string, from: number, budget: { left: number }): { url: string; end: number } | null {
+  if (budget.left <= 0) {
+    return null
+  }
+
+  const found = readDestination(s, from, Math.min(s.length, from + MAX_TARGET, from + budget.left))
+
+  budget.left -= found.scanned
+
+  return found.target
+}
+
+// readDestination is destination's reading, up to limit: the target, if there is one, and
+// how far it scanned.
+function readDestination(
+  s: string,
+  from: number,
+  limit: number,
+): { target: { url: string; end: number } | null; scanned: number } {
+  const target = (end: number, url: string | null) => ({
+    target: url === null ? null : { url: unescapeText(decodeEntities(url)), end },
+    scanned: Math.max(end - from, 1),
+  })
   let j = skipSpace(s, from, limit)
   let url: string
 
@@ -1217,7 +1294,7 @@ function destination(s: string, from: number): { url: string; end: number } | nu
     }
 
     if (s.charAt(k) !== '>') {
-      return null
+      return target(k, null)
     }
 
     url = s.slice(j + 1, k)
@@ -1260,13 +1337,13 @@ function destination(s: string, from: number): { url: string; end: number } | nu
     }
 
     if (k >= limit) {
-      return null
+      return target(k, null)
     }
 
     j = skipSpace(s, k + 1, limit)
   }
 
-  return s.charAt(j) === ')' ? { url: unescapeText(decodeEntities(url)), end: j + 1 } : null
+  return s.charAt(j) === ')' ? target(j + 1, url) : target(j, null)
 }
 
 function skipSpace(s: string, from: number, limit: number): number {
