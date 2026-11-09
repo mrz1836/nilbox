@@ -197,9 +197,10 @@ is known, and the app quits once you dismiss it.
 ## The window
 
 A single toolbar runs beside the macOS window controls. It holds the **Inbox**, **Worktrees**,
-and **Prompts** tabs and, on the right, the [notification](#menu-bar-and-notifications) bell,
-the API budget gauge, and your profile picture. Drag the bar to move the window, and
-double-click it to zoom.
+and **Prompts** tabs and, on the right, the page's [filter](#filtering), the
+[notification](#menu-bar-and-notifications) bell, the API budget gauge, and your profile
+picture. Drag the bar to move the window, and double-click it to zoom. As the window narrows,
+the filter gives way first.
 
 **Tab counts.** **Inbox** counts the items in your lists, leaving out what is snoozed or
 dismissed. An item in two lists, such as a pull request you opened and are assigned, counts
@@ -293,6 +294,83 @@ defaults](#launch-defaults) for orgs and repositories), trust (the [trusted
 bots](#outside-contributors)), [sensitive files](#sensitive-files), and the app's version. Each change is
 saved as you make it, except the clone root and launch defaults, which are saved with their
 **Save** buttons. Escape or the back arrow returns to the view you came from.
+
+<br>
+
+## Filtering
+
+The toolbar's field filters the page you're on: **Filter inbox**, **Filter worktrees**, or
+**Find a setting**. Prompts keeps the search in its own sidebar. Everything it searches is
+already in the window, so a filter is instant and asks GitHub nothing. Each page keeps its
+own query while you look at another, until the app quits; a filter never comes back after a
+relaunch, where it would make items look lost.
+
+**Keys.**
+
+| Key | What it does |
+|---|---|
+| **⌘F**, or **/** while you're not typing | Focuses the field, with its text selected. On Prompts, ⌘F focuses the prompt search. ⌃⌘F still toggles full screen. |
+| **↓** and **↑** | Choose among the suggestions, or open them over plain words. |
+| **Enter** or **Tab** | Inserts the chosen suggestion. |
+| **Escape** | Closes the suggestions, then clears the query, then leaves the field. Once the field is empty and left, Escape closes Settings as usual. |
+
+**Suggestions.** Focus the empty field for what the page can be narrowed by, each with how
+many it would match: pull requests, issues, drafts, pinned items, a repository, a label, an
+author, and a project status or failing checks while some item has one. Type a key such as
+`label:` or `repo:ac` and the field lists the values that fit, each counted among what the
+rest of your query already matches. A value with spaces is inserted in quotes. Keys the page
+understands are tinted as you type, and the field shows **5 matches** or **No matches** (just
+the number when it's narrow), with **✕** to clear it.
+
+**The query.** Words AND together: each must appear, ignoring case and accents, in what the
+item says. `"a quoted phrase"` matches as a phrase, and `-word` leaves out what has it.
+`key:value` filters by a key the page knows; any other `word:` is just text, so a title such
+as `fix: x` still matches. `-key:value` leaves out what matches, and `key:a,b` means either.
+Repeating a key means either for something an item has one of (`repo:a repo:b`) and both for
+something it can have several of (`label:bug label:ui`). A value matches as part of one while
+you type, and exactly once it names one an item has, as a picked suggestion does. `#123`
+matches item 123, and a bare `123` matches it too.
+
+| Page | Keys |
+|---|---|
+| Inbox | `is:pr`, `is:issue`, `is:draft`, `is:pinned`, `is:conflict` (`is:open` matches everything); `repo:`, `org:`, `author:` (with `@me` for you), `label:`, `status:` (project status), `project:`; `checks:failing`, `checks:passing`, `checks:pending`; `review:approved`, `review:changes_requested`, `review:required` |
+| Worktrees | `repo:`, `branch:`, `agent:`; `is:dirty`, `is:locked`, `is:in-use`, `is:finished`, `is:review` (needs a look), `is:pr`, `is:issue`, `is:open`, `is:merged`, `is:closed` |
+| Settings | Words only |
+
+**What the inbox searches.** An item's title, its repository as `owner/name`, its number, its
+author, its branch, its labels, its projects and their statuses, and the teams asked to review
+it, in every list and in Snoozed and Dismissed too. `checks:`, `review:`, and `status:` read
+an item the way its card shows it. An item whose details haven't arrived yet matches no key
+that needs them, such as `label:`. Descriptions and comments aren't kept on your Mac, so the
+filter can't search them.
+
+**The inbox while filtered.** Each list keeps its order (pinned items first, then the status
+sort) and shows only its matches, and its tab says how many, as **5 of 38**, in a dashed pill
+of its own. Snoozed and Dismissed count their matches too, and a tab with none points to the
+one that has some, as **No matches here · 2 in Snoozed**. A list with no match anywhere hides
+and comes back as you left it, and a collapsed list shows open while you filter without
+forgetting that it was collapsed. The words you typed are marked in each title. When nothing
+matches, the top of the page says so and offers **Clear filter**. The **Inbox** tab's count
+stays the whole inbox's.
+
+**Click to filter.** A card's repository, author, and labels are buttons: click one to add it
+to the filter, and click it again to take it out.
+
+**Showing an item.** When the menu bar or a notification shows an item, the inbox's filter is
+cleared first, so the item is always found.
+
+**The Worktrees view while filtered.** A clone with no matching worktree hides. A clone whose
+name matches shows all its worktrees; any other shows only the matching ones, and its header
+says **3 of 7 worktrees**. A clone or worktree showing an error stays in sight whatever the
+filter. When nothing matches, the top of the view says so. **Clean up finished**, **Remove all
+clean**, and **Recently cleaned up** aren't filtered: their confirmation lists everything they
+would take.
+
+**Find a setting.** The sidebar narrows to the sections with a matching setting, each with how
+many match, and turns to the first of them when the open section has none. The matching
+settings are marked, and the first scrolls into view. Words match each setting's name and the
+words it's known by, such as "dark mode" for the theme or "font" for the text size. The search
+is cleared whenever you leave Settings.
 
 <br>
 
