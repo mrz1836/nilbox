@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { attempt, start, type Result } from './call'
 
@@ -15,23 +15,15 @@ export interface Mutation<A extends unknown[], T> {
 }
 
 // useMutation makes writes with mutate. A write is never cancelled, since it may already
-// have been stored; when writes overlap, the state follows the latest one. Nothing is set
-// once the component has gone, though run still resolves, so a caller can report a write
-// that finished after its page closed.
+// have been stored; when writes overlap, the state follows the latest one. A write that
+// finishes while its page is hidden (an Activity, kept with its state while another view
+// shows) is still recorded, so the page is not left pending when it shows again; one that
+// finishes after its page has gone sets nothing, which React ignores, and run still
+// resolves, so a caller can report it.
 export function useMutation<A extends unknown[], T>(mutate: (...args: A) => PromiseLike<T>): Mutation<A, T> {
   const [state, setState] = useState({ pending: false, error: '' })
-  // latest numbers the writes, so only the latest one's outcome is shown; mounted is
-  // false once the component has gone.
+  // latest numbers the writes, so only the latest one's outcome is shown.
   const latest = useRef(0)
-  const mounted = useRef(false)
-
-  useEffect(() => {
-    mounted.current = true
-
-    return () => {
-      mounted.current = false
-    }
-  }, [])
 
   const run = async (...args: A): Promise<Result<T>> => {
     latest.current += 1
@@ -41,7 +33,7 @@ export function useMutation<A extends unknown[], T>(mutate: (...args: A) => Prom
 
     const result = await attempt(start(() => mutate(...args)))
 
-    if (mounted.current && n === latest.current) {
+    if (n === latest.current) {
       setState({ pending: false, error: result.ok ? '' : result.error })
     }
 

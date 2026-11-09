@@ -23,6 +23,7 @@ import {
 } from '../platform'
 import { useMutation } from './useMutation'
 import { useQuery } from './useQuery'
+import { branchSummary, bulkSummary, failedSummary, shortName, singleSummary, type Summary } from './worktreeSummary'
 
 export interface WorktreesOptions {
   // clock returns the current time for the last-commit ages. Keep it stable across renders.
@@ -35,6 +36,9 @@ export interface WorktreesOptions {
   // cleanup toast's View opens the view. Each time it is set again, the list is scrolled
   // to again.
   focusHistory?: boolean
+  // onSummary is told what each change did, or why it failed, as it finishes, so the
+  // window can confirm it where the user will see it.
+  onSummary?: (summary: Summary) => void
 }
 
 // Target is a worktree a bulk action offers to take, in its repository.
@@ -105,8 +109,8 @@ export interface WorktreesState {
   // clearError is why the history could not be cleared, or ''.
   clearError: string
   errors: WorktreeErrors
-  // notice says what the latest single change did, or ''.
-  notice: string
+  // notice says what the latest single change did, or null.
+  notice: Summary | null
   // bulk is the outcome of the latest bulk action, or null.
   bulk: Bulk | null
   // confirmation is the destructive action waiting for the user's yes, or null.
@@ -133,6 +137,8 @@ export interface WorktreesState {
   cancel: () => void
   // clearHistory forgets the recently cleaned-up worktrees.
   clearHistory: () => void
+  // dismiss puts away what the latest change did.
+  dismiss: () => void
 }
 
 // Failure is a single action that failed, kept with where it failed. A repository's main
@@ -146,7 +152,7 @@ interface Failure {
 // State is what the view reports and holds besides the listings and the writes.
 interface State {
   failure: Failure | null
-  notice: string
+  notice: Summary | null
   bulk: Bulk | null
   branchResults: BranchResult[] | null
   confirmation: Confirmation | null
@@ -158,7 +164,7 @@ interface State {
 
 type Action =
   | { type: 'reset' }
-  | { type: 'changed'; notice: string }
+  | { type: 'changed'; notice: Summary }
   | { type: 'failed'; failure: Failure }
   | { type: 'bulkDone'; bulk: Bulk }
   | { type: 'branchesDone'; results: BranchResult[] }
@@ -169,7 +175,7 @@ type Action =
 
 const initialState: State = {
   failure: null,
-  notice: '',
+  notice: null,
   bulk: null,
   branchResults: null,
   confirmation: null,
@@ -181,7 +187,7 @@ const initialState: State = {
 function reducer(state: State, action: Action): State {
   switch (action.type) {
     case 'reset':
-      return { ...state, failure: null, notice: '', bulk: null, branchResults: null }
+      return { ...state, failure: null, notice: null, bulk: null, branchResults: null }
     case 'changed':
       return { ...state, notice: action.notice }
     case 'failed':
@@ -210,22 +216,6 @@ function failureAt(failure: Failure | null, scope: Failure['scope'], path: strin
   return failure !== null && failure.scope === scope && failure.path === path ? failure.message : ''
 }
 
-// branchesText names the branches deleted with a worktree, as in "its branch
-// worktree-pr-7" or "its branches worktree-pr-7 and feature-x".
-function branchesText(names: readonly string[]): string {
-  return `${names.length === 1 ? 'its branch' : 'its branches'} ${names.join(' and ')}`
-}
-
-// doneNotice says what a single removal or clean-up did, with the branches deleted and
-// why any branch ticked was kept: verb is "Removed", "Force removed", or "Cleaned up".
-function doneNotice(verb: string, wt: Worktree, res: RemoveResult): string {
-  const deleted = res.deletedBranches.length > 0 ? ` and ${branchesText(res.deletedBranches)}` : ''
-
-  return res.reason === ''
-    ? `${verb} ${wt.displayPath}${deleted}.`
-    : `${verb} ${wt.displayPath}${deleted}; ${res.reason}.`
-}
-
 // targetsOf lists the worktrees a bulk action offers to take: those take keeps.
 function targetsOf(repos: readonly WorktreeRepo[], take: (wt: Worktree) => boolean): Target[] {
   return repos.flatMap((repo) => repo.worktrees.filter(take).map((worktree) => ({ repoPath: repo.path, worktree })))
@@ -241,6 +231,7 @@ export function useWorktrees({
   reloadKey = 0,
   onSnapshot,
   focusHistory = false,
+  onSummary,
 }: WorktreesOptions = {}): WorktreesState {
   // listing is the worktrees as git reports them, with when the listing arrived, which
   // the ages are measured against.
@@ -251,7 +242,7 @@ export function useWorktrees({
   })
   const [opened] = useState(clock)
   const [state, dispatch] = useReducer(reducer, initialState)
-  const changer = useMutation((change: () => Promise<string>) => change())
+  const changer = useMutation((change: () => Promise<Summary>) => change())
   const bulker = useMutation((action: () => Promise<RemoveResult[]>) => action())
   const brancher = useMutation((picks: BranchPick[]) => deleteBranches(picks))
   const clearer = useMutation(() => clearCleanups())
@@ -312,33 +303,36 @@ export function useWorktrees({
     }
   }
 
-  // run performs one change, then lists again. The change returns the notice to show,
-  // and a failure is kept with where it happened.
-  const run = async (scope: Failure['scope'], path: string, change: () => Promise<string>) => {
+  // run performs one change, then lists again. The change returns what it did; a
+  // failure is kept with where it happened, and failed names the change for its report.
+  const run = async (scope: Failure['scope'], path: string, failed: string, change: () => Promise<Summary>) => {
     resetMessages()
 
     const result = await changer.run(change)
 
     if (result.ok) {
       dispatch({ type: 'changed', notice: result.data })
+      onSummary?.(result.data)
       void reload()
     } else {
       dispatch({ type: 'failed', failure: { scope, path, message: result.error } })
+      onSummary?.(failedSummary(failed, result.error))
     }
   }
 
   // single makes one confirmed change to one worktree, with the branches ticked.
   const single = (confirmation: Extract<Confirmation, { repoPath: string }>, branches: string[]) => {
     const { repoPath, worktree: wt } = confirmation
+    const failed = `Couldn’t ${confirmation.kind === 'cleanUp' ? 'clean up' : 'remove'} ${shortName(wt.displayPath)}`
 
-    void run('worktree', wt.path, async () => {
+    void run('worktree', wt.path, failed, async () => {
       switch (confirmation.kind) {
         case 'remove':
-          return doneNotice('Removed', wt, await removeWorktree(repoPath, wt.path, branches))
+          return singleSummary('Removed', wt, await removeWorktree(repoPath, wt.path, branches))
         case 'force':
-          return doneNotice('Force removed', wt, await forceRemoveWorktree(repoPath, wt.path, branches))
+          return singleSummary('Force removed', wt, await forceRemoveWorktree(repoPath, wt.path, branches))
         default:
-          return doneNotice('Cleaned up', wt, await cleanUpWorktree(repoPath, wt.path, branches))
+          return singleSummary('Cleaned up', wt, await cleanUpWorktree(repoPath, wt.path, branches))
       }
     })
   }
@@ -351,19 +345,26 @@ export function useWorktrees({
 
     if (result.ok) {
       dispatch({ type: 'branchesDone', results: result.data })
+      onSummary?.(branchSummary(result.data))
       void reload()
+    } else {
+      onSummary?.(failedSummary('Couldn’t delete the branches', result.error))
     }
   }
 
-  // runBulk performs a bulk action and reports each worktree's outcome.
-  const runBulk = async (action: () => Promise<RemoveResult[]>, noun: string, verb: string) => {
+  // runBulk performs a bulk action and reports each worktree's outcome; failed names the
+  // action for a report of its failure.
+  const runBulk = async (action: () => Promise<RemoveResult[]>, noun: string, verb: string, failed: string) => {
     resetMessages()
 
     const result = await bulker.run(action)
 
     if (result.ok) {
       dispatch({ type: 'bulkDone', bulk: { results: result.data, noun, verb } })
+      onSummary?.(bulkSummary(result.data, noun, verb))
       void reload()
+    } else {
+      onSummary?.(failedSummary(failed, result.error))
     }
   }
 
@@ -405,17 +406,25 @@ export function useWorktrees({
       dispatch({ type: 'ask', confirmation: { kind: 'cleanUp', repoPath: repo.path, worktree: wt } })
     },
     unlock: (repo, wt) => {
-      void run('worktree', wt.path, async () => {
+      void run('worktree', wt.path, `Couldn’t unlock ${shortName(wt.displayPath)}`, async () => {
         await unlockWorktree(repo.path, wt.path)
 
-        return `Unlocked ${wt.displayPath}.`
+        return {
+          title: `Unlocked ${shortName(wt.displayPath)}`,
+          detail: 'The lock its ended session left was released, so it can be removed.',
+          tone: 'success',
+        }
       })
     },
     prune: (repo) => {
-      void run('repo', repo.path, async () => {
+      void run('repo', repo.path, `Couldn’t prune ${repo.displayPath}`, async () => {
         await pruneWorktrees(repo.path)
 
-        return `Pruned the stale entries of ${repo.displayPath}.`
+        return {
+          title: `Pruned ${repo.displayPath}`,
+          detail: 'The entries of worktrees whose folders are gone were cleared.',
+          tone: 'success',
+        }
       })
     },
     askRemoveAllClean: () => {
@@ -438,10 +447,20 @@ export function useWorktrees({
 
       switch (confirmation.kind) {
         case 'all':
-          void runBulk(() => removeAllCleanWorktrees(choice.picks ?? []), 'clean worktree', 'Removed')
+          void runBulk(
+            () => removeAllCleanWorktrees(choice.picks ?? []),
+            'clean worktree',
+            'Removed',
+            'Couldn’t remove the clean worktrees',
+          )
           break
         case 'finished':
-          void runBulk(() => cleanUpFinishedWorktrees(choice.picks ?? []), 'finished worktree', 'Cleaned up')
+          void runBulk(
+            () => cleanUpFinishedWorktrees(choice.picks ?? []),
+            'finished worktree',
+            'Cleaned up',
+            'Couldn’t clean up the finished worktrees',
+          )
           break
         case 'merged':
           void runBranches(choice.branchPicks ?? [])
@@ -456,5 +475,6 @@ export function useWorktrees({
     clearHistory: () => {
       void clearHistory()
     },
+    dismiss: resetMessages,
   }
 }

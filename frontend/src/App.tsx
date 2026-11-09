@@ -21,6 +21,7 @@ import { useNotifications } from './lib/useNotifications'
 import { useQuery } from './lib/useQuery'
 import { useTheme } from './lib/useTheme'
 import { useTriage } from './lib/useTriage'
+import type { Summary } from './lib/worktreeSummary'
 import {
   lastWorktreeSweep,
   on,
@@ -273,6 +274,38 @@ export function App() {
       ? sweeps.toast
       : { ...sweeps.toast, action: { label: 'View', onClick: viewCleanups } }
 
+  // changeToast confirms a change made in the Worktrees view as it finishes: what it did,
+  // or why it failed. It shows over a sweep's toast, and offers View once another view is
+  // open.
+  const [changeToast, setChangeToast] = useState<ToastMessage | null>(null)
+  const changes = useRef(0)
+
+  const reportChange = (summary: Summary) => {
+    // Its ids count down, so they never meet a sweep toast's.
+    changes.current -= 1
+    setChangeToast({ id: changes.current, text: summary.title, detail: summary.detail, tone: summary.tone })
+  }
+
+  const closeChangeToast = () => {
+    setChangeToast(null)
+  }
+
+  const shownToast =
+    changeToast === null
+      ? sweepToast
+      : view === 'worktrees'
+        ? changeToast
+        : {
+            ...changeToast,
+            action: {
+              label: 'View',
+              onClick: () => {
+                closeChangeToast()
+                changeView('worktrees')
+              },
+            },
+          }
+
   const openSettings = () => {
     go({ type: 'settings', section: 'account' })
   }
@@ -449,6 +482,7 @@ export function App() {
                 agentName={(id) => agentName(config.agents, id)}
                 launchFor={launchFor}
                 branchRules={config.settings?.branches}
+                onSummary={reportChange}
               />
             </Suspense>
           </Activity>
@@ -493,7 +527,7 @@ export function App() {
           </Activity>
         )}
       </main>
-      <Toast toast={sweepToast} onClose={closeSweepToast} />
+      <Toast toast={shownToast} onClose={changeToast === null ? closeSweepToast : closeChangeToast} />
     </div>
   )
 }

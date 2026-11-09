@@ -3,12 +3,13 @@ import type { ReactNode } from 'react'
 import { useWorktrees, type WorktreesOptions } from '../lib/useWorktrees'
 import type { AgentID, BranchRules, LinkedItem } from '../platform'
 import { ErrorBanner } from './ErrorBanner'
+import { Spinner } from './Spinner'
 import { BranchResults } from './worktrees/BranchResults'
 import { BulkResults } from './worktrees/BulkResults'
 import { CleanupHistory } from './worktrees/CleanupHistory'
 import { ConfirmationDialog } from './worktrees/ConfirmationDialog'
-import { Spinner } from './Spinner'
 import { RepoSection } from './worktrees/RepoSection'
+import { ResultCard } from './worktrees/ResultCard'
 import { plainButton } from './worktrees/shared'
 
 // defaultRules are the branch rules a confirmation starts from until the settings load:
@@ -102,13 +103,9 @@ export function WorktreesView({ agentName, launchFor, branchRules = defaultRules
           {snapshot.linkError} Worktrees are shown without their pull requests and issues, so none counts as finished.
         </p>
       )}
-      {notice !== '' && (
-        <p role="status" className="text-sm text-success">
-          {notice}
-        </p>
-      )}
-      {bulk !== null && <BulkResults bulk={bulk} />}
-      {branchResults !== null && <BranchResults results={branchResults} />}
+      {notice !== null && <ResultCard summary={notice} onDismiss={actions.dismiss} />}
+      {bulk !== null && <BulkResults bulk={bulk} onDismiss={actions.dismiss} />}
+      {branchResults !== null && <BranchResults results={branchResults} onDismiss={actions.dismiss} />}
       {snapshot === null
         ? loadError === '' && (
             <p className="flex items-center gap-2 text-sm text-muted">

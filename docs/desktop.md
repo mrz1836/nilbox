@@ -1210,7 +1210,10 @@ reached, the view says so and lists the worktrees without their items.
 **Actions.** Each row offers only what is allowed, and every removal checks again first that no
 session runs in the worktree. Each removal and cleanup asks first, in a dialog that says what
 it does to the folder and lists a box for each [branch](#branches) that could go with it,
-ticked as **Settings → Worktrees** says; untick any to keep it.
+ticked as **Settings → Worktrees** says; untick any to keep it. When a change finishes, a
+toast says what it did (or why it failed), with **View** if another view is open by then, and
+a card at the top of the Worktrees view sums it up, with notes on anything left, until you
+dismiss it or make the next change.
 
 - **Clean up** removes a finished worktree. It checks the worktree again first, releases the
   lock of a Claude Code session that has ended, and runs `git worktree remove` without

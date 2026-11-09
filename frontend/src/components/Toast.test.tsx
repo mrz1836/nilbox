@@ -74,6 +74,17 @@ describe('Toast', () => {
     expect(onClose).toHaveBeenCalledOnce()
   })
 
+  it.each([
+    ['success', 'text-success'],
+    ['warning', 'text-warning'],
+  ] as const)('leads a %s with its sign, in its color', (tone, color) => {
+    render(<Toast toast={{ id: 1, text: 'Deleted 2 branches', tone }} onClose={vi.fn()} />)
+
+    const card = screen.getByRole('group', { name: 'Notification' })
+    expect(card.querySelectorAll('svg')).toHaveLength(2)
+    expect(card.querySelector(`svg.${color}`)).not.toBeNull()
+  })
+
   it('shows an action button with its label', async () => {
     const person = user()
     const onClick = vi.fn()

@@ -267,7 +267,9 @@ describe('WorktreesView', () => {
     await userEvent.click(row(linkedDisplay).getByRole('button', { name: 'Unlock' }))
 
     expect(platform.unlockWorktree).toHaveBeenCalledWith(repoPath, linkedPath)
-    expect(await screen.findByRole('status')).toHaveTextContent(`Unlocked ${linkedDisplay}.`)
+    expect(await screen.findByRole('status', { name: 'Unlocked example-repo/pr-7' })).toHaveTextContent(
+      'The lock its ended session left was released, so it can be removed.',
+    )
     expect(await row(linkedDisplay).findByRole('button', { name: 'Remove' })).toBeInTheDocument()
 
     platform.listWorktrees.mockResolvedValue(
@@ -421,8 +423,8 @@ describe('WorktreesView', () => {
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(platform.cleanUpWorktree).toHaveBeenCalledWith(repoPath, linkedPath, ['worktree-pr-7'])
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      `Cleaned up ${linkedDisplay} and its branch worktree-pr-7.`,
+    expect(await screen.findByRole('status', { name: 'Cleaned up example-repo/pr-7' })).toHaveTextContent(
+      'Its branch worktree-pr-7 was deleted.',
     )
     expect(platform.listWorktrees).toHaveBeenCalledTimes(2)
   })
@@ -459,7 +461,9 @@ describe('WorktreesView', () => {
 
     await confirmWith('Clean up')
     expect(platform.cleanUpWorktree).toHaveBeenCalledWith(repoPath, linkedPath, [])
-    expect(await screen.findByRole('status')).toHaveTextContent(`Cleaned up ${linkedDisplay}.`)
+    expect(await screen.findByRole('status', { name: 'Cleaned up example-repo/pr-7' })).toHaveTextContent(
+      'No branch was deleted.',
+    )
 
     platform.cleanUpWorktree.mockResolvedValueOnce({
       ...result,
@@ -467,8 +471,8 @@ describe('WorktreesView', () => {
     })
     await userEvent.click(await row(linkedDisplay).findByRole('button', { name: 'Clean up' }))
     await confirmWith('Clean up')
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      `Cleaned up ${linkedDisplay}; kept the branch worktree-pr-7: git: cannot lock ref.`,
+    expect(await screen.findByRole('status', { name: 'Cleaned up example-repo/pr-7' })).toHaveTextContent(
+      'No branch was deleted. Kept the branch worktree-pr-7: git: cannot lock ref.',
     )
 
     platform.cleanUpWorktree.mockRejectedValueOnce(
@@ -544,7 +548,8 @@ describe('WorktreesView', () => {
       { repoPath, path: pr8Path, branches: ['worktree-pr-8'] },
     ])
     const results = await screen.findByRole('status')
-    expect(results).toHaveTextContent('Cleaned up 1 of 2 finished worktrees.')
+    expect(results).toHaveAccessibleName('Cleaned up 1 of 2 finished worktrees')
+    expect(results).toHaveTextContent('1 branch deleted · 1 left in place, as noted below.')
     expect(results).toHaveTextContent(
       '~/projects/example-repo/.claude/worktrees/pr-8: the worktree changed since it was checked; refresh and try again',
     )
@@ -594,7 +599,7 @@ describe('WorktreesView', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Clean up finished (1)' }))
     await userEvent.click(screen.getByRole('button', { name: 'Clean up 1 worktree' }))
-    expect(await screen.findByRole('status')).toHaveTextContent('There were no finished worktrees to remove.')
+    expect(await screen.findByRole('status')).toHaveTextContent('There were no finished worktrees to remove')
 
     platform.cleanUpFinishedWorktrees.mockRejectedValue(
       new Error('GitHub could not be asked which worktrees are finished'),
@@ -662,8 +667,8 @@ describe('WorktreesView', () => {
     await confirmWith('Remove')
 
     expect(platform.removeWorktree).toHaveBeenCalledWith(repoPath, linkedPath, ['worktree-pr-7'])
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      `Removed ${linkedDisplay} and its branch worktree-pr-7.`,
+    expect(await screen.findByRole('status', { name: 'Removed example-repo/pr-7' })).toHaveTextContent(
+      'Its branch worktree-pr-7 was deleted.',
     )
     expect(platform.listWorktrees).toHaveBeenCalledTimes(2)
     expect(await screen.findByRole('button', { name: 'Remove all clean (0)' })).toBeDisabled()
@@ -715,8 +720,8 @@ describe('WorktreesView', () => {
     await confirmWith('Remove')
 
     expect(platform.removeWorktree).toHaveBeenCalledWith(repoPath, linkedPath, [])
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      `Removed ${linkedDisplay}; kept the branch worktree-pr-7, which has 2 commits not on GitHub.`,
+    expect(await screen.findByRole('status', { name: 'Removed example-repo/pr-7' })).toHaveTextContent(
+      'No branch was deleted. Kept the branch worktree-pr-7, which has 2 commits not on GitHub.',
     )
   })
 
@@ -798,7 +803,9 @@ describe('WorktreesView', () => {
     await confirmWith('Remove')
 
     expect(platform.removeWorktree).toHaveBeenCalledWith(repoPath, linkedPath, [])
-    expect(await screen.findByRole('status')).toHaveTextContent(`Removed ${linkedDisplay}.`)
+    expect(await screen.findByRole('status', { name: 'Removed example-repo/pr-7' })).toHaveTextContent(
+      'No branch was deleted.',
+    )
   })
 
   it('names every branch a removal deleted', async () => {
@@ -809,8 +816,8 @@ describe('WorktreesView', () => {
     await userEvent.click(row(linkedDisplay).getByRole('button', { name: 'Remove' }))
     await confirmWith('Remove')
 
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      `Removed ${linkedDisplay} and its branches worktree-pr-7 and feature-x.`,
+    expect(await screen.findByRole('status', { name: 'Removed example-repo/pr-7' })).toHaveTextContent(
+      'Its branches worktree-pr-7 and feature-x were deleted.',
     )
   })
 
@@ -847,8 +854,8 @@ describe('WorktreesView', () => {
 
     expect(platform.forceRemoveWorktree).toHaveBeenCalledWith(repoPath, linkedPath, ['worktree-pr-7'])
     expect(platform.removeWorktree).not.toHaveBeenCalled()
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      `Force removed ${linkedDisplay} and its branch worktree-pr-7.`,
+    expect(await screen.findByRole('status', { name: 'Force removed example-repo/pr-7' })).toHaveTextContent(
+      'Its branch worktree-pr-7 was deleted.',
     )
     expect(platform.listWorktrees).toHaveBeenCalledTimes(2)
   })
@@ -903,7 +910,8 @@ describe('WorktreesView', () => {
       { repoPath, path: `${repoPath}/.claude/worktrees/issue-9`, branches: ['worktree-issue-9'] },
     ])
     const results = await screen.findByRole('status')
-    expect(results).toHaveTextContent('Removed 1 of 2 clean worktrees.')
+    expect(results).toHaveAccessibleName('Removed 1 of 2 clean worktrees')
+    expect(results).toHaveTextContent('No branch was deleted · 1 left in place, as noted below.')
     expect(results).toHaveTextContent('~/projects/example-repo/.claude/worktrees/issue-9: has uncommitted changes')
     expect(platform.listWorktrees).toHaveBeenCalledTimes(2)
   })
@@ -915,7 +923,7 @@ describe('WorktreesView', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Remove all clean (1)' }))
     await userEvent.click(screen.getByRole('button', { name: 'Remove 1 worktree' }))
 
-    expect(await screen.findByRole('status')).toHaveTextContent('There were no clean worktrees to remove.')
+    expect(await screen.findByRole('status')).toHaveTextContent('There were no clean worktrees to remove')
 
     platform.removeAllCleanWorktrees.mockRejectedValue(new Error('scan the clone root: permission denied'))
     await userEvent.click(await screen.findByRole('button', { name: 'Remove all clean (1)' }))
@@ -943,7 +951,7 @@ describe('WorktreesView', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Remove 1 worktree' }))
 
     const results = await screen.findByRole('status')
-    expect(results).toHaveTextContent('Removed 1 of 1 clean worktree.')
+    expect(results).toHaveAccessibleName('Removed 1 clean worktree')
     expect(within(results).queryByRole('listitem')).not.toBeInTheDocument()
   })
 
@@ -977,7 +985,9 @@ describe('WorktreesView', () => {
     await userEvent.click((await repo('other-repo')).getByRole('button', { name: 'Prune' }))
 
     expect(platform.pruneWorktrees).toHaveBeenCalledWith('/home/user/projects/other-repo')
-    expect(await screen.findByRole('status')).toHaveTextContent('Pruned the stale entries of ~/projects/other-repo.')
+    expect(await screen.findByRole('status', { name: 'Pruned ~/projects/other-repo' })).toHaveTextContent(
+      'The entries of worktrees whose folders are gone were cleared.',
+    )
     expect(platform.listWorktrees).toHaveBeenCalledTimes(2)
   })
 
@@ -1464,14 +1474,15 @@ describe('WorktreesView merged branches', () => {
     ])
 
     const results = await screen.findByRole('status')
-    expect(results).toHaveTextContent('Deleted 1 of 2 branches.')
+    expect(results).toHaveAccessibleName('Deleted 1 of 2 branches')
+    expect(results).toHaveTextContent('across 1 clone · 1 kept, as noted below.')
     expect(within(results).getByRole('list', { name: 'Branches kept' })).toHaveTextContent(
       '~/projects/other-repo: feature-z kept: the branch moved since it was checked; refresh and try again',
     )
     expect(within(results).getByRole('list', { name: 'Branches deleted' })).toHaveTextContent(
       '~/projects/example-repo: feature-x at fc1c397',
     )
-    expect(results).toHaveTextContent('The branch deleted, and the commits that bring them back')
+    expect(results).toHaveTextContent('Show the branch deleted, with the commit each pointed at')
     expect(platform.listWorktrees).toHaveBeenCalledTimes(2)
   })
 
@@ -1555,10 +1566,11 @@ describe('WorktreesView merged branches', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Delete 2 branches' }))
 
     const results = await screen.findByRole('status')
-    expect(results).toHaveTextContent('Deleted 2 of 2 branches.')
-    expect(results.firstElementChild).toHaveClass('text-success')
+    expect(results).toHaveAccessibleName('Deleted 2 branches')
+    expect(results).toHaveTextContent('across 1 clone.')
+    expect(results).toHaveClass('border-success/40')
     expect(within(results).queryByRole('list', { name: 'Branches kept' })).not.toBeInTheDocument()
-    expect(results).toHaveTextContent('The 2 branches deleted, and the commits that bring them back')
+    expect(results).toHaveTextContent('Show the 2 branches deleted, with the commit each pointed at')
 
     platform.copyText.mockRejectedValueOnce(new Error('clipboard refused'))
     await userEvent.click(within(results).getByRole('button', { name: 'Copy restore commands' }))
@@ -1574,5 +1586,113 @@ describe('WorktreesView merged branches', () => {
     )
     expect(await within(results).findByRole('button', { name: 'Copied' })).toBeInTheDocument()
     error.mockRestore()
+  })
+})
+
+describe('WorktreesView summaries', () => {
+  it('reports what each change did, or why it failed, and puts the result away when dismissed', async () => {
+    const onSummary = vi.fn()
+    render(<WorktreesView clock={fixedNow} onSummary={onSummary} />)
+    await repo('example-repo')
+
+    await userEvent.click(row(linkedDisplay).getByRole('button', { name: 'Remove' }))
+    await confirmWith('Remove')
+
+    const card = await screen.findByRole('status', { name: 'Removed example-repo/pr-7' })
+    expect(onSummary).toHaveBeenLastCalledWith({
+      title: 'Removed example-repo/pr-7',
+      detail: 'Its branch worktree-pr-7 was deleted.',
+      tone: 'success',
+    })
+
+    await userEvent.click(within(card).getByRole('button', { name: 'Dismiss' }))
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+
+    platform.removeWorktree.mockRejectedValueOnce(new Error('git refused: has uncommitted changes'))
+    await userEvent.click(await row(linkedDisplay).findByRole('button', { name: 'Remove' }))
+    await confirmWith('Remove')
+    await vi.waitFor(() => {
+      expect(onSummary).toHaveBeenLastCalledWith({
+        title: 'Couldn’t remove example-repo/pr-7',
+        detail: 'git refused: has uncommitted changes',
+        tone: 'error',
+      })
+    })
+
+    platform.removeAllCleanWorktrees.mockRejectedValueOnce(new Error('scan the clone root: permission denied'))
+    await userEvent.click(await screen.findByRole('button', { name: 'Remove all clean (1)' }))
+    await confirmWith('Remove 1 worktree')
+    await vi.waitFor(() => {
+      expect(onSummary).toHaveBeenLastCalledWith({
+        title: 'Couldn’t remove the clean worktrees',
+        detail: 'scan the clone root: permission denied',
+        tone: 'error',
+      })
+    })
+
+    platform.mergedBranches.mockResolvedValueOnce([mergedBranch()])
+    platform.deleteBranches.mockRejectedValueOnce(new Error('offline'))
+    await userEvent.click(await screen.findByRole('button', { name: 'Clean up merged branches…' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete 1 branch' }))
+    await vi.waitFor(() => {
+      expect(onSummary).toHaveBeenLastCalledWith({
+        title: 'Couldn’t delete the branches',
+        detail: 'offline',
+        tone: 'error',
+      })
+    })
+  })
+
+  it('names a clean-up that failed, and reports a bulk action and a deletion of branches', async () => {
+    const onSummary = vi.fn()
+    platform.listWorktrees.mockResolvedValue(
+      worktreesSnapshot({
+        repos: [worktreeRepo({ worktrees: [mainWorktree(), finishedWorktree()] })],
+        finishedCount: 1,
+      }),
+    )
+    platform.cleanUpWorktree.mockRejectedValueOnce(new Error('the worktree is not finished'))
+    platform.cleanUpFinishedWorktrees.mockResolvedValueOnce([removeResult()])
+    platform.mergedBranches.mockResolvedValueOnce([mergedBranch()])
+    platform.deleteBranches.mockResolvedValueOnce([
+      {
+        repoPath,
+        displayRepo: '~/projects/example-repo',
+        name: 'feature-x',
+        head: 'fc1c3975011e66491785ace891c893e4fc716587',
+        deleted: true,
+        reason: '',
+      },
+    ])
+    render(<WorktreesView clock={fixedNow} onSummary={onSummary} />)
+    await repo('example-repo')
+
+    await userEvent.click(row(linkedDisplay).getByRole('button', { name: 'Clean up' }))
+    await confirmWith('Clean up')
+    await vi.waitFor(() => {
+      expect(onSummary).toHaveBeenLastCalledWith(
+        expect.objectContaining({ title: 'Couldn’t clean up example-repo/pr-7', tone: 'error' }),
+      )
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Clean up finished (1)' }))
+    await confirmWith('Clean up 1 worktree')
+    await vi.waitFor(() => {
+      expect(onSummary).toHaveBeenLastCalledWith({
+        title: 'Cleaned up 1 finished worktree',
+        detail: '1 branch deleted.',
+        tone: 'success',
+      })
+    })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Clean up merged branches…' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete 1 branch' }))
+    await vi.waitFor(() => {
+      expect(onSummary).toHaveBeenLastCalledWith({
+        title: 'Deleted 1 branch',
+        detail: 'across 1 clone.',
+        tone: 'success',
+      })
+    })
   })
 })

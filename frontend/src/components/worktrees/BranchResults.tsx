@@ -1,9 +1,11 @@
 import { useState } from 'react'
 
-import { counted } from '../../lib/format'
+import { branchSummary } from '../../lib/worktreeSummary'
 import { copyText, type BranchResult } from '../../platform'
 import { quietButtonClass } from '../controls'
+import { CopyIcon } from '../icons'
 import { shortCommit } from './BranchChoices'
+import { ResultCard } from './ResultCard'
 
 // shellQuoted quotes text for a POSIX shell: single quotes, each one inside closed,
 // escaped, and reopened.
@@ -39,25 +41,23 @@ function CopyRestore({ results }: { results: readonly BranchResult[] }) {
       }}
       className={quietButtonClass}
     >
+      <CopyIcon className="size-3.5" />
       {copied ? 'Copied' : 'Copy restore commands'}
     </button>
   )
 }
 
-// BranchResults reports the outcome of deleting merged branches: how many went, why each
-// one kept stayed, and, folded away, each deleted branch with the commit it pointed at,
-// which brings it back, with the commands to do so to copy.
-export function BranchResults({ results }: { results: readonly BranchResult[] }) {
+// BranchResults reports the outcome of deleting merged branches: how many went, across how
+// many clones, why each one kept stayed, and, folded away, each deleted branch with the
+// commit it pointed at, which brings it back, with the commands to do so to copy.
+export function BranchResults({ results, onDismiss }: { results: readonly BranchResult[]; onDismiss: () => void }) {
   const deleted = results.filter((r) => r.deleted)
   const kept = results.filter((r) => !r.deleted)
 
   return (
-    <div role="status" className="flex flex-col gap-1 text-sm">
-      <p className={kept.length === 0 ? 'text-success' : 'text-warning'}>
-        Deleted {String(deleted.length)} of {counted(results.length, 'branch', 'branches')}.
-      </p>
+    <ResultCard summary={branchSummary(results)} onDismiss={onDismiss}>
       {kept.length > 0 && (
-        <ul aria-label="Branches kept" className="list-disc pl-5 text-xs text-muted">
+        <ul aria-label="Branches kept" className="mt-1 list-disc pl-5 text-xs text-muted">
           {kept.map((r) => (
             <li key={`${r.repoPath}\u0000${r.name}`}>
               {r.displayRepo}: <code className="font-mono text-text">{r.name}</code> kept: {r.reason}
@@ -66,28 +66,30 @@ export function BranchResults({ results }: { results: readonly BranchResult[] })
         </ul>
       )}
       {deleted.length > 0 && (
-        <details className="text-xs text-muted">
-          <summary className="cursor-pointer select-none hover:text-text">
-            {deleted.length === 1 ? 'The branch deleted' : `The ${String(deleted.length)} branches deleted`}, and the
-            commits that bring them back
-          </summary>
-          <ul aria-label="Branches deleted" className="mt-1 list-disc pl-5">
-            {deleted.map((r) => (
-              <li key={`${r.repoPath}\u0000${r.name}`}>
-                {r.displayRepo}: <code className="font-mono text-text">{r.name}</code> at{' '}
-                <code className="font-mono text-text" title={r.head}>
-                  {shortCommit(r.head)}
-                </code>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-1 flex flex-wrap items-center gap-2">
-            To bring a branch back, run{' '}
-            <code className="font-mono text-text">git branch &lt;name&gt; &lt;commit&gt;</code> in its clone.
+        <>
+          <details className="mt-1 text-xs text-muted">
+            <summary className="cursor-pointer select-none hover:text-text">
+              {deleted.length === 1 ? 'Show the branch deleted' : `Show the ${String(deleted.length)} branches deleted`}
+              , with the commit each pointed at
+            </summary>
+            <ul aria-label="Branches deleted" className="mt-1 max-h-60 list-disc overflow-y-auto pl-5">
+              {deleted.map((r) => (
+                <li key={`${r.repoPath}\u0000${r.name}`}>
+                  {r.displayRepo}: <code className="font-mono text-text">{r.name}</code> at{' '}
+                  <code className="font-mono text-text" title={r.head}>
+                    {shortCommit(r.head)}
+                  </code>
+                </li>
+              ))}
+            </ul>
+          </details>
+          <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
             <CopyRestore results={results} />
+            to bring any back: each runs{' '}
+            <code className="font-mono text-text">git branch &lt;name&gt; &lt;commit&gt;</code> in its clone.
           </p>
-        </details>
+        </>
       )}
-    </div>
+    </ResultCard>
   )
 }

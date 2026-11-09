@@ -44,7 +44,7 @@ describe('useWorktrees', () => {
     })
     expect(result.current.errors.worktree(repo.path)).toBe('')
     expect(result.current.errors.repo('/elsewhere')).toBe('')
-    expect(result.current.notice).toBe('')
+    expect(result.current.notice).toBeNull()
   })
 
   it('takes nothing that a confirmation did not tick', async () => {

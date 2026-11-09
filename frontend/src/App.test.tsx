@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { brand } from './generated/brand'
-import type { Settings, TerminalID, AgentID } from './platform'
+import type { Settings, TerminalID, AgentID, RemoveResult } from './platform'
 import {
   appInfo,
   budgetGauge,
@@ -16,6 +16,7 @@ import {
   mainWorktree,
   profile,
   reading,
+  removeResult,
   settings,
   snapshot,
   sweepReport,
@@ -640,6 +641,51 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
     expect(await screen.findByRole('region', { name: 'Recently cleaned up' })).toBeInTheDocument()
     expect(scroll).toHaveBeenCalledOnce()
+  })
+
+  it('confirms a change made in the Worktrees view with a toast, offering View once another view is open', async () => {
+    let finish: (result: RemoveResult) => void = () => undefined
+    platform.removeWorktree.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
+    await renderApp()
+    await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
+
+    const clone = await screen.findByRole('region', { name: 'example-repo' })
+    await userEvent.click(within(clone).getByRole('button', { name: 'Remove' }))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Inbox' }))
+
+    act(() => {
+      finish(removeResult())
+    })
+
+    const toast = await screen.findByRole('group', { name: 'Notification' })
+    expect(toast).toHaveTextContent('Removed example-repo/pr-7 · Its branch worktree-pr-7 was deleted.')
+
+    await userEvent.click(within(toast).getByRole('button', { name: 'View' }))
+    expect(screen.getByRole('button', { name: 'Worktrees' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByRole('group', { name: 'Notification' })).not.toBeInTheDocument()
+
+    // A change finished while the view is open needs no View, and closes like any toast.
+    platform.removeWorktree.mockResolvedValueOnce(removeResult({ deletedBranches: [] }))
+    const remove = within(await screen.findByRole('region', { name: 'example-repo' })).getByRole('button', {
+      name: 'Remove',
+    })
+    await vi.waitFor(() => {
+      expect(remove).toBeEnabled()
+    })
+    await userEvent.click(remove)
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }))
+
+    const again = await screen.findByRole('group', { name: 'Notification' })
+    expect(again).toHaveTextContent('Removed example-repo/pr-7 · No branch was deleted.')
+    expect(within(again).queryByRole('button', { name: 'View' })).not.toBeInTheDocument()
+
+    await userEvent.click(within(again).getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('group', { name: 'Notification' })).not.toBeInTheDocument()
   })
 
   it('offers no View on a cleanup toast while the Worktrees view is open', async () => {
