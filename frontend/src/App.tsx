@@ -1,13 +1,28 @@
-import { Activity, lazy, Suspense, useEffect, useEffectEvent, useReducer, useRef, useState } from 'react'
+import {
+  Activity,
+  lazy,
+  Suspense,
+  useDeferredValue,
+  useEffect,
+  useEffectEvent,
+  useReducer,
+  useRef,
+  useState,
+} from 'react'
 
 import { AppHeader, type View } from './components/AppHeader'
 import { DataResetNotice } from './components/DataResetNotice'
 import { ErrorBanner } from './components/ErrorBanner'
 import { InboxView, type LaunchOptions, type Reveal } from './components/InboxView'
 import { LaunchControls } from './components/LaunchControls'
+import type { SearchFieldProps } from './components/SearchField'
 import type { SettingsSection } from './components/SettingsView'
 import { Toast, type ToastMessage } from './components/Toast'
 import { attempt } from './lib/call'
+import { filterInbox, inboxItems, inboxSpec, inboxSuggestions } from './lib/inboxFilter'
+import { isFindKey, isTyping } from './lib/keys'
+import { toggleFilter } from './lib/query'
+import { matchSettings } from './lib/settingsIndex'
 import { itemWorktrees } from './lib/itemWorktrees'
 import { runningSession, sessionsOf } from './lib/sessions'
 import { useSessions } from './lib/useSessions'
@@ -24,12 +39,14 @@ import { useNotifications } from './lib/useNotifications'
 import { useQuery } from './lib/useQuery'
 import { useTheme } from './lib/useTheme'
 import { useTriage } from './lib/useTriage'
+import { filterWorktrees, worktreeSpec, worktreeSuggestions } from './lib/worktreeFilter'
 import type { Summary } from './lib/worktreeSummary'
 import {
   lastWorktreeSweep,
   on,
   openExternal,
   setProjectsTipDismissed,
+  type AgentID,
   type AppNotification,
   type InboxSnapshot,
   type LinkedItem,
@@ -166,11 +183,23 @@ function useReveal(snapshot: InboxSnapshot | null, openInbox: () => void) {
   return { reveal, show, clear }
 }
 
+// SearchView is a page the toolbar's field filters; Prompts searches in its own sidebar.
+type SearchView = Exclude<View, 'prompts'>
+
+// placeholders say what the field does on each page.
+const placeholders: Readonly<Record<SearchView, string>> = {
+  inbox: 'Filter inbox',
+  worktrees: 'Filter worktrees',
+  settings: 'Find a setting',
+}
+
 // Nav is where the window is: the page it shows, and the pages visited so far, each of
 // which stays mounted once visited; where closing the settings goes back to; the section
 // the settings open at, with a count of their openings, so each opening turns to its
-// section; and whether the Worktrees view opens at its recently cleaned-up list, as a
-// cleanup toast's View asks.
+// section; whether the Worktrees view opens at its recently cleaned-up list, as a
+// cleanup toast's View asks; and each page's query in the toolbar's field. The queries
+// last only as long as the window: a filter that came back after a relaunch would make
+// items look lost.
 interface Nav {
   view: View
   visited: ReadonlySet<View>
@@ -178,6 +207,7 @@ interface Nav {
   settingsSection: SettingsSection
   settingsOpened: number
   historyFocus: boolean
+  queries: Readonly<Record<SearchView, string>>
 }
 
 type NavAction =
@@ -185,6 +215,9 @@ type NavAction =
   | { type: 'settings'; section: SettingsSection }
   | { type: 'closeSettings' }
   | { type: 'cleanups' }
+  | { type: 'reveal' }
+  | { type: 'search'; view: SearchView; query: string }
+  | { type: 'filterBy'; key: string; value: string }
 
 const startNav: Nav = {
   view: 'inbox',
@@ -193,19 +226,31 @@ const startNav: Nav = {
   settingsSection: 'account',
   settingsOpened: 0,
   historyFocus: false,
+  queries: { inbox: '', worktrees: '', settings: '' },
 }
 
-// visit shows a page, with any other change to where the window is.
+// visit shows a page, with any other change to where the window is. Leaving the settings,
+// by any way out, forgets what was being found there.
 function visit(nav: Nav, view: View, change: Partial<Nav> = {}): Nav {
   const visited = nav.visited.has(view) ? nav.visited : new Set([...nav.visited, view])
+  const next = { ...nav, ...change, view, visited }
 
-  return { ...nav, ...change, view, visited }
+  return nav.view === 'settings' && view !== 'settings' && next.queries.settings !== ''
+    ? { ...next, queries: { ...next.queries, settings: '' } }
+    : next
+}
+
+// search sets one page's query.
+function search(nav: Nav, view: SearchView, query: string): Nav {
+  return nav.queries[view] === query ? nav : { ...nav, queries: { ...nav.queries, [view]: query } }
 }
 
 // navigate moves the window: show opens a page (and drops the cleaned-up list's focus);
 // settings opens the settings at a section, remembering the page to go back to, unless
 // they are open already; closeSettings goes back; cleanups opens the Worktrees view at
-// its recently cleaned-up list.
+// its recently cleaned-up list; reveal opens the inbox unfiltered, so the item asked for
+// is surely in it; search sets a page's query; and filterBy adds a filter to the inbox's
+// query, or takes it away.
 function navigate(nav: Nav, action: NavAction): Nav {
   switch (action.type) {
     case 'show':
@@ -222,7 +267,22 @@ function navigate(nav: Nav, action: NavAction): Nav {
       return visit(nav, nav.returnView)
     case 'cleanups':
       return visit(nav, 'worktrees', { historyFocus: true })
+    case 'reveal':
+      return visit(search(nav, 'inbox', ''), 'inbox', { historyFocus: false })
+    case 'search':
+      return search(nav, action.view, action.query)
+    case 'filterBy':
+      return search(nav, 'inbox', toggleFilter(nav.queries.inbox, action.key, action.value, inboxSpec))
   }
+}
+
+// useQueryOf is a page's query as its page filters by it: a step behind while the window
+// is busy, so typing stays quick, but at once when cleared, so a reveal that clears the
+// inbox's query finds its row in the same render.
+function useQueryOf(query: string): string {
+  const deferred = useDeferredValue(query)
+
+  return query === '' ? '' : deferred
 }
 
 // App is the window's root: the toolbar over the active page. It holds the state the
@@ -257,9 +317,20 @@ export function App() {
   const inboxOrder = useInboxOrder()
   const [nav, go] = useReducer(navigate, startNav)
   const { view } = nav
+  const inboxQuery = useQueryOf(nav.queries.inbox)
+  const worktreesQuery = useQueryOf(nav.queries.worktrees)
+  const settingsQuery = useQueryOf(nav.queries.settings)
+  // onFilterBy is made once, so the inbox's cards, which take it, keep their identity.
+  const [onFilterBy] = useState(() => (key: string, value: string) => {
+    go({ type: 'filterBy', key, value })
+  })
+  // searchRef is the toolbar's field, which ⌘F focuses.
+  const searchRef = useRef<HTMLInputElement>(null)
 
+  // openInbox shows the inbox at an item the menu bar or a notification asked for. It
+  // clears the inbox's filter, so the item is always found.
   const openInbox = () => {
-    go({ type: 'show', view: 'inbox' })
+    go({ type: 'reveal' })
   }
   const revealer = useReveal(inbox.snapshot, openInbox)
   const { clear: clearReveal, show: showItem } = revealer
@@ -343,17 +414,29 @@ export function App() {
     go({ type: 'closeSettings' })
   }
 
-  // ⌘, opens the settings page, as in every Mac app.
-  const openSettingsOnKey = useEffectEvent((e: KeyboardEvent) => {
+  // ⌘, opens the settings page, as in every Mac app. ⌘F, or / while not typing, focuses
+  // the toolbar's field with its text selected; on Prompts, ⌘F belongs to the page's own
+  // search.
+  const onShortcut = useEffectEvent((e: KeyboardEvent) => {
     if (e.metaKey && e.key === ',') {
       e.preventDefault()
       openSettings()
+
+      return
+    }
+
+    const slash = e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.defaultPrevented && !isTyping(e)
+
+    if (view !== 'prompts' && (isFindKey(e) || slash)) {
+      e.preventDefault()
+      searchRef.current?.focus()
+      searchRef.current?.select()
     }
   })
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      openSettingsOnKey(e)
+      onShortcut(e)
     }
 
     document.addEventListener('keydown', onKeyDown)
@@ -441,6 +524,45 @@ export function App() {
 
   const account = inbox.snapshot?.account ?? null
   const mode = (page: View) => (view === page ? 'visible' : 'hidden')
+  const viewer = account?.login ?? ''
+  const inboxFilter = triaged === null ? null : filterInbox(triaged, inboxQuery, viewer)
+  const wtRepos = sweeps.snapshot?.repos ?? []
+  const wtOptions = { agentName: (id: AgentID) => agentName(config.agents, id) }
+
+  // searchFor is the toolbar's field on a page that has one: its query, what it counts,
+  // and what it suggests.
+  const searchFor = (page: SearchView): SearchFieldProps => {
+    const base = {
+      value: nav.queries[page],
+      onChange: (query: string) => {
+        go({ type: 'search', view: page, query })
+      },
+      placeholder: placeholders[page],
+    }
+
+    switch (page) {
+      case 'inbox': {
+        const items = triaged === null ? [] : inboxItems(triaged)
+
+        return {
+          ...base,
+          spec: inboxSpec,
+          matches: inboxFilter?.matches ?? null,
+          suggest: (src, caret) => inboxSuggestions(items, src, caret, viewer),
+        }
+      }
+      case 'worktrees':
+        return {
+          ...base,
+          spec: worktreeSpec,
+          matches:
+            sweeps.snapshot === null ? null : (filterWorktrees(wtRepos, worktreesQuery, wtOptions)?.matches ?? null),
+          suggest: (src, caret) => worktreeSuggestions(wtRepos, src, caret, wtOptions),
+        }
+      case 'settings':
+        return { ...base, matches: matchSettings(settingsQuery)?.matches ?? null }
+    }
+  }
 
   return (
     <div className="flex h-screen flex-col bg-background text-text">
@@ -457,6 +579,8 @@ export function App() {
         notifications={notifications}
         onOpenNotification={openNotification}
         onNotificationSettings={openNotificationSettings}
+        search={view === 'prompts' ? undefined : searchFor(view)}
+        searchRef={searchRef}
       />
       <DataResetNotice />
       {config.error !== '' && (
@@ -481,6 +605,11 @@ export function App() {
             offerProjects={offersProjects(inbox.snapshot, config.settings)}
             onDismissProjects={dismissProjects}
             inboxOrder={inboxOrder}
+            filter={inboxFilter}
+            onFilterBy={onFilterBy}
+            onClearFilter={() => {
+              go({ type: 'search', view: 'inbox', query: '' })
+            }}
           />
         </Activity>
         {nav.visited.has('worktrees') && (
@@ -494,6 +623,7 @@ export function App() {
                 launchFor={launchFor}
                 branchRules={config.settings?.branches}
                 onSummary={reportChange}
+                query={worktreesQuery}
               />
             </Suspense>
           </Activity>
@@ -533,6 +663,7 @@ export function App() {
                 onSaved={saveSettings}
                 onLaunchChanged={reload}
                 onClose={closeSettings}
+                query={settingsQuery}
               />
             </Suspense>
           </Activity>

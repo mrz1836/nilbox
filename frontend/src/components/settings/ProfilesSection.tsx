@@ -4,6 +4,7 @@ import { planPhrase } from '../../lib/launch'
 import { useQuery } from '../../lib/useQuery'
 import { agentVersions, type AgentInfo, type Profile } from '../../platform'
 import { chipClass } from '../controls'
+import { headingMatchClass, useSetting } from './match'
 import { Group, Note } from './rows'
 
 // permissionLabel names a profile's permission mode for people, in its agent's words. A
@@ -92,9 +93,11 @@ interface AgentProfilesProps {
 // sets for a session, whether its folder has gone missing, and whether it is signed in,
 // under the agent's version and where its command is.
 function AgentProfiles({ agent, version, profiles }: AgentProfilesProps) {
+  const [marks, match] = useSetting(`${agent.name} profiles`)
+
   return (
-    <section aria-label={`${agent.name} profiles`} className="flex flex-col gap-2">
-      <h3 className="flex items-baseline gap-2 text-sm font-semibold">
+    <section {...marks} aria-label={`${agent.name} profiles`} className="flex flex-col gap-2">
+      <h3 className={`flex items-baseline gap-2 text-sm font-semibold ${headingMatchClass(match)}`}>
         {agent.name}
         {version !== '' && <span className="font-mono text-xs font-normal text-muted">{version}</span>}
         <span className={`text-xs font-normal ${agent.installed ? 'text-muted' : 'text-warning'}`}>

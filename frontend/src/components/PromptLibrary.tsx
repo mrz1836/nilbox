@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useId, useState, type Ref } from 'react'
 
 import { usagePlaces } from '../lib/launch'
 import type { Prompt, PromptAppliesTo } from '../platform'
@@ -22,6 +22,8 @@ export interface PromptLibraryProps {
   // actions are what can be done with the whole library, such as importing and
   // exporting it, offered in a menu beside New.
   actions: readonly MenuItem[]
+  // searchRef reaches the search field, for ⌘F to focus it.
+  searchRef?: Ref<HTMLInputElement>
 }
 
 const groups: readonly { appliesTo: PromptAppliesTo; title: string }[] = [
@@ -39,7 +41,15 @@ function isAppDefault(p: Prompt): boolean {
 // searchable by title or nickname, with a button for a new one and a menu of what can be
 // done with the whole library. A prompt that is a default somewhere says so, and the open
 // one is marked, with a dot while it has unsaved changes.
-export function PromptLibrary({ prompts, selection, newNickname, dirty, onAsk, actions }: PromptLibraryProps) {
+export function PromptLibrary({
+  prompts,
+  selection,
+  newNickname,
+  dirty,
+  onAsk,
+  actions,
+  searchRef,
+}: PromptLibraryProps) {
   const id = useId()
   const [query, setQuery] = useState('')
   const q = query.trim().toLowerCase()
@@ -78,6 +88,7 @@ export function PromptLibrary({ prompts, selection, newNickname, dirty, onAsk, a
         <div className="flex items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5 focus-within:border-accent/60">
           <SearchIcon className="size-3.5 shrink-0 text-muted" />
           <input
+            ref={searchRef}
             id={`${id}-search`}
             type="search"
             value={query}

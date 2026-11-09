@@ -231,7 +231,8 @@ The **Inbox** tab shows three lists: **Review requested**, **Authored**, and **A
 from every repository your account can see and refreshed every five minutes. **Snooze** an item
 (3 days by default), **dismiss** it, or **pin** it to the top. Each card's **⋯** menu gathers
 those, opens or copies the item's link, and, when you're assigned or asked to review, takes you
-off it on GitHub.
+off it on GitHub. Press **⌘F** to filter the inbox: type a few words, or pick `repo:`, `label:`,
+`author:`, and more from the field's list.
 
 <br>
 
@@ -269,6 +270,7 @@ requests that merged, never touching `main`, `master`, or any branch you protect
 ## ✨ Features
 
 - **One inbox, every repository** — Review requested, Authored, and Assigned, across every repo your account can see
+- **Filter as you type** — one toolbar field narrows the inbox, the worktrees, or the settings at once, without a request to GitHub
 - **Cards that answer "is it ready?"** — checks, reviews, comments, size grade, labels, and Draft and Conflicts tags
 - **Issue projects** — each issue's GitHub project, its status and priority and size there, and its sub-issue progress, one click from the board, plus a status sort in your own order
 - **Local triage** — snooze, dismiss, or pin; wake rules end a snooze early when something changes
@@ -312,8 +314,15 @@ requests that merged, never touching `main`, `master`, or any branch you protect
   indexed them, never show.
 - **Tab counts and collapsible lists:** the Inbox tab counts each item that needs you once, and a
   collapsed list stays collapsed across launches.
+- **Filter:** the toolbar's field (**⌘F** or **/**) narrows every list as you type, by words in
+  the title, repository, number, branch, author, and labels, or by GitHub-style keys such as
+  `is:pr`, `repo:`, `label:`, `author:@me`, `status:`, and `checks:failing`, offered with counts
+  as you type. Matches are marked in the titles, and a card's repository, author, and labels
+  filter by themselves when clicked. It searches what's already in the window, so it asks GitHub
+  nothing.
 
-More in [Inbox cards](docs/desktop.md#inbox-cards) and [Issue projects](docs/desktop.md#issue-projects).
+More in [Inbox cards](docs/desktop.md#inbox-cards), [Issue projects](docs/desktop.md#issue-projects),
+and [Filtering](docs/desktop.md#filtering).
 
 </details>
 
@@ -473,6 +482,8 @@ More in [Outside contributors](docs/desktop.md#outside-contributors) and
   default branch are never offered.
 - **Recently cleaned up** lists each cleanup, by hand or automatic, with the deleted branch and the
   commit the worktree was at.
+- **Filter** the worktrees from the toolbar by branch, path, clone, item, or agent, or by
+  `is:dirty`, `is:finished`, and the other states.
 
 More in [The Worktrees view](docs/desktop.md#the-worktrees-view).
 
@@ -507,7 +518,8 @@ More in [Menu bar and notifications](docs/desktop.md#menu-bar-and-notifications)
 - **Text size:** 100%, 115%, or 130%, apart from the window's size. Text and the spacing around
   it scale together, so nothing clips.
 - **Settings** covers your account, appearance, notifications, snoozing, launching, profiles,
-  repositories, trust, and sensitive files.
+  repositories, trust, and sensitive files. **Find a setting** in the toolbar narrows the sections
+  to those with a match and marks the setting.
 - **About** shows the version, build, commit, and system, and each coding agent's installed
   version, and **Report a bug** opens a GitHub issue with those details filled in.
 

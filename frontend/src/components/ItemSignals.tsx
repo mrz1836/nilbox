@@ -92,9 +92,46 @@ function SignalSlot<K extends string>({
   )
 }
 
+// chipClass is a label chip's shape; a chip that filters is a button of the same shape.
+const chipClass =
+  'inline-flex max-w-40 shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-[0.6875rem] text-text'
+
+// LabelChip is one label with its GitHub color: a button that filters the inbox by it,
+// when the card offers that, or else a plain chip.
+function LabelChip({ label, onFilterBy }: { label: Label; onFilterBy: FilterBy | undefined }) {
+  const children = (
+    <>
+      <span
+        aria-hidden="true"
+        className={`size-2 shrink-0 rounded-full ${label.color === '' ? 'bg-muted' : ''}`}
+        style={label.color === '' ? undefined : { backgroundColor: label.color }}
+      />
+      <span className="truncate">{label.name}</span>
+    </>
+  )
+
+  if (onFilterBy === undefined) {
+    return <span className={chipClass}>{children}</span>
+  }
+
+  return (
+    <button
+      type="button"
+      aria-label={`Filter by label ${label.name}`}
+      title={`Filter by label ${label.name}`}
+      onClick={() => {
+        onFilterBy('label', label.name)
+      }}
+      className={`${chipClass} transition-colors hover:bg-raised`}
+    >
+      {children}
+    </button>
+  )
+}
+
 // Labels shows the first few labels as chips with their GitHub color, and the count of
 // the rest, named in its tooltip.
-function Labels({ labels }: { labels: Label[] }) {
+function Labels({ labels, onFilterBy }: { labels: Label[]; onFilterBy: FilterBy | undefined }) {
   if (labels.length === 0) {
     return null
   }
@@ -105,17 +142,7 @@ function Labels({ labels }: { labels: Label[] }) {
     <li className="flex min-w-0 items-center gap-1 overflow-hidden">
       <span className="sr-only">Labels:</span>
       {labels.slice(0, shownLabels).map((label) => (
-        <span
-          key={label.name}
-          className="inline-flex max-w-40 shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-[0.6875rem] text-text"
-        >
-          <span
-            aria-hidden="true"
-            className={`size-2 shrink-0 rounded-full ${label.color === '' ? 'bg-muted' : ''}`}
-            style={label.color === '' ? undefined : { backgroundColor: label.color }}
-          />
-          <span className="truncate">{label.name}</span>
-        </span>
+        <LabelChip key={label.name} label={label} onFilterBy={onFilterBy} />
       ))}
       {rest.length > 0 && (
         <span title={rest.map((label) => label.name).join(', ')} className="shrink-0 text-[0.6875rem]">
@@ -231,8 +258,13 @@ function Projects({ projects }: { projects: Project[] }) {
   )
 }
 
+// FilterBy adds a filter to the inbox's query, or takes it away.
+type FilterBy = (key: string, value: string) => void
+
 export interface ItemSignalsProps {
   item: InboxItem
+  // onFilterBy makes each label chip filter the inbox by its label when clicked.
+  onFilterBy?: FilterBy | undefined
 }
 
 // ItemSignals is the card's line of facts about an item. For a pull request: its checks,
@@ -241,7 +273,7 @@ export interface ItemSignalsProps {
 // is in, with its status and featured fields in each.
 // Labels close the line. Every value before the projects and labels keeps a fixed width,
 // so the values line up from card to card.
-export function ItemSignals({ item }: ItemSignalsProps) {
+export function ItemSignals({ item, onFilterBy }: ItemSignalsProps) {
   const details = item.details
 
   if (details === null) {
@@ -279,7 +311,7 @@ export function ItemSignals({ item }: ItemSignalsProps) {
       )}
       {!isPR && <SubIssueProgress subIssues={details.subIssues} />}
       {!isPR && <Projects projects={details.projects} />}
-      <Labels labels={details.labels} />
+      <Labels labels={details.labels} onFilterBy={onFilterBy} />
     </ul>
   )
 }

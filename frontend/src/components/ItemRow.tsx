@@ -18,6 +18,7 @@ import {
   type Prompt,
   type Worktree,
 } from '../platform'
+import { Highlight } from './Highlight'
 import { ArchiveIcon, ClockIcon, IssueIcon, PullRequestIcon } from './icons'
 import { ItemMenu, type EditActions } from './ItemMenu'
 import { ItemSignals } from './ItemSignals'
@@ -63,10 +64,47 @@ export interface ItemRowProps {
   onFilesSettings?: (() => void) | undefined
   // highlighted marks the row the menu bar or a notification just asked to show.
   highlighted?: boolean
+  // marks is what the inbox's filter looks for, which the title highlights; a plain
+  // string, so the row renders again only when it changes.
+  marks?: string
+  // onFilterBy adds a filter to the inbox's query, or takes it away: the row's
+  // repository, author, and labels offer it when clicked. Without it they are plain text.
+  onFilterBy?: ((key: string, value: string) => void) | undefined
 }
 
 // tagClass is a status tag: weight and color mark it, with no pill around it.
 const tagClass = 'shrink-0 text-[0.6875rem] leading-4 font-medium'
+
+interface FilterTextProps {
+  // filterKey and value are the filter the text adds, as in repo and its name; name
+  // says what it is, as in "repository".
+  filterKey: string
+  value: string
+  name: string
+  onFilterBy: ((key: string, value: string) => void) | undefined
+}
+
+// FilterText is a card's repository or author: plain text, or a quiet inline button that
+// filters the inbox by it.
+function FilterText({ filterKey, value, name, onFilterBy }: FilterTextProps) {
+  if (onFilterBy === undefined) {
+    return value
+  }
+
+  return (
+    <button
+      type="button"
+      aria-label={`Filter by ${name} ${value}`}
+      title={`Filter by ${name} ${value}`}
+      onClick={() => {
+        onFilterBy(filterKey, value)
+      }}
+      className="rounded-sm hover:text-text hover:underline"
+    >
+      {value}
+    </button>
+  )
+}
 
 // KindIcon tells a pull request from an issue: green while open, muted for a draft.
 function KindIcon({ item }: { item: InboxItem }) {
@@ -239,6 +277,8 @@ export const ItemRow = memo(function ItemRow({
   edits,
   onFilesSettings,
   highlighted = false,
+  marks = '',
+  onFilterBy,
 }: ItemRowProps) {
   const conflicting = item.details?.mergeable === 'CONFLICTING'
   const [work, start] = useRowWork()
@@ -260,7 +300,7 @@ export const ItemRow = memo(function ItemRow({
             }}
             className="min-w-0 truncate text-left text-sm font-medium text-text hover:text-accent hover:underline"
           >
-            {item.title}
+            <Highlight text={item.title} marks={marks} />
           </button>
           {item.isDraft && <span className={`${tagClass} text-muted`}>Draft</span>}
           {conflicting && (
@@ -271,7 +311,11 @@ export const ItemRow = memo(function ItemRow({
         </div>
         <div className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-muted">
           <span className="truncate">
-            {item.repo} #{item.number} · {item.author} · <RelativeTime iso={item.updatedAt} show={formatAge} />
+            <FilterText filterKey="repo" value={item.repo} name="repository" onFilterBy={onFilterBy} /> #{item.number}
+            {' · '}
+            <FilterText filterKey="author" value={item.author} name="author" onFilterBy={onFilterBy} />
+            {' · '}
+            <RelativeTime iso={item.updatedAt} show={formatAge} />
           </span>
           <TrustTag item={item} />
           {item.files !== null && <SensitiveFiles itemId={item.id} check={item.files} onSettings={onFilesSettings} />}
@@ -279,7 +323,7 @@ export const ItemRow = memo(function ItemRow({
           {worktree !== undefined && <WorktreeTag wt={worktree} agents={launch?.agents ?? []} />}
           {sessions !== undefined && <SessionTag sessions={sessions} agents={launch?.agents ?? []} />}
         </div>
-        <ItemSignals item={item} />
+        <ItemSignals item={item} onFilterBy={onFilterBy} />
       </div>
       {triage !== undefined && (
         <div className="flex items-center gap-0.5 self-center">

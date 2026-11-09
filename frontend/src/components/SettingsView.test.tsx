@@ -1324,3 +1324,142 @@ describe('SettingsView notifications', () => {
     logged.mockRestore()
   })
 })
+
+describe('SettingsView search', () => {
+  // searchProps are the page's props with a query, for a test that changes the query.
+  function searchProps(query: string, section: SettingsSection = 'account'): SettingsViewProps {
+    return {
+      initialSection: section,
+      settings: settings(),
+      agents: agents(),
+      profiles: [profile(), profile({ agent: 'codex', name: 'default', folder: '~/.codex' })],
+      prompts: prompts(),
+      defaultPrompts: { pr: 1, issue: 4 },
+      launchDefaults: [],
+      account: account(),
+      projectAccess: 'on',
+      theme: 'system',
+      onThemeChange: () => Promise.resolve({ ok: true, data: undefined }),
+      onSaved: vi.fn(),
+      onLaunchChanged: () => Promise.resolve(),
+      onClose: vi.fn(),
+      query,
+    }
+  }
+
+  // sidebar names the sections the sidebar lists, without their counts.
+  function sidebar() {
+    const nav = within(screen.getByRole('navigation', { name: 'Settings sections' }))
+
+    return nav
+      .getAllByRole('button')
+      .filter((b) => b.getAttribute('aria-label') !== 'Close settings')
+      .map((b) => b.firstChild?.textContent)
+  }
+
+  // matched lists the labels of the rows the search marks as matching.
+  function matched(): (string | null)[] {
+    return [...document.querySelectorAll('[data-match]')].map((el) => el.getAttribute('data-setting'))
+  }
+
+  it('lists only the sections with a matching setting, each with how many, and turns to the first', () => {
+    render(<SettingsView {...searchProps('wake')} />)
+
+    expect(sidebar()).toEqual(['Snoozing'])
+    expect(screen.getByRole('button', { name: 'Snoozing (4 matches)' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('region', { name: 'Snoozing' })).toBeInTheDocument()
+    expect(matched()).toEqual(['Wake early', 'New commits', 'Reviews', 'New comments'])
+  })
+
+  it('says a single match in the singular', () => {
+    render(<SettingsView {...searchProps('dark mode')} />)
+
+    expect(screen.getByRole('button', { name: 'Appearance (1 match)' })).toBeInTheDocument()
+    expect(matched()).toEqual(['Theme'])
+  })
+
+  it('stays on the open section while it has a match', () => {
+    render(<SettingsView {...searchProps('worktree', 'worktrees')} />)
+
+    expect(sidebar()).toEqual(['Launching', 'Worktrees'])
+    expect(screen.getByRole('button', { name: 'Launching (1 match)' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Worktrees (6 matches)' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('region', { name: 'Worktrees' })).toBeInTheDocument()
+  })
+
+  it('scrolls the first match into view as the search changes', () => {
+    const scroll = vi.spyOn(Element.prototype, 'scrollIntoView')
+    const { rerender } = render(<SettingsView {...searchProps('', 'launching')} />)
+
+    expect(scroll).not.toHaveBeenCalled()
+
+    rerender(<SettingsView {...searchProps('codex', 'launching')} />)
+
+    expect(scroll).toHaveBeenCalledOnce()
+    expect(scroll.mock.contexts[0]).toHaveAttribute('data-setting', 'Default agent')
+    expect(matched()).toEqual([
+      'Default agent',
+      'Codex profile',
+      'Set Codex’s effort at launch',
+      'Start Codex in Fast mode',
+    ])
+  })
+
+  it('says when no setting matches, and keeps the section open', () => {
+    render(<SettingsView {...searchProps('zebra crossing', 'trust')} />)
+
+    expect(screen.getByText('No setting matches “zebra crossing”.')).toBeInTheDocument()
+    expect(sidebar()).toEqual([])
+    expect(screen.getByRole('region', { name: 'Trust' })).toBeInTheDocument()
+    expect(matched()).toEqual([])
+  })
+
+  it('lists every section again once the search is cleared, where it was left', () => {
+    const { rerender } = render(<SettingsView {...searchProps('banners')} />)
+
+    expect(screen.getByRole('region', { name: 'Notifications' })).toBeInTheDocument()
+
+    rerender(<SettingsView {...searchProps('')} />)
+
+    expect(sidebar()).toHaveLength(11)
+    expect(sidebar()).toContain('Account')
+    expect(screen.getByRole('region', { name: 'Notifications' })).toBeInTheDocument()
+    expect(matched()).toEqual([])
+    expect(screen.queryByText(/No setting matches/)).not.toBeInTheDocument()
+  })
+
+  it('colors a matching heading', () => {
+    render(<SettingsView {...searchProps('alerts')} />)
+
+    expect(screen.getByRole('heading', { name: 'Banners' })).toHaveClass('text-accent')
+    expect(screen.getByRole('heading', { name: 'Agent sessions' })).not.toHaveClass('text-accent')
+  })
+
+  it('marks the account’s cards', () => {
+    render(<SettingsView {...searchProps('github')} />)
+
+    expect(matched()).toEqual(['GitHub account', 'Projects on issues'])
+  })
+
+  it('marks one agent’s profiles', async () => {
+    render(<SettingsView {...searchProps('codex_home')} />)
+
+    expect(await screen.findByRole('region', { name: 'Codex profiles' })).toHaveAttribute('data-match')
+    expect(screen.getByRole('region', { name: 'Claude profiles' })).not.toHaveAttribute('data-match')
+    expect(screen.getByRole('heading', { name: /^Codex/ })).toHaveClass('text-accent')
+  })
+
+  it('marks the version in About', async () => {
+    render(<SettingsView {...searchProps('report a bug')} />)
+
+    expect(await screen.findByText('1.4.0 (42)')).toBeInTheDocument()
+    expect(matched()).toEqual(['Version'])
+  })
+
+  it('marks the scope of the sensitive-file check, a choice of its own', () => {
+    render(<SettingsView {...searchProps('forks')} />)
+
+    expect(matched()).toEqual(['Check pull requests from'])
+    expect(screen.getByRole('radiogroup', { name: 'Check pull requests from' })).toBeInTheDocument()
+  })
+})

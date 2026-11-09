@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useState } from 'react'
 
+import { filterInbox } from '../lib/inboxFilter'
 import { offersProjects } from '../lib/projects'
 import { useCollapsedSections } from '../lib/useCollapsedSections'
 import { useInbox } from '../lib/useInbox'
@@ -42,6 +43,8 @@ const resolutions = new Map([[1, itemResolution()]])
 
 const openSnoozeSettings = vi.fn()
 const dismissProjects = vi.fn()
+const filterBy = vi.fn<(key: string, value: string) => void>()
+const clearFilter = vi.fn()
 
 interface HarnessProps {
   launch: LaunchOptions | null
@@ -49,6 +52,8 @@ interface HarnessProps {
   clock: () => Date
   snoozeDays?: number
   reveal?: Reveal | null
+  // query filters the inbox, as the toolbar's field does.
+  query?: string
 }
 
 // Harness renders the view over the real inbox state, triage, and collapsed lists, the
@@ -63,9 +68,10 @@ function Harness({ clock, ...props }: HarnessProps) {
   )
 }
 
-function Inbox({ launch, snoozeDays = 3, reveal = null }: Omit<HarnessProps, 'clock'>) {
+function Inbox({ launch, snoozeDays = 3, reveal = null, query = '' }: Omit<HarnessProps, 'clock'>) {
   const inbox = useInbox()
   const triaged = useTriage(inbox.snapshot)
+  const filter = triaged === null ? null : filterInbox(triaged, query, inbox.snapshot?.account.login ?? '')
   const sections = useCollapsedSections()
   const inboxOrder = useInboxOrder()
   // tipDismissed stands in for the stored setting, as App keeps it.
@@ -88,6 +94,9 @@ function Inbox({ launch, snoozeDays = 3, reveal = null }: Omit<HarnessProps, 'cl
         setTipDismissed(true)
       }}
       inboxOrder={inboxOrder}
+      filter={filter}
+      onFilterBy={filterBy}
+      onClearFilter={clearFilter}
     />
   )
 }
@@ -127,13 +136,13 @@ describe('InboxView', () => {
 
     const review = await section('Review requested')
     expect(review.getByRole('button', { name: 'Add the widget cache' })).toBeInTheDocument()
-    expect(review.getByText(/acme-org\/example-repo #7 · octo-user ·/)).toBeInTheDocument()
+    expect(review.getByRole('listitem')).toHaveTextContent(/acme-org\/example-repo #7 · octo-user ·/)
     expect(review.getByText('3h')).toHaveAttribute('dateTime', '2026-06-15T09:00:00Z')
     expect(review.getByRole('img', { name: 'Pull request' })).toBeInTheDocument()
 
     const authored = await section('Authored')
     expect(authored.getByRole('button', { name: 'Fix the parser' })).toBeInTheDocument()
-    expect(authored.getByText(/acme-org\/other-repo #12/)).toBeInTheDocument()
+    expect(authored.getByRole('listitem')).toHaveTextContent(/acme-org\/other-repo #12/)
     expect(authored.getByText('Draft')).toBeInTheDocument()
 
     const assigned = await section('Assigned')
@@ -1286,5 +1295,138 @@ describe('InboxView edits on GitHub', () => {
 
     expect(await screen.findByText('Could not copy the link')).toBeInTheDocument()
     expect(screen.getByRole('status')).toHaveTextContent('The clipboard is not available.')
+  })
+})
+
+describe('InboxView filtering', () => {
+  const later = '2026-06-20T00:00:00Z'
+  // entry is an item on no branch, so only the words a test gives it match.
+  const entry = (overrides: Parameters<typeof item>[0]) => item({ branch: '', ...overrides })
+  const inbox = () =>
+    snapshot({
+      reviewRequested: list([
+        entry({ id: 1, title: 'Add the widget cache', details: details() }),
+        entry({ id: 2, number: 12, title: 'Fix the parser' }),
+        entry({ id: 3, number: 13, title: 'Snoozed widget', snoozedUntil: later }),
+      ]),
+      authored: list([entry({ id: 4, number: 14, title: 'Write the docs' })]),
+      assigned: list([
+        entry({ id: 5, kind: 'issue', number: 31, title: 'Crash on start' }),
+        entry({ id: 6, kind: 'issue', number: 32, title: 'Crash later', snoozedUntil: later }),
+      ]),
+      lastRefreshedAt: '2026-06-15T11:55:00Z',
+    })
+
+  beforeEach(() => {
+    platform.getInboxSnapshot.mockResolvedValue(inbox())
+  })
+
+  it('shows only the matching items, counted in each tab, with the matches marked', async () => {
+    render(<Harness launch={launchOptions} clock={fixedNow} query="widget" />)
+
+    const review = await section('Review requested')
+
+    expect(review.getByRole('tab', { name: 'Review requested 1 of 2 matching' })).toBeInTheDocument()
+    expect(review.getByRole('tab', { name: 'Snoozed 1 matching' })).toBeInTheDocument()
+    expect(review.queryByRole('button', { name: 'Fix the parser' })).not.toBeInTheDocument()
+
+    const title = review.getByRole('button', { name: 'Add the widget cache' })
+
+    expect(title.querySelector('mark')).toHaveTextContent('widget')
+    expect(review.getByText('1 of 2')).toHaveAttribute('data-filtered', 'true')
+  })
+
+  it('hides a list with no match, which comes back as it was left', async () => {
+    const view = render(<Harness launch={launchOptions} clock={fixedNow} />)
+    const assigned = await section('Assigned')
+
+    await userEvent.click(assigned.getByRole('tab', { name: 'Snoozed 1' }))
+    view.rerender(<Harness launch={launchOptions} clock={fixedNow} query="widget" />)
+
+    expect(screen.queryByRole('region', { name: 'Assigned' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Authored' })).not.toBeInTheDocument()
+
+    view.rerender(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    expect((await section('Assigned')).getByRole('tab', { name: 'Snoozed 1' })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('shows a collapsed list open while filtering, leaving it collapsed', async () => {
+    const view = render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Collapse Authored' }))
+    view.rerender(<Harness launch={launchOptions} clock={fixedNow} query="docs" />)
+
+    const authored = await section('Authored')
+
+    expect(authored.getByRole('button', { name: 'Write the docs' })).toBeInTheDocument()
+    expect(authored.queryByRole('button', { name: /Expand|Collapse/ })).not.toBeInTheDocument()
+
+    view.rerender(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    expect(await screen.findByRole('button', { name: 'Expand Authored' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Write the docs' })).not.toBeInTheDocument()
+  })
+
+  it('points a tab with no match to the tab that has one', async () => {
+    render(<Harness launch={launchOptions} clock={fixedNow} query="later" />)
+
+    const assigned = await section('Assigned')
+
+    expect(assigned.getByText(/No matches here/)).toBeInTheDocument()
+    expect(assigned.queryByText(/Nothing here/)).not.toBeInTheDocument()
+
+    await userEvent.click(assigned.getByRole('button', { name: '1 in Snoozed' }))
+
+    expect(assigned.getByRole('tab', { name: 'Snoozed 1 matching' })).toHaveAttribute('aria-selected', 'true')
+    expect(assigned.getByRole('button', { name: 'Crash later' })).toBeInTheDocument()
+    expect(assigned.queryByText(/No matches here/)).not.toBeInTheDocument()
+  })
+
+  it('points a set-aside tab with no match back to the list', async () => {
+    render(<Harness launch={launchOptions} clock={fixedNow} query="start" />)
+
+    const assigned = await section('Assigned')
+
+    await userEvent.click(assigned.getByRole('tab', { name: 'Snoozed' }))
+    await userEvent.click(assigned.getByRole('button', { name: '1 in the list' }))
+
+    expect(assigned.getByRole('button', { name: 'Crash on start' })).toBeInTheDocument()
+  })
+
+  it('says at the top when nothing matches, and offers to clear the filter', async () => {
+    render(<Harness launch={launchOptions} clock={fixedNow} query="  zzz " />)
+
+    expect(await screen.findByText('No items match “zzz”')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Review requested' })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Clear filter' }))
+
+    expect(clearFilter).toHaveBeenCalledOnce()
+  })
+
+  it('says nothing matches in place of the party at nil', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: '2026-06-15T11:55:00Z' }))
+    render(<Harness launch={launchOptions} clock={fixedNow} query="cache" />)
+
+    expect(await screen.findByText('No items match “cache”')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'inbox == nil' })).not.toBeInTheDocument()
+  })
+
+  it('filters by a card’s repository, author, or label when clicked', async () => {
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    const review = await section('Review requested')
+    const row = review.getByRole('button', { name: 'Add the widget cache' }).closest('li') as HTMLElement
+
+    await userEvent.click(within(row).getByRole('button', { name: 'Filter by repository acme-org/example-repo' }))
+    await userEvent.click(within(row).getByRole('button', { name: 'Filter by author octo-user' }))
+    await userEvent.click(within(row).getByRole('button', { name: 'Filter by label enhancement' }))
+
+    expect(filterBy.mock.calls).toEqual([
+      ['repo', 'acme-org/example-repo'],
+      ['author', 'octo-user'],
+      ['label', 'enhancement'],
+    ])
   })
 })

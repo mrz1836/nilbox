@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 
+import { formatCount } from '../lib/format'
+import type { FilteredList } from '../lib/inboxFilter'
 import { prefersReducedMotion } from '../lib/motion'
 import { sortByStatus, statusesOf, statusOrder } from '../lib/statusOrder'
 import { tabOf, type TriagedList, type TriageTab } from '../lib/triage'
@@ -28,6 +30,11 @@ const highlightMs = 2400
 function countText(shown: number, total: number): string {
   return total > shown ? `${String(shown)} of ${String(total)}` : String(shown)
 }
+
+// tabNames name the tabs in the hint that points to the matches in another.
+const tabNames: Readonly<Record<TriageTab, string>> = { inbox: 'the list', snoozed: 'Snoozed', dismissed: 'Dismissed' }
+
+const tabOrder: readonly TriageTab[] = ['inbox', 'snoozed', 'dismissed']
 
 // emptyText is what an empty tab says.
 function emptyText(tab: TriageTab, title: string): string {
@@ -74,6 +81,15 @@ export interface ListSectionProps {
   reveal: Reveal | null
   // order is how the list's own tab is ordered.
   order: ListOrder
+  // matched is what the inbox's filter leaves of each tab, while one is on; the list then
+  // shows only those items, and hides itself when no tab has any. triaged stays whole,
+  // for the statuses the list sorts by and for finding a revealed item's tab.
+  matched?: FilteredList | undefined
+  // marks is what each card highlights in its title (see Highlight).
+  marks?: string
+  // onFilterBy adds a filter to the inbox's query, or takes it away, as a card's
+  // repository, author, and labels do when clicked.
+  onFilterBy?: ((key: string, value: string) => void) | undefined
 }
 
 // ListSection is one inbox list as tabs: the list itself, then what was snoozed and
@@ -81,6 +97,10 @@ export interface ListSectionProps {
 // collapses it to just the tabs, which keep their counts; a collapsed list's rows are not
 // rendered at all. A list whose items are in GitHub projects can sort its own tab by
 // project status (StatusSort), left of the toggle.
+//
+// While the inbox is filtered, each tab shows only its matching items, in its own order,
+// and counts them; a tab with none points to the tabs that have some. A list with no
+// match anywhere is hidden but stays mounted, so it comes back as it was.
 export function ListSection({
   title,
   triaged,
@@ -95,6 +115,9 @@ export function ListSection({
   onFilesSettings,
   reveal,
   order,
+  matched,
+  marks = '',
+  onFilterBy,
 }: ListSectionProps) {
   const id = useId()
   const [tab, setTab] = useState<TriageTab>('inbox')
@@ -106,7 +129,11 @@ export function ListSection({
     order.stored,
     statuses.map((s) => s.name),
   )
-  const items = tab === 'inbox' && byStatus ? sortByStatus(triaged.inbox, ranked) : triaged[tab]
+  const shown = matched ?? triaged
+  const items = tab === 'inbox' && byStatus ? sortByStatus(shown.inbox, ranked) : shown[tab]
+  const filtering = matched !== undefined
+  // elsewhere are the other tabs that hold matches, for a tab that holds none.
+  const elsewhere = filtering ? tabOrder.filter((t) => t !== tab && matched[t].length > 0) : []
   // The sort shows on the list's own tab while it has a status to sort by, or is sorted
   // by one, so it can always be turned back.
   const sortable = tab === 'inbox' && !collapsed && (statuses.length > 0 || byStatus)
@@ -157,9 +184,16 @@ export function ListSection({
   }
 
   const hiddenCount = (n: number) => (n > 0 ? String(n) : '')
+  const listCount = filtering
+    ? `${formatCount(matched.inbox.length)} of ${formatCount(triaged.inbox.length)}`
+    : countText(triaged.inbox.length, triaged.total)
 
   return (
-    <section aria-label={title} className="rounded-lg border border-border bg-surface">
+    <section
+      aria-label={title}
+      hidden={filtering && tabOrder.every((t) => matched[t].length === 0)}
+      className="rounded-lg border border-border bg-surface"
+    >
       <div className={`flex items-center gap-1 px-1.5 ${collapsed ? '' : 'border-b border-border'}`}>
         <Tabs
           baseId={id}
@@ -167,18 +201,20 @@ export function ListSection({
           value={tab}
           onChange={select}
           tabs={[
-            { value: 'inbox', label: title, count: countText(triaged.inbox.length, triaged.total), strong: true },
+            { value: 'inbox', label: title, count: listCount, strong: true, filtered: filtering },
             {
               value: 'snoozed',
               label: 'Snoozed',
-              count: hiddenCount(triaged.snoozed.length),
+              count: hiddenCount(shown.snoozed.length),
               icon: <ClockIcon className="size-3.5" />,
+              filtered: filtering,
             },
             {
               value: 'dismissed',
               label: 'Dismissed',
-              count: hiddenCount(triaged.dismissed.length),
+              count: hiddenCount(shown.dismissed.length),
               icon: <ArchiveIcon className="size-3.5" />,
+              filtered: filtering,
             },
           ]}
           className="flex flex-1 items-center gap-1"
@@ -195,22 +231,44 @@ export function ListSection({
             onOrderChange={order.onOrderChange}
           />
         )}
-        <button
-          type="button"
-          aria-expanded={!collapsed}
-          aria-controls={tabPanelId(id)}
-          aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${title}`}
-          title={collapsed ? 'Expand' : 'Collapse'}
-          onClick={() => {
-            onCollapse(!collapsed)
-          }}
-          className="mr-1 rounded-md p-1 text-muted transition-colors hover:bg-raised hover:text-text"
-        >
-          <ChevronDownIcon className={`size-4 transition-transform ${collapsed ? '-rotate-90' : ''}`} />
-        </button>
+        {/* A filtered list shows open whatever its stored state, so it has nothing to
+            toggle until the filter is off. */}
+        {!filtering && (
+          <button
+            type="button"
+            aria-expanded={!collapsed}
+            aria-controls={tabPanelId(id)}
+            aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${title}`}
+            title={collapsed ? 'Expand' : 'Collapse'}
+            onClick={() => {
+              onCollapse(!collapsed)
+            }}
+            className="mr-1 rounded-md p-1 text-muted transition-colors hover:bg-raised hover:text-text"
+          >
+            <ChevronDownIcon className={`size-4 transition-transform ${collapsed ? '-rotate-90' : ''}`} />
+          </button>
+        )}
       </div>
       <TabPanel ref={panelRef} baseId={id} value={tab} hidden={collapsed}>
-        {collapsed ? null : items.length === 0 ? (
+        {collapsed ? null : items.length === 0 && filtering ? (
+          <p className="flex flex-wrap items-center gap-x-1.5 px-4 py-3 text-sm text-muted">
+            No matches here
+            {elsewhere.map((t) => (
+              <span key={t} className="flex items-center gap-1.5">
+                <span aria-hidden="true">·</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    select(t)
+                  }}
+                  className="font-medium text-text hover:text-accent hover:underline"
+                >
+                  {formatCount(matched[t].length)} in {tabNames[t]}
+                </button>
+              </span>
+            ))}
+          </p>
+        ) : items.length === 0 ? (
           <p className="px-4 py-3 text-sm text-muted">{emptyText(tab, title)}</p>
         ) : (
           <ul>
@@ -227,6 +285,8 @@ export function ListSection({
                 edits={edits}
                 onFilesSettings={onFilesSettings}
                 highlighted={item.id === highlight}
+                marks={marks}
+                onFilterBy={onFilterBy}
               />
             ))}
           </ul>

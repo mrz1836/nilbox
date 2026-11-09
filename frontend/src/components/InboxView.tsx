@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { attempt } from '../lib/call'
+import type { InboxFilter } from '../lib/inboxFilter'
 import { noWorktrees } from '../lib/itemWorktrees'
 import { isInboxNil } from '../lib/nil'
 import { noSessions } from '../lib/sessions'
@@ -69,6 +70,14 @@ export interface InboxViewProps {
   // inboxOrder is how the lists are ordered (useInboxOrder). The lists wait for it to
   // load.
   inboxOrder: InboxOrderState
+  // filter is the inbox as the toolbar's query narrows it (filterInbox), or null while
+  // the query filters nothing.
+  filter?: InboxFilter | null
+  // onFilterBy adds a filter to the query, or takes it away, from a card's repository,
+  // author, or label. It must keep its identity, so the cards keep theirs.
+  onFilterBy?: (key: string, value: string) => void
+  // onClearFilter empties the query.
+  onClearFilter?: () => void
 }
 
 const sections: readonly { key: ListKey; title: string }[] = [
@@ -76,6 +85,32 @@ const sections: readonly { key: ListKey; title: string }[] = [
   { key: 'authored', title: 'Authored' },
   { key: 'assigned', title: 'Assigned' },
 ]
+
+// NoMatches says that nothing in the inbox matches the query, what the filter looks at,
+// and offers to clear it. It sits at the top, where the eye already is.
+function NoMatches({ query, onClear }: { query: string; onClear: (() => void) | undefined }) {
+  return (
+    <div className="flex items-start gap-4 rounded-lg border border-border bg-surface px-4 py-3">
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium">No items match “{query.trim()}”</p>
+        <p className="mt-0.5 text-xs text-muted">
+          The filter looks at the items in your inbox, snoozed and dismissed ones too: their titles, repositories,
+          numbers, branches, authors, labels, and projects. It doesn&apos;t search descriptions or comments, which
+          aren&apos;t kept here.
+        </p>
+      </div>
+      {onClear !== undefined && (
+        <button
+          type="button"
+          onClick={onClear}
+          className="shrink-0 rounded-md border border-border bg-surface px-3 py-1 text-sm font-medium hover:bg-raised"
+        >
+          Clear filter
+        </button>
+      )}
+    </div>
+  )
+}
 
 // firstMessage returns the first non-empty message.
 function firstMessage(...messages: string[]): string {
@@ -87,6 +122,10 @@ function firstMessage(...messages: string[]): string {
 // it and collapses from its header, and each triage action is confirmed by a toast with an
 // Undo. When every list is empty, the inbox throws a party above them (InboxNil). The
 // account and the API budget live in the toolbar.
+//
+// While the toolbar's query filters the inbox, each list shows only its matching items,
+// open whatever its stored collapse state, and a list with no match hides; when nothing
+// matches at all, the inbox says so at the top instead of throwing its party.
 export function InboxView({
   inbox,
   triaged,
@@ -104,6 +143,9 @@ export function InboxView({
   offerProjects = false,
   onDismissProjects,
   inboxOrder,
+  filter = null,
+  onFilterBy,
+  onClearFilter,
 }: InboxViewProps) {
   const {
     snapshot,
@@ -344,7 +386,8 @@ export function InboxView({
           }}
         />
       )}
-      {nil && <InboxNil key={visit.n} stats={triaged} earned={busy} />}
+      {filter !== null && filter.matches === 0 && <NoMatches query={filter.query} onClear={onClearFilter} />}
+      {nil && filter === null && <InboxNil key={visit.n} stats={triaged} earned={busy} />}
       {triaged === null || collapsed === null || order === null
         ? loadError === '' && <p className="text-sm text-muted">Loading the inbox…</p>
         : sections.map(({ key, title }) => (
@@ -358,7 +401,7 @@ export function InboxView({
               sessions={sessions}
               triage={triage}
               edits={edits}
-              collapsed={collapsed.has(key)}
+              collapsed={filter === null && collapsed.has(key)}
               onCollapse={(on) => {
                 onCollapse(key, on)
               }}
@@ -372,6 +415,9 @@ export function InboxView({
                 },
                 onOrderChange: setStatusOrder,
               }}
+              matched={filter?.lists[key]}
+              marks={filter?.marks ?? ''}
+              onFilterBy={onFilterBy}
             />
           ))}
       <Toast toast={toast} onClose={closeToast} />

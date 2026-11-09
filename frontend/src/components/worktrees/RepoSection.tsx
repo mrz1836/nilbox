@@ -7,6 +7,9 @@ import { WorktreeRow } from './WorktreeRow'
 
 export interface RepoSectionProps {
   repo: WorktreeRepo
+  // worktrees are the repository's worktrees to show, when a filter keeps only some of
+  // them; all of them without one.
+  worktrees?: readonly Worktree[] | undefined
   now: Date
   disabled: boolean
   errors: WorktreeErrors
@@ -22,9 +25,11 @@ export interface RepoSectionProps {
 }
 
 // RepoSection is one clone and its worktrees, with Prune when git holds stale entries for
-// it, and the failure of an action taken on the repository or one of its worktrees.
+// it, and the failure of an action taken on the repository or one of its worktrees. While
+// a filter shows only some of its worktrees, the count says how many of them.
 export function RepoSection({
   repo,
+  worktrees = repo.worktrees,
   now,
   disabled,
   errors,
@@ -36,14 +41,16 @@ export function RepoSection({
   agentName,
   launchFor,
 }: RepoSectionProps) {
-  const worktrees = repo.worktrees
   const pruneError = errors.repo(repo.path)
+  const total = repo.worktrees.length
+  const count =
+    worktrees.length < total ? `${String(worktrees.length)} of ${plural(total, 'worktree')}` : plural(total, 'worktree')
 
   return (
     <section aria-label={repo.name} className="rounded-lg border border-border bg-surface">
       <header className="flex items-center gap-3 border-b border-border px-3 py-2">
         <h2 className="text-sm font-semibold">{repo.name}</h2>
-        <span className="text-xs text-muted">{plural(worktrees.length, 'worktree')}</span>
+        <span className="text-xs text-muted">{count}</span>
         {repo.hasStale && (
           <button
             type="button"

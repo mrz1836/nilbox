@@ -11,8 +11,8 @@ import { details, fileCheck, item, list, rate, snapshot } from './test/fixtures'
 import { emit, platform, renderApp } from './test/platform'
 
 // The render profile: a 300-item inbox, and how much of it renders again for a minute
-// tick, a background update that changes one item, collapsing a list, and leaving the
-// inbox and coming back. It runs twice. In the unit tests the components run as written,
+// tick, a background update that changes one item, collapsing a list, leaving the inbox
+// and coming back, and filtering it and clearing the filter. It runs twice. In the unit tests the components run as written,
 // where the bounds below hold however much a parent renders again. `pnpm test:renders`
 // (vitest.renders.config.ts) runs it through the React Compiler, as the build ships, where
 // the tighter bounds hold, and prints what it measured.
@@ -228,19 +228,46 @@ describe('App rendering', () => {
     expect(mountedRows()).toBe(rows - shown('authored'))
     expect(back.mounts).toBe(0)
 
-    // Through the compiler, only the changed row renders again, and nothing else does. As
-    // written, every render of a list renders its rows again, a couple of times a step.
+    // Filtering by a phrase only Review requested's items have renders their rows again,
+    // to mark their titles, and mounts none: the lists it hides drop their rows, and the
+    // collapsed Authored, open while filtering, has no match to show. It is pasted in one
+    // event, as the field's own steps are measured in its tests.
+    const unfiltered = mountedRows()
+    const matches = inbox()
+      .reviewRequested.items.concat(inbox().authored.items, inbox().assigned.items)
+      .filter((i) => /item 5/i.test(i.title)).length
+    const filter = await measure(async () => {
+      await userEvent.click(screen.getByLabelText('Filter inbox'))
+      await userEvent.paste('"Item 5"')
+    })
+
+    expect(document.querySelector('header [role="status"]')?.textContent).toBe(`${String(matches)} matches`)
+    expect(filter.mounts).toBe(0)
+
+    // Clearing it mounts back only the rows it hid, and the inbox is as it was.
+    const hidden = unfiltered - mountedRows()
+    const clear = await measure(async () => {
+      await userEvent.click(screen.getByLabelText('Clear the search'))
+    })
+
+    expect(clear.mounts).toBeLessThanOrEqual(hidden)
+    expect(mountedRows()).toBe(unfiltered)
+
+    // Through the compiler, only the changed row renders again, and nothing else does;
+    // filtering renders only the rows it marks. As written, every render of a list renders
+    // its rows again, a couple of times a step.
     const most = compiled
-      ? { update: 1, collapse: 0, away: 0, back: 0 }
-      : { update: 2 * rows, collapse: rows, away: 2 * rows, back: rows }
+      ? { update: 1, collapse: 0, away: 0, back: 0, filter: matches }
+      : { update: 2 * rows, collapse: rows, away: 2 * rows, back: rows, filter: 2 * rows }
 
     expect(update.rows).toBeLessThanOrEqual(most.update)
     expect(collapse.rows).toBeLessThanOrEqual(most.collapse)
     expect(away.rows).toBeLessThanOrEqual(most.away)
     expect(back.rows).toBeLessThanOrEqual(most.back)
+    expect(filter.rows).toBeLessThanOrEqual(most.filter)
 
     if (compiled) {
-      const steps = Object.entries({ mounted, tick, update, collapse, away, back }).map(
+      const steps = Object.entries({ mounted, tick, update, collapse, away, back, filter, clear }).map(
         ([step, m]) => `  ${step}: ${String(m.rows)} / ${String(m.mounts)} / ${String(m.commits)} / ${String(m.ms)}`,
       )
 

@@ -2,6 +2,7 @@ import { useEffect, useEffectEvent, useId, useRef, useState } from 'react'
 
 import { brand } from '../generated/brand'
 import { counted, errorMessage } from '../lib/format'
+import { isFindKey } from '../lib/keys'
 import { kindPlural, promptApplies, usageCount, usagePlaces } from '../lib/launch'
 import { useMutation } from '../lib/useMutation'
 import { useDebouncedQuery } from '../lib/useQuery'
@@ -180,6 +181,8 @@ function touchedField(field: string, draft: PromptInput, start: PromptInput): bo
 export function PromptsView({ agents, prompts, defaults, variables, items, onChanged }: PromptsViewProps) {
   const id = useId()
   const editorRef = useRef<TemplateEditorHandle>(null)
+  // searchRef is the library's search field, which ⌘F focuses.
+  const searchRef = useRef<HTMLInputElement>(null)
   const [selection, setSelection] = useState<Selection | null>(null)
   const [baseline, setBaseline] = useState<PromptInput>(blankInput)
   const [draft, setDraft] = useState<PromptInput>(blankInput)
@@ -334,8 +337,8 @@ export function PromptsView({ agents, prompts, defaults, variables, items, onCha
 
   const canSave = dirty && problemCount === 0 && hiddenProblems === 0 && !busy
 
-  // ⌘S saves while the page is showing: a page hidden behind another runs no effects,
-  // so it stops listening.
+  // ⌘S saves while the page is showing, and ⌘F finds a prompt in the library: a page
+  // hidden behind another runs no effects, so it stops listening.
   const saveOnKey = useEffectEvent((e: globalThis.KeyboardEvent) => {
     if (e.metaKey && e.key === 's') {
       e.preventDefault()
@@ -343,6 +346,10 @@ export function PromptsView({ agents, prompts, defaults, variables, items, onCha
       if (canSave) {
         void save()
       }
+    } else if (isFindKey(e)) {
+      e.preventDefault()
+      searchRef.current?.focus()
+      searchRef.current?.select()
     }
   })
 
@@ -620,6 +627,7 @@ export function PromptsView({ agents, prompts, defaults, variables, items, onCha
         dirty={dirty}
         onAsk={ask}
         actions={libraryActions}
+        searchRef={searchRef}
       />
 
       <section aria-label="Prompt editor" className="flex min-w-0 flex-1 flex-col">
