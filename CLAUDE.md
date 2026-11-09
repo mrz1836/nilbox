@@ -91,7 +91,7 @@ sync overwrites these files with the shared version. Anything Nilbox-specific wr
 lost, so keep project rules in this file and project CI and tooling settings in
 `.github/env/90-project.env`. The sync covers at least:
 
-- `.github/AGENTS.md`, `.github/SECURITY.md`, `.mage.yaml`, and `codecov.yml`
+- `.github/AGENTS.md`, `.github/SECURITY.md`, `.goreleaser.yml`, `.mage.yaml`, and `codecov.yml`
 - everything under `.github/workflows/`, `.github/actions/`, `.github/scripts/`,
   `.github/tech-conventions/`, `.github/ISSUE_TEMPLATE/`, `.github/docs/`, and `.vscode/`
 - `.github/env/`, except `20-guardian.env`, `90-project.env`, and `99-local.env`
@@ -188,7 +188,12 @@ app:lint` reads.
   Theme colors come from the `--color-*` tokens `internal/brandgen` writes to
   `frontend/src/generated/theme.css`. Checkboxes and radio buttons take the `checkbox` and
   `radio` classes (`frontend/src/index.css`), which draw them in the app's own style: macOS
-  draws a native one grey whenever it counts the window as inactive.
+  draws a native one grey whenever it counts the window as inactive. Text is sized in rem,
+  never px (`text-[0.6875rem]`, not `text-[11px]`): the text size setting scales the root's
+  font size, which only rem follows, and the shell passes the stored size in the page's URL
+  (`internal/desktop.PageURL`) so the first frame is already at it. A repoguard test fails
+  on px text. Only chrome lined up with the native window, such as the toolbar's height and
+  its inset beside the window controls, and hairlines stay in px.
 - The bound API's shapes: a closed set of string values is a named Go string type with
   constants (`item.Kind`, `settings.Theme`, `sensitive.Scope`, ...), which `magex
   app:bindings` writes as a TypeScript union of its values plus a const object of the same
