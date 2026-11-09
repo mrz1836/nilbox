@@ -151,7 +151,7 @@ export function LaunchMenu({
                 onChange={() => {
                   set({ promptId: p.id === resolved.prompt.inheritedId ? 0 : p.id })
                 }}
-                className="row-span-2 translate-y-0.5 accent-accent"
+                className="radio row-span-2 translate-y-0.5"
               />
               <span className="truncate font-medium">{p.nickname}</span>
               <span className="text-[11px] text-muted">
@@ -253,7 +253,7 @@ export function LaunchMenu({
             onChange={(e) => {
               set({ worktree: e.target.checked === resolved.worktree.inherited ? null : e.target.checked })
             }}
-            className="accent-accent"
+            className="checkbox"
           />
           Start in a worktree
           <span className="ml-auto text-[11px] text-muted">
@@ -268,7 +268,7 @@ export function LaunchMenu({
             onChange={(e) => {
               set({ planMode: e.target.checked === resolved.planMode.inherited ? null : e.target.checked })
             }}
-            className="accent-accent"
+            className="checkbox"
           />
           <span className={forcedPlan ? 'text-muted' : ''}>{planToggleLabel(agent)}</span>
           <span className="ml-auto text-[11px] text-muted">
@@ -289,7 +289,7 @@ export function LaunchMenu({
                 onChange={(e) => {
                   set({ override: e.target.checked })
                 }}
-                className="accent-accent"
+                className="checkbox"
               />
               Use profile permissions for this item
             </label>

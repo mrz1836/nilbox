@@ -91,7 +91,7 @@ function BranchBox({ branch, checked, onChange, off = false }: BranchBoxProps) {
         onChange={(e) => {
           onChange(e.target.checked)
         }}
-        className="mt-1 accent-accent"
+        className="checkbox mt-0.5"
       />
       <span className="flex min-w-0 flex-col gap-0.5">
         <span className="text-sm text-text">

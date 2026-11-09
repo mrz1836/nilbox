@@ -273,7 +273,7 @@ function BackupList({ id, backups, pending, error, choice, onPick }: BackupListP
                     onChange={() => {
                       onPick(b.path)
                     }}
-                    className="row-span-3 mt-1 accent-accent"
+                    className="radio row-span-3 mt-0.5"
                   />
                   <span className="text-sm font-medium text-text">
                     {kind.title} · {formatDateTime(b.at)}
@@ -347,7 +347,7 @@ function EntryList({ agents, entries, pending, error, unchosen, onToggle }: Entr
                   onChange={(ev) => {
                     onToggle(i, ev.target.checked)
                   }}
-                  className="mt-1 accent-accent"
+                  className="checkbox mt-0.5"
                 />
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <span className="flex flex-wrap items-baseline gap-x-2 gap-y-1">

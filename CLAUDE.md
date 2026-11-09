@@ -186,7 +186,9 @@ app:lint` reads.
   `useCallback`, and the gate's render check (`pnpm test:renders`) profiles the compiled
   inbox. Tests stand in for Go only with the shared fake in `frontend/src/test/platform.tsx`.
   Theme colors come from the `--color-*` tokens `internal/brandgen` writes to
-  `frontend/src/generated/theme.css`.
+  `frontend/src/generated/theme.css`. Checkboxes and radio buttons take the `checkbox` and
+  `radio` classes (`frontend/src/index.css`), which draw them in the app's own style: macOS
+  draws a native one grey whenever it counts the window as inactive.
 - The bound API's shapes: a closed set of string values is a named Go string type with
   constants (`item.Kind`, `settings.Theme`, `sensitive.Scope`, ...), which `magex
   app:bindings` writes as a TypeScript union of its values plus a const object of the same

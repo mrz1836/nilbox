@@ -1409,8 +1409,10 @@ describe('WorktreesView merged branches', () => {
     ])
 
     const dialog = await openMerged()
-    expect(dialog.getByRole('status')).toHaveTextContent('Checking your clones’ branches against GitHub…')
-    expect(dialog.getByRole('button', { name: 'Delete 0 branches' })).toBeDisabled()
+    const checking = dialog.getByRole('status')
+    expect(checking).toHaveTextContent('Checking your clones’ branches against GitHub…')
+    expect(checking).toHaveTextContent('then GitHub is asked which of their pull requests merged')
+    expect(dialog.getByRole('button', { name: 'Delete branches' })).toBeDisabled()
 
     act(() => {
       answer([

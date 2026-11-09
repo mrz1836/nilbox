@@ -146,7 +146,7 @@ function BulkConfirmation({
                   onChange={(e) => {
                     ticks.set([wt.path], e.target.checked)
                   }}
-                  className="mt-1 accent-accent"
+                  className="checkbox mt-0.5"
                 />
                 <span className="flex min-w-0 flex-col gap-0.5">
                   <span className="text-sm font-medium break-all text-text">{wt.displayPath}</span>

@@ -74,7 +74,7 @@ export function PromptPreview({
               onChange={(e) => {
                 onInWorktreeChange(e.target.checked)
               }}
-              className="accent-accent"
+              className="checkbox"
             />
             In a worktree
           </label>
@@ -87,7 +87,7 @@ export function PromptPreview({
                 onChange={(e) => {
                   onAtPrHeadChange(e.target.checked)
                 }}
-                className="accent-accent"
+                className="checkbox"
               />
               At the PR&apos;s head
             </label>

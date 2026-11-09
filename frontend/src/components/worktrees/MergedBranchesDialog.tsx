@@ -7,6 +7,7 @@ import { mergedBranches, type BranchPick, type BranchRules, type MergedBranch } 
 import { ConfirmDialog } from '../ConfirmDialog'
 import { quietButtonClass } from '../controls'
 import { AlertIcon, ChevronDownIcon } from '../icons'
+import { Spinner } from '../Spinner'
 import { shortCommit, useTicks, type Ticks } from './BranchChoices'
 
 export interface MergedBranchesDialogProps {
@@ -82,7 +83,7 @@ function MergedRow({ merged: m, checked, now, onChange }: MergedRowProps) {
           onChange={(e) => {
             onChange(e.target.checked)
           }}
-          className="mt-1 accent-accent"
+          className="checkbox mt-0.5"
         />
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="flex items-center gap-2">
@@ -139,7 +140,7 @@ function CloneRow({ group, rules, ticks, now, open, onToggle }: CloneRowProps) {
           onChange={(e) => {
             ticks.set(deletable.map(boxKey), e.target.checked)
           }}
-          className="accent-accent"
+          className="checkbox"
         />
         <button
           type="button"
@@ -177,6 +178,38 @@ function CloneRow({ group, rules, ticks, now, open, onToggle }: CloneRowProps) {
   )
 }
 
+// skeletonRows are the widths of the placeholder clone rows shown while the branches
+// load, varied so the list reads as a list.
+const skeletonRows = ['w-48', 'w-36', 'w-56', 'w-40', 'w-44'] as const
+
+// Checking stands in for the list while the backend reads every clone and asks GitHub: a
+// spinner with what is happening, over placeholder rows shaped like the list to come, a
+// highlight sweeping down them one after another.
+function Checking() {
+  return (
+    <>
+      <div role="status" className="flex items-start gap-2.5">
+        <Spinner className="mt-0.5 size-4" />
+        <div>
+          <p className="text-text">Checking your clones’ branches against GitHub…</p>
+          <p className="mt-0.5 text-xs">
+            Each clone’s local branches are listed, then GitHub is asked which of their pull requests merged.
+          </p>
+        </div>
+      </div>
+      <ul aria-hidden="true" className="mt-3 divide-y divide-border rounded-md border border-border">
+        {skeletonRows.map((width, i) => (
+          <li key={width} className="flex items-center gap-2.5 px-2 py-2.5">
+            <span className="skeleton size-4" style={{ animationDelay: `${String(i * 120)}ms` }} />
+            <span className={`skeleton h-3 ${width}`} style={{ animationDelay: `${String(i * 120)}ms` }} />
+            <span className="skeleton ml-auto h-3 w-24" style={{ animationDelay: `${String(i * 120)}ms` }} />
+          </li>
+        ))}
+      </ul>
+    </>
+  )
+}
+
 // MergedBranchesDialog asks which of the clones' local branches to delete whose pull
 // requests merged. It looks them up itself when it opens: the backend lists each clone's
 // branches and asks GitHub about them in batches of fifty names. The branches are grouped
@@ -197,7 +230,9 @@ export function MergedBranchesDialog({ rules, now, onConfirm, onCancel }: Merged
   return (
     <ConfirmDialog
       title="Delete merged branches?"
-      confirmLabel={`Delete ${counted(chosen.length, 'branch', 'branches')}`}
+      confirmLabel={
+        found.data === undefined ? 'Delete branches' : `Delete ${counted(chosen.length, 'branch', 'branches')}`
+      }
       confirmDisabled={chosen.length === 0}
       size="large"
       onConfirm={() => {
@@ -208,7 +243,7 @@ export function MergedBranchesDialog({ rules, now, onConfirm, onCancel }: Merged
       {found.error !== '' ? (
         <p role="alert">Couldn’t check the branches: {found.error}</p>
       ) : found.data === undefined ? (
-        <p role="status">Checking your clones’ branches against GitHub…</p>
+        <Checking />
       ) : branches.length === 0 ? (
         <p>
           No local branch in your clones belongs to a merged pull request. A protected branch, and each repository’s

@@ -7,6 +7,7 @@ import { BranchResults } from './worktrees/BranchResults'
 import { BulkResults } from './worktrees/BulkResults'
 import { CleanupHistory } from './worktrees/CleanupHistory'
 import { ConfirmationDialog } from './worktrees/ConfirmationDialog'
+import { Spinner } from './Spinner'
 import { RepoSection } from './worktrees/RepoSection'
 import { plainButton } from './worktrees/shared'
 
@@ -109,7 +110,12 @@ export function WorktreesView({ agentName, launchFor, branchRules = defaultRules
       {bulk !== null && <BulkResults bulk={bulk} />}
       {branchResults !== null && <BranchResults results={branchResults} />}
       {snapshot === null
-        ? loadError === '' && <p className="text-sm text-muted">Listing the worktrees…</p>
+        ? loadError === '' && (
+            <p className="flex items-center gap-2 text-sm text-muted">
+              <Spinner />
+              Listing the worktrees…
+            </p>
+          )
         : repos.length === 0 && (
             <p className="text-sm text-muted">No clone under {snapshot.root} has linked worktrees.</p>
           )}
