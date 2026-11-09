@@ -13,7 +13,7 @@ One click to hand any pull request or issue to a coding agent.
 
 <br/>
 
-<a href="https://github.com/mrz1836/nilbox/releases"><img src="https://img.shields.io/github/release-pre/mrz1836/nilbox?include_prereleases&style=flat-square&logo=github&color=black" alt="Release"></a>
+<a href="https://github.com/mrz1836/nilbox/releases"><img src="https://img.shields.io/github/release-pre/mrz1836/nilbox.svg?include_prereleases&style=flat-square&logo=github&color=black" alt="Release"></a>
 <a href="https://golang.org/"><img src="https://img.shields.io/github/go-mod/go-version/mrz1836/nilbox?style=flat-square&logo=go&color=00ADD8" alt="Go Version"></a>
 <a href="#-installation"><img src="https://img.shields.io/badge/platform-macOS%2013%2B-000000?style=flat-square&logo=apple&logoColor=white" alt="Platform"></a>
 <a href="https://github.com/mrz1836/nilbox/blob/master/LICENSE"><img src="https://img.shields.io/github/license/mrz1836/nilbox?style=flat-square&color=blue&v=2" alt="License"></a>
