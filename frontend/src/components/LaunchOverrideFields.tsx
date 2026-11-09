@@ -169,7 +169,7 @@ export function LaunchOverrideFields({
             onChange={(e) => {
               onChange({ extraFlags: { ...values.extraFlags, [tab]: e.target.value } })
             }}
-            className={`${fieldClass} w-full font-mono text-[13px]`}
+            className={`${fieldClass} w-full font-mono text-[0.8125rem]`}
           />
         </Field>
       </div>

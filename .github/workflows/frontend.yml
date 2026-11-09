@@ -2,18 +2,27 @@
 #  Frontend
 #
 #  Purpose: Run the desktop frontend gate (frozen-lockfile install, format check,
-#  lint, typecheck, and tests with coverage) on an ubuntu runner.
+#  lint, typecheck, tests with coverage, and the render profile through the React
+#  Compiler) on an ubuntu runner.
 #
-#  The gate itself lives in frontend/scripts/gate.sh, the same script the local
-#  `magex frontend:gate` target runs, so CI and local checks cannot drift apart.
+#  The gate itself is the local `magex frontend:gate` target (magefiles/frontend.go),
+#  so CI and local checks cannot drift apart.
 # ------------------------------------------------------------------------------------
 
 name: Frontend
 
 on:
   pull_request:
+    # The gate is a magex target, so the magefiles, the Go module, the .github/env settings,
+    # and the actions that set up MAGE-X decide whether it runs too.
     paths:
       - "frontend/**"
+      - "magefiles/**"
+      - "go.mod"
+      - "go.sum"
+      - ".github/env/**"
+      - ".github/actions/load-env/**"
+      - ".github/actions/setup-magex/**"
       - ".github/workflows/frontend.yml"
   push:
     branches:
@@ -49,5 +58,30 @@ jobs:
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
 
+      - name: Set up Go (version from go.mod)
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Load the .github/env settings
+        id: load-env
+        uses: ./.github/actions/load-env
+
+      - name: Set up MAGE-X (version from .github/env)
+        uses: ./.github/actions/setup-magex
+        with:
+          magex-version: ${{ fromJSON(steps.load-env.outputs.env-json).MAGE_X_VERSION }}
+          runner-os: ${{ runner.os }}
+
+      # magex runs this repository's own targets (magefiles/) through the mage binary.
+      # Without mage on PATH it falls back to `go run` on magefiles/, which has no main
+      # function until mage generates one, so the build fails. Install the mage version
+      # go.mod pins.
+      - name: Install mage (version from go.mod)
+        run: |
+          mage_version="$(go list -m -f '{{.Version}}' github.com/magefile/mage)"
+          go install "github.com/magefile/mage@${mage_version}"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
       - name: Run the frontend gate
-        run: bash frontend/scripts/gate.sh
+        run: magex frontend:gate

@@ -13,16 +13,16 @@ func macAppOptions() application.MacOptions {
 	return application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true}
 }
 
-// windowOptions returns the macOS window, at the given size and on the background of the
-// dark or light palette, with an inset, hidden title bar.
+// windowOptions returns the macOS window for the window spec, with an inset, hidden title
+// bar.
 //
 // The content extends beneath the window controls, where the frontend's toolbar sits.
 // The toolbar marks itself as the drag region with the --wails-draggable CSS property
 // and its buttons opt out, so the bar drags and zooms the window while its controls take
 // clicks. A native InvisibleTitleBarHeight is not set: it would turn every click in that
 // strip into a window drag, buttons included.
-func windowOptions(dark bool, size settings.WindowSize) application.WebviewWindowOptions {
-	opts := baseWindowOptions(dark, size)
+func windowOptions(spec windowSpec) application.WebviewWindowOptions {
+	opts := baseWindowOptions(spec)
 	opts.Mac = application.MacWindow{TitleBar: application.MacTitleBarHiddenInset}
 
 	return opts

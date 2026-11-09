@@ -1,9 +1,9 @@
 import { act, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 
 import { brand } from './generated/brand'
-import type { Settings, TerminalID, AgentID, RemoveResult } from './platform'
+import type { Settings, TerminalID, AgentID, RemoveResult, TextSize } from './platform'
 import {
   appInfo,
   budgetGauge,
@@ -256,6 +256,45 @@ describe('App', () => {
     expect(document.documentElement.style.colorScheme).toBe('light')
     expect(screen.getByRole('radio', { name: 'Light' })).toBeChecked()
     expect(platform.setTheme).toHaveBeenCalledExactlyOnceWith('light')
+    expect(platform.getInboxSnapshot).toHaveBeenCalledTimes(inboxReads)
+    expect(platform.resolveLaunches).toHaveBeenCalledTimes(resolves)
+  })
+
+  it('shows the stored text size and switches it from Settings → Appearance, without reading the inbox again', async () => {
+    onTestFinished(() => {
+      document.documentElement.style.removeProperty('font-size')
+      window.history.replaceState(null, '', '/')
+    })
+    platform.getSettings.mockImplementation(() => stored({ textSize: 'large' }))
+    platform.setTextSize.mockImplementation((textSize: TextSize) => stored({ textSize }))
+    await renderApp()
+    await screen.findByRole('button', { name: 'Open in Claude' })
+
+    await vi.waitFor(() => {
+      expect(document.documentElement.style.fontSize).toBe('115%')
+    })
+    expect(new URLSearchParams(window.location.search).get('textSize')).toBe('large')
+
+    await openSettingsFromMenu()
+    await userEvent.click(screen.getByRole('button', { name: 'Appearance' }))
+    expect(screen.getByRole('radio', { name: '115%' })).toBeChecked()
+
+    const inboxReads = platform.getInboxSnapshot.mock.calls.length
+    const resolves = platform.resolveLaunches.mock.calls.length
+
+    await userEvent.click(screen.getByRole('radio', { name: '130%' }))
+
+    await vi.waitFor(() => {
+      expect(document.documentElement.style.fontSize).toBe('130%')
+    })
+    expect(new URLSearchParams(window.location.search).get('textSize')).toBe('larger')
+    expect(platform.setTextSize).toHaveBeenCalledExactlyOnceWith('larger')
+
+    await userEvent.click(screen.getByRole('radio', { name: '100%' }))
+
+    await vi.waitFor(() => {
+      expect(document.documentElement.style.fontSize).toBe('')
+    })
     expect(platform.getInboxSnapshot).toHaveBeenCalledTimes(inboxReads)
     expect(platform.resolveLaunches).toHaveBeenCalledTimes(resolves)
   })

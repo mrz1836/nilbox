@@ -169,6 +169,11 @@ export interface Settings {
     "theme": Theme;
 
     /**
+     * TextSize is the size of the app's text, apart from the size of its window.
+     */
+    "textSize": TextSize;
+
+    /**
      * CollapsedSections lists the inbox sections the user collapsed, in the order the
      * inbox shows them.
      */
@@ -186,6 +191,40 @@ export interface Settings {
      */
     "inboxOrder": InboxOrder;
 }
+
+/**
+ * TextSize is the size of the app's text, apart from the size of its window. A larger size
+ * scales the text and the spacing sized with it, as a browser's font size setting does;
+ * the frontend sets the scale for each choice.
+ */
+export type TextSize = "default" | "large" | "larger";
+
+/**
+ * The values of TextSize, by the names of their Go constants.
+ */
+export const TextSize = {
+    /**
+     * Text size choices.
+     *
+     * TextSizeDefault shows the text at the size the app is designed at (100%).
+     */
+    TextSizeDefault: "default",
+
+    /**
+     * TextSizeLarge shows the text a step larger (115%).
+     */
+    TextSizeLarge: "large",
+
+    /**
+     * TextSizeLarger shows the text two steps larger (130%).
+     */
+    TextSizeLarger: "larger",
+
+    /**
+     * DefaultTextSize is the text size of a fresh database.
+     */
+    DefaultTextSize: "default",
+} as const;
 
 /**
  * Theme is the palette the app shows.

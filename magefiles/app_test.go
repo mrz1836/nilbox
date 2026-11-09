@@ -869,27 +869,49 @@ func TestAppProcesses(t *testing.T) {
 	})
 }
 
+// helperSleepEnv, set to "1", makes TestHelperSleep sleep rather than skip.
+const helperSleepEnv = "MAGEFILES_TEST_HELPER_SLEEP"
+
+// TestHelperSleep is not a test of its own: run by TestAppProcessesFindsARealProcess with
+// helperSleepEnv set, it sleeps until it is stopped, as a process of the test's own under
+// a path of the test's choosing. Any other time it skips.
+func TestHelperSleep(t *testing.T) {
+	t.Parallel()
+
+	if os.Getenv(helperSleepEnv) != "1" {
+		t.Skip("a helper process for TestAppProcessesFindsARealProcess")
+	}
+
+	time.Sleep(time.Minute)
+}
+
 //nolint:paralleltest // changes the process's standard output
 func TestAppProcessesFindsARealProcess(t *testing.T) {
 	requireProcessList(t)
-	requireTool(t, "sleep")
 
-	bash := requireTool(t, "bash")
+	self, err := os.Executable()
+	require.NoError(t, err)
+
 	exe := filepath.Join(t.TempDir(), brand.Name+".app", "Contents", "MacOS", brand.Slug)
 
-	// bash replaces itself with sleep, run under the app's path as its command name.
-	pid, done := startProcess(t, exec.CommandContext(t.Context(), bash, "-c", `exec -a "$0" sleep 30`, exe)) //nolint:gosec // the test's own process, fixed arguments
+	// The app's path links to this test binary, which runs TestHelperSleep under the app's
+	// path as its command name. A system tool would not do: a multi-call build of sleep
+	// (as on Ubuntu) picks what it does by the name it runs under, and exits at once.
+	require.NoError(t, os.MkdirAll(filepath.Dir(exe), 0o750))
+	require.NoError(t, os.Symlink(self, exe))
+
+	helper := exec.CommandContext(t.Context(), exe, "-test.run=^TestHelperSleep$") //nolint:gosec // the test's own binary, fixed arguments
+
+	helper.Env = append(os.Environ(), helperSleepEnv+"=1")
+	pid, done := startProcess(t, helper)
 
 	assert.Eventually(t, func() bool {
-		pids, err := appProcesses(exe)
+		pids, listErr := appProcesses(exe)
 
-		return err == nil && slices.Equal(pids, []int{pid})
+		return listErr == nil && slices.Equal(pids, []int{pid})
 	}, 5*time.Second, 20*time.Millisecond)
 
-	var (
-		quit bool
-		err  error
-	)
+	var quit bool
 
 	captureStdout(t, func() { quit, err = quitRunningApp(exe, 5*time.Second) })
 
@@ -1142,6 +1164,19 @@ func TestBuildDesktopBinary(t *testing.T) {
 		}, logLines(t, log))
 	})
 
+	t.Run("quiets Apple's newer linker about duplicate libraries", func(t *testing.T) {
+		dir := isolatedPath(t)
+		fakeTool(t, dir, "ld", `echo "@(#)PROGRAM:ld PROJECT:ld-1167.5" >&2`)
+		log := fakeLoggedTool(t, dir, "go", "")
+
+		require.NoError(t, buildDesktopBinary("bin/app", meta))
+
+		assert.Equal(t, []string{
+			"build -tags desktop,production -trimpath -buildvcs=false -ldflags -s -w " + versionFlags(meta) +
+				" -extldflags=-Wl,-no_warn_duplicate_libraries -o bin/app ./cmd/" + brand.Slug,
+		}, logLines(t, log))
+	})
+
 	t.Run("the build fails", func(t *testing.T) {
 		fakeGo(t, "exit 1")
 
@@ -1150,6 +1185,34 @@ func TestBuildDesktopBinary(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "build the desktop binary")
 	})
+}
+
+//nolint:paralleltest // changes the process's PATH
+func TestQuietLinkerFlags(t *testing.T) {
+	const quiet = " -extldflags=-Wl,-no_warn_duplicate_libraries"
+
+	tests := []struct {
+		name string
+		ld   string // the fake ld's body, or "" for no ld on PATH
+		want string
+	}{
+		{name: "Apple's linker since Xcode 15", ld: `echo "@(#)PROGRAM:ld PROJECT:ld-1167.5" >&2`, want: quiet},
+		{name: "whatever ld -v exits with", ld: `echo "@(#)PROGRAM:ld PROJECT:ld-1115.7.3" >&2; exit 1`, want: quiet},
+		{name: "Apple's older ld64, which does not know the flag", ld: `echo "@(#)PROGRAM:ld PROJECT:ld64-820.1" >&2`},
+		{name: "a GNU linker", ld: `echo "GNU ld (GNU Binutils) 2.42"`},
+		{name: "no linker on PATH"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := isolatedPath(t)
+			if tt.ld != "" {
+				fakeTool(t, dir, "ld", tt.ld)
+			}
+
+			assert.Equal(t, tt.want, quietLinkerFlags())
+		})
+	}
 }
 
 //nolint:paralleltest // changes the process's working directory and PATH

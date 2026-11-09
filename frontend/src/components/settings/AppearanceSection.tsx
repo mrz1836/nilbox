@@ -1,10 +1,11 @@
 import { useId, useState } from 'react'
 
 import type { Result } from '../../lib/call'
+import { defaultTextSize, textSizes, type TextSize } from '../../lib/textSize'
 import type { Theme } from '../../lib/theme'
 import { useSettingsSave } from '../../lib/useSettingsSave'
 import { presetFor, sizeKey, sizeLabel, windowPresets } from '../../lib/windowSize'
-import { setWindowSize, type Settings } from '../../platform'
+import { setTextSize, setWindowSize, type Settings } from '../../platform'
 import { Segmented } from '../controls'
 import { DisplayIcon, MoonIcon, SunIcon } from '../icons'
 import { ChoiceRow, Group, joinIds, Note } from './rows'
@@ -82,6 +83,38 @@ function ThemeRow({ theme, onThemeChange }: ThemeRowProps) {
   )
 }
 
+// TextSizeRow holds the size of the app's text, apart from the window's size. Choosing a
+// size stores it, and the page shows it as soon as it is stored.
+function TextSizeRow({ settings: stored, onSaved }: SectionProps) {
+  const errorId = useId()
+  const { settings, save, error } = useSettingsSave(stored, onSaved)
+
+  const choose = (size: TextSize) => {
+    void save({ textSize: size }, () => setTextSize(size))
+  }
+
+  return (
+    <ChoiceRow
+      label="Text size"
+      description="Larger sizes scale the text and the spacing around it, whatever the window's size."
+      error={error}
+      errorId={errorId}
+    >
+      <Segmented
+        label="Text size"
+        value={settings.textSize}
+        options={textSizes.map(({ value, percent }) => ({
+          value,
+          label: `${String(percent)}%`,
+          title: value === defaultTextSize ? 'The default size' : `${String(percent - 100)}% larger than the default`,
+        }))}
+        describedBy={joinIds(error !== '' && errorId)}
+        onChange={choose}
+      />
+    </ChoiceRow>
+  )
+}
+
 // WindowSizeRow holds the size the window opens at. Choosing a size stores it and resizes
 // the open window to it at once.
 function WindowSizeRow({ settings: stored, onSaved }: SectionProps) {
@@ -121,27 +154,30 @@ function WindowSizeRow({ settings: stored, onSaved }: SectionProps) {
 }
 
 interface AppearanceSectionProps extends ThemeRowProps {
-  // settings is null until it has loaded; the window size waits for it.
+  // settings is null until it has loaded; the text and window sizes wait for it.
   settings: Settings | null
   onSaved: (settings: Settings) => void
 }
 
 // AppearanceSection holds how the app looks: the theme, which needs no settings to show,
-// and the size the window opens at.
+// the size of its text, and the size the window opens at.
 export function AppearanceSection({ settings, onSaved, theme, onThemeChange }: AppearanceSectionProps) {
   return (
     <div className="flex flex-col gap-3">
       <Group>
         <ThemeRow theme={theme} onThemeChange={onThemeChange} />
         {settings === null ? (
-          <p className="px-4 py-3.5 text-sm text-muted">Loading the window size…</p>
+          <p className="px-4 py-3.5 text-sm text-muted">Loading the text and window sizes…</p>
         ) : (
-          <WindowSizeRow settings={settings} onSaved={onSaved} />
+          <>
+            <TextSizeRow settings={settings} onSaved={onSaved} />
+            <WindowSizeRow settings={settings} onSaved={onSaved} />
+          </>
         )}
       </Group>
       <Note>
-        Sizes are in points. A size larger than your screen opens as large as the screen allows, and you can still
-        resize the window by dragging its edges.
+        Window sizes are in points. A size larger than your screen opens as large as the screen allows, and you can
+        still resize the window by dragging its edges.
       </Note>
     </div>
   )

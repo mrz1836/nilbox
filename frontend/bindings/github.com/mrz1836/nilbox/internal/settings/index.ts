@@ -8,6 +8,7 @@ export {
 
 export {
     ListKey,
+    TextSize,
     Theme
 } from "./models.js";
 

@@ -57,7 +57,7 @@ export function PromptPreview({
           onChange={(e) => {
             onItemChange(Number(e.target.value))
           }}
-          className="w-full truncate rounded-md border border-border bg-surface px-2 py-1.5 text-[13px]"
+          className="w-full truncate rounded-md border border-border bg-surface px-2 py-1.5 text-[0.8125rem]"
         >
           <option value={0}>A sample {forPRs ? 'pull request' : 'issue'}</option>
           {items.map((item) => (
@@ -107,15 +107,15 @@ export function PromptPreview({
         ) : (
           <>
             {result.previewNote !== '' && <p className="mb-2 text-xs text-muted">{result.previewNote}</p>}
-            <pre className="font-mono text-[12px] leading-5 break-words whitespace-pre-wrap text-text">
+            <pre className="font-mono text-[0.75rem] leading-5 break-words whitespace-pre-wrap text-text">
               {result.preview}
             </pre>
             {result.notice !== '' && (
               <div className="mt-3 rounded-md border border-warning/40 bg-warning/5 px-3 py-2">
-                <p className="text-[11px] font-semibold tracking-wide text-warning uppercase">
+                <p className="text-[0.6875rem] font-semibold tracking-wide text-warning uppercase">
                   Added for outside contributors
                 </p>
-                <p className="mt-1 font-mono text-[12px] leading-5 text-text">{result.notice}</p>
+                <p className="mt-1 font-mono text-[0.75rem] leading-5 text-text">{result.notice}</p>
               </div>
             )}
           </>

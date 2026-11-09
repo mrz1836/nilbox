@@ -73,6 +73,19 @@ func TestAThemeChangeReachesTheWindow(t *testing.T) {
 	assert.Empty(t, r.page.events())
 }
 
+func TestATextSizeChangeReachesTheWindow(t *testing.T) {
+	t.Parallel()
+
+	r := newRig()
+	s := r.shell()
+
+	s.Emit(event.TextSizeChanged{Size: string(settings.TextSizeLarger)})
+	s.Emit(event.TextSizeChanged{Size: string(settings.TextSizeDefault)})
+
+	assert.Equal(t, []settings.TextSize{settings.TextSizeLarger, settings.TextSizeDefault}, r.window.textSizesSet())
+	assert.Empty(t, r.page.events(), "the page shows the size itself")
+}
+
 func TestShowWindowAndQuit(t *testing.T) {
 	t.Parallel()
 
@@ -98,7 +111,8 @@ func TestLaunchedOpensTheWindowFromTheSettings(t *testing.T) {
 		s.Launched()
 		synctest.Wait()
 
-		assert.Equal(t, []opening{{theme: settings.ThemeDark, size: r.settings.size}}, r.window.openings())
+		assert.Equal(t, []opening{{theme: settings.ThemeDark, size: r.settings.size, textSize: settings.TextSizeLarger}},
+			r.window.openings())
 		assert.Equal(t, []string{"tray shown"}, r.lines("tray shown"))
 		assert.Len(t, r.tray.drawn(), 1, "a shown icon is drawn at once")
 		assert.Equal(t, []string{"banners asked"}, r.lines("banners"))
@@ -142,13 +156,16 @@ func TestLaunchedFallsBackWhenTheSettingsCannotBeRead(t *testing.T) {
 		s.Launched()
 		synctest.Wait()
 
-		assert.Equal(t, []opening{{theme: settings.DefaultTheme, size: settings.DefaultWindowSize()}}, r.window.openings())
+		assert.Equal(t, []opening{{
+			theme: settings.DefaultTheme, size: settings.DefaultWindowSize(), textSize: settings.DefaultTextSize,
+		}}, r.window.openings())
 		assert.Equal(t, []string{"tray shown"}, r.lines("tray shown"), "the icon shows by default")
 
 		notes := r.logs.String()
 		wantErr := `error="` + errFakeSettings.Error() + `"`
 		assert.Contains(t, notes, `level=WARN msg="could not read the theme; following the system" `+wantErr)
 		assert.Contains(t, notes, `level=WARN msg="could not read the window size; opening at the default" `+wantErr)
+		assert.Contains(t, notes, `level=WARN msg="could not read the text size; opening at the default" `+wantErr)
 		assert.Contains(t, notes, `level=WARN msg="could not read the menu bar setting; showing the icon" `+wantErr)
 
 		require.NoError(t, s.Stop())
@@ -346,6 +363,7 @@ func TestAStoppedShellDoesNothing(t *testing.T) {
 			event.InboxUpdated{},
 			event.RevealItem{ItemID: 7},
 			event.ThemeChanged{Theme: string(settings.ThemeDark)},
+			event.TextSizeChanged{Size: string(settings.TextSizeLarge)},
 			event.MenuBarChanged{On: true},
 			event.FirstPaint{},
 		} {
@@ -359,6 +377,7 @@ func TestAStoppedShellDoesNothing(t *testing.T) {
 		assert.Empty(t, r.window.openings())
 		assert.Zero(t, r.window.shown())
 		assert.Empty(t, r.window.themesSet())
+		assert.Empty(t, r.window.textSizesSet())
 		assert.Zero(t, r.app.quitCount())
 		assert.False(t, s.HidesOnClose(), "a quitting app closes its window")
 		assert.Empty(t, r.stdout.String())

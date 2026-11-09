@@ -35,6 +35,9 @@ const (
 	// NameThemeChanged is ThemeChanged's name.
 	NameThemeChanged = "settings:theme"
 
+	// NameTextSizeChanged is TextSizeChanged's name.
+	NameTextSizeChanged = "settings:textSize"
+
 	// NameMenuBarChanged is MenuBarChanged's name.
 	NameMenuBarChanged = "settings:menuBar"
 
@@ -141,6 +144,16 @@ type ThemeChanged struct {
 
 // Name returns NameThemeChanged.
 func (ThemeChanged) Name() string { return NameThemeChanged }
+
+// TextSizeChanged says the user chose a text size and it was stored. The shell sets the
+// window's smallest size to suit it; the page shows the size itself.
+type TextSizeChanged struct {
+	// Size is the stored text size: one of the settings package's text size choices.
+	Size string
+}
+
+// Name returns NameTextSizeChanged.
+func (TextSizeChanged) Name() string { return NameTextSizeChanged }
 
 // MenuBarChanged says the user turned the menu bar icon on or off and it was stored.
 type MenuBarChanged struct {

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -119,6 +120,37 @@ func TestShebangless(t *testing.T) {
 	})
 }
 
+func TestNeedsPOSIXShell(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	script := filepath.Join(dir, "pnpm")
+	require.NoError(t, os.WriteFile(script, []byte("exec node pnpm.cjs \"$@\"\n"), 0o600))
+
+	shebang := filepath.Join(dir, "pnpm-shebang")
+	require.NoError(t, os.WriteFile(shebang, []byte("#!/bin/sh\nexit 0\n"), 0o600))
+
+	tests := []struct {
+		name string
+		goos string
+		path string
+		want bool
+	}{
+		{name: "script without a shebang on macOS", goos: "darwin", path: script, want: true},
+		{name: "script without a shebang on Linux", goos: "linux", path: script, want: true},
+		{name: "script with a shebang on Linux", goos: "linux", path: shebang, want: false},
+		{name: "Windows starts its launchers itself", goos: "windows", path: script, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.want, needsPOSIXShell(tt.goos, tt.path))
+		})
+	}
+}
+
 //nolint:paralleltest // changes the process's working directory and PATH
 func TestPnpmCommand(t *testing.T) {
 	t.Run("runs a native launcher directly", func(t *testing.T) {
@@ -226,28 +258,71 @@ func TestFrontendBuild(t *testing.T) {
 	})
 }
 
-//nolint:paralleltest // changes the process's working directory
+//nolint:paralleltest // changes the process's working directory and PATH
 func TestFrontendGate(t *testing.T) {
-	requireTool(t, "bash")
+	allSteps := []string{
+		"install --frozen-lockfile",
+		"run format:check",
+		"run lint",
+		"run typecheck",
+		"run test:coverage",
+		"run test:renders",
+	}
 
-	t.Run("passes when the gate passes", func(t *testing.T) {
+	t.Run("installs, then runs every check in order", func(t *testing.T) {
 		dir := inTempDir(t)
-		writeFile(t, filepath.Join(dir, frontendGateScript), "exit 0\n")
+		require.NoError(t, os.Mkdir(filepath.Join(dir, frontendDir), 0o750))
+
+		log := fakePNPM(t, "exit 0")
 
 		require.NoError(t, Frontend{}.Gate())
+
+		assert.Equal(t, allSteps, logLines(t, log))
 	})
 
-	t.Run("fails when the gate fails", func(t *testing.T) {
+	t.Run("stops at the first check that fails", func(t *testing.T) {
 		dir := inTempDir(t)
-		writeFile(t, filepath.Join(dir, frontendGateScript), "exit 1\n")
+		require.NoError(t, os.Mkdir(filepath.Join(dir, frontendDir), 0o750))
+
+		log := fakePNPM(t, `[ "$2" = lint ] && exit 1`+"\nexit 0")
+
+		err := Frontend{}.Gate()
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "pnpm [run lint]")
+		assert.Equal(t, allSteps[:3], logLines(t, log))
+	})
+
+	t.Run("stops when the install fails", func(t *testing.T) {
+		dir := inTempDir(t)
+		require.NoError(t, os.Mkdir(filepath.Join(dir, frontendDir), 0o750))
+
+		log := fakePNPM(t, `[ "$1" = install ] && exit 1`+"\nexit 0")
 
 		require.Error(t, Frontend{}.Gate())
+
+		assert.Equal(t, allSteps[:1], logLines(t, log))
+	})
+
+	t.Run("pnpm missing", func(t *testing.T) {
+		inTempDir(t)
+		isolatedPath(t)
+
+		require.ErrorIs(t, Frontend{}.Gate(), errPNPMMissing)
 	})
 }
 
 //nolint:paralleltest // changes the process's working directory
-func TestFrontendGateScriptExists(t *testing.T) {
+func TestFrontendGateScriptsExist(t *testing.T) {
 	inRepoRoot(t)
 
-	assert.FileExists(t, frontendGateScript, "magex frontend:gate and CI run the same script")
+	var manifest struct {
+		Scripts map[string]string `json:"scripts"`
+	}
+
+	require.NoError(t, json.Unmarshal([]byte(readFile(t, filepath.Join(frontendDir, "package.json"))), &manifest))
+
+	for _, script := range frontendGateScripts() {
+		assert.Contains(t, manifest.Scripts, script, "frontend/package.json must define every script the gate runs")
+	}
 }

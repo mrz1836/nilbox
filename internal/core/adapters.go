@@ -46,7 +46,7 @@ func (v settingsView[T]) Get(ctx context.Context) (T, error) {
 }
 
 // ShellSettings are the settings the desktop shell reads when the app launches: the theme,
-// whether the menu bar icon shows, and the window size. It is not bound to the window, so
+// whether the menu bar icon shows, the window size, and the text size. It is not bound to the window, so
 // the size, which only the shell reads on its own, stays out of the frontend's API.
 type ShellSettings struct {
 	settings *settings.Service
@@ -72,6 +72,11 @@ func (s ShellSettings) MenuBar(ctx context.Context) (bool, error) {
 // WindowSize returns the size the window opens at.
 func (s ShellSettings) WindowSize(ctx context.Context) (settings.WindowSize, error) {
 	return settings.ReadWindowSize(ctx, s.prefs)
+}
+
+// TextSize returns the text size the window opens at.
+func (s ShellSettings) TextSize(ctx context.Context) (settings.TextSize, error) {
+	return s.settings.TextSize(ctx)
 }
 
 // launchSettings is the part of the settings a launch reads.

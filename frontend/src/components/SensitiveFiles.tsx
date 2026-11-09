@@ -62,7 +62,7 @@ function FileRow({ file }: { file: SensitiveFile }) {
       )}
       <span
         title={change}
-        className={`ml-auto min-w-0 shrink truncate text-[11px] ${toneText[changeTone(file.change)]}`}
+        className={`ml-auto min-w-0 shrink truncate text-[0.6875rem] ${toneText[changeTone(file.change)]}`}
       >
         {change}
       </span>
@@ -81,7 +81,7 @@ function GroupSection({ group }: { group: SensitiveGroup }) {
         {group.label}
         <span className="font-normal text-muted">{formatCount(files.length)}</span>
       </h4>
-      <p className="text-[11px] leading-snug text-muted">{group.description}</p>
+      <p className="text-[0.6875rem] leading-snug text-muted">{group.description}</p>
       <ul className="mt-0.5 flex flex-col">
         {files.map((file) => (
           <FileRow key={file.path} file={file} />
@@ -151,7 +151,7 @@ export function SensitiveFiles({ itemId, check, onSettings }: SensitiveFilesProp
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         onClick={toggle}
-        className={`inline-flex max-w-64 items-center gap-1 py-px text-[11px] leading-4 font-medium transition-colors aria-expanded:ring-1 aria-expanded:ring-border ${chipClass[chip.tone]}`}
+        className={`inline-flex max-w-64 items-center gap-1 py-px text-[0.6875rem] leading-4 font-medium transition-colors aria-expanded:ring-1 aria-expanded:ring-border ${chipClass[chip.tone]}`}
       >
         {icon}
         {chip.short !== '' && <span className="truncate">{chip.short}</span>}
@@ -167,7 +167,7 @@ export function SensitiveFiles({ itemId, check, onSettings }: SensitiveFilesProp
         <div>
           <h3 className="text-sm font-semibold text-text">Sensitive files</h3>
           {check.head !== '' && (
-            <p className="mt-0.5 text-[11px] text-muted">
+            <p className="mt-0.5 text-[0.6875rem] text-muted">
               At commit <span className="font-mono">{shortHead(check.head)}</span>
               {check.checkedAt !== '' && (
                 <>
@@ -202,7 +202,7 @@ export function SensitiveFiles({ itemId, check, onSettings }: SensitiveFilesProp
             {checking ? 'Checking…' : 'Check now'}
           </button>
           {onSettings === undefined ? (
-            <span className="text-[11px] text-muted">Settings → Sensitive files</span>
+            <span className="text-[0.6875rem] text-muted">Settings → Sensitive files</span>
           ) : (
             <button type="button" onClick={onSettings} className={quietButtonClass}>
               What counts as sensitive

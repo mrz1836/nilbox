@@ -44,6 +44,7 @@ func TestEveryEventHasItsOwnName(t *testing.T) {
 		{event.WorktreesUpdated{}, event.NameWorktreesUpdated},
 		{event.NotificationsUpdated{}, event.NameNotificationsUpdated},
 		{event.ThemeChanged{}, event.NameThemeChanged},
+		{event.TextSizeChanged{}, event.NameTextSizeChanged},
 		{event.MenuBarChanged{}, event.NameMenuBarChanged},
 		{event.FirstPaint{}, event.NameFirstPaint},
 	}
@@ -71,7 +72,7 @@ func TestTheWindowHearsOnlyTheWindowEvents(t *testing.T) {
 		event.NameBudgetUpdated,
 	}, names)
 
-	for _, e := range []event.Event{event.ThemeChanged{}, event.MenuBarChanged{}, event.FirstPaint{}} {
+	for _, e := range []event.Event{event.ThemeChanged{}, event.TextSizeChanged{}, event.MenuBarChanged{}, event.FirstPaint{}} {
 		_, ok := e.(event.WindowEvent)
 		assert.False(t, ok, "%s stays in Go", e.Name())
 	}

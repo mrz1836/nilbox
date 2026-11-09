@@ -161,7 +161,7 @@ export function InboxNil({ stats, earned }: InboxNilProps) {
           <p
             aria-hidden="true"
             data-testid="nil-badge"
-            className="nil-rise mt-8 inline-flex overflow-hidden rounded-md font-mono text-[11px] leading-5 font-semibold"
+            className="nil-rise mt-8 inline-flex overflow-hidden rounded-md font-mono text-[0.6875rem] leading-5 font-semibold"
           >
             <span className="bg-raised px-2 text-muted">inbox</span>
             <span className="bg-success px-2 text-background">nil</span>
@@ -189,7 +189,7 @@ export function InboxNil({ stats, earned }: InboxNilProps) {
 
         <figure
           aria-label="Terminal"
-          className="nil-rise mt-9 w-full max-w-xl overflow-hidden rounded-lg border border-border bg-surface text-left font-mono text-[13px] leading-6 text-text shadow-2xl shadow-black/40"
+          className="nil-rise mt-9 w-full max-w-xl overflow-hidden rounded-lg border border-border bg-surface text-left font-mono text-[0.8125rem] leading-6 text-text shadow-2xl shadow-black/40"
           style={{ ...terminalTokens, animationDelay: '320ms' }}
         >
           <div className="flex items-center gap-1.5 border-b border-border bg-raised px-3 py-2">

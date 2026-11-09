@@ -3,11 +3,19 @@ import { createRoot } from 'react-dom/client'
 
 import { App } from './App'
 import './index.css'
+import { applyTextSize, textSizeFromURL } from './lib/textSize'
 import { reportFirstPaint } from './platform'
 
 const container = document.getElementById('root')
 if (container === null) {
   throw new Error('index.html is missing the #root element')
+}
+
+// The desktop shell opens the page with the stored text size in its URL; showing it
+// before the first render means the first frame is already at that size.
+const textSize = textSizeFromURL(window.location.search)
+if (textSize !== null) {
+  applyTextSize(textSize)
 }
 
 createRoot(container).render(

@@ -12,18 +12,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 
 	"github.com/magefile/mage/mg"
-	"github.com/magefile/mage/sh"
 )
 
-const (
-	// frontendDir holds the desktop frontend (its package.json and lockfile).
-	frontendDir = "frontend"
-
-	// frontendGateScript is the single frontend gate shared with CI.
-	frontendGateScript = "frontend/scripts/gate.sh"
-)
+// frontendDir holds the desktop frontend (its package.json and lockfile).
+const frontendDir = "frontend"
 
 // errPNPMMissing is returned when pnpm is not on PATH.
 var errPNPMMissing = errors.New("pnpm is required")
@@ -53,12 +48,31 @@ func (Frontend) Build() error {
 	return runPNPM(frontendDir, "build")
 }
 
-// Gate runs the shared frontend gate: frozen-lockfile install, format check, lint,
-// typecheck, and tests with coverage. CI runs the same script.
+// Gate runs the frontend gate, the one entry point for every frontend check: the
+// frozen-lockfile install, then each of frontendGateScripts in order. Any failure stops
+// the gate. The frontend CI workflow runs this same target, so local runs and CI cannot
+// drift apart.
 //
 //	magex frontend:gate
 func (Frontend) Gate() error {
-	return sh.RunV("bash", frontendGateScript)
+	if err := (Frontend{}).Install(); err != nil {
+		return err
+	}
+
+	for _, script := range frontendGateScripts() {
+		if err := runPNPM(frontendDir, "run", script); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// frontendGateScripts are the frontend/package.json scripts the gate runs, in order: the
+// format check, lint, typecheck, the tests with coverage, and the render profile through
+// the React Compiler.
+func frontendGateScripts() []string {
+	return []string{"format:check", "lint", "typecheck", "test:coverage", "test:renders"}
 }
 
 // requirePNPM returns an actionable error naming the pinned pnpm version when pnpm is
@@ -103,8 +117,9 @@ func runPNPM(dir string, args ...string) error {
 }
 
 // pnpmCommand returns a command that runs pnpm with args in dir. Until pnpm's native
-// binary is installed, its launcher is a shell script without a shebang line: a shell
-// runs it, but the OS will not exec it directly, so such a launcher runs through /bin/sh.
+// binary is installed, its launcher on macOS and Linux is a shell script without a
+// shebang line: a shell runs it, but the OS will not exec it directly, so such a launcher
+// runs through /bin/sh. Windows runs pnpm's .exe or .cmd launcher directly.
 func pnpmCommand(ctx context.Context, dir string, args ...string) (*exec.Cmd, error) {
 	if err := requirePNPM(); err != nil {
 		return nil, err
@@ -116,7 +131,7 @@ func pnpmCommand(ctx context.Context, dir string, args ...string) (*exec.Cmd, er
 	}
 
 	name, argv := path, args
-	if shebangless(path) {
+	if needsPOSIXShell(runtime.GOOS, path) {
 		name, argv = "/bin/sh", append([]string{path}, args...)
 	}
 
@@ -124,6 +139,13 @@ func pnpmCommand(ctx context.Context, dir string, args ...string) (*exec.Cmd, er
 	cmd.Dir = dir
 
 	return cmd, nil
+}
+
+// needsPOSIXShell reports whether the launcher at path must run through /bin/sh on goos:
+// a script without a #! line, anywhere but Windows, which has no /bin/sh and starts its
+// .cmd launchers itself.
+func needsPOSIXShell(goos, path string) bool {
+	return goos != "windows" && shebangless(path)
 }
 
 // executableMagic are the leading bytes of native executables: ELF, Mach-O in both byte

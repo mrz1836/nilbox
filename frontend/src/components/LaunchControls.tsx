@@ -278,7 +278,7 @@ export function LaunchControls({
   return (
     <>
       <div className="relative self-center">
-        <div className="inline-flex items-stretch rounded-md border border-border bg-surface text-[13px]">
+        <div className="inline-flex items-stretch rounded-md border border-border bg-surface text-[0.8125rem]">
           <button
             type="button"
             disabled={busy || base === null}

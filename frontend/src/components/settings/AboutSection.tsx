@@ -45,7 +45,7 @@ function Rows({ rows }: { rows: readonly (readonly [string, string, string?])[] 
           <dt className="font-medium">{term}</dt>
           <dd
             title={title === '' ? undefined : title}
-            className="text-right font-mono text-[13px] break-all text-muted"
+            className="text-right font-mono text-[0.8125rem] break-all text-muted"
           >
             {value}
           </dd>

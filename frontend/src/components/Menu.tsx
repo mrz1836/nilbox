@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react'
 
+import { remToPx } from '../lib/rem'
 import { usePopover } from '../lib/usePopover'
 import { ChevronRightIcon } from './icons'
 import { PopoverPanel } from './PopoverPanel'
@@ -67,8 +68,8 @@ const itemClass =
   'flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm whitespace-nowrap hover:bg-raised focus:bg-raised focus-visible:outline-none disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent aria-expanded:bg-raised'
 
 // submenuGap is the least room a submenu keeps from the window's edges before it opens
-// the other way.
-const submenuGap = 8
+// the other way, in rem, so it follows the text size.
+const submenuGap = 0.5
 
 // built returns a menu's items, building them when given a function.
 function built(items: readonly MenuItem[] | (() => readonly MenuItem[])): readonly MenuItem[] {
@@ -137,9 +138,11 @@ function Submenu({ id, label, items, focusFirst, onChoose, onBack }: SubmenuProp
     const rect = menuRef.current?.getBoundingClientRect()
 
     if (rect !== undefined) {
+      const gap = remToPx(submenuGap)
+
       setFlip({
-        left: rect.right > window.innerWidth - submenuGap,
-        up: rect.bottom > window.innerHeight - submenuGap,
+        left: rect.right > window.innerWidth - gap,
+        up: rect.bottom > window.innerHeight - gap,
       })
     }
   }, [])
@@ -163,7 +166,7 @@ function Submenu({ id, label, items, focusFirst, onChoose, onBack }: SubmenuProp
   }
 
   const x = flip.left ? 'right-full mr-1' : 'left-full ml-1'
-  const y = flip.up ? '-bottom-[7px]' : '-top-[7px]'
+  const y = flip.up ? '-bottom-[calc(var(--spacing)*1.5+1px)]' : '-top-[calc(var(--spacing)*1.5+1px)]'
 
   return (
     <div
@@ -215,7 +218,10 @@ function MenuItems({ items, onChoose }: MenuItemsProps) {
       <Fragment key={item.label}>
         {item.divided === true && <hr className="mx-1 my-1.5 border-border" />}
         {item.section !== undefined && (
-          <p aria-hidden="true" className="px-2.5 pt-1 pb-1 text-[11px] font-medium tracking-wide text-muted uppercase">
+          <p
+            aria-hidden="true"
+            className="px-2.5 pt-1 pb-1 text-[0.6875rem] font-medium tracking-wide text-muted uppercase"
+          >
             {item.section}
           </p>
         )}

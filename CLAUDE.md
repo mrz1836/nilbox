@@ -25,6 +25,11 @@ are Nilbox's own, and they win wherever the two differ.
 4. **User data stays local.** Nilbox never sends a user's GitHub data, preferences, triage state,
    or caches anywhere except GitHub's own API.
 5. **Optimize for local-first operation.** Nilbox should minimize network requests and rely on local caches and state wherever possible, ensuring responsiveness and reducing dependency on external services. Try and use the least amount of GitHub requests necessary for any operation.
+6. **No shell or Python scripts.** A build, check, or release step is a `magex` target written in
+   Go (`magefiles/`, see Layout), never a `.sh`, `.py`, or other script, and a workflow runs the
+   target rather than a script. `TestNoScripts` in `internal/repoguard` fails on any script file
+   (by extension or `#!` line) outside the synced `.github/env/` and `.github/scripts/`, which
+   are fixed in go-broadcast instead.
 
 <br>
 
@@ -91,7 +96,7 @@ sync overwrites these files with the shared version. Anything Nilbox-specific wr
 lost, so keep project rules in this file and project CI and tooling settings in
 `.github/env/90-project.env`. The sync covers at least:
 
-- `.github/AGENTS.md`, `.github/SECURITY.md`, `.mage.yaml`, and `codecov.yml`
+- `.github/AGENTS.md`, `.github/SECURITY.md`, `.goreleaser.yml`, `.mage.yaml`, and `codecov.yml`
 - everything under `.github/workflows/`, `.github/actions/`, `.github/scripts/`,
   `.github/tech-conventions/`, `.github/ISSUE_TEMPLATE/`, `.github/docs/`, and `.vscode/`
 - `.github/env/`, except `20-guardian.env`, `90-project.env`, and `99-local.env`
@@ -188,7 +193,12 @@ app:lint` reads.
   Theme colors come from the `--color-*` tokens `internal/brandgen` writes to
   `frontend/src/generated/theme.css`. Checkboxes and radio buttons take the `checkbox` and
   `radio` classes (`frontend/src/index.css`), which draw them in the app's own style: macOS
-  draws a native one grey whenever it counts the window as inactive.
+  draws a native one grey whenever it counts the window as inactive. Text is sized in rem,
+  never px (`text-[0.6875rem]`, not `text-[11px]`): the text size setting scales the root's
+  font size, which only rem follows, and the shell passes the stored size in the page's URL
+  (`internal/desktop.PageURL`) so the first frame is already at it. A repoguard test fails
+  on px text. Only chrome lined up with the native window, such as the toolbar's height and
+  its inset beside the window controls, and hairlines stay in px.
 - The bound API's shapes: a closed set of string values is a named Go string type with
   constants (`item.Kind`, `settings.Theme`, `sensitive.Scope`, ...), which `magex
   app:bindings` writes as a TypeScript union of its values plus a const object of the same

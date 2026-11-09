@@ -81,7 +81,7 @@ function CategoryRow({ category, on, busy, onChange, describedBy }: CategoryRowP
           <label htmlFor={id} className="text-sm font-medium">
             {category.label}
           </label>
-          {category.locked && <span className="text-[11px] text-muted">Always on</span>}
+          {category.locked && <span className="text-[0.6875rem] text-muted">Always on</span>}
         </div>
         <p id={`${id}-help`} className="mt-0.5 text-xs leading-relaxed text-muted">
           {category.description}
@@ -94,7 +94,7 @@ function CategoryRow({ category, on, busy, onChange, describedBy }: CategoryRowP
           </summary>
           <ul aria-label={`${category.label} patterns`} className="mt-1.5 flex flex-wrap gap-1">
             {patterns.map((p) => (
-              <li key={p} className="rounded border border-border px-1.5 py-px font-mono text-[11px] text-text">
+              <li key={p} className="rounded border border-border px-1.5 py-px font-mono text-[0.6875rem] text-text">
                 {p}
               </li>
             ))}

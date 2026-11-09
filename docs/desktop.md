@@ -50,7 +50,7 @@ pins.
 |---|---|
 | `magex frontend:install` | Installs the frontend dependencies exactly as `pnpm-lock.yaml` pins them |
 | `magex frontend:build` | Type-checks the frontend and builds it into `frontend/dist` |
-| `magex frontend:gate` | The frontend gate: frozen-lockfile install, format check, lint, typecheck, tests with coverage, and the render profile through the React Compiler (`frontend/scripts/gate.sh`, the script CI runs) |
+| `magex frontend:gate` | The frontend gate: frozen-lockfile install, format check, lint, typecheck, tests with coverage, and the render profile through the React Compiler, stopping at the first failure (`magefiles/frontend.go`; CI runs this same target) |
 | `magex brand:generate` | Regenerates the theme tokens, frontend brand constants, `build/darwin/Info.plist`, and the icon artwork (the app icon `build/appicon.svg` and the menu bar icon `build/trayicon.svg`) from `internal/brand` |
 | `magex brand:icons` | Renders `build/appicon.svg` into the bundle's icon set `build/darwin/icons.icns` and the development Dock icon `cmd/nilbox/appicon.png`, and `build/trayicon.svg` into the menu bar icon `cmd/nilbox/trayicon.png` (needs `rsvg-convert`: `brew install librsvg`); run it after changing the mark or the artwork |
 | `magex app:bindings` | Regenerates the committed TypeScript bindings in `frontend/bindings`, writing each Go string type with constants as a union of its values |
@@ -143,7 +143,7 @@ and it sits behind the `desktop` build tag:
   `app:run`, and `app:check` end to end against those fakes.
 
 CI runs the fortress workflows on ubuntu for the Go code, `.github/workflows/frontend.yml` for
-the frontend gate, and `.github/workflows/sqlc.yml` for `magex db:check`. No macOS runner is
+`magex frontend:gate`, and `.github/workflows/sqlc.yml` for `magex db:check`. No macOS runner is
 used, so `magex app:check` is a local step.
 
 <br>
@@ -265,8 +265,23 @@ chose: its native appearance is set before the window appears, so the first fram
 that palette, and the window frame, menus, and pop-up lists match the theme rather than the
 system.
 
-**Settings** is a page of its own, with sections for your account, appearance (the theme and the
-size the window opens at), [notifications](#menu-bar-and-notifications) (the menu bar icon and
+**Text size.** Settings → Appearance offers **100%**, **115%**, and **130%**, apart from the
+window's size. A larger size scales the text and the spacing around it together, the way a
+browser's font size setting does, so nothing clips or crowds; the toolbar beside the window
+controls keeps its height, and borders stay hairline-thin. A choice shows as soon as it is saved,
+and the app opens at the size you chose: the window's first frame is already at it. The
+smallest the window can be grows with the text, from 800 × 520 at 100% to 920 × 598 at 115% and
+1040 × 676 at 130%, so the layout is never narrower than at 100%; picking a larger size grows a
+window smaller than that, and every window size below clears it. The frontend sizes all text in
+rem, never px, so it follows the setting; a repository test fails the build for text sized in px.
+
+**Window size.** Settings → Appearance also sets the size the window opens at: **Compact**
+(1100 × 720), **Standard** (1280 × 800), **Large** (1440 × 900, the default), or **Extra
+large** (1680 × 1050). Choosing one resizes the window at once. A size larger than the screen
+opens as large as the screen allows.
+
+**Settings** is a page of its own, with sections for your account, appearance (the theme, the
+text size, and the size the window opens at), [notifications](#menu-bar-and-notifications) (the menu bar icon and
 which banners show), snoozing (how long the
 [Snooze](#snooze-dismiss-and-pin) button sets an item aside, and what [wakes a snooze
 early](#waking-a-snooze-early)), launching (the terminal,

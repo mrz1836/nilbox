@@ -72,7 +72,7 @@ function Entry({ entry, fresh, onOpen }: EntryProps) {
             <RelativeTime
               iso={entry.createdAt}
               show={formatAgo}
-              className="shrink-0 text-[11px] text-muted tabular-nums"
+              className="shrink-0 text-[0.6875rem] text-muted tabular-nums"
             />
           </span>
           <span className="mt-0.5 block truncate text-sm font-medium">{entry.title}</span>
@@ -131,12 +131,12 @@ export function NotificationsMenu({ notifications, onOpen, onSettings }: Notific
         onClick={onToggle}
         className="relative flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text aria-expanded:bg-raised aria-expanded:text-text"
       >
-        <BellIcon className="size-[18px]" />
+        <BellIcon className="size-[1.125rem]" />
         {log.unread > 0 && (
           <span
             data-testid="notifications-unread"
             aria-hidden="true"
-            className="absolute top-0.5 right-0.5 min-w-4 rounded-full bg-accent px-1 text-center text-[10px] leading-4 font-semibold text-surface tabular-nums"
+            className="absolute top-0.5 right-0.5 min-w-4 rounded-full bg-accent px-1 text-center text-[0.625rem] leading-4 font-semibold text-surface tabular-nums"
           >
             {log.unread > 99 ? '99+' : formatCount(log.unread)}
           </span>

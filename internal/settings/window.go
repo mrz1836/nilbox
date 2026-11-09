@@ -14,10 +14,11 @@ import (
 const KeyWindowSize = "window.size"
 
 // Window sizes, in points. A fresh database opens the window at the default size; the
-// minimum is also the smallest the window can be resized to.
+// minimum is the smallest the window can be resized to at the default text size, and
+// grows with a larger one (MinWindowSizeFor).
 const (
-	DefaultWindowWidth  = 1280
-	DefaultWindowHeight = 800
+	DefaultWindowWidth  = 1440
+	DefaultWindowHeight = 900
 	MinWindowWidth      = 800
 	MinWindowHeight     = 520
 	MaxWindowWidth      = 7680
@@ -50,6 +51,34 @@ func (w WindowSize) Fit(width, height int) WindowSize {
 	}
 
 	return w
+}
+
+// AtLeast returns the size grown, where needed, to least.
+func (w WindowSize) AtLeast(least WindowSize) WindowSize {
+	return WindowSize{Width: max(w.Width, least.Width), Height: max(w.Height, least.Height)}
+}
+
+// MinWindowSizeFor returns the smallest the window can be at a text size: MinWindowWidth
+// by MinWindowHeight scaled by the text size, rounded up. The page's layout is then never
+// narrower or shorter, in its own scaled units, than at the default text size.
+func MinWindowSizeFor(textSize TextSize) WindowSize {
+	percent := textSize.Percent()
+
+	return WindowSize{
+		Width:  (MinWindowWidth*percent + 99) / 100,
+		Height: (MinWindowHeight*percent + 99) / 100,
+	}
+}
+
+// WindowBounds returns the size the window opens at, and the smallest it can be resized
+// to, for the stored size at a text size on a screen area of the given width and height.
+// The smallest is MinWindowSizeFor the text size, and the stored size grows to it; both
+// then shrink, where needed, to fit the area (see Fit). A zero or negative area fits any
+// size.
+func WindowBounds(stored WindowSize, textSize TextSize, width, height int) (size, least WindowSize) {
+	least = MinWindowSizeFor(textSize).Fit(width, height)
+
+	return stored.AtLeast(least).Fit(width, height), least
 }
 
 // ReadWindowSize returns the size the window opens at, from the preferences in store: the

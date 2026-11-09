@@ -17,8 +17,12 @@ on:
       - "sqlc.yaml"
       - "internal/**/queries/**"
       - "internal/store/migrate/migrations/**"
-      - ".github/env/90-project.env"
-      - "magefiles/db.go"
+      - "magefiles/**"
+      - "go.mod"
+      - "go.sum"
+      - ".github/env/**"
+      - ".github/actions/load-env/**"
+      - ".github/actions/setup-magex/**"
       - ".github/workflows/sqlc.yml"
   push:
     branches:
@@ -27,8 +31,12 @@ on:
       - "sqlc.yaml"
       - "internal/**/queries/**"
       - "internal/store/migrate/migrations/**"
-      - ".github/env/90-project.env"
-      - "magefiles/db.go"
+      - "magefiles/**"
+      - "go.mod"
+      - "go.sum"
+      - ".github/env/**"
+      - ".github/actions/load-env/**"
+      - ".github/actions/setup-magex/**"
       - ".github/workflows/sqlc.yml"
 
 permissions:
@@ -54,20 +62,14 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Read the MAGE-X version from .github/env
-        run: |
-          # Sourced as a condition, as the shared load-env action does, so the loader's
-          # own strict mode cannot end this step early.
-          if ! source .github/env/load-env.sh; then
-            echo "::error::could not load the .github/env files"
-            exit 1
-          fi
-          echo "MAGE_X_VERSION=$MAGE_X_VERSION" >> "$GITHUB_ENV"
+      - name: Load the .github/env settings
+        id: load-env
+        uses: ./.github/actions/load-env
 
-      - name: Set up MAGE-X
+      - name: Set up MAGE-X (version from .github/env)
         uses: ./.github/actions/setup-magex
         with:
-          magex-version: ${{ env.MAGE_X_VERSION }}
+          magex-version: ${{ fromJSON(steps.load-env.outputs.env-json).MAGE_X_VERSION }}
           runner-os: ${{ runner.os }}
 
       # magex runs this repository's own targets (magefiles/) through the mage binary.

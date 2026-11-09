@@ -11,6 +11,7 @@ import { attempt } from './lib/call'
 import { itemWorktrees } from './lib/itemWorktrees'
 import { agentName } from './lib/launch'
 import { offersProjects } from './lib/projects'
+import { useTextSize } from './lib/textSize'
 import { defaultSnoozeDays, findItem } from './lib/triage'
 import { useCollapsedSections } from './lib/useCollapsedSections'
 import { useBudget } from './lib/useBudget'
@@ -240,6 +241,9 @@ export function App() {
   const budget = useBudget()
   const triaged = useTriage(inbox.snapshot)
   const config = useLaunchConfig(inbox.snapshot)
+  // The text size follows the stored settings; until they load, it is the size the
+  // window opened at (main.tsx).
+  useTextSize(config.settings?.textSize)
   const sweeps = useWorktreeSweeps()
   const notifications = useNotifications()
   // sections lives here rather than in the inbox page, so the lists stay as they were

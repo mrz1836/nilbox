@@ -170,6 +170,9 @@ type Settings struct {
 	// Theme is the palette the app shows.
 	Theme Theme `json:"theme"`
 
+	// TextSize is the size of the app's text, apart from the size of its window.
+	TextSize TextSize `json:"textSize"`
+
 	// CollapsedSections lists the inbox sections the user collapsed, in the order the
 	// inbox shows them.
 	CollapsedSections []ListKey `json:"collapsedSections"`
@@ -230,7 +233,8 @@ func WithClock(c clock.Clock) Option {
 	return func(s *Service) { s.clock = c }
 }
 
-// WithEvents emits the theme and menu bar changes into sink once they are stored.
+// WithEvents emits the theme, text size, and menu bar changes into sink once they are
+// stored.
 func WithEvents(sink event.Sink) Option {
 	return func(s *Service) { s.events = sink }
 }
@@ -490,6 +494,7 @@ func fromStored(stored map[string]string) Settings {
 		MenuBar:                  decodeMenuBar(stored[KeyMenuBar]),
 		BannersOff:               notifyprefs.DecodeBannersOff(stored[notifyprefs.KeyBannersOff]),
 		Theme:                    decodeTheme(stored[KeyTheme]),
+		TextSize:                 decodeTextSize(stored[KeyTextSize]),
 		CollapsedSections:        decodeCollapsed(stored),
 
 		ProjectsTipDismissed: decodeProjectsTipDismissed(stored[KeyProjectsTipDismissed]),
@@ -609,6 +614,6 @@ func settingKeys() []string {
 		KeySnoozeDays, KeyWindowSize,
 		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, KeyTheme,
-		KeyProjectsTipDismissed,
+		KeyTextSize, KeyProjectsTipDismissed,
 	), append(append(collapsedKeys(), orderKeys()...), branchrules.Keys()...)...)
 }

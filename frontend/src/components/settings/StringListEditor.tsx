@@ -62,7 +62,7 @@ export function StringListEditor({
         <ul aria-label={label} className="divide-y divide-border">
           {items.map((item) => (
             <li key={item} className="flex items-center gap-3 px-4 py-2.5">
-              <span className="min-w-0 truncate font-mono text-[13px]">{item}</span>
+              <span className="min-w-0 truncate font-mono text-[0.8125rem]">{item}</span>
               {extra?.(item)}
               <button
                 type="button"
@@ -102,7 +102,7 @@ export function StringListEditor({
             onChange={(e) => {
               onDraftChange(e.target.value)
             }}
-            className={`${fieldClass} w-full font-mono text-[13px]`}
+            className={`${fieldClass} w-full font-mono text-[0.8125rem]`}
           />
           <ErrorText id={`${id}-error`} error={error} />
         </div>

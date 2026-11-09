@@ -303,16 +303,16 @@ describe('SettingsView', () => {
 
     const sizes = screen.getByRole('radiogroup', { name: 'Window size' })
     expect(within(sizes).getAllByRole('radio')).toHaveLength(4)
-    expect(within(sizes).getByRole('radio', { name: 'Standard' })).toBeChecked()
-    expect(within(sizes).getByText('Standard')).toHaveAttribute('title', '1280 × 800 (default)')
-    expect(within(sizes).getByText('Large')).toHaveAttribute('title', '1440 × 900')
-    expect(screen.getByText(/Opens at 1280 × 800\./)).toBeInTheDocument()
+    expect(within(sizes).getByRole('radio', { name: 'Large' })).toBeChecked()
+    expect(within(sizes).getByText('Large')).toHaveAttribute('title', '1440 × 900 (default)')
+    expect(within(sizes).getByText('Standard')).toHaveAttribute('title', '1280 × 800')
+    expect(screen.getByText(/Opens at 1440 × 900\./)).toBeInTheDocument()
 
-    await userEvent.click(within(sizes).getByRole('radio', { name: 'Large' }))
+    await userEvent.click(within(sizes).getByRole('radio', { name: 'Extra large' }))
 
-    expect(platform.setWindowSize).toHaveBeenCalledWith({ width: 1440, height: 900 })
+    expect(platform.setWindowSize).toHaveBeenCalledWith({ width: 1680, height: 1050 })
     await waitFor(() => {
-      expect(onSaved).toHaveBeenCalledWith(settings({ windowSize: { width: 1440, height: 900 } }))
+      expect(onSaved).toHaveBeenCalledWith(settings({ windowSize: { width: 1680, height: 1050 } }))
     })
   })
 
@@ -339,13 +339,60 @@ describe('SettingsView', () => {
     expect(screen.getByText(/Opens at 1366 × 768\./)).toBeInTheDocument()
   })
 
-  it('waits for the settings before showing the window size, but not to show the theme', async () => {
+  it('waits for the settings before showing the text and window sizes, but not to show the theme', async () => {
     renderSettings({ current: null })
     await openSection('Appearance')
 
-    expect(screen.getByText('Loading the window size…')).toBeInTheDocument()
+    expect(screen.getByText('Loading the text and window sizes…')).toBeInTheDocument()
+    expect(screen.queryByRole('radiogroup', { name: 'Text size' })).not.toBeInTheDocument()
     expect(screen.queryByRole('radiogroup', { name: 'Window size' })).not.toBeInTheDocument()
     expect(screen.getByRole('radio', { name: 'System' })).toBeChecked()
+  })
+
+  it('offers the text sizes, smallest first, with the stored one checked', async () => {
+    renderSettings({ current: settings({ textSize: 'large' }) })
+    await openSection('Appearance')
+
+    const sizes = screen.getByRole('radiogroup', { name: 'Text size' })
+    expect(
+      within(sizes)
+        .getAllByRole('radio')
+        .map((r) => r.getAttribute('value')),
+    ).toEqual(['default', 'large', 'larger'])
+    expect(within(sizes).getByRole('radio', { name: '115%' })).toBeChecked()
+    expect(within(sizes).getByText('100%')).toHaveAttribute('title', 'The default size')
+    expect(within(sizes).getByText('115%')).toHaveAttribute('title', '15% larger than the default')
+    expect(within(sizes).getByText('130%')).toHaveAttribute('title', '30% larger than the default')
+  })
+
+  it('saves the text size as soon as it is chosen', async () => {
+    const { onSaved } = renderSettings()
+    await openSection('Appearance')
+
+    const sizes = screen.getByRole('radiogroup', { name: 'Text size' })
+    expect(within(sizes).getByRole('radio', { name: '100%' })).toBeChecked()
+
+    await userEvent.click(within(sizes).getByRole('radio', { name: '130%' }))
+
+    expect(within(sizes).getByRole('radio', { name: '130%' })).toBeChecked()
+    expect(platform.setTextSize).toHaveBeenCalledWith('larger')
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(settings({ textSize: 'larger' }))
+    })
+  })
+
+  it('shows a text size the backend refused, and goes back to the stored one', async () => {
+    platform.setTextSize.mockRejectedValue(new Error('unknown text size'))
+    const { onSaved } = renderSettings()
+    await openSection('Appearance')
+
+    await userEvent.click(screen.getByRole('radio', { name: '115%' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('unknown text size')
+    expect(onSaved).not.toHaveBeenCalled()
+    const sizes = screen.getByRole('radiogroup', { name: 'Text size' })
+    expect(sizes).toHaveAccessibleDescription('unknown text size')
+    expect(within(sizes).getByRole('radio', { name: '100%' })).toBeChecked()
   })
 
   it('offers the themes, with the chosen one checked', async () => {

@@ -81,7 +81,9 @@ function tabCount(id: View, props: AppHeaderProps): TabCount {
 // the logo, the view tabs (Inbox and Worktrees with their counts, Prompts), and on the
 // right the notification bell, the API budget gauge, and the account menu. The bar itself drags the window
 // (--wails-draggable), double-clicking it zooms, and the controls opt out so they take
-// clicks. The left inset clears the traffic lights.
+// clicks. The left inset clears the traffic lights. The bar's height and that inset line
+// it up with the native window controls, which keep their size whatever the text size, so
+// both stay in px while everything inside the bar follows the text size.
 export function AppHeader(props: AppHeaderProps) {
   const {
     view,
@@ -96,7 +98,7 @@ export function AppHeader(props: AppHeaderProps) {
   } = props
 
   return (
-    <header className="relative z-30 flex h-[52px] shrink-0 items-center gap-4 border-b border-border bg-surface pr-3 pl-20 select-none [--wails-draggable:drag]">
+    <header className="relative z-30 flex h-[52px] shrink-0 items-center gap-4 border-b border-border bg-surface pr-3 pl-[80px] select-none [--wails-draggable:drag]">
       <h1 className="flex">
         <Logo />
       </h1>
@@ -122,7 +124,7 @@ export function AppHeader(props: AppHeaderProps) {
               {count > 0 && (
                 <span
                   data-testid={`${id}-count`}
-                  className="flex items-center gap-1 rounded-full bg-raised px-1.5 text-[11px] leading-[18px] font-medium tabular-nums transition-colors group-hover:bg-border group-aria-pressed:bg-border"
+                  className="flex items-center gap-1 rounded-full bg-raised px-1.5 text-[0.6875rem] leading-[1.125rem] font-medium tabular-nums transition-colors group-hover:bg-border group-aria-pressed:bg-border"
                 >
                   {attention && (
                     <span

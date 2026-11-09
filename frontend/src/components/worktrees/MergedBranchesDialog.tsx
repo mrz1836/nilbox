@@ -87,7 +87,7 @@ function MergedRow({ merged: m, checked, now, onChange }: MergedRowProps) {
         />
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="flex items-center gap-2">
-            <code className={`min-w-0 truncate font-mono text-[13px] ${held ? 'text-muted' : 'text-text'}`}>
+            <code className={`min-w-0 truncate font-mono text-[0.8125rem] ${held ? 'text-muted' : 'text-text'}`}>
               {m.branch.name}
             </code>
             {held && <Warning label="Can’t be deleted" />}

@@ -497,6 +497,8 @@ More in [Menu bar and notifications](docs/desktop.md#menu-bar-and-notifications)
   how much Nilbox spent versus everything else signed in as you, what a refresh costs for the
   items you track, and the edits it made for you in the last hour. The counts survive a restart.
 - **Themes:** follow the system, or pin Light or Dark. The native window frame and menus follow.
+- **Text size:** 100%, 115%, or 130%, apart from the window's size. Text and the spacing around
+  it scale together, so nothing clips.
 - **Settings** covers your account, appearance, notifications, snoozing, launching, profiles,
   repositories, trust, and sensitive files.
 - **About** shows the version, build, commit, and system, and each coding agent's installed
@@ -693,7 +695,7 @@ Nilbox uses the **Fortress** workflow system for its Go CI/CD, plus a dedicated 
 - **fortress-security-scans.yml** — Security scanning with gitleaks, govulncheck, and Nancy
 - **fortress-coverage.yml** — Code coverage reporting to Codecov
 - **fortress-release.yml** — Automated releases via GoReleaser
-- **frontend.yml** — The frontend gate: install, format check, lint, typecheck, tests, and the render check
+- **frontend.yml** — The frontend gate (`magex frontend:gate`): install, format check, lint, typecheck, tests, and the render check
 - **sqlc.yml** — Checks that the generated queries match their SQL and that every query prepares
 
 The desktop shell needs macOS, so `magex app:check` runs locally. See all workflows in

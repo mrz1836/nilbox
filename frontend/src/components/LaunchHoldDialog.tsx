@@ -52,7 +52,7 @@ function AgentFilesBody({ hold, agentName }: { hold: LaunchHold; agentName: stri
               <span className="truncate">{file.path}</span>
               {file.url !== '' && <ExternalIcon className="size-3 shrink-0 self-center text-muted" />}
             </button>
-            <span className="ml-auto shrink-0 text-[11px] text-muted">{changeText(file)}</span>
+            <span className="ml-auto shrink-0 text-[0.6875rem] text-muted">{changeText(file)}</span>
           </li>
         ))}
       </ul>

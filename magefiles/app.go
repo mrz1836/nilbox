@@ -187,7 +187,7 @@ func (App) Dev() error {
 
 	defer stopProcessGroup(vite)
 
-	ldflags := versionFlags(readBuildMeta())
+	ldflags := versionFlags(readBuildMeta()) + quietLinkerFlags()
 
 	app := exec.CommandContext(ctx, "go", "run", "-tags", desktopTag, "-ldflags", ldflags, "./cmd/"+brand.Slug) //nolint:gosec // argv only, no shell
 
@@ -785,6 +785,22 @@ func versionFlags(meta buildMeta) string {
 		meta.version, meta.commit, meta.date, meta.bundleVersion, meta.bundleBuild)
 }
 
+// quietLinkerFlags returns linker flags that quiet Apple's linker about duplicate
+// libraries, or "" where there is nothing to quiet. Two Wails packages hold Objective-C,
+// and Go asks for libobjc once for each; the linker Xcode 15 brought (ld-prime) links it
+// once and warns "ignoring duplicate libraries: '-lobjc'". Only that linker knows
+// -no_warn_duplicate_libraries, so the flag is added only when ld -v names it (ld-, where
+// the older ld64 says ld64-); an older Apple linker, or any other, gets nothing.
+func quietLinkerFlags() string {
+	// ld -v reports on standard error; whatever its exit status, the text decides.
+	out, _ := exec.CommandContext(context.Background(), "ld", "-v").CombinedOutput()
+	if !strings.Contains(string(out), "PROJECT:ld-") {
+		return ""
+	}
+
+	return " -extldflags=-Wl,-no_warn_duplicate_libraries"
+}
+
 // buildDesktopBinary compiles the production desktop binary into exe.
 func buildDesktopBinary(exe string, meta buildMeta) error {
 	minVersion := "-mmacosx-version-min=" + macOSMinVersion
@@ -797,7 +813,7 @@ func buildDesktopBinary(exe string, meta buildMeta) error {
 
 	err := sh.RunWithV(env, "go", "build",
 		"-tags", desktopTag+",production", "-trimpath", "-buildvcs=false",
-		"-ldflags", "-s -w "+versionFlags(meta), "-o", exe, "./cmd/"+brand.Slug)
+		"-ldflags", "-s -w "+versionFlags(meta)+quietLinkerFlags(), "-o", exe, "./cmd/"+brand.Slug)
 	if err != nil {
 		return fmt.Errorf("build the desktop binary: %w", err)
 	}
