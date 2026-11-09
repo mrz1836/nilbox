@@ -1164,6 +1164,19 @@ func TestBuildDesktopBinary(t *testing.T) {
 		}, logLines(t, log))
 	})
 
+	t.Run("quiets Apple's newer linker about duplicate libraries", func(t *testing.T) {
+		dir := isolatedPath(t)
+		fakeTool(t, dir, "ld", `echo "@(#)PROGRAM:ld PROJECT:ld-1167.5" >&2`)
+		log := fakeLoggedTool(t, dir, "go", "")
+
+		require.NoError(t, buildDesktopBinary("bin/app", meta))
+
+		assert.Equal(t, []string{
+			"build -tags desktop,production -trimpath -buildvcs=false -ldflags -s -w " + versionFlags(meta) +
+				" -extldflags=-Wl,-no_warn_duplicate_libraries -o bin/app ./cmd/" + brand.Slug,
+		}, logLines(t, log))
+	})
+
 	t.Run("the build fails", func(t *testing.T) {
 		fakeGo(t, "exit 1")
 
@@ -1172,6 +1185,34 @@ func TestBuildDesktopBinary(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "build the desktop binary")
 	})
+}
+
+//nolint:paralleltest // changes the process's PATH
+func TestQuietLinkerFlags(t *testing.T) {
+	const quiet = " -extldflags=-Wl,-no_warn_duplicate_libraries"
+
+	tests := []struct {
+		name string
+		ld   string // the fake ld's body, or "" for no ld on PATH
+		want string
+	}{
+		{name: "Apple's linker since Xcode 15", ld: `echo "@(#)PROGRAM:ld PROJECT:ld-1167.5" >&2`, want: quiet},
+		{name: "whatever ld -v exits with", ld: `echo "@(#)PROGRAM:ld PROJECT:ld-1115.7.3" >&2; exit 1`, want: quiet},
+		{name: "Apple's older ld64, which does not know the flag", ld: `echo "@(#)PROGRAM:ld PROJECT:ld64-820.1" >&2`},
+		{name: "a GNU linker", ld: `echo "GNU ld (GNU Binutils) 2.42"`},
+		{name: "no linker on PATH"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := isolatedPath(t)
+			if tt.ld != "" {
+				fakeTool(t, dir, "ld", tt.ld)
+			}
+
+			assert.Equal(t, tt.want, quietLinkerFlags())
+		})
+	}
 }
 
 //nolint:paralleltest // changes the process's working directory and PATH
