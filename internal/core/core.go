@@ -15,8 +15,10 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/appinfo"
+	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/budget"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/event"
@@ -32,6 +34,9 @@ import (
 	"github.com/mrz1836/nilbox/internal/procs"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
+	"github.com/mrz1836/nilbox/internal/sessions"
+	"github.com/mrz1836/nilbox/internal/sessions/observe/claude"
+	"github.com/mrz1836/nilbox/internal/sessions/observe/codex"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/timing"
@@ -105,6 +110,7 @@ type Core struct {
 	Notifications  *notify.Service
 	AppInfo        *appinfo.Service
 	Budget         *budget.Service
+	Sessions       *sessions.Service
 
 	// ShellSettings are the settings the desktop shell reads when the app launches. They
 	// are not bound.
@@ -119,6 +125,12 @@ type Core struct {
 	// context is canceled; the desktop shell runs both while the app is open.
 	Scheduler *inbox.Scheduler
 	Sweeper   worktrees.Sweeper
+
+	// Watcher follows the agent sessions launches start, once Run is called; the desktop
+	// shell runs it with the other work. ShellSessions are the sessions the menu bar
+	// lists, and the terminals a click on one brings forward. Neither is bound.
+	Watcher       *sessions.Watcher
+	ShellSessions ShellSessions
 
 	// BudgetSaver keeps the API budget across runs: it saves it soon after each change
 	// once Run is called, and once more as Run's context ends. The desktop shell runs it
@@ -201,7 +213,7 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 func (c *Core) Services() []any {
 	return []any{
 		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.Notifications,
-		c.AppInfo, c.Budget,
+		c.AppInfo, c.Budget, c.Sessions,
 	}
 }
 
@@ -308,17 +320,20 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	gitRunner := opts.Runner
 
 	versionRunner := runner
+	agentRunners := func([]string) execpath.Runner { return opts.Runner }
 
 	if runner == nil {
 		runner, gitRunner, versionRunner = execpath.Exec{Search: search}, worktreeRunner(search), agentRunner{search: search}
+		agentRunners = func(env []string) execpath.Runner { return agentRunner{search: search, env: env} }
 	}
 
 	profileStore := profiles.NewStore(pool, opts.Clock)
 	promptStore := info.kept.prompts
 	defaultsStore := info.kept.defaults
 	inboxStore := inbox.NewStore(pool, opts.Clock)
+	followed := &followSwitch{sink: event.Or(opts.Events)}
 	prefs := settings.NewService(pool, profileStore, opts.Home, settings.WithClock(opts.Clock),
-		settings.WithEvents(opts.Events), settings.WithLogger(logger))
+		settings.WithEvents(followed), settings.WithLogger(logger))
 	tokens := github.NewTokenSource(runner, search,
 		github.WithTokenClock(opts.Clock), github.WithHostsFile(github.GHHostsFile(opts.Home)))
 	// One tracker hears every response the shared client gets, whichever service asked.
@@ -347,6 +362,10 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 
 	recorder := timing.NewRecorder(timing.Config{Logger: logger, LogsDir: opts.Paths.Logs})
 
+	registry := terminal.DefaultRegistry(runner)
+	follow := followSessions(pool, prefs, opts, logger, runner, registry, agentRunners)
+	followed.watcher = follow.watcher
+
 	sweeps := worktrees.NewService(worktrees.Config{
 		Settings: settingsView[worktrees.SweepSettings]{settings: prefs, part: sweepSettings},
 		Git:      gitRunner,
@@ -357,6 +376,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Records:  workLog,
 		Procs:    procs.System{Run: runner},
 		History:  workLog,
+		Agents:   follow.ledger,
 		Events:   opts.Events,
 		Logger:   logger,
 	})
@@ -370,12 +390,13 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Git:       runner,
 		GH:        runner,
 		Finder:    search,
-		Registry:  terminal.DefaultRegistry(runner),
+		Registry:  registry,
 		Paths:     opts.Paths,
 		Home:      opts.Home,
 		Clock:     opts.Clock,
 		Worktrees: worktreeMaker{maker: worktrees.NewMaker(sweeps)},
 		Sessions:  workLog,
+		Ledger:    sessionLedger{ledger: follow.ledger},
 		Trust:     trusters(opts.Home, logger),
 		Files:     inboxSvc,
 		Logger:    logger,
@@ -414,6 +435,9 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 			Tracker: tracker, Reader: rateReader{tokens: tokens, client: client}, Clock: opts.Clock,
 			RefreshInterval: inbox.DefaultInterval,
 		}),
+		Sessions:      follow.service,
+		Watcher:       follow.watcher,
+		ShellSessions: ShellSessions{ledger: follow.ledger, service: follow.service},
 		ShellSettings: newShellSettings(prefs, pool, opts.Clock),
 		ProfileStore:  profileStore,
 		Scheduler:     inbox.NewScheduler(inboxSvc, logger),
@@ -425,4 +449,52 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		budget:        tracker,
 		budgetKeeper:  keeper,
 	}
+}
+
+// following is what follows the agent sessions: the ledger launches record them in, the
+// watcher that follows them, and the service the window binds.
+type following struct {
+	ledger  *sessions.Ledger
+	watcher *sessions.Watcher
+	service *sessions.Service
+}
+
+// followSessions builds what follows the agent sessions over the database: an observer
+// per agent, each through the agent's own supported interface, the user's master switch,
+// the session banners, and the terminal drivers that bring a session's tab forward.
+func followSessions(
+	pool *sql.DB, prefs *settings.Service, opts Options, logger *slog.Logger, runner execpath.Runner,
+	registry terminal.Registry, agentRunners func([]string) execpath.Runner,
+) following {
+	search := execpath.Search{Home: opts.Home}
+	store := sessions.NewStore(pool)
+	processes := procs.System{Run: runner}
+
+	watcher := sessions.NewWatcher(sessions.WatcherConfig{
+		Store: store,
+		Observers: map[agent.ID]sessions.Observer{
+			agent.Claude: claude.New(claude.Config{
+				Finder: search, Run: agentRunners, Home: opts.Home, Procs: processes, Logger: logger,
+			}),
+			agent.Codex: codex.New(codex.Config{
+				Dialer: codex.ProxyDialer{
+					Finder: search, Info: codex.ClientInfo{Name: brand.Slug, Title: brand.Name, Version: opts.Version},
+				},
+				Home: opts.Home, Procs: processes, Logger: logger,
+			}),
+		},
+		Switch:    prefs,
+		Attention: notify.NewSessionBanners(notify.Config{Pool: pool, Poster: opts.Banners, Clock: opts.Clock, Logger: logger}),
+		Events:    opts.Events,
+		Clock:     opts.Clock,
+		Home:      opts.Home,
+		Logger:    logger,
+	})
+
+	cfg := sessions.Config{
+		Store: store, Watcher: watcher, Switch: prefs, Focuser: terminalFocuser{registry: registry}, PS: runner,
+		Home: opts.Home, Events: opts.Events, Clock: opts.Clock, Logger: logger,
+	}
+
+	return following{ledger: sessions.NewLedger(cfg), watcher: watcher, service: sessions.NewService(cfg)}
 }

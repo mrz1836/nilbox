@@ -274,6 +274,7 @@ requests that merged, never touching `main`, `master`, or any branch you protect
 - **Local triage** — snooze, dismiss, or pin; wake rules end a snooze early when something changes
 - **Edits when you ask** — take yourself off an item's assignees or a pull request's reviewers from the card's menu, paced within your API budget
 - **One-click agent launch** — Claude Code or OpenAI Codex in iTerm2 or Terminal.app, in the item's own worktree
+- **Follow every session** — each card shows what its agent is doing (working, waiting for your approval, done) and what it last said, with Show in terminal and Resume, read from the agent on your Mac
 - **Profiles per repo or org** — every `~/.claude-<name>` and `~/.codex-<name>` config directory is a profile, so each repo launches on its own account
 - **Prompt library** — Go templates with highlighting, autocomplete, error checking, and a live preview
 - **Trust guardrails** — outside contributors launch in plan mode (Codex: read-only), and changes to sensitive files are flagged
@@ -385,9 +386,15 @@ More in [The item menu and edits on GitHub](docs/desktop.md#the-item-menu-and-ed
   profile's own config (Claude Code's `.claude.json`, or Codex's `config.toml`), so the session
   starts straight away.
 - **No prompt on the command line:** the prompt goes through a file that the launch script reads.
+- **Followed from its card:** every launch gets an ID, and the card shows what the session is
+  doing (working, needs approval, needs input, idle, or ended), how long, and what the agent last
+  said, read through `claude agents --json` and Codex's local app server. **Show in terminal**
+  brings its tab forward, **Resume** reopens one that ended, and the menu bar lists the sessions
+  waiting for you. Banners for them are there to turn on.
 
-More in [Coding agents and profiles](docs/desktop.md#coding-agents-and-profiles) and
-[Launching a session](docs/desktop.md#launching-a-session).
+More in [Coding agents and profiles](docs/desktop.md#coding-agents-and-profiles),
+[Launching a session](docs/desktop.md#launching-a-session), and
+[Following a session](docs/desktop.md#following-a-session).
 
 </details>
 

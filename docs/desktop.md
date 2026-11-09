@@ -5,8 +5,8 @@ TypeScript + Vite + Tailwind frontend in `frontend/`. This guide covers the one-
 build targets, how the desktop shell is kept out of the Linux CI build, and what the app does
 on your machine: where it keeps its data, how the window and the inbox cards are laid out, how
 it finds your coding agents (Claude Code and OpenAI Codex) and their profiles, how prompts and
-launch defaults decide what a session starts with, how it decides what an item may do, and how
-it makes, keeps track of, and cleans up git worktrees.
+launch defaults decide what a session starts with, how it follows each session it starts, how it
+decides what an item may do, and how it makes, keeps track of, and cleans up git worktrees.
 
 Measured startup, refresh, launch, size, and API-budget numbers, and how they were taken, are
 in [performance.md](performance.md).
@@ -308,7 +308,10 @@ Each pull request or issue in the inbox is a card three lines high:
    [sensitive files](#sensitive-files) chip. An item with a worktree, as the
    [Worktrees view](#the-worktrees-view) last listed it, is tagged with it, as in **worktree · 2
    changes · Codex 3h ago**, or **worktree · in use** while a session runs in it; hover the tag
-   for the worktree's path. The inbox never lists the worktrees itself.
+   for the worktree's path. The inbox never lists the worktrees itself. An item with an agent
+   session running, or one that ended in the last day, is tagged with what it is doing, as in
+   **Claude · needs approval · 2m**; click it for the item's sessions (see
+   [Following a session](#following-a-session)).
 3. Its details, in a fixed order. Each detail before the projects and labels keeps the same
    width on every card, sized for the longest value a card should meet, so the details line up
    from card to card. Hover any of them for the whole sentence, which is also what a screen
@@ -599,6 +602,9 @@ and no number shows at zero. The icon is a template image, so macOS tints it to 
 dark menu bar. Click it for its menu:
 
 - **Open Nilbox** brings the window forward.
+- Agent sessions waiting for your approval or input, under **Waiting for you**, such as
+  **example-repo #12 · Claude needs approval**. Click one to bring its terminal tab forward
+  (see [Following a session](#following-a-session)).
 - Up to five items from each list that need you, under the list's name (a native section
   heading on macOS 14 and later), each item once even when it is in two lists, and **N more…**
   for the rest. Hover an item for its full title. Click it to bring the window forward with the
@@ -608,7 +614,8 @@ dark menu bar. Click it for its menu:
 - **Quit Nilbox** (⌘Q).
 
 The menu is redrawn whenever the inbox changes, after a refresh or a snooze, dismissal, or pin
-in the window, and when a snooze ends, so the count is right without waiting for a refresh.
+in the window, when a snooze ends, and when a session changes what it is doing, so the count is
+right without waiting for a refresh.
 
 **Closing the window.** While the icon is in the menu bar, closing the window only hides it:
 the app keeps refreshing, keeps the count current, and can still show notifications. The icon,
@@ -636,7 +643,9 @@ left the inbox. **Clear** empties the history. It lives in the local database (t
 `notifications` table), whether or not a banner was shown.
 
 **Banners.** Each kind can also show a native macOS banner. All three are on by default, and
-each has its own switch in Settings → Notifications. A banner gives the kind, the repository
+each has its own switch in Settings → Notifications. Two more switches there show a banner when
+an [agent session](#following-a-session) waits for you or finishes its turn; those start off,
+and the history doesn't keep them. A banner gives the kind, the repository
 and number, and the title; a snooze that ended early adds what was new. When one refresh finds
 more than three, a single banner sums them up, such as **5 new in your inbox: 3 review
 requests, 2 assignments**. Clicking a banner brings the window forward with its item in view.
@@ -887,11 +896,16 @@ next layer's first word as its value. Each agent reserves its own flags:
 
 - **Claude Code:** `--model`, `--effort`, `--worktree` (`-w`), `--name` (`-n`), the permission
   flags (`--permission-mode`, `--dangerously-skip-permissions`,
-  `--allow-dangerously-skip-permissions`), `--print` (`-p`), and `--background` (`--bg`).
+  `--allow-dangerously-skip-permissions`), `--print` (`-p`), `--background` (`--bg`), and the
+  flags that pick the conversation, since each launch starts its own
+  [followed session](#following-a-session): `--session-id`, `--resume` (`-r`), `--continue`
+  (`-c`), `--fork-session`, `--from-pr`, and `--teleport`; and `--desktop`, `--cloud`, and
+  `--environment`, which move the session out of your terminal. A short option counts wherever
+  Claude Code reads one, so `-r<id>` and the combined `-cw` are refused too.
 - **Codex:** `--model` (`-m`), the permission flags (`--sandbox` (`-s`), `--ask-for-approval`
   (`-a`), `--dangerously-bypass-approvals-and-sandbox`, `--dangerously-bypass-hook-trust`,
   `--approve-for-me`, `--full-auto`, and `--yolo`), `--worktree` (`-w`), `--cd` (`-C`), and
-  `--remote`; a `-c`/`--config` override of `model`, `model_reasoning_effort`,
+  `--remote`; a `-c`/`--config` override of `model`, `model_reasoning_effort`, `service_tier`,
   `sandbox_mode`, `approval_policy`, `sandbox_permissions`, `sandbox_workspace_write`, or any
   `projects.*` key, in every spelling Codex reads (`-c key=value`, `-ckey=value`,
   `--config=key=value`); and any of Codex's command names as a word of its own (`exec`, `e`,
@@ -1051,12 +1065,32 @@ filled in (a title such as `--dangerously-skip-...` printed first, say) is refus
 agent would read it as an option. Each agent gets its arguments in its own order:
 
 - **Claude Code** gets the prompt first, then `--model`, `--effort`, the permission flags,
-  `--add-dir=<dir>` for each extra directory, the extra flags, and a session name such as
+  `--add-dir=<dir>` for each extra directory, the extra flags, a session name such as
   `--name='Review · example-repo#7'`, which it shows in its prompt box, its resume list, and the
-  terminal's title.
+  terminal's title, and `--session-id=<id>`, the ID the app [follows the session](#following-a-session)
+  by.
 - **Codex** gets its flags first and the prompt last, after `--`, so the prompt can never be read
-  as a flag or a subcommand: `codex --model <model> --config model_reasoning_effort="<level>"
-  <permission flags> --add-dir=<dir> <extra flags> -- <prompt>`. Codex has no session names.
+  as a flag or a subcommand: `codex --model <model> <permission flags> --add-dir=<dir> <extra
+  flags> -- <prompt>`. Codex has no session names, and no flag for the effort level or Fast
+  mode (see below).
+
+**Codex's effort and Fast mode.** Codex takes these only as config overrides (`--config
+model_reasoning_effort="<level>"` and `--config service_tier="fast"`), and runs a session
+started with any config override outside its shared app server, where the app can't see that
+it [waits for you](#following-a-session). So by default a Codex launch passes neither: Codex
+uses the effort and speed in its own config, and you change them in the session with `/model`
+and `/fast`. With Codex chosen, the launch menu greys **Effort** out and says so. Two switches
+under **Settings → Launching** change that, both off at first:
+
+- **Set Codex's effort at launch** passes the effort a launch resolves to, as Claude Code gets
+  it, and the launch menu offers it again.
+- **Start Codex in Fast mode** presets the launch menu's **Fast mode** checkbox, which shows
+  only for Codex and can be changed for one launch. Fast mode is never saved as a launch
+  default.
+
+Either one costs that session the **Needs approval** and **Needs input** states on its card,
+which then says it runs outside Codex's app server. Your own `--config` flags in a profile's
+extra flags cost the same.
 
 The terminal then runs the script:
 
@@ -1167,6 +1201,121 @@ If you chose **Don't Allow**, the launch fails with a message that says so. Chan
 
 <br>
 
+## Following a session
+
+Every launch starts an agent session that the item's card follows until the agent quits:
+what it is doing, how long it has been at it, and what it last said. You keep your own
+terminal; the app only reads.
+
+**Its ID.** Before the terminal opens, the app mints the session an ID of its own. Claude Code
+takes it as `--session-id`, so the session is linked from its first moment. Codex takes no ID:
+once the session starts, the app finds its thread among the ones Codex lists for the item's
+folder, created after the launch, preferring the one whose first message is the prompt the
+launch sent.
+
+**On the card.** A tag beside the worktree's names the agent, what its newest running session
+is doing, and for how long, such as **Claude · needs approval · 2m**. A session that ended
+stays on the card for a day.
+
+| State | What it means |
+|---|---|
+| Starting | Launched, and the agent hasn't reported the session yet |
+| Working | The agent is working on its turn |
+| Needs approval | The agent waits for you to allow an action, such as a command |
+| Needs input | The agent asked you something, or a dialog of its own is open |
+| Idle | The agent finished its turn and waits for your next message |
+| Failed | The agent reported an error it couldn't get past |
+| Status unavailable | The session runs, but the agent couldn't be asked how it is |
+| Ended | The agent quit |
+
+**The panel.** Click the tag for every session of the item, newest first: its agent, profile,
+and prompt, what it is doing and since when, the folder it runs in, and the start of what the
+agent last said. Each has its actions:
+
+- **Show in terminal** brings forward the tab the session runs in, found by its terminal
+  device (`ps -o tty=`). iTerm2 uses the Automation permission you gave at the first launch;
+  Terminal.app asks for it the first time.
+- **Resume** reopens a session that ended, in the same folder and terminal, with `claude
+  --resume=<id>` or `codex resume <id> <flags> --`, and the item's launch settings as they now
+  resolve for the agent and profile it ran with. The item must still be in the inbox and its
+  worktree still on disk; the resumed session is a new one on the card. It asks first, as a
+  launch does, when a session is running in that folder, and when the pull request's
+  [files](#sensitive-files), as last checked, change agent configuration; it asks GitHub
+  nothing. A conversation that already runs again, resumed from the app or outside it, offers
+  no Resume.
+- **Copy session ID** copies the agent's own ID, to resume or look the session up yourself.
+
+**How it is read.** The app asks each agent through the interface it supports for this, and
+never the terminal:
+
+- **Claude Code:** `claude agents --json`, which Claude Code documents as the supported way to
+  read session state from outside it, run once for each profile's config directory. Its
+  `busy`, `waiting` (for a permission prompt, a sandbox request, input, or a dialog), and
+  `idle` become the states above. While Claude sessions run, the app checks the timestamps of
+  the config directory's `sessions/` folder every second and asks Claude Code only when one
+  changed, or every 20 seconds. One listing that fails leaves the card as it was; only one that
+  keeps failing for 30 seconds shows **Status unavailable**. When a session's own process
+  moves on to another conversation, as `/clear` and `/resume` do inside Claude Code, the card
+  follows the new one. The last message comes from the end of the session's transcript under
+  the config directory's `projects/` folder.
+- **Codex:** the local app-server daemon, through `codex app-server proxy`, the protocol
+  Codex's own editor and desktop clients use. The app sends only read methods (`initialize`,
+  `thread/list`, `thread/read`, `thread/turns/list`, `thread/loaded/list`); a test holds the
+  client to that list. A Codex session runs on the daemon unless it was started with
+  command-line config overrides, and then the daemon reports it live, approvals and questions
+  included. Codex runs a session started with overrides, which a launch adds only when you turn
+  on [Codex's effort or Fast mode](#launching-a-session), in its own process instead: the
+  daemon then knows only what the session recorded, so the card shows **Working** or **Idle**,
+  never that it waits for you, and says why. When the daemon can't be reached, the session is linked through the first
+  line of the rollout file Codex writes, and the card shows **Status unavailable** while it
+  runs.
+
+Whether a session still runs comes from its process, checked against the agent so a process ID
+macOS has since given another program never keeps a session alive: Claude Code must list the
+session within 30 seconds, and a Codex session's process must still be `codex` in its folder,
+checked every 30 seconds. Where Claude Code can't be asked, a session it never listed is taken
+for running only while a Claude Code process works in its folder, never another program's. A
+Claude session resumed outside the app within a day of ending, as with `claude --resume <id>`
+in a terminal, is followed again from its card as a new session resumed from the first; the
+app asks Claude Code about it only when its `sessions/` folder changes, as a session starting
+changes it, never on a timer. Polling stops while no session runs, and
+starts again with the next launch or the next time the app opens: sessions left running when
+the app quit are reconciled then. Nothing is ever sent to a session, no approval is answered,
+and nothing is written into an agent's config or conversation beyond the launch's
+`--session-id`. Nothing about sessions leaves your Mac.
+
+**One session per folder, unless you say so.** While a session is still running on an item, its
+card's button, and its worktree's in the Worktrees view, is **Show in terminal** rather than
+**Open in Claude**: getting back to it is the likely reason to click. Starting another from the
+launch options asks first when one is still running in the same folder (the item's worktree, or
+its clone, whichever item that session was started on, since items share their clone): two
+agents working in one folder can undo each other's changes and wait on each other's git
+commands. The question offers **Show in terminal**, or **Start another**, which
+starts it beside exactly the sessions it listed; one that started since asks again. A launch
+waiting on that question asks GitHub nothing, and a pull request whose
+[files](#sensitive-files) also hold it back asks about them next. Only sessions the app follows
+count: a shell, an editor, or a dev server in the folder never holds a launch back, and while
+following is off nothing does.
+
+**The menu bar and banners.** Sessions waiting for your approval or input are listed first in
+the [menu bar](#menu-bar-and-notifications), under **Waiting for you**, the longest waiting
+first and five at most, then how many more; click one to bring its terminal tab forward, or the
+item when the tab can't be found. The menu is redrawn only when what it lists changes. Two banners, **Sessions waiting
+for you** (once a session has waited five seconds) and **Sessions finishing a turn**, start
+off, since Claude Code and Codex can already notify through your terminal. Turn them on in
+Settings → Notifications.
+
+**Turning it off.** **Follow agent sessions** under Settings → Launching is on by default. Turn
+it off and no agent is asked about its sessions, the cards and the menu show none at once, and no
+session banner shows. Launches are still recorded, which costs nothing. Turned on again, the
+sessions still running are followed at once.
+
+**What is kept.** Sessions are recorded in the local database (the `agent_sessions` table):
+every one still running, and each ended one for 30 days, at most the newest 20 per item. The
+last message keeps its first 500 characters.
+
+<br>
+
 ## The Worktrees view
 
 The **Worktrees** tab lists every linked worktree of every git repository one level under the
@@ -1191,7 +1340,10 @@ against `git worktree list` each time it lists or sweeps:
   recorded once GitHub links it to its item.
 
 **In use.** A worktree is **in use** while a running process works inside it, whichever agent or
-tool it is, and whether a terminal or an editor runs it, as in **in use · codex (pid 4242)**. The
+tool it is, and whether a terminal or an editor runs it, as in **in use · codex (pid 4242)**. A
+session the app [follows](#following-a-session) is named by its agent, as in **Claude (pid
+63296)**, where the program's own name would be Claude Code's version, and a process a session
+started there, such as the `caffeinate` that keeps the Mac awake for it, is folded into it. The
 app lists the running processes' working folders once per listing or sweep, with `lsof` on macOS
 and `/proc` on Linux, leaving out its own git commands, and a coding agent's background service:
 the agent's own program running under launchd (or init or systemd) rather than a terminal or an

@@ -2,6 +2,7 @@ import { useId, useState } from 'react'
 
 import { attempt } from '../lib/call'
 import { agentName as agentLabel } from '../lib/launch'
+import { stateLabel } from '../lib/sessions'
 import {
   defaultsInput,
   emptyDefaults,
@@ -22,10 +23,12 @@ import { useQuery } from '../lib/useQuery'
 import {
   cloneRepo,
   cloneTarget,
+  focusSession,
   launch,
   resolveLaunch,
   saveLaunchDefaults,
   type AgentInfo,
+  type AgentSession,
   type CloneTarget,
   type InboxItem,
   type ItemResolution,
@@ -58,6 +61,9 @@ export interface LaunchControlsProps {
   onDefaultsSaved: () => Promise<void>
   // onManagePrompts opens the Prompts page.
   onManagePrompts: () => void
+  // running is the item's newest session still running, if any: the button then brings
+  // its terminal tab forward instead, and a launch from the menu asks first.
+  running?: AgentSession | null | undefined
   // initial are the choices every launch from here starts with, such as the worktree on
   // for a launch from the Worktrees view; none by default.
   initial?: Partial<Choices>
@@ -122,6 +128,7 @@ export function LaunchControls({
   onManagePrompts,
   initial,
   menuAlign = 'right',
+  running = null,
 }: LaunchControlsProps) {
   // start is the choices a launch starts from, and goes back to after it.
   const start: Choices = { ...noChoices, ...initial }
@@ -223,6 +230,20 @@ export function LaunchControls({
     void run(launchRequest(item.id, choices, untrusted))
   }
 
+  // showTerminal brings a running session's terminal tab forward, saying why when it
+  // can't.
+  const showTerminal = async (sessionId: string) => {
+    const shown = await attempt(focusSession(sessionId))
+
+    setState(shown.ok ? { kind: 'idle' } : { kind: 'failed', message: shown.error })
+  }
+
+  // confirmHold launches again with the hold the user confirmed: a running session's apart
+  // from a pull request's files, so a launch held back for both is confirmed for each.
+  const confirmHold = (hold: LaunchHold, request: LaunchRequest) => {
+    void run(hold.reason === 'running' ? { ...request, alongside: hold.key } : { ...request, confirmed: hold.key })
+  }
+
   // cloneThenLaunch clones the repository a launch found no clone of, then continues that
   // launch.
   const cloneThenLaunch = async (target: CloneTarget, request: LaunchRequest) => {
@@ -279,22 +300,41 @@ export function LaunchControls({
     <>
       <div className="relative self-center">
         <div className="inline-flex items-stretch rounded-md border border-border bg-surface text-[0.8125rem]">
-          <button
-            type="button"
-            disabled={busy || base === null}
-            onClick={launchNow}
-            title={
-              problem !== ''
-                ? problem
-                : base === null
-                  ? openLabel
-                  : `${openLabel} with “${promptName}” as ${profileName}`
-            }
-            className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent"
-          >
-            <TerminalIcon className="size-3.5 text-accent" />
-            {state.kind === 'launching' ? 'Opening…' : state.kind === 'cloning' ? 'Cloning…' : openLabel}
-          </button>
+          {running === null ? (
+            <button
+              type="button"
+              disabled={busy || base === null}
+              onClick={launchNow}
+              title={
+                problem !== ''
+                  ? problem
+                  : base === null
+                    ? openLabel
+                    : `${openLabel} with “${promptName}” as ${profileName}`
+              }
+              className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent"
+            >
+              <TerminalIcon className="size-3.5 text-accent" />
+              {state.kind === 'launching' ? 'Opening…' : state.kind === 'cloning' ? 'Cloning…' : openLabel}
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={busy || !running.canFocus}
+              onClick={() => {
+                void showTerminal(running.id)
+              }}
+              title={
+                running.canFocus
+                  ? `${agentLabel(agents, running.agent)} ${stateLabel(running.state)}: show its terminal tab. To start another session, use the launch options.`
+                  : `${agentLabel(agents, running.agent)} is starting; its terminal tab can be shown once it has started.`
+              }
+              className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent"
+            >
+              <TerminalIcon className="size-3.5 text-accent" />
+              {state.kind === 'launching' ? 'Opening…' : 'Show in terminal'}
+            </button>
+          )}
           <button
             ref={triggerRef}
             type="button"
@@ -411,11 +451,16 @@ export function LaunchControls({
         <LaunchHoldDialog
           hold={state.hold}
           agentName={agentName}
+          agents={agents}
+          item={{ repo: item.repo, number: item.number }}
           onCancel={() => {
             setState({ kind: 'idle' })
           }}
           onConfirm={() => {
-            void run({ ...state.request, confirmed: state.hold.key })
+            confirmHold(state.hold, state.request)
+          }}
+          onShow={(sessionId) => {
+            void showTerminal(sessionId)
           }}
         />
       )}

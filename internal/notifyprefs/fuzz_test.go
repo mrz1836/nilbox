@@ -10,25 +10,26 @@ import (
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 )
 
-// FuzzDecodeBannersOff checks that any stored value decodes to known kinds, each once and
+// FuzzDecodeBannersOff checks that any stored values decode to known kinds, each once and
 // in the order of Kinds, that the list reads back unchanged once encoded, and that
 // turning any kind on or off changes that kind alone and also reads back unchanged.
 func FuzzDecodeBannersOff(f *testing.F) {
-	for _, seed := range []string{
-		"",
-		"[]",
-		`["woke","review_requested"]`,
-		`["assigned","assigned","nope",""]`,
-		`{"assigned":true}`,
-		`["woke"`,
-		"null",
-		`["été", 7, null]`,
+	for _, seed := range [][2]string{
+		{"", ""},
+		{"[]", "[]"},
+		{`["woke","review_requested"]`, `["session_finished"]`},
+		{`["assigned","assigned","nope",""]`, `["session_needs_you","session_needs_you"]`},
+		{`{"assigned":true}`, `{"session_finished":true}`},
+		{`["woke"`, `["session_finished"`},
+		{"null", "null"},
+		{`["été", 7, null]`, `["session_finished", 7]`},
+		{`["session_finished"]`, `["woke"]`},
 	} {
-		f.Add(seed)
+		f.Add(seed[0], seed[1])
 	}
 
-	f.Fuzz(func(t *testing.T, stored string) {
-		off := notifyprefs.DecodeBannersOff(stored)
+	f.Fuzz(func(t *testing.T, storedOff, storedOn string) {
+		off := notifyprefs.DecodeBannersOff(storedOff, storedOn)
 		checkBannersOff(t, off)
 
 		for _, kind := range notifyprefs.Kinds() {
@@ -56,7 +57,7 @@ func checkBannersOff(t *testing.T, off []notifyprefs.Kind) {
 		last = at
 	}
 
-	assert.Equal(t, off, notifyprefs.DecodeBannersOff(notifyprefs.EncodeBannersOff(off)))
+	assert.Equal(t, off, notifyprefs.DecodeBannersOff(notifyprefs.EncodeBanners(off)))
 }
 
 // checkSetBanner checks that turning kind's banners on or off in off changes only kind

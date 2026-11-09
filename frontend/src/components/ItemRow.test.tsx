@@ -7,6 +7,7 @@ import { itemWorktrees, worktreeOf } from '../lib/itemWorktrees'
 import type { InboxItem, Worktree } from '../platform'
 import { at } from '../test/clock'
 import {
+  agentSession,
   agents,
   details,
   fileCheck,
@@ -459,9 +460,36 @@ describe('ItemRow worktree tag', () => {
     expect(tag()).toHaveTextContent('worktree · 2 changes · Codex 3h ago')
   })
 
+  it('offers its running session’s terminal instead of a second launch', () => {
+    render(
+      <ul>
+        <ItemRow item={item()} launch={launch} resolution={itemResolution()} sessions={[agentSession()]} />
+      </ul>,
+    )
+
+    expect(screen.getByRole('button', { name: 'Show in terminal' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Open in Claude' })).not.toBeInTheDocument()
+  })
+
+  it('launches again once its session ended', () => {
+    render(
+      <ul>
+        <ItemRow
+          item={item()}
+          launch={launch}
+          resolution={itemResolution()}
+          sessions={[agentSession({ state: 'ended', endedAt: '2026-06-15T11:59:00Z', canFocus: false })]}
+        />
+      </ul>,
+    )
+
+    expect(screen.getByRole('button', { name: 'Open in Claude' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Show in terminal' })).not.toBeInTheDocument()
+  })
+
   it('says a session is running in it, rather than when one was launched', () => {
     renderWith(item(), {
-      inUse: [{ pid: 4242, command: 'claude' }],
+      inUse: [{ pid: 4242, command: 'claude', agent: '' }],
       agent: 'claude',
       lastLaunchedAt: '2026-06-15T09:00:00Z',
     })

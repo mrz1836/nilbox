@@ -64,6 +64,14 @@ type LaunchSettings struct {
 	// TrustedBots lists the bots whose items are trusted like a collaborator's (see the
 	// trust package).
 	TrustedBots []string
+
+	// EffortOverrides passes the effort level to an agent that takes it only as a config
+	// override (see agent.Agent.ConfigOverrides); off, such an agent uses its own.
+	EffortOverrides bool
+
+	// FastMode starts each session in Fast mode, where the agent has one, unless the
+	// launch says otherwise.
+	FastMode bool
 }
 
 // SettingsReader reads the launch settings as they are now, so every launch sees the
@@ -140,6 +148,14 @@ type Config struct {
 	// Sessions records each session started in a worktree, with its agent. Optional.
 	Sessions SessionRecorder
 
+	// Ledger records every session a launch starts, so the app follows it from its item,
+	// and finds the session Resume reopens. Without it, nothing is followed and Resume
+	// fails with ErrNoLedger.
+	Ledger SessionLedger
+
+	// NewID mints each session's own ID. It defaults to a random UUID.
+	NewID func() string
+
 	// Trust holds each agent's Truster. An agent without one is started without its
 	// workspace trusted first.
 	Trust map[agent.ID]Truster
@@ -178,6 +194,10 @@ type LaunchRequest struct {
 	// PlanMode starts the session in plan mode, or not; nil keeps the resolved setting.
 	PlanMode *bool `json:"planMode"`
 
+	// Fast starts the session in the agent's Fast mode, or not; nil keeps the resolved
+	// setting. An agent without Fast mode ignores it.
+	Fast *bool `json:"fast"`
+
 	// Worktree starts the session in the item's worktree, or in the clone; nil keeps the
 	// resolved setting.
 	Worktree *bool `json:"worktree"`
@@ -189,6 +209,11 @@ type LaunchRequest struct {
 	// Confirmed is the Key of a Hold the user confirmed: the launch goes ahead if it
 	// would be held back for exactly that reason again, and is held back otherwise.
 	Confirmed string `json:"confirmed"`
+
+	// Alongside is the Key of a HoldRunning hold the user confirmed: the launch starts
+	// beside exactly those sessions, and is held back again for any other. It is kept
+	// apart from Confirmed, so a launch held back for both reasons is confirmed for each.
+	Alongside string `json:"alongside"`
 }
 
 // LaunchResult describes a started launch, or one held back. Every field is a plain
@@ -231,6 +256,9 @@ type LaunchResult struct {
 
 	// Terminal is the terminal the launch opened in.
 	Terminal terminal.ID `json:"terminal"`
+
+	// SessionID is the session's own ID, which the app follows it by.
+	SessionID string `json:"sessionId"`
 }
 
 // Preview is a launch planned but not started: what it resolved to, where it runs, the
@@ -279,6 +307,8 @@ type Service struct {
 	clock     clock.Clock
 	worktrees WorktreeMaker
 	sessions  SessionRecorder
+	ledger    SessionLedger
+	newID     func() string
 	trust     map[agent.ID]Truster
 	files     FileChecker
 	logger    *slog.Logger
@@ -289,6 +319,10 @@ type Service struct {
 
 // NewService returns a launch Service over cfg.
 func NewService(cfg Config) *Service {
+	if cfg.NewID == nil {
+		cfg.NewID = newSessionID
+	}
+
 	return &Service{
 		items:     cfg.Items,
 		settings:  cfg.Settings,
@@ -304,6 +338,8 @@ func NewService(cfg Config) *Service {
 		clock:     clock.Or(cfg.Clock),
 		worktrees: cfg.Worktrees,
 		sessions:  cfg.Sessions,
+		ledger:    cfg.Ledger,
+		newID:     cfg.NewID,
 		trust:     cfg.Trust,
 		files:     cfg.Files,
 		logger:    logging.Or(cfg.Logger),
@@ -378,7 +414,7 @@ type ItemResolution struct {
 // so the prompt shown is the prompt sent, except that Launch checks a pull request's
 // files against GitHub again where Preview uses the last check.
 func (s *Service) Preview(ctx context.Context, req LaunchRequest) (Preview, error) {
-	p, err := s.plan(ctx, req, false)
+	p, err := s.plan(ctx, req, planPreview, sessionRef{})
 	if err != nil {
 		return Preview{}, err
 	}
@@ -394,7 +430,9 @@ func (s *Service) Preview(ctx context.Context, req LaunchRequest) (Preview, erro
 //  2. find the item's local clone: the cached path when it still is a clone of the
 //     repository, otherwise a scan of the clone root, whose result is cached;
 //  3. find the agent and, for a worktree launch, what its worktree would be, and build
-//     the plan;
+//     the plan, and hold the launch back, starting nothing and asking GitHub nothing,
+//     while a session the app follows runs in the folder it would start in, unless the
+//     request confirms that hold;
 //  4. for a pull request whose files are checked, check them against GitHub as of now,
 //     and fill in the prompt, which names its sensitive files;
 //  5. hold the launch back, starting nothing, when the pull request changes agent files
@@ -405,19 +443,21 @@ func (s *Service) Preview(ctx context.Context, req LaunchRequest) (Preview, erro
 //     agent would otherwise stop at its workspace trust question;
 //  8. write the prompt file and launch script;
 //  9. open the script in the terminal chosen in settings;
-//  10. record the session in the worktree, with its agent.
+//  10. record the session in the worktree, with its agent, and in the ledger, under the
+//     ID minted for it, so the item's card follows it.
 //
 // The launcher itself runs only the read-only `git -C <clone> config --get-regexp` remote
 // lookup. The script only changes into the directory and runs the agent; it never checks
 // out, stashes, fetches, switches branches, or creates worktrees.
 func (s *Service) Launch(ctx context.Context, req LaunchRequest) (LaunchResult, error) {
-	p, err := s.plan(ctx, req, true)
+	ref := sessionRef{id: s.newID()}
+
+	p, err := s.plan(ctx, req, planLaunch, ref)
 	if err != nil {
 		return LaunchResult{}, err
 	}
 
-	if hold := holdFor(p.check, p.atHead(), paths.Tilde(p.plan.Dir, s.home), p.worktreeName()); hold != nil &&
-		hold.Key != req.Confirmed {
+	if hold := s.heldBack(p, req.Confirmed); hold != nil {
 		return LaunchResult{Hold: hold}, nil
 	}
 
@@ -425,38 +465,22 @@ func (s *Service) Launch(ctx context.Context, req LaunchRequest) (LaunchResult, 
 		return LaunchResult{}, err
 	}
 
-	if err = s.trustDir(ctx, p); err != nil {
-		return LaunchResult{}, err
+	return s.start(ctx, p, ref, "")
+}
+
+// heldBack returns what holds a planned launch or resume back: the sessions running where
+// it would start, then the pull request's files unless confirmed names that hold, or nil.
+func (s *Service) heldBack(p planned, confirmed string) *Hold {
+	if p.running != nil {
+		return p.running
 	}
 
-	files, err := WriteLaunchFiles(s.paths, p.plan, p.prompt, s.clock.Now(), s.logger)
-	if err != nil {
-		return LaunchResult{}, err
+	hold := holdFor(p.check, p.atHead(), paths.Tilde(p.plan.Dir, s.home), p.worktreeName())
+	if hold != nil && hold.Key != confirmed {
+		return hold
 	}
 
-	if err = p.driver.Open(ctx, files.Script); err != nil {
-		return LaunchResult{}, err
-	}
-
-	s.recordSession(ctx, p)
-
-	res := LaunchResult{
-		ScriptPath: files.Script,
-		ClonePath:  paths.Tilde(p.clone.Dir, s.home),
-		Dir:        paths.Tilde(p.plan.Dir, s.home),
-		Worktree:   p.worktreeName(),
-		Prompt:     p.res.Prompt.Nickname,
-		Profile:    p.res.Profile.Value,
-		Permission: p.plan.Permission,
-		Terminal:   p.driver.ID(),
-		Agent:      p.res.Agent.ID,
-	}
-
-	if p.worktree != nil {
-		res.WorktreeAction, res.Notice = p.worktree.Action, p.worktree.Notice
-	}
-
-	return res, nil
+	return nil
 }
 
 // planned is a launch worked out but not started.
@@ -474,6 +498,10 @@ type planned struct {
 
 	// check is the pull request's file check, or nil when its files are not checked.
 	check *sensitive.Check
+
+	// running holds a launch back for the sessions running where it would start, or is
+	// nil. A plan held back for them is not finished: it has no file check or prompt.
+	running *Hold
 }
 
 // worktreeName is the item's worktree name, or "" when the session starts in the clone.
@@ -531,11 +559,24 @@ func (p planned) worktreeRequest() WorktreeRequest {
 	}
 }
 
-// plan works out a launch. The terminal driver is chosen before the clone is resolved,
-// so an OS without terminal support fails before anything runs or is written. A pull
-// request's files are checked last, against GitHub when fresh is set, so a launch that
-// cannot be planned asks GitHub nothing.
-func (s *Service) plan(ctx context.Context, req LaunchRequest, fresh bool) (planned, error) {
+// planMode is what a plan is for.
+type planMode int
+
+// The plans: a preview, which is never held back and asks GitHub nothing; a launch, held
+// back for a session running where it starts and for the pull request's files as GitHub
+// has them now; and a resume, held back for both too, with the files as last checked, so
+// it asks GitHub nothing either.
+const (
+	planPreview planMode = iota
+	planLaunch
+	planResume
+)
+
+// plan works out a launch of the session ref names. The terminal driver is chosen before
+// the clone is resolved, so an OS without terminal support fails before anything runs or
+// is written. A pull request's files are checked last, against GitHub for a launch, so a
+// launch that cannot be planned asks GitHub nothing. A resume has no prompt to fill in.
+func (s *Service) plan(ctx context.Context, req LaunchRequest, mode planMode, ref sessionRef) (planned, error) {
 	w, err := s.loadWorld(ctx)
 	if err != nil {
 		return planned{}, err
@@ -559,21 +600,30 @@ func (s *Service) plan(ctx context.Context, req LaunchRequest, fresh bool) (plan
 	p, err := s.place(ctx, w, row, res, Request{
 		Item: row.item(w.policy), Agent: res.Agent.ID, Profile: effectiveProfile(profile, res),
 		FullAccessOverride: req.FullAccessOverride, SessionName: sessionName(prompt.Nickname, row),
+		SessionID: ref.id, ResumeID: ref.resume, Fast: res.Fast.Value,
 	})
 	if err != nil {
 		return planned{}, err
 	}
 
+	// A launch held back for a running session asks GitHub nothing: confirmed, it plans
+	// again and checks the files then. A preview is never held.
+	if p.running = s.runningHold(ctx, p, req.Alongside, mode != planPreview); p.running != nil {
+		return p, nil
+	}
+
+	fresh := mode == planLaunch
 	if p.check, err = s.fileCheck(ctx, row.ID, fresh); err != nil && !errors.Is(err, sensitive.ErrNotChecked) {
 		return planned{}, err
 	}
 
-	data := row.promptData(w.policy, profile.Name, "", p.check)
-	if p.prompt, err = s.fillIn(ctx, data, prompt.Nickname, tmpl, p); err != nil {
-		return planned{}, err
+	if p.plan.NoPrompt {
+		return p, nil
 	}
 
-	return p, nil
+	p.prompt, err = s.fillIn(ctx, row.promptData(w.policy, profile.Name, "", p.check), prompt.Nickname, tmpl, p)
+
+	return p, err
 }
 
 // place works out where and how a launch runs: the terminal driver, the clone, the

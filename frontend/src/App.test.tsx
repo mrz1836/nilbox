@@ -24,10 +24,15 @@ import {
   worktreeCleanup,
   worktreeRepo,
   worktreesSnapshot,
+  agentSession,
+  sessionsSnapshot,
 } from './test/fixtures'
 import { emit, listening, platform, renderApp } from './test/platform'
 
 vi.mock('./platform', () => import('./test/platform').then((fake) => fake.platform))
+
+// FIXED_ISO is the test clock's time, when the session came to its state.
+const FIXED_ISO = '2026-06-15T12:00:00Z'
 
 // stored is every setting as the backend stores it after a change, as each setter returns
 // them.
@@ -103,6 +108,23 @@ describe('App', () => {
     const options = await rowOptions()
     expect(options.getByRole('radio', { name: 'work' })).toBeChecked()
     expect(options.getByRole('checkbox', { name: /Start in a worktree/ })).not.toBeChecked()
+  })
+
+  it('follows each item’s agent session on its card, without the worktrees view', async () => {
+    platform.listSessions.mockResolvedValue(sessionsSnapshot([agentSession({ state: 'working', stateAt: FIXED_ISO })]))
+
+    await renderApp()
+
+    const tag = await screen.findByRole('button', { name: /Claude session: working/ })
+    expect(tag).toHaveTextContent('Claude · working')
+    expect(platform.listWorktrees).not.toHaveBeenCalled()
+
+    platform.listSessions.mockResolvedValue(sessionsSnapshot([agentSession()]))
+    act(() => {
+      emit('sessions:updated')
+    })
+
+    expect(await screen.findByRole('button', { name: /Claude session: needs approval/ })).toBeInTheDocument()
   })
 
   it('switches between the inbox and the worktrees view', async () => {
@@ -589,6 +611,37 @@ describe('App', () => {
     expect(await screen.findByTitle('~/projects/example-repo/.claude/worktrees/pr-7')).toHaveTextContent(
       /^worktree · Codex \S+ ago$/,
     )
+  })
+
+  it('shows a running session’s terminal from its card and its worktree, rather than starting another', async () => {
+    platform.listSessions.mockResolvedValue(sessionsSnapshot([agentSession({ state: 'working', stateAt: FIXED_ISO })]))
+    platform.listWorktrees.mockResolvedValue(
+      worktreesSnapshot({
+        repos: [
+          worktreeRepo({
+            worktrees: [mainWorktree(), worktree({ item: linkedItem({ state: 'open' }) })],
+          }),
+        ],
+      }),
+    )
+    await renderApp()
+
+    const card = await screen.findByRole('button', { name: 'Show in terminal' })
+    expect(screen.queryByRole('button', { name: 'Open in Claude' })).not.toBeInTheDocument()
+
+    await userEvent.click(card)
+    expect(platform.focusSession).toHaveBeenCalledWith('0f8c1e2a-5b4d-4c3e-9a1f-2b3c4d5e6f70')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
+
+    const repo = within(await screen.findByRole('region', { name: 'example-repo' }))
+    const listed = within(
+      repo.getByText('~/projects/example-repo/.claude/worktrees/pr-7').closest('li') ?? document.body,
+    )
+
+    await userEvent.click(listed.getByRole('button', { name: 'Show in terminal' }))
+    expect(platform.focusSession).toHaveBeenCalledTimes(2)
+    expect(platform.launch).not.toHaveBeenCalled()
   })
 
   it('counts from the Worktrees view and lists again after a sweep', async () => {

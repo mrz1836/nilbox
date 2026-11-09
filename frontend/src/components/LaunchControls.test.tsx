@@ -4,7 +4,9 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
 import type { LaunchPreview } from '../platform'
+import { at } from '../test/clock'
 import {
+  agentSession,
   agents,
   codexAgent,
   cloneTarget,
@@ -17,6 +19,7 @@ import {
   profile,
   prompts,
   resolution,
+  runningHold,
 } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { LaunchControls, type LaunchControlsProps } from './LaunchControls'
@@ -40,8 +43,10 @@ const defaultRequest = {
   effort: null,
   planMode: null,
   worktree: null,
+  fast: null,
   fullAccessOverride: false,
   confirmed: '',
+  alongside: '',
 }
 
 function props(overrides: Partial<LaunchControlsProps> = {}): LaunchControlsProps {
@@ -568,6 +573,101 @@ describe('LaunchControls', () => {
     expect(onManagePrompts).toHaveBeenCalledOnce()
   })
 
+  it('shows the running session’s terminal rather than starting another', async () => {
+    render(<LaunchControls {...props({ running: agentSession() })} />, { wrapper: at() })
+
+    expect(screen.queryByRole('button', { name: 'Open in Claude' })).not.toBeInTheDocument()
+
+    const show = screen.getByRole('button', { name: 'Show in terminal' })
+    expect(show).toHaveAttribute('title', expect.stringContaining('Claude needs approval: show its terminal tab'))
+
+    await userEvent.click(show)
+
+    expect(platform.focusSession).toHaveBeenCalledWith('0f8c1e2a-5b4d-4c3e-9a1f-2b3c4d5e6f70')
+    expect(platform.launch).not.toHaveBeenCalled()
+
+    platform.focusSession.mockRejectedValueOnce(new Error('Couldn’t find the session’s tab.'))
+    await userEvent.click(show)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Couldn’t find the session’s tab.')
+  })
+
+  it('waits for a starting session’s terminal before it can show it', () => {
+    render(<LaunchControls {...props({ running: agentSession({ state: 'starting', canFocus: false }) })} />, {
+      wrapper: at(),
+    })
+
+    const show = screen.getByRole('button', { name: 'Show in terminal' })
+    expect(show).toBeDisabled()
+    expect(show).toHaveAttribute('title', expect.stringContaining('is starting'))
+  })
+
+  it('asks before starting a second session where one is running, and can go to it instead', async () => {
+    const hold = runningHold()
+    platform.launch
+      .mockResolvedValueOnce(launchResult({ hold }))
+      .mockResolvedValueOnce(launchResult({ hold }))
+      .mockResolvedValueOnce(launchResult())
+    render(<LaunchControls {...props({ running: agentSession() })} />, { wrapper: at() })
+
+    const menu = await openMenu()
+    await userEvent.click(menu.getByRole('button', { name: 'Open in Claude' }))
+
+    const dialog = within(await screen.findByRole('dialog', { name: 'A session is already running here' }))
+    expect(dialog.getByRole('list', { name: 'Sessions running here' })).toHaveTextContent(
+      'Claude needs approval · 2m ago',
+    )
+    expect(dialog.getByText(/working in worktree pr-7 at once can undo each other’s changes/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus()
+
+    await userEvent.click(dialog.getByRole('button', { name: 'Show in terminal' }))
+
+    expect(platform.focusSession).toHaveBeenCalledWith(hold.running[0]?.sessionId)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(platform.launch).toHaveBeenCalledOnce()
+
+    await userEvent.click((await openMenu()).getByRole('button', { name: 'Open in Claude' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Start another' }))
+
+    expect(platform.launch).toHaveBeenLastCalledWith({ ...defaultRequest, alongside: hold.key })
+    expect(await screen.findByRole('status')).toHaveTextContent('Opened “Review”')
+  })
+
+  it('names the item a session running in the same clone was started on', async () => {
+    const base = runningHold()
+    const running = base.running.map((r) => ({ ...r, number: 12, worktree: '' }))
+    platform.launch.mockResolvedValueOnce(launchResult({ hold: { ...base, worktree: '', running } }))
+    render(<LaunchControls {...props()} />, { wrapper: at() })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+
+    const dialog = within(await screen.findByRole('dialog', { name: 'A session is already running here' }))
+    expect(dialog.getByRole('list', { name: 'Sessions running here' })).toHaveTextContent(
+      'Claude needs approval on acme-org/example-repo#12',
+    )
+  })
+
+  it('confirms a running session and a pull request’s agent files apart', async () => {
+    const running = runningHold()
+    const files = launchHold()
+    platform.launch
+      .mockResolvedValueOnce(launchResult({ hold: running }))
+      .mockResolvedValueOnce(launchResult({ hold: files }))
+      .mockResolvedValueOnce(launchResult())
+    render(<LaunchControls {...props()} />, { wrapper: at() })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Start another' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Open anyway' }))
+
+    expect(platform.launch).toHaveBeenNthCalledWith(2, { ...defaultRequest, alongside: running.key })
+    expect(platform.launch).toHaveBeenNthCalledWith(3, {
+      ...defaultRequest,
+      alongside: running.key,
+      confirmed: files.key,
+    })
+  })
+
   it('asks before opening a pull request that changes agent configuration', async () => {
     const hold = launchHold()
     platform.launch.mockResolvedValueOnce(launchResult({ hold })).mockResolvedValueOnce(launchResult())
@@ -794,6 +894,43 @@ describe('LaunchControls with more than one agent', () => {
     expect(menu.getByText('export CODEX_HOME=~/.codex_alt')).toBeInTheDocument()
     expect(menu.getByText('codex --sandbox read-only --ask-for-approval on-request -- <prompt>')).toBeInTheDocument()
     expect(platform.previewLaunch).toHaveBeenLastCalledWith({ ...defaultRequest, agent: 'codex' })
+  })
+
+  it('greys Codex’s effort out unless the settings pass it, and offers Fast mode for one launch', async () => {
+    platform.resolveLaunch.mockResolvedValue(
+      resolution({
+        ...codexResolution,
+        effort: { value: '', source: 'app', inherited: '', inheritedSource: 'app' },
+        effortOff: true,
+        fast: { value: false, source: 'app', inherited: false, inheritedSource: 'app' },
+      }),
+    )
+    render(<LaunchControls {...props()} />)
+
+    const menu = await openMenu()
+
+    expect(menu.getByRole('combobox', { name: 'Effort' })).toBeEnabled()
+    expect(menu.queryByRole('checkbox', { name: /Fast mode/ })).not.toBeInTheDocument()
+
+    await userEvent.click(menu.getByRole('radio', { name: 'Codex' }))
+
+    const effort = await menu.findByRole('combobox', { name: 'Effort' })
+    expect(effort).toBeDisabled()
+    expect(effort).toHaveDisplayValue('Codex’s own')
+    expect(effort).toHaveAccessibleDescription(/change it in the session with \/model/)
+
+    const fast = menu.getByRole('checkbox', { name: /Fast mode/ })
+    expect(fast).not.toBeChecked()
+
+    await userEvent.click(fast)
+
+    expect(fast).toBeChecked()
+    expect(fast).toHaveAccessibleDescription(/can’t show when it waits for you/)
+    expect(menu.getByText('this launch')).toBeInTheDocument()
+
+    await userEvent.click(menu.getByRole('button', { name: 'Open in Codex' }))
+
+    expect(platform.launch).toHaveBeenLastCalledWith({ ...defaultRequest, agent: 'codex', fast: true })
   })
 
   it('names the agent a launch started', async () => {

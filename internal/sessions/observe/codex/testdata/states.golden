@@ -1,0 +1,13 @@
+status notLoaded [] -> "" "" loaded=false
+status idle [] -> "idle" "" loaded=true
+status systemError [] -> "failed" "Codex reported a system error" loaded=true
+status active [] -> "working" "" loaded=true
+status active [waitingOnApproval] -> "needs_approval" "" loaded=true
+status active [waitingOnUserInput] -> "needs_input" "" loaded=true
+status active [waitingOnUserInput waitingOnApproval] -> "needs_approval" "" loaded=true
+status somethingNew [] -> "unknown" "Codex reported a state this version of the app doesn't know" loaded=true
+turn turns_in_flight.json -> "working" "" message="I'll run the tests now."
+turn turns_completed.json -> "idle" "" message="The fix is right; one test is missing."
+turn turns_interrupted.json -> "idle" "The last turn was interrupted" message="I'll run the tests now."
+turn turns_failed.json -> "idle" "The last turn failed: The model is overloaded." message=""
+turn turns_unknown.json -> "unknown" "" message="I'll run the tests now."

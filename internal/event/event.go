@@ -32,6 +32,9 @@ const (
 	// NameBudgetUpdated is BudgetUpdated's name.
 	NameBudgetUpdated = "budget:updated"
 
+	// NameSessionsUpdated is SessionsUpdated's name.
+	NameSessionsUpdated = "sessions:updated"
+
 	// NameThemeChanged is ThemeChanged's name.
 	NameThemeChanged = "settings:theme"
 
@@ -79,7 +82,9 @@ func Or(s Sink) Sink {
 // WindowEvents returns one of each window event. The repository's checks compare it with
 // the events the desktop bootstrap registers.
 func WindowEvents() []WindowEvent {
-	return []WindowEvent{InboxUpdated{}, RevealItem{}, WorktreesUpdated{}, NotificationsUpdated{}, BudgetUpdated{}}
+	return []WindowEvent{
+		InboxUpdated{}, RevealItem{}, WorktreesUpdated{}, NotificationsUpdated{}, BudgetUpdated{}, SessionsUpdated{},
+	}
 }
 
 // InboxUpdated says the stored inbox, or the status of its last refresh, changed: the
@@ -134,6 +139,15 @@ type BudgetUpdated struct{}
 func (BudgetUpdated) Name() string { return NameBudgetUpdated }
 
 func (BudgetUpdated) window() {}
+
+// SessionsUpdated says an agent session was launched, or changed what it is doing: the
+// window reads the sessions again, and the menu bar redraws.
+type SessionsUpdated struct{}
+
+// Name returns NameSessionsUpdated.
+func (SessionsUpdated) Name() string { return NameSessionsUpdated }
+
+func (SessionsUpdated) window() {}
 
 // ThemeChanged says the user chose a theme and it was stored. The shell brings the
 // window's native appearance along with it; the page has already switched itself.

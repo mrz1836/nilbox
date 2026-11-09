@@ -54,9 +54,15 @@ export interface Hold {
     "key": string;
 
     /**
-     * Reason is HoldAgentFiles or HoldUnchecked.
+     * Reason is HoldAgentFiles, HoldUnchecked, or HoldRunning.
      */
     "reason": HoldReason;
+
+    /**
+     * Running are the sessions running where the launch would start, newest first, for
+     * HoldRunning; empty otherwise.
+     */
+    "running": RunningSession[] | null;
 
     /**
      * Head is the head commit the files were checked at, or "".
@@ -98,7 +104,7 @@ export interface Hold {
 /**
  * HoldReason is why a launch is held back.
  */
-export type HoldReason = "agentFiles" | "unchecked";
+export type HoldReason = "agentFiles" | "unchecked" | "running";
 
 /**
  * The values of HoldReason, by the names of their Go constants.
@@ -119,6 +125,13 @@ export const HoldReason = {
      * change agent files without the app knowing.
      */
     HoldUnchecked: "unchecked",
+
+    /**
+     * HoldRunning is an item with a session still running in the folder the launch would
+     * start in. Two agents working in one folder can undo each other's changes, so a second
+     * starts only once the user says so; LaunchRequest.Alongside carries that.
+     */
+    HoldRunning: "running",
 } as const;
 
 /**
@@ -157,6 +170,19 @@ export interface ItemResolution {
     "effort": Setting;
     "planMode": Toggle;
     "worktree": Toggle;
+
+    /**
+     * EffortOff reports that the launch passes the agent no effort level whatever the
+     * layers say: the agent takes it only as a config override, and the app's settings
+     * leave that off, so it uses its own. Effort is then empty.
+     */
+    "effortOff": boolean;
+
+    /**
+     * Fast is whether the session starts in the agent's Fast mode: the launch's own
+     * choice, else the app's setting. It is off, from the agent, for one without.
+     */
+    "fast": Toggle;
 
     /**
      * ExtraArgs are every extra argument for the agent, in order: the profile's, the
@@ -214,6 +240,12 @@ export interface LaunchRequest {
     "planMode": boolean | null;
 
     /**
+     * Fast starts the session in the agent's Fast mode, or not; nil keeps the resolved
+     * setting. An agent without Fast mode ignores it.
+     */
+    "fast": boolean | null;
+
+    /**
      * Worktree starts the session in the item's worktree, or in the clone; nil keeps the
      * resolved setting.
      */
@@ -230,6 +262,13 @@ export interface LaunchRequest {
      * would be held back for exactly that reason again, and is held back otherwise.
      */
     "confirmed": string;
+
+    /**
+     * Alongside is the Key of a HoldRunning hold the user confirmed: the launch starts
+     * beside exactly those sessions, and is held back again for any other. It is kept
+     * apart from Confirmed, so a launch held back for both reasons is confirmed for each.
+     */
+    "alongside": string;
 }
 
 /**
@@ -296,6 +335,11 @@ export interface LaunchResult {
      * Terminal is the terminal the launch opened in.
      */
     "terminal": terminal$0.ID;
+
+    /**
+     * SessionID is the session's own ID, which the app follows it by.
+     */
+    "sessionId": string;
 }
 
 /**
@@ -395,6 +439,19 @@ export interface Resolution {
     "worktree": Toggle;
 
     /**
+     * EffortOff reports that the launch passes the agent no effort level whatever the
+     * layers say: the agent takes it only as a config override, and the app's settings
+     * leave that off, so it uses its own. Effort is then empty.
+     */
+    "effortOff": boolean;
+
+    /**
+     * Fast is whether the session starts in the agent's Fast mode: the launch's own
+     * choice, else the app's setting. It is off, from the agent, for one without.
+     */
+    "fast": Toggle;
+
+    /**
      * ExtraArgs are every extra argument for the agent, in order: the profile's, the
      * org's, the repository's, and the prompt's.
      */
@@ -405,6 +462,61 @@ export interface Resolution {
      * a profile that no longer exists.
      */
     "warnings": string[] | null;
+}
+
+/**
+ * ResumeRequest asks to resume an ended session. Every field is a plain value.
+ */
+export interface ResumeRequest {
+    /**
+     * SessionID is the app's ID of the session to resume.
+     */
+    "sessionId": string;
+
+    /**
+     * Alongside and Confirmed carry the keys of the holds the user confirmed, as a
+     * LaunchRequest's do: a session running in the folder, and the pull request's files.
+     */
+    "alongside": string;
+    "confirmed": string;
+}
+
+/**
+ * RunningSession is a session that has not ended, as a launch held back for it shows it.
+ * Every field is a plain value.
+ */
+export interface RunningSession {
+    /**
+     * SessionID is the session's own ID, and Agent its agent.
+     */
+    "sessionId": string;
+    "agent": agent$0.ID;
+
+    /**
+     * Doing says what it is doing, after the agent's name: "is working", "needs
+     * approval". Since is when it came to that, as RFC 3339.
+     */
+    "doing": string;
+    "since": string;
+
+    /**
+     * Dir is the folder it runs in, with ~ for home, and Worktree the item's worktree
+     * there, or "" for the clone.
+     */
+    "dir": string;
+    "worktree": string;
+
+    /**
+     * Repo is "owner/name" and Number the item the session was started on, which may be
+     * another than the launch's when both run in the clone.
+     */
+    "repo": string;
+    "number": number;
+
+    /**
+     * CanFocus reports a session whose terminal tab can be brought forward.
+     */
+    "canFocus": boolean;
 }
 
 /**

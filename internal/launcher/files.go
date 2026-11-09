@@ -36,8 +36,14 @@ const (
 	launchFileMaxAge = 7 * 24 * time.Hour
 )
 
-// ErrEmptyPrompt is returned when a launch has no prompt text.
-var ErrEmptyPrompt = errors.New("prompt is empty")
+var (
+	// ErrEmptyPrompt is returned when a launch has no prompt text.
+	ErrEmptyPrompt = errors.New("prompt is empty")
+
+	// ErrResumePrompt is returned when a launch that resumes a session is given a prompt,
+	// which the session would never see.
+	ErrResumePrompt = errors.New("a resumed session takes no prompt")
+)
 
 // launchFileName matches the names of files WriteLaunchFiles creates, capturing the
 // timestamp and the suffix from the first dot on, which is the prompt file's or a
@@ -49,7 +55,8 @@ type LaunchFiles struct {
 	// Script is the script a terminal runs to start the session.
 	Script string
 
-	// Prompt is the file the script reads the prompt from.
+	// Prompt is the file the script reads the prompt from, or "" for a session resumed,
+	// which takes none.
 	Prompt string
 }
 
@@ -57,7 +64,8 @@ type LaunchFiles struct {
 // created (readable only by the user) if needed. The files are named
 // <kind>-<number>-<UTC stamp>-<random>.prompt.md (mode 0600) and the matching script
 // (mode 0700, with the renderer's extension). The script reads the prompt from the
-// prompt file, whatever plan.PromptFile said.
+// prompt file, whatever plan.PromptFile said. A NoPrompt plan, which resumes a session,
+// writes the script alone, and prompt must be "".
 //
 // Afterwards it prunes launch files older than seven days, judged by the timestamp in
 // their names. Pruning never touches other files, and a pruning failure is logged to log
@@ -97,16 +105,22 @@ func writeLaunchFiles(
 
 	base := filepath.Join(paths.Launch, string(plan.Kind)+"-"+strconv.Itoa(plan.Number)+"-"+
 		clock.Stamp(now)+"-"+hex.EncodeToString(suffix))
-	files := LaunchFiles{Prompt: base + promptFileSuffix, Script: base + deps.renderer.Extension()}
+	files := LaunchFiles{Script: base + deps.renderer.Extension()}
 
-	if err := writeNewFile(files.Prompt, []byte(prompt), appdata.PrivateFilePerm); err != nil {
-		return LaunchFiles{}, err
+	if !plan.NoPrompt {
+		files.Prompt = base + promptFileSuffix
+
+		if err := writeNewFile(files.Prompt, []byte(prompt), appdata.PrivateFilePerm); err != nil {
+			return LaunchFiles{}, err
+		}
 	}
 
 	plan.PromptFile = files.Prompt
 
 	if err := writeNewFile(files.Script, deps.renderer.Render(plan.script()), scriptFilePerm); err != nil {
-		_ = os.Remove(files.Prompt)
+		if files.Prompt != "" {
+			_ = os.Remove(files.Prompt)
+		}
 
 		return LaunchFiles{}, err
 	}
@@ -126,11 +140,14 @@ func validateLaunchFiles(plan Plan, prompt string) error {
 		return fmt.Errorf("%w: %d", ErrInvalidNumber, plan.Number)
 	}
 
-	if prompt == "" {
+	switch {
+	case plan.NoPrompt && prompt != "":
+		return ErrResumePrompt
+	case !plan.NoPrompt && prompt == "":
 		return ErrEmptyPrompt
+	default:
+		return nil
 	}
-
-	return nil
 }
 
 // ensurePrivateDir creates dir if needed and makes it readable only by the user.

@@ -22,6 +22,7 @@ import type * as notifyprefs from '../../bindings/github.com/mrz1836/nilbox/inte
 import * as profiles from '../../bindings/github.com/mrz1836/nilbox/internal/profiles'
 import * as prompts from '../../bindings/github.com/mrz1836/nilbox/internal/prompts'
 import type * as sensitive from '../../bindings/github.com/mrz1836/nilbox/internal/sensitive'
+import * as sessions from '../../bindings/github.com/mrz1836/nilbox/internal/sessions'
 import * as settings from '../../bindings/github.com/mrz1836/nilbox/internal/settings'
 import type * as snooze from '../../bindings/github.com/mrz1836/nilbox/internal/snooze'
 import * as worktrees from '../../bindings/github.com/mrz1836/nilbox/internal/worktrees'
@@ -110,6 +111,7 @@ export type LaunchHold = NonNullLists<launcher.Hold>
 export type ItemResolution = NonNullLists<launcher.ItemResolution>
 export type LaunchRequest = NonNullLists<launcher.LaunchRequest>
 export type LaunchResult = NonNullLists<launcher.LaunchResult>
+export type ResumeRequest = launcher.ResumeRequest
 export type LaunchPreview = NonNullLists<launcher.Preview>
 export type Resolution = NonNullLists<launcher.Resolution>
 export type LaunchSetting = NonNullLists<launcher.Setting>
@@ -149,6 +151,10 @@ export type SensitiveGroup = NonNullLists<sensitive.Group>
 export type SensitivePathMatch = NonNullLists<sensitive.PathMatch>
 export type SensitiveLevel = sensitive.Level
 export type SensitiveScope = sensitive.Scope
+
+export type AgentSession = NonNullLists<sessions.Session>
+export type SessionsSnapshot = NonNullLists<sessions.Snapshot>
+export type SessionState = sessions.State
 
 export type Settings = NonNullLists<settings.Settings>
 export type InboxOrder = NonNullLists<settings.InboxOrder>
@@ -213,7 +219,10 @@ export const {
   Preview: previewLaunch,
   CloneTarget: cloneTarget,
   Clone: cloneRepo,
+  Resume: resumeSession,
 } = narrow(launcher.Service)
+
+export const { List: listSessions, Focus: focusSession } = narrow(sessions.Service)
 
 export const {
   List: listPrompts,
@@ -249,6 +258,9 @@ export const {
   SetDefaultProfile: setDefaultProfile,
   SetWorktreeDefault: setWorktreeDefault,
   SetWorktreeAutoCleanup: setWorktreeAutoCleanup,
+  SetFollowSessions: setFollowSessions,
+  SetCodexEffort: setCodexEffort,
+  SetCodexFast: setCodexFast,
   SetMenuBar: setMenuBar,
   SetNotificationBanner: setNotificationBanner,
   SetSnoozeDays: setSnoozeDays,

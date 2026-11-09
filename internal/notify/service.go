@@ -68,12 +68,12 @@ func (b base) notify() {
 
 // bannersOff reads the kinds whose banners are off.
 func (b base) bannersOff(ctx context.Context) ([]notifyprefs.Kind, error) {
-	stored, _, err := b.prefs.Get(ctx, notifyprefs.KeyBannersOff)
+	stored, err := b.prefs.GetMany(ctx, notifyprefs.KeyBannersOff, notifyprefs.KeyBannersOn)
 	if err != nil {
 		return nil, fmt.Errorf("read the notification settings: %w", err)
 	}
 
-	return notifyprefs.DecodeBannersOff(stored), nil
+	return notifyprefs.DecodeBannersOff(stored[notifyprefs.KeyBannersOff], stored[notifyprefs.KeyBannersOn]), nil
 }
 
 // Dispatcher records the inbox's arrivals and shows their banners. It is the inbox's

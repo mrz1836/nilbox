@@ -6,7 +6,10 @@ import { useSettingsSave } from '../../lib/useSettingsSave'
 import {
   setDefaultAgent,
   setDefaultProfile,
+  setCodexEffort,
+  setCodexFast,
   setDefaultPrompt,
+  setFollowSessions,
   setTerminal,
   setWorktreeDefault,
   type AgentID,
@@ -217,6 +220,36 @@ export function LaunchingSection({
         checked={settings.worktreeDefault}
         onChange={(worktreeDefault) => {
           void store('worktree', { worktreeDefault }, () => setWorktreeDefault(worktreeDefault))
+        }}
+      />
+      <SwitchRow
+        label="Follow agent sessions"
+        controlId={`${id}-follow`}
+        description="Each item's card shows what its Claude Code or Codex session is doing (working, waiting for you, or done) and what it last said, read from the agent on this Mac. Turn it off and nothing asks the agents; launches are still remembered."
+        error={errorOf('follow')}
+        checked={settings.followSessions}
+        onChange={(followSessions) => {
+          void store('follow', { followSessions }, () => setFollowSessions(followSessions))
+        }}
+      />
+      <SwitchRow
+        label="Set Codex’s effort at launch"
+        controlId={`${id}-codex-effort`}
+        description="Passes Codex the effort a launch resolves to. Codex takes it only as a config override (-c), and runs a session started with one outside its app server, so the card can’t show when it waits for you. Off, Codex uses the effort in its own config, which you change in a session with /model."
+        error={errorOf('codexEffort')}
+        checked={settings.codexEffort}
+        onChange={(codexEffort) => {
+          void store('codexEffort', { codexEffort }, () => setCodexEffort(codexEffort))
+        }}
+      />
+      <SwitchRow
+        label="Start Codex in Fast mode"
+        controlId={`${id}-codex-fast`}
+        description="Presets each Codex launch’s Fast mode, which you can still change per launch. It is a config override too, with the same cost: the card can’t show when the session waits for you. Off, turn it on in a session with /fast."
+        error={errorOf('codexFast')}
+        checked={settings.codexFast}
+        onChange={(codexFast) => {
+          void store('codexFast', { codexFast }, () => setCodexFast(codexFast))
         }}
       />
     </Group>

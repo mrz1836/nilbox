@@ -9,12 +9,14 @@ package procs
 import (
 	"context"
 	"errors"
+	"math"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/paths"
 )
 
 // ErrUnsupported is returned where this OS's processes cannot be listed.
@@ -84,26 +86,36 @@ func Within(list []Process, dir string) []Process {
 	return out
 }
 
-// resolved returns path cleaned, with symbolic links resolved. A path that does not
-// exist is resolved through its nearest existing parent, so it still matches the form the
-// OS reports for it.
-func resolved(path string) string {
-	clean := filepath.Clean(path)
+// In returns the processes whose working directory is dir itself, not one inside it, by
+// PID, compared as Within compares them.
+func In(list []Process, dir string) []Process {
+	root := resolved(dir)
 
-	for dir := clean; ; dir = filepath.Dir(dir) {
-		if r, err := filepath.EvalSymlinks(dir); err == nil {
-			rest, relErr := filepath.Rel(dir, clean)
-			if relErr != nil {
-				return clean
-			}
+	var out []Process
 
-			return filepath.Join(r, rest)
-		}
-
-		if filepath.Dir(dir) == dir {
-			return clean
+	for _, p := range list {
+		if p.Dir != "" && resolved(p.Dir) == root {
+			out = append(out, p)
 		}
 	}
+
+	return out
+}
+
+// resolved returns path cleaned, with symbolic links resolved, in the form the OS
+// reports for it.
+func resolved(path string) string {
+	return paths.Resolved(path)
+}
+
+// MaxPID is the largest process ID any OS the app runs on hands out. A larger one would
+// be cut short by the kernel, so kill(2) could read it as -1 and reach every process.
+const MaxPID = math.MaxInt32
+
+// ValidPID reports whether pid can be a process's ID: positive, and no larger than
+// MaxPID.
+func ValidPID(pid int) bool {
+	return pid > 0 && pid <= MaxPID
 }
 
 // ParseLsof reads `lsof -F pcRn` output: a "p<pid>" line starts each process, an

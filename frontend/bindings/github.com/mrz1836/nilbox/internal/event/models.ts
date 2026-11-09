@@ -41,6 +41,13 @@ export interface RevealItem {
 }
 
 /**
+ * SessionsUpdated says an agent session was launched, or changed what it is doing: the
+ * window reads the sessions again, and the menu bar redraws.
+ */
+export interface SessionsUpdated {
+}
+
+/**
  * WorktreesUpdated says an automatic worktree sweep removed a worktree or changed how many
  * need attention: the window reads the latest sweep.
  */

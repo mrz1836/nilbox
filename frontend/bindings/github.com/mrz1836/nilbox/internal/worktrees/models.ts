@@ -340,7 +340,8 @@ export interface Repo {
 }
 
 /**
- * Session is a running process that works in a worktree.
+ * Session is a running process that works in a worktree. The processes it started there,
+ * such as a helper that keeps the Mac awake, are folded into it.
  */
 export interface Session {
     /**
@@ -349,9 +350,17 @@ export interface Session {
     "pid": number;
 
     /**
-     * Command is its program's name, such as "codex".
+     * Command is its program's name, such as "codex", as the OS reports it. Claude Code's
+     * program is named after its version, such as "2.1.319".
      */
     "command": string;
+
+    /**
+     * Agent is the coding agent when the process is a session the app follows, or "". A
+     * followed session stands for the processes folded with it, such as the user's shell
+     * it runs in.
+     */
+    "agent": agent$0.ID;
 }
 
 /**

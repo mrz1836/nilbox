@@ -144,13 +144,30 @@ type LinkedItem struct {
 	Launched bool `json:"launched"`
 }
 
-// Session is a running process that works in a worktree.
+// Session is a running process that works in a worktree. The processes it started there,
+// such as a helper that keeps the Mac awake, are folded into it.
 type Session struct {
 	// PID is the process's ID.
 	PID int `json:"pid"`
 
-	// Command is its program's name, such as "codex".
+	// Command is its program's name, such as "codex", as the OS reports it. Claude Code's
+	// program is named after its version, such as "2.1.319".
 	Command string `json:"command"`
+
+	// Agent is the coding agent when the process is a session the app follows, or "". A
+	// followed session stands for the processes folded with it, such as the user's shell
+	// it runs in.
+	Agent agent.ID `json:"agent"`
+}
+
+// name is what the session is called: its agent's name when the app follows it, else its
+// program's.
+func (s Session) name() string {
+	if a, err := agent.Lookup(s.Agent); err == nil && s.Agent != agent.Inherit {
+		return a.Name
+	}
+
+	return s.Command
 }
 
 // done reports a merged or closed item.

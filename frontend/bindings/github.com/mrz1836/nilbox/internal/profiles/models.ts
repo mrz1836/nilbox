@@ -70,6 +70,26 @@ export interface AgentInfo {
     "sessionNames": boolean;
 
     /**
+     * SessionIDs reports that a launch passes the agent the session's ID, so the app
+     * follows the session from its start. Without it, the app finds the agent's own ID
+     * once the session starts.
+     */
+    "sessionIds": boolean;
+
+    /**
+     * FastMode reports that a launch can start the session in the agent's Fast mode.
+     */
+    "fastMode": boolean;
+
+    /**
+     * ConfigOverrides reports an agent that takes the effort level and Fast mode only as
+     * config overrides, and runs a session started with any outside its shared app
+     * server, where the app can't see that it waits for the user. A launch passes it the
+     * effort only when the user's settings say to.
+     */
+    "configOverrides": boolean;
+
+    /**
      * AuthFile is the file in a config directory that holds the agent's sign-in, or ""
      * when the app does not check the agent's sign-in. Only its presence is checked; it is
      * never read.

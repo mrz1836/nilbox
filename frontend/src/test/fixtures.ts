@@ -4,6 +4,7 @@ import { brand } from '../generated/brand'
 import type {
   Account,
   Agent,
+  AgentSession,
   AgentInfo,
   AgentVersion,
   AppNotification,
@@ -37,6 +38,7 @@ import type {
   Resolution,
   SensitiveCategory,
   SensitiveGroup,
+  SessionsSnapshot,
   Settings,
   SweepReport,
   Worktree,
@@ -185,6 +187,9 @@ export function claudeAgent(overrides: Partial<Agent> = {}): Agent {
     ],
     planLabel: 'Plan mode',
     sessionNames: true,
+    sessionIds: true,
+    fastMode: false,
+    configOverrides: false,
     authFile: '',
     authEnv: [],
     modelsCache: '',
@@ -224,6 +229,9 @@ export function codexAgent(overrides: Partial<Agent> = {}): Agent {
     ],
     planLabel: 'Read-only',
     sessionNames: false,
+    sessionIds: false,
+    fastMode: true,
+    configOverrides: true,
     authFile: 'auth.json',
     authEnv: ['OPENAI_API_KEY', 'CODEX_API_KEY'],
     modelsCache: 'models_cache.json',
@@ -265,6 +273,9 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     worktreeDefault: true,
     worktreeAutoCleanup: true,
     terminal: 'iterm2',
+    followSessions: true,
+    codexEffort: false,
+    codexFast: false,
     cloneRoot: '~/projects',
     trustedBots: ['dependabot', 'github-actions', 'renovate'],
     defaultTrustedBots: ['dependabot', 'github-actions', 'renovate'],
@@ -277,7 +288,7 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     defaultProtectedBranches: ['main', 'master'],
     sensitiveCategories: sensitiveCategories(),
     menuBar: true,
-    bannersOff: [],
+    bannersOff: ['session_needs_you', 'session_finished'],
     theme: 'system',
     textSize: 'default',
     collapsedSections: [],
@@ -392,8 +403,38 @@ export function launchHold(overrides: Partial<LaunchHold> = {}): LaunchHold {
     atHead: true,
     dir: '~/projects/example-repo',
     worktree: 'pr-7',
+    running: [],
     ...overrides,
   }
+}
+
+// runningHold is a launch held back for a Claude session that needs approval in the same
+// worktree.
+export function runningHold(overrides: Partial<LaunchHold> = {}): LaunchHold {
+  return launchHold({
+    key: 'running:0f8c1e2a-5b4d-4c3e-9a1f-2b3c4d5e6f70',
+    reason: 'running',
+    head: '',
+    files: [],
+    checked: 0,
+    total: 0,
+    atHead: false,
+    dir: `~/projects/.${brand.slug}/worktrees/example-repo/pr-7`,
+    running: [
+      {
+        sessionId: '0f8c1e2a-5b4d-4c3e-9a1f-2b3c4d5e6f70',
+        agent: 'claude',
+        doing: 'needs approval',
+        since: '2026-06-15T11:58:00Z',
+        dir: `~/projects/.${brand.slug}/worktrees/example-repo/pr-7`,
+        worktree: 'pr-7',
+        repo: 'acme-org/example-repo',
+        number: 7,
+        canFocus: true,
+      },
+    ],
+    ...overrides,
+  })
 }
 
 export function launchResult(overrides: Partial<LaunchResult> = {}): LaunchResult {
@@ -409,6 +450,7 @@ export function launchResult(overrides: Partial<LaunchResult> = {}): LaunchResul
     profile: 'default',
     permission: 'full access',
     terminal: 'iterm2',
+    sessionId: '0f8c1e2a-5b4d-4c3e-9a1f-2b3c4d5e6f70',
     hold: null,
     ...overrides,
   }
@@ -584,6 +626,8 @@ export function resolution(overrides: Partial<Resolution> = {}): Resolution {
     effort: { value: 'high', source: 'profile', inherited: 'high', inheritedSource: 'profile' },
     planMode: { value: false, source: 'profile', inherited: false, inheritedSource: 'profile' },
     worktree: { value: true, source: 'app', inherited: true, inheritedSource: 'app' },
+    effortOff: false,
+    fast: { value: false, source: 'agent', inherited: false, inheritedSource: 'agent' },
     extraArgs: [],
     warnings: [],
     ...overrides,
@@ -921,4 +965,40 @@ export function worktreesSnapshot(overrides: Partial<WorktreesSnapshot> = {}): W
     listedAt: '2026-06-15T12:00:00Z',
     ...overrides,
   }
+}
+
+// agentSession is a Claude session on the fixture's pull request #7, launched a few minutes
+// before the fixed clock's time and waiting for approval since a minute before it.
+export function agentSession(overrides: Partial<AgentSession> = {}): AgentSession {
+  return {
+    id: '0f8c1e2a-5b4d-4c3e-9a1f-2b3c4d5e6f70',
+    agentSessionId: '0f8c1e2a-5b4d-4c3e-9a1f-2b3c4d5e6f70',
+    resumedFrom: '',
+    agent: 'claude',
+    profile: 'default',
+    prompt: 'Review',
+    terminal: 'iterm2',
+    itemId: 1,
+    repo: 'acme-org/example-repo',
+    kind: 'pr',
+    number: 7,
+    title: 'Add the widget cache',
+    url: 'https://github.com/acme-org/example-repo/pull/7',
+    dir: `~/projects/.${brand.slug}/worktrees/example-repo/pr-7`,
+    worktree: 'pr-7',
+    state: 'needs_approval',
+    detail: 'Permission prompt',
+    stateAt: '2026-06-15T11:59:00Z',
+    lastMessage: 'I need to run the test suite. May I?',
+    launchedAt: '2026-06-15T11:55:00Z',
+    endedAt: '',
+    canFocus: true,
+    canResume: false,
+    ...overrides,
+  }
+}
+
+// sessionsSnapshot is what the sessions service lists: followed, with sessions.
+export function sessionsSnapshot(sessions: AgentSession[] = [], following = true): SessionsSnapshot {
+  return { following, sessions }
 }

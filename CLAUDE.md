@@ -127,7 +127,8 @@ app:lint` reads.
   artwork the icons were rendered from. `build/darwin/` holds the bundle's generated
   `Info.plist` and the rendered icon set, `icons.icns`.
 - `internal/core/` assembles the app and builds every service the window binds: settings,
-  profiles, prompts, launch defaults, inbox, launcher, worktrees, notifications, and app info.
+  profiles, prompts, launch defaults, inbox, launcher, worktrees, notifications, app info, and
+  sessions.
   Every `internal/*` package is plain Go, built and tested on Linux without CGO.
 - Services share their building blocks rather than keep copies: `internal/repo` and
   `internal/item` name repositories, pull requests and issues, and their worktrees;
@@ -146,11 +147,11 @@ app:lint` reads.
 - `internal/event/` holds the app's events, one Go type each with its name; services emit them
   into the one `event.Sink` they are given. `internal/desktop/` is the shell's logic: it hears
   those events, keeps the menu bar current with what `internal/menubar` works out, runs the
-  scheduler and the sweeper as tracked work, and shuts down in order (timers, then the work,
-  then the database). It declares small interfaces that the Wails glue in `cmd/nilbox`
-  implements, and imports no Wails. A window event is registered in `main_desktop.go` with
-  `application.RegisterEvent`, which generates its TypeScript type and name in
-  `frontend/bindings`; a repository test checks that every window event is registered.
+  scheduler, the sweeper, and the sessions watcher as tracked work, and shuts down in order
+  (timers, then the work, then the database). It declares small interfaces that the Wails glue
+  in `cmd/nilbox` implements, and imports no Wails. A window event is registered in
+  `main_desktop.go` with `application.RegisterEvent`, which generates its TypeScript type and
+  name in `frontend/bindings`; a repository test checks that every window event is registered.
 - When a service needs another, prefer a narrow interface or value type declared where it is
   used (the launcher's `ItemStore`, `LaunchSettings`, `WorktreeMaker`, and per-agent `Truster`
   map, the worktree service's `SweepSettings` and `GitHub`) over importing the other service;
@@ -183,6 +184,17 @@ app:lint` reads.
   ticked it (or, for the automatic cleanup, the user's rules pick it), every commit on it is on
   GitHub, and neither the user's protected patterns (`internal/branchrules`) nor a remote's
   `HEAD` keeps it.
+- `internal/sessions/` follows the agent sessions launches start. It owns `agent_sessions`, the
+  ledger the launcher records each launch in (through its `SessionLedger`) under an ID minted
+  before the launch, which Claude takes as `--session-id`. A `Watcher` (a desktop worker)
+  reconciles what each agent reports into it and emits `event.SessionsUpdated`; one `Observer`
+  per agent turns the agent's own shapes into one `State`: `observe/claude` runs `claude agents
+  --json` and reads the transcript tail, and `observe/codex` talks to Codex's app-server daemon
+  over `codex app-server proxy` with a read-only JSON-RPC client (its `Allowed` methods only, over
+  a WebSocket it speaks itself, since only `internal/github` speaks HTTP), falling back to the
+  rollout files. Each observer degrades to `StateUnknown` rather than guess, and a session's
+  process says whether it still runs. Following never sends a session anything, and nothing here
+  reaches the network.
 - `internal/measure/` and `magefiles/measure.go` take the numbers in
   [`docs/performance.md`](docs/performance.md).
 - `frontend/` is the React + TypeScript + Vite + Tailwind app. It reaches Go only through the

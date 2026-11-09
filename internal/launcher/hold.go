@@ -21,6 +21,11 @@ const (
 	// HoldUnchecked is a pull request whose files could not all be checked, so it may
 	// change agent files without the app knowing.
 	HoldUnchecked HoldReason = "unchecked"
+
+	// HoldRunning is an item with a session still running in the folder the launch would
+	// start in. Two agents working in one folder can undo each other's changes, so a second
+	// starts only once the user says so; LaunchRequest.Alongside carries that.
+	HoldRunning HoldReason = "running"
 )
 
 // FileChecker checks the files of the pull requests the inbox checks. *inbox.Service
@@ -44,8 +49,12 @@ type Hold struct {
 	// confirmation never carries over to a later push.
 	Key string `json:"key"`
 
-	// Reason is HoldAgentFiles or HoldUnchecked.
+	// Reason is HoldAgentFiles, HoldUnchecked, or HoldRunning.
 	Reason HoldReason `json:"reason"`
+
+	// Running are the sessions running where the launch would start, newest first, for
+	// HoldRunning; empty otherwise.
+	Running []RunningSession `json:"running"`
 
 	// Head is the head commit the files were checked at, or "".
 	Head string `json:"head"`
@@ -85,7 +94,7 @@ func holdFor(check *sensitive.Check, atHead bool, dir, worktree string) *Hold {
 
 	hold := &Hold{
 		Head: check.Head, Checked: check.Checked, Total: check.Total, Error: check.Error, AtHead: atHead,
-		Dir: dir, Worktree: worktree, Files: []sensitive.Finding{},
+		Dir: dir, Worktree: worktree, Files: []sensitive.Finding{}, Running: []RunningSession{},
 	}
 
 	if g, ok := check.Category(sensitive.CategoryAgent); ok {

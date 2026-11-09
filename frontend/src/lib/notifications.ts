@@ -5,6 +5,8 @@ import type { AppNotification, BannerStatus, NotificationKind } from '../platfor
 
 export interface KindDescription {
   kind: NotificationKind
+  // session marks a kind about the agent sessions, which the history never keeps.
+  session?: boolean
   // title heads an entry in the history, as it heads its banner.
   title: string
   // label and description are the kind's switch in Settings.
@@ -31,7 +33,29 @@ export const notificationKinds: readonly KindDescription[] = [
     label: 'Snoozes ending early',
     description: 'New activity brings a snoozed item back before its time, under your wake rules.',
   },
+  {
+    kind: 'session_needs_you',
+    session: true,
+    title: 'Session waiting for you',
+    label: 'Sessions waiting for you',
+    description: 'A Claude Code or Codex session you started has waited a few seconds for your approval or answer.',
+  },
+  {
+    kind: 'session_finished',
+    session: true,
+    title: 'Session finished its turn',
+    label: 'Sessions finishing a turn',
+    description: 'A Claude Code or Codex session you started is done working and waits for your next message.',
+  },
 ]
+
+// sessionBannerHint explains why the sessions' banners start off.
+export const sessionBannerHint = 'Claude Code and Codex can already notify through your terminal, so these start off.'
+
+// inboxKinds and sessionKinds are the kinds of notification about the inbox, which the
+// history keeps, and about the agent sessions, which it does not.
+export const inboxKinds = notificationKinds.filter((k) => k.session !== true)
+export const sessionKinds = notificationKinds.filter((k) => k.session === true)
 
 // kindTitle heads an entry of a kind in the history.
 export function kindTitle(kind: NotificationKind): string {

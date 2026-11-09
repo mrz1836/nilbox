@@ -82,6 +82,7 @@ func TestPrefDefaults(t *testing.T) {
 		WorktreeDefault:     true,
 		WorktreeAutoCleanup: true,
 		Terminal:            "iterm2",
+		FollowSessions:      true,
 		CloneRoot:           "~/projects",
 		TrustedBots:         []string{"dependabot", "github-actions", "renovate"},
 		DefaultTrustedBots:  []string{"dependabot", "github-actions", "renovate"},
@@ -93,7 +94,7 @@ func TestPrefDefaults(t *testing.T) {
 		SensitiveCategories: sensitive.Categories(),
 		Branches:            branchrules.Defaults(),
 		MenuBar:             DefaultMenuBar,
-		BannersOff:          []notifyprefs.Kind{},
+		BannersOff:          []notifyprefs.Kind{notifyprefs.KindSessionNeedsYou, notifyprefs.KindSessionFinished},
 		Theme:               ThemeSystem,
 		TextSize:            TextSizeDefault,
 		CollapsedSections:   []ListKey{},
@@ -215,6 +216,8 @@ func TestSettersPersist(t *testing.T) {
 	require.NoError(t, testutil.ErrOf(svc.SetSnoozeWake(t.Context(), snooze.Rules{Commits: 3, Reviews: snooze.ReviewsAny, Comments: 5})))
 	require.NoError(t, testutil.ErrOf(svc.SetMenuBar(t.Context(), false)))
 	require.NoError(t, testutil.ErrOf(svc.SetNotificationBanner(t.Context(), notifyprefs.KindWoke, false)))
+	require.NoError(t, testutil.ErrOf(svc.SetNotificationBanner(t.Context(), notifyprefs.KindSessionNeedsYou, true)))
+	require.NoError(t, testutil.ErrOf(svc.SetFollowSessions(t.Context(), false)))
 	require.NoError(t, testutil.ErrOf(svc.SetBranchRules(t.Context(), branchrules.Rules{Own: true, Protected: []string{"develop"}})))
 	require.NoError(t, testutil.ErrOf(svc.SetTextSize(t.Context(), TextSizeLarger)))
 
@@ -226,6 +229,7 @@ func TestSettersPersist(t *testing.T) {
 		WorktreeDefault:     false,
 		WorktreeAutoCleanup: false,
 		Terminal:            TerminalITerm2,
+		FollowSessions:      false,
 		CloneRoot:           "~/code/clones",
 		TrustedBots:         trust.DefaultBots(),
 		DefaultTrustedBots:  trust.DefaultBots(),
@@ -236,7 +240,7 @@ func TestSettersPersist(t *testing.T) {
 		SensitiveFiles:      sensitive.DefaultConfig(),
 		SensitiveCategories: sensitive.Categories(),
 		MenuBar:             false,
-		BannersOff:          []notifyprefs.Kind{notifyprefs.KindWoke},
+		BannersOff:          []notifyprefs.Kind{notifyprefs.KindWoke, notifyprefs.KindSessionFinished},
 		Theme:               DefaultTheme,
 		TextSize:            TextSizeLarger,
 		CollapsedSections:   []ListKey{},
@@ -583,7 +587,19 @@ func TestSettersReturnTheStoredSettings(t *testing.T) {
 			"notification banner",
 			func() (Settings, error) { return svc.SetNotificationBanner(ctx, notifyprefs.KindAssigned, false) },
 			func(s Settings) any { return s.BannersOff },
-			[]notifyprefs.Kind{notifyprefs.KindAssigned},
+			[]notifyprefs.Kind{notifyprefs.KindAssigned, notifyprefs.KindSessionNeedsYou, notifyprefs.KindSessionFinished},
+		},
+		{
+			"follow sessions", func() (Settings, error) { return svc.SetFollowSessions(ctx, false) },
+			func(s Settings) any { return s.FollowSessions }, false,
+		},
+		{
+			"codex effort", func() (Settings, error) { return svc.SetCodexEffort(ctx, true) },
+			func(s Settings) any { return s.CodexEffort }, true,
+		},
+		{
+			"codex fast", func() (Settings, error) { return svc.SetCodexFast(ctx, true) },
+			func(s Settings) any { return s.CodexFast }, true,
 		},
 		{
 			"collapsed section", func() (Settings, error) { return svc.SetSectionCollapsed(ctx, ListAuthored, true) },

@@ -125,6 +125,17 @@ type Request struct {
 	// terminal's title, or "" to leave it unnamed. An agent that cannot name sessions
 	// ignores it.
 	SessionName string
+
+	// SessionID is the ID the app minted for the session, or "". An agent that takes no
+	// session ID ignores it.
+	SessionID string
+
+	// ResumeID is the agent's own ID of a session to resume, or "" to start one. A
+	// session resumed takes no prompt, and keeps the name it was started with.
+	ResumeID string
+
+	// Fast starts the session in the agent's Fast mode. An agent without one ignores it.
+	Fast bool
 }
 
 // Plan is an OS-independent description of one launch. The prompt is passed first, or
@@ -151,6 +162,10 @@ type Plan struct {
 	// than coming first.
 	PromptLast bool
 
+	// NoPrompt reports a session resumed rather than started: the agent is passed Args
+	// alone, and no prompt.
+	NoPrompt bool
+
 	// Env holds the environment variables to set.
 	Env map[string]string
 
@@ -167,10 +182,15 @@ type Plan struct {
 // Argv returns the full command line: the binary, then the prompt and Args, the prompt
 // first unless PromptLast. Claude's prompt comes first because some of its flags (such as
 // --add-dir) take several values and would otherwise swallow it; Codex's comes last,
-// after "--", so it is never read as a flag or a subcommand.
+// after "--", so it is never read as a flag or a subcommand. A NoPrompt plan passes Args
+// alone, and prompt is ignored.
 func (p Plan) Argv(prompt string) []string {
 	argv := make([]string, 0, len(p.Args)+2)
 	argv = append(argv, p.Binary)
+
+	if p.NoPrompt {
+		return append(argv, p.Args...)
+	}
 
 	if p.PromptLast {
 		return append(append(argv, p.Args...), prompt)
@@ -185,7 +205,8 @@ func (p Plan) Argv(prompt string) []string {
 //
 // The agent spec writes the arguments, in order: the model, the effort, the permission
 // flags the trust policy chose, one --add-dir=<dir> per extra directory, the profile's
-// extra arguments verbatim, and the session name where the agent takes one. Extra
+// extra arguments verbatim, the session name where the agent takes one, and the session
+// to start, where the agent takes its ID, or to resume. Extra
 // arguments that try to set a permission switch are rejected with ErrConflictingExtraArg,
 // and no plan is returned.
 func BuildPlan(req Request) (Plan, error) {
@@ -208,15 +229,7 @@ func BuildPlan(req Request) (Plan, error) {
 		return Plan{}, fmt.Errorf("%w: %w", ErrConflictingExtraArg, err)
 	}
 
-	opts := agent.Options{
-		Model: req.Profile.Model, Effort: req.Profile.Effort, Access: perm.access, AddDirs: dirs,
-		Extra: req.Profile.ExtraArgs,
-	}
-	if a.SessionNames {
-		opts.SessionName = req.SessionName
-	}
-
-	args, err := agent.Args(a.ID, opts)
+	args, err := agent.Args(a.ID, agentOptions(a, req, perm, dirs))
 	if err != nil {
 		return Plan{}, err
 	}
@@ -234,6 +247,7 @@ func BuildPlan(req Request) (Plan, error) {
 		Binary:     req.BinaryPath,
 		Args:       args,
 		PromptLast: agent.PromptLast(a.ID),
+		NoPrompt:   req.ResumeID != "",
 		Env:        env,
 		Unset:      unset,
 		PromptFile: req.PromptFile,
@@ -247,11 +261,30 @@ func BuildPlan(req Request) (Plan, error) {
 	return plan, nil
 }
 
+// agentOptions are what a launch passes the agent: the profile's choices, the access the
+// policy chose, and the session to name, start, or resume, where the agent takes them.
+func agentOptions(a agent.Agent, req Request, perm permission, dirs []string) agent.Options {
+	opts := agent.Options{
+		Model: req.Profile.Model, Effort: req.Profile.Effort, Access: perm.access, AddDirs: dirs,
+		Extra: req.Profile.ExtraArgs, ResumeID: req.ResumeID, Fast: req.Fast && a.FastMode,
+	}
+
+	if a.SessionNames {
+		opts.SessionName = req.SessionName
+	}
+
+	if a.SessionIDs && req.ResumeID == "" {
+		opts.SessionID = req.SessionID
+	}
+
+	return opts
+}
+
 // script is what the plan's launch script runs, for a terminal.ScriptRenderer.
 func (p Plan) script() terminal.Script {
 	return terminal.Script{
 		Dir: p.Dir, Binary: p.Binary, Args: p.Args, Env: p.Env, Unset: p.Unset, PromptFile: p.PromptFile,
-		PromptLast: p.PromptLast,
+		PromptLast: p.PromptLast, NoPrompt: p.NoPrompt,
 	}
 }
 

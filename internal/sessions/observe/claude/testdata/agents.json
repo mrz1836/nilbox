@@ -1,0 +1,75 @@
+[
+    {
+        "pid": 41001,
+        "cwd": "/srv/projects/example-repo",
+        "kind": "interactive",
+        "startedAt": 1794156947268,
+        "sessionId": "cf548e89-ea5e-4f28-855a-09c8aac84d01",
+        "name": "a session the app did not start",
+        "status": "busy"
+    },
+    {
+        "pid": 41002,
+        "cwd": "/srv/wt/example-repo/pr-12",
+        "kind": "interactive",
+        "startedAt": 1794201075851,
+        "sessionId": "11111111-2222-4333-8444-555555555555",
+        "name": "Review · example-repo#12",
+        "status": "busy"
+    },
+    {
+        "pid": 41003,
+        "cwd": "/srv/wt/example-repo/pr-13",
+        "kind": "interactive",
+        "startedAt": 1794201097452,
+        "sessionId": "22222222-2222-4333-8444-555555555555",
+        "name": "Review · example-repo#13",
+        "status": "waiting",
+        "waitingFor": "permission prompt"
+    },
+    {
+        "pid": 41004,
+        "cwd": "/srv/wt/example-repo/issue-14",
+        "kind": "interactive",
+        "startedAt": 1794201097452,
+        "sessionId": "33333333-2222-4333-8444-555555555555",
+        "name": "Work on · example-repo#14",
+        "status": "waiting",
+        "waitingFor": "input needed"
+    },
+    {
+        "pid": 41005,
+        "cwd": "/srv/wt/example-repo/pr-15",
+        "kind": "interactive",
+        "startedAt": 1794201270064,
+        "sessionId": "44444444-2222-4333-8444-555555555555",
+        "name": "Review · example-repo#15",
+        "status": "idle"
+    },
+    {
+        "pid": 41006,
+        "cwd": "/srv/wt/example-repo/pr-16",
+        "kind": "interactive",
+        "startedAt": 1794201270064,
+        "sessionId": "55555555-2222-4333-8444-555555555555",
+        "status": "waiting",
+        "waitingFor": "sandbox request"
+    },
+    {
+        "pid": 41007,
+        "cwd": "/srv/wt/example-repo/pr-17",
+        "kind": "interactive",
+        "startedAt": 1794201270064,
+        "sessionId": "66666666-2222-4333-8444-555555555555",
+        "status": "waiting",
+        "waitingFor": "dialog open"
+    },
+    {
+        "id": "bg-1",
+        "cwd": "/srv/wt/example-repo/pr-18",
+        "kind": "background",
+        "startedAt": 1794201270064,
+        "sessionId": "77777777-2222-4333-8444-555555555555",
+        "state": "failed"
+    }
+]

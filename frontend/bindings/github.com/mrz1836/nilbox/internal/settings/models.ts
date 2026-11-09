@@ -89,6 +89,21 @@ export interface Settings {
     "terminal": terminal$0.ID;
 
     /**
+     * FollowSessions follows each agent session a launch starts from its item: what it
+     * is doing, and what it last said. Sessions are recorded either way.
+     */
+    "followSessions": boolean;
+
+    /**
+     * CodexEffort passes Codex the effort level a launch resolves to, and CodexFast
+     * presets each Codex launch's Fast mode. Codex takes both only as config overrides,
+     * and runs a session started with either outside its shared app server, where the app
+     * can't see that it waits for the user, so both start off.
+     */
+    "codexEffort": boolean;
+    "codexFast": boolean;
+
+    /**
      * CloneRoot is the clone root as entered, e.g. "~/projects".
      */
     "cloneRoot": string;
@@ -159,7 +174,8 @@ export interface Settings {
 
     /**
      * BannersOff lists the kinds of notification (see the notify package) whose banners
-     * are off. The notification history keeps every kind either way.
+     * are off, the agent sessions' kinds among them until turned on. The notification
+     * history keeps every inbox kind either way.
      */
     "bannersOff": notifyprefs$0.Kind[] | null;
 

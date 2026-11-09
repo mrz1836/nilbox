@@ -79,6 +79,37 @@ describe('useLaunchConfig', () => {
     })
   })
 
+  it('re-resolves after the Codex effort or Fast mode setting changes', async () => {
+    const { result } = renderHook(() => useLaunchConfig(snapshot({ reviewRequested: list([item()]) })))
+
+    await waitFor(() => {
+      expect(platform.resolveLaunches).toHaveBeenCalledOnce()
+    })
+
+    act(() => {
+      result.current.setSettings(settings({ codexEffort: true }))
+    })
+
+    await waitFor(() => {
+      expect(platform.resolveLaunches).toHaveBeenCalledTimes(2)
+    })
+
+    act(() => {
+      result.current.setSettings(settings({ codexEffort: true, codexFast: true }))
+    })
+
+    await waitFor(() => {
+      expect(platform.resolveLaunches).toHaveBeenCalledTimes(3)
+    })
+
+    act(() => {
+      result.current.setSettings(settings({ codexEffort: true, codexFast: true, menuBar: false }))
+    })
+
+    expect(result.current.settings?.menuBar).toBe(false)
+    expect(platform.resolveLaunches).toHaveBeenCalledTimes(3)
+  })
+
   it('reports a configuration or resolution that could not load', async () => {
     platform.getSettings.mockRejectedValueOnce(new Error('database is locked'))
     const { result } = renderHook(() => useLaunchConfig(snapshot({ reviewRequested: list([item()]) })))

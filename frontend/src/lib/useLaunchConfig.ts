@@ -107,6 +107,8 @@ function launchKey(settings: Settings | undefined): string {
         settings.terminal,
         settings.cloneRoot,
         settings.trustedBots,
+        settings.codexEffort,
+        settings.codexFast,
       ])
 }
 

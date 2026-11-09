@@ -1,0 +1,19 @@
+{
+    "data": [
+        {
+            "id": "t-failed",
+            "items": [],
+            "itemsView": "full",
+            "status": "failed",
+            "error": {
+                "message": "The model is overloaded.",
+                "additionalDetails": null,
+                "codexErrorInfo": null
+            },
+            "startedAt": 1794201536,
+            "completedAt": 1794201540,
+            "durationMs": 4000
+        }
+    ],
+    "nextCursor": null
+}

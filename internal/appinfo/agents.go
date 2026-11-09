@@ -118,8 +118,11 @@ func (v *versions) of(ctx context.Context, a agent.Agent) AgentVersion {
 
 	got, ok := v.kept(a.ID, key)
 	if !ok {
+		// A run cut short because its caller left returns that caller's error, so flight
+		// counts it abandoned: a caller that joins it as it ends starts it again, rather than
+		// taking the cut-short run as its answer.
 		got, err = v.calls.Do(ctx, string(a.ID), func(ctx context.Context) (versionResult, error) {
-			return v.read(ctx, a, path, key), nil
+			return v.read(ctx, a, path, key), ctx.Err()
 		})
 		if err != nil {
 			out.Error = "the version check was cut short"

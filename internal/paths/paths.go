@@ -60,3 +60,35 @@ func Tilde(path, home string) string {
 
 	return "~/" + filepath.ToSlash(rel)
 }
+
+// Resolved returns path cleaned, with symbolic links resolved. A path that does not exist
+// is resolved through its nearest existing parent, so it still matches the form the OS and
+// git report for it; a path with no existing parent is only cleaned.
+func Resolved(path string) string {
+	clean := filepath.Clean(path)
+
+	for dir := clean; ; dir = filepath.Dir(dir) {
+		if r, err := filepath.EvalSymlinks(dir); err == nil {
+			rest, relErr := filepath.Rel(dir, clean)
+			if relErr != nil {
+				return clean
+			}
+
+			return filepath.Join(r, rest)
+		}
+
+		if filepath.Dir(dir) == dir {
+			return clean
+		}
+	}
+}
+
+// Same reports whether a and b name the same folder: they are equal once cleaned, or once
+// their symbolic links are resolved.
+func Same(a, b string) bool {
+	if a == "" || b == "" {
+		return a == b
+	}
+
+	return filepath.Clean(a) == filepath.Clean(b) || Resolved(a) == Resolved(b)
+}

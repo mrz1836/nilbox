@@ -1,6 +1,7 @@
 package paths_test
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -78,4 +79,29 @@ func TestTilde(t *testing.T) {
 			assert.Equal(t, tt.want, paths.Tilde(tt.path, tt.home))
 		})
 	}
+}
+
+func TestResolvedAndSame(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	target := filepath.Join(root, "real")
+	link := filepath.Join(root, "link")
+
+	require.NoError(t, os.Mkdir(target, 0o750))
+	require.NoError(t, os.Symlink(target, link))
+
+	resolvedTarget, err := filepath.EvalSymlinks(target)
+	require.NoError(t, err)
+
+	assert.Equal(t, resolvedTarget, paths.Resolved(link), "a link resolves to its target")
+	assert.Equal(t, filepath.Join(resolvedTarget, "gone", "pr-7"), paths.Resolved(filepath.Join(link, "gone", "pr-7")),
+		"a missing path resolves through its nearest existing parent")
+
+	assert.True(t, paths.Same(link, target), "a link and its target are the same folder")
+	assert.True(t, paths.Same(target+string(filepath.Separator), target), "a trailing separator is cleaned")
+	assert.True(t, paths.Same(filepath.Join(link, "pr-7"), filepath.Join(target, "pr-7")), "even before it exists")
+	assert.False(t, paths.Same(filepath.Join(target, "pr-7"), filepath.Join(target, "pr-8")))
+	assert.False(t, paths.Same(target, ""), "an empty path names no folder")
+	assert.True(t, paths.Same("", ""))
 }

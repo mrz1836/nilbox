@@ -568,6 +568,44 @@ describe('SettingsView', () => {
     expect(toggle).not.toBeChecked()
   })
 
+  it('leaves Codex its own effort and speed unless switched on, saying what it costs', async () => {
+    const { onSaved } = renderSettings()
+    await openSection('Launching')
+
+    const effort = screen.getByRole('switch', { name: 'Set Codex’s effort at launch' })
+    const fast = screen.getByRole('switch', { name: 'Start Codex in Fast mode' })
+    expect(effort).not.toBeChecked()
+    expect(fast).not.toBeChecked()
+    expect(effort).toHaveAccessibleDescription(/can’t show when it waits for you/)
+    expect(fast).toHaveAccessibleDescription(/\/fast/)
+
+    await userEvent.click(effort)
+    expect(platform.setCodexEffort).toHaveBeenCalledWith(true)
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(settings({ codexEffort: true }))
+    })
+
+    await userEvent.click(fast)
+    expect(platform.setCodexFast).toHaveBeenCalledWith(true)
+  })
+
+  it('turns following the agent sessions off and on', async () => {
+    const { onSaved } = renderSettings()
+    await openSection('Launching')
+
+    const follow = screen.getByRole('switch', { name: 'Follow agent sessions' })
+    expect(follow).toBeChecked()
+    expect(follow).toHaveAccessibleDescription(/nothing asks the agents/)
+
+    await userEvent.click(follow)
+
+    expect(platform.setFollowSessions).toHaveBeenCalledWith(false)
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(settings({ followSessions: false }))
+    })
+    expect(follow).not.toBeChecked()
+  })
+
   it('shows a worktree default the backend refused, and switches it back', async () => {
     let refuse: (err: Error) => void = () => undefined
     platform.setWorktreeDefault.mockReturnValue(
@@ -1192,6 +1230,31 @@ describe('SettingsView notifications', () => {
     })
     expect(banner('Review requests')).not.toBeChecked()
     expect(banner('Snoozes ending early')).toBeChecked()
+  })
+
+  it('starts the agent sessions’ banners off, apart from the inbox’s', async () => {
+    let stored = settings()
+    platform.setNotificationBanner.mockImplementation((kind: NotificationKind, on: boolean) => {
+      stored = {
+        ...stored,
+        bannersOff: on ? stored.bannersOff.filter((k) => k !== kind) : [...stored.bannersOff, kind],
+      }
+
+      return Promise.resolve(stored)
+    })
+    renderSettings({ section: 'notifications', current: stored })
+
+    const sessions = screen.getByRole('switch', { name: 'Sessions waiting for you' })
+    expect(sessions).not.toBeChecked()
+    expect(banner('Sessions finishing a turn')).not.toBeChecked()
+    expect(banner('Review requests')).toBeChecked()
+    expect(screen.getByText(/can already notify through your terminal, so these start off/)).toBeInTheDocument()
+
+    await userEvent.click(sessions)
+    expect(platform.setNotificationBanner).toHaveBeenCalledWith('session_needs_you', true)
+    await waitFor(() => {
+      expect(sessions).toBeChecked()
+    })
   })
 
   it('shows a setting that could not be saved', async () => {

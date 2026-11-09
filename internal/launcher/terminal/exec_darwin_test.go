@@ -18,6 +18,7 @@ type fakeExecutor struct {
 	args     []string
 	deadline time.Duration
 	calls    int
+	stdout   string
 	stderr   string
 	err      error
 }
@@ -31,7 +32,7 @@ func (e *fakeExecutor) Run(ctx context.Context, name string, args ...string) (st
 		e.deadline = time.Until(d)
 	}
 
-	return nil, []byte(e.stderr), e.err
+	return []byte(e.stdout), []byte(e.stderr), e.err
 }
 
 func TestDefaultRegistryOnDarwin(t *testing.T) {
@@ -124,5 +125,28 @@ func TestDriversRejectUnsafePaths(t *testing.T) {
 			require.ErrorIs(t, d.Open(t.Context(), "/tmp/a\nb.command"), ErrInvalidScriptPath)
 			assert.Zero(t, ex.calls, "nothing runs for an unsafe path")
 		})
+	}
+}
+
+func TestDriversFocusATabByItsTTY(t *testing.T) {
+	t.Parallel()
+
+	for id, script := range map[ID]func(string) string{ITerm2: itermFocusScript, TerminalApp: terminalAppFocusScript} {
+		ex := &fakeExecutor{stdout: "found\n"}
+
+		require.NoError(t, DefaultRegistry(ex).Focus(t.Context(), id, "/dev/ttys004"), id)
+		assert.Equal(t, "osascript", ex.name)
+		assert.Equal(t, []string{"-e", script("/dev/ttys004")}, ex.args)
+		assert.LessOrEqual(t, ex.deadline, openTimeout)
+
+		ex.stdout = "missing\n"
+		require.ErrorIs(t, DefaultRegistry(ex).Focus(t.Context(), id, "/dev/ttys004"), ErrNoSuchTab, id)
+
+		ex.stdout, ex.stderr, ex.err = "", "execution error: Not authorized to send Apple events (-1743)", &exec.ExitError{}
+		require.ErrorIs(t, DefaultRegistry(ex).Focus(t.Context(), id, "/dev/ttys004"), ErrAutomationDenied, id)
+
+		calls := ex.calls
+		require.ErrorIs(t, DefaultRegistry(ex).Focus(t.Context(), id, `/dev/ttys004" then quit`), ErrInvalidTTY, id)
+		assert.Equal(t, calls, ex.calls, "nothing runs for a device that is not one")
 	}
 }

@@ -128,8 +128,8 @@ func (f *fixture) arrival(i int, kind notifyprefs.Kind) inbox.Arrival {
 func TestKindsAreTheInboxArrivals(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, []notifyprefs.Kind{KindReviewRequested, KindAssigned, KindWoke}, notifyprefs.Kinds(),
-		"the kinds the settings list are the inbox's kinds of arrival, in order")
+	assert.Equal(t, []notifyprefs.Kind{KindReviewRequested, KindAssigned, KindWoke, KindSessionNeedsYou, KindSessionFinished},
+		notifyprefs.Kinds(), "the kinds the settings list are the inbox's kinds of arrival, in order, then the sessions'")
 }
 
 func TestTheLogKeepsWhatWasRecorded(t *testing.T) {

@@ -30,6 +30,7 @@ func TestLookup(t *testing.T) {
 	assert.Equal(t, "CLAUDE_CONFIG_DIR", got.ConfigEnv)
 	assert.Equal(t, ".claude", got.ConfigDir)
 	assert.True(t, got.SessionNames)
+	assert.True(t, got.SessionIDs)
 
 	got, err = agent.Lookup(agent.Codex)
 	require.NoError(t, err)
@@ -39,6 +40,7 @@ func TestLookup(t *testing.T) {
 	assert.Equal(t, ".codex", got.ConfigDir)
 	assert.Equal(t, "Read-only", got.PlanLabel)
 	assert.False(t, got.SessionNames)
+	assert.False(t, got.SessionIDs)
 
 	_, err = agent.Lookup(unknownAgent)
 	require.ErrorIs(t, err, agent.ErrUnknownAgent)

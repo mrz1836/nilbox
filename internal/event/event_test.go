@@ -43,6 +43,8 @@ func TestEveryEventHasItsOwnName(t *testing.T) {
 		{event.RevealItem{}, event.NameRevealItem},
 		{event.WorktreesUpdated{}, event.NameWorktreesUpdated},
 		{event.NotificationsUpdated{}, event.NameNotificationsUpdated},
+		{event.BudgetUpdated{}, event.NameBudgetUpdated},
+		{event.SessionsUpdated{}, event.NameSessionsUpdated},
 		{event.ThemeChanged{}, event.NameThemeChanged},
 		{event.TextSizeChanged{}, event.NameTextSizeChanged},
 		{event.MenuBarChanged{}, event.NameMenuBarChanged},
@@ -69,7 +71,7 @@ func TestTheWindowHearsOnlyTheWindowEvents(t *testing.T) {
 
 	assert.Equal(t, []string{
 		event.NameInboxUpdated, event.NameRevealItem, event.NameWorktreesUpdated, event.NameNotificationsUpdated,
-		event.NameBudgetUpdated,
+		event.NameBudgetUpdated, event.NameSessionsUpdated,
 	}, names)
 
 	for _, e := range []event.Event{event.ThemeChanged{}, event.TextSizeChanged{}, event.MenuBarChanged{}, event.FirstPaint{}} {

@@ -22,6 +22,9 @@ export interface Choices {
   effort: string | null
   planMode: boolean | null
   worktree: boolean | null
+  // fast starts the session in the agent's Fast mode, where it has one. Like the override,
+  // it is this launch's alone and never saved as a default: its default is in Settings.
+  fast: boolean | null
   // override lifts the outside-contributor restriction; it is never saved as a default.
   override: boolean
 }
@@ -34,6 +37,7 @@ export const noChoices: Choices = {
   effort: null,
   planMode: null,
   worktree: null,
+  fast: null,
   override: false,
 }
 
@@ -47,14 +51,15 @@ export function hasChoices(c: Choices): boolean {
     c.effort !== null ||
     c.planMode !== null ||
     c.worktree !== null ||
+    c.fast !== null ||
     c.override
   )
 }
 
 // savableChoices reports whether any choice can be saved as a default: all of them but
-// the outside-contributor override.
+// the outside-contributor override and Fast mode.
 export function savableChoices(c: Choices): boolean {
-  return hasChoices({ ...c, override: false })
+  return hasChoices({ ...c, override: false, fast: null })
 }
 
 // launchRequest turns the choices into a launch request for an item. The override only
@@ -69,15 +74,17 @@ export function launchRequest(itemId: number, c: Choices, untrusted: boolean): L
     effort: c.effort,
     planMode: c.planMode,
     worktree: c.worktree,
+    fast: c.fast,
     fullAccessOverride: untrusted && c.override,
     confirmed: '',
+    alongside: '',
   }
 }
 
-// withAgent returns the choices with another agent chosen: the profile and model, which
-// are each agent's own, go back to what the new agent resolves to.
+// withAgent returns the choices with another agent chosen: the profile, model, and Fast
+// mode, which are each agent's own, go back to what the new agent resolves to.
 export function withAgent(c: Choices, agent: AgentID): Choices {
-  return { ...c, agent, profile: '', model: null }
+  return { ...c, agent, profile: '', model: null, fast: null }
 }
 
 // defaultsInput returns stored launch defaults as an editable input.

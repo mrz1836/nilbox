@@ -3,12 +3,20 @@ import { useEffect, useRef, useState } from 'react'
 import { attempt } from '../lib/call'
 import { noWorktrees } from '../lib/itemWorktrees'
 import { isInboxNil } from '../lib/nil'
+import { noSessions } from '../lib/sessions'
 import { formatAgo, formatWhen } from '../lib/time'
 import { findItem, isDismissed, type TriagedInbox } from '../lib/triage'
 import type { InboxState } from '../lib/useInbox'
 import type { InboxOrderState } from '../lib/useInboxOrder'
 import { useClock } from '../lib/useNow'
-import { copyText, type InboxItem, type ItemResolution, type ListKey, type Worktree } from '../platform'
+import {
+  copyText,
+  type AgentSession,
+  type InboxItem,
+  type ItemResolution,
+  type ListKey,
+  type Worktree,
+} from '../platform'
 import { ErrorBanner } from './ErrorBanner'
 import { InboxNil } from './InboxNil'
 import { teamsText, type EditActions } from './ItemMenu'
@@ -35,6 +43,9 @@ export interface InboxViewProps {
   // worktrees holds each item's worktree, from the Worktrees view's latest listing (see
   // itemWorktrees); empty until the view has listed.
   worktrees?: ReadonlyMap<string, Worktree>
+  // sessions holds each item's agent sessions, newest first, by itemKey (useSessions);
+  // empty until they load, and while the app does not follow sessions.
+  sessions?: ReadonlyMap<string, readonly AgentSession[]>
   // snoozeDays is how long a row's Snooze button hides an item.
   snoozeDays: number
   // onSnoozeSettings opens the setting for the Snooze button's length.
@@ -82,6 +93,7 @@ export function InboxView({
   launch,
   resolutions,
   worktrees = noWorktrees,
+  sessions = noSessions,
   snoozeDays,
   onSnoozeSettings,
   onFilesSettings,
@@ -343,6 +355,7 @@ export function InboxView({
               launch={launch}
               resolutions={resolutions}
               worktrees={worktrees}
+              sessions={sessions}
               triage={triage}
               edits={edits}
               collapsed={collapsed.has(key)}

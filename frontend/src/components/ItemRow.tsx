@@ -2,6 +2,7 @@ import { memo } from 'react'
 
 import { counted } from '../lib/format'
 import { agentName } from '../lib/launch'
+import { runningSession } from '../lib/sessions'
 import { useRowWork } from '../lib/rowWork'
 import { formatAge, formatAgo, formatFull, formatWhen } from '../lib/time'
 import { isBackFromSnooze, wakeSummary, type TriageTab } from '../lib/triage'
@@ -12,6 +13,7 @@ import {
   type InboxItem,
   type ItemResolution,
   type LaunchDefaults,
+  type AgentSession,
   type Profile,
   type Prompt,
   type Worktree,
@@ -22,6 +24,7 @@ import { ItemSignals } from './ItemSignals'
 import { LaunchControls } from './LaunchControls'
 import { RelativeTime } from './RelativeTime'
 import { SensitiveFiles } from './SensitiveFiles'
+import { SessionTag } from './SessionTag'
 import { TriageControls, type TriageActions } from './TriageControls'
 
 // LaunchOptions are what every row's launch controls share: the coding agents, profiles,
@@ -46,6 +49,8 @@ export interface ItemRowProps {
   resolution?: ItemResolution | null
   // worktree is the item's worktree, as the Worktrees view last listed it, if it has one.
   worktree?: Worktree | undefined
+  // sessions are the item's agent sessions, newest first, if it has any.
+  sessions?: readonly AgentSession[] | undefined
   // tab is the list tab the row is in: the inbox, Snoozed, or Dismissed.
   tab?: TriageTab
   // triage is what the row's snooze, dismiss, and restore buttons do; without it the row
@@ -228,6 +233,7 @@ export const ItemRow = memo(function ItemRow({
   launch,
   resolution = null,
   worktree,
+  sessions,
   tab = 'inbox',
   triage,
   edits,
@@ -271,6 +277,7 @@ export const ItemRow = memo(function ItemRow({
           {item.files !== null && <SensitiveFiles itemId={item.id} check={item.files} onSettings={onFilesSettings} />}
           <TriageTag item={item} tab={tab} />
           {worktree !== undefined && <WorktreeTag wt={worktree} agents={launch?.agents ?? []} />}
+          {sessions !== undefined && <SessionTag sessions={sessions} agents={launch?.agents ?? []} />}
         </div>
         <ItemSignals item={item} />
       </div>
@@ -292,6 +299,7 @@ export const ItemRow = memo(function ItemRow({
           launchDefaults={launch.launchDefaults}
           onDefaultsSaved={launch.onDefaultsSaved}
           onManagePrompts={launch.onManagePrompts}
+          running={runningSession(sessions)}
         />
       )}
     </li>
