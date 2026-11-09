@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { InboxSnapshot } from '../platform'
-import { item, itemResolution, list, prompts, settings, snapshot } from '../test/fixtures'
+import { defaultPrompts, item, itemResolution, list, prompt, prompts, settings, snapshot } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { useLaunchConfig } from './useLaunchConfig'
 
@@ -36,9 +36,24 @@ describe('useLaunchConfig', () => {
     expect(result.current.loaded).toBe(true)
     expect(result.current.settings).toEqual(settings())
     expect(result.current.prompts).toHaveLength(5)
-    expect(result.current.defaultPrompts).toEqual({ pr: 1, issue: 4 })
+    expect(result.current.defaultPrompts).toEqual(defaultPrompts())
     expect(result.current.items.map((i) => i.id)).toEqual([1, 2])
     expect(platform.resolveLaunches).toHaveBeenCalledWith([1, 2])
+  })
+
+  it('leaves the review replies out of the prompts a launch can use', async () => {
+    platform.listPrompts.mockResolvedValue([
+      ...prompts(),
+      prompt({ id: 8, nickname: 'LGTM', purpose: 'reply', replyAction: 'approve' }),
+    ])
+    const { result } = renderHook(() => useLaunchConfig(snapshot()))
+
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true)
+    })
+
+    expect(result.current.prompts.map((p) => p.id)).not.toContain(8)
+    expect(result.current.prompts).toHaveLength(5)
   })
 
   it('resolves nothing for an empty inbox', async () => {

@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
 import type { Prompt, PromptCheckRequest } from '../platform'
-import { agents, checkResult, importEntry, item, prompt, prompts, variables } from '../test/fixtures'
+import { agents, checkResult, defaultPrompts, importEntry, item, prompt, prompts, variables } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { PromptsView } from './PromptsView'
 
@@ -27,7 +27,7 @@ function Harness({ initial = prompts(), onChanged }: HarnessProps) {
     <PromptsView
       agents={agents()}
       prompts={list}
-      defaults={{ pr: 1, issue: 4 }}
+      defaults={defaultPrompts()}
       variables={variables()}
       items={[item(), item({ id: 2, kind: 'issue', number: 12, title: 'Crash on start' })]}
       onChanged={() => {

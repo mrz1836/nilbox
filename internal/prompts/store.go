@@ -27,7 +27,29 @@ const (
 	// prefDefaultPR and prefDefaultIssue hold the app's default prompt ID per kind.
 	prefDefaultPR    = "prompts.default.pr"
 	prefDefaultIssue = "prompts.default.issue"
+
+	// The default replies' IDs, one per ReplySlot.
+	prefReplyApprove        = "prompts.default.reply.approve"
+	prefReplyApproveBots    = "prompts.default.reply.approve.bots"
+	prefReplyRequestChanges = "prompts.default.reply.request_changes"
+	prefReplyComment        = "prompts.default.reply.comment"
 )
+
+// replyPrefKey returns the preference holding slot's default reply.
+func replyPrefKey(slot ReplySlot) string {
+	switch slot {
+	case SlotApprove:
+		return prefReplyApprove
+	case SlotApproveBots:
+		return prefReplyApproveBots
+	case SlotRequestChanges:
+		return prefReplyRequestChanges
+	case SlotComment:
+		return prefReplyComment
+	default:
+		return prefReplyApprove
+	}
+}
 
 // Store reads and writes the prompt library: the prompts table, which no other package
 // touches, and the library's preferences, the app's default prompts among them.
@@ -114,14 +136,17 @@ func (s *Store) Library(ctx context.Context) (Library, error) {
 	return Library{
 		Prompts: all,
 		Defaults: DefaultPrompts{
-			PR:    pickDefault(all, item.KindPR, stored.PR),
-			Issue: pickDefault(all, item.KindIssue, stored.Issue),
+			PR:      pickDefault(all, item.KindPR, stored.PR),
+			Issue:   pickDefault(all, item.KindIssue, stored.Issue),
+			Replies: pickReplies(all, stored.Replies),
 		},
 	}, nil
 }
 
-// Defaults returns the app's default prompt for each kind. A stored default that is
-// gone or no longer applies falls back to the first prompt, by nickname, that applies.
+// Defaults returns the app's default prompt for each kind and its default replies. A
+// stored default prompt that is gone or no longer applies falls back to the first agent
+// prompt, by nickname, that applies; a default reply that is gone or no longer a reply for
+// its review leaves that review with none.
 func (s *Store) Defaults(ctx context.Context) (DefaultPrompts, error) {
 	lib, err := s.Library(ctx)
 	if err != nil {
@@ -156,7 +181,7 @@ func (s *Store) insert(ctx context.Context, p Prompt) (int64, error) {
 	return s.q.InsertPrompt(ctx, queries.InsertPromptParams{
 		Name: p.Name, Nickname: p.Nickname, AppliesTo: string(p.AppliesTo), Body: p.Body, Models: models,
 		Effort: p.Effort, PlanMode: p.PlanMode, Worktree: p.Worktree, AgentArgs: args, StarterKey: p.StarterKey,
-		CreatedAt: now, UpdatedAt: now,
+		CreatedAt: now, UpdatedAt: now, Purpose: string(purposeOf(p.Purpose)), ReplyAction: string(actionOf(p)),
 	})
 }
 
@@ -174,8 +199,26 @@ func encodeSettings(p Prompt) (models, args string, err error) {
 	return models, args, nil
 }
 
-// update replaces the title, nickname, text, and settings of the prompt with id with
-// p's, stamped now. Its starter key stays. It returns ErrPromptNotFound when no prompt
+// purposeOf returns purpose, or PurposeAgent for "".
+func purposeOf(purpose Purpose) Purpose {
+	if purpose == PurposeReply {
+		return PurposeReply
+	}
+
+	return PurposeAgent
+}
+
+// actionOf returns a reply's action, and "" for an agent prompt.
+func actionOf(p Prompt) ReplyAction {
+	if purposeOf(p.Purpose) != PurposeReply {
+		return ""
+	}
+
+	return p.ReplyAction
+}
+
+// update replaces the title, nickname, text, settings, and reply action of the prompt with
+// id with p's, stamped now. Its purpose and starter key stay. It returns ErrPromptNotFound when no prompt
 // has id.
 func (s *Store) update(ctx context.Context, id int64, p Prompt) error {
 	models, args, err := encodeSettings(p)
@@ -185,7 +228,8 @@ func (s *Store) update(ctx context.Context, id int64, p Prompt) error {
 
 	n, err := s.q.UpdatePrompt(ctx, queries.UpdatePromptParams{
 		Name: p.Name, Nickname: p.Nickname, AppliesTo: string(p.AppliesTo), Body: p.Body, Models: models,
-		Effort: p.Effort, PlanMode: p.PlanMode, Worktree: p.Worktree, AgentArgs: args, UpdatedAt: s.now(), ID: id,
+		Effort: p.Effort, PlanMode: p.PlanMode, Worktree: p.Worktree, AgentArgs: args, ReplyAction: string(actionOf(p)),
+		UpdatedAt: s.now(), ID: id,
 	})
 
 	switch {
@@ -201,7 +245,8 @@ func (s *Store) update(ctx context.Context, id int64, p Prompt) error {
 // remove deletes the prompt with id. It returns ErrPromptNotFound when no prompt has
 // id, and an InUseError naming the prompt, with its Usage left for the caller to fill
 // in, when the prompt is one of the app's default prompts, or when launch defaults name
-// it and their foreign keys refuse the delete.
+// it and their foreign keys refuse the delete. A reply that is a default reply is deleted,
+// and the reviews it was the default for are left with none.
 func (s *Store) remove(ctx context.Context, id int64) error {
 	return s.inTx(ctx, func(st *Store) error {
 		defaults, err := st.storedDefaults(ctx)
@@ -209,20 +254,30 @@ func (s *Store) remove(ctx context.Context, id int64) error {
 			return err
 		}
 
-		if defaults.PR != id && defaults.Issue != id {
-			if err = st.deleteRow(ctx, id); !store.IsForeignKeyViolation(err) {
-				return err
-			}
-		}
-
-		// The prompt is in use; look it up to name it.
-		p, err := st.Lookup(ctx, id)
-		if err != nil {
+		if err = st.clearReplyDefaults(ctx, defaults.Replies, id); err != nil {
 			return err
 		}
 
-		return &InUseError{Nickname: p.Nickname}
+		if defaults.PR == id || defaults.Issue == id {
+			return st.inUse(ctx, id)
+		}
+
+		if err = st.deleteRow(ctx, id); !store.IsForeignKeyViolation(err) {
+			return err
+		}
+
+		return st.inUse(ctx, id)
 	})
+}
+
+// inUse is the InUseError for the prompt with id, which a default keeps.
+func (s *Store) inUse(ctx context.Context, id int64) error {
+	p, err := s.Lookup(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	return &InUseError{Nickname: p.Nickname}
 }
 
 // deleteRow deletes the prompt row with id, or returns ErrPromptNotFound when there is
@@ -286,7 +341,53 @@ func (s *Store) storedDefaults(ctx context.Context) (DefaultPrompts, error) {
 	prID, _ := strconv.ParseInt(pr, 10, 64)       // a missing or bad value means no default
 	issueID, _ := strconv.ParseInt(issue, 10, 64) // a missing or bad value means no default
 
-	return DefaultPrompts{PR: prID, Issue: issueID}, nil
+	replies, err := s.storedReplies(ctx)
+	if err != nil {
+		return DefaultPrompts{}, err
+	}
+
+	return DefaultPrompts{PR: prID, Issue: issueID, Replies: replies}, nil
+}
+
+// storedReplies reads the stored default reply IDs; 0 where none is stored, or where the
+// stored value is not a number.
+func (s *Store) storedReplies(ctx context.Context) (ReplyDefaults, error) {
+	ids := make(map[ReplySlot]int64, len(ReplySlots()))
+
+	for _, slot := range ReplySlots() {
+		raw, _, err := s.prefs.Get(ctx, replyPrefKey(slot))
+		if err != nil {
+			return ReplyDefaults{}, err
+		}
+
+		ids[slot], _ = strconv.ParseInt(raw, 10, 64) // a missing or bad value means no default
+	}
+
+	return ReplyDefaults{
+		Approve: ids[SlotApprove], ApproveBots: ids[SlotApproveBots], RequestChanges: ids[SlotRequestChanges],
+		Comment: ids[SlotComment],
+	}, nil
+}
+
+// clearReplyDefaults leaves every slot whose default reply is id with none.
+func (s *Store) clearReplyDefaults(ctx context.Context, replies ReplyDefaults, id int64) error {
+	for _, slot := range replies.Slots(id) {
+		if err := s.setReplyDefault(ctx, slot, 0); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// setReplyDefault stores id as slot's default reply; 0 leaves the slot with none.
+func (s *Store) setReplyDefault(ctx context.Context, slot ReplySlot, id int64) error {
+	value := ""
+	if id != 0 {
+		value = strconv.FormatInt(id, 10)
+	}
+
+	return s.prefs.Set(ctx, replyPrefKey(slot), value)
 }
 
 // setDefault stores id as the app's default prompt for kind.
@@ -332,12 +433,12 @@ func (s *Store) now() time.Time {
 }
 
 // pickDefault returns the stored default for kind when it exists and applies, else the
-// first prompt that applies, else 0.
+// first agent prompt that applies, else 0. A reply is never a default prompt.
 func pickDefault(all []Prompt, kind item.Kind, stored int64) int64 {
 	var first int64
 
 	for _, p := range all {
-		if !p.AppliesTo.Covers(kind) {
+		if p.IsReply() || !p.AppliesTo.Covers(kind) {
 			continue
 		}
 
@@ -351,6 +452,29 @@ func pickDefault(all []Prompt, kind item.Kind, stored int64) int64 {
 	}
 
 	return first
+}
+
+// pickReplies returns each stored default reply that still exists and is a reply for its
+// slot's review, and 0 for the others.
+func pickReplies(all []Prompt, stored ReplyDefaults) ReplyDefaults {
+	byID := make(map[int64]Prompt, len(all))
+	for _, p := range all {
+		byID[p.ID] = p
+	}
+
+	keep := func(slot ReplySlot) int64 {
+		p, ok := byID[stored.For(slot)]
+		if !ok || !p.IsReply() || p.ReplyAction != slot.Action() {
+			return 0
+		}
+
+		return p.ID
+	}
+
+	return ReplyDefaults{
+		Approve: keep(SlotApprove), ApproveBots: keep(SlotApproveBots), RequestChanges: keep(SlotRequestChanges),
+		Comment: keep(SlotComment),
+	}
 }
 
 // defaultPrefKey returns the preference holding the default prompt for kind.
@@ -378,6 +502,7 @@ func fromRow(row queries.Prompt) (Prompt, error) {
 
 	p := Prompt{
 		ID: row.ID, Name: row.Name, Nickname: row.Nickname, AppliesTo: AppliesTo(row.AppliesTo), Body: row.Body,
+		Purpose: purposeOf(Purpose(row.Purpose)), ReplyAction: ReplyAction(row.ReplyAction),
 		Models: agent.CloneModels(models), Effort: row.Effort, PlanMode: row.PlanMode, Worktree: row.Worktree,
 		ExtraArgs: agent.CloneArgs(args), ExtraFlags: agent.JoinArgs(args), StarterKey: row.StarterKey,
 		Usage:     normalizeUsage(Usage{}),
@@ -395,7 +520,7 @@ func fromRow(row queries.Prompt) (Prompt, error) {
 // matchesStarter reports whether a prompt still has its starter's title, text, and
 // settings. The nickname may differ: Reset keeps it when another prompt took it.
 func matchesStarter(p Prompt, st Starter) bool {
-	return p.Name == st.Name && p.AppliesTo == st.AppliesTo && p.Body == st.Body &&
+	return p.Name == st.Name && p.AppliesTo == st.AppliesTo && p.Body == st.Body && p.ReplyAction == st.ReplyAction &&
 		agent.EqualModels(p.Models, st.Models) && p.Effort == st.Effort && sameBool(p.PlanMode, st.PlanMode) &&
 		sameBool(p.Worktree, st.Worktree) && agent.EqualArgs(p.ExtraArgs, st.ExtraArgs)
 }

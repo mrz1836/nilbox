@@ -2,7 +2,7 @@ import { act, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { sectionInfo, sectionOrder, settingsIndex, type SettingsSection } from '../../lib/settingsIndex'
-import { account, agents, profile, prompts, settings } from '../../test/fixtures'
+import { account, agents, defaultPrompts, profile, prompts, settings } from '../../test/fixtures'
 import { SettingsView } from '../SettingsView'
 import { SettingMatch } from './match'
 import { ChoiceRow, SectionIntro, SettingRow } from './rows'
@@ -24,7 +24,7 @@ async function shownLabels(section: SettingsSection): Promise<string[]> {
       agents={agents()}
       profiles={[profile(), profile({ agent: 'codex', name: 'default', folder: '~/.codex' })]}
       prompts={prompts()}
-      defaultPrompts={{ pr: 1, issue: 4 }}
+      defaultPrompts={defaultPrompts()}
       launchDefaults={[]}
       account={account()}
       projectAccess="on"

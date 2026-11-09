@@ -111,6 +111,19 @@ func launchDefaultsByTarget(t *testing.T, c *Core) map[string]launchdefaults.Def
 	return out
 }
 
+// agentPrompts counts the agent prompts in lib, leaving out the review replies.
+func agentPrompts(lib map[string]prompts.Prompt) int {
+	n := 0
+
+	for _, p := range lib {
+		if !p.IsReply() {
+			n++
+		}
+	}
+
+	return n
+}
+
 func TestAnUpdateThatSetsTheDatabaseAsideKeepsThePrompts(t *testing.T) {
 	t.Parallel()
 
@@ -131,7 +144,8 @@ func TestAnUpdateThatSetsTheDatabaseAsideKeepsThePrompts(t *testing.T) {
 	assert.Regexp(t, `^~/data/`+regexp.QuoteMeta(filepath.Base(paths.DB))+`\.broken-`, info.Restored.From)
 
 	lib := libraryByNickname(t, c)
-	assert.Len(t, lib, 3, "the three prompts, and no starter the user deleted")
+	assert.Equal(t, 3, agentPrompts(lib), "the three prompts, and no starter the user deleted")
+	assert.Contains(t, lib, "LGTM", "the starter replies, new in this build, are added")
 
 	assert.Equal(t, "Review #{{.Number}} in {{.Repo}} my way: {{.URL}}", lib["Review"].Body, "the edit is kept")
 	assert.Equal(t, prompts.StarterReviewPR, lib["Review"].StarterKey, "it can still be reset to the original")
@@ -154,7 +168,7 @@ func TestAnUpdateThatSetsTheDatabaseAsideKeepsThePrompts(t *testing.T) {
 
 	saved, err := prompts.NewLibraryFile(paths.Prompts, "", nil).Load()
 	require.NoError(t, err, "the restored library is saved beside the database")
-	assert.Len(t, saved.Prompts, 3)
+	assert.Len(t, saved.Prompts, len(lib))
 
 	// The launch defaults come back pointing at the restored prompts, which have new IDs.
 	byTarget := launchDefaultsByTarget(t, c)

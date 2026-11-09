@@ -194,6 +194,21 @@ func (c *checker) checkField(at span, ident []string, dotIsData bool) {
 		c.addAt(SeverityWarning, at.start, at.length, fmt.Sprintf(
 			".%s is always empty here: it's only set for pull requests, and this prompt is for issues.", name,
 		))
+	case c.reply && sessionOnly(name):
+		c.addAt(SeverityWarning, at.start, at.length, fmt.Sprintf(
+			".%s means nothing in a reply: it describes an agent's session, and a reply starts none.", name,
+		))
+	}
+}
+
+// sessionOnly reports a variable that describes an agent's session, and so means nothing
+// in a review reply.
+func sessionOnly(name string) bool {
+	switch name {
+	case "InWorktree", "WorktreeOnPRHead", "Worktree", "Profile":
+		return true
+	default:
+		return false
 	}
 }
 

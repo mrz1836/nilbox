@@ -200,6 +200,16 @@ func TestPreviewMatchesLaunch(t *testing.T) {
 	assert.Equal(t, "origin/main", codex.Worktree.Base)
 }
 
+func TestLaunchRefusesAReviewReply(t *testing.T) {
+	t.Parallel()
+
+	h := newLaunchHarness(t)
+	reply := h.promptID(t, "LGTM")
+
+	_, err := h.service().Launch(t.Context(), LaunchRequest{ItemID: h.trustedPR, PromptID: reply})
+	require.ErrorIs(t, err, prompts.ErrPromptNotFound, "a review reply is never a launch's prompt")
+}
+
 func TestLaunchUsesPromptSettings(t *testing.T) {
 	t.Parallel()
 

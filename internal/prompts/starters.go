@@ -8,6 +8,29 @@ const (
 	StarterWorkOnIssue = "work-on-issue"
 	StarterQuickLook   = "quick-look"
 	StarterFixChecks   = "fix-checks"
+
+	// The starter review replies.
+	StarterReplyLGTM         = "reply-lgtm"
+	StarterReplyUpdateOK     = "reply-update-ok"
+	StarterReplyNeedsChanges = "reply-needs-changes"
+	StarterReplyQuestion     = "reply-question"
+)
+
+// The starter review replies. A reply is the text of a review the user submits, so it is
+// written in the user's voice, and the update reply guards each part, so a title it can't
+// read still gives a sentence.
+const (
+	replyLGTMBody = "Reviewed and approved. Thanks for the work on this, @{{.Author}}!\n"
+
+	replyUpdateOKBody = "{{if .Dependency}}Reviewed the {{if .UpdateType}}{{.UpdateType}} {{end}}update of " +
+		"`{{.Dependency}}`{{if and .FromVersion .ToVersion}} from {{.FromVersion}} to {{.ToVersion}}" +
+		"{{else if .ToVersion}} to {{.ToVersion}}{{end}}.{{else}}Reviewed this automated update.{{end}}" +
+		"{{if eq .Checks \"passing\"}} All checks pass.{{end}} Approved.\n"
+
+	replyNeedsChangesBody = "Thanks for this, @{{.Author}}. A few things need to change before it can merge; " +
+		"details are in the comments below.\n"
+
+	replyQuestionBody = "Thanks, @{{.Author}}. I have a few questions before approving; see the comments below.\n"
 )
 
 // The starter prompts. Each passes the item's address and title, never its body: the
@@ -79,6 +102,15 @@ type Starter struct {
 	Nickname  string
 	AppliesTo AppliesTo
 	Body      string
+
+	// Purpose is PurposeReply for a starter reply, and "" or PurposeAgent for a prompt.
+	Purpose Purpose
+
+	// ReplyAction is a reply's review, and Slot the default reply it becomes when that
+	// slot has none.
+	ReplyAction ReplyAction
+	Slot        ReplySlot
+
 	Models    map[agent.ID]string
 	Effort    string
 	PlanMode  *bool
@@ -106,7 +138,29 @@ func Starters() []Starter {
 			Key: StarterFixChecks, Name: "Fix a pull request's failing checks", Nickname: "Fix checks",
 			AppliesTo: AppliesToPR, Body: fixChecksBody,
 		},
+		{
+			Key: StarterReplyLGTM, Name: "Approve with thanks", Nickname: "LGTM", AppliesTo: AppliesToPR,
+			Body: replyLGTMBody, Purpose: PurposeReply, ReplyAction: ReplyApprove, Slot: SlotApprove,
+		},
+		{
+			Key: StarterReplyUpdateOK, Name: "Approve a dependency update", Nickname: "Update OK",
+			AppliesTo: AppliesToPR, Body: replyUpdateOKBody, Purpose: PurposeReply, ReplyAction: ReplyApprove,
+			Slot: SlotApproveBots,
+		},
+		{
+			Key: StarterReplyNeedsChanges, Name: "Ask for changes", Nickname: "Needs changes", AppliesTo: AppliesToPR,
+			Body: replyNeedsChangesBody, Purpose: PurposeReply, ReplyAction: ReplyRequestChanges, Slot: SlotRequestChanges,
+		},
+		{
+			Key: StarterReplyQuestion, Name: "Ask a question", Nickname: "Question", AppliesTo: AppliesToPR,
+			Body: replyQuestionBody, Purpose: PurposeReply, ReplyAction: ReplyComment, Slot: SlotComment,
+		},
 	}
+}
+
+// purpose returns the starter's purpose, PurposeAgent when it names none.
+func (st Starter) purpose() Purpose {
+	return purposeOf(st.Purpose)
 }
 
 // starterFor returns the starter with key.

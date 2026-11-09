@@ -15,7 +15,17 @@ import type {
   ProjectAccess,
   Settings,
 } from '../platform'
-import { account, agents, appInfo, launchDefaults, profile, prompts, settings, signedOut } from '../test/fixtures'
+import {
+  account,
+  agents,
+  appInfo,
+  defaultPrompts,
+  launchDefaults,
+  profile,
+  prompts,
+  settings,
+  signedOut,
+} from '../test/fixtures'
 import { platform } from '../test/platform'
 import { SettingsView, type SettingsSection, type SettingsViewProps } from './SettingsView'
 
@@ -84,7 +94,7 @@ function renderSettings({
       agents={coding}
       profiles={profiles}
       prompts={prompts()}
-      defaultPrompts={{ pr: 1, issue: 4 }}
+      defaultPrompts={defaultPrompts()}
       launchDefaults={defaults}
       account={who}
       projectAccess={access}
@@ -111,7 +121,7 @@ describe('SettingsView', () => {
       agents: agents(),
       profiles: [profile()],
       prompts: prompts(),
-      defaultPrompts: { pr: 1, issue: 4 },
+      defaultPrompts: defaultPrompts(),
       launchDefaults: [],
       account: account(),
       theme: 'system',
@@ -1334,7 +1344,7 @@ describe('SettingsView search', () => {
       agents: agents(),
       profiles: [profile(), profile({ agent: 'codex', name: 'default', folder: '~/.codex' })],
       prompts: prompts(),
-      defaultPrompts: { pr: 1, issue: 4 },
+      defaultPrompts: defaultPrompts(),
       launchDefaults: [],
       account: account(),
       projectAccess: 'on',

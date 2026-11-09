@@ -193,29 +193,62 @@ func restorePrompts(ctx context.Context, st *Store, b Bundle) (map[string]int64,
 }
 
 // restoreDefaults makes the prompts defaults names, by their nicknames in the file, the
-// app's default prompts again, each where it applies to the kind.
+// app's default prompts again, each where it is an agent prompt for the kind, and the
+// replies it names the default replies again, each where it is a reply for the slot's
+// review.
 func restoreDefaults(ctx context.Context, st *Store, defaults BundleDefaults, ids map[string]int64) error {
 	for kind, nickname := range map[item.Kind]string{item.KindPR: defaults.PR, item.KindIssue: defaults.Issue} {
-		id, ok := ids[nickname]
-		if nickname == "" || !ok {
-			continue
-		}
-
-		p, err := st.Lookup(ctx, id)
+		p, ok, err := restoredPrompt(ctx, st, ids, nickname)
 		if err != nil {
 			return err
 		}
 
-		if !p.AppliesTo.Covers(kind) {
+		if !ok || p.IsReply() || !p.AppliesTo.Covers(kind) {
 			continue
 		}
 
-		if err = st.setDefault(ctx, kind, id); err != nil {
+		if err = st.setDefault(ctx, kind, p.ID); err != nil {
+			return err
+		}
+	}
+
+	return restoreReplies(ctx, st, defaults, ids)
+}
+
+// restoreReplies makes the replies defaults names the default replies again, each where
+// it is a reply for the slot's review.
+func restoreReplies(ctx context.Context, st *Store, defaults BundleDefaults, ids map[string]int64) error {
+	for _, slot := range ReplySlots() {
+		p, ok, err := restoredPrompt(ctx, st, ids, defaults.Replies[slot])
+		if err != nil {
+			return err
+		}
+
+		if !ok || !p.IsReply() || p.ReplyAction != slot.Action() {
+			continue
+		}
+
+		if err = st.setReplyDefault(ctx, slot, p.ID); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+// restoredPrompt returns the prompt restored under nickname, and whether there is one.
+func restoredPrompt(ctx context.Context, st *Store, ids map[string]int64, nickname string) (Prompt, bool, error) {
+	id, ok := ids[nickname]
+	if nickname == "" || !ok {
+		return Prompt{}, false, nil
+	}
+
+	p, err := st.Lookup(ctx, id)
+	if err != nil {
+		return Prompt{}, false, err
+	}
+
+	return p, true, nil
 }
 
 // appendUniqueAll appends each of items that list does not hold yet.

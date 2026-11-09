@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { LaunchDefaults } from '../../platform'
-import { agents, launchDefaults, profile, prompts, settings } from '../../test/fixtures'
+import { agents, defaultPrompts, launchDefaults, profile, prompts, settings } from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { LaunchDefaultsSection } from './LaunchDefaultsSection'
 
@@ -32,7 +32,7 @@ function renderSection(stored: LaunchDefaults[] = [], onChanged = vi.fn(() => Pr
         profile({ agent: 'codex', name: 'alt' }),
       ]}
       prompts={prompts()}
-      defaultPrompts={{ pr: 1, issue: 4 }}
+      defaultPrompts={defaultPrompts()}
       launchDefaults={stored}
       onChanged={onChanged}
     />,

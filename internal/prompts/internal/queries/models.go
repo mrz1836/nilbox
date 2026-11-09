@@ -9,17 +9,19 @@ import (
 )
 
 type Prompt struct {
-	ID         int64
-	Name       string
-	Nickname   string
-	AppliesTo  string
-	Body       string
-	Effort     string
-	PlanMode   *bool
-	Worktree   *bool
-	StarterKey string
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
-	Models     string
-	AgentArgs  string
+	ID          int64
+	Name        string
+	Nickname    string
+	AppliesTo   string
+	Body        string
+	Effort      string
+	PlanMode    *bool
+	Worktree    *bool
+	StarterKey  string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	Models      string
+	AgentArgs   string
+	Purpose     string
+	ReplyAction string
 }

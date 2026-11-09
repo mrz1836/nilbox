@@ -41,7 +41,8 @@ type CheckResult struct {
 	// errors.
 	Preview string `json:"preview"`
 
-	// Notice is the line added after the prompt for an outside contributor's item, or "".
+	// Notice is the line added after the prompt for an outside contributor's item, or "";
+	// always "" for a reply, which goes to GitHub, not to an agent.
 	Notice string `json:"notice"`
 
 	// PreviewError says why the preview could not be filled in, or "".
@@ -80,7 +81,7 @@ func (s *Service) Check(ctx context.Context, req CheckRequest) (CheckResult, err
 	}
 
 	_, fields := validateFields(ctx, s.store, req.ID, in, usage)
-	tmpl, diags := Parse(in.Body, appliesToOrAny(in.AppliesTo))
+	tmpl, diags := parseFor(in.Purpose, in.Body, appliesToOrAny(in.AppliesTo))
 
 	data, note := s.previewData(ctx, req, appliesToOrAny(in.AppliesTo))
 	result := CheckResult{
@@ -99,8 +100,12 @@ func (s *Service) Check(ctx context.Context, req CheckRequest) (CheckResult, err
 		return result, nil
 	}
 
-	result.Preview, result.Notice = out, Notice(data)
+	result.Preview = out
 	result.Characters = utf8.RuneCountInString(out)
+
+	if in.Purpose != PurposeReply {
+		result.Notice = Notice(data)
+	}
 
 	if result.Notice != "" {
 		result.Characters += utf8.RuneCountInString(result.Notice) + 2

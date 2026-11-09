@@ -10,6 +10,7 @@ import {
   modelLabel,
   pinSummary,
   planToggleLabel,
+  isAgentPrompt,
   promptApplies,
   sourceLabel,
   usageCount,
@@ -17,7 +18,7 @@ import {
   usageSummary,
 } from './launch'
 
-const noUsage: PromptUsage = { defaults: [], orgs: [], repos: [], kinds: [] }
+const noUsage: PromptUsage = { defaults: [], orgs: [], repos: [], kinds: [], replies: [] }
 
 describe('labels', () => {
   it('names where a setting came from', () => {
@@ -38,6 +39,13 @@ describe('labels', () => {
   it('names kinds in the plural', () => {
     expect(kindPlural('pr')).toBe('pull requests')
     expect(kindPlural('issue')).toBe('issues')
+  })
+})
+
+describe('isAgentPrompt', () => {
+  it('leaves out review replies', () => {
+    expect(isAgentPrompt({ purpose: 'agent' })).toBe(true)
+    expect(isAgentPrompt({ purpose: 'reply' })).toBe(false)
   })
 })
 

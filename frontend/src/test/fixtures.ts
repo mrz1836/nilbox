@@ -12,6 +12,7 @@ import type {
   BudgetReading,
   BudgetWrites,
   BundlePrompt,
+  DefaultPrompts,
   CloneTarget,
   FileCheck,
   ImportEntry,
@@ -465,6 +466,8 @@ export function prompt(overrides: Partial<Prompt> = {}): Prompt {
     nickname: 'Review',
     appliesTo: 'pr',
     body: 'Review pull request #{{.Number}} in {{.Repo}}: {{.Title}}\n{{.URL}}\n',
+    purpose: 'agent',
+    replyAction: '',
     models: {},
     effort: '',
     planMode: null,
@@ -473,7 +476,7 @@ export function prompt(overrides: Partial<Prompt> = {}): Prompt {
     extraFlags: {},
     starterKey: 'review-pr',
     modified: false,
-    usage: { defaults: ['pr'], orgs: [], repos: [], kinds: ['pr'] },
+    usage: { defaults: ['pr'], orgs: [], repos: [], kinds: ['pr'], replies: [] },
     createdAt: '2026-06-01T09:00:00Z',
     updatedAt: '2026-06-15T09:00:00Z',
     ...overrides,
@@ -487,6 +490,8 @@ export function bundlePrompt(overrides: Partial<BundlePrompt> = {}): BundlePromp
     nickname: 'Security',
     appliesTo: 'any',
     body: 'Look for security problems in {{.URL}}\n',
+    purpose: 'agent',
+    action: '',
     models: {},
     effort: '',
     planMode: null,
@@ -524,6 +529,17 @@ export function promptBackup(overrides: Partial<PromptBackup> = {}): PromptBacku
   }
 }
 
+// defaultPrompts are the app's default prompts in the small library below, with no
+// default replies.
+export function defaultPrompts(overrides: Partial<DefaultPrompts> = {}): DefaultPrompts {
+  return {
+    pr: 1,
+    issue: 4,
+    replies: { approve: 0, approveBots: 0, requestChanges: 0, comment: 0 },
+    ...overrides,
+  }
+}
+
 // prompts is a small library: two pull request prompts, an issue prompt, and one for both.
 export function prompts(): Prompt[] {
   return [
@@ -532,7 +548,7 @@ export function prompts(): Prompt[] {
       name: 'Fix a pull request’s failing checks',
       nickname: 'Fix checks',
       starterKey: 'fix-checks',
-      usage: { defaults: [], orgs: [], repos: [], kinds: [] },
+      usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: [] },
     }),
     prompt({
       id: 2,
@@ -542,7 +558,7 @@ export function prompts(): Prompt[] {
       effort: 'low',
       worktree: false,
       starterKey: 'quick-look',
-      usage: { defaults: [], orgs: ['acme-org'], repos: ['acme-org/api'], kinds: ['pr'] },
+      usage: { defaults: [], orgs: ['acme-org'], repos: ['acme-org/api'], kinds: ['pr'], replies: [] },
     }),
     prompt(),
     prompt({
@@ -552,7 +568,7 @@ export function prompts(): Prompt[] {
       appliesTo: 'issue',
       body: 'Work on issue #{{.Number}}\n',
       starterKey: 'work-on-issue',
-      usage: { defaults: ['issue'], orgs: [], repos: [], kinds: ['issue'] },
+      usage: { defaults: ['issue'], orgs: [], repos: [], kinds: ['issue'], replies: [] },
     }),
     prompt({
       id: 5,
@@ -561,7 +577,7 @@ export function prompts(): Prompt[] {
       appliesTo: 'any',
       body: 'Explain {{.URL}}\n',
       starterKey: '',
-      usage: { defaults: [], orgs: [], repos: [], kinds: [] },
+      usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: [] },
     }),
   ]
 }

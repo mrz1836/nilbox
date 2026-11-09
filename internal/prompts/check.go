@@ -38,6 +38,9 @@ type checker struct {
 	appliesTo AppliesTo
 	known     map[string]Variable
 	diags     []Diagnostic
+
+	// reply checks a review reply's text (see ParseReply).
+	reply bool
 }
 
 // newChecker returns a checker for body, a prompt that applies to appliesTo.
@@ -65,13 +68,16 @@ func (c *checker) check() *Template {
 
 	c.walkList(tmpl.Root, true)
 	c.checkDefinitions(tmpl)
-	c.checkStart(tmpl.Root)
+
+	if !c.reply {
+		c.checkStart(tmpl.Root)
+	}
 
 	if c.hasErrors() {
 		return nil
 	}
 
-	t := &Template{tmpl: tmpl}
+	t := &Template{tmpl: tmpl, reply: c.reply}
 	c.trySamples(t)
 
 	if c.hasErrors() {

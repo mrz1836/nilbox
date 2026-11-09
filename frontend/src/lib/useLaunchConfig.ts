@@ -21,6 +21,7 @@ import {
   type Settings,
 } from '../platform'
 import { all } from './call'
+import { isAgentPrompt } from './launch'
 import { shareResolutions } from './share'
 import { useQuery } from './useQuery'
 
@@ -86,7 +87,8 @@ function loadAll(): PromiseLike<Loaded> {
     settings,
     agents,
     profiles,
-    prompts,
+    // Review replies live in the same library, but no launch ever uses one.
+    prompts: prompts.filter(isAgentPrompt),
     defaultPrompts,
     variables,
     launchDefaults,

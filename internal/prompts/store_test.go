@@ -58,10 +58,17 @@ func TestSeedRecordsWhatItAddedAndTheDefaults(t *testing.T) {
 	s, db := seeded(t, nil)
 	review, work := byNickname(t, s, "Review"), byNickname(t, s, "Work on it")
 
+	id := func(nickname string) string { return strconv.FormatInt(byNickname(t, s, nickname).ID, 10) }
+
 	assert.Equal(t, map[string]string{
-		"prompts.seeded":        `["review-pr","work-on-issue","quick-look","fix-checks"]`,
-		"prompts.default.pr":    strconv.FormatInt(review.ID, 10),
-		"prompts.default.issue": strconv.FormatInt(work.ID, 10),
+		"prompts.seeded": `["review-pr","work-on-issue","quick-look","fix-checks","reply-lgtm","reply-update-ok",` +
+			`"reply-needs-changes","reply-question"]`,
+		"prompts.default.pr":                    strconv.FormatInt(review.ID, 10),
+		"prompts.default.issue":                 strconv.FormatInt(work.ID, 10),
+		"prompts.default.reply.approve":         id("LGTM"),
+		"prompts.default.reply.approve.bots":    id("Update OK"),
+		"prompts.default.reply.request_changes": id("Needs changes"),
+		"prompts.default.reply.comment":         id("Question"),
 	}, promptPrefs(t, db))
 }
 
@@ -542,7 +549,10 @@ func TestLibraryHoldsEveryPromptAndTheDefaults(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, Library{Prompts: all, Defaults: defaults}, lib)
-	assert.Equal(t, DefaultPrompts{PR: idOf(t, s, "Review"), Issue: idOf(t, s, "Work on it")}, lib.Defaults)
+	assert.Equal(t, DefaultPrompts{PR: idOf(t, s, "Review"), Issue: idOf(t, s, "Work on it"), Replies: ReplyDefaults{
+		Approve: idOf(t, s, "LGTM"), ApproveBots: idOf(t, s, "Update OK"), RequestChanges: idOf(t, s, "Needs changes"),
+		Comment: idOf(t, s, "Question"),
+	}}, lib.Defaults)
 }
 
 func TestLibraryReportsUnreadableDefaults(t *testing.T) {

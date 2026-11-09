@@ -177,8 +177,11 @@ func (s *Service) loadWorld(ctx context.Context) (world, error) {
 		profiles: make(map[profileKey]profiles.Profile, len(stored)),
 	}
 
+	// A review reply is never a launch's prompt: a launch naming one finds no prompt.
 	for _, p := range library.Prompts {
-		w.prompts[p.ID] = p
+		if !p.IsReply() {
+			w.prompts[p.ID] = p
+		}
 	}
 
 	for _, p := range stored {

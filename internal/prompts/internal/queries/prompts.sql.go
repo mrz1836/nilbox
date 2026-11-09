@@ -44,7 +44,7 @@ func (q *Queries) DeletePrompt(ctx context.Context, id int64) (int64, error) {
 
 const getPrompt = `-- name: GetPrompt :one
 SELECT id, name, nickname, applies_to, body, effort, plan_mode, worktree, starter_key, created_at, updated_at,
-    models, agent_args
+    models, agent_args, purpose, reply_action
 FROM prompts
 WHERE id = ?
 `
@@ -67,6 +67,8 @@ func (q *Queries) GetPrompt(ctx context.Context, id int64) (Prompt, error) {
 		&i.UpdatedAt,
 		&i.Models,
 		&i.AgentArgs,
+		&i.Purpose,
+		&i.ReplyAction,
 	)
 	return i, err
 }
@@ -74,27 +76,29 @@ func (q *Queries) GetPrompt(ctx context.Context, id int64) (Prompt, error) {
 const insertPrompt = `-- name: InsertPrompt :one
 INSERT INTO prompts (
     name, nickname, applies_to, body, models, effort, plan_mode, worktree, agent_args, starter_key, created_at,
-    updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    updated_at, purpose, reply_action
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id
 `
 
 type InsertPromptParams struct {
-	Name       string
-	Nickname   string
-	AppliesTo  string
-	Body       string
-	Models     string
-	Effort     string
-	PlanMode   *bool
-	Worktree   *bool
-	AgentArgs  string
-	StarterKey string
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	Name        string
+	Nickname    string
+	AppliesTo   string
+	Body        string
+	Models      string
+	Effort      string
+	PlanMode    *bool
+	Worktree    *bool
+	AgentArgs   string
+	StarterKey  string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	Purpose     string
+	ReplyAction string
 }
 
-// InsertPrompt stores a new prompt and returns its id.
+// InsertPrompt stores a new prompt, an agent prompt or a review reply, and returns its id.
 func (q *Queries) InsertPrompt(ctx context.Context, arg InsertPromptParams) (int64, error) {
 	row := q.db.QueryRowContext(ctx, insertPrompt,
 		arg.Name,
@@ -109,6 +113,8 @@ func (q *Queries) InsertPrompt(ctx context.Context, arg InsertPromptParams) (int
 		arg.StarterKey,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.Purpose,
+		arg.ReplyAction,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -117,7 +123,7 @@ func (q *Queries) InsertPrompt(ctx context.Context, arg InsertPromptParams) (int
 
 const listPrompts = `-- name: ListPrompts :many
 SELECT id, name, nickname, applies_to, body, effort, plan_mode, worktree, starter_key, created_at, updated_at,
-    models, agent_args
+    models, agent_args, purpose, reply_action
 FROM prompts
 ORDER BY nickname COLLATE NOCASE, id
 `
@@ -146,6 +152,8 @@ func (q *Queries) ListPrompts(ctx context.Context) ([]Prompt, error) {
 			&i.UpdatedAt,
 			&i.Models,
 			&i.AgentArgs,
+			&i.Purpose,
+			&i.ReplyAction,
 		); err != nil {
 			return nil, err
 		}
@@ -171,27 +179,29 @@ UPDATE prompts SET
     plan_mode = ?,
     worktree = ?,
     agent_args = ?,
+    reply_action = ?,
     updated_at = ?
 WHERE id = ?
 `
 
 type UpdatePromptParams struct {
-	Name      string
-	Nickname  string
-	AppliesTo string
-	Body      string
-	Models    string
-	Effort    string
-	PlanMode  *bool
-	Worktree  *bool
-	AgentArgs string
-	UpdatedAt time.Time
-	ID        int64
+	Name        string
+	Nickname    string
+	AppliesTo   string
+	Body        string
+	Models      string
+	Effort      string
+	PlanMode    *bool
+	Worktree    *bool
+	AgentArgs   string
+	ReplyAction string
+	UpdatedAt   time.Time
+	ID          int64
 }
 
-// UpdatePrompt replaces the title, nickname, text, and settings of the prompt with id and
-// stamps updated_at. Its starter key and created_at stay as they are. No row changes when
-// no prompt has id.
+// UpdatePrompt replaces the title, nickname, text, settings, and reply action of the prompt
+// with id and stamps updated_at. Its purpose, starter key, and created_at stay as they are.
+// No row changes when no prompt has id.
 func (q *Queries) UpdatePrompt(ctx context.Context, arg UpdatePromptParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, updatePrompt,
 		arg.Name,
@@ -203,6 +213,7 @@ func (q *Queries) UpdatePrompt(ctx context.Context, arg UpdatePromptParams) (int
 		arg.PlanMode,
 		arg.Worktree,
 		arg.AgentArgs,
+		arg.ReplyAction,
 		arg.UpdatedAt,
 		arg.ID,
 	)

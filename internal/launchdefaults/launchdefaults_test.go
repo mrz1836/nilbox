@@ -195,6 +195,11 @@ func TestValidation(t *testing.T) {
 	h := newHarness(t)
 	gone := new(int64(9999))
 
+	lib, libErr := h.library.Library(t.Context())
+	require.NoError(t, libErr)
+
+	reply := new(lib.Defaults.Replies.Approve)
+
 	tests := []struct {
 		name  string
 		in    launchdefaults.Input
@@ -210,6 +215,7 @@ func TestValidation(t *testing.T) {
 		{name: "unknown agent's profile", in: launchdefaults.Input{Owner: acme, Profiles: map[agent.ID]string{"example-agent": "work"}}, field: launchdefaults.FieldProfiles, want: `no coding agent called "example-agent"`},
 		{name: "missing prompt", in: launchdefaults.Input{Owner: acme, PRPromptID: gone}, field: launchdefaults.FieldPRPromptID, want: "no longer exists"},
 		{name: "issue prompt for PRs", in: launchdefaults.Input{Owner: acme, PRPromptID: &h.work}, field: launchdefaults.FieldPRPromptID, want: `"Work on it" isn't a prompt for pull requests.`},
+		{name: "a review reply", in: launchdefaults.Input{Owner: acme, PRPromptID: reply}, field: launchdefaults.FieldPRPromptID, want: `"LGTM" is a review reply, not a prompt an agent can launch with.`},
 		{name: "PR prompt for issues", in: launchdefaults.Input{Owner: acme, IssuePromptID: &h.review}, field: launchdefaults.FieldIssuePromptID, want: `"Review" isn't a prompt for issues.`},
 		{name: "model", in: launchdefaults.Input{Owner: acme, Models: claude("-x")}, field: "models.claude"},
 		{name: "codex model", in: launchdefaults.Input{Owner: acme, Models: map[agent.ID]string{agent.Codex: "a b"}}, field: "models.codex"},
@@ -297,7 +303,7 @@ func TestDefaultPromptsCannotBeDeletedWhileUsed(t *testing.T) {
 
 	fix.Usage = prompts.Usage{
 		Defaults: []item.Kind{}, Orgs: []string{acme}, Repos: []string{"acme-org/example-repo"},
-		Kinds: []item.Kind{item.KindPR},
+		Kinds: []item.Kind{item.KindPR}, Replies: []prompts.ReplySlot{},
 	}
 	require.Contains(t, all, fix, "the prompt is still there, with where it is used")
 

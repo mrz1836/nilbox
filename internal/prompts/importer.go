@@ -2,6 +2,7 @@ package prompts
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"maps"
 	"regexp"
@@ -100,6 +101,7 @@ type planned struct {
 func (p planned) stored() Prompt {
 	out := Prompt{
 		Name: p.Prompt.Name, Nickname: p.Nickname, AppliesTo: p.Prompt.AppliesTo, Body: p.Prompt.Body,
+		Purpose: purposeOf(p.Prompt.Purpose), ReplyAction: p.Prompt.Action,
 		Models: agent.CloneModels(p.Prompt.Models), Effort: p.Prompt.Effort, PlanMode: p.Prompt.PlanMode,
 		Worktree: p.Prompt.Worktree, ExtraArgs: agent.CloneArgs(p.Prompt.ExtraArgs),
 	}
@@ -265,6 +267,12 @@ func cleanImport(in BundlePrompt) (BundlePrompt, []string) {
 	p.Name, p.Nickname = cmpOr(p.Name, p.Nickname, untitledName), cmpOr(p.Nickname, p.Name, untitledNickname)
 	p.Name, p.Nickname = textutil.Clip(p.Name, maxNameRunes), textutil.Clip(p.Nickname, maxNicknameRunes)
 
+	if p.Purpose == PurposeReply {
+		return cleanReply(p)
+	}
+
+	p.Purpose, p.Action = PurposeAgent, ""
+
 	switch p.AppliesTo {
 	case AppliesToPR, AppliesToIssue, AppliesToAny:
 	default:
@@ -285,6 +293,27 @@ func cleanImport(in BundlePrompt) (BundlePrompt, []string) {
 
 	if t, _ := Parse(p.Body, p.AppliesTo); t == nil {
 		notes = append(notes, "Its text has problems to fix before it can launch.")
+	}
+
+	return p, notes
+}
+
+// cleanReply returns a review reply read from a file or a backup as this build would store
+// it: for pull requests, with no launch settings, and for one of the reviews, a comment
+// when the file names none this build knows.
+func cleanReply(p BundlePrompt) (BundlePrompt, []string) {
+	var notes []string
+
+	p.AppliesTo, p.Effort, p.PlanMode, p.Worktree = AppliesToPR, "", nil, nil
+	p.Models, p.ExtraArgs = map[agent.ID]string{}, map[agent.ID][]string{}
+
+	if !p.Action.valid() {
+		notes = append(notes, "It didn’t say which review it’s for, so it’s a reply for comments.")
+		p.Action = ReplyComment
+	}
+
+	if t, _ := ParseReply(p.Body); t == nil {
+		notes = append(notes, "Its text has problems to fix before it can be used.")
 	}
 
 	return p, notes
@@ -392,6 +421,7 @@ func untouchedStored(p Prompt) bool {
 // text, and settings, whatever their nicknames.
 func sameContent(q Prompt, p BundlePrompt) bool {
 	return q.Name == p.Name && q.AppliesTo == p.AppliesTo && q.Body == p.Body &&
+		purposeOf(q.Purpose) == purposeOf(p.Purpose) && q.ReplyAction == p.Action &&
 		agent.EqualModels(q.Models, p.Models) && q.Effort == p.Effort && sameBool(q.PlanMode, p.PlanMode) &&
 		sameBool(q.Worktree, p.Worktree) && agent.EqualArgs(q.ExtraArgs, p.ExtraArgs)
 }
@@ -399,9 +429,9 @@ func sameContent(q Prompt, p BundlePrompt) bool {
 // bundledAsPrompt returns a portable prompt as a Prompt, for comparing with a starter.
 func bundledAsPrompt(p BundlePrompt) Prompt {
 	return Prompt{
-		Name: p.Name, Nickname: p.Nickname, AppliesTo: p.AppliesTo, Body: p.Body, Models: agent.CloneModels(p.Models),
-		Effort: p.Effort, PlanMode: p.PlanMode, Worktree: p.Worktree, ExtraArgs: agent.CloneArgs(p.ExtraArgs),
-		StarterKey: p.StarterKey,
+		Name: p.Name, Nickname: p.Nickname, AppliesTo: p.AppliesTo, Body: p.Body, Purpose: purposeOf(p.Purpose),
+		ReplyAction: p.Action, Models: agent.CloneModels(p.Models), Effort: p.Effort, PlanMode: p.PlanMode,
+		Worktree: p.Worktree, ExtraArgs: agent.CloneArgs(p.ExtraArgs), StarterKey: p.StarterKey,
 	}
 }
 
@@ -498,7 +528,7 @@ func recordStarters(ctx context.Context, st *Store, keys []string) error {
 func promptColumns() []string {
 	return []string{
 		"id", "name", "nickname", "applies_to", "body", "model", "models", "effort", "plan_mode", "worktree",
-		"extra_args", "agent_args", "starter_key", "created_at", "updated_at",
+		"extra_args", "agent_args", "starter_key", "created_at", "updated_at", "purpose", "reply_action",
 	}
 }
 
@@ -536,6 +566,7 @@ func readSnapshot(ctx context.Context, path string) (Bundle, map[int64]string, e
 			Body: row.Text("body"), Models: models, Effort: row.Text("effort"),
 			PlanMode: row.Bool("plan_mode"), Worktree: row.Bool("worktree"), ExtraArgs: args,
 			StarterKey: row.Text("starter_key"), CreatedAt: row.Time("created_at"), UpdatedAt: row.Time("updated_at"),
+			Purpose: purposeOf(Purpose(row.Text("purpose"))), Action: ReplyAction(row.Text("reply_action")),
 		}
 
 		if id, ok := row.Int("id"); ok {
@@ -547,16 +578,41 @@ func readSnapshot(ctx context.Context, path string) (Bundle, map[int64]string, e
 
 	// The library's own records come back too where the backup has them; the prompts come
 	// back without them.
-	if values, prefsErr := prefs.New(snap.DB(), nil).GetMany(ctx, prefSeeded, prefDefaultPR, prefDefaultIssue); prefsErr == nil {
-		if added, decodeErr := store.DecodeJSON[[]string](values[prefSeeded]); decodeErr == nil && added != nil {
-			b.StartersAdded = added
-		}
-
-		b.Defaults.PR = nicknames[idText(values[prefDefaultPR])]
-		b.Defaults.Issue = nicknames[idText(values[prefDefaultIssue])]
-	}
+	b.Defaults, b.StartersAdded = snapshotRecords(ctx, snap.DB(), nicknames)
 
 	return b, nicknames, nil
+}
+
+// snapshotRecords reads a backup's default prompts and default replies, by the nicknames
+// of the prompts with those IDs, and the starters it had added. A backup without them, or
+// whose prefs can't be read, has none.
+func snapshotRecords(ctx context.Context, db *sql.DB, nicknames map[int64]string) (BundleDefaults, []string) {
+	keys := make([]string, 0, 3+len(ReplySlots()))
+	keys = append(keys, prefSeeded, prefDefaultPR, prefDefaultIssue)
+
+	for _, slot := range ReplySlots() {
+		keys = append(keys, replyPrefKey(slot))
+	}
+
+	values, err := prefs.New(db, nil).GetMany(ctx, keys...)
+	if err != nil {
+		return BundleDefaults{}, []string{}
+	}
+
+	added, decodeErr := store.DecodeJSON[[]string](values[prefSeeded])
+	if decodeErr != nil || added == nil {
+		added = []string{}
+	}
+
+	defaults := BundleDefaults{PR: nicknames[idText(values[prefDefaultPR])], Issue: nicknames[idText(values[prefDefaultIssue])]}
+
+	for _, slot := range ReplySlots() {
+		if nickname := nicknames[idText(values[replyPrefKey(slot)])]; nickname != "" {
+			defaults.setReply(slot, nickname)
+		}
+	}
+
+	return defaults, added
 }
 
 // snapshotSettings reads a backed-up prompt's models and extra arguments: the per-agent

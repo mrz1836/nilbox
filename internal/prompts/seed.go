@@ -10,7 +10,8 @@ import (
 )
 
 // Seed adds each starter prompt this build ships that was never added before, and makes
-// the review and work-on-issue starters the default prompts where no default is set yet.
+// the review and work-on-issue starters the default prompts, and each starter reply the
+// default reply for its slot, where no default is set yet.
 // A starter that was added once is never added again, so one the user deleted stays
 // deleted. A starter whose nickname is taken gets a free one. It adds all of them or,
 // when a write fails, none.
@@ -52,7 +53,8 @@ func seedMissing(ctx context.Context, st *Store, seeded []string) ([]string, err
 }
 
 // seedStarter adds one starter, and makes it the default for its kind when it is the
-// review or work-on-issue starter and no default is set.
+// review or work-on-issue starter and no default is set, or the default reply for its slot
+// when that slot has none.
 func seedStarter(ctx context.Context, st *Store, starter Starter, defaults DefaultPrompts) error {
 	nickname, err := st.freeNickname(ctx, starter.Nickname)
 	if err != nil {
@@ -75,6 +77,8 @@ func seedStarter(ctx context.Context, st *Store, starter Starter, defaults Defau
 		return st.setDefault(ctx, item.KindPR, id)
 	case starter.Key == StarterWorkOnIssue && defaults.Issue == 0:
 		return st.setDefault(ctx, item.KindIssue, id)
+	case starter.Slot != "" && defaults.Replies.For(starter.Slot) == 0:
+		return st.setReplyDefault(ctx, starter.Slot, id)
 	default:
 		return nil
 	}
