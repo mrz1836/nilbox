@@ -98,7 +98,8 @@ func TestLaunchedOpensTheWindowFromTheSettings(t *testing.T) {
 		s.Launched()
 		synctest.Wait()
 
-		assert.Equal(t, []opening{{theme: settings.ThemeDark, size: r.settings.size}}, r.window.openings())
+		assert.Equal(t, []opening{{theme: settings.ThemeDark, size: r.settings.size, textSize: settings.TextSizeLarger}},
+			r.window.openings())
 		assert.Equal(t, []string{"tray shown"}, r.lines("tray shown"))
 		assert.Len(t, r.tray.drawn(), 1, "a shown icon is drawn at once")
 		assert.Equal(t, []string{"banners asked"}, r.lines("banners"))
@@ -142,13 +143,16 @@ func TestLaunchedFallsBackWhenTheSettingsCannotBeRead(t *testing.T) {
 		s.Launched()
 		synctest.Wait()
 
-		assert.Equal(t, []opening{{theme: settings.DefaultTheme, size: settings.DefaultWindowSize()}}, r.window.openings())
+		assert.Equal(t, []opening{{
+			theme: settings.DefaultTheme, size: settings.DefaultWindowSize(), textSize: settings.DefaultTextSize,
+		}}, r.window.openings())
 		assert.Equal(t, []string{"tray shown"}, r.lines("tray shown"), "the icon shows by default")
 
 		notes := r.logs.String()
 		wantErr := `error="` + errFakeSettings.Error() + `"`
 		assert.Contains(t, notes, `level=WARN msg="could not read the theme; following the system" `+wantErr)
 		assert.Contains(t, notes, `level=WARN msg="could not read the window size; opening at the default" `+wantErr)
+		assert.Contains(t, notes, `level=WARN msg="could not read the text size; opening at the default" `+wantErr)
 		assert.Contains(t, notes, `level=WARN msg="could not read the menu bar setting; showing the icon" `+wantErr)
 
 		require.NoError(t, s.Stop())

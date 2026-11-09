@@ -135,6 +135,9 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.SetTheme": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetTheme(ctx, settings.ThemeDark)
 		},
+		"settings.Service.SetTextSize": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetTextSize(ctx, settings.TextSizeLarge)
+		},
 		"settings.Service.SetWindowSize": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetWindowSize(ctx, settings.DefaultWindowSize())
 		},

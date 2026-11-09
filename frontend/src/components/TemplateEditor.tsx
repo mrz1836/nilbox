@@ -2,6 +2,7 @@ import { useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEv
 
 import { caretPosition } from '../lib/caret'
 import { completionAt, highlight, matchVariables, offsetOf, type Completion, type TokenKind } from '../lib/template'
+import { remToPx } from '../lib/textSize'
 import type { Diagnostic, PromptVariable } from '../platform'
 
 // TemplateEditorHandle lets the page around the editor insert text and point at a spot.
@@ -48,9 +49,10 @@ const underlineClass = {
 
 // The text area and the colored copy behind it share every metric.
 const surfaceClass =
-  'absolute inset-0 m-0 overflow-y-scroll px-3.5 py-3 font-mono text-[13px] leading-6 break-words whitespace-pre-wrap'
+  'absolute inset-0 m-0 overflow-y-scroll px-3.5 py-3 font-mono text-[0.8125rem] leading-6 break-words whitespace-pre-wrap'
 
-const popupWidth = 288
+// popupWidth is the variables popup's width, in rem, so it follows the text size.
+const popupWidth = 18
 
 // insertText types text at the focused text area's selection through the browser's own
 // editing, which keeps its undo history, and reports whether that worked.
@@ -151,7 +153,7 @@ export function TemplateEditor({
 
     setPopup({
       top: pos.top + pos.height + 2,
-      left: Math.max(0, Math.min(pos.left, textarea.clientWidth - popupWidth)),
+      left: Math.max(0, Math.min(pos.left, textarea.clientWidth - remToPx(popupWidth, textarea.ownerDocument))),
     })
     setActive(0)
     setCompletion(next)
@@ -292,7 +294,7 @@ export function TemplateEditor({
           id={listId}
           role="listbox"
           aria-label="Variables"
-          style={{ top: popup.top, left: popup.left, width: popupWidth }}
+          style={{ top: popup.top, left: popup.left, width: `${String(popupWidth)}rem` }}
           className="absolute z-10 max-h-56 overflow-y-auto rounded-lg border border-border bg-surface p-1 text-sm shadow-xl shadow-black/20"
         >
           {matches.map((name, i) => {
@@ -315,7 +317,7 @@ export function TemplateEditor({
                 }}
                 className="flex cursor-pointer items-baseline gap-2 rounded-md px-2 py-1 aria-selected:bg-raised"
               >
-                <span className="font-mono text-[12px] text-info">.{name}</span>
+                <span className="font-mono text-[0.75rem] text-info">.{name}</span>
                 <span className="truncate text-xs text-muted">{v?.description}</span>
               </div>
             )

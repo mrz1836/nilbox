@@ -53,8 +53,9 @@ type Frontend interface {
 // Window is the app's one window and its native appearance.
 type Window interface {
 	// Open opens the window at size, shrunk to fit the screen, in the native appearance
-	// and on the background of theme.
-	Open(theme settings.Theme, size settings.WindowSize)
+	// and on the background of theme, with its page showing text at textSize from the
+	// first frame.
+	Open(theme settings.Theme, size settings.WindowSize, textSize settings.TextSize)
 
 	// Show brings the window forward: shown if it was closed into the menu bar, restored
 	// if it was minimized, and the app made active.
@@ -96,6 +97,7 @@ type Settings interface {
 	Theme(ctx context.Context) (settings.Theme, error)
 	MenuBar(ctx context.Context) (bool, error)
 	WindowSize(ctx context.Context) (settings.WindowSize, error)
+	TextSize(ctx context.Context) (settings.TextSize, error)
 }
 
 // Worker is background work that runs while the app is open, such as the inbox's
@@ -304,17 +306,17 @@ func (s *Shell) Emit(e event.Event) {
 	}
 }
 
-// Launched opens the window in the stored theme and at the stored size, shows the menu
-// bar icon when it is on, asks once to allow banners, and starts a startup measurement's
-// timeout. The desktop runtime calls it once the app has launched, when the system
-// appearance the System theme follows is known. A setting that cannot be read falls back
-// to its default, with a note on Stderr.
+// Launched opens the window in the stored theme, at the stored size and text size, shows
+// the menu bar icon when it is on, asks once to allow banners, and starts a startup
+// measurement's timeout. The desktop runtime calls it once the app has launched, when the
+// system appearance the System theme follows is known. A setting that cannot be read falls
+// back to its default, with a note on Stderr.
 func (s *Shell) Launched() {
 	if s.stopping.Load() {
 		return
 	}
 
-	s.window.Open(s.storedTheme(), s.storedWindowSize())
+	s.window.Open(s.storedTheme(), s.storedWindowSize(), s.storedTextSize())
 
 	if s.storedMenuBar() {
 		s.setMenuBar(true)
@@ -444,6 +446,18 @@ func (s *Shell) storedWindowSize() settings.WindowSize {
 		s.logger.Warn("could not read the window size; opening at the default", "error", err)
 
 		return settings.DefaultWindowSize()
+	}
+
+	return size
+}
+
+// storedTextSize is the stored text size, or the default when it cannot be read.
+func (s *Shell) storedTextSize() settings.TextSize {
+	size, err := s.settings.TextSize(s.lifetime)
+	if err != nil {
+		s.logger.Warn("could not read the text size; opening at the default", "error", err)
+
+		return settings.DefaultTextSize
 	}
 
 	return size

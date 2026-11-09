@@ -33,7 +33,7 @@ describe('LogoMark', () => {
 
     expect(svg).toHaveAttribute('aria-hidden', 'true')
     expect(svg).toHaveAttribute('viewBox', `0 0 ${String(brand.mark.width)} ${String(brand.mark.height)}`)
-    expect(svg).toHaveClass('h-[18px]', 'w-auto')
+    expect(svg).toHaveClass('h-[1.125rem]', 'w-auto')
     expect(container.querySelector('path')).toHaveAttribute('d', brand.mark.path)
   })
 

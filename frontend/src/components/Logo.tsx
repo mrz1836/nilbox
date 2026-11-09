@@ -24,7 +24,7 @@ export function Logo({ className = 'text-base' }: LogoProps) {
 // LogoMark is the product's mark, the empty-set sign drawn as a box, in the theme's
 // accent warming toward the mark's highlight at the top, as the app icon's glyph does. It
 // is decorative: the wordmark beside it carries the name.
-export function LogoMark({ className = 'h-[18px] w-auto' }: LogoProps) {
+export function LogoMark({ className = 'h-[1.125rem] w-auto' }: LogoProps) {
   const fill = `${useId()}mark-fill`
 
   return (

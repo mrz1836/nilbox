@@ -40,7 +40,7 @@ function Counter({ value, limit }: { value: string; limit: number }) {
   const n = Array.from(value).length
 
   return (
-    <span aria-hidden="true" className={`text-[11px] tabular-nums ${n > limit ? 'text-danger' : 'text-muted'}`}>
+    <span aria-hidden="true" className={`text-[0.6875rem] tabular-nums ${n > limit ? 'text-danger' : 'text-muted'}`}>
       {n}/{limit}
     </span>
   )
@@ -159,7 +159,7 @@ export function PromptEditor({
             <span className="text-xs font-medium text-muted">Used as a default</span>
             <p
               title={usagePlaces(saved.usage).join('\n') || undefined}
-              className="flex items-center gap-1.5 py-1 text-[13px] text-text"
+              className="flex items-center gap-1.5 py-1 text-[0.8125rem] text-text"
             >
               {saved.usage.defaults.length > 0 && <StarIcon className="size-3.5 text-accent" />}
               {usageSummary(saved.usage)}
@@ -171,7 +171,7 @@ export function PromptEditor({
       <div className="flex min-h-[18rem] flex-1 flex-col gap-2">
         <div className="flex items-baseline justify-between">
           <span className="text-xs font-medium text-muted">Prompt</span>
-          <span className="text-[11px] text-muted">
+          <span className="text-[0.6875rem] text-muted">
             Type <code className="font-mono">{'{{'}</code> for variables
           </span>
         </div>

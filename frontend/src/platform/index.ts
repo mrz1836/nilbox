@@ -155,6 +155,7 @@ export type InboxOrder = NonNullLists<settings.InboxOrder>
 export type WindowSize = NonNullLists<settings.WindowSize>
 export type ListKey = settings.ListKey
 export type Theme = settings.Theme
+export type TextSize = settings.TextSize
 
 export type SnoozeRules = NonNullLists<snooze.Rules>
 export type WakeReasons = NonNullLists<snooze.Reasons>
@@ -260,6 +261,7 @@ export const {
   MatchSensitivePath: matchSensitivePath,
   Theme: getTheme,
   SetTheme: setTheme,
+  SetTextSize: setTextSize,
   CollapsedSections: getCollapsedSections,
   SetSectionCollapsed: setSectionCollapsed,
   SetProjectsTipDismissed: setProjectsTipDismissed,

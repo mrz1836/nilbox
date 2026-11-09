@@ -227,6 +227,14 @@ export function SetTerminal(id: terminal$0.ID): $CancellablePromise<$models.Sett
 }
 
 /**
+ * SetTextSize stores the size of the app's text: TextSizeDefault, TextSizeLarge, or
+ * TextSizeLarger, and returns the settings with it. The page shows the new size itself.
+ */
+export function SetTextSize(size: $models.TextSize): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(2598014963, size);
+}
+
+/**
  * SetTheme stores the theme the app shows: ThemeSystem, ThemeLight, or ThemeDark, and
  * returns the settings with it. Once it is stored, an event.ThemeChanged is emitted, so
  * the desktop shell brings the window's native appearance along with it.
@@ -268,6 +276,15 @@ export function SetWorktreeAutoCleanup(on: boolean): $CancellablePromise<$models
  */
 export function SetWorktreeDefault(on: boolean): $CancellablePromise<$models.Settings> {
     return $Call.ByID(2809427945, on);
+}
+
+/**
+ * TextSize returns the stored text size, or DefaultTextSize when none is stored or the
+ * stored value is no longer a choice. The desktop shell reads it to open the window at
+ * it.
+ */
+export function TextSize(): $CancellablePromise<$models.TextSize> {
+    return $Call.ByID(1658372517);
 }
 
 /**

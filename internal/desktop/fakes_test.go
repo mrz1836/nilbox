@@ -88,8 +88,9 @@ func (p *fakePage) events() []event.WindowEvent {
 
 // opening is one call to Window.Open.
 type opening struct {
-	theme settings.Theme
-	size  settings.WindowSize
+	theme    settings.Theme
+	size     settings.WindowSize
+	textSize settings.TextSize
 }
 
 // fakeWindow records what the window was asked to do.
@@ -100,11 +101,11 @@ type fakeWindow struct {
 	themes []settings.Theme
 }
 
-func (w *fakeWindow) Open(theme settings.Theme, size settings.WindowSize) {
+func (w *fakeWindow) Open(theme settings.Theme, size settings.WindowSize, textSize settings.TextSize) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	w.opened = append(w.opened, opening{theme: theme, size: size})
+	w.opened = append(w.opened, opening{theme: theme, size: size, textSize: textSize})
 }
 
 func (w *fakeWindow) Show() {
@@ -265,10 +266,11 @@ func (f *fakeInbox) readCount() int {
 
 // fakeSettings serves fixed settings, or fails every read with err.
 type fakeSettings struct {
-	theme   settings.Theme
-	menuBar bool
-	size    settings.WindowSize
-	err     error
+	theme    settings.Theme
+	menuBar  bool
+	size     settings.WindowSize
+	textSize settings.TextSize
+	err      error
 }
 
 func (f fakeSettings) Theme(context.Context) (settings.Theme, error) {
@@ -293,6 +295,14 @@ func (f fakeSettings) WindowSize(context.Context) (settings.WindowSize, error) {
 	}
 
 	return f.size, nil
+}
+
+func (f fakeSettings) TextSize(context.Context) (settings.TextSize, error) {
+	if f.err != nil {
+		return settings.DefaultTextSize, f.err
+	}
+
+	return f.textSize, nil
 }
 
 // fakeWorker runs until its context ends, then takes linger more and, when release is
@@ -361,16 +371,19 @@ func newRig() *rig {
 	log := &journal{}
 
 	return &rig{
-		log:      log,
-		page:     &fakePage{},
-		window:   &fakeWindow{},
-		tray:     &fakeTray{log: log},
-		app:      &fakeApp{},
-		inbox:    &fakeInbox{log: log},
-		settings: fakeSettings{theme: settings.ThemeDark, menuBar: true, size: settings.WindowSize{Width: 1440, Height: 900}},
-		data:     &fakeData{log: log},
-		stdout:   &buffer{},
-		logs:     &testutil.Logs{},
+		log:    log,
+		page:   &fakePage{},
+		window: &fakeWindow{},
+		tray:   &fakeTray{log: log},
+		app:    &fakeApp{},
+		inbox:  &fakeInbox{log: log},
+		settings: fakeSettings{
+			theme: settings.ThemeDark, menuBar: true, size: settings.WindowSize{Width: 1680, Height: 1050},
+			textSize: settings.TextSizeLarger,
+		},
+		data:   &fakeData{log: log},
+		stdout: &buffer{},
+		logs:   &testutil.Logs{},
 	}
 }
 

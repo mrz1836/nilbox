@@ -16,8 +16,8 @@ const KeyWindowSize = "window.size"
 // Window sizes, in points. A fresh database opens the window at the default size; the
 // minimum is also the smallest the window can be resized to.
 const (
-	DefaultWindowWidth  = 1280
-	DefaultWindowHeight = 800
+	DefaultWindowWidth  = 1440
+	DefaultWindowHeight = 900
 	MinWindowWidth      = 800
 	MinWindowHeight     = 520
 	MaxWindowWidth      = 7680

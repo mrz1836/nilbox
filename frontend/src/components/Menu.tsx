@@ -163,7 +163,7 @@ function Submenu({ id, label, items, focusFirst, onChoose, onBack }: SubmenuProp
   }
 
   const x = flip.left ? 'right-full mr-1' : 'left-full ml-1'
-  const y = flip.up ? '-bottom-[7px]' : '-top-[7px]'
+  const y = flip.up ? '-bottom-[calc(var(--spacing)*1.5+1px)]' : '-top-[calc(var(--spacing)*1.5+1px)]'
 
   return (
     <div
@@ -215,7 +215,10 @@ function MenuItems({ items, onChoose }: MenuItemsProps) {
       <Fragment key={item.label}>
         {item.divided === true && <hr className="mx-1 my-1.5 border-border" />}
         {item.section !== undefined && (
-          <p aria-hidden="true" className="px-2.5 pt-1 pb-1 text-[11px] font-medium tracking-wide text-muted uppercase">
+          <p
+            aria-hidden="true"
+            className="px-2.5 pt-1 pb-1 text-[0.6875rem] font-medium tracking-wide text-muted uppercase"
+          >
             {item.section}
           </p>
         )}

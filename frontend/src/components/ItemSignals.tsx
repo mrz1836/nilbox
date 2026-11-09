@@ -107,7 +107,7 @@ function Labels({ labels }: { labels: Label[] }) {
       {labels.slice(0, shownLabels).map((label) => (
         <span
           key={label.name}
-          className="inline-flex max-w-40 shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-[11px] text-text"
+          className="inline-flex max-w-40 shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-[0.6875rem] text-text"
         >
           <span
             aria-hidden="true"
@@ -118,7 +118,7 @@ function Labels({ labels }: { labels: Label[] }) {
         </span>
       ))}
       {rest.length > 0 && (
-        <span title={rest.map((label) => label.name).join(', ')} className="shrink-0 text-[11px]">
+        <span title={rest.map((label) => label.name).join(', ')} className="shrink-0 text-[0.6875rem]">
           +{rest.length}
           <span className="sr-only"> more: {rest.map((label) => label.name).join(', ')}</span>
         </span>
@@ -132,7 +132,7 @@ function Labels({ labels }: { labels: Label[] }) {
 function FieldPill({ field }: { field: ProjectField }) {
   return (
     <span
-      className={`inline-flex max-w-24 shrink-0 items-center rounded-full border px-1.5 text-[11px] leading-4 font-medium text-text ${field.color === '' ? 'border-border' : ''}`}
+      className={`inline-flex max-w-24 shrink-0 items-center rounded-full border px-1.5 text-[0.6875rem] leading-4 font-medium text-text ${field.color === '' ? 'border-border' : ''}`}
       style={field.color === '' ? undefined : { borderColor: field.color + fieldEdge }}
     >
       <span className="truncate">{field.value}</span>
@@ -162,7 +162,7 @@ function ProjectLink({ project }: { project: Project }) {
       <span className="max-w-40 min-w-0 truncate group-hover/project:underline">{project.title}</span>
       {project.status !== '' && (
         <span
-          className={`inline-flex max-w-36 shrink-0 items-center gap-1 rounded-full px-1.5 py-px text-[11px] font-medium text-text ${project.statusColor === '' ? 'bg-raised' : ''}`}
+          className={`inline-flex max-w-36 shrink-0 items-center gap-1 rounded-full px-1.5 py-px text-[0.6875rem] font-medium text-text ${project.statusColor === '' ? 'bg-raised' : ''}`}
           style={project.statusColor === '' ? undefined : { backgroundColor: project.statusColor + statusTint }}
         >
           <span
@@ -222,7 +222,7 @@ function Projects({ projects }: { projects: Project[] }) {
       <span className="sr-only">Projects:</span>
       <ProjectLink project={first} />
       {rest.length > 0 && (
-        <span title={others.join('\n')} className="shrink-0 text-[11px]">
+        <span title={others.join('\n')} className="shrink-0 text-[0.6875rem]">
           +{rest.length}
           <span className="sr-only"> more: {others.join(', ')}</span>
         </span>
@@ -267,7 +267,7 @@ export function ItemSignals({ item }: ItemSignalsProps) {
       {isPR && (
         <Slot long={sizeText(additions, deletions, changedFiles, commits)}>
           <span
-            className={`${columns.size} rounded border border-border px-1 text-center text-[10px] leading-4 font-semibold text-text`}
+            className={`${columns.size} rounded border border-border px-1 text-center text-[0.625rem] leading-4 font-semibold text-text`}
           >
             {sizeOf(additions + deletions)}
           </span>

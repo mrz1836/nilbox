@@ -32,7 +32,7 @@ export interface LaunchMenuProps {
   onManagePrompts: () => void
 }
 
-const sectionTitle = 'px-2 pb-1 text-[11px] font-semibold tracking-wide text-muted uppercase'
+const sectionTitle = 'px-2 pb-1 text-[0.6875rem] font-semibold tracking-wide text-muted uppercase'
 const overrideHelp = "Lifts the outside-contributor restriction; keeps the profile's plan and permission settings."
 
 // defaultLabel names a setting's default: its value and where it comes from.
@@ -102,7 +102,7 @@ export function LaunchMenu({
                       ? sourceLabel(resolved.agentInheritedSource)
                       : a.path
                 }
-                className="flex-1 cursor-pointer rounded-md border border-border px-2.5 py-1 text-center text-[13px] text-muted transition-colors select-none hover:text-text has-checked:border-accent has-checked:bg-accent/10 has-checked:text-text has-focus-visible:outline-2 has-focus-visible:outline-accent has-disabled:cursor-not-allowed has-disabled:opacity-50"
+                className="flex-1 cursor-pointer rounded-md border border-border px-2.5 py-1 text-center text-[0.8125rem] text-muted transition-colors select-none hover:text-text has-checked:border-accent has-checked:bg-accent/10 has-checked:text-text has-focus-visible:outline-2 has-focus-visible:outline-accent has-disabled:cursor-not-allowed has-disabled:opacity-50"
               >
                 <input
                   type="radio"
@@ -154,7 +154,7 @@ export function LaunchMenu({
                 className="radio row-span-2 translate-y-0.5"
               />
               <span className="truncate font-medium">{p.nickname}</span>
-              <span className="text-[11px] text-muted">
+              <span className="text-[0.6875rem] text-muted">
                 {p.id === resolved.prompt.inheritedId ? sourceLabel(resolved.prompt.inheritedSource) : ''}
               </span>
               <span className="col-span-2 truncate text-xs text-muted">{p.name}</span>
@@ -181,7 +181,7 @@ export function LaunchMenu({
                     ? sourceLabel(resolved.profile.inheritedSource)
                     : p.folder
               }
-              className="cursor-pointer rounded-full border border-border px-2.5 py-0.5 text-[13px] text-muted transition-colors select-none hover:text-text has-checked:border-accent has-checked:bg-accent/10 has-checked:text-text has-focus-visible:outline-2 has-focus-visible:outline-accent"
+              className="cursor-pointer rounded-full border border-border px-2.5 py-0.5 text-[0.8125rem] text-muted transition-colors select-none hover:text-text has-checked:border-accent has-checked:bg-accent/10 has-checked:text-text has-focus-visible:outline-2 has-focus-visible:outline-accent"
             >
               <input
                 type="radio"
@@ -194,7 +194,7 @@ export function LaunchMenu({
                 className="sr-only"
               />
               {p.name}
-              {!p.signedIn && <span className="ml-1 text-[11px] text-warning">· not signed in</span>}
+              {!p.signedIn && <span className="ml-1 text-[0.6875rem] text-warning">· not signed in</span>}
             </label>
           ))}
         </div>
@@ -213,7 +213,7 @@ export function LaunchMenu({
 
               set({ model: value === '' || value === resolved.model.inherited ? null : value })
             }}
-            className="w-full truncate rounded-md border border-border bg-surface px-2 py-1 text-[13px]"
+            className="w-full truncate rounded-md border border-border bg-surface px-2 py-1 text-[0.8125rem]"
           >
             <option value="">{defaultLabel(resolved.model, (v) => modelLabel(v, agent.models))}</option>
             {choices.model !== null && !agent.models.some((c) => c.value === choices.model) && (
@@ -236,7 +236,7 @@ export function LaunchMenu({
 
               set({ effort: value === '' || value === resolved.effort.inherited ? null : value })
             }}
-            className="w-full truncate rounded-md border border-border bg-surface px-2 py-1 text-[13px]"
+            className="w-full truncate rounded-md border border-border bg-surface px-2 py-1 text-[0.8125rem]"
           >
             <option value="">{defaultLabel(resolved.effort, (v) => effortLabel(v, agent.effortLevels))}</option>
             {agent.effortLevels.map((c) => (
@@ -256,7 +256,7 @@ export function LaunchMenu({
             className="checkbox"
           />
           Start in a worktree
-          <span className="ml-auto text-[11px] text-muted">
+          <span className="ml-auto text-[0.6875rem] text-muted">
             {choices.worktree === null ? sourceLabel(resolved.worktree.inheritedSource) : 'this launch'}
           </span>
         </label>
@@ -271,7 +271,7 @@ export function LaunchMenu({
             className="checkbox"
           />
           <span className={forcedPlan ? 'text-muted' : ''}>{planToggleLabel(agent)}</span>
-          <span className="ml-auto text-[11px] text-muted">
+          <span className="ml-auto text-[0.6875rem] text-muted">
             {forcedPlan
               ? 'outside contributor'
               : choices.planMode === null
@@ -313,7 +313,7 @@ export function LaunchMenu({
 
       <div className="flex items-center gap-2 border-t border-border px-3 py-2.5">
         <div className="mr-auto flex min-w-0 flex-col">
-          <span className="text-[11px] text-muted">Save these choices as the default for</span>
+          <span className="text-[0.6875rem] text-muted">Save these choices as the default for</span>
           <span className="flex gap-1">
             <button
               type="button"
@@ -341,7 +341,7 @@ export function LaunchMenu({
           {status !== null && (
             <span
               role={status.tone === 'error' ? 'alert' : 'status'}
-              className={`text-[11px] leading-snug ${status.tone === 'error' ? 'text-danger' : status.tone === 'warning' ? 'text-warning' : 'text-success'}`}
+              className={`text-[0.6875rem] leading-snug ${status.tone === 'error' ? 'text-danger' : status.tone === 'warning' ? 'text-warning' : 'text-success'}`}
             >
               {status.text}
             </span>

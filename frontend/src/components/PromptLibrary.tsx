@@ -106,7 +106,7 @@ export function PromptLibrary({ prompts, selection, newNickname, dirty, onAsk, a
 
           return (
             <section key={g.appliesTo} aria-label={g.title} className="mt-2 first:mt-0">
-              <h3 className="px-2.5 pt-2 pb-1 text-[11px] font-semibold tracking-wide text-muted uppercase">
+              <h3 className="px-2.5 pt-2 pb-1 text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">
                 {g.title}
               </h3>
               <ul>
@@ -139,7 +139,7 @@ export function PromptLibrary({ prompts, selection, newNickname, dirty, onAsk, a
                         </span>
                         <span className="truncate text-xs text-muted">{p.name}</span>
                         {places > 0 && (
-                          <span className="text-[11px] text-muted">
+                          <span className="text-[0.6875rem] text-muted">
                             Default in {places} {places === 1 ? 'place' : 'places'}
                           </span>
                         )}

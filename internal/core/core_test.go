@@ -332,11 +332,12 @@ func TestTheShellReadsItsSettingsOffTheBoundService(t *testing.T) {
 	}
 
 	ctx := t.Context()
-	size := settings.WindowSize{Width: 1440, Height: 900}
+	size := settings.WindowSize{Width: 1680, Height: 1050}
 
 	require.NoError(t, testutil.ErrOf(c.Settings.SetTheme(ctx, settings.ThemeDark)))
 	require.NoError(t, testutil.ErrOf(c.Settings.SetMenuBar(ctx, false)))
 	require.NoError(t, testutil.ErrOf(c.Settings.SetWindowSize(ctx, size)))
+	require.NoError(t, testutil.ErrOf(c.Settings.SetTextSize(ctx, settings.TextSizeLarge)))
 
 	theme, err := c.ShellSettings.Theme(ctx)
 	require.NoError(t, err)
@@ -349,6 +350,10 @@ func TestTheShellReadsItsSettingsOffTheBoundService(t *testing.T) {
 	got, err := c.ShellSettings.WindowSize(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, size, got)
+
+	textSize, err := c.ShellSettings.TextSize(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, settings.TextSizeLarge, textSize)
 }
 
 func TestThemeWithoutAnEventSink(t *testing.T) {

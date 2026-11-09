@@ -153,6 +153,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     matchSensitivePath: () => Promise.resolve({ sensitive: false, category: '', label: '', level: '', pattern: '' }),
     getTheme: () => Promise.resolve('system'),
     setTheme: (theme) => stored({ theme }),
+    setTextSize: (textSize) => stored({ textSize }),
     getCollapsedSections: () => Promise.resolve([]),
     setSectionCollapsed: (section, collapsed) => stored({ collapsedSections: collapsed ? [section] : [] }),
     setProjectsTipDismissed: (projectsTipDismissed) => stored({ projectsTipDismissed }),

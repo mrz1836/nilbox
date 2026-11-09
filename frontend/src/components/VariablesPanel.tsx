@@ -91,7 +91,9 @@ export function VariablesPanel({
         {groups.length === 0 && <p className="px-2 py-3 text-sm text-muted">No variable matches “{query}”.</p>}
         {groups.map(({ group, vars }) => (
           <section key={group} aria-label={group} className="mt-2 first:mt-0">
-            <h3 className="px-2 pt-2 pb-1 text-[11px] font-semibold tracking-wide text-muted uppercase">{group}</h3>
+            <h3 className="px-2 pt-2 pb-1 text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">
+              {group}
+            </h3>
             <ul>
               {vars.map((v) => {
                 const value = values?.[v.name]
@@ -108,17 +110,17 @@ export function VariablesPanel({
                       className={`group flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-raised ${dimmed ? 'opacity-60' : ''}`}
                     >
                       <span className="flex w-full items-center gap-2">
-                        <code className="rounded-sm bg-info/10 px-1 font-mono text-[12px] text-info">{`{{.${v.name}}}`}</code>
-                        <span className="text-[11px] text-muted">{v.type}</span>
+                        <code className="rounded-sm bg-info/10 px-1 font-mono text-[0.75rem] text-info">{`{{.${v.name}}}`}</code>
+                        <span className="text-[0.6875rem] text-muted">{v.type}</span>
                         {v.prOnly && (
-                          <span className="ml-auto rounded-full border border-border px-1.5 text-[10px] leading-4 text-muted">
+                          <span className="ml-auto rounded-full border border-border px-1.5 text-[0.625rem] leading-4 text-muted">
                             PR only
                           </span>
                         )}
                       </span>
                       <span className="text-xs text-muted">{v.description}</span>
                       {value !== undefined && (
-                        <span className="truncate font-mono text-[11px] text-text/80" title={value}>
+                        <span className="truncate font-mono text-[0.6875rem] text-text/80" title={value}>
                           {value === '' ? <span className="text-muted italic">empty</span> : value}
                         </span>
                       )}
@@ -131,7 +133,7 @@ export function VariablesPanel({
         ))}
         {query.trim() === '' && (
           <section aria-label="Syntax" className="mt-4">
-            <h3 className="px-2 pt-2 pb-1 text-[11px] font-semibold tracking-wide text-muted uppercase">Syntax</h3>
+            <h3 className="px-2 pt-2 pb-1 text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">Syntax</h3>
             <ul>
               {syntax.map((s) => (
                 <li key={s.code}>
@@ -143,7 +145,7 @@ export function VariablesPanel({
                     title="Insert this snippet"
                     className="flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-raised"
                   >
-                    <code className="font-mono text-[12px] break-all text-text">{s.code}</code>
+                    <code className="font-mono text-[0.75rem] break-all text-text">{s.code}</code>
                     <span className="text-xs text-muted">{s.meaning}</span>
                   </button>
                 </li>

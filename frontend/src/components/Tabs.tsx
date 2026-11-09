@@ -104,7 +104,7 @@ export function Tabs<T extends string>({
             <span className={tab.strong === true ? 'font-semibold' : 'font-medium'}>{tab.label}</span>
             {count !== '' && (
               <span
-                className={`rounded-full px-1.5 text-[11px] leading-[18px] font-medium tabular-nums ${selected ? 'bg-accent/15 text-text' : 'bg-raised text-muted'}`}
+                className={`rounded-full px-1.5 text-[0.6875rem] leading-[1.125rem] font-medium tabular-nums ${selected ? 'bg-accent/15 text-text' : 'bg-raised text-muted'}`}
               >
                 {count}
               </span>

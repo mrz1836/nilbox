@@ -16,7 +16,7 @@ func TestWindowSizePersists(t *testing.T) {
 	svc, db, _ := newTestService(t)
 
 	for _, size := range []WindowSize{
-		{Width: 1440, Height: 900},
+		{Width: 1680, Height: 1050},
 		{Width: MinWindowWidth, Height: MinWindowHeight},
 		{Width: MaxWindowWidth, Height: MaxWindowHeight},
 	} {
@@ -123,5 +123,5 @@ func TestDefaultWindowSizeIsInBounds(t *testing.T) {
 	t.Parallel()
 
 	assert.True(t, DefaultWindowSize().valid())
-	assert.Equal(t, "1280x800", DefaultWindowSize().encode())
+	assert.Equal(t, "1440x900", DefaultWindowSize().encode())
 }

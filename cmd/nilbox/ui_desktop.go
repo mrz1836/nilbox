@@ -38,8 +38,8 @@ func (u *desktopUI) Emit(e event.WindowEvent) {
 }
 
 // Open opens the window in theme and at size, shrunk where needed to fit the primary
-// screen's work area.
-func (u *desktopUI) Open(theme settings.Theme, size settings.WindowSize) {
+// screen's work area, with its page showing text at textSize.
+func (u *desktopUI) Open(theme settings.Theme, size settings.WindowSize, textSize settings.TextSize) {
 	app := u.app.Load()
 	if app == nil {
 		return
@@ -54,7 +54,7 @@ func (u *desktopUI) Open(theme settings.Theme, size settings.WindowSize) {
 	// Pinning the appearance before the window exists is what keeps its first frame from
 	// flashing the other palette: the page's prefers-color-scheme already matches.
 	applyAppearance(theme)
-	u.window = app.Window.NewWithOptions(windowOptions(settings.IsDark(theme, app.Env.IsDarkMode()), size))
+	u.window = app.Window.NewWithOptions(windowOptions(settings.IsDark(theme, app.Env.IsDarkMode()), size, textSize))
 	window := u.window
 	u.appearance.Unlock()
 
@@ -150,15 +150,16 @@ func (u *desktopUI) closing(e *application.WindowEvent) {
 
 // baseWindowOptions are the window settings shared by every OS, for a window of the given
 // size in points, on the native background of the dark or light palette, so the frame
-// never flashes a different color before the page paints.
-func baseWindowOptions(dark bool, size settings.WindowSize) application.WebviewWindowOptions {
+// never flashes a different color before the page paints. The page's URL carries the text
+// size, so its first frame already shows text at that size.
+func baseWindowOptions(dark bool, size settings.WindowSize, textSize settings.TextSize) application.WebviewWindowOptions {
 	return application.WebviewWindowOptions{
 		Title:            brand.Name,
 		Width:            size.Width,
 		Height:           size.Height,
 		MinWidth:         settings.MinWindowWidth,
 		MinHeight:        settings.MinWindowHeight,
-		URL:              "/",
+		URL:              desktop.PageURL(textSize),
 		BackgroundColour: backgroundColour(dark),
 	}
 }

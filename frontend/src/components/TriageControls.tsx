@@ -57,7 +57,7 @@ function DefaultTag() {
   return (
     <>
       <span className="sr-only">, </span>
-      <span className="rounded border border-border px-1 text-[10px] leading-4 font-medium tracking-wide uppercase">
+      <span className="rounded border border-border px-1 text-[0.625rem] leading-4 font-medium tracking-wide uppercase">
         Default
       </span>
     </>

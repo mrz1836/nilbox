@@ -87,14 +87,15 @@ func TestPrefDefaults(t *testing.T) {
 		DefaultTrustedBots:  []string{"dependabot", "github-actions", "renovate"},
 		SnoozeDays:          3,
 		SnoozeWake:          snooze.Rules{Commits: 1, Reviews: "decisions", Comments: 0},
-		WindowSize:          WindowSize{Width: 1280, Height: 800},
-		DefaultWindowSize:   WindowSize{Width: 1280, Height: 800},
+		WindowSize:          WindowSize{Width: 1440, Height: 900},
+		DefaultWindowSize:   WindowSize{Width: 1440, Height: 900},
 		SensitiveFiles:      sensitive.Config{Scope: "collaborators", Off: []string{}, Patterns: []string{}},
 		SensitiveCategories: sensitive.Categories(),
 		Branches:            branchrules.Defaults(),
 		MenuBar:             DefaultMenuBar,
 		BannersOff:          []notifyprefs.Kind{},
 		Theme:               ThemeSystem,
+		TextSize:            TextSizeDefault,
 		CollapsedSections:   []ListKey{},
 		InboxOrder:          InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}},
 
@@ -215,6 +216,7 @@ func TestSettersPersist(t *testing.T) {
 	require.NoError(t, testutil.ErrOf(svc.SetMenuBar(t.Context(), false)))
 	require.NoError(t, testutil.ErrOf(svc.SetNotificationBanner(t.Context(), notifyprefs.KindWoke, false)))
 	require.NoError(t, testutil.ErrOf(svc.SetBranchRules(t.Context(), branchrules.Rules{Own: true, Protected: []string{"develop"}})))
+	require.NoError(t, testutil.ErrOf(svc.SetTextSize(t.Context(), TextSizeLarger)))
 
 	got, err := svc.Get(t.Context())
 	require.NoError(t, err)
@@ -236,6 +238,7 @@ func TestSettersPersist(t *testing.T) {
 		MenuBar:             false,
 		BannersOff:          []notifyprefs.Kind{notifyprefs.KindWoke},
 		Theme:               DefaultTheme,
+		TextSize:            TextSizeLarger,
 		CollapsedSections:   []ListKey{},
 		InboxOrder:          InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}},
 		Branches:            branchrules.Rules{Own: true, Protected: []string{"develop"}},
@@ -598,6 +601,10 @@ func TestSettersReturnTheStoredSettings(t *testing.T) {
 		{
 			"window size", func() (Settings, error) { return svc.SetWindowSize(ctx, size) },
 			func(s Settings) any { return s.WindowSize }, size,
+		},
+		{
+			"text size", func() (Settings, error) { return svc.SetTextSize(ctx, TextSizeLarge) },
+			func(s Settings) any { return s.TextSize }, TextSizeLarge,
 		},
 	} {
 		got, err := tc.set()

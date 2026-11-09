@@ -61,7 +61,7 @@ export interface ItemRowProps {
 }
 
 // tagClass is a status tag: weight and color mark it, with no pill around it.
-const tagClass = 'shrink-0 text-[11px] leading-4 font-medium'
+const tagClass = 'shrink-0 text-[0.6875rem] leading-4 font-medium'
 
 // KindIcon tells a pull request from an issue: green while open, muted for a draft.
 function KindIcon({ item }: { item: InboxItem }) {
@@ -158,7 +158,7 @@ function BackTag({ item }: { item: InboxItem }) {
           ? `Snoozed until ${formatFull(item.snoozedUntil)}`
           : `Back early, ${formatFull(item.snoozedUntil)}: ${woke} since you snoozed it`
       }
-      className="inline-flex min-w-0 items-center gap-1 text-[11px] leading-4 font-medium text-info"
+      className="inline-flex min-w-0 items-center gap-1 text-[0.6875rem] leading-4 font-medium text-info"
     >
       <ClockIcon className="size-3 shrink-0" />
       <span className="truncate">{woke === '' ? 'Back from snooze' : `Back early: ${woke}`}</span>
