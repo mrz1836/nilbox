@@ -13,6 +13,7 @@ is a placeholder. No test calls GitHub: each one serves a file from a local `htt
 | `inbox_response.json` | The inbox query, `inboxQuery` in `inbox_query.go`: the viewer, the review-requested, authored, and assigned searches, and the query's rate-limit cost | `fetchFixtureInbox` and the `TestFetchInbox*` tests in `client_test.go` that serve it, and `BenchmarkDecodeInbox` in `bench_test.go` |
 | `details_response.json` | The details query, `detailsQuery` in `details.go`, for three pull requests (passing checks, failing checks, no checks), an issue, and an ID GitHub could not resolve | `TestFetchDetailsReadsEachItem` in `details_test.go` |
 | `item_response.json` | The item query, `itemQuery` in `item.go`, for one merged pull request opened from a fork | `TestFetchItemReadsTheItemAndItsDetails` in `item_test.go` |
+| `pull_review_response.json` | The pull review query, `pullReviewQuery` in `pullreview.go`, for one open Dependabot pull request; a pending and a failing check, a commit status, reviews, a pending review, and auto-merge were added by hand | `TestFetchPullReviewReadsTheSheet` in `pullreview_test.go` |
 | `rate_limit_response.json` | The REST endpoint `GET /rate_limit` | `TestFetchRateLimits` in `ratelimit_test.go` |
 
 The files also hold cases the tests rely on that a fresh recording may not reproduce, such as a
@@ -25,7 +26,8 @@ that is not hex. A refreshed file must keep every case a test asserts on.
 
 1. Copy the query into a scratch file outside the repository, with the fragments its Go
    constant appends: `inboxQuery` ends with `itemFieldsFragment` and `repoFieldsFragment`,
-   `detailsQuery` with `detailFieldsFragment`, and `itemQuery` with all three.
+   `detailsQuery` with `detailFieldsFragment`, `itemQuery` with all three, and `pullReviewQuery`
+   with those three and `reviewFieldsFragment`.
 2. Run it with `gh`, which sends the token itself, and format the result the way the files
    are formatted:
 
@@ -36,6 +38,7 @@ that is not hex. A refreshed file must keep every case a test asserts on.
    # The details query takes a list of node IDs, and the item query takes one.
    gh api graphql -F query=@/tmp/details.graphql -f 'ids[]=<node-id>' -f 'ids[]=<node-id>' | jq --indent 4 .
    gh api graphql -F query=@/tmp/item.graphql -f id=<node-id> | jq --indent 4 .
+   gh api graphql -F query=@/tmp/pull_review.graphql -f id=<node-id> | jq --indent 4 .
 
    # The rate limits come from the REST API.
    gh api rate_limit | jq --indent 4 .

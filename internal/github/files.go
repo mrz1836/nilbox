@@ -79,6 +79,43 @@ type ChangedFile struct {
 	Status string
 }
 
+// PullDiff is a pull request's changed files, with their diffs, at one head commit.
+type PullDiff struct {
+	// Head is the head commit the files belong to.
+	Head string
+
+	// Total is how many files the pull request changes, which can exceed len(Files).
+	Total int
+
+	// Files are the files GitHub listed: every one, or the first 3,000.
+	Files []PullFile
+
+	// Complete reports that Files holds every changed file.
+	Complete bool
+}
+
+// PullFile is one file a pull request changes, with its diff.
+type PullFile struct {
+	// Path is the file's path after the change, and PreviousPath a renamed or copied
+	// file's path before it, or "".
+	Path         string
+	PreviousPath string
+
+	// Status is GitHub's word for the change, as ChangedFile's.
+	Status string
+
+	// BlobSHA is the file's blob as GitHub lists it.
+	BlobSHA string
+
+	// Patch is the file's diff as GitHub shows it, without the file headers. HasPatch is
+	// false when GitHub shows none: for a binary file, and one too large to show.
+	Patch    string
+	HasPatch bool
+
+	Additions int
+	Deletions int
+}
+
 // FetchPullHead reads a pull request's head commit and size as of now, with one REST
 // request.
 func (c *Client) FetchPullHead(ctx context.Context, tok Token, ref item.Ref) (*PullHead, error) {
@@ -99,6 +136,139 @@ func (c *Client) FetchChangedFiles(ctx context.Context, tok Token, ref item.Ref,
 	files, err := c.fetchChangedFiles(ctx, tok, ref, head)
 
 	return files, Redact(err, tok)
+}
+
+// FetchPullDiff lists the files a pull request changes with their diffs, as GitHub's
+// REST API shows them, at one head commit: head, the head already known (read first when
+// it is ""). Each listed file names the commit it was read at, so a list whose files all
+// name head, and that holds every file, costs no second reading of the head; otherwise the
+// head is read after the list, as FetchChangedFiles does, and a list read while the pull
+// request was pushed to is read again for the new head. ErrHeadMoved is returned when the
+// head moves again.
+//
+// It costs one REST request per 100 files, and one more when the head must be read.
+func (c *Client) FetchPullDiff(ctx context.Context, tok Token, ref item.Ref, head string) (*PullDiff, error) {
+	diff, err := c.fetchPullDiff(ctx, tok, ref, head)
+
+	return diff, Redact(err, tok)
+}
+
+// fetchPullDiff is FetchPullDiff without the redaction.
+func (c *Client) fetchPullDiff(ctx context.Context, tok Token, ref item.Ref, head string) (*PullDiff, error) {
+	if err := validateRef(ref); err != nil {
+		return nil, err
+	}
+
+	for range fileReadAttempts {
+		diff, now, err := c.readDiffAt(ctx, tok, ref, head)
+		if err != nil || diff != nil {
+			return diff, err
+		}
+
+		head = now
+	}
+
+	return nil, ErrHeadMoved
+}
+
+// readDiffAt lists the files with their diffs at head (read first when it is ""). When
+// the list belongs to head, it returns it; otherwise it returns no list and the head as it
+// is now.
+func (c *Client) readDiffAt(ctx context.Context, tok Token, ref item.Ref, head string) (*PullDiff, string, error) {
+	if head == "" {
+		before, err := c.fetchPullHead(ctx, tok, ref)
+		if err != nil {
+			return nil, "", err
+		}
+
+		head = before.Head
+	}
+
+	listed, err := listFiles(ctx, c, tok, ref, pullFile)
+	if err != nil {
+		return nil, "", err
+	}
+
+	files := make([]PullFile, 0, len(listed))
+	for _, f := range listed {
+		files = append(files, f.file)
+	}
+
+	if at, ok := listedAt(listed); ok && strings.EqualFold(at, head) && len(files) < maxListedFiles {
+		return &PullDiff{Head: head, Total: len(files), Files: files, Complete: true}, head, nil
+	}
+
+	after, err := c.fetchPullHead(ctx, tok, ref)
+	if err != nil {
+		return nil, "", err
+	}
+
+	if !strings.EqualFold(after.Head, head) {
+		return nil, after.Head, nil
+	}
+
+	return &PullDiff{
+		Head: after.Head, Total: after.ChangedFiles, Files: files, Complete: len(files) >= after.ChangedFiles,
+	}, after.Head, nil
+}
+
+// listedFile is a listed file with its diff, and the head commit GitHub listed it at ("",
+// when the entry does not say, as for a removed file).
+type listedFile struct {
+	file PullFile
+	at   string
+}
+
+// pullFile keeps a listed file with its diff, and the commit its contents link names.
+func pullFile(f restFile) (listedFile, bool) {
+	if f.Filename == "" {
+		return listedFile{}, false
+	}
+
+	file := PullFile{
+		Path: f.Filename, PreviousPath: f.PreviousFilename, Status: f.Status, BlobSHA: f.SHA,
+		Additions: max(f.Additions, 0), Deletions: max(f.Deletions, 0),
+	}
+
+	if f.Patch != nil {
+		file.Patch, file.HasPatch = *f.Patch, true
+	}
+
+	at := ""
+	if f.Status != "removed" {
+		at = contentsRef(f.ContentsURL)
+	}
+
+	return listedFile{file: file, at: at}, true
+}
+
+// contentsRef reads the commit a file's contents link names, as in
+// ".../contents/a.go?ref=<sha>", or "" when it names none.
+func contentsRef(link string) string {
+	u, err := url.Parse(link)
+	if err != nil {
+		return ""
+	}
+
+	return u.Query().Get("ref")
+}
+
+// listedAt returns the one commit the listed files name, and whether they all name the
+// same one; ok is false when none names a commit, or two name different ones.
+func listedAt(files []listedFile) (string, bool) {
+	at := ""
+
+	for _, f := range files {
+		switch {
+		case f.at == "":
+		case at == "":
+			at = f.at
+		case !strings.EqualFold(at, f.at):
+			return "", false
+		}
+	}
+
+	return at, at != ""
 }
 
 // fetchChangedFiles is FetchChangedFiles without the redaction.
@@ -192,6 +362,7 @@ type restFile struct {
 	Additions        int     `json:"additions"`
 	Deletions        int     `json:"deletions"`
 	Patch            *string `json:"patch"`
+	ContentsURL      string  `json:"contents_url"`
 }
 
 // fileConv turns one listed file into what a caller keeps of it; ok is false for an entry

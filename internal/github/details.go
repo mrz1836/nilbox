@@ -65,6 +65,7 @@ fragment DetailFields on Node {
   ... on PullRequest {
     id additions deletions changedFiles totalCommentsCount reviewDecision mergeable headRefOid
     author { login }
+    autoMergeRequest { enabledAt mergeMethod }
     commits { totalCount }
     labels(first: 50) { nodes { name color } }
     reviewRequests(first: 50) {
@@ -198,6 +199,10 @@ type ItemDetails struct {
 	// issue.
 	ReviewRequests ReviewRequests
 
+	// AutoMerge is a pull request's auto-merge, when someone turned it on; zero when it is
+	// off, and for an issue.
+	AutoMerge AutoMerge
+
 	// Projects lists the open projects an issue is in, in GitHub's order, when they were
 	// read (see DetailOptions). It is nil when they were not, when the issue is in none,
 	// and for a pull request.
@@ -245,6 +250,24 @@ type ProjectField struct {
 
 	// Color is a single-select option's color as "#rrggbb", and "" for any other value.
 	Color string
+}
+
+// AutoMerge is a pull request's auto-merge: GitHub merges it once its requirements are
+// met.
+type AutoMerge struct {
+	// Method is the merge method it will use: MERGE, SQUASH, or REBASE; "" when auto-merge
+	// is off.
+	Method string
+
+	// EnabledAt is when it was turned on, and EnabledBy who turned it on ("" when the
+	// read does not say).
+	EnabledAt time.Time
+	EnabledBy string
+}
+
+// On reports whether auto-merge is on.
+func (a AutoMerge) On() bool {
+	return a.Method != ""
 }
 
 // Label is one label on an item.
@@ -432,24 +455,46 @@ func (r graphQLRateLimit) queryRate() QueryRate {
 // detailsNode is one node of the details query: a pull request, an issue, or null.
 // GitHub's nulls decode to zero values.
 type detailsNode struct {
-	TypeName           string           `json:"__typename"`
-	ID                 string           `json:"id"`
-	Additions          int              `json:"additions"`
-	Deletions          int              `json:"deletions"`
-	ChangedFiles       int              `json:"changedFiles"`
-	TotalCommentsCount int              `json:"totalCommentsCount"`
-	ReviewDecision     string           `json:"reviewDecision"`
-	Mergeable          string           `json:"mergeable"`
-	HeadRefOID         string           `json:"headRefOid"`
-	Author             *graphQLActor    `json:"author"`
-	Commits            graphQLCount     `json:"commits"`
-	Comments           graphQLCount     `json:"comments"`
-	Labels             graphQLLabels    `json:"labels"`
-	ReviewRequests     graphQLRequests  `json:"reviewRequests"`
-	LatestReviews      graphQLReviews   `json:"latestReviews"`
-	StatusCheckRollup  *graphQLRollup   `json:"statusCheckRollup"`
-	ProjectItems       graphQLProjects  `json:"projectItems"`
-	SubIssuesSummary   graphQLSubIssues `json:"subIssuesSummary"`
+	TypeName           string            `json:"__typename"`
+	ID                 string            `json:"id"`
+	Additions          int               `json:"additions"`
+	Deletions          int               `json:"deletions"`
+	ChangedFiles       int               `json:"changedFiles"`
+	TotalCommentsCount int               `json:"totalCommentsCount"`
+	ReviewDecision     string            `json:"reviewDecision"`
+	Mergeable          string            `json:"mergeable"`
+	HeadRefOID         string            `json:"headRefOid"`
+	Author             *graphQLActor     `json:"author"`
+	Commits            graphQLCount      `json:"commits"`
+	Comments           graphQLCount      `json:"comments"`
+	Labels             graphQLLabels     `json:"labels"`
+	ReviewRequests     graphQLRequests   `json:"reviewRequests"`
+	LatestReviews      graphQLReviews    `json:"latestReviews"`
+	StatusCheckRollup  *graphQLRollup    `json:"statusCheckRollup"`
+	AutoMergeRequest   *graphQLAutoMerge `json:"autoMergeRequest"`
+	ProjectItems       graphQLProjects   `json:"projectItems"`
+	SubIssuesSummary   graphQLSubIssues  `json:"subIssuesSummary"`
+}
+
+// graphQLAutoMerge is a pull request's auto-merge request, null when auto-merge is off.
+type graphQLAutoMerge struct {
+	MergeMethod string        `json:"mergeMethod"`
+	EnabledAt   time.Time     `json:"enabledAt"`
+	EnabledBy   *graphQLActor `json:"enabledBy"`
+}
+
+// autoMerge converts the request; a nil one is auto-merge off.
+func (a *graphQLAutoMerge) autoMerge() AutoMerge {
+	if a == nil || a.MergeMethod == "" {
+		return AutoMerge{}
+	}
+
+	out := AutoMerge{Method: a.MergeMethod, EnabledAt: a.EnabledAt.UTC()}
+	if a.EnabledBy != nil {
+		out.EnabledBy = a.EnabledBy.Login
+	}
+
+	return out
 }
 
 // graphQLSubIssues is an issue's sub-issue counts.
@@ -580,6 +625,7 @@ func (n *detailsNode) details() (id string, item ItemDetails, ok bool) {
 			Checks:         n.StatusCheckRollup.checks(),
 			Reviews:        n.reviews(author),
 			ReviewRequests: n.ReviewRequests.requests(),
+			AutoMerge:      n.AutoMergeRequest.autoMerge(),
 		}, true
 	default:
 		return "", ItemDetails{}, false
