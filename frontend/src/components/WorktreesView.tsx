@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 import { useWorktrees, type WorktreesOptions } from '../lib/useWorktrees'
+import { filterWorktrees } from '../lib/worktreeFilter'
 import type { AgentID, BranchRules, LinkedItem } from '../platform'
 import { ErrorBanner } from './ErrorBanner'
 import { Spinner } from './Spinner'
@@ -27,6 +28,8 @@ export type WorktreesViewProps = WorktreesOptions & {
   // launchFor is the "Open in Claude" or "Open in Codex" control for a worktree's item,
   // when the inbox lists it, or null.
   launchFor?: ((item: LinkedItem) => ReactNode) | undefined
+  // query is the toolbar's filter (see lib/worktreeFilter), or '' for none.
+  query?: string | undefined
 }
 
 // WorktreesView lists the git worktrees of every clone under the clone root and removes
@@ -34,7 +37,17 @@ export type WorktreesViewProps = WorktreesOptions & {
 // reloadKey changes, never on a timer of its own: a listing runs git in every clone.
 // Removal follows what the backend allows, and every removal and cleanup asks first,
 // showing a box for each worktree and branch it would take.
-export function WorktreesView({ agentName, launchFor, branchRules = defaultRules, ...props }: WorktreesViewProps) {
+//
+// The toolbar's filter narrows the clones and worktrees shown, and says at the top when
+// nothing matches. The bulk cleanups still offer every worktree they would take, since
+// their confirmation lists each one, and the recently cleaned-up list is not filtered.
+export function WorktreesView({
+  agentName,
+  launchFor,
+  branchRules = defaultRules,
+  query = '',
+  ...props
+}: WorktreesViewProps) {
   const {
     snapshot,
     repos,
@@ -55,6 +68,8 @@ export function WorktreesView({ agentName, launchFor, branchRules = defaultRules
     finishedCount,
     ...actions
   } = useWorktrees(props)
+  const filter = filterWorktrees(repos, query, { agentName, errors })
+  const shown = filter === null ? repos.map((repo) => ({ repo, worktrees: repo.worktrees })) : filter.repos
 
   return (
     <section aria-label="Worktrees" className="flex flex-col gap-4 p-4">
@@ -116,10 +131,14 @@ export function WorktreesView({ agentName, launchFor, branchRules = defaultRules
         : repos.length === 0 && (
             <p className="text-sm text-muted">No clone under {snapshot.root} has linked worktrees.</p>
           )}
-      {repos.map((repo) => (
+      {repos.length > 0 && filter?.matches === 0 && (
+        <p className="text-sm text-muted">No worktree matches “{query.trim()}”.</p>
+      )}
+      {shown.map(({ repo, worktrees }) => (
         <RepoSection
           key={repo.path}
           repo={repo}
+          worktrees={worktrees}
           now={now}
           disabled={disabled}
           errors={errors}

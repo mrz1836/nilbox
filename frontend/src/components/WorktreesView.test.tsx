@@ -1703,3 +1703,103 @@ describe('WorktreesView summaries', () => {
     })
   })
 })
+
+describe('WorktreesView filter', () => {
+  // listing is example-repo with its main worktree, pr-7, and a dirty worktree, and
+  // other-tool with its main worktree; the history holds one cleanup.
+  function listing() {
+    platform.listWorktrees.mockResolvedValue(
+      worktreesSnapshot({
+        repos: [
+          worktreeRepo({
+            worktrees: [
+              mainWorktree(),
+              worktree(),
+              worktree({
+                path: `${repoPath}/.claude/worktrees/scratch`,
+                displayPath: '~/projects/example-repo/.claude/worktrees/scratch',
+                branch: 'scratch',
+                dirty: true,
+                dirtyCount: 1,
+                canRemove: false,
+                canForceRemove: true,
+              }),
+            ],
+          }),
+          worktreeRepo({
+            path: '/home/user/projects/other-tool',
+            displayPath: '~/projects/other-tool',
+            name: 'other-tool',
+            worktrees: [mainWorktree({ path: '/home/user/projects/other-tool', displayPath: '~/projects/other-tool' })],
+          }),
+        ],
+      }),
+    )
+    platform.recentCleanups.mockResolvedValue([worktreeCleanup()])
+  }
+
+  it('shows only the clones and worktrees that match, counting what each clone shows', async () => {
+    listing()
+    const { rerender } = render(<WorktreesView clock={fixedNow} query="is:dirty" />)
+
+    const example = await repo('example-repo')
+    expect(example.getByText('1 of 3 worktrees')).toBeInTheDocument()
+    expect(example.getByText('~/projects/example-repo/.claude/worktrees/scratch')).toBeInTheDocument()
+    expect(example.queryByText(linkedDisplay)).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'other-tool' })).not.toBeInTheDocument()
+    expect(screen.queryByText(/^No worktree matches/)).not.toBeInTheDocument()
+
+    // The bulk actions and the cleanup history still cover everything.
+    expect(screen.getByRole('button', { name: 'Remove all clean (1)' })).toBeEnabled()
+    expect(await screen.findByRole('region', { name: 'Recently cleaned up' })).toBeInTheDocument()
+
+    // A query that names a clone shows all of it.
+    rerender(<WorktreesView clock={fixedNow} query="other-tool" />)
+    expect((await repo('other-tool')).getByText('1 worktree')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'example-repo' })).not.toBeInTheDocument()
+
+    // Clearing the query shows everything again.
+    rerender(<WorktreesView clock={fixedNow} query="" />)
+    expect((await repo('example-repo')).getByText('3 worktrees')).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'other-tool' })).toBeInTheDocument()
+  })
+
+  it('says at the top when no worktree matches, keeping a worktree that shows an error', async () => {
+    platform.pruneWorktrees.mockRejectedValue(new Error('prune: exit status 128'))
+    platform.listWorktrees.mockResolvedValue(
+      worktreesSnapshot({
+        repos: [
+          worktreeRepo({
+            hasStale: true,
+            worktrees: [mainWorktree(), worktree({ canRemove: false, error: 'could not read the status: exit 128' })],
+          }),
+        ],
+      }),
+    )
+    const { rerender } = render(<WorktreesView clock={fixedNow} />)
+
+    // A prune fails, so its clone shows an error too.
+    await userEvent.click((await repo('example-repo')).getByRole('button', { name: 'Prune' }))
+    expect(await (await repo('example-repo')).findByRole('alert')).toHaveTextContent('prune: exit status 128')
+
+    rerender(<WorktreesView clock={fixedNow} query="  nothing-here " />)
+
+    const message = screen.getByText('No worktree matches “nothing-here”.')
+    const example = within(screen.getByRole('region', { name: 'example-repo' }))
+    expect(example.getByText('1 of 2 worktrees')).toBeInTheDocument()
+    expect(example.getByText('could not read the status: exit 128')).toBeInTheDocument()
+    expect(example.queryByText('main worktree')).not.toBeInTheDocument()
+    // The message comes before the clones.
+    expect(message.compareDocumentPosition(screen.getByRole('region', { name: 'example-repo' }))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
+  })
+
+  it('says nothing of a filter while no clone has worktrees', async () => {
+    platform.listWorktrees.mockResolvedValue(worktreesSnapshot({ repos: [], cleanCount: 0 }))
+    render(<WorktreesView clock={fixedNow} query="anything" />)
+
+    expect(await screen.findByText('No clone under ~/projects has linked worktrees.')).toBeInTheDocument()
+    expect(screen.queryByText(/^No worktree matches/)).not.toBeInTheDocument()
+  })
+})
