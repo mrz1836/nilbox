@@ -87,9 +87,13 @@ describe('ItemRow', () => {
       'title',
       'Add the widget cache',
     )
-    expect(screen.getByText(/acme-org\/example-repo #7 · octo-user ·/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add the widget cache' }).closest('li')).toHaveTextContent(
+      /acme-org\/example-repo #7 · octo-user ·/,
+    )
     expect(screen.getByText('3h')).toHaveAttribute('dateTime', '2026-06-15T09:00:00Z')
     expect(screen.getByRole('button', { name: 'Open in Claude' })).toBeInTheDocument()
+    // Without a filter to add to, the repository, author, and labels are plain text.
+    expect(screen.queryByRole('button', { name: /^Filter by/ })).not.toBeInTheDocument()
 
     const checks = slot('Checks: 12 passed, 3 skipped')
     expect(checks).toHaveClass('text-success')

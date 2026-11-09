@@ -1,3 +1,5 @@
+import type { RefObject } from 'react'
+
 import { counted, formatCount } from '../lib/format'
 import type { NotificationsState } from '../lib/useNotifications'
 import type { Account, AppNotification, BudgetGauge } from '../platform'
@@ -5,6 +7,7 @@ import { AccountMenu } from './AccountMenu'
 import { BudgetMenu } from './BudgetMenu'
 import { Logo } from './Logo'
 import { NotificationsMenu } from './NotificationsMenu'
+import { SearchField, type SearchFieldProps } from './SearchField'
 
 // View is the page the window shows. Settings is opened from the account menu (or ⌘,)
 // rather than from a tab.
@@ -38,6 +41,10 @@ export interface AppHeaderProps {
   notifications?: NotificationsState
   onOpenNotification?: (entry: AppNotification) => void
   onNotificationSettings?: () => void
+  // search is the current page's filter field, or undefined on a page with none, and
+  // searchRef reaches its text field, for ⌘F to focus it.
+  search?: SearchFieldProps | undefined
+  searchRef?: RefObject<HTMLInputElement | null>
 }
 
 // TabCount is what a view tab counts: how many, what that means, and whether some of
@@ -79,7 +86,9 @@ function tabCount(id: View, props: AppHeaderProps): TabCount {
 
 // AppHeader is the window's single toolbar, sitting beside the macOS window controls:
 // the logo, the view tabs (Inbox and Worktrees with their counts, Prompts), and on the
-// right the notification bell, the API budget gauge, and the account menu. The bar itself drags the window
+// right the page's filter field, the notification bell, the API budget gauge, and the
+// account menu. The filter gives way first as the window narrows; the logo and the tabs
+// keep their size. The bar itself drags the window
 // (--wails-draggable), double-clicking it zooms, and the controls opt out so they take
 // clicks. The left inset clears the traffic lights. The bar's height and that inset line
 // it up with the native window controls, which keep their size whatever the text size, so
@@ -95,14 +104,16 @@ export function AppHeader(props: AppHeaderProps) {
     notifications,
     onOpenNotification = () => undefined,
     onNotificationSettings = onOpenSettings,
+    search,
+    searchRef,
   } = props
 
   return (
     <header className="relative z-30 flex h-[52px] shrink-0 items-center gap-4 border-b border-border bg-surface pr-3 pl-[80px] select-none [--wails-draggable:drag]">
-      <h1 className="flex">
+      <h1 className="flex shrink-0">
         <Logo />
       </h1>
-      <nav aria-label="Views" className="flex items-center gap-0.5 [--wails-draggable:no-drag]">
+      <nav aria-label="Views" className="flex shrink-0 items-center gap-0.5 [--wails-draggable:no-drag]">
         {tabs.map(({ id, label }) => {
           const { count, title, attention } = tabCount(id, props)
 
@@ -140,7 +151,9 @@ export function AppHeader(props: AppHeaderProps) {
           )
         })}
       </nav>
-      <div className="ml-auto flex items-center gap-1 [--wails-draggable:no-drag]">
+      <div className="ml-auto flex min-w-0 items-center gap-1 [--wails-draggable:no-drag]">
+        {/* Each page has a field of its own, so its list and caret start afresh. */}
+        {search !== undefined && <SearchField key={view} {...search} inputRef={searchRef} />}
         {notifications !== undefined && (
           <NotificationsMenu
             notifications={notifications}

@@ -971,3 +971,178 @@ describe('App’s projects tip', () => {
     expect(within(projects).getByText('gh auth refresh -s read:project')).toBeInTheDocument()
   })
 })
+
+describe('App’s filter field', () => {
+  // field is the toolbar's filter, named by what it does on the page.
+  const field = (name = 'Filter inbox') => screen.getByRole<HTMLInputElement>('combobox', { name })
+  // said is what the field says it matches, in the toolbar the field is in.
+  const said = () =>
+    within(screen.getByRole('combobox', { name: /^(Filter|Find)/ }).closest('header') as HTMLElement).getByRole(
+      'status',
+    )
+
+  // inboxShown waits for the inbox's first list.
+  async function inboxShown() {
+    await screen.findByRole('region', { name: 'Review requested' })
+  }
+
+  function reveal(itemId: number) {
+    act(() => {
+      emit('inbox:reveal', { itemId, url: '' })
+    })
+  }
+
+  it('focuses on ⌘F or /, with its text selected, but not on ⌃⌘F', async () => {
+    await renderApp()
+    await inboxShown()
+
+    await userEvent.keyboard('{Control>}{Meta>}f{/Meta}{/Control}')
+    expect(field()).not.toHaveFocus()
+
+    await userEvent.keyboard('{Meta>}f{/Meta}')
+    expect(field()).toHaveFocus()
+
+    // A slash typed in a field is just a slash.
+    await userEvent.keyboard('cache/')
+    expect(field()).toHaveValue('cache/')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    expect(field()).not.toHaveFocus()
+
+    await userEvent.keyboard('/')
+    expect(field()).toHaveFocus()
+    expect([field().selectionStart, field().selectionEnd]).toEqual([0, 6])
+  })
+
+  it('says what it does on each page, and leaves Prompts to its own search', async () => {
+    await renderApp()
+    await inboxShown()
+
+    expect(field('Filter inbox')).toHaveAttribute('placeholder', 'Filter inbox')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
+    expect(field('Filter worktrees')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Prompts' }))
+    const library = await screen.findByRole('searchbox', { name: 'Search prompts' })
+
+    expect(screen.queryByRole('combobox', { name: /^(Filter|Find)/ })).not.toBeInTheDocument()
+
+    // ⌘F there finds a prompt.
+    await userEvent.keyboard('{Meta>}f{/Meta}')
+    expect(library).toHaveFocus()
+
+    await userEvent.keyboard('{Meta>},{/Meta}')
+    expect(await screen.findByRole('combobox', { name: 'Find a setting' })).toBeInTheDocument()
+  })
+
+  it('filters the inbox, keeping each page’s query while another page shows', async () => {
+    await renderApp()
+    await inboxShown()
+
+    await userEvent.type(field(), 'zzz')
+
+    expect(await screen.findByText('No items match “zzz”')).toBeInTheDocument()
+    expect(said()).toHaveTextContent('No matches')
+    // The Inbox tab still counts the whole inbox.
+    expect(screen.getByTestId('inbox-count')).toHaveTextContent('1')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
+    expect(field('Filter worktrees')).toHaveValue('')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Inbox' }))
+    expect(field()).toHaveValue('zzz')
+    expect(screen.getByText('No items match “zzz”')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Clear filter' }))
+    expect(field()).toHaveValue('')
+    expect(screen.getByRole('button', { name: 'Add the widget cache' })).toBeInTheDocument()
+  })
+
+  it('offers what the inbox can be narrowed by, and adds a card’s repository when clicked', async () => {
+    await renderApp()
+    await inboxShown()
+
+    await userEvent.click(field())
+    expect(screen.getByRole('option', { name: /Pull requests/ })).toHaveTextContent('Pull requestsis:pr1')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Filter by repository acme-org/example-repo' }))
+    expect(field()).toHaveValue('repo:acme-org/example-repo')
+    expect(said()).toHaveTextContent('1 match')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Filter by repository acme-org/example-repo' }))
+    expect(field()).toHaveValue('')
+  })
+
+  it('clears the inbox’s filter for an item the shell asks to show, and finds it', async () => {
+    await renderApp()
+    await inboxShown()
+
+    await userEvent.type(field(), 'zzz')
+    await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
+    reveal(1)
+
+    expect(field()).toHaveValue('')
+
+    const review = within(await screen.findByRole('region', { name: 'Review requested' }))
+
+    expect(review.getByRole('button', { name: 'Add the widget cache' }).closest('li')).toHaveAttribute(
+      'data-highlighted',
+      'true',
+    )
+  })
+
+  it('filters the worktrees, counting from their listing', async () => {
+    await renderApp()
+    await inboxShown()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
+    await screen.findByRole('region', { name: 'example-repo' })
+
+    await userEvent.click(field('Filter worktrees'))
+    expect(screen.getByRole('listbox', { name: 'Filters' })).toBeInTheDocument()
+
+    await userEvent.keyboard('pr-7')
+    expect(said()).toHaveTextContent('1 match')
+  })
+
+  it('forgets what was being found in the settings by every way out of them', async () => {
+    await renderApp()
+    await inboxShown()
+
+    const find = async () => {
+      await userEvent.keyboard('{Meta>},{/Meta}')
+      await userEvent.type(await screen.findByRole('combobox', { name: 'Find a setting' }), 'theme')
+      expect(said()).not.toHaveTextContent(/^$/)
+    }
+    const empty = async () => {
+      await userEvent.keyboard('{Meta>},{/Meta}')
+      expect(await screen.findByRole('combobox', { name: 'Find a setting' })).toHaveValue('')
+    }
+
+    // The back button.
+    await find()
+    await userEvent.click(screen.getByRole('button', { name: 'Close settings' }))
+    await empty()
+
+    // A toolbar tab.
+    await userEvent.type(field('Find a setting'), 'theme')
+    await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
+    await empty()
+
+    // A reveal.
+    await userEvent.type(field('Find a setting'), 'theme')
+    reveal(1)
+    await empty()
+
+    // Escape: it clears the field first, then leaves it, then closes the settings.
+    await userEvent.type(field('Find a setting'), 'theme')
+    await userEvent.keyboard('{Escape}')
+    expect(field('Find a setting')).toHaveValue('')
+    await userEvent.type(field('Find a setting'), 'theme')
+    await userEvent.click(screen.getByRole('navigation', { name: 'Settings sections' }))
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('navigation', { name: 'Settings sections' })).not.toBeInTheDocument()
+    await empty()
+  })
+})

@@ -10,6 +10,9 @@ export interface TabItem<T extends string> {
   icon?: ReactNode
   // strong sets the label in the weight of a heading, for the tab that names the whole set.
   strong?: boolean
+  // filtered marks a count of what a filter matches, as in "5 of 38": its badge is drawn
+  // apart from an ordinary count, and it reads as matching.
+  filtered?: boolean
 }
 
 export interface TabsProps<T extends string> {
@@ -83,6 +86,8 @@ export function Tabs<T extends string>({
       {tabs.map((tab) => {
         const selected = tab.value === value
         const count = tab.count ?? ''
+        const filtered = tab.filtered === true
+        const spoken = filtered ? `${count} matching` : count
 
         return (
           <button
@@ -90,7 +95,7 @@ export function Tabs<T extends string>({
             type="button"
             role="tab"
             id={tabId(baseId, tab.value)}
-            aria-label={count === '' ? tab.label : `${tab.label} ${count}`}
+            aria-label={count === '' ? tab.label : `${tab.label} ${spoken}`}
             aria-selected={selected}
             aria-controls={tabPanelId(baseId)}
             tabIndex={selected ? 0 : -1}
@@ -104,7 +109,8 @@ export function Tabs<T extends string>({
             <span className={tab.strong === true ? 'font-semibold' : 'font-medium'}>{tab.label}</span>
             {count !== '' && (
               <span
-                className={`rounded-full px-1.5 text-[0.6875rem] leading-[1.125rem] font-medium tabular-nums ${selected ? 'bg-accent/15 text-text' : 'bg-raised text-muted'}`}
+                data-filtered={filtered || undefined}
+                className={`rounded-full px-1.5 text-[0.6875rem] leading-[1.125rem] font-medium tabular-nums ${filtered ? 'text-text outline-1 -outline-offset-1 outline-accent/60 outline-dashed' : selected ? 'bg-accent/15 text-text' : 'bg-raised text-muted'}`}
               >
                 {count}
               </span>
