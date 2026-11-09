@@ -535,6 +535,11 @@ describe('App', () => {
     // Pull request #8 is not in the inbox, so its worktree has no launch control.
     expect(row('~/projects/example-repo/.claude/worktrees/pr-8').queryByRole('button', { name: /^Open/ })).toBeNull()
 
+    // The control sits at the left of the row, so its menu opens from the left edge.
+    await userEvent.click(listed.getByRole('button', { name: /^Launch options/ }))
+    expect(screen.getByRole('dialog', { name: 'Launch options' })).toHaveClass('left-0')
+    await userEvent.keyboard('{Escape}')
+
     await userEvent.click(listed.getByRole('button', { name: 'Open in Claude' }))
 
     expect(platform.launch).toHaveBeenCalledWith(expect.objectContaining({ itemId: 1, worktree: true }))

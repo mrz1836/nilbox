@@ -391,6 +391,7 @@ export function App() {
         onDefaultsSaved={launch.onDefaultsSaved}
         onManagePrompts={launch.onManagePrompts}
         initial={{ worktree: true }}
+        menuAlign="left"
       />
     )
   }

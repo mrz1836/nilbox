@@ -61,6 +61,10 @@ export interface LaunchControlsProps {
   // initial are the choices every launch from here starts with, such as the worktree on
   // for a launch from the Worktrees view; none by default.
   initial?: Partial<Choices>
+  // menuAlign lines the launch menu up with the button's right edge, for a button at the
+  // right of a card (the default), or its left edge, for one at the left of a row, so the
+  // menu opens over the content rather than off the side of the view.
+  menuAlign?: 'left' | 'right'
 }
 
 // LaunchState is where the row's launch stands. A launch that finds no local clone ends
@@ -117,6 +121,7 @@ export function LaunchControls({
   onDefaultsSaved,
   onManagePrompts,
   initial,
+  menuAlign = 'right',
 }: LaunchControlsProps) {
   // start is the choices a launch starts from, and goes back to after it.
   const start: Choices = { ...noChoices, ...initial }
@@ -310,7 +315,7 @@ export function LaunchControls({
         </div>
         <PopoverPanel
           state={popover}
-          align="right"
+          align={menuAlign}
           id={id}
           role="dialog"
           aria-label="Launch options"

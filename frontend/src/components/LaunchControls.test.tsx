@@ -89,6 +89,19 @@ describe('LaunchControls', () => {
     expect(optionsButton()).toHaveAttribute('aria-expanded', 'false')
   })
 
+  it('opens the menu from the button’s right edge, or its left edge for a button at the left of a row', async () => {
+    const { unmount } = render(<LaunchControls {...props()} />)
+
+    await openMenu()
+    expect(screen.getByRole('dialog', { name: 'Launch options' })).toHaveClass('right-0', 'origin-top-right')
+
+    unmount()
+    render(<LaunchControls {...props({ menuAlign: 'left' })} />)
+
+    await openMenu()
+    expect(screen.getByRole('dialog', { name: 'Launch options' })).toHaveClass('left-0', 'origin-top-left')
+  })
+
   it('waits for the launch settings before it can launch', () => {
     render(<LaunchControls {...props({ resolution: null })} />)
 
