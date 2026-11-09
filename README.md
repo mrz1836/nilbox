@@ -115,6 +115,7 @@ One click to hand any pull request or issue to a coding agent.
 </table>
 
 <br/>
+<br/>
 
 **Nilbox is a local-first macOS app that turns a GitHub account spread across hundreds of
 repositories into one focused inbox. It shows what needs *you*, hides the noise, and opens any
@@ -128,6 +129,7 @@ branch, open a terminal, start an agent, retype the prompt. Nilbox handles both:
 the noise, and it launches the agent for you. Your triage state stays on your machine and never
 touches GitHub.
 
+<br/>
 <br/>
 
 ```
