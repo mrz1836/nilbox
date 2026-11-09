@@ -133,23 +133,9 @@ type editTarget struct {
 // editTarget reads the item with id, and checks that the signed-in user is in the list
 // the edit takes them off.
 func (s *Service) editTarget(ctx context.Context, id int64, kind editKind) (editTarget, error) {
-	row, err := s.q.GetEditItem(ctx, id)
-	if errors.Is(err, sql.ErrNoRows) {
-		return editTarget{}, fmt.Errorf("%w (id %d)", item.ErrNotFound, id)
-	}
-
+	row, err := s.shownItem(ctx, id)
 	if err != nil {
-		return editTarget{}, fmt.Errorf("read the item: %w", err)
-	}
-
-	viewer, _, err := s.prefs.Get(ctx, prefViewer)
-	if err != nil {
-		return editTarget{}, fmt.Errorf("read the signed-in account: %w", err)
-	}
-
-	// Only the signed-in account's items are shown, so another's is not found.
-	if viewer == "" || !strings.EqualFold(viewer, row.AccountLogin) {
-		return editTarget{}, fmt.Errorf("%w (id %d)", item.ErrNotFound, id)
+		return editTarget{}, err
 	}
 
 	ref := item.Ref{

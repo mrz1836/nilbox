@@ -66,8 +66,8 @@ INSERT INTO item_details (
     item_id, labels, projects, comments, additions, deletions, changed_files, commits, head_oid, mergeable,
     checks_state, checks_passed, checks_failed, checks_pending, checks_skipped, review_decision,
     reviewers, reviewed, approvals, changes_requested, sub_issues_total, sub_issues_completed,
-    review_users, review_teams, fetched_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    review_users, review_teams, auto_merge_method, auto_merge_at, fetched_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (item_id) DO UPDATE SET
     labels = excluded.labels,
     projects = excluded.projects,
@@ -92,6 +92,8 @@ ON CONFLICT (item_id) DO UPDATE SET
     sub_issues_completed = excluded.sub_issues_completed,
     review_users = excluded.review_users,
     review_teams = excluded.review_teams,
+    auto_merge_method = excluded.auto_merge_method,
+    auto_merge_at = excluded.auto_merge_at,
     fetched_at = excluded.fetched_at
 `
 
@@ -120,6 +122,8 @@ type UpsertDetailsParams struct {
 	SubIssuesCompleted int64
 	ReviewUsers        string
 	ReviewTeams        string
+	AutoMergeMethod    string
+	AutoMergeAt        *time.Time
 	FetchedAt          time.Time
 }
 
@@ -151,6 +155,8 @@ func (q *Queries) UpsertDetails(ctx context.Context, arg UpsertDetailsParams) er
 		arg.SubIssuesCompleted,
 		arg.ReviewUsers,
 		arg.ReviewTeams,
+		arg.AutoMergeMethod,
+		arg.AutoMergeAt,
 		arg.FetchedAt,
 	)
 	return err

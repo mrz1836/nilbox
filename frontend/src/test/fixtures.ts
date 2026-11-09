@@ -151,6 +151,7 @@ export function details(overrides: Partial<ItemDetails> = {}): ItemDetails {
     mergeable: 'MERGEABLE',
     checks: { state: 'SUCCESS', passed: 12, failed: 0, pending: 0, skipped: 3 },
     reviews: { decision: 'APPROVED', reviewers: 2, reviewed: 1, approvals: 1, changesRequested: 0 },
+    autoMerge: '',
     fetchedAt: '2026-06-15T11:59:00Z',
     ...overrides,
   }

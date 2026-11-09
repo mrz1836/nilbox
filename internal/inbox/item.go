@@ -133,6 +133,15 @@ func (w *writer) rewrite(ctx context.Context, id int64, it github.Item) error {
 	return w.wakeSnoozed(ctx)
 }
 
+// unlistMerged takes an item the user just merged out of every list.
+func (w *writer) unlistMerged(ctx context.Context, id int64) error {
+	if err := w.q.UnlistItem(ctx, queries.UnlistItemParams{FetchedAt: w.now, ID: id}); err != nil {
+		return fmt.Errorf("take the merged item out of the lists: %w", err)
+	}
+
+	return nil
+}
+
 // unlist takes an item out of every list. An item in an archived repository records the
 // repository first, so it is known as archived, as a whole refresh does.
 func (w *writer) unlist(ctx context.Context, id int64, update *github.ItemUpdate) error {

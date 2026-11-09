@@ -40,6 +40,13 @@
 // API budget paces and counts, made only with the token of the account whose inbox is shown,
 // and the item leaves that list once GitHub's answer confirms the edit.
 //
+// The review sheet reads and acts on a pull request through an Actor (see actor.go), which
+// runs the sheet's own requests under the item's lock and, for an action, only with a token
+// of the account whose inbox is shown, then records what GitHub did: a review takes the pull
+// request out of the Review requested list, and a merge out of every list, at once and with
+// no request of its own. A read rewrites the card, and the files it listed serve as the pull
+// request's sensitive-file check, so one read serves both.
+//
 // An issue's details include the GitHub projects it is in, with its status in each, when
 // the token has the optional read:project scope. Without it the details are read without
 // them and the snapshot says so (ProjectAccess), so a missing scope never fails a refresh.
