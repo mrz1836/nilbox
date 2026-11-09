@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/pelletier/go-toml/v2"
 
@@ -119,6 +120,19 @@ func (c Codex) Trust(ctx context.Context, configDir string, dirs []string) error
 	return err
 }
 
+// codexWrites holds one mutex per Codex config, by its resolved path. Two launches at
+// once would otherwise each read the config, add their own entry, and replace it, so the
+// file would keep only one of the two. Codex itself takes no lock to write it, so the
+// read-back before each write still guards against Codex.
+var codexWrites sync.Map //nolint:gochecknoglobals // one lock per config for the whole process, which every Codex value shares
+
+// codexWriteLock returns the mutex for the Codex config at target.
+func codexWriteLock(target string) *sync.Mutex {
+	mu, _ := codexWrites.LoadOrStore(target, &sync.Mutex{})
+
+	return mu.(*sync.Mutex) //nolint:forcetypeassert // the map holds nothing else
+}
+
 // grant appends a trusted entry for each of keys the config at file lacks, and reports
 // whether it changed the file. A config that changed while it was read is read again
 // once; one that keeps changing is left alone.
@@ -133,6 +147,10 @@ func (c Codex) grant(ctx context.Context, file string, keys []string) (bool, err
 	if err != nil {
 		return false, fmt.Errorf("resolve %s: %w", file, err)
 	}
+
+	mu := codexWriteLock(target)
+	mu.Lock()
+	defer mu.Unlock()
 
 	for range 2 {
 		changed, settled, attemptErr := c.attempt(ctx, log, file, target, keys)

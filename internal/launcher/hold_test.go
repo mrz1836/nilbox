@@ -96,6 +96,25 @@ func (h *launchHarness) trusted(t *testing.T) bool {
 	return true
 }
 
+func TestLaunchMakesAPullRequestsWorktreeAtTheHeadItChecked(t *testing.T) {
+	t.Parallel()
+
+	h := newLaunchHarness(t)
+	h.withFiles(checkOf(holdHeadA, true, "main.go"))
+
+	res, err := h.service().Launch(t.Context(), LaunchRequest{ItemID: h.outsidePR})
+	require.NoError(t, err)
+	require.Nil(t, res.Hold)
+	require.Len(t, h.maker.ensures(), 1)
+	assert.Equal(t, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", h.maker.ensures()[0].Head,
+		"the worktree must start at the commit whose files were checked")
+
+	// An item whose files are not checked asks for no particular commit.
+	h.launch(t, LaunchRequest{ItemID: h.trustedPR})
+	require.Len(t, h.maker.ensures(), 2)
+	assert.Empty(t, h.maker.ensures()[1].Head)
+}
+
 func TestLaunchHoldsBackAPullRequestThatChangesAgentFiles(t *testing.T) {
 	t.Parallel()
 

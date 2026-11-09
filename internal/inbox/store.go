@@ -97,6 +97,9 @@ type LaunchItem struct {
 	Mergeable      string
 	ChecksState    string
 	ReviewDecision string
+
+	// HeadOID is a pull request's head commit as the last refresh read it, or "".
+	HeadOID string
 }
 
 // LaunchItems returns the stored items among ids, by id. An id with no stored item is
@@ -147,6 +150,6 @@ func launchItemOf(r queries.ListLaunchItemsRow) (LaunchItem, error) {
 		RepoID: r.RepoID, Owner: r.Owner, Name: r.Name, LocalPath: r.LocalPath, DefaultBranch: r.DefaultBranch,
 		Labels: labels, Additions: int(value(r.Additions)), Deletions: int(value(r.Deletions)),
 		ChangedFiles: int(value(r.ChangedFiles)), Commits: int(value(r.Commits)), Mergeable: value(r.Mergeable),
-		ChecksState: value(r.ChecksState), ReviewDecision: value(r.ReviewDecision),
+		ChecksState: value(r.ChecksState), ReviewDecision: value(r.ReviewDecision), HeadOID: value(r.HeadOID),
 	}, nil
 }

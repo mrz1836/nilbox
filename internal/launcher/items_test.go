@@ -99,7 +99,7 @@ func TestALaunchGoesOnWhenItsCloneCannotBeRemembered(t *testing.T) {
 
 	res, _ := h.launch(t, LaunchRequest{ItemID: h.trustedPR})
 	assert.Equal(t, "~/projects/example-repo", res.ClonePath)
-	assert.Empty(t, h.cachedPath(t, "example-repo"), "the next launch scans for the clone again")
+	assert.Empty(t, h.cachedPath(t, exampleRepo), "the next launch scans for the clone again")
 	assert.Contains(t, logs.String(), `level=WARN msg="could not remember a repository's local clone"`)
 	assert.Contains(t, logs.String(), errFakeRemember.Error())
 }

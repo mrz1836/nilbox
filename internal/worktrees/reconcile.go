@@ -45,7 +45,7 @@ func (s *Service) reconcile(ctx context.Context, listings []cloneListing, record
 
 		wt := recordRow(l, r)
 		if wt == nil {
-			s.forget(ctx, r)
+			s.forgetStale(ctx, r)
 
 			continue
 		}
@@ -183,6 +183,35 @@ func cloneGone(path string) bool {
 	_, err := os.Stat(path)
 
 	return errors.Is(err, fs.ErrNotExist)
+}
+
+// forgetStale forgets a record the listing found no worktree for, once git still has
+// none under the clone's lock. A launch holds that lock from finding the item's worktree
+// to recording it, so a listing that ran before the launch added the worktree never
+// forgets the record the launch just wrote. When git cannot say, the record stays for
+// the next listing to decide.
+func (s *Service) forgetStale(ctx context.Context, r worklog.Record) {
+	unlock := s.lockClone(r.ClonePath)
+	defer unlock()
+
+	g, err := s.git()
+	if err != nil {
+		return
+	}
+
+	entries, _, err := g.list(ctx, r.ClonePath)
+	if err != nil {
+		return
+	}
+
+	l := &cloneListing{rows: make([]Worktree, 0, len(entries))}
+	for _, e := range entries {
+		l.rows = append(l.rows, Worktree{Path: e.Path, Branch: e.Branch, Main: e.Main, Prunable: e.Prunable})
+	}
+
+	if recordRow(l, r) == nil {
+		s.forget(ctx, r)
+	}
 }
 
 // forget drops a record whose worktree is gone.

@@ -224,15 +224,16 @@ func linkedItem(t linkTarget, ref item.Ref, state ItemState) *LinkedItem {
 // assess works out a linked worktree's stage and whether it may be removed. GitHub
 // decides when the work is done; whether removing the worktree is safe rests on git and
 // the running processes alone: no uncommitted changes, every commit on GitHub, no lock,
-// and no session running in it.
-func assess(wt *Worktree) {
+// and no session running in it. sessionsKnown reports that the running processes could
+// be listed: without them a force removal, which discards changes, is not offered.
+func assess(wt *Worktree, sessionsKnown bool) {
 	if wt.Main {
 		return
 	}
 
 	free := !wt.Locked && !wt.Prunable && len(wt.InUse) == 0
 	wt.CanRemove = free && !wt.Dirty
-	wt.CanForceRemove = free && wt.Dirty
+	wt.CanForceRemove = free && wt.Dirty && sessionsKnown
 
 	wt.OnGitHub = wt.Unpushed == 0 || headIsItemHead(wt)
 	wt.Stage = stageOf(wt)

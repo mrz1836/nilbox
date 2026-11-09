@@ -49,6 +49,10 @@ type WorktreeRequest struct {
 
 	// DefaultBranch is the repository's default branch as GitHub reported it, or "".
 	DefaultBranch string
+
+	// Head is the pull request's head commit whose files the launch checked, or "". A
+	// worktree made for the pull request must start there; the maker refuses otherwise.
+	Head string
 }
 
 // Worktree is an item's worktree, as a WorktreeMaker found or made it, or would.
@@ -62,6 +66,9 @@ type Worktree struct {
 
 	// Base names what a created worktree starts from, such as "origin/main", or "".
 	Base string
+
+	// Head is the commit the worktree has checked out, or "" for one not made yet.
+	Head string
 
 	// Dirty is how many files have uncommitted changes in an existing worktree, or -1
 	// when unknown.

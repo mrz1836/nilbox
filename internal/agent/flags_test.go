@@ -147,6 +147,11 @@ func TestCheckExtraCodex(t *testing.T) {
 		{name: "config spaced key", args: []string{"-c", " sandbox_mode = 'danger-full-access'"}, want: agent.ErrReservedFlag, access: true},
 		{name: "config trust", args: []string{"-c", `projects."/srv".trust_level="trusted"`}, want: agent.ErrReservedFlag, text: "trusts the folder"},
 		{name: "config projects", args: []string{"-c", "projects={}"}, want: agent.ErrReservedFlag},
+		{name: "config sandbox permissions", args: []string{"-c", `sandbox_permissions=["disk-full-read-access"]`}, want: agent.ErrReservedFlag, access: true},
+		{name: "config workspace write", args: []string{"-c", "sandbox_workspace_write.network_access=true"}, want: agent.ErrReservedFlag, access: true},
+		{name: "a command", args: []string{"exec"}, want: agent.ErrReservedFlag, text: "exec can't be added: it runs another command instead of a session", access: true},
+		{name: "a command's alias after a flag", args: []string{"--search", "e"}, want: agent.ErrReservedFlag, access: true},
+		{name: "a command after an option's value", args: []string{"--enable", "web_search", "review"}, want: agent.ErrReservedFlag, access: true},
 		{name: "end of flags", args: []string{"--search", "--"}, want: agent.ErrEndOfFlags},
 		{name: "tilde", args: []string{"--add-dir", "~/shared"}, want: agent.ErrTilde},
 	}
@@ -193,6 +198,10 @@ func TestCheckAccess(t *testing.T) {
 	require.ErrorIs(t, agent.CheckAccess(agent.Claude, []string{"--dangerously-skip-permissions"}), agent.ErrReservedFlag)
 	require.NoError(t, agent.CheckAccess(agent.Codex, []string{"-c", "model=o3"}), "a model override is no permission")
 	require.ErrorIs(t, agent.CheckAccess(agent.Codex, []string{"-c", "sandbox_mode=danger-full-access"}), agent.ErrReservedFlag)
+	require.ErrorIs(t, agent.CheckAccess(agent.Codex, []string{"exec"}), agent.ErrReservedFlag,
+		"a command would run without the launch's sandbox")
+	require.NoError(t, agent.CheckExtra(agent.Claude, []string{flagAdvisor, "review"}),
+		"Claude Code reads its prompt first, so no later word is a command")
 }
 
 func TestReservedFlagErrorAs(t *testing.T) {

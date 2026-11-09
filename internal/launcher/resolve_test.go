@@ -25,6 +25,7 @@ const (
 	strSonnet         = "sonnet"
 	profileWork       = "work"
 	acmeOrg           = "acme-org"
+	exampleRepo       = "example-repo"
 	flagDebug         = "--debug"
 )
 
@@ -81,7 +82,7 @@ func testWorld() world {
 
 // prSubject is a trusted pull request in acme-org/example-repo.
 func prSubject() subject {
-	return subject{id: 7, kind: item.KindPR, repo: repo.Name{Owner: acmeOrg, Repo: "example-repo"}, trusted: true}
+	return subject{id: 7, kind: item.KindPR, repo: repo.Name{Owner: acmeOrg, Repo: exampleRepo}, trusted: true}
 }
 
 func TestResolveAppDefaults(t *testing.T) {
@@ -126,7 +127,7 @@ func TestResolvePrecedence(t *testing.T) {
 			ExtraArgs: claudeOnly([]string{"--org"}),
 		},
 		{
-			Owner: acmeOrg, Name: "example-repo", Models: claudeOnly(strSonnet), Worktree: new(false),
+			Owner: acmeOrg, Name: exampleRepo, Models: claudeOnly(strSonnet), Worktree: new(false),
 			ExtraArgs: claudeOnly([]string{"--repo"}),
 		},
 	})
@@ -170,13 +171,29 @@ func TestResolvePrecedence(t *testing.T) {
 	assert.Equal(t, []string{"--org", "--repo", flagDebug}, res.ExtraArgs, "the default profile has no flags")
 }
 
+func TestResolveChecksTheExtraFlagsTogether(t *testing.T) {
+	t.Parallel()
+
+	// Each layer passes on its own, but the org's -c takes the repository's model=x as
+	// its value, which would set the model past the Model setting.
+	w := testWorld()
+	w.rules = launchdefaults.NewIndex([]launchdefaults.Defaults{
+		{Owner: acmeOrg, ExtraArgs: map[agent.ID][]string{agent.Codex: {"--search", "-c"}}},
+		{Owner: acmeOrg, Name: exampleRepo, ExtraArgs: map[agent.ID][]string{agent.Codex: {"model=o3"}}},
+	})
+
+	err := resolveErr(w, prSubject(), LaunchRequest{Agent: agent.Codex})
+	require.ErrorIs(t, err, agent.ErrReservedFlag)
+	assert.Contains(t, err.Error(), "-c model is set by the Model setting")
+}
+
 func TestResolveDefaultPrompts(t *testing.T) {
 	t.Parallel()
 
 	w := testWorld()
 	w.rules = launchdefaults.NewIndex([]launchdefaults.Defaults{
 		{Owner: acmeOrg, PRPromptID: new(bothID)},
-		{Owner: acmeOrg, Name: "example-repo", PRPromptID: new(quickID)},
+		{Owner: acmeOrg, Name: exampleRepo, PRPromptID: new(quickID)},
 		{Owner: acmeOrg, Name: "other-repo", PRPromptID: new(missingID), IssuePromptID: new(reviewID)},
 	})
 
@@ -212,7 +229,7 @@ func TestResolveSkipsDefaultsThatAreGone(t *testing.T) {
 
 	w := testWorld()
 	w.rules = launchdefaults.NewIndex([]launchdefaults.Defaults{
-		{Owner: acmeOrg, Name: "example-repo", Profiles: claudeOnly("pruned"), Agent: "example-agent"},
+		{Owner: acmeOrg, Name: exampleRepo, Profiles: claudeOnly("pruned"), Agent: "example-agent"},
 	})
 
 	res, profile, _, err := resolve(w, prSubject(), LaunchRequest{})
@@ -239,7 +256,7 @@ func TestResolveTheAgent(t *testing.T) {
 
 	w.rules = launchdefaults.NewIndex([]launchdefaults.Defaults{
 		{Owner: acmeOrg, Agent: agent.Claude},
-		{Owner: acmeOrg, Name: "example-repo", Agent: agent.Codex},
+		{Owner: acmeOrg, Name: exampleRepo, Agent: agent.Codex},
 	})
 
 	res, _, _, err = resolve(w, prSubject(), LaunchRequest{})

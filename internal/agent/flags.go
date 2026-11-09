@@ -24,6 +24,7 @@ const (
 	reasonPermissions = "can't be added: permissions come from the profile and the outside-contributor rule"
 	reasonTerminal    = "can't be added: sessions run in your terminal"
 	reasonTrust       = "the launch trusts the folder it starts in"
+	reasonCommand     = "can't be added: it runs another command instead of a session, with none of the launch's settings"
 )
 
 var (
@@ -221,6 +222,10 @@ func CheckAccess(id ID, args []string) error {
 // accessArg returns a ReservedFlagError when args[i] sets one of the agent's permission
 // switches, directly or through a config override.
 func accessArg(s spec, args []string, i int) error {
+	if err := command(s, args[i]); err != nil {
+		return err
+	}
+
 	if flag, ok := reserved(s, args[i]); ok && flag.access {
 		return &ReservedFlagError{Flag: displayFlag(args[i]), Reason: flag.reason, Access: true}
 	}
@@ -233,8 +238,23 @@ func accessArg(s spec, args []string, i int) error {
 	return nil
 }
 
+// command returns a ReservedFlagError when arg is one of the agent's commands (see
+// spec.commands): the agent would run that command, which takes none of the session's
+// flags, permissions included, rather than start a session.
+func command(s spec, arg string) error {
+	if strings.HasPrefix(arg, "-") || !slices.Contains(s.commands(), arg) {
+		return nil
+	}
+
+	return &ReservedFlagError{Flag: arg, Reason: reasonCommand, Access: true}
+}
+
 // checkArg checks one extra argument.
 func checkArg(s spec, arg string) error {
+	if err := command(s, arg); err != nil {
+		return err
+	}
+
 	switch {
 	case arg == "":
 		return ErrEmptyFlag

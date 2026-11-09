@@ -2,10 +2,12 @@ package worktrees
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/brand"
+	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/procs"
 	"github.com/mrz1836/nilbox/internal/testutil"
@@ -320,6 +323,60 @@ func TestConcurrentEnsuresOnOneClone(t *testing.T) {
 	assert.Len(t, gitWorktreePaths(t, f.clone), 5, "the clone, pull request 7's worktree, and three issues'")
 }
 
+func TestEnsureRunsNoHookInThePullRequestsFiles(t *testing.T) {
+	t.Parallel()
+
+	e := newEnv(t)
+	f := newRemoteFixture(t, e)
+	m, _ := e.maker(&fakeLaunches{})
+
+	// A post-checkout hook in the clone runs with the new worktree, which holds the pull
+	// request's files, as its working directory: one that runs a tool from the checkout
+	// would run the pull request's code.
+	marker := filepath.Join(e.home, "hook-ran")
+	hook := filepath.Join(f.clone, ".git", "hooks", "post-checkout")
+	require.NoError(t, os.WriteFile(hook, []byte("#!/bin/sh\npwd > '"+marker+"'\n"), 0o700)) //nolint:gosec // the hook must be executable
+
+	_, err := m.Ensure(t.Context(), f.request(item.KindPR, 7))
+	require.NoError(t, err)
+	assert.NoFileExists(t, marker, "making the worktree runs no hook")
+
+	_, err = m.Ensure(t.Context(), f.request(item.KindIssue, 9))
+	require.NoError(t, err)
+	assert.NoFileExists(t, marker, "nor does making an issue's")
+
+	// The hook is real: git runs it for a worktree added by hand.
+	testutil.RunGit(t, f.clone, "worktree", "add", "-q", "--detach", filepath.Join(e.home, "by-hand"), "HEAD")
+	assert.FileExists(t, marker)
+}
+
+func TestEnsureRefusesAPullRequestHeadThatMovedAfterItsCheck(t *testing.T) {
+	t.Parallel()
+
+	e := newEnv(t)
+	f := newRemoteFixture(t, e)
+	records := &fakeLaunches{}
+	m, _ := e.maker(records)
+
+	// The launch checked the files of another commit than the head the fetch finds now.
+	req := f.request(item.KindPR, 7)
+	req.Head = f.main
+
+	_, err := m.Ensure(t.Context(), req)
+	require.ErrorIs(t, err, ErrHeadMoved)
+	assert.Equal(t, "Pull request #7 changed while it was opening, so its new commits weren't checked. "+
+		"Open it again to check them.", uierr.Message(err))
+	assert.NotContains(t, branches(t, f.clone), "worktree-pr-7", "the unchecked head is not left for a later launch")
+	assert.NoDirExists(t, ManagedPath(f.clone, "pr-7"))
+	assert.Empty(t, records.all())
+
+	req.Head = f.prHead
+	got, err := m.Ensure(t.Context(), req)
+	require.NoError(t, err)
+	assert.Equal(t, ActionCreate, got.Action)
+	assert.Equal(t, f.prHead, got.Head, "made at the head that was checked")
+}
+
 func TestEnsureChecksItsRequest(t *testing.T) {
 	t.Parallel()
 
@@ -327,11 +384,15 @@ func TestEnsureChecksItsRequest(t *testing.T) {
 	ok := EnsureRequest{Clone: "/srv/clone", Owner: "acme-org", Name: "example-repo", Kind: item.KindPR, Number: 1}
 
 	for name, edit := range map[string]func(*EnsureRequest){
-		"relative clone": func(r *EnsureRequest) { r.Clone = "clone" },
-		"no kind":        func(r *EnsureRequest) { r.Kind = "" },
-		"no number":      func(r *EnsureRequest) { r.Number = 0 },
-		"no repository":  func(r *EnsureRequest) { r.Owner = "" },
-		"an option":      func(r *EnsureRequest) { r.Remote = "--upload-pack=x" },
+		"relative clone":       func(r *EnsureRequest) { r.Clone = "clone" },
+		"no kind":              func(r *EnsureRequest) { r.Kind = "" },
+		"no number":            func(r *EnsureRequest) { r.Number = 0 },
+		"no repository":        func(r *EnsureRequest) { r.Owner = "" },
+		"an option":            func(r *EnsureRequest) { r.Remote = "--upload-pack=x" },
+		"a head no commit has": func(r *EnsureRequest) { r.Head = "main" },
+		"an issue's head": func(r *EnsureRequest) {
+			r.Kind, r.Head = item.KindIssue, "fc1c3975011e66491785ace891c893e4fc716587"
+		},
 	} {
 		req := ok
 		edit(&req)
@@ -381,6 +442,41 @@ func TestListReconcilesRecordsWithGit(t *testing.T) {
 	assert.True(t, row.OwnBranch)
 }
 
+func TestListKeepsTheRecordOfAWorktreeMadeWhileItListed(t *testing.T) {
+	t.Parallel()
+
+	e := newEnv(t)
+	f := newRemoteFixture(t, e)
+	records := &fakeLaunches{}
+	m, _ := e.maker(records)
+
+	got, err := m.Ensure(t.Context(), f.request(item.KindPR, 7))
+	require.NoError(t, err)
+
+	// The listing read the clone's worktrees just before a launch added pr-7's, so its
+	// read has the clone alone, while the record the launch then wrote is there.
+	var reads atomic.Int32
+
+	run := scriptedGit(e.git, func(sub []string) (reply, bool) {
+		if startsWith(sub, "worktree list") && reads.Add(1) == 1 {
+			return reply{stdout: "worktree " + f.clone + "\x00HEAD " + f.main + "\x00branch refs/heads/main\x00\x00"}, true
+		}
+
+		return reply{}, false
+	})
+	svc := NewService(Config{
+		Settings: fakeSettings{root: cloneRoot}, Git: run, Finder: execpath.Search{}, Home: e.home,
+		Clock: testutil.NewClock(listedAt()), Logger: slog.New(slog.DiscardHandler), Records: records,
+	})
+
+	_, err = svc.List(t.Context())
+	require.NoError(t, err)
+	require.Greater(t, reads.Load(), int32(1), "git is asked again before a record goes")
+	assert.Empty(t, records.forgotten, "the launch's record stays")
+	require.Len(t, records.all(), 1)
+	assert.Equal(t, got.Path, records.all()[0].Path)
+}
+
 func TestListReportsSessionsAndRemovalRefusesThem(t *testing.T) {
 	t.Parallel()
 
@@ -419,8 +515,25 @@ func TestListReportsSessionsAndRemovalRefusesThem(t *testing.T) {
 	assert.Empty(t, mustRow(t, snap, got.Path).InUse)
 	assert.NotNil(t, mustRow(t, snap, got.Path).InUse)
 
+	// A force removal discards changes, and only the process list could tell that no
+	// session is making them, so without it none is offered or done.
+	dirty(t, got.Path)
+
+	snap, err = unknown.List(t.Context())
+	require.NoError(t, err)
+	assert.False(t, mustRow(t, snap, got.Path).CanForceRemove)
+
+	err = unknown.ForceRemove(t.Context(), f.clone, got.Path)
+	require.ErrorIs(t, err, ErrSessionsUnknown)
+	assert.Contains(t, uierr.Message(err), "won't discard its changes")
+	assert.DirExists(t, got.Path)
+
+	require.Error(t, unknown.Remove(t.Context(), f.clone, got.Path), "git refuses a plain removal of a dirty worktree")
+	testutil.RunGit(t, got.Path, "checkout", "--", "README.md")
+	require.NoError(t, os.Remove(filepath.Join(got.Path, "notes.txt")))
+
 	require.NoError(t, unknown.Remove(t.Context(), f.clone, got.Path),
-		"a removal the user asks for goes ahead when sessions can't be listed: git and the locks still guard it")
+		"a plain removal the user asks for goes ahead when sessions can't be listed: git and the locks still guard it")
 }
 
 func TestSweepLeavesWhatItCannotTellIsUnused(t *testing.T) {

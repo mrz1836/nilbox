@@ -3,6 +3,8 @@ package workspacetrust_test
 import (
 	"os"
 	"path/filepath"
+	"strconv"
+	"sync"
 	"testing"
 
 	"github.com/pelletier/go-toml/v2"
@@ -157,6 +159,35 @@ func TestCodexTrustFollowsALinkedConfigAndResolvesFolders(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, linked, target, "the link stays a link")
 	assert.Equal(t, map[string]string{worktree: "trusted"}, trustLevels(t, linked), "the folder is trusted by its real path")
+}
+
+func TestCodexTrustKeepsEveryLaunchsEntryWhenLaunchesRunAtOnce(t *testing.T) {
+	t.Parallel()
+
+	home, _, _ := codexDirs(t)
+	config := filepath.Join(home, ".codex", "config.toml")
+	require.NoError(t, os.WriteFile(config, []byte("model = \"gpt-6-sol\"\n"), 0o600))
+
+	dirs := make([]string, 12)
+	for i := range dirs {
+		dirs[i] = filepath.Join(home, "projects", "repo-"+strconv.Itoa(i))
+		require.NoError(t, os.MkdirAll(dirs[i], 0o700))
+	}
+
+	var wg sync.WaitGroup
+
+	for _, dir := range dirs {
+		wg.Go(func() {
+			assert.NoError(t, workspacetrust.Codex{Home: home}.Trust(t.Context(), "", []string{dir}))
+		})
+	}
+
+	wg.Wait()
+
+	levels := trustLevels(t, config)
+	for _, dir := range dirs {
+		assert.Equal(t, "trusted", levels[dir], "each launch's folder stays trusted")
+	}
 }
 
 func TestCodexTrustQuotesAnyPath(t *testing.T) {

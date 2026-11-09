@@ -108,6 +108,11 @@ type spec interface {
 	// configFlags names the option that overrides one config value, such as -c, or nil.
 	configFlags() []string
 
+	// commands lists the words that make the agent run another command instead of a
+	// session, such as Codex's exec, when one comes before the prompt. An agent whose
+	// prompt comes first lists none.
+	commands() []string
+
 	// args returns a launch's flags, in order: model, effort, access, extra
 	// directories, extra arguments, and session name.
 	args(o Options) []string

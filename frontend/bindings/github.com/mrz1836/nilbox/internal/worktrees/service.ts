@@ -45,7 +45,8 @@ export function ClearCleanups(): $CancellablePromise<void> {
  * ForceRemove removes one unlocked linked worktree that has uncommitted changes,
  * discarding them, with a single --force. Locked worktrees, and ones a running process
  * works in, are refused even here, so a running session's worktree is never pulled out
- * from under it.
+ * from under it; so is every worktree when the running processes cannot be listed, since
+ * nothing else would stop it then.
  */
 export function ForceRemove(repoPath: string, path: string): $CancellablePromise<void> {
     return $Call.ByID(4169835063, repoPath, path);

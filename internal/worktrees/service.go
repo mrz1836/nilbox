@@ -49,8 +49,8 @@ var (
 	// removed (see InUseError).
 	ErrInUse = errors.New("a session is running in the worktree")
 
-	// ErrSessionsUnknown is returned when the automatic cleanup cannot tell whether a
-	// session runs in a worktree, so it leaves it.
+	// ErrSessionsUnknown is returned when the automatic cleanup or a force removal cannot
+	// tell whether a session runs in a worktree, so it leaves it.
 	ErrSessionsUnknown = errors.New("can't tell whether a session is running in the worktree")
 
 	// ErrNotLocked is returned when unlocking a worktree that has no lock.
@@ -270,6 +270,13 @@ type Service struct {
 	// neither runs then either.
 	act sync.RWMutex
 
+	// clonesMu guards clones, which holds a lock per clone: a Maker holds a clone's while
+	// it finds, makes, and records one of its worktrees, and a listing holds it to forget
+	// a record, so it never forgets one a launch is writing. Whoever needs act takes it
+	// before a clone's lock.
+	clonesMu sync.Mutex
+	clones   map[string]*sync.Mutex
+
 	// mu guards last.
 	mu   sync.Mutex
 	last SweepReport
@@ -333,12 +340,18 @@ func (s *Service) Remove(ctx context.Context, repoPath, path string) error {
 // ForceRemove removes one unlocked linked worktree that has uncommitted changes,
 // discarding them, with a single --force. Locked worktrees, and ones a running process
 // works in, are refused even here, so a running session's worktree is never pulled out
-// from under it.
+// from under it; so is every worktree when the running processes cannot be listed, since
+// nothing else would stop it then.
 func (s *Service) ForceRemove(ctx context.Context, repoPath, path string) error {
 	s.act.Lock()
 	defer s.act.Unlock()
 
-	g, e, err := s.removable(ctx, repoPath, path, "", false)
+	g, e, err := s.removable(ctx, repoPath, path, "", true)
+	if errors.Is(err, ErrSessionsUnknown) {
+		return uierr.New("This system can't list the running processes, so it can't tell whether a session is "+
+			"working in the worktree, and won't discard its changes.", err)
+	}
+
 	if err != nil {
 		return err
 	}
@@ -516,8 +529,9 @@ func (s *Service) sessionsIn(ctx context.Context, dir string) ([]Session, bool) 
 }
 
 // checkSessions refuses a worktree a running process works in. strict refuses it as well
-// when the processes cannot be listed, as the automatic cleanup does; a removal the user
-// asks for goes ahead then, since git and the locks still guard it.
+// when the processes cannot be listed, as the automatic cleanup and a force removal do; a
+// plain removal the user asks for goes ahead then, since git refuses a worktree with
+// changes, and the locks still guard it.
 func (s *Service) checkSessions(ctx context.Context, dir string, strict bool) error {
 	sessions, known := s.sessionsIn(ctx, dir)
 
@@ -556,7 +570,7 @@ func (s *Service) tally(snap *Snapshot) {
 	snap.CleanCount, snap.FinishedCount, snap.ReviewCount, snap.WorktreeCount = 0, 0, 0, 0
 
 	for _, wt := range rows(snap.Repos) {
-		assess(wt)
+		assess(wt, !snap.SessionsUnknown)
 
 		if !wt.Main {
 			snap.WorktreeCount++
@@ -597,6 +611,29 @@ func (s *Service) prepare(ctx context.Context) (git, string, SweepSettings, erro
 }
 
 // git returns the allowlisted git runner, resolving the binary when a Finder is set.
+// lockClone takes the clone's lock (see Service.clones), and returns its release.
+func (s *Service) lockClone(clone string) func() {
+	key := resolvedPath(clone)
+
+	s.clonesMu.Lock()
+
+	if s.clones == nil {
+		s.clones = map[string]*sync.Mutex{}
+	}
+
+	mu, ok := s.clones[key]
+	if !ok {
+		mu = &sync.Mutex{}
+		s.clones[key] = mu
+	}
+
+	s.clonesMu.Unlock()
+
+	mu.Lock()
+
+	return mu.Unlock
+}
+
 func (s *Service) git() (git, error) {
 	if s.finder == nil {
 		return git{run: s.run, bin: gitBin}, nil

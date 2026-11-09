@@ -67,6 +67,10 @@ func (claude) reservedConfig(string) string { return "" }
 
 func (claude) configFlags() []string { return nil }
 
+// commands lists none: Claude Code reads its prompt first, so no later word is read as a
+// command.
+func (claude) commands() []string { return nil }
+
 func (claude) args(o Options) []string {
 	var args []string
 

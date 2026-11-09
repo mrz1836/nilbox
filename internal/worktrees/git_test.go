@@ -46,6 +46,14 @@ func argv(parts ...string) []string {
 	return out
 }
 
+// gitArgv is the argv a git run in dir gets: git, -C <dir>, the hardening settings, then
+// words as argv splits them.
+func gitArgv(dir string, words ...string) []string {
+	out := append([]string{gitPath, "-C", dir}, hardening()...)
+
+	return append(out, argv(words...)...)
+}
+
 func TestGitArgvUsesDashC(t *testing.T) {
 	t.Parallel()
 
@@ -61,32 +69,32 @@ func TestGitArgvUsesDashC(t *testing.T) {
 			name:   "list",
 			stdout: string(porcelain(mainAttrs())),
 			call:   func(g git) error { _, _, err := g.list(ctx, repoDir); return err },
-			want:   argv(gitPath, "-C", repoDir, "worktree list --porcelain -z"),
+			want:   gitArgv(repoDir, "worktree list --porcelain -z"),
 		},
 		{
 			name: "remove",
 			call: func(g git) error { _, err := g.remove(ctx, repoDir, treePath, false); return err },
-			want: argv(gitPath, "-C", repoDir, "worktree remove", treePath),
+			want: gitArgv(repoDir, "worktree remove", treePath),
 		},
 		{
 			name: "force remove passes a single --force",
 			call: func(g git) error { _, err := g.remove(ctx, repoDir, treePath, true); return err },
-			want: argv(gitPath, "-C", repoDir, "worktree remove --force", treePath),
+			want: gitArgv(repoDir, "worktree remove --force", treePath),
 		},
 		{
 			name: "prune",
 			call: func(g git) error { _, err := g.prune(ctx, repoDir); return err },
-			want: argv(gitPath, "-C", repoDir, "worktree prune"),
+			want: gitArgv(repoDir, "worktree prune"),
 		},
 		{
 			name: "status runs in the worktree",
 			call: func(g git) error { _, _, err := g.dirtyCount(ctx, treePath); return err },
-			want: argv(gitPath, "-C", treePath, "status --porcelain=v1 -z --untracked-files=all"),
+			want: gitArgv(treePath, "status --porcelain=v1 -z --untracked-files=all"),
 		},
 		{
 			name: "last commit runs in the worktree",
 			call: func(g git) error { _, err := g.lastCommit(ctx, treePath); return err },
-			want: argv(gitPath, "-C", treePath, "log -1 --format=%ct"),
+			want: gitArgv(treePath, "log -1 --format=%ct"),
 		},
 		{
 			name:   "commit times run in the clone",
@@ -96,23 +104,23 @@ func TestGitArgvUsesDashC(t *testing.T) {
 
 				return err
 			},
-			want: []string{gitPath, "-C", repoDir, "log", "--no-walk=unsorted", "--format=%H %ct", headSHA, otherSHA},
+			want: append(gitArgv(repoDir, "log --no-walk=unsorted"), "--format=%H %ct", headSHA, otherSHA),
 		},
 		{
 			name:   "unpushed count runs in the worktree",
 			stdout: "0\n",
 			call:   func(g git) error { _, _, err := g.unpushed(ctx, treePath); return err },
-			want:   argv(gitPath, "-C", treePath, "rev-list --count HEAD --not --remotes"),
+			want:   gitArgv(treePath, "rev-list --count HEAD --not --remotes"),
 		},
 		{
 			name: "unlock",
 			call: func(g git) error { _, err := g.unlock(ctx, repoDir, treePath); return err },
-			want: argv(gitPath, "-C", repoDir, "worktree unlock", treePath),
+			want: gitArgv(repoDir, "worktree unlock", treePath),
 		},
 		{
 			name: "delete branch compares and deletes",
 			call: func(g git) error { _, err := g.deleteBranch(ctx, repoDir, "worktree-pr-7", headSHA); return err },
-			want: argv(gitPath, "-C", repoDir, "update-ref -d refs/heads/worktree-pr-7", headSHA),
+			want: gitArgv(repoDir, "update-ref -d refs/heads/worktree-pr-7", headSHA),
 		},
 	}
 

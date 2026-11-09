@@ -45,14 +45,25 @@ type reply struct {
 	err    error
 }
 
+// gitWords returns a git run's words after its leading -C <dir> and -c settings.
+func gitWords(argv []string) []string {
+	sub := argv[1:]
+	if len(sub) >= 2 && sub[0] == "-C" {
+		sub = sub[2:]
+	}
+
+	for len(sub) >= 2 && sub[0] == "-c" {
+		sub = sub[2:]
+	}
+
+	return sub
+}
+
 // scriptedGit answers the git commands intercept accepts itself, matching them by their
-// words after any leading -C <dir>, and runs the rest with realGit.
+// words after any leading -C <dir> and -c settings, and runs the rest with realGit.
 func scriptedGit(realGit execpath.Runner, intercept func(sub []string) (reply, bool)) *testutil.Runner {
 	return &testutil.Runner{Script: func(ctx context.Context, argv []string) ([]byte, []byte, error) {
-		sub := argv[1:]
-		if len(sub) >= 2 && sub[0] == "-C" {
-			sub = sub[2:]
-		}
+		sub := gitWords(argv)
 
 		if answer, ok := intercept(sub); ok {
 			return []byte(answer.stdout), []byte(answer.stderr), answer.err
@@ -659,15 +670,13 @@ func TestServiceErrors(t *testing.T) {
 	})
 }
 
-// gitCalls counts the git runs a runner recorded by their first words after -C <dir>.
+// gitCalls counts the git runs a runner recorded by their first words after -C <dir>
+// and the -c settings.
 func gitCalls(run *testutil.Runner, prefixes ...string) map[string]int {
 	counts := make(map[string]int, len(prefixes))
 
 	for _, argv := range run.Calls() {
-		sub := argv[1:]
-		if len(sub) >= 2 && sub[0] == "-C" {
-			sub = sub[2:]
-		}
+		sub := gitWords(argv)
 
 		for _, prefix := range prefixes {
 			if startsWith(sub, prefix) {

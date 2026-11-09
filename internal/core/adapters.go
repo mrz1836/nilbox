@@ -109,15 +109,15 @@ func (m worktreeMaker) EnsureWorktree(ctx context.Context, req launcher.Worktree
 func ensureRequest(req launcher.WorktreeRequest) worktrees.EnsureRequest {
 	return worktrees.EnsureRequest{
 		Clone: req.Clone, Remote: req.Remote, Owner: req.Owner, Name: req.Name, Kind: req.Kind, Number: req.Number,
-		DefaultBranch: req.DefaultBranch,
+		DefaultBranch: req.DefaultBranch, Head: req.Head,
 	}
 }
 
 // launcherWorktree converts the worktrees package's answer for the launcher.
 func launcherWorktree(e worktrees.Ensured) launcher.Worktree {
 	return launcher.Worktree{
-		Path: e.Path, Branch: e.Branch, Action: launcher.WorktreeAction(e.Action), Base: e.Base, Dirty: e.Dirty,
-		Notice: e.Notice,
+		Path: e.Path, Branch: e.Branch, Action: launcher.WorktreeAction(e.Action), Base: e.Base, Head: e.Head,
+		Dirty: e.Dirty, Notice: e.Notice,
 	}
 }
 

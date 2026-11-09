@@ -67,7 +67,8 @@ func (codex) reservedConfig(key string) string {
 		return reasonModel
 	case key == codexEffortKey:
 		return reasonEffort
-	case key == "sandbox_mode", key == "approval_policy":
+	case key == "sandbox_mode", key == "approval_policy", key == "sandbox_permissions",
+		key == "sandbox_workspace_write" || strings.HasPrefix(key, "sandbox_workspace_write."):
 		return reasonPermissions
 	case key == "projects" || strings.HasPrefix(key, codexProjectsPrefix):
 		return "can't be added: " + reasonTrust
@@ -77,6 +78,18 @@ func (codex) reservedConfig(key string) string {
 }
 
 func (codex) configFlags() []string { return []string{"-c", codexConfig} }
+
+// commands lists Codex's commands and their aliases, as of codex-cli 0.163, with some
+// earlier versions had. Any of them before the prompt would run that command, which reads
+// none of the session's flags, its sandbox included.
+func (codex) commands() []string {
+	return []string{
+		"a", "agents", "app", "app-server", "apply", "archive", "cloud", "cloud-tasks", "completion", "debug",
+		"delete", "doctor", "e", "exec", "exec-server", "features", "fork", "generate-ts", "help", "login", "logout",
+		"mcp", "mcp-server", "migrate-rollouts", "plugin", "proto", "queue", "remote-control", "responses-api-proxy",
+		"resume", "review", "sandbox", "unarchive", "update",
+	}
+}
 
 func (codex) args(o Options) []string {
 	var args []string

@@ -862,8 +862,9 @@ warning when the other agent launches, and that agent's own default is used.
 Extra flags add up instead: the profile's, then the org's, the repository's, and the prompt's,
 each the launched agent's own. Flags the launcher sets itself can't be added this way, and a
 value starting with `~` is refused (as in `~/x` or `--add-dir=~/x`), since nothing expands it.
-Neither can `--`, after which the agent would read everything as the prompt. Each agent reserves
-its own flags:
+Neither can `--`, after which the agent would read everything as the prompt. The flags are
+checked layer by layer and then all together, since an option ending one layer would take the
+next layer's first word as its value. Each agent reserves its own flags:
 
 - **Claude Code:** `--model`, `--effort`, `--worktree` (`-w`), `--name` (`-n`), the permission
   flags (`--permission-mode`, `--dangerously-skip-permissions`,
@@ -871,10 +872,13 @@ its own flags:
 - **Codex:** `--model` (`-m`), the permission flags (`--sandbox` (`-s`), `--ask-for-approval`
   (`-a`), `--dangerously-bypass-approvals-and-sandbox`, `--dangerously-bypass-hook-trust`,
   `--approve-for-me`, `--full-auto`, and `--yolo`), `--worktree` (`-w`), `--cd` (`-C`), and
-  `--remote`; and a `-c`/`--config` override of `model`, `model_reasoning_effort`,
-  `sandbox_mode`, `approval_policy`, or any `projects.*` key, in every spelling Codex reads
-  (`-c key=value`, `-ckey=value`, `--config=key=value`). Other overrides, such as `-c
-  model_verbosity=low`, and `-p` (a Codex config profile) are fine.
+  `--remote`; a `-c`/`--config` override of `model`, `model_reasoning_effort`,
+  `sandbox_mode`, `approval_policy`, `sandbox_permissions`, `sandbox_workspace_write`, or any
+  `projects.*` key, in every spelling Codex reads (`-c key=value`, `-ckey=value`,
+  `--config=key=value`); and any of Codex's command names as a word of its own (`exec`, `e`,
+  `review`, `resume`, `apply`, and the rest), which would run that command instead of a
+  session, without the launch's sandbox. Other overrides, such as `-c model_verbosity=low`, and
+  `-p` (a Codex config profile) are fine.
 
 A default that no longer makes sense, such as a profile that was removed or an agent this
 version doesn't know, is skipped with a warning in the launch menu. The outside-contributor rule
@@ -1091,7 +1095,9 @@ A launch finds the item's worktree, or makes it, in this order:
 4. **Create** a pull request's worktree at its head: `git fetch --no-tags <remote>
    refs/pull/<n>/head:refs/heads/worktree-pr-<n>`, then `git worktree add`. `<remote>` is the
    clone's remote for the item's repository, so a fork's clone with an `upstream` remote gets the
-   real head.
+   real head. When the launch checked the pull request's files, the head fetched must be the
+   commit it checked: if the pull request was pushed to in between, the fetched branch is deleted
+   again and the launch asks you to open it again, which checks the new commits.
 5. **Create** an issue's worktree from the repository's default branch: its remote-tracking
    branch is fetched, then `git worktree add --no-track -b worktree-issue-<n>`, so a push never
    lands on the default branch. When the fetch fails (offline, say) and an earlier fetch left the
@@ -1100,7 +1106,10 @@ A launch finds the item's worktree, or makes it, in this order:
 Entries for worktrees whose folders are gone are pruned first. When something git doesn't know is
 already at the worktree's path, the app prunes git's entries and tries once more, then says what
 is in the way: it never deletes a folder. Git runs as an argument list with prompts off and a time
-limit, and one clone's worktrees are made one at a time. Every worktree made or adopted is
+limit, and one clone's worktrees are made one at a time. Every git command the app runs on
+worktrees runs with hooks, the file system monitor, and submodule recursion turned off: a
+worktree holds the pull request's own files, and a hook in your clone that runs a tool from the
+checkout would otherwise run the pull request's code before any agent starts. Every worktree made or adopted is
 recorded with its item, and each session started in it with its agent and time, so the
 [Worktrees view](#the-worktrees-view) links it and its cleanup finds it.
 
@@ -1166,8 +1175,8 @@ against `git worktree list` each time it lists or sweeps:
 tool it is, as in **in use · codex (pid 4242)**. The app lists the running processes' working
 folders once per listing or sweep, with `lsof` on macOS and `/proc` on Linux, leaving out its own
 git commands. Where the processes can't be listed, the view says so; the automatic cleanup then
-removes nothing, since it never guesses, while a removal you ask for still goes ahead, guarded by
-git and the locks. A lock Claude Code wrote for a session in one of its own worktrees counts too.
+removes nothing, since it never guesses, and no worktree is force-removed, while a plain removal
+you ask for still goes ahead, since git refuses one with uncommitted changes. A lock Claude Code wrote for a session in one of its own worktrees counts too.
 
 **Linked pull requests and issues.** A worktree made for an item is linked to it: exactly, from
 the app's record, or otherwise by its name (`pr-<n>` or `issue-<n>` in the app's or Claude Code's
@@ -1206,8 +1215,9 @@ session runs in the worktree:
 - **Remove** runs `git worktree remove` without `--force` and keeps the branch. Git refuses a
   dirty or locked worktree, and the row shows why. **Remove all clean** removes every clean,
   unlocked worktree no session runs in, after a confirmation that shows the count.
-- **Force remove** is offered only on dirty, unlocked rows no session runs in. It runs `git
-  worktree remove --force` after a confirmation that shows the number of uncommitted files.
+- **Force remove** is offered only on dirty, unlocked rows no session runs in, and only while
+  the running processes can be listed. It runs `git worktree remove --force` after a
+  confirmation that shows the number of uncommitted files.
 - **Prune** appears for a repository with entries whose directory is gone, and runs
   `git worktree prune`.
 - The main worktree is listed for context and is never removable.

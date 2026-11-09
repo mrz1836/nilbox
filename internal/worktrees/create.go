@@ -11,7 +11,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/flight"
@@ -69,6 +68,10 @@ var (
 	// ErrNoDefaultBranch is returned when the default branch of the item's repository
 	// cannot be found.
 	ErrNoDefaultBranch = errors.New("the repository's default branch could not be found")
+
+	// ErrHeadMoved is returned when a pull request's head fetched for its new worktree is
+	// not the commit whose files the launch checked.
+	ErrHeadMoved = errors.New("the pull request's head moved after its files were checked")
 )
 
 // remotePattern is what a remote's name must look like to be passed to git.
@@ -94,6 +97,11 @@ type EnsureRequest struct {
 	// DefaultBranch is the repository's default branch as GitHub reports it, or "". An
 	// issue's worktree starts from it.
 	DefaultBranch string
+
+	// Head is the pull request's head commit whose files the launch checked, or "" when
+	// it checked none. A pull request's worktree made now must start there (see
+	// verifyHead).
+	Head string
 }
 
 // Ensured is an item's worktree, as Ensure found or made it, or Plan says it would.
@@ -132,17 +140,11 @@ type Maker struct {
 	// calls runs one Ensure per item at a time, handing its result to every caller that
 	// asked while it ran.
 	calls flight.Group[Ensured]
-
-	// mu guards clones.
-	mu sync.Mutex
-
-	// clones holds a lock per clone, so one clone's git work runs one Ensure at a time.
-	clones map[string]*sync.Mutex
 }
 
 // NewMaker returns a Maker over svc's git, records, and clock.
 func NewMaker(svc *Service) *Maker {
-	return &Maker{s: svc, clones: map[string]*sync.Mutex{}}
+	return &Maker{s: svc}
 }
 
 // Plan says what Ensure would do for req, changing nothing and asking no remote.
@@ -192,34 +194,16 @@ func (m *Maker) Ensure(ctx context.Context, req EnsureRequest) (Ensured, error) 
 		ctx, cancel := context.WithTimeout(ctx, ensureTimeout)
 		defer cancel()
 
-		unlock := m.lockClone(req.Clone)
-		defer unlock()
-
-		// A sweep or a removal never runs while a worktree is being made or resumed.
+		// A sweep or a removal never runs while a worktree is being made or resumed, and
+		// one clone's git work runs one call at a time. act comes first, as everywhere.
 		m.s.act.RLock()
 		defer m.s.act.RUnlock()
 
+		unlock := m.s.lockClone(req.Clone)
+		defer unlock()
+
 		return m.ensure(ctx, req)
 	})
-}
-
-// lockClone takes the clone's lock, and returns its release.
-func (m *Maker) lockClone(clone string) func() {
-	key := resolvedPath(clone)
-
-	m.mu.Lock()
-
-	mu, ok := m.clones[key]
-	if !ok {
-		mu = &sync.Mutex{}
-		m.clones[key] = mu
-	}
-
-	m.mu.Unlock()
-
-	mu.Lock()
-
-	return mu.Unlock
 }
 
 // ensure does Ensure's work under the clone's lock.
@@ -258,9 +242,16 @@ func (req EnsureRequest) check() error {
 		return fmt.Errorf("%w: no repository", ErrInvalidRequest)
 	case req.remote() != "" && !remotePattern.MatchString(req.remote()):
 		return fmt.Errorf("%w: the remote %q", ErrInvalidRequest, req.Remote)
+	case !req.validHead():
+		return fmt.Errorf("%w: the head %q", ErrInvalidRequest, req.Head)
 	default:
 		return nil
 	}
+}
+
+// validHead reports a Head the request may carry: none, or a pull request's commit.
+func (req EnsureRequest) validHead() bool {
+	return req.Head == "" || (req.Kind == item.KindPR && isCommitID(req.Head))
 }
 
 // remote returns the remote to fetch from: Remote, or origin.
@@ -327,14 +318,14 @@ func (m *Maker) find(ctx context.Context, g git, req EnsureRequest, rec *worklog
 
 	f := found{action: ActionCreate, path: target, branch: branch, prune: staleEntry(entries, target, branch)}
 
-	exists, err := branchExists(ctx, g, req.Clone, branch)
+	oid, err := branchCommit(ctx, g, req.Clone, branch)
 	if err != nil {
 		return found{}, err
 	}
 
 	switch {
-	case exists:
-		f.action = ActionAttach
+	case oid != "":
+		f.action, f.head = ActionAttach, oid
 	case req.Kind == item.KindPR:
 		f.base = "the pull request's head"
 	default:
@@ -456,6 +447,10 @@ func (m *Maker) addArgs(ctx context.Context, g git, req EnsureRequest, f *found)
 				fmt.Errorf("fetch pull request #%d from %s: %w", req.Number, req.remote(), gitError(err, stderr)))
 		}
 
+		if err := m.verifyHead(ctx, g, req, f.branch); err != nil {
+			return nil, err
+		}
+
 		return worktreeAddArgs(f.path, f.branch), nil
 	default:
 		base, notice, err := m.fetchDefault(ctx, g, req)
@@ -468,6 +463,40 @@ func (m *Maker) addArgs(ctx context.Context, g git, req EnsureRequest, f *found)
 
 		return worktreeNewBranchArgs(f.path, f.branch, base), nil
 	}
+}
+
+// verifyHead makes sure the pull request's head just fetched into branch is the commit
+// whose files the launch checked, when it checked one. A push between the check and the
+// fetch would otherwise put files no one checked, such as agent configuration, in the
+// worktree a session then starts in. On a mismatch the branch is deleted again, only
+// while it still points where the fetch put it, and the launch is refused, so launching
+// again checks the new head.
+func (m *Maker) verifyHead(ctx context.Context, g git, req EnsureRequest, branch string) error {
+	if req.Head == "" {
+		return nil
+	}
+
+	got, err := branchCommit(ctx, g, req.Clone, branch)
+	if err != nil {
+		return err
+	}
+
+	if got == req.Head {
+		return nil
+	}
+
+	if isCommitID(got) {
+		if stderr, err := g.deleteBranch(ctx, req.Clone, branch, got); err != nil {
+			m.s.logger.WarnContext(ctx, "could not delete a pull request head that was not checked",
+				"branch", branch, "error", gitError(err, stderr))
+		}
+	}
+
+	return uierr.New(
+		fmt.Sprintf("Pull request #%d changed while it was opening, so its new commits weren't checked. "+
+			"Open it again to check them.", req.Number),
+		fmt.Errorf("%w: #%d is at %s, its files were checked at %s", ErrHeadMoved, req.Number, got, req.Head),
+	)
 }
 
 // fetchDefault fetches the default branch of the item's repository from its remote and
@@ -579,23 +608,31 @@ func dirExists(path string) bool {
 	return err == nil && info.IsDir()
 }
 
-// branchExists reports whether the clone has the local branch.
-func branchExists(ctx context.Context, g git, clone, branch string) (bool, error) {
-	return refExists(ctx, g, clone, headsPrefix+branch)
+// branchCommit returns the commit the clone's local branch points at, or "" when it has
+// no such branch.
+func branchCommit(ctx context.Context, g git, clone, branch string) (string, error) {
+	return refCommit(ctx, g, clone, headsPrefix+branch)
 }
 
-// refExists reports whether the clone has ref. git's "no such ref" is false; failing to
-// run git is an error.
+// refExists reports whether the clone has ref.
 func refExists(ctx context.Context, g git, clone, ref string) (bool, error) {
-	_, stderr, err := g.do(ctx, clone, revParseArgs(ref)...)
+	oid, err := refCommit(ctx, g, clone, ref)
+
+	return oid != "", err
+}
+
+// refCommit returns the commit ref points at, or "" when the clone has no such ref.
+// git's "no such ref" is "", and failing to run git is an error.
+func refCommit(ctx context.Context, g git, clone, ref string) (string, error) {
+	stdout, stderr, err := g.do(ctx, clone, revParseArgs(ref)...)
 
 	switch {
 	case err == nil:
-		return true, nil
+		return strings.TrimSpace(string(stdout)), nil
 	case gitRefused(ctx, err):
-		return false, nil
+		return "", nil
 	default:
-		return false, fmt.Errorf("look for %s: %w", ref, gitError(err, stderr))
+		return "", fmt.Errorf("look for %s: %w", ref, gitError(err, stderr))
 	}
 }
 

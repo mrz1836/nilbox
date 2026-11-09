@@ -65,6 +65,9 @@ type StoredItem struct {
 	Mergeable      string
 	ChecksState    string
 	ReviewDecision string
+
+	// HeadOID is a pull request's head commit as the last refresh read it, or "".
+	HeadOID string
 }
 
 // launchItemRow is a stored item as a launch reads it.

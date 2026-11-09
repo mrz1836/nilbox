@@ -235,7 +235,7 @@ func TestLaunchUsesLaunchDefaults(t *testing.T) {
 
 	h.saveDefaults(t, launchdefaults.Input{Owner: acmeOrg, Profiles: claudeOnly("work"), ExtraFlags: claudeOnly("--advisor fable")})
 	h.saveDefaults(t, launchdefaults.Input{
-		Owner: acmeOrg, Name: "example-repo", PRPromptID: fix, Effort: "max", PlanMode: new(true),
+		Owner: acmeOrg, Name: exampleRepo, PRPromptID: fix, Effort: "max", PlanMode: new(true),
 	})
 
 	res, script := h.launch(t, LaunchRequest{ItemID: h.trustedPR})
@@ -318,7 +318,7 @@ VALUES (?, '[{"name":"bug","color":""},{"name":"size/L","color":""}]', 12, 3, 2,
 	assert.Equal(t, prompts.Data{
 		Kind: "pull request", IsPR: true, Number: 7, Title: "Change 7", URL: "https://github.com/acme-org/x/7",
 		Author: "octo-user", Labels: "bug, size/L", Repo: "acme-org/example-repo", Owner: acmeOrg,
-		RepoName: "example-repo", DefaultBranch: "main", Branch: "feature-branch", Checks: "failing", Review: "approved",
+		RepoName: exampleRepo, DefaultBranch: "main", Branch: "feature-branch", Checks: "failing", Review: "approved",
 		HasConflicts: true, Additions: 12, Deletions: 3, ChangedFiles: 2, Commits: 1, Profile: "work", Me: "octo-user",
 	}, got)
 
@@ -354,7 +354,7 @@ func TestLaunchTrustsTheTrustedBots(t *testing.T) {
 	bot := h.store(t, github.Item{
 		IsPR: true, Number: 30, Title: "Bump the widget library", URL: "https://github.com/acme-org/example-repo/pull/30",
 		CreatedAt: now, UpdatedAt: now, HeadRef: "dependabot/go_modules/widget-1.2.3", AuthorLogin: "dependabot",
-		AuthorType: "Bot", AuthorAssociation: "NONE", RepoOwner: "acme-org", RepoName: "example-repo",
+		AuthorType: "Bot", AuthorAssociation: "NONE", RepoOwner: "acme-org", RepoName: exampleRepo,
 	})[0]
 
 	res, script := h.launch(t, LaunchRequest{ItemID: bot})

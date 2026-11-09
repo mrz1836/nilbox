@@ -73,7 +73,7 @@ func baseRequest() Request {
 		},
 		Agent:      agent.Claude,
 		Profile:    fullProfile(),
-		Dir:        absPath("projects", "."+brand.Slug, "worktrees", "example-repo", "pr-7"),
+		Dir:        absPath("projects", "."+brand.Slug, "worktrees", exampleRepo, "pr-7"),
 		BinaryPath: absPath("bin", "claude"),
 	}
 }

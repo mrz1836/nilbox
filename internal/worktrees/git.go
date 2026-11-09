@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"regexp"
 	"slices"
 	"strconv"
@@ -89,14 +90,31 @@ type git struct {
 	bin string
 }
 
-// do runs git in dir with args after checking them against the allowlist.
+// hardening are the settings every git command here runs with. Git runs hooks, and the
+// file system monitor, with the worktree as their working directory, and a worktree holds
+// a pull request's own files, which may come from anyone: a hook that runs a tool from
+// the checkout (node_modules/.bin, say) would run the pull request's code before any
+// agent starts, outside every limit a launch sets. None of these commands needs either,
+// nor to recurse into submodules, whose URLs the pull request names.
+func hardening() []string {
+	return []string{
+		"-c", "core.hooksPath=" + os.DevNull,
+		"-c", "core.fsmonitor=false",
+		"-c", "submodule.recurse=false",
+	}
+}
+
+// do runs git in dir with args after checking them against the allowlist, with hooks,
+// the file system monitor, and submodule recursion off (see hardening).
 func (g git) do(ctx context.Context, dir string, args ...string) (stdout, stderr []byte, err error) {
 	if !allowed(args) {
 		return nil, nil, fmt.Errorf("%w: git %s", ErrGitCommandNotAllowed, strings.Join(args, " "))
 	}
 
-	argv := make([]string, 0, len(args)+2)
+	safe := hardening()
+	argv := make([]string, 0, len(safe)+len(args)+2)
 	argv = append(argv, "-C", dir)
+	argv = append(argv, safe...)
 	argv = append(argv, args...)
 
 	return g.run.Run(ctx, g.bin, argv...)

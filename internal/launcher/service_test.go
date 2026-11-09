@@ -183,6 +183,9 @@ type fakeMaker struct {
 	planned []WorktreeRequest
 	ensured []WorktreeRequest
 	err     error
+
+	// head is the commit an existing worktree has checked out.
+	head string
 }
 
 // worktreeOf is where the fake makes a request's worktree.
@@ -224,7 +227,7 @@ func (m *fakeMaker) answer(req WorktreeRequest) Worktree {
 	wt := Worktree{Path: path, Branch: "worktree-" + filepath.Base(path), Action: WorktreeCreate, Dirty: 0}
 
 	if _, err := os.Stat(path); err == nil {
-		wt.Action = WorktreeResume
+		wt.Action, wt.Head = WorktreeResume, m.head
 	} else if req.Kind == item.KindPR {
 		wt.Base = "the pull request's head"
 	} else {
@@ -340,7 +343,7 @@ func newLaunchHarness(t *testing.T) *launchHarness {
 		sessions: &fakeSessions{},
 	}
 	h.root = filepath.Join(h.home, "projects")
-	h.clone = filepath.Join(h.root, "example-repo")
+	h.clone = filepath.Join(h.root, exampleRepo)
 	h.git = &fakeGit{remotes: map[string]string{
 		h.clone: "remote.origin.url https://github.com/acme-org/example-repo.git\n",
 	}}
@@ -393,9 +396,9 @@ func (h *launchHarness) seed(t *testing.T) {
 	t.Helper()
 
 	stored := h.store(t,
-		storedItem("example-repo", item.KindPR, 7, "OWNER", false),
-		storedItem("example-repo", item.KindPR, 8, "CONTRIBUTOR", true),
-		storedItem("example-repo", item.KindIssue, 3, "MEMBER", false),
+		storedItem(exampleRepo, item.KindPR, 7, "OWNER", false),
+		storedItem(exampleRepo, item.KindPR, 8, "CONTRIBUTOR", true),
+		storedItem(exampleRepo, item.KindIssue, 3, "MEMBER", false),
 		storedItem("missing-repo", item.KindPR, 9, "OWNER", false),
 	)
 	h.trustedPR, h.outsidePR, h.issue, h.orphanPR = stored[0], stored[1], stored[2], stored[3]
@@ -533,19 +536,19 @@ func TestLaunchWritesFilesAndOpensDriver(t *testing.T) {
 		Agent:          agent.Claude,
 	}, res)
 
-	worktree := filepath.Join(h.root, "."+brand.Slug, "worktrees", "example-repo", "pr-7")
+	worktree := filepath.Join(h.root, "."+brand.Slug, "worktrees", exampleRepo, "pr-7")
 	assert.Contains(t, script, "cd -- "+shQuote(worktree)+" || exit 1\n", "the session starts in the item's worktree")
 	assert.Contains(t, script, "unset CLAUDE_CONFIG_DIR\n")
 	assert.Contains(t, script, `exec '`+filepath.Join(filepath.Dir(h.home), "bin", "claude")+`' "$prompt" `+
 		"'--dangerously-skip-permissions' '--name=Review · example-repo#7'\n", "no agent worktree flag")
 	assert.NotContains(t, script, "--worktree")
 	assert.Equal(t, []WorktreeRequest{{
-		Clone: h.clone, Remote: "origin", Owner: "acme-org", Name: "example-repo", Kind: item.KindPR, Number: 7,
+		Clone: h.clone, Remote: "origin", Owner: "acme-org", Name: exampleRepo, Kind: item.KindPR, Number: 7,
 	}}, h.maker.ensures())
 	assert.Contains(t, promptFor(t, res.ScriptPath), "Review pull request #7 in acme-org/example-repo: Change 7")
 	assert.Len(t, h.launchFiles(t), 2, "one script and one prompt file")
 
-	assert.Equal(t, h.clone, h.cachedPath(t, "example-repo"), "the resolved clone is cached")
+	assert.Equal(t, h.clone, h.cachedPath(t, exampleRepo), "the resolved clone is cached")
 }
 
 func TestWorktreePrefDefaultAndUntick(t *testing.T) {
@@ -585,7 +588,7 @@ func TestWorktreePrefDefaultAndUntick(t *testing.T) {
 			}
 
 			assert.Equal(t, "issue-3", res.Worktree)
-			assert.Contains(t, script, "cd -- "+shQuote(filepath.Join(h.root, "."+brand.Slug, "worktrees", "example-repo", "issue-3")))
+			assert.Contains(t, script, "cd -- "+shQuote(filepath.Join(h.root, "."+brand.Slug, "worktrees", exampleRepo, "issue-3")))
 			assert.Contains(t, prompt, "fresh worktree")
 		})
 	}
@@ -695,7 +698,7 @@ func TestLaunchTrustsTheFolderForTheAgent(t *testing.T) {
 
 	h.launch(t, LaunchRequest{ItemID: h.trustedPR})
 
-	worktree, err := filepath.EvalSymlinks(filepath.Join(h.root, "."+brand.Slug, "worktrees", "example-repo", "pr-7"))
+	worktree, err := filepath.EvalSymlinks(filepath.Join(h.root, "."+brand.Slug, "worktrees", exampleRepo, "pr-7"))
 	require.NoError(t, err)
 	assert.True(t, trustedIn(t, defaultConfig, worktree), "the default profile's config, in home, trusts the worktree")
 	assert.True(t, trustedIn(t, defaultConfig, clone), "and the clone it belongs to")
@@ -753,7 +756,7 @@ func TestLaunchCodex(t *testing.T) {
 	assert.Equal(t, agent.Codex, res.Agent)
 	assert.Equal(t, "permission mode workspace-write", res.Permission)
 
-	worktree := filepath.Join(h.root, "."+brand.Slug, "worktrees", "example-repo", "pr-7")
+	worktree := filepath.Join(h.root, "."+brand.Slug, "worktrees", exampleRepo, "pr-7")
 	assert.Contains(t, script, "cd -- "+shQuote(worktree)+" || exit 1\n")
 	assert.Contains(t, script, "export CODEX_HOME="+shQuote(codexHome)+"\n")
 	assert.Regexp(t, `exec '[^']*/codex' '--sandbox' 'workspace-write' '--' "\$prompt"\n$`, script,
@@ -870,27 +873,27 @@ func TestLaunchRevalidatesTheCachedClone(t *testing.T) {
 	h := newLaunchHarness(t)
 
 	stale := filepath.Join(h.root, "gone")
-	h.exec(t, "UPDATE repos SET local_path = ? WHERE name = ?", stale, "example-repo")
+	h.exec(t, "UPDATE repos SET local_path = ? WHERE name = ?", stale, exampleRepo)
 
 	res, _ := h.launch(t, LaunchRequest{ItemID: h.trustedPR})
 	assert.Equal(t, "~/projects/example-repo", res.ClonePath, "a vanished cached clone is found again")
-	assert.Equal(t, h.clone, h.cachedPath(t, "example-repo"))
+	assert.Equal(t, h.clone, h.cachedPath(t, exampleRepo))
 
 	// A cached clone whose remotes no longer point at the repository is replaced too.
 	other := filepath.Join(h.root, "other-repo")
 	makeRepoDir(t, other)
 	h.git.remotes[other] = "remote.origin.url git@github.com:acme-org/other-repo.git\n"
-	h.exec(t, "UPDATE repos SET local_path = ? WHERE name = ?", other, "example-repo")
+	h.exec(t, "UPDATE repos SET local_path = ? WHERE name = ?", other, exampleRepo)
 
 	res, _ = h.launch(t, LaunchRequest{ItemID: h.trustedPR})
 	assert.Equal(t, "~/projects/example-repo", res.ClonePath)
-	assert.Equal(t, h.clone, h.cachedPath(t, "example-repo"))
+	assert.Equal(t, h.clone, h.cachedPath(t, exampleRepo))
 
 	// A valid cached clone outside the clone root is used without a scan.
-	elsewhere := filepath.Join(h.home, "elsewhere", "example-repo")
+	elsewhere := filepath.Join(h.home, "elsewhere", exampleRepo)
 	makeRepoDir(t, elsewhere)
 	h.git.remotes[elsewhere] = "remote.origin.url https://github.com/acme-org/example-repo\n"
-	h.exec(t, "UPDATE repos SET local_path = ? WHERE name = ?", elsewhere, "example-repo")
+	h.exec(t, "UPDATE repos SET local_path = ? WHERE name = ?", elsewhere, exampleRepo)
 
 	before := len(h.git.recorded())
 	res, _ = h.launch(t, LaunchRequest{ItemID: h.trustedPR})
@@ -911,6 +914,41 @@ func TestLaunchFromAForkFetchesTheItemsRemote(t *testing.T) {
 	require.Len(t, h.maker.ensures(), 1)
 	assert.Equal(t, "upstream", h.maker.ensures()[0].Remote, "the pull request's head comes from the item's repository")
 	assert.Contains(t, promptFor(t, res.ScriptPath), "This worktree is already at the pull request's head commit")
+}
+
+func TestLaunchSaysAWorktreeIsAtThePullRequestsHeadOnlyWhenItIs(t *testing.T) {
+	t.Parallel()
+
+	const (
+		atHead   = "This worktree is already at the pull request's head commit"
+		checkout = "First run `gh pr checkout 7 --repo acme-org/example-repo` inside this worktree"
+		head     = "fc1c3975011e66491785ace891c893e4fc716587"
+	)
+
+	h := newLaunchHarness(t)
+
+	res, _ := h.launch(t, LaunchRequest{ItemID: h.trustedPR})
+	require.Equal(t, WorktreeCreate, res.WorktreeAction, "made now")
+	assert.Contains(t, promptFor(t, res.ScriptPath), atHead, "a worktree made now starts at the head fetched for it")
+
+	// Resumed, the worktree has whatever commit it was left at.
+	h.maker.mu.Lock()
+	h.maker.head = "0123456789abcdef0123456789abcdef01234567"
+	h.maker.mu.Unlock()
+
+	res, _ = h.launch(t, LaunchRequest{ItemID: h.trustedPR})
+	prompt := promptFor(t, res.ScriptPath)
+	assert.NotContains(t, prompt, atHead, "a worktree left behind the pull request's head is not at it")
+	assert.Contains(t, prompt, checkout)
+
+	// One at the head the last refresh read is.
+	h.exec(t, `INSERT INTO item_details (item_id, fetched_at, head_oid) VALUES (?, ?, ?)`, h.trustedPR, fixedNow(), head)
+	h.maker.mu.Lock()
+	h.maker.head = head
+	h.maker.mu.Unlock()
+
+	res, _ = h.launch(t, LaunchRequest{ItemID: h.trustedPR})
+	assert.Contains(t, promptFor(t, res.ScriptPath), atHead)
 }
 
 func TestLaunchFailures(t *testing.T) {
@@ -1000,7 +1038,7 @@ func TestLaunchStopsWhenCancelled(t *testing.T) {
 	t.Parallel()
 
 	h := newLaunchHarness(t)
-	h.exec(t, "UPDATE repos SET local_path = ? WHERE name = ?", h.clone, "example-repo")
+	h.exec(t, "UPDATE repos SET local_path = ? WHERE name = ?", h.clone, exampleRepo)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()

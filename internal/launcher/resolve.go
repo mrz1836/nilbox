@@ -545,7 +545,9 @@ func (r *resolver) toggle(requested, fromPrompt *bool, pick func(*launchdefaults
 
 // extraArgs returns every extra argument for the agent, in order: the profile's, the
 // org's, the repository's, and the prompt's. The launch defaults' and the prompt's are
-// checked again, in case the database was edited by hand.
+// checked again, in case the database was edited by hand, and then the whole list, since
+// an option that ends one layer takes the next layer's first argument as its value, as
+// an org's -c would a repository's model=x.
 func (r *resolver) extraArgs(profile profiles.Profile, prompt prompts.Prompt) ([]string, error) {
 	id := r.agent.ID
 	args := slices.Clone(profile.ExtraArgs)
@@ -562,7 +564,13 @@ func (r *resolver) extraArgs(profile profiles.Profile, prompt prompts.Prompt) ([
 		return nil, fmt.Errorf("the %q prompt's %s flags: %w", prompt.Nickname, r.agent.Name, err)
 	}
 
-	return textutil.NonNil(append(args, prompt.ExtraArgs[id]...)), nil
+	args = append(args, prompt.ExtraArgs[id]...)
+	if err := agent.CheckExtra(id, args); err != nil {
+		return nil, fmt.Errorf("the %s flags the profile, the launch defaults, and the prompt add together: %w",
+			r.agent.Name, err)
+	}
+
+	return textutil.NonNil(args), nil
 }
 
 // warn records a warning.

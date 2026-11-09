@@ -74,8 +74,8 @@ export function WorktreesView({ agentName, launchFor, ...props }: WorktreesViewP
       {error !== '' && <ErrorBanner>{error}</ErrorBanner>}
       {snapshot?.sessionsUnknown === true && (
         <p className="text-sm text-muted">
-          This system can&apos;t list the running processes, so no worktree shows a session, and the automatic cleanup
-          removes none.
+          This system can&apos;t list the running processes, so no worktree shows a session, the automatic cleanup
+          removes none, and no worktree can be force-removed.
         </p>
       )}
       {snapshot !== null && snapshot.linkError !== '' && (

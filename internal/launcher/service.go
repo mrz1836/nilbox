@@ -491,11 +491,43 @@ func (p planned) atHead() bool {
 	return p.worktree != nil && p.row.Kind == item.KindPR
 }
 
-// worktreeRequest asks for the item's worktree in the launch's clone.
+// checkedHead is the pull request's head commit whose files the launch checked, or "".
+func (p planned) checkedHead() string {
+	if p.check == nil || p.row.Kind != item.KindPR {
+		return ""
+	}
+
+	return strings.ToLower(p.check.Head)
+}
+
+// onPRHead reports a session that starts in a pull request's worktree at its head: one
+// made now, from the head fetched for it, or one whose commit is the head the launch
+// checked or the last refresh read. A worktree resumed after the pull request moved on,
+// or taken over from an older session, is not, so its prompt asks the agent to check
+// the pull request out.
+func (p planned) onPRHead() bool {
+	if !p.atHead() {
+		return false
+	}
+
+	if p.worktree.Action == WorktreeCreate {
+		return true
+	}
+
+	head := p.checkedHead()
+	if head == "" {
+		head = strings.ToLower(p.row.HeadOID)
+	}
+
+	return head != "" && strings.EqualFold(p.worktree.Head, head)
+}
+
+// worktreeRequest asks for the item's worktree in the launch's clone, made at the head
+// the launch checked when it checked one.
 func (p planned) worktreeRequest() WorktreeRequest {
 	return WorktreeRequest{
 		Clone: p.clone.Dir, Remote: p.clone.Remote, Owner: p.row.Owner, Name: p.row.Name, Kind: p.row.Kind,
-		Number: p.row.Number, DefaultBranch: p.row.DefaultBranch,
+		Number: p.row.Number, DefaultBranch: p.row.DefaultBranch, Head: p.checkedHead(),
 	}
 }
 
@@ -682,7 +714,7 @@ func (s *Service) fillIn(ctx context.Context, data prompts.Data, nickname string
 	}
 
 	data.Me = viewer
-	data = data.WithSession(p.worktree != nil, p.atHead())
+	data = data.WithSession(p.worktree != nil, p.onPRHead())
 
 	text, err := tmpl.Render(data)
 	if err != nil {

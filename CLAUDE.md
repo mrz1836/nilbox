@@ -1,10 +1,10 @@
 # CLAUDE.md — read this first
 
 This is **Nilbox**, a local-first desktop app (Go + Wails v3 + React) that turns a GitHub account
-spanning hundreds of repositories into one focused inbox and launches coding agents (Claude Code and
-OpenAI Codex) on pull requests and issues. The shared engineering rulebook is [`.github/AGENTS.md`](.github/AGENTS.md). Read it
-before changing anything. The rules in this file are Nilbox's own, and they win wherever the two
-differ.
+spanning hundreds of repositories into one focused inbox and launches coding agents (Claude Code
+and OpenAI Codex) on pull requests and issues. The shared engineering rulebook is
+[`.github/AGENTS.md`](.github/AGENTS.md). Read it before changing anything. The rules in this file
+are Nilbox's own, and they win wherever the two differ.
 
 <br>
 
@@ -167,7 +167,10 @@ app:lint` reads.
   `internal/worklog`, checks every record against git on each listing and sweep, and removes
   them safely. Only `internal/worktrees/create.go` fetches or runs `git worktree add`, and
   nothing changes a clone's own checkout; `TestNoGitCommandChangesAClone` in
-  `internal/repoguard` fails the build otherwise. The launcher reaches the `Maker` through its
+  `internal/repoguard` fails the build otherwise. Every git command there runs with hooks, the
+  file system monitor, and submodule recursion off (`hardening` in `internal/worktrees/git.go`),
+  since a worktree holds a pull request's own files, and a pull request's worktree is made only
+  at the head whose files the launch checked. The launcher reaches the `Maker` through its
   `WorktreeMaker` interface; no agent's own `--worktree` flag is used.
 - `internal/measure/` and `magefiles/measure.go` take the numbers in
   [`docs/performance.md`](docs/performance.md).
@@ -213,9 +216,9 @@ package imports the driver, and nothing imports an ORM (`internal/repoguard` enf
   library comes back on its own.
 - **Ownership.** Every table has one owner package (`tableOwners` in
   `internal/repoguard/datalayer_test.go`): profiles owns `agent_profiles`, keyed by `(agent,
-  name)`, and worklog owns `worktree_records` and `worktree_cleanups`, for instance. The owner keeps its SQL in
-  `internal/<owner>/internal/queries/*.sql`, and sqlc generates package `queries` beside it, so
-  Go's `internal/` rule lets only the owner import it. Other packages call the owner's API,
+  name)`, and worklog owns `worktree_records` and `worktree_cleanups`, for instance. The owner
+  keeps its SQL in `internal/<owner>/internal/queries/*.sql`, and sqlc generates package
+  `queries` beside it, so Go's `internal/` rule lets only the owner import it. Other packages call the owner's API,
   usually through a small interface the consumer declares and `internal/core` wires. SQL
   appears nowhere else but `internal/store`, and a query file never names another owner's table.
 - **Adding a query.** Write it in the owner's query file under a `-- name: <Name> :one`
