@@ -25,6 +25,11 @@ are Nilbox's own, and they win wherever the two differ.
 4. **User data stays local.** Nilbox never sends a user's GitHub data, preferences, triage state,
    or caches anywhere except GitHub's own API.
 5. **Optimize for local-first operation.** Nilbox should minimize network requests and rely on local caches and state wherever possible, ensuring responsiveness and reducing dependency on external services. Try and use the least amount of GitHub requests necessary for any operation.
+6. **No shell or Python scripts.** A build, check, or release step is a `magex` target written in
+   Go (`magefiles/`, see Layout), never a `.sh`, `.py`, or other script, and a workflow runs the
+   target rather than a script. `TestNoScripts` in `internal/repoguard` fails on any script file
+   (by extension or `#!` line) outside the synced `.github/env/` and `.github/scripts/`, which
+   are fixed in go-broadcast instead.
 
 <br>
 
