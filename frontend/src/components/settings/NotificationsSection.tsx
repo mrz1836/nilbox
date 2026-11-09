@@ -1,7 +1,7 @@
 import { useId, useState } from 'react'
 
 import { brand } from '../../generated/brand'
-import { bannerStatusText, notificationKinds } from '../../lib/notifications'
+import { bannerStatusText, inboxKinds, sessionBannerHint, sessionKinds } from '../../lib/notifications'
 import { useMutation } from '../../lib/useMutation'
 import { useQuery } from '../../lib/useQuery'
 import { useSettingsSave } from '../../lib/useSettingsSave'
@@ -18,7 +18,7 @@ import type { SectionProps } from './types'
 
 // NotificationsSection holds the menu bar icon and which kinds of notification show a
 // banner, each saved as soon as it is switched, with a test banner and a note when banners
-// cannot show.
+// cannot show. The agent sessions' kinds stand apart, since they start off.
 export function NotificationsSection({ settings: stored, onSaved }: SectionProps) {
   const id = useId()
   const { settings, save, error } = useSettingsSave(stored, onSaved)
@@ -76,7 +76,7 @@ export function NotificationsSection({ settings: stored, onSaved }: SectionProps
           <p className="rounded-md border border-warning px-3 py-2 text-xs text-warning">{statusText}</p>
         )}
         <Group>
-          {notificationKinds.map(({ kind, label, description }) => (
+          {inboxKinds.map(({ kind, label, description }) => (
             <SwitchRow
               key={kind}
               label={label}
@@ -118,6 +118,27 @@ export function NotificationsSection({ settings: stored, onSaved }: SectionProps
               {tester.pending ? 'Sending…' : 'Send a test'}
             </button>
           </ChoiceRow>
+        </Group>
+      </div>
+      <div className="flex flex-col gap-3">
+        <SectionIntro title="Agent sessions">
+          {brand.name} can also show a banner when a coding agent session you started from an item needs you. Clicking
+          one shows its item here. {sessionBannerHint}
+        </SectionIntro>
+        <Group>
+          {sessionKinds.map(({ kind, label, description }) => (
+            <SwitchRow
+              key={kind}
+              label={label}
+              controlId={`${id}-${kind}`}
+              description={description}
+              checked={!off.includes(kind)}
+              describedBy={errorId}
+              onChange={(on) => {
+                switchBanner(kind, on)
+              }}
+            />
+          ))}
         </Group>
       </div>
       <ErrorText id={`${id}-error`} error={error} className="-mt-5" />

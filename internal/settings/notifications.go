@@ -45,16 +45,27 @@ func (s *Service) SetMenuBar(ctx context.Context, on bool) (Settings, error) {
 // SetNotificationBanner turns the banners of one kind of notification on or off (see the
 // notify package for the kinds), and returns the settings with it. The notification
 // history keeps every kind either way.
+//
+// A kind that starts on is stored in notifyprefs.KeyBannersOff once turned off, and one
+// that starts off, such as the agent sessions' kinds, in notifyprefs.KeyBannersOn once
+// turned on; both keys are written together.
 func (s *Service) SetNotificationBanner(ctx context.Context, kind notifyprefs.Kind, on bool) (Settings, error) {
 	return s.save(ctx, func(ctx context.Context, p *prefs.Store) error {
-		err := p.Update(ctx, notifyprefs.KeyBannersOff, func(stored string, _ bool) (string, error) {
-			off, err := notifyprefs.SetBanner(notifyprefs.DecodeBannersOff(stored), kind, on)
-			if err != nil {
-				return "", err
-			}
+		stored, err := p.GetMany(ctx, notifyprefs.KeyBannersOff, notifyprefs.KeyBannersOn)
+		if err != nil {
+			return fmt.Errorf("read the notification settings: %w", err)
+		}
 
-			return notifyprefs.EncodeBannersOff(off), nil
-		})
+		off, err := notifyprefs.SetBanner(
+			notifyprefs.DecodeBannersOff(stored[notifyprefs.KeyBannersOff], stored[notifyprefs.KeyBannersOn]), kind, on,
+		)
+		if err != nil {
+			return err
+		}
+
+		storedOff, storedOn := notifyprefs.EncodeBanners(off)
+
+		err = p.SetMany(ctx, map[string]string{notifyprefs.KeyBannersOff: storedOff, notifyprefs.KeyBannersOn: storedOn})
 		if err != nil {
 			return fmt.Errorf("save the notification settings: %w", err)
 		}

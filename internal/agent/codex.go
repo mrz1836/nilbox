@@ -11,9 +11,14 @@ const (
 	codexBypass         = "--dangerously-bypass-approvals-and-sandbox"
 	codexAddDirPrefix   = "--add-dir="
 	codexEffortKey      = "model_reasoning_effort"
+	codexServiceTierKey = "service_tier"
+	codexFastTier       = "fast"
 	codexReadOnly       = "read-only"
 	codexApproveOnAsk   = "on-request"
 	codexProjectsPrefix = "projects."
+
+	// codexResume is the command that resumes a session: `codex resume [flags] -- <id>`.
+	codexResume = "resume"
 )
 
 // codex is OpenAI Codex. Its prompt is a positional argument that comes after every flag,
@@ -36,11 +41,13 @@ func (codex) info() Agent {
 			{Value: "workspace-write", Label: "Writes in the workspace"},
 			{Value: "danger-full-access", Label: "Full access, asks first"},
 		},
-		PlanLabel:    "Read-only",
-		SessionNames: false,
-		AuthFile:     "auth.json",
-		AuthEnv:      []string{"OPENAI_API_KEY", "CODEX_API_KEY"},
-		ModelsCache:  "models_cache.json",
+		PlanLabel:       "Read-only",
+		SessionNames:    false,
+		FastMode:        true,
+		ConfigOverrides: true,
+		AuthFile:        "auth.json",
+		AuthEnv:         []string{"OPENAI_API_KEY", "CODEX_API_KEY"},
+		ModelsCache:     "models_cache.json",
 	}
 }
 
@@ -67,6 +74,8 @@ func (codex) reservedConfig(key string) string {
 		return reasonModel
 	case key == codexEffortKey:
 		return reasonEffort
+	case key == codexServiceTierKey:
+		return reasonFast
 	case key == "sandbox_mode", key == "approval_policy", key == "sandbox_permissions",
 		key == "sandbox_workspace_write" || strings.HasPrefix(key, "sandbox_workspace_write."):
 		return reasonPermissions
@@ -91,35 +100,69 @@ func (codex) commands() []string {
 	}
 }
 
+// args returns Codex's flags. Codex takes no session ID of its own, so SessionID is
+// ignored; a resumed session runs the resume command, with every flag after it, and the
+// session's ID last, after "--", where the prompt would go.
 func (codex) args(o Options) []string {
 	var args []string
+
+	if o.ResumeID != "" {
+		args = append(args, codexResume)
+	}
 
 	if o.Model != "" {
 		args = append(args, codexModel, o.Model)
 	}
 
-	if o.Effort != "" {
-		// The value is read as TOML, so it is quoted as a TOML string.
-		args = append(args, codexConfig, codexEffortKey+`="`+o.Effort+`"`)
-	}
-
-	switch o.Access.Kind {
-	case AccessFull:
-		args = append(args, codexBypass)
-	case AccessMode:
-		args = append(args, codexSandbox, o.Access.Mode)
-	case AccessPlan, AccessPlanAllowFull:
-		// Codex has no plan mode: a read-only sandbox that asks before anything else is
-		// the nearest, and it cannot switch to full access later.
-		args = append(args, codexSandbox, codexReadOnly, codexApproval, codexApproveOnAsk)
-	case AccessDefault:
-	}
+	args = append(args, codexOverrides(o)...)
+	args = append(args, codexAccess(o.Access)...)
 
 	for _, dir := range o.AddDirs {
 		args = append(args, codexAddDirPrefix+dir)
 	}
 
-	return append(append(args, o.Extra...), endOfFlags)
+	args = append(append(args, o.Extra...), endOfFlags)
+
+	if o.ResumeID != "" {
+		args = append(args, o.ResumeID)
+	}
+
+	return args
+}
+
+// codexOverrides returns the config overrides a launch passes: the effort level and Fast
+// mode, which Codex has no flags for. Each value is read as TOML, so it is quoted as a
+// TOML string.
+func codexOverrides(o Options) []string {
+	var args []string
+
+	if o.Effort != "" {
+		args = append(args, codexConfig, codexEffortKey+`="`+o.Effort+`"`)
+	}
+
+	if o.Fast {
+		args = append(args, codexConfig, codexServiceTierKey+`="`+codexFastTier+`"`)
+	}
+
+	return args
+}
+
+// codexAccess returns the flags of a launch's permissions.
+func codexAccess(a Access) []string {
+	switch a.Kind {
+	case AccessFull:
+		return []string{codexBypass}
+	case AccessMode:
+		return []string{codexSandbox, a.Mode}
+	case AccessPlan, AccessPlanAllowFull:
+		// Codex has no plan mode: a read-only sandbox that asks before anything else is the
+		// nearest, and it cannot switch to full access later.
+		return []string{codexSandbox, codexReadOnly, codexApproval, codexApproveOnAsk}
+	case AccessDefault:
+		return nil
+	default:
+		return nil
+	}
 }
 
 func (codex) promptLast() bool { return true }

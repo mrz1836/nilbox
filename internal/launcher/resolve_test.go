@@ -285,6 +285,7 @@ func TestResolveEachAgentsOwnSettings(t *testing.T) {
 	t.Parallel()
 
 	w := testWorld()
+	w.settings.EffortOverrides = true
 	w.rules = launchdefaults.NewIndex([]launchdefaults.Defaults{
 		{
 			Owner: acmeOrg, Effort: "ultra",
@@ -313,7 +314,52 @@ func TestResolveEachAgentsOwnSettings(t *testing.T) {
 	codex, _, _, err = resolve(w, prSubject(), LaunchRequest{Agent: agent.Codex})
 	require.NoError(t, err)
 	assert.Equal(t, "ultra", codex.Effort.Value, "Codex takes ultra")
+	assert.False(t, codex.EffortOff)
 	assert.Empty(t, codex.Warnings)
+}
+
+func TestResolveLeavesCodexItsOwnEffortUnlessTheSettingsSayOtherwise(t *testing.T) {
+	t.Parallel()
+
+	w := testWorld()
+	w.rules = launchdefaults.NewIndex([]launchdefaults.Defaults{{Owner: acmeOrg, Effort: "ultra"}})
+
+	codex, profile, _, err := resolve(w, prSubject(), LaunchRequest{Agent: agent.Codex, Effort: new("high")})
+	require.NoError(t, err)
+	assert.True(t, codex.EffortOff)
+	assert.Equal(t, Setting{Source: SourceApp, InheritedSource: SourceApp}, codex.Effort,
+		"no effort, not even the launch's own: Codex takes it only as a config override")
+	assert.Empty(t, effectiveProfile(profile, codex).Effort)
+	assert.Empty(t, codex.Warnings, "nothing was skipped by mistake")
+
+	claude, _, _, err := resolve(w, prSubject(), LaunchRequest{})
+	require.NoError(t, err)
+	assert.False(t, claude.EffortOff, "Claude takes its effort as a flag")
+}
+
+func TestResolveFastMode(t *testing.T) {
+	t.Parallel()
+
+	w := testWorld()
+
+	codex, _, _, err := resolve(w, prSubject(), LaunchRequest{Agent: agent.Codex})
+	require.NoError(t, err)
+	assert.Equal(t, Toggle{Source: SourceApp, InheritedSource: SourceApp}, codex.Fast, "off unless the settings say on")
+
+	w.settings.FastMode = true
+
+	codex, _, _, err = resolve(w, prSubject(), LaunchRequest{Agent: agent.Codex})
+	require.NoError(t, err)
+	assert.Equal(t, Toggle{Value: true, Source: SourceApp, Inherited: true, InheritedSource: SourceApp}, codex.Fast)
+
+	codex, _, _, err = resolve(w, prSubject(), LaunchRequest{Agent: agent.Codex, Fast: new(false)})
+	require.NoError(t, err)
+	assert.Equal(t, Toggle{Source: SourceLaunch, Inherited: true, InheritedSource: SourceApp}, codex.Fast,
+		"the launch's own choice wins")
+
+	claude, _, _, err := resolve(w, prSubject(), LaunchRequest{Fast: new(true)})
+	require.NoError(t, err)
+	assert.Equal(t, Toggle{Source: SourceAgent, InheritedSource: SourceAgent}, claude.Fast, "Claude has no Fast mode")
 }
 
 func TestResolveSkipsAnEffortTheAgentLacks(t *testing.T) {

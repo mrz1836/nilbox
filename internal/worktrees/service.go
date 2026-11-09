@@ -125,7 +125,7 @@ type InUseError struct {
 func (e *InUseError) Error() string {
 	names := make([]string, 0, len(e.Sessions))
 	for _, s := range e.Sessions {
-		names = append(names, fmt.Sprintf("%s (pid %d)", s.Command, s.PID))
+		names = append(names, fmt.Sprintf("%s (pid %d)", s.name(), s.PID))
 	}
 
 	return ErrInUse.Error() + ": " + strings.Join(names, ", ")
@@ -285,6 +285,10 @@ type Config struct {
 	// History records each cleanup, for the view's list of recent ones.
 	History History
 
+	// Agents names the processes of the agent sessions the app follows, so the view says
+	// "Claude" rather than the name of Claude Code's program. Optional.
+	Agents AgentProcesses
+
 	// Events hears an event.WorktreesUpdated when a sweep removed a worktree or changed
 	// how many need the user's attention.
 	Events event.Sink
@@ -306,6 +310,7 @@ type Service struct {
 	launches Records
 	lister   procs.Lister
 	history  History
+	agents   AgentProcesses
 	events   event.Sink
 	logger   *slog.Logger
 	procs    processTable
@@ -348,6 +353,7 @@ func NewService(cfg Config) *Service {
 		launches: cfg.Records,
 		lister:   cfg.Procs,
 		history:  cfg.History,
+		agents:   cfg.Agents,
 		events:   event.Or(cfg.Events),
 		logger:   logging.Or(cfg.Logger),
 		procs:    osProcesses{},
@@ -651,7 +657,7 @@ func (s *Service) assessClones(ctx context.Context, g git, root string, clones [
 	snap := s.snapshot(root, listed)
 	snap.LinkError = s.link(ctx, snap.Repos, remotes, recorded)
 	s.adopt(ctx, snap.Repos, recorded)
-	markSessions(snap.Repos, running)
+	markSessions(snap.Repos, running, s.agentProcesses(ctx))
 	snap.SessionsUnknown = !known
 	s.tally(&snap)
 	s.markBranches(ctx, g, snap.Repos, rules)
@@ -713,7 +719,31 @@ func agentCommands() []string {
 func (s *Service) sessionsIn(ctx context.Context, dir string) ([]Session, bool) {
 	running, known := s.processes(ctx)
 
-	return sessionsOf(procs.Within(running, dir)), known
+	return sessionsOf(procs.Within(running, dir), nil), known
+}
+
+// AgentProcesses names the processes of the agent sessions the app follows. The app
+// adapts the sessions ledger to it.
+type AgentProcesses interface {
+	// AgentProcesses returns the coding agent of each followed session's process, by PID.
+	AgentProcesses(ctx context.Context) (map[int]agent.ID, error)
+}
+
+// agentProcesses returns the agent of each followed session's process, or none when
+// they cannot be read, which only costs the view its names.
+func (s *Service) agentProcesses(ctx context.Context) map[int]agent.ID {
+	if s.agents == nil {
+		return nil
+	}
+
+	named, err := s.agents.AgentProcesses(ctx)
+	if err != nil {
+		s.logger.DebugContext(ctx, "the agent sessions' processes could not be read", "error", err)
+
+		return nil
+	}
+
+	return named
 }
 
 // checkSessions refuses a worktree a running process works in. strict refuses it as well
@@ -733,20 +763,33 @@ func (s *Service) checkSessions(ctx context.Context, dir string, strict bool) er
 	}
 }
 
-// markSessions fills in the sessions working in each linked worktree.
-func markSessions(repos []Repo, running []procs.Process) {
+// markSessions fills in the sessions working in each linked worktree, naming the agent of
+// each the app follows.
+func markSessions(repos []Repo, running []procs.Process, agents map[int]agent.ID) {
 	for _, wt := range rows(repos) {
 		if !wt.Main && !wt.Prunable {
-			wt.InUse = sessionsOf(procs.Within(running, wt.Path))
+			wt.InUse = sessionsOf(procs.Within(running, wt.Path), agents)
 		}
 	}
 }
 
-// sessionsOf returns processes as sessions, never nil.
-func sessionsOf(list []procs.Process) []Session {
-	out := make([]Session, 0, len(list))
+// sessionsOf returns processes as sessions, never nil, with agents naming the ones the app
+// follows. A process another in the list started is folded into it: a session's own
+// helpers are part of it.
+func sessionsOf(list []procs.Process, agents map[int]agent.ID) []Session {
+	listed := make(map[int]bool, len(list))
 	for _, p := range list {
-		out = append(out, Session{PID: p.PID, Command: p.Command})
+		listed[p.PID] = true
+	}
+
+	out := make([]Session, 0, len(list))
+
+	for _, p := range list {
+		if p.PPID != 0 && p.PPID != p.PID && listed[p.PPID] {
+			continue
+		}
+
+		out = append(out, Session{PID: p.PID, Command: p.Command, Agent: agents[p.PID]})
 	}
 
 	return out

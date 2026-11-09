@@ -80,6 +80,20 @@ type Agent struct {
 	// SessionNames reports that a launch can name the session.
 	SessionNames bool `json:"sessionNames"`
 
+	// SessionIDs reports that a launch passes the agent the session's ID, so the app
+	// follows the session from its start. Without it, the app finds the agent's own ID
+	// once the session starts.
+	SessionIDs bool `json:"sessionIds"`
+
+	// FastMode reports that a launch can start the session in the agent's Fast mode.
+	FastMode bool `json:"fastMode"`
+
+	// ConfigOverrides reports an agent that takes the effort level and Fast mode only as
+	// config overrides, and runs a session started with any outside its shared app
+	// server, where the app can't see that it waits for the user. A launch passes it the
+	// effort only when the user's settings say to.
+	ConfigOverrides bool `json:"configOverrides"`
+
 	// AuthFile is the file in a config directory that holds the agent's sign-in, or ""
 	// when the app does not check the agent's sign-in. Only its presence is checked; it is
 	// never read.
@@ -114,7 +128,7 @@ type spec interface {
 	commands() []string
 
 	// args returns a launch's flags, in order: model, effort, access, extra
-	// directories, extra arguments, and session name.
+	// directories, extra arguments, session name, and the session to start or resume.
 	args(o Options) []string
 
 	// promptLast reports that the prompt follows the flags, after "--", rather than

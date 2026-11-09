@@ -100,9 +100,12 @@ function origin(worktree: Worktree): string {
   return worktree.managed ? `made by ${brand.name}` : ''
 }
 
-// sessionsText names the processes working in a worktree, as in "codex (pid 4242)".
-function sessionsText(worktree: Worktree): string {
-  return worktree.inUse.map((s) => `${s.command} (pid ${String(s.pid)})`).join(', ')
+// sessionsText names the processes working in a worktree, as in "Claude (pid 4242)": the
+// agent of a session the app follows, or else the program's name.
+function sessionsText(worktree: Worktree, agentName: (id: AgentID) => string): string {
+  return worktree.inUse
+    .map((s) => `${s.agent === '' ? s.command : agentName(s.agent)} (pid ${String(s.pid)})`)
+    .join(', ')
 }
 
 // LastSession is the agent and age of the latest session the app launched in a worktree.
@@ -156,7 +159,7 @@ function CopyPath({ path }: { path: string }) {
 }
 
 // WorktreeStatus is the row's clean, dirty, locked, prunable, origin, and stage markers.
-function WorktreeStatus({ worktree }: { worktree: Worktree }) {
+function WorktreeStatus({ worktree, agentName }: { worktree: Worktree; agentName: (id: AgentID) => string }) {
   const made = origin(worktree)
   const stage = stageLabels[worktree.stage]
   const notOnGitHub = !worktree.main && !worktree.onGitHub && worktree.unpushed > 0
@@ -176,8 +179,8 @@ function WorktreeStatus({ worktree }: { worktree: Worktree }) {
       {worktree.locked && <span className={`${badge} text-danger`}>locked</span>}
       {made !== '' && <span className={`${badge} text-muted`}>{made}</span>}
       {worktree.inUse.length > 0 ? (
-        <span title={sessionsText(worktree)} className={`${badge} text-info`}>
-          in use · {sessionsText(worktree)}
+        <span title={sessionsText(worktree, agentName)} className={`${badge} text-info`}>
+          in use · {sessionsText(worktree, agentName)}
         </span>
       ) : (
         stage !== undefined && <span className={`${badge} ${stage.className}`}>{stage.text}</span>
@@ -301,7 +304,7 @@ export function WorktreeRow({
         <span className="font-medium">
           {worktree.detached || worktree.branch === '' ? 'detached' : worktree.branch}
         </span>
-        <WorktreeStatus worktree={worktree} />
+        <WorktreeStatus worktree={worktree} agentName={agentName} />
         <span className="ml-auto flex items-center gap-2">
           {!worktree.main && !worktree.prunable && <CopyPath path={worktree.path} />}
           <WorktreeActions worktree={worktree} disabled={disabled} {...actions} />

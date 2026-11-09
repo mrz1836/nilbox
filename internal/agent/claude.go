@@ -9,6 +9,8 @@ const (
 	claudePermissionMode  = "--permission-mode"
 	claudeAddDirPrefix    = "--add-dir="
 	claudeNamePrefix      = "--name="
+	claudeSessionIDPrefix = "--session-id="
+	claudeResumePrefix    = "--resume="
 
 	// claudePlanMode is the --permission-mode value that starts a session in plan mode.
 	claudePlanMode = "plan"
@@ -45,9 +47,13 @@ func (claude) info() Agent {
 		},
 		PlanLabel:    "Plan mode",
 		SessionNames: true,
+		SessionIDs:   true,
 		AuthEnv:      []string{},
 	}
 }
+
+// reasonSession says why a flag that picks the conversation can't be added.
+const reasonSession = "can't be added: each launch starts its own session, which the item's card follows"
 
 func (claude) reserved() []reservedFlag {
 	return append(commonReserved(),
@@ -60,6 +66,11 @@ func (claude) reserved() []reservedFlag {
 		reservedFlag{long: "--print", short: "-p", reason: reasonTerminal},
 		reservedFlag{long: "--background", reason: reasonTerminal},
 		reservedFlag{long: "--bg", reason: reasonTerminal},
+		reservedFlag{long: "--session-id", reason: reasonSession},
+		reservedFlag{long: "--resume", short: "-r", reason: reasonSession},
+		reservedFlag{long: "--continue", short: "-c", reason: reasonSession},
+		reservedFlag{long: "--fork-session", reason: reasonSession},
+		reservedFlag{long: "--from-pr", reason: reasonSession},
 	)
 }
 
@@ -82,17 +93,7 @@ func (claude) args(o Options) []string {
 		args = append(args, claudeEffort, o.Effort)
 	}
 
-	switch o.Access.Kind {
-	case AccessFull:
-		args = append(args, claudeSkipPermissions)
-	case AccessMode:
-		args = append(args, claudePermissionMode, o.Access.Mode)
-	case AccessPlan:
-		args = append(args, claudePermissionMode, claudePlanMode)
-	case AccessPlanAllowFull:
-		args = append(args, claudePermissionMode, claudePlanMode, claudeAllowSkip)
-	case AccessDefault:
-	}
+	args = append(args, claudeAccess(o.Access)...)
 
 	// The "=" form keeps --add-dir from taking the arguments after it as more directories.
 	for _, dir := range o.AddDirs {
@@ -101,8 +102,42 @@ func (claude) args(o Options) []string {
 
 	args = append(args, o.Extra...)
 
+	return append(args, claudeSession(o)...)
+}
+
+// claudeAccess returns the flags of a launch's permissions.
+func claudeAccess(a Access) []string {
+	switch a.Kind {
+	case AccessFull:
+		return []string{claudeSkipPermissions}
+	case AccessMode:
+		return []string{claudePermissionMode, a.Mode}
+	case AccessPlan:
+		return []string{claudePermissionMode, claudePlanMode}
+	case AccessPlanAllowFull:
+		return []string{claudePermissionMode, claudePlanMode, claudeAllowSkip}
+	case AccessDefault:
+		return nil
+	default:
+		return nil
+	}
+}
+
+// claudeSession returns the flags that name the session and start it under the app's ID,
+// or resume one, which keeps the name and ID it was started with.
+func claudeSession(o Options) []string {
+	if o.ResumeID != "" {
+		return []string{claudeResumePrefix + o.ResumeID}
+	}
+
+	var args []string
+
 	if o.SessionName != "" {
 		args = append(args, claudeNamePrefix+o.SessionName)
+	}
+
+	if o.SessionID != "" {
+		args = append(args, claudeSessionIDPrefix+o.SessionID)
 	}
 
 	return args

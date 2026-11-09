@@ -1106,7 +1106,10 @@ describe('WorktreesView sessions and origin', () => {
                 agent: 'codex',
                 lastLaunchedAt: '2026-06-15T09:00:00Z',
                 launches: 2,
-                inUse: [{ pid: 4242, command: 'codex' }],
+                inUse: [
+                  { pid: 4242, command: '2.1.319', agent: 'claude' },
+                  { pid: 4300, command: 'zsh', agent: '' },
+                ],
                 stage: 'in-use',
                 canRemove: false,
               }),
@@ -1120,7 +1123,7 @@ describe('WorktreesView sessions and origin', () => {
 
     const managed = row(managedDisplay)
     expect(managed.getByText(`made by ${brand.name}`)).toBeInTheDocument()
-    expect(managed.getByText('in use · codex (pid 4242)')).toBeInTheDocument()
+    expect(managed.getByText('in use · Claude (pid 4242), zsh (pid 4300)')).toBeInTheDocument()
     // The process names the session, so the stage's own "in use" is not shown twice.
     expect(managed.queryByText('in use')).not.toBeInTheDocument()
     expect(managed.getByText(/Codex/)).toHaveTextContent('Codex 3h ago')

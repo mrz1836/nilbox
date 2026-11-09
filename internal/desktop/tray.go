@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/menubar"
+	"github.com/mrz1836/nilbox/internal/sessions"
 )
 
 // setMenuBar shows or hides the menu bar icon, as the user turned it on or off. A shown
@@ -58,7 +59,8 @@ func (s *Shell) redrawTray(ctx context.Context) {
 	}
 }
 
-// drawTray draws the icon's count and menu from the stored inbox, while the icon shows,
+// drawTray draws the icon's count and menu from the stored inbox and the sessions waiting
+// for the user, while the icon shows,
 // and sets the timer for the soonest snooze to end, which changes the count with nothing
 // stored.
 func (s *Shell) drawTray(ctx context.Context) {
@@ -76,10 +78,29 @@ func (s *Shell) drawTray(ctx context.Context) {
 	}
 
 	now := s.clock.Now()
-	sum := menubar.Summarize(snap, now)
+	sum := menubar.Summarize(snap, s.waiting(ctx), now)
 
 	s.tray.Draw(sum)
 	s.wakeAt(sum.NextChange, now)
+}
+
+// waiting returns the sessions waiting for the user, or none when they cannot be read,
+// which is logged: the inbox's part of the menu still shows.
+func (s *Shell) waiting(ctx context.Context) []sessions.Session {
+	if s.sessions == nil {
+		return nil
+	}
+
+	got, err := s.sessions.Waiting(ctx)
+	if err != nil {
+		if ctx.Err() == nil {
+			s.logger.WarnContext(ctx, "could not read the sessions for the menu bar", "error", err)
+		}
+
+		return nil
+	}
+
+	return got
 }
 
 // showsTray reports whether the icon is on and the shell is not stopping.

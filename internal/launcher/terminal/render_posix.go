@@ -15,7 +15,8 @@ var envNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 // Script is what a launch script does: it changes into Dir, unsets the variables in
 // Unset, sets those in Env, reads the prompt from PromptFile, and replaces itself with
 // Binary, passing the prompt first and then Args, or Args and then the prompt when
-// PromptLast is set.
+// PromptLast is set. A NoPrompt script, which resumes a session, reads no prompt and
+// passes Args alone.
 type Script struct {
 	// Dir is the directory the session starts in.
 	Dir string
@@ -37,6 +38,9 @@ type Script struct {
 
 	// PromptFile holds the prompt text the script passes to the agent.
 	PromptFile string
+
+	// NoPrompt passes the agent no prompt, and PromptFile is not read.
+	NoPrompt bool
 }
 
 // ScriptRenderer writes a Script as a file a terminal can run. A port to another shell
@@ -80,7 +84,8 @@ func (POSIXRenderer) Extension() string { return ".command" }
 //	prompt=$(cat -- '<prompt file>')
 //	exec '<agent>' "$prompt" '<arg>' ...
 //
-// or, with PromptLast, exec '<agent>' '<arg>' ... "$prompt".
+// or, with PromptLast, exec '<agent>' '<arg>' ... "$prompt", and with NoPrompt, no
+// prompt line and exec '<agent>' '<arg>' ....
 func (POSIXRenderer) Render(s Script) []byte {
 	var b strings.Builder
 
@@ -97,10 +102,13 @@ func (POSIXRenderer) Render(s Script) []byte {
 		b.WriteString("export " + shName(name) + "=" + shQuote(s.Env[name]) + "\n")
 	}
 
-	b.WriteString("prompt=$(cat -- " + shQuote(s.PromptFile) + ")\n")
+	if !s.NoPrompt {
+		b.WriteString("prompt=$(cat -- " + shQuote(s.PromptFile) + ")\n")
+	}
+
 	b.WriteString("exec " + shQuote(s.Binary))
 
-	if !s.PromptLast {
+	if !s.NoPrompt && !s.PromptLast {
 		b.WriteString(` "$prompt"`)
 	}
 
@@ -108,7 +116,7 @@ func (POSIXRenderer) Render(s Script) []byte {
 		b.WriteString(" " + shQuote(arg))
 	}
 
-	if s.PromptLast {
+	if !s.NoPrompt && s.PromptLast {
 		b.WriteString(` "$prompt"`)
 	}
 

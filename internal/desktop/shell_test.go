@@ -37,7 +37,11 @@ func TestWindowEventsGoOnToThePage(t *testing.T) {
 	s.Emit(event.FirstPaint{})
 
 	assert.Equal(t, []event.WindowEvent{
-		event.InboxUpdated{}, event.WorktreesUpdated{}, event.NotificationsUpdated{}, event.BudgetUpdated{},
+		event.InboxUpdated{},
+		event.WorktreesUpdated{},
+		event.NotificationsUpdated{},
+		event.BudgetUpdated{},
+		event.SessionsUpdated{},
 	}, r.page.events(), "the shell's own events stay in Go")
 }
 

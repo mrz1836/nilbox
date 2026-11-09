@@ -6,7 +6,13 @@ import { bannerStatusText, entryRef, kindTitle, notificationKinds } from './noti
 
 describe('notifications', () => {
   it('lists the kinds in the order Settings shows them', () => {
-    expect(notificationKinds.map((k) => k.kind)).toEqual(['review_requested', 'assigned', 'woke'])
+    expect(notificationKinds.map((k) => k.kind)).toEqual([
+      'review_requested',
+      'assigned',
+      'woke',
+      'session_needs_you',
+      'session_finished',
+    ])
   })
 
   it('titles each kind, and an unknown one plainly', () => {

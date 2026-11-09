@@ -3,6 +3,7 @@ package agent
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 )
 
@@ -59,11 +60,24 @@ type Options struct {
 
 	// SessionName names the session, or is "". An agent without SessionNames ignores it.
 	SessionName string
+
+	// SessionID is the ID the app minted for a new session, or "". An agent without
+	// SessionIDs ignores it.
+	SessionID string
+
+	// ResumeID is the agent's own ID of a session to resume instead of starting one, or
+	// "". A session resumed takes no prompt.
+	ResumeID string
+
+	// Fast starts the session in the agent's Fast mode. An agent without FastMode
+	// ignores it.
+	Fast bool
 }
 
 // Args returns the flags a launch passes the agent with id, in order: model, effort,
-// access, extra directories, extra arguments, and session name. It refuses a model or
-// effort level the agent would not accept, and a permission mode it does not have.
+// access, extra directories, extra arguments, session name, and the session to start or
+// resume. It refuses a model or effort level the agent would not accept, a permission
+// mode it does not have, and a session ID that is not one.
 func Args(id ID, o Options) ([]string, error) {
 	s, err := specFor(id)
 	if err != nil {
@@ -71,6 +85,10 @@ func Args(id ID, o Options) ([]string, error) {
 	}
 
 	if err = ValidateModel(o.Model); err != nil {
+		return nil, err
+	}
+
+	if err = validateSessionIDs(o); err != nil {
 		return nil, err
 	}
 
@@ -83,6 +101,36 @@ func Args(id ID, o Options) ([]string, error) {
 	}
 
 	return s.args(o), nil
+}
+
+// ErrInvalidSessionID is returned for a session ID that could be read as anything but
+// one, or for a launch that both starts a session with an ID and resumes one.
+var ErrInvalidSessionID = errors.New("invalid session ID")
+
+// maxSessionIDLen caps a session ID: UUIDs, which both agents use, are 36 long.
+const maxSessionIDLen = 128
+
+// sessionIDPattern is what a session ID looks like: a letter or digit, then up to 127
+// letters, digits, dashes, and underscores, so it is never read as a flag.
+var sessionIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
+
+// ValidSessionID reports whether id can be passed as a session ID (see sessionIDPattern).
+func ValidSessionID(id string) bool {
+	return len(id) <= maxSessionIDLen && sessionIDPattern.MatchString(id)
+}
+
+// validateSessionIDs checks the session a launch starts or resumes.
+func validateSessionIDs(o Options) error {
+	switch {
+	case o.SessionID != "" && o.ResumeID != "":
+		return fmt.Errorf("%w: a launch starts a session or resumes one, not both", ErrInvalidSessionID)
+	case o.SessionID != "" && !ValidSessionID(o.SessionID):
+		return fmt.Errorf("%w %q", ErrInvalidSessionID, o.SessionID)
+	case o.ResumeID != "" && !ValidSessionID(o.ResumeID):
+		return fmt.Errorf("%w %q", ErrInvalidSessionID, o.ResumeID)
+	default:
+		return nil
+	}
 }
 
 // ValidPermissionMode reports whether mode is one of the agent's permission modes.

@@ -55,6 +55,15 @@ func boundaries() []boundary {
 			why:       "the budget hears the GitHub client's readings and the inbox's refreshes, and keeps its state, through interfaces",
 		},
 		{
+			pkg: "internal/sessions",
+			forbidden: []string{
+				"internal/launcher", "internal/settings", "internal/notify", "internal/inbox", "internal/github",
+				"internal/desktop", "internal/core",
+			},
+			why: "sessions follows the agents through its own Observer, Switch, Focuser, and AttentionSink interfaces, " +
+				"and never reaches GitHub",
+		},
+		{
 			pkg:       "internal/desktop",
 			forbidden: []string{"internal/core"},
 			why:       "the shell reaches the services through the interfaces it declares; the desktop bootstrap wires the core into it",

@@ -68,3 +68,31 @@ func runTerminal(ctx context.Context, executor execpath.Runner, app, name string
 
 	return nil
 }
+
+// Focus brings forward the iTerm2 session that runs on tty, with its tab and window.
+func (d itermDriver) Focus(ctx context.Context, tty string) error {
+	return focus(ctx, d.executor, appITerm2, tty, itermFocusScript)
+}
+
+// Focus brings forward the Terminal.app tab that runs on tty, with its window. The first
+// time, macOS asks the user to allow the app to control Terminal.app.
+func (d terminalAppDriver) Focus(ctx context.Context, tty string) error {
+	return focus(ctx, d.executor, appTerminal, tty, terminalAppFocusScript)
+}
+
+// focus runs a terminal's focus script for tty with openTimeout, and explains a failure.
+func focus(ctx context.Context, executor execpath.Runner, app, tty string, script func(string) string) error {
+	if err := validateTTY(tty); err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, openTimeout)
+	defer cancel()
+
+	stdout, stderr, err := executor.Run(ctx, osascriptBin, "-e", script(tty))
+	if err != nil {
+		return openError(app, stderr, err)
+	}
+
+	return focusResult(app, stdout)
+}

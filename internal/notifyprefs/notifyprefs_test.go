@@ -12,7 +12,9 @@ import (
 func TestKinds(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, []notifyprefs.Kind{"review_requested", "assigned", "woke"}, notifyprefs.Kinds())
+	assert.Equal(t, []notifyprefs.Kind{
+		"review_requested", "assigned", "woke", "session_needs_you", "session_finished",
+	}, notifyprefs.Kinds())
 
 	for _, kind := range notifyprefs.Kinds() {
 		assert.True(t, kind.Valid(), kind)
@@ -25,18 +27,28 @@ func TestKinds(t *testing.T) {
 func TestDecodeBannersOff(t *testing.T) {
 	t.Parallel()
 
+	sessionKinds := []notifyprefs.Kind{notifyprefs.KindSessionNeedsYou, notifyprefs.KindSessionFinished}
+
 	tests := []struct {
-		name   string
-		stored string
-		want   []notifyprefs.Kind
+		name    string
+		off, on string
+		want    []notifyprefs.Kind
 	}{
-		{name: "nothing stored: every kind is on", stored: "", want: []notifyprefs.Kind{}},
-		{name: "not JSON", stored: "not json", want: []notifyprefs.Kind{}},
-		{name: "not a list", stored: `{"woke":true}`, want: []notifyprefs.Kind{}},
-		{name: "an empty list", stored: `[]`, want: []notifyprefs.Kind{}},
+		{name: "nothing stored: the inbox's kinds are on, the sessions' off", want: sessionKinds},
+		{name: "not JSON", off: "not json", on: "not json", want: sessionKinds},
+		{name: "not a list", off: `{"woke":true}`, want: sessionKinds},
+		{name: "empty lists", off: `[]`, on: `[]`, want: sessionKinds},
 		{
-			name: "known kinds in the order of Kinds, unknown ones dropped", stored: `["woke","mentions","review_requested"]`,
-			want: []notifyprefs.Kind{notifyprefs.KindReviewRequested, notifyprefs.KindWoke},
+			name: "known kinds in the order of Kinds, unknown ones dropped", off: `["woke","mentions","review_requested"]`,
+			want: append([]notifyprefs.Kind{notifyprefs.KindReviewRequested, notifyprefs.KindWoke}, sessionKinds...),
+		},
+		{
+			name: "a session kind turned on", on: `["session_finished","mentions"]`,
+			want: []notifyprefs.Kind{notifyprefs.KindSessionNeedsYou},
+		},
+		{
+			name: "each list counts only for the kinds that start its way", off: `["session_finished"]`, on: `["woke"]`,
+			want: sessionKinds,
 		},
 	}
 
@@ -44,8 +56,17 @@ func TestDecodeBannersOff(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			assert.Equal(t, tt.want, notifyprefs.DecodeBannersOff(tt.stored))
+			assert.Equal(t, tt.want, notifyprefs.DecodeBannersOff(tt.off, tt.on))
 		})
+	}
+}
+
+func TestDefaultOn(t *testing.T) {
+	t.Parallel()
+
+	for _, kind := range notifyprefs.Kinds() {
+		session := kind == notifyprefs.KindSessionNeedsYou || kind == notifyprefs.KindSessionFinished
+		assert.Equal(t, !session, kind.DefaultOn(), kind)
 	}
 }
 
@@ -95,13 +116,20 @@ func TestSetBannerRejectsAnUnknownKind(t *testing.T) {
 	assert.Contains(t, err.Error(), `"mentions"`)
 }
 
-func TestBannersOffRoundTrip(t *testing.T) {
+func TestBannersRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	assert.JSONEq(t, `["review_requested"]`, notifyprefs.EncodeBannersOff([]notifyprefs.Kind{notifyprefs.KindReviewRequested}))
-	assert.JSONEq(t, `[]`, notifyprefs.EncodeBannersOff(nil))
+	storedOff, storedOn := notifyprefs.EncodeBanners([]notifyprefs.Kind{notifyprefs.KindReviewRequested})
+	assert.JSONEq(t, `["review_requested"]`, storedOff)
+	assert.JSONEq(t, `["session_needs_you","session_finished"]`, storedOn, "the sessions' kinds are on: not listed off")
 
-	for _, off := range [][]notifyprefs.Kind{{}, {notifyprefs.KindWoke}, notifyprefs.Kinds()} {
-		assert.Equal(t, off, notifyprefs.DecodeBannersOff(notifyprefs.EncodeBannersOff(off)))
+	storedOff, storedOn = notifyprefs.EncodeBanners(nil)
+	assert.JSONEq(t, `[]`, storedOff)
+	assert.JSONEq(t, `["session_needs_you","session_finished"]`, storedOn)
+
+	for _, off := range [][]notifyprefs.Kind{
+		{}, {notifyprefs.KindWoke}, notifyprefs.Kinds(), {notifyprefs.KindSessionFinished},
+	} {
+		assert.Equal(t, off, notifyprefs.DecodeBannersOff(notifyprefs.EncodeBanners(off)))
 	}
 }

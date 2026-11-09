@@ -16,6 +16,7 @@ declare module "@wailsio/runtime" {
             "inbox:reveal": event$0.RevealItem;
             "inbox:updated": event$0.InboxUpdated;
             "notifications:updated": event$0.NotificationsUpdated;
+            "sessions:updated": event$0.SessionsUpdated;
             "worktrees:updated": event$0.WorktreesUpdated;
         }
     }

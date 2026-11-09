@@ -23,6 +23,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/menubar"
+	"github.com/mrz1836/nilbox/internal/sessions"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/timing"
 )
@@ -95,6 +96,17 @@ type Inbox interface {
 	Refresh(ctx context.Context) (inbox.Snapshot, error)
 }
 
+// Sessions are the agent sessions the menu bar lists, and the terminal a click on one
+// brings forward. *sessions.Ledger and *sessions.Service do, which the core joins.
+type Sessions interface {
+	// Waiting returns the running sessions waiting for the user, the longest waiting
+	// first.
+	Waiting(ctx context.Context) ([]sessions.Session, error)
+
+	// Focus brings forward the terminal tab a running session is in.
+	Focus(ctx context.Context, id string) error
+}
+
 // Settings are the settings the shell reads when the app launches. core.ShellSettings
 // implements it.
 type Settings interface {
@@ -127,6 +139,10 @@ type Config struct {
 
 	Inbox    Inbox
 	Settings Settings
+
+	// Sessions are the agent sessions the menu bar lists first. Optional: without it, the
+	// menu lists the inbox alone.
+	Sessions Sessions
 
 	// Workers run in the background from Start until Stop, started in this order.
 	Workers []Worker
@@ -175,6 +191,7 @@ type Shell struct {
 	app      App
 	inbox    Inbox
 	settings Settings
+	sessions Sessions
 	workers  []Worker
 	data     io.Closer
 	banners  Authorizer
@@ -218,7 +235,7 @@ func New(cfg Config) *Shell {
 
 	s := &Shell{
 		frontend: cfg.Frontend, window: cfg.Window, tray: cfg.Tray, app: cfg.App,
-		inbox: cfg.Inbox, settings: cfg.Settings, workers: cfg.Workers, data: cfg.Data, banners: cfg.Banners,
+		inbox: cfg.Inbox, settings: cfg.Settings, sessions: cfg.Sessions, workers: cfg.Workers, data: cfg.Data, banners: cfg.Banners,
 		clock: clock.Or(cfg.Clock), stdout: orDiscard(cfg.Stdout), logger: logging.Or(cfg.Logger),
 		measure: cfg.MeasureStartup, stopTimeout: cfg.StopTimeout, measureTimeout: cfg.MeasureTimeout,
 		lifetime: lifetime, cancel: cancel, redraw: make(chan struct{}, 1),
@@ -284,8 +301,8 @@ func (s *Shell) Stop() error {
 	return s.closeErr
 }
 
-// Emit acts on e, until the shell stops: a window event goes on to the page, an inbox
-// change also redraws the menu bar, a request to reveal an item brings the window
+// Emit acts on e, until the shell stops: a window event goes on to the page, an inbox or
+// sessions change also redraws the menu bar, a request to reveal an item brings the window
 // forward, a theme or menu bar change reaches the window or the icon, and the first paint
 // ends a startup measurement. It never waits for a redraw.
 func (s *Shell) Emit(e event.Event) {
@@ -295,6 +312,9 @@ func (s *Shell) Emit(e event.Event) {
 
 	switch e := e.(type) {
 	case event.InboxUpdated:
+		s.frontend.Emit(e)
+		s.askRedraw()
+	case event.SessionsUpdated:
 		s.frontend.Emit(e)
 		s.askRedraw()
 	case event.RevealItem:
@@ -356,6 +376,24 @@ func (s *Shell) RefreshNow() {
 		if _, err := s.inbox.Refresh(ctx); err != nil && ctx.Err() == nil {
 			s.logger.WarnContext(ctx, "the menu bar's inbox refresh failed", "error", err)
 		}
+	})
+}
+
+// FocusSession brings forward the terminal tab of a session waiting for the user, as its
+// row in the menu bar asks, in the background; Stop waits for it. When the tab cannot be
+// shown, the session's item is shown in the window instead.
+func (s *Shell) FocusSession(id string, itemID int64, url string) {
+	s.goTracked(func(ctx context.Context) {
+		if s.sessions != nil {
+			err := s.sessions.Focus(ctx, id)
+			if err == nil || ctx.Err() != nil {
+				return
+			}
+
+			s.logger.InfoContext(ctx, "could not show the session's terminal; showing its item", "error", err)
+		}
+
+		s.reveal(event.RevealItem{ItemID: itemID, URL: url})
 	})
 }
 

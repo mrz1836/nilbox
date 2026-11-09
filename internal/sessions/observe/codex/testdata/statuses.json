@@ -1,0 +1,37 @@
+[
+    {
+        "type": "notLoaded"
+    },
+    {
+        "type": "idle"
+    },
+    {
+        "type": "systemError"
+    },
+    {
+        "type": "active",
+        "activeFlags": []
+    },
+    {
+        "type": "active",
+        "activeFlags": [
+            "waitingOnApproval"
+        ]
+    },
+    {
+        "type": "active",
+        "activeFlags": [
+            "waitingOnUserInput"
+        ]
+    },
+    {
+        "type": "active",
+        "activeFlags": [
+            "waitingOnUserInput",
+            "waitingOnApproval"
+        ]
+    },
+    {
+        "type": "somethingNew"
+    }
+]

@@ -38,10 +38,21 @@ describe('choices', () => {
       effort: null,
       planMode: true,
       worktree: null,
+      fast: null,
       fullAccessOverride: true,
       confirmed: '',
+      alongside: '',
     })
     expect(launchRequest(7, c, false).fullAccessOverride).toBe(false)
+  })
+
+  it('keeps Fast mode for this launch alone: it is never a default, and goes with the agent', () => {
+    const c = { ...noChoices, fast: true }
+
+    expect(hasChoices(c)).toBe(true)
+    expect(savableChoices(c)).toBe(false)
+    expect(launchRequest(7, c, false).fast).toBe(true)
+    expect(withAgent(c, 'claude').fast).toBeNull()
   })
 })
 

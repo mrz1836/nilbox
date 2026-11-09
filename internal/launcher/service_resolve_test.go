@@ -210,7 +210,7 @@ func TestLaunchUsesPromptSettings(t *testing.T) {
 	assert.Equal(t, "Quick look", res.Prompt)
 	assert.Empty(t, res.Worktree, "the quick look turns the worktree off")
 	assert.Contains(t, script, "'--model' 'sonnet' '--effort' 'low' '--dangerously-skip-permissions' "+
-		"'--name=Quick look · example-repo#7'\n")
+		"'--name=Quick look · example-repo#7' '--session-id="+testSessionID+"'\n")
 	assert.Contains(t, promptFor(t, res.ScriptPath), "Take a quick look at pull request #7")
 
 	// The launch's own choices win over the prompt's.
@@ -218,13 +218,43 @@ func TestLaunchUsesPromptSettings(t *testing.T) {
 	assert.Contains(t, script, "'--model' 'opus' '--effort' 'low'")
 	assert.Equal(t, "pr-7", res.Worktree)
 
-	// The prompt's model is Claude's; Codex keeps its own default.
+	// The prompt's model is Claude's; Codex keeps its own default, and its own effort
+	// unless the settings pass it the shared one.
 	_, script = h.launch(t, LaunchRequest{ItemID: h.trustedPR, PromptID: quick, Agent: agent.Codex})
 	assert.NotContains(t, script, "sonnet")
-	assert.Contains(t, script, `'--config' 'model_reasoning_effort="low"'`, "the effort is shared")
+	assert.NotContains(t, script, "--config", "no config override: the session stays on Codex's app server")
 
-	_, err := h.service().Launch(t.Context(), LaunchRequest{ItemID: h.issue, PromptID: quick})
+	_, err := h.settings.SetCodexEffort(t.Context(), true)
+	require.NoError(t, err)
+
+	_, script = h.launch(t, LaunchRequest{ItemID: h.trustedPR, PromptID: quick, Agent: agent.Codex})
+	assert.Contains(t, script, `'--config' 'model_reasoning_effort="low"'`, "the effort is shared once allowed")
+
+	_, err = h.service().Launch(t.Context(), LaunchRequest{ItemID: h.issue, PromptID: quick})
 	require.ErrorIs(t, err, prompts.ErrWrongKind)
+}
+
+func TestLaunchCodexInFastMode(t *testing.T) {
+	t.Parallel()
+
+	h := newLaunchHarness(t)
+
+	_, script := h.launch(t, LaunchRequest{ItemID: h.issue, Agent: agent.Codex, Fast: new(true)})
+	assert.Contains(t, script, `'--config' 'service_tier="fast"' '--dangerously-bypass-approvals-and-sandbox'`)
+
+	_, err := h.settings.SetCodexFast(t.Context(), true)
+	require.NoError(t, err)
+
+	preview, err := h.service().Preview(t.Context(), LaunchRequest{ItemID: h.issue, Agent: agent.Codex})
+	require.NoError(t, err)
+	assert.Contains(t, preview.Command, `--config 'service_tier="fast"'`, "the settings start each launch in Fast mode")
+
+	preview, err = h.service().Preview(t.Context(), LaunchRequest{ItemID: h.issue, Agent: agent.Codex, Fast: new(false)})
+	require.NoError(t, err)
+	assert.NotContains(t, preview.Command, "service_tier", "unticked for this launch")
+
+	_, script = h.launch(t, LaunchRequest{ItemID: h.trustedPR, Fast: new(true)})
+	assert.NotContains(t, script, "service_tier", "Claude has no Fast mode")
 }
 
 func TestLaunchUsesLaunchDefaults(t *testing.T) {
@@ -243,7 +273,7 @@ func TestLaunchUsesLaunchDefaults(t *testing.T) {
 	assert.Equal(t, "work", res.Profile)
 	assert.Equal(t, "plan mode", res.Permission, "the work profile asks first, so plan mode adds no bypass")
 	assert.Contains(t, script, "'--effort' 'max' '--permission-mode' 'plan' '--advisor' 'fable' "+
-		"'--name=Fix checks · example-repo#7'\n")
+		"'--name=Fix checks · example-repo#7' '--session-id="+testSessionID+"'\n")
 	assert.Contains(t, promptFor(t, res.ScriptPath), "Fix the failing checks on pull request #7")
 
 	// The outside contributor rule still wins over every default.

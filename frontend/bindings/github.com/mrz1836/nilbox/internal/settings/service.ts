@@ -49,6 +49,14 @@ export function CollapsedSections(): $CancellablePromise<$models.ListKey[] | nul
 }
 
 /**
+ * FollowSessions returns whether the app follows the agent sessions it launches: the
+ * stored setting, or DefaultFollowSessions when none is stored or it cannot be read.
+ */
+export function FollowSessions(): $CancellablePromise<boolean> {
+    return $Call.ByID(1534672355);
+}
+
+/**
  * Get returns every preference, with the default for any that is unset or holds a value
  * that is no longer valid.
  */
@@ -107,6 +115,22 @@ export function SetCloneRoot(root: string): $CancellablePromise<$models.Settings
 }
 
 /**
+ * SetCodexEffort stores whether a Codex launch passes the effort level it resolves to, and
+ * returns the settings with it. Off, Codex uses the effort in its own config.
+ */
+export function SetCodexEffort(on: boolean): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(1774115158, on);
+}
+
+/**
+ * SetCodexFast stores whether Codex launches start in Fast mode unless unticked, and
+ * returns the settings with it.
+ */
+export function SetCodexFast(on: boolean): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(2644004182, on);
+}
+
+/**
  * SetDefaultAgent stores the coding agent launches use when no launch default names one,
  * and returns the settings with it.
  */
@@ -123,6 +147,15 @@ export function SetDefaultProfile(id: agent$0.ID, name: string): $CancellablePro
 }
 
 /**
+ * SetFollowSessions stores whether the app follows the agent sessions it launches, and
+ * returns the settings with it. While it is off, no agent is asked about its sessions,
+ * and the window shows none; launches are still recorded.
+ */
+export function SetFollowSessions(on: boolean): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(3396426745, on);
+}
+
+/**
  * SetMenuBar stores whether the app shows its menu bar icon, and returns the settings
  * with it. Once it is stored, an event.MenuBarChanged is emitted, so the desktop shell
  * adds or removes the icon.
@@ -135,6 +168,10 @@ export function SetMenuBar(on: boolean): $CancellablePromise<$models.Settings> {
  * SetNotificationBanner turns the banners of one kind of notification on or off (see the
  * notify package for the kinds), and returns the settings with it. The notification
  * history keeps every kind either way.
+ *
+ * A kind that starts on is stored in notifyprefs.KeyBannersOff once turned off, and one
+ * that starts off, such as the agent sessions' kinds, in notifyprefs.KeyBannersOn once
+ * turned on; both keys are written together.
  */
 export function SetNotificationBanner(kind: notifyprefs$0.Kind, on: boolean): $CancellablePromise<$models.Settings> {
     return $Call.ByID(515060680, kind, on);

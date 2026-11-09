@@ -77,6 +77,7 @@ export function LaunchMenu({
   const profile = choices.profile === '' ? resolved.profile.value : choices.profile
   const worktree = choices.worktree ?? resolved.worktree.inherited
   const planMode = choices.planMode ?? resolved.planMode.inherited
+  const fast = choices.fast ?? resolved.fast.inherited
   // forcedPlan: an outside contributor's item starts in plan mode until the override lifts it.
   const forcedPlan = untrusted && !choices.override
   const [owner, name] = [resolved.owner, resolved.repo.split('/').at(-1) ?? '']
@@ -225,27 +226,45 @@ export function LaunchMenu({
               </option>
             ))}
           </select>
-          <label htmlFor={`${id}-effort`} className="text-xs text-muted">
+          <label htmlFor={`${id}-effort`} className={`text-xs text-muted ${resolved.effortOff ? 'opacity-60' : ''}`}>
             Effort
           </label>
-          <select
-            id={`${id}-effort`}
-            value={choices.effort ?? ''}
-            onChange={(e) => {
-              const value = e.target.value
+          {resolved.effortOff ? (
+            <select
+              id={`${id}-effort`}
+              value=""
+              disabled
+              aria-describedby={`${id}-effort-help`}
+              className="w-full truncate rounded-md border border-border bg-surface px-2 py-1 text-[0.8125rem] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <option value="">{agent.name}’s own</option>
+            </select>
+          ) : (
+            <select
+              id={`${id}-effort`}
+              value={choices.effort ?? ''}
+              onChange={(e) => {
+                const value = e.target.value
 
-              set({ effort: value === '' || value === resolved.effort.inherited ? null : value })
-            }}
-            className="w-full truncate rounded-md border border-border bg-surface px-2 py-1 text-[0.8125rem]"
-          >
-            <option value="">{defaultLabel(resolved.effort, (v) => effortLabel(v, agent.effortLevels))}</option>
-            {agent.effortLevels.map((c) => (
-              <option key={c.value} value={c.value}>
-                {c.label}
-              </option>
-            ))}
-          </select>
+                set({ effort: value === '' || value === resolved.effort.inherited ? null : value })
+              }}
+              className="w-full truncate rounded-md border border-border bg-surface px-2 py-1 text-[0.8125rem]"
+            >
+              <option value="">{defaultLabel(resolved.effort, (v) => effortLabel(v, agent.effortLevels))}</option>
+              {agent.effortLevels.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
+        {resolved.effortOff && (
+          <p id={`${id}-effort-help`} className="-mt-1 text-xs text-muted">
+            {agent.name} uses the effort in its own config; change it in the session with /model. To set it here, turn
+            on Settings → Launching → Set Codex’s effort at launch.
+          </p>
+        )}
         <label className="flex cursor-pointer items-center gap-2">
           <input
             type="checkbox"
@@ -279,6 +298,31 @@ export function LaunchMenu({
                 : 'this launch'}
           </span>
         </label>
+        {agent.fastMode && (
+          <div>
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                checked={fast}
+                aria-describedby={fast ? `${id}-fast-help` : undefined}
+                onChange={(e) => {
+                  set({ fast: e.target.checked === resolved.fast.inherited ? null : e.target.checked })
+                }}
+                className="checkbox"
+              />
+              Fast mode
+              <span className="ml-auto text-[0.6875rem] text-muted">
+                {choices.fast === null ? sourceLabel(resolved.fast.inheritedSource) : 'this launch'}
+              </span>
+            </label>
+            {fast && (
+              <p id={`${id}-fast-help`} className="pt-0.5 pl-6 text-xs text-muted">
+                {agent.name} runs a session started in Fast mode outside its app server, so its card can’t show when it
+                waits for you.
+              </p>
+            )}
+          </div>
+        )}
         {untrusted && (
           <div>
             <label className="flex cursor-pointer items-center gap-2">

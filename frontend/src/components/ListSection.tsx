@@ -4,7 +4,8 @@ import { prefersReducedMotion } from '../lib/motion'
 import { sortByStatus, statusesOf, statusOrder } from '../lib/statusOrder'
 import { tabOf, type TriagedList, type TriageTab } from '../lib/triage'
 import { worktreeOf } from '../lib/itemWorktrees'
-import type { ItemResolution, Worktree } from '../platform'
+import { sessionsOf } from '../lib/sessions'
+import type { AgentSession, ItemResolution, Worktree } from '../platform'
 import { ArchiveIcon, ChevronDownIcon, ClockIcon } from './icons'
 import type { EditActions } from './ItemMenu'
 import { ItemRow, type LaunchOptions } from './ItemRow'
@@ -57,6 +58,9 @@ export interface ListSectionProps {
   launch: LaunchOptions | null
   // resolutions holds each item's resolved launch settings by item ID, as they load.
   resolutions: ReadonlyMap<number, ItemResolution>
+  // sessions holds each item's agent sessions, newest first, by itemKey (see
+  // itemSessions).
+  sessions: ReadonlyMap<string, readonly AgentSession[]>
   // worktrees holds each item's worktree, from the Worktrees view's latest listing (see
   // itemWorktrees).
   worktrees: ReadonlyMap<string, Worktree>
@@ -83,6 +87,7 @@ export function ListSection({
   launch,
   resolutions,
   worktrees,
+  sessions,
   triage,
   edits,
   collapsed,
@@ -216,6 +221,7 @@ export function ListSection({
                 launch={launch}
                 resolution={resolutions.get(item.id) ?? null}
                 worktree={worktreeOf(worktrees, item)}
+                sessions={sessionsOf(sessions, item)}
                 tab={tab}
                 triage={triage}
                 edits={edits}

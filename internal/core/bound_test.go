@@ -87,6 +87,18 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.SetDefaultAgent": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetDefaultAgent(ctx, agent.Codex)
 		},
+		"settings.Service.SetFollowSessions": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetFollowSessions(ctx, false)
+		},
+		"settings.Service.SetCodexEffort": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetCodexEffort(ctx, true)
+		},
+		"settings.Service.SetCodexFast": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetCodexFast(ctx, true)
+		},
+		"sessions.Service.List": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Sessions.List(ctx)
+		},
 		"profiles.Service.Agents": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Profiles.Agents(ctx)
 		},
@@ -268,6 +280,7 @@ func unreachedBound() map[string]string {
 		"inbox.Service.StoredFiles":         "nil for an item whose files are not checked",
 		"launcher.Service.Preview":          "needs a clone; its resolution is built as Resolve's",
 		"launcher.Service.Launch":           "opens a terminal",
+		"launcher.Service.Resume":           "opens a terminal",
 		"worktrees.Service.Remove":          "needs a worktree to remove; its result starts its lists empty, as RemoveAllClean's",
 		"worktrees.Service.ForceRemove":     "needs a dirty worktree; its result is built as Remove's",
 		"worktrees.Service.CleanUp":         "reads GitHub; its result is built as CleanUpFinished's",

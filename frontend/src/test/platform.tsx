@@ -32,6 +32,7 @@ import {
   prompts,
   removeResult,
   resolution,
+  sessionsSnapshot,
   settings,
   snapshot,
   sweepReport,
@@ -110,6 +111,10 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     previewLaunch: () => Promise.resolve(launchPreview()),
     cloneTarget: () => Promise.resolve(cloneTarget()),
     cloneRepo: () => Promise.resolve(cloneTarget()),
+    resumeSession: () => Promise.resolve(launchResult({ worktreeAction: 'resume' })),
+
+    listSessions: () => Promise.resolve(sessionsSnapshot()),
+    focusSession: done,
 
     listPrompts: () => Promise.resolve(prompts()),
     createPrompt: (input) => Promise.resolve(prompt({ ...fromInput(input), id: 9 })),
@@ -141,6 +146,9 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     setDefaultProfile: (agent, name) => stored({ defaultProfiles: { ...settings().defaultProfiles, [agent]: name } }),
     setWorktreeDefault: (worktreeDefault) => stored({ worktreeDefault }),
     setWorktreeAutoCleanup: (worktreeAutoCleanup) => stored({ worktreeAutoCleanup }),
+    setFollowSessions: (followSessions) => stored({ followSessions }),
+    setCodexEffort: (codexEffort) => stored({ codexEffort }),
+    setCodexFast: (codexFast) => stored({ codexFast }),
     setMenuBar: (menuBar) => stored({ menuBar }),
     setNotificationBanner: (kind, on) => stored({ bannersOff: on ? [] : [kind] }),
     setSnoozeDays: (snoozeDays) => stored({ snoozeDays }),

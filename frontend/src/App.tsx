@@ -9,6 +9,8 @@ import type { SettingsSection } from './components/SettingsView'
 import { Toast, type ToastMessage } from './components/Toast'
 import { attempt } from './lib/call'
 import { itemWorktrees } from './lib/itemWorktrees'
+import { runningSession, sessionsOf } from './lib/sessions'
+import { useSessions } from './lib/useSessions'
 import { agentName } from './lib/launch'
 import { offersProjects } from './lib/projects'
 import { useTextSize } from './lib/textSize'
@@ -245,6 +247,9 @@ export function App() {
   // window opened at (main.tsx).
   useTextSize(config.settings?.textSize)
   const sweeps = useWorktreeSweeps()
+  // agentSessions are the agent sessions the inbox's cards follow, loaded as the window
+  // opens and again whenever one changes.
+  const agentSessions = useSessions()
   const notifications = useNotifications()
   // sections lives here rather than in the inbox page, so the lists stay as they were
   // left without reading them again.
@@ -429,6 +434,7 @@ export function App() {
         onManagePrompts={launch.onManagePrompts}
         initial={{ worktree: true }}
         menuAlign="left"
+        running={runningSession(sessionsOf(agentSessions.byItem, found))}
       />
     )
   }
@@ -464,6 +470,7 @@ export function App() {
             launch={launch}
             resolutions={config.resolutions}
             worktrees={worktrees}
+            sessions={agentSessions.byItem}
             snoozeDays={config.settings?.snoozeDays ?? defaultSnoozeDays}
             onSnoozeSettings={openSnoozeSettings}
             onFilesSettings={openFilesSettings}

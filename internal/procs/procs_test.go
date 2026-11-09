@@ -114,3 +114,26 @@ func TestWithoutServicesStopsAtALoop(t *testing.T) {
 
 	assert.Len(t, procs.WithoutServices(list, []string{"codex"}), 3)
 }
+
+func TestInMatchesTheFolderItself(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	inner := filepath.Join(root, "inner")
+	require.NoError(t, os.MkdirAll(inner, 0o700))
+
+	list := []procs.Process{{PID: 1, Dir: root}, {PID: 2, Dir: inner}, {PID: 3, Dir: ""}, {PID: 4, Dir: root + "/"}}
+
+	got := procs.In(list, root)
+	require.Len(t, got, 2)
+	assert.Equal(t, 1, got[0].PID)
+	assert.Equal(t, 4, got[1].PID)
+}
+
+func TestAlive(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, procs.Alive(os.Getpid()), "this test runs")
+	assert.False(t, procs.Alive(0))
+	assert.False(t, procs.Alive(-1))
+}

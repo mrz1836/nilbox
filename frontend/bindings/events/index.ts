@@ -29,6 +29,11 @@ export const InboxUpdated = "inbox:updated";
 export const NotificationsUpdated = "notifications:updated";
 
 /**
+ * Name of the custom event "sessions:updated".
+ */
+export const SessionsUpdated = "sessions:updated";
+
+/**
  * Name of the custom event "worktrees:updated".
  */
 export const WorktreesUpdated = "worktrees:updated";

@@ -1,0 +1,2 @@
+{"timestamp":"2026-11-09T05:17:28.514Z","ordinal":0,"type":"session_meta","payload":{"session_id":"01a1bebd-6f52-7942-9e77-e69115ff8ee8","id":"01a1bebd-6f52-7942-9e77-e69115ff8ee8","timestamp":"2026-11-09T05:17:28.311Z","cwd":"/srv/wt/example-repo/pr-12","originator":"codex-tui","cli_version":"0.163.0","source":"cli","base_instructions":{"text":"You are Codex."}}}
+{"timestamp":"2026-11-09T05:17:28.600Z","ordinal":1,"type":"event_msg","payload":{"type":"task_started"}}

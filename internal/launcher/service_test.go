@@ -172,6 +172,7 @@ func (s launchSettings) Get(ctx context.Context) (LaunchSettings, error) {
 	return LaunchSettings{
 		DefaultAgent: all.DefaultAgent, DefaultProfiles: all.DefaultProfiles, WorktreeDefault: all.WorktreeDefault,
 		Terminal: all.Terminal, CloneRoot: all.CloneRoot, TrustedBots: all.TrustedBots,
+		EffortOverrides: all.CodexEffort, FastMode: all.CodexFast,
 	}, nil
 }
 
@@ -272,6 +273,74 @@ func (f *fakeSessions) Touch(_ context.Context, clonePath, worktree string, id a
 	return nil
 }
 
+// testSessionID is the ID the harness mints for every session.
+const testSessionID = "0f8c1e2a-5b4d-4c3e-9a1f-2b3c4d5e6f70"
+
+// fakeLedger records the sessions launches start, and answers Resumable from what it
+// holds.
+type fakeLedger struct {
+	mu        sync.Mutex
+	started   []StartedSession
+	resumable map[string]ResumableSession
+	running   []RunningSession
+	err       error
+	runErr    error
+	asked     []string
+}
+
+func (f *fakeLedger) Running(_ context.Context, owner, name string, number int) ([]RunningSession, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.asked = append(f.asked, fmt.Sprintf("%s/%s#%d", owner, name, number))
+
+	return slices.Clone(f.running), f.runErr
+}
+
+func (f *fakeLedger) Started(_ context.Context, s StartedSession) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if f.err != nil {
+		return f.err
+	}
+
+	f.started = append(f.started, s)
+
+	return nil
+}
+
+func (f *fakeLedger) Resumable(_ context.Context, id string) (ResumableSession, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	s, ok := f.resumable[id]
+	if !ok {
+		return ResumableSession{}, errUnknownSession
+	}
+
+	return s, nil
+}
+
+// setRunning replaces the sessions the ledger says run on any item.
+func (f *fakeLedger) setRunning(running ...RunningSession) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.running = running
+}
+
+// all returns the sessions recorded so far.
+func (f *fakeLedger) all() []StartedSession {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return slices.Clone(f.started)
+}
+
+// errUnknownSession is what fakeLedger fails Resumable with for an ID it does not hold.
+var errUnknownSession = errors.New("no such session")
+
 // inboxItems reads the launch items from the inbox's store, as the app does.
 type inboxItems struct {
 	*inbox.Store
@@ -323,6 +392,7 @@ type launchHarness struct {
 	settings *settings.Service
 	maker    *fakeMaker
 	sessions *fakeSessions
+	ledger   *fakeLedger
 	cfg      Config
 
 	// Item IDs: a trusted PR, an outside contributor's PR, a trusted issue, and a PR in a
@@ -341,6 +411,7 @@ func newLaunchHarness(t *testing.T) *launchHarness {
 		terminal: &fakeDriver{id: terminal.TerminalApp},
 		maker:    &fakeMaker{},
 		sessions: &fakeSessions{},
+		ledger:   &fakeLedger{},
 	}
 	h.root = filepath.Join(h.home, "projects")
 	h.clone = filepath.Join(h.root, exampleRepo)
@@ -375,6 +446,8 @@ func newLaunchHarness(t *testing.T) *launchHarness {
 		Clock:     testutil.NewClock(fixedNow()),
 		Worktrees: h.maker,
 		Sessions:  h.sessions,
+		Ledger:    h.ledger,
+		NewID:     func() string { return testSessionID },
 		Trust: map[agent.ID]Truster{
 			agent.Claude: workspacetrust.Claude{Home: h.home},
 			agent.Codex:  workspacetrust.Codex{Home: h.home},
@@ -534,13 +607,15 @@ func TestLaunchWritesFilesAndOpensDriver(t *testing.T) {
 		Permission:     "full access",
 		Terminal:       settings.TerminalITerm2,
 		Agent:          agent.Claude,
+		SessionID:      testSessionID,
 	}, res)
 
 	worktree := filepath.Join(h.root, "."+brand.Slug, "worktrees", exampleRepo, "pr-7")
 	assert.Contains(t, script, "cd -- "+shQuote(worktree)+" || exit 1\n", "the session starts in the item's worktree")
 	assert.Contains(t, script, "unset CLAUDE_CONFIG_DIR\n")
 	assert.Contains(t, script, `exec '`+filepath.Join(filepath.Dir(h.home), "bin", "claude")+`' "$prompt" `+
-		"'--dangerously-skip-permissions' '--name=Review · example-repo#7'\n", "no agent worktree flag")
+		"'--dangerously-skip-permissions' '--name=Review · example-repo#7' '--session-id="+testSessionID+"'\n",
+		"no agent worktree flag, and the app's own session ID")
 	assert.NotContains(t, script, "--worktree")
 	assert.Equal(t, []WorktreeRequest{{
 		Clone: h.clone, Remote: "origin", Owner: "acme-org", Name: exampleRepo, Kind: item.KindPR, Number: 7,

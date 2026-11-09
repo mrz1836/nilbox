@@ -1,0 +1,113 @@
+{
+    "data": [
+        {
+            "id": "01a1bec5-d48c-7092-9332-fb198342b55d",
+            "environments": [
+                {
+                    "environmentId": "local",
+                    "cwd": "/srv/wt/example-repo/issue-14",
+                    "runtimeWorkspaceRoots": [
+                        "/srv/wt/example-repo/issue-14"
+                    ]
+                }
+            ],
+            "extra": null,
+            "sessionId": "01a1bec5-d48c-7092-9332-fb198342b55d",
+            "forkedFromId": null,
+            "parentThreadId": null,
+            "preview": "Work on this issue #14 in acme-org/example-repo: Crash on start\nhttps://github.com/acme-org/example-repo/issues/14",
+            "ephemeral": false,
+            "section": null,
+            "sectionEnteredAt": null,
+            "projectId": null,
+            "historyMode": "paginated",
+            "modelProvider": "openai",
+            "model": "example-model",
+            "reasoningEffort": "medium",
+            "createdAt": 1794202017,
+            "updatedAt": 1794202040,
+            "recencyAt": 1794202017,
+            "status": {
+                "type": "active",
+                "activeFlags": [
+                    "waitingOnApproval"
+                ]
+            },
+            "path": "/srv/home/.codex/sessions/2026/11/09/rollout-2026-11-09T00-26-38-01a1bec5-d48c-7092-9332-fb198342b55d.jsonl",
+            "cwd": "/srv/wt/example-repo/issue-14",
+            "cliVersion": "0.167.0",
+            "originator": "codex-tui",
+            "source": "vscode",
+            "canAcceptDirectInput": true,
+            "threadSource": "user",
+            "agentNickname": null,
+            "agentRole": null,
+            "gitInfo": null,
+            "name": "Approve marker file creation",
+            "daybreakEnabled": null,
+            "turns": []
+        },
+        {
+            "id": "01a1bebd-6f52-7942-9e77-e69115ff8ee8",
+            "environments": null,
+            "extra": null,
+            "sessionId": "01a1bebd-6f52-7942-9e77-e69115ff8ee8",
+            "forkedFromId": null,
+            "parentThreadId": null,
+            "preview": "Review pull request #12 in acme-org/example-repo: Fix the widget",
+            "ephemeral": false,
+            "section": null,
+            "sectionEnteredAt": null,
+            "projectId": null,
+            "historyMode": "paginated",
+            "modelProvider": "openai",
+            "model": "example-model",
+            "reasoningEffort": "low",
+            "createdAt": 1794201448,
+            "updatedAt": 1794201591,
+            "recencyAt": 1794201536,
+            "status": {
+                "type": "notLoaded"
+            },
+            "path": "/srv/home/.codex/sessions/2026/11/09/rollout-2026-11-09T00-17-28-01a1bebd-6f52-7942-9e77-e69115ff8ee8.jsonl",
+            "cwd": "/srv/wt/example-repo/pr-12",
+            "cliVersion": "0.163.0",
+            "originator": "codex-tui",
+            "source": "cli",
+            "canAcceptDirectInput": null,
+            "threadSource": null,
+            "agentNickname": null,
+            "agentRole": null,
+            "gitInfo": {
+                "sha": "0000000000000000000000000000000000000000",
+                "branch": "main",
+                "originUrl": "https://github.com/acme-org/example-repo.git"
+            },
+            "name": "Review the widget fix",
+            "daybreakEnabled": null,
+            "turns": []
+        },
+        {
+            "id": "01a1bec6-6a9b-73c3-9d6a-6d1834ae7cd5",
+            "environments": [],
+            "extra": null,
+            "sessionId": "01a1bec6-6a9b-73c3-9d6a-6d1834ae7cd5",
+            "forkedFromId": null,
+            "parentThreadId": null,
+            "preview": "",
+            "ephemeral": true,
+            "historyMode": "paginated",
+            "modelProvider": "openai",
+            "createdAt": 1794202037,
+            "updatedAt": 1794202040,
+            "status": {
+                "type": "idle"
+            },
+            "cwd": "/srv/wt/example-repo/issue-14",
+            "cliVersion": "0.167.0",
+            "source": "vscode",
+            "turns": []
+        }
+    ],
+    "nextCursor": null
+}

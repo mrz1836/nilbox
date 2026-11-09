@@ -84,6 +84,22 @@ func Within(list []Process, dir string) []Process {
 	return out
 }
 
+// In returns the processes whose working directory is dir itself, not one inside it, by
+// PID, compared as Within compares them.
+func In(list []Process, dir string) []Process {
+	root := resolved(dir)
+
+	var out []Process
+
+	for _, p := range list {
+		if p.Dir != "" && resolved(p.Dir) == root {
+			out = append(out, p)
+		}
+	}
+
+	return out
+}
+
 // resolved returns path cleaned, with symbolic links resolved. A path that does not
 // exist is resolved through its nearest existing parent, so it still matches the form the
 // OS reports for it.

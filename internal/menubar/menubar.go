@@ -1,7 +1,8 @@
-// Package menubar works out what the app's menu bar icon shows for the stored inbox: how
-// many items need the user, beside the icon, and a short list of them, by list, in its
-// menu. The desktop shell draws the result with native menu items; this package decides
-// what they say, so it builds and is tested on any OS.
+// Package menubar works out what the app's menu bar icon shows for the stored inbox and
+// the agent sessions: how many items need the user, beside the icon, and in its menu the
+// sessions waiting for the user first, then a short list of the items, by list. The
+// desktop shell draws the result with native menu items; this package decides what they
+// say, so it builds and is tested on any OS.
 package menubar
 
 import (
@@ -9,7 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/inbox"
+	"github.com/mrz1836/nilbox/internal/sessions"
 	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
@@ -32,10 +35,15 @@ type Summary struct {
 	// Label is the text beside the icon: the count, "99+" past MaxCount, or "" for none.
 	Label string
 
+	// Waiting are the agent sessions waiting for the user, the longest waiting first,
+	// which the menu lists before the items under WaitingTitle.
+	Waiting []Waiting
+
 	// Sections are the lists with items that need the user, in the inbox's order.
 	Sections []Section
 
-	// Nothing is the menu's line in place of the lists when no item needs the user.
+	// Nothing is the menu's line in place of the lists when no item and no session needs
+	// the user.
 	Nothing string
 
 	// Status says when the inbox was last refreshed, or that the last refresh failed.
@@ -74,15 +82,34 @@ type Entry struct {
 	Tooltip string
 }
 
+// WaitingTitle heads the sessions waiting for the user.
+const WaitingTitle = "Waiting for you"
+
+// Waiting is one agent session waiting for the user, in the menu.
+type Waiting struct {
+	// SessionID is the session a click shows the terminal of; ItemID and URL are its item,
+	// which a click shows instead when the terminal cannot be.
+	SessionID string
+	ItemID    int64
+	URL       string
+
+	// Label is the row: "example-repo #123 · Claude needs approval".
+	Label string
+
+	// Tooltip is the item in full, and what the session waits for: "acme-org/example-repo
+	// #123: Fix the login redirect · Claude needs approval".
+	Tooltip string
+}
+
 // sectionTitles are the lists' names, as the inbox shows them.
 //
 //nolint:gochecknoglobals // a fixed table
 var sectionTitles = [...]string{"Review requested", "Authored", "Assigned"}
 
-// Summarize works out what the menu bar shows for snap at now, with times shown in now's
-// location. An item in more than one list is listed once, under the first, as the count
-// counts it.
-func Summarize(snap inbox.Snapshot, now time.Time) Summary {
+// Summarize works out what the menu bar shows for snap and the sessions waiting for the
+// user at now, with times shown in now's location. An item in more than one list is
+// listed once, under the first, as the count counts it.
+func Summarize(snap inbox.Snapshot, waiting []sessions.Session, now time.Time) Summary {
 	out := Summary{
 		Count:      snap.NeedsYou(now),
 		Status:     status(snap, now),
@@ -99,8 +126,45 @@ func Summarize(snap inbox.Snapshot, now time.Time) Summary {
 	}
 
 	out.Sections = sections(&snap, now)
+	out.Waiting = waitingEntries(waiting)
 
 	return out
+}
+
+// waitingEntries are the rows of the sessions waiting for the user.
+func waitingEntries(waiting []sessions.Session) []Waiting {
+	out := make([]Waiting, 0, len(waiting))
+
+	for _, s := range waiting {
+		name := s.Repo
+		if i := strings.LastIndexByte(name, '/'); i >= 0 {
+			name = name[i+1:]
+		}
+
+		number := "#" + strconv.Itoa(s.Number)
+		what := agentName(s.Agent) + " " + s.State.Phrase()
+
+		tooltip := s.Repo + " " + number
+		if title := strings.Join(strings.Fields(s.Title), " "); title != "" {
+			tooltip += ": " + title
+		}
+
+		out = append(out, Waiting{
+			SessionID: s.ID, ItemID: s.ItemID, URL: s.URL,
+			Label: name + " " + number + " · " + what, Tooltip: tooltip + " · " + what,
+		})
+	}
+
+	return out
+}
+
+// agentName is what the menu calls an agent.
+func agentName(id agent.ID) string {
+	if a, err := agent.Lookup(id); err == nil {
+		return a.Name
+	}
+
+	return string(id)
 }
 
 // sections are the lists with items that need the user at now, each item under the first

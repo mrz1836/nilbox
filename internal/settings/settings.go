@@ -54,6 +54,16 @@ const (
 	// KeyTerminal is the terminal app launches open in.
 	KeyTerminal = "launch.terminal"
 
+	// KeyFollowSessions is whether the app follows the agent sessions it launches.
+	KeyFollowSessions = "launch.followSessions"
+
+	// KeyCodexEffort is whether a Codex launch passes the effort level it resolves to,
+	// which Codex takes only as a config override.
+	KeyCodexEffort = "agent.codex.effort"
+
+	// KeyCodexFast is whether Codex launches start in Fast mode unless unticked.
+	KeyCodexFast = "agent.codex.fast"
+
 	// KeyCloneRoot is the directory whose children are the user's local clones.
 	KeyCloneRoot = "clones.root"
 
@@ -82,6 +92,7 @@ const (
 	DefaultAutoCleanup     = true
 	DefaultTerminal        = TerminalITerm2
 	DefaultCloneRoot       = "~/projects"
+	DefaultFollowSessions  = true
 )
 
 var (
@@ -117,6 +128,17 @@ type Settings struct {
 
 	// Terminal is TerminalITerm2 or TerminalApp.
 	Terminal terminal.ID `json:"terminal"`
+
+	// FollowSessions follows each agent session a launch starts from its item: what it
+	// is doing, and what it last said. Sessions are recorded either way.
+	FollowSessions bool `json:"followSessions"`
+
+	// CodexEffort passes Codex the effort level a launch resolves to, and CodexFast
+	// presets each Codex launch's Fast mode. Codex takes both only as config overrides,
+	// and runs a session started with either outside its shared app server, where the app
+	// can't see that it waits for the user, so both start off.
+	CodexEffort bool `json:"codexEffort"`
+	CodexFast   bool `json:"codexFast"`
 
 	// CloneRoot is the clone root as entered, e.g. "~/projects".
 	CloneRoot string `json:"cloneRoot"`
@@ -164,7 +186,8 @@ type Settings struct {
 	MenuBar bool `json:"menuBar"`
 
 	// BannersOff lists the kinds of notification (see the notify package) whose banners
-	// are off. The notification history keeps every kind either way.
+	// are off, the agent sessions' kinds among them until turned on. The notification
+	// history keeps every inbox kind either way.
 	BannersOff []notifyprefs.Kind `json:"bannersOff"`
 
 	// Theme is the palette the app shows.
@@ -270,6 +293,53 @@ func (s *Service) SetTerminal(ctx context.Context, id terminal.ID) (Settings, er
 	}
 
 	return s.save(ctx, setting(KeyTerminal, string(id)))
+}
+
+// FollowSessions returns whether the app follows the agent sessions it launches: the
+// stored setting, or DefaultFollowSessions when none is stored or it cannot be read.
+func (s *Service) FollowSessions(ctx context.Context) (bool, error) {
+	stored, _, err := s.prefs.Get(ctx, KeyFollowSessions)
+	if err != nil {
+		return DefaultFollowSessions, fmt.Errorf("read whether to follow sessions: %w", err)
+	}
+
+	return decodeFollowSessions(stored), nil
+}
+
+// SetFollowSessions stores whether the app follows the agent sessions it launches, and
+// returns the settings with it. While it is off, no agent is asked about its sessions,
+// and the window shows none; launches are still recorded.
+func (s *Service) SetFollowSessions(ctx context.Context, on bool) (Settings, error) {
+	return s.save(ctx, setting(KeyFollowSessions, strconv.FormatBool(on)))
+}
+
+// SetCodexEffort stores whether a Codex launch passes the effort level it resolves to, and
+// returns the settings with it. Off, Codex uses the effort in its own config.
+func (s *Service) SetCodexEffort(ctx context.Context, on bool) (Settings, error) {
+	return s.save(ctx, setting(KeyCodexEffort, strconv.FormatBool(on)))
+}
+
+// SetCodexFast stores whether Codex launches start in Fast mode unless unticked, and
+// returns the settings with it.
+func (s *Service) SetCodexFast(ctx context.Context, on bool) (Settings, error) {
+	return s.save(ctx, setting(KeyCodexFast, strconv.FormatBool(on)))
+}
+
+// decodeOff reads a stored switch that starts off: on only when stored as true.
+func decodeOff(stored string) bool {
+	on, err := strconv.ParseBool(stored)
+
+	return err == nil && on
+}
+
+// decodeFollowSessions reads a stored follow setting, falling back to the default for one
+// that is unset ("") or cannot be read.
+func decodeFollowSessions(stored string) bool {
+	if on, err := strconv.ParseBool(stored); err == nil {
+		return on
+	}
+
+	return DefaultFollowSessions
 }
 
 // SetDefaultAgent stores the coding agent launches use when no launch default names one,
@@ -479,6 +549,9 @@ func fromStored(stored map[string]string) Settings {
 		WorktreeDefault:     DefaultWorktreeDefault,
 		WorktreeAutoCleanup: DefaultAutoCleanup,
 		Terminal:            DefaultTerminal,
+		FollowSessions:      decodeFollowSessions(stored[KeyFollowSessions]),
+		CodexEffort:         decodeOff(stored[KeyCodexEffort]),
+		CodexFast:           decodeOff(stored[KeyCodexFast]),
 		CloneRoot:           DefaultCloneRoot,
 		TrustedBots:         trust.DecodeBots(rawBots, hasBots),
 		DefaultTrustedBots:  trust.DefaultBots(),
@@ -492,10 +565,11 @@ func fromStored(stored map[string]string) Settings {
 
 		DefaultProtectedBranches: branchrules.DefaultProtected(),
 		MenuBar:                  decodeMenuBar(stored[KeyMenuBar]),
-		BannersOff:               notifyprefs.DecodeBannersOff(stored[notifyprefs.KeyBannersOff]),
-		Theme:                    decodeTheme(stored[KeyTheme]),
-		TextSize:                 decodeTextSize(stored[KeyTextSize]),
-		CollapsedSections:        decodeCollapsed(stored),
+		BannersOff: notifyprefs.DecodeBannersOff(stored[notifyprefs.KeyBannersOff],
+			stored[notifyprefs.KeyBannersOn]),
+		Theme:             decodeTheme(stored[KeyTheme]),
+		TextSize:          decodeTextSize(stored[KeyTextSize]),
+		CollapsedSections: decodeCollapsed(stored),
 
 		ProjectsTipDismissed: decodeProjectsTipDismissed(stored[KeyProjectsTipDismissed]),
 		InboxOrder:           decodeInboxOrder(stored),
@@ -610,10 +684,11 @@ func settingKeys() []string {
 	}
 
 	return append(append(keys,
-		KeyWorktreeDefault, KeyWorktreeAutoCleanup, KeyTerminal, KeyCloneRoot, KeyTrustedBots,
+		KeyWorktreeDefault, KeyWorktreeAutoCleanup, KeyTerminal, KeyFollowSessions, KeyCodexEffort, KeyCodexFast,
+		KeyCloneRoot, KeyTrustedBots,
 		KeySnoozeDays, KeyWindowSize,
 		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments,
-		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, KeyTheme,
+		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, notifyprefs.KeyBannersOn, KeyTheme,
 		KeyTextSize, KeyProjectsTipDismissed,
 	), append(append(collapsedKeys(), orderKeys()...), branchrules.Keys()...)...)
 }

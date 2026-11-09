@@ -45,7 +45,9 @@ export function CloneTarget(itemID: number): $CancellablePromise<$models.CloneTa
  *  2. find the item's local clone: the cached path when it still is a clone of the
  *     repository, otherwise a scan of the clone root, whose result is cached;
  *  3. find the agent and, for a worktree launch, what its worktree would be, and build
- *     the plan;
+ *     the plan, and hold the launch back, starting nothing and asking GitHub nothing,
+ *     while a session the app follows runs in the folder it would start in, unless the
+ *     request confirms that hold;
  *  4. for a pull request whose files are checked, check them against GitHub as of now,
  *     and fill in the prompt, which names its sensitive files;
  *  5. hold the launch back, starting nothing, when the pull request changes agent files
@@ -56,7 +58,8 @@ export function CloneTarget(itemID: number): $CancellablePromise<$models.CloneTa
  *     agent would otherwise stop at its workspace trust question;
  *  8. write the prompt file and launch script;
  *  9. open the script in the terminal chosen in settings;
- *  10. record the session in the worktree, with its agent.
+ *  10. record the session in the worktree, with its agent, and in the ledger, under the
+ *     ID minted for it, so the item's card follows it.
  *
  * The launcher itself runs only the read-only `git -C <clone> config --get-regexp` remote
  * lookup. The script only changes into the directory and runs the agent; it never checks
@@ -93,4 +96,16 @@ export function Resolve(req: $models.LaunchRequest): $CancellablePromise<$models
  */
 export function ResolveItems(ids: number[] | null): $CancellablePromise<$models.ItemResolution[] | null> {
     return $Call.ByID(2484134288, ids);
+}
+
+/**
+ * Resume reopens an ended session in the terminal chosen in settings: the agent picks
+ * the conversation up where it stopped, in the same folder, with the item's launch
+ * settings as they now resolve for the agent and profile the session ran with. The
+ * session resumed is recorded as a new session that names the first, and nothing is
+ * fetched: the item's worktree must still be there. It returns ErrSessionRunning for a
+ * session still running, and ErrNotLinked for one the agent never named.
+ */
+export function Resume(sessionID: string): $CancellablePromise<$models.LaunchResult> {
+    return $Call.ByID(2717730259, sessionID);
 }

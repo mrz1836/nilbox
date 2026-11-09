@@ -12,12 +12,17 @@ import (
 )
 
 // KeyBannersOff is the prefs key listing, as a JSON array, the kinds of notification whose
-// banners are off. Kinds are on unless listed, so a kind added later starts on. The
-// settings package writes it.
+// banners start on and were turned off. Such a kind is on unless listed, so a kind added
+// later that starts on is on. The settings package writes it.
 const KeyBannersOff = "notify.bannersOff"
 
-// Kind is a kind of notification. The kinds are the inbox's kinds of arrival (see
-// inbox.Arrival).
+// KeyBannersOn is the prefs key listing, as a JSON array, the kinds of notification whose
+// banners start off and were turned on (see Kind.DefaultOn). The settings package writes
+// it.
+const KeyBannersOn = "notify.bannersOn"
+
+// Kind is a kind of notification: one of the inbox's kinds of arrival (see
+// inbox.Arrival), or a moment an agent session needs the user.
 type Kind string
 
 // Kinds of notification.
@@ -30,6 +35,12 @@ const (
 
 	// KindWoke is a snoozed item that new activity brought back early.
 	KindWoke Kind = "woke"
+
+	// KindSessionNeedsYou is an agent session waiting for the user's approval or input.
+	KindSessionNeedsYou Kind = "session_needs_you"
+
+	// KindSessionFinished is an agent session that finished its turn.
+	KindSessionFinished Kind = "session_finished"
 )
 
 // ErrUnknownKind is returned for a kind of notification that is not one of Kinds.
@@ -37,7 +48,7 @@ var ErrUnknownKind = errors.New("unknown kind of notification")
 
 // Kinds returns the kinds of notification in the order the settings list them.
 func Kinds() []Kind {
-	return []Kind{KindReviewRequested, KindAssigned, KindWoke}
+	return []Kind{KindReviewRequested, KindAssigned, KindWoke, KindSessionNeedsYou, KindSessionFinished}
 }
 
 // Valid reports whether k is one of Kinds.
@@ -45,19 +56,23 @@ func (k Kind) Valid() bool {
 	return slices.Contains(Kinds(), k)
 }
 
-// DecodeBannersOff reads the kinds whose banners are off from the stored value of
-// KeyBannersOff, in the order of Kinds. A value that is unset ("") or cannot be read
-// turns none off, and kinds that are not known are dropped.
-func DecodeBannersOff(stored string) []Kind {
-	var listed []Kind
-	if json.Unmarshal([]byte(stored), &listed) != nil {
-		return []Kind{}
-	}
+// DefaultOn reports whether a kind's banners are on until the user turns them off. The
+// sessions' kinds start off: the coding agents and the terminal can already notify the
+// user themselves.
+func (k Kind) DefaultOn() bool {
+	return k != KindSessionNeedsYou && k != KindSessionFinished
+}
 
+// DecodeBannersOff reads the kinds whose banners are off, in the order of Kinds, from the
+// stored values of KeyBannersOff and KeyBannersOn: a kind that starts on is off when the
+// first lists it, and one that starts off is off unless the second lists it. A value that
+// is unset ("") or cannot be read lists none, and kinds that are not known are dropped.
+func DecodeBannersOff(storedOff, storedOn string) []Kind {
+	listedOff, listedOn := decodeList(storedOff), decodeList(storedOn)
 	off := []Kind{}
 
 	for _, kind := range Kinds() {
-		if slices.Contains(listed, kind) {
+		if kind.DefaultOn() && slices.Contains(listedOff, kind) || !kind.DefaultOn() && !slices.Contains(listedOn, kind) {
 			off = append(off, kind)
 		}
 	}
@@ -88,13 +103,39 @@ func SetBanner(off []Kind, kind Kind, on bool) ([]Kind, error) {
 	return out, nil
 }
 
-// EncodeBannersOff writes the kinds whose banners are off as the value of KeyBannersOff.
-func EncodeBannersOff(off []Kind) string {
-	if off == nil {
-		off = []Kind{}
+// EncodeBanners writes the kinds whose banners are off as the values of KeyBannersOff,
+// which lists the kinds that start on and are off, and KeyBannersOn, which lists the
+// kinds that start off and are on.
+func EncodeBanners(off []Kind) (storedOff, storedOn string) {
+	offList, onList := []Kind{}, []Kind{}
+
+	for _, kind := range Kinds() {
+		isOff := slices.Contains(off, kind)
+
+		switch {
+		case kind.DefaultOn() && isOff:
+			offList = append(offList, kind)
+		case !kind.DefaultOn() && !isOff:
+			onList = append(onList, kind)
+		}
 	}
 
-	b, _ := json.Marshal(off) //nolint:errchkjson // a []Kind always encodes
+	return encodeList(offList), encodeList(onList)
+}
+
+// decodeList reads a stored JSON array of kinds, or none when it cannot be read.
+func decodeList(stored string) []Kind {
+	var listed []Kind
+	if json.Unmarshal([]byte(stored), &listed) != nil {
+		return nil
+	}
+
+	return listed
+}
+
+// encodeList writes kinds as a JSON array.
+func encodeList(kinds []Kind) string {
+	b, _ := json.Marshal(kinds) //nolint:errchkjson // a []Kind always encodes
 
 	return string(b)
 }

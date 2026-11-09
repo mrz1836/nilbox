@@ -136,6 +136,34 @@ func TestWriteLaunchFiles(t *testing.T) {
 	})
 }
 
+func TestWriteLaunchFilesWithoutAPrompt(t *testing.T) {
+	t.Parallel()
+
+	paths := testPaths(t)
+	req := baseRequest()
+	req.ResumeID = "0f8c1e2a-5b4d-4c3e-9a1f-2b3c4d5e6f70"
+
+	plan, err := BuildPlan(req)
+	require.NoError(t, err)
+	require.True(t, plan.NoPrompt)
+
+	_, err = WriteLaunchFiles(paths, plan, "a prompt", fixedNow(), nil)
+	require.ErrorIs(t, err, ErrResumePrompt)
+
+	files, err := WriteLaunchFiles(paths, plan, "", fixedNow(), nil)
+	require.NoError(t, err)
+	assert.Empty(t, files.Prompt, "no prompt file")
+
+	entries, err := os.ReadDir(paths.Launch)
+	require.NoError(t, err)
+	assert.Len(t, entries, 1, "the script alone")
+
+	script, err := os.ReadFile(files.Script)
+	require.NoError(t, err)
+	assert.NotContains(t, string(script), "prompt")
+	assert.Contains(t, string(script), "'--resume="+req.ResumeID+"'\n")
+}
+
 func TestWriteLaunchFilesRestrictsAnExistingDir(t *testing.T) {
 	t.Parallel()
 

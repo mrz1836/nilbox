@@ -1,0 +1,42 @@
+{
+    "data": [
+        {
+            "id": "01a1bebe-c690-7853-a4c9-9b32d8b412bd",
+            "rootTurnId": "01a1bebe-c690-7853-a4c9-9b32d8b412bd",
+            "items": [
+                {
+                    "type": "userMessage",
+                    "id": "01a1bebe-c69f-7d70-8cd1-ebb00a434cf3",
+                    "clientId": "d8f08496-ea87-4ad0-9e9e-a4cf08c4e905",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Run the tests.",
+                            "text_elements": []
+                        }
+                    ],
+                    "startedAtMs": 1794201536160,
+                    "completedAtMs": 1794201536160
+                },
+                {
+                    "type": "agentMessage",
+                    "id": "msg_1",
+                    "text": "I'll run the tests now.",
+                    "phase": "commentary",
+                    "memoryCitation": null,
+                    "delivery": null,
+                    "questions": null,
+                    "startedAtMs": 1794201537198,
+                    "completedAtMs": 1794201537543
+                }
+            ],
+            "itemsView": "full",
+            "status": "interrupted",
+            "error": null,
+            "startedAt": 1794201536,
+            "completedAt": null,
+            "durationMs": null
+        }
+    ],
+    "nextCursor": null
+}

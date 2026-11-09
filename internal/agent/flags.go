@@ -21,6 +21,7 @@ const (
 const (
 	reasonModel       = "is set by the Model setting"
 	reasonEffort      = "is set by the Effort setting"
+	reasonFast        = "is set by the Fast mode setting"
 	reasonPermissions = "can't be added: permissions come from the profile and the outside-contributor rule"
 	reasonTerminal    = "can't be added: sessions run in your terminal"
 	reasonTrust       = "the launch trusts the folder it starts in"

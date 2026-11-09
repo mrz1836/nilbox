@@ -116,6 +116,15 @@ type Resolution struct {
 	PlanMode Toggle       `json:"planMode"`
 	Worktree Toggle       `json:"worktree"`
 
+	// EffortOff reports that the launch passes the agent no effort level whatever the
+	// layers say: the agent takes it only as a config override, and the app's settings
+	// leave that off, so it uses its own. Effort is then empty.
+	EffortOff bool `json:"effortOff"`
+
+	// Fast is whether the session starts in the agent's Fast mode: the launch's own
+	// choice, else the app's setting. It is off, from the agent, for one without.
+	Fast Toggle `json:"fast"`
+
 	// ExtraArgs are every extra argument for the agent, in order: the profile's, the
 	// org's, the repository's, and the prompt's.
 	ExtraArgs []string `json:"extraArgs"`
@@ -258,8 +267,8 @@ func resolve(w world, it subject, req LaunchRequest) (Resolution, profiles.Profi
 	id := r.agent.ID
 	res.Model = r.text(req.Model, prompt.Models[id], func(d *launchdefaults.Defaults) string { return d.Models[id] },
 		profile.Model, SourceProfile)
-	res.Effort = r.effort(r.text(req.Effort, prompt.Effort, func(d *launchdefaults.Defaults) string { return d.Effort },
-		profile.Effort, SourceProfile))
+	res.Effort, res.EffortOff = r.agentEffort(req.Effort, prompt.Effort, profile.Effort)
+	res.Fast = r.fast(req.Fast)
 	res.PlanMode = r.toggle(req.PlanMode, prompt.PlanMode, func(d *launchdefaults.Defaults) *bool { return d.PlanMode },
 		profile.PlanMode, SourceProfile)
 	res.Worktree = r.toggle(req.Worktree, prompt.Worktree, func(d *launchdefaults.Defaults) *bool { return d.Worktree },
@@ -371,6 +380,33 @@ func (r *resolver) effort(s Setting) Setting {
 	}
 
 	return s
+}
+
+// agentEffort resolves the effort level the agent is passed, and reports true when it is
+// passed none whatever the layers say: it takes one only as a config override, and the
+// app's settings leave that off.
+func (r *resolver) agentEffort(requested *string, prompt, profile string) (Setting, bool) {
+	if r.agent.ConfigOverrides && !r.w.settings.EffortOverrides {
+		return Setting{Source: SourceApp, InheritedSource: SourceApp}, true
+	}
+
+	return r.effort(r.text(requested, prompt, func(d *launchdefaults.Defaults) string { return d.Effort }, profile,
+		SourceProfile)), false
+}
+
+// fast resolves Fast mode for an agent that has one: the request's choice, else the app's
+// setting. An agent without one is off, by its own default.
+func (r *resolver) fast(requested *bool) Toggle {
+	if !r.agent.FastMode {
+		return Toggle{Source: SourceAgent, InheritedSource: SourceAgent}
+	}
+
+	t := Toggle{Value: r.w.settings.FastMode, Source: SourceApp, Inherited: r.w.settings.FastMode, InheritedSource: SourceApp}
+	if requested != nil {
+		t.Value, t.Source = *requested, SourceLaunch
+	}
+
+	return t
 }
 
 // profile resolves the agent's profile: the request's, else the repository's, the org's,
