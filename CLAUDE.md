@@ -171,7 +171,13 @@ app:lint` reads.
   file system monitor, and submodule recursion off (`hardening` in `internal/worktrees/git.go`),
   since a worktree holds a pull request's own files, and a pull request's worktree is made only
   at the head whose files the launch checked. The launcher reaches the `Maker` through its
-  `WorktreeMaker` interface; no agent's own `--worktree` flag is used.
+  `WorktreeMaker` interface; no agent's own `--worktree` flag is used. A branch is deleted only
+  with the conditional `git update-ref -d <ref> <oid>` (the repoguard tests ban `git branch
+  -d/-D`): by `create.go`, of a branch it just fetched at a head the launch didn't check, and
+  otherwise only through `deleteBranchAt` in `internal/worktrees/branches.go`, when the user
+  ticked it (or, for the automatic cleanup, the user's rules pick it), every commit on it is on
+  GitHub, and neither the user's protected patterns (`internal/branchrules`) nor a remote's
+  `HEAD` keeps it.
 - `internal/measure/` and `magefiles/measure.go` take the numbers in
   [`docs/performance.md`](docs/performance.md).
 - `frontend/` is the React + TypeScript + Vite + Tailwind app. It reaches Go only through the
@@ -240,7 +246,7 @@ package imports the driver, and nothing imports an ORM (`internal/repoguard` enf
   pool-backed store from inside an open transaction: it waits on the lock the transaction holds.
 - **Prefs.** `internal/prefs` owns the `prefs` table. Any package reads any key, but each key has
   exactly one writer: settings writes the user's settings, including the rule keys that the trust,
-  snooze, sensitive, and notifyprefs packages declare; inbox writes `inbox.*`; prompts writes
+  snooze, sensitive, notifyprefs, and branchrules packages declare; inbox writes `inbox.*`; prompts writes
   `prompts.*` (the package doc has the full list).
 - **Values.** Owners stamp `created_at`, `updated_at`, and every other time from their injected
   `clock.Clock`; nothing fills them in. The driver stores every `time.Time` as UTC text

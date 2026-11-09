@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/paths"
@@ -90,12 +91,46 @@ func TestPrefDefaults(t *testing.T) {
 		DefaultWindowSize:   WindowSize{Width: 1280, Height: 800},
 		SensitiveFiles:      sensitive.Config{Scope: "collaborators", Off: []string{}, Patterns: []string{}},
 		SensitiveCategories: sensitive.Categories(),
+		Branches:            branchrules.Defaults(),
 		MenuBar:             DefaultMenuBar,
 		BannersOff:          []notifyprefs.Kind{},
 		Theme:               ThemeSystem,
 		CollapsedSections:   []ListKey{},
 		InboxOrder:          InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}},
+
+		DefaultProtectedBranches: []string{"main", "master"},
 	}, got)
+}
+
+func TestBranchRules(t *testing.T) {
+	t.Parallel()
+
+	svc, db, _ := newTestService(t)
+	ctx := t.Context()
+
+	rules := branchrules.Rules{Own: true, PullRequest: false, Merged: false, Protected: []string{"main", " develop ", "release/*"}}
+
+	got, err := svc.SetBranchRules(ctx, rules)
+	require.NoError(t, err)
+	assert.Equal(t, branchrules.Rules{Own: true, PullRequest: false, Merged: false, Protected: []string{"main", "develop", "release/*"}},
+		got.Branches, "the protected list normalized")
+
+	again, err := svc.Get(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, got.Branches, again.Branches)
+
+	_, err = svc.SetBranchRules(ctx, branchrules.Rules{Protected: []string{"[broken"}})
+	require.ErrorIs(t, err, branchrules.ErrInvalidPattern)
+
+	again, err = svc.Get(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, got.Branches, again.Branches, "a refused save stores nothing")
+
+	setPref(t, db, branchrules.PrefProtected, "{broken")
+
+	again, err = svc.Get(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, branchrules.DefaultProtected(), again.Branches.Protected, "an unreadable list falls back to the defaults")
 }
 
 func TestTrustedBots(t *testing.T) {
@@ -179,6 +214,7 @@ func TestSettersPersist(t *testing.T) {
 	require.NoError(t, testutil.ErrOf(svc.SetSnoozeWake(t.Context(), snooze.Rules{Commits: 3, Reviews: snooze.ReviewsAny, Comments: 5})))
 	require.NoError(t, testutil.ErrOf(svc.SetMenuBar(t.Context(), false)))
 	require.NoError(t, testutil.ErrOf(svc.SetNotificationBanner(t.Context(), notifyprefs.KindWoke, false)))
+	require.NoError(t, testutil.ErrOf(svc.SetBranchRules(t.Context(), branchrules.Rules{Own: true, Protected: []string{"develop"}})))
 
 	got, err := svc.Get(t.Context())
 	require.NoError(t, err)
@@ -202,6 +238,9 @@ func TestSettersPersist(t *testing.T) {
 		Theme:               DefaultTheme,
 		CollapsedSections:   []ListKey{},
 		InboxOrder:          InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}},
+		Branches:            branchrules.Rules{Own: true, Protected: []string{"develop"}},
+
+		DefaultProtectedBranches: branchrules.DefaultProtected(),
 	}, got)
 
 	abs := t.TempDir()

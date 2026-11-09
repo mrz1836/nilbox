@@ -158,7 +158,7 @@ func (r agentRunner) Run(ctx context.Context, name string, args ...string) (stdo
 
 // sweepSettings is the part of the settings the worktree service reads.
 func sweepSettings(s settings.Settings) worktrees.SweepSettings {
-	return worktrees.SweepSettings{CloneRoot: s.CloneRoot, AutoCleanup: s.WorktreeAutoCleanup}
+	return worktrees.SweepSettings{CloneRoot: s.CloneRoot, AutoCleanup: s.WorktreeAutoCleanup, Branches: s.Branches}
 }
 
 // launchItems hands the launcher the inbox's stored items, the signed-in account, and
@@ -282,12 +282,53 @@ func (s itemStates) ItemStates(ctx context.Context, refs []item.Ref) (map[string
 	return out, nil
 }
 
+// MergedPullRequests asks GitHub which branch names were the head of a merged pull
+// request. A token GitHub refuses is borrowed again once.
+func (s itemStates) MergedPullRequests(ctx context.Context, queries []worktrees.BranchQuery,
+) (map[worktrees.BranchKey][]worktrees.MergedPR, error) {
+	asks := make([]github.BranchQuery, 0, len(queries))
+	for _, q := range queries {
+		asks = append(asks, github.BranchQuery{Repo: q.Repo, Branches: q.Branches})
+	}
+
+	answers, err := github.WithToken(ctx, s.tokens, func(tok github.Token) (map[string][]github.MergedPR, error) {
+		return s.client.FetchMergedPullRequests(ctx, tok, asks)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	out := map[worktrees.BranchKey][]worktrees.MergedPR{}
+
+	for _, q := range queries {
+		for _, branch := range q.Branches {
+			if prs := answers[github.MergedKey(q.Repo, branch)]; len(prs) > 0 {
+				out[worktrees.BranchKey{Repo: q.Repo.Key(), Branch: branch}] = worktreeMerged(prs)
+			}
+		}
+	}
+
+	return out, nil
+}
+
+// worktreeMerged converts GitHub's merged pull requests for the worktree service.
+func worktreeMerged(prs []github.MergedPR) []worktrees.MergedPR {
+	out := make([]worktrees.MergedPR, 0, len(prs))
+	for _, pr := range prs {
+		out = append(out, worktrees.MergedPR{
+			Number: pr.Number, Title: pr.Title, URL: pr.URL, MergedAt: pr.MergedAt, HeadOID: pr.HeadOID,
+		})
+	}
+
+	return out
+}
+
 // worktreeState converts GitHub's answer about an item for the worktree service. An item
 // GitHub reports neither merged nor closed is open.
 func worktreeState(s github.ItemState) worktrees.ItemState {
 	out := worktrees.ItemState{
 		PullRequest: s.PullRequest, Title: s.Title, URL: s.URL, State: worktrees.ItemOpen, ClosedAt: s.ClosedAt,
-		HeadOID: s.HeadOID,
+		HeadOID: s.HeadOID, HeadRef: s.HeadRef,
 	}
 
 	switch s.State {

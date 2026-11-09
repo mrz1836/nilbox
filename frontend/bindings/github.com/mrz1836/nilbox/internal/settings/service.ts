@@ -21,6 +21,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as agent$0 from "../agent/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as branchrules$0 from "../branchrules/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as terminal$0 from "../launcher/terminal/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -83,6 +86,15 @@ export function MenuBar(): $CancellablePromise<boolean> {
  */
 export function ResetTrustedBots(): $CancellablePromise<$models.Settings> {
     return $Call.ByID(3791295291);
+}
+
+/**
+ * SetBranchRules stores the rules for deleting local branches, and returns the settings
+ * with them. Every rule is stored together, so the rules never mix two saves; a protected
+ * pattern that cannot match a branch is refused, and nothing is stored.
+ */
+export function SetBranchRules(rules: branchrules$0.Rules): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(3664504924, rules);
 }
 
 /**

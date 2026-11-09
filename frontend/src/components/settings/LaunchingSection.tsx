@@ -8,9 +8,7 @@ import {
   setDefaultProfile,
   setDefaultPrompt,
   setTerminal,
-  setWorktreeAutoCleanup,
   setWorktreeDefault,
-  sweepWorktrees,
   type AgentID,
   type AgentInfo,
   type DefaultPrompts,
@@ -41,8 +39,8 @@ interface LaunchingSectionProps extends SectionProps {
 }
 
 // LaunchingSection holds the app defaults every launch starts from: the terminal, the
-// coding agent and each agent's profile, the prompt for each kind of item, and the
-// worktree a session runs in. Each is saved as soon as it changes, with why a change was
+// coding agent and each agent's profile, the prompt for each kind of item, and whether a
+// session runs in a worktree. Each is saved as soon as it changes, with why a change was
 // refused shown under its row.
 export function LaunchingSection({
   settings: stored,
@@ -214,33 +212,11 @@ export function LaunchingSection({
       <SwitchRow
         label="Start in a worktree"
         controlId={`${id}-worktree`}
-        description="Presets each row's “Start in a worktree” box. You can still change it per launch."
+        description="Presets each row's “Start in a worktree” box. You can still change it per launch. How worktrees are cleaned up is under Worktrees."
         error={errorOf('worktree')}
         checked={settings.worktreeDefault}
         onChange={(worktreeDefault) => {
           void store('worktree', { worktreeDefault }, () => setWorktreeDefault(worktreeDefault))
-        }}
-      />
-      <SwitchRow
-        label="Clean up after merging"
-        controlId={`${id}-cleanup`}
-        description="Removes a session's worktree, with its own worktree-… branch, once its pull request merges or its issue closes, if it has no uncommitted changes, all its commits are on GitHub, and no session runs in it. Checked every few minutes; ignored files in it go with it."
-        error={errorOf('cleanup')}
-        checked={settings.worktreeAutoCleanup}
-        onChange={(worktreeAutoCleanup) => {
-          // Turned on, it sweeps at once rather than at the next check.
-          const call = () =>
-            setWorktreeAutoCleanup(worktreeAutoCleanup).then((saved) => {
-              if (worktreeAutoCleanup) {
-                sweepWorktrees().catch((err: unknown) => {
-                  console.error('could not sweep the worktrees', err)
-                })
-              }
-
-              return saved
-            })
-
-          void store('cleanup', { worktreeAutoCleanup }, call)
         }}
       />
     </Group>

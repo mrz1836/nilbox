@@ -16,6 +16,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
@@ -75,6 +76,16 @@ var (
 
 	// ErrBranchInUse is returned when a branch to delete is checked out in a worktree.
 	ErrBranchInUse = errors.New("the branch is checked out in a worktree")
+
+	// ErrBranchProtected is returned for a branch the user protects, or a remote's
+	// default branch, which is never deleted.
+	ErrBranchProtected = errors.New("the branch is protected")
+
+	// ErrBranchGone is returned for a branch to delete that no longer exists.
+	ErrBranchGone = errors.New("the branch is already gone")
+
+	// ErrBranchMoved is returned for a branch to delete that moved since it was checked.
+	ErrBranchMoved = errors.New("the branch moved since it was checked; check again")
 
 	// ErrGitHubUnavailable is returned when GitHub could not say which worktrees are
 	// finished.
@@ -155,6 +166,10 @@ type SweepSettings struct {
 	// AutoCleanup lets the automatic sweep clean up a finished worktree once its pull
 	// request merges or its issue closes.
 	AutoCleanup bool
+
+	// Branches are the user's rules for deleting branches: the automatic sweep follows
+	// them, and nothing ever deletes a branch they protect.
+	Branches branchrules.Rules
 }
 
 // SettingsReader reads the sweep settings as they are now, so every listing and sweep
@@ -179,6 +194,9 @@ type ItemState struct {
 
 	// HeadOID is a pull request's head commit SHA; "" for an issue.
 	HeadOID string
+
+	// HeadRef is a pull request's head branch; "" for an issue.
+	HeadRef string
 }
 
 // GitHub reads the current state of pull requests and issues. The app adapts the GitHub
@@ -187,6 +205,35 @@ type GitHub interface {
 	// ItemStates returns the state of each item in refs that GitHub knows, keyed by the
 	// ref's Key.
 	ItemStates(ctx context.Context, refs []item.Ref) (map[string]ItemState, error)
+
+	// MergedPullRequests returns the merged pull requests whose head branch had each
+	// name asked about, newest first, keyed by BranchKey. A name none had is left out.
+	MergedPullRequests(ctx context.Context, queries []BranchQuery) (map[BranchKey][]MergedPR, error)
+}
+
+// BranchQuery asks which of a repository's branch names were the head of a merged pull
+// request.
+type BranchQuery struct {
+	Repo     repo.Name
+	Branches []string
+}
+
+// BranchKey names a repository's branch in the answer to MergedPullRequests: the
+// repository's Key and the branch.
+type BranchKey struct {
+	Repo   string
+	Branch string
+}
+
+// MergedPR is a merged pull request a branch was the head of.
+type MergedPR struct {
+	Number   int
+	Title    string
+	URL      string
+	MergedAt time.Time
+
+	// HeadOID is the commit its head branch was at, which GitHub keeps.
+	HeadOID string
 }
 
 // Records reads, writes, and prunes the record of the worktrees the app made or found for
@@ -314,7 +361,7 @@ func NewService(cfg Config) *Service {
 // repository that git cannot read is listed with an error rather than hiding the rest. A
 // clone that is itself a linked worktree of another clone is folded into that repository.
 func (s *Service) List(ctx context.Context) (Snapshot, error) {
-	g, root, _, err := s.prepare(ctx)
+	g, root, prefs, err := s.prepare(ctx)
 	if err != nil {
 		return Snapshot{}, err
 	}
@@ -324,17 +371,18 @@ func (s *Service) List(ctx context.Context) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 
-	return s.assessClones(ctx, g, root, clones)
+	return s.assessClones(ctx, g, root, clones, prefs.Branches)
 }
 
-// Remove removes one linked worktree without --force, and with it its own worktree-<name>
-// branch when nothing on that would be lost: every commit on it is on GitHub. A branch
-// with commits that are not stays, with them, for the item's next launch. The repository
-// must be a clone under the clone root and path one of its linked worktrees, which is
-// assessed again first. The main worktree, a locked one, and one a session works in are
-// refused before git runs, and git itself refuses one with uncommitted changes, which
-// comes back as a RefusedError. The result says what became of the branch.
-func (s *Service) Remove(ctx context.Context, repoPath, path string) (RemoveResult, error) {
+// Remove removes one linked worktree without --force, and with it the branches named,
+// of those it offers (see Worktree.Branches): each goes only when nothing on it would be
+// lost and nothing protects it, and only while it still points at the commit assessed.
+// The repository must be a clone under the clone root and path one of its linked
+// worktrees, which is assessed again first. The main worktree, a locked one, and one a
+// session works in are refused before git runs, and git itself refuses one with
+// uncommitted changes, which comes back as a RefusedError. The result names the branches
+// deleted, and says why any other one named was kept.
+func (s *Service) Remove(ctx context.Context, repoPath, path string, branches []string) (RemoveResult, error) {
 	s.act.Lock()
 	defer s.act.Unlock()
 
@@ -343,15 +391,15 @@ func (s *Service) Remove(ctx context.Context, repoPath, path string) (RemoveResu
 		return RemoveResult{}, err
 	}
 
-	return s.removeRow(ctx, g, repoPath, wt, false)
+	return s.removeRow(ctx, g, repoPath, wt, false, branches)
 }
 
 // ForceRemove removes one unlocked linked worktree that has uncommitted changes,
-// discarding them, with a single --force, and its own branch as Remove does. Locked
+// discarding them, with a single --force, and the branches named as Remove does. Locked
 // worktrees, and ones a running process works in, are refused even here, so a running
 // session's worktree is never pulled out from under it; so is every worktree when the
 // running processes cannot be listed, since nothing else would stop it then.
-func (s *Service) ForceRemove(ctx context.Context, repoPath, path string) (RemoveResult, error) {
+func (s *Service) ForceRemove(ctx context.Context, repoPath, path string, branches []string) (RemoveResult, error) {
 	s.act.Lock()
 	defer s.act.Unlock()
 
@@ -360,7 +408,7 @@ func (s *Service) ForceRemove(ctx context.Context, repoPath, path string) (Remov
 		return RemoveResult{}, err
 	}
 
-	res, err := s.removeRow(ctx, g, repoPath, wt, true)
+	res, err := s.removeRow(ctx, g, repoPath, wt, true, branches)
 	if errors.Is(err, ErrSessionsUnknown) {
 		return res, uierr.New("This system can't list the running processes, so it can't tell whether a session is "+
 			"working in the worktree, and won't discard its changes.", err)
@@ -369,11 +417,11 @@ func (s *Service) ForceRemove(ctx context.Context, repoPath, path string) (Remov
 	return res, err
 }
 
-// RemoveAllClean removes every clean, unlocked, linked worktree whose directory still
-// exists, one at a time, each with its own branch as Remove does, and reports each
-// outcome. Each removal is re-checked against the repository first, and git refuses any
-// worktree that changed in the meantime.
-func (s *Service) RemoveAllClean(ctx context.Context) ([]RemoveResult, error) {
+// RemoveAllClean removes the clean, unlocked, linked worktrees picked, one at a time, each
+// with the branches picked for it as Remove does, and reports each outcome. Each is
+// checked against a fresh listing first: one that is no longer clean and removable is
+// left, with why, and git refuses any worktree that changed in the meantime.
+func (s *Service) RemoveAllClean(ctx context.Context, picks []Pick) ([]RemoveResult, error) {
 	s.act.Lock()
 	defer s.act.Unlock()
 
@@ -387,26 +435,38 @@ func (s *Service) RemoveAllClean(ctx context.Context) ([]RemoveResult, error) {
 		return nil, err
 	}
 
-	results := make([]RemoveResult, 0, snap.CleanCount)
+	results := make([]RemoveResult, 0, len(picks))
 
-	for repo, wt := range rows(snap.Repos) {
-		if !wt.CanRemove {
-			continue
-		}
-
+	for _, p := range picks {
 		if err = ctx.Err(); err != nil {
 			return results, err
 		}
 
-		res, removeErr := s.removeRow(ctx, g, repo.Path, *wt, false)
-		if removeErr != nil {
-			res.Reason = reasonOf(removeErr)
-		}
+		wt, ok := findWorktree(snap, p.Path)
 
-		results = append(results, res)
+		switch {
+		case !ok:
+			results = append(results, pickRefused(p, s.display(p.Path), ErrNotAWorktree))
+		case !wt.CanRemove:
+			results = append(results, pickRefused(p, wt.DisplayPath, ErrChanged))
+		default:
+			res, removeErr := s.removeRow(ctx, g, p.RepoPath, wt, false, p.Branches)
+			if removeErr != nil {
+				res.Reason = reasonOf(removeErr)
+			}
+
+			results = append(results, res)
+		}
 	}
 
 	return results, nil
+}
+
+// pickRefused is the result for a picked worktree left as it was, with why.
+func pickRefused(p Pick, display string, err error) RemoveResult {
+	return RemoveResult{
+		RepoPath: p.RepoPath, Path: p.Path, DisplayPath: display, DeletedBranches: []string{}, Reason: reasonOf(err),
+	}
 }
 
 // Prune clears the repository's entries for worktrees whose directories are gone. It
@@ -430,7 +490,7 @@ func (s *Service) Prune(ctx context.Context, repoPath string) error {
 // assessClone assesses the clone at repoPath alone, GitHub included, as a listing would:
 // the clone must be under the clone root.
 func (s *Service) assessClone(ctx context.Context, repoPath string) (git, Snapshot, error) {
-	g, root, _, err := s.prepare(ctx)
+	g, root, prefs, err := s.prepare(ctx)
 	if err != nil {
 		return git{}, Snapshot{}, err
 	}
@@ -444,7 +504,7 @@ func (s *Service) assessClone(ctx context.Context, repoPath string) (git, Snapsh
 		return git{}, Snapshot{}, err
 	}
 
-	snap, err := s.assessClones(ctx, g, root, []localrepos.LocalRepo{clone})
+	snap, err := s.assessClones(ctx, g, root, []localrepos.LocalRepo{clone}, prefs.Branches)
 	if err != nil {
 		return git{}, Snapshot{}, err
 	}
@@ -475,9 +535,14 @@ func (s *Service) assessOne(ctx context.Context, repoPath, path string) (git, Wo
 // removeRow removes an assessed linked worktree, with --force when force is set, which
 // discards its uncommitted changes: a force removal needs some to discard, and the
 // running processes listed. The worktree must still have the commit assessed checked out.
-// Its own branch then goes too when nothing on it would be lost (see dropBranch).
-func (s *Service) removeRow(ctx context.Context, g git, repoPath string, wt Worktree, force bool) (RemoveResult, error) {
-	res := RemoveResult{RepoPath: repoPath, Path: wt.Path, DisplayPath: wt.DisplayPath, Item: itemName(wt.Item)}
+// The branches named then go with it, each only when it may (see deleteChosen).
+func (s *Service) removeRow(ctx context.Context, g git, repoPath string, wt Worktree, force bool,
+	branches []string,
+) (RemoveResult, error) {
+	res := RemoveResult{
+		RepoPath: repoPath, Path: wt.Path, DisplayPath: wt.DisplayPath, Item: itemName(wt.Item),
+		DeletedBranches: []string{},
+	}
 
 	e, err := s.removable(ctx, repoPath, wt.Path, wt.Head, force)
 	if err != nil {
@@ -497,7 +562,9 @@ func (s *Service) removeRow(ctx context.Context, g git, repoPath string, wt Work
 	res.Removed = true
 
 	s.forgetRecord(ctx, wt.Path)
-	s.dropBranch(ctx, g, repoPath, wt, &res)
+
+	deleted, kept := s.deleteChosen(ctx, g, repoPath, wt, branches)
+	res.DeletedBranches, res.Reason = deleted, strings.Join(kept, "; ")
 
 	return res, nil
 }
@@ -521,29 +588,6 @@ func (s *Service) discardable(ctx context.Context, g git, e Entry) error {
 	return nil
 }
 
-// dropBranch deletes a removed worktree's own worktree-<name> branch when nothing on it
-// would be lost, every commit on it being on GitHub, and says in res what became of it.
-// A branch with commits that are not stays, so the item's next launch picks them up again;
-// a branch that is not the worktree's own, such as one checked out by hand, always stays.
-func (s *Service) dropBranch(ctx context.Context, g git, repoPath string, wt Worktree, res *RemoveResult) {
-	switch {
-	case !wt.OwnBranch || wt.Branch == "":
-		return
-	case !wt.OnGitHub:
-		res.Reason = fmt.Sprintf("kept the branch %s, which has %s not on GitHub", wt.Branch, unpushedText(wt.Unpushed))
-
-		return
-	}
-
-	if err := s.deleteOwnBranch(ctx, g, repoPath, wt.Branch, wt.Head); err != nil {
-		res.Reason = "kept the branch " + wt.Branch + ": " + reasonOf(err)
-
-		return
-	}
-
-	res.DeletedBranch = wt.Branch
-}
-
 // unpushedText counts the commits a branch has that are not on GitHub, or says "commits"
 // when the count could not be read.
 func unpushedText(n int) string {
@@ -565,7 +609,9 @@ func unpushedText(n int) string {
 // The records and the running processes are read before git lists anything: a worktree
 // made after the listing then has no record yet rather than a record that seems to name a
 // worktree gone, and the git commands the listing runs are not mistaken for sessions.
-func (s *Service) assessClones(ctx context.Context, g git, root string, clones []localrepos.LocalRepo) (Snapshot, error) {
+func (s *Service) assessClones(ctx context.Context, g git, root string, clones []localrepos.LocalRepo,
+	rules branchrules.Rules,
+) (Snapshot, error) {
 	records := s.records(ctx)
 	running, known := s.processes(ctx)
 
@@ -608,6 +654,7 @@ func (s *Service) assessClones(ctx context.Context, g git, root string, clones [
 	markSessions(snap.Repos, running)
 	snap.SessionsUnknown = !known
 	s.tally(&snap)
+	s.markBranches(ctx, g, snap.Repos, rules)
 
 	return snap, nil
 }
@@ -751,7 +798,6 @@ func (s *Service) prepare(ctx context.Context) (git, string, SweepSettings, erro
 	return g, root, prefs, nil
 }
 
-// git returns the allowlisted git runner, resolving the binary when a Finder is set.
 // lockClone takes the clone's lock (see Service.clones), and returns its release.
 func (s *Service) lockClone(clone string) func() {
 	key := resolvedPath(clone)
@@ -775,6 +821,7 @@ func (s *Service) lockClone(clone string) func() {
 	return mu.Unlock
 }
 
+// git returns the allowlisted git runner, resolving the binary when a Finder is set.
 func (s *Service) git() (git, error) {
 	if s.finder == nil {
 		return git{run: s.run, bin: gitBin}, nil
@@ -1021,6 +1068,7 @@ func (s *Service) row(ctx context.Context, g git, e Entry, managedDir, legacyDir
 		Head:           e.HEAD,
 		Unpushed:       -1,
 		InUse:          []Session{},
+		Branches:       []Branch{},
 	}
 
 	wt.Managed = wt.Legacy || within(managedDir, path)

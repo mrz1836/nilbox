@@ -10,6 +10,7 @@ import { Browser, Clipboard, Dialogs, Events, Window, type CancellablePromise } 
 import '../../bindings/events'
 import type * as agent from '../../bindings/github.com/mrz1836/nilbox/internal/agent'
 import * as appinfo from '../../bindings/github.com/mrz1836/nilbox/internal/appinfo'
+import * as branchrules from '../../bindings/github.com/mrz1836/nilbox/internal/branchrules'
 import * as budget from '../../bindings/github.com/mrz1836/nilbox/internal/budget'
 import * as inbox from '../../bindings/github.com/mrz1836/nilbox/internal/inbox'
 import type * as item from '../../bindings/github.com/mrz1836/nilbox/internal/item'
@@ -166,6 +167,14 @@ export type WorktreeRepo = NonNullLists<worktrees.Repo>
 export type WorktreesSnapshot = NonNullLists<worktrees.Snapshot>
 export type SweepReport = NonNullLists<worktrees.SweepReport>
 export type Worktree = NonNullLists<worktrees.Worktree>
+export type WorktreeBranch = NonNullLists<worktrees.Branch>
+export type BranchKind = worktrees.BranchKind
+export type WorktreePick = NonNullLists<worktrees.Pick>
+export type MergedBranch = NonNullLists<worktrees.MergedBranch>
+export type MergedPullRequest = NonNullLists<worktrees.MergedPullRequest>
+export type BranchPick = NonNullLists<worktrees.BranchPick>
+export type BranchResult = NonNullLists<worktrees.BranchResult>
+export type BranchRules = NonNullLists<branchrules.Rules>
 export type WorktreeStage = worktrees.Stage
 export type WorktreeSession = NonNullLists<worktrees.Session>
 
@@ -257,6 +266,7 @@ export const {
   InboxOrder: getInboxOrder,
   SetStatusSort: setStatusSort,
   SetStatusOrder: setStatusOrder,
+  SetBranchRules: setBranchRules,
 } = narrow(settings.Service)
 
 export const {
@@ -268,6 +278,8 @@ export const {
   Unlock: unlockWorktree,
   CleanUp: cleanUpWorktree,
   CleanUpFinished: cleanUpFinishedWorktrees,
+  MergedBranches: mergedBranches,
+  DeleteBranches: deleteBranches,
   Sweep: sweepWorktrees,
   LastSweep: lastWorktreeSweep,
   RecentCleanups: recentCleanups,

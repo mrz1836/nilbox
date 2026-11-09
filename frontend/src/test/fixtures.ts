@@ -14,17 +14,18 @@ import type {
   CloneTarget,
   FileCheck,
   ImportEntry,
-  Info,
   InboxItem,
-  ItemDetails,
   InboxList,
   InboxSnapshot,
+  Info,
+  ItemDetails,
   ItemResolution,
   LaunchDefaults,
   LaunchHold,
   LaunchPreview,
   LaunchResult,
   LinkedItem,
+  MergedBranch,
   Profile,
   Project,
   Prompt,
@@ -39,6 +40,7 @@ import type {
   Settings,
   SweepReport,
   Worktree,
+  WorktreeBranch,
   WorktreeCleanup,
   WorktreeRepo,
   WorktreesSnapshot,
@@ -271,6 +273,8 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     windowSize: { width: 1280, height: 800 },
     defaultWindowSize: { width: 1280, height: 800 },
     sensitiveFiles: { scope: 'collaborators', off: [], patterns: [] },
+    branches: { own: true, pullRequest: true, merged: true, protected: ['main', 'master'] },
+    defaultProtectedBranches: ['main', 'master'],
     sensitiveCategories: sensitiveCategories(),
     menuBar: true,
     bannersOff: [],
@@ -767,6 +771,7 @@ export function worktree(overrides: Partial<Worktree> = {}): Worktree {
     canRemove: true,
     canForceRemove: false,
     canCleanUp: false,
+    branches: [ownBranch()],
     error: '',
     ...overrides,
   }
@@ -784,6 +789,7 @@ export function linkedItem(overrides: Partial<LinkedItem> = {}): LinkedItem {
     state: 'merged',
     closedAt: '2026-06-15T10:00:00Z',
     headOid: 'fc1c3975011e66491785ace891c893e4fc716587',
+    headRef: '',
     launched: true,
     ...overrides,
   }
@@ -818,9 +824,44 @@ export function removeResult(overrides: Partial<RemoveResult> = {}): RemoveResul
     path: '/home/user/projects/example-repo/.claude/worktrees/pr-7',
     displayPath: '~/projects/example-repo/.claude/worktrees/pr-7',
     removed: true,
-    deletedBranch: 'worktree-pr-7',
+    deletedBranches: ['worktree-pr-7'],
     item: 'acme-org/example-repo#7',
     reason: '',
+    ...overrides,
+  }
+}
+
+// ownBranch is pr-7's own worktree-pr-7 branch, which nothing keeps it from deleting.
+export function ownBranch(overrides: Partial<WorktreeBranch> = {}): WorktreeBranch {
+  return {
+    name: 'worktree-pr-7',
+    head: 'fc1c3975011e66491785ace891c893e4fc716587',
+    kind: 'own',
+    deletable: true,
+    reason: '',
+    ...overrides,
+  }
+}
+
+// mergedBranch is example-repo's feature-x, whose pull request #184 merged, at its head.
+export function mergedBranch(overrides: Partial<MergedBranch> = {}): MergedBranch {
+  return {
+    repoPath: '/home/user/projects/example-repo',
+    displayRepo: '~/projects/example-repo',
+    branch: {
+      name: 'feature-x',
+      head: 'fc1c3975011e66491785ace891c893e4fc716587',
+      kind: 'merged',
+      deletable: true,
+      reason: '',
+    },
+    pullRequest: {
+      repo: 'acme-org/example-repo',
+      number: 184,
+      title: 'Add locktimes',
+      url: 'https://github.com/acme-org/example-repo/pull/184',
+      mergedAt: '2026-06-12T12:00:00Z',
+    },
     ...overrides,
   }
 }
@@ -849,6 +890,7 @@ export function mainWorktree(overrides: Partial<Worktree> = {}): Worktree {
     managed: false,
     legacy: false,
     canRemove: false,
+    branches: [],
     ...overrides,
   })
 }

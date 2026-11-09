@@ -409,7 +409,8 @@ func TestNoBranchDeletion(t *testing.T) {
 		}
 	}
 
-	assert.Empty(t, found, "removing worktrees must never delete a branch")
+	assert.Empty(t, found, "a branch is deleted only with update-ref -d <ref> <commit>, which git refuses once the "+
+		"branch has moved, so a commit made after the check is never lost; never with git branch -d or -D")
 }
 
 // cloneWriterFile is the only production file allowed to create a clone: the launcher's

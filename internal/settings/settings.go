@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
@@ -144,6 +145,15 @@ type Settings struct {
 	// built-in categories are off, and the user's own patterns (see the sensitive
 	// package).
 	SensitiveFiles sensitive.Config `json:"sensitiveFiles"`
+
+	// Branches are the rules for deleting local branches: which go with a worktree that
+	// is removed or cleaned up, whether a merged pull request's branch starts checked in
+	// the cleanup of merged branches, and which are never deleted. Each deletion is
+	// confirmed with checkboxes that start from them.
+	Branches branchrules.Rules `json:"branches"`
+
+	// DefaultProtectedBranches is the protected list before the user changes it.
+	DefaultProtectedBranches []string `json:"defaultProtectedBranches"`
 
 	// SensitiveCategories are the built-in categories in matching order, with their
 	// patterns, for the settings page to describe.
@@ -303,6 +313,24 @@ func (s *Service) SetWorktreeAutoCleanup(ctx context.Context, on bool) (Settings
 	return s.save(ctx, setting(KeyWorktreeAutoCleanup, strconv.FormatBool(on)))
 }
 
+// SetBranchRules stores the rules for deleting local branches, and returns the settings
+// with them. Every rule is stored together, so the rules never mix two saves; a protected
+// pattern that cannot match a branch is refused, and nothing is stored.
+func (s *Service) SetBranchRules(ctx context.Context, rules branchrules.Rules) (Settings, error) {
+	values, err := rules.Encode()
+	if err != nil {
+		return Settings{}, err
+	}
+
+	return s.save(ctx, func(ctx context.Context, p *prefs.Store) error {
+		if err := p.SetMany(ctx, values); err != nil {
+			return fmt.Errorf("save the branch rules: %w", err)
+		}
+
+		return nil
+	})
+}
+
 // SetCloneRoot stores the clone root, and returns the settings with it. It must be an
 // absolute or ~-relative path to an existing directory; it is stored as entered (trimmed
 // and cleaned), so "~/projects" stays portable across machines.
@@ -456,10 +484,13 @@ func fromStored(stored map[string]string) Settings {
 		DefaultWindowSize:   DefaultWindowSize(),
 		SensitiveFiles:      sensitive.DecodeConfig(stored),
 		SensitiveCategories: sensitive.Categories(),
-		MenuBar:             decodeMenuBar(stored[KeyMenuBar]),
-		BannersOff:          notifyprefs.DecodeBannersOff(stored[notifyprefs.KeyBannersOff]),
-		Theme:               decodeTheme(stored[KeyTheme]),
-		CollapsedSections:   decodeCollapsed(stored),
+		Branches:            branchrules.Decode(stored),
+
+		DefaultProtectedBranches: branchrules.DefaultProtected(),
+		MenuBar:                  decodeMenuBar(stored[KeyMenuBar]),
+		BannersOff:               notifyprefs.DecodeBannersOff(stored[notifyprefs.KeyBannersOff]),
+		Theme:                    decodeTheme(stored[KeyTheme]),
+		CollapsedSections:        decodeCollapsed(stored),
 
 		ProjectsTipDismissed: decodeProjectsTipDismissed(stored[KeyProjectsTipDismissed]),
 		InboxOrder:           decodeInboxOrder(stored),
@@ -579,5 +610,5 @@ func settingKeys() []string {
 		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, KeyTheme,
 		KeyProjectsTipDismissed,
-	), append(collapsedKeys(), orderKeys()...)...)
+	), append(append(collapsedKeys(), orderKeys()...), branchrules.Keys()...)...)
 }

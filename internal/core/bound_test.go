@@ -16,6 +16,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/appdata"
+	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/item"
@@ -79,6 +80,9 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		},
 		"settings.Service.SetDefaultProfile": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetDefaultProfile(ctx, agent.Claude, settings.DefaultProfile)
+		},
+		"settings.Service.SetBranchRules": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetBranchRules(ctx, branchrules.Defaults())
 		},
 		"settings.Service.SetDefaultAgent": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetDefaultAgent(ctx, agent.Codex)
@@ -225,10 +229,13 @@ func boundCalls(t *testing.T) map[string]boundCall {
 			return got, err
 		},
 		"worktrees.Service.RemoveAllClean": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
-			return c.Worktrees.RemoveAllClean(ctx)
+			return c.Worktrees.RemoveAllClean(ctx, nil)
 		},
 		"worktrees.Service.CleanUpFinished": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
-			return c.Worktrees.CleanUpFinished(ctx)
+			return c.Worktrees.CleanUpFinished(ctx, nil)
+		},
+		"worktrees.Service.DeleteBranches": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Worktrees.DeleteBranches(ctx, nil)
 		},
 		"worktrees.Service.Sweep": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Worktrees.Sweep(ctx), nil
@@ -258,6 +265,10 @@ func unreachedBound() map[string]string {
 		"inbox.Service.StoredFiles":         "nil for an item whose files are not checked",
 		"launcher.Service.Preview":          "needs a clone; its resolution is built as Resolve's",
 		"launcher.Service.Launch":           "opens a terminal",
+		"worktrees.Service.Remove":          "needs a worktree to remove; its result starts its lists empty, as RemoveAllClean's",
+		"worktrees.Service.ForceRemove":     "needs a dirty worktree; its result is built as Remove's",
+		"worktrees.Service.CleanUp":         "reads GitHub; its result is built as CleanUpFinished's",
+		"worktrees.Service.MergedBranches":  "reads GitHub; it starts its list empty, as DeleteBranches does",
 	}
 }
 

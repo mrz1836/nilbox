@@ -16,6 +16,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/appdata"
+	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
@@ -52,7 +53,9 @@ func TestSettingsViewsReadTheSettingsAsTheyAreNow(t *testing.T) {
 
 	swept, err := sweep.Get(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, worktrees.SweepSettings{CloneRoot: settings.DefaultCloneRoot, AutoCleanup: true}, swept)
+	assert.Equal(t, worktrees.SweepSettings{
+		CloneRoot: settings.DefaultCloneRoot, AutoCleanup: true, Branches: branchrules.Defaults(),
+	}, swept)
 
 	// A change the user makes reaches the next read, with no restart.
 	root := t.TempDir()
@@ -61,6 +64,7 @@ func TestSettingsViewsReadTheSettingsAsTheyAreNow(t *testing.T) {
 	require.NoError(t, testutil.ErrOf(c.Settings.SetTerminal(ctx, settings.TerminalApp)))
 	require.NoError(t, testutil.ErrOf(c.Settings.SetCloneRoot(ctx, root)))
 	require.NoError(t, testutil.ErrOf(c.Settings.SetTrustedBots(ctx, []string{"renovate"})))
+	require.NoError(t, testutil.ErrOf(c.Settings.SetBranchRules(ctx, branchrules.Rules{Own: true, Protected: []string{"develop"}})))
 
 	got, err = launch.Get(ctx)
 	require.NoError(t, err)
@@ -71,7 +75,9 @@ func TestSettingsViewsReadTheSettingsAsTheyAreNow(t *testing.T) {
 
 	swept, err = sweep.Get(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, worktrees.SweepSettings{CloneRoot: root}, swept)
+	assert.Equal(t, worktrees.SweepSettings{
+		CloneRoot: root, Branches: branchrules.Rules{Own: true, Protected: []string{"develop"}},
+	}, swept)
 }
 
 func TestSettingsViewReportsUnreadableSettings(t *testing.T) {
@@ -215,4 +221,33 @@ func TestAgentRunnerPutsTheCommandsDirectoryFirstOnThePath(t *testing.T) {
 	first, _, _ := strings.Cut(string(stdout), string(os.PathListSeparator))
 	assert.Equal(t, dir, first)
 	assert.Contains(t, string(stdout), os.Getenv("PATH"), "the rest of the search path follows")
+}
+
+func TestMergedPullRequestsKeyEachAnswerByRepositoryAndBranch(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"data": {"r0": {
+			"b0": {"nodes": [{"number": 184, "title": "Add locktimes", "url": "https://github.com/acme-org/Example-Repo/pull/184",
+				"mergedAt": "2026-11-06T18:00:05Z", "headRefOid": "fc1c3975011e66491785ace891c893e4fc716587"}]},
+			"b1": {"nodes": []}}}}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	states := itemStates{
+		tokens: github.NewTokenSource(&testutil.Runner{Stdout: "test-token-not-real\n"}, testutil.Finder{Path: "/opt/fake/bin/gh"}),
+		client: &github.Client{BaseURL: srv.URL, HTTP: srv.Client()},
+	}
+	example := repo.Name{Owner: boundOwner, Repo: "Example-Repo"}
+
+	got, err := states.MergedPullRequests(t.Context(), []worktrees.BranchQuery{
+		{Repo: example, Branches: []string{"feature-x", "old-idea"}},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, map[worktrees.BranchKey][]worktrees.MergedPR{
+		{Repo: "acme-org/example-repo", Branch: "feature-x"}: {{
+			Number: 184, Title: "Add locktimes", URL: "https://github.com/acme-org/Example-Repo/pull/184",
+			MergedAt: time.Date(2026, 11, 6, 18, 0, 5, 0, time.UTC), HeadOID: "fc1c3975011e66491785ace891c893e4fc716587",
+		}},
+	}, got, "keyed by the repository's key, whatever its case; a branch none had is left out")
 }

@@ -23,6 +23,7 @@ import { RepositoriesSection } from './settings/RepositoriesSection'
 import { SensitiveFilesSection } from './settings/SensitiveFilesSection'
 import { SnoozingSection } from './settings/SnoozingSection'
 import { TrustSection } from './settings/TrustSection'
+import { WorktreesSection } from './settings/WorktreesSection'
 
 // SettingsSection is one section of the settings page.
 export type SettingsSection =
@@ -31,6 +32,7 @@ export type SettingsSection =
   | 'notifications'
   | 'snoozing'
   | 'launching'
+  | 'worktrees'
   | 'profiles'
   | 'repositories'
   | 'trust'
@@ -46,6 +48,7 @@ const sectionOrder: readonly SectionId[] = [
   'notifications',
   'snoozing',
   'launching',
+  'worktrees',
   'profiles',
   'repositories',
   'trust',
@@ -70,6 +73,11 @@ const sections: Readonly<Record<SectionId, { label: string; description: string 
   launching: {
     label: 'Launching',
     description: 'How a launch starts a coding agent: the app defaults every launch starts from.',
+  },
+  worktrees: {
+    label: 'Worktrees',
+    description:
+      'How the worktrees sessions run in are cleaned up, which branches go with them, and the branches that never go.',
   },
   profiles: {
     label: 'Profiles',
@@ -252,6 +260,8 @@ export function SettingsView({
                   onLaunchChanged={onLaunchChanged}
                 />
               ))}
+            {section === 'worktrees' &&
+              (settings === null ? loading : <WorktreesSection settings={settings} onSaved={onSaved} />)}
             {section === 'profiles' && <ProfilesSection agents={agents} profiles={profiles} />}
             {section === 'repositories' &&
               (settings === null ? (

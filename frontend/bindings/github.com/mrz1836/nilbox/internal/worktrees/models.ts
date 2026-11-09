@@ -9,6 +9,97 @@ import * as agent$0 from "../agent/models.js";
 import * as item$0 from "../item/models.js";
 
 /**
+ * Branch is a local branch the app offers to delete.
+ */
+export interface Branch {
+    /**
+     * Name is the branch, as in feature-x.
+     */
+    "name": string;
+
+    /**
+     * Head is the commit it points at; it is deleted only while it still does.
+     */
+    "head": string;
+
+    /**
+     * Kind is why it is offered.
+     */
+    "kind": BranchKind;
+
+    /**
+     * Deletable reports that nothing on it would be lost, every commit on it being on
+     * GitHub, and that nothing protects it.
+     */
+    "deletable": boolean;
+
+    /**
+     * Reason says why it may not go, or is "".
+     */
+    "reason": string;
+}
+
+/**
+ * BranchKind is why the app offers to delete a branch.
+ */
+export type BranchKind = "own" | "pullRequest" | "merged";
+
+/**
+ * The values of BranchKind, by the names of their Go constants.
+ */
+export const BranchKind = {
+    /**
+     * Why the app offers to delete a branch.
+     *
+     * BranchOwn is a worktree's own worktree-<name> branch.
+     */
+    BranchOwn: "own",
+
+    /**
+     * BranchPullRequest is a pull request's own branch, checked out in its worktree.
+     */
+    BranchPullRequest: "pullRequest",
+
+    /**
+     * BranchMerged is a clone's branch whose pull request merged.
+     */
+    BranchMerged: "merged",
+} as const;
+
+/**
+ * BranchPick is one branch the user ticked to delete: its clone, its name, and the commit
+ * it pointed at when it was offered.
+ */
+export interface BranchPick {
+    "repoPath": string;
+    "name": string;
+    "head": string;
+}
+
+/**
+ * BranchResult is the outcome of deleting one branch.
+ */
+export interface BranchResult {
+    /**
+     * RepoPath is the clone, and DisplayRepo it with ~ for the home directory.
+     */
+    "repoPath": string;
+    "displayRepo": string;
+    "name": string;
+
+    /**
+     * Head is the commit it pointed at, which restores it: git branch <name> <head>.
+     */
+    "head": string;
+
+    /**
+     * Deleted reports whether it was deleted, and Reason why not, or is "".
+     */
+    "deleted": boolean;
+    "reason": string;
+}
+
+/**
  * Cleanup is one worktree the app cleaned up, as the Worktrees view's history shows it.
  */
 export interface Cleanup {
@@ -111,10 +202,64 @@ export interface LinkedItem {
     "headOid": string;
 
     /**
+     * HeadRef is a pull request's head branch, as in feature-x, or "".
+     */
+    "headRef": string;
+
+    /**
      * Launched reports a worktree the app launched a session in, which the automatic
      * cleanup looks after. Others are linked by their name or branch alone.
      */
     "launched": boolean;
+}
+
+/**
+ * MergedBranch is a clone's local branch whose pull request merged.
+ */
+export interface MergedBranch {
+    /**
+     * RepoPath is the clone, and DisplayRepo it with ~ for the home directory.
+     */
+    "repoPath": string;
+    "displayRepo": string;
+
+    /**
+     * Branch is the branch, of kind BranchMerged.
+     */
+    "branch": Branch;
+
+    /**
+     * PullRequest is the merged pull request it was the head of.
+     */
+    "pullRequest": MergedPullRequest;
+}
+
+/**
+ * MergedPullRequest is a merged pull request, as the cleanup of merged branches shows it.
+ */
+export interface MergedPullRequest {
+    /**
+     * Repo names its repository, as in acme-org/example-repo.
+     */
+    "repo": string;
+    "number": number;
+    "title": string;
+    "url": string;
+
+    /**
+     * MergedAt is when it merged, in RFC 3339.
+     */
+    "mergedAt": string;
+}
+
+/**
+ * Pick is one worktree a bulk removal or cleanup takes, as the user ticked it: its clone,
+ * its directory, and the branches to delete with it.
+ */
+export interface Pick {
+    "repoPath": string;
+    "path": string;
+    "branches": string[] | null;
 }
 
 /**
@@ -142,9 +287,9 @@ export interface RemoveResult {
     "removed": boolean;
 
     /**
-     * DeletedBranch is the branch deleted with the worktree, or "".
+     * DeletedBranches are the branches deleted with the worktree.
      */
-    "deletedBranch": string;
+    "deletedBranches": string[] | null;
 
     /**
      * Item names the pull request or issue a cleaned-up worktree was for, e.g.
@@ -514,6 +659,13 @@ export interface Worktree {
      * CanCleanUp reports a finished worktree that CleanUp removes, with its own branch.
      */
     "canCleanUp": boolean;
+
+    /**
+     * Branches are the local branches a removal of the worktree can take with it: its own
+     * worktree-<name> branch, and its pull request's own branch when the worktree has that
+     * checked out. Each says whether it may go; which do is the user's choice.
+     */
+    "branches": Branch[] | null;
 
     /**
      * Error explains why the worktree's status could not be read, or is "".

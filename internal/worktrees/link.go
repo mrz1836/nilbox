@@ -201,7 +201,7 @@ func pickItem(t linkTarget, states map[string]ItemState) *LinkedItem {
 func linkedItem(t linkTarget, ref item.Ref, state ItemState) *LinkedItem {
 	linked := &LinkedItem{
 		Kind: t.kind, Owner: ref.Repo.Owner, Name: ref.Repo.Repo, Number: ref.Number, Title: state.Title,
-		URL: state.URL, HeadOID: state.HeadOID, Launched: t.launched,
+		URL: state.URL, HeadOID: state.HeadOID, HeadRef: state.HeadRef, Launched: t.launched,
 	}
 
 	switch state.State {

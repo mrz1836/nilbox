@@ -30,7 +30,7 @@ const (
 const stateFieldsFragment = `
 fragment StateFields on IssueOrPullRequest {
   __typename
-  ... on PullRequest { title url prState: state closedAt mergedAt headRefOid }
+  ... on PullRequest { title url prState: state closedAt mergedAt headRefOid headRefName }
   ... on Issue { title url issueState: state closedAt }
 }
 `
@@ -55,6 +55,10 @@ type ItemState struct {
 
 	// HeadOID is a pull request's head commit SHA; "" for an issue.
 	HeadOID string
+
+	// HeadRef is the name of a pull request's head branch, as in feature-x; "" for an
+	// issue.
+	HeadRef string
 }
 
 // FetchItemStates reads the state of each pull request or issue in refs, as of now, keyed
@@ -186,6 +190,7 @@ type statesNode struct {
 	ClosedAt   time.Time `json:"closedAt"`
 	MergedAt   time.Time `json:"mergedAt"`
 	HeadRefOID string    `json:"headRefOid"`
+	HeadRef    string    `json:"headRefName"`
 }
 
 // state converts the answer for one ref; ok is false when there is none.
@@ -199,7 +204,7 @@ func (r *statesRepo) state() (ItemState, bool) {
 
 	switch n.TypeName {
 	case typePullRequest:
-		out.PullRequest, out.State, out.HeadOID = true, n.PRState, n.HeadRefOID
+		out.PullRequest, out.State, out.HeadOID, out.HeadRef = true, n.PRState, n.HeadRefOID, n.HeadRef
 		if !n.MergedAt.IsZero() {
 			out.ClosedAt = n.MergedAt.UTC()
 		}

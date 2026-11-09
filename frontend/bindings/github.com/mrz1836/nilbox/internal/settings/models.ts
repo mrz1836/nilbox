@@ -6,6 +6,9 @@
 import * as agent$0 from "../agent/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as branchrules$0 from "../branchrules/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as terminal$0 from "../launcher/terminal/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -128,6 +131,19 @@ export interface Settings {
      * package).
      */
     "sensitiveFiles": sensitive$0.Config;
+
+    /**
+     * Branches are the rules for deleting local branches: which go with a worktree that
+     * is removed or cleaned up, whether a merged pull request's branch starts checked in
+     * the cleanup of merged branches, and which are never deleted. Each deletion is
+     * confirmed with checkboxes that start from them.
+     */
+    "branches": branchrules$0.Rules;
+
+    /**
+     * DefaultProtectedBranches is the protected list before the user changes it.
+     */
+    "defaultProtectedBranches": string[] | null;
 
     /**
      * SensitiveCategories are the built-in categories in matching order, with their

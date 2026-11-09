@@ -254,11 +254,7 @@ function WorktreeActions({
           type="button"
           disabled={disabled}
           onClick={onCleanUp}
-          title={
-            worktree.ownBranch
-              ? `Removes the worktree and its branch ${worktree.branch}; every commit is on GitHub`
-              : 'Removes the worktree; every commit is on GitHub, and its branch is kept'
-          }
+          title="Removes the worktree, whose every commit is on GitHub; asks which branches go with it"
           className={`${buttonBase} border-success text-success hover:bg-raised`}
         >
           Clean up

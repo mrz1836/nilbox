@@ -1060,8 +1060,8 @@ remote lookup. Nothing ever changes a clone's own checkout: no checkout, stash, 
 branch switch. When a session needs a pull request's branch, the starter prompts ask the agent to
 run `gh pr checkout <n>` inside the worktree. The only git commands the app runs that change a
 clone are its [worktree creation](#worktrees) (a fetch into the item's own refs, and `git worktree
-add`) and the [Worktrees view's](#the-worktrees-view) removals, prunes, and unlocks, and its
-deletion of a cleaned-up worktree's own branch.
+add`) and the [Worktrees view's](#the-worktrees-view) removals, prunes, and unlocks, with the
+[branch deletions](#branches) you confirm there.
 
 **A repository with no clone.** When a launch finds no clone of the item's repository, the row
 says so and offers **Clone into ~/projects/&lt;name&gt;**: the clone root, then the repository's
@@ -1208,35 +1208,29 @@ so a name or branch that only looks like an item's can never cost work. If GitHu
 reached, the view says so and lists the worktrees without their items.
 
 **Actions.** Each row offers only what is allowed, and every removal checks again first that no
-session runs in the worktree:
+session runs in the worktree. Each removal and cleanup asks first, in a dialog that says what
+it does to the folder and lists a box for each [branch](#branches) that could go with it,
+ticked as **Settings → Worktrees** says; untick any to keep it.
 
 - **Clean up** removes a finished worktree. It checks the worktree again first, releases the
-  lock of a Claude Code session that has ended, runs `git worktree remove` without `--force`, and
-  deletes the worktree's own `worktree-<name>` branch with `git update-ref -d`, which refuses if
-  the branch moved since it was checked. A branch the worktree had checked out that isn't its
-  own is kept. **Clean up finished** does the same for every finished worktree, after a
-  confirmation that shows the count.
+  lock of a Claude Code session that has ended, and runs `git worktree remove` without
+  `--force`. **Clean up finished** does the same for every finished worktree: its dialog lists
+  each one, ticked, with its branches under it, and an unticked worktree is left alone.
 - **Unlock** appears when a Claude Code session's lock outlived the session (you closed the
   terminal, say). The lock records the session's process and start time. A lock counts as
   stale only when no process has that ID, or the process that has it now started after the
   session did (the ID was reused, after a restart for instance). Anything in doubt counts as a
   running session. A lock you set yourself with `git worktree lock` is never released: the row
   shows the `git worktree unlock` command to run instead.
-- **Remove** asks first, saying what it does to the folder and to the branch, then checks the
-  worktree again and runs `git worktree remove` without `--force`. Git refuses a dirty or
-  locked worktree, and the row shows why. The worktree's own `worktree-<name>` branch goes with
-  it when every commit on it is on GitHub (on a remote-tracking branch, or as the pull
-  request's head), so nothing is lost and the item's next launch starts afresh; it is deleted
-  only while it still points at the commit checked. A branch with commits that aren't on GitHub
-  stays, so the next launch on the item picks them up again, and a branch that isn't the
-  worktree's own always stays. The note after it says which happened. This works for an item
-  still open, such as a session that only answered a question. **Remove all clean** removes
-  every clean, unlocked worktree no session runs in, each with its branch by the same rule,
-  after a confirmation that shows the count.
+- **Remove** checks the worktree again and runs `git worktree remove` without `--force`. Git
+  refuses a dirty or locked worktree, and the row shows why. This works for an item still open,
+  such as a session that only answered a question; a branch kept with commits that aren't on
+  GitHub is picked up again by the item's next launch. **Remove all clean** removes every
+  clean, unlocked worktree no session runs in, listed in its dialog the same way as **Clean up
+  finished**.
 - **Force remove** is offered only on dirty, unlocked rows no session runs in, and only while
   the running processes can be listed. It runs `git worktree remove --force` after a
-  confirmation that shows the number of uncommitted files and what becomes of the branch, by
-  the same rule as **Remove**.
+  confirmation that shows the number of uncommitted files.
 - **Prune** appears for a repository with entries whose directory is gone, and runs
   `git worktree prune`.
 - The main worktree is listed for context and is never removable.
@@ -1244,9 +1238,9 @@ session runs in the worktree:
 **Cleaning up after a merge.** A worktree stays after its session ends, so the next launch on the
 item resumes it, and no agent removes one whose pull request merges later. So every five minutes
 the app checks the clones that have worktrees it or Claude Code made, or records, without listing
-every clone, and, with **Clean up after merging** on (**Settings → Launching**, on by default),
+every clone, and, with **Clean up after merging** on (**Settings → Worktrees**, on by default),
 cleans up each finished worktree whose pull request merged or whose issue closed and that no
-session runs in. It takes only worktrees the app launched a session in, or whose HEAD is the
+session runs in, with the branches **Settings → Worktrees** deletes. It takes only worktrees the app launched a session in, or whose HEAD is the
 merged pull request's own head commit, so a worktree is never matched by its name or branch
 alone. A toast names what was cleaned up, with **View** to open the list below. The same check
 updates the **Worktrees** tab's count, which it reads from each clone's git directory without
@@ -1261,7 +1255,37 @@ commit it was at (on GitHub, so `git fetch` and `git worktree add` bring it back
 The list survives restarts and keeps the newest 100; **Clear** empties it and removes nothing
 else.
 
-Branches are deleted only as described above: a worktree's own `worktree-<name>` branch, once
-everything on it is on GitHub. Nothing on GitHub is ever changed.
+### Branches
+
+Removing a worktree can delete local branches with it, and **Clean up merged branches…** deletes
+the branches of pull requests that merged, so the branches in a clone you work in often don't
+pile up. **Settings → Worktrees** sets what each starts with; every dialog shows a box per branch,
+ticked as those settings say, and you can change any before you confirm.
+
+- **The worktree's own branch**, `worktree-pr-<n>` or `worktree-issue-<n>`, the branch the app
+  made for it. On by default.
+- **The pull request's branch**, such as `feature-x`, when a session checked it out in the
+  worktree (with `gh pr checkout`, say). On by default.
+- **Merged branches.** **Clean up merged branches…** lists each clone's local branches whose
+  pull request merged. It asks GitHub, in GraphQL requests of up to 50 branch names each across
+  every clone, for the merged pull requests whose head branch has each name, in each of the
+  clone's GitHub repositories, and only when you click it. A `worktree-pr-<n>` branch left after its worktree went is matched by its
+  number. The dialog groups them by clone, with the pull request, its title, and when it
+  merged. **Tick merged branches** (on by default) sets whether they start ticked.
+
+**Protected branches** are never deleted, by any cleanup: `main` and `master` by default, and
+any you add, as a name or a pattern such as `release/*` (`*` matches any run of characters but
+`/`, and `?` any one). Each repository's default branch (its remote's `HEAD`) and any branch
+checked out in a worktree are always kept too.
+
+A branch is deleted only when nothing is lost: every commit on it is on GitHub (on a
+remote-tracking branch, or as the pull request's head, which GitHub keeps after the branch is
+deleted), or, for a merged branch, it points at the merged pull request's head or a commit
+before it. A branch that can't go is shown unticked and held, with why, such as "2 commits on it
+aren't on GitHub". Each is checked again as it is deleted, and deleted with `git update-ref -d`
+only while it still points at the commit the dialog showed, so a branch that moved in between is
+kept. The outcome lists each branch with that commit, so `git branch <name> <commit>` brings one
+back. The automatic cleanup deletes only a worktree's own and pull request branches, as the
+settings say; merged branches go only through the dialog. Nothing on GitHub is ever changed.
 
 Every git command runs as an argument list with `git -C <repository>`, never through a shell.

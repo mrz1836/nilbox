@@ -448,6 +448,7 @@ export function App() {
                 focusHistory={nav.historyFocus}
                 agentName={(id) => agentName(config.agents, id)}
                 launchFor={launchFor}
+                branchRules={config.settings?.branches}
               />
             </Suspense>
           </Activity>

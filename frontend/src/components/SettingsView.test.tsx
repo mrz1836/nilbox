@@ -543,12 +543,12 @@ describe('SettingsView', () => {
     await waitFor(() => {
       expect(toggle).toBeChecked()
     })
-    expect(toggle).toHaveAccessibleDescription(/You can still change it per launch\. database is locked$/)
+    expect(toggle).toHaveAccessibleDescription(/You can still change it per launch\. .* database is locked$/)
   })
 
   it('turns the automatic worktree cleanup off and on, sweeping at once when turned on', async () => {
     const { onSaved } = renderSettings()
-    await openSection('Launching')
+    await openSection('Worktrees')
 
     const toggle = screen.getByRole('switch', { name: 'Clean up after merging' })
     expect(toggle).toBeChecked()
@@ -567,7 +567,7 @@ describe('SettingsView', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     platform.sweepWorktrees.mockRejectedValue(new Error('no clone root'))
     const { onSaved } = renderSettings({ current: settings({ worktreeAutoCleanup: false }) })
-    await openSection('Launching')
+    await openSection('Worktrees')
 
     await userEvent.click(screen.getByRole('switch', { name: 'Clean up after merging' }))
 

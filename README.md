@@ -255,7 +255,8 @@ filled in from a real inbox item.
 
 The **Worktrees** tab lists every linked worktree under your clone root. **Clean up** removes one
 only when nothing would be lost, and a background sweep does it for you once the pull request
-merges or the issue closes.
+merges or the issue closes. **Clean up merged branches…** clears out the local branches of pull
+requests that merged, never touching `main`, `master`, or any branch you protect.
 
 <br/>
 
@@ -447,14 +448,20 @@ More in [Outside contributors](docs/desktop.md#outside-contributors) and
 - Worktrees made for a pull request or issue are linked to it, and GitHub is asked whether it is
   done, so each shows as **in use**, **ready to clean up**, or **needs a look**. **In use** means a
   running process, of any agent or tool, works inside it.
-- **Clean up** removes a finished worktree and its `worktree-<name>` branch only when nothing would
-  be lost: no uncommitted changes, every commit on GitHub, and no session running in it. A sweep
-  every five minutes does the same once a pull request merges or an issue closes (on by default).
+- **Clean up** removes a finished worktree only when nothing would be lost: no uncommitted
+  changes, every commit on GitHub, and no session running in it. A sweep every five minutes does
+  the same once a pull request merges or an issue closes (on by default).
 - **Remove**, **Remove all clean**, **Force remove** (for dirty, unlocked worktrees), **Prune**,
-  and **Unlock** for an agent lock whose session has ended. Each removal asks first and says what
-  becomes of the branch: a worktree's own branch goes with it when every commit on it is on
-  GitHub, and stays, with its work, when some aren't. The main worktree is never removable, a
+  and **Unlock** for an agent lock whose session has ended. The main worktree is never removable, a
   worktree in use is never removed, and a lock you set by hand is never released.
+- Every removal and cleanup asks first, with a box for each worktree and branch it would take,
+  ticked as **Settings → Worktrees** says: the worktree's own `worktree-<item>` branch, the pull
+  request's branch when a session checked it out, or both. Untick any to keep it. A branch goes
+  only when every commit on it is on GitHub, and only while it still points at the commit shown.
+- **Clean up merged branches…** finds each clone's local branches whose pull request merged, in a
+  few batched GitHub requests, and deletes the ones you tick. Protected branches (`main` and
+  `master` by default, plus names or patterns such as `release/*` you add) and each repository's
+  default branch are never offered.
 - **Recently cleaned up** lists each cleanup, by hand or automatic, with the deleted branch and the
   commit the worktree was at.
 

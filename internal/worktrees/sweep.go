@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/localrepos"
@@ -116,7 +117,7 @@ func (s *Service) sweep(ctx context.Context) (SweepReport, error) {
 	}
 
 	report.Enabled = prefs.AutoCleanup
-	err = s.sweepAgentWork(ctx, g, root, &report)
+	err = s.sweepAgentWork(ctx, g, root, prefs.Branches, &report)
 
 	// Counted last, so the worktrees the sweep removed are not.
 	report.WorktreeCount = countWorktrees(root)
@@ -128,7 +129,9 @@ func (s *Service) sweep(ctx context.Context) (SweepReport, error) {
 // records, cleans up what it may, and drops the records whose worktree is gone. It
 // returns the error that stopped it before it could clean up anything, which it also
 // words in the report.
-func (s *Service) sweepAgentWork(ctx context.Context, g git, root string, report *SweepReport) error {
+func (s *Service) sweepAgentWork(ctx context.Context, g git, root string, rules branchrules.Rules,
+	report *SweepReport,
+) error {
 	records := s.records(ctx)
 
 	clones := s.sweepClones(ctx, root, records)
@@ -139,7 +142,7 @@ func (s *Service) sweepAgentWork(ctx context.Context, g git, root string, report
 		return nil
 	}
 
-	snap, err := s.assessClones(ctx, g, root, clones)
+	snap, err := s.assessClones(ctx, g, root, clones, rules)
 	if err != nil {
 		report.Error = uierr.Message(err)
 
@@ -149,7 +152,7 @@ func (s *Service) sweepAgentWork(ctx context.Context, g git, root string, report
 	report.Error = snap.LinkError
 
 	for repo, wt := range rows(snap.Repos) {
-		s.sweepRow(ctx, g, repo.Path, *wt, !snap.SessionsUnknown, report)
+		s.sweepRow(ctx, g, repo.Path, *wt, !snap.SessionsUnknown, rules, report)
 	}
 
 	return nil
@@ -159,10 +162,10 @@ func (s *Service) sweepAgentWork(ctx context.Context, g git, root string, report
 // the user. sessionsKnown reports that the running processes could be listed; without
 // them, the sweep removes nothing.
 func (s *Service) sweepRow(ctx context.Context, g git, repoPath string, wt Worktree, sessionsKnown bool,
-	report *SweepReport,
+	rules branchrules.Rules, report *SweepReport,
 ) {
 	if report.Enabled && sessionsKnown && autoCleanable(wt) && ctx.Err() == nil {
-		res := s.cleanUpRow(ctx, g, repoPath, wt, true)
+		res := s.cleanUpRow(ctx, g, repoPath, wt, true, defaultBranches(wt, rules))
 		if res.Removed {
 			report.Cleaned = append(report.Cleaned, res)
 

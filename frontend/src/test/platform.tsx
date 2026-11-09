@@ -160,6 +160,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     setStatusSort: (section, on) => stored({ inboxOrder: { statusSorted: on ? [section] : [], statusOrder: [] } }),
     setStatusOrder: (statusOrder) => stored({ inboxOrder: { statusSorted: [], statusOrder: statusOrder ?? [] } }),
     setWindowSize: (windowSize) => stored({ windowSize }),
+    setBranchRules: (branches) => stored({ branches: { ...branches, protected: branches.protected ?? [] } }),
 
     listWorktrees: () => Promise.resolve(worktreesSnapshot()),
     removeWorktree: () => Promise.resolve(removeResult()),
@@ -169,6 +170,8 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     unlockWorktree: done,
     cleanUpWorktree: () => Promise.resolve(removeResult()),
     cleanUpFinishedWorktrees: () => Promise.resolve([]),
+    mergedBranches: () => Promise.resolve([]),
+    deleteBranches: () => Promise.resolve([]),
     sweepWorktrees: () => Promise.resolve(sweepReport()),
     lastWorktreeSweep: () => Promise.resolve(sweepReport({ seq: 0 })),
     recentCleanups: () => Promise.resolve([]),

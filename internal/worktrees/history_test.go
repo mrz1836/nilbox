@@ -56,7 +56,7 @@ func TestCleanUpsAreRecorded(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, none)
 
-	_, err = svc.CleanUp(t.Context(), repo, byHand)
+	_, err = svc.CleanUp(t.Context(), repo, byHand, []string{"worktree-pr-1"})
 	require.NoError(t, err)
 
 	report := svc.Sweep(t.Context())
@@ -88,7 +88,7 @@ func TestCleanUpsAreRecorded(t *testing.T) {
 
 	swept := byWorktree["issue-2"]
 	assert.True(t, swept.Automatic)
-	assert.Equal(t, "worktree-issue-2", swept.DeletedBranch)
+	assert.Equal(t, "worktree-issue-2", swept.DeletedBranch, "the sweep takes what the rules say")
 	require.NotNil(t, swept.Item)
 	assert.Equal(t, item.KindIssue, swept.Item.Kind)
 	assert.Equal(t, ItemClosed, swept.Item.State)
@@ -121,7 +121,7 @@ func TestHistoryFailuresAndAbsence(t *testing.T) {
 
 	svc := e.linked(linkDeps{gh: gh, history: failingHistory{}})
 
-	res, err := svc.CleanUp(t.Context(), repo, path)
+	res, err := svc.CleanUp(t.Context(), repo, path, nil)
 	require.NoError(t, err, "a cleanup that could not be recorded still succeeds")
 	assert.True(t, res.Removed)
 

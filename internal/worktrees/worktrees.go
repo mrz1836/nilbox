@@ -136,6 +136,9 @@ type LinkedItem struct {
 	// HeadOID is a pull request's head commit, or "".
 	HeadOID string `json:"headOid"`
 
+	// HeadRef is a pull request's head branch, as in feature-x, or "".
+	HeadRef string `json:"headRef"`
+
 	// Launched reports a worktree the app launched a session in, which the automatic
 	// cleanup looks after. Others are linked by their name or branch alone.
 	Launched bool `json:"launched"`
@@ -278,8 +281,103 @@ type Worktree struct {
 	// CanCleanUp reports a finished worktree that CleanUp removes, with its own branch.
 	CanCleanUp bool `json:"canCleanUp"`
 
+	// Branches are the local branches a removal of the worktree can take with it: its own
+	// worktree-<name> branch, and its pull request's own branch when the worktree has that
+	// checked out. Each says whether it may go; which do is the user's choice.
+	Branches []Branch `json:"branches"`
+
 	// Error explains why the worktree's status could not be read, or is "".
 	Error string `json:"error"`
+}
+
+// BranchKind is why the app offers to delete a branch.
+type BranchKind string
+
+// Why the app offers to delete a branch.
+const (
+	// BranchOwn is a worktree's own worktree-<name> branch.
+	BranchOwn BranchKind = "own"
+
+	// BranchPullRequest is a pull request's own branch, checked out in its worktree.
+	BranchPullRequest BranchKind = "pullRequest"
+
+	// BranchMerged is a clone's branch whose pull request merged.
+	BranchMerged BranchKind = "merged"
+)
+
+// Branch is a local branch the app offers to delete.
+type Branch struct {
+	// Name is the branch, as in feature-x.
+	Name string `json:"name"`
+
+	// Head is the commit it points at; it is deleted only while it still does.
+	Head string `json:"head"`
+
+	// Kind is why it is offered.
+	Kind BranchKind `json:"kind"`
+
+	// Deletable reports that nothing on it would be lost, every commit on it being on
+	// GitHub, and that nothing protects it.
+	Deletable bool `json:"deletable"`
+
+	// Reason says why it may not go, or is "".
+	Reason string `json:"reason"`
+}
+
+// Pick is one worktree a bulk removal or cleanup takes, as the user ticked it: its clone,
+// its directory, and the branches to delete with it.
+type Pick struct {
+	RepoPath string   `json:"repoPath"`
+	Path     string   `json:"path"`
+	Branches []string `json:"branches"`
+}
+
+// MergedBranch is a clone's local branch whose pull request merged.
+type MergedBranch struct {
+	// RepoPath is the clone, and DisplayRepo it with ~ for the home directory.
+	RepoPath    string `json:"repoPath"`
+	DisplayRepo string `json:"displayRepo"`
+
+	// Branch is the branch, of kind BranchMerged.
+	Branch Branch `json:"branch"`
+
+	// PullRequest is the merged pull request it was the head of.
+	PullRequest MergedPullRequest `json:"pullRequest"`
+}
+
+// MergedPullRequest is a merged pull request, as the cleanup of merged branches shows it.
+type MergedPullRequest struct {
+	// Repo names its repository, as in acme-org/example-repo.
+	Repo   string `json:"repo"`
+	Number int    `json:"number"`
+	Title  string `json:"title"`
+	URL    string `json:"url"`
+
+	// MergedAt is when it merged, in RFC 3339.
+	MergedAt string `json:"mergedAt"`
+}
+
+// BranchPick is one branch the user ticked to delete: its clone, its name, and the commit
+// it pointed at when it was offered.
+type BranchPick struct {
+	RepoPath string `json:"repoPath"`
+	Name     string `json:"name"`
+	Head     string `json:"head"`
+}
+
+// BranchResult is the outcome of deleting one branch.
+type BranchResult struct {
+	// RepoPath is the clone, and DisplayRepo it with ~ for the home directory.
+	RepoPath    string `json:"repoPath"`
+	DisplayRepo string `json:"displayRepo"`
+	Name        string `json:"name"`
+
+	// Head is the commit it pointed at, which restores it: git branch <name> <head>.
+	Head string `json:"head"`
+
+	// Deleted reports whether it was deleted, and Reason why not, or is "".
+	Deleted bool   `json:"deleted"`
+	Reason  string `json:"reason"`
 }
 
 // RemoveResult is the outcome of removing one worktree in a bulk removal.
@@ -296,8 +394,8 @@ type RemoveResult struct {
 	// Removed reports whether the worktree was removed.
 	Removed bool `json:"removed"`
 
-	// DeletedBranch is the branch deleted with the worktree, or "".
-	DeletedBranch string `json:"deletedBranch"`
+	// DeletedBranches are the branches deleted with the worktree.
+	DeletedBranches []string `json:"deletedBranches"`
 
 	// Item names the pull request or issue a cleaned-up worktree was for, e.g.
 	// "acme-org/example-repo#184", or is "".

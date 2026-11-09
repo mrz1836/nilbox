@@ -1,17 +1,25 @@
 import type { ReactNode } from 'react'
 
 import { useWorktrees, type WorktreesOptions } from '../lib/useWorktrees'
-import type { AgentID, LinkedItem } from '../platform'
+import type { AgentID, BranchRules, LinkedItem } from '../platform'
 import { ErrorBanner } from './ErrorBanner'
+import { BranchResults } from './worktrees/BranchResults'
 import { BulkResults } from './worktrees/BulkResults'
 import { CleanupHistory } from './worktrees/CleanupHistory'
 import { ConfirmationDialog } from './worktrees/ConfirmationDialog'
 import { RepoSection } from './worktrees/RepoSection'
 import { plainButton } from './worktrees/shared'
 
+// defaultRules are the branch rules a confirmation starts from until the settings load:
+// the app's defaults.
+const defaultRules: BranchRules = { own: true, pullRequest: true, merged: true, protected: ['main', 'master'] }
+
 // WorktreesViewProps are useWorktrees' options, which the view passes straight through,
-// with how to name an agent and how to launch on a worktree's item.
+// with how to name an agent, how to launch on a worktree's item, and the user's branch
+// rules.
 export type WorktreesViewProps = WorktreesOptions & {
+  // branchRules tick each branch's box in a confirmation to start with.
+  branchRules?: BranchRules | undefined
   // agentName names a coding agent for people, as in "Codex".
   agentName?: ((id: AgentID) => string) | undefined
   // launchFor is the "Open in Claude" or "Open in Codex" control for a worktree's item,
@@ -22,9 +30,9 @@ export type WorktreesViewProps = WorktreesOptions & {
 // WorktreesView lists the git worktrees of every clone under the clone root and removes
 // them safely. It loads when it opens, when its Refresh button is clicked, and when
 // reloadKey changes, never on a timer of its own: a listing runs git in every clone.
-// Removal follows what the backend allows, and the destructive actions (force remove and
-// the bulk actions) ask first.
-export function WorktreesView({ agentName, launchFor, ...props }: WorktreesViewProps) {
+// Removal follows what the backend allows, and every removal and cleanup asks first,
+// showing a box for each worktree and branch it would take.
+export function WorktreesView({ agentName, launchFor, branchRules = defaultRules, ...props }: WorktreesViewProps) {
   const {
     snapshot,
     repos,
@@ -39,6 +47,7 @@ export function WorktreesView({ agentName, launchFor, ...props }: WorktreesViewP
     errors,
     notice,
     bulk,
+    branchResults,
     confirmation,
     cleanCount,
     finishedCount,
@@ -52,7 +61,16 @@ export function WorktreesView({ agentName, launchFor, ...props }: WorktreesViewP
           {loading ? 'Refreshing…' : 'Refresh'}
         </button>
         {snapshot !== null && <span className="text-muted">Worktrees of the clones under {snapshot.root}</span>}
-        <span className="ml-auto flex items-center gap-2">
+        <span className="ml-auto flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={actions.askCleanUpMerged}
+            title="Find the local branches in your clones whose pull requests merged"
+            className={plainButton}
+          >
+            Clean up merged branches…
+          </button>
           <button
             type="button"
             disabled={disabled || finishedCount === 0}
@@ -89,6 +107,7 @@ export function WorktreesView({ agentName, launchFor, ...props }: WorktreesViewP
         </p>
       )}
       {bulk !== null && <BulkResults bulk={bulk} />}
+      {branchResults !== null && <BranchResults results={branchResults} />}
       {snapshot === null
         ? loadError === '' && <p className="text-sm text-muted">Listing the worktrees…</p>
         : repos.length === 0 && (
@@ -105,7 +124,7 @@ export function WorktreesView({ agentName, launchFor, ...props }: WorktreesViewP
           onRemove={actions.askRemove}
           onForceRemove={actions.askForceRemove}
           onUnlock={actions.unlock}
-          onCleanUp={actions.cleanUp}
+          onCleanUp={actions.askCleanUp}
           agentName={agentName}
           launchFor={launchFor}
         />
@@ -121,7 +140,13 @@ export function WorktreesView({ agentName, launchFor, ...props }: WorktreesViewP
         />
       )}
       {confirmation !== null && (
-        <ConfirmationDialog confirmation={confirmation} onConfirm={actions.confirm} onCancel={actions.cancel} />
+        <ConfirmationDialog
+          confirmation={confirmation}
+          rules={branchRules}
+          now={now}
+          onConfirm={actions.confirm}
+          onCancel={actions.cancel}
+        />
       )}
     </section>
   )
