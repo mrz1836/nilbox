@@ -167,6 +167,66 @@ func (p *lsofParser) flush() {
 	p.cur = nil
 }
 
+// managers are the commands of the processes that start and adopt background services:
+// launchd on macOS, and init or systemd (a user's own systemd too) on Linux.
+var managers = []string{"launchd", "init", "systemd"} //nolint:gochecknoglobals // a fixed table
+
+// maxDepth bounds the walk up a process's parents, which a reused PID could turn into a
+// loop.
+const maxDepth = 64
+
+// WithoutServices returns list without the background services of the commands named, and
+// every process under one. A service is a process of one of commands whose parent is the
+// system's process manager (PID 1, or launchd, init, or systemd), as a daemon's is, such
+// as Codex's app-server daemon. It outlives the session that started it and keeps that
+// session's folder as its working directory, but works for no session there. The same
+// command run by a terminal or an editor, as a session is, has that as its parent, and
+// stays.
+func WithoutServices(list []Process, commands []string) []Process {
+	byPID := make(map[int]Process, len(list))
+	for _, p := range list {
+		byPID[p.PID] = p
+	}
+
+	isService := func(p Process) bool {
+		if !slices.Contains(commands, filepath.Base(p.Command)) {
+			return false
+		}
+
+		parent, ok := byPID[p.PPID]
+
+		return p.PPID == 1 || (ok && slices.Contains(managers, filepath.Base(parent.Command)))
+	}
+
+	var out []Process
+
+	for _, p := range list {
+		if !underService(p, byPID, isService) {
+			out = append(out, p)
+		}
+	}
+
+	return out
+}
+
+// underService reports p, or a process above it, as a service.
+func underService(p Process, byPID map[int]Process, isService func(Process) bool) bool {
+	for range maxDepth {
+		if isService(p) {
+			return true
+		}
+
+		parent, ok := byPID[p.PPID]
+		if !ok || parent.PID == p.PID {
+			return false
+		}
+
+		p = parent
+	}
+
+	return false
+}
+
 // Others returns the processes that are neither self nor its children, such as the git
 // commands self runs in a directory while it looks at that directory.
 func Others(list []Process, self int) []Process {

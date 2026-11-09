@@ -1176,11 +1176,17 @@ against `git worktree list` each time it lists or sweeps:
   recorded once GitHub links it to its item.
 
 **In use.** A worktree is **in use** while a running process works inside it, whichever agent or
-tool it is, as in **in use · codex (pid 4242)**. The app lists the running processes' working
-folders once per listing or sweep, with `lsof` on macOS and `/proc` on Linux, leaving out its own
-git commands. Where the processes can't be listed, the view says so; the automatic cleanup then
-removes nothing, since it never guesses, and no worktree is force-removed, while a plain removal
-you ask for still goes ahead, since git refuses one with uncommitted changes. A lock Claude Code wrote for a session in one of its own worktrees counts too.
+tool it is, and whether a terminal or an editor runs it, as in **in use · codex (pid 4242)**. The
+app lists the running processes' working folders once per listing or sweep, with `lsof` on macOS
+and `/proc` on Linux, leaving out its own git commands, and a coding agent's background service:
+the agent's own program running under launchd (or init or systemd) rather than a terminal or an
+app, with everything under it. Codex's app-server daemon is one: Codex starts it with its first
+session and keeps it after you quit, and it keeps that session's folder as its working
+directory, so it would otherwise hold that worktree in use until you restart. Where the processes
+can't be listed, the view says so; the automatic cleanup then removes nothing, since it never
+guesses, and no worktree is force-removed, while a plain removal you ask for still goes ahead,
+since git refuses one with uncommitted changes. A lock Claude Code wrote for a session in one of
+its own worktrees counts too.
 
 **Linked pull requests and issues.** A worktree made for an item is linked to it: exactly, from
 the app's record, or otherwise by its name (`pr-<n>` or `issue-<n>` in the app's or Claude Code's

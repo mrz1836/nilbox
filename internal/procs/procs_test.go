@@ -68,3 +68,49 @@ func pids(list []procs.Process) []int {
 
 	return out
 }
+
+func TestWithoutServices(t *testing.T) {
+	t.Parallel()
+
+	commands := []string{"claude", "codex"}
+	list := []procs.Process{
+		// Codex's app-server daemon, which launchd runs, and its worker.
+		{PID: 15337, PPID: 1, Command: "codex", Dir: "/srv/wt"},
+		{PID: 22072, PPID: 15337, Command: "codex", Dir: "/srv/wt"},
+		{PID: 22100, PPID: 22072, Command: "zsh", Dir: "/srv/wt"},
+		// A session in a terminal.
+		{PID: 4000, PPID: 1, Command: "iTerm2", Dir: "/"},
+		{PID: 4100, PPID: 4000, Command: "zsh", Dir: "/srv/wt"},
+		{PID: 4242, PPID: 4100, Command: "/usr/local/bin/codex", Dir: "/srv/wt"},
+		// A session an editor runs, with no terminal.
+		{PID: 83937, PPID: 1, Command: "Code Helper", Dir: "/"},
+		{PID: 87508, PPID: 83937, Command: "claude", Dir: "/srv/wt"},
+		// A service a user's systemd runs, and a daemon that is no agent's.
+		{PID: 900, PPID: 1, Command: "systemd", Dir: "/"},
+		{PID: 901, PPID: 900, Command: "claude", Dir: "/srv/wt"},
+		{PID: 950, PPID: 1, Command: "gradle", Dir: "/srv/wt"},
+	}
+
+	got := procs.WithoutServices(list, commands)
+	kept := make([]int, 0, len(got))
+
+	for _, p := range got {
+		kept = append(kept, p.PID)
+	}
+
+	assert.Equal(t, []int{4000, 4100, 4242, 83937, 87508, 900, 950}, kept)
+	assert.Equal(t, list, procs.WithoutServices(list, nil), "with no commands, nothing is a service")
+}
+
+func TestWithoutServicesStopsAtALoop(t *testing.T) {
+	t.Parallel()
+
+	// A reused PID can make a process its own grandparent.
+	list := []procs.Process{
+		{PID: 10, PPID: 11, Command: "zsh", Dir: "/srv"},
+		{PID: 11, PPID: 10, Command: "zsh", Dir: "/srv"},
+		{PID: 12, PPID: 12, Command: "zsh", Dir: "/srv"},
+	}
+
+	assert.Len(t, procs.WithoutServices(list, []string{"codex"}), 3)
+}

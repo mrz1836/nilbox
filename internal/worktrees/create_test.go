@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -488,8 +489,12 @@ func TestListReportsSessionsAndRemovalRefusesThem(t *testing.T) {
 	require.NoError(t, err)
 
 	running := fakeRunning{list: []procs.Process{
-		{PID: 4242, PPID: 1, Command: "codex", Dir: filepath.Join(got.Path, "src")},
-		{PID: 4343, PPID: 1, Command: "zsh", Dir: f.clone},
+		{PID: 4000, PPID: 1, Command: "iTerm2", Dir: "/"},
+		{PID: 4242, PPID: 4000, Command: "codex", Dir: filepath.Join(got.Path, "src")},
+		{PID: 4343, PPID: 4000, Command: "zsh", Dir: f.clone},
+		// Codex's app-server daemon outlives the session that started it, keeping its
+		// folder as its working directory: no session.
+		{PID: 15337, PPID: 1, Command: "codex", Dir: got.Path},
 	}}
 	svc := e.linked(linkDeps{launches: records, running: running})
 
@@ -498,7 +503,7 @@ func TestListReportsSessionsAndRemovalRefusesThem(t *testing.T) {
 	assert.False(t, snap.SessionsUnknown)
 
 	row := mustRow(t, snap, got.Path)
-	assert.Equal(t, []Session{{PID: 4242, Command: "codex"}}, row.InUse)
+	assert.Equal(t, []Session{{PID: 4242, Command: "codex"}}, row.InUse, "a session counts, an agent's background service does not")
 	assert.Equal(t, StageInUse, row.Stage, "a session works in it")
 	assert.False(t, row.CanRemove, "a worktree in use is never removed")
 
@@ -536,6 +541,48 @@ func TestListReportsSessionsAndRemovalRefusesThem(t *testing.T) {
 		"a plain removal the user asks for goes ahead when sessions can't be listed: git and the locks still guard it")
 }
 
+func TestABackgroundServiceLeftInAWorktreeIsNoSession(t *testing.T) {
+	t.Parallel()
+
+	e := newEnv(t)
+	f := newRemoteFixture(t, e)
+	records := &fakeLaunches{}
+
+	got, err := NewMaker(e.linked(linkDeps{launches: records})).Ensure(t.Context(), f.request(item.KindIssue, 202))
+	require.NoError(t, err)
+
+	// The session ended; Codex's app-server daemon, which launchd now runs, and its
+	// worker are still running from the worktree.
+	daemon := []procs.Process{
+		{PID: 15337, PPID: 1, Command: "codex", Dir: got.Path},
+		{PID: 22072, PPID: 15337, Command: "codex", Dir: got.Path},
+	}
+	svc := e.linked(linkDeps{launches: records, running: fakeRunning{list: daemon}})
+
+	snap, err := svc.List(t.Context())
+	require.NoError(t, err)
+
+	row := mustRow(t, snap, got.Path)
+	assert.Empty(t, row.InUse)
+	assert.True(t, row.CanRemove)
+
+	// An agent an editor runs in the worktree, with the editor as its parent, is a
+	// session, terminal or not.
+	editor := append(slices.Clone(daemon),
+		procs.Process{PID: 83937, PPID: 1, Command: "Code Helper (Plugin)", Dir: "/"},
+		procs.Process{PID: 87508, PPID: 83937, Command: "codex", Dir: got.Path},
+	)
+	inEditor := e.linked(linkDeps{launches: records, running: fakeRunning{list: editor}})
+
+	snap, err = inEditor.List(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, []Session{{PID: 87508, Command: "codex"}}, mustRow(t, snap, got.Path).InUse)
+	require.ErrorIs(t, inEditor.Remove(t.Context(), f.clone, got.Path), ErrInUse)
+
+	require.NoError(t, svc.Remove(t.Context(), f.clone, got.Path))
+	assert.NoDirExists(t, got.Path)
+}
+
 func TestSweepLeavesWhatItCannotTellIsUnused(t *testing.T) {
 	t.Parallel()
 
@@ -549,7 +596,7 @@ func TestSweepLeavesWhatItCannotTellIsUnused(t *testing.T) {
 	assert.Equal(t, 6, report.Leftover)
 
 	busy := e.linked(linkDeps{gh: f.gh, launches: f.launches, auto: true, running: fakeRunning{list: []procs.Process{
-		{PID: 99, PPID: 1, Command: "claude", Dir: f.launchedPR},
+		{PID: 99, PPID: 98, Command: "claude", Dir: f.launchedPR},
 	}}})
 
 	report = busy.Sweep(t.Context())

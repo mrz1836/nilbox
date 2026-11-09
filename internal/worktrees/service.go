@@ -15,6 +15,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
@@ -502,9 +503,12 @@ func (s *Service) records(ctx context.Context) []worklog.Record {
 	return records
 }
 
-// processes lists the running processes other than this app and the commands it runs,
-// and reports whether they could be listed. Without a lister none is listed, and that is
-// known.
+// processes lists the running processes that can be a session: every process but this
+// app and the commands it runs, and a coding agent's background service with everything
+// under it (see procs.WithoutServices). Codex's app-server daemon keeps the folder it was
+// started from as its working directory long after the session that started it ended, so
+// it never counts. It reports whether the processes could be listed; without a lister
+// none is listed, and that is known.
 func (s *Service) processes(ctx context.Context) ([]procs.Process, bool) {
 	if s.lister == nil {
 		return nil, true
@@ -517,7 +521,20 @@ func (s *Service) processes(ctx context.Context) ([]procs.Process, bool) {
 		return nil, false
 	}
 
-	return procs.Others(list, os.Getpid()), true
+	return procs.WithoutServices(procs.Others(list, os.Getpid()), agentCommands()), true
+}
+
+// agentCommands are the coding agents' commands, whose background services are no
+// session.
+func agentCommands() []string {
+	agents := agent.All()
+	out := make([]string, 0, len(agents))
+
+	for _, a := range agents {
+		out = append(out, a.Command)
+	}
+
+	return out
 }
 
 // sessionsIn returns the sessions working in dir, and whether the processes could be
