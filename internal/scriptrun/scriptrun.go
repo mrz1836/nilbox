@@ -212,7 +212,8 @@ type Spec struct {
 	Dir string
 
 	// Argv is the command, its program's absolute path first. A shell command runs as
-	// [shell, -c, command], exactly as written: the engine never adds a shell.
+	// [shell, -c, command], exactly as written: the engine never adds a shell. It may be
+	// empty when Before works it out.
 	Argv []string
 
 	// Env is the environment. For a run in the app it is the whole environment, as in
@@ -243,13 +244,16 @@ type Spec struct {
 	Output io.Writer
 
 	// Before runs under the clone's lock and a slot, before anything is recorded or
-	// started; an error ends the start there. A release gathers its facts again in it.
-	Before func(ctx context.Context) error
+	// started; an error ends the start there. It may return the command to run, worked out
+	// under the lock, which replaces Argv; nil keeps Argv. A release gathers its facts again
+	// in it and decides there what magex runs.
+	Before func(ctx context.Context) ([]string, error)
 
 	// Finish works out the run's outcome once it has ended and Output has read all of
 	// it. It is given how the run ended and the outcome the engine worked out from that,
 	// and returns the one to record. nil records the engine's. Its context ends when the
-	// app quits and can wait no longer, and Finish must then return at once.
+	// app quits and can wait no longer, and Finish must then return at once: with an
+	// Unsettled outcome, when what it needed to know couldn't be learned in time.
 	Finish func(ctx context.Context, end Ending, out Outcome) Outcome
 }
 
@@ -285,6 +289,11 @@ type Outcome struct {
 
 	// Detail is the kind's own result, encoded as JSON.
 	Detail any
+
+	// Unsettled, from a Finish whose context ended first, records nothing: the run stays
+	// recorded as going, and the next start of the app settles it again, through its
+	// kind's Verifier. Every other field is then ignored.
+	Unsettled bool
 }
 
 // Result is a run's result, as recorded.
@@ -374,4 +383,21 @@ type Revealer interface {
 // target. It never replays the recorded argv.
 type Rerunner interface {
 	Rerun(ctx context.Context, run Record) (Spec, error)
+}
+
+// Verifier stands in, for the runs of its kind from before the app restarted, for what
+// their Spec gave them: an output reader and a Finish, closures a restart loses. As the
+// engine picks such a run up, orphaned or interrupted, it asks Verify for them again,
+// built from the run's record alone, its intent above all. It then feeds the reader the
+// run's whole log, from its start, and calls Finish when the run ends, as for a run it
+// started: a release is verified that way, wherever its tag and its clone were left.
+type Verifier interface {
+	Verify(run Record) Verification
+}
+
+// Verification is what a Verifier gives a run from before the app restarted: its output
+// reader and its Finish, as a Spec's. Either may be nil, as in a Spec.
+type Verification struct {
+	Output io.Writer
+	Finish func(ctx context.Context, end Ending, out Outcome) Outcome
 }
