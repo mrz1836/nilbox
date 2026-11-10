@@ -1,6 +1,6 @@
 // Package integrationprefs declares the integrations' preference keys and decodes and
-// encodes their values: whether each integration is on, off, or automatic, and which copy
-// of a tool to use. The settings package writes them and the integrations package reads
+// encodes their values: whether each integration is on, off, or automatic, which copy of
+// a tool to use, and where the runs go. The settings package writes them and the integrations package reads
 // them. It imports nothing of the app's, so settings never depends on the integrations
 // package, nor through it on the GitHub client.
 package integrationprefs
@@ -11,8 +11,13 @@ import (
 	"slices"
 )
 
-// keyPrefix starts every integration's keys.
-const keyPrefix = "integrations."
+const (
+	// keyPrefix starts every integration's keys.
+	keyPrefix = "integrations."
+
+	// KeyRunsIn is the preference key holding where the runs go: "app", or "terminal".
+	KeyRunsIn = keyPrefix + "runsIn"
+)
 
 // ID names an integration: a tool the app finds and runs, or the scripts.
 type ID string
@@ -45,6 +50,20 @@ const (
 	SwitchOff Switch = "off"
 )
 
+// RunsIn is where the runs go: releases, hooks actions, checks, and scripts.
+type RunsIn string
+
+// The places a run goes.
+const (
+	// RunsInApp runs in the app, which shows the run's progress and its whole log. It is
+	// the default.
+	RunsInApp RunsIn = "app"
+
+	// RunsInTerminal runs in the terminal chosen for launches, where a run can ask for a
+	// passphrase; the app follows it.
+	RunsInTerminal RunsIn = "terminal"
+)
+
 var (
 	// ErrUnknownIntegration is returned for an ID that is not one of IDs.
 	ErrUnknownIntegration = errors.New("unknown integration")
@@ -57,6 +76,9 @@ var (
 
 	// ErrRelativePath is returned for a chosen copy whose path is not absolute.
 	ErrRelativePath = errors.New("the path is not absolute")
+
+	// ErrInvalidRunsIn is returned for a RunsIn that is not one of its places.
+	ErrInvalidRunsIn = errors.New("unknown place to run")
 )
 
 // Config is how the user set the integrations up, as the settings show it. Every
@@ -67,6 +89,9 @@ type Config struct {
 
 	// Paths is the copy of each tool the user chose, or "" for the one their shell finds.
 	Paths map[ID]string `json:"paths"`
+
+	// RunsIn is where the runs go.
+	RunsIn RunsIn `json:"runsIn"`
 }
 
 // IDs returns the integrations, in the order the settings list them.
@@ -105,9 +130,14 @@ func KeyPath(id ID) string {
 	return keyPrefix + string(id) + ".path"
 }
 
+// Valid reports whether r is one of the places a run goes.
+func (r RunsIn) Valid() bool {
+	return r == RunsInApp || r == RunsInTerminal
+}
+
 // Keys returns every key Decode reads.
 func Keys() []string {
-	keys := make([]string, 0, len(IDs())+len(Tools()))
+	keys := make([]string, 0, len(IDs())+len(Tools())+1)
 
 	for _, id := range IDs() {
 		keys = append(keys, KeyEnabled(id))
@@ -117,13 +147,14 @@ func Keys() []string {
 		keys = append(keys, KeyPath(id))
 	}
 
-	return keys
+	return append(keys, KeyRunsIn)
 }
 
 // Decode reads the integrations' settings from the stored preferences. A switch that is
-// unset or holds an unknown value is automatic, and a path that is not absolute is none.
+// unset or holds an unknown value is automatic, a path that is not absolute is none, and
+// runs go in the app unless the terminal is stored.
 func Decode(stored map[string]string) Config {
-	out := Config{Switches: map[ID]Switch{}, Paths: map[ID]string{}}
+	out := Config{Switches: map[ID]Switch{}, Paths: map[ID]string{}, RunsIn: DecodeRunsIn(stored[KeyRunsIn])}
 
 	for _, id := range IDs() {
 		out.Switches[id] = DecodeSwitch(stored[KeyEnabled(id)])
@@ -177,4 +208,23 @@ func EncodePath(path string) (string, error) {
 	}
 
 	return filepath.Clean(path), nil
+}
+
+// DecodeRunsIn reads where the runs go: the terminal when it is stored, else the app.
+func DecodeRunsIn(stored string) RunsIn {
+	if RunsIn(stored) == RunsInTerminal {
+		return RunsInTerminal
+	}
+
+	return RunsInApp
+}
+
+// EncodeRunsIn returns the stored form of where the runs go. A place that is not one of
+// RunsIn's is refused.
+func EncodeRunsIn(r RunsIn) (string, error) {
+	if !r.Valid() {
+		return "", ErrInvalidRunsIn
+	}
+
+	return string(r), nil
 }

@@ -20,8 +20,9 @@ func TestDecodeDefaultsToAutomatic(t *testing.T) {
 			integrationprefs.GoPreCommit: integrationprefs.SwitchAuto,
 			integrationprefs.Scripts:     integrationprefs.SwitchAuto,
 		},
-		Paths: map[integrationprefs.ID]string{integrationprefs.MageX: "", integrationprefs.GoPreCommit: ""},
-	}, got, "a fresh database: every switch automatic, no copy chosen, and no nil map")
+		Paths:  map[integrationprefs.ID]string{integrationprefs.MageX: "", integrationprefs.GoPreCommit: ""},
+		RunsIn: integrationprefs.RunsInApp,
+	}, got, "a fresh database: every switch automatic, no copy chosen, runs in the app, and no nil map")
 }
 
 func TestDecodeReadsTheStoredValues(t *testing.T) {
@@ -33,6 +34,7 @@ func TestDecodeReadsTheStoredValues(t *testing.T) {
 		"integrations.scripts.enabled":       "sometimes",
 		"integrations.mage-x.path":           "/opt/tools/bin/../bin/magex",
 		"integrations.go-pre-commit.path":    "bin/go-pre-commit",
+		"integrations.runsIn":                "terminal",
 	})
 
 	assert.Equal(t, integrationprefs.SwitchOn, got.Switches[integrationprefs.MageX])
@@ -40,6 +42,24 @@ func TestDecodeReadsTheStoredValues(t *testing.T) {
 	assert.Equal(t, integrationprefs.SwitchAuto, got.Switches[integrationprefs.Scripts], "an unknown value is automatic")
 	assert.Equal(t, "/opt/tools/bin/magex", got.Paths[integrationprefs.MageX], "cleaned")
 	assert.Empty(t, got.Paths[integrationprefs.GoPreCommit], "a relative path is none")
+	assert.Equal(t, integrationprefs.RunsInTerminal, got.RunsIn)
+}
+
+func TestEncodeRunsIn(t *testing.T) {
+	t.Parallel()
+
+	for _, place := range []integrationprefs.RunsIn{integrationprefs.RunsInApp, integrationprefs.RunsInTerminal} {
+		got, err := integrationprefs.EncodeRunsIn(place)
+		require.NoError(t, err)
+		assert.Equal(t, place, integrationprefs.DecodeRunsIn(got), "a stored place reads back as itself")
+	}
+
+	for _, refused := range []integrationprefs.RunsIn{"", "cloud"} {
+		_, err := integrationprefs.EncodeRunsIn(refused)
+		require.ErrorIs(t, err, integrationprefs.ErrInvalidRunsIn, refused)
+	}
+
+	assert.Equal(t, integrationprefs.RunsInApp, integrationprefs.DecodeRunsIn("Terminal"), "anything else is the app")
 }
 
 func TestEncodeSwitch(t *testing.T) {
@@ -85,7 +105,7 @@ func TestIDs(t *testing.T) {
 	assert.False(t, integrationprefs.Scripts.Tool(), "the scripts have no copy to choose")
 	assert.Equal(t, []string{
 		"integrations.mage-x.enabled", "integrations.go-pre-commit.enabled", "integrations.scripts.enabled",
-		"integrations.mage-x.path", "integrations.go-pre-commit.path",
+		"integrations.mage-x.path", "integrations.go-pre-commit.path", "integrations.runsIn",
 	}, integrationprefs.Keys())
 }
 
