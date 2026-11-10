@@ -42,10 +42,17 @@ func Capitalize(s string) string {
 }
 
 // Sentence turns a message such as an error's into a sentence: trimmed, its first letter
-// upper-cased, and ending with a period. An empty message stays empty.
+// upper-cased, and ended as EndSentence ends it. An empty message stays empty.
 func Sentence(msg string) string {
-	msg = Capitalize(strings.TrimSpace(msg))
-	if msg == "" || strings.HasSuffix(msg, ".") {
+	return Capitalize(EndSentence(msg))
+}
+
+// EndSentence ends a message as a sentence without changing its words: trimmed, and with
+// a period unless it already ends in one, a question mark, or an exclamation mark. It
+// suits a line quoted as it was written. An empty message stays empty.
+func EndSentence(msg string) string {
+	msg = strings.TrimSpace(msg)
+	if msg == "" || strings.HasSuffix(msg, ".") || strings.HasSuffix(msg, "?") || strings.HasSuffix(msg, "!") {
 		return msg
 	}
 

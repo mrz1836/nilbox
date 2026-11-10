@@ -466,6 +466,21 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	toolFinder := integrations.NewWorker(tools)
 	followed.tools = toolFinder
 
+	// The clones are read with the git the user's shell finds, as magex runs it.
+	releaseGit := gitread.New(gitread.Config{
+		Env: func() []string { env, _ := shellEnv.Env(); return env }, Runner: toolRunners,
+	})
+	releases := release.NewService(release.Config{
+		GitHub:  releaseGitHub{tokens: tokens, client: client},
+		Clones:  releaseClones{settings: prefs, home: opts.Home, git: runner},
+		Checker: release.GitChecker{Git: releaseGit},
+		Git:     releaseGit, Origins: releaseOrigins{git: runner}, Tools: releaseTool{tools: tools}, Locks: clones,
+		Env: shellEnv.Env, Ready: shellEnv.Ready, Runner: toolRunners, Runs: runs, Places: releasePlaces{settings: prefs},
+		Home: opts.Home, Clock: opts.Clock, Events: opts.Events, Logger: logger,
+	})
+	// A release left from before a restart is read and verified as one started now.
+	runs.RegisterVerifier(scriptrun.KindRelease, release.NewVerifier(releases))
+
 	return &Core{
 		DB:       pool,
 		Settings: prefs,
@@ -518,20 +533,12 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		ToolFinder:    toolFinder,
 		Runs:          runs,
 		ScriptRuns:    scriptrun.NewService(runs),
-		Release: release.NewService(release.Config{
-			GitHub: releaseGitHub{tokens: tokens, client: client},
-			Clones: releaseClones{settings: prefs, home: opts.Home, git: runner},
-			// The clones are read with the git the user's shell finds, as magex runs it.
-			Checker: release.GitChecker{Git: gitread.New(gitread.Config{
-				Env: func() []string { env, _ := shellEnv.Env(); return env }, Runner: toolRunners,
-			})},
-			Home: opts.Home, Clock: opts.Clock, Events: opts.Events, Logger: logger,
-		}),
-		tokens:       tokens,
-		BudgetSaver:  budget.NewSaver(tracker, keeper, logger),
-		client:       client,
-		budget:       tracker,
-		budgetKeeper: keeper,
+		Release:       releases,
+		tokens:        tokens,
+		BudgetSaver:   budget.NewSaver(tracker, keeper, logger),
+		client:        client,
+		budget:        tracker,
+		budgetKeeper:  keeper,
 	}
 }
 

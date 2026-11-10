@@ -734,6 +734,64 @@ func (r releaseGitHub) ReleaseCompare(ctx context.Context, reqs []release.Compar
 	return out, nil
 }
 
+// releaseOrigins reads which GitHub repository a clone's origin is, with the read-only
+// remote lookup localrepos.Inspect runs (release.OriginReader).
+type releaseOrigins struct {
+	git execpath.Runner
+}
+
+// Origin returns the repository the clone at dir's origin points at, and whether it is a
+// GitHub repository.
+func (o releaseOrigins) Origin(ctx context.Context, dir string) (repo.Name, bool, error) {
+	found, err := localrepos.Inspect(ctx, dir, o.git)
+	if err != nil {
+		return repo.Name{}, false, err
+	}
+
+	origin, onGitHub := found.Remotes["origin"]
+
+	return origin, onGitHub, nil
+}
+
+// releaseTool reads what the integrations know of magex, the copy in use and its
+// definition's features, for a release (release.ToolSource). It never waits for a
+// detection: List serves the last one.
+type releaseTool struct {
+	tools *integrations.Service
+}
+
+// ReleaseTool returns magex's facts; a list that can't be read is a magex that's missing.
+func (r releaseTool) ReleaseTool(ctx context.Context) release.ToolFacts {
+	def := integrations.MageX()
+
+	list, err := r.tools.List(ctx)
+	if err == nil {
+		for _, t := range list.Tools {
+			if t.ID == def.ID {
+				return release.ToolFactsOf(def, t)
+			}
+		}
+	}
+
+	return release.ToolFactsOf(def, integrations.Tool{})
+}
+
+// releasePlaces reads where runs go from the settings: Runs in, and the terminal chosen
+// for launches, by name (release.Places).
+type releasePlaces struct {
+	settings *settings.Service
+}
+
+// Where returns where runs go.
+func (p releasePlaces) Where(ctx context.Context) (release.Where, error) {
+	all, err := p.settings.Get(ctx)
+	if err != nil {
+		return release.Where{}, err
+	}
+
+	return release.Where{RunsIn: all.Integrations.RunsIn, Terminal: terminal.Name(all.Terminal)}, nil
+}
+
 // releaseSignedOut marks gh's "no one is signed in" as release.ErrSignedOut. A missing gh
 // keeps the client's own words, which say to install it.
 func releaseSignedOut(err error) error {

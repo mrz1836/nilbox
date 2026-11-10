@@ -38,6 +38,9 @@ type fakeGitHub struct {
 	err      error
 	asked    [][]repo.Name
 	compared [][]CompareRequest
+
+	// asking, when set, is called as each status is asked for.
+	asking func()
 }
 
 func (f *fakeGitHub) ReleaseStatus(_ context.Context, repos []repo.Name) (map[string]RepoStatus, error) {
@@ -45,6 +48,10 @@ func (f *fakeGitHub) ReleaseStatus(_ context.Context, repos []repo.Name) (map[st
 	defer f.mu.Unlock()
 
 	f.asked = append(f.asked, slices.Clone(repos))
+
+	if f.asking != nil {
+		f.asking()
+	}
 
 	if f.err != nil {
 		return nil, f.err

@@ -158,3 +158,11 @@ func TestErrDetailCapsLength(t *testing.T) {
 	assert.Len(t, []rune(errDetail([]byte(string(long)))), maxErrDetail)
 	assert.Empty(t, errDetail([]byte(" \n\t\n")))
 }
+
+func TestName(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "iTerm2", Name(ITerm2))
+	assert.Equal(t, "Terminal", Name(TerminalApp))
+	assert.Empty(t, Name("hyper"))
+}
