@@ -73,8 +73,13 @@ This deliberately overrides the synced
 A test that runs real git isolates it through the runner, not the process: hand the service
 under test `execpath.Exec{Env: testutil.GitEnv(home)}` (or `testutil.Git(t)` for a fresh home),
 which reads none of the user's git configuration, and run fixture commands with
-`testutil.RunGit`. Timer tests run in a `testing/synctest` bubble instead of sleeping or
-polling, fuzz tests seed their corpus with `f.Add` (`testdata/fuzz/` is ignored), and golden
+`testutil.RunGit`. A test that runs an external tool runs a fake one: `testutil.FakeTool`
+links the tool's name to the test binary, which replays a recorded run or a scripted behavior
+when the package's `TestMain` calls `testutil.FakeToolMain` first, so no test writes a script
+to run.
+Tests of the real magex or go-pre-commit carry the `integration` build tag and `Integration` in
+their names; the gate never runs them (`magex test:integration` does). Timer tests run in a
+`testing/synctest` bubble instead of sleeping or polling, fuzz tests seed their corpus with `f.Add` (`testdata/fuzz/` is ignored), and golden
 files are rewritten with the test's `-update` flag.
 
 <br>
@@ -137,18 +142,25 @@ app:lint` reads.
   modes, reserved flags, and how a launch's options become its flags, so adding an agent adds
   a spec and the launcher, profiles, and editors read the rest from it; `internal/procs` lists
   the running processes' working directories (`lsof` on macOS, `/proc` on Linux), which tell
-  a worktree some session is in; `internal/execpath` finds and runs external programs
-  (`Finder`, `Runner`); and
+  a worktree some session is in, and reads a process's start time (`StartedAt`), which tells a
+  process from a stranger that reused its PID; `internal/execpath` finds and runs external
+  programs (`Finder`, `Runner`; `Search.Path` searches the login shell's PATH), and starts a
+  long-lived one in its own process group (`Start`, `Proc`), writing straight into a file the
+  app tails and stopping the whole group with a signal ladder; nothing else starts a process
+  (`TestOnlyExecpathStartsProcesses`, with named exceptions), and nothing runs `go install` or
+  `sudo` (`TestNoGoInstall`, `TestNoSudo`); `internal/shellenv` reads the user's login shell's
+  environment, after the first paint, and never logs a variable's name or value; and
   `internal/clock`, `internal/periodic`, `internal/flight`, `internal/paths`, and
   `internal/textutil` hold the clock, the interval runner, one call per key at a time, `~`
   paths, and text helpers. `internal/testutil` holds the fakes and fixtures the test suites
-  share (a fresh database, an isolated git, a runner, finder, clock, event sink, and log);
-  only tests may import it.
+  share (a fresh database, an isolated git, a runner, finder, clock, event sink, log, and fake
+  tools); only tests may import it.
 - `internal/event/` holds the app's events, one Go type each with its name; services emit them
   into the one `event.Sink` they are given. `internal/desktop/` is the shell's logic: it hears
   those events, keeps the menu bar current with what `internal/menubar` works out, runs the
-  scheduler, the sweeper, and the sessions watcher as tracked work, and shuts down in order
-  (timers, then the work, then the database). It declares small interfaces that the Wails glue
+  scheduler, the sweeper, and the sessions watcher as tracked work, starts the deferred work
+  (`core.Deferred`: the login-shell read first) once after the first paint, never on the cold
+  start, and shuts down in order (timers, then the work, then the database). It declares small interfaces that the Wails glue
   in `cmd/nilbox` implements, and imports no Wails. A window event is registered in
   `main_desktop.go` with `application.RegisterEvent`, which generates its TypeScript type and
   name in `frontend/bindings`; a repository test checks that every window event is registered.

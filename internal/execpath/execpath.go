@@ -2,10 +2,12 @@
 //
 // An app started from the Finder or the Dock inherits launchd's minimal PATH, which lacks
 // Homebrew, ~/.local/bin, and other common install locations. Search.Find therefore tries
-// the inherited PATH first and then a short list of well-known directories for the current
-// OS. Exec runs a program as an argv, never through a shell. Every service that finds a
-// program takes a Finder, and every service that runs one takes a Runner, so tests can
-// hand it a fake. ExitCode and GitMessage read a failed program's outcome.
+// a search path (the user's login shell's, when Search.Path is set, else the inherited
+// one) and then a short list of well-known directories for the current OS. Exec runs a
+// program as an argv, never through a shell, and Start runs a long-lived one in its own
+// process group (Proc). Every service that finds a program takes a Finder, and every
+// service that runs one takes a Runner, so tests can hand it a fake. ExitCode and
+// GitMessage read a failed program's outcome.
 package execpath
 
 import (
@@ -15,8 +17,14 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
+	"time"
 )
+
+// runWaitDelay bounds how long Exec.Run waits, once its program has exited, for a
+// descendant still holding the program's output, such as a daemon it started.
+const runWaitDelay = 2 * time.Second
 
 // ErrNotFound is returned when a program is on neither the search path nor any of the
 // well-known directories.
@@ -28,10 +36,16 @@ type Finder interface {
 	Find(name string) (string, error)
 }
 
-// Search finds programs on the inherited search path and in the well-known directories
-// where command-line tools are installed. Its zero value searches those without the
-// home-relative directories.
+// Search finds programs on a search path and in the well-known directories where
+// command-line tools are installed. Its zero value searches the inherited PATH and those
+// directories without the home-relative ones.
 type Search struct {
+	// Path, when set, is the search path Find tries first, in place of the inherited
+	// PATH: the user's login shell's PATH (internal/shellenv), so the app finds the same
+	// git, magex, and go-pre-commit as the user's terminal. FallbackPath builds one for
+	// when the shell's can't be read.
+	Path string
+
 	// Home is the user's home directory. Home-relative well-known directories are skipped
 	// when it is empty.
 	Home string
@@ -40,11 +54,12 @@ type Search struct {
 	Extra []string
 }
 
-// Find returns the absolute path of the named executable. It tries exec.LookPath(name)
-// first, then each extra and well-known directory in order, and returns ErrNotFound
-// naming the program and every directory searched when none has it.
+// Find returns the absolute path of the named executable. It tries the search path first
+// (Path, or the inherited PATH through exec.LookPath), then each extra and well-known
+// directory in order, and returns ErrNotFound naming the program and every directory
+// searched when none has it.
 func (f Search) Find(name string) (string, error) {
-	if path, err := exec.LookPath(name); err == nil {
+	if path, ok := f.onPath(name); ok {
 		return absolute(path)
 	}
 
@@ -56,6 +71,46 @@ func (f Search) Find(name string) (string, error) {
 	}
 
 	return "", fmt.Errorf("%w: %q is not on the search path or in %s", ErrNotFound, name, strings.Join(dirs, ", "))
+}
+
+// onPath looks name up on Path when it is set, else on the inherited PATH. Path's empty
+// and relative entries are skipped: "." would hand the name back to the inherited PATH,
+// and any other relative folder would resolve against the app's own working directory.
+func (f Search) onPath(name string) (string, bool) {
+	if f.Path == "" || strings.ContainsRune(name, filepath.Separator) {
+		path, err := exec.LookPath(name)
+
+		return path, err == nil
+	}
+
+	for _, dir := range filepath.SplitList(f.Path) {
+		if !filepath.IsAbs(dir) {
+			continue
+		}
+
+		if path, err := exec.LookPath(filepath.Join(dir, name)); err == nil {
+			return path, true
+		}
+	}
+
+	return "", false
+}
+
+// FallbackPath returns the search path to use when the user's login shell's PATH can't be
+// read: the well-known directories for home first, then inherited, without repeats. On
+// macOS a GUI app inherits launchd's /usr/bin:/bin:/usr/sbin:/sbin, where Apple's git
+// asks in a keychain window for credentials another git stored and so stalls a run with
+// no terminal; the well-known directories hold the git and tools the user's terminal runs.
+func FallbackPath(home, inherited string) string {
+	dirs := wellKnownDirs(home)
+
+	for _, dir := range filepath.SplitList(inherited) {
+		if dir != "" && !slices.Contains(dirs, dir) {
+			dirs = append(dirs, dir)
+		}
+	}
+
+	return strings.Join(dirs, string(filepath.ListSeparator))
 }
 
 // dirs returns the non-empty extra directories followed by the well-known ones.
@@ -86,14 +141,17 @@ type Exec struct {
 	// Env, when non-nil, is the whole environment each program runs with, as in
 	// exec.Cmd.Env; nil runs it with this process's environment. It lets a caller, such
 	// as a test isolating git from the user's configuration, set a program's environment
-	// without changing the process's, which every other goroutine shares. Search still
-	// looks a program up on this process's search path, not on a PATH in Env.
+	// without changing the process's, which every other goroutine shares. Search looks a
+	// program up on its own Path, or this process's search path, never on a PATH in Env.
 	Env []string
 }
 
 // Run runs name with args and returns what it wrote to stdout and stderr. The error is the
 // lookup or exec error, wrapped; a non-zero exit is an *exec.ExitError in the chain, so
-// callers can read its exit code (see ExitCode).
+// callers can read its exit code (see ExitCode). A program that exits but leaves a
+// descendant holding its output is waited for runWaitDelay more, then its output so far
+// is returned and its exit status counts: such a descendant can't hang Run past the
+// program.
 func (r Exec) Run(ctx context.Context, name string, args ...string) (stdout, stderr []byte, err error) {
 	path := name
 	if !filepath.IsAbs(path) {
@@ -108,8 +166,9 @@ func (r Exec) Run(ctx context.Context, name string, args ...string) (stdout, std
 	cmd.Env = r.Env
 	cmd.Stdout = &outBuf
 	cmd.Stderr = &errBuf
+	cmd.WaitDelay = runWaitDelay
 
-	if err = cmd.Run(); err != nil {
+	if err = cmd.Run(); err != nil && !errors.Is(err, exec.ErrWaitDelay) {
 		return outBuf.Bytes(), errBuf.Bytes(), fmt.Errorf("run %s: %w", filepath.Base(path), err)
 	}
 

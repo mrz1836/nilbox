@@ -39,6 +39,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/sessions/observe/claude"
 	"github.com/mrz1836/nilbox/internal/sessions/observe/codex"
 	"github.com/mrz1836/nilbox/internal/settings"
+	"github.com/mrz1836/nilbox/internal/shellenv"
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/timing"
 	"github.com/mrz1836/nilbox/internal/worklog"
@@ -91,6 +92,11 @@ type Options struct {
 
 	// Logger receives every service's log records. Without it they are not logged.
 	Logger *slog.Logger
+
+	// ShellStarter runs the user's login shell to read its environment, after the first
+	// paint. Nil runs the real shell; tests hand in a fake, so no test runs the
+	// developer's own shell.
+	ShellStarter shellenv.Starter
 }
 
 // Core is the assembled app: the database and every service.
@@ -141,6 +147,14 @@ type Core struct {
 
 	// Timing records the first paint.
 	Timing *timing.Recorder
+
+	// ShellEnv holds the user's login shell's environment once Deferred has read it: the
+	// PATH the tools the app finds and runs come from. It is not bound.
+	ShellEnv *shellenv.Reader
+
+	// Deferred is the work kept off the cold start, which the desktop shell runs once
+	// after the window's first paint (desktop.Config.Deferred). It is not bound.
+	Deferred *Deferred
 
 	// tokens holds the GitHub token the inbox and the worktree service borrow, until
 	// Close forgets it.
@@ -316,6 +330,7 @@ func dataReset(ctx context.Context, reset *store.Reset, home string, logger *slo
 // what happened at startup, which the window is told, and holds the stores whose data is
 // kept outside the database, with their copies.
 func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Core {
+	shellEnv := shellenv.New(shellenv.Config{Start: opts.ShellStarter, Home: opts.Home, Logger: logger})
 	search := execpath.Search{Home: opts.Home}
 
 	runner := opts.Runner
@@ -452,6 +467,8 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Scheduler:     inbox.NewScheduler(inboxSvc, logger),
 		Sweeper:       worktrees.NewSweeper(sweeps, worktrees.DefaultSweepInterval),
 		Timing:        recorder,
+		ShellEnv:      shellEnv,
+		Deferred:      &Deferred{steps: []func(context.Context){func(ctx context.Context) { _ = shellEnv.Read(ctx) }}},
 		tokens:        tokens,
 		BudgetSaver:   budget.NewSaver(tracker, keeper, logger),
 		client:        client,

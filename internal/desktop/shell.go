@@ -37,6 +37,10 @@ const (
 	// first paint.
 	DefaultMeasureTimeout = time.Minute
 
+	// DeferredFallback is how long after launch the deferred work starts when the window
+	// never reports its first paint.
+	DeferredFallback = 10 * time.Second
+
 	// snoozeSlack is how long after the soonest snooze ends the menu bar is redrawn, so
 	// the snooze has ended when the count is taken again.
 	snoozeSlack = time.Second
@@ -147,6 +151,12 @@ type Config struct {
 	// Workers run in the background from Start until Stop, started in this order.
 	Workers []Worker
 
+	// Deferred is work kept off the cold start: it starts once, when the window reports
+	// its first paint, or DeferredFallback after launch when it never does, and never in
+	// a startup measurement. Each Run returns when its work is done or its context ends,
+	// and Stop waits for it as for the workers.
+	Deferred []Worker
+
 	// Data is what Stop closes last, once the background work is done: the database.
 	Data io.Closer
 
@@ -193,6 +203,7 @@ type Shell struct {
 	settings Settings
 	sessions Sessions
 	workers  []Worker
+	deferred []Worker
 	data     io.Closer
 	banners  Authorizer
 	clock    clock.Clock
@@ -220,6 +231,11 @@ type Shell struct {
 	snooze   *time.Timer
 	measured *time.Timer
 
+	// deferStarted is set once the deferred work has started, and deferTimer is its
+	// fallback, armed at launch.
+	deferStarted bool
+	deferTimer   *time.Timer
+
 	// redraw holds one pending ask to redraw the menu bar: asks that come while one is
 	// pending fold into it. full is set by an ask for a whole redraw, which every ask but
 	// a sessions change is.
@@ -243,7 +259,8 @@ func New(cfg Config) *Shell {
 
 	s := &Shell{
 		frontend: cfg.Frontend, window: cfg.Window, tray: cfg.Tray, app: cfg.App,
-		inbox: cfg.Inbox, settings: cfg.Settings, sessions: cfg.Sessions, workers: cfg.Workers, data: cfg.Data, banners: cfg.Banners,
+		inbox: cfg.Inbox, settings: cfg.Settings, sessions: cfg.Sessions, workers: cfg.Workers, deferred: cfg.Deferred,
+		data: cfg.Data, banners: cfg.Banners,
 		clock: clock.Or(cfg.Clock), stdout: orDiscard(cfg.Stdout), logger: logging.Or(cfg.Logger),
 		measure: cfg.MeasureStartup, stopTimeout: cfg.StopTimeout, measureTimeout: cfg.MeasureTimeout,
 		lifetime: lifetime, cancel: cancel, redraw: make(chan struct{}, 1),
@@ -282,8 +299,8 @@ func (s *Shell) Start(ctx context.Context) {
 }
 
 // Stop shuts the shell down, once, in this order: it drops every later event, stops the
-// snooze and measurement timers, ends the background work and waits for it, up to the
-// stop timeout, and then closes the data. It returns the error closing the data
+// snooze, measurement, and deferred-work timers, ends the background work and waits for
+// it, up to the stop timeout, and then closes the data. It returns the error closing the data
 // returned, on this and every later call. It is safe to call without Start.
 func (s *Shell) Stop() error {
 	s.stopOnce.Do(func() {
@@ -291,6 +308,7 @@ func (s *Shell) Stop() error {
 		s.stopping.Store(true)
 		stopTimer(&s.snooze)
 		stopTimer(&s.measured)
+		stopTimer(&s.deferTimer)
 		unlink := s.unlink
 		s.mu.Unlock()
 
@@ -313,7 +331,8 @@ func (s *Shell) Stop() error {
 // change also redraws the menu bar, and a sessions change does when the sessions waiting
 // for the user read otherwise than the menu shows them, a request to reveal an item brings
 // the window forward, a theme or menu bar change reaches the window or the icon, and the
-// first paint ends a startup measurement. It never waits for a redraw.
+// first paint ends a startup measurement or starts the deferred work. It never waits for
+// a redraw.
 func (s *Shell) Emit(e event.Event) {
 	if s.stopping.Load() {
 		return
@@ -336,14 +355,15 @@ func (s *Shell) Emit(e event.Event) {
 		s.setMenuBar(e.On)
 	case event.FirstPaint:
 		s.firstPaint(e.Measurement)
+		s.startDeferred()
 	case event.WindowEvent:
 		s.frontend.Emit(e)
 	}
 }
 
 // Launched opens the window in the stored theme, at the stored size and text size, shows
-// the menu bar icon when it is on, asks once to allow banners, and starts a startup
-// measurement's timeout. The desktop runtime calls it once the app has launched, when the
+// the menu bar icon when it is on, asks once to allow banners, arms the deferred work's
+// fallback, and starts a startup measurement's timeout. The desktop runtime calls it once the app has launched, when the
 // system appearance the System theme follows is known. A setting that cannot be read falls
 // back to its default, with a note on Stderr.
 func (s *Shell) Launched() {
@@ -365,7 +385,11 @@ func (s *Shell) Launched() {
 
 	if s.measure {
 		s.startMeasureTimeout()
+
+		return
 	}
+
+	s.armDeferred()
 }
 
 // ShowWindow brings the window forward, unless the shell is stopping.
@@ -430,6 +454,37 @@ func (s *Shell) Stopping() bool {
 // the run then exits with a failure status.
 func (s *Shell) TimedOut() bool {
 	return s.timedOut.Load()
+}
+
+// armDeferred starts the deferred work DeferredFallback from now, in case the window
+// never reports its first paint.
+func (s *Shell) armDeferred() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.stopping.Load() || s.deferStarted || s.deferTimer != nil || len(s.deferred) == 0 {
+		return
+	}
+
+	s.deferTimer = time.AfterFunc(DeferredFallback, s.startDeferred)
+}
+
+// startDeferred starts the deferred work, once, tracked so Stop waits for it; never in a
+// startup measurement, and never once the shell is stopping.
+func (s *Shell) startDeferred() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.measure || s.deferStarted || s.stopping.Load() {
+		return
+	}
+
+	s.deferStarted = true
+	stopTimer(&s.deferTimer)
+
+	for _, w := range s.deferred {
+		s.goLocked(w.Run)
+	}
 }
 
 // goTracked runs fn in the background under the shell's lifetime, tracked so Stop waits
