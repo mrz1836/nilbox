@@ -1,0 +1,157 @@
+{
+    "name": "major-no-confirm",
+    "dir": "/work/cases/major-no-confirm/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=major",
+        "branch=master",
+        "push=true"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n21:59:48 [INFO] Using bump type: major\n21:59:48 [INFO] Detecting current version...\n21:59:48 [INFO] No tags found on HEAD commit\n21:59:48 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.2\n21:59:48 [INFO] Recent commits:\n8e27ab4 fix: retries on 502 (#45)\n5dd33f3 feat: first feature\n4e26fb6 chore: initial commit\n21:59:48 [WARN] ⚠️  MAJOR VERSION BUMP DETECTED:\n21:59:48 [WARN]    Current version: v1.4.2\n21:59:48 [WARN]    New version:     v2.0.0\n21:59:48 [WARN]    This will create a breaking change release!\n21:59:48 [WARN] \n21:59:48 [WARN] To proceed with major version bump, add 'major-confirm' parameter\n21:59:48 [WARN] Example: magex version:bump bump=major major-confirm push\n21:59:48 [WARN] \n21:59:48 [WARN] Or use 'dry-run' to preview the change first:\n21:59:48 [WARN] Example: magex version:bump bump=major dry-run\n",
+    "stderr": "❌ Error: major version bump requires explicit confirmation via MAJOR_BUMP_CONFIRM=true\n",
+    "exit": 1,
+    "durationMs": 46,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "21:59:48 [INFO] Using bump type: major"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "21:59:48 [INFO] Detecting current version..."
+        },
+        {
+            "stream": "out",
+            "ms": 12,
+            "text": "21:59:48 [INFO] No tags found on HEAD commit"
+        },
+        {
+            "stream": "out",
+            "ms": 34,
+            "text": "21:59:48 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 40,
+            "text": "21:59:48 [INFO] Recent commits:"
+        },
+        {
+            "stream": "out",
+            "ms": 40,
+            "text": "8e27ab4 fix: retries on 502 (#45)"
+        },
+        {
+            "stream": "out",
+            "ms": 40,
+            "text": "5dd33f3 feat: first feature"
+        },
+        {
+            "stream": "out",
+            "ms": 40,
+            "text": "4e26fb6 chore: initial commit"
+        },
+        {
+            "stream": "out",
+            "ms": 45,
+            "text": "21:59:48 [WARN] ⚠️  MAJOR VERSION BUMP DETECTED:"
+        },
+        {
+            "stream": "out",
+            "ms": 45,
+            "text": "21:59:48 [WARN]    Current version: v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 45,
+            "text": "21:59:48 [WARN]    New version:     v2.0.0"
+        },
+        {
+            "stream": "out",
+            "ms": 45,
+            "text": "21:59:48 [WARN]    This will create a breaking change release!"
+        },
+        {
+            "stream": "out",
+            "ms": 45,
+            "text": "21:59:48 [WARN] "
+        },
+        {
+            "stream": "out",
+            "ms": 45,
+            "text": "21:59:48 [WARN] To proceed with major version bump, add 'major-confirm' parameter"
+        },
+        {
+            "stream": "out",
+            "ms": 45,
+            "text": "21:59:48 [WARN] Example: magex version:bump bump=major major-confirm push"
+        },
+        {
+            "stream": "out",
+            "ms": 45,
+            "text": "21:59:48 [WARN] "
+        },
+        {
+            "stream": "out",
+            "ms": 45,
+            "text": "21:59:48 [WARN] Or use 'dry-run' to preview the change first:"
+        },
+        {
+            "stream": "out",
+            "ms": 45,
+            "text": "21:59:48 [WARN] Example: magex version:bump bump=major dry-run"
+        },
+        {
+            "stream": "err",
+            "ms": 45,
+            "text": "❌ Error: major version bump requires explicit confirmation via MAJOR_BUMP_CONFIRM=true"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "head": "8e27ab4",
+        "inProgress": "",
+        "localMaster": "8e27ab4",
+        "localTags": "v1.4.2 0167c98 5dd33f3",
+        "remoteMaster": "8e27ab4eb334c7a074a56c307e9dd7c059f9e316\trefs/heads/master",
+        "remoteTags": "0167c98b364dbe6159a4bea34c3d022f78c6c559\trefs/tags/v1.4.2\n5dd33f3240de36adb36bd6e4884e40ea70b29ebf\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "master",
+        "head": "8e27ab4",
+        "inProgress": "",
+        "localMaster": "8e27ab4",
+        "localTags": "v1.4.2 0167c98 5dd33f3",
+        "remoteMaster": "8e27ab4eb334c7a074a56c307e9dd7c059f9e316\trefs/heads/master",
+        "remoteTags": "0167c98b364dbe6159a4bea34c3d022f78c6c559\trefs/tags/v1.4.2\n5dd33f3240de36adb36bd6e4884e40ea70b29ebf\trefs/tags/v1.4.2^{}",
+        "status": ""
+    }
+}

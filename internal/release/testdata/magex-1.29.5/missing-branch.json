@@ -1,0 +1,72 @@
+{
+    "name": "missing-branch",
+    "dir": "/work/cases/missing-branch/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=release",
+        "push=true"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n21:59:52 [INFO] Using bump type: patch\n",
+    "stderr": "❌ Error: branch does not exist locally or remotely: 'release'\n",
+    "exit": 1,
+    "durationMs": 26,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": "21:59:52 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "err",
+            "ms": 26,
+            "text": "❌ Error: branch does not exist locally or remotely: 'release'"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "head": "7af82b2",
+        "inProgress": "",
+        "localMaster": "7af82b2",
+        "localTags": "v1.4.2 8541486 4eb8829",
+        "remoteMaster": "7af82b2c540187b9fdd806c63efb2a7d34eaae4c\trefs/heads/master",
+        "remoteTags": "8541486070cce85648d9b0860193842006b373a7\trefs/tags/v1.4.2\n4eb8829442e5a8a01ff20d82cca96a1c86fcf211\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "master",
+        "head": "7af82b2",
+        "inProgress": "",
+        "localMaster": "7af82b2",
+        "localTags": "v1.4.2 8541486 4eb8829",
+        "remoteMaster": "7af82b2c540187b9fdd806c63efb2a7d34eaae4c\trefs/heads/master",
+        "remoteTags": "8541486070cce85648d9b0860193842006b373a7\trefs/tags/v1.4.2\n4eb8829442e5a8a01ff20d82cca96a1c86fcf211\trefs/tags/v1.4.2^{}",
+        "status": ""
+    }
+}

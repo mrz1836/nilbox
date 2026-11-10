@@ -1,0 +1,223 @@
+{
+    "name": "local-only-tag",
+    "note": "v1.4.3 tagged in the clone only; origin 2 commits ahead",
+    "dir": "/work/cases/local-only-tag/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n22:00:00 [INFO] Using bump type: patch\n22:00:00 [INFO] Already on target branch 'master'\n22:00:00 [INFO] Pulling latest changes...\nUpdating d608d70..a10c26e\nFast-forward\n seed0.go | 1 +\n seed1.go | 1 +\n 2 files changed, 2 insertions(+)\n create mode 100644 seed0.go\n create mode 100644 seed1.go\n✅ Successfully pulled latest changes\n22:00:00 [INFO] Detecting current version...\n22:00:00 [INFO] No tags found on HEAD commit\n22:00:00 [WARN] Current version tag is not on HEAD - there are 2 commits since v1.4.3\n22:00:00 [INFO] Recent commits:\na10c26e fix: b\n3fd48c3 fix: a\nd608d70 fix: retries on 502 (#45)\neda3e8c feat: first feature\n0d8931f chore: initial commit\n22:00:00 [INFO] 📋 Version Bump Summary:\n22:00:00 [INFO]   From:    v1.4.3\n22:00:00 [INFO]   To:      v1.4.4\n22:00:00 [INFO]   Type:    patch bump\n✅ ✅ Created tag: v1.4.4\na10c26e29209d4706677b1713b605af7adfc6c82\tHEAD\n22:00:00 [INFO] Pushing tag to remote...\n✅ ✅ Tag pushed to remote\n",
+    "stderr": "From /work/cases/local-only-tag/origin\n   d608d70..a10c26e  master     -> origin/master\nTo /work/cases/local-only-tag/origin.git\n * [new tag]         v1.4.4 -> v1.4.4\n",
+    "exit": 0,
+    "durationMs": 267,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "22:00:00 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 17,
+            "text": "22:00:00 [INFO] Already on target branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 17,
+            "text": "22:00:00 [INFO] Pulling latest changes..."
+        },
+        {
+            "stream": "err",
+            "ms": 56,
+            "text": "From /work/cases/local-only-tag/origin"
+        },
+        {
+            "stream": "err",
+            "ms": 56,
+            "text": "   d608d70..a10c26e  master     -> origin/master"
+        },
+        {
+            "stream": "out",
+            "ms": 108,
+            "text": "Updating d608d70..a10c26e"
+        },
+        {
+            "stream": "out",
+            "ms": 108,
+            "text": "Fast-forward"
+        },
+        {
+            "stream": "out",
+            "ms": 115,
+            "text": " seed0.go | 1 +"
+        },
+        {
+            "stream": "out",
+            "ms": 115,
+            "text": " seed1.go | 1 +"
+        },
+        {
+            "stream": "out",
+            "ms": 115,
+            "text": " 2 files changed, 2 insertions(+)"
+        },
+        {
+            "stream": "out",
+            "ms": 115,
+            "text": " create mode 100644 seed0.go"
+        },
+        {
+            "stream": "out",
+            "ms": 115,
+            "text": " create mode 100644 seed1.go"
+        },
+        {
+            "stream": "out",
+            "ms": 116,
+            "text": "✅ Successfully pulled latest changes"
+        },
+        {
+            "stream": "out",
+            "ms": 123,
+            "text": "22:00:00 [INFO] Detecting current version..."
+        },
+        {
+            "stream": "out",
+            "ms": 129,
+            "text": "22:00:00 [INFO] No tags found on HEAD commit"
+        },
+        {
+            "stream": "out",
+            "ms": 155,
+            "text": "22:00:00 [WARN] Current version tag is not on HEAD - there are 2 commits since v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 163,
+            "text": "22:00:00 [INFO] Recent commits:"
+        },
+        {
+            "stream": "out",
+            "ms": 163,
+            "text": "a10c26e fix: b"
+        },
+        {
+            "stream": "out",
+            "ms": 163,
+            "text": "3fd48c3 fix: a"
+        },
+        {
+            "stream": "out",
+            "ms": 163,
+            "text": "d608d70 fix: retries on 502 (#45)"
+        },
+        {
+            "stream": "out",
+            "ms": 163,
+            "text": "eda3e8c feat: first feature"
+        },
+        {
+            "stream": "out",
+            "ms": 163,
+            "text": "0d8931f chore: initial commit"
+        },
+        {
+            "stream": "out",
+            "ms": 180,
+            "text": "22:00:00 [INFO] 📋 Version Bump Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 180,
+            "text": "22:00:00 [INFO]   From:    v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 180,
+            "text": "22:00:00 [INFO]   To:      v1.4.4"
+        },
+        {
+            "stream": "out",
+            "ms": 180,
+            "text": "22:00:00 [INFO]   Type:    patch bump"
+        },
+        {
+            "stream": "out",
+            "ms": 194,
+            "text": "✅ ✅ Created tag: v1.4.4"
+        },
+        {
+            "stream": "out",
+            "ms": 212,
+            "text": "a10c26e29209d4706677b1713b605af7adfc6c82\tHEAD"
+        },
+        {
+            "stream": "out",
+            "ms": 224,
+            "text": "22:00:00 [INFO] Pushing tag to remote..."
+        },
+        {
+            "stream": "err",
+            "ms": 267,
+            "text": "To /work/cases/local-only-tag/origin.git"
+        },
+        {
+            "stream": "err",
+            "ms": 267,
+            "text": " * [new tag]         v1.4.4 -> v1.4.4"
+        },
+        {
+            "stream": "out",
+            "ms": 267,
+            "text": "✅ ✅ Tag pushed to remote"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "head": "d608d70",
+        "inProgress": "",
+        "localMaster": "d608d70",
+        "localTags": "v1.4.2 03b90e5 eda3e8c\nv1.4.3 6fdcaf4 d608d70",
+        "remoteMaster": "a10c26e29209d4706677b1713b605af7adfc6c82\trefs/heads/master",
+        "remoteTags": "03b90e582b497bd2bfaeccef5139ade8b0f3d2cb\trefs/tags/v1.4.2\neda3e8cc5784f9d5fe00ce0c59e72c08d6fd4fc9\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "master",
+        "head": "a10c26e",
+        "inProgress": "",
+        "localMaster": "a10c26e",
+        "localTags": "v1.4.2 03b90e5 eda3e8c\nv1.4.3 6fdcaf4 d608d70\nv1.4.4 aad700f a10c26e",
+        "remoteMaster": "a10c26e29209d4706677b1713b605af7adfc6c82\trefs/heads/master",
+        "remoteTags": "03b90e582b497bd2bfaeccef5139ade8b0f3d2cb\trefs/tags/v1.4.2\neda3e8cc5784f9d5fe00ce0c59e72c08d6fd4fc9\trefs/tags/v1.4.2^{}\naad700fa665bccbbaa238b48f4916017a6d0ed8e\trefs/tags/v1.4.4\na10c26e29209d4706677b1713b605af7adfc6c82\trefs/tags/v1.4.4^{}",
+        "status": ""
+    }
+}

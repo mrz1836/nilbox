@@ -1,0 +1,218 @@
+{
+    "name": "post-checkout-hook",
+    "note": "a post-checkout hook that prints and exits 0; on feature-x",
+    "dir": "/work/cases/post-checkout-hook/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n22:00:04 [INFO] Using bump type: patch\n22:00:04 [INFO] Switching to branch 'master'...\nYour branch is up to date with 'origin/master'.\n✅ Switched to branch 'master'\n22:00:04 [INFO] Pulling latest changes...\nAlready up to date.\n✅ Successfully pulled latest changes\n22:00:04 [INFO] Detecting current version...\n22:00:04 [INFO] No tags found on HEAD commit\n22:00:04 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.2\n22:00:04 [INFO] Recent commits:\n40a8cdb fix: retries on 502 (#45)\n1560399 feat: first feature\n4c53f7a chore: initial commit\n22:00:04 [INFO] 📋 Version Bump Summary:\n22:00:04 [INFO]   From:    v1.4.2\n22:00:04 [INFO]   To:      v1.4.3\n22:00:04 [INFO]   Type:    patch bump\n✅ ✅ Created tag: v1.4.3\n40a8cdba5b24ebc5054dc4391b74760f0d95ea34\tHEAD\n22:00:04 [INFO] Pushing tag to remote...\n✅ ✅ Tag pushed to remote\n22:00:04 [INFO] Switching to branch 'feature-x'...\n✅ Switched to branch 'feature-x'\n✅ ✅ Switched back to original branch 'feature-x'\n",
+    "stderr": "Switched to branch 'master'\npost-checkout: ran\nTo /work/cases/post-checkout-hook/origin.git\n * [new tag]         v1.4.3 -> v1.4.3\nSwitched to branch 'feature-x'\npost-checkout: ran\n",
+    "exit": 0,
+    "durationMs": 382,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "22:00:04 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 22,
+            "text": "22:00:04 [INFO] Switching to branch 'master'..."
+        },
+        {
+            "stream": "err",
+            "ms": 29,
+            "text": "Switched to branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 29,
+            "text": "Your branch is up to date with 'origin/master'."
+        },
+        {
+            "stream": "err",
+            "ms": 163,
+            "text": "post-checkout: ran"
+        },
+        {
+            "stream": "out",
+            "ms": 164,
+            "text": "✅ Switched to branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 164,
+            "text": "22:00:04 [INFO] Pulling latest changes..."
+        },
+        {
+            "stream": "out",
+            "ms": 231,
+            "text": "Already up to date."
+        },
+        {
+            "stream": "out",
+            "ms": 232,
+            "text": "✅ Successfully pulled latest changes"
+        },
+        {
+            "stream": "out",
+            "ms": 237,
+            "text": "22:00:04 [INFO] Detecting current version..."
+        },
+        {
+            "stream": "out",
+            "ms": 242,
+            "text": "22:00:04 [INFO] No tags found on HEAD commit"
+        },
+        {
+            "stream": "out",
+            "ms": 263,
+            "text": "22:00:04 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 269,
+            "text": "22:00:04 [INFO] Recent commits:"
+        },
+        {
+            "stream": "out",
+            "ms": 269,
+            "text": "40a8cdb fix: retries on 502 (#45)"
+        },
+        {
+            "stream": "out",
+            "ms": 269,
+            "text": "1560399 feat: first feature"
+        },
+        {
+            "stream": "out",
+            "ms": 269,
+            "text": "4c53f7a chore: initial commit"
+        },
+        {
+            "stream": "out",
+            "ms": 284,
+            "text": "22:00:04 [INFO] 📋 Version Bump Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 284,
+            "text": "22:00:04 [INFO]   From:    v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 284,
+            "text": "22:00:04 [INFO]   To:      v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 284,
+            "text": "22:00:04 [INFO]   Type:    patch bump"
+        },
+        {
+            "stream": "out",
+            "ms": 296,
+            "text": "✅ ✅ Created tag: v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 315,
+            "text": "40a8cdba5b24ebc5054dc4391b74760f0d95ea34\tHEAD"
+        },
+        {
+            "stream": "out",
+            "ms": 327,
+            "text": "22:00:04 [INFO] Pushing tag to remote..."
+        },
+        {
+            "stream": "err",
+            "ms": 369,
+            "text": "To /work/cases/post-checkout-hook/origin.git"
+        },
+        {
+            "stream": "err",
+            "ms": 369,
+            "text": " * [new tag]         v1.4.3 -> v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 370,
+            "text": "✅ ✅ Tag pushed to remote"
+        },
+        {
+            "stream": "out",
+            "ms": 370,
+            "text": "22:00:04 [INFO] Switching to branch 'feature-x'..."
+        },
+        {
+            "stream": "err",
+            "ms": 376,
+            "text": "Switched to branch 'feature-x'"
+        },
+        {
+            "stream": "err",
+            "ms": 381,
+            "text": "post-checkout: ran"
+        },
+        {
+            "stream": "out",
+            "ms": 381,
+            "text": "✅ Switched to branch 'feature-x'"
+        },
+        {
+            "stream": "out",
+            "ms": 381,
+            "text": "✅ ✅ Switched back to original branch 'feature-x'"
+        }
+    ],
+    "before": {
+        "branch": "feature-x",
+        "head": "40a8cdb",
+        "inProgress": "",
+        "localMaster": "40a8cdb",
+        "localTags": "v1.4.2 9763f2d 1560399",
+        "remoteMaster": "40a8cdba5b24ebc5054dc4391b74760f0d95ea34\trefs/heads/master",
+        "remoteTags": "9763f2de72072708a1ff55b8da21c32e63d6e76f\trefs/tags/v1.4.2\n1560399ca2d7fa4b4f5c9eed1697ed4bae1fff53\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "feature-x",
+        "head": "40a8cdb",
+        "inProgress": "",
+        "localMaster": "40a8cdb",
+        "localTags": "v1.4.2 9763f2d 1560399\nv1.4.3 8ade1ed 40a8cdb",
+        "remoteMaster": "40a8cdba5b24ebc5054dc4391b74760f0d95ea34\trefs/heads/master",
+        "remoteTags": "9763f2de72072708a1ff55b8da21c32e63d6e76f\trefs/tags/v1.4.2\n1560399ca2d7fa4b4f5c9eed1697ed4bae1fff53\trefs/tags/v1.4.2^{}\n8ade1edfc18a79a541d3183c843561845425c008\trefs/tags/v1.4.3\n40a8cdba5b24ebc5054dc4391b74760f0d95ea34\trefs/tags/v1.4.3^{}",
+        "status": ""
+    }
+}

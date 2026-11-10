@@ -1,0 +1,225 @@
+{
+    "name": "sigint-after-tag",
+    "note": "SIGINT to the group when a pre-push hook starts (after the tag); on feature-x",
+    "dir": "/work/cases/sigint-after-tag/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n22:00:09 [INFO] Using bump type: patch\n22:00:09 [INFO] Switching to branch 'master'...\nYour branch is up to date with 'origin/master'.\n✅ Switched to branch 'master'\n22:00:09 [INFO] Pulling latest changes...\nAlready up to date.\n✅ Successfully pulled latest changes\n22:00:09 [INFO] Detecting current version...\n22:00:09 [INFO] No tags found on HEAD commit\n22:00:09 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.2\n22:00:09 [INFO] Recent commits:\ne7d54fc fix: retries on 502 (#45)\naf57ad8 feat: first feature\n953fbae chore: initial commit\n22:00:09 [INFO] 📋 Version Bump Summary:\n22:00:09 [INFO]   From:    v1.4.2\n22:00:09 [INFO]   To:      v1.4.3\n22:00:09 [INFO]   Type:    patch bump\n✅ ✅ Created tag: v1.4.3\ne7d54fcce2b5d3423367333c78e15f7bf87ff5ab\tHEAD\n22:00:09 [INFO] Pushing tag to remote...\n22:00:10 [ERROR] ❌ Failed to push tag to remote\n22:00:10 [WARN] 💡 To push manually: git push origin v1.4.3\n22:00:10 [INFO] Switching to branch 'feature-x'...\n22:00:10 [INFO] Local branch not found, trying to checkout from remote...\n22:00:10 [ERROR] ⚠️  Failed to switch back to original branch 'feature-x': failed to checkout branch 'feature-x': local branch not found (command 'git' was canceled after 30s: command failed [git checkout feature-x]: context canceled) and remote checkout failed (command 'git' was canceled after 30s: command failed [git checkout -b feature-x origin/feature-x]: context canceled)\n22:00:10 [INFO] You are currently on branch 'master'\n22:00:10 [INFO] To switch back manually: git checkout feature-x\n",
+    "stderr": "Switched to branch 'master'\n\n⚠  Canceled by user (Ctrl+C) — stopping...\n❌ Error: failed to push tag: command 'git' was canceled after 30s: context canceled (command failed [git push origin v1.4.3]: signal: interrupt)\n",
+    "exit": 130,
+    "sent": "interrupt",
+    "sentMs": 361,
+    "durationMs": 362,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "22:00:09 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 23,
+            "text": "22:00:09 [INFO] Switching to branch 'master'..."
+        },
+        {
+            "stream": "err",
+            "ms": 29,
+            "text": "Switched to branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 30,
+            "text": "Your branch is up to date with 'origin/master'."
+        },
+        {
+            "stream": "out",
+            "ms": 30,
+            "text": "✅ Switched to branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 30,
+            "text": "22:00:09 [INFO] Pulling latest changes..."
+        },
+        {
+            "stream": "out",
+            "ms": 99,
+            "text": "Already up to date."
+        },
+        {
+            "stream": "out",
+            "ms": 99,
+            "text": "✅ Successfully pulled latest changes"
+        },
+        {
+            "stream": "out",
+            "ms": 105,
+            "text": "22:00:09 [INFO] Detecting current version..."
+        },
+        {
+            "stream": "out",
+            "ms": 110,
+            "text": "22:00:09 [INFO] No tags found on HEAD commit"
+        },
+        {
+            "stream": "out",
+            "ms": 132,
+            "text": "22:00:09 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 137,
+            "text": "22:00:09 [INFO] Recent commits:"
+        },
+        {
+            "stream": "out",
+            "ms": 137,
+            "text": "e7d54fc fix: retries on 502 (#45)"
+        },
+        {
+            "stream": "out",
+            "ms": 137,
+            "text": "af57ad8 feat: first feature"
+        },
+        {
+            "stream": "out",
+            "ms": 137,
+            "text": "953fbae chore: initial commit"
+        },
+        {
+            "stream": "out",
+            "ms": 153,
+            "text": "22:00:09 [INFO] 📋 Version Bump Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 153,
+            "text": "22:00:09 [INFO]   From:    v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 153,
+            "text": "22:00:09 [INFO]   To:      v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 153,
+            "text": "22:00:09 [INFO]   Type:    patch bump"
+        },
+        {
+            "stream": "out",
+            "ms": 166,
+            "text": "✅ ✅ Created tag: v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 184,
+            "text": "e7d54fcce2b5d3423367333c78e15f7bf87ff5ab\tHEAD"
+        },
+        {
+            "stream": "out",
+            "ms": 197,
+            "text": "22:00:09 [INFO] Pushing tag to remote..."
+        },
+        {
+            "stream": "err",
+            "ms": 361,
+            "text": ""
+        },
+        {
+            "stream": "err",
+            "ms": 361,
+            "text": "⚠  Canceled by user (Ctrl+C) — stopping..."
+        },
+        {
+            "stream": "out",
+            "ms": 362,
+            "text": "22:00:10 [ERROR] ❌ Failed to push tag to remote"
+        },
+        {
+            "stream": "out",
+            "ms": 362,
+            "text": "22:00:10 [WARN] 💡 To push manually: git push origin v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 362,
+            "text": "22:00:10 [INFO] Switching to branch 'feature-x'..."
+        },
+        {
+            "stream": "out",
+            "ms": 362,
+            "text": "22:00:10 [INFO] Local branch not found, trying to checkout from remote..."
+        },
+        {
+            "stream": "out",
+            "ms": 362,
+            "text": "22:00:10 [ERROR] ⚠️  Failed to switch back to original branch 'feature-x': failed to checkout branch 'feature-x': local branch not found (command 'git' was canceled after 30s: command failed [git checkout feature-x]: context canceled) and remote checkout failed (command 'git' was canceled after 30s: command failed [git checkout -b feature-x origin/feature-x]: context canceled)"
+        },
+        {
+            "stream": "out",
+            "ms": 362,
+            "text": "22:00:10 [INFO] You are currently on branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 362,
+            "text": "22:00:10 [INFO] To switch back manually: git checkout feature-x"
+        },
+        {
+            "stream": "err",
+            "ms": 362,
+            "text": "❌ Error: failed to push tag: command 'git' was canceled after 30s: context canceled (command failed [git push origin v1.4.3]: signal: interrupt)"
+        }
+    ],
+    "before": {
+        "branch": "feature-x",
+        "head": "e7d54fc",
+        "inProgress": "",
+        "localMaster": "e7d54fc",
+        "localTags": "v1.4.2 743871b af57ad8",
+        "remoteMaster": "e7d54fcce2b5d3423367333c78e15f7bf87ff5ab\trefs/heads/master",
+        "remoteTags": "743871b0ad2285f83efc7a06b5c6c8a98729ab64\trefs/tags/v1.4.2\naf57ad8584ce5fc34eded46a90b0df90806038f2\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "master",
+        "head": "e7d54fc",
+        "inProgress": "",
+        "localMaster": "e7d54fc",
+        "localTags": "v1.4.2 743871b af57ad8\nv1.4.3 22ffb26 e7d54fc",
+        "remoteMaster": "e7d54fcce2b5d3423367333c78e15f7bf87ff5ab\trefs/heads/master",
+        "remoteTags": "743871b0ad2285f83efc7a06b5c6c8a98729ab64\trefs/tags/v1.4.2\naf57ad8584ce5fc34eded46a90b0df90806038f2\trefs/tags/v1.4.2^{}",
+        "status": ""
+    }
+}

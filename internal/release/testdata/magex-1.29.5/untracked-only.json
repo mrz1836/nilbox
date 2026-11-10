@@ -1,0 +1,83 @@
+{
+    "name": "untracked-only",
+    "note": "only an untracked file",
+    "dir": "/work/cases/untracked-only/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n21:59:51 [INFO] Using bump type: patch\n21:59:51 [ERROR] ❌ Cannot proceed: Working directory has uncommitted changes\n21:59:51 [INFO] Please commit or stash your changes before bumping version\n",
+    "stderr": "❌ Error: working directory has uncommitted changes\n",
+    "exit": 1,
+    "durationMs": 13,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "21:59:51 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 13,
+            "text": "21:59:51 [ERROR] ❌ Cannot proceed: Working directory has uncommitted changes"
+        },
+        {
+            "stream": "out",
+            "ms": 13,
+            "text": "21:59:51 [INFO] Please commit or stash your changes before bumping version"
+        },
+        {
+            "stream": "err",
+            "ms": 13,
+            "text": "❌ Error: working directory has uncommitted changes"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "head": "4548c5d",
+        "inProgress": "",
+        "localMaster": "4548c5d",
+        "localTags": "v1.4.2 c9467f2 2efee39",
+        "remoteMaster": "4548c5da946feccfb99bfb73dcd1f95da7ff8667\trefs/heads/master",
+        "remoteTags": "c9467f28492b49ad99e3e13fc3cd0872a566fe77\trefs/tags/v1.4.2\n2efee39e639ab4d5048a69d0351461324e5a252a\trefs/tags/v1.4.2^{}",
+        "status": "?? notes.txt"
+    },
+    "after": {
+        "branch": "master",
+        "head": "4548c5d",
+        "inProgress": "",
+        "localMaster": "4548c5d",
+        "localTags": "v1.4.2 c9467f2 2efee39",
+        "remoteMaster": "4548c5da946feccfb99bfb73dcd1f95da7ff8667\trefs/heads/master",
+        "remoteTags": "c9467f28492b49ad99e3e13fc3cd0872a566fe77\trefs/tags/v1.4.2\n2efee39e639ab4d5048a69d0351461324e5a252a\trefs/tags/v1.4.2^{}",
+        "status": "?? notes.txt"
+    }
+}

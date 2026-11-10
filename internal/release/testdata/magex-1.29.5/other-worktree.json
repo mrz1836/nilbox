@@ -1,0 +1,93 @@
+{
+    "name": "other-worktree",
+    "note": "master is checked out in another worktree",
+    "dir": "/work/cases/other-worktree/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n21:59:54 [INFO] Using bump type: patch\n21:59:54 [INFO] Switching to branch 'master'...\n21:59:54 [INFO] Local branch not found, trying to checkout from remote...\n",
+    "stderr": "fatal: 'master' is already used by worktree at '/work/cases/other-worktree/wt-master'\nfatal: a branch named 'master' already exists\n❌ Error: failed to checkout branch 'master': local branch not found (command failed [git checkout master]: exit status 128) and remote checkout failed (command failed [git checkout -b master origin/master]: exit status 128)\n",
+    "exit": 1,
+    "durationMs": 34,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "21:59:54 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 23,
+            "text": "21:59:54 [INFO] Switching to branch 'master'..."
+        },
+        {
+            "stream": "err",
+            "ms": 28,
+            "text": "fatal: 'master' is already used by worktree at '/work/cases/other-worktree/wt-master'"
+        },
+        {
+            "stream": "out",
+            "ms": 29,
+            "text": "21:59:54 [INFO] Local branch not found, trying to checkout from remote..."
+        },
+        {
+            "stream": "err",
+            "ms": 34,
+            "text": "fatal: a branch named 'master' already exists"
+        },
+        {
+            "stream": "err",
+            "ms": 34,
+            "text": "❌ Error: failed to checkout branch 'master': local branch not found (command failed [git checkout master]: exit status 128) and remote checkout failed (command failed [git checkout -b master origin/master]: exit status 128)"
+        }
+    ],
+    "before": {
+        "branch": "feature-x",
+        "head": "6f500fb",
+        "inProgress": "",
+        "localMaster": "6f500fb",
+        "localTags": "v1.4.2 42a6af6 1a2a968",
+        "remoteMaster": "6f500fb1b0e7bef291a4dfca34355016f38c38bd\trefs/heads/master",
+        "remoteTags": "42a6af62d4b7c0aebe730ac6e9c4f930bd08a014\trefs/tags/v1.4.2\n1a2a9689264a12ed9820eb763976e4c72a92161e\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "feature-x",
+        "head": "6f500fb",
+        "inProgress": "",
+        "localMaster": "6f500fb",
+        "localTags": "v1.4.2 42a6af6 1a2a968",
+        "remoteMaster": "6f500fb1b0e7bef291a4dfca34355016f38c38bd\trefs/heads/master",
+        "remoteTags": "42a6af62d4b7c0aebe730ac6e9c4f930bd08a014\trefs/tags/v1.4.2\n1a2a9689264a12ed9820eb763976e4c72a92161e\trefs/tags/v1.4.2^{}",
+        "status": ""
+    }
+}

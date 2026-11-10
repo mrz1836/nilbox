@@ -1,0 +1,108 @@
+{
+    "name": "no-upstream",
+    "note": "on master, master tracks nothing, origin 1 ahead",
+    "dir": "/work/cases/no-upstream/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n21:59:52 [INFO] Using bump type: patch\n21:59:52 [INFO] Already on target branch 'master'\n21:59:52 [INFO] Pulling latest changes...\n",
+    "stderr": "From /work/cases/no-upstream/origin\n   7af82b2..bc1c5b5  master     -> origin/master\nYou asked to pull from the remote 'origin', but did not specify\na branch. Because this is not the default configured remote\nfor your current branch, you must specify a branch on the command line.\n❌ Error: failed to pull latest changes: command failed [git pull --rebase origin]: exit status 1\n",
+    "exit": 1,
+    "durationMs": 88,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "21:59:52 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 17,
+            "text": "21:59:52 [INFO] Already on target branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 17,
+            "text": "21:59:52 [INFO] Pulling latest changes..."
+        },
+        {
+            "stream": "err",
+            "ms": 50,
+            "text": "From /work/cases/no-upstream/origin"
+        },
+        {
+            "stream": "err",
+            "ms": 50,
+            "text": "   7af82b2..bc1c5b5  master     -> origin/master"
+        },
+        {
+            "stream": "err",
+            "ms": 88,
+            "text": "You asked to pull from the remote 'origin', but did not specify"
+        },
+        {
+            "stream": "err",
+            "ms": 88,
+            "text": "a branch. Because this is not the default configured remote"
+        },
+        {
+            "stream": "err",
+            "ms": 88,
+            "text": "for your current branch, you must specify a branch on the command line."
+        },
+        {
+            "stream": "err",
+            "ms": 88,
+            "text": "❌ Error: failed to pull latest changes: command failed [git pull --rebase origin]: exit status 1"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "head": "7af82b2",
+        "inProgress": "",
+        "localMaster": "7af82b2",
+        "localTags": "v1.4.2 8541486 4eb8829",
+        "remoteMaster": "bc1c5b573bb6f075e72bc962e1432a75f993cd87\trefs/heads/master",
+        "remoteTags": "8541486070cce85648d9b0860193842006b373a7\trefs/tags/v1.4.2\n4eb8829442e5a8a01ff20d82cca96a1c86fcf211\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "master",
+        "head": "7af82b2",
+        "inProgress": "",
+        "localMaster": "7af82b2",
+        "localTags": "v1.4.2 8541486 4eb8829",
+        "remoteMaster": "bc1c5b573bb6f075e72bc962e1432a75f993cd87\trefs/heads/master",
+        "remoteTags": "8541486070cce85648d9b0860193842006b373a7\trefs/tags/v1.4.2\n4eb8829442e5a8a01ff20d82cca96a1c86fcf211\trefs/tags/v1.4.2^{}",
+        "status": ""
+    }
+}
