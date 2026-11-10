@@ -19,10 +19,12 @@ import (
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
+	"github.com/mrz1836/nilbox/internal/integrations"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/prefs"
+	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/sessions"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -179,19 +181,74 @@ func (r agentRunner) Run(ctx context.Context, name string, args ...string) (stdo
 // followSwitch passes the settings service's events on, and wakes the sessions watcher
 // when the user turns following on or off, which the settings service says with an
 // event.SessionsUpdated, so the watcher starts or stops following at once instead of at
-// its next look at the switch. The watcher is set once, before any setting can change.
+// its next look at the switch. An event.IntegrationsChanged stays in Go: a chosen copy of a
+// tool wakes the tool finder, which tells the window once it has looked, and a flipped
+// switch, which changes no detection, tells the window at once. The watcher and the finder
+// are set once, before any setting can change.
 type followSwitch struct {
 	sink    event.Sink
 	watcher *sessions.Watcher
+	tools   waker
 }
 
-// Emit passes e on, waking the watcher first for an event.SessionsUpdated.
+// waker is woken to look again: *integrations.Worker.
+type waker interface {
+	Wake()
+}
+
+// Emit passes e on, waking the watcher first for an event.SessionsUpdated, and turns an
+// event.IntegrationsChanged into a wake of the tool finder or an event.ToolsUpdated.
 func (f *followSwitch) Emit(e event.Event) {
-	if _, ok := e.(event.SessionsUpdated); ok && f.watcher != nil {
-		f.watcher.Wake()
+	switch e := e.(type) {
+	case event.SessionsUpdated:
+		if f.watcher != nil {
+			f.watcher.Wake()
+		}
+	case event.IntegrationsChanged:
+		if e.CopyChosen && f.tools != nil {
+			f.tools.Wake()
+
+			return
+		}
+
+		f.sink.Emit(event.ToolsUpdated{})
+
+		return
 	}
 
 	f.sink.Emit(e)
+}
+
+// latestReleases hands the integrations the tools' latest releases from GitHub. It
+// implements integrations.Releases.
+type latestReleases struct {
+	tokens github.Tokens
+	client *github.Client
+}
+
+// LatestReleases asks GitHub for each repository's latest release. A token GitHub
+// refuses is borrowed again once; with no token at all, as when signed out, nothing is
+// asked.
+func (r latestReleases) LatestReleases(ctx context.Context, repos []repo.Name) (map[string]integrations.Release, error) {
+	got, err := github.WithToken(ctx, r.tokens, func(tok github.Token) (map[string]github.LatestRelease, error) {
+		return r.client.FetchLatestReleases(ctx, tok, repos)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	out := make(map[string]integrations.Release, len(got))
+
+	for key, release := range got {
+		assets := make([]integrations.Asset, 0, len(release.Assets))
+		for _, a := range release.Assets {
+			assets = append(assets, integrations.Asset{Name: a.Name, URL: a.URL, Size: a.Size, Digest: a.Digest})
+		}
+
+		out[key] = integrations.Release{Tag: release.Tag, URL: release.URL, PublishedAt: release.PublishedAt, Assets: assets}
+	}
+
+	return out, nil
 }
 
 // sessionLedger hands the launcher the sessions ledger, which records each session a

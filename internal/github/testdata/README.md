@@ -15,6 +15,7 @@ is a placeholder. No test calls GitHub: each one serves a file from a local `htt
 | `item_response.json` | The item query, `itemQuery` in `item.go`, for one merged pull request opened from a fork | `TestFetchItemReadsTheItemAndItsDetails` in `item_test.go` |
 | `pull_review_response.json` | The pull review query, `pullReviewQuery` in `pullreview.go`, for one open Dependabot pull request; a pending and a failing check, a commit status, reviews, a pending review, and auto-merge were added by hand | `TestFetchPullReviewReadsTheSheet` in `pullreview_test.go` |
 | `rate_limit_response.json` | The REST endpoint `GET /rate_limit` | `TestFetchRateLimits` in `ratelimit_test.go` |
+| `latest_releases_response.json` | The latest-release query, `latestReleasesQuery` in `releases.go`, for the two public tool repositories the integrations install from (`t0`, `t1`), which keep their real names since the integrations' definitions name them; a repository with no release (`t2`) and one GitHub could not find (`t3`) were added by hand | `TestFetchLatestReleases*` in `releases_test.go` |
 
 The files also hold cases the tests rely on that a fresh recording may not reproduce, such as a
 null node, a bot author, a pull request from a fork, and labels with an empty name or a color

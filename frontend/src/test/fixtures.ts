@@ -26,6 +26,9 @@ import type {
   InboxList,
   InboxSnapshot,
   Info,
+  IntegrationsConfig,
+  IntegrationTool,
+  IntegrationTools,
   ItemDetails,
   ItemResolution,
   LaunchDefaults,
@@ -48,6 +51,7 @@ import type {
   SessionsSnapshot,
   Settings,
   SweepReport,
+  ToolCopy,
   Worktree,
   WorktreeBranch,
   WorktreeCleanup,
@@ -311,8 +315,98 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     projectsTipDismissed: false,
     inboxOrder: { statusSorted: [], statusOrder: [] },
     mergeMethod: 'repo',
+    integrations: integrationsConfig(),
     ...overrides,
   }
+}
+
+// integrationsConfig is how a fresh database sets the integrations up: every switch
+// automatic, and no copy of a tool chosen.
+export function integrationsConfig(overrides: Partial<IntegrationsConfig> = {}): IntegrationsConfig {
+  return {
+    switches: { 'mage-x': 'auto', 'go-pre-commit': 'auto', scripts: 'auto' },
+    paths: { 'mage-x': '', 'go-pre-commit': '' },
+    ...overrides,
+  }
+}
+
+// toolCopy is a copy of magex from a GitHub release, in ~/.local/bin, that runs and is on
+// the shell's PATH.
+export function toolCopy(overrides: Partial<ToolCopy> = {}): ToolCopy {
+  return {
+    path: '/Users/example/.local/bin/magex',
+    displayPath: '~/.local/bin/magex',
+    link: false,
+    target: '',
+    runs: true,
+    version: { raw: '1.29.5', commit: '', built: '' },
+    error: '',
+    source: 'release',
+    onPath: true,
+    shadowing: false,
+    ...overrides,
+  }
+}
+
+// integrationTool is mage-x, switched automatically, found, and as new as its latest
+// release.
+export function integrationTool(overrides: Partial<IntegrationTool> = {}): IntegrationTool {
+  return {
+    id: 'mage-x',
+    name: 'mage-x',
+    binary: 'magex',
+    purpose: 'Release new versions of your repositories in two clicks.',
+    repo: 'acme-org/mage-x',
+    releasesUrl: 'https://github.com/acme-org/mage-x/releases',
+    minVersion: '1.29.5',
+    switch: 'auto',
+    on: true,
+    state: 'found',
+    checking: false,
+    copy: toolCopy(),
+    others: [],
+    chosen: '',
+    chosenMissing: false,
+    latest: {
+      version: '1.29.5',
+      url: 'https://github.com/acme-org/mage-x/releases/tag/v1.29.5',
+      checkedAt: '2026-06-15T09:00:00Z',
+    },
+    checkedAt: '2026-06-15T11:50:00Z',
+    ...overrides,
+  }
+}
+
+// goPreCommitTool is go-pre-commit, switched automatically, found from Homebrew, and as
+// new as its latest release.
+export function goPreCommitTool(overrides: Partial<IntegrationTool> = {}): IntegrationTool {
+  return integrationTool({
+    id: 'go-pre-commit',
+    name: 'go-pre-commit',
+    binary: 'go-pre-commit',
+    purpose: 'Install, update, and run Git pre-commit hooks in your Go repositories.',
+    repo: 'acme-org/go-pre-commit',
+    releasesUrl: 'https://github.com/acme-org/go-pre-commit/releases',
+    minVersion: '1.12.0',
+    copy: toolCopy({
+      path: '/opt/homebrew/bin/go-pre-commit',
+      displayPath: '/opt/homebrew/bin/go-pre-commit',
+      version: { raw: '1.12.3', commit: '', built: '' },
+      source: 'homebrew',
+    }),
+    latest: {
+      version: '1.12.3',
+      url: 'https://github.com/acme-org/go-pre-commit/releases/tag/v1.12.3',
+      checkedAt: '2026-06-15T09:00:00Z',
+    },
+    ...overrides,
+  })
+}
+
+// integrationTools is what the integrations service lists once the login shell was read:
+// mage-x and go-pre-commit, both found.
+export function integrationTools(overrides: Partial<IntegrationTools> = {}): IntegrationTools {
+  return { tools: [integrationTool(), goPreCommitTool()], shellChecked: true, shellRead: true, ...overrides }
 }
 
 // sensitiveCategories are three built-in categories of sensitive files, with a few of

@@ -18,6 +18,7 @@ declare module "@wailsio/runtime" {
             "notifications:updated": event$0.NotificationsUpdated;
             "review:progress": event$0.ReviewProgress;
             "sessions:updated": event$0.SessionsUpdated;
+            "tools:updated": event$0.ToolsUpdated;
             "worktrees:updated": event$0.WorktreesUpdated;
         }
     }

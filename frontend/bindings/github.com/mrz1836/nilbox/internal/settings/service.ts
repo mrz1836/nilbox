@@ -24,6 +24,9 @@ import * as agent$0 from "../agent/models.js";
 import * as branchrules$0 from "../branchrules/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as integrationprefs$0 from "../integrationprefs/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as terminal$0 from "../launcher/terminal/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -163,6 +166,25 @@ export function SetDefaultProfile(id: agent$0.ID, name: string): $CancellablePro
  */
 export function SetFollowSessions(on: boolean): $CancellablePromise<$models.Settings> {
     return $Call.ByID(3396426745, on);
+}
+
+/**
+ * SetIntegrationEnabled stores how the user set an integration's switch, automatic, on,
+ * or off, and returns the settings with it. Once it is stored, an
+ * event.IntegrationsChanged is emitted, so the window hears that the tools' list changed.
+ */
+export function SetIntegrationEnabled(id: integrationprefs$0.ID, state: integrationprefs$0.Switch): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(662887674, id, state);
+}
+
+/**
+ * SetIntegrationPath stores the copy of a tool the user chose, and returns the settings
+ * with it: an absolute or ~-relative path to an executable file, stored cleaned and
+ * absolute, or "" to use the copy the user's shell finds. Once it is stored, an
+ * event.IntegrationsChanged is emitted, so the integrations detect the tools again.
+ */
+export function SetIntegrationPath(id: integrationprefs$0.ID, path: string): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(429270666, id, path);
 }
 
 /**

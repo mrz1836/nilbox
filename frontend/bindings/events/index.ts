@@ -39,6 +39,11 @@ export const ReviewProgress = "review:progress";
 export const SessionsUpdated = "sessions:updated";
 
 /**
+ * Name of the custom event "tools:updated".
+ */
+export const ToolsUpdated = "tools:updated";
+
+/**
  * Name of the custom event "worktrees:updated".
  */
 export const WorktreesUpdated = "worktrees:updated";

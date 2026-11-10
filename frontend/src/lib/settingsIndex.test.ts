@@ -25,6 +25,8 @@ describe('matchSettings', () => {
     ['clone root', 'repositories', 'Clone root'],
     ['dependabot', 'trust', 'Trusted bots and apps'],
     ['gitignore', 'files', 'Your patterns'],
+    ['magex', 'integrations', 'mage-x'],
+    ['git hooks', 'integrations', 'go-pre-commit'],
     ['gh auth', 'account', 'GitHub account'],
     ['bug', 'about', 'Version'],
   ] as const)('finds %j by a keyword', (query, section, label) => {
@@ -90,6 +92,19 @@ describe('matchSettings', () => {
 
   it('finds the product by name in About', () => {
     expect(matchSettings(brand.name)?.isMatch('about', 'Version')).toBe(true)
+  })
+
+  it('finds every tool the app runs by the section’s name, after Sensitive files and before About', () => {
+    const match = matchSettings('integrations')
+
+    expect(found('integrations')).toEqual([['integrations', 2]])
+    expect(match?.isMatch('integrations', 'mage-x')).toBe(true)
+    expect(match?.isMatch('integrations', 'go-pre-commit')).toBe(true)
+    expect(sectionOrder.indexOf('integrations')).toBe(sectionOrder.indexOf('files') + 1)
+    expect(sectionOrder.indexOf('about')).toBe(sectionOrder.indexOf('integrations') + 1)
+    expect(sectionInfo.integrations.description).toBe(
+      `Tools ${brand.name} runs for you: mage-x releases, go-pre-commit hooks, and scripts.`,
+    )
   })
 
   it('finds a template’s rows by the agent each names', () => {

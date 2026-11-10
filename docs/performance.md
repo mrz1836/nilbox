@@ -98,6 +98,14 @@ environment launchd gives a GUI app, the interactive login shell (`zsh -i -l`) t
 cold and 57–58 ms warm, and a login shell without `-i` took 20 ms but missed the folders the
 shell's `.zshrc` adds to `PATH`. The read runs off the main thread and nothing waits for it.
 
+**Tool detection** (`internal/integrations`) is deferred work too: once the shell's
+environment is read, a second deferred worker looks for magex and go-pre-commit on the shell's
+`PATH` and in the well-known tool folders, and runs `--version` on every copy it finds, four at a
+time. Measured on the M1 Max with both tools and one other copy of magex installed
+(`TestIntegrationDetectsTheInstalledTools`, `-tags integration`): 143 ms for the first
+detection after the shell read, and 8 ms for each one after. Settings → Integrations never waits
+for it: until it ends, the section shows what the last run found, marked as checking.
+
 ### Inbox refresh
 
 **What is measured.** One refresh as the app runs it: the token, which the first refresh

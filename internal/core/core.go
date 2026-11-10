@@ -26,12 +26,14 @@ import (
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
+	"github.com/mrz1836/nilbox/internal/integrations"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/paths"
+	prefsstore "github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/procs"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
@@ -120,6 +122,7 @@ type Core struct {
 	Budget         *budget.Service
 	Sessions       *sessions.Service
 	Review         *review.Service
+	Integrations   *integrations.Service
 
 	// ShellSettings are the settings the desktop shell reads when the app launches. They
 	// are not bound.
@@ -156,6 +159,11 @@ type Core struct {
 	// Deferred is the work kept off the cold start, which the desktop shell runs once
 	// after the window's first paint (desktop.Config.Deferred). It is not bound.
 	Deferred *Deferred
+
+	// ToolFinder looks for the tools the integrations drive once the shell's environment is
+	// read, again when woken, and checks for their updates once a day. The desktop shell
+	// runs it as deferred work too. It is not bound.
+	ToolFinder *integrations.Worker
 
 	// tokens holds the GitHub token the inbox and the worktree service borrow, until
 	// Close forgets it.
@@ -230,7 +238,7 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 func (c *Core) Services() []any {
 	return []any{
 		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.Notifications,
-		c.AppInfo, c.Budget, c.Sessions, c.Review,
+		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Integrations,
 	}
 }
 
@@ -339,10 +347,12 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 
 	versionRunner := runner
 	agentRunners := func([]string) execpath.Runner { return opts.Runner }
+	toolRunners := func([]string) execpath.Runner { return opts.Runner }
 
 	if runner == nil {
 		runner, gitRunner, versionRunner = execpath.Exec{Search: search}, worktreeRunner(search), agentRunner{search: search}
 		agentRunners = func(env []string) execpath.Runner { return agentRunner{search: search, env: env} }
+		toolRunners = nil // the integrations run each tool by its path, with the shell's environment
 	}
 
 	profileStore := profiles.NewStore(pool, opts.Clock)
@@ -383,6 +393,13 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	registry := terminal.DefaultRegistry(runner)
 	follow := followSessions(pool, prefs, opts, logger, runner, registry, agentRunners)
 	followed.watcher = follow.watcher
+
+	tools := integrations.NewService(integrations.Config{
+		Prefs: prefsstore.New(pool, opts.Clock), Env: shellEnv, Releases: latestReleases{tokens: tokens, client: client},
+		Home: opts.Home, Clock: opts.Clock, Events: opts.Events, Logger: logger, Runner: toolRunners,
+	})
+	toolFinder := integrations.NewWorker(tools)
+	followed.tools = toolFinder
 
 	// clones is the app's one set of clone locks: every job that changes a clone takes
 	// its clone's, so a worktree is never made or removed while a run is using it.
@@ -475,6 +492,8 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Timing:        recorder,
 		ShellEnv:      shellEnv,
 		Deferred:      &Deferred{steps: []func(context.Context){func(ctx context.Context) { _ = shellEnv.Read(ctx) }}},
+		Integrations:  tools,
+		ToolFinder:    toolFinder,
 		tokens:        tokens,
 		BudgetSaver:   budget.NewSaver(tracker, keeper, logger),
 		client:        client,
