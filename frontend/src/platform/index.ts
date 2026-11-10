@@ -25,6 +25,7 @@ import * as profiles from '../../bindings/github.com/mrz1836/nilbox/internal/pro
 import type * as bump from '../../bindings/github.com/mrz1836/nilbox/internal/bump'
 import * as prompts from '../../bindings/github.com/mrz1836/nilbox/internal/prompts'
 import * as review from '../../bindings/github.com/mrz1836/nilbox/internal/review'
+import * as scriptrun from '../../bindings/github.com/mrz1836/nilbox/internal/scriptrun'
 import type * as sensitive from '../../bindings/github.com/mrz1836/nilbox/internal/sensitive'
 import * as sessions from '../../bindings/github.com/mrz1836/nilbox/internal/sessions'
 import * as settings from '../../bindings/github.com/mrz1836/nilbox/internal/settings'
@@ -116,6 +117,13 @@ export type ToolState = integrations.State
 export type InstallPlan = NonNullLists<integrations.InstallPlan>
 export type InstallProgress = NonNullLists<integrations.InstallProgress>
 export type InstallResult = NonNullLists<integrations.InstallResult>
+export type RunsIn = integrationprefs.RunsIn
+export type ScriptRun = NonNullLists<scriptrun.Run>
+export type ScriptRunKind = scriptrun.Kind
+export type ScriptRunStatus = scriptrun.Status
+export type ScriptRunResult = NonNullLists<scriptrun.Result>
+export type ScriptRunFilter = NonNullLists<scriptrun.Filter>
+export type ScriptRunChunk = NonNullLists<scriptrun.Chunk>
 
 export type ItemKind = item.Kind
 
@@ -342,6 +350,7 @@ export const {
   SetMergeMethod: setMergeMethod,
   SetIntegrationEnabled: setIntegrationEnabled,
   SetIntegrationPath: setIntegrationPath,
+  SetRunsIn: setRunsIn,
 } = narrow(settings.Service)
 
 // The tools the app finds, installs, and runs for the user. List never waits for a
@@ -357,6 +366,24 @@ export const {
   Trash: trashToolCopy,
   Reveal: revealToolCopy,
 } = narrow(integrations.Service)
+
+// The runs: releases, hooks actions, checks, and scripts, in the app or in the user's
+// terminal, newest first. A "scriptruns:updated" event follows each start, end, or change
+// of status, never output: the window reads a live run's output by polling Output from
+// where it left off. Stop works only on a run going in the app; Run again never on a
+// release. QuitAnyway answers the "app:quitRequested" question: stop the runs and quit.
+export const {
+  Runs: listScriptRuns,
+  Run: getScriptRun,
+  Output: scriptRunOutput,
+  Stop: stopScriptRun,
+  RunAgain: runScriptAgain,
+  OpenInTerminal: openScriptRunInTerminal,
+  ShowLog: showScriptRunLog,
+  MarkSeen: markScriptRunSeen,
+  ClearHistory: clearScriptRunHistory,
+  QuitAnyway: quitAnyway,
+} = narrow(scriptrun.Service)
 
 export const {
   List: listWorktrees,
