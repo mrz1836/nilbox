@@ -291,6 +291,7 @@ requests that merged, never touching `main`, `master`, or any branch you protect
 - **Worktrees Nilbox keeps track of** — one per item, shared by every agent, resumed on the next launch, and removed only when nothing would be lost
 - **Menu bar and notifications** — a live count in the menu bar and native banners for what's new
 - **API budget gauge** — an always-visible, live dial for the GitHub budget closest to running out, counting every request the app makes
+- **Release in two clicks** — Scripts → Release lists every clone with unreleased changes; the sheet checks the clone, origin, and GitHub, names the exact version, and has magex tag and push it, in Nilbox or your terminal, then confirms GitHub has the tag. A merge in the review sheet offers it too
 - **Your release tools, found and kept current** — mage-x and go-pre-commit found the way your terminal finds them, checked for updates once a day, and installed or updated from their GitHub release after a checksum check, never with `go install` or `sudo`
 - **Inbox nil** — empty every list and the inbox throws you a party
 
@@ -534,14 +535,48 @@ More in [The Worktrees view](docs/desktop.md#the-worktrees-view).
 </details>
 
 <details>
+<summary><strong><code>Scripts and Release</code></strong></summary>
+<br/>
+
+- The **Scripts** tab appears while mage-x or go-pre-commit is on (Settings → Integrations finds
+  them, or installs them from their GitHub releases). Its badge counts the runs going, with a red
+  dot after a run fails and an amber one while a tool that's on can't be used.
+- **Release** lists every clone under your clone root whose `origin` is on GitHub, grouped into
+  unreleased changes (newest commit first), up to date, no releases yet, and can't release here.
+  Each row shows the newest version, the commits since it, the checks on the newest commit, and
+  what matters about your clone, such as being on another branch or having uncommitted files.
+- **The release sheet** checks the clone, origin, and GitHub before you click: uncommitted
+  changes, where your clone is, commits not on GitHub, a version only on your Mac, reaching
+  origin, the checks, signing, and more, each with its fix. It lists the commits since the last
+  version, offers Patch (always preselected), Minor, or Major, and says exactly what magex will
+  do. The button names the version, and everything is checked again under the clone's lock
+  before magex runs.
+- **Major** needs a magex that can be told which version to make (1.30.0 or later), the exact
+  version typed to confirm, and, for a Go module whose `go.mod` doesn't name the new major, a box
+  ticked on purpose.
+- **Runs in Nilbox or your terminal.** In Nilbox, the sheet follows magex's steps with the live
+  log; in iTerm2 or Terminal.app, a signing passphrase can be typed, and Nilbox still follows
+  the run. Either way, the result is what GitHub and your clone say once magex ends: the tag on
+  GitHub, the branch your clone is back on, or, if the push didn't land, the commands to finish
+  or undo it.
+- **After a merge,** the review sheet's toast offers **Release acme-org/sdk…**, behind a setting
+  that's on by default. Nilbox never releases by itself.
+- **Runs** lists every release, hooks action, check, and script, with each run's status, result,
+  and full log.
+
+More in [The Scripts tab](docs/desktop.md#the-scripts-tab) and [Release](docs/desktop.md#release).
+
+</details>
+
+<details>
 <summary><strong><code>Menu bar and notifications</code></strong></summary>
 <br/>
 
 - A **menu bar icon** shows how many items need you. Its menu lists up to five items per list,
   refreshes the inbox, and opens any item in the window. While the icon is shown, closing the
   window keeps Nilbox running in the menu bar.
-- **Native banners** announce new review requests, new assignments, and snoozes that end early,
-  each kind with its own switch. More than three at once are summed up in one banner.
+- **Native banners** announce new review requests, new assignments, snoozes that end early, and
+  releases you started that reach GitHub, each kind with its own switch. More than three at once are summed up in one banner.
 - A **notification history** behind the toolbar's bell keeps the newest 200.
 
 More in [Menu bar and notifications](docs/desktop.md#menu-bar-and-notifications).
