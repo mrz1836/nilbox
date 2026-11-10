@@ -111,9 +111,20 @@ func boundaries() []boundary {
 				"each kind's Rerunner; the kinds call it, never the reverse",
 		},
 		{
+			pkg:       "internal/release",
+			forbidden: append(slices.Clone(services), "internal/launcher", "internal/desktop"),
+			why: "release reads GitHub through its own GitHub interface, which core adapts, and the clones through " +
+				"gitread; it starts runs through scriptrun, never the reverse",
+		},
+		{
 			pkg:       "internal/shellenv",
 			forbidden: noService,
 			why:       "shellenv reads the login shell's environment for whatever runs tools; it knows no service",
+		},
+		{
+			pkg:       "internal/gitread",
+			forbidden: noService,
+			why:       "gitread runs the read-only git commands the release and hooks services ask of a clone; it knows no service",
 		},
 		{
 			pkg: "internal/review",
