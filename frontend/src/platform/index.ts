@@ -13,6 +13,8 @@ import * as appinfo from '../../bindings/github.com/mrz1836/nilbox/internal/appi
 import * as branchrules from '../../bindings/github.com/mrz1836/nilbox/internal/branchrules'
 import * as budget from '../../bindings/github.com/mrz1836/nilbox/internal/budget'
 import * as inbox from '../../bindings/github.com/mrz1836/nilbox/internal/inbox'
+import type * as integrationprefs from '../../bindings/github.com/mrz1836/nilbox/internal/integrationprefs'
+import * as integrations from '../../bindings/github.com/mrz1836/nilbox/internal/integrations'
 import type * as item from '../../bindings/github.com/mrz1836/nilbox/internal/item'
 import * as launchdefaults from '../../bindings/github.com/mrz1836/nilbox/internal/launchdefaults'
 import * as launcher from '../../bindings/github.com/mrz1836/nilbox/internal/launcher'
@@ -102,6 +104,15 @@ export type RateGauge = NonNullLists<inbox.RateGauge>
 export type Reviews = NonNullLists<inbox.Reviews>
 export type ReviewRequest = inbox.ReviewRequest
 export type InboxSnapshot = NonNullLists<inbox.Snapshot>
+
+export type IntegrationID = integrationprefs.ID
+export type IntegrationSwitch = integrationprefs.Switch
+export type IntegrationsConfig = NonNullLists<integrationprefs.Config>
+export type IntegrationTools = NonNullLists<integrations.Tools>
+export type IntegrationTool = NonNullLists<integrations.Tool>
+export type ToolCopy = NonNullLists<integrations.Copy>
+export type ToolSource = integrations.Source
+export type ToolState = integrations.State
 
 export type ItemKind = item.Kind
 
@@ -326,7 +337,13 @@ export const {
   SetStatusOrder: setStatusOrder,
   SetBranchRules: setBranchRules,
   SetMergeMethod: setMergeMethod,
+  SetIntegrationEnabled: setIntegrationEnabled,
+  SetIntegrationPath: setIntegrationPath,
 } = narrow(settings.Service)
+
+// The tools the app finds and runs for the user. List never waits for a detection, and a
+// "tools:updated" event follows each one that ends, so the window reads the list again.
+export const { List: listIntegrations, CheckAgain: checkIntegrationsAgain } = narrow(integrations.Service)
 
 export const {
   List: listWorktrees,

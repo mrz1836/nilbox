@@ -19,6 +19,7 @@ import { ChevronLeftIcon } from './icons'
 import { AboutSection } from './settings/AboutSection'
 import { AccountSection } from './settings/AccountSection'
 import { AppearanceSection } from './settings/AppearanceSection'
+import { IntegrationsSection } from './settings/IntegrationsSection'
 import { LaunchingSection } from './settings/LaunchingSection'
 import { SettingMatch } from './settings/match'
 import { NotificationsSection } from './settings/NotificationsSection'
@@ -244,6 +245,7 @@ export function SettingsView({
                 (settings === null ? loading : <TrustSection settings={settings} onSaved={onSaved} />)}
               {section === 'files' &&
                 (settings === null ? loading : <SensitiveFilesSection settings={settings} onSaved={onSaved} />)}
+              {section === 'integrations' && <IntegrationsSection onSaved={onSaved} />}
               {section === 'about' && <AboutSection />}
             </div>
           </div>

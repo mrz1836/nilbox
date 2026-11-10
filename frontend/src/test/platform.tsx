@@ -24,6 +24,8 @@ import {
   defaultPrompts,
   fileCheck,
   importEntry,
+  integrationsConfig,
+  integrationTools,
   itemResolution,
   launchDefaults,
   launchPreview,
@@ -187,6 +189,13 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     setWindowSize: (windowSize) => stored({ windowSize }),
     setBranchRules: (branches) => stored({ branches: { ...branches, protected: branches.protected ?? [] } }),
     setMergeMethod: (mergeMethod) => stored({ mergeMethod }),
+    setIntegrationEnabled: (id, state) =>
+      stored({ integrations: integrationsConfig({ switches: { ...integrationsConfig().switches, [id]: state } }) }),
+    setIntegrationPath: (id, path) =>
+      stored({ integrations: integrationsConfig({ paths: { ...integrationsConfig().paths, [id]: path } }) }),
+
+    listIntegrations: () => Promise.resolve(integrationTools()),
+    checkIntegrationsAgain: () => Promise.resolve(integrationTools()),
 
     listWorktrees: () => Promise.resolve(worktreesSnapshot()),
     removeWorktree: () => Promise.resolve(removeResult()),

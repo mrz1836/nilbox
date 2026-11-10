@@ -24,6 +24,7 @@ export type SettingsSection =
   | 'repositories'
   | 'trust'
   | 'files'
+  | 'integrations'
   | 'about'
 
 // sectionOrder is the sidebar's order.
@@ -39,6 +40,7 @@ export const sectionOrder: readonly SettingsSection[] = [
   'repositories',
   'trust',
   'files',
+  'integrations',
   'about',
 ]
 
@@ -86,6 +88,10 @@ export const sectionInfo: Readonly<Record<SettingsSection, { label: string; desc
     label: 'Sensitive files',
     description:
       'The changed files to point out on pull requests from outside the repository, before you review them or open a session on them.',
+  },
+  integrations: {
+    label: 'Integrations',
+    description: `Tools ${brand.name} runs for you: mage-x releases, go-pre-commit hooks, and scripts.`,
   },
   about: { label: 'About', description: '' },
 }
@@ -229,6 +235,17 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     { label: 'Your patterns', keywords: ['custom patterns', 'gitignore', 'glob', 'infrastructure', 'deploy'] },
     { label: 'Try a path', keywords: ['test a path', 'check a path'] },
     { label: 'How it works', keywords: ['sensitive check', 'changed files', 'paths'] },
+  ],
+  // Each tool's card, by the tool's name, with what it does and what its card shows.
+  integrations: [
+    {
+      label: 'mage-x',
+      keywords: ['magex', 'mage', 'release', 'tools', 'version', 'update', 'install', 'path', 'copy', 'shell'],
+    },
+    {
+      label: 'go-pre-commit',
+      keywords: ['pre-commit', 'git hooks', 'checks', 'tools', 'version', 'update', 'install', 'path', 'copy', 'shell'],
+    },
   ],
   about: [
     {

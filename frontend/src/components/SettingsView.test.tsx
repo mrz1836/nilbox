@@ -1208,6 +1208,36 @@ describe('SettingsView escape and trust', () => {
     expect(screen.getByRole('radiogroup', { name: 'Merge method' })).toBeInTheDocument()
   })
 
+  it('has an Integrations section between Sensitive files and About, for the tools it runs', async () => {
+    renderSettings()
+
+    const nav = within(screen.getByRole('navigation', { name: 'Settings sections' }))
+    const names = nav.getAllByRole('button').map((b) => b.textContent)
+    expect(names.indexOf('Integrations')).toBe(names.indexOf('Sensitive files') + 1)
+    expect(names.indexOf('About')).toBe(names.indexOf('Integrations') + 1)
+
+    await openSection('Integrations')
+
+    const region = screen.getByRole('region', { name: 'Integrations' })
+    expect(
+      within(region).getByText(`Tools ${brand.name} runs for you: mage-x releases, go-pre-commit hooks, and scripts.`),
+    ).toBeInTheDocument()
+    expect(await within(region).findByRole('switch', { name: 'mage-x' })).toBeChecked()
+    expect(within(region).getByRole('switch', { name: 'go-pre-commit' })).toBeChecked()
+  })
+
+  it('hands on the settings a tool’s switch stored', async () => {
+    const { onSaved } = renderSettings({ section: 'integrations' })
+
+    await userEvent.click(await screen.findByRole('switch', { name: 'mage-x' }))
+
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledOnce()
+    })
+    expect(platform.setIntegrationEnabled).toHaveBeenCalledExactlyOnceWith('mage-x', 'off')
+    expect(onSaved.mock.lastCall?.[0]).toMatchObject({ integrations: { switches: { 'mage-x': 'off' } } })
+  })
+
   it('opens at the Sensitive files section when asked', () => {
     renderSettings({ section: 'files' })
 
@@ -1466,7 +1496,7 @@ describe('SettingsView search', () => {
 
     rerender(<SettingsView {...searchProps('')} />)
 
-    expect(sidebar()).toHaveLength(12)
+    expect(sidebar()).toHaveLength(13)
     expect(sidebar()).toContain('Account')
     expect(screen.getByRole('region', { name: 'Notifications' })).toBeInTheDocument()
     expect(matched()).toEqual([])
