@@ -4,12 +4,13 @@
 // Any package may read any key, but every key has exactly one writer:
 //
 //   - settings writes the user's settings, among them the rules that the trust, snooze,
-//     sensitive, notifyprefs, and branchrules packages declare and decode (trust.*,
-//     snooze.*, files.*, notify.*, and branches.*).
+//     sensitive, notifyprefs, branchrules, and integrationprefs packages declare and
+//     decode (trust.*, snooze.*, files.*, notify.*, branches.*, and integrations.*).
 //   - inbox writes inbox.*: the account and status of the last refresh, and the cached
 //     avatar.
 //   - prompts writes prompts.*: the default prompts and the starters already added.
 //   - budget writes budget.*: the API budget's state between runs, through core's keeper.
+//   - integrations writes tools.*: each tool's last detection and latest release.
 //
 // A Store from New runs each call on the pool. One joined to a transaction with WithTx
 // runs every call inside it, so prefs are written together with another owner's tables

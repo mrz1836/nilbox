@@ -18,6 +18,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/event"
+	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/prefs"
@@ -100,6 +101,13 @@ func TestPrefDefaults(t *testing.T) {
 		CollapsedSections:   []ListKey{},
 		InboxOrder:          InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}},
 		MergeMethod:         DefaultMergeMethod,
+		Integrations: integrationprefs.Config{
+			Switches: map[integrationprefs.ID]integrationprefs.Switch{
+				integrationprefs.MageX: integrationprefs.SwitchAuto, integrationprefs.GoPreCommit: integrationprefs.SwitchAuto,
+				integrationprefs.Scripts: integrationprefs.SwitchAuto,
+			},
+			Paths: map[integrationprefs.ID]string{integrationprefs.MageX: "", integrationprefs.GoPreCommit: ""},
+		},
 
 		DefaultProtectedBranches: []string{"main", "master"},
 	}, got)
@@ -222,6 +230,12 @@ func TestSettersPersist(t *testing.T) {
 	require.NoError(t, testutil.ErrOf(svc.SetBranchRules(t.Context(), branchrules.Rules{Own: true, Protected: []string{"develop"}})))
 	require.NoError(t, testutil.ErrOf(svc.SetTextSize(t.Context(), TextSizeLarger)))
 
+	magex := filepath.Join(home, "bin", "magex")
+	testutil.WriteFile(t, magex, "")
+	require.NoError(t, os.Chmod(magex, 0o700)) //nolint:gosec // a fake tool must be executable
+	require.NoError(t, testutil.ErrOf(svc.SetIntegrationEnabled(t.Context(), integrationprefs.GoPreCommit, integrationprefs.SwitchOff)))
+	require.NoError(t, testutil.ErrOf(svc.SetIntegrationPath(t.Context(), integrationprefs.MageX, "~/bin/magex")))
+
 	got, err := svc.Get(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, Settings{
@@ -248,6 +262,13 @@ func TestSettersPersist(t *testing.T) {
 		InboxOrder:          InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}},
 		MergeMethod:         DefaultMergeMethod,
 		Branches:            branchrules.Rules{Own: true, Protected: []string{"develop"}},
+		Integrations: integrationprefs.Config{
+			Switches: map[integrationprefs.ID]integrationprefs.Switch{
+				integrationprefs.MageX: integrationprefs.SwitchAuto, integrationprefs.GoPreCommit: integrationprefs.SwitchOff,
+				integrationprefs.Scripts: integrationprefs.SwitchAuto,
+			},
+			Paths: map[integrationprefs.ID]string{integrationprefs.MageX: magex, integrationprefs.GoPreCommit: ""},
+		},
 
 		DefaultProtectedBranches: branchrules.DefaultProtected(),
 	}, got)

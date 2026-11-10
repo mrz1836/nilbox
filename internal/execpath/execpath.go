@@ -15,6 +15,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os/exec"
 	"path/filepath"
 	"slices"
@@ -185,6 +186,12 @@ func ExitCode(err error) int {
 	}
 
 	return exit.ExitCode()
+}
+
+// Executable reports whether a file with mode m is a program someone may run: a regular
+// file with an execute bit.
+func Executable(m fs.FileMode) bool {
+	return m.IsRegular() && m.Perm()&0o111 != 0
 }
 
 // FirstLine returns the first non-blank line of a program's output, trimmed, or "".

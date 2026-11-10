@@ -49,6 +49,12 @@ const (
 
 	// NameFirstPaint is FirstPaint's name.
 	NameFirstPaint = "app:firstPaint"
+
+	// NameToolsUpdated is ToolsUpdated's name.
+	NameToolsUpdated = "tools:updated"
+
+	// NameIntegrationsChanged is IntegrationsChanged's name.
+	NameIntegrationsChanged = "integrations:changed"
 )
 
 // Event is something that happened, or was asked for, that another part of the app
@@ -93,6 +99,7 @@ func WindowEvents() []WindowEvent {
 		BudgetUpdated{},
 		SessionsUpdated{},
 		ReviewProgress{},
+		ToolsUpdated{},
 	}
 }
 
@@ -212,6 +219,26 @@ type FirstPaint struct {
 
 // Name returns NameFirstPaint.
 func (FirstPaint) Name() string { return NameFirstPaint }
+
+// ToolsUpdated says what the integrations service lists changed: a detection or an update
+// check finished. The window reads the list again.
+type ToolsUpdated struct{}
+
+// Name returns NameToolsUpdated.
+func (ToolsUpdated) Name() string { return NameToolsUpdated }
+
+func (ToolsUpdated) window() {}
+
+// IntegrationsChanged says the user flipped an integration's switch or chose a copy of a
+// tool, and it was stored. Core has the integrations look for the tools again when a copy
+// was chosen, and otherwise tells the window that what they list changed.
+type IntegrationsChanged struct {
+	// CopyChosen reports a chosen copy of a tool, rather than a switch.
+	CopyChosen bool
+}
+
+// Name returns NameIntegrationsChanged.
+func (IntegrationsChanged) Name() string { return NameIntegrationsChanged }
 
 // Discard is a Sink that drops every event.
 type Discard struct{}

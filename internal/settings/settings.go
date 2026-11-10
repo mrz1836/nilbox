@@ -4,8 +4,8 @@
 // Each preference is a typed key with a default, so a fresh database already has a
 // complete set of settings. Setters validate their value before storing it and reject
 // anything unknown with a sentinel error. Settings writes every key it declares, and the
-// rule keys the trust, snooze, sensitive, and notifyprefs packages declare and decode;
-// see the prefs package for which package writes the others.
+// keys the trust, snooze, sensitive, notifyprefs, branchrules, and integrationprefs
+// packages declare and decode; see the prefs package for which package writes the others.
 package settings
 
 import (
@@ -23,6 +23,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/event"
+	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
@@ -210,6 +211,9 @@ type Settings struct {
 
 	// MergeMethod is how the review sheet merges a pull request.
 	MergeMethod MergeMethod `json:"mergeMethod"`
+
+	// Integrations is each integration's switch, and the copy of each tool the user chose.
+	Integrations integrationprefs.Config `json:"integrations"`
 }
 
 // ProfileLookup finds an agent's stored profile by name, or returns
@@ -586,6 +590,7 @@ func fromStored(stored map[string]string) Settings {
 		ProjectsTipDismissed: decodeProjectsTipDismissed(stored[KeyProjectsTipDismissed]),
 		InboxOrder:           decodeInboxOrder(stored),
 		MergeMethod:          decodeMergeMethod(stored[KeyMergeMethod]),
+		Integrations:         integrationprefs.Decode(stored),
 	}
 
 	if v := agent.ID(stored[KeyDefaultAgent]); agent.Known(v) {
@@ -703,5 +708,5 @@ func settingKeys() []string {
 		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, notifyprefs.KeyBannersOn, KeyTheme,
 		KeyTextSize, KeyProjectsTipDismissed, KeyMergeMethod,
-	), append(append(collapsedKeys(), orderKeys()...), branchrules.Keys()...)...)
+	), append(append(append(collapsedKeys(), orderKeys()...), branchrules.Keys()...), integrationprefs.Keys()...)...)
 }

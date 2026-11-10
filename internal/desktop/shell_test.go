@@ -35,6 +35,7 @@ func TestWindowEventsGoOnToThePage(t *testing.T) {
 	s.Emit(event.ThemeChanged{Theme: string(settings.ThemeLight)})
 	s.Emit(event.MenuBarChanged{On: false})
 	s.Emit(event.FirstPaint{})
+	s.Emit(event.IntegrationsChanged{})
 
 	assert.Equal(t, []event.WindowEvent{
 		event.InboxUpdated{},
@@ -43,6 +44,7 @@ func TestWindowEventsGoOnToThePage(t *testing.T) {
 		event.BudgetUpdated{},
 		event.SessionsUpdated{},
 		event.ReviewProgress{},
+		event.ToolsUpdated{},
 	}, r.page.events(), "the shell's own events stay in Go")
 }
 

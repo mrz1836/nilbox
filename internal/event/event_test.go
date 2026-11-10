@@ -72,10 +72,12 @@ func TestTheWindowHearsOnlyTheWindowEvents(t *testing.T) {
 
 	assert.Equal(t, []string{
 		event.NameInboxUpdated, event.NameRevealItem, event.NameWorktreesUpdated, event.NameNotificationsUpdated,
-		event.NameBudgetUpdated, event.NameSessionsUpdated, event.NameReviewProgress,
+		event.NameBudgetUpdated, event.NameSessionsUpdated, event.NameReviewProgress, event.NameToolsUpdated,
 	}, names)
 
-	for _, e := range []event.Event{event.ThemeChanged{}, event.TextSizeChanged{}, event.MenuBarChanged{}, event.FirstPaint{}} {
+	for _, e := range []event.Event{
+		event.ThemeChanged{}, event.TextSizeChanged{}, event.MenuBarChanged{}, event.FirstPaint{}, event.IntegrationsChanged{},
+	} {
 		_, ok := e.(event.WindowEvent)
 		assert.False(t, ok, "%s stays in Go", e.Name())
 	}
