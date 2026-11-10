@@ -47,6 +47,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
+	releases "github.com/mrz1836/nilbox/internal/release"
 	"github.com/mrz1836/nilbox/internal/review"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/sessions"
@@ -225,6 +226,7 @@ func registerEvents() {
 	application.RegisterEvent[event.ToolsUpdated](event.NameToolsUpdated)
 	application.RegisterEvent[event.ScriptRunsUpdated](event.NameScriptRunsUpdated)
 	application.RegisterEvent[event.QuitRequested](event.NameQuitRequested)
+	application.RegisterEvent[event.ReleasesUpdated](event.NameReleasesUpdated)
 }
 
 // services wraps every service the core binds, in the core's order. A service no binder
@@ -267,6 +269,7 @@ func binders() []func(svc any) (application.Service, bool) {
 		binder[launchdefaults.Service], binder[inbox.Service], binder[launcher.Service],
 		binder[worktrees.Service], binder[notify.Service], binder[appinfo.Service], binder[budget.Service],
 		binder[sessions.Service], binder[review.Service], binder[integrations.Service], binder[scriptrun.Service],
+		binder[releases.Service],
 	}
 }
 

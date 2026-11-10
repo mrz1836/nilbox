@@ -1,0 +1,234 @@
+{
+    "checked": "2026-11-10",
+    "how": "magex version:bump bump=<b> [major-confirm] in a fresh repository, no branch= and no push, tags as listed (each on its own commit, oldest first), then one untagged commit at HEAD",
+    "magex": "1.29.5",
+    "rows": [
+        {
+            "tags": [],
+            "bump": "patch",
+            "made": "v0.0.1",
+            "exit": 0
+        },
+        {
+            "tags": [],
+            "bump": "minor",
+            "made": "v0.1.0",
+            "exit": 0
+        },
+        {
+            "tags": [],
+            "bump": "major",
+            "made": "v1.0.0",
+            "exit": 0
+        },
+        {
+            "tags": [
+                "v1.4.2"
+            ],
+            "bump": "patch",
+            "made": "v1.4.3",
+            "exit": 0
+        },
+        {
+            "tags": [
+                "v1.4.2"
+            ],
+            "bump": "minor",
+            "made": "v1.5.0",
+            "exit": 0
+        },
+        {
+            "tags": [
+                "v1.4.2"
+            ],
+            "bump": "major",
+            "made": "v2.0.0",
+            "exit": 0
+        },
+        {
+            "tags": [
+                "v0.9.1"
+            ],
+            "bump": "patch",
+            "made": "v0.9.2",
+            "exit": 0
+        },
+        {
+            "tags": [
+                "v0.9.1"
+            ],
+            "bump": "minor",
+            "made": "v0.10.0",
+            "exit": 0
+        },
+        {
+            "tags": [
+                "v0.9.1"
+            ],
+            "bump": "major",
+            "made": "v1.0.0",
+            "exit": 0
+        },
+        {
+            "tags": [
+                "v0.0.0"
+            ],
+            "bump": "patch",
+            "made": "v0.0.1",
+            "exit": 0
+        },
+        {
+            "tags": [
+                "v1.4.2",
+                "v1.4.10"
+            ],
+            "bump": "patch",
+            "made": "v1.4.11",
+            "exit": 0,
+            "note": "numeric, not text, order"
+        },
+        {
+            "tags": [
+                "v1.4.10",
+                "v1.4.2"
+            ],
+            "bump": "patch",
+            "made": "v1.4.11",
+            "exit": 0,
+            "note": "the newer commit has the lower version"
+        },
+        {
+            "tags": [
+                "v1.4.2",
+                "v1.5.0-rc.1"
+            ],
+            "bump": "patch",
+            "made": "v1.5.1",
+            "exit": 0
+        },
+        {
+            "tags": [
+                "v1.4.2",
+                "v1.5.0-rc.1"
+            ],
+            "bump": "minor",
+            "made": "v1.6.0",
+            "exit": 0
+        },
+        {
+            "tags": [
+                "v1.4.2",
+                "v1.5.0-rc.1"
+            ],
+            "bump": "major",
+            "made": "v2.0.0",
+            "exit": 0
+        },
+        {
+            "tags": [
+                "v1.5.0-rc.1"
+            ],
+            "bump": "patch",
+            "made": "v1.5.1",
+            "exit": 0,
+            "note": "only a prerelease"
+        },
+        {
+            "tags": [
+                "v1.5.0-rc.1"
+            ],
+            "bump": "minor",
+            "made": "v1.6.0",
+            "exit": 0,
+            "note": "only a prerelease"
+        },
+        {
+            "tags": [
+                "v1.4.2",
+                "v1.4.3-rc.1"
+            ],
+            "bump": "patch",
+            "made": "v1.4.4",
+            "exit": 0
+        },
+        {
+            "tags": [
+                "v1.4.2",
+                "v2.0.0-beta.1"
+            ],
+            "bump": "major",
+            "made": "v3.0.0",
+            "exit": 0
+        },
+        {
+            "tags": [
+                "v1.4.2",
+                "1.4.3"
+            ],
+            "bump": "patch",
+            "made": "v1.4.4",
+            "exit": 0,
+            "note": "a tag without v"
+        },
+        {
+            "tags": [
+                "v1.4.2",
+                "v1.5"
+            ],
+            "bump": "patch",
+            "made": "v1.4.3",
+            "exit": 0,
+            "note": "a two-part tag"
+        },
+        {
+            "tags": [
+                "v1.4.2",
+                "v1.5"
+            ],
+            "bump": "minor",
+            "made": "v1.5.0",
+            "exit": 0,
+            "note": "a two-part tag"
+        },
+        {
+            "tags": [
+                "v1.4.2",
+                "release-7"
+            ],
+            "bump": "patch",
+            "made": "v1.4.3",
+            "exit": 0,
+            "note": "a non-version tag"
+        },
+        {
+            "tags": [
+                "v1.4.2",
+                "sdk/v1.9.0"
+            ],
+            "bump": "patch",
+            "made": "v1.4.3",
+            "exit": 0,
+            "note": "a module-prefixed tag"
+        },
+        {
+            "tags": [
+                "v1.4.2",
+                "v1.4.3"
+            ],
+            "bump": "patch",
+            "made": "v1.4.4",
+            "exit": 0,
+            "note": "v1.4.3 is lightweight"
+        },
+        {
+            "tags": [
+                "v1.3.0",
+                "v1.4.2"
+            ],
+            "bump": "patch",
+            "made": "v1.4.3",
+            "exit": 0,
+            "note": "v1.4.2 is on a side branch master never merged"
+        }
+    ]
+}

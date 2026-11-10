@@ -25,7 +25,10 @@ import (
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
+	"github.com/mrz1836/nilbox/internal/localrepos"
+	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/prefs"
+	"github.com/mrz1836/nilbox/internal/release"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/sessions"
@@ -625,4 +628,118 @@ func envMap(env []string) map[string]string {
 	}
 
 	return out
+}
+
+// releaseClones lists the clones under the clone root the settings name, for the Release
+// page, with each one's origin when origin is a GitHub repository (release.Clones).
+type releaseClones struct {
+	settings *settings.Service
+	home     string
+	git      execpath.Runner
+}
+
+// Root returns the clone root as it is set now, with ~ expanded.
+func (c releaseClones) Root(ctx context.Context) (string, error) {
+	all, err := c.settings.Get(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	root, err := paths.ExpandHome(all.CloneRoot, c.home)
+	if err != nil {
+		return "", fmt.Errorf("clone root: %w", err)
+	}
+
+	return root, nil
+}
+
+// Clones scans root.
+func (c releaseClones) Clones(ctx context.Context, root string) ([]release.Clone, error) {
+	found, err := localrepos.Scan(ctx, root, c.git)
+	if err != nil {
+		return nil, fmt.Errorf("scan the clone root: %w", err)
+	}
+
+	out := make([]release.Clone, 0, len(found))
+
+	for _, r := range found {
+		origin, onHub := r.Remotes["origin"]
+		out = append(out, release.Clone{Dir: r.Path, Origin: origin, OnHub: onHub})
+	}
+
+	return out, nil
+}
+
+// releaseGitHub asks GitHub what the Release page needs, borrowing the token as the other
+// reads do (release.GitHub). With no token at all, as when signed out, nothing is asked,
+// and the error is release.ErrSignedOut.
+type releaseGitHub struct {
+	tokens github.Tokens
+	client *github.Client
+}
+
+// ReleaseStatus is round one: each repository's state, default branch, and newest tags.
+func (r releaseGitHub) ReleaseStatus(ctx context.Context, repos []repo.Name) (map[string]release.RepoStatus, error) {
+	got, err := github.WithToken(ctx, r.tokens, func(tok github.Token) (map[string]github.ReleaseStatus, error) {
+		return r.client.FetchReleaseStatus(ctx, tok, repos)
+	})
+	if err != nil {
+		return nil, releaseSignedOut(err)
+	}
+
+	out := make(map[string]release.RepoStatus, len(got))
+
+	for key, st := range got {
+		tags := make([]release.Tag, 0, len(st.Tags))
+		for _, t := range st.Tags {
+			tags = append(tags, release.Tag{Name: t.Name, Commit: t.CommitOID})
+		}
+
+		out[key] = release.RepoStatus{
+			Archived: st.Archived, Permission: st.ViewerPermission, DefaultBranch: st.DefaultBranch,
+			HeadOID: st.Head.OID, HeadAt: st.Head.CommittedAt, Headline: st.Head.Headline,
+			Checks: release.Checks(st.HeadChecks),
+			Tags:   tags,
+		}
+	}
+
+	return out, nil
+}
+
+// ReleaseCompare is round two: how far each default branch is ahead of its version tag.
+func (r releaseGitHub) ReleaseCompare(ctx context.Context, reqs []release.CompareRequest) (map[string]release.Compare, error) {
+	asks := make([]github.CompareRequest, 0, len(reqs))
+	for _, q := range reqs {
+		asks = append(asks, github.CompareRequest{Repo: q.Repo, Tag: q.Tag, Branch: q.Branch})
+	}
+
+	got, err := github.WithToken(ctx, r.tokens, func(tok github.Token) (map[string]github.ReleaseCompare, error) {
+		return r.client.FetchReleaseCompare(ctx, tok, asks)
+	})
+	if err != nil {
+		return nil, releaseSignedOut(err)
+	}
+
+	out := make(map[string]release.Compare, len(got))
+
+	for key, c := range got {
+		commits := make([]release.Commit, 0, len(c.Commits))
+		for _, cm := range c.Commits {
+			commits = append(commits, release.Commit{OID: cm.OID, Headline: cm.Headline, At: cm.CommittedAt})
+		}
+
+		out[key] = release.Compare{Ahead: c.AheadBy, Commits: commits}
+	}
+
+	return out, nil
+}
+
+// releaseSignedOut marks gh's "no one is signed in" as release.ErrSignedOut. A missing gh
+// keeps the client's own words, which say to install it.
+func releaseSignedOut(err error) error {
+	if errors.Is(err, github.ErrNotLoggedIn) {
+		return fmt.Errorf("%w: %w", release.ErrSignedOut, err)
+	}
+
+	return err
 }

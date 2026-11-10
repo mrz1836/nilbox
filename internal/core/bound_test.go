@@ -39,6 +39,9 @@ import (
 // boundOwner owns the repositories of the seeded items.
 const boundOwner = "acme-org"
 
+// boundRepo is the repository the core tests' clones and items belong to.
+const boundRepo = "example-repo"
+
 // seededItems are the stored items the bound calls use: a pull request whose launch
 // settings resolve, and an issue whose settings cannot, because its repository's launch
 // defaults were edited by hand into flags the agent refuses.
@@ -343,6 +346,7 @@ func unreachedBound() map[string]string {
 		"worktrees.Service.MergedBranches":  "reads GitHub; it starts its list empty, as DeleteBranches does",
 		"review.Service.Refresh":            "reads GitHub; its review is built as Open's",
 		"review.Service.Act":                "edits GitHub; its steps start empty",
+		"release.Service.Candidates":        "scans the clone root and reads GitHub; its lists start empty",
 	}
 }
 

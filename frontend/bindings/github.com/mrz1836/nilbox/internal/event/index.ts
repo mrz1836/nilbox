@@ -6,6 +6,7 @@ export type {
     InboxUpdated,
     NotificationsUpdated,
     QuitRequested,
+    ReleasesUpdated,
     RevealItem,
     ReviewProgress,
     ScriptRunsUpdated,
