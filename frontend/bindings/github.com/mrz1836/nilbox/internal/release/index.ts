@@ -7,13 +7,24 @@ export {
 };
 
 export {
+    Bump,
+    CheckID,
+    CheckState,
     Checks,
+    Fix,
     Group
 } from "./models.js";
 
 export type {
+    BranchChoice,
+    BumpOffer,
     Candidate,
     Candidates,
+    Check,
     CloneState,
-    Commit
+    Commit,
+    MajorOffer,
+    Offer,
+    PrepareRequest,
+    StartRequest
 } from "./models.js";

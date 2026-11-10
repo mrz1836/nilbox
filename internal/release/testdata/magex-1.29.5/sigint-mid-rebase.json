@@ -1,0 +1,105 @@
+{
+    "name": "sigint-mid-rebase",
+    "note": "SIGINT to the group while the rebase is under way (a post-checkout hook inside it); 1 local commit, 1 remote",
+    "dir": "/work/cases/sigint-mid-rebase/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n22:00:09 [INFO] Using bump type: patch\n22:00:09 [INFO] Already on target branch 'master'\n22:00:09 [INFO] Pulling latest changes...\n",
+    "stderr": "From /work/cases/sigint-mid-rebase/origin\n   b698097..cbb98cc  master     -> origin/master\n\n⚠  Canceled by user (Ctrl+C) — stopping...\n❌ Error: failed to pull latest changes: command failed [git pull --rebase origin]: signal: interrupt\n",
+    "exit": 130,
+    "sent": "interrupt",
+    "sentMs": 242,
+    "durationMs": 243,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "22:00:09 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 17,
+            "text": "22:00:09 [INFO] Already on target branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 17,
+            "text": "22:00:09 [INFO] Pulling latest changes..."
+        },
+        {
+            "stream": "err",
+            "ms": 51,
+            "text": "From /work/cases/sigint-mid-rebase/origin"
+        },
+        {
+            "stream": "err",
+            "ms": 51,
+            "text": "   b698097..cbb98cc  master     -> origin/master"
+        },
+        {
+            "stream": "err",
+            "ms": 242,
+            "text": ""
+        },
+        {
+            "stream": "err",
+            "ms": 242,
+            "text": "⚠  Canceled by user (Ctrl+C) — stopping..."
+        },
+        {
+            "stream": "err",
+            "ms": 242,
+            "text": "❌ Error: failed to pull latest changes: command failed [git pull --rebase origin]: signal: interrupt"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "head": "ecc70ab",
+        "inProgress": "",
+        "localMaster": "ecc70ab",
+        "localTags": "v1.4.2 f132778 6dbd0a7",
+        "remoteMaster": "cbb98cc3e3d69da13bb775312b5c4602944ae991\trefs/heads/master",
+        "remoteTags": "f132778e0315b68b3aa5a7c42d307922b74d8b51\trefs/tags/v1.4.2\n6dbd0a7c2f4827b9dc8522e84e6e28a3c6f8912f\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "(detached)",
+        "head": "cbb98cc",
+        "inProgress": "rebase-merge",
+        "localMaster": "ecc70ab",
+        "localTags": "v1.4.2 f132778 6dbd0a7",
+        "remoteMaster": "cbb98cc3e3d69da13bb775312b5c4602944ae991\trefs/heads/master",
+        "remoteTags": "f132778e0315b68b3aa5a7c42d307922b74d8b51\trefs/tags/v1.4.2\n6dbd0a7c2f4827b9dc8522e84e6e28a3c6f8912f\trefs/tags/v1.4.2^{}",
+        "status": ""
+    }
+}

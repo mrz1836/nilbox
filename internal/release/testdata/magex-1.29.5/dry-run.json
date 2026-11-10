@@ -1,0 +1,179 @@
+{
+    "name": "dry-run",
+    "note": "origin has v1.4.3 the clone hasn't fetched",
+    "dir": "/work/cases/dry-run/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true",
+        "dry-run"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n21:59:50 [INFO] Using bump type: patch\n21:59:50 [INFO] 🔍 Running in DRY-RUN mode - no changes will be made\n21:59:50 [INFO] Already on target branch 'master'\n21:59:50 [INFO] 🔧 DRY-RUN: Would pull latest changes on current branch 'master'\n21:59:50 [INFO] Detecting current version...\n21:59:50 [INFO] No tags found on HEAD commit\n21:59:50 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.2\n21:59:50 [INFO] Recent commits:\n53dc080 fix: retries on 502 (#45)\na56e1b8 feat: first feature\nb195e6b chore: initial commit\n21:59:50 [INFO] 📋 Version Bump Summary:\n21:59:50 [INFO]   From:    v1.4.2\n21:59:50 [INFO]   To:      v1.4.3\n21:59:50 [INFO]   Type:    patch bump\n21:59:50 [INFO] 📋 DRY-RUN Summary:\n21:59:50 [INFO]   Current version: v1.4.2\n21:59:50 [INFO]   New version:     v1.4.3\n21:59:50 [INFO]   Bump type:       patch\n21:59:50 [INFO] 🔧 Commands that would be executed:\n21:59:50 [INFO]   git tag -a v1.4.3 -m \"GitHubRelease v1.4.3\"\n21:59:50 [INFO]   git push origin v1.4.3\n✅ ✅ DRY-RUN completed - no changes made\n",
+    "stderr": "",
+    "exit": 0,
+    "durationMs": 74,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "21:59:50 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "21:59:50 [INFO] 🔍 Running in DRY-RUN mode - no changes will be made"
+        },
+        {
+            "stream": "out",
+            "ms": 19,
+            "text": "21:59:50 [INFO] Already on target branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 19,
+            "text": "21:59:50 [INFO] 🔧 DRY-RUN: Would pull latest changes on current branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 24,
+            "text": "21:59:50 [INFO] Detecting current version..."
+        },
+        {
+            "stream": "out",
+            "ms": 30,
+            "text": "21:59:50 [INFO] No tags found on HEAD commit"
+        },
+        {
+            "stream": "out",
+            "ms": 52,
+            "text": "21:59:50 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 58,
+            "text": "21:59:50 [INFO] Recent commits:"
+        },
+        {
+            "stream": "out",
+            "ms": 58,
+            "text": "53dc080 fix: retries on 502 (#45)"
+        },
+        {
+            "stream": "out",
+            "ms": 58,
+            "text": "a56e1b8 feat: first feature"
+        },
+        {
+            "stream": "out",
+            "ms": 58,
+            "text": "b195e6b chore: initial commit"
+        },
+        {
+            "stream": "out",
+            "ms": 74,
+            "text": "21:59:50 [INFO] 📋 Version Bump Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 74,
+            "text": "21:59:50 [INFO]   From:    v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 74,
+            "text": "21:59:50 [INFO]   To:      v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 74,
+            "text": "21:59:50 [INFO]   Type:    patch bump"
+        },
+        {
+            "stream": "out",
+            "ms": 74,
+            "text": "21:59:50 [INFO] 📋 DRY-RUN Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 74,
+            "text": "21:59:50 [INFO]   Current version: v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 74,
+            "text": "21:59:50 [INFO]   New version:     v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 74,
+            "text": "21:59:50 [INFO]   Bump type:       patch"
+        },
+        {
+            "stream": "out",
+            "ms": 74,
+            "text": "21:59:50 [INFO] 🔧 Commands that would be executed:"
+        },
+        {
+            "stream": "out",
+            "ms": 74,
+            "text": "21:59:50 [INFO]   git tag -a v1.4.3 -m \"GitHubRelease v1.4.3\""
+        },
+        {
+            "stream": "out",
+            "ms": 74,
+            "text": "21:59:50 [INFO]   git push origin v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 74,
+            "text": "✅ ✅ DRY-RUN completed - no changes made"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "head": "53dc080",
+        "inProgress": "",
+        "localMaster": "53dc080",
+        "localTags": "v1.4.2 1c41097 a56e1b8",
+        "remoteMaster": "a2104712b93cdd1f4c56d599dec84b152350e4be\trefs/heads/master",
+        "remoteTags": "1c410974035ef2a5ac05c0d03bd06ddcacb4988f\trefs/tags/v1.4.2\na56e1b84a433d4b9da4ec15a72fc2a0ff1b22c12\trefs/tags/v1.4.2^{}\nf3351a2a8a59b5a5a63e699508363da8f8ec18b4\trefs/tags/v1.4.3\na2104712b93cdd1f4c56d599dec84b152350e4be\trefs/tags/v1.4.3^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "master",
+        "head": "53dc080",
+        "inProgress": "",
+        "localMaster": "53dc080",
+        "localTags": "v1.4.2 1c41097 a56e1b8",
+        "remoteMaster": "a2104712b93cdd1f4c56d599dec84b152350e4be\trefs/heads/master",
+        "remoteTags": "1c410974035ef2a5ac05c0d03bd06ddcacb4988f\trefs/tags/v1.4.2\na56e1b84a433d4b9da4ec15a72fc2a0ff1b22c12\trefs/tags/v1.4.2^{}\nf3351a2a8a59b5a5a63e699508363da8f8ec18b4\trefs/tags/v1.4.3\na2104712b93cdd1f4c56d599dec84b152350e4be\trefs/tags/v1.4.3^{}",
+        "status": ""
+    }
+}

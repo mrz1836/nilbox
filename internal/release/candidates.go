@@ -1,5 +1,9 @@
 // Package release is the Release page's service: which clones have changes to release,
-// and, in a later part, the release itself through mage-x's magex.
+// and the release itself, through mage-x's magex. Prepare gathers a release's facts and
+// shows the sheet Decide works out from them; Start gathers them again under the clone's
+// lock, decides again, and runs magex through scriptrun; and once magex ends, whatever its
+// exit status, the release is verified: origin is asked for the tag, and the clone for the
+// branch it is on.
 package release
 
 import (

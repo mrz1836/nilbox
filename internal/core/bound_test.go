@@ -347,6 +347,7 @@ func unreachedBound() map[string]string {
 		"review.Service.Refresh":            "reads GitHub; its review is built as Open's",
 		"review.Service.Act":                "edits GitHub; its steps start empty",
 		"release.Service.Candidates":        "scans the clone root and reads GitHub; its lists start empty",
+		"release.Service.Prepare":           "needs a clone of a GitHub repository; Decide starts every list empty",
 	}
 }
 

@@ -254,6 +254,25 @@ func TestReadsARealClone(t *testing.T) {
 		assert.Equal(t, []string{"v1.0.0", "v1.1.0"}, remote)
 	})
 
+	t.Run("a version tag's commit here", func(t *testing.T) {
+		t.Parallel()
+
+		got, err := g.LocalTagCommit(t.Context(), f.clone, "v1.0.0")
+		require.NoError(t, err)
+		assert.Equal(t, f.first, got, "an annotated tag is peeled")
+
+		got, err = g.LocalTagCommit(t.Context(), f.clone, "v1.1.0")
+		require.NoError(t, err)
+		assert.Equal(t, f.second, got)
+
+		got, err = g.LocalTagCommit(t.Context(), f.clone, "v9.9.9")
+		require.NoError(t, err)
+		assert.Empty(t, got, "a tag the clone lacks is no commit")
+
+		_, err = g.LocalTagCommit(t.Context(), f.clone, "release-notes")
+		require.ErrorIs(t, err, ErrGitCommandNotAllowed, "only version tags")
+	})
+
 	t.Run("origin's branches and tags", func(t *testing.T) {
 		t.Parallel()
 

@@ -80,10 +80,31 @@ func TestSentence(t *testing.T) {
 		"Done.":                     "Done.",
 		"  --model is set by it \n": "--model is set by it.",
 		"éclair":                    "Éclair.",
+		"is it there?":              "Is it there?",
+		"refused!":                  "Refused!",
 	}
 
 	for in, want := range tests {
 		assert.Equal(t, want, textutil.Sentence(in), in)
+	}
+}
+
+func TestEndSentence(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]string{
+		"":                      "",
+		" \n":                   "",
+		"failed to push tag":    "failed to push tag.",
+		" pre-push: blocked \n": "pre-push: blocked.",
+		"Done.":                 "Done.",
+		"is it there?":          "is it there?",
+		"refused!":              "refused!",
+		"v1.4.3 already exists": "v1.4.3 already exists.",
+	}
+
+	for in, want := range tests {
+		assert.Equal(t, want, textutil.EndSentence(in), in)
 	}
 }
 

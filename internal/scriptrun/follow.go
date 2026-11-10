@@ -51,6 +51,11 @@ type live struct {
 	// started is when the run started: a terminal run's shell starts after it.
 	started time.Time
 
+	// settling marks a run from before the app restarted that had ended by then: it is
+	// held and registered only while its outcome is worked out. Nothing of it runs, so it
+	// can't be stopped, holds no tool, and doesn't keep the app from quitting.
+	settling bool
+
 	// stopped, timedOut, and quit say what ended it, when the engine did.
 	stopped  atomic.Bool
 	timedOut atomic.Bool
@@ -271,7 +276,8 @@ func (e *Engine) shellStart(started, start time.Time) bool {
 }
 
 // followOrphan follows a run in the app from before the app restarted until its process
-// group is gone. Its exit status can't be known.
+// group is gone, tailing its log into the reader its kind's Verifier gave it, if any. Its
+// exit status can't be known.
 func (e *Engine) followOrphan(ctx context.Context, l *live) {
 	ticker := time.NewTicker(e.tailEvery)
 	defer ticker.Stop()
@@ -283,6 +289,8 @@ func (e *Engine) followOrphan(ctx context.Context, l *live) {
 
 			return
 		case <-ticker.C:
+			e.tail(l)
+
 			if !e.groupLive(l) {
 				e.end(ctx, l, Ending{Stopped: l.stopped.Load(), Quit: l.quit.Load(), Interrupted: orphanEnded})
 
@@ -328,7 +336,14 @@ func (e *Engine) end(ctx context.Context, l *live, end Ending) {
 
 	out := defaultOutcome(end, l.timeout)
 	if l.finish != nil {
-		out = checkedOutcome(l.finishOutcome(ctx, end, out), out)
+		got := l.finishOutcome(ctx, end, out)
+		if got.Unsettled {
+			e.leave(ctx, l)
+
+			return
+		}
+
+		out = checkedOutcome(got, out)
 	}
 
 	size, err := e.compaction.compact(e.files.log(l.id))
@@ -371,6 +386,13 @@ func (e *Engine) record(ctx context.Context, l *live, exitCode *int, out Outcome
 	e.logEnd(ctx, l, exitCode, out.Status, result)
 	e.prune(ctx)
 	e.notify()
+}
+
+// leave lets go of a run whose Finish couldn't settle it before its context ended, as the
+// app quit: its record stays as going, and the next start settles it again.
+func (e *Engine) leave(ctx context.Context, l *live) {
+	e.logger.InfoContext(ctx, "a run's end is left for the next start to settle", "run", l.id, "kind", string(l.kind))
+	e.drop(l)
 }
 
 // drop lets go of a run without recording its end, which stays for the next start.

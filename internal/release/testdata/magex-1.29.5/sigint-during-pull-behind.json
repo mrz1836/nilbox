@@ -1,0 +1,208 @@
+{
+    "name": "sigint-during-pull-behind",
+    "note": "SIGINT to the group when a pre-rebase hook starts; clone only behind",
+    "dir": "/work/cases/sigint-during-pull-behind/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n22:00:07 [INFO] Using bump type: patch\n22:00:07 [INFO] Already on target branch 'master'\n22:00:07 [INFO] Pulling latest changes...\nUpdating a2ff483..3bb9381\nFast-forward\n seed0.go | 1 +\n 1 file changed, 1 insertion(+)\n create mode 100644 seed0.go\n✅ Successfully pulled latest changes\n22:00:07 [INFO] Detecting current version...\n22:00:07 [INFO] No tags found on HEAD commit\n22:00:07 [WARN] Current version tag is not on HEAD - there are 2 commits since v1.4.2\n22:00:07 [INFO] Recent commits:\n3bb9381 fix: a\na2ff483 fix: retries on 502 (#45)\n65427a0 feat: first feature\n974e04f chore: initial commit\n22:00:07 [INFO] 📋 Version Bump Summary:\n22:00:07 [INFO]   From:    v1.4.2\n22:00:07 [INFO]   To:      v1.4.3\n22:00:07 [INFO]   Type:    patch bump\n✅ ✅ Created tag: v1.4.3\n3bb9381c780b397e1b5e43bd87e9710bb737dcd6\tHEAD\n22:00:07 [INFO] Pushing tag to remote...\n✅ ✅ Tag pushed to remote\n",
+    "stderr": "From /work/cases/sigint-during-pull-behind/origin\n   a2ff483..3bb9381  master     -> origin/master\nTo /work/cases/sigint-during-pull-behind/origin.git\n * [new tag]         v1.4.3 -> v1.4.3\n",
+    "exit": 0,
+    "durationMs": 253,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "22:00:07 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 18,
+            "text": "22:00:07 [INFO] Already on target branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 18,
+            "text": "22:00:07 [INFO] Pulling latest changes..."
+        },
+        {
+            "stream": "err",
+            "ms": 53,
+            "text": "From /work/cases/sigint-during-pull-behind/origin"
+        },
+        {
+            "stream": "err",
+            "ms": 53,
+            "text": "   a2ff483..3bb9381  master     -> origin/master"
+        },
+        {
+            "stream": "out",
+            "ms": 103,
+            "text": "Updating a2ff483..3bb9381"
+        },
+        {
+            "stream": "out",
+            "ms": 103,
+            "text": "Fast-forward"
+        },
+        {
+            "stream": "out",
+            "ms": 109,
+            "text": " seed0.go | 1 +"
+        },
+        {
+            "stream": "out",
+            "ms": 109,
+            "text": " 1 file changed, 1 insertion(+)"
+        },
+        {
+            "stream": "out",
+            "ms": 109,
+            "text": " create mode 100644 seed0.go"
+        },
+        {
+            "stream": "out",
+            "ms": 109,
+            "text": "✅ Successfully pulled latest changes"
+        },
+        {
+            "stream": "out",
+            "ms": 115,
+            "text": "22:00:07 [INFO] Detecting current version..."
+        },
+        {
+            "stream": "out",
+            "ms": 121,
+            "text": "22:00:07 [INFO] No tags found on HEAD commit"
+        },
+        {
+            "stream": "out",
+            "ms": 143,
+            "text": "22:00:07 [WARN] Current version tag is not on HEAD - there are 2 commits since v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 148,
+            "text": "22:00:07 [INFO] Recent commits:"
+        },
+        {
+            "stream": "out",
+            "ms": 148,
+            "text": "3bb9381 fix: a"
+        },
+        {
+            "stream": "out",
+            "ms": 148,
+            "text": "a2ff483 fix: retries on 502 (#45)"
+        },
+        {
+            "stream": "out",
+            "ms": 148,
+            "text": "65427a0 feat: first feature"
+        },
+        {
+            "stream": "out",
+            "ms": 148,
+            "text": "974e04f chore: initial commit"
+        },
+        {
+            "stream": "out",
+            "ms": 164,
+            "text": "22:00:07 [INFO] 📋 Version Bump Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 164,
+            "text": "22:00:07 [INFO]   From:    v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 164,
+            "text": "22:00:07 [INFO]   To:      v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 164,
+            "text": "22:00:07 [INFO]   Type:    patch bump"
+        },
+        {
+            "stream": "out",
+            "ms": 177,
+            "text": "✅ ✅ Created tag: v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 194,
+            "text": "3bb9381c780b397e1b5e43bd87e9710bb737dcd6\tHEAD"
+        },
+        {
+            "stream": "out",
+            "ms": 208,
+            "text": "22:00:07 [INFO] Pushing tag to remote..."
+        },
+        {
+            "stream": "err",
+            "ms": 252,
+            "text": "To /work/cases/sigint-during-pull-behind/origin.git"
+        },
+        {
+            "stream": "err",
+            "ms": 252,
+            "text": " * [new tag]         v1.4.3 -> v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 252,
+            "text": "✅ ✅ Tag pushed to remote"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "head": "a2ff483",
+        "inProgress": "",
+        "localMaster": "a2ff483",
+        "localTags": "v1.4.2 d3d5d3b 65427a0",
+        "remoteMaster": "3bb9381c780b397e1b5e43bd87e9710bb737dcd6\trefs/heads/master",
+        "remoteTags": "d3d5d3bcd8aa35357b667fa59241e7a338188ee9\trefs/tags/v1.4.2\n65427a0b238c54828b4f4a783287fd857e8d0934\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "master",
+        "head": "3bb9381",
+        "inProgress": "",
+        "localMaster": "3bb9381",
+        "localTags": "v1.4.2 d3d5d3b 65427a0\nv1.4.3 3e4e5b3 3bb9381",
+        "remoteMaster": "3bb9381c780b397e1b5e43bd87e9710bb737dcd6\trefs/heads/master",
+        "remoteTags": "d3d5d3bcd8aa35357b667fa59241e7a338188ee9\trefs/tags/v1.4.2\n65427a0b238c54828b4f4a783287fd857e8d0934\trefs/tags/v1.4.2^{}\n3e4e5b312d46696765c40e03f328c2c1a9b5f163\trefs/tags/v1.4.3\n3bb9381c780b397e1b5e43bd87e9710bb737dcd6\trefs/tags/v1.4.3^{}",
+        "status": ""
+    }
+}

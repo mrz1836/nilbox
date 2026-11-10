@@ -1,0 +1,103 @@
+{
+    "name": "tag-on-head",
+    "note": "the newest commit already has v1.4.2",
+    "dir": "/work/cases/tag-on-head/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n21:59:51 [INFO] Using bump type: patch\n21:59:51 [INFO] Already on target branch 'master'\n21:59:51 [INFO] Pulling latest changes...\nAlready up to date.\n✅ Successfully pulled latest changes\n21:59:51 [WARN] Current commit already has version tags: v1.4.2\n21:59:51 [WARN] Please create a new commit before bumping the version again\n",
+    "stderr": "❌ Error: current commit already has version tags: v1.4.2\n",
+    "exit": 1,
+    "durationMs": 91,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "21:59:51 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 17,
+            "text": "21:59:51 [INFO] Already on target branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 17,
+            "text": "21:59:51 [INFO] Pulling latest changes..."
+        },
+        {
+            "stream": "out",
+            "ms": 85,
+            "text": "Already up to date."
+        },
+        {
+            "stream": "out",
+            "ms": 86,
+            "text": "✅ Successfully pulled latest changes"
+        },
+        {
+            "stream": "out",
+            "ms": 91,
+            "text": "21:59:51 [WARN] Current commit already has version tags: v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 91,
+            "text": "21:59:51 [WARN] Please create a new commit before bumping the version again"
+        },
+        {
+            "stream": "err",
+            "ms": 91,
+            "text": "❌ Error: current commit already has version tags: v1.4.2"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "head": "2efee39",
+        "inProgress": "",
+        "localMaster": "2efee39",
+        "localTags": "v1.4.2 c9467f2 2efee39",
+        "remoteMaster": "2efee39e639ab4d5048a69d0351461324e5a252a\trefs/heads/master",
+        "remoteTags": "c9467f28492b49ad99e3e13fc3cd0872a566fe77\trefs/tags/v1.4.2\n2efee39e639ab4d5048a69d0351461324e5a252a\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "master",
+        "head": "2efee39",
+        "inProgress": "",
+        "localMaster": "2efee39",
+        "localTags": "v1.4.2 c9467f2 2efee39",
+        "remoteMaster": "2efee39e639ab4d5048a69d0351461324e5a252a\trefs/heads/master",
+        "remoteTags": "c9467f28492b49ad99e3e13fc3cd0872a566fe77\trefs/tags/v1.4.2\n2efee39e639ab4d5048a69d0351461324e5a252a\trefs/tags/v1.4.2^{}",
+        "status": ""
+    }
+}

@@ -1,0 +1,233 @@
+{
+    "name": "major-confirm",
+    "dir": "/work/cases/major-confirm/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=major",
+        "branch=master",
+        "push=true",
+        "major-confirm"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n21:59:48 [INFO] Using bump type: major\n21:59:48 [INFO] Detecting current version...\n21:59:48 [INFO] No tags found on HEAD commit\n21:59:48 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.2\n21:59:48 [INFO] Recent commits:\n8e27ab4 fix: retries on 502 (#45)\n5dd33f3 feat: first feature\n4e26fb6 chore: initial commit\n21:59:48 [WARN] ⚠️  MAJOR VERSION BUMP DETECTED:\n21:59:48 [WARN]    Current version: v1.4.2\n21:59:48 [WARN]    New version:     v2.0.0\n21:59:48 [WARN]    This will create a breaking change release!\n✅ ✅ Major version bump confirmed via 'major-confirm' parameter\n21:59:48 [INFO] Already on target branch 'master'\n21:59:48 [INFO] Pulling latest changes...\nAlready up to date.\n✅ Successfully pulled latest changes\n21:59:49 [INFO] Detecting current version...\n21:59:49 [INFO] No tags found on HEAD commit\n21:59:49 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.2\n21:59:49 [INFO] Recent commits:\n8e27ab4 fix: retries on 502 (#45)\n5dd33f3 feat: first feature\n4e26fb6 chore: initial commit\n21:59:49 [INFO] 📋 Version Bump Summary:\n21:59:49 [INFO]   From:    v1.4.2\n21:59:49 [INFO]   To:      v2.0.0\n21:59:49 [INFO]   Type:    major bump\n✅ ✅ Created tag: v2.0.0\n8e27ab4eb334c7a074a56c307e9dd7c059f9e316\tHEAD\n21:59:49 [INFO] Pushing tag to remote...\n✅ ✅ Tag pushed to remote\n",
+    "stderr": "To /work/cases/major-confirm/origin.git\n * [new tag]         v2.0.0 -> v2.0.0\n",
+    "exit": 0,
+    "durationMs": 270,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "21:59:48 [INFO] Using bump type: major"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "21:59:48 [INFO] Detecting current version..."
+        },
+        {
+            "stream": "out",
+            "ms": 13,
+            "text": "21:59:48 [INFO] No tags found on HEAD commit"
+        },
+        {
+            "stream": "out",
+            "ms": 36,
+            "text": "21:59:48 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 43,
+            "text": "21:59:48 [INFO] Recent commits:"
+        },
+        {
+            "stream": "out",
+            "ms": 43,
+            "text": "8e27ab4 fix: retries on 502 (#45)"
+        },
+        {
+            "stream": "out",
+            "ms": 43,
+            "text": "5dd33f3 feat: first feature"
+        },
+        {
+            "stream": "out",
+            "ms": 43,
+            "text": "4e26fb6 chore: initial commit"
+        },
+        {
+            "stream": "out",
+            "ms": 48,
+            "text": "21:59:48 [WARN] ⚠️  MAJOR VERSION BUMP DETECTED:"
+        },
+        {
+            "stream": "out",
+            "ms": 48,
+            "text": "21:59:48 [WARN]    Current version: v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 48,
+            "text": "21:59:48 [WARN]    New version:     v2.0.0"
+        },
+        {
+            "stream": "out",
+            "ms": 48,
+            "text": "21:59:48 [WARN]    This will create a breaking change release!"
+        },
+        {
+            "stream": "out",
+            "ms": 48,
+            "text": "✅ ✅ Major version bump confirmed via 'major-confirm' parameter"
+        },
+        {
+            "stream": "out",
+            "ms": 60,
+            "text": "21:59:48 [INFO] Already on target branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 60,
+            "text": "21:59:48 [INFO] Pulling latest changes..."
+        },
+        {
+            "stream": "out",
+            "ms": 127,
+            "text": "Already up to date."
+        },
+        {
+            "stream": "out",
+            "ms": 128,
+            "text": "✅ Successfully pulled latest changes"
+        },
+        {
+            "stream": "out",
+            "ms": 133,
+            "text": "21:59:49 [INFO] Detecting current version..."
+        },
+        {
+            "stream": "out",
+            "ms": 139,
+            "text": "21:59:49 [INFO] No tags found on HEAD commit"
+        },
+        {
+            "stream": "out",
+            "ms": 161,
+            "text": "21:59:49 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 167,
+            "text": "21:59:49 [INFO] Recent commits:"
+        },
+        {
+            "stream": "out",
+            "ms": 167,
+            "text": "8e27ab4 fix: retries on 502 (#45)"
+        },
+        {
+            "stream": "out",
+            "ms": 167,
+            "text": "5dd33f3 feat: first feature"
+        },
+        {
+            "stream": "out",
+            "ms": 167,
+            "text": "4e26fb6 chore: initial commit"
+        },
+        {
+            "stream": "out",
+            "ms": 184,
+            "text": "21:59:49 [INFO] 📋 Version Bump Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 184,
+            "text": "21:59:49 [INFO]   From:    v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 184,
+            "text": "21:59:49 [INFO]   To:      v2.0.0"
+        },
+        {
+            "stream": "out",
+            "ms": 184,
+            "text": "21:59:49 [INFO]   Type:    major bump"
+        },
+        {
+            "stream": "out",
+            "ms": 196,
+            "text": "✅ ✅ Created tag: v2.0.0"
+        },
+        {
+            "stream": "out",
+            "ms": 214,
+            "text": "8e27ab4eb334c7a074a56c307e9dd7c059f9e316\tHEAD"
+        },
+        {
+            "stream": "out",
+            "ms": 227,
+            "text": "21:59:49 [INFO] Pushing tag to remote..."
+        },
+        {
+            "stream": "err",
+            "ms": 269,
+            "text": "To /work/cases/major-confirm/origin.git"
+        },
+        {
+            "stream": "err",
+            "ms": 269,
+            "text": " * [new tag]         v2.0.0 -> v2.0.0"
+        },
+        {
+            "stream": "out",
+            "ms": 269,
+            "text": "✅ ✅ Tag pushed to remote"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "head": "8e27ab4",
+        "inProgress": "",
+        "localMaster": "8e27ab4",
+        "localTags": "v1.4.2 0167c98 5dd33f3",
+        "remoteMaster": "8e27ab4eb334c7a074a56c307e9dd7c059f9e316\trefs/heads/master",
+        "remoteTags": "0167c98b364dbe6159a4bea34c3d022f78c6c559\trefs/tags/v1.4.2\n5dd33f3240de36adb36bd6e4884e40ea70b29ebf\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "master",
+        "head": "8e27ab4",
+        "inProgress": "",
+        "localMaster": "8e27ab4",
+        "localTags": "v1.4.2 0167c98 5dd33f3\nv2.0.0 88bf006 8e27ab4",
+        "remoteMaster": "8e27ab4eb334c7a074a56c307e9dd7c059f9e316\trefs/heads/master",
+        "remoteTags": "0167c98b364dbe6159a4bea34c3d022f78c6c559\trefs/tags/v1.4.2\n5dd33f3240de36adb36bd6e4884e40ea70b29ebf\trefs/tags/v1.4.2^{}\n88bf0065277b5f72f8d1509d992d697c5d50515a\trefs/tags/v2.0.0\n8e27ab4eb334c7a074a56c307e9dd7c059f9e316\trefs/tags/v2.0.0^{}",
+        "status": ""
+    }
+}

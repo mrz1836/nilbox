@@ -1,0 +1,213 @@
+{
+    "name": "prerelease-minor",
+    "note": "v1.4.2 and v1.5.0-rc.1",
+    "dir": "/work/cases/prerelease-minor/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=minor",
+        "branch=master",
+        "push=true"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n21:59:59 [INFO] Using bump type: minor\n21:59:59 [INFO] Already on target branch 'master'\n21:59:59 [INFO] Pulling latest changes...\nUpdating 6ac175c..3b5fea2\nFast-forward\n seed0.go | 1 +\n 1 file changed, 1 insertion(+)\n create mode 100644 seed0.go\n✅ Successfully pulled latest changes\n21:59:59 [INFO] Detecting current version...\n21:59:59 [INFO] No tags found on HEAD commit\n21:59:59 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.5.0-rc.1\n21:59:59 [INFO] Recent commits:\n3b5fea2 feat: rc work\n6ac175c fix: retries on 502 (#45)\n74b2185 feat: first feature\n443329a chore: initial commit\n21:59:59 [INFO] 📋 Version Bump Summary:\n21:59:59 [INFO]   From:    v1.5.0-rc.1\n21:59:59 [INFO]   To:      v1.6.0\n21:59:59 [INFO]   Type:    minor bump\n✅ ✅ Created tag: v1.6.0\n3b5fea2c681e40c3ad468100c7951adb7762e12c\tHEAD\n21:59:59 [INFO] Pushing tag to remote...\n✅ ✅ Tag pushed to remote\n",
+    "stderr": "From /work/cases/prerelease-minor/origin\n   6ac175c..3b5fea2  master      -> origin/master\n * [new tag]         v1.5.0-rc.1 -> v1.5.0-rc.1\nTo /work/cases/prerelease-minor/origin.git\n * [new tag]         v1.6.0 -> v1.6.0\n",
+    "exit": 0,
+    "durationMs": 260,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "21:59:59 [INFO] Using bump type: minor"
+        },
+        {
+            "stream": "out",
+            "ms": 18,
+            "text": "21:59:59 [INFO] Already on target branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 18,
+            "text": "21:59:59 [INFO] Pulling latest changes..."
+        },
+        {
+            "stream": "err",
+            "ms": 52,
+            "text": "From /work/cases/prerelease-minor/origin"
+        },
+        {
+            "stream": "err",
+            "ms": 52,
+            "text": "   6ac175c..3b5fea2  master      -> origin/master"
+        },
+        {
+            "stream": "err",
+            "ms": 52,
+            "text": " * [new tag]         v1.5.0-rc.1 -> v1.5.0-rc.1"
+        },
+        {
+            "stream": "out",
+            "ms": 105,
+            "text": "Updating 6ac175c..3b5fea2"
+        },
+        {
+            "stream": "out",
+            "ms": 105,
+            "text": "Fast-forward"
+        },
+        {
+            "stream": "out",
+            "ms": 111,
+            "text": " seed0.go | 1 +"
+        },
+        {
+            "stream": "out",
+            "ms": 111,
+            "text": " 1 file changed, 1 insertion(+)"
+        },
+        {
+            "stream": "out",
+            "ms": 111,
+            "text": " create mode 100644 seed0.go"
+        },
+        {
+            "stream": "out",
+            "ms": 111,
+            "text": "✅ Successfully pulled latest changes"
+        },
+        {
+            "stream": "out",
+            "ms": 117,
+            "text": "21:59:59 [INFO] Detecting current version..."
+        },
+        {
+            "stream": "out",
+            "ms": 123,
+            "text": "21:59:59 [INFO] No tags found on HEAD commit"
+        },
+        {
+            "stream": "out",
+            "ms": 146,
+            "text": "21:59:59 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.5.0-rc.1"
+        },
+        {
+            "stream": "out",
+            "ms": 152,
+            "text": "21:59:59 [INFO] Recent commits:"
+        },
+        {
+            "stream": "out",
+            "ms": 152,
+            "text": "3b5fea2 feat: rc work"
+        },
+        {
+            "stream": "out",
+            "ms": 152,
+            "text": "6ac175c fix: retries on 502 (#45)"
+        },
+        {
+            "stream": "out",
+            "ms": 152,
+            "text": "74b2185 feat: first feature"
+        },
+        {
+            "stream": "out",
+            "ms": 152,
+            "text": "443329a chore: initial commit"
+        },
+        {
+            "stream": "out",
+            "ms": 169,
+            "text": "21:59:59 [INFO] 📋 Version Bump Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 169,
+            "text": "21:59:59 [INFO]   From:    v1.5.0-rc.1"
+        },
+        {
+            "stream": "out",
+            "ms": 169,
+            "text": "21:59:59 [INFO]   To:      v1.6.0"
+        },
+        {
+            "stream": "out",
+            "ms": 169,
+            "text": "21:59:59 [INFO]   Type:    minor bump"
+        },
+        {
+            "stream": "out",
+            "ms": 182,
+            "text": "✅ ✅ Created tag: v1.6.0"
+        },
+        {
+            "stream": "out",
+            "ms": 201,
+            "text": "3b5fea2c681e40c3ad468100c7951adb7762e12c\tHEAD"
+        },
+        {
+            "stream": "out",
+            "ms": 215,
+            "text": "21:59:59 [INFO] Pushing tag to remote..."
+        },
+        {
+            "stream": "err",
+            "ms": 260,
+            "text": "To /work/cases/prerelease-minor/origin.git"
+        },
+        {
+            "stream": "err",
+            "ms": 260,
+            "text": " * [new tag]         v1.6.0 -> v1.6.0"
+        },
+        {
+            "stream": "out",
+            "ms": 260,
+            "text": "✅ ✅ Tag pushed to remote"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "head": "6ac175c",
+        "inProgress": "",
+        "localMaster": "6ac175c",
+        "localTags": "v1.4.2 48c44a5 74b2185",
+        "remoteMaster": "3b5fea2c681e40c3ad468100c7951adb7762e12c\trefs/heads/master",
+        "remoteTags": "48c44a5b4f6cd229bb0a71586d7af078c3dd4106\trefs/tags/v1.4.2\n74b21857ea50ac00a9434d39584bc317cd616c5b\trefs/tags/v1.4.2^{}\n0e42b21ddf80c6ae5893fa7c8da7b28c017f8b3e\trefs/tags/v1.5.0-rc.1\n6ac175ce70453fce16a3bbaa2ef9c8911fa25f96\trefs/tags/v1.5.0-rc.1^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "master",
+        "head": "3b5fea2",
+        "inProgress": "",
+        "localMaster": "3b5fea2",
+        "localTags": "v1.4.2 48c44a5 74b2185\nv1.5.0-rc.1 0e42b21 6ac175c\nv1.6.0 53fa379 3b5fea2",
+        "remoteMaster": "3b5fea2c681e40c3ad468100c7951adb7762e12c\trefs/heads/master",
+        "remoteTags": "48c44a5b4f6cd229bb0a71586d7af078c3dd4106\trefs/tags/v1.4.2\n74b21857ea50ac00a9434d39584bc317cd616c5b\trefs/tags/v1.4.2^{}\n0e42b21ddf80c6ae5893fa7c8da7b28c017f8b3e\trefs/tags/v1.5.0-rc.1\n6ac175ce70453fce16a3bbaa2ef9c8911fa25f96\trefs/tags/v1.5.0-rc.1^{}\n53fa3797501d93ec4f83a005aef4222bcd1a8743\trefs/tags/v1.6.0\n3b5fea2c681e40c3ad468100c7951adb7762e12c\trefs/tags/v1.6.0^{}",
+        "status": ""
+    }
+}

@@ -1,0 +1,203 @@
+{
+    "name": "signing-fails-from-feature",
+    "note": "tag signing fails; started on feature-x",
+    "dir": "/work/cases/signing-fails-from-feature/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n22:00:06 [INFO] Using bump type: patch\n22:00:06 [INFO] Switching to branch 'master'...\nYour branch is up to date with 'origin/master'.\n✅ Switched to branch 'master'\n22:00:06 [INFO] Pulling latest changes...\nAlready up to date.\n✅ Successfully pulled latest changes\n22:00:06 [INFO] Detecting current version...\n22:00:06 [INFO] No tags found on HEAD commit\n22:00:06 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.2\n22:00:06 [INFO] Recent commits:\n73f2fcb fix: retries on 502 (#45)\nb6b56cc feat: first feature\ncff162f chore: initial commit\n22:00:06 [INFO] 📋 Version Bump Summary:\n22:00:06 [INFO]   From:    v1.4.2\n22:00:06 [INFO]   To:      v1.4.3\n22:00:06 [INFO]   Type:    patch bump\n22:00:06 [INFO] Switching to branch 'feature-x'...\n✅ Switched to branch 'feature-x'\n✅ ✅ Switched back to original branch 'feature-x'\n",
+    "stderr": "Switched to branch 'master'\nerror: gpg failed to sign the data:\n(no gpg output)\nerror: unable to sign the tag\nThe tag message has been left in .git/TAG_EDITMSG\nSwitched to branch 'feature-x'\n❌ Error: failed to create tag: command failed [git tag -a v1.4.3 -m GitHubRelease v1.4.3]: exit status 128\n",
+    "exit": 1,
+    "durationMs": 182,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "22:00:06 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 29,
+            "text": "22:00:06 [INFO] Switching to branch 'master'..."
+        },
+        {
+            "stream": "err",
+            "ms": 36,
+            "text": "Switched to branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 36,
+            "text": "Your branch is up to date with 'origin/master'."
+        },
+        {
+            "stream": "out",
+            "ms": 36,
+            "text": "✅ Switched to branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 36,
+            "text": "22:00:06 [INFO] Pulling latest changes..."
+        },
+        {
+            "stream": "out",
+            "ms": 105,
+            "text": "Already up to date."
+        },
+        {
+            "stream": "out",
+            "ms": 106,
+            "text": "✅ Successfully pulled latest changes"
+        },
+        {
+            "stream": "out",
+            "ms": 111,
+            "text": "22:00:06 [INFO] Detecting current version..."
+        },
+        {
+            "stream": "out",
+            "ms": 117,
+            "text": "22:00:06 [INFO] No tags found on HEAD commit"
+        },
+        {
+            "stream": "out",
+            "ms": 139,
+            "text": "22:00:06 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 145,
+            "text": "22:00:06 [INFO] Recent commits:"
+        },
+        {
+            "stream": "out",
+            "ms": 145,
+            "text": "73f2fcb fix: retries on 502 (#45)"
+        },
+        {
+            "stream": "out",
+            "ms": 145,
+            "text": "b6b56cc feat: first feature"
+        },
+        {
+            "stream": "out",
+            "ms": 145,
+            "text": "cff162f chore: initial commit"
+        },
+        {
+            "stream": "out",
+            "ms": 160,
+            "text": "22:00:06 [INFO] 📋 Version Bump Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 160,
+            "text": "22:00:06 [INFO]   From:    v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 160,
+            "text": "22:00:06 [INFO]   To:      v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 160,
+            "text": "22:00:06 [INFO]   Type:    patch bump"
+        },
+        {
+            "stream": "err",
+            "ms": 174,
+            "text": "error: gpg failed to sign the data:"
+        },
+        {
+            "stream": "err",
+            "ms": 174,
+            "text": "(no gpg output)"
+        },
+        {
+            "stream": "err",
+            "ms": 174,
+            "text": "error: unable to sign the tag"
+        },
+        {
+            "stream": "err",
+            "ms": 174,
+            "text": "The tag message has been left in .git/TAG_EDITMSG"
+        },
+        {
+            "stream": "out",
+            "ms": 174,
+            "text": "22:00:06 [INFO] Switching to branch 'feature-x'..."
+        },
+        {
+            "stream": "err",
+            "ms": 181,
+            "text": "Switched to branch 'feature-x'"
+        },
+        {
+            "stream": "err",
+            "ms": 181,
+            "text": "❌ Error: failed to create tag: command failed [git tag -a v1.4.3 -m GitHubRelease v1.4.3]: exit status 128"
+        },
+        {
+            "stream": "out",
+            "ms": 181,
+            "text": "✅ Switched to branch 'feature-x'"
+        },
+        {
+            "stream": "out",
+            "ms": 181,
+            "text": "✅ ✅ Switched back to original branch 'feature-x'"
+        }
+    ],
+    "before": {
+        "branch": "feature-x",
+        "head": "73f2fcb",
+        "inProgress": "",
+        "localMaster": "73f2fcb",
+        "localTags": "v1.4.2 089bb3c b6b56cc",
+        "remoteMaster": "73f2fcba984843ba6f7d417019e895509d76d070\trefs/heads/master",
+        "remoteTags": "089bb3c919a6ac2a2911549d1cc32af40ba30b67\trefs/tags/v1.4.2\nb6b56cc6c94420b84e96df588a4a38df177abeb5\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "feature-x",
+        "head": "73f2fcb",
+        "inProgress": "",
+        "localMaster": "73f2fcb",
+        "localTags": "v1.4.2 089bb3c b6b56cc",
+        "remoteMaster": "73f2fcba984843ba6f7d417019e895509d76d070\trefs/heads/master",
+        "remoteTags": "089bb3c919a6ac2a2911549d1cc32af40ba30b67\trefs/tags/v1.4.2\nb6b56cc6c94420b84e96df588a4a38df177abeb5\trefs/tags/v1.4.2^{}",
+        "status": ""
+    }
+}

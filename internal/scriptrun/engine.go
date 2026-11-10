@@ -139,10 +139,11 @@ type Engine struct {
 	// they hold it to write.
 	regMu sync.RWMutex
 
-	// mu guards live, rerunners, and closed.
+	// mu guards live, rerunners, verifiers, and closed.
 	mu        sync.Mutex
 	live      map[int64]*live
 	rerunners map[Kind]Rerunner
+	verifiers map[Kind]Verifier
 	closed    bool
 
 	// closing is closed once StopAll begins.
@@ -171,7 +172,8 @@ func NewEngine(cfg Config) *Engine {
 		compaction: compaction{over: CompactOver, head: CompactHead, tail: CompactTail},
 		tailEvery:  tailEvery, quitKill: QuitKillAfter, quitGrace: quitGrace, pidWait: pidWait,
 		ladder: execpath.StopLadder(), alive: procs.Alive, groupAlive: groupAlive, startedAt: procs.StartedAt,
-		signal: signalGroup, live: map[int64]*live{}, rerunners: map[Kind]Rerunner{}, closing: make(chan struct{}),
+		signal: signalGroup, live: map[int64]*live{}, rerunners: map[Kind]Rerunner{}, verifiers: map[Kind]Verifier{},
+		closing: make(chan struct{}),
 	}
 }
 
@@ -182,6 +184,16 @@ func (e *Engine) RegisterRerunner(kind Kind, r Rerunner) {
 	defer e.mu.Unlock()
 
 	e.rerunners[kind] = r
+}
+
+// RegisterVerifier makes v verify the runs of kind from before the app restarted: it
+// gives each again the output reader and the Finish its Spec gave it. Register it before
+// Run, which picks those runs up.
+func (e *Engine) RegisterVerifier(kind Kind, v Verifier) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	e.verifiers[kind] = v
 }
 
 // Start starts the run spec describes and returns its ID. In order, it takes the clone's
@@ -199,7 +211,7 @@ func (e *Engine) Start(ctx context.Context, spec Spec) (int64, error) {
 		return 0, err
 	}
 
-	h, err := e.hold(ctx, spec)
+	h, err := e.hold(ctx, &spec)
 	if err != nil {
 		return 0, err
 	}
@@ -222,7 +234,7 @@ func (e *Engine) InUse(tool string) bool {
 	defer e.mu.Unlock()
 
 	for _, l := range e.live {
-		if l.tool == tool {
+		if l.tool == tool && !l.settling {
 			return true
 		}
 	}
@@ -238,7 +250,7 @@ func (e *Engine) Active() bool {
 	defer e.mu.Unlock()
 
 	for _, l := range e.live {
-		if l.runsIn == RunsInApp {
+		if l.runsIn == RunsInApp && !l.settling {
 			return true
 		}
 	}
@@ -271,16 +283,25 @@ func (e *Engine) StopAll() {
 		close(e.closing)
 	}
 
-	var runs []*live
+	var runs, settling []*live
 
 	for _, l := range e.live {
-		if l.runsIn == RunsInApp {
+		switch {
+		case l.settling:
+			settling = append(settling, l)
+		case l.runsIn == RunsInApp:
 			runs = append(runs, l)
 		}
 	}
 
 	e.mu.Unlock()
 	e.regMu.Unlock()
+
+	// A run only being settled has nothing left to stop: its Finish ends at once, and the
+	// next start settles it again.
+	for _, l := range settling {
+		l.giveUp()
+	}
 
 	if first {
 		e.stopForQuit(runs)
@@ -339,7 +360,7 @@ func (e *Engine) check(spec Spec) error {
 		return fmt.Errorf("%w: unknown place %q", ErrInvalidSpec, spec.RunsIn)
 	case !filepath.IsAbs(spec.Dir):
 		return fmt.Errorf("%w: the folder %q is not absolute", ErrInvalidSpec, spec.Dir)
-	case len(spec.Argv) == 0 || !filepath.IsAbs(spec.Argv[0]):
+	case spec.Before == nil && !validArgv(spec.Argv):
 		return fmt.Errorf("%w: the command doesn't start with a program's absolute path", ErrInvalidSpec)
 	case !filepath.IsAbs(e.files.dir):
 		return fmt.Errorf("%w: no folder for the logs", ErrInvalidSpec)
@@ -348,6 +369,11 @@ func (e *Engine) check(spec Spec) error {
 	default:
 		return nil
 	}
+}
+
+// validArgv reports a command that starts with a program's absolute path.
+func validArgv(argv []string) bool {
+	return len(argv) > 0 && filepath.IsAbs(argv[0])
 }
 
 // holds is what a starting run holds: its clone's lock and, in the app, a slot.
@@ -366,10 +392,11 @@ func (h holds) free() {
 	}
 }
 
-// hold takes, for a run in the app, a slot, then the clone's lock, then runs spec.Before.
-// The slot comes first, so a run that waits for one never holds its clone while it waits:
-// the clone's lock is only ever tried, and a busy clone fails the start at once.
-func (e *Engine) hold(ctx context.Context, spec Spec) (holds, error) {
+// hold takes, for a run in the app, a slot, then the clone's lock, then runs spec.Before,
+// which may set spec's command. The slot comes first, so a run that waits for one never
+// holds its clone while it waits: the clone's lock is only ever tried, and a busy clone
+// fails the start at once.
+func (e *Engine) hold(ctx context.Context, spec *Spec) (holds, error) {
 	var h holds
 
 	if spec.RunsIn == RunsInApp {
@@ -394,12 +421,26 @@ func (e *Engine) hold(ctx context.Context, spec Spec) (holds, error) {
 
 	h.lock = release
 
-	if spec.Before != nil {
-		if err := spec.Before(ctx); err != nil {
-			h.free()
+	if spec.Before == nil {
+		return h, nil
+	}
 
-			return holds{}, err
-		}
+	argv, err := spec.Before(ctx)
+	if err != nil {
+		h.free()
+
+		return holds{}, err
+	}
+
+	if argv != nil {
+		spec.Argv = argv
+	}
+
+	if !validArgv(spec.Argv) {
+		h.free()
+
+		return holds{}, fmt.Errorf("%w: Before gave no command that starts with a program's absolute path",
+			ErrInvalidSpec)
 	}
 
 	return h, nil
@@ -640,6 +681,10 @@ func (e *Engine) stop(ctx context.Context, id int64) error {
 		return uierr.New("A run in your terminal stops there: press Control-C in its window.", ErrNoStop)
 	}
 
+	if l.settling {
+		return uierr.New("It has already ended.", ErrNotRunning)
+	}
+
 	l.stopped.Store(true)
 
 	if l.proc != nil {
@@ -712,6 +757,14 @@ func (e *Engine) rerunner(kind Kind) Rerunner {
 	defer e.mu.Unlock()
 
 	return e.rerunners[kind]
+}
+
+// verifier returns the Verifier of kind, or nil.
+func (e *Engine) verifier(kind Kind) Verifier {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	return e.verifiers[kind]
 }
 
 // isClosed reports whether StopAll has begun.

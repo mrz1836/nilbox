@@ -1,0 +1,103 @@
+{
+    "name": "post-checkout-fails",
+    "note": "a post-checkout hook that exits 1; on feature-x",
+    "dir": "/work/cases/post-checkout-fails/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n22:00:04 [INFO] Using bump type: patch\n22:00:04 [INFO] Switching to branch 'master'...\nYour branch is up to date with 'origin/master'.\n22:00:05 [INFO] Local branch not found, trying to checkout from remote...\n",
+    "stderr": "Switched to branch 'master'\npost-checkout: blocked by policy\nfatal: a branch named 'master' already exists\n❌ Error: failed to checkout branch 'master': local branch not found (command failed [git checkout master]: exit status 1) and remote checkout failed (command failed [git checkout -b master origin/master]: exit status 128)\n",
+    "exit": 1,
+    "durationMs": 176,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "22:00:04 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 23,
+            "text": "22:00:04 [INFO] Switching to branch 'master'..."
+        },
+        {
+            "stream": "err",
+            "ms": 29,
+            "text": "Switched to branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 30,
+            "text": "Your branch is up to date with 'origin/master'."
+        },
+        {
+            "stream": "err",
+            "ms": 169,
+            "text": "post-checkout: blocked by policy"
+        },
+        {
+            "stream": "out",
+            "ms": 170,
+            "text": "22:00:05 [INFO] Local branch not found, trying to checkout from remote..."
+        },
+        {
+            "stream": "err",
+            "ms": 176,
+            "text": "fatal: a branch named 'master' already exists"
+        },
+        {
+            "stream": "err",
+            "ms": 176,
+            "text": "❌ Error: failed to checkout branch 'master': local branch not found (command failed [git checkout master]: exit status 1) and remote checkout failed (command failed [git checkout -b master origin/master]: exit status 128)"
+        }
+    ],
+    "before": {
+        "branch": "feature-x",
+        "head": "b1195e1",
+        "inProgress": "",
+        "localMaster": "b1195e1",
+        "localTags": "v1.4.2 9b58642 3f01290",
+        "remoteMaster": "b1195e1cd5d80829ed56dec883a9409256dab135\trefs/heads/master",
+        "remoteTags": "9b586423b38c73e14d469b790b07ae4f5837bce9\trefs/tags/v1.4.2\n3f01290dae4de6bda6f90b348231c707719af50d\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "master",
+        "head": "b1195e1",
+        "inProgress": "",
+        "localMaster": "b1195e1",
+        "localTags": "v1.4.2 9b58642 3f01290",
+        "remoteMaster": "b1195e1cd5d80829ed56dec883a9409256dab135\trefs/heads/master",
+        "remoteTags": "9b586423b38c73e14d469b790b07ae4f5837bce9\trefs/tags/v1.4.2\n3f01290dae4de6bda6f90b348231c707719af50d\trefs/tags/v1.4.2^{}",
+        "status": ""
+    }
+}

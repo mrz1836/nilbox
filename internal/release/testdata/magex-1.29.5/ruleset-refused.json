@@ -1,0 +1,188 @@
+{
+    "name": "ruleset-refused",
+    "note": "a tag ruleset blocks creating v* tags on origin; created",
+    "dir": "/work/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n22:37:27 [INFO] Using bump type: patch\n22:37:27 [INFO] Already on target branch 'master'\n22:37:27 [INFO] Pulling latest changes...\nAlready up to date.\n✅ Successfully pulled latest changes\n22:37:28 [INFO] Detecting current version...\n22:37:28 [INFO] No tags found on HEAD commit\n22:37:28 [WARN] Found tag v0.0.1 in repository, but it's not reachable from current commit\n22:37:28 [INFO] This can happen after squash-merges where the tag was on a different branch\n22:37:28 [INFO] 📋 Version Bump Summary:\n22:37:28 [INFO]   From:    v0.0.1\n22:37:28 [INFO]   To:      v0.0.2\n22:37:28 [INFO]   Type:    patch bump\n✅ ✅ Created tag: v0.0.2\n48af097c77e5fa4eca5f1e6f5ff025a41dc2c15f\tHEAD\n22:37:29 [INFO] Pushing tag to remote...\n22:37:30 [ERROR] ❌ Failed to push tag to remote\n22:37:30 [WARN] 💡 To push manually: git push origin v0.0.2\n",
+    "stderr": "remote: error: GH013: Repository rule violations found for refs/tags/v0.0.2.        \nremote: Review all repository rules at https://github.com/acme-org/example-repo/rules?ref=refs%2Ftags%2Fv0.0.2        \nremote: \nremote: - Cannot create ref due to creations being restricted.        \nremote: \nTo https://github.com/acme-org/example-repo.git\n ! [remote rejected] v0.0.2 -> v0.0.2 (push declined due to repository rule violations)\nerror: failed to push some refs to 'https://github.com/acme-org/example-repo.git'\n❌ Error: failed to push tag: command failed [git push origin v0.0.2]: exit status 1\n",
+    "exit": 1,
+    "durationMs": 2970,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "22:37:27 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 20,
+            "text": "22:37:27 [INFO] Already on target branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 20,
+            "text": "22:37:27 [INFO] Pulling latest changes..."
+        },
+        {
+            "stream": "out",
+            "ms": 869,
+            "text": "Already up to date."
+        },
+        {
+            "stream": "out",
+            "ms": 870,
+            "text": "✅ Successfully pulled latest changes"
+        },
+        {
+            "stream": "out",
+            "ms": 876,
+            "text": "22:37:28 [INFO] Detecting current version..."
+        },
+        {
+            "stream": "out",
+            "ms": 882,
+            "text": "22:37:28 [INFO] No tags found on HEAD commit"
+        },
+        {
+            "stream": "out",
+            "ms": 895,
+            "text": "22:37:28 [WARN] Found tag v0.0.1 in repository, but it's not reachable from current commit"
+        },
+        {
+            "stream": "out",
+            "ms": 895,
+            "text": "22:37:28 [INFO] This can happen after squash-merges where the tag was on a different branch"
+        },
+        {
+            "stream": "out",
+            "ms": 912,
+            "text": "22:37:28 [INFO] 📋 Version Bump Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 912,
+            "text": "22:37:28 [INFO]   From:    v0.0.1"
+        },
+        {
+            "stream": "out",
+            "ms": 912,
+            "text": "22:37:28 [INFO]   To:      v0.0.2"
+        },
+        {
+            "stream": "out",
+            "ms": 912,
+            "text": "22:37:28 [INFO]   Type:    patch bump"
+        },
+        {
+            "stream": "out",
+            "ms": 933,
+            "text": "✅ ✅ Created tag: v0.0.2"
+        },
+        {
+            "stream": "out",
+            "ms": 1308,
+            "text": "48af097c77e5fa4eca5f1e6f5ff025a41dc2c15f\tHEAD"
+        },
+        {
+            "stream": "out",
+            "ms": 1745,
+            "text": "22:37:29 [INFO] Pushing tag to remote..."
+        },
+        {
+            "stream": "err",
+            "ms": 2584,
+            "text": "remote: error: GH013: Repository rule violations found for refs/tags/v0.0.2.        "
+        },
+        {
+            "stream": "err",
+            "ms": 2584,
+            "text": "remote: Review all repository rules at https://github.com/acme-org/example-repo/rules?ref=refs%2Ftags%2Fv0.0.2        "
+        },
+        {
+            "stream": "err",
+            "ms": 2584,
+            "text": "remote: "
+        },
+        {
+            "stream": "err",
+            "ms": 2584,
+            "text": "remote: - Cannot create ref due to creations being restricted.        "
+        },
+        {
+            "stream": "err",
+            "ms": 2584,
+            "text": "remote: "
+        },
+        {
+            "stream": "err",
+            "ms": 2586,
+            "text": "To https://github.com/acme-org/example-repo.git"
+        },
+        {
+            "stream": "err",
+            "ms": 2586,
+            "text": " ! [remote rejected] v0.0.2 -> v0.0.2 (push declined due to repository rule violations)"
+        },
+        {
+            "stream": "err",
+            "ms": 2586,
+            "text": "error: failed to push some refs to 'https://github.com/acme-org/example-repo.git'"
+        },
+        {
+            "stream": "out",
+            "ms": 2969,
+            "text": "22:37:30 [ERROR] ❌ Failed to push tag to remote"
+        },
+        {
+            "stream": "out",
+            "ms": 2969,
+            "text": "22:37:30 [WARN] 💡 To push manually: git push origin v0.0.2"
+        },
+        {
+            "stream": "err",
+            "ms": 2969,
+            "text": "❌ Error: failed to push tag: command failed [git push origin v0.0.2]: exit status 1"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "localTags": "v0.0.1",
+        "remoteTags": "29d3cd52b5709eee231b5b8d9754750764983ae7\trefs/tags/v0.0.1\n62254db5a66b04e08345725d30636608ea6a921b\trefs/tags/v0.0.1^{}"
+    },
+    "after": {
+        "branch": "master",
+        "localTags": "v0.0.1\nv0.0.2",
+        "remoteTags": "29d3cd52b5709eee231b5b8d9754750764983ae7\trefs/tags/v0.0.1\n62254db5a66b04e08345725d30636608ea6a921b\trefs/tags/v0.0.1^{}"
+    }
+}

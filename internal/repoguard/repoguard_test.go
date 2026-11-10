@@ -482,6 +482,10 @@ func cloneChangingVerbs() []string {
 // checkout.
 const worktreeMakerFile = "internal/worktrees/create.go"
 
+// TestNoGitCommandChangesAClone keeps every git command the app runs from changing a
+// clone's checkout. Work that does change one belongs to the integration's own tool, run
+// on the user's click: a release's magex switches, pulls, tags, and pushes, and the app
+// only starts it and reads, afterwards, where the tag and the clone are.
 func TestNoGitCommandChangesAClone(t *testing.T) {
 	t.Parallel()
 

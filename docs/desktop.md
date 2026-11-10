@@ -285,7 +285,8 @@ record of each run and its whole output.
 - **Quitting while runs are going.** Quitting (the app menu, ⌘Q, or the menu bar's Quit) while a
   run goes in the app brings the window forward and asks first: **Keep running** or **Stop and
   quit**. Stop and quit sends each run SIGTERM, then SIGKILL after 3 seconds, and records it as
-  stopped before the app closes. Runs in your terminal are left running. Closing the window never
+  stopped before the app closes. A release the app hasn't finished checking on GitHub by then
+  stays recorded as going, and the next start checks it. Runs in your terminal are left running. Closing the window never
   asks: the app keeps running in the menu bar. A logout, a restart, or a shutdown asks the app to
   quit too, so while a run goes in the app, macOS cancels it and names the app, as Terminal does for
   a running command; answer the question, then try again.
@@ -294,7 +295,8 @@ record of each run and its whole output.
   shows *Still running from before Nilbox restarted*: its log is followed again, and **Stop** works.
   One that's gone shows *Nilbox closed while this was running*. A run in your terminal is followed
   again if it's still going, finished with its exit status if it wrote one, or shows *The terminal
-  closed while this was running*.
+  closed while this was running*. A release among them is checked as one that just ended is: its
+  log is read again, and GitHub is asked whether its tag is there.
 - **History.** The newest 200 runs are kept, with up to 512 MB of logs in all; older runs go with
   their logs, and a run still going is never dropped. A finished log over 16 MB keeps its first
   4 MB and its last 12 MB.
@@ -1487,12 +1489,14 @@ whose agent isn't installed says so, as in "Codex isn't installed (codex wasn't 
 **Clones.** The item's clone is found by scanning the clone root one level deep and matching
 each repository's git remotes. The match is remembered and checked again on the next launch. To
 find and check clones, the launcher runs only the read-only `git -C <clone> config --get-regexp`
-remote lookup. Nothing ever changes a clone's own checkout: no checkout, stash, pull, reset, or
-branch switch. When a session needs a pull request's branch, the starter prompts ask the agent to
-run `gh pr checkout <n>` inside the worktree. The only git commands the app runs that change a
-clone are its [worktree creation](#worktrees) (a fetch into the item's own refs, and `git worktree
-add`) and the [Worktrees view's](#the-worktrees-view) removals, prunes, and unlocks, with the
-[branch deletions](#branches) you confirm there.
+remote lookup. No git command the app runs changes a clone's own checkout: no checkout, stash,
+pull, reset, or branch switch. Only a tool you turn on in Settings → Integrations does, when you
+click: a release's magex switches to the branch, pulls, tags, and pushes the tag, and the app
+then checks where the tag and your clone are. When a session needs a pull request's branch, the
+starter prompts ask the agent to run `gh pr checkout <n>` inside the worktree. The only git
+commands the app runs that change a clone are its [worktree creation](#worktrees) (a fetch into
+the item's own refs, and `git worktree add`) and the [Worktrees view's](#the-worktrees-view)
+removals, prunes, and unlocks, with the [branch deletions](#branches) you confirm there.
 
 **A repository with no clone.** When a launch finds no clone of the item's repository, the row
 says so and offers **Clone into ~/projects/&lt;name&gt;**: the clone root, then the repository's

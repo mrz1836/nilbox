@@ -10,7 +10,9 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/event"
+	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/flight"
+	"github.com/mrz1836/nilbox/internal/gitread"
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/repo"
@@ -51,15 +53,43 @@ type Checker interface {
 	CloneState(ctx context.Context, dir, branch, remoteHead string, tags []Tag) CloneState
 }
 
-// Config holds a Service's dependencies. GitHub and Clones are required.
+// Config holds a Service's dependencies. GitHub and Clones are required; Prepare and
+// Start also need Git, Origins, and Runs.
 type Config struct {
 	GitHub  GitHub
 	Clones  Clones
 	Checker Checker
-	Home    string
-	Clock   clock.Clock
-	Events  event.Sink
-	Logger  *slog.Logger
+
+	// Git reads the clone a release runs in, before it starts and under its lock, and
+	// finds where the release left the tag and the clone once it ends.
+	Git *gitread.Git
+
+	// Origins reads which repository a clone's origin is, Tools what the app knows of
+	// magex, and Locks which job holds a clone: the app's one *clonelock.Set.
+	Origins OriginReader
+	Tools   ToolSource
+	Locks   LockHolders
+
+	// Env returns the login shell's environment, and whether it was read
+	// (shellenv.Reader.Env): a release in the app runs with it, and so do ssh-add and
+	// ssh-keygen, which Runner runs. Both default as GatherConfig's do.
+	Env    func() ([]string, bool)
+	Runner func(env []string) execpath.Runner
+
+	// Ready, when set, returns a channel closed once the login shell's environment has
+	// first been read (shellenv.Reader.Ready). A release from before a restart waits for
+	// it before it is verified, so origin is asked with the user's own ssh agent.
+	Ready func() <-chan struct{}
+
+	// Runs starts a release's run: the scriptrun engine. Places reads where runs go; without
+	// it they go in the app.
+	Runs   Runs
+	Places Places
+
+	Home   string
+	Clock  clock.Clock
+	Events event.Sink
+	Logger *slog.Logger
 }
 
 // Candidates is the Release page's list: every clone with a GitHub origin, grouped, and
@@ -72,7 +102,8 @@ type Candidates struct {
 	Error         string      `json:"error"`
 }
 
-// Service lists what can be released. The window binds it.
+// Service lists what can be released, prepares a release's sheet, and starts the
+// release. The window binds it.
 type Service struct {
 	github  GitHub
 	clones  Clones
@@ -81,6 +112,22 @@ type Service struct {
 	clock   clock.Clock
 	events  event.Sink
 	logger  *slog.Logger
+
+	// gatherer gathers a release's facts, and git reads where a release left the tag and
+	// the clone; both are nil without Config.Git. env is the environment a release runs
+	// with, and ready says when it is the shell's; runs starts a release, and places says
+	// where runs go.
+	gatherer *Gatherer
+	git      verifyGit
+	env      func() ([]string, bool)
+	ready    func() <-chan struct{}
+	runs     Runs
+	places   Places
+
+	// factsMu guards facts: the facts each clone's sheet was last shown, by its folder,
+	// resolved.
+	factsMu sync.Mutex
+	facts   map[string]keptFacts
 
 	// refreshes runs one refresh at a time; a caller that comes while one runs gets its
 	// answer.
@@ -98,10 +145,25 @@ type Service struct {
 
 // NewService returns a Service over cfg.
 func NewService(cfg Config) *Service {
-	return &Service{
+	s := &Service{
 		github: cfg.GitHub, clones: cfg.Clones, checker: cfg.Checker, home: cfg.Home,
 		clock: clock.Or(cfg.Clock), events: event.Or(cfg.Events), logger: logging.Or(cfg.Logger),
+		env: cfg.Env, ready: cfg.Ready, runs: cfg.Runs, places: cfg.Places, facts: map[string]keptFacts{},
 	}
+
+	if s.env == nil {
+		s.env = appEnv
+	}
+
+	if cfg.Git != nil {
+		s.git = cfg.Git
+		s.gatherer = NewGatherer(GatherConfig{
+			Git: cfg.Git, GitHub: cfg.GitHub, Origins: cfg.Origins, Tools: cfg.Tools, Locks: cfg.Locks, Env: s.env,
+			Runner: cfg.Runner, Home: cfg.Home,
+		})
+	}
+
+	return s
 }
 
 // Candidates returns the repositories the Release page lists. It serves the last list

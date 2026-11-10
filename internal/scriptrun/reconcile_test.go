@@ -2,7 +2,10 @@ package scriptrun
 
 import (
 	"context"
+	"database/sql"
 	"os"
+	"slices"
+	"sync"
 	"syscall"
 	"testing"
 	"testing/synctest"
@@ -394,4 +397,301 @@ func TestReconcileAfterTheEngineStoppedDoesNothing(t *testing.T) {
 	h.e.reconcile(context.WithoutCancel(t.Context()))
 
 	assert.Equal(t, StatusRunning, h.record(id).Status, "the next start settles it")
+}
+
+// fakeVerifier verifies the runs from before a restart: it hands each a collector, and
+// its Finish records how the run ended and says it verified it.
+type fakeVerifier struct {
+	output *collector
+
+	mu    sync.Mutex
+	asked []Record
+	ended []Ending
+	given []Outcome
+}
+
+func newFakeVerifier() *fakeVerifier {
+	return &fakeVerifier{output: &collector{}}
+}
+
+func (f *fakeVerifier) Verify(run Record) Verification {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.asked = append(f.asked, run)
+
+	return Verification{Output: f.output, Finish: func(_ context.Context, end Ending, out Outcome) Outcome {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+
+		f.ended, f.given = append(f.ended, end), append(f.given, out)
+
+		return Outcome{Status: StatusSucceeded, Summary: "Verified.", Detail: map[string]string{"tag": "v1.4.3"}}
+	}}
+}
+
+// seen returns the runs it was asked about, and the endings and outcomes its Finish got.
+func (f *fakeVerifier) seen() ([]Record, []Ending, []Outcome) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return slices.Clone(f.asked), slices.Clone(f.ended), slices.Clone(f.given)
+}
+
+// writeLog writes a run's log, as the run did before the app restarted.
+func (h *harness) writeLog(id int64, text string) {
+	h.t.Helper()
+
+	require.NoError(h.t, h.e.files.ensureDir())
+	testutil.WriteFile(h.t, h.e.files.log(id), text)
+}
+
+func TestReconcileVerifiesAnInterruptedRun(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	procs := newFakeProcs()
+	procs.install(h.e)
+
+	v := newFakeVerifier()
+	h.e.RegisterVerifier(KindScript, v)
+
+	id := h.insertRow(RunsInApp, h.clone(), 4646, 4646, startedLong())
+	h.writeLog(id, "Created tag v1.4.3\n")
+
+	h.e.reconcile(t.Context())
+
+	rec := h.ended(id)
+	assert.Equal(t, StatusSucceeded, rec.Status, "its kind's verifier worked out how it ended")
+	assert.Equal(t, "Verified.", rec.Summary)
+	assert.Equal(t, map[string]any{"tag": "v1.4.3"}, rec.Result.Outcome)
+	assert.Equal(t, map[string]any{"a": float64(1)}, rec.Result.Intent, "its intent is kept")
+
+	asked, ended, given := v.seen()
+	require.Len(t, asked, 1)
+	assert.Equal(t, id, asked[0].ID)
+	assert.Equal(t, map[string]any{"a": float64(1)}, asked[0].Result.Intent, "it verifies from the record's intent")
+	assert.Equal(t, []Ending{{Interrupted: appClosed}}, ended)
+	require.Len(t, given, 1)
+	assert.Equal(t, StatusInterrupted, given[0].Status, "it is given the engine's own outcome")
+	assert.Equal(t, "Created tag v1.4.3\n", v.output.String(), "its reader read the log from the start")
+}
+
+func TestReconcileVerifiesAnOrphanedRunWhenItEnds(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		h := newHarness(t)
+		procs := newFakeProcs()
+		procs.install(h.e)
+		procs.run(4747, startedLong())
+
+		v := newFakeVerifier()
+		h.e.RegisterVerifier(KindScript, v)
+
+		id := h.insertRow(RunsInApp, h.clone(), 4747, 4747, startedLong())
+		h.writeLog(id, "Pulling latest changes...\n")
+
+		h.e.reconcile(t.Context())
+
+		assert.Equal(t, StatusOrphaned, h.record(id).Status)
+
+		asked, ended, _ := v.seen()
+		assert.Len(t, asked, 1, "it is asked as the run is picked up")
+		assert.Empty(t, ended, "its Finish waits for the run to end")
+
+		time.Sleep(h.e.tailEvery)
+		synctest.Wait()
+		assert.Equal(t, "Pulling latest changes...\n", v.output.String(), "the log is read as the run goes on")
+
+		procs.end(4747)
+		time.Sleep(h.e.tailEvery)
+		synctest.Wait()
+
+		rec := h.record(id)
+		assert.Equal(t, StatusSucceeded, rec.Status)
+		assert.Nil(t, h.e.liveRun(id))
+
+		_, ended, _ = v.seen()
+		assert.Equal(t, []Ending{{Interrupted: orphanEnded}}, ended)
+	})
+}
+
+// heldVerifier verifies runs from before a restart slowly: each one's Finish waits until
+// let is closed, or its context ends, when it leaves the run unsettled.
+type heldVerifier struct {
+	let chan struct{}
+}
+
+func (v heldVerifier) Verify(Record) Verification {
+	return Verification{Finish: func(ctx context.Context, _ Ending, _ Outcome) Outcome {
+		select {
+		case <-v.let:
+			return Outcome{Status: StatusSucceeded, Summary: "Verified."}
+		case <-ctx.Done():
+			return Outcome{Unsettled: true}
+		}
+	}}
+}
+
+func TestReconcileHoldsEveryRunBeforeItVerifiesAny(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	procs := newFakeProcs()
+	procs.install(h.e)
+
+	v := heldVerifier{let: make(chan struct{})}
+	h.e.RegisterVerifier(KindScript, v)
+
+	first, second := h.clone(), h.clone()
+	ids := []int64{
+		h.insertRow(RunsInApp, first, 5151, 5151, startedLong()),
+		h.insertRow(RunsInTerminal, second, 5252, 0, startedLong()),
+	}
+
+	h.e.reconcile(t.Context()) // returns while both are still being verified
+
+	for i, dir := range []string{first, second} {
+		holder, held := h.locks.Holder(dir)
+		require.True(t, held, "run %d's clone is held while it is verified", i)
+		assert.Equal(t, clonelock.KindOrphan, holder.Kind)
+		assert.Equal(t, ids[i], holder.RunID)
+		assert.NotNil(t, h.e.liveRun(ids[i]), "run %d is registered", i)
+
+		run, err := h.s.Run(t.Context(), ids[i])
+		require.NoError(t, err)
+		assert.False(t, run.CanStop, "nothing of it runs to stop")
+	}
+
+	assert.False(t, h.e.Active(), "verifying holds up no quit")
+	assert.False(t, h.e.InUse("mage-x"), "nor an install")
+
+	_, err := h.e.Start(t.Context(), Spec{
+		Kind: KindScript, Dir: first, Argv: []string{"/usr/bin/true"}, Repo: testRepo(),
+	})
+	require.ErrorIs(t, err, clonelock.ErrBusy, "no run starts in a clone being verified")
+
+	close(v.let)
+
+	for _, id := range ids {
+		assert.Equal(t, StatusSucceeded, h.ended(id).Status)
+	}
+}
+
+func TestAnUnsettledEndIsLeftForTheNextStart(t *testing.T) {
+	t.Parallel()
+
+	var db *sql.DB
+
+	h := newHarness(t, func(c *Config) { db = c.DB })
+	procs := newFakeProcs()
+
+	// A run in the app whose Finish can't learn what it needs before the app quits.
+	spec := h.spec(testutil.FakeRun{Stdout: readyLine, Sleep: time.Minute})
+	spec.Finish = heldVerifier{let: make(chan struct{})}.Verify(Record{}).Finish
+	id := h.start(spec)
+	h.waitReady(id)
+
+	h.e.StopAll()
+
+	rec := h.record(id)
+	assert.Equal(t, StatusRunning, rec.Status, "its record is left as going")
+	assert.Nil(t, h.e.liveRun(id))
+
+	_, held := h.locks.Holder(spec.Dir)
+	assert.False(t, held, "its clone is let go")
+
+	// The next start settles it through its kind's verifier.
+	next := NewEngine(Config{DB: db, Locks: clonelock.New(), LogDir: h.e.files.dir, Logger: h.logs.Logger()})
+	t.Cleanup(next.StopAll)
+	procs.install(next)
+
+	v := newFakeVerifier()
+	next.RegisterVerifier(KindScript, v)
+	next.reconcile(t.Context())
+
+	require.Eventually(t, func() bool { return next.liveRun(id) == nil }, wait, poll)
+
+	rec, err := next.store.get(t.Context(), id)
+	require.NoError(t, err)
+	assert.Equal(t, StatusSucceeded, rec.Status)
+	assert.Contains(t, v.output.String(), "ready", "its log is read again")
+
+	_, ended, _ := v.seen()
+	assert.Equal(t, []Ending{{Interrupted: appClosed}}, ended)
+}
+
+func TestAShutdownGivesUpOnVerifyingAtOnce(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		h := newHarness(t)
+		procs := newFakeProcs()
+		procs.install(h.e)
+		h.e.RegisterVerifier(KindScript, heldVerifier{let: make(chan struct{})})
+
+		id := h.insertRow(RunsInApp, h.clone(), 5353, 5353, startedLong())
+		h.e.reconcile(t.Context())
+
+		begun := time.Now()
+
+		h.e.StopAll()
+
+		assert.Zero(t, time.Since(begun), "nothing runs, so no stop is waited for")
+		assert.Equal(t, StatusRunning, h.record(id).Status, "the next start verifies it again")
+		assert.Nil(t, h.e.liveRun(id))
+	})
+}
+
+func TestReconcileAsksOnlyTheRunsKindsVerifier(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	procs := newFakeProcs()
+	procs.install(h.e)
+
+	v := newFakeVerifier()
+	h.e.RegisterVerifier(KindRelease, v)
+
+	id := h.insertRow(RunsInApp, h.clone(), 4848, 4848, startedLong())
+
+	h.e.reconcile(t.Context())
+
+	rec := h.record(id)
+	assert.Equal(t, StatusInterrupted, rec.Status, "a script has no verifier: the engine's outcome stands")
+	assert.Equal(t, appClosed, rec.Summary)
+
+	asked, _, _ := v.seen()
+	assert.Empty(t, asked)
+}
+
+func TestAQuitMidReconcileLeavesTheRestForTheNextStart(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.e.RegisterVerifier(KindScript, heldVerifier{let: make(chan struct{})})
+
+	dir := h.clone()
+	id := h.insertRow(RunsInApp, dir, 0, 0, startedLong())
+
+	recs, err := h.e.leftBehind(t.Context())
+	require.NoError(t, err)
+	require.Len(t, recs, 1)
+
+	ended := h.e.resumeAll(t.Context(), recs)
+	require.Len(t, ended, 1, "registered, its end not yet worked out")
+
+	h.e.StopAll() // the app quits before it is settled
+
+	h.e.settle(t.Context(), ended[0])
+
+	assert.Nil(t, h.e.liveRun(id))
+	assert.Equal(t, StatusRunning, h.record(id).Status, "the next start settles it")
+
+	_, held := h.locks.Holder(dir)
+	assert.False(t, held, "its clone is let go")
+
+	l := h.e.liveOf(recs[0])
+	assert.Nil(t, h.e.endedRun(l, Ending{Interrupted: appClosed}), "nothing is registered once the engine stopped")
 }

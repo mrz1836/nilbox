@@ -1,0 +1,158 @@
+{
+    "name": "no-tags-minor",
+    "note": "no tags at all",
+    "dir": "/work/cases/no-tags-minor/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=minor",
+        "branch=master",
+        "push=true"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n22:00:01 [INFO] Using bump type: minor\n22:00:01 [INFO] Already on target branch 'master'\n22:00:01 [INFO] Pulling latest changes...\nAlready up to date.\n✅ Successfully pulled latest changes\n22:00:01 [INFO] Detecting current version...\n22:00:01 [INFO] No tags found on HEAD commit\n22:00:01 [INFO] No previous tags found in repository\n22:00:01 [INFO] No previous tags found, starting from v0.0.0\n22:00:01 [INFO] 📋 Version Bump Summary:\n22:00:01 [INFO]   From:    v0.0.0\n22:00:01 [INFO]   To:      v0.1.0\n22:00:01 [INFO]   Type:    minor bump\n✅ ✅ Created tag: v0.1.0\na9064826f561bc252544e4b8dde75597e4037748\tHEAD\n22:00:01 [INFO] Pushing tag to remote...\n✅ ✅ Tag pushed to remote\n",
+    "stderr": "To /work/cases/no-tags-minor/origin.git\n * [new tag]         v0.1.0 -> v0.1.0\n",
+    "exit": 0,
+    "durationMs": 203,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "22:00:01 [INFO] Using bump type: minor"
+        },
+        {
+            "stream": "out",
+            "ms": 17,
+            "text": "22:00:01 [INFO] Already on target branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 17,
+            "text": "22:00:01 [INFO] Pulling latest changes..."
+        },
+        {
+            "stream": "out",
+            "ms": 86,
+            "text": "Already up to date."
+        },
+        {
+            "stream": "out",
+            "ms": 87,
+            "text": "✅ Successfully pulled latest changes"
+        },
+        {
+            "stream": "out",
+            "ms": 92,
+            "text": "22:00:01 [INFO] Detecting current version..."
+        },
+        {
+            "stream": "out",
+            "ms": 97,
+            "text": "22:00:01 [INFO] No tags found on HEAD commit"
+        },
+        {
+            "stream": "out",
+            "ms": 108,
+            "text": "22:00:01 [INFO] No previous tags found in repository"
+        },
+        {
+            "stream": "out",
+            "ms": 108,
+            "text": "22:00:01 [INFO] No previous tags found, starting from v0.0.0"
+        },
+        {
+            "stream": "out",
+            "ms": 118,
+            "text": "22:00:01 [INFO] 📋 Version Bump Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 118,
+            "text": "22:00:01 [INFO]   From:    v0.0.0"
+        },
+        {
+            "stream": "out",
+            "ms": 118,
+            "text": "22:00:01 [INFO]   To:      v0.1.0"
+        },
+        {
+            "stream": "out",
+            "ms": 118,
+            "text": "22:00:01 [INFO]   Type:    minor bump"
+        },
+        {
+            "stream": "out",
+            "ms": 131,
+            "text": "✅ ✅ Created tag: v0.1.0"
+        },
+        {
+            "stream": "out",
+            "ms": 148,
+            "text": "a9064826f561bc252544e4b8dde75597e4037748\tHEAD"
+        },
+        {
+            "stream": "out",
+            "ms": 161,
+            "text": "22:00:01 [INFO] Pushing tag to remote..."
+        },
+        {
+            "stream": "err",
+            "ms": 202,
+            "text": "To /work/cases/no-tags-minor/origin.git"
+        },
+        {
+            "stream": "err",
+            "ms": 202,
+            "text": " * [new tag]         v0.1.0 -> v0.1.0"
+        },
+        {
+            "stream": "out",
+            "ms": 203,
+            "text": "✅ ✅ Tag pushed to remote"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "head": "a906482",
+        "inProgress": "",
+        "localMaster": "a906482",
+        "localTags": "",
+        "remoteMaster": "a9064826f561bc252544e4b8dde75597e4037748\trefs/heads/master",
+        "remoteTags": "",
+        "status": ""
+    },
+    "after": {
+        "branch": "master",
+        "head": "a906482",
+        "inProgress": "",
+        "localMaster": "a906482",
+        "localTags": "v0.1.0 952505d a906482",
+        "remoteMaster": "a9064826f561bc252544e4b8dde75597e4037748\trefs/heads/master",
+        "remoteTags": "952505d4e7c1827fecd054323a08e4fcba475fce\trefs/tags/v0.1.0\na9064826f561bc252544e4b8dde75597e4037748\trefs/tags/v0.1.0^{}",
+        "status": ""
+    }
+}

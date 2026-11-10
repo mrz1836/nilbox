@@ -196,8 +196,11 @@ app:lint` reads.
   every agent, under `<clone root>/.<slug>/worktrees/<clone>/`), records them in
   `internal/worklog`, checks every record against git on each listing and sweep, and removes
   them safely. Only `internal/worktrees/create.go` fetches or runs `git worktree add`, and
-  nothing changes a clone's own checkout; `TestNoGitCommandChangesAClone` in
-  `internal/repoguard` fails the build otherwise. Every git command there runs with hooks, the
+  nothing the app runs changes a clone's own checkout; `TestNoGitCommandChangesAClone` in
+  `internal/repoguard` fails the build otherwise. The one exception is a tool the user turned
+  on, run on their click: a release's magex switches to the branch, pulls, tags, and pushes
+  the tag (`internal/release`), and the app only starts it and checks afterwards where the tag
+  and the clone are. Every git command there runs with hooks, the
   file system monitor, and submodule recursion off (`hardening` in `internal/worktrees/git.go`),
   since a worktree holds a pull request's own files, and a pull request's worktree is made only
   at the head whose files the launch checked. The launcher reaches the `Maker` through its
@@ -270,11 +273,16 @@ app:lint` reads.
   clone's lock first and fails at once when the clone is busy, runs the program through
   `execpath.Start` in its own process group, writing straight into its log in
   `<data>/script-runs` (four runs at a time in the app; a release never waits for a slot), and
-  ends it with a per-kind timeout or the stop ladder. Its `Run` is a deferred desktop worker: it
+  ends it with a per-kind timeout or the stop ladder. A spec's `Before`, run under the lock and
+  a slot, may work the command out there. Its `Run` is a deferred desktop worker: it
   reconciles the runs left from before a restart (a live group whose start time matches is
   orphaned and followed again; one that is gone was interrupted; a terminal run is told apart by
-  its PID and exit files) and, as the app quits, stops every run in the app and records it
-  stopped. `Active` is the desktop shell's quit guard (`desktop.QuitGuard`): while a run goes in
+  its PID and exit files; every one is held under a placeholder lock and registered before any
+  is settled, and a kind's `Verifier`, registered with `RegisterVerifier`, gives such a run its
+  output reader and `Finish` again from its record's intent, so it is read and verified as it
+  ends, as tracked work) and, as the app quits, stops every run in the app and records it
+  stopped, unless its `Finish` returns `Unsettled` (a release whose check of GitHub the quit cut
+  off), which leaves it recorded as going for the next start. `Active` is the desktop shell's quit guard (`desktop.QuitGuard`): while a run goes in
   the app, `Shell.ShouldQuit` holds a quit and the window asks (`event.QuitRequested`), until the
   bound `Service.QuitAnyway` emits the Go-only `event.QuitConfirmed`. The Service's
   `OpenInTerminal` opens the user's terminal in a run's folder and runs nothing there, and
@@ -301,7 +309,27 @@ app:lint` reads.
   then `FetchReleaseCompare` for the repositories with a version, 15 to a query, adapted in core),
   and reads each unreleased clone's state with `gitread`, never asking origin; it keeps the list
   five minutes and keeps the last one when a refresh fails. `version.go` works the next version
-  out exactly as magex does, tested against a table recorded from the real magex.
+  out exactly as magex does, tested against a table recorded from the real magex. A release
+  follows the review sheet's template: the `Gatherer` reads its `Facts` at once (magex through
+  a `ToolSource`, GitHub's status of the one repository, origin's refs with one `ls-remote`,
+  and the clone with `gitread`), and the pure `Decide` works out the sheet's `Offer`: every
+  check, every bump's version over the clone's and origin's tags, the Major gate, and the
+  argv, `push=true` (never the bare word) plus `expect=`, `json=true`, and `ff-only` only for a
+  magex whose `Definition.Features` has them. The bound `Prepare` takes the sheet's choice and,
+  within `FactsFor`, decides again on the facts the sheet was shown, so a choice asks GitHub
+  nothing; the bound `Start` hands `scriptrun` a release whose `Before`, under the clone's lock,
+  gathers the facts once (origin and the clone afresh, GitHub's from the sheet while under
+  `FactsFor` old) and decides there what magex runs, so a release that isn't ready, whose
+  version moved, or that the sheet should never have sent (a major without its typed version,
+  its go.mod box, or a magex with `expect=`, logged as a bug) never runs. The run's
+  `OutputReader` turns magex's lines into steps, warnings, and unrecognized lines, and its
+  `Finish` verifies the release whatever magex's exit status: `ls-remote` for the tag, peeled to
+  its commit, then the clone's own tag, its branch, and any rebase in progress, into a `Result`
+  (released, not pushed, failed with `ExplainFailure`'s heading, or unverified). Only this
+  run's tag succeeds: origin's must point at the commit magex's JSON result names, or the
+  clone's tag that magex said it made; any other is someone else's (`Taken`). The commands it
+  offers to copy are shell-quoted. `release.Verifier`, which core registers for releases,
+  verifies one left from before a restart the same way.
 - `internal/measure/` and `magefiles/measure.go` take the numbers in
   [`docs/performance.md`](docs/performance.md).
 - `frontend/` is the React + TypeScript + Vite + Tailwind app. It reaches Go only through the

@@ -250,7 +250,7 @@ func (s *Service) view(rec Record) Run {
 		Dir: paths.Tilde(rec.Dir, s.e.home), Argv: rec.Argv, Command: rec.Command, RunsIn: rec.RunsIn,
 		Status: rec.Status, ExitCode: rec.ExitCode, Summary: rec.Summary, Result: rec.Result, LogBytes: rec.LogBytes,
 		Seen: !rec.SeenAt.IsZero(), StartedAt: clock.Format(rec.StartedAt), FinishedAt: formatTime(rec.FinishedAt),
-		CanStop:     l != nil && l.runsIn == RunsInApp,
+		CanStop:     l != nil && l.runsIn == RunsInApp && !l.settling,
 		CanRunAgain: rec.Kind != KindRelease && s.e.rerunner(rec.Kind) != nil,
 	}
 
