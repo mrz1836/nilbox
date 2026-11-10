@@ -1,0 +1,138 @@
+{
+    "name": "no-upstream-from-feature",
+    "note": "on feature-x, master tracks nothing, origin 1 ahead",
+    "dir": "/work/cases/no-upstream-from-feature/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n21:59:53 [INFO] Using bump type: patch\n21:59:53 [INFO] Switching to branch 'master'...\n✅ Switched to branch 'master'\n21:59:53 [INFO] Pulling latest changes...\n21:59:53 [INFO] Switching to branch 'feature-x'...\n✅ Switched to branch 'feature-x'\n✅ ✅ Switched back to original branch 'feature-x'\n",
+    "stderr": "Switched to branch 'master'\nFrom /work/cases/no-upstream-from-feature/origin\n   02f7056..527e9fb  master     -> origin/master\nYou asked to pull from the remote 'origin', but did not specify\na branch. Because this is not the default configured remote\nfor your current branch, you must specify a branch on the command line.\nSwitched to branch 'feature-x'\n❌ Error: failed to pull latest changes on branch 'master': failed to pull latest changes: command failed [git pull --rebase origin]: exit status 1\n",
+    "exit": 1,
+    "durationMs": 110,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "21:59:53 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 24,
+            "text": "21:59:53 [INFO] Switching to branch 'master'..."
+        },
+        {
+            "stream": "err",
+            "ms": 31,
+            "text": "Switched to branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 32,
+            "text": "✅ Switched to branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 32,
+            "text": "21:59:53 [INFO] Pulling latest changes..."
+        },
+        {
+            "stream": "err",
+            "ms": 65,
+            "text": "From /work/cases/no-upstream-from-feature/origin"
+        },
+        {
+            "stream": "err",
+            "ms": 65,
+            "text": "   02f7056..527e9fb  master     -> origin/master"
+        },
+        {
+            "stream": "err",
+            "ms": 101,
+            "text": "You asked to pull from the remote 'origin', but did not specify"
+        },
+        {
+            "stream": "err",
+            "ms": 101,
+            "text": "a branch. Because this is not the default configured remote"
+        },
+        {
+            "stream": "err",
+            "ms": 101,
+            "text": "for your current branch, you must specify a branch on the command line."
+        },
+        {
+            "stream": "out",
+            "ms": 102,
+            "text": "21:59:53 [INFO] Switching to branch 'feature-x'..."
+        },
+        {
+            "stream": "err",
+            "ms": 109,
+            "text": "Switched to branch 'feature-x'"
+        },
+        {
+            "stream": "err",
+            "ms": 109,
+            "text": "❌ Error: failed to pull latest changes on branch 'master': failed to pull latest changes: command failed [git pull --rebase origin]: exit status 1"
+        },
+        {
+            "stream": "out",
+            "ms": 109,
+            "text": "✅ Switched to branch 'feature-x'"
+        },
+        {
+            "stream": "out",
+            "ms": 109,
+            "text": "✅ ✅ Switched back to original branch 'feature-x'"
+        }
+    ],
+    "before": {
+        "branch": "feature-x",
+        "head": "02f7056",
+        "inProgress": "",
+        "localMaster": "02f7056",
+        "localTags": "v1.4.2 6d180ad f4d7e59",
+        "remoteMaster": "527e9fb23bc86cf47214331c8f86e2826ccdc6ac\trefs/heads/master",
+        "remoteTags": "6d180ad6c51dafb8856ed52881098f607a53fc5e\trefs/tags/v1.4.2\nf4d7e59c05d95b040c4adc8450503dfce6955dc7\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "feature-x",
+        "head": "02f7056",
+        "inProgress": "",
+        "localMaster": "02f7056",
+        "localTags": "v1.4.2 6d180ad f4d7e59",
+        "remoteMaster": "527e9fb23bc86cf47214331c8f86e2826ccdc6ac\trefs/heads/master",
+        "remoteTags": "6d180ad6c51dafb8856ed52881098f607a53fc5e\trefs/tags/v1.4.2\nf4d7e59c05d95b040c4adc8450503dfce6955dc7\trefs/tags/v1.4.2^{}",
+        "status": ""
+    }
+}

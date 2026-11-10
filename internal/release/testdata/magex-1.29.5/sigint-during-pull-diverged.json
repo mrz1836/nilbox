@@ -1,0 +1,105 @@
+{
+    "name": "sigint-during-pull-diverged",
+    "note": "SIGINT to the group when a pre-rebase hook starts; 1 local commit, 1 remote",
+    "dir": "/work/cases/sigint-during-pull-diverged/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n22:00:08 [INFO] Using bump type: patch\n22:00:08 [INFO] Already on target branch 'master'\n22:00:08 [INFO] Pulling latest changes...\n",
+    "stderr": "From /work/cases/sigint-during-pull-diverged/origin\n   a2ff483..34d608e  master     -> origin/master\n\n⚠  Canceled by user (Ctrl+C) — stopping...\n❌ Error: failed to pull latest changes: command 'git' was canceled after 30s: context canceled (command failed [git pull --rebase origin]: signal: interrupt)\n",
+    "exit": 130,
+    "sent": "interrupt",
+    "sentMs": 262,
+    "durationMs": 263,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": "22:00:08 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 21,
+            "text": "22:00:08 [INFO] Already on target branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 21,
+            "text": "22:00:08 [INFO] Pulling latest changes..."
+        },
+        {
+            "stream": "err",
+            "ms": 61,
+            "text": "From /work/cases/sigint-during-pull-diverged/origin"
+        },
+        {
+            "stream": "err",
+            "ms": 61,
+            "text": "   a2ff483..34d608e  master     -> origin/master"
+        },
+        {
+            "stream": "err",
+            "ms": 262,
+            "text": ""
+        },
+        {
+            "stream": "err",
+            "ms": 262,
+            "text": "⚠  Canceled by user (Ctrl+C) — stopping..."
+        },
+        {
+            "stream": "err",
+            "ms": 262,
+            "text": "❌ Error: failed to pull latest changes: command 'git' was canceled after 30s: context canceled (command failed [git pull --rebase origin]: signal: interrupt)"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "head": "68ae739",
+        "inProgress": "",
+        "localMaster": "68ae739",
+        "localTags": "v1.4.2 d3d5d3b 65427a0",
+        "remoteMaster": "34d608ecfe82f65e946a4ee4e0b6358033707191\trefs/heads/master",
+        "remoteTags": "d3d5d3bcd8aa35357b667fa59241e7a338188ee9\trefs/tags/v1.4.2\n65427a0b238c54828b4f4a783287fd857e8d0934\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "master",
+        "head": "68ae739",
+        "inProgress": "",
+        "localMaster": "68ae739",
+        "localTags": "v1.4.2 d3d5d3b 65427a0",
+        "remoteMaster": "34d608ecfe82f65e946a4ee4e0b6358033707191\trefs/heads/master",
+        "remoteTags": "d3d5d3bcd8aa35357b667fa59241e7a338188ee9\trefs/tags/v1.4.2\n65427a0b238c54828b4f4a783287fd857e8d0934\trefs/tags/v1.4.2^{}",
+        "status": ""
+    }
+}

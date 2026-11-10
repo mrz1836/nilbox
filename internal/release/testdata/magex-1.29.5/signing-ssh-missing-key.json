@@ -1,0 +1,168 @@
+{
+    "name": "signing-ssh-missing-key",
+    "note": "tag.gpgSign with ssh and a key file that doesn't exist",
+    "dir": "/work/cases/signing-ssh-missing-key/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n22:00:05 [INFO] Using bump type: patch\n22:00:05 [INFO] Already on target branch 'master'\n22:00:05 [INFO] Pulling latest changes...\nAlready up to date.\n✅ Successfully pulled latest changes\n22:00:05 [INFO] Detecting current version...\n22:00:05 [INFO] No tags found on HEAD commit\n22:00:05 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.2\n22:00:05 [INFO] Recent commits:\n5aa696a fix: retries on 502 (#45)\ne2e384e feat: first feature\nccf5f93 chore: initial commit\n22:00:05 [INFO] 📋 Version Bump Summary:\n22:00:05 [INFO]   From:    v1.4.2\n22:00:05 [INFO]   To:      v1.4.3\n22:00:05 [INFO]   Type:    patch bump\n",
+    "stderr": "error: Couldn't load public key /work/cases/signing-ssh-missing-key/missing-key.pub: No such file or directory?\n\nerror: unable to sign the tag\nThe tag message has been left in .git/TAG_EDITMSG\n❌ Error: failed to create tag: command failed [git tag -a v1.4.3 -m GitHubRelease v1.4.3]: exit status 128\n",
+    "exit": 1,
+    "durationMs": 162,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "22:00:05 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 17,
+            "text": "22:00:05 [INFO] Already on target branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 17,
+            "text": "22:00:05 [INFO] Pulling latest changes..."
+        },
+        {
+            "stream": "out",
+            "ms": 85,
+            "text": "Already up to date."
+        },
+        {
+            "stream": "out",
+            "ms": 86,
+            "text": "✅ Successfully pulled latest changes"
+        },
+        {
+            "stream": "out",
+            "ms": 91,
+            "text": "22:00:05 [INFO] Detecting current version..."
+        },
+        {
+            "stream": "out",
+            "ms": 97,
+            "text": "22:00:05 [INFO] No tags found on HEAD commit"
+        },
+        {
+            "stream": "out",
+            "ms": 119,
+            "text": "22:00:05 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 125,
+            "text": "22:00:05 [INFO] Recent commits:"
+        },
+        {
+            "stream": "out",
+            "ms": 125,
+            "text": "5aa696a fix: retries on 502 (#45)"
+        },
+        {
+            "stream": "out",
+            "ms": 125,
+            "text": "e2e384e feat: first feature"
+        },
+        {
+            "stream": "out",
+            "ms": 125,
+            "text": "ccf5f93 chore: initial commit"
+        },
+        {
+            "stream": "out",
+            "ms": 140,
+            "text": "22:00:05 [INFO] 📋 Version Bump Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 140,
+            "text": "22:00:05 [INFO]   From:    v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 140,
+            "text": "22:00:05 [INFO]   To:      v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 140,
+            "text": "22:00:05 [INFO]   Type:    patch bump"
+        },
+        {
+            "stream": "err",
+            "ms": 161,
+            "text": "error: Couldn't load public key /work/cases/signing-ssh-missing-key/missing-key.pub: No such file or directory?"
+        },
+        {
+            "stream": "err",
+            "ms": 161,
+            "text": ""
+        },
+        {
+            "stream": "err",
+            "ms": 162,
+            "text": "error: unable to sign the tag"
+        },
+        {
+            "stream": "err",
+            "ms": 162,
+            "text": "The tag message has been left in .git/TAG_EDITMSG"
+        },
+        {
+            "stream": "err",
+            "ms": 162,
+            "text": "❌ Error: failed to create tag: command failed [git tag -a v1.4.3 -m GitHubRelease v1.4.3]: exit status 128"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "head": "5aa696a",
+        "inProgress": "",
+        "localMaster": "5aa696a",
+        "localTags": "v1.4.2 f353b76 e2e384e",
+        "remoteMaster": "5aa696a8b430f8b496b9f2216e1beb2bffde2e49\trefs/heads/master",
+        "remoteTags": "f353b763e58027733b6d6f729207f9101382231c\trefs/tags/v1.4.2\ne2e384e7b75b699257288c1b2d058308f82ad395\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "master",
+        "head": "5aa696a",
+        "inProgress": "",
+        "localMaster": "5aa696a",
+        "localTags": "v1.4.2 f353b76 e2e384e",
+        "remoteMaster": "5aa696a8b430f8b496b9f2216e1beb2bffde2e49\trefs/heads/master",
+        "remoteTags": "f353b763e58027733b6d6f729207f9101382231c\trefs/tags/v1.4.2\ne2e384e7b75b699257288c1b2d058308f82ad395\trefs/tags/v1.4.2^{}",
+        "status": ""
+    }
+}

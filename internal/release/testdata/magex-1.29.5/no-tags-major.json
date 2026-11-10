@@ -1,0 +1,174 @@
+{
+    "name": "no-tags-major",
+    "note": "no tags at all",
+    "dir": "/work/cases/no-tags-major/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=major",
+        "branch=master",
+        "push=true",
+        "major-confirm"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n22:00:01 [INFO] Using bump type: major\n22:00:01 [INFO] Detecting current version...\n22:00:01 [INFO] No tags found on HEAD commit\n22:00:01 [INFO] No previous tags found in repository\n22:00:01 [INFO] Already on target branch 'master'\n22:00:01 [INFO] Pulling latest changes...\nAlready up to date.\n✅ Successfully pulled latest changes\n22:00:01 [INFO] Detecting current version...\n22:00:01 [INFO] No tags found on HEAD commit\n22:00:01 [INFO] No previous tags found in repository\n22:00:01 [INFO] No previous tags found, starting from v0.0.0\n22:00:01 [INFO] 📋 Version Bump Summary:\n22:00:01 [INFO]   From:    v0.0.0\n22:00:01 [INFO]   To:      v1.0.0\n22:00:01 [INFO]   Type:    major bump\n✅ ✅ Created tag: v1.0.0\nc0c59c10b78028bae661a5be1f54781762679cd8\tHEAD\n22:00:02 [INFO] Pushing tag to remote...\n✅ ✅ Tag pushed to remote\n",
+    "stderr": "To /work/cases/no-tags-major/origin.git\n * [new tag]         v1.0.0 -> v1.0.0\n",
+    "exit": 0,
+    "durationMs": 220,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "22:00:01 [INFO] Using bump type: major"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "22:00:01 [INFO] Detecting current version..."
+        },
+        {
+            "stream": "out",
+            "ms": 12,
+            "text": "22:00:01 [INFO] No tags found on HEAD commit"
+        },
+        {
+            "stream": "out",
+            "ms": 23,
+            "text": "22:00:01 [INFO] No previous tags found in repository"
+        },
+        {
+            "stream": "out",
+            "ms": 34,
+            "text": "22:00:01 [INFO] Already on target branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 34,
+            "text": "22:00:01 [INFO] Pulling latest changes..."
+        },
+        {
+            "stream": "out",
+            "ms": 102,
+            "text": "Already up to date."
+        },
+        {
+            "stream": "out",
+            "ms": 103,
+            "text": "✅ Successfully pulled latest changes"
+        },
+        {
+            "stream": "out",
+            "ms": 108,
+            "text": "22:00:01 [INFO] Detecting current version..."
+        },
+        {
+            "stream": "out",
+            "ms": 114,
+            "text": "22:00:01 [INFO] No tags found on HEAD commit"
+        },
+        {
+            "stream": "out",
+            "ms": 124,
+            "text": "22:00:01 [INFO] No previous tags found in repository"
+        },
+        {
+            "stream": "out",
+            "ms": 124,
+            "text": "22:00:01 [INFO] No previous tags found, starting from v0.0.0"
+        },
+        {
+            "stream": "out",
+            "ms": 135,
+            "text": "22:00:01 [INFO] 📋 Version Bump Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 135,
+            "text": "22:00:01 [INFO]   From:    v0.0.0"
+        },
+        {
+            "stream": "out",
+            "ms": 135,
+            "text": "22:00:01 [INFO]   To:      v1.0.0"
+        },
+        {
+            "stream": "out",
+            "ms": 135,
+            "text": "22:00:01 [INFO]   Type:    major bump"
+        },
+        {
+            "stream": "out",
+            "ms": 147,
+            "text": "✅ ✅ Created tag: v1.0.0"
+        },
+        {
+            "stream": "out",
+            "ms": 165,
+            "text": "c0c59c10b78028bae661a5be1f54781762679cd8\tHEAD"
+        },
+        {
+            "stream": "out",
+            "ms": 178,
+            "text": "22:00:02 [INFO] Pushing tag to remote..."
+        },
+        {
+            "stream": "err",
+            "ms": 219,
+            "text": "To /work/cases/no-tags-major/origin.git"
+        },
+        {
+            "stream": "err",
+            "ms": 219,
+            "text": " * [new tag]         v1.0.0 -> v1.0.0"
+        },
+        {
+            "stream": "out",
+            "ms": 219,
+            "text": "✅ ✅ Tag pushed to remote"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "head": "c0c59c1",
+        "inProgress": "",
+        "localMaster": "c0c59c1",
+        "localTags": "",
+        "remoteMaster": "c0c59c10b78028bae661a5be1f54781762679cd8\trefs/heads/master",
+        "remoteTags": "",
+        "status": ""
+    },
+    "after": {
+        "branch": "master",
+        "head": "c0c59c1",
+        "inProgress": "",
+        "localMaster": "c0c59c1",
+        "localTags": "v1.0.0 3d6a05e c0c59c1",
+        "remoteMaster": "c0c59c10b78028bae661a5be1f54781762679cd8\trefs/heads/master",
+        "remoteTags": "3d6a05e003029f7303c7942e6e3cafa2b4e6983b\trefs/tags/v1.0.0\nc0c59c10b78028bae661a5be1f54781762679cd8\trefs/tags/v1.0.0^{}",
+        "status": ""
+    }
+}

@@ -1,0 +1,193 @@
+{
+    "name": "unpushed-commits",
+    "note": "master has 2 commits not on origin; origin has 1 the clone lacks",
+    "dir": "/work/cases/unpushed-commits/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n21:59:54 [INFO] Using bump type: patch\n21:59:54 [INFO] Already on target branch 'master'\n21:59:54 [INFO] Pulling latest changes...\n✅ Successfully pulled latest changes\n21:59:54 [INFO] Detecting current version...\n21:59:54 [INFO] No tags found on HEAD commit\n21:59:54 [WARN] Current version tag is not on HEAD - there are 4 commits since v1.4.2\n21:59:54 [INFO] Recent commits:\n7b203fc fix: local two\n22dc4fc fix: local one\n583483b fix: remote\n02f7056 fix: retries on 502 (#45)\nf4d7e59 feat: first feature\n21:59:54 [INFO] 📋 Version Bump Summary:\n21:59:54 [INFO]   From:    v1.4.2\n21:59:54 [INFO]   To:      v1.4.3\n21:59:54 [INFO]   Type:    patch bump\n✅ ✅ Created tag: v1.4.3\n583483bb5e35c71d226cb64207672fd00434e1f3\tHEAD\n21:59:54 [INFO] Pushing tag to remote...\n✅ ✅ Tag pushed to remote\n",
+    "stderr": "From /work/cases/unpushed-commits/origin\n   02f7056..583483b  master     -> origin/master\nRebasing (1/2)\rRebasing (2/2)\rSuccessfully rebased and updated refs/heads/master.\nTo /work/cases/unpushed-commits/origin.git\n * [new tag]         v1.4.3 -> v1.4.3\n",
+    "exit": 0,
+    "durationMs": 273,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "21:59:54 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 20,
+            "text": "21:59:54 [INFO] Already on target branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 20,
+            "text": "21:59:54 [INFO] Pulling latest changes..."
+        },
+        {
+            "stream": "err",
+            "ms": 57,
+            "text": "From /work/cases/unpushed-commits/origin"
+        },
+        {
+            "stream": "err",
+            "ms": 57,
+            "text": "   02f7056..583483b  master     -> origin/master"
+        },
+        {
+            "stream": "err",
+            "ms": 121,
+            "text": "Rebasing (1/2)\rRebasing (2/2)\rSuccessfully rebased and updated refs/heads/master."
+        },
+        {
+            "stream": "out",
+            "ms": 122,
+            "text": "✅ Successfully pulled latest changes"
+        },
+        {
+            "stream": "out",
+            "ms": 128,
+            "text": "21:59:54 [INFO] Detecting current version..."
+        },
+        {
+            "stream": "out",
+            "ms": 134,
+            "text": "21:59:54 [INFO] No tags found on HEAD commit"
+        },
+        {
+            "stream": "out",
+            "ms": 159,
+            "text": "21:59:54 [WARN] Current version tag is not on HEAD - there are 4 commits since v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 165,
+            "text": "21:59:54 [INFO] Recent commits:"
+        },
+        {
+            "stream": "out",
+            "ms": 165,
+            "text": "7b203fc fix: local two"
+        },
+        {
+            "stream": "out",
+            "ms": 165,
+            "text": "22dc4fc fix: local one"
+        },
+        {
+            "stream": "out",
+            "ms": 165,
+            "text": "583483b fix: remote"
+        },
+        {
+            "stream": "out",
+            "ms": 165,
+            "text": "02f7056 fix: retries on 502 (#45)"
+        },
+        {
+            "stream": "out",
+            "ms": 165,
+            "text": "f4d7e59 feat: first feature"
+        },
+        {
+            "stream": "out",
+            "ms": 180,
+            "text": "21:59:54 [INFO] 📋 Version Bump Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 180,
+            "text": "21:59:54 [INFO]   From:    v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 180,
+            "text": "21:59:54 [INFO]   To:      v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 180,
+            "text": "21:59:54 [INFO]   Type:    patch bump"
+        },
+        {
+            "stream": "out",
+            "ms": 192,
+            "text": "✅ ✅ Created tag: v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 211,
+            "text": "583483bb5e35c71d226cb64207672fd00434e1f3\tHEAD"
+        },
+        {
+            "stream": "out",
+            "ms": 225,
+            "text": "21:59:54 [INFO] Pushing tag to remote..."
+        },
+        {
+            "stream": "err",
+            "ms": 272,
+            "text": "To /work/cases/unpushed-commits/origin.git"
+        },
+        {
+            "stream": "err",
+            "ms": 272,
+            "text": " * [new tag]         v1.4.3 -> v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 272,
+            "text": "✅ ✅ Tag pushed to remote"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "head": "0efdae9",
+        "inProgress": "",
+        "localMaster": "0efdae9",
+        "localTags": "v1.4.2 6d180ad f4d7e59",
+        "remoteMaster": "583483bb5e35c71d226cb64207672fd00434e1f3\trefs/heads/master",
+        "remoteTags": "6d180ad6c51dafb8856ed52881098f607a53fc5e\trefs/tags/v1.4.2\nf4d7e59c05d95b040c4adc8450503dfce6955dc7\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "master",
+        "head": "7b203fc",
+        "inProgress": "",
+        "localMaster": "7b203fc",
+        "localTags": "v1.4.2 6d180ad f4d7e59\nv1.4.3 1a9d045 7b203fc",
+        "remoteMaster": "583483bb5e35c71d226cb64207672fd00434e1f3\trefs/heads/master",
+        "remoteTags": "6d180ad6c51dafb8856ed52881098f607a53fc5e\trefs/tags/v1.4.2\nf4d7e59c05d95b040c4adc8450503dfce6955dc7\trefs/tags/v1.4.2^{}\n1a9d04570ac7d255d6d4d526a5648b567e018d95\trefs/tags/v1.4.3\n7b203fce29355ba542926a2765ea3cc64831cff2\trefs/tags/v1.4.3^{}",
+        "status": ""
+    }
+}

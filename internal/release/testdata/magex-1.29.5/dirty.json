@@ -1,0 +1,83 @@
+{
+    "name": "dirty",
+    "note": "a modified tracked file and an untracked file",
+    "dir": "/work/cases/dirty/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n21:59:50 [INFO] Using bump type: patch\n21:59:50 [ERROR] ❌ Cannot proceed: Working directory has uncommitted changes\n21:59:50 [INFO] Please commit or stash your changes before bumping version\n",
+    "stderr": "❌ Error: working directory has uncommitted changes\n",
+    "exit": 1,
+    "durationMs": 13,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "21:59:50 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 12,
+            "text": "21:59:50 [ERROR] ❌ Cannot proceed: Working directory has uncommitted changes"
+        },
+        {
+            "stream": "out",
+            "ms": 12,
+            "text": "21:59:50 [INFO] Please commit or stash your changes before bumping version"
+        },
+        {
+            "stream": "err",
+            "ms": 12,
+            "text": "❌ Error: working directory has uncommitted changes"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "head": "53dc080",
+        "inProgress": "",
+        "localMaster": "53dc080",
+        "localTags": "v1.4.2 1c41097 a56e1b8",
+        "remoteMaster": "53dc08028d381e355dc1c3971b4e3c52395560fe\trefs/heads/master",
+        "remoteTags": "1c410974035ef2a5ac05c0d03bd06ddcacb4988f\trefs/tags/v1.4.2\na56e1b84a433d4b9da4ec15a72fc2a0ff1b22c12\trefs/tags/v1.4.2^{}",
+        "status": "M README.md\n?? notes.txt"
+    },
+    "after": {
+        "branch": "master",
+        "head": "53dc080",
+        "inProgress": "",
+        "localMaster": "53dc080",
+        "localTags": "v1.4.2 1c41097 a56e1b8",
+        "remoteMaster": "53dc08028d381e355dc1c3971b4e3c52395560fe\trefs/heads/master",
+        "remoteTags": "1c410974035ef2a5ac05c0d03bd06ddcacb4988f\trefs/tags/v1.4.2\na56e1b84a433d4b9da4ec15a72fc2a0ff1b22c12\trefs/tags/v1.4.2^{}",
+        "status": "M README.md\n?? notes.txt"
+    }
+}
