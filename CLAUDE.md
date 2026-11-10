@@ -291,8 +291,9 @@ app:lint` reads.
   limit and a batch-mode ssh unless the user's environment or the clone picks its own. A
   `status`, which reads files and so would run their filter drivers, first reads the drivers
   with `config --show-scope` and runs with every one the clone's own config defines turned off,
-  so reading a clone runs no program the clone names (the user's own, such as Git LFS's, still
-  run). Its allowlist test asserts that no entry holds a verb `TestNoGitCommandChangesAClone`
+  and with `--ignore-submodules=dirty`, so it runs no status inside a submodule, whose own config
+  could name one: reading a clone runs no program the clone names (the user's own, such as Git
+  LFS's, still run). Its allowlist test asserts that no entry holds a verb `TestNoGitCommandChangesAClone`
   guards.
 - `internal/release/` is the Release page's service. `Candidates` lists every clone under the
   clone root whose origin is on GitHub, grouped as unreleased, up to date, no releases yet, or

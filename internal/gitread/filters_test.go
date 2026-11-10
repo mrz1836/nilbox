@@ -33,7 +33,7 @@ func TestStatusTurnsOffTheClonesFilterDrivers(t *testing.T) {
 	status := strings.Join(calls[1].argv, " ")
 	assert.Contains(t, status, "-c filter.x.clean= -c filter.x.process= -c filter.odd.name.clean= -c filter.odd.name.process=")
 	assert.NotContains(t, status, "filter.lfs", "the user's own drivers still run")
-	assert.True(t, strings.HasSuffix(status, "status --porcelain -z"))
+	assert.True(t, strings.HasSuffix(status, "status --porcelain -z --ignore-submodules=dirty"))
 }
 
 func TestStatusRefusesADriverItCantName(t *testing.T) {
@@ -108,4 +108,41 @@ func TestFilterName(t *testing.T) {
 		_, ok := filterName(key)
 		assert.False(t, ok, key)
 	}
+}
+
+// TestStatusRunsNoFilterASubmoduleNames reproduces a submodule whose own config and
+// attributes name a filter driver: a status in the superproject would check the submodule
+// with a status of its own, which runs the driver. gitread's status doesn't look inside.
+func TestStatusRunsNoFilterASubmoduleNames(t *testing.T) {
+	t.Parallel()
+
+	env := testutil.Git(t)
+	root := t.TempDir()
+	sub := filepath.Join(root, "sub-origin")
+	super := filepath.Join(root, "super")
+	marker := filepath.Join(t.TempDir(), "ran")
+
+	testutil.InitRepo(t, sub)
+	commitFile(t, sub, "a.txt", "a")
+	testutil.InitRepo(t, super)
+	commitFile(t, super, "readme.txt", "readme")
+	testutil.RunGit(t, super, "-c", "protocol.file.allow=always", "submodule", "add", "-q", sub, "sub")
+	testutil.RunGit(t, super, "commit", "-q", "-m", "add sub")
+
+	modules := strings.TrimSpace(testutil.RunGit(t, filepath.Join(super, "sub"), "rev-parse", "--absolute-git-dir"))
+	testutil.RunGit(t, filepath.Join(super, "sub"), "config", "filter.evil.clean", "touch '"+marker+"'; cat")
+	require.NoError(t, os.MkdirAll(filepath.Join(modules, "info"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(modules, "info", "attributes"), []byte("* filter=evil\n"), 0o600))
+
+	later := time.Now().Add(time.Hour)
+	require.NoError(t, os.Chtimes(filepath.Join(super, "sub", "a.txt"), later, later))
+
+	g := New(Config{Env: func() []string { return env }})
+
+	_, err := g.Changes(t.Context(), super)
+	require.NoError(t, err)
+	assert.NoFileExists(t, marker, "gitread's status ran the submodule's filter")
+
+	testutil.RunGit(t, super, "status", "--porcelain")
+	assert.FileExists(t, marker, "the superproject is set up so that a plain status runs it")
 }

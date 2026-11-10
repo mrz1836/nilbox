@@ -56,6 +56,11 @@ const (
 	// maxNameLen caps a branch or tag name gitread passes to git.
 	maxNameLen = 255
 
+	// ignoreSubmodulesDirty keeps a status from running a status inside each submodule,
+	// whose own config and attributes could name a filter driver, which would then run: a
+	// submodule moved to another commit still shows, and edits inside one don't.
+	ignoreSubmodulesDirty = "--ignore-submodules=dirty"
+
 	// filterKeysPattern matches the config keys that make a filter driver run a program
 	// when git reads a file: its clean command and its long-running process.
 	filterKeysPattern = `^filter\..*\.(clean|process)$`
@@ -137,7 +142,7 @@ func allowlist() []command {
 		{name: "a local branch", words: append(fixed(revParse, verifyFlag, quietFlag), value(slotLocalRef))},
 		{name: "a branch on origin", words: append(fixed(revParse, verifyFlag, quietFlag), value(slotTrackingRef))},
 		{name: "a commit in the clone", words: append(fixed(revParse, verifyFlag, quietFlag), value(slotCommitPeel))},
-		{name: "uncommitted changes", words: fixed(statusCmd, "--porcelain", "-z")},
+		{name: "uncommitted changes", words: fixed(statusCmd, "--porcelain", "-z", ignoreSubmodulesDirty)},
 		{name: "the filter drivers", words: fixed(configCmd, "--show-scope", "--get-regexp", filterKeysPattern)},
 		{name: "the current branch", words: fixed("symbolic-ref", quietFlag, "--short", "HEAD")},
 		{name: "the worktrees", words: fixed("worktree", "list", "--porcelain", "-z")},
@@ -358,7 +363,7 @@ func commonDirArgs() []string { return []string{revParse, "--git-common-dir"} }
 
 func verifyArgs(ref string) []string { return []string{revParse, verifyFlag, quietFlag, ref} }
 
-func statusArgs() []string { return []string{"status", "--porcelain", "-z"} }
+func statusArgs() []string { return []string{statusCmd, "--porcelain", "-z", ignoreSubmodulesDirty} }
 
 func currentBranchArgs() []string { return []string{"symbolic-ref", quietFlag, "--short", "HEAD"} }
 
