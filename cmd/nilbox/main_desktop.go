@@ -225,6 +225,7 @@ func registerEvents() {
 	application.RegisterEvent[event.ReviewProgress](event.NameReviewProgress)
 	application.RegisterEvent[event.ToolsUpdated](event.NameToolsUpdated)
 	application.RegisterEvent[event.ScriptRunsUpdated](event.NameScriptRunsUpdated)
+	application.RegisterEvent[event.ScriptRunProgress](event.NameScriptRunProgress)
 	application.RegisterEvent[event.QuitRequested](event.NameQuitRequested)
 	application.RegisterEvent[event.ReleasesUpdated](event.NameReleasesUpdated)
 }

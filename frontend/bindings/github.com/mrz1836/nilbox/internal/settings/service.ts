@@ -218,6 +218,15 @@ export function SetNotificationBanner(kind: notifyprefs$0.Kind, on: boolean): $C
 }
 
 /**
+ * SetOfferAfterMerge stores whether merging a pull request in the review sheet offers to
+ * release its repository, and returns the settings with it. Nothing else hears of it: the
+ * review sheet asks Release whether to offer as each merge lands.
+ */
+export function SetOfferAfterMerge(on: boolean): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(2786949455, on);
+}
+
+/**
  * SetProjectsTipDismissed stores whether the inbox's tip about showing issue projects is
  * put away, and returns the settings with it.
  */

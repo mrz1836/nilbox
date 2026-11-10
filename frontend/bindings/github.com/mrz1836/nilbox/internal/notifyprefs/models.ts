@@ -3,9 +3,10 @@
 
 /**
  * Kind is a kind of notification: one of the inbox's kinds of arrival (see
- * inbox.Arrival), or a moment an agent session needs the user.
+ * inbox.Arrival), a moment an agent session needs the user, or an event about no item,
+ * such as a release that reached GitHub.
  */
-export type Kind = "review_requested" | "assigned" | "woke" | "session_needs_you" | "session_finished";
+export type Kind = "review_requested" | "assigned" | "woke" | "session_needs_you" | "session_finished" | "release_done";
 
 /**
  * The values of Kind, by the names of their Go constants.
@@ -37,4 +38,9 @@ export const Kind = {
      * KindSessionFinished is an agent session that finished its turn.
      */
     KindSessionFinished: "session_finished",
+
+    /**
+     * KindReleaseDone is a release whose tag reached GitHub.
+     */
+    KindReleaseDone: "release_done",
 } as const;

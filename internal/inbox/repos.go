@@ -2,8 +2,11 @@ package inbox
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 
+	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/repo"
 )
 
@@ -28,4 +31,20 @@ func (s *Store) RepoCounts(ctx context.Context) ([]RepoCount, error) {
 	}
 
 	return counts, nil
+}
+
+// DefaultBranch returns the default branch the last refresh stored for the repository
+// name, which matches ignoring case, or "" when the inbox has never seen it. It reads
+// only the database.
+func (s *Store) DefaultBranch(ctx context.Context, name repo.Name) (string, error) {
+	branch, err := s.q.GetRepoDefaultBranch(ctx, queries.GetRepoDefaultBranchParams{Owner: name.Owner, Name: name.Repo})
+
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return "", nil
+	case err != nil:
+		return "", fmt.Errorf("read the default branch of %s: %w", name, err)
+	default:
+		return branch, nil
+	}
 }

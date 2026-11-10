@@ -84,8 +84,14 @@ type Run struct {
 	StartedAt  string `json:"startedAt"`
 	FinishedAt string `json:"finishedAt"`
 
-	// CanStop reports a run in the app going now; CanRunAgain a run whose command can be
-	// worked out again, never a release.
+	// Progress is how far a run going now has got, as its kind reads its output, and
+	// whether Stop is off or asks first; zero once it has ended. Its stop texts are ""
+	// for a run in the terminal, which stops there.
+	Progress Progress `json:"progress"`
+
+	// CanStop reports a run in the app going now that its kind lets stop now
+	// (Progress.StopRefused says why not); CanRunAgain a run whose command can be worked
+	// out again, never a release.
 	CanStop     bool `json:"canStop"`
 	CanRunAgain bool `json:"canRunAgain"`
 }
@@ -132,7 +138,8 @@ func (s *Service) Output(ctx context.Context, id, offset, limit int64) (Chunk, e
 
 // Stop starts stopping a run in the app: SIGINT to its process group, SIGTERM five
 // seconds later, and SIGKILL ten after that. It returns at once; the run's record says
-// it stopped once it has. A run in the terminal stops there.
+// it stopped once it has. A run in the terminal stops there, and a run whose kind refuses
+// to stop now (Progress.StopRefused) is refused with its kind's words, ErrStopRefused.
 func (s *Service) Stop(ctx context.Context, id int64) error {
 	return s.e.stop(ctx, id)
 }
@@ -250,13 +257,26 @@ func (s *Service) view(rec Record) Run {
 		Dir: paths.Tilde(rec.Dir, s.e.home), Argv: rec.Argv, Command: rec.Command, RunsIn: rec.RunsIn,
 		Status: rec.Status, ExitCode: rec.ExitCode, Summary: rec.Summary, Result: rec.Result, LogBytes: rec.LogBytes,
 		Seen: !rec.SeenAt.IsZero(), StartedAt: clock.Format(rec.StartedAt), FinishedAt: formatTime(rec.FinishedAt),
-		CanStop:     l != nil && l.runsIn == RunsInApp && !l.settling,
 		CanRunAgain: rec.Kind != KindRelease && s.e.rerunner(rec.Kind) != nil,
 	}
 
 	if rec.Status.Live() {
 		run.LogBytes = s.e.files.size(rec.ID)
 	}
+
+	if l == nil || l.settling {
+		return run
+	}
+
+	run.Progress = l.progressNow()
+
+	if l.runsIn != RunsInApp {
+		run.Progress.StopRefused, run.Progress.StopConfirm = "", ""
+
+		return run
+	}
+
+	run.CanStop = run.Progress.StopRefused == ""
 
 	return run
 }

@@ -20,6 +20,12 @@ export interface Config {
      * RunsIn is where the runs go.
      */
     "runsIn": RunsIn;
+
+    /**
+     * OfferAfterMerge reports whether merging a pull request in the review sheet offers to
+     * release its repository, when Release can.
+     */
+    "offerAfterMerge": boolean;
 }
 
 /**

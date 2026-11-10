@@ -53,7 +53,7 @@ export interface Notification {
     "id": number;
 
     /**
-     * Kind is KindReviewRequested, KindAssigned, or KindWoke.
+     * Kind is KindReviewRequested, KindAssigned, KindWoke, or KindReleaseDone.
      */
     "kind": notifyprefs$0.Kind;
 
@@ -69,13 +69,20 @@ export interface Notification {
 
     /**
      * ItemID is the item's id in the inbox snapshot, or 0 once the item is no longer
-     * stored.
+     * stored, or for an entry about no item.
      */
     "itemId": number;
+
+    /**
+     * ItemKind is the item's kind, or "" for an entry about no item (an Entry), such as a
+     * release: its Number and Author are then 0 and "".
+     */
     "itemKind": item$0.Kind;
 
     /**
-     * Repo is "owner/name".
+     * Repo is "owner/name", or "" when the repository is unknown. Title is the item's
+     * title, or an entry's own sentence ("v1.4.3 is on GitHub"), and URL the page a click
+     * opens: the item, or the entry's.
      */
     "repo": string;
     "number": number;
@@ -85,7 +92,7 @@ export interface Notification {
 
     /**
      * Detail is what ended a snooze early, in a few words ("approved, 2 new commits"), for
-     * KindWoke, and "" otherwise.
+     * KindWoke; an entry's body ("Tagged a1b2c3d on master."); and "" otherwise.
      */
     "detail": string;
 }

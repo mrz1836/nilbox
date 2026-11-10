@@ -50,6 +50,8 @@ func TestEveryEventHasItsOwnName(t *testing.T) {
 		{event.TextSizeChanged{}, event.NameTextSizeChanged},
 		{event.MenuBarChanged{}, event.NameMenuBarChanged},
 		{event.FirstPaint{}, event.NameFirstPaint},
+		{event.ScriptRunsUpdated{}, event.NameScriptRunsUpdated},
+		{event.ScriptRunProgress{}, event.NameScriptRunProgress},
 	}
 
 	seen := make(map[string]bool, len(all))
@@ -73,7 +75,7 @@ func TestTheWindowHearsOnlyTheWindowEvents(t *testing.T) {
 	assert.Equal(t, []string{
 		event.NameInboxUpdated, event.NameRevealItem, event.NameWorktreesUpdated, event.NameNotificationsUpdated,
 		event.NameBudgetUpdated, event.NameSessionsUpdated, event.NameReviewProgress, event.NameToolsUpdated,
-		event.NameScriptRunsUpdated, event.NameQuitRequested, event.NameReleasesUpdated,
+		event.NameScriptRunsUpdated, event.NameScriptRunProgress, event.NameQuitRequested, event.NameReleasesUpdated,
 	}, names)
 
 	for _, e := range []event.Event{
@@ -87,6 +89,14 @@ func TestTheWindowHearsOnlyTheWindowEvents(t *testing.T) {
 		_, ok := e.(event.WindowEvent)
 		assert.False(t, ok, "%s stays in Go", e.Name())
 	}
+}
+
+func TestScriptRunProgressIsSentAsTheFrontendReadsIt(t *testing.T) {
+	t.Parallel()
+
+	data, err := json.Marshal(event.ScriptRunProgress{ID: 42})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"id":42}`, string(data))
 }
 
 func TestRevealItemIsSentAsTheFrontendReadsIt(t *testing.T) {

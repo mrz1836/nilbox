@@ -10,6 +10,9 @@
 // banner is shown, and whether or not the shell can show banners at all, so the window's
 // notification history always has every one. Only the newest Keep entries are kept.
 //
+// Some notifications are about no item: a release whose tag reached GitHub, for one. The
+// Dispatcher's Notify records such an Entry and shows its banner the same way.
+//
 // Service is what the window binds: the log, marking it read, clearing it, the state of
 // the banners, and a test banner. Nothing here leaves the machine: banners are posted to
 // the operating system, and the log is a local table.
@@ -30,8 +33,8 @@ import (
 	"github.com/mrz1836/nilbox/internal/store"
 )
 
-// Kinds of notification. They are the inbox's kinds of arrival, which notifyprefs lists
-// for the settings.
+// Kinds of notification, which notifyprefs lists for the settings: the inbox's kinds of
+// arrival, and the kinds about no item.
 const (
 	// KindReviewRequested is a pull request that newly asks for the user's review.
 	KindReviewRequested = notifyprefs.Kind(inbox.ArrivalReviewRequested)
@@ -41,6 +44,9 @@ const (
 
 	// KindWoke is a snoozed item that new activity brought back early.
 	KindWoke = notifyprefs.Kind(inbox.ArrivalWoke)
+
+	// KindReleaseDone is a release whose tag reached GitHub. It is about no item.
+	KindReleaseDone = notifyprefs.KindReleaseDone
 )
 
 // Keep is how many notifications the log keeps; recording more drops the oldest.
@@ -51,7 +57,7 @@ const Keep = 200
 type Notification struct {
 	ID int64 `json:"id"`
 
-	// Kind is KindReviewRequested, KindAssigned, or KindWoke.
+	// Kind is KindReviewRequested, KindAssigned, KindWoke, or KindReleaseDone.
 	Kind notifyprefs.Kind `json:"kind"`
 
 	// CreatedAt is when it was recorded, as RFC 3339.
@@ -61,12 +67,16 @@ type Notification struct {
 	Read bool `json:"read"`
 
 	// ItemID is the item's id in the inbox snapshot, or 0 once the item is no longer
-	// stored.
+	// stored, or for an entry about no item.
 	ItemID int64 `json:"itemId"`
 
+	// ItemKind is the item's kind, or "" for an entry about no item (an Entry), such as a
+	// release: its Number and Author are then 0 and "".
 	ItemKind item.Kind `json:"itemKind"`
 
-	// Repo is "owner/name".
+	// Repo is "owner/name", or "" when the repository is unknown. Title is the item's
+	// title, or an entry's own sentence ("v1.4.3 is on GitHub"), and URL the page a click
+	// opens: the item, or the entry's.
 	Repo   string `json:"repo"`
 	Number int    `json:"number"`
 	Title  string `json:"title"`
@@ -74,8 +84,25 @@ type Notification struct {
 	Author string `json:"author"`
 
 	// Detail is what ended a snooze early, in a few words ("approved, 2 new commits"), for
-	// KindWoke, and "" otherwise.
+	// KindWoke; an entry's body ("Tagged a1b2c3d on master."); and "" otherwise.
 	Detail string `json:"detail"`
+}
+
+// Entry is a notification about no item, as a release whose tag reached GitHub:
+// RecordEvent stores it.
+type Entry struct {
+	// Kind is the kind of notification, one of notifyprefs.Kinds.
+	Kind notifyprefs.Kind
+
+	// Title is its sentence ("v1.4.3 is on GitHub"), Body what follows it, which may be "",
+	// and URL the page a click on it opens, which may be "".
+	Title string
+	Body  string
+	URL   string
+
+	// RepoOwner and RepoName are the repository it is about, or "" for none.
+	RepoOwner string
+	RepoName  string
 }
 
 // Log is the notification history: the newest first, and how many are unread.
@@ -129,6 +156,38 @@ func (s *Store) Record(ctx context.Context, now time.Time, arrivals []inbox.Arri
 	})
 	if err != nil {
 		return nil, fmt.Errorf("record the notifications: %w", err)
+	}
+
+	return out, nil
+}
+
+// RecordEvent stores entry, a notification about no item, at now, and drops the oldest
+// past Keep, in one transaction. It returns what it stored, with its id. A kind that isn't
+// one of notifyprefs.Kinds is refused, and nothing is stored.
+func (s *Store) RecordEvent(ctx context.Context, now time.Time, entry Entry) (Notification, error) {
+	if !entry.Kind.Valid() {
+		return Notification{}, fmt.Errorf("record the notification: %w %q", notifyprefs.ErrUnknownKind, entry.Kind)
+	}
+
+	var out Notification
+
+	err := store.InTx(ctx, s.db, func(tx *sql.Tx) error {
+		q := s.q.WithTx(tx)
+
+		row, err := q.InsertNotification(ctx, queries.InsertNotificationParams{
+			Kind: string(entry.Kind), CreatedAt: now.UTC(), RepoOwner: entry.RepoOwner, RepoName: entry.RepoName,
+			Title: entry.Title, URL: entry.URL, Detail: entry.Body,
+		})
+		if err != nil {
+			return err
+		}
+
+		out = fromRow(row)
+
+		return q.TrimNotifications(ctx, s.keep)
+	})
+	if err != nil {
+		return Notification{}, fmt.Errorf("record the notification: %w", err)
 	}
 
 	return out, nil

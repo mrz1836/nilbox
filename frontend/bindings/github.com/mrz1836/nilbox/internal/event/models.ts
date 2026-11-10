@@ -29,8 +29,9 @@ export interface QuitRequested {
 }
 
 /**
- * ReleasesUpdated says the Release page's list was read again from GitHub: the window
- * reads it.
+ * ReleasesUpdated says the Release page's list was read again from GitHub, or went out of
+ * date, as when a release ended: the window reads it, and a list out of date is read again
+ * from GitHub then.
  */
 export interface ReleasesUpdated {
 }
@@ -72,8 +73,20 @@ export interface ReviewProgress {
 }
 
 /**
- * ScriptRunsUpdated says a run started, changed step, or ended: the window lists the runs
- * again and pulls what it shows. It never carries output.
+ * ScriptRunProgress says one run going now changed its progress (scriptrun.Progress): it
+ * reached a step, or Stop turned on or off. The window reads that run again, and only that
+ * one; the history is as it was. It never carries output.
+ */
+export interface ScriptRunProgress {
+    /**
+     * ID is the run's ID.
+     */
+    "id": number;
+}
+
+/**
+ * ScriptRunsUpdated says a run started, ended, or changed status, or the history changed:
+ * the window lists the runs again and pulls what it shows. It never carries output.
  */
 export interface ScriptRunsUpdated {
 }

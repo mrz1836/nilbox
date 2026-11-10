@@ -59,6 +59,9 @@ const (
 	// NameScriptRunsUpdated is ScriptRunsUpdated's name.
 	NameScriptRunsUpdated = "scriptruns:updated"
 
+	// NameScriptRunProgress is ScriptRunProgress's name.
+	NameScriptRunProgress = "scriptruns:progress"
+
 	// NameQuitRequested is QuitRequested's name.
 	NameQuitRequested = "app:quitRequested"
 
@@ -113,6 +116,7 @@ func WindowEvents() []WindowEvent {
 		ReviewProgress{},
 		ToolsUpdated{},
 		ScriptRunsUpdated{},
+		ScriptRunProgress{},
 		QuitRequested{},
 		ReleasesUpdated{},
 	}
@@ -256,14 +260,27 @@ type IntegrationsChanged struct {
 // Name returns NameIntegrationsChanged.
 func (IntegrationsChanged) Name() string { return NameIntegrationsChanged }
 
-// ScriptRunsUpdated says a run started, changed step, or ended: the window lists the runs
-// again and pulls what it shows. It never carries output.
+// ScriptRunsUpdated says a run started, ended, or changed status, or the history changed:
+// the window lists the runs again and pulls what it shows. It never carries output.
 type ScriptRunsUpdated struct{}
 
 // Name returns NameScriptRunsUpdated.
 func (ScriptRunsUpdated) Name() string { return NameScriptRunsUpdated }
 
 func (ScriptRunsUpdated) window() {}
+
+// ScriptRunProgress says one run going now changed its progress (scriptrun.Progress): it
+// reached a step, or Stop turned on or off. The window reads that run again, and only that
+// one; the history is as it was. It never carries output.
+type ScriptRunProgress struct {
+	// ID is the run's ID.
+	ID int64 `json:"id"`
+}
+
+// Name returns NameScriptRunProgress.
+func (ScriptRunProgress) Name() string { return NameScriptRunProgress }
+
+func (ScriptRunProgress) window() {}
 
 // QuitRequested says the user asked to quit while runs are going in the app: the window
 // asks whether to stop them and quit, or keep running.
@@ -281,8 +298,9 @@ type QuitConfirmed struct{}
 // Name returns NameQuitConfirmed.
 func (QuitConfirmed) Name() string { return NameQuitConfirmed }
 
-// ReleasesUpdated says the Release page's list was read again from GitHub: the window
-// reads it.
+// ReleasesUpdated says the Release page's list was read again from GitHub, or went out of
+// date, as when a release ended: the window reads it, and a list out of date is read again
+// from GitHub then.
 type ReleasesUpdated struct{}
 
 // Name returns NameReleasesUpdated.

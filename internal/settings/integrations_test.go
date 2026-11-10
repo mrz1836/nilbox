@@ -75,6 +75,35 @@ func TestSetRunsIn(t *testing.T) {
 	assert.Zero(t, events.Count(), "each run reads the setting when it starts")
 }
 
+func TestSetOfferAfterMerge(t *testing.T) {
+	t.Parallel()
+
+	events := &testutil.Events{}
+	svc := serviceOver(t, testutil.DB(t), t.TempDir(), WithEvents(events))
+
+	fresh, err := svc.Get(t.Context())
+	require.NoError(t, err)
+	assert.True(t, fresh.Integrations.OfferAfterMerge, "a merge offers a release until the user turns it off")
+
+	got, err := svc.SetOfferAfterMerge(t.Context(), false)
+	require.NoError(t, err)
+	assert.False(t, got.Integrations.OfferAfterMerge)
+
+	stored, ok, err := svc.prefs.Get(t.Context(), integrationprefs.KeyOfferAfterMerge)
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.Equal(t, "false", stored)
+
+	reread, err := svc.Get(t.Context())
+	require.NoError(t, err)
+	assert.False(t, reread.Integrations.OfferAfterMerge, "it is kept")
+
+	got, err = svc.SetOfferAfterMerge(t.Context(), true)
+	require.NoError(t, err)
+	assert.True(t, got.Integrations.OfferAfterMerge)
+	assert.Zero(t, events.Count(), "the review sheet asks as each merge lands")
+}
+
 func TestSetIntegrationPath(t *testing.T) {
 	t.Parallel()
 

@@ -76,6 +76,13 @@ func (s *Service) SetRunsIn(ctx context.Context, place integrationprefs.RunsIn) 
 	return s.save(ctx, setting(integrationprefs.KeyRunsIn, stored))
 }
 
+// SetOfferAfterMerge stores whether merging a pull request in the review sheet offers to
+// release its repository, and returns the settings with it. Nothing else hears of it: the
+// review sheet asks Release whether to offer as each merge lands.
+func (s *Service) SetOfferAfterMerge(ctx context.Context, on bool) (Settings, error) {
+	return s.save(ctx, setting(integrationprefs.KeyOfferAfterMerge, integrationprefs.EncodeOfferAfterMerge(on)))
+}
+
 // toolPath expands a ~ in path and checks that it names an executable file, worded for
 // the user when it doesn't.
 func (s *Service) toolPath(path string) (string, error) {

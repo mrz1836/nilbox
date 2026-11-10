@@ -26,6 +26,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/prompts"
+	"github.com/mrz1836/nilbox/internal/release"
 	"github.com/mrz1836/nilbox/internal/review"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/sensitive"
@@ -279,9 +280,18 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.SetRunsIn": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetRunsIn(ctx, integrationprefs.RunsInTerminal)
 		},
+		"settings.Service.SetOfferAfterMerge": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetOfferAfterMerge(ctx, false)
+		},
 		"scriptrun.Service.Runs": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			got, err := c.ScriptRuns.Runs(ctx, scriptrun.Filter{})
-			require.Len(t, got, 1)
+			require.Len(t, got, 2)
+
+			return got, err
+		},
+		"release.Service.ReleaseResult": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			got, err := c.Release.ReleaseResult(ctx, 2)
+			require.Equal(t, release.ResultNotPushed, got.Kind)
 
 			return got, err
 		},
@@ -314,7 +324,7 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		},
 		"notify.Service.List": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			got, err := c.Notifications.List(ctx)
-			require.NotEmpty(t, got.Items)
+			require.Len(t, got.Items, 2, "an item's notification and one about no item")
 
 			return got, err
 		},
@@ -451,6 +461,12 @@ func seedBound(t *testing.T) (*Core, seededItems) {
 	}})
 	require.NoError(t, err)
 
+	// And one about no item: a release that reached GitHub.
+	_, err = notify.NewStore(c.DB).RecordEvent(ctx, now, notify.Entry{
+		Kind: notify.KindReleaseDone, Title: "v1.4.3 is on GitHub", RepoOwner: boundOwner, RepoName: "example-repo",
+	})
+	require.NoError(t, err)
+
 	require.NoError(t, worklog.New(c.DB).RecordCleanup(ctx, worklog.Cleanup{
 		CleanedAt: now, Repo: "example-repo", Worktree: "pr-7", Head: "abc123", ItemKind: string(item.KindPR),
 		ItemOwner: boundOwner, ItemName: "example-repo", ItemNumber: 7, ItemState: string(worktrees.ItemMerged),
@@ -467,10 +483,17 @@ func seedBound(t *testing.T) (*Core, seededItems) {
 +b')`, ids[0])
 	require.NoError(t, err)
 
-	// A run that ended, with its result as sparse as an older build's.
+	// A run that ended, with its result as sparse as an older build's, and a release whose
+	// outcome is as sparse.
 	_, err = c.DB.ExecContext(ctx, `INSERT INTO script_runs (id, kind, title, dir, argv, status, exit_code, result,
 		started_at, finished_at) VALUES (1, 'script', 'Lint', '/work/example-repo', '["/usr/local/bin/magex","lint"]',
 		'failed', 1, '{}', ?, ?)`, now, now)
+	require.NoError(t, err)
+
+	_, err = c.DB.ExecContext(ctx, `INSERT INTO script_runs (id, kind, title, dir, argv, status, exit_code, result,
+		started_at, finished_at) VALUES (2, 'release', 'Release v1.4.3', '/work/example-repo',
+		'["/usr/local/bin/magex","version:bump"]', 'failed', 0, '{"outcome":{"kind":"notPushed","tag":"v1.4.3"}}', ?, ?)`,
+		now, now)
 	require.NoError(t, err)
 
 	return c, seededItems{item: ids[0], stuck: ids[1]}

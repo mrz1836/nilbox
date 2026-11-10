@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/gitread"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
@@ -140,19 +141,74 @@ func (s *Service) finisher(name repo.Name, dir string, in *Intent, reader *Outpu
 	}
 }
 
-// released notes that a release ended: the clone's kept facts and the candidates are out
-// of date, and a failure only a bug causes is logged as one.
+// released notes that a release ended: the clone's kept facts and the Release page's list
+// are out of date, so the next Candidates reads GitHub again, and the window hears so
+// (event.ReleasesUpdated) whether or not the sheet is open; and a failure only a bug
+// causes is logged as one.
 func (s *Service) released(ctx context.Context, name repo.Name, dir string, res Result) {
 	s.forget(dir)
 
 	s.mu.Lock()
-	s.tried = time.Time{} // the next Candidates reads GitHub again
+	s.tried = time.Time{}
 	s.mu.Unlock()
+
+	s.events.Emit(event.ReleasesUpdated{})
 
 	if res.Failure != nil && res.Failure.Bug {
 		s.logger.ErrorContext(ctx, "magex wanted a confirmation the release didn't send; this is a bug",
 			"repo", name.String(), "version", res.Version)
 	}
+}
+
+// announcer returns a release's scriptrun Recorded: once the runner has recorded the
+// release's outcome, a release on GitHub is told to the user (release_done). It is told
+// only then, so a release whose record failed, which the next start verifies again, is
+// told once, by the start whose record holds.
+func (s *Service) announcer(name repo.Name, in *Intent) func(context.Context, int64, scriptrun.Outcome) {
+	return func(ctx context.Context, _ int64, out scriptrun.Outcome) {
+		res, ok := out.Detail.(Result)
+		if !ok || res.Kind != ResultReleased || s.notifier == nil {
+			return
+		}
+
+		s.notifier.Released(ctx, noticeOf(name, *in, res))
+	}
+}
+
+// Notifier tells the user that a release reached GitHub: a notification in the log, and
+// its banner when the user has it on (release_done, §5.19). Core adapts the notify
+// package's Dispatcher. It must return promptly; a failure is its own to log.
+type Notifier interface {
+	Released(ctx context.Context, n Notice)
+}
+
+// Notice is what the user is told when a release's tag reaches GitHub.
+type Notice struct {
+	// Repo is the repository released.
+	Repo repo.Name
+
+	// Title says what happened ("v1.4.3 is on GitHub"), Body where the tag went ("Tagged
+	// a1b2c3d on master."), and URL is the tag's page on GitHub.
+	Title string
+	Body  string
+	URL   string
+}
+
+// noticeOf words the notice of a release on GitHub: the tag, the commit and branch it
+// tagged, and the version that appeared meanwhile when it moved.
+func noticeOf(name repo.Name, in Intent, res Result) Notice {
+	body := "Tagged " + res.Commit[:min(len(res.Commit), shortOIDLen)]
+	if in.Branch != "" {
+		body += " on " + in.Branch
+	}
+
+	body += "."
+
+	if res.Moved {
+		body += " " + res.Version + " appeared on GitHub meanwhile."
+	}
+
+	return Notice{Repo: name, Title: res.Tag + " is on GitHub", Body: body, URL: res.TagURL}
 }
 
 // tagOf is the tag a release made, or set out to: magex's JSON result's, the tag it said it
@@ -388,9 +444,11 @@ func NewVerifier(s *Service) Verifier {
 	return Verifier{s: s}
 }
 
-// Verify gives a release from before the app restarted its reader and Finish, which first
-// waits for the login shell's environment (Config.Ready). A record whose intent can't be
-// read, or a Service that can't read git, gets none: the runner's own outcome stands.
+// Verify gives a release from before the app restarted its reader, its progress, its
+// Recorded, and its Finish, which first waits for the login shell's environment
+// (Config.Ready). A record
+// whose intent can't be read, or a Service that can't read git, gets none: the runner's own
+// outcome stands.
 func (v Verifier) Verify(run scriptrun.Record) scriptrun.Verification {
 	in, ok := intentOf(run.Result.Intent)
 	if !ok || v.s.git == nil {
@@ -403,7 +461,9 @@ func (v Verifier) Verify(run scriptrun.Record) scriptrun.Verification {
 	finish := v.s.finisher(run.Repo, run.Dir, &in, reader)
 
 	return scriptrun.Verification{
-		Output: reader,
+		Output:   reader,
+		Progress: func() scriptrun.Progress { return reader.Progress(in) },
+		Recorded: v.s.announcer(run.Repo, &in),
 		Finish: func(ctx context.Context, end scriptrun.Ending, out scriptrun.Outcome) scriptrun.Outcome {
 			v.s.awaitShell(ctx)
 

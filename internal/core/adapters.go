@@ -26,6 +26,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/localrepos"
+	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/release"
@@ -776,20 +777,45 @@ func (r releaseTool) ReleaseTool(ctx context.Context) release.ToolFacts {
 	return release.ToolFactsOf(def, integrations.Tool{})
 }
 
-// releasePlaces reads where runs go from the settings: Runs in, and the terminal chosen
-// for launches, by name (release.Places).
-type releasePlaces struct {
+// releaseSettings reads what Release needs of the settings: where runs go, Runs in and the
+// terminal chosen for launches, by name (release.Places), and whether a merge offers a
+// release (release.MergeSetting).
+type releaseSettings struct {
 	settings *settings.Service
 }
 
 // Where returns where runs go.
-func (p releasePlaces) Where(ctx context.Context) (release.Where, error) {
+func (p releaseSettings) Where(ctx context.Context) (release.Where, error) {
 	all, err := p.settings.Get(ctx)
 	if err != nil {
 		return release.Where{}, err
 	}
 
 	return release.Where{RunsIn: all.Integrations.RunsIn, Terminal: terminal.Name(all.Terminal)}, nil
+}
+
+// OfferAfterMerge returns the integrations.offerAfterMerge setting.
+func (p releaseSettings) OfferAfterMerge(ctx context.Context) (bool, error) {
+	all, err := p.settings.Get(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	return all.Integrations.OfferAfterMerge, nil
+}
+
+// releaseNotices tells the user of a release that reached GitHub with a notification
+// about no item, release_done, and its banner when that kind is on (release.Notifier).
+type releaseNotices struct {
+	dispatcher *notify.Dispatcher
+}
+
+// Released records the notice and shows its banner.
+func (n releaseNotices) Released(ctx context.Context, notice release.Notice) {
+	n.dispatcher.Notify(ctx, notify.Entry{
+		Kind: notify.KindReleaseDone, Title: notice.Title, Body: notice.Body, URL: notice.URL,
+		RepoOwner: notice.Repo.Owner, RepoName: notice.Repo.Repo,
+	})
 }
 
 // releaseSignedOut marks gh's "no one is signed in" as release.ErrSignedOut. A missing gh

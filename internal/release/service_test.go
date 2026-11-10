@@ -99,12 +99,14 @@ func (f *fakeGitHub) fail(err error) {
 	f.err = err
 }
 
-// fakeClones lists fixed clones under a clone root that can change.
+// fakeClones lists fixed clones under a clone root that can change, counting the scans.
 type fakeClones struct {
-	mu   sync.Mutex
-	root string
-	list []Clone
-	err  error
+	mu      sync.Mutex
+	root    string
+	rootErr error
+	list    []Clone
+	err     error
+	scanned int
 }
 
 func (f *fakeClones) Root(context.Context) (string, error) {
@@ -112,13 +114,28 @@ func (f *fakeClones) Root(context.Context) (string, error) {
 	defer f.mu.Unlock()
 
 	if f.root == "" {
-		return "/Users/example/projects", nil
+		return "/Users/example/projects", f.rootErr
 	}
 
-	return f.root, nil
+	return f.root, f.rootErr
 }
 
-func (f *fakeClones) Clones(context.Context, string) ([]Clone, error) { return f.list, f.err }
+func (f *fakeClones) Clones(context.Context, string) ([]Clone, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.scanned++
+
+	return f.list, f.err
+}
+
+// scans returns how often the clone root was scanned.
+func (f *fakeClones) scans() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return f.scanned
+}
 
 func (f *fakeClones) moveTo(root string) {
 	f.mu.Lock()

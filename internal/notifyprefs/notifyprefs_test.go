@@ -1,6 +1,7 @@
 package notifyprefs_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,7 +14,7 @@ func TestKinds(t *testing.T) {
 	t.Parallel()
 
 	assert.Equal(t, []notifyprefs.Kind{
-		"review_requested", "assigned", "woke", "session_needs_you", "session_finished",
+		"review_requested", "assigned", "woke", "session_needs_you", "session_finished", "release_done",
 	}, notifyprefs.Kinds())
 
 	for _, kind := range notifyprefs.Kinds() {
@@ -49,6 +50,10 @@ func TestDecodeBannersOff(t *testing.T) {
 		{
 			name: "each list counts only for the kinds that start its way", off: `["session_finished"]`, on: `["woke"]`,
 			want: sessionKinds,
+		},
+		{
+			name: "a release reaching GitHub turned off", off: `["release_done"]`,
+			want: append(slices.Clone(sessionKinds), notifyprefs.KindReleaseDone),
 		},
 	}
 
@@ -128,7 +133,7 @@ func TestBannersRoundTrip(t *testing.T) {
 	assert.JSONEq(t, `["session_needs_you","session_finished"]`, storedOn)
 
 	for _, off := range [][]notifyprefs.Kind{
-		{}, {notifyprefs.KindWoke}, notifyprefs.Kinds(), {notifyprefs.KindSessionFinished},
+		{}, {notifyprefs.KindWoke}, notifyprefs.Kinds(), {notifyprefs.KindSessionFinished}, {notifyprefs.KindReleaseDone},
 	} {
 		assert.Equal(t, off, notifyprefs.DecodeBannersOff(notifyprefs.EncodeBanners(off)))
 	}

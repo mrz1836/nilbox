@@ -50,6 +50,29 @@ func TestABannerForAnItemNoLongerStored(t *testing.T) {
 	assert.Equal(t, "Assigned to you", got[0].Title)
 }
 
+func TestABannerForAnEntryAboutNoItem(t *testing.T) {
+	t.Parallel()
+
+	got := Banners([]Notification{{
+		ID: 3, Kind: KindReleaseDone, Repo: "acme-org/sdk", Title: "v1.4.3 is on GitHub",
+		URL: "https://github.com/acme-org/sdk/releases/tag/v1.4.3",
+	}}, nil)
+
+	require.Len(t, got, 1)
+	assert.Equal(t, Banner{
+		ID: brand.Slug + "-3", Title: "Released", Subtitle: "acme-org/sdk", Body: "v1.4.3 is on GitHub",
+		Thread: string(KindReleaseDone), URL: "https://github.com/acme-org/sdk/releases/tag/v1.4.3",
+	}, got[0], "its repository alone as the subtitle, and no item to show")
+
+	sum := Banners([]Notification{
+		row(1, KindReviewRequested, 1), row(2, KindAssigned, 2), row(3, KindWoke, 3),
+		{ID: 4, Kind: KindReleaseDone},
+		{ID: 5, Kind: KindReleaseDone},
+	}, nil)
+	require.Len(t, sum, 1)
+	assert.Equal(t, "1 review request, 1 assignment, 1 back from snooze, 2 releases", sum[0].Body)
+}
+
 func TestManyBannersAreSummedUp(t *testing.T) {
 	t.Parallel()
 

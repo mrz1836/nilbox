@@ -27,18 +27,24 @@ const (
 
 // live is a run the engine follows: one it started, or one from before the app restarted.
 type live struct {
-	id      int64
-	kind    Kind
-	runsIn  RunsIn
-	tool    string
-	dir     string
-	repo    string
-	title   string
-	timeout time.Duration
-	output  io.Writer
-	finish  func(ctx context.Context, end Ending, out Outcome) Outcome
-	intent  any
-	holds   holds
+	id       int64
+	kind     Kind
+	runsIn   RunsIn
+	tool     string
+	dir      string
+	repo     string
+	title    string
+	timeout  time.Duration
+	output   io.Writer
+	finish   func(ctx context.Context, end Ending, out Outcome) Outcome
+	recorded func(ctx context.Context, id int64, out Outcome)
+	intent   any
+	holds    holds
+
+	// progress is its kind's Spec.Progress, or nil, and shown the progress last seen after
+	// a read of its log, which only its follower touches.
+	progress func() Progress
+	shown    Progress
 
 	// proc is the program of a run this engine started in the app, or nil. pid, pgid,
 	// and procStart are its process, group, and start time, or a terminal run's shell's
@@ -73,6 +79,16 @@ type live struct {
 	reader *os.File
 	buf    []byte
 	offset int64
+}
+
+// progressNow returns how far the run has got, as its kind says, or no progress for a kind
+// that says nothing.
+func (l *live) progressNow() Progress {
+	if l.progress == nil {
+		return Progress{}
+	}
+
+	return l.progress()
 }
 
 // markDone closes done, once.
@@ -300,30 +316,50 @@ func (e *Engine) followOrphan(ctx context.Context, l *live) {
 	}
 }
 
-// tail feeds the run's output reader what its log holds past what it has read.
+// tail feeds the run's output reader what its log holds past what it has read, and then
+// notes whether its progress changed.
 func (e *Engine) tail(l *live) {
-	if l.output == nil {
+	if l.output == nil || !e.openLog(l) {
 		return
 	}
 
-	if l.reader == nil {
-		f, err := os.Open(e.files.log(l.id))
-		if err != nil {
-			return // not written yet
-		}
-
-		l.reader, l.buf = f, make([]byte, readBlock)
+	if l.feed() {
+		e.noteProgress(l)
 	}
+}
+
+// openLog opens the run's log for its follower to read, once, and reports whether it is
+// open: a log not written yet isn't.
+func (e *Engine) openLog(l *live) bool {
+	if l.reader != nil {
+		return true
+	}
+
+	f, err := os.Open(e.files.log(l.id))
+	if err != nil {
+		return false
+	}
+
+	l.reader, l.buf = f, make([]byte, readBlock)
+
+	return true
+}
+
+// feed feeds the run's output reader what its open log holds past what it has read, and
+// reports whether there was anything.
+func (l *live) feed() bool {
+	fed := false
 
 	for {
 		n, err := l.reader.ReadAt(l.buf, l.offset)
 		if n > 0 {
 			_, _ = l.output.Write(l.buf[:n])
 			l.offset += int64(n)
+			fed = true
 		}
 
 		if err != nil || n < len(l.buf) {
-			return
+			return fed
 		}
 	}
 }
@@ -361,8 +397,8 @@ func (e *Engine) failStart(ctx context.Context, l *live, summary string) {
 	e.record(ctx, l, nil, Outcome{Status: StatusFailed, Summary: summary}, e.files.size(l.id))
 }
 
-// record records a run's end, lets go of it, logs it, applies the retention, and tells
-// Changed.
+// record records a run's end, tells its kind's Recorded once it is recorded, lets go of
+// it, logs it, applies the retention, and tells Changed.
 func (e *Engine) record(ctx context.Context, l *live, exitCode *int, out Outcome, size int64) {
 	unrecognized := out.Unrecognized
 	if len(unrecognized) > MaxUnrecognized {
@@ -378,8 +414,12 @@ func (e *Engine) record(ctx context.Context, l *live, exitCode *int, out Outcome
 		id: l.id, status: out.Status, exitCode: exitCode, summary: out.Summary, result: result, logBytes: size,
 		at: e.clock.Now(),
 	})
-	if err != nil {
+
+	switch {
+	case err != nil:
 		e.logger.WarnContext(ctx, "couldn't record how a run ended", "run", l.id, "error", err)
+	case l.recorded != nil:
+		l.recorded(ctx, l.id, out)
 	}
 
 	e.release(l)

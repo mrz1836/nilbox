@@ -87,6 +87,33 @@ export const Kind = {
 } as const;
 
 /**
+ * Progress is how far a run going now has got, as its kind reads its output, and whether
+ * the user may stop it now.
+ */
+export interface Progress {
+    /**
+     * Step is the last step the run reached, and Working the one under way, in its kind's
+     * own names, as a release's "onBranch" or "tagCreated"; "" for none yet, or for a kind
+     * without steps.
+     */
+    "step": string;
+    "working": string;
+
+    /**
+     * StopRefused, when set, says why Stop is off now, as "Stopping now could leave a
+     * rebase in progress.": Stop refuses with it.
+     */
+    "stopRefused": string;
+
+    /**
+     * StopConfirm, when set, is what the window asks before it stops the run, since
+     * stopping now leaves something behind: "Stopping now can leave v1.4.3 on this Mac but
+     * not on GitHub, and your clone on master."
+     */
+    "stopConfirm": string;
+}
+
+/**
  * Result is a run's result, as recorded.
  */
 export interface Result {
@@ -165,8 +192,16 @@ export interface Run {
     "finishedAt": string;
 
     /**
-     * CanStop reports a run in the app going now; CanRunAgain a run whose command can be
-     * worked out again, never a release.
+     * Progress is how far a run going now has got, as its kind reads its output, and
+     * whether Stop is off or asks first; zero once it has ended. Its stop texts are ""
+     * for a run in the terminal, which stops there.
+     */
+    "progress": Progress;
+
+    /**
+     * CanStop reports a run in the app going now that its kind lets stop now
+     * (Progress.StopRefused says why not); CanRunAgain a run whose command can be worked
+     * out again, never a release.
      */
     "canStop": boolean;
     "canRunAgain": boolean;
