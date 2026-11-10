@@ -135,7 +135,7 @@ app:lint` reads.
   `Info.plist` and the rendered icon set, `icons.icns`.
 - `internal/core/` assembles the app and builds every service the window binds: settings,
   profiles, prompts, launch defaults, inbox, review, launcher, worktrees, notifications, app
-  info, sessions, integrations, and script runs.
+  info, sessions, integrations, script runs, and release.
   Every `internal/*` package is plain Go, built and tested on Linux without CGO.
 - Services share their building blocks rather than keep copies: `internal/repo` and
   `internal/item` name repositories, pull requests and issues, and their worktrees;
@@ -281,6 +281,26 @@ app:lint` reads.
   `ShowLog` shows a run's log in Finder, both by the run's ID alone. `InUse` tells an install a
   tool is running. The history keeps 200 runs and 512 MB of logs, and cuts a long log to its
   head and tail; Run again works the command out afresh from its source, never for a release.
+- `internal/gitread/` is the read-only git that release and hooks share: an exact-argv allowlist
+  plus validating predicates (a branch, a tag, a commit, a `v*` pattern, an absolute clean folder)
+  that refuses anything else with `ErrGitCommandNotAllowed` before git runs, and typed helpers over
+  it (the current branch, an operation in progress, uncommitted changes, unpushed commits, tags
+  here and on origin, signing, the hooks folder). Every command runs as `git -C <dir> -c
+  core.fsmonitor=false -c submodule.recurse=false` with `GIT_OPTIONAL_LOCKS=0` and
+  `GIT_TERMINAL_PROMPT=0`, never touches `core.hooksPath`, and an `ls-remote` gets a 15-second
+  limit and a batch-mode ssh unless the user's environment or the clone picks its own. A
+  `status`, which reads files and so would run their filter drivers, first reads the drivers
+  with `config --show-scope` and runs with every one the clone's own config defines turned off,
+  so reading a clone runs no program the clone names (the user's own, such as Git LFS's, still
+  run). Its allowlist test asserts that no entry holds a verb `TestNoGitCommandChangesAClone`
+  guards.
+- `internal/release/` is the Release page's service. `Candidates` lists every clone under the
+  clone root whose origin is on GitHub, grouped as unreleased, up to date, no releases yet, or
+  can't release here, from two rounds of batched GraphQL (`(*github.Client).FetchReleaseStatus`,
+  then `FetchReleaseCompare` for the repositories with a version, 15 to a query, adapted in core),
+  and reads each unreleased clone's state with `gitread`, never asking origin; it keeps the list
+  five minutes and keeps the last one when a refresh fails. `version.go` works the next version
+  out exactly as magex does, tested against a table recorded from the real magex.
 - `internal/measure/` and `magefiles/measure.go` take the numbers in
   [`docs/performance.md`](docs/performance.md).
 - `frontend/` is the React + TypeScript + Vite + Tailwind app. It reaches Go only through the
