@@ -159,6 +159,7 @@ func assemble(
 		Settings:       c.ShellSettings,
 		Sessions:       c.ShellSessions,
 		Workers:        []desktop.Worker{c.Scheduler, c.Sweeper, c.BudgetSaver, c.Watcher},
+		Deferred:       []desktop.Worker{c.Deferred},
 		Data:           c,
 		Banners:        banners.poster(),
 		Stdout:         stdout,
