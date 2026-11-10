@@ -276,7 +276,9 @@ app:lint` reads.
   its PID and exit files) and, as the app quits, stops every run in the app and records it
   stopped. `Active` is the desktop shell's quit guard (`desktop.QuitGuard`): while a run goes in
   the app, `Shell.ShouldQuit` holds a quit and the window asks (`event.QuitRequested`), until the
-  bound `Service.QuitAnyway` emits the Go-only `event.QuitConfirmed`. `InUse` tells an install a
+  bound `Service.QuitAnyway` emits the Go-only `event.QuitConfirmed`. The Service's
+  `OpenInTerminal` opens the user's terminal in a run's folder and runs nothing there, and
+  `ShowLog` shows a run's log in Finder, both by the run's ID alone. `InUse` tells an install a
   tool is running. The history keeps 200 runs and 512 MB of logs, and cuts a long log to its
   head and tail; Run again works the command out afresh from its source, never for a release.
 - `internal/measure/` and `magefiles/measure.go` take the numbers in

@@ -197,6 +197,15 @@ desktop build, before the card details, the prompt library, snoozing, the app ic
 cleanup, the sensitive-file check, and the menu bar, measured 16,446,784 bytes (16.4 MB), with
 a 16.4 MB bundle and a frontend of about 280 KB.
 
+### Scripts tab, first open
+
+The Scripts tab opens on Runs, which first lists the run history. Listing a full history, the
+200 runs the app keeps, each with its result, takes about 1.0 ms on the M1 Max (`go test -run '^$'
+-bench BenchmarkRunsFullHistory ./internal/scriptrun`, three runs of 2 s: 1.00–1.01 ms, 696 KB and
+10,676 allocations per list). The tab stays hidden until its first page that uses a tool ships,
+so its script isn't in the bundle yet; the end-to-end time from the click to the painted list, and
+the tab's script size, are recorded once the tab can be opened.
+
 ### API budget at 5-minute cadence
 
 Every refresh recorded the GraphQL point cost GitHub charged for its queries
