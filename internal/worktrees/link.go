@@ -10,6 +10,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/uierr"
 	"github.com/mrz1836/nilbox/internal/worklog"
@@ -88,7 +89,7 @@ func linkTargetFor(wt *Worktree, remotes map[string]repo.Name, recorded map[stri
 		return linkTarget{}, false
 	}
 
-	if r, ok := recorded[resolvedPath(wt.Path)]; ok {
+	if r, ok := recorded[paths.Resolved(wt.Path)]; ok {
 		ref := item.Ref{Repo: repo.Name{Owner: r.Owner, Repo: r.Name}, Number: r.Number, Kind: r.Kind}
 
 		return linkTarget{wt: wt, kind: r.Kind, refs: []item.Ref{ref}, launched: r.Launches > 0}, true

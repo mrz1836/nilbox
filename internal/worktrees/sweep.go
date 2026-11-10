@@ -2,6 +2,7 @@ package worktrees
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -10,8 +11,10 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/clonelock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/localrepos"
+	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/periodic"
 	"github.com/mrz1836/nilbox/internal/uierr"
 	"github.com/mrz1836/nilbox/internal/worklog"
@@ -151,28 +154,40 @@ func (s *Service) sweepAgentWork(ctx context.Context, g git, root string, rules 
 
 	report.Error = snap.LinkError
 
+	// A clone a run is using is still listed, so its worktrees are counted, but nothing in
+	// it is removed until a later sweep.
+	var skipped map[string]bool
+	if report.Enabled && !snap.SessionsUnknown {
+		skipped = s.skippedClones(ctx, snap.Repos)
+	}
+
 	for repo, wt := range rows(snap.Repos) {
-		s.sweepRow(ctx, g, repo.Path, *wt, !snap.SessionsUnknown, rules, report)
+		s.sweepRow(ctx, g, repo.Path, *wt, !snap.SessionsUnknown && !skipped[repo.Path], rules, report)
 	}
 
 	return nil
 }
 
 // sweepRow cleans up one worktree when the sweep may, and counts it when it is left for
-// the user. sessionsKnown reports that the running processes could be listed; without
-// them, the sweep removes nothing.
-func (s *Service) sweepRow(ctx context.Context, g git, repoPath string, wt Worktree, sessionsKnown bool,
+// the user. mayRemove is false when the running processes couldn't be listed or a run is
+// using the clone; the sweep removes nothing then. A run that takes the clone meanwhile
+// skips the worktree rather than fail it: the next sweep tries again.
+func (s *Service) sweepRow(ctx context.Context, g git, repoPath string, wt Worktree, mayRemove bool,
 	rules branchrules.Rules, report *SweepReport,
 ) {
-	if report.Enabled && sessionsKnown && autoCleanable(wt) && ctx.Err() == nil {
-		res := s.cleanUpRow(ctx, g, repoPath, wt, true, defaultBranches(wt, rules))
-		if res.Removed {
+	if report.Enabled && mayRemove && autoCleanable(wt) && ctx.Err() == nil {
+		res, err := s.cleanUpRow(ctx, g, repoPath, wt, true, defaultBranches(wt, rules))
+
+		switch busy, isBusy := errors.AsType[*clonelock.BusyError](err); {
+		case res.Removed:
 			report.Cleaned = append(report.Cleaned, res)
 
 			return
+		case isBusy:
+			s.logSkipped(ctx, busy.Holder)
+		default:
+			report.Failed = append(report.Failed, res)
 		}
-
-		report.Failed = append(report.Failed, res)
 	}
 
 	if wt.CanCleanUp || wt.Stage == StageNeedsReview {
@@ -187,7 +202,7 @@ func (s *Service) sweepClones(ctx context.Context, root string, records []worklo
 	dirs := managedCloneDirs(root)
 
 	for _, r := range records {
-		if s.underRoot(r.ClonePath, root) && !slices.ContainsFunc(dirs, func(d string) bool { return samePath(d, r.ClonePath) }) {
+		if s.underRoot(r.ClonePath, root) && !slices.ContainsFunc(dirs, func(d string) bool { return paths.Same(d, r.ClonePath) }) {
 			dirs = append(dirs, filepath.Clean(r.ClonePath))
 		}
 	}
@@ -289,7 +304,7 @@ func commonDir(dir string) string {
 	}
 
 	if info.IsDir() {
-		return resolvedPath(dotGit)
+		return paths.Resolved(dotGit)
 	}
 
 	gitDir, ok := readGitPointer(dotGit, dir, "gitdir: ")
@@ -298,10 +313,10 @@ func commonDir(dir string) string {
 	}
 
 	if common, found := readGitPointer(filepath.Join(gitDir, "commondir"), gitDir, ""); found {
-		return resolvedPath(common)
+		return paths.Resolved(common)
 	}
 
-	return resolvedPath(gitDir)
+	return paths.Resolved(gitDir)
 }
 
 // readGitPointer reads the path a one-line git file holds after prefix. A relative path

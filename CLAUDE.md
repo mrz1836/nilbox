@@ -197,7 +197,12 @@ app:lint` reads.
   otherwise only through `deleteBranchAt` in `internal/worktrees/branches.go`, when the user
   ticked it (or, for the automatic cleanup, the user's rules pick it), every commit on it is on
   GitHub, and neither the user's protected patterns (`internal/branchrules`) nor a remote's
-  `HEAD` keeps it.
+  `HEAD` keeps it. Every job that changes a clone holds that clone's lock from
+  `internal/clonelock`, one `Set` that core builds and hands to each, keyed by
+  `paths.Resolved`. Lock `act` before a clone's lock, never after. Worktree changes wait only
+  for one another. A run (a release, checks, a script) is never waited for: a launch or a
+  click fails at once with a sentence naming the run, and the sweep and a listing's
+  forgetting of a record skip the clone until next time.
 - `internal/sessions/` follows the agent sessions launches start. It owns `agent_sessions`, the
   ledger the launcher records each launch in (through its `SessionLedger`) under an ID minted
   before the launch, which Claude takes as `--session-id`. A `Watcher` (a desktop worker)

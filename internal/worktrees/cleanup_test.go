@@ -677,7 +677,7 @@ func TestCleanUpRowChecksAgainBeforeEachStep(t *testing.T) {
 
 		_, repo, svc, g := setup(t)
 		path, head := agentWorktree(t, repo, "pr-1")
-		res := svc.cleanUpRow(t.Context(), g, repo, Worktree{Path: path, DisplayPath: "pr-1", Head: head + "x"}, false, nil)
+		res, _ := svc.cleanUpRow(t.Context(), g, repo, Worktree{Path: path, DisplayPath: "pr-1", Head: head + "x"}, false, nil)
 		assert.False(t, res.Removed)
 		assert.Equal(t, ErrChanged.Error(), res.Reason)
 		assert.Contains(t, gitWorktreePaths(t, repo), resolvedPath(path))
@@ -690,7 +690,7 @@ func TestCleanUpRowChecksAgainBeforeEachStep(t *testing.T) {
 		path, head := agentWorktree(t, repo, "pr-2")
 		lock(t, repo, path, "claude session pr-2 (pid 999998)")
 
-		res := svc.cleanUpRow(t.Context(), g, repo, Worktree{
+		res, _ := svc.cleanUpRow(t.Context(), g, repo, Worktree{
 			Path: path, Head: head, Locked: true, LockReason: "claude session pr-2 (pid 999999)",
 		}, false, nil)
 		assert.False(t, res.Removed)
@@ -703,7 +703,7 @@ func TestCleanUpRowChecksAgainBeforeEachStep(t *testing.T) {
 
 		_, repo, svc, g := setup(t)
 		path, head := agentWorktree(t, repo, "pr-3")
-		res := svc.cleanUpRow(t.Context(), g, repo, Worktree{
+		res, _ := svc.cleanUpRow(t.Context(), g, repo, Worktree{
 			Path: path, Head: head, Branch: "worktree-pr-3", OwnBranch: true,
 			Branches: []Branch{{Name: "worktree-pr-3", Head: head, Kind: BranchOwn, Deletable: true}},
 		}, false, []string{"worktree-pr-3"})
@@ -732,7 +732,7 @@ func TestCleanUpRowChecksAgainBeforeEachStep(t *testing.T) {
 
 		assert.Contains(t, branches(t, repo), "worktree-pr-4")
 
-		res := svc.cleanUpRow(t.Context(), g, repo, Worktree{Path: other, Head: otherHead, Branch: "worktree-pr-4", OwnBranch: true}, false, nil)
+		res, _ := svc.cleanUpRow(t.Context(), g, repo, Worktree{Path: other, Head: otherHead, Branch: "worktree-pr-4", OwnBranch: true}, false, nil)
 		assert.False(t, res.Removed, "it is no longer a worktree")
 	})
 
@@ -741,7 +741,7 @@ func TestCleanUpRowChecksAgainBeforeEachStep(t *testing.T) {
 
 		_, repo, svc, g := setup(t)
 		path, head := agentWorktree(t, repo, "pr-5")
-		res := svc.cleanUpRow(t.Context(), g, repo, Worktree{
+		res, _ := svc.cleanUpRow(t.Context(), g, repo, Worktree{
 			Path: path, Head: head, Branch: "worktree-pr-5x", OwnBranch: true,
 			Branches: []Branch{{Name: "worktree-pr-5x", Head: head, Kind: BranchOwn, Deletable: true}},
 		}, false, []string{"worktree-pr-5x"})

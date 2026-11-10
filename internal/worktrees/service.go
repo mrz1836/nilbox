@@ -18,6 +18,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/clonelock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/item"
@@ -293,6 +294,11 @@ type Config struct {
 	// how many need the user's attention.
 	Events event.Sink
 
+	// Clones is the app's one set of clone locks, which every job that changes a clone
+	// takes, so a worktree is never made or removed while a run is using its clone. It
+	// defaults to a set of the Service's own.
+	Clones *clonelock.Set
+
 	// Logger receives sweep failures and, at Debug, why GitHub could not say which pull
 	// requests and issues the worktrees belong to. Without it they are not logged.
 	Logger *slog.Logger
@@ -323,12 +329,11 @@ type Service struct {
 	// neither runs then either.
 	act sync.RWMutex
 
-	// clonesMu guards clones, which holds a lock per clone: a Maker holds a clone's while
-	// it finds, makes, and records one of its worktrees, and a listing holds it to forget
-	// a record, so it never forgets one a launch is writing. Whoever needs act takes it
-	// before a clone's lock.
-	clonesMu sync.Mutex
-	clones   map[string]*sync.Mutex
+	// clones holds a lock per clone (see holdClone): a Maker holds a clone's while it
+	// finds, makes, and records one of its worktrees, a removal while it removes one or
+	// deletes a branch, and a listing to forget a record, so it never forgets one a launch
+	// is writing. Whoever needs act takes it before a clone's lock.
+	clones *clonelock.Set
 
 	// mu guards last.
 	mu   sync.Mutex
@@ -339,7 +344,12 @@ type Service struct {
 func NewService(cfg Config) *Service {
 	realHome := cfg.Home
 	if cfg.Home != "" {
-		realHome = resolvedPath(cfg.Home)
+		realHome = paths.Resolved(cfg.Home)
+	}
+
+	clones := cfg.Clones
+	if clones == nil {
+		clones = clonelock.New()
 	}
 
 	return &Service{
@@ -356,6 +366,7 @@ func NewService(cfg Config) *Service {
 		agents:   cfg.Agents,
 		events:   event.Or(cfg.Events),
 		logger:   logging.Or(cfg.Logger),
+		clones:   clones,
 		procs:    osProcesses{},
 		zone:     time.Local, //nolint:gosmopolitan // the agent writes a session's start in the machine's zone or in UTC
 		last:     emptyReport(),
@@ -392,6 +403,10 @@ func (s *Service) Remove(ctx context.Context, repoPath, path string, branches []
 	s.act.Lock()
 	defer s.act.Unlock()
 
+	if err := s.checkNoRun(repoPath); err != nil {
+		return RemoveResult{}, err
+	}
+
 	g, wt, err := s.assessOne(ctx, repoPath, path)
 	if err != nil {
 		return RemoveResult{}, err
@@ -408,6 +423,10 @@ func (s *Service) Remove(ctx context.Context, repoPath, path string, branches []
 func (s *Service) ForceRemove(ctx context.Context, repoPath, path string, branches []string) (RemoveResult, error) {
 	s.act.Lock()
 	defer s.act.Unlock()
+
+	if err := s.checkNoRun(repoPath); err != nil {
+		return RemoveResult{}, err
+	}
 
 	g, wt, err := s.assessOne(ctx, repoPath, path)
 	if err != nil {
@@ -486,6 +505,13 @@ func (s *Service) Prune(ctx context.Context, repoPath string) error {
 		return err
 	}
 
+	unlock, err := s.holdClone(ctx, repoPath)
+	if err != nil {
+		return err
+	}
+
+	defer unlock()
+
 	if stderr, pruneErr := g.prune(ctx, repoPath); pruneErr != nil {
 		return fmt.Errorf("prune %s: %w", s.display(repoPath), gitError(pruneErr, stderr))
 	}
@@ -541,7 +567,8 @@ func (s *Service) assessOne(ctx context.Context, repoPath, path string) (git, Wo
 // removeRow removes an assessed linked worktree, with --force when force is set, which
 // discards its uncommitted changes: a force removal needs some to discard, and the
 // running processes listed. The worktree must still have the commit assessed checked out.
-// The branches named then go with it, each only when it may (see deleteChosen).
+// The branches named then go with it, each only when it may (see deleteChosen). It holds
+// the clone's lock throughout, and a run using the clone refuses it (see holdClone).
 func (s *Service) removeRow(ctx context.Context, g git, repoPath string, wt Worktree, force bool,
 	branches []string,
 ) (RemoveResult, error) {
@@ -549,6 +576,13 @@ func (s *Service) removeRow(ctx context.Context, g git, repoPath string, wt Work
 		RepoPath: repoPath, Path: wt.Path, DisplayPath: wt.DisplayPath, Item: itemName(wt.Item),
 		DeletedBranches: []string{},
 	}
+
+	unlock, err := s.holdClone(ctx, repoPath)
+	if err != nil {
+		return res, err
+	}
+
+	defer unlock()
 
 	e, err := s.removable(ctx, repoPath, wt.Path, wt.Head, force)
 	if err != nil {
@@ -884,29 +918,6 @@ func (s *Service) prepare(ctx context.Context) (git, string, SweepSettings, erro
 	return g, root, prefs, nil
 }
 
-// lockClone takes the clone's lock (see Service.clones), and returns its release.
-func (s *Service) lockClone(clone string) func() {
-	key := resolvedPath(clone)
-
-	s.clonesMu.Lock()
-
-	if s.clones == nil {
-		s.clones = map[string]*sync.Mutex{}
-	}
-
-	mu, ok := s.clones[key]
-	if !ok {
-		mu = &sync.Mutex{}
-		s.clones[key] = mu
-	}
-
-	s.clonesMu.Unlock()
-
-	mu.Lock()
-
-	return mu.Unlock
-}
-
 // git returns the allowlisted git runner, resolving the binary when a Finder is set.
 func (s *Service) git() (git, error) {
 	if s.finder == nil {
@@ -941,7 +952,7 @@ func (s *Service) underRoot(repoPath, root string) bool {
 	clean := filepath.Clean(repoPath)
 
 	return filepath.IsAbs(clean) && !strings.HasPrefix(filepath.Base(clean), ".") &&
-		resolvedPath(filepath.Dir(clean)) == resolvedPath(root)
+		paths.Resolved(filepath.Dir(clean)) == paths.Resolved(root)
 }
 
 // entryOf re-lists the repository and returns path's entry when it is a linked worktree
@@ -953,7 +964,7 @@ func (s *Service) entryOf(ctx context.Context, g git, repoPath, path string) (En
 	}
 
 	for _, e := range entries {
-		if !samePath(e.Path, path) {
+		if !paths.Same(e.Path, path) {
 			continue
 		}
 
@@ -1047,7 +1058,7 @@ func (l cloneListing) withRows() listedRepo {
 func (s *Service) listRepo(ctx context.Context, g git, dir string) (cloneListing, error) {
 	listed := listedRepo{
 		repo: Repo{Path: dir, DisplayPath: s.display(dir), Name: filepath.Base(dir), Worktrees: []Worktree{}},
-		key:  resolvedPath(dir),
+		key:  paths.Resolved(dir),
 	}
 
 	entries, stderr, err := g.list(ctx, dir)
@@ -1063,7 +1074,7 @@ func (s *Service) listRepo(ctx context.Context, g git, dir string) (cloneListing
 	}
 
 	if len(entries) > 0 && entries[0].Main {
-		listed.key = resolvedPath(entries[0].Path)
+		listed.key = paths.Resolved(entries[0].Path)
 	}
 
 	entries = slices.DeleteFunc(entries, func(e Entry) bool { return e.Bare })
@@ -1074,8 +1085,8 @@ func (s *Service) listRepo(ctx context.Context, g git, dir string) (cloneListing
 	}
 
 	return cloneListing{
-		repo: listed, entries: entries, managedDir: resolvedPath(ManagedRoot(listed.key)),
-		legacyDir: resolvedPath(legacyRoot(listed.key)), times: times,
+		repo: listed, entries: entries, managedDir: paths.Resolved(ManagedRoot(listed.key)),
+		legacyDir: paths.Resolved(legacyRoot(listed.key)), times: times,
 	}, nil
 }
 
@@ -1138,7 +1149,7 @@ func (s *Service) readRows(ctx context.Context, g git, listings []cloneListing) 
 // managedDir and legacyDir are where its clone's worktrees are made, and times holds its
 // clone's commit times (see cloneListing).
 func (s *Service) row(ctx context.Context, g git, e Entry, managedDir, legacyDir string, times map[string]int64) (Worktree, error) {
-	path := resolvedPath(e.Path)
+	path := paths.Resolved(e.Path)
 
 	wt := Worktree{
 		Path:           e.Path,
@@ -1347,33 +1358,6 @@ func reasonOf(err error) string {
 	}
 
 	return err.Error()
-}
-
-// resolvedPath returns path with symlinks resolved. A path that no longer exists, such as
-// a deleted worktree, is resolved through its nearest existing parent, so it still matches
-// the form git reports for it. A path with no existing parent is only cleaned.
-func resolvedPath(path string) string {
-	clean := filepath.Clean(path)
-
-	for dir := clean; ; dir = filepath.Dir(dir) {
-		if resolved, err := filepath.EvalSymlinks(dir); err == nil {
-			rest, relErr := filepath.Rel(dir, clean)
-			if relErr != nil {
-				return clean
-			}
-
-			return filepath.Join(resolved, rest)
-		}
-
-		if filepath.Dir(dir) == dir {
-			return clean
-		}
-	}
-}
-
-// samePath reports whether two paths name the same directory.
-func samePath(a, b string) bool {
-	return resolvedPath(a) == resolvedPath(b)
 }
 
 // within reports whether path is strictly inside dir.

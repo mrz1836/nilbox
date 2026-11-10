@@ -15,6 +15,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -206,6 +207,16 @@ func branches(t *testing.T, repo string) []string {
 	t.Helper()
 
 	return strings.Fields(testutil.RunGit(t, repo, "branch", "--list", "--format=%(refname:short)"))
+}
+
+// resolvedPath and samePath are paths.Resolved and paths.Same, under the names these
+// tests have always used.
+func resolvedPath(path string) string {
+	return paths.Resolved(path)
+}
+
+func samePath(a, b string) bool {
+	return paths.Same(a, b)
 }
 
 // gitWorktreePaths lists the resolved paths git knows as worktrees of repo.

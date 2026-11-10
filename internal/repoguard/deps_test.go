@@ -25,6 +25,9 @@ type boundary struct {
 // boundaries are the package dependencies the app keeps cut. A forbidden path covers
 // the packages under it too.
 func boundaries() []boundary {
+	// noService is what a building block that serves any service never imports.
+	noService := []string{"internal/store", "internal/github", "internal/settings", "internal/inbox", "internal/core"}
+
 	return []boundary{
 		{
 			pkg:       "internal/settings",
@@ -76,8 +79,13 @@ func boundaries() []boundary {
 			why: "bump reads a dependency update from its title alone; prompts and the review sheet call it, never the reverse",
 		},
 		{
+			pkg:       "internal/clonelock",
+			forbidden: noService,
+			why:       "clonelock keeps one job at a time on each clone for whatever changes one; it knows no service",
+		},
+		{
 			pkg:       "internal/shellenv",
-			forbidden: []string{"internal/store", "internal/github", "internal/settings", "internal/inbox", "internal/core"},
+			forbidden: noService,
 			why:       "shellenv reads the login shell's environment for whatever runs tools; it knows no service",
 		},
 		{
