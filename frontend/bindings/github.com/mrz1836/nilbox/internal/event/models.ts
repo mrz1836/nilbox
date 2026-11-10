@@ -65,6 +65,13 @@ export interface SessionsUpdated {
 }
 
 /**
+ * ToolsUpdated says what the integrations service lists changed: a detection or an update
+ * check finished. The window reads the list again.
+ */
+export interface ToolsUpdated {
+}
+
+/**
  * WorktreesUpdated says an automatic worktree sweep removed a worktree or changed how many
  * need attention: the window reads the latest sweep.
  */

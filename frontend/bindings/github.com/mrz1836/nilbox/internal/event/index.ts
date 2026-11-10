@@ -8,5 +8,6 @@ export type {
     RevealItem,
     ReviewProgress,
     SessionsUpdated,
+    ToolsUpdated,
     WorktreesUpdated
 } from "./models.js";

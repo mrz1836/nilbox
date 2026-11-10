@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"testing"
 
@@ -25,14 +26,17 @@ type boundary struct {
 // boundaries are the package dependencies the app keeps cut. A forbidden path covers
 // the packages under it too.
 func boundaries() []boundary {
-	// noService is what a building block that serves any service never imports.
-	noService := []string{"internal/store", "internal/github", "internal/settings", "internal/inbox", "internal/core"}
+	// services are the app's services that a building block below them never imports,
+	// and noService adds the store: what a leaf that serves any of them never imports.
+	services := []string{"internal/github", "internal/settings", "internal/inbox", "internal/core"}
+	noService := append([]string{"internal/store"}, services...)
 
 	return []boundary{
 		{
 			pkg:       "internal/settings",
-			forbidden: []string{"internal/notify", "internal/inbox", "internal/github"},
-			why:       "settings stores preferences; the services that read them depend on it, never the reverse",
+			forbidden: []string{"internal/notify", "internal/inbox", "internal/github", "internal/integrations"},
+			why: "settings stores preferences; the services that read them depend on it, never the reverse " +
+				"(it writes the integrations' keys through integrationprefs)",
 		},
 		{
 			pkg:       "internal/worktrees",
@@ -77,6 +81,17 @@ func boundaries() []boundary {
 				"internal/github", "internal/inbox", "internal/prompts", "internal/settings", "internal/store",
 			},
 			why: "bump reads a dependency update from its title alone; prompts and the review sheet call it, never the reverse",
+		},
+		{
+			pkg:       "internal/integrationprefs",
+			forbidden: noService,
+			why:       "integrationprefs declares the integrations' settings keys, which settings writes; it knows no service",
+		},
+		{
+			pkg:       "internal/integrations",
+			forbidden: append(slices.Clone(services), "internal/launcher", "internal/desktop"),
+			why: "the integrations reach the settings through integrationprefs and GitHub through their own Releases, " +
+				"which core adapts",
 		},
 		{
 			pkg:       "internal/clonelock",

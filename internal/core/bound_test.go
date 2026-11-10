@@ -19,6 +19,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
+	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/launcher"
@@ -265,6 +266,18 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.SetMergeMethod": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetMergeMethod(ctx, settings.MergeMethodSquash)
 		},
+		"settings.Service.SetIntegrationEnabled": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetIntegrationEnabled(ctx, integrationprefs.MageX, integrationprefs.SwitchOff)
+		},
+		"settings.Service.SetIntegrationPath": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetIntegrationPath(ctx, integrationprefs.MageX, "")
+		},
+		"integrations.Service.List": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			got, err := c.Integrations.List(ctx)
+			require.Len(t, got.Tools, 2)
+
+			return got, err
+		},
 		"review.Service.Open": func(ctx context.Context, c *Core, ids seededItems) (any, error) {
 			got, err := c.Review.Open(ctx, ids.item)
 			require.NotEmpty(t, got.Files)
@@ -297,6 +310,7 @@ func boundCalls(t *testing.T) map[string]boundCall {
 // the tests do not have. Their results come from the same code as a method that is called.
 func unreachedBound() map[string]string {
 	return map[string]string{
+		"integrations.Service.CheckAgain":   "reads the user's login shell and GitHub; its result is built as List's",
 		"inbox.Service.Refresh":             "reads GitHub; its snapshot is built as Snapshot's",
 		"inbox.Service.RefreshItem":         "reads GitHub; its snapshot is built as Snapshot's",
 		"inbox.Service.Unassign":            "edits GitHub; its snapshot is built as Snapshot's",

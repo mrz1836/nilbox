@@ -9,6 +9,9 @@ import * as agent$0 from "../agent/models.js";
 import * as branchrules$0 from "../branchrules/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as integrationprefs$0 from "../integrationprefs/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as terminal$0 from "../launcher/terminal/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -243,6 +246,11 @@ export interface Settings {
      * MergeMethod is how the review sheet merges a pull request.
      */
     "mergeMethod": MergeMethod;
+
+    /**
+     * Integrations is each integration's switch, and the copy of each tool the user chose.
+     */
+    "integrations": integrationprefs$0.Config;
 }
 
 /**
