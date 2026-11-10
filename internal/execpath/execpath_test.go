@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -324,5 +325,81 @@ func TestFirstLineAndGitMessage(t *testing.T) {
 			assert.Equal(t, tt.first, FirstLine([]byte(tt.out)))
 			assert.Equal(t, tt.git, GitMessage([]byte(tt.out)))
 		})
+	}
+}
+
+func TestFindSearchesPathInPlaceOfTheInheritedOne(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake tool is a POSIX script")
+	}
+
+	inherited := t.TempDir()
+	writeExecutable(t, inherited)
+	t.Setenv("PATH", inherited)
+
+	shell := t.TempDir()
+	want := writeExecutable(t, shell)
+
+	got, err := Search{Path: string(filepath.ListSeparator) + t.TempDir() + string(filepath.ListSeparator) + shell}.Find(fakeTool)
+	require.NoError(t, err)
+	assert.Equal(t, want, got, "the shell's PATH is searched, not the inherited one")
+}
+
+func TestFindSkipsRelativePathEntries(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake tool is a POSIX script")
+	}
+
+	inherited := t.TempDir()
+	writeExecutable(t, inherited)
+	t.Setenv("PATH", inherited)
+
+	work := t.TempDir()
+	writeExecutable(t, filepath.Join(work, "bin"))
+	t.Chdir(work)
+
+	shell := t.TempDir()
+	want := writeExecutable(t, shell)
+	sep := string(filepath.ListSeparator)
+
+	got, err := Search{Path: "." + sep + "bin" + sep + shell}.Find(fakeTool)
+	require.NoError(t, err)
+	assert.Equal(t, want, got, "neither \".\" nor a folder relative to the working directory is searched")
+}
+
+func TestFindTriesExtraDirsAfterPath(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake tool is a POSIX script")
+	}
+
+	extra := t.TempDir()
+	want := writeExecutable(t, extra)
+
+	got, err := Search{Path: t.TempDir(), Extra: []string{extra}}.Find(fakeTool)
+	require.NoError(t, err)
+	assert.Equal(t, want, got)
+
+	_, err = Search{Path: t.TempDir()}.Find(fakeTool)
+	require.ErrorIs(t, err, ErrNotFound)
+}
+
+func TestFallbackPath(t *testing.T) {
+	t.Parallel()
+
+	home := filepath.Join(string(filepath.Separator)+"home", "octo-user")
+	sep := string(filepath.ListSeparator)
+	inherited := "/usr/bin" + sep + sep + "/bin" + sep + "/opt/homebrew/bin"
+
+	switch runtime.GOOS {
+	case "darwin":
+		assert.Equal(t, strings.Join([]string{
+			"/opt/homebrew/bin", "/usr/local/bin",
+			filepath.Join(home, ".local", "bin"), filepath.Join(home, "bin"), filepath.Join(home, "go", "bin"),
+			"/usr/bin", "/bin",
+		}, sep), FallbackPath(home, inherited), "the well-known folders come before launchd's PATH, without repeats")
+	default:
+		assert.Equal(t, strings.Join([]string{"/usr/bin", "/bin", "/opt/homebrew/bin"}, sep), FallbackPath(home, inherited))
 	}
 }
