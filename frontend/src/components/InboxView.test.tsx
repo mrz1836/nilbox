@@ -12,9 +12,10 @@ import { useInboxOrder } from '../lib/useInboxOrder'
 import { useReviewDrafts } from '../lib/reviewDrafts'
 import { ClockContext } from '../lib/useNow'
 import { useTriage } from '../lib/useTriage'
-import type { InboxSnapshot, ListKey } from '../platform'
+import type { AfterMerge, InboxSnapshot, ListKey } from '../platform'
 import { clockAt, FIXED_NOW, fixedNow, fromNow } from '../test/clock'
 import {
+  afterMerge,
   agents,
   details,
   item,
@@ -49,6 +50,7 @@ const dismissProjects = vi.fn()
 const filterBy = vi.fn<(key: string, value: string) => void>()
 const clearFilter = vi.fn()
 const manageReplies = vi.fn()
+const release = vi.fn<(offer: AfterMerge) => void>()
 
 interface HarnessProps {
   launch: LaunchOptions | null
@@ -58,8 +60,10 @@ interface HarnessProps {
   reveal?: Reveal | null
   // query filters the inbox, as the toolbar's field does.
   query?: string
-  // reviews turns the review sheet on, as App does.
+  // reviews turns the review sheet on, as App does, and releases the offer of a release
+  // after a merge, on with it unless turned off.
   reviews?: boolean
+  releases?: boolean
 }
 
 // Harness renders the view over the real inbox state, triage, and collapsed lists, the
@@ -74,7 +78,14 @@ function Harness({ clock, ...props }: HarnessProps) {
   )
 }
 
-function Inbox({ launch, snoozeDays = 3, reveal = null, query = '', reviews = false }: Omit<HarnessProps, 'clock'>) {
+function Inbox({
+  launch,
+  snoozeDays = 3,
+  reveal = null,
+  query = '',
+  reviews = false,
+  releases = true,
+}: Omit<HarnessProps, 'clock'>) {
   const inbox = useInbox()
   const drafts = useReviewDrafts()
   const triaged = useTriage(inbox.snapshot)
@@ -105,6 +116,7 @@ function Inbox({ launch, snoozeDays = 3, reveal = null, query = '', reviews = fa
       onFilterBy={filterBy}
       onClearFilter={clearFilter}
       {...(reviews ? { drafts, onManageReplies: manageReplies } : {})}
+      {...(reviews && releases ? { onRelease: release } : {})}
     />
   )
 }
@@ -1461,6 +1473,99 @@ describe('InboxView review sheet', () => {
 
     expect(await screen.findByText('Approved, but GitHub won’t merge yet')).toBeInTheDocument()
     expect(screen.queryByRole('dialog', { name: 'Add the widget cache' })).not.toBeInTheDocument()
+    // Only a merge asks whether to offer a release.
+    expect(platform.offerReleaseAfterMerge).not.toHaveBeenCalled()
+  })
+
+  describe('after a merge', () => {
+    // merge merges the inbox's pull request from the review sheet, as Approve does when
+    // GitHub merges it too, and returns the toast that says so.
+    async function merge(releases = true) {
+      platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([item()]) }))
+      platform.actOnReview.mockResolvedValue(
+        reviewResult({ outcome: 'merged', message: 'Merged acme-org/example-repo#7' }),
+      )
+      render(<Harness launch={launchOptions} clock={fixedNow} reviews releases={releases} />)
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Add the widget cache' }))
+
+      const sheet = await screen.findByRole('dialog', { name: 'Add the widget cache' })
+
+      await userEvent.click(await within(sheet).findByRole('button', { name: 'More review actions' }))
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Approve' }))
+      await userEvent.click(within(sheet).getByRole('button', { name: 'Approve' }))
+
+      return screen.findByRole('group', { name: 'Notification' })
+    }
+
+    it('offers to release the repository on the toast that says it merged, and opens its sheet', async () => {
+      platform.offerReleaseAfterMerge.mockResolvedValue(
+        afterMerge({ repo: 'acme-org/example-repo', dir: '~/projects/example-repo', branch: 'main' }),
+      )
+
+      const toast = within(await merge())
+
+      expect(toast.getByText('Merged acme-org/example-repo#7')).toBeInTheDocument()
+      expect(platform.offerReleaseAfterMerge).toHaveBeenCalledExactlyOnceWith('acme-org', 'example-repo', 'main')
+
+      await userEvent.click(await toast.findByRole('button', { name: 'Release acme-org/example-repo…' }))
+
+      expect(release).toHaveBeenCalledExactlyOnceWith(
+        afterMerge({ repo: 'acme-org/example-repo', dir: '~/projects/example-repo', branch: 'main' }),
+      )
+      expect(screen.queryByRole('group', { name: 'Notification' })).not.toBeInTheDocument()
+    })
+
+    it('offers nothing when Release can’t release the repository', async () => {
+      const toast = within(await merge())
+
+      await waitFor(() => {
+        expect(platform.offerReleaseAfterMerge).toHaveBeenCalledOnce()
+      })
+      expect(toast.queryByRole('button', { name: /^Release/ })).not.toBeInTheDocument()
+    })
+
+    it('asks nothing where the window offers no release', async () => {
+      platform.offerReleaseAfterMerge.mockResolvedValue(afterMerge())
+
+      const toast = within(await merge(false))
+
+      expect(platform.offerReleaseAfterMerge).not.toHaveBeenCalled()
+      expect(toast.queryByRole('button', { name: /^Release/ })).not.toBeInTheDocument()
+    })
+
+    it('writes a failure to ask to the console, and offers nothing', async () => {
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+      platform.offerReleaseAfterMerge.mockRejectedValue(new Error('database is locked'))
+
+      const toast = within(await merge())
+
+      await waitFor(() => {
+        expect(logged).toHaveBeenCalledWith('could not ask whether the merge offers a release:', 'database is locked')
+      })
+      expect(toast.queryByRole('button', { name: /^Release/ })).not.toBeInTheDocument()
+    })
+
+    it('adds nothing to a toast already gone when the answer comes', async () => {
+      let answer: (offer: AfterMerge) => void = () => undefined
+
+      platform.offerReleaseAfterMerge.mockReturnValue(
+        new Promise((resolve) => {
+          answer = resolve
+        }),
+      )
+
+      const toast = within(await merge())
+
+      await userEvent.click(toast.getByRole('button', { name: 'Close' }))
+      await act(async () => {
+        answer(afterMerge())
+        await Promise.resolve()
+      })
+
+      expect(screen.queryByRole('button', { name: /^Release/ })).not.toBeInTheDocument()
+    })
   })
 
   it('opens one from the menu, steps through its list, and closes', async () => {

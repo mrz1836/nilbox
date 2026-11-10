@@ -122,8 +122,3 @@ export function changeTone(change: string): Tone {
       return 'muted'
   }
 }
-
-// shortHead is a commit's SHA as GitHub abbreviates it.
-export function shortHead(head: string): string {
-  return head.slice(0, 7)
-}

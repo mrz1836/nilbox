@@ -98,10 +98,11 @@ describe('matchSettings', () => {
   it('finds every tool the app runs, and where runs go, by the section’s name, after Sensitive files and before About', () => {
     const match = matchSettings('integrations')
 
-    expect(found('integrations')).toEqual([['integrations', 3]])
+    expect(found('integrations')).toEqual([['integrations', 4]])
     expect(match?.isMatch('integrations', 'mage-x')).toBe(true)
     expect(match?.isMatch('integrations', 'go-pre-commit')).toBe(true)
     expect(match?.isMatch('integrations', 'Runs in')).toBe(true)
+    expect(match?.isMatch('integrations', 'Offer a release after you merge a pull request')).toBe(true)
     expect(sectionOrder.indexOf('integrations')).toBe(sectionOrder.indexOf('files') + 1)
     expect(sectionOrder.indexOf('about')).toBe(sectionOrder.indexOf('integrations') + 1)
     expect(sectionInfo.integrations.description).toBe(

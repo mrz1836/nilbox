@@ -164,6 +164,35 @@ describe('RunPanel', () => {
     expect(listening('scriptruns:updated')).toBe(0)
   })
 
+  it('reads the run again as its own progress moves, and not for another run’s', async () => {
+    const refused = 'Stopping now could leave a rebase in progress.'
+    const { unmount } = renderPanel(
+      running({ canStop: false, progress: { step: '', working: 'onBranch', stopRefused: refused, stopConfirm: '' } }),
+    )
+
+    await shownRun()
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeDisabled()
+
+    const reads = platform.getScriptRun.mock.calls.length
+
+    platform.getScriptRun.mockResolvedValue(running())
+    act(() => {
+      emit('scriptruns:progress', { id: 2 })
+    })
+    expect(platform.getScriptRun).toHaveBeenCalledTimes(reads)
+
+    act(() => {
+      emit('scriptruns:progress', { id: 1 })
+    })
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Stop' })).toBeEnabled()
+    })
+
+    expect(listening('scriptruns:progress')).toBe(1)
+    unmount()
+    expect(listening('scriptruns:progress')).toBe(0)
+  })
+
   it('says the run is being read, then why it couldn’t be, and still closes', async () => {
     platform.getScriptRun.mockRejectedValue(new Error('the run is no longer recorded'))
     const onClose = vi.fn<() => void>()
@@ -274,6 +303,77 @@ describe('RunPanel', () => {
 
       expect(await screen.findByRole('alert')).toHaveTextContent('A run in the terminal stops there.')
       expect(screen.getByRole('button', { name: 'Stop' })).toBeEnabled()
+    })
+
+    it('turns Stop off while the run’s kind refuses it, saying why, and on again once it lets it', async () => {
+      const refused = 'Stopping now could leave a rebase in progress.'
+
+      renderPanel(
+        running({
+          canStop: false,
+          progress: { step: 'onBranch', working: 'updated', stopRefused: refused, stopConfirm: '' },
+        }),
+      )
+
+      await shownRun()
+
+      const stop = screen.getByRole('button', { name: 'Stop' })
+
+      expect(stop).toBeDisabled()
+      expect(stop).toHaveAccessibleDescription(refused)
+
+      platform.getScriptRun.mockResolvedValue(running())
+      act(() => {
+        emit('scriptruns:updated')
+      })
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Stop' })).toBeEnabled()
+      })
+      expect(screen.queryByText(refused)).not.toBeInTheDocument()
+    })
+
+    it('asks first while stopping would leave something behind, and stops only when told to', async () => {
+      const confirm = 'Stopping now can leave v1.4.3 on this Mac but not on GitHub, and your clone on master.'
+
+      renderPanel(running({ progress: { step: 'tagCreated', working: '', stopRefused: '', stopConfirm: confirm } }))
+
+      await shownRun()
+      await userEvent.click(screen.getByRole('button', { name: 'Stop' }))
+
+      const ask = screen.getByRole('dialog', { name: 'Stop this run?' })
+
+      expect(ask).toHaveTextContent(confirm)
+      await userEvent.click(within(ask).getByRole('button', { name: 'Keep running' }))
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(platform.stopScriptRun).not.toHaveBeenCalled()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Stop' }))
+      await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Stop the run' }))
+
+      expect(platform.stopScriptRun).toHaveBeenCalledExactlyOnceWith(1)
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+
+    it.each<[TerminalID | null, string]>([
+      ['iterm2', 'iTerm2'],
+      [null, 'your terminal'],
+    ])('offers no Stop for a run in the terminal, and says to press Control-C there (%s)', async (terminal, name) => {
+      renderPanel(running({ runsIn: 'terminal', canStop: false }), terminal)
+
+      await shownRun()
+
+      expect(screen.queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument()
+      expect(screen.getByText(`It runs in ${name}: press Control-C there to stop it.`)).toBeInTheDocument()
+    })
+
+    it('has no close button where the panel closes with what holds it', async () => {
+      platform.getScriptRun.mockResolvedValue(ended())
+      render(<RunPanel id={1} terminal="iterm2" onSelect={vi.fn()} />, { wrapper: at() })
+
+      await shownRun()
+
+      expect(screen.queryByRole('button', { name: 'Close the run' })).not.toBeInTheDocument()
     })
 
     it('offers no Stop for an ended run, nor Run again where the run can’t', async () => {

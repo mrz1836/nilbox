@@ -21,6 +21,8 @@ import {
   type ScriptRunResult,
   type TerminalID,
 } from '../../platform'
+import { terminalNames } from '../../lib/terminals'
+import { ConfirmDialog } from '../ConfirmDialog'
 import { quietButtonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import { AlertIcon, CheckIcon, CopyIcon, DocumentIcon, RefreshIcon, StopIcon, TerminalIcon, XIcon } from '../icons'
@@ -129,15 +131,41 @@ export interface RunPanelProps {
   terminal: TerminalID | null
   // onSelect shows another run, as Run again starts one.
   onSelect: (id: number) => void
-  // onClose closes the panel.
-  onClose: () => void
+  // onClose closes the panel; without it there is no close button, as in the release
+  // sheet, which closes itself.
+  onClose?: () => void
+}
+
+// StopNote says why Stop is off, or how to stop a run in the terminal, which only the
+// terminal can.
+function StopNote({ id, run, terminal }: { id: string; run: ScriptRun; terminal: TerminalID | null }) {
+  if (!isLive(run.status)) {
+    return null
+  }
+
+  if (run.runsIn === 'terminal') {
+    const where = terminal === null ? 'your terminal' : terminalNames[terminal]
+
+    return (
+      <p id={id} className="text-xs text-muted">
+        It runs in {where}: press Control-C there to stop it.
+      </p>
+    )
+  }
+
+  return run.progress.stopRefused === '' ? null : (
+    <p id={id} className="flex items-center gap-1.5 text-xs text-muted">
+      <AlertIcon className="size-3.5 shrink-0 text-warning" />
+      {run.progress.stopRefused}
+    </p>
+  )
 }
 
 // RunPanel is one run, live or ended, in the app or in the terminal: what it is and where
 // it ran, its status (announced as it changes, and only it), how long it took, what can
 // be done with it, what it left to look at, and its log. It reads the run again whenever
-// the shell says the runs changed, and marks an ended run seen once it shows, which
-// clears the tab's red dot.
+// the shell says the runs changed or this run's progress moved, and marks an ended run
+// seen once it shows, which clears the tab's red dot.
 export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
   const headingId = useId()
   const query = useQuery(() => getScriptRun(id), [id])
@@ -155,20 +183,32 @@ export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
   // last is the button pressed last: only its failure shows, so one that works clears
   // what an earlier one said went wrong.
   const [last, setLast] = useState<Action | null>(null)
-  // stopping is set once Stop was asked for, until the run ends.
+  // stopping is set once Stop was asked for, until the run ends; confirming holds the
+  // question Stop asks first while stopping now would leave something behind.
   const [stopping, setStopping] = useState(false)
+  const [confirming, setConfirming] = useState('')
   const [copied, setCopied] = useState(false)
   const run = query.data
   const unseen = run !== undefined && !run.seen && !isLive(run.status)
   const error = last === null ? '' : actions[last].error
 
-  useEffect(
-    () =>
-      on('scriptruns:updated', () => {
+  // The run is read again as it changes status or ends, and as its own progress moves:
+  // a step reached, or Stop turned on or off.
+  useEffect(() => {
+    const offUpdated = on('scriptruns:updated', () => {
+      reloadOnUpdate()
+    })
+    const offProgress = on('scriptruns:progress', ({ id: moved }) => {
+      if (moved === id) {
         reloadOnUpdate()
-      }),
-    [],
-  )
+      }
+    })
+
+    return () => {
+      offUpdated()
+      offProgress()
+    }
+  }, [id])
 
   const markSeen = useEffectEvent(() => {
     void attempt(markScriptRunSeen(id)).then((result) => {
@@ -191,8 +231,19 @@ export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
   }
 
   const stopRun = async () => {
+    setConfirming('')
     press('stop')
     setStopping((await stop.run()).ok)
+  }
+
+  // askToStop stops the run, asking first when its kind says stopping now leaves
+  // something behind.
+  const askToStop = (confirm: string) => {
+    if (confirm === '') {
+      void stopRun()
+    } else {
+      setConfirming(confirm)
+    }
   }
 
   const runAgain = async () => {
@@ -210,7 +261,7 @@ export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
     setCopied((await copy.run()).ok)
   }
 
-  const close = (
+  const close = onClose !== undefined && (
     <button
       type="button"
       aria-label="Close the run"
@@ -238,6 +289,10 @@ export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
   }
 
   const { result } = run
+  // Stop shows while the run goes in the app: on while its kind lets it stop now, and off,
+  // saying why, while it doesn't.
+  const refused = run.progress.stopRefused
+  const offersStop = run.canStop || (isLive(run.status) && run.runsIn === 'app' && refused !== '')
   const hasResult =
     (run.exitCode !== null && run.exitCode !== 0) || result.warnings.length > 0 || result.unrecognizedCount > 0
 
@@ -272,12 +327,13 @@ export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
         )}
       </header>
       <div className="flex flex-wrap items-center gap-1">
-        {run.canStop && (
+        {offersStop && (
           <button
             type="button"
-            disabled={stopping || stop.pending}
+            disabled={stopping || stop.pending || !run.canStop}
+            aria-describedby={refused === '' ? undefined : `${headingId}-stop`}
             onClick={() => {
-              void stopRun()
+              askToStop(run.progress.stopConfirm)
             }}
             className={quietButtonClass}
           >
@@ -334,10 +390,26 @@ export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
           Show the log file
         </button>
       </div>
+      <StopNote id={`${headingId}-stop`} run={run} terminal={terminal} />
       <ErrorText error={error} />
       {query.error !== '' && <ErrorBanner>Couldn’t read the run again: {query.error}</ErrorBanner>}
       {hasResult && <RunResult exitCode={run.exitCode} result={result} />}
       <LogView key={run.id} runId={run.id} live={isLive(run.status)} />
+      {confirming !== '' && (
+        <ConfirmDialog
+          title="Stop this run?"
+          confirmLabel="Stop the run"
+          cancelLabel="Keep running"
+          onConfirm={() => {
+            void stopRun()
+          }}
+          onCancel={() => {
+            setConfirming('')
+          }}
+        >
+          {confirming}
+        </ConfirmDialog>
+      )}
     </section>
   )
 }

@@ -2,15 +2,8 @@ import { useId } from 'react'
 
 import { formatAgo } from '../lib/time'
 import { counted, formatCount } from '../lib/format'
-import {
-  changeText,
-  changeTone,
-  filesChip,
-  levelDot,
-  sensitiveCount,
-  shortHead,
-  type FilesChip,
-} from '../lib/sensitive'
+import { shortCommit } from '../lib/git'
+import { changeText, changeTone, filesChip, levelDot, sensitiveCount, type FilesChip } from '../lib/sensitive'
 import { toneText } from '../lib/signals'
 import { useMutation } from '../lib/useMutation'
 import { usePopover } from '../lib/usePopover'
@@ -168,7 +161,7 @@ export function SensitiveFiles({ itemId, check, onSettings }: SensitiveFilesProp
           <h3 className="text-sm font-semibold text-text">Sensitive files</h3>
           {check.head !== '' && (
             <p className="mt-0.5 text-[0.6875rem] text-muted">
-              At commit <span className="font-mono">{shortHead(check.head)}</span>
+              At commit <span className="font-mono">{shortCommit(check.head)}</span>
               {check.checkedAt !== '' && (
                 <>
                   {' · checked '}

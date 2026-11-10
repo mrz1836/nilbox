@@ -1,23 +1,30 @@
-import { useId } from 'react'
+import { useId, useState } from 'react'
 
 import { brand } from '../../generated/brand'
+import { toolOf, usable } from '../../lib/scriptsTab'
 import { terminalNames } from '../../lib/terminals'
 import { useIntegrations } from '../../lib/useIntegrations'
 import { useSettingsSave } from '../../lib/useSettingsSave'
-import { setRunsIn, type RunsIn, type Settings } from '../../platform'
-import { buttonClass, quietButtonClass } from '../controls'
+import { setOfferAfterMerge, setRunsIn, type RunsIn, type Settings } from '../../platform'
+import { buttonClass, quietButtonClass, Switch } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import { RefreshIcon } from '../icons'
 import { IntegrationCard } from './IntegrationCard'
 import { rowMatchClass, useSetting } from './match'
-import { ErrorText, Group, joinIds } from './rows'
+import { ErrorText, Group, joinIds, rowDescribedBy, SettingRow } from './rows'
 import type { SectionProps } from './types'
 
 // RunsGroup holds where the runs go: in the app, or in the terminal chosen in Settings →
-// Launching, named as it is set there. It is saved as soon as it is chosen.
-function RunsGroup({ settings: stored, onSaved }: SectionProps) {
+// Launching, named as it is set there; and whether a merge in the review sheet offers to
+// release its repository, which needs mage-x usable. Each is saved as soon as it is
+// chosen.
+function RunsGroup({ settings: stored, onSaved, releases }: SectionProps & { releases: boolean }) {
   const id = useId()
-  const { settings, save, error } = useSettingsSave(stored, onSaved)
+  const { settings, save, error: saveError } = useSettingsSave(stored, onSaved)
+  // changed is the setting changed last, beside which its refusal shows.
+  const [changed, setChanged] = useState<'runsIn' | 'offer'>('runsIn')
+  const error = changed === 'runsIn' ? saveError : ''
+  const offerError = changed === 'offer' ? saveError : ''
   const [marks] = useSetting('Runs in')
   const choices: readonly { value: RunsIn; label: string }[] = [
     { value: 'app', label: brand.name },
@@ -25,6 +32,7 @@ function RunsGroup({ settings: stored, onSaved }: SectionProps) {
   ]
 
   const choose = (runsIn: RunsIn) => {
+    setChanged('runsIn')
     void save({ integrations: { ...settings.integrations, runsIn } }, () => setRunsIn(runsIn))
   }
 
@@ -65,6 +73,29 @@ function RunsGroup({ settings: stored, onSaved }: SectionProps) {
             <ErrorText id={`${id}-error`} error={error} />
           </div>
         </div>
+        <SettingRow
+          label="Offer a release after you merge a pull request"
+          controlId={`${id}-offer`}
+          description={
+            releases
+              ? 'The toast that says a pull request merged offers to release its repository. It never releases by itself.'
+              : 'Needs mage-x: turn it on above, and make sure it can be used.'
+          }
+          error={offerError}
+        >
+          <Switch
+            id={`${id}-offer`}
+            checked={settings.integrations.offerAfterMerge}
+            disabled={!releases}
+            describedBy={rowDescribedBy(`${id}-offer`, offerError)}
+            onChange={(offerAfterMerge) => {
+              setChanged('offer')
+              void save({ integrations: { ...settings.integrations, offerAfterMerge } }, () =>
+                setOfferAfterMerge(offerAfterMerge),
+              )
+            }}
+          />
+        </SettingRow>
       </Group>
     </div>
   )
@@ -127,7 +158,9 @@ export function IntegrationsSection({ settings, onSaved }: IntegrationsSectionPr
               onTools={replace}
             />
           ))}
-      {settings !== null && <RunsGroup settings={settings} onSaved={onSaved} />}
+      {settings !== null && (
+        <RunsGroup settings={settings} onSaved={onSaved} releases={usable(toolOf(tools, 'mage-x'))} />
+      )}
     </div>
   )
 }

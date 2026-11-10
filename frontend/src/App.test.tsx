@@ -1,11 +1,17 @@
-import { act, screen, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 
 import { brand } from './generated/brand'
 import type { Settings, TerminalID, AgentID, RemoveResult, TextSize } from './platform'
 import {
+  afterMerge,
   appInfo,
+  goPreCommitTool,
+  integrationsConfig,
+  integrationTool,
+  integrationTools,
+  reviewResult,
   budgetGauge,
   fileCheck,
   item,
@@ -1163,5 +1169,219 @@ describe('App’s filter field', () => {
     await userEvent.keyboard('{Escape}')
     expect(screen.queryByRole('navigation', { name: 'Settings sections' })).not.toBeInTheDocument()
     await empty()
+  })
+})
+
+describe('the Scripts tab', () => {
+  // off lists both tools switched off, so no integration is on.
+  const off = () =>
+    integrationTools({
+      tools: [integrationTool({ switch: 'off', on: false }), goPreCommitTool({ switch: 'off', on: false })],
+    })
+  // missing lists both tools as a first start does before detection: on automatically,
+  // and found nowhere yet.
+  const missing = () =>
+    integrationTools({
+      tools: [
+        integrationTool({ on: false, state: 'missing', checking: true }),
+        goPreCommitTool({ on: false, state: 'missing', checking: true }),
+      ],
+    })
+  const views = () => within(screen.getByRole('navigation', { name: 'Views' }))
+  const toast = () => screen.findByRole('group', { name: 'Notification' })
+
+  it('shows while a tool is on, loads on its first visit, and leaves the toolbar’s field and ⌘F out', async () => {
+    await renderApp()
+
+    await userEvent.click(await views().findByRole('button', { name: 'Scripts' }))
+
+    expect(await screen.findByRole('navigation', { name: 'Scripts' })).toBeInTheDocument()
+    expect(views().getByRole('button', { name: 'Scripts' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByRole('combobox', { name: /^(Filter|Find)/ })).not.toBeInTheDocument()
+
+    await userEvent.keyboard('{Meta>}f{/Meta}')
+    expect(screen.queryByRole('combobox', { name: /^(Filter|Find)/ })).not.toBeInTheDocument()
+
+    // Kept while another page shows.
+    await userEvent.click(views().getByRole('button', { name: 'Inbox' }))
+    expect(screen.queryByRole('navigation', { name: 'Scripts' })).not.toBeInTheDocument()
+    await userEvent.click(views().getByRole('button', { name: 'Scripts' }))
+    expect(screen.getByRole('navigation', { name: 'Scripts' })).toBeInTheDocument()
+  })
+
+  it('stays hidden while every integration is off, and lists no runs for its badge', async () => {
+    platform.listIntegrations.mockResolvedValue(off())
+    await renderApp()
+
+    await screen.findByRole('region', { name: 'Review requested' })
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(views().queryByRole('button', { name: 'Scripts' })).not.toBeInTheDocument()
+    expect(platform.listIntegrations).toHaveBeenCalled()
+    expect(platform.listScriptRuns).not.toHaveBeenCalled()
+  })
+
+  it('shows while Scripts is turned on with no tool on', async () => {
+    platform.listIntegrations.mockResolvedValue(off())
+    platform.getSettings.mockResolvedValue(
+      settings({
+        integrations: integrationsConfig({ switches: { 'mage-x': 'off', 'go-pre-commit': 'off', scripts: 'on' } }),
+      }),
+    )
+    await renderApp()
+
+    expect(await views().findByRole('button', { name: 'Scripts' })).toBeInTheDocument()
+  })
+
+  it('badges the runs going', async () => {
+    platform.listScriptRuns.mockResolvedValue([scriptRun({ id: 2, status: 'running' }), scriptRun()])
+    await renderApp()
+
+    const scripts = await views().findByRole('button', { name: 'Scripts' })
+
+    await waitFor(() => {
+      expect(scripts).toHaveTextContent('Scripts1')
+    })
+    expect(scripts).toHaveAccessibleDescription('1 script running')
+  })
+
+  it('announces the tools found once, as the tab first appears, and opens it from the toast', async () => {
+    platform.listIntegrations.mockResolvedValue(missing())
+    await renderApp()
+
+    await screen.findByRole('region', { name: 'Review requested' })
+    expect(views().queryByRole('button', { name: 'Scripts' })).not.toBeInTheDocument()
+
+    platform.listIntegrations.mockResolvedValue(integrationTools())
+    act(() => {
+      emit('tools:updated')
+    })
+
+    const shown = within(await toast())
+
+    expect(shown.getByText('Found magex and go-pre-commit. They’re in the new Scripts tab.')).toBeInTheDocument()
+    await userEvent.click(shown.getByRole('button', { name: 'Open Scripts' }))
+
+    expect(await screen.findByRole('navigation', { name: 'Scripts' })).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Notification' })).not.toBeInTheDocument()
+
+    // Gone and back again, it isn't announced twice.
+    platform.listIntegrations.mockResolvedValue(off())
+    act(() => {
+      emit('tools:updated')
+    })
+    await waitFor(() => {
+      expect(views().queryByRole('button', { name: 'Scripts' })).not.toBeInTheDocument()
+    })
+    platform.listIntegrations.mockResolvedValue(integrationTools())
+    act(() => {
+      emit('tools:updated')
+    })
+
+    expect(await views().findByRole('button', { name: 'Scripts' })).toBeInTheDocument()
+    expect(screen.queryByText(/in the new Scripts tab/)).not.toBeInTheDocument()
+  })
+
+  it('closes the announcement from its close button', async () => {
+    platform.listIntegrations.mockResolvedValue(missing())
+    await renderApp()
+
+    await screen.findByRole('region', { name: 'Review requested' })
+    platform.listIntegrations.mockResolvedValue(integrationTools({ tools: [integrationTool()] }))
+    act(() => {
+      emit('tools:updated')
+    })
+
+    const shown = within(await toast())
+
+    expect(shown.getByText('Found magex. Release is in the new Scripts tab.')).toBeInTheDocument()
+    await userEvent.click(shown.getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('group', { name: 'Notification' })).not.toBeInTheDocument()
+  })
+
+  it('says nothing of a tab already there as the window opens', async () => {
+    await renderApp()
+
+    await views().findByRole('button', { name: 'Scripts' })
+
+    expect(screen.queryByText(/in the new Scripts tab/)).not.toBeInTheDocument()
+  })
+
+  it('shows the inbox once the tab goes away under it', async () => {
+    await renderApp()
+
+    await userEvent.click(await views().findByRole('button', { name: 'Scripts' }))
+    await screen.findByRole('navigation', { name: 'Scripts' })
+
+    platform.listIntegrations.mockResolvedValue(off())
+    act(() => {
+      emit('tools:updated')
+    })
+
+    expect(await screen.findByRole('region', { name: 'Review requested' })).toBeVisible()
+    expect(views().getByRole('button', { name: 'Inbox' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('opens Settings → Integrations from the tab', async () => {
+    await renderApp()
+
+    await userEvent.click(await views().findByRole('button', { name: 'Scripts' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Manage in Settings' }))
+
+    expect(await screen.findByRole('heading', { name: 'Integrations', level: 2 })).toBeInTheDocument()
+  })
+
+  it('opens the release a merge offers, from the toast that says it merged', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([item()]) }))
+    platform.actOnReview.mockResolvedValue(
+      reviewResult({ outcome: 'merged', message: 'Merged acme-org/example-repo#7' }),
+    )
+    platform.offerReleaseAfterMerge.mockResolvedValue(afterMerge())
+    await renderApp()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Add the widget cache' }))
+
+    const sheet = await screen.findByRole('dialog', { name: 'Add the widget cache' })
+
+    await userEvent.click(await within(sheet).findByRole('button', { name: 'More review actions' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Approve' }))
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Approve' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Release acme-org/sdk…' }))
+
+    expect(await screen.findByRole('dialog', { name: 'Release acme-org/sdk' })).toBeInTheDocument()
+    expect(views().getByRole('button', { name: 'Scripts' })).toHaveAttribute('aria-pressed', 'true')
+    expect(platform.prepareRelease).toHaveBeenCalledWith(
+      expect.objectContaining({ repo: 'acme-org/sdk', dir: '~/projects/sdk', branch: 'master', refresh: true }),
+    )
+  })
+
+  it('opens a notification about no item, a release, on GitHub', async () => {
+    const released = notification({
+      kind: 'release_done',
+      itemId: 0,
+      itemKind: '',
+      repo: 'acme-org/sdk',
+      number: 0,
+      title: 'v1.4.3 is on GitHub',
+      url: 'https://github.com/acme-org/sdk/releases/tag/v1.4.3',
+      detail: 'Tagged a1b2c3d on master.',
+    })
+
+    platform.listNotifications.mockResolvedValue({ items: [released], unread: 1 })
+    await renderApp()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Notifications, 1 unread' }))
+
+    const entry = screen.getByRole('button', { name: /v1\.4\.3 is on GitHub/ })
+
+    expect(entry).toHaveTextContent('Released')
+    expect(entry).toHaveTextContent('sdk · Tagged a1b2c3d on master.')
+    expect(entry).not.toHaveTextContent('#0')
+    expect(entry).toHaveAttribute('title', 'acme-org/sdk')
+
+    await userEvent.click(entry)
+    expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/sdk/releases/tag/v1.4.3')
   })
 })

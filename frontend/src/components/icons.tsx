@@ -485,3 +485,23 @@ export function StopIcon(props: IconProps) {
     </Icon>
   )
 }
+
+// InfoIcon marks a note that only informs.
+export function InfoIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="8.25" />
+      <path d="M12 11v5.25M12 7.75v.25" />
+    </Icon>
+  )
+}
+
+// TagIcon stands for a release: the version tag it pushes.
+export function TagIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 5.5V11l8.5 8.5a1.5 1.5 0 0 0 2.1 0l4.9-4.9a1.5 1.5 0 0 0 0-2.1L11 4H5.5A1.5 1.5 0 0 0 4 5.5z" />
+      <circle cx="8" cy="8" r="1.25" />
+    </Icon>
+  )
+}

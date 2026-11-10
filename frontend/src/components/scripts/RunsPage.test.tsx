@@ -1,4 +1,5 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { useState } from 'react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -39,7 +40,9 @@ const lint = scriptRun({ id: 1, startedAt: ago(60, 38), finishedAt: ago(60) })
 
 // Listed is the page as the tab shows it: fed every run the tab lists.
 function Listed({ terminal }: { terminal: TerminalID | null }) {
-  return <RunsPage {...useScriptRuns()} terminal={terminal} />
+  const [selected, setSelected] = useState<number | null>(null)
+
+  return <RunsPage {...useScriptRuns()} terminal={terminal} selected={selected} onSelect={setSelected} />
 }
 
 // renderPage shows the page with runs listed.

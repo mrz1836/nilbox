@@ -1,17 +1,11 @@
 import { useState } from 'react'
 
+import { shellQuoted, shortCommit } from '../../lib/git'
 import { branchSummary } from '../../lib/worktreeSummary'
 import { copyText, type BranchResult } from '../../platform'
 import { quietButtonClass } from '../controls'
 import { ChevronRightIcon, CopyIcon } from '../icons'
-import { shortCommit } from './BranchChoices'
 import { ResultCard } from './ResultCard'
-
-// shellQuoted quotes text for a POSIX shell: single quotes, each one inside closed,
-// escaped, and reopened.
-function shellQuoted(text: string): string {
-  return `'${text.replaceAll("'", `'\\''`)}'`
-}
 
 // restoreCommands are the git commands that bring the deleted branches back, one a line:
 // each branch made again at the commit it pointed at, in its clone.

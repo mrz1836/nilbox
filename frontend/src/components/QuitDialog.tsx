@@ -10,6 +10,20 @@ import { ConfirmDialog } from './ConfirmDialog'
 // tagRisk is what stopping a release partway can leave behind.
 const tagRisk = 'Stopping it now can leave a tag on this Mac but not on GitHub.'
 
+// held reports a run whose kind holds Stop back for now, as a release does while magex
+// switches branches or pulls.
+function held(run: ScriptRun): boolean {
+  return run.progress.stopRefused !== ''
+}
+
+// heldText says what quitting does to runs held back: it waits a few seconds for them, and
+// one still held then goes on after the app closes, and is checked at the next start.
+function heldText(one: boolean): string {
+  return one
+    ? `magex is switching branches or pulling, so stopping waits up to a few seconds for it to finish. If it doesn’t, the release goes on after ${brand.name} closes, and ${brand.name} checks how it ended when it opens again.`
+    : `A release is switching branches or pulling, so stopping waits up to a few seconds for it. If it doesn’t finish, that release goes on after ${brand.name} closes, and ${brand.name} checks how it ended when it opens again.`
+}
+
 // question asks whether to quit while runs go in the app: one run by its name and where
 // it runs, with what stopping it can leave, or several listed. With none known, since
 // they couldn't be listed, it asks about the runs as a whole.
@@ -21,18 +35,24 @@ function question(going: readonly ScriptRun[]): ReactNode {
   }
 
   if (going.length === 1) {
+    if (held(only)) {
+      return `A release is running in ${runWhere(only)}. ${heldText(true)} Quit anyway?`
+    }
+
     return only.kind === 'release'
       ? `A release is running in ${runWhere(only)}. ${tagRisk} Quit anyway?`
       : `${only.title} is running in ${runWhere(only)}. Stopping it now ends it partway. Quit anyway?`
   }
 
   const releases = going.some((run) => run.kind === 'release')
+  const holding = going.some(held)
 
   return (
     <>
       <p>
         {counted(going.length, 'run is', 'runs are')} going in {brand.name}. Stopping them now ends them partway.
         {releases && ' Stopping a release now can leave a tag on this Mac but not on GitHub.'}
+        {holding && ` ${heldText(false)}`}
       </p>
       <ul className="my-2 list-disc pl-5">
         {going.map((run) => (
@@ -73,7 +93,9 @@ export function QuitDialog() {
       return
     }
 
-    const stoppable = listed.data.filter((run) => run.canStop)
+    // A run held back from stopping for now still goes in the app, and quitting waits for
+    // it, so it is asked about too.
+    const stoppable = listed.data.filter((run) => run.canStop || held(run))
 
     if (stoppable.length === 0) {
       quit()

@@ -3,6 +3,7 @@
 import { brand } from '../generated/brand'
 import type {
   Account,
+  AfterMerge,
   Agent,
   AgentSession,
   AgentInfo,
@@ -46,6 +47,11 @@ import type {
   PromptCheckResult,
   PromptVariable,
   Rate,
+  ReleaseCandidate,
+  ReleaseCandidates,
+  ReleaseCheck,
+  ReleaseOffer,
+  ReleaseResult,
   RemoveResult,
   Resolution,
   ScriptRun,
@@ -325,12 +331,13 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
 }
 
 // integrationsConfig is how a fresh database sets the integrations up: every switch
-// automatic, no copy of a tool chosen, and runs in the app.
+// automatic, no copy of a tool chosen, runs in the app, and a merge offering a release.
 export function integrationsConfig(overrides: Partial<IntegrationsConfig> = {}): IntegrationsConfig {
   return {
     switches: { 'mage-x': 'auto', 'go-pre-commit': 'auto', scripts: 'auto' },
     paths: { 'mage-x': '', 'go-pre-commit': '' },
     runsIn: 'app',
+    offerAfterMerge: true,
     ...overrides,
   }
 }
@@ -394,6 +401,7 @@ export function scriptRun(overrides: Partial<ScriptRun> = {}): ScriptRun {
     seen: true,
     startedAt: '2026-11-10T16:00:00Z',
     finishedAt: '2026-11-10T16:00:38Z',
+    progress: { step: '', working: '', stopRefused: '', stopConfirm: '' },
     canStop: false,
     canRunAgain: true,
     ...overrides,
@@ -1357,4 +1365,212 @@ export function replyPrompts(): Prompt[] {
       usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: [] },
     }),
   ]
+}
+
+// releaseCandidate is acme-org/sdk with four commits on master since v1.4.2, checks passed
+// on the newest, and its clone on a branch of its own.
+export function releaseCandidate(overrides: Partial<ReleaseCandidate> = {}): ReleaseCandidate {
+  return {
+    repo: 'acme-org/sdk',
+    dir: '~/projects/sdk',
+    group: 'unreleased',
+    reason: '',
+    version: 'v1.4.2',
+    ahead: 4,
+    commits: [
+      {
+        oid: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
+        headline: 'Fix retries on 502 (#45)',
+        at: '2026-06-15T11:48:00Z',
+      },
+      {
+        oid: 'b2c3d4e5f60718293a4b5c6d7e8f901234567890',
+        headline: 'Bump golang.org/x/net (#44)',
+        at: '2026-06-13T09:00:00Z',
+      },
+      {
+        oid: 'c3d4e5f60718293a4b5c6d7e8f90123456789012',
+        headline: 'Document the client (#43)',
+        at: '2026-06-12T09:00:00Z',
+      },
+      { oid: 'd4e5f60718293a4b5c6d7e8f9012345678901234', headline: 'Tidy the tests (#42)', at: '2026-06-11T09:00:00Z' },
+    ],
+    defaultBranch: 'master',
+    headline: 'Fix retries on 502 (#45)',
+    headAt: '2026-06-15T11:48:00Z',
+    checks: 'SUCCESS',
+    clone: {
+      branch: 'feature-x',
+      detached: false,
+      dirty: 0,
+      notPushed: 0,
+      behind: false,
+      localOnly: [],
+      unreadable: false,
+    },
+    ...overrides,
+  }
+}
+
+// releaseCandidates is the Release page's list as GitHub was last read five minutes before
+// FIXED_NOW: acme-org/sdk unreleased, and one repository in each other group.
+export function releaseCandidates(overrides: Partial<ReleaseCandidates> = {}): ReleaseCandidates {
+  return {
+    repos: [
+      releaseCandidate(),
+      releaseCandidate({
+        repo: 'acme-org/web',
+        dir: '~/projects/web',
+        group: 'upToDate',
+        version: 'v0.9.1',
+        ahead: 0,
+        commits: [],
+        headline: 'Release v0.9.1',
+        headAt: '2026-06-12T09:00:00Z',
+        clone: null,
+      }),
+      releaseCandidate({
+        repo: 'acme-org/tools',
+        dir: '~/projects/tools',
+        group: 'noReleases',
+        version: '',
+        ahead: 0,
+        commits: [],
+        headline: 'First commit',
+        headAt: '2026-06-01T09:00:00Z',
+        checks: '',
+        clone: null,
+      }),
+      releaseCandidate({
+        repo: 'acme-org/old',
+        dir: '~/projects/old',
+        group: 'cantRelease',
+        reason: 'Archived on GitHub',
+        version: 'v2.0.0',
+        ahead: 0,
+        commits: [],
+        headline: 'Archive',
+        headAt: '2025-01-01T09:00:00Z',
+        checks: '',
+        clone: null,
+      }),
+    ],
+    withoutGitHub: 0,
+    checkedAt: '2026-06-15T11:55:00Z',
+    error: '',
+    ...overrides,
+  }
+}
+
+// releaseCheck is the sheet's line that the clone has no uncommitted changes.
+export function releaseCheck(overrides: Partial<ReleaseCheck> = {}): ReleaseCheck {
+  return {
+    id: 'dirty',
+    state: 'ok',
+    text: 'No uncommitted changes',
+    fixes: [],
+    commands: [],
+    link: '',
+    runId: 0,
+    ...overrides,
+  }
+}
+
+// releaseOffer is the sheet for a patch of acme-org/sdk from a clone on feature-x, every
+// check passed, with a magex that has expect= and json=true, running in the app.
+export function releaseOffer(overrides: Partial<ReleaseOffer> = {}): ReleaseOffer {
+  return {
+    repo: 'acme-org/sdk',
+    branch: 'master',
+    branches: [{ name: 'master', default: true }],
+    branchNote: '',
+    current: 'feature-x',
+    head: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
+    checks: [
+      releaseCheck(),
+      releaseCheck({ id: 'where', text: 'You’re on feature-x. magex switches to master, then back.' }),
+      releaseCheck({ id: 'reach', text: 'Reaches origin with your git credentials' }),
+      releaseCheck({ id: 'checks', text: 'Checks passed on a1b2c3d' }),
+    ],
+    bump: 'patch',
+    version: 'v1.4.3',
+    bumps: [
+      { bump: 'patch', version: 'v1.4.3', offered: true, note: '', fixes: [] },
+      { bump: 'minor', version: 'v1.5.0', offered: true, note: '', fixes: [] },
+      { bump: 'major', version: 'v2.0.0', offered: true, note: '', fixes: [] },
+    ],
+    major: { version: 'v2.0.0', firstStable: false, modulePath: '', moduleWant: '', moduleText: '', confirmed: false },
+    ready: true,
+    anyway: false,
+    button: 'Release v1.4.3',
+    sentence: `magex switches to master, pulls, tags the newest commit as v1.4.3, pushes the tag to origin, and switches back to feature-x. It runs here in ${brand.name}.`,
+    argv: [
+      '/Users/example/.local/bin/magex',
+      'version:bump',
+      'bump=patch',
+      'branch=master',
+      'push=true',
+      'expect=v1.4.3',
+      'json=true',
+    ],
+    ...overrides,
+  }
+}
+
+// releaseResult is acme-org/sdk v1.4.3 verified on GitHub, its clone back on feature-x.
+export function releaseResult(overrides: Partial<ReleaseResult> = {}): ReleaseResult {
+  return {
+    kind: 'released',
+    version: 'v1.4.3',
+    tag: 'v1.4.3',
+    moved: false,
+    commit: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
+    head: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
+    newer: false,
+    taken: false,
+    tagged: true,
+    branch: 'feature-x',
+    detached: false,
+    original: 'feature-x',
+    back: true,
+    inProgress: '',
+    tagUrl: 'https://github.com/acme-org/sdk/releases/tag/v1.4.3',
+    workflowUrl: 'https://github.com/acme-org/sdk/actions?query=branch%3Av1.4.3',
+    pushWarning: '',
+    commands: [],
+    failure: null,
+    error: '',
+    ...overrides,
+  }
+}
+
+// releaseRun is the release of acme-org/sdk v1.4.3 from master, in the app, verified on
+// GitHub.
+export function releaseRun(overrides: Partial<ScriptRun> = {}): ScriptRun {
+  return scriptRun({
+    id: 7,
+    kind: 'release',
+    title: 'Release v1.4.3',
+    source: 'magex',
+    repo: 'acme-org/sdk',
+    dir: '~/projects/sdk',
+    argv: ['/Users/example/.local/bin/magex', 'version:bump', 'bump=patch', 'branch=master', 'push=true'],
+    command: 'magex version:bump bump=patch branch=master push=true',
+    summary: 'v1.4.3 is on GitHub.',
+    result: {
+      tool: 'mage-x',
+      intent: { version: 'v1.4.3', bump: 'patch', branch: 'master', original: 'feature-x', head: '' },
+      warnings: [],
+      unrecognized: [],
+      unrecognizedCount: 0,
+      outcome: { kind: 'released', tag: 'v1.4.3' },
+    },
+    canRunAgain: false,
+    ...overrides,
+  })
+}
+
+// afterMerge is a merge in acme-org/sdk that offers its release.
+export function afterMerge(overrides: Partial<AfterMerge> = {}): AfterMerge {
+  return { offer: true, repo: 'acme-org/sdk', dir: '~/projects/sdk', branch: 'master', ...overrides }
 }

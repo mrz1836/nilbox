@@ -1,6 +1,7 @@
 import type { RefObject } from 'react'
 
 import { counted, formatCount } from '../lib/format'
+import { scriptsBadgeTitle, type ScriptsBadge } from '../lib/scriptsTab'
 import type { NotificationsState } from '../lib/useNotifications'
 import type { Account, AppNotification, BudgetGauge } from '../platform'
 import { AccountMenu } from './AccountMenu'
@@ -11,12 +12,13 @@ import { SearchField, type SearchFieldProps } from './SearchField'
 
 // View is the page the window shows. Settings is opened from the account menu (or ⌘,)
 // rather than from a tab.
-export type View = 'inbox' | 'worktrees' | 'prompts' | 'settings'
+export type View = 'inbox' | 'worktrees' | 'prompts' | 'scripts' | 'settings'
 
 const tabs: readonly { id: View; label: string }[] = [
   { id: 'inbox', label: 'Inbox' },
   { id: 'worktrees', label: 'Worktrees' },
   { id: 'prompts', label: 'Prompts' },
+  { id: 'scripts', label: 'Scripts' },
 ]
 
 export interface AppHeaderProps {
@@ -34,6 +36,9 @@ export interface AppHeaderProps {
   // when some are done.
   worktreeCount?: number
   worktreeAttention?: number
+  // scripts is the Scripts tab's badge while the tab shows, or null while it doesn't: no
+  // integration is on (D2).
+  scripts?: ScriptsBadge | null
   onOpenSettings: () => void
   // notifications is the notification history the bell shows; without it there is no bell.
   // onOpenNotification shows an entry's item, and onNotificationSettings opens their
@@ -47,12 +52,13 @@ export interface AppHeaderProps {
   searchRef?: RefObject<HTMLInputElement | null>
 }
 
-// TabCount is what a view tab counts: how many, what that means, and whether some of
-// them need a look.
+// TabCount is what a view tab counts: how many, what that means, whether some of them
+// need a look (an amber dot), and whether something failed (a red dot).
 interface TabCount {
   count: number
   title: string
   attention: boolean
+  failed?: boolean
 }
 
 // worktreesTitle explains the Worktrees tab's count.
@@ -62,9 +68,11 @@ function worktreesTitle(count: number, attention: number): string {
   return attention > 0 ? `${worktrees}, ${formatCount(attention)} done on GitHub but still on disk` : worktrees
 }
 
-// tabCount is the count a tab shows; Prompts and Settings show none.
+// tabCount is the count a tab shows; Prompts and Settings show none. Scripts counts the
+// runs going, with a red dot after a run failed until it is opened, and an amber one
+// while a tool that's on can't be used.
 function tabCount(id: View, props: AppHeaderProps): TabCount {
-  const { inboxCount = 0, worktreeCount = 0, worktreeAttention = 0 } = props
+  const { inboxCount = 0, worktreeCount = 0, worktreeAttention = 0, scripts = null } = props
 
   switch (id) {
     case 'inbox':
@@ -79,6 +87,15 @@ function tabCount(id: View, props: AppHeaderProps): TabCount {
         title: worktreesTitle(worktreeCount, worktreeAttention),
         attention: worktreeAttention > 0,
       }
+    case 'scripts':
+      return scripts === null
+        ? { count: 0, title: '', attention: false }
+        : {
+            count: scripts.running,
+            title: scriptsBadgeTitle(scripts),
+            attention: scripts.blocked,
+            failed: scripts.failed,
+          }
     default:
       return { count: 0, title: '', attention: false }
   }
@@ -115,7 +132,12 @@ export function AppHeader(props: AppHeaderProps) {
       </h1>
       <nav aria-label="Views" className="flex shrink-0 items-center gap-0.5 [--wails-draggable:no-drag]">
         {tabs.map(({ id, label }) => {
-          const { count, title, attention } = tabCount(id, props)
+          if (id === 'scripts' && (props.scripts ?? null) === null) {
+            return null
+          }
+
+          const { count, title, attention, failed = false } = tabCount(id, props)
+          const badged = count > 0 || attention || failed
 
           return (
             <button
@@ -123,7 +145,7 @@ export function AppHeader(props: AppHeaderProps) {
               type="button"
               aria-pressed={view === id}
               aria-label={label}
-              title={count > 0 ? title : undefined}
+              title={badged ? title : undefined}
               onClick={() => {
                 onViewChange(id)
               }}
@@ -132,19 +154,22 @@ export function AppHeader(props: AppHeaderProps) {
               {label}
               {/* The pill sits one step above the tab: raised on the bar, border on a
                   hovered or active tab. */}
-              {count > 0 && (
+              {badged && (
                 <span
                   data-testid={`${id}-count`}
                   className="flex items-center gap-1 rounded-full bg-raised px-1.5 text-[0.6875rem] leading-[1.125rem] font-medium tabular-nums transition-colors group-hover:bg-border group-aria-pressed:bg-border"
                 >
+                  {failed && (
+                    <span data-testid={`${id}-failed`} aria-hidden="true" className="size-1.5 rounded-full bg-danger" />
+                  )}
                   {attention && (
                     <span
-                      data-testid="worktree-attention"
+                      data-testid={id === 'worktrees' ? 'worktree-attention' : `${id}-attention`}
                       aria-hidden="true"
                       className="size-1.5 rounded-full bg-warning"
                     />
                   )}
-                  {formatCount(count)}
+                  {count > 0 && formatCount(count)}
                 </span>
               )}
             </button>
