@@ -1,0 +1,127 @@
+{
+    "data": {
+        "t0": {
+            "latestRelease": {
+                "tagName": "v1.29.5",
+                "url": "https://github.com/mrz1836/mage-x/releases/tag/v1.29.5",
+                "publishedAt": "2026-11-05T04:19:11Z",
+                "releaseAssets": {
+                    "nodes": [
+                        {
+                            "name": "mage-x_1.29.5_darwin_arm64.tar.gz",
+                            "downloadUrl": "https://github.com/mrz1836/mage-x/releases/download/v1.29.5/mage-x_1.29.5_darwin_arm64.tar.gz",
+                            "size": 3925898,
+                            "digest": "sha256:72bb2aaae2d8946b0bc7ac513fb32b1765b19162a29bbc7f724cb495e39d9842"
+                        },
+                        {
+                            "name": "mage-x_1.29.5_darwin_amd64.tar.gz",
+                            "downloadUrl": "https://github.com/mrz1836/mage-x/releases/download/v1.29.5/mage-x_1.29.5_darwin_amd64.tar.gz",
+                            "size": 4264217,
+                            "digest": "sha256:ef089129d9844bb02dbd8bca41cab9c51cc28941d87cb2869b6896a2ca64d2b3"
+                        },
+                        {
+                            "name": "mage-x_1.29.5_linux_amd64.tar.gz",
+                            "downloadUrl": "https://github.com/mrz1836/mage-x/releases/download/v1.29.5/mage-x_1.29.5_linux_amd64.tar.gz",
+                            "size": 4214524,
+                            "digest": "sha256:d665df066d418d980506f5a52511ae6be30bd81f15cde4bbe8ef1a25307518b3"
+                        },
+                        {
+                            "name": "mage-x_1.29.5_linux_arm64.tar.gz",
+                            "downloadUrl": "https://github.com/mrz1836/mage-x/releases/download/v1.29.5/mage-x_1.29.5_linux_arm64.tar.gz",
+                            "size": 3800383,
+                            "digest": "sha256:f43e9516106e2e1c6197e18c032963247f2963ceff27d9e26d4cda6454dd2ea3"
+                        },
+                        {
+                            "name": "mage-x_1.29.5_windows_arm64.tar.gz",
+                            "downloadUrl": "https://github.com/mrz1836/mage-x/releases/download/v1.29.5/mage-x_1.29.5_windows_arm64.tar.gz",
+                            "size": 3853568,
+                            "digest": "sha256:c9c04587790970b66c84704ed23ed438696a354c4e3f570927cabc16e67f4cde"
+                        },
+                        {
+                            "name": "mage-x_1.29.5_checksums.txt",
+                            "downloadUrl": "https://github.com/mrz1836/mage-x/releases/download/v1.29.5/mage-x_1.29.5_checksums.txt",
+                            "size": 600,
+                            "digest": "sha256:2b83c3199b5e42b6e132c3a628cf632b2507a5512c8b359b3a9f94da2fffefc2"
+                        },
+                        {
+                            "name": "mage-x_1.29.5_windows_amd64.tar.gz",
+                            "downloadUrl": "https://github.com/mrz1836/mage-x/releases/download/v1.29.5/mage-x_1.29.5_windows_amd64.tar.gz",
+                            "size": 4328190,
+                            "digest": "sha256:bf56c0483f41286af7872114a93454e13bd1edc9ab3804ae64f10e1f17cc7313"
+                        }
+                    ]
+                }
+            }
+        },
+        "t1": {
+            "latestRelease": {
+                "tagName": "v1.13.1",
+                "url": "https://github.com/mrz1836/go-pre-commit/releases/tag/v1.13.1",
+                "publishedAt": "2026-10-18T04:08:14Z",
+                "releaseAssets": {
+                    "nodes": [
+                        {
+                            "name": "go-pre-commit_1.13.1_darwin_amd64.tar.gz",
+                            "downloadUrl": "https://github.com/mrz1836/go-pre-commit/releases/download/v1.13.1/go-pre-commit_1.13.1_darwin_amd64.tar.gz",
+                            "size": 4077496,
+                            "digest": "sha256:623e92b657e4ebb296e2997dc777ed67249b23a81dc2c418f19abcac0d100778"
+                        },
+                        {
+                            "name": "go-pre-commit_1.13.1_linux_amd64.tar.gz",
+                            "downloadUrl": "https://github.com/mrz1836/go-pre-commit/releases/download/v1.13.1/go-pre-commit_1.13.1_linux_amd64.tar.gz",
+                            "size": 4023205,
+                            "digest": "sha256:40d237cc9b16eabe7b4e0b6af34c01276f16af3403afd001e770c6f8745ccbc2"
+                        },
+                        {
+                            "name": "go-pre-commit_1.13.1_darwin_arm64.tar.gz",
+                            "downloadUrl": "https://github.com/mrz1836/go-pre-commit/releases/download/v1.13.1/go-pre-commit_1.13.1_darwin_arm64.tar.gz",
+                            "size": 3759167,
+                            "digest": "sha256:2d737ff5cc1ab280b2b319bc3b320dadf6ec45df663fddaa62c270228ca309a4"
+                        },
+                        {
+                            "name": "go-pre-commit_1.13.1_linux_arm64.tar.gz",
+                            "downloadUrl": "https://github.com/mrz1836/go-pre-commit/releases/download/v1.13.1/go-pre-commit_1.13.1_linux_arm64.tar.gz",
+                            "size": 3629421,
+                            "digest": "sha256:151d56c444ac5171a0d575124343c92a666a7e2cca96b35822ad779aef9cf469"
+                        },
+                        {
+                            "name": "go-pre-commit_1.13.1_checksums.txt",
+                            "downloadUrl": "https://github.com/mrz1836/go-pre-commit/releases/download/v1.13.1/go-pre-commit_1.13.1_checksums.txt",
+                            "size": 642,
+                            "digest": "sha256:c697b6c166aea68acba5fdbf147f5e66e7da894b18d1708438eb39f34ff9fd37"
+                        },
+                        {
+                            "name": "go-pre-commit_1.13.1_windows_arm64.tar.gz",
+                            "downloadUrl": "https://github.com/mrz1836/go-pre-commit/releases/download/v1.13.1/go-pre-commit_1.13.1_windows_arm64.tar.gz",
+                            "size": 3710674,
+                            "digest": "sha256:f1e100ad8bb46f91dde316541eaf51effbc7c4e6cda2228e57e9779910f1a4e6"
+                        },
+                        {
+                            "name": "go-pre-commit_1.13.1_windows_amd64.tar.gz",
+                            "downloadUrl": "https://github.com/mrz1836/go-pre-commit/releases/download/v1.13.1/go-pre-commit_1.13.1_windows_amd64.tar.gz",
+                            "size": 4165497,
+                            "digest": "sha256:d5903f9f113372fda230b445f3febaea67f5b08cb127a0ebbe6c8f8bf4255080"
+                        }
+                    ]
+                }
+            }
+        },
+        "rateLimit": {
+            "cost": 1,
+            "remaining": 4980
+        },
+        "t2": {
+            "latestRelease": null
+        },
+        "t3": null
+    },
+    "errors": [
+        {
+            "type": "NOT_FOUND",
+            "path": [
+                "t3"
+            ],
+            "message": "Could not resolve to a Repository with the name 'acme-org/gone'."
+        }
+    ]
+}
