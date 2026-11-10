@@ -17,6 +17,7 @@ import {
   profile,
   reading,
   removeResult,
+  scriptRun,
   settings,
   snapshot,
   sweepReport,
@@ -841,6 +842,24 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Dismiss notice' }))
 
     expect(screen.queryByText(/couldn’t read its data/)).not.toBeInTheDocument()
+  })
+
+  it('asks before quitting while a run goes in the app', async () => {
+    platform.listScriptRuns.mockResolvedValue([
+      scriptRun({ status: 'running', kind: 'release', repo: 'acme-org/sdk', canStop: true }),
+    ])
+    await renderApp()
+
+    act(() => {
+      emit('app:quitRequested')
+    })
+
+    const dialog = within(await screen.findByRole('dialog', { name: `Quit ${brand.name}?` }))
+
+    expect(dialog.getByText(/A release is running in acme-org\/sdk\./)).toBeInTheDocument()
+    await userEvent.click(dialog.getByRole('button', { name: 'Stop and quit' }))
+
+    expect(platform.quitAnyway).toHaveBeenCalledOnce()
   })
 
   it('shows settings that could not be loaded', async () => {

@@ -15,6 +15,7 @@ import { DataResetNotice } from './components/DataResetNotice'
 import { ErrorBanner } from './components/ErrorBanner'
 import { InboxView, type LaunchOptions, type Reveal } from './components/InboxView'
 import { LaunchControls } from './components/LaunchControls'
+import { QuitDialog } from './components/QuitDialog'
 import type { SearchFieldProps } from './components/SearchField'
 import type { SettingsSection } from './components/SettingsView'
 import { Toast, type ToastMessage } from './components/Toast'
@@ -676,6 +677,7 @@ export function App() {
         )}
       </main>
       <Toast toast={shownToast} onClose={changeToast === null ? closeSweepToast : closeChangeToast} />
+      <QuitDialog />
     </div>
   )
 }

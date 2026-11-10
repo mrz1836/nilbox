@@ -4,7 +4,15 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
 import type { IntegrationTools, Settings } from '../../platform'
-import { goPreCommitTool, installPlan, installResult, integrationTool, integrationTools } from '../../test/fixtures'
+import {
+  goPreCommitTool,
+  installPlan,
+  installResult,
+  integrationsConfig,
+  integrationTool,
+  integrationTools,
+  settings,
+} from '../../test/fixtures'
 import { emit, platform } from '../../test/platform'
 import { IntegrationsSection } from './IntegrationsSection'
 
@@ -13,10 +21,10 @@ vi.mock('../../platform', () => import('../../test/platform').then((fake) => fak
 const shellWarning =
   'Couldn’t read your shell’s environment, so runs use a basic PATH, and your ssh agent may be missing.'
 
-function renderSection() {
+function renderSection(stored: Settings | null = settings()) {
   const onSaved = vi.fn<(settings: Settings) => void>()
 
-  render(<IntegrationsSection onSaved={onSaved} />)
+  render(<IntegrationsSection settings={stored} onSaved={onSaved} />)
 
   return { onSaved }
 }
@@ -197,5 +205,71 @@ describe('IntegrationsSection', () => {
     expect(platform.installIntegration).toHaveBeenCalledExactlyOnceWith('mage-x')
     // The install returned the tools, so the list is not read again.
     expect(platform.listIntegrations).toHaveBeenCalledOnce()
+  })
+})
+
+describe('IntegrationsSection’s runs', () => {
+  const terminalChoice = 'Terminal: iTerm2, as set in Launching'
+  const note = `Runs in your terminal can ask for a passphrase. ${brand.name} follows both.`
+
+  // runsIn is the choice of where runs go.
+  function runsIn() {
+    return within(screen.getByRole('radiogroup', { name: 'Runs in' }))
+  }
+
+  it('offers the app or the terminal chosen in Launching, with the stored one chosen', async () => {
+    renderSection()
+
+    expect(screen.getByRole('heading', { name: 'Runs' })).toBeInTheDocument()
+    expect(
+      runsIn()
+        .getAllByRole('radio')
+        .map((r) => r.getAttribute('value')),
+    ).toEqual(['app', 'terminal'])
+    expect(runsIn().getByRole('radio', { name: brand.name })).toBeChecked()
+    expect(runsIn().getByRole('radio', { name: terminalChoice })).not.toBeChecked()
+    expect(runsIn().getByRole('radio', { name: terminalChoice })).toHaveClass('radio')
+    expect(screen.getByRole('radiogroup', { name: 'Runs in' })).toHaveAccessibleDescription(note)
+
+    // The tools come after; the runs wait for nothing.
+    await screen.findByRole('region', { name: 'mage-x' })
+  })
+
+  it('names the terminal Launching chooses', async () => {
+    renderSection(settings({ terminal: 'terminal', integrations: integrationsConfig({ runsIn: 'terminal' }) }))
+
+    expect(runsIn().getByRole('radio', { name: 'Terminal: Terminal, as set in Launching' })).toBeChecked()
+    await screen.findByRole('region', { name: 'mage-x' })
+  })
+
+  it('saves where runs go as soon as it is chosen', async () => {
+    const { onSaved } = renderSection()
+
+    await userEvent.click(runsIn().getByRole('radio', { name: terminalChoice }))
+
+    expect(platform.setRunsIn).toHaveBeenCalledExactlyOnceWith('terminal')
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(settings({ integrations: integrationsConfig({ runsIn: 'terminal' }) }))
+    })
+  })
+
+  it('shows a choice the backend refused, and goes back to the stored one', async () => {
+    platform.setRunsIn.mockRejectedValue(new Error('unknown place for runs'))
+    renderSection()
+
+    await userEvent.click(runsIn().getByRole('radio', { name: terminalChoice }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('unknown place for runs')
+    expect(runsIn().getByRole('radio', { name: brand.name })).toBeChecked()
+    expect(screen.getByRole('radiogroup', { name: 'Runs in' })).toHaveAccessibleDescription(
+      `${note} unknown place for runs`,
+    )
+  })
+
+  it('waits for the settings to say where runs go', async () => {
+    renderSection(null)
+
+    await screen.findByRole('region', { name: 'mage-x' })
+    expect(screen.queryByRole('radiogroup', { name: 'Runs in' })).not.toBeInTheDocument()
   })
 })
