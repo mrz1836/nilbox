@@ -309,6 +309,7 @@ type fakeTerminal struct {
 	nothing bool
 	mu      sync.Mutex
 	opened  []TerminalRun
+	folders []string
 	procs   []*execpath.Proc
 }
 
@@ -360,6 +361,47 @@ func (f *fakeTerminal) OpenRun(ctx context.Context, run TerminalRun) error {
 	f.procs = append(f.procs, proc)
 
 	return nil
+}
+
+// OpenFolder records the folder it was asked to open a terminal in, unless told to fail.
+func (f *fakeTerminal) OpenFolder(_ context.Context, name, dir string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.folders = append(f.folders, name+" "+dir)
+
+	return f.err
+}
+
+// opensIn returns the folders it was asked to open a terminal in, each after its name.
+func (f *fakeTerminal) opensIn() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return append([]string(nil), f.folders...)
+}
+
+// fakeReveal records the files it was asked to show.
+type fakeReveal struct {
+	mu    sync.Mutex
+	shown []string
+	err   error
+}
+
+func (f *fakeReveal) Reveal(_ context.Context, path string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.shown = append(f.shown, path)
+
+	return f.err
+}
+
+func (f *fakeReveal) paths() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return append([]string(nil), f.shown...)
 }
 
 // runs returns the runs it was asked to open.

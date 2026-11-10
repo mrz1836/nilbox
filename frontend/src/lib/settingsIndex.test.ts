@@ -27,6 +27,7 @@ describe('matchSettings', () => {
     ['gitignore', 'files', 'Your patterns'],
     ['magex', 'integrations', 'mage-x'],
     ['git hooks', 'integrations', 'go-pre-commit'],
+    ['passphrase', 'integrations', 'Runs in'],
     ['gh auth', 'account', 'GitHub account'],
     ['bug', 'about', 'Version'],
   ] as const)('finds %j by a keyword', (query, section, label) => {
@@ -94,12 +95,13 @@ describe('matchSettings', () => {
     expect(matchSettings(brand.name)?.isMatch('about', 'Version')).toBe(true)
   })
 
-  it('finds every tool the app runs by the section’s name, after Sensitive files and before About', () => {
+  it('finds every tool the app runs, and where runs go, by the section’s name, after Sensitive files and before About', () => {
     const match = matchSettings('integrations')
 
-    expect(found('integrations')).toEqual([['integrations', 2]])
+    expect(found('integrations')).toEqual([['integrations', 3]])
     expect(match?.isMatch('integrations', 'mage-x')).toBe(true)
     expect(match?.isMatch('integrations', 'go-pre-commit')).toBe(true)
+    expect(match?.isMatch('integrations', 'Runs in')).toBe(true)
     expect(sectionOrder.indexOf('integrations')).toBe(sectionOrder.indexOf('files') + 1)
     expect(sectionOrder.indexOf('about')).toBe(sectionOrder.indexOf('integrations') + 1)
     expect(sectionInfo.integrations.description).toBe(

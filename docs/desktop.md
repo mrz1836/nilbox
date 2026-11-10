@@ -267,9 +267,10 @@ it says which copy it uses, its version, and where it came from (a GitHub releas
 Releases, hook changes, pre-commit checks, and scripts all go through one runner, which keeps a
 record of each run and its whole output.
 
-- **In the app or in your terminal.** A run goes in the app by default: its output is written as it
-  comes into its own log in `script-runs/` in the data folder, readable only by you, and the window
-  reads it from there. A run in your terminal (the one chosen in Settings → Launching) gets a small
+- **In the app or in your terminal.** A run goes in the app by default; **Runs in** under Settings →
+  Integrations sends runs to your terminal instead. In the app, its output is written as it comes
+  into its own log in `script-runs/` in the data folder, readable only by you, and the window reads
+  it from there. A run in your terminal (the one chosen in Settings → Launching) gets a small
   script in the launch folder, as a session does. The script runs the command under `script(1)`,
   so it has a real terminal (colors, a passphrase prompt) while its output is copied into the same
   log, and leaves the shell's process ID and the command's exit status beside it, which is how the

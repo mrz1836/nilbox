@@ -165,7 +165,9 @@ func readChunk(path string, offset, limit int64, ended bool) (Chunk, error) {
 }
 
 // chunkOf reads up to limit bytes of a log of size from offset, or its last limit bytes
-// for a negative offset, cut between characters: at the end too while more may come.
+// for a negative offset, cut between characters: a read that starts inside a character
+// starts after it, and one that ends inside a character ends before it while more may
+// come.
 func chunkOf(src io.ReaderAt, size, offset, limit int64, ended bool) Chunk {
 	fromEnd := offset < 0
 	if fromEnd {
@@ -180,7 +182,7 @@ func chunkOf(src io.ReaderAt, size, offset, limit int64, ended bool) Chunk {
 	n, _ := src.ReadAt(buf, offset) // a short read is what there is
 	buf = buf[:n]
 
-	if fromEnd && offset > 0 {
+	if offset > 0 {
 		skip := partialStart(buf)
 		buf, offset = buf[skip:], offset+int64(skip)
 	}

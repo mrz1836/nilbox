@@ -182,8 +182,14 @@ var (
 	// ErrClosed is returned once the engine has stopped every run, as the app quits.
 	ErrClosed = errors.New("the runner has stopped")
 
-	// ErrNotAvailable is returned by what a later version adds.
-	ErrNotAvailable = errors.New("not available yet")
+	// ErrNoFolder is returned for Open in terminal on a run whose folder is gone.
+	ErrNoFolder = errors.New("the run's folder is gone")
+
+	// ErrNoLog is returned for Show the log file on a run whose log is gone.
+	ErrNoLog = errors.New("the run's log is gone")
+
+	// ErrNoReveal is returned where no file manager can show a file.
+	ErrNoReveal = errors.New("files can't be shown here")
 )
 
 // Spec is a run to start.
@@ -350,10 +356,17 @@ type TerminalRun struct {
 	ExitFile string
 }
 
-// TerminalOpener opens a run in the user's terminal app. Core adapts the launcher's
-// terminal to it; where no terminal can be opened, it returns an error.
+// TerminalOpener opens a run in the user's terminal app, or the terminal in a run's folder
+// with nothing run there, for Open in terminal. Core adapts the launcher's terminal to it;
+// where no terminal can be opened, it returns an error.
 type TerminalOpener interface {
 	OpenRun(ctx context.Context, run TerminalRun) error
+	OpenFolder(ctx context.Context, name, dir string) error
+}
+
+// Revealer shows a file in the user's file manager: Finder on macOS. Core adapts it.
+type Revealer interface {
+	Reveal(ctx context.Context, path string) error
 }
 
 // Rerunner works a run's command out again from its source, for Run again: the script's

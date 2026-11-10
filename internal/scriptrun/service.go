@@ -3,10 +3,12 @@ package scriptrun
 import (
 	"context"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/repo"
@@ -169,13 +171,50 @@ func (s *Service) RunAgain(ctx context.Context, id int64) (int64, error) {
 	return s.e.Start(ctx, spec)
 }
 
-// OpenInTerminal will open a terminal in a run's folder. It isn't available yet.
+// OpenInTerminal opens the terminal chosen for launches in a run's folder, the clone, so
+// the user can look at it or finish by hand what the run left; the app runs nothing there.
 func (s *Service) OpenInTerminal(ctx context.Context, id int64) error {
+	rec, err := s.e.store.get(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if s.e.terminal == nil {
+		return uierr.New("Your terminal can't be opened here.", ErrNoTerminal)
+	}
+
+	if info, statErr := os.Stat(rec.Dir); statErr != nil || !info.IsDir() {
+		return uierr.New(paths.Tilde(rec.Dir, s.e.home)+" isn't there anymore.", fmt.Errorf("%w: %s", ErrNoFolder, rec.Dir))
+	}
+
+	if err = s.e.terminal.OpenFolder(ctx, fmt.Sprintf("run-%d", id), rec.Dir); err != nil {
+		return fmt.Errorf("open the terminal in the run's folder: %w", err)
+	}
+
+	return nil
+}
+
+// ShowLog shows a run's log file in Finder.
+func (s *Service) ShowLog(ctx context.Context, id int64) error {
 	if _, err := s.e.store.get(ctx, id); err != nil {
 		return err
 	}
 
-	return uierr.New("Opening a run in your terminal isn't available yet.", ErrNotAvailable)
+	if s.e.reveal == nil {
+		return uierr.New(brand.Name+" can't open Finder here.", ErrNoReveal)
+	}
+
+	path := s.e.files.log(id)
+
+	if info, err := os.Lstat(path); err != nil || !info.Mode().IsRegular() {
+		return uierr.New("This run's log is gone.", fmt.Errorf("%w: run %d", ErrNoLog, id))
+	}
+
+	if err := s.e.reveal.Reveal(ctx, path); err != nil {
+		return fmt.Errorf("show the run's log: %w", err)
+	}
+
+	return nil
 }
 
 // MarkSeen records that the user has seen a run.

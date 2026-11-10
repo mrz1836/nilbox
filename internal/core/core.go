@@ -447,7 +447,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	})
 
 	previews := launcher.NewPromptSource(launch)
-	runs := newRuns(pool, opts, clones, launch, logger)
+	runs := newRuns(pool, opts, clones, launch, runner, shellEnv.Shell, logger)
 
 	tools := integrations.NewService(integrations.Config{
 		Prefs: prefsstore.New(pool, opts.Clock), Env: shellEnv, Releases: latestReleases{tokens: tokens, client: client},
@@ -529,7 +529,9 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 // can block or free a tool's update; a run in the terminal opens through the launcher's
 // terminals, and the user's choice to stop the runs and quit reaches the desktop shell as
 // event.QuitConfirmed.
-func newRuns(pool *sql.DB, opts Options, clones *clonelock.Set, launch *launcher.Service, logger *slog.Logger,
+func newRuns(
+	pool *sql.DB, opts Options, clones *clonelock.Set, launch *launcher.Service, runner execpath.Runner,
+	shell func() string, logger *slog.Logger,
 ) *scriptrun.Engine {
 	events := event.Or(opts.Events)
 
@@ -542,8 +544,10 @@ func newRuns(pool *sql.DB, opts Options, clones *clonelock.Set, launch *launcher
 		},
 		Terminal: terminalRuns{
 			launch: opts.Paths.Launch, opener: launcher.NewCommandOpener(launch), clock: opts.Clock, logger: logger,
+			shell: shell,
 		},
-		Quit: func() { events.Emit(event.QuitConfirmed{}) },
+		Reveal: revealer(runner),
+		Quit:   func() { events.Emit(event.QuitConfirmed{}) },
 	})
 }
 

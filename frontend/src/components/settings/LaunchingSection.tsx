@@ -2,6 +2,7 @@ import { useId, useState } from 'react'
 
 import { attempt } from '../../lib/call'
 import { kindPlural, promptApplies } from '../../lib/launch'
+import { terminals } from '../../lib/terminals'
 import { useSettingsSave } from '../../lib/useSettingsSave'
 import {
   setDefaultAgent,
@@ -18,16 +19,10 @@ import {
   type Profile,
   type Prompt,
   type Settings,
-  type TerminalID,
 } from '../../platform'
 import { fieldClass } from '../controls'
 import { Group, rowDescribedBy, SettingRow, SwitchRow } from './rows'
 import type { SectionProps } from './types'
-
-const terminals: readonly { id: TerminalID; label: string }[] = [
-  { id: 'iterm2', label: 'iTerm2' },
-  { id: 'terminal', label: 'Terminal' },
-]
 
 interface LaunchingSectionProps extends SectionProps {
   // agents are the coding agents, each with whether it is installed.

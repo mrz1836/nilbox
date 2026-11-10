@@ -1,22 +1,87 @@
+import { useId } from 'react'
+
 import { brand } from '../../generated/brand'
+import { terminalNames } from '../../lib/terminals'
 import { useIntegrations } from '../../lib/useIntegrations'
-import type { Settings } from '../../platform'
+import { useSettingsSave } from '../../lib/useSettingsSave'
+import { setRunsIn, type RunsIn, type Settings } from '../../platform'
 import { buttonClass, quietButtonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import { RefreshIcon } from '../icons'
 import { IntegrationCard } from './IntegrationCard'
-import { ErrorText } from './rows'
+import { rowMatchClass, useSetting } from './match'
+import { ErrorText, Group, joinIds } from './rows'
+import type { SectionProps } from './types'
+
+// RunsGroup holds where the runs go: in the app, or in the terminal chosen in Settings →
+// Launching, named as it is set there. It is saved as soon as it is chosen.
+function RunsGroup({ settings: stored, onSaved }: SectionProps) {
+  const id = useId()
+  const { settings, save, error } = useSettingsSave(stored, onSaved)
+  const [marks] = useSetting('Runs in')
+  const choices: readonly { value: RunsIn; label: string }[] = [
+    { value: 'app', label: brand.name },
+    { value: 'terminal', label: `Terminal: ${terminalNames[settings.terminal]}, as set in Launching` },
+  ]
+
+  const choose = (runsIn: RunsIn) => {
+    void save({ integrations: { ...settings.integrations, runsIn } }, () => setRunsIn(runsIn))
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <h3 className="text-sm font-semibold">Runs</h3>
+      <Group>
+        <div {...marks} className={`flex items-start gap-8 px-4 py-3.5 ${rowMatchClass}`}>
+          <p id={`${id}-label`} className="w-16 shrink-0 text-sm font-medium">
+            Runs in
+          </p>
+          <div className="flex min-w-0 flex-col gap-2">
+            <div
+              role="radiogroup"
+              aria-labelledby={`${id}-label`}
+              aria-describedby={joinIds(`${id}-note`, error !== '' && `${id}-error`)}
+              className="flex flex-wrap gap-x-6 gap-y-2"
+            >
+              {choices.map((choice) => (
+                <label key={choice.value} className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name={`${id}-runs-in`}
+                    value={choice.value}
+                    checked={settings.integrations.runsIn === choice.value}
+                    onChange={() => {
+                      choose(choice.value)
+                    }}
+                    className="radio"
+                  />
+                  {choice.label}
+                </label>
+              ))}
+            </div>
+            <p id={`${id}-note`} className="text-xs text-muted">
+              Runs in your terminal can ask for a passphrase. {brand.name} follows both.
+            </p>
+            <ErrorText id={`${id}-error`} error={error} />
+          </div>
+        </div>
+      </Group>
+    </div>
+  )
+}
 
 export interface IntegrationsSectionProps {
+  // settings is null until it has loaded; the Runs group waits for it.
+  settings: Settings | null
   // onSaved receives every setting as stored after a change, as the setter returned it.
   onSaved: (settings: Settings) => void
 }
 
 // IntegrationsSection is the settings page's Integrations section: the tools the app runs
 // for the user, one card each, as the last look for them found them, with a way to look
-// again. It says so when the login shell's environment couldn't be read, since the tools
-// are then looked for, and run, with a basic PATH.
-export function IntegrationsSection({ onSaved }: IntegrationsSectionProps) {
+// again, then where their runs go. It says so when the login shell's environment couldn't
+// be read, since the tools are then looked for, and run, with a basic PATH.
+export function IntegrationsSection({ settings, onSaved }: IntegrationsSectionProps) {
   const { tools, error, checking, checkError, checkAgain, reload, replace } = useIntegrations()
   const shellFailed = tools !== null && tools.shellChecked && !tools.shellRead
 
@@ -62,6 +127,7 @@ export function IntegrationsSection({ onSaved }: IntegrationsSectionProps) {
               onTools={replace}
             />
           ))}
+      {settings !== null && <RunsGroup settings={settings} onSaved={onSaved} />}
     </div>
   )
 }

@@ -199,33 +199,10 @@ func Lookup(env []string, key string) string {
 	return ""
 }
 
-// read runs the shell once and parses what it printed.
-func (r *Reader) read(ctx context.Context) ([]string, error) {
-	marker, err := newMarker()
-	if err != nil {
-		return nil, err
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, r.timeout)
-	defer cancel()
-
-	argv := []string{r.shell(), "-i", "-l", "-c", "printf '%s' " + marker + "; /usr/bin/env -0; printf '%s' " + marker}
-
-	out, err := r.start(ctx, argv, r.environ())
-	if err != nil {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, fmt.Errorf("run %s: %w", filepath.Base(argv[0]), ctxErr)
-		}
-
-		return nil, fmt.Errorf("run %s: %w", filepath.Base(argv[0]), err)
-	}
-
-	return parse(out, marker)
-}
-
-// shell returns $SHELL from the app's environment when it is a listed login shell, else
-// /bin/zsh.
-func (r *Reader) shell() string {
+// Shell returns the user's login shell: $SHELL from the app's environment when it is a
+// listed login shell (in /etc/shells), else /bin/zsh. The read runs it, and so does a
+// terminal the app opens in a folder.
+func (r *Reader) Shell() string {
 	sh := Lookup(r.environ(), "SHELL")
 	if sh == "" || !filepath.IsAbs(sh) {
 		return fallbackShell
@@ -243,6 +220,30 @@ func (r *Reader) shell() string {
 	}
 
 	return fallbackShell
+}
+
+// read runs the shell once and parses what it printed.
+func (r *Reader) read(ctx context.Context) ([]string, error) {
+	marker, err := newMarker()
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, r.timeout)
+	defer cancel()
+
+	argv := []string{r.Shell(), "-i", "-l", "-c", "printf '%s' " + marker + "; /usr/bin/env -0; printf '%s' " + marker}
+
+	out, err := r.start(ctx, argv, r.environ())
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, fmt.Errorf("run %s: %w", filepath.Base(argv[0]), ctxErr)
+		}
+
+		return nil, fmt.Errorf("run %s: %w", filepath.Base(argv[0]), err)
+	}
+
+	return parse(out, marker)
 }
 
 // fallback is the app's own environment with the fallback PATH.

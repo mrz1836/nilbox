@@ -476,3 +476,12 @@ export function SortIcon(props: IconProps) {
     </Icon>
   )
 }
+
+// StopIcon stands for stopping something under way, and marks something that was stopped.
+export function StopIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="6.5" y="6.5" width="11" height="11" rx="2" />
+    </Icon>
+  )
+}

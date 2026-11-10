@@ -48,6 +48,8 @@ import type {
   Rate,
   RemoveResult,
   Resolution,
+  ScriptRun,
+  ScriptRunChunk,
   SensitiveCategory,
   SensitiveGroup,
   SessionsSnapshot,
@@ -369,6 +371,38 @@ export function installPlan(overrides: Partial<InstallPlan> = {}): InstallPlan {
     brewCommand: '',
     ...overrides,
   }
+}
+
+// scriptRun is a magex lint run in acme-org/example-repo that went in the app and
+// succeeded.
+export function scriptRun(overrides: Partial<ScriptRun> = {}): ScriptRun {
+  return {
+    id: 1,
+    kind: 'script',
+    title: 'magex lint',
+    source: 'magex',
+    repo: 'acme-org/example-repo',
+    dir: '~/projects/example-repo',
+    argv: ['/Users/example/.local/bin/magex', 'lint'],
+    command: 'magex lint',
+    runsIn: 'app',
+    status: 'succeeded',
+    exitCode: 0,
+    summary: 'Finished.',
+    result: { tool: 'mage-x', intent: null, warnings: [], unrecognized: [], unrecognizedCount: 0, outcome: null },
+    logBytes: 12,
+    seen: true,
+    startedAt: '2026-11-10T16:00:00Z',
+    finishedAt: '2026-11-10T16:00:38Z',
+    canStop: false,
+    canRunAgain: true,
+    ...overrides,
+  }
+}
+
+// scriptRunChunk is a run's whole log, ended: one line of output.
+export function scriptRunChunk(overrides: Partial<ScriptRunChunk> = {}): ScriptRunChunk {
+  return { text: 'lint passed\n', offset: 0, next: 12, size: 12, done: true, restart: false, ...overrides }
 }
 
 // installResult is what installing mage-x 1.30.0 said it did, and the tools after it.

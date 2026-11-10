@@ -40,6 +40,8 @@ import {
   resolution,
   review,
   reviewResult,
+  scriptRun,
+  scriptRunChunk,
   sessionsSnapshot,
   settings,
   snapshot,
@@ -194,6 +196,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
       stored({ integrations: integrationsConfig({ switches: { ...integrationsConfig().switches, [id]: state } }) }),
     setIntegrationPath: (id, path) =>
       stored({ integrations: integrationsConfig({ paths: { ...integrationsConfig().paths, [id]: path } }) }),
+    setRunsIn: (runsIn) => stored({ integrations: integrationsConfig({ runsIn }) }),
 
     listIntegrations: () => Promise.resolve(integrationTools()),
     checkIntegrationsAgain: () => Promise.resolve(integrationTools()),
@@ -202,6 +205,17 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     reinstallIntegration: () => Promise.resolve(installResult({ message: 'Reinstalled mage-x 1.29.5' })),
     trashToolCopy: () => Promise.resolve(integrationTools()),
     revealToolCopy: done,
+
+    listScriptRuns: () => Promise.resolve([scriptRun()]),
+    getScriptRun: (id) => Promise.resolve(scriptRun({ id })),
+    scriptRunOutput: () => Promise.resolve(scriptRunChunk()),
+    stopScriptRun: done,
+    runScriptAgain: (id) => Promise.resolve(id + 1),
+    openScriptRunInTerminal: done,
+    showScriptRunLog: done,
+    markScriptRunSeen: done,
+    clearScriptRunHistory: done,
+    quitAnyway: done,
 
     listWorktrees: () => Promise.resolve(worktreesSnapshot()),
     removeWorktree: () => Promise.resolve(removeResult()),

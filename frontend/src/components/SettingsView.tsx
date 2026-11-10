@@ -245,7 +245,7 @@ export function SettingsView({
                 (settings === null ? loading : <TrustSection settings={settings} onSaved={onSaved} />)}
               {section === 'files' &&
                 (settings === null ? loading : <SensitiveFilesSection settings={settings} onSaved={onSaved} />)}
-              {section === 'integrations' && <IntegrationsSection onSaved={onSaved} />}
+              {section === 'integrations' && <IntegrationsSection settings={settings} onSaved={onSaved} />}
               {section === 'about' && <AboutSection />}
             </div>
           </div>
