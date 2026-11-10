@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -24,6 +25,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/worktrees"
@@ -250,4 +252,46 @@ func TestMergedPullRequestsKeyEachAnswerByRepositoryAndBranch(t *testing.T) {
 			MergedAt: time.Date(2026, 11, 6, 18, 0, 5, 0, time.UTC), HeadOID: "fc1c3975011e66491785ace891c893e4fc716587",
 		}},
 	}, got, "keyed by the repository's key, whatever its case; a branch none had is left out")
+}
+
+func TestTerminalRunsOpenAFollowedScriptInTheTerminal(t *testing.T) {
+	t.Parallel()
+
+	paths := appdata.NewPaths(filepath.Join(t.TempDir(), "data"))
+	runner := &testutil.Runner{}
+	c := bootstrap(t, Options{Paths: paths, Home: testutil.ClaudeHome(t), Runner: runner})
+	runs := terminalRuns{launch: paths.Launch, opener: launcher.NewCommandOpener(c.Launcher)}
+	logs := filepath.Join(paths.Root, "script-runs")
+
+	err := runs.OpenRun(t.Context(), scriptrun.TerminalRun{
+		Name: "run-7", Dir: "/work/example-repo", Argv: []string{"/usr/local/bin/magex", "lint"},
+		Env: []string{"MAGEX_NO_UPDATE_CHECK=1"},
+		Log: filepath.Join(logs, "7.log"), PIDFile: filepath.Join(logs, "7.pid"), ExitFile: filepath.Join(logs, "7.exit"),
+	})
+
+	scripts, globErr := filepath.Glob(filepath.Join(paths.Launch, "run-7-*"))
+	require.NoError(t, globErr)
+	require.Len(t, scripts, 1, "the run's script is written into the launch folder")
+
+	data, err2 := os.ReadFile(scripts[0])
+	require.NoError(t, err2)
+
+	body := string(data)
+	assert.Contains(t, body, "export MAGEX_NO_UPDATE_CHECK='1'\n")
+	assert.Contains(t, body, "-q -F '"+filepath.Join(logs, "7.log")+"' '/usr/local/bin/magex' 'lint'\n",
+		"the command runs recorded into the run's log")
+
+	if runtime.GOOS != "darwin" {
+		require.ErrorIs(t, err, terminal.ErrUnsupportedOS)
+
+		return
+	}
+
+	require.NoError(t, err)
+
+	calls := runner.Calls()
+	require.NotEmpty(t, calls)
+	assert.Contains(t, strings.Join(calls[len(calls)-1], " "), scripts[0], "the terminal chosen for launches opens it")
+
+	require.ErrorIs(t, runs.OpenRun(t.Context(), scriptrun.TerminalRun{Name: "run-8"}), errNoCommand)
 }

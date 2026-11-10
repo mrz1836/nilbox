@@ -323,11 +323,12 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
 }
 
 // integrationsConfig is how a fresh database sets the integrations up: every switch
-// automatic, and no copy of a tool chosen.
+// automatic, no copy of a tool chosen, and runs in the app.
 export function integrationsConfig(overrides: Partial<IntegrationsConfig> = {}): IntegrationsConfig {
   return {
     switches: { 'mage-x': 'auto', 'go-pre-commit': 'auto', scripts: 'auto' },
     paths: { 'mage-x': '', 'go-pre-commit': '' },
+    runsIn: 'app',
     ...overrides,
   }
 }

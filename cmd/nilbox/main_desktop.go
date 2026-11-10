@@ -48,6 +48,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/review"
+	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/sessions"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/worktrees"
@@ -160,9 +161,10 @@ func assemble(
 		Settings:       c.ShellSettings,
 		Sessions:       c.ShellSessions,
 		Workers:        []desktop.Worker{c.Scheduler, c.Sweeper, c.BudgetSaver, c.Watcher},
-		Deferred:       []desktop.Worker{c.Deferred, c.ToolFinder},
+		Deferred:       []desktop.Worker{c.Deferred, c.ToolFinder, c.Runs},
 		Data:           c,
 		Banners:        banners.poster(),
+		QuitGuard:      c.Runs,
 		Stdout:         stdout,
 		Logger:         logger,
 		MeasureStartup: measureStartup,
@@ -180,6 +182,8 @@ func assemble(
 		Mac:         macAppOptions(),
 		// A bound method's error reaches the page with what the user is told about it.
 		MarshalError: desktop.MarshalError,
+		// Every quit asks first, while runs are going in the app.
+		ShouldQuit: shell.ShouldQuit,
 		// A timed-out measurement run exits with a failure status. On macOS the app exits
 		// from inside Run, with a success status unless this hook exits first.
 		PostShutdown: func() {
@@ -219,6 +223,8 @@ func registerEvents() {
 	application.RegisterEvent[event.SessionsUpdated](event.NameSessionsUpdated)
 	application.RegisterEvent[event.ReviewProgress](event.NameReviewProgress)
 	application.RegisterEvent[event.ToolsUpdated](event.NameToolsUpdated)
+	application.RegisterEvent[event.ScriptRunsUpdated](event.NameScriptRunsUpdated)
+	application.RegisterEvent[event.QuitRequested](event.NameQuitRequested)
 }
 
 // services wraps every service the core binds, in the core's order. A service no binder
@@ -260,7 +266,7 @@ func binders() []func(svc any) (application.Service, bool) {
 		binder[settings.Service], binder[profiles.Service], binder[prompts.Service],
 		binder[launchdefaults.Service], binder[inbox.Service], binder[launcher.Service],
 		binder[worktrees.Service], binder[notify.Service], binder[appinfo.Service], binder[budget.Service],
-		binder[sessions.Service], binder[review.Service], binder[integrations.Service],
+		binder[sessions.Service], binder[review.Service], binder[integrations.Service], binder[scriptrun.Service],
 	}
 }
 

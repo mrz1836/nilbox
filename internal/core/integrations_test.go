@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/integrations"
@@ -96,4 +98,22 @@ func TestLatestReleasesAsksNothingWhenSignedOut(t *testing.T) {
 	_, err := releases.LatestReleases(t.Context(), []repo.Name{{Owner: boundOwner, Repo: "example-tool"}})
 	require.ErrorIs(t, err, integrations.ErrSignedOut, "the integrations can say to sign in")
 	assert.Zero(t, requests.Load(), "no check runs while signed out")
+}
+
+func TestARunsChangeReachesTheRunsAndTheTools(t *testing.T) {
+	t.Parallel()
+
+	events := &testutil.Events{}
+	c := bootstrap(t, Options{
+		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
+		Home:   testutil.ClaudeHome(t),
+		Runner: noPrograms(),
+		Events: events,
+	})
+
+	before := len(events.All())
+
+	require.NoError(t, c.ScriptRuns.ClearHistory(t.Context()))
+	assert.Equal(t, []event.Event{event.ScriptRunsUpdated{}, event.ToolsUpdated{}}, events.All()[before:],
+		"the window lists the runs again, and the tools, whose updates a run can block")
 }

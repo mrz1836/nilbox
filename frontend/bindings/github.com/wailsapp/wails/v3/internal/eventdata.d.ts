@@ -12,11 +12,13 @@ import type * as event$0 from "../../../../mrz1836/nilbox/internal/event/models.
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
+            "app:quitRequested": event$0.QuitRequested;
             "budget:updated": event$0.BudgetUpdated;
             "inbox:reveal": event$0.RevealItem;
             "inbox:updated": event$0.InboxUpdated;
             "notifications:updated": event$0.NotificationsUpdated;
             "review:progress": event$0.ReviewProgress;
+            "scriptruns:updated": event$0.ScriptRunsUpdated;
             "sessions:updated": event$0.SessionsUpdated;
             "tools:updated": event$0.ToolsUpdated;
             "worktrees:updated": event$0.WorktreesUpdated;

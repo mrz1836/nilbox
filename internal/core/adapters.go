@@ -26,6 +26,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/sessions"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -531,6 +532,48 @@ func worktreeState(s github.ItemState) worktrees.ItemState {
 		out.State = worktrees.ItemMerged
 	case github.StateClosed:
 		out.State = worktrees.ItemClosed
+	}
+
+	return out
+}
+
+// errNoCommand is returned for a run in the terminal with no command to run.
+var errNoCommand = errors.New("the run has no command")
+
+// terminalRuns opens the runs that go in the user's terminal: it writes each one's script
+// into the launch folder, as a launch writes its own, recorded so the app follows it, and
+// opens it in the terminal chosen in Settings → Launching (scriptrun.TerminalOpener).
+type terminalRuns struct {
+	launch string
+	opener *launcher.CommandOpener
+	clock  clock.Clock
+	logger *slog.Logger
+}
+
+// OpenRun writes run's script and opens it.
+func (t terminalRuns) OpenRun(ctx context.Context, run scriptrun.TerminalRun) error {
+	if len(run.Argv) == 0 {
+		return errNoCommand
+	}
+
+	path, err := terminal.WriteScript(t.launch, run.Name, terminal.Script{
+		Dir: run.Dir, Binary: run.Argv[0], Args: run.Argv[1:], Env: envMap(run.Env), NoPrompt: true,
+		Record: &terminal.Recording{Log: run.Log, PIDFile: run.PIDFile, ExitFile: run.ExitFile},
+	}, clock.Or(t.clock).Now(), nil, t.logger)
+	if err != nil {
+		return fmt.Errorf("write the run's script: %w", err)
+	}
+
+	return t.opener.Open(ctx, path)
+}
+
+// envMap turns NAME=value entries into a map; an entry without "=" sets the name empty.
+func envMap(env []string) map[string]string {
+	out := make(map[string]string, len(env))
+
+	for _, kv := range env {
+		name, value, _ := strings.Cut(kv, "=")
+		out[name] = value
 	}
 
 	return out

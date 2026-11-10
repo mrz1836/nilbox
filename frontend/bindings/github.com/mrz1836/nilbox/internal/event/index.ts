@@ -5,8 +5,10 @@ export type {
     BudgetUpdated,
     InboxUpdated,
     NotificationsUpdated,
+    QuitRequested,
     RevealItem,
     ReviewProgress,
+    ScriptRunsUpdated,
     SessionsUpdated,
     ToolsUpdated,
     WorktreesUpdated
