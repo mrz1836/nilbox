@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -435,7 +436,10 @@ func TestDirsFrom(t *testing.T) {
 	t.Parallel()
 
 	home := "/Users/example"
-	base := []string{"/opt/homebrew/bin", "/usr/local/bin", "/Users/example/.local/bin", "/Users/example/bin", "/Users/example/go/bin"}
+
+	// The well-known tool folders are execpath's, which differ by OS (macOS has some, Linux
+	// none), so they come from it rather than from this test.
+	wellKnown := filepath.SplitList(execpath.FallbackPath(home, ""))
 
 	tests := []struct {
 		name       string
@@ -461,9 +465,8 @@ func TestDirsFrom(t *testing.T) {
 			assert.Equal(t, tt.wantPath, got.path, "the shell's PATH, absolute folders once each")
 			assert.Equal(t, tt.wantGoBins, got.goBins)
 
-			for _, dir := range append(slices.Clone(base[:4]), tt.wantGoBins...) {
-				assert.Contains(t, got.extra, dir)
-			}
+			assert.Equal(t, absDirs(append(slices.Clone(wellKnown), tt.wantGoBins...)), got.extra,
+				"the well-known folders, then go install's, each once")
 		})
 	}
 }
