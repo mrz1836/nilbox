@@ -15,6 +15,11 @@ export interface Config {
      * Paths is the copy of each tool the user chose, or "" for the one their shell finds.
      */
     "paths": { [_ in ID]?: string } | null;
+
+    /**
+     * RunsIn is where the runs go.
+     */
+    "runsIn": RunsIn;
 }
 
 /**
@@ -42,6 +47,30 @@ export const ID = {
      * Scripts is the user's and the repositories' own scripts.
      */
     Scripts: "scripts",
+} as const;
+
+/**
+ * RunsIn is where the runs go: releases, hooks actions, checks, and scripts.
+ */
+export type RunsIn = "app" | "terminal";
+
+/**
+ * The values of RunsIn, by the names of their Go constants.
+ */
+export const RunsIn = {
+    /**
+     * The places a run goes.
+     *
+     * RunsInApp runs in the app, which shows the run's progress and its whole log. It is
+     * the default.
+     */
+    RunsInApp: "app",
+
+    /**
+     * RunsInTerminal runs in the terminal chosen for launches, where a run can ask for a
+     * passphrase; the app follows it.
+     */
+    RunsInTerminal: "terminal",
 } as const;
 
 /**

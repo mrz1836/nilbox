@@ -11,6 +11,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -106,7 +107,7 @@ func TestResumeReopensTheConversationWithoutAPrompt(t *testing.T) {
 	assert.Contains(t, string(script), "'--dangerously-skip-permissions' '--resume="+testSessionID+"'\n")
 	assert.NotContains(t, string(script), "--name=")
 	assert.NotContains(t, string(script), "--session-id")
-	assert.NoFileExists(t, strings.TrimSuffix(res.ScriptPath, ".command")+promptFileSuffix)
+	assert.NoFileExists(t, strings.TrimSuffix(res.ScriptPath, ".command")+terminal.PromptSuffix)
 
 	started := h.ledger.all()
 	require.Len(t, started, 2)

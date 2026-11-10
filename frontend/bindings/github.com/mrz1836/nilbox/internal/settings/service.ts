@@ -226,6 +226,15 @@ export function SetProjectsTipDismissed(dismissed: boolean): $CancellablePromise
 }
 
 /**
+ * SetRunsIn stores where the runs go, in the app or in the terminal chosen for launches,
+ * and returns the settings with it. Nothing else hears of it: what starts a run (a
+ * release, a hooks action, checks, or a script) reads the setting as it starts one.
+ */
+export function SetRunsIn(place: integrationprefs$0.RunsIn): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(2418863044, place);
+}
+
+/**
  * SetSectionCollapsed stores whether an inbox section is collapsed, so the inbox opens the
  * same way at the next launch, and returns the settings with it.
  */

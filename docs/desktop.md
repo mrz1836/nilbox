@@ -262,6 +262,47 @@ it says which copy it uses, its version, and where it came from (a GitHub releas
 
 <br>
 
+## Runs
+
+Releases, hook changes, pre-commit checks, and scripts all go through one runner, which keeps a
+record of each run and its whole output.
+
+- **In the app or in your terminal.** A run goes in the app by default: its output is written as it
+  comes into its own log in `script-runs/` in the data folder, readable only by you, and the window
+  reads it from there. A run in your terminal (the one chosen in Settings → Launching) gets a small
+  script in the launch folder, as a session does. The script runs the command under `script(1)`,
+  so it has a real terminal (colors, a passphrase prompt) while its output is copied into the same
+  log, and leaves the shell's process ID and the command's exit status beside it, which is how the
+  app follows a run it didn't start itself.
+- **One run per clone, and none queued.** A run holds its clone while it goes. A second run in that
+  clone, or a launch that needs a new worktree there, fails at once and names the run, and the
+  worktree cleanup skips the clone until its next pass. At most four runs go in the app at once,
+  and a release never waits for one of those slots.
+- **Limits and stopping.** In the app, a release stops after 5 minutes, a hooks action after 1, and
+  checks after 30; a run in your terminal has no limit. **Stop** sends the run's whole process group
+  Control-C (SIGINT), then SIGTERM after 5 seconds, then SIGKILL after 10 more.
+- **Quitting while runs are going.** Quitting (the app menu, ⌘Q, or the menu bar's Quit) while a
+  run goes in the app brings the window forward and asks first: **Keep running** or **Stop and
+  quit**. Stop and quit sends each run SIGTERM, then SIGKILL after 3 seconds, and records it as
+  stopped before the app closes. Runs in your terminal are left running. Closing the window never
+  asks: the app keeps running in the menu bar. A logout, a restart, or a shutdown asks the app to
+  quit too, so while a run goes in the app, macOS cancels it and names the app, as Terminal does for
+  a running command; answer the question, then try again.
+- **After a crash or a restart.** Once the window paints, the app checks every run still recorded
+  as going. A run in the app whose process group is still alive, and started when the record says,
+  shows *Still running from before Nilbox restarted*: its log is followed again, and **Stop** works.
+  One that's gone shows *Nilbox closed while this was running*. A run in your terminal is followed
+  again if it's still going, finished with its exit status if it wrote one, or shows *The terminal
+  closed while this was running*.
+- **History.** The newest 200 runs are kept, with up to 512 MB of logs in all; older runs go with
+  their logs, and a run still going is never dropped. A finished log over 16 MB keeps its first
+  4 MB and its last 12 MB.
+- **What's logged.** The app log gets one line per run as it ends: its kind, repository, status,
+  exit code, and how many warnings and unrecognized lines it had. Never the output, and never an
+  environment value.
+
+<br>
+
 ## The window
 
 A single toolbar runs beside the macOS window controls. It holds the **Inbox**, **Worktrees**,

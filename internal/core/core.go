@@ -27,6 +27,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
+	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/launcher"
@@ -39,6 +40,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/review"
+	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/sessions"
 	"github.com/mrz1836/nilbox/internal/sessions/observe/claude"
 	"github.com/mrz1836/nilbox/internal/sessions/observe/codex"
@@ -125,6 +127,7 @@ type Core struct {
 	Sessions       *sessions.Service
 	Review         *review.Service
 	Integrations   *integrations.Service
+	ScriptRuns     *scriptrun.Service
 
 	// ShellSettings are the settings the desktop shell reads when the app launches. They
 	// are not bound.
@@ -166,6 +169,12 @@ type Core struct {
 	// read, again when woken, and checks for their updates once a day. The desktop shell
 	// runs it as deferred work too. It is not bound.
 	ToolFinder *integrations.Worker
+
+	// Runs starts the runs (releases, hooks actions, checks, and scripts) and follows
+	// them; ScriptRuns is its bound face. The desktop shell runs it as deferred work, which
+	// picks up the runs left from before a restart and stops the app's own at quit, and
+	// asks it before quitting whether runs are going (desktop.QuitGuard). It is not bound.
+	Runs *scriptrun.Engine
 
 	// tokens holds the GitHub token the inbox and the worktree service borrow, until
 	// Close forgets it.
@@ -240,7 +249,7 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 func (c *Core) Services() []any {
 	return []any{
 		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.Notifications,
-		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Integrations,
+		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Integrations, c.ScriptRuns,
 	}
 }
 
@@ -396,18 +405,6 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	follow := followSessions(pool, prefs, opts, logger, runner, registry, agentRunners)
 	followed.watcher = follow.watcher
 
-	tools := integrations.NewService(integrations.Config{
-		Prefs: prefsstore.New(pool, opts.Clock), Env: shellEnv, Releases: latestReleases{tokens: tokens, client: client},
-		Home: opts.Home, Clock: opts.Clock, Events: opts.Events, Logger: logger, Runner: toolRunners, DB: pool,
-		// Releases download straight from GitHub's download hosts, never through the API.
-		Installer: &toolinstall.Installer{
-			Downloads: filepath.Join(opts.Paths.Root, "downloads"), Download: client, Slug: brand.Slug,
-		},
-		Commands: runner,
-	})
-	toolFinder := integrations.NewWorker(tools)
-	followed.tools = toolFinder
-
 	// clones is the app's one set of clone locks: every job that changes a clone takes
 	// its clone's, so a worktree is never made or removed while a run is using it.
 	clones := clonelock.New()
@@ -450,6 +447,21 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	})
 
 	previews := launcher.NewPromptSource(launch)
+	runs := newRuns(pool, opts, clones, launch, logger)
+
+	tools := integrations.NewService(integrations.Config{
+		Prefs: prefsstore.New(pool, opts.Clock), Env: shellEnv, Releases: latestReleases{tokens: tokens, client: client},
+		Home: opts.Home, Clock: opts.Clock, Events: opts.Events, Logger: logger, Runner: toolRunners, DB: pool,
+		// Releases download straight from GitHub's download hosts, never through the API.
+		Installer: &toolinstall.Installer{
+			Downloads: filepath.Join(opts.Paths.Root, "downloads"), Download: client, Slug: brand.Slug,
+		},
+		Commands: runner,
+		// An install waits while a run is using the tool.
+		InUse: func(id integrationprefs.ID) bool { return runs.InUse(string(id)) },
+	})
+	toolFinder := integrations.NewWorker(tools)
+	followed.tools = toolFinder
 
 	return &Core{
 		DB:       pool,
@@ -501,12 +513,38 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Deferred:      &Deferred{steps: []func(context.Context){func(ctx context.Context) { _ = shellEnv.Read(ctx) }}},
 		Integrations:  tools,
 		ToolFinder:    toolFinder,
+		Runs:          runs,
+		ScriptRuns:    scriptrun.NewService(runs),
 		tokens:        tokens,
 		BudgetSaver:   budget.NewSaver(tracker, keeper, logger),
 		client:        client,
 		budget:        tracker,
 		budgetKeeper:  keeper,
 	}
+}
+
+// newRuns builds the engine that starts and follows the runs, over the app's one set of
+// clone locks, with its logs in <data>/script-runs. Its changes reach the window as
+// event.ScriptRunsUpdated, and as event.ToolsUpdated too, since a run starting or ending
+// can block or free a tool's update; a run in the terminal opens through the launcher's
+// terminals, and the user's choice to stop the runs and quit reaches the desktop shell as
+// event.QuitConfirmed.
+func newRuns(pool *sql.DB, opts Options, clones *clonelock.Set, launch *launcher.Service, logger *slog.Logger,
+) *scriptrun.Engine {
+	events := event.Or(opts.Events)
+
+	return scriptrun.NewEngine(scriptrun.Config{
+		DB: pool, Locks: clones, LogDir: filepath.Join(opts.Paths.Root, "script-runs"), Home: opts.Home,
+		Clock: opts.Clock, Logger: logger,
+		Changed: func() {
+			events.Emit(event.ScriptRunsUpdated{})
+			events.Emit(event.ToolsUpdated{})
+		},
+		Terminal: terminalRuns{
+			launch: opts.Paths.Launch, opener: launcher.NewCommandOpener(launch), clock: opts.Clock, logger: logger,
+		},
+		Quit: func() { events.Emit(event.QuitConfirmed{}) },
+	})
 }
 
 // following is what follows the agent sessions: the ledger launches record them in, the

@@ -127,6 +127,12 @@ type Worker interface {
 	Run(ctx context.Context)
 }
 
+// QuitGuard says whether quitting now would stop work the user is asked about first: runs
+// going in the app. *scriptrun.Engine implements it.
+type QuitGuard interface {
+	Active() bool
+}
+
 // Authorizer asks the user, the first time, to allow notification banners. Every
 // notify.Poster implements it.
 type Authorizer interface {
@@ -163,6 +169,10 @@ type Config struct {
 	// Banners is asked at launch to allow notifications. Nil means this build cannot
 	// show them, and nothing is asked.
 	Banners Authorizer
+
+	// QuitGuard holds a quit while it reports work going, until the user confirms. Nil
+	// means nothing holds a quit.
+	QuitGuard QuitGuard
 
 	// Clock times the menu bar's snooze ends. It defaults to the system clock.
 	Clock clock.Clock
@@ -206,6 +216,7 @@ type Shell struct {
 	deferred []Worker
 	data     io.Closer
 	banners  Authorizer
+	guard    QuitGuard
 	clock    clock.Clock
 	stdout   io.Writer
 	logger   *slog.Logger
@@ -248,6 +259,10 @@ type Shell struct {
 	drawn        bool
 	drawnWaiting []menubar.Waiting
 
+	// quitConfirmed is set once the user chose to stop the runs and quit, which lets every
+	// later quit through.
+	quitConfirmed atomic.Bool
+
 	timedOut atomic.Bool
 	stopOnce sync.Once
 	closeErr error
@@ -260,7 +275,7 @@ func New(cfg Config) *Shell {
 	s := &Shell{
 		frontend: cfg.Frontend, window: cfg.Window, tray: cfg.Tray, app: cfg.App,
 		inbox: cfg.Inbox, settings: cfg.Settings, sessions: cfg.Sessions, workers: cfg.Workers, deferred: cfg.Deferred,
-		data: cfg.Data, banners: cfg.Banners,
+		data: cfg.Data, banners: cfg.Banners, guard: cfg.QuitGuard,
 		clock: clock.Or(cfg.Clock), stdout: orDiscard(cfg.Stdout), logger: logging.Or(cfg.Logger),
 		measure: cfg.MeasureStartup, stopTimeout: cfg.StopTimeout, measureTimeout: cfg.MeasureTimeout,
 		lifetime: lifetime, cancel: cancel, redraw: make(chan struct{}, 1),
@@ -330,9 +345,9 @@ func (s *Shell) Stop() error {
 // Emit acts on e, until the shell stops: a window event goes on to the page, an inbox
 // change also redraws the menu bar, and a sessions change does when the sessions waiting
 // for the user read otherwise than the menu shows them, a request to reveal an item brings
-// the window forward, a theme or menu bar change reaches the window or the icon, and the
-// first paint ends a startup measurement or starts the deferred work. It never waits for
-// a redraw.
+// the window forward, a theme or menu bar change reaches the window or the icon, the
+// first paint ends a startup measurement or starts the deferred work, and the user's
+// choice to stop the runs and quit quits. It never waits for a redraw or the quit.
 func (s *Shell) Emit(e event.Event) {
 	if s.stopping.Load() {
 		return
@@ -347,15 +362,13 @@ func (s *Shell) Emit(e event.Event) {
 		s.askSessionsRedraw()
 	case event.RevealItem:
 		s.reveal(e)
-	case event.ThemeChanged:
-		s.window.SetTheme(settings.Theme(e.Theme))
-	case event.TextSizeChanged:
-		s.window.SetTextSize(settings.TextSize(e.Size))
-	case event.MenuBarChanged:
-		s.setMenuBar(e.On)
+	case event.ThemeChanged, event.TextSizeChanged, event.MenuBarChanged:
+		s.applySetting(e)
 	case event.FirstPaint:
 		s.firstPaint(e.Measurement)
 		s.startDeferred()
+	case event.QuitConfirmed:
+		s.quitAnyway()
 	case event.WindowEvent:
 		s.frontend.Emit(e)
 	}
@@ -435,6 +448,24 @@ func (s *Shell) Quit() {
 	s.app.Quit()
 }
 
+// ShouldQuit answers the desktop runtime's question whether the app may quit now, which
+// every quit asks: the menu's, the menu bar's, and the system's at a logout. It says yes
+// unless the quit guard reports runs going in the app and the user hasn't chosen to stop
+// them; then it brings the window forward, asks the page to ask the user, and says no. It
+// runs on the main thread, so it answers at once and does the rest in the background.
+func (s *Shell) ShouldQuit() bool {
+	if s.guard == nil || s.quitConfirmed.Load() || s.stopping.Load() || !s.guard.Active() {
+		return true
+	}
+
+	s.goTracked(func(context.Context) {
+		s.window.Show()
+		s.frontend.Emit(event.QuitRequested{})
+	})
+
+	return false
+}
+
 // HidesOnClose reports whether closing the window only hides it, keeping the app running
 // in the menu bar: while the icon shows and the app is not quitting.
 func (s *Shell) HidesOnClose() bool {
@@ -454,6 +485,18 @@ func (s *Shell) Stopping() bool {
 // the run then exits with a failure status.
 func (s *Shell) TimedOut() bool {
 	return s.timedOut.Load()
+}
+
+// applySetting brings a theme, text size, or menu bar change to the window or the icon.
+func (s *Shell) applySetting(e event.Event) {
+	switch e := e.(type) {
+	case event.ThemeChanged:
+		s.window.SetTheme(settings.Theme(e.Theme))
+	case event.TextSizeChanged:
+		s.window.SetTextSize(settings.TextSize(e.Size))
+	case event.MenuBarChanged:
+		s.setMenuBar(e.On)
+	}
 }
 
 // armDeferred starts the deferred work DeferredFallback from now, in case the window
@@ -588,6 +631,14 @@ func (s *Shell) askForBanners() {
 	if _, err := s.banners.Authorize(); err != nil {
 		s.logger.Warn("could not ask to show notifications", "error", err)
 	}
+}
+
+// quitAnyway lets every later quit through and quits, in the background: the quit stops
+// the shell, which waits for its tracked work, so the quit is not tracked work itself.
+func (s *Shell) quitAnyway() {
+	s.quitConfirmed.Store(true)
+
+	go s.app.Quit()
 }
 
 // startMeasureTimeout quits a startup measurement that has not painted in time.

@@ -64,6 +64,18 @@ func (s *Service) SetIntegrationPath(ctx context.Context, id integrationprefs.ID
 	return s.saveIntegrations(ctx, integrationprefs.KeyPath(id), stored, event.IntegrationsChanged{CopyChosen: true})
 }
 
+// SetRunsIn stores where the runs go, in the app or in the terminal chosen for launches,
+// and returns the settings with it. Nothing else hears of it: what starts a run (a
+// release, a hooks action, checks, or a script) reads the setting as it starts one.
+func (s *Service) SetRunsIn(ctx context.Context, place integrationprefs.RunsIn) (Settings, error) {
+	stored, err := integrationprefs.EncodeRunsIn(place)
+	if err != nil {
+		return Settings{}, fmt.Errorf("%w: %q", err, place)
+	}
+
+	return s.save(ctx, setting(integrationprefs.KeyRunsIn, stored))
+}
+
 // toolPath expands a ~ in path and checks that it names an executable file, worded for
 // the user when it doesn't.
 func (s *Service) toolPath(path string) (string, error) {

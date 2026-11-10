@@ -135,7 +135,7 @@ app:lint` reads.
   `Info.plist` and the rendered icon set, `icons.icns`.
 - `internal/core/` assembles the app and builds every service the window binds: settings,
   profiles, prompts, launch defaults, inbox, review, launcher, worktrees, notifications, app
-  info, sessions, and integrations.
+  info, sessions, integrations, and script runs.
   Every `internal/*` package is plain Go, built and tested on Linux without CGO.
 - Services share their building blocks rather than keep copies: `internal/repo` and
   `internal/item` name repositories, pull requests and issues, and their worktrees;
@@ -184,7 +184,12 @@ app:lint` reads.
 - `internal/launcher/` resolves a launch (the agent first, then that agent's profile, model,
   and flags), plans it, and writes its files; `internal/launcher/terminal/` renders the launch
   script, which only changes into the folder and runs the agent, and opens it in the user's
-  terminal app, one driver per terminal and OS. `internal/workspacetrust` marks the launch
+  terminal app, one driver per terminal and OS. `terminal.WriteScript` writes every script the
+  app opens in a terminal into the launch folder, a session's and a followed run's alike (named
+  `pr-`, `issue-`, or `run-<number>`, pruned after seven days by those prefixes alone); a
+  followed run's script runs its command under `script(1)`, recording its output, its shell's
+  PID, and its exit status in the run's files. `launcher.CommandOpener`, which core hands the
+  runs and never binds, opens only such a script, in the terminal chosen in Settings. `internal/workspacetrust` marks the launch
   folder trusted in each agent's own config (Claude's `.claude.json`, Codex's `config.toml`,
   appended to and never rewritten).
 - The app owns its worktrees: `internal/worktrees` makes them (one per item per clone, shared by
@@ -259,6 +264,21 @@ app:lint` reads.
   makes the copy read as installed by the app. Nothing replaces a Homebrew copy or a link, a
   copy the app didn't install is replaced only after the user confirms, and a go install copy
   gets a new copy in `~/.local/bin` instead; the app never runs `go install` or `sudo`.
+- `internal/scriptrun/` runs the commands the integrations start (releases, hooks actions,
+  checks, and scripts) and follows them, in the app or in the user's terminal, and owns
+  `script_runs`. The `Engine` is never bound, since a `Spec` holds functions: `Start` takes the
+  clone's lock first and fails at once when the clone is busy, runs the program through
+  `execpath.Start` in its own process group, writing straight into its log in
+  `<data>/script-runs` (four runs at a time in the app; a release never waits for a slot), and
+  ends it with a per-kind timeout or the stop ladder. Its `Run` is a deferred desktop worker: it
+  reconciles the runs left from before a restart (a live group whose start time matches is
+  orphaned and followed again; one that is gone was interrupted; a terminal run is told apart by
+  its PID and exit files) and, as the app quits, stops every run in the app and records it
+  stopped. `Active` is the desktop shell's quit guard (`desktop.QuitGuard`): while a run goes in
+  the app, `Shell.ShouldQuit` holds a quit and the window asks (`event.QuitRequested`), until the
+  bound `Service.QuitAnyway` emits the Go-only `event.QuitConfirmed`. `InUse` tells an install a
+  tool is running. The history keeps 200 runs and 512 MB of logs, and cuts a long log to its
+  head and tail; Run again works the command out afresh from its source, never for a release.
 - `internal/measure/` and `magefiles/measure.go` take the numbers in
   [`docs/performance.md`](docs/performance.md).
 - `frontend/` is the React + TypeScript + Vite + Tailwind app. It reaches Go only through the

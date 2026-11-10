@@ -17,7 +17,6 @@ import (
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
-	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -63,10 +62,13 @@ func perm(t *testing.T, path string) os.FileMode {
 	return info.Mode().Perm()
 }
 
-// posixDeps returns what writeLaunchFiles uses for a POSIX script named from random,
-// logging nowhere.
-func posixDeps(random io.Reader) launchFileDeps {
-	return launchFileDeps{renderer: terminal.POSIXRenderer{}, random: random, log: logging.Or(nil)}
+// randomBytes is how many random bytes end a launch file's base name.
+const randomBytes = 4
+
+// posixDeps returns the writer writeLaunchFiles uses for a POSIX script named from
+// random, logging nowhere.
+func posixDeps(random io.Reader) terminal.ScriptWriter {
+	return terminal.ScriptWriter{Renderer: terminal.POSIXRenderer{}, Random: random}
 }
 
 // touchLaunchFile creates an empty file in the launch directory.
@@ -96,9 +98,9 @@ func TestWriteLaunchFiles(t *testing.T) {
 	assert.Equal(t, paths.Launch, filepath.Dir(files.Script))
 
 	assert.Regexp(t, `^pr-7-20260314T150926Z-[0-9a-f]{8}\.prompt\.md$`, filepath.Base(files.Prompt))
-	assert.Regexp(t, launchFileName, filepath.Base(files.Script))
+	assert.Regexp(t, `^pr-7-20260314T150926Z-[0-9a-f]{8}\.command$`, filepath.Base(files.Script))
 	assert.Equal(t, ".command", filepath.Ext(files.Script))
-	assert.Equal(t, strings.TrimSuffix(files.Prompt, promptFileSuffix), strings.TrimSuffix(files.Script, ".command"),
+	assert.Equal(t, strings.TrimSuffix(files.Prompt, terminal.PromptSuffix), strings.TrimSuffix(files.Script, ".command"),
 		"the prompt file and the script share a base name")
 
 	prompt, err := os.ReadFile(files.Prompt)
@@ -215,16 +217,6 @@ func TestWriteLaunchFilesPrunesOldFiles(t *testing.T) {
 	assert.DirExists(t, oldDir, "only regular files are pruned")
 }
 
-func TestPruneLaunchFilesLogsWhatItCannotList(t *testing.T) {
-	t.Parallel()
-
-	var logs testutil.Logs
-
-	pruneLaunchFiles(filepath.Join(t.TempDir(), "missing"), fixedNow(), ".command", logs.Logger())
-
-	assert.Contains(t, logs.String(), `level=WARN msg="could not list old launch files"`)
-}
-
 func TestWriteLaunchFilesRejectsInvalidInput(t *testing.T) {
 	t.Parallel()
 
@@ -282,7 +274,7 @@ func TestWriteLaunchFilesFailures(t *testing.T) {
 		t.Parallel()
 
 		paths := testPaths(t)
-		suffix := bytes.Repeat([]byte{0xab}, suffixBytes)
+		suffix := bytes.Repeat([]byte{0xab}, randomBytes)
 
 		first, err := writeLaunchFiles(paths, plan, "first", fixedNow(), posixDeps(bytes.NewReader(suffix)))
 		require.NoError(t, err)
@@ -299,7 +291,7 @@ func TestWriteLaunchFilesFailures(t *testing.T) {
 		t.Parallel()
 
 		paths := testPaths(t)
-		suffix := bytes.Repeat([]byte{0xcd}, suffixBytes)
+		suffix := bytes.Repeat([]byte{0xcd}, randomBytes)
 
 		planned, err := writeLaunchFiles(paths, plan, "first", fixedNow(), posixDeps(bytes.NewReader(suffix)))
 		require.NoError(t, err)

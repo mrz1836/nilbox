@@ -106,7 +106,8 @@ func TestPrefDefaults(t *testing.T) {
 				integrationprefs.MageX: integrationprefs.SwitchAuto, integrationprefs.GoPreCommit: integrationprefs.SwitchAuto,
 				integrationprefs.Scripts: integrationprefs.SwitchAuto,
 			},
-			Paths: map[integrationprefs.ID]string{integrationprefs.MageX: "", integrationprefs.GoPreCommit: ""},
+			Paths:  map[integrationprefs.ID]string{integrationprefs.MageX: "", integrationprefs.GoPreCommit: ""},
+			RunsIn: integrationprefs.RunsInApp,
 		},
 
 		DefaultProtectedBranches: []string{"main", "master"},
@@ -267,7 +268,8 @@ func TestSettersPersist(t *testing.T) {
 				integrationprefs.MageX: integrationprefs.SwitchAuto, integrationprefs.GoPreCommit: integrationprefs.SwitchOff,
 				integrationprefs.Scripts: integrationprefs.SwitchAuto,
 			},
-			Paths: map[integrationprefs.ID]string{integrationprefs.MageX: magex, integrationprefs.GoPreCommit: ""},
+			Paths:  map[integrationprefs.ID]string{integrationprefs.MageX: magex, integrationprefs.GoPreCommit: ""},
+			RunsIn: integrationprefs.RunsInApp,
 		},
 
 		DefaultProtectedBranches: branchrules.DefaultProtected(),

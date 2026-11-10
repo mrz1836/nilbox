@@ -55,6 +55,15 @@ const (
 
 	// NameIntegrationsChanged is IntegrationsChanged's name.
 	NameIntegrationsChanged = "integrations:changed"
+
+	// NameScriptRunsUpdated is ScriptRunsUpdated's name.
+	NameScriptRunsUpdated = "scriptruns:updated"
+
+	// NameQuitRequested is QuitRequested's name.
+	NameQuitRequested = "app:quitRequested"
+
+	// NameQuitConfirmed is QuitConfirmed's name.
+	NameQuitConfirmed = "app:quitConfirmed"
 )
 
 // Event is something that happened, or was asked for, that another part of the app
@@ -100,6 +109,8 @@ func WindowEvents() []WindowEvent {
 		SessionsUpdated{},
 		ReviewProgress{},
 		ToolsUpdated{},
+		ScriptRunsUpdated{},
+		QuitRequested{},
 	}
 }
 
@@ -221,7 +232,8 @@ type FirstPaint struct {
 func (FirstPaint) Name() string { return NameFirstPaint }
 
 // ToolsUpdated says what the integrations service lists changed: a detection or an update
-// check finished. The window reads the list again.
+// check finished, or a run started or ended, which can block or free a tool's update.
+// The window reads the list again.
 type ToolsUpdated struct{}
 
 // Name returns NameToolsUpdated.
@@ -239,6 +251,31 @@ type IntegrationsChanged struct {
 
 // Name returns NameIntegrationsChanged.
 func (IntegrationsChanged) Name() string { return NameIntegrationsChanged }
+
+// ScriptRunsUpdated says a run started, changed step, or ended: the window lists the runs
+// again and pulls what it shows. It never carries output.
+type ScriptRunsUpdated struct{}
+
+// Name returns NameScriptRunsUpdated.
+func (ScriptRunsUpdated) Name() string { return NameScriptRunsUpdated }
+
+func (ScriptRunsUpdated) window() {}
+
+// QuitRequested says the user asked to quit while runs are going in the app: the window
+// asks whether to stop them and quit, or keep running.
+type QuitRequested struct{}
+
+// Name returns NameQuitRequested.
+func (QuitRequested) Name() string { return NameQuitRequested }
+
+func (QuitRequested) window() {}
+
+// QuitConfirmed says the user chose to stop the runs and quit. The desktop shell hears it,
+// lets the next quit through, and quits; shutdown stops the runs.
+type QuitConfirmed struct{}
+
+// Name returns NameQuitConfirmed.
+func (QuitConfirmed) Name() string { return NameQuitConfirmed }
 
 // Discard is a Sink that drops every event.
 type Discard struct{}

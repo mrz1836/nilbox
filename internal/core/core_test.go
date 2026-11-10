@@ -205,7 +205,7 @@ func TestServicesListsBoundServices(t *testing.T) {
 
 	assert.Equal(t, []any{
 		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.Notifications,
-		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Integrations,
+		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Integrations, c.ScriptRuns,
 	}, services)
 
 	for _, s := range services {
@@ -213,6 +213,7 @@ func TestServicesListsBoundServices(t *testing.T) {
 	}
 
 	assert.NotNil(t, c.ToolFinder)
+	assert.NotNil(t, c.Runs)
 	assert.NotNil(t, c.Scheduler)
 	assert.NotNil(t, c.Watcher)
 	assert.NotNil(t, c.Timing)

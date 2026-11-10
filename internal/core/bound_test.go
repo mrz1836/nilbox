@@ -27,6 +27,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/review"
+	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/snooze"
@@ -272,6 +273,18 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.SetIntegrationPath": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetIntegrationPath(ctx, integrationprefs.MageX, "")
 		},
+		"settings.Service.SetRunsIn": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetRunsIn(ctx, integrationprefs.RunsInTerminal)
+		},
+		"scriptrun.Service.Runs": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			got, err := c.ScriptRuns.Runs(ctx, scriptrun.Filter{})
+			require.Len(t, got, 1)
+
+			return got, err
+		},
+		"scriptrun.Service.Run": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.ScriptRuns.Run(ctx, 1)
+		},
 		"integrations.Service.List": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			got, err := c.Integrations.List(ctx)
 			require.Len(t, got.Tools, 2)
@@ -447,6 +460,12 @@ func seedBound(t *testing.T) (*Core, seededItems) {
 		VALUES (?, 0, 'login.go', 'modified', 1, '@@ -1 +1 @@
 -a
 +b')`, ids[0])
+	require.NoError(t, err)
+
+	// A run that ended, with its result as sparse as an older build's.
+	_, err = c.DB.ExecContext(ctx, `INSERT INTO script_runs (id, kind, title, dir, argv, status, exit_code, result,
+		started_at, finished_at) VALUES (1, 'script', 'Lint', '/work/example-repo', '["/usr/local/bin/magex","lint"]',
+		'failed', 1, '{}', ?, ?)`, now, now)
 	require.NoError(t, err)
 
 	return c, seededItems{item: ids[0], stuck: ids[1]}

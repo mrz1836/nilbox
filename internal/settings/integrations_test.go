@@ -52,6 +52,29 @@ func TestSetIntegrationEnabled(t *testing.T) {
 	assert.Equal(t, 2, events.Count(), "a refused change says nothing")
 }
 
+func TestSetRunsIn(t *testing.T) {
+	t.Parallel()
+
+	events := &testutil.Events{}
+	svc := serviceOver(t, testutil.DB(t), t.TempDir(), WithEvents(events))
+
+	got, err := svc.SetRunsIn(t.Context(), integrationprefs.RunsInTerminal)
+	require.NoError(t, err)
+	assert.Equal(t, integrationprefs.RunsInTerminal, got.Integrations.RunsIn)
+
+	got, err = svc.SetRunsIn(t.Context(), integrationprefs.RunsInApp)
+	require.NoError(t, err)
+	assert.Equal(t, integrationprefs.RunsInApp, got.Integrations.RunsIn)
+
+	_, err = svc.SetRunsIn(t.Context(), "cloud")
+	require.ErrorIs(t, err, integrationprefs.ErrInvalidRunsIn)
+
+	reread, err := svc.Get(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, integrationprefs.RunsInApp, reread.Integrations.RunsIn, "a refused place stored nothing")
+	assert.Zero(t, events.Count(), "each run reads the setting when it starts")
+}
+
 func TestSetIntegrationPath(t *testing.T) {
 	t.Parallel()
 

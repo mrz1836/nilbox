@@ -9,6 +9,11 @@ import type {} from "../github.com/wailsapp/wails/v3/internal/eventdata.js";
 import "../github.com/wailsapp/wails/v3/internal/eventcreate.js";
 
 /**
+ * Name of the custom event "app:quitRequested".
+ */
+export const AppQuitRequested = "app:quitRequested";
+
+/**
  * Name of the custom event "budget:updated".
  */
 export const BudgetUpdated = "budget:updated";
@@ -32,6 +37,11 @@ export const NotificationsUpdated = "notifications:updated";
  * Name of the custom event "review:progress".
  */
 export const ReviewProgress = "review:progress";
+
+/**
+ * Name of the custom event "scriptruns:updated".
+ */
+export const ScriptrunsUpdated = "scriptruns:updated";
 
 /**
  * Name of the custom event "sessions:updated".

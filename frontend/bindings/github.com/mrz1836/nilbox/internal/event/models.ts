@@ -22,6 +22,13 @@ export interface NotificationsUpdated {
 }
 
 /**
+ * QuitRequested says the user asked to quit while runs are going in the app: the window
+ * asks whether to stop them and quit, or keep running.
+ */
+export interface QuitRequested {
+}
+
+/**
  * RevealItem asks for the window to come forward with an item in view, for a click on
  * the item in the menu bar or on its notification. A request that names neither an item
  * nor a URL, such as a click on a banner that stands for many items, only brings the
@@ -58,6 +65,13 @@ export interface ReviewProgress {
 }
 
 /**
+ * ScriptRunsUpdated says a run started, changed step, or ended: the window lists the runs
+ * again and pulls what it shows. It never carries output.
+ */
+export interface ScriptRunsUpdated {
+}
+
+/**
  * SessionsUpdated says an agent session was launched, or changed what it is doing: the
  * window reads the sessions again, and the menu bar redraws.
  */
@@ -66,7 +80,8 @@ export interface SessionsUpdated {
 
 /**
  * ToolsUpdated says what the integrations service lists changed: a detection or an update
- * check finished. The window reads the list again.
+ * check finished, or a run started or ended, which can block or free a tool's update.
+ * The window reads the list again.
  */
 export interface ToolsUpdated {
 }
