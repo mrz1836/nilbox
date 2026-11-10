@@ -1,8 +1,9 @@
 // Package terminal opens launch scripts in the user's terminal app. A ScriptRenderer
 // writes a Script (the directory, environment, prompt file, and agent command a launch
-// runs) as a script the terminal can run, and a Driver opens that script in one terminal
-// app. The Registry holds the drivers for this OS, under the IDs the terminal setting
-// stores.
+// runs, or a command run the app follows) as a script the terminal can run, a
+// ScriptWriter writes it into the app's own folder and prunes the old ones, and a Driver
+// opens that script in one terminal app. The Registry holds the drivers for this OS,
+// under the IDs the terminal setting stores.
 //
 // The renderers and the scripts the drivers send are pure and tested on every OS; only
 // running a terminal program is per OS, and an OS without drivers registers none.

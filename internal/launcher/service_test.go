@@ -593,7 +593,7 @@ func (h *launchHarness) launchFiles(t *testing.T) []string {
 func promptFor(t *testing.T, scriptPath string) string {
 	t.Helper()
 
-	prompt, err := os.ReadFile(strings.TrimSuffix(scriptPath, ".command") + promptFileSuffix)
+	prompt, err := os.ReadFile(strings.TrimSuffix(scriptPath, ".command") + terminal.PromptSuffix)
 	require.NoError(t, err)
 
 	return string(prompt)
