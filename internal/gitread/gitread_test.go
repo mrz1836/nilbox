@@ -945,6 +945,7 @@ func TestEveryAllowlistEntryIsUsed(t *testing.T) {
 	_, _ = g.RemoteRefs(ctx, repoDir)
 	_, _ = g.RemoteVersionTags(ctx, repoDir)
 	_, _ = g.RemoteTagCommit(ctx, repoDir, "v1.4.2")
+	_, _ = g.LocalTagCommit(ctx, repoDir, "v1.4.2")
 	_, _ = g.Signing(ctx, repoDir)
 	_, _ = g.HooksDir(ctx, repoDir)
 	_, _ = g.HookPaths(ctx, repoDir)

@@ -199,6 +199,12 @@ func (g *Git) TrackingBranch(ctx context.Context, dir, branch string) (string, e
 	return g.resolve(ctx, dir, trackingPrefix+branch)
 }
 
+// LocalTagCommit returns the commit the clone's version tag points at, peeled through an
+// annotated tag, or "" when the clone has no such tag.
+func (g *Git) LocalTagCommit(ctx context.Context, dir, tag string) (string, error) {
+	return g.resolve(ctx, dir, tagsPrefix+tag+commitSuffix)
+}
+
 // HasCommit reports whether the clone has the commit oid.
 func (g *Git) HasCommit(ctx context.Context, dir, oid string) (bool, error) {
 	got, err := g.resolve(ctx, dir, oid+commitSuffix)

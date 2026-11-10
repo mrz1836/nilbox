@@ -91,6 +91,7 @@ const (
 	slotVersionPattern
 	slotTagRef
 	slotPeeledTagRef
+	slotTagCommit
 )
 
 // word is one word of an allowlisted command: text itself, or a value its slot accepts.
@@ -142,6 +143,7 @@ func allowlist() []command {
 		{name: "a local branch", words: append(fixed(revParse, verifyFlag, quietFlag), value(slotLocalRef))},
 		{name: "a branch on origin", words: append(fixed(revParse, verifyFlag, quietFlag), value(slotTrackingRef))},
 		{name: "a commit in the clone", words: append(fixed(revParse, verifyFlag, quietFlag), value(slotCommitPeel))},
+		{name: "a version tag's commit", words: append(fixed(revParse, verifyFlag, quietFlag), value(slotTagCommit))},
 		{name: "uncommitted changes", words: fixed(statusCmd, "--porcelain", "-z", ignoreSubmodulesDirty)},
 		{name: "the filter drivers", words: fixed(configCmd, "--show-scope", "--get-regexp", filterKeysPattern)},
 		{name: "the current branch", words: fixed("symbolic-ref", quietFlag, "--short", "HEAD")},
@@ -193,6 +195,7 @@ func validators() map[slot]func(string) bool {
 		slotVersionPattern: versionGlobPattern.MatchString,
 		slotTagRef:         isTagRef,
 		slotPeeledTagRef:   isPeeledTagRef,
+		slotTagCommit:      isTagCommit,
 	}
 }
 
@@ -314,6 +317,13 @@ func isPeeledTagRef(ref string) bool {
 	tag, ok := strings.CutSuffix(ref, peelSuffix)
 
 	return ok && isTagRef(tag)
+}
+
+// isTagCommit reports refs/tags/<version tag>^{commit}.
+func isTagCommit(arg string) bool {
+	ref, ok := strings.CutSuffix(arg, commitSuffix)
+
+	return ok && isTagRef(ref)
 }
 
 // samePeeledTag reports a tag ref followed by the same tag peeled, as the last two words.
