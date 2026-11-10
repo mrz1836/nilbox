@@ -29,6 +29,13 @@ export interface QuitRequested {
 }
 
 /**
+ * ReleasesUpdated says the Release page's list was read again from GitHub: the window
+ * reads it.
+ */
+export interface ReleasesUpdated {
+}
+
+/**
  * RevealItem asks for the window to come forward with an item in view, for a click on
  * the item in the menu bar or on its notification. A request that names neither an item
  * nor a URL, such as a click on a banner that stands for many items, only brings the

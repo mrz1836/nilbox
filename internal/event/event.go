@@ -64,6 +64,9 @@ const (
 
 	// NameQuitConfirmed is QuitConfirmed's name.
 	NameQuitConfirmed = "app:quitConfirmed"
+
+	// NameReleasesUpdated is ReleasesUpdated's name.
+	NameReleasesUpdated = "releases:updated"
 )
 
 // Event is something that happened, or was asked for, that another part of the app
@@ -111,6 +114,7 @@ func WindowEvents() []WindowEvent {
 		ToolsUpdated{},
 		ScriptRunsUpdated{},
 		QuitRequested{},
+		ReleasesUpdated{},
 	}
 }
 
@@ -276,6 +280,15 @@ type QuitConfirmed struct{}
 
 // Name returns NameQuitConfirmed.
 func (QuitConfirmed) Name() string { return NameQuitConfirmed }
+
+// ReleasesUpdated says the Release page's list was read again from GitHub: the window
+// reads it.
+type ReleasesUpdated struct{}
+
+// Name returns NameReleasesUpdated.
+func (ReleasesUpdated) Name() string { return NameReleasesUpdated }
+
+func (ReleasesUpdated) window() {}
 
 // Discard is a Sink that drops every event.
 type Discard struct{}

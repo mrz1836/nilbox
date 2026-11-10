@@ -26,6 +26,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/gitread"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
@@ -39,6 +40,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/procs"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
+	"github.com/mrz1836/nilbox/internal/release"
 	"github.com/mrz1836/nilbox/internal/review"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/sessions"
@@ -128,6 +130,7 @@ type Core struct {
 	Review         *review.Service
 	Integrations   *integrations.Service
 	ScriptRuns     *scriptrun.Service
+	Release        *release.Service
 
 	// ShellSettings are the settings the desktop shell reads when the app launches. They
 	// are not bound.
@@ -249,7 +252,7 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 func (c *Core) Services() []any {
 	return []any{
 		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.Notifications,
-		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Integrations, c.ScriptRuns,
+		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Integrations, c.ScriptRuns, c.Release,
 	}
 }
 
@@ -515,11 +518,20 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		ToolFinder:    toolFinder,
 		Runs:          runs,
 		ScriptRuns:    scriptrun.NewService(runs),
-		tokens:        tokens,
-		BudgetSaver:   budget.NewSaver(tracker, keeper, logger),
-		client:        client,
-		budget:        tracker,
-		budgetKeeper:  keeper,
+		Release: release.NewService(release.Config{
+			GitHub: releaseGitHub{tokens: tokens, client: client},
+			Clones: releaseClones{settings: prefs, home: opts.Home, git: runner},
+			// The clones are read with the git the user's shell finds, as magex runs it.
+			Checker: release.GitChecker{Git: gitread.New(gitread.Config{
+				Env: func() []string { env, _ := shellEnv.Env(); return env }, Runner: toolRunners,
+			})},
+			Home: opts.Home, Clock: opts.Clock, Events: opts.Events, Logger: logger,
+		}),
+		tokens:       tokens,
+		BudgetSaver:  budget.NewSaver(tracker, keeper, logger),
+		client:       client,
+		budget:       tracker,
+		budgetKeeper: keeper,
 	}
 }
 

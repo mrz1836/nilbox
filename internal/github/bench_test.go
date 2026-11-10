@@ -77,6 +77,24 @@ func BenchmarkFetchItemStates(b *testing.B) {
 	}
 }
 
+// BenchmarkFetchReleaseStatus asks about 150 repositories, ten queries' worth, as the
+// release list of a clone root with many clones does.
+func BenchmarkFetchReleaseStatus(b *testing.B) {
+	client := benchClient(b, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"data": {}}`)
+	})
+
+	repos := releaseRepos(10 * releaseBatch)
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		if _, err := client.FetchReleaseStatus(b.Context(), NewToken(fakeToken), repos); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 // benchPullFiles is how many files the benchmark pull request changes: ten pages.
 const benchPullFiles = 10 * filesPerPage
 
