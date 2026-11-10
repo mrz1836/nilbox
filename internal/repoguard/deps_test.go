@@ -104,6 +104,13 @@ func boundaries() []boundary {
 			why:       "clonelock keeps one job at a time on each clone for whatever changes one; it knows no service",
 		},
 		{
+			pkg: "internal/scriptrun",
+			forbidden: append(slices.Clone(services),
+				"internal/release", "internal/hooks", "internal/scripts", "internal/launcher", "internal/desktop"),
+			why: "the runner opens the terminal through its own TerminalOpener and works a command out again through " +
+				"each kind's Rerunner; the kinds call it, never the reverse",
+		},
+		{
 			pkg:       "internal/shellenv",
 			forbidden: noService,
 			why:       "shellenv reads the login shell's environment for whatever runs tools; it knows no service",

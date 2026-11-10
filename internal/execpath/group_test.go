@@ -318,3 +318,33 @@ func TestStopLadderEndsWithKill(t *testing.T) {
 	assert.Equal(t, 10*time.Second, ladder[1].Wait)
 	assert.Equal(t, syscall.SIGKILL, ladder[2].Signal)
 }
+
+func TestLadderClimbStopsWhenTheTargetIsGone(t *testing.T) {
+	t.Parallel()
+
+	ladder := execpath.Ladder{{Signal: syscall.SIGINT}, {Signal: syscall.SIGTERM}, {Signal: syscall.SIGKILL}}
+
+	var sent []syscall.Signal
+
+	record := func(sig syscall.Signal) error {
+		sent = append(sent, sig)
+
+		return nil
+	}
+
+	ladder.Climb(nil, nil, record)
+	assert.Equal(t, []syscall.Signal{syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL}, sent, "every step, in turn")
+
+	sent = nil
+
+	ladder.Climb(nil, func() bool { return len(sent) < 1 }, record)
+	assert.Equal(t, []syscall.Signal{syscall.SIGINT}, sent, "nothing once alive says the target is gone")
+
+	done := make(chan struct{})
+	close(done)
+
+	sent = nil
+
+	ladder.Climb(done, nil, record)
+	assert.Empty(t, sent, "nothing once the target has ended")
+}

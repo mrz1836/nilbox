@@ -116,14 +116,26 @@ func (p *Proc) Stop(ladder Ladder) {
 
 // climb sends ladder's signals in turn until the program exits.
 func (p *Proc) climb(ladder Ladder) {
-	for _, step := range ladder {
+	ladder.Climb(p.done, nil, func(sig syscall.Signal) error { return signalGroup(p.pgid, sig) })
+}
+
+// Climb sends each step's signal in turn through signal, waiting the step's time between
+// them, until done closes or alive, when given, reports the target gone. Proc.Stop climbs
+// with it; a caller that holds no Proc, such as one stopping a program from before the
+// app restarted, passes its own alive and signal, which check the group is still its own.
+func (l Ladder) Climb(done <-chan struct{}, alive func() bool, signal func(syscall.Signal) error) {
+	for _, step := range l {
 		select {
-		case <-p.done:
+		case <-done:
 			return
 		default:
 		}
 
-		_ = signalGroup(p.pgid, step.Signal)
+		if alive != nil && !alive() {
+			return
+		}
+
+		_ = signal(step.Signal)
 
 		if step.Wait <= 0 {
 			continue
@@ -132,7 +144,7 @@ func (p *Proc) climb(ladder Ladder) {
 		timer := time.NewTimer(step.Wait)
 
 		select {
-		case <-p.done:
+		case <-done:
 			timer.Stop()
 
 			return
