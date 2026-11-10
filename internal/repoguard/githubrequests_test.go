@@ -20,9 +20,10 @@ import (
 // sent any other way would spend the user's budget without the budget knowing. So:
 //
 //   - only internal/github speaks HTTP;
-//   - inside it, a request is built only in (*Client).do, and in (*Client).FetchAvatar,
-//     which downloads the profile picture from GitHub's avatar host, not its API, and
-//     costs no budget;
+//   - inside it, a request is built only in (*Client).do, in (*Client).FetchAvatar,
+//     which downloads the profile picture from GitHub's avatar host, and in
+//     (*Client).DownloadAsset, which downloads a public release file from GitHub's
+//     download hosts; neither is the API, sends a token, or costs budget;
 //   - nothing runs the GitHub CLI's api command, which would spend the same budget behind
 //     the app's back. (gh auth token and gh repo clone stay allowed: the first spends
 //     nothing, and the clone is git's.)
@@ -33,7 +34,7 @@ const githubPackage = "internal/github/"
 // requestBuilders are the functions in internal/github allowed to build a request, by
 // "Receiver.Name".
 func requestBuilders() []string {
-	return []string{"*Client.do", "*Client.FetchAvatar"}
+	return []string{"*Client.do", "*Client.FetchAvatar", "*Client.DownloadAsset"}
 }
 
 // httpSenders are the net/http functions that build or send a request.
