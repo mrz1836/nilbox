@@ -234,10 +234,10 @@ func TestABusyCloneNamesItsHolderAndNeverQueues(t *testing.T) {
 	defer release()
 
 	before := false
-	spec.Before = func(context.Context) error {
+	spec.Before = func(context.Context) ([]string, error) {
 		before = true
 
-		return nil
+		return nil, nil
 	}
 
 	begun := time.Now()
@@ -289,13 +289,13 @@ func TestBeforeRunsUnderTheLockAndCanEndTheStart(t *testing.T) {
 	h := newHarness(t)
 	spec := h.spec(testutil.FakeRun{})
 
-	spec.Before = func(context.Context) error {
+	spec.Before = func(context.Context) ([]string, error) {
 		holder, held := h.locks.Holder(spec.Dir)
 		assert.True(t, held, "Before runs under the clone's lock")
 		assert.Equal(t, clonelock.KindScript, holder.Kind)
 		assert.Len(t, h.e.slots, 1, "and holds a slot")
 
-		return errFacts
+		return nil, errFacts
 	}
 
 	_, err := h.e.Start(t.Context(), spec)
@@ -305,6 +305,35 @@ func TestBeforeRunsUnderTheLockAndCanEndTheStart(t *testing.T) {
 	_, held := h.locks.Holder(spec.Dir)
 	assert.False(t, held)
 	assert.Empty(t, h.e.slots)
+}
+
+func TestBeforeCanWorkTheCommandOut(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	spec := h.spec(testutil.FakeRun{Stdout: readyLine})
+	argv := spec.Argv
+	spec.Argv = nil
+
+	spec.Before = func(context.Context) ([]string, error) { return argv, nil }
+
+	rec := h.ended(h.start(spec))
+	assert.Equal(t, StatusSucceeded, rec.Status)
+	assert.Equal(t, argv, rec.Argv, "the command Before worked out is the one run and recorded")
+
+	spec.Before = func(context.Context) ([]string, error) { return []string{"tool"}, nil }
+
+	_, err := h.e.Start(t.Context(), spec)
+	require.ErrorIs(t, err, ErrInvalidSpec, "a command Before gives must start with an absolute path")
+
+	_, held := h.locks.Holder(spec.Dir)
+	assert.False(t, held)
+	assert.Empty(t, h.e.slots)
+
+	spec.Before = nil
+
+	_, err = h.e.Start(t.Context(), spec)
+	require.ErrorIs(t, err, ErrInvalidSpec, "without Before, the command is needed up front")
 }
 
 func TestTheSlotLimitHoldsAndAReleaseNeverWaits(t *testing.T) {
