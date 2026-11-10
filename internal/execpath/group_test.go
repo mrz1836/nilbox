@@ -3,9 +3,11 @@
 package execpath_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -15,7 +17,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sys/unix"
 
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/testutil"
@@ -166,34 +167,32 @@ func TestStdinIsDevNull(t *testing.T) {
 func TestChildSeesOnlyStdio(t *testing.T) {
 	t.Parallel()
 
-	proc, logPath := startFake(t, t.Context(), testutil.FakeRun{ReportFDs: true, Stderr: "to the same log\n"})
+	run := testutil.FakeRun{ReportFDs: true, Stderr: "to the same log\n"}
+
+	// The baseline is the same fake started by Go's own exec with nothing extra passed: it
+	// holds stdio, whatever its own runtime opens (the race runtime does on Linux), and what
+	// this test process hands every child (a CI runner leaves some open). Start must add
+	// nothing to that.
+	path, env := testutil.FakeTool(t, "tool", run)
+
+	var baseline bytes.Buffer
+
+	plain := exec.CommandContext(t.Context(), path) //nolint:gosec // the test's own fake tool
+
+	plain.Env = append(os.Environ(), env)
+	plain.Stdout = &baseline
+	require.NoError(t, plain.Run())
+	require.True(t, strings.HasPrefix(baseline.String(), "fds: 0,1,2"), baseline.String())
+
+	proc, logPath := startFake(t, t.Context(), run)
 
 	_, err := proc.Wait()
 	require.NoError(t, err)
 
 	out, err := os.ReadFile(logPath) //nolint:gosec // the test's own temp file
 	require.NoError(t, err)
-
-	want := append([]string{"0", "1", "2"}, inheritedFDs()...)
-	assert.Equal(t, "fds: "+strings.Join(want, ",")+"\nto the same log\n", string(out),
-		"the child holds stdin, stdout, and stderr, plus only what this test process already passes "+
-			"to every child, and stdout and stderr share the log in order")
-}
-
-// inheritedFDs lists this process's descriptors above stderr that lack close-on-exec, which
-// any child inherits whoever starts it: a CI runner can leave some open in the test process.
-// Start must add none of its own.
-func inheritedFDs() []string {
-	var fds []string
-
-	for fd := 3; fd < 256; fd++ {
-		flags, err := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0)
-		if err == nil && flags&unix.FD_CLOEXEC == 0 {
-			fds = append(fds, strconv.Itoa(fd))
-		}
-	}
-
-	return fds
+	assert.Equal(t, baseline.String()+"to the same log\n", string(out),
+		"the child holds what any child does and nothing more, and stdout and stderr share the log in order")
 }
 
 func TestSetsidDescendantSurvives(t *testing.T) {
