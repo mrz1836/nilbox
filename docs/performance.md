@@ -89,6 +89,15 @@ and 551 ms with it; single runs ranged from 519 to 584 ms either way, so the ste
 measurable. These runs compare with each other and with the M1 Max run above, not with the
 build host's.
 
+**Deferred work.** Work that isn't needed for the first frame waits for it: the shell starts the
+deferred work (`desktop.Config.Deferred`) once the window reports its first paint, or 10 s
+after launch when it never does, and never in a startup measurement, so `magex
+measure:startup` times the same cold start as before. The first deferred step reads the login
+shell's environment (`internal/shellenv`): measured on the M1 Max under exactly the
+environment launchd gives a GUI app, the interactive login shell (`zsh -i -l`) took 326 ms
+cold and 57–58 ms warm, and a login shell without `-i` took 20 ms but missed the folders the
+shell's `.zshrc` adds to `PATH`. The read runs off the main thread and nothing waits for it.
+
 ### Inbox refresh
 
 **What is measured.** One refresh as the app runs it: the token, which the first refresh
