@@ -19,6 +19,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -416,6 +417,14 @@ func everyFetch() []fetchCall {
 		}},
 		{name: "FetchItemStates", graphQL: true, call: func(ctx context.Context, c *Client, tok Token) error {
 			_, err := c.FetchItemStates(ctx, tok, []item.Ref{pullRef()})
+			return err
+		}},
+		{name: "FetchReleaseStatus", graphQL: true, call: func(ctx context.Context, c *Client, tok Token) error {
+			_, err := c.FetchReleaseStatus(ctx, tok, []repo.Name{pullRef().Repo})
+			return err
+		}},
+		{name: "FetchReleaseCompare", graphQL: true, call: func(ctx context.Context, c *Client, tok Token) error {
+			_, err := c.FetchReleaseCompare(ctx, tok, []CompareRequest{{Repo: pullRef().Repo, Tag: "v1.0.0", Branch: "master"}})
 			return err
 		}},
 	}
