@@ -15,6 +15,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/unix"
 
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/testutil"
@@ -172,8 +173,27 @@ func TestChildSeesOnlyStdio(t *testing.T) {
 
 	out, err := os.ReadFile(logPath) //nolint:gosec // the test's own temp file
 	require.NoError(t, err)
-	assert.Equal(t, "fds: 0,1,2\nto the same log\n", string(out),
-		"the child holds stdin, stdout, and stderr only, and stdout and stderr share the log in order")
+
+	want := append([]string{"0", "1", "2"}, inheritedFDs()...)
+	assert.Equal(t, "fds: "+strings.Join(want, ",")+"\nto the same log\n", string(out),
+		"the child holds stdin, stdout, and stderr, plus only what this test process already passes "+
+			"to every child, and stdout and stderr share the log in order")
+}
+
+// inheritedFDs lists this process's descriptors above stderr that lack close-on-exec, which
+// any child inherits whoever starts it: a CI runner can leave some open in the test process.
+// Start must add none of its own.
+func inheritedFDs() []string {
+	var fds []string
+
+	for fd := 3; fd < 256; fd++ {
+		flags, err := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0)
+		if err == nil && flags&unix.FD_CLOEXEC == 0 {
+			fds = append(fds, strconv.Itoa(fd))
+		}
+	}
+
+	return fds
 }
 
 func TestSetsidDescendantSurvives(t *testing.T) {
