@@ -31,7 +31,8 @@ export function MarkSeen(id: number): $CancellablePromise<void> {
 }
 
 /**
- * OpenInTerminal will open a terminal in a run's folder. It isn't available yet.
+ * OpenInTerminal opens the terminal chosen for launches in a run's folder, the clone, so
+ * the user can look at it or finish by hand what the run left; the app runs nothing there.
  */
 export function OpenInTerminal(id: number): $CancellablePromise<void> {
     return $Call.ByID(1973677521, id);
@@ -75,6 +76,13 @@ export function RunAgain(id: number): $CancellablePromise<number> {
  */
 export function Runs(filter: $models.Filter): $CancellablePromise<$models.Run[] | null> {
     return $Call.ByID(3130425600, filter);
+}
+
+/**
+ * ShowLog shows a run's log file in Finder.
+ */
+export function ShowLog(id: number): $CancellablePromise<void> {
+    return $Call.ByID(267560295, id);
 }
 
 /**

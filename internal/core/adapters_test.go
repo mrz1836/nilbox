@@ -28,6 +28,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/testutil"
+	"github.com/mrz1836/nilbox/internal/uierr"
 	"github.com/mrz1836/nilbox/internal/worktrees"
 )
 
@@ -294,4 +295,56 @@ func TestTerminalRunsOpenAFollowedScriptInTheTerminal(t *testing.T) {
 	assert.Contains(t, strings.Join(calls[len(calls)-1], " "), scripts[0], "the terminal chosen for launches opens it")
 
 	require.ErrorIs(t, runs.OpenRun(t.Context(), scriptrun.TerminalRun{Name: "run-8"}), errNoCommand)
+}
+
+func TestTerminalRunsOpenATerminalInAFolder(t *testing.T) {
+	t.Parallel()
+
+	paths := appdata.NewPaths(filepath.Join(t.TempDir(), "data"))
+	runner := &testutil.Runner{}
+	c := bootstrap(t, Options{Paths: paths, Home: testutil.ClaudeHome(t), Runner: runner})
+	runs := terminalRuns{
+		launch: paths.Launch, opener: launcher.NewCommandOpener(c.Launcher), shell: func() string { return "/opt/shells/fish" },
+	}
+
+	err := runs.OpenFolder(t.Context(), "run-9", "/work/example-repo")
+
+	scripts, globErr := filepath.Glob(filepath.Join(paths.Launch, "run-9-*"))
+	require.NoError(t, globErr)
+	require.Len(t, scripts, 1)
+
+	data, readErr := os.ReadFile(scripts[0])
+	require.NoError(t, readErr)
+	assert.Contains(t, string(data), "cd -- '/work/example-repo' || exit 1\nexec '/opt/shells/fish' '-l'\n",
+		"the user's login shell, in the folder, and nothing else")
+
+	if runtime.GOOS != "darwin" {
+		require.ErrorIs(t, err, terminal.ErrUnsupportedOS)
+
+		return
+	}
+
+	require.NoError(t, err)
+}
+
+func TestFinderRevealShowsTheFile(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS != "darwin" {
+		assert.Nil(t, revealer(&testutil.Runner{}), "no Finder: Show the log file says so")
+
+		return
+	}
+
+	runner := &testutil.Runner{}
+	require.NoError(t, revealer(runner).Reveal(t.Context(), "/data/script-runs/7.log"))
+	assert.Equal(t, [][]string{{"/usr/bin/open", "-R", "/data/script-runs/7.log"}}, runner.Calls())
+
+	failing := &testutil.Runner{Stderr: "The file does not exist.\nmore", Err: errNoPrograms}
+	err := finderReveal{runner: failing}.Reveal(t.Context(), "/gone")
+	require.ErrorIs(t, err, errNoPrograms)
+	assert.Equal(t, "Finder couldn't show the file: The file does not exist.", uierr.Message(err))
+
+	err = finderReveal{runner: &testutil.Runner{Err: errNoPrograms}}.Reveal(t.Context(), "/gone")
+	assert.Equal(t, "Finder couldn't show the file: "+errNoPrograms.Error(), uierr.Message(err))
 }

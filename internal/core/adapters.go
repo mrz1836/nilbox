@@ -9,6 +9,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -548,6 +549,9 @@ type terminalRuns struct {
 	opener *launcher.CommandOpener
 	clock  clock.Clock
 	logger *slog.Logger
+
+	// shell is the user's login shell, which a terminal opened in a folder starts.
+	shell func() string
 }
 
 // OpenRun writes run's script and opens it.
@@ -565,6 +569,50 @@ func (t terminalRuns) OpenRun(ctx context.Context, run scriptrun.TerminalRun) er
 	}
 
 	return t.opener.Open(ctx, path)
+}
+
+// OpenFolder opens the terminal in dir, for Open in terminal: a script that changes into
+// dir and starts the user's login shell there, and runs nothing else.
+func (t terminalRuns) OpenFolder(ctx context.Context, name, dir string) error {
+	path, err := terminal.WriteScript(t.launch, name, terminal.Script{
+		Purpose: "to open a terminal in a run's folder", Dir: dir, Binary: t.shell(), Args: []string{"-l"},
+		NoPrompt: true,
+	}, clock.Or(t.clock).Now(), nil, t.logger)
+	if err != nil {
+		return fmt.Errorf("write the terminal's script: %w", err)
+	}
+
+	return t.opener.Open(ctx, path)
+}
+
+// finderReveal shows a file in Finder with open -R (scriptrun.Revealer). Core wires it
+// only on macOS.
+type finderReveal struct {
+	runner execpath.Runner
+}
+
+// Reveal shows path in Finder.
+func (f finderReveal) Reveal(ctx context.Context, path string) error {
+	if _, stderr, err := f.runner.Run(ctx, "/usr/bin/open", "-R", path); err != nil {
+		reason := execpath.FirstLine(stderr)
+		if reason == "" {
+			reason = err.Error()
+		}
+
+		return uierr.New("Finder couldn't show the file: "+reason, err)
+	}
+
+	return nil
+}
+
+// revealer is finderReveal over runner on macOS, and nothing elsewhere, where there is
+// no Finder: Show the log file then says so.
+func revealer(runner execpath.Runner) scriptrun.Revealer {
+	if runtime.GOOS != "darwin" {
+		return nil
+	}
+
+	return finderReveal{runner: runner}
 }
 
 // envMap turns NAME=value entries into a map; an entry without "=" sets the name empty.

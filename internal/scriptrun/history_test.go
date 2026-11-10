@@ -2,6 +2,7 @@ package scriptrun
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -283,6 +284,10 @@ func TestChunkOfHoldsBackAHalfWrittenCharacter(t *testing.T) {
 	fromEnd := chunkOf(bytes.NewReader(marks), int64(len(marks)), -1, 4, true)
 	assert.Equal(t, "✓", fromEnd.Text, "a read from the end starts at a character")
 	assert.Equal(t, int64(3), fromEnd.Offset)
+
+	earlier := chunkOf(bytes.NewReader(marks), int64(len(marks)), 1, 5, true)
+	assert.Equal(t, "✓", earlier.Text, "so does a read that starts inside one, as Show earlier output's can")
+	assert.Equal(t, int64(3), earlier.Offset)
 }
 
 func TestOutputOfALogNotWrittenYet(t *testing.T) {
@@ -485,18 +490,55 @@ func TestRunAgainIsRefusedWhereItCantWork(t *testing.T) {
 	require.ErrorIs(t, err, ErrNotFound)
 }
 
-func TestOpenInTerminalIsNotAvailableYet(t *testing.T) {
+func TestOpenInTerminalOpensTheRunsFolder(t *testing.T) {
 	t.Parallel()
 
-	h := newHarness(t)
-	id := h.start(h.spec(testutil.FakeRun{}))
+	terminal := newFakeTerminal(t)
+	h := newHarness(t, func(c *Config) { c.Terminal = terminal })
+	spec := h.spec(testutil.FakeRun{})
+	id := h.start(spec)
 	h.ended(id)
 
+	require.NoError(t, h.s.OpenInTerminal(t.Context(), id))
+	assert.Equal(t, []string{fmt.Sprintf("run-%d %s", id, spec.Dir)}, terminal.opensIn(), "nothing is run there")
+
+	require.NoError(t, os.Remove(spec.Dir))
+
 	err := h.s.OpenInTerminal(t.Context(), id)
-	require.ErrorIs(t, err, ErrNotAvailable)
-	assert.Equal(t, "Opening a run in your terminal isn't available yet.", uierr.Message(err))
+	require.ErrorIs(t, err, ErrNoFolder)
+	assert.Contains(t, uierr.Message(err), "isn't there anymore.")
 
 	require.ErrorIs(t, h.s.OpenInTerminal(t.Context(), id+100), ErrNotFound)
+
+	bare := newHarness(t)
+	bareID := bare.start(bare.spec(testutil.FakeRun{}))
+	bare.ended(bareID)
+	require.ErrorIs(t, bare.s.OpenInTerminal(t.Context(), bareID), ErrNoTerminal)
+}
+
+func TestShowLogRevealsTheRunsLog(t *testing.T) {
+	t.Parallel()
+
+	reveal := &fakeReveal{}
+	h := newHarness(t, func(c *Config) { c.Reveal = reveal })
+	id := h.start(h.spec(testutil.FakeRun{Stdout: "done\n"}))
+	h.ended(id)
+
+	require.NoError(t, h.s.ShowLog(t.Context(), id))
+	assert.Equal(t, []string{h.e.files.log(id)}, reveal.paths())
+
+	require.NoError(t, os.Remove(h.e.files.log(id)))
+
+	err := h.s.ShowLog(t.Context(), id)
+	require.ErrorIs(t, err, ErrNoLog)
+	assert.Equal(t, "This run's log is gone.", uierr.Message(err))
+
+	require.ErrorIs(t, h.s.ShowLog(t.Context(), id+100), ErrNotFound)
+
+	bare := newHarness(t)
+	bareID := bare.start(bare.spec(testutil.FakeRun{}))
+	bare.ended(bareID)
+	require.ErrorIs(t, bare.s.ShowLog(t.Context(), bareID), ErrNoReveal)
 }
 
 func TestQuitAnywayCallsQuit(t *testing.T) {

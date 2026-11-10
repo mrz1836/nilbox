@@ -88,8 +88,12 @@ type Config struct {
 	// return promptly and never call back into the engine.
 	Changed func()
 
-	// Terminal opens runs in the user's terminal. Without it, they fail to start.
+	// Terminal opens runs in the user's terminal, and the terminal in a run's folder.
+	// Without it, runs there fail to start, and Open in terminal fails.
 	Terminal TerminalOpener
+
+	// Reveal shows a run's log file in Finder. Without it, Show the log file fails.
+	Reveal Revealer
 
 	// Quit is what the Service's QuitAnyway calls: the user chose to stop the runs and
 	// quit.
@@ -108,6 +112,7 @@ type Engine struct {
 	logger   *slog.Logger
 	changed  func()
 	terminal TerminalOpener
+	reveal   Revealer
 	quit     func()
 
 	// slots holds a token per run going in the app.
@@ -160,7 +165,8 @@ func NewEngine(cfg Config) *Engine {
 	return &Engine{
 		store: runStore{q: queries.New(cfg.DB)}, locks: locks, files: logFiles{dir: cfg.LogDir}, home: cfg.Home,
 		clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger), changed: cfg.Changed, terminal: cfg.Terminal,
-		quit: cfg.Quit, slots: make(chan struct{}, Slots),
+		reveal: cfg.Reveal,
+		quit:   cfg.Quit, slots: make(chan struct{}, Slots),
 		keep:       retention{runs: KeepRuns, bytes: KeepLogBytes},
 		compaction: compaction{over: CompactOver, head: CompactHead, tail: CompactTail},
 		tailEvery:  tailEvery, quitKill: QuitKillAfter, quitGrace: quitGrace, pidWait: pidWait,
