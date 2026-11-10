@@ -1,0 +1,9 @@
+{
+    "argv": [
+        "go-pre-commit",
+        "--version"
+    ],
+    "stdout": "go-pre-commit version 1.13.1 (commit: cf3b488734cae11acac58840a3177e93d00b53c3, built: 2026-10-18T04:07:07Z)\n",
+    "stderr": "",
+    "exit": 0
+}

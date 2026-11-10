@@ -1,0 +1,9 @@
+{
+    "argv": [
+        "magex",
+        "--version"
+    ],
+    "stdout": "\n███╗   ███╗ █████╗  ██████╗ ███████╗      ██╗  ██╗\n████╗ ████║██╔══██╗██╔════╝ ██╔════╝      ╚██╗██╔╝\n██╔████╔██║███████║██║  ███╗█████╗  █████╗ ╚███╔╝\n██║╚██╔╝██║██╔══██║██║   ██║██╔══╝  ╚════╝ ██╔██╗\n██║ ╚═╝ ██║██║  ██║╚██████╔╝███████╗      ██╔╝ ██╗\n╚═╝     ╚═╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝      ╚═╝  ╚═╝\n   🪄 MAGE-X - Write Once, Mage Everywhere\n\nVersion Information\n──────────────────────────────────────────────────\n  Version:      1.29.5\n  Commit:       9a61f25\n  Build Date:   2026-11-05T04:17:38Z\n  Build Time:   2026-11-05T04:17:38Z\n  Platform:     darwin/arm64\n  Go Version:   go1.26.10\n\n Capabilities\n──────────────────────────────────────────────────\n  Commands:     184 built-in commands\n  Namespaces:   25 specialized namespaces\n  AI Features:  6 commands across 2 namespaces\n\n Quick Start\n──────────────────────────────────────────────────\n  magex help       Show comprehensive help\n  magex build      Build your project\n  magex test       Run tests\n\n Learn More\n──────────────────────────────────────────────────\n  https://github.com/mrz1836/mage-x\n",
+    "stderr": "",
+    "exit": 0
+}
