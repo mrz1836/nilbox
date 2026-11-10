@@ -2,7 +2,9 @@ package desktop_test
 
 import (
 	"context"
+	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -36,6 +38,7 @@ func TestWindowEventsGoOnToThePage(t *testing.T) {
 	s.Emit(event.MenuBarChanged{On: false})
 	s.Emit(event.FirstPaint{})
 	s.Emit(event.IntegrationsChanged{})
+	s.Emit(event.QuitConfirmed{})
 
 	assert.Equal(t, []event.WindowEvent{
 		event.InboxUpdated{},
@@ -45,6 +48,8 @@ func TestWindowEventsGoOnToThePage(t *testing.T) {
 		event.SessionsUpdated{},
 		event.ReviewProgress{},
 		event.ToolsUpdated{},
+		event.ScriptRunsUpdated{},
+		event.QuitRequested{},
 	}, r.page.events(), "the shell's own events stay in Go")
 }
 
@@ -530,4 +535,97 @@ func withoutTray(lines []string) []string {
 	}
 
 	return out
+}
+
+// fakeGuard reports whether runs are going.
+type fakeGuard struct{ active atomic.Bool }
+
+func (g *fakeGuard) Active() bool { return g.active.Load() }
+
+func TestAQuitGoesThroughWithNothingRunning(t *testing.T) {
+	t.Parallel()
+
+	r := newRig()
+	assert.True(t, r.shell().ShouldQuit(), "without a guard, nothing holds a quit")
+
+	guard := &fakeGuard{}
+	s := r.shell(func(c *desktop.Config) { c.QuitGuard = guard })
+	assert.True(t, s.ShouldQuit(), "with no runs going, the quit goes through")
+	assert.Zero(t, r.window.shown())
+	assert.Empty(t, r.page.events())
+}
+
+func TestQuitBlockedWhileRunsActive(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig()
+		guard := &fakeGuard{}
+		guard.active.Store(true)
+
+		s := r.shell(func(c *desktop.Config) { c.QuitGuard = guard })
+
+		assert.False(t, s.ShouldQuit(), "a quit waits while runs go in the app")
+		synctest.Wait()
+
+		assert.Equal(t, 1, r.window.shown(), "the window comes forward to ask")
+		assert.Equal(t, []event.WindowEvent{event.QuitRequested{}}, r.page.events())
+		assert.Zero(t, r.app.quitCount())
+
+		s.Emit(event.QuitConfirmed{})
+		synctest.Wait()
+
+		assert.Equal(t, 1, r.app.quitCount(), "Stop and quit quits")
+		assert.True(t, s.ShouldQuit(), "and lets that quit through, though the runs still go")
+		assert.Equal(t, []event.WindowEvent{event.QuitRequested{}}, r.page.events(), "nothing more is asked")
+	})
+}
+
+func TestAQuitOnceStoppingGoesThrough(t *testing.T) {
+	t.Parallel()
+
+	r := newRig()
+	guard := &fakeGuard{}
+	guard.active.Store(true)
+
+	s := r.shell(func(c *desktop.Config) { c.QuitGuard = guard })
+
+	require.NoError(t, s.Stop())
+	assert.True(t, s.ShouldQuit())
+	assert.Zero(t, r.window.shown())
+}
+
+func TestQuitAnywayStopsThenQuits(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig()
+		guard := &fakeGuard{}
+		guard.active.Store(true)
+
+		runs := &fakeWorker{name: "runs", log: r.log}
+		s := r.shell(func(c *desktop.Config) {
+			c.QuitGuard = guard
+			c.Deferred = []desktop.Worker{runs}
+		})
+
+		s.Start(t.Context())
+		s.Launched()
+		s.Emit(event.FirstPaint{})
+		synctest.Wait()
+
+		require.False(t, s.ShouldQuit())
+		s.Emit(event.QuitConfirmed{})
+		synctest.Wait()
+		require.Equal(t, 1, r.app.quitCount())
+
+		// The quit goes through, and the runtime stops the shell: the runs' worker stops
+		// them before the data closes.
+		require.True(t, s.ShouldQuit())
+		require.NoError(t, s.Stop())
+		assert.Equal(t, []string{"runs started", "runs returned", "data closed"},
+			slices.DeleteFunc(r.log.all(), func(line string) bool {
+				return !strings.HasPrefix(line, "runs ") && line != "data closed"
+			}))
+	})
 }
