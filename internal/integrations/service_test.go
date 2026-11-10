@@ -193,6 +193,10 @@ func TestListShowsEachTool(t *testing.T) {
 			Version: Version{Raw: recordedMagex, Commit: "9a61f25"}, Source: SourceRelease, OnPath: true,
 		},
 		Others: []Copy{}, CheckedAt: "2026-11-10T09:00:00Z",
+		Install: InstallPlan{
+			Action: ActionReinstall, TargetDir: h.m.pathA, Target: filepath.Join(h.m.pathA, "magex"),
+			Replaces: recordedMagex, ReplacesPath: filepath.Join(h.m.pathA, "magex"), Foreign: true,
+		},
 	}, tools["mage-x"])
 }
 

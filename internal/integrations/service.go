@@ -12,10 +12,14 @@
 package integrations
 
 import (
+	"cmp"
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"runtime"
 	"sync"
 	"time"
 
@@ -23,9 +27,11 @@ import (
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
+	"github.com/mrz1836/nilbox/internal/integrations/internal/queries"
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/toolinstall"
 )
 
 const (
@@ -108,6 +114,23 @@ type Config struct {
 	// defaults to execpath.Exec, with stdin from /dev/null; tests hand in one that runs
 	// nothing.
 	Runner func(env []string) execpath.Runner
+
+	// DB holds tool_installs, the record of what the app installed. Without it no copy
+	// reads as installed by the app, and nothing is recorded.
+	DB *sql.DB
+
+	// Installer installs releases. Without it, nothing is installed.
+	Installer *toolinstall.Installer
+
+	// Commands runs Finder's scripts and open, for the Trash and Reveal in Finder.
+	Commands execpath.Runner
+
+	// InUse reports whether a run is using a tool, which an install then waits for.
+	// Without it, none is.
+	InUse func(id integrationprefs.ID) bool
+
+	// GOOS and GOARCH pick a release's archive. They default to this build's.
+	GOOS, GOARCH string
 }
 
 // Service says what the settings show about each tool, and looks again when asked.
@@ -126,6 +149,15 @@ type Service struct {
 	// no test looks in the machine's own tool folders.
 	dirsFor func(env []string, home string) searchDirs
 
+	queries      *queries.Queries
+	installer    *toolinstall.Installer
+	commands     execpath.Runner
+	inUse        func(id integrationprefs.ID) bool
+	goos, goarch string
+
+	// installMu runs one install at a time.
+	installMu sync.Mutex
+
 	// wake asks the worker to detect again.
 	wake chan struct{}
 
@@ -140,6 +172,13 @@ type Service struct {
 	detectedAt time.Time
 	pending    bool
 	running    bool
+
+	// installing is each running install's progress, and hashes the files hashed, by
+	// path; signedOut reports that the last update check found no one signed in to GitHub.
+	// mu guards them.
+	installing map[integrationprefs.ID]InstallProgress
+	hashes     map[string]cachedHash
+	signedOut  bool
 }
 
 // NewService returns a Service over cfg.
@@ -156,11 +195,22 @@ func NewService(cfg Config) *Service {
 		}
 	}
 
-	return &Service{
+	s := &Service{
 		prefs: cfg.Prefs, env: cfg.Env, releases: cfg.Releases, home: cfg.Home, clock: clock.Or(cfg.Clock),
 		events: event.Or(cfg.Events), logger: logging.Or(cfg.Logger), defs: defs, run: run, dirsFor: dirsFrom,
-		wake: make(chan struct{}, 1),
+		wake: make(chan struct{}, 1), installer: cfg.Installer, commands: cfg.Commands, inUse: cfg.InUse,
+		goos: cmp.Or(cfg.GOOS, runtime.GOOS), goarch: cmp.Or(cfg.GOARCH, runtime.GOARCH),
 	}
+
+	if cfg.DB != nil {
+		s.queries = queries.New(cfg.DB)
+	}
+
+	if s.inUse == nil {
+		s.inUse = func(integrationprefs.ID) bool { return false }
+	}
+
+	return s
 }
 
 // List returns what the settings show about every tool. It never waits for a detection:
@@ -197,7 +247,15 @@ func (s *Service) List(ctx context.Context) (Tools, error) {
 			d, checkedAt = seen.detection(), seen.CheckedAt
 		}
 
-		out.Tools = append(out.Tools, tool(def, cfg, d, decodeLatest(stored[latestKey(def.ID)]), checking, checkedAt, s.home))
+		latest := decodeLatest(stored[latestKey(def.ID)])
+		t := tool(def, cfg, d, latest, checking, checkedAt, s.home)
+		t.Install = s.plan(def, d, latest, t.State)
+
+		s.mu.Lock()
+		t.Progress = s.installing[def.ID]
+		s.mu.Unlock()
+
+		out.Tools = append(out.Tools, t)
 	}
 
 	select {
@@ -289,6 +347,11 @@ func (s *Service) detect(ctx context.Context) error {
 	got := detectAll(ctx, s.defs, chosen, s.dirsFor(env, s.home), env, s.home, s.run)
 	now := s.clock.Now()
 
+	for id, d := range got {
+		s.markInstalled(ctx, &d)
+		got[id] = d
+	}
+
 	if ctx.Err() != nil {
 		return ctx.Err() //nolint:wrapcheck // the caller's own context ended
 	}
@@ -358,6 +421,11 @@ func (s *Service) checkUpdates(ctx context.Context, maxAge time.Duration) error 
 	}
 
 	got, err := s.releases.LatestReleases(ctx, repos)
+
+	s.mu.Lock()
+	s.signedOut = errors.Is(err, ErrSignedOut)
+	s.mu.Unlock()
+
 	if err != nil {
 		if ctx.Err() == nil {
 			s.logger.InfoContext(ctx, "couldn't check the tools for updates", "error", err)
@@ -443,6 +511,7 @@ func (w *Worker) Run(ctx context.Context) {
 	}
 
 	w.detect(ctx)
+	w.s.cleanup()
 	_ = w.s.checkUpdates(ctx, updateEvery) // logged; the next tick tries again
 
 	ticker := time.NewTicker(w.tick)

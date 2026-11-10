@@ -83,6 +83,11 @@ func boundaries() []boundary {
 			why: "bump reads a dependency update from its title alone; prompts and the review sheet call it, never the reverse",
 		},
 		{
+			pkg:       "internal/toolinstall",
+			forbidden: append(slices.Clone(noService), "internal/integrations"),
+			why:       "toolinstall places a verified release; it keeps no records and speaks no HTTP, and the integrations call it",
+		},
+		{
 			pkg:       "internal/integrationprefs",
 			forbidden: noService,
 			why:       "integrationprefs declares the integrations' settings keys, which settings writes; it knows no service",

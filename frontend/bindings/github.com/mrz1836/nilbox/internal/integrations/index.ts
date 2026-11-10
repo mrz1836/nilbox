@@ -13,6 +13,9 @@ export {
 
 export type {
     Copy,
+    InstallPlan,
+    InstallProgress,
+    InstallResult,
     Latest,
     Tool,
     Tools,

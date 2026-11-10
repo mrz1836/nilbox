@@ -94,6 +94,6 @@ func TestLatestReleasesAsksNothingWhenSignedOut(t *testing.T) {
 	}
 
 	_, err := releases.LatestReleases(t.Context(), []repo.Name{{Owner: boundOwner, Repo: "example-tool"}})
-	require.Error(t, err)
+	require.ErrorIs(t, err, integrations.ErrSignedOut, "the integrations can say to sign in")
 	assert.Zero(t, requests.Load(), "no check runs while signed out")
 }

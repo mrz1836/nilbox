@@ -238,7 +238,8 @@ func brandJSON() []byte {
 
 // infoPlist renders the macOS bundle metadata. Keys are sorted, as plutil writes them.
 func infoPlist() []byte {
-	automation := brand.Name + " opens your terminal app (such as iTerm2) to start coding sessions in your local clones."
+	automation := brand.Name + " opens your terminal app (such as iTerm2) to start coding sessions in your local clones, " +
+		"and asks Finder to move a copy of a tool to the Trash when you choose to."
 
 	entries := []struct {
 		key   string

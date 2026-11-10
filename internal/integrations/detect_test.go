@@ -120,7 +120,13 @@ func (m *machine) run(ctx context.Context, path string, args, env []string) ([]b
 	m.mu.Unlock()
 
 	if !ok {
-		return nil, nil, errNoProgram
+		// A copy the test didn't put, such as one an install downloaded, prints what it holds.
+		data, err := os.ReadFile(path) //nolint:gosec // the test's own temporary files
+		if err != nil {
+			return nil, nil, errNoProgram
+		}
+
+		return data, nil, nil
 	}
 
 	if a.hang {

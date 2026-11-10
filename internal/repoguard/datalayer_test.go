@@ -71,6 +71,7 @@ func tableOwners() map[string]string {
 		"agent_sessions":    "sessions",
 		"review_diffs":      "review",
 		"review_diff_files": "review",
+		"tool_installs":     "integrations",
 	}
 }
 

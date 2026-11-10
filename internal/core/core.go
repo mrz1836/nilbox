@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/appdata"
@@ -45,6 +46,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/shellenv"
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/timing"
+	"github.com/mrz1836/nilbox/internal/toolinstall"
 	"github.com/mrz1836/nilbox/internal/worklog"
 	"github.com/mrz1836/nilbox/internal/worktrees"
 )
@@ -396,7 +398,12 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 
 	tools := integrations.NewService(integrations.Config{
 		Prefs: prefsstore.New(pool, opts.Clock), Env: shellEnv, Releases: latestReleases{tokens: tokens, client: client},
-		Home: opts.Home, Clock: opts.Clock, Events: opts.Events, Logger: logger, Runner: toolRunners,
+		Home: opts.Home, Clock: opts.Clock, Events: opts.Events, Logger: logger, Runner: toolRunners, DB: pool,
+		// Releases download straight from GitHub's download hosts, never through the API.
+		Installer: &toolinstall.Installer{
+			Downloads: filepath.Join(opts.Paths.Root, "downloads"), Download: client, Slug: brand.Slug,
+		},
+		Commands: runner,
 	})
 	toolFinder := integrations.NewWorker(tools)
 	followed.tools = toolFinder

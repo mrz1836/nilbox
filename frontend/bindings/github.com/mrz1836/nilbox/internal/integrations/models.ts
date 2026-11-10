@@ -41,9 +41,79 @@ export interface Copy {
     "onPath": boolean;
 
     /**
+     * InstalledAt and Archive say, for a copy the app installed, when it did and from which
+     * release archive.
+     */
+    "installedAt": string;
+    "archive": string;
+
+    /**
      * Shadowing reports the copy the user's terminal runs when it isn't the one in use.
      */
     "shadowing": boolean;
+}
+
+/**
+ * InstallPlan says what installing the tool would do, for the card's button and the
+ * install dialog, or why it can't.
+ */
+export interface InstallPlan {
+    /**
+     * Action is install, update, or reinstall.
+     */
+    "action": string;
+
+    /**
+     * Version and Archive are the latest release's version and its archive for this Mac,
+     * "" until the release is known.
+     */
+    "version": string;
+    "archive": string;
+
+    /**
+     * TargetDir and Target are where the program would go, with ~.
+     */
+    "targetDir": string;
+    "target": string;
+
+    /**
+     * Replaces is the version of the copy it would replace, and ReplacesPath where, or
+     * "" when it replaces none. Foreign reports a copy the app didn't install, which the
+     * user confirms replacing first.
+     */
+    "replaces": string;
+    "replacesPath": string;
+    "foreign": boolean;
+
+    /**
+     * Blocked says why it can't be done, as a sentence, or "" when it can; BrewCommand is
+     * the command that updates a Homebrew copy.
+     */
+    "blocked": string;
+    "brewCommand": string;
+}
+
+/**
+ * InstallProgress is how far an install of the tool has got.
+ */
+export interface InstallProgress {
+    /**
+     * Step is downloading, verifying, trying, or installing, or "" when none runs.
+     */
+    "step": string;
+    "done": number;
+    "total": number;
+}
+
+/**
+ * InstallResult is what an install did, and the tools as they are after it.
+ */
+export interface InstallResult {
+    /**
+     * Message says what was done, as in "Installed go-pre-commit 1.13.1 in ~/.local/bin".
+     */
+    "message": string;
+    "tools": Tools;
 }
 
 /**
@@ -65,7 +135,7 @@ export interface Latest {
 /**
  * Source says where a copy of a tool came from.
  */
-export type Source = "homebrew" | "goInstall" | "development" | "release";
+export type Source = "app" | "homebrew" | "goInstall" | "development" | "release";
 
 /**
  * The values of Source, by the names of their Go constants.
@@ -74,6 +144,12 @@ export const Source = {
     /**
      * The sources.
      *
+     * SourceApp is a copy the app installed: the newest install recorded at its path has
+     * its SHA-256.
+     */
+    SourceApp: "app",
+
+    /**
      * SourceHomebrew is a copy inside a Homebrew Cellar.
      */
     SourceHomebrew: "homebrew",
@@ -175,6 +251,13 @@ export interface Tool {
      * Latest is the tool's latest release, zero until it was checked.
      */
     "latest": Latest;
+
+    /**
+     * Install says what installing it would do, or why it can't; Progress is how far a
+     * running install has got, with an empty step when none runs.
+     */
+    "install": InstallPlan;
+    "progress": InstallProgress;
 
     /**
      * CheckedAt is when the tool was last looked for, or "" when it never was.

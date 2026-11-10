@@ -12,6 +12,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as integrationprefs$0 from "../integrationprefs/models.js";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
 /**
@@ -24,6 +28,14 @@ export function CheckAgain(): $CancellablePromise<$models.Tools> {
 }
 
 /**
+ * Install installs the latest release of a tool that has no copy, or whose copy it
+ * replaces, as its plan says, and returns what it did.
+ */
+export function Install(id: integrationprefs$0.ID): $CancellablePromise<$models.InstallResult> {
+    return $Call.ByID(2989765108, id);
+}
+
+/**
  * List returns what the settings show about every tool. It never waits for a detection:
  * until this run's first one ends, it serves the last one kept, and while one is asked
  * for or runs, the last one found; either way each tool is marked as checking, and an
@@ -32,4 +44,35 @@ export function CheckAgain(): $CancellablePromise<$models.Tools> {
  */
 export function List(): $CancellablePromise<$models.Tools> {
     return $Call.ByID(3213659501);
+}
+
+/**
+ * Reinstall installs the latest release again, as over a copy that won't run.
+ */
+export function Reinstall(id: integrationprefs$0.ID): $CancellablePromise<$models.InstallResult> {
+    return $Call.ByID(4238254175, id);
+}
+
+/**
+ * Reveal shows a copy of a tool in Finder: one detection found, never anything else.
+ */
+export function Reveal(id: integrationprefs$0.ID, path: string): $CancellablePromise<void> {
+    return $Call.ByID(2434231068, id, path);
+}
+
+/**
+ * Trash moves a copy of a tool to the Trash through Finder, so Finder's Put Back works:
+ * one the app installed, or another copy detection found, never anything else. The path
+ * is passed to the script as an argument, never written into it. When the user hasn't let
+ * the app control Finder, it returns ErrAutomationDenied.
+ */
+export function Trash(id: integrationprefs$0.ID, path: string): $CancellablePromise<$models.Tools> {
+    return $Call.ByID(4012530593, id, path);
+}
+
+/**
+ * Update installs the latest release over the tool's copy, as its plan says.
+ */
+export function Update(id: integrationprefs$0.ID): $CancellablePromise<$models.InstallResult> {
+    return $Call.ByID(945634048, id);
 }
