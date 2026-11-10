@@ -35,6 +35,19 @@ const (
 	TerminalApp ID = "terminal"
 )
 
+// Name returns the terminal's name as a sentence says it, as in "It runs in iTerm2.", or
+// "" for an ID no terminal has.
+func Name(id ID) string {
+	switch id {
+	case ITerm2:
+		return appITerm2
+	case TerminalApp:
+		return appTerminal
+	default:
+		return ""
+	}
+}
+
 // maxErrDetail caps how much of a terminal program's error output an error message carries.
 const maxErrDetail = 200
 
