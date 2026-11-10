@@ -22,6 +22,16 @@ export function Focus(id: string): $CancellablePromise<void> {
 }
 
 /**
+ * LastWords returns what the session with id last said, in full, read from the agent's own
+ * files, so the review sheet can show a whole verdict where a card shows its start. When the
+ * agent's files can't be read, it returns the start the ledger keeps, marked Partial; a
+ * session that said nothing has empty Words.
+ */
+export function LastWords(id: string): $CancellablePromise<$models.Words> {
+    return $Call.ByID(2957308872, id);
+}
+
+/**
  * List returns every session still running and the others launched in the last week,
  * newest first, and whether the app follows sessions.
  */

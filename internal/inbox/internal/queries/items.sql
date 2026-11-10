@@ -112,7 +112,7 @@ SELECT
     d.changed_files, d.commits, d.mergeable, d.checks_state, d.checks_passed, d.checks_failed,
     d.checks_pending, d.checks_skipped, d.review_decision, d.reviewers, d.reviewed, d.approvals,
     d.changes_requested, d.sub_issues_total, d.sub_issues_completed,
-    d.fetched_at AS details_fetched_at, d.head_oid, d.review_users, d.review_teams,
+    d.fetched_at AS details_fetched_at, d.head_oid, d.review_users, d.review_teams, d.auto_merge_method,
     f.item_id AS files_item_id, f.head_oid AS files_head_oid, f.total AS files_total, f.files,
     f.complete AS files_complete, f.error AS files_error, f.checked_at AS files_checked_at,
     ls.dismissed_at, ls.snoozed_until, ls.wake_reasons, ls.pinned_at
@@ -158,14 +158,40 @@ ORDER BY i.id;
 
 -- name: GetEditItem :one
 -- GetEditItem returns what an edit to the item with id on GitHub needs: the item, its
--- repository, the account whose inbox lists it, and the lists the user can leave. It
--- returns sql.ErrNoRows when no item has id.
+-- node ID, its repository, the account whose inbox lists it, the lists it is in, and its
+-- head commit when a refresh has read its details (NULL otherwise). It returns
+-- sql.ErrNoRows when no item has id.
 SELECT
-    i.id, i.kind, i.number, i.item_updated_at, i.reason_review_requested, i.reason_assigned,
-    r.owner AS repo_owner, r.name AS repo_name, a.login AS account_login
+    i.id, i.account_id, i.kind, i.number, i.node_id, i.item_updated_at, i.reason_review_requested,
+    i.reason_authored, i.reason_assigned, r.owner AS repo_owner, r.name AS repo_name, a.login AS account_login,
+    d.head_oid
 FROM items i
 JOIN repos r ON r.id = i.repo_id
 JOIN accounts a ON a.id = i.account_id
+LEFT JOIN item_details d ON d.item_id = i.id
+WHERE i.id = ?;
+
+-- name: GetReviewItem :one
+-- GetReviewItem returns what the review sheet shows of the item with id before asking
+-- GitHub: the item, its repository with its merge settings and the viewer's access, the
+-- account whose inbox lists it, the lists it is in, and its details when a refresh has
+-- read them (a column of missing details is NULL). It returns sql.ErrNoRows when no item
+-- has id.
+SELECT
+    i.id, i.kind, i.number, i.node_id, i.title, i.url, i.author_login, i.author_type, i.author_association,
+    i.is_cross_repository, i.is_draft, i.head_ref, i.item_created_at, i.item_updated_at,
+    i.reason_review_requested, i.reason_authored, i.reason_assigned,
+    r.owner AS repo_owner, r.name AS repo_name, r.default_branch, r.viewer_permission, r.viewer_merge_method,
+    r.merge_commit_allowed, r.squash_merge_allowed, r.rebase_merge_allowed, r.auto_merge_allowed,
+    r.delete_branch_on_merge, r.allow_update_branch, a.login AS account_login,
+    d.item_id AS details_item_id, d.labels, d.comments, d.additions, d.deletions, d.changed_files, d.commits,
+    d.mergeable, d.checks_state, d.checks_passed, d.checks_failed, d.checks_pending, d.checks_skipped,
+    d.review_decision, d.reviewers, d.reviewed, d.approvals, d.changes_requested, d.head_oid,
+    d.auto_merge_method, d.fetched_at AS details_fetched_at
+FROM items i
+JOIN repos r ON r.id = i.repo_id
+JOIN accounts a ON a.id = i.account_id
+LEFT JOIN item_details d ON d.item_id = i.id
 WHERE i.id = ?;
 
 -- name: LeaveAssigned :exec

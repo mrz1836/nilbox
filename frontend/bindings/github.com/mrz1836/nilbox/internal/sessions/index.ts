@@ -12,5 +12,6 @@ export {
 
 export type {
     Session,
-    Snapshot
+    Snapshot,
+    Words
 } from "./models.js";

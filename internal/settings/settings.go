@@ -207,6 +207,9 @@ type Settings struct {
 	// InboxOrder is which inbox lists are sorted by project status, and the order of the
 	// statuses.
 	InboxOrder InboxOrder `json:"inboxOrder"`
+
+	// MergeMethod is how the review sheet merges a pull request.
+	MergeMethod MergeMethod `json:"mergeMethod"`
 }
 
 // ProfileLookup finds an agent's stored profile by name, or returns
@@ -582,6 +585,7 @@ func fromStored(stored map[string]string) Settings {
 
 		ProjectsTipDismissed: decodeProjectsTipDismissed(stored[KeyProjectsTipDismissed]),
 		InboxOrder:           decodeInboxOrder(stored),
+		MergeMethod:          decodeMergeMethod(stored[KeyMergeMethod]),
 	}
 
 	if v := agent.ID(stored[KeyDefaultAgent]); agent.Known(v) {
@@ -698,6 +702,6 @@ func settingKeys() []string {
 		KeySnoozeDays, KeyWindowSize,
 		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, notifyprefs.KeyBannersOn, KeyTheme,
-		KeyTextSize, KeyProjectsTipDismissed,
+		KeyTextSize, KeyProjectsTipDismissed, KeyMergeMethod,
 	), append(append(collapsedKeys(), orderKeys()...), branchrules.Keys()...)...)
 }

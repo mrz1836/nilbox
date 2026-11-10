@@ -4,6 +4,7 @@ import { brand } from '../generated/brand'
 import { counted, errorMessage } from '../lib/format'
 import { isFindKey } from '../lib/keys'
 import { kindPlural, promptApplies, usageCount, usagePlaces } from '../lib/launch'
+import { replyDefaultsText, replySlotPlaces, replySlots } from '../lib/replies'
 import { useMutation } from '../lib/useMutation'
 import { useDebouncedQuery } from '../lib/useQuery'
 import {
@@ -16,6 +17,7 @@ import {
   exportPrompts,
   resetPrompt,
   setDefaultPrompt,
+  setReplyDefault,
   updatePrompt,
   type AgentInfo,
   type DefaultPrompts,
@@ -25,6 +27,7 @@ import {
   type PerAgent,
   type Prompt,
   type PromptInput,
+  type PromptPurpose,
   type PromptVariable,
 } from '../platform'
 import { ConfirmDialog, type ConfirmDialogProps } from './ConfirmDialog'
@@ -53,7 +56,10 @@ import { VariablesPanel } from './VariablesPanel'
 export interface PromptsViewProps {
   // agents are the coding agents, whose models and flags a prompt can set.
   agents: readonly AgentInfo[]
+  // prompts are the agent prompts, and replies the review replies, each as the library
+  // lists them.
   prompts: readonly Prompt[]
+  replies: readonly Prompt[]
   defaults: DefaultPrompts | null
   variables: readonly PromptVariable[]
   // items are the inbox's items, offered to preview a prompt with.
@@ -63,9 +69,15 @@ export interface PromptsViewProps {
   onChanged: () => Promise<void>
 }
 
+// Library is the whole prompt library: its agent prompts and its review replies.
+interface Library {
+  prompts: readonly Prompt[]
+  replies: readonly Prompt[]
+}
+
 // Pending is a question the page is asking before it acts.
 type Pending =
-  | { kind: 'discard'; then: Selection }
+  | { kind: 'discard'; then: Selection | null; mode: PromptPurpose }
   | { kind: 'delete'; prompt: Prompt }
   | { kind: 'in-use'; prompt: Prompt }
   | { kind: 'reset'; prompt: Prompt }
@@ -89,11 +101,25 @@ const blankInput: PromptInput = {
   nickname: '',
   appliesTo: 'pr',
   body: newPromptBody,
+  purpose: 'agent',
+  replyAction: '',
   models: {},
   effort: '',
   planMode: null,
   worktree: null,
   extraFlags: {},
+}
+
+// newReplyBody starts a new reply by thanking the pull request's author.
+const newReplyBody = 'Thanks, @{{.Author}}!\n'
+
+// blankReply is a new review reply: an approval, which applies to pull requests and sets
+// nothing for a launch.
+const blankReply: PromptInput = { ...blankInput, body: newReplyBody, purpose: 'reply', replyAction: 'approve' }
+
+// nounOf names what a prompt is: a prompt, or a reply.
+function nounOf(purpose: PromptPurpose): string {
+  return purpose === 'reply' ? 'reply' : 'prompt'
 }
 
 // toInput is a stored prompt as the editor holds it.
@@ -103,6 +129,8 @@ function toInput(p: Prompt): PromptInput {
     nickname: p.nickname,
     appliesTo: p.appliesTo,
     body: p.body,
+    purpose: p.purpose,
+    replyAction: p.replyAction,
     models: { ...p.models },
     effort: p.effort,
     planMode: p.planMode,
@@ -125,6 +153,7 @@ function sameInput(a: PromptInput, b: PromptInput): boolean {
     a.name === b.name &&
     a.nickname === b.nickname &&
     a.appliesTo === b.appliesTo &&
+    a.replyAction === b.replyAction &&
     a.body === b.body &&
     samePerAgent(a.models, b.models) &&
     a.effort === b.effort &&
@@ -176,13 +205,16 @@ function touchedField(field: string, draft: PromptInput, start: PromptInput): bo
 
 // PromptsView is the Prompts page: the prompt library on the left, the selected prompt's
 // editor in the middle, and its live preview and the variables cheat sheet on the right.
-// Edits are checked by the backend as you type and saved with Save (or ⌘S). Leaving a
-// prompt with unsaved changes asks first.
-export function PromptsView({ agents, prompts, defaults, variables, items, onChanged }: PromptsViewProps) {
+// The library shows either the agent prompts or the review replies, and a stored prompt
+// always opens in its own part. Edits are checked by the backend as you type and saved
+// with Save (or ⌘S). Leaving a prompt with unsaved changes asks first.
+export function PromptsView({ agents, prompts, replies, defaults, variables, items, onChanged }: PromptsViewProps) {
   const id = useId()
   const editorRef = useRef<TemplateEditorHandle>(null)
   // searchRef is the library's search field, which ⌘F focuses.
   const searchRef = useRef<HTMLInputElement>(null)
+  // mode is the part of the library on show: the agent prompts or the review replies.
+  const [mode, setMode] = useState<PromptPurpose>('agent')
   const [selection, setSelection] = useState<Selection | null>(null)
   const [baseline, setBaseline] = useState<PromptInput>(blankInput)
   const [draft, setDraft] = useState<PromptInput>(blankInput)
@@ -199,8 +231,13 @@ export function PromptsView({ agents, prompts, defaults, variables, items, onCha
   // importing is the import under way in its dialog, or null.
   const [importing, setImporting] = useState<ImportStart | null>(null)
 
+  const replyMode = mode === 'reply'
+  const noun = nounOf(mode)
+  // listed is the part of the library on show.
+  const listed = replyMode ? replies : prompts
+
   // applicableItems are the inbox items the draft applies to, which it can be previewed
-  // with.
+  // with: a reply applies to pull requests.
   const applicableItems = items.filter((item) => promptApplies({ appliesTo: draft.appliesTo }, item.kind))
 
   // previewItem is the item chosen to preview with: the one picked while the prompt
@@ -217,17 +254,18 @@ export function PromptsView({ agents, prompts, defaults, variables, items, onCha
         id: selection?.kind === 'prompt' ? selection.id : 0,
         input: draft,
         itemId: previewItem,
-        inWorktree,
-        atPrHead,
+        // A reply starts no session.
+        inWorktree: !replyMode && inWorktree,
+        atPrHead: !replyMode && atPrHead,
       }).then((result) => ({ opened, result })),
-    [selection, draft, previewItem, inWorktree, atPrHead, opened],
+    [selection, draft, previewItem, inWorktree, atPrHead, replyMode, opened],
     150,
     { enabled: selection !== null },
   )
   const check = checked.data?.opened === opened ? checked.data.result : null
   const checkError = !checked.pending && checked.error !== '' ? `Could not check the prompt: ${checked.error}` : ''
 
-  const saved = selection?.kind === 'prompt' ? (prompts.find((p) => p.id === selection.id) ?? null) : null
+  const saved = selection?.kind === 'prompt' ? (listed.find((p) => p.id === selection.id) ?? null) : null
   const dirty = selection !== null && !sameInput(draft, baseline)
   // A new prompt's empty fields are not problems to point at until they are edited.
   const shownFields = (check?.fields ?? []).filter(
@@ -238,17 +276,21 @@ export function PromptsView({ agents, prompts, defaults, variables, items, onCha
   const hiddenProblems = (check?.fields.length ?? 0) - shownFields.length
   const problemCount = shownFields.length + diagnostics.filter((d: Diagnostic) => d.severity === 'error').length
 
-  // open shows a prompt from list (or a new one) in the editor, and reports whether it
-  // could: a stored prompt must be in the list.
-  const open = (list: readonly Prompt[], next: Selection): boolean => {
-    const stored = next.kind === 'prompt' ? list.find((p) => p.id === next.id) : undefined
+  // open shows a prompt from lists in the editor, a new one, or none, and reports whether
+  // it could: a stored prompt must be in the library, and shows in its own part of it;
+  // anything else shows in the part in.
+  const open = (lists: Library, next: Selection | null, part: PromptPurpose): boolean => {
+    const stored =
+      next?.kind === 'prompt' ? [...lists.prompts, ...lists.replies].find((p) => p.id === next.id) : undefined
 
-    if (next.kind === 'prompt' && stored === undefined) {
+    if (next?.kind === 'prompt' && stored === undefined) {
       return false
     }
 
-    const input = stored === undefined ? blankInput : toInput(stored)
+    const shows = stored?.purpose ?? part
+    const input = stored === undefined ? (shows === 'reply' ? blankReply : blankInput) : toInput(stored)
 
+    setMode(shows)
     setSelection(next)
     setBaseline(input)
     setDraft(input)
@@ -257,41 +299,55 @@ export function PromptsView({ agents, prompts, defaults, variables, items, onCha
     return true
   }
 
-  const select = (next: Selection) => {
-    open(prompts, next)
+  const select = (next: Selection | null, part: PromptPurpose = mode) => {
+    open({ prompts, replies }, next, part)
   }
 
   // afterReload is the prompt an action asked to open once the library reloads.
   const [afterReload, setAfterReload] = useState<Selection | null>(null)
-  // library is the prompt list last seen, to notice when a reload brings a new one.
-  const [library, setLibrary] = useState<readonly Prompt[] | null>(null)
+  // library is the library last seen, to notice when a reload brings a new one.
+  const [library, setLibrary] = useState<Library | null>(null)
 
   // Whenever the library loads, open the prompt an action asked for, or else the first
-  // prompt when none is open or the open one was deleted. This adjusts state while
-  // rendering, as React recommends for reacting to a changed prop.
-  if (library !== prompts) {
-    setLibrary(prompts)
+  // one on show when none is open or the open one was deleted, or none when nothing is
+  // left on show. This adjusts state while rendering, as React recommends for reacting
+  // to a changed prop.
+  if (library === null || library.prompts !== prompts || library.replies !== replies) {
+    const lists = { prompts, replies }
 
-    const wanted = afterReload !== null && open(prompts, afterReload)
+    setLibrary(lists)
+
+    const wanted = afterReload !== null && open(lists, afterReload, mode)
 
     if (wanted) {
       setAfterReload(null)
-    } else if (selection === null || (selection.kind === 'prompt' && !prompts.some((p) => p.id === selection.id))) {
-      const first = prompts[0]
+    } else if (selection === null || (selection.kind === 'prompt' && !listed.some((p) => p.id === selection.id))) {
+      const first = listed[0]
 
       if (first !== undefined) {
-        open(prompts, { kind: 'prompt', id: first.id })
+        open(lists, { kind: 'prompt', id: first.id }, mode)
+      } else if (selection !== null) {
+        open(lists, null, mode)
       }
     }
   }
 
-  // ask switches prompts, asking first when the current one has unsaved changes.
-  const ask = (next: Selection) => {
+  // ask switches prompts, or to another part of the library, asking first when the
+  // current prompt has unsaved changes.
+  const ask = (next: Selection | null, part: PromptPurpose = mode) => {
     if (dirty) {
-      setPending({ kind: 'discard', then: next })
+      setPending({ kind: 'discard', then: next, mode: part })
     } else {
-      select(next)
+      select(next, part)
     }
+  }
+
+  // switchMode shows the other part of the library, opening its first prompt, or none
+  // when it has none.
+  const switchMode = (part: PromptPurpose) => {
+    const first = (part === 'reply' ? replies : prompts)[0]
+
+    ask(first === undefined ? null : { kind: 'prompt', id: first.id }, part)
   }
 
   // saver stores the draft as a new prompt or over the open one, then reloads the library.
@@ -332,7 +388,10 @@ export function PromptsView({ agents, prompts, defaults, variables, items, onCha
     setSelection({ kind: 'prompt', id: stored.id })
     setBaseline(toInput(stored))
     setDraft((current) => (sameInput(current, submitted) ? toInput(stored) : current))
-    setStatus({ tone: 'success', text: selection.kind === 'new' ? 'Prompt created.' : 'Saved.' })
+    setStatus({
+      tone: 'success',
+      text: selection.kind === 'new' ? `${replyMode ? 'Reply' : 'Prompt'} created.` : 'Saved.',
+    })
   }
 
   const canSave = dirty && problemCount === 0 && hiddenProblems === 0 && !busy
@@ -452,7 +511,7 @@ export function PromptsView({ agents, prompts, defaults, variables, items, onCha
       label: 'Export all prompts…',
       icon: <ExportIcon className="size-4 text-muted" />,
       divided: true,
-      disabled: prompts.length === 0,
+      disabled: prompts.length + replies.length === 0,
       onSelect: () => {
         void exportTo([], `${brand.name} prompts ${datePart(new Date())}.json`)
       },
@@ -463,29 +522,45 @@ export function PromptsView({ agents, prompts, defaults, variables, items, onCha
   // the last action went.
   const shown = status?.tone === 'error' || checkError === '' ? status : { tone: 'error' as const, text: checkError }
 
+  // replyDefaultItems offers to make a reply the default for each review it is written
+  // for, where it is not already.
+  const replyDefaultItems = (p: Prompt): MenuItem[] =>
+    replySlots(p.replyAction)
+      .filter((slot) => !p.usage.replies.includes(slot))
+      .map((slot) => ({
+        label: `Make the default for ${replySlotPlaces[slot]}`,
+        icon: <StarIcon className="size-4 text-muted" />,
+        onSelect: () => {
+          void run(async () => {
+            await setReplyDefault(slot, p.id)
+
+            return null
+          }, `“${p.nickname}” is now the default for ${replySlotPlaces[slot]}.`)
+        },
+      }))
+
+  // promptDefaultItems offers to make an agent prompt the app's default for each kind of
+  // item it applies to, where it is not already.
+  const promptDefaultItems = (p: Prompt): MenuItem[] =>
+    (['pr', 'issue'] as const)
+      .filter((kind) => promptApplies(p, kind) && (kind === 'pr' ? defaults?.pr : defaults?.issue) !== p.id)
+      .map((kind) => ({
+        label: `Make the default for ${kindPlural(kind)}`,
+        icon: <StarIcon className="size-4 text-muted" />,
+        onSelect: () => {
+          void run(
+            async () => {
+              await setDefaultPrompt(kind, p.id)
+
+              return null
+            },
+            `“${p.nickname}” is now the default for ${kindPlural(kind)}.`,
+          )
+        },
+      }))
+
   const menuItems = (p: Prompt): MenuItem[] => {
-    const items: MenuItem[] = []
-
-    for (const kind of ['pr', 'issue'] as const) {
-      const isDefault = (kind === 'pr' ? defaults?.pr : defaults?.issue) === p.id
-
-      if (promptApplies(p, kind) && !isDefault) {
-        items.push({
-          label: `Make the default for ${kindPlural(kind)}`,
-          icon: <StarIcon className="size-4 text-muted" />,
-          onSelect: () => {
-            void run(
-              async () => {
-                await setDefaultPrompt(kind, p.id)
-
-                return null
-              },
-              `“${p.nickname}” is now the default for ${kindPlural(kind)}.`,
-            )
-          },
-        })
-      }
-    }
+    const items = p.purpose === 'reply' ? replyDefaultItems(p) : promptDefaultItems(p)
 
     items.push({
       label: 'Duplicate',
@@ -542,20 +617,26 @@ export function PromptsView({ agents, prompts, defaults, variables, items, onCha
           cancelLabel: 'Keep editing',
           children:
             selection?.kind === 'new'
-              ? 'The new prompt hasn’t been created yet.'
+              ? `The new ${noun} hasn’t been created yet.`
               : `“${baseline.nickname}” has changes that aren’t saved.`,
           onConfirm: () => {
-            select(asked.then)
+            select(asked.then, asked.mode)
           },
         }
-      case 'delete':
+      case 'delete': {
+        const what = nounOf(asked.prompt.purpose)
+        const gone =
+          asked.prompt.starterKey !== ''
+            ? `It’s a starter ${what}, and it won’t be added back.`
+            : 'This can’t be undone.'
+        // A reply that is a default can go: the review then has no default reply.
+        const slots = asked.prompt.usage.replies
+        const undefaulted = slots.length > 0 ? ` It stops being the default for ${replyDefaultsText(slots)}.` : ''
+
         return {
           title: `Delete “${asked.prompt.nickname}”?`,
-          confirmLabel: 'Delete prompt',
-          children:
-            asked.prompt.starterKey !== ''
-              ? 'It’s a starter prompt, and it won’t be added back.'
-              : 'This can’t be undone.',
+          confirmLabel: `Delete ${what}`,
+          children: gone + undefaulted,
           onConfirm: () => {
             void run(async () => {
               await deletePrompt(asked.prompt.id)
@@ -564,6 +645,7 @@ export function PromptsView({ agents, prompts, defaults, variables, items, onCha
             }, `Deleted “${asked.prompt.nickname}”.`)
           },
         }
+      }
       case 'in-use':
         return {
           title: `“${asked.prompt.nickname}” is still in use`,
@@ -587,20 +669,26 @@ export function PromptsView({ agents, prompts, defaults, variables, items, onCha
             // Acknowledging is all there is to do.
           },
         }
-      default:
+      default: {
+        const reply = asked.prompt.purpose === 'reply'
+
         return {
           title: `Reset “${asked.prompt.nickname}”?`,
           confirmLabel: 'Reset to original',
           tone: 'primary',
-          children: `Its title, text, and launch settings go back to how the app ships them.${dirty ? ' Your unsaved changes are discarded too.' : ''}`,
+          children: `Its title, text, and ${reply ? 'action' : 'launch settings'} go back to how the app ships them.${dirty ? ' Your unsaved changes are discarded too.' : ''}`,
           onConfirm: () => {
-            void run(async () => {
-              await resetPrompt(asked.prompt.id)
+            void run(
+              async () => {
+                await resetPrompt(asked.prompt.id)
 
-              return { kind: 'prompt', id: asked.prompt.id }
-            }, `Reset “${asked.prompt.nickname}” to its original text and settings.`)
+                return { kind: 'prompt', id: asked.prompt.id }
+              },
+              `Reset “${asked.prompt.nickname}” to its original text and ${reply ? 'action' : 'settings'}.`,
+            )
           },
         }
+      }
     }
   }
 
@@ -621,11 +709,15 @@ export function PromptsView({ agents, prompts, defaults, variables, items, onCha
   return (
     <div className="flex h-full min-h-0">
       <PromptLibrary
-        prompts={prompts}
+        mode={mode}
+        onModeChange={switchMode}
+        prompts={listed}
         selection={selection}
         newNickname={draft.nickname}
         dirty={dirty}
-        onAsk={ask}
+        onAsk={(next) => {
+          ask(next)
+        }}
         actions={libraryActions}
         searchRef={searchRef}
       />
@@ -634,7 +726,7 @@ export function PromptsView({ agents, prompts, defaults, variables, items, onCha
         {selection === null ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
             <DocumentIcon className="size-8 text-muted" />
-            <p className="text-sm text-muted">No prompts yet.</p>
+            <p className="text-sm text-muted">{replyMode ? 'No replies yet.' : 'No prompts yet.'}</p>
             <div className="flex gap-2">
               <button
                 type="button"
@@ -644,7 +736,7 @@ export function PromptsView({ agents, prompts, defaults, variables, items, onCha
                 className={primaryButtonClass}
               >
                 <PlusIcon className="size-4" />
-                New prompt
+                New {noun}
               </button>
               <button
                 type="button"
@@ -663,7 +755,8 @@ export function PromptsView({ agents, prompts, defaults, variables, items, onCha
             <div className="flex items-center justify-end gap-2 px-6 pt-4">
               {saved?.starterKey !== '' && saved !== null && (
                 <span className="mr-auto text-xs text-muted">
-                  {saved.modified ? 'Starter prompt · changed' : 'Starter prompt'}
+                  Starter {noun}
+                  {saved.modified ? ' · changed' : ''}
                 </span>
               )}
               {saved !== null && (
@@ -707,7 +800,7 @@ export function PromptsView({ agents, prompts, defaults, variables, items, onCha
                     : dirty && problemCount > 0
                       ? `Fix ${String(problemCount)} ${problemCount === 1 ? 'problem' : 'problems'} to save.`
                       : hiddenProblems > 0
-                        ? 'Give the prompt a title and a nickname to create it.'
+                        ? `Give the ${noun} a title and a nickname to create it.`
                         : dirty
                           ? 'Unsaved changes'
                           : (shown?.text ?? '')}
@@ -718,11 +811,9 @@ export function PromptsView({ agents, prompts, defaults, variables, items, onCha
                   disabled={busy}
                   onClick={() => {
                     if (selection.kind === 'new') {
-                      const first = prompts[0]
+                      const first = listed[0]
 
-                      if (first !== undefined) {
-                        select({ kind: 'prompt', id: first.id })
-                      }
+                      select(first === undefined ? null : { kind: 'prompt', id: first.id })
                     } else {
                       setDraft(baseline)
                     }
@@ -741,7 +832,7 @@ export function PromptsView({ agents, prompts, defaults, variables, items, onCha
                 title="Save (⌘S)"
                 className={primaryButtonClass}
               >
-                {selection.kind === 'new' ? 'Create prompt' : 'Save'}
+                {selection.kind === 'new' ? `Create ${noun}` : 'Save'}
               </button>
             </footer>
           </>
@@ -774,6 +865,7 @@ export function PromptsView({ agents, prompts, defaults, variables, items, onCha
                 forPRs={forPRs}
                 result={check}
                 hasErrors={diagnostics.some((d) => d.severity === 'error')}
+                reply={replyMode}
               />
             ) : (
               <VariablesPanel

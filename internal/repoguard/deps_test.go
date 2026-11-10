@@ -68,6 +68,22 @@ func boundaries() []boundary {
 			forbidden: []string{"internal/core"},
 			why:       "the shell reaches the services through the interfaces it declares; the desktop bootstrap wires the core into it",
 		},
+		{
+			pkg: "internal/bump",
+			forbidden: []string{
+				"internal/github", "internal/inbox", "internal/prompts", "internal/settings", "internal/store",
+			},
+			why: "bump reads a dependency update from its title alone; prompts and the review sheet call it, never the reverse",
+		},
+		{
+			pkg: "internal/review",
+			forbidden: []string{
+				"internal/inbox", "internal/settings", "internal/prompts", "internal/launcher", "internal/worktrees",
+				"internal/sessions", "internal/core", "internal/desktop",
+			},
+			why: "the review sheet reaches the inbox, the settings, and the replies through its own Inbox, Settings, " +
+				"and Replies interfaces",
+		},
 	}
 }
 

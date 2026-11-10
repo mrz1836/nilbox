@@ -23,8 +23,9 @@ const (
 	// BundleVersion is the version of the format this build writes, and the newest it
 	// reads. A change that an older build would misread raises it; adding a field does not.
 	// Version 2 keeps a model and extra arguments per agent; a version 1 file's are
-	// Claude's.
-	BundleVersion = 2
+	// Claude's. Version 3 adds review replies, which an older build would import as agent
+	// prompts; a version 1 or 2 file holds agent prompts only.
+	BundleVersion = 3
 
 	// maxBundleBytes caps the size of a prompt file Import reads.
 	maxBundleBytes = 8 << 20
@@ -55,10 +56,10 @@ var (
 //
 //	{
 //	  "format": "<slug>.prompts",
-//	  "version": 2,
+//	  "version": 3,
 //	  "exportedAt": "2026-11-08T17:00:00Z",
 //	  "app": "v0.4.0",
-//	  "defaults": {"pr": "Review", "issue": "Work on it"},
+//	  "defaults": {"pr": "Review", "issue": "Work on it", "replies": {"approve": "LGTM"}},
 //	  "startersAdded": ["review-pr", "work-on-issue"],
 //	  "prompts": [{"name": "Review a pull request", "nickname": "Review", ...}]
 //	}
@@ -93,6 +94,19 @@ type Bundle struct {
 type BundleDefaults struct {
 	PR    string `json:"pr"`
 	Issue string `json:"issue"`
+
+	// Replies names the default reply for each slot by nickname, leaving out a slot whose
+	// default is none of the file's prompts.
+	Replies map[ReplySlot]string `json:"replies,omitempty"`
+}
+
+// setReply names nickname the default reply for slot.
+func (d *BundleDefaults) setReply(slot ReplySlot, nickname string) {
+	if d.Replies == nil {
+		d.Replies = map[ReplySlot]string{}
+	}
+
+	d.Replies[slot] = nickname
 }
 
 // BundlePrompt is one prompt in portable form: its text, its names, and its launch
@@ -102,6 +116,13 @@ type BundlePrompt struct {
 	Nickname  string    `json:"nickname"`
 	AppliesTo AppliesTo `json:"appliesTo"`
 	Body      string    `json:"body"`
+
+	// Purpose is PurposeAgent or PurposeReply; a file older than version 3 holds agent
+	// prompts only, and reads as "".
+	Purpose Purpose `json:"purpose"`
+
+	// Action is a reply's review, and "" for an agent prompt.
+	Action ReplyAction `json:"action"`
 
 	// Models is each agent's model; an agent with no entry inherits.
 	Models map[agent.ID]string `json:"models"`
@@ -149,23 +170,32 @@ func newBundle(lib Library, startersAdded []string, ids []int64, now time.Time, 
 		}
 
 		b.Prompts = append(b.Prompts, bundlePrompt(p))
-
-		if p.ID == lib.Defaults.PR {
-			b.Defaults.PR = p.Nickname
-		}
-
-		if p.ID == lib.Defaults.Issue {
-			b.Defaults.Issue = p.Nickname
-		}
+		b.Defaults.name(lib.Defaults, p)
 	}
 
 	return b
 }
 
+// name records p by nickname wherever defaults makes it a default.
+func (d *BundleDefaults) name(defaults DefaultPrompts, p Prompt) {
+	if p.ID == defaults.PR {
+		d.PR = p.Nickname
+	}
+
+	if p.ID == defaults.Issue {
+		d.Issue = p.Nickname
+	}
+
+	for _, slot := range defaults.Replies.Slots(p.ID) {
+		d.setReply(slot, p.Nickname)
+	}
+}
+
 // bundlePrompt returns a stored prompt in portable form.
 func bundlePrompt(p Prompt) BundlePrompt {
 	return BundlePrompt{
-		Name: p.Name, Nickname: p.Nickname, AppliesTo: p.AppliesTo, Body: p.Body, Models: agent.CloneModels(p.Models),
+		Name: p.Name, Nickname: p.Nickname, AppliesTo: p.AppliesTo, Body: p.Body, Purpose: purposeOf(p.Purpose),
+		Action: actionOf(p), Models: agent.CloneModels(p.Models),
 		Effort: p.Effort, PlanMode: p.PlanMode, Worktree: p.Worktree, ExtraArgs: agent.CloneArgs(p.ExtraArgs),
 		StarterKey: p.StarterKey, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
 	}

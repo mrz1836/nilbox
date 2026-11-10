@@ -130,6 +130,12 @@ export const appliesToLabels: Readonly<Record<PromptAppliesTo, string>> = {
   any: 'Both',
 }
 
+// isAgentPrompt reports a prompt a launch can use: every prompt but a review reply, which
+// the review sheet fills in as a review's text and never launches an agent.
+export function isAgentPrompt(prompt: Pick<Prompt, 'purpose'>): boolean {
+  return prompt.purpose !== 'reply'
+}
+
 // promptApplies reports whether a prompt can launch an item of kind.
 export function promptApplies(prompt: Pick<Prompt, 'appliesTo'>, kind: ItemKind): boolean {
   return prompt.appliesTo === 'any' || prompt.appliesTo === kind

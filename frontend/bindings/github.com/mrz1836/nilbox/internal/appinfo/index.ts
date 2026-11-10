@@ -14,5 +14,6 @@ export type {
     AgentVersion,
     DataReset,
     Info,
-    Restored
+    Restored,
+    ToolVersion
 } from "./models.js";

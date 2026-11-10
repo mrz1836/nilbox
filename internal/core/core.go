@@ -34,6 +34,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/procs"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
+	"github.com/mrz1836/nilbox/internal/review"
 	"github.com/mrz1836/nilbox/internal/sessions"
 	"github.com/mrz1836/nilbox/internal/sessions/observe/claude"
 	"github.com/mrz1836/nilbox/internal/sessions/observe/codex"
@@ -111,6 +112,7 @@ type Core struct {
 	AppInfo        *appinfo.Service
 	Budget         *budget.Service
 	Sessions       *sessions.Service
+	Review         *review.Service
 
 	// ShellSettings are the settings the desktop shell reads when the app launches. They
 	// are not bound.
@@ -213,7 +215,7 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 func (c *Core) Services() []any {
 	return []any{
 		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.Notifications,
-		c.AppInfo, c.Budget, c.Sessions,
+		c.AppInfo, c.Budget, c.Sessions, c.Review,
 	}
 }
 
@@ -402,12 +404,14 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Logger:    logger,
 	})
 
+	previews := launcher.NewPromptSource(launch)
+
 	return &Core{
 		DB:       pool,
 		Settings: prefs,
 		Profiles: profiles.NewService(profileStore, opts.Home, search),
 		Prompts: prompts.NewService(prompts.Config{
-			Store: promptStore, Usage: defaultsStore, Source: launcher.NewPromptSource(launch),
+			Store: promptStore, Usage: defaultsStore, Source: previews,
 			File: info.kept.promptFile, Database: opts.Paths.DB, App: opts.Version, Clock: opts.Clock, Logger: logger,
 			Changed: info.kept.saveDefaults,
 		}),
@@ -435,7 +439,12 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 			Tracker: tracker, Reader: rateReader{tokens: tokens, client: client}, Clock: opts.Clock,
 			RefreshInterval: inbox.DefaultInterval,
 		}),
-		Sessions:      follow.service,
+		Sessions: follow.service,
+		Review: review.NewService(review.Config{
+			Pool: pool, Inbox: reviewInbox{store: inboxStore, actor: inbox.NewActor(inboxSvc)}, GitHub: client,
+			Settings: reviewSettings{settings: prefs}, Replies: reviewReplies{store: promptStore, source: previews},
+			Events: opts.Events, Clock: opts.Clock, Logger: logger,
+		}),
 		Watcher:       follow.watcher,
 		ShellSessions: ShellSessions{ledger: follow.ledger, service: follow.service},
 		ShellSettings: newShellSettings(prefs, pool, opts.Clock),
@@ -494,6 +503,9 @@ func followSessions(
 	cfg := sessions.Config{
 		Store: store, Watcher: watcher, Switch: prefs, Focuser: terminalFocuser{registry: registry}, PS: runner,
 		Home: opts.Home, Events: opts.Events, Clock: opts.Clock, Logger: logger,
+		Words: map[agent.ID]sessions.WordsReader{
+			agent.Claude: claude.Words{Home: opts.Home}, agent.Codex: codex.Words{Home: opts.Home},
+		},
 	}
 
 	return following{ledger: sessions.NewLedger(cfg), watcher: watcher, service: sessions.NewService(cfg)}

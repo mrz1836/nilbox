@@ -90,6 +90,8 @@ export interface ListSectionProps {
   // onFilterBy adds a filter to the inbox's query, or takes it away, as a card's
   // repository, author, and labels do when clicked.
   onFilterBy?: ((key: string, value: string) => void) | undefined
+  // onReview opens a pull request of this list in the review sheet (see ItemRow).
+  onReview?: ((id: number, tab: TriageTab) => void) | undefined
 }
 
 // ListSection is one inbox list as tabs: the list itself, then what was snoozed and
@@ -118,6 +120,7 @@ export function ListSection({
   matched,
   marks = '',
   onFilterBy,
+  onReview,
 }: ListSectionProps) {
   const id = useId()
   const [tab, setTab] = useState<TriageTab>('inbox')
@@ -287,6 +290,7 @@ export function ListSection({
                 highlighted={item.id === highlight}
                 marks={marks}
                 onFilterBy={onFilterBy}
+                onReview={onReview}
               />
             ))}
           </ul>

@@ -20,6 +20,8 @@ export interface PromptPreviewProps {
   result: PromptCheckResult | null
   // hasErrors reports whether the text has errors, so there is nothing to preview.
   hasErrors: boolean
+  // reply marks a review reply, which starts no session: it has no session switches.
+  reply?: boolean
 }
 
 // itemLabel names an inbox item in the preview's item list.
@@ -30,7 +32,8 @@ function itemLabel(item: InboxItem): string {
 }
 
 // PromptPreview shows a prompt filled in for an inbox item (or a sample), exactly as a
-// launch would send it, with switches for the session facts the prompt can test.
+// launch would send it, with switches for the session facts the prompt can test. A review
+// reply shows as the review sheet would fill it in, with no session.
 export function PromptPreview({
   items,
   itemId,
@@ -42,8 +45,10 @@ export function PromptPreview({
   forPRs,
   result,
   hasErrors,
+  reply = false,
 }: PromptPreviewProps) {
   const id = useId()
+  const noun = reply ? 'reply' : 'prompt'
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -66,39 +71,41 @@ export function PromptPreview({
             </option>
           ))}
         </select>
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-          <label className="flex cursor-pointer items-center gap-1.5 text-muted">
-            <input
-              type="checkbox"
-              checked={inWorktree}
-              onChange={(e) => {
-                onInWorktreeChange(e.target.checked)
-              }}
-              className="checkbox"
-            />
-            In a worktree
-          </label>
-          {forPRs && (
-            <label className={`flex items-center gap-1.5 text-muted ${inWorktree ? 'cursor-pointer' : 'opacity-50'}`}>
+        {!reply && (
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+            <label className="flex cursor-pointer items-center gap-1.5 text-muted">
               <input
                 type="checkbox"
-                checked={inWorktree && atPrHead}
-                disabled={!inWorktree}
+                checked={inWorktree}
                 onChange={(e) => {
-                  onAtPrHeadChange(e.target.checked)
+                  onInWorktreeChange(e.target.checked)
                 }}
                 className="checkbox"
               />
-              At the PR&apos;s head
+              In a worktree
             </label>
-          )}
-        </div>
+            {forPRs && (
+              <label className={`flex items-center gap-1.5 text-muted ${inWorktree ? 'cursor-pointer' : 'opacity-50'}`}>
+                <input
+                  type="checkbox"
+                  checked={inWorktree && atPrHead}
+                  disabled={!inWorktree}
+                  onChange={(e) => {
+                    onAtPrHeadChange(e.target.checked)
+                  }}
+                  className="checkbox"
+                />
+                At the PR&apos;s head
+              </label>
+            )}
+          </div>
+        )}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto border-t border-border px-4 py-3">
         {result === null ? (
-          <p className="text-sm text-muted">Filling in the prompt…</p>
+          <p className="text-sm text-muted">Filling in the {noun}…</p>
         ) : hasErrors ? (
-          <p className="text-sm text-muted">Fix the problems in the prompt to see it filled in.</p>
+          <p className="text-sm text-muted">Fix the problems in the {noun} to see it filled in.</p>
         ) : result.previewError !== '' ? (
           <p role="alert" className="flex items-start gap-2 text-sm text-danger">
             <AlertIcon className="mt-0.5 size-4 shrink-0" />

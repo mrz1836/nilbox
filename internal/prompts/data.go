@@ -6,6 +6,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/mrz1836/nilbox/internal/bump"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/textutil"
 )
@@ -120,6 +121,20 @@ type Data struct {
 	// package).
 	SensitiveFiles string
 
+	// Dependency is the dependency a bot's update pull request bumps, as its title names
+	// it, such as "golang.org/x/net"; "" for any other item, and for an update of a group
+	// of dependencies.
+	Dependency string
+
+	// FromVersion and ToVersion are the versions the update moves the dependency between,
+	// as its title writes them; "" when the title doesn't say.
+	FromVersion string
+	ToVersion   string
+
+	// UpdateType is how big the update is: "patch", "minor", or "major", and "" when the
+	// title can't tell.
+	UpdateType string
+
 	// InWorktree reports whether the session starts in its own worktree.
 	InWorktree bool
 
@@ -190,6 +205,16 @@ func Variables() []Variable {
 			Name: "SensitiveFiles", Group: groupPR, Type: typeText, PROnly: true,
 			Description: "Sensitive files it changes, such as workflows, with their categories, or empty",
 		},
+		{
+			Name: "Dependency", Group: groupPR, Type: typeText, PROnly: true,
+			Description: "The dependency a bot's update bumps, such as golang.org/x/net, or empty",
+		},
+		{Name: "FromVersion", Group: groupPR, Type: typeText, Description: "The version it moves from, or empty", PROnly: true},
+		{Name: "ToVersion", Group: groupPR, Type: typeText, Description: "The version it moves to, or empty", PROnly: true},
+		{
+			Name: "UpdateType", Group: groupPR, Type: typeText, PROnly: true,
+			Description: `"patch", "minor", "major", or empty when it can't be told`,
+		},
 		{Name: "InWorktree", Group: groupSession, Type: typeYesNo, Description: "The session starts in its own worktree"},
 		{
 			Name: "WorktreeOnPRHead", Group: groupSession, Type: typeYesNo, PROnly: true,
@@ -255,6 +280,25 @@ func (d Data) Values() map[string]string {
 	return out
 }
 
+// WithUpdate fills in what a bot's dependency update says about itself, from its title
+// (see bump.Parse): the dependency, the versions, and how big the update is. It leaves d as
+// it is for an issue, for a pull request a person opened, and for a title that is not a
+// dependency update.
+func (d Data) WithUpdate(title string) Data {
+	if !d.IsPR || !d.IsBot {
+		return d
+	}
+
+	u, ok := bump.Parse(title)
+	if !ok {
+		return d
+	}
+
+	d.Dependency, d.FromVersion, d.ToVersion, d.UpdateType = u.Name, u.From, u.To, string(u.Level)
+
+	return d
+}
+
 // kind returns the kind of item d is for.
 func (d Data) kind() item.Kind {
 	if d.IsPR {
@@ -271,6 +315,7 @@ func (d Data) sanitized() Data {
 	for _, field := range []*string{
 		&d.Kind, &d.URL, &d.Author, &d.Repo, &d.Owner, &d.RepoName, &d.DefaultBranch,
 		&d.Branch, &d.Checks, &d.Review, &d.Worktree, &d.Profile, &d.Me, &d.SensitiveFiles,
+		&d.Dependency, &d.FromVersion, &d.ToVersion, &d.UpdateType,
 	} {
 		*field = sanitizeLine(*field)
 	}
@@ -278,6 +323,10 @@ func (d Data) sanitized() Data {
 	d.Title = textutil.Clip(sanitizeLine(d.Title), maxTitleRunes)
 	d.Labels = textutil.Clip(sanitizeLine(d.Labels), maxLabelsRunes)
 	d.SensitiveFiles = textutil.Clip(d.SensitiveFiles, maxSensitiveRunes)
+
+	for _, field := range []*string{&d.Dependency, &d.FromVersion, &d.ToVersion} {
+		*field = textutil.Clip(*field, maxTitleRunes)
+	}
 
 	return d
 }

@@ -10,8 +10,12 @@ import (
 	"strings"
 )
 
-// tailBytes is how much of a transcript's end is read for its last message.
-const tailBytes = 64 << 10
+// tailBytes is how much of a transcript's end is read for its last message, and
+// wordsTailBytes how much is read for the whole of it, which can run long.
+const (
+	tailBytes      = 64 << 10
+	wordsTailBytes = 4 << 20
+)
 
 // record is one line of a transcript, as far as the last message needs it.
 type record struct {
@@ -34,7 +38,12 @@ type block struct {
 // of a subagent, that holds text. It returns "" when the tail holds none, and an error
 // only when the file cannot be read.
 func LastMessage(path string) (string, error) {
-	tail, err := readTail(path, tailBytes)
+	return lastMessageIn(path, tailBytes)
+}
+
+// lastMessageIn is LastMessage, reading the last n bytes of the transcript.
+func lastMessageIn(path string, n int64) (string, error) {
+	tail, err := readTail(path, n)
 	if err != nil {
 		return "", err
 	}

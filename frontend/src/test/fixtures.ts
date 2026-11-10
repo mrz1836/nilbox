@@ -7,11 +7,18 @@ import type {
   AgentSession,
   AgentInfo,
   AgentVersion,
+  ToolVersion,
   AppNotification,
   BudgetGauge,
   BudgetReading,
   BudgetWrites,
   BundlePrompt,
+  DefaultPrompts,
+  Review,
+  ReviewFile,
+  ReviewOffer,
+  ReviewReplyList,
+  ReviewResult,
   CloneTarget,
   FileCheck,
   ImportEntry,
@@ -68,6 +75,14 @@ export function agentVersions(): AgentVersion[] {
   return [
     { agent: 'claude', name: 'Claude', installed: true, path: '~/.local/bin/claude', version: '2.1.319', error: '' },
     { agent: 'codex', name: 'Codex', installed: true, path: '/opt/bin/codex', version: '0.163.0', error: '' },
+  ]
+}
+
+// toolVersions are the tools other than the agents, installed, as their commands report
+// their versions.
+export function toolVersions(): ToolVersion[] {
+  return [
+    { tool: 'gh', name: 'GitHub CLI', installed: true, path: '/opt/homebrew/bin/gh', version: '2.83.1', error: '' },
   ]
 }
 
@@ -150,6 +165,7 @@ export function details(overrides: Partial<ItemDetails> = {}): ItemDetails {
     mergeable: 'MERGEABLE',
     checks: { state: 'SUCCESS', passed: 12, failed: 0, pending: 0, skipped: 3 },
     reviews: { decision: 'APPROVED', reviewers: 2, reviewed: 1, approvals: 1, changesRequested: 0 },
+    autoMerge: '',
     fetchedAt: '2026-06-15T11:59:00Z',
     ...overrides,
   }
@@ -294,6 +310,7 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     collapsedSections: [],
     projectsTipDismissed: false,
     inboxOrder: { statusSorted: [], statusOrder: [] },
+    mergeMethod: 'repo',
     ...overrides,
   }
 }
@@ -465,6 +482,8 @@ export function prompt(overrides: Partial<Prompt> = {}): Prompt {
     nickname: 'Review',
     appliesTo: 'pr',
     body: 'Review pull request #{{.Number}} in {{.Repo}}: {{.Title}}\n{{.URL}}\n',
+    purpose: 'agent',
+    replyAction: '',
     models: {},
     effort: '',
     planMode: null,
@@ -473,7 +492,7 @@ export function prompt(overrides: Partial<Prompt> = {}): Prompt {
     extraFlags: {},
     starterKey: 'review-pr',
     modified: false,
-    usage: { defaults: ['pr'], orgs: [], repos: [], kinds: ['pr'] },
+    usage: { defaults: ['pr'], orgs: [], repos: [], kinds: ['pr'], replies: [] },
     createdAt: '2026-06-01T09:00:00Z',
     updatedAt: '2026-06-15T09:00:00Z',
     ...overrides,
@@ -487,6 +506,8 @@ export function bundlePrompt(overrides: Partial<BundlePrompt> = {}): BundlePromp
     nickname: 'Security',
     appliesTo: 'any',
     body: 'Look for security problems in {{.URL}}\n',
+    purpose: 'agent',
+    action: '',
     models: {},
     effort: '',
     planMode: null,
@@ -524,6 +545,17 @@ export function promptBackup(overrides: Partial<PromptBackup> = {}): PromptBacku
   }
 }
 
+// defaultPrompts are the app's default prompts in the small library below, with no
+// default replies.
+export function defaultPrompts(overrides: Partial<DefaultPrompts> = {}): DefaultPrompts {
+  return {
+    pr: 1,
+    issue: 4,
+    replies: { approve: 0, approveBots: 0, requestChanges: 0, comment: 0 },
+    ...overrides,
+  }
+}
+
 // prompts is a small library: two pull request prompts, an issue prompt, and one for both.
 export function prompts(): Prompt[] {
   return [
@@ -532,7 +564,7 @@ export function prompts(): Prompt[] {
       name: 'Fix a pull request’s failing checks',
       nickname: 'Fix checks',
       starterKey: 'fix-checks',
-      usage: { defaults: [], orgs: [], repos: [], kinds: [] },
+      usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: [] },
     }),
     prompt({
       id: 2,
@@ -542,7 +574,7 @@ export function prompts(): Prompt[] {
       effort: 'low',
       worktree: false,
       starterKey: 'quick-look',
-      usage: { defaults: [], orgs: ['acme-org'], repos: ['acme-org/api'], kinds: ['pr'] },
+      usage: { defaults: [], orgs: ['acme-org'], repos: ['acme-org/api'], kinds: ['pr'], replies: [] },
     }),
     prompt(),
     prompt({
@@ -552,7 +584,7 @@ export function prompts(): Prompt[] {
       appliesTo: 'issue',
       body: 'Work on issue #{{.Number}}\n',
       starterKey: 'work-on-issue',
-      usage: { defaults: ['issue'], orgs: [], repos: [], kinds: ['issue'] },
+      usage: { defaults: ['issue'], orgs: [], repos: [], kinds: ['issue'], replies: [] },
     }),
     prompt({
       id: 5,
@@ -561,7 +593,7 @@ export function prompts(): Prompt[] {
       appliesTo: 'any',
       body: 'Explain {{.URL}}\n',
       starterKey: '',
-      usage: { defaults: [], orgs: [], repos: [], kinds: [] },
+      usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: [] },
     }),
   ]
 }
@@ -1001,4 +1033,160 @@ export function agentSession(overrides: Partial<AgentSession> = {}): AgentSessio
 // sessionsSnapshot is what the sessions service lists: followed, with sessions.
 export function sessionsSnapshot(sessions: AgentSession[] = [], following = true): SessionsSnapshot {
   return { following, sessions }
+}
+
+// reviewFile is a file a reviewed pull request changes: a source file with its diff.
+export function reviewFile(overrides: Partial<ReviewFile> = {}): ReviewFile {
+  return {
+    path: 'cache/cache.go',
+    previousPath: '',
+    status: 'modified',
+    additions: 2,
+    deletions: 1,
+    patch: '@@ -1,3 +1,4 @@\n package cache\n-var size = 1\n+var size = 2\n+var ttl = 3\n func Get() {}',
+    patchState: '',
+    category: '',
+    level: '',
+    ...overrides,
+  }
+}
+
+// offer is an action the review sheet offers, enabled.
+export function offer(overrides: Partial<ReviewOffer> = {}): ReviewOffer {
+  return {
+    action: 'approve',
+    label: 'Approve',
+    enabled: true,
+    reason: '',
+    confirm: false,
+    warnings: [],
+    ...overrides,
+  }
+}
+
+// review is pull request #7 as the review sheet shows it, read from GitHub: ready to
+// merge by squash, waiting on the user's approval.
+export function review(overrides: Partial<Review> = {}): Review {
+  return {
+    id: 1,
+    repo: 'acme-org/example-repo',
+    number: 7,
+    title: 'Add the widget cache',
+    url: 'https://github.com/acme-org/example-repo/pull/7',
+    state: 'OPEN',
+    author: 'octo-other',
+    isBot: false,
+    mine: false,
+    draft: false,
+    headRef: 'widget-cache',
+    baseRef: 'main',
+    reviewRequested: true,
+    labels: ['enhancement'],
+    additions: 120,
+    deletions: 30,
+    commits: 3,
+    comments: 4,
+    body: 'Adds a cache in front of the widget store.',
+    bump: null,
+    change: { kind: 'code', label: 'Code', areas: ['cache'] },
+    files: [reviewFile()],
+    totalFiles: 1,
+    filesComplete: true,
+    checks: [{ name: 'test', workflow: 'CI', state: 'SUCCESS', outcome: 'passed', url: '', required: true }],
+    reviews: [],
+    readiness: { state: 'ready', sentence: 'Ready to merge', needs: [] },
+    offers: [
+      offer({ action: 'approve_merge', label: 'Approve & squash-merge', confirm: true }),
+      offer({ action: 'merge_now', label: 'Squash-merge', confirm: true }),
+      offer(),
+      offer({ action: 'request_changes', label: 'Request changes' }),
+      offer({ action: 'comment', label: 'Comment' }),
+    ],
+    primary: 'approve_merge',
+    mergeMethods: ['MERGE', 'SQUASH'],
+    defaultMethod: 'SQUASH',
+    autoMerge: '',
+    head: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    fetchedAt: '2026-06-15T11:59:00Z',
+    stale: false,
+    ...overrides,
+  }
+}
+
+// reviewResult is what an approval came to.
+export function reviewResult(overrides: Partial<ReviewResult> = {}): ReviewResult {
+  return {
+    outcome: 'reviewed',
+    message: 'Approved acme-org/example-repo#7',
+    reason: '',
+    steps: ['Approved'],
+    leftReview: true,
+    leftInbox: false,
+    method: '',
+    ...overrides,
+  }
+}
+
+// replyList is the approval replies: one for people, one for bots.
+export function replyList(overrides: Partial<ReviewReplyList> = {}): ReviewReplyList {
+  return {
+    replies: [
+      { id: 21, name: 'Approve with thanks', nickname: 'LGTM', action: 'approve' },
+      { id: 22, name: 'Approve a dependency update', nickname: 'Update OK', action: 'approve' },
+    ],
+    default: 21,
+    defaultBots: 22,
+    ...overrides,
+  }
+}
+
+// replyPrompt is the LGTM starter reply as the prompt library lists it: the default for
+// approvals.
+export function replyPrompt(overrides: Partial<Prompt> = {}): Prompt {
+  return prompt({
+    id: 21,
+    name: 'Approve with thanks',
+    nickname: 'LGTM',
+    body: 'Looks good to me. Thanks, @{{.Author}}!\n',
+    purpose: 'reply',
+    replyAction: 'approve',
+    starterKey: 'lgtm',
+    usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: ['approve'] },
+    ...overrides,
+  })
+}
+
+// replyPrompts is a small library of review replies, as the library lists them: two
+// approvals (the defaults for people and for bots), a request for changes, and a comment
+// the user wrote.
+export function replyPrompts(): Prompt[] {
+  return [
+    replyPrompt(),
+    replyPrompt({
+      id: 22,
+      name: 'Approve a dependency update',
+      nickname: 'Update OK',
+      body: 'Update looks fine.\n',
+      starterKey: 'update-ok',
+      usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: ['approve_bots'] },
+    }),
+    replyPrompt({
+      id: 23,
+      name: 'Ask for changes',
+      nickname: 'Needs changes',
+      body: 'Thanks, @{{.Author}}. A few things to change first:\n\n- \n',
+      replyAction: 'request_changes',
+      starterKey: 'needs-changes',
+      usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: [] },
+    }),
+    replyPrompt({
+      id: 24,
+      name: 'Ask a question',
+      nickname: 'Question',
+      body: 'A question before I approve, @{{.Author}}:\n\n',
+      replyAction: 'comment',
+      starterKey: '',
+      usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: [] },
+    }),
+  ]
 }

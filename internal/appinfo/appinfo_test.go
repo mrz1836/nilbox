@@ -112,7 +112,7 @@ func TestBugReportURLFillsInTheEnvironment(t *testing.T) {
 	assert.Equal(t, bugReportTemplate, u.Query().Get("template"))
 	assert.Equal(t,
 		"- Version: 0.0.0 (16)\n- Commit: abc1234-dirty\n- System: macOS 15.1 (24B83), "+runtime.GOARCH+"\n"+
-			"- Claude: 2.1.319\n- Codex: not installed\n",
+			"- Claude: 2.1.319\n- Codex: not installed\n- GitHub CLI: not installed\n",
 		u.Query().Get(environmentField))
 }
 

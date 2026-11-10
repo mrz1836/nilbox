@@ -25,8 +25,8 @@ type UsageSource interface {
 	PromptUses(ctx context.Context) ([]Use, error)
 }
 
-// loadUsage reads where every prompt is a default: the app's default prompts, and the
-// org and repository launch defaults.
+// loadUsage reads where every prompt is a default: the app's default prompts, the org and
+// repository launch defaults, and the default replies.
 func (s *Service) loadUsage(ctx context.Context) (map[int64]Usage, error) {
 	defaults, err := s.store.storedDefaults(ctx)
 	if err != nil {
@@ -54,6 +54,14 @@ func (s *Service) loadUsage(ctx context.Context) (map[int64]Usage, error) {
 
 	addDefault(defaults.PR, item.KindPR)
 	addDefault(defaults.Issue, item.KindIssue)
+
+	for _, slot := range ReplySlots() {
+		if id := defaults.Replies.For(slot); id != 0 {
+			u := usage[id]
+			u.Replies = append(u.Replies, slot)
+			usage[id] = u
+		}
+	}
 
 	for _, use := range uses {
 		addPlace(usage, use)
@@ -94,10 +102,12 @@ func appendUnique[S comparable](list []S, s S) []S {
 	return append(list, s)
 }
 
-// normalizeUsage sorts a usage's lists and turns nil lists into empty ones.
+// normalizeUsage sorts a usage's lists, keeping the default replies in ReplySlots order,
+// and turns nil lists into empty ones.
 func normalizeUsage(u Usage) Usage {
 	u.Defaults, u.Kinds = sortedList(u.Defaults), sortedList(u.Kinds)
 	u.Orgs, u.Repos = sortedList(u.Orgs), sortedList(u.Repos)
+	u.Replies = textutil.NonNil(u.Replies)
 
 	return u
 }

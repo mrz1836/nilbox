@@ -27,6 +27,10 @@ import (
 //     refresh's data is the newer. Each item keeps the number of the last refresh that
 //     stored it and the last that checked its files, which may be an earlier one when no
 //     check was due since.
+//   - A merge the user made from the review sheet unlists its item as an item write of its
+//     own, numbered after GitHub answered the merge. It costs no request, a whole refresh
+//     still fetching applies it again, and one that started later sees the pull request
+//     merged and drops it (see dropClosed), so nothing ever supersedes it.
 //   - Two pieces of work on one item never overlap at all: itemLocks runs them one at a
 //     time.
 //
@@ -64,18 +68,21 @@ type refreshInFlight struct {
 }
 
 // supersedes reports whether a whole refresh that started after w already stored what w
-// would: the item's card for an item's own refresh, its file check for a file check.
-// The caller holds mu.
+// would: the item's card for an item's own refresh, its file check for a file check. A
+// merge's unlisting is never superseded. The caller holds mu.
 func (o *writeOrder) supersedes(w itemWrite) bool {
-	if w.update != nil {
+	switch {
+	case w.unlist:
+		return false
+	case w.update != nil:
 		return o.refreshed[w.id] > w.seq
+	default:
+		return o.checked[w.id] > w.seq
 	}
-
-	return o.checked[w.id] > w.seq
 }
 
-// itemWrite is what one item's own refresh, or a check of its files, stores: exactly one
-// of update and files is set.
+// itemWrite is what one item's own refresh, a check of its files, or a merge stores:
+// exactly one of update, files, and unlist is set.
 type itemWrite struct {
 	// id is the item's id, and seq the number its fetch took.
 	id  int64
@@ -86,6 +93,9 @@ type itemWrite struct {
 
 	// files is a file check's outcome.
 	files *filesRow
+
+	// unlist takes the item out of every list, after a merge.
+	unlist bool
 }
 
 // itemUpdate is what an item's own refresh read: the account the item is stored for,
@@ -170,7 +180,10 @@ func (s *Service) storeItemWrite(ctx context.Context, w itemWrite) (bool, error)
 // The first time, an item's own refresh records the GraphQL budget its query left; a
 // replay does not record it again.
 func (s *Service) applyItemWrite(ctx context.Context, tx *sql.Tx, w itemWrite, first bool) (bool, error) {
-	if w.files != nil {
+	switch {
+	case w.unlist:
+		return true, s.newWriter(tx).unlistMerged(ctx, w.id)
+	case w.files != nil:
 		return false, upsertFiles(ctx, s.q.WithTx(tx), *w.files)
 	}
 

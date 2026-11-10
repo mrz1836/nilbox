@@ -57,6 +57,38 @@ export const ListKey = {
 } as const;
 
 /**
+ * MergeMethod is how the review sheet merges a pull request: as the repository offers
+ * first, or with one method wherever the repository allows it.
+ */
+export type MergeMethod = "repo" | "squash" | "merge_commit" | "rebase_merge";
+
+/**
+ * The values of MergeMethod, by the names of their Go constants.
+ */
+export const MergeMethod = {
+    /**
+     * Merge method choices.
+     *
+     * MergeMethodRepo merges with the method GitHub offers first in each repository.
+     */
+    MergeMethodRepo: "repo",
+
+    /**
+     * MergeMethodSquash, MergeMethodMerge, and MergeMethodRebase merge with that method
+     * (squash, a merge commit, or a rebase) where the repository allows it, and as the
+     * repository offers first elsewhere.
+     */
+    MergeMethodSquash: "squash",
+    MergeMethodMerge: "merge_commit",
+    MergeMethodRebase: "rebase_merge",
+
+    /**
+     * DefaultMergeMethod is the merge method of a fresh database.
+     */
+    DefaultMergeMethod: "repo",
+} as const;
+
+/**
  * Settings is the full set of preferences as the UI shows them. Every field is a plain
  * value.
  */
@@ -206,6 +238,11 @@ export interface Settings {
      * statuses.
      */
     "inboxOrder": InboxOrder;
+
+    /**
+     * MergeMethod is how the review sheet merges a pull request.
+     */
+    "mergeMethod": MergeMethod;
 }
 
 /**

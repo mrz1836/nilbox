@@ -41,6 +41,23 @@ export interface RevealItem {
 }
 
 /**
+ * ReviewProgress says what the review sheet's action on a pull request is doing now, as
+ * in "Approving" or "Checking that GitHub can merge it", so the sheet can show each step
+ * while the user waits for GitHub.
+ */
+export interface ReviewProgress {
+    /**
+     * ItemID is the stored pull request the action is on.
+     */
+    "itemId": number;
+
+    /**
+     * Step says what the action is doing now.
+     */
+    "step": string;
+}
+
+/**
  * SessionsUpdated says an agent session was launched, or changed what it is doing: the
  * window reads the sessions again, and the menu bar redraws.
  */

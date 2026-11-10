@@ -90,42 +90,188 @@ func (q *Queries) GetCheckItem(ctx context.Context, id int64) (GetCheckItemRow, 
 
 const getEditItem = `-- name: GetEditItem :one
 SELECT
-    i.id, i.kind, i.number, i.item_updated_at, i.reason_review_requested, i.reason_assigned,
-    r.owner AS repo_owner, r.name AS repo_name, a.login AS account_login
+    i.id, i.account_id, i.kind, i.number, i.node_id, i.item_updated_at, i.reason_review_requested,
+    i.reason_authored, i.reason_assigned, r.owner AS repo_owner, r.name AS repo_name, a.login AS account_login,
+    d.head_oid
 FROM items i
 JOIN repos r ON r.id = i.repo_id
 JOIN accounts a ON a.id = i.account_id
+LEFT JOIN item_details d ON d.item_id = i.id
 WHERE i.id = ?
 `
 
 type GetEditItemRow struct {
 	ID                    int64
+	AccountID             int64
 	Kind                  string
 	Number                int64
+	NodeID                string
 	ItemUpdatedAt         time.Time
 	ReasonReviewRequested bool
+	ReasonAuthored        bool
 	ReasonAssigned        bool
 	RepoOwner             string
 	RepoName              string
 	AccountLogin          string
+	HeadOID               *string
 }
 
 // GetEditItem returns what an edit to the item with id on GitHub needs: the item, its
-// repository, the account whose inbox lists it, and the lists the user can leave. It
-// returns sql.ErrNoRows when no item has id.
+// node ID, its repository, the account whose inbox lists it, the lists it is in, and its
+// head commit when a refresh has read its details (NULL otherwise). It returns
+// sql.ErrNoRows when no item has id.
 func (q *Queries) GetEditItem(ctx context.Context, id int64) (GetEditItemRow, error) {
 	row := q.db.QueryRowContext(ctx, getEditItem, id)
 	var i GetEditItemRow
 	err := row.Scan(
 		&i.ID,
+		&i.AccountID,
 		&i.Kind,
 		&i.Number,
+		&i.NodeID,
 		&i.ItemUpdatedAt,
 		&i.ReasonReviewRequested,
+		&i.ReasonAuthored,
 		&i.ReasonAssigned,
 		&i.RepoOwner,
 		&i.RepoName,
 		&i.AccountLogin,
+		&i.HeadOID,
+	)
+	return i, err
+}
+
+const getReviewItem = `-- name: GetReviewItem :one
+SELECT
+    i.id, i.kind, i.number, i.node_id, i.title, i.url, i.author_login, i.author_type, i.author_association,
+    i.is_cross_repository, i.is_draft, i.head_ref, i.item_created_at, i.item_updated_at,
+    i.reason_review_requested, i.reason_authored, i.reason_assigned,
+    r.owner AS repo_owner, r.name AS repo_name, r.default_branch, r.viewer_permission, r.viewer_merge_method,
+    r.merge_commit_allowed, r.squash_merge_allowed, r.rebase_merge_allowed, r.auto_merge_allowed,
+    r.delete_branch_on_merge, r.allow_update_branch, a.login AS account_login,
+    d.item_id AS details_item_id, d.labels, d.comments, d.additions, d.deletions, d.changed_files, d.commits,
+    d.mergeable, d.checks_state, d.checks_passed, d.checks_failed, d.checks_pending, d.checks_skipped,
+    d.review_decision, d.reviewers, d.reviewed, d.approvals, d.changes_requested, d.head_oid,
+    d.auto_merge_method, d.fetched_at AS details_fetched_at
+FROM items i
+JOIN repos r ON r.id = i.repo_id
+JOIN accounts a ON a.id = i.account_id
+LEFT JOIN item_details d ON d.item_id = i.id
+WHERE i.id = ?
+`
+
+type GetReviewItemRow struct {
+	ID                    int64
+	Kind                  string
+	Number                int64
+	NodeID                string
+	Title                 string
+	URL                   string
+	AuthorLogin           string
+	AuthorType            string
+	AuthorAssociation     string
+	IsCrossRepository     bool
+	IsDraft               bool
+	HeadRef               string
+	ItemCreatedAt         time.Time
+	ItemUpdatedAt         time.Time
+	ReasonReviewRequested bool
+	ReasonAuthored        bool
+	ReasonAssigned        bool
+	RepoOwner             string
+	RepoName              string
+	DefaultBranch         string
+	ViewerPermission      string
+	ViewerMergeMethod     string
+	MergeCommitAllowed    bool
+	SquashMergeAllowed    bool
+	RebaseMergeAllowed    bool
+	AutoMergeAllowed      bool
+	DeleteBranchOnMerge   bool
+	AllowUpdateBranch     bool
+	AccountLogin          string
+	DetailsItemID         *int64
+	Labels                *string
+	Comments              *int64
+	Additions             *int64
+	Deletions             *int64
+	ChangedFiles          *int64
+	Commits               *int64
+	Mergeable             *string
+	ChecksState           *string
+	ChecksPassed          *int64
+	ChecksFailed          *int64
+	ChecksPending         *int64
+	ChecksSkipped         *int64
+	ReviewDecision        *string
+	Reviewers             *int64
+	Reviewed              *int64
+	Approvals             *int64
+	ChangesRequested      *int64
+	HeadOID               *string
+	AutoMergeMethod       *string
+	DetailsFetchedAt      *time.Time
+}
+
+// GetReviewItem returns what the review sheet shows of the item with id before asking
+// GitHub: the item, its repository with its merge settings and the viewer's access, the
+// account whose inbox lists it, the lists it is in, and its details when a refresh has
+// read them (a column of missing details is NULL). It returns sql.ErrNoRows when no item
+// has id.
+func (q *Queries) GetReviewItem(ctx context.Context, id int64) (GetReviewItemRow, error) {
+	row := q.db.QueryRowContext(ctx, getReviewItem, id)
+	var i GetReviewItemRow
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Number,
+		&i.NodeID,
+		&i.Title,
+		&i.URL,
+		&i.AuthorLogin,
+		&i.AuthorType,
+		&i.AuthorAssociation,
+		&i.IsCrossRepository,
+		&i.IsDraft,
+		&i.HeadRef,
+		&i.ItemCreatedAt,
+		&i.ItemUpdatedAt,
+		&i.ReasonReviewRequested,
+		&i.ReasonAuthored,
+		&i.ReasonAssigned,
+		&i.RepoOwner,
+		&i.RepoName,
+		&i.DefaultBranch,
+		&i.ViewerPermission,
+		&i.ViewerMergeMethod,
+		&i.MergeCommitAllowed,
+		&i.SquashMergeAllowed,
+		&i.RebaseMergeAllowed,
+		&i.AutoMergeAllowed,
+		&i.DeleteBranchOnMerge,
+		&i.AllowUpdateBranch,
+		&i.AccountLogin,
+		&i.DetailsItemID,
+		&i.Labels,
+		&i.Comments,
+		&i.Additions,
+		&i.Deletions,
+		&i.ChangedFiles,
+		&i.Commits,
+		&i.Mergeable,
+		&i.ChecksState,
+		&i.ChecksPassed,
+		&i.ChecksFailed,
+		&i.ChecksPending,
+		&i.ChecksSkipped,
+		&i.ReviewDecision,
+		&i.Reviewers,
+		&i.Reviewed,
+		&i.Approvals,
+		&i.ChangesRequested,
+		&i.HeadOID,
+		&i.AutoMergeMethod,
+		&i.DetailsFetchedAt,
 	)
 	return i, err
 }
@@ -192,7 +338,7 @@ SELECT
     d.changed_files, d.commits, d.mergeable, d.checks_state, d.checks_passed, d.checks_failed,
     d.checks_pending, d.checks_skipped, d.review_decision, d.reviewers, d.reviewed, d.approvals,
     d.changes_requested, d.sub_issues_total, d.sub_issues_completed,
-    d.fetched_at AS details_fetched_at, d.head_oid, d.review_users, d.review_teams,
+    d.fetched_at AS details_fetched_at, d.head_oid, d.review_users, d.review_teams, d.auto_merge_method,
     f.item_id AS files_item_id, f.head_oid AS files_head_oid, f.total AS files_total, f.files,
     f.complete AS files_complete, f.error AS files_error, f.checked_at AS files_checked_at,
     ls.dismissed_at, ls.snoozed_until, ls.wake_reasons, ls.pinned_at
@@ -249,6 +395,7 @@ type ListItemsRow struct {
 	HeadOID               *string
 	ReviewUsers           *string
 	ReviewTeams           *string
+	AutoMergeMethod       *string
 	FilesItemID           *int64
 	FilesHeadOID          *string
 	FilesTotal            *int64
@@ -318,6 +465,7 @@ func (q *Queries) ListItems(ctx context.Context, accountID int64) ([]ListItemsRo
 			&i.HeadOID,
 			&i.ReviewUsers,
 			&i.ReviewTeams,
+			&i.AutoMergeMethod,
 			&i.FilesItemID,
 			&i.FilesHeadOID,
 			&i.FilesTotal,

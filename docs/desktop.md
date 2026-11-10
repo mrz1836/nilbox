@@ -94,11 +94,13 @@ part of the build.
 (the latest tag, `0.0.0` before the first release), a build number (the commit count), and the
 `git describe` commit, such as `v0.1.0-3-gabc1234`, or the bare commit hash before the first
 tag, with `-dirty` when the working tree had uncommitted changes. Settings → About shows all
-three, with the macOS version and the processor architecture, and the version of each coding
-agent installed, read with its own `--version` (`claude --version`, `codex --version`). Each
-agent is read once per build of its command and kept until the command changes, as when the
-agent updates itself, so opening About again runs nothing. Its **Report a bug** button opens a
-new GitHub issue with all of it filled in: the agents' versions only, never their paths. The bundle's `Info.plist` carries the
+three, with the macOS version and the processor architecture, the version of each coding
+agent installed, read with its own `--version` (`claude --version`, `codex --version`), and,
+under **Tools**, the GitHub CLI's (`gh --version`), whose sign-in the app borrows. Each is read
+once per build of its command and kept until the command changes, as when it updates itself,
+so opening About again runs nothing; hover a version for where its command is. Its **Report a
+bug** button opens a new GitHub issue with all of it filled in: the versions only, never their
+paths. The bundle's `Info.plist` carries the
 release version and the build number too. macOS caches app icons by that build number, so a
 new commit is what refreshes the icon Stage Manager and Finder show. An icon change you have
 not committed yet keeps the old build number; if a stale icon persists, clear the cache with
@@ -378,8 +380,12 @@ is cleared whenever you leave Settings.
 
 Each pull request or issue in the inbox is a card three lines high:
 
-1. Its title, with a **Draft** tag on a draft pull request and a **Conflicts** tag when it has
-   merge conflicts with its base branch. A long title is cut short; hover it for all of it.
+1. Its title, with a **Draft** tag on a draft pull request, a **Conflicts** tag when it has
+   merge conflicts with its base branch, and an **Auto-merge · squash** tag (or merge commit, or
+   rebase) when GitHub will merge it on its own once its requirements are met. A long title is cut
+   short; hover it for all of it. Clicking a pull request's title opens it in the [review
+   sheet](#reviewing-a-pull-request); **⌘-click** it, or click the small **↗** beside it, to
+   open it on GitHub instead. An issue's title opens GitHub.
 2. The repository and number, the author, how long ago it last changed, and a tag when the
    [trust rule](#outside-contributors) says so: **bot** for a trusted bot, **untrusted bot**,
    or **outside contributor**. A pull request whose files are checked then shows its
@@ -608,6 +614,7 @@ again starts a fresh record.
 Every card has a **More actions** menu (**⋯**) at the end of its triage buttons, which shows as
 you hover the card or move focus into it. It gathers everything you can do with the item:
 
+- **Review…**, on a pull request, opens it in the [review sheet](#reviewing-a-pull-request).
 - **Open on GitHub** and **Copy link**.
 - **Inbox actions**, a submenu with the card's triage buttons: **Refresh from GitHub**, **Pin to
   top** (or **Unpin**), **Snooze**, with a submenu of lengths, and **Dismiss**; on a card in the
@@ -620,12 +627,29 @@ The keyboard works as in any Mac menu: the arrows move, → opens a submenu and 
 Return chooses, and Escape closes the menu.
 
 **Edits on GitHub.** These are the only changes Nilbox makes on GitHub, and only when you choose
-one. Each is one REST request made with your `gh` token, and GitHub's answer is checked before
-the card changes: once GitHub has taken you off, the item leaves that list (and the inbox, when
-it is in no other), and a toast confirms it. When GitHub refuses, or answers without making the
-change, as it does for an account that may not edit the item, the card stays as it was and the
-toast says why. While an edit runs, the card's **⋯** turns into a spinner and the card's other
-GitHub actions wait for it.
+one. Each is made with your `gh` token, and GitHub's answer is checked before the card changes.
+A combined action, such as **Approve & merge**, makes its changes one at a time and costs the sum
+of their rows. Nilbox never goes past branch protection on its own (only **Merge past the
+rules** does, when you choose it), and no agent ever approves or merges: every approval and
+merge happens only because you clicked.
+
+| Change | Where | Cost |
+|---|---|---|
+| Unassign me | The card's menu | 1 REST point |
+| Remove me as reviewer | The card's menu | 1 REST point |
+| Approve (with line comments) | The review sheet | 1 GraphQL point to check nothing was pushed, then 1 REST point |
+| Request changes, Comment (with line comments) | The review sheet | 1 REST point |
+| Merge | The review sheet, after you confirm | 1–3 GraphQL points to read the merge state, then 1 REST point |
+| Merge past the rules | The review sheet's menu, when GitHub lets you, after you confirm each rule it skips | 1–3 GraphQL points to read the merge state, then 1 REST point |
+| Turn on auto-merge | The review sheet, after you confirm | 1 GraphQL point |
+| Update branch | The review sheet | 1 REST point |
+| Ask Dependabot to rebase (a `@dependabot rebase` comment) | The review sheet | 1 REST point |
+
+From the card's menu, once GitHub has taken you off, the item leaves that list (and the inbox,
+when it is in no other), and a toast confirms it. When GitHub refuses, or answers without making
+the change, as it does for an account that may not edit the item, the card stays as it was and
+the toast says why. While an edit runs, the card's **⋯** turns into a spinner and the card's
+other GitHub actions wait for it.
 
 - **Unassign me** takes you, and nobody else, off the item's assignees.
 - **Remove me as reviewer** takes back the request for your review by name. A request made only
@@ -644,12 +668,149 @@ you switched accounts with `gh auth switch` since the last refresh, Nilbox asks 
 first, so it never takes another account off anything. Checking a token the inbox hasn't used
 yet costs one GraphQL point; after that, it is remembered.
 
-**Within your budget.** Each edit spends one REST point, which the [API budget
+**Within your budget.** Each edit spends what the table says, which the [API budget
 gauge](#the-window) counts like every other request. Nilbox also keeps its own pace well under
 GitHub's limits on writes: at most 30 edits a minute and 200 an hour, and none while the REST
 budget is down to its last hundredth (50 of 5,000 points), which it leaves for `gh` and your
 agents. When GitHub asks it to slow down, it waits as long as GitHub says. An edit held back for
 any of these sends nothing, and the toast says why and when to try again.
+
+<br>
+
+## Reviewing a pull request
+
+Clicking a pull request's title opens the **review sheet**, a large panel over the inbox, so you
+can read a pull request and act on it without leaving Nilbox: approve a Dependabot bump you can
+judge in five seconds, merge, ask for changes with comments on its lines, or ask Claude first.
+Every card gets it, in any list.
+
+**What it shows.**
+
+- **The header:** the title, `owner/repo#n`, who opened it with the same trust tag the card has,
+  which branch merges into which, and where it sits in its list, as in **3 of 8 in Assigned**.
+  **←** and **→** (or the arrow keys, while you aren't typing) step to the previous or next pull
+  request in the same list and tab; **↗** opens it on GitHub, and **✕** or **Escape** closes the
+  sheet.
+- **The files** on the left: each path with its additions and deletions, a dot for a
+  [sensitive](#sensitive-files) category, and a tick once you mark it viewed. Clicking one scrolls
+  to its diff.
+- **The description**, rendered from markdown. Images show as links labelled with their alt
+  text, and HTML is stripped, so an outside contributor's description can never make the app
+  load anything from another host.
+- **The diff:** unified, with added and removed lines tinted. Lock and generated files (such as
+  `go.sum`, lockfiles, `vendor/`, `dist/`, and `*.min.js`) and files with more than 400 changed
+  lines start folded. A binary file, or one GitHub won't show, says so and offers ↗.
+- **The summary** on the right: a one-line readiness sentence (**Ready to merge**, **An approval
+  · checks running · auto-merge available**, **Behind main**, **Conflicts with main**), which
+  stays in view at the top of the column while the rest scrolls; a chip for the kind of change
+  and the folders it touches (as in **in wallet/ and the top level**); the dependency it bumps
+  (as in `golang.org/x/net 0.30.0 → 0.31.0 · minor`, a major in amber); the checks, listed open
+  with the failing ones first, then those running, then those passed, the required ones marked,
+  and the skipped ones folded away below them under their count (click a count to open or fold
+  it); the card's sensitive-file chip; and each reviewer's latest review.
+- **The latest agent session** on the pull request, with what it last said. **Show all** reads
+  the whole message from the agent's own files on this Mac, and **Use as review comment** puts it
+  into your review's text, to edit before you send it.
+- **Your review**, at the foot of the right column and always in view: the text, a **Replies**
+  menu of your [review replies](#review-replies), the line comments waiting to go, the action
+  button, and **Ask Claude** (the item's launch button, with its menu).
+
+**Opening is instant.** The sheet opens from what it read last time, with no request, then reads
+the pull request from GitHub in the background (**Checking GitHub…**): one GraphQL request, and
+its files only when it was pushed to since. Opening one you read in the last 20 seconds asks
+nothing. When the inbox has seen a push the sheet hasn't, it says so and offers **Reload**. Right
+after a push, GitHub can still be working out whether the pull request can merge (**Checking
+whether it can merge**); the sheet then asks again, up to twice, two seconds apart.
+
+**One button.** The action button runs the action that fits the pull request, and says exactly
+what it does, as in **Approve & squash-merge**:
+
+| When the pull request… | The button |
+|---|---|
+| can merge now (checks green, no review needed, or approved) | **Approve & merge**, or **Merge** once you approved this commit |
+| can merge now, with only optional checks failing (**Ready to merge · 1 optional check failing**) | **Approve & merge**, whose confirmation asks you to accept the failing checks |
+| only waits for your approval | **Approve & merge** |
+| waits for required checks still running | **Approve & auto-merge** |
+| has a required check failing | **Comment**, with Ask Claude beside it |
+| is behind its base | **Update branch**; on a Dependabot pull request, **Ask Dependabot to rebase**, since Dependabot stops maintaining a branch someone else pushed to |
+| has conflicts, from Dependabot | **Ask Dependabot to rebase** |
+| is your own | Merge or auto-merge, never Approve or Request changes. When the rules want an approval, the sheet says it needs one **from someone else**, since GitHub never lets you approve your own, and **Merge when ready** warns that it waits for one |
+
+The menu beside it lists every action, with why one can't run now (a draft, a merge queue, no
+write access, a pending review of yours on GitHub, and so on). **⌘↩** runs the button. **Request
+changes** and **Comment** need text or a line comment.
+
+**Every merge asks first.** Merge, Merge when ready (auto-merge), Approve & merge, and Approve &
+auto-merge open a confirmation with the merge methods the repository allows, the commit it
+merges, and any warnings to accept first: optional checks failing, or sensitive files
+of the danger level. **Cancel** is where the focus starts. Approve, Comment, Request changes,
+Update branch, and Ask Dependabot to rebase are one click.
+
+**Merge method.** **Settings → Reviewing** chooses the method the confirmation starts on: **As
+each repository offers first** (the default, GitHub's own first choice for you there), **Squash
+and merge**, **Create a merge commit**, or **Rebase and merge**. A repository that doesn't allow
+the one you chose starts on the one it offers first.
+
+**Safe by construction.**
+
+- **Pinned to the commit you saw.** Every merge names the head commit as the SHA the head must
+  still be, and auto-merge and Update branch name it as the head they expect, so GitHub refuses
+  them after a push. GitHub would take a review of an older commit, and an approval of one would
+  count toward merging commits you never saw, so an approval first reads the head (1 GraphQL
+  point) and isn't sent once someone pushed. Either way nothing changes, and the sheet stays
+  open, with your draft, to reload. A comment or a request for changes is about the code you
+  saw, so it goes to the commit you saw, its line comments with it.
+- **No silent admin bypass.** For an admin, GitHub's REST merge quietly merges a pull request
+  that branch protection blocks. So every merge first reads the merge state fresh (1 GraphQL
+  point, up to three reads a second apart while GitHub is still working it out) and merges only
+  when GitHub says it can (**CLEAN** or **HAS_HOOKS**, or **UNSTABLE** once you accept the failing
+  checks). Otherwise it turns on auto-merge where the repository allows it, after an approval, or
+  says why not.
+- **Merge past the rules, only on purpose.** When GitHub lets you merge past a branch's rules,
+  as it lets a repository admin, and the rules are what hold the pull request back, the action
+  menu offers **Squash-merge past the rules** (or your method). It is never the main button. Its
+  confirmation lists each rule it skips (**It needs an approval from someone else.**, **1
+  required check is failing.**, **It's behind main, and the rules want it up to date.**), and
+  merges only once you tick **I'm merging past the rules**. It still reads the merge state first:
+  it refuses after a push, on conflicts, or once GitHub no longer lets you, and when GitHub would
+  merge anyway by then, it's a plain merge. The toast says **Merged acme-org/api#212 past the
+  rules (squash)**.
+- **A step GitHub made stands.** An approval GitHub took and a merge it won't make yet comes back
+  as **Approved, but GitHub won't merge yet: 1 required check failing**, never as an error. A
+  token GitHub refuses midway is borrowed again, and the approval is not sent twice.
+- **The same pipeline as every edit:** one action per item at a time, the [account
+  check](#the-item-menu-and-edits-on-github), the pace limits, and the API budget.
+
+**While it works** the sheet dims and takes no input, and a panel ticks off each step as GitHub
+finishes it (**Checking your account**, **Checking nothing was pushed since you opened it**,
+**Approving**, **Checking that GitHub can merge it**, **Squash-merging**), with the one under way
+marked. The sheet can't be closed or stepped away from until the action ends, so its outcome is
+never lost.
+
+**After acting** the sheet closes and the inbox's toast reports what happened, as in **Merged
+acme-org/api#212 (squash)** or **Approved acme-org/api#212 · auto-merge is on**. A review takes the
+pull request out of **Review requested**, and a merge out of every list, at once, with no extra
+request.
+
+**Line comments.** Click a line number in the diff to comment on that line; shift-click another
+in the same part of the diff for a range. **Suggest a change** (on the new version only) starts
+a ` ```suggestion ` block with the lines as they are. A comment waits in your draft, shown under
+its line with **Edit** and **Delete**, and goes with the review. Nilbox checks each comment
+against the diff before GitHub sees it, so GitHub never refuses one for a line it doesn't show.
+
+**Drafts** are kept per pull request for the session: closing the sheet, or stepping to another
+pull request and back, keeps your text, chosen reply, line comments, and viewed files. A draft
+is cleared once its action succeeds.
+
+**What it costs.** Opening costs nothing; a refresh with nothing pushed, 1 GraphQL point; the first
+open of a pull request with up to 100 files, 1 GraphQL point and 1 REST point; each write, what
+the [edits table](#the-item-menu-and-edits-on-github) says. Nothing is fetched ahead, since the
+sheet closes after acting.
+
+**What it keeps.** The sheet keeps what it read of each pull request in the app's database on this
+Mac, diffs included: at most 8 MB of diffs per pull request, 64 MB and 100 pull requests in all,
+the least recently opened dropped first, anything unopened for 14 days dropped, and a pull
+request's own dropped once it merges. Nothing leaves your Mac but the requests to GitHub's API.
 
 <br>
 
@@ -840,6 +1001,7 @@ syntax snippet in the cheat sheet inserts it at the caret.
 | `.Repo`, `.Owner`, `.RepoName`, `.DefaultBranch` | The repository |
 | `.Branch`, `.Checks`, `.Review`, `.HasConflicts`, `.Additions`, `.Deletions`, `.ChangedFiles`, `.Commits` | A pull request's head branch, its checks ("passing", "failing", "pending", or empty), its review decision, whether it conflicts with its base, and its size; empty or zero for issues |
 | `.SensitiveFiles` | A checked pull request's [sensitive files](#sensitive-files), each with its category, as in ".github/workflows/ci.yml (Workflows)", separated by commas; empty when there are none, and for issues |
+| `.Dependency`, `.FromVersion`, `.ToVersion`, `.UpdateType` | For a bot's dependency update, what its title says: the dependency (as in `golang.org/x/net`), the versions it moves between, and how big the jump is (`patch`, `minor`, `major`); empty when the title doesn't say, for a person's pull request, and for issues |
 | `.InWorktree`, `.WorktreeOnPRHead`, `.Worktree`, `.Profile`, `.Me`, `.OutsideContributor` | The session: whether it starts in a worktree, whether that worktree is at the pull request's head, its name, the profile, your login, and whether the item comes from an outside contributor |
 
 An item's description and comments are deliberately not variables: the agent reads them with
@@ -870,6 +1032,37 @@ contributor's item it also shows the line every such prompt ends with.
 per agent, and the effort, plan mode, and worktree for every agent; they win over the org's and
 repository's defaults whenever it is chosen. A prompt never chooses the agent or the profile,
 so a prompt can't put a repository on the wrong account.
+
+### Review replies
+
+The Prompts tab holds a second library, **Review replies**: the text the [review
+sheet](#reviewing-a-pull-request) starts a review with. Switch to it with **Agent prompts |
+Review replies** above the library. A reply has a title, a nickname, and the **Action** it is
+written for (**Approve**, **Request changes**, or **Comment**), and no launch settings; agent
+prompts and replies share one set of nicknames.
+
+**Starter replies.** **LGTM** (approve, the default for people): "Reviewed and approved. Thanks
+for the work on this, @{{.Author}}!" **Update OK** (approve, the default for bots): "Reviewed the
+minor update of `golang.org/x/net` from 0.30.0 to 0.31.0. All checks pass. Approved.", which says
+"Reviewed this automated update." when the title says nothing it can read, and "All checks pass."
+only when they do. **Needs
+changes** (request changes) and **Question** (comment). Like the starter prompts, each is added
+once, and **Reset to original** restores one you changed.
+
+**Defaults.** The **⋯** menu makes a reply the default for approvals, for approvals of bots' pull
+requests, for requests for changes, or for comments. The sheet fills the default in for the
+review you're about to send, a bot's default on a bot's pull request, until you write your own
+text; with no default, the text starts empty. Deleting a reply that is a default clears that
+default.
+
+**Writing one.** A reply is a template like a prompt, with the same variables, checked the same
+way, with three differences: it may start with `-`, for a markdown list; it may come out empty,
+as an approval with no text does; and a session variable (`.InWorktree`, `.WorktreeOnPRHead`,
+`.Worktree`, `.Profile`) is a warning, since a reply starts no session. A reply never gets the
+lines an agent's prompt ends with. The preview fills it in for a real pull request.
+
+A reply is never an agent's prompt: the launch menu, launch defaults, and Settings → Launching
+list agent prompts only.
 
 ### Keeping your prompts
 
@@ -1102,8 +1295,11 @@ came from: one request per 100 files, between two readings of the head commit, s
 belongs to one commit. A refresh checks at most 20 pull requests, 4 at a time, within 30
 seconds; the rest show **Files not checked yet** until the next one. A check that fails never
 fails the refresh: its card says so, and the next refresh tries again. GitHub lists at most
-3,000 files, so a larger pull request is marked as not fully checked. Only paths are stored,
-never content, and a check is removed when its item leaves the inbox.
+3,000 files, so a larger pull request is marked as not fully checked. A check stores only paths,
+never content, and is removed when its item leaves the inbox. (The [review
+sheet](#reviewing-a-pull-request) keeps the diffs of the pull requests you open in it, in its own
+bounded cache on this Mac; when it reads a pull request's files, that list serves as the check
+too, so one request does both.)
 
 **Opening a session.** Launching on a checked pull request checks its files against GitHub again
 at that moment, one request when nothing was pushed. When it changes agent configuration, nothing

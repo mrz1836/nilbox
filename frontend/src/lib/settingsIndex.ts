@@ -17,6 +17,7 @@ export type SettingsSection =
   | 'appearance'
   | 'notifications'
   | 'snoozing'
+  | 'reviewing'
   | 'launching'
   | 'worktrees'
   | 'profiles'
@@ -31,6 +32,7 @@ export const sectionOrder: readonly SettingsSection[] = [
   'appearance',
   'notifications',
   'snoozing',
+  'reviewing',
   'launching',
   'worktrees',
   'profiles',
@@ -54,6 +56,10 @@ export const sectionInfo: Readonly<Record<SettingsSection, { label: string; desc
   snoozing: {
     label: 'Snoozing',
     description: 'How long a snooze lasts, and what new activity brings an item back early.',
+  },
+  reviewing: {
+    label: 'Reviewing',
+    description: 'How the review sheet merges a pull request, and where its replies are kept.',
   },
   launching: {
     label: 'Launching',
@@ -145,6 +151,16 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     { label: 'Reviews', keywords: ['wake', 'approval', 'changes requested'] },
     { label: 'New comments', keywords: ['wake', 'bots'] },
   ],
+  reviewing: [
+    {
+      label: 'Merge method',
+      keywords: ['squash', 'merge commit', 'rebase', 'approve and merge', 'merge button', 'review sheet'],
+    },
+    {
+      label: 'Review replies',
+      keywords: ['reply', 'LGTM', 'approval', 'request changes', 'comment', 'templates', 'review text'],
+    },
+  ],
   launching: [
     { label: 'Terminal', keywords: ['iTerm2', 'terminal app', 'open sessions in'] },
     { label: 'Default agent', keywords: ['coding agent', ...agentNames] },
@@ -220,6 +236,7 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
       keywords: [brand.name, 'build', 'commit', 'release', 'system', 'update', 'report a bug', 'feedback'],
     },
     { label: 'Coding agents', keywords: ['agent versions', 'installed', ...agentNames] },
+    { label: 'Tools', keywords: ['GitHub CLI', 'gh', 'versions', 'installed'] },
   ],
 }
 

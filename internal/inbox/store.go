@@ -3,7 +3,9 @@ package inbox
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
@@ -151,5 +153,135 @@ func launchItemOf(r queries.ListLaunchItemsRow) (LaunchItem, error) {
 		Labels: labels, Additions: int(value(r.Additions)), Deletions: int(value(r.Deletions)),
 		ChangedFiles: int(value(r.ChangedFiles)), Commits: int(value(r.Commits)), Mergeable: value(r.Mergeable),
 		ChecksState: value(r.ChecksState), ReviewDecision: value(r.ReviewDecision), HeadOID: value(r.HeadOID),
+	}, nil
+}
+
+// ReviewItem is a stored pull request as the review sheet shows it before asking GitHub:
+// the item, its repository's merge settings and the viewer's access, the lists it is in,
+// and the details a refresh read, which are zero until one has.
+type ReviewItem struct {
+	ID     int64
+	Kind   item.Kind
+	Number int
+	NodeID string
+	Title  string
+	URL    string
+
+	AuthorLogin       string
+	AuthorType        string
+	AuthorAssociation string
+	IsCrossRepository bool
+	IsDraft           bool
+
+	// HeadRef is the head branch.
+	HeadRef string
+
+	CreatedAt time.Time
+	UpdatedAt time.Time
+
+	ReviewRequested bool
+	Authored        bool
+	Assigned        bool
+
+	// Owner and Name are the repository, and DefaultBranch its default branch.
+	Owner         string
+	Name          string
+	DefaultBranch string
+
+	// ViewerPermission is the viewer's access to the repository, and ViewerMergeMethod
+	// the merge method GitHub offers the viewer first.
+	ViewerPermission  string
+	ViewerMergeMethod string
+
+	MergeCommitAllowed  bool
+	SquashMergeAllowed  bool
+	RebaseMergeAllowed  bool
+	AutoMergeAllowed    bool
+	DeleteBranchOnMerge bool
+	AllowUpdateBranch   bool
+
+	// Viewer is the account whose inbox lists the pull request.
+	Viewer string
+
+	// HasDetails reports that a refresh has read the details below.
+	HasDetails bool
+
+	// Labels names the labels, in GitHub's order.
+	Labels []string
+
+	Comments     int
+	Additions    int
+	Deletions    int
+	ChangedFiles int
+	Commits      int
+
+	// Mergeable, ChecksState, and ReviewDecision are GitHub's words.
+	Mergeable      string
+	ChecksState    string
+	ChecksPassed   int
+	ChecksFailed   int
+	ChecksPending  int
+	ChecksSkipped  int
+	ReviewDecision string
+
+	Reviewers        int
+	Reviewed         int
+	Approvals        int
+	ChangesRequested int
+
+	// HeadOID is the head commit, and AutoMerge the method auto-merge merges with, ""
+	// while it is off.
+	HeadOID   string
+	AutoMerge string
+
+	// DetailsAt is when a refresh read the details; zero before one has.
+	DetailsAt time.Time
+}
+
+// ReviewItem returns the stored item with id as the review sheet reads it, or an error
+// matching item.ErrNotFound when no item has id.
+func (s *Store) ReviewItem(ctx context.Context, id int64) (ReviewItem, error) {
+	r, err := s.q.GetReviewItem(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ReviewItem{}, fmt.Errorf("%w (id %d)", item.ErrNotFound, id)
+	}
+
+	if err != nil {
+		return ReviewItem{}, fmt.Errorf("read the item: %w", err)
+	}
+
+	labels := []string{}
+
+	if r.Labels != nil {
+		stored, decodeErr := store.DecodeJSON[[]storedLabel](*r.Labels)
+		if decodeErr != nil {
+			return ReviewItem{}, fmt.Errorf("the labels of item %d: %w", r.ID, decodeErr)
+		}
+
+		for _, l := range stored {
+			labels = append(labels, l.Name)
+		}
+	}
+
+	return ReviewItem{
+		ID: r.ID, Kind: item.Kind(r.Kind), Number: int(r.Number), NodeID: r.NodeID, Title: r.Title, URL: r.URL,
+		AuthorLogin: r.AuthorLogin, AuthorType: r.AuthorType, AuthorAssociation: r.AuthorAssociation,
+		IsCrossRepository: r.IsCrossRepository, IsDraft: r.IsDraft, HeadRef: r.HeadRef,
+		CreatedAt: r.ItemCreatedAt.UTC(), UpdatedAt: r.ItemUpdatedAt.UTC(),
+		ReviewRequested: r.ReasonReviewRequested, Authored: r.ReasonAuthored, Assigned: r.ReasonAssigned,
+		Owner: r.RepoOwner, Name: r.RepoName, DefaultBranch: r.DefaultBranch, ViewerPermission: r.ViewerPermission,
+		ViewerMergeMethod: r.ViewerMergeMethod, MergeCommitAllowed: r.MergeCommitAllowed,
+		SquashMergeAllowed: r.SquashMergeAllowed, RebaseMergeAllowed: r.RebaseMergeAllowed,
+		AutoMergeAllowed: r.AutoMergeAllowed, DeleteBranchOnMerge: r.DeleteBranchOnMerge,
+		AllowUpdateBranch: r.AllowUpdateBranch, Viewer: r.AccountLogin,
+		HasDetails: r.DetailsItemID != nil, Labels: labels, Comments: int(value(r.Comments)),
+		Additions: int(value(r.Additions)), Deletions: int(value(r.Deletions)),
+		ChangedFiles: int(value(r.ChangedFiles)), Commits: int(value(r.Commits)), Mergeable: value(r.Mergeable),
+		ChecksState: value(r.ChecksState), ChecksPassed: int(value(r.ChecksPassed)),
+		ChecksFailed: int(value(r.ChecksFailed)), ChecksPending: int(value(r.ChecksPending)),
+		ChecksSkipped: int(value(r.ChecksSkipped)), ReviewDecision: value(r.ReviewDecision),
+		Reviewers: int(value(r.Reviewers)), Reviewed: int(value(r.Reviewed)), Approvals: int(value(r.Approvals)),
+		ChangesRequested: int(value(r.ChangesRequested)), HeadOID: value(r.HeadOID),
+		AutoMerge: value(r.AutoMergeMethod), DetailsAt: value(r.DetailsFetchedAt).UTC(),
 	}, nil
 }

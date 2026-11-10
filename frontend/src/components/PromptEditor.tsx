@@ -1,7 +1,16 @@
 import { useId, useState, type Ref } from 'react'
 
 import { appliesToLabels, pinSummary, usagePlaces, usageSummary } from '../lib/launch'
-import type { AgentInfo, Diagnostic, Prompt, PromptAppliesTo, PromptInput, PromptVariable } from '../platform'
+import { replyActionLabels, replyGroups, replyUsageSummary } from '../lib/replies'
+import type {
+  AgentInfo,
+  Diagnostic,
+  Prompt,
+  PromptAppliesTo,
+  PromptInput,
+  PromptReplyAction,
+  PromptVariable,
+} from '../platform'
 import { chipClass, describedBy, Field, fieldClass, Segmented, type SegmentOption } from './controls'
 import { AlertIcon, ChevronRightIcon, CircleCheckIcon, StarIcon } from './icons'
 import { LaunchOverrideFields } from './LaunchOverrideFields'
@@ -16,6 +25,11 @@ const appliesToOptions: readonly SegmentOption<PromptAppliesTo>[] = [
   { value: 'issue', label: appliesToLabels.issue },
   { value: 'any', label: appliesToLabels.any, title: 'Pull requests and issues' },
 ]
+
+const actionOptions: readonly SegmentOption<PromptReplyAction>[] = replyGroups.map(({ action }) => ({
+  value: action,
+  label: replyActionLabels[action],
+}))
 
 export interface PromptEditorProps {
   // agents are the coding agents, whose models and flags a prompt can set.
@@ -57,7 +71,8 @@ function whereText(d: Diagnostic): string {
 
 // PromptEditor is the form for one prompt: its large title, its nickname for the launch
 // menu, what it is for, its text in the template editor with the problems found in it,
-// and the launch settings it sets.
+// and the launch settings it sets. A review reply has the review it is for in place of
+// what it applies to, and no launch settings, since it never launches anything.
 export function PromptEditor({
   agents,
   draft,
@@ -90,6 +105,7 @@ export function PromptEditor({
   )
   const errors = diagnostics.filter((d) => d.severity === 'error')
   const warnings = diagnostics.filter((d) => d.severity !== 'error')
+  const reply = draft.purpose === 'reply'
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 pt-5 pb-4">
@@ -100,7 +116,11 @@ export function PromptEditor({
         <input
           id={`${id}-name`}
           value={draft.name}
-          placeholder="Name this prompt, such as “Review a pull request”"
+          placeholder={
+            reply
+              ? 'Name this reply, such as “Approve with thanks”'
+              : 'Name this prompt, such as “Review a pull request”'
+          }
           aria-invalid={(fieldErrors.name ?? '') !== ''}
           aria-describedby={describedBy(`${id}-name`, fieldErrors.name, false)}
           maxLength={maxNameLength + 20}
@@ -121,14 +141,14 @@ export function PromptEditor({
           <Field
             label="Nickname"
             controlId={`${id}-nickname`}
-            hint="Shown on the launch button."
+            hint={reply ? 'Shown when you pick a reply.' : 'Shown on the launch button.'}
             error={fieldErrors.nickname}
             aside={<Counter value={draft.nickname} limit={maxNicknameLength} />}
           >
             <input
               id={`${id}-nickname`}
               value={draft.nickname}
-              placeholder="Review"
+              placeholder={reply ? 'LGTM' : 'Review'}
               aria-invalid={(fieldErrors.nickname ?? '') !== ''}
               aria-describedby={describedBy(`${id}-nickname`, fieldErrors.nickname, true)}
               onChange={(e) => {
@@ -138,39 +158,65 @@ export function PromptEditor({
             />
           </Field>
         </div>
-        <div className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted">For</span>
-          <Segmented
-            label="What the prompt is for"
-            value={draft.appliesTo}
-            options={appliesToOptions}
-            onChange={(appliesTo) => {
-              set({ appliesTo })
-            }}
-          />
-          {(fieldErrors.appliesTo ?? '') !== '' && (
-            <p role="alert" className="max-w-sm text-xs text-danger">
-              {fieldErrors.appliesTo}
-            </p>
-          )}
-        </div>
+        {reply ? (
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-muted">Action</span>
+            <Segmented
+              label="Action"
+              value={draft.replyAction}
+              options={actionOptions}
+              onChange={(replyAction) => {
+                set({ replyAction })
+              }}
+            />
+            {(fieldErrors.replyAction ?? '') !== '' && (
+              <p role="alert" className="max-w-sm text-xs text-danger">
+                {fieldErrors.replyAction}
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-muted">For</span>
+            <Segmented
+              label="What the prompt is for"
+              value={draft.appliesTo}
+              options={appliesToOptions}
+              onChange={(appliesTo) => {
+                set({ appliesTo })
+              }}
+            />
+            {(fieldErrors.appliesTo ?? '') !== '' && (
+              <p role="alert" className="max-w-sm text-xs text-danger">
+                {fieldErrors.appliesTo}
+              </p>
+            )}
+          </div>
+        )}
         {saved !== null && (
           <div className="flex flex-col gap-1">
             <span className="text-xs font-medium text-muted">Used as a default</span>
-            <p
-              title={usagePlaces(saved.usage).join('\n') || undefined}
-              className="flex items-center gap-1.5 py-1 text-[0.8125rem] text-text"
-            >
-              {saved.usage.defaults.length > 0 && <StarIcon className="size-3.5 text-accent" />}
-              {usageSummary(saved.usage)}
-            </p>
+            {reply ? (
+              <p className="flex items-center gap-1.5 py-1 text-[0.8125rem] text-text">
+                {saved.usage.replies.length > 0 && <StarIcon className="size-3.5 text-accent" />}
+                {replyUsageSummary(saved.usage.replies)}
+              </p>
+            ) : (
+              <p
+                title={usagePlaces(saved.usage).join('\n') || undefined}
+                className="flex items-center gap-1.5 py-1 text-[0.8125rem] text-text"
+              >
+                {saved.usage.defaults.length > 0 && <StarIcon className="size-3.5 text-accent" />}
+                {usageSummary(saved.usage)}
+              </p>
+            )}
           </div>
         )}
       </div>
 
       <div className="flex min-h-[18rem] flex-1 flex-col gap-2">
         <div className="flex items-baseline justify-between">
-          <span className="text-xs font-medium text-muted">Prompt</span>
+          <span className="text-xs font-medium text-muted">{reply ? 'Reply' : 'Prompt'}</span>
           <span className="text-[0.6875rem] text-muted">
             Type <code className="font-mono">{'{{'}</code> for variables
           </span>
@@ -178,7 +224,7 @@ export function PromptEditor({
         <TemplateEditor
           id={`${id}-body`}
           ref={editorRef}
-          label="Prompt text"
+          label={reply ? 'Reply text' : 'Prompt text'}
           value={draft.body}
           onChange={(body) => {
             set({ body })
@@ -186,7 +232,7 @@ export function PromptEditor({
           variables={variables}
           diagnostics={diagnostics}
           describedBy={`${id}-problems`}
-          placeholder={'Review pull request #{{.Number}} in {{.Repo}}: {{.Title}}'}
+          placeholder={reply ? 'Thanks, @{{.Author}}!' : 'Review pull request #{{.Number}} in {{.Repo}}: {{.Title}}'}
         />
         <div id={`${id}-problems`} aria-live="polite" className="flex flex-col gap-1">
           {checked && errors.length === 0 && warnings.length === 0 && (
@@ -214,54 +260,58 @@ export function PromptEditor({
         </div>
       </div>
 
-      <section aria-labelledby={`${id}-settings`} className="rounded-lg border border-border">
-        <button
-          id={`${id}-settings`}
-          type="button"
-          aria-expanded={settingsOpen}
-          onClick={() => {
-            setSettingsOpen((was) => !was)
-          }}
-          className="flex w-full items-center gap-2 rounded-lg px-3.5 py-2.5 text-left transition-colors hover:bg-raised/60"
-        >
-          <ChevronRightIcon className={`size-3.5 text-muted transition-transform ${settingsOpen ? 'rotate-90' : ''}`} />
-          <span className="text-sm font-medium">Launch settings</span>
-          <span className="flex min-w-0 flex-1 flex-wrap justify-end gap-1.5">
-            {settingsError && <span className="text-xs text-danger">Has a problem</span>}
-            {pins.length === 0 ? (
-              <span className="text-xs text-muted">Inherits everything</span>
-            ) : (
-              pins.map((pin) => (
-                <span key={pin} className={chipClass}>
-                  {pin}
-                </span>
-              ))
-            )}
-          </span>
-        </button>
-        {settingsOpen && (
-          <div className="grid grid-cols-2 gap-x-5 gap-y-4 border-t border-border px-3.5 pt-3 pb-4">
-            <p className="col-span-2 text-xs leading-relaxed text-muted">
-              Used whenever this prompt is chosen, over the org and repo defaults. The profile (the account) always
-              comes from the defaults or the launch menu.
-            </p>
-            <LaunchOverrideFields
-              id={id}
-              agents={agents}
-              values={draft}
-              onChange={set}
-              errors={fieldErrors}
-              modelHint="An alias or a full name."
-              flagsHint={
-                <>
-                  Added after the profile&apos;s and the defaults&apos; flags, such as{' '}
-                  <code className="font-mono">--advisor fable</code>. Quote values with spaces.
-                </>
-              }
+      {!reply && (
+        <section aria-labelledby={`${id}-settings`} className="rounded-lg border border-border">
+          <button
+            id={`${id}-settings`}
+            type="button"
+            aria-expanded={settingsOpen}
+            onClick={() => {
+              setSettingsOpen((was) => !was)
+            }}
+            className="flex w-full items-center gap-2 rounded-lg px-3.5 py-2.5 text-left transition-colors hover:bg-raised/60"
+          >
+            <ChevronRightIcon
+              className={`size-3.5 text-muted transition-transform ${settingsOpen ? 'rotate-90' : ''}`}
             />
-          </div>
-        )}
-      </section>
+            <span className="text-sm font-medium">Launch settings</span>
+            <span className="flex min-w-0 flex-1 flex-wrap justify-end gap-1.5">
+              {settingsError && <span className="text-xs text-danger">Has a problem</span>}
+              {pins.length === 0 ? (
+                <span className="text-xs text-muted">Inherits everything</span>
+              ) : (
+                pins.map((pin) => (
+                  <span key={pin} className={chipClass}>
+                    {pin}
+                  </span>
+                ))
+              )}
+            </span>
+          </button>
+          {settingsOpen && (
+            <div className="grid grid-cols-2 gap-x-5 gap-y-4 border-t border-border px-3.5 pt-3 pb-4">
+              <p className="col-span-2 text-xs leading-relaxed text-muted">
+                Used whenever this prompt is chosen, over the org and repo defaults. The profile (the account) always
+                comes from the defaults or the launch menu.
+              </p>
+              <LaunchOverrideFields
+                id={id}
+                agents={agents}
+                values={draft}
+                onChange={set}
+                errors={fieldErrors}
+                modelHint="An alias or a full name."
+                flagsHint={
+                  <>
+                    Added after the profile&apos;s and the defaults&apos; flags, such as{' '}
+                    <code className="font-mono">--advisor fable</code>. Quote values with spaces.
+                  </>
+                }
+              />
+            </div>
+          )}
+        </section>
+      )}
     </div>
   )
 }

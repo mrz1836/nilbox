@@ -20,7 +20,9 @@ import type * as terminal from '../../bindings/github.com/mrz1836/nilbox/interna
 import * as notify from '../../bindings/github.com/mrz1836/nilbox/internal/notify'
 import type * as notifyprefs from '../../bindings/github.com/mrz1836/nilbox/internal/notifyprefs'
 import * as profiles from '../../bindings/github.com/mrz1836/nilbox/internal/profiles'
+import type * as bump from '../../bindings/github.com/mrz1836/nilbox/internal/bump'
 import * as prompts from '../../bindings/github.com/mrz1836/nilbox/internal/prompts'
+import * as review from '../../bindings/github.com/mrz1836/nilbox/internal/review'
 import type * as sensitive from '../../bindings/github.com/mrz1836/nilbox/internal/sensitive'
 import * as sessions from '../../bindings/github.com/mrz1836/nilbox/internal/sessions'
 import * as settings from '../../bindings/github.com/mrz1836/nilbox/internal/settings'
@@ -70,6 +72,7 @@ export type Agent = NonNullLists<agent.Agent>
 export type AgentID = agent.ID
 export type AgentInfo = NonNullLists<profiles.AgentInfo>
 export type AgentVersion = NonNullLists<appinfo.AgentVersion>
+export type ToolVersion = NonNullLists<appinfo.ToolVersion>
 export type Choice = NonNullLists<agent.Choice>
 // PerAgent is a setting each agent has its own value of, as launch defaults and prompts
 // store their profiles, models, and extra flags: an agent with no entry inherits.
@@ -136,6 +139,10 @@ export type Prompt = NonNullLists<prompts.Prompt>
 export type PromptUsage = NonNullLists<prompts.Usage>
 export type PromptVariable = NonNullLists<prompts.Variable>
 export type PromptAppliesTo = prompts.AppliesTo
+export type PromptPurpose = prompts.Purpose
+export type PromptReplyAction = prompts.ReplyAction
+export type ReplySlot = prompts.ReplySlot
+export type ReplyDefaults = NonNullLists<prompts.ReplyDefaults>
 export type PromptBackup = NonNullLists<prompts.Backup>
 export type PromptBackupKind = prompts.BackupKind
 export type BundlePrompt = NonNullLists<prompts.BundlePrompt>
@@ -143,6 +150,30 @@ export type ImportEntry = NonNullLists<prompts.ImportEntry>
 export type ImportOutcome = prompts.ImportOutcome
 export type ImportResult = NonNullLists<prompts.ImportResult>
 export type ImportSource = NonNullLists<prompts.ImportSource>
+
+export type Review = NonNullLists<review.Review>
+export type ReviewAction = review.Action
+export type ReviewActRequest = NonNullLists<review.ActRequest>
+export type ReviewChange = NonNullLists<review.Change>
+export type ReviewCheck = NonNullLists<review.Check>
+export type ReviewEntry = NonNullLists<review.ReviewEntry>
+export type ReviewFile = NonNullLists<review.File>
+export type ReviewFilePatch = NonNullLists<review.FilePatch>
+export type ReviewLineComment = NonNullLists<review.LineComment>
+export type ReviewOffer = NonNullLists<review.Offer>
+export type ReviewOutcome = review.Outcome
+export type ReviewReadiness = NonNullLists<review.Readiness>
+export type ReviewReply = NonNullLists<review.Reply>
+export type ReviewReplyList = NonNullLists<review.ReplyList>
+export type ReviewResult = NonNullLists<review.Result>
+export type MergeMethod = review.MergeMethod
+export type PatchState = review.PatchState
+export type ReadyState = review.ReadyState
+export type ReplyAction = review.ReplyAction
+export type DiffSide = review.Side
+export type ChangeKind = review.ChangeKind
+export type DependencyUpdate = NonNullLists<bump.Update>
+export type UpdateLevel = bump.Level
 
 export type SensitiveCategory = NonNullLists<sensitive.Category>
 export type FileCheck = NonNullLists<sensitive.Check>
@@ -153,6 +184,7 @@ export type SensitiveLevel = sensitive.Level
 export type SensitiveScope = sensitive.Scope
 
 export type AgentSession = NonNullLists<sessions.Session>
+export type SessionWords = NonNullLists<sessions.Words>
 export type SessionsSnapshot = NonNullLists<sessions.Snapshot>
 export type SessionState = sessions.State
 
@@ -162,6 +194,7 @@ export type WindowSize = NonNullLists<settings.WindowSize>
 export type ListKey = settings.ListKey
 export type Theme = settings.Theme
 export type TextSize = settings.TextSize
+export type MergeMethodSetting = settings.MergeMethod
 
 export type SnoozeRules = NonNullLists<snooze.Rules>
 export type WakeReasons = NonNullLists<snooze.Reasons>
@@ -192,6 +225,7 @@ export const {
   Info: getAppInfo,
   ReportFirstPaint: reportFirstPaint,
   AgentVersions: agentVersions,
+  ToolVersions: toolVersions,
   BugReportURL: bugReportURL,
 } = narrow(appinfo.Service)
 
@@ -222,7 +256,16 @@ export const {
   Resume: resumeSession,
 } = narrow(launcher.Service)
 
-export const { List: listSessions, Focus: focusSession } = narrow(sessions.Service)
+export const { List: listSessions, Focus: focusSession, LastWords: sessionLastWords } = narrow(sessions.Service)
+
+export const {
+  Open: openReview,
+  Refresh: refreshReview,
+  Patches: reviewPatches,
+  Act: actOnReview,
+  Replies: reviewReplies,
+  FillReply: fillReply,
+} = narrow(review.Service)
 
 export const {
   List: listPrompts,
@@ -235,6 +278,7 @@ export const {
   Variables: listPromptVariables,
   Defaults: getDefaultPrompts,
   SetDefault: setDefaultPrompt,
+  SetReplyDefault: setReplyDefault,
   Export: exportPrompts,
   Backups: listPromptBackups,
   PreviewImport: previewPromptImport,
@@ -281,6 +325,7 @@ export const {
   SetStatusSort: setStatusSort,
   SetStatusOrder: setStatusOrder,
   SetBranchRules: setBranchRules,
+  SetMergeMethod: setMergeMethod,
 } = narrow(settings.Service)
 
 export const {

@@ -280,8 +280,22 @@ func detailsRow(itemID int64, d github.ItemDetails, now time.Time) (queries.Upse
 		SubIssuesCompleted: int64(d.SubIssues.Completed),
 		ReviewUsers:        reviewUsers,
 		ReviewTeams:        reviewTeams,
+		AutoMergeMethod:    d.AutoMerge.Method,
+		AutoMergeAt:        autoMergeAt(d.AutoMerge),
 		FetchedAt:          now,
 	}, nil
+}
+
+// autoMergeAt is when a pull request's auto-merge was turned on, or nil while it is off or
+// GitHub did not say.
+func autoMergeAt(a github.AutoMerge) *time.Time {
+	if !a.On() || a.EnabledAt.IsZero() {
+		return nil
+	}
+
+	at := a.EnabledAt.UTC()
+
+	return &at
 }
 
 // saveRates records one snapshot per resource and prunes snapshots past the retention

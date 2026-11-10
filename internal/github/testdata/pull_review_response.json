@@ -1,0 +1,339 @@
+{
+    "data": {
+        "node": {
+            "__typename": "PullRequest",
+            "id": "PR_fakeNodeId94",
+            "number": 94,
+            "title": "Bump github/codeql-action from 4.39.1 to 4.39.3 in the github-actions group",
+            "url": "https://github.com/acme-org/example-repo/pull/94",
+            "createdAt": "2026-11-09T16:52:52Z",
+            "updatedAt": "2026-11-09T16:54:08Z",
+            "isDraft": false,
+            "headRefName": "dependabot/github_actions/github-actions-1111111111",
+            "prState": "OPEN",
+            "authorAssociation": "CONTRIBUTOR",
+            "isCrossRepository": false,
+            "author": {
+                "__typename": "Bot",
+                "login": "dependabot"
+            },
+            "repository": {
+                "id": "R_fakeRepoExample",
+                "name": "example-repo",
+                "owner": {
+                    "login": "acme-org"
+                },
+                "description": "An example repository",
+                "visibility": "PUBLIC",
+                "isArchived": false,
+                "archivedAt": null,
+                "isDisabled": false,
+                "isLocked": false,
+                "lockReason": null,
+                "isFork": false,
+                "parent": null,
+                "defaultBranchRef": {
+                    "name": "master"
+                },
+                "viewerPermission": "ADMIN",
+                "viewerDefaultMergeMethod": "SQUASH",
+                "mergeCommitAllowed": true,
+                "squashMergeAllowed": true,
+                "rebaseMergeAllowed": true,
+                "autoMergeAllowed": false,
+                "deleteBranchOnMerge": false,
+                "allowUpdateBranch": false,
+                "primaryLanguage": {
+                    "name": "Makefile",
+                    "color": "#427819"
+                },
+                "pushedAt": "2026-11-09T16:50:00Z"
+            },
+            "additions": 3,
+            "deletions": 3,
+            "changedFiles": 1,
+            "totalCommentsCount": 1,
+            "reviewDecision": "REVIEW_REQUIRED",
+            "mergeable": "MERGEABLE",
+            "headRefOid": "1111111111111111111111111111111111111111",
+            "autoMergeRequest": {
+                "mergeMethod": "SQUASH",
+                "enabledAt": "2026-11-09T17:10:00Z",
+                "enabledBy": {
+                    "login": "octo-reviewer"
+                }
+            },
+            "commits": {
+                "totalCount": 1
+            },
+            "labels": {
+                "nodes": [
+                    {
+                        "name": "chore",
+                        "color": "006b75"
+                    }
+                ]
+            },
+            "reviewRequests": {
+                "nodes": [
+                    {
+                        "requestedReviewer": {
+                            "__typename": "User",
+                            "login": "acme-org"
+                        }
+                    }
+                ]
+            },
+            "latestReviews": {
+                "nodes": []
+            },
+            "statusCheckRollup": {
+                "state": "SUCCESS",
+                "contexts": {
+                    "checkRunCountsByState": [
+                        {
+                            "state": "ACTION_REQUIRED",
+                            "count": 0
+                        },
+                        {
+                            "state": "CANCELLED",
+                            "count": 0
+                        },
+                        {
+                            "state": "COMPLETED",
+                            "count": 0
+                        },
+                        {
+                            "state": "FAILURE",
+                            "count": 0
+                        },
+                        {
+                            "state": "IN_PROGRESS",
+                            "count": 0
+                        },
+                        {
+                            "state": "NEUTRAL",
+                            "count": 0
+                        },
+                        {
+                            "state": "PENDING",
+                            "count": 0
+                        },
+                        {
+                            "state": "QUEUED",
+                            "count": 0
+                        },
+                        {
+                            "state": "SKIPPED",
+                            "count": 0
+                        },
+                        {
+                            "state": "STALE",
+                            "count": 0
+                        },
+                        {
+                            "state": "STARTUP_FAILURE",
+                            "count": 0
+                        },
+                        {
+                            "state": "SUCCESS",
+                            "count": 4
+                        },
+                        {
+                            "state": "TIMED_OUT",
+                            "count": 0
+                        },
+                        {
+                            "state": "WAITING",
+                            "count": 0
+                        }
+                    ],
+                    "statusContextCountsByState": [
+                        {
+                            "state": "EXPECTED",
+                            "count": 0
+                        },
+                        {
+                            "state": "ERROR",
+                            "count": 0
+                        },
+                        {
+                            "state": "FAILURE",
+                            "count": 0
+                        },
+                        {
+                            "state": "PENDING",
+                            "count": 0
+                        },
+                        {
+                            "state": "SUCCESS",
+                            "count": 0
+                        }
+                    ]
+                }
+            },
+            "body": "Bumps the github-actions group with 1 update: [github/codeql-action](https://github.com/github/codeql-action).\n\nUpdates `github/codeql-action` from 4.39.1 to 4.39.3\n<details>\n<summary>Release notes</summary>\n<p><em>Sourced from <a href=\"https://github.com/github/codeql-action/releases\">github/codeql-action's releases</a>.</em></p>\n<blockquote>\n<h2>v4.39.3</h2>\n<ul>\n<li>Fixed diff-informed alert filtering incorrectly removing alerts in changed files whose paths contain spaces, special characters, or non-ASCII characters. <a href=\"https://redirect.github.com/github/codeql-action/pull/4283\">#4283</a></li>\n</ul>\n<h2>v4.39.2</h2>\n<ul>\n<li>Update default CodeQL bundle version to <a href=\"https://github.com/github/codeql-action/releases/tag/codeql-bundle-v2.27.4\">2.27.4</a>. <a href=\"https://redirect.github.com/github/codeql-action/pull/4284\">#4284</a></li>\n<li><em>Upcoming breaking change</em>: CodeQL version 2.22.3 and earlier were discontinued on 16 October 2026 alongside GitHub Enterprise Server 3.18, and will be unsupported by the next minor release of the CodeQL Action. Added a deprecation warning for customers using these versions of CodeQL. <a href=\"https://redirect.github.com/git",
+            "baseRefName": "master",
+            "mergeStateStatus": "BLOCKED",
+            "isMergeQueueEnabled": false,
+            "viewerDidAuthor": false,
+            "viewerCanUpdateBranch": false,
+            "viewerCanEnableAutoMerge": false,
+            "viewerCanMergeAsAdmin": true,
+            "viewerLatestReview": {
+                "state": "COMMENTED",
+                "commit": {
+                    "oid": "2222222222222222222222222222222222222222"
+                }
+            },
+            "pendingReviews": {
+                "totalCount": 1
+            },
+            "reviewBodies": {
+                "nodes": [
+                    {
+                        "state": "COMMENTED",
+                        "body": "Could you check the changelog?",
+                        "url": "https://github.com/acme-org/example-repo/pull/94#pullrequestreview-1",
+                        "submittedAt": "2026-11-09T17:00:00Z",
+                        "author": {
+                            "login": "octo-user"
+                        },
+                        "commit": {
+                            "oid": "2222222222222222222222222222222222222222"
+                        }
+                    },
+                    {
+                        "state": "APPROVED",
+                        "body": "",
+                        "url": "https://github.com/acme-org/example-repo/pull/94#pullrequestreview-2",
+                        "submittedAt": "2026-11-09T17:05:00Z",
+                        "author": {
+                            "login": "octo-reviewer"
+                        },
+                        "commit": {
+                            "oid": "1111111111111111111111111111111111111111"
+                        }
+                    },
+                    null,
+                    {
+                        "state": "COMMENTED",
+                        "body": "x",
+                        "url": "",
+                        "submittedAt": null,
+                        "author": null,
+                        "commit": null
+                    }
+                ]
+            },
+            "firstCommit": {
+                "nodes": [
+                    {
+                        "commit": {
+                            "message": "Bump github/codeql-action\n\nBumps the github-actions group with 1 update: [github/codeql-action](https://github.com/github/codeql-action).\n\n\nUpdates `github/codeql-action` from 4.39.1 to 4.39.3\n- [Release notes](https://github.com/github/codeql-action/releases)\n- [Changelog](https://github.com/github/codeql-action/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/github/codeql-action/compare/v4.39.1...v4.39.3)\n\n---\nupdated-dependencies:\n- dependency-name: github/codeql-action\n  dependency-version: 4.39.3\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: github-actions\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>"
+                        }
+                    }
+                ]
+            },
+            "checkList": {
+                "contexts": {
+                    "nodes": [
+                        {
+                            "__typename": "CheckRun",
+                            "name": "Analyze (go)",
+                            "conclusion": "SUCCESS",
+                            "status": "COMPLETED",
+                            "detailsUrl": "https://github.com/acme-org/example-repo/actions/runs/101/job/201",
+                            "isRequired": false,
+                            "checkSuite": {
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "CodeQL"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "name": "test (1.26.x, ubuntu-latest)",
+                            "conclusion": "SUCCESS",
+                            "status": "COMPLETED",
+                            "detailsUrl": "https://github.com/acme-org/example-repo/actions/runs/101/job/201",
+                            "isRequired": true,
+                            "checkSuite": {
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "run-go-tests"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "name": "CodeQL",
+                            "conclusion": "SUCCESS",
+                            "status": "COMPLETED",
+                            "detailsUrl": "https://github.com/acme-org/example-repo/runs/129306286891",
+                            "isRequired": false,
+                            "checkSuite": {
+                                "workflowRun": null
+                            }
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "name": "codecov/project",
+                            "conclusion": "SUCCESS",
+                            "status": "COMPLETED",
+                            "detailsUrl": "https://app.codecov.io/gh/acme-org/example-repo/pull/94",
+                            "isRequired": false,
+                            "checkSuite": {
+                                "workflowRun": null
+                            }
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "name": "lint",
+                            "conclusion": null,
+                            "status": "IN_PROGRESS",
+                            "detailsUrl": "https://github.com/acme-org/example-repo/actions/runs/101/job/202",
+                            "isRequired": true,
+                            "checkSuite": {
+                                "workflowRun": null
+                            }
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "name": "e2e",
+                            "conclusion": "FAILURE",
+                            "status": "COMPLETED",
+                            "detailsUrl": "https://github.com/acme-org/example-repo/actions/runs/101/job/203",
+                            "isRequired": false,
+                            "checkSuite": {
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "e2e"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "__typename": "StatusContext",
+                            "context": "ci/legacy",
+                            "state": "SUCCESS",
+                            "targetUrl": "https://ci.example.com/acme-org/example-repo/7",
+                            "isRequired": false
+                        },
+                        null
+                    ]
+                }
+            }
+        },
+        "rateLimit": {
+            "cost": 1,
+            "remaining": 4995,
+            "resetAt": "2026-11-09T20:17:11Z",
+            "limit": 5000,
+            "used": 5
+        }
+    }
+}

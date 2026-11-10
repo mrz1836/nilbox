@@ -89,6 +89,14 @@ export function MenuBar(): $CancellablePromise<boolean> {
 }
 
 /**
+ * MergeMethod returns the stored merge method, or DefaultMergeMethod when none is stored
+ * or the stored value is no longer a choice.
+ */
+export function MergeMethod(): $CancellablePromise<$models.MergeMethod> {
+    return $Call.ByID(3939744348);
+}
+
+/**
  * ResetTrustedBots goes back to the default trusted bots, and returns the settings with
  * them.
  */
@@ -164,6 +172,14 @@ export function SetFollowSessions(on: boolean): $CancellablePromise<$models.Sett
  */
 export function SetMenuBar(on: boolean): $CancellablePromise<$models.Settings> {
     return $Call.ByID(1825092391, on);
+}
+
+/**
+ * SetMergeMethod stores how the review sheet merges: MergeMethodRepo, MergeMethodSquash,
+ * MergeMethodMerge, or MergeMethodRebase, and returns the settings with it.
+ */
+export function SetMergeMethod(method: $models.MergeMethod): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(1196338418, method);
 }
 
 /**

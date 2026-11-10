@@ -1,6 +1,7 @@
 // Package prompts is the prompt library: the prompts a launch can fill in for a pull
 // request or issue, with the launch settings each one sets, and the defaults for each
-// kind of item.
+// kind of item; and, beside them in the same table, the review replies the review sheet
+// fills in as the text of a review (see Purpose).
 //
 // A prompt is a Go text/template over Data. Parse checks one the way a launch runs it,
 // and explains each problem with its line and column. The app adds the starter prompts
@@ -42,6 +43,7 @@ const (
 	FieldName       = "name"
 	FieldNickname   = "nickname"
 	FieldAppliesTo  = "appliesTo"
+	FieldAction     = "replyAction"
 	FieldBody       = "body"
 	FieldModels     = agent.FieldModels
 	FieldEffort     = agent.FieldEffort
@@ -66,7 +68,94 @@ var (
 	// ErrWrongKind is returned when a prompt is made the default for a kind it does not
 	// apply to.
 	ErrWrongKind = errors.New("the prompt doesn't apply to that kind of item")
+
+	// ErrNotAgentPrompt is returned when a review reply is used where an agent prompt is
+	// needed: as a launch's prompt, or a default for a kind of item.
+	ErrNotAgentPrompt = errors.New("a review reply can't be used to launch an agent")
+
+	// ErrNotReply is returned when an agent prompt, or a reply for another review, is made
+	// a default reply.
+	ErrNotReply = errors.New("the prompt isn't a reply for that review")
 )
+
+// Purpose is what a prompt is for.
+type Purpose string
+
+// What a prompt is for.
+const (
+	// PurposeAgent is a prompt a launch fills in for a coding agent.
+	PurposeAgent Purpose = "agent"
+
+	// PurposeReply is a review reply: text the review sheet fills in as the body of an
+	// approval, a request for changes, or a comment. It applies to pull requests, has no
+	// launch settings, and is never a launch's prompt.
+	PurposeReply Purpose = "reply"
+)
+
+// ReplyAction is the review a reply is written for.
+type ReplyAction string
+
+// The reviews a reply can be written for.
+const (
+	// ReplyNone is an agent prompt's: it writes no review.
+	ReplyNone ReplyAction = ""
+
+	ReplyApprove        ReplyAction = "approve"
+	ReplyRequestChanges ReplyAction = "request_changes"
+	ReplyComment        ReplyAction = "comment"
+)
+
+// ReplySlot is a default a reply can be: the reply for each review, and a second one for
+// approving a bot's pull request, such as a dependency update.
+type ReplySlot string
+
+// The default replies.
+const (
+	SlotApprove        ReplySlot = "approve"
+	SlotApproveBots    ReplySlot = "approve_bots"
+	SlotRequestChanges ReplySlot = "request_changes"
+	SlotComment        ReplySlot = "comment"
+)
+
+// ReplySlots returns every default reply, in the order the editor lists them.
+func ReplySlots() []ReplySlot {
+	return []ReplySlot{SlotApprove, SlotApproveBots, SlotRequestChanges, SlotComment}
+}
+
+// Action is the review a slot's reply must be written for.
+func (s ReplySlot) Action() ReplyAction {
+	switch s {
+	case SlotApprove, SlotApproveBots:
+		return ReplyApprove
+	case SlotRequestChanges:
+		return ReplyRequestChanges
+	case SlotComment:
+		return ReplyComment
+	default:
+		return ""
+	}
+}
+
+// describe names a slot in a sentence, as in "the default for approvals".
+func (s ReplySlot) describe() string {
+	switch s {
+	case SlotApprove:
+		return "the default for approvals"
+	case SlotApproveBots:
+		return "the default for approvals of bots' pull requests"
+	case SlotRequestChanges:
+		return "the default for requests for changes"
+	case SlotComment:
+		return "the default for comments"
+	default:
+		return "the default for approvals"
+	}
+}
+
+// valid reports a reply action this build knows.
+func (a ReplyAction) valid() bool {
+	return a == ReplyApprove || a == ReplyRequestChanges || a == ReplyComment
+}
 
 // Prompt is one prompt as the UI shows it. Every field is a plain value.
 type Prompt struct {
@@ -83,6 +172,12 @@ type Prompt struct {
 
 	// Body is the Go text/template.
 	Body string `json:"body"`
+
+	// Purpose is PurposeAgent or PurposeReply.
+	Purpose Purpose `json:"purpose"`
+
+	// ReplyAction is the review a reply is written for, and "" for an agent prompt.
+	ReplyAction ReplyAction `json:"replyAction"`
 
 	// Models is each agent's model; an agent with no entry inherits.
 	Models map[agent.ID]string `json:"models"`
@@ -130,23 +225,37 @@ type Usage struct {
 
 	// Kinds lists every kind the prompt is a default for, anywhere.
 	Kinds []item.Kind `json:"kinds"`
+
+	// Replies lists the default replies a reply is. Unlike the defaults above, being one
+	// never keeps a reply from being deleted.
+	Replies []ReplySlot `json:"replies"`
 }
 
-// InUse reports whether the prompt is a default anywhere.
+// InUse reports whether the prompt is a default for a launch anywhere, which keeps it from
+// being deleted.
 func (u Usage) InUse() bool {
 	return len(u.Defaults)+len(u.Orgs)+len(u.Repos) > 0
 }
 
-// Input is a prompt as the editor saves it.
+// Input is a prompt as the editor saves it. A reply's AppliesTo and launch settings are
+// ignored: it applies to pull requests and has none.
 type Input struct {
-	Name      string              `json:"name"`
-	Nickname  string              `json:"nickname"`
-	AppliesTo AppliesTo           `json:"appliesTo"`
-	Body      string              `json:"body"`
-	Models    map[agent.ID]string `json:"models"`
-	Effort    string              `json:"effort"`
-	PlanMode  *bool               `json:"planMode"`
-	Worktree  *bool               `json:"worktree"`
+	Name      string    `json:"name"`
+	Nickname  string    `json:"nickname"`
+	AppliesTo AppliesTo `json:"appliesTo"`
+	Body      string    `json:"body"`
+
+	// Purpose is what a new prompt is for; "" is an agent prompt. A saved prompt keeps
+	// the purpose it was created with.
+	Purpose Purpose `json:"purpose"`
+
+	// ReplyAction is the review a reply is written for; ignored for an agent prompt.
+	ReplyAction ReplyAction `json:"replyAction"`
+
+	Models   map[agent.ID]string `json:"models"`
+	Effort   string              `json:"effort"`
+	PlanMode *bool               `json:"planMode"`
+	Worktree *bool               `json:"worktree"`
 
 	// ExtraFlags is each agent's extra arguments typed on one line, quoted as in a shell.
 	ExtraFlags map[agent.ID]string `json:"extraFlags"`
@@ -170,11 +279,55 @@ func (e *InUseError) Is(target error) bool {
 	return target == ErrPromptInUse
 }
 
-// DefaultPrompts are the app's default prompt for each kind of item; 0 when no prompt
-// applies to that kind.
+// DefaultPrompts are the app's default prompt for each kind of item, 0 when no prompt
+// applies to that kind, and its default replies.
 type DefaultPrompts struct {
 	PR    int64 `json:"pr"`
 	Issue int64 `json:"issue"`
+
+	// Replies are the default replies.
+	Replies ReplyDefaults `json:"replies"`
+}
+
+// ReplyDefaults are the default reply for each review, by prompt ID; 0 where none is
+// chosen, which leaves the review's text empty.
+type ReplyDefaults struct {
+	Approve int64 `json:"approve"`
+
+	// ApproveBots is the reply for approving a bot's pull request, such as a dependency
+	// update.
+	ApproveBots    int64 `json:"approveBots"`
+	RequestChanges int64 `json:"requestChanges"`
+	Comment        int64 `json:"comment"`
+}
+
+// For returns the default reply for slot.
+func (r ReplyDefaults) For(slot ReplySlot) int64 {
+	switch slot {
+	case SlotApprove:
+		return r.Approve
+	case SlotApproveBots:
+		return r.ApproveBots
+	case SlotRequestChanges:
+		return r.RequestChanges
+	case SlotComment:
+		return r.Comment
+	default:
+		return 0
+	}
+}
+
+// Slots lists the slots whose default is id, in ReplySlots order.
+func (r ReplyDefaults) Slots(id int64) []ReplySlot {
+	out := []ReplySlot{}
+
+	for _, slot := range ReplySlots() {
+		if id != 0 && r.For(slot) == id {
+			out = append(out, slot)
+		}
+	}
+
+	return out
 }
 
 // For returns the default for kind.
@@ -186,9 +339,15 @@ func (d DefaultPrompts) For(kind item.Kind) int64 {
 	return d.Issue
 }
 
-// Template parses the prompt's text, failing when it has errors.
+// IsReply reports a review reply.
+func (p Prompt) IsReply() bool {
+	return p.Purpose == PurposeReply
+}
+
+// Template parses the prompt's text, as a reply's in reply mode, failing when it has
+// errors.
 func (p Prompt) Template() (*Template, error) {
-	t, diags := Parse(p.Body, p.AppliesTo)
+	t, diags := parseFor(p.Purpose, p.Body, p.AppliesTo)
 	if t != nil {
 		return t, nil
 	}
@@ -324,11 +483,14 @@ func (s *Service) Create(ctx context.Context, in Input) (Prompt, error) {
 // Update saves changes to a prompt. A prompt that is a default for a kind must keep
 // applying to that kind.
 func (s *Service) Update(ctx context.Context, id int64, in Input) (Prompt, error) {
-	in = in.normalized()
-
-	if _, err := s.store.Lookup(ctx, id); err != nil {
+	stored, err := s.store.Lookup(ctx, id)
+	if err != nil {
 		return Prompt{}, err
 	}
+
+	// A prompt keeps the purpose it was created with.
+	in.Purpose = stored.Purpose
+	in = in.normalized()
 
 	usage, err := s.usageOf(ctx, id)
 	if err != nil {
@@ -461,11 +623,43 @@ func (s *Service) SetDefault(ctx context.Context, kind item.Kind, id int64) erro
 		return err
 	}
 
+	if p.IsReply() {
+		return fmt.Errorf("%w: %q", ErrNotAgentPrompt, p.Nickname)
+	}
+
 	if !p.AppliesTo.Covers(k) {
 		return fmt.Errorf("%w: %q doesn't apply to %s", ErrWrongKind, p.Nickname, k.Plural())
 	}
 
 	if err = s.store.setDefault(ctx, k, id); err != nil {
+		return err
+	}
+
+	s.saved(ctx)
+
+	return nil
+}
+
+// SetReplyDefault makes the reply with id the default for slot, or, with id 0, leaves the
+// slot with no default, so that review starts with no text. The prompt must be a reply for
+// the slot's review.
+func (s *Service) SetReplyDefault(ctx context.Context, slot ReplySlot, id int64) error {
+	if slot.Action() == "" {
+		return fmt.Errorf("%w: unknown default reply %q", ErrNotReply, slot)
+	}
+
+	if id != 0 {
+		p, err := s.store.Lookup(ctx, id)
+		if err != nil {
+			return err
+		}
+
+		if !p.IsReply() || p.ReplyAction != slot.Action() {
+			return fmt.Errorf("%w: %q can't be %s", ErrNotReply, p.Nickname, slot.describe())
+		}
+	}
+
+	if err := s.store.setReplyDefault(ctx, slot, id); err != nil {
 		return err
 	}
 
@@ -535,11 +729,19 @@ func resetPrompt(ctx context.Context, st *Store, p Prompt, starter Starter, usag
 }
 
 // normalized trims the names and each agent's model, and turns Windows line endings into
-// newlines.
+// newlines. An Input with no purpose is an agent prompt's, whose reply action is cleared;
+// a reply applies to pull requests and has no launch settings.
 func (in Input) normalized() Input {
 	in.Name = strings.TrimSpace(in.Name)
 	in.Nickname = strings.TrimSpace(in.Nickname)
 	in.Body = strings.ReplaceAll(in.Body, "\r\n", "\n")
+
+	if in.Purpose != PurposeReply {
+		in.Purpose, in.ReplyAction = PurposeAgent, ""
+	} else {
+		in.AppliesTo, in.Effort, in.PlanMode, in.Worktree = AppliesToPR, "", nil, nil
+		in.Models, in.ExtraFlags = nil, nil
+	}
 
 	models := make(map[agent.ID]string, len(in.Models))
 	for id, model := range in.Models {
@@ -554,8 +756,9 @@ func (in Input) normalized() Input {
 // input returns the starter as an Input.
 func (st Starter) input() Input {
 	return Input{
-		Name: st.Name, Nickname: st.Nickname, AppliesTo: st.AppliesTo, Body: st.Body,
-		Models: agent.CloneModels(st.Models), Effort: st.Effort, PlanMode: st.PlanMode, Worktree: st.Worktree,
+		Name: st.Name, Nickname: st.Nickname, AppliesTo: st.AppliesTo, Body: st.Body, Purpose: st.purpose(),
+		ReplyAction: st.ReplyAction,
+		Models:      agent.CloneModels(st.Models), Effort: st.Effort, PlanMode: st.PlanMode, Worktree: st.Worktree,
 		ExtraFlags: agent.JoinArgs(st.ExtraArgs),
 	}
 }
@@ -565,11 +768,21 @@ func (st Starter) input() Input {
 func validate(ctx context.Context, st *Store, id int64, in Input, usage Usage) (agent.Checked, []agent.FieldError) {
 	checked, fields := validateFields(ctx, st, id, in, usage)
 
-	if t, _ := Parse(in.Body, appliesToOrAny(in.AppliesTo)); t == nil {
+	if t, _ := parseFor(in.Purpose, in.Body, appliesToOrAny(in.AppliesTo)); t == nil {
 		fields = append(fields, agent.FieldError{Field: FieldBody, Message: "Fix the problems in the prompt's text."})
 	}
 
 	return checked, fields
+}
+
+// parseFor checks a prompt's text the way its purpose fills it in: a reply's in reply
+// mode, an agent prompt's for the kinds it applies to.
+func parseFor(purpose Purpose, body string, appliesTo AppliesTo) (*Template, []Diagnostic) {
+	if purpose == PurposeReply {
+		return ParseReply(body)
+	}
+
+	return Parse(body, appliesTo)
 }
 
 // validateFields checks every field but the text, which Parse checks.
@@ -584,6 +797,13 @@ func validateFields(ctx context.Context, st *Store, id int64, in Input, usage Us
 
 	add(FieldName, checkName(in.Name))
 	add(FieldNickname, checkNickname(ctx, st, id, in.Nickname))
+
+	if in.Purpose == PurposeReply {
+		add(FieldAction, checkReplyAction(in.ReplyAction, usage))
+
+		return agent.Checked{Models: map[agent.ID]string{}, Args: map[agent.ID][]string{}}, fields
+	}
+
 	add(FieldAppliesTo, checkAppliesTo(in.AppliesTo, usage))
 
 	checked, overrides := agent.CheckSettings(agent.Settings{
@@ -654,6 +874,22 @@ func checkAppliesTo(appliesTo AppliesTo, usage Usage) string {
 	return ""
 }
 
+// checkReplyAction checks the review a reply is written for: one of the three, and the
+// one every default it is needs.
+func checkReplyAction(action ReplyAction, usage Usage) string {
+	if !action.valid() {
+		return "Choose the review the reply is for: an approval, a request for changes, or a comment."
+	}
+
+	for _, slot := range usage.Replies {
+		if slot.Action() != action {
+			return fmt.Sprintf("It's %s, so it has to stay a reply for that review.", slot.describe())
+		}
+	}
+
+	return ""
+}
+
 // appliesToOrAny returns appliesTo when it is valid, else "any", so a prompt's text can
 // be checked while its kind is still being chosen.
 func appliesToOrAny(appliesTo AppliesTo) AppliesTo {
@@ -668,8 +904,9 @@ func appliesToOrAny(appliesTo AppliesTo) AppliesTo {
 // Prompt to store.
 func fromInput(in Input, checked agent.Checked) Prompt {
 	return Prompt{
-		Name: in.Name, Nickname: in.Nickname, AppliesTo: in.AppliesTo, Body: in.Body,
-		Models: agent.CloneModels(checked.Models), Effort: in.Effort, PlanMode: in.PlanMode, Worktree: in.Worktree,
+		Name: in.Name, Nickname: in.Nickname, AppliesTo: in.AppliesTo, Body: in.Body, Purpose: in.Purpose,
+		ReplyAction: in.ReplyAction,
+		Models:      agent.CloneModels(checked.Models), Effort: in.Effort, PlanMode: in.PlanMode, Worktree: in.Worktree,
 		ExtraArgs: agent.CloneArgs(checked.Args),
 	}
 }

@@ -15,7 +15,17 @@ import type {
   ProjectAccess,
   Settings,
 } from '../platform'
-import { account, agents, appInfo, launchDefaults, profile, prompts, settings, signedOut } from '../test/fixtures'
+import {
+  account,
+  agents,
+  appInfo,
+  defaultPrompts,
+  launchDefaults,
+  profile,
+  prompts,
+  settings,
+  signedOut,
+} from '../test/fixtures'
 import { platform } from '../test/platform'
 import { SettingsView, type SettingsSection, type SettingsViewProps } from './SettingsView'
 
@@ -84,7 +94,7 @@ function renderSettings({
       agents={coding}
       profiles={profiles}
       prompts={prompts()}
-      defaultPrompts={{ pr: 1, issue: 4 }}
+      defaultPrompts={defaultPrompts()}
       launchDefaults={defaults}
       account={who}
       projectAccess={access}
@@ -111,7 +121,7 @@ describe('SettingsView', () => {
       agents: agents(),
       profiles: [profile()],
       prompts: prompts(),
-      defaultPrompts: { pr: 1, issue: 4 },
+      defaultPrompts: defaultPrompts(),
       launchDefaults: [],
       account: account(),
       theme: 'system',
@@ -720,7 +730,7 @@ describe('SettingsView', () => {
     await openSection('Repositories')
     expect(screen.getByText('Loading the settings…')).toBeInTheDocument()
 
-    for (const name of ['Notifications', 'Trust', 'Sensitive files']) {
+    for (const name of ['Notifications', 'Reviewing', 'Trust', 'Sensitive files']) {
       await openSection(name)
       expect(screen.getByText('Loading the settings…')).toBeInTheDocument()
     }
@@ -798,6 +808,28 @@ describe('SettingsView', () => {
     expect(await agents.findByText('2.1.319')).toHaveAttribute('title', '~/.local/bin/claude')
     expect(agents.getByText('Claude')).toBeInTheDocument()
     expect(agents.getByText('unknown')).toHaveAttribute('title', 'codex --version failed: boom')
+  })
+
+  it('shows the GitHub CLI version with the tools', async () => {
+    renderSettings({ section: 'about' })
+
+    const tools = within(screen.getByRole('region', { name: 'Tools' }))
+    expect(await tools.findByText('2.83.1')).toHaveAttribute('title', '/opt/homebrew/bin/gh')
+    expect(tools.getByText('GitHub CLI')).toBeInTheDocument()
+  })
+
+  it('says why the tools could not be checked', async () => {
+    platform.toolVersions.mockRejectedValue(new Error('the app is closing'))
+    renderSettings({ section: 'about' })
+
+    expect(await screen.findByText("Couldn't check the tools: the app is closing")).toBeInTheDocument()
+  })
+
+  it('says it is checking the tools', async () => {
+    platform.toolVersions.mockReturnValue(new Promise(() => undefined))
+    renderSettings({ section: 'about' })
+
+    expect(await screen.findByText('Checking the tools…')).toBeInTheDocument()
   })
 
   it('says when a coding agent is not installed', async () => {
@@ -1163,6 +1195,19 @@ describe('SettingsView escape and trust', () => {
     expect(screen.getByRole('list', { name: 'Categories' })).toBeInTheDocument()
   })
 
+  it('has a Reviewing section after Snoozing, for the merge method', async () => {
+    renderSettings()
+
+    const nav = within(screen.getByRole('navigation', { name: 'Settings sections' }))
+    const names = nav.getAllByRole('button').map((b) => b.textContent)
+    expect(names.indexOf('Reviewing')).toBe(names.indexOf('Snoozing') + 1)
+
+    await openSection('Reviewing')
+
+    expect(screen.getByRole('region', { name: 'Reviewing' })).toBeInTheDocument()
+    expect(screen.getByRole('radiogroup', { name: 'Merge method' })).toBeInTheDocument()
+  })
+
   it('opens at the Sensitive files section when asked', () => {
     renderSettings({ section: 'files' })
 
@@ -1334,7 +1379,7 @@ describe('SettingsView search', () => {
       agents: agents(),
       profiles: [profile(), profile({ agent: 'codex', name: 'default', folder: '~/.codex' })],
       prompts: prompts(),
-      defaultPrompts: { pr: 1, issue: 4 },
+      defaultPrompts: defaultPrompts(),
       launchDefaults: [],
       account: account(),
       projectAccess: 'on',
@@ -1421,7 +1466,7 @@ describe('SettingsView search', () => {
 
     rerender(<SettingsView {...searchProps('')} />)
 
-    expect(sidebar()).toHaveLength(11)
+    expect(sidebar()).toHaveLength(12)
     expect(sidebar()).toContain('Account')
     expect(screen.getByRole('region', { name: 'Notifications' })).toBeInTheDocument()
     expect(matched()).toEqual([])

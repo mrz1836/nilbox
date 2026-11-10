@@ -25,6 +25,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/prompts"
+	"github.com/mrz1836/nilbox/internal/review"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/snooze"
@@ -59,6 +60,9 @@ func boundCalls(t *testing.T) map[string]boundCall {
 	return map[string]boundCall{
 		"appinfo.Service.AgentVersions": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.AppInfo.AgentVersions(ctx), nil
+		},
+		"appinfo.Service.ToolVersions": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.AppInfo.ToolVersions(ctx), nil
 		},
 		"settings.Service.Get": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.Get(ctx)
@@ -258,6 +262,27 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"worktrees.Service.LastSweep": func(_ context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Worktrees.LastSweep(), nil
 		},
+		"settings.Service.SetMergeMethod": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetMergeMethod(ctx, settings.MergeMethodSquash)
+		},
+		"review.Service.Open": func(ctx context.Context, c *Core, ids seededItems) (any, error) {
+			got, err := c.Review.Open(ctx, ids.item)
+			require.NotEmpty(t, got.Files)
+
+			return got, err
+		},
+		"review.Service.Patches": func(ctx context.Context, c *Core, ids seededItems) (any, error) {
+			got, err := c.Review.Patches(ctx, ids.item, "abc123", []string{"login.go"})
+			require.NotEmpty(t, got)
+
+			return got, err
+		},
+		"review.Service.Replies": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			got, err := c.Review.Replies(ctx, review.ReplyApprove)
+			require.NotEmpty(t, got.Replies)
+
+			return got, err
+		},
 		"notify.Service.List": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			got, err := c.Notifications.List(ctx)
 			require.NotEmpty(t, got.Items)
@@ -285,6 +310,8 @@ func unreachedBound() map[string]string {
 		"worktrees.Service.ForceRemove":     "needs a dirty worktree; its result is built as Remove's",
 		"worktrees.Service.CleanUp":         "reads GitHub; its result is built as CleanUpFinished's",
 		"worktrees.Service.MergedBranches":  "reads GitHub; it starts its list empty, as DeleteBranches does",
+		"review.Service.Refresh":            "reads GitHub; its review is built as Open's",
+		"review.Service.Act":                "edits GitHub; its steps start empty",
 	}
 }
 
@@ -358,7 +385,8 @@ func seedBound(t *testing.T) (*Core, seededItems) {
 	stored := func(kind item.Kind, number int, repoName string) inbox.FixtureItem {
 		return inbox.FixtureItem{
 			Item: github.Item{
-				IsPR: kind == item.KindPR, Number: number, Title: "Fix the login redirect",
+				IsPR: kind == item.KindPR, NodeID: "NODE_" + strconv.Itoa(number), Number: number,
+				Title:     "Fix the login redirect",
 				URL:       "https://github.com/acme-org/" + repoName + "/issues/" + strconv.Itoa(number),
 				CreatedAt: now, UpdatedAt: now, HeadRef: "fix-login", AuthorLogin: "octo-other",
 				AuthorAssociation: "CONTRIBUTOR", RepoOwner: boundOwner, RepoName: repoName,
@@ -391,6 +419,17 @@ func seedBound(t *testing.T) (*Core, seededItems) {
 		CleanedAt: now, Repo: "example-repo", Worktree: "pr-7", Head: "abc123", ItemKind: string(item.KindPR),
 		ItemOwner: boundOwner, ItemName: "example-repo", ItemNumber: 7, ItemState: string(worktrees.ItemMerged),
 	}))
+
+	// The review sheet's cache of the pull request, as a refresh leaves it.
+	_, err = c.DB.ExecContext(ctx, `INSERT INTO review_diffs (item_id, head_oid, total, complete, context, context_at,
+		fetched_at, used_at) VALUES (?, 'abc123', 1, 1, '{"head":"abc123","state":"OPEN"}', ?, ?, ?)`, ids[0], now, now, now)
+	require.NoError(t, err)
+
+	_, err = c.DB.ExecContext(ctx, `INSERT INTO review_diff_files (item_id, position, path, status, additions, patch)
+		VALUES (?, 0, 'login.go', 'modified', 1, '@@ -1 +1 @@
+-a
++b')`, ids[0])
+	require.NoError(t, err)
 
 	return c, seededItems{item: ids[0], stuck: ids[1]}
 }

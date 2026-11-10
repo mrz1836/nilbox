@@ -513,3 +513,48 @@ describe('ItemRow worktree tag', () => {
     expect(screen.queryByText(/^worktree/)).not.toBeInTheDocument()
   })
 })
+
+describe('ItemRow review', () => {
+  it('opens a pull request in the review sheet from its title, and GitHub otherwise', async () => {
+    const onReview = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <ul>
+        <ItemRow item={item()} launch={null} tab="dismissed" onReview={onReview} />
+      </ul>,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Add the widget cache' }))
+    expect(onReview).toHaveBeenCalledExactlyOnceWith(1, 'dismissed')
+    expect(platform.openExternal).not.toHaveBeenCalled()
+
+    await user.keyboard('{Meta>}')
+    await user.click(screen.getByRole('button', { name: 'Add the widget cache' }))
+    await user.keyboard('{/Meta}')
+    expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/pull/7')
+
+    await user.click(screen.getByRole('button', { name: 'Open on GitHub' }))
+    expect(platform.openExternal).toHaveBeenCalledTimes(2)
+  })
+
+  it('opens an issue on GitHub', async () => {
+    const onReview = vi.fn()
+    render(
+      <ul>
+        <ItemRow item={item({ kind: 'issue', title: 'Crash on start' })} launch={null} onReview={onReview} />
+      </ul>,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Crash on start' }))
+    expect(onReview).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: 'Open on GitHub' })).not.toBeInTheDocument()
+  })
+
+  it('marks a pull request GitHub merges on its own', () => {
+    renderRow(item({ details: details({ autoMerge: 'SQUASH' }) }))
+    expect(screen.getByText('Auto-merge · squash')).toBeInTheDocument()
+
+    renderRow(item({ id: 2, details: details({ autoMerge: 'FAST' }) }))
+    expect(screen.getByText('Auto-merge · fast')).toBeInTheDocument()
+  })
+})

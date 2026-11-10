@@ -69,6 +69,9 @@ type Diagnostic struct {
 // Template is a checked prompt, ready to fill in.
 type Template struct {
 	tmpl *template.Template
+
+	// reply reports a review reply's template, which Execute fills in in reply mode.
+	reply bool
 }
 
 // Parse checks the text of a prompt that applies to appliesTo ("pr", "issue", or "any")
@@ -87,10 +90,21 @@ func Parse(body string, appliesTo AppliesTo) (*Template, []Diagnostic) {
 	return c.check(), c.diags
 }
 
+// ParseReply checks the text of a review reply, which the review sheet fills in for a pull
+// request as the text of a review, and parses it. It is Parse in reply mode: the text may
+// start with "-", as a markdown list does; filled in, it may be empty, as an approval with
+// no text is; and a session variable, which means nothing in a reply, is a warning.
+func ParseReply(body string) (*Template, []Diagnostic) {
+	c := newChecker(body, AppliesToPR)
+	c.reply = true
+
+	return c.check(), c.diags
+}
+
 // Execute fills in the prompt for data, which it sanitizes first, and tidies the result:
 // trailing spaces are trimmed from each line, runs of blank lines collapse to one, and
 // the prompt ends with exactly one newline. A prompt that is empty, starts with "-", or
-// is longer than 64 KB once filled in is an error.
+// is longer than 64 KB once filled in is an error; a reply may be empty or start with "-".
 func (t *Template) Execute(data Data) (string, error) {
 	buf := &cappedBuffer{limit: maxOutputBytes}
 
@@ -105,6 +119,7 @@ func (t *Template) Execute(data Data) (string, error) {
 	out := tidy(buf.String())
 
 	switch {
+	case t.reply:
 	case out == "":
 		return "", ErrEmptyPrompt
 	case strings.HasPrefix(out, "-"):
@@ -115,11 +130,12 @@ func (t *Template) Execute(data Data) (string, error) {
 }
 
 // Render fills in the prompt for data and, for an outside contributor's item, adds the
-// Notice after it, so no prompt can leave it out.
+// Notice after it, so no prompt can leave it out. A reply, which goes to GitHub rather
+// than to an agent, gets no notice.
 func (t *Template) Render(data Data) (string, error) {
 	out, err := t.Execute(data)
-	if err != nil {
-		return "", err
+	if err != nil || t.reply {
+		return out, err
 	}
 
 	if notice := Notice(data); notice != "" {
@@ -300,6 +316,8 @@ func (w *cappedBuffer) String() string {
 // with no NUL, and fit the length limit. It reports whether parsing should go ahead.
 func (c *checker) checkText() bool {
 	switch {
+	case strings.TrimSpace(c.body) == "" && c.reply:
+		c.addWhole("Write the reply's text.")
 	case strings.TrimSpace(c.body) == "":
 		c.addWhole("Write what the agent should do.")
 	case !utf8.ValidString(c.body) || strings.ContainsRune(c.body, 0):

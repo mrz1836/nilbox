@@ -102,11 +102,9 @@ type itemData struct {
 func itemUpdate(r *graphQLResponse[itemData]) (*ItemUpdate, error) {
 	update := &ItemUpdate{RateLimit: r.Data.RateLimit.queryRate()}
 
-	if isNull(r.Data.Node) {
-		for _, e := range r.Errors {
-			if e.Type != errorNotFound {
-				return nil, graphQLErr(r.Errors)
-			}
+	if gone, err := goneNode(r); gone || err != nil {
+		if err != nil {
+			return nil, err
 		}
 
 		return update, nil
@@ -137,6 +135,22 @@ func itemUpdate(r *graphQLResponse[itemData]) (*ItemUpdate, error) {
 	update.Found, update.Item = true, item
 
 	return update, nil
+}
+
+// goneNode reports a null node GitHub could not find, which is an item that is gone; a
+// null node for any other error is that error, so a passing problem never reads as gone.
+func goneNode(r *graphQLResponse[itemData]) (bool, error) {
+	if !isNull(r.Data.Node) {
+		return false, nil
+	}
+
+	for _, e := range r.Errors {
+		if e.Type != errorNotFound {
+			return false, graphQLErr(r.Errors)
+		}
+	}
+
+	return true, nil
 }
 
 // isNull reports a JSON value that is absent or null.

@@ -10,6 +10,9 @@ export {
     AppliesTo,
     BackupKind,
     ImportOutcome,
+    Purpose,
+    ReplyAction,
+    ReplySlot,
     Severity,
     SourceKind
 } from "./models.js";
@@ -26,6 +29,7 @@ export type {
     ImportSource,
     Input,
     Prompt,
+    ReplyDefaults,
     Usage,
     Variable
 } from "./models.js";

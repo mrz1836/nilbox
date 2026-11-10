@@ -99,6 +99,7 @@ func TestPrefDefaults(t *testing.T) {
 		TextSize:            TextSizeDefault,
 		CollapsedSections:   []ListKey{},
 		InboxOrder:          InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}},
+		MergeMethod:         DefaultMergeMethod,
 
 		DefaultProtectedBranches: []string{"main", "master"},
 	}, got)
@@ -245,6 +246,7 @@ func TestSettersPersist(t *testing.T) {
 		TextSize:            TextSizeLarger,
 		CollapsedSections:   []ListKey{},
 		InboxOrder:          InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}},
+		MergeMethod:         DefaultMergeMethod,
 		Branches:            branchrules.Rules{Own: true, Protected: []string{"develop"}},
 
 		DefaultProtectedBranches: branchrules.DefaultProtected(),

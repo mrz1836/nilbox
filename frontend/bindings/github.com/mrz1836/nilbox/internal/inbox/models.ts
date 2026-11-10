@@ -93,6 +93,12 @@ export interface Details {
     "reviews": Reviews;
 
     /**
+     * AutoMerge is the method a pull request's auto-merge merges with (MERGE, SQUASH, or
+     * REBASE), and "" while auto-merge is off and for an issue.
+     */
+    "autoMerge": string;
+
+    /**
      * FetchedAt is when the details were read, as RFC 3339.
      */
     "fetchedAt": string;

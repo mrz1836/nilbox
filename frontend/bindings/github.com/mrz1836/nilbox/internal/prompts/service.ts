@@ -122,6 +122,15 @@ export function SetDefault(kind: item$0.Kind, id: number): $CancellablePromise<v
 }
 
 /**
+ * SetReplyDefault makes the reply with id the default for slot, or, with id 0, leaves the
+ * slot with no default, so that review starts with no text. The prompt must be a reply for
+ * the slot's review.
+ */
+export function SetReplyDefault(slot: $models.ReplySlot, id: number): $CancellablePromise<void> {
+    return $Call.ByID(1716749300, slot, id);
+}
+
+/**
  * Update saves changes to a prompt. A prompt that is a default for a kind must keep
  * applying to that kind.
  */

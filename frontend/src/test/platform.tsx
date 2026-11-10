@@ -15,11 +15,13 @@ import type * as real from '../platform'
 import { clockAt, FIXED_NOW, withClock } from './clock'
 import {
   agentVersions,
+  toolVersions,
   agents,
   appInfo,
   budgetGauge,
   checkResult,
   cloneTarget,
+  defaultPrompts,
   fileCheck,
   importEntry,
   itemResolution,
@@ -31,7 +33,10 @@ import {
   promptBackup,
   prompts,
   removeResult,
+  replyList,
   resolution,
+  review,
+  reviewResult,
   sessionsSnapshot,
   settings,
   snapshot,
@@ -85,6 +90,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     getAppInfo: () => Promise.resolve(appInfo()),
     reportFirstPaint: done,
     agentVersions: () => Promise.resolve(agentVersions()),
+    toolVersions: () => Promise.resolve(toolVersions()),
     bugReportURL: () => Promise.resolve('https://github.com/acme-org/example-repo/issues/new?template=bug_report.yml'),
 
     getBudget: () => Promise.resolve(budgetGauge()),
@@ -115,6 +121,15 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
 
     listSessions: () => Promise.resolve(sessionsSnapshot()),
     focusSession: done,
+    sessionLastWords: () => Promise.resolve({ text: 'The change looks good.', partial: false }),
+
+    openReview: () => Promise.resolve(review()),
+    refreshReview: () => Promise.resolve(review()),
+    reviewPatches: (_id, _head, paths) =>
+      Promise.resolve((paths ?? []).map((path) => ({ path, patch: '@@ -1 +1 @@\n-a\n+b', patchState: '' as const }))),
+    actOnReview: () => Promise.resolve(reviewResult()),
+    reviewReplies: () => Promise.resolve(replyList()),
+    fillReply: () => Promise.resolve('Reviewed and approved. Thanks, @octo-other!'),
 
     listPrompts: () => Promise.resolve(prompts()),
     createPrompt: (input) => Promise.resolve(prompt({ ...fromInput(input), id: 9 })),
@@ -124,8 +139,9 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     resetPrompt: (id) => Promise.resolve(prompt({ id })),
     checkPrompt: () => Promise.resolve(checkResult()),
     listPromptVariables: () => Promise.resolve(variables()),
-    getDefaultPrompts: () => Promise.resolve({ pr: 1, issue: 4 }),
+    getDefaultPrompts: () => Promise.resolve(defaultPrompts()),
     setDefaultPrompt: done,
+    setReplyDefault: done,
     exportPrompts: (_path, ids) => Promise.resolve(ids === null || ids.length === 0 ? prompts().length : ids.length),
     listPromptBackups: () => Promise.resolve([promptBackup()]),
     previewPromptImport: () => Promise.resolve([importEntry()]),
@@ -170,6 +186,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     setStatusOrder: (statusOrder) => stored({ inboxOrder: { statusSorted: [], statusOrder: statusOrder ?? [] } }),
     setWindowSize: (windowSize) => stored({ windowSize }),
     setBranchRules: (branches) => stored({ branches: { ...branches, protected: branches.protected ?? [] } }),
+    setMergeMethod: (mergeMethod) => stored({ mergeMethod }),
 
     listWorktrees: () => Promise.resolve(worktreesSnapshot()),
     removeWorktree: () => Promise.resolve(removeResult()),

@@ -581,3 +581,33 @@ func TestTruncateCapsMessages(t *testing.T) {
 	assert.Empty(t, apiMessage([]byte("not json")))
 	assert.Equal(t, "Not Found", apiMessage([]byte(fmt.Sprintf(`{"message":%q}`, "Not Found"))))
 }
+
+func TestAPIMessageAddsGitHubsErrors(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name, body, want string
+	}{
+		{
+			name: "strings",
+			body: `{"message":"Unprocessable Entity","errors":["Review Can not approve your own pull request"]}`,
+			want: "Unprocessable Entity: Review Can not approve your own pull request",
+		},
+		{
+			name: "objects",
+			body: `{"message":"Validation Failed","errors":[{"resource":"PullRequestReview","code":"custom","message":"line must be part of the diff"},{"code":"missing_field","field":"body"},{"code":"invalid"}]}`,
+			want: "Validation Failed: line must be part of the diff; missing_field: body; invalid",
+		},
+		{name: "no message", body: `{"errors":["one"," two "]}`, want: "one; two"},
+		{name: "repeats the message", body: `{"message":"Not Found","errors":["not found",7,{}]}`, want: "Not Found"},
+		{name: "no errors", body: `{"message":"Bad credentials","errors":[]}`, want: "Bad credentials"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.want, apiMessage([]byte(tt.body)))
+		})
+	}
+}

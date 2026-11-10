@@ -175,7 +175,9 @@ func TestSeed(t *testing.T) {
 	s, _ := seeded(t, nil)
 	ctx := t.Context()
 
-	assert.Equal(t, []string{"Fix checks", "Quick look", "Review", "Work on it"}, nicknames(t, s))
+	assert.Equal(t, []string{
+		"Fix checks", "LGTM", "Needs changes", "Question", "Quick look", "Review", "Update OK", "Work on it",
+	}, nicknames(t, s))
 
 	review, work := byNickname(t, s, "Review"), byNickname(t, s, "Work on it")
 	assert.Equal(t, StarterReviewPR, review.StarterKey)
@@ -185,7 +187,10 @@ func TestSeed(t *testing.T) {
 
 	defaults, err := s.Defaults(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, DefaultPrompts{PR: review.ID, Issue: work.ID}, defaults)
+	assert.Equal(t, DefaultPrompts{PR: review.ID, Issue: work.ID, Replies: ReplyDefaults{
+		Approve: byNickname(t, s, "LGTM").ID, ApproveBots: byNickname(t, s, "Update OK").ID,
+		RequestChanges: byNickname(t, s, "Needs changes").ID, Comment: byNickname(t, s, "Question").ID,
+	}}, defaults)
 
 	quick := byNickname(t, s, "Quick look")
 	assert.Equal(t, map[agent.ID]string{agent.Claude: "sonnet"}, quick.Models)
@@ -197,7 +202,9 @@ func TestSeed(t *testing.T) {
 	require.NoError(t, Seed(ctx, s.store))
 	require.NoError(t, s.Delete(ctx, quick.ID))
 	require.NoError(t, Seed(ctx, s.store))
-	assert.Equal(t, []string{"Fix checks", "Review", "Work on it"}, nicknames(t, s))
+	assert.Equal(t, []string{
+		"Fix checks", "LGTM", "Needs changes", "Question", "Review", "Update OK", "Work on it",
+	}, nicknames(t, s))
 }
 
 func TestSeedFindsAFreeNickname(t *testing.T) {
@@ -360,7 +367,7 @@ func TestDeleteRefusesAPromptInUse(t *testing.T) {
 	fix = byNickname(t, s, "Fix checks")
 	assert.Equal(t, Usage{
 		Defaults: []item.Kind{}, Orgs: []string{"acme-org"}, Repos: []string{"acme-org/api", "other-org/web"},
-		Kinds: []item.Kind{item.KindPR},
+		Kinds: []item.Kind{item.KindPR}, Replies: []ReplySlot{},
 	}, fix.Usage)
 
 	var inUse *InUseError
@@ -458,7 +465,8 @@ func TestSetDefault(t *testing.T) {
 
 	defaults, err := s.store.Defaults(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, DefaultPrompts{PR: fix.ID, Issue: work.ID}, defaults)
+	assert.Equal(t, fix.ID, defaults.PR)
+	assert.Equal(t, work.ID, defaults.Issue)
 	assert.Equal(t, fix.ID, defaults.For(item.KindPR))
 	assert.Equal(t, work.ID, defaults.For(item.KindIssue))
 
@@ -502,7 +510,7 @@ func TestLookupAndAll(t *testing.T) {
 
 	all, err := s.store.All(ctx)
 	require.NoError(t, err)
-	assert.Len(t, all, 4)
+	assert.Len(t, all, len(Starters()))
 
 	tmpl, err := got.Template()
 	require.NoError(t, err)

@@ -97,6 +97,17 @@ export interface BundlePrompt {
     "body": string;
 
     /**
+     * Purpose is PurposeAgent or PurposeReply; a file older than version 3 holds agent
+     * prompts only, and reads as "".
+     */
+    "purpose": Purpose;
+
+    /**
+     * Action is a reply's review, and "" for an agent prompt.
+     */
+    "action": ReplyAction;
+
+    /**
      * Models is each agent's model; an agent with no entry inherits.
      */
     "models": { [_ in agent$0.ID]?: string } | null;
@@ -180,7 +191,8 @@ export interface CheckResult {
     "preview": string;
 
     /**
-     * Notice is the line added after the prompt for an outside contributor's item, or "".
+     * Notice is the line added after the prompt for an outside contributor's item, or "";
+     * always "" for a reply, which goes to GitHub, not to an agent.
      */
     "notice": string;
 
@@ -212,12 +224,17 @@ export interface CheckResult {
 }
 
 /**
- * DefaultPrompts are the app's default prompt for each kind of item; 0 when no prompt
- * applies to that kind.
+ * DefaultPrompts are the app's default prompt for each kind of item, 0 when no prompt
+ * applies to that kind, and its default replies.
  */
 export interface DefaultPrompts {
     "pr": number;
     "issue": number;
+
+    /**
+     * Replies are the default replies.
+     */
+    "replies": ReplyDefaults;
 }
 
 /**
@@ -336,13 +353,25 @@ export interface ImportSource {
 }
 
 /**
- * Input is a prompt as the editor saves it.
+ * Input is a prompt as the editor saves it. A reply's AppliesTo and launch settings are
+ * ignored: it applies to pull requests and has none.
  */
 export interface Input {
     "name": string;
     "nickname": string;
     "appliesTo": AppliesTo;
     "body": string;
+
+    /**
+     * Purpose is what a new prompt is for; "" is an agent prompt. A saved prompt keeps
+     * the purpose it was created with.
+     */
+    "purpose": Purpose;
+
+    /**
+     * ReplyAction is the review a reply is written for; ignored for an agent prompt.
+     */
+    "replyAction": ReplyAction;
     "models": { [_ in agent$0.ID]?: string } | null;
     "effort": string;
     "planMode": boolean | null;
@@ -379,6 +408,16 @@ export interface Prompt {
      * Body is the Go text/template.
      */
     "body": string;
+
+    /**
+     * Purpose is PurposeAgent or PurposeReply.
+     */
+    "purpose": Purpose;
+
+    /**
+     * ReplyAction is the review a reply is written for, and "" for an agent prompt.
+     */
+    "replyAction": ReplyAction;
 
     /**
      * Models is each agent's model; an agent with no entry inherits.
@@ -431,6 +470,85 @@ export interface Prompt {
     "createdAt": string;
     "updatedAt": string;
 }
+
+/**
+ * Purpose is what a prompt is for.
+ */
+export type Purpose = "agent" | "reply";
+
+/**
+ * The values of Purpose, by the names of their Go constants.
+ */
+export const Purpose = {
+    /**
+     * What a prompt is for.
+     *
+     * PurposeAgent is a prompt a launch fills in for a coding agent.
+     */
+    PurposeAgent: "agent",
+
+    /**
+     * PurposeReply is a review reply: text the review sheet fills in as the body of an
+     * approval, a request for changes, or a comment. It applies to pull requests, has no
+     * launch settings, and is never a launch's prompt.
+     */
+    PurposeReply: "reply",
+} as const;
+
+/**
+ * ReplyAction is the review a reply is written for.
+ */
+export type ReplyAction = "" | "approve" | "request_changes" | "comment";
+
+/**
+ * The values of ReplyAction, by the names of their Go constants.
+ */
+export const ReplyAction = {
+    /**
+     * The reviews a reply can be written for.
+     *
+     * ReplyNone is an agent prompt's: it writes no review.
+     */
+    ReplyNone: "",
+    ReplyApprove: "approve",
+    ReplyRequestChanges: "request_changes",
+    ReplyComment: "comment",
+} as const;
+
+/**
+ * ReplyDefaults are the default reply for each review, by prompt ID; 0 where none is
+ * chosen, which leaves the review's text empty.
+ */
+export interface ReplyDefaults {
+    "approve": number;
+
+    /**
+     * ApproveBots is the reply for approving a bot's pull request, such as a dependency
+     * update.
+     */
+    "approveBots": number;
+    "requestChanges": number;
+    "comment": number;
+}
+
+/**
+ * ReplySlot is a default a reply can be: the reply for each review, and a second one for
+ * approving a bot's pull request, such as a dependency update.
+ */
+export type ReplySlot = "approve" | "approve_bots" | "request_changes" | "comment";
+
+/**
+ * The values of ReplySlot, by the names of their Go constants.
+ */
+export const ReplySlot = {
+    /**
+     * The default replies.
+     */
+    SlotApprove: "approve",
+    SlotApproveBots: "approve_bots",
+    SlotRequestChanges: "request_changes",
+    SlotComment: "comment",
+} as const;
 
 /**
  * Severity says how much a Diagnostic matters.
@@ -498,6 +616,12 @@ export interface Usage {
      * Kinds lists every kind the prompt is a default for, anywhere.
      */
     "kinds": item$0.Kind[] | null;
+
+    /**
+     * Replies lists the default replies a reply is. Unlike the defaults above, being one
+     * never keeps a reply from being deleted.
+     */
+    "replies": ReplySlot[] | null;
 }
 
 /**

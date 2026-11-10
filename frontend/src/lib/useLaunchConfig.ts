@@ -21,19 +21,24 @@ import {
   type Settings,
 } from '../platform'
 import { all } from './call'
+import { isAgentPrompt } from './launch'
 import { shareResolutions } from './share'
 import { useQuery } from './useQuery'
 
 // LaunchConfig is everything launching reads: the settings, the coding agents and their
 // profiles, prompts, default prompts, variables, and launch defaults, and each inbox
-// item's resolved settings.
+// item's resolved settings. It also holds the review replies, which share the prompt
+// library but never launch anything.
 export interface LaunchConfig {
   // settings is null until the first load finishes.
   settings: Settings | null
   // agents are the coding agents, the default first, each with whether it is installed.
   agents: AgentInfo[]
   profiles: Profile[]
+  // prompts are the agent prompts a launch can use, as the library lists them.
   prompts: Prompt[]
+  // replies are the review replies, as the library lists them.
+  replies: Prompt[]
   defaultPrompts: DefaultPrompts | null
   variables: PromptVariable[]
   launchDefaults: LaunchDefaults[]
@@ -59,6 +64,7 @@ interface Loaded {
   agents: AgentInfo[]
   profiles: Profile[]
   prompts: Prompt[]
+  replies: Prompt[]
   defaultPrompts: DefaultPrompts
   variables: PromptVariable[]
   launchDefaults: LaunchDefaults[]
@@ -86,7 +92,9 @@ function loadAll(): PromiseLike<Loaded> {
     settings,
     agents,
     profiles,
-    prompts,
+    // Review replies live in the same library, but no launch ever uses one.
+    prompts: prompts.filter(isAgentPrompt),
+    replies: prompts.filter((p) => !isAgentPrompt(p)),
     defaultPrompts,
     variables,
     launchDefaults,
@@ -167,6 +175,7 @@ export function useLaunchConfig(snapshot: InboxSnapshot | null): LaunchConfig {
     agents: data?.agents ?? noList,
     profiles: data?.profiles ?? noList,
     prompts: data?.prompts ?? noList,
+    replies: data?.replies ?? noList,
     defaultPrompts: data?.defaultPrompts ?? null,
     variables: data?.variables ?? noList,
     launchDefaults: data?.launchDefaults ?? noList,

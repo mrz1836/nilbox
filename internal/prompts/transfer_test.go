@@ -161,7 +161,7 @@ func TestDecodeBundleRefusesWhatItCannotRead(t *testing.T) {
 		"a list":            {data: `[{"name":"x"}]`, want: ErrNotBundle},
 		"another format":    {data: `{"format":"other.prompts","version":1,"prompts":[]}`, want: ErrNotBundle},
 		"no version":        {data: `{"format":"` + BundleFormat + `","prompts":[]}`, want: ErrNotBundle},
-		"a newer version":   {data: `{"format":"` + BundleFormat + `","version":3,"prompts":[]}`, want: ErrNewerBundle},
+		"a newer version":   {data: `{"format":"` + BundleFormat + `","version":4,"prompts":[]}`, want: ErrNewerBundle},
 		"bad extra args":    {data: `{"format":"` + BundleFormat + `","version":2,"prompts":[{"extraArgs":"--x"}]}`, want: ErrNotBundle},
 		"too many prompts":  {data: `{"format":"` + BundleFormat + `","version":1,"prompts":[` + strings.Join(many, ",") + `]}`, want: ErrBundleTooLarge},
 		"too large to read": {data: strings.Repeat(" ", maxBundleBytes+1), want: ErrBundleTooLarge},
@@ -201,8 +201,13 @@ func TestExportWritesTheWholeLibrary(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "2026-11-08T17:00:00Z", got.ExportedAt)
 	assert.Equal(t, "v1.2.3", got.App)
-	assert.Equal(t, BundleDefaults{PR: "Review", Issue: "Work on it"}, got.Defaults)
-	assert.ElementsMatch(t, []string{StarterReviewPR, StarterWorkOnIssue, StarterQuickLook, StarterFixChecks}, got.StartersAdded)
+	assert.Equal(t, BundleDefaults{PR: "Review", Issue: "Work on it", Replies: map[ReplySlot]string{
+		SlotApprove: "LGTM", SlotApproveBots: "Update OK", SlotRequestChanges: "Needs changes", SlotComment: "Question",
+	}}, got.Defaults)
+	assert.ElementsMatch(t, []string{
+		StarterReviewPR, StarterWorkOnIssue, StarterQuickLook, StarterFixChecks,
+		StarterReplyLGTM, StarterReplyUpdateOK, StarterReplyNeedsChanges, StarterReplyQuestion,
+	}, got.StartersAdded)
 	assert.Len(t, got.Prompts, len(Starters()))
 
 	info, err := os.Stat(path)
@@ -656,8 +661,9 @@ func TestRestoreBringsBackTheLibraryFromTheDatabaseSetAside(t *testing.T) {
 	assert.Len(t, restored.Nicknames, len(Starters()))
 
 	require.NoError(t, Seed(t.Context(), s.store))
-	assert.ElementsMatch(t, []string{"Quick look", "Review", "Security", "Work on it"}, nicknames(t, s),
-		"the deleted starter stays deleted")
+	assert.ElementsMatch(t, []string{
+		"LGTM", "Needs changes", "Question", "Quick look", "Review", "Security", "Update OK", "Work on it",
+	}, nicknames(t, s), "the deleted starter stays deleted")
 	assert.Equal(t, byNickname(t, s, "Security").ID, restored.IDs["Security"], "each nickname finds its restored prompt")
 
 	defaults, err := s.Defaults(t.Context())
@@ -859,10 +865,10 @@ func TestReadSnapshotBundleReadsAnOlderSchema(t *testing.T) {
 	got, err := readSnapshotBundle(t.Context(), path)
 	require.NoError(t, err)
 	assert.Equal(t, []BundlePrompt{{
-		Name: "Early", Nickname: "Early", AppliesTo: AppliesToPR, Body: lookAtURL,
+		Name: "Early", Nickname: "Early", AppliesTo: AppliesToPR, Body: lookAtURL, Purpose: PurposeAgent,
 		Models: map[agent.ID]string{}, ExtraArgs: map[agent.ID][]string{},
 		CreatedAt: "2026-01-01T10:00:00Z", UpdatedAt: "2026-01-02T10:00:00Z",
-	}}, got.Prompts)
+	}}, got.Prompts, "a backup from before replies holds agent prompts")
 	assert.Equal(t, []string{}, got.StartersAdded)
 	assert.Equal(t, BundleDefaults{}, got.Defaults)
 }

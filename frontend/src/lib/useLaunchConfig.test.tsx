@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { InboxSnapshot } from '../platform'
-import { item, itemResolution, list, prompts, settings, snapshot } from '../test/fixtures'
+import { defaultPrompts, item, itemResolution, list, prompts, replyPrompts, settings, snapshot } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { useLaunchConfig } from './useLaunchConfig'
 
@@ -36,9 +36,40 @@ describe('useLaunchConfig', () => {
     expect(result.current.loaded).toBe(true)
     expect(result.current.settings).toEqual(settings())
     expect(result.current.prompts).toHaveLength(5)
-    expect(result.current.defaultPrompts).toEqual({ pr: 1, issue: 4 })
+    expect(result.current.defaultPrompts).toEqual(defaultPrompts())
     expect(result.current.items.map((i) => i.id)).toEqual([1, 2])
     expect(platform.resolveLaunches).toHaveBeenCalledWith([1, 2])
+  })
+
+  it('keeps the review replies apart from the prompts a launch can use, in the library’s order', async () => {
+    const replies = replyPrompts()
+    platform.listPrompts.mockResolvedValue([
+      ...replies.slice(3),
+      ...prompts().slice(0, 2),
+      ...replies.slice(0, 1),
+      ...prompts().slice(2),
+      ...replies.slice(1, 3),
+    ])
+    const { result } = renderHook(() => useLaunchConfig(snapshot()))
+
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true)
+    })
+
+    expect(result.current.prompts.map((p) => p.id)).toEqual(prompts().map((p) => p.id))
+    expect(result.current.replies.map((p) => p.nickname)).toEqual(['Question', 'LGTM', 'Update OK', 'Needs changes'])
+  })
+
+  it('shows the same empty lists until the configuration loads', () => {
+    platform.listPrompts.mockReturnValue(new Promise(() => undefined))
+    const { result, rerender } = renderHook(() => useLaunchConfig(snapshot()))
+    const first = result.current
+
+    rerender()
+
+    expect(first.replies).toEqual([])
+    expect(result.current.replies).toBe(first.replies)
+    expect(result.current.prompts).toBe(first.prompts)
   })
 
   it('resolves nothing for an empty inbox', async () => {

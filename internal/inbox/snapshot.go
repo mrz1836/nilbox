@@ -194,6 +194,10 @@ type Details struct {
 	Checks  Checks  `json:"checks"`
 	Reviews Reviews `json:"reviews"`
 
+	// AutoMerge is the method a pull request's auto-merge merges with (MERGE, SQUASH, or
+	// REBASE), and "" while auto-merge is off and for an issue.
+	AutoMerge string `json:"autoMerge"`
+
 	// FetchedAt is when the details were read, as RFC 3339.
 	FetchedAt string `json:"fetchedAt"`
 }
@@ -473,6 +477,7 @@ type itemRow struct {
 	SubIssues        SubIssues
 	DetailsFetchedAt *time.Time
 	HeadOID          string
+	AutoMerge        string
 
 	// ReviewUsers and ReviewTeams are who a pull request asks to review: the logins of
 	// the people and the slugs of the teams. Both are nil until a refresh reads them.
@@ -535,7 +540,8 @@ func itemRowOf(r queries.ListItemsRow) (itemRow, error) {
 		Reviewers: int(value(r.Reviewers)), Reviewed: int(value(r.Reviewed)), Approvals: int(value(r.Approvals)),
 		ChangesRequested: int(value(r.ChangesRequested)), DetailsFetchedAt: r.DetailsFetchedAt,
 		SubIssues: SubIssues{Total: int(value(r.SubIssuesTotal)), Completed: int(value(r.SubIssuesCompleted))},
-		HeadOID:   value(r.HeadOID), ReviewUsers: reviewUsers, ReviewTeams: reviewTeams,
+		HeadOID:   value(r.HeadOID), AutoMerge: value(r.AutoMergeMethod), ReviewUsers: reviewUsers,
+		ReviewTeams: reviewTeams,
 
 		Stored: stored,
 
@@ -684,6 +690,7 @@ func (r *itemRow) details() *Details {
 			Approvals: r.Approvals, ChangesRequested: r.ChangesRequested,
 		},
 		SubIssues: r.SubIssues,
+		AutoMerge: r.AutoMerge,
 		FetchedAt: formatOptionalTime(r.DetailsFetchedAt),
 	}
 }
