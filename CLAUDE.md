@@ -23,7 +23,9 @@ are Nilbox's own, and they win wherever the two differ.
 3. **The product name lives only in `internal/brand`.** Reference `brand.Name`, `brand.Slug`, and
    friends. Never hard-code the name elsewhere.
 4. **User data stays local.** Nilbox never sends a user's GitHub data, preferences, triage state,
-   or caches anywhere except GitHub's own API.
+   or caches anywhere except GitHub's own API. Installing a tool downloads its public release from
+   GitHub's release download hosts (`github.DefaultDownloadHosts`), which get only the request for
+   that file: no token, and nothing of the user's.
 5. **Optimize for local-first operation.** Nilbox should minimize network requests and rely on local caches and state wherever possible, ensuring responsiveness and reducing dependency on external services. Try and use the least amount of GitHub requests necessary for any operation.
 6. **No shell or Python scripts.** A build, check, or release step is a `magex` target written in
    Go (`magefiles/`, see Layout), never a `.sh`, `.py`, or other script, and a workflow runs the
@@ -172,7 +174,10 @@ app:lint` reads.
 - `internal/budget/` keeps the GitHub API budget current. The one shared `github.Client` hands
   every response's rate-limit reading, and what the request spent, to its `Tracker`
   (`github.RateObserver`), whose state the `Saver` keeps across runs. Every GitHub request goes
-  through `(*github.Client).do`: never build an HTTP request anywhere else, nor run `gh api`;
+  through `(*github.Client).do`, apart from two downloads that aren't the API and carry no token:
+  the profile picture (`FetchAvatar`) and a public release file (`DownloadAsset`, https only, its
+  host and every redirect's on `DownloadHosts`). Never build an HTTP request anywhere else, nor run
+  `gh api`;
   `internal/repoguard/githubrequests_test.go` fails the build if anything does. Every write goes
   through the `WriteGate`, a REST one through `edit` and a GraphQL mutation through `mutate`
   (`postGraphQL` refuses a mutation); `internal/repoguard/githubwrites_test.go` keeps it so.
@@ -245,7 +250,15 @@ app:lint` reads.
   ends, and `event.ToolsUpdated` tells the window. It writes the `tools.*` preferences and only
   reads `integrations.*`, which settings writes through the leaf `internal/integrationprefs`
   (the switches, automatic, on, or off, and the chosen copies), so settings never imports
-  integrations.
+  integrations. `Install`, `Update`, and `Reinstall` hand the latest release to
+  `internal/toolinstall`, which downloads the archive and checksums file into a fresh private
+  folder under `<data>/downloads`, checks both against the checksums file and GitHub's digests,
+  extracts only the program's own entry, tries it, and places it so the target is never missing
+  (a copy beside it renamed over it, the old one put back if the new one won't run); it keeps no
+  records and speaks no HTTP, and integrations records each install in `tool_installs`, which
+  makes the copy read as installed by the app. Nothing replaces a Homebrew copy or a link, a
+  copy the app didn't install is replaced only after the user confirms, and a go install copy
+  gets a new copy in `~/.local/bin` instead; the app never runs `go install` or `sudo`.
 - `internal/measure/` and `magefiles/measure.go` take the numbers in
   [`docs/performance.md`](docs/performance.md).
 - `frontend/` is the React + TypeScript + Vite + Tailwind app. It reaches Go only through the

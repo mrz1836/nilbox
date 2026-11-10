@@ -291,6 +291,7 @@ requests that merged, never touching `main`, `master`, or any branch you protect
 - **Worktrees Nilbox keeps track of** — one per item, shared by every agent, resumed on the next launch, and removed only when nothing would be lost
 - **Menu bar and notifications** — a live count in the menu bar and native banners for what's new
 - **API budget gauge** — an always-visible, live dial for the GitHub budget closest to running out, counting every request the app makes
+- **Your release tools, found and kept current** — mage-x and go-pre-commit found the way your terminal finds them, checked for updates once a day, and installed or updated from their GitHub release after a checksum check, never with `go install` or `sudo`
 - **Inbox nil** — empty every list and the inbox throws you a party
 
 <br/>
@@ -604,8 +605,10 @@ More in [The window](docs/desktop.md#the-window).
 
 <br>
 
-> **Your data stays on your Mac.** Nilbox talks only to GitHub: `api.github.com`, and
-> `avatars.githubusercontent.com` once for your profile picture. It reads from GitHub, and changes
+> **Your data stays on your Mac.** Nilbox talks only to GitHub: `api.github.com`,
+> `avatars.githubusercontent.com` once for your profile picture, and, when you install or update a
+> tool, `github.com` and GitHub's release download hosts for that tool's public release, with no
+> token and nothing of yours. It reads from GitHub, and changes
 > something there only when you ask: taking you off an item, or a review, merge, or branch update
 > you send from the review sheet. Your preferences, triage state, and cache, the diffs of pull
 > requests you review included, never leave your machine.
@@ -640,6 +643,10 @@ View the full documentation for Nilbox:
 > - **Untrusted content stays untrusted:** pull requests and issues from outside contributors can
 >   carry prompt injection. Plan mode (Codex's read-only sandbox) for outsiders and the
 >   sensitive-file checks reduce that risk; they don't remove it.
+> - **Tools you install run on your Mac:** Nilbox installs mage-x and go-pre-commit only from
+>   their GitHub releases, after checking the release's checksums, into `~/.local/bin`, and never
+>   with `go install` or `sudo`. Those tools then fetch what they need themselves: before 1.14.0,
+>   go-pre-commit installs its own linters with `go install` and `curl`, which Nilbox can't check.
 > - **No formal audit:** Nilbox has not been professionally audited.
 > - **No liability:** the authors accept no responsibility for lost work, exposed data, or damages.
 >

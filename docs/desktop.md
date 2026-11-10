@@ -209,8 +209,9 @@ five-second limit, and keeps the variables it prints. On an M1 Max that took abo
 330 ms the first time and under 60 ms after.
 
 - **What it's for.** It's the environment the app finds and runs your command-line tools with
-  for the coming Integrations (mage-x and go-pre-commit), so they're the same copies your
-  terminal runs. This release reads it and doesn't use it yet. It matters for `git` too:
+  for Integrations (mage-x and go-pre-commit), so they're the same copies your terminal runs
+  (see [Tools the app finds and installs](#tools-the-app-finds-and-installs)). It matters for
+  `git` too:
   Apple's `/usr/bin/git` and Homebrew's keep separate keychain entries, and Apple's can stop to
   ask for a keychain password in a window, which a run with no terminal can't answer.
 - **When it can't be read** (the shell takes longer than five seconds, fails, or prints
@@ -222,6 +223,42 @@ five-second limit, and keeps the variables it prints. On an M1 Max that took abo
   name); the log records how long the read took and how many variables it found.
 - **Your startup files** run as they do when you open a terminal. If they print a greeting,
   it's ignored. If one waits for input, the read gives up after five seconds.
+
+<br>
+
+## Tools the app finds and installs
+
+**Settings → Integrations** shows the command-line tools the app drives: mage-x's `magex`, which
+releases your repositories, and `go-pre-commit`, which runs your pre-commit checks. For each one
+it says which copy it uses, its version, and where it came from (a GitHub release, Homebrew,
+`go install`, a development build, or the app itself).
+
+- **Finding them.** After the first paint, the app looks on your shell's `PATH`, then in
+  Homebrew, `/usr/local/bin`, `~/.local/bin`, `~/bin`, and go install's folder, and runs each
+  copy's `--version`. The copy your terminal runs is the one it uses, unless you choose another
+  under **Details**. It checks once a day, while you're signed in to GitHub, for a newer release.
+- **Installing and updating.** **Install** and **Update** download the release archive for your
+  Mac from the tool's GitHub release, check it against the release's SHA-256 checksums file and
+  GitHub's own digest, try the program, and put it in `~/.local/bin` (or replace the copy you
+  have in place). The download goes to a private folder in the app's data folder, and nothing
+  else on your Mac changes until the program has run once. The program is swapped in with a
+  rename, so your terminal never finds it missing, and if the new copy won't run, the old one is
+  put back.
+- **What the app never does.** It never runs `go install` or `sudo`, never edits your shell's
+  startup files, and never replaces a Homebrew copy (it shows the `brew upgrade` command) or a
+  link (such as a development build you linked into `~/.local/bin`). A copy it didn't install is
+  replaced only after you say so. A copy in go install's folder stays where it is: the new one goes
+  in `~/.local/bin`, and if your terminal still finds the old one first, the card says so and
+  offers to move it to the Trash, through Finder, so **Put Back** works. The first time, macOS
+  asks whether the app may control Finder; if you say no, it offers **Reveal in Finder** instead.
+- **`~/.local/bin` and your `PATH`.** The app finds a tool it installed either way. If your shell's
+  `PATH` doesn't include `~/.local/bin`, your terminal won't, and the card says so with the line to
+  add to `~/.zprofile`: `export PATH="$HOME/.local/bin:$PATH"`. For go-pre-commit this matters
+  most: its Git hook runs `go-pre-commit` from your `PATH`, so without that line, commits fail.
+- **What the tools fetch themselves.** Until go-pre-commit 1.14.0, the first time its checks need
+  gofumpt, golangci-lint, or gitleaks, go-pre-commit installs them itself with `go install` and
+  `curl`; from 1.14.0 it checks those downloads against their checksums. The app doesn't install
+  them, and can't check them for an older go-pre-commit.
 
 <br>
 
