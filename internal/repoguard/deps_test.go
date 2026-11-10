@@ -76,6 +76,11 @@ func boundaries() []boundary {
 			why: "bump reads a dependency update from its title alone; prompts and the review sheet call it, never the reverse",
 		},
 		{
+			pkg:       "internal/shellenv",
+			forbidden: []string{"internal/store", "internal/github", "internal/settings", "internal/inbox", "internal/core"},
+			why:       "shellenv reads the login shell's environment for whatever runs tools; it knows no service",
+		},
+		{
 			pkg: "internal/review",
 			forbidden: []string{
 				"internal/inbox", "internal/settings", "internal/prompts", "internal/launcher", "internal/worktrees",
