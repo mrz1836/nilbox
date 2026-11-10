@@ -10,6 +10,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/worklog"
 )
 
@@ -50,13 +51,13 @@ func (s *Service) reconcile(ctx context.Context, listings []cloneListing, record
 			continue
 		}
 
-		if !samePath(wt.Path, r.Dir()) {
+		if !paths.Same(wt.Path, r.Dir()) {
 			r.Path, r.Branch = wt.Path, wt.Branch
 			s.rerecord(ctx, r)
 		}
 
 		markRecorded(wt, r)
-		live[resolvedPath(wt.Path)] = r
+		live[paths.Resolved(wt.Path)] = r
 	}
 
 	return live
@@ -73,7 +74,7 @@ func (s *Service) adopt(ctx context.Context, repos []Repo, recorded map[string]w
 
 	taken := map[string]bool{}
 	for _, r := range recorded {
-		taken[resolvedPath(r.ClonePath)+"\x00"+r.Worktree] = true
+		taken[paths.Resolved(r.ClonePath)+"\x00"+r.Worktree] = true
 	}
 
 	for repo, wt := range rows(repos) {
@@ -82,7 +83,7 @@ func (s *Service) adopt(ctx context.Context, repos []Repo, recorded map[string]w
 		}
 
 		name := item.WorktreeName(wt.Item.Kind, wt.Item.Number)
-		key := resolvedPath(repo.Path) + "\x00" + name
+		key := paths.Resolved(repo.Path) + "\x00" + name
 
 		if taken[key] {
 			continue
@@ -100,7 +101,7 @@ func (s *Service) adopt(ctx context.Context, repos []Repo, recorded map[string]w
 		}
 
 		taken[key] = true
-		recorded[resolvedPath(wt.Path)] = r
+		recorded[paths.Resolved(wt.Path)] = r
 		markRecorded(wt, r)
 	}
 }
@@ -112,7 +113,7 @@ func adoptable(wt *Worktree, recorded map[string]worklog.Record) bool {
 		return false
 	}
 
-	if _, ok := recorded[resolvedPath(wt.Path)]; ok {
+	if _, ok := recorded[paths.Resolved(wt.Path)]; ok {
 		return false
 	}
 
@@ -145,10 +146,10 @@ func markRecorded(wt *Worktree, r worklog.Record) {
 
 // listingOf returns the listing of the clone at clonePath, or nil when it was not listed.
 func listingOf(listings []cloneListing, clonePath string) *cloneListing {
-	key := resolvedPath(clonePath)
+	key := paths.Resolved(clonePath)
 
 	for i := range listings {
-		if l := &listings[i]; resolvedPath(l.repo.repo.Path) == key || l.repo.key == key {
+		if l := &listings[i]; paths.Resolved(l.repo.repo.Path) == key || l.repo.key == key {
 			return l
 		}
 	}
@@ -165,7 +166,7 @@ func recordRow(l *cloneListing, r worklog.Record) *Worktree {
 	}
 
 	for _, match := range []func(*Worktree) bool{
-		func(wt *Worktree) bool { return samePath(wt.Path, r.Dir()) },
+		func(wt *Worktree) bool { return paths.Same(wt.Path, r.Dir()) },
 		func(wt *Worktree) bool { return wt.Branch == branch },
 	} {
 		for i := range l.rows {
@@ -188,10 +189,14 @@ func cloneGone(path string) bool {
 // forgetStale forgets a record the listing found no worktree for, once git still has
 // none under the clone's lock. A launch holds that lock from finding the item's worktree
 // to recording it, so a listing that ran before the launch added the worktree never
-// forgets the record the launch just wrote. When git cannot say, the record stays for
-// the next listing to decide.
+// forgets the record the launch just wrote. When git cannot say, or another job holds the
+// clone, the record stays for the next listing to decide: a listing never waits.
 func (s *Service) forgetStale(ctx context.Context, r worklog.Record) {
-	unlock := s.lockClone(r.ClonePath)
+	unlock, ok := s.tryClone(r.ClonePath)
+	if !ok {
+		return
+	}
+
 	defer unlock()
 
 	g, err := s.git()

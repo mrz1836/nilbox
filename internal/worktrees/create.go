@@ -15,6 +15,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/flight"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/uierr"
 	"github.com/mrz1836/nilbox/internal/worklog"
 )
@@ -182,13 +183,14 @@ func (m *Maker) Plan(ctx context.Context, req EnsureRequest) (Ensured, error) {
 // Entries whose directories are gone are pruned first. When the worktree's directory is
 // taken by something git does not know, git's entries are pruned and the add is tried
 // once more; it never deletes anything. The worktree is recorded with its item. Calls for
-// one item share one run, and one clone's git work runs one call at a time.
+// one item share one run, and one clone's git work runs one call at a time. While a run (a
+// release, checks, a script) is using the clone, Ensure fails at once, naming it.
 func (m *Maker) Ensure(ctx context.Context, req EnsureRequest) (Ensured, error) {
 	if err := req.check(); err != nil {
 		return Ensured{}, err
 	}
 
-	key := resolvedPath(req.Clone) + "\x00" + item.WorktreeName(req.Kind, req.Number)
+	key := paths.Resolved(req.Clone) + "\x00" + item.WorktreeName(req.Kind, req.Number)
 
 	return m.calls.Do(ctx, key, func(ctx context.Context) (Ensured, error) {
 		ctx, cancel := context.WithTimeout(ctx, ensureTimeout)
@@ -199,7 +201,11 @@ func (m *Maker) Ensure(ctx context.Context, req EnsureRequest) (Ensured, error) 
 		m.s.act.RLock()
 		defer m.s.act.RUnlock()
 
-		unlock := m.s.lockClone(req.Clone)
+		unlock, err := m.s.holdClone(ctx, req.Clone)
+		if err != nil {
+			return Ensured{}, err
+		}
+
 		defer unlock()
 
 		return m.ensure(ctx, req)
@@ -272,7 +278,7 @@ func (req EnsureRequest) name() string {
 // still found by its branch, so a failure is only logged.
 func (m *Maker) record(ctx context.Context, req EnsureRequest) *worklog.Record {
 	for _, r := range m.s.records(ctx) {
-		if r.Worktree == req.name() && samePath(r.ClonePath, req.Clone) {
+		if r.Worktree == req.name() && paths.Same(r.ClonePath, req.Clone) {
 			return &r
 		}
 	}
@@ -340,7 +346,7 @@ func (m *Maker) find(ctx context.Context, g git, req EnsureRequest, rec *worklog
 func (m *Maker) reuse(ctx context.Context, g git, e Entry, rec *worklog.Record, target string) found {
 	f := found{action: ActionAdopt, path: e.Path, branch: e.Branch, head: e.HEAD, dirty: m.dirty(ctx, g, e.Path)}
 
-	if samePath(e.Path, target) || (rec != nil && samePath(e.Path, rec.Dir())) {
+	if paths.Same(e.Path, target) || (rec != nil && paths.Same(e.Path, rec.Dir())) {
 		f.action = ActionResume
 	}
 
@@ -351,7 +357,7 @@ func (m *Maker) reuse(ctx context.Context, g git, e Entry, rec *worklog.Record, 
 // branch, which git must forget before the worktree can be added.
 func staleEntry(entries []Entry, target, branch string) bool {
 	return slices.ContainsFunc(entries, func(e Entry) bool {
-		return e.Prunable && (e.Branch == branch || samePath(e.Path, target))
+		return e.Prunable && (e.Branch == branch || paths.Same(e.Path, target))
 	})
 }
 
@@ -368,12 +374,12 @@ func defaultName(branch string) string {
 // the item's managed path, then one with the item's branch checked out anywhere.
 func pickEntry(entries []Entry, rec *worklog.Record, target, branch string) (Entry, bool) {
 	matches := []func(Entry) bool{
-		func(e Entry) bool { return samePath(e.Path, target) },
+		func(e Entry) bool { return paths.Same(e.Path, target) },
 		func(e Entry) bool { return e.Branch == branch },
 	}
 
 	if rec != nil {
-		matches = append([]func(Entry) bool{func(e Entry) bool { return samePath(e.Path, rec.Dir()) }}, matches...)
+		matches = append([]func(Entry) bool{func(e Entry) bool { return paths.Same(e.Path, rec.Dir()) }}, matches...)
 	}
 
 	for _, match := range matches {
@@ -425,7 +431,7 @@ func (m *Maker) build(ctx context.Context, g git, req EnsureRequest, f *found) e
 	}
 
 	for _, e := range entries {
-		if samePath(e.Path, f.path) {
+		if paths.Same(e.Path, f.path) {
 			f.path, f.head = e.Path, e.HEAD
 		}
 	}

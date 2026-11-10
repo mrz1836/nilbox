@@ -21,6 +21,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/budget"
 	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/clonelock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
@@ -383,6 +384,10 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	follow := followSessions(pool, prefs, opts, logger, runner, registry, agentRunners)
 	followed.watcher = follow.watcher
 
+	// clones is the app's one set of clone locks: every job that changes a clone takes
+	// its clone's, so a worktree is never made or removed while a run is using it.
+	clones := clonelock.New()
+
 	sweeps := worktrees.NewService(worktrees.Config{
 		Settings: settingsView[worktrees.SweepSettings]{settings: prefs, part: sweepSettings},
 		Git:      gitRunner,
@@ -395,6 +400,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		History:  workLog,
 		Agents:   follow.ledger,
 		Events:   opts.Events,
+		Clones:   clones,
 		Logger:   logger,
 	})
 

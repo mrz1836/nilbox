@@ -2,8 +2,12 @@ package worktrees
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/mrz1836/nilbox/internal/clonelock"
+	"github.com/mrz1836/nilbox/internal/paths"
 )
 
 // Unlock releases a lock the coding agent wrote for a session that has certainly ended,
@@ -18,6 +22,13 @@ func (s *Service) Unlock(ctx context.Context, repoPath, path string) error {
 		return err
 	}
 
+	release, err := s.holdClone(ctx, repoPath)
+	if err != nil {
+		return err
+	}
+
+	defer release()
+
 	return s.unlockEntry(ctx, g, repoPath, path, "")
 }
 
@@ -31,6 +42,10 @@ func (s *Service) CleanUp(ctx context.Context, repoPath, path string, branches [
 	s.act.Lock()
 	defer s.act.Unlock()
 
+	if err := s.checkNoRun(repoPath); err != nil {
+		return RemoveResult{}, err
+	}
+
 	g, snap, err := s.assessClone(ctx, repoPath)
 	if err != nil {
 		return RemoveResult{}, err
@@ -41,8 +56,12 @@ func (s *Service) CleanUp(ctx context.Context, repoPath, path string, branches [
 		return RemoveResult{}, err
 	}
 
-	res := s.cleanUpRow(ctx, g, repoPath, wt, false, branches)
-	if !res.Removed {
+	res, err := s.cleanUpRow(ctx, g, repoPath, wt, false, branches)
+
+	switch {
+	case errors.Is(err, clonelock.ErrBusy):
+		return res, err
+	case !res.Removed:
 		return res, fmt.Errorf("%w: %s: %s", ErrCleanUpFailed, wt.DisplayPath, res.Reason)
 	}
 
@@ -87,7 +106,8 @@ func (s *Service) CleanUpFinished(ctx context.Context, picks []Pick) ([]RemoveRe
 			results = append(results, pickRefused(p, wt.DisplayPath, fmt.Errorf("%w: %s", ErrNotFinished,
 				notFinishedReason(wt))))
 		default:
-			results = append(results, s.cleanUpRow(ctx, g, p.RepoPath, wt, false, p.Branches))
+			res, _ := s.cleanUpRow(ctx, g, p.RepoPath, wt, false, p.Branches) // its Reason says why
+			results = append(results, res)
 		}
 	}
 
@@ -144,19 +164,28 @@ func (s *Service) cleanUpRefusal(wt Worktree, found bool, path, linkError string
 // it in the history, and reports the outcome; automatic tells a sweep from the user. Each
 // step checks git again: the lock must be the one assessed and its session still ended,
 // the worktree must still have the commit assessed checked out, git refuses one with
-// uncommitted changes, and a branch is deleted only when it may (see deleteChosen).
+// uncommitted changes, and a branch is deleted only when it may (see deleteChosen). It
+// holds the clone's lock throughout; the error, when it removed nothing, is why, which
+// the Reason words, and a run using the clone is a clonelock.ErrBusy (see holdClone).
 func (s *Service) cleanUpRow(ctx context.Context, g git, repoPath string, wt Worktree, automatic bool,
 	branches []string,
-) RemoveResult {
+) (RemoveResult, error) {
 	res := RemoveResult{
 		RepoPath: repoPath, Path: wt.Path, DisplayPath: wt.DisplayPath, Item: itemName(wt.Item),
 		DeletedBranches: []string{},
 	}
 
-	if err := s.removeFinished(ctx, g, repoPath, wt, automatic); err != nil {
+	unlock, err := s.holdClone(ctx, repoPath)
+	if err == nil {
+		defer unlock()
+
+		err = s.removeFinished(ctx, g, repoPath, wt, automatic)
+	}
+
+	if err != nil {
 		res.Reason = reasonOf(err)
 
-		return res
+		return res, err
 	}
 
 	res.Removed = true
@@ -168,7 +197,7 @@ func (s *Service) cleanUpRow(ctx context.Context, g git, repoPath string, wt Wor
 
 	s.recordCleanup(ctx, repoPath, wt, strings.Join(deleted, ", "), automatic)
 
-	return res
+	return res, nil
 }
 
 // removeFinished releases a finished worktree's stale lock, if it has one, and removes it
@@ -198,7 +227,7 @@ func (s *Service) removeFinished(ctx context.Context, g git, repoPath string, wt
 // by the next listing or sweep, so a failure is only logged.
 func (s *Service) forgetRecord(ctx context.Context, path string) {
 	for _, r := range s.records(ctx) {
-		if samePath(r.Dir(), path) {
+		if paths.Same(r.Dir(), path) {
 			s.forget(ctx, r)
 		}
 	}
@@ -207,7 +236,7 @@ func (s *Service) forgetRecord(ctx context.Context, path string) {
 // findWorktree returns the snapshot's row for path.
 func findWorktree(snap Snapshot, path string) (Worktree, bool) {
 	for _, wt := range rows(snap.Repos) {
-		if samePath(wt.Path, path) {
+		if paths.Same(wt.Path, path) {
 			return *wt, true
 		}
 	}

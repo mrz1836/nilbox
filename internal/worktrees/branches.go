@@ -15,6 +15,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/localrepos"
+	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/repo"
 )
 
@@ -169,7 +170,7 @@ func (s *Service) checkedOut(clone, where string) string {
 	switch {
 	case where == "":
 		return ""
-	case samePath(clone, where):
+	case paths.Same(clone, where):
 		return "it is the clone's current branch"
 	default:
 		return "it is checked out in " + s.display(where)
@@ -633,9 +634,22 @@ func (s *Service) readCloneBranches(ctx context.Context, g git, root, clone stri
 }
 
 // deleteInClone deletes the picks at idx, all in one clone, recording each outcome in out.
+// It holds the clone's lock throughout, and a run using the clone refuses every pick, naming
+// the run (see holdClone).
 func (s *Service) deleteInClone(ctx context.Context, g git, root, clone string, idx []int, picks []BranchPick,
 	out []BranchResult, rules branchrules.Rules,
 ) {
+	unlock, err := s.holdClone(ctx, clone)
+	if err != nil {
+		for _, i := range idx {
+			out[i].Reason = reasonOf(err)
+		}
+
+		return
+	}
+
+	defer unlock()
+
 	state, readErr := s.readCloneBranches(ctx, g, root, clone)
 
 	for _, i := range idx {
