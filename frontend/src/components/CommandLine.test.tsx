@@ -18,7 +18,16 @@ describe('CommandLine', () => {
     render(<CommandLine command={command} />)
 
     expect(screen.getByText(command)).toHaveClass('select-all')
+    expect(screen.getByText(command)).toHaveTextContent(`$ ${command}`)
     expect(screen.getByRole('button', { name: 'Copy the command' })).toHaveTextContent('Copy')
+  })
+
+  it('shows a line to put in a file without the prompt', () => {
+    const line = 'export PATH="$HOME/.local/bin:$PATH"'
+
+    render(<CommandLine command={line} prompt={false} />)
+
+    expect(screen.getByText(line)).toHaveTextContent(/^export PATH/)
   })
 
   it('copies the command, and says so for a moment', async () => {

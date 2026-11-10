@@ -20,6 +20,9 @@ export interface IntegrationsState {
   // reload reads the list again, as after a change to a tool's settings; it resolves once
   // the list is in.
   reload: () => Promise<void>
+  // replace shows tools in place of the list, as an install or a move to the Trash
+  // returns them, without reading it again.
+  replace: (tools: IntegrationTools) => void
 }
 
 // useIntegrations lists the tools as the settings open, and again whenever the shell says
@@ -55,5 +58,8 @@ export function useIntegrations(): IntegrationsState {
     checkError: checker.error,
     checkAgain,
     reload: list.refetch,
+    replace: (tools) => {
+      list.set(() => tools)
+    },
   }
 }

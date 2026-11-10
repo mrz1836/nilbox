@@ -17,7 +17,7 @@ export interface IntegrationsSectionProps {
 // again. It says so when the login shell's environment couldn't be read, since the tools
 // are then looked for, and run, with a basic PATH.
 export function IntegrationsSection({ onSaved }: IntegrationsSectionProps) {
-  const { tools, error, checking, checkError, checkAgain, reload } = useIntegrations()
+  const { tools, error, checking, checkError, checkAgain, reload, replace } = useIntegrations()
   const shellFailed = tools !== null && tools.shellChecked && !tools.shellRead
 
   const check = () => {
@@ -53,7 +53,14 @@ export function IntegrationsSection({ onSaved }: IntegrationsSectionProps) {
       {tools === null
         ? error === '' && <p className="text-sm text-muted">Looking for the tools…</p>
         : tools.tools.map((tool) => (
-            <IntegrationCard key={tool.id} tool={tool} checking={checking} onSaved={onSaved} reload={reload} />
+            <IntegrationCard
+              key={tool.id}
+              tool={tool}
+              checking={checking}
+              onSaved={onSaved}
+              reload={reload}
+              onTools={replace}
+            />
           ))}
     </div>
   )

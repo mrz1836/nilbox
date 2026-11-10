@@ -26,6 +26,8 @@ import type {
   InboxList,
   InboxSnapshot,
   Info,
+  InstallPlan,
+  InstallResult,
   IntegrationsConfig,
   IntegrationTool,
   IntegrationTools,
@@ -343,9 +345,34 @@ export function toolCopy(overrides: Partial<ToolCopy> = {}): ToolCopy {
     error: '',
     source: 'release',
     onPath: true,
+    installedAt: '',
+    archive: '',
     shadowing: false,
     ...overrides,
   }
+}
+
+// installPlan is what installing mage-x would do while the release's copy in ~/.local/bin
+// is in use: put the latest release, the same version, in its place.
+export function installPlan(overrides: Partial<InstallPlan> = {}): InstallPlan {
+  return {
+    action: 'reinstall',
+    version: '1.29.5',
+    archive: 'mage-x_1.29.5_darwin_arm64.tar.gz',
+    targetDir: '~/.local/bin',
+    target: '~/.local/bin/magex',
+    replaces: '1.29.5',
+    replacesPath: '~/.local/bin/magex',
+    foreign: true,
+    blocked: '',
+    brewCommand: '',
+    ...overrides,
+  }
+}
+
+// installResult is what installing mage-x 1.30.0 said it did, and the tools after it.
+export function installResult(overrides: Partial<InstallResult> = {}): InstallResult {
+  return { message: 'Installed mage-x 1.30.0 in ~/.local/bin', tools: integrationTools(), ...overrides }
 }
 
 // integrationTool is mage-x, switched automatically, found, and as new as its latest
@@ -372,13 +399,15 @@ export function integrationTool(overrides: Partial<IntegrationTool> = {}): Integ
       url: 'https://github.com/acme-org/mage-x/releases/tag/v1.29.5',
       checkedAt: '2026-06-15T09:00:00Z',
     },
+    install: installPlan(),
+    progress: { step: '', done: 0, total: 0 },
     checkedAt: '2026-06-15T11:50:00Z',
     ...overrides,
   }
 }
 
 // goPreCommitTool is go-pre-commit, switched automatically, found from Homebrew, and as
-// new as its latest release.
+// new as its latest release; Homebrew updates it, not the app.
 export function goPreCommitTool(overrides: Partial<IntegrationTool> = {}): IntegrationTool {
   return integrationTool({
     id: 'go-pre-commit',
@@ -399,6 +428,16 @@ export function goPreCommitTool(overrides: Partial<IntegrationTool> = {}): Integ
       url: 'https://github.com/acme-org/go-pre-commit/releases/tag/v1.12.3',
       checkedAt: '2026-06-15T09:00:00Z',
     },
+    install: installPlan({
+      version: '1.12.3',
+      archive: 'go-pre-commit_1.12.3_darwin_arm64.tar.gz',
+      target: '~/.local/bin/go-pre-commit',
+      replaces: '',
+      replacesPath: '',
+      foreign: false,
+      blocked: 'Homebrew manages this copy. Update it with brew upgrade go-pre-commit.',
+      brewCommand: 'brew upgrade go-pre-commit',
+    }),
     ...overrides,
   })
 }
