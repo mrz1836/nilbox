@@ -119,14 +119,15 @@ func (m *machine) run(ctx context.Context, path string, args, env []string) ([]b
 	m.envs[path] = env
 	m.mu.Unlock()
 
-	if !ok {
-		// A copy the test didn't put, such as one an install downloaded, prints what it holds.
-		data, err := os.ReadFile(path) //nolint:gosec // the test's own temporary files
-		if err != nil {
-			return nil, nil, errNoProgram
-		}
-
+	// The copies the test puts are empty files that answer as recorded. A file with
+	// something in it, one an install downloaded or placed over a put copy, prints what it
+	// holds, so a replaced copy answers as the new program.
+	if data, err := os.ReadFile(path); err == nil && len(data) > 0 { //nolint:gosec // the test's own temporary files
 		return data, nil, nil
+	}
+
+	if !ok {
+		return nil, nil, errNoProgram
 	}
 
 	if a.hang {
