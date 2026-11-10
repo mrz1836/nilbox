@@ -31,6 +31,10 @@ type Source string
 
 // The sources.
 const (
+	// SourceApp is a copy the app installed: the newest install recorded at its path has
+	// its SHA-256.
+	SourceApp Source = "app"
+
 	// SourceHomebrew is a copy inside a Homebrew Cellar.
 	SourceHomebrew Source = "homebrew"
 
@@ -67,6 +71,11 @@ type Copy struct {
 
 	// OnPath reports that the user's shell finds it on its PATH.
 	OnPath bool `json:"onPath"`
+
+	// InstalledAt and Archive say, for a copy the app installed, when it did and from which
+	// release archive.
+	InstalledAt string `json:"installedAt"`
+	Archive     string `json:"archive"`
 
 	// Shadowing reports the copy the user's terminal runs when it isn't the one in use.
 	Shadowing bool `json:"shadowing"`

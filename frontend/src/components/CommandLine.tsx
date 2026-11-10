@@ -16,6 +16,9 @@ const copyLabel: Readonly<Record<Copy, string>> = { idle: 'Copy', copied: 'Copie
 export interface CommandLineProps {
   // command is the shell command, as the user types it.
   command: string
+  // prompt shows a $ before the command, as for one to run in a terminal; false shows
+  // the line alone, as for one to put in a file.
+  prompt?: boolean
   // className places the line, such as its width.
   className?: string
 }
@@ -24,7 +27,7 @@ export interface CommandLineProps {
 // The button says how the copy went for a moment, and a screen reader hears so. A click
 // on the command selects all of it, so it can be copied by hand when the clipboard
 // refuses.
-export function CommandLine({ command, className = '' }: CommandLineProps) {
+export function CommandLine({ command, prompt = true, className = '' }: CommandLineProps) {
   const [copy, setCopy] = useState<Copy>('idle')
 
   useEffect(() => {
@@ -58,9 +61,11 @@ export function CommandLine({ command, className = '' }: CommandLineProps) {
       className={`flex min-w-0 items-center gap-2 rounded-md border border-border bg-background py-1 pr-1 pl-2.5 ${className}`.trim()}
     >
       <code className="min-w-0 flex-1 truncate font-mono text-xs text-text select-all" title={command}>
-        <span aria-hidden="true" className="text-muted select-none">
-          ${' '}
-        </span>
+        {prompt && (
+          <span aria-hidden="true" className="text-muted select-none">
+            ${' '}
+          </span>
+        )}
         {command}
       </code>
       <button type="button" aria-label="Copy the command" onClick={onCopy} className={`${quietButtonClass} shrink-0`}>

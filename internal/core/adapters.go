@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log/slog"
 	"maps"
 	"os"
@@ -228,12 +229,16 @@ type latestReleases struct {
 
 // LatestReleases asks GitHub for each repository's latest release. A token GitHub
 // refuses is borrowed again once; with no token at all, as when signed out, nothing is
-// asked.
+// asked, and the error is integrations.ErrSignedOut.
 func (r latestReleases) LatestReleases(ctx context.Context, repos []repo.Name) (map[string]integrations.Release, error) {
 	got, err := github.WithToken(ctx, r.tokens, func(tok github.Token) (map[string]github.LatestRelease, error) {
 		return r.client.FetchLatestReleases(ctx, tok, repos)
 	})
-	if err != nil {
+
+	switch {
+	case errors.Is(err, github.ErrNotLoggedIn) || errors.Is(err, github.ErrGHNotFound):
+		return nil, fmt.Errorf("%w: %w", integrations.ErrSignedOut, err)
+	case err != nil:
 		return nil, err
 	}
 

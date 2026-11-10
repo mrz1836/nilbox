@@ -73,6 +73,11 @@ type Tool struct {
 	// Latest is the tool's latest release, zero until it was checked.
 	Latest Latest `json:"latest"`
 
+	// Install says what installing it would do, or why it can't; Progress is how far a
+	// running install has got, with an empty step when none runs.
+	Install  InstallPlan     `json:"install"`
+	Progress InstallProgress `json:"progress"`
+
 	// CheckedAt is when the tool was last looked for, or "" when it never was.
 	CheckedAt string `json:"checkedAt"`
 }

@@ -109,6 +109,14 @@ type Client struct {
 	// defaults to DefaultAvatarHost; tests point it at a local server.
 	AvatarHost string
 
+	// DownloadHosts are the only hosts DownloadAsset downloads from, and may be redirected
+	// to, as host or host:port. They default to DefaultDownloadHosts; tests point them at a
+	// local server.
+	DownloadHosts []string
+
+	// stall is how long a download may go without a byte; tests shorten it.
+	stall time.Duration
+
 	// Rates hears the budget reading every API response carries, and what its request
 	// spent, so the app's view of the budgets follows every call it makes. Nil hears none.
 	Rates RateObserver
@@ -130,6 +138,8 @@ func NewClient(version string) *Client {
 		HTTP:       &http.Client{Timeout: defaultTimeout},
 		UserAgent:  brand.Slug + "/" + version,
 		AvatarHost: DefaultAvatarHost,
+
+		DownloadHosts: DefaultDownloadHosts(),
 	}
 }
 

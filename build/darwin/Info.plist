@@ -26,7 +26,7 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>Nilbox opens your terminal app (such as iTerm2) to start coding sessions in your local clones.</string>
+	<string>Nilbox opens your terminal app (such as iTerm2) to start coding sessions in your local clones, and asks Finder to move a copy of a tool to the Trash when you choose to.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 </dict>

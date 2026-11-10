@@ -3,8 +3,27 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
-import type { IntegrationSwitch, IntegrationTool, Settings, ToolCopy } from '../../platform'
-import { goPreCommitTool, integrationsConfig, integrationTool, settings, toolCopy } from '../../test/fixtures'
+import { formatDateTime } from '../../lib/time'
+import type {
+  InstallPlan,
+  InstallProgress,
+  InstallResult,
+  IntegrationSwitch,
+  IntegrationTool,
+  IntegrationTools,
+  Settings,
+  ToolCopy,
+} from '../../platform'
+import {
+  goPreCommitTool,
+  installPlan,
+  installResult,
+  integrationsConfig,
+  integrationTool,
+  integrationTools,
+  settings,
+  toolCopy,
+} from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { IntegrationCard } from './IntegrationCard'
 
@@ -21,14 +40,90 @@ function noCopy(): ToolCopy {
   })
 }
 
+// idle is the progress of a tool no install runs for.
+const idle: InstallProgress = { step: '', done: 0, total: 0 }
+
+// latest130 is mage-x's latest release once 1.30.0 is out.
+const latest130 = {
+  version: '1.30.0',
+  url: 'https://github.com/acme-org/mage-x/releases/tag/v1.30.0',
+  checkedAt: '2026-06-15T09:00:00Z',
+}
+
+// missingTool is mage-x with no copy, and 1.30.0 to install, with plan changed as given
+// and an install as far as progress says.
+function missingTool(plan: Partial<InstallPlan> = {}, progress: InstallProgress = idle): IntegrationTool {
+  return integrationTool({
+    state: 'missing',
+    on: false,
+    copy: noCopy(),
+    install: installPlan({
+      action: 'install',
+      version: '1.30.0',
+      archive: 'mage-x_1.30.0_darwin_arm64.tar.gz',
+      replaces: '',
+      replacesPath: '',
+      foreign: false,
+      ...plan,
+    }),
+    progress,
+  })
+}
+
+// appCopy is a copy of magex the app installed in ~/.local/bin, on the shell's PATH.
+function appCopy(overrides: Partial<ToolCopy> = {}): ToolCopy {
+  return toolCopy({
+    source: 'app',
+    installedAt: '2026-06-15T11:40:00Z',
+    archive: 'mage-x_1.29.5_darwin_arm64.tar.gz',
+    ...overrides,
+  })
+}
+
+// appTool is mage-x as the app installed it: found, and as new as its latest release.
+function appTool(overrides: Partial<IntegrationTool> = {}): IntegrationTool {
+  return integrationTool({ copy: appCopy(), install: installPlan({ foreign: false }), ...overrides })
+}
+
+// updateTool is mage-x as the app installed it, with 1.30.0 out, and plan changed as
+// given.
+function updateTool(plan: Partial<InstallPlan> = {}): IntegrationTool {
+  return appTool({
+    state: 'update',
+    latest: latest130,
+    install: installPlan({
+      action: 'update',
+      version: '1.30.0',
+      archive: 'mage-x_1.30.0_darwin_arm64.tar.gz',
+      foreign: false,
+      ...plan,
+    }),
+  })
+}
+
+// wontRunTool is mage-x as the app installed it, there but not running.
+function wontRunTool(): IntegrationTool {
+  return appTool({
+    state: 'wontRun',
+    copy: appCopy({ runs: false, version: { raw: '', commit: '', built: '' }, error: 'killed' }),
+    install: installPlan({ replaces: '', foreign: false }),
+  })
+}
+
 // renderCard renders one tool's card, and returns what it hands its section.
 function renderCard(tool: IntegrationTool = integrationTool(), checking = false) {
   const onSaved = vi.fn<(settings: Settings) => void>()
   const reload = vi.fn(() => Promise.resolve())
+  const onTools = vi.fn<(tools: IntegrationTools) => void>()
 
-  render(<IntegrationCard tool={tool} checking={checking} onSaved={onSaved} reload={reload} />)
+  render(<IntegrationCard tool={tool} checking={checking} onSaved={onSaved} reload={reload} onTools={onTools} />)
 
-  return { onSaved, reload, card: within(screen.getByRole('region', { name: tool.name })) }
+  return { onSaved, reload, onTools, card: within(screen.getByRole('region', { name: tool.name })) }
+}
+
+// dialog is the open dialog named name.
+function dialog(name: string) {
+  return within(screen.getByRole('dialog', { name }))
 }
 
 // withSwitch is the settings as stored once the mage-x switch is set.
@@ -62,8 +157,9 @@ describe('IntegrationCard', () => {
     expect(card.queryByText('Checking…')).not.toBeInTheDocument()
     expect(card.queryByText(/is available/)).not.toBeInTheDocument()
     expect(card.queryByText(/isn’t there any more/)).not.toBeInTheDocument()
-    // Installing comes later: nothing here installs, updates, or removes a copy.
+    // A tool that is found has no button, and no copy the app didn't install offers more.
     expect(card.queryByRole('button', { name: /install|update|trash/i })).not.toBeInTheDocument()
+    expect(card.queryByText(/your PATH/)).not.toBeInTheDocument()
   })
 
   it.each<[string, IntegrationTool, string]>([
@@ -103,26 +199,22 @@ describe('IntegrationCard', () => {
       '~/.local/bin/magex is there but won’t run: exec format error',
     ],
     ['no copy at all', integrationTool({ state: 'missing', on: false, copy: noCopy() }), 'Not on this Mac'],
+    ['a copy the app installed', appTool(), `magex 1.29.5 · ~/.local/bin/magex · installed by ${brand.name}`],
   ])('says what was found of %s', (_, tool, line) => {
     const { card } = renderCard(tool)
 
     expect(card.getByText(line)).toBeInTheDocument()
-    expect(card.queryByRole('button', { name: /install/i })).not.toBeInTheDocument()
   })
 
   it('offers a newer release, with what is new in it', async () => {
-    const url = 'https://github.com/acme-org/mage-x/releases/tag/v1.30.0'
-    const { card } = renderCard(
-      integrationTool({ state: 'update', latest: { version: '1.30.0', url, checkedAt: '2026-06-15T09:00:00Z' } }),
-    )
+    const { card } = renderCard(integrationTool({ state: 'update', latest: latest130 }))
 
     expect(card.getByText('magex 1.29.5 · ~/.local/bin/magex · GitHub release')).toBeInTheDocument()
     expect(card.getByText(/^1\.30\.0 is available ·/)).toBeInTheDocument()
-    expect(card.queryByRole('button', { name: /^update/i })).not.toBeInTheDocument()
 
     await userEvent.click(card.getByRole('button', { name: 'What’s new' }))
 
-    expect(platform.openExternal).toHaveBeenCalledExactlyOnceWith(url)
+    expect(platform.openExternal).toHaveBeenCalledExactlyOnceWith(latest130.url)
   })
 
   it.each<[IntegrationSwitch, boolean, string]>([
@@ -168,7 +260,7 @@ describe('IntegrationCard', () => {
   })
 
   it('turns a tool that is off on for good', async () => {
-    const { card, onSaved } = renderCard(integrationTool({ switch: 'auto', on: false, state: 'missing' }))
+    const { card, onSaved } = renderCard(integrationTool({ switch: 'off', on: false }))
 
     await userEvent.click(card.getByRole('switch', { name: 'mage-x' }))
 
@@ -261,6 +353,9 @@ describe('IntegrationCard details', () => {
       'GitHub release',
       '1.29.5',
     ])
+    // Only a copy the app installed can be reinstalled or moved to the Trash from here.
+    expect(card.queryByText(/^Installed/)).not.toBeInTheDocument()
+    expect(card.queryByRole('button', { name: /reinstall|trash/i })).not.toBeInTheDocument()
   })
 
   it('shows no version for a copy that won’t run, and no copy for a missing tool', async () => {
@@ -316,7 +411,7 @@ describe('IntegrationCard details', () => {
     const others = within(card.getByRole('list', { name: 'Other copies' })).getAllByRole('listitem')
 
     expect(others.map((li) => li.textContent)).toEqual([
-      'Your terminal runs ~/go/bin/magex 1.28.0, not this one.',
+      'Your terminal runs ~/go/bin/magex 1.28.0, not this one.Move it to the Trash',
       '/opt/homebrew/bin/magex 1.29.1 (Homebrew)',
       '/usr/local/bin/magex (GitHub release) won’t run: permission denied',
     ])
@@ -434,5 +529,392 @@ describe('IntegrationCard details', () => {
     await userEvent.click(card.getByRole('button', { name: 'Releases on GitHub' }))
 
     expect(platform.openExternal).toHaveBeenCalledExactlyOnceWith('https://github.com/acme-org/mage-x/releases')
+  })
+})
+
+describe('IntegrationCard installs', () => {
+  it.each<[string, IntegrationTool, string]>([
+    ['a missing tool', missingTool(), 'Install mage-x 1.30.0'],
+    ['a missing tool before its release is known', missingTool({ version: '', archive: '' }), 'Install mage-x'],
+    ['a newer release', updateTool(), 'Update to 1.30.0'],
+    ['a newer release not looked up yet', updateTool({ version: '' }), 'Update mage-x'],
+    [
+      'a copy too old to drive',
+      integrationTool({ state: 'tooOld', install: installPlan({ action: 'update', version: '1.30.0' }) }),
+      'Update to 1.30.0',
+    ],
+    ['a copy that won’t run', wontRunTool(), 'Reinstall'],
+  ])('offers to install %s', (_, tool, label) => {
+    const { card } = renderCard(tool)
+
+    expect(card.getByRole('button', { name: label })).toBeEnabled()
+  })
+
+  it('says why Homebrew’s copy can’t be updated here, with the command to copy', async () => {
+    const { card } = renderCard(goPreCommitTool({ state: 'update' }))
+
+    expect(card.getByText('Homebrew manages this copy. Update it with brew upgrade go-pre-commit.')).toBeInTheDocument()
+    expect(card.queryByRole('button', { name: /^update/i })).not.toBeInTheDocument()
+
+    await userEvent.click(card.getByRole('button', { name: 'Copy the command' }))
+
+    expect(platform.copyText).toHaveBeenCalledExactlyOnceWith('brew upgrade go-pre-commit')
+  })
+
+  it('says why a missing tool can’t be installed now', () => {
+    const blocked = `Sign in to GitHub first, so ${brand.name} can find the latest release.`
+    const { card } = renderCard(missingTool({ version: '', archive: '', blocked }))
+
+    expect(card.getByText(blocked)).toBeInTheDocument()
+    expect(card.queryByRole('button', { name: /^install/i })).not.toBeInTheDocument()
+    expect(card.queryByRole('button', { name: 'Copy the command' })).not.toBeInTheDocument()
+  })
+
+  it('says nothing of what blocks an install while the tool is found', () => {
+    const { card } = renderCard(goPreCommitTool())
+
+    expect(card.queryByText(/^Homebrew manages/)).not.toBeInTheDocument()
+    expect(card.queryByRole('button', { name: 'Copy the command' })).not.toBeInTheDocument()
+  })
+
+  it.each<[string, InstallProgress, string]>([
+    ['downloading', { step: 'downloading', done: 4_100_000, total: 9_000_000 }, 'Downloading… 4.1 of 9.0 MB'],
+    [
+      'downloading, rounded',
+      { step: 'downloading', done: 1_234_567, total: 12_345_678 },
+      'Downloading… 1.2 of 12.3 MB',
+    ],
+    ['downloading, of a size not known', { step: 'downloading', done: 52_000, total: 0 }, 'Downloading…'],
+    ['verifying', { step: 'verifying', done: 9_000_000, total: 9_000_000 }, 'Checking the checksum…'],
+    ['trying', { step: 'trying', done: 0, total: 0 }, 'Trying it…'],
+    ['installing', { step: 'installing', done: 0, total: 0 }, 'Installing…'],
+  ])('shows an install that is %s, and holds the button', (_, progress, line) => {
+    const { card } = renderCard(missingTool({}, progress))
+
+    expect(card.getByText(line)).toBeInTheDocument()
+    expect(card.queryByText('Not on this Mac')).not.toBeInTheDocument()
+    expect(card.getByRole('button', { name: 'Install mage-x 1.30.0' })).toBeDisabled()
+  })
+
+  it('asks first, and does nothing when cancelled', async () => {
+    const { card } = renderCard(missingTool())
+
+    await userEvent.click(card.getByRole('button', { name: 'Install mage-x 1.30.0' }))
+    await userEvent.click(dialog('Install mage-x 1.30.0?').getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(platform.installIntegration).not.toHaveBeenCalled()
+    expect(platform.setIntegrationEnabled).not.toHaveBeenCalled()
+  })
+
+  it.each<
+    [
+      string,
+      IntegrationTool,
+      string,
+      string,
+      string,
+      'installIntegration' | 'updateIntegration' | 'reinstallIntegration',
+      string,
+    ]
+  >([
+    [
+      'install',
+      missingTool(),
+      'Install mage-x 1.30.0',
+      'Install mage-x 1.30.0?',
+      'Install',
+      'installIntegration',
+      'Installed mage-x 1.30.0 in ~/.local/bin',
+    ],
+    [
+      'update',
+      updateTool(),
+      'Update to 1.30.0',
+      'Update mage-x to 1.30.0?',
+      'Update',
+      'updateIntegration',
+      'Updated mage-x to 1.30.0',
+    ],
+    [
+      'reinstall',
+      wontRunTool(),
+      'Reinstall',
+      'Reinstall mage-x 1.29.5?',
+      'Reinstall',
+      'reinstallIntegration',
+      'Reinstalled mage-x 1.29.5',
+    ],
+  ])('runs the %s the user confirms, and says what it did', async (_, tool, label, title, confirm, call, message) => {
+    const { card, onTools, onSaved } = renderCard(tool)
+
+    await userEvent.click(card.getByRole('button', { name: label }))
+    await userEvent.click(dialog(title).getByRole('button', { name: confirm }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(platform[call]).toHaveBeenCalledExactlyOnceWith('mage-x')
+    expect(await card.findByText(message)).toBeInTheDocument()
+    expect(onTools).toHaveBeenCalledExactlyOnceWith(integrationTools())
+    expect(onSaved).not.toHaveBeenCalled()
+    expect(
+      [platform.installIntegration, platform.updateIntegration, platform.reinstallIntegration].filter(
+        (installer) => installer.mock.calls.length > 0,
+      ),
+    ).toHaveLength(1)
+  })
+
+  it('holds the button while the install runs', async () => {
+    let finish: (result: InstallResult) => void = () => undefined
+    platform.updateIntegration.mockReturnValue(
+      new Promise<InstallResult>((resolve) => {
+        finish = resolve
+      }),
+    )
+    const { card } = renderCard(updateTool())
+    const button = card.getByRole('button', { name: 'Update to 1.30.0' })
+
+    await userEvent.click(button)
+    await userEvent.click(dialog('Update mage-x to 1.30.0?').getByRole('button', { name: 'Update' }))
+
+    expect(button).toBeDisabled()
+    expect(card.getByRole('switch', { name: 'mage-x' })).toBeDisabled()
+
+    finish(installResult({ message: 'Updated mage-x to 1.30.0' }))
+
+    expect(await card.findByText('Updated mage-x to 1.30.0')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(button).toBeEnabled()
+    })
+  })
+
+  it('says why an install failed, until the next change', async () => {
+    const failed = 'The download’s checksum doesn’t match the release’s. Nothing on your Mac changed.'
+    platform.updateIntegration.mockRejectedValue(new Error(failed))
+    const { card, onTools } = renderCard(updateTool())
+
+    await userEvent.click(card.getByRole('button', { name: 'Update to 1.30.0' }))
+    await userEvent.click(dialog('Update mage-x to 1.30.0?').getByRole('button', { name: 'Update' }))
+
+    expect(await card.findByRole('alert')).toHaveTextContent(failed)
+    expect(onTools).not.toHaveBeenCalled()
+
+    await userEvent.click(card.getByRole('switch', { name: 'mage-x' }))
+
+    expect(card.queryByText(failed)).not.toBeInTheDocument()
+  })
+
+  it('says what the install did until the next change', async () => {
+    const { card } = renderCard(updateTool())
+
+    await userEvent.click(card.getByRole('button', { name: 'Update to 1.30.0' }))
+    await userEvent.click(dialog('Update mage-x to 1.30.0?').getByRole('button', { name: 'Update' }))
+
+    expect(await card.findByText('Updated mage-x to 1.30.0')).toBeInTheDocument()
+
+    await userEvent.click(card.getByRole('switch', { name: 'mage-x' }))
+
+    expect(platform.setIntegrationEnabled).toHaveBeenCalledExactlyOnceWith('mage-x', 'off')
+    expect(card.queryByText('Updated mage-x to 1.30.0')).not.toBeInTheDocument()
+  })
+})
+
+describe('IntegrationCard turning a missing tool on', () => {
+  it('asks to install it, and stores nothing when cancelled', async () => {
+    const { card } = renderCard(missingTool())
+    const toggle = card.getByRole('switch', { name: 'mage-x' })
+
+    await userEvent.click(toggle)
+    await userEvent.click(dialog('Install mage-x 1.30.0?').getByRole('button', { name: 'Cancel' }))
+
+    expect(toggle).not.toBeChecked()
+    expect(card.getByText('Off')).toBeInTheDocument()
+    expect(platform.setIntegrationEnabled).not.toHaveBeenCalled()
+    expect(platform.installIntegration).not.toHaveBeenCalled()
+  })
+
+  it('turns it on, then installs it, once the user confirms', async () => {
+    const { card, onSaved, reload, onTools } = renderCard(missingTool())
+
+    await userEvent.click(card.getByRole('switch', { name: 'mage-x' }))
+    await userEvent.click(dialog('Install mage-x 1.30.0?').getByRole('button', { name: 'Install' }))
+
+    expect(await card.findByText('Installed mage-x 1.30.0 in ~/.local/bin')).toBeInTheDocument()
+    expect(platform.setIntegrationEnabled).toHaveBeenCalledExactlyOnceWith('mage-x', 'on')
+    expect(platform.installIntegration).toHaveBeenCalledExactlyOnceWith('mage-x')
+    expect(platform.setIntegrationEnabled.mock.invocationCallOrder[0]).toBeLessThan(
+      platform.installIntegration.mock.invocationCallOrder[0] ?? 0,
+    )
+    expect(onSaved).toHaveBeenCalledExactlyOnceWith(withSwitch('on'))
+    expect(reload).toHaveBeenCalledOnce()
+    expect(onTools).toHaveBeenCalledExactlyOnceWith(integrationTools())
+  })
+
+  it('installs nothing when the switch can’t be stored', async () => {
+    platform.setIntegrationEnabled.mockRejectedValue(new Error('database is locked'))
+    const { card } = renderCard(missingTool())
+    const toggle = card.getByRole('switch', { name: 'mage-x' })
+
+    await userEvent.click(toggle)
+    await userEvent.click(dialog('Install mage-x 1.30.0?').getByRole('button', { name: 'Install' }))
+
+    expect(await card.findByRole('alert')).toHaveTextContent('database is locked')
+    expect(toggle).toHaveAccessibleDescription(/database is locked$/)
+    expect(toggle).not.toBeChecked()
+    expect(platform.installIntegration).not.toHaveBeenCalled()
+  })
+
+  it('only turns it on when it can’t be installed now', async () => {
+    const { card, onSaved } = renderCard(missingTool({ blocked: 'A run is using magex. Update it when the run ends.' }))
+
+    await userEvent.click(card.getByRole('switch', { name: 'mage-x' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(platform.setIntegrationEnabled).toHaveBeenCalledExactlyOnceWith('mage-x', 'on')
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledExactlyOnceWith(withSwitch('on'))
+    })
+    expect(platform.installIntegration).not.toHaveBeenCalled()
+  })
+})
+
+describe('IntegrationCard PATH note', () => {
+  it.each<[string, string, string]>([
+    ['~/.local/bin/magex', '~/.local/bin', 'export PATH="$HOME/.local/bin:$PATH"'],
+    ['~/magex', '~', 'export PATH="$HOME:$PATH"'],
+    ['/opt/tools/bin/magex', '/opt/tools/bin', 'export PATH="/opt/tools/bin:$PATH"'],
+    ['~/my "$tools"/magex', '~/my "$tools"', 'export PATH="$HOME/my \\"\\$tools\\":$PATH"'],
+  ])('says how to put %s on the PATH, with the line to copy', async (displayPath, folder, line) => {
+    const { card } = renderCard(appTool({ copy: appCopy({ displayPath, onPath: false }) }))
+
+    expect(card.getByText(/^Your terminal won’t find/)).toHaveTextContent(
+      `Your terminal won’t find magex yet. Add ${folder} to your PATH: put this line in ~/.zprofile.`,
+    )
+    expect(card.getByText(line)).toBeInTheDocument()
+
+    await userEvent.click(card.getByRole('button', { name: 'Copy the command' }))
+
+    expect(platform.copyText).toHaveBeenCalledExactlyOnceWith(line)
+  })
+
+  it('says nothing of the PATH for a copy the terminal finds, or one the app didn’t install', () => {
+    renderCard(appTool())
+    renderCard(goPreCommitTool({ copy: toolCopy({ onPath: false }) }))
+
+    expect(screen.queryByText(/your PATH/)).not.toBeInTheDocument()
+  })
+})
+
+describe('IntegrationCard details of a copy the app installed', () => {
+  it('says when and from what it was installed, and reinstalls it once the user confirms', async () => {
+    const { card, onTools } = renderCard(appTool())
+
+    await openDetails()
+
+    expect(card.getAllByRole('definition').map((d) => d.textContent)).toEqual([
+      '~/.local/bin/magex',
+      `installed by ${brand.name}`,
+      '1.29.5',
+    ])
+    expect(card.getByText(/^Installed/)).toHaveTextContent(
+      `Installed ${formatDateTime('2026-06-15T11:40:00Z')} from mage-x_1.29.5_darwin_arm64.tar.gz`,
+    )
+
+    await userEvent.click(card.getByRole('button', { name: 'Reinstall' }))
+    await userEvent.click(dialog('Reinstall mage-x 1.29.5?').getByRole('button', { name: 'Reinstall' }))
+
+    expect(platform.reinstallIntegration).toHaveBeenCalledExactlyOnceWith('mage-x')
+    expect(await card.findByText('Reinstalled mage-x 1.29.5')).toBeInTheDocument()
+    expect(onTools).toHaveBeenCalledExactlyOnceWith(integrationTools())
+  })
+
+  it.each<[string, IntegrationTool]>([
+    [
+      'it can’t be done now',
+      appTool({ install: installPlan({ blocked: 'A run is using magex. Update it when the run ends.' }) }),
+    ],
+    ['the card updates it instead', updateTool()],
+  ])('offers no reinstall when %s', async (_, tool) => {
+    const { card } = renderCard(tool)
+
+    await openDetails()
+
+    expect(card.queryByRole('button', { name: 'Reinstall' })).not.toBeInTheDocument()
+    expect(card.getByRole('button', { name: 'Move to the Trash' })).toBeEnabled()
+  })
+
+  it('holds its controls while an install runs', async () => {
+    const { card } = renderCard(appTool({ progress: { step: 'trying', done: 0, total: 0 } }))
+
+    await openDetails()
+
+    expect(card.getByText('Trying it…')).toBeInTheDocument()
+    expect(card.getByRole('button', { name: 'Reinstall' })).toBeDisabled()
+    expect(card.getByRole('button', { name: 'Move to the Trash' })).toBeDisabled()
+    expect(card.getByRole('button', { name: 'Choose…' })).toBeDisabled()
+  })
+
+  it('moves it to the Trash once the user confirms, showing the tools as it left them', async () => {
+    const left = integrationTools({ tools: [missingTool()] })
+    platform.trashToolCopy.mockResolvedValue(left)
+    const { card, onTools } = renderCard(appTool())
+
+    await openDetails()
+    await userEvent.click(card.getByRole('button', { name: 'Move to the Trash' }))
+
+    const confirmation = screen.getByRole('dialog', { name: 'Move ~/.local/bin/magex to the Trash?' })
+    expect(confirmation).toHaveAccessibleDescription('Finder’s Put Back can restore it.')
+
+    await userEvent.click(within(confirmation).getByRole('button', { name: 'Move to the Trash' }))
+
+    expect(platform.trashToolCopy).toHaveBeenCalledExactlyOnceWith('mage-x', '/Users/example/.local/bin/magex')
+    await waitFor(() => {
+      expect(onTools).toHaveBeenCalledExactlyOnceWith(left)
+    })
+  })
+
+  it('moves the copy the terminal runs instead to the Trash', async () => {
+    const { card, onTools } = renderCard(
+      integrationTool({
+        others: [
+          toolCopy({
+            path: '/Users/example/go/bin/magex',
+            displayPath: '~/go/bin/magex',
+            source: 'goInstall',
+            version: { raw: '1.28.0', commit: '', built: '' },
+            shadowing: true,
+          }),
+        ],
+      }),
+    )
+
+    await openDetails()
+    await userEvent.click(card.getByRole('button', { name: 'Move it to the Trash' }))
+    await userEvent.click(
+      dialog('Move ~/go/bin/magex to the Trash?').getByRole('button', { name: 'Move to the Trash' }),
+    )
+
+    expect(platform.trashToolCopy).toHaveBeenCalledExactlyOnceWith('mage-x', '/Users/example/go/bin/magex')
+    await waitFor(() => {
+      expect(onTools).toHaveBeenCalledOnce()
+    })
+  })
+
+  it('offers to show the copy in Finder when it can’t be moved to the Trash', async () => {
+    const refused = `${brand.name} isn’t allowed to control Finder, so it can’t move this to the Trash.`
+    platform.trashToolCopy.mockRejectedValue(new Error(refused))
+    const { card, onTools } = renderCard(appTool())
+
+    await openDetails()
+    await userEvent.click(card.getByRole('button', { name: 'Move to the Trash' }))
+    await userEvent.click(
+      dialog('Move ~/.local/bin/magex to the Trash?').getByRole('button', { name: 'Move to the Trash' }),
+    )
+
+    expect(await card.findByRole('alert')).toHaveTextContent(refused)
+    expect(onTools).not.toHaveBeenCalled()
+
+    await userEvent.click(card.getByRole('button', { name: 'Reveal in Finder' }))
+
+    expect(platform.revealToolCopy).toHaveBeenCalledExactlyOnceWith('mage-x', '/Users/example/.local/bin/magex')
   })
 })

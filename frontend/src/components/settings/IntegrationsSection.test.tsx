@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
 import type { IntegrationTools, Settings } from '../../platform'
-import { goPreCommitTool, integrationTool, integrationTools } from '../../test/fixtures'
+import { goPreCommitTool, installPlan, installResult, integrationTool, integrationTools } from '../../test/fixtures'
 import { emit, platform } from '../../test/platform'
 import { IntegrationsSection } from './IntegrationsSection'
 
@@ -162,5 +162,40 @@ describe('IntegrationsSection', () => {
     expect(toggle).not.toBeChecked()
     expect(within(screen.getByRole('region', { name: 'go-pre-commit' })).getByText('Off')).toBeInTheDocument()
     expect(platform.listIntegrations).toHaveBeenCalledTimes(2)
+  })
+
+  it('installs a tool, and shows the tools as the install left them', async () => {
+    platform.listIntegrations.mockResolvedValue(
+      integrationTools({
+        tools: [
+          integrationTool({
+            state: 'missing',
+            on: false,
+            install: installPlan({
+              action: 'install',
+              version: '1.30.0',
+              replaces: '',
+              replacesPath: '',
+              foreign: false,
+            }),
+          }),
+        ],
+      }),
+    )
+    platform.installIntegration.mockResolvedValue(
+      installResult({ tools: integrationTools({ tools: [integrationTool()] }) }),
+    )
+    renderSection()
+
+    const card = within(await screen.findByRole('region', { name: 'mage-x' }))
+    await userEvent.click(card.getByRole('button', { name: 'Install mage-x 1.30.0' }))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Install' }))
+
+    expect(await card.findByText('Installed mage-x 1.30.0 in ~/.local/bin')).toBeInTheDocument()
+    expect(card.getByText('magex 1.29.5 · ~/.local/bin/magex · GitHub release')).toBeInTheDocument()
+    expect(card.queryByRole('button', { name: /^install/i })).not.toBeInTheDocument()
+    expect(platform.installIntegration).toHaveBeenCalledExactlyOnceWith('mage-x')
+    // The install returned the tools, so the list is not read again.
+    expect(platform.listIntegrations).toHaveBeenCalledOnce()
   })
 })

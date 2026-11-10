@@ -113,6 +113,9 @@ export type IntegrationTool = NonNullLists<integrations.Tool>
 export type ToolCopy = NonNullLists<integrations.Copy>
 export type ToolSource = integrations.Source
 export type ToolState = integrations.State
+export type InstallPlan = NonNullLists<integrations.InstallPlan>
+export type InstallProgress = NonNullLists<integrations.InstallProgress>
+export type InstallResult = NonNullLists<integrations.InstallResult>
 
 export type ItemKind = item.Kind
 
@@ -341,9 +344,19 @@ export const {
   SetIntegrationPath: setIntegrationPath,
 } = narrow(settings.Service)
 
-// The tools the app finds and runs for the user. List never waits for a detection, and a
-// "tools:updated" event follows each one that ends, so the window reads the list again.
-export const { List: listIntegrations, CheckAgain: checkIntegrationsAgain } = narrow(integrations.Service)
+// The tools the app finds, installs, and runs for the user. List never waits for a
+// detection, and a "tools:updated" event follows each one that ends, and each step of an
+// install, so the window reads the list again. An install blocks until it is done; Trash
+// and Reveal take only a copy the last detection found.
+export const {
+  List: listIntegrations,
+  CheckAgain: checkIntegrationsAgain,
+  Install: installIntegration,
+  Update: updateIntegration,
+  Reinstall: reinstallIntegration,
+  Trash: trashToolCopy,
+  Reveal: revealToolCopy,
+} = narrow(integrations.Service)
 
 export const {
   List: listWorktrees,

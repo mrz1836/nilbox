@@ -123,4 +123,19 @@ describe('useIntegrations', () => {
     expect(result.current.checkError).toBe('the shell timed out')
     expect(names(result.current.tools)).toEqual(['mage-x found', 'go-pre-commit found'])
   })
+
+  it('shows tools in place of the list, without reading it again', async () => {
+    const { result } = renderHook(() => useIntegrations())
+
+    await waitFor(() => {
+      expect(result.current.tools).not.toBeNull()
+    })
+
+    act(() => {
+      result.current.replace(integrationTools({ tools: [goPreCommitTool({ state: 'missing' })] }))
+    })
+
+    expect(names(result.current.tools)).toEqual(['go-pre-commit missing'])
+    expect(platform.listIntegrations).toHaveBeenCalledOnce()
+  })
 })
