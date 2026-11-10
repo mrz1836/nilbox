@@ -133,7 +133,7 @@ app:lint` reads.
   `Info.plist` and the rendered icon set, `icons.icns`.
 - `internal/core/` assembles the app and builds every service the window binds: settings,
   profiles, prompts, launch defaults, inbox, review, launcher, worktrees, notifications, app
-  info, and sessions.
+  info, sessions, and integrations.
   Every `internal/*` package is plain Go, built and tested on Linux without CGO.
 - Services share their building blocks rather than keep copies: `internal/repo` and
   `internal/item` name repositories, pull requests and issues, and their worktrees;
@@ -231,6 +231,21 @@ app:lint` reads.
 - `internal/bump/` reads a dependency update from a bot's pull request title (and Dependabot's
   commit trailer) into an `Update`, for the review sheet and the `.Dependency` prompt variables.
   It is pure and imports no service.
+- `internal/integrations/` finds the tools the app drives, mage-x's magex and go-pre-commit,
+  each one a `Definition` (its binary, releases, version parser, quiet environment, minimum
+  version, and the release that brought each upstream `Feature`). Detection looks on the login
+  shell's `PATH`, then in the well-known tool folders and go install's, runs every copy's
+  `--version` (four at a time), and works out where each came from; the `Worker` runs it as
+  deferred work after the shell read, again when woken (settings emits the Go-only
+  `event.IntegrationsChanged`, which core relays: a chosen copy wakes the finder, a flipped
+  switch only tells the window), and checks GitHub for newer releases once a day
+  (`(*github.Client).FetchLatestReleases`, adapted in core; **Check again** reuses an answer
+  less than ten minutes old). `Service.List` never waits: it
+  serves the last detection kept in `tools.<id>.seen`, marked as checking, until this run's
+  ends, and `event.ToolsUpdated` tells the window. It writes the `tools.*` preferences and only
+  reads `integrations.*`, which settings writes through the leaf `internal/integrationprefs`
+  (the switches, automatic, on, or off, and the chosen copies), so settings never imports
+  integrations.
 - `internal/measure/` and `magefiles/measure.go` take the numbers in
   [`docs/performance.md`](docs/performance.md).
 - `frontend/` is the React + TypeScript + Vite + Tailwind app. It reaches Go only through the
