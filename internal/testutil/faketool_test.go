@@ -66,9 +66,7 @@ func TestFakeToolExitsOnceTheFileItWaitsForAppears(t *testing.T) {
 	t.Parallel()
 
 	proceed := filepath.Join(t.TempDir(), "proceed")
-	path, env := testutil.FakeTool(t, "magex", testutil.FakeRun{
-		Stdout: "waiting\n", Sleep: time.Minute, WaitFor: proceed, Exit: 4,
-	})
+	path, env := testutil.FakeTool(t, "magex", testutil.FakeRun{Stdout: "waiting\n", WaitFor: proceed, Exit: 4})
 
 	cmd := exec.CommandContext(t.Context(), path) //nolint:gosec // the fake tool this test made
 
@@ -89,7 +87,7 @@ func TestFakeToolExitsOnceTheFileItWaitsForAppears(t *testing.T) {
 	var exit *exec.ExitError
 	require.ErrorAs(t, cmd.Wait(), &exit)
 	assert.Equal(t, 4, exit.ExitCode())
-	assert.Less(t, time.Since(start), time.Minute, "it exits once the file appears, not after its Sleep")
+	assert.Less(t, time.Since(start), time.Minute, "it exits once the file appears, not at its bound")
 }
 
 func TestFakeToolReportsStdin(t *testing.T) {

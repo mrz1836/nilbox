@@ -41,7 +41,8 @@ type FakeRun struct {
 
 	// WaitFor, when set, names a file that ends the Sleep early: it exits as soon as the
 	// file appears, so a test that must see it running decides when it ends, rather than
-	// guessing how long it takes to start. Sleep still bounds the wait.
+	// guessing how long it takes to start. Sleep still bounds the wait; with no Sleep, a
+	// minute does, so a fake whose file never appears doesn't outlive its test for long.
 	WaitFor string `json:"waitFor,omitempty"`
 
 	// IgnoreSignals makes it ignore SIGINT, SIGTERM, and SIGHUP, so only SIGKILL ends it.
@@ -206,33 +207,47 @@ func play(run FakeRun) int {
 	_, _ = os.Stdout.WriteString(run.Stdout)
 	_, _ = os.Stderr.WriteString(run.Stderr)
 
-	awaitFile(run.WaitFor, run.Sleep)
+	awaitFile(run.WaitFor, run.waitLimit())
 
 	return run.Exit
 }
 
+// waitForLimit bounds how long a fake tool waits for its WaitFor file when its run sets no
+// Sleep.
+const waitForLimit = time.Minute
+
 // awaitPoll is how often a fake tool looks for the file it waits for.
 const awaitPoll = 10 * time.Millisecond
 
-// awaitFile waits until the file at path exists, for at most limit, and reports whether
-// it appeared; with no path, it waits all of limit.
-func awaitFile(path string, limit time.Duration) bool {
+// waitLimit is how long the run waits after writing: its Sleep, or waitForLimit when it
+// waits for a file and sets no Sleep.
+func (run FakeRun) waitLimit() time.Duration {
+	if run.WaitFor != "" && run.Sleep <= 0 {
+		return waitForLimit
+	}
+
+	return run.Sleep
+}
+
+// awaitFile waits until the file at path exists, for at most limit; with no path, it
+// waits all of limit.
+func awaitFile(path string, limit time.Duration) {
 	if path == "" {
 		time.Sleep(limit)
 
-		return false
+		return
 	}
 
 	deadline := time.Now().Add(limit)
 
 	for {
 		if _, err := os.Stat(path); err == nil {
-			return true
+			return
 		}
 
 		left := time.Until(deadline)
 		if left <= 0 {
-			return false
+			return
 		}
 
 		time.Sleep(min(awaitPoll, left))

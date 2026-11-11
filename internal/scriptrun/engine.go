@@ -234,6 +234,7 @@ func (e *Engine) Start(ctx context.Context, spec Spec) (int64, error) {
 // InUse reports whether a run going now uses tool, an integration's ID such as "mage-x".
 // The installer waits for such a run to end before it replaces the tool. The tool's own
 // update doesn't count: it is the replacement, not a run the replacement would cut across.
+// Nor does a run whose end is recorded, which the engine is only letting go of.
 func (e *Engine) InUse(tool string) bool {
 	if tool == "" {
 		return false
@@ -243,7 +244,7 @@ func (e *Engine) InUse(tool string) bool {
 	defer e.mu.Unlock()
 
 	for _, l := range e.live {
-		if l.tool == tool && !l.settling && l.kind != KindUpdate {
+		if l.tool == tool && !l.settling && !l.ended && l.kind != KindUpdate {
 			return true
 		}
 	}
@@ -253,7 +254,7 @@ func (e *Engine) InUse(tool string) bool {
 
 // Updating returns the ID of tool's own update going now (a KindUpdate run), however it
 // started, one from before the app restarted included, or 0: nothing else may replace the
-// tool meanwhile.
+// tool meanwhile. An update whose end is recorded is no longer going.
 func (e *Engine) Updating(tool string) int64 {
 	if tool == "" {
 		return 0
@@ -263,7 +264,7 @@ func (e *Engine) Updating(tool string) int64 {
 	defer e.mu.Unlock()
 
 	for id, l := range e.live {
-		if l.kind == KindUpdate && l.tool == tool && !l.settling {
+		if l.kind == KindUpdate && l.tool == tool && !l.settling && !l.ended {
 			return id
 		}
 	}
@@ -272,14 +273,15 @@ func (e *Engine) Updating(tool string) int64 {
 }
 
 // Active reports whether a run is going in the app, one from before the app restarted
-// included: quitting would stop it. A run in the terminal doesn't count. It never waits on
-// anything but the engine's own lock, so the quit guard can ask it on the main thread.
+// included: quitting would stop it. A run in the terminal doesn't count, nor does one whose
+// end is recorded. It never waits on anything but the engine's own lock, so the quit guard
+// can ask it on the main thread.
 func (e *Engine) Active() bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
 	for _, l := range e.live {
-		if l.runsIn == RunsInApp && !l.settling {
+		if l.runsIn == RunsInApp && !l.settling && !l.ended {
 			return true
 		}
 	}
@@ -321,7 +323,7 @@ func (e *Engine) StopAll() {
 		switch {
 		case l.settling:
 			settling = append(settling, l)
-		case l.runsIn == RunsInApp:
+		case l.runsIn == RunsInApp && !l.ended:
 			runs = append(runs, l)
 		}
 	}
@@ -382,7 +384,7 @@ func (e *Engine) stopForQuit(runs []*live) {
 // termWhenAllowed sends each of runs SIGTERM, marked as stopped by the quit, as soon as its
 // kind lets it be stopped, looking again at each tail of the logs until deadline fires. It
 // returns the runs it signaled, and those its kind still held back then. A run that ends
-// on its own meanwhile is neither.
+// on its own meanwhile, its end recorded, is neither.
 func (e *Engine) termWhenAllowed(runs []*live, deadline <-chan struct{}) (signaled, held []*live) {
 	held = slices.Clone(runs)
 
@@ -392,7 +394,7 @@ func (e *Engine) termWhenAllowed(runs []*live, deadline <-chan struct{}) (signal
 	for {
 		held = slices.DeleteFunc(held, func(l *live) bool {
 			switch {
-			case isDone(l):
+			case isDone(l) || e.isEnded(l):
 				return true
 			case l.progressNow().StopRefused != "":
 				return false
@@ -766,15 +768,17 @@ func (e *Engine) follow(ctx context.Context, l *live, fn func(context.Context, *
 
 // stop starts stopping a run in the app: its program, or a run from before the app
 // restarted, climbs the stop ladder. It returns at once. A run whose kind says it can't be
-// stopped now is left going, and the error says why in the kind's words.
+// stopped now is left going, and the error says why in the kind's words. A run whose end
+// is recorded has ended, though the engine may not have let go of it yet: it is never
+// marked stopped, nor signaled.
 func (e *Engine) stop(ctx context.Context, id int64) error {
-	l := e.liveRun(id)
+	l := e.goingRun(id)
 	if l == nil {
 		if _, err := e.store.get(ctx, id); err != nil {
 			return err
 		}
 
-		return uierr.New("It has already ended.", ErrNotRunning)
+		return alreadyEnded()
 	}
 
 	if l.runsIn == RunsInTerminal {
@@ -782,11 +786,19 @@ func (e *Engine) stop(ctx context.Context, id int64) error {
 	}
 
 	if l.settling {
-		return uierr.New("It has already ended.", ErrNotRunning)
+		return alreadyEnded()
 	}
 
 	if why := l.progressNow().StopRefused; why != "" {
 		return uierr.New(why, ErrStopRefused)
+	}
+
+	// Under the lock, so the run's end can't be recorded between the look and the stop.
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if l.ended {
+		return alreadyEnded()
 	}
 
 	l.stopped.Store(true)
@@ -798,15 +810,17 @@ func (e *Engine) stop(ctx context.Context, id int64) error {
 	}
 
 	l.stopOnce.Do(func() {
-		e.mu.Lock()
-		defer e.mu.Unlock()
-
 		if !e.closed {
 			e.wg.Go(func() { e.climb(l, e.ladder) })
 		}
 	})
 
 	return nil
+}
+
+// alreadyEnded is the error of stopping a run that has ended.
+func alreadyEnded() error {
+	return uierr.New("It has already ended.", ErrNotRunning)
 }
 
 // climb sends a run from before the app restarted each of ladder's signals in turn, until
@@ -847,12 +861,34 @@ func (e *Engine) processAlive(pid int, start time.Time) bool {
 	return e.alive(pid) && sameStart(e.startedAt(pid), start)
 }
 
-// liveRun returns the run the engine follows with id, or nil.
+// liveRun returns the run the engine follows with id, or nil: until the engine lets go of
+// it, which is a moment after its end is recorded.
 func (e *Engine) liveRun(id int64) *live {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
 	return e.live[id]
+}
+
+// goingRun returns the run the engine follows with id while it goes, or nil: nil too for a
+// run whose end is recorded, which the engine is only letting go of.
+func (e *Engine) goingRun(id int64) *live {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if l := e.live[id]; l != nil && !l.ended {
+		return l
+	}
+
+	return nil
+}
+
+// isEnded reports whether a run's end is recorded.
+func (e *Engine) isEnded(l *live) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	return l.ended
 }
 
 // rerunner returns the Rerunner of kind, or nil.

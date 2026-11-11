@@ -63,6 +63,12 @@ type live struct {
 	// can't be stopped, holds no tool, and doesn't keep the app from quitting.
 	settling bool
 
+	// ended marks a run whose end is recorded. The engine holds it, and its clone, a moment
+	// longer, until it lets go of it, but nothing of it goes any more: it can't be stopped,
+	// shows no progress, uses no tool, and doesn't keep the app from quitting. The engine's
+	// mu guards it.
+	ended bool
+
 	// stopped, timedOut, and quit say what ended it, when the engine did.
 	stopped  atomic.Bool
 	timedOut atomic.Bool
@@ -398,8 +404,10 @@ func (e *Engine) failStart(ctx context.Context, l *live, summary string) {
 	e.record(ctx, l, nil, Outcome{Status: StatusFailed, Summary: summary}, e.files.size(l.id))
 }
 
-// record records a run's end, tells its kind's Recorded once it is recorded, lets go of
-// it and then tells its Released, logs it, applies the retention, and tells Changed.
+// record records a run's end and marks the run ended once it is recorded, tells its kind's
+// Recorded, lets go of it and then tells its Released, logs it, applies the retention, and
+// tells Changed. A run whose end couldn't be recorded isn't marked: its record still says
+// it goes, and the next start settles it.
 func (e *Engine) record(ctx context.Context, l *live, exitCode *int, out Outcome, size int64) {
 	unrecognized := out.Unrecognized
 	if len(unrecognized) > MaxUnrecognized {
@@ -415,6 +423,9 @@ func (e *Engine) record(ctx context.Context, l *live, exitCode *int, out Outcome
 		id: l.id, status: out.Status, exitCode: exitCode, summary: out.Summary, result: result, logBytes: size,
 		at: e.clock.Now(),
 	})
+	if err == nil {
+		e.markEnded(l)
+	}
 
 	switch {
 	case err != nil:
@@ -432,6 +443,14 @@ func (e *Engine) record(ctx context.Context, l *live, exitCode *int, out Outcome
 	e.logEnd(ctx, l, exitCode, out.Status, result)
 	e.prune(ctx)
 	e.notify()
+}
+
+// markEnded marks a run whose end is recorded as ended.
+func (e *Engine) markEnded(l *live) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	l.ended = true
 }
 
 // leave lets go of a run whose Finish couldn't settle it before its context ended, as the
