@@ -1,0 +1,239 @@
+{
+    "name": "run-installs-tools-gopath-on-path",
+    "note": "PATH has git, go, and the empty GOPATH's bin; GOPATH and HOME are empty",
+    "dir": "/work/repos/run-installs-tools-gopath-on-path",
+    "argv": [
+        "go-pre-commit",
+        "run",
+        "--no-color",
+        "--all-files"
+    ],
+    "stdout": "⏳ Running fumpt check...\n⏳ Running lint check...\n→ Installing gofumpt@v0.12.0...\n✓ Successfully installed gofumpt\n→ Installing golangci-lint@v2.15.0...\n⏳ Running gitleaks check...\n⏳ Running mod-tidy check...\n→ Installing gitleaks@v8.30.1...\n⏳ Running whitespace check...\n⏳ Running eof check...\n✓ fumpt check passed (4.2s)\n✓ mod-tidy check passed (106ms)\n✓ whitespace check passed (220μs)\n✓ eof check passed (81μs)\n✓ gitleaks check passed (6.2s)\n\nCheck Results\n─────────────\n✓ fumpt completed successfully (4.2s)\n  Error: golangci-lint not found\n💡 Install golangci-lint manually: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest\n✓ mod-tidy completed successfully (106ms)\n✓ whitespace completed successfully (220μs)\n✓ eof completed successfully (81μs)\n✓ gitleaks completed successfully (6.2s)\n\nSummary:\n\nERRORS FOUND\n────────────\n  \n    golangci-lint not found\n💡 To fix: Install golangci-lint manually: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest\n  \nℹ Run with --verbose flag to see full error details\nℹ Fix the errors above and run the checks again\n",
+    "stderr": "✗ lint check failed (8.8s)\n✗ lint failed (8.8s)\n✗ 5 passed, 1 failed on 6 file(s) in 10.4s\n✗ 1 check(s) failed with the following errors:\n✗ ━ lint ━\nError: checks failed: 1\n",
+    "exit": 1,
+    "durationMs": 10426,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 18,
+            "text": "⏳ Running fumpt check..."
+        },
+        {
+            "stream": "out",
+            "ms": 18,
+            "text": "⏳ Running lint check..."
+        },
+        {
+            "stream": "out",
+            "ms": 27,
+            "text": "→ Installing gofumpt@v0.12.0..."
+        },
+        {
+            "stream": "out",
+            "ms": 4024,
+            "text": "✓ Successfully installed gofumpt"
+        },
+        {
+            "stream": "out",
+            "ms": 4024,
+            "text": "→ Installing golangci-lint@v2.15.0..."
+        },
+        {
+            "stream": "out",
+            "ms": 4198,
+            "text": "⏳ Running gitleaks check..."
+        },
+        {
+            "stream": "out",
+            "ms": 8799,
+            "text": "⏳ Running mod-tidy check..."
+        },
+        {
+            "stream": "out",
+            "ms": 8799,
+            "text": "→ Installing gitleaks@v8.30.1..."
+        },
+        {
+            "stream": "out",
+            "ms": 8905,
+            "text": "⏳ Running whitespace check..."
+        },
+        {
+            "stream": "out",
+            "ms": 8905,
+            "text": "⏳ Running eof check..."
+        },
+        {
+            "stream": "err",
+            "ms": 10425,
+            "text": "✗ lint check failed (8.8s)"
+        },
+        {
+            "stream": "out",
+            "ms": 10425,
+            "text": "✓ fumpt check passed (4.2s)"
+        },
+        {
+            "stream": "out",
+            "ms": 10425,
+            "text": "✓ mod-tidy check passed (106ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 10425,
+            "text": "✓ whitespace check passed (220μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 10425,
+            "text": "✓ eof check passed (81μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 10425,
+            "text": "✓ gitleaks check passed (6.2s)"
+        },
+        {
+            "stream": "err",
+            "ms": 10425,
+            "text": "✗ lint failed (8.8s)"
+        },
+        {
+            "stream": "err",
+            "ms": 10425,
+            "text": "✗ 5 passed, 1 failed on 6 file(s) in 10.4s"
+        },
+        {
+            "stream": "out",
+            "ms": 10425,
+            "text": ""
+        },
+        {
+            "stream": "err",
+            "ms": 10425,
+            "text": "✗ 1 check(s) failed with the following errors:"
+        },
+        {
+            "stream": "err",
+            "ms": 10425,
+            "text": "✗ ━ lint ━"
+        },
+        {
+            "stream": "out",
+            "ms": 10425,
+            "text": "Check Results"
+        },
+        {
+            "stream": "out",
+            "ms": 10425,
+            "text": "─────────────"
+        },
+        {
+            "stream": "out",
+            "ms": 10425,
+            "text": "✓ fumpt completed successfully (4.2s)"
+        },
+        {
+            "stream": "out",
+            "ms": 10425,
+            "text": "  Error: golangci-lint not found"
+        },
+        {
+            "stream": "out",
+            "ms": 10425,
+            "text": "💡 Install golangci-lint manually: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"
+        },
+        {
+            "stream": "out",
+            "ms": 10425,
+            "text": "✓ mod-tidy completed successfully (106ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 10425,
+            "text": "✓ whitespace completed successfully (220μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 10425,
+            "text": "✓ eof completed successfully (81μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 10425,
+            "text": "✓ gitleaks completed successfully (6.2s)"
+        },
+        {
+            "stream": "out",
+            "ms": 10425,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 10425,
+            "text": "Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 10425,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 10425,
+            "text": "ERRORS FOUND"
+        },
+        {
+            "stream": "out",
+            "ms": 10425,
+            "text": "────────────"
+        },
+        {
+            "stream": "out",
+            "ms": 10425,
+            "text": "  "
+        },
+        {
+            "stream": "out",
+            "ms": 10425,
+            "text": "    golangci-lint not found"
+        },
+        {
+            "stream": "out",
+            "ms": 10425,
+            "text": "💡 To fix: Install golangci-lint manually: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"
+        },
+        {
+            "stream": "out",
+            "ms": 10425,
+            "text": "  "
+        },
+        {
+            "stream": "out",
+            "ms": 10425,
+            "text": "ℹ Run with --verbose flag to see full error details"
+        },
+        {
+            "stream": "out",
+            "ms": 10425,
+            "text": "ℹ Fix the errors above and run the checks again"
+        },
+        {
+            "stream": "err",
+            "ms": 10425,
+            "text": "Error: checks failed: 1"
+        }
+    ],
+    "before": {
+        "hooks": "",
+        "hooksDir": "/work/repos/run-installs-tools-gopath-on-path/.git/hooks",
+        "staged": "",
+        "status": ""
+    },
+    "after": {
+        "hooks": "",
+        "hooksDir": "/work/repos/run-installs-tools-gopath-on-path/.git/hooks",
+        "staged": "",
+        "status": ""
+    }
+}

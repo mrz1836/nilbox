@@ -1,0 +1,33 @@
+{
+    "name": "run-no-files",
+    "note": "nothing staged",
+    "dir": "/work/repos/run-no-files",
+    "argv": [
+        "go-pre-commit",
+        "run",
+        "--no-color"
+    ],
+    "stdout": "ℹ No files to check\n",
+    "stderr": "",
+    "exit": 0,
+    "durationMs": 17,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 16,
+            "text": "ℹ No files to check"
+        }
+    ],
+    "before": {
+        "hooks": "",
+        "hooksDir": "/work/repos/run-no-files/.git/hooks",
+        "staged": "",
+        "status": ""
+    },
+    "after": {
+        "hooks": "",
+        "hooksDir": "/work/repos/run-no-files/.git/hooks",
+        "staged": "",
+        "status": ""
+    }
+}

@@ -1,0 +1,58 @@
+{
+    "name": "status-other",
+    "note": "a husky pre-commit hook",
+    "dir": "/work/repos/status-other",
+    "argv": [
+        "go-pre-commit",
+        "status",
+        "--no-color"
+    ],
+    "stdout": "ℹ \n=== Go Pre-commit System Status ===\n✓ ✓ Pre-commit system is enabled\nℹ \nGit Hook Status:\n",
+    "stderr": "⚠   ⚠ pre-commit: Different hook installed (not Go pre-commit)\n",
+    "exit": 0,
+    "durationMs": 29,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 10,
+            "text": "ℹ "
+        },
+        {
+            "stream": "out",
+            "ms": 10,
+            "text": "=== Go Pre-commit System Status ==="
+        },
+        {
+            "stream": "out",
+            "ms": 10,
+            "text": "✓ ✓ Pre-commit system is enabled"
+        },
+        {
+            "stream": "out",
+            "ms": 10,
+            "text": "ℹ "
+        },
+        {
+            "stream": "out",
+            "ms": 10,
+            "text": "Git Hook Status:"
+        },
+        {
+            "stream": "err",
+            "ms": 15,
+            "text": "⚠   ⚠ pre-commit: Different hook installed (not Go pre-commit)"
+        }
+    ],
+    "before": {
+        "hooks": "pre-commit mode=-rwx------ size=69 sha=f0bc40a403f0 marker=false first=\"#!/usr/bin/env sh\"",
+        "hooksDir": "/work/repos/status-other/.git/hooks",
+        "staged": "",
+        "status": ""
+    },
+    "after": {
+        "hooks": "pre-commit mode=-rwx------ size=69 sha=f0bc40a403f0 marker=false first=\"#!/usr/bin/env sh\"",
+        "hooksDir": "/work/repos/status-other/.git/hooks",
+        "staged": "",
+        "status": ""
+    }
+}

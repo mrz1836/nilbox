@@ -1,0 +1,44 @@
+{
+    "name": "install-force-over-other",
+    "note": "a husky pre-commit hook",
+    "dir": "/work/repos/install-force-over-other",
+    "argv": [
+        "go-pre-commit",
+        "install",
+        "--force",
+        "--no-color"
+    ],
+    "stdout": "✓ Successfully installed hooks: [pre-commit]\nℹ Run 'git commit' to test the pre-commit hook\nℹ Run 'go-pre-commit run --help' to see available checks\n",
+    "stderr": "",
+    "exit": 0,
+    "durationMs": 20,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 20,
+            "text": "✓ Successfully installed hooks: [pre-commit]"
+        },
+        {
+            "stream": "out",
+            "ms": 20,
+            "text": "ℹ Run 'git commit' to test the pre-commit hook"
+        },
+        {
+            "stream": "out",
+            "ms": 20,
+            "text": "ℹ Run 'go-pre-commit run --help' to see available checks"
+        }
+    ],
+    "before": {
+        "hooks": "pre-commit mode=-rwx------ size=69 sha=f0bc40a403f0 marker=false first=\"#!/usr/bin/env sh\"",
+        "hooksDir": "/work/repos/install-force-over-other/.git/hooks",
+        "staged": "",
+        "status": ""
+    },
+    "after": {
+        "hooks": "pre-commit mode=-rwxr-xr-x size=3101 sha=e69979e1c8ed marker=true first=\"#!/bin/bash\"\npre-commit.backup.64138 mode=-rwx------ size=69 sha=f0bc40a403f0 marker=false first=\"#!/usr/bin/env sh\"",
+        "hooksDir": "/work/repos/install-force-over-other/.git/hooks",
+        "staged": "",
+        "status": ""
+    }
+}

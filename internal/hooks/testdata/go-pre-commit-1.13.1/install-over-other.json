@@ -1,0 +1,38 @@
+{
+    "name": "install-over-other",
+    "note": "a husky pre-commit hook",
+    "dir": "/work/repos/install-over-other",
+    "argv": [
+        "go-pre-commit",
+        "install",
+        "--no-color"
+    ],
+    "stdout": "",
+    "stderr": "⚠ Hook already exists: pre-commit (use --force to overwrite)\n⚠ No hooks were installed\n",
+    "exit": 0,
+    "durationMs": 20,
+    "lines": [
+        {
+            "stream": "err",
+            "ms": 20,
+            "text": "⚠ Hook already exists: pre-commit (use --force to overwrite)"
+        },
+        {
+            "stream": "err",
+            "ms": 20,
+            "text": "⚠ No hooks were installed"
+        }
+    ],
+    "before": {
+        "hooks": "pre-commit mode=-rwx------ size=69 sha=f0bc40a403f0 marker=false first=\"#!/usr/bin/env sh\"",
+        "hooksDir": "/work/repos/install-over-other/.git/hooks",
+        "staged": "",
+        "status": ""
+    },
+    "after": {
+        "hooks": "pre-commit mode=-rwx------ size=69 sha=f0bc40a403f0 marker=false first=\"#!/usr/bin/env sh\"",
+        "hooksDir": "/work/repos/install-over-other/.git/hooks",
+        "staged": "",
+        "status": ""
+    }
+}

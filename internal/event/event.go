@@ -70,6 +70,9 @@ const (
 
 	// NameReleasesUpdated is ReleasesUpdated's name.
 	NameReleasesUpdated = "releases:updated"
+
+	// NameHooksUpdated is HooksUpdated's name.
+	NameHooksUpdated = "hooks:updated"
 )
 
 // Event is something that happened, or was asked for, that another part of the app
@@ -119,6 +122,7 @@ func WindowEvents() []WindowEvent {
 		ScriptRunProgress{},
 		QuitRequested{},
 		ReleasesUpdated{},
+		HooksUpdated{},
 	}
 }
 
@@ -307,6 +311,16 @@ type ReleasesUpdated struct{}
 func (ReleasesUpdated) Name() string { return NameReleasesUpdated }
 
 func (ReleasesUpdated) window() {}
+
+// HooksUpdated says the Hooks page's list changed: a clone was scanned again, or a hooks
+// action or a checks run ended. The window reads the list again, which serves what is kept
+// and scans again only the clones that changed.
+type HooksUpdated struct{}
+
+// Name returns NameHooksUpdated.
+func (HooksUpdated) Name() string { return NameHooksUpdated }
+
+func (HooksUpdated) window() {}
 
 // Discard is a Sink that drops every event.
 type Discard struct{}

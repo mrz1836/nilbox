@@ -1,0 +1,34 @@
+{
+    "name": "run-disabled",
+    "note": "ENABLE_GO_PRE_COMMIT=false in 99-local.env",
+    "dir": "/work/repos/run-disabled",
+    "argv": [
+        "go-pre-commit",
+        "run",
+        "--no-color",
+        "--all-files"
+    ],
+    "stdout": "",
+    "stderr": "⚠ Pre-commit system is disabled in configuration (ENABLE_GO_PRE_COMMIT=false)\n",
+    "exit": 0,
+    "durationMs": 6,
+    "lines": [
+        {
+            "stream": "err",
+            "ms": 6,
+            "text": "⚠ Pre-commit system is disabled in configuration (ENABLE_GO_PRE_COMMIT=false)"
+        }
+    ],
+    "before": {
+        "hooks": "",
+        "hooksDir": "/work/repos/run-disabled/.git/hooks",
+        "staged": "",
+        "status": "? .github/env/99-local.env"
+    },
+    "after": {
+        "hooks": "",
+        "hooksDir": "/work/repos/run-disabled/.git/hooks",
+        "staged": "",
+        "status": "? .github/env/99-local.env"
+    }
+}

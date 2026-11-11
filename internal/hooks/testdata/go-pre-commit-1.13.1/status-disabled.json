@@ -1,0 +1,58 @@
+{
+    "name": "status-disabled",
+    "note": "installed, then ENABLE_GO_PRE_COMMIT=false in 99-local.env",
+    "dir": "/work/repos/status-disabled",
+    "argv": [
+        "go-pre-commit",
+        "status",
+        "--no-color"
+    ],
+    "stdout": "ℹ \n=== Go Pre-commit System Status ===\nℹ \nGit Hook Status:\n✓   ✓ pre-commit: Go pre-commit hook installed and ready\n",
+    "stderr": "⚠ ⚠ Pre-commit system is disabled (ENABLE_GO_PRE_COMMIT=false)\n",
+    "exit": 0,
+    "durationMs": 29,
+    "lines": [
+        {
+            "stream": "err",
+            "ms": 11,
+            "text": "⚠ ⚠ Pre-commit system is disabled (ENABLE_GO_PRE_COMMIT=false)"
+        },
+        {
+            "stream": "out",
+            "ms": 11,
+            "text": "ℹ "
+        },
+        {
+            "stream": "out",
+            "ms": 11,
+            "text": "=== Go Pre-commit System Status ==="
+        },
+        {
+            "stream": "out",
+            "ms": 11,
+            "text": "ℹ "
+        },
+        {
+            "stream": "out",
+            "ms": 11,
+            "text": "Git Hook Status:"
+        },
+        {
+            "stream": "out",
+            "ms": 15,
+            "text": "✓   ✓ pre-commit: Go pre-commit hook installed and ready"
+        }
+    ],
+    "before": {
+        "hooks": "pre-commit mode=-rwxr-xr-x size=3101 sha=e69979e1c8ed marker=true first=\"#!/bin/bash\"",
+        "hooksDir": "/work/repos/status-disabled/.git/hooks",
+        "staged": "",
+        "status": "? .github/env/99-local.env"
+    },
+    "after": {
+        "hooks": "pre-commit mode=-rwxr-xr-x size=3101 sha=e69979e1c8ed marker=true first=\"#!/bin/bash\"",
+        "hooksDir": "/work/repos/status-disabled/.git/hooks",
+        "staged": "",
+        "status": "? .github/env/99-local.env"
+    }
+}

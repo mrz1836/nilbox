@@ -18,6 +18,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
 	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/release"
@@ -283,4 +284,75 @@ func TestReleaseClonesListTheCloneRoot(t *testing.T) {
 		{Dir: filepath.Join(root, "notes")},
 		{Dir: filepath.Join(root, "sdk"), Origin: repo.Name{Owner: boundOwner, Repo: boundRepo}, OnHub: true},
 	}, got)
+}
+
+func TestHooksClonesListTheCloneRootWithoutGit(t *testing.T) {
+	t.Parallel()
+
+	home := testutil.ClaudeHome(t)
+	root := filepath.Join(home, "projects")
+	env := testutil.Git(t)
+
+	sdk, notes := filepath.Join(root, "sdk"), filepath.Join(root, "notes")
+	testutil.InitRepo(t, sdk)
+	testutil.InitRepo(t, notes)
+	testutil.RunGit(t, sdk, "remote", "add", "origin", "https://github.com/acme-org/example-repo.git")
+
+	c := bootstrap(t, Options{
+		Paths: appdata.NewPaths(filepath.Join(t.TempDir(), "data")), Home: home, Runner: noPrograms(),
+	})
+	require.NoError(t, testutil.ErrOf(c.Settings.SetCloneRoot(t.Context(), root)))
+
+	clones := hooksClones{settings: c.Settings, home: home, git: execpath.Exec{Env: env}}
+
+	gotRoot, err := clones.Root(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, root, gotRoot)
+
+	dirs, err := clones.Dirs(t.Context(), gotRoot)
+	require.NoError(t, err)
+	assert.Equal(t, []string{notes, sdk}, dirs)
+
+	name, onHub, err := clones.Origin(t.Context(), sdk)
+	require.NoError(t, err)
+	assert.True(t, onHub)
+	assert.Equal(t, repo.Name{Owner: boundOwner, Repo: boundRepo}, name)
+
+	_, onHub, err = clones.Origin(t.Context(), notes)
+	require.NoError(t, err)
+	assert.False(t, onHub)
+
+	_, err = clones.Dirs(t.Context(), filepath.Join(root, "missing"))
+	require.Error(t, err)
+}
+
+func TestHooksToolAndSettingsReadWhatTheAppKnows(t *testing.T) {
+	t.Parallel()
+
+	c := bootstrap(t, Options{
+		Paths: appdata.NewPaths(filepath.Join(t.TempDir(), "data")), Home: testutil.ClaudeHome(t), Runner: noPrograms(),
+	})
+
+	facts := hooksTool{tools: c.Integrations}.HooksTool(t.Context())
+	assert.False(t, facts.Usable(), "no go-pre-commit is found")
+	assert.Empty(t, facts.Copies)
+
+	place := hooksSettings{settings: c.Settings}
+
+	got, err := place.RunsIn(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, integrationprefs.RunsInApp, got)
+
+	_, err = c.Settings.SetRunsIn(t.Context(), integrationprefs.RunsInTerminal)
+	require.NoError(t, err)
+
+	got, err = place.RunsIn(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, integrationprefs.RunsInTerminal, got)
+
+	require.NoError(t, c.Close())
+
+	_, err = place.RunsIn(t.Context())
+	require.Error(t, err, "a closed database can't say")
+	assert.False(t, hooksTool{tools: c.Integrations}.HooksTool(t.Context()).Usable())
 }

@@ -3,6 +3,7 @@
 
 export type {
     BudgetUpdated,
+    HooksUpdated,
     InboxUpdated,
     NotificationsUpdated,
     QuitRequested,

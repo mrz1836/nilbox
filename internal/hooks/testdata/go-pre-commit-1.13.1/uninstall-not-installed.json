@@ -1,0 +1,32 @@
+{
+    "name": "uninstall-not-installed",
+    "dir": "/work/repos/uninstall-not-installed",
+    "argv": [
+        "go-pre-commit",
+        "uninstall",
+        "--no-color"
+    ],
+    "stdout": "ℹ Hooks not found or not managed by Go pre-commit: [pre-commit]\n",
+    "stderr": "",
+    "exit": 0,
+    "durationMs": 16,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 15,
+            "text": "ℹ Hooks not found or not managed by Go pre-commit: [pre-commit]"
+        }
+    ],
+    "before": {
+        "hooks": "",
+        "hooksDir": "/work/repos/uninstall-not-installed/.git/hooks",
+        "staged": "",
+        "status": ""
+    },
+    "after": {
+        "hooks": "",
+        "hooksDir": "/work/repos/uninstall-not-installed/.git/hooks",
+        "staged": "",
+        "status": ""
+    }
+}

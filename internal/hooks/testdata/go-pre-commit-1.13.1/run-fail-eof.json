@@ -1,0 +1,209 @@
+{
+    "name": "run-fail-eof",
+    "note": "README.md has no final newline",
+    "dir": "/work/repos/run-fail-eof",
+    "argv": [
+        "go-pre-commit",
+        "run",
+        "--no-color",
+        "--all-files"
+    ],
+    "stdout": "⏳ Running fumpt check...\n⏳ Running gitleaks check...\n⏳ Running whitespace check...\n⏳ Running mod-tidy check...\n⏳ Running eof check...\n⏳ Running lint check...\n✓ fumpt check passed (15ms)\n✓ whitespace check passed (171μs)\n✓ mod-tidy check passed (34ms)\n✓ lint check passed (234ms)\n✓ gitleaks check passed (357ms)\n\nCheck Results\n─────────────\n✓ fumpt completed successfully (15ms)\n✓ whitespace completed successfully (171μs)\n✓ mod-tidy completed successfully (34ms)\n  Error: EOF issues found\n✓ lint completed successfully (234ms)\n✓ gitleaks completed successfully (357ms)\n\nSummary:\n\nERRORS FOUND\n────────────\n  \n    EOF issues found\n  \nℹ Run with --verbose flag to see full error details\nℹ Fix the errors above and run the checks again\n",
+    "stderr": "✗ eof check failed (351μs)\n✗ eof failed (351μs)\n✗ 5 passed, 1 failed on 6 file(s) in 357ms\n✗ 1 check(s) failed with the following errors:\n✗ ━ eof ━\nError: checks failed: 1\n",
+    "exit": 1,
+    "durationMs": 373,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 15,
+            "text": "⏳ Running fumpt check..."
+        },
+        {
+            "stream": "out",
+            "ms": 15,
+            "text": "⏳ Running gitleaks check..."
+        },
+        {
+            "stream": "out",
+            "ms": 30,
+            "text": "⏳ Running whitespace check..."
+        },
+        {
+            "stream": "out",
+            "ms": 31,
+            "text": "⏳ Running mod-tidy check..."
+        },
+        {
+            "stream": "out",
+            "ms": 65,
+            "text": "⏳ Running eof check..."
+        },
+        {
+            "stream": "out",
+            "ms": 66,
+            "text": "⏳ Running lint check..."
+        },
+        {
+            "stream": "err",
+            "ms": 372,
+            "text": "✗ eof check failed (351μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 372,
+            "text": "✓ fumpt check passed (15ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 372,
+            "text": "✓ whitespace check passed (171μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 372,
+            "text": "✓ mod-tidy check passed (34ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 372,
+            "text": "✓ lint check passed (234ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 372,
+            "text": "✓ gitleaks check passed (357ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 372,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 372,
+            "text": "Check Results"
+        },
+        {
+            "stream": "out",
+            "ms": 372,
+            "text": "─────────────"
+        },
+        {
+            "stream": "out",
+            "ms": 372,
+            "text": "✓ fumpt completed successfully (15ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 372,
+            "text": "✓ whitespace completed successfully (171μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 372,
+            "text": "✓ mod-tidy completed successfully (34ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 372,
+            "text": "  Error: EOF issues found"
+        },
+        {
+            "stream": "out",
+            "ms": 372,
+            "text": "✓ lint completed successfully (234ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 372,
+            "text": "✓ gitleaks completed successfully (357ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 372,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 372,
+            "text": "Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 372,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 372,
+            "text": "ERRORS FOUND"
+        },
+        {
+            "stream": "out",
+            "ms": 372,
+            "text": "────────────"
+        },
+        {
+            "stream": "out",
+            "ms": 372,
+            "text": "  "
+        },
+        {
+            "stream": "out",
+            "ms": 372,
+            "text": "    EOF issues found"
+        },
+        {
+            "stream": "out",
+            "ms": 372,
+            "text": "  "
+        },
+        {
+            "stream": "out",
+            "ms": 372,
+            "text": "ℹ Run with --verbose flag to see full error details"
+        },
+        {
+            "stream": "out",
+            "ms": 372,
+            "text": "ℹ Fix the errors above and run the checks again"
+        },
+        {
+            "stream": "err",
+            "ms": 372,
+            "text": "✗ eof failed (351μs)"
+        },
+        {
+            "stream": "err",
+            "ms": 372,
+            "text": "✗ 5 passed, 1 failed on 6 file(s) in 357ms"
+        },
+        {
+            "stream": "err",
+            "ms": 372,
+            "text": "✗ 1 check(s) failed with the following errors:"
+        },
+        {
+            "stream": "err",
+            "ms": 372,
+            "text": "✗ ━ eof ━"
+        },
+        {
+            "stream": "err",
+            "ms": 372,
+            "text": "Error: checks failed: 1"
+        }
+    ],
+    "before": {
+        "hooks": "",
+        "hooksDir": "/work/repos/run-fail-eof/.git/hooks",
+        "staged": "",
+        "status": ""
+    },
+    "after": {
+        "hooks": "",
+        "hooksDir": "/work/repos/run-fail-eof/.git/hooks",
+        "staged": "",
+        "status": "1 .M N... 100644 100644 100644 c48a3fed14c950dc94fc3b2cb2e52c4a38dfc8f9 c48a3fed14c950dc94fc3b2cb2e52c4a38dfc8f9 README.md"
+    }
+}

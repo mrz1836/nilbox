@@ -1,0 +1,43 @@
+{
+    "name": "global-hookspath-install",
+    "note": "a global core.hooksPath shared by every repository",
+    "dir": "/work/repos/global-hookspath-install",
+    "argv": [
+        "go-pre-commit",
+        "install",
+        "--no-color"
+    ],
+    "stdout": "✓ Successfully installed hooks: [pre-commit]\nℹ Run 'git commit' to test the pre-commit hook\nℹ Run 'go-pre-commit run --help' to see available checks\n",
+    "stderr": "",
+    "exit": 0,
+    "durationMs": 20,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 19,
+            "text": "✓ Successfully installed hooks: [pre-commit]"
+        },
+        {
+            "stream": "out",
+            "ms": 19,
+            "text": "ℹ Run 'git commit' to test the pre-commit hook"
+        },
+        {
+            "stream": "out",
+            "ms": 19,
+            "text": "ℹ Run 'go-pre-commit run --help' to see available checks"
+        }
+    ],
+    "before": {
+        "hooks": "",
+        "hooksDir": "/work/shared-hooks",
+        "staged": "",
+        "status": ""
+    },
+    "after": {
+        "hooks": "pre-commit mode=-rwxr-xr-x size=3101 sha=e69979e1c8ed marker=true first=\"#!/bin/bash\"",
+        "hooksDir": "/work/shared-hooks",
+        "staged": "",
+        "status": ""
+    }
+}

@@ -27,6 +27,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/gitread"
+	"github.com/mrz1836/nilbox/internal/hooks"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
@@ -131,6 +132,7 @@ type Core struct {
 	Integrations   *integrations.Service
 	ScriptRuns     *scriptrun.Service
 	Release        *release.Service
+	Hooks          *hooks.Service
 
 	// ShellSettings are the settings the desktop shell reads when the app launches. They
 	// are not bound.
@@ -252,7 +254,7 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 func (c *Core) Services() []any {
 	return []any{
 		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.Notifications,
-		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Integrations, c.ScriptRuns, c.Release,
+		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Integrations, c.ScriptRuns, c.Release, c.Hooks,
 	}
 }
 
@@ -496,6 +498,11 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	// A release left from before a restart is read and verified as one started now.
 	runs.RegisterVerifier(scriptrun.KindRelease, release.NewVerifier(releases))
 
+	hookPage := newHooks(pool, opts, logger, hookDeps{
+		settings: prefs, tools: tools, git: releaseGit, runner: runner, clones: clones, runs: runs, history: scriptRuns,
+		shellEnv: shellEnv,
+	})
+
 	return &Core{
 		DB:       pool,
 		Settings: prefs,
@@ -549,6 +556,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Runs:          runs,
 		ScriptRuns:    scriptRuns,
 		Release:       releases,
+		Hooks:         hookPage,
 		tokens:        tokens,
 		BudgetSaver:   budget.NewSaver(tracker, keeper, logger),
 		client:        client,
@@ -582,6 +590,45 @@ func newRuns(
 		Reveal:     revealer(runner),
 		Quit:       func() { events.Emit(event.QuitConfirmed{}) },
 	})
+}
+
+// hookDeps are the services and building blocks the Hooks page shares with the rest of
+// the app.
+type hookDeps struct {
+	settings *settings.Service
+	tools    *integrations.Service
+	git      *gitread.Git
+	runner   execpath.Runner
+	clones   *clonelock.Set
+	runs     *scriptrun.Engine
+	history  *scriptrun.Service
+	shellEnv *shellenv.Reader
+}
+
+// newHooks builds the Hooks page's service: the clones under the clone root, read with the
+// same read-only git as Release's, go-pre-commit as the integrations found it, its actions
+// and checks run through the runner with the shell's environment, and the hooks.*
+// preferences. Run again works a hooks action or a checks run out afresh through its
+// Rerunner.
+func newHooks(pool *sql.DB, opts Options, logger *slog.Logger, deps hookDeps) *hooks.Service {
+	var runner func([]string, string) execpath.Runner
+
+	if opts.Runner != nil {
+		runner = func([]string, string) execpath.Runner { return opts.Runner }
+	}
+
+	svc := hooks.NewService(hooks.Config{
+		Clones: hooksClones{settings: deps.settings, home: opts.Home, git: deps.runner}, Git: deps.git,
+		Tools: hooksTool{tools: deps.tools}, Locks: deps.clones, Runs: deps.runs, History: deps.history,
+		Places: hooksSettings{settings: deps.settings}, Memory: prefsstore.New(pool, opts.Clock), Env: deps.shellEnv.Env,
+		Runner: runner, Home: opts.Home, Clock: opts.Clock, Events: opts.Events, Logger: logger,
+	})
+
+	rerun := hooks.NewRerunner(svc)
+	deps.runs.RegisterRerunner(scriptrun.KindHooks, rerun)
+	deps.runs.RegisterRerunner(scriptrun.KindChecks, rerun)
+
+	return svc
 }
 
 // following is what follows the agent sessions: the ledger launches record them in, the

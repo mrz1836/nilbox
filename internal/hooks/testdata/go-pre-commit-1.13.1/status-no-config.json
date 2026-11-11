@@ -1,0 +1,38 @@
+{
+    "name": "status-no-config",
+    "note": "no .github/env and no .github/.env.base",
+    "dir": "/work/repos/status-no-config",
+    "argv": [
+        "go-pre-commit",
+        "status",
+        "--no-color"
+    ],
+    "stdout": "",
+    "stderr": "✗ Failed to load configuration: failed to load configuration: failed to find environment configuration (.github/env/ directory or .github/.env.base)\nError: failed to load configuration: failed to load configuration: failed to find environment configuration (.github/env/ directory or .github/.env.base)\n",
+    "exit": 1,
+    "durationMs": 6,
+    "lines": [
+        {
+            "stream": "err",
+            "ms": 6,
+            "text": "✗ Failed to load configuration: failed to load configuration: failed to find environment configuration (.github/env/ directory or .github/.env.base)"
+        },
+        {
+            "stream": "err",
+            "ms": 6,
+            "text": "Error: failed to load configuration: failed to load configuration: failed to find environment configuration (.github/env/ directory or .github/.env.base)"
+        }
+    ],
+    "before": {
+        "hooks": "",
+        "hooksDir": "/work/repos/status-no-config/.git/hooks",
+        "staged": "",
+        "status": ""
+    },
+    "after": {
+        "hooks": "",
+        "hooksDir": "/work/repos/status-no-config/.git/hooks",
+        "staged": "",
+        "status": ""
+    }
+}

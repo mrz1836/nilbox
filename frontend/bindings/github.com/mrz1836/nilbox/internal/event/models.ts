@@ -9,6 +9,14 @@ export interface BudgetUpdated {
 }
 
 /**
+ * HooksUpdated says the Hooks page's list changed: a clone was scanned again, or a hooks
+ * action or a checks run ended. The window reads the list again, which serves what is kept
+ * and scans again only the clones that changed.
+ */
+export interface HooksUpdated {
+}
+
+/**
  * InboxUpdated says the stored inbox, or the status of its last refresh, changed: the
  * window reads the inbox again, and the menu bar redraws.
  */
