@@ -188,3 +188,24 @@ func TestStatusRunsNoFilterASubmoduleNames(t *testing.T) {
 	testutil.RunGit(t, super, "status", "--porcelain")
 	assert.FileExists(t, marker, "the superproject is set up so that a plain status runs it")
 }
+
+func TestStatusTrustsOnlyTheUsersOwnScopes(t *testing.T) {
+	t.Parallel()
+
+	rec := &recorder{replies: map[string]reply{
+		words(filterDriversArgs()): {out: "system\tfilter.sys.process a\n" +
+			"command\tfilter.mine.clean b\n" +
+			"unknown\tfilter.odd.clean c\n"},
+	}, answer: func(_ context.Context, _ []string) (string, error) { return "", nil }}
+
+	_, err := fakeGit(plainEnv(), rec).Changes(t.Context(), repoDir)
+	require.NoError(t, err)
+
+	calls := rec.Calls()
+	require.Len(t, calls, 2)
+
+	status := strings.Join(calls[1].argv, " ")
+	assert.Contains(t, status, "-c filter.odd.clean= -c filter.odd.process=", "a scope that isn't the user's is the clone's")
+	assert.NotContains(t, status, "filter.sys", "the system config is the user's")
+	assert.NotContains(t, status, "filter.mine", "the environment's settings are the user's")
+}
