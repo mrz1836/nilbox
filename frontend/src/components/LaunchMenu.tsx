@@ -93,8 +93,8 @@ export function LaunchMenu({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col text-sm">
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+    <div className="flex min-h-0 flex-col text-sm">
+      <div className="min-h-0 overflow-y-auto overscroll-contain">
         {agents.length > 1 && (
           <div className="px-1.5 pt-2">
             <p id={`${id}-agent-title`} className={sectionTitle}>

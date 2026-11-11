@@ -222,6 +222,23 @@ describe('LaunchControls', () => {
     expect(screen.getByTestId('row')).toContainElement(optionsButton())
   })
 
+  it('sizes every column in the dialog to what it holds, so the desktop’s WebKit never collapses it', async () => {
+    render(<LaunchControls {...props()} />)
+
+    await openMenu()
+
+    // The dialog is as tall as its content, under a cap. WebKit counts a column item
+    // with flex-1 (a 0% basis) there as empty, and the dialog shrinks to its border.
+    const dialog = screen.getByRole('dialog', { name: 'Launch options' })
+    const grown = Array.from(dialog.querySelectorAll('.flex-1'))
+      .filter((el) => el.parentElement?.classList.contains('flex-col'))
+      .map((el) => el.className)
+
+    expect(dialog).not.toHaveClass('flex-1')
+    expect(grown).toEqual([])
+    expect(within(dialog).getByRole('heading', { name: 'Open in Claude' })).toBeInTheDocument()
+  })
+
   it('closes the options when its page hides, keeping the choices, and leaves them closed when it shows', async () => {
     const page = (mode: 'visible' | 'hidden') => (
       <Activity mode={mode}>
