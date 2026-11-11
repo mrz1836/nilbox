@@ -5,14 +5,25 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { emptyDraft } from '../../lib/reviewDrafts'
 import { at } from '../../test/clock'
-import { agentSession, agents, fileCheck, item, mergeOffer, offer, review } from '../../test/fixtures'
+import {
+  agentSession,
+  agents,
+  fileCheck,
+  item,
+  itemResolution,
+  mergeOffer,
+  offer,
+  profile,
+  prompts,
+  review,
+} from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { ActionButton } from './ActionButton'
 import { AgentVerdict } from './AgentVerdict'
 import { DiffView } from './DiffView'
 import { LineComment } from './LineComment'
 import { MergeConfirmDialog, merges, mergeVerb } from './MergeConfirmDialog'
-import { commentFirst, heldBack, needsText, replyActionOf, sendsText } from './ReviewComposer'
+import { commentFirst, heldBack, needsText, ReviewComposer, replyActionOf, sendsText } from './ReviewComposer'
 import { ReviewHeader } from './ReviewHeader'
 import { areasText, checksSummary, Readiness, ReviewSummary } from './ReviewSummary'
 
@@ -440,6 +451,53 @@ describe('DiffView', () => {
       />,
     )
     expect(screen.getByText('Not read from GitHub yet.')).toBeInTheDocument()
+  })
+})
+
+describe('ReviewComposer', () => {
+  it('starts each pull request’s launch from its own settings as the sheet steps to the next', async () => {
+    const launch = {
+      agents: agents(),
+      profiles: [profile()],
+      prompts: prompts(),
+      launchDefaults: [],
+      onDefaultsSaved: () => Promise.resolve(),
+      onManagePrompts: () => undefined,
+    }
+    // composer is the sheet's composer for pull request id, which the sheet steps through
+    // in place.
+    const composer = (id: number) => (
+      <ReviewComposer
+        review={review({ id })}
+        item={item({ id, number: id + 6 })}
+        draft={emptyDraft}
+        onDraft={vi.fn()}
+        reply={{ list: undefined, fallback: 0, body: '' }}
+        selected="approve"
+        onRun={vi.fn()}
+        busy={false}
+        error=""
+        launch={launch}
+        resolution={itemResolution()}
+        sessions={undefined}
+      />
+    )
+    const { rerender } = render(composer(1))
+
+    await userEvent.click(screen.getByRole('button', { name: /^Launch options/ }))
+    await userEvent.click(
+      within(screen.getByRole('dialog', { name: 'Launch options' })).getByRole('radio', { name: /Quick look/ }),
+    )
+    await userEvent.keyboard('{Escape}')
+    expect(screen.getByRole('button', { name: /^Launch options/ })).toHaveAccessibleName(
+      'Launch options: Quick look · default, changed for this launch',
+    )
+
+    rerender(composer(2))
+
+    expect(screen.getByRole('button', { name: /^Launch options/ })).toHaveAccessibleName(
+      'Launch options: Review · default',
+    )
   })
 })
 
