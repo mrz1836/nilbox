@@ -1,0 +1,231 @@
+{
+    "name": "pre-push-fails-from-feature",
+    "note": "a pre-push hook that exits 1; started on feature-x",
+    "dir": "/work/cases/pre-push-fails-from-feature/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true",
+        "expect=v1.4.3",
+        "json=true",
+        "ff-only"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n00:38:37 [INFO] Using bump type: patch\n00:38:37 [INFO] Switching to branch 'master'...\nYour branch is up to date with 'origin/master'.\n✅ Switched to branch 'master'\n00:38:37 [INFO] Updating 'master' from origin/master (fast-forward only)...\n✅ 'master' is level with origin/master\n00:38:37 [INFO] Detecting current version...\n00:38:37 [INFO] No tags found on HEAD commit\n00:38:37 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.2\n00:38:37 [INFO] Recent commits:\nb7b3c7a fix: retries on 502 (#45)\n93691b5 feat: first feature\nc16cd16 chore: initial commit\n00:38:37 [INFO] 📋 Version Bump Summary:\n00:38:37 [INFO]   From:    v1.4.2\n00:38:37 [INFO]   To:      v1.4.3\n00:38:37 [INFO]   Type:    patch bump\n✅ v1.4.3 matches expect\n✅ ✅ Created tag: v1.4.3\nb7b3c7a285293f971007781c81c82917f27a0175\tHEAD\n00:38:37 [INFO] Pushing tag to remote...\n00:38:37 [ERROR] ❌ Failed to push tag to remote\n00:38:37 [WARN] 💡 To push manually: git push origin v1.4.3\n00:38:37 [INFO] Switching to branch 'feature-x'...\n✅ Switched to branch 'feature-x'\n✅ ✅ Switched back to original branch 'feature-x'\n{\"from\":\"v1.4.2\",\"to\":\"v1.4.3\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"v1.4.3\",\"commit\":\"b7b3c7a285293f971007781c81c82917f27a0175\",\"pushed\":false,\"startBranch\":\"feature-x\",\"branch\":\"feature-x\",\"warnings\":[\"Current version tag is not on HEAD - there are 1 commits since v1.4.2\",\"To push manually: git push origin v1.4.3\"],\"error\":\"failed to push tag: command failed [git push origin v1.4.3]: exit status 1\\ntag v1.4.3 was left in the local repository: push it with 'git push origin v1.4.3' or delete it with 'git tag -d v1.4.3'\"}\n",
+    "stderr": "Switched to branch 'master'\npre-push: blocked by policy\nerror: failed to push some refs to '/work/cases/pre-push-fails-from-feature/origin.git'\nSwitched to branch 'feature-x'\n❌ Error: failed to push tag: command failed [git push origin v1.4.3]: exit status 1\ntag v1.4.3 was left in the local repository: push it with 'git push origin v1.4.3' or delete it with 'git tag -d v1.4.3'\n",
+    "exit": 1,
+    "durationMs": 396,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 13,
+            "text": "00:38:37 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 31,
+            "text": "00:38:37 [INFO] Switching to branch 'master'..."
+        },
+        {
+            "stream": "err",
+            "ms": 39,
+            "text": "Switched to branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 39,
+            "text": "Your branch is up to date with 'origin/master'."
+        },
+        {
+            "stream": "out",
+            "ms": 40,
+            "text": "✅ Switched to branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 40,
+            "text": "00:38:37 [INFO] Updating 'master' from origin/master (fast-forward only)..."
+        },
+        {
+            "stream": "out",
+            "ms": 76,
+            "text": "✅ 'master' is level with origin/master"
+        },
+        {
+            "stream": "out",
+            "ms": 83,
+            "text": "00:38:37 [INFO] Detecting current version..."
+        },
+        {
+            "stream": "out",
+            "ms": 89,
+            "text": "00:38:37 [INFO] No tags found on HEAD commit"
+        },
+        {
+            "stream": "out",
+            "ms": 116,
+            "text": "00:38:37 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 123,
+            "text": "00:38:37 [INFO] Recent commits:"
+        },
+        {
+            "stream": "out",
+            "ms": 123,
+            "text": "b7b3c7a fix: retries on 502 (#45)"
+        },
+        {
+            "stream": "out",
+            "ms": 123,
+            "text": "93691b5 feat: first feature"
+        },
+        {
+            "stream": "out",
+            "ms": 123,
+            "text": "c16cd16 chore: initial commit"
+        },
+        {
+            "stream": "out",
+            "ms": 142,
+            "text": "00:38:37 [INFO] 📋 Version Bump Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 142,
+            "text": "00:38:37 [INFO]   From:    v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 142,
+            "text": "00:38:37 [INFO]   To:      v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 142,
+            "text": "00:38:37 [INFO]   Type:    patch bump"
+        },
+        {
+            "stream": "out",
+            "ms": 142,
+            "text": "✅ v1.4.3 matches expect"
+        },
+        {
+            "stream": "out",
+            "ms": 157,
+            "text": "✅ ✅ Created tag: v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 185,
+            "text": "b7b3c7a285293f971007781c81c82917f27a0175\tHEAD"
+        },
+        {
+            "stream": "out",
+            "ms": 200,
+            "text": "00:38:37 [INFO] Pushing tag to remote..."
+        },
+        {
+            "stream": "err",
+            "ms": 362,
+            "text": "pre-push: blocked by policy"
+        },
+        {
+            "stream": "err",
+            "ms": 362,
+            "text": "error: failed to push some refs to '/work/cases/pre-push-fails-from-feature/origin.git'"
+        },
+        {
+            "stream": "out",
+            "ms": 379,
+            "text": "00:38:37 [ERROR] ❌ Failed to push tag to remote"
+        },
+        {
+            "stream": "out",
+            "ms": 379,
+            "text": "00:38:37 [WARN] 💡 To push manually: git push origin v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 379,
+            "text": "00:38:37 [INFO] Switching to branch 'feature-x'..."
+        },
+        {
+            "stream": "err",
+            "ms": 388,
+            "text": "Switched to branch 'feature-x'"
+        },
+        {
+            "stream": "out",
+            "ms": 389,
+            "text": "✅ Switched to branch 'feature-x'"
+        },
+        {
+            "stream": "out",
+            "ms": 389,
+            "text": "✅ ✅ Switched back to original branch 'feature-x'"
+        },
+        {
+            "stream": "out",
+            "ms": 395,
+            "text": "{\"from\":\"v1.4.2\",\"to\":\"v1.4.3\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"v1.4.3\",\"commit\":\"b7b3c7a285293f971007781c81c82917f27a0175\",\"pushed\":false,\"startBranch\":\"feature-x\",\"branch\":\"feature-x\",\"warnings\":[\"Current version tag is not on HEAD - there are 1 commits since v1.4.2\",\"To push manually: git push origin v1.4.3\"],\"error\":\"failed to push tag: command failed [git push origin v1.4.3]: exit status 1\\ntag v1.4.3 was left in the local repository: push it with 'git push origin v1.4.3' or delete it with 'git tag -d v1.4.3'\"}"
+        },
+        {
+            "stream": "err",
+            "ms": 395,
+            "text": "❌ Error: failed to push tag: command failed [git push origin v1.4.3]: exit status 1"
+        },
+        {
+            "stream": "err",
+            "ms": 395,
+            "text": "tag v1.4.3 was left in the local repository: push it with 'git push origin v1.4.3' or delete it with 'git tag -d v1.4.3'"
+        }
+    ],
+    "before": {
+        "branch": "feature-x",
+        "head": "b7b3c7a",
+        "inProgress": "",
+        "localMaster": "b7b3c7a",
+        "localTags": "v1.4.2 a99e0ad 93691b5",
+        "remoteMaster": "b7b3c7a285293f971007781c81c82917f27a0175\trefs/heads/master",
+        "remoteTags": "a99e0adf88bfb029326c0bdb59af5adcd6c8dc5a\trefs/tags/v1.4.2\n93691b562878cae3964b63105f8d651e95ee81b4\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "feature-x",
+        "head": "b7b3c7a",
+        "inProgress": "",
+        "localMaster": "b7b3c7a",
+        "localTags": "v1.4.2 a99e0ad 93691b5\nv1.4.3 c8d5700 b7b3c7a",
+        "remoteMaster": "b7b3c7a285293f971007781c81c82917f27a0175\trefs/heads/master",
+        "remoteTags": "a99e0adf88bfb029326c0bdb59af5adcd6c8dc5a\trefs/tags/v1.4.2\n93691b562878cae3964b63105f8d651e95ee81b4\trefs/tags/v1.4.2^{}",
+        "status": ""
+    }
+}

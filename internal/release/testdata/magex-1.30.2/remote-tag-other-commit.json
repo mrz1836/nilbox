@@ -1,0 +1,204 @@
+{
+    "name": "remote-tag-other-commit",
+    "note": "origin has v1.4.3 at a commit the clone lacks; no branch= so no fetch",
+    "dir": "/work/cases/remote-tag-other-commit/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "push=true",
+        "expect=v1.4.3",
+        "json=true"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n00:38:30 [INFO] Using bump type: patch\n00:38:30 [WARN] ⚠️  No branch parameter specified - performing version bump on current branch: 'master'\n00:38:30 [WARN] 💡 If not on a release branch, consider using: magex version:bump branch=master bump=patch\n00:38:30 [INFO] To proceed with version bump on current branch, this is normal behavior\n00:38:30 [INFO] Detecting current version...\n00:38:30 [INFO] No tags found on HEAD commit\n00:38:30 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.2\n00:38:30 [INFO] Recent commits:\n7886164 fix: retries on 502 (#45)\n52b1f7b feat: first feature\n7715d61 chore: initial commit\n00:38:30 [INFO] 📋 Version Bump Summary:\n00:38:30 [INFO]   From:    v1.4.2\n00:38:30 [INFO]   To:      v1.4.3\n00:38:30 [INFO]   Type:    patch bump\n✅ v1.4.3 matches expect\n✅ ✅ Created tag: v1.4.3\nfb06790e699b01eebd340a534a5bdc025057bae9\tHEAD\n00:38:30 [ERROR] ❌ Tag v1.4.3 already exists on remote pointing at a different commit\n00:38:30 [WARN] 💡 This usually means:\n00:38:30 [WARN]    • The tag was created from a different branch\n00:38:30 [WARN]    • Another developer created this tag\n00:38:30 [WARN]    • Your local tags were out of sync with remote\n00:38:30 [INFO]    • Local tag → 788616466c2d, remote tag → 9168f2806aa5\n00:38:30 [INFO] To see all remote tags: git ls-remote --tags origin\n00:38:30 [INFO] To fetch all remote tags: git fetch --tags origin\n{\"from\":\"v1.4.2\",\"to\":\"v1.4.3\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"v1.4.3\",\"commit\":\"788616466c2de86563ca058351d23a92cddd2b54\",\"pushed\":false,\"startBranch\":\"master\",\"branch\":\"master\",\"warnings\":[\"No branch parameter specified - performing version bump on current branch: 'master'\",\"If not on a release branch, consider using: magex version:bump branch=master bump=patch\",\"Current version tag is not on HEAD - there are 1 commits since v1.4.2\",\"This usually means:\",\"The tag was created from a different branch\",\"Another developer created this tag\",\"Your local tags were out of sync with remote\"],\"error\":\"tag already exists on remote: v1.4.3\"}\n",
+    "stderr": "❌ Error: tag already exists on remote: v1.4.3\n",
+    "exit": 1,
+    "durationMs": 160,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 14,
+            "text": "00:38:30 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 28,
+            "text": "00:38:30 [WARN] ⚠️  No branch parameter specified - performing version bump on current branch: 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 28,
+            "text": "00:38:30 [WARN] 💡 If not on a release branch, consider using: magex version:bump branch=master bump=patch"
+        },
+        {
+            "stream": "out",
+            "ms": 28,
+            "text": "00:38:30 [INFO] To proceed with version bump on current branch, this is normal behavior"
+        },
+        {
+            "stream": "out",
+            "ms": 35,
+            "text": "00:38:30 [INFO] Detecting current version..."
+        },
+        {
+            "stream": "out",
+            "ms": 42,
+            "text": "00:38:30 [INFO] No tags found on HEAD commit"
+        },
+        {
+            "stream": "out",
+            "ms": 66,
+            "text": "00:38:30 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 73,
+            "text": "00:38:30 [INFO] Recent commits:"
+        },
+        {
+            "stream": "out",
+            "ms": 73,
+            "text": "7886164 fix: retries on 502 (#45)"
+        },
+        {
+            "stream": "out",
+            "ms": 73,
+            "text": "52b1f7b feat: first feature"
+        },
+        {
+            "stream": "out",
+            "ms": 73,
+            "text": "7715d61 chore: initial commit"
+        },
+        {
+            "stream": "out",
+            "ms": 92,
+            "text": "00:38:30 [INFO] 📋 Version Bump Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 92,
+            "text": "00:38:30 [INFO]   From:    v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 92,
+            "text": "00:38:30 [INFO]   To:      v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 92,
+            "text": "00:38:30 [INFO]   Type:    patch bump"
+        },
+        {
+            "stream": "out",
+            "ms": 92,
+            "text": "✅ v1.4.3 matches expect"
+        },
+        {
+            "stream": "out",
+            "ms": 106,
+            "text": "✅ ✅ Created tag: v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 132,
+            "text": "fb06790e699b01eebd340a534a5bdc025057bae9\tHEAD"
+        },
+        {
+            "stream": "out",
+            "ms": 155,
+            "text": "00:38:30 [ERROR] ❌ Tag v1.4.3 already exists on remote pointing at a different commit"
+        },
+        {
+            "stream": "out",
+            "ms": 155,
+            "text": "00:38:30 [WARN] 💡 This usually means:"
+        },
+        {
+            "stream": "out",
+            "ms": 155,
+            "text": "00:38:30 [WARN]    • The tag was created from a different branch"
+        },
+        {
+            "stream": "out",
+            "ms": 155,
+            "text": "00:38:30 [WARN]    • Another developer created this tag"
+        },
+        {
+            "stream": "out",
+            "ms": 155,
+            "text": "00:38:30 [WARN]    • Your local tags were out of sync with remote"
+        },
+        {
+            "stream": "out",
+            "ms": 155,
+            "text": "00:38:30 [INFO]    • Local tag → 788616466c2d, remote tag → 9168f2806aa5"
+        },
+        {
+            "stream": "out",
+            "ms": 155,
+            "text": "00:38:30 [INFO] To see all remote tags: git ls-remote --tags origin"
+        },
+        {
+            "stream": "out",
+            "ms": 155,
+            "text": "00:38:30 [INFO] To fetch all remote tags: git fetch --tags origin"
+        },
+        {
+            "stream": "err",
+            "ms": 160,
+            "text": "❌ Error: tag already exists on remote: v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 160,
+            "text": "{\"from\":\"v1.4.2\",\"to\":\"v1.4.3\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"v1.4.3\",\"commit\":\"788616466c2de86563ca058351d23a92cddd2b54\",\"pushed\":false,\"startBranch\":\"master\",\"branch\":\"master\",\"warnings\":[\"No branch parameter specified - performing version bump on current branch: 'master'\",\"If not on a release branch, consider using: magex version:bump branch=master bump=patch\",\"Current version tag is not on HEAD - there are 1 commits since v1.4.2\",\"This usually means:\",\"The tag was created from a different branch\",\"Another developer created this tag\",\"Your local tags were out of sync with remote\"],\"error\":\"tag already exists on remote: v1.4.3\"}"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "head": "7886164",
+        "inProgress": "",
+        "localMaster": "7886164",
+        "localTags": "v1.4.2 36789ac 52b1f7b",
+        "remoteMaster": "fb06790e699b01eebd340a534a5bdc025057bae9\trefs/heads/master",
+        "remoteTags": "36789acd2df8ec760d8f29d6599850c1e07abcf6\trefs/tags/v1.4.2\n52b1f7b04c1bced197fcd5ee9bd43195087e8c7d\trefs/tags/v1.4.2^{}\n9168f2806aa5f919527274d20b75d33c49ba03f8\trefs/tags/v1.4.3\nfb06790e699b01eebd340a534a5bdc025057bae9\trefs/tags/v1.4.3^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "master",
+        "head": "7886164",
+        "inProgress": "",
+        "localMaster": "7886164",
+        "localTags": "v1.4.2 36789ac 52b1f7b\nv1.4.3 218a112 7886164",
+        "remoteMaster": "fb06790e699b01eebd340a534a5bdc025057bae9\trefs/heads/master",
+        "remoteTags": "36789acd2df8ec760d8f29d6599850c1e07abcf6\trefs/tags/v1.4.2\n52b1f7b04c1bced197fcd5ee9bd43195087e8c7d\trefs/tags/v1.4.2^{}\n9168f2806aa5f919527274d20b75d33c49ba03f8\trefs/tags/v1.4.3\nfb06790e699b01eebd340a534a5bdc025057bae9\trefs/tags/v1.4.3^{}",
+        "status": ""
+    }
+}

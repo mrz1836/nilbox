@@ -1,6 +1,7 @@
 package release
 
 import (
+	"cmp"
 	"regexp"
 	"slices"
 	"strings"
@@ -41,7 +42,8 @@ const (
 	// FailureTimeout is a git step past magex's 30-second limit.
 	FailureTimeout FailureKind = "timeout"
 
-	// FailureMidPull is magex stopped while it pulled, which can leave a rebase.
+	// FailureMidPull is magex stopped while it pulled, which can leave a rebase, or while
+	// it fast-forwarded the branch (ff-only), which can't.
 	FailureMidPull FailureKind = "midPull"
 
 	// FailureSigning is git unable to sign the tag, with gpg or ssh.
@@ -138,7 +140,7 @@ func failureRules() []failureRule {
 		{FailureUnsafe, errorSays("version bump blocked due to safety check"), unsafeHeading},
 		{FailureTaken, errorSays("tag already exists on remote"), fixedHeading(takenHeading)},
 		{FailureTimeout, timedOut, fixedHeading("A git step took longer than magex's 30 seconds.")},
-		{FailureMidPull, stoppedMidPull, fixedHeading("Stopped while magex was pulling. A rebase may be in progress.")},
+		{FailureMidPull, stoppedMidPull, midPullHeading},
 		{
 			FailureSigning, func(in FailureInput, _ string) bool { return in.Output.Signing != "" },
 			fixedHeading("Git couldn't sign the tag here. Release in your terminal, where signing can ask you."),
@@ -246,6 +248,19 @@ var gitCanceled = regexp.MustCompile(`signal: \w+|context canceled|was canceled`
 func stoppedMidPull(in FailureInput, said string) bool {
 	return in.Output.Working == StepUpdated &&
 		(in.Output.Canceled || gitCanceled.MatchString(said) || endedOnSignal(in.End))
+}
+
+// midPullHeading says where a run cut short while it pulled stopped. git pull --rebase
+// may leave a rebase going; a fast-forward (ff-only) never starts one, but may leave the
+// branch's files partly updated.
+func midPullHeading(in FailureInput, _ string) (string, string) {
+	if !in.Output.FastForward {
+		return "Stopped while magex was pulling. A rebase may be in progress.", ""
+	}
+
+	branch := cmp.Or(in.Branch, in.Output.Branch, "the branch")
+
+	return "Stopped while magex was fast-forwarding " + branch + ", which may be partly updated. Nothing was tagged.", ""
 }
 
 // endedOnSignal reports a run stopped, timed out, or stopped as the app quit, one whose

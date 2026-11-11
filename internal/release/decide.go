@@ -816,6 +816,10 @@ func (d decider) ready(checks []Check, bumps []BumpOffer, major MajorOffer) bool
 	return d.bump != BumpMajor || d.majorAllowed(major)
 }
 
+// argFastForward is magex's ff-only parameter: update the branch from origin by
+// fast-forward only, refusing before it tags when the branch can't be.
+const argFastForward = "ff-only"
+
 // argv is what the release runs (§5.11.4): push=true, never the bare word, and each
 // optional parameter only for a magex that reads it, since magex ignores a key it
 // doesn't know.
@@ -836,7 +840,7 @@ func (d decider) argv(major MajorOffer) []string {
 	}
 
 	if t.Has(integrations.FeatureFastForwardPull) {
-		argv = append(argv, "ff-only")
+		argv = append(argv, argFastForward)
 	}
 
 	if d.bump == BumpMajor && d.majorAllowed(major) {

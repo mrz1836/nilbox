@@ -125,7 +125,8 @@ type Output struct {
 	TagPushed bool   `json:"tagPushed"`
 
 	// PushSkipped reports magex's warning that origin couldn't be reached, so it skipped
-	// sending the tag (magex 1.29.5 then exits 0), and PushSkipWarning is that warning.
+	// sending the tag (magex 1.29.5 then exits 0; 1.30.0 and later fail, keeping the tag),
+	// and PushSkipWarning is that warning.
 	PushSkipped     bool   `json:"pushSkipped"`
 	PushSkipWarning string `json:"pushSkipWarning"`
 
@@ -136,6 +137,11 @@ type Output struct {
 	// reports that it said it couldn't.
 	BackOn           string `json:"backOn"`
 	SwitchBackFailed bool   `json:"switchBackFailed"`
+
+	// FastForward reports that magex updates the branch from origin by fast-forward only
+	// (ff-only, magex 1.30.2), rather than with git pull --rebase, so stopping it while it
+	// updates leaves no rebase behind.
+	FastForward bool `json:"fastForward"`
 
 	// DryRun reports magex's dry-run mode, which the app never asks for.
 	DryRun bool `json:"dryRun"`
@@ -239,8 +245,9 @@ func cloneOutputLines(lines []string) []string {
 // escapes removed. Snapshot returns what it has read, and is safe to call while it reads.
 //
 // A line it doesn't recognize leaves the step as it was and is kept for the result. It
-// knows magex 1.29.5's lines, recorded in testdata/magex-1.29.5, and the JSON result that
-// json=true adds from 1.30.1.
+// knows the lines of magex 1.29.5 and 1.30.2, recorded in testdata/magex-1.29.5 and
+// testdata/magex-1.30.2, ff-only's among them, and the JSON result that json=true adds
+// from 1.30.1.
 type OutputReader struct {
 	mu sync.Mutex
 
@@ -500,7 +507,7 @@ var (
 	mxBumpType    = regexp.MustCompile(`^Using bump type: (\w+)$`)
 	mxSwitching   = regexp.MustCompile(`^Switching to branch '(.*)'\.\.\.$`)
 	mxAlreadyOn   = regexp.MustCompile(`^Already on target branch '(.*)'$`)
-	mxUpdating    = regexp.MustCompile(`^(?:Pulling latest changes\.\.\.|Updating '.+' from \S+ \(fast-forward only\)\.\.\.)$`)
+	mxUpdating    = regexp.MustCompile(`^(?:Pulling latest changes\.\.\.|Updating '.+' from \S+ (\(fast-forward only\))\.\.\.)$`)
 	mxFrom        = regexp.MustCompile(`^From:\s+(\S+)$`)
 	mxTo          = regexp.MustCompile(`^To:\s+(\S+)$`)
 	mxType        = regexp.MustCompile(`^Type:\s+(\w+) bump$`)
@@ -604,9 +611,12 @@ func (r *OutputReader) readSummary(text string) bool {
 // readProgress reads the INFO lines that start a step or set the run's mode, reporting
 // whether text is one.
 func (r *OutputReader) readProgress(text string) bool {
+	updating := mxUpdating.FindStringSubmatch(text)
+
 	switch {
-	case mxUpdating.MatchString(text):
+	case updating != nil:
 		r.out.Working = StepUpdated
+		r.out.FastForward = updating[1] != ""
 	case mxSending.MatchString(text):
 		r.out.Working = StepTagPushed
 		r.out.HookLine = ""

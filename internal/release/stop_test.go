@@ -80,6 +80,8 @@ func (r *releaseRig) waitProgress(id int64, want scriptrun.Progress) {
 func TestStopIsRefusedWhileMagexSwitchesOrPulls(t *testing.T) {
 	t.Parallel()
 
+	partly := stopOffFastForward(recBranch)
+
 	tests := []struct {
 		name string
 		upTo string
@@ -87,15 +89,15 @@ func TestStopIsRefusedWhileMagexSwitchesOrPulls(t *testing.T) {
 	}{
 		{
 			name: "switching to the branch", upTo: "Switching to branch 'master'",
-			want: scriptrun.Progress{Working: string(StepOnBranch), StopRefused: stopOff},
+			want: scriptrun.Progress{Working: string(StepOnBranch), StopRefused: partly},
 		},
 		{
 			name: "switched, the pull not begun", upTo: "✅ Switched to branch 'master'",
-			want: scriptrun.Progress{Step: string(StepOnBranch), StopRefused: stopOff},
+			want: scriptrun.Progress{Step: string(StepOnBranch), StopRefused: partly},
 		},
 		{
 			name: "pulling", upTo: "Fast-forward",
-			want: scriptrun.Progress{Step: string(StepOnBranch), Working: string(StepUpdated), StopRefused: stopOff},
+			want: scriptrun.Progress{Step: string(StepOnBranch), Working: string(StepUpdated), StopRefused: partly},
 		},
 	}
 
@@ -114,7 +116,7 @@ func TestStopIsRefusedWhileMagexSwitchesOrPulls(t *testing.T) {
 
 			err := r.runs.Stop(t.Context(), id)
 			require.ErrorIs(t, err, scriptrun.ErrStopRefused)
-			assert.Equal(t, "Stopping now could leave a rebase in progress.", uierr.Message(err))
+			assert.Equal(t, partly, uierr.Message(err), "magex 1.30.2 is told ff-only, so it never rebases")
 			assert.True(t, r.run(id).Status.Live(), "magex goes on")
 		})
 	}

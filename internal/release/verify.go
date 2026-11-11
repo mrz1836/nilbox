@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/event"
@@ -34,6 +35,10 @@ type Intent struct {
 
 	// Head is the commit the sheet showed, the newest on origin's branch then.
 	Head string `json:"head"`
+
+	// FastForward reports that magex was told to update the branch by fast-forward only
+	// (ff-only), so it never rebases there.
+	FastForward bool `json:"fastForward"`
 }
 
 // ResultKind is how a release came out, as the app verified it after magex ended.
@@ -337,11 +342,15 @@ func taggedCommit(said Output, got seen) string {
 // failureOf names what stopped a release that isn't on GitHub: always for one that made
 // no tag, else only when magex said something to name. A version someone else released
 // reads as taken when nothing else names it: at another commit than ownTag, this run's
-// own tag in the clone, or with no tag of this run's at all.
+// own tag in the clone, or with no tag of this run's at all. A tag magex kept because it
+// couldn't reach origin needs no name when magex's error only repeats that: the result
+// quotes magex's warning, which says so (magex 1.30.0 and later fail with it).
 func failureOf(res Result, in Intent, said Output, end scriptrun.Ending, ownTag bool) *Failure {
 	f := ExplainFailure(FailureInput{Output: said, End: end, Version: in.Version, Branch: in.Branch})
 
 	switch {
+	case res.Kind == ResultNotPushed && f.Kind == FailureOther && repeatsPushWarning(f.Quote, res.PushWarning):
+		return nil
 	case f.Kind != FailureOther || f.Quote != "":
 		return &f
 	case res.Taken && ownTag:
@@ -353,6 +362,15 @@ func failureOf(res Result, in Intent, said Output, end scriptrun.Ending, ownTag 
 	default:
 		return nil
 	}
+}
+
+// repeatsPushWarning reports that quote, magex's error, only repeats the cause in warning,
+// its warning that origin couldn't be reached: "failed to push tag: <cause>" after "Git
+// remote validation failed: <cause>".
+func repeatsPushWarning(quote, warning string) bool {
+	cause := strings.TrimSpace(mxPushSkipped.ReplaceAllString(warning, ""))
+
+	return cause != "" && cause != warning && strings.HasSuffix(quote, cause)
 }
 
 // cloneSide is the part of a result that says where the clone is: its branch, whether it

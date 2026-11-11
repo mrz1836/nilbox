@@ -1,0 +1,236 @@
+{
+    "name": "detached-head",
+    "note": "detached at HEAD~1",
+    "dir": "/work/cases/detached-head/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true",
+        "expect=v1.4.3",
+        "json=true",
+        "ff-only"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n00:38:26 [INFO] Using bump type: patch\n00:38:26 [INFO] Switching to branch 'master'...\nYour branch is up to date with 'origin/master'.\n✅ Switched to branch 'master'\n00:38:26 [INFO] Updating 'master' from origin/master (fast-forward only)...\n✅ 'master' is level with origin/master\n00:38:26 [INFO] Detecting current version...\n00:38:26 [INFO] No tags found on HEAD commit\n00:38:26 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.2\n00:38:26 [INFO] Recent commits:\nfa4c49e fix: retries on 502 (#45)\n4c87986 feat: first feature\n098b33c chore: initial commit\n00:38:26 [INFO] 📋 Version Bump Summary:\n00:38:26 [INFO]   From:    v1.4.2\n00:38:26 [INFO]   To:      v1.4.3\n00:38:26 [INFO]   Type:    patch bump\n✅ v1.4.3 matches expect\n✅ ✅ Created tag: v1.4.3\nfa4c49e5712f4bfa53eb26dd3275a310d1c281c4\tHEAD\n00:38:26 [INFO] Pushing tag to remote...\n✅ ✅ Tag pushed to remote\n00:38:26 [INFO] Switching to branch ''...\n00:38:26 [INFO] Local branch not found, trying to checkout from remote...\n00:38:26 [ERROR] ⚠️  Failed to switch back to original branch '': failed to checkout branch '': local branch not found (command failed [git checkout ]: exit status 128) and remote checkout failed (command failed [git checkout -b  origin/]: exit status 128)\n00:38:26 [INFO] You are currently on branch 'master'\n00:38:26 [INFO] To switch back manually: git checkout \n{\"from\":\"v1.4.2\",\"to\":\"v1.4.3\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"v1.4.3\",\"commit\":\"fa4c49e5712f4bfa53eb26dd3275a310d1c281c4\",\"pushed\":true,\"startBranch\":\"\",\"branch\":\"master\",\"warnings\":[\"Current version tag is not on HEAD - there are 1 commits since v1.4.2\",\"The bump started on a detached HEAD but ended on branch 'master'\"],\"error\":\"\"}\n",
+    "stderr": "Previous HEAD position was 4c87986 feat: first feature\nSwitched to branch 'master'\nTo /work/cases/detached-head/origin.git\n * [new tag]         v1.4.3 -> v1.4.3\nfatal: empty string is not a valid pathspec. please use . instead if you meant to match all paths\nfatal: 'origin/' is not a commit and a branch '' cannot be created from it\n",
+    "exit": 0,
+    "durationMs": 272,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 14,
+            "text": "00:38:26 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 33,
+            "text": "00:38:26 [INFO] Switching to branch 'master'..."
+        },
+        {
+            "stream": "err",
+            "ms": 41,
+            "text": "Previous HEAD position was 4c87986 feat: first feature"
+        },
+        {
+            "stream": "err",
+            "ms": 41,
+            "text": "Switched to branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 42,
+            "text": "Your branch is up to date with 'origin/master'."
+        },
+        {
+            "stream": "out",
+            "ms": 43,
+            "text": "✅ Switched to branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 43,
+            "text": "00:38:26 [INFO] Updating 'master' from origin/master (fast-forward only)..."
+        },
+        {
+            "stream": "out",
+            "ms": 80,
+            "text": "✅ 'master' is level with origin/master"
+        },
+        {
+            "stream": "out",
+            "ms": 87,
+            "text": "00:38:26 [INFO] Detecting current version..."
+        },
+        {
+            "stream": "out",
+            "ms": 93,
+            "text": "00:38:26 [INFO] No tags found on HEAD commit"
+        },
+        {
+            "stream": "out",
+            "ms": 119,
+            "text": "00:38:26 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 126,
+            "text": "00:38:26 [INFO] Recent commits:"
+        },
+        {
+            "stream": "out",
+            "ms": 126,
+            "text": "fa4c49e fix: retries on 502 (#45)"
+        },
+        {
+            "stream": "out",
+            "ms": 126,
+            "text": "4c87986 feat: first feature"
+        },
+        {
+            "stream": "out",
+            "ms": 126,
+            "text": "098b33c chore: initial commit"
+        },
+        {
+            "stream": "out",
+            "ms": 146,
+            "text": "00:38:26 [INFO] 📋 Version Bump Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 146,
+            "text": "00:38:26 [INFO]   From:    v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 146,
+            "text": "00:38:26 [INFO]   To:      v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 146,
+            "text": "00:38:26 [INFO]   Type:    patch bump"
+        },
+        {
+            "stream": "out",
+            "ms": 146,
+            "text": "✅ v1.4.3 matches expect"
+        },
+        {
+            "stream": "out",
+            "ms": 160,
+            "text": "✅ ✅ Created tag: v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 188,
+            "text": "fa4c49e5712f4bfa53eb26dd3275a310d1c281c4\tHEAD"
+        },
+        {
+            "stream": "out",
+            "ms": 203,
+            "text": "00:38:26 [INFO] Pushing tag to remote..."
+        },
+        {
+            "stream": "err",
+            "ms": 254,
+            "text": "To /work/cases/detached-head/origin.git"
+        },
+        {
+            "stream": "err",
+            "ms": 254,
+            "text": " * [new tag]         v1.4.3 -> v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 254,
+            "text": "✅ ✅ Tag pushed to remote"
+        },
+        {
+            "stream": "out",
+            "ms": 254,
+            "text": "00:38:26 [INFO] Switching to branch ''..."
+        },
+        {
+            "stream": "err",
+            "ms": 260,
+            "text": "fatal: empty string is not a valid pathspec. please use . instead if you meant to match all paths"
+        },
+        {
+            "stream": "out",
+            "ms": 260,
+            "text": "00:38:26 [INFO] Local branch not found, trying to checkout from remote..."
+        },
+        {
+            "stream": "err",
+            "ms": 266,
+            "text": "fatal: 'origin/' is not a commit and a branch '' cannot be created from it"
+        },
+        {
+            "stream": "out",
+            "ms": 266,
+            "text": "00:38:26 [ERROR] ⚠️  Failed to switch back to original branch '': failed to checkout branch '': local branch not found (command failed [git checkout ]: exit status 128) and remote checkout failed (command failed [git checkout -b  origin/]: exit status 128)"
+        },
+        {
+            "stream": "out",
+            "ms": 266,
+            "text": "00:38:26 [INFO] You are currently on branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 266,
+            "text": "00:38:26 [INFO] To switch back manually: git checkout "
+        },
+        {
+            "stream": "out",
+            "ms": 272,
+            "text": "{\"from\":\"v1.4.2\",\"to\":\"v1.4.3\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"v1.4.3\",\"commit\":\"fa4c49e5712f4bfa53eb26dd3275a310d1c281c4\",\"pushed\":true,\"startBranch\":\"\",\"branch\":\"master\",\"warnings\":[\"Current version tag is not on HEAD - there are 1 commits since v1.4.2\",\"The bump started on a detached HEAD but ended on branch 'master'\"],\"error\":\"\"}"
+        }
+    ],
+    "before": {
+        "branch": "(detached)",
+        "head": "4c87986",
+        "inProgress": "",
+        "localMaster": "fa4c49e",
+        "localTags": "v1.4.2 80f5780 4c87986",
+        "remoteMaster": "fa4c49e5712f4bfa53eb26dd3275a310d1c281c4\trefs/heads/master",
+        "remoteTags": "80f578058c1dda64c50ca4b2bc347beef0757fbf\trefs/tags/v1.4.2\n4c87986b077ee1a93bfac6deb46ea14d072f2023\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "master",
+        "head": "fa4c49e",
+        "inProgress": "",
+        "localMaster": "fa4c49e",
+        "localTags": "v1.4.2 80f5780 4c87986\nv1.4.3 0e29a30 fa4c49e",
+        "remoteMaster": "fa4c49e5712f4bfa53eb26dd3275a310d1c281c4\trefs/heads/master",
+        "remoteTags": "80f578058c1dda64c50ca4b2bc347beef0757fbf\trefs/tags/v1.4.2\n4c87986b077ee1a93bfac6deb46ea14d072f2023\trefs/tags/v1.4.2^{}\n0e29a3037b55f8fdfca34e7794684b350490baac\trefs/tags/v1.4.3\nfa4c49e5712f4bfa53eb26dd3275a310d1c281c4\trefs/tags/v1.4.3^{}",
+        "status": ""
+    }
+}
