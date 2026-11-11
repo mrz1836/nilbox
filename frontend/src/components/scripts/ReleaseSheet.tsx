@@ -3,7 +3,7 @@ import { useEffect, useEffectEvent, useId, useState } from 'react'
 import { brand } from '../../generated/brand'
 import { counted } from '../../lib/format'
 import { shellQuoted } from '../../lib/git'
-import { intentOf } from '../../lib/release'
+import { bumpHint, intentOf } from '../../lib/release'
 import { isLive } from '../../lib/scriptRuns'
 import { terminalNames } from '../../lib/terminals'
 import { formatAgo } from '../../lib/time'
@@ -17,6 +17,7 @@ import {
   startRelease,
   type ReleaseBump,
   type ReleaseCandidate,
+  type ReleaseCommit,
   type ReleaseOffer,
   type ReleaseStartRequest,
   type RunsIn,
@@ -24,7 +25,7 @@ import {
 } from '../../platform'
 import { buttonClass, dangerButtonClass, fieldClass, primaryButtonClass, Segmented } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
-import { ChevronRightIcon, ExternalIcon, XIcon } from '../icons'
+import { ChevronRightIcon, ExternalIcon, InfoIcon, XIcon } from '../icons'
 import { RelativeTime } from '../RelativeTime'
 import { ErrorText } from '../settings/rows'
 import { Sheet } from '../Sheet'
@@ -55,6 +56,23 @@ interface Choice {
   typed: string
   allowModulePath: boolean
   runsIn: RunsIn
+}
+
+// BumpHint says, under the cards, which bump the commits' conventional-commit prefixes
+// usually mean (bumpHint), or nothing. It never changes the choice.
+function BumpHint({ commits }: { commits: readonly ReleaseCommit[] }) {
+  const hint = bumpHint(commits.map((c) => c.headline))
+
+  if (hint === '') {
+    return null
+  }
+
+  return (
+    <p className="-mt-2 flex items-start gap-1.5 text-xs text-muted">
+      <InfoIcon className="mt-px size-3.5 shrink-0" />
+      {hint}
+    </p>
+  )
 }
 
 // WhatsInIt lists the commits since the newest version, from GitHub, so they are right
@@ -403,6 +421,7 @@ export function ReleaseSheet({
                     onUpdate={onOpenSettings}
                   />
                 )}
+                {offer.bumps.length > 0 && candidate !== undefined && <BumpHint commits={candidate.commits} />}
                 {choice.bump === 'major' && offer.bumps.some((b) => b.bump === 'major' && b.offered) && (
                   <MajorConfirm
                     major={offer.major}

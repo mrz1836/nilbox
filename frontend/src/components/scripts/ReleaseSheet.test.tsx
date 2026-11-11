@@ -121,6 +121,33 @@ describe('ReleaseSheet', () => {
     expect(platform.openExternal).toHaveBeenLastCalledWith('https://github.com/acme-org/sdk/compare/v1.4.2...master')
   })
 
+  it('hints at the bump the commits’ prefixes usually mean, and never changes the choice', async () => {
+    const candidate = releaseCandidate()
+    const [first, ...rest] = candidate.commits
+    renderSheet({
+      candidate: {
+        ...candidate,
+        commits: [...(first === undefined ? [] : [{ ...first, headline: 'feat!: drop v1' }]), ...rest],
+      },
+    })
+
+    const s = await sheet()
+
+    expect(
+      s.getByText('1 commit is marked breaking (feat!:), which usually means a major release.'),
+    ).toBeInTheDocument()
+    expect(s.getByRole('radio', { name: /Patch/ })).toBeChecked()
+  })
+
+  it('hints nothing for commits without a conventional prefix, or before the page lists them', async () => {
+    renderSheet()
+
+    const s = await sheet()
+
+    expect(s.getByRole('radio', { name: /Patch/ })).toBeChecked()
+    expect(s.queryByText(/which usually means a/)).not.toBeInTheDocument()
+  })
+
   it('leaves the commits out while the page hasn’t listed the repository', async () => {
     renderSheet({ candidate: undefined })
 

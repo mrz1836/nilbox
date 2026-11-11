@@ -155,6 +155,41 @@ export function commitChecksText(checks: CommitChecks): string {
   }
 }
 
+// breakingHeadline matches a conventional commit marked breaking, its type in the first
+// group: feat!: and fix(api)!: alike, or a headline that starts BREAKING CHANGE:.
+const breakingHeadline = /^(?:([a-z]+)(?:\([^)]*\))?!:|BREAKING[ -]CHANGE:)/i
+
+// featHeadline matches a conventional commit that adds a feature: feat: or feat(scope):.
+const featHeadline = /^feat(?:\([^)]*\))?:/i
+
+// bumpHint suggests, from the headlines of the commits a release would ship, the bump
+// their conventional-commit prefixes usually mean: a major one when any is marked
+// breaking, else a minor one when any starts with feat:. It only words the suggestion and
+// never changes the choice, which starts at Patch every time (D11); '' when there is
+// nothing to suggest.
+export function bumpHint(headlines: readonly string[]): string {
+  const breaking = headlines.map((h) => breakingHeadline.exec(h.trim())).filter((m) => m !== null)
+
+  if (breaking.length > 0) {
+    const kind = breaking[0]?.[1]?.toLowerCase()
+    const marker = kind === undefined ? 'BREAKING CHANGE:' : `${kind}!:`
+
+    return breaking.length === 1
+      ? `1 commit is marked breaking (${marker}), which usually means a major release.`
+      : `${counted(breaking.length, 'commit', 'commits')} are marked breaking (such as ${marker}), which usually means a major release.`
+  }
+
+  const feats = headlines.filter((h) => featHeadline.test(h.trim())).length
+
+  if (feats === 0) {
+    return ''
+  }
+
+  return feats === 1
+    ? '1 commit starts with feat:, which usually means a minor release.'
+    : `${counted(feats, 'commit', 'commits')} start with feat:, which usually means a minor release.`
+}
+
 // ReleaseIntent is what a release set out to do, as its run recorded it at the start.
 export interface ReleaseIntent {
   version: string
