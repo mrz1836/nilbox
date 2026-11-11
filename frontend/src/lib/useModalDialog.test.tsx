@@ -1,16 +1,22 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useRef, useState } from 'react'
+import { Activity, useRef, useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { isTopmost, nextFocus, useModalDialog } from './useModalDialog'
 
+interface ModalProps {
+  onCancel: () => void
+  nested?: boolean
+  backdrop?: boolean
+}
+
 // Modal is a dialog run by the hook, with two buttons and, when nested is set, a second
 // dialog opened from inside it.
-function Modal({ onCancel, nested = false }: { onCancel: () => void; nested?: boolean }) {
+function Modal({ onCancel, nested = false, backdrop = false }: ModalProps) {
   const ref = useRef<HTMLDialogElement>(null)
   const firstRef = useRef<HTMLButtonElement>(null)
-  const cancel = useModalDialog(ref, onCancel, () => firstRef.current)
+  const cancel = useModalDialog(ref, onCancel, () => firstRef.current, { backdrop })
   const [inner, setInner] = useState(nested)
 
   return (
@@ -92,6 +98,65 @@ describe('useModalDialog', () => {
 
     expect(event.defaultPrevented).toBe(true)
     expect(onCancel).toHaveBeenCalledOnce()
+  })
+
+  it('cancels only the dialog a close request is for, not the one it was opened over', () => {
+    const onCancel = vi.fn()
+    render(<Modal onCancel={onCancel} nested />)
+
+    // React hands a cancel event on to the handlers around it, as if it bubbled.
+    fireEvent(screen.getByRole('dialog', { name: 'Inner' }), new Event('cancel', { cancelable: true }))
+
+    expect(screen.queryByRole('dialog', { name: 'Inner' })).not.toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Outer' })).toHaveAttribute('open')
+    expect(onCancel).not.toHaveBeenCalled()
+  })
+
+  it('cancels on a click on the backdrop when asked, but not after a drag out of the dialog', async () => {
+    const onCancel = vi.fn()
+    const { rerender } = render(<Modal onCancel={onCancel} />)
+    const dialog = screen.getByRole('dialog', { name: 'Outer' })
+
+    await userEvent.click(dialog)
+    expect(onCancel).not.toHaveBeenCalled()
+
+    rerender(<Modal onCancel={onCancel} backdrop />)
+
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'First' }))
+    fireEvent.click(dialog)
+    expect(onCancel).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Last' }))
+    expect(onCancel).not.toHaveBeenCalled()
+
+    await userEvent.click(dialog)
+    expect(onCancel).toHaveBeenCalledOnce()
+  })
+
+  it('gives focus back to where it was as the dialog first opened, after its page hides and shows', () => {
+    const opener = document.createElement('button')
+    const elsewhere = document.createElement('button')
+    document.body.append(opener, elsewhere)
+    opener.focus()
+
+    const page = (mode: 'visible' | 'hidden') => (
+      <Activity mode={mode}>
+        <Modal onCancel={vi.fn()} />
+      </Activity>
+    )
+    const { rerender, unmount } = render(page('visible'))
+
+    rerender(page('hidden'))
+    elsewhere.focus()
+    rerender(page('visible'))
+
+    expect(screen.getByRole('dialog', { name: 'Outer' })).toHaveAttribute('open')
+    expect(screen.getByRole('button', { name: 'First' })).toHaveFocus()
+
+    unmount()
+    expect(opener).toHaveFocus()
+    opener.remove()
+    elsewhere.remove()
   })
 })
 

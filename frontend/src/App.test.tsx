@@ -604,10 +604,12 @@ describe('App', () => {
     // Pull request #8 is not in the inbox, so its worktree has no launch control.
     expect(row('~/projects/example-repo/.claude/worktrees/pr-8').queryByRole('button', { name: /^Open/ })).toBeNull()
 
-    // The control sits at the left of the row, so its menu opens from the left edge.
+    // The row's launch options open in the dialog every launch control opens, worktree on.
     await userEvent.click(listed.getByRole('button', { name: /^Launch options/ }))
-    expect(screen.getByRole('dialog', { name: 'Launch options' })).toHaveClass('left-0')
+    const options = within(screen.getByRole('dialog', { name: 'Launch options' }))
+    expect(options.getByRole('checkbox', { name: /Start in a worktree/ })).toBeChecked()
     await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog', { name: 'Launch options' })).not.toBeInTheDocument()
 
     await userEvent.click(listed.getByRole('button', { name: 'Open in Claude' }))
 
