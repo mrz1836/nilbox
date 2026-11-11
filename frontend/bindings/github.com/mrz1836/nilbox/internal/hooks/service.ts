@@ -53,6 +53,15 @@ export function InstallAll(dirs: string[] | null): $CancellablePromise<$models.I
 }
 
 /**
+ * OpenTerminal opens the terminal chosen for launches in the clone the page lists at dir
+ * (with ~), for a row's Open in terminal: the user looks at the clone or fixes it there.
+ * The app runs nothing in it. Only a clone directly under the clone root is opened.
+ */
+export function OpenTerminal(dir: string): $CancellablePromise<void> {
+    return $Call.ByID(1334707302, dir);
+}
+
+/**
  * Reinstall writes go-pre-commit's hook again.
  */
 export function Reinstall(req: $models.ActionRequest): $CancellablePromise<number> {
@@ -72,8 +81,10 @@ export function Replace(req: $models.ActionRequest): $CancellablePromise<number>
  * was read from the clone root as set now, and no copy of go-pre-commit took the place of
  * the one it judged with, scanning again first only the clones an action or a check ran
  * in; refresh, or anything else, scans every clone again and emits event.HooksUpdated. A
- * scan that fails keeps the last page, with its error, until one succeeds. What holds each
- * clone, and its newest checks run, are read for every call.
+ * scan that fails keeps the last page, with its error, until one succeeds. A scan runs
+ * apart from the caller that started it, within ScanTimeout: a caller whose context ends
+ * stops waiting, and the scan goes on for the next. What holds each clone, and its newest
+ * checks run, are read for every call.
  */
 export function Repos(refresh: boolean): $CancellablePromise<$models.Page> {
     return $Call.ByID(1187910443, refresh);
@@ -86,6 +97,15 @@ export function Repos(refresh: boolean): $CancellablePromise<$models.Page> {
  */
 export function RunChecks(req: $models.ChecksRequest): $CancellablePromise<number> {
     return $Call.ByID(1567581702, req);
+}
+
+/**
+ * ShowConfig shows the go-pre-commit config of the clone the page lists at dir (with ~) in
+ * Finder, for a row's Open the config: its .github/env folder, or the legacy
+ * .github/.env.base. Only a clone directly under the clone root, with a config, is shown.
+ */
+export function ShowConfig(dir: string): $CancellablePromise<void> {
+    return $Call.ByID(3217116281, dir);
 }
 
 /**

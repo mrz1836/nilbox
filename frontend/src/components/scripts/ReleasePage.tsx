@@ -19,21 +19,14 @@ import { formatAge, formatAgo } from '../../lib/time'
 import type { CommitChecks, IntegrationTool, ReleaseCandidate, ReleaseGroup, ScriptRun } from '../../platform'
 import { buttonClass, quietButtonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
-import {
-  AlertIcon,
-  CheckIcon,
-  ChevronDownIcon,
-  ChevronRightIcon,
-  DotIcon,
-  RefreshIcon,
-  RingIcon,
-  SearchIcon,
-  XIcon,
-} from '../icons'
+import { AlertIcon, CheckIcon, DotIcon, RefreshIcon, RingIcon, XIcon } from '../icons'
 import { RelativeTime } from '../RelativeTime'
 import { ErrorText } from '../settings/rows'
 import { Spinner } from '../Spinner'
+import { GroupHeading } from './GroupHeading'
+import { RepoSearch } from './RepoSearch'
 import { RunStatus } from './RunStatus'
+import { ToolProblem } from './ToolProblem'
 
 // checksIcons mark the checks on a commit beside their words: passed, running, failing,
 // or none at all.
@@ -108,37 +101,6 @@ function CandidateRow({ candidate, onRelease }: { candidate: ReleaseCandidate; o
   )
 }
 
-// ToolProblem stands in for the list while magex can't be used, saying why, with the way
-// to fix it in Settings.
-function ToolProblem({ tool, onOpenSettings }: { tool: IntegrationTool | undefined; onOpenSettings: () => void }) {
-  let text = 'magex can’t be used yet.'
-  let fix = 'Open Settings'
-
-  switch (tool?.state) {
-    case 'missing':
-      text = 'magex isn’t on this Mac.'
-      fix = 'Install mage-x in Settings'
-      break
-    case 'tooOld':
-      text = `magex ${tool.copy.version.raw} is older than ${tool.minVersion}, which Release needs.`
-      fix = 'Update mage-x in Settings'
-      break
-    case 'wontRun':
-      text = `${tool.copy.displayPath} is there but won’t run${tool.copy.error === '' ? '.' : `: ${tool.copy.error}`}`
-      break
-  }
-
-  return (
-    <div className="flex items-start gap-3 rounded-lg border border-warning px-4 py-3">
-      <AlertIcon className="mt-0.5 size-4 shrink-0 text-warning" />
-      <p className="min-w-0 flex-1 text-sm text-text">{text}</p>
-      <button type="button" onClick={onOpenSettings} className={buttonClass}>
-        {fix}
-      </button>
-    </div>
-  )
-}
-
 // RecentRelease is a release in Recent: how it went, its version and repository, and
 // when it started. It opens its run.
 function RecentRelease({ run, onOpen }: { run: ScriptRun; onOpen: () => void }) {
@@ -203,7 +165,7 @@ export function ReleasePage({
   let body: ReactNode
 
   if (!usable(tool)) {
-    body = <ToolProblem tool={tool} onOpenSettings={openIntegrations} />
+    body = <ToolProblem tool={tool} binary="magex" name="mage-x" page="Release" onOpenSettings={openIntegrations} />
   } else if (list === null) {
     body =
       error === '' ? (
@@ -247,20 +209,16 @@ export function ReleasePage({
 
           return (
             <section key={group.id} aria-labelledby={`${id}-${group.id}`} className="flex flex-col gap-1">
-              <h3 id={`${id}-${group.id}`}>
-                <button
-                  type="button"
-                  aria-expanded={shown}
-                  disabled={searching}
-                  onClick={() => {
-                    setOpen({ ...open, [group.id]: !open[group.id] })
-                  }}
-                  className="flex w-full items-center gap-1.5 rounded-md px-1 py-1 text-left text-[0.6875rem] font-semibold tracking-wide text-muted uppercase hover:text-text disabled:hover:text-muted"
-                >
-                  {shown ? <ChevronDownIcon className="size-3.5" /> : <ChevronRightIcon className="size-3.5" />}
-                  {group.title} · {formatCount(rows.length)}
-                </button>
-              </h3>
+              <GroupHeading
+                id={`${id}-${group.id}`}
+                title={group.title}
+                count={rows.length}
+                open={shown}
+                disabled={searching}
+                onToggle={() => {
+                  setOpen({ ...open, [group.id]: !open[group.id] })
+                }}
+              />
               {shown &&
                 (rows.length === 0 ? (
                   <p className="px-3 text-sm text-muted">No repository has unreleased changes.</p>
@@ -342,22 +300,7 @@ export function ReleasePage({
             {progress !== null && <span> {listProgressWords(progress)}</span>}
           </p>
         )}
-        <label htmlFor={`${id}-search`} className="sr-only">
-          Search repositories
-        </label>
-        <div className="flex items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1 focus-within:border-accent/60">
-          <SearchIcon className="size-3.5 shrink-0 text-muted" />
-          <input
-            id={`${id}-search`}
-            type="search"
-            value={search}
-            placeholder="Search repositories…"
-            onChange={(e) => {
-              setSearch(e.target.value)
-            }}
-            className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted/70"
-          />
-        </div>
+        <RepoSearch value={search} onChange={setSearch} />
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 pb-4">
         {body}

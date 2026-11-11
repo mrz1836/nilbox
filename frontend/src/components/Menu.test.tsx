@@ -158,6 +158,25 @@ describe('MenuButton', () => {
     expect(screen.getAllByRole('menuitem')).toHaveLength(2)
   })
 
+  it('shows a note below an item, which describes it', async () => {
+    const choices: MenuItem[] = [
+      { label: 'Run checks', note: 'Some checks fix files.', onSelect: vi.fn() },
+      { label: 'Open the config', onSelect: vi.fn() },
+    ]
+
+    render(
+      <MenuButton label="More actions" items={choices}>
+        ⋯
+      </MenuButton>,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'More actions' }))
+
+    expect(screen.getByText('Some checks fix files.')).toHaveAttribute('aria-hidden', 'true')
+    expect(screen.getByRole('menuitem', { name: 'Run checks' })).toHaveAccessibleDescription('Some checks fix files.')
+    expect(screen.getByRole('menuitem', { name: 'Open the config' })).not.toHaveAttribute('aria-describedby')
+  })
+
   it('opens upward when there is no room below the button', async () => {
     const rect = vi
       .spyOn(HTMLElement.prototype, 'getBoundingClientRect')

@@ -102,6 +102,12 @@ type ActionResult struct {
 	Dir      string `json:"dir"`
 	HooksDir string `json:"hooksDir"`
 
+	// Shared reports a hooks folder other repositories use too, as Repo.Shared does, and
+	// SharedWith how many of the clones under the clone root use it, so the window can ask
+	// before an action there, as the row does.
+	Shared     bool `json:"shared"`
+	SharedWith int  `json:"sharedWith"`
+
 	// OtherTool names the other tool whose hook was in the way, replaced, or put back:
 	// husky, pre-commit, lefthook, or "" when it can't be told.
 	OtherTool string `json:"otherTool"`
@@ -325,6 +331,10 @@ func (s *Service) finishAction(ctx context.Context, run *actionRun, reader *acti
 		Action: run.action, Repo: repoText(run.clone.name), Name: display(run.clone.name, run.clone.dir),
 		Dir: paths.Tilde(run.clone.dir, s.home), HooksDir: paths.Tilde(run.before.paths.Hooks, s.home),
 		Removed: []string{}, Error: said.lastError(),
+	}
+
+	if res.Shared = isShared(run.before.paths); res.Shared {
+		res.SharedWith = s.sharedCount(paths.Resolved(run.before.paths.Hooks))
 	}
 
 	if run.action == ActionUninstall {

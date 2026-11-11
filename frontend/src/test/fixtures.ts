@@ -22,6 +22,11 @@ import type {
   ReviewResult,
   CloneTarget,
   FileCheck,
+  HookActionResult,
+  HookChecksResult,
+  HookInstallAllResult,
+  HookRepo,
+  HooksList,
   ImportEntry,
   InboxItem,
   InboxList,
@@ -1575,4 +1580,267 @@ export function releaseRun(overrides: Partial<ScriptRun> = {}): ScriptRun {
 // afterMerge is a merge in acme-org/sdk that offers its release.
 export function afterMerge(overrides: Partial<AfterMerge> = {}): AfterMerge {
   return { offer: true, repo: 'acme-org/sdk', dir: '~/projects/sdk', branch: 'master', ...overrides }
+}
+
+// hookRepo is acme-org/web with go-pre-commit's current hook, executable, every check on
+// but gitleaks, and its last checks passed two hours before FIXED_NOW.
+export function hookRepo(overrides: Partial<HookRepo> = {}): HookRepo {
+  return {
+    repo: 'acme-org/web',
+    name: 'acme-org/web',
+    dir: '~/projects/web',
+    group: 'ready',
+    state: 'ready',
+    action: '',
+    otherTool: '',
+    hooksDir: '~/projects/web/.git/hooks',
+    shared: false,
+    sharedWith: 0,
+    alsoInstalled: [],
+    backups: [],
+    ciVersion: '',
+    checks: [
+      { name: 'eof', on: true },
+      { name: 'fumpt', on: true },
+      { name: 'gitleaks', on: false },
+      { name: 'lint', on: true },
+      { name: 'mod-tidy', on: true },
+      { name: 'whitespace', on: true },
+    ],
+    busy: '',
+    lastChecks: {
+      id: 21,
+      status: 'succeeded',
+      summary: 'All 5 checks passed on 41 files in 38 s.',
+      finishedAt: '2026-06-15T10:00:00Z',
+    },
+    error: '',
+    ...overrides,
+  }
+}
+
+// noChecks is a row's last checks when none has run.
+const noChecks = { id: 0, status: 'succeeded', summary: '', finishedAt: '' } as const
+
+// hooksList is the Hooks page as the clones were scanned a minute before FIXED_NOW: one
+// clone with no hook, one outdated, one with husky's, one in a hooks folder six clones
+// share, acme-org/web ready, one turned off, and two clones without a config.
+export function hooksList(overrides: Partial<HooksList> = {}): HooksList {
+  return {
+    tool: { version: '1.12.3', path: '/opt/homebrew/bin/go-pre-commit', state: 'found', off: false, usable: true },
+    root: '~/projects',
+    repos: [
+      hookRepo({
+        repo: 'acme-org/api',
+        name: 'acme-org/api',
+        dir: '~/projects/api',
+        group: 'attention',
+        state: 'missing',
+        action: 'install',
+        hooksDir: '~/projects/api/.git/hooks',
+        lastChecks: noChecks,
+      }),
+      hookRepo({
+        repo: 'acme-org/cli',
+        name: 'acme-org/cli',
+        dir: '~/projects/cli',
+        group: 'attention',
+        state: 'outdated',
+        action: 'update',
+        hooksDir: '~/projects/cli/.git/hooks',
+        lastChecks: noChecks,
+      }),
+      hookRepo({
+        repo: 'acme-org/ops',
+        name: 'acme-org/ops',
+        dir: '~/projects/ops',
+        group: 'attention',
+        state: 'missing',
+        action: 'install',
+        hooksDir: '~/.githooks',
+        shared: true,
+        sharedWith: 6,
+        lastChecks: noChecks,
+      }),
+      hookRepo({
+        repo: 'acme-org/sdk',
+        name: 'acme-org/sdk',
+        dir: '~/projects/sdk',
+        group: 'attention',
+        state: 'other',
+        action: 'replace',
+        otherTool: 'husky',
+        hooksDir: '~/projects/sdk/.git/hooks',
+        lastChecks: noChecks,
+      }),
+      hookRepo(),
+      hookRepo({
+        repo: '',
+        name: 'scratch',
+        dir: '~/projects/scratch',
+        group: 'off',
+        state: 'missing',
+        action: 'install',
+        hooksDir: '~/projects/scratch/.git/hooks',
+        lastChecks: noChecks,
+      }),
+    ],
+    notSetUp: [
+      { name: 'notes', dir: '~/projects/notes' },
+      { name: 'site', dir: '~/projects/site' },
+    ],
+    pathWarning: { show: false, dir: '' },
+    toolNote: { show: false, open: false },
+    checkedAt: '2026-06-15T11:59:00Z',
+    error: '',
+    ...overrides,
+  }
+}
+
+// hookActionResult is go-pre-commit's hook installed in acme-org/api.
+export function hookActionResult(overrides: Partial<HookActionResult> = {}): HookActionResult {
+  return {
+    action: 'install',
+    outcome: 'installed',
+    message: 'Installed the pre-commit hook in acme-org/api.',
+    repo: 'acme-org/api',
+    name: 'acme-org/api',
+    dir: '~/projects/api',
+    hooksDir: '~/projects/api/.git/hooks',
+    shared: false,
+    sharedWith: 0,
+    otherTool: '',
+    backup: '',
+    restored: false,
+    removed: [],
+    notExecutable: false,
+    error: '',
+    ...overrides,
+  }
+}
+
+// hookChecksResult is every check run on every file in acme-org/web: four passed and
+// whitespace failed, fixing and staging two files, one of them already changed, with
+// gitleaks off.
+export function hookChecksResult(overrides: Partial<HookChecksResult> = {}): HookChecksResult {
+  const check = { durationMs: 0, error: '', suggestion: '', detail: [], changedFiles: [] }
+
+  return {
+    scope: 'all',
+    check: '',
+    name: 'acme-org/web',
+    dir: '~/projects/web',
+    message: '4 passed, 1 failed: whitespace.',
+    checks: [
+      { ...check, name: 'eof', state: 'passed', durationMs: 120 },
+      { ...check, name: 'fumpt', state: 'passed', durationMs: 900 },
+      { ...check, name: 'lint', state: 'passed', durationMs: 61_000 },
+      { ...check, name: 'mod-tidy', state: 'passed', durationMs: 2_000 },
+      {
+        ...check,
+        name: 'whitespace',
+        state: 'failed',
+        durationMs: 300,
+        error: 'whitespace issues found',
+        suggestion: 'Run go-pre-commit run whitespace and commit the fixes.',
+        detail: ['README.md:3: trailing whitespace'],
+        changedFiles: ['README.md', 'docs/setup.md'],
+      },
+      { ...check, name: 'gitleaks', state: 'off' },
+    ],
+    passed: 4,
+    failed: 1,
+    skipped: 0,
+    files: 41,
+    durationMs: 72_000,
+    noFiles: false,
+    disabled: false,
+    changed: [
+      { path: 'README.md', staged: true, wasDirty: false, by: ['whitespace'] },
+      { path: 'docs/setup.md', staged: true, wasDirty: true, by: ['whitespace'] },
+    ],
+    changedKnown: true,
+    changedError: '',
+    installs: [],
+    errors: [],
+    ...overrides,
+  }
+}
+
+// hookInstallAll is Install and update all over acme-org/api and acme-org/cli: one
+// installed, one updated.
+export function hookInstallAll(overrides: Partial<HookInstallAllResult> = {}): HookInstallAllResult {
+  return {
+    lines: [
+      {
+        name: 'acme-org/api',
+        dir: '~/projects/api',
+        action: 'install',
+        runId: 11,
+        outcome: 'installed',
+        message: 'Installed the pre-commit hook in acme-org/api.',
+      },
+      {
+        name: 'acme-org/cli',
+        dir: '~/projects/cli',
+        action: 'update',
+        runId: 12,
+        outcome: 'updated',
+        message: 'Updated the pre-commit hook in acme-org/cli.',
+      },
+    ],
+    message: '1 installed, 1 updated.',
+    ...overrides,
+  }
+}
+
+// hooksRun is go-pre-commit's hook installed in acme-org/api, in the app.
+export function hooksRun(overrides: Partial<ScriptRun> = {}): ScriptRun {
+  return scriptRun({
+    id: 11,
+    kind: 'hooks',
+    title: 'Install the hook',
+    source: 'install',
+    repo: 'acme-org/api',
+    dir: '~/projects/api',
+    argv: ['/opt/homebrew/bin/go-pre-commit', 'install', '--no-color'],
+    command: 'go-pre-commit install --no-color',
+    summary: 'Installed the pre-commit hook in acme-org/api.',
+    result: {
+      tool: 'go-pre-commit',
+      intent: { action: 'install', confirm: '' },
+      warnings: [],
+      unrecognized: [],
+      unrecognizedCount: 0,
+      outcome: { action: 'install', outcome: 'installed' },
+    },
+    ...overrides,
+  })
+}
+
+// checksRun is every check run on every file in acme-org/web, in the app, with
+// whitespace failing.
+export function checksRun(overrides: Partial<ScriptRun> = {}): ScriptRun {
+  return scriptRun({
+    id: 21,
+    kind: 'checks',
+    title: 'Checks · all files',
+    source: 'all',
+    repo: 'acme-org/web',
+    dir: '~/projects/web',
+    argv: ['/opt/homebrew/bin/go-pre-commit', 'run', '--no-color', '--all-files'],
+    command: 'go-pre-commit run --no-color --all-files',
+    status: 'failed',
+    exitCode: 1,
+    summary: '4 passed, 1 failed: whitespace.',
+    result: {
+      tool: 'go-pre-commit',
+      intent: { scope: 'all', check: '' },
+      warnings: [],
+      unrecognized: [],
+      unrecognizedCount: 0,
+      outcome: { scope: 'all' },
+    },
+    ...overrides,
+  })
 }

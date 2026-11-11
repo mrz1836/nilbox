@@ -68,6 +68,12 @@ const (
 	// an action or a check ran in is scanned again at once.
 	FreshFor = 5 * time.Minute
 
+	// ScanTimeout bounds a scan the page's callers share. A scan runs apart from the
+	// caller that started it, so a window that asks again (as it does when a run starts or
+	// ends) or closes doesn't throw away a scan half done: the caller stops waiting, and
+	// the scan goes on and is kept for the next one.
+	ScanTimeout = 5 * time.Minute
+
 	// scanParallel is how many clones are scanned at once.
 	scanParallel = 4
 

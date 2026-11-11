@@ -13,6 +13,7 @@ import * as appinfo from '../../bindings/github.com/mrz1836/nilbox/internal/appi
 import * as branchrules from '../../bindings/github.com/mrz1836/nilbox/internal/branchrules'
 import * as budget from '../../bindings/github.com/mrz1836/nilbox/internal/budget'
 import type * as gitread from '../../bindings/github.com/mrz1836/nilbox/internal/gitread'
+import * as hooks from '../../bindings/github.com/mrz1836/nilbox/internal/hooks'
 import * as inbox from '../../bindings/github.com/mrz1836/nilbox/internal/inbox'
 import type * as integrationprefs from '../../bindings/github.com/mrz1836/nilbox/internal/integrationprefs'
 import * as integrations from '../../bindings/github.com/mrz1836/nilbox/internal/integrations'
@@ -155,6 +156,39 @@ export type AfterMerge = NonNullLists<release.AfterMerge>
 export type ReleasesProgress = Events.CustomEvents['releases:progress']
 export type ReleasesPhase = ReleasesProgress['phase']
 export type GitOperation = gitread.Operation
+
+export type HooksList = Omit<NonNullLists<hooks.Page>, 'repos'> & { repos: HookRepo[] }
+export type HooksTool = NonNullLists<hooks.ToolStatus>
+export type HooksPathWarning = NonNullLists<hooks.PathWarning>
+export type HooksToolNote = NonNullLists<hooks.ToolNote>
+// HookRepo's action and HookInstallLine's are '' for none, which the generated type, an
+// action, leaves out; so is a request's runsIn, for the setting.
+export type HookRepo = Omit<NonNullLists<hooks.Repo>, 'action'> & { action: hooks.Action | '' }
+export type HookClone = NonNullLists<hooks.Clone>
+export type HookGroup = hooks.Group
+export type HookState = hooks.State
+export type HookAction = hooks.Action
+export type HookActionOutcome = hooks.ActionOutcome
+export type HookActionRequest = Omit<NonNullLists<hooks.ActionRequest>, 'runsIn'> & {
+  runsIn: integrationprefs.RunsIn | ''
+}
+export type HookActionResult = NonNullLists<hooks.ActionResult>
+export type HookCheck = hooks.Check
+export type HookCheckSetting = NonNullLists<hooks.CheckSetting>
+export type HookCheckState = hooks.CheckState
+export type HookCheckResult = NonNullLists<hooks.CheckResult>
+export type HookChangedFile = NonNullLists<hooks.ChangedFile>
+export type HookLastRun = NonNullLists<hooks.LastRun>
+export type HookChecksScope = hooks.Scope
+// HookChecksRequest and HookChecksResult name a check only for a run of one check: Go
+// sends '' for every other scope, which the generated type, a check, leaves out.
+export type HookChecksRequest = Omit<NonNullLists<hooks.ChecksRequest>, 'check' | 'runsIn'> & {
+  check: hooks.Check | ''
+  runsIn: integrationprefs.RunsIn | ''
+}
+export type HookChecksResult = Omit<NonNullLists<hooks.ChecksResult>, 'check'> & { check: hooks.Check | '' }
+export type HookInstallLine = Omit<NonNullLists<hooks.InstallLine>, 'action'> & { action: hooks.Action | '' }
+export type HookInstallAllResult = Omit<NonNullLists<hooks.InstallAllResult>, 'lines'> & { lines: HookInstallLine[] }
 
 export type ItemKind = item.Kind
 
@@ -437,6 +471,37 @@ export const {
   OfferAfterMerge: offerReleaseAfterMerge,
   OpenTerminal: openReleaseTerminal,
 } = narrow(release.Service)
+
+// Hooks: the clones the Hooks page lists (the last scan, kept five minutes unless refresh
+// is set; a "hooks:updated" event follows each scan, and each action or checks run that
+// lets go of its clone), go-pre-commit's actions and checks in one clone, each returning
+// its run's ID, Install and update all, which returns once every clone's run has ended,
+// and the result each run recorded. OpenTerminal opens the terminal chosen for launches in
+// a clone and runs nothing there; ShowConfig shows a clone's config in Finder. Nothing
+// here asks GitHub.
+const hooksService = narrow(hooks.Service)
+
+// ActionCall is a hooks action as the window asks for it: where it runs may be left to the
+// setting (HookActionRequest).
+type ActionCall = (req: HookActionRequest) => CancellablePromise<number>
+
+export const {
+  ActionResult: getHookActionResult,
+  OpenTerminal: openHooksTerminal,
+  ShowConfig: showHooksConfig,
+} = hooksService
+
+// The calls whose requests or results the hooks types above widen, typed with them.
+export const listHooks: (refresh: boolean) => CancellablePromise<HooksList> = hooksService.Repos
+export const installHook = hooksService.Install as ActionCall
+export const updateHook = hooksService.Update as ActionCall
+export const reinstallHook = hooksService.Reinstall as ActionCall
+export const replaceHook = hooksService.Replace as ActionCall
+export const uninstallHook = hooksService.Uninstall as ActionCall
+export const runChecks = hooksService.RunChecks as (req: HookChecksRequest) => CancellablePromise<number>
+export const installAllHooks: (dirs: string[] | null) => CancellablePromise<HookInstallAllResult> =
+  hooksService.InstallAll
+export const getChecksResult: (runID: number) => CancellablePromise<HookChecksResult> = hooksService.ChecksResult
 
 export const {
   List: listWorktrees,
