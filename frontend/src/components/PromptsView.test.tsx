@@ -789,7 +789,11 @@ describe('PromptsView review replies', () => {
         .map((b) => b.textContent),
     ).toEqual([expect.stringContaining('LGTM'), expect.stringContaining('Update OK')])
     expect(replyLibrary().getByRole('button', { name: /LGTM/ })).toHaveTextContent('Default for approvals')
-    expect(replyLibrary().getByRole('button', { name: /LGTM/ })).toHaveAttribute('title', 'Default for approvals')
+    // The row's tooltip holds its nickname and name whole, which the row may cut short.
+    expect(replyLibrary().getByRole('button', { name: /LGTM/ })).toHaveAttribute(
+      'title',
+      'LGTM\nApprove with thanks\nDefault for approvals',
+    )
     expect(replyLibrary().getByRole('button', { name: /Update OK/ })).toHaveTextContent('Default for bots')
     expect(replyLibrary().getByRole('region', { name: 'Requests for changes' })).toHaveTextContent(
       'Needs changesAsk for changesDefault for changes',
