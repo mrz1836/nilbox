@@ -402,7 +402,9 @@ export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
       {query.error !== '' && <ErrorBanner>Couldn’t read the run again: {query.error}</ErrorBanner>}
       {/* Each child keyed by the run needs a key of its own: siblings that share one, as
           these did with the log's, can be shown twice when the panel renders again. */}
-      {ended && run.kind === 'hooks' && <HookResult key={`hook-${String(run.id)}`} runId={run.id} onSelect={onSelect} />}
+      {ended && run.kind === 'hooks' && (
+        <HookResult key={`hook-${String(run.id)}`} runId={run.id} onSelect={onSelect} />
+      )}
       {ended && run.kind === 'checks' && <ChecksResult key={`checks-${String(run.id)}`} runId={run.id} />}
       {hasResult && <RunResult exitCode={run.exitCode} result={result} />}
       <LogView
