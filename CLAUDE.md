@@ -160,8 +160,8 @@ app:lint` reads.
 - `internal/event/` holds the app's events, one Go type each with its name; services emit them
   into the one `event.Sink` they are given. `internal/desktop/` is the shell's logic: it hears
   those events, keeps the menu bar current with what `internal/menubar` works out, runs the
-  scheduler, the sweeper, the sessions watcher, and the Release page's refresher as tracked
-  work, starts the deferred work
+  scheduler, the sweeper, the sessions watcher, the Release page's refresher, and the Hooks
+  page's scans as tracked work, starts the deferred work
   (`core.Deferred`: the login-shell read first) once after the first paint, never on the cold
   start, and shuts down in order (timers, then the work, then the database). It declares small interfaces that the Wails glue
   in `cmd/nilbox` implements, and imports no Wails. A window event is registered in
@@ -319,10 +319,10 @@ app:lint` reads.
   orphaned and followed again; one that is gone was interrupted; a terminal run is told apart by
   its PID and exit files; every one is held under a placeholder lock and registered before any
   is settled, and a kind's `Verifier`, registered with `RegisterVerifier`, gives such a run its
-  output reader, progress, and `Finish` again from its record's intent, so it is read and verified as it
-  ends, as tracked work) and, as the app quits, stops every run in the app and records it
-  stopped, unless its `Finish` returns `Unsettled` (a release whose check of GitHub the quit cut
-  off), which leaves it recorded as going for the next start. `Active` is the desktop shell's quit guard (`desktop.QuitGuard`): while a run goes in
+  output reader, progress, `Finish`, `Recorded`, and `Released` again from its record's intent, so
+  it is read and verified as it ends, as tracked work) and, as the app quits, stops every run in
+  the app and records it stopped, unless its `Finish` returns `Unsettled` (a release whose check
+  of GitHub the quit cut off), which leaves it recorded as going for the next start. `Active` is the desktop shell's quit guard (`desktop.QuitGuard`): while a run goes in
   the app, `Shell.ShouldQuit` holds a quit and the window asks (`event.QuitRequested`), until the
   bound `Service.QuitAnyway` emits the Go-only `event.QuitConfirmed`. The Service's
   `OpenInTerminal` opens the user's terminal in a run's folder and runs nothing there, and
@@ -428,12 +428,17 @@ app:lint` reads.
   `.github/.env.base`): where git runs its hooks (gitread's `HookPaths`), its `pre-commit` hook
   (missing, go-pre-commit's by its marker, or another tool's, named husky, pre-commit, or
   lefthook from its text), and `ENABLE_GO_PRE_COMMIT` and the checks' switches from the config
-  files themselves. A hooks folder outside both the clone's git folder and its work tree is
+  files themselves. Only a regular file, or a link to one, is read, a config file and a hook
+  alike, and each is opened without waiting and checked again once open, so a named pipe swapped
+  in never hangs a scan. A hooks folder outside both the clone's git folder and its work tree is
   shared, and the scan counts the clones that use it. Only go-pre-commit's `status` says whether
   its own hook is current, a byte comparison, so it runs in a scratch repository of the app's own
   that holds the hook's bytes, never in a clone, whose `.env` files go-pre-commit would load into
   its environment, `PATH` included, before it runs git; its answer is kept per copy and per
-  hook's SHA-256, so status runs once for bytes no one judged. The scan is kept
+  hook's SHA-256, so status runs once for bytes no one judged. A scan runs apart from the
+  window's call that started it, within `ScanTimeout`, and `Scans`, a desktop worker, holds it
+  to the app's lifetime: the quit ends every scan under way, and the worker returns once they
+  have, so the shell waits for them before it closes the database. The scan is kept
   five minutes, a clone an action or a check ran in is scanned again on the next read, and
   `event.HooksUpdated` tells the window once the run has let go of the clone (the spec's
   `Released`), so the reread finds it free and the run ended. `Install`, `Update`, `Reinstall`, `Replace`,
@@ -442,8 +447,14 @@ app:lint` reads.
   doesn't confirm. An action's `Finish` reads what it did from the hook files, never from the
   exit status alone (1.13 exits 0 when another tool's hook stops it); a checks run's compares
   git's porcelain v2 status and each dirty file's SHA-256, taken before and after, so a fix to a
-  file that was already dirty shows. `InstallAll` installs or updates one clone at a time, each
-  its own run in the app, and skips another tool's hook, a shared folder, and a busy clone. The
+  file that was already dirty shows. The `Before` keeps what it read in the run's intent (an
+  action's hooks; a checks run's snapshot, while it goes, dropped from the record of its end,
+  and none for a clone with more dirty files than it hashes), so the `Verifier`, which core
+  registers for both kinds, judges a run left from before a restart as its `Finish` would, once
+  the shell's environment is read; a run whose record keeps none says it can't tell. A `Finish`
+  the quit cuts short leaves the run `Unsettled`, for the next start. `InstallAll` installs or
+  updates one clone at a time, each its own run in the app, and skips another tool's hook, a
+  shared folder, and a busy clone. The
   readers know 1.13.1's text, recorded in `testdata/go-pre-commit-1.13.1`, and read `status
   --json` and `run --json` once `Definition.Features` says the copy has them. The page carries
   the PATH warning (the hook finds go-pre-commit only on the PATH or in `$(go env GOPATH)/bin`)

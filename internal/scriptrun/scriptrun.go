@@ -455,11 +455,12 @@ type Verifier interface {
 }
 
 // Verification is what a Verifier gives a run from before the app restarted: its output
-// reader, its progress, its Finish, and its Recorded, as a Spec's. Any may be nil, as in a
-// Spec.
+// reader, its progress, its Finish, its Recorded, and its Released, as a Spec's. Any may be
+// nil, as in a Spec.
 type Verification struct {
 	Output   io.Writer
 	Progress func() Progress
 	Finish   func(ctx context.Context, end Ending, out Outcome) Outcome
 	Recorded func(ctx context.Context, id int64, out Outcome)
+	Released func(id int64)
 }

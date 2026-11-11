@@ -324,7 +324,10 @@ one runner, which keeps a record of each run and its whole output.
   One that's gone shows *Nilbox closed while this was running*. A run in your terminal is followed
   again if it's still going, finished with its exit status if it wrote one, or shows *The terminal
   closed while this was running*. A release among them is checked as one that just ended is: its
-  log is read again, and GitHub is asked whether its tag is there.
+  log is read again, and GitHub is asked whether its tag is there. So is a hooks action, whose
+  result is read from the hook files against the hooks it started from, and a checks run, whose
+  result names the files the checks changed, from git's status of the clone against the one
+  taken as they started.
 - **The run panel.** A run's panel shows its status, its result, and its log as it comes
   (colors kept, the newest 2,000 lines, earlier output on request). **Open in terminal** opens
   your terminal in the run's folder and runs nothing there; **Show the log file** shows the log

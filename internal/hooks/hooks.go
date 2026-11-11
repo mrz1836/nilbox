@@ -60,6 +60,10 @@ const (
 	// their output isn't a terminal.
 	noColor = "--no-color"
 
+	// jsonFlag asks status and run for JSON, from a copy whose Definition.Features has
+	// StatusJSON or RunJSON.
+	jsonFlag = "--json"
+
 	// backupPrefix starts the name go-pre-commit gives another tool's hook it replaces:
 	// pre-commit.backup.<pid>.
 	backupPrefix = hookPreCommit + ".backup."
@@ -71,7 +75,7 @@ const (
 	// ScanTimeout bounds a scan the page's callers share. A scan runs apart from the
 	// caller that started it, so a window that asks again (as it does when a run starts or
 	// ends) or closes doesn't throw away a scan half done: the caller stops waiting, and
-	// the scan goes on and is kept for the next one.
+	// the scan goes on and is kept for the next one. The app's quit ends it sooner (Scans).
 	ScanTimeout = 5 * time.Minute
 
 	// scanParallel is how many clones are scanned at once.

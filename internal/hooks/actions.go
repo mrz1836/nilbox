@@ -132,6 +132,11 @@ type ActionResult struct {
 type ActionIntent struct {
 	Action  Action `json:"action"`
 	Confirm string `json:"confirm"`
+
+	// Before is the clone's hooks as the action's Before read them, under the clone's lock,
+	// so an action the app restarted across is judged as its Finish judges one (Verifier);
+	// nil in a run recorded before they were kept. Run again reads them afresh.
+	Before *keptHooks `json:"before,omitempty"`
 }
 
 // Install installs go-pre-commit's pre-commit hook in the clone, and returns the run's ID.
@@ -207,6 +212,9 @@ type actionRun struct {
 	confirm string
 	where   integrationprefs.RunsIn
 
+	// intent is what its record keeps, which Before completes with the hooks it read.
+	intent *ActionIntent
+
 	// tool and before are the copy that runs and the clone's hooks, under the lock, and
 	// result what its Finish read from them.
 	tool   ToolFacts
@@ -215,9 +223,10 @@ type actionRun struct {
 }
 
 // actionSpec is the run of action in c: go-pre-commit, its output read as it arrives,
-// its Before reading the hooks under the clone's lock, and its Finish reading them again
-// once it ended. Once the run has let go of the clone, its record kept, the clone is marked
-// to be scanned again, which tells the window, and done, when set, hears the result.
+// its Before reading the hooks under the clone's lock, and keeping them in its intent, and
+// its Finish reading them again once it ended. Once the run has let go of the clone, its
+// record kept, the clone is marked to be scanned again, which tells the window, and done,
+// when set, hears the result.
 func (s *Service) actionSpec(ctx context.Context, action Action, c clone, confirm string,
 	where integrationprefs.RunsIn, done func(ActionResult),
 ) (scriptrun.Spec, error) {
@@ -229,20 +238,20 @@ func (s *Service) actionSpec(ctx context.Context, action Action, c clone, confir
 		return scriptrun.Spec{}, noToolError(tool)
 	}
 
-	run := &actionRun{action: action, clone: c, confirm: confirm, where: where}
+	in := &ActionIntent{Action: action, Confirm: confirm}
+	run := &actionRun{action: action, clone: c, confirm: confirm, where: where, intent: in}
 	reader := newActionReader()
 	base, _ := s.env()
 
 	return scriptrun.Spec{
 		Kind: scriptrun.KindHooks, Title: actionTitle(action), Source: string(action), Repo: c.name, Dir: c.dir,
-		Env: runEnv(base, where), RunsIn: where, Tool: string(toolID),
-		Intent: ActionIntent{Action: action, Confirm: confirm},
+		Env: runEnv(base, where), RunsIn: where, Tool: string(toolID), Intent: in,
 		Output: reader,
 		Before: func(ctx context.Context) ([]string, error) { return s.beforeAction(ctx, run) },
 		Finish: func(ctx context.Context, end scriptrun.Ending, engine scriptrun.Outcome) scriptrun.Outcome {
 			run.result = s.finishAction(ctx, run, reader, end)
 
-			return actionOutcome(run.result, reader.snapshot(), engine)
+			return settled(ctx, actionOutcome(run.result, reader.snapshot(), engine))
 		},
 		Released: func(int64) {
 			s.markStale(run.clone.dir)
@@ -256,7 +265,7 @@ func (s *Service) actionSpec(ctx context.Context, action Action, c clone, confir
 
 // beforeAction is a hooks action's Before: under the clone's lock, it reads go-pre-commit
 // and the clone's hooks again, refuses a shared hooks folder the request didn't confirm,
-// and returns go-pre-commit's argv.
+// keeps the hooks in the run's intent, and returns go-pre-commit's argv.
 func (s *Service) beforeAction(ctx context.Context, run *actionRun) ([]string, error) {
 	tool := s.tool(ctx)
 	if !tool.Usable() {
@@ -277,6 +286,7 @@ func (s *Service) beforeAction(ctx context.Context, run *actionRun) ([]string, e
 	}
 
 	run.tool, run.before = tool, l
+	run.intent.Before = keepHooks(tool, l)
 
 	return actionArgv(run.action, tool.Path, l.marked, run.where), nil
 }
@@ -390,11 +400,14 @@ func exitFailed(end scriptrun.Ending) bool {
 }
 
 // wrote records what go-pre-commit just wrote, the hook this copy writes, as current, and
-// what writing it over the hook before did.
+// what writing it over the hook before did. Without the copy that ran, as after a restart
+// that found another, it records nothing of the copy.
 func (s *Service) wrote(run *actionRun, after hookFile, res *ActionResult) {
 	before := run.before.hook
 
-	s.judged.set(run.tool.key(), after.sha, true)
+	if run.tool.Usable() {
+		s.judged.set(run.tool.key(), after.sha, true)
+	}
 
 	res.Outcome = installedOutcome(before)
 

@@ -112,7 +112,7 @@ func (s *Service) statusOf(ctx context.Context, hook []byte, tool ToolFacts) (st
 
 	withJSON := tool.Has(integrations.FeatureStatusJSON)
 	if withJSON {
-		args = append(args, "--json")
+		args = append(args, jsonFlag)
 	}
 
 	stdout, stderr, err := s.runner(runEnv(base, integrationprefs.RunsInApp), dir).Run(ctx, tool.Path, args...)

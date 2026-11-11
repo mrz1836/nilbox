@@ -95,6 +95,11 @@ type Config struct {
 	// from it. It defaults to the app's own, counted as read.
 	Env func() ([]string, bool)
 
+	// Ready, when set, returns a channel closed once the login shell's environment has
+	// first been read (shellenv.Reader.Ready). A run from before a restart waits for it
+	// before it is judged (Verifier), so git and go-pre-commit run with the user's own.
+	Ready func() <-chan struct{}
+
 	// Runner returns what runs go-pre-commit's status with env, in the folder dir: a scratch
 	// repository of the app's own. It defaults to an execpath.Exec with env and dir.
 	Runner func(env []string, dir string) execpath.Runner
@@ -225,6 +230,7 @@ type Service struct {
 	places   Places
 	memory   Memory
 	env      func() ([]string, bool)
+	ready    func() <-chan struct{}
 	runner   func(env []string, dir string) execpath.Runner
 	scratch  string
 	terminal FolderOpener
@@ -240,6 +246,15 @@ type Service struct {
 	// scanning runs one scan of each kind at a time; a caller that comes while one runs
 	// gets its answer.
 	scanning flight.Group[struct{}]
+
+	// lifeMu guards what holds the scans to the app's lifetime (Scans): quitting refuses a
+	// scan once the app quits, and cancels ends each scan under way, by its number, the last
+	// of which was lastScan. going counts the scans under way, which Scans waits for.
+	lifeMu   sync.Mutex
+	quitting bool
+	cancels  map[uint64]context.CancelFunc
+	lastScan uint64
+	going    sync.WaitGroup
 
 	// mu guards the last scan: the clone root it read, when, the copy of go-pre-commit it
 	// judged the hooks with, why the next one failed, the clones with a config and those
@@ -262,10 +277,10 @@ type Service struct {
 func NewService(cfg Config) *Service {
 	s := &Service{
 		clones: cfg.Clones, git: cfg.Git, tools: cfg.Tools, locks: cfg.Locks, runs: cfg.Runs, history: cfg.History,
-		places: cfg.Places, memory: cfg.Memory, env: cfg.Env, runner: cfg.Runner, scratch: cfg.Scratch,
+		places: cfg.Places, memory: cfg.Memory, env: cfg.Env, ready: cfg.Ready, runner: cfg.Runner, scratch: cfg.Scratch,
 		terminal: cfg.Terminal, reveal: cfg.Reveal, home: cfg.Home,
 		clock: clock.Or(cfg.Clock), events: event.Or(cfg.Events), logger: logging.Or(cfg.Logger),
-		stale: map[string]uint64{},
+		stale: map[string]uint64{}, cancels: map[uint64]context.CancelFunc{},
 	}
 
 	if s.env == nil {
@@ -284,9 +299,9 @@ func NewService(cfg Config) *Service {
 // the one it judged with, scanning again first only the clones an action or a check ran
 // in; refresh, or anything else, scans every clone again and emits event.HooksUpdated. A
 // scan that fails keeps the last page, with its error, until one succeeds. A scan runs
-// apart from the caller that started it, within ScanTimeout: a caller whose context ends
-// stops waiting, and the scan goes on for the next. What holds each clone, and its newest
-// checks run, are read for every call.
+// apart from the caller that started it, within ScanTimeout and the app's lifetime (Scans):
+// a caller whose context ends stops waiting, and the scan goes on for the next, until the
+// app quits. What holds each clone, and its newest checks run, are read for every call.
 func (s *Service) Repos(ctx context.Context, refresh bool) (Page, error) {
 	root, err := s.clones.Root(ctx)
 	if err != nil {
@@ -309,6 +324,13 @@ func (s *Service) Repos(ctx context.Context, refresh bool) (Page, error) {
 	detached := func(ctx context.Context) (struct{}, error) {
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), ScanTimeout)
 		defer cancel()
+
+		done, refused := s.scanStarts(cancel) // the app's quit ends it too
+		if refused != nil {
+			return struct{}{}, refused
+		}
+
+		defer done()
 
 		return struct{}{}, scan(ctx)
 	}

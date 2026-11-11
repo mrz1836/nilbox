@@ -163,7 +163,7 @@ func assemble(
 		Inbox:          c.Inbox,
 		Settings:       c.ShellSettings,
 		Sessions:       c.ShellSessions,
-		Workers:        []desktop.Worker{c.Scheduler, c.Sweeper, c.BudgetSaver, c.Watcher, c.ReleaseRefresher},
+		Workers:        []desktop.Worker{c.Scheduler, c.Sweeper, c.BudgetSaver, c.Watcher, c.ReleaseRefresher, c.HooksScans},
 		Deferred:       []desktop.Worker{c.Deferred, c.ToolFinder, c.Runs},
 		Data:           c,
 		Banners:        banners.poster(),

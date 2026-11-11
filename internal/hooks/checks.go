@@ -34,6 +34,13 @@ type ChecksRequest struct {
 type ChecksIntent struct {
 	Scope Scope `json:"scope"`
 	Check Check `json:"check"`
+
+	// Before is the clone's snapshot as the run's Before took it, under the clone's lock,
+	// kept while the run goes so that one the app restarted across still names the files
+	// it changed (Verifier). The run's own Finish drops it from the record of its end; it is
+	// nil in a run recorded before snapshots were kept, or whose clone had too many dirty
+	// files to keep one of.
+	Before *keptSnapshot `json:"before,omitempty"`
 }
 
 // ChecksResult is a checks run's result for the window: its run's outcome detail
@@ -117,9 +124,10 @@ func (s *Service) RunChecks(ctx context.Context, req ChecksRequest) (int64, erro
 	return id, nil
 }
 
-// checksRun is one checks run as it goes: what it was asked, and what its Before read.
+// checksRun is one checks run as it goes: what it was asked, which its record keeps, and
+// what its Before read.
 type checksRun struct {
-	intent ChecksIntent
+	intent *ChecksIntent
 	clone  clone
 	where  integrationprefs.RunsIn
 
@@ -128,7 +136,8 @@ type checksRun struct {
 	before snapshot
 }
 
-// checksSpec is the checks run in c that intent asks for.
+// checksSpec is the checks run in c that intent asks for: its scope and its check, its
+// snapshot taken afresh.
 func (s *Service) checksSpec(ctx context.Context, c clone, intent ChecksIntent, where integrationprefs.RunsIn,
 ) (scriptrun.Spec, error) {
 	if err := checkIntent(intent); err != nil {
@@ -140,17 +149,21 @@ func (s *Service) checksSpec(ctx context.Context, c clone, intent ChecksIntent, 
 		return scriptrun.Spec{}, noToolError(tool)
 	}
 
-	run := &checksRun{intent: intent, clone: c, where: where}
+	in := &ChecksIntent{Scope: intent.Scope, Check: intent.Check}
+	run := &checksRun{intent: in, clone: c, where: where}
 	reader := newChecksReader(tool.Has(integrations.FeatureRunJSON))
 	base, _ := s.env()
 
 	return scriptrun.Spec{
 		Kind: scriptrun.KindChecks, Title: checksTitle(intent), Source: string(intent.Scope), Repo: c.name, Dir: c.dir,
-		Env: runEnv(base, where), RunsIn: where, Tool: string(toolID), Intent: intent,
+		Env: runEnv(base, where), RunsIn: where, Tool: string(toolID), Intent: in,
 		Output: reader,
 		Before: func(ctx context.Context) ([]string, error) { return s.beforeChecks(ctx, run) },
 		Finish: func(ctx context.Context, end scriptrun.Ending, engine scriptrun.Outcome) scriptrun.Outcome {
-			return s.finishChecks(ctx, run, reader, end, engine)
+			out := s.finishChecks(ctx, run, reader, end, engine)
+			in.Before = nil // its use is over: the record of the run's end keeps what was asked alone
+
+			return settled(ctx, out)
 		},
 		Recorded: func(ctx context.Context, _ int64, _ scriptrun.Outcome) { s.checksRecorded(ctx) },
 		// The window reads the page again once the run lets go of the clone, its record
@@ -174,7 +187,8 @@ func checkIntent(intent ChecksIntent) error {
 }
 
 // beforeChecks is a checks run's Before: under the clone's lock, it reads go-pre-commit and
-// the clone's config again, takes the clone's snapshot, and returns go-pre-commit's argv.
+// the clone's config again, takes the clone's snapshot and keeps it in the run's intent,
+// and returns go-pre-commit's argv.
 func (s *Service) beforeChecks(ctx context.Context, run *checksRun) ([]string, error) {
 	tool := s.tool(ctx)
 	if !tool.Usable() {
@@ -187,8 +201,9 @@ func (s *Service) beforeChecks(ctx context.Context, run *checksRun) ([]string, e
 	}
 
 	run.before = s.take(ctx, run.clone.dir)
+	run.intent.Before = keepSnapshot(run.before)
 
-	return checksArgv(tool, run.intent, run.where), nil
+	return checksArgv(tool, *run.intent, run.where), nil
 }
 
 // checksArgv is go-pre-commit's command for a checks run: every tracked file, the staged
@@ -208,7 +223,7 @@ func checksArgv(tool ToolFacts, intent ChecksIntent, where integrationprefs.Runs
 	}
 
 	if tool.Has(integrations.FeatureRunJSON) {
-		argv = append(argv, "--json")
+		argv = append(argv, jsonFlag)
 	}
 
 	return argv
@@ -228,7 +243,7 @@ func (s *Service) finishChecks(ctx context.Context, run *checksRun, reader *chec
 		Errors: textutil.NonNil(said.errors), NoFiles: said.noFiles, Disabled: said.disabled,
 	}
 
-	res.Checks = allChecks(said.checks, run.config, run.intent)
+	res.Checks = allChecks(said.checks, run.config, *run.intent)
 	res.Passed, res.Failed, res.Skipped = counts(res.Checks)
 
 	if said.totals.known {
