@@ -18,12 +18,13 @@ import (
 
 // The app reads GitHub, and edits it only when the user asks, one item at a time: it takes
 // the user off an item's assignees, or off a pull request's requested reviewers, and,
-// from the review sheet, reviews, merges, turns on auto-merge, updates a branch, or asks
-// Dependabot to rebase (see review.go). Each edit is one request: a REST edit spends one
-// point of the REST budget, a GraphQL mutation one point of the GraphQL budget. Every edit
-// goes through the client's WriteGate first (edit for REST, mutate for GraphQL), so the
-// app's edits stay within the user's budget and well clear of GitHub's own limits on
-// writes, and an answer that asks the app to slow down holds the next ones.
+// from the review sheet, reviews, merges, turns on auto-merge, updates a branch, asks
+// Dependabot to rebase, or closes a pull request (see review.go). Each edit is one
+// request: a REST edit spends one point of the REST budget, a GraphQL mutation one point of
+// the GraphQL budget. Every edit goes through the client's WriteGate first (edit for REST,
+// mutate for GraphQL), so the app's edits stay within the user's budget and well clear of
+// GitHub's own limits on writes, and an answer that asks the app to slow down holds the
+// next ones.
 
 // secondaryLimitWait is how long GitHub asks a client it slowed down for writing too fast
 // to wait, when the answer does not say: at least a minute.
@@ -404,11 +405,11 @@ func editError(ref item.Ref, err error) error {
 	}
 }
 
-// writeError gives a refused review, merge, auto-merge, or branch update of ref a message
-// the user can act on, and the sentinel that says what went wrong, keeping err's chain: a
-// push since the head the write was pinned to (409, or a 422 about the expected head), a
-// merge GitHub won't make yet (405, or a merge queue), a review of the user's own pull
-// request, a pending review that blocks another, and a line comment off the diff. Any
+// writeError gives a refused review, merge, auto-merge, branch update, or close of ref a
+// message the user can act on, and the sentinel that says what went wrong, keeping err's
+// chain: a push since the head the write was pinned to (409, or a 422 about the expected
+// head), a merge GitHub won't make yet (405, or a merge queue), a review of the user's own
+// pull request, a pending review that blocks another, and a line comment off the diff. Any
 // other refusal is worded by editError.
 func writeError(ref item.Ref, err error) error {
 	status, ok := errors.AsType[*StatusError](err)

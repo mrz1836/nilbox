@@ -18,7 +18,8 @@ import (
 // or mutate (GraphQL), so the WriteGate paces it and the API budget counts it, and each is
 // pinned to the head commit the user saw: a review names it as its commit, a merge as the
 // SHA the head must still be, auto-merge and a branch update as the head they expect. A
-// push in between makes GitHub refuse the write, which comes back as ErrPushedSince.
+// push in between makes GitHub refuse the write, which comes back as ErrPushedSince. A
+// close takes no head, so the sheet reads the head before it sends one.
 
 // Review events a submitted review can carry.
 const (
@@ -124,6 +125,12 @@ type Comment struct {
 	CreatedAt time.Time
 }
 
+// Closed is a pull request as GitHub answered its closing.
+type Closed struct {
+	// ClosedAt is when GitHub closed it, zero when it did not say.
+	ClosedAt time.Time
+}
+
 // SubmitReview submits a review of the pull request ref, pinned to in.CommitID, with one
 // REST request (POST /repos/{owner}/{repo}/pulls/{number}/reviews). GitHub answers with
 // the review; one left pending, which a review with an event never is, returns
@@ -175,6 +182,16 @@ func (c *Client) AddComment(ctx context.Context, tok Token, ref item.Ref, body s
 	comment, err := c.addComment(ctx, tok, ref, body)
 
 	return comment, Redact(err, tok)
+}
+
+// ClosePull closes the pull request ref without merging it, with one REST request (PATCH
+// /repos/{owner}/{repo}/pulls/{number}). GitHub answers with the pull request; one it left
+// open returns ErrEditIgnored. GitHub takes no head to pin a close to, so a caller reads
+// the head first (FetchMergeState) and closes only what the user saw.
+func (c *Client) ClosePull(ctx context.Context, tok Token, ref item.Ref) (*Closed, error) {
+	closed, err := c.closePull(ctx, tok, ref)
+
+	return closed, Redact(err, tok)
 }
 
 // restReviewComment is a line comment as the reviews endpoint takes it.
@@ -453,6 +470,43 @@ func (c *Client) addComment(ctx context.Context, tok Token, ref item.Ref, body s
 	}
 
 	return &Comment{ID: answer.ID, URL: answer.HTMLURL, CreatedAt: answer.CreatedAt.UTC()}, nil
+}
+
+// closePull checks the pull request, sends the close, and checks GitHub's answer.
+func (c *Client) closePull(ctx context.Context, tok Token, ref item.Ref) (*Closed, error) {
+	if err := validateRef(ref); err != nil {
+		return nil, err
+	}
+
+	body, err := json.Marshal(map[string]string{"state": "closed"})
+	if err != nil {
+		return nil, fmt.Errorf("encode the close: %w", err)
+	}
+
+	raw, err := c.edit(ctx, tok, http.MethodPatch, pullPath(ref), body)
+	if err != nil {
+		return nil, writeError(ref, fmt.Errorf("close %s: %w", ref, err))
+	}
+
+	var answer struct {
+		State    string     `json:"state"`
+		ClosedAt *time.Time `json:"closed_at"`
+	}
+
+	if err = json.Unmarshal(raw, &answer); err != nil {
+		return nil, fmt.Errorf("%w: decode the close of %s: %w", ErrMalformedResponse, ref, err)
+	}
+
+	if !strings.EqualFold(answer.State, "closed") {
+		return nil, uierr.New(fmt.Sprintf("GitHub did not close %s.", ref), fmt.Errorf("close %s: %w", ref, ErrEditIgnored))
+	}
+
+	closed := &Closed{}
+	if answer.ClosedAt != nil {
+		closed.ClosedAt = answer.ClosedAt.UTC()
+	}
+
+	return closed, nil
 }
 
 // validateReview checks a review before anything is sent: its pull request, its event,
