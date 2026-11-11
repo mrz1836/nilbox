@@ -15,6 +15,7 @@ import { openExternal, type Review, type ReviewFile } from '../../platform'
 import { quietButtonClass } from '../controls'
 import { ChevronDownIcon, ChevronRightIcon, ExternalIcon } from '../icons'
 import { LineComment } from './LineComment'
+import { DiffLinesSkeleton } from './ReviewLoading'
 
 // largeDiffLines is how many changed lines make a file start collapsed.
 export const largeDiffLines = 400
@@ -247,12 +248,15 @@ function FileBody({
   switch (file.patchState) {
     case 'omitted':
       return (
-        <p className="flex items-center gap-2 px-3 py-2 font-sans text-xs text-muted">
-          This diff is large.
-          <button type="button" disabled={loading} onClick={onLoad} className={quietButtonClass}>
-            {loading ? 'Loading…' : 'Show the diff'}
-          </button>
-        </p>
+        <>
+          <p className="flex items-center gap-2 px-3 py-2 font-sans text-xs text-muted">
+            This diff is large.
+            <button type="button" disabled={loading} onClick={onLoad} className={quietButtonClass}>
+              {loading ? 'Loading…' : 'Show the diff'}
+            </button>
+          </p>
+          {loading && <DiffLinesSkeleton lines={5} />}
+        </>
       )
     case 'no_content':
       return (
@@ -354,7 +358,15 @@ function FileBody({
 // another for a range. Comments wait in the draft and go with the review.
 export function DiffView({ review, draft, onDraft, loading, onLoad }: DiffViewProps) {
   if (review.files.length === 0) {
-    return <p className="text-sm text-muted">{review.stale ? 'Reading the files from GitHub…' : 'No files changed.'}</p>
+    return (
+      <p className="text-sm text-muted">
+        {review.fetchedAt === ''
+          ? 'Not read from GitHub yet.'
+          : review.stale
+            ? 'Reading the files from GitHub…'
+            : 'No files changed.'}
+      </p>
+    )
   }
 
   return (
