@@ -10,6 +10,7 @@ import {
   agentSession,
   agents,
   item,
+  mergeOffer,
   offer,
   profile,
   prompts,
@@ -362,6 +363,51 @@ describe('ReviewSheet', () => {
     })
   })
 
+  it('holds a merge back while GitHub can’t take its comment, until the text is cleared', async () => {
+    const reason =
+      'You have a review of this pull request started on GitHub. Submit or discard it there first. ' +
+      'Or clear your text and line comments to merge without a comment.'
+    platform.refreshReview.mockResolvedValue(
+      review({
+        mine: true,
+        offers: [
+          mergeOffer({ commentBlocked: reason }),
+          offer({ action: 'comment', label: 'Comment', enabled: false }),
+        ],
+        primary: 'merge_now',
+      }),
+    )
+    render(<Harness />)
+
+    const box = await screen.findByRole('textbox', { name: 'Your review' })
+    await waitFor(() => {
+      expect(box).toHaveValue('Reviewed and approved. Thanks, @octo-other!')
+    })
+
+    const button = await actionButton('Squash-merge')
+    expect(button).toBeDisabled()
+    expect(button).toHaveAttribute('title', reason)
+    expect(screen.getByText(reason)).toHaveClass('text-warning')
+
+    // ⌘↩ holds it back too.
+    await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
+    expect(screen.queryByRole('dialog', { name: 'Merge #7 into main?' })).not.toBeInTheDocument()
+
+    await userEvent.clear(box)
+
+    expect(screen.queryByText(reason)).not.toBeInTheDocument()
+    expect(await actionButton('Squash-merge')).toBeEnabled()
+
+    await userEvent.click(await actionButton('Squash-merge'))
+    await userEvent.click(
+      within(screen.getByRole('dialog', { name: 'Merge #7 into main?' })).getByRole('button', { name: 'Squash-merge' }),
+    )
+
+    await waitFor(() => {
+      expect(platform.actOnReview).toHaveBeenCalledWith(expect.objectContaining({ action: 'merge_now', body: '' }))
+    })
+  })
+
   it('drops the text a merge posted before it found a push, so it never posts twice', async () => {
     platform.actOnReview.mockResolvedValue(
       reviewResult({
@@ -650,7 +696,10 @@ describe('ReviewSheet', () => {
 
   it('runs an action that needs no review', async () => {
     platform.refreshReview.mockResolvedValue(
-      review({ offers: [offer({ action: 'update_branch', label: 'Update branch' })], primary: 'update_branch' }),
+      review({
+        offers: [offer({ action: 'update_branch', label: 'Update branch', reviews: false })],
+        primary: 'update_branch',
+      }),
     )
     platform.actOnReview.mockResolvedValue(reviewResult({ outcome: 'branch_updating', message: 'Updating' }))
     const onDone = vi.fn()

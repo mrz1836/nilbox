@@ -2,6 +2,8 @@ package review
 
 import (
 	"slices"
+	"strings"
+	"unicode"
 
 	"github.com/mrz1836/nilbox/internal/bump"
 	"github.com/mrz1836/nilbox/internal/sensitive"
@@ -65,9 +67,20 @@ func (a Action) reviews() bool {
 
 // commentsFirst reports a merge with no review of its own, which posts the user's text and
 // line comments, when there are any, as a comment before it merges: the user's own pull
-// request, where GitHub refuses an approval, then shows it was reviewed.
+// request, where GitHub refuses an approval, then shows it was reviewed. Decide marks each
+// offer with it (Offer.CommentsFirst), which is what Act and the window go by.
 func (a Action) commentsFirst() bool {
 	return slices.Contains([]Action{ActionMerge, ActionMergeBypass, ActionAutoMerge}, a)
+}
+
+// hasText reports text that says something: anything left once the white space the
+// window's String.prototype.trim drops is gone from both ends, so the window and Act
+// always agree. That is unicode.IsSpace's set but U+0085, which trim keeps, plus U+FEFF,
+// which trim drops.
+func hasText(s string) bool {
+	return strings.TrimFunc(s, func(r rune) bool {
+		return r == '\uFEFF' || (unicode.IsSpace(r) && r != '\u0085')
+	}) != ""
 }
 
 // MergeMethod is how GitHub merges a pull request, as its GraphQL API names it.
@@ -380,6 +393,16 @@ type Offer struct {
 
 	// Warnings are what the user must accept before the action runs.
 	Warnings []string `json:"warnings"`
+
+	// Reviews reports an action that submits a review of its own, which the text and line
+	// comments go with.
+	Reviews bool `json:"reviews"`
+
+	// CommentsFirst reports a merge with no review of its own, which posts the text and line
+	// comments, when there are any, as a comment before it merges, and CommentBlocked why it
+	// can't post one now, with how to merge without it, or "" when it can.
+	CommentsFirst  bool   `json:"commentsFirst"`
+	CommentBlocked string `json:"commentBlocked"`
 }
 
 // ActRequest is an action the user asked for.

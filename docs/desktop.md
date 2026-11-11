@@ -1035,7 +1035,8 @@ Return chooses, and Escape closes the menu.
 **Edits on GitHub.** These are the only changes Nilbox makes on GitHub, and only when you choose
 one. Each is made with your `gh` token, and GitHub's answer is checked before the card changes.
 A combined action, such as **Approve & merge**, makes its changes one at a time and costs the sum
-of their rows, and so does a merge that posts your text as a comment first. Nilbox never goes past branch protection on its own (only **Merge past the
+of their rows, and so does a merge that posts your text as a comment first (Merge when ready
+then reads the merge state before the comment, 1 GraphQL point more). Nilbox never goes past branch protection on its own (only **Merge past the
 rules** does, when you choose it), and no agent ever approves or merges: every approval and
 merge happens only because you clicked.
 
@@ -1155,12 +1156,16 @@ Update branch, and Ask Dependabot to rebase are one click.
 **Your text goes with a merge.** Merge, Merge past the rules, and Merge when ready post the text
 in **Your review**, and any line comments, as a comment before they merge, so the pull request
 shows it was reviewed, your own included, where GitHub takes a comment but never your approval.
-A note under the button says so (**Your text is posted as a comment first.**); clear the text to
-merge without one. The comment goes to the commit you saw, the way **Comment** sends one, and
-the merge then runs exactly as it would without it. If the comment fails, nothing merges. If
-GitHub then won't merge, the toast says the comment is posted and why it didn't merge, as in
-**Commented on acme-org/api#212, but it wasn't merged: It has conflicts**, and a push found
-after the comment clears the text from your draft, so a second try doesn't post it again.
+A note under the button, and the confirmation, say so (**Your text is posted as a comment
+first.**); clear the text to merge without one. The comment goes to the commit you saw, the way
+**Comment** sends one, and only once the merge state Nilbox reads first says GitHub would make
+the merge, so a pull request that has conflicts, is blocked, or was pushed to gets no comment.
+The merge then runs exactly as it would without it. If the comment fails, nothing merges. If
+GitHub then won't merge, or anything else fails, the toast says the comment is posted and why
+it didn't merge, as in **Commented on acme-org/api#212, but it wasn't merged: Required status
+check is expected**, and the text leaves your draft, so a second try doesn't post it again.
+While you have a review of the pull request started on GitHub, which holds back every comment,
+the button waits and says so: submit or discard that review there, or clear your text.
 
 **Merge method.** **Settings → Reviewing** chooses the method the confirmation starts on: **As
 each repository offers first** (the default, GitHub's own first choice for you there), **Squash

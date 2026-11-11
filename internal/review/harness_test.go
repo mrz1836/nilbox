@@ -17,6 +17,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/testutil"
+	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
 // Test values.
@@ -87,6 +88,11 @@ type fakeInbox struct {
 	tries  int
 	acted  []Acted
 	read   []PullRead
+
+	// retryErr fails the account check of the retry with a fresh token, and recordErr the
+	// record of what an action made happen, as the Actor joins it to the action's error.
+	retryErr  error
+	recordErr error
 }
 
 func (f *fakeInbox) Pull(context.Context, int64) (StoredPull, error) {
@@ -127,9 +133,19 @@ func (f *fakeInbox) Act(
 	acted, err := act(ctx, github.NewToken("fake-token-1"), target)
 	tries := 1
 
-	if github.IsBadCredentials(err) {
+	switch {
+	case github.IsBadCredentials(err) && f.retryErr != nil:
+		err = f.retryErr
+	case github.IsBadCredentials(err):
+		// The action keeps what it made happen across tries, so the second's Acted holds both.
 		acted, err = act(ctx, github.NewToken("fake-token-2"), target)
 		tries++
+	}
+
+	if f.recordErr != nil && (acted.Reviewed || acted.Merged) {
+		err = errors.Join(err, uierr.New(
+			"GitHub made the change, but the inbox could not record it. The next refresh catches it up.", f.recordErr,
+		))
 	}
 
 	f.mu.Lock()
@@ -172,7 +188,9 @@ type fakeGitHub struct {
 	// stateOK is how many merge-state reads succeed before stateErr fails the rest.
 	stateOK int
 
-	submitErr  error
+	submitErr error
+	// submitted runs once GitHub took a review, before the fake answers.
+	submitted  func()
 	mergeErr   error
 	mergeOnce  error
 	autoErr    error
@@ -221,11 +239,15 @@ func (g *fakeGitHub) FetchPullDiff(context.Context, github.Token, item.Ref, stri
 	return g.diff, nil
 }
 
-func (g *fakeGitHub) FetchMergeState(context.Context, github.Token, string) (*github.MergeState, error) {
+func (g *fakeGitHub) FetchMergeState(ctx context.Context, _ github.Token, _ string) (*github.MergeState, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
 	g.count(callState)
+
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	if g.stateErr != nil && g.calls[callState] > g.stateOK {
 		return nil, g.stateErr
@@ -256,6 +278,10 @@ func (g *fakeGitHub) SubmitReview(
 	}
 
 	g.sent = append(g.sent, in)
+
+	if g.submitted != nil {
+		g.submitted()
+	}
 
 	return &github.SubmittedReview{ID: 1, State: "APPROVED", CommitID: in.CommitID, SubmittedAt: testNow}, nil
 }
@@ -408,6 +434,7 @@ type harness struct {
 	github *fakeGitHub
 	clock  *testutil.Clock
 	events *testutil.Events
+	logs   *testutil.Logs
 }
 
 // newHarness returns a harness whose GitHub answers with review and diff at headA.
@@ -420,6 +447,7 @@ func newHarness(t *testing.T) *harness {
 	h := &harness{
 		db: db, inbox: &fakeInbox{pull: storedPull()}, clock: testutil.NewClock(testNow), events: &testutil.Events{},
 		github: &fakeGitHub{review: pullReview(headA, github.MergeStateClean), diff: pullDiff(headA)},
+		logs:   &testutil.Logs{},
 	}
 
 	h.svc = h.service(fakeSettings{}, fakeReplies{})
@@ -431,7 +459,7 @@ func newHarness(t *testing.T) *harness {
 func (h *harness) service(settings Settings, replies Replies) *Service {
 	return NewService(Config{
 		Pool: h.db, Inbox: h.inbox, GitHub: h.github, Settings: settings, Replies: replies, Events: h.events,
-		Clock: h.clock,
+		Clock: h.clock, Logger: h.logs.Logger(),
 	})
 }
 

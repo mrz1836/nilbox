@@ -5,14 +5,14 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { emptyDraft } from '../../lib/reviewDrafts'
 import { at } from '../../test/clock'
-import { agentSession, agents, fileCheck, item, offer, review } from '../../test/fixtures'
+import { agentSession, agents, fileCheck, item, mergeOffer, offer, review } from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { ActionButton } from './ActionButton'
 import { AgentVerdict } from './AgentVerdict'
 import { DiffView } from './DiffView'
 import { LineComment } from './LineComment'
 import { MergeConfirmDialog, mergeVerb } from './MergeConfirmDialog'
-import { commentFirst, needsText, replyActionOf } from './ReviewComposer'
+import { commentFirst, heldBack, needsText, replyActionOf, sendsText } from './ReviewComposer'
 import { ReviewHeader } from './ReviewHeader'
 import { areasText, checksText, Readiness, ReviewSummary } from './ReviewSummary'
 
@@ -388,16 +388,35 @@ describe('ReviewComposer helpers', () => {
     expect(needsText('auto_merge', ' ', 0)).toBe('')
   })
 
-  it('says what a merge with no review of its own posts as a comment first', () => {
-    for (const action of ['merge_now', 'merge_bypass', 'auto_merge'] as const) {
-      expect(commentFirst(action, 'Thanks!', 0)).toBe('Your text is posted as a comment first.')
-      expect(commentFirst(action, 'Thanks!', 2)).toBe('Your text is posted as a comment first.')
-      expect(commentFirst(action, ' \n', 1)).toBe('Your line comments are posted as a comment first.')
-      expect(commentFirst(action, ' \n', 0)).toBe('')
-    }
+  it('says what a merge with no review of its own posts as a comment first, as its offer says', () => {
+    const merge = mergeOffer()
 
-    for (const action of ['approve_merge', 'approve_auto_merge', 'comment', 'update_branch', 'rebase_bot'] as const) {
-      expect(commentFirst(action, 'Thanks!', 1)).toBe('')
-    }
+    expect(commentFirst(merge, 'Thanks!', 0)).toBe('Your text is posted as a comment first.')
+    expect(commentFirst(merge, 'Thanks!', 2)).toBe('Your text is posted as a comment first.')
+    expect(commentFirst(merge, ' \n', 1)).toBe('Your line comments are posted as a comment first.')
+    expect(commentFirst(merge, ' \n', 0)).toBe('')
+    // The backend trims the same way: a byte order mark is no text, and U+0085 is some.
+    expect(commentFirst(merge, '\uFEFF', 0)).toBe('')
+    expect(commentFirst(merge, '\u0085', 0)).toBe('Your text is posted as a comment first.')
+    expect(commentFirst(undefined, 'Thanks!', 1)).toBe('')
+    expect(commentFirst(offer({ action: 'approve_merge' }), 'Thanks!', 1)).toBe('')
+  })
+
+  it('sends the text with an offer that reviews or comments first, and with nothing else', () => {
+    expect(sendsText(offer())).toBe(true)
+    expect(sendsText(mergeOffer({ action: 'auto_merge' }))).toBe(true)
+    expect(sendsText(offer({ action: 'update_branch', reviews: false }))).toBe(false)
+    expect(sendsText(undefined)).toBe(false)
+  })
+
+  it('holds back a merge whose comment GitHub can’t take, only while it has one to post', () => {
+    const blocked = mergeOffer({ commentBlocked: 'You have a review started on GitHub. Or clear your text.' })
+
+    expect(heldBack(blocked, 'Thanks!', 0)).toBe('You have a review started on GitHub. Or clear your text.')
+    expect(commentFirst(blocked, '', 1)).toBe('You have a review started on GitHub. Or clear your text.')
+    expect(heldBack(blocked, ' ', 0)).toBe('')
+    expect(heldBack(mergeOffer(), 'Thanks!', 0)).toBe('')
+    expect(heldBack(offer({ action: 'comment' }), '\uFEFF', 0)).toBe('Write something, or add a line comment, first.')
+    expect(heldBack(undefined, '', 0)).toBe('')
   })
 })

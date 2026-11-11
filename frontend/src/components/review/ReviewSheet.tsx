@@ -27,7 +27,7 @@ import { AgentVerdict } from './AgentVerdict'
 import { DiffView } from './DiffView'
 import { FileList } from './FileList'
 import { MergeConfirmDialog } from './MergeConfirmDialog'
-import { commentFirst, needsText, ReviewComposer, useReplyBody } from './ReviewComposer'
+import { commentFirst, heldBack, ReviewComposer, sendsText, useReplyBody } from './ReviewComposer'
 import { ReviewHeader } from './ReviewHeader'
 import { DescriptionSkeleton, DiffSkeleton, FileListSkeleton, ReadingBanner, SummarySkeleton } from './ReviewLoading'
 import { Readiness, ReviewSummary } from './ReviewSummary'
@@ -130,19 +130,19 @@ export function ReviewSheet({
   }
 
   const send = async (r: Review, action: ReviewAction, method: MergeMethod, accept: boolean) => {
+    const offer = r.offers.find((o) => o.action === action)
     // A review sends the text and line comments, and so does a merge with no review of its
-    // own, which posts them as a comment first when there are any.
-    const sendsText = action !== 'update_branch' && action !== 'rebase_bot'
-    const label = r.offers.find((o) => o.action === action)?.label ?? 'Working'
+    // own, which posts them as a comment first when there are any, as the offer says.
+    const text = sendsText(offer)
 
-    setProgress({ title: label, target: `${r.repo}#${String(r.number)}`, steps: [] })
+    setProgress({ title: offer?.label ?? 'Working', target: `${r.repo}#${String(r.number)}`, steps: [] })
 
     const result = await act.run({
       itemId: id,
       action,
       head: r.head,
-      body: sendsText ? reply.body : '',
-      comments: sendsText
+      body: text ? reply.body : '',
+      comments: text
         ? draft.comments.map((c) => ({
             path: c.path,
             line: c.line,
@@ -240,7 +240,13 @@ export function ReviewSheet({
     if (e.key === 'Enter' && e.metaKey) {
       e.preventDefault()
 
-      if (needsText(selected, reply.body, draft.comments.length) === '') {
+      if (
+        heldBack(
+          review?.offers.find((o) => o.action === selected),
+          reply.body,
+          draft.comments.length,
+        ) === ''
+      ) {
         run(selected)
       }
 
@@ -426,7 +432,7 @@ export function ReviewSheet({
         <MergeConfirmDialog
           review={review}
           offer={confirming}
-          comment={commentFirst(confirming.action, reply.body, draft.comments.length)}
+          comment={commentFirst(confirming, reply.body, draft.comments.length)}
           onCancel={() => {
             setConfirming(null)
           }}

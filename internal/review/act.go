@@ -41,12 +41,14 @@ var (
 // Act runs the action the user asked for on a pull request, and returns what it came to.
 // It runs only what the sheet offers now, decided again on what the sheet read, only at
 // the head the user saw (a pull request pushed to since returns OutcomePushedSince and
-// sends nothing), and with its line comments checked against the diff. A merge with no
-// review of its own posts the user's text and line comments, when there are any, as a
-// comment first, the way a comment is posted, and then merges as it would without them.
-// Every merge reads the merge state fresh first and merges only what GitHub says can merge
-// now. A step GitHub made stands, so an approval or a comment GitHub took and a merge it
-// would not make yet is a result, not an error.
+// sends nothing), and with its line comments checked against the diff. Every merge reads
+// the merge state fresh first and merges only what GitHub says can merge now. A merge with
+// no review of its own posts the user's text and line comments, when there are any, as a
+// comment once that read says GitHub would merge (or, for auto-merge, that the pull request
+// is open at the head the user saw), the way a comment is posted, and then merges as it
+// would without them. A step GitHub made stands, so an approval or a comment GitHub took
+// and a merge it would not make yet is a result, not an error, and once a merge's comment
+// is posted nothing that fails after it is an error either.
 func (s *Service) Act(ctx context.Context, req ActRequest) (Result, error) {
 	pull, c, err := s.loadAct(ctx, req)
 	if err != nil {
@@ -88,8 +90,13 @@ func (s *Service) Act(ctx context.Context, req ActRequest) (Result, error) {
 
 	s.settle(ctx, req.ItemID, run.acted.Merged)
 
-	if err != nil {
+	if err != nil && !run.commentedFirst() {
 		return Result{}, err
+	}
+
+	if err != nil {
+		// The comment is on GitHub: the sheet must hear it was posted, whatever failed after.
+		run.failedAfterComment(ctx, s, err)
 	}
 
 	return run.result(pull.ReviewRequested), nil
@@ -154,7 +161,9 @@ func (s *Service) prepare(ctx context.Context, req ActRequest, plan Plan, c *cac
 			fmt.Errorf("%w: merge method %q", ErrNotOffered, method))
 	}
 
-	reviewAs, err := reviewOf(req, plan)
+	offer, _ := plan.offer(req.Action)
+
+	reviewAs, err := reviewOf(req, offer)
 	if err != nil {
 		return nil, err
 	}
@@ -164,30 +173,27 @@ func (s *Service) prepare(ctx context.Context, req ActRequest, plan Plan, c *cac
 	}
 
 	return &action{
-		kind: req.Action, reviewAs: reviewAs, head: c.head, body: req.Body, comments: req.Comments, method: method,
-		unstable: req.Accept,
+		kind: req.Action, reviewAs: reviewAs, commentFirst: offer.CommentsFirst, head: c.head, body: req.Body,
+		comments: req.Comments, method: method, unstable: req.Accept,
 	}, nil
 }
 
-// reviewOf is the review a request submits: the action's own, for one that reviews; a
-// comment, for a merge with no review of its own and text or line comments to post, which
-// the plan must offer as it offers the Comment action; and ActionNone for anything else.
-func reviewOf(req ActRequest, plan Plan) (Action, error) {
+// reviewOf is the review a request submits, as its offer says: the action's own, for one
+// that reviews; a comment, for a merge that posts its text and line comments first and has
+// either to post, while the offer says GitHub can take one; and ActionNone for anything
+// else.
+func reviewOf(req ActRequest, offer Offer) (Action, error) {
 	switch {
-	case req.Action.reviews():
+	case offer.Reviews:
 		return req.Action, nil
-	case !req.Action.commentsFirst() || (strings.TrimSpace(req.Body) == "" && len(req.Comments) == 0):
+	case !offer.CommentsFirst || (!hasText(req.Body) && len(req.Comments) == 0):
 		return ActionNone, nil
+	case offer.CommentBlocked != "":
+		return ActionNone, uierr.New(offer.CommentBlocked,
+			fmt.Errorf("%w: a comment before %q: %s", ErrNotOffered, req.Action, offer.CommentBlocked))
+	default:
+		return ActionComment, nil
 	}
-
-	if offer, ok := plan.offer(ActionComment); !ok || !offer.Enabled {
-		reason := nonEmpty(offer.Reason, "GitHub can't take a comment on this pull request now.")
-
-		return ActionNone, uierr.New(reason+" Or clear your text and line comments to merge without a comment.",
-			fmt.Errorf("%w: a comment before %q: %s", ErrNotOffered, req.Action, reason))
-	}
-
-	return ActionComment, nil
 }
 
 // checkOffer checks that the plan offers the request's action now, that its warnings are
@@ -203,7 +209,7 @@ func checkOffer(req ActRequest, plan Plan) error {
 		return uierr.New(offer.Reason, fmt.Errorf("%w: %q: %s", ErrNotOffered, req.Action, offer.Reason))
 	case len(offer.Warnings) > 0 && !req.Accept:
 		return uierr.New("Accept the warnings first.", fmt.Errorf("%w: %q", ErrWarningsNotAccepted, req.Action))
-	case (req.Action == ActionRequestChanges || req.Action == ActionComment) && strings.TrimSpace(req.Body) == "" &&
+	case (req.Action == ActionRequestChanges || req.Action == ActionComment) && !hasText(req.Body) &&
 		len(req.Comments) == 0:
 		return uierr.New("Write something, or add a line comment, first.",
 			fmt.Errorf("%w: %q needs text", ErrNotOffered, req.Action))
@@ -285,9 +291,13 @@ func containsMethod(methods []MergeMethod, m MergeMethod) bool {
 type action struct {
 	kind Action
 
-	// reviewAs is the review the action submits before anything else: its own, the comment
-	// a merge posts first, or ActionNone.
-	reviewAs Action
+	// reviewAs is the review the action submits: its own, the comment a merge posts first,
+	// or ActionNone. commentFirst reports a merge whose offer says it posts the text first,
+	// with or without any to post, and fellBack an auto-merge GitHub said could merge now,
+	// which merges instead.
+	reviewAs     Action
+	commentFirst bool
+	fellBack     bool
 
 	head     string
 	body     string
@@ -319,9 +329,11 @@ func (a *action) step(s *Service, doing string) {
 	s.events.Emit(event.ReviewProgress{ItemID: a.itemID, Step: doing})
 }
 
-// do runs the action with tok, from where an earlier try left off.
+// do runs the action with tok, from where an earlier try left off. A review goes first,
+// but for the comment a merge posts first, which goes only once the merge state says
+// GitHub would make the merge (postFirst), so a merge GitHub refuses strands no comment.
 func (a *action) do(ctx context.Context, s *Service, tok github.Token) (Acted, error) {
-	if a.reviewAs != ActionNone {
+	if a.reviewAs != ActionNone && !a.commentFirst {
 		if err := a.review(ctx, s, tok); err != nil {
 			return a.acted, err
 		}
@@ -345,7 +357,57 @@ func (a *action) approved() bool {
 // commentedFirst reports a merge that posted the user's text as a comment before it
 // merged.
 func (a *action) commentedFirst() bool {
-	return a.reviewed != nil && a.kind.commentsFirst()
+	return a.reviewed != nil && a.commentFirst
+}
+
+// postFirst posts the comment a merge with no review of its own posts first, once, when
+// it has one: right before the merge's own write, after the merge state was read.
+func (a *action) postFirst(ctx context.Context, s *Service, tok github.Token) error {
+	if !a.commentFirst || a.reviewAs == ActionNone {
+		return nil
+	}
+
+	return a.review(ctx, s, tok)
+}
+
+// checkAhead reads the merge state before auto-merge's comment is posted, as a merge's
+// guard does before its own: a pull request no longer open, a draft, or one on a merge
+// queue is refused, and a head other than the one the user saw reported as a pushed-since
+// outcome, so neither gets a comment. It reports whether the action stops there.
+func (a *action) checkAhead(ctx context.Context, s *Service, tok github.Token) (bool, error) {
+	a.step(s, "Checking nothing was pushed since you opened it")
+
+	state, err := s.github.FetchMergeState(ctx, tok, a.nodeID)
+	if err != nil {
+		return true, err
+	}
+
+	if err = mergeableState(state); err != nil {
+		return true, err
+	}
+
+	if !strings.EqualFold(state.Head, a.head) {
+		a.outcome = OutcomePushedSince
+
+		return true, nil
+	}
+
+	return false, nil
+}
+
+// failedAfterComment turns an error that came after the comment a merge posted first into
+// the action's result, so the sheet hears the comment stands and never posts it twice. A
+// step GitHub had answered (the merge, auto-merge, its refusal, or a push it found) stands,
+// and the error, which then came from the inbox's own bookkeeping, is only logged; any
+// other is OutcomeCommentedNotMerged, with the error's words as its reason.
+func (a *action) failedAfterComment(ctx context.Context, s *Service, err error) {
+	if a.outcome != OutcomeReviewed {
+		s.logger.WarnContext(ctx, "an action's step failed after GitHub answered it", "outcome", a.outcome, "error", err)
+
+		return
+	}
+
+	a.outcome, a.reason = OutcomeCommentedNotMerged, strings.TrimSuffix(uierr.Message(err), ".")
 }
 
 // follow makes the steps of the action that come after its review, if any.
@@ -387,7 +449,7 @@ func (a *action) review(ctx context.Context, s *Service, tok github.Token) error
 		}
 	}
 
-	if a.kind.commentsFirst() {
+	if a.commentFirst {
 		a.step(s, "Posting your comment")
 	} else {
 		a.step(s, reviewDoing(a.reviewAs))
@@ -498,6 +560,10 @@ func (a *action) guardedMerge(ctx context.Context, s *Service, tok github.Token)
 		return nil
 	case mergeStepMerge:
 		a.bypassing = !a.mergesNow(state)
+
+		if err = a.postFirst(ctx, s, tok); err != nil {
+			return err
+		}
 
 		return a.merge(ctx, s, tok)
 	case mergeStepAuto:
@@ -643,12 +709,25 @@ func (a *action) past() string {
 }
 
 // autoMerge turns on auto-merge, or merges at once when GitHub says the pull request can
-// merge now.
+// merge now. The comment it posts first, if any, goes once the merge state says the pull
+// request is still open, not a draft, and at the head the user saw.
 func (a *action) autoMerge(ctx context.Context, s *Service, tok github.Token) error {
+	if a.commentFirst && a.reviewAs != ActionNone && a.reviewed == nil {
+		if stop, err := a.checkAhead(ctx, s, tok); stop {
+			return err
+		}
+
+		if err := a.postFirst(ctx, s, tok); err != nil {
+			return err
+		}
+	}
+
 	err := a.enableAutoMerge(ctx, s, tok)
 	if !errors.Is(err, github.ErrMergeableNow) {
 		return err
 	}
+
+	a.fellBack = true
 
 	return a.guardedMerge(ctx, s, tok)
 }
@@ -776,7 +855,7 @@ func (a *action) message() string {
 		return a.mergedMessage(ref)
 	case a.outcome == OutcomeApprovedNotMerged:
 		return "Approved, but GitHub won't merge yet: " + a.reason
-	case a.outcome == OutcomeCommentedNotMerged && a.kind == ActionAutoMerge:
+	case a.outcome == OutcomeCommentedNotMerged && a.kind == ActionAutoMerge && !a.fellBack:
 		return "Commented on " + ref + ", but auto-merge isn't on: " + a.reason
 	case a.outcome == OutcomeCommentedNotMerged:
 		return "Commented on " + ref + ", but it wasn't merged: " + a.reason

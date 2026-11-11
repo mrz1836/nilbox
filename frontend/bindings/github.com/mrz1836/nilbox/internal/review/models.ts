@@ -285,6 +285,20 @@ export interface Offer {
      * Warnings are what the user must accept before the action runs.
      */
     "warnings": string[] | null;
+
+    /**
+     * Reviews reports an action that submits a review of its own, which the text and line
+     * comments go with.
+     */
+    "reviews": boolean;
+
+    /**
+     * CommentsFirst reports a merge with no review of its own, which posts the text and line
+     * comments, when there are any, as a comment before it merges, and CommentBlocked why it
+     * can't post one now, with how to merge without it, or "" when it can.
+     */
+    "commentsFirst": boolean;
+    "commentBlocked": string;
 }
 
 /**
