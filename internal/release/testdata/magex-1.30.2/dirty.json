@@ -1,0 +1,91 @@
+{
+    "name": "dirty",
+    "note": "a modified tracked file and an untracked file",
+    "dir": "/work/cases/dirty/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true",
+        "expect=v1.4.3",
+        "json=true",
+        "ff-only"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n00:38:19 [INFO] Using bump type: patch\n00:38:19 [ERROR] ❌ Cannot proceed: Working directory has uncommitted changes\n00:38:19 [INFO] Please commit or stash your changes before bumping version\n{\"from\":\"\",\"to\":\"\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"\",\"commit\":\"\",\"pushed\":false,\"startBranch\":\"master\",\"branch\":\"master\",\"warnings\":[],\"error\":\"working directory has uncommitted changes\"}\n",
+    "stderr": "❌ Error: working directory has uncommitted changes\n",
+    "exit": 1,
+    "durationMs": 26,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 13,
+            "text": "00:38:19 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 20,
+            "text": "00:38:19 [ERROR] ❌ Cannot proceed: Working directory has uncommitted changes"
+        },
+        {
+            "stream": "out",
+            "ms": 20,
+            "text": "00:38:19 [INFO] Please commit or stash your changes before bumping version"
+        },
+        {
+            "stream": "out",
+            "ms": 26,
+            "text": "{\"from\":\"\",\"to\":\"\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"\",\"commit\":\"\",\"pushed\":false,\"startBranch\":\"master\",\"branch\":\"master\",\"warnings\":[],\"error\":\"working directory has uncommitted changes\"}"
+        },
+        {
+            "stream": "err",
+            "ms": 26,
+            "text": "❌ Error: working directory has uncommitted changes"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "head": "8dd3948",
+        "inProgress": "",
+        "localMaster": "8dd3948",
+        "localTags": "v1.4.2 46c5dec 348ff63",
+        "remoteMaster": "8dd3948abc1a9953857e1d1ef8b12e19e1cd0550\trefs/heads/master",
+        "remoteTags": "46c5deca03ab8fa7d221c56819ea7f757b247533\trefs/tags/v1.4.2\n348ff6339db49b7e0719e9eb0804d761e4ec7597\trefs/tags/v1.4.2^{}",
+        "status": "M README.md\n?? notes.txt"
+    },
+    "after": {
+        "branch": "master",
+        "head": "8dd3948",
+        "inProgress": "",
+        "localMaster": "8dd3948",
+        "localTags": "v1.4.2 46c5dec 348ff63",
+        "remoteMaster": "8dd3948abc1a9953857e1d1ef8b12e19e1cd0550\trefs/heads/master",
+        "remoteTags": "46c5deca03ab8fa7d221c56819ea7f757b247533\trefs/tags/v1.4.2\n348ff6339db49b7e0719e9eb0804d761e4ec7597\trefs/tags/v1.4.2^{}",
+        "status": "M README.md\n?? notes.txt"
+    }
+}

@@ -1,0 +1,101 @@
+{
+    "name": "other-worktree",
+    "note": "master is checked out in another worktree",
+    "dir": "/work/cases/other-worktree/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true",
+        "expect=v1.4.3",
+        "json=true",
+        "ff-only"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n00:38:25 [INFO] Using bump type: patch\n00:38:25 [INFO] Switching to branch 'master'...\n00:38:25 [INFO] Local branch not found, trying to checkout from remote...\n{\"from\":\"\",\"to\":\"\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"\",\"commit\":\"\",\"pushed\":false,\"startBranch\":\"feature-x\",\"branch\":\"feature-x\",\"warnings\":[],\"error\":\"failed to checkout branch 'master': local branch not found (command failed [git checkout master]: exit status 128) and remote checkout failed (command failed [git checkout -b master origin/master]: exit status 128)\"}\n",
+    "stderr": "fatal: 'master' is already used by worktree at '/work/cases/other-worktree/wt-master'\nfatal: a branch named 'master' already exists\n❌ Error: failed to checkout branch 'master': local branch not found (command failed [git checkout master]: exit status 128) and remote checkout failed (command failed [git checkout -b master origin/master]: exit status 128)\n",
+    "exit": 1,
+    "durationMs": 54,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 14,
+            "text": "00:38:25 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 34,
+            "text": "00:38:25 [INFO] Switching to branch 'master'..."
+        },
+        {
+            "stream": "err",
+            "ms": 41,
+            "text": "fatal: 'master' is already used by worktree at '/work/cases/other-worktree/wt-master'"
+        },
+        {
+            "stream": "out",
+            "ms": 41,
+            "text": "00:38:25 [INFO] Local branch not found, trying to checkout from remote..."
+        },
+        {
+            "stream": "err",
+            "ms": 47,
+            "text": "fatal: a branch named 'master' already exists"
+        },
+        {
+            "stream": "out",
+            "ms": 53,
+            "text": "{\"from\":\"\",\"to\":\"\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"\",\"commit\":\"\",\"pushed\":false,\"startBranch\":\"feature-x\",\"branch\":\"feature-x\",\"warnings\":[],\"error\":\"failed to checkout branch 'master': local branch not found (command failed [git checkout master]: exit status 128) and remote checkout failed (command failed [git checkout -b master origin/master]: exit status 128)\"}"
+        },
+        {
+            "stream": "err",
+            "ms": 53,
+            "text": "❌ Error: failed to checkout branch 'master': local branch not found (command failed [git checkout master]: exit status 128) and remote checkout failed (command failed [git checkout -b master origin/master]: exit status 128)"
+        }
+    ],
+    "before": {
+        "branch": "feature-x",
+        "head": "0977276",
+        "inProgress": "",
+        "localMaster": "0977276",
+        "localTags": "v1.4.2 309f0bc e25be35",
+        "remoteMaster": "097727699566565a0329294240907c859e321911\trefs/heads/master",
+        "remoteTags": "309f0bc94d59dcbd9afd11e385c77fcc8174ff7b\trefs/tags/v1.4.2\ne25be35e845dbe37a69cbed635b78fd029c7b8bb\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "feature-x",
+        "head": "0977276",
+        "inProgress": "",
+        "localMaster": "0977276",
+        "localTags": "v1.4.2 309f0bc e25be35",
+        "remoteMaster": "097727699566565a0329294240907c859e321911\trefs/heads/master",
+        "remoteTags": "309f0bc94d59dcbd9afd11e385c77fcc8174ff7b\trefs/tags/v1.4.2\ne25be35e845dbe37a69cbed635b78fd029c7b8bb\trefs/tags/v1.4.2^{}",
+        "status": ""
+    }
+}

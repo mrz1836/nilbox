@@ -342,6 +342,7 @@ func TestRecheckCompletesTheIntent(t *testing.T) {
 	}, argv)
 	assert.Equal(t, Intent{
 		Version: recVersion, Bump: BumpPatch, Branch: branchMaster, Original: recFeature, Head: r.second,
+		FastForward: true,
 	}, *in, "what the sheet didn't say, the facts do")
 
 	ended, stop := context.WithCancel(t.Context())

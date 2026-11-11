@@ -1,0 +1,281 @@
+{
+    "name": "patch-feature-behind",
+    "note": "on feature-x, master 3 behind origin",
+    "dir": "/work/cases/patch-feature-behind/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true",
+        "expect=v1.4.3",
+        "json=true",
+        "ff-only"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n00:38:15 [INFO] Using bump type: patch\n00:38:15 [INFO] Switching to branch 'master'...\nYour branch is up to date with 'origin/master'.\n✅ Switched to branch 'master'\n00:38:15 [INFO] Updating 'master' from origin/master (fast-forward only)...\nUpdating e1a4734..074fcc0\nFast-forward\n seed0.go | 1 +\n seed1.go | 1 +\n seed2.go | 1 +\n 3 files changed, 3 insertions(+)\n create mode 100644 seed0.go\n create mode 100644 seed1.go\n create mode 100644 seed2.go\n✅ Fast-forwarded 'master' by 3 commits to origin/master\n00:38:15 [INFO] Detecting current version...\n00:38:15 [INFO] No tags found on HEAD commit\n00:38:15 [WARN] Current version tag is not on HEAD - there are 4 commits since v1.4.2\n00:38:15 [INFO] Recent commits:\n074fcc0 chore: c\nefc3d97 feat: b\n6e8c9ae fix: a\ne1a4734 fix: retries on 502 (#45)\nabb122c feat: first feature\n00:38:15 [INFO] 📋 Version Bump Summary:\n00:38:15 [INFO]   From:    v1.4.2\n00:38:15 [INFO]   To:      v1.4.3\n00:38:15 [INFO]   Type:    patch bump\n✅ v1.4.3 matches expect\n✅ ✅ Created tag: v1.4.3\n074fcc0ee60e3c3640bc82a097604382eb3711d9\tHEAD\n00:38:15 [INFO] Pushing tag to remote...\n✅ ✅ Tag pushed to remote\n00:38:15 [INFO] Switching to branch 'feature-x'...\n✅ Switched to branch 'feature-x'\n✅ ✅ Switched back to original branch 'feature-x'\n{\"from\":\"v1.4.2\",\"to\":\"v1.4.3\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"v1.4.3\",\"commit\":\"074fcc0ee60e3c3640bc82a097604382eb3711d9\",\"pushed\":true,\"startBranch\":\"feature-x\",\"branch\":\"feature-x\",\"warnings\":[\"Current version tag is not on HEAD - there are 4 commits since v1.4.2\"],\"error\":\"\"}\n",
+    "stderr": "Switched to branch 'master'\nFrom /work/cases/patch-feature-behind/origin\n   e1a4734..074fcc0  master     -> origin/master\nTo /work/cases/patch-feature-behind/origin.git\n * [new tag]         v1.4.3 -> v1.4.3\nSwitched to branch 'feature-x'\n",
+    "exit": 0,
+    "durationMs": 306,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 22,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 22,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 22,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 22,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 22,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 28,
+            "text": "00:38:15 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 47,
+            "text": "00:38:15 [INFO] Switching to branch 'master'..."
+        },
+        {
+            "stream": "err",
+            "ms": 54,
+            "text": "Switched to branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 55,
+            "text": "Your branch is up to date with 'origin/master'."
+        },
+        {
+            "stream": "out",
+            "ms": 55,
+            "text": "✅ Switched to branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 55,
+            "text": "00:38:15 [INFO] Updating 'master' from origin/master (fast-forward only)..."
+        },
+        {
+            "stream": "err",
+            "ms": 95,
+            "text": "From /work/cases/patch-feature-behind/origin"
+        },
+        {
+            "stream": "err",
+            "ms": 95,
+            "text": "   e1a4734..074fcc0  master     -> origin/master"
+        },
+        {
+            "stream": "out",
+            "ms": 118,
+            "text": "Updating e1a4734..074fcc0"
+        },
+        {
+            "stream": "out",
+            "ms": 118,
+            "text": "Fast-forward"
+        },
+        {
+            "stream": "out",
+            "ms": 125,
+            "text": " seed0.go | 1 +"
+        },
+        {
+            "stream": "out",
+            "ms": 125,
+            "text": " seed1.go | 1 +"
+        },
+        {
+            "stream": "out",
+            "ms": 125,
+            "text": " seed2.go | 1 +"
+        },
+        {
+            "stream": "out",
+            "ms": 125,
+            "text": " 3 files changed, 3 insertions(+)"
+        },
+        {
+            "stream": "out",
+            "ms": 125,
+            "text": " create mode 100644 seed0.go"
+        },
+        {
+            "stream": "out",
+            "ms": 125,
+            "text": " create mode 100644 seed1.go"
+        },
+        {
+            "stream": "out",
+            "ms": 125,
+            "text": " create mode 100644 seed2.go"
+        },
+        {
+            "stream": "out",
+            "ms": 125,
+            "text": "✅ Fast-forwarded 'master' by 3 commits to origin/master"
+        },
+        {
+            "stream": "out",
+            "ms": 132,
+            "text": "00:38:15 [INFO] Detecting current version..."
+        },
+        {
+            "stream": "out",
+            "ms": 138,
+            "text": "00:38:15 [INFO] No tags found on HEAD commit"
+        },
+        {
+            "stream": "out",
+            "ms": 164,
+            "text": "00:38:15 [WARN] Current version tag is not on HEAD - there are 4 commits since v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 171,
+            "text": "00:38:15 [INFO] Recent commits:"
+        },
+        {
+            "stream": "out",
+            "ms": 171,
+            "text": "074fcc0 chore: c"
+        },
+        {
+            "stream": "out",
+            "ms": 171,
+            "text": "efc3d97 feat: b"
+        },
+        {
+            "stream": "out",
+            "ms": 171,
+            "text": "6e8c9ae fix: a"
+        },
+        {
+            "stream": "out",
+            "ms": 171,
+            "text": "e1a4734 fix: retries on 502 (#45)"
+        },
+        {
+            "stream": "out",
+            "ms": 171,
+            "text": "abb122c feat: first feature"
+        },
+        {
+            "stream": "out",
+            "ms": 189,
+            "text": "00:38:15 [INFO] 📋 Version Bump Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 189,
+            "text": "00:38:15 [INFO]   From:    v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 189,
+            "text": "00:38:15 [INFO]   To:      v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 189,
+            "text": "00:38:15 [INFO]   Type:    patch bump"
+        },
+        {
+            "stream": "out",
+            "ms": 189,
+            "text": "✅ v1.4.3 matches expect"
+        },
+        {
+            "stream": "out",
+            "ms": 202,
+            "text": "✅ ✅ Created tag: v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 228,
+            "text": "074fcc0ee60e3c3640bc82a097604382eb3711d9\tHEAD"
+        },
+        {
+            "stream": "out",
+            "ms": 242,
+            "text": "00:38:15 [INFO] Pushing tag to remote..."
+        },
+        {
+            "stream": "err",
+            "ms": 289,
+            "text": "To /work/cases/patch-feature-behind/origin.git"
+        },
+        {
+            "stream": "err",
+            "ms": 289,
+            "text": " * [new tag]         v1.4.3 -> v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 290,
+            "text": "✅ ✅ Tag pushed to remote"
+        },
+        {
+            "stream": "out",
+            "ms": 290,
+            "text": "00:38:15 [INFO] Switching to branch 'feature-x'..."
+        },
+        {
+            "stream": "err",
+            "ms": 298,
+            "text": "Switched to branch 'feature-x'"
+        },
+        {
+            "stream": "out",
+            "ms": 299,
+            "text": "✅ Switched to branch 'feature-x'"
+        },
+        {
+            "stream": "out",
+            "ms": 299,
+            "text": "✅ ✅ Switched back to original branch 'feature-x'"
+        },
+        {
+            "stream": "out",
+            "ms": 305,
+            "text": "{\"from\":\"v1.4.2\",\"to\":\"v1.4.3\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"v1.4.3\",\"commit\":\"074fcc0ee60e3c3640bc82a097604382eb3711d9\",\"pushed\":true,\"startBranch\":\"feature-x\",\"branch\":\"feature-x\",\"warnings\":[\"Current version tag is not on HEAD - there are 4 commits since v1.4.2\"],\"error\":\"\"}"
+        }
+    ],
+    "before": {
+        "branch": "feature-x",
+        "head": "9d74b38",
+        "inProgress": "",
+        "localMaster": "e1a4734",
+        "localTags": "v1.4.2 db4bf62 abb122c",
+        "remoteMaster": "074fcc0ee60e3c3640bc82a097604382eb3711d9\trefs/heads/master",
+        "remoteTags": "db4bf62aeb1f9689b7ec5eb0d3636d72a886a2c8\trefs/tags/v1.4.2\nabb122c022e4de2f90eb3f102605e76e9ae2a2d1\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "feature-x",
+        "head": "9d74b38",
+        "inProgress": "",
+        "localMaster": "074fcc0",
+        "localTags": "v1.4.2 db4bf62 abb122c\nv1.4.3 cffb465 074fcc0",
+        "remoteMaster": "074fcc0ee60e3c3640bc82a097604382eb3711d9\trefs/heads/master",
+        "remoteTags": "db4bf62aeb1f9689b7ec5eb0d3636d72a886a2c8\trefs/tags/v1.4.2\nabb122c022e4de2f90eb3f102605e76e9ae2a2d1\trefs/tags/v1.4.2^{}\ncffb46586679c598d1b5bd902d27f443d41df6ac\trefs/tags/v1.4.3\n074fcc0ee60e3c3640bc82a097604382eb3711d9\trefs/tags/v1.4.3^{}",
+        "status": ""
+    }
+}

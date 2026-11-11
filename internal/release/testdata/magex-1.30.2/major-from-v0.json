@@ -1,0 +1,241 @@
+{
+    "name": "major-from-v0",
+    "dir": "/work/cases/major-from-v0/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=major",
+        "branch=master",
+        "push=true",
+        "expect=v1.0.0",
+        "json=true",
+        "ff-only",
+        "major-confirm"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n00:38:18 [INFO] Using bump type: major\n00:38:18 [INFO] Detecting current version...\n00:38:18 [INFO] No tags found on HEAD commit\n00:38:18 [WARN] Current version tag is not on HEAD - there are 1 commits since v0.9.1\n00:38:18 [INFO] Recent commits:\n3c8c90f fix: retries on 502 (#45)\n4b9fb73 feat: first feature\n997125c chore: initial commit\n00:38:18 [WARN] ⚠️  MAJOR VERSION BUMP DETECTED:\n00:38:18 [WARN]    Current version: v0.9.1\n00:38:18 [WARN]    New version:     v1.0.0\n00:38:18 [WARN]    This will create a breaking change release!\n✅ ✅ Major version bump confirmed via 'major-confirm' parameter\n00:38:18 [INFO] Already on target branch 'master'\n00:38:18 [INFO] Updating 'master' from origin/master (fast-forward only)...\n✅ 'master' is level with origin/master\n00:38:18 [INFO] Detecting current version...\n00:38:18 [INFO] No tags found on HEAD commit\n00:38:18 [WARN] Current version tag is not on HEAD - there are 1 commits since v0.9.1\n00:38:18 [INFO] Recent commits:\n3c8c90f fix: retries on 502 (#45)\n4b9fb73 feat: first feature\n997125c chore: initial commit\n00:38:18 [INFO] 📋 Version Bump Summary:\n00:38:18 [INFO]   From:    v0.9.1\n00:38:18 [INFO]   To:      v1.0.0\n00:38:18 [INFO]   Type:    major bump\n✅ v1.0.0 matches expect\n✅ ✅ Created tag: v1.0.0\n3c8c90fe628d469c3b32419b10c5ffb7ca651466\tHEAD\n00:38:18 [INFO] Pushing tag to remote...\n✅ ✅ Tag pushed to remote\n{\"from\":\"v0.9.1\",\"to\":\"v1.0.0\",\"bump\":\"major\",\"expect\":\"v1.0.0\",\"dryRun\":false,\"tag\":\"v1.0.0\",\"commit\":\"3c8c90fe628d469c3b32419b10c5ffb7ca651466\",\"pushed\":true,\"startBranch\":\"master\",\"branch\":\"master\",\"warnings\":[\"Current version tag is not on HEAD - there are 1 commits since v0.9.1\",\"MAJOR VERSION BUMP DETECTED:\",\"Current version: v0.9.1\",\"New version:     v1.0.0\",\"This will create a breaking change release!\",\"Current version tag is not on HEAD - there are 1 commits since v0.9.1\"],\"error\":\"\"}\n",
+    "stderr": "To /work/cases/major-from-v0/origin.git\n * [new tag]         v1.0.0 -> v1.0.0\n",
+    "exit": 0,
+    "durationMs": 282,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 13,
+            "text": "00:38:18 [INFO] Using bump type: major"
+        },
+        {
+            "stream": "out",
+            "ms": 13,
+            "text": "00:38:18 [INFO] Detecting current version..."
+        },
+        {
+            "stream": "out",
+            "ms": 19,
+            "text": "00:38:18 [INFO] No tags found on HEAD commit"
+        },
+        {
+            "stream": "out",
+            "ms": 44,
+            "text": "00:38:18 [WARN] Current version tag is not on HEAD - there are 1 commits since v0.9.1"
+        },
+        {
+            "stream": "out",
+            "ms": 52,
+            "text": "00:38:18 [INFO] Recent commits:"
+        },
+        {
+            "stream": "out",
+            "ms": 52,
+            "text": "3c8c90f fix: retries on 502 (#45)"
+        },
+        {
+            "stream": "out",
+            "ms": 52,
+            "text": "4b9fb73 feat: first feature"
+        },
+        {
+            "stream": "out",
+            "ms": 52,
+            "text": "997125c chore: initial commit"
+        },
+        {
+            "stream": "out",
+            "ms": 58,
+            "text": "00:38:18 [WARN] ⚠️  MAJOR VERSION BUMP DETECTED:"
+        },
+        {
+            "stream": "out",
+            "ms": 58,
+            "text": "00:38:18 [WARN]    Current version: v0.9.1"
+        },
+        {
+            "stream": "out",
+            "ms": 58,
+            "text": "00:38:18 [WARN]    New version:     v1.0.0"
+        },
+        {
+            "stream": "out",
+            "ms": 58,
+            "text": "00:38:18 [WARN]    This will create a breaking change release!"
+        },
+        {
+            "stream": "out",
+            "ms": 58,
+            "text": "✅ ✅ Major version bump confirmed via 'major-confirm' parameter"
+        },
+        {
+            "stream": "out",
+            "ms": 70,
+            "text": "00:38:18 [INFO] Already on target branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 70,
+            "text": "00:38:18 [INFO] Updating 'master' from origin/master (fast-forward only)..."
+        },
+        {
+            "stream": "out",
+            "ms": 107,
+            "text": "✅ 'master' is level with origin/master"
+        },
+        {
+            "stream": "out",
+            "ms": 113,
+            "text": "00:38:18 [INFO] Detecting current version..."
+        },
+        {
+            "stream": "out",
+            "ms": 119,
+            "text": "00:38:18 [INFO] No tags found on HEAD commit"
+        },
+        {
+            "stream": "out",
+            "ms": 144,
+            "text": "00:38:18 [WARN] Current version tag is not on HEAD - there are 1 commits since v0.9.1"
+        },
+        {
+            "stream": "out",
+            "ms": 150,
+            "text": "00:38:18 [INFO] Recent commits:"
+        },
+        {
+            "stream": "out",
+            "ms": 150,
+            "text": "3c8c90f fix: retries on 502 (#45)"
+        },
+        {
+            "stream": "out",
+            "ms": 150,
+            "text": "4b9fb73 feat: first feature"
+        },
+        {
+            "stream": "out",
+            "ms": 150,
+            "text": "997125c chore: initial commit"
+        },
+        {
+            "stream": "out",
+            "ms": 169,
+            "text": "00:38:18 [INFO] 📋 Version Bump Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 169,
+            "text": "00:38:18 [INFO]   From:    v0.9.1"
+        },
+        {
+            "stream": "out",
+            "ms": 169,
+            "text": "00:38:18 [INFO]   To:      v1.0.0"
+        },
+        {
+            "stream": "out",
+            "ms": 169,
+            "text": "00:38:18 [INFO]   Type:    major bump"
+        },
+        {
+            "stream": "out",
+            "ms": 169,
+            "text": "✅ v1.0.0 matches expect"
+        },
+        {
+            "stream": "out",
+            "ms": 184,
+            "text": "✅ ✅ Created tag: v1.0.0"
+        },
+        {
+            "stream": "out",
+            "ms": 213,
+            "text": "3c8c90fe628d469c3b32419b10c5ffb7ca651466\tHEAD"
+        },
+        {
+            "stream": "out",
+            "ms": 228,
+            "text": "00:38:18 [INFO] Pushing tag to remote..."
+        },
+        {
+            "stream": "err",
+            "ms": 275,
+            "text": "To /work/cases/major-from-v0/origin.git"
+        },
+        {
+            "stream": "err",
+            "ms": 275,
+            "text": " * [new tag]         v1.0.0 -> v1.0.0"
+        },
+        {
+            "stream": "out",
+            "ms": 276,
+            "text": "✅ ✅ Tag pushed to remote"
+        },
+        {
+            "stream": "out",
+            "ms": 282,
+            "text": "{\"from\":\"v0.9.1\",\"to\":\"v1.0.0\",\"bump\":\"major\",\"expect\":\"v1.0.0\",\"dryRun\":false,\"tag\":\"v1.0.0\",\"commit\":\"3c8c90fe628d469c3b32419b10c5ffb7ca651466\",\"pushed\":true,\"startBranch\":\"master\",\"branch\":\"master\",\"warnings\":[\"Current version tag is not on HEAD - there are 1 commits since v0.9.1\",\"MAJOR VERSION BUMP DETECTED:\",\"Current version: v0.9.1\",\"New version:     v1.0.0\",\"This will create a breaking change release!\",\"Current version tag is not on HEAD - there are 1 commits since v0.9.1\"],\"error\":\"\"}"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "head": "3c8c90f",
+        "inProgress": "",
+        "localMaster": "3c8c90f",
+        "localTags": "v0.9.1 3908e02 4b9fb73",
+        "remoteMaster": "3c8c90fe628d469c3b32419b10c5ffb7ca651466\trefs/heads/master",
+        "remoteTags": "3908e024425ac96eaada58f47e205138ac5a99b0\trefs/tags/v0.9.1\n4b9fb737b417abf727685e1b4e5614e75afe1db5\trefs/tags/v0.9.1^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "master",
+        "head": "3c8c90f",
+        "inProgress": "",
+        "localMaster": "3c8c90f",
+        "localTags": "v0.9.1 3908e02 4b9fb73\nv1.0.0 eb6629a 3c8c90f",
+        "remoteMaster": "3c8c90fe628d469c3b32419b10c5ffb7ca651466\trefs/heads/master",
+        "remoteTags": "3908e024425ac96eaada58f47e205138ac5a99b0\trefs/tags/v0.9.1\n4b9fb737b417abf727685e1b4e5614e75afe1db5\trefs/tags/v0.9.1^{}\neb6629a5bc1131f4e6501c382a51413893bac34e\trefs/tags/v1.0.0\n3c8c90fe628d469c3b32419b10c5ffb7ca651466\trefs/tags/v1.0.0^{}",
+        "status": ""
+    }
+}

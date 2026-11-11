@@ -1,0 +1,106 @@
+{
+    "name": "tag-on-head",
+    "note": "the newest commit already has v1.4.2",
+    "dir": "/work/cases/tag-on-head/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true",
+        "expect=v1.4.3",
+        "json=true",
+        "ff-only"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n00:38:20 [INFO] Using bump type: patch\n00:38:20 [INFO] Already on target branch 'master'\n00:38:20 [INFO] Updating 'master' from origin/master (fast-forward only)...\n✅ 'master' is level with origin/master\n00:38:21 [WARN] Current commit already has version tags: v1.4.2\n00:38:21 [WARN] Please create a new commit before bumping the version again\n{\"from\":\"\",\"to\":\"\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"\",\"commit\":\"\",\"pushed\":false,\"startBranch\":\"master\",\"branch\":\"master\",\"warnings\":[\"Current commit already has version tags: v1.4.2\",\"Please create a new commit before bumping the version again\"],\"error\":\"current commit already has version tags: v1.4.2\"}\n",
+    "stderr": "❌ Error: current commit already has version tags: v1.4.2\n",
+    "exit": 1,
+    "durationMs": 70,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 6,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 12,
+            "text": "00:38:20 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 23,
+            "text": "00:38:20 [INFO] Already on target branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 23,
+            "text": "00:38:20 [INFO] Updating 'master' from origin/master (fast-forward only)..."
+        },
+        {
+            "stream": "out",
+            "ms": 58,
+            "text": "✅ 'master' is level with origin/master"
+        },
+        {
+            "stream": "out",
+            "ms": 64,
+            "text": "00:38:21 [WARN] Current commit already has version tags: v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 64,
+            "text": "00:38:21 [WARN] Please create a new commit before bumping the version again"
+        },
+        {
+            "stream": "err",
+            "ms": 69,
+            "text": "❌ Error: current commit already has version tags: v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 69,
+            "text": "{\"from\":\"\",\"to\":\"\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"\",\"commit\":\"\",\"pushed\":false,\"startBranch\":\"master\",\"branch\":\"master\",\"warnings\":[\"Current commit already has version tags: v1.4.2\",\"Please create a new commit before bumping the version again\"],\"error\":\"current commit already has version tags: v1.4.2\"}"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "head": "45e455e",
+        "inProgress": "",
+        "localMaster": "45e455e",
+        "localTags": "v1.4.2 1ebf1cd 45e455e",
+        "remoteMaster": "45e455e9e667cbf5fadb1f4db6773c2d8f2d3324\trefs/heads/master",
+        "remoteTags": "1ebf1cd8a23b9c0342e079ad017c53c7d700ecfa\trefs/tags/v1.4.2\n45e455e9e667cbf5fadb1f4db6773c2d8f2d3324\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "master",
+        "head": "45e455e",
+        "inProgress": "",
+        "localMaster": "45e455e",
+        "localTags": "v1.4.2 1ebf1cd 45e455e",
+        "remoteMaster": "45e455e9e667cbf5fadb1f4db6773c2d8f2d3324\trefs/heads/master",
+        "remoteTags": "1ebf1cd8a23b9c0342e079ad017c53c7d700ecfa\trefs/tags/v1.4.2\n45e455e9e667cbf5fadb1f4db6773c2d8f2d3324\trefs/tags/v1.4.2^{}",
+        "status": ""
+    }
+}

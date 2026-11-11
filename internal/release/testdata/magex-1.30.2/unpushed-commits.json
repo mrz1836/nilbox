@@ -1,0 +1,106 @@
+{
+    "name": "unpushed-commits",
+    "note": "master has 2 commits not on origin; origin has 1 the clone lacks",
+    "dir": "/work/cases/unpushed-commits/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true",
+        "expect=v1.4.3",
+        "json=true",
+        "ff-only"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n00:38:23 [INFO] Using bump type: patch\n00:38:23 [INFO] Already on target branch 'master'\n00:38:23 [INFO] Updating 'master' from origin/master (fast-forward only)...\n{\"from\":\"\",\"to\":\"\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"\",\"commit\":\"\",\"pushed\":false,\"startBranch\":\"master\",\"branch\":\"master\",\"warnings\":[],\"error\":\"ff-only: branch 'master' has diverged from origin/master: it has 2 commits that origin/master doesn't have, and origin/master has 1 commit it doesn't; nothing was tagged\\nto release them, rebase them onto origin/master and push them first (git checkout master && git pull --rebase origin master && git push origin master); to drop them, reset the branch to origin in a terminal (git checkout master && git reset --hard origin/master)\"}\n",
+    "stderr": "From /work/cases/unpushed-commits/origin\n   de33443..d88f56a  master     -> origin/master\n❌ Error: ff-only: branch 'master' has diverged from origin/master: it has 2 commits that origin/master doesn't have, and origin/master has 1 commit it doesn't; nothing was tagged\nto release them, rebase them onto origin/master and push them first (git checkout master && git pull --rebase origin master && git push origin master); to drop them, reset the branch to origin in a terminal (git checkout master && git reset --hard origin/master)\n",
+    "exit": 1,
+    "durationMs": 79,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 13,
+            "text": "00:38:23 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 25,
+            "text": "00:38:23 [INFO] Already on target branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 25,
+            "text": "00:38:23 [INFO] Updating 'master' from origin/master (fast-forward only)..."
+        },
+        {
+            "stream": "err",
+            "ms": 61,
+            "text": "From /work/cases/unpushed-commits/origin"
+        },
+        {
+            "stream": "err",
+            "ms": 61,
+            "text": "   de33443..d88f56a  master     -> origin/master"
+        },
+        {
+            "stream": "err",
+            "ms": 79,
+            "text": "❌ Error: ff-only: branch 'master' has diverged from origin/master: it has 2 commits that origin/master doesn't have, and origin/master has 1 commit it doesn't; nothing was tagged"
+        },
+        {
+            "stream": "err",
+            "ms": 79,
+            "text": "to release them, rebase them onto origin/master and push them first (git checkout master && git pull --rebase origin master && git push origin master); to drop them, reset the branch to origin in a terminal (git checkout master && git reset --hard origin/master)"
+        },
+        {
+            "stream": "out",
+            "ms": 79,
+            "text": "{\"from\":\"\",\"to\":\"\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"\",\"commit\":\"\",\"pushed\":false,\"startBranch\":\"master\",\"branch\":\"master\",\"warnings\":[],\"error\":\"ff-only: branch 'master' has diverged from origin/master: it has 2 commits that origin/master doesn't have, and origin/master has 1 commit it doesn't; nothing was tagged\\nto release them, rebase them onto origin/master and push them first (git checkout master && git pull --rebase origin master && git push origin master); to drop them, reset the branch to origin in a terminal (git checkout master && git reset --hard origin/master)\"}"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "head": "954c202",
+        "inProgress": "",
+        "localMaster": "954c202",
+        "localTags": "v1.4.2 9b496a8 55ce288",
+        "remoteMaster": "d88f56a3d62cf83877ef40e9d2b85c4bcf88438f\trefs/heads/master",
+        "remoteTags": "9b496a8793ff9114124dcacb664a461ef382be00\trefs/tags/v1.4.2\n55ce288574064a548c16364c1dacf21d5b1a9f98\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "master",
+        "head": "954c202",
+        "inProgress": "",
+        "localMaster": "954c202",
+        "localTags": "v1.4.2 9b496a8 55ce288",
+        "remoteMaster": "d88f56a3d62cf83877ef40e9d2b85c4bcf88438f\trefs/heads/master",
+        "remoteTags": "9b496a8793ff9114124dcacb664a461ef382be00\trefs/tags/v1.4.2\n55ce288574064a548c16364c1dacf21d5b1a9f98\trefs/tags/v1.4.2^{}",
+        "status": ""
+    }
+}

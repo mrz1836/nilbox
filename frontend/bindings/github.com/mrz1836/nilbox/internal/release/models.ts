@@ -406,7 +406,8 @@ export const FailureKind = {
     FailureTimeout: "timeout",
 
     /**
-     * FailureMidPull is magex stopped while it pulled, which can leave a rebase.
+     * FailureMidPull is magex stopped while it pulled, which can leave a rebase, or while
+     * it fast-forwarded the branch (ff-only), which can't.
      */
     FailureMidPull: "midPull",
 

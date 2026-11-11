@@ -1,0 +1,111 @@
+{
+    "name": "post-checkout-fails",
+    "note": "a post-checkout hook that exits 1; on feature-x",
+    "dir": "/work/cases/post-checkout-fails/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true",
+        "expect=v1.4.3",
+        "json=true",
+        "ff-only"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n00:38:39 [INFO] Using bump type: patch\n00:38:39 [INFO] Switching to branch 'master'...\nYour branch is up to date with 'origin/master'.\n00:38:39 [INFO] Local branch not found, trying to checkout from remote...\n{\"from\":\"\",\"to\":\"\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"\",\"commit\":\"\",\"pushed\":false,\"startBranch\":\"feature-x\",\"branch\":\"master\",\"warnings\":[\"The bump started on branch 'feature-x' but ended on branch 'master'\"],\"error\":\"failed to checkout branch 'master': local branch not found (command failed [git checkout master]: exit status 1) and remote checkout failed (command failed [git checkout -b master origin/master]: exit status 128)\"}\n",
+    "stderr": "Switched to branch 'master'\npost-checkout: blocked by policy\nfatal: a branch named 'master' already exists\n❌ Error: failed to checkout branch 'master': local branch not found (command failed [git checkout master]: exit status 1) and remote checkout failed (command failed [git checkout -b master origin/master]: exit status 128)\n",
+    "exit": 1,
+    "durationMs": 209,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 10,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 10,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 10,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 10,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 10,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 16,
+            "text": "00:38:39 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 36,
+            "text": "00:38:39 [INFO] Switching to branch 'master'..."
+        },
+        {
+            "stream": "err",
+            "ms": 44,
+            "text": "Switched to branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 44,
+            "text": "Your branch is up to date with 'origin/master'."
+        },
+        {
+            "stream": "err",
+            "ms": 195,
+            "text": "post-checkout: blocked by policy"
+        },
+        {
+            "stream": "out",
+            "ms": 196,
+            "text": "00:38:39 [INFO] Local branch not found, trying to checkout from remote..."
+        },
+        {
+            "stream": "err",
+            "ms": 202,
+            "text": "fatal: a branch named 'master' already exists"
+        },
+        {
+            "stream": "err",
+            "ms": 208,
+            "text": "❌ Error: failed to checkout branch 'master': local branch not found (command failed [git checkout master]: exit status 1) and remote checkout failed (command failed [git checkout -b master origin/master]: exit status 128)"
+        },
+        {
+            "stream": "out",
+            "ms": 208,
+            "text": "{\"from\":\"\",\"to\":\"\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"\",\"commit\":\"\",\"pushed\":false,\"startBranch\":\"feature-x\",\"branch\":\"master\",\"warnings\":[\"The bump started on branch 'feature-x' but ended on branch 'master'\"],\"error\":\"failed to checkout branch 'master': local branch not found (command failed [git checkout master]: exit status 1) and remote checkout failed (command failed [git checkout -b master origin/master]: exit status 128)\"}"
+        }
+    ],
+    "before": {
+        "branch": "feature-x",
+        "head": "e45c9d6",
+        "inProgress": "",
+        "localMaster": "e45c9d6",
+        "localTags": "v1.4.2 df79aee 15b78e9",
+        "remoteMaster": "e45c9d655562413d59ec88f45b957f80fd01ae06\trefs/heads/master",
+        "remoteTags": "df79aeea3839816280bf730241e41af9300d581f\trefs/tags/v1.4.2\n15b78e93e58a65517126c9ed84008216d06102e0\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "master",
+        "head": "e45c9d6",
+        "inProgress": "",
+        "localMaster": "e45c9d6",
+        "localTags": "v1.4.2 df79aee 15b78e9",
+        "remoteMaster": "e45c9d655562413d59ec88f45b957f80fd01ae06\trefs/heads/master",
+        "remoteTags": "df79aeea3839816280bf730241e41af9300d581f\trefs/tags/v1.4.2\n15b78e93e58a65517126c9ed84008216d06102e0\trefs/tags/v1.4.2^{}",
+        "status": ""
+    }
+}

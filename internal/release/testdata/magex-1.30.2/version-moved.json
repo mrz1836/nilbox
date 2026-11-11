@@ -1,0 +1,211 @@
+{
+    "name": "version-moved",
+    "note": "origin gained v1.4.3 after the release expected it; branch= fetches it",
+    "dir": "/work/cases/version-moved/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true",
+        "expect=v1.4.3",
+        "json=true",
+        "ff-only"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n00:38:31 [INFO] Using bump type: patch\n00:38:31 [INFO] Already on target branch 'master'\n00:38:31 [INFO] Updating 'master' from origin/master (fast-forward only)...\nUpdating a3b756e..ff0125d\nFast-forward\n other.go | 1 +\n seed0.go | 1 +\n 2 files changed, 2 insertions(+)\n create mode 100644 other.go\n create mode 100644 seed0.go\n✅ Fast-forwarded 'master' by 2 commits to origin/master\n00:38:31 [INFO] Detecting current version...\n00:38:31 [INFO] No tags found on HEAD commit\n00:38:31 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.3\n00:38:31 [INFO] Recent commits:\nff0125d fix: more\n1e97bd3 fix: other\na3b756e fix: retries on 502 (#45)\n020909a feat: first feature\nf9ccea2 chore: initial commit\n00:38:31 [INFO] 📋 Version Bump Summary:\n00:38:31 [INFO]   From:    v1.4.3\n00:38:31 [INFO]   To:      v1.4.4\n00:38:31 [INFO]   Type:    patch bump\n{\"from\":\"v1.4.3\",\"to\":\"v1.4.4\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"\",\"commit\":\"\",\"pushed\":false,\"startBranch\":\"master\",\"branch\":\"master\",\"warnings\":[\"Current version tag is not on HEAD - there are 1 commits since v1.4.3\"],\"error\":\"expected v1.4.3, but the next patch is v1.4.4: another version was tagged meanwhile; nothing was tagged\"}\n",
+    "stderr": "From /work/cases/version-moved/origin\n   a3b756e..ff0125d  master     -> origin/master\n * [new tag]         v1.4.3     -> v1.4.3\n❌ Error: expected v1.4.3, but the next patch is v1.4.4: another version was tagged meanwhile; nothing was tagged\n",
+    "exit": 1,
+    "durationMs": 174,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 10,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 10,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 10,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 10,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 10,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 16,
+            "text": "00:38:31 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 28,
+            "text": "00:38:31 [INFO] Already on target branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 28,
+            "text": "00:38:31 [INFO] Updating 'master' from origin/master (fast-forward only)..."
+        },
+        {
+            "stream": "err",
+            "ms": 71,
+            "text": "From /work/cases/version-moved/origin"
+        },
+        {
+            "stream": "err",
+            "ms": 71,
+            "text": "   a3b756e..ff0125d  master     -> origin/master"
+        },
+        {
+            "stream": "err",
+            "ms": 71,
+            "text": " * [new tag]         v1.4.3     -> v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 94,
+            "text": "Updating a3b756e..ff0125d"
+        },
+        {
+            "stream": "out",
+            "ms": 94,
+            "text": "Fast-forward"
+        },
+        {
+            "stream": "out",
+            "ms": 101,
+            "text": " other.go | 1 +"
+        },
+        {
+            "stream": "out",
+            "ms": 101,
+            "text": " seed0.go | 1 +"
+        },
+        {
+            "stream": "out",
+            "ms": 101,
+            "text": " 2 files changed, 2 insertions(+)"
+        },
+        {
+            "stream": "out",
+            "ms": 101,
+            "text": " create mode 100644 other.go"
+        },
+        {
+            "stream": "out",
+            "ms": 101,
+            "text": " create mode 100644 seed0.go"
+        },
+        {
+            "stream": "out",
+            "ms": 101,
+            "text": "✅ Fast-forwarded 'master' by 2 commits to origin/master"
+        },
+        {
+            "stream": "out",
+            "ms": 108,
+            "text": "00:38:31 [INFO] Detecting current version..."
+        },
+        {
+            "stream": "out",
+            "ms": 115,
+            "text": "00:38:31 [INFO] No tags found on HEAD commit"
+        },
+        {
+            "stream": "out",
+            "ms": 142,
+            "text": "00:38:31 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 149,
+            "text": "00:38:31 [INFO] Recent commits:"
+        },
+        {
+            "stream": "out",
+            "ms": 149,
+            "text": "ff0125d fix: more"
+        },
+        {
+            "stream": "out",
+            "ms": 149,
+            "text": "1e97bd3 fix: other"
+        },
+        {
+            "stream": "out",
+            "ms": 149,
+            "text": "a3b756e fix: retries on 502 (#45)"
+        },
+        {
+            "stream": "out",
+            "ms": 149,
+            "text": "020909a feat: first feature"
+        },
+        {
+            "stream": "out",
+            "ms": 149,
+            "text": "f9ccea2 chore: initial commit"
+        },
+        {
+            "stream": "out",
+            "ms": 169,
+            "text": "00:38:31 [INFO] 📋 Version Bump Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 169,
+            "text": "00:38:31 [INFO]   From:    v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 169,
+            "text": "00:38:31 [INFO]   To:      v1.4.4"
+        },
+        {
+            "stream": "out",
+            "ms": 169,
+            "text": "00:38:31 [INFO]   Type:    patch bump"
+        },
+        {
+            "stream": "err",
+            "ms": 174,
+            "text": "❌ Error: expected v1.4.3, but the next patch is v1.4.4: another version was tagged meanwhile; nothing was tagged"
+        },
+        {
+            "stream": "out",
+            "ms": 174,
+            "text": "{\"from\":\"v1.4.3\",\"to\":\"v1.4.4\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"\",\"commit\":\"\",\"pushed\":false,\"startBranch\":\"master\",\"branch\":\"master\",\"warnings\":[\"Current version tag is not on HEAD - there are 1 commits since v1.4.3\"],\"error\":\"expected v1.4.3, but the next patch is v1.4.4: another version was tagged meanwhile; nothing was tagged\"}"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "head": "a3b756e",
+        "inProgress": "",
+        "localMaster": "a3b756e",
+        "localTags": "v1.4.2 3994563 020909a",
+        "remoteMaster": "ff0125d8c98388370697b12ba01f911e31e1a38e\trefs/heads/master",
+        "remoteTags": "3994563b7e7b4ed3d737a2d17106d21733ecd120\trefs/tags/v1.4.2\n020909a2e78258bd0375b0f3283603f05c1e94e7\trefs/tags/v1.4.2^{}\n4092aec2c67994baf8bfa2c0792da7eb6362d22d\trefs/tags/v1.4.3\n1e97bd3c22005c3171ccb3fcba621dad881de573\trefs/tags/v1.4.3^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "master",
+        "head": "ff0125d",
+        "inProgress": "",
+        "localMaster": "ff0125d",
+        "localTags": "v1.4.2 3994563 020909a\nv1.4.3 4092aec 1e97bd3",
+        "remoteMaster": "ff0125d8c98388370697b12ba01f911e31e1a38e\trefs/heads/master",
+        "remoteTags": "3994563b7e7b4ed3d737a2d17106d21733ecd120\trefs/tags/v1.4.2\n020909a2e78258bd0375b0f3283603f05c1e94e7\trefs/tags/v1.4.2^{}\n4092aec2c67994baf8bfa2c0792da7eb6362d22d\trefs/tags/v1.4.3\n1e97bd3c22005c3171ccb3fcba621dad881de573\trefs/tags/v1.4.3^{}",
+        "status": ""
+    }
+}

@@ -1,0 +1,138 @@
+{
+    "name": "sigint-during-pull-behind",
+    "note": "SIGINT to the group when a post-merge hook starts (the fast-forward); clone only behind",
+    "dir": "/work/cases/sigint-during-pull-behind/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true",
+        "expect=v1.4.3",
+        "json=true",
+        "ff-only"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n00:38:42 [INFO] Using bump type: patch\n00:38:42 [INFO] Already on target branch 'master'\n00:38:42 [INFO] Updating 'master' from origin/master (fast-forward only)...\nUpdating b8a60cb..b08bf8d\nFast-forward\n seed0.go | 1 +\n 1 file changed, 1 insertion(+)\n create mode 100644 seed0.go\n{\"from\":\"\",\"to\":\"\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"\",\"commit\":\"\",\"pushed\":false,\"startBranch\":\"master\",\"branch\":\"\",\"warnings\":[\"The bump started on branch 'master' but ended on a detached HEAD\"],\"error\":\"failed to fast-forward 'master' to origin/master: command failed [git merge --ff-only refs/remotes/origin/master]: signal: interrupt\"}\n",
+    "stderr": "From /work/cases/sigint-during-pull-behind/origin\n   b8a60cb..b08bf8d  master     -> origin/master\n\n⚠  Canceled by user (Ctrl+C) — stopping...\n❌ Error: failed to fast-forward 'master' to origin/master: command failed [git merge --ff-only refs/remotes/origin/master]: signal: interrupt\n",
+    "exit": 130,
+    "sent": "interrupt",
+    "sentMs": 242,
+    "durationMs": 244,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 13,
+            "text": "00:38:42 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 27,
+            "text": "00:38:42 [INFO] Already on target branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 27,
+            "text": "00:38:42 [INFO] Updating 'master' from origin/master (fast-forward only)..."
+        },
+        {
+            "stream": "err",
+            "ms": 65,
+            "text": "From /work/cases/sigint-during-pull-behind/origin"
+        },
+        {
+            "stream": "err",
+            "ms": 65,
+            "text": "   b8a60cb..b08bf8d  master     -> origin/master"
+        },
+        {
+            "stream": "out",
+            "ms": 90,
+            "text": "Updating b8a60cb..b08bf8d"
+        },
+        {
+            "stream": "out",
+            "ms": 90,
+            "text": "Fast-forward"
+        },
+        {
+            "stream": "out",
+            "ms": 96,
+            "text": " seed0.go | 1 +"
+        },
+        {
+            "stream": "out",
+            "ms": 96,
+            "text": " 1 file changed, 1 insertion(+)"
+        },
+        {
+            "stream": "out",
+            "ms": 96,
+            "text": " create mode 100644 seed0.go"
+        },
+        {
+            "stream": "err",
+            "ms": 242,
+            "text": ""
+        },
+        {
+            "stream": "err",
+            "ms": 242,
+            "text": "⚠  Canceled by user (Ctrl+C) — stopping..."
+        },
+        {
+            "stream": "err",
+            "ms": 244,
+            "text": "❌ Error: failed to fast-forward 'master' to origin/master: command failed [git merge --ff-only refs/remotes/origin/master]: signal: interrupt"
+        },
+        {
+            "stream": "out",
+            "ms": 244,
+            "text": "{\"from\":\"\",\"to\":\"\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"\",\"commit\":\"\",\"pushed\":false,\"startBranch\":\"master\",\"branch\":\"\",\"warnings\":[\"The bump started on branch 'master' but ended on a detached HEAD\"],\"error\":\"failed to fast-forward 'master' to origin/master: command failed [git merge --ff-only refs/remotes/origin/master]: signal: interrupt\"}"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "head": "b8a60cb",
+        "inProgress": "",
+        "localMaster": "b8a60cb",
+        "localTags": "v1.4.2 44cff23 c290356",
+        "remoteMaster": "b08bf8d584833c285ae4dab424f7dc871856609b\trefs/heads/master",
+        "remoteTags": "44cff2355a3f2001faa9227597d534f8852923eb\trefs/tags/v1.4.2\nc2903569994b366604bfc0314b102cacf6b6d831\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "master",
+        "head": "b08bf8d",
+        "inProgress": "",
+        "localMaster": "b08bf8d",
+        "localTags": "v1.4.2 44cff23 c290356",
+        "remoteMaster": "b08bf8d584833c285ae4dab424f7dc871856609b\trefs/heads/master",
+        "remoteTags": "44cff2355a3f2001faa9227597d534f8852923eb\trefs/tags/v1.4.2\nc2903569994b366604bfc0314b102cacf6b6d831\trefs/tags/v1.4.2^{}",
+        "status": ""
+    }
+}
