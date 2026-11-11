@@ -135,7 +135,7 @@ app:lint` reads.
   `Info.plist` and the rendered icon set, `icons.icns`.
 - `internal/core/` assembles the app and builds every service the window binds: settings,
   profiles, prompts, launch defaults, inbox, review, launcher, worktrees, notifications, app
-  info, sessions, integrations, script runs, and release.
+  info, sessions, integrations, script runs, release, and hooks.
   Every `internal/*` package is plain Go, built and tested on Linux without CGO.
 - Services share their building blocks rather than keep copies: `internal/repo` and
   `internal/item` name repositories, pull requests and issues, and their worktrees;
@@ -160,7 +160,8 @@ app:lint` reads.
 - `internal/event/` holds the app's events, one Go type each with its name; services emit them
   into the one `event.Sink` they are given. `internal/desktop/` is the shell's logic: it hears
   those events, keeps the menu bar current with what `internal/menubar` works out, runs the
-  scheduler, the sweeper, and the sessions watcher as tracked work, starts the deferred work
+  scheduler, the sweeper, the sessions watcher, and the Release page's refresher as tracked
+  work, starts the deferred work
   (`core.Deferred`: the login-shell read first) once after the first paint, never on the cold
   start, and shuts down in order (timers, then the work, then the database). It declares small interfaces that the Wails glue
   in `cmd/nilbox` implements, and imports no Wails. A window event is registered in
@@ -281,7 +282,8 @@ app:lint` reads.
   `Config.Progressed` hears each change with the run's ID, which core sends the window as
   `event.ScriptRunProgress` (`scriptruns:progress`), never the whole list's
   `event.ScriptRunsUpdated`. A spec's `Recorded` is told the outcome only once the run's
-  end is recorded, so a record that fails tells nothing twice. Its `Run` is a deferred desktop worker: it
+  end is recorded, so a record that fails tells nothing twice, and its `Released` once the run
+  has let go of its clone, so a page that reads the clone again finds it free. Its `Run` is a deferred desktop worker: it
   reconciles the runs left from before a restart (a live group whose start time matches is
   orphaned and followed again; one that is gone was interrupted; a terminal run is told apart by
   its PID and exit files; every one is held under a placeholder lock and registered before any
@@ -320,10 +322,9 @@ app:lint` reads.
   user's own; an http or https origin the clone's own config reroutes (its TLS checks,
   certificates, proxy, `remote.origin.proxy`, or resolved address) is refused
   (`ErrCloneRoutes`), since the user's credentials, cookies, and headers for the real host
-  could go elsewhere; no cookie is saved and a cookie file
-  the clone names is dropped; and origin is asked for git's own upload-pack with
-  `--upload-pack` (git keeps the first `uploadpack` it reads, so a `-c` can't replace the
-  clone's). An `ls-remote` that fails after setting anything aside returns a `SetAsideError`
+  could go elsewhere; no cookie is saved, and a cookie file the clone names is dropped; and
+  origin is asked for git's own upload-pack with `--upload-pack` (git keeps the first
+  `uploadpack` it reads, so a `-c` can't replace the clone's). An `ls-remote` that fails after setting anything aside returns a `SetAsideError`
   naming it, which the Release sheet words as the likely cause and where to set the clone's own
   settings instead: the user's global config, with an `includeIf` for the folder, which counts
   as the user's own. Only the system, global, and environment (`command`) scopes are the
@@ -335,7 +336,14 @@ app:lint` reads.
   can't release here, from two rounds of batched GraphQL (`(*github.Client).FetchReleaseStatus`,
   then `FetchReleaseCompare` for the repositories with a version, 15 to a query, adapted in core),
   and reads each unreleased clone's state with `gitread`, never asking origin; it keeps the list
-  five minutes and keeps the last one when a refresh fails. `version.go` works the next version
+  five minutes and keeps the last one when a refresh fails. A refresh tells the window how far
+  it has got, at most four times a second (`event.ReleasesProgress`: finding the clones, each
+  round's repositories as GitHub answers each batch, then the unreleased clones), and each list
+  that lands is kept in the `release.lastCandidates` pref with its clone root. After a restart,
+  the first `Candidates` serves that list at once, marked `Kept`, while the `Refresher` (a
+  desktop worker) reads GitHub again behind the page and `event.ReleasesUpdated` says when it
+  lands; a list from another clone root is never served, and a refresh that fails or is cut
+  short keeps nothing. `version.go` works the next version
   out exactly as magex does, tested against a table recorded from the real magex. A release
   follows the review sheet's template: the `Gatherer` reads its `Facts` at once (magex through
   a `ToolSource`, GitHub's status of the one repository, origin's refs with one `ls-remote`,
@@ -349,7 +357,9 @@ app:lint` reads.
   `FactsFor` old) and decides there what magex runs, so a release that isn't ready, whose
   version moved, or that the sheet should never have sent (a major without its typed version,
   its go.mod box, or a magex with `expect=`, logged as a bug) never runs. The run's
-  `OutputReader` turns magex's lines into steps, warnings, and unrecognized lines, and its
+  `OutputReader` turns magex's lines into steps, warnings, and unrecognized lines (the run's
+  result leaves out the warning every release has, that the newest version tag isn't on HEAD;
+  the log keeps it, and the window's log view leaves out magex's JSON result line), and its
   `Finish` verifies the release whatever magex's exit status: `ls-remote` for the tag, peeled to
   its commit, then the clone's own tag, its branch, and any rebase in progress, into a `Result`
   (released, not pushed, failed with `ExplainFailure`'s heading, or unverified). Only this
@@ -367,6 +377,34 @@ app:lint` reads.
   `integrations.offerAfterMerge` setting, magex, the default branch the Release page or the
   inbox already holds, and a clone with that origin, from the page's list or else only the
   folders named as the repository is (one git command each), never a scan of the clone root.
+- `internal/hooks/` is the Hooks page's service. `Repos` scans, four at a time, every clone
+  under the clone root with a go-pre-commit config inside it (a `.github/env/*.env` file, or
+  `.github/.env.base`): where git runs its hooks (gitread's `HookPaths`), its `pre-commit` hook
+  (missing, go-pre-commit's by its marker, or another tool's, named husky, pre-commit, or
+  lefthook from its text), and `ENABLE_GO_PRE_COMMIT` and the checks' switches from the config
+  files themselves. A hooks folder outside both the clone's git folder and its work tree is
+  shared, and the scan counts the clones that use it. Only go-pre-commit's `status` says whether
+  its own hook is current, a byte comparison, so it runs in a scratch repository of the app's own
+  that holds the hook's bytes, never in a clone, whose `.env` files go-pre-commit would load into
+  its environment, `PATH` included, before it runs git; its answer is kept per copy and per
+  hook's SHA-256, so status runs once for bytes no one judged. The scan is kept
+  five minutes, a clone an action or a check ran in is scanned again on the next read, and
+  `event.HooksUpdated` tells the window once the run has let go of the clone (the spec's
+  `Released`), so the reread finds it free and the run ended. `Install`, `Update`, `Reinstall`, `Replace`,
+  `Uninstall`, and `RunChecks` hand `scriptrun` a `KindHooks` or `KindChecks` run whose `Before`,
+  under the clone's lock, reads the clone again and refuses a shared hooks folder the request
+  doesn't confirm. An action's `Finish` reads what it did from the hook files, never from the
+  exit status alone (1.13 exits 0 when another tool's hook stops it); a checks run's compares
+  git's porcelain v2 status and each dirty file's SHA-256, taken before and after, so a fix to a
+  file that was already dirty shows. `InstallAll` installs or updates one clone at a time, each
+  its own run in the app, and skips another tool's hook, a shared folder, and a busy clone. The
+  readers know 1.13.1's text, recorded in `testdata/go-pre-commit-1.13.1`, and read `status
+  --json` and `run --json` once `Definition.Features` says the copy has them. The page carries
+  the PATH warning (the hook finds go-pre-commit only on the PATH or in `$(go env GOPATH)/bin`)
+  and, until `FeatureVerifiedTools`, the note that the checks install their own tools, folded
+  once a checks run ended (`hooks.checksRan`, which hooks alone writes). The bound
+  `ActionResult` and `ChecksResult` read a run's outcome back typed, and its `Rerunner`, which
+  core registers for both kinds, works Run again out afresh from the run's intent.
 - `internal/measure/` and `magefiles/measure.go` take the numbers in
   [`docs/performance.md`](docs/performance.md).
 - `frontend/` is the React + TypeScript + Vite + Tailwind app. It reaches Go only through the
