@@ -77,7 +77,8 @@ func (b base) bannersOff(ctx context.Context) ([]notifyprefs.Kind, error) {
 }
 
 // Dispatcher records the inbox's arrivals and shows their banners. It is the inbox's
-// inbox.ArrivalSink, and is not bound to the window.
+// inbox.ArrivalSink. It also records the notifications about no item, such as a release
+// that reached GitHub, and shows theirs (Notify). It is not bound to the window.
 type Dispatcher struct {
 	base
 }
@@ -103,7 +104,27 @@ func (d *Dispatcher) Arrived(ctx context.Context, arrivals []inbox.Arrival) {
 	}
 
 	d.notify()
+	d.show(ctx, rows)
+}
 
+// Notify records entry, a notification about no item, tells the window, and shows its
+// banner when its kind is on and the user allows banners. A failure is logged: what it
+// tells of has happened anyway.
+func (d *Dispatcher) Notify(ctx context.Context, entry Entry) {
+	row, err := d.store.RecordEvent(ctx, d.clock.Now(), entry)
+	if err != nil {
+		d.logger.WarnContext(ctx, "could not record the notification", "kind", string(entry.Kind), "error", err)
+
+		return
+	}
+
+	d.notify()
+	d.show(ctx, []Notification{row})
+}
+
+// show posts the banners for recorded notifications, of the kinds that are on, when the
+// user allows banners.
+func (d *Dispatcher) show(ctx context.Context, rows []Notification) {
 	if d.poster == nil || d.poster.Status() != StatusOn {
 		return
 	}

@@ -61,15 +61,17 @@ type releaseRig struct {
 	first  string
 	second string
 
-	github *fakeGitHub
-	locks  *clonelock.Set
-	logs   *testutil.Logs
-	db     *sql.DB
-	logDir string
-	engine *scriptrun.Engine
-	runs   *scriptrun.Service
-	svc    *Service
-	after  *afterGit
+	github  *fakeGitHub
+	locks   *clonelock.Set
+	logs    *testutil.Logs
+	db      *sql.DB
+	logDir  string
+	engine  *scriptrun.Engine
+	runs    *scriptrun.Service
+	svc     *Service
+	after   *afterGit
+	notices *fakeNotifier
+	events  *testutil.Events
 
 	tool     ToolFacts
 	magexEnv string
@@ -110,6 +112,7 @@ func newReleaseRig(t *testing.T, opts rigOptions) *releaseRig {
 	t.Cleanup(r.engine.StopAll)
 
 	r.runs = scriptrun.NewService(r.engine)
+	r.notices, r.events = &fakeNotifier{}, &testutil.Events{}
 	r.magex("1.30.2", testutil.FakeRun{})
 
 	r.svc = NewService(Config{
@@ -118,7 +121,7 @@ func newReleaseRig(t *testing.T, opts rigOptions) *releaseRig {
 		Origins: fakeOrigins{name: name("sdk"), onGitHub: true}, Tools: rigTools{r: r}, Locks: r.locks,
 		Env:    func() ([]string, bool) { return append(slices.Clone(r.env), r.magexEnv), true },
 		Runner: (&sshFake{}).runner, Runs: r.engine, Places: fakePlaces{where: Where{RunsIn: integrationprefs.RunsInApp}},
-		Home: r.root, Logger: r.logs.Logger(),
+		History: r.runs, Notifier: r.notices, Home: r.root, Events: r.events, Logger: r.logs.Logger(),
 	})
 	r.after = &afterGit{verifyGit: r.svc.git}
 	r.svc.git = r.after
@@ -272,6 +275,27 @@ func resultOf(t *testing.T, run scriptrun.Run) Result {
 	require.NoError(t, json.Unmarshal(data, &res))
 
 	return res
+}
+
+// fakeNotifier keeps the notices of releases that reached GitHub.
+type fakeNotifier struct {
+	mu   sync.Mutex
+	told []Notice
+}
+
+func (f *fakeNotifier) Released(_ context.Context, n Notice) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.told = append(f.told, n)
+}
+
+// all returns the notices told so far.
+func (f *fakeNotifier) all() []Notice {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return slices.Clone(f.told)
 }
 
 // rigTools is magex as the rig has it now.
@@ -542,6 +566,11 @@ func TestStartReleasedAnotherVersionWithoutExpect(t *testing.T) {
 	assert.Equal(t, ResultReleased, res.Kind)
 	assert.Equal(t, "v1.4.4", res.Tag)
 	assert.True(t, res.Moved)
+
+	told := r.notices.all()
+	require.Len(t, told, 1)
+	assert.Equal(t, "v1.4.4 is on GitHub", told[0].Title, "the version magex made")
+	assert.Equal(t, "Tagged "+r.second[:shortOIDLen]+" on master. v1.4.3 appeared on GitHub meanwhile.", told[0].Body)
 }
 
 func TestASkippedPushIsntARelease(t *testing.T) {
@@ -850,10 +879,11 @@ func TestReconcileVerifiesAnInterruptedRelease(t *testing.T) {
 		status  scriptrun.Status
 		summary string
 		kind    ResultKind
+		told    int
 	}{
 		{
 			name: "its tag reached GitHub", sent: true, status: scriptrun.StatusSucceeded,
-			summary: "v1.4.3 is on GitHub.", kind: ResultReleased,
+			summary: "v1.4.3 is on GitHub.", kind: ResultReleased, told: 1,
 		},
 		{
 			name: "its tag stayed on this Mac", status: scriptrun.StatusInterrupted,
@@ -897,6 +927,7 @@ func TestReconcileVerifiesAnInterruptedRelease(t *testing.T) {
 			assert.True(t, res.Back)
 			assert.Equal(t, gitread.OperationNone, res.InProgress)
 			assert.True(t, res.Tagged, "its log, read again, says magex made the tag")
+			assert.Len(t, r.notices.all(), tt.told, "a release verified on the next start is told then")
 		})
 	}
 }
@@ -1049,6 +1080,7 @@ func TestAReleaseCutOffAsTheAppQuitsIsVerifiedOnTheNextStart(t *testing.T) {
 	run, err := r.runs.Run(t.Context(), id)
 	require.NoError(t, err)
 	assert.Equal(t, scriptrun.StatusRunning, run.Status, "it is left for the next start to verify")
+	assert.Empty(t, r.notices.all(), "nothing is told of a release not verified")
 
 	// magex had pushed the tag; the next start finds it.
 	require.NoError(t, r.tagged(recVersion, r.second, true)(t.Context()))
@@ -1082,4 +1114,5 @@ func TestAReleaseCutOffAsTheAppQuitsIsVerifiedOnTheNextStart(t *testing.T) {
 	assert.Equal(t, scriptrun.StatusSucceeded, run.Status)
 	assert.Equal(t, "v1.4.3 is on GitHub.", run.Summary)
 	assert.Equal(t, ResultReleased, resultOf(t, run).Kind)
+	assert.Len(t, r.notices.all(), 1, "told once, by the start that verified it")
 }

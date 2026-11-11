@@ -44,6 +44,11 @@ export const ReleasesUpdated = "releases:updated";
 export const ReviewProgress = "review:progress";
 
 /**
+ * Name of the custom event "scriptruns:progress".
+ */
+export const ScriptrunsProgress = "scriptruns:progress";
+
+/**
  * Name of the custom event "scriptruns:updated".
  */
 export const ScriptrunsUpdated = "scriptruns:updated";

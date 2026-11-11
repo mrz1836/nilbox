@@ -19,6 +19,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/integrations"
+	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/release"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/testutil"
@@ -119,6 +120,66 @@ func TestARunsChangeReachesTheRunsAndTheTools(t *testing.T) {
 	require.NoError(t, c.ScriptRuns.ClearHistory(t.Context()))
 	assert.Equal(t, []event.Event{event.ScriptRunsUpdated{}, event.ToolsUpdated{}}, events.All()[before:],
 		"the window lists the runs again, and the tools, whose updates a run can block")
+}
+
+func TestReleaseSettingsReadWhetherAMergeOffersARelease(t *testing.T) {
+	t.Parallel()
+
+	c := bootstrap(t, Options{
+		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
+		Home:   testutil.ClaudeHome(t),
+		Runner: noPrograms(),
+	})
+	adapter := releaseSettings{settings: c.Settings}
+
+	on, err := adapter.OfferAfterMerge(t.Context())
+	require.NoError(t, err)
+	assert.True(t, on, "on until the user turns it off")
+
+	_, err = c.Settings.SetOfferAfterMerge(t.Context(), false)
+	require.NoError(t, err)
+
+	on, err = adapter.OfferAfterMerge(t.Context())
+	require.NoError(t, err)
+	assert.False(t, on)
+
+	got, err := c.Release.OfferAfterMerge(t.Context(), boundOwner, boundRepo, "main")
+	require.NoError(t, err)
+	assert.False(t, got.Offer, "the setting is off")
+
+	require.NoError(t, c.Close())
+
+	_, err = adapter.OfferAfterMerge(t.Context())
+	require.Error(t, err, "a closed database can't say")
+}
+
+func TestReleaseNoticesRecordARelease(t *testing.T) {
+	t.Parallel()
+
+	events := &testutil.Events{}
+	c := bootstrap(t, Options{
+		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
+		Home:   testutil.ClaudeHome(t),
+		Runner: noPrograms(),
+		Events: events,
+	})
+
+	pool := c.DB
+	releaseNotices{dispatcher: notify.NewDispatcher(notify.Config{Pool: pool, Events: events})}.Released(t.Context(),
+		release.Notice{
+			Repo: repo.Name{Owner: boundOwner, Repo: boundRepo}, Title: "v1.4.3 is on GitHub", Body: "Tagged abc1234 on main.",
+			URL: "https://github.com/acme-org/example-repo/releases/tag/v1.4.3",
+		})
+
+	log, err := c.Notifications.List(t.Context())
+	require.NoError(t, err)
+	require.Len(t, log.Items, 1)
+	assert.Equal(t, notify.KindReleaseDone, log.Items[0].Kind)
+	assert.Equal(t, "acme-org/example-repo", log.Items[0].Repo)
+	assert.Equal(t, "v1.4.3 is on GitHub", log.Items[0].Title)
+	assert.Equal(t, "Tagged abc1234 on main.", log.Items[0].Detail)
+	assert.Empty(t, log.Items[0].ItemKind, "about no item")
+	assert.Contains(t, events.All(), event.Event(event.NotificationsUpdated{}))
 }
 
 func TestReleaseGitHubAdaptsBothRounds(t *testing.T) {

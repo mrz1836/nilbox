@@ -12,6 +12,7 @@ import type * as agent from '../../bindings/github.com/mrz1836/nilbox/internal/a
 import * as appinfo from '../../bindings/github.com/mrz1836/nilbox/internal/appinfo'
 import * as branchrules from '../../bindings/github.com/mrz1836/nilbox/internal/branchrules'
 import * as budget from '../../bindings/github.com/mrz1836/nilbox/internal/budget'
+import type * as gitread from '../../bindings/github.com/mrz1836/nilbox/internal/gitread'
 import * as inbox from '../../bindings/github.com/mrz1836/nilbox/internal/inbox'
 import type * as integrationprefs from '../../bindings/github.com/mrz1836/nilbox/internal/integrationprefs'
 import * as integrations from '../../bindings/github.com/mrz1836/nilbox/internal/integrations'
@@ -24,6 +25,7 @@ import type * as notifyprefs from '../../bindings/github.com/mrz1836/nilbox/inte
 import * as profiles from '../../bindings/github.com/mrz1836/nilbox/internal/profiles'
 import type * as bump from '../../bindings/github.com/mrz1836/nilbox/internal/bump'
 import * as prompts from '../../bindings/github.com/mrz1836/nilbox/internal/prompts'
+import * as release from '../../bindings/github.com/mrz1836/nilbox/internal/release'
 import * as review from '../../bindings/github.com/mrz1836/nilbox/internal/review'
 import * as scriptrun from '../../bindings/github.com/mrz1836/nilbox/internal/scriptrun'
 import type * as sensitive from '../../bindings/github.com/mrz1836/nilbox/internal/sensitive'
@@ -124,6 +126,31 @@ export type ScriptRunStatus = scriptrun.Status
 export type ScriptRunResult = NonNullLists<scriptrun.Result>
 export type ScriptRunFilter = NonNullLists<scriptrun.Filter>
 export type ScriptRunChunk = NonNullLists<scriptrun.Chunk>
+export type ScriptRunProgress = NonNullLists<scriptrun.Progress>
+
+export type ReleaseCandidates = NonNullLists<release.Candidates>
+export type ReleaseCandidate = NonNullLists<release.Candidate>
+export type ReleaseCloneState = NonNullLists<release.CloneState>
+export type ReleaseCommit = NonNullLists<release.Commit>
+export type ReleaseGroup = release.Group
+export type CommitChecks = release.Checks
+export type ReleaseOffer = NonNullLists<release.Offer>
+export type ReleaseCheck = NonNullLists<release.Check>
+export type ReleaseCheckID = release.CheckID
+export type ReleaseCheckState = release.CheckState
+export type ReleaseFix = release.Fix
+export type ReleaseBump = release.Bump
+export type ReleaseBumpOffer = NonNullLists<release.BumpOffer>
+export type ReleaseMajorOffer = NonNullLists<release.MajorOffer>
+export type ReleaseBranchChoice = NonNullLists<release.BranchChoice>
+export type ReleasePrepareRequest = NonNullLists<release.PrepareRequest>
+export type ReleaseStartRequest = NonNullLists<release.StartRequest>
+export type ReleaseResult = NonNullLists<release.Result>
+export type ReleaseResultKind = release.ResultKind
+export type ReleaseFailure = NonNullLists<release.Failure>
+export type ReleaseFailureKind = release.FailureKind
+export type AfterMerge = NonNullLists<release.AfterMerge>
+export type GitOperation = gitread.Operation
 
 export type ItemKind = item.Kind
 
@@ -145,8 +172,11 @@ export type WorktreeAction = launcher.WorktreeAction
 export type WorktreePlan = NonNullLists<launcher.WorktreePlan>
 export type TerminalID = terminal.ID
 
-export type AppNotification = NonNullLists<notify.Notification>
-export type NotificationLog = NonNullLists<notify.Log>
+// AppNotification is an entry in the notification history. Its item's kind is '' for an
+// entry about no item, such as a release reaching GitHub, which the generated type, a
+// union of the item kinds alone, leaves out; NotificationLog holds such entries.
+export type AppNotification = Omit<NonNullLists<notify.Notification>, 'itemKind'> & { itemKind: item.Kind | '' }
+export type NotificationLog = Omit<NonNullLists<notify.Log>, 'items'> & { items: AppNotification[] }
 export type BannerStatus = notify.BannerStatus
 export type NotificationKind = notifyprefs.Kind
 
@@ -351,6 +381,7 @@ export const {
   SetIntegrationEnabled: setIntegrationEnabled,
   SetIntegrationPath: setIntegrationPath,
   SetRunsIn: setRunsIn,
+  SetOfferAfterMerge: setOfferAfterMerge,
 } = narrow(settings.Service)
 
 // The tools the app finds, installs, and runs for the user. List never waits for a
@@ -385,6 +416,22 @@ export const {
   QuitAnyway: quitAnyway,
 } = narrow(scriptrun.Service)
 
+// Releases: the repositories the Release page lists (kept five minutes unless refresh
+// is set; a "releases:updated" event follows each new list), a release's sheet as Decide
+// works it out, the release itself, which returns its run's ID, the result a release's
+// run recorded once it was verified, and whether a merge in the review sheet offers one.
+// Only Candidates, Prepare with refresh, and Prepare after its facts are two minutes old
+// ask GitHub; OfferAfterMerge never does. OpenTerminal opens the terminal chosen for launches
+// in a clone, for a check's fix, and runs nothing there.
+export const {
+  Candidates: listReleaseCandidates,
+  Prepare: prepareRelease,
+  Start: startRelease,
+  ReleaseResult: getReleaseResult,
+  OfferAfterMerge: offerReleaseAfterMerge,
+  OpenTerminal: openReleaseTerminal,
+} = narrow(release.Service)
+
 export const {
   List: listWorktrees,
   Remove: removeWorktree,
@@ -402,13 +449,18 @@ export const {
   ClearCleanups: clearCleanups,
 } = narrow(worktrees.Service)
 
+const notifications = narrow(notify.Service)
+
 export const {
-  List: listNotifications,
   MarkAllRead: markNotificationsRead,
   Clear: clearNotifications,
   BannerStatus: notificationBannerStatus,
   SendTest: sendTestNotification,
-} = narrow(notify.Service)
+} = notifications
+
+// listNotifications reads the notification history, typed so its entries can be about no
+// item (AppNotification).
+export const listNotifications: () => CancellablePromise<NotificationLog> = notifications.List
 
 // checkItemFiles checks a pull request's changed files against GitHub now, stores the
 // outcome (the inbox is updated with it), and returns it. It fails for an item whose files

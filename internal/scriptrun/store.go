@@ -83,7 +83,13 @@ type finished struct {
 	at       time.Time
 }
 
-// finish records how a run ended. A run that ended already is left as it is.
+// errNotRecorded is a run's end that changed no record: the run had ended already, or is
+// no longer held.
+var errNotRecorded = errors.New("no run's end was recorded")
+
+// finish records how a run ended. A run that ended already, or that the history no longer
+// holds, is left as it is, and errNotRecorded says so: its end was recorded once already,
+// so nothing is told of it again.
 func (s runStore) finish(ctx context.Context, f finished) error {
 	result, err := store.EncodeJSON(f.result)
 	if err != nil {
@@ -99,12 +105,16 @@ func (s runStore) finish(ctx context.Context, f finished) error {
 
 	at := f.at.UTC()
 
-	_, err = s.q.FinishRun(ctx, queries.FinishRunParams{
+	n, err := s.q.FinishRun(ctx, queries.FinishRunParams{
 		ID: f.id, Status: string(f.status), ExitCode: exitCode, Summary: f.summary, Result: result,
 		LogBytes: f.logBytes, FinishedAt: &at,
 	})
 	if err != nil {
 		return fmt.Errorf("record how the run ended: %w", err)
+	}
+
+	if n == 0 {
+		return fmt.Errorf("%w: run %d isn't recorded as going", errNotRecorded, f.id)
 	}
 
 	return nil

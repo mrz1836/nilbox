@@ -192,8 +192,10 @@ func (s *Service) Start(ctx context.Context, req StartRequest) (int64, error) {
 }
 
 // spec is the run of the release req starts: magex in the clone, with the shell's
-// environment, its intent, its output reader, its Finish, and its Before, which decides,
-// under the clone's lock, what magex runs, and completes the intent.
+// environment, its intent, its output reader and the progress it reads, its Finish, which
+// verifies it, its Recorded, which tells of it once that is kept, and its Before, which
+// decides, under the clone's lock, what magex runs, and completes the intent before the run
+// starts, so the progress reads it whole.
 func (s *Service) spec(req StartRequest, sh sheet) scriptrun.Spec {
 	in := &Intent{Version: req.Version, Bump: req.Bump, Branch: req.Branch, Original: req.Original, Head: req.Head}
 	github := s.sheetGitHub(sh.dir)
@@ -203,13 +205,15 @@ func (s *Service) spec(req StartRequest, sh sheet) scriptrun.Spec {
 	return scriptrun.Spec{
 		Kind: scriptrun.KindRelease, Title: "Release " + req.Version, Repo: sh.name, Dir: sh.dir,
 		Env: runEnv(env, sh.choice.RunsIn), RunsIn: sh.choice.RunsIn, Tool: string(integrationprefs.MageX), Intent: in,
-		Output: reader,
+		Output:   reader,
+		Progress: func() scriptrun.Progress { return reader.Progress(*in) },
 		Before: func(ctx context.Context) ([]string, error) {
 			gather := GatherRequest{Repo: sh.name, Dir: sh.dir, Choice: sh.choice, Locked: true, GitHub: github}
 
 			return s.recheck(ctx, req, gather, in)
 		},
-		Finish: s.finisher(sh.name, sh.dir, in, reader),
+		Finish:   s.finisher(sh.name, sh.dir, in, reader),
+		Recorded: s.announcer(sh.name, in),
 	}
 }
 

@@ -70,6 +70,54 @@ describe('QuitDialog', () => {
     expect(asked.getByRole('button', { name: 'Keep running' })).toHaveFocus()
   })
 
+  it('asks about a release Stop holds back for now, saying quitting waits for it and may leave it going', async () => {
+    const held = going({
+      ...release,
+      canStop: false,
+      progress: {
+        step: 'onBranch',
+        working: 'updated',
+        stopRefused: 'Stopping now could leave a rebase in progress.',
+        stopConfirm: '',
+      },
+    })
+
+    await askToQuit([held])
+
+    const d = await dialog()
+
+    expect(
+      d.getByText(
+        `A release is running in acme-org/sdk. magex is switching branches or pulling, so stopping waits up to a few seconds for it to finish. If it doesn’t, the release goes on after ${brand.name} closes, and ${brand.name} checks how it ended when it opens again. Quit anyway?`,
+      ),
+    ).toBeInTheDocument()
+
+    await userEvent.click(d.getByRole('button', { name: 'Stop and quit' }))
+    expect(platform.quitAnyway).toHaveBeenCalledOnce()
+  })
+
+  it('says so among several runs when one is held back', async () => {
+    const held = going({
+      ...release,
+      canStop: false,
+      progress: {
+        step: '',
+        working: 'onBranch',
+        stopRefused: 'Stopping now could leave a rebase in progress.',
+        stopConfirm: '',
+      },
+    })
+
+    await askToQuit([held, going({ id: 2 })])
+
+    const d = await dialog()
+
+    expect(
+      d.getByText(/A release is switching branches or pulling, so stopping waits up to a few seconds for it\./),
+    ).toBeInTheDocument()
+    expect(d.getByText(new RegExp(`that release goes on after ${brand.name} closes`))).toBeInTheDocument()
+  })
+
   it('names another run and where it runs', async () => {
     await askToQuit([going({ repo: '', dir: '~/scratch' })])
 

@@ -390,6 +390,9 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	notices := notify.Config{
 		Pool: pool, Poster: opts.Banners, Events: opts.Events, Clock: opts.Clock, Logger: logger,
 	}
+	// One dispatcher records the inbox's arrivals and the notifications about no item, such
+	// as a release that reached GitHub.
+	dispatcher := notify.NewDispatcher(notices)
 
 	inboxSvc := inbox.NewService(inbox.Config{
 		Pool:     pool,
@@ -397,7 +400,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Client:   client,
 		Clock:    opts.Clock,
 		Events:   opts.Events,
-		Arrivals: notify.NewDispatcher(notices),
+		Arrivals: dispatcher,
 		Usage:    tracker,
 		Logger:   logger,
 	})
@@ -450,7 +453,14 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	})
 
 	previews := launcher.NewPromptSource(launch)
-	runs := newRuns(pool, opts, clones, launch, runner, shellEnv.Shell, logger)
+	// One terminal opens the runs in the user's terminal, and the terminal in a run's folder
+	// or a clone, for the runs and for Release alike.
+	terminals := terminalRuns{
+		launch: opts.Paths.Launch, opener: launcher.NewCommandOpener(launch), clock: opts.Clock, logger: logger,
+		shell: shellEnv.Shell,
+	}
+	runs := newRuns(pool, opts, clones, terminals, runner, logger)
+	scriptRuns := scriptrun.NewService(runs)
 
 	tools := integrations.NewService(integrations.Config{
 		Prefs: prefsstore.New(pool, opts.Clock), Env: shellEnv, Releases: latestReleases{tokens: tokens, client: client},
@@ -475,8 +485,13 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Clones:  releaseClones{settings: prefs, home: opts.Home, git: runner},
 		Checker: release.GitChecker{Git: releaseGit},
 		Git:     releaseGit, Origins: releaseOrigins{git: runner}, Tools: releaseTool{tools: tools}, Locks: clones,
-		Env: shellEnv.Env, Ready: shellEnv.Ready, Runner: toolRunners, Runs: runs, Places: releasePlaces{settings: prefs},
-		Home: opts.Home, Clock: opts.Clock, Events: opts.Events, Logger: logger,
+		Env: shellEnv.Env, Ready: shellEnv.Ready, Runner: toolRunners, Runs: runs, Places: releaseSettings{settings: prefs},
+		History: scriptRuns, Notifier: releaseNotices{dispatcher: dispatcher},
+		// A merge's offer reads the setting, magex, the clones, and the default branch the
+		// inbox stored: nothing of GitHub's.
+		AfterMerge: releaseSettings{settings: prefs}, Branches: inboxStore,
+		// A check's Open in terminal opens the terminal chosen for launches in the clone.
+		Terminal: terminals, Home: opts.Home, Clock: opts.Clock, Events: opts.Events, Logger: logger,
 	})
 	// A release left from before a restart is read and verified as one started now.
 	runs.RegisterVerifier(scriptrun.KindRelease, release.NewVerifier(releases))
@@ -532,7 +547,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Integrations:  tools,
 		ToolFinder:    toolFinder,
 		Runs:          runs,
-		ScriptRuns:    scriptrun.NewService(runs),
+		ScriptRuns:    scriptRuns,
 		Release:       releases,
 		tokens:        tokens,
 		BudgetSaver:   budget.NewSaver(tracker, keeper, logger),
@@ -545,12 +560,13 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 // newRuns builds the engine that starts and follows the runs, over the app's one set of
 // clone locks, with its logs in <data>/script-runs. Its changes reach the window as
 // event.ScriptRunsUpdated, and as event.ToolsUpdated too, since a run starting or ending
-// can block or free a tool's update; a run in the terminal opens through the launcher's
-// terminals, and the user's choice to stop the runs and quit reaches the desktop shell as
-// event.QuitConfirmed.
+// can block or free a tool's update; a run's progress alone, as a release's next step,
+// reaches it as event.ScriptRunProgress, which names the run. A run in the terminal opens
+// through terminals, and the user's choice to stop the runs and quit reaches the desktop
+// shell as event.QuitConfirmed.
 func newRuns(
-	pool *sql.DB, opts Options, clones *clonelock.Set, launch *launcher.Service, runner execpath.Runner,
-	shell func() string, logger *slog.Logger,
+	pool *sql.DB, opts Options, clones *clonelock.Set, terminals terminalRuns, runner execpath.Runner,
+	logger *slog.Logger,
 ) *scriptrun.Engine {
 	events := event.Or(opts.Events)
 
@@ -561,12 +577,10 @@ func newRuns(
 			events.Emit(event.ScriptRunsUpdated{})
 			events.Emit(event.ToolsUpdated{})
 		},
-		Terminal: terminalRuns{
-			launch: opts.Paths.Launch, opener: launcher.NewCommandOpener(launch), clock: opts.Clock, logger: logger,
-			shell: shell,
-		},
-		Reveal: revealer(runner),
-		Quit:   func() { events.Emit(event.QuitConfirmed{}) },
+		Progressed: func(id int64) { events.Emit(event.ScriptRunProgress{ID: id}) },
+		Terminal:   terminals,
+		Reveal:     revealer(runner),
+		Quit:       func() { events.Emit(event.QuitConfirmed{}) },
 	})
 }
 

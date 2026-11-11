@@ -20,9 +20,11 @@ func TestDecodeDefaultsToAutomatic(t *testing.T) {
 			integrationprefs.GoPreCommit: integrationprefs.SwitchAuto,
 			integrationprefs.Scripts:     integrationprefs.SwitchAuto,
 		},
-		Paths:  map[integrationprefs.ID]string{integrationprefs.MageX: "", integrationprefs.GoPreCommit: ""},
-		RunsIn: integrationprefs.RunsInApp,
-	}, got, "a fresh database: every switch automatic, no copy chosen, runs in the app, and no nil map")
+		Paths:           map[integrationprefs.ID]string{integrationprefs.MageX: "", integrationprefs.GoPreCommit: ""},
+		RunsIn:          integrationprefs.RunsInApp,
+		OfferAfterMerge: true,
+	}, got, "a fresh database: every switch automatic, no copy chosen, runs in the app, a merge offers a release, "+
+		"and no nil map")
 }
 
 func TestDecodeReadsTheStoredValues(t *testing.T) {
@@ -35,6 +37,7 @@ func TestDecodeReadsTheStoredValues(t *testing.T) {
 		"integrations.mage-x.path":           "/opt/tools/bin/../bin/magex",
 		"integrations.go-pre-commit.path":    "bin/go-pre-commit",
 		"integrations.runsIn":                "terminal",
+		"integrations.offerAfterMerge":       "false",
 	})
 
 	assert.Equal(t, integrationprefs.SwitchOn, got.Switches[integrationprefs.MageX])
@@ -43,6 +46,22 @@ func TestDecodeReadsTheStoredValues(t *testing.T) {
 	assert.Equal(t, "/opt/tools/bin/magex", got.Paths[integrationprefs.MageX], "cleaned")
 	assert.Empty(t, got.Paths[integrationprefs.GoPreCommit], "a relative path is none")
 	assert.Equal(t, integrationprefs.RunsInTerminal, got.RunsIn)
+	assert.False(t, got.OfferAfterMerge)
+}
+
+func TestOfferAfterMerge(t *testing.T) {
+	t.Parallel()
+
+	for _, on := range []bool{true, false} {
+		assert.Equal(t, on, integrationprefs.DecodeOfferAfterMerge(integrationprefs.EncodeOfferAfterMerge(on)),
+			"a stored choice reads back as itself")
+	}
+
+	for _, stored := range []string{"", "maybe", "on"} {
+		assert.True(t, integrationprefs.DecodeOfferAfterMerge(stored), "%q is the default: on", stored)
+	}
+
+	assert.False(t, integrationprefs.DecodeOfferAfterMerge("0"), "anything that reads as false is off")
 }
 
 func TestEncodeRunsIn(t *testing.T) {
@@ -106,6 +125,7 @@ func TestIDs(t *testing.T) {
 	assert.Equal(t, []string{
 		"integrations.mage-x.enabled", "integrations.go-pre-commit.enabled", "integrations.scripts.enabled",
 		"integrations.mage-x.path", "integrations.go-pre-commit.path", "integrations.runsIn",
+		"integrations.offerAfterMerge",
 	}, integrationprefs.Keys())
 }
 

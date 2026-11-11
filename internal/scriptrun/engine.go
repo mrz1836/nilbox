@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -88,6 +89,12 @@ type Config struct {
 	// return promptly and never call back into the engine.
 	Changed func()
 
+	// Progressed is called with a run's ID whenever its Progress changes: it reached a
+	// step, or Stop turned on or off. Nothing else about the runs changed, so core emits
+	// event.ScriptRunProgress from it, never ScriptRunsUpdated. It has Changed's rules, and
+	// may be nil.
+	Progressed func(id int64)
+
 	// Terminal opens runs in the user's terminal, and the terminal in a run's folder.
 	// Without it, runs there fail to start, and Open in terminal fails.
 	Terminal TerminalOpener
@@ -104,16 +111,17 @@ type Config struct {
 // is its desktop worker, and the Service its bound face; the Engine itself is not bound,
 // since a Spec holds functions.
 type Engine struct {
-	store    runStore
-	locks    *clonelock.Set
-	files    logFiles
-	home     string
-	clock    clock.Clock
-	logger   *slog.Logger
-	changed  func()
-	terminal TerminalOpener
-	reveal   Revealer
-	quit     func()
+	store      runStore
+	locks      *clonelock.Set
+	files      logFiles
+	home       string
+	clock      clock.Clock
+	logger     *slog.Logger
+	changed    func()
+	progressed func(id int64)
+	terminal   TerminalOpener
+	reveal     Revealer
+	quit       func()
 
 	// slots holds a token per run going in the app.
 	slots chan struct{}
@@ -165,9 +173,8 @@ func NewEngine(cfg Config) *Engine {
 
 	return &Engine{
 		store: runStore{q: queries.New(cfg.DB)}, locks: locks, files: logFiles{dir: cfg.LogDir}, home: cfg.Home,
-		clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger), changed: cfg.Changed, terminal: cfg.Terminal,
-		reveal: cfg.Reveal,
-		quit:   cfg.Quit, slots: make(chan struct{}, Slots),
+		clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger), changed: cfg.Changed, progressed: cfg.Progressed,
+		terminal: cfg.Terminal, reveal: cfg.Reveal, quit: cfg.Quit, slots: make(chan struct{}, Slots),
 		keep:       retention{runs: KeepRuns, bytes: KeepLogBytes},
 		compaction: compaction{over: CompactOver, head: CompactHead, tail: CompactTail},
 		tailEvery:  tailEvery, quitKill: QuitKillAfter, quitGrace: quitGrace, pidWait: pidWait,
@@ -269,10 +276,13 @@ func (e *Engine) Run(ctx context.Context) {
 	e.StopAll()
 }
 
-// StopAll stops every run in the app, as the app quits: SIGTERM to each at once, SIGKILL
-// to those left after QuitKillAfter, and each run's record then says it was stopped. Runs
-// in the terminal are left alone, still recorded as running, for the next start to follow
-// again. Nothing starts after it. It returns once the runs are recorded, or given up on.
+// StopAll stops every run in the app, as the app quits: SIGTERM to each as soon as its kind
+// lets it be stopped, which is at once unless it refuses (a release while magex switches
+// branches or pulls), SIGKILL to those left QuitKillAfter after the quit began, and each
+// run's record then says it was stopped. A run whose kind still refuses QuitKillAfter in
+// is never signaled: it is let go, still recorded as running, and the next start follows
+// it again or settles how it ended, as it does a run in the terminal, which is always left
+// alone. Nothing starts after it. It returns once the runs are recorded, or given up on.
 func (e *Engine) StopAll() {
 	e.regMu.Lock()
 	e.mu.Lock()
@@ -310,40 +320,107 @@ func (e *Engine) StopAll() {
 	e.wg.Wait()
 }
 
-// stopForQuit sends SIGTERM to runs, SIGKILL to those still going QuitKillAfter later,
-// and gives up on any still not recorded a moment after that.
+// stopForQuit sends each of runs SIGTERM as soon as its kind lets it be stopped, within
+// QuitKillAfter, then SIGKILL to those still going, and gives up on any still not recorded
+// a moment after that. A run its kind still holds back once QuitKillAfter has passed is
+// let go unsignaled, so a pull is never cut short: its record stays as going for the next
+// start. The whole fits inside the desktop shell's stop timeout.
 func (e *Engine) stopForQuit(runs []*live) {
-	for _, l := range runs {
-		l.quit.Store(true)
-		e.signalRun(l, syscall.SIGTERM)
+	deadline, stop := closedAfter(e.quitKill)
+	defer stop()
+
+	signaled, held := e.termWhenAllowed(runs, deadline)
+
+	for _, l := range held {
+		e.logger.Warn("left a run going as the app quit: stopping it now could leave its clone half changed",
+			"run", l.id, "kind", string(l.kind), "why", l.progressNow().StopRefused)
+		l.giveUp()
 	}
 
-	if waitDone(runs, e.quitKill) {
+	if waitDone(signaled, deadline) {
 		return
 	}
 
-	for _, l := range runs {
+	for _, l := range signaled {
 		e.signalRun(l, syscall.SIGKILL)
 	}
 
-	if waitDone(runs, e.quitGrace) {
+	grace, stopGrace := closedAfter(e.quitGrace)
+	defer stopGrace()
+
+	if waitDone(signaled, grace) {
 		return
 	}
 
-	for _, l := range runs {
+	for _, l := range signaled {
 		l.giveUp()
 	}
 }
 
-// waitDone waits up to d for every run to be done, and reports whether they all were.
-func waitDone(runs []*live, d time.Duration) bool {
-	timer := time.NewTimer(d)
-	defer timer.Stop()
+// termWhenAllowed sends each of runs SIGTERM, marked as stopped by the quit, as soon as its
+// kind lets it be stopped, looking again at each tail of the logs until deadline fires. It
+// returns the runs it signaled, and those its kind still held back then. A run that ends
+// on its own meanwhile is neither.
+func (e *Engine) termWhenAllowed(runs []*live, deadline <-chan struct{}) (signaled, held []*live) {
+	held = slices.Clone(runs)
 
+	ticker := time.NewTicker(e.tailEvery)
+	defer ticker.Stop()
+
+	for {
+		held = slices.DeleteFunc(held, func(l *live) bool {
+			switch {
+			case isDone(l):
+				return true
+			case l.progressNow().StopRefused != "":
+				return false
+			default:
+				l.quit.Store(true)
+				e.signalRun(l, syscall.SIGTERM)
+				signaled = append(signaled, l)
+
+				return true
+			}
+		})
+
+		if len(held) == 0 {
+			return signaled, nil
+		}
+
+		select {
+		case <-deadline:
+			return signaled, held
+		case <-ticker.C:
+		}
+	}
+}
+
+// isDone reports whether a run's end is recorded, or the engine let it go.
+func isDone(l *live) bool {
+	select {
+	case <-l.done:
+		return true
+	default:
+		return false
+	}
+}
+
+// closedAfter returns a channel closed once d has passed, which any number of waits can
+// read, and what stops it early.
+func closedAfter(d time.Duration) (<-chan struct{}, func() bool) {
+	ch := make(chan struct{})
+	timer := time.AfterFunc(d, func() { close(ch) })
+
+	return ch, timer.Stop
+}
+
+// waitDone waits, until timeout is closed, for every run to be done, and reports whether
+// they all were.
+func waitDone(runs []*live, timeout <-chan struct{}) bool {
 	for _, l := range runs {
 		select {
 		case <-l.done:
-		case <-timer.C:
+		case <-timeout:
 			return false
 		}
 	}
@@ -637,9 +714,9 @@ func (e *Engine) newLive(spec Spec, h holds) *live {
 
 	return &live{
 		kind: spec.Kind, runsIn: spec.RunsIn, tool: spec.Tool, dir: spec.Dir, repo: e.where(spec.Repo, spec.Dir),
-		title: spec.Title, timeout: timeout, output: spec.Output, finish: spec.Finish, intent: spec.Intent, holds: h,
-		started: e.clock.Now(),
-		done:    make(chan struct{}), abandon: make(chan struct{}),
+		title: spec.Title, timeout: timeout, output: spec.Output, progress: spec.Progress, finish: spec.Finish,
+		recorded: spec.Recorded, intent: spec.Intent, holds: h, started: e.clock.Now(),
+		done: make(chan struct{}), abandon: make(chan struct{}),
 	}
 }
 
@@ -666,7 +743,8 @@ func (e *Engine) follow(ctx context.Context, l *live, fn func(context.Context, *
 }
 
 // stop starts stopping a run in the app: its program, or a run from before the app
-// restarted, climbs the stop ladder. It returns at once.
+// restarted, climbs the stop ladder. It returns at once. A run whose kind says it can't be
+// stopped now is left going, and the error says why in the kind's words.
 func (e *Engine) stop(ctx context.Context, id int64) error {
 	l := e.liveRun(id)
 	if l == nil {
@@ -683,6 +761,10 @@ func (e *Engine) stop(ctx context.Context, id int64) error {
 
 	if l.settling {
 		return uierr.New("It has already ended.", ErrNotRunning)
+	}
+
+	if why := l.progressNow().StopRefused; why != "" {
+		return uierr.New(why, ErrStopRefused)
 	}
 
 	l.stopped.Store(true)
@@ -779,6 +861,25 @@ func (e *Engine) isClosed() bool {
 func (e *Engine) notify() {
 	if e.changed != nil {
 		e.changed()
+	}
+}
+
+// noteProgress tells Progressed, with the run's ID, when its progress changed since it
+// last looked. Only the goroutine that follows the run calls it.
+func (e *Engine) noteProgress(l *live) {
+	if l.progress == nil {
+		return
+	}
+
+	now := l.progress()
+	if now == l.shown {
+		return
+	}
+
+	l.shown = now
+
+	if e.progressed != nil {
+		e.progressed(l.id)
 	}
 }
 

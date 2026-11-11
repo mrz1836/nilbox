@@ -55,3 +55,8 @@ LEFT JOIN items i ON i.repo_id = r.id
 WHERE r.is_archived = 0
 GROUP BY r.id
 ORDER BY r.owner COLLATE NOCASE, r.name COLLATE NOCASE;
+
+-- name: GetRepoDefaultBranch :one
+-- GetRepoDefaultBranch returns the default branch a refresh last stored for the repository
+-- named owner and name, which match ignoring case.
+SELECT default_branch FROM repos WHERE owner = ? AND name = ?;

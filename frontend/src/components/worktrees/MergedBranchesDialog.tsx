@@ -1,6 +1,7 @@
 import { useId, useState } from 'react'
 
 import { counted } from '../../lib/format'
+import { shortCommit } from '../../lib/git'
 import { formatAgo } from '../../lib/time'
 import { useQuery } from '../../lib/useQuery'
 import { mergedBranches, type BranchPick, type BranchRules, type MergedBranch } from '../../platform'
@@ -8,7 +9,7 @@ import { ConfirmDialog } from '../ConfirmDialog'
 import { quietButtonClass } from '../controls'
 import { AlertIcon, ChevronDownIcon } from '../icons'
 import { Spinner } from '../Spinner'
-import { shortCommit, useTicks, type Ticks } from './BranchChoices'
+import { useTicks, type Ticks } from './BranchChoices'
 
 export interface MergedBranchesDialogProps {
   rules: BranchRules

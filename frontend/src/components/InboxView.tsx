@@ -13,10 +13,13 @@ import type { InboxOrderState } from '../lib/useInboxOrder'
 import { useClock } from '../lib/useNow'
 import {
   copyText,
+  offerReleaseAfterMerge,
+  type AfterMerge,
   type AgentSession,
   type InboxItem,
   type ItemResolution,
   type ListKey,
+  type Review,
   type ReviewResult,
   type Worktree,
 } from '../platform'
@@ -86,6 +89,9 @@ export interface InboxViewProps {
   drafts?: ReviewDrafts
   // onManageReplies opens the review replies in the Prompts tab.
   onManageReplies?: () => void
+  // onRelease opens a repository's release sheet, as a merge's toast offers when Release
+  // can release it; without it, no merge offers a release. It must keep its identity.
+  onRelease?: (offer: AfterMerge) => void
 }
 
 // Reviewing is the pull request the review sheet shows, and the list and tab it was
@@ -169,6 +175,7 @@ export function InboxView({
   onClearFilter,
   drafts,
   onManageReplies,
+  onRelease,
 }: InboxViewProps) {
   const {
     snapshot,
@@ -273,6 +280,46 @@ export function InboxView({
 
   const closeToast = () => {
     setToast(null)
+  }
+
+  // offerRelease asks, once a pull request merged, whether its repository can be released
+  // now, and, when it can, adds Release <repo>… to the toast that says it merged, while
+  // that toast still shows. Asking reads only what the app keeps, never GitHub.
+  const offerRelease = (r: Review, toastId: number) => {
+    if (onRelease === undefined) {
+      return
+    }
+
+    const slash = r.repo.indexOf('/')
+
+    void attempt(offerReleaseAfterMerge(r.repo.slice(0, slash), r.repo.slice(slash + 1), r.baseRef)).then((answer) => {
+      if (!answer.ok) {
+        console.error('could not ask whether the merge offers a release:', answer.error)
+
+        return
+      }
+
+      const offer = answer.data
+
+      if (!offer.offer) {
+        return
+      }
+
+      setToast((shown) =>
+        shown?.id === toastId
+          ? {
+              ...shown,
+              action: {
+                label: `Release ${offer.repo}…`,
+                onClick: () => {
+                  setToast(null)
+                  onRelease(offer)
+                },
+              },
+            }
+          : shown,
+      )
+    })
   }
 
   // failed reports a triage action the backend refused; the item is back as it was.
@@ -496,6 +543,10 @@ export function InboxView({
           onDone={(result, r) => {
             setReviewing(null)
             showToast({ text: result.message, detail: r.title, tone: resultTone(result) })
+
+            if (result.outcome === 'merged') {
+              offerRelease(r, toastCount.current)
+            }
           }}
           onFilesSettings={onFilesSettings}
           onManageReplies={onManageReplies}

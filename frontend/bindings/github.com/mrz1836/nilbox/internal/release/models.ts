@@ -3,7 +3,30 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as gitread$0 from "../gitread/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as integrationprefs$0 from "../integrationprefs/models.js";
+
+/**
+ * AfterMerge says whether the toast that reports a merge in the review sheet offers to
+ * release the repository (§3.4.8). When Offer is set, its action opens Scripts → Release
+ * and the repository's sheet, with Repo, Dir, and Branch as the sheet's PrepareRequest.
+ */
+export interface AfterMerge {
+    /**
+     * Offer reports that the toast carries Release <repo>….
+     */
+    "offer": boolean;
+
+    /**
+     * Repo is the repository, "owner/name", Dir its clone, with ~, and Branch the branch
+     * the pull request merged into, which the sheet releases. Each is "" without Offer.
+     */
+    "repo": string;
+    "dir": string;
+    "branch": string;
+}
 
 /**
  * BranchChoice is a branch the sheet's menu offers (D10).
@@ -303,6 +326,111 @@ export interface Commit {
 }
 
 /**
+ * Failure is a failed release's heading: what happened, in words.
+ */
+export interface Failure {
+    /**
+     * Kind is what happened, and Heading says it in a sentence.
+     */
+    "kind": FailureKind;
+    "heading": string;
+
+    /**
+     * Quote is the line of the output the heading quotes, or "".
+     */
+    "quote": string;
+
+    /**
+     * Bug reports a failure only a bug in the app can cause, to report as one.
+     */
+    "bug": boolean;
+}
+
+/**
+ * FailureKind names what stopped a release, one for each heading.
+ */
+export type FailureKind = "unconfirmed" | "moved" | "dirty" | "nothingNew" | "noBranch" | "unsafe" | "taken" | "timeout" | "midPull" | "signing" | "auth" | "refused" | "hook" | "other";
+
+/**
+ * The values of FailureKind, by the names of their Go constants.
+ */
+export const FailureKind = {
+    /**
+     * The kinds of failure, in the order they are told apart.
+     *
+     * FailureUnconfirmed is magex asking to confirm a major bump, which the app always
+     * does: a bug in the app.
+     */
+    FailureUnconfirmed: "unconfirmed",
+
+    /**
+     * FailureMoved is a version tagged on GitHub between the sheet and the run, which
+     * expect= made magex refuse.
+     */
+    FailureMoved: "moved",
+
+    /**
+     * FailureDirty is a clone with uncommitted changes.
+     */
+    FailureDirty: "dirty",
+
+    /**
+     * FailureNothingNew is a newest commit that already has a version tag.
+     */
+    FailureNothingNew: "nothingNew",
+
+    /**
+     * FailureNoBranch is a branch neither the clone nor origin has.
+     */
+    FailureNoBranch: "noBranch",
+
+    /**
+     * FailureUnsafe is magex's safety check refusing the bump.
+     */
+    FailureUnsafe: "unsafe",
+
+    /**
+     * FailureTaken is the version on GitHub at another commit.
+     */
+    FailureTaken: "taken",
+
+    /**
+     * FailureTimeout is a git step past magex's 30-second limit.
+     */
+    FailureTimeout: "timeout",
+
+    /**
+     * FailureMidPull is magex stopped while it pulled, which can leave a rebase.
+     */
+    FailureMidPull: "midPull",
+
+    /**
+     * FailureSigning is git unable to sign the tag, with gpg or ssh.
+     */
+    FailureSigning: "signing",
+
+    /**
+     * FailureAuth is origin refusing the git credentials.
+     */
+    FailureAuth: "auth",
+
+    /**
+     * FailureRefused is GitHub refusing the tag: a tag ruleset, or a protected tag.
+     */
+    FailureRefused: "refused",
+
+    /**
+     * FailureHook is the clone's pre-push hook stopping the tag.
+     */
+    FailureHook: "hook",
+
+    /**
+     * FailureOther is anything else, told in magex's own words.
+     */
+    FailureOther: "other",
+} as const;
+
+/**
  * Fix is an action the sheet offers beside a check.
  */
 export type Fix = "openSettings" | "update" | "openTerminal" | "checkAgain" | "view" | "watch";
@@ -497,6 +625,117 @@ export interface PrepareRequest {
      */
     "refresh": boolean;
 }
+
+/**
+ * Result is a release's result for the window: its run's outcome detail
+ * (scriptrun.Result.Outcome), worked out from what magex said and what origin and the
+ * clone say once it ended, never from its exit status alone (§5.11.6).
+ */
+export interface Result {
+    /**
+     * Kind is how it came out.
+     */
+    "kind": ResultKind;
+
+    /**
+     * Version is the version the sheet showed, and Tag the one magex made, or set out to;
+     * Moved reports they differ, as when a version was tagged meanwhile and magex, without
+     * expect=, made the next one.
+     */
+    "version": string;
+    "tag": string;
+    "moved": boolean;
+
+    /**
+     * Commit is the commit the release's tag points at on origin, for ResultReleased. Head
+     * is the commit the sheet showed, and Newer reports the release tagged another, a
+     * commit that landed between the sheet and the run.
+     */
+    "commit": string;
+    "head": string;
+    "newer": boolean;
+
+    /**
+     * Taken reports origin has the tag at a commit this release didn't tag: someone else
+     * released that version, and this release isn't on GitHub.
+     */
+    "taken": boolean;
+
+    /**
+     * Tagged reports the clone has the tag.
+     */
+    "tagged": boolean;
+
+    /**
+     * Branch is the branch the clone is on now, "" when Detached or unknown; Original is
+     * the one it was on when the sheet opened, and Back reports it is on that one again.
+     * InProgress is what git is in the middle of there, as a rebase a stopped pull left.
+     */
+    "branch": string;
+    "detached": boolean;
+    "original": string;
+    "back": boolean;
+    "inProgress": gitread$0.Operation;
+
+    /**
+     * TagURL is the tag's page on GitHub, which shows the release once its workflow
+     * publishes it, and WorkflowURL the repository's Actions runs for the tag; both are ""
+     * unless it was released.
+     */
+    "tagUrl": string;
+    "workflowUrl": string;
+
+    /**
+     * PushWarning is magex's warning that it skipped the push, and Commands the commands
+     * to finish or undo a tag origin doesn't have, quoted for a shell, which the app never
+     * runs.
+     */
+    "pushWarning": string;
+    "commands": string[] | null;
+
+    /**
+     * Failure names what stopped a release that isn't on GitHub, or is nil.
+     */
+    "failure": Failure | null;
+
+    /**
+     * Error says why origin couldn't be asked, for ResultUnverified.
+     */
+    "error": string;
+}
+
+/**
+ * ResultKind is how a release came out, as the app verified it after magex ended.
+ */
+export type ResultKind = "released" | "notPushed" | "failed" | "unverified";
+
+/**
+ * The values of ResultKind, by the names of their Go constants.
+ */
+export const ResultKind = {
+    /**
+     * The ways a release comes out.
+     *
+     * ResultReleased is a release origin has: its tag is on GitHub.
+     */
+    ResultReleased: "released",
+
+    /**
+     * ResultNotPushed is a tag made on this Mac that origin doesn't have: magex skipped
+     * or failed the push, or GitHub refused the tag.
+     */
+    ResultNotPushed: "notPushed",
+
+    /**
+     * ResultFailed is a release that made no tag at all.
+     */
+    ResultFailed: "failed",
+
+    /**
+     * ResultUnverified is a release origin couldn't be asked about: it may be on GitHub.
+     */
+    ResultUnverified: "unverified",
+} as const;
 
 /**
  * StartRequest is the release the user started on the sheet: the choice, and what the

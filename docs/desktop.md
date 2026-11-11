@@ -281,12 +281,19 @@ record of each run and its whole output.
   and a release never waits for one of those slots.
 - **Limits and stopping.** In the app, a release stops after 5 minutes, a hooks action after 1, and
   checks after 30; a run in your terminal has no limit. **Stop** sends the run's whole process group
-  Control-C (SIGINT), then SIGTERM after 5 seconds, then SIGKILL after 10 more.
+  Control-C (SIGINT), then SIGTERM after 5 seconds, then SIGKILL after 10 more. A release's Stop is
+  off while magex switches to the branch it releases and pulls (*Stopping now could leave a rebase
+  in progress*), and once magex has made the tag, Stop asks first, since stopping can leave the
+  tag on your Mac but not on GitHub.
 - **Quitting while runs are going.** Quitting (the app menu, ⌘Q, or the menu bar's Quit) while a
   run goes in the app brings the window forward and asks first: **Keep running** or **Stop and
   quit**. Stop and quit sends each run SIGTERM, then SIGKILL after 3 seconds, and records it as
-  stopped before the app closes. A release the app hasn't finished checking on GitHub by then
-  stays recorded as going, and the next start checks it. Runs in your terminal are left running. Closing the window never
+  stopped before the app closes. A release whose magex is switching branches or pulling gets
+  SIGTERM only once that ends, within the same 3 seconds; one still pulling then is left to
+  finish, unsignaled, and the next start follows it. The question says so for such a release:
+  stopping waits up to a few seconds, and the release may finish after the app closes. A
+  release the app hasn't finished checking on GitHub by then stays recorded as going, and the
+  next start checks it. Runs in your terminal are left running. Closing the window never
   asks: the app keeps running in the menu bar. A logout, a restart, or a shutdown asks the app to
   quit too, so while a run goes in the app, macOS cancels it and names the app, as Terminal does for
   a running command; answer the question, then try again.
@@ -297,6 +304,13 @@ record of each run and its whole output.
   again if it's still going, finished with its exit status if it wrote one, or shows *The terminal
   closed while this was running*. A release among them is checked as one that just ended is: its
   log is read again, and GitHub is asked whether its tag is there.
+- **The run panel.** A run's panel shows its status, its result, and its log as it comes
+  (colors kept, the newest 2,000 lines, earlier output on request). **Open in terminal** opens
+  your terminal in the run's folder and runs nothing there; **Show the log file** shows the log
+  in Finder. **Stop** shows while a run goes in the app: it is off, with the reason beside it,
+  while the run's kind refuses it (a release while magex switches branches and pulls), and asks
+  first, in the kind's own words, while stopping would leave something behind. A run in your
+  terminal has no **Stop**: the panel says to press Control-C there.
 - **History.** The newest 200 runs are kept, with up to 512 MB of logs in all; older runs go with
   their logs, and a run still going is never dropped. A finished log over 16 MB keeps its first
   4 MB and its last 12 MB.
@@ -306,10 +320,115 @@ record of each run and its whole output.
 
 <br>
 
+## The Scripts tab
+
+**Scripts** sits after Prompts while mage-x or go-pre-commit is on, or you turned Scripts on in
+Settings → Integrations; with everything off, the tab goes away. When it first appears because a
+tool was found while the window is open, a toast says so (*Found magex and go-pre-commit.
+They're in the new Scripts tab.*) with **Open Scripts**. The toolbar's filter isn't shown on
+Scripts: each page searches in itself.
+
+- **The rail** lists the pages: **Release** while mage-x is on, counting the repositories with
+  unreleased changes, and **Runs**, counting the runs in progress. Hooks and Repo scripts join
+  them in later releases. Its foot lists each tool's status, and **Manage in Settings** opens
+  Settings → Integrations.
+- **It opens** on the page you used last while the window is open, or the first page that's
+  on. The tab keeps its page and an open release sheet while you switch tabs.
+- **A page whose tool can't be used** says why in place of its list (*magex isn't on this
+  Mac.*), with the way to fix it in Settings.
+
+<br>
+
+## Release
+
+**Release** lists every clone under the clone root whose `origin` is on GitHub, which is where
+magex pushes, and releases a new version of any of them with magex's `version:bump`. The app
+itself never tags or pushes: magex does, when you click a button that names the version.
+
+**The page.**
+
+- **Groups:** **Unreleased changes** (the default branch has commits since its newest version
+  tag), open; **Up to date**, **No releases yet** (no `vX.Y.Z` tag), and **Can't release here**
+  (archived, read-only to you, or not found), collapsed, each with its count.
+- **Each row** shows the repository and its newest version, **+N** commits since it, the checks
+  on the default branch's newest commit (passed, running, failing, or none) and that commit's
+  age and headline, and what matters about your clone: the branch it's on when that isn't the
+  default, uncommitted files, commits not on GitHub, commits it lacks, or a version only it has.
+  Those come from read-only git checks of the unreleased clones. **Release…** opens the sheet.
+- **Search** filters every group, opening each while it searches. **Read GitHub again** reads the
+  list again now; otherwise the page reads it when it opens if it's more than 5 minutes old, and
+  after every release. When GitHub can't be reached, the last list stays, marked *Couldn't reach
+  GitHub · 14m old*. Clones without a GitHub origin are counted at the foot.
+- **Recent** lists the last 10 releases started from the app, with how each came out (*on
+  GitHub*, *not pushed*, *failed*); each opens its run.
+
+**The sheet** checks the clone, origin, and GitHub as it opens, then shows:
+
+- **Branch:** the repository's default branch on GitHub, with `main` or `master` beside it when
+  origin has the other one; a branch that isn't the default says so.
+- **The checks,** each with ✓, ℹ, ⚠, or ✗ and its words: magex, the clone and your access,
+  git in the middle of a rebase or merge, uncommitted changes, where your clone is and whether
+  git can switch, the branch following origin, commits not on GitHub, a version only on this
+  Mac, reaching origin with your git credentials, something to release, the checks on the newest
+  commit, another run holding the clone, signed tags, your shell's environment, and your hooks.
+  A ✗ blocks the release; a ⚠ makes the button read **Release v1.4.3 anyway**. Fixes sit beside
+  each: **Open Settings**, **Update magex in Settings**, **Open in terminal** (your terminal in
+  the clone, running nothing), **Check again**, **View on GitHub**, **Watch the run**, and
+  **Copy** for a command the app never runs itself.
+- **What's in it:** the commits since the newest version, from GitHub, each linked to its
+  commit.
+- **The version:** **Patch**, **Minor**, or **Major**, each with the version it makes. Patch is
+  chosen every time the sheet opens. Major needs a magex that can be told which version to make
+  (1.30.0 or later, with `expect=`); before that its card says so, with **Update magex in
+  Settings**. Choosing Major asks you to type the exact version, with an empty field every time,
+  and, for a Go module whose `go.mod` doesn't name the new major, to tick **Release anyway: this
+  module isn't meant to be imported**. The service checks both again.
+- **Runs in:** the app or your terminal, as Settings → Integrations sets, or the other one for
+  this release only.
+- **The sentence** says exactly what will happen, and **Command** shows the exact command, to
+  copy. The button names the version: **Release v1.4.3**, **Release v1.4.3 in iTerm2**, or
+  **Release v2.0.0 (major)**.
+
+Choices decide the sheet again on the facts it read; only opening it and **Check again** read
+the clone, origin, and GitHub afresh. **Release** reads the clone and origin once more under the
+clone's lock before magex starts. When that refuses (the clone changed, or someone released that
+version meanwhile), the sheet says why, checks again, and shows the version it would make now.
+
+**While it runs,** the sheet ticks off magex's steps (switched to the branch, pulled, tagged,
+pushed, then the app's own check that GitHub has the tag), with the run's panel and log below.
+Closing the sheet never stops a release: it goes on under Runs. **Stop** is off while magex
+switches branches and pulls (*Stopping now could leave a rebase in progress*), and asks first
+once the tag is made.
+
+**The result** comes from what magex said and what origin and your clone say once it ended,
+never from its exit status alone:
+
+- **On GitHub:** the tag and commit, the branch your clone is back on, and **View v1.4.3 on
+  GitHub**, **Watch the release workflow**, and **Copy v1.4.3**, with a burst of confetti
+  (none when the system asks for reduced motion). A version that moved meanwhile, or a newer
+  commit than the one you saw, is said too.
+- **Tagged on this Mac only:** the push magex skipped or GitHub refused, the commands to push or
+  undo the tag, to copy, and **Open in terminal**.
+- **Failed:** what happened in words, magex's line that says so, where your clone is now, and
+  **Try again**, which reopens the sheet with fresh checks. A release is never run again from
+  its stored command.
+
+**After a merge.** When you merge a pull request in the review sheet, the toast that says so
+offers **Release acme-org/sdk…** when Release can release it: the setting **Offer a release after
+you merge a pull request** (Settings → Integrations, on by default) is on, mage-x can be used,
+the repository has a clone with that GitHub origin, and the pull request merged into a branch
+Release offers. Asking costs no GitHub request. The action opens Scripts → Release at that
+repository's sheet, its checks already running; it never releases by itself. A release that
+reaches GitHub is also recorded in the [notification history](#menu-bar-and-notifications) as
+**Released**, with its banner when that kind is on.
+
+<br>
+
 ## The window
 
 A single toolbar runs beside the macOS window controls. It holds the **Inbox**, **Worktrees**,
-and **Prompts** tabs and, on the right, the page's [filter](#filtering), the
+and **Prompts** tabs, and [**Scripts**](#the-scripts-tab) while a tool you run from it is on,
+and, on the right, the page's [filter](#filtering), the
 [notification](#menu-bar-and-notifications) bell, the API budget gauge, and your profile
 picture. Drag the bar to move the window, and double-click it to zoom. As the window narrows,
 the filter gives way first.
@@ -317,8 +436,10 @@ the filter gives way first.
 **Tab counts.** **Inbox** counts the items in your lists, leaving out what is snoozed or
 dismissed. An item in two lists, such as a pull request you opened and are assigned, counts
 once. **Worktrees** counts the linked worktrees on disk across every clone under the clone root,
-main worktrees aside, with an amber dot while some are done on GitHub but still on disk. Hover
-either tab for what its number means. **Prompts** has no count.
+main worktrees aside, with an amber dot while some are done on GitHub but still on disk.
+**Scripts** counts the runs going, with a red dot after a run failed until you open it, and an
+amber dot while a tool that's on can't be used. Hover a tab for what its number or dot means.
+**Prompts** has no count.
 
 **Account menu.** Click your picture for who is signed in, **Settings** (also ⌘,), and **View
 GitHub profile**. After a refresh, the picture is downloaded from
@@ -979,6 +1100,7 @@ and records what newly needs you:
 | Review requested | A pull request newly asks for your review, including when it asks again after you reviewed it |
 | Assigned to you | An issue or pull request someone else opened is newly assigned to you |
 | Back from snooze | New activity ends a snooze early under your [wake rules](#waking-a-snooze-early); it says what was new |
+| Released | A release you started reaches GitHub; it names the version and the commit it tagged |
 
 Nothing is recorded for the first refresh of an account (everything in it would be new), for
 an item you dismissed or that is still snoozed, or for a refresh that failed. A list that shows
@@ -988,16 +1110,19 @@ changed since the last refresh. Refreshing a single card never notifies.
 **The history.** The bell in the toolbar keeps every notification, newest first, up to the
 latest 200. Its badge counts the unread ones; opening it marks them read, and they stay marked
 until it closes. Click an entry to show its item in the inbox, or on GitHub once the item has
-left the inbox. **Clear** empties the history. It lives in the local database (the
+left the inbox. An entry about no item, such as a release, names its repository alone, and a
+click opens its page on GitHub. **Clear** empties the history. It lives in the local database (the
 `notifications` table), whether or not a banner was shown.
 
-**Banners.** Each kind can also show a native macOS banner. All three are on by default, and
+**Banners.** Each kind can also show a native macOS banner. All four are on by default, and
 each has its own switch in Settings → Notifications. Two more switches there show a banner when
 an [agent session](#following-a-session) waits for you or finishes its turn; those start off,
 and the history doesn't keep them. A banner gives the kind, the repository
 and number, and the title; a snooze that ended early adds what was new. When one refresh finds
 more than three, a single banner sums them up, such as **5 new in your inbox: 3 review
 requests, 2 assignments**. Clicking a banner brings the window forward with its item in view.
+A release is about no item: its banner gives the repository and the version, and clicking it
+opens the tag on GitHub.
 
 The first time the app starts, macOS asks whether to allow its notifications. **Send a test**
 in Settings shows a sample banner, asking first if macOS never has. If notifications are

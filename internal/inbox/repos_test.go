@@ -65,3 +65,31 @@ func TestRepoCountsReportsAnUnreadableDatabase(t *testing.T) {
 	_, err := NewStore(db, nil).RepoCounts(t.Context())
 	require.ErrorContains(t, err, "count the items of each repository")
 }
+
+func TestDefaultBranch(t *testing.T) {
+	t.Parallel()
+
+	db := testutil.DB(t)
+
+	it := githubItem("sdk", 1, "OWNER", true, false)
+	it.RepoOwner = "acme-org"
+	it.Repo = github.Repository{DefaultBranch: "trunk"}
+
+	_, err := StoreFixture(t.Context(), db, Fixture{Viewer: octoUser, Items: []FixtureItem{{Item: it, Assigned: true}}})
+	require.NoError(t, err)
+
+	s := NewStore(db, nil)
+
+	got, err := s.DefaultBranch(t.Context(), repo.Name{Owner: "Acme-Org", Repo: "SDK"})
+	require.NoError(t, err)
+	assert.Equal(t, "trunk", got, "the stored default branch, the name matched ignoring case")
+
+	got, err = s.DefaultBranch(t.Context(), repo.Name{Owner: "acme-org", Repo: "unseen"})
+	require.NoError(t, err)
+	assert.Empty(t, got, "a repository the inbox has never seen has none")
+
+	require.NoError(t, db.Close())
+
+	_, err = s.DefaultBranch(t.Context(), repo.Name{Owner: "acme-org", Repo: "sdk"})
+	require.ErrorContains(t, err, "read the default branch of acme-org/sdk")
+}

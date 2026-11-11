@@ -128,11 +128,14 @@ function BurstView({ burst: b, onLand }: BurstViewProps) {
 export interface ConfettiProps {
   bursts: readonly ConfettiBurst[]
   onLand: (id: number) => void
+  // container holds the layer: the body by default, or a modal dialog, which the browser
+  // draws above everything on the body, so confetti thrown over it holds its layer there.
+  container?: Element | null
 }
 
 // Confetti draws the bursts in flight over the whole window, toolbar included, from a
 // layer on the body that takes no clicks. It is decorative, so assistive technology skips it.
-export function Confetti({ bursts, onLand }: ConfettiProps) {
+export function Confetti({ bursts, onLand, container = null }: ConfettiProps) {
   if (bursts.length === 0) {
     return null
   }
@@ -147,6 +150,6 @@ export function Confetti({ bursts, onLand }: ConfettiProps) {
         <BurstView key={b.id} burst={b} onLand={onLand} />
       ))}
     </div>,
-    document.body,
+    container ?? document.body,
   )
 }

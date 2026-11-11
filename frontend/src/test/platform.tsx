@@ -14,6 +14,7 @@ import { vi, type Mock } from 'vitest'
 import type * as real from '../platform'
 import { clockAt, FIXED_NOW, withClock } from './clock'
 import {
+  afterMerge,
   agentVersions,
   toolVersions,
   agents,
@@ -35,6 +36,9 @@ import {
   prompt,
   promptBackup,
   prompts,
+  releaseCandidates,
+  releaseOffer,
+  releaseResult,
   removeResult,
   replyList,
   resolution,
@@ -197,6 +201,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     setIntegrationPath: (id, path) =>
       stored({ integrations: integrationsConfig({ paths: { ...integrationsConfig().paths, [id]: path } }) }),
     setRunsIn: (runsIn) => stored({ integrations: integrationsConfig({ runsIn }) }),
+    setOfferAfterMerge: (offerAfterMerge) => stored({ integrations: integrationsConfig({ offerAfterMerge }) }),
 
     listIntegrations: () => Promise.resolve(integrationTools()),
     checkIntegrationsAgain: () => Promise.resolve(integrationTools()),
@@ -216,6 +221,13 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     markScriptRunSeen: done,
     clearScriptRunHistory: done,
     quitAnyway: done,
+
+    listReleaseCandidates: () => Promise.resolve(releaseCandidates()),
+    prepareRelease: () => Promise.resolve(releaseOffer()),
+    startRelease: () => Promise.resolve(7),
+    getReleaseResult: () => Promise.resolve(releaseResult()),
+    offerReleaseAfterMerge: () => Promise.resolve(afterMerge({ offer: false, repo: '', dir: '', branch: '' })),
+    openReleaseTerminal: done,
 
     listWorktrees: () => Promise.resolve(worktreesSnapshot()),
     removeWorktree: () => Promise.resolve(removeResult()),

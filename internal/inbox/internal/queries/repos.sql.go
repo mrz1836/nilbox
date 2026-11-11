@@ -10,6 +10,24 @@ import (
 	"time"
 )
 
+const getRepoDefaultBranch = `-- name: GetRepoDefaultBranch :one
+SELECT default_branch FROM repos WHERE owner = ? AND name = ?
+`
+
+type GetRepoDefaultBranchParams struct {
+	Owner string
+	Name  string
+}
+
+// GetRepoDefaultBranch returns the default branch a refresh last stored for the repository
+// named owner and name, which match ignoring case.
+func (q *Queries) GetRepoDefaultBranch(ctx context.Context, arg GetRepoDefaultBranchParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, getRepoDefaultBranch, arg.Owner, arg.Name)
+	var default_branch string
+	err := row.Scan(&default_branch)
+	return default_branch, err
+}
+
 const listRepoCounts = `-- name: ListRepoCounts :many
 SELECT r.owner, r.name, COUNT(i.id) AS items
 FROM repos r

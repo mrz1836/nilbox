@@ -1,5 +1,6 @@
 import { useState } from 'react'
 
+import { shortCommit } from '../../lib/git'
 import type { BranchKind, BranchRules, Worktree, WorktreeBranch } from '../../platform'
 
 // Ticks are the boxes of a confirmation: each shows its default, from the user's rules,
@@ -53,11 +54,6 @@ export function chosenBranches(
   key: (name: string) => string,
 ): string[] {
   return wt.branches.filter((b) => b.deletable && ticks.on(key(b.name), tickedByDefault(b, rules))).map((b) => b.name)
-}
-
-// shortCommit is the abbreviated commit ID people read, as git shows it.
-export function shortCommit(oid: string): string {
-  return oid.slice(0, 7)
 }
 
 // kindText says what a branch is to its worktree.

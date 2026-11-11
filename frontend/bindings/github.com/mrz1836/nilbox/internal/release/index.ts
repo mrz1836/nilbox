@@ -11,11 +11,14 @@ export {
     CheckID,
     CheckState,
     Checks,
+    FailureKind,
     Fix,
-    Group
+    Group,
+    ResultKind
 } from "./models.js";
 
 export type {
+    AfterMerge,
     BranchChoice,
     BumpOffer,
     Candidate,
@@ -23,8 +26,10 @@ export type {
     Check,
     CloneState,
     Commit,
+    Failure,
     MajorOffer,
     Offer,
     PrepareRequest,
+    Result,
     StartRequest
 } from "./models.js";

@@ -23,6 +23,8 @@ import { attempt } from './lib/call'
 import { filterInbox, inboxItems, inboxSpec, inboxSuggestions } from './lib/inboxFilter'
 import { isFindKey, isTyping } from './lib/keys'
 import { toggleFilter } from './lib/query'
+import type { ReleaseRequest } from './lib/release'
+import { foundToolsText, scriptsBadge, showsScripts } from './lib/scriptsTab'
 import { matchSettings } from './lib/settingsIndex'
 import { itemWorktrees } from './lib/itemWorktrees'
 import { runningSession, sessionsOf } from './lib/sessions'
@@ -35,6 +37,8 @@ import { useCollapsedSections } from './lib/useCollapsedSections'
 import { useBudget } from './lib/useBudget'
 import { useInbox } from './lib/useInbox'
 import { useInboxOrder } from './lib/useInboxOrder'
+import { useIntegrations } from './lib/useIntegrations'
+import { useScriptRuns } from './lib/useScriptRuns'
 import { useReviewDrafts } from './lib/reviewDrafts'
 import { useLaunchConfig } from './lib/useLaunchConfig'
 import { useNotifications } from './lib/useNotifications'
@@ -48,8 +52,10 @@ import {
   on,
   openExternal,
   setProjectsTipDismissed,
+  type AfterMerge,
   type AgentID,
   type AppNotification,
+  type IntegrationTools,
   type InboxSnapshot,
   type LinkedItem,
   type RemoveResult,
@@ -62,6 +68,7 @@ import {
 // before its first paint is the inbox's alone. The inbox itself is never behind a lazy
 // boundary: main.tsx reports the first paint once it has rendered.
 const PromptsView = lazy(() => import('./components/PromptsView').then((m) => ({ default: m.PromptsView })))
+const ScriptsView = lazy(() => import('./components/scripts/ScriptsView'))
 const SettingsView = lazy(() => import('./components/SettingsView').then((m) => ({ default: m.SettingsView })))
 const WorktreesView = lazy(() => import('./components/WorktreesView').then((m) => ({ default: m.WorktreesView })))
 
@@ -185,8 +192,39 @@ function useReveal(snapshot: InboxSnapshot | null, openInbox: () => void) {
   return { reveal, show, clear }
 }
 
-// SearchView is a page the toolbar's field filters; Prompts searches in its own sidebar.
-type SearchView = Exclude<View, 'prompts'>
+// useFoundTools announces the Scripts tab once, as it first appears because a tool was
+// found: shown is whether the tab shows, and ready whether that is known yet (the tools
+// and the settings have loaded). A tab already showing when that is first known was
+// announced before, so only a tab that appears while the window is open is announced, and
+// only once while it is. Nothing is stored, so a tab that appears again after the next
+// start is announced again.
+function useFoundTools(tools: IntegrationTools | null, shown: boolean, ready: boolean) {
+  // was is whether the tab showed when last looked at, or null until it is known.
+  const [was, setWas] = useState<boolean | null>(null)
+  const [announced, setAnnounced] = useState(false)
+  const [toast, setToast] = useState<ToastMessage | null>(null)
+
+  if (ready && was !== shown) {
+    setWas(shown)
+
+    const text = foundToolsText(tools)
+
+    if (was === false && shown && !announced && text !== '') {
+      setAnnounced(true)
+      setToast({ id: 0, text, tone: 'success' })
+    }
+  }
+
+  const close = () => {
+    setToast(null)
+  }
+
+  return { toast, close }
+}
+
+// SearchView is a page the toolbar's field filters; Prompts searches in its own sidebar,
+// and Scripts in each of its pages.
+type SearchView = Exclude<View, 'prompts' | 'scripts'>
 
 // placeholders say what the field does on each page.
 const placeholders: Readonly<Record<SearchView, string>> = {
@@ -319,8 +357,16 @@ export function App() {
   // left without reading them again.
   const sections = useCollapsedSections()
   const inboxOrder = useInboxOrder()
+  // The tools the app runs, and the runs, decide whether the Scripts tab shows and what
+  // its badge says; the tab itself reads both from here. The runs are listed only while
+  // the tab shows.
+  const integrations = useIntegrations()
+  const scriptsShown = showsScripts(integrations.tools, config.settings?.integrations ?? null)
+  const scriptRuns = useScriptRuns(scriptsShown)
+  const found = useFoundTools(integrations.tools, scriptsShown, integrations.tools !== null && config.settings !== null)
   const [nav, go] = useReducer(navigate, startNav)
-  const { view } = nav
+  // A Scripts tab gone, as when every integration was turned off, shows the inbox.
+  const view = nav.view === 'scripts' && !scriptsShown ? 'inbox' : nav.view
   const inboxQuery = useQueryOf(nav.queries.inbox)
   const worktreesQuery = useQueryOf(nav.queries.worktrees)
   const settingsQuery = useQueryOf(nav.queries.settings)
@@ -374,7 +420,33 @@ export function App() {
     setChangeToast(null)
   }
 
-  const shownToast =
+  // releaseRequest is the release sheet a merge's toast asked for last, which the Scripts
+  // tab opens; requests numbers them.
+  const [releaseRequest, setReleaseRequest] = useState<ReleaseRequest | null>(null)
+  const requests = useRef(0)
+  // openRelease opens Scripts → Release at a repository's sheet, as a merge offers.
+  const [openRelease] = useState(() => (offer: AfterMerge) => {
+    requests.current += 1
+    setReleaseRequest({ repo: offer.repo, dir: offer.dir, branch: offer.branch, seq: requests.current })
+    go({ type: 'show', view: 'scripts' })
+  })
+
+  // foundToast announces the Scripts tab, over every other toast, with a way to open it.
+  const foundToast =
+    found.toast === null
+      ? null
+      : {
+          ...found.toast,
+          action: {
+            label: 'Open Scripts',
+            onClick: () => {
+              found.close()
+              changeView('scripts')
+            },
+          },
+        }
+
+  const changeShown =
     changeToast === null
       ? sweepToast
       : view === 'worktrees'
@@ -389,9 +461,16 @@ export function App() {
               },
             },
           }
+  const shownToast = foundToast ?? changeShown
+  const closeToast = foundToast !== null ? found.close : changeToast === null ? closeSweepToast : closeChangeToast
 
   const openSettings = () => {
     go({ type: 'settings', section: 'account' })
+  }
+
+  // openSettingsAt opens the settings at a section, as the Scripts tab's fixes do.
+  const openSettingsAt = (section: SettingsSection) => {
+    go({ type: 'settings', section })
   }
 
   // openSnoozeSettings opens the setting for the Snooze button's length.
@@ -431,7 +510,7 @@ export function App() {
 
     const slash = e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.defaultPrevented && !isTyping(e)
 
-    if (view !== 'prompts' && (isFindKey(e) || slash)) {
+    if (view !== 'prompts' && view !== 'scripts' && (isFindKey(e) || slash)) {
       e.preventDefault()
       searchRef.current?.focus()
       searchRef.current?.select()
@@ -579,11 +658,12 @@ export function App() {
         inboxCount={triaged?.count ?? 0}
         worktreeCount={sweeps.count}
         worktreeAttention={sweeps.attention}
+        scripts={scriptsShown ? scriptsBadge(scriptRuns.runs, integrations.tools) : null}
         onOpenSettings={openSettings}
         notifications={notifications}
         onOpenNotification={openNotification}
         onNotificationSettings={openNotificationSettings}
-        search={view === 'prompts' ? undefined : searchFor(view)}
+        search={view === 'prompts' || view === 'scripts' ? undefined : searchFor(view)}
         searchRef={searchRef}
       />
       <DataResetNotice />
@@ -616,6 +696,7 @@ export function App() {
             }}
             drafts={reviewDrafts}
             onManageReplies={openPrompts}
+            onRelease={openRelease}
           />
         </Activity>
         {nav.visited.has('worktrees') && (
@@ -651,6 +732,23 @@ export function App() {
             </Suspense>
           </Activity>
         )}
+        {nav.visited.has('scripts') && (
+          <Activity mode={mode('scripts')}>
+            <Suspense fallback={<PageLoading />}>
+              <div className="h-full">
+                <ScriptsView
+                  terminal={config.settings?.terminal ?? null}
+                  runsIn={config.settings?.integrations.runsIn ?? 'app'}
+                  cloneRoot={config.settings?.cloneRoot ?? ''}
+                  integrations={integrations}
+                  runs={scriptRuns}
+                  request={releaseRequest}
+                  onOpenSettings={openSettingsAt}
+                />
+              </div>
+            </Suspense>
+          </Activity>
+        )}
         {nav.visited.has('settings') && (
           <Activity mode={mode('settings')}>
             <Suspense fallback={<PageLoading />}>
@@ -676,7 +774,7 @@ export function App() {
           </Activity>
         )}
       </main>
-      <Toast toast={shownToast} onClose={changeToast === null ? closeSweepToast : closeChangeToast} />
+      <Toast toast={shownToast} onClose={closeToast} />
       <QuitDialog />
     </div>
   )

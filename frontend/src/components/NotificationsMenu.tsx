@@ -2,19 +2,20 @@ import { useId, useState, type ReactNode } from 'react'
 
 import { formatAgo } from '../lib/time'
 import { formatCount } from '../lib/format'
-import { entryRef, kindTitle } from '../lib/notifications'
+import { entryRef, entryTitle, kindTitle } from '../lib/notifications'
 import { useMutation } from '../lib/useMutation'
 import type { NotificationsState } from '../lib/useNotifications'
 import { usePopover } from '../lib/usePopover'
 import type { AppNotification, NotificationKind } from '../platform'
 import { quietButtonClass } from './controls'
-import { AssignIcon, BellIcon, ClockIcon, EyeIcon, SlidersIcon } from './icons'
+import { AssignIcon, BellIcon, ClockIcon, EyeIcon, SlidersIcon, TagIcon } from './icons'
 import { PopoverPanel } from './PopoverPanel'
 import { RelativeTime } from './RelativeTime'
 
 export interface NotificationsMenuProps {
   notifications: NotificationsState
-  // onOpen shows an entry's item: in the inbox while it is there, on GitHub after.
+  // onOpen shows an entry's item: in the inbox while it is there, on GitHub after; an
+  // entry about no item, such as a release, opens its page.
   onOpen: (entry: AppNotification) => void
   // onSettings opens the notification settings.
   onSettings: () => void
@@ -26,6 +27,7 @@ const kindIcons: Readonly<Partial<Record<NotificationKind, (props: { className?:
   review_requested: EyeIcon,
   assigned: AssignIcon,
   woke: ClockIcon,
+  release_done: TagIcon,
 }
 
 // bellLabel names the bell with how many entries are unread.
@@ -50,7 +52,7 @@ function Entry({ entry, fresh, onOpen }: EntryProps) {
       <button
         type="button"
         onClick={onOpen}
-        title={entry.repo === '' ? undefined : `${entry.repo} #${String(entry.number)}`}
+        title={entryTitle(entry)}
         className="flex w-full items-start gap-3 px-4 py-2.5 text-left transition-colors hover:bg-raised focus-visible:bg-raised focus-visible:outline-none"
       >
         <span className="relative mt-0.5 shrink-0 text-muted">

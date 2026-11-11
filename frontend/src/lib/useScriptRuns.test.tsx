@@ -31,6 +31,24 @@ describe('useScriptRuns', () => {
     expect(listening('scriptruns:updated')).toBe(0)
   })
 
+  it('never lists again for one run’s progress, which changes nothing it lists', async () => {
+    const { result } = renderHook(() => useScriptRuns())
+
+    await waitFor(() => {
+      expect(result.current.runs).not.toBeNull()
+    })
+
+    expect(listening('scriptruns:progress')).toBe(0)
+  })
+
+  it('lists nothing, and listens for nothing, while it isn’t enabled', () => {
+    const { result } = renderHook(() => useScriptRuns(false))
+
+    expect(result.current.runs).toBeNull()
+    expect(platform.listScriptRuns).not.toHaveBeenCalled()
+    expect(listening('scriptruns:updated')).toBe(0)
+  })
+
   it('lists them again when asked', async () => {
     const { result } = renderHook(() => useScriptRuns())
 

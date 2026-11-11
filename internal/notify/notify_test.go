@@ -128,8 +128,87 @@ func (f *fixture) arrival(i int, kind notifyprefs.Kind) inbox.Arrival {
 func TestKindsAreTheInboxArrivals(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, []notifyprefs.Kind{KindReviewRequested, KindAssigned, KindWoke, KindSessionNeedsYou, KindSessionFinished},
-		notifyprefs.Kinds(), "the kinds the settings list are the inbox's kinds of arrival, in order, then the sessions'")
+	assert.Equal(t, []notifyprefs.Kind{
+		KindReviewRequested, KindAssigned, KindWoke, KindSessionNeedsYou, KindSessionFinished, KindReleaseDone,
+	}, notifyprefs.Kinds(),
+		"the kinds the settings list are the inbox's kinds of arrival, in order, then the sessions', then a release's")
+}
+
+// releaseEntry is the entry for acme-org/sdk's v1.4.3 reaching GitHub.
+func releaseEntry() Entry {
+	return Entry{
+		Kind: KindReleaseDone, Title: "v1.4.3 is on GitHub", Body: "Tagged a1b2c3d on master.",
+		URL: "https://github.com/acme-org/sdk/releases/tag/v1.4.3", RepoOwner: "acme-org", RepoName: "sdk",
+	}
+}
+
+func TestRecordEventStoresAnEntryAboutNoItem(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, 1)
+	s := NewStore(f.pool)
+
+	_, err := s.Record(t.Context(), testNow, []inbox.Arrival{f.arrival(0, KindReviewRequested)})
+	require.NoError(t, err)
+
+	got, err := s.RecordEvent(t.Context(), testNow.Add(time.Minute), releaseEntry())
+	require.NoError(t, err)
+
+	want := Notification{
+		ID: got.ID, Kind: KindReleaseDone, CreatedAt: "2026-03-04T12:01:00Z", Repo: "acme-org/sdk",
+		Title: "v1.4.3 is on GitHub", URL: "https://github.com/acme-org/sdk/releases/tag/v1.4.3",
+		Detail: "Tagged a1b2c3d on master.",
+	}
+	assert.Equal(t, want, got, "no item: no id, kind, number, or author")
+
+	var itemID sql.NullInt64
+	require.NoError(t, f.pool.QueryRowContext(t.Context(), "SELECT item_id FROM notifications WHERE id = ?", got.ID).
+		Scan(&itemID))
+	assert.False(t, itemID.Valid, "its item is NULL")
+
+	log, err := s.Log(t.Context())
+	require.NoError(t, err)
+	require.Len(t, log.Items, 2, "the log lists entries about no item beside the items'")
+	assert.Equal(t, want, log.Items[0], "newest first, as RecordEvent returned it")
+	assert.Equal(t, KindReviewRequested, log.Items[1].Kind)
+	assert.Equal(t, 2, log.Unread)
+
+	_, err = s.RecordEvent(t.Context(), testNow, Entry{Kind: "mentions", Title: "Hello"})
+	require.ErrorIs(t, err, notifyprefs.ErrUnknownKind)
+	assert.Equal(t, 2, countNotifications(t, f.pool), "an unknown kind stores nothing")
+
+	repoless := releaseEntry()
+	repoless.RepoOwner, repoless.RepoName = "", ""
+
+	got, err = s.RecordEvent(t.Context(), testNow, repoless)
+	require.NoError(t, err)
+	assert.Empty(t, got.Repo, "no repository reads as none")
+}
+
+func TestRecordEventKeepsOnlyTheNewest(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, 1)
+	s := NewStore(f.pool)
+	s.keep = 3
+
+	for i := range 5 {
+		_, err := s.RecordEvent(t.Context(), testNow.Add(time.Duration(i)*time.Minute), releaseEntry())
+		require.NoError(t, err)
+	}
+
+	assert.Equal(t, 3, countNotifications(t, f.pool), "trimmed to Keep like the rest")
+
+	log, err := s.Log(t.Context())
+	require.NoError(t, err)
+	require.Len(t, log.Items, 3)
+	assert.Equal(t, "2026-03-04T12:04:00Z", log.Items[0].CreatedAt)
+	assert.Equal(t, "2026-03-04T12:02:00Z", log.Items[2].CreatedAt, "the oldest were dropped")
+
+	require.NoError(t, f.pool.Close())
+
+	_, err = s.RecordEvent(t.Context(), testNow, releaseEntry())
+	require.ErrorContains(t, err, "record the notification")
 }
 
 func TestTheLogKeepsWhatWasRecorded(t *testing.T) {
@@ -562,6 +641,37 @@ func TestTheDispatcherKeepsTheLogWhateverHappensToTheBanners(t *testing.T) {
 			assert.Len(t, log.Items, 2, "the log keeps every arrival")
 		})
 	}
+}
+
+func TestTheDispatcherNotifiesOfAnEntryAboutNoItem(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, 0)
+	logs := &testutil.Logs{}
+	cfg := f.config()
+	cfg.Logger = logs.Logger()
+	d := NewDispatcher(cfg)
+
+	d.Notify(t.Context(), releaseEntry())
+
+	log, err := NewStore(f.pool).Log(t.Context())
+	require.NoError(t, err)
+	require.Len(t, log.Items, 1)
+	assert.Equal(t, []event.Event{event.NotificationsUpdated{}}, f.events.All())
+	assert.Equal(t, []Banner{{
+		ID: brand.Slug + "-" + strconv.FormatInt(log.Items[0].ID, 10), Title: "Released", Subtitle: "acme-org/sdk",
+		Body: "v1.4.3 is on GitHub\nTagged a1b2c3d on master.", Thread: string(KindReleaseDone),
+		URL: "https://github.com/acme-org/sdk/releases/tag/v1.4.3",
+	}}, f.poster.posted(), "a click opens the entry's page: there's no item to show")
+
+	require.NoError(t, prefs.New(f.pool, f.clock).Set(t.Context(), notifyprefs.KeyBannersOff, `["release_done"]`))
+	d.Notify(t.Context(), releaseEntry())
+	assert.Len(t, f.poster.posted(), 1, "its kind's banners are off")
+	assert.Equal(t, 2, f.events.Count(), "the log still keeps it")
+
+	d.Notify(t.Context(), Entry{Kind: "mentions"})
+	assert.Equal(t, 2, f.events.Count(), "an entry that can't be recorded tells nothing")
+	assert.Contains(t, logs.String(), "could not record the notification")
 }
 
 func TestTheDispatcherSurvivesFailures(t *testing.T) {

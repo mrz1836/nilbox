@@ -34,6 +34,12 @@ export const notificationKinds: readonly KindDescription[] = [
     description: 'New activity brings a snoozed item back before its time, under your wake rules.',
   },
   {
+    kind: 'release_done',
+    title: 'Released',
+    label: 'Releases',
+    description: 'A release you started from the Scripts tab reaches GitHub: its tag is on origin.',
+  },
+  {
     kind: 'session_needs_you',
     session: true,
     title: 'Session waiting for you',
@@ -52,8 +58,9 @@ export const notificationKinds: readonly KindDescription[] = [
 // sessionBannerHint explains why the sessions' banners start off.
 export const sessionBannerHint = 'Claude Code and Codex can already notify through your terminal, so these start off.'
 
-// inboxKinds and sessionKinds are the kinds of notification about the inbox, which the
-// history keeps, and about the agent sessions, which it does not.
+// inboxKinds and sessionKinds are the kinds of notification the history keeps (the
+// inbox's, and a release reaching GitHub), and those about the agent sessions, which it
+// does not.
 export const inboxKinds = notificationKinds.filter((k) => k.session !== true)
 export const sessionKinds = notificationKinds.filter((k) => k.session === true)
 
@@ -62,11 +69,22 @@ export function kindTitle(kind: NotificationKind): string {
   return notificationKinds.find((k) => k.kind === kind)?.title ?? 'Notification'
 }
 
-// entryRef names an entry's item: "example-repo #12".
+// entryRef names an entry's item: "example-repo #12", or, for an entry about no item, as
+// a release is, its repository alone: "example-repo".
 export function entryRef(entry: AppNotification): string {
   const name = entry.repo.slice(entry.repo.lastIndexOf('/') + 1)
 
-  return `${name} #${String(entry.number)}`
+  return entry.itemKind === '' ? name : `${name} #${String(entry.number)}`
+}
+
+// entryTitle is an entry's full reference, for its tooltip: "acme-org/example-repo #12",
+// "acme-org/sdk" for an entry about no item, or none when the repository is unknown.
+export function entryTitle(entry: AppNotification): string | undefined {
+  if (entry.repo === '') {
+    return undefined
+  }
+
+  return entry.itemKind === '' ? entry.repo : `${entry.repo} #${String(entry.number)}`
 }
 
 // bannerStatusText explains the state of the banners in Settings, or '' when they show.

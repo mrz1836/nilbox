@@ -66,21 +66,23 @@ function RunRow({
 }
 
 // RunsPageProps are every run, as the tab lists them (runs, error, and reload, from
-// useScriptRuns), and the terminal chosen for launches, which a run in the terminal runs
-// in, or null until the settings have loaded.
+// useScriptRuns), the terminal chosen for launches, which a run in the terminal runs in,
+// or null until the settings have loaded, and the run open in the panel, which the tab
+// holds, so another page can open one here (as Recent on Release does).
 export interface RunsPageProps extends ScriptRunsState {
   terminal: TerminalID | null
+  selected: number | null
+  onSelect: (id: number | null) => void
 }
 
 // RunsPage is the Scripts tab's Runs page: every run, newest first, filtered by kind and
 // searched by repository as the backend would, from the runs the tab listed. A run opens
 // in the run panel beside the list. Clear history forgets the runs that have ended, after
 // asking; the runs going stay, and so does the panel of one, whatever the filter shows.
-export function RunsPage({ runs, error, reload, terminal }: RunsPageProps) {
+export function RunsPage({ runs, error, reload, terminal, selected, onSelect: setSelected }: RunsPageProps) {
   const id = useId()
   const [filter, setFilter] = useState<RunFilterID>('all')
   const [search, setSearch] = useState('')
-  const [selected, setSelected] = useState<number | null>(null)
   const [asking, setAsking] = useState(false)
   const repo = search.trim()
   const shown = runs === null ? null : filterRuns(runs, filter, repo)

@@ -1,16 +1,23 @@
-import { useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 
 import { counted, formatCount } from '../../lib/format'
+import { unreleasedCount, type ReleaseRequest } from '../../lib/release'
 import { isLive } from '../../lib/scriptRuns'
-import { useIntegrations } from '../../lib/useIntegrations'
-import { useScriptRuns } from '../../lib/useScriptRuns'
-import type { IntegrationTool, TerminalID } from '../../platform'
-import { AlertIcon, CheckIcon, ChevronRightIcon, ClockIcon, RingIcon, XIcon } from '../icons'
+import { toolOf, usable } from '../../lib/scriptsTab'
+import type { SettingsSection } from '../../lib/settingsIndex'
+import type { IntegrationsState } from '../../lib/useIntegrations'
+import { useReleaseCandidates } from '../../lib/useReleaseCandidates'
+import type { ScriptRunsState } from '../../lib/useScriptRuns'
+import type { IntegrationTool, RunsIn, TerminalID } from '../../platform'
+import { AlertIcon, CheckIcon, ChevronRightIcon, ClockIcon, RingIcon, TagIcon, XIcon } from '../icons'
 import { ErrorText } from '../settings/rows'
+import { ReleasePage } from './ReleasePage'
+import { ReleaseSheet, type ReleaseTarget } from './ReleaseSheet'
 import { RunsPage } from './RunsPage'
 
-// ScriptsPage is one of the tab's pages, in the rail's order. The rail lists those built:
-// Runs so far, which Release, Hooks, and Repo scripts join as they are.
+// ScriptsPage is one of the tab's pages, in the rail's order. The rail lists those built
+// whose integration is on: Release and Runs so far, which Hooks and Repo scripts join as
+// they are.
 export type ScriptsPage = 'release' | 'hooks' | 'scripts' | 'runs'
 
 // RailEntry is a page as the rail lists it: its name and icon, and what it counts, with
@@ -60,25 +67,81 @@ function ToolLine({ tool }: { tool: IntegrationTool }) {
   )
 }
 
+// Sheet is the release sheet open over the tab: its repository, and the request that
+// opened it, so a new request opens it afresh.
+interface OpenSheet {
+  target: ReleaseTarget
+  key: number
+}
+
 export interface ScriptsViewProps {
   // terminal is the terminal chosen for launches, which a run in the terminal runs in, or
-  // null until the settings have loaded.
-  terminal?: TerminalID | null
-  // onManageSettings opens Settings → Integrations.
-  onManageSettings: () => void
+  // null until the settings have loaded; runsIn is where runs go, as set.
+  terminal: TerminalID | null
+  runsIn: RunsIn
+  // cloneRoot is the folder the clones are under, with ~.
+  cloneRoot: string
+  // integrations are the tools as the window lists them, and runs every run: the window
+  // holds both, for the tab's badge.
+  integrations: Pick<IntegrationsState, 'tools' | 'error'>
+  runs: ScriptRunsState
+  // request asks for a repository's release sheet, as a merge's toast does; each new one
+  // opens Release and the sheet.
+  request: ReleaseRequest | null
+  // onOpenSettings opens the settings at a section: Integrations, or Repositories for the
+  // clone root.
+  onOpenSettings: (section: SettingsSection) => void
 }
 
 // ScriptsView is the Scripts tab: a rail of its pages, each with what it counts, and at
 // its foot the status of each tool and a way to manage them in Settings; beside it, the
-// page chosen. Runs is its only page so far; Release, Hooks, and Repo scripts join it as
-// they are built. It is a default export, for the window to load it lazily.
-export default function ScriptsView({ terminal = null, onManageSettings }: ScriptsViewProps) {
-  const [page, setPage] = useState<ScriptsPage>('runs')
-  // The runs are listed once, here: the rail counts them, and Runs filters them.
-  const listing = useScriptRuns()
-  const { tools, error } = useIntegrations()
-  const going = listing.runs?.filter((run) => isLive(run.status)).length ?? 0
+// page chosen. Release shows while mage-x is on, beside Runs; Hooks and Repo scripts join
+// them as they are built. The tab opens on the page used last, kept while the window is
+// open, or the first page that's on. It is a default export, for the window to load it
+// lazily.
+export default function ScriptsView({
+  terminal,
+  runsIn,
+  cloneRoot,
+  integrations,
+  runs,
+  request,
+  onOpenSettings,
+}: ScriptsViewProps) {
+  const { tools, error } = integrations
+  const mageX = toolOf(tools, 'mage-x')
+  const releaseOn = mageX?.on === true
+  const [page, setPage] = useState<ScriptsPage | null>(null)
+  const shown: ScriptsPage =
+    page === null || (page === 'release' && !releaseOn) ? (releaseOn ? 'release' : 'runs') : page
+  const candidates = useReleaseCandidates(usable(mageX))
+  const [selectedRun, setSelectedRun] = useState<number | null>(null)
+  const [sheet, setSheet] = useState<OpenSheet | null>(null)
+  // handled is the last request opened, so each opens once; opens numbers the sheets the
+  // page's rows open, below every request's number, so each opens afresh.
+  const [handled, setHandled] = useState(0)
+  const opens = useRef(0)
+
+  if (request !== null && request.seq !== handled) {
+    setHandled(request.seq)
+    setPage('release')
+    setSheet({ target: { repo: request.repo, dir: request.dir, branch: request.branch }, key: request.seq })
+  }
+
+  const going = runs.runs?.filter((run) => isLive(run.status)).length ?? 0
   const pages: readonly RailEntry[] = [
+    ...(releaseOn
+      ? [
+          {
+            id: 'release' as const,
+            label: 'Release',
+            icon: <TagIcon className="size-4" />,
+            count: unreleasedCount(candidates.list?.repos),
+            counts: (n: number) =>
+              counted(n, 'repository with unreleased changes', 'repositories with unreleased changes'),
+          },
+        ]
+      : []),
     {
       id: 'runs',
       label: 'Runs',
@@ -87,8 +150,26 @@ export default function ScriptsView({ terminal = null, onManageSettings }: Scrip
       counts: (n) => counted(n, 'run in progress', 'runs in progress'),
     },
   ]
-  // content is each built page.
-  const content: Partial<Record<ScriptsPage, ReactNode>> = { runs: <RunsPage {...listing} terminal={terminal} /> }
+
+  // openRun shows a run in the Runs page's panel.
+  const openRun = (id: number) => {
+    setSheet(null)
+    setSelectedRun(id)
+    setPage('runs')
+  }
+
+  const openIntegrations = () => {
+    onOpenSettings('integrations')
+  }
+
+  const candidate =
+    sheet === null
+      ? undefined
+      : candidates.list?.repos.find(
+          (r) =>
+            r.repo.toLowerCase() === sheet.target.repo.toLowerCase() &&
+            (sheet.target.dir === '' || r.dir === sheet.target.dir),
+        )
 
   return (
     <div className="flex h-full min-h-0">
@@ -98,7 +179,7 @@ export default function ScriptsView({ terminal = null, onManageSettings }: Scrip
           <button
             key={entry.id}
             type="button"
-            aria-current={entry.id === page ? 'page' : undefined}
+            aria-current={entry.id === shown ? 'page' : undefined}
             title={entry.count > 0 ? entry.counts(entry.count) : undefined}
             onClick={() => {
               setPage(entry.id)
@@ -135,7 +216,7 @@ export default function ScriptsView({ terminal = null, onManageSettings }: Scrip
           <ErrorText error={error === '' ? '' : `Couldn’t list the tools: ${error}`} className="px-2.5" />
           <button
             type="button"
-            onClick={onManageSettings}
+            onClick={openIntegrations}
             className="mt-1 inline-flex items-center gap-1 self-start rounded-md px-2.5 py-1 text-xs font-medium text-accent transition-colors hover:bg-raised"
           >
             Manage in Settings
@@ -143,7 +224,38 @@ export default function ScriptsView({ terminal = null, onManageSettings }: Scrip
           </button>
         </div>
       </nav>
-      <div className="min-w-0 flex-1">{content[page]}</div>
+      <div className="min-w-0 flex-1">
+        {shown === 'release' ? (
+          <ReleasePage
+            candidates={candidates}
+            tool={mageX}
+            runs={runs.runs}
+            cloneRoot={cloneRoot}
+            onRelease={(c) => {
+              opens.current -= 1
+              setSheet({ target: { repo: c.repo, dir: c.dir, branch: '' }, key: opens.current })
+            }}
+            onOpenRun={openRun}
+            onOpenSettings={onOpenSettings}
+          />
+        ) : (
+          <RunsPage {...runs} terminal={terminal} selected={selectedRun} onSelect={setSelectedRun} />
+        )}
+      </div>
+      {sheet !== null && (
+        <ReleaseSheet
+          key={sheet.key}
+          target={sheet.target}
+          candidate={candidate}
+          runsIn={runsIn}
+          terminal={terminal}
+          onOpenSettings={openIntegrations}
+          onWatch={openRun}
+          onClose={() => {
+            setSheet(null)
+          }}
+        />
+      )}
     </div>
   )
 }

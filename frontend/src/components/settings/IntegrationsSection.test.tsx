@@ -266,6 +266,57 @@ describe('IntegrationsSection’s runs', () => {
     )
   })
 
+  it('offers a release after a merge while mage-x can be used, and saves the switch at once', async () => {
+    const { onSaved } = renderSection()
+    const offer = screen.getByRole('switch', { name: 'Offer a release after you merge a pull request' })
+
+    expect(offer).toBeChecked()
+    await waitFor(() => {
+      expect(offer).toBeEnabled()
+    })
+    expect(offer).toHaveAccessibleDescription(
+      'The toast that says a pull request merged offers to release its repository. It never releases by itself.',
+    )
+
+    await userEvent.click(offer)
+
+    expect(platform.setOfferAfterMerge).toHaveBeenCalledExactlyOnceWith(false)
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(settings({ integrations: integrationsConfig({ offerAfterMerge: false }) }))
+    })
+  })
+
+  it('greys the offer out while mage-x can’t be used, saying it needs mage-x', async () => {
+    platform.listIntegrations.mockResolvedValue(
+      integrationTools({ tools: [integrationTool({ state: 'missing', on: false }), goPreCommitTool()] }),
+    )
+    renderSection()
+
+    await screen.findByRole('region', { name: 'mage-x' })
+
+    const offer = screen.getByRole('switch', { name: 'Offer a release after you merge a pull request' })
+
+    expect(offer).toBeDisabled()
+    expect(offer).toHaveAccessibleDescription('Needs mage-x: turn it on above, and make sure it can be used.')
+  })
+
+  it('shows an offer the backend refused beside the switch, not beside Runs in', async () => {
+    platform.setOfferAfterMerge.mockRejectedValue(new Error('database is locked'))
+    renderSection()
+
+    const offer = screen.getByRole('switch', { name: 'Offer a release after you merge a pull request' })
+
+    await waitFor(() => {
+      expect(offer).toBeEnabled()
+    })
+    await userEvent.click(offer)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('database is locked')
+    expect(offer).toBeChecked()
+    expect(offer).toHaveAccessibleDescription(/database is locked$/)
+    expect(screen.getByRole('radiogroup', { name: 'Runs in' })).toHaveAccessibleDescription(note)
+  })
+
   it('waits for the settings to say where runs go', async () => {
     renderSection(null)
 

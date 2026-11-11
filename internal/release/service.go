@@ -86,6 +86,24 @@ type Config struct {
 	Runs   Runs
 	Places Places
 
+	// History reads a run back from the runner's history, for ReleaseResult: the scriptrun
+	// Service.
+	History RunHistory
+
+	// Notifier tells the user of each release that reaches GitHub; without it, nothing is
+	// told.
+	Notifier Notifier
+
+	// AfterMerge reads whether a merge offers a release, and Branches the default branch
+	// the app last stored for a repository, which OfferAfterMerge reads with Tools and the
+	// clones. Without AfterMerge, a merge offers nothing.
+	AfterMerge MergeSetting
+	Branches   DefaultBranches
+
+	// Terminal opens the user's terminal in a clone, for a check's Open in terminal.
+	// Without it, OpenTerminal says the terminal can't be opened here.
+	Terminal FolderOpener
+
 	Home   string
 	Clock  clock.Clock
 	Events event.Sink
@@ -102,8 +120,9 @@ type Candidates struct {
 	Error         string      `json:"error"`
 }
 
-// Service lists what can be released, prepares a release's sheet, and starts the
-// release. The window binds it.
+// Service lists what can be released, prepares a release's sheet, starts the release,
+// reads a release's result back, and says whether a merge offers a release. The window
+// binds it.
 type Service struct {
 	github  GitHub
 	clones  Clones
@@ -115,14 +134,22 @@ type Service struct {
 
 	// gatherer gathers a release's facts, and git reads where a release left the tag and
 	// the clone; both are nil without Config.Git. env is the environment a release runs
-	// with, and ready says when it is the shell's; runs starts a release, and places says
-	// where runs go.
-	gatherer *Gatherer
-	git      verifyGit
-	env      func() ([]string, bool)
-	ready    func() <-chan struct{}
-	runs     Runs
-	places   Places
+	// with, and ready says when it is the shell's; runs starts a release, places says where
+	// runs go, history reads a run back, and notifier tells of a release on GitHub. origins,
+	// tools, afterMerge, and branches serve OfferAfterMerge.
+	gatherer   *Gatherer
+	git        verifyGit
+	env        func() ([]string, bool)
+	ready      func() <-chan struct{}
+	runs       Runs
+	places     Places
+	history    RunHistory
+	notifier   Notifier
+	origins    OriginReader
+	tools      ToolSource
+	afterMerge MergeSetting
+	branches   DefaultBranches
+	terminal   FolderOpener
 
 	// factsMu guards facts: the facts each clone's sheet was last shown, by its folder,
 	// resolved.
@@ -148,7 +175,11 @@ func NewService(cfg Config) *Service {
 	s := &Service{
 		github: cfg.GitHub, clones: cfg.Clones, checker: cfg.Checker, home: cfg.Home,
 		clock: clock.Or(cfg.Clock), events: event.Or(cfg.Events), logger: logging.Or(cfg.Logger),
-		env: cfg.Env, ready: cfg.Ready, runs: cfg.Runs, places: cfg.Places, facts: map[string]keptFacts{},
+		env: cfg.Env, ready: cfg.Ready, runs: cfg.Runs, places: cfg.Places, history: cfg.History,
+		notifier: cfg.Notifier, origins: cfg.Origins, tools: cfg.Tools, afterMerge: cfg.AfterMerge,
+		branches: cfg.Branches,
+		terminal: cfg.Terminal,
+		facts:    map[string]keptFacts{},
 	}
 
 	if s.env == nil {

@@ -88,7 +88,8 @@ export function ShowLog(id: number): $CancellablePromise<void> {
 /**
  * Stop starts stopping a run in the app: SIGINT to its process group, SIGTERM five
  * seconds later, and SIGKILL ten after that. It returns at once; the run's record says
- * it stopped once it has. A run in the terminal stops there.
+ * it stopped once it has. A run in the terminal stops there, and a run whose kind refuses
+ * to stop now (Progress.StopRefused) is refused with its kind's words, ErrStopRefused.
  */
 export function Stop(id: number): $CancellablePromise<void> {
     return $Call.ByID(2218126378, id);

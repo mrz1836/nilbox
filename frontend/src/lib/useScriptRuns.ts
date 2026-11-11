@@ -15,20 +15,23 @@ export interface ScriptRunsState {
 
 // useScriptRuns lists every run the history keeps, and lists them again whenever the
 // shell says a run started, ended, or changed, or the history did. The tab lists them once
-// and filters what it shows itself: the history keeps at most a few hundred runs.
-export function useScriptRuns(): ScriptRunsState {
-  const runs = useQuery(() => listScriptRuns({ kinds: [], repo: '' }), [])
+// and filters what it shows itself: the history keeps at most a few hundred runs. While
+// enabled is false, as while the Scripts tab is hidden, nothing is listed.
+export function useScriptRuns(enabled = true): ScriptRunsState {
+  const runs = useQuery(() => listScriptRuns({ kinds: [], repo: '' }), [], { enabled })
   const reloadOnUpdate = useEffectEvent(() => {
     void runs.refetch()
   })
 
-  useEffect(
-    () =>
-      on('scriptruns:updated', () => {
-        reloadOnUpdate()
-      }),
-    [],
-  )
+  useEffect(() => {
+    if (!enabled) {
+      return undefined
+    }
+
+    return on('scriptruns:updated', () => {
+      reloadOnUpdate()
+    })
+  }, [enabled])
 
   return { runs: runs.data ?? null, error: runs.error, reload: runs.refetch }
 }

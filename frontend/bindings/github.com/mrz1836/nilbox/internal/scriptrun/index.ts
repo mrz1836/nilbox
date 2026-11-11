@@ -14,6 +14,7 @@ export {
 export type {
     Chunk,
     Filter,
+    Progress,
     Result,
     Run,
     RunsIn

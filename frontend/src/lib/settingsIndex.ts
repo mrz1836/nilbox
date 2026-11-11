@@ -251,6 +251,10 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
       label: 'Runs in',
       keywords: ['runs', 'scripts', 'terminal', 'iTerm2', 'where runs go', 'passphrase', 'ssh', brand.name],
     },
+    {
+      label: 'Offer a release after you merge a pull request',
+      keywords: ['release', 'merge', 'after merge', 'toast', 'magex', 'tag', 'version'],
+    },
   ],
   about: [
     {

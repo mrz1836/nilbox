@@ -71,6 +71,7 @@ var kindTitles = map[notifyprefs.Kind]string{
 	KindReviewRequested: "Review requested",
 	KindAssigned:        "Assigned to you",
 	KindWoke:            "Back from snooze",
+	KindReleaseDone:     "Released",
 }
 
 // summaryNouns name each kind in a summary banner, singular and plural.
@@ -80,22 +81,30 @@ var summaryNouns = map[notifyprefs.Kind][2]string{
 	KindReviewRequested: {"review request", "review requests"},
 	KindAssigned:        {"assignment", "assignments"},
 	KindWoke:            {"back from snooze", "back from snooze"},
+	KindReleaseDone:     {"release", "releases"},
 }
 
 // maxTitleRunes bounds an item title in a banner body; the system wraps and cuts the rest.
 const maxTitleRunes = 160
 
-// banner is the banner for one recorded notification.
+// banner is the banner for one recorded notification: its kind as the title, and its item,
+// or for an entry about no item its repository, as the subtitle. A click shows the item,
+// or opens the entry's page.
 func banner(n Notification) Banner {
 	body := textutil.Truncate(n.Title, maxTitleRunes)
 	if n.Detail != "" {
 		body += "\n" + textutil.Capitalize(n.Detail)
 	}
 
+	subtitle := n.Repo + " #" + strconv.Itoa(n.Number)
+	if n.ItemKind == "" {
+		subtitle = n.Repo
+	}
+
 	return Banner{
 		ID:       brand.Slug + "-" + strconv.FormatInt(n.ID, 10),
 		Title:    kindTitles[n.Kind],
-		Subtitle: n.Repo + " #" + strconv.Itoa(n.Number),
+		Subtitle: subtitle,
 		Body:     body,
 		Thread:   string(n.Kind),
 		ItemID:   n.ItemID,

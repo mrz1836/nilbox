@@ -9,6 +9,7 @@ export type {
     ReleasesUpdated,
     RevealItem,
     ReviewProgress,
+    ScriptRunProgress,
     ScriptRunsUpdated,
     SessionsUpdated,
     ToolsUpdated,

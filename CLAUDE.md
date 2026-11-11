@@ -274,12 +274,19 @@ app:lint` reads.
   `execpath.Start` in its own process group, writing straight into its log in
   `<data>/script-runs` (four runs at a time in the app; a release never waits for a slot), and
   ends it with a per-kind timeout or the stop ladder. A spec's `Before`, run under the lock and
-  a slot, may work the command out there. Its `Run` is a deferred desktop worker: it
+  a slot, may work the command out there, and its `Progress` says how far the run has got and
+  whether Stop is let through now: the bound `Run` carries it, `Stop` refuses with the kind's
+  words (`ErrStopRefused`), quitting signals a run only once its kind lets it stop (within
+  `QuitKillAfter`; one still held back is left going for the next start), and
+  `Config.Progressed` hears each change with the run's ID, which core sends the window as
+  `event.ScriptRunProgress` (`scriptruns:progress`), never the whole list's
+  `event.ScriptRunsUpdated`. A spec's `Recorded` is told the outcome only once the run's
+  end is recorded, so a record that fails tells nothing twice. Its `Run` is a deferred desktop worker: it
   reconciles the runs left from before a restart (a live group whose start time matches is
   orphaned and followed again; one that is gone was interrupted; a terminal run is told apart by
   its PID and exit files; every one is held under a placeholder lock and registered before any
   is settled, and a kind's `Verifier`, registered with `RegisterVerifier`, gives such a run its
-  output reader and `Finish` again from its record's intent, so it is read and verified as it
+  output reader, progress, and `Finish` again from its record's intent, so it is read and verified as it
   ends, as tracked work) and, as the app quits, stops every run in the app and records it
   stopped, unless its `Finish` returns `Unsettled` (a release whose check of GitHub the quit cut
   off), which leaves it recorded as going for the next start. `Active` is the desktop shell's quit guard (`desktop.QuitGuard`): while a run goes in
@@ -329,7 +336,17 @@ app:lint` reads.
   run's tag succeeds: origin's must point at the commit magex's JSON result names, or the
   clone's tag that magex said it made; any other is someone else's (`Taken`). The commands it
   offers to copy are shell-quoted. `release.Verifier`, which core registers for releases,
-  verifies one left from before a restart the same way.
+  verifies one left from before a restart the same way. The reader's `Progress` turns Stop off
+  from magex's switch to the branch until its pull ends, and asks first once the tag exists; a
+  release that reaches GitHub is told once its outcome is recorded (the run's `Recorded`),
+  through its `Notifier` (core: the notify `Dispatcher`'s `Notify`, a `release_done`
+  notification about no item, and its banner), and every release that ends emits
+  `event.ReleasesUpdated`, since the page's list is then out of date. The bound
+  `ReleaseResult` reads a run's outcome back as a typed `Result`, and the bound
+  `OfferAfterMerge` answers the review sheet's offer after a merge from local state alone: the
+  `integrations.offerAfterMerge` setting, magex, the default branch the Release page or the
+  inbox already holds, and a clone with that origin, from the page's list or else only the
+  folders named as the repository is (one git command each), never a scan of the clone root.
 - `internal/measure/` and `magefiles/measure.go` take the numbers in
   [`docs/performance.md`](docs/performance.md).
 - `frontend/` is the React + TypeScript + Vite + Tailwind app. It reaches Go only through the

@@ -173,6 +173,10 @@ var (
 	// ErrNoStop is returned when stopping a run in the terminal, which stops there.
 	ErrNoStop = errors.New("a run in the terminal can't be stopped from the app")
 
+	// ErrStopRefused is returned when stopping a run whose kind says it can't be stopped
+	// now (Progress.StopRefused), as a release while magex pulls.
+	ErrStopRefused = errors.New("the run can't be stopped now")
+
 	// ErrNoRerun is returned for Run again on a release, or on a kind with no Rerunner.
 	ErrNoRerun = errors.New("the run can't run again")
 
@@ -243,11 +247,26 @@ type Spec struct {
 	// arrives, from one goroutine at a time. nil reads nothing.
 	Output io.Writer
 
+	// Progress says how far the run has got, and whether Stop is let through now, as its
+	// kind works it out from what Output has read. The engine asks it as the window reads
+	// the run, at each Stop, and after each read of the log, telling Config.Progressed when
+	// the answer changed. It is called from any goroutine, must return promptly, and must
+	// never call back into the engine. nil has no steps, and lets Stop through.
+	Progress func() Progress
+
 	// Before runs under the clone's lock and a slot, before anything is recorded or
 	// started; an error ends the start there. It may return the command to run, worked out
 	// under the lock, which replaces Argv; nil keeps Argv. A release gathers its facts again
 	// in it and decides there what magex runs.
 	Before func(ctx context.Context) ([]string, error)
+
+	// Recorded is called once the run's end is recorded, with the outcome recorded, before
+	// the run lets go of its clone: what is told of an outcome is told only once it is
+	// kept, so a record that failed, which the next start settles again, tells nothing
+	// twice. It is never called for an outcome left Unsettled, nor when the record failed.
+	// It runs on the goroutine that recorded the run, and must return promptly. nil tells
+	// nothing.
+	Recorded func(ctx context.Context, id int64, out Outcome)
 
 	// Finish works out the run's outcome once it has ended and Output has read all of
 	// it. It is given how the run ended and the outcome the engine worked out from that,
@@ -255,6 +274,25 @@ type Spec struct {
 	// app quits and can wait no longer, and Finish must then return at once: with an
 	// Unsettled outcome, when what it needed to know couldn't be learned in time.
 	Finish func(ctx context.Context, end Ending, out Outcome) Outcome
+}
+
+// Progress is how far a run going now has got, as its kind reads its output, and whether
+// the user may stop it now.
+type Progress struct {
+	// Step is the last step the run reached, and Working the one under way, in its kind's
+	// own names, as a release's "onBranch" or "tagCreated"; "" for none yet, or for a kind
+	// without steps.
+	Step    string `json:"step"`
+	Working string `json:"working"`
+
+	// StopRefused, when set, says why Stop is off now, as "Stopping now could leave a
+	// rebase in progress.": Stop refuses with it.
+	StopRefused string `json:"stopRefused"`
+
+	// StopConfirm, when set, is what the window asks before it stops the run, since
+	// stopping now leaves something behind: "Stopping now can leave v1.4.3 on this Mac but
+	// not on GitHub, and your clone on master."
+	StopConfirm string `json:"stopConfirm"`
 }
 
 // Ending is how a run ended, as the engine saw it.
@@ -396,8 +434,11 @@ type Verifier interface {
 }
 
 // Verification is what a Verifier gives a run from before the app restarted: its output
-// reader and its Finish, as a Spec's. Either may be nil, as in a Spec.
+// reader, its progress, its Finish, and its Recorded, as a Spec's. Any may be nil, as in a
+// Spec.
 type Verification struct {
-	Output io.Writer
-	Finish func(ctx context.Context, end Ending, out Outcome) Outcome
+	Output   io.Writer
+	Progress func() Progress
+	Finish   func(ctx context.Context, end Ending, out Outcome) Outcome
+	Recorded func(ctx context.Context, id int64, out Outcome)
 }

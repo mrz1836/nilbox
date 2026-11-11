@@ -1588,8 +1588,8 @@ describe('WorktreesView merged branches', () => {
     await userEvent.click(within(results).getByRole('button', { name: 'Copy restore commands' }))
 
     expect(platform.copyText).toHaveBeenLastCalledWith(
-      `git -C '${repoPath}' branch 'feature-x' fc1c3975011e66491785ace891c893e4fc716587\n` +
-        `git -C '${repoPath}' branch 'it'\\''s-done' 1851851851851851851851851851851851851851`,
+      `git -C ${repoPath} branch feature-x fc1c3975011e66491785ace891c893e4fc716587\n` +
+        `git -C ${repoPath} branch 'it'\\''s-done' 1851851851851851851851851851851851851851`,
     )
     expect(await within(results).findByRole('button', { name: 'Copied' })).toBeInTheDocument()
     error.mockRestore()

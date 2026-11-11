@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -117,6 +117,43 @@ describe('AppHeader', () => {
     expect(worktrees).toHaveAccessibleDescription('4 linked worktrees, 2 done on GitHub but still on disk')
     expect(screen.getByTestId('worktree-attention')).toHaveAttribute('aria-hidden', 'true')
     expect(screen.getByRole('button', { name: 'Inbox' })).toHaveAccessibleDescription('1 item in the inbox')
+  })
+
+  it('hides the Scripts tab while no integration is on (D2)', () => {
+    renderHeader({ scripts: null })
+
+    expect(screen.queryByRole('button', { name: 'Scripts' })).not.toBeInTheDocument()
+  })
+
+  it('shows the Scripts tab after Prompts while an integration is on', () => {
+    renderHeader({ scripts: { running: 0, failed: false, blocked: false } })
+
+    const views = within(screen.getByRole('navigation', { name: 'Views' })).getAllByRole('button')
+    const scripts = screen.getByRole('button', { name: 'Scripts' })
+
+    expect(views.map((b) => b.getAttribute('aria-label'))).toEqual(['Inbox', 'Worktrees', 'Prompts', 'Scripts'])
+    expect(scripts).toHaveTextContent(/^Scripts$/)
+    expect(scripts).not.toHaveAttribute('title')
+  })
+
+  it('badges Scripts with the runs going, a red dot after a failed run, and an amber one for a tool that can’t be used', () => {
+    renderHeader({ view: 'scripts', scripts: { running: 2, failed: true, blocked: true } })
+
+    const scripts = screen.getByRole('button', { name: 'Scripts' })
+
+    expect(scripts).toHaveAttribute('aria-pressed', 'true')
+    expect(scripts).toHaveTextContent('Scripts2')
+    expect(scripts).toHaveAccessibleDescription('2 scripts running, a run failed, a tool that’s on can’t be used')
+    expect(screen.getByTestId('scripts-failed')).toHaveClass('bg-danger')
+    expect(screen.getByTestId('scripts-attention')).toHaveClass('bg-warning')
+  })
+
+  it('shows a dot alone on Scripts while nothing runs', () => {
+    renderHeader({ scripts: { running: 0, failed: true, blocked: false } })
+
+    expect(screen.getByTestId('scripts-count')).toHaveTextContent(/^$/)
+    expect(screen.getByRole('button', { name: 'Scripts' })).toHaveAccessibleDescription('A run failed')
+    expect(screen.queryByTestId('scripts-attention')).not.toBeInTheDocument()
   })
 
   it('shows no count while there is nothing to count', () => {
