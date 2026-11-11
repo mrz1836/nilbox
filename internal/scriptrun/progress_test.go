@@ -4,6 +4,8 @@ package scriptrun
 
 import (
 	"bytes"
+	"context"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -144,6 +146,136 @@ func TestStopIsRefusedWhileTheKindSaysSo(t *testing.T) {
 	require.NotNil(t, rec.ExitCode)
 	assert.Equal(t, 130, *rec.ExitCode, "SIGINT ended it")
 	assert.Equal(t, Progress{}, h.run(id).Progress, "a run that ended has no progress")
+}
+
+func TestARunReadAsItsEndIsRecordedHasNoProgress(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	spec, _ := withKind(h.spec(testutil.FakeRun{Stdout: "step updated\nconfirm Stopping now can leave v1.4.3 on this Mac.\n"}))
+
+	type seen struct {
+		run  Run
+		err  error
+		held bool
+	}
+
+	got := make(chan seen, 1)
+
+	// Recorded is told once the end is recorded, before the engine lets go of the run: a
+	// window reading the run then reads an ended record of a run still registered.
+	spec.Recorded = func(ctx context.Context, id int64, _ Outcome) {
+		run, err := h.s.Run(ctx, id)
+		got <- seen{run: run, err: err, held: h.e.liveRun(id) != nil}
+	}
+
+	h.ended(h.start(spec))
+
+	read := received(t, got, "Recorded is told")
+	require.NoError(t, read.err)
+	require.True(t, read.held, "the engine still held the run")
+	assert.Equal(t, StatusSucceeded, read.run.Status)
+	assert.Equal(t, Progress{}, read.run.Progress, "a run that ended has no progress")
+	assert.False(t, read.run.CanStop, "nor a Stop")
+}
+
+func TestARunWhoseEndIsRecordedNoLongerGoes(t *testing.T) {
+	t.Parallel()
+
+	for _, kind := range []Kind{KindScript, KindUpdate} {
+		t.Run(string(kind), func(t *testing.T) {
+			t.Parallel()
+
+			h := newHarness(t)
+			proceed := filepath.Join(t.TempDir(), "proceed")
+			spec, _ := withKind(h.spec(testutil.FakeRun{Stdout: "step updated\n", WaitFor: proceed}))
+			spec.Kind, spec.Tool = kind, "mage-x"
+
+			type gap struct {
+				held     bool
+				stop     error
+				stopped  bool
+				active   bool
+				inUse    bool
+				updating int64
+				stale    Run
+				listed   []Run
+				listErr  error
+			}
+
+			got := make(chan gap, 1)
+
+			var going atomic.Pointer[Record]
+
+			// Recorded is told in the gap: the run's end is recorded, and the engine still
+			// holds it and its clone.
+			spec.Recorded = func(ctx context.Context, id int64, _ Outcome) {
+				var g gap
+
+				l := h.e.liveRun(id)
+				g.held = l != nil
+				g.stop = h.s.Stop(ctx, id)
+				g.stopped = l != nil && l.stopped.Load()
+				g.active, g.inUse, g.updating = h.e.Active(), h.e.InUse("mage-x"), h.e.Updating("mage-x")
+				g.stale = h.s.view(*going.Load())
+				g.listed, g.listErr = h.s.Runs(ctx, Filter{})
+
+				got <- g
+			}
+
+			id := h.start(spec)
+			h.waitProgress(id, Progress{Step: "updated"})
+
+			rec := h.record(id)
+			require.Equal(t, StatusRunning, rec.Status)
+			going.Store(&rec)
+
+			var updating int64
+			if kind == KindUpdate {
+				updating = id
+			}
+
+			assert.True(t, h.e.Active(), "while it goes, it keeps the app from quitting")
+			assert.Equal(t, kind != KindUpdate, h.e.InUse("mage-x"), "uses its tool, unless it updates it")
+			assert.Equal(t, updating, h.e.Updating("mage-x"))
+			assert.True(t, h.s.view(rec).CanStop)
+
+			testutil.WriteFile(t, proceed, "")
+			h.ended(id)
+
+			read := received(t, got, "Recorded is told")
+			require.True(t, read.held, "the engine still held the run")
+			require.ErrorIs(t, read.stop, ErrNotRunning, "a Stop finds it ended")
+			assert.Equal(t, "It has already ended.", uierr.Message(read.stop))
+			assert.False(t, read.stopped, "and never marks it stopped")
+			assert.False(t, read.active, "it keeps nothing from quitting")
+			assert.False(t, read.inUse, "uses no tool")
+			assert.Zero(t, read.updating, "and updates none")
+			assert.Equal(t, Progress{}, read.stale.Progress, "a record read while it went shows no progress now")
+			assert.False(t, read.stale.CanStop, "nor a Stop")
+
+			require.NoError(t, read.listErr)
+			require.Len(t, read.listed, 1)
+			assert.Equal(t, Progress{}, read.listed[0].Progress, "nor does the list")
+			assert.False(t, read.listed[0].CanStop)
+		})
+	}
+}
+
+// received returns what ch gives, failing the test when it gives nothing within wait.
+func received[T any](t *testing.T, ch <-chan T, what string) T {
+	t.Helper()
+
+	select {
+	case v := <-ch:
+		return v
+	case <-time.After(wait):
+		require.FailNow(t, what+": nothing came")
+
+		var none T
+
+		return none
+	}
 }
 
 func TestProgressIsToldWhenItChanges(t *testing.T) {

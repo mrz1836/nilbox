@@ -138,8 +138,9 @@ func (s *Service) Output(ctx context.Context, id, offset, limit int64) (Chunk, e
 
 // Stop starts stopping a run in the app: SIGINT to its process group, SIGTERM five
 // seconds later, and SIGKILL ten after that. It returns at once; the run's record says
-// it stopped once it has. A run in the terminal stops there, and a run whose kind refuses
-// to stop now (Progress.StopRefused) is refused with its kind's words, ErrStopRefused.
+// it stopped once it has. A run in the terminal stops there, a run whose kind refuses to
+// stop now (Progress.StopRefused) is refused with its kind's words, ErrStopRefused, and a
+// run whose end is recorded is refused with ErrNotRunning.
 func (s *Service) Stop(ctx context.Context, id int64) error {
 	return s.e.stop(ctx, id)
 }
@@ -250,7 +251,7 @@ func (s *Service) QuitAnyway(_ context.Context) {
 
 // view returns rec as the window shows it.
 func (s *Service) view(rec Record) Run {
-	l := s.e.liveRun(rec.ID)
+	l := s.e.goingRun(rec.ID)
 
 	run := Run{
 		ID: rec.ID, Kind: rec.Kind, Title: rec.Title, Source: rec.Source, Repo: repoText(rec.Repo),
@@ -264,7 +265,10 @@ func (s *Service) view(rec Record) Run {
 		run.LogBytes = s.e.files.size(rec.ID)
 	}
 
-	if l == nil || l.settling {
+	// Progress and Stop are a going run's alone. The engine records a run's end a moment
+	// before it marks the run ended, and lets go of it a moment after: a record read as
+	// ended, or a run marked ended since its record was read, has ended either way.
+	if l == nil || l.settling || !rec.Status.Live() {
 		return run
 	}
 

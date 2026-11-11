@@ -155,6 +155,7 @@ func TestStopIsLetThroughOutsideTheSwitchAndThePull(t *testing.T) {
 			r.magex("1.30.2", r.replayUpTo("patch-feature-behind", tt.upTo))
 
 			id := r.release()
+			r.waitFor(id, tt.upTo) // magex got that far: an empty progress is also where every run starts
 			r.waitProgress(id, tt.want)
 			assert.True(t, r.run(id).CanStop)
 

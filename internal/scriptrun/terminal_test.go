@@ -3,6 +3,7 @@
 package scriptrun
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -41,7 +42,10 @@ func TestATerminalRunIsFollowedToItsExitFile(t *testing.T) {
 	h := terminalHarness(t, term)
 	out := &collector{}
 
-	spec := h.terminalSpec(testutil.FakeRun{Stdout: "in the terminal\n", Sleep: 500 * time.Millisecond, Exit: 3})
+	// The tool runs until the test lets it end, so it is still running when the test looks,
+	// however long the shell and the tool take to start and be seen.
+	proceed := filepath.Join(t.TempDir(), "proceed")
+	spec := h.terminalSpec(testutil.FakeRun{Stdout: "in the terminal\n", Sleep: time.Minute, WaitFor: proceed, Exit: 3})
 	spec.Output = out
 
 	id := h.start(spec)
@@ -70,6 +74,8 @@ func TestATerminalRunIsFollowedToItsExitFile(t *testing.T) {
 
 	err := h.s.Stop(t.Context(), id)
 	require.ErrorIs(t, err, ErrNoStop, "a run in the terminal stops there")
+
+	testutil.WriteFile(t, proceed, "") // the tool ends, as the user's command would
 
 	rec = h.ended(id)
 	assert.Equal(t, StatusFailed, rec.Status)
@@ -100,9 +106,17 @@ func TestATerminalClosedMidRunIsInterrupted(t *testing.T) {
 	term.noExit = true
 
 	h := terminalHarness(t, term)
-	spec := h.terminalSpec(testutil.FakeRun{Stdout: "partial\n", Sleep: 300 * time.Millisecond})
+
+	// The tool runs until the shell is seen, so its PID is recorded however slow the tick.
+	proceed := filepath.Join(t.TempDir(), "proceed")
+	spec := h.terminalSpec(testutil.FakeRun{Stdout: "partial\n", Sleep: time.Minute, WaitFor: proceed})
 
 	id := h.start(spec)
+
+	require.Eventually(t, func() bool { return h.record(id).PID > 0 }, wait, poll, "the shell's PID is recorded")
+
+	testutil.WriteFile(t, proceed, "") // the tool ends, and the shell with it, leaving no exit file
+
 	rec := h.ended(id)
 
 	assert.Equal(t, StatusInterrupted, rec.Status, "its shell is gone and it left no exit status")

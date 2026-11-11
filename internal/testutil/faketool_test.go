@@ -1,6 +1,7 @@
 package testutil_test
 
 import (
+	"bufio"
 	"bytes"
 	"os"
 	"os/exec"
@@ -59,6 +60,34 @@ func TestFakeToolSleepsBeforeExiting(t *testing.T) {
 	assert.Equal(t, "done\n", stdout)
 	assert.Zero(t, code)
 	assert.GreaterOrEqual(t, time.Since(start), 200*time.Millisecond)
+}
+
+func TestFakeToolExitsOnceTheFileItWaitsForAppears(t *testing.T) {
+	t.Parallel()
+
+	proceed := filepath.Join(t.TempDir(), "proceed")
+	path, env := testutil.FakeTool(t, "magex", testutil.FakeRun{Stdout: "waiting\n", WaitFor: proceed, Exit: 4})
+
+	cmd := exec.CommandContext(t.Context(), path) //nolint:gosec // the fake tool this test made
+
+	cmd.Env = append(os.Environ(), env)
+
+	stdout, err := cmd.StdoutPipe()
+	require.NoError(t, err)
+	require.NoError(t, cmd.Start())
+
+	line, err := bufio.NewReader(stdout).ReadString('\n')
+	require.NoError(t, err)
+	assert.Equal(t, "waiting\n", line)
+
+	testutil.WriteFile(t, proceed, "")
+
+	start := time.Now()
+
+	var exit *exec.ExitError
+	require.ErrorAs(t, cmd.Wait(), &exit)
+	assert.Equal(t, 4, exit.ExitCode())
+	assert.Less(t, time.Since(start), time.Minute, "it exits once the file appears, not at its bound")
 }
 
 func TestFakeToolReportsStdin(t *testing.T) {
