@@ -14,7 +14,8 @@ import (
 
 // runStore reads and writes script_runs.
 type runStore struct {
-	q *queries.Queries
+	db *sql.DB
+	q  *queries.Queries
 }
 
 // started is what a run's row records as it starts.
@@ -118,6 +119,64 @@ func (s runStore) finish(ctx context.Context, f finished) error {
 	}
 
 	return nil
+}
+
+// amend rewrites the summary and the kind's own result of a run that has ended, in one
+// transaction with the read of the run that change is given: change returns what to
+// write, or false to leave the run as it is. It reports whether it changed the run. A run
+// the history no longer holds fails with ErrNotFound, and one still going with
+// ErrStillGoing.
+func (s runStore) amend(ctx context.Context, id int64, change func(Record) (Amendment, bool)) (bool, error) {
+	changed := false
+
+	err := store.InTx(ctx, s.db, func(tx *sql.Tx) error {
+		var err error
+
+		changed, err = amendIn(ctx, s.q.WithTx(tx), id, change)
+
+		return err
+	})
+	if err != nil {
+		return false, err
+	}
+
+	return changed, nil
+}
+
+// amendIn is amend's work inside its transaction, through q.
+func amendIn(ctx context.Context, q *queries.Queries, id int64, change func(Record) (Amendment, bool)) (bool, error) {
+	row, err := q.GetRun(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, fmt.Errorf("%w: %d", ErrNotFound, id)
+	}
+
+	if err != nil {
+		return false, fmt.Errorf("read the run: %w", err)
+	}
+
+	rec := recordOf(row)
+	if rec.Status.Live() {
+		return false, fmt.Errorf("%w: %d", ErrStillGoing, id)
+	}
+
+	a, ok := change(rec)
+	if !ok {
+		return false, nil
+	}
+
+	result := rec.Result
+	result.Outcome = a.Outcome
+
+	raw, err := store.EncodeJSON(result)
+	if err == nil {
+		_, err = q.AmendRun(ctx, queries.AmendRunParams{ID: id, Summary: a.Summary, Result: raw})
+	}
+
+	if err != nil {
+		return false, fmt.Errorf("record the run's result: %w", err)
+	}
+
+	return true, nil
 }
 
 // get returns one run, or ErrNotFound.

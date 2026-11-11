@@ -173,7 +173,7 @@ func NewEngine(cfg Config) *Engine {
 	}
 
 	return &Engine{
-		store: runStore{q: queries.New(cfg.DB)}, locks: locks, files: logFiles{dir: cfg.LogDir}, home: cfg.Home,
+		store: runStore{db: cfg.DB, q: queries.New(cfg.DB)}, locks: locks, files: logFiles{dir: cfg.LogDir}, home: cfg.Home,
 		clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger), changed: cfg.Changed, progressed: cfg.Progressed,
 		terminal: cfg.Terminal, reveal: cfg.Reveal, quit: cfg.Quit, slots: make(chan struct{}, Slots),
 		keep:       retention{runs: KeepRuns, bytes: KeepLogBytes},

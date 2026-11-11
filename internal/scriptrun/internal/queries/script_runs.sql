@@ -69,3 +69,11 @@ UPDATE script_runs SET seen_at = sqlc.arg(seen_at) WHERE id = sqlc.arg(id);
 -- name: DeleteRuns :exec
 -- DeleteRuns deletes the runs named that have finished; one still going is kept.
 DELETE FROM script_runs WHERE status NOT IN ('running', 'orphaned') AND id IN (sqlc.slice(ids));
+
+-- name: AmendRun :execrows
+-- AmendRun rewrites the summary and the result of a run that has finished, as a release does
+-- while it follows its workflow on GitHub. A run still going is left as it is.
+UPDATE script_runs SET
+    summary = sqlc.arg(summary),
+    result = sqlc.arg(result)
+WHERE id = sqlc.arg(id) AND status NOT IN ('running', 'orphaned');

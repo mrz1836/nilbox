@@ -11,6 +11,29 @@ import (
 	"time"
 )
 
+const amendRun = `-- name: AmendRun :execrows
+UPDATE script_runs SET
+    summary = ?1,
+    result = ?2
+WHERE id = ?3 AND status NOT IN ('running', 'orphaned')
+`
+
+type AmendRunParams struct {
+	Summary string
+	Result  string
+	ID      int64
+}
+
+// AmendRun rewrites the summary and the result of a run that has finished, as a release does
+// while it follows its workflow on GitHub. A run still going is left as it is.
+func (q *Queries) AmendRun(ctx context.Context, arg AmendRunParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, amendRun, arg.Summary, arg.Result, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const deleteRuns = `-- name: DeleteRuns :exec
 DELETE FROM script_runs WHERE status NOT IN ('running', 'orphaned') AND id IN (/*SLICE:ids*/?)
 `
