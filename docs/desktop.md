@@ -546,15 +546,21 @@ origin, with one `git ls-remote` whose answer is kept five minutes.
   origin, one that has diverged from it, one that tracks no branch on origin, a detached HEAD, or
   a merge or rebase in progress says so, and offers no pull. A pull refuses a clone that moved to
   another branch since the check, fails with git's own words on a branch with commits of its own,
-  and says so if the clone is switched to another branch while it runs. It runs under the same
-  guards as the app's own reads of a clone: no hook, no file system monitor, no submodule, no
-  signature program, and none of the programs the clone's own git config names (its ssh command,
-  password program, credential helpers, and filter drivers give way to your own, and its cookie
-  file is dropped), and it updates only the branch and origin's copy of it, whatever the clone's
-  own refspecs say. If it fails because a setting of the clone's own was set aside, it says
-  which, and to set it for that folder in your global git config with an `includeIf`. Stop asks
-  first while git fetches, and waits once git is writing the files. Nothing is checked or pulled
-  while Scripts is off.
+  and says so if the clone is switched to another branch while it runs. A pull runs only in a
+  clone whose own git config holds nothing but what git, Git LFS, and your editor write there
+  (its remotes, branches, signing, and the like; see [What a clone's own config may
+  hold](#what-a-clones-own-config-may-hold)): anything else, such as a hook, a filter, an ssh
+  command, a credential helper, or a setting that moves its files elsewhere, refuses the pull
+  before git runs, naming the settings, and you can set them for that folder in your global git
+  config with an `includeIf` instead, where they count as your own. It runs with no hook, no
+  file system monitor, no submodule, no signature program, and no maintenance, the clone's own
+  folder named so its config can't move it, and it updates only the branch and origin's copy of
+  it, whatever the clone's own refspecs say. In a partial clone, it fetches the contents of the
+  files it writes from the clone's promisor remote, under the same guards. Checking asks origin
+  once; pulling asks it only in git's own fetch. A pull
+  can't be stopped, since stopping partway could leave the files half updated: it ends on its
+  own within ten minutes, and quitting leaves it to finish. Nothing is checked or pulled while
+  Scripts is off.
 - **The sources, in order:** **Yours** (below), then **From t3.json**, **From
   .vscode/tasks.json**, and **magex**, each as Settings → Integrations turns it on (the Scripts
   card's **Show magex targets** and **Read t3.json and VS Code tasks**). A file that can't be
@@ -1871,15 +1877,47 @@ worktrees runs with hooks, the file system monitor, and submodule recursion turn
 worktree holds the pull request's own files, and a hook in your clone that runs a tool from the
 checkout would otherwise run the pull request's code before any agent starts. Its fetches, its
 look at the remote's default branch, and `git worktree add` also run under the same guards as
-the app's own reads of a clone, with the git and environment your login shell gives: none of
-the programs the clone's own git config names runs (its ssh command, password program,
-credential helpers, and filter drivers give way to your own, its cookie file is dropped, and the
-remote is asked for git's own upload-pack), and a remote reached through a remote helper, or an
-https one the clone's own config reroutes, is refused. If a fetch fails because a setting of the
-clone's own was set aside, the launch says which, and to set it for that folder in your global
-git config with an `includeIf`. Every worktree made or adopted is
+Repo scripts' **Pull**, with the environment your login shell gives and the same git as every
+other command the app runs there: a clone whose own git config holds anything but what git,
+Git LFS, and your editor write there ([below](#what-a-clones-own-config-may-hold)) is refused
+before git runs, naming the settings, and so is a remote reached through a remote helper, by
+name. No maintenance runs, the remote is asked for git's own upload-pack, and the clone's own
+folder is named so its config can't send the checkout elsewhere. A fetch moves only the ref it
+names, whatever the clone's own refspecs say, so a launch never moves one of your branches. In
+a partial clone, the checkout fetches the files it writes from the clone's promisor remote,
+under the same guards. Every worktree made or adopted is
 recorded with its item, and each session started in it with its agent and time, so the
 [Worktrees view](#the-worktrees-view) links it and its cleanup finds it.
+
+### What a clone's own config may hold
+
+The git commands the app runs that change a clone (Repo scripts' **Pull**, and a launch's
+fetches and `git worktree add`) first read the clone's own git config, `.git/config` and
+whatever it includes, and run only when every setting there is one git, Git LFS, or an editor
+writes for itself, which names no program to run and no place to write:
+
+- what `git init` and `git clone` write (`core.repositoryformatversion`, `core.filemode`,
+  `core.bare`, `core.logallrefupdates`, `core.ignorecase`, `core.precomposeunicode`,
+  `core.symlinks`, `core.autocrlf`, `core.eol`), and `core.hooksPath` and `core.fsmonitor`,
+  which the app sets again for these commands, so a husky folder doesn't stop them;
+- a remote's `url`, `fetch`, `pushurl`, `tagopt`, `prune`, `promisor`, and
+  `partialclonefilter`, and the notes the GitHub CLI and other git clients keep there
+  (`gh-resolved`, `gtserviceaccountidentifier`);
+- anything about a branch but its `mergeoptions` (VS Code keeps `vscode-merge-base` there);
+- the repository's format extensions (`partialclone`, `worktreeconfig`, `objectformat`,
+  `refstorage`);
+- `user.name`, `user.email`, `user.signingkey`, `commit.gpgsign`, `tag.gpgsign`, and
+  `gpg.format`;
+- `pull.rebase`, `pull.ff`, and `fetch.prune`;
+- a submodule's `url` and `active`, `submodule.active`, and `submodule.recurse`;
+- `lfs.repositoryformatversion`, `lfs.<url>.access`, and Git LFS's own filter, exactly as
+  `git lfs install --local` writes it; and `log.excludeDecoration`.
+
+Anything else, such as a hook, another filter, an ssh command, a credential helper, an http
+setting, `core.worktree`, an include or `includeIf`, a gc or maintenance setting, or one of Git
+LFS's transfer agents, refuses the command, which names the settings. Set them for that folder
+in your global git config with an `includeIf` instead: your own config, global or system, is
+never weighed.
 
 ### Workspace trust
 

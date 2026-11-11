@@ -376,11 +376,15 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	versionRunner := runner
 	agentRunners := func([]string) execpath.Runner { return opts.Runner }
 	toolRunners := func([]string) execpath.Runner { return opts.Runner }
+	// gitWith is gitRunner with an environment of its own, for the worktree commands that
+	// run under gitread's guards: the same search, so the same git.
+	gitWith := func([]string) execpath.Runner { return opts.Runner }
 
 	if runner == nil {
 		runner, gitRunner, versionRunner = execpath.Exec{Search: search}, worktreeRunner(search), agentRunner{search: search}
 		agentRunners = func(env []string) execpath.Runner { return agentRunner{search: search, env: env} }
 		toolRunners = nil // the integrations run each tool by its path, with the shell's environment
+		gitWith = func(env []string) execpath.Runner { return execpath.Exec{Search: search, Env: env} }
 	}
 
 	profileStore := profiles.NewStore(pool, opts.Clock)
@@ -442,6 +446,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Git:      gitRunner,
 		Finder:   search,
 		Guard:    shellGit,
+		GitWith:  gitWith,
 		Home:     opts.Home,
 		Clock:    opts.Clock,
 		GitHub:   itemStates{tokens: tokens, client: client},

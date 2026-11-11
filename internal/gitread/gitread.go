@@ -23,6 +23,10 @@
 // ssh transports are allowed; the clone's ssh command, password program, and credential
 // helpers give way to the user's own; no cookie file is written; and origin is asked for
 // git's own upload-pack. No other command reaches a transport at all.
+//
+// The git commands that do change a clone, run elsewhere, get what they run with from a
+// Setup (RemoteSetup, RemoteSetupFor, CheckoutSetup), which first refuses a clone whose own
+// config holds a setting outside the allowlist in cloneconfig.go.
 package gitread
 
 import (
@@ -117,8 +121,8 @@ func (g *Git) Run(ctx context.Context, dir string, args ...string) (stdout, stde
 
 // remote runs an ls-remote, which has passed the allowlist, within RemoteTimeout and as
 // remoteGuard sets it up, and words its failure as Run says.
-func (g *Git) remote(ctx context.Context, dir string, args []string) (stdout, stderr []byte, err error) {
-	ctx, cancel := context.WithTimeout(ctx, RemoteTimeout)
+func (g *Git) remote(parent context.Context, dir string, args []string) (stdout, stderr []byte, err error) {
+	ctx, cancel := context.WithTimeout(parent, RemoteTimeout)
 	defer cancel()
 
 	base := g.env()
@@ -130,10 +134,12 @@ func (g *Git) remote(ctx context.Context, dir string, args []string) (stdout, st
 
 	switch {
 	case err == nil:
+	case ctx.Err() != nil && parent.Err() == nil:
+		err = fmt.Errorf("%w: %w: %w", ErrRemoteTimeout, ctx.Err(), err)
 	case ctx.Err() != nil:
 		err = fmt.Errorf("%w: %w", ctx.Err(), err)
 	case len(setup.setAside) > 0:
-		err = &SetAsideError{Err: err, Settings: setup.setAside}
+		err = &SetAsideError{Err: err, Settings: setup.setAside, Remote: remoteName}
 	}
 
 	return stdout, stderr, err
@@ -183,46 +189,75 @@ func (g *Git) filtersOff(ctx context.Context, dir string, env []string) (off []s
 		return nil, errOut, err
 	}
 
-	off, err = cloneFiltersOff(out)
+	settings, err := parseScoped(out)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	off, err = cloneFiltersOff(settings)
 
 	return off, nil, err
 }
 
-// cloneFiltersOff reads `git config --show-scope --get-regexp` lines for the filter
-// drivers' keys and returns the settings that turn off each driver from the clone's own
-// config (any scope but trustedScopes): its clean, smudge, and process commands emptied,
-// which git reads as no filter, and required off, so the file is read or written as it is
-// rather than failing. A driver name passable refuses can't be named in a -c setting, and
-// is refused.
-func cloneFiltersOff(out []byte) ([]string, error) {
-	var (
-		off  []string
-		seen []string
-	)
+// cloneFiltersOff returns, from the filter drivers' settings, the -c settings that turn
+// off each driver the clone's own config (any scope but trustedScopes) defines: its clean,
+// smudge, and process commands emptied, which git reads as no filter, and required off,
+// so the file is read or written as it is rather than failing. A driver whose every
+// command the clone sets is Git LFS's own (lfsCommand), as `git lfs install --local`
+// writes them, stays on: it runs the user's own git-lfs, from their PATH, not a program
+// the clone chose. A driver name passable refuses can't be named in a -c setting, and is
+// refused.
+func cloneFiltersOff(settings []scopedSetting) ([]string, error) {
+	var order []string
 
-	for line := range strings.Lines(string(out)) {
-		scope, rest, ok := strings.Cut(strings.TrimRight(line, "\n"), "\t")
-		if !ok || trustedScope(scope) {
+	lfs := map[string]bool{}
+
+	for _, s := range settings {
+		if s.trusted() {
 			continue
 		}
 
-		key, _, _ := strings.Cut(rest, " ")
-
-		name, ok := filterName(key)
+		name, ok := filterName(s.key)
 		if !ok {
-			return nil, fmt.Errorf("%w: a filter driver named %q", ErrGitCommandNotAllowed, key)
+			return nil, fmt.Errorf("%w: a filter driver named %q", ErrGitCommandNotAllowed, s.key)
 		}
 
-		if slices.Contains(seen, name) {
-			continue
+		kept, seen := lfs[name]
+		if !seen {
+			order, kept = append(order, name), true
 		}
 
-		seen = append(seen, name)
+		lfs[name] = kept && lfsCommand(s.key) == s.value
+	}
+
+	return driversOff(slices.DeleteFunc(order, func(name string) bool { return lfs[name] })), nil
+}
+
+// driversOff returns the -c settings that turn off each of the filter drivers names.
+func driversOff(names []string) []string {
+	off := make([]string, 0, 8*len(names))
+
+	for _, name := range names {
 		off = append(off, "-c", "filter."+name+".clean=", "-c", "filter."+name+".smudge=",
 			"-c", "filter."+name+".process=", "-c", "filter."+name+".required=false")
 	}
 
-	return off, nil
+	return off
+}
+
+// lfsCommand is Git LFS's own command for a filter driver's key, filter.<name>.clean,
+// .smudge, or .process, as `git lfs install` writes it, or "" for another key.
+func lfsCommand(key string) string {
+	switch {
+	case strings.HasSuffix(key, ".clean"):
+		return "git-lfs clean -- %f"
+	case strings.HasSuffix(key, ".smudge"):
+		return "git-lfs smudge -- %f"
+	case strings.HasSuffix(key, ".process"):
+		return "git-lfs filter-process"
+	default:
+		return ""
+	}
 }
 
 // filterName returns the driver's name in a filter.<name>.clean, .smudge, or .process
@@ -243,9 +278,10 @@ func filterName(key string) (string, bool) {
 	return name, passable(name)
 }
 
-// filterDriversArgs lists the filter drivers' program settings with where each is set.
+// filterDriversArgs lists the filter drivers' program settings with where each is set,
+// NUL-terminated so a value may hold a newline.
 func filterDriversArgs() []string {
-	return []string{configCmd, "--show-scope", "--get-regexp", filterKeysPattern}
+	return []string{configCmd, "--show-scope", "-z", "--get-regexp", filterKeysPattern}
 }
 
 // environment returns Env's environment with GIT_OPTIONAL_LOCKS=0, GIT_TERMINAL_PROMPT=0,

@@ -112,34 +112,33 @@ func lsRemoteArgs(remote string) []string {
 }
 
 // git runs allowlisted git commands as `git -C <dir> <args>`, and, with a guard, those that
-// reach a remote or write a worktree's files under gitread's guards.
+// reach a remote or write a worktree's files under gitread's guards. Every command runs
+// bin, through run, or through with for one that needs an environment of its own.
 type git struct {
 	run   execpath.Runner
 	bin   string
 	guard Guard
+
+	// with runs git argv with a whole environment of its own, as a guarded command needs:
+	// Config.GitWith, the same runner as run but for the environment.
+	with func(env []string) execpath.Runner
 }
 
 // reach runs args, a command that reaches the clone's remote, as gitread's RemoteSetupFor
-// works it out for that remote (guarded), and returns the clone's own settings it set
-// aside, which may be why it failed. Without a guard it runs as do does. A remote the guard
-// refuses, a remote helper or a rerouted one, is refused before anything runs.
-func (g git) reach(ctx context.Context, dir, remote string, args ...string) (stdout, stderr []byte, aside []string,
-	err error,
-) {
+// works it out for that remote (guarded). Without a guard it runs as do does. A clone
+// whose own config sets what the guard refuses, or a remote it refuses, as one reached
+// through a remote helper, is refused before anything runs.
+func (g git) reach(ctx context.Context, dir, remote string, args ...string) (stdout, stderr []byte, err error) {
 	if g.guard == nil {
-		stdout, stderr, err = g.do(ctx, dir, args...)
-
-		return stdout, stderr, nil, err
+		return g.do(ctx, dir, args...)
 	}
 
 	setup, err := g.guard.RemoteSetupFor(ctx, dir, remote)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("%w: %w", errGuard, err)
+		return nil, nil, fmt.Errorf("%w: %w", errGuard, err)
 	}
 
-	stdout, stderr, err = g.guarded(ctx, dir, setup, args)
-
-	return stdout, stderr, setup.SetAside, err
+	return g.guarded(ctx, dir, setup, args)
 }
 
 // write runs args, a command that writes a worktree's files and reaches no remote, as
@@ -157,8 +156,10 @@ func (g git) write(ctx context.Context, dir string, args ...string) (stdout, std
 	return g.guarded(ctx, dir, setup, args)
 }
 
-// guarded runs args, which must pass the allowlist, with setup's git, its environment, and
-// its settings (gitread.Hardening first) ahead of them.
+// guarded runs args, which must pass the allowlist, with setup's environment, which holds
+// its settings (gitread.Hardening's first), the clone's folders, and its transports: the
+// same git as every other command here, bin, through the configured runner, never setup's
+// own, so one clone is never handled by two git builds.
 func (g git) guarded(ctx context.Context, dir string, setup gitread.Setup, args []string) (stdout, stderr []byte,
 	err error,
 ) {
@@ -166,12 +167,14 @@ func (g git) guarded(ctx context.Context, dir string, setup gitread.Setup, args 
 		return nil, nil, fmt.Errorf("%w: git %s", ErrGitCommandNotAllowed, strings.Join(args, " "))
 	}
 
-	argv := make([]string, 0, len(setup.Settings)+len(args)+2)
-	argv = append(argv, "-C", dir)
-	argv = append(argv, setup.Settings...)
-	argv = append(argv, args...)
+	argv := append([]string{"-C", dir}, args...)
 
-	return execpath.Exec{Env: setup.Env}.Run(ctx, setup.Git, argv...)
+	with := g.with
+	if with == nil {
+		with = func(env []string) execpath.Runner { return execpath.Exec{Env: env} }
+	}
+
+	return with(setup.Env).Run(ctx, g.bin, argv...)
 }
 
 // hardening are the settings every git command here runs with, gitread.Hardening: the

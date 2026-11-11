@@ -25,9 +25,10 @@ const heldPull = going({
   repo: 'acme-org/sdk',
   canStop: false,
   progress: {
-    step: 'updating',
+    step: '',
     working: '',
-    stopRefused: 'git is updating the clone’s files now. Stopping could leave them half updated.',
+    stopRefused:
+      'A pull can’t be stopped: stopping it partway could leave the clone’s files half updated. It ends on its own, within ten minutes.',
     stopConfirm: '',
   },
 })
@@ -138,7 +139,7 @@ describe('QuitDialog', () => {
 
     expect(
       (await dialog()).getByText(
-        `Pull main is running in acme-org/sdk. git is updating the clone’s files now. Stopping could leave them half updated. Stopping waits up to a few seconds for it to finish that. If it doesn’t, it goes on after ${brand.name} closes. Quit anyway?`,
+        `Pull main is running in acme-org/sdk. A pull can’t be stopped: stopping it partway could leave the clone’s files half updated. It ends on its own, within ten minutes. Quitting waits up to a few seconds for it. If it hasn’t ended by then, it goes on after ${brand.name} closes. Quit anyway?`,
       ),
     ).toBeInTheDocument()
   })

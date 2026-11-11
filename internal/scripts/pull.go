@@ -20,16 +20,11 @@ import (
 // updates is the pulled branch's.
 const trackingRef = "refs/remotes/" + originRemote + "/"
 
-// What the window says of stopping a pull: asked first while git fetches, and refused
-// once it says it is updating the clone's files, which stopping would leave half written.
-const (
-	stopPullConfirm = "Stopping a pull partway can leave the clone's files half updated."
-	stopPullRefused = "git is updating the clone's files now. Stopping could leave them half updated."
-)
-
-// updatingPrefix starts the line git prints as a fast-forward begins writing the clone's
-// files, in git's own words: the pull runs with LC_ALL=C, so it is never translated.
-const updatingPrefix = "Updating "
+// stopPullRefused is why a pull can't be stopped, for its whole run: git writes its output
+// only as it exits, so no line says in time that it has begun writing the clone's files,
+// which stopping would leave half written. Its kind's limit ends it all the same.
+const stopPullRefused = "A pull can't be stopped: stopping it partway could leave the clone's files half " +
+	"updated. It ends on its own, within ten minutes."
 
 // PullIntent is what a pull sets out to do, written into its run's result as it starts, so
 // Run again pulls the same branch: the one the clone was on.
@@ -39,13 +34,12 @@ type PullIntent struct {
 
 // pullRun is one pull as it goes: the clone and the branch it pulls, and what its Before
 // read and worked out under the clone's lock: the branch on origin it follows, its commit
-// before the pull, the clone's own settings git goes without, and git's environment.
+// before the pull, and git's environment, its settings in it.
 type pullRun struct {
 	c        clone
 	branch   string
 	upstream string
 	before   string
-	aside    []string
 	env      []string
 }
 
@@ -54,12 +48,14 @@ type pullRun struct {
 // run's ID. It runs in the app, in the clone, under the clone's lock, which the runner
 // takes and a busy clone fails at once. The run's Before reads the clone again under the
 // lock and refuses a clone on another branch, one whose branch follows none on origin,
-// and one git is in the middle of something in; then it asks origin for its branches
-// again, and works out what git runs with (gitread's RemoteSetup), every one of gitread's
-// guards applied, before anything runs. git's pull is fast forward only: it never merges
-// or rebases, and a branch with commits of its own fails with git's own message. Its
-// Finish reads the branch again, and words what the pull did. Like a script, it is refused
-// while the Scripts integration is off.
+// and one git is in the middle of something in; then it works out what git runs with
+// (gitread's RemoteSetup), every one of gitread's guards applied, before anything runs,
+// asking origin nothing: the pull's own fetch is the one time it is asked. git's pull is
+// fast forward only: it never merges or rebases, and a branch with commits of its own, or
+// one origin no longer has, fails with git's own message. Stop is held back for the whole
+// run, and so is a quit, which leaves it going for the next start. Its Finish reads the
+// branch again, and words what the pull did. Like a script, it is refused while the Scripts
+// integration is off.
 func (s *Service) Pull(ctx context.Context, dir string) (int64, error) {
 	if s.runs == nil || s.branchGit == nil {
 		return 0, ErrNotSetUp
@@ -107,8 +103,8 @@ func (s *Service) pullsOff(ctx context.Context) error {
 }
 
 // pullSpec is the run that pulls branch in c: git, in the app, its Before reading the
-// clone and origin again and working out git's guards under the clone's lock, Stop held
-// back while git writes the clone's files, and its Finish reading what the pull did.
+// clone again and working out git's guards under the clone's lock, Stop held back for its
+// whole run, and its Finish reading what the pull did.
 func (s *Service) pullSpec(c clone, branch string) scriptrun.Spec {
 	run := &pullRun{c: c, branch: branch}
 	out := &pullOutput{}
@@ -116,7 +112,7 @@ func (s *Service) pullSpec(c clone, branch string) scriptrun.Spec {
 	return scriptrun.Spec{
 		Kind: scriptrun.KindPull, Title: "Pull " + branch, Source: "git", Repo: c.name, Dir: c.dir,
 		RunsIn: scriptrun.RunsInApp, Intent: PullIntent{Branch: branch}, Output: out,
-		Progress:  out.progress,
+		Progress:  pullProgress,
 		Before:    func(ctx context.Context) ([]string, error) { return s.beforePull(ctx, run) },
 		BeforeEnv: func() []string { return run.env },
 		Finish: func(ctx context.Context, end scriptrun.Ending, engine scriptrun.Outcome) scriptrun.Outcome {
@@ -127,10 +123,12 @@ func (s *Service) pullSpec(c clone, branch string) scriptrun.Spec {
 
 // beforePull is a pull's Before: under the clone's lock, it reads the clone again and
 // refuses one on another branch than the one asked for, one whose branch follows none on
-// origin, and one git is in the middle of something in; asks origin for its branches, with
-// gitread's guards, and keeps the answer; and works out what git runs with
-// (gitread.RemoteSetup): gitread's own git, the ls-remote's environment and settings, the
-// clone's own filter drivers off, and no hook. It returns git's pull.
+// origin, and one git is in the middle of something in; and works out what git runs with
+// (gitread.RemoteSetup), reading only the clone: a clone whose own config holds anything
+// but what git and Git LFS write there is refused, and otherwise git is gitread's own,
+// with the ls-remote's environment, the clone's folders as GIT_DIR and GIT_WORK_TREE, and
+// every setting (no hook, no maintenance) passed through the environment. It returns git's
+// pull, which holds only the pull's own words.
 func (s *Service) beforePull(ctx context.Context, run *pullRun) ([]string, error) {
 	f, stop, why := s.readBranch(ctx, run.c.dir)
 
@@ -143,24 +141,16 @@ func (s *Service) beforePull(ctx context.Context, run *pullRun) ([]string, error
 		return nil, cantPull(why, nil)
 	}
 
-	refs, err := s.branchGit.RemoteRefs(ctx, run.c.dir)
-	if err != nil {
-		return nil, cantPull("Couldn't ask origin about "+f.upstream+": "+gitread.Message(err), err)
-	}
-
-	if s.keepHeads(run.c.dir, refs.Heads).heads[f.upstream] == "" {
-		return nil, cantPull("origin has no branch "+f.upstream+".", nil)
-	}
-
 	setup, err := s.branchGit.RemoteSetup(ctx, run.c.dir)
 	if err != nil {
-		return nil, cantPull("Couldn't work out how to reach origin safely: "+gitread.Message(err), err)
+		return nil, cantPull("Couldn't pull "+run.branch+". "+textutil.Sentence(gitread.Message(err)), err)
 	}
 
-	run.upstream, run.before, run.aside = f.upstream, f.local, setup.SetAside
+	run.upstream, run.before = f.upstream, f.local
+	// LC_ALL=C has git speak the window's language, which the run's summary quotes.
 	run.env = append(slices.Clone(setup.Env), "LC_ALL=C")
 
-	return slices.Concat([]string{setup.Git}, setup.Settings, pullArgs(f.upstream)), nil
+	return append([]string{setup.Git}, pullArgs(f.upstream)...), nil
 }
 
 // movedText says that the clone is no longer on the branch a pull was asked for.
@@ -222,15 +212,14 @@ func ranToItsEnd(end scriptrun.Ending) bool {
 	return !end.Stopped && !end.TimedOut && !end.Quit && end.Interrupted == "" && end.ExitCode != nil
 }
 
-// failedText says why a pull failed, from git's last error line said, with any of the
-// clone's own settings it went without, which may be why; "" when git said nothing.
+// failedText says why a pull failed, from git's last error line said; "" when git said
+// nothing.
 func failedText(run *pullRun, said string) string {
 	if said == "" {
 		return ""
 	}
 
-	return strings.TrimSpace("Couldn't pull " + run.branch + ": " + textutil.EndSentence(said) + " " +
-		gitread.SetAsideNote(run.aside))
+	return "Couldn't pull " + run.branch + ": " + textutil.EndSentence(said)
 }
 
 // movedDuringText says that the clone was switched to another branch while a pull ran, so
@@ -332,16 +321,20 @@ func (s *Service) forgetHeads(dir string) {
 	delete(s.heads, dir)
 }
 
+// pullProgress is a pull's Progress: Stop is held back for its whole run (stopPullRefused),
+// and a quit too, within scriptrun.QuitKillAfter, after which it is left going.
+func pullProgress() scriptrun.Progress {
+	return scriptrun.Progress{StopRefused: stopPullRefused}
+}
+
 // pullOutput reads a pull's output for its last error line, git's last fatal or error
-// line, its prefix cut, or else its last line that isn't a hint, and for the line that
-// says git has begun writing the clone's files, after which Stop is held back. It is fed
-// the log's bytes in order, split anywhere.
+// line, its prefix cut, or else its last line that isn't a hint. It is fed the log's bytes
+// in order, split anywhere.
 type pullOutput struct {
-	mu       sync.Mutex
-	lines    textutil.LineSplitter
-	said     string
-	last     string
-	updating bool
+	mu    sync.Mutex
+	lines textutil.LineSplitter
+	said  string
+	last  string
 }
 
 // Write reads p, the next part of the output. It never fails.
@@ -361,26 +354,11 @@ func (o *pullOutput) read(line string) {
 	switch {
 	case line == "" || strings.HasPrefix(line, "hint:"):
 		return
-	case strings.HasPrefix(line, updatingPrefix):
-		o.updating = true
 	case strings.HasPrefix(line, "fatal: ") || strings.HasPrefix(line, "error: "):
 		o.said = execpath.GitMessage([]byte(line))
 	}
 
 	o.last = line
-}
-
-// progress is the pull's Progress: Stop asks first while git fetches, and is held back
-// once git has begun writing the clone's files, until the pull ends.
-func (o *pullOutput) progress() scriptrun.Progress {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-
-	if o.updating {
-		return scriptrun.Progress{Step: "updating", StopRefused: stopPullRefused}
-	}
-
-	return scriptrun.Progress{StopConfirm: stopPullConfirm}
 }
 
 // lastError returns git's last error line, once the output has ended, or "" for none.

@@ -97,6 +97,25 @@ describe('BranchCheck', () => {
     expect(platform.getBranchStatus).toHaveBeenLastCalledWith('~/projects/sdk', true)
   })
 
+  it('starts afresh on another clone, never with the last one’s refresh or pull', async () => {
+    const user = userEvent.setup()
+    const handlers = { onStarted: vi.fn<(id: number) => void>(), onPulled: vi.fn<() => void>() }
+    platform.getBranchStatus.mockResolvedValue(branchStatus(behind))
+    platform.getScriptRun.mockResolvedValue(scriptRun({ id: 51, kind: 'gitPull', status: 'running' }))
+    const { rerender } = render(<BranchCheck dir="~/projects/sdk" {...handlers} />)
+
+    await user.click(await screen.findByRole('button', { name: 'Check origin again' }))
+    await user.click(await screen.findByRole('button', { name: 'Pull master' }))
+    expect(await screen.findByRole('button', { name: 'Pulling master' })).toBeDisabled()
+
+    platform.getBranchStatus.mockResolvedValue(branchStatus({ ...behind, dir: '~/projects/web' }))
+    rerender(<BranchCheck dir="~/projects/web" {...handlers} />)
+
+    expect(await screen.findByRole('button', { name: 'Pull master' })).toBeEnabled()
+    expect(platform.getBranchStatus).toHaveBeenLastCalledWith('~/projects/web', false)
+    expect(listening('scriptruns:updated')).toBe(0)
+  })
+
   it('pulls, shows the run, and checks again once it ends', async () => {
     const user = userEvent.setup()
     const { onStarted, onPulled } = renderCheck(behind)

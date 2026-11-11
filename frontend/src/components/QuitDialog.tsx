@@ -28,7 +28,7 @@ function heldText(one: boolean): string {
 // the clone's files.
 function heldOtherText(one: boolean): string {
   return one
-    ? `Stopping waits up to a few seconds for it to finish that. If it doesn’t, it goes on after ${brand.name} closes.`
+    ? `Quitting waits up to a few seconds for it. If it hasn’t ended by then, it goes on after ${brand.name} closes.`
     : `A run that can’t be stopped right now is waited for up to a few seconds. If it doesn’t finish, it goes on after ${brand.name} closes.`
 }
 

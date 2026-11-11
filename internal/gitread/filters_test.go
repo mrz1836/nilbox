@@ -18,10 +18,10 @@ func TestStatusTurnsOffTheClonesFilterDrivers(t *testing.T) {
 	t.Parallel()
 
 	rec := &recorder{replies: map[string]reply{
-		words(filterDriversArgs()): {out: "local\tfilter.x.clean sh -c 'touch /tmp/owned; cat'\n" +
+		words(filterDriversArgs()): {out: zLines("local\tfilter.x.clean sh -c 'touch /tmp/owned; cat'\n" +
 			"global\tfilter.lfs.process git-lfs filter-process\n" +
 			"worktree\tfilter.odd.name.process y\n" +
-			"local\tfilter.x.process x\n"},
+			"local\tfilter.x.process x\n")},
 	}, answer: func(_ context.Context, _ []string) (string, error) { return "", nil }}
 
 	_, err := fakeGit(plainEnv(), rec).Changes(t.Context(), repoDir)
@@ -37,7 +37,7 @@ func TestStatusTurnsOffTheClonesFilterDrivers(t *testing.T) {
 	assert.True(t, strings.HasSuffix(status, "status --porcelain -z --ignore-submodules=dirty"))
 
 	rec = &recorder{replies: map[string]reply{
-		words(filterDriversArgs()): {out: "local\tfilter.x.clean sh -c 'touch /tmp/owned; cat'\n"},
+		words(filterDriversArgs()): {out: zLines("local\tfilter.x.clean sh -c 'touch /tmp/owned; cat'\n")},
 	}, answer: func(_ context.Context, _ []string) (string, error) { return "", nil }}
 
 	_, err = fakeGit(plainEnv(), rec).Entries(t.Context(), repoDir)
@@ -60,7 +60,7 @@ func TestStatusRefusesADriverItCantName(t *testing.T) {
 		"local\tfilter..clean evil\n",
 		"local\tother.x.clean evil\n",
 	} {
-		rec := &recorder{replies: map[string]reply{words(filterDriversArgs()): {out: line}}}
+		rec := &recorder{replies: map[string]reply{words(filterDriversArgs()): {out: zLines(line)}}}
 
 		_, err := fakeGit(plainEnv(), rec).Changes(t.Context(), repoDir)
 		require.ErrorIs(t, err, ErrGitCommandNotAllowed, "%q", line)
@@ -194,9 +194,9 @@ func TestStatusTrustsOnlyTheUsersOwnScopes(t *testing.T) {
 	t.Parallel()
 
 	rec := &recorder{replies: map[string]reply{
-		words(filterDriversArgs()): {out: "system\tfilter.sys.process a\n" +
+		words(filterDriversArgs()): {out: zLines("system\tfilter.sys.process a\n" +
 			"command\tfilter.mine.clean b\n" +
-			"unknown\tfilter.odd.clean c\n"},
+			"unknown\tfilter.odd.clean c\n")},
 	}, answer: func(_ context.Context, _ []string) (string, error) { return "", nil }}
 
 	_, err := fakeGit(plainEnv(), rec).Changes(t.Context(), repoDir)
@@ -210,4 +210,53 @@ func TestStatusTrustsOnlyTheUsersOwnScopes(t *testing.T) {
 		"-c filter.odd.required=false", "a scope that isn't the user's is the clone's")
 	assert.NotContains(t, status, "filter.sys", "the system config is the user's")
 	assert.NotContains(t, status, "filter.mine", "the environment's settings are the user's")
+}
+
+func TestTheClonesOwnGitLFSStaysOn(t *testing.T) {
+	t.Parallel()
+
+	lfs := "local\tfilter.lfs.clean git-lfs clean -- %f\n" +
+		"local\tfilter.lfs.smudge git-lfs smudge -- %f\n" +
+		"local\tfilter.lfs.process git-lfs filter-process\n"
+
+	off, err := cloneFiltersOff(settingsOf(t, lfs))
+	require.NoError(t, err)
+	assert.Empty(t, off, "git lfs install --local runs the user's own git-lfs")
+
+	for _, line := range []string{
+		"local\tfilter.lfs.smudge git-lfs smudge -- %f; touch /nonexistent/owned\n",
+		"local\tfilter.lfs.process /srv/elsewhere/git-lfs filter-process\n",
+		"local\tfilter.lfs.clean git-lfs smudge -- %f\n",
+	} {
+		off, err = cloneFiltersOff(settingsOf(t, lfs+line))
+		require.NoError(t, err)
+		assert.Equal(t, []string{
+			"-c", "filter.lfs.clean=", "-c", "filter.lfs.smudge=", "-c", "filter.lfs.process=",
+			"-c", "filter.lfs.required=false",
+		}, off, "%q: any other command turns the whole driver off", line)
+	}
+}
+
+// zLines writes "scope\tkey value\n" lines as `git config --show-scope -z --get-regexp`
+// writes them: the scope, a NUL, the key, a newline and the value, and a NUL.
+func zLines(lines string) string {
+	var b strings.Builder
+
+	for line := range strings.Lines(lines) {
+		scope, rest, _ := strings.Cut(strings.TrimSuffix(line, "\n"), "\t")
+		key, value, _ := strings.Cut(rest, " ")
+		b.WriteString(scope + "\x00" + key + "\n" + value + "\x00")
+	}
+
+	return b.String()
+}
+
+// settingsOf reads "scope\tkey value\n" lines as settings.
+func settingsOf(t *testing.T, lines string) []scopedSetting {
+	t.Helper()
+
+	settings, err := parseScoped([]byte(zLines(lines)))
+	require.NoError(t, err)
+
+	return settings
 }

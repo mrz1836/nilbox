@@ -79,10 +79,12 @@ const (
 	// remoteKeysPattern matches the config keys an ls-remote's guard weighs: the ssh command,
 	// the program that asks for a password, and the credential helpers (the URL-scoped ones
 	// too), which run programs; the transports' allowances, for the user's own policy;
-	// each remote's remote helper and proxy, of which the guard weighs its remote's; the
-	// cookie settings, which write a file; and the http settings that change how https
+	// each remote's remote helper and proxy, of which the guard weighs its remote's; a
+	// partial clone's promisor remotes and their upload-pack, which a lazy fetch reaches;
+	// the cookie settings, which write a file; and the http settings that change how https
 	// reaches a remote (routeKeys), for every URL or one.
-	remoteKeysPattern = `^(core\.(sshcommand|askpass)|credential\.(.*\.)?helper|protocol\.(.*\.)?allow|remote\..+\.(vcs|proxy)|` +
+	remoteKeysPattern = `^(core\.(sshcommand|askpass)|credential\.(.*\.)?helper|protocol\.(.*\.)?allow|` +
+		`remote\..+\.(vcs|proxy|promisor|uploadpack)|extensions\.partialclone|` +
 		`http\.(.*\.)?(savecookies|cookiefile|sslverify|sslcainfo|sslcapath|proxy|curloptresolve))$`
 
 	// uploadPackFlag names the upload-pack an ls-remote asks for: git's own, which a
@@ -176,7 +178,9 @@ func allowlist() []command {
 			name:  "every changed and untracked file, with its staged object",
 			words: fixed(statusCmd, porcelainV2, "-z", untrackedAll, ignoreSubmodulesDirty),
 		},
-		{name: "the filter drivers", words: fixed(configCmd, "--show-scope", "--get-regexp", filterKeysPattern)},
+		{name: "the filter drivers", words: fixed(configCmd, "--show-scope", "-z", "--get-regexp", filterKeysPattern)},
+		{name: "every setting, with where it is set", words: fixed(configCmd, "--show-scope", "--show-origin", "-z", "--list")},
+		{name: "the git folder and the top folder", words: fixed(revParse, "--absolute-git-dir", "--show-toplevel")},
 		{name: "what an ls-remote's guard weighs", words: fixed(configCmd, "--show-scope", "-z", "--get-regexp", remoteKeysPattern)},
 		{name: "a remote's URL, asking nothing of it", words: append(fixed(lsRemote, "--get-url"), value(slotRemoteName))},
 		{name: "the current branch", words: fixed("symbolic-ref", quietFlag, "--short", "HEAD")},
@@ -427,6 +431,12 @@ func gitPathArgs(name string) []string { return []string{revParse, gitPathFlag, 
 func hookPathsArgs() []string { return []string{revParse, "--show-toplevel", gitPathFlag, hooksName} }
 
 func commonDirArgs() []string { return []string{revParse, "--git-common-dir"} }
+
+func configListArgs() []string {
+	return []string{configCmd, "--show-scope", "--show-origin", "-z", "--list"}
+}
+
+func gitDirArgs() []string { return []string{revParse, "--absolute-git-dir", "--show-toplevel"} }
 
 func verifyArgs(ref string) []string { return []string{revParse, verifyFlag, quietFlag, ref} }
 

@@ -31,6 +31,9 @@ const (
 	proxyKey      = "remote." + remoteName + ".proxy"
 	httpPrefix    = "http."
 
+	// partialCloneKey names the remote a partial clone fetches missing objects from.
+	partialCloneKey = "extensions.partialclone"
+
 	// protocolKeyPrefix and protocolKeySuffix make a transport's own allowance,
 	// protocol.<name>.allow, and protocolDefaultKey the allowance of every transport
 	// without one; never is the allowance that refuses it.
@@ -59,14 +62,36 @@ var ErrRemoteHelper = errors.New("origin is reached through a remote helper, whi
 // so an ls-remote there is refused before it runs.
 var ErrCloneRoutes = errors.New("this clone's own git config changes how origin is reached, so it isn't asked from here")
 
-// SetAsideError is an ls-remote that failed after gitread set aside settings, which may be
-// why it failed: the clone picks its own ssh key with core.sshCommand, say, which gitread
-// doesn't run. Its text is the ls-remote's own.
+// ErrRemoteTimeout is returned for an ls-remote that ran past RemoteTimeout, the only
+// command here with a limit of its own.
+var ErrRemoteTimeout = errors.New("origin didn't answer in time")
+
+// RefusedError is a remote gitread's guards refused before anything ran: Remote is its
+// name, and Err says why, ErrRemoteHelper or ErrCloneRoutes, with the setting or the URL
+// that refused it.
+type RefusedError struct {
+	Remote string
+	Err    error
+}
+
+// Error returns the refusal's text.
+func (e *RefusedError) Error() string { return e.Err.Error() }
+
+// Unwrap returns the refusal.
+func (e *RefusedError) Unwrap() error { return e.Err }
+
+// SetAsideError is an ls-remote, or a fetch run with RemoteSetupFor's settings, that failed
+// after gitread set aside settings, which may be why it failed: the clone picks its own
+// ssh key with core.sshCommand, say, which gitread doesn't run. Its text is the command's
+// own.
 type SetAsideError struct {
-	// Err is the ls-remote's error, and Settings the settings set aside, of
+	// Err is the command's error, and Settings the settings set aside, of
 	// SetAsideSSHCommand, SetAsideAskPass, and SetAsideHelpers.
 	Err      error
 	Settings []string
+
+	// Remote is the remote the command reached, "" for origin.
+	Remote string
 }
 
 // Error returns the ls-remote's error's text.
@@ -97,12 +122,14 @@ func routeKeys() []string {
 	return []string{"sslverify", "sslcainfo", "sslcapath", "proxy", "curloptresolve"}
 }
 
-// scopedSetting is one config setting as `git config --show-scope -z --get-regexp` lists
-// it: where it is set, its key (lowercased, apart from a subsection), and its value.
+// scopedSetting is one config setting as `git config --show-scope -z` lists it: where it
+// is set (its scope and, when listed with --show-origin, its origin), its key (lowercased,
+// apart from a subsection), and its value.
 type scopedSetting struct {
-	scope string
-	key   string
-	value string
+	scope  string
+	origin string
+	key    string
+	value  string
 }
 
 // trusted reports a setting from the user's own config rather than the clone's.
@@ -149,43 +176,114 @@ type remoteSetup struct {
 func (g *Git) remoteGuard(
 	ctx context.Context, dir string, env []string, userAllow *string,
 ) (setup remoteSetup, stderr []byte, err error) {
-	return g.remoteGuardFor(ctx, dir, remoteName, env, userAllow)
-}
-
-// remoteGuardFor is remoteGuard for the clone's remote called remote, which isRemoteName
-// passed: its own remote.<remote>.vcs and remote.<remote>.proxy, and its URL.
-func (g *Git) remoteGuardFor(
-	ctx context.Context, dir, remote string, env []string, userAllow *string,
-) (setup remoteSetup, stderr []byte, err error) {
 	settings, stderr, err := g.readScoped(ctx, dir, env)
 	if err != nil {
 		return remoteSetup{}, stderr, err
 	}
 
+	return g.guardRemotes(ctx, dir, []string{remoteName}, settings, env, userAllow)
+}
+
+// guardRemotes is remoteGuard for each of remotes, each of which isRemoteName passed, over
+// settings, the ones remoteKeysPattern matches, read once: each remote's own
+// remote.<remote>.vcs and remote.<remote>.proxy, and its URL, are weighed in turn.
+func (g *Git) guardRemotes(
+	ctx context.Context, dir string, remotes []string, settings []scopedSetting, env []string, userAllow *string,
+) (remoteSetup, []byte, error) {
+	for _, remote := range remotes {
+		if stderr, err := g.weigh(ctx, dir, remote, settings, env); err != nil {
+			return remoteSetup{}, stderr, err
+		}
+	}
+
+	setup, err := guard(env, settings, userAllow)
+
+	return setup, nil, err
+}
+
+// weigh refuses the clone's remote called remote when it is reached through a remote
+// helper, or is an http or https one the clone's own config reroutes, reading its URL as
+// git would use it, which asks it nothing.
+func (g *Git) weigh(ctx context.Context, dir, remote string, settings []scopedSetting, env []string) ([]byte, error) {
 	vcs := "remote." + remote + ".vcs"
 
 	if s, set := lastAny(settings, vcs); set {
-		return remoteSetup{}, nil, fmt.Errorf("%w (%s is %q)", ErrRemoteHelper, vcs, s)
+		return nil, &RefusedError{Remote: remote, Err: fmt.Errorf("%w (%s is %q)", ErrRemoteHelper, vcs, s)}
 	}
 
 	url, stderr, err := g.exec(ctx, dir, env, nil, getURLArgsFor(remote))
 	if err != nil {
-		return remoteSetup{}, stderr, fmt.Errorf("read %s's URL: %w", remote, err)
+		return stderr, fmt.Errorf("read %s's URL: %w", remote, err)
 	}
 
 	u := firstLine(url)
 
 	if helperURL(u) {
-		return remoteSetup{}, nil, fmt.Errorf("%w (%s's URL is %q)", ErrRemoteHelper, remote, u)
+		return nil, &RefusedError{Remote: remote, Err: fmt.Errorf("%w (%s's URL is %q)", ErrRemoteHelper, remote, u)}
 	}
 
 	if key, routes := cloneRoute(settings, remote); routes && httpURL(u) {
-		return remoteSetup{}, nil, fmt.Errorf("%w (%s)", ErrCloneRoutes, key)
+		return nil, &RefusedError{Remote: remote, Err: fmt.Errorf("%w (%s)", ErrCloneRoutes, key)}
 	}
 
-	setup, err = guard(env, settings, userAllow)
+	return nil, nil
+}
 
-	return setup, nil, err
+// promisors returns the remotes a partial clone fetches a missing object from: the one
+// extensions.partialClone names, then every remote whose remote.<name>.promisor is true
+// (promisorFlags), as the clone's config or the user's says, each once, in that order. A
+// name isRemoteName refuses is refused.
+func promisors(settings []scopedSetting) ([]string, error) {
+	var out []string
+
+	if name, ok := lastAny(settings, partialCloneKey); ok && name != "" {
+		out = append(out, name)
+	}
+
+	for _, name := range promisorFlags(settings) {
+		if !slices.Contains(out, name) {
+			out = append(out, name)
+		}
+	}
+
+	for _, name := range out {
+		if !isRemoteName(name) {
+			return nil, fmt.Errorf("%w: a promisor remote named %q", ErrGitCommandNotAllowed, name)
+		}
+	}
+
+	return out, nil
+}
+
+// promisorFlags returns the remotes whose last remote.<name>.promisor is true, in the
+// order the first one of each is set.
+func promisorFlags(settings []scopedSetting) []string {
+	var order []string
+
+	last := map[string]bool{}
+
+	for _, s := range settings {
+		rest, ok := strings.CutPrefix(s.key, "remote.")
+		name, isPromisor := strings.CutSuffix(rest, ".promisor")
+
+		if !ok || !isPromisor {
+			continue
+		}
+
+		if _, seen := last[name]; !seen {
+			order = append(order, name)
+		}
+
+		last[name] = gitTrue(s.value)
+	}
+
+	return slices.DeleteFunc(order, func(name string) bool { return !last[name] })
+}
+
+// gitTrue reports a value git reads as true: a key with no value, or true, yes, on, or 1,
+// in any case.
+func gitTrue(value string) bool {
+	return slices.Contains([]string{"", "true", "yes", "on", "1"}, strings.ToLower(value))
 }
 
 // readScoped reads, with where each is set, the settings remoteGuard weighs, and returns
@@ -259,25 +357,38 @@ func getURLArgs() []string { return getURLArgsFor(remoteName) }
 // it.
 func getURLArgsFor(remote string) []string { return []string{lsRemote, "--get-url", remote} }
 
-// parseScoped reads `git config --show-scope -z --get-regexp` output: for each setting,
-// its scope, a NUL, its key, a newline and its value (or nothing, for a key without
-// one), and a NUL.
-func parseScoped(out []byte) ([]scopedSetting, error) {
+// parseScoped reads `git config --show-scope -z --get-regexp` output (parseSettings).
+func parseScoped(out []byte) ([]scopedSetting, error) { return parseSettings(out, false) }
+
+// parseSettings reads `git config --show-scope -z` output, --show-origin's too when
+// withOrigin is set: for each setting, its scope and a NUL, then its origin and a NUL, then
+// its key, a newline and its value (or nothing, for a key without one), and a NUL.
+func parseSettings(out []byte, withOrigin bool) ([]scopedSetting, error) {
 	text := strings.TrimSuffix(string(out), "\x00")
 	if text == "" {
 		return nil, nil
 	}
 
+	each := 2
+	if withOrigin {
+		each = 3
+	}
+
 	fields := strings.Split(text, "\x00")
-	if len(fields)%2 != 0 {
+	if len(fields)%each != 0 {
 		return nil, fmt.Errorf("%w: config settings as %q", errOutput, out)
 	}
 
-	settings := make([]scopedSetting, 0, len(fields)/2)
+	settings := make([]scopedSetting, 0, len(fields)/each)
 
-	for i := 0; i < len(fields); i += 2 {
-		key, value, _ := strings.Cut(fields[i+1], "\n")
-		settings = append(settings, scopedSetting{scope: fields[i], key: key, value: value})
+	for i := 0; i < len(fields); i += each {
+		s := scopedSetting{scope: fields[i]}
+		if withOrigin {
+			s.origin = fields[i+1]
+		}
+
+		s.key, s.value, _ = strings.Cut(fields[i+each-1], "\n")
+		settings = append(settings, s)
 	}
 
 	return settings, nil

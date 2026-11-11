@@ -13,7 +13,6 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/clonelock"
 	"github.com/mrz1836/nilbox/internal/execpath"
-	"github.com/mrz1836/nilbox/internal/gitread"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/shellenv"
@@ -66,17 +65,11 @@ func TestPullFastForwardsTheBranch(t *testing.T) {
 	git, err := execpath.Search{Path: shellenv.Lookup(env, "PATH"), Home: shellenv.Lookup(env, "HOME")}.Find("git")
 	require.NoError(t, err)
 
-	assert.Equal(t, git, run.Argv[0], "gitread's own git, by its absolute path")
-	assert.Equal(t, gitread.Hardening(), run.Argv[1:7], "no hook, file system monitor, or submodule recursion")
-	assert.Contains(t, strings.Join(run.Argv, " "), "-c http.savecookies=false", "gitread's ls-remote settings")
-
-	i := slices.Index(run.Argv, "pull")
-	require.Positive(t, i)
 	assert.Equal(t, []string{
-		"pull", "--ff-only", "--no-rebase", "--refmap=", "--no-tags", "--no-autostash", "--no-recurse-submodules",
+		git, "pull", "--ff-only", "--no-rebase", "--refmap=", "--no-tags", "--no-autostash", "--no-recurse-submodules",
 		"--no-verify-signatures", "--no-stat", "--upload-pack=git-upload-pack", originRemote,
 		"+refs/heads/main:refs/remotes/origin/main",
-	}, run.Argv[i:])
+	}, run.Argv, "gitread's own git, by its absolute path, and the pull's own words alone: its settings are in its environment")
 
 	asked := g.asked.remote.Load()
 	assert.Equal(t, BranchUpToDate, g.status(false).State, "what the pull fetched is kept as origin's")
@@ -184,30 +177,36 @@ func TestPullRunsWithGitreadsEnvironment(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, argv)
 
+	dir, err := filepath.EvalSymlinks(g.dir)
+	require.NoError(t, err)
+
 	env := spec.BeforeEnv()
 	for _, want := range []string{
 		"GIT_TERMINAL_PROMPT=0", "GIT_NO_LAZY_FETCH=1", "GIT_ALLOW_PROTOCOL=file:http:https:ssh", "LC_ALL=C",
-		"GIT_SSH_COMMAND=ssh -o BatchMode=yes -o ConnectTimeout=10",
+		"GIT_SSH_COMMAND=ssh -o BatchMode=yes -o ConnectTimeout=10", "GIT_DIR=" + filepath.Join(dir, ".git"),
+		"GIT_WORK_TREE=" + dir, "GIT_CONFIG_KEY_0=core.hooksPath", "GIT_CONFIG_VALUE_0=" + os.DevNull,
+		"GIT_CONFIG_KEY_3=core.alternateRefsCommand", "GIT_CONFIG_VALUE_3=true", "GIT_CONFIG_KEY_5=maintenance.auto",
+		"GIT_CONFIG_VALUE_5=false", "GIT_CONFIG_KEY_6=gc.auto", "GIT_CONFIG_VALUE_6=0",
 	} {
 		assert.Contains(t, env, want)
 	}
 
+	assert.Equal(t, []string{"pull"}, argv[1:2], "no -c setting on the command line")
+
 	assert.Equal(t, 10*time.Minute, spec.Kind.Timeout(), "a pull gets time enough never to be cut off writing files")
 }
 
-func TestPullHoldsStopOnceGitWritesTheClonesFiles(t *testing.T) {
+// TestPullHoldsStopForItsWholeRun: git writes its output only as it exits, so nothing
+// read from it says in time that it has begun writing the clone's files. Stop, and so a
+// quit, are held back from the start, saying the pull ends on its own within its limit.
+func TestPullHoldsStopForItsWholeRun(t *testing.T) {
 	t.Parallel()
 
-	out := &pullOutput{}
-	assert.Equal(t, scriptrun.Progress{StopConfirm: stopPullConfirm}, out.progress(), "fetching, Stop asks first")
-
-	_, err := out.Write([]byte("From file:///srv/origin\n * branch main -> FETCH_HEAD\nUpdating 1a2b3c4..5d6e"))
-	require.NoError(t, err)
-	assert.Equal(t, scriptrun.Progress{StopConfirm: stopPullConfirm}, out.progress(), "not until the line ends")
-
-	_, err = out.Write([]byte("7f8\n"))
-	require.NoError(t, err)
-	assert.Equal(t, scriptrun.Progress{Step: "updating", StopRefused: stopPullRefused}, out.progress())
+	spec := (&Service{}).pullSpec(clone{dir: "/srv/projects/sdk"}, "main")
+	require.NotNil(t, spec.Progress)
+	assert.Equal(t, scriptrun.Progress{StopRefused: stopPullRefused}, spec.Progress())
+	assert.Contains(t, stopPullRefused, "within ten minutes")
+	assert.Equal(t, 10*time.Minute, spec.Kind.Timeout())
 }
 
 func TestPullRefusesACloneOnAnotherBranch(t *testing.T) {
@@ -274,11 +273,19 @@ func TestPullIsRefusedWhileScriptsAreOff(t *testing.T) {
 	assert.Equal(t, g.first, g.head(g.dir))
 }
 
-func TestPullAsksOriginAgainUnderTheLock(t *testing.T) {
+// TestPullWeighsOriginAgainUnderTheLockAskingItNothing: the pull's Before weighs origin
+// with gitread's guards, from the clone alone, and the pull's own fetch is the one time
+// origin is asked.
+func TestPullWeighsOriginAgainUnderTheLockAskingItNothing(t *testing.T) {
 	t.Parallel()
 
 	g := newGitRig(t)
+	g.pushed("two.txt")
 	g.status(false)
+	asked := g.asked.remote.Load()
+
+	require.Equal(t, scriptrun.StatusSucceeded, g.pull().Status)
+	assert.Equal(t, asked, g.asked.remote.Load(), "no ls-remote before the pull's own fetch")
 
 	pwned := filepath.Join(g.home, "pwned")
 	testutil.RunGit(t, g.dir, "remote", "set-url", "origin", "ext::sh -c touch% "+pwned)
@@ -286,8 +293,46 @@ func TestPullAsksOriginAgainUnderTheLock(t *testing.T) {
 	_, err := g.branch.Pull(t.Context(), g.shown(g.dir))
 	require.ErrorIs(t, err, ErrCantPull)
 	assert.Contains(t, uierr.Message(err), "remote helper", "gitread's guard refuses origin before git runs")
-	assert.Zero(t, g.recorded())
+	assert.Equal(t, 1, g.recorded(), "only the first pull ran")
 	assert.NoFileExists(t, pwned)
+}
+
+func TestPullOfABranchOriginNoLongerHas(t *testing.T) {
+	t.Parallel()
+
+	g := newGitRig(t)
+	testutil.RunGit(t, g.dir, "checkout", "-q", "-b", "feature")
+	testutil.RunGit(t, g.dir, "config", "branch.feature.remote", "origin")
+	testutil.RunGit(t, g.dir, "config", "branch.feature.merge", "refs/heads/feature")
+	g.status(false)
+
+	run := g.pull()
+	assert.Equal(t, scriptrun.StatusFailed, run.Status)
+	assert.Equal(t, "Couldn't pull feature: couldn't find remote ref refs/heads/feature.", run.Summary,
+		"git's own words, from the pull's own fetch")
+}
+
+// TestPullOfABloblessClone pulls into a partial clone that has none of its files'
+// contents: the fast-forward fetches those it writes from origin, the clone's promisor
+// remote, under the same guards.
+func TestPullOfABloblessClone(t *testing.T) {
+	t.Parallel()
+
+	g := newGitRig(t)
+	testutil.RunGit(t, g.origin, "config", "uploadpack.allowFilter", "true")
+	require.NoError(t, os.RemoveAll(g.dir))
+	testutil.RunGit(t, g.root, "clone", "-q", "--filter=blob:none", g.url(), g.dir)
+
+	third := g.pushed("three.txt")
+	require.Equal(t, BranchBehind, g.status(false).State)
+
+	run := g.pull()
+	require.Equal(t, scriptrun.StatusSucceeded, run.Status, run.Summary)
+	assert.Equal(t, third, g.head(g.dir))
+
+	got, err := os.ReadFile(filepath.Join(g.dir, "three.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, "three.txt\n", string(got))
 }
 
 func TestPullFailsAtOnceOnABusyClone(t *testing.T) {

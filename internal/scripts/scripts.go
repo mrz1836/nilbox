@@ -31,9 +31,11 @@
 // follows on origin, read with gitread from the clone's own refs and one ls-remote, whose
 // answer is kept five minutes, and never fetches. Pull brings it level on the user's
 // click: git's fast-forward-only pull of that branch, run in the app under the clone's
-// lock, its Before reading the clone and asking origin again, every one of gitread's guards
-// applied, before git runs. It is the one git command the app runs that changes a clone's
-// checkout, and pull.go the one file that holds it.
+// lock, its Before reading the clone again and working out what git runs with, every one of
+// gitread's guards applied, before git runs, so that the pull's own fetch is the one time
+// origin is asked: a clone whose own config holds anything but what git and its tools write
+// there is refused. It is the one git command the app runs that changes a clone's checkout,
+// and pull.go the one file that holds it.
 //
 // It owns the script_trust table, the commands the user trusted, and user_scripts, the
 // user's own scripts, in the order the user put them in.
@@ -292,6 +294,7 @@ var (
 	// ErrCantPull is returned for a pull refused before it ran: no status was worked out
 	// for the clone, it is on another branch than the one its status was worked out on,
 	// its branch follows none on origin, git is in the middle of something there, or
-	// origin couldn't be asked.
+	// gitread's guards refused it, as for a clone whose own config holds a setting outside
+	// their allowlist.
 	ErrCantPull = errors.New("the branch can't be pulled now")
 )

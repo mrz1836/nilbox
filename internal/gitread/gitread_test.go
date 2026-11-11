@@ -269,6 +269,7 @@ func TestRemoteTimeout(t *testing.T) {
 
 		_, err := fakeGit(plainEnv(), rec).RemoteRefs(t.Context(), repoDir)
 		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.ErrorIs(t, err, ErrRemoteTimeout, "worded as origin not answering in time")
 		assert.Equal(t, RemoteTimeout, time.Since(start), "ls-remote stops after the time limit, no sooner")
 
 		for _, c := range rec.Calls() {
@@ -900,7 +901,7 @@ func TestEveryAllowlistEntryIsUsed(t *testing.T) {
 
 	ctx := t.Context()
 	rec := &recorder{
-		replies: map[string]reply{words(hookPathsArgs()): {out: repoDir + "\n.git/hooks\n"}},
+		replies: map[string]reply{words(hookPathsArgs()): {out: repoDir + "\n.git/hooks\n"}, words(configListArgs()): {}},
 		answer:  func(context.Context, []string) (string, error) { return "", exitError{code: 1} },
 	}
 	g := fakeGit(plainEnv(), rec)
@@ -928,6 +929,12 @@ func TestEveryAllowlistEntryIsUsed(t *testing.T) {
 	_, _ = g.Signing(ctx, repoDir)
 	_, _ = g.HooksDir(ctx, repoDir)
 	_, _ = g.HookPaths(ctx, repoDir)
+	listed, stderr, err := g.listConfig(ctx, repoDir, plainEnv())
+	require.NoError(t, err)
+	assert.Empty(t, listed)
+	assert.Empty(t, stderr)
+
+	_, _ = g.folders(ctx, repoDir, plainEnv())
 
 	used := map[string]bool{}
 

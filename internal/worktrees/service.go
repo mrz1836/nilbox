@@ -271,10 +271,16 @@ type Config struct {
 
 	// Guard works out what the commands worktree creation runs that reach a remote (its
 	// fetches and its ls-remote) or write a worktree's files (git worktree add) run with:
-	// gitread's guards, so none runs a program the clone's own git config names. They run
-	// with its git and its environment, never Git's. Core gives every Service one; without
-	// it, as in tests that script git, they run as every other command here does.
+	// gitread's guards, which refuse a clone whose own git config holds a setting outside
+	// their allowlist, so none runs a program the clone's own config names. They run the
+	// same git as every other command here, with the guard's environment, which holds their
+	// settings, through GitWith. Core gives every Service one; without it, as in tests that
+	// script git, they run as every other command here does.
 	Guard Guard
+
+	// GitWith runs git argv with the whole environment env, as a guarded command needs: the
+	// same runner as Git but for the environment. It defaults to an execpath.Exec with env.
+	GitWith func(env []string) execpath.Runner
 
 	// Home is the user's home directory; it expands a ~ clone root and shortens paths.
 	Home string
@@ -328,6 +334,7 @@ type Service struct {
 	run      execpath.Runner
 	finder   execpath.Finder
 	guard    Guard
+	gitWith  func(env []string) execpath.Runner
 	home     string
 	realHome string
 	clock    clock.Clock
@@ -376,6 +383,7 @@ func NewService(cfg Config) *Service {
 		run:      cfg.Git,
 		finder:   cfg.Finder,
 		guard:    cfg.Guard,
+		gitWith:  cfg.GitWith,
 		home:     cfg.Home,
 		realHome: realHome,
 		clock:    clock.Or(cfg.Clock),
@@ -941,7 +949,7 @@ func (s *Service) prepare(ctx context.Context) (git, string, SweepSettings, erro
 // git returns the allowlisted git runner, resolving the binary when a Finder is set.
 func (s *Service) git() (git, error) {
 	if s.finder == nil {
-		return git{run: s.run, bin: gitBin, guard: s.guard}, nil
+		return git{run: s.run, bin: gitBin, guard: s.guard, with: s.gitWith}, nil
 	}
 
 	bin, err := s.finder.Find(gitBin)
@@ -949,7 +957,7 @@ func (s *Service) git() (git, error) {
 		return git{}, fmt.Errorf("find git: %w", err)
 	}
 
-	return git{run: s.run, bin: bin, guard: s.guard}, nil
+	return git{run: s.run, bin: bin, guard: s.guard, with: s.gitWith}, nil
 }
 
 // checkedGit resolves git and checks that repoPath is a clone directly under the clone

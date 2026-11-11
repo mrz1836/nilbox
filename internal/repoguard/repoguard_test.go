@@ -515,6 +515,7 @@ func TestNoGitCommandChangesAClone(t *testing.T) {
 	assert.Empty(t, hits(worktreeMakerFile, maker, argvLiteral(changing...).MatchString),
 		"%s only fetches and adds worktrees", worktreeMakerFile)
 
+	assertMakerFetchesOnlyItsOwnRefs(t, maker)
 	assertPullerOnlyFastForwards(t, root)
 
 	found := productionGoHits(t, root, verbs, worktreeMakerFile, clonePullerFile)
@@ -523,6 +524,37 @@ func TestNoGitCommandChangesAClone(t *testing.T) {
 	assert.Empty(t, found, "nothing changes a clone's own checkout: no checkout, stash, branch switch, pull, reset, "+
 		"merge, rebase, commit, push, restore, cherry-pick, or clean anywhere, only worktree creation ("+
 		worktreeMakerFile+") fetches and adds worktrees, and only Repo scripts' pull ("+clonePullerFile+") pulls")
+}
+
+// makerFetchWords are the only words worktree creation's fetch holds, besides the remote
+// and the refspec: no tag, nothing fetched through the clone's own refspecs (--refmap=,
+// which a forced map onto the clone's own branches would otherwise move), and git's own
+// upload-pack; makerOptions are every option worktreeMakerFile may name, those and
+// `worktree add`'s. Built from parts so this file does not match itself.
+func makerFetchWords() []string {
+	return []string{"fet" + "ch", "--no-tags", "--refmap=", "--upload-pack=git-upload-pack"}
+}
+
+func makerOptions() []string {
+	return append(makerFetchWords()[1:], "--no-track", "-b")
+}
+
+// assertMakerFetchesOnlyItsOwnRefs checks worktreeMakerFile's text: it fetches with one
+// argv literal whose words are exactly makerFetchWords, each a literal, and names no
+// option but makerOptions anywhere, so no forced refspec, --update-head-ok, -c setting, or
+// other upload-pack can be added beside.
+func assertMakerFetchesOnlyItsOwnRefs(t *testing.T, text string) {
+	t.Helper()
+
+	words := makerFetchWords()
+	argvs, options := verbLiterals(t, text, words[0])
+
+	require.Len(t, argvs, 1, "%s fetches with one argv literal; update this guard", worktreeMakerFile)
+	assert.ElementsMatch(t, words, argvs[0], "%s fetches with exactly these words, each a literal", worktreeMakerFile)
+
+	for _, option := range options {
+		assert.Contains(t, makerOptions(), option, "%s names an option it may not run git with", worktreeMakerFile)
+	}
 }
 
 // pullWords are the only words Repo scripts' pull holds, besides origin's name and its
@@ -551,7 +583,7 @@ func assertPullerOnlyFastForwards(t *testing.T, root string) {
 	text, ok := readText(t, root, clonePullerFile)
 	require.True(t, ok, "%s is gone; update this guard", clonePullerFile)
 
-	argvs, options := pullLiterals(t, text, pull)
+	argvs, options := verbLiterals(t, text, pull)
 
 	require.Len(t, argvs, 1, "%s pulls with one argv literal; update this guard", clonePullerFile)
 	assert.ElementsMatch(t, words, argvs[0], "%s pulls with exactly these words, each a literal", clonePullerFile)
@@ -563,19 +595,19 @@ func assertPullerOnlyFastForwards(t *testing.T, root string) {
 	assert.Empty(t, hits(clonePullerFile, text, argvLiteral(others...).MatchString), "%s only pulls", clonePullerFile)
 }
 
-// pullLiterals parses the Go source text and returns the words of each []string literal
-// whose first element is the string pull, a word that isn't a string literal kept as "?",
+// verbLiterals parses the Go source text and returns the words of each []string literal
+// whose first element is the string verb, a word that isn't a string literal kept as "?",
 // and every string literal in it that starts with "-".
-func pullLiterals(t *testing.T, text, pull string) (argvs [][]string, options []string) {
+func verbLiterals(t *testing.T, text, verb string) (argvs [][]string, options []string) {
 	t.Helper()
 
-	file, err := parser.ParseFile(token.NewFileSet(), clonePullerFile, text, parser.SkipObjectResolution)
+	file, err := parser.ParseFile(token.NewFileSet(), "src.go", text, parser.SkipObjectResolution)
 	require.NoError(t, err)
 
 	ast.Inspect(file, func(n ast.Node) bool {
 		switch x := n.(type) {
 		case *ast.CompositeLit:
-			if words := literalWords(x.Elts); len(words) > 0 && words[0] == pull {
+			if words := literalWords(x.Elts); len(words) > 0 && words[0] == verb {
 				argvs = append(argvs, words)
 			}
 		case *ast.BasicLit:
@@ -607,13 +639,13 @@ func literalWords(exprs []ast.Expr) []string {
 	return words
 }
 
-func TestPullLiterals(t *testing.T) {
+func TestVerbLiterals(t *testing.T) {
 	t.Parallel()
 
 	src := "package p\n\nfunc a(b string) []string {\n\treturn append([]string{\"pu" + "ll\", \"--ff-only\", x, " +
 		"\"-r\"}, \"origin\", \"+\"+b)\n}\n\nvar c = []string{\"-X\", \"ours\"}\n"
 
-	argvs, options := pullLiterals(t, src, "pu"+"ll")
+	argvs, options := verbLiterals(t, src, "pu"+"ll")
 	assert.Equal(t, [][]string{{"pu" + "ll", "--ff-only", "?", "-r"}}, argvs)
 	assert.Equal(t, []string{"--ff-only", "-r", "-X"}, options)
 }

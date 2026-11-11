@@ -343,8 +343,9 @@ func TestIsDir(t *testing.T) {
 func assertReadOnlyForm(t *testing.T, name, verb string, words []string, form string) {
 	t.Helper()
 
-	// config's --get-regexp only reads too, and ls-remote's --get-url asks no remote anything.
-	if form == "" || (verb == configCmd && slices.Contains(words, "--get-regexp")) ||
+	// config's --get-regexp and --list only read too, and ls-remote's --get-url asks no
+	// remote anything.
+	if form == "" || (verb == configCmd && (slices.Contains(words, "--get-regexp") || slices.Contains(words, "--list"))) ||
 		(verb == lsRemote && slices.Contains(words, "--get-url")) {
 		return
 	}

@@ -74,12 +74,14 @@ export function Move(id: number, way: $models.Direction, dir: string): $Cancella
  * run's ID. It runs in the app, in the clone, under the clone's lock, which the runner
  * takes and a busy clone fails at once. The run's Before reads the clone again under the
  * lock and refuses a clone on another branch, one whose branch follows none on origin,
- * and one git is in the middle of something in; then it asks origin for its branches
- * again, and works out what git runs with (gitread's RemoteSetup), every one of gitread's
- * guards applied, before anything runs. git's pull is fast forward only: it never merges
- * or rebases, and a branch with commits of its own fails with git's own message. Its
- * Finish reads the branch again, and words what the pull did. Like a script, it is refused
- * while the Scripts integration is off.
+ * and one git is in the middle of something in; then it works out what git runs with
+ * (gitread's RemoteSetup), every one of gitread's guards applied, before anything runs,
+ * asking origin nothing: the pull's own fetch is the one time it is asked. git's pull is
+ * fast forward only: it never merges or rebases, and a branch with commits of its own, or
+ * one origin no longer has, fails with git's own message. Stop is held back for the whole
+ * run, and so is a quit, which leaves it going for the next start. Its Finish reads the
+ * branch again, and words what the pull did. Like a script, it is refused while the Scripts
+ * integration is off.
  */
 export function Pull(dir: string): $CancellablePromise<number> {
     return $Call.ByID(245934037, dir);

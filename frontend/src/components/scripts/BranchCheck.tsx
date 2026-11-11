@@ -67,8 +67,15 @@ interface BranchCheckProps {
 // commits on the branch the clone follows, and offers Pull only then: git's
 // fast-forward-only pull, which shows as a run beside the scripts. Origin's answer is kept
 // five minutes, and the refresh button asks it again. Once a pull ends, the status is read
-// again, from the answer the pull's own look at origin left, and the page's scripts too.
-export function BranchCheck({ dir, onStarted, onPulled }: BranchCheckProps) {
+// again, from the answer the pull's own fetch left, and the page's scripts too. Each clone
+// has a check of its own: another clone starts afresh, never with a refresh asked or a pull
+// under way in the one before.
+export function BranchCheck(props: BranchCheckProps) {
+  return <CloneBranchCheck key={props.dir} {...props} />
+}
+
+// CloneBranchCheck is BranchCheck for one clone.
+function CloneBranchCheck({ dir, onStarted, onPulled }: BranchCheckProps) {
   // check counts the checks after the first: refresh asks origin again.
   const [check, setCheck] = useState({ n: 0, refresh: false })
   const query = useQuery(() => getBranchStatus(dir, check.refresh), [dir, check.n])

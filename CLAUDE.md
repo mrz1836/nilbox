@@ -215,16 +215,23 @@ app:lint` reads.
   there runs with hooks, the file system monitor, and submodule recursion off
   (`gitread.Hardening`, which the worktrees' `hardening` and the pull share),
   since a worktree holds a pull request's own files, and a pull request's worktree is made only
-  at the head whose files the launch checked. `create.go`'s fetches and its `ls-remote
-  --symref` (each with `--upload-pack=git-upload-pack`) and its `git worktree add` also run
-  under gitread's guards, through the worktrees `Guard` core gives every `Service` (the same
-  `gitread.Git` as Release's): `git.reach` runs a command that reaches the item's remote
-  with `RemoteSetupFor` that remote, and `git.write` one that writes files with
-  `CheckoutSetup`, each with gitread's git, environment, and settings, so no program the
-  clone's own config names runs; a remote helper or rerouted remote is refused in
-  `gitread.Message`'s words, and a fetch that failed after setting the clone's own settings
-  aside says which (`gitread.SetAsideNote`, a `gitread.SetAsideError` in the chain), which
-  the launch's error shows. The launcher reaches the `Maker` through its
+  at the head whose files the launch checked. `create.go`'s one fetch argv (`fetchArgs`:
+  `fetch --no-tags --refmap= --upload-pack=git-upload-pack <remote> <refspec>`, so it moves
+  only the ref its refspec names, never one the clone's own `remote.<name>.fetch` maps,
+  which the repoguard test holds to exactly those words), its `ls-remote --symref` (with
+  `--upload-pack=git-upload-pack`), and its `git worktree add` also run under gitread's
+  guards, through the worktrees `Guard` core gives every `Service` (the same `gitread.Git`
+  as Release's): `git.reach` runs a command that reaches the item's remote with
+  `RemoteSetupFor` that remote, and `git.write` one that writes files with `CheckoutSetup`
+  (a partial clone's checkout may fetch from its promisor remotes, which are weighed too),
+  each as `git -C <clone> <words>` with that setup's environment, which holds every setting
+  (`GIT_CONFIG_COUNT`), `GIT_DIR`, and `GIT_WORK_TREE`, but the same git, `bin`, as every
+  other command there, through `Config.GitWith`, core's runner with an environment of its
+  own, so one clone is never handled by two git builds. A clone whose own config holds a
+  setting outside gitread's allowlist (a hook, a filter, `core.worktree`, an include, ...),
+  a remote helper, or a rerouted remote is refused before git runs, in `gitread.Message`'s
+  words, naming the settings or the remote, which the launch's error shows. The launcher
+  reaches the `Maker` through its
   `WorktreeMaker` interface; no agent's own `--worktree` flag is used. A branch is deleted only
   with the conditional `git update-ref -d <ref> <oid>` (the repoguard tests ban `git branch
   -d/-D`): by `create.go`, of a branch it just fetched at a head the launch didn't check, and
@@ -394,16 +401,53 @@ app:lint` reads.
   as the user's own. Only the system, global, and environment (`command`) scopes are the
   user's. Reading a clone runs no program the clone names (the user's own, such as Git LFS's,
   still run). Its allowlist test asserts that no entry holds a verb `TestNoGitCommandChangesAClone`
-  guards. For the git commands that do change a clone, run elsewhere, it hands over what they
-  run with rather than running them: `Hardening` (no hook, fsmonitor, or submodule
-  recursion); `RemoteSetup` (origin) and `RemoteSetupFor` (a named remote, whose own URL,
-  remote helper, and proxy it weighs), for one that reaches a remote and writes files, which
-  work out exactly what its ls-remote runs under (its git, environment, and `-c` settings,
-  with the same refusals) plus `Hardening` and the clone's own filter drivers turned off;
-  `CheckoutSetup`, for one that writes files and reaches no remote, which adds those two to
-  a read's environment;
-  `ValidBranch` is the branch rule a command's argument must pass, and `SetAsideNote` words
-  what such a command went without.
+  guards. For the git commands that do change a clone, run elsewhere (Repo scripts' pull,
+  and worktree creation's fetches, `ls-remote --symref`, and `git worktree add`), it hands
+  over what they run with rather than running them: `RemoteSetup` (origin) and
+  `RemoteSetupFor` (a named remote, whose own URL and remote helper it weighs), for one that
+  reaches a remote, and `CheckoutSetup`, for one that writes files and reaches no remote.
+  Each reads the clone's whole config once, includes followed, with `config --show-scope
+  --show-origin -z --list`, and refuses, before anything runs, a clone whose own config
+  (the local and worktree scopes, and whatever they include) holds any setting outside the
+  allowlist in `cloneconfig.go`, with a `CloneConfigError` naming the settings and where each
+  is set, which `Message` words with where to set them instead (the user's global config,
+  with an `includeIf` for the folder). The allowlist (`cloneKeys`, less `refusedKeys`) is
+  what git init, clone, remote, branch, submodule, and Git LFS write, and the notes editors
+  and git clients keep: `core.{repositoryformatversion, filemode, bare, logallrefupdates,
+  ignorecase, precomposeunicode, symlinks, autocrlf, eol}`, `core.hooksPath` and
+  `core.fsmonitor` (husky writes the first; every such command sets both again);
+  `remote.<n>.{url, fetch, pushurl, tagopt, prune, promisor, partialclonefilter,
+  gh-resolved, gtserviceaccountidentifier}`; `branch.<n>.<any>` but `mergeoptions`;
+  `extensions.{partialclone, worktreeconfig, objectformat, refstorage}`; `user.{name, email,
+  signingkey}`, `commit.gpgsign`, `tag.gpgsign`, `gpg.format`; `pull.{rebase, ff}`,
+  `fetch.prune`; `submodule.<n>.{url, active}`, `submodule.active`, `submodule.recurse`;
+  `lfs.repositoryformatversion`, `lfs.<url>.access`; `log.excludeDecoration`; and
+  `filter.lfs.{clean, smudge, process, required}` only with Git LFS's own values
+  (`lfsSettings`). Everything else refuses: a hook (`core.hooksPath` aside, `hook.<n>.*`
+  runs whatever it says), a filter, `core.worktree`, `include.*` and `includeIf.*` (an
+  `includeIf` of `gitdir:**/.git/worktrees/**` or `onbranch:` reaches only a worktree being
+  made), `core.sshCommand`, `core.askPass`, `credential.*`, `http.*`, `url.*`, `gc.*`,
+  `maintenance.*`, `lfs.customtransfer.*`, `lfs.standalonetransferagent`, `lfs.url`,
+  `remote.<n>.{uploadpack, vcs, proxy}`, and any key a later git adds. The user's own scopes
+  (system, global, and the environment's) are never weighed, so an `includeIf` in the
+  user's global config still counts as theirs. Past the allowlist, the setup checks that
+  git takes the folder as its clone's top folder (`ErrWorkTree`), weighs the remotes the
+  command reaches exactly as an ls-remote's guard does (a `RefusedError` naming the remote),
+  and returns a `Setup`: gitread's own git; an ls-remote's environment (or a read's, which
+  allows no transport, for a checkout) with `GIT_DIR` and `GIT_WORK_TREE` set to the
+  clone's folders, which beat its config; and every setting, `Hardening` (no hook,
+  fsmonitor, or submodule recursion), `fetchHardening` (`core.alternateRefsCommand=true`, so
+  a fetch from a clone with alternates runs nothing to learn their refs, an empty one making
+  git try to run "" on every fetch; `maintenance.auto=false` and `gc.auto=0`, so no fetch or
+  merge starts maintenance), the ls-remote's (no cookie saved), and any filter driver of the
+  clone's own turned off, passed through `GIT_CONFIG_COUNT` after any the environment passes
+  (`Setup.Settings` lists them), so the command's argv holds only its own words. In a partial
+  clone (`extensions.partialClone`, `remote.<r>.promisor`) either may fetch a missing file's
+  contents: its promisor remotes are weighed as a remote is, and the setup leaves
+  `GIT_NO_LAZY_FETCH` out and allows the user's transports (`Setup.Partial`). Only an
+  ls-remote has `RemoteTimeout`, whose end is `ErrRemoteTimeout`, which `Message` words as
+  origin not answering in time. `ValidBranch` is the branch rule a command's argument must
+  pass.
 - `internal/release/` is the Release page's service. `Candidates` lists every clone under the
   clone root whose origin is on GitHub, grouped as unreleased, up to date, no releases yet, or
   can't release here, from two rounds of batched GraphQL (`(*github.Client).FetchReleaseStatus`,
@@ -595,24 +639,26 @@ app:lint` reads.
   (`pull.go`) returns a `scriptrun.KindPull` run's ID (ten minutes' limit), in the app,
   under the clone's lock, of the branch the last status was worked out on, an upstream
   `gitread.ValidBranch` passes: its `Before` refuses a clone now on another branch, one
-  whose branch follows none on origin, and one git is in the middle of something in, asks
-  origin again with `RemoteRefs` (the answer kept), and works out with
-  `gitread.RemoteSetup` exactly what the ls-remote ran under: gitread's own git, its
-  environment (`GIT_TERMINAL_PROMPT=0`, `GIT_NO_LAZY_FETCH=1`, the user's transports in
-  `GIT_ALLOW_PROTOCOL`, the user's ssh command or a batch-mode one) and `-c` settings (the
-  clone's own password program, credential helpers, and cookie file set aside), plus
-  `gitread.Hardening` and every filter driver the clone's own config defines turned off
-  (clean, smudge, and process emptied, required off; the user's own, such as Git LFS's,
-  still run). It runs `git pull --ff-only --no-rebase --refmap= --no-tags --no-autostash
+  whose branch follows none on origin, and one git is in the middle of something in, and
+  works out with `gitread.RemoteSetup`, asking origin nothing (the pull's own fetch is the
+  one round trip), what git runs with: a clone whose own config holds anything outside
+  gitread's allowlist is refused, naming the settings; otherwise gitread's own git, an
+  ls-remote's environment (`GIT_TERMINAL_PROMPT=0`, the user's transports in
+  `GIT_ALLOW_PROTOCOL`, the user's ssh command or a batch-mode one, and
+  `GIT_NO_LAZY_FETCH=1` but in a partial clone, whose promisor remotes are weighed too),
+  `GIT_DIR` and `GIT_WORK_TREE`, and every setting (`gitread.Hardening`, no alternate refs
+  command, no automatic maintenance, no cookie saved) passed through `GIT_CONFIG_COUNT`. It
+  runs `git pull --ff-only --no-rebase --refmap= --no-tags --no-autostash
   --no-recurse-submodules --no-verify-signatures --no-stat --upload-pack=git-upload-pack
-  origin +refs/heads/<b>:refs/remotes/origin/<b>` as argv, with `LC_ALL=C` so its reader
-  knows git's words, handed to the runner through the spec's `BeforeEnv`: the fetch updates
-  that one remote-tracking ref, never one the clone's own `remote.origin.fetch` maps. Stop
-  asks first while git fetches and is held back (`StopRefused`) once git prints `Updating`,
-  and so is a quit; the kind's limit isn't. Its `Finish` checks the clone is still on the
+  origin +refs/heads/<b>:refs/remotes/origin/<b>` as argv, nothing else in it, with
+  `LC_ALL=C` so git speaks the window's language, the environment handed to the runner
+  through the spec's `BeforeEnv`: the fetch updates that one remote-tracking ref, never one the
+  clone's own `remote.origin.fetch` maps. Stop is held back (`StopRefused`) for the whole
+  run, since git writes its output only as it exits, and so is a quit, which leaves it going
+  for the next start; only the kind's limit cuts it off. Its `Finish` checks the clone is still on the
   branch (a switch while git ran fails the run, saying git may have pulled into the other),
   reads the branch back and words the summary (updated from one commit to another, how many
-  commits, already up to date, or git's last error line with any setting set aside), and
+  commits, already up to date, or git's last error line), and
   keeps the commit git fetched as origin's for the next status, or forgets origin's answer
   when that can't be told. Run again pulls the same branch, its `Before` checking
   everything afresh.
