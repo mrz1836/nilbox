@@ -619,8 +619,9 @@ main worktrees aside, with an amber dot while some are done on GitHub but still 
 amber dot while a tool that's on can't be used. Hover a tab for what its number or dot means.
 **Prompts** has no count.
 
-**Account menu.** Click your picture for who is signed in, **Settings** (also ⌘,), and **View
-GitHub profile**. After a refresh, the picture is downloaded from
+**Account menu.** Click your picture for who is signed in, **Settings** (also ⌘,), **View
+GitHub profile**, and **GitHub status**, which opens githubstatus.com in your browser, for when
+GitHub is having an incident and the inbox, reviews, or checks lag. After a refresh, the picture is downloaded from
 `avatars.githubusercontent.com` without your token and cached in the database, so it shows
 offline. It is downloaded again only when GitHub reports a new picture, such as after you
 change it or sign in as another account with `gh auth switch`. Until it arrives, the button

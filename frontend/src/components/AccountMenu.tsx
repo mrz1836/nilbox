@@ -1,7 +1,11 @@
 import { openExternal, type Account } from '../platform'
 import { Avatar } from './Avatar'
-import { ExternalIcon, SlidersIcon } from './icons'
+import { ExternalIcon, PulseIcon, SlidersIcon } from './icons'
 import { MenuButton, type MenuItem } from './Menu'
+
+// githubStatusUrl is GitHub's own status page, which says when GitHub has an incident:
+// the inbox, reviews, and checks can lag or fail while it does.
+export const githubStatusUrl = 'https://www.githubstatus.com/'
 
 export interface AccountMenuProps {
   // account is null before the inbox has loaded; its login is "" before the first refresh.
@@ -35,7 +39,8 @@ function AccountCard({ account }: { account: Account | null }) {
 }
 
 // AccountMenu is the toolbar's profile button. It shows the signed-in account's picture
-// and opens a menu with who is signed in, Settings, and the account's GitHub profile.
+// and opens a menu with who is signed in, Settings, the account's GitHub profile, and
+// GitHub's status page, signed in or not, which opens in the browser.
 export function AccountMenu({ account, onOpenSettings }: AccountMenuProps) {
   const login = account?.login ?? ''
   const items: MenuItem[] = [
@@ -56,6 +61,14 @@ export function AccountMenu({ account, onOpenSettings }: AccountMenuProps) {
       },
     })
   }
+
+  items.push({
+    label: 'GitHub status',
+    icon: <PulseIcon className="size-4 text-muted" />,
+    onSelect: () => {
+      openExternal(githubStatusUrl)
+    },
+  })
 
   return (
     <MenuButton
