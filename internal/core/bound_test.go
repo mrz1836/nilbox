@@ -30,6 +30,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/release"
 	"github.com/mrz1836/nilbox/internal/review"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
+	"github.com/mrz1836/nilbox/internal/scripts"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/snooze"
@@ -308,9 +309,35 @@ func boundCalls(t *testing.T) map[string]boundCall {
 			_, err = c.Settings.SetIntegrationEnabled(ctx, integrationprefs.Scripts, integrationprefs.SwitchOn)
 			require.NoError(t, err)
 
+			_, err = c.Scripts.Save(ctx, scripts.UserScript{
+				Name: "Fix all", Command: "magex format:fix", Icon: scripts.IconPlay, Scope: scripts.ScopeAll,
+			})
+			require.NoError(t, err)
+
 			got, err := c.Scripts.List(ctx, "~/projects/example-repo", true)
 			require.Len(t, got.Sections, 4)
+			require.NotEmpty(t, got.Sections[0].Entries, "the user's own script, with its repositories")
 			require.Len(t, got.Sections[1].Entries, 1, "the clone's t3.json")
+
+			return got, err
+		},
+		"scripts.Service.Save": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Scripts.Save(ctx, scripts.UserScript{
+				Name: "Test", Command: "magex test", Icon: scripts.IconTest, Scope: scripts.ScopeGo,
+			})
+		},
+		"scripts.Service.Duplicate": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			saved, err := c.Scripts.Save(ctx, scripts.UserScript{
+				Name: "Deploy", Command: "magex deploy", Icon: scripts.IconBuild, Scope: scripts.ScopeRepos,
+				Repos: []string{"acme-org/example-repo"},
+			})
+			require.NoError(t, err)
+
+			return c.Scripts.Duplicate(ctx, saved.ID)
+		},
+		"scripts.Service.RepoNames": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			got, err := c.Scripts.RepoNames(ctx)
+			require.Empty(t, got, "the fake git reads no origin")
 
 			return got, err
 		},

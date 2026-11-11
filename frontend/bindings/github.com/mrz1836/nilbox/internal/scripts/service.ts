@@ -16,14 +16,52 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * Delete deletes the user's script id. The runs it made stay in the history.
+ */
+export function Delete(id: number): $CancellablePromise<void> {
+    return $Call.ByID(3968208225, id);
+}
+
+/**
+ * Duplicate saves a copy of the user's script id, called "<name> copy", right after it in
+ * the order, and returns the copy.
+ */
+export function Duplicate(id: number): $CancellablePromise<$models.UserScript> {
+    return $Call.ByID(4267996871, id);
+}
+
+/**
  * List returns Repo scripts for the clone at dir, as the picker lists it, with ~: its
  * sources in the page's order, as the settings turn them on, each script with what
- * running it asks first, or the page marked off while the scripts are. It runs nothing in
- * the clone: its files are read, and magex's built-ins are listed in a folder of the
- * app's own, once per copy of magex, a list that failed included, until refresh.
+ * running it asks first, or the page marked off while the scripts are. The user's own
+ * scripts are the ones whose scope includes the clone: every clone, one with a go.mod at
+ * its root, or the clones of the repositories they chose, by its origin, in any case. It
+ * runs nothing in the clone: its files are read, and magex's built-ins are listed in a
+ * folder of the app's own, once per copy of magex, a list that failed included, until
+ * refresh.
  */
 export function List(dir: string, refresh: boolean): $CancellablePromise<$models.Page> {
     return $Call.ByID(1361743794, dir, refresh);
+}
+
+/**
+ * Move moves the user's script id one place up or down their order, as the clone at dir,
+ * with ~, lists them: past the nearest script that way that shows there, so the move
+ * shows on the page it was made on, or, with dir "", past its neighbor. A script already
+ * first or last there stays where it is.
+ */
+export function Move(id: number, way: $models.Direction, dir: string): $CancellablePromise<void> {
+    return $Call.ByID(650564211, id, way, dir);
+}
+
+/**
+ * RepoNames returns the GitHub repositories of the clones under the clone root,
+ * owner/name, each once, sorted: what a script for chosen repositories can choose from.
+ * Each clone's origin is read with git, a few at a time, and kept until the clone's
+ * .git/config changes, so the editor opens at once after the first time.
+ */
+export function RepoNames(): $CancellablePromise<string[] | null> {
+    return $Call.ByID(441066262);
 }
 
 /**
@@ -42,4 +80,15 @@ export function Repos(): $CancellablePromise<$models.Clone[] | null> {
  */
 export function Run(req: $models.RunRequest): $CancellablePromise<number> {
     return $Call.ByID(344589791, req);
+}
+
+/**
+ * Save saves one of the user's own scripts as the editor filled it in: a new one, at the
+ * end of the order, when its ID is 0, else in place of the one with its ID. Its name and
+ * command are trimmed and must be there, on one line; its scope, place, and icon must be
+ * ones there are; and a script for chosen repositories needs one, each read as owner/name
+ * and kept once, in any case. It returns the script as saved.
+ */
+export function Save(script: $models.UserScript): $CancellablePromise<$models.UserScript> {
+    return $Call.ByID(607867363, script);
 }

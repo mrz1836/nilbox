@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
-import { bumpInput, magexTarget, repoScripts, scriptEntry, scriptQuestion, scriptSection } from '../test/fixtures'
+import {
+  bumpInput,
+  magexTarget,
+  repoScripts,
+  scriptEntry,
+  scriptQuestion,
+  scriptSection,
+  yourEntry,
+} from '../test/fixtures'
 import {
   argsOf,
   changedCommand,
@@ -11,6 +19,7 @@ import {
   otherPlace,
   shownSections,
   trustTitle,
+  yoursSection,
 } from './repoScripts'
 
 describe('trustTitle', () => {
@@ -52,6 +61,16 @@ describe('shownSections', () => {
 
     expect(shownSections(page).map((s) => s.source)).toEqual(['t3', 'magex'])
     expect(shownSections(repoScripts({ sections: [scriptSection({ note: 'a note' })] }))).toEqual([])
+    expect(
+      shownSections(repoScripts({ sections: [scriptSection({ source: 'yours', entries: [yourEntry()] })] })),
+    ).toEqual([])
+  })
+})
+
+describe('yoursSection', () => {
+  it('is the user’s own scripts, or null for a page without them', () => {
+    expect(yoursSection(repoScripts())?.title).toBe('Yours')
+    expect(yoursSection(repoScripts({ off: true, sections: [] }))).toBeNull()
   })
 })
 

@@ -533,9 +533,10 @@ it works offline and signed out.
   first, and the page starts on the one you chose last while the window is open. Beside it: the
   repository, the folder, and the branch, with *From branch feature-x* when the clone isn't on
   its default branch, since a branch can change what the files say.
-- **The sources, in order:** **From t3.json**, **From .vscode/tasks.json**, and **magex**, each
-  as Settings → Integrations turns it on (the Scripts card's **Show magex targets** and **Read
-  t3.json and VS Code tasks**). A file that can't be read says why.
+- **The sources, in order:** **Yours** (below), then **From t3.json**, **From
+  .vscode/tasks.json**, and **magex**, each as Settings → Integrations turns it on (the Scripts
+  card's **Show magex targets** and **Read t3.json and VS Code tasks**). A file that can't be
+  read says why.
 - **Each script** shows its command (or a task's detail) with **Run**, and a ⋯ menu that runs
   it in the other place: your terminal when runs go to the app, or the app when they go to your
   terminal. A task the app can't run, such as one that uses `${file}`, shows greyed with the
@@ -549,8 +550,27 @@ it works offline and signed out.
   `key=value` pairs, which magex's own targets run with. A note says that magex targets run the
   repository's own code and its `.github/env` settings, as any build does.
 
+**Your scripts.**
+
+- **New script** saves a command of your own: its name; the command, one line as you'd type it
+  in a terminal; the repositories it shows in, **All repositories**, **Go repositories** (the
+  clones with a `go.mod` at their root), or **Chosen…** from your clones' GitHub repositories;
+  where it runs, **As set in Settings**, Nilbox, or **Terminal**, for a command that asks you
+  questions; **Ask before running**; and its icon.
+- **They show first**, in the order you put them in, in each clone their repositories include;
+  a clone with none of yours says so. They never ask for trust, since you wrote them, and run
+  exactly as written, in the clone, with `NILBOX_REPO` (owner/name), `NILBOX_REPO_DIR`, and
+  `NILBOX_DEFAULT_BRANCH` set, so a command never has to quote a path. One that bumps a
+  version points to Release, like any other.
+- **Each one's ⋯ menu** has **Edit…**, **Duplicate** (a copy right after it), **Move up** and
+  **Move down** (past the nearest of yours shown in that clone), and **Delete…**, which asks
+  first; its runs stay in Runs. Run again runs a script as it is saved now, and refuses one
+  you deleted.
+
 **Running one.**
 
+- **A script of yours set to ask before running** shows its command and where it runs, with
+  **Run** and **Cancel**, before each run, its ⋯ menu's included.
 - **A task with inputs** (VS Code's `pickString` and `promptString`) opens a small form first,
   with the defaults filled in; each choice shows the value it fills in beside its label.
 - **A command from the repository asks first**, before its first run and whenever it changes:

@@ -139,6 +139,13 @@ export type ScriptInput = NonNullLists<scripts.Input>
 export type ScriptOption = NonNullLists<scripts.Option>
 export type ScriptSource = scripts.Source
 export type ScriptTrust = scripts.Trust
+// UserScript is one of the user's own scripts, as saved: its scope, which clones it shows
+// in, its place, '' for the setting, and its icon, each a closed set.
+export type UserScript = NonNullLists<scripts.UserScript>
+export type UserScriptScope = scripts.Scope
+export type UserScriptRunsIn = scripts.RunsIn
+export type UserScriptIcon = scripts.Icon
+export type UserScriptMove = scripts.Direction
 // ScriptRunRequest's runsIn is '' for the setting, which the generated type, a place,
 // leaves out.
 export type ScriptRunRequest = Omit<NonNullLists<scripts.RunRequest>, 'runsIn'> & { runsIn: RunsIn | '' }
@@ -540,13 +547,25 @@ export const installAllHooks: (dirs: string[] | null) => CancellablePromise<Hook
 export const getChecksResult: (runID: number) => CancellablePromise<HookChecksResult> = hooksService.ChecksResult
 
 // Repo scripts: the clones the page's picker lists, the ones a script ran in most recently
-// first; one clone's scripts, from its t3.json, its .vscode/tasks.json, and magex (refresh
-// lists magex's built-ins again); and a run of one of them, which returns its run's ID.
-// Nothing here runs anything in a clone but the run the user asked for, and nothing asks
-// GitHub.
+// first; one clone's scripts, the user's own whose scope includes it, then its t3.json,
+// its .vscode/tasks.json, and magex (refresh lists magex's built-ins again); and a run of
+// one of them, which returns its run's ID. The user's own scripts are saved (a new one
+// with ID 0, at the end), deleted, duplicated right after the original, and moved past the
+// nearest script shown in the clone named (all of them for ''); RepoNames lists the
+// clones' GitHub repositories, owner/name, which a script for chosen repositories picks
+// from. Nothing here runs anything in a clone but the run the user asked for, and nothing
+// asks GitHub.
 const scriptsService = narrow(scripts.Service)
 
-export const { Repos: listScriptRepos, List: listRepoScripts } = scriptsService
+export const {
+  Repos: listScriptRepos,
+  List: listRepoScripts,
+  RepoNames: listScriptRepoNames,
+  Save: saveUserScript,
+  Delete: deleteUserScript,
+  Duplicate: duplicateUserScript,
+  Move: moveUserScript,
+} = scriptsService
 
 // questionFields are the fields every ScriptQuestion holds, each a string.
 const questionFields = ['ref', 'name', 'source', 'command', 'trust', 'trusted', 'trustNote', 'sha256'] as const

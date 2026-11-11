@@ -31,13 +31,22 @@ export function changedCommand(question: ScriptQuestion): string {
   return question.trusted
 }
 
-// shownSections are the sources the page shows, in its order: each one the settings turn
-// on that has scripts, couldn't be read, or, for magex, says why it can't list them. The
-// user's own scripts show once they have some.
+// shownSections are the repository's sources the page shows, in its order: each one the
+// settings turn on that has scripts, couldn't be read, or, for magex, says why it can't
+// list them. The user's own scripts show apart, always (yoursSection).
 export function shownSections(page: RepoScripts): ScriptSection[] {
   return page.sections.filter(
-    (s) => !s.off && (s.entries.length > 0 || s.error !== '' || (s.source === 'magex' && s.note !== '')),
+    (s) =>
+      s.source !== 'yours' &&
+      !s.off &&
+      (s.entries.length > 0 || s.error !== '' || (s.source === 'magex' && s.note !== '')),
   )
+}
+
+// yoursSection is the page's section of the user's own scripts, or null when it has none,
+// as while Scripts is off.
+export function yoursSection(page: RepoScripts): ScriptSection | null {
+  return page.sections.find((s) => s.source === 'yours') ?? null
 }
 
 // EmptyReason says why a clone shows no scripts, a sentence each: a file that lists none,

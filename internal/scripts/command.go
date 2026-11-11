@@ -13,6 +13,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/shellenv"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
@@ -51,6 +52,10 @@ type part struct {
 	cwd   string
 	env   [][2]string
 	shell *shellSpec
+
+	// raw is a command line that runs exactly as written, as the user's own scripts do:
+	// no ${…} in it is filled in.
+	raw bool
 }
 
 // shellSpec is the shell a tasks.json shell task names, and the arguments before its
@@ -70,6 +75,10 @@ type script struct {
 	// for a script that needs no trust.
 	name string
 	hash string
+
+	// place is where the script itself says it runs, or "" for the setting: only the
+	// user's own scripts say.
+	place integrationprefs.RunsIn
 
 	// parts are what it runs, in order, and inputs the values they ask for, by ID.
 	parts  []part
@@ -269,6 +278,10 @@ func (l launcher) command(p part, dir string) ([]string, error) {
 	}
 
 	line := commandLine(l.vars.expand(p.command), l.expandAll(p.args))
+	if p.raw {
+		line = p.command
+	}
+
 	if p.shell == nil {
 		return []string{l.lineShell(), "-c", line}, nil
 	}

@@ -19,8 +19,15 @@
 // refuses a command whose hash isn't the one the user confirmed, or the one they trusted
 // before: what runs is exactly what the user saw.
 //
+// The user's own scripts, saved in the app (Save, Delete, Duplicate, Move), show in the
+// clones their scope includes: every clone, one with a go.mod at its root, or the clones
+// of the repositories they chose. They need no trust, since the user wrote them, and run
+// exactly as written, as the login shell's -c, in the clone, with the clone's repository,
+// folder, and default branch in Variables, where the script says, or else where the
+// setting sends runs.
+//
 // It owns the script_trust table, the commands the user trusted, and user_scripts, the
-// user's own scripts, whose queries come with them.
+// user's own scripts, in the order the user put them in.
 package scripts
 
 import (
@@ -194,6 +201,10 @@ type Entry struct {
 
 	// Inputs are the values a task asks for, which a small form fills in before it runs.
 	Inputs []Input `json:"inputs"`
+
+	// Mine is the user's own script, as saved, for its menu's Edit and the question Ask
+	// before running asks; nil for every other source's.
+	Mine *UserScript `json:"mine"`
 }
 
 // Input is one value a task asks for: VS Code's pickString or promptString.

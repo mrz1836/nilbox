@@ -1,10 +1,12 @@
 import { useEffect, useEffectEvent, useId, useState, type ReactNode } from 'react'
 
 import { brand } from '../../generated/brand'
-import { emptyReason, otherPlace, shownSections } from '../../lib/repoScripts'
+import { emptyReason, otherPlace, shownSections, yoursSection } from '../../lib/repoScripts'
 import type { SettingsSection } from '../../lib/settingsIndex'
 import { terminalNames } from '../../lib/terminals'
+import { useMutation } from '../../lib/useMutation'
 import { useQuery } from '../../lib/useQuery'
+import { newUserScript, placeName, placeOf } from '../../lib/userScripts'
 import { useScriptRun, type ScriptAsk, type ScriptRunState } from '../../lib/useScriptRun'
 import {
   listRepoScripts,
@@ -13,17 +15,20 @@ import {
   type RunsIn,
   type ScriptClone,
   type TerminalID,
+  type UserScript,
 } from '../../platform'
 import { buttonClass, captionClass, quietButtonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
-import { AlertIcon, InfoIcon, RefreshIcon } from '../icons'
+import { AlertIcon, InfoIcon, PlusIcon, RefreshIcon } from '../icons'
 import { ErrorText } from '../settings/rows'
 import { Spinner } from '../Spinner'
 import { MagexSection } from './MagexSection'
 import { RunPanel } from './RunPanel'
+import { ScriptEditor } from './ScriptEditor'
 import { ScriptRow } from './ScriptRow'
 import { TaskInputsForm } from './TaskInputsForm'
 import { TrustDialog } from './TrustDialog'
+import { AskFirst, YoursSection } from './YoursSection'
 
 interface FrameProps {
   // action sits at the end of the heading's line; header under it; children are the body.
@@ -54,6 +59,10 @@ interface PlaceProps {
   // way to run there instead.
   other: RunsIn
   otherName: string
+  // setting is where runs go, as set, and terminalName the terminal they go to there,
+  // for the user's own scripts, which may say a place of their own.
+  setting: RunsIn
+  terminalName: string
   // onOpenRelease opens the Release page, or is null while it isn't on.
   onOpenRelease: (() => void) | null
 }
@@ -62,6 +71,10 @@ interface ScriptsProps extends PlaceProps {
   page: RepoScripts
   run: ScriptRunState
   onOpenSettings: (section: SettingsSection) => void
+  // onEdit opens the editor on one of the user's scripts; onChange makes a change to
+  // them, after which the page reads its scripts again.
+  onEdit: (script: UserScript) => void
+  onChange: (change: () => PromiseLike<unknown>) => void
 }
 
 // Empty says why a clone shows no scripts: a file that lists none, the files it doesn't
@@ -91,20 +104,38 @@ function Empty({ page, onOpenSettings }: { page: RepoScripts; onOpenSettings: (s
   )
 }
 
-// Scripts are a clone's sources in the page's order: its t3.json scripts and its
-// .vscode/tasks.json tasks, each showing the command it runs, then magex. A source that
-// couldn't be read says why, and a clone with none says why not. Beside them, the form a
-// task's inputs open first, and the question a repository command asks before it runs.
-function Scripts({ page, run, onOpenSettings, ...place }: ScriptsProps) {
+// Scripts are a clone's sources in the page's order: the user's own scripts that show
+// there, then its t3.json scripts and its .vscode/tasks.json tasks, each showing the
+// command it runs, then magex. A source that couldn't be read says why, and a clone with
+// none of the repository's says why not. Beside them, the confirmation one of the user's
+// scripts asks first when it says to, the form a task's inputs open first, and the
+// question a repository command asks before it runs.
+function Scripts({ page, run, onOpenSettings, onEdit, onChange, setting, terminalName, ...place }: ScriptsProps) {
   const id = useId()
+  const yours = yoursSection(page)
   const sections = shownSections(page)
   const { step } = run
+  const { onOpenRelease } = place
   const onRun = (ask: ScriptAsk) => {
     run.begin(ask)
   }
 
   return (
     <>
+      {yours !== null && (
+        <YoursSection
+          page={page}
+          section={yours}
+          headingId={`${id}-yours`}
+          pending={run.pending}
+          onRun={onRun}
+          setting={setting}
+          terminalName={terminalName}
+          onOpenRelease={onOpenRelease}
+          onEdit={onEdit}
+          onChange={onChange}
+        />
+      )}
       {sections.length === 0 && <Empty page={page} onOpenSettings={onOpenSettings} />}
       {sections.map((section) => {
         const headingId = `${id}-${section.source}`
@@ -151,6 +182,18 @@ function Scripts({ page, run, onOpenSettings, ...place }: ScriptsProps) {
           </section>
         )
       })}
+      {step.step === 'confirm' && (
+        <AskFirst
+          ask={step.ask}
+          script={step.script}
+          dir={page.dir}
+          place={placeName(step.ask.runsIn === '' ? placeOf(step.script, setting) : step.ask.runsIn, terminalName)}
+          onRun={() => {
+            run.go(step.ask)
+          }}
+          onCancel={run.cancel}
+        />
+      )}
       {step.step === 'inputs' && (
         <TaskInputsForm
           entry={step.ask.entry}
@@ -187,17 +230,32 @@ interface ClonePageProps extends PlaceProps {
 }
 
 // ClonePage is the page for one clone: its repository, folder, and branch beside the
-// picker, the note when it is on another branch than the default, Read again, and its
-// scripts.
+// picker, the note when it is on another branch than the default, New script and Read
+// again, and its scripts, with the editor of the user's own.
 function ClonePage({ clone, picker, onStarted, onOpenSettings, ...place }: ClonePageProps) {
-  // reads counts the times Read again was pressed. Each is a new read of the clone's
-  // scripts that lists magex's targets afresh, and the query shows only the newest read's
-  // answer, so one still under way from before can't land over it.
-  const [reads, setReads] = useState(0)
-  const query = useQuery(() => listRepoScripts(clone.dir, reads > 0), [clone.dir, reads])
+  // read counts the reads of the clone's scripts after the first: Read again, which
+  // lists magex's targets afresh (refresh), and each change to the user's own scripts,
+  // which doesn't. The query shows only the newest read's answer, so one still under way
+  // from before can't land over it.
+  const [read, setRead] = useState({ n: 0, refresh: false })
+  const query = useQuery(() => listRepoScripts(clone.dir, read.refresh), [clone.dir, read.n])
   const run = useScriptRun(clone.dir, onStarted)
+  // editing is the script the editor is open on, a new one with ID 0, or null.
+  const [editing, setEditing] = useState<UserScript | null>(null)
+  const change = useMutation((act: () => PromiseLike<unknown>) => act())
   const page = query.data ?? null
-  const reading = reads > 0 && query.pending
+  const reading = read.refresh && query.pending
+  const readAgain = (refresh: boolean) => {
+    setRead({ n: read.n + 1, refresh })
+  }
+
+  const onChange = async (act: () => PromiseLike<unknown>) => {
+    const result = await change.run(act)
+
+    if (result.ok) {
+      readAgain(false)
+    }
+  }
 
   let body: ReactNode
 
@@ -230,24 +288,49 @@ function ClonePage({ clone, picker, onStarted, onOpenSettings, ...place }: Clone
       </div>
     )
   } else {
-    body = <Scripts page={page} run={run} onOpenSettings={onOpenSettings} {...place} />
+    body = (
+      <Scripts
+        page={page}
+        run={run}
+        onOpenSettings={onOpenSettings}
+        onEdit={setEditing}
+        onChange={(act) => {
+          void onChange(act)
+        }}
+        {...place}
+      />
+    )
   }
 
   return (
     <Frame
       action={
-        <button
-          type="button"
-          disabled={reading}
-          title="Read the repository’s files and magex’s targets again"
-          onClick={() => {
-            setReads(reads + 1)
-          }}
-          className={quietButtonClass}
-        >
-          <RefreshIcon className={`size-3.5 ${reading ? 'motion-safe:animate-spin' : ''}`} />
-          {reading ? 'Reading…' : 'Read again'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={reading}
+            title="Read the repository’s files and magex’s targets again"
+            onClick={() => {
+              readAgain(true)
+            }}
+            className={quietButtonClass}
+          >
+            <RefreshIcon className={`size-3.5 ${reading ? 'motion-safe:animate-spin' : ''}`} />
+            {reading ? 'Reading…' : 'Read again'}
+          </button>
+          {page !== null && !page.off && (
+            <button
+              type="button"
+              onClick={() => {
+                setEditing(newUserScript())
+              }}
+              className={buttonClass}
+            >
+              <PlusIcon className="size-3.5" />
+              New script
+            </button>
+          )}
+        </div>
       }
       header={
         <>
@@ -287,10 +370,23 @@ function ClonePage({ clone, picker, onStarted, onOpenSettings, ...place }: Clone
             error={page === null || query.error === '' ? '' : `Couldn’t read the scripts again: ${query.error}`}
           />
           <ErrorText error={run.failed === null ? '' : `Couldn’t run ${run.failed.name}: ${run.failed.error}`} />
+          <ErrorText error={change.error === '' ? '' : `Couldn’t change your scripts: ${change.error}`} />
         </>
       }
     >
       {body}
+      {editing !== null && (
+        <ScriptEditor
+          script={editing}
+          onSaved={() => {
+            setEditing(null)
+            readAgain(false)
+          }}
+          onCancel={() => {
+            setEditing(null)
+          }}
+        />
+      )}
     </Frame>
   )
 }
@@ -317,11 +413,13 @@ export interface RepoScriptsPageProps {
 
 // RepoScriptsPage is the Scripts tab's Repo scripts page: a picker of the clones under the
 // clone root, the ones a script ran in most recently first, starting on the one chosen
-// last; then the chosen clone's commands, from its t3.json, its .vscode/tasks.json, and
-// magex, each with Run and a menu that runs it in the other place. A task with inputs
-// asks for them first, and a command from the repository's own files asks before its
-// first run and whenever it changes. A run that starts shows beside the scripts, which
-// stay as they were. Nothing here asks GitHub.
+// last; then the chosen clone's commands, the user's own first (with New script and each
+// one's menu to edit, duplicate, move, or delete it), then its t3.json, its
+// .vscode/tasks.json, and magex, each with Run and a menu that runs it in the other place.
+// A script of the user's set to ask before running asks first, a task with inputs asks
+// for them first, and a command from the repository's own files asks before its first
+// run and whenever it changes. A run that starts shows beside the scripts, which stay as
+// they were. Nothing here asks GitHub.
 export function RepoScriptsPage({
   dir,
   onDir,
@@ -339,7 +437,8 @@ export function RepoScriptsPage({
   const chosen = clones?.find((c) => c.dir === dir) ?? clones?.[0]
   const shownDir = chosen?.dir ?? ''
   const other = otherPlace(runsIn)
-  const otherName = other === 'app' ? brand.name : terminal === null ? 'your terminal' : terminalNames[terminal]
+  const terminalName = terminal === null ? 'your terminal' : terminalNames[terminal]
+  const otherName = other === 'app' ? brand.name : terminalName
   const remember = useEffectEvent((shown: string) => {
     onDir(shown)
   })
@@ -414,6 +513,8 @@ export function RepoScriptsPage({
         }
         other={other}
         otherName={otherName}
+        setting={runsIn}
+        terminalName={terminalName}
         onOpenRelease={onOpenRelease}
         onStarted={onFollow}
         onOpenSettings={onOpenSettings}

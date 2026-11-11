@@ -15,6 +15,22 @@ export interface Clone {
 }
 
 /**
+ * Direction is the way Move moves a script in the order.
+ */
+export type Direction = "up" | "down";
+
+/**
+ * The values of Direction, by the names of their Go constants.
+ */
+export const Direction = {
+    /**
+     * The directions.
+     */
+    MoveUp: "up",
+    MoveDown: "down",
+} as const;
+
+/**
  * Entry is one script as the page lists it.
  */
 export interface Entry {
@@ -76,7 +92,32 @@ export interface Entry {
      * Inputs are the values a task asks for, which a small form fills in before it runs.
      */
     "inputs": Input[] | null;
+
+    /**
+     * Mine is the user's own script, as saved, for its menu's Edit and the question Ask
+     * before running asks; nil for every other source's.
+     */
+    "mine": UserScript | null;
 }
+
+/**
+ * Icon is what one of the user's scripts shows beside its name: t3.json's icon names.
+ */
+export type Icon = "play" | "test" | "lint" | "build" | "configure";
+
+/**
+ * The values of Icon, by the names of their Go constants.
+ */
+export const Icon = {
+    /**
+     * The icons.
+     */
+    IconPlay: "play",
+    IconTest: "test",
+    IconLint: "lint",
+    IconBuild: "build",
+    IconConfigure: "configure",
+} as const;
 
 /**
  * Input is one value a task asks for: VS Code's pickString or promptString.
@@ -185,7 +226,8 @@ export interface RunRequest {
     "args": string[] | null;
 
     /**
-     * RunsIn is where it runs, or "" for the setting.
+     * RunsIn is where it runs, or "" for where the script says, as one of the user's own
+     * may, or else the setting.
      */
     "runsIn": integrationprefs$0.RunsIn;
 
@@ -202,6 +244,61 @@ export interface RunRequest {
      */
     "anyway": boolean;
 }
+
+/**
+ * RunsIn is where one of the user's scripts runs: where Settings → Integrations sends
+ * runs, or a place of its own.
+ */
+export type RunsIn = "" | "app" | "terminal";
+
+/**
+ * The values of RunsIn, by the names of their Go constants.
+ */
+export const RunsIn = {
+    /**
+     * The places a script of the user's can name.
+     *
+     * RunsInSetting runs it where the setting sends runs.
+     */
+    RunsInSetting: "",
+
+    /**
+     * RunsInApp runs it in the app.
+     */
+    RunsInApp: "app",
+
+    /**
+     * RunsInTerminal runs it in the user's terminal, for a command that asks questions.
+     */
+    RunsInTerminal: "terminal",
+} as const;
+
+/**
+ * Scope is which clones one of the user's own scripts shows in.
+ */
+export type Scope = "all" | "go" | "repos";
+
+/**
+ * The values of Scope, by the names of their Go constants.
+ */
+export const Scope = {
+    /**
+     * The scopes.
+     *
+     * ScopeAll shows the script in every clone.
+     */
+    ScopeAll: "all",
+
+    /**
+     * ScopeGo shows it in a clone with a go.mod at its root.
+     */
+    ScopeGo: "go",
+
+    /**
+     * ScopeRepos shows it in the clones of the repositories it names.
+     */
+    ScopeRepos: "repos",
+} as const;
 
 /**
  * Section is one source's scripts.
@@ -304,3 +401,44 @@ export const Trust = {
      */
     TrustChanged: "changed",
 } as const;
+
+/**
+ * UserScript is one of the user's own scripts, saved in the app: a command they run from
+ * Repo scripts, in every clone its scope includes, needing no trust (D13).
+ */
+export interface UserScript {
+    /**
+     * ID names it; Save creates one whose ID is 0.
+     */
+    "id": number;
+
+    /**
+     * Name is what the page calls it, and Command the shell command it runs in the
+     * clone, as the user would type it in a terminal.
+     */
+    "name": string;
+    "command": string;
+
+    /**
+     * Icon is what shows beside its name.
+     */
+    "icon": Icon;
+
+    /**
+     * Scope is which clones it shows in, and Repos, for ScopeRepos, the repositories
+     * whose clones those are, owner/name; empty for any other scope.
+     */
+    "scope": Scope;
+    "repos": string[] | null;
+
+    /**
+     * RunsIn is where it runs, unless a run asks for the other place.
+     */
+    "runsIn": RunsIn;
+
+    /**
+     * Confirm asks before each run. The window asks: it is the user's own setting, which
+     * the service leaves to them.
+     */
+    "confirm": boolean;
+}

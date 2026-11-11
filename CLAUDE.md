@@ -457,7 +457,7 @@ app:lint` reads.
 - `internal/scripts/` is Repo scripts' service. While the Scripts integration is off (its own
   switch, whose automatic is on while mage-x or go-pre-commit is), `List` returns the page
   marked off and `Run` and Run again refuse. Otherwise `List` reads a clone's sources in the
-  page's order (the user's own scripts, which come later, then `t3.json`'s `scripts`, the
+  page's order (the user's own scripts, then `t3.json`'s `scripts`, the
   subset of `.vscode/tasks.json` the app can run, read through `jsonc.go`, and magex's
   targets), as the `scripts.repoFiles` and `scripts.magexTargets` switches in
   `integrationprefs` turn them on, and runs nothing in a clone: the files are read, magex's
@@ -497,6 +497,27 @@ app:lint` reads.
   -c` line of shell-quoted parts joined by `&&`. Its `Rerunner` works Run again out from the
   run's intent and asks nothing, so it runs a repository command only while a trust record
   under the clone's current origin matches it; anything else is run from the page, which asks.
+  The user's own scripts live in `user_scripts`, which it owns, in their order (positions
+  0, 1, 2, numbered again in the `store.InTx` of every create, delete, duplicate, or move).
+  The bound `Save` creates one (ID 0, at the end) or edits one, checking that the name and
+  command are there, on one line, with no character that hides what runs, that the scope
+  (`all`, `go`, or `repos`), the place (`''` for the setting, `app`, or `terminal`), and the
+  icon (t3.json's five) are known, and that a `repos` scope names at least one
+  owner/name, kept once in any case; `Delete`, `Duplicate` ("<name> copy", right after the
+  original), and `Move` (up or down past the nearest script shown in the clone named, so
+  the move shows on that page) change the order, and `RepoNames` lists the clones'
+  GitHub repositories for the editor's Chosen list, reading origins four at a time and
+  keeping each until the clone's `.git/config` changes. `List` shows the ones whose scope
+  includes the clone: every clone, one with a `go.mod` at its root, or its origin among
+  the chosen repositories, in any case. They need no trust (D13), keep the hidden
+  character guard, point a version bump to Release, and run exactly as written, no `${…}`
+  filled in, as `[$SHELL, -c, command]` under the same POSIX rule, in the clone, with the
+  run env plus `Variables()`: `<SLUG>_REPO`, `<SLUG>_REPO_DIR`, and `<SLUG>_DEFAULT_BRANCH`,
+  named from `brand.Slug` (the stored default branch, else `main` or `master` when the
+  clone is on one, else ''), set alone in the terminal. Their own place beats the setting,
+  and a request's place beats both. Run again works the command out afresh from the saved
+  script by its ID and refuses one deleted or no longer shown there. Ask before running is
+  the window's confirmation, which the service leaves to the user.
 - `internal/measure/` and `magefiles/measure.go` take the numbers in
   [`docs/performance.md`](docs/performance.md).
 - `frontend/` is the React + TypeScript + Vite + Tailwind app. It reaches Go only through the

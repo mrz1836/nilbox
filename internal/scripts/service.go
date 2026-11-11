@@ -79,7 +79,7 @@ type Config struct {
 	Runs     Runs
 	History  RunHistory
 
-	// DB holds script_trust.
+	// DB holds script_trust and user_scripts.
 	DB *sql.DB
 
 	// Env returns the login shell's environment, and whether it was read
@@ -111,6 +111,7 @@ type Service struct {
 	runs     Runs
 	history  RunHistory
 	trust    trustStore
+	yours    yourStore
 	env      func() ([]string, bool)
 	shell    func() string
 	runner   func(env []string, dir string) execpath.Runner
@@ -121,11 +122,12 @@ type Service struct {
 	// listing lists one copy of magex's built-ins at a time.
 	listing flight.Group[builtins]
 
-	// mu guards the built-ins listed per copy of magex, and the magefiles read per clone,
-	// each with the fingerprint it was read at.
-	mu     sync.Mutex
-	listed map[string]listedBuiltins
-	mages  map[string]keptMagefiles
+	// mu guards the built-ins listed per copy of magex, the magefiles read per clone, and
+	// the origins RepoNames read per clone, each with the fingerprint it was read at.
+	mu      sync.Mutex
+	listed  map[string]listedBuiltins
+	mages   map[string]keptMagefiles
+	origins map[string]keptOrigin
 }
 
 // keptMagefiles is a clone's magefiles as last read, and what they looked like then.
@@ -138,9 +140,10 @@ type keptMagefiles struct {
 func NewService(cfg Config) *Service {
 	s := &Service{
 		clones: cfg.Clones, git: cfg.Git, branches: cfg.Branches, tools: cfg.Tools, settings: cfg.Settings,
-		runs: cfg.Runs, history: cfg.History, trust: newTrustStore(cfg.DB, cfg.Clock), env: cfg.Env, shell: cfg.Shell,
-		runner: cfg.Runner, scratch: cfg.Scratch, home: cfg.Home, logger: logging.Or(cfg.Logger),
-		listed: map[string]listedBuiltins{}, mages: map[string]keptMagefiles{},
+		runs: cfg.Runs, history: cfg.History, trust: newTrustStore(cfg.DB, cfg.Clock), yours: newYourStore(cfg.DB, cfg.Clock),
+		env: cfg.Env, shell: cfg.Shell, runner: cfg.Runner, scratch: cfg.Scratch, home: cfg.Home,
+		logger: logging.Or(cfg.Logger), listed: map[string]listedBuiltins{}, mages: map[string]keptMagefiles{},
+		origins: map[string]keptOrigin{},
 	}
 
 	if s.env == nil {
@@ -202,9 +205,12 @@ func (s *Service) Repos(ctx context.Context) ([]Clone, error) {
 
 // List returns Repo scripts for the clone at dir, as the picker lists it, with ~: its
 // sources in the page's order, as the settings turn them on, each script with what
-// running it asks first, or the page marked off while the scripts are. It runs nothing in
-// the clone: its files are read, and magex's built-ins are listed in a folder of the
-// app's own, once per copy of magex, a list that failed included, until refresh.
+// running it asks first, or the page marked off while the scripts are. The user's own
+// scripts are the ones whose scope includes the clone: every clone, one with a go.mod at
+// its root, or the clones of the repositories they chose, by its origin, in any case. It
+// runs nothing in the clone: its files are read, and magex's built-ins are listed in a
+// folder of the app's own, once per copy of magex, a list that failed included, until
+// refresh.
 func (s *Service) List(ctx context.Context, dir string, refresh bool) (Page, error) {
 	c, err := s.cloneAt(ctx, dir)
 	if err != nil {
@@ -237,10 +243,9 @@ func (s *Service) List(ctx context.Context, dir string, refresh bool) (Page, err
 		return Page{}, err
 	}
 
-	page.Sections = append(page.Sections, Section{Source: SourceYours, Title: "Yours", Entries: []Entry{}, Common: []string{}})
 	page.Branch, page.FromBranch = s.branch(ctx, c)
 
-	for _, src := range []Source{SourceT3, SourceTasks, SourceMagex} {
+	for _, src := range Sources() {
 		page.Sections = append(page.Sections, s.section(ctx, c, src, cfg, tools.Magex, records))
 	}
 
@@ -342,6 +347,7 @@ func (s *Service) read(ctx context.Context, c clone, src Source, tool ToolFacts,
 			err = uierr.New(magefilesMessage(mf.readErr), mf.readErr)
 		}
 	case SourceYours:
+		out.scripts, out.found, err = s.yoursIn(ctx, c)
 	}
 
 	return out, err
@@ -382,8 +388,11 @@ func (s *Service) find(ctx context.Context, c clone, src Source, name string, to
 		}
 	}
 
-	if err != nil {
+	switch {
+	case err != nil:
 		return script{}, err
+	case src == SourceYours:
+		return script{}, s.yoursMissing(ctx, c, name)
 	}
 
 	return script{}, uierr.New(fmt.Sprintf("%q is no longer in %s.", name, sourceFile(src)),
@@ -456,16 +465,49 @@ func (s *Service) branch(ctx context.Context, c clone) (branch, from string) {
 // isDefault reports whether branch is the clone's repository's default branch: the one the
 // app stored, or else main or master.
 func (s *Service) isDefault(ctx context.Context, c clone, branch string) bool {
-	def := ""
-	if s.branches != nil && c.name.Valid() {
-		def, _ = s.branches.DefaultBranch(ctx, c.name)
+	if def := s.storedDefault(ctx, c); def != "" {
+		return branch == def
 	}
 
-	if def == "" {
-		return branch == "main" || branch == "master"
+	return mainBranch(branch)
+}
+
+// defaultBranch is the clone's repository's default branch as isDefault reckons it: the
+// one the app stored, or else the branch the clone is on when that is main or master, or
+// "" when the app can't tell.
+func (s *Service) defaultBranch(ctx context.Context, c clone) string {
+	if def := s.storedDefault(ctx, c); def != "" {
+		return def
 	}
 
-	return branch == def
+	if s.git == nil {
+		return ""
+	}
+
+	if branch, err := s.git.CurrentBranch(ctx, c.dir); err == nil && mainBranch(branch) {
+		return branch
+	}
+
+	return ""
+}
+
+// storedDefault is the default branch the app stored for the clone's repository, or "".
+func (s *Service) storedDefault(ctx context.Context, c clone) string {
+	if s.branches == nil || !c.name.Valid() {
+		return ""
+	}
+
+	def, err := s.branches.DefaultBranch(ctx, c.name)
+	if err != nil {
+		return ""
+	}
+
+	return def
+}
+
+// mainBranch reports a branch named as a default branch most often is: main or master.
+func mainBranch(branch string) bool {
+	return branch == "main" || branch == "master"
 }
 
 // sourceOff says, for a source the settings turn off, so; "" when it is on.

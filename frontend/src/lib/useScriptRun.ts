@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { runScript, type RunsIn, type ScriptEntry, type ScriptQuestion } from '../platform'
+import { runScript, type RunsIn, type ScriptEntry, type ScriptQuestion, type UserScript } from '../platform'
 import { useMutation } from './useMutation'
 
 // ScriptAsk is a run the user asked for: the script, where it runs ('' for the setting),
@@ -21,9 +21,14 @@ export interface TrustStep {
   question: ScriptQuestion
 }
 
-// ScriptRunStep is where asking for a run stands: nothing open; the form for a task's
-// inputs; or the question.
-export type ScriptRunStep = { step: 'idle' } | { step: 'inputs'; ask: ScriptAsk } | TrustStep
+// ScriptRunStep is where asking for a run stands: nothing open; the confirmation one of
+// the user's own scripts set to ask before running asks; the form for a task's inputs; or
+// the question.
+export type ScriptRunStep =
+  | { step: 'idle' }
+  | { step: 'confirm'; ask: ScriptAsk; script: UserScript }
+  | { step: 'inputs'; ask: ScriptAsk }
+  | TrustStep
 
 // ScriptRunState is a click on Run as it goes.
 export interface ScriptRunState {
@@ -32,8 +37,11 @@ export interface ScriptRunState {
   // start, and why, or is null.
   pending: boolean
   failed: { name: string; error: string } | null
-  // begin starts a run the user asked for: the form first, for a task with inputs.
+  // begin starts a run the user asked for: the confirmation first, for one of their own
+  // scripts set to ask before running, and the form, for a task with inputs.
   begin: (ask: ScriptAsk) => void
+  // go runs the script the confirmation asked about.
+  go: (ask: ScriptAsk) => void
   // fill runs the script the form asked for with the values it filled in.
   fill: (ask: ScriptAsk, inputs: Record<string, string>) => void
   // confirm runs the command the question showed, as it showed it, remembering it when
@@ -85,6 +93,15 @@ export function useScriptRun(dir: string, onStarted: (id: number) => void): Scri
     }
   }
 
+  // proceed asks for the run, or for a task's inputs first.
+  const proceed = (ask: ScriptAsk) => {
+    if (ask.entry.inputs.length > 0) {
+      setStep({ step: 'inputs', ask })
+    } else {
+      void send(ask, {}, '', false)
+    }
+  }
+
   return {
     step,
     pending: start.pending,
@@ -92,12 +109,15 @@ export function useScriptRun(dir: string, onStarted: (id: number) => void): Scri
     begin: (ask) => {
       setFailed(null)
 
-      if (ask.entry.inputs.length > 0) {
-        setStep({ step: 'inputs', ask })
+      const { mine } = ask.entry
+
+      if (mine?.confirm === true) {
+        setStep({ step: 'confirm', ask, script: mine })
       } else {
-        void send(ask, {}, '', false)
+        proceed(ask)
       }
     },
+    go: proceed,
     fill: (ask, inputs) => {
       void send(ask, inputs, '', false)
     },
