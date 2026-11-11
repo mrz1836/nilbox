@@ -3,6 +3,7 @@ package scripts
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -93,7 +94,9 @@ func (s *Service) Move(ctx context.Context, id int64, way Direction, dir string)
 // RepoNames returns the GitHub repositories of the clones under the clone root,
 // owner/name, each once, sorted: what a script for chosen repositories can choose from.
 // Each clone's origin is read with git, a few at a time, and kept until the clone's
-// .git/config changes, so the editor opens at once after the first time.
+// .git/config changes, so the editor opens at once after the first time; a clone the
+// listing no longer holds is forgotten. Once the caller has gone (ctx is done, as when the
+// window cancels the call), no more origins are read.
 func (s *Service) RepoNames(ctx context.Context) ([]string, error) {
 	l, err := s.listClones(ctx)
 	if err != nil {
@@ -101,7 +104,13 @@ func (s *Service) RepoNames(ctx context.Context) ([]string, error) {
 	}
 
 	names := make([]repo.Name, len(l.dirs))
-	parallel(l.dirs, func(i int, dir string) { names[i] = s.originOf(ctx, dir) })
+	parallel(ctx, l.dirs, func(i int, dir string) { names[i] = s.originOf(ctx, dir) })
+
+	if err = ctx.Err(); err != nil {
+		return nil, fmt.Errorf("list the clones' repositories: %w", err)
+	}
+
+	s.forgetOrigins(l.dirs)
 
 	seen := map[string]bool{}
 	out := []string{}
@@ -160,6 +169,19 @@ func (s *Service) originOf(ctx context.Context, dir string) repo.Name {
 	return name
 }
 
+// forgetOrigins drops the origins kept for clones that aren't among dirs, the clones the
+// latest listing holds.
+func (s *Service) forgetOrigins(dirs []string) {
+	listed := map[string]bool{}
+	for _, d := range dirs {
+		listed[d] = true
+	}
+
+	s.mu.Lock()
+	maps.DeleteFunc(s.origins, func(dir string, _ keptOrigin) bool { return !listed[dir] })
+	s.mu.Unlock()
+}
+
 // configLook is what the clone at dir's .git/config looks like on disk, its size and
 // modification time, or "" when it isn't there, as in a clone whose .git is a file.
 func configLook(dir string) string {
@@ -172,14 +194,24 @@ func configLook(dir string) string {
 }
 
 // parallel calls fn for each folder of dirs, a few at a time, and returns once every call
-// has.
-func parallel(dirs []string, fn func(i int, dir string)) {
+// it made has returned. Once ctx is done it starts no more.
+func parallel(ctx context.Context, dirs []string, fn func(i int, dir string)) {
 	var wg sync.WaitGroup
 
 	slots := make(chan struct{}, originParallel)
 
 	for i, dir := range dirs {
-		slots <- struct{}{}
+		if ctx.Err() != nil {
+			break
+		}
+
+		select {
+		case slots <- struct{}{}:
+		case <-ctx.Done():
+			wg.Wait()
+
+			return
+		}
 
 		wg.Go(func() {
 			defer func() { <-slots }()

@@ -10,7 +10,6 @@ export {
     Direction,
     Icon,
     InputKind,
-    RunsIn,
     Scope,
     Source,
     Trust

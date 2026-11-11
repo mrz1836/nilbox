@@ -10,15 +10,14 @@ import {
   repoChoices,
   runsInLabel,
   scopeLabels,
-  scriptVariables,
   toggleRepo,
 } from '../../lib/userScripts'
 import {
   listScriptRepoNames,
   saveUserScript,
+  type RunsIn,
   type UserScript,
   type UserScriptIcon,
-  type UserScriptRunsIn,
   type UserScriptScope,
 } from '../../platform'
 import { buttonClass, Field, fieldClass, primaryButtonClass, Segmented, type SegmentOption } from '../controls'
@@ -36,7 +35,7 @@ const iconOptions: readonly SegmentOption<UserScriptIcon>[] = [
   { value: 'configure', label: iconLabels.configure, icon: <SlidersIcon className={iconClass} /> },
 ]
 
-const runsInOptions: readonly SegmentOption<UserScriptRunsIn>[] = (['', 'app', 'terminal'] as const).map((value) => ({
+const runsInOptions: readonly SegmentOption<RunsIn | ''>[] = (['', 'app', 'terminal'] as const).map((value) => ({
   value,
   label: runsInLabel(value),
 }))
@@ -118,6 +117,9 @@ function Chosen({ chosen, onChange }: ChosenProps) {
 export interface ScriptEditorProps {
   // script is the script to edit, or a new one, whose ID is 0.
   script: UserScript
+  // variables name the variables every script of the user's runs with, as Go names them
+  // (RepoScripts.variables).
+  variables: readonly string[]
   // onSaved hears the script as saved; onCancel closes the editor, saving nothing.
   onSaved: (saved: UserScript) => void
   onCancel: () => void
@@ -129,7 +131,7 @@ export interface ScriptEditorProps {
 // it runs; whether it asks before running; and its icon. It is a modal dialog like
 // TaskInputsForm (useModalDialog): focus starts on the name, Escape cancels, and Enter
 // saves. Render it only while it is open.
-export function ScriptEditor({ script, onSaved, onCancel }: ScriptEditorProps) {
+export function ScriptEditor({ script, variables, onSaved, onCancel }: ScriptEditorProps) {
   const id = useId()
   const dialogRef = useRef<HTMLDialogElement>(null)
   const nameRef = useRef<HTMLInputElement>(null)
@@ -184,7 +186,7 @@ export function ScriptEditor({ script, onSaved, onCancel }: ScriptEditorProps) {
         <Field
           label="Command"
           controlId={`${id}-command`}
-          hint={`A shell command, as you’d type it in a terminal. It runs in the clone, with ${scriptVariables.join(', ')} set, so it never needs to quote a path.`}
+          hint={`A shell command, as you’d type it in a terminal. It runs in the clone, with ${variables.join(', ')} set, so it never needs to quote a path.`}
         >
           <input
             id={`${id}-command`}

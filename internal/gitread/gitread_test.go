@@ -451,6 +451,30 @@ func TestHelpersReadGitsAnswers(t *testing.T) {
 			want:    "",
 		},
 		{
+			name:    "origin's default branch",
+			replies: map[string]reply{words(originHeadArgs()): {out: "origin/release/v2\n"}},
+			run:     func(g *Git) (any, error) { return g.OriginHead(ctx, repoDir) },
+			want:    "release/v2",
+		},
+		{
+			name:    "no origin HEAD",
+			replies: map[string]reply{words(originHeadArgs()): {code: 1}},
+			run:     func(g *Git) (any, error) { return g.OriginHead(ctx, repoDir) },
+			want:    "",
+		},
+		{
+			name:    "an origin HEAD naming another remote's branch",
+			replies: map[string]reply{words(originHeadArgs()): {out: "upstream/main\n"}},
+			run:     func(g *Git) (any, error) { return g.OriginHead(ctx, repoDir) },
+			want:    "",
+		},
+		{
+			name:    "an origin HEAD naming no branch",
+			replies: map[string]reply{words(originHeadArgs()): {out: "origin/a..b\n"}},
+			run:     func(g *Git) (any, error) { return g.OriginHead(ctx, repoDir) },
+			want:    "",
+		},
+		{
 			name: "changes, renames read once",
 			replies: map[string]reply{
 				words(statusArgs()): {out: " M a.go\x00?? notes/\x00R  new.go\x00old.go\x00A  b c.go\x00 D gone\x00"},
@@ -877,6 +901,7 @@ func TestEveryAllowlistEntryIsUsed(t *testing.T) {
 	// Each helper, answered "no", runs each command it needs at least once; the errors
 	// that a no gives some of them don't matter here.
 	_, _ = g.CurrentBranch(ctx, repoDir)
+	_, _ = g.OriginHead(ctx, repoDir)
 	_, _ = g.InProgress(ctx, repoDir)
 	_, _ = g.Changes(ctx, repoDir)
 	_, _ = g.Entries(ctx, repoDir)

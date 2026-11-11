@@ -236,6 +236,56 @@ describe('Yours', () => {
     })
   })
 
+  it('reads the page again after each of two moves that end one after another', async () => {
+    const answers: (() => void)[] = []
+    platform.moveUserScript.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          answers.push(resolve)
+        }),
+    )
+    withYours(yours([yourEntry(), yourEntry(test)]))
+    renderPage()
+
+    await menu('Fix all')
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Move down' }))
+    await menu('Test')
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Move up' }))
+    expect(answers).toHaveLength(2)
+
+    answers[0]?.()
+    await waitFor(() => {
+      expect(platform.listRepoScripts).toHaveBeenCalledTimes(2)
+    })
+
+    answers[1]?.()
+    await waitFor(() => {
+      expect(platform.listRepoScripts).toHaveBeenCalledTimes(3)
+    })
+  })
+
+  it('says the repository has nothing of its own, beside the user’s scripts', async () => {
+    withYours(yours([yourEntry()]), {
+      sections: [
+        yours([yourEntry()]),
+        scriptSection({ off: true }),
+        scriptSection({ source: 'tasks', title: 'From .vscode/tasks.json', off: true }),
+      ],
+    })
+    renderPage()
+
+    await yourList()
+    expect(
+      screen.getByText('Commands from t3.json and VS Code tasks are turned off in Settings → Integrations.'),
+    ).toBeInTheDocument()
+
+    withYours(yours([yourEntry()]), { sections: [yours([yourEntry()])] })
+    await userEvent.click(screen.getByRole('button', { name: /Read again/ }))
+
+    expect(await screen.findByText('acme-org/sdk has no commands of its own to show.')).toBeInTheDocument()
+    expect(screen.queryByText(/has no scripts to show/)).not.toBeInTheDocument()
+  })
+
   it('says why a change didn’t take', async () => {
     withYours(yours([yourEntry()]))
     platform.duplicateUserScript.mockRejectedValueOnce(

@@ -1897,6 +1897,12 @@ export function scriptEntry(overrides: Partial<ScriptEntry> = {}): ScriptEntry {
   }
 }
 
+// scriptVariables name the variables each of the user's scripts runs with, as Go's
+// scripts.Variables does, from the product's slug.
+export function scriptVariables(): string[] {
+  return ['REPO', 'REPO_DIR', 'DEFAULT_BRANCH'].map((v) => `${brand.slug.toUpperCase()}_${v}`)
+}
+
 // userScript is the user's own Fix all, for every clone, run where the setting sends runs.
 export function userScript(overrides: Partial<UserScript> = {}): UserScript {
   return {
@@ -1988,6 +1994,7 @@ export function repoScripts(overrides: Partial<RepoScripts> = {}): RepoScripts {
     branch: 'master',
     fromBranch: '',
     switches: { magexTargets: true, repoFiles: true },
+    variables: scriptVariables(),
     off: false,
     why: '',
     sections: [

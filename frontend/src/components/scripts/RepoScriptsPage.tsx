@@ -240,13 +240,16 @@ function ClonePage({ clone, picker, onStarted, onOpenSettings, ...place }: Clone
   const [read, setRead] = useState({ n: 0, refresh: false })
   const query = useQuery(() => listRepoScripts(clone.dir, read.refresh), [clone.dir, read.n])
   const run = useScriptRun(clone.dir, onStarted)
-  // editing is the script the editor is open on, a new one with ID 0, or null.
-  const [editing, setEditing] = useState<UserScript | null>(null)
+  // editing is the script the editor is open on, a new one with ID 0, with the names of
+  // the variables it runs with, as the page had them, or null.
+  const [editing, setEditing] = useState<{ script: UserScript; variables: readonly string[] } | null>(null)
   const change = useMutation((act: () => PromiseLike<unknown>) => act())
   const page = query.data ?? null
   const reading = read.refresh && query.pending
+  // readAgain reads the scripts again. It counts from the latest count, not the one this
+  // render saw, so changes that end one after another each read again.
   const readAgain = (refresh: boolean) => {
-    setRead({ n: read.n + 1, refresh })
+    setRead((was) => ({ n: was.n + 1, refresh }))
   }
 
   const onChange = async (act: () => PromiseLike<unknown>) => {
@@ -293,7 +296,9 @@ function ClonePage({ clone, picker, onStarted, onOpenSettings, ...place }: Clone
         page={page}
         run={run}
         onOpenSettings={onOpenSettings}
-        onEdit={setEditing}
+        onEdit={(script) => {
+          setEditing({ script, variables: page.variables })
+        }}
         onChange={(act) => {
           void onChange(act)
         }}
@@ -322,7 +327,7 @@ function ClonePage({ clone, picker, onStarted, onOpenSettings, ...place }: Clone
             <button
               type="button"
               onClick={() => {
-                setEditing(newUserScript())
+                setEditing({ script: newUserScript(), variables: page.variables })
               }}
               className={buttonClass}
             >
@@ -377,7 +382,8 @@ function ClonePage({ clone, picker, onStarted, onOpenSettings, ...place }: Clone
       {body}
       {editing !== null && (
         <ScriptEditor
-          script={editing}
+          script={editing.script}
+          variables={editing.variables}
           onSaved={() => {
             setEditing(null)
             readAgain(false)

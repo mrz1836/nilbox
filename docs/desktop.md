@@ -559,13 +559,17 @@ it works offline and signed out.
   questions; **Ask before running**; and its icon.
 - **They show first**, in the order you put them in, in each clone their repositories include;
   a clone with none of yours says so. They never ask for trust, since you wrote them, and run
-  exactly as written, in the clone, with `NILBOX_REPO` (owner/name), `NILBOX_REPO_DIR`, and
-  `NILBOX_DEFAULT_BRANCH` set, so a command never has to quote a path. One that bumps a
+  exactly as written, in your login shell, fish and tcsh included, in the clone, with
+  `NILBOX_REPO` (owner/name), `NILBOX_REPO_DIR`, and `NILBOX_DEFAULT_BRANCH` set, so a
+  command never has to quote a path. The default branch is the one Nilbox knows from GitHub,
+  else the one the clone's `origin/HEAD` names, else `main` or `master` when the clone is on
+  it. One that bumps a
   version points to Release, like any other.
 - **Each one's ⋯ menu** has **Edit…**, **Duplicate** (a copy right after it), **Move up** and
   **Move down** (past the nearest of yours shown in that clone), and **Delete…**, which asks
   first; its runs stay in Runs. Run again runs a script as it is saved now, and refuses one
-  you deleted.
+  you deleted or set to ask before running, which you run from Repo scripts. A script you
+  save again as its run is starting doesn't run, and says so.
 
 **Running one.**
 

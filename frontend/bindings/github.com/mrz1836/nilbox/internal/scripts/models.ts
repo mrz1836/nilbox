@@ -195,6 +195,12 @@ export interface Page {
     "switches": integrationprefs$0.ScriptSources;
 
     /**
+     * Variables names the variables each of the user's own scripts runs with (Variables),
+     * for the editor to name.
+     */
+    "variables": string[] | null;
+
+    /**
      * Off reports the Scripts integration off, and Why says why; the page then has no
      * sections, and nothing runs.
      */
@@ -244,34 +250,6 @@ export interface RunRequest {
      */
     "anyway": boolean;
 }
-
-/**
- * RunsIn is where one of the user's scripts runs: where Settings → Integrations sends
- * runs, or a place of its own.
- */
-export type RunsIn = "" | "app" | "terminal";
-
-/**
- * The values of RunsIn, by the names of their Go constants.
- */
-export const RunsIn = {
-    /**
-     * The places a script of the user's can name.
-     *
-     * RunsInSetting runs it where the setting sends runs.
-     */
-    RunsInSetting: "",
-
-    /**
-     * RunsInApp runs it in the app.
-     */
-    RunsInApp: "app",
-
-    /**
-     * RunsInTerminal runs it in the user's terminal, for a command that asks questions.
-     */
-    RunsInTerminal: "terminal",
-} as const;
 
 /**
  * Scope is which clones one of the user's own scripts shows in.
@@ -432,9 +410,10 @@ export interface UserScript {
     "repos": string[] | null;
 
     /**
-     * RunsIn is where it runs, unless a run asks for the other place.
+     * RunsIn is where it runs, unless a run asks for the other place, or "" for where the
+     * setting sends runs ("As set in Settings").
      */
-    "runsIn": RunsIn;
+    "runsIn": integrationprefs$0.RunsIn;
 
     /**
      * Confirm asks before each run. The window asks: it is the user's own setting, which

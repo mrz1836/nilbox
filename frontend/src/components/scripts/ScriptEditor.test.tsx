@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { brand } from '../../generated/brand'
 import { newUserScript } from '../../lib/userScripts'
 import type { UserScript } from '../../platform'
-import { userScript } from '../../test/fixtures'
+import { scriptVariables, userScript } from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { ScriptEditor } from './ScriptEditor'
 
@@ -16,7 +16,7 @@ function renderEditor(script: UserScript = newUserScript()) {
   const onSaved = vi.fn<(saved: UserScript) => void>()
   const onCancel = vi.fn<() => void>()
 
-  render(<ScriptEditor script={script} onSaved={onSaved} onCancel={onCancel} />)
+  render(<ScriptEditor script={script} variables={scriptVariables()} onSaved={onSaved} onCancel={onCancel} />)
 
   return { onSaved, onCancel, dialog: within(screen.getByRole('dialog')) }
 }
@@ -139,6 +139,25 @@ describe('ScriptEditor', () => {
     answer([])
     expect(await dialog.findByText('None of your clones is on GitHub.')).toBeInTheDocument()
     expect(dialog.queryByRole('list', { name: 'Repositories' })).not.toBeInTheDocument()
+  })
+
+  it('cancels the read of the clones’ repositories once Chosen closes', async () => {
+    let cancelled = false
+    platform.listScriptRepoNames.mockReturnValueOnce(
+      Object.assign(new Promise<string[]>(() => undefined), {
+        cancel: () => {
+          cancelled = true
+        },
+      }),
+    )
+    const { dialog } = renderEditor()
+
+    await userEvent.click(dialog.getByRole('radio', { name: 'Chosen…' }))
+    expect(dialog.getByRole('status')).toHaveTextContent('Reading your clones…')
+
+    await userEvent.click(dialog.getByRole('radio', { name: 'All repositories' }))
+
+    expect(cancelled).toBe(true)
   })
 
   it('says why the clones’ repositories couldn’t be read', async () => {

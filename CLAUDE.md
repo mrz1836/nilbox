@@ -335,7 +335,8 @@ app:lint` reads.
 - `internal/gitread/` is the read-only git that release and hooks share: an exact-argv allowlist
   plus validating predicates (a branch, a tag, a commit, a `v*` pattern, an absolute clean folder)
   that refuses anything else with `ErrGitCommandNotAllowed` before git runs, and typed helpers over
-  it (the current branch, an operation in progress, uncommitted changes, each dirty file with what
+  it (the current branch, origin's default branch as the clone last learned it from its own
+  `refs/remotes/origin/HEAD`, an operation in progress, uncommitted changes, each dirty file with what
   the index holds for it, unpushed commits, tags here and on origin, signing, the hooks folder).
   Every command runs as `git -C <dir> -c core.fsmonitor=false -c submodule.recurse=false` with
   `GIT_OPTIONAL_LOCKS=0`, `GIT_TERMINAL_PROMPT=0`, `GIT_NO_LAZY_FETCH=1`, and an empty
@@ -490,9 +491,11 @@ app:lint` reads.
   confirmation they asked to keep, so what runs is what they saw. A refusal that asks is a
   `QuestionError` whose `Question` holds the command with the chosen inputs filled in;
   `desktop.MarshalError` sends any error's `Detail` to the window beside its message. A
-  shell command runs as `[$SHELL, -c, command]` when the login shell is of the POSIX family,
-  else under `/bin/sh` (a task's `options.shell` as written, with `-c` after its arguments as
-  VS Code adds it), a process as its argv, a magex target as `[magex, target, key=value…]`
+  repository's shell command (a `t3.json` script or a shell task, which assume POSIX quoting,
+  and which the app quotes for one) runs as `[$SHELL, -c, command]` when the login shell is
+  of the POSIX family (sh, bash, zsh, dash, ksh, mksh), else under `/bin/sh` (a task's
+  `options.shell` as written, with `-c` after its arguments as VS Code adds it), a process as
+  its argv, a magex target as `[magex, target, key=value…]`
   with magex's `RunEnv`, and a `dependsOn` chain, or a part in another folder, as one `/bin/sh
   -c` line of shell-quoted parts joined by `&&`. Its `Rerunner` works Run again out from the
   run's intent and asks nothing, so it runs a repository command only while a trust record
@@ -501,23 +504,33 @@ app:lint` reads.
   0, 1, 2, numbered again in the `store.InTx` of every create, delete, duplicate, or move).
   The bound `Save` creates one (ID 0, at the end) or edits one, checking that the name and
   command are there, on one line, with no character that hides what runs, that the scope
-  (`all`, `go`, or `repos`), the place (`''` for the setting, `app`, or `terminal`), and the
-  icon (t3.json's five) are known, and that a `repos` scope names at least one
-  owner/name, kept once in any case; `Delete`, `Duplicate` ("<name> copy", right after the
-  original), and `Move` (up or down past the nearest script shown in the clone named, so
-  the move shows on that page) change the order, and `RepoNames` lists the clones'
-  GitHub repositories for the editor's Chosen list, reading origins four at a time and
-  keeping each until the clone's `.git/config` changes. `List` shows the ones whose scope
-  includes the clone: every clone, one with a `go.mod` at its root, or its origin among
-  the chosen repositories, in any case. They need no trust (D13), keep the hidden
-  character guard, point a version bump to Release, and run exactly as written, no `${…}`
-  filled in, as `[$SHELL, -c, command]` under the same POSIX rule, in the clone, with the
-  run env plus `Variables()`: `<SLUG>_REPO`, `<SLUG>_REPO_DIR`, and `<SLUG>_DEFAULT_BRANCH`,
-  named from `brand.Slug` (the stored default branch, else `main` or `master` when the
-  clone is on one, else ''), set alone in the terminal. Their own place beats the setting,
-  and a request's place beats both. Run again works the command out afresh from the saved
-  script by its ID and refuses one deleted or no longer shown there. Ask before running is
-  the window's confirmation, which the service leaves to the user.
+  (`all`, `go`, or `repos`), the place (an `integrationprefs.RunsIn`, `''` for "As set in
+  Settings"; `validPlace` checks it and a run request's alike), and the icon (t3.json's
+  five) are known, and that a `repos` scope names at least one owner/name, kept once in any
+  case; `Delete`, `Duplicate` ("<name> copy", right after the original), and `Move` (up or
+  down past the nearest script shown in the clone named, so the move shows on that page)
+  change the order, and `RepoNames` lists the clones' GitHub repositories for the editor's
+  Chosen list, reading origins four at a time and keeping each until the clone's
+  `.git/config` changes, forgetting a clone no longer listed, and starting no more reads
+  once the window cancels the call. `List` shows the ones whose scope includes the clone:
+  every clone, one with a `go.mod` at its root, or its origin among the chosen
+  repositories, in any case. They need no trust (D13), keep the hidden character guard,
+  point a version bump to Release, and run exactly as written, no `${…}` filled in, as
+  `[$SHELL, -c, command]` in the user's login shell whatever its family (fish and tcsh
+  included, since the line is theirs and the app quotes none of it; `/bin/sh` only for a
+  login shell that isn't an absolute path), in the clone, with the run env plus
+  `Variables()`, which the page also carries (`Page.Variables`) for the editor:
+  `<SLUG>_REPO`, `<SLUG>_REPO_DIR`, and `<SLUG>_DEFAULT_BRANCH`, named from `brand.Slug`,
+  set alone in the terminal. The default branch, and so the page's *From branch* note,
+  is the one the app stored, else the one the clone's `refs/remotes/origin/HEAD` names
+  (gitread's `OriginHead`, which never asks origin), else `main` or `master` when the clone
+  is on one, else ''. Their own place beats the setting, and a request's place beats both.
+  A run's `Before` compares the SHA-256 of what the saved script runs (its name, command,
+  place, and Ask before running) with the one worked out as the run was asked for, and
+  refuses one saved again in between ("changed as it was starting"). Run again works the
+  command out afresh from the saved script by its ID and refuses one deleted, no longer
+  shown there, or set to ask before running (`ErrAsksFirst`), which only the page asks:
+  Ask before running is the window's confirmation, which `Run` leaves to the user.
 - `internal/measure/` and `magefiles/measure.go` take the numbers in
   [`docs/performance.md`](docs/performance.md).
 - `frontend/` is the React + TypeScript + Vite + Tailwind app. It reaches Go only through the

@@ -107,12 +107,12 @@ func TestSaveCreatesAndEdits(t *testing.T) {
 
 	saved := r.save(UserScript{
 		Name: "  Fix all ", Command: " magex format:fix  ", Icon: IconLint, Scope: ScopeGo,
-		Repos: []string{"acme-org/sdk"}, RunsIn: RunsInTerminal, Confirm: true,
+		Repos: []string{"acme-org/sdk"}, RunsIn: integrationprefs.RunsInTerminal, Confirm: true,
 	})
 	assert.Positive(t, saved.ID)
 	assert.Equal(t, UserScript{
 		ID: saved.ID, Name: fixAllName, Command: "magex format:fix", Icon: IconLint, Scope: ScopeGo, Repos: []string{},
-		RunsIn: RunsInTerminal, Confirm: true,
+		RunsIn: integrationprefs.RunsInTerminal, Confirm: true,
 	}, saved, "trimmed, and a Go scope keeps no repositories")
 
 	got, ok, err := r.svc.yours.get(t.Context(), saved.ID)
@@ -120,7 +120,7 @@ func TestSaveCreatesAndEdits(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, saved, got, "what Save returns is what it stored")
 
-	saved.Name, saved.Confirm, saved.RunsIn = "Format", false, RunsInSetting
+	saved.Name, saved.Confirm, saved.RunsIn = "Format", false, ""
 	edited := r.save(saved)
 	assert.Equal(t, saved, edited)
 
@@ -277,7 +277,7 @@ func TestDuplicatePlacesTheCopyRightAfter(t *testing.T) {
 	r := newRig(t)
 	first := named(firstName)
 	first.Scope, first.Repos, first.RunsIn, first.Confirm, first.Icon = ScopeRepos, []string{"acme-org/sdk"},
-		RunsInTerminal, true, IconBuild
+		integrationprefs.RunsInTerminal, true, IconBuild
 	first = r.save(first)
 	r.save(named("Second"))
 
@@ -445,11 +445,22 @@ func TestTheDefaultBranchVariable(t *testing.T) {
 	assert.Empty(t, branch(web), "can't tell")
 	assert.Empty(t, branch(notes))
 
+	r.git.setHead("trunk", nil)
+	assert.Equal(t, "trunk", branch(web), "none stored: the one the clone's origin HEAD names, on any branch")
+
+	r.git.setHead("", os.ErrPermission)
+	assert.Empty(t, branch(web), "an origin HEAD that can't be read")
+
+	r.git.setHead("", nil)
 	r.git.set("main")
 	assert.Equal(t, "main", branch(notes))
 
 	repoName := Variables()[0] + "="
 	assert.Contains(t, got.last().Env, repoName, "a clone whose origin isn't on GitHub has no repository")
+
+	sdk := r.clone("sdk", "acme-org/sdk", nil)
+	r.git.setHead("trunk", nil)
+	assert.Equal(t, "main", branch(sdk), "the one the app stored comes first")
 
 	none := NewService(Config{Clones: r.clones, Home: r.home})
 	assert.Empty(t, none.defaultBranch(t.Context(), clone{dir: web}), "no git to read")
@@ -475,7 +486,7 @@ func TestAScriptsRunsInOverridesTheSetting(t *testing.T) {
 	svc := r.service(got)
 
 	ownPlace := fixAll()
-	ownPlace.RunsIn = RunsInTerminal
+	ownPlace.RunsIn = integrationprefs.RunsInTerminal
 	ownPlace = r.save(ownPlace)
 	setting := r.save(named("Setting"))
 
@@ -496,7 +507,7 @@ func TestAScriptsRunsInOverridesTheSetting(t *testing.T) {
 
 	assert.Equal(t, integrationprefs.RunsInTerminal, place(setting, ""))
 
-	ownPlace.RunsIn = RunsInApp
+	ownPlace.RunsIn = integrationprefs.RunsInApp
 	r.save(ownPlace)
 	assert.Equal(t, integrationprefs.RunsInApp, place(ownPlace, ""), "the script's own place, over the setting")
 
@@ -717,7 +728,7 @@ func TestAStoredScriptThisBuildDoesntKnow(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, UserScript{
 		ID: u.ID, Name: u.Name, Command: u.Command, Icon: IconPlay, Scope: ScopeAll, Repos: []string{},
-		RunsIn: RunsInSetting, Confirm: true,
+		RunsIn: "", Confirm: true,
 	}, got)
 
 	_, err = r.svc.yours.db.ExecContext(t.Context(), `UPDATE user_scripts SET scope = 'later'`)

@@ -34,9 +34,11 @@ type Clones interface {
 	Origin(ctx context.Context, dir string) (name repo.Name, onGitHub bool, err error)
 }
 
-// Git reads which branch a clone is on: *gitread.Git.
+// Git reads which branch a clone is on, and origin's default branch as the clone last
+// learned it, from its own refs and never asking origin: *gitread.Git.
 type Git interface {
 	CurrentBranch(ctx context.Context, dir string) (string, error)
+	OriginHead(ctx context.Context, dir string) (string, error)
 }
 
 // DefaultBranches reads the default branch the app last stored for a repository, "" when
@@ -225,7 +227,7 @@ func (s *Service) List(ctx context.Context, dir string, refresh bool) (Page, err
 	tools := s.toolsNow(ctx)
 	page := Page{
 		Repo: repoText(c.name), Name: c.display(), Dir: paths.Tilde(c.dir, s.home), Switches: cfg.ScriptSources,
-		Sections: []Section{},
+		Variables: Variables(), Sections: []Section{},
 	}
 
 	if page.Why = scriptsOff(cfg, tools); page.Why != "" {
@@ -444,7 +446,7 @@ func scriptsOff(cfg integrationprefs.Config, t Tools) string {
 }
 
 // branch returns the branch the clone is on, and that branch again when it isn't the
-// repository's default: the one the app stored, or else main or master.
+// repository's default, as isDefault reckons it.
 func (s *Service) branch(ctx context.Context, c clone) (branch, from string) {
 	if s.git == nil {
 		return "", ""
@@ -462,10 +464,10 @@ func (s *Service) branch(ctx context.Context, c clone) (branch, from string) {
 	return branch, branch
 }
 
-// isDefault reports whether branch is the clone's repository's default branch: the one the
-// app stored, or else main or master.
+// isDefault reports whether branch is the clone's repository's default branch: the one
+// knownDefault knows, or else main or master.
 func (s *Service) isDefault(ctx context.Context, c clone, branch string) bool {
-	if def := s.storedDefault(ctx, c); def != "" {
+	if def := s.knownDefault(ctx, c); def != "" {
 		return branch == def
 	}
 
@@ -473,10 +475,10 @@ func (s *Service) isDefault(ctx context.Context, c clone, branch string) bool {
 }
 
 // defaultBranch is the clone's repository's default branch as isDefault reckons it: the
-// one the app stored, or else the branch the clone is on when that is main or master, or
-// "" when the app can't tell.
+// one knownDefault knows, or else the branch the clone is on when that is main or master,
+// or "" when the app can't tell.
 func (s *Service) defaultBranch(ctx context.Context, c clone) string {
-	if def := s.storedDefault(ctx, c); def != "" {
+	if def := s.knownDefault(ctx, c); def != "" {
 		return def
 	}
 
@@ -489,6 +491,26 @@ func (s *Service) defaultBranch(ctx context.Context, c clone) string {
 	}
 
 	return ""
+}
+
+// knownDefault is the clone's repository's default branch as the app knows it without
+// asking anyone: the one it stored, or else the one the clone's refs/remotes/origin/HEAD
+// names; "" when it knows neither.
+func (s *Service) knownDefault(ctx context.Context, c clone) string {
+	if def := s.storedDefault(ctx, c); def != "" {
+		return def
+	}
+
+	if s.git == nil {
+		return ""
+	}
+
+	head, err := s.git.OriginHead(ctx, c.dir)
+	if err != nil {
+		return ""
+	}
+
+	return head
 }
 
 // storedDefault is the default branch the app stored for the clone's repository, or "".

@@ -259,10 +259,13 @@ func (f *fakeClones) setOrigin(dir string, name repo.Name) {
 	f.origins[dir] = name
 }
 
-// fakeGit says every clone is on branch.
+// fakeGit says every clone is on branch, with origin's HEAD naming head ("" for none), or
+// failing to read it with headErr.
 type fakeGit struct {
-	mu     sync.Mutex
-	branch string
+	mu      sync.Mutex
+	branch  string
+	head    string
+	headErr error
 }
 
 func (f *fakeGit) CurrentBranch(context.Context, string) (string, error) {
@@ -272,11 +275,26 @@ func (f *fakeGit) CurrentBranch(context.Context, string) (string, error) {
 	return f.branch, nil
 }
 
+func (f *fakeGit) OriginHead(context.Context, string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return f.head, f.headErr
+}
+
 func (f *fakeGit) set(branch string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	f.branch = branch
+}
+
+// setHead makes origin's HEAD name head, or fail to be read with err.
+func (f *fakeGit) setHead(head string, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.head, f.headErr = head, err
 }
 
 // fakeBranches are the default branches the app stored, by "owner/name".

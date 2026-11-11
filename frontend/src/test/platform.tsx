@@ -242,8 +242,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     listRepoScripts: (dir) => Promise.resolve(repoScripts({ dir })),
     runScript: () => Promise.resolve({ started: true, id: 31 }),
     listScriptRepoNames: () => Promise.resolve(['acme-org/sdk', 'acme-org/web']),
-    saveUserScript: (script) =>
-      Promise.resolve(userScript({ ...script, id: script.id === 0 ? 41 : script.id, repos: script.repos ?? [] })),
+    saveUserScript: (script) => Promise.resolve(userScript({ ...script, id: script.id === 0 ? 41 : script.id })),
     deleteUserScript: done,
     duplicateUserScript: (id) => Promise.resolve(userScript({ id: id + 40, name: 'Fix all copy' })),
     moveUserScript: done,

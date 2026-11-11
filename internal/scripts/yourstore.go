@@ -8,6 +8,7 @@ import (
 	"slices"
 
 	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/scripts/internal/queries"
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -257,11 +258,11 @@ func fromRow(r queries.UserScript) UserScript {
 
 	u := UserScript{
 		ID: r.ID, Name: r.Name, Command: r.Command, Icon: Icon(r.Icon), Scope: Scope(r.Scope), Repos: repos,
-		RunsIn: RunsIn(r.RunsIn), Confirm: r.Confirm != 0,
+		RunsIn: integrationprefs.RunsIn(r.RunsIn), Confirm: r.Confirm != 0,
 	}
 
-	if !u.RunsIn.Valid() {
-		u.RunsIn = RunsInSetting
+	if !validPlace(u.RunsIn) {
+		u.RunsIn = ""
 	}
 
 	if !u.Icon.Valid() {

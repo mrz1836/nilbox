@@ -128,6 +128,11 @@ type pending struct {
 	in   Intent
 	conf confirmation
 	v    vars
+
+	// title is the script's name as the run records it, and look what one of the user's
+	// own scripts ran as then (script.look), which the Before compares.
+	title string
+	look  string
 }
 
 // Run runs the script req names in its clone, and returns the run's ID. A command from the
@@ -139,7 +144,7 @@ func (s *Service) Run(ctx context.Context, req RunRequest) (int64, error) {
 		return 0, ErrNotSetUp
 	}
 
-	if req.RunsIn != "" && !req.RunsIn.Valid() {
+	if !validPlace(req.RunsIn) {
 		return 0, fmt.Errorf("%w: the place %q", ErrInvalidRequest, req.RunsIn)
 	}
 
@@ -194,6 +199,11 @@ func (s *Service) spec(ctx context.Context, c clone, in Intent, asked integratio
 		return scriptrun.Spec{}, err
 	}
 
+	if conf.rerun && sc.asksFirst {
+		return scriptrun.Spec{}, uierr.New(fmt.Sprintf("%q asks before each run, so run it from Repo scripts.",
+			sc.entry.Name), fmt.Errorf("%w: %s", ErrAsksFirst, sc.entry.Ref))
+	}
+
 	if in.Inputs, err = check(sc, in); err != nil {
 		return scriptrun.Spec{}, err
 	}
@@ -204,7 +214,8 @@ func (s *Service) spec(ctx context.Context, c clone, in Intent, asked integratio
 	base, _ := s.env()
 	p := pending{
 		c: c, src: src, name: name, in: in, conf: conf,
-		v: vars{dir: c.dir, home: s.home, env: base, inputs: in.Inputs},
+		v:     vars{dir: c.dir, home: s.home, env: base, inputs: in.Inputs},
+		title: sc.entry.Name, look: sc.look,
 	}
 
 	spec := scriptrun.Spec{
@@ -239,7 +250,8 @@ func (s *Service) repoVars(ctx context.Context, c clone) []string {
 
 // before is a script run's Before: under the clone's lock, it reads the script's source
 // again, from its bytes, and refuses it when its hash isn't the one worked out as the run
-// was asked for. It works the command out, refuses one that would tag a version unless
+// was asked for, or, for one of the user's own scripts, when it was saved again since with
+// another name, command, place, or Ask before running. It works the command out, refuses one that would tag a version unless
 // asked to run it anyway, then one the user hasn't confirmed or trusted as it is now, and
 // only then remembers a confirmation the user asked to keep, and returns the command.
 func (s *Service) before(ctx context.Context, p pending) ([]string, error) {
@@ -251,6 +263,11 @@ func (s *Service) before(ctx context.Context, p pending) ([]string, error) {
 	}
 
 	shown := runDisplay(sc, p.v, p.in.Args)
+
+	if sc.look != p.look {
+		return nil, uierr.New(fmt.Sprintf("%q changed as it was starting. Look at it again before it runs.", p.title),
+			fmt.Errorf("%w: %s", ErrChanged, sc.entry.Ref))
+	}
 
 	if sc.hash != p.in.SHA256 {
 		return nil, s.ask(ctx, p.c, sc, shown, fmt.Sprintf("%q changed in %s as it was starting. Look at it "+
@@ -478,9 +495,10 @@ func nonNil(list []string) []string {
 // nothing, so it runs a repository command only while the user trusts it as it is now, by
 // a record kept under the clone's current origin; one confirmed once, or changed since, is
 // refused, and the user runs it from the page, which asks. One of the user's own scripts
-// runs as it is saved now, found by its ID, and is refused once deleted. Core registers it
-// with the runner for scriptrun.KindScript. It is its own type, not a method of the
-// Service, which the window binds.
+// runs as it is saved now, found by its ID, and is refused once deleted, and while it is
+// set to ask before each run, which only the page asks. Core registers it with the runner
+// for scriptrun.KindScript. It is its own type, not a method of the Service, which the
+// window binds.
 type Rerunner struct {
 	s *Service
 }

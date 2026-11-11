@@ -12,7 +12,6 @@ import {
   repoChoices,
   runsInLabel,
   scopeWords,
-  scriptVariables,
   toggleRepo,
 } from './userScripts'
 
@@ -74,14 +73,6 @@ describe('repository choices', () => {
     expect(toggleRepo(['Acme-Org/SDK', 'acme-org/web'], 'acme-org/sdk', false)).toEqual(['acme-org/web'])
     expect(isChosen(['Acme-Org/SDK'], 'acme-org/sdk')).toBe(true)
     expect(isChosen([], 'acme-org/sdk')).toBe(false)
-  })
-})
-
-describe('scriptVariables', () => {
-  it('names the variables from the product’s slug', () => {
-    const prefix = brand.slug.toUpperCase()
-
-    expect(scriptVariables).toEqual([`${prefix}_REPO`, `${prefix}_REPO_DIR`, `${prefix}_DEFAULT_BRANCH`])
   })
 })
 

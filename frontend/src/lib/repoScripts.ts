@@ -57,8 +57,10 @@ export interface EmptyReason {
   off: boolean
 }
 
-// emptyReason words why page shows no source (shownSections is empty): its t3.json or
-// .vscode/tasks.json lists nothing, the clone has neither, or the sources are turned off.
+// emptyReason words why page shows none of the repository's own sources (shownSections is
+// empty): its t3.json or .vscode/tasks.json lists nothing, the clone has neither, or the
+// sources are turned off. With none of those to say, it says the clone has nothing to show,
+// or, while the user's own scripts show above, nothing of its own.
 export function emptyReason(page: RepoScripts): EmptyReason {
   const files = page.sections.filter((s) => s.source === 't3' || s.source === 'tasks')
   const on = files.filter((s) => !s.off)
@@ -83,7 +85,9 @@ export function emptyReason(page: RepoScripts): EmptyReason {
   }
 
   if (lines.length === 0) {
-    lines.push(`${page.name} has no scripts to show.`)
+    const yours = page.sections.some((s) => s.source === 'yours' && s.entries.length > 0)
+
+    lines.push(yours ? `${page.name} has no commands of its own to show.` : `${page.name} has no scripts to show.`)
   }
 
   return { lines, off: off.length > 0 }

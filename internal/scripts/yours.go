@@ -54,25 +54,10 @@ func (i Icon) Valid() bool {
 	return slices.Contains([]Icon{IconPlay, IconTest, IconLint, IconBuild, IconConfigure}, i)
 }
 
-// RunsIn is where one of the user's scripts runs: where Settings → Integrations sends
-// runs, or a place of its own.
-type RunsIn string
-
-// The places a script of the user's can name.
-const (
-	// RunsInSetting runs it where the setting sends runs.
-	RunsInSetting RunsIn = ""
-
-	// RunsInApp runs it in the app.
-	RunsInApp RunsIn = "app"
-
-	// RunsInTerminal runs it in the user's terminal, for a command that asks questions.
-	RunsInTerminal RunsIn = "terminal"
-)
-
-// Valid reports whether r is one of the places.
-func (r RunsIn) Valid() bool {
-	return r == RunsInSetting || r == RunsInApp || r == RunsInTerminal
+// validPlace reports whether r is a place a run request or a script of the user's may
+// name: one of the places runs go, or "" for where Settings → Integrations sends them.
+func validPlace(r integrationprefs.RunsIn) bool {
+	return r == "" || r.Valid()
 }
 
 // Direction is the way Move moves a script in the order.
@@ -112,8 +97,9 @@ type UserScript struct {
 	Scope Scope    `json:"scope"`
 	Repos []string `json:"repos"`
 
-	// RunsIn is where it runs, unless a run asks for the other place.
-	RunsIn RunsIn `json:"runsIn"`
+	// RunsIn is where it runs, unless a run asks for the other place, or "" for where the
+	// setting sends runs ("As set in Settings").
+	RunsIn integrationprefs.RunsIn `json:"runsIn"`
 
 	// Confirm asks before each run. The window asks: it is the user's own setting, which
 	// the service leaves to them.
@@ -182,7 +168,7 @@ func checkChoices(u UserScript) error {
 	switch {
 	case !u.Scope.Valid():
 		return invalidScript("Choose the repositories it shows in.", "the scope "+string(u.Scope))
-	case !u.RunsIn.Valid():
+	case !validPlace(u.RunsIn):
 		return invalidScript("Choose where it runs.", "the place "+string(u.RunsIn))
 	case !u.Icon.Valid():
 		return invalidScript("Choose its icon.", "the icon "+string(u.Icon))
@@ -259,10 +245,21 @@ func yoursRef(id int64) string {
 	return ref(SourceYours, strconv.FormatInt(id, 10))
 }
 
+// yoursForm is what one of the user's scripts runs, and how: the SHA-256 of its JSON is the
+// script's look, which a run's Before compares with the saved script's, so what runs is
+// what the run records.
+type yoursForm struct {
+	ID      int64                   `json:"id"`
+	Name    string                  `json:"name"`
+	Command string                  `json:"command"`
+	RunsIn  integrationprefs.RunsIn `json:"runsIn"`
+	Confirm bool                    `json:"confirm"`
+}
+
 // yoursScript works out u as the page lists it and a run runs it: [$SHELL, -c, command] in
-// the clone, run exactly as written, needing no trust; greyed when its name or command
-// holds a character that hides what it runs, and pointed to Release when it would bump a
-// version.
+// the clone, exactly as written, in the user's login shell whatever it is, needing no
+// trust; greyed when its name or command holds a character that hides what it runs, and
+// pointed to Release when it would bump a version.
 func yoursScript(u UserScript) script {
 	mine := u
 	mine.Repos = append([]string{}, u.Repos...)
@@ -271,7 +268,8 @@ func yoursScript(u UserScript) script {
 			Ref: yoursRef(u.ID), Source: SourceYours, Name: u.Name, Command: u.Command, Icon: string(u.Icon),
 			Runnable: true, Release: bumps([]string{u.Command}, nil), Inputs: []Input{}, Mine: &mine,
 		},
-		name: strconv.FormatInt(u.ID, 10), place: integrationprefs.RunsIn(u.RunsIn),
+		name: strconv.FormatInt(u.ID, 10), place: u.RunsIn, asksFirst: u.Confirm,
+		look:  hashOf(yoursForm{ID: u.ID, Name: u.Name, Command: u.Command, RunsIn: u.RunsIn, Confirm: u.Confirm}),
 		parts: []part{{kind: partShell, command: u.Command, raw: true}}, inputs: map[string]Input{},
 	}
 

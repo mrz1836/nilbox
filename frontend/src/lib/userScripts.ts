@@ -1,9 +1,9 @@
 // The user's own scripts on Repo scripts: a new one as the editor starts it, how a row
-// words where one shows and runs, the repositories the editor's Chosen list offers, and
-// the variables every one runs with.
+// words where one shows and runs, and the repositories the editor's Chosen list offers.
+// The variables every one runs with come from Go, on the page (RepoScripts.variables).
 
 import { brand } from '../generated/brand'
-import type { RunsIn, UserScript, UserScriptIcon, UserScriptRunsIn, UserScriptScope } from '../platform'
+import type { RunsIn, UserScript, UserScriptIcon, UserScriptScope } from '../platform'
 
 // newUserScript is a script as the editor starts a new one: for every repository, run
 // where the setting sends runs, without asking first. ID 0 asks Save to create it.
@@ -32,13 +32,14 @@ export function placeName(place: RunsIn, terminalName: string): string {
   return place === 'app' ? brand.name : terminalName
 }
 
-// placeOf is where the script u runs: its own place, or else setting.
+// placeOf is where the script u runs: its own place, or, for '' ("As set in Settings"),
+// setting.
 export function placeOf(u: UserScript, setting: RunsIn): RunsIn {
   return u.runsIn === '' ? setting : u.runsIn
 }
 
-// runsInLabel names a script's own place as the editor offers it.
-export function runsInLabel(place: UserScriptRunsIn): string {
+// runsInLabel names a script's own place as the editor offers it, '' being the setting's.
+export function runsInLabel(place: RunsIn | ''): string {
   switch (place) {
     case 'app':
       return brand.name
@@ -101,12 +102,6 @@ export function toggleRepo(chosen: readonly string[], name: string, on: boolean)
 export function isChosen(chosen: readonly string[], name: string): boolean {
   return chosen.some((n) => sameRepo(n, name))
 }
-
-// scriptVariables name the variables each of the user's scripts runs with, from the
-// product's slug: its repository, owner/name; its folder; and its default branch.
-export const scriptVariables: readonly string[] = ['REPO', 'REPO_DIR', 'DEFAULT_BRANCH'].map(
-  (v) => `${brand.slug.toUpperCase()}_${v}`,
-)
 
 // readyToSave reports whether the editor's script can be saved: it has a name and a
 // command, and a script for chosen repositories has one chosen.

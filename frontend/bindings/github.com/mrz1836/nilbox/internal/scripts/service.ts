@@ -58,7 +58,9 @@ export function Move(id: number, way: $models.Direction, dir: string): $Cancella
  * RepoNames returns the GitHub repositories of the clones under the clone root,
  * owner/name, each once, sorted: what a script for chosen repositories can choose from.
  * Each clone's origin is read with git, a few at a time, and kept until the clone's
- * .git/config changes, so the editor opens at once after the first time.
+ * .git/config changes, so the editor opens at once after the first time; a clone the
+ * listing no longer holds is forgotten. Once the caller has gone (ctx is done, as when the
+ * window cancels the call), no more origins are read.
  */
 export function RepoNames(): $CancellablePromise<string[] | null> {
     return $Call.ByID(441066262);

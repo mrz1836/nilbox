@@ -22,9 +22,10 @@
 // The user's own scripts, saved in the app (Save, Delete, Duplicate, Move), show in the
 // clones their scope includes: every clone, one with a go.mod at its root, or the clones
 // of the repositories they chose. They need no trust, since the user wrote them, and run
-// exactly as written, as the login shell's -c, in the clone, with the clone's repository,
-// folder, and default branch in Variables, where the script says, or else where the
-// setting sends runs.
+// exactly as written, as the login shell's -c whatever its family (a repository's command
+// line, which the app quotes for POSIX shells, runs in sh unless the login shell is one),
+// in the clone, with the clone's repository, folder, and default branch in Variables,
+// where the script says, or else where the setting sends runs.
 //
 // It owns the script_trust table, the commands the user trusted, and user_scripts, the
 // user's own scripts, in the order the user put them in.
@@ -122,6 +123,10 @@ type Page struct {
 
 	// Switches are the settings' sources, as set now.
 	Switches integrationprefs.ScriptSources `json:"switches"`
+
+	// Variables names the variables each of the user's own scripts runs with (Variables),
+	// for the editor to name.
+	Variables []string `json:"variables"`
 
 	// Off reports the Scripts integration off, and Why says why; the page then has no
 	// sections, and nothing runs.
@@ -269,6 +274,10 @@ var (
 	ErrNeedsTrust = errors.New("the command needs the user's trust")
 
 	// ErrChanged is returned for a repository command that changed after the user
-	// confirmed it.
+	// confirmed it, or one of the user's own scripts saved again as its run was starting.
 	ErrChanged = errors.New("the command changed since it was confirmed")
+
+	// ErrAsksFirst is returned by Run again for one of the user's scripts set to ask
+	// before each run, which only the page asks.
+	ErrAsksFirst = errors.New("the script asks before each run")
 )
