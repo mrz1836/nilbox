@@ -85,6 +85,18 @@ export function PullRequestIcon(props: IconProps) {
   )
 }
 
+// WorktreeIcon stands for a worktree: a branch leaving its trunk.
+export function WorktreeIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="6" cy="5" r="2.25" />
+      <circle cx="6" cy="19" r="2.25" />
+      <circle cx="18" cy="7" r="2.25" />
+      <path d="M6 7.25v9.5M18 9.25c0 4.25-3.5 6-9.75 7" />
+    </Icon>
+  )
+}
+
 // IssueIcon stands for an issue.
 export function IssueIcon(props: IconProps) {
   return (

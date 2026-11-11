@@ -235,13 +235,14 @@ func (s *Service) Open(ctx context.Context, id int64) (Review, error) {
 // A pull request read in the last 20 seconds is not read again. Two refreshes of one pull
 // request never run side by side.
 func (s *Service) Refresh(ctx context.Context, id int64) (Review, error) {
-	return s.refreshes.Do(ctx, strconv.FormatInt(id, 10), func(ctx context.Context) (Review, error) {
-		if err := s.read(ctx, id); err != nil {
-			return Review{}, err
-		}
+	return s.refresh(ctx, id, false)
+}
 
-		return s.open(ctx, id, openPatchBytes)
-	})
+// ReadAgain reads the pull request with id from GitHub as Refresh does, however recently
+// it was read: the user asked for it, from the sheet's refresh button. A read already
+// under way for the pull request is joined rather than run beside it.
+func (s *Service) ReadAgain(ctx context.Context, id int64) (Review, error) {
+	return s.refresh(ctx, id, true)
 }
 
 // Patches returns the diffs of the files at paths of the pull request with id, as the
@@ -304,6 +305,18 @@ func (s *Service) FillReply(ctx context.Context, itemID, replyID int64) (string,
 	return s.replies.Fill(ctx, replyID, itemID)
 }
 
+// refresh reads the pull request with id, skipping one read recently unless force is set,
+// and returns it as Open builds it.
+func (s *Service) refresh(ctx context.Context, id int64, force bool) (Review, error) {
+	return s.refreshes.Do(ctx, strconv.FormatInt(id, 10), func(ctx context.Context) (Review, error) {
+		if err := s.read(ctx, id, force); err != nil {
+			return Review{}, err
+		}
+
+		return s.open(ctx, id, openPatchBytes)
+	})
+}
+
 // open builds the sheet from the inbox's stored pull request and the cache, with up to
 // budget bytes of patches, and stamps the cache's use.
 func (s *Service) open(ctx context.Context, id, budget int64) (Review, error) {
@@ -353,8 +366,8 @@ func (s *Service) pull(ctx context.Context, id int64) (StoredPull, error) {
 // read reads the pull request with id from GitHub, through the inbox, which stores the
 // card, and stores the rest in the cache. A context read in the last refreshAfter, of the
 // head the inbox knows, is not read again, unless GitHub was still working out whether it
-// can merge: the sheet reads again for the answer.
-func (s *Service) read(ctx context.Context, id int64) error {
+// can merge (the sheet reads again for the answer) or force is set.
+func (s *Service) read(ctx context.Context, id int64, force bool) error {
 	c, err := s.cache.load(ctx, id, 0)
 	if err != nil {
 		return err
@@ -365,7 +378,7 @@ func (s *Service) read(ctx context.Context, id int64) error {
 		return err
 	}
 
-	if c != nil && strings.EqualFold(c.head, pull.HeadOID) && s.now().Sub(c.contextAt) < refreshAfter &&
+	if !force && c != nil && strings.EqualFold(c.head, pull.HeadOID) && s.now().Sub(c.contextAt) < refreshAfter &&
 		c.context.MergeState != github.MergeStateUnknown {
 		return nil
 	}

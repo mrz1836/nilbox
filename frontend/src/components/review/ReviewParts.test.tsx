@@ -245,6 +245,7 @@ describe('ReviewHeader', () => {
         onPrev={null}
         onNext={null}
         onClose={onClose}
+        onRefresh={vi.fn()}
         checking={false}
       />,
     )
@@ -265,6 +266,7 @@ describe('ReviewHeader', () => {
         onPrev={null}
         onNext={null}
         onClose={onClose}
+        onRefresh={vi.fn()}
         checking={false}
       />,
     )
@@ -280,6 +282,7 @@ describe('ReviewHeader', () => {
         onPrev={null}
         onNext={null}
         onClose={onClose}
+        onRefresh={vi.fn()}
         checking={false}
       />,
     )

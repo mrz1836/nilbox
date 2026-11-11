@@ -359,7 +359,9 @@ export const ItemRow = memo(function ItemRow({
           {item.files !== null && <SensitiveFiles itemId={item.id} check={item.files} onSettings={onFilesSettings} />}
           <TriageTag item={item} tab={tab} />
           {worktree !== undefined && <WorktreeTag wt={worktree} agents={launch?.agents ?? []} />}
-          {sessions !== undefined && <SessionTag sessions={sessions} agents={launch?.agents ?? []} />}
+          {sessions !== undefined && (
+            <SessionTag sessions={sessions} agents={launch?.agents ?? []} markWorktree={worktree === undefined} />
+          )}
         </div>
         <ItemSignals item={item} onFilterBy={onFilterBy} />
       </div>

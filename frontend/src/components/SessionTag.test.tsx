@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
+import { brand } from '../generated/brand'
 import type { AgentSession } from '../platform'
 import { at } from '../test/clock'
 import { agentSession, agents, launchHold, launchResult, runningHold } from '../test/fixtures'
@@ -28,7 +29,47 @@ describe('SessionTag', () => {
 
     const tag = screen.getByRole('button', { name: /Claude session: needs approval/ })
     expect(tag).toHaveTextContent('Claude · needs approval · 1m')
+    // It runs in the item's worktree, which the tag says wherever it was launched from.
+    expect(tag).toHaveAccessibleName("Claude session: needs approval, in its worktree. Show the item's sessions")
+    expect(tag).toHaveAttribute(
+      'title',
+      `Claude needs approval: Permission prompt\nIn its worktree: ~/projects/.${brand.slug}/worktrees/example-repo/pr-7`,
+    )
+  })
+
+  it('carries no worktree mark for a session in the clone itself', () => {
+    renderTag([agentSession({ worktree: '', dir: '~/projects/example-repo' })])
+
+    const tag = screen.getByRole('button', { name: /Claude session: needs approval/ })
+    expect(tag).toHaveAccessibleName("Claude session: needs approval. Show the item's sessions")
     expect(tag).toHaveAttribute('title', 'Claude needs approval: Permission prompt')
+  })
+
+  it('leaves the worktree mark to the card when the card already shows its worktree', () => {
+    const { container, rerender } = renderTag([agentSession()])
+    const marks = () => container.querySelectorAll('button svg')
+
+    expect(marks()).toHaveLength(1)
+
+    rerender(<SessionTag sessions={[agentSession()]} agents={agents()} markWorktree={false} />)
+    expect(marks()).toHaveLength(0)
+  })
+
+  it('swells a ring out of the dot while the session works, pulses it while it starts, and holds it still otherwise', () => {
+    const { container, rerender } = renderTag([agentSession({ state: 'working', detail: '' })])
+    const ring = () => container.querySelector('.motion-safe\\:animate-ping')
+    const pulse = () => container.querySelector('.motion-safe\\:animate-pulse')
+
+    expect(ring()).not.toBeNull()
+    expect(pulse()).toBeNull()
+
+    rerender(<SessionTag sessions={[agentSession({ state: 'starting', detail: '' })]} agents={agents()} />)
+    expect(ring()).toBeNull()
+    expect(pulse()).not.toBeNull()
+
+    rerender(<SessionTag sessions={[agentSession({ state: 'idle', detail: '' })]} agents={agents()} />)
+    expect(ring()).toBeNull()
+    expect(pulse()).toBeNull()
   })
 
   it('shows nothing for an item whose sessions ended over a day ago', () => {

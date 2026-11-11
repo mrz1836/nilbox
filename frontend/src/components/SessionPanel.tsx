@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 
 import { agentName } from '../lib/launch'
-import { pulses, sinceWhen, stateDot, stateLabel } from '../lib/sessions'
+import { sinceWhen, stateLabel } from '../lib/sessions'
 import { formatAgo, formatFull } from '../lib/time'
 import { useMutation } from '../lib/useMutation'
 import {
@@ -17,6 +17,7 @@ import { quietButtonClass } from './controls'
 import { CheckIcon, CopyIcon, PlayIcon, TerminalIcon } from './icons'
 import { LaunchHoldDialog } from './LaunchHoldDialog'
 import { RelativeTime } from './RelativeTime'
+import { SessionDot } from './SessionDot'
 
 // sessionWhat names what a session ran with: its profile and prompt, or that it resumed
 // an earlier one.
@@ -33,10 +34,7 @@ function StateLine({ session }: { session: AgentSession }) {
 
   return (
     <p className="flex min-w-0 items-center gap-1.5 text-xs text-text">
-      <span
-        aria-hidden="true"
-        className={`size-2 shrink-0 rounded-full ${stateDot[session.state]} ${pulses(session.state) ? 'motion-safe:animate-pulse' : ''}`}
-      />
+      <SessionDot state={session.state} />
       <span className="font-medium">{stateLabel(session.state)}</span>
       {since !== '' && (
         <span className="text-muted" title={formatFull(since)}>

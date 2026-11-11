@@ -4,7 +4,14 @@
 
 import { useEffect, useState } from 'react'
 
-import { openReview, refreshReview, reviewPatches, type Review, type ReviewFilePatch } from '../platform'
+import {
+  openReview,
+  readReviewAgain,
+  refreshReview,
+  reviewPatches,
+  type Review,
+  type ReviewFilePatch,
+} from '../platform'
 import { attempt } from './call'
 import { useQuery } from './useQuery'
 
@@ -15,7 +22,8 @@ export interface ReviewState {
   checking: boolean
   // error is why the last read failed, or ''.
   error: string
-  // reload reads the pull request from GitHub again.
+  // reload reads the pull request from GitHub again, however recently it was read: the
+  // user asked for it.
   reload: () => void
   // loadPatches reads the diffs of paths that Open left out; loading reports those under
   // way, and patchError why the last read of them failed.
@@ -64,8 +72,10 @@ function withPatches(review: Review, patches: Patches): Review {
 // before the sheet stepped to this one, is never shown.
 export function useReview(id: number): ReviewState {
   const opened = useQuery(() => openReview(id), [id])
-  const [round, setRound] = useState(0)
-  const refreshed = useQuery(() => refreshReview(id), [id, round])
+  // round counts the reads asked for after the first; force marks one the user asked for,
+  // which reads GitHub however recently the pull request was read.
+  const [round, setRound] = useState({ n: 0, force: false })
+  const refreshed = useQuery(() => (round.force ? readReviewAgain(id) : refreshReview(id)), [id, round.n])
   const [patches, setPatches] = useState(noPatches)
   const [loading, setLoading] = useState<ReadonlySet<string>>(new Set())
   const [patchError, setPatchError] = useState('')
@@ -87,7 +97,7 @@ export function useReview(id: number): ReviewState {
 
     const timer = setTimeout(() => {
       setRetries({ id, count: tries + 1 })
-      setRound((r) => r + 1)
+      setRound((r) => ({ n: r.n + 1, force: false }))
     }, unknownWait)
 
     return () => {
@@ -100,7 +110,7 @@ export function useReview(id: number): ReviewState {
     checking: refreshed.pending,
     error: refreshed.error === '' ? opened.error : refreshed.error,
     reload: () => {
-      setRound((r) => r + 1)
+      setRound((r) => ({ n: r.n + 1, force: true }))
     },
     loading,
     patchError,
