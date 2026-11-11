@@ -102,13 +102,76 @@ func symbolicRefArgs(remote string) []string {
 	return []string{"symbolic-ref", "--quiet", remotesRef + remote + "/HEAD"}
 }
 
-// lsRemoteArgs asks remote which branch its HEAD points at.
-func lsRemoteArgs(remote string) []string { return []string{"ls-remote", "--symref", remote, "HEAD"} }
+// uploadPack asks a remote for git's own upload-pack, as gitread's ls-remote does, so a
+// remote.<name>.uploadpack in the clone's config runs nothing.
+const uploadPack = "--upload-pack=git-upload-pack"
 
-// git runs allowlisted git commands as `git -C <dir> <args>`.
+// lsRemoteArgs asks remote which branch its HEAD points at.
+func lsRemoteArgs(remote string) []string {
+	return []string{"ls-remote", uploadPack, "--symref", remote, "HEAD"}
+}
+
+// git runs allowlisted git commands as `git -C <dir> <args>`, and, with a guard, those that
+// reach a remote or write a worktree's files under gitread's guards.
 type git struct {
-	run execpath.Runner
-	bin string
+	run   execpath.Runner
+	bin   string
+	guard Guard
+}
+
+// reach runs args, a command that reaches the clone's remote, as gitread's RemoteSetupFor
+// works it out for that remote (guarded), and returns the clone's own settings it set
+// aside, which may be why it failed. Without a guard it runs as do does. A remote the guard
+// refuses, a remote helper or a rerouted one, is refused before anything runs.
+func (g git) reach(ctx context.Context, dir, remote string, args ...string) (stdout, stderr []byte, aside []string,
+	err error,
+) {
+	if g.guard == nil {
+		stdout, stderr, err = g.do(ctx, dir, args...)
+
+		return stdout, stderr, nil, err
+	}
+
+	setup, err := g.guard.RemoteSetupFor(ctx, dir, remote)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("%w: %w", errGuard, err)
+	}
+
+	stdout, stderr, err = g.guarded(ctx, dir, setup, args)
+
+	return stdout, stderr, setup.SetAside, err
+}
+
+// write runs args, a command that writes a worktree's files and reaches no remote, as
+// gitread's CheckoutSetup works it out (guarded). Without a guard it runs as do does.
+func (g git) write(ctx context.Context, dir string, args ...string) (stdout, stderr []byte, err error) {
+	if g.guard == nil {
+		return g.do(ctx, dir, args...)
+	}
+
+	setup, err := g.guard.CheckoutSetup(ctx, dir)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: %w", errGuard, err)
+	}
+
+	return g.guarded(ctx, dir, setup, args)
+}
+
+// guarded runs args, which must pass the allowlist, with setup's git, its environment, and
+// its settings (gitread.Hardening first) ahead of them.
+func (g git) guarded(ctx context.Context, dir string, setup gitread.Setup, args []string) (stdout, stderr []byte,
+	err error,
+) {
+	if !allowed(args) {
+		return nil, nil, fmt.Errorf("%w: git %s", ErrGitCommandNotAllowed, strings.Join(args, " "))
+	}
+
+	argv := make([]string, 0, len(setup.Settings)+len(args)+2)
+	argv = append(argv, "-C", dir)
+	argv = append(argv, setup.Settings...)
+	argv = append(argv, args...)
+
+	return execpath.Exec{Env: setup.Env}.Run(ctx, setup.Git, argv...)
 }
 
 // hardening are the settings every git command here runs with, gitread.Hardening: the
@@ -383,8 +446,8 @@ func allowedLookup(args []string) bool {
 		return isOwnBranchRef(args[3]) || isTrackingRef(args[3])
 	case len(args) == 3 && joinArgs(args[:2]) == joinArgs(symbolicRefArgs("")[:2]):
 		return isRemoteHead(args[2])
-	case len(args) == 4 && joinArgs(args) == joinArgs(lsRemoteArgs(args[2])):
-		return remotePattern.MatchString(args[2])
+	case len(args) == 5 && joinArgs(args) == joinArgs(lsRemoteArgs(args[3])):
+		return remotePattern.MatchString(args[3])
 	default:
 		return false
 	}

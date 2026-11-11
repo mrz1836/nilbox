@@ -429,10 +429,19 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	// its clone's, so a worktree is never made or removed while a run is using it.
 	clones := clonelock.New()
 
+	// The clones are read with the git the user's shell finds, as magex runs it, and the
+	// git commands that reach a clone's remote or write its files run under the same
+	// guards: Release's and Hooks' reads, Repo scripts' branch status and pull, and
+	// worktree creation's fetches and checkouts.
+	shellGit := gitread.New(gitread.Config{
+		Env: func() []string { env, _ := shellEnv.Env(); return env }, Runner: toolRunners,
+	})
+
 	sweeps := worktrees.NewService(worktrees.Config{
 		Settings: settingsView[worktrees.SweepSettings]{settings: prefs, part: sweepSettings},
 		Git:      gitRunner,
 		Finder:   search,
+		Guard:    shellGit,
 		Home:     opts.Home,
 		Clock:    opts.Clock,
 		GitHub:   itemStates{tokens: tokens, client: client},
@@ -495,10 +504,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	toolFinder := integrations.NewWorker(tools)
 	followed.tools = toolFinder
 
-	// The clones are read with the git the user's shell finds, as magex runs it.
-	releaseGit := gitread.New(gitread.Config{
-		Env: func() []string { env, _ := shellEnv.Env(); return env }, Runner: toolRunners,
-	})
+	releaseGit := shellGit
 	releases := release.NewService(release.Config{
 		GitHub:  releaseGitHub{tokens: tokens, client: client},
 		Clones:  releaseClones{settings: prefs, home: opts.Home, git: runner},

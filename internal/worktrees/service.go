@@ -21,6 +21,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/clonelock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/gitread"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/logging"
@@ -113,6 +114,9 @@ var (
 
 	// errGit marks an error that carries git's own message.
 	errGit = errors.New("git")
+
+	// errGuard marks a command gitread's guards refused before it ran.
+	errGuard = errors.New("refused before git ran")
 )
 
 // InUseError is returned for a worktree running processes work in. It matches ErrInUse.
@@ -265,6 +269,13 @@ type Config struct {
 	// error. Without it, Git resolves "git" itself.
 	Finder execpath.Finder
 
+	// Guard works out what the commands worktree creation runs that reach a remote (its
+	// fetches and its ls-remote) or write a worktree's files (git worktree add) run with:
+	// gitread's guards, so none runs a program the clone's own git config names. They run
+	// with its git and its environment, never Git's. Core gives every Service one; without
+	// it, as in tests that script git, they run as every other command here does.
+	Guard Guard
+
 	// Home is the user's home directory; it expands a ~ clone root and shortens paths.
 	Home string
 
@@ -304,11 +315,19 @@ type Config struct {
 	Logger *slog.Logger
 }
 
+// Guard works out what a git command that reaches the clone's remote, or writes a
+// worktree's files, runs with: gitread's RemoteSetupFor and CheckoutSetup, *gitread.Git.
+type Guard interface {
+	RemoteSetupFor(ctx context.Context, dir, remote string) (gitread.Setup, error)
+	CheckoutSetup(ctx context.Context, dir string) (gitread.Setup, error)
+}
+
 // Service lists and removes worktrees of the clones under the clone root.
 type Service struct {
 	settings SettingsReader
 	run      execpath.Runner
 	finder   execpath.Finder
+	guard    Guard
 	home     string
 	realHome string
 	clock    clock.Clock
@@ -356,6 +375,7 @@ func NewService(cfg Config) *Service {
 		settings: cfg.Settings,
 		run:      cfg.Git,
 		finder:   cfg.Finder,
+		guard:    cfg.Guard,
 		home:     cfg.Home,
 		realHome: realHome,
 		clock:    clock.Or(cfg.Clock),
@@ -921,7 +941,7 @@ func (s *Service) prepare(ctx context.Context) (git, string, SweepSettings, erro
 // git returns the allowlisted git runner, resolving the binary when a Finder is set.
 func (s *Service) git() (git, error) {
 	if s.finder == nil {
-		return git{run: s.run, bin: gitBin}, nil
+		return git{run: s.run, bin: gitBin, guard: s.guard}, nil
 	}
 
 	bin, err := s.finder.Find(gitBin)
@@ -929,7 +949,7 @@ func (s *Service) git() (git, error) {
 		return git{}, fmt.Errorf("find git: %w", err)
 	}
 
-	return git{run: s.run, bin: bin}, nil
+	return git{run: s.run, bin: bin, guard: s.guard}, nil
 }
 
 // checkedGit resolves git and checks that repoPath is a clone directly under the clone

@@ -14,8 +14,10 @@ import (
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/flight"
+	"github.com/mrz1836/nilbox/internal/gitread"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/paths"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 	"github.com/mrz1836/nilbox/internal/worklog"
 )
@@ -448,9 +450,11 @@ func (m *Maker) addArgs(ctx context.Context, g git, req EnsureRequest, f *found)
 	case f.action == ActionAttach:
 		return worktreeAddArgs(f.path, f.branch), nil
 	case req.Kind == item.KindPR:
-		if stderr, err := g.fetchPR(ctx, req.Clone, req.remote(), req.Number); err != nil {
-			return nil, uierr.New(fmt.Sprintf("Couldn't fetch pull request #%d from %s.", req.Number, req.remote()),
-				fmt.Errorf("fetch pull request #%d from %s: %w", req.Number, req.remote(), gitError(err, stderr)))
+		if stderr, aside, err := g.fetchPR(ctx, req.Clone, req.remote(), req.Number); err != nil {
+			extra, cause := remoteWhy(err, stderr, aside)
+
+			return nil, uierr.New(fmt.Sprintf("Couldn't fetch pull request #%d from %s.", req.Number, req.remote())+extra,
+				fmt.Errorf("fetch pull request #%d from %s: %w", req.Number, req.remote(), cause))
 		}
 
 		if err := m.verifyHead(ctx, g, req, f.branch); err != nil {
@@ -517,18 +521,47 @@ func (m *Maker) fetchDefault(ctx context.Context, g git, req EnsureRequest) (str
 	remote := req.remote()
 	ref := remotesRef + remote + "/" + branch
 
-	stderr, fetchErr := g.fetchBranch(ctx, req.Clone, remote, branch)
+	stderr, aside, fetchErr := g.fetchBranch(ctx, req.Clone, remote, branch)
 	if fetchErr == nil {
 		return ref, "", nil
 	}
 
+	extra, cause := remoteWhy(fetchErr, stderr, aside)
+
 	if ok, _ := refExists(ctx, g, req.Clone, ref); ok && ctx.Err() == nil {
-		return ref, fmt.Sprintf("Couldn't fetch %s/%s, so the worktree starts from the last fetched copy: %s.",
-			remote, branch, uierr.Message(gitError(fetchErr, stderr))), nil
+		return ref, fmt.Sprintf("Couldn't fetch %s/%s, so the worktree starts from the last fetched copy: %s",
+			remote, branch, remoteSaid(fetchErr, cause, extra)), nil
 	}
 
-	return "", "", uierr.New(fmt.Sprintf("Couldn't fetch %s/%s.", remote, branch),
-		fmt.Errorf("fetch %s/%s: %w", remote, branch, gitError(fetchErr, stderr)))
+	return "", "", uierr.New(fmt.Sprintf("Couldn't fetch %s/%s.", remote, branch)+extra,
+		fmt.Errorf("fetch %s/%s: %w", remote, branch, cause))
+}
+
+// remoteWhy works out what a command that reached the clone's remote and failed adds to
+// the sentence that says so, "" or a space and more words, and its cause: gitread's words
+// when its guards refused the remote before git ran, such as one reached through a remote
+// helper; or, when it went without settings of the clone's own, which may be why, which
+// they are and where to set them instead (gitread.SetAsideNote), with a
+// gitread.SetAsideError in the cause's chain; or else git's own line.
+func remoteWhy(err error, stderr []byte, aside []string) (extra string, cause error) {
+	switch {
+	case errors.Is(err, errGuard):
+		return " " + gitread.Message(err), err
+	case len(aside) > 0:
+		return " " + gitread.SetAsideNote(aside), &gitread.SetAsideError{Err: gitError(err, stderr), Settings: aside}
+	default:
+		return "", gitError(err, stderr)
+	}
+}
+
+// remoteSaid is why a command that reached the clone's remote failed, in a sentence, from
+// remoteWhy's cause and extra.
+func remoteSaid(err, cause error, extra string) string {
+	if errors.Is(err, errGuard) {
+		return strings.TrimSpace(extra)
+	}
+
+	return textutil.EndSentence(uierr.Message(cause)) + extra
 }
 
 // defaultBranch finds the default branch of the item's repository: as GitHub reported
@@ -547,10 +580,12 @@ func (m *Maker) defaultBranch(ctx context.Context, g git, req EnsureRequest) (st
 		}
 	}
 
-	out, stderr, err := g.do(ctx, req.Clone, lsRemoteArgs(remote)...)
+	out, stderr, aside, err := g.reach(ctx, req.Clone, remote, lsRemoteArgs(remote)...)
 	if err != nil {
-		return "", uierr.New(fmt.Sprintf("Couldn't find the default branch of %s.", remote),
-			fmt.Errorf("%w: %s: %w", ErrNoDefaultBranch, remote, gitError(err, stderr)))
+		extra, cause := remoteWhy(err, stderr, aside)
+
+		return "", uierr.New(fmt.Sprintf("Couldn't find the default branch of %s.", remote)+extra,
+			fmt.Errorf("%w: %s: %w", ErrNoDefaultBranch, remote, cause))
 	}
 
 	if branch, ok := parseSymref(string(out)); ok {
@@ -589,8 +624,10 @@ func (m *Maker) add(ctx context.Context, g git, clone, path string, args []strin
 	}
 
 	if !gitRefused(ctx, err) || !dirExists(path) {
-		return uierr.New(fmt.Sprintf("Couldn't make the worktree %s.", m.s.display(path)),
-			fmt.Errorf("add the worktree %s: %w", m.s.display(path), gitError(err, stderr)))
+		extra, cause := remoteWhy(err, stderr, nil)
+
+		return uierr.New(fmt.Sprintf("Couldn't make the worktree %s.", m.s.display(path))+extra,
+			fmt.Errorf("add the worktree %s: %w", m.s.display(path), cause))
 	}
 
 	if _, pruneErr := g.prune(ctx, clone); pruneErr == nil {
@@ -659,22 +696,26 @@ func (s *Service) recordWorktree(ctx context.Context, req EnsureRequest, path, b
 
 // fetchPR fetches pull request n's head from remote into the item's branch, which does
 // not exist yet: git refuses to move a branch that does, so nothing is ever overwritten.
-func (g git) fetchPR(ctx context.Context, dir, remote string, n int) ([]byte, error) {
-	_, stderr, err := g.do(ctx, dir, "fetch", "--no-tags", remote, pullRefspec(n))
+// It runs under gitread's guards for remote (git.reach), asking it for git's own
+// upload-pack, and returns the clone's own settings set aside.
+func (g git) fetchPR(ctx context.Context, dir, remote string, n int) ([]byte, []string, error) {
+	_, stderr, aside, err := g.reach(ctx, dir, remote, "fetch", "--no-tags", uploadPack, remote, pullRefspec(n))
 
-	return stderr, err
+	return stderr, aside, err
 }
 
-// fetchBranch fetches remote's branch into its remote-tracking ref.
-func (g git) fetchBranch(ctx context.Context, dir, remote, branch string) ([]byte, error) {
-	_, stderr, err := g.do(ctx, dir, "fetch", "--no-tags", remote, trackingRefspec(remote, branch))
+// fetchBranch fetches remote's branch into its remote-tracking ref, as fetchPR does.
+func (g git) fetchBranch(ctx context.Context, dir, remote, branch string) ([]byte, []string, error) {
+	_, stderr, aside, err := g.reach(ctx, dir, remote, "fetch", "--no-tags", uploadPack, remote,
+		trackingRefspec(remote, branch))
 
-	return stderr, err
+	return stderr, aside, err
 }
 
-// addWorktree runs `git worktree add` with args.
+// addWorktree runs `git worktree add` with args, under gitread's guards for a command that
+// writes files (git.write): no hook, and none of the clone's own filter drivers.
 func (g git) addWorktree(ctx context.Context, dir string, args []string) ([]byte, error) {
-	_, stderr, err := g.do(ctx, dir, args...)
+	_, stderr, err := g.write(ctx, dir, args...)
 
 	return stderr, err
 }
@@ -706,8 +747,8 @@ func trackingRefspec(remote, branch string) string {
 // into its remote-tracking ref, and adding a worktree on an item's branch.
 func allowedCreate(args []string) bool {
 	switch {
-	case hasWords(args, 4, "fetch", "--no-tags"):
-		return remotePattern.MatchString(args[2]) && allowedFetchRefspec(args[2], args[3])
+	case hasWords(args, 5, "fetch", "--no-tags", uploadPack):
+		return remotePattern.MatchString(args[3]) && allowedFetchRefspec(args[3], args[4])
 	case hasWords(args, 4, "worktree", "add"):
 		return filepath.IsAbs(args[2]) && isOwnBranchRef(headsPrefix+args[3])
 	case hasWords(args, 7, "worktree", "add", "--no-track", "-b"):

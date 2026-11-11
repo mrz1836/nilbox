@@ -120,3 +120,43 @@ func TestValidBranch(t *testing.T) {
 		assert.False(t, ValidBranch(name), name)
 	}
 }
+
+func TestRemoteSetupForWeighsTheRemoteNamed(t *testing.T) {
+	t.Parallel()
+
+	dir, env := setupClone(t)
+	g := New(Config{Env: func() []string { return env }})
+
+	testutil.RunGit(t, dir, "remote", "add", "upstream", "ext::sh -c touch% /nonexistent/pwned")
+
+	_, err := g.RemoteSetup(t.Context(), dir)
+	require.NoError(t, err, "origin is fine")
+
+	_, err = g.RemoteSetupFor(t.Context(), dir, "upstream")
+	require.ErrorIs(t, err, ErrRemoteHelper, "upstream's own URL is weighed")
+
+	testutil.RunGit(t, dir, "remote", "set-url", "upstream", "https://example.invalid/acme-org/example-repo.git")
+	testutil.RunGit(t, dir, "config", "remote.upstream.proxy", "http://203.0.113.9:8080")
+
+	_, err = g.RemoteSetupFor(t.Context(), dir, "upstream")
+	require.ErrorIs(t, err, ErrCloneRoutes, "and its own proxy")
+
+	_, err = g.RemoteSetupFor(t.Context(), dir, "-x")
+	require.ErrorIs(t, err, ErrGitCommandNotAllowed)
+}
+
+func TestCheckoutSetupReachesNoRemote(t *testing.T) {
+	t.Parallel()
+
+	dir, env := setupClone(t)
+
+	setup, err := New(Config{Env: func() []string { return env }}).CheckoutSetup(t.Context(), dir)
+	require.NoError(t, err)
+
+	assert.True(t, filepath.IsAbs(setup.Git))
+	assert.Equal(t, append(Hardening(), "-c", "filter.evil.clean=", "-c", "filter.evil.smudge=", "-c",
+		"filter.evil.process=", "-c", "filter.evil.required=false"), setup.Settings)
+	assert.Contains(t, setup.Env, "GIT_ALLOW_PROTOCOL=", "no transport at all")
+	assert.Contains(t, setup.Env, "GIT_NO_LAZY_FETCH=1")
+	assert.Empty(t, setup.SetAside)
+}

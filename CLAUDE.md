@@ -215,7 +215,16 @@ app:lint` reads.
   there runs with hooks, the file system monitor, and submodule recursion off
   (`gitread.Hardening`, which the worktrees' `hardening` and the pull share),
   since a worktree holds a pull request's own files, and a pull request's worktree is made only
-  at the head whose files the launch checked. The launcher reaches the `Maker` through its
+  at the head whose files the launch checked. `create.go`'s fetches and its `ls-remote
+  --symref` (each with `--upload-pack=git-upload-pack`) and its `git worktree add` also run
+  under gitread's guards, through the worktrees `Guard` core gives every `Service` (the same
+  `gitread.Git` as Release's): `git.reach` runs a command that reaches the item's remote
+  with `RemoteSetupFor` that remote, and `git.write` one that writes files with
+  `CheckoutSetup`, each with gitread's git, environment, and settings, so no program the
+  clone's own config names runs; a remote helper or rerouted remote is refused in
+  `gitread.Message`'s words, and a fetch that failed after setting the clone's own settings
+  aside says which (`gitread.SetAsideNote`, a `gitread.SetAsideError` in the chain), which
+  the launch's error shows. The launcher reaches the `Maker` through its
   `WorktreeMaker` interface; no agent's own `--worktree` flag is used. A branch is deleted only
   with the conditional `git update-ref -d <ref> <oid>` (the repoguard tests ban `git branch
   -d/-D`): by `create.go`, of a branch it just fetched at a head the launch didn't check, and
@@ -387,9 +396,12 @@ app:lint` reads.
   still run). Its allowlist test asserts that no entry holds a verb `TestNoGitCommandChangesAClone`
   guards. For the git commands that do change a clone, run elsewhere, it hands over what they
   run with rather than running them: `Hardening` (no hook, fsmonitor, or submodule
-  recursion), and `RemoteSetup`, for one that reaches origin and writes files, which works
-  out exactly what its ls-remote runs under (its git, environment, and `-c` settings, with
-  the same refusals) plus `Hardening` and the clone's own filter drivers turned off;
+  recursion); `RemoteSetup` (origin) and `RemoteSetupFor` (a named remote, whose own URL,
+  remote helper, and proxy it weighs), for one that reaches a remote and writes files, which
+  work out exactly what its ls-remote runs under (its git, environment, and `-c` settings,
+  with the same refusals) plus `Hardening` and the clone's own filter drivers turned off;
+  `CheckoutSetup`, for one that writes files and reaches no remote, which adds those two to
+  a read's environment;
   `ValidBranch` is the branch rule a command's argument must pass, and `SetAsideNote` words
   what such a command went without.
 - `internal/release/` is the Release page's service. `Candidates` lists every clone under the

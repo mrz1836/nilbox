@@ -79,9 +79,10 @@ const (
 	// remoteKeysPattern matches the config keys an ls-remote's guard weighs: the ssh command,
 	// the program that asks for a password, and the credential helpers (the URL-scoped ones
 	// too), which run programs; the transports' allowances, for the user's own policy;
-	// origin's remote helper; the cookie settings, which write a file; and the http settings
-	// that change how https reaches origin (routeKeys), for every URL or one.
-	remoteKeysPattern = `^(core\.(sshcommand|askpass)|credential\.(.*\.)?helper|protocol\.(.*\.)?allow|remote\.origin\.(vcs|proxy)|` +
+	// each remote's remote helper and proxy, of which the guard weighs its remote's; the
+	// cookie settings, which write a file; and the http settings that change how https
+	// reaches a remote (routeKeys), for every URL or one.
+	remoteKeysPattern = `^(core\.(sshcommand|askpass)|credential\.(.*\.)?helper|protocol\.(.*\.)?allow|remote\..+\.(vcs|proxy)|` +
 		`http\.(.*\.)?(savecookies|cookiefile|sslverify|sslcainfo|sslcapath|proxy|curloptresolve))$`
 
 	// uploadPackFlag names the upload-pack an ls-remote asks for: git's own, which a
@@ -117,6 +118,7 @@ const (
 	slotPeeledTagRef
 	slotTagCommit
 	slotCommitRange
+	slotRemoteName
 )
 
 // word is one word of an allowlisted command: text itself, or a value its slot accepts.
@@ -176,7 +178,7 @@ func allowlist() []command {
 		},
 		{name: "the filter drivers", words: fixed(configCmd, "--show-scope", "--get-regexp", filterKeysPattern)},
 		{name: "what an ls-remote's guard weighs", words: fixed(configCmd, "--show-scope", "-z", "--get-regexp", remoteKeysPattern)},
-		{name: "origin's URL, asking nothing of it", words: fixed(lsRemote, "--get-url", remoteName)},
+		{name: "a remote's URL, asking nothing of it", words: append(fixed(lsRemote, "--get-url"), value(slotRemoteName))},
 		{name: "the current branch", words: fixed("symbolic-ref", quietFlag, "--short", "HEAD")},
 		{
 			name:  "origin's default branch, as the clone last learned it",
@@ -233,6 +235,7 @@ func validators() map[slot]func(string) bool {
 		slotPeeledTagRef:   isPeeledTagRef,
 		slotTagCommit:      isTagCommit,
 		slotCommitRange:    isCommitRange,
+		slotRemoteName:     isRemoteName,
 	}
 }
 
@@ -341,6 +344,16 @@ func isCommitRange(arg string) bool {
 	from, to, ok := strings.Cut(arg, "..")
 
 	return ok && isCommitID(from) && isCommitID(to)
+}
+
+// remoteNamePattern is what a remote's name must look like to be named in a command or a
+// config key: a letter or a digit first, then letters, digits, '.', '_', or '-'.
+var remoteNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+// isRemoteName reports a remote's name gitread may pass to git, which can't be read as an
+// option, a path, or a URL: remoteNamePattern, with no "..", and at most maxNameLen bytes.
+func isRemoteName(name string) bool {
+	return len(name) <= maxNameLen && remoteNamePattern.MatchString(name) && !strings.Contains(name, "..")
 }
 
 // isVersionTag reports a tag name that starts with v and is otherwise a well-formed ref

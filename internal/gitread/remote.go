@@ -149,27 +149,37 @@ type remoteSetup struct {
 func (g *Git) remoteGuard(
 	ctx context.Context, dir string, env []string, userAllow *string,
 ) (setup remoteSetup, stderr []byte, err error) {
+	return g.remoteGuardFor(ctx, dir, remoteName, env, userAllow)
+}
+
+// remoteGuardFor is remoteGuard for the clone's remote called remote, which isRemoteName
+// passed: its own remote.<remote>.vcs and remote.<remote>.proxy, and its URL.
+func (g *Git) remoteGuardFor(
+	ctx context.Context, dir, remote string, env []string, userAllow *string,
+) (setup remoteSetup, stderr []byte, err error) {
 	settings, stderr, err := g.readScoped(ctx, dir, env)
 	if err != nil {
 		return remoteSetup{}, stderr, err
 	}
 
-	if s, set := lastAny(settings, vcsKey); set {
-		return remoteSetup{}, nil, fmt.Errorf("%w (%s is %q)", ErrRemoteHelper, vcsKey, s)
+	vcs := "remote." + remote + ".vcs"
+
+	if s, set := lastAny(settings, vcs); set {
+		return remoteSetup{}, nil, fmt.Errorf("%w (%s is %q)", ErrRemoteHelper, vcs, s)
 	}
 
-	url, stderr, err := g.exec(ctx, dir, env, nil, getURLArgs())
+	url, stderr, err := g.exec(ctx, dir, env, nil, getURLArgsFor(remote))
 	if err != nil {
-		return remoteSetup{}, stderr, fmt.Errorf("read origin's URL: %w", err)
+		return remoteSetup{}, stderr, fmt.Errorf("read %s's URL: %w", remote, err)
 	}
 
 	u := firstLine(url)
 
 	if helperURL(u) {
-		return remoteSetup{}, nil, fmt.Errorf("%w (origin's URL is %q)", ErrRemoteHelper, u)
+		return remoteSetup{}, nil, fmt.Errorf("%w (%s's URL is %q)", ErrRemoteHelper, remote, u)
 	}
 
-	if key, routes := cloneRoute(settings); routes && httpURL(u) {
+	if key, routes := cloneRoute(settings, remote); routes && httpURL(u) {
 		return remoteSetup{}, nil, fmt.Errorf("%w (%s)", ErrCloneRoutes, key)
 	}
 
@@ -243,7 +253,11 @@ func remoteKeysArgs() []string {
 
 // getURLArgs prints origin's URL as git would use it, insteadOf applied, asking nothing of
 // origin.
-func getURLArgs() []string { return []string{lsRemote, "--get-url", remoteName} }
+func getURLArgs() []string { return getURLArgsFor(remoteName) }
+
+// getURLArgsFor prints remote's URL as git would use it, insteadOf applied, asking nothing of
+// it.
+func getURLArgsFor(remote string) []string { return []string{lsRemote, "--get-url", remote} }
 
 // parseScoped reads `git config --show-scope -z --get-regexp` output: for each setting,
 // its scope, a NUL, its key, a newline and its value (or nothing, for a key without
@@ -295,11 +309,11 @@ func httpURL(url string) bool {
 	return ok && (strings.EqualFold(scheme, "http") || strings.EqualFold(scheme, "https"))
 }
 
-// cloneRoute returns the first of the route keys (isRouteKey) the clone's own config sets,
+// cloneRoute returns the first of remote's route keys (isRouteKey) the clone's own config sets,
 // and whether it sets one.
-func cloneRoute(settings []scopedSetting) (string, bool) {
+func cloneRoute(settings []scopedSetting, remote string) (string, bool) {
 	for _, s := range settings {
-		if !s.trusted() && isRouteKey(s.key) {
+		if !s.trusted() && isRouteKey(s.key, remote) {
 			return s.key, true
 		}
 	}
@@ -445,11 +459,11 @@ func httpName(key string) (string, bool) {
 	return key[strings.LastIndexByte(key, '.')+1:], true
 }
 
-// isRouteKey reports one of routeKeys, for every URL or one, or remote.origin.proxy.
-func isRouteKey(key string) bool {
+// isRouteKey reports one of routeKeys, for every URL or one, or remote.<remote>.proxy.
+func isRouteKey(key, remote string) bool {
 	name, ok := httpName(key)
 
-	return key == proxyKey || ok && slices.Contains(routeKeys(), name)
+	return key == "remote."+remote+".proxy" || ok && slices.Contains(routeKeys(), name)
 }
 
 // configSetting returns key=value as a -c setting, refusing a key passable doesn't take.

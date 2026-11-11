@@ -1869,7 +1869,15 @@ is in the way: it never deletes a folder. Git runs as an argument list with prom
 limit, and one clone's worktrees are made one at a time. Every git command the app runs on
 worktrees runs with hooks, the file system monitor, and submodule recursion turned off: a
 worktree holds the pull request's own files, and a hook in your clone that runs a tool from the
-checkout would otherwise run the pull request's code before any agent starts. Every worktree made or adopted is
+checkout would otherwise run the pull request's code before any agent starts. Its fetches, its
+look at the remote's default branch, and `git worktree add` also run under the same guards as
+the app's own reads of a clone, with the git and environment your login shell gives: none of
+the programs the clone's own git config names runs (its ssh command, password program,
+credential helpers, and filter drivers give way to your own, its cookie file is dropped, and the
+remote is asked for git's own upload-pack), and a remote reached through a remote helper, or an
+https one the clone's own config reroutes, is refused. If a fetch fails because a setting of the
+clone's own was set aside, the launch says which, and to set it for that folder in your global
+git config with an `includeIf`. Every worktree made or adopted is
 recorded with its item, and each session started in it with its agent and time, so the
 [Worktrees view](#the-worktrees-view) links it and its cleanup finds it.
 
