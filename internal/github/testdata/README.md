@@ -2,7 +2,8 @@
 
 The tests in this package decode real GitHub API responses. Each file here was recorded from
 GitHub once, then scrubbed so that every owner, repository, login, name, node ID, and URL in it
-is a placeholder. No test calls GitHub: each one serves a file from a local `httptest` server.
+is a placeholder, unless the table below says it was written by hand. No test calls GitHub: each
+one serves a file from a local `httptest` server.
 
 <br>
 
@@ -16,6 +17,7 @@ is a placeholder. No test calls GitHub: each one serves a file from a local `htt
 | `pull_review_response.json` | The pull review query, `pullReviewQuery` in `pullreview.go`, for one open Dependabot pull request; a pending and a failing check, a commit status, reviews, a pending review, and auto-merge were added by hand | `TestFetchPullReviewReadsTheSheet` in `pullreview_test.go` |
 | `rate_limit_response.json` | The REST endpoint `GET /rate_limit` | `TestFetchRateLimits` in `ratelimit_test.go` |
 | `latest_releases_response.json` | The latest-release query, `latestReleasesQuery` in `releases.go`, for the two public tool repositories the integrations install from (`t0`, `t1`), which keep their real names since the integrations' definitions name them; a repository with no release (`t2`) and one GitHub could not find (`t3`) were added by hand | `TestFetchLatestReleases*` in `releases_test.go` |
+| `release_progress_response.json` | **Not recorded: written by hand** from GitHub's GraphQL schema for the release progress query, `releaseProgressQuery` in `releaseprogress.go`, in the shape P0 found on a real release's tag: a drafted release, and on the tag's commit the branch's own push run (failed), apps' suites that stay QUEUED forever (`codecov`, `example-bot`), a dynamic and a schedule run (failed), the tag's own push run (in progress, for no branch), and a null suite | `TestFetchReleaseProgressReadsTheTagsCommit` in `releaseprogress_test.go` |
 
 The files also hold cases the tests rely on that a fresh recording may not reproduce, such as a
 null node, a bot author, a pull request from a fork, and labels with an empty name or a color
@@ -69,7 +71,9 @@ compares the queries with them. After a deliberate change to a query, rewrite th
    - Rewrite titles, descriptions, branch names, and label names that say anything about the
      real project.
    - Keep the shape: field names, nulls, enum values, and the timestamp format.
-4. Diff the new file against the old one, and carry over the cases the tests rely on.
+4. Diff the new file against the old one, and carry over the cases the tests rely on. A file
+   written by hand, as `release_progress_response.json` is, is replaced by a recording only
+   once one shows every case it holds; until then, keep it in step with the query by hand.
 5. Run `go test ./internal/github/ ./internal/repoguard/`. The first package's tests prove the
    new file still decodes as they expect. The guard tests fail on an absolute home directory
    path, on the product name written outside `internal/brand`, and on any name a contributor
