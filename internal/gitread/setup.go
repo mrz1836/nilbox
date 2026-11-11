@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
+	"os"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/mrz1836/nilbox/internal/execpath"
 )
 
 const (
@@ -33,6 +35,10 @@ const (
 // subfolder of one, so no command that changes it runs there.
 var ErrWorkTree = errors.New("git doesn't take this folder as its clone's top folder")
 
+// ErrNoGit is returned for a Setup when git can't be found where every gitread command
+// looks for it (GitFinder).
+var ErrNoGit = errors.New("git can't be found on the login shell's PATH or in the usual tool folders")
+
 // remoteKeys and filterKeys are remoteKeysPattern and filterKeysPattern, which a Setup
 // picks the guards' settings out of the clone's whole config with.
 var (
@@ -41,11 +47,12 @@ var (
 )
 
 // Setup is what a git command that changes a clone runs with, Repo scripts' pull and
-// worktree creation's fetches, ls-remote, and checkouts: the clone's own config allowed
-// setting by setting first, then every guard gitread's own ls-remote runs under, and those
-// a status runs under, so a command that changes a clone is held tighter than the reads.
+// worktree creation's fetches, ls-remote, and checkouts: the clone's own config weighed
+// setting by setting first (cloneconfig.go), then every guard gitread's own ls-remote runs
+// under, and those a status runs under, so a command that changes a clone is held tighter
+// than the reads.
 type Setup struct {
-	// Git is git's absolute path: the git every gitread command runs.
+	// Git is git's absolute path, as GitFinder finds it: the git the command must run.
 	Git string
 
 	// Env is the command's whole environment, its settings in it, so its argv holds
@@ -54,39 +61,80 @@ type Setup struct {
 	//   - for one that reaches a remote, the ls-remote's (remoteGuard), with
 	//     GIT_TERMINAL_PROMPT=0, the transports GIT_ALLOW_PROTOCOL allows, and the ssh
 	//     command the user's own config or environment chose, else a batch-mode ssh; for one
-	//     that reaches none, a read's, which allows no transport. GIT_NO_LAZY_FETCH=1 is in
-	//     it, but for a partial clone, whose promisor remotes the guard has weighed too;
+	//     that reaches none (Checkout), the same but that it allows no transport.
+	//     GIT_NO_LAZY_FETCH=1 is in it, but for a partial clone, whose promisor remotes the
+	//     guard has weighed too;
 	//   - GIT_DIR and GIT_WORK_TREE, the clone's git folder and the folder itself, which
 	//     beat anything its config says;
 	//   - Settings, through GIT_CONFIG_COUNT, after any the environment passes already.
 	Env []string
 
 	// Settings are the key=value settings Env passes, read only to say what they are:
-	// Hardening's; fetchHardening's; the ls-remote's, which keep the user's own credential
-	// helpers and save no cookie; and every filter driver the clone's own config defines
-	// but Git LFS's turned off, as a status turns them off.
+	// Hardening's; fetchHardening's; the remote guard's, which set aside the clone's own
+	// password program and credential helpers for the user's own, and save no cookie; and
+	// every filter driver the clone's own config defines but Git LFS's turned off.
 	Settings []string
+
+	// SetAside names the clone's own settings set aside, of SetAsideSSHCommand,
+	// SetAsideAskPass, and SetAsideHelpers, which may be why a command that reached a
+	// remote failed: SetAsideNote says so.
+	SetAside []string
 
 	// Partial reports a partial clone, whose checkout may fetch a missing file's contents
 	// from its promisor remote.
 	Partial bool
 }
 
+// Checkout returns s for a command that writes the clone's files and reaches no remote,
+// as `git worktree add` does, from a Setup RemoteSetupFor worked out for the same clone: the
+// same, but that git may use no transport, unless the clone is partial, whose checkout may
+// fetch a missing file's contents from its promisor remotes, which the setup weighed.
+func (s Setup) Checkout() Setup {
+	if s.Partial {
+		return s
+	}
+
+	out := s
+	out.Env = withVar(s.Env, allowProtocolVar, "")
+
+	return out
+}
+
+// GitFinder returns what finds the git every Setup names, as every gitread command finds
+// it: on the PATH of the environment Config.Env returns, the login shell's in the app,
+// then in the well-known tool folders under its HOME. Core hands it to every other service
+// that runs git on a clone, so one clone is never handled by two git builds.
+func (g *Git) GitFinder() execpath.Finder {
+	return gitFinder{env: g.env}
+}
+
+// gitFinder finds a program as gitSearch does, on the environment env returns now.
+type gitFinder struct {
+	env func() []string
+}
+
+// Find returns name's absolute path.
+func (f gitFinder) Find(name string) (string, error) {
+	return gitSearch(f.env()).Find(name)
+}
+
 // RemoteSetup works out what a git command in the clone at dir that reaches origin and
 // writes the clone's files runs with (Setup), reading the clone's config, its folders, and
 // origin's URL (`ls-remote --get-url`, which asks origin nothing): no command here reaches
-// the network. It refuses, before anything runs, a clone whose own config sets a setting
+// the network. It refuses, before anything runs, a clone whose own config holds a setting
 // cloneSettingAllowed doesn't allow (a CloneConfigError naming them), a folder that isn't
 // its clone's top folder (ErrWorkTree), what an ls-remote's guard refuses (an origin
 // reached through a remote helper, a RefusedError naming it, for a partial clone its
-// promisor remotes too), and a setting it can't pass safely (ErrGitCommandNotAllowed).
+// promisor remotes too), a clone whose own config reroutes a host where it would matter
+// (ErrCloneRoutes), and a setting it can't pass safely (ErrGitCommandNotAllowed).
 func (g *Git) RemoteSetup(ctx context.Context, dir string) (Setup, error) {
 	return g.RemoteSetupFor(ctx, dir, remoteName)
 }
 
 // RemoteSetupFor is RemoteSetup for the clone's remote called remote, as worktree creation
 // fetches from a fork's upstream: that remote's URL and remote helper are weighed in
-// origin's place. A name that isn't one is refused (ErrGitCommandNotAllowed).
+// origin's place. A name that isn't one is refused (ErrGitCommandNotAllowed). Its Checkout
+// serves the same clone's checkout.
 func (g *Git) RemoteSetupFor(ctx context.Context, dir, remote string) (Setup, error) {
 	if !isRemoteName(remote) {
 		return Setup{}, fmt.Errorf("%w: a remote named %q", ErrGitCommandNotAllowed, remote)
@@ -96,38 +144,33 @@ func (g *Git) RemoteSetupFor(ctx context.Context, dir, remote string) (Setup, er
 }
 
 // CheckoutSetup works out what a git command in the clone at dir that writes its files but
-// reaches no remote runs with, as `git worktree add` does: gitread's own git, the
-// environment every gitread read runs with (no transport allowed, no lazy fetch, no
-// prompt), and RemoteSetup's checks and settings otherwise. A partial clone's checkout
-// fetches a missing file's contents from its promisor remotes: for one, those are weighed
-// and refused as RemoteSetup weighs its remote, and the environment is a fetch's.
+// reaches no remote runs with, as `git worktree add` does: RemoteSetup's, but that no
+// remote is weighed and git may use no transport (Checkout), unless the clone is partial,
+// whose promisor remotes are weighed as RemoteSetup weighs its remote.
 func (g *Git) CheckoutSetup(ctx context.Context, dir string) (Setup, error) {
-	return g.setupFor(ctx, dir, nil)
+	setup, err := g.setupFor(ctx, dir, nil)
+	if err != nil {
+		return Setup{}, err
+	}
+
+	return setup.Checkout(), nil
 }
 
 // setupFor works out the Setup of a command in dir that reaches remotes, none for a
 // checkout, and a partial clone's promisor remotes. Its config is read once, whole, and
-// checked setting by setting (cloneConfig) before anything else.
+// checked setting by setting (checkedConfig) before anything else.
 func (g *Git) setupFor(ctx context.Context, dir string, remotes []string) (Setup, error) {
-	if !isDir(dir) {
-		return Setup{}, fmt.Errorf("%w: the folder %q", ErrGitCommandNotAllowed, dir)
-	}
-
 	base := g.env()
 	env := environmentOf(base)
 
-	git, err := gitSearch(env).Find(gitBin)
+	listed, err := g.checkedConfig(ctx, dir, env)
 	if err != nil {
-		return Setup{}, fmt.Errorf("find git: %w", err)
-	}
-
-	listed, stderr, err := g.listConfig(ctx, dir, env)
-	if err != nil {
-		return Setup{}, failure(configListArgs(), stderr, err)
-	}
-
-	if err = cloneConfig(listed); err != nil {
 		return Setup{}, err
+	}
+
+	git, err := g.GitFinder().Find(gitBin)
+	if err != nil {
+		return Setup{}, fmt.Errorf("%w: %w", ErrNoGit, err)
 	}
 
 	folders, err := g.folders(ctx, dir, env)
@@ -165,39 +208,37 @@ type setupFacts struct {
 	partial   bool
 }
 
-// setupWith works out a Setup from what setupFor read: the remotes weighed, the
-// environment and settings an ls-remote runs with when the command reaches one, the
-// clone's own filter drivers but Git LFS's off, and the settings passed through the
-// environment.
+// setupWith works out a Setup from what setupFor read: the remotes weighed; the
+// environment and settings an ls-remote runs with, the clone's own ssh command, password
+// program, credential helpers, and cookie file set aside whether or not the command
+// reaches a remote, as Git LFS may reach one during a checkout; the clone's own filter
+// drivers but Git LFS's off; and the settings passed through the environment.
 func (g *Git) setupWith(ctx context.Context, dir string, f setupFacts) (Setup, error) {
-	env, extra := f.env, []string(nil)
-
-	if len(f.remotes) > 0 {
-		guarded, stderr, err := g.guardRemotes(ctx, dir, f.remotes, matching(f.listed, remoteKeys), f.env, f.userAllow)
-		if err != nil {
-			return Setup{}, failure([]string{lsRemote}, stderr, err)
-		}
-
-		env, extra = guarded.env, guarded.extra
+	guarded, stderr, err := g.guardRemotes(ctx, dir, f.remotes, matching(f.listed, remoteKeys), f.env, f.userAllow)
+	if err != nil {
+		return Setup{}, failure([]string{lsRemote}, stderr, err)
 	}
 
-	off, err := cloneFiltersOff(matching(f.listed, filterKeys))
+	off, err := cloneFiltersOff(matching(f.listed, filterKeys), true)
 	if err != nil {
 		return Setup{}, err
 	}
 
+	env := guarded.env
 	if f.partial {
 		env = slices.DeleteFunc(slices.Clone(env), func(kv string) bool { return strings.HasPrefix(kv, noLazyFetchVar+"=") })
 	}
 
-	settings := unflagged(slices.Concat(Hardening(), fetchHardening(), extra, off))
+	settings := unflagged(slices.Concat(Hardening(), fetchHardening(), guarded.extra, off))
 
 	env, err = withSettings(append(slices.Clone(env), f.folders...), settings)
 	if err != nil {
 		return Setup{}, err
 	}
 
-	return Setup{Git: f.git, Env: env, Settings: settings, Partial: f.partial}, nil
+	return Setup{
+		Git: f.git, Env: env, Settings: settings, SetAside: append([]string{}, guarded.setAside...), Partial: f.partial,
+	}, nil
 }
 
 // listConfig reads every setting git reads in dir, includes followed, with its scope and
@@ -214,7 +255,9 @@ func (g *Git) listConfig(ctx context.Context, dir string, env []string) ([]scope
 }
 
 // folders reads the clone's git folder and top folder, and returns them as GIT_DIR and
-// GIT_WORK_TREE, refusing a dir git doesn't take as the top folder (ErrWorkTree).
+// GIT_WORK_TREE, refusing a dir git doesn't take as the top folder (ErrWorkTree). The two
+// are compared as files, not names, as a case-insensitive file system takes a folder by
+// any case, and git names it as the disk does.
 func (g *Git) folders(ctx context.Context, dir string, env []string) ([]string, error) {
 	out, stderr, err := g.exec(ctx, dir, env, nil, gitDirArgs())
 	if err != nil {
@@ -223,12 +266,8 @@ func (g *Git) folders(ctx context.Context, dir string, env []string) ([]string, 
 
 	gitDir, top, _ := strings.Cut(strings.TrimRight(string(out), "\n"), "\n")
 
-	resolved, err := filepath.EvalSymlinks(dir)
-	if err != nil {
-		return nil, fmt.Errorf("resolve %s: %w", dir, err)
-	}
-
-	if !filepath.IsAbs(gitDir) || top != resolved {
+	here, err := os.Stat(dir)
+	if err != nil || !isDir(gitDir) || !isDir(top) || !sameFolder(here, top) {
 		return nil, fmt.Errorf("%w: %s is in %q", ErrWorkTree, dir, top)
 	}
 
@@ -291,4 +330,27 @@ func withSettings(env, settings []string) ([]string, error) {
 	}
 
 	return withVar(out, configCountVar, strconv.Itoa(n+len(settings))), nil
+}
+
+// SetAsideNote says which of the clone's own settings, of SetAsideSSHCommand,
+// SetAsideAskPass, and SetAsideHelpers, a command reaching the clone's remote called
+// remote went without, which may be why it failed, and where to set them so that they are
+// used: the user's global config, for this folder alone with an includeIf, which gitread
+// counts as the user's own. It is "" for none.
+func SetAsideNote(remote string, settings []string) string {
+	if len(settings) == 0 {
+		return ""
+	}
+
+	return setAsideNote(remote, settings)
+}
+
+// errNotAFolder refuses dir, which isn't absolute and clean.
+func errNotAFolder(dir string) error {
+	return fmt.Errorf("%w: the folder %q", ErrGitCommandNotAllowed, dir)
+}
+
+// routesErr is ErrCloneRoutes for the setting key.
+func routesErr(key string) error {
+	return fmt.Errorf("%w (%s)", ErrCloneRoutes, key)
 }

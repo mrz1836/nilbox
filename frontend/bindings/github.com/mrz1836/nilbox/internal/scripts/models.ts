@@ -8,7 +8,7 @@ import * as integrationprefs$0 from "../integrationprefs/models.js";
 /**
  * BranchState is where a clone's branch stands against the branch it follows on origin.
  */
-export type BranchState = "upToDate" | "behind" | "ahead" | "diverged" | "detached" | "noUpstream" | "inProgress" | "unknown" | "off";
+export type BranchState = "upToDate" | "behind" | "ahead" | "diverged" | "detached" | "noUpstream" | "inProgress" | "unknown" | "off" | "refused";
 
 /**
  * The values of BranchState, by the names of their Go constants.
@@ -68,6 +68,14 @@ export const BranchState = {
      * nor origin is read, and nothing is pulled.
      */
     BranchOff: "off",
+
+    /**
+     * BranchRefused is a clone a pull would be refused in before git ran, as its own git
+     * config holds a setting gitread's guards refuse (gitread's CloneConfig), read from the
+     * clone alone: origin isn't asked, and the note says which settings, and where to set
+     * them instead.
+     */
+    BranchRefused: "refused",
 } as const;
 
 /**

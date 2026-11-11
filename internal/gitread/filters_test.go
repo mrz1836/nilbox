@@ -212,29 +212,66 @@ func TestStatusTrustsOnlyTheUsersOwnScopes(t *testing.T) {
 	assert.NotContains(t, status, "filter.mine", "the environment's settings are the user's")
 }
 
-func TestTheClonesOwnGitLFSStaysOn(t *testing.T) {
+// lfsOff are the settings that turn Git LFS's driver off.
+func lfsOff() []string {
+	return []string{
+		"-c", "filter.lfs.clean=", "-c", "filter.lfs.smudge=", "-c", "filter.lfs.process=", "-c", "filter.lfs.required=false",
+	}
+}
+
+func TestTheClonesOwnGitLFSStaysOnOnlyWhereItWrites(t *testing.T) {
 	t.Parallel()
 
 	lfs := "local\tfilter.lfs.clean git-lfs clean -- %f\n" +
 		"local\tfilter.lfs.smudge git-lfs smudge -- %f\n" +
 		"local\tfilter.lfs.process git-lfs filter-process\n"
 
-	off, err := cloneFiltersOff(settingsOf(t, lfs))
+	off, err := cloneFiltersOff(settingsOf(t, lfs), true)
 	require.NoError(t, err)
-	assert.Empty(t, off, "git lfs install --local runs the user's own git-lfs")
+	assert.Empty(t, off, "a pull or a checkout runs the user's own git-lfs, as git lfs install --local sets it")
+
+	off, err = cloneFiltersOff(settingsOf(t, "local\tfilter.lfs.smudge git-lfs smudge --skip -- %f\n"+
+		"local\tfilter.lfs.process git-lfs filter-process --skip\n"), true)
+	require.NoError(t, err)
+	assert.Empty(t, off, "and as git lfs install --local --skip-smudge sets it")
+
+	off, err = cloneFiltersOff(settingsOf(t, lfs), false)
+	require.NoError(t, err)
+	assert.Equal(t, lfsOff(), off, "a read turns it off, as git-lfs's clean writes into the clone")
 
 	for _, line := range []string{
 		"local\tfilter.lfs.smudge git-lfs smudge -- %f; touch /nonexistent/owned\n",
 		"local\tfilter.lfs.process /srv/elsewhere/git-lfs filter-process\n",
 		"local\tfilter.lfs.clean git-lfs smudge -- %f\n",
 	} {
-		off, err = cloneFiltersOff(settingsOf(t, lfs+line))
+		off, err = cloneFiltersOff(settingsOf(t, lfs+line), true)
 		require.NoError(t, err)
-		assert.Equal(t, []string{
-			"-c", "filter.lfs.clean=", "-c", "filter.lfs.smudge=", "-c", "filter.lfs.process=",
-			"-c", "filter.lfs.required=false",
-		}, off, "%q: any other command turns the whole driver off", line)
+		assert.Equal(t, lfsOff(), off, "%q: any other command turns the whole driver off", line)
 	}
+
+	off, err = cloneFiltersOff(settingsOf(t, "local\tfilter.other.process git-lfs filter-process\n"), true)
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"-c", "filter.other.clean=", "-c", "filter.other.smudge=", "-c", "filter.other.process=",
+		"-c", "filter.other.required=false",
+	}, off, "only the driver called lfs")
+}
+
+// TestStatusTurnsOffTheClonesOwnGitLFS reads a clone whose own config sets Git LFS's own
+// driver: the status runs with it off.
+func TestStatusTurnsOffTheClonesOwnGitLFS(t *testing.T) {
+	t.Parallel()
+
+	rec := &recorder{replies: map[string]reply{
+		words(filterDriversArgs()): {out: zLines("local\tfilter.lfs.process git-lfs filter-process\n")},
+	}, answer: func(_ context.Context, _ []string) (string, error) { return "", nil }}
+
+	_, err := fakeGit(plainEnv(), rec).Changes(t.Context(), repoDir)
+	require.NoError(t, err)
+
+	calls := rec.Calls()
+	require.Len(t, calls, 2)
+	assert.Contains(t, strings.Join(calls[1].argv, " "), strings.Join(lfsOff(), " "))
 }
 
 // zLines writes "scope\tkey value\n" lines as `git config --show-scope -z --get-regexp`

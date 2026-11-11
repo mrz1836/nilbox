@@ -139,8 +139,8 @@ func TestCloneSettingAllowed(t *testing.T) {
 
 	for _, s := range [][2]string{
 		{"core.repositoryformatversion", "0"},
-		{"core.hookspath", ".husky/_"},
-		{"core.fsmonitor", on},
+		{"core.sparsecheckout", on},
+		{"core.sparsecheckoutcone", on},
 		{"remote.origin.url", "https://example.invalid/acme-org/example-repo.git"},
 		{"remote.upstream.gh-resolved", "base"},
 		{"remote.origin.partialclonefilter", "blob:none"},
@@ -154,32 +154,64 @@ func TestCloneSettingAllowed(t *testing.T) {
 		{"pull.ff", "only"},
 		{"submodule.active", "."},
 		{"submodule.lib.url", "../lib.git"},
-		{"submodule.recurse", on},
 		{"lfs.repositoryformatversion", "0"},
 		{"lfs.https://example.invalid/acme-org/example-repo.git/info/lfs.access", "basic"},
+		{"lfs.https://example.invalid/acme-org/example-repo.git/info/lfs.locksverify", on},
 		{"filter.lfs.process", "git-lfs filter-process"},
+		{"filter.lfs.smudge", "git-lfs smudge --skip -- %f"},
 		{"filter.lfs.required", on},
+		{"rerere.enabled", on},
+		{"rerere.autoupdate", on},
 		{"log.excludedecoration", "refs/prefetch/"},
+		{"color.ui", "auto"},
+		{"color.diff.meta", "yellow"},
+		{"gui.wmstate", "normal"},
+		{"mergetool.a.cmd", "x"},
+		{"mergetool.keepbackup", "false"},
+		{"difftool.a.cmd", "x"},
+		{"merge.tool", "a"},
+		{"diff.tool", "a"},
 	} {
-		assert.True(t, cloneSettingAllowed(s[0], s[1]), "%s=%s", s[0], s[1])
+		assert.True(t, cloneSettingAllowed(s[0], s[1]), "inert: %s=%s", s[0], s[1])
+	}
+
+	for _, s := range [][2]string{
+		{"core.sshcommand", "x"},
+		{"core.askpass", "x"},
+		{"credential.helper", "x"},
+		{"credential.https://example.invalid.helper", "x"},
+		{"credential.usehttppath", on},
+		{"url.https://example.invalid/.insteadof", "https://github.com/"},
+		{"url.ext::sh.insteadof", "https://"},
+		{"url.https://example.invalid/.pushinsteadof", "https://github.com/"},
+		{"http.postbuffer", "524288000"},
+		{"http.https://example.invalid/.extraheader", "x"},
+		{"http.proxy", "x"},
+		{"http.cookiefile", "x"},
+		{"remote.origin.proxy", "x"},
+		{"protocol.ext.allow", "always"},
+		{"protocol.version", "2"},
+		{"core.hookspath", ".husky/_"},
+		{"core.fsmonitor", on},
+		{"submodule.recurse", on},
+		{"maintenance.auto", "false"},
+		{"maintenance.strategy", "incremental"},
+		{"maintenance.gc.enabled", on},
+		{"maintenance.prefetch.schedule", "hourly"},
+		{"gc.auto", "1"},
+	} {
+		assert.True(t, cloneSettingAllowed(s[0], s[1]), "neutralized: %s=%s", s[0], s[1])
 	}
 
 	for _, s := range [][2]string{
 		{"core.worktree", "/elsewhere"},
-		{"core.sshcommand", "x"},
-		{"core.askpass", "x"},
 		{"core.alternaterefscommand", "x"},
 		{"core.pager", "x"},
-		{"credential.helper", "x"},
-		{"credential.https://example.invalid.helper", "x"},
-		{"http.proxy", "x"},
-		{"http.cookiefile", "x"},
+		{"core.editor", "x"},
 		{"hook.a.command", "x"},
 		{"hook.a.event", "post-checkout"},
-		{"gc.auto", "1"},
 		{"gc.recentobjectshook", "x"},
-		{"maintenance.strategy", "gc"},
-		{"maintenance.auto", on},
+		{"gc.cruftpacks", on},
 		{"lfs.customtransfer.a.path", "x"},
 		{"lfs.standalonetransferagent", "a"},
 		{"lfs.extension.a.clean", "x"},
@@ -188,7 +220,6 @@ func TestCloneSettingAllowed(t *testing.T) {
 		{"includeif.gitdir:**/.git/worktrees/**.path", "x"},
 		{"includeif.onbranch:worktree-*.path", "x"},
 		{"remote.origin.uploadpack", "x"},
-		{"remote.origin.proxy", "x"},
 		{"remote.origin.vcs", "x"},
 		{"remote.origin.lfsurl", "x"},
 		{"remote..url", "x"},
@@ -197,41 +228,36 @@ func TestCloneSettingAllowed(t *testing.T) {
 		{"filter.lfs.smudge", "git-lfs smudge -- %f; touch /nonexistent/owned"},
 		{"filter.lfs.required", "false"},
 		{"filter.evil.smudge", "x"},
-		{"url.ext::sh.insteadof", "https://"},
-		{"protocol.ext.allow", "always"},
 		{"submodule.lib.update", "!x"},
 		{"merge.a.driver", "x"},
+		{"diff.a.textconv", "x"},
+		{"diff.external", "x"},
 		{"uploadpack.packobjectshook", "x"},
 		{"gpg.program", "x"},
 		{"gpg.ssh.program", "x"},
 		{"nodot", ""},
-		{"mergetool.a.cmd", "x"},
 		{"user.useconfigonly", on},
 	} {
-		assert.False(t, cloneSettingAllowed(s[0], s[1]), "%s=%s", s[0], s[1])
+		assert.False(t, cloneSettingAllowed(s[0], s[1]), "refused: %s=%s", s[0], s[1])
 	}
 }
 
 // refusedSettings are settings of a clone's own config that refuse a Setup, each with the
 // key git lists it by: one of each kind a security review found running a program or
-// writing outside the clone, and the ones the guards set aside before.
+// writing outside the clone.
 func refusedSettings(root string) [][3]string {
 	return [][3]string{
 		{"hook.evil.command", "touch " + filepath.Join(root, "hook"), "hook.evil.command"},
 		{"hook.evil.event", "post-checkout", "hook.evil.event"},
 		{"core.alternateRefsCommand", "touch " + filepath.Join(root, "alternates"), "core.alternaterefscommand"},
-		{"gc.auto", "1", "gc.auto"},
-		{"maintenance.strategy", "gc", "maintenance.strategy"},
 		{"gc.recentObjectsHook", "touch " + filepath.Join(root, "gc"), "gc.recentobjectshook"},
 		{"lfs.customtransfer.evil.path", filepath.Join(root, "agent"), "lfs.customtransfer.evil.path"},
 		{"lfs.standalonetransferagent", "evil", "lfs.standalonetransferagent"},
 		{"core.worktree", filepath.Join(root, "elsewhere"), "core.worktree"},
 		{"includeIf.gitdir:**/.git/worktrees/**.path", filepath.Join(root, "evil.gitconfig"), "includeif.gitdir:**/.git/worktrees/**.path"},
 		{"includeIf.onbranch:worktree-*.path", filepath.Join(root, "evil.gitconfig"), "includeif.onbranch:worktree-*.path"},
-		{"core.sshCommand", "evil-ssh", "core.sshcommand"},
-		{"credential.helper", "!evil-helper", "credential.helper"},
-		{"http.proxy", "http://203.0.113.9:8080", "http.proxy"},
 		{"filter.evil.smudge", "evil-smudge", "filter.evil.smudge"},
+		{"branch.main.mergeOptions", "-s evil", "branch.main.mergeoptions"},
 	}
 }
 
@@ -275,16 +301,16 @@ func TestSetupReadsTheWorktreeConfigAndIncludesToo(t *testing.T) {
 	g := New(Config{Env: func() []string { return env }})
 	included := filepath.Join(t.TempDir(), "included.gitconfig")
 
-	require.NoError(t, os.WriteFile(included, []byte("[core]\n\tsshCommand = evil-ssh\n"), 0o600))
+	require.NoError(t, os.WriteFile(included, []byte("[hook \"evil\"]\n\tcommand = evil-hook\n"), 0o600))
 	testutil.RunGit(t, dir, "config", "extensions.worktreeConfig", on)
-	testutil.RunGit(t, dir, "config", "--worktree", "core.askPass", "evil-askpass")
+	testutil.RunGit(t, dir, "config", "--worktree", "gc.recentObjectsHook", "evil-gc")
 	testutil.RunGit(t, dir, "config", "include.path", included)
 
 	_, err := g.CheckoutSetup(t.Context(), dir)
 
 	refused, ok := asCloneConfig(err)
 	require.True(t, ok, "%v", err)
-	assert.Equal(t, []string{"include.path", "core.sshcommand", "core.askpass"}, refused.Keys,
+	assert.Equal(t, []string{"include.path", "hook.evil.command", "gc.recentobjectshook"}, refused.Keys,
 		"an include, what it includes, and the worktree's own config")
 	assert.Equal(t, []string{"file:.git/config", "file:" + included, "file:.git/config.worktree"}, refused.Origins)
 }
@@ -425,11 +451,124 @@ func TestCheckoutSetupReachesNoRemote(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.True(t, filepath.IsAbs(setup.Git))
-	assert.Equal(t, unflagged(append(Hardening(), fetchHardening()...)), setup.Settings)
+	assert.Equal(t, append(unflagged(append(Hardening(), fetchHardening()...)), "http.savecookies=false"), setup.Settings)
 	assert.Contains(t, setup.Env, "GIT_ALLOW_PROTOCOL=", "no transport at all")
 	assert.Contains(t, setup.Env, "GIT_NO_LAZY_FETCH=1")
 	assert.Contains(t, setup.Env, "GIT_WORK_TREE="+realDir(t, dir))
 	assert.False(t, setup.Partial)
+
+	remote, err := New(Config{Env: func() []string { return env }}).RemoteSetup(t.Context(), dir)
+	require.NoError(t, err)
+	assert.Equal(t, setup, remote.Checkout(), "a remote setup's checkout is the checkout's setup")
+}
+
+// transportClone is a clone whose own config holds the settings that change how a remote
+// is reached, which every Setup sets aside or weighs: an ssh command, a password program,
+// a credential helper, an insteadOf that rewrites origin's URL to the file:// origin it
+// was cloned from, a cookie file, and http settings that send nothing elsewhere.
+func transportClone(t *testing.T) (dir string, env []string) {
+	t.Helper()
+
+	dir, _, env = setupClone(t)
+	origin := strings.TrimSpace(testutil.RunGit(t, dir, "remote", "get-url", "origin"))
+
+	for _, kv := range [][2]string{
+		{"core.sshCommand", "evil-ssh"},
+		{"core.askPass", "evil-askpass"},
+		{"credential.helper", "!evil-helper"},
+		{"url." + origin + ".insteadOf", "https://example.invalid/acme-org/example-repo.git"},
+		{"remote.origin.url", "https://example.invalid/acme-org/example-repo.git"},
+		{"http.cookieFile", filepath.Join(t.TempDir(), "cookies")},
+		{"http.postBuffer", "524288000"},
+		{"protocol.version", "2"},
+	} {
+		testutil.RunGit(t, dir, "config", kv[0], kv[1])
+	}
+
+	return dir, env
+}
+
+func TestSetupSetsTheClonesTransportSettingsAside(t *testing.T) {
+	t.Parallel()
+
+	dir, env := transportClone(t)
+	g := New(Config{Env: func() []string { return env }})
+
+	for name, setup := range map[string]func() (Setup, error){
+		"fetch":    func() (Setup, error) { return g.RemoteSetup(t.Context(), dir) },
+		"checkout": func() (Setup, error) { return g.CheckoutSetup(t.Context(), dir) },
+	} {
+		got, err := setup()
+		require.NoError(t, err, name)
+
+		assert.Contains(t, got.Env, "GIT_SSH_COMMAND="+batchSSH, "%s: never the clone's ssh command", name)
+
+		for _, want := range []string{"core.askpass=", "credential.helper=", "http.cookiefile="} {
+			assert.Contains(t, got.Settings, want, "%s: the clone's own set aside", name)
+		}
+
+		assert.NotContains(t, strings.Join(got.Settings, " "), "evil-", name)
+		assert.Equal(t, []string{SetAsideSSHCommand, SetAsideAskPass, SetAsideHelpers}, got.SetAside, name)
+	}
+
+	assert.Equal(t, "This clone's own core.sshCommand, core.askPass, and credential.helper aren't used to reach "+
+		"origin, which may be why: set them for this folder in your global git config, with an includeIf.",
+		SetAsideNote(remoteName, []string{SetAsideSSHCommand, SetAsideAskPass, SetAsideHelpers}))
+	assert.Empty(t, SetAsideNote(remoteName, nil))
+}
+
+func TestSetupRefusesRoutesWhereGitLFSMayRun(t *testing.T) {
+	t.Parallel()
+
+	dir, global, env := setupClone(t)
+	g := New(Config{Env: func() []string { return env }})
+
+	testutil.RunGit(t, dir, "config", "http.proxy", "http://203.0.113.9:8080")
+
+	_, err := g.CheckoutSetup(t.Context(), dir)
+	require.ErrorIs(t, err, ErrCloneRoutes, "the user's Git LFS would reach its server through the clone's proxy")
+
+	require.NoError(t, os.WriteFile(global, nil, 0o600))
+
+	_, err = g.CheckoutSetup(t.Context(), dir)
+	require.NoError(t, err, "without Git LFS, a checkout reaches no host")
+
+	_, err = g.RemoteSetup(t.Context(), dir)
+	require.NoError(t, err, "nor a fetch from a file:// origin")
+
+	testutil.RunGit(t, dir, "remote", "set-url", "origin", "https://example.invalid/acme-org/example-repo.git")
+
+	_, err = g.RemoteSetup(t.Context(), dir)
+	require.ErrorIs(t, err, ErrCloneRoutes, "but an https origin is refused")
+}
+
+func TestSetupTakesTheFolderByAnyCase(t *testing.T) {
+	t.Parallel()
+
+	dir, _, env := setupClone(t)
+	other := filepath.Join(filepath.Dir(dir), strings.ToUpper(filepath.Base(dir)))
+
+	if _, err := os.Stat(other); err != nil {
+		t.Skip("the file system tells folders apart by case")
+	}
+
+	setup, err := New(Config{Env: func() []string { return env }}).RemoteSetup(t.Context(), other)
+	require.NoError(t, err, "the clone root's case may differ from the disk's")
+	assert.Contains(t, setup.Env, "GIT_WORK_TREE="+realDir(t, dir), "as git names it")
+}
+
+func TestTheSetupsGitIsTheOneGitFinderFinds(t *testing.T) {
+	t.Parallel()
+
+	dir, _, env := setupClone(t)
+	g := New(Config{Env: func() []string { return env }})
+
+	setup, err := g.RemoteSetup(t.Context(), dir)
+	require.NoError(t, err)
+
+	found, err := g.GitFinder().Find("git")
+	require.NoError(t, err)
+	assert.Equal(t, found, setup.Git)
 }
 
 // blobless returns a blobless partial clone of a local bare origin over file:// that lets

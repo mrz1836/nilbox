@@ -114,9 +114,6 @@ var (
 
 	// errGit marks an error that carries git's own message.
 	errGit = errors.New("git")
-
-	// errGuard marks a command gitread's guards refused before it ran.
-	errGuard = errors.New("refused before git ran")
 )
 
 // InUseError is returned for a worktree running processes work in. It matches ErrInUse.

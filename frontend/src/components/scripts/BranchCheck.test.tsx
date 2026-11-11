@@ -144,17 +144,40 @@ describe('BranchCheck', () => {
     expect(listening('scriptruns:updated')).toBe(0)
   })
 
-  it('says why a pull didn’t start', async () => {
+  it('says why a pull didn’t start, in the words it came back with', async () => {
     const user = userEvent.setup()
     const { onStarted } = renderCheck(behind)
     platform.pullBranch.mockRejectedValue(new Error('A script is using acme-org/sdk right now.'))
 
     await user.click(await screen.findByRole('button', { name: 'Pull master' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Couldn’t pull master: A script is using acme-org/sdk right now.',
-    )
+    expect((await screen.findByRole('alert')).textContent).toBe('A script is using acme-org/sdk right now.')
     expect(onStarted).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'Pull master' })).toBeEnabled()
+  })
+
+  it('names the branch once when the clone’s own config refuses the pull', async () => {
+    const user = userEvent.setup()
+    renderCheck(behind)
+    const refused =
+      "Couldn't pull master. This clone's own git config sets hook.evil.command, which isn't run with here: a " +
+      "clone's own config may hold only what git and Git LFS write there. Set it for this folder in your global git " +
+      'config, with an includeIf, instead.'
+    platform.pullBranch.mockRejectedValue(new Error(refused))
+
+    await user.click(await screen.findByRole('button', { name: 'Pull master' }))
+
+    expect((await screen.findByRole('alert')).textContent).toBe(refused)
+  })
+
+  it('says a pull would be refused here, the settings in its tooltip, and offers none', async () => {
+    const note =
+      "This clone's own git config sets hook.evil.command, which isn't run with here: a clone's own config may " +
+      'hold only what git and Git LFS write there. Set it for this folder in your global git config, with an ' +
+      'includeIf, instead.'
+    renderCheck({ state: 'refused', origin: '', checkedAt: '', note })
+
+    expect(await screen.findByText('Can’t pull here')).toHaveAttribute('title', note)
+    expect(screen.queryByRole('button', { name: /^Pull/ })).not.toBeInTheDocument()
   })
 })

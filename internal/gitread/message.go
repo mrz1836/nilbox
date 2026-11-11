@@ -38,6 +38,8 @@ func Message(err error) string {
 			"credentials: set that for this folder in your global git config, with an includeIf."
 	case errors.Is(err, ErrWorkTree):
 		return "Git doesn't take this folder as its clone's top folder, so nothing that changes it runs from here."
+	case errors.Is(err, ErrNoGit):
+		return "git can't be found on your login shell's PATH or in the usual tool folders."
 	}
 
 	msg := gitSaid(err)

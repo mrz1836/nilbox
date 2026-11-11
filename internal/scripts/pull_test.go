@@ -56,7 +56,8 @@ func TestPullFastForwardsTheBranch(t *testing.T) {
 	assert.Equal(t, scriptrun.KindPull, run.Kind)
 	assert.Equal(t, "Pull main", run.Title)
 	assert.Equal(t, scriptrun.RunsInApp, run.RunsIn)
-	assert.Equal(t, map[string]any{"branch": "main"}, run.Result.Intent)
+	assert.Equal(t, map[string]any{"branch": "main", "upstream": "main", "before": g.first}, run.Result.Intent,
+		"with what its Before read, for a pull followed again after a restart")
 	assert.Equal(t, third, g.head(g.dir))
 	assert.Equal(t, third, g.ref(g.dir, "refs/remotes/origin/main"), "origin's branch as the clone keeps it moved too")
 	assert.FileExists(t, filepath.Join(g.dir, "three.txt"))
@@ -375,6 +376,66 @@ func TestPullRunsAgainOnTheSameBranch(t *testing.T) {
 
 	_, err = g.runs.RunAgain(t.Context(), again.ID)
 	require.ErrorIs(t, err, ErrCantPull, "Run again checks the branch afresh")
+}
+
+// pullRecord is the record of a pull of main in the rig's clone from before a restart, as
+// its Before left it: main at before.
+func (g *gitRig) pullRecord(before string) scriptrun.Record {
+	return scriptrun.Record{
+		ID: 7, Kind: scriptrun.KindPull, Dir: g.dir, Title: "Pull main", Status: scriptrun.StatusOrphaned,
+		Result: scriptrun.Result{Intent: map[string]any{"branch": "main", "upstream": "main", "before": before}},
+	}
+}
+
+// TestAPullFollowedAgainAfterARestart verifies a pull left going at a quit, as the runner
+// picks it up after a restart: Stop is held back again, as git may still be writing, and
+// its end is worded from the branch, as a pull's own Finish words it.
+func TestAPullFollowedAgainAfterARestart(t *testing.T) {
+	t.Parallel()
+
+	g := newGitRig(t)
+	two := g.pushed("two.txt")
+	g.status(false)
+
+	v := NewVerifier(g.branch).Verify(g.pullRecord(g.first))
+	require.NotNil(t, v.Progress)
+	assert.Equal(t, scriptrun.Progress{StopRefused: stopPullRefused}, v.Progress(), "Stop is held from the start")
+	require.NotNil(t, v.Output)
+	require.NotNil(t, v.Finish)
+
+	unseen := scriptrun.Outcome{Status: scriptrun.StatusInterrupted, Summary: "Its exit status is unknown."}
+
+	got := v.Finish(t.Context(), scriptrun.Ending{}, unseen)
+	assert.Equal(t, scriptrun.StatusInterrupted, got.Status)
+	assert.Equal(t, "Its exit status is unknown. main is where it was, at "+g.first[:7]+".", got.Summary)
+
+	// git, left going at the quit, fast-forwards the branch while the app is away.
+	testutil.RunGit(t, g.dir, "fetch", "-q", "origin")
+	testutil.RunGit(t, g.dir, "merge", "-q", "--ff-only", "origin/main")
+
+	got = v.Finish(t.Context(), scriptrun.Ending{}, unseen)
+	assert.Equal(t, scriptrun.Outcome{
+		Status: scriptrun.StatusSucceeded, Summary: "Updated main from " + g.first[:7] + " to " + two[:7] + ", 1 new commit.",
+	}, got, "the branch moved on from where the pull found it")
+
+	ok := 0
+	got = v.Finish(t.Context(), scriptrun.Ending{ExitCode: &ok}, scriptrun.Outcome{Status: scriptrun.StatusSucceeded})
+	assert.Equal(t, "Updated main from "+g.first[:7]+" to "+two[:7]+", 1 new commit.", got.Summary,
+		"an end that was seen, as its Spec's Finish words it")
+
+	got = v.Finish(t.Context(), scriptrun.Ending{Quit: true}, scriptrun.Outcome{Status: scriptrun.StatusStopped, Summary: "x"})
+	assert.Equal(t, "x", got.Summary, "a pull stopped keeps the runner's words")
+
+	unread := NewVerifier(g.branch).Verify(scriptrun.Record{
+		ID: 8, Kind: scriptrun.KindPull, Dir: g.dir, Result: scriptrun.Result{Intent: "nonsense"},
+	})
+	require.NotNil(t, unread.Progress, "a pull whose intent can't be read still holds Stop")
+	assert.Equal(t, scriptrun.Progress{StopRefused: stopPullRefused}, unread.Progress())
+	assert.Nil(t, unread.Finish)
+
+	other := NewVerifier(g.branch).Verify(scriptrun.Record{Kind: scriptrun.KindScript})
+	assert.Nil(t, other.Progress)
+	assert.Nil(t, other.Finish)
 }
 
 func TestPullOutputLastError(t *testing.T) {

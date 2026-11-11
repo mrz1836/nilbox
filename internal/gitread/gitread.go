@@ -26,7 +26,7 @@
 //
 // The git commands that do change a clone, run elsewhere, get what they run with from a
 // Setup (RemoteSetup, RemoteSetupFor, CheckoutSetup), which first refuses a clone whose own
-// config holds a setting outside the allowlist in cloneconfig.go.
+// config holds a setting cloneconfig.go's classes refuse.
 package gitread
 
 import (
@@ -159,11 +159,12 @@ func (g *Git) exec(ctx context.Context, dir string, env, extra, args []string) (
 }
 
 // status runs a status with every filter driver the clone's own config defines turned
-// off. A status reads a file whose stat data changed, as in a copied clone, and reading
-// it runs the clean filter or the process its .gitattributes names: a clone's config could
-// make that any program, run with no click when the Release page reads its clones. The
-// user's own drivers, in their global or system config, such as Git LFS's, still run. A
-// driver whose name can't be passed safely refuses the status.
+// off, Git LFS's too. A status reads a file whose stat data changed, as in a copied clone,
+// and reading it runs the clean filter or the process its .gitattributes names: a clone's
+// config could make that any program, run with no click when the Release page reads its
+// clones, and even Git LFS's own writes into the clone. The user's own drivers, in their
+// global or system config, such as Git LFS's, still run. A driver whose name can't be
+// passed safely refuses the status.
 func (g *Git) status(ctx context.Context, dir string, args []string) (stdout, stderr []byte, err error) {
 	env := g.environment()
 
@@ -194,7 +195,7 @@ func (g *Git) filtersOff(ctx context.Context, dir string, env []string) (off []s
 		return nil, nil, err
 	}
 
-	off, err = cloneFiltersOff(settings)
+	off, err = cloneFiltersOff(settings, false)
 
 	return off, nil, err
 }
@@ -202,12 +203,13 @@ func (g *Git) filtersOff(ctx context.Context, dir string, env []string) (off []s
 // cloneFiltersOff returns, from the filter drivers' settings, the -c settings that turn
 // off each driver the clone's own config (any scope but trustedScopes) defines: its clean,
 // smudge, and process commands emptied, which git reads as no filter, and required off,
-// so the file is read or written as it is rather than failing. A driver whose every
-// command the clone sets is Git LFS's own (lfsCommand), as `git lfs install --local`
-// writes them, stays on: it runs the user's own git-lfs, from their PATH, not a program
-// the clone chose. A driver name passable refuses can't be named in a -c setting, and is
-// refused.
-func cloneFiltersOff(settings []scopedSetting) ([]string, error) {
+// so the file is read or written as it is rather than failing. A read turns off every
+// one, Git LFS's too, since git-lfs's clean writes into the clone's .git/lfs. With keepLFS,
+// as for a pull or a checkout, which write the clone's files, Git LFS's own driver,
+// filter.lfs with only the commands `git lfs install --local` writes (lfsSettings), stays
+// on: it runs the user's own git-lfs, from their PATH, not a program the clone chose. A
+// driver name passable refuses can't be named in a -c setting, and is refused.
+func cloneFiltersOff(settings []scopedSetting, keepLFS bool) ([]string, error) {
 	var order []string
 
 	lfs := map[string]bool{}
@@ -224,10 +226,10 @@ func cloneFiltersOff(settings []scopedSetting) ([]string, error) {
 
 		kept, seen := lfs[name]
 		if !seen {
-			order, kept = append(order, name), true
+			order, kept = append(order, name), keepLFS && name == "lfs"
 		}
 
-		lfs[name] = kept && lfsCommand(s.key) == s.value
+		lfs[name] = kept && slices.Contains(lfsSettings()[s.key], s.value)
 	}
 
 	return driversOff(slices.DeleteFunc(order, func(name string) bool { return lfs[name] })), nil
@@ -243,21 +245,6 @@ func driversOff(names []string) []string {
 	}
 
 	return off
-}
-
-// lfsCommand is Git LFS's own command for a filter driver's key, filter.<name>.clean,
-// .smudge, or .process, as `git lfs install` writes it, or "" for another key.
-func lfsCommand(key string) string {
-	switch {
-	case strings.HasSuffix(key, ".clean"):
-		return "git-lfs clean -- %f"
-	case strings.HasSuffix(key, ".smudge"):
-		return "git-lfs smudge -- %f"
-	case strings.HasSuffix(key, ".process"):
-		return "git-lfs filter-process"
-	default:
-		return ""
-	}
 }
 
 // filterName returns the driver's name in a filter.<name>.clean, .smudge, or .process

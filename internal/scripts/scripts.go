@@ -33,9 +33,9 @@
 // click: git's fast-forward-only pull of that branch, run in the app under the clone's
 // lock, its Before reading the clone again and working out what git runs with, every one of
 // gitread's guards applied, before git runs, so that the pull's own fetch is the one time
-// origin is asked: a clone whose own config holds anything but what git and its tools write
-// there is refused. It is the one git command the app runs that changes a clone's checkout,
-// and pull.go the one file that holds it.
+// origin is asked: a clone whose own config holds a setting gitread refuses is refused, and
+// the status says so before offering a pull. It is the one git command the app runs that
+// changes a clone's checkout, and pull.go the one file that holds it.
 //
 // It owns the script_trust table, the commands the user trusted, and user_scripts, the
 // user's own scripts, in the order the user put them in.

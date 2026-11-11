@@ -377,7 +377,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	agentRunners := func([]string) execpath.Runner { return opts.Runner }
 	toolRunners := func([]string) execpath.Runner { return opts.Runner }
 	// gitWith is gitRunner with an environment of its own, for the worktree commands that
-	// run under gitread's guards: the same search, so the same git.
+	// run under gitread's guards, each by its Setup's absolute path.
 	gitWith := func([]string) execpath.Runner { return opts.Runner }
 
 	if runner == nil {
@@ -441,10 +441,12 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Env: func() []string { env, _ := shellEnv.Env(); return env }, Runner: toolRunners,
 	})
 
+	// The worktrees find git with gitread's own finder, so the git a guarded command runs
+	// (its Setup's) is the one every other worktree command runs: one clone, one git build.
 	sweeps := worktrees.NewService(worktrees.Config{
 		Settings: settingsView[worktrees.SweepSettings]{settings: prefs, part: sweepSettings},
 		Git:      gitRunner,
-		Finder:   search,
+		Finder:   shellGit.GitFinder(),
 		Guard:    shellGit,
 		GitWith:  gitWith,
 		Home:     opts.Home,
@@ -699,6 +701,8 @@ func newScripts(pool *sql.DB, opts Options, logger *slog.Logger, deps hookDeps, 
 	rerun := scripts.NewRerunner(svc)
 	deps.runs.RegisterRerunner(scriptrun.KindScript, rerun)
 	deps.runs.RegisterRerunner(scriptrun.KindPull, rerun)
+	// A pull left going at a quit comes back with Stop held and its own words.
+	deps.runs.RegisterVerifier(scriptrun.KindPull, scripts.NewVerifier(svc))
 
 	return svc
 }

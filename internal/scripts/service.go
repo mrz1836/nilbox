@@ -59,6 +59,7 @@ type BranchGit interface {
 	CommitsBetween(ctx context.Context, dir, from, to string) (int, error)
 	RemoteRefs(ctx context.Context, dir string) (gitread.RemoteRefs, error)
 	RemoteSetup(ctx context.Context, dir string) (gitread.Setup, error)
+	CloneConfig(ctx context.Context, dir string) error
 }
 
 // DefaultBranches reads the default branch the app last stored for a repository, "" when

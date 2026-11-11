@@ -2,6 +2,7 @@ package scripts
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -62,6 +63,12 @@ const (
 	// BranchOff is no status at all: the Scripts integration is off, so neither the clone
 	// nor origin is read, and nothing is pulled.
 	BranchOff BranchState = "off"
+
+	// BranchRefused is a clone a pull would be refused in before git ran, as its own git
+	// config holds a setting gitread's guards refuse (gitread's CloneConfig), read from the
+	// clone alone: origin isn't asked, and the note says which settings, and where to set
+	// them instead.
+	BranchRefused BranchState = "refused"
 )
 
 // BranchStatus is a clone's branch against origin's, for Repo scripts' header: whether a
@@ -137,6 +144,12 @@ func (s *Service) branchStatus(ctx context.Context, c clone, refresh bool) Branc
 
 	if stop != "" {
 		st.State, st.Note = stop, why
+
+		return st
+	}
+
+	if err := s.branchGit.CloneConfig(ctx, c.dir); refusedConfig(err) {
+		st.State, st.Note = BranchRefused, gitread.Message(err)
 
 		return st
 	}
@@ -290,6 +303,13 @@ func (s *Service) keepHeads(dir string, heads map[string]string) keptHeads {
 	return kept
 }
 
+// refusedConfig reports a clone gitread's guards refuse for its own config, which a pull's
+// Before would refuse too: a setting outside their allowlist, or one that reroutes a host
+// where Git LFS may run. A config that couldn't be read leaves the status to say so.
+func refusedConfig(err error) bool {
+	return errors.Is(err, gitread.ErrCloneConfig) || errors.Is(err, gitread.ErrCloneRoutes)
+}
+
 // compare works out where the branch at local stands against origin's commit oid. A
 // branch with no commit yet takes origin's, and a commit the clone hasn't fetched is
 // behind: only a pull can tell more, and a fast-forward-only one refuses safely.
@@ -332,7 +352,7 @@ func stateNote(st BranchStatus) string {
 		return st.Branch + " has commits that aren't on " + theirs + " yet, and nothing to pull."
 	case BranchDiverged:
 		return st.Branch + " and " + theirs + " both have commits the other doesn't, so it can't be fast-forwarded."
-	case BranchDetached, BranchNoUpstream, BranchInProgress, BranchUnknown, BranchOff:
+	case BranchDetached, BranchNoUpstream, BranchInProgress, BranchUnknown, BranchOff, BranchRefused:
 	}
 
 	return ""

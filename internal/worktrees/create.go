@@ -227,7 +227,9 @@ func (m *Maker) ensure(ctx context.Context, req EnsureRequest) (Ensured, error) 
 	}
 
 	if f.action == ActionAttach || f.action == ActionCreate {
-		if err = m.build(ctx, g, req, &f); err != nil {
+		// One setup serves every guarded command the build runs: its fetches, its
+		// ls-remote, and its checkout.
+		if err = m.build(ctx, g.session(req.Clone, req.remote()), req, &f); err != nil {
 			return Ensured{}, err
 		}
 	}
@@ -451,7 +453,7 @@ func (m *Maker) addArgs(ctx context.Context, g git, req EnsureRequest, f *found)
 		return worktreeAddArgs(f.path, f.branch), nil
 	case req.Kind == item.KindPR:
 		if stderr, err := g.fetchPR(ctx, req.Clone, req.remote(), req.Number); err != nil {
-			extra, cause := remoteWhy(err, stderr)
+			extra, cause := remoteWhy(req.remote(), err, stderr, g.setAside())
 
 			return nil, uierr.New(fmt.Sprintf("Couldn't fetch pull request #%d from %s.", req.Number, req.remote())+extra,
 				fmt.Errorf("fetch pull request #%d from %s: %w", req.Number, req.remote(), cause))
@@ -526,7 +528,7 @@ func (m *Maker) fetchDefault(ctx context.Context, g git, req EnsureRequest) (str
 		return ref, "", nil
 	}
 
-	extra, cause := remoteWhy(fetchErr, stderr)
+	extra, cause := remoteWhy(remote, fetchErr, stderr, g.setAside())
 
 	if ok, _ := refExists(ctx, g, req.Clone, ref); ok && ctx.Err() == nil {
 		return ref, fmt.Sprintf("Couldn't fetch %s/%s, so the worktree starts from the last fetched copy: %s",
@@ -538,12 +540,21 @@ func (m *Maker) fetchDefault(ctx context.Context, g git, req EnsureRequest) (str
 }
 
 // remoteWhy works out what a guarded command that failed adds to the sentence that says
-// so, "" or a space and more words, and its cause: gitread's words when its guards refused
-// it before git ran, naming the clone's own settings they refused, or the remote, as one
-// reached through a remote helper; or else git's own line.
-func remoteWhy(err error, stderr []byte) (extra string, cause error) {
-	if errors.Is(err, errGuard) {
-		return " " + gitread.Message(err), err
+// so, "" or a space and more words, and its cause: gitread's words, as a sentence, when
+// its guards refused it before git ran (a *guardError), naming the clone's own settings
+// they refused or the remote, or saying why its setup couldn't be worked out, such as a
+// config git can't read; or, when it reached the clone's remote called remote without
+// settings of the clone's own, which may be why, which they are and where to set them
+// instead (gitread.SetAsideNote), with a gitread.SetAsideError in the cause's chain; or
+// else git's own line.
+func remoteWhy(remote string, err error, stderr []byte, aside []string) (extra string, cause error) {
+	if refused, ok := errors.AsType[*guardError](err); ok {
+		return " " + textutil.Sentence(gitread.Message(refused.err)), err
+	}
+
+	if len(aside) > 0 {
+		return " " + gitread.SetAsideNote(remote, aside),
+			&gitread.SetAsideError{Err: gitError(err, stderr), Settings: aside, Remote: remote}
 	}
 
 	return "", gitError(err, stderr)
@@ -552,7 +563,7 @@ func remoteWhy(err error, stderr []byte) (extra string, cause error) {
 // remoteSaid is why a command that reached the clone's remote failed, in a sentence, from
 // remoteWhy's cause and extra.
 func remoteSaid(err, cause error, extra string) string {
-	if errors.Is(err, errGuard) {
+	if _, ok := errors.AsType[*guardError](err); ok {
 		return strings.TrimSpace(extra)
 	}
 
@@ -577,7 +588,7 @@ func (m *Maker) defaultBranch(ctx context.Context, g git, req EnsureRequest) (st
 
 	out, stderr, err := g.reach(ctx, req.Clone, remote, lsRemoteArgs(remote)...)
 	if err != nil {
-		extra, cause := remoteWhy(err, stderr)
+		extra, cause := remoteWhy(remote, err, stderr, g.setAside())
 
 		return "", uierr.New(fmt.Sprintf("Couldn't find the default branch of %s.", remote)+extra,
 			fmt.Errorf("%w: %s: %w", ErrNoDefaultBranch, remote, cause))
@@ -619,7 +630,7 @@ func (m *Maker) add(ctx context.Context, g git, clone, path string, args []strin
 	}
 
 	if !gitRefused(ctx, err) || !dirExists(path) {
-		extra, cause := remoteWhy(err, stderr)
+		extra, cause := remoteWhy("", err, stderr, nil)
 
 		return uierr.New(fmt.Sprintf("Couldn't make the worktree %s.", m.s.display(path))+extra,
 			fmt.Errorf("add the worktree %s: %w", m.s.display(path), cause))

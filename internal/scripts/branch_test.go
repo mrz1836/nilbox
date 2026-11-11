@@ -359,6 +359,32 @@ func TestBranchStatusReadsNothingWhileScriptsAreOff(t *testing.T) {
 	require.ErrorIs(t, err, ErrCantRun)
 }
 
+// TestBranchStatusOffersNoPullItWouldRefuse reads a clone behind origin whose own config
+// holds a hook, which a pull's Before refuses: the status says so, from the clone alone,
+// and offers no pull; once the setting is gone, it does.
+func TestBranchStatusOffersNoPullItWouldRefuse(t *testing.T) {
+	t.Parallel()
+
+	g := newGitRig(t)
+	g.pushed("two.txt")
+	testutil.RunGit(t, g.dir, "config", "hook.evil.command", "touch /nonexistent/owned")
+
+	st := g.status(true)
+	assert.Equal(t, BranchRefused, st.State)
+	assert.Equal(t, "main", st.Branch)
+	assert.Equal(t, "This clone's own git config sets hook.evil.command, which isn't run with here: a clone's own "+
+		"config may hold only what git and Git LFS write there. Set it for this folder in your global git config, "+
+		"with an includeIf, instead.", st.Note)
+	assert.Zero(t, g.asked.remote.Load(), "origin isn't asked")
+
+	_, err := g.branch.Pull(t.Context(), g.shown(g.dir))
+	require.ErrorIs(t, err, ErrCantPull, "the pull refuses it all the same")
+
+	testutil.RunGit(t, g.dir, "config", "core.sshCommand", "my-ssh")
+	testutil.RunGit(t, g.dir, "config", "--unset", "hook.evil.command")
+	assert.Equal(t, BranchBehind, g.status(false).State, "a setting the pull sets aside offers it")
+}
+
 func TestBranchStatusOnlyInAClone(t *testing.T) {
 	t.Parallel()
 

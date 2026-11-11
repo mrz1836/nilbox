@@ -68,6 +68,10 @@ func TestMessage(t *testing.T) {
 				"config, with an includeIf, instead.",
 		},
 		{
+			err:  fmt.Errorf("%w: %w", ErrNoGit, errUnread),
+			want: "git can't be found on your login shell's PATH or in the usual tool folders.",
+		},
+		{
 			err:  fmt.Errorf("%w: /x is in \"/\"", ErrWorkTree),
 			want: "Git doesn't take this folder as its clone's top folder, so nothing that changes it runs from here.",
 		},

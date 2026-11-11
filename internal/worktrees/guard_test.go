@@ -2,11 +2,14 @@ package worktrees
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -62,13 +65,22 @@ func (r *guardRig) environ() []string {
 }
 
 // maker returns a Maker whose guarded commands run under gitread's guards, recording the
-// program every command runs.
+// program every command runs, wired as core wires it: git found with gitread's own finder.
 func (r *guardRig) maker() *Maker {
+	return r.makerWith(gitread.New(gitread.Config{Env: r.environ}))
+}
+
+// guard is the guard core would give the Maker: gitread over the rig's environment.
+func (r *guardRig) guard() *gitread.Git {
+	return gitread.New(gitread.Config{Env: r.environ})
+}
+
+// makerWith returns maker's Maker over guard.
+func (r *guardRig) makerWith(guard Guard) *Maker {
 	git := namedRunner{run: execpath.Exec{Env: r.environ()}, names: &r.names}
 
 	return NewMaker(NewService(Config{
-		Settings: fakeSettings{root: cloneRoot}, Git: git, Finder: execpath.Search{},
-		Guard: gitread.New(gitread.Config{Env: r.environ}),
+		Settings: fakeSettings{root: cloneRoot}, Git: git, Finder: r.guard().GitFinder(), Guard: guard,
 		GitWith: func(env []string) execpath.Runner {
 			return namedRunner{run: execpath.Exec{Env: env}, names: &r.names}
 		},
@@ -138,23 +150,19 @@ type planting struct {
 }
 
 // refusedPlantings are every way a planted clone config could make a fetch or a checkout
-// run its own program, each of which refuses worktree creation before git runs: the ssh
-// command, the password program, a credential helper, a filter driver, git's
-// upload-pack, an alternate refs command, a hook named in the config (which
-// core.hooksPath doesn't reach), the automatic maintenance a fetch starts, and Git LFS's
-// own transfer agent.
+// run its own program that no setup sets aside, each of which refuses worktree creation
+// before git runs: a filter driver, git's upload-pack, an alternate refs command, a hook
+// named in the config (which core.hooksPath doesn't reach), gc's recent objects hook,
+// which the automatic maintenance a fetch starts runs, and Git LFS's own transfer agent.
 func refusedPlantings() []planting {
 	return []planting{
-		{name: "evil-ssh", settings: []setting{{"core.sshCommand", "%s"}}},
-		{name: "evil-askpass", settings: []setting{{"core.askPass", "%s"}}},
-		{name: "evil-credential", settings: []setting{{"credential.helper", "!%s"}}},
 		{name: "evil-smudge", settings: []setting{
 			{"filter.evil.smudge", "%s"}, {"filter.evil.clean", "%s"}, {"filter.evil.required", "true"},
 		}},
 		{name: "evil-upload-pack", settings: []setting{{"remote.origin.uploadpack", "%s"}}},
 		{name: "evil-alternate-refs", settings: []setting{{"core.alternateRefsCommand", "%s"}}},
 		{name: "evil-hook", settings: []setting{{"hook.evil.command", "%s"}, {"hook.evil.event", "post-checkout"}}},
-		{name: "evil-gc", settings: []setting{{"gc.auto", "1"}, {"gc.recentObjectsHook", "%s"}}},
+		{name: "evil-gc", settings: []setting{{"gc.recentObjectsHook", "%s"}, {"gc.auto", "1"}}},
 		{name: "evil-lfs-agent", settings: []setting{
 			{"lfs.standalonetransferagent", "evil"}, {"lfs.customtransfer.evil.path", "%s"},
 		}},
@@ -263,14 +271,195 @@ func TestEnsureNamesTheClonesOwnSettingsItRefuses(t *testing.T) {
 	t.Parallel()
 
 	r := newGuardRig(t)
-	testutil.RunGit(t, r.f.clone, "config", "core.sshCommand", "ssh -i ~/.ssh/example-key")
+	testutil.RunGit(t, r.f.clone, "config", "hook.evil.command", "touch /nonexistent/owned")
 
 	_, err := r.maker().Ensure(t.Context(), r.f.request(item.KindPR, 7))
 	require.ErrorIs(t, err, gitread.ErrCloneConfig)
-	assert.Equal(t, "Couldn't fetch pull request #7 from origin. This clone's own git config sets core.sshcommand, "+
+	assert.Equal(t, "Couldn't fetch pull request #7 from origin. This clone's own git config sets hook.evil.command, "+
 		"which isn't run with here: a clone's own config may hold only what git and Git LFS write there. Set it for "+
 		"this folder in your global git config, with an includeIf, instead.", uierr.Message(err))
-	assert.NotErrorIs(t, err, gitread.ErrRemoteHelper)
+	require.NotErrorIs(t, err, gitread.ErrRemoteHelper)
+
+	var refused *guardError
+	require.ErrorAs(t, err, &refused, "the guard's refusal stays in the chain")
+}
+
+// TestEnsureWithTheClonesOwnTransportSettings makes worktrees in a clone whose own config
+// names an ssh command, a password program, and a credential helper, each a fake that
+// writes a marker file, rewrites origin's URL with insteadOf to the file:// remote it was
+// cloned from, and sets an http setting: a pull request's worktree and an issue's, whose
+// default branch is asked of the remote, are both made, and none of the clone's programs
+// runs.
+func TestEnsureWithTheClonesOwnTransportSettings(t *testing.T) {
+	t.Parallel()
+
+	r := newGuardRig(t)
+	markers := map[string]string{}
+
+	for _, p := range []planting{
+		{name: "evil-ssh", settings: []setting{{"core.sshCommand", "%s"}}},
+		{name: "evil-askpass", settings: []setting{{"core.askPass", "%s"}}},
+		{name: "evil-credential", settings: []setting{{"credential.helper", "!%s"}}},
+	} {
+		markers[p.name] = r.plant(r.f.clone, p)
+	}
+
+	const url = "https://example.invalid/acme-org/example-repo.git"
+
+	testutil.RunGit(t, r.f.clone, "config", "url."+r.f.bare+".insteadOf", url)
+	testutil.RunGit(t, r.f.clone, "remote", "set-url", "origin", url)
+	testutil.RunGit(t, r.f.clone, "config", "http.postBuffer", "524288000")
+	testutil.RunGit(t, r.f.clone, "remote", "set-head", "origin", "-d")
+
+	m := r.maker()
+
+	pr, err := m.Ensure(t.Context(), r.f.request(item.KindPR, 9))
+	require.NoError(t, err)
+	assert.FileExists(t, filepath.Join(pr.Path, "a.txt"))
+
+	issue, err := m.Ensure(t.Context(), r.f.request(item.KindIssue, 3))
+	require.NoError(t, err, "its default branch is asked of the remote, then fetched")
+	assert.Equal(t, r.f.main, issue.Head)
+
+	for name, marker := range markers {
+		assert.NoFileExists(t, marker, "worktree creation ran the clone's own %s", name)
+	}
+}
+
+// TestEnsureSaysWhichOfTheClonesOwnSettingsItWentWithout fetches over ssh from a clone whose
+// own config names its ssh command, from an environment whose own GIT_SSH is a fake that
+// answers nothing: the user's ssh runs, never the clone's, and the failed fetch says the
+// clone's own was set aside, which may be why.
+func TestEnsureSaysWhichOfTheClonesOwnSettingsItWentWithout(t *testing.T) {
+	t.Parallel()
+
+	r := newGuardRig(t)
+	evil := r.plant(r.f.clone, planting{name: "evil-ssh", settings: []setting{{"core.sshCommand", "%s"}}})
+	mine, ran := r.marker("my-ssh")
+
+	r.mu.Lock()
+	r.env = append(r.env, "GIT_SSH="+mine)
+	r.mu.Unlock()
+
+	testutil.RunGit(t, r.f.clone, "remote", "set-url", "origin", "ssh://git@example.invalid/acme-org/example-repo.git")
+
+	_, err := r.maker().Ensure(t.Context(), r.f.request(item.KindPR, 7))
+	require.Error(t, err)
+
+	var aside *gitread.SetAsideError
+	require.ErrorAs(t, err, &aside)
+	assert.Equal(t, []string{gitread.SetAsideSSHCommand}, aside.Settings)
+	assert.Equal(t, "Couldn't fetch pull request #7 from origin. This clone's own core.sshCommand isn't used to reach "+
+		"origin, which may be why: set it for this folder in your global git config, with an includeIf.",
+		uierr.Message(err))
+	assert.FileExists(t, ran, "the user's own ssh ran")
+	assert.NoFileExists(t, evil, "the clone's never did")
+}
+
+// failingGuard is a Guard whose setups fail with err, counting them.
+type failingGuard struct {
+	err   error
+	calls *atomic.Int32
+}
+
+func (f failingGuard) RemoteSetupFor(context.Context, string, string) (gitread.Setup, error) {
+	f.calls.Add(1)
+
+	return gitread.Setup{}, f.err
+}
+
+func (f failingGuard) CheckoutSetup(context.Context, string) (gitread.Setup, error) {
+	f.calls.Add(1)
+
+	return gitread.Setup{}, f.err
+}
+
+// errExit stands for git's exit status.
+var errExit = errors.New("exit status 128")
+
+func TestEnsureWordsASetupThatCouldntBeWorkedOut(t *testing.T) {
+	t.Parallel()
+
+	r := newGuardRig(t)
+
+	for setupErr, want := range map[error]string{
+		fmt.Errorf("git config: bad config line 3 in file .git/config: %w", errExit): "Bad config line 3 in file .git/config.",
+		fmt.Errorf("%w: %w", gitread.ErrNoGit, errExit): "Git can't be found on your login shell's PATH or in the usual tool " +
+			"folders.",
+		fmt.Errorf("git ls-remote: No such remote 'upstream': %w", errExit): "No such remote 'upstream'.",
+	} {
+		guard := failingGuard{err: setupErr, calls: &atomic.Int32{}}
+
+		_, err := r.makerWith(guard).Ensure(t.Context(), r.f.request(item.KindPR, 7))
+		require.Error(t, err)
+		assert.Equal(t, "Couldn't fetch pull request #7 from origin. "+want, uierr.Message(err))
+		require.ErrorIs(t, err, setupErr, "gitread's error stays in the chain")
+		assert.Equal(t, int32(1), guard.calls.Load())
+	}
+}
+
+// countingGuard is a Guard that counts the setups it works out.
+type countingGuard struct {
+	Guard
+
+	remote, checkout atomic.Int32
+}
+
+func (c *countingGuard) RemoteSetupFor(ctx context.Context, dir, remote string) (gitread.Setup, error) {
+	c.remote.Add(1)
+
+	return c.Guard.RemoteSetupFor(ctx, dir, remote)
+}
+
+func (c *countingGuard) CheckoutSetup(ctx context.Context, dir string) (gitread.Setup, error) {
+	c.checkout.Add(1)
+
+	return c.Guard.CheckoutSetup(ctx, dir)
+}
+
+// TestEnsureWorksOutOneSetup makes an issue's worktree, which asks the remote for its
+// default branch, fetches it, and checks it out, and a pull request's, which fetches and
+// checks out: each works out the clone's setup once, for all three commands.
+func TestEnsureWorksOutOneSetup(t *testing.T) {
+	t.Parallel()
+
+	r := newGuardRig(t)
+	testutil.RunGit(t, r.f.clone, "remote", "set-head", "origin", "-d")
+
+	guard := &countingGuard{Guard: r.guard()}
+	m := r.makerWith(guard)
+
+	_, err := m.Ensure(t.Context(), r.f.request(item.KindIssue, 3))
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), guard.remote.Load(), "one setup for the ls-remote, the fetch, and the checkout")
+	assert.Zero(t, guard.checkout.Load())
+
+	_, err = m.Ensure(t.Context(), r.f.request(item.KindPR, 9))
+	require.NoError(t, err)
+	assert.Equal(t, int32(2), guard.remote.Load(), "one more for the next launch")
+	assert.Zero(t, guard.checkout.Load())
+}
+
+func TestGuardedCommandsRunTheSetupsGit(t *testing.T) {
+	t.Parallel()
+
+	var names recorded
+
+	g := git{bin: "/srv/tools/other-git", with: func([]string) execpath.Runner {
+		return namedRunner{run: okRunner{}, names: &names}
+	}}
+
+	_, _, err := g.guarded(t.Context(), "/srv/projects/example-repo", gitread.Setup{Git: "/srv/tools/git"},
+		worktreeAddArgs("/srv/worktrees/pr-7", "worktree-pr-7"))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/srv/tools/git"}, names.all(), "the git the setup was worked out for")
+}
+
+// okRunner runs nothing and succeeds.
+type okRunner struct{}
+
+func (okRunner) Run(context.Context, string, ...string) (stdout, stderr []byte, err error) {
+	return nil, nil, nil
 }
 
 // plantWorktreeFilter adds to the clone at dir's own config an includeIf of every worktree
@@ -358,7 +547,7 @@ func TestEnsureRunsNoHookOrMonitorOfTheClonesOwn(t *testing.T) {
 		assert.NoFileExists(t, marker, "worktree creation ran the clone's own %s", name)
 	}
 
-	bin, err := execpath.Search{}.Find("git")
+	bin, err := r.guard().GitFinder().Find("git")
 	require.NoError(t, err)
 
 	names := r.names.all()

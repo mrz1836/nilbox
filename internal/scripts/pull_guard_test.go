@@ -27,16 +27,13 @@ type planted struct {
 const alternateRefs = "evil-alternate-refs"
 
 // refusedPlantings are every way a planted clone config could make a pull run its own
-// program, each of which refuses the pull before git runs: the ssh command, the password
-// program, a credential helper, a filter driver (the checkout runs its smudge), signature
-// checks, git's upload-pack, an alternate refs command, a hook named in the config (which
-// core.hooksPath doesn't reach), the automatic maintenance a fetch and a merge start
-// (gc's recent objects hook), and Git LFS's own transfer agent.
+// program that no setup sets aside, each of which refuses the pull before git runs: a
+// filter driver (the checkout runs its smudge), signature checks, git's upload-pack, an
+// alternate refs command, a hook named in the config (which core.hooksPath doesn't
+// reach), gc's recent objects hook, which the automatic maintenance a fetch and a merge
+// start runs, and Git LFS's own transfer agent.
 func refusedPlantings() []planted {
 	return []planted{
-		{name: "evil-ssh", settings: [][2]string{{"core.sshCommand", "%s"}}},
-		{name: "evil-askpass", settings: [][2]string{{"core.askPass", "%s"}}},
-		{name: "evil-credential", settings: [][2]string{{"credential.helper", "!%s"}}},
 		{name: "evil-smudge", settings: [][2]string{
 			{"filter.evil.smudge", "%s"}, {"filter.evil.clean", "%s"}, {"filter.evil.required", "true"},
 		}},
@@ -47,14 +44,14 @@ func refusedPlantings() []planted {
 		{name: alternateRefs, settings: [][2]string{{"core.alternateRefsCommand", "%s"}}},
 		{name: "evil-hook", settings: [][2]string{{"hook.evil.command", "%s"}, {"hook.evil.event", "post-merge"}}},
 		{name: "evil-gc", settings: [][2]string{
-			{"maintenance.strategy", "gc"},
-			{"gc.auto", "1"},
+			{"gc.recentObjectsHook", "%s"},
+			{"gc.cruftPacks", "true"},
 			{"gc.autoPackLimit", "1"},
 			{"gc.autoDetach", "false"},
-			{"maintenance.autoDetach", "false"},
 			{"fetch.unpackLimit", "1"},
-			{"gc.cruftPacks", "true"},
-			{"gc.recentObjectsHook", "%s"},
+			{"maintenance.strategy", "gc"},
+			{"maintenance.autoDetach", "false"},
+			{"gc.auto", "1"},
 		}},
 		{name: "evil-lfs-agent", settings: [][2]string{
 			{"lfs.standalonetransferagent", "evil"}, {"lfs.customtransfer.evil.path", "%s"},
@@ -184,6 +181,69 @@ func TestPullNamesEveryRefusedSetting(t *testing.T) {
 	assert.Equal(t, "Couldn't pull main. This clone's own git config sets hook.evil.command and hook.evil.event, "+
 		"which aren't run with here: a clone's own config may hold only what git and Git LFS write there. Set them "+
 		"for this folder in your global git config, with an includeIf, instead.", uierr.Message(err))
+}
+
+// TestPullWithTheClonesOwnTransportSettings pulls into a clone whose own config names an
+// ssh command, a password program, and a credential helper, each a fake that writes a
+// marker file, and rewrites origin's URL with insteadOf to the file:// origin it was
+// cloned from: the pull runs, and none of the clone's programs does.
+func TestPullWithTheClonesOwnTransportSettings(t *testing.T) {
+	t.Parallel()
+
+	g := newGitRig(t)
+	two := g.pushed("two.txt")
+	markers := map[string]string{}
+
+	for _, p := range []planted{
+		{name: "evil-ssh", settings: [][2]string{{"core.sshCommand", "%s"}}},
+		{name: "evil-askpass", settings: [][2]string{{"core.askPass", "%s"}}},
+		{name: "evil-credential", settings: [][2]string{{"credential.helper", "!%s"}}},
+	} {
+		markers[p.name] = g.plant(g.dir, p)
+	}
+
+	const url = "https://example.invalid/acme-org/example-repo.git"
+
+	testutil.RunGit(t, g.dir, "config", "url."+g.url()+".insteadOf", url)
+	testutil.RunGit(t, g.dir, "remote", "set-url", "origin", url)
+	testutil.RunGit(t, g.dir, "config", "http.postBuffer", "524288000")
+	require.Equal(t, BranchBehind, g.status(false).State)
+
+	run := g.pull()
+	require.Equal(t, scriptrun.StatusSucceeded, run.Status, run.Summary)
+	assert.Equal(t, two, g.head(g.dir))
+
+	for name, marker := range markers {
+		assert.NoFileExists(t, marker, "the pull ran the clone's own %s", name)
+	}
+}
+
+// TestPullSaysWhichOfTheClonesOwnSettingsItWentWithout pulls over ssh in a clone whose own
+// config names its ssh command, from an environment whose own GIT_SSH is a fake that
+// answers nothing: the user's ssh runs, never the clone's, and the failed pull says the
+// clone's own was set aside, which may be why.
+func TestPullSaysWhichOfTheClonesOwnSettingsItWentWithout(t *testing.T) {
+	t.Parallel()
+
+	g := newGitRig(t)
+	g.status(false)
+
+	evil := g.plant(g.dir, planted{name: "evil-ssh", settings: [][2]string{{"core.sshCommand", "%s"}}})
+	mine, ran := g.marker("my-ssh")
+
+	g.envMu.Lock()
+	g.genv = append(g.genv, "GIT_SSH="+mine)
+	g.envMu.Unlock()
+
+	testutil.RunGit(t, g.dir, "remote", "set-url", "origin", "ssh://git@example.invalid/acme-org/example-repo.git")
+
+	run := g.pull()
+	assert.Equal(t, scriptrun.StatusFailed, run.Status)
+	assert.Equal(t, "Couldn't pull main: Could not read from remote repository. This clone's own core.sshCommand "+
+		"isn't used to reach origin, which may be why: set it for this folder in your global git config, with an "+
+		"includeIf.", run.Summary)
+	assert.FileExists(t, ran, "the user's own ssh ran")
+	assert.NoFileExists(t, evil, "the clone's never did")
 }
 
 // TestPullNeverWritesOutsideTheClone plants a core.worktree that sends git's checkout to a

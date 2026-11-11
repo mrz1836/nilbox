@@ -27,20 +27,24 @@ const stopPullRefused = "A pull can't be stopped: stopping it partway could leav
 	"updated. It ends on its own, within ten minutes."
 
 // PullIntent is what a pull sets out to do, written into its run's result as it starts, so
-// Run again pulls the same branch: the one the clone was on.
+// Run again pulls the same branch, the one the clone was on, and a pull followed again
+// after a restart (Verifier) is worded as it would have been: the branch, and what the
+// pull's Before read under the clone's lock, the branch on origin it follows and the
+// branch's commit then.
 type PullIntent struct {
-	Branch string `json:"branch"`
+	Branch   string `json:"branch"`
+	Upstream string `json:"upstream,omitempty"`
+	Before   string `json:"before,omitempty"`
 }
 
-// pullRun is one pull as it goes: the clone and the branch it pulls, and what its Before
-// read and worked out under the clone's lock: the branch on origin it follows, its commit
-// before the pull, and git's environment, its settings in it.
+// pullRun is one pull as it goes: the clone and what it sets out to do, which its Before
+// completes under the clone's lock, the clone's own settings git goes without, and git's
+// environment, its settings in it.
 type pullRun struct {
-	c        clone
-	branch   string
-	upstream string
-	before   string
-	env      []string
+	c      clone
+	intent PullIntent
+	aside  []string
+	env    []string
 }
 
 // Pull pulls the branch the clone at dir, as the picker lists it, with ~, was on when its
@@ -106,12 +110,13 @@ func (s *Service) pullsOff(ctx context.Context) error {
 // clone again and working out git's guards under the clone's lock, Stop held back for its
 // whole run, and its Finish reading what the pull did.
 func (s *Service) pullSpec(c clone, branch string) scriptrun.Spec {
-	run := &pullRun{c: c, branch: branch}
+	run := &pullRun{c: c, intent: PullIntent{Branch: branch}}
 	out := &pullOutput{}
 
+	// The intent is recorded once Before has run, so it holds what Before read too.
 	return scriptrun.Spec{
 		Kind: scriptrun.KindPull, Title: "Pull " + branch, Source: "git", Repo: c.name, Dir: c.dir,
-		RunsIn: scriptrun.RunsInApp, Intent: PullIntent{Branch: branch}, Output: out,
+		RunsIn: scriptrun.RunsInApp, Intent: &run.intent, Output: out,
 		Progress:  pullProgress,
 		Before:    func(ctx context.Context) ([]string, error) { return s.beforePull(ctx, run) },
 		BeforeEnv: func() []string { return run.env },
@@ -135,18 +140,18 @@ func (s *Service) beforePull(ctx context.Context, run *pullRun) ([]string, error
 	switch {
 	case stop == BranchUnknown && f.branch == "":
 		return nil, cantPull(why, nil)
-	case f.branch != run.branch:
-		return nil, cantPull(movedText(run.branch, f.branch), nil)
+	case f.branch != run.intent.Branch:
+		return nil, cantPull(movedText(run.intent.Branch, f.branch), nil)
 	case stop != "":
 		return nil, cantPull(why, nil)
 	}
 
 	setup, err := s.branchGit.RemoteSetup(ctx, run.c.dir)
 	if err != nil {
-		return nil, cantPull("Couldn't pull "+run.branch+". "+textutil.Sentence(gitread.Message(err)), err)
+		return nil, cantPull("Couldn't pull "+run.intent.Branch+". "+textutil.Sentence(gitread.Message(err)), err)
 	}
 
-	run.upstream, run.before = f.upstream, f.local
+	run.intent.Upstream, run.intent.Before, run.aside = f.upstream, f.local, setup.SetAside
 	// LC_ALL=C has git speak the window's language, which the run's summary quotes.
 	run.env = append(slices.Clone(setup.Env), "LC_ALL=C")
 
@@ -165,24 +170,29 @@ func movedText(asked, now string) string {
 
 // finishPull works out a pull's outcome once git ended: a clone moved to another branch
 // while git ran, which git may have pulled into instead; what the pull did to the branch,
-// read from the branch itself; or git's last error line when it failed. A pull stopped, cut
-// off, or whose end wasn't seen keeps the engine's words. Origin's branches as kept are
-// brought up to date with what git fetched, or forgotten when that can't be told.
+// read from the branch itself; or git's last error line when it failed, with the clone's
+// own settings it went without, which may be why. A pull stopped or cut off keeps the
+// engine's words, and one whose end wasn't seen, as one followed again after a restart,
+// is settled from the branch alone (settleUnseen). Origin's branches as kept are brought
+// up to date with what git fetched, or forgotten when that can't be told.
 func (s *Service) finishPull(ctx context.Context, run *pullRun, out *pullOutput, end scriptrun.Ending,
 	engine scriptrun.Outcome,
 ) scriptrun.Outcome {
 	said := out.lastError()
 
-	if !ranToItsEnd(end) {
+	switch {
+	case end.Stopped || end.TimedOut || end.Quit:
 		s.forgetHeads(run.c.dir)
 
 		return engine
+	case !ranToItsEnd(end):
+		return s.settleUnseen(ctx, run, engine)
 	}
 
-	if now, err := s.branchGit.CurrentBranch(ctx, run.c.dir); err == nil && now != run.branch {
+	if now, err := s.branchGit.CurrentBranch(ctx, run.c.dir); err == nil && now != run.intent.Branch {
 		s.forgetHeads(run.c.dir)
 
-		return scriptrun.Outcome{Status: scriptrun.StatusFailed, Summary: movedDuringText(run.branch, now)}
+		return scriptrun.Outcome{Status: scriptrun.StatusFailed, Summary: movedDuringText(run.intent.Branch, now)}
 	}
 
 	if *end.ExitCode != 0 {
@@ -194,9 +204,9 @@ func (s *Service) finishPull(ctx context.Context, run *pullRun, out *pullOutput,
 
 	s.fetched(ctx, run)
 
-	after, err := s.branchGit.LocalBranch(ctx, run.c.dir, run.branch)
+	after, err := s.branchGit.LocalBranch(ctx, run.c.dir, run.intent.Branch)
 	if err != nil || after == "" {
-		engine.Summary = "git finished, but " + run.branch + " couldn't be read afterwards."
+		engine.Summary = "git finished, but " + run.intent.Branch + " couldn't be read afterwards."
 
 		return engine
 	}
@@ -212,14 +222,42 @@ func ranToItsEnd(end scriptrun.Ending) bool {
 	return !end.Stopped && !end.TimedOut && !end.Quit && end.Interrupted == "" && end.ExitCode != nil
 }
 
-// failedText says why a pull failed, from git's last error line said; "" when git said
-// nothing.
+// settleUnseen works out what a pull whose end wasn't seen did, from the branch alone: a
+// clone now on another branch fails, as git may have pulled into it; a branch moved on
+// from its commit before the pull was pulled, which a fast-forward-only pull alone does
+// here; and one where it was keeps the engine's words, saying so. Origin's branches as
+// kept are forgotten, as what git fetched can't be told.
+func (s *Service) settleUnseen(ctx context.Context, run *pullRun, engine scriptrun.Outcome) scriptrun.Outcome {
+	s.forgetHeads(run.c.dir)
+
+	if now, err := s.branchGit.CurrentBranch(ctx, run.c.dir); err == nil && now != run.intent.Branch {
+		return scriptrun.Outcome{Status: scriptrun.StatusFailed, Summary: movedDuringText(run.intent.Branch, now)}
+	}
+
+	after, err := s.branchGit.LocalBranch(ctx, run.c.dir, run.intent.Branch)
+	if err != nil || after == "" || run.intent.Before == "" {
+		return engine
+	}
+
+	if after != run.intent.Before {
+		return scriptrun.Outcome{Status: scriptrun.StatusSucceeded, Summary: s.pulled(ctx, run, after)}
+	}
+
+	engine.Summary = textutil.EndSentence(engine.Summary) + " " + run.intent.Branch + " is where it was, at " +
+		short(after) + "."
+
+	return engine
+}
+
+// failedText says why a pull failed, from git's last error line said, with any of the
+// clone's own settings it went without, which may be why; "" when git said nothing.
 func failedText(run *pullRun, said string) string {
 	if said == "" {
 		return ""
 	}
 
-	return "Couldn't pull " + run.branch + ": " + textutil.EndSentence(said)
+	return strings.TrimSpace("Couldn't pull " + run.intent.Branch + ": " + textutil.EndSentence(said) + " " +
+		gitread.SetAsideNote(originRemote, run.aside))
 }
 
 // movedDuringText says that the clone was switched to another branch while a pull ran, so
@@ -238,7 +276,7 @@ func movedDuringText(asked, now string) string {
 // git's fetch just stored as origin's branch, which origin may have moved since Before
 // asked; when it can't be read, they are forgotten, so the next status asks origin.
 func (s *Service) fetched(ctx context.Context, run *pullRun) {
-	oid, err := s.branchGit.TrackingBranch(ctx, run.c.dir, run.upstream)
+	oid, err := s.branchGit.TrackingBranch(ctx, run.c.dir, run.intent.Upstream)
 	if err != nil || oid == "" {
 		s.forgetHeads(run.c.dir)
 
@@ -254,7 +292,7 @@ func (s *Service) fetched(ctx context.Context, run *pullRun) {
 	}
 
 	heads := maps.Clone(kept.heads)
-	heads[run.upstream] = oid
+	heads[run.intent.Upstream] = oid
 	s.heads[run.c.dir] = keptHeads{heads: heads, at: s.clock.Now()}
 }
 
@@ -262,15 +300,15 @@ func (s *Service) fetched(ctx context.Context, run *pullRun) {
 // was up to date, or which commits it went from and to, and how many it brought.
 func (s *Service) pulled(ctx context.Context, run *pullRun, after string) string {
 	switch {
-	case after == run.before:
-		return run.branch + " was already up to date."
-	case run.before == "":
-		return "Updated " + run.branch + " to " + short(after) + "."
+	case after == run.intent.Before:
+		return run.intent.Branch + " was already up to date."
+	case run.intent.Before == "":
+		return "Updated " + run.intent.Branch + " to " + short(after) + "."
 	}
 
-	text := "Updated " + run.branch + " from " + short(run.before) + " to " + short(after)
+	text := "Updated " + run.intent.Branch + " from " + short(run.intent.Before) + " to " + short(after)
 
-	if n, err := s.branchGit.CommitsBetween(ctx, run.c.dir, run.before, after); err == nil {
+	if n, err := s.branchGit.CommitsBetween(ctx, run.c.dir, run.intent.Before, after); err == nil {
 		text += fmt.Sprintf(", %d new commit%s", n, plural(n))
 	}
 
@@ -325,6 +363,46 @@ func (s *Service) forgetHeads(dir string) {
 // and a quit too, within scriptrun.QuitKillAfter, after which it is left going.
 func pullProgress() scriptrun.Progress {
 	return scriptrun.Progress{StopRefused: stopPullRefused}
+}
+
+// Verifier gives a pull from before the app restarted, followed again or found ended,
+// what its Spec gave it, from the run's record alone (scriptrun.Verifier): Stop and a quit
+// held back for its whole run, as git may still be writing the clone's files, and its
+// Finish, which words what it did as its Spec's would, or, when its end wasn't seen,
+// settles it from the branch (settleUnseen). Core registers it for scriptrun.KindPull.
+type Verifier struct {
+	s *Service
+}
+
+// NewVerifier returns the Verifier of s's pulls.
+func NewVerifier(s *Service) Verifier {
+	return Verifier{s: s}
+}
+
+// Verify gives a pull from before the app restarted what its Spec gave it. A record whose
+// intent can't be read still has Stop held back, and keeps the runner's own outcome.
+func (v Verifier) Verify(rec scriptrun.Record) scriptrun.Verification {
+	if rec.Kind != scriptrun.KindPull {
+		return scriptrun.Verification{}
+	}
+
+	var in PullIntent
+	if err := decodeIntent(rec.Result.Intent, &in); err != nil || !gitread.ValidBranch(in.Branch) || v.s.branchGit == nil {
+		v.s.logger.Warn("a pull from before the app restarted can't be checked", "run", rec.ID)
+
+		return scriptrun.Verification{Progress: pullProgress}
+	}
+
+	run := &pullRun{c: clone{dir: rec.Dir, name: rec.Repo}, intent: in}
+	out := &pullOutput{}
+
+	return scriptrun.Verification{
+		Output:   out,
+		Progress: pullProgress,
+		Finish: func(ctx context.Context, end scriptrun.Ending, engine scriptrun.Outcome) scriptrun.Outcome {
+			return v.s.finishPull(ctx, run, out, end, engine)
+		},
+	}
 }
 
 // pullOutput reads a pull's output for its last error line, git's last fatal or error

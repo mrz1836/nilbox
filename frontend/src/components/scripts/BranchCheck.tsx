@@ -22,6 +22,7 @@ const stateLabels: Readonly<Record<BranchState, string>> = {
   inProgress: 'git is in the middle of something',
   unknown: 'Couldn’t check origin',
   off: 'Scripts are off',
+  refused: 'Can’t pull here',
 }
 
 // statusTitle is a status in full, for its tooltip: its note, and when origin was asked.
@@ -30,8 +31,9 @@ function statusTitle(status: BranchStatus): string {
 }
 
 // StateLabel is what the header says of a status: a check for up to date, an alert for a
-// status that couldn't be worked out, which says why in full, and a few words for the
-// rest, the note in their tooltip.
+// status that couldn't be worked out, which says why in full, and for a clone a pull would
+// be refused in, whose settings the tooltip names, and a few words for the rest, the note
+// in their tooltip.
 function StateLabel({ status }: { status: BranchStatus }) {
   let icon: ReactNode = null
   let tone = 'text-muted'
@@ -41,9 +43,9 @@ function StateLabel({ status }: { status: BranchStatus }) {
     icon = <CheckIcon className="size-3.5 text-muted" />
   } else if (status.state === 'behind') {
     tone = 'text-text'
-  } else if (status.state === 'unknown') {
+  } else if (status.state === 'unknown' || status.state === 'refused') {
     icon = <AlertIcon className="size-3.5 shrink-0 text-warning" />
-    text = status.note
+    text = status.state === 'unknown' ? status.note : text
   }
 
   return (
@@ -171,9 +173,10 @@ function CloneBranchCheck({ dir, onStarted, onPulled }: BranchCheckProps) {
       >
         <RefreshIcon className={`size-3.5 ${checking ? 'motion-safe:animate-spin' : ''}`} />
       </button>
+      {/* The pull's error says what failed in full, the branch included. */}
       {pull.error !== '' && (
         <span role="alert" className="text-danger">
-          Couldn’t pull {status.branch}: {pull.error}
+          {pull.error}
         </span>
       )}
     </span>
