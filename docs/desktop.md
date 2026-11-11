@@ -237,20 +237,39 @@ it says which copy it uses, its version, and where it came from (a GitHub releas
   Homebrew, `/usr/local/bin`, `~/.local/bin`, `~/bin`, and go install's folder, and runs each
   copy's `--version`. The copy your terminal runs is the one it uses, unless you choose another
   under **Details**. It checks once a day, while you're signed in to GitHub, for a newer release.
-- **Installing and updating.** **Install** and **Update** download the release archive for your
-  Mac from the tool's GitHub release, check it against the release's SHA-256 checksums file and
-  GitHub's own digest, try the program, and put it in `~/.local/bin` (or replace the copy you
-  have in place). The download goes to a private folder in the app's data folder, and nothing
-  else on your Mac changes until the program has run once. The program is swapped in with a
-  rename, so your terminal never finds it missing, and if the new copy won't run, the old one is
-  put back.
+- **Updating.** A copy that can update itself does: **Update** runs the tool's own updater,
+  `magex update:install` or `go-pre-commit update`, which downloads the latest release for your
+  Mac, checks it against the release's SHA-256 checksums, and swaps it in for the copy with a
+  rename. That's any copy from a GitHub release (or one the app installed) that isn't a link,
+  isn't in a go install folder, sits in a folder you can write, and is new enough to have the
+  updater (magex 1.26.0, go-pre-commit 1.10.0). The go install folders are `$GOBIN`, each
+  `$GOPATH` folder's `bin`, and `~/go/bin`, from your shell's environment and, when `go` is on
+  your `PATH`, from `go env` too (so `go env -w` settings count); if `go env` can't be read, no
+  copy updates itself. It runs in the app, in the copy's folder, with your shell's environment;
+  the card shows the run as it goes, and it's in **Runs** too. Once it ends, the app looks for
+  the tools again, and only a newer version reads as *Updated magex to 1.30.0*; an updater that
+  says the copy is already current reads as *magex is already up to date (1.30.0)*, which isn't
+  an error. A copy the app installed stays *installed by Nilbox*. Since the tool replaces its
+  own copy, the app doesn't ask whether to replace a copy it didn't install. An update still
+  running from before the app restarted shows on the card too, and nothing installs the tool
+  until it ends.
+- **Installing.** **Install**, **Reinstall**, and an update of any other copy download the
+  release archive for your Mac from the tool's GitHub release, check it against the release's
+  SHA-256 checksums file and GitHub's own digest, try the program, and put it in
+  `~/.local/bin` (or replace the copy you have in place). The download goes to a private folder
+  in the app's data folder, and nothing else on your Mac changes until the program has run
+  once. The program is swapped in with a rename, so your terminal never finds it missing, and
+  if the new copy won't run, the old one is put back. While a tool updates itself in that folder,
+  an install there waits for it to end.
 - **What the app never does.** It never runs `go install` or `sudo`, never edits your shell's
   startup files, and never replaces a Homebrew copy (it shows the `brew upgrade` command) or a
   link (such as a development build you linked into `~/.local/bin`). A copy it didn't install is
-  replaced only after you say so. A copy in go install's folder stays where it is: the new one goes
+  replaced only after you say so, unless the tool updates itself. A copy in go install's folder
+  stays where it is, and never runs its own updater, which would run `go install`: the new one goes
   in `~/.local/bin`, and if your terminal still finds the old one first, the card says so and
   offers to move it to the Trash, through Finder, so **Put Back** works. The first time, macOS
   asks whether the app may control Finder; if you say no, it offers **Reveal in Finder** instead.
+  While a run uses the tool, neither kind of update starts.
 - **`~/.local/bin` and your `PATH`.** The app finds a tool it installed either way. If your shell's
   `PATH` doesn't include `~/.local/bin`, your terminal won't, and the card says so with the line to
   add to `~/.zprofile`: `export PATH="$HOME/.local/bin:$PATH"`. For go-pre-commit this matters
@@ -264,8 +283,8 @@ it says which copy it uses, its version, and where it came from (a GitHub releas
 
 ## Runs
 
-Releases, hook changes, pre-commit checks, and scripts all go through one runner, which keeps a
-record of each run and its whole output.
+Releases, hook changes, pre-commit checks, scripts, and a tool updating itself all go through
+one runner, which keeps a record of each run and its whole output.
 
 - **In the app or in your terminal.** A run goes in the app by default; **Runs in** under Settings →
   Integrations sends runs to your terminal instead. In the app, its output is written as it comes
@@ -277,10 +296,12 @@ record of each run and its whole output.
   app follows a run it didn't start itself.
 - **One run per clone, and none queued.** A run holds its clone while it goes. A second run in that
   clone, or a launch that needs a new worktree there, fails at once and names the run, and the
-  worktree cleanup skips the clone until its next pass. At most four runs go in the app at once,
-  and a release never waits for one of those slots.
-- **Limits and stopping.** In the app, a release stops after 5 minutes, a hooks action after 1, and
-  checks after 30; a run in your terminal has no limit. **Stop** sends the run's whole process group
+  worktree cleanup skips the clone until its next pass. A tool updating itself holds the folder
+  its copy is in the same way, as does the app installing a tool there, so a second update or an
+  install there fails at once too. At most four runs go in the app at once, and a release never
+  waits for one of those slots.
+- **Limits and stopping.** In the app, a release stops after 5 minutes, a hooks action after 1,
+  checks after 30, and a tool's update after 10; a run in your terminal has no limit. **Stop** sends the run's whole process group
   Control-C (SIGINT), then SIGTERM after 5 seconds, then SIGKILL after 10 more. A release's Stop is
   off while magex switches to the branch it releases and pulls (*Stopping now could leave a rebase
   in progress*), and once magex has made the tag, Stop asks first, since stopping can leave the

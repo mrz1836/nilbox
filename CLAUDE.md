@@ -259,7 +259,35 @@ app:lint` reads.
   ends, and `event.ToolsUpdated` tells the window. It writes the `tools.*` preferences and only
   reads `integrations.*`, which settings writes through the leaf `internal/integrationprefs`
   (the switches, automatic, on, or off, and the chosen copies), so settings never imports
-  integrations. `Install`, `Update`, and `Reinstall` hand the latest release to
+  integrations. One rule says which folders are go install's (`goFolders`), for a copy's
+  source and for its own updater alike: `$GOBIN`, each `$GOPATH` folder's bin, and
+  `~/go/bin`, from the shell's environment and, while `go` is on its `PATH`, from `go env
+  GOBIN GOPATH` too (run once per detection with `GOTOOLCHAIN=local`; one that fails leaves the
+  folders unsure, and then no copy updates itself). Every run of a tool gets
+  `Definition.RunEnv` (the shell's environment with the quiet variables and
+  `GIT_TERMINAL_PROMPT=0`, or the quiet variables alone in the terminal); release and hooks use
+  it too. `Update` of a copy that can update itself runs the tool's own updater
+  (`Definition.UpdateArgs`: `magex update:install`, `go-pre-commit update`), which downloads
+  the latest release, checks it against the release's checksums, and renames it over the copy
+  it runs as: a copy from a GitHub release or the app, no link, whose version has
+  `FeatureSelfUpdate`, that it and its folder can be written, in no go install folder (magex's
+  updater would run `go install` there). Detection works that out once per look
+  (`detection.selfUpdates`, kept in `tools.<id>.seen`), so `List` reads no files for it. It is a
+  `scriptrun.KindUpdate` run in the app, in the copy's folder, holding that folder's lock;
+  its `Before` checks the copy again under the lock, the bound `Update` returns the run's ID for
+  the window to show, and its `Finish` detects again, reading the copy's version from that look
+  (the copy runs once), judges the update by the version alone (exit 0 with the updater saying
+  the copy is already up to date succeeds, saying so), and, before the look matches its copies
+  with the installs, records a copy the app installed as the app's (a new `tool_installs` row at
+  the same path); `Tool.SelfUpdate` and `event.ToolsUpdated` bring that to the card. A tool's
+  own update counts as updating it however it started (`scriptrun.Engine.Updating`, through
+  `Runs`): one from before a restart shows on the card and refuses every install, and core
+  registers `integrations.Verifier` to settle it as one that just ended. A self-update needs no
+  sign-in and no build named by the app, since the tool finds its own release and archive. It
+  asks nothing about replacing a copy the app didn't install: the tool replaces its own.
+  `Install`, `Reinstall`, and every other `Update` take the lock of the folder they place the
+  program in (`clonelock.KindInstall`, the app's one `Set`), so they never meet a tool's
+  update there, and hand the latest release to
   `internal/toolinstall`, which downloads the archive and checksums file into a fresh private
   folder under `<data>/downloads`, checks both against the checksums file and GitHub's digests,
   extracts only the program's own entry, tries it, and places it so the target is never missing
@@ -267,9 +295,12 @@ app:lint` reads.
   records and speaks no HTTP, and integrations records each install in `tool_installs`, which
   makes the copy read as installed by the app. Nothing replaces a Homebrew copy or a link, a
   copy the app didn't install is replaced only after the user confirms, and a go install copy
-  gets a new copy in `~/.local/bin` instead; the app never runs `go install` or `sudo`.
+  gets a new copy in `~/.local/bin` instead; the app never runs `go install` or `sudo`. A run
+  using the tool (`scriptrun.Engine.InUse`, which leaves out the tool's own update) holds both
+  kinds of update back, nothing installs a tool while it updates itself, and nothing installs
+  before this run's first detection ends (the kept one is only shown, never acted on).
 - `internal/scriptrun/` runs the commands the integrations start (releases, hooks actions,
-  checks, and scripts) and follows them, in the app or in the user's terminal, and owns
+  checks, scripts, and a tool's own update) and follows them, in the app or in the user's terminal, and owns
   `script_runs`. The `Engine` is never bound, since a `Spec` holds functions: `Start` takes the
   clone's lock first and fails at once when the clone is busy, runs the program through
   `execpath.Start` in its own process group, writing straight into its log in
@@ -296,8 +327,11 @@ app:lint` reads.
   bound `Service.QuitAnyway` emits the Go-only `event.QuitConfirmed`. The Service's
   `OpenInTerminal` opens the user's terminal in a run's folder and runs nothing there, and
   `ShowLog` shows a run's log in Finder, both by the run's ID alone. `InUse` tells an install a
-  tool is running. The history keeps 200 runs and 512 MB of logs, and cuts a long log to its
-  head and tail; Run again works the command out afresh from its source, never for a release.
+  tool is running, never counting a `KindUpdate` run, which is the tool updating itself (it
+  holds its copy's folder, not a clone, for up to ten minutes), and `Updating` names such a run
+  going now, one from before a restart included. The history keeps 200 runs and 512 MB of logs, and cuts a long log to its
+  head and tail; Run again works the command out afresh from its source, never for a release
+  or a tool's update.
 - `internal/gitread/` is the read-only git that release and hooks share: an exact-argv allowlist
   plus validating predicates (a branch, a tag, a commit, a `v*` pattern, an absolute clean folder)
   that refuses anything else with `ErrGitCommandNotAllowed` before git runs, and typed helpers over

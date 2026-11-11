@@ -292,7 +292,7 @@ requests that merged, never touching `main`, `master`, or any branch you protect
 - **Menu bar and notifications** — a live count in the menu bar and native banners for what's new
 - **API budget gauge** — an always-visible, live dial for the GitHub budget closest to running out, counting every request the app makes
 - **Release in two clicks** — Scripts → Release lists every clone with unreleased changes; the sheet checks the clone, origin, and GitHub, names the exact version, and has magex tag and push it, in Nilbox or your terminal, then confirms GitHub has the tag. A merge in the review sheet offers it too
-- **Your release tools, found and kept current** — mage-x and go-pre-commit found the way your terminal finds them, checked for updates once a day, and installed or updated from their GitHub release after a checksum check, never with `go install` or `sudo`
+- **Your release tools, found and kept current** — mage-x and go-pre-commit found the way your terminal finds them, checked for updates once a day, updated by their own `magex update:install` or `go-pre-commit update` where they can update themselves, and otherwise installed from their GitHub release after a checksum check, never with `go install` or `sudo`
 - **Inbox nil** — empty every list and the inbox throws you a party
 
 <br/>
@@ -574,8 +574,8 @@ More in [The Worktrees view](docs/desktop.md#the-worktrees-view).
   and which failed and why, and every file they fixed or staged, including files that already had
   uncommitted changes. The page warns when your shell's PATH won't let the hook find
   go-pre-commit, with the line that fixes it.
-- **Runs** lists every release, hooks action, check, and script, with each run's status, result,
-  and full log.
+- **Runs** lists every release, hooks action, check, script, and tool update, with each run's
+  status, result, and full log.
 
 More in [The Scripts tab](docs/desktop.md#the-scripts-tab), [Release](docs/desktop.md#release),
 and [Hooks](docs/desktop.md#hooks).
@@ -694,7 +694,11 @@ View the full documentation for Nilbox:
 >   sensitive-file checks reduce that risk; they don't remove it.
 > - **Tools you install run on your Mac:** Nilbox installs mage-x and go-pre-commit only from
 >   their GitHub releases, after checking the release's checksums, into `~/.local/bin`, and never
->   with `go install` or `sudo`. Those tools then fetch what they need themselves: before 1.14.0,
+>   with `go install` or `sudo`. A copy that can update itself is updated by its own updater
+>   (`magex update:install`, `go-pre-commit update`), which checks the release's checksums too;
+>   Nilbox never runs it for a copy in a go install folder (`$GOBIN`, `$GOPATH/bin`, or
+>   `~/go/bin`, as your shell and `go env` set them), where magex's would run `go install`.
+>   Those tools then fetch what they need themselves: before 1.14.0,
 >   go-pre-commit installs its own linters with `go install` and `curl`, which Nilbox can't check.
 > - **No formal audit:** Nilbox has not been professionally audited.
 > - **No liability:** the authors accept no responsibility for lost work, exposed data, or damages.
