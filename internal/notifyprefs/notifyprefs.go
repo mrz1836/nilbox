@@ -45,6 +45,12 @@ const (
 
 	// KindReleaseDone is a release whose tag reached GitHub.
 	KindReleaseDone Kind = "release_done"
+
+	// KindReleasePublished is a release its workflow on GitHub published.
+	KindReleasePublished Kind = "release_published"
+
+	// KindReleaseFailed is a release whose workflow on GitHub failed.
+	KindReleaseFailed Kind = "release_failed"
 )
 
 // ErrUnknownKind is returned for a kind of notification that is not one of Kinds.
@@ -54,6 +60,7 @@ var ErrUnknownKind = errors.New("unknown kind of notification")
 func Kinds() []Kind {
 	return []Kind{
 		KindReviewRequested, KindAssigned, KindWoke, KindSessionNeedsYou, KindSessionFinished, KindReleaseDone,
+		KindReleasePublished, KindReleaseFailed,
 	}
 }
 

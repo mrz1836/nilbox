@@ -114,6 +114,10 @@ type Result struct {
 
 	// Error says why origin couldn't be asked, for ResultUnverified.
 	Error string `json:"error"`
+
+	// Follow is how following the release's workflow on GitHub goes, once it was released
+	// (Follower), or nil for a release that isn't followed.
+	Follow *Follow `json:"follow"`
 }
 
 // verifyGit is what verifying a release reads with git: *gitread.Git.
@@ -141,6 +145,7 @@ func (s *Service) finisher(name repo.Name, dir string, in *Intent, reader *Outpu
 		}
 
 		res := judge(name, *in, said, end, got)
+		res.Follow = s.startFollow(name, res)
 		s.released(ctx, name, dir, res)
 
 		return outcomeOf(res, said, engine)
@@ -162,34 +167,47 @@ func (s *Service) released(ctx context.Context, name repo.Name, dir string, res 
 }
 
 // announcer returns a release's scriptrun Recorded: once the runner has recorded the
-// release's outcome, a release on GitHub is told to the user (release_done). It is told
-// only then, so a release whose record failed, which the next start verifies again, is
-// told once, by the start whose record holds.
+// release's outcome, a release on GitHub is told to the user (release_done), and handed to
+// the Follower, which follows its workflow. Both happen only then, so a release whose
+// record failed, which the next start verifies again, is told and followed once, by the
+// start whose record holds.
 func (s *Service) announcer(name repo.Name, in *Intent) func(context.Context, int64, scriptrun.Outcome) {
-	return func(ctx context.Context, _ int64, out scriptrun.Outcome) {
+	return func(ctx context.Context, id int64, out scriptrun.Outcome) {
 		res, ok := out.Detail.(Result)
-		if !ok || res.Kind != ResultReleased || s.notifier == nil {
+		if !ok || res.Kind != ResultReleased {
 			return
 		}
 
-		s.notifier.Released(ctx, noticeOf(name, *in, res))
+		if s.notifier != nil {
+			s.notifier.Released(ctx, noticeOf(name, *in, res))
+		}
+
+		if res.Follow != nil {
+			s.queueFollow(followed{id: id, name: name, res: res})
+		}
 	}
 }
 
-// Notifier tells the user that a release reached GitHub: a notification in the log, and
-// its banner when the user has it on (release_done, §5.19). Core adapts the notify
-// package's Dispatcher. It must return promptly; a failure is its own to log.
+// Notifier tells the user of a release: its tag reached GitHub (release_done), its
+// workflow published it (release_published), or its workflow failed (release_failed),
+// each a notification in the log, and its banner when the user has the kind on (§5.19).
+// Core adapts the notify package's Dispatcher. Each must return promptly; a failure is its
+// own to log.
 type Notifier interface {
 	Released(ctx context.Context, n Notice)
+	Published(ctx context.Context, n Notice)
+	WorkflowFailed(ctx context.Context, n Notice)
 }
 
-// Notice is what the user is told when a release's tag reaches GitHub.
+// Notice is what the user is told of a release.
 type Notice struct {
 	// Repo is the repository released.
 	Repo repo.Name
 
-	// Title says what happened ("v1.4.3 is on GitHub"), Body where the tag went ("Tagged
-	// a1b2c3d on master."), and URL is the tag's page on GitHub.
+	// Title says what happened ("v1.4.3 is on GitHub", "acme-org/sdk v1.4.3 is
+	// published"), Body what follows it, as where the tag went ("Tagged a1b2c3d on
+	// master."), or "", and URL is the page a click opens: the tag's, the release's, or the
+	// failed run's on GitHub.
 	Title string
 	Body  string
 	URL   string

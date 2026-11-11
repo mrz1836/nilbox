@@ -86,9 +86,15 @@ type Config struct {
 	// Service.
 	History RunHistory
 
-	// Notifier tells the user of each release that reaches GitHub; without it, nothing is
-	// told.
+	// Notifier tells the user of each release that reaches GitHub, and of each its workflow
+	// published or failed; without it, nothing is told.
 	Notifier Notifier
+
+	// Workflows reads how a release's workflow on GitHub goes, and Records reads the
+	// releases that ended and writes how each one's follow goes into its record: the
+	// Follower needs both, and without either no release is followed.
+	Workflows Workflows
+	Records   RunRecords
 
 	// AfterMerge reads whether a merge offers a release, and Branches the default branch
 	// the app last stored for a repository, which OfferAfterMerge reads with Tools and the
@@ -157,6 +163,15 @@ type Service struct {
 	branches   DefaultBranches
 	terminal   FolderOpener
 
+	// workflows reads a release's workflow on GitHub, and records the releases' records,
+	// for the Follower. followMu guards toFollow, the releases handed to the Follower since
+	// it last looked, and wakeFollow wakes it (queueFollow).
+	workflows  Workflows
+	records    RunRecords
+	followMu   sync.Mutex
+	toFollow   map[int64]followed
+	wakeFollow chan struct{}
+
 	// keeper keeps the last list between starts, and progressEvery is how often, at most, a
 	// refresh tells the window how far it has got.
 	keeper        Keeper
@@ -214,7 +229,9 @@ func NewService(cfg Config) *Service {
 		branches: cfg.Branches,
 		terminal: cfg.Terminal,
 		keeper:   cfg.Keeper, progressEvery: progressEvery,
-		wake: make(chan struct{}, 1), wakePatch: make(chan struct{}, 1), reading: make(chan struct{}, 1),
+		workflows: cfg.Workflows, records: cfg.Records, toFollow: map[int64]followed{},
+		wakeFollow: make(chan struct{}, 1),
+		wake:       make(chan struct{}, 1), wakePatch: make(chan struct{}, 1), reading: make(chan struct{}, 1),
 		facts: map[string]keptFacts{}, unpatched: map[string]bool{},
 	}
 

@@ -73,6 +73,43 @@ func TestABannerForAnEntryAboutNoItem(t *testing.T) {
 	assert.Equal(t, "1 review request, 1 assignment, 1 back from snooze, 2 releases", sum[0].Body)
 }
 
+func TestBannersForTheReleaseWorkflow(t *testing.T) {
+	t.Parallel()
+
+	got := Banners([]Notification{
+		{
+			ID: 6, Kind: KindReleasePublished, Repo: "acme-org/sdk", Title: "acme-org/sdk v1.4.3 is published",
+			URL: "https://github.com/acme-org/sdk/releases/tag/v1.4.3",
+		},
+		{
+			ID: 7, Kind: KindReleaseFailed, Repo: "acme-org/sdk", Title: "The release workflow failed for acme-org/sdk v1.4.4",
+			URL: "https://github.com/acme-org/sdk/actions/runs/7",
+		},
+	}, nil)
+
+	require.Len(t, got, 2)
+	assert.Equal(t, Banner{
+		ID: brand.Slug + "-6", Title: "Published", Subtitle: "acme-org/sdk", Body: "acme-org/sdk v1.4.3 is published",
+		Thread: string(KindReleasePublished), URL: "https://github.com/acme-org/sdk/releases/tag/v1.4.3",
+	}, got[0], "it opens the release")
+	assert.Equal(t, "Release workflow failed", got[1].Title)
+	assert.Equal(t, "https://github.com/acme-org/sdk/actions/runs/7", got[1].URL, "it opens the run")
+
+	off := Banners([]Notification{{ID: 8, Kind: KindReleasePublished}}, []notifyprefs.Kind{KindReleasePublished})
+	assert.Empty(t, off, "a kind turned off shows none")
+
+	sum := Banners([]Notification{
+		row(1, KindReviewRequested, 1), row(2, KindAssigned, 2), row(3, KindWoke, 3),
+		{ID: 4, Kind: KindReleasePublished},
+		{ID: 5, Kind: KindReleasePublished},
+		{ID: 6, Kind: KindReleaseFailed},
+	}, nil)
+	require.Len(t, sum, 1)
+	assert.Equal(t,
+		"1 review request, 1 assignment, 1 back from snooze, 2 releases published, 1 release workflow failed",
+		sum[0].Body)
+}
+
 func TestManyBannersAreSummedUp(t *testing.T) {
 	t.Parallel()
 

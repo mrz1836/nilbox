@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -249,7 +250,131 @@ func TestReleaseGitHubAsksNothingWhenSignedOut(t *testing.T) {
 
 	_, err = gh.ReleaseCompare(t.Context(), []release.CompareRequest{{Repo: sdk, Tag: "v1.4.2", Branch: "master"}}, nil)
 	require.ErrorIs(t, err, release.ErrSignedOut)
+
+	_, err = gh.ReleaseWorkflow(t.Context(), sdk, "v1.4.3", strings.Repeat("1", 40))
+	require.ErrorIs(t, err, release.ErrSignedOut)
 	assert.Zero(t, requests.Load())
+}
+
+// workflowAnswers are GitHub's answers to a followed release's polls, in turn: its
+// workflow still going, then failed, then the release published.
+func workflowAnswers() []string {
+	suites := func(conclusion string) string {
+		return `{"checkSuites": {"nodes": [
+			{"app": {"slug": "codecov", "name": "Codecov"}, "status": "QUEUED", "conclusion": null, "branch": null,
+				"workflowRun": null},
+			{"app": {"slug": "github-actions", "name": "GitHub Actions"}, "status": "COMPLETED", "conclusion": "FAILURE",
+				"branch": {"name": "master"}, "workflowRun": {"url": "https://github.com/acme-org/example-repo/actions/runs/1",
+				"event": "push", "workflow": {"name": "CI"}}},
+			{"app": {"slug": "github-actions", "name": "GitHub Actions"}, "status": ` + conclusion + `,
+				"branch": null, "workflowRun": {"url": "https://github.com/acme-org/example-repo/actions/runs/2",
+				"event": "push", "workflow": {"name": "CI"}}}
+		]}}`
+	}
+
+	return []string{
+		`{"data": {"repository": {"release": null, "object": ` + suites(`"IN_PROGRESS", "conclusion": null`) +
+			`}, "rateLimit": {"cost": 1}}}`,
+		`{"data": {"repository": {"release": null, "object": ` + suites(`"COMPLETED", "conclusion": "FAILURE"`) +
+			`}, "rateLimit": {"cost": 1}}}`,
+		`{"data": {"repository": {"release": {"url": "https://github.com/acme-org/example-repo/releases/tag/v1.4.3",
+			"isDraft": false, "publishedAt": "2026-11-11T15:30:00Z"}, "object": ` +
+			suites(`"COMPLETED", "conclusion": "SUCCESS"`) + `}, "rateLimit": {"cost": 1}}}`,
+	}
+}
+
+func TestReleaseGitHubReadsTheWorkflowAndTheBudgetCountsEveryPoll(t *testing.T) {
+	t.Parallel()
+
+	c := bootstrap(t, Options{
+		Paths: appdata.NewPaths(filepath.Join(t.TempDir(), "data")), Home: testutil.ClaudeHome(t), Runner: noPrograms(),
+	})
+
+	answers := workflowAnswers()
+	resetAt := time.Now().Add(time.Hour).Unix()
+
+	var polls atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		assert.Contains(t, string(body), "query ReleaseProgress")
+
+		n := int(polls.Add(1))
+
+		w.Header().Set("X-Ratelimit-Resource", github.ResourceGraphQL)
+		w.Header().Set("X-Ratelimit-Limit", "5000")
+		w.Header().Set("X-Ratelimit-Remaining", strconv.Itoa(5000-n))
+		w.Header().Set("X-Ratelimit-Used", strconv.Itoa(n))
+		w.Header().Set("X-Ratelimit-Reset", strconv.FormatInt(resetAt, 10))
+		_, _ = io.WriteString(w, answers[n-1])
+	}))
+	t.Cleanup(srv.Close)
+
+	// The app's one client, which tells the budget about every response, pointed at GitHub's
+	// stand-in.
+	c.client.BaseURL, c.client.HTTP = srv.URL, srv.Client()
+	gh := releaseGitHub{
+		tokens: github.NewTokenSource(&testutil.Runner{Stdout: "test-token-not-real\n"}, testutil.Finder{Path: "/opt/fake/bin/gh"}),
+		client: c.client,
+	}
+	sdk := repo.Name{Owner: boundOwner, Repo: boundRepo}
+	commit := strings.Repeat("1", 40)
+
+	got, err := gh.ReleaseWorkflow(t.Context(), sdk, "v1.4.3", commit)
+	require.NoError(t, err)
+	assert.Equal(t, release.Workflow{}, got, "the tag's run goes on; codecov's queued suite and the branch's failed run say nothing")
+
+	got, err = gh.ReleaseWorkflow(t.Context(), sdk, "v1.4.3", commit)
+	require.NoError(t, err)
+	assert.Equal(t, release.Workflow{Failed: true, RunURL: "https://github.com/acme-org/example-repo/actions/runs/2"}, got)
+
+	got, err = gh.ReleaseWorkflow(t.Context(), sdk, "v1.4.3", commit)
+	require.NoError(t, err)
+	assert.Equal(t, release.Workflow{
+		Published: true, ReleaseURL: "https://github.com/acme-org/example-repo/releases/tag/v1.4.3",
+	}, got)
+
+	gauge := c.Budget.Gauge()
+	assert.Equal(t, 3, gauge.GraphQL.Spent, "the budget gauge counts every poll's point")
+	assert.Equal(t, 3, gauge.GraphQL.Requests)
+}
+
+func TestReleaseNoticesRecordTheReleaseWorkflow(t *testing.T) {
+	t.Parallel()
+
+	events := &testutil.Events{}
+	c := bootstrap(t, Options{
+		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
+		Home:   testutil.ClaudeHome(t),
+		Runner: noPrograms(),
+		Events: events,
+	})
+
+	notices := releaseNotices{dispatcher: notify.NewDispatcher(notify.Config{Pool: c.DB, Events: events})}
+	sdk := repo.Name{Owner: boundOwner, Repo: boundRepo}
+
+	notices.Published(t.Context(), release.Notice{
+		Repo: sdk, Title: "acme-org/example-repo v1.4.3 is published",
+		URL: "https://github.com/acme-org/example-repo/releases/tag/v1.4.3",
+	})
+	notices.WorkflowFailed(t.Context(), release.Notice{
+		Repo: sdk, Title: "The release workflow failed for acme-org/example-repo v1.4.4",
+		URL: "https://github.com/acme-org/example-repo/actions/runs/2",
+	})
+
+	log, err := c.Notifications.List(t.Context())
+	require.NoError(t, err)
+	require.Len(t, log.Items, 2)
+
+	failed, published := log.Items[0], log.Items[1]
+	assert.Equal(t, notify.KindReleasePublished, published.Kind)
+	assert.Equal(t, "acme-org/example-repo v1.4.3 is published", published.Title)
+	assert.Equal(t, "https://github.com/acme-org/example-repo/releases/tag/v1.4.3", published.URL, "it opens the release")
+	assert.Empty(t, published.ItemKind, "about no item")
+
+	assert.Equal(t, notify.KindReleaseFailed, failed.Kind)
+	assert.Equal(t, "https://github.com/acme-org/example-repo/actions/runs/2", failed.URL, "it opens the run")
+	assert.Equal(t, "acme-org/example-repo", failed.Repo)
 }
 
 func TestReleaseClonesListTheCloneRoot(t *testing.T) {

@@ -164,7 +164,7 @@ func assemble(
 		Settings:       c.ShellSettings,
 		Sessions:       c.ShellSessions,
 		Workers:        []desktop.Worker{c.Scheduler, c.Sweeper, c.BudgetSaver, c.Watcher, c.ReleaseRefresher, c.HooksScans},
-		Deferred:       []desktop.Worker{c.Deferred, c.ToolFinder, c.Runs},
+		Deferred:       []desktop.Worker{c.Deferred, c.ToolFinder, c.Runs, c.ReleaseFollower},
 		Data:           c,
 		Banners:        banners.poster(),
 		QuitGuard:      c.Runs,

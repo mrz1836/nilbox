@@ -372,6 +372,10 @@ describe('ReleasePage', () => {
         releaseRun({ id: 8, status: 'running', result: { ...releaseRun().result, outcome: null } }),
         releaseRun(),
         releaseRun({ id: 6, title: 'Release v1.4.2', result: { ...releaseRun().result, intent: null } }),
+        releaseRun({
+          id: 5,
+          result: { ...releaseRun().result, outcome: { kind: 'released', follow: { state: 'published' } } },
+        }),
       ],
     })
 
@@ -382,6 +386,7 @@ describe('ReleasePage', () => {
       expect.stringContaining('v1.4.3acme-org/sdkrunning'),
       expect.stringContaining('v1.4.3acme-org/sdkon GitHub'),
       expect.stringContaining('Release v1.4.2acme-org/sdkon GitHub'),
+      expect.stringContaining('v1.4.3acme-org/sdkpublished'),
     ])
 
     await userEvent.click(rows[1] as HTMLElement)

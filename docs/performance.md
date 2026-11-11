@@ -256,6 +256,13 @@ GitHub's file list names the commit it listed each file at, so a read whose file
 head the sheet asked for needs no separate request to confirm it, and the same list serves as
 the pull request's sensitive-file check when one is due.
 
+[Following a release](desktop.md#release) to published costs at most 20 GraphQL points per
+release: one query of 1 point (P0 measured it) a minute after the release ends, then one every
+three minutes, until the release is published, its workflow fails, or 45 minutes pass, which
+the schedule reaches after 16 queries. A follow resumed after a restart keeps the count and the
+45 minutes it started with. Each query goes through the shared client, so the API budget gauge
+counts it.
+
 <br>
 
 ## Reproducing

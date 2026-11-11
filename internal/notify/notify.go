@@ -47,6 +47,11 @@ const (
 
 	// KindReleaseDone is a release whose tag reached GitHub. It is about no item.
 	KindReleaseDone = notifyprefs.KindReleaseDone
+
+	// KindReleasePublished is a release its workflow on GitHub published, and
+	// KindReleaseFailed one whose workflow failed. Both are about no item.
+	KindReleasePublished = notifyprefs.KindReleasePublished
+	KindReleaseFailed    = notifyprefs.KindReleaseFailed
 )
 
 // Keep is how many notifications the log keeps; recording more drops the oldest.
@@ -57,7 +62,8 @@ const Keep = 200
 type Notification struct {
 	ID int64 `json:"id"`
 
-	// Kind is KindReviewRequested, KindAssigned, KindWoke, or KindReleaseDone.
+	// Kind is KindReviewRequested, KindAssigned, KindWoke, or one of a release's kinds:
+	// KindReleaseDone, KindReleasePublished, or KindReleaseFailed.
 	Kind notifyprefs.Kind `json:"kind"`
 
 	// CreatedAt is when it was recorded, as RFC 3339.

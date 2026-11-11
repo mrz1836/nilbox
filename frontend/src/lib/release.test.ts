@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import type { ReleaseCloneState, ScriptRunProgress } from '../platform'
-import { releaseCandidate, releaseResult, releaseRun, scriptRun } from '../test/fixtures'
+import type { ReleaseCloneState, ReleaseFollow, ScriptRunProgress } from '../platform'
+import { releaseCandidate, releaseFollow, releaseResult, releaseRun, scriptRun } from '../test/fixtures'
 import {
   cloneNotes,
   commitChecksText,
+  followLine,
+  followState,
   intentOf,
   isBumpResult,
   listProgressWords,
@@ -213,5 +215,71 @@ describe('release', () => {
     expect(resultHeading(releaseResult({ kind: 'unverified' }), 'acme-org/sdk')).toBe(
       'Couldn’t check whether v1.4.3 is on GitHub',
     )
+    expect(resultHeading(releaseResult({ follow: releaseFollow() }), 'acme-org/sdk')).toBe(
+      'acme-org/sdk v1.4.3 is on GitHub',
+    )
+    expect(resultHeading(releaseResult({ follow: releaseFollow({ state: 'published' }) }), 'acme-org/sdk')).toBe(
+      'acme-org/sdk v1.4.3 is published',
+    )
+  })
+
+  it('reads how following a release’s workflow goes from its run', () => {
+    const followed = (follow: unknown) =>
+      releaseRun({ result: { ...releaseRun().result, outcome: { kind: 'released', follow } } })
+
+    expect(followState(releaseRun())).toBe('')
+    expect(followState(followed(null))).toBe('')
+    expect(followState(followed({ state: 'other' }))).toBe('')
+    expect(followState(scriptRun())).toBe('')
+
+    for (const state of ['following', 'published', 'failed', 'timedOut'] as const) {
+      expect(followState(followed({ state }))).toBe(state)
+    }
+
+    expect(recentWords(followed({ state: 'following' }))).toBe('on GitHub, following its workflow')
+    expect(recentWords(followed({ state: 'published' }))).toBe('published')
+    expect(recentWords(followed({ state: 'failed' }))).toBe('release workflow failed')
+    expect(recentWords(followed({ state: 'timedOut' }))).toBe('on GitHub')
+    expect(recentWords(followed({ state: 'published' }))).toBe('published')
+    expect(
+      recentWords(
+        releaseRun({ result: { ...releaseRun().result, outcome: { kind: 'failed', follow: { state: 'failed' } } } }),
+      ),
+    ).toBe('failed')
+  })
+
+  it('words the workflow line of a followed release', () => {
+    const line = (follow: Partial<ReleaseFollow> | null) =>
+      followLine(releaseResult({ follow: follow === null ? null : releaseFollow(follow) }), 'acme-org/sdk')
+
+    expect(line(null)).toBeNull()
+    expect(line({})).toEqual({
+      tone: 'info',
+      text: 'Following the release workflow for acme-org/sdk v1.4.3…',
+      url: '',
+      label: '',
+    })
+    expect(line({ state: 'published', url: 'https://github.com/acme-org/sdk/releases/tag/v1.4.3' })).toEqual({
+      tone: 'ok',
+      text: 'The release workflow published acme-org/sdk v1.4.3',
+      url: 'https://github.com/acme-org/sdk/releases/tag/v1.4.3',
+      label: 'View the release',
+    })
+    expect(line({ state: 'failed', url: 'https://github.com/acme-org/sdk/actions/runs/7' })).toEqual({
+      tone: 'bad',
+      text: 'The release workflow failed for acme-org/sdk v1.4.3',
+      url: 'https://github.com/acme-org/sdk/actions/runs/7',
+      label: 'View the failed workflow',
+    })
+    expect(line({ state: 'timedOut', minutes: 45, url: 'https://github.com/acme-org/sdk/actions' })).toEqual({
+      tone: 'warn',
+      text: 'Stopped following acme-org/sdk v1.4.3 after 45 minutes',
+      url: 'https://github.com/acme-org/sdk/actions',
+      label: 'View the release workflow',
+    })
+    expect(
+      followLine(releaseResult({ tag: '', follow: releaseFollow({ state: 'timedOut', minutes: 1 }) }), 'acme-org/sdk')
+        ?.text,
+    ).toBe('Stopped following acme-org/sdk v1.4.3 after 1 minute')
   })
 })

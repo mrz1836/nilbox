@@ -188,6 +188,12 @@ type Core struct {
 	// it as a worker. It is not bound.
 	ReleaseRefresher *release.Refresher
 
+	// ReleaseFollower follows each release that reached GitHub until its workflow
+	// publishes it, fails, or the follow reaches its limits, and resumes the follows a quit
+	// cut off. The desktop shell runs it as deferred work, beside Runs: a release Runs
+	// verifies as on GitHub after a restart is handed to it once recorded. It is not bound.
+	ReleaseFollower *release.Follower
+
 	// HooksScans holds the Hooks page's scans, which run apart from the window's calls, to
 	// the app's lifetime: the app's quit ends them, and the desktop shell, which runs it as
 	// a worker, waits for them before it closes the database. It is not bound.
@@ -518,6 +524,9 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Git:     shellGit, Origins: releaseOrigins{git: runner}, Tools: releaseTool{tools: tools}, Locks: clones,
 		Env: shellEnv.Env, Ready: shellEnv.Ready, Runner: toolRunners, Runs: runs, Places: releaseSettings{settings: prefs},
 		History: scriptRuns, Notifier: releaseNotices{dispatcher: dispatcher},
+		// A release on GitHub is followed until its workflow publishes it: each poll is one
+		// query through the shared client, and goes into the release's record.
+		Workflows: releaseGitHub{tokens: tokens, client: client}, Records: runs,
 		// A merge's offer reads the setting, magex, the clones, and the default branch the
 		// inbox stored: nothing of GitHub's.
 		AfterMerge: releaseSettings{settings: prefs}, Branches: inboxStore,
@@ -531,6 +540,9 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	// The Refresher reads the Release page's rows of a released repository again, and of
 	// one a merge in the review sheet went into.
 	releaseRefresher := release.NewRefresher(releases)
+	// The Follower follows each release on GitHub to published, and resumes the follows a
+	// quit cut off.
+	releaseFollower := release.NewFollower(releases)
 
 	deps := hookDeps{
 		settings: prefs, tools: tools, git: shellGit, runner: runner, clones: clones, runs: runs, history: scriptRuns,
@@ -593,6 +605,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		ScriptRuns:       scriptRuns,
 		Release:          releases,
 		ReleaseRefresher: releaseRefresher,
+		ReleaseFollower:  releaseFollower,
 		Hooks:            hookPage,
 		HooksScans:       hooks.NewScans(hookPage),
 		Scripts:          repoScripts,

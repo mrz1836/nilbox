@@ -13,6 +13,7 @@ export {
     Checks,
     FailureKind,
     Fix,
+    FollowState,
     Group,
     ResultKind
 } from "./models.js";
@@ -27,6 +28,7 @@ export type {
     CloneState,
     Commit,
     Failure,
+    Follow,
     MajorOffer,
     Offer,
     PrepareRequest,

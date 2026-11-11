@@ -6,6 +6,7 @@ import type {
   CommitChecks,
   ReleaseCandidate,
   ReleaseCloneState,
+  ReleaseFollowState,
   ReleaseGroup,
   ReleaseResult,
   ReleaseResultKind,
@@ -201,25 +202,97 @@ export const outcomeWords: Readonly<Record<ReleaseResultKind, string>> = {
   unverified: 'not checked on GitHub',
 }
 
+// followState reads where following a released run's workflow on GitHub is, or '' for a
+// release not followed: one that isn't on GitHub, or from before the app followed them.
+export function followState(run: Pick<ScriptRun, 'result'>): ReleaseFollowState | '' {
+  const outcome: unknown = run.result.outcome
+  const follow =
+    typeof outcome === 'object' && outcome !== null && 'follow' in outcome
+      ? (outcome as Record<string, unknown>).follow
+      : null
+  const state = stringField(follow, 'state')
+
+  return state === 'following' || state === 'published' || state === 'failed' || state === 'timedOut' ? state : ''
+}
+
+// followWords say where a release on GitHub is as its workflow is followed, in the words
+// Recent lists it with. One that stopped at its limits is still only on GitHub: nothing is
+// assumed.
+export const followWords: Readonly<Record<ReleaseFollowState, string>> = {
+  following: 'on GitHub, following its workflow',
+  published: 'published',
+  failed: 'release workflow failed',
+  timedOut: 'on GitHub',
+}
+
 // recentReleases are the newest releases, newest first, as the runs list them.
 export function recentReleases(runs: readonly ScriptRun[] | null, limit = 10): ScriptRun[] {
   return (runs ?? []).filter((run) => run.kind === 'release').slice(0, limit)
 }
 
-// recentWords say where a release in Recent is: going, how it came out, or, without a
-// result, how its run ended.
+// recentWords say where a release in Recent is: going, how it came out, as far as its
+// workflow on GitHub has got once it is on GitHub, or, without a result, how its run
+// ended.
 export function recentWords(run: ScriptRun): string {
   if (isLive(run.status)) {
     return 'running'
   }
 
   const kind = outcomeKind(run)
+  const follow = followState(run)
+
+  if (kind === 'released' && follow !== '') {
+    return followWords[follow]
+  }
 
   if (kind !== '') {
     return outcomeWords[kind]
   }
 
   return run.status === 'succeeded' ? 'done' : run.status
+}
+
+// FollowLine is the line a release's result says how its workflow on GitHub goes with:
+// its tone, its words, the page its View link opens, or '' for none, and what that link
+// is called to assistive technology.
+export interface FollowLine {
+  tone: 'ok' | 'info' | 'warn' | 'bad'
+  text: string
+  url: string
+  label: string
+}
+
+// followLine is the workflow line of a release on GitHub: following it, published, its
+// workflow failed, or stopped at the follow's limits; null for a release not followed.
+export function followLine(result: ReleaseResult, repo: string): FollowLine | null {
+  const { follow } = result
+
+  if (follow === null) {
+    return null
+  }
+
+  const what = `${repo} ${result.tag === '' ? result.version : result.tag}`
+
+  switch (follow.state) {
+    case 'following':
+      return { tone: 'info', text: `Following the release workflow for ${what}…`, url: '', label: '' }
+    case 'published':
+      return { tone: 'ok', text: `The release workflow published ${what}`, url: follow.url, label: 'View the release' }
+    case 'failed':
+      return {
+        tone: 'bad',
+        text: `The release workflow failed for ${what}`,
+        url: follow.url,
+        label: 'View the failed workflow',
+      }
+    case 'timedOut':
+      return {
+        tone: 'warn',
+        text: `Stopped following ${what} after ${counted(follow.minutes, 'minute', 'minutes')}`,
+        url: follow.url,
+        label: 'View the release workflow',
+      }
+  }
 }
 
 // StepState is how far a release's step is: done, under way, or still to come.
@@ -287,7 +360,7 @@ export function resultHeading(result: ReleaseResult, repo: string): string {
 
   switch (result.kind) {
     case 'released':
-      return `${repo} ${tag} is on GitHub`
+      return result.follow?.state === 'published' ? `${repo} ${tag} is published` : `${repo} ${tag} is on GitHub`
     case 'notPushed':
       return `${tag} is tagged on this Mac but isn’t on GitHub`
     case 'failed':

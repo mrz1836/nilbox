@@ -395,7 +395,8 @@ itself never tags or pushes: magex does, when you click a button that names the 
   *From 2h ago · checking again…*, while it reads GitHub again behind it, and then replaces it.
   A list read from another clone root isn't shown.
 - **Recent** lists the last 10 releases started from the app, with how each came out (*on
-  GitHub*, *not pushed*, *failed*); each opens its run.
+  GitHub*, *on GitHub, following its workflow*, *published*, *release workflow failed*, *not
+  pushed*, *failed*); each opens its run.
 
 **The sheet** checks the clone, origin, and GitHub as it opens, then shows:
 
@@ -453,6 +454,30 @@ never from its exit status alone:
 magex's warnings show with the result, all but the one it prints on every release with
 something to release, that the newest version tag isn't on HEAD; the log keeps that one.
 
+**Following the release.** Once a release is on GitHub, the app follows the tag's release
+workflow until it publishes the release, and the result says how it goes:
+
+- **While it follows:** *Following the release workflow for acme-org/sdk v1.4.3…*.
+- **Published:** the heading reads *acme-org/sdk v1.4.3 is published*, the line *The release
+  workflow published acme-org/sdk v1.4.3* · **View** opens the release, and the run's summary
+  and Recent say *published*.
+- **The workflow failed:** *The release workflow failed for acme-org/sdk v1.4.3* · **View**
+  opens the failed run, or the tag's Actions runs.
+- **Stopped:** *Stopped following acme-org/sdk v1.4.3 after 45 minutes* · **View** opens the
+  tag's Actions runs. Nothing is assumed: the release is only on GitHub.
+
+It asks GitHub one query a minute after the release ends, then one every three minutes, at most
+20 over 45 minutes, whichever comes first, through the same client as everything else, so the
+API budget gauge counts each. *Published* means GitHub has the tag's release published, not a
+draft. *Failed* means only the tag's own GitHub Actions push run failed (once every one of
+them ended): the tag's commit also carries other apps' checks that may stay queued forever,
+schedule and dynamic runs, and the branch's own push run, and none of those say anything about
+the release. Each poll is written into the release's run, so a follow cut off by quitting
+resumes once the app starts again, within the same 20 queries and 45 minutes. A published
+release and a failed workflow are recorded in the [notification
+history](#menu-bar-and-notifications), with their banners when those kinds are on; a follow
+that stopped at its limits only says so in its result.
+
 **After a merge.** When you merge a pull request in the review sheet, the toast that says so
 offers **Release acme-org/sdk…** when Release can release it: the setting **Offer a release after
 you merge a pull request** (Settings → Integrations, on by default) is on, mage-x can be used,
@@ -460,7 +485,8 @@ the repository has a clone with that GitHub origin, and the pull request merged 
 Release offers. Asking costs no GitHub request. The action opens Scripts → Release at that
 repository's sheet, its checks already running; it never releases by itself. A release that
 reaches GitHub is also recorded in the [notification history](#menu-bar-and-notifications) as
-**Released**, with its banner when that kind is on.
+**Released**, with its banner when that kind is on, and then as **Published** or **Release
+workflow failed** once its workflow says so.
 
 <br>
 
@@ -1345,6 +1371,8 @@ and records what newly needs you:
 | Assigned to you | An issue or pull request someone else opened is newly assigned to you |
 | Back from snooze | New activity ends a snooze early under your [wake rules](#waking-a-snooze-early); it says what was new |
 | Released | A release you started reaches GitHub; it names the version and the commit it tagged |
+| Published | The release workflow on GitHub publishes a release you started (*acme-org/sdk v1.4.3 is published*) |
+| Release workflow failed | The release workflow on GitHub fails for a release you started (*The release workflow failed for acme-org/sdk v1.4.3*) |
 
 Nothing is recorded for the first refresh of an account (everything in it would be new), for
 an item you dismissed or that is still snoozed, or for a refresh that failed. A list that shows
@@ -1358,7 +1386,7 @@ left the inbox. An entry about no item, such as a release, names its repository 
 click opens its page on GitHub. **Clear** empties the history. It lives in the local database (the
 `notifications` table), whether or not a banner was shown.
 
-**Banners.** Each kind can also show a native macOS banner. All four are on by default, and
+**Banners.** Each kind can also show a native macOS banner. All six are on by default, and
 each has its own switch in Settings → Notifications. Two more switches there show a banner when
 an [agent session](#following-a-session) waits for you or finishes its turn; those start off,
 and the history doesn't keep them. A banner gives the kind, the repository
@@ -1366,7 +1394,8 @@ and number, and the title; a snooze that ended early adds what was new. When one
 more than three, a single banner sums them up, such as **5 new in your inbox: 3 review
 requests, 2 assignments**. Clicking a banner brings the window forward with its item in view.
 A release is about no item: its banner gives the repository and the version, and clicking it
-opens the tag on GitHub.
+opens the tag on GitHub, the release once it is published, or the failed run once its workflow
+failed.
 
 The first time the app starts, macOS asks whether to allow its notifications. **Send a test**
 in Settings shows a sample banner, asking first if macOS never has. If notifications are

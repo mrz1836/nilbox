@@ -8,7 +8,7 @@ import type { NotificationsState } from '../lib/useNotifications'
 import { usePopover } from '../lib/usePopover'
 import type { AppNotification, NotificationKind } from '../platform'
 import { quietButtonClass } from './controls'
-import { AssignIcon, BellIcon, ClockIcon, EyeIcon, SlidersIcon, TagIcon } from './icons'
+import { AssignIcon, BellIcon, CircleCheckIcon, ClockIcon, EyeIcon, SlidersIcon, TagIcon, XIcon } from './icons'
 import { PopoverPanel } from './PopoverPanel'
 import { RelativeTime } from './RelativeTime'
 
@@ -28,6 +28,8 @@ const kindIcons: Readonly<Partial<Record<NotificationKind, (props: { className?:
   assigned: AssignIcon,
   woke: ClockIcon,
   release_done: TagIcon,
+  release_published: CircleCheckIcon,
+  release_failed: XIcon,
 }
 
 // bellLabel names the bell with how many entries are unread.

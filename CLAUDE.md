@@ -167,7 +167,8 @@ app:lint` reads.
   those events, keeps the menu bar current with what `internal/menubar` works out, runs the
   scheduler, the sweeper, the sessions watcher, the Release page's refresher, and the Hooks
   page's scans as tracked work, starts the deferred work
-  (`core.Deferred`: the login-shell read first) once after the first paint, never on the cold
+  (`core.Deferred`: the login-shell read first; the tool finder, the runs, and the release
+  `Follower` beside it) once after the first paint, never on the cold
   start, and shuts down in order (timers, then the work, then the database). It declares small interfaces that the Wails glue
   in `cmd/nilbox` implements, and imports no Wails. A window event is registered in
   `main_desktop.go` with `application.RegisterEvent`, which generates its TypeScript type and
@@ -414,7 +415,10 @@ app:lint` reads.
   `ShowLog` shows a run's log in Finder, both by the run's ID alone. `InUse` tells an install a
   tool is running, never counting a `KindUpdate` run, which is the tool updating itself (it
   holds its copy's folder, not a clone, for up to ten minutes), and `Updating` names such a run
-  going now, one from before a restart included. The history keeps 200 runs and 512 MB of logs, and cuts a long log to its
+  going now, one from before a restart included. `Amend` rewrites an ended run's summary and
+  its kind's own result, in one transaction with the read its change is given, as a release's
+  follow of its workflow does, and `Ended` lists a kind's ended runs, from which that follow
+  resumes. The history keeps 200 runs and 512 MB of logs, and cuts a long log to its
   head and tail; Run again works the command out afresh from its source, never for a release
   or a tool's update.
 - `internal/gitread/` is the read-only git that release, hooks, and Repo scripts share: an exact-argv allowlist
@@ -606,6 +610,25 @@ app:lint` reads.
   `integrations.offerAfterMerge` setting, magex, the default branch the Release page or the
   inbox already holds, and a clone with that origin, from the page's list or else only the
   folders named as the repository is (one git command each), never a scan of the clone root.
+  The `Follower`, a deferred desktop worker, follows each release on GitHub to *published*: a
+  release's `Finish` (its `Verifier`'s too) starts a `Follow` in its `Result` (its state,
+  `until`, and `polls`) when the Service has `Workflows` and `Records`, and its `Recorded` hands
+  it to the `Follower` once the outcome is kept. It polls a minute after a follow starts or
+  resumes, then every three minutes, at most `FollowPolls` (20) over `FollowFor` (45 minutes),
+  each poll one query, `(*github.Client).FetchReleaseProgress` through `postGraphQL` (core's
+  `ReleaseWorkflow`), so the budget counts it. *Published* is the tag's release with
+  `publishedAt` set and not a draft; *failed* is only the tag's own GitHub Actions push run (for
+  no branch, or the tag) concluding in failure once every such run completed, since other
+  apps' suites that stay QUEUED, schedule and dynamic runs, and the branch's own push run say
+  nothing of the release. Each poll is written into the run's record with
+  `scriptrun.Engine.Amend` (an ended run's summary and outcome, in one transaction with its
+  read, and only while the record still says this follow goes on), and the follow stops on
+  *published* (`Notifier.Published`, `release_published`, opening the release), a failed
+  workflow (`Notifier.WorkflowFailed`, `release_failed`, opening the run, or else the tag's
+  Actions runs), or its limits (the result's line alone, no banner), each told only once the
+  record holds it. As it starts, it resumes every release whose record says it follows
+  (`Engine.Ended`), within the same limits; a quit leaves the follow recorded for the next
+  start.
 - `internal/hooks/` is the Hooks page's service. `Repos` scans, four at a time, every clone
   under the clone root with a go-pre-commit config inside it (a `.github/env/*.env` file, or
   `.github/.env.base`): where git runs its hooks (gitread's `HookPaths`), its `pre-commit` hook
