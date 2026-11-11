@@ -353,6 +353,9 @@ export function integrationsConfig(overrides: Partial<IntegrationsConfig> = {}):
     runsIn: 'app',
     offerAfterMerge: true,
     scriptSources: { magexTargets: true, repoFiles: true },
+    announced: false,
+    lastPage: '',
+    lastRepo: '',
     ...overrides,
   }
 }
