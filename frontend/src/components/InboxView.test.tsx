@@ -269,6 +269,22 @@ describe('InboxView', () => {
     expect(screen.getByText('the token reports no scopes, so they could not be verified')).toBeInTheDocument()
   })
 
+  it('closes a refresh error, and shows it again when a refresh fails again', async () => {
+    const message = 'read the item details: the GitHub API returned HTTP 502'
+    platform.refreshInbox.mockRejectedValue(new Error(message))
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Refresh' }))
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(message)
+
+    await userEvent.click(within(alert).getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(message)
+  })
+
   it('shows an inbox that could not be loaded', async () => {
     platform.getInboxSnapshot.mockRejectedValue(new Error('open the database: locked'))
     render(<Harness launch={launchOptions} clock={fixedNow} />)

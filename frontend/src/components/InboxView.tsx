@@ -195,6 +195,19 @@ export function InboxView({
   const { order, setStatusSort, setStatusOrder } = inboxOrder
   const clock = useClock()
   const error = firstMessage(refreshError, snapshot?.lastError ?? '', loadError)
+  // closedError is the error the user closed; it stays closed until another error comes or
+  // a refresh they start begins, so one that fails again shows again.
+  const [closedError, setClosedError] = useState('')
+  const [wasRefreshing, setWasRefreshing] = useState(refreshing)
+
+  if (refreshing !== wasRefreshing) {
+    setWasRefreshing(refreshing)
+
+    if (refreshing) {
+      setClosedError('')
+    }
+  }
+
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const count = triaged?.count ?? 0
   const nil =
@@ -471,7 +484,15 @@ export function InboxView({
           )}
         </span>
       </div>
-      {error !== '' && <ErrorBanner>{error}</ErrorBanner>}
+      {error !== '' && error !== closedError && (
+        <ErrorBanner
+          onClose={() => {
+            setClosedError(error)
+          }}
+        >
+          {error}
+        </ErrorBanner>
+      )}
       {snapshot !== null && snapshot.scopeWarning !== '' && (
         <p className="rounded-md border border-warning px-3 py-2 text-sm text-warning">{snapshot.scopeWarning}</p>
       )}
