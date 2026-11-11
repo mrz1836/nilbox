@@ -179,11 +179,14 @@ export function PromptLibrary({
                             onAsk({ kind: 'prompt', id: p.id })
                           }
                         }}
-                        title={[...usagePlaces(p.usage), ...badges].join('\n') || undefined}
-                        className="flex w-full flex-col rounded-md px-2.5 py-1.5 text-left transition-colors hover:bg-raised aria-[current=true]:bg-raised"
+                        title={[p.nickname, p.name, ...usagePlaces(p.usage), ...badges].join('\n')}
+                        className="flex w-full min-w-0 flex-col overflow-hidden rounded-md px-2.5 py-1.5 text-left transition-colors hover:bg-raised aria-[current=true]:bg-raised"
                       >
-                        <span className="flex w-full items-center gap-1.5">
-                          <span className="truncate text-sm font-medium">{p.nickname}</span>
+                        {/* Each line is held to the row's width, so a long nickname or name ends
+                            in an ellipsis inside the row rather than running under the next
+                            column; the row's tooltip holds both whole. */}
+                        <span className="flex w-full max-w-full min-w-0 items-center gap-1.5">
+                          <span className="min-w-0 truncate text-sm font-medium">{p.nickname}</span>
                           {isDefault(p) && <StarIcon className="size-3 shrink-0 text-accent" />}
                           {current && dirty && (
                             <span
@@ -192,7 +195,7 @@ export function PromptLibrary({
                             />
                           )}
                         </span>
-                        <span className="truncate text-xs text-muted">{p.name}</span>
+                        <span className="block w-full max-w-full truncate text-xs text-muted">{p.name}</span>
                         {places > 0 && (
                           <span className="text-[0.6875rem] text-muted">
                             Default in {places} {places === 1 ? 'place' : 'places'}

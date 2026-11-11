@@ -1,5 +1,6 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { Activity, StrictMode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
@@ -94,17 +95,187 @@ describe('LaunchControls', () => {
     expect(optionsButton()).toHaveAttribute('aria-expanded', 'false')
   })
 
-  it('opens the menu from the button’s right edge, or its left edge for a button at the left of a row', async () => {
-    const { unmount } = render(<LaunchControls {...props()} />)
+  it('opens the options as a modal dialog named for the launch and the item, focus on the chosen prompt', async () => {
+    render(<LaunchControls {...props()} />)
+
+    // Only an open dialog is rendered, so a list of rows holds none.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    const menu = await openMenu()
+    const dialog = screen.getByRole('dialog', { name: 'Launch options' })
+
+    expect(dialog).toHaveAttribute('open')
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+    expect(dialog).toHaveAccessibleDescription('acme-org/example-repo#7 · Add the widget cache')
+    expect(menu.getByRole('heading', { name: 'Open in Claude' })).toBeInTheDocument()
+    expect(optionsButton()).toHaveAttribute('aria-haspopup', 'dialog')
+    expect(optionsButton()).toHaveAttribute('aria-expanded', 'true')
+    expect(optionsButton()).toHaveAttribute('aria-controls', dialog.id)
+    expect(menu.getByRole('radio', { name: /Review/ })).toHaveFocus()
+  })
+
+  it('names an issue under the title', async () => {
+    const issue = item({ id: 9, kind: 'issue', number: 12, title: 'The cache leaks' })
+    const res = itemResolution({
+      itemId: 9,
+      kind: 'issue',
+      prompt: { ...resolution().prompt, id: 4, nickname: 'Work on it', inheritedId: 4 },
+    })
+    render(<LaunchControls {...props({ item: issue, resolution: res })} />)
 
     await openMenu()
-    expect(screen.getByRole('dialog', { name: 'Launch options' })).toHaveClass('right-0', 'origin-top-right')
 
-    unmount()
-    render(<LaunchControls {...props({ menuAlign: 'left' })} />)
+    expect(screen.getByRole('dialog', { name: 'Launch options' })).toHaveAccessibleDescription(
+      'acme-org/example-repo#12 · The cache leaks',
+    )
+  })
+
+  it('stays open while choosing, and keeps the choices once closed', async () => {
+    const codex = resolution({ agent: codexAgent(), agentSource: 'launch' })
+    platform.resolveLaunch.mockImplementation((request) =>
+      Promise.resolve(request.agent === 'codex' ? codex : resolution()),
+    )
+    render(<LaunchControls {...props()} />)
+
+    const menu = await openMenu()
+
+    await userEvent.click(menu.getByRole('radio', { name: /Quick look/ }))
+    await userEvent.click(menu.getByRole('radio', { name: 'work' }))
+    expect(screen.getByRole('dialog', { name: 'Launch options' })).toBeInTheDocument()
+
+    await userEvent.click(menu.getByRole('radio', { name: 'Codex' }))
+    expect(screen.getByRole('dialog', { name: 'Launch options' })).toBeInTheDocument()
+    expect(await menu.findByRole('heading', { name: 'Open in Codex' })).toBeInTheDocument()
+
+    await userEvent.click(menu.getByRole('button', { name: 'Close' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(optionsButton()).toHaveAccessibleName(/changed for this launch$/)
+    expect(platform.launch).not.toHaveBeenCalled()
+
+    const again = await openMenu()
+
+    expect(again.getByRole('radio', { name: 'Codex' })).toBeChecked()
+    expect(again.getByRole('radio', { name: /Quick look/ })).toBeChecked()
+    expect(again.getByRole('radio', { name: /Quick look/ })).toHaveFocus()
+
+    await userEvent.click(again.getByRole('button', { name: 'Open in Codex' }))
+
+    expect(platform.launch).toHaveBeenCalledWith({ ...defaultRequest, agent: 'codex', promptId: 2 })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(optionsButton()).toHaveFocus()
+  })
+
+  it('closes without launching on Escape, the close button, Cancel, or a click on the backdrop, focus back on the arrow', async () => {
+    render(<LaunchControls {...props()} />)
+
+    const closers: ((dialog: HTMLElement) => Promise<unknown>)[] = [
+      () => userEvent.keyboard('{Escape}'),
+      (dialog) => userEvent.click(within(dialog).getByRole('button', { name: 'Close' })),
+      (dialog) => userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' })),
+      (dialog) => userEvent.click(dialog),
+    ]
+
+    for (const closeWith of closers) {
+      await openMenu()
+      await closeWith(screen.getByRole('dialog', { name: 'Launch options' }))
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(optionsButton()).toHaveFocus()
+      expect(optionsButton()).toHaveAttribute('aria-expanded', 'false')
+      expect(optionsButton()).not.toHaveAttribute('aria-controls')
+    }
+
+    expect(platform.launch).not.toHaveBeenCalled()
+  })
+
+  it('stays open after a press inside it that ends on the backdrop', async () => {
+    render(<LaunchControls {...props()} />)
+
+    const menu = await openMenu()
+    const dialog = screen.getByRole('dialog', { name: 'Launch options' })
+
+    // A drag that selects text from the heading out past the dialog's edge ends on the
+    // backdrop, where the click lands.
+    fireEvent.mouseDown(menu.getByRole('heading', { name: 'Open in Claude' }))
+    fireEvent.click(dialog)
+
+    expect(dialog).toBeInTheDocument()
+  })
+
+  it('draws the dialog in the page’s body, outside the row that opens it', async () => {
+    render(
+      <ul>
+        <li data-testid="row" className="group hover:bg-raised/40">
+          <LaunchControls {...props()} />
+        </li>
+      </ul>,
+    )
 
     await openMenu()
-    expect(screen.getByRole('dialog', { name: 'Launch options' })).toHaveClass('left-0', 'origin-top-left')
+
+    // The row's :hover and :focus-within never take in the pointer or focus in the
+    // dialog, so the row doesn't light up behind the backdrop.
+    const dialog = screen.getByRole('dialog', { name: 'Launch options' })
+    expect(screen.getByTestId('row')).not.toContainElement(dialog)
+    expect(dialog.parentElement).toBe(document.body)
+    expect(screen.getByTestId('row')).toContainElement(optionsButton())
+  })
+
+  it('closes the options when its page hides, keeping the choices, and leaves them closed when it shows', async () => {
+    const page = (mode: 'visible' | 'hidden') => (
+      <Activity mode={mode}>
+        <LaunchControls {...props()} />
+      </Activity>
+    )
+    const { rerender } = render(page('visible'))
+
+    const menu = await openMenu()
+    await userEvent.click(menu.getByRole('radio', { name: 'work' }))
+
+    rerender(page('hidden'))
+    // The dialog closes a microtask after its page hides.
+    await act(async () => {
+      await Promise.resolve()
+    })
+    rerender(page('visible'))
+
+    expect(document.querySelector('dialog')).toBeNull()
+    expect(optionsButton()).toHaveAttribute('aria-expanded', 'false')
+    expect(optionsButton()).toHaveAccessibleName(/changed for this launch$/)
+    expect((await openMenu()).getByRole('radio', { name: 'work' })).toBeChecked()
+  })
+
+  it('stays open under StrictMode, which runs its effects twice', async () => {
+    render(
+      <StrictMode>
+        <LaunchControls {...props()} />
+      </StrictMode>,
+    )
+
+    await openMenu()
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(screen.getByRole('dialog', { name: 'Launch options' })).toHaveAttribute('open')
+    expect(optionsButton()).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('holds the options back while a launch runs, so nothing launches twice', async () => {
+    platform.launch.mockReturnValue(new Promise(() => undefined))
+    render(<LaunchControls {...props()} />)
+
+    await userEvent.click((await openMenu()).getByRole('button', { name: 'Open in Claude' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Opening…' })).toBeDisabled()
+    expect(optionsButton()).toBeDisabled()
+
+    await userEvent.click(optionsButton())
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(platform.launch).toHaveBeenCalledOnce()
   })
 
   it('waits for the launch settings before it can launch', () => {
@@ -193,6 +364,7 @@ describe('LaunchControls', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Clone and open' }))
 
     expect(screen.getByRole('button', { name: 'Cloning…' })).toBeDisabled()
+    expect(optionsButton()).toBeDisabled()
     expect(screen.getByRole('status')).toHaveTextContent('Cloning acme-org/example-repo into ~/projects/example-repo…')
     expect(platform.launch).toHaveBeenCalledTimes(1)
   })
@@ -568,9 +740,14 @@ describe('LaunchControls', () => {
     const menu = await openMenu()
 
     expect(menu.getByText(/No prompt applies/)).toBeInTheDocument()
+    // With no options to choose, focus starts in the dialog itself.
+    expect(screen.getByRole('dialog', { name: 'Launch options' })).toContainElement(
+      document.activeElement as HTMLElement,
+    )
 
     await userEvent.click(menu.getByRole('button', { name: 'Open the Prompts page' }))
     expect(onManagePrompts).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('shows the running session’s terminal rather than starting another', async () => {

@@ -239,6 +239,9 @@ export function ReviewComposer({
         />
         {launch !== null && item !== undefined && (
           <LaunchControls
+            // The sheet steps through its list in place: each pull request's launch starts
+            // from its own settings, never the choices made for the last one.
+            key={item.id}
             item={item}
             resolution={resolution}
             agents={launch.agents}
@@ -248,8 +251,6 @@ export function ReviewComposer({
             onDefaultsSaved={launch.onDefaultsSaved}
             onManagePrompts={launch.onManagePrompts}
             running={runningSession(sessions)}
-            // The menu opens leftward, over the diff: the column is narrower than it.
-            menuAlign="right"
           />
         )}
       </div>
