@@ -13,6 +13,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // CheckID names one of the release sheet's checks (§3.4.3).
@@ -208,8 +209,10 @@ type Offer struct {
 }
 
 const (
-	// magexName is the program Release runs, as the sheet names it.
+	// magexName is the program Release runs, as the sheet names it, and mageXName the
+	// integration the settings turn on and off.
 	magexName = "magex"
+	mageXName = "mage-x"
 
 	// remoteOrigin is the remote magex releases to.
 	remoteOrigin = "origin"
@@ -326,6 +329,8 @@ func (d decider) toolCheck() (Check, bool) {
 	switch {
 	case t.Usable():
 		return Check{}, false
+	case t.Off:
+		return checkBlock(CheckTool, mageXName+" is turned off in Settings", FixOpenSettings), true
 	case !t.Off && t.Path != "" && t.State == integrations.StateTooOld:
 		text := fmt.Sprintf("%s %s is older than %s, which Release needs", magexName, t.Version, t.MinVersion)
 
@@ -360,7 +365,7 @@ func (d decider) originCheck() (Check, bool) {
 
 	switch {
 	case c.Error != "":
-		return checkBlock(CheckOrigin, withReason("Couldn't read this clone with git", c.Error), FixCheckAgain), true
+		return checkBlock(CheckOrigin, textutil.WithReason("Couldn't read this clone with git", c.Error), FixCheckAgain), true
 	case !c.OriginMatches:
 		return checkBlock(CheckOrigin, d.f.Repo.Name.String()+"'s clone has a different origin"), true
 	default:
@@ -591,7 +596,7 @@ func (d decider) reachCheck() (Check, bool) {
 		return checkOK(CheckReach, "Reaches origin with your git credentials"), true
 	}
 
-	text := withReason("Can't reach origin with your git credentials", c.ReachError)
+	text := textutil.WithReason("Can't reach origin with your git credentials", c.ReachError)
 
 	return checkBlock(CheckReach, text, FixOpenTerminal, FixCheckAgain), true
 }

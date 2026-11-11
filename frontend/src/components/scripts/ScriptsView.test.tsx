@@ -199,7 +199,10 @@ describe('ScriptsView', () => {
     ['too old', { state: 'tooOld' }, 'magex 1.29.5 is too old'],
     ['won’t run', { state: 'wontRun' }, 'magex won’t run'],
     ['missing', { state: 'missing', on: false }, 'magex isn’t on this Mac'],
+    ['too old, left automatic', { switch: 'auto', on: false, state: 'tooOld' }, 'magex 1.29.5 is too old'],
+    ['won’t run, left automatic', { switch: 'auto', on: false, state: 'wontRun' }, 'magex won’t run'],
     ['off', { switch: 'off', on: false }, 'mage-x is off'],
+    ['off, and too old', { switch: 'off', on: false, state: 'tooOld' }, 'mage-x is off'],
     ['off, with an update', { switch: 'off', on: false, state: 'update' }, 'mage-x is off'],
   ])('says when a tool is %s', async (_, change, words) => {
     platform.listIntegrations.mockResolvedValue(integrationTools({ tools: [integrationTool(change)] }))

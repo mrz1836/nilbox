@@ -607,11 +607,31 @@ func TestToolFactsOf(t *testing.T) {
 	assert.True(t, got.Has(integrations.FeatureExpect))
 	assert.False(t, got.Has(integrations.FeatureFastForwardPull))
 
-	tool.On = false
+	tool.Switch, tool.On = integrationprefs.SwitchOff, false
 	got = ToolFactsOf(def, tool)
 	assert.True(t, got.Off)
 	assert.False(t, got.Usable())
 	assert.False(t, got.Has(integrations.FeatureExpect), "a magex that is off has nothing")
+
+	// Left automatic, a copy too old to use isn't on, but the user didn't turn it off: the
+	// sheet says it is too old, and how to update it.
+	old := integrations.Tool{
+		Switch: integrationprefs.SwitchAuto, State: integrations.StateTooOld, On: false,
+		Copy: integrations.Copy{Path: "/opt/tools/magex", Version: integrations.Version{Raw: "1.27.0"}},
+	}
+	got = ToolFactsOf(def, old)
+	assert.False(t, got.Off)
+	assert.False(t, got.Usable())
+
+	check, blocks := decider{f: Facts{Tool: got}}.toolCheck()
+	require.True(t, blocks)
+	assert.Equal(t, []Fix{FixUpdate}, check.Fixes)
+	assert.Contains(t, check.Text, "magex 1.27.0 is older than")
+
+	// Turned on, a missing copy isn't off either.
+	got = ToolFactsOf(def, integrations.Tool{Switch: integrationprefs.SwitchOn, State: integrations.StateMissing, On: true})
+	assert.False(t, got.Off)
+	assert.False(t, got.Usable())
 
 	got = ToolFactsOf(def, integrations.Tool{State: integrations.StateMissing, On: true})
 	assert.Equal(t, []integrations.Feature{}, got.Features)
