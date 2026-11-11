@@ -21,16 +21,16 @@ const (
 	boundOptionsFunc = "boundOptions"
 )
 
-// calledFunc returns the function call calls with any type arguments taken off: the
-// selector or identifier it names.
-func calledFunc(call *ast.CallExpr) ast.Expr {
-	switch fun := call.Fun.(type) {
+// withoutTypeArgs returns fun with any type arguments taken off: the selector or
+// identifier a generic function's instantiation names.
+func withoutTypeArgs(fun ast.Expr) ast.Expr {
+	switch f := fun.(type) {
 	case *ast.IndexExpr:
-		return fun.X
+		return f.X
 	case *ast.IndexListExpr:
-		return fun.X
+		return f.X
 	default:
-		return call.Fun
+		return fun
 	}
 }
 
@@ -41,27 +41,29 @@ func isCallTo(expr ast.Expr, name string) bool {
 		return false
 	}
 
-	ident, ok := calledFunc(call).(*ast.Ident)
+	ident, ok := withoutTypeArgs(call.Fun).(*ast.Ident)
 
 	return ok && ident.Name == name
 }
 
 // serviceBindings returns how many services files bind with the runtime's
-// NewServiceWithOptions and the bound options, and the position of every call that binds
-// one otherwise: through NewService, or with other options.
+// NewServiceWithOptions and the bound options, and the position of every reference that
+// binds one otherwise: NewService (called or taken as a value), NewServiceWithOptions with
+// other options or taken as a value, or an App's RegisterService.
 func serviceBindings(fset *token.FileSet, files []*ast.File) (bound int, problems []string) {
 	for _, file := range files {
 		imports := importNames(file)
+		calls := calledSelectors(file)
 
 		ast.Inspect(file, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
+			sel, ok := n.(*ast.SelectorExpr)
 			if !ok {
 				return true
 			}
 
-			switch ok, problem := checkBinding(call, imports); {
+			switch ok, problem := checkBinding(sel, calls[sel], imports); {
 			case problem != "":
-				problems = append(problems, fset.Position(call.Pos()).String()+": "+problem)
+				problems = append(problems, fset.Position(sel.Pos()).String()+": "+problem)
 			case ok:
 				bound++
 			}
@@ -73,16 +75,37 @@ func serviceBindings(fset *token.FileSet, files []*ast.File) (bound int, problem
 	return bound, problems
 }
 
-// checkBinding reports whether call binds a service with the runtime's
-// NewServiceWithOptions and the bound options, or what is wrong with a call that binds one
-// otherwise; a call that binds nothing is neither.
-func checkBinding(call *ast.CallExpr, imports map[string]string) (bound bool, problem string) {
-	switch name, _ := refIn(calledFunc(call), imports, wailsApplication); name {
+// calledSelectors maps each selector file calls, type arguments aside, to its call.
+func calledSelectors(file *ast.File) map[*ast.SelectorExpr]*ast.CallExpr {
+	out := map[*ast.SelectorExpr]*ast.CallExpr{}
+
+	ast.Inspect(file, func(n ast.Node) bool {
+		if call, ok := n.(*ast.CallExpr); ok {
+			if sel, ok := withoutTypeArgs(call.Fun).(*ast.SelectorExpr); ok {
+				out[sel] = call
+			}
+		}
+
+		return true
+	})
+
+	return out
+}
+
+// checkBinding reports whether sel, called as call (nil when it is not called), binds a
+// service with the runtime's NewServiceWithOptions and the bound options, or what is wrong
+// with a reference that binds one otherwise; a reference that binds nothing is neither.
+func checkBinding(sel *ast.SelectorExpr, call *ast.CallExpr, imports map[string]string) (bound bool, problem string) {
+	if sel.Sel.Name == "RegisterService" {
+		return false, "RegisterService"
+	}
+
+	switch name, _ := refIn(sel, imports, wailsApplication); name {
 	case "NewService":
 		return false, "NewService"
 	case "NewServiceWithOptions":
-		if len(call.Args) != 2 || !isCallTo(call.Args[1], boundOptionsFunc) {
-			return false, "options other than " + boundOptionsFunc + "()"
+		if call == nil || len(call.Args) != 2 || !isCallTo(call.Args[1], boundOptionsFunc) {
+			return false, "NewServiceWithOptions other than with " + boundOptionsFunc + "()"
 		}
 
 		return true, ""
@@ -91,18 +114,28 @@ func checkBinding(call *ast.CallExpr, imports map[string]string) (bound bool, pr
 	}
 }
 
-// boundMarshaler reports whether files declare the bound options function as one return
-// of the runtime's ServiceOptions whose MarshalError is desktop.MarshalError.
+// boundMarshaler reports whether files declare the bound options function, and every
+// declaration of it, whatever its build tags, is one return of the runtime's
+// ServiceOptions whose MarshalError is desktop.MarshalError.
 func boundMarshaler(files []*ast.File, desktopPath string) bool {
+	found := false
+
 	for _, file := range files {
 		for _, decl := range file.Decls {
-			if result, ok := boundOptionsResult(decl); ok {
-				return marshalsWithDesktop(result, importNames(file), desktopPath)
+			result, ok := boundOptionsResult(decl)
+			if !ok {
+				continue
 			}
+
+			if !marshalsWithDesktop(result, importNames(file), desktopPath) {
+				return false
+			}
+
+			found = true
 		}
 	}
 
-	return false
+	return found
 }
 
 // boundOptionsResult returns what decl returns when it is the bound options function and
@@ -190,12 +223,15 @@ func boundOptions() app.ServiceOptions {
 	return app.ServiceOptions{Name: "x", MarshalError: desktop.MarshalError}
 }
 
-func bind[T any](s *T) {
+func bind[T any](s *T, a *app.App) {
 	_ = app.NewServiceWithOptions(s, boundOptions())
 	_ = app.NewServiceWithOptions[T](s, boundOptions())
 	_ = app.NewService(s)
 	_ = app.NewServiceWithOptions(s, app.ServiceOptions{})
 	_ = app.NewServiceWithOptions(s, otherOptions())
+	f := app.NewService[T]
+	g := app.NewServiceWithOptions[T]
+	a.RegisterService(f(s))
 }
 `, 0)
 	require.NoError(t, err)
@@ -206,11 +242,26 @@ func bind[T any](s *T) {
 	assert.Equal(t, 2, bound, "with or without type arguments")
 	assert.Equal(t, []string{
 		"main.go:15:6: NewService",
-		"main.go:16:6: options other than boundOptions()",
-		"main.go:17:6: options other than boundOptions()",
-	}, problems)
+		"main.go:16:6: NewServiceWithOptions other than with boundOptions()",
+		"main.go:17:6: NewServiceWithOptions other than with boundOptions()",
+		"main.go:18:7: NewService",
+		"main.go:19:7: NewServiceWithOptions other than with boundOptions()",
+		"main.go:20:2: RegisterService",
+	}, problems, "a call, a function value, and a registration alike")
 	assert.True(t, boundMarshaler(files, desktopPath))
 	assert.False(t, boundMarshaler(files, "example.com/m/internal/other"), "another package's MarshalError")
+
+	other, err := parser.ParseFile(fset, "main_other.go", `package main
+
+import "github.com/wailsapp/wails/v3/pkg/application"
+
+func boundOptions() application.ServiceOptions {
+	return application.ServiceOptions{}
+}
+`, 0)
+	require.NoError(t, err)
+	assert.False(t, boundMarshaler([]*ast.File{file, other}, desktopPath),
+		"every declaration counts, as another build's file can declare its own")
 }
 
 func TestBoundMarshalerNeedsDesktopMarshalError(t *testing.T) {

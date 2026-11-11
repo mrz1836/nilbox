@@ -86,16 +86,7 @@ func strayWrite(call *ast.CallExpr, caller string) string {
 // calleeName is the name a call calls: the method's name for c.do(...), the function's
 // for f(...) or f[T](...), and "" for anything else.
 func calleeName(call *ast.CallExpr) string {
-	fun := call.Fun
-
-	switch f := fun.(type) {
-	case *ast.IndexExpr:
-		fun = f.X
-	case *ast.IndexListExpr:
-		fun = f.X
-	}
-
-	switch f := fun.(type) {
+	switch f := withoutTypeArgs(call.Fun).(type) {
 	case *ast.SelectorExpr:
 		return f.Sel.Name
 	case *ast.Ident:

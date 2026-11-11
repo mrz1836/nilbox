@@ -180,9 +180,12 @@ func assemble(
 		Name:        brand.Name,
 		Description: brand.Tagline,
 		Icon:        appIcon(),
-		Services:    append(bound, application.NewServiceWithOptions(&lifecycle{of: shell}, boundOptions())),
+		Services:    append(bound, bindService(&lifecycle{of: shell})),
 		Assets:      application.AssetOptions{Handler: application.AssetFileServerFS(frontend.Assets)},
 		Mac:         macAppOptions(),
+		// The application's error marshaler too, for any error the runtime encodes without
+		// a service's; a bound method's goes through its service's (boundOptions).
+		MarshalError: desktop.MarshalError,
 		// Every quit asks first, while runs are going in the app.
 		ShouldQuit: shell.ShouldQuit,
 		// A timed-out measurement run exits with a failure status. On macOS the app exits
@@ -283,14 +286,20 @@ func binder[T any](svc any) (application.Service, bool) {
 		return application.Service{}, false
 	}
 
-	return application.NewServiceWithOptions(s, boundOptions()), true
+	return bindService(s), true
+}
+
+// bindService binds s, as every service the window calls is bound: with boundOptions.
+func bindService[T any](s *T) application.Service {
+	return application.NewServiceWithOptions(s, boundOptions())
 }
 
 // boundOptions are the options every bound service is bound with: its methods' errors
 // reach the window through desktop.MarshalError, with what the user is told about each
 // and the detail the window needs to answer it. The runtime encodes a bound method's
 // error with its own service's marshaler alone, never the application's MarshalError
-// option, so each service carries it (internal/repoguard checks that every one does).
+// option, so each service carries it (internal/repoguard checks that every one does, and
+// the desktop-tagged test that the window gets both).
 func boundOptions() application.ServiceOptions {
 	return application.ServiceOptions{MarshalError: desktop.MarshalError}
 }

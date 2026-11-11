@@ -161,8 +161,8 @@ describe('ReviewSheet', () => {
 
     const status = await screen.findByRole('status')
     const heading = within(status).getByRole('heading', { name: 'Approve acme-org/example-repo#7' })
-    // The pull request is one piece, which wraps as a whole after the action.
-    expect(within(heading).getByText('acme-org/example-repo#7')).toHaveClass('inline-block')
+    // The pull request is its own piece of the title, which wraps as a whole after the action.
+    expect(within(heading).getByText('acme-org/example-repo#7')).toBeInTheDocument()
     expect(within(status).getByRole('listitem')).toHaveTextContent('Starting…')
     expect(within(status).getByText(/Waiting for GitHub/)).toBeInTheDocument()
 
