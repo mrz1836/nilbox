@@ -1,7 +1,14 @@
 // When the Scripts tab shows, what its badge says, and what the toast that announces it
 // says, from the tools the app found and how the user switched them.
 
-import type { IntegrationID, IntegrationsConfig, IntegrationTool, IntegrationTools, ScriptRun } from '../platform'
+import type {
+  IntegrationID,
+  IntegrationsConfig,
+  IntegrationSwitch,
+  IntegrationTool,
+  IntegrationTools,
+  ScriptRun,
+} from '../platform'
 import { counted } from './format'
 import { isLive } from './scriptRuns'
 
@@ -30,6 +37,17 @@ export function showsScripts(tools: IntegrationTools | null, config: Integration
   }
 
   return tools.tools.some((t) => t.on) || config.switches.scripts === 'on'
+}
+
+// scriptsOn reports whether the Scripts integration is on, which shows Repo scripts: as the
+// user set its switch, or, left automatic, while mage-x or go-pre-commit is on. Nothing is
+// on until the tools have loaded.
+export function scriptsOn(tools: IntegrationTools | null, set: IntegrationSwitch): boolean {
+  if (set === 'auto') {
+    return tools?.tools.some((t) => t.on) === true
+  }
+
+  return set === 'on'
 }
 
 // ScriptsBadge is what the Scripts tab's badge says: how many runs are going, whether a

@@ -12,6 +12,7 @@ import { RefreshIcon } from '../icons'
 import { IntegrationCard } from './IntegrationCard'
 import { rowMatchClass, useSetting } from './match'
 import { ErrorText, Group, joinIds, rowDescribedBy, SettingRow } from './rows'
+import { ScriptsCard } from './ScriptsCard'
 import type { SectionProps } from './types'
 
 // RunsGroup holds where the runs go: in the app, or in the terminal chosen in Settings →
@@ -110,8 +111,9 @@ export interface IntegrationsSectionProps {
 
 // IntegrationsSection is the settings page's Integrations section: the tools the app runs
 // for the user, one card each, as the last look for them found them, with a way to look
-// again, then where their runs go. It says so when the login shell's environment couldn't
-// be read, since the tools are then looked for, and run, with a basic PATH.
+// again, then the Scripts card, with the sources Repo scripts reads, and where the runs
+// go. It says so when the login shell's environment couldn't be read, since the tools are
+// then looked for, and run, with a basic PATH.
 export function IntegrationsSection({ settings, onSaved }: IntegrationsSectionProps) {
   const { tools, error, checking, checkError, checkAgain, reload, replace } = useIntegrations()
   const shellFailed = tools !== null && tools.shellChecked && !tools.shellRead
@@ -160,7 +162,10 @@ export function IntegrationsSection({ settings, onSaved }: IntegrationsSectionPr
             />
           ))}
       {settings !== null && (
-        <RunsGroup settings={settings} onSaved={onSaved} releases={usable(toolOf(tools, 'mage-x'))} />
+        <>
+          <ScriptsCard settings={settings} onSaved={onSaved} tools={tools} />
+          <RunsGroup settings={settings} onSaved={onSaved} releases={usable(toolOf(tools, 'mage-x'))} />
+        </>
       )}
     </div>
   )

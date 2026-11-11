@@ -515,3 +515,30 @@ export function AnchorIcon(props: IconProps) {
     </Icon>
   )
 }
+
+// FlaskIcon stands for a script that runs tests: t3.json's test icon.
+export function FlaskIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M9 3.5h6M10 3.5v5.75L4.9 18.4a1.5 1.5 0 0 0 1.3 2.35h11.6a1.5 1.5 0 0 0 1.3-2.35L14 9.25V3.5M7.25 14.5h9.5" />
+    </Icon>
+  )
+}
+
+// ChecklistIcon stands for a script that lints: t3.json's lint icon.
+export function ChecklistIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M11 6.5h8.5M11 12h8.5M11 17.5h8.5M4.5 6.5l1.5 1.5 2.5-3M4.5 12l1.5 1.5 2.5-3M4.5 17.5l1.5 1.5 2.5-3" />
+    </Icon>
+  )
+}
+
+// BoxIcon stands for a script that builds: t3.json's build icon, the package it makes.
+export function BoxIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 3.5l7.5 4.25v8.5L12 20.5l-7.5-4.25v-8.5zM4.5 7.75L12 12l7.5-4.25M12 12v8.5" />
+    </Icon>
+  )
+}

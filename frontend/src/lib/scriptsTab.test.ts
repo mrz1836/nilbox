@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
 import { goPreCommitTool, integrationsConfig, integrationTool, integrationTools, scriptRun } from '../test/fixtures'
-import { foundToolsText, scriptsBadge, scriptsBadgeTitle, showsScripts, toolOf, unusable, usable } from './scriptsTab'
+import {
+  foundToolsText,
+  scriptsBadge,
+  scriptsBadgeTitle,
+  scriptsOn,
+  showsScripts,
+  toolOf,
+  unusable,
+  usable,
+} from './scriptsTab'
 
 // off is a tool switched off.
 const off = { switch: 'off' as const, on: false }
@@ -32,6 +41,18 @@ describe('scriptsTab', () => {
     ).toBe(true)
     expect(showsScripts(null, integrationsConfig())).toBe(false)
     expect(showsScripts(integrationTools(), null)).toBe(false)
+  })
+
+  it('turns Scripts on as switched, or, while automatic, with mage-x or go-pre-commit', () => {
+    const allOff = integrationTools({ tools: [integrationTool(off), goPreCommitTool(off)] })
+    const hooksOnly = integrationTools({ tools: [integrationTool(off), goPreCommitTool()] })
+
+    expect(scriptsOn(integrationTools(), 'auto')).toBe(true)
+    expect(scriptsOn(hooksOnly, 'auto')).toBe(true)
+    expect(scriptsOn(allOff, 'auto')).toBe(false)
+    expect(scriptsOn(null, 'auto')).toBe(false)
+    expect(scriptsOn(allOff, 'on')).toBe(true)
+    expect(scriptsOn(integrationTools(), 'off')).toBe(false)
   })
 
   it('badges the runs going, a run failed and unseen, and a tool on that can’t be used', () => {

@@ -351,9 +351,9 @@ Scripts: each page searches in itself.
 
 - **The rail** lists the pages: **Release** while mage-x is on, counting the repositories with
   unreleased changes; **Hooks** while go-pre-commit is on, counting the repositories that need
-  attention, with an amber dot; and **Runs**, counting the runs in progress. Repo scripts joins
-  them in a later release. Its foot lists each tool's status, and **Manage in Settings** opens
-  Settings → Integrations.
+  attention, with an amber dot; **Repo scripts** while Scripts is on (automatically, while
+  mage-x or go-pre-commit is); and **Runs**, counting the runs in progress. Its foot lists each
+  tool's status, and **Manage in Settings** opens Settings → Integrations.
 - **It opens** on the page you used last while the window is open, or the first page that's
   on. The tab keeps its page and an open release sheet while you switch tabs.
 - **A page whose tool can't be used** says why in place of its list (*magex isn't on this
@@ -517,6 +517,57 @@ terminal as **Runs in** says.
   before and after the run. Run again runs the same checks again.
 
 Agent sessions' worktrees share each clone's hooks, so an agent's commits run these checks too.
+
+<br>
+
+## Repo scripts
+
+**Repo scripts** runs a clone's own commands: its `t3.json` scripts, its `.vscode/tasks.json`
+tasks, and magex's targets. Listing them runs nothing in the clone: the files are read, and
+magex's built-in targets are listed in a folder of the app's own. The page never asks GitHub, so
+it works offline and signed out.
+
+**The page.**
+
+- **The picker** lists the clones under the clone root, the ones a script ran in most recently
+  first, and the page starts on the one you chose last while the window is open. Beside it: the
+  repository, the folder, and the branch, with *From branch feature-x* when the clone isn't on
+  its default branch, since a branch can change what the files say.
+- **The sources, in order:** **From t3.json**, **From .vscode/tasks.json**, and **magex**, each
+  as Settings → Integrations turns it on (the Scripts card's **Show magex targets** and **Read
+  t3.json and VS Code tasks**). A file that can't be read says why.
+- **Each script** shows its command (or a task's detail) with **Run**, and a ⋯ menu that runs
+  it in the other place: your terminal when runs go to the app, or the app when they go to your
+  terminal. A task the app can't run, such as one that uses `${file}`, shows greyed with the
+  reason. A background task says it runs until you stop it.
+- **A version bump** (a command naming `version:bump` or another target that tags) shows
+  *Release does this, with checks* and **Open Release** instead of Run; its ⋯ menu still has
+  **Run it anyway**.
+- **magex:** the common targets as chips that run at once (one that bumps a version opens a
+  menu instead, with **Open Release** and **Run it anyway**), then **This repository's targets**
+  and **All magex commands**, folded and searched together, with an **Arguments** field for
+  `key=value` pairs, which magex's own targets run with. A note says that magex targets run the
+  repository's own code and its `.github/env` settings, as any build does.
+
+**Running one.**
+
+- **A task with inputs** (VS Code's `pickString` and `promptString`) opens a small form first,
+  with the defaults filled in; each choice shows the value it fills in beside its label.
+- **A command from the repository asks first**, before its first run and whenever it changes:
+  *Run "Test" from acme-org/sdk's t3.json?* shows the command exactly as it will run, inputs
+  filled in, and that it runs in the clone with your permissions, with **Don't ask again for
+  this command in acme-org/sdk** ticked. A changed command shows what you ran before above what
+  it runs now, under *Changed since you last ran it*. The repository's own magex target asks the
+  same way, and again whenever a file under `magefiles/` changes. magex's built-in targets
+  never ask. A clone whose origin isn't on GitHub asks every time.
+- **What runs is what you saw:** the app reads the command again under the clone's lock and
+  refuses one that changed after you confirmed it, saying so rather than asking again.
+- **Each run** shows beside the scripts, with its log, in the app or your terminal as **Runs
+  in** says; the page stays as you left it, the arguments and the search included, and Runs
+  lists the run too.
+- **A clone with nothing to show** says why: its `t3.json` or `.vscode/tasks.json` lists no
+  commands, it has neither file, or the sources are turned off in Settings → Integrations, with
+  **Open Settings**.
 
 <br>
 

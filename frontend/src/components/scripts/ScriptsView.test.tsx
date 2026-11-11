@@ -6,7 +6,7 @@ import type { ReleaseRequest } from '../../lib/release'
 import type { SettingsSection } from '../../lib/settingsIndex'
 import { useIntegrations } from '../../lib/useIntegrations'
 import { useScriptRuns } from '../../lib/useScriptRuns'
-import type { HookInstallAllResult, IntegrationTool, TerminalID } from '../../platform'
+import type { HookInstallAllResult, IntegrationSwitch, IntegrationTool, TerminalID } from '../../platform'
 import { at } from '../../test/clock'
 import {
   goPreCommitTool,
@@ -21,6 +21,7 @@ import {
   releaseCheck,
   releaseOffer,
   releaseRun,
+  scriptClone,
   scriptRun,
 } from '../../test/fixtures'
 import { emit, platform } from '../../test/platform'
@@ -31,17 +32,19 @@ vi.mock('../../platform', () => import('../../test/platform').then((fake) => fak
 interface TabProps {
   terminal?: TerminalID | null
   request?: ReleaseRequest | null
+  scriptsSwitch?: IntegrationSwitch
   onOpenSettings: (section: SettingsSection) => void
 }
 
 // Tab is the tab as the window shows it: fed the tools and the runs the window lists.
-function Tab({ terminal = 'iterm2', request = null, onOpenSettings }: TabProps) {
+function Tab({ terminal = 'iterm2', request = null, scriptsSwitch = 'auto', onOpenSettings }: TabProps) {
   return (
     <ScriptsView
       terminal={terminal}
       runsIn="app"
       cloneRoot="~/projects"
       integrations={useIntegrations()}
+      scriptsSwitch={scriptsSwitch}
       runs={useScriptRuns()}
       request={request}
       onOpenSettings={onOpenSettings}
@@ -92,19 +95,24 @@ function request(seq: number): ReleaseRequest {
 }
 
 describe('ScriptsView', () => {
-  it('opens on Release while mage-x is on, with Hooks and Runs after it, and keeps the page used last', async () => {
+  it('opens on Release while mage-x is on, with Hooks, Repo scripts, and Runs after it, and keeps the page used last', async () => {
     renderView()
 
     const release = await rail().findByRole('button', { name: /^Release/ })
 
     expect(release).toHaveAttribute('aria-current', 'page')
     expect(await screen.findByRole('heading', { name: 'Release', level: 2 })).toBeInTheDocument()
-    expect(rail().queryByRole('button', { name: /Repo scripts/ })).not.toBeInTheDocument()
     expect(
       rail()
         .getAllByRole('button')
         .map((b) => b.textContent),
-    ).toEqual([expect.stringMatching(/^Release/), expect.stringMatching(/^Hooks/), 'Runs', 'Manage in Settings'])
+    ).toEqual([
+      expect.stringMatching(/^Release/),
+      expect.stringMatching(/^Hooks/),
+      'Repo scripts',
+      'Runs',
+      'Manage in Settings',
+    ])
 
     await userEvent.click(rail().getByRole('button', { name: /^Runs/ }))
     expect(rail().getByRole('button', { name: /^Runs/ })).toHaveAttribute('aria-current', 'page')
@@ -550,6 +558,106 @@ describe('ScriptsView', () => {
       await waitFor(() => {
         expect(platform.listHooks).toHaveBeenCalledTimes(2)
       })
+    })
+  })
+
+  describe('Repo scripts', () => {
+    it('shows only while Scripts is on: with a tool while automatic, or switched on alone', async () => {
+      const { view, onOpenSettings } = renderView({ scriptsSwitch: 'off' })
+
+      await rail().findByRole('button', { name: /^Release/ })
+      expect(rail().queryByRole('button', { name: 'Repo scripts' })).not.toBeInTheDocument()
+
+      view.rerender(<Tab onOpenSettings={onOpenSettings} scriptsSwitch="auto" />)
+      expect(rail().getByRole('button', { name: 'Repo scripts' })).toBeInTheDocument()
+
+      magexOff()
+      act(() => {
+        emit('tools:updated')
+      })
+      await waitFor(() => {
+        expect(rail().queryByRole('button', { name: 'Repo scripts' })).not.toBeInTheDocument()
+      })
+
+      view.rerender(<Tab onOpenSettings={onOpenSettings} scriptsSwitch="on" />)
+      expect(rail().getByRole('button', { name: 'Repo scripts' })).toHaveAttribute('aria-current', 'page')
+      expect(await screen.findByRole('combobox', { name: 'Repository' })).toHaveValue('~/projects/sdk')
+      expect(screen.getByRole('heading', { name: 'Repo scripts', level: 2 })).toBeInTheDocument()
+
+      view.rerender(<Tab onOpenSettings={onOpenSettings} scriptsSwitch="off" />)
+      expect(await screen.findByRole('heading', { name: 'Runs', level: 2 })).toBeInTheDocument()
+    })
+
+    it('shows the run a script starts beside the page, and keeps the clone and the run when it shows again', async () => {
+      renderView()
+
+      await userEvent.click(await rail().findByRole('button', { name: 'Repo scripts' }))
+      await userEvent.selectOptions(await screen.findByRole('combobox', { name: 'Repository' }), 'web')
+      await userEvent.type(await screen.findByRole('textbox', { name: 'Arguments' }), 'verbose')
+      await userEvent.click(screen.getByRole('button', { name: 'Run magex lint' }))
+
+      expect(platform.runScript).toHaveBeenCalledWith(
+        expect.objectContaining({ dir: '~/projects/web', ref: 'magex:lint', args: ['verbose'] }),
+      )
+      expect(await screen.findByRole('region', { name: 'magex lint' })).toBeInTheDocument()
+      expect(platform.getScriptRun).toHaveBeenCalledWith(31)
+      expect(rail().getByRole('button', { name: 'Repo scripts' })).toHaveAttribute('aria-current', 'page')
+      expect(screen.getByRole('heading', { name: 'Repo scripts', level: 2 })).toBeInTheDocument()
+      expect(screen.getByRole('textbox', { name: 'Arguments' })).toHaveValue('verbose')
+
+      await userEvent.click(rail().getByRole('button', { name: /^Runs/ }))
+      await userEvent.click(rail().getByRole('button', { name: 'Repo scripts' }))
+      expect(await screen.findByRole('combobox', { name: 'Repository' })).toHaveValue('~/projects/web')
+      expect(await screen.findByRole('region', { name: 'magex lint' })).toBeInTheDocument()
+    })
+
+    it('keeps the clone it started on when the clones are listed in another order', async () => {
+      renderView()
+
+      await userEvent.click(await rail().findByRole('button', { name: 'Repo scripts' }))
+      expect(await screen.findByRole('combobox', { name: 'Repository' })).toHaveValue('~/projects/sdk')
+
+      platform.listScriptRepos.mockResolvedValue([scriptClone({ name: 'web', dir: '~/projects/web' }), scriptClone()])
+      await userEvent.click(rail().getByRole('button', { name: /^Runs/ }))
+      await userEvent.click(rail().getByRole('button', { name: 'Repo scripts' }))
+
+      await waitFor(() => {
+        expect(platform.listScriptRepos).toHaveBeenCalledTimes(2)
+      })
+      expect(await screen.findByRole('combobox', { name: 'Repository' })).toHaveValue('~/projects/sdk')
+    })
+
+    it('opens Release from a command Release does, while Release is on', async () => {
+      renderView()
+
+      await userEvent.click(await rail().findByRole('button', { name: 'Repo scripts' }))
+      const row = within(await screen.findByRole('list', { name: 'From t3.json' }))
+        .getByText('Version: bump patch')
+        .closest('li')
+
+      await userEvent.click(within(row as HTMLElement).getByRole('button', { name: 'Open Release' }))
+      expect(await screen.findByRole('heading', { name: 'Release', level: 2 })).toBeInTheDocument()
+    })
+
+    it('points to Release without a way there while Release is off', async () => {
+      hooksOnly()
+      renderView()
+
+      await userEvent.click(await rail().findByRole('button', { name: 'Repo scripts' }))
+      await screen.findByRole('list', { name: 'From t3.json' })
+
+      expect(screen.getAllByText('Release does this, with checks')).not.toHaveLength(0)
+      expect(screen.queryByRole('button', { name: 'Open Release' })).not.toBeInTheDocument()
+    })
+
+    it('opens Settings from the page', async () => {
+      platform.listScriptRepos.mockResolvedValue([])
+      const { onOpenSettings } = renderView()
+
+      await userEvent.click(await rail().findByRole('button', { name: 'Repo scripts' }))
+      await userEvent.click(await screen.findByRole('button', { name: 'Change the clone root' }))
+
+      expect(onOpenSettings).toHaveBeenCalledExactlyOnceWith('repositories')
     })
   })
 })

@@ -30,6 +30,10 @@ export const quietButtonClass =
 
 export const chipClass = 'rounded-full border border-border px-2 py-0.5 text-xs whitespace-nowrap text-muted'
 
+// captionClass sets a small uppercase caption over a group, such as a page's section
+// heading in the Scripts tab; add the padding that lines it up.
+export const captionClass = 'text-[0.6875rem] font-semibold tracking-wide text-muted uppercase'
+
 // switchClass draws a native checkbox as a switch; give it role="switch" so assistive
 // tech announces on and off.
 export const switchClass =

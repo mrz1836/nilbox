@@ -741,6 +741,7 @@ export function App() {
                   runsIn={config.settings?.integrations.runsIn ?? 'app'}
                   cloneRoot={config.settings?.cloneRoot ?? ''}
                   integrations={integrations}
+                  scriptsSwitch={config.settings?.integrations.switches.scripts ?? 'auto'}
                   runs={scriptRuns}
                   request={releaseRequest}
                   onOpenSettings={openSettingsAt}
