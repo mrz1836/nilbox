@@ -715,7 +715,7 @@ func (e *Engine) newLive(spec Spec, h holds) *live {
 	return &live{
 		kind: spec.Kind, runsIn: spec.RunsIn, tool: spec.Tool, dir: spec.Dir, repo: e.where(spec.Repo, spec.Dir),
 		title: spec.Title, timeout: timeout, output: spec.Output, progress: spec.Progress, finish: spec.Finish,
-		recorded: spec.Recorded, intent: spec.Intent, holds: h, started: e.clock.Now(),
+		recorded: spec.Recorded, released: spec.Released, intent: spec.Intent, holds: h, started: e.clock.Now(),
 		done: make(chan struct{}), abandon: make(chan struct{}),
 	}
 }

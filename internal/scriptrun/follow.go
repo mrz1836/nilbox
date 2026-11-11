@@ -38,6 +38,7 @@ type live struct {
 	output   io.Writer
 	finish   func(ctx context.Context, end Ending, out Outcome) Outcome
 	recorded func(ctx context.Context, id int64, out Outcome)
+	released func(id int64)
 	intent   any
 	holds    holds
 
@@ -398,7 +399,7 @@ func (e *Engine) failStart(ctx context.Context, l *live, summary string) {
 }
 
 // record records a run's end, tells its kind's Recorded once it is recorded, lets go of
-// it, logs it, applies the retention, and tells Changed.
+// it and then tells its Released, logs it, applies the retention, and tells Changed.
 func (e *Engine) record(ctx context.Context, l *live, exitCode *int, out Outcome, size int64) {
 	unrecognized := out.Unrecognized
 	if len(unrecognized) > MaxUnrecognized {
@@ -423,6 +424,11 @@ func (e *Engine) record(ctx context.Context, l *live, exitCode *int, out Outcome
 	}
 
 	e.release(l)
+
+	if l.released != nil {
+		l.released(l.id)
+	}
+
 	e.logEnd(ctx, l, exitCode, out.Status, result)
 	e.prune(ctx)
 	e.notify()
