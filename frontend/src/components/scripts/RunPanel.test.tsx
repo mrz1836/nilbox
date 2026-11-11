@@ -454,6 +454,35 @@ describe('RunPanel', () => {
       expect(screen.getByRole('button', { name: 'Copy log' })).toBeInTheDocument()
     })
 
+    it('leaves magex’s JSON result out of a release’s log, and keeps it in the copy', async () => {
+      const result =
+        '{"from":"v1.4.3","to":"v1.4.4","bump":"patch","tag":"v1.4.4","pushed":true,"branch":"master",' +
+        '"warnings":[],"error":""}'
+
+      platform.scriptRunOutput.mockResolvedValue(scriptRunChunk({ text: `✅ Tag pushed to remote\n${result}\n` }))
+      renderPanel(ended({ kind: 'release', title: 'Release v1.4.4' }))
+
+      await shownRun('Release v1.4.4')
+
+      const log = screen.getByRole('region', { name: 'Output' })
+
+      expect(await within(log).findByText('✅ Tag pushed to remote')).toBeInTheDocument()
+      expect(log).not.toHaveTextContent('"pushed":true')
+
+      await userEvent.click(screen.getByRole('button', { name: 'Copy log' }))
+      expect(platform.copyText).toHaveBeenCalledExactlyOnceWith(`✅ Tag pushed to remote\n${result}\n`)
+    })
+
+    it('shows a line like a JSON result in another run’s log', async () => {
+      const line = '{"from":"a","to":"b","tag":"","pushed":false,"branch":"","warnings":[],"error":""}'
+
+      platform.scriptRunOutput.mockResolvedValue(scriptRunChunk({ text: `${line}\n` }))
+      renderPanel()
+
+      await shownRun()
+      expect(await within(screen.getByRole('region', { name: 'Output' })).findByText(line)).toBeInTheDocument()
+    })
+
     it('says it is copying until it has, and why it couldn’t', async () => {
       let refuse: (err: Error) => void = () => undefined
 

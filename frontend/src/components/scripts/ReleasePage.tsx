@@ -5,6 +5,7 @@ import {
   cloneNotes,
   commitChecksText,
   intentOf,
+  listProgressWords,
   matchCandidates,
   recentReleases,
   recentWords,
@@ -53,6 +54,11 @@ function groupsOpen(): Readonly<Partial<Record<ReleaseGroup, boolean>>> {
 // oldAs says how old a list is: "14m old".
 function oldAs(now: Date, iso: string): string {
   return `${formatAge(now, iso)} old`
+}
+
+// fromAgo says when a list kept from the last start was read: "From 2h ago".
+function fromAgo(now: Date, iso: string): string {
+  return `From ${formatAgo(now, iso)}`
 }
 
 // CandidateRow is one repository: its newest version and how many commits came since,
@@ -171,9 +177,9 @@ export interface ReleasePageProps {
 // ReleasePage is the Scripts tab's Release page: every clone with a GitHub origin, in its
 // group (unreleased changes first, newest commit first, then the collapsed rest), each
 // with Release… where there is something to release; a search over every group; a way
-// to read GitHub again, and how old the list is when the last read failed; and the
-// recent releases, each opening its run. While magex can't be used, the page says why
-// in place of its list.
+// to read GitHub again, how far a read has got, and how old the list is when it was kept
+// from the last start or the last read failed; and the recent releases, each opening its
+// run. While magex can't be used, the page says why in place of its list.
 export function ReleasePage({
   candidates,
   tool,
@@ -186,7 +192,7 @@ export function ReleasePage({
   const id = useId()
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState(groupsOpen)
-  const { list, error, refreshing, refreshError, refresh } = candidates
+  const { list, error, refreshing, refreshError, progress, refresh } = candidates
   const searching = search.trim() !== ''
   const matched = list === null ? [] : matchCandidates(list.repos, search)
   const recent = recentReleases(runs)
@@ -203,7 +209,7 @@ export function ReleasePage({
       error === '' ? (
         <p role="status" className="flex items-center gap-2 px-1 text-sm text-muted">
           <Spinner />
-          Listing your repositories…
+          {progress === null ? 'Listing your repositories…' : listProgressWords(progress)}
         </p>
       ) : (
         <ErrorBanner>Couldn’t list the repositories: {error}</ErrorBanner>
@@ -295,7 +301,7 @@ export function ReleasePage({
                 {tool.binary} {tool.copy.version.raw}
               </span>
             )}
-            {list !== null && list.checkedAt !== '' && (
+            {list !== null && list.checkedAt !== '' && !list.kept && (
               <span>
                 · Read <RelativeTime iso={list.checkedAt} show={formatAgo} />
               </span>
@@ -319,6 +325,21 @@ export function ReleasePage({
             <AlertIcon className="size-3.5 shrink-0" />
             Couldn’t reach GitHub · <RelativeTime iso={list.checkedAt} show={oldAs} />
             <span className="sr-only">: {list.error}</span>
+          </p>
+        )}
+        {list !== null && list.error === '' && (list.kept || progress !== null) && (
+          // The list kept from the last start, with its age, and how far the read of
+          // GitHub under way has got. The space before the progress keeps the two apart
+          // when read as text; the gap keeps them apart on screen.
+          <p role="status" className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted">
+            {(list.refreshing || progress !== null) && <Spinner className="size-3.5" />}
+            {list.kept && (
+              <span>
+                <RelativeTime iso={list.checkedAt} show={fromAgo} />
+                {list.refreshing && ' · checking again…'}
+              </span>
+            )}
+            {progress !== null && <span> {listProgressWords(progress)}</span>}
           </p>
         )}
         <label htmlFor={`${id}-search`} className="sr-only">

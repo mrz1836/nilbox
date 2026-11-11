@@ -75,7 +75,8 @@ type Config struct {
 	// LogDir is the absolute folder the runs' logs go in: <data>/script-runs.
 	LogDir string
 
-	// Home is the user's home folder, for ~ in the folders the window shows.
+	// Home is the user's home folder, for ~ in the folders the window shows and in a run's
+	// command, which records its program's absolute path all the same.
 	Home string
 
 	// Clock stamps the runs. It defaults to the system clock.
@@ -693,7 +694,7 @@ func (e *Engine) open(ctx context.Context, l *live, spec Spec) error {
 func (e *Engine) insert(ctx context.Context, spec Spec) (int64, error) {
 	command := spec.Command
 	if command == "" {
-		command = displayCommand(spec.Argv)
+		command = displayCommand(spec.Argv, e.home)
 	}
 
 	return e.store.insert(ctx, started{
@@ -909,10 +910,19 @@ func sameStart(a, b time.Time) bool {
 	return d <= startSlack && d >= -startSlack
 }
 
-// displayCommand writes argv out as a shell would read it, quoting what needs quoting.
-func displayCommand(argv []string) string {
+// displayCommand writes argv out as a shell would read it, quoting what needs quoting,
+// with the program's folder under home written from ~, as the window shows every folder.
+// The ~/ stays outside the quotes, where a shell still reads it as home.
+func displayCommand(argv []string, home string) string {
 	parts := make([]string, 0, len(argv))
-	for _, arg := range argv {
+
+	for i, arg := range argv {
+		if rest, ok := strings.CutPrefix(paths.Tilde(arg, home), "~/"); i == 0 && ok {
+			parts = append(parts, "~/"+shellQuote(rest))
+
+			continue
+		}
+
 		parts = append(parts, shellQuote(arg))
 	}
 

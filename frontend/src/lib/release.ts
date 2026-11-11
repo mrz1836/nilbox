@@ -1,5 +1,6 @@
-// Releases as the Release page and its sheet word them: the groups, a clone's state, the
-// steps a release goes through, how one came out, and the recent ones, from the runs.
+// Releases as the Release page and its sheet word them: the groups, how far a read of the
+// list has got, a clone's state, the steps a release goes through, how one came out, and
+// the recent ones, from the runs.
 
 import type {
   CommitChecks,
@@ -8,9 +9,11 @@ import type {
   ReleaseGroup,
   ReleaseResult,
   ReleaseResultKind,
+  ReleasesProgress,
   ScriptRun,
   ScriptRunProgress,
 } from '../platform'
+import { counted, formatCount } from './format'
 import { isLive } from './scriptRuns'
 
 // ReleaseRequest asks the Release page to open a repository's sheet, as a merge's toast
@@ -49,6 +52,52 @@ export function matchCandidates(repos: readonly ReleaseCandidate[], search: stri
 // the rail shows beside Release.
 export function unreleasedCount(repos: readonly ReleaseCandidate[] | undefined): number {
   return repos?.filter((r) => r.group === 'unreleased').length ?? 0
+}
+
+// listProgressWords says how far a read of the list has got, phase by phase: finding the
+// clones, asking GitHub about their repositories, then what changed since each version,
+// and checking the unreleased clones, as "Asking GitHub: 45 of 151 repositories…".
+export function listProgressWords({ phase, done, total }: ReleasesProgress): string {
+  const repos = `${formatCount(done)} of ${counted(total, 'repository', 'repositories')}`
+
+  switch (phase) {
+    case 'clones':
+      return 'Finding your clones…'
+    case 'github':
+      return `Asking GitHub: ${repos}…`
+    case 'compare':
+      return `Asking GitHub what changed: ${repos}…`
+    case 'checking':
+      return `Checking your clones: ${formatCount(done)} of ${formatCount(total)}…`
+  }
+}
+
+// bumpResultKeys are the fields a line must have to be magex's json=true result, as the
+// release service reads it (mxResultKeys in internal/release).
+const bumpResultKeys = ['from', 'to', 'tag', 'pushed', 'branch', 'warnings', 'error'] as const
+
+// isBumpResult reports whether a line of a release's log is magex's json=true result: a
+// JSON object with every field the result has. The release's own result shows what it
+// says, so its log view leaves the line out; the log file keeps it.
+export function isBumpResult(line: string): boolean {
+  const text = line.trim()
+
+  if (!text.startsWith('{') || !text.endsWith('}')) {
+    return false
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(text)
+
+    return (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      !Array.isArray(parsed) &&
+      bumpResultKeys.every((k) => k in parsed)
+    )
+  } catch {
+    return false
+  }
 }
 
 // cloneNotes says what matters about a clone before releasing from it, in a few words

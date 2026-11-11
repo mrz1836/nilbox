@@ -118,12 +118,18 @@ export interface Candidate {
  * Candidates is the Release page's list: every clone with a GitHub origin, grouped, and
  * how many clones have none. CheckedAt is when GitHub was last asked, RFC 3339. Error
  * says why the last refresh failed, while the list from before it is still shown.
+ *
+ * Kept reports the list kept from a past start, shown at once after a restart: GitHub
+ * hasn't been read since, and CheckedAt says how old it is. Refreshing reports a read of
+ * GitHub under way behind the page; event.ReleasesUpdated says when it lands.
  */
 export interface Candidates {
     "repos": Candidate[] | null;
     "withoutGitHub": number;
     "checkedAt": string;
     "error": string;
+    "kept": boolean;
+    "refreshing": boolean;
 }
 
 /**

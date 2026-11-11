@@ -680,9 +680,12 @@ type releaseGitHub struct {
 }
 
 // ReleaseStatus is round one: each repository's state, default branch, and newest tags.
-func (r releaseGitHub) ReleaseStatus(ctx context.Context, repos []repo.Name) (map[string]release.RepoStatus, error) {
+// answered hears each batch GitHub answers.
+func (r releaseGitHub) ReleaseStatus(
+	ctx context.Context, repos []repo.Name, answered func(n int),
+) (map[string]release.RepoStatus, error) {
 	got, err := github.WithToken(ctx, r.tokens, func(tok github.Token) (map[string]github.ReleaseStatus, error) {
-		return r.client.FetchReleaseStatus(ctx, tok, repos)
+		return r.client.FetchReleaseStatus(ctx, tok, repos, answered)
 	})
 	if err != nil {
 		return nil, releaseSignedOut(err)
@@ -708,14 +711,17 @@ func (r releaseGitHub) ReleaseStatus(ctx context.Context, repos []repo.Name) (ma
 }
 
 // ReleaseCompare is round two: how far each default branch is ahead of its version tag.
-func (r releaseGitHub) ReleaseCompare(ctx context.Context, reqs []release.CompareRequest) (map[string]release.Compare, error) {
+// answered hears each batch GitHub answers.
+func (r releaseGitHub) ReleaseCompare(
+	ctx context.Context, reqs []release.CompareRequest, answered func(n int),
+) (map[string]release.Compare, error) {
 	asks := make([]github.CompareRequest, 0, len(reqs))
 	for _, q := range reqs {
 		asks = append(asks, github.CompareRequest{Repo: q.Repo, Tag: q.Tag, Branch: q.Branch})
 	}
 
 	got, err := github.WithToken(ctx, r.tokens, func(tok github.Token) (map[string]github.ReleaseCompare, error) {
-		return r.client.FetchReleaseCompare(ctx, tok, asks)
+		return r.client.FetchReleaseCompare(ctx, tok, asks, answered)
 	})
 	if err != nil {
 		return nil, releaseSignedOut(err)

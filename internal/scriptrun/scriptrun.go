@@ -226,7 +226,8 @@ type Spec struct {
 	// which the terminal's own shell sets up.
 	Env []string
 
-	// Command is the display form of Argv; "" writes Argv out, quoted as a shell would.
+	// Command is the display form of Argv; "" writes Argv out, quoted as a shell would, with
+	// its program's folder under home from ~. Argv itself stays absolute.
 	Command string
 
 	// RunsIn is where it runs; "" is the app.

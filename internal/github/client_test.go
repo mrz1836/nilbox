@@ -420,11 +420,11 @@ func everyFetch() []fetchCall {
 			return err
 		}},
 		{name: "FetchReleaseStatus", graphQL: true, call: func(ctx context.Context, c *Client, tok Token) error {
-			_, err := c.FetchReleaseStatus(ctx, tok, []repo.Name{pullRef().Repo})
+			_, err := c.FetchReleaseStatus(ctx, tok, []repo.Name{pullRef().Repo}, nil)
 			return err
 		}},
 		{name: "FetchReleaseCompare", graphQL: true, call: func(ctx context.Context, c *Client, tok Token) error {
-			_, err := c.FetchReleaseCompare(ctx, tok, []CompareRequest{{Repo: pullRef().Repo, Tag: "v1.0.0", Branch: "master"}})
+			_, err := c.FetchReleaseCompare(ctx, tok, []CompareRequest{{Repo: pullRef().Repo, Tag: "v1.0.0", Branch: "master"}}, nil)
 			return err
 		}},
 	}

@@ -67,6 +67,11 @@ function LogLine({ line }: { line: AnsiLine }) {
   )
 }
 
+// lineText is a line's text, without its styles.
+function lineText(line: AnsiLine): string {
+  return line.map((span) => span.text).join('')
+}
+
 export interface LogViewProps {
   // runId is the run whose log shows.
   runId: number
@@ -74,6 +79,10 @@ export interface LogViewProps {
   // says it is done, whether or not the run is live; a live run's failed read is tried
   // again.
   live: boolean
+  // hide, when set, picks out the lines the view leaves out by their text, such as the
+  // result a release's magex prints as JSON, which the run's own result shows. They keep
+  // their place in the log, and the log file and Copy log keep them.
+  hide?: ((text: string) => boolean) | undefined
 }
 
 // LogView shows a run's log: its text in the theme's colors, never markup, in lines a
@@ -82,7 +91,7 @@ export interface LogViewProps {
 // reads on from where it left off, and follows the new output down until the user scrolls
 // up, then offers Jump to latest. A log cut down as its run ended is read again from its
 // tail. The status of the run is the panel's to announce, not the log's lines.
-export function LogView({ runId, live }: LogViewProps) {
+export function LogView({ runId, live, hide }: LogViewProps) {
   const [log, setLog] = useState(emptyTail)
   const [error, setError] = useState('')
   const [reading, setReading] = useState(false)
@@ -255,9 +264,9 @@ export function LogView({ runId, live }: LogViewProps) {
             : total === 0 && <p className="font-sans text-muted">{live ? 'No output yet.' : 'No output.'}</p>}
           {blocks.map((block) => (
             <div key={block.at} className="[contain-intrinsic-size:auto_67.5rem] [content-visibility:auto]">
-              {block.lines.map((line, i) => (
-                <LogLine key={block.at + i} line={line} />
-              ))}
+              {block.lines.map((line, i) =>
+                hide?.(lineText(line)) === true ? null : <LogLine key={block.at + i} line={line} />,
+              )}
             </div>
           ))}
         </div>
