@@ -136,13 +136,13 @@ describe('RunPanel', () => {
     renderPanel(running())
 
     await shownRun()
-    expect(screen.getByText('5 s')).toBeInTheDocument()
+    expect(await screen.findByText('5 s')).toBeInTheDocument()
 
-    act(() => {
-      vi.advanceTimersByTime(1_000)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000)
     })
 
-    expect(screen.getByText('6 s')).toBeInTheDocument()
+    expect(await screen.findByText('6 s')).toBeInTheDocument()
   })
 
   it('reads the run again whenever the runs change, until it goes', async () => {
