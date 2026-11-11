@@ -223,3 +223,60 @@ func TestDownloadAssetStopsWhenCanceled(t *testing.T) {
 	_, err := client.DownloadAsset(ctx, servers[0].URL+"/file", io.Discard, 1<<20)
 	require.ErrorIs(t, err, context.Canceled)
 }
+
+// eofOnCancel is a transport whose response bodies end cleanly, as if the file ended, once
+// the request is canceled: the order a canceled request's body can read in, which a real
+// connection shows only now and then.
+type eofOnCancel struct{ next http.RoundTripper }
+
+func (e eofOnCancel) RoundTrip(r *http.Request) (*http.Response, error) {
+	resp, err := e.next.RoundTrip(r)
+	if err != nil {
+		return nil, err //nolint:wrapcheck // the transport's own error, passed through
+	}
+
+	resp.Body = &eofBody{ReadCloser: resp.Body, done: r.Context().Done()}
+
+	return resp, nil
+}
+
+// eofBody reads its first chunk, then waits for the request to be canceled and ends.
+type eofBody struct {
+	io.ReadCloser
+
+	done <-chan struct{}
+	read bool
+}
+
+func (b *eofBody) Read(p []byte) (int, error) {
+	if !b.read {
+		b.read = true
+
+		return b.ReadCloser.Read(p) //nolint:wrapcheck // the body's own read
+	}
+
+	<-b.done
+
+	return 0, io.EOF
+}
+
+func TestDownloadAssetStopsWhenCanceledThoughTheBodyEndsCleanly(t *testing.T) {
+	t.Parallel()
+
+	client, servers := downloadServers(t, []http.HandlerFunc{
+		func(w http.ResponseWriter, r *http.Request) {
+			_, _ = io.WriteString(w, "a start")
+			w.(http.Flusher).Flush() //nolint:forcetypeassert // httptest's writer flushes
+
+			<-r.Context().Done()
+		},
+	}, 0)
+	client.HTTP.Timeout = 0
+	client.HTTP.Transport = eofOnCancel{next: client.HTTP.Transport}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	time.AfterFunc(50*time.Millisecond, cancel)
+
+	_, err := client.DownloadAsset(ctx, servers[0].URL+"/file", io.Discard, 1<<20)
+	require.ErrorIs(t, err, context.Canceled, "a canceled download is no success, however its body ended")
+}
