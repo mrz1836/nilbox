@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { brand } from '../../generated/brand'
 import type { ScriptRun, ScriptRunStatus, TerminalID } from '../../platform'
 import { at, FIXED_NOW, fromNow } from '../../test/clock'
-import { scriptRun, scriptRunChunk } from '../../test/fixtures'
+import { checksRun, hookActionResult, hooksRun, scriptRun, scriptRunChunk } from '../../test/fixtures'
 import { emit, listening, platform } from '../../test/platform'
 import { RunPanel } from './RunPanel'
 
@@ -561,6 +561,58 @@ describe('RunPanel', () => {
       expect(result.getByText(`1 line ${brand.name} didn’t recognize ·`, { exact: false })).toBeInTheDocument()
       await userEvent.click(result.getByRole('button', { name: 'Show' }))
       expect(result.queryByText(/are kept/)).not.toBeInTheDocument()
+    })
+  })
+  describe('the result of a hooks action or a checks run', () => {
+    it('shows what a hooks action did, read from the hook files, once it ended', async () => {
+      renderPanel(hooksRun({ startedAt: ago(98_000), finishedAt: ago(60_000) }))
+
+      await shownRun('Install the hook')
+
+      expect(
+        await screen.findByRole('heading', { name: /Installed the pre-commit hook in acme-org\/api\./ }),
+      ).toBeInTheDocument()
+      expect(platform.getHookActionResult).toHaveBeenCalledExactlyOnceWith(11)
+      expect(platform.getChecksResult).not.toHaveBeenCalled()
+    })
+
+    it('opens the run Replace… starts from a blocked install’s result', async () => {
+      platform.getHookActionResult.mockResolvedValue(
+        hookActionResult({
+          outcome: 'nothingInstalled',
+          message: 'Nothing installed: husky’s hook is in the way.',
+          otherTool: 'husky',
+        }),
+      )
+      platform.replaceHook.mockResolvedValue(12)
+      const { onSelect } = renderPanel(hooksRun())
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Replace the hook in acme-org/api…' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Replace husky’s hook' }))
+
+      await waitFor(() => {
+        expect(onSelect).toHaveBeenCalledExactlyOnceWith(12)
+      })
+    })
+
+    it('shows how a checks run came out, above the rest of its result, once it ended', async () => {
+      renderPanel(checksRun())
+
+      await shownRun('Checks · all files')
+
+      expect(await screen.findByRole('heading', { name: 'Checks in acme-org/web · all files' })).toBeInTheDocument()
+      expect(platform.getChecksResult).toHaveBeenCalledExactlyOnceWith(21)
+      expect(screen.getByRole('region', { name: 'Result' })).toHaveTextContent('Exit code 1')
+      expect(platform.getHookActionResult).not.toHaveBeenCalled()
+    })
+
+    it('reads no result while the run goes', async () => {
+      renderPanel(running({ kind: 'checks', title: 'Checks · all files' }))
+
+      await shownRun('Checks · all files')
+
+      expect(platform.getChecksResult).not.toHaveBeenCalled()
+      expect(platform.getHookActionResult).not.toHaveBeenCalled()
     })
   })
 })

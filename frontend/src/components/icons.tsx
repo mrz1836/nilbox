@@ -505,3 +505,13 @@ export function TagIcon(props: IconProps) {
     </Icon>
   )
 }
+
+// AnchorIcon stands for the hooks: the pre-commit hook a repository's commits are held to.
+export function AnchorIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="5.5" r="2" />
+      <path d="M12 7.5V20M8.5 11h7M5 13.5a7 7 0 0 0 14 0" />
+    </Icon>
+  )
+}

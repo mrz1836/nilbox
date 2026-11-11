@@ -2,6 +2,7 @@ import { startTransition, useId, useOptimistic, useState, useTransition, type Re
 
 import { brand } from '../../generated/brand'
 import { attempt, start, type Result } from '../../lib/call'
+import { exportLine } from '../../lib/shell'
 import { formatDateTime } from '../../lib/time'
 import {
   chooseFileToOpen,
@@ -105,15 +106,6 @@ function progressText({ step, done, total }: InstallProgress): string {
 // folderOf is the folder a copy is in, as its display path names it.
 function folderOf(copy: ToolCopy): string {
   return copy.displayPath.slice(0, copy.displayPath.lastIndexOf('/'))
-}
-
-// exportLine is the line for ~/.zprofile that puts folder on the PATH: double-quoted, with
-// the characters special inside double quotes escaped, and a leading ~ written as $HOME,
-// since the shell expands $HOME inside double quotes but not ~.
-function exportLine(folder: string): string {
-  const quoted = folder.replace(/["$`\\]/g, '\\$&').replace(/^~(?=\/|$)/, '$$HOME')
-
-  return `export PATH="${quoted}:$PATH"`
 }
 
 // switchCaption says what a tool's switch means: on or off as the user set it, or, while

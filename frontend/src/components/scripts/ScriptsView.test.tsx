@@ -10,6 +10,9 @@ import type { IntegrationTool, TerminalID } from '../../platform'
 import { at } from '../../test/clock'
 import {
   goPreCommitTool,
+  hookRepo,
+  hooksList,
+  hooksRun,
   integrationTool,
   integrationTools,
   releaseCandidate,
@@ -52,10 +55,19 @@ function renderView(props: Partial<TabProps> = {}) {
   return { onOpenSettings, view }
 }
 
-// magexOff lists mage-x switched off, so the tab has Runs alone.
+// magexOff lists mage-x and go-pre-commit switched off, so the tab has Runs alone.
 function magexOff() {
   platform.listIntegrations.mockResolvedValue(
-    integrationTools({ tools: [integrationTool({ switch: 'off', on: false }), goPreCommitTool()] }),
+    integrationTools({
+      tools: [integrationTool({ switch: 'off', on: false }), goPreCommitTool({ switch: 'off', on: false })],
+    }),
+  )
+}
+
+// hooksOnly lists mage-x switched off and go-pre-commit on, so the tab has Hooks and Runs.
+function hooksOnly(change: Partial<IntegrationTool> = {}) {
+  platform.listIntegrations.mockResolvedValue(
+    integrationTools({ tools: [integrationTool({ switch: 'off', on: false }), goPreCommitTool(change)] }),
   )
 }
 
@@ -79,14 +91,19 @@ function request(seq: number): ReleaseRequest {
 }
 
 describe('ScriptsView', () => {
-  it('opens on Release while mage-x is on, with Runs beside it, and keeps the page used last', async () => {
+  it('opens on Release while mage-x is on, with Hooks and Runs after it, and keeps the page used last', async () => {
     renderView()
 
     const release = await rail().findByRole('button', { name: /^Release/ })
 
     expect(release).toHaveAttribute('aria-current', 'page')
     expect(await screen.findByRole('heading', { name: 'Release', level: 2 })).toBeInTheDocument()
-    expect(rail().queryByRole('button', { name: /Hooks|Repo scripts/ })).not.toBeInTheDocument()
+    expect(rail().queryByRole('button', { name: /Repo scripts/ })).not.toBeInTheDocument()
+    expect(
+      rail()
+        .getAllByRole('button')
+        .map((b) => b.textContent),
+    ).toEqual([expect.stringMatching(/^Release/), expect.stringMatching(/^Hooks/), 'Runs', 'Manage in Settings'])
 
     await userEvent.click(rail().getByRole('button', { name: /^Runs/ }))
     expect(rail().getByRole('button', { name: /^Runs/ })).toHaveAttribute('aria-current', 'page')
@@ -398,5 +415,111 @@ describe('ScriptsView', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(await screen.findByRole('heading', { name: 'Checks · all files', level: 2 })).toBeInTheDocument()
     expect(platform.getScriptRun).toHaveBeenCalledWith(9)
+  })
+  describe('Hooks', () => {
+    it('counts the repositories that need attention beside Hooks, with an amber dot', async () => {
+      renderView()
+
+      const hooks = await rail().findByRole('button', { name: 'Hooks (4 repositories need attention)' })
+
+      expect(hooks).toHaveAttribute('title', '4 repositories need attention')
+      expect(hooks.querySelector('.text-warning')).not.toBeNull()
+      expect(platform.listHooks).toHaveBeenCalledWith(false)
+
+      platform.listHooks.mockResolvedValue(hooksList({ repos: [hookRepo()] }))
+      act(() => {
+        emit('hooks:updated')
+      })
+
+      await waitFor(() => {
+        expect(rail().getByRole('button', { name: 'Hooks' })).not.toHaveAttribute('title')
+      })
+      const dot = rail().getByRole('button', { name: 'Hooks' }).querySelector('.text-warning')
+
+      expect(dot).toBeNull()
+    })
+
+    it('counts one repository that needs attention', async () => {
+      platform.listHooks.mockResolvedValue(hooksList({ repos: [hooksList().repos[0] ?? hookRepo()] }))
+      renderView()
+
+      expect(await rail().findByRole('button', { name: 'Hooks (1 repository needs attention)' })).toBeInTheDocument()
+    })
+
+    it('opens on Hooks while mage-x is off, and leaves it when go-pre-commit goes off', async () => {
+      hooksOnly()
+      renderView()
+
+      expect(await screen.findByRole('heading', { name: 'Hooks', level: 2 })).toBeInTheDocument()
+      expect(rail().getByRole('button', { name: /^Hooks/ })).toHaveAttribute('aria-current', 'page')
+      expect(rail().queryByRole('button', { name: /^Release/ })).not.toBeInTheDocument()
+      expect(platform.listReleaseCandidates).not.toHaveBeenCalled()
+
+      magexOff()
+      act(() => {
+        emit('tools:updated')
+      })
+
+      expect(await screen.findByRole('heading', { name: 'Runs', level: 2 })).toBeInTheDocument()
+      expect(rail().queryByRole('button', { name: /^Hooks/ })).not.toBeInTheDocument()
+    })
+
+    it('keeps Hooks once chosen, beside Release', async () => {
+      renderView()
+
+      await userEvent.click(await rail().findByRole('button', { name: /^Hooks/ }))
+
+      expect(await screen.findByRole('heading', { name: 'Hooks', level: 2 })).toBeInTheDocument()
+      expect(await screen.findByRole('list', { name: 'Needs attention' })).toBeInTheDocument()
+    })
+
+    it('says why go-pre-commit can’t be used in place of the list, reading nothing', async () => {
+      hooksOnly({
+        state: 'tooOld',
+        copy: { ...goPreCommitTool().copy, version: { raw: '1.10.0', commit: '', built: '' } },
+      })
+      const { onOpenSettings } = renderView()
+
+      expect(
+        await screen.findByText('go-pre-commit 1.10.0 is older than 1.12.0, which Hooks needs.'),
+      ).toBeInTheDocument()
+      expect(rail().getByRole('button', { name: 'Hooks' })).toBeInTheDocument()
+      expect(platform.listHooks).not.toHaveBeenCalled()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Update go-pre-commit in Settings' }))
+      expect(onOpenSettings).toHaveBeenCalledExactlyOnceWith('integrations')
+    })
+
+    it('opens the run a row starts in Runs, with its result', async () => {
+      hooksOnly()
+      platform.getScriptRun.mockResolvedValue(hooksRun())
+      renderView()
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Install the hook in acme-org/api' }))
+
+      expect(await screen.findByRole('heading', { name: 'Install the hook', level: 2 })).toBeInTheDocument()
+      expect(rail().getByRole('button', { name: /^Runs/ })).toHaveAttribute('aria-current', 'page')
+      expect(
+        await screen.findByRole('heading', { name: /Installed the pre-commit hook in acme-org\/api\./ }),
+      ).toBeInTheDocument()
+      expect(platform.getScriptRun).toHaveBeenCalledWith(11)
+    })
+
+    it('reads which clones are busy again when a run starts in one', async () => {
+      hooksOnly()
+      renderView()
+
+      await screen.findByRole('list', { name: 'Needs attention' })
+      expect(platform.listHooks).toHaveBeenCalledOnce()
+
+      platform.listScriptRuns.mockResolvedValue([hooksRun({ status: 'running', exitCode: null, finishedAt: '' })])
+      act(() => {
+        emit('scriptruns:updated')
+      })
+
+      await waitFor(() => {
+        expect(platform.listHooks).toHaveBeenCalledTimes(2)
+      })
+    })
   })
 })
