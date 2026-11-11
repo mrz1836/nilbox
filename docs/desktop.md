@@ -1893,9 +1893,14 @@ Entries for worktrees whose folders are gone are pruned first. When something gi
 already at the worktree's path, the app prunes git's entries and tries once more, then says what
 is in the way: it never deletes a folder. Git runs as an argument list with prompts off and a time
 limit, and one clone's worktrees are made one at a time. Every git command the app runs on
-worktrees runs with hooks, the file system monitor, and submodule recursion turned off: a
-worktree holds the pull request's own files, and a hook in your clone that runs a tool from the
-checkout would otherwise run the pull request's code before any agent starts. Its fetches, its
+worktrees runs with hooks (a hooks folder's, and the ones a git config names), the file system
+monitor, and submodule recursion turned off: a worktree holds the pull request's own files, and
+a hook in your clone that runs a tool from the checkout would otherwise run the pull request's
+code before any agent starts. The status the Worktrees view and the cleanup read, and a
+removal, run with none of the clone's own filters (Git LFS's either) and never in a clone whose
+own config holds a setting that could make git run a program
+([below](#what-a-clones-own-config-may-hold)): its worktrees say why instead, and no cleanup
+removes them. A commit is always checked out as itself, whatever replace refs the clone has. Its fetches, its
 look at the remote's default branch, and `git worktree add` also run under the same guards as
 Repo scripts' **Pull**, with the environment your login shell gives and the same git as every
 other command the app runs there: a clone whose own git config holds a setting that could make
@@ -1932,7 +1937,8 @@ whatever it includes, and run only when every setting there is one of these:
   gui's settings; and `mergetool`, `difftool`, `merge.tool`, and `diff.tool`, which only `git
   mergetool` and `git difftool` read;
 - what the app sets aside or sets again for these commands, so the clone's own is never used:
-  its ssh command, password program, and credential helpers, for your own; `url` rewrites,
+  its ssh command, password program, and credential helpers, for your own (of its other
+  credential settings, only the user name and `useHttpPath` are allowed); `url` rewrites,
   as the app checks each remote by the URL git will use; http settings (one that sends git
   through a proxy, trusts other certificates, or resolves a host elsewhere still refuses a
   command that reaches an https remote, or that Git LFS may run in); which transports git may

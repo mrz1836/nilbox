@@ -18,6 +18,11 @@ const (
 	// a partial clone leaves it out, so its checkout can fetch them, under the remote guard.
 	noLazyFetchVar = "GIT_NO_LAZY_FETCH"
 
+	// noReplaceVar has git ignore refs/replace: a clone's replace ref for a commit would
+	// otherwise have a checkout of that commit write another commit's files, while the
+	// commit's ID, which the launch checked, stays the same.
+	noReplaceVar = "GIT_NO_REPLACE_OBJECTS"
+
 	// gitDirVar and workTreeVar name the repository and the work tree a command runs on,
 	// over anything its config says, core.worktree included.
 	gitDirVar   = "GIT_DIR"
@@ -224,14 +229,14 @@ func (g *Git) setupWith(ctx context.Context, dir string, f setupFacts) (Setup, e
 		return Setup{}, err
 	}
 
-	env := guarded.env
+	env := withVar(guarded.env, noReplaceVar, "1")
 	if f.partial {
-		env = slices.DeleteFunc(slices.Clone(env), func(kv string) bool { return strings.HasPrefix(kv, noLazyFetchVar+"=") })
+		env = slices.DeleteFunc(env, func(kv string) bool { return strings.HasPrefix(kv, noLazyFetchVar+"=") })
 	}
 
-	settings := unflagged(slices.Concat(Hardening(), fetchHardening(), guarded.extra, off))
+	settings := unflagged(slices.Concat(Hardening(), fetchHardening(), credentialHardening(), guarded.extra, off))
 
-	env, err = withSettings(append(slices.Clone(env), f.folders...), settings)
+	env, err = withSettings(append(env, f.folders...), settings)
 	if err != nil {
 		return Setup{}, err
 	}
@@ -286,6 +291,70 @@ func fetchHardening() []string {
 		"-c", "core.alternateRefsCommand=true", "-c", "core.alternateRefsPrefixes=",
 		"-c", "maintenance.auto=false", "-c", "gc.auto=0",
 	}
+}
+
+// credentialHardening are the credential settings every Setup runs with, which the
+// clone's own config can't set (cloneSettingAllowed) and a command-line setting couldn't
+// beat for one URL, set again all the same: a credential is only ever handed over for the
+// protocol it was stored for (protectProtocol, git's defense against CVE-2024-52006), and a
+// prompt's text is cleaned of what could mislead (sanitizePrompt).
+func credentialHardening() []string {
+	return []string{"-c", "credential.protectProtocol=true", "-c", "credential.sanitizePrompt=true"}
+}
+
+// Local is what a git command in a clone, or in one of its worktrees, that reaches no
+// remote and writes no file of the clone's runs with (LocalSetup), as the worktrees' own
+// status, removal, and branch deletion do: Setup's git and settings, the environment a
+// read runs with (no transport, no lazy fetch, no optional lock, no replace ref), and
+// every filter driver the clone's own config defines turned off, Git LFS's too, as a read
+// does.
+type Local struct {
+	Setup
+
+	// Refused, when set, is why a command there that could run one of the clone's own
+	// programs, as a status's clean filter or a hook, must not run: the clone's own config
+	// holds a setting cloneSettingAllowed doesn't allow (a CloneConfigError naming them).
+	Refused error
+}
+
+// LocalSetup works out what a git command in dir, a clone or one of its worktrees, that
+// reaches no remote runs with (Local), reading the config git reads there: no command
+// here reaches the network. A config git can't read, a folder that isn't absolute and
+// clean, and no git refuse it; a clone whose own config holds a setting a Setup would
+// refuse is told by Local.Refused, so a read that runs none of its programs can go on.
+func (g *Git) LocalSetup(ctx context.Context, dir string) (Local, error) {
+	if !isDir(dir) {
+		return Local{}, errNotAFolder(dir)
+	}
+
+	env := withVar(environmentOf(g.env()), noReplaceVar, "1")
+
+	git, err := g.GitFinder().Find(gitBin)
+	if err != nil {
+		return Local{}, fmt.Errorf("%w: %w", ErrNoGit, err)
+	}
+
+	listed, stderr, err := g.listConfig(ctx, dir, env)
+	if err != nil {
+		return Local{}, failure(configListArgs(), stderr, err)
+	}
+
+	off, err := cloneFiltersOff(matching(listed, filterKeys), false)
+	if err != nil {
+		return Local{}, err
+	}
+
+	settings := unflagged(slices.Concat(Hardening(), fetchHardening(), off))
+
+	env, err = withSettings(env, settings)
+	if err != nil {
+		return Local{}, err
+	}
+
+	return Local{
+		Setup:   Setup{Git: git, Env: env, Settings: settings, SetAside: []string{}},
+		Refused: cloneConfig(listed),
+	}, nil
 }
 
 // matching returns the settings whose key pattern matches, in order.

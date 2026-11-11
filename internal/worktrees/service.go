@@ -319,10 +319,13 @@ type Config struct {
 }
 
 // Guard works out what a git command that reaches the clone's remote, or writes a
-// worktree's files, runs with: gitread's RemoteSetupFor and CheckoutSetup, *gitread.Git.
+// worktree's files, runs with, and one in a clone or a worktree that could run one of the
+// clone's programs, as a status or a removal: gitread's RemoteSetupFor, CheckoutSetup, and
+// LocalSetup, *gitread.Git.
 type Guard interface {
 	RemoteSetupFor(ctx context.Context, dir, remote string) (gitread.Setup, error)
 	CheckoutSetup(ctx context.Context, dir string) (gitread.Setup, error)
+	LocalSetup(ctx context.Context, dir string) (gitread.Local, error)
 }
 
 // Service lists and removes worktrees of the clones under the clone root.
@@ -943,10 +946,13 @@ func (s *Service) prepare(ctx context.Context) (git, string, SweepSettings, erro
 	return g, root, prefs, nil
 }
 
-// git returns the allowlisted git runner, resolving the binary when a Finder is set.
+// git returns the allowlisted git runner, resolving the binary when a Finder is set, for
+// one operation: the Local of each folder it runs a command in is worked out once.
 func (s *Service) git() (git, error) {
+	locals := &localCache{byID: map[string]localResult{}}
+
 	if s.finder == nil {
-		return git{run: s.run, bin: gitBin, guard: s.guard, with: s.gitWith}, nil
+		return git{run: s.run, bin: gitBin, guard: s.guard, with: s.gitWith, locals: locals}, nil
 	}
 
 	bin, err := s.finder.Find(gitBin)
@@ -954,7 +960,7 @@ func (s *Service) git() (git, error) {
 		return git{}, fmt.Errorf("find git: %w", err)
 	}
 
-	return git{run: s.run, bin: bin, guard: s.guard, with: s.gitWith}, nil
+	return git{run: s.run, bin: bin, guard: s.guard, with: s.gitWith, locals: locals}, nil
 }
 
 // checkedGit resolves git and checks that repoPath is a clone directly under the clone
@@ -1227,6 +1233,10 @@ func (s *Service) readState(ctx context.Context, g git, wt *Worktree, times map[
 	switch {
 	case err == nil:
 		wt.Dirty, wt.DirtyCount = count > 0, count
+	case guarded(err):
+		// The clone's own config refuses a status: the worktree says why, and nothing that
+		// needs its status, as a sweep's removal, touches it.
+		wt.Error = uierr.Message(err)
 	case gitRefused(ctx, err):
 		wt.Error = uierr.Message(fmt.Errorf("could not read the status: %w", gitError(err, stderr)))
 	default:

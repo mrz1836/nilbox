@@ -67,8 +67,9 @@ const anyPart = "*"
 //     choose which of the clone's files are written (index.sparse with them);
 //   - remote.<name>: what git clone and git remote write (url is weighed by the remote
 //     guard for each remote the command reaches, and fetch is never used: every fetch
-//     names its refspec with --refmap=); and gh-resolved and gtserviceaccountidentifier,
-//     which the GitHub CLI and a desktop git client write for themselves;
+//     names its refspec with --refmap=); and gh-resolved, gtserviceaccountidentifier, and
+//     github-pr-remote, which the GitHub CLI, a desktop git client, and VS Code's GitHub
+//     Pull Requests extension write for themselves;
 //   - branch.<name>: anything but mergeoptions (refusedKeys), which could name a merge
 //     strategy, a program; editors keep their notes there, as VS Code's vscode-merge-base;
 //   - extensions: the repository's format, partial clone, and worktree config;
@@ -93,6 +94,7 @@ func inertKeys() []string {
 		"core.sparsecheckoutcone", "index.sparse",
 		"remote.*.url", "remote.*.fetch", "remote.*.pushurl", "remote.*.tagopt", "remote.*.prune", "remote.*.promisor",
 		"remote.*.partialclonefilter", "remote.*.gh-resolved", "remote.*.gtserviceaccountidentifier",
+		"remote.*.github-pr-remote",
 		"branch.*.*",
 		"extensions.partialclone", "extensions.worktreeconfig", "extensions.objectformat", "extensions.refstorage",
 		"user.name", "user.email", "user.signingkey", "commit.gpgsign", "tag.gpgsign", "gpg.format",
@@ -109,10 +111,15 @@ func inertKeys() []string {
 // neutralizedKeys are the settings of the second class (see above), allowed because the
 // Setup never lets the clone's own value reach git:
 //
-//   - core.sshCommand, core.askPass, credential.* (its helpers), and http's cookie
-//     settings: the remote guard sets them aside for the user's own (remoteGuard), for
-//     every Setup, so a Git LFS the checkout runs asks for credentials the same way; a
-//     command that fails without them says which it went without (SetAside);
+//   - core.sshCommand, core.askPass, credential.helper (for every URL or one), and http's
+//     cookie settings: the remote guard sets them aside for the user's own (remoteGuard),
+//     for every Setup, so a Git LFS the checkout runs asks for credentials the same way; a
+//     command that fails without them says which it went without (SetAside). Of the other
+//     credential settings, only the user name and useHttpPath, which say which credential
+//     the user's own helper is asked for, and to the clone's own remote, are allowed: the
+//     rest, protectProtocol and sanitizePrompt among them, which a command-line setting
+//     can't beat for one URL, refuse the command (and every Setup sets those two again,
+//     credentialHardening);
 //   - url.<base>.insteadOf and pushInsteadOf: the remote guard weighs each remote the
 //     command reaches by the URL git will use, insteadOf applied, and refuses a remote
 //     helper there;
@@ -130,7 +137,8 @@ func inertKeys() []string {
 //     write never starts.
 func neutralizedKeys() []string {
 	return []string{
-		"core.sshcommand", "core.askpass", "credential.*", "credential.*.*",
+		"core.sshcommand", "core.askpass", "credential.helper", "credential.*.helper", "credential.username",
+		"credential.*.username", "credential.usehttppath", "credential.*.usehttppath",
 		"url.*.insteadof", "url.*.pushinsteadof",
 		"http.*", "http.*.*", "remote.*.proxy", "remote.*.proxyauthmethod",
 		"protocol.allow", "protocol.*.allow", "protocol.version",

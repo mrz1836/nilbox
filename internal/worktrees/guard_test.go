@@ -374,6 +374,12 @@ func (f failingGuard) CheckoutSetup(context.Context, string) (gitread.Setup, err
 	return gitread.Setup{}, f.err
 }
 
+func (f failingGuard) LocalSetup(context.Context, string) (gitread.Local, error) {
+	f.calls.Add(1)
+
+	return gitread.Local{}, f.err
+}
+
 // errExit stands for git's exit status.
 var errExit = errors.New("exit status 128")
 

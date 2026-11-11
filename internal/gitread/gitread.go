@@ -303,12 +303,35 @@ func hardening() []string {
 
 // Hardening returns the settings, ahead of its subcommand, that every git command the app
 // runs to change a clone runs with: no hook, the file system monitor off, and no submodule
-// recursion. git runs hooks and the file system monitor with the clone as their working
-// folder, so either could run a program the clone's own files hold, and a submodule's URL
-// is the clone's to name. internal/worktrees runs each of its commands with them, and Repo
+// recursion. No hook means both kinds git runs: a hooks folder's, as core.hooksPath points
+// it at an empty one, and the ones a config names (hook.<name>.command and .event, which
+// core.hooksPath doesn't reach), as hook.<event>.enabled=false turns off every hook of each
+// event git can fire (hookEvents); a git older than config hooks ignores those settings.
+// git runs hooks and the file system monitor with the clone as their working folder, so
+// either could run a program the clone's own files hold, and a submodule's URL is the
+// clone's to name. internal/worktrees runs each of its commands with them, and Repo
 // scripts' pull too (RemoteSetup).
 func Hardening() []string {
-	return append([]string{"-c", "core.hooksPath=" + os.DevNull}, hardening()...)
+	out := append([]string{"-c", "core.hooksPath=" + os.DevNull}, hardening()...)
+
+	for _, event := range hookEvents() {
+		out = append(out, "-c", "hook."+event+".enabled=false")
+	}
+
+	return out
+}
+
+// hookEvents are every event git fires hooks for, through 2.56: those a command the app
+// runs could fire (post-checkout, post-merge, post-rewrite, reference-transaction,
+// post-index-change, pre-auto-gc, push-to-checkout), and the rest, so none is left on.
+func hookEvents() []string {
+	return []string{
+		"applypatch-msg", "pre-applypatch", "post-applypatch", "pre-commit", "pre-merge-commit", "prepare-commit-msg",
+		"commit-msg", "post-commit", "pre-rebase", "post-checkout", "post-merge", "pre-push", "pre-receive", "update",
+		"proc-receive", "post-receive", "post-update", "reference-transaction", "push-to-checkout", "pre-auto-gc",
+		"post-rewrite", "sendemail-validate", "fsmonitor-watchman", "p4-changelist", "p4-prepare-changelist",
+		"p4-post-changelist", "p4-pre-submit", "post-index-change",
+	}
 }
 
 // ValidBranch reports a branch name the app may hand git as an argument: one that can't be

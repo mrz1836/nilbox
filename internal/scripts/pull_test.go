@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -181,15 +182,27 @@ func TestPullRunsWithGitreadsEnvironment(t *testing.T) {
 	dir, err := filepath.EvalSymlinks(g.dir)
 	require.NoError(t, err)
 
-	env := spec.BeforeEnv()
+	// Only git's own variables are looked at, so a failure never prints the rest of the
+	// test's environment.
+	env := slices.DeleteFunc(spec.BeforeEnv(), func(kv string) bool {
+		return !strings.HasPrefix(kv, "GIT_") && !strings.HasPrefix(kv, "LC_ALL=")
+	})
+
 	for _, want := range []string{
 		"GIT_TERMINAL_PROMPT=0", "GIT_NO_LAZY_FETCH=1", "GIT_ALLOW_PROTOCOL=file:http:https:ssh", "LC_ALL=C",
 		"GIT_SSH_COMMAND=ssh -o BatchMode=yes -o ConnectTimeout=10", "GIT_DIR=" + filepath.Join(dir, ".git"),
-		"GIT_WORK_TREE=" + dir, "GIT_CONFIG_KEY_0=core.hooksPath", "GIT_CONFIG_VALUE_0=" + os.DevNull,
-		"GIT_CONFIG_KEY_3=core.alternateRefsCommand", "GIT_CONFIG_VALUE_3=true", "GIT_CONFIG_KEY_5=maintenance.auto",
-		"GIT_CONFIG_VALUE_5=false", "GIT_CONFIG_KEY_6=gc.auto", "GIT_CONFIG_VALUE_6=0",
+		"GIT_WORK_TREE=" + dir, "GIT_NO_REPLACE_OBJECTS=1", "GIT_CONFIG_KEY_0=core.hooksPath",
+		"GIT_CONFIG_VALUE_0=" + os.DevNull,
 	} {
 		assert.Contains(t, env, want)
+	}
+
+	settings := configSettings(env)
+	for _, want := range []string{
+		"core.alternateRefsCommand=true", "maintenance.auto=false", "gc.auto=0", "hook.post-merge.enabled=false",
+		"credential.protectProtocol=true",
+	} {
+		assert.Contains(t, settings, want)
 	}
 
 	assert.Equal(t, []string{"pull"}, argv[1:2], "no -c setting on the command line")
@@ -376,6 +389,32 @@ func TestPullRunsAgainOnTheSameBranch(t *testing.T) {
 
 	_, err = g.runs.RunAgain(t.Context(), again.ID)
 	require.ErrorIs(t, err, ErrCantPull, "Run again checks the branch afresh")
+}
+
+// configSettings returns the settings env passes git through GIT_CONFIG_COUNT, key=value
+// each.
+func configSettings(env []string) []string {
+	var out []string
+
+	for i := 0; ; i++ {
+		key := lookup(env, "GIT_CONFIG_KEY_"+strconv.Itoa(i))
+		if key == "" {
+			return out
+		}
+
+		out = append(out, key+"="+lookup(env, "GIT_CONFIG_VALUE_"+strconv.Itoa(i)))
+	}
+}
+
+// lookup returns the value env gives key, or "".
+func lookup(env []string, key string) string {
+	for _, kv := range env {
+		if value, ok := strings.CutPrefix(kv, key+"="); ok {
+			return value
+		}
+	}
+
+	return ""
 }
 
 // pullRecord is the record of a pull of main in the rig's clone from before a restart, as

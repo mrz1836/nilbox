@@ -5,9 +5,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -93,7 +95,7 @@ func TestRemoteSetupHoldsWhatAnLsRemoteHolds(t *testing.T) {
 		"GIT_TERMINAL_PROMPT=0", "GIT_NO_LAZY_FETCH=1", "GIT_ALLOW_PROTOCOL=file:http:https:ssh",
 		"GIT_SSH_COMMAND=" + batchSSH, "GIT_DIR=" + filepath.Join(realDir(t, dir), ".git"), "GIT_WORK_TREE=" + realDir(t, dir),
 	} {
-		assert.Contains(t, setup.Env, want)
+		assert.Contains(t, gitVars(setup.Env), want)
 	}
 
 	assert.False(t, setup.Partial)
@@ -143,6 +145,7 @@ func TestCloneSettingAllowed(t *testing.T) {
 		{"core.sparsecheckoutcone", on},
 		{"remote.origin.url", "https://example.invalid/acme-org/example-repo.git"},
 		{"remote.upstream.gh-resolved", "base"},
+		{"remote.fork.github-pr-remote", on},
 		{"remote.origin.partialclonefilter", "blob:none"},
 		{"branch.feature/x.vscode-merge-base", "origin/main"},
 		{"branch.main.rebase", on},
@@ -237,6 +240,10 @@ func TestCloneSettingAllowed(t *testing.T) {
 		{"gpg.ssh.program", "x"},
 		{"nodot", ""},
 		{"user.useconfigonly", on},
+		{"credential.protectprotocol", "false"},
+		{"credential.https://example.invalid.protectprotocol", "false"},
+		{"credential.sanitizeprompt", "false"},
+		{"credential.interactive", "true"},
 	} {
 		assert.False(t, cloneSettingAllowed(s[0], s[1]), "refused: %s=%s", s[0], s[1])
 	}
@@ -368,7 +375,7 @@ func TestTheUsersOwnIncludeIfStillCounts(t *testing.T) {
 
 	setup, err := New(Config{Env: func() []string { return env }}).RemoteSetup(t.Context(), dir)
 	require.NoError(t, err, "settings the user's own config includes for the folder are theirs")
-	assert.NotContains(t, setup.Env, "GIT_SSH_COMMAND="+batchSSH, "git runs the user's own ssh command")
+	assert.NotContains(t, gitVars(setup.Env), "GIT_SSH_COMMAND="+batchSSH, "git runs the user's own ssh command")
 	assert.NotContains(t, setup.Settings, "credential.helper=", "and the user's own helper")
 }
 
@@ -403,9 +410,115 @@ func TestRemoteSetupRefusesWhatAnLsRemoteRefuses(t *testing.T) {
 func TestHardening(t *testing.T) {
 	t.Parallel()
 
+	got := Hardening()
 	assert.Equal(t, []string{
 		"-c", "core.hooksPath=" + os.DevNull, "-c", "core.fsmonitor=false", "-c", "submodule.recurse=false",
-	}, Hardening())
+	}, got[:6])
+
+	for _, event := range []string{
+		"post-checkout", "post-merge", "post-rewrite", "reference-transaction", "post-index-change", "pre-auto-gc",
+		"push-to-checkout",
+	} {
+		assert.Contains(t, got, "hook."+event+".enabled=false", "every hook a config names for %s is off", event)
+	}
+}
+
+// TestHardeningTurnsOffTheHooksAConfigNames plants hooks a clone's own config names, which
+// core.hooksPath doesn't reach, for the events a status that writes the index and a
+// branch's deletion fire, and runs both with Hardening: neither hook runs, and both run
+// without it.
+func TestHardeningTurnsOffTheHooksAConfigNames(t *testing.T) {
+	t.Parallel()
+
+	env := testutil.Git(t)
+	dir := filepath.Join(t.TempDir(), "clone")
+	ran := t.TempDir()
+
+	testutil.InitRepo(t, dir)
+	commitFile(t, dir, "a.txt", "a")
+	testutil.RunGit(t, dir, "branch", "doomed")
+
+	for _, event := range []string{"post-index-change", "reference-transaction"} {
+		testutil.RunGit(t, dir, "config", "hook.evil-"+event+".command", "touch "+filepath.Join(ran, event))
+		testutil.RunGit(t, dir, "config", "hook.evil-"+event+".event", event)
+	}
+
+	run := func(args ...string) {
+		cmd := exec.CommandContext(t.Context(), "git", append([]string{"-C", dir}, args...)...) //nolint:gosec // test: fixed words
+		cmd.Env = env
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, "%s", out)
+	}
+
+	touch := func(at time.Time) { require.NoError(t, os.Chtimes(filepath.Join(dir, "a.txt"), at, at)) }
+
+	touch(time.Now().Add(time.Hour))
+	run(append(Hardening(), "status", "--porcelain")...)
+	run(append(Hardening(), "update-ref", "-d", "refs/heads/doomed")...)
+	assert.NoFileExists(t, filepath.Join(ran, "post-index-change"))
+	assert.NoFileExists(t, filepath.Join(ran, "reference-transaction"))
+
+	testutil.RunGit(t, dir, "branch", "doomed")
+	touch(time.Now().Add(2 * time.Hour))
+	run("status", "--porcelain")
+	run("update-ref", "-d", "refs/heads/doomed")
+	assert.FileExists(t, filepath.Join(ran, "post-index-change"), "a plain status runs it")
+	assert.FileExists(t, filepath.Join(ran, "reference-transaction"), "a plain update-ref runs it")
+}
+
+func TestLocalSetup(t *testing.T) {
+	t.Parallel()
+
+	dir, _, env := setupClone(t)
+	g := New(Config{Env: func() []string { return env }})
+
+	testutil.RunGit(t, dir, "config", "filter.lfs.process", "git-lfs filter-process")
+
+	local, err := g.LocalSetup(t.Context(), dir)
+	require.NoError(t, err)
+	require.NoError(t, local.Refused)
+
+	for _, want := range []string{
+		"GIT_OPTIONAL_LOCKS=0", "GIT_NO_LAZY_FETCH=1", "GIT_ALLOW_PROTOCOL=", "GIT_NO_REPLACE_OBJECTS=1",
+	} {
+		assert.Contains(t, gitVars(local.Env), want)
+	}
+
+	assert.Contains(t, local.Settings, "filter.lfs.process=", "a read turns the clone's own Git LFS off")
+	assert.Contains(t, local.Settings, "hook.post-index-change.enabled=false")
+	assert.Equal(t, local.Settings, configOf(t, local.Env))
+
+	testutil.RunGit(t, dir, "config", "filter.evil.clean", "evil-clean")
+
+	local, err = g.LocalSetup(t.Context(), dir)
+	require.NoError(t, err, "a read runs none of the clone's programs")
+	require.ErrorIs(t, local.Refused, ErrCloneConfig, "a command that could is refused")
+	assert.Contains(t, local.Settings, "filter.evil.clean=")
+
+	_, err = g.LocalSetup(t.Context(), "relative")
+	require.ErrorIs(t, err, ErrGitCommandNotAllowed)
+}
+
+func TestSetupHandsCredentialsOverOnlyAsGitWould(t *testing.T) {
+	t.Parallel()
+
+	dir, _, env := setupClone(t)
+	g := New(Config{Env: func() []string { return env }})
+
+	setup, err := g.RemoteSetup(t.Context(), dir)
+	require.NoError(t, err)
+	assert.Contains(t, setup.Settings, "credential.protectProtocol=true")
+	assert.Contains(t, setup.Settings, "credential.sanitizePrompt=true")
+	assert.Contains(t, gitVars(setup.Env), "GIT_NO_REPLACE_OBJECTS=1", "a replace ref changes no commit's files")
+
+	for _, key := range []string{"credential.protectProtocol", "credential.https://example.invalid.protectProtocol"} {
+		testutil.RunGit(t, dir, "config", key, "false")
+
+		_, err = g.RemoteSetup(t.Context(), dir)
+		require.ErrorIs(t, err, ErrCloneConfig, "%s: a URL's own couldn't be beaten from the command line", key)
+
+		testutil.RunGit(t, dir, "config", "--unset", key)
+	}
 }
 
 func TestValidBranch(t *testing.T) {
@@ -451,15 +564,26 @@ func TestCheckoutSetupReachesNoRemote(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.True(t, filepath.IsAbs(setup.Git))
-	assert.Equal(t, append(unflagged(append(Hardening(), fetchHardening()...)), "http.savecookies=false"), setup.Settings)
-	assert.Contains(t, setup.Env, "GIT_ALLOW_PROTOCOL=", "no transport at all")
-	assert.Contains(t, setup.Env, "GIT_NO_LAZY_FETCH=1")
-	assert.Contains(t, setup.Env, "GIT_WORK_TREE="+realDir(t, dir))
+	assert.Equal(t, append(unflagged(slices.Concat(Hardening(), fetchHardening(), credentialHardening())),
+		"http.savecookies=false"), setup.Settings)
+	assert.Contains(t, gitVars(setup.Env), "GIT_ALLOW_PROTOCOL=", "no transport at all")
+	assert.Contains(t, gitVars(setup.Env), "GIT_NO_LAZY_FETCH=1")
+	assert.Contains(t, gitVars(setup.Env), "GIT_WORK_TREE="+realDir(t, dir))
 	assert.False(t, setup.Partial)
 
 	remote, err := New(Config{Env: func() []string { return env }}).RemoteSetup(t.Context(), dir)
 	require.NoError(t, err)
-	assert.Equal(t, setup, remote.Checkout(), "a remote setup's checkout is the checkout's setup")
+
+	checkout := remote.Checkout()
+	assert.Equal(t, gitVars(setup.Env), gitVars(checkout.Env), "a remote setup's checkout is the checkout's setup")
+	assert.Equal(t, setup.Settings, checkout.Settings)
+	assert.True(t, slices.Equal(setup.Env, checkout.Env), "the rest of the environment too")
+}
+
+// gitVars returns env's git variables alone, so a failure never prints the rest of the
+// test's environment.
+func gitVars(env []string) []string {
+	return slices.DeleteFunc(slices.Clone(env), func(kv string) bool { return !strings.HasPrefix(kv, "GIT_") })
 }
 
 // transportClone is a clone whose own config holds the settings that change how a remote
@@ -501,7 +625,7 @@ func TestSetupSetsTheClonesTransportSettingsAside(t *testing.T) {
 		got, err := setup()
 		require.NoError(t, err, name)
 
-		assert.Contains(t, got.Env, "GIT_SSH_COMMAND="+batchSSH, "%s: never the clone's ssh command", name)
+		assert.Contains(t, gitVars(got.Env), "GIT_SSH_COMMAND="+batchSSH, "%s: never the clone's ssh command", name)
 
 		for _, want := range []string{"core.askpass=", "credential.helper=", "http.cookiefile="} {
 			assert.Contains(t, got.Settings, want, "%s: the clone's own set aside", name)
@@ -554,7 +678,7 @@ func TestSetupTakesTheFolderByAnyCase(t *testing.T) {
 
 	setup, err := New(Config{Env: func() []string { return env }}).RemoteSetup(t.Context(), other)
 	require.NoError(t, err, "the clone root's case may differ from the disk's")
-	assert.Contains(t, setup.Env, "GIT_WORK_TREE="+realDir(t, dir), "as git names it")
+	assert.Contains(t, gitVars(setup.Env), "GIT_WORK_TREE="+realDir(t, dir), "as git names it")
 }
 
 func TestTheSetupsGitIsTheOneGitFinderFinds(t *testing.T) {
@@ -604,8 +728,8 @@ func TestAPartialClonesSetupMayFetchFromItsPromisor(t *testing.T) {
 		require.NoError(t, err, name)
 
 		assert.True(t, got.Partial, name)
-		assert.NotContains(t, got.Env, "GIT_NO_LAZY_FETCH=1", "%s: a missing file's contents may be fetched", name)
-		assert.Contains(t, got.Env, "GIT_ALLOW_PROTOCOL=file:http:https:ssh", "%s: over the user's transports", name)
+		assert.NotContains(t, gitVars(got.Env), "GIT_NO_LAZY_FETCH=1", "%s: a missing file's contents may be fetched", name)
+		assert.Contains(t, gitVars(got.Env), "GIT_ALLOW_PROTOCOL=file:http:https:ssh", "%s: over the user's transports", name)
 		assert.Contains(t, got.Settings, "http.savecookies=false", "%s: as a fetch", name)
 	}
 

@@ -212,10 +212,22 @@ app:lint` reads.
   `internal/scripts/pull.go`, whose one pull argv the guard parses and holds to an exact list
   of literal words (`--ff-only`, `--refmap=`, and `--no-verify-signatures` among them),
   with no other option anywhere in the file and no other verb it bans. Every git command
-  there runs with hooks, the file system monitor, and submodule recursion off
-  (`gitread.Hardening`, which the worktrees' `hardening` and the pull share),
-  since a worktree holds a pull request's own files, and a pull request's worktree is made only
-  at the head whose files the launch checked. `create.go`'s one fetch argv (`fetchArgs`:
+  there runs with hooks (a hooks folder's and the ones a config names), the file system
+  monitor, and submodule recursion off (`gitread.Hardening`, which the worktrees'
+  `hardening` and the pull share), since a worktree holds a pull request's own files, and a
+  pull request's worktree is made only at the head whose files the launch checked. With
+  core's `Guard`, the worktree service's own commands on a clone or its worktrees are
+  guarded too (`git.do`): the reads that run no program a config could name (`readOnly`:
+  listing the worktrees and branches, resolving a ref, counting commits, an ancestor's
+  check, and a commit's time, with `--no-show-signature`) run with `--no-replace-objects`
+  and `--no-optional-locks`; every other (a status, which runs a file's clean filter, a
+  removal, a prune, an unlock, and a branch's deletion, which fires
+  reference-transaction) runs with gitread's `LocalSetup` for its folder, worked out once
+  per operation (`localCache`): every filter driver of the clone's own off, Git LFS's too,
+  no optional lock, no replace ref, no transport, and refused before git runs, with a
+  `guardError` worded for the window, when the clone's own config holds a setting gitread
+  refuses. Such a clone's worktrees show the refusal as their `Error`, so no sweep or
+  cleanup removes them, and a removal fails with the same words. `create.go`'s one fetch argv (`fetchArgs`:
   `fetch --no-tags --refmap= --upload-pack=git-upload-pack <remote> <refspec>`, so it moves
   only the ref its refspec names, never one the clone's own `remote.<name>.fetch` maps,
   which the repoguard test holds to exactly those words), its `ls-remote --symref` (with
@@ -442,11 +454,15 @@ app:lint` reads.
   `lfs.repositoryformatversion`, `lfs.<url>.{access, locksverify}`; `rerere.{enabled,
   autoupdate}`; `log.excludeDecoration`, `color.*`, `gui.*`; and `mergetool.*`,
   `difftool.*`, `merge.tool`, `diff.tool` (and their gui ones), which only `git mergetool`
-  and `git difftool` read. Neutralized (`neutralizedKeys`), as the setup never lets the
-  clone's own value reach git: `core.sshCommand`, `core.askPass`, `credential.*`, and the
-  cookie settings, which the remote guard sets aside for the user's own in every setup (a
-  checkout's Git LFS asks for credentials too), a failure then saying which
-  (`Setup.SetAside`, `SetAsideNote`); `url.*.insteadOf` and `pushInsteadOf`, as each remote
+  and `git difftool` read, and which the app never runs (`TestNoGitCommandRunsAMergeOrDiffTool`);
+  `remote.<n>.github-pr-remote` among a remote's notes. Neutralized (`neutralizedKeys`), as
+  the setup never lets the clone's own value reach git: `core.sshCommand`, `core.askPass`,
+  `credential.helper` (for every URL or one), and the cookie settings, which the remote
+  guard sets aside for the user's own in every setup (a checkout's Git LFS asks for
+  credentials too), a failure then saying which (`Setup.SetAside`, `SetAsideNote`), and of
+  the rest of `credential.*` only `username` and `useHttpPath` (`protectProtocol` and
+  `sanitizePrompt`, which a command-line setting can't beat for one URL, refuse, and every
+  setup sets both on again, `credentialHardening`); `url.*.insteadOf` and `pushInsteadOf`, as each remote
   reached is weighed by the URL git will use; `http.*` and `remote.<n>.proxy`, whose
   rerouting keys (`routeKeys`, a remote's proxy) refuse a command that reaches an http or
   https remote, or one Git LFS may run in, whatever origin's scheme (`cloneRoutes`:
@@ -473,15 +489,25 @@ app:lint` reads.
   returns a `Setup`: git as `GitFinder` finds it, the finder core hands the worktrees too
   (`ErrNoGit` when it can't); an ls-remote's environment (for `CheckoutSetup`, and a
   setup's `Checkout`, the same allowing no transport) with `GIT_DIR` and `GIT_WORK_TREE`
-  set to the clone's folders, which beat its config; and every setting, `Hardening` (no
-  hook, fsmonitor, or submodule recursion), `fetchHardening` (`core.alternateRefsCommand=true`,
+  set to the clone's folders, which beat its config, and `GIT_NO_REPLACE_OBJECTS=1`, so a
+  replace ref can't have a checkout of the commit the launch checked write another's
+  files; and every setting, `Hardening` (no hook: `core.hooksPath` at an empty folder, and
+  `hook.<event>.enabled=false` for every event git fires, `hookEvents`, which turns off the
+  hooks a config names and which an older git ignores; no fsmonitor or submodule
+  recursion), `fetchHardening` (`core.alternateRefsCommand=true`,
   so a fetch from a clone with alternates runs nothing to learn their refs, an empty one
   making git try to run "" on every fetch; `maintenance.auto=false` and `gc.auto=0`, so no
-  fetch or merge starts maintenance), the remote guard's (the clone's own password program
+  fetch or merge starts maintenance), `credentialHardening` (`credential.protectProtocol`
+  and `sanitizePrompt` on), the remote guard's (the clone's own password program
   and credential helpers set aside, no cookie saved), and any filter driver of the clone's
   own but Git LFS's own turned off, passed through `GIT_CONFIG_COUNT` after any the
   environment passes (`Setup.Settings` lists them), so the command's argv holds only its
-  own words. In a partial
+  own words. `LocalSetup` works out a `Local` for a command in a clone or a worktree that
+  reaches no remote, the worktree service's own status, removal, prune, unlock, and branch
+  deletion: a read's environment (no transport, no lazy fetch, no optional lock, no
+  replace ref), `Hardening`, `fetchHardening`, and every filter driver of the clone's own
+  off, Git LFS's too, with `Local.Refused` saying when the clone's own config holds a
+  setting a setup would refuse. In a partial
   clone (`extensions.partialClone`, `remote.<r>.promisor`) either may fetch a missing file's
   contents: its promisor remotes are weighed as a remote is, and the setup leaves
   `GIT_NO_LAZY_FETCH` out and allows the user's transports (`Setup.Partial`). Only an

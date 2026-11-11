@@ -526,6 +526,20 @@ func TestNoGitCommandChangesAClone(t *testing.T) {
 		worktreeMakerFile+") fetches and adds worktrees, and only Repo scripts' pull ("+clonePullerFile+") pulls")
 }
 
+// TestNoGitCommandRunsAMergeOrDiffTool keeps the app from running git mergetool or git
+// difftool anywhere: gitread lets a clone's own config name their programs
+// (mergetool.<name>.cmd, difftool.<name>.cmd) as settings nothing the app runs reads, which
+// holds only while no command the app runs is one of them.
+func TestNoGitCommandRunsAMergeOrDiffTool(t *testing.T) {
+	t.Parallel()
+
+	// Built from parts so this file does not match itself.
+	tools := argvLiteral("merge"+"tool", "diff"+"tool")
+
+	assert.Empty(t, productionGoHits(t, moduleRoot(t), tools),
+		"no git command the app runs is mergetool or difftool, whose programs a clone's config may name")
+}
+
 // makerFetchWords are the only words worktree creation's fetch holds, besides the remote
 // and the refspec: no tag, nothing fetched through the clone's own refspecs (--refmap=,
 // which a forced map onto the clone's own branches would otherwise move), and git's own
