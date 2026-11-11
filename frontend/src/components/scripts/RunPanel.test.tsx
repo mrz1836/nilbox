@@ -605,6 +605,30 @@ describe('RunPanel', () => {
       expect(platform.getChecksResult).not.toHaveBeenCalled()
     })
 
+    it('shows a hooks action’s result once, however often the panel reads the run again', async () => {
+      // React warns when siblings share a key, which is what showed the result twice.
+      const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+      renderPanel(hooksRun({ startedAt: ago(98_000), finishedAt: ago(60_000) }))
+
+      await screen.findByRole('heading', { name: /Installed the pre-commit hook in acme-org\/api\./ })
+
+      for (let i = 0; i < 3; i++) {
+        act(() => {
+          emit('scriptruns:updated')
+        })
+        await waitFor(() => {
+          expect(platform.getScriptRun).toHaveBeenCalledTimes(i + 2)
+        })
+      }
+
+      expect(screen.getAllByRole('heading', { name: /Installed the pre-commit hook in acme-org\/api\./ })).toHaveLength(
+        1,
+      )
+      expect(errors.mock.calls.flat().join(' ')).not.toMatch(/same key/)
+      errors.mockRestore()
+    })
+
     it('opens the run Replace… starts from a blocked install’s result', async () => {
       platform.getHookActionResult.mockResolvedValue(
         hookActionResult({
