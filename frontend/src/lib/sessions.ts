@@ -119,6 +119,20 @@ export const stateText: Readonly<Record<SessionState, string>> = {
   unknown: 'text-muted',
 }
 
+// stateTint is the faint backing of the card's tag in a state the user should see at a
+// glance: a session at work, waiting on them, or failed, so it stands apart from the
+// card's other details. The rest have none.
+export const stateTint: Readonly<Record<SessionState, string>> = {
+  starting: 'bg-muted/10',
+  working: 'bg-info/12 ring-1 ring-info/25',
+  needs_approval: 'bg-warning/12 ring-1 ring-warning/30',
+  needs_input: 'bg-warning/12 ring-1 ring-warning/30',
+  idle: '',
+  ended: '',
+  failed: 'bg-danger/10',
+  unknown: '',
+}
+
 // pulses reports a state whose dot pulses: one the session is in the middle of.
 export function pulses(state: SessionState): boolean {
   return state === 'working' || state === 'starting'
