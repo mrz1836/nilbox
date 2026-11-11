@@ -42,29 +42,28 @@ function reviewWord(state: string): string {
   }
 }
 
+// runningOutcome is where a check GitHub has not finished counts: queued or in progress.
+const runningOutcome = 'pending'
+
 // checkTone is a check's color, by where it counts.
-function checkTone(check: ReviewCheck): Tone {
-  switch (check.outcome) {
+function checkTone(outcome: string): Tone {
+  switch (outcome) {
     case 'passed':
       return 'success'
     case 'failed':
       return 'danger'
-    case 'pending':
+    case runningOutcome:
       return 'warning'
     default:
       return 'muted'
   }
 }
 
-// running reports a check GitHub has not finished: queued or in progress.
-function running(check: ReviewCheck): boolean {
-  return check.outcome === 'pending'
-}
-
-// CheckDot is a check's dot, in its tone: a ring swells slowly out of it while the check
-// runs, as out of a working session's.
-function CheckDot({ check }: { check: ReviewCheck }) {
-  return <StatusDot color={toneDot[checkTone(check)]} ping={running(check)} />
+// CheckDot is the dot of a check with outcome, in its tone: a ring swells slowly out of it
+// while the check runs, as out of a working session's. The count of the checks running
+// carries the running one, so the list and its summary always match.
+function CheckDot({ outcome }: { outcome: string }) {
+  return <StatusDot color={toneDot[checkTone(outcome)]} ping={outcome === runningOutcome} />
 }
 
 // checksSummary sums up the checks: how many there are and how many fail, as in "12 checks ·
@@ -72,7 +71,7 @@ function CheckDot({ check }: { check: ReviewCheck }) {
 // marks with a running check's dot.
 export function checksSummary(checks: readonly ReviewCheck[]): { counts: string; running: string } {
   const failing = checks.filter((c) => c.outcome === 'failed').length
-  const pending = checks.filter(running).length
+  const pending = checks.filter((c) => c.outcome === runningOutcome).length
   const parts = [counted(checks.length, 'check', 'checks')]
 
   if (failing > 0) {
@@ -128,7 +127,7 @@ function CheckList({ checks }: { checks: readonly ReviewCheck[] }) {
     <ul className="mt-1 space-y-0.5">
       {checks.map((c, i) => (
         <li key={`${c.name}-${String(i)}`} className="flex min-w-0 items-center gap-1.5">
-          <CheckDot check={c} />
+          <CheckDot outcome={c.outcome} />
           {c.url === '' ? (
             <span className="truncate">{c.name}</span>
           ) : (
@@ -171,7 +170,7 @@ function Checks({ checks }: { checks: readonly ReviewCheck[] }) {
         {summary.running !== '' && (
           <>
             {' · '}
-            <StatusDot color={toneDot.warning} ping /> {summary.running}
+            <CheckDot outcome={runningOutcome} /> {summary.running}
           </>
         )}
       </summary>

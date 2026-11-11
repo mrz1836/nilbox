@@ -1,6 +1,6 @@
 import { useId, useState } from 'react'
 
-import type { MergeMethod, Review, ReviewOffer } from '../../platform'
+import type { MergeMethod, Review, ReviewAction, ReviewOffer } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { WarningsToAccept } from './WarningsToAccept'
 
@@ -12,6 +12,22 @@ export interface MergeConfirmDialogProps {
   // comment says what is posted as a comment before the merge, as the composer says it, or
   // '' when nothing is.
   comment?: string
+}
+
+// mergeActions are the actions that merge, now or once the pull request can: every one asks
+// first, with this dialog.
+const mergeActions: ReadonlySet<ReviewAction> = new Set<ReviewAction>([
+  'approve_merge',
+  'approve_auto_merge',
+  'merge_now',
+  'auto_merge',
+  'merge_bypass',
+])
+
+// merges reports an action that merges, which this dialog confirms; any other action that
+// asks first gets ActionConfirmDialog, with no merge methods.
+export function merges(action: ReviewAction): boolean {
+  return mergeActions.has(action)
 }
 
 // methodNames are each merge method's name, as GitHub says it.

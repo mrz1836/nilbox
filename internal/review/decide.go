@@ -144,10 +144,8 @@ func (d decider) offers() []Offer {
 	out := []Offer{d.approveMerge(), d.approveAutoMerge(), d.merge(), d.autoMerge(), d.bypass()}
 	out = append(out, d.review(ActionApprove), d.review(ActionRequestChanges), d.review(ActionComment))
 
-	// Dependabot rebases its own pull request whatever its merge state, which picks up what
-	// landed on the base since, such as the fix for a check failing.
 	if f.Dependabot {
-		out = append(out, Offer{Action: ActionRebaseBot, Label: "Ask Dependabot to rebase", Enabled: true, Warnings: []string{}})
+		out = append(out, d.rebaseBot())
 	}
 
 	// GitHub says when the user can bring the branch up to date, however the merge state reads
@@ -161,10 +159,34 @@ func (d decider) offers() []Offer {
 	out = slices.DeleteFunc(out, func(o Offer) bool { return o.Action == ActionNone })
 
 	for i := range out {
+		// An action with warnings to accept always asks first: Act refuses it otherwise.
+		out[i].Confirm = out[i].Confirm || len(out[i].Warnings) > 0
 		d.markText(&out[i])
 	}
 
 	return out
+}
+
+// rebaseBot offers to ask Dependabot to rebase its pull request, which picks up what
+// landed on the base since, such as the fix for a check failing, whatever the merge state:
+// once the sheet read the pull request, for a user Dependabot takes commands from, and
+// while the branch is behind its base or has conflicts with it.
+func (d decider) rebaseBot() Offer {
+	f := d.f
+	o := Offer{Action: ActionRebaseBot, Label: "Ask Dependabot to rebase", Warnings: []string{}}
+
+	switch {
+	case f.MergeState == "":
+		o.Reason = "Wait for it to load from GitHub."
+	case !f.CanWrite:
+		o.Reason = "Dependabot only takes commands from people with push access to the repository."
+	case f.MergeState != github.MergeStateBehind && f.MergeState != github.MergeStateDirty && !f.CanUpdateBranch:
+		o.Reason = fmt.Sprintf("It's up to date with %s, so there's nothing to rebase.", base(f))
+	default:
+		o.Enabled = true
+	}
+
+	return o
 }
 
 // markText says on an offer what its text and line comments go with: the review it
@@ -420,13 +442,13 @@ func (d decider) autoMergeBlock() string {
 const dependabotUpdateWarning = "Dependabot stops rebasing a pull request once someone else changes its branch. " +
 	"Ask Dependabot to rebase instead to keep it managed."
 
-// updateBranch offers to merge the base branch in. On Dependabot's pull request it asks
-// first: Dependabot stops rebasing a branch someone else changed.
+// updateBranch offers to merge the base branch in. On Dependabot's pull request it warns
+// first, so it asks first: Dependabot stops rebasing a branch someone else changed.
 func (d decider) updateBranch() Offer {
 	o := Offer{Action: ActionUpdateBranch, Label: "Update branch", Warnings: []string{}}
 
 	if d.f.Dependabot {
-		o.Confirm, o.Warnings = true, []string{dependabotUpdateWarning}
+		o.Warnings = []string{dependabotUpdateWarning}
 	}
 
 	if d.f.CanUpdateBranch {
@@ -481,11 +503,11 @@ func notNowReason(f Facts) string {
 	}
 }
 
-// primary picks the offer the sheet's button runs: exactly one enabled offer, or none
-// when nothing is enabled. Asking Dependabot to rebase comes first while its pull request
-// is behind or has conflicts, and Update branch while the rules hold a pull request back
-// for being behind; otherwise both wait in the menu, and are the button only when nothing
-// else can run, since the sheet shows no menu without a button.
+// primary picks the offer the sheet's button runs: one enabled offer, or none. Asking
+// Dependabot to rebase comes first while its pull request is behind or has conflicts, and
+// Update branch while the rules hold a pull request back for being behind; otherwise both
+// wait in the menu, and are never the button, since each writes to the branch. With no
+// primary and offers enabled, the sheet's button only opens the menu.
 func primary(f Facts, offers []Offer) Action {
 	enabled := func(a Action) bool {
 		return slices.ContainsFunc(offers, func(o Offer) bool { return o.Action == a && o.Enabled })
@@ -514,8 +536,7 @@ func primary(f Facts, offers []Offer) Action {
 		order = append(order, ActionUpdateBranch)
 	}
 
-	order = append(order, ActionMerge, ActionAutoMerge, ActionApprove, ActionComment, ActionRequestChanges,
-		ActionRebaseBot, ActionUpdateBranch)
+	order = append(order, ActionMerge, ActionAutoMerge, ActionApprove, ActionComment, ActionRequestChanges)
 
 	for _, a := range order {
 		if enabled(a) {

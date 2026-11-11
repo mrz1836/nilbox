@@ -661,14 +661,15 @@ func keepUpHarness(t *testing.T, status string, bot, canUpdate bool) *harness {
 func TestActDecidesAgainOnARebaseOrAnUpdateWheneverTheyApply(t *testing.T) {
 	t.Parallel()
 
-	t.Run("Dependabot asked to rebase in any merge state", func(t *testing.T) {
+	t.Run("Dependabot asked to rebase a branch behind its base in any merge state", func(t *testing.T) {
 		t.Parallel()
 
 		for _, status := range []string{
 			github.MergeStateBlocked, github.MergeStateClean, github.MergeStateUnstable, github.MergeStateBehind,
 			github.MergeStateDirty,
 		} {
-			h := keepUpHarness(t, status, true, false)
+			// GitHub can't update a branch with conflicts, which the rebase resolves.
+			h := keepUpHarness(t, status, true, status != github.MergeStateDirty)
 
 			res := h.act(t, ActRequest{Action: ActionRebaseBot})
 			assert.Equal(t, OutcomeAskedBot, res.Outcome, status)
@@ -677,15 +678,36 @@ func TestActDecidesAgainOnARebaseOrAnUpdateWheneverTheyApply(t *testing.T) {
 		}
 	})
 
-	t.Run("never someone else's pull request", func(t *testing.T) {
-		t.Parallel()
+	for _, c := range []struct {
+		name, words string
+		edit        func(h *harness)
+	}{
+		{"never someone else's pull request", "isn't something the sheet can do", func(h *harness) {
+			h.inbox.pull.AuthorLogin, h.inbox.pull.AuthorType = octoOther, "User"
+		}},
+		{"nor a branch up to date", "nothing to rebase", func(h *harness) {
+			h.github.review.ViewerCanUpdateBranch = false
+		}},
+		{"nor for a user without push access", "push access", func(h *harness) {
+			h.inbox.pull.ViewerPermission = "TRIAGE"
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 
-		h := keepUpHarness(t, github.MergeStateDirty, false, false)
+			h := newHarness(t)
+			h.inbox.pull.AuthorLogin, h.inbox.pull.AuthorType = "dependabot", "Bot"
+			h.github.review = pullReview(headA, github.MergeStateBlocked)
+			h.github.review.ViewerCanUpdateBranch = true
+			c.edit(h)
+			h.refreshed(t)
 
-		_, err := h.svc.Act(t.Context(), ActRequest{ItemID: pullID, Action: ActionRebaseBot, Head: headA})
-		require.ErrorIs(t, err, ErrNotOffered)
-		assert.Zero(t, h.inbox.acts, "nothing was sent")
-	})
+			_, err := h.svc.Act(t.Context(), ActRequest{ItemID: pullID, Action: ActionRebaseBot, Head: headA})
+			require.ErrorIs(t, err, ErrNotOffered)
+			assert.Contains(t, uierr.Message(err), c.words)
+			assert.Zero(t, h.inbox.acts, "nothing was sent")
+		})
+	}
 
 	t.Run("a branch behind a base the rules don't mind is updated", func(t *testing.T) {
 		t.Parallel()

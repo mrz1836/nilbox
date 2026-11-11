@@ -26,12 +26,12 @@ import { ActionProgress } from './ActionProgress'
 import { AgentVerdict } from './AgentVerdict'
 import { DiffView } from './DiffView'
 import { FileList } from './FileList'
-import { MergeConfirmDialog } from './MergeConfirmDialog'
+import { ActionConfirmDialog } from './ActionConfirmDialog'
+import { MergeConfirmDialog, merges } from './MergeConfirmDialog'
 import { commentFirst, heldBack, ReviewComposer, sendsText, useReplyBody } from './ReviewComposer'
 import { ReviewHeader } from './ReviewHeader'
 import { DescriptionSkeleton, DiffSkeleton, FileListSkeleton, ReadingBanner, SummarySkeleton } from './ReviewLoading'
 import { Readiness, ReviewSummary } from './ReviewSummary'
-import { UpdateBranchConfirmDialog } from './UpdateBranchConfirmDialog'
 
 export interface ReviewSheetProps {
   // id is the pull request the sheet shows, and item its inbox card.
@@ -433,21 +433,10 @@ export function ReviewSheet({
         )}
       </div>
       {progress !== null && <ActionProgress title={progress.title} target={progress.target} steps={progress.steps} />}
+      {/* A merge asks with its methods; any other action that asks first, with none. */}
       {confirming !== null &&
         review !== null &&
-        (confirming.action === 'update_branch' ? (
-          <UpdateBranchConfirmDialog
-            review={review}
-            offer={confirming}
-            onCancel={() => {
-              setConfirming(null)
-            }}
-            onConfirm={() => {
-              setConfirming(null)
-              void send(review, confirming.action, review.defaultMethod, confirming.warnings.length > 0)
-            }}
-          />
-        ) : (
+        (merges(confirming.action) ? (
           <MergeConfirmDialog
             review={review}
             offer={confirming}
@@ -458,6 +447,18 @@ export function ReviewSheet({
             onConfirm={(method) => {
               setConfirming(null)
               void send(review, confirming.action, method, confirming.warnings.length > 0)
+            }}
+          />
+        ) : (
+          <ActionConfirmDialog
+            review={review}
+            offer={confirming}
+            onCancel={() => {
+              setConfirming(null)
+            }}
+            onConfirm={() => {
+              setConfirming(null)
+              void send(review, confirming.action, review.defaultMethod, confirming.warnings.length > 0)
             }}
           />
         ))}

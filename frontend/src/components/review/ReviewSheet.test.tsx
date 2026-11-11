@@ -825,6 +825,80 @@ describe('ReviewSheet', () => {
     })
   })
 
+  it('only opens the menu when the actions that can run are never the button on their own', async () => {
+    platform.refreshReview.mockResolvedValue(
+      review({
+        offers: [
+          offer({
+            action: 'comment',
+            label: 'Comment',
+            enabled: false,
+            reason: 'You have a review started on GitHub.',
+          }),
+          offer({ action: 'rebase_bot', label: 'Ask Dependabot to rebase', reviews: false }),
+          offer({
+            action: 'update_branch',
+            label: 'Update branch',
+            reviews: false,
+            confirm: true,
+            warnings: ['Careful.'],
+          }),
+        ],
+        primary: '',
+      }),
+    )
+    render(<Harness />)
+
+    const choose = await screen.findByRole('button', { name: 'Choose an action' })
+    expect(screen.queryByText('Nothing to do here now.')).not.toBeInTheDocument()
+
+    // ⌘↩ runs nothing: there is no action to run until the user picks one.
+    await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
+    expect(platform.actOnReview).not.toHaveBeenCalled()
+
+    await userEvent.click(choose)
+    expect(screen.getByRole('menuitem', { name: 'Comment' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Ask Dependabot to rebase' }))
+
+    // Picked, it is the button, and runs on a click.
+    await userEvent.click(await actionButton('Ask Dependabot to rebase'))
+    await waitFor(() => {
+      expect(platform.actOnReview).toHaveBeenCalledWith(expect.objectContaining({ action: 'rebase_bot' }))
+    })
+  })
+
+  it('asks before any action with warnings, never with merge methods unless it merges', async () => {
+    platform.refreshReview.mockResolvedValue(
+      review({
+        offers: [
+          offer({
+            action: 'rebase_bot',
+            label: 'Ask Dependabot to rebase',
+            reviews: false,
+            confirm: true,
+            warnings: ['It drops your commits.'],
+          }),
+        ],
+        primary: 'rebase_bot',
+      }),
+    )
+    platform.actOnReview.mockResolvedValue(reviewResult({ outcome: 'asked_bot', message: 'Asked' }))
+    render(<Harness />)
+
+    await userEvent.click(await actionButton('Ask Dependabot to rebase'))
+
+    const dialog = screen.getByRole('dialog', { name: 'Ask Dependabot to rebase on #7?' })
+    expect(within(dialog).queryByRole('radio')).not.toBeInTheDocument()
+    expect(within(dialog).queryByText('Merge method')).not.toBeInTheDocument()
+    expect(within(dialog).getByText('It drops your commits.')).toBeInTheDocument()
+
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'I’ve looked, go ahead' }))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Ask Dependabot to rebase' }))
+    await waitFor(() => {
+      expect(platform.actOnReview).toHaveBeenCalledWith(expect.objectContaining({ action: 'rebase_bot', accept: true }))
+    })
+  })
+
   it('says when there is nothing to do', async () => {
     platform.refreshReview.mockResolvedValue(review({ offers: [], primary: '' }))
     render(<Harness />)
@@ -832,6 +906,27 @@ describe('ReviewSheet', () => {
     expect(await screen.findByText('Nothing to do here now.')).toBeInTheDocument()
     await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
     expect(platform.actOnReview).not.toHaveBeenCalled()
+  })
+
+  it('says there is nothing to do when no offer can run', async () => {
+    platform.refreshReview.mockResolvedValue(
+      review({
+        offers: [
+          offer({
+            action: 'rebase_bot',
+            label: 'Ask Dependabot to rebase',
+            reviews: false,
+            enabled: false,
+            reason: 'Wait for it to load from GitHub.',
+          }),
+        ],
+        primary: '',
+      }),
+    )
+    render(<Harness />)
+
+    expect(await screen.findByText('Nothing to do here now.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Choose an action' })).not.toBeInTheDocument()
   })
 
   it('runs nothing before the pull request loads', async () => {

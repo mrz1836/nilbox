@@ -1155,19 +1155,25 @@ changes** and **Comment** need text or a line comment.
 
 **Bringing a branch up to date.** The menu offers **Ask Dependabot to rebase** on every open
 Dependabot pull request, whatever its merge state, so one held back by a failing check can pick
-up the fix from its base. It offers **Update branch** whenever GitHub says you can update the
-branch (it is behind its base and you may push to it), even when the rules don't need it up to
-date and the pull request reads as blocked or ready. Outside the rows above, both stay in the
-menu and the button keeps its own action.
+up the fix from its base. It runs once the sheet has read the pull request from GitHub, for an
+account with push access (Dependabot takes commands from no one else), while the branch is
+behind its base or has conflicts with it; otherwise the menu says why not, as in **It's up to
+date with main, so there's nothing to rebase.** The menu offers **Update branch** whenever GitHub
+says you can update the branch (it is behind its base and you may push to it), even when the
+rules don't need it up to date and the pull request reads as blocked or ready. Both write to the
+branch, so outside the rows above neither is ever the button: it keeps its own action, and when
+nothing else can run it reads **Choose an action** and only opens the menu, and **⌘↩** does
+nothing until you pick one. **Nothing to do here now.** shows only when no action can run.
 
 **Every merge asks first.** Merge, Merge when ready (auto-merge), Approve & merge, and Approve &
 auto-merge open a confirmation with the merge methods the repository allows, the commit it
 merges, and any warnings to accept first: optional checks failing, or sensitive files
 of the danger level. **Cancel** is where the focus starts. Approve, Comment, Request changes,
-Update branch, and Ask Dependabot to rebase are one click, but for **Update branch** on a
-Dependabot pull request: its confirmation warns that Dependabot stops rebasing a pull request
-once someone else changes its branch, and that asking Dependabot to rebase keeps it managed, and
-it updates only once you tick **I've looked, update anyway**.
+Update branch, and Ask Dependabot to rebase are one click, but any action with a warning asks
+first, in a confirmation of its own with no merge methods. **Update branch** on a Dependabot
+pull request does: its confirmation warns that Dependabot stops rebasing a pull request once
+someone else changes its branch, and that asking Dependabot to rebase keeps it managed, and it
+updates only once you tick **I've looked, update anyway**.
 
 **Your text goes with a merge.** Merge, Merge past the rules, and Merge when ready post the text
 in **Your review**, and any line comments, as a comment before they merge, so the pull request

@@ -1,5 +1,5 @@
 import type { ReviewAction, ReviewOffer } from '../../platform'
-import { primaryButtonClass } from '../controls'
+import { buttonClass, primaryButtonClass } from '../controls'
 import { CheckIcon, ChevronDownIcon } from '../icons'
 import { MenuButton, type MenuItem } from '../Menu'
 
@@ -17,15 +17,12 @@ export interface ActionButtonProps {
 
 // ActionButton is the review sheet's split button: the action it runs, labelled with
 // exactly what happens, as in "Approve & squash-merge", and a menu of every action the
-// sheet offers, with why each one that can't run now can't.
+// sheet offers, with why each one that can't run now can't. With no action to run on its
+// own (no primary, and none chosen) but some the user may pick, such as a write to the
+// branch that is never the button by default, it reads "Choose an action" and only opens
+// the menu.
 export function ActionButton({ offers, selected, onSelect, onRun, busy, blocked }: ActionButtonProps) {
   const offer = offers.find((o) => o.action === selected)
-
-  if (offer === undefined) {
-    return <p className="text-xs text-muted">Nothing to do here now.</p>
-  }
-
-  const reason = offer.enabled ? blocked(offer.action) : offer.reason
   const items = (): MenuItem[] =>
     offers.map((o) => ({
       label: o.label,
@@ -36,6 +33,20 @@ export function ActionButton({ offers, selected, onSelect, onRun, busy, blocked 
         onSelect(o.action)
       },
     }))
+
+  if (offer === undefined) {
+    if (!offers.some((o) => o.enabled)) {
+      return <p className="text-xs text-muted">Nothing to do here now.</p>
+    }
+
+    return (
+      <MenuButton label="Choose an action" items={items} className={buttonClass}>
+        Choose an action <ChevronDownIcon className="size-3.5" />
+      </MenuButton>
+    )
+  }
+
+  const reason = offer.enabled ? blocked(offer.action) : offer.reason
 
   return (
     <div className="flex items-stretch">

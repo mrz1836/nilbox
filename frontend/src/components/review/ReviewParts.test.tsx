@@ -11,7 +11,7 @@ import { ActionButton } from './ActionButton'
 import { AgentVerdict } from './AgentVerdict'
 import { DiffView } from './DiffView'
 import { LineComment } from './LineComment'
-import { MergeConfirmDialog, mergeVerb } from './MergeConfirmDialog'
+import { MergeConfirmDialog, merges, mergeVerb } from './MergeConfirmDialog'
 import { commentFirst, heldBack, needsText, replyActionOf, sendsText } from './ReviewComposer'
 import { ReviewHeader } from './ReviewHeader'
 import { areasText, checksSummary, Readiness, ReviewSummary } from './ReviewSummary'
@@ -198,6 +198,16 @@ describe('ReviewSummary', () => {
 })
 
 describe('MergeConfirmDialog', () => {
+  it('confirms only the actions that merge', () => {
+    for (const a of ['approve_merge', 'approve_auto_merge', 'merge_now', 'auto_merge', 'merge_bypass'] as const) {
+      expect(merges(a)).toBe(true)
+    }
+
+    for (const a of ['approve', 'comment', 'request_changes', 'update_branch', 'rebase_bot', ''] as const) {
+      expect(merges(a)).toBe(false)
+    }
+  })
+
   it('words each kind of merge', () => {
     const cases = [
       { action: 'merge_now' as const, title: 'Merge #7 into main?', label: 'Squash-merge' },

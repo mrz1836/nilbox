@@ -339,8 +339,9 @@ func TestChooseMethod(t *testing.T) {
 
 // FuzzDecide checks the rules every plan keeps, whatever the facts: nothing merges what
 // GitHub would not merge now, a draft, or a merge queue's; nobody approves or requests
-// changes on their own pull request; a pending review blocks every review; and the
-// primary is one enabled offer, there whenever any offer is enabled.
+// changes on their own pull request; a pending review blocks every review; the primary is
+// an enabled offer, or none only while every enabled offer is one the button never runs on
+// its own; and an offer with warnings asks first.
 func FuzzDecide(f *testing.F) {
 	f.Add(uint16(0), uint8(0), uint8(0), uint8(0))
 	f.Add(uint16(0xffff), uint8(1), uint8(2), uint8(3))
@@ -384,16 +385,33 @@ func checkPlan(t *testing.T, fa Facts, p Plan) {
 		}
 	}
 
-	if len(on) == 0 {
-		assert.Equal(t, ActionNone, p.Primary)
-	} else {
-		assert.Contains(t, on, p.Primary, "the primary is enabled")
-	}
+	checkPrimary(t, p, on)
+	checkAsksFirst(t, p)
+	checkKeepingUp(t, fa, p, on)
+}
+
+// checkPrimary checks that the primary is an enabled offer, or none, and that with none,
+// only actions the button never runs on its own are enabled: the sheet's button then only
+// opens the menu.
+func checkPrimary(t *testing.T, p Plan, on []Action) {
+	t.Helper()
 
 	assert.NotEqual(t, ActionMergeBypass, p.Primary, "going past the rules is never the button")
 
-	checkAsksFirst(t, p)
-	checkKeepingUp(t, fa, p, on)
+	if p.Primary != ActionNone {
+		assert.Contains(t, on, p.Primary, "the primary is enabled")
+
+		return
+	}
+
+	// The writes the button never runs unless the user picks them: a merge past the rules,
+	// which only ever runs on purpose, and the two that write to the branch, which are the
+	// button only while the pull request is behind (or, for the rebase, has conflicts).
+	neverDefault := []Action{ActionMergeBypass, ActionRebaseBot, ActionUpdateBranch}
+
+	for _, a := range on {
+		assert.Contains(t, neverDefault, a, "with no primary, %s is enabled", a)
+	}
 }
 
 // checkAsksFirst checks that every offer with warnings to accept asks first, as Update
@@ -407,9 +425,9 @@ func checkAsksFirst(t *testing.T, p Plan) {
 }
 
 // checkKeepingUp checks the two ways of bringing a branch up to date: asking Dependabot to
-// rebase is offered on every open pull request of its, and Update branch whenever GitHub
-// lets the user; and each is the button only while the pull request is behind (the rebase
-// also while it has conflicts), or when nothing else can run.
+// rebase (checkRebase), and Update branch, offered whenever GitHub lets the user; and that
+// each is the button only while the pull request is behind (the rebase also while it has
+// conflicts).
 func checkKeepingUp(t *testing.T, fa Facts, p Plan, on []Action) {
 	t.Helper()
 
@@ -419,31 +437,43 @@ func checkKeepingUp(t *testing.T, fa Facts, p Plan, on []Action) {
 		return
 	}
 
-	if fa.Dependabot {
-		assert.Contains(t, on, ActionRebaseBot, "Dependabot's pull request, in any merge state")
-	} else {
-		_, ok := p.offer(ActionRebaseBot)
-		assert.False(t, ok, "asking Dependabot to rebase a pull request it didn't open")
-	}
+	checkRebase(t, fa, p)
 
 	if fa.CanUpdateBranch {
 		assert.Contains(t, on, ActionUpdateBranch, "GitHub lets the user update the branch")
 	}
 
-	rest := slices.DeleteFunc(slices.Clone(on), func(a Action) bool {
-		return a == ActionRebaseBot || a == ActionUpdateBranch
-	})
 	behind := fa.MergeState == github.MergeStateBehind
 
 	if p.Primary == ActionRebaseBot {
-		assert.True(t, behind || fa.MergeState == github.MergeStateDirty || len(rest) == 0,
+		assert.True(t, behind || fa.MergeState == github.MergeStateDirty,
 			"the rebase is the button only while it is behind or has conflicts")
 	}
 
 	if p.Primary == ActionUpdateBranch {
-		assert.True(t, behind || len(rest) == 0, "Update branch is the button only while it is behind")
-		assert.False(t, fa.Dependabot, "Dependabot's own rebase comes first")
+		assert.True(t, behind, "Update branch is the button only while it is behind")
+		assert.NotContains(t, on, ActionRebaseBot, "Dependabot's own rebase comes first")
 	}
+}
+
+// checkRebase checks that asking Dependabot to rebase is offered on every open pull request
+// of its, and only there, and runs only once the sheet read the pull request, for a user
+// with push access, while the branch is behind its base or has conflicts with it.
+func checkRebase(t *testing.T, fa Facts, p Plan) {
+	t.Helper()
+
+	rebase, ok := p.offer(ActionRebaseBot)
+	if !fa.Dependabot {
+		assert.False(t, ok, "asking Dependabot to rebase a pull request it didn't open")
+
+		return
+	}
+
+	require.True(t, ok, "Dependabot's pull request, in any merge state")
+
+	behind := fa.MergeState == github.MergeStateBehind || fa.MergeState == github.MergeStateDirty || fa.CanUpdateBranch
+	assert.Equal(t, fa.MergeState != "" && fa.CanWrite && behind, rebase.Enabled, rebase.Reason)
+	assert.Equal(t, rebase.Enabled, rebase.Reason == "", "a reason exactly when it can't run")
 }
 
 // checkMerges checks that nothing merges what GitHub would not merge now, a draft, or a
@@ -609,6 +639,15 @@ func dependabot(status string) Facts {
 	return f
 }
 
+// behindBot is Dependabot's pull request in merge state status, behind its base, which the
+// user may update.
+func behindBot(status string) Facts {
+	f := dependabot(status)
+	f.CanUpdateBranch = true
+
+	return f
+}
+
 func TestDecideAsksDependabotToRebaseInAnyMergeState(t *testing.T) {
 	t.Parallel()
 
@@ -619,15 +658,15 @@ func TestDecideAsksDependabotToRebaseInAnyMergeState(t *testing.T) {
 	}{
 		{"behind", dependabot(github.MergeStateBehind), ActionRebaseBot},
 		{"with conflicts", dependabot(github.MergeStateDirty), ActionRebaseBot},
-		{"clean", dependabot(github.MergeStateClean), ActionApproveMerge},
+		{"clean", behindBot(github.MergeStateClean), ActionApproveMerge},
 		{"an optional check failing", func() Facts {
-			f := dependabot(github.MergeStateUnstable)
+			f := behindBot(github.MergeStateUnstable)
 			f.Failing = 1
 
 			return f
 		}(), ActionApproveMerge},
 		{"a required check failing", func() Facts {
-			f := dependabot(github.MergeStateBlocked)
+			f := behindBot(github.MergeStateBlocked)
 			f.RequiredFailing, f.Failing = 1, 1
 
 			return f
@@ -651,6 +690,40 @@ func TestDecideAsksDependabotToRebaseInAnyMergeState(t *testing.T) {
 	// Never anyone else's pull request.
 	_, ok := Decide(facts(github.MergeStateBehind), PrefRepo).offer(ActionRebaseBot)
 	assert.False(t, ok)
+}
+
+func TestDecideOffersTheRebaseOnlyWhenItCanDoSomething(t *testing.T) {
+	t.Parallel()
+
+	for _, c := range []struct {
+		name, reason string
+		facts        Facts
+	}{
+		{"before the sheet read it", "Wait for it to load from GitHub.", dependabot("")},
+		{
+			"without push access", "Dependabot only takes commands from people with push access to the repository.",
+			func() Facts {
+				f := dependabot(github.MergeStateBehind)
+				f.CanWrite = false
+
+				return f
+			}(),
+		},
+		{"up to date and blocked", "It's up to date with main, so there's nothing to rebase.", dependabot(github.MergeStateBlocked)},
+		{"up to date and clean", "It's up to date with main, so there's nothing to rebase.", dependabot(github.MergeStateClean)},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			p := Decide(c.facts, PrefRepo)
+
+			rebase, ok := p.offer(ActionRebaseBot)
+			require.True(t, ok, "in the menu, with why it can't run")
+			assert.False(t, rebase.Enabled)
+			assert.Equal(t, c.reason, rebase.Reason)
+			assert.NotEqual(t, ActionRebaseBot, p.Primary)
+		})
+	}
 }
 
 func TestDecideOffersUpdateBranchWheneverGitHubLets(t *testing.T) {
@@ -735,21 +808,28 @@ func TestDecideOffersNeitherOnceMergedOrClosed(t *testing.T) {
 	}
 }
 
-func TestTheRebaseIsTheButtonWhenNothingElseCanRun(t *testing.T) {
+func TestNeitherIsTheButtonWhenNothingElseCanRun(t *testing.T) {
 	t.Parallel()
 
 	// A review of the user's started on GitHub holds back every review, and a required
-	// check failing every merge: the sheet shows no menu without a button.
+	// check failing every merge: only the two that write to the branch can run, and the
+	// sheet's button only opens the menu that holds them.
 	f := dependabot(github.MergeStateBlocked)
 	f.PendingReview, f.RequiredFailing, f.Failing, f.CanAutoMerge, f.CanUpdateBranch = true, 1, 1, false, true
 
 	p := Decide(f, PrefRepo)
 	assert.ElementsMatch(t, []Action{ActionRebaseBot, ActionUpdateBranch}, enabled(p))
-	assert.Equal(t, ActionRebaseBot, p.Primary)
+	assert.Equal(t, ActionNone, p.Primary)
 
 	f.Dependabot = false
 
 	p = Decide(f, PrefRepo)
 	assert.Equal(t, []Action{ActionUpdateBranch}, enabled(p))
-	assert.Equal(t, ActionUpdateBranch, p.Primary)
+	assert.Equal(t, ActionNone, p.Primary)
+
+	// Behind, which the rules mind: the rebase is the button again.
+	f = dependabot(github.MergeStateBehind)
+	f.PendingReview = true
+
+	assert.Equal(t, ActionRebaseBot, Decide(f, PrefRepo).Primary)
 }

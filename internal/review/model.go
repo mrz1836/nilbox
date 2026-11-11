@@ -274,7 +274,9 @@ type Review struct {
 	// Readiness says how close it is to merging.
 	Readiness Readiness `json:"readiness"`
 
-	// Offers are the actions the sheet offers, and Primary the one its button runs.
+	// Offers are the actions the sheet offers, and Primary the one its button runs, or
+	// ActionNone, when the button runs nothing: it only opens the menu while any offer is
+	// enabled, such as a write to the branch that is never the button on its own.
 	Offers  []Offer `json:"offers"`
 	Primary Action  `json:"primary"`
 
@@ -388,8 +390,8 @@ type Offer struct {
 	Enabled bool   `json:"enabled"`
 	Reason  string `json:"reason"`
 
-	// Confirm reports an action that asks the user to confirm first: every merge, and an
-	// update of Dependabot's branch. Every action with warnings asks first.
+	// Confirm reports an action that asks the user to confirm first: every merge, and every
+	// action with warnings, such as an update of Dependabot's branch.
 	Confirm bool `json:"confirm"`
 
 	// Warnings are what the user must accept before the action runs: Act refuses it unless
