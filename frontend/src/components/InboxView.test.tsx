@@ -691,7 +691,10 @@ describe('InboxView triage', () => {
 
     expect(platform.pinItem).toHaveBeenCalledWith(4)
     const unpin = await review.findByRole('button', { name: 'Unpin' })
-    expect(titles()).toEqual(['Tidy the docs', 'Add the widget cache'])
+    // The pin shows before the stored order lands, so the order is waited for too.
+    await waitFor(() => {
+      expect(titles()).toEqual(['Tidy the docs', 'Add the widget cache'])
+    })
     // The pin of a pinned item shows without hovering, in the accent color.
     expect(unpin.parentElement).not.toHaveClass('opacity-0')
     expect(unpin).toHaveClass('text-accent')
@@ -945,7 +948,9 @@ describe('InboxView triage', () => {
       vi.advanceTimersByTime(60_000)
     })
 
-    expect(review.getByRole('button', { name: 'Add the widget cache' })).toBeInTheDocument()
+    // The tick re-renders the list; on a loaded machine that can land after the act, so
+    // the item is waited for (only the interval is faked, so waiting uses real time).
+    expect(await review.findByRole('button', { name: 'Add the widget cache' })).toBeInTheDocument()
     expect(review.getByText('Back from snooze')).toBeInTheDocument()
     expect(review.getByRole('tab', { name: 'Snoozed' })).toBeInTheDocument()
   })
