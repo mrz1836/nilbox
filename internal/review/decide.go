@@ -152,7 +152,24 @@ func (d decider) offers() []Offer {
 		out = append(out, Offer{Action: ActionRebaseBot, Label: "Ask Dependabot to rebase", Enabled: true, Warnings: []string{}})
 	}
 
-	return slices.DeleteFunc(out, func(o Offer) bool { return o.Action == ActionNone })
+	out = slices.DeleteFunc(out, func(o Offer) bool { return o.Action == ActionNone })
+
+	for i := range out {
+		d.markText(&out[i])
+	}
+
+	return out
+}
+
+// markText says on an offer what its text and line comments go with: the review it
+// submits, or the comment a merge with no review of its own posts first, and why that
+// comment can't be posted now. Act and the window both go by what it says.
+func (d decider) markText(o *Offer) {
+	o.Reviews, o.CommentsFirst = o.Action.reviews(), o.Action.commentsFirst()
+
+	if reason := d.reviewBlock(ActionComment); o.CommentsFirst && reason != "" {
+		o.CommentBlocked = reason + " Or clear your text and line comments to merge without a comment."
+	}
 }
 
 // reviewBlock is why the user can't review now, or "".

@@ -2,6 +2,8 @@ package review
 
 import (
 	"slices"
+	"strings"
+	"unicode"
 
 	"github.com/mrz1836/nilbox/internal/bump"
 	"github.com/mrz1836/nilbox/internal/sensitive"
@@ -63,6 +65,24 @@ func (a Action) reviews() bool {
 	}, a)
 }
 
+// commentsFirst reports a merge with no review of its own, which posts the user's text and
+// line comments, when there are any, as a comment before it merges: the user's own pull
+// request, where GitHub refuses an approval, then shows it was reviewed. Decide marks each
+// offer with it (Offer.CommentsFirst), which is what Act and the window go by.
+func (a Action) commentsFirst() bool {
+	return slices.Contains([]Action{ActionMerge, ActionMergeBypass, ActionAutoMerge}, a)
+}
+
+// hasText reports text that says something: anything left once the white space the
+// window's String.prototype.trim drops is gone from both ends, so the window and Act
+// always agree. That is unicode.IsSpace's set but U+0085, which trim keeps, plus U+FEFF,
+// which trim drops.
+func hasText(s string) bool {
+	return strings.TrimFunc(s, func(r rune) bool {
+		return r == '\uFEFF' || (unicode.IsSpace(r) && r != '\u0085')
+	}) != ""
+}
+
 // MergeMethod is how GitHub merges a pull request, as its GraphQL API names it.
 type MergeMethod string
 
@@ -121,6 +141,10 @@ const (
 	// OutcomeApprovedNotMerged is an approval GitHub took, and a merge it would not make
 	// yet; Reason says why.
 	OutcomeApprovedNotMerged Outcome = "approved_not_merged"
+
+	// OutcomeCommentedNotMerged is the comment a merge posted first, which GitHub took, and
+	// a merge, or auto-merge, it would not make; Reason says why.
+	OutcomeCommentedNotMerged Outcome = "commented_not_merged"
 
 	// OutcomeBranchUpdating is a branch update GitHub started.
 	OutcomeBranchUpdating Outcome = "branch_updating"
@@ -369,6 +393,16 @@ type Offer struct {
 
 	// Warnings are what the user must accept before the action runs.
 	Warnings []string `json:"warnings"`
+
+	// Reviews reports an action that submits a review of its own, which the text and line
+	// comments go with.
+	Reviews bool `json:"reviews"`
+
+	// CommentsFirst reports a merge with no review of its own, which posts the text and line
+	// comments, when there are any, as a comment before it merges, and CommentBlocked why it
+	// can't post one now, with how to merge without it, or "" when it can.
+	CommentsFirst  bool   `json:"commentsFirst"`
+	CommentBlocked string `json:"commentBlocked"`
 }
 
 // ActRequest is an action the user asked for.
@@ -379,7 +413,9 @@ type ActRequest struct {
 	// Head is the head commit the user saw. A pull request pushed to since is refused.
 	Head string `json:"head"`
 
-	// Body is the review's or comment's text.
+	// Body is the review's or comment's text. A merge with no review of its own (merge now,
+	// past the rules, or when ready) posts it, with Comments, as a comment first, when
+	// either holds anything.
 	Body string `json:"body"`
 
 	// Comments are the review's line comments.
@@ -400,11 +436,17 @@ type Result struct {
 	// Message says what happened, for the toast.
 	Message string `json:"message"`
 
-	// Reason says why GitHub would not merge, for OutcomeApprovedNotMerged.
+	// Reason says why GitHub would not merge, for OutcomeApprovedNotMerged and
+	// OutcomeCommentedNotMerged.
 	Reason string `json:"reason"`
 
 	// Steps are what happened, in order.
 	Steps []string `json:"steps"`
+
+	// Commented reports that a merge posted the user's text and line comments as a comment
+	// first, which GitHub took whatever the merge came to, so the draft no longer holds
+	// anything to send.
+	Commented bool `json:"commented"`
 
 	// LeftReview reports that the pull request left the Review requested list, and
 	// LeftInbox that it left every list.

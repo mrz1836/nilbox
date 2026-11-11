@@ -8,6 +8,9 @@ export interface MergeConfirmDialogProps {
   offer: ReviewOffer
   onConfirm: (method: MergeMethod) => void
   onCancel: () => void
+  // comment says what is posted as a comment before the merge, as the composer says it, or
+  // '' when nothing is.
+  comment?: string
 }
 
 // methodNames are each merge method's name, as GitHub says it.
@@ -53,7 +56,7 @@ function confirmText(review: Review, offer: ReviewOffer, method: MergeMethod): {
 // accept first, such as optional checks failing or sensitive files. A merge past the
 // repository's rules lists each rule it skips instead, says plainly what it does, and
 // confirms in the danger tone. Cancel is the safe choice it starts on.
-export function MergeConfirmDialog({ review, offer, onConfirm, onCancel }: MergeConfirmDialogProps) {
+export function MergeConfirmDialog({ review, offer, onConfirm, onCancel, comment = '' }: MergeConfirmDialogProps) {
   const id = useId()
   const [method, setMethod] = useState<MergeMethod>(review.defaultMethod)
   const [accepted, setAccepted] = useState(false)
@@ -96,6 +99,7 @@ export function MergeConfirmDialog({ review, offer, onConfirm, onCancel }: Merge
         At commit <span className="font-mono text-text">{review.head.slice(0, 7)}</span>. GitHub refuses it if anything
         is pushed first.
       </p>
+      {comment !== '' && <p className="mt-2">{comment}</p>}
       {warned && (
         <div className="mt-3 rounded-md border border-warning/60 p-2 text-warning">
           {past && <p className="mb-1">GitHub would hold this merge back:</p>}
