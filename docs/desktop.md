@@ -56,11 +56,12 @@ pins.
 | `magex app:bindings` | Regenerates the committed TypeScript bindings in `frontend/bindings`, writing each Go string type with constants as a union of its values |
 | `magex app:bindingsCheck` | Regenerates the bindings into a temporary directory and fails on any drift |
 | `magex app:lint` | Lints the desktop-tagged Go code (the desktop shell and the frontend embed) |
+| `magex app:test` | Runs the desktop-tagged tests, which run the desktop runtime itself (a bound method's error reaching the window worded); `magex test` builds without the tag |
 | `magex app:dev` | Runs the app against the Vite dev server with hot reload |
 | `magex app:build` | Builds the production bundle `bin/Nilbox.app` and signs it ad hoc for local use |
 | `magex app:open` | Opens `bin/Nilbox.app` as it is, building it first when it is missing; a running copy is only brought to the front |
 | `magex app:run` | Builds `bin/Nilbox.app`, quits the copy already running, and opens the fresh build: the one command after a change |
-| `magex app:check` | Runs `app:bindingsCheck`, `app:lint`, and `app:build` |
+| `magex app:check` | Runs `app:bindingsCheck`, `app:lint`, `app:test`, and `app:build` |
 | `magex db:generate` | Regenerates each table owner's typed queries from its `queries/*.sql` and the migrations, with the sqlc version `.github/env/90-project.env` pins |
 | `magex db:check` | Fails when the generated queries are stale or a query does not prepare against the schema the migrations build |
 | `magex measure:startup` | Startup to the first frame on screen, over six launches |

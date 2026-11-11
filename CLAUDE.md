@@ -54,8 +54,8 @@ version `SQLC_VERSION` pins in `.github/env/90-project.env`, through `go run`, s
 enters `go.mod`.
 
 On macOS, a change to the desktop shell, the bound services, or the frontend must also pass
-`magex app:check` (bindings drift check, desktop lint, and the app bundle build). CI has no
-macOS runner, so this check is local.
+`magex app:check` (bindings drift check, desktop lint, desktop tests, and the app bundle
+build). CI has no macOS runner, so this check is local.
 
 <br>
 
@@ -92,7 +92,12 @@ Log only through the `*slog.Logger` a service is given (`cmd/nilbox` builds the 
 with `internal/logging` and passes it down; nil means discard, never `slog.Default`, and
 `internal/repoguard` bans the global loggers), and turn an error into text for the window only
 with `uierr.Message`, attaching a worded sentence with `uierr.New` where the error's own text
-would not help the user.
+would not help the user. A bound method's error reaches the window through
+`desktop.MarshalError` only because `cmd/nilbox` binds every service with `boundOptions`: the
+runtime encodes a method's error with its own service's marshaler alone, never the
+application's `MarshalError` option, so a service bound any other way sends the window neither
+the words nor the detail. A repoguard test fails on one, and a desktop-tagged test (`magex
+app:test`, part of `app:check`) calls a bound method through the runtime itself.
 
 <br>
 

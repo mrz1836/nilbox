@@ -180,10 +180,11 @@ func assemble(
 		Name:        brand.Name,
 		Description: brand.Tagline,
 		Icon:        appIcon(),
-		Services:    append(bound, application.NewService(&lifecycle{of: shell})),
+		Services:    append(bound, bindService(&lifecycle{of: shell})),
 		Assets:      application.AssetOptions{Handler: application.AssetFileServerFS(frontend.Assets)},
 		Mac:         macAppOptions(),
-		// A bound method's error reaches the page with what the user is told about it.
+		// The application's error marshaler too, for any error the runtime encodes without
+		// a service's; a bound method's goes through its service's (boundOptions).
 		MarshalError: desktop.MarshalError,
 		// Every quit asks first, while runs are going in the app.
 		ShouldQuit: shell.ShouldQuit,
@@ -265,9 +266,9 @@ func bind(svc any) (application.Service, error) {
 }
 
 // binders wraps each type of service the core binds. The bindings generator finds a
-// bound service by its call to application.NewService, which needs the service's
-// concrete type, so each type is named here once; which services are bound, and in what
-// order, is the core's to say.
+// bound service by its call to application.NewServiceWithOptions, which needs the
+// service's concrete type, so each type is named here once; which services are bound, and
+// in what order, is the core's to say.
 func binders() []func(svc any) (application.Service, bool) {
 	return []func(svc any) (application.Service, bool){
 		binder[settings.Service], binder[profiles.Service], binder[prompts.Service],
@@ -285,7 +286,22 @@ func binder[T any](svc any) (application.Service, bool) {
 		return application.Service{}, false
 	}
 
-	return application.NewService(s), true
+	return bindService(s), true
+}
+
+// bindService binds s, as every service the window calls is bound: with boundOptions.
+func bindService[T any](s *T) application.Service {
+	return application.NewServiceWithOptions(s, boundOptions())
+}
+
+// boundOptions are the options every bound service is bound with: its methods' errors
+// reach the window through desktop.MarshalError, with what the user is told about each
+// and the detail the window needs to answer it. The runtime encodes a bound method's
+// error with its own service's marshaler alone, never the application's MarshalError
+// option, so each service carries it (internal/repoguard checks that every one does, and
+// the desktop-tagged test that the window gets both).
+func boundOptions() application.ServiceOptions {
+	return application.ServiceOptions{MarshalError: desktop.MarshalError}
 }
 
 // startFailed returns err, which stopped the app from starting, with the build's details.
