@@ -173,6 +173,19 @@ func TestJudgeAndOutcome(t *testing.T) {
 	}
 }
 
+func TestTheResultLeavesOutTheWarningEveryReleaseHas(t *testing.T) {
+	t.Parallel()
+
+	said := Output{Warnings: []string{
+		notOnHead, sendByHand, "Current version tag is not on HEAD – there are 12 commits since v0.9.1",
+	}}
+	out := outcomeOf(Result{Kind: ResultNotPushed, Tag: recVersion}, said, scriptrun.Outcome{})
+
+	assert.Equal(t, []string{sendByHand}, out.Warnings, "a version tag not on HEAD is why a release is made")
+	assert.Len(t, said.Warnings, 3, "the output keeps every warning, for reading a failure")
+	assert.Empty(t, Output{}.NotableWarnings())
+}
+
 func TestJudgeWithoutARepositoryLinksNothing(t *testing.T) {
 	t.Parallel()
 

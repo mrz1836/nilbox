@@ -422,7 +422,7 @@ func (g *Gatherer) tool(ctx context.Context) ToolFacts {
 func (g *Gatherer) repo(ctx context.Context, name repo.Name) RepoFacts {
 	out := RepoFacts{Name: name, Branches: []string{}}
 
-	got, err := g.github.ReleaseStatus(ctx, []repo.Name{name})
+	got, err := g.github.ReleaseStatus(ctx, []repo.Name{name}, nil)
 	if err != nil {
 		out.Error = repoError(name, err)
 

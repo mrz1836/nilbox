@@ -1463,6 +1463,8 @@ export function releaseCandidates(overrides: Partial<ReleaseCandidates> = {}): R
     withoutGitHub: 0,
     checkedAt: '2026-06-15T11:55:00Z',
     error: '',
+    kept: false,
+    refreshing: false,
     ...overrides,
   }
 }

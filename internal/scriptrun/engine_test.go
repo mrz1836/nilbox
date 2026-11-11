@@ -634,9 +634,42 @@ func TestAStaleLogIsReplaced(t *testing.T) {
 func TestDisplayCommandQuotesWhatAShellWouldRead(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, "/bin/magex version:bump bump=patch", displayCommand([]string{"/bin/magex", "version:bump", "bump=patch"}))
-	assert.Equal(t, `/bin/zsh -c 'echo "$HOME" it'\''s'`, displayCommand([]string{"/bin/zsh", "-c", `echo "$HOME" it's`}))
-	assert.Equal(t, "/bin/x ''", displayCommand([]string{"/bin/x", ""}))
+	const home = "/Users/example"
+
+	assert.Equal(t, "/bin/magex version:bump bump=patch", displayCommand([]string{"/bin/magex", "version:bump", "bump=patch"}, home))
+	assert.Equal(t, `/bin/zsh -c 'echo "$HOME" it'\''s'`, displayCommand([]string{"/bin/zsh", "-c", `echo "$HOME" it's`}, home))
+	assert.Equal(t, "/bin/x ''", displayCommand([]string{"/bin/x", ""}, home))
+}
+
+func TestDisplayCommandShowsTheProgramFromHome(t *testing.T) {
+	t.Parallel()
+
+	const home = "/Users/example"
+
+	assert.Equal(t, "~/.local/bin/magex version:bump branch=master",
+		displayCommand([]string{home + "/.local/bin/magex", "version:bump", "branch=master"}, home))
+	assert.Equal(t, `~/'My Tools/magex' /Users/example/notes`,
+		displayCommand([]string{home + "/My Tools/magex", home + "/notes"}, home),
+		"~/ stays outside the quotes, and only the program is shortened")
+	assert.Equal(t, "/Users/username/bin/magex", displayCommand([]string{"/Users/username/bin/magex"}, "/Users/user"),
+		"a folder beside home, its name starting as home's does, isn't under it")
+	assert.Equal(t, "/Users/example/bin/magex", displayCommand([]string{home + "/bin/magex"}, ""),
+		"an unknown home shortens nothing")
+}
+
+func TestARunShowsItsProgramFromHomeAndRecordsItWhole(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	spec := h.spec(testutil.FakeRun{Stdout: "hello\n"})
+
+	// The fake tool's folder stands in for home.
+	h.e.home = filepath.Dir(spec.Argv[0])
+
+	rec := h.ended(h.start(spec))
+
+	assert.Equal(t, spec.Argv, rec.Argv, "the program's path is recorded whole")
+	assert.Equal(t, "~/"+filepath.Base(spec.Argv[0]), rec.Command, "and shown from ~")
 }
 
 func TestSameStart(t *testing.T) {

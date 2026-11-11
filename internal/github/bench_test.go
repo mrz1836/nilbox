@@ -89,7 +89,7 @@ func BenchmarkFetchReleaseStatus(b *testing.B) {
 	b.ReportAllocs()
 
 	for b.Loop() {
-		if _, err := client.FetchReleaseStatus(b.Context(), NewToken(fakeToken), repos); err != nil {
+		if _, err := client.FetchReleaseStatus(b.Context(), NewToken(fakeToken), repos, nil); err != nil {
 			b.Fatal(err)
 		}
 	}

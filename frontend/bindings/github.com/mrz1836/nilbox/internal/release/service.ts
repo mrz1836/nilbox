@@ -20,8 +20,13 @@ import * as $models from "./models.js";
  * Candidates returns the repositories the Release page lists. It serves the last list
  * while it is under five minutes old and was read from the clone root as set now, unless
  * refresh is set; otherwise it asks GitHub, in two rounds of batched queries, reads the
- * unreleased clones' state, and emits event.ReleasesUpdated. A refresh that fails keeps
- * the last list, with its error, until one succeeds, and fails only when there is none.
+ * unreleased clones' state, and emits event.ReleasesUpdated, telling the window how far
+ * it has got meanwhile (event.ReleasesProgress). A refresh that fails keeps the last list,
+ * with its error, until one succeeds, and fails only when there is none.
+ *
+ * After a restart, the list kept from the last start, when it was read from the clone
+ * root as set now, is served at once, marked Kept and Refreshing, while the Refresher
+ * reads GitHub again behind the page; without the Refresher, the call waits for GitHub.
  */
 export function Candidates(refresh: boolean): $CancellablePromise<$models.Candidates> {
     return $Call.ByID(1671334015, refresh);

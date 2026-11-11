@@ -4,6 +4,7 @@ import { brand } from '../../generated/brand'
 import { plainText } from '../../lib/ansi'
 import { attempt } from '../../lib/call'
 import { counted } from '../../lib/format'
+import { isBumpResult } from '../../lib/release'
 import { formatDuration, isLive, readLog, runDuration, runPlace } from '../../lib/scriptRuns'
 import { useMutation } from '../../lib/useMutation'
 import { useNow } from '../../lib/useNow'
@@ -402,7 +403,13 @@ export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
       {ended && run.kind === 'hooks' && <HookResult key={run.id} runId={run.id} onSelect={onSelect} />}
       {ended && run.kind === 'checks' && <ChecksResult key={run.id} runId={run.id} />}
       {hasResult && <RunResult exitCode={run.exitCode} result={result} />}
-      <LogView key={run.id} runId={run.id} live={isLive(run.status)} />
+      <LogView
+        key={run.id}
+        runId={run.id}
+        live={isLive(run.status)}
+        // A release's result shows what magex's JSON line says.
+        hide={run.kind === 'release' ? isBumpResult : undefined}
+      />
       {confirming !== '' && (
         <ConfirmDialog
           title="Stop this run?"

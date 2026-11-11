@@ -181,6 +181,11 @@ type Core struct {
 	// asks it before quitting whether runs are going (desktop.QuitGuard). It is not bound.
 	Runs *scriptrun.Engine
 
+	// ReleaseRefresher reads the Release page's list again behind the page when, after a
+	// restart, the page was shown the list kept from the last start. The desktop shell runs
+	// it as a worker. It is not bound.
+	ReleaseRefresher *release.Refresher
+
 	// tokens holds the GitHub token the inbox and the worktree service borrow, until
 	// Close forgets it.
 	tokens *github.TokenSource
@@ -493,7 +498,9 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		// inbox stored: nothing of GitHub's.
 		AfterMerge: releaseSettings{settings: prefs}, Branches: inboxStore,
 		// A check's Open in terminal opens the terminal chosen for launches in the clone.
-		Terminal: terminals, Home: opts.Home, Clock: opts.Clock, Events: opts.Events, Logger: logger,
+		Terminal: terminals,
+		// The last list is kept in the prefs, so the next start shows it at once.
+		Keeper: prefsstore.New(pool, opts.Clock), Home: opts.Home, Clock: opts.Clock, Events: opts.Events, Logger: logger,
 	})
 	// A release left from before a restart is read and verified as one started now.
 	runs.RegisterVerifier(scriptrun.KindRelease, release.NewVerifier(releases))
@@ -542,26 +549,27 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 			Settings: reviewSettings{settings: prefs}, Replies: reviewReplies{store: promptStore, source: previews},
 			Events: opts.Events, Clock: opts.Clock, Logger: logger,
 		}),
-		Watcher:       follow.watcher,
-		ShellSessions: ShellSessions{ledger: follow.ledger, service: follow.service},
-		ShellSettings: newShellSettings(prefs, pool, opts.Clock),
-		ProfileStore:  profileStore,
-		Scheduler:     inbox.NewScheduler(inboxSvc, logger),
-		Sweeper:       worktrees.NewSweeper(sweeps, worktrees.DefaultSweepInterval),
-		Timing:        recorder,
-		ShellEnv:      shellEnv,
-		Deferred:      &Deferred{steps: []func(context.Context){func(ctx context.Context) { _ = shellEnv.Read(ctx) }}},
-		Integrations:  tools,
-		ToolFinder:    toolFinder,
-		Runs:          runs,
-		ScriptRuns:    scriptRuns,
-		Release:       releases,
-		Hooks:         hookPage,
-		tokens:        tokens,
-		BudgetSaver:   budget.NewSaver(tracker, keeper, logger),
-		client:        client,
-		budget:        tracker,
-		budgetKeeper:  keeper,
+		Watcher:          follow.watcher,
+		ShellSessions:    ShellSessions{ledger: follow.ledger, service: follow.service},
+		ShellSettings:    newShellSettings(prefs, pool, opts.Clock),
+		ProfileStore:     profileStore,
+		Scheduler:        inbox.NewScheduler(inboxSvc, logger),
+		Sweeper:          worktrees.NewSweeper(sweeps, worktrees.DefaultSweepInterval),
+		Timing:           recorder,
+		ShellEnv:         shellEnv,
+		Deferred:         &Deferred{steps: []func(context.Context){func(ctx context.Context) { _ = shellEnv.Read(ctx) }}},
+		Integrations:     tools,
+		ToolFinder:       toolFinder,
+		Runs:             runs,
+		ScriptRuns:       scriptRuns,
+		Release:          releases,
+		ReleaseRefresher: release.NewRefresher(releases),
+		Hooks:            hookPage,
+		tokens:           tokens,
+		BudgetSaver:      budget.NewSaver(tracker, keeper, logger),
+		client:           client,
+		budget:           tracker,
+		budgetKeeper:     keeper,
 	}
 }
 

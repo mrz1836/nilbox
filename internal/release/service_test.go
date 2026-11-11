@@ -39,11 +39,17 @@ type fakeGitHub struct {
 	asked    [][]repo.Name
 	compared [][]CompareRequest
 
+	// batch is how many repositories each answer it tells of holds, as the client's
+	// batches do; 0 tells of them all at once.
+	batch int
+
 	// asking, when set, is called as each status is asked for.
 	asking func()
 }
 
-func (f *fakeGitHub) ReleaseStatus(_ context.Context, repos []repo.Name) (map[string]RepoStatus, error) {
+func (f *fakeGitHub) ReleaseStatus(
+	_ context.Context, repos []repo.Name, answered func(n int),
+) (map[string]RepoStatus, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -65,10 +71,14 @@ func (f *fakeGitHub) ReleaseStatus(_ context.Context, repos []repo.Name) (map[st
 		}
 	}
 
+	f.tell(len(repos), answered)
+
 	return out, nil
 }
 
-func (f *fakeGitHub) ReleaseCompare(_ context.Context, reqs []CompareRequest) (map[string]Compare, error) {
+func (f *fakeGitHub) ReleaseCompare(
+	_ context.Context, reqs []CompareRequest, answered func(n int),
+) (map[string]Compare, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -82,7 +92,25 @@ func (f *fakeGitHub) ReleaseCompare(_ context.Context, reqs []CompareRequest) (m
 		}
 	}
 
+	f.tell(len(reqs), answered)
+
 	return out, nil
+}
+
+// tell tells answered of n answers, batch at a time. The caller holds mu.
+func (f *fakeGitHub) tell(n int, answered func(int)) {
+	if answered == nil {
+		return
+	}
+
+	size := f.batch
+	if size <= 0 {
+		size = max(n, 1)
+	}
+
+	for done := 0; done < n; done += size {
+		answered(min(size, n-done))
+	}
 }
 
 func (f *fakeGitHub) calls() int {
@@ -233,6 +261,19 @@ func newRig() *rig {
 	return r
 }
 
+// updates counts the event.ReleasesUpdated among events, leaving out the progress.
+func updates(events *testutil.Events) int {
+	n := 0
+
+	for _, e := range events.All() {
+		if _, ok := e.(event.ReleasesUpdated); ok {
+			n++
+		}
+	}
+
+	return n
+}
+
 // groups returns each listed repository's name and group, in order.
 func groups(list Candidates) []string {
 	out := make([]string, 0, len(list.Repos))
@@ -291,7 +332,7 @@ func TestCandidatesGroupTheClones(t *testing.T) {
 	}, reasons)
 
 	assert.Equal(t, []string{"/Users/example/projects/sdk", "/Users/example/projects/web"}, r.checker.asked())
-	assert.Equal(t, []event.Event{event.ReleasesUpdated{}}, r.events.All())
+	assert.Equal(t, 1, updates(r.events), "the window hears the list landed")
 }
 
 func TestCandidatesCompareOnlyWhatHasChanges(t *testing.T) {
@@ -355,7 +396,7 @@ func TestCandidatesAreKeptForFiveMinutes(t *testing.T) {
 	_, err = r.svc.Candidates(t.Context(), false)
 	require.NoError(t, err)
 	assert.Equal(t, 3, r.github.calls(), "an older list is read again")
-	assert.Len(t, r.events.All(), 3, "each refresh that lands tells the window")
+	assert.Equal(t, 3, updates(r.events), "each refresh that lands tells the window")
 }
 
 func TestAFailedRefreshKeepsTheLastList(t *testing.T) {
@@ -373,7 +414,7 @@ func TestAFailedRefreshKeepsTheLastList(t *testing.T) {
 	assert.Equal(t, groups(first), groups(kept))
 	assert.Equal(t, first.CheckedAt, kept.CheckedAt, "with the time it was read, so its age shows")
 	assert.Equal(t, "Couldn't read your repositories from GitHub.", kept.Error)
-	assert.Len(t, r.events.All(), 2, "a refresh that failed tells the window too")
+	assert.Equal(t, 2, updates(r.events), "a refresh that failed tells the window too")
 
 	again, err := r.svc.Candidates(t.Context(), false)
 	require.NoError(t, err)

@@ -151,6 +151,10 @@ export type ReleaseResultKind = release.ResultKind
 export type ReleaseFailure = NonNullLists<release.Failure>
 export type ReleaseFailureKind = release.FailureKind
 export type AfterMerge = NonNullLists<release.AfterMerge>
+// ReleasesProgress is how far a read of the Release page's list has got, as the
+// "releases:progress" event says.
+export type ReleasesProgress = Events.CustomEvents['releases:progress']
+export type ReleasesPhase = ReleasesProgress['phase']
 export type GitOperation = gitread.Operation
 
 export type HooksList = Omit<NonNullLists<hooks.Page>, 'repos'> & { repos: HookRepo[] }
@@ -451,7 +455,9 @@ export const {
 } = narrow(scriptrun.Service)
 
 // Releases: the repositories the Release page lists (kept five minutes unless refresh
-// is set; a "releases:updated" event follows each new list), a release's sheet as Decide
+// is set; "releases:progress" events say how far a read of GitHub has got, and a
+// "releases:updated" event follows each new list; after a restart, the list kept from the
+// last start comes at once, marked kept, while it is read again behind it), a release's sheet as Decide
 // works it out, the release itself, which returns its run's ID, the result a release's
 // run recorded once it was verified, and whether a merge in the review sheet offers one.
 // Only Candidates, Prepare with refresh, and Prepare after its facts are two minutes old

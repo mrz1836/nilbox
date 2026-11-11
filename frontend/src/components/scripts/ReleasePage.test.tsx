@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { SettingsSection } from '../../lib/settingsIndex'
 import { useReleaseCandidates } from '../../lib/useReleaseCandidates'
-import type { IntegrationTool, ReleaseCandidate, ScriptRun } from '../../platform'
+import type { IntegrationTool, ReleaseCandidate, ReleaseCandidates, ScriptRun } from '../../platform'
 import { at } from '../../test/clock'
 import {
   integrationTool,
@@ -47,6 +47,23 @@ function renderPage(props: Partial<Omit<PageProps, 'onRelease' | 'onOpenRun' | '
 // group is a group's heading button, by its title.
 function group(title: RegExp) {
   return screen.getByRole('button', { name: title })
+}
+
+// heldList makes the next read of the list wait until the test answers it, as a read of
+// GitHub does, and returns the answer.
+function heldList(): (list: ReleaseCandidates) => void {
+  let answer: (list: ReleaseCandidates) => void = () => undefined
+
+  platform.listReleaseCandidates.mockImplementationOnce(
+    () =>
+      new Promise<ReleaseCandidates>((resolve) => {
+        answer = resolve
+      }),
+  )
+
+  return (list) => {
+    answer(list)
+  }
 }
 
 describe('ReleasePage', () => {
@@ -160,6 +177,104 @@ describe('ReleasePage', () => {
     expect(note).toHaveTextContent('Couldn’t reach GitHub · 14m old')
     expect(note).toHaveAttribute('title', 'Couldn’t reach GitHub.')
     expect(screen.getByRole('list', { name: 'Unreleased changes' })).toBeInTheDocument()
+  })
+
+  it('says how far the first read has got in place of the bare spinner', async () => {
+    const answer = heldList()
+
+    renderPage()
+
+    expect(screen.getByRole('status')).toHaveTextContent('Listing your repositories…')
+
+    act(() => {
+      emit('releases:progress', { phase: 'clones', done: 0, total: 0 })
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('Finding your clones…')
+
+    act(() => {
+      emit('releases:progress', { phase: 'github', done: 45, total: 151 })
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('Asking GitHub: 45 of 151 repositories…')
+
+    act(() => {
+      emit('releases:progress', { phase: 'compare', done: 1, total: 1 })
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('Asking GitHub what changed: 1 of 1 repository…')
+
+    act(() => {
+      emit('releases:progress', { phase: 'checking', done: 3, total: 12 })
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('Checking your clones: 3 of 12…')
+
+    act(() => {
+      answer(releaseCandidates())
+    })
+
+    expect(await screen.findByRole('list', { name: 'Unreleased changes' })).toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('shows the list kept from the last start at once, with its age, while GitHub is read again', async () => {
+    platform.listReleaseCandidates.mockResolvedValueOnce(
+      releaseCandidates({ kept: true, refreshing: true, checkedAt: '2026-06-15T10:00:00Z' }),
+    )
+    renderPage()
+
+    expect(await screen.findByRole('list', { name: 'Unreleased changes' })).toBeInTheDocument()
+
+    const status = screen.getByRole('status')
+
+    expect(status).toHaveTextContent('From 2h ago · checking again…')
+    expect(screen.queryByText(/Read 2h ago/)).not.toBeInTheDocument()
+
+    act(() => {
+      emit('releases:progress', { phase: 'github', done: 45, total: 151 })
+    })
+    expect(status).toHaveTextContent('From 2h ago · checking again… Asking GitHub: 45 of 151 repositories…')
+
+    platform.listReleaseCandidates.mockResolvedValue(
+      releaseCandidates({ repos: [releaseCandidate({ repo: 'acme-org/cli', dir: '~/projects/cli' })] }),
+    )
+    act(() => {
+      emit('releases:updated')
+    })
+
+    expect(await screen.findByRole('button', { name: 'Release acme-org/cli…' })).toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.getByText('5m ago')).toHaveAttribute('dateTime', '2026-06-15T11:55:00Z')
+  })
+
+  it('says how old a kept list is when GitHub couldn’t be read again', async () => {
+    platform.listReleaseCandidates.mockResolvedValue(
+      releaseCandidates({ kept: true, checkedAt: '2026-06-15T10:00:00Z', error: 'Couldn’t reach GitHub.' }),
+    )
+    renderPage()
+
+    expect(await screen.findByRole('note')).toHaveTextContent('Couldn’t reach GitHub · 2h old')
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('says how far a read it asked for has got, over the list it has', async () => {
+    renderPage()
+
+    await screen.findByRole('list', { name: 'Unreleased changes' })
+
+    const answer = heldList()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Read GitHub again' }))
+    act(() => {
+      emit('releases:progress', { phase: 'github', done: 15, total: 151 })
+    })
+
+    expect(screen.getByRole('status')).toHaveTextContent('Asking GitHub: 15 of 151 repositories…')
+    expect(screen.getByRole('list', { name: 'Unreleased changes' })).toBeInTheDocument()
+
+    act(() => {
+      answer(releaseCandidates())
+    })
+
+    expect(await screen.findByRole('button', { name: 'Read GitHub again' })).toBeEnabled()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
   it('says why the list couldn’t be read at all', async () => {

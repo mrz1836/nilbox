@@ -53,6 +53,7 @@ func TestEveryEventHasItsOwnName(t *testing.T) {
 		{event.ScriptRunsUpdated{}, event.NameScriptRunsUpdated},
 		{event.ScriptRunProgress{}, event.NameScriptRunProgress},
 		{event.ReleasesUpdated{}, event.NameReleasesUpdated},
+		{event.ReleasesProgress{}, event.NameReleasesProgress},
 		{event.HooksUpdated{}, event.NameHooksUpdated},
 	}
 
@@ -78,6 +79,7 @@ func TestTheWindowHearsOnlyTheWindowEvents(t *testing.T) {
 		event.NameInboxUpdated, event.NameRevealItem, event.NameWorktreesUpdated, event.NameNotificationsUpdated,
 		event.NameBudgetUpdated, event.NameSessionsUpdated, event.NameReviewProgress, event.NameToolsUpdated,
 		event.NameScriptRunsUpdated, event.NameScriptRunProgress, event.NameQuitRequested, event.NameReleasesUpdated,
+		event.NameReleasesProgress,
 		event.NameHooksUpdated,
 	}, names)
 
@@ -100,6 +102,14 @@ func TestScriptRunProgressIsSentAsTheFrontendReadsIt(t *testing.T) {
 	data, err := json.Marshal(event.ScriptRunProgress{ID: 42})
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"id":42}`, string(data))
+}
+
+func TestReleasesProgressIsSentAsTheFrontendReadsIt(t *testing.T) {
+	t.Parallel()
+
+	data, err := json.Marshal(event.ReleasesProgress{Phase: event.ReleasesAskingGitHub, Done: 45, Total: 151})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"phase":"github","done":45,"total":151}`, string(data))
 }
 
 func TestRevealItemIsSentAsTheFrontendReadsIt(t *testing.T) {
