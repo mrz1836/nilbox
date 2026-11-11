@@ -195,7 +195,30 @@ export function InboxView({
   } = inbox
   const { order, setStatusSort, setStatusOrder } = inboxOrder
   const clock = useClock()
-  const error = firstMessage(refreshError, snapshot?.lastError ?? '', loadError)
+  const lastError = snapshot?.lastError ?? ''
+  const error = firstMessage(refreshError, lastError, loadError)
+  // closedError is the refresh error the user closed. It stays closed while it is still
+  // the error, through a refresh they start, and shows again once that refresh fails or
+  // once it clears and comes back. An inbox that could not load can't be closed: the page
+  // has nothing else to show.
+  const [closedError, setClosedError] = useState('')
+  const [wasRefreshing, setWasRefreshing] = useState(refreshing)
+
+  if (refreshing !== wasRefreshing) {
+    setWasRefreshing(refreshing)
+
+    if (!refreshing) {
+      setClosedError('')
+    }
+  }
+
+  if (closedError !== '' && refreshError !== closedError && lastError !== closedError) {
+    setClosedError('')
+  }
+
+  // refreshFailure is the refresh error to show, past the one the user closed.
+  const refreshFailure = [refreshError, lastError].find((e) => e !== '' && e !== closedError) ?? ''
+
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const count = triaged?.count ?? 0
   const nil =
@@ -472,7 +495,17 @@ export function InboxView({
           )}
         </span>
       </div>
-      {error !== '' && <ErrorBanner>{error}</ErrorBanner>}
+      {refreshFailure !== '' ? (
+        <ErrorBanner
+          onClose={() => {
+            setClosedError(refreshFailure)
+          }}
+        >
+          {refreshFailure}
+        </ErrorBanner>
+      ) : (
+        loadError !== '' && <ErrorBanner>{loadError}</ErrorBanner>
+      )}
       {snapshot !== null && snapshot.scopeWarning !== '' && (
         <p className="rounded-md border border-warning px-3 py-2 text-sm text-warning">{snapshot.scopeWarning}</p>
       )}

@@ -360,6 +360,18 @@ describe('DiffView', () => {
       />,
     )
     expect(screen.getByText('No files changed.')).toBeInTheDocument()
+
+    // Never read from GitHub (its first read failed): it says so, rather than reading.
+    rerender(
+      <DiffView
+        review={review({ files: [], stale: true, fetchedAt: '' })}
+        draft={emptyDraft}
+        onDraft={vi.fn()}
+        loading={new Set()}
+        onLoad={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('Not read from GitHub yet.')).toBeInTheDocument()
   })
 })
 

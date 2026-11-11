@@ -235,7 +235,10 @@ describe('InboxView', () => {
 
     await act(async () => {
       finish(
-        snapshot({ authored: list([item({ title: 'Fresh from GitHub' })]), lastRefreshedAt: FIXED_NOW.toISOString() }),
+        snapshot({
+          authored: list([item({ title: 'Fresh from GitHub' })]),
+          lastRefreshedAt: FIXED_NOW.toISOString(),
+        }),
       )
       await Promise.resolve()
     })
@@ -267,6 +270,70 @@ describe('InboxView', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('run gh auth refresh -s repo,read:org')
     expect(screen.getByText('the token reports no scopes, so they could not be verified')).toBeInTheDocument()
+  })
+
+  it('closes a refresh error, and shows it again when a refresh fails again', async () => {
+    const message = 'read the item details: the GitHub API returned HTTP 502'
+    platform.refreshInbox.mockRejectedValue(new Error(message))
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Refresh' }))
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(message)
+
+    await userEvent.click(within(alert).getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(message)
+  })
+
+  it('keeps a closed stored error closed while a refresh runs, and shows it again once it clears and returns', async () => {
+    const message = 'read the item details: the GitHub API returned HTTP 502'
+    let finish: (value: InboxSnapshot) => void = () => undefined
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ lastRefreshedAt: '2026-06-15T11:55:00Z', lastError: message }),
+    )
+    platform.refreshInbox.mockReturnValue(
+      new Promise<InboxSnapshot>((resolve) => {
+        finish = resolve
+      }),
+    )
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    await userEvent.click(within(await screen.findByRole('alert')).getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+    // A refresh the user starts doesn't bring the closed error back while it runs.
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+    // It succeeds, the error clears, and a later background refresh fails the same way.
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: '2026-06-15T11:55:00Z' }))
+    act(() => {
+      finish(snapshot({ lastRefreshedAt: '2026-06-15T11:55:00Z' }))
+      emit('inbox:updated')
+    })
+    await waitFor(() => {
+      expect(platform.getInboxSnapshot).toHaveBeenCalledTimes(2)
+    })
+
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ lastRefreshedAt: '2026-06-15T11:55:00Z', lastError: message }),
+    )
+    act(() => {
+      emit('inbox:updated')
+    })
+    expect(await screen.findByRole('alert')).toHaveTextContent(message)
+  })
+
+  it('offers no close on an inbox that could not be loaded, which has nothing else to show', async () => {
+    platform.getInboxSnapshot.mockRejectedValue(new Error('open the database: locked'))
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('open the database: locked')
+    expect(within(alert).queryByRole('button', { name: 'Close' })).not.toBeInTheDocument()
   })
 
   it('shows an inbox that could not be loaded', async () => {
