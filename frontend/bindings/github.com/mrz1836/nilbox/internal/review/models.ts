@@ -277,12 +277,14 @@ export interface Offer {
     "reason": string;
 
     /**
-     * Confirm reports an action that asks the user to confirm first: every merge.
+     * Confirm reports an action that asks the user to confirm first: every merge, and an
+     * update of Dependabot's branch. Every action with warnings asks first.
      */
     "confirm": boolean;
 
     /**
-     * Warnings are what the user must accept before the action runs.
+     * Warnings are what the user must accept before the action runs: Act refuses it unless
+     * the request accepts them.
      */
     "warnings": string[] | null;
 

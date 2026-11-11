@@ -11,10 +11,12 @@ import (
 )
 
 // facts are a pull request someone else opened, which the user may merge by squash or
-// merge commit, with auto-merge allowed, in merge state status.
+// merge commit, with auto-merge allowed, in merge state status, and may update while it is
+// behind: GitHub's viewerCanUpdateBranch is false for a branch up to date with its base.
 func facts(status string) Facts {
 	return Facts{
-		MergeState: status, CanWrite: true, CanUpdateBranch: true, CanAutoMerge: true, Base: "main",
+		MergeState: status, CanWrite: true, CanUpdateBranch: status == github.MergeStateBehind, CanAutoMerge: true,
+		Base:    "main",
 		Methods: []MergeMethod{MethodMerge, MethodSquash}, ViewerMethod: MethodSquash, Sensitive: []string{},
 	}
 }
@@ -100,7 +102,7 @@ func TestDecide(t *testing.T) {
 
 				return f
 			},
-			enabled: []Action{ActionApprove, ActionRequestChanges, ActionComment, ActionRebaseBot},
+			enabled: []Action{ActionApprove, ActionRequestChanges, ActionComment, ActionRebaseBot, ActionUpdateBranch},
 		},
 		{
 			name: "dependabot with conflicts", primary: ActionRebaseBot, ready: ReadyConflicts,
@@ -389,6 +391,59 @@ func checkPlan(t *testing.T, fa Facts, p Plan) {
 	}
 
 	assert.NotEqual(t, ActionMergeBypass, p.Primary, "going past the rules is never the button")
+
+	checkAsksFirst(t, p)
+	checkKeepingUp(t, fa, p, on)
+}
+
+// checkAsksFirst checks that every offer with warnings to accept asks first, as Update
+// branch on Dependabot's pull request does: Act refuses it unless they were accepted.
+func checkAsksFirst(t *testing.T, p Plan) {
+	t.Helper()
+
+	for _, o := range p.Offers {
+		assert.True(t, len(o.Warnings) == 0 || o.Confirm, "an action with warnings to accept asks first: %s", o.Action)
+	}
+}
+
+// checkKeepingUp checks the two ways of bringing a branch up to date: asking Dependabot to
+// rebase is offered on every open pull request of its, and Update branch whenever GitHub
+// lets the user; and each is the button only while the pull request is behind (the rebase
+// also while it has conflicts), or when nothing else can run.
+func checkKeepingUp(t *testing.T, fa Facts, p Plan, on []Action) {
+	t.Helper()
+
+	if fa.Closed {
+		assert.Empty(t, p.Offers, "a pull request no longer open offers nothing")
+
+		return
+	}
+
+	if fa.Dependabot {
+		assert.Contains(t, on, ActionRebaseBot, "Dependabot's pull request, in any merge state")
+	} else {
+		_, ok := p.offer(ActionRebaseBot)
+		assert.False(t, ok, "asking Dependabot to rebase a pull request it didn't open")
+	}
+
+	if fa.CanUpdateBranch {
+		assert.Contains(t, on, ActionUpdateBranch, "GitHub lets the user update the branch")
+	}
+
+	rest := slices.DeleteFunc(slices.Clone(on), func(a Action) bool {
+		return a == ActionRebaseBot || a == ActionUpdateBranch
+	})
+	behind := fa.MergeState == github.MergeStateBehind
+
+	if p.Primary == ActionRebaseBot {
+		assert.True(t, behind || fa.MergeState == github.MergeStateDirty || len(rest) == 0,
+			"the rebase is the button only while it is behind or has conflicts")
+	}
+
+	if p.Primary == ActionUpdateBranch {
+		assert.True(t, behind || len(rest) == 0, "Update branch is the button only while it is behind")
+		assert.False(t, fa.Dependabot, "Dependabot's own rebase comes first")
+	}
 }
 
 // checkMerges checks that nothing merges what GitHub would not merge now, a draft, or a
@@ -544,4 +599,157 @@ func TestEachOfferSaysWhatItsTextGoesWith(t *testing.T) {
 		assert.Equal(t, "You have a review of this pull request started on GitHub. Submit or discard it there first. "+
 			"Or clear your text and line comments to merge without a comment.", o.CommentBlocked, o.Action)
 	}
+}
+
+// dependabot are Dependabot's pull request in merge state status.
+func dependabot(status string) Facts {
+	f := facts(status)
+	f.Dependabot = true
+
+	return f
+}
+
+func TestDecideAsksDependabotToRebaseInAnyMergeState(t *testing.T) {
+	t.Parallel()
+
+	for _, c := range []struct {
+		name    string
+		facts   Facts
+		primary Action
+	}{
+		{"behind", dependabot(github.MergeStateBehind), ActionRebaseBot},
+		{"with conflicts", dependabot(github.MergeStateDirty), ActionRebaseBot},
+		{"clean", dependabot(github.MergeStateClean), ActionApproveMerge},
+		{"an optional check failing", func() Facts {
+			f := dependabot(github.MergeStateUnstable)
+			f.Failing = 1
+
+			return f
+		}(), ActionApproveMerge},
+		{"a required check failing", func() Facts {
+			f := dependabot(github.MergeStateBlocked)
+			f.RequiredFailing, f.Failing = 1, 1
+
+			return f
+		}(), ActionComment},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			p := Decide(c.facts, PrefRepo)
+
+			rebase, ok := p.offer(ActionRebaseBot)
+			require.True(t, ok)
+			assert.True(t, rebase.Enabled)
+			assert.Equal(t, "Ask Dependabot to rebase", rebase.Label)
+			assert.False(t, rebase.Confirm, "one click")
+			assert.Empty(t, rebase.Warnings)
+			assert.Equal(t, c.primary, p.Primary, "the button only while it is behind or has conflicts")
+		})
+	}
+
+	// Never anyone else's pull request.
+	_, ok := Decide(facts(github.MergeStateBehind), PrefRepo).offer(ActionRebaseBot)
+	assert.False(t, ok)
+}
+
+func TestDecideOffersUpdateBranchWheneverGitHubLets(t *testing.T) {
+	t.Parallel()
+
+	// Behind its base, which the rules don't mind: a required check failing holds it back.
+	f := facts(github.MergeStateBlocked)
+	f.CanUpdateBranch, f.RequiredFailing, f.Failing = true, 1, 1
+
+	p := Decide(f, PrefRepo)
+
+	update, ok := p.offer(ActionUpdateBranch)
+	require.True(t, ok)
+	assert.True(t, update.Enabled)
+	assert.Equal(t, "Update branch", update.Label)
+	assert.False(t, update.Confirm, "one click")
+	assert.Empty(t, update.Warnings)
+	assert.Equal(t, ActionComment, p.Primary, "in the menu, not the button")
+
+	// The user's own, which merges now: the button merges.
+	f = facts(github.MergeStateClean)
+	f.Mine, f.CanUpdateBranch = true, true
+
+	p = Decide(f, PrefRepo)
+	assert.Contains(t, enabled(p), ActionUpdateBranch)
+	assert.Equal(t, ActionMerge, p.Primary)
+
+	// Up to date, or GitHub doesn't let the user: not offered, but for a branch the rules
+	// hold back for being behind, which says why.
+	_, ok = Decide(facts(github.MergeStateBlocked), PrefRepo).offer(ActionUpdateBranch)
+	assert.False(t, ok)
+}
+
+func TestDecideOffersBothOnDependabotsBranchAndWarnsBeforeTheUpdate(t *testing.T) {
+	t.Parallel()
+
+	for _, status := range []string{github.MergeStateBlocked, github.MergeStateClean, github.MergeStateBehind} {
+		t.Run(status, func(t *testing.T) {
+			t.Parallel()
+
+			f := dependabot(status)
+			f.CanUpdateBranch = true
+
+			p := Decide(f, PrefRepo)
+
+			rebase := slices.IndexFunc(p.Offers, func(o Offer) bool { return o.Action == ActionRebaseBot })
+			update := slices.IndexFunc(p.Offers, func(o Offer) bool { return o.Action == ActionUpdateBranch })
+
+			require.GreaterOrEqual(t, rebase, 0)
+			require.Greater(t, update, rebase, "the menu lists the rebase first")
+
+			o := p.Offers[update]
+			assert.True(t, o.Enabled)
+			assert.True(t, o.Confirm, "it asks first")
+			assert.Equal(t, []string{
+				"Dependabot stops rebasing a pull request once someone else changes its branch. " +
+					"Ask Dependabot to rebase instead to keep it managed.",
+			}, o.Warnings)
+			assert.NotEqual(t, ActionUpdateBranch, p.Primary)
+		})
+	}
+
+	// Behind, with GitHub not letting the user update it: only the rebase.
+	f := dependabot(github.MergeStateBehind)
+	f.CanUpdateBranch = false
+
+	_, ok := Decide(f, PrefRepo).offer(ActionUpdateBranch)
+	assert.False(t, ok)
+}
+
+func TestDecideOffersNeitherOnceMergedOrClosed(t *testing.T) {
+	t.Parallel()
+
+	for _, status := range []string{github.MergeStateBehind, github.MergeStateDirty, github.MergeStateBlocked} {
+		f := dependabot(status)
+		f.CanUpdateBranch, f.Closed = true, true
+
+		p := Decide(f, PrefRepo)
+		assert.Empty(t, p.Offers, status)
+		assert.Equal(t, ActionNone, p.Primary, status)
+		assert.Equal(t, ReadyClosed, p.Readiness.State, status)
+	}
+}
+
+func TestTheRebaseIsTheButtonWhenNothingElseCanRun(t *testing.T) {
+	t.Parallel()
+
+	// A review of the user's started on GitHub holds back every review, and a required
+	// check failing every merge: the sheet shows no menu without a button.
+	f := dependabot(github.MergeStateBlocked)
+	f.PendingReview, f.RequiredFailing, f.Failing, f.CanAutoMerge, f.CanUpdateBranch = true, 1, 1, false, true
+
+	p := Decide(f, PrefRepo)
+	assert.ElementsMatch(t, []Action{ActionRebaseBot, ActionUpdateBranch}, enabled(p))
+	assert.Equal(t, ActionRebaseBot, p.Primary)
+
+	f.Dependabot = false
+
+	p = Decide(f, PrefRepo)
+	assert.Equal(t, []Action{ActionUpdateBranch}, enabled(p))
+	assert.Equal(t, ActionUpdateBranch, p.Primary)
 }

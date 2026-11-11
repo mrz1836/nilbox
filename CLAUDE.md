@@ -236,10 +236,14 @@ app:lint` reads.
   files, on demand, for the review sheet.
 - `internal/review/` is the review sheet's service. `Decide` is pure: from a pull request's
   facts it works out every action's offer and the one primary, and `Act` runs it again before
-  any write. Every write goes through the inbox's `Actor` (the item lock, the account check,
-  and the token retry, never bound, since its methods take funcs), is pinned to the head the
-  user saw (an approval reads the head first, since GitHub takes a review of an older commit),
-  and a merge first reads `mergeStateStatus` fresh and merges only when GitHub says it can, so
+  any write. An offer with warnings asks first (`Offer.Confirm`), since `Act` refuses it unless
+  the request accepts them. Asking Dependabot to rebase is offered on every open Dependabot pull
+  request, and Update branch whenever GitHub's `viewerCanUpdateBranch` lets the user (with a
+  warning on Dependabot's), each the primary only while the pull request is behind (the rebase
+  also with conflicts) or nothing else can run. Every write goes through the inbox's `Actor`
+  (the item lock, the account check, and the token retry, never bound, since its methods take
+  funcs), is pinned to the head the user saw (an approval reads the head first, since GitHub
+  takes a review of an older commit), and a merge first reads `mergeStateStatus` fresh and merges only when GitHub says it can, so
   an admin's token never merges past branch protection on its own: only `merge_bypass`
   ("merge past the rules") does, offered when GitHub sets `viewerCanMergeAsAdmin`, never the
   sheet's button, and with each rule it skips to accept. Each step is reported as an

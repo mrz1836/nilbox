@@ -2,6 +2,7 @@ import { useId, useState } from 'react'
 
 import type { MergeMethod, Review, ReviewOffer } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
+import { WarningsToAccept } from './WarningsToAccept'
 
 export interface MergeConfirmDialogProps {
   review: Review
@@ -100,27 +101,13 @@ export function MergeConfirmDialog({ review, offer, onConfirm, onCancel, comment
         is pushed first.
       </p>
       {comment !== '' && <p className="mt-2">{comment}</p>}
-      {warned && (
-        <div className="mt-3 rounded-md border border-warning/60 p-2 text-warning">
-          {past && <p className="mb-1">GitHub would hold this merge back:</p>}
-          <ul className="list-disc space-y-0.5 pl-4">
-            {offer.warnings.map((w) => (
-              <li key={w}>{w}</li>
-            ))}
-          </ul>
-          <label className="mt-2 flex items-center gap-2 text-text">
-            <input
-              type="checkbox"
-              className="checkbox"
-              checked={accepted}
-              onChange={(e) => {
-                setAccepted(e.target.checked)
-              }}
-            />
-            {past ? 'I’m merging past the rules' : 'I’ve looked, merge anyway'}
-          </label>
-        </div>
-      )}
+      <WarningsToAccept
+        warnings={offer.warnings}
+        heading={past ? 'GitHub would hold this merge back:' : ''}
+        accept={past ? 'I’m merging past the rules' : 'I’ve looked, merge anyway'}
+        accepted={accepted}
+        onAccept={setAccepted}
+      />
       {past && (
         <p className="mt-3">
           GitHub lets you merge past them, as it lets a repository admin. Nothing else here ever does, and no agent can.

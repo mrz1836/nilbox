@@ -31,6 +31,7 @@ import { commentFirst, heldBack, ReviewComposer, sendsText, useReplyBody } from 
 import { ReviewHeader } from './ReviewHeader'
 import { DescriptionSkeleton, DiffSkeleton, FileListSkeleton, ReadingBanner, SummarySkeleton } from './ReviewLoading'
 import { Readiness, ReviewSummary } from './ReviewSummary'
+import { UpdateBranchConfirmDialog } from './UpdateBranchConfirmDialog'
 
 export interface ReviewSheetProps {
   // id is the pull request the sheet shows, and item its inbox card.
@@ -432,20 +433,34 @@ export function ReviewSheet({
         )}
       </div>
       {progress !== null && <ActionProgress title={progress.title} target={progress.target} steps={progress.steps} />}
-      {confirming !== null && review !== null && (
-        <MergeConfirmDialog
-          review={review}
-          offer={confirming}
-          comment={commentFirst(confirming, reply.body, draft.comments.length)}
-          onCancel={() => {
-            setConfirming(null)
-          }}
-          onConfirm={(method) => {
-            setConfirming(null)
-            void send(review, confirming.action, method, confirming.warnings.length > 0)
-          }}
-        />
-      )}
+      {confirming !== null &&
+        review !== null &&
+        (confirming.action === 'update_branch' ? (
+          <UpdateBranchConfirmDialog
+            review={review}
+            offer={confirming}
+            onCancel={() => {
+              setConfirming(null)
+            }}
+            onConfirm={() => {
+              setConfirming(null)
+              void send(review, confirming.action, review.defaultMethod, confirming.warnings.length > 0)
+            }}
+          />
+        ) : (
+          <MergeConfirmDialog
+            review={review}
+            offer={confirming}
+            comment={commentFirst(confirming, reply.body, draft.comments.length)}
+            onCancel={() => {
+              setConfirming(null)
+            }}
+            onConfirm={(method) => {
+              setConfirming(null)
+              void send(review, confirming.action, method, confirming.warnings.length > 0)
+            }}
+          />
+        ))}
     </Sheet>
   )
 }

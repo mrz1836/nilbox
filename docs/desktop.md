@@ -1141,7 +1141,7 @@ what it does, as in **Approve & squash-merge**:
 | only waits for your approval | **Approve & merge** |
 | waits for required checks still running | **Approve & auto-merge** |
 | has a required check failing | **Comment**, with Ask Claude beside it |
-| is behind its base | **Update branch**; on a Dependabot pull request, **Ask Dependabot to rebase**, since Dependabot stops maintaining a branch someone else pushed to |
+| is behind its base, and the rules want it up to date | **Update branch**; on a Dependabot pull request, **Ask Dependabot to rebase**, since Dependabot stops maintaining a branch someone else pushed to |
 | has conflicts, from Dependabot | **Ask Dependabot to rebase** |
 | is your own | Merge or auto-merge, never Approve or Request changes. When the rules want an approval, the sheet says it needs one **from someone else**, since GitHub never lets you approve your own, and **Merge when ready** warns that it waits for one |
 
@@ -1149,11 +1149,21 @@ The menu beside it lists every action, with why one can't run now (a draft, a me
 write access, a pending review of yours on GitHub, and so on). **⌘↩** runs the button. **Request
 changes** and **Comment** need text or a line comment.
 
+**Bringing a branch up to date.** The menu offers **Ask Dependabot to rebase** on every open
+Dependabot pull request, whatever its merge state, so one held back by a failing check can pick
+up the fix from its base. It offers **Update branch** whenever GitHub says you can update the
+branch (it is behind its base and you may push to it), even when the rules don't need it up to
+date and the pull request reads as blocked or ready. Outside the rows above, both stay in the
+menu and the button keeps its own action.
+
 **Every merge asks first.** Merge, Merge when ready (auto-merge), Approve & merge, and Approve &
 auto-merge open a confirmation with the merge methods the repository allows, the commit it
 merges, and any warnings to accept first: optional checks failing, or sensitive files
 of the danger level. **Cancel** is where the focus starts. Approve, Comment, Request changes,
-Update branch, and Ask Dependabot to rebase are one click.
+Update branch, and Ask Dependabot to rebase are one click, but for **Update branch** on a
+Dependabot pull request: its confirmation warns that Dependabot stops rebasing a pull request
+once someone else changes its branch, and that asking Dependabot to rebase keeps it managed, and
+it updates only once you tick **I've looked, update anyway**.
 
 **Your text goes with a merge.** Merge, Merge past the rules, and Merge when ready post the text
 in **Your review**, and any line comments, as a comment before they merge, so the pull request

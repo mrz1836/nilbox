@@ -388,10 +388,12 @@ type Offer struct {
 	Enabled bool   `json:"enabled"`
 	Reason  string `json:"reason"`
 
-	// Confirm reports an action that asks the user to confirm first: every merge.
+	// Confirm reports an action that asks the user to confirm first: every merge, and an
+	// update of Dependabot's branch. Every action with warnings asks first.
 	Confirm bool `json:"confirm"`
 
-	// Warnings are what the user must accept before the action runs.
+	// Warnings are what the user must accept before the action runs: Act refuses it unless
+	// the request accepts them.
 	Warnings []string `json:"warnings"`
 
 	// Reviews reports an action that submits a review of its own, which the text and line
