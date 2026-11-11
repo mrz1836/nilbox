@@ -200,6 +200,17 @@ func (o Output) LastError() string {
 	return strings.TrimSpace(first)
 }
 
+// mxExpectedWarning is a WARN line magex prints on every release with something to
+// release: its newest version tag isn't on HEAD, which is why the release is made.
+var mxExpectedWarning = regexp.MustCompile(`^Current version tag is not on HEAD\b`)
+
+// NotableWarnings returns the warnings that tell the user something, for the result:
+// every WARN line but those magex prints on every release with something to release. The
+// log keeps them all, and Warnings still holds them for reading the failures.
+func (o Output) NotableWarnings() []string {
+	return slices.DeleteFunc(slices.Clone(o.Warnings), mxExpectedWarning.MatchString)
+}
+
 // clone returns a copy of o that shares nothing with it, with no nil lists.
 func (o Output) clone() Output {
 	o.Warnings = cloneOutputLines(o.Warnings)

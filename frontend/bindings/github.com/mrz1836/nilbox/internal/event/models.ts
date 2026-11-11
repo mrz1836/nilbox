@@ -29,6 +29,51 @@ export interface QuitRequested {
 }
 
 /**
+ * ReleasesPhase is how far a read of the Release page's list has got.
+ */
+export type ReleasesPhase = "clones" | "github" | "compare" | "checking";
+
+/**
+ * The values of ReleasesPhase, by the names of their Go constants.
+ */
+export const ReleasesPhase = {
+    /**
+     * The phases of a read of the Release page's list, in order.
+     *
+     * ReleasesFindingClones is the clone root being searched for clones.
+     */
+    ReleasesFindingClones: "clones",
+
+    /**
+     * ReleasesAskingGitHub is GitHub being asked about each clone's repository.
+     */
+    ReleasesAskingGitHub: "github",
+
+    /**
+     * ReleasesComparing is GitHub being asked how far each default branch is ahead of its
+     * newest version.
+     */
+    ReleasesComparing: "compare",
+
+    /**
+     * ReleasesCheckingClones is the unreleased clones being read.
+     */
+    ReleasesCheckingClones: "checking",
+} as const;
+
+/**
+ * ReleasesProgress says how far a read of the Release page's list has got, while it runs:
+ * its phase, and how many of the phase's repositories or clones are done. Finding the
+ * clones counts nothing. It comes a few times a second at most, and ReleasesUpdated
+ * follows once the read lands.
+ */
+export interface ReleasesProgress {
+    "phase": ReleasesPhase;
+    "done": number;
+    "total": number;
+}
+
+/**
  * ReleasesUpdated says the Release page's list was read again from GitHub, or went out of
  * date, as when a release ended: the window reads it, and a list out of date is read again
  * from GitHub then.

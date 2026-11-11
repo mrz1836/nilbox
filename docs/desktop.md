@@ -359,6 +359,12 @@ itself never tags or pushes: magex does, when you click a button that names the 
   list again now; otherwise the page reads it when it opens if it's more than 5 minutes old, and
   after every release. When GitHub can't be reached, the last list stays, marked *Couldn't reach
   GitHub · 14m old*. Clones without a GitHub origin are counted at the foot.
+- **While it reads,** the page says how far it has got: *Finding your clones…*, *Asking GitHub:
+  45 of 151 repositories…* (GitHub answers 15 at a time), *Asking GitHub what changed: 12 of 40
+  repositories…*, then *Checking your clones: 3 of 12…*.
+- **After a restart,** the page shows the list from the last time it was read at once, marked
+  *From 2h ago · checking again…*, while it reads GitHub again behind it, and then replaces it.
+  A list read from another clone root isn't shown.
 - **Recent** lists the last 10 releases started from the app, with how each came out (*on
   GitHub*, *not pushed*, *failed*); each opens its run.
 
@@ -396,9 +402,11 @@ version meanwhile), the sheet says why, checks again, and shows the version it w
 
 **While it runs,** the sheet ticks off magex's steps (switched to the branch, pulled, tagged,
 pushed, then the app's own check that GitHub has the tag), with the run's panel and log below.
-Closing the sheet never stops a release: it goes on under Runs. **Stop** is off while magex
-switches branches and pulls (*Stopping now could leave a rebase in progress*), and asks first
-once the tag is made.
+The panel shows magex's command with your home folder as `~`; the log leaves out magex's JSON
+result line, which the result shows, and the log file and **Copy log** keep it. Closing the
+sheet never stops a release: it goes on under Runs. **Stop** is off while magex switches
+branches and pulls (*Stopping now could leave a rebase in progress*), and asks first once the
+tag is made.
 
 **The result** comes from what magex said and what origin and your clone say once it ended,
 never from its exit status alone:
@@ -412,6 +420,9 @@ never from its exit status alone:
 - **Failed:** what happened in words, magex's line that says so, where your clone is now, and
   **Try again**, which reopens the sheet with fresh checks. A release is never run again from
   its stored command.
+
+magex's warnings show with the result, all but the one it prints on every release with
+something to release, that the newest version tag isn't on HEAD; the log keeps that one.
 
 **After a merge.** When you merge a pull request in the review sheet, the toast that says so
 offers **Release acme-org/sdk…** when Release can release it: the setting **Offer a release after

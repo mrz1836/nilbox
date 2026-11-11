@@ -101,10 +101,12 @@ type Commit struct {
 
 // GitHub is what Release reads from GitHub: each repository's status, then, for those
 // with a version, how far the default branch is ahead of it. Both key their answers by
-// repo.Name.Key(), and leave out a repository GitHub can't find. Core adapts the client.
+// repo.Name.Key(), and leave out a repository GitHub can't find. answered, when set, is
+// told as GitHub answers each batch, with how many of repos or reqs it held, from any
+// goroutine; nil hears nothing. Core adapts the client.
 type GitHub interface {
-	ReleaseStatus(ctx context.Context, repos []repo.Name) (map[string]RepoStatus, error)
-	ReleaseCompare(ctx context.Context, reqs []CompareRequest) (map[string]Compare, error)
+	ReleaseStatus(ctx context.Context, repos []repo.Name, answered func(n int)) (map[string]RepoStatus, error)
+	ReleaseCompare(ctx context.Context, reqs []CompareRequest, answered func(n int)) (map[string]Compare, error)
 }
 
 // Candidate is a repository the Release page lists, with the clone it releases from.

@@ -91,6 +91,12 @@ func (c *Client) DownloadAsset(ctx context.Context, rawURL string, w io.Writer, 
 		return n, downloadError(ctx, err)
 	}
 
+	// A stall can end the copy as if the file ended: the canceled request's connection
+	// closes, and the body may read as finished before it reads as canceled.
+	if errors.Is(context.Cause(ctx), ErrDownloadStalled) {
+		return n, downloadError(ctx, ErrDownloadStalled)
+	}
+
 	if n > maxBytes {
 		return n, fmt.Errorf("%w: more than %d bytes", ErrDownloadTooLarge, maxBytes)
 	}

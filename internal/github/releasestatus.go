@@ -153,12 +153,15 @@ type ReleaseCommit struct {
 // and a repository named twice is asked about once. A repository GitHub can't resolve, or
 // won't show the token, is left out; any other error fails the whole call. The
 // repositories are asked about 15 to a query, at most four queries at a time, each costing
-// one point, which the budget hears.
-func (c *Client) FetchReleaseStatus(ctx context.Context, tok Token, repos []repo.Name) (map[string]ReleaseStatus, error) {
+// one point, which the budget hears. answered, when set, hears each query GitHub answers
+// (see ReleaseAnswered).
+func (c *Client) FetchReleaseStatus(
+	ctx context.Context, tok Token, repos []repo.Name, answered ReleaseAnswered,
+) (map[string]ReleaseStatus, error) {
 	out, err := sendReleaseBatches(ctx, uniqueBy(repos, repo.Name.Key),
 		func(ctx context.Context, batch []repo.Name) (map[string]ReleaseStatus, error) {
 			return c.fetchReleaseStatus(ctx, tok, batch)
-		})
+		}, answered)
 	if err != nil {
 		return nil, Redact(err, tok)
 	}
@@ -172,8 +175,10 @@ func (c *Client) FetchReleaseStatus(ctx context.Context, tok Token, repos []repo
 // request's Repo.Key, so a repository is compared once: a later request for one already
 // asked about is dropped. A repository, tag, or branch GitHub can't resolve, or a
 // repository it won't show the token, is left out; any other error fails the whole call. A request without a tag or a branch fails the call
-// before anything is sent. The batching is FetchReleaseStatus's.
-func (c *Client) FetchReleaseCompare(ctx context.Context, tok Token, reqs []CompareRequest) (map[string]ReleaseCompare, error) {
+// before anything is sent. The batching, and answered, are FetchReleaseStatus's.
+func (c *Client) FetchReleaseCompare(
+	ctx context.Context, tok Token, reqs []CompareRequest, answered ReleaseAnswered,
+) (map[string]ReleaseCompare, error) {
 	for _, req := range reqs {
 		if req.Tag == "" || req.Branch == "" {
 			return nil, fmt.Errorf("%w: %s, tag %q, branch %q", ErrInvalidCompareRequest, req.Repo, req.Tag, req.Branch)
@@ -183,7 +188,7 @@ func (c *Client) FetchReleaseCompare(ctx context.Context, tok Token, reqs []Comp
 	out, err := sendReleaseBatches(ctx, uniqueBy(reqs, CompareRequest.key),
 		func(ctx context.Context, batch []CompareRequest) (map[string]ReleaseCompare, error) {
 			return c.fetchReleaseCompare(ctx, tok, batch)
-		})
+		}, answered)
 	if err != nil {
 		return nil, Redact(err, tok)
 	}
@@ -196,12 +201,21 @@ func (r CompareRequest) key() string {
 	return r.Repo.Key()
 }
 
+// ReleaseAnswered hears a release query's progress: once for each batch GitHub answered,
+// with how many of the call's repositories or requests it held, so a caller can count them
+// off against all it asked about. It is called from the batches' own goroutines, perhaps
+// at once, and must return promptly. A nil ReleaseAnswered hears nothing.
+type ReleaseAnswered func(n int)
+
 // releaseSend sends one release query about asks and returns its answers by key.
 type releaseSend[A, T any] func(ctx context.Context, asks []A) (map[string]T, error)
 
 // sendReleaseBatches sends asks in batches of releaseBatch, at most releaseParallel at a
-// time, and merges the answers. The first batch to fail stops the rest and fails the call.
-func sendReleaseBatches[A, T any](ctx context.Context, asks []A, send releaseSend[A, T]) (map[string]T, error) {
+// time, telling answered of each batch answered, and merges the answers. The first batch
+// to fail stops the rest and fails the call.
+func sendReleaseBatches[A, T any](
+	ctx context.Context, asks []A, send releaseSend[A, T], answered ReleaseAnswered,
+) (map[string]T, error) {
 	batches := slices.Collect(slices.Chunk(asks, releaseBatch))
 	answers := make([]map[string]T, len(batches))
 
@@ -213,6 +227,9 @@ func sendReleaseBatches[A, T any](ctx context.Context, asks []A, send releaseSen
 			var err error
 
 			answers[i], err = sendHalving(gctx, batch, send)
+			if err == nil && answered != nil {
+				answered(len(batch))
+			}
 
 			return err
 		})

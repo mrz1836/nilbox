@@ -210,7 +210,9 @@ func TestReleaseGitHubAdaptsBothRounds(t *testing.T) {
 	sdk := repo.Name{Owner: boundOwner, Repo: boundRepo}
 	at := time.Date(2026, 11, 10, 4, 0, 0, 0, time.UTC)
 
-	status, err := gh.ReleaseStatus(t.Context(), []repo.Name{sdk})
+	var answered []int
+
+	status, err := gh.ReleaseStatus(t.Context(), []repo.Name{sdk}, func(n int) { answered = append(answered, n) })
 	require.NoError(t, err)
 	assert.Equal(t, map[string]release.RepoStatus{sdk.Key(): {
 		Permission: "WRITE", DefaultBranch: "master", HeadOID: "c2", HeadAt: at, Headline: "Fix retries",
@@ -218,11 +220,13 @@ func TestReleaseGitHubAdaptsBothRounds(t *testing.T) {
 		Tags:   []release.Tag{{Name: "v1.4.2", Commit: "c1"}},
 	}}, status, "an annotated tag is peeled to its commit")
 
-	compared, err := gh.ReleaseCompare(t.Context(), []release.CompareRequest{{Repo: sdk, Tag: "v1.4.2", Branch: "master"}})
+	compared, err := gh.ReleaseCompare(t.Context(), []release.CompareRequest{{Repo: sdk, Tag: "v1.4.2", Branch: "master"}},
+		func(n int) { answered = append(answered, n) })
 	require.NoError(t, err)
 	assert.Equal(t, map[string]release.Compare{sdk.Key(): {
 		Ahead: 2, Commits: []release.Commit{{OID: "c2", Headline: "Fix retries", At: at}},
 	}}, compared)
+	assert.Equal(t, []int{1, 1}, answered, "each round tells the page as GitHub answers")
 }
 
 func TestReleaseGitHubAsksNothingWhenSignedOut(t *testing.T) {
@@ -239,10 +243,10 @@ func TestReleaseGitHubAsksNothingWhenSignedOut(t *testing.T) {
 	}
 	sdk := repo.Name{Owner: boundOwner, Repo: boundRepo}
 
-	_, err := gh.ReleaseStatus(t.Context(), []repo.Name{sdk})
+	_, err := gh.ReleaseStatus(t.Context(), []repo.Name{sdk}, nil)
 	require.ErrorIs(t, err, release.ErrSignedOut)
 
-	_, err = gh.ReleaseCompare(t.Context(), []release.CompareRequest{{Repo: sdk, Tag: "v1.4.2", Branch: "master"}})
+	_, err = gh.ReleaseCompare(t.Context(), []release.CompareRequest{{Repo: sdk, Tag: "v1.4.2", Branch: "master"}}, nil)
 	require.ErrorIs(t, err, release.ErrSignedOut)
 	assert.Zero(t, requests.Load())
 }

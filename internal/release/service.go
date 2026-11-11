@@ -104,6 +104,10 @@ type Config struct {
 	// Without it, OpenTerminal says the terminal can't be opened here.
 	Terminal FolderOpener
 
+	// Keeper keeps the last list between starts, so the page shows it at once while the
+	// Refresher reads GitHub again. Without it, nothing is kept.
+	Keeper Keeper
+
 	Home   string
 	Clock  clock.Clock
 	Events event.Sink
@@ -113,11 +117,17 @@ type Config struct {
 // Candidates is the Release page's list: every clone with a GitHub origin, grouped, and
 // how many clones have none. CheckedAt is when GitHub was last asked, RFC 3339. Error
 // says why the last refresh failed, while the list from before it is still shown.
+//
+// Kept reports the list kept from a past start, shown at once after a restart: GitHub
+// hasn't been read since, and CheckedAt says how old it is. Refreshing reports a read of
+// GitHub under way behind the page; event.ReleasesUpdated says when it lands.
 type Candidates struct {
 	Repos         []Candidate `json:"repos"`
 	WithoutGitHub int         `json:"withoutGitHub"`
 	CheckedAt     string      `json:"checkedAt"`
 	Error         string      `json:"error"`
+	Kept          bool        `json:"kept"`
+	Refreshing    bool        `json:"refreshing"`
 }
 
 // Service lists what can be released, prepares a release's sheet, starts the release,
@@ -151,6 +161,14 @@ type Service struct {
 	branches   DefaultBranches
 	terminal   FolderOpener
 
+	// keeper keeps the last list between starts, and progressEvery is how often, at most, a
+	// refresh tells the window how far it has got.
+	keeper        Keeper
+	progressEvery time.Duration
+
+	// wake asks the Refresher to read the list again behind the page.
+	wake chan struct{}
+
 	// factsMu guards facts: the facts each clone's sheet was last shown, by its folder,
 	// resolved.
 	factsMu sync.Mutex
@@ -161,13 +179,20 @@ type Service struct {
 	refreshes flight.Group[Candidates]
 
 	// mu guards the last list, the clone root it was read from, when it was last asked
-	// for, and why that failed, if it did.
-	mu      sync.Mutex
-	last    Candidates
-	root    string
-	tried   time.Time
-	failure string
-	has     bool
+	// for, and why that failed, if it did. kept reports the last list as the one kept from
+	// a past start, which no refresh has replaced yet, and restored that it was read.
+	// background reports the Refresher running, and pending a refresh it was asked for
+	// that hasn't landed.
+	mu         sync.Mutex
+	last       Candidates
+	root       string
+	tried      time.Time
+	failure    string
+	has        bool
+	kept       bool
+	restored   bool
+	background bool
+	pending    bool
 }
 
 // NewService returns a Service over cfg.
@@ -179,7 +204,8 @@ func NewService(cfg Config) *Service {
 		notifier: cfg.Notifier, origins: cfg.Origins, tools: cfg.Tools, afterMerge: cfg.AfterMerge,
 		branches: cfg.Branches,
 		terminal: cfg.Terminal,
-		facts:    map[string]keptFacts{},
+		keeper:   cfg.Keeper, progressEvery: progressEvery, wake: make(chan struct{}, 1),
+		facts: map[string]keptFacts{},
 	}
 
 	if s.env == nil {
@@ -200,19 +226,22 @@ func NewService(cfg Config) *Service {
 // Candidates returns the repositories the Release page lists. It serves the last list
 // while it is under five minutes old and was read from the clone root as set now, unless
 // refresh is set; otherwise it asks GitHub, in two rounds of batched queries, reads the
-// unreleased clones' state, and emits event.ReleasesUpdated. A refresh that fails keeps
-// the last list, with its error, until one succeeds, and fails only when there is none.
+// unreleased clones' state, and emits event.ReleasesUpdated, telling the window how far
+// it has got meanwhile (event.ReleasesProgress). A refresh that fails keeps the last list,
+// with its error, until one succeeds, and fails only when there is none.
+//
+// After a restart, the list kept from the last start, when it was read from the clone
+// root as set now, is served at once, marked Kept and Refreshing, while the Refresher
+// reads GitHub again behind the page; without the Refresher, the call waits for GitHub.
 func (s *Service) Candidates(ctx context.Context, refresh bool) (Candidates, error) {
 	root, err := s.clones.Root(ctx)
 	if err != nil {
 		return Candidates{}, fmt.Errorf("read the clone root: %w", err)
 	}
 
-	s.mu.Lock()
-	served, fresh := s.served(), s.has && s.root == root && s.clock.Now().Sub(s.tried) < FreshFor
-	s.mu.Unlock()
+	s.restore(ctx)
 
-	if fresh && !refresh {
+	if served, ok := s.serveNow(root, refresh); ok {
 		return served, nil
 	}
 
@@ -221,22 +250,51 @@ func (s *Service) Candidates(ctx context.Context, refresh bool) (Candidates, err
 	})
 }
 
-// served is the last list as the page shows it, with the last refresh's failure. The
-// caller holds mu.
+// serveNow returns the last list read from root when it is served without waiting for
+// GitHub: while it is fresh, unless refresh is set, or, when it is the list kept from a
+// past start, at once, asking the Refresher to read GitHub again behind it.
+func (s *Service) serveNow(root string, refresh bool) (Candidates, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if refresh || !s.has || s.root != root {
+		return Candidates{}, false
+	}
+
+	if s.clock.Now().Sub(s.tried) < FreshFor {
+		return s.served(), true
+	}
+
+	if !s.kept || !s.background {
+		return Candidates{}, false
+	}
+
+	s.askBehind()
+
+	return s.served(), true
+}
+
+// served is the last list as the page shows it, with the last refresh's failure, whether
+// it was kept from a past start, and whether a refresh runs behind it. The caller holds mu.
 func (s *Service) served() Candidates {
 	out := s.last
-	out.Error = s.failure
+	out.Error, out.Kept, out.Refreshing = s.failure, s.kept, s.pending
 
 	return out
 }
 
 // refresh asks GitHub and the clones under root again, keeping the last list when it
-// fails. A refresh cut short, as when the page closes, keeps nothing and records nothing.
+// fails. A list that lands is kept for the next start too. A refresh cut short, as when
+// the page closes, keeps nothing and records nothing.
 func (s *Service) refresh(ctx context.Context, root string) (Candidates, error) {
-	got, err := s.gather(ctx, root)
+	progress := newListProgress(s.events, s.progressEvery)
+
+	got, err := s.gather(ctx, root, progress)
 	if err == nil {
 		err = ctx.Err() // a list read as the call ended holds clones marked unreadable
 	}
+
+	progress.end()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -253,21 +311,24 @@ func (s *Service) refresh(ctx context.Context, root string) (Candidates, error) 
 		}
 
 		s.logger.WarnContext(ctx, "couldn't list the repositories to release; showing the last list", "error", err)
-		s.failure = uierr.Message(err)
+		s.failure, s.pending = uierr.Message(err), false
 		s.events.Emit(event.ReleasesUpdated{})
 
 		return s.served(), nil
 	}
 
-	s.last, s.root, s.failure, s.has = got, root, "", true
+	s.last, s.root, s.failure, s.has, s.kept, s.pending = got, root, "", true, false, false
+	s.keep(context.WithoutCancel(ctx), got, root)
 	s.events.Emit(event.ReleasesUpdated{})
 
 	return got, nil
 }
 
 // gather lists the clones, asks GitHub about their origins, and reads the clones whose
-// repository has changes to release.
-func (s *Service) gather(ctx context.Context, root string) (Candidates, error) {
+// repository has changes to release, telling progress of each phase.
+func (s *Service) gather(ctx context.Context, root string, progress *listProgress) (Candidates, error) {
+	progress.start(event.ReleasesFindingClones, 0)
+
 	all, err := s.clones.Clones(ctx, root)
 	if err != nil {
 		return Candidates{}, fmt.Errorf("list the clones: %w", err)
@@ -293,7 +354,7 @@ func (s *Service) gather(ctx context.Context, root string) (Candidates, error) {
 		return out, nil
 	}
 
-	statuses, compares, err := s.askGitHub(ctx, listed)
+	statuses, compares, err := s.askGitHub(ctx, listed, progress)
 	if err != nil {
 		return Candidates{}, err
 	}
@@ -308,7 +369,7 @@ func (s *Service) gather(ctx context.Context, root string) (Candidates, error) {
 		out.Repos = append(out.Repos, cand)
 	}
 
-	s.checkClones(ctx, out.Repos, statuses)
+	s.checkClones(ctx, out.Repos, statuses, progress)
 	sortCandidates(out.Repos)
 
 	out.CheckedAt = s.clock.Now().UTC().Format(time.RFC3339)
@@ -317,11 +378,16 @@ func (s *Service) gather(ctx context.Context, root string) (Candidates, error) {
 }
 
 // askGitHub runs the two rounds: every repository's status, then, for each with a
-// version tag not on its newest commit, how far the default branch is ahead of it.
-func (s *Service) askGitHub(ctx context.Context, listed []clone) (map[string]RepoStatus, map[string]Compare, error) {
+// version tag not on its newest commit, how far the default branch is ahead of it. Each
+// round counts its repositories off as GitHub answers them.
+func (s *Service) askGitHub(
+	ctx context.Context, listed []clone, progress *listProgress,
+) (map[string]RepoStatus, map[string]Compare, error) {
 	repos := uniqueRepos(listed)
 
-	statuses, err := s.github.ReleaseStatus(ctx, repos)
+	progress.start(event.ReleasesAskingGitHub, len(repos))
+
+	statuses, err := s.github.ReleaseStatus(ctx, repos, progress.add)
 	if err != nil {
 		return nil, nil, wordGitHub(err)
 	}
@@ -331,7 +397,9 @@ func (s *Service) askGitHub(ctx context.Context, listed []clone) (map[string]Rep
 		return statuses, map[string]Compare{}, nil
 	}
 
-	compares, err := s.github.ReleaseCompare(ctx, reqs)
+	progress.start(event.ReleasesComparing, len(reqs))
+
+	compares, err := s.github.ReleaseCompare(ctx, reqs, progress.add)
 	if err != nil {
 		return nil, nil, wordGitHub(err)
 	}
@@ -375,11 +443,24 @@ func compareRequests(repos []repo.Name, statuses map[string]RepoStatus) []Compar
 	return reqs
 }
 
-// checkClones reads the state of each unreleased clone, a few at a time.
-func (s *Service) checkClones(ctx context.Context, list []Candidate, statuses map[string]RepoStatus) {
-	if s.checker == nil {
+// checkClones reads the state of each unreleased clone, a few at a time, counting them
+// off as each is read.
+func (s *Service) checkClones(
+	ctx context.Context, list []Candidate, statuses map[string]RepoStatus, progress *listProgress,
+) {
+	unreleased := 0
+
+	for _, c := range list {
+		if c.Group == GroupUnreleased {
+			unreleased++
+		}
+	}
+
+	if s.checker == nil || unreleased == 0 {
 		return
 	}
+
+	progress.start(event.ReleasesCheckingClones, unreleased)
 
 	var wg sync.WaitGroup
 
@@ -399,6 +480,8 @@ func (s *Service) checkClones(ctx context.Context, list []Candidate, statuses ma
 
 			state := s.checker.CloneState(ctx, list[i].dir, status.DefaultBranch, status.HeadOID, status.Tags)
 			list[i].Clone = &state
+
+			progress.add(1)
 		})
 	}
 

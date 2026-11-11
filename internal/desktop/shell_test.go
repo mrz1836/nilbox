@@ -52,6 +52,7 @@ func TestWindowEventsGoOnToThePage(t *testing.T) {
 		event.ScriptRunProgress{},
 		event.QuitRequested{},
 		event.ReleasesUpdated{},
+		event.ReleasesProgress{},
 	}, r.page.events(), "the shell's own events stay in Go")
 }
 
