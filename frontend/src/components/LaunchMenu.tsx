@@ -21,6 +21,8 @@ export interface LaunchMenuProps {
   // agentName names the coding agent the launch starts, as in "Claude".
   agentName: string
   onLaunch: () => void
+  // busy reports a launch or a clone running for the item, which holds Open back.
+  busy: boolean
   // onSave saves the choices as defaults for the repository, or for its whole owner.
   onSave: (scope: 'repo' | 'org') => void
   saving: boolean
@@ -62,6 +64,7 @@ export function LaunchMenu({
   prompts,
   agentName,
   onLaunch,
+  busy,
   onSave,
   saving,
   status,
@@ -400,7 +403,7 @@ export function LaunchMenu({
         <button type="button" onClick={onCancel} className={`${buttonClass} shrink-0`}>
           Cancel
         </button>
-        <button type="button" onClick={onLaunch} className={`${primaryButtonClass} shrink-0`}>
+        <button type="button" disabled={busy} onClick={onLaunch} className={`${primaryButtonClass} shrink-0`}>
           <TerminalIcon className="size-4" />
           Open in {agentName}
         </button>

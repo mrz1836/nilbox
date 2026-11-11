@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { Activity, StrictMode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
@@ -202,29 +203,79 @@ describe('LaunchControls', () => {
     expect(dialog).toBeInTheDocument()
   })
 
-  it('opens one launch dialog at a time', async () => {
+  it('draws the dialog in the page’s body, outside the row that opens it', async () => {
     render(
-      <>
+      <ul>
+        <li data-testid="row" className="group hover:bg-raised/40">
+          <LaunchControls {...props()} />
+        </li>
+      </ul>,
+    )
+
+    await openMenu()
+
+    // The row's :hover and :focus-within never take in the pointer or focus in the
+    // dialog, so the row doesn't light up behind the backdrop.
+    const dialog = screen.getByRole('dialog', { name: 'Launch options' })
+    expect(screen.getByTestId('row')).not.toContainElement(dialog)
+    expect(dialog.parentElement).toBe(document.body)
+    expect(screen.getByTestId('row')).toContainElement(optionsButton())
+  })
+
+  it('closes the options when its page hides, keeping the choices, and leaves them closed when it shows', async () => {
+    const page = (mode: 'visible' | 'hidden') => (
+      <Activity mode={mode}>
         <LaunchControls {...props()} />
-        <LaunchControls {...props({ item: item({ id: 2, number: 8, title: 'Trim the cache' }) })} />
-      </>,
+      </Activity>
+    )
+    const { rerender } = render(page('visible'))
+
+    const menu = await openMenu()
+    await userEvent.click(menu.getByRole('radio', { name: 'work' }))
+
+    rerender(page('hidden'))
+    // The dialog closes a microtask after its page hides.
+    await act(async () => {
+      await Promise.resolve()
+    })
+    rerender(page('visible'))
+
+    expect(document.querySelector('dialog')).toBeNull()
+    expect(optionsButton()).toHaveAttribute('aria-expanded', 'false')
+    expect(optionsButton()).toHaveAccessibleName(/changed for this launch$/)
+    expect((await openMenu()).getByRole('radio', { name: 'work' })).toBeChecked()
+  })
+
+  it('stays open under StrictMode, which runs its effects twice', async () => {
+    render(
+      <StrictMode>
+        <LaunchControls {...props()} />
+      </StrictMode>,
     )
 
-    const [first, second] = screen.getAllByRole('button', { name: /^Launch options/ })
+    await openMenu()
+    await act(async () => {
+      await Promise.resolve()
+    })
 
-    await userEvent.click(first as HTMLElement)
-    expect(screen.getByRole('dialog', { name: 'Launch options' })).toHaveAccessibleDescription(/#7 · /)
+    expect(screen.getByRole('dialog', { name: 'Launch options' })).toHaveAttribute('open')
+    expect(optionsButton()).toHaveAttribute('aria-expanded', 'true')
+  })
 
-    // The page behind a modal dialog takes no clicks in the window; one that opens
-    // anyway closes the first.
-    await userEvent.click(second as HTMLElement)
+  it('holds the options back while a launch runs, so nothing launches twice', async () => {
+    platform.launch.mockReturnValue(new Promise(() => undefined))
+    render(<LaunchControls {...props()} />)
 
-    expect(screen.getAllByRole('dialog')).toHaveLength(1)
-    expect(screen.getByRole('dialog', { name: 'Launch options' })).toHaveAccessibleDescription(
-      'acme-org/example-repo#8 · Trim the cache',
-    )
-    expect(first).toHaveAttribute('aria-expanded', 'false')
-    expect(second).toHaveAttribute('aria-expanded', 'true')
+    await userEvent.click((await openMenu()).getByRole('button', { name: 'Open in Claude' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Opening…' })).toBeDisabled()
+    expect(optionsButton()).toBeDisabled()
+
+    await userEvent.click(optionsButton())
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(platform.launch).toHaveBeenCalledOnce()
   })
 
   it('waits for the launch settings before it can launch', () => {
@@ -313,6 +364,7 @@ describe('LaunchControls', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Clone and open' }))
 
     expect(screen.getByRole('button', { name: 'Cloning…' })).toBeDisabled()
+    expect(optionsButton()).toBeDisabled()
     expect(screen.getByRole('status')).toHaveTextContent('Cloning acme-org/example-repo into ~/projects/example-repo…')
     expect(platform.launch).toHaveBeenCalledTimes(1)
   })

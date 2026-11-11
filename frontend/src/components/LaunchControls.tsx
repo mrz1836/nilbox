@@ -106,10 +106,11 @@ function launchedText(result: LaunchResult, agent: string): string {
 // the window (LaunchDialog), where this launch can use another agent, prompt, profile,
 // model, effort, worktree, or plan mode, preview exactly what it runs, or save those
 // choices as the repository's or the org's defaults. The dialog is rendered only while it
-// is open, so a list of rows holds none. Choices apply to the next launch only and outlast
-// closing the dialog, and the arrow shows a dot while any differs from the defaults. A
-// launch that finds no local clone offers to clone the repository into the clone root
-// and, once confirmed, continues with the same choices.
+// is open, so a list of rows holds none, and it closes when its page hides. Choices apply
+// to the next launch only and outlast closing the dialog, and the arrow shows a dot while
+// any differs from the defaults. While a launch or a clone runs, the button, the arrow,
+// and the dialog's Open all wait. A launch that finds no local clone offers to clone the
+// repository into the clone root and, once confirmed, continues with the same choices.
 //
 // It renders two grid children: the button, and below the row's content, the launch's
 // outcome, which runs to the card's right edge. The inbox row is the grid that places
@@ -330,7 +331,9 @@ export function LaunchControls({
           )}
           <button
             type="button"
-            disabled={resolution === null}
+            // While a launch or a clone runs, the options wait with the button beside them,
+            // so nothing starts a second launch.
+            disabled={busy || resolution === null}
             aria-label={`Launch options: ${chip}${changed ? ', changed for this launch' : ''}`}
             title="Prompt, profile, and options for this launch"
             aria-haspopup="dialog"
@@ -385,6 +388,7 @@ export function LaunchControls({
                 prompts={prompts}
                 agentName={agentName}
                 onLaunch={launchNow}
+                busy={busy}
                 onSave={(scope) => {
                   void save(scope)
                 }}

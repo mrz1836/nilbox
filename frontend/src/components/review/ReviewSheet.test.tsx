@@ -1,9 +1,10 @@
-import { act, render as renderPlain, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render as renderPlain, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useState, type ReactElement } from 'react'
+import { Activity, useState, type ReactElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { useReviewDrafts } from '../../lib/reviewDrafts'
+import { isTopmost } from '../../lib/useModalDialog'
 import type { InboxItem, ReviewResult } from '../../platform'
 import { at } from '../../test/clock'
 import {
@@ -553,8 +554,8 @@ describe('ReviewSheet', () => {
     const arrow = screen.getByRole('button', { name: /^Launch options/ })
     await userEvent.click(arrow)
 
-    const options = screen.getByRole('dialog', { name: 'Launch options' })
-    expect(sheet()).toContainElement(options)
+    const options = screen.getByRole<HTMLDialogElement>('dialog', { name: 'Launch options' })
+    expect(isTopmost(options)).toBe(true)
     expect(within(options).getByRole('heading', { name: 'Open in Claude' })).toBeInTheDocument()
     expect(within(options).getByRole('radio', { name: /Review/ })).toHaveFocus()
 
@@ -581,6 +582,75 @@ describe('ReviewSheet', () => {
     })
     await userEvent.keyboard('{Escape}')
     expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('stays open when the launch options over it get a close request', async () => {
+    const onClose = vi.fn()
+    render(<Harness onClose={onClose} launch={launch} resolution={itemResolution()} />)
+
+    await actionButton('Approve & squash-merge')
+    await userEvent.click(screen.getByRole('button', { name: /^Launch options/ }))
+
+    // React hands a dialog's cancel event on to the dialogs around it, as if it bubbled.
+    fireEvent(screen.getByRole('dialog', { name: 'Launch options' }), new Event('cancel', { cancelable: true }))
+
+    expect(screen.queryByRole('dialog', { name: 'Launch options' })).not.toBeInTheDocument()
+    expect(sheet()).toHaveAttribute('open')
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('closes the launch options when its page hides, so the sheet alone is on top when it shows', async () => {
+    const onClose = vi.fn()
+    const page = (mode: 'visible' | 'hidden') => (
+      <Activity mode={mode}>
+        <Harness onClose={onClose} launch={launch} resolution={itemResolution()} />
+      </Activity>
+    )
+    const { rerender } = render(page('visible'))
+
+    await actionButton('Approve & squash-merge')
+    await userEvent.click(screen.getByRole('button', { name: /^Launch options/ }))
+    expect(screen.getByRole('dialog', { name: 'Launch options' })).toBeInTheDocument()
+
+    // Another view shows (⌘, opens Settings), then the inbox again.
+    rerender(page('hidden'))
+    // The launch options close a microtask after their page hides.
+    await act(async () => {
+      await Promise.resolve()
+    })
+    rerender(page('visible'))
+
+    expect(document.querySelector('dialog[aria-label="Launch options"]')).toBeNull()
+    expect(sheet()).toHaveAttribute('open')
+    expect(isTopmost(sheet() as HTMLDialogElement)).toBe(true)
+
+    await userEvent.keyboard('{Escape}')
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('starts each pull request’s launch from its own settings, not the last one’s choices', async () => {
+    platform.openReview.mockImplementation((id) => Promise.resolve(review({ id })))
+    platform.refreshReview.mockImplementation((id) => Promise.resolve(review({ id })))
+    render(<Harness launch={launch} resolution={itemResolution()} />)
+
+    await actionButton('Approve & squash-merge')
+    await userEvent.click(screen.getByRole('button', { name: /^Launch options/ }))
+
+    const options = within(screen.getByRole('dialog', { name: 'Launch options' }))
+    await userEvent.click(options.getByRole('radio', { name: /Quick look/ }))
+    await userEvent.click(options.getByRole('button', { name: 'Close' }))
+    expect(screen.getByRole('button', { name: /^Launch options/ })).toHaveAccessibleName(
+      'Launch options: Quick look · default, changed for this launch',
+    )
+
+    await userEvent.keyboard('{ArrowRight}')
+    await waitFor(() => {
+      expect(platform.openReview).toHaveBeenLastCalledWith(2)
+    })
+
+    expect(screen.getByRole('button', { name: /^Launch options/ })).toHaveAccessibleName(
+      'Launch options: Review · default',
+    )
   })
 
   it('writes line comments, with a suggested change, and sends them with the review', async () => {

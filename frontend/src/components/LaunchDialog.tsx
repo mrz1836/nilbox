@@ -1,4 +1,5 @@
 import { useEffectEvent, useLayoutEffect, useRef, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 import { useModalDialog } from '../lib/useModalDialog'
 import type { InboxItem } from '../platform'
@@ -8,7 +9,7 @@ import { IssueIcon, PullRequestIcon, XIcon } from './icons'
 export interface LaunchDialogProps {
   // id is the dialog's ID, which the button that opened it names in aria-controls.
   id: string
-  // title is the dialog's heading, the launch it makes: "Open in Claude".
+  // title is the dialog's heading, the launch it makes: "Open in Codex".
   title: string
   // item is the pull request or issue the launch is for, named under the title.
   item: InboxItem
@@ -16,10 +17,6 @@ export interface LaunchDialogProps {
   // children are the launch options, which fill the dialog under its heading.
   children: ReactNode
 }
-
-// closeShown closes the launch dialog that is open, if any. Only one is ever open: one
-// that opens closes it first.
-let closeShown: (() => void) | null = null
 
 // initialFocus is the control focus starts on: the chosen prompt, else the first chosen
 // option, else the first control, else the dialog's body, when it shows no options.
@@ -35,43 +32,49 @@ function initialFocus(body: HTMLElement | null): HTMLElement | null {
 // LaunchDialog holds one item's launch options in the middle of the window, so a row at
 // the top or bottom of a list never cuts them off. It is a native modal <dialog> (see
 // useModalDialog), its accessible name "Launch options" as the button that opens it says,
-// and a nested one over the review sheet hears the keys alone: Escape closes it and leaves
+// and one opened over the review sheet hears the keys alone: Escape closes it and leaves
 // the sheet open. Focus starts on the chosen prompt, the choice most often changed, and goes
-// back to where it was, the button that opened it, as it closes: on Escape, the close
-// button, or a click on the backdrop. The heading stays at the top while the options under
-// it scroll. Render it only while it is open.
+// back to the button that opened it as it closes: on Escape, the close button, or a click on
+// the backdrop. The heading stays at the top while the options under it scroll.
+//
+// It is drawn in the page's body rather than inside the row that opens it, so the row
+// doesn't count the pointer or focus in the dialog as its own and light up behind the
+// backdrop. A page that hides with it open (the window's views are Activities, kept while
+// another shows) closes it, so it never shows again unasked, nor opens before the review
+// sheet it was opened over. Render it only while it is open.
 export function LaunchDialog({ id, title, item, onClose, children }: LaunchDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
-  // pressed records that a press began on the backdrop, so a click that ends there closes
-  // the dialog, but a drag out of it, such as one selecting text, does not.
-  const pressed = useRef(false)
-  const cancel = useModalDialog(dialogRef, onClose, () => initialFocus(bodyRef.current))
+  const cancel = useModalDialog(dialogRef, onClose, () => initialFocus(bodyRef.current), { backdrop: true })
+  // live says the dialog's effects are running: they stop as its page hides, or it closes.
+  const live = useRef(false)
 
-  const closeEvent = useEffectEvent(() => {
+  const pageHidden = useEffectEvent(() => {
     onClose()
   })
 
-  // Close the launch dialog already open, if any, before this one is seen.
+  // A page that hides keeps the dialog in the document, where a closed one is gone; and
+  // StrictMode runs the effects again at once after this cleanup, where a hidden page
+  // waits. So the close waits a microtask and happens only for a hidden page.
   useLayoutEffect(() => {
-    const close = () => {
-      closeEvent()
-    }
+    const dialog = dialogRef.current
 
-    closeShown?.()
-    closeShown = close
+    live.current = true
 
     return () => {
-      if (closeShown === close) {
-        closeShown = null
-      }
+      live.current = false
+
+      queueMicrotask(() => {
+        if (!live.current && dialog?.isConnected === true) {
+          pageHidden()
+        }
+      })
     }
   }, [])
 
   const name = `${item.repo}#${String(item.number)}`
 
-  return (
-    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- a click on the backdrop closes the dialog as Escape and the close button do, which the keyboard has
+  return createPortal(
     <dialog
       ref={dialogRef}
       id={id}
@@ -79,16 +82,6 @@ export function LaunchDialog({ id, title, item, onClose, children }: LaunchDialo
       aria-label="Launch options"
       aria-describedby={`${id}-item`}
       onCancel={cancel}
-      onMouseDown={(e) => {
-        pressed.current = e.target === e.currentTarget
-      }}
-      onClick={(e) => {
-        if (pressed.current && e.target === e.currentTarget) {
-          onClose()
-        }
-
-        pressed.current = false
-      }}
       // The backdrop's color is spelled out, as ConfirmDialog's is, for older Safari.
       className="m-auto max-h-[calc(100%-3rem)] w-[calc(100%-2rem)] max-w-[34rem] overflow-hidden rounded-xl border border-border bg-surface p-0 text-text shadow-xl backdrop:bg-[rgb(0_0_0/0.4)] open:flex open:flex-col motion-safe:animate-pop-in"
     >
@@ -126,6 +119,7 @@ export function LaunchDialog({ id, title, item, onClose, children }: LaunchDialo
         </header>
         {children}
       </div>
-    </dialog>
+    </dialog>,
+    document.body,
   )
 }
