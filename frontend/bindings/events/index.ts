@@ -39,6 +39,11 @@ export const InboxUpdated = "inbox:updated";
 export const NotificationsUpdated = "notifications:updated";
 
 /**
+ * Name of the custom event "releases:progress".
+ */
+export const ReleasesProgress = "releases:progress";
+
+/**
  * Name of the custom event "releases:updated".
  */
 export const ReleasesUpdated = "releases:updated";

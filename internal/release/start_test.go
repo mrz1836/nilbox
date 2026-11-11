@@ -479,7 +479,11 @@ func TestStartReleases(t *testing.T) {
 	assert.Equal(t, map[string]any{
 		"version": recVersion, "bump": "patch", "branch": "master", "original": recFeature, "head": r.second,
 	}, run.Result.Intent)
-	assert.NotEmpty(t, run.Result.Warnings, "magex's warnings reach the result")
+	assert.Empty(t, run.Result.Warnings, "a version tag not on HEAD is why it released, not a warning")
+
+	logged, err := r.runs.Output(t.Context(), run.ID, 0, 0)
+	require.NoError(t, err)
+	assert.Contains(t, logged.Text, "Current version tag is not on HEAD", "the log keeps the line")
 
 	res := resultOf(t, run)
 	assert.Equal(t, Result{
@@ -492,7 +496,7 @@ func TestStartReleases(t *testing.T) {
 
 	assert.Equal(t, 1, r.github.calls(), "the release checked again with the sheet's GitHub facts")
 
-	_, err := r.svc.Prepare(t.Context(), PrepareRequest{Repo: sdkRepo})
+	_, err = r.svc.Prepare(t.Context(), PrepareRequest{Repo: sdkRepo})
 	require.NoError(t, err)
 	assert.Equal(t, 2, r.github.calls(), "a release ended: the sheet reads the clone again")
 }

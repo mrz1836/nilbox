@@ -112,6 +112,14 @@ describe('LogView', () => {
     }
   })
 
+  it('leaves out the lines it is told to hide, wherever they are', async () => {
+    platform.scriptRunOutput.mockResolvedValue(chunk('✅ Tag pushed\n{"tag":"v1.4.4"}\n❌ Error: late\n', 0))
+    render(<LogView runId={7} live={false} hide={(text) => text.startsWith('{')} />)
+
+    expect(await within(output()).findByText('❌ Error: late')).toBeInTheDocument()
+    expect(shown()).toEqual(['✅ Tag pushed', '❌ Error: late'])
+  })
+
   it('draws bold text in the log’s own color', async () => {
     platform.scriptRunOutput.mockResolvedValue(chunk('\x1b[1mBold\x1b[0m\n', 0))
     render(<LogView runId={7} live={false} />)

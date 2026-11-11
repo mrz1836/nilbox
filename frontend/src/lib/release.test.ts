@@ -6,6 +6,8 @@ import {
   cloneNotes,
   commitChecksText,
   intentOf,
+  isBumpResult,
+  listProgressWords,
   matchCandidates,
   outcomeKind,
   recentReleases,
@@ -51,6 +53,41 @@ describe('release', () => {
 
     expect(matchCandidates(repos, '  SDK ').map((r) => r.repo)).toEqual(['acme-org/sdk'])
     expect(matchCandidates(repos, '')).toHaveLength(2)
+  })
+
+  it('says how far a read of the list has got, phase by phase', () => {
+    expect(listProgressWords({ phase: 'clones', done: 0, total: 0 })).toBe('Finding your clones…')
+    expect(listProgressWords({ phase: 'github', done: 45, total: 151 })).toBe('Asking GitHub: 45 of 151 repositories…')
+    expect(listProgressWords({ phase: 'github', done: 0, total: 1 })).toBe('Asking GitHub: 0 of 1 repository…')
+    expect(listProgressWords({ phase: 'compare', done: 15, total: 1200 })).toBe(
+      'Asking GitHub what changed: 15 of 1,200 repositories…',
+    )
+    expect(listProgressWords({ phase: 'checking', done: 3, total: 12 })).toBe('Checking your clones: 3 of 12…')
+  })
+
+  it('knows magex’s JSON result line, and nothing else that looks like it', () => {
+    const result = {
+      from: 'v1.4.3',
+      to: 'v1.4.4',
+      bump: 'patch',
+      expect: '',
+      dryRun: false,
+      tag: 'v1.4.4',
+      commit: 'a1b2c3',
+      pushed: true,
+      startBranch: 'master',
+      branch: 'master',
+      warnings: [],
+      error: '',
+    }
+
+    expect(isBumpResult(JSON.stringify(result))).toBe(true)
+    expect(isBumpResult(`  ${JSON.stringify(result)}  `)).toBe(true)
+    expect(isBumpResult(JSON.stringify({ ...result, error: undefined }))).toBe(false)
+    expect(isBumpResult('{"from":"v1.4.3"}')).toBe(false)
+    expect(isBumpResult('{ not json }')).toBe(false)
+    expect(isBumpResult('[]')).toBe(false)
+    expect(isBumpResult('21:59:47 [INFO] Using bump type: patch')).toBe(false)
   })
 
   it('counts the unreleased repositories, none before the list', () => {

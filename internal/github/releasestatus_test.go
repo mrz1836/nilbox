@@ -173,7 +173,7 @@ func releaseRounds() []releaseRound {
 			name: "status",
 			node: `{"isArchived": false, "viewerPermission": "ADMIN", "refs": {"nodes": []}}`,
 			fetch: func(ctx context.Context, c *Client, n int) (int, error) {
-				got, err := c.FetchReleaseStatus(ctx, NewToken(fakeToken), releaseRepos(n))
+				got, err := c.FetchReleaseStatus(ctx, NewToken(fakeToken), releaseRepos(n), nil)
 
 				return len(got), err
 			},
@@ -187,7 +187,7 @@ func releaseRounds() []releaseRound {
 					reqs[i] = CompareRequest{Repo: r, Tag: "v1.0.0", Branch: "master"}
 				}
 
-				got, err := c.FetchReleaseCompare(ctx, NewToken(fakeToken), reqs)
+				got, err := c.FetchReleaseCompare(ctx, NewToken(fakeToken), reqs, nil)
 
 				return len(got), err
 			},
@@ -218,7 +218,7 @@ func TestFetchReleaseStatusReadsEachRepository(t *testing.T) {
 
 	repos := releaseStatusRepos()
 
-	got, err := client.FetchReleaseStatus(t.Context(), NewToken(fakeToken), repos)
+	got, err := client.FetchReleaseStatus(t.Context(), NewToken(fakeToken), repos, nil)
 	require.NoError(t, err)
 	require.Len(t, got, 3, "a repository GitHub can't find, or won't show, is left out")
 
@@ -272,7 +272,7 @@ func TestFetchReleaseCompareReadsEachRepository(t *testing.T) {
 
 	reqs := releaseCompareRequests()
 
-	got, err := client.FetchReleaseCompare(t.Context(), NewToken(fakeToken), reqs)
+	got, err := client.FetchReleaseCompare(t.Context(), NewToken(fakeToken), reqs, nil)
 	require.NoError(t, err)
 	require.Len(t, got, 1, "a tag, branch, or repository GitHub can't find is left out")
 
@@ -471,6 +471,56 @@ func TestReleaseRoundsSendAtMostFourQueriesAtOnce(t *testing.T) {
 			assert.Equal(t, int32(4), gate.most.Load(), "four queries are in flight together, never more")
 		})
 	}
+}
+
+func TestReleaseRoundsTellEachBatchAnswered(t *testing.T) {
+	t.Parallel()
+
+	const asked = 2*releaseBatch + 3
+
+	var (
+		mu    sync.Mutex
+		sizes []int
+	)
+
+	answered := func(n int) {
+		mu.Lock()
+		defer mu.Unlock()
+
+		sizes = append(sizes, n)
+	}
+
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		query := readReleaseQuery(t, r)
+		node := `{"isArchived": false, "viewerPermission": "ADMIN", "refs": {"nodes": []}}`
+
+		if strings.Contains(query, "ReleaseCompare") {
+			node = `{"ref": {"compare": {"aheadBy": 1, "commits": {"totalCount": 1, "nodes": []}}}}`
+		}
+
+		_, _ = io.WriteString(w, answerEach(releaseAliases(query), node))
+	})
+
+	_, err := client.FetchReleaseStatus(t.Context(), NewToken(fakeToken), releaseRepos(asked), answered)
+	require.NoError(t, err)
+
+	mu.Lock()
+	assert.ElementsMatch(t, []int{releaseBatch, releaseBatch, 3}, sizes, "each batch is told once, by its size")
+	sizes = nil
+	mu.Unlock()
+
+	reqs := make([]CompareRequest, 0, releaseBatch+1)
+	for _, r := range releaseRepos(releaseBatch + 1) {
+		reqs = append(reqs, CompareRequest{Repo: r, Tag: "v1.0.0", Branch: "master"})
+	}
+
+	_, err = client.FetchReleaseCompare(t.Context(), NewToken(fakeToken), reqs, answered)
+	require.NoError(t, err)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	assert.ElementsMatch(t, []int{releaseBatch, 1}, sizes, "the compare round counts its batches too")
 }
 
 // halvingThreshold is the most repositories the halving tests' server answers in one
@@ -688,12 +738,12 @@ func TestReleaseRoundsWithNothingToAskSendNothing(t *testing.T) {
 		t.Error("nothing is asked")
 	})
 
-	status, err := client.FetchReleaseStatus(t.Context(), NewToken(fakeToken), nil)
+	status, err := client.FetchReleaseStatus(t.Context(), NewToken(fakeToken), nil, nil)
 	require.NoError(t, err)
 	assert.NotNil(t, status)
 	assert.Empty(t, status)
 
-	compare, err := client.FetchReleaseCompare(t.Context(), NewToken(fakeToken), []CompareRequest{})
+	compare, err := client.FetchReleaseCompare(t.Context(), NewToken(fakeToken), []CompareRequest{}, nil)
 	require.NoError(t, err)
 	assert.NotNil(t, compare)
 	assert.Empty(t, compare)
@@ -762,7 +812,7 @@ func TestFetchReleaseCompareRefusesARequestWithoutATagOrBranch(t *testing.T) {
 				reqs = append(reqs, CompareRequest{Repo: r, Tag: "v1.0.0", Branch: "master"})
 			}
 
-			_, err := client.FetchReleaseCompare(t.Context(), NewToken(fakeToken), append(reqs, tt.bad))
+			_, err := client.FetchReleaseCompare(t.Context(), NewToken(fakeToken), append(reqs, tt.bad), nil)
 			require.ErrorIs(t, err, ErrInvalidCompareRequest)
 		})
 	}
@@ -779,14 +829,14 @@ func TestReleaseRoundsAskAboutARepositoryOnce(t *testing.T) {
 	example := repo.Name{Owner: filesOwner, Repo: exampleRepo}
 	shouted := repo.Name{Owner: "Acme-Org", Repo: "Example-Repo"}
 
-	status, err := client.FetchReleaseStatus(t.Context(), NewToken(fakeToken), []repo.Name{example, shouted})
+	status, err := client.FetchReleaseStatus(t.Context(), NewToken(fakeToken), []repo.Name{example, shouted}, nil)
 	require.NoError(t, err)
 	assert.Len(t, status, 1)
 
 	compare, err := client.FetchReleaseCompare(t.Context(), NewToken(fakeToken), []CompareRequest{
 		{Repo: shouted, Tag: "v1.0.0", Branch: "master"},
 		{Repo: example, Tag: "v2.0.0", Branch: "master"},
-	})
+	}, nil)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]ReleaseCompare{
 		example.Key(): {AheadBy: 2, Commits: []ReleaseCommit{}},
