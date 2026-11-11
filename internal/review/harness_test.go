@@ -25,6 +25,9 @@ const (
 	octoOther = "octo-other"
 	nodePR    = "PR_fakeNodeId7"
 	pullID    = int64(1)
+
+	// cacheFile is #7's source file, whose diff the sheet shows.
+	cacheFile = "cache.go"
 )
 
 var (
@@ -145,6 +148,18 @@ func (f *fakeInbox) target() Target {
 	}
 }
 
+// The fake's names for GitHub's requests, as called and requests give them.
+const (
+	callReview  = "review"
+	callDiff    = "diff"
+	callState   = "state"
+	callSubmit  = "submit"
+	callMerge   = "merge"
+	callAuto    = "auto"
+	callUpdate  = "update"
+	callComment = "comment"
+)
+
 // fakeGitHub answers the sheet's requests and counts them.
 type fakeGitHub struct {
 	mu sync.Mutex
@@ -164,7 +179,9 @@ type fakeGitHub struct {
 	updateErr  error
 	commentErr error
 
-	calls    map[string]int
+	calls map[string]int
+	// order names every request, in the order they came.
+	order    []string
 	sent     []github.ReviewInput
 	merges   []github.MergeInput
 	autos    []string
@@ -175,7 +192,7 @@ func (g *fakeGitHub) FetchPullReview(context.Context, github.Token, string) (*gi
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	g.count("review")
+	g.count(callReview)
 
 	if len(g.reviews) > 0 {
 		r := g.reviews[0]
@@ -195,7 +212,7 @@ func (g *fakeGitHub) FetchPullDiff(context.Context, github.Token, item.Ref, stri
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	g.count("diff")
+	g.count(callDiff)
 
 	if g.diff == nil {
 		return nil, errNotCalled
@@ -208,9 +225,9 @@ func (g *fakeGitHub) FetchMergeState(context.Context, github.Token, string) (*gi
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	g.count("state")
+	g.count(callState)
 
-	if g.stateErr != nil && g.calls["state"] > g.stateOK {
+	if g.stateErr != nil && g.calls[callState] > g.stateOK {
 		return nil, g.stateErr
 	}
 
@@ -232,7 +249,7 @@ func (g *fakeGitHub) SubmitReview(
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	g.count("submit")
+	g.count(callSubmit)
 
 	if g.submitErr != nil {
 		return nil, g.submitErr
@@ -247,7 +264,7 @@ func (g *fakeGitHub) MergePull(_ context.Context, _ github.Token, _ item.Ref, in
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	g.count("merge")
+	g.count(callMerge)
 
 	if g.mergeOnce != nil {
 		err := g.mergeOnce
@@ -271,7 +288,7 @@ func (g *fakeGitHub) EnableAutoMerge(
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	g.count("auto")
+	g.count(callAuto)
 
 	if g.autoErr != nil {
 		err := g.autoErr
@@ -289,7 +306,7 @@ func (g *fakeGitHub) UpdateBranch(context.Context, github.Token, item.Ref, strin
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	g.count("update")
+	g.count(callUpdate)
 
 	if g.updateErr != nil {
 		return nil, g.updateErr
@@ -302,7 +319,7 @@ func (g *fakeGitHub) AddComment(_ context.Context, _ github.Token, _ item.Ref, b
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	g.count("comment")
+	g.count(callComment)
 
 	if g.commentErr != nil {
 		return nil, g.commentErr
@@ -319,6 +336,7 @@ func (g *fakeGitHub) count(name string) {
 	}
 
 	g.calls[name]++
+	g.order = append(g.order, name)
 }
 
 func (g *fakeGitHub) called(name string) int {
@@ -326,6 +344,22 @@ func (g *fakeGitHub) called(name string) int {
 	defer g.mu.Unlock()
 
 	return g.calls[name]
+}
+
+// requests names the requests made since the sheet last read the pull request, in order.
+func (g *fakeGitHub) requests() []string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	last := -1
+
+	for i, name := range g.order {
+		if name == callReview || name == callDiff {
+			last = i
+		}
+	}
+
+	return append([]string{}, g.order[last+1:]...)
 }
 
 // fakeSettings is the settings the sheet follows.
@@ -434,7 +468,7 @@ func pullReview(head, status string) *github.PullReview {
 // pullDiff is #7's files at head: a source file, and a workflow.
 func pullDiff(head string) *github.PullDiff {
 	return &github.PullDiff{Head: head, Total: 3, Complete: true, Files: []github.PullFile{
-		{Path: "cache.go", Status: "modified", Patch: "@@ -1,2 +1,3 @@\n line\n-old\n+new\n+added", HasPatch: true, Additions: 2, Deletions: 1},
+		{Path: cacheFile, Status: "modified", Patch: "@@ -1,2 +1,3 @@\n line\n-old\n+new\n+added", HasPatch: true, Additions: 2, Deletions: 1},
 		{Path: ".github/workflows/ci.yml", Status: "modified", Patch: "@@ -1 +1 @@\n-a\n+b", HasPatch: true, Additions: 1, Deletions: 1},
 		{Path: "logo.png", Status: "added"},
 	}}

@@ -12,7 +12,7 @@ import { AgentVerdict } from './AgentVerdict'
 import { DiffView } from './DiffView'
 import { LineComment } from './LineComment'
 import { MergeConfirmDialog, mergeVerb } from './MergeConfirmDialog'
-import { needsText, replyActionOf } from './ReviewComposer'
+import { commentFirst, needsText, replyActionOf } from './ReviewComposer'
 import { ReviewHeader } from './ReviewHeader'
 import { areasText, checksText, Readiness, ReviewSummary } from './ReviewSummary'
 
@@ -371,5 +371,21 @@ describe('ReviewComposer helpers', () => {
     expect(needsText('comment', ' ', 0)).not.toBe('')
     expect(needsText('comment', '', 1)).toBe('')
     expect(needsText('approve', '', 0)).toBe('')
+    // A merge never waits for text: it posts what there is as a comment first.
+    expect(needsText('merge_now', '', 0)).toBe('')
+    expect(needsText('auto_merge', ' ', 0)).toBe('')
+  })
+
+  it('says what a merge with no review of its own posts as a comment first', () => {
+    for (const action of ['merge_now', 'merge_bypass', 'auto_merge'] as const) {
+      expect(commentFirst(action, 'Thanks!', 0)).toBe('Your text is posted as a comment first.')
+      expect(commentFirst(action, 'Thanks!', 2)).toBe('Your text is posted as a comment first.')
+      expect(commentFirst(action, ' \n', 1)).toBe('Your line comments are posted as a comment first.')
+      expect(commentFirst(action, ' \n', 0)).toBe('')
+    }
+
+    for (const action of ['approve_merge', 'approve_auto_merge', 'comment', 'update_branch', 'rebase_bot'] as const) {
+      expect(commentFirst(action, 'Thanks!', 1)).toBe('')
+    }
   })
 })

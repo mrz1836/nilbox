@@ -63,6 +63,13 @@ func (a Action) reviews() bool {
 	}, a)
 }
 
+// commentsFirst reports a merge with no review of its own, which posts the user's text and
+// line comments, when there are any, as a comment before it merges: the user's own pull
+// request, where GitHub refuses an approval, then shows it was reviewed.
+func (a Action) commentsFirst() bool {
+	return slices.Contains([]Action{ActionMerge, ActionMergeBypass, ActionAutoMerge}, a)
+}
+
 // MergeMethod is how GitHub merges a pull request, as its GraphQL API names it.
 type MergeMethod string
 
@@ -121,6 +128,10 @@ const (
 	// OutcomeApprovedNotMerged is an approval GitHub took, and a merge it would not make
 	// yet; Reason says why.
 	OutcomeApprovedNotMerged Outcome = "approved_not_merged"
+
+	// OutcomeCommentedNotMerged is the comment a merge posted first, which GitHub took, and
+	// a merge, or auto-merge, it would not make; Reason says why.
+	OutcomeCommentedNotMerged Outcome = "commented_not_merged"
 
 	// OutcomeBranchUpdating is a branch update GitHub started.
 	OutcomeBranchUpdating Outcome = "branch_updating"
@@ -379,7 +390,9 @@ type ActRequest struct {
 	// Head is the head commit the user saw. A pull request pushed to since is refused.
 	Head string `json:"head"`
 
-	// Body is the review's or comment's text.
+	// Body is the review's or comment's text. A merge with no review of its own (merge now,
+	// past the rules, or when ready) posts it, with Comments, as a comment first, when
+	// either holds anything.
 	Body string `json:"body"`
 
 	// Comments are the review's line comments.
@@ -400,11 +413,17 @@ type Result struct {
 	// Message says what happened, for the toast.
 	Message string `json:"message"`
 
-	// Reason says why GitHub would not merge, for OutcomeApprovedNotMerged.
+	// Reason says why GitHub would not merge, for OutcomeApprovedNotMerged and
+	// OutcomeCommentedNotMerged.
 	Reason string `json:"reason"`
 
 	// Steps are what happened, in order.
 	Steps []string `json:"steps"`
+
+	// Commented reports that a merge posted the user's text and line comments as a comment
+	// first, which GitHub took whatever the merge came to, so the draft no longer holds
+	// anything to send.
+	Commented bool `json:"commented"`
 
 	// LeftReview reports that the pull request left the Review requested list, and
 	// LeftInbox that it left every list.

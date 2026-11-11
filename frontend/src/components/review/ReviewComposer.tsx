@@ -63,6 +63,21 @@ export function needsText(action: ReviewAction, body: string, comments: number):
   return ''
 }
 
+// commentFirst says what a merge with no review of its own (merge now, past the rules, or
+// when ready) posts as a comment before it merges, or '' when it posts nothing: clearing the
+// text, and the line comments, skips the comment.
+export function commentFirst(action: ReviewAction, body: string, comments: number): string {
+  if (action !== 'merge_now' && action !== 'merge_bypass' && action !== 'auto_merge') {
+    return ''
+  }
+
+  if (body.trim() !== '') {
+    return 'Your text is posted as a comment first.'
+  }
+
+  return comments > 0 ? 'Your line comments are posted as a comment first.' : ''
+}
+
 // ReplyBody is a review's text as the composer shows it, and the replies it offers.
 export interface ReplyBody {
   // list is the replies for the review the selected action sends, with the defaults, or
@@ -109,6 +124,7 @@ export function ReviewComposer({
 }: ReviewComposerProps) {
   const id = useId()
   const { list, fallback, body } = reply
+  const firstNote = commentFirst(selected, body, draft.comments.length)
 
   const pick = (replyId: number) => {
     void fillReply(review.id, replyId).then(
@@ -206,6 +222,7 @@ export function ReviewComposer({
           />
         )}
       </div>
+      {firstNote !== '' && <p className="text-xs text-muted">{firstNote}</p>}
     </section>
   )
 }

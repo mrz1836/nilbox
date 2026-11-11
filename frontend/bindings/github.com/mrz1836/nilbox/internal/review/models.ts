@@ -21,7 +21,9 @@ export interface ActRequest {
     "head": string;
 
     /**
-     * Body is the review's or comment's text.
+     * Body is the review's or comment's text. A merge with no review of its own (merge now,
+     * past the rules, or when ready) posts it, with Comments, as a comment first, when
+     * either holds anything.
      */
     "body": string;
 
@@ -288,7 +290,7 @@ export interface Offer {
 /**
  * Outcome is what an action came to.
  */
-export type Outcome = "reviewed" | "merged" | "auto_merge" | "approved_not_merged" | "branch_updating" | "asked_bot" | "pushed_since";
+export type Outcome = "reviewed" | "merged" | "auto_merge" | "approved_not_merged" | "commented_not_merged" | "branch_updating" | "asked_bot" | "pushed_since";
 
 /**
  * The values of Outcome, by the names of their Go constants.
@@ -316,6 +318,12 @@ export const Outcome = {
      * yet; Reason says why.
      */
     OutcomeApprovedNotMerged: "approved_not_merged",
+
+    /**
+     * OutcomeCommentedNotMerged is the comment a merge posted first, which GitHub took, and
+     * a merge, or auto-merge, it would not make; Reason says why.
+     */
+    OutcomeCommentedNotMerged: "commented_not_merged",
 
     /**
      * OutcomeBranchUpdating is a branch update GitHub started.
@@ -463,7 +471,8 @@ export interface Result {
     "message": string;
 
     /**
-     * Reason says why GitHub would not merge, for OutcomeApprovedNotMerged.
+     * Reason says why GitHub would not merge, for OutcomeApprovedNotMerged and
+     * OutcomeCommentedNotMerged.
      */
     "reason": string;
 
@@ -471,6 +480,13 @@ export interface Result {
      * Steps are what happened, in order.
      */
     "steps": string[] | null;
+
+    /**
+     * Commented reports that a merge posted the user's text and line comments as a comment
+     * first, which GitHub took whatever the merge came to, so the draft no longer holds
+     * anything to send.
+     */
+    "commented": boolean;
 
     /**
      * LeftReview reports that the pull request left the Review requested list, and

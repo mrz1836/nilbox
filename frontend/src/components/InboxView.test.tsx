@@ -1477,6 +1477,38 @@ describe('InboxView review sheet', () => {
     expect(platform.offerReleaseAfterMerge).not.toHaveBeenCalled()
   })
 
+  it('says a merge’s comment was posted when GitHub didn’t merge, as a warning', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([item()]) }))
+    platform.actOnReview.mockResolvedValue(
+      reviewResult({
+        outcome: 'commented_not_merged',
+        message: 'Commented on acme-org/example-repo#7, but it wasn’t merged: It has conflicts',
+        reason: 'It has conflicts',
+        steps: ['Commented'],
+        commented: true,
+      }),
+    )
+    render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Add the widget cache' }))
+
+    const sheet = await screen.findByRole('dialog', { name: 'Add the widget cache' })
+
+    await userEvent.click(await within(sheet).findByRole('button', { name: 'More review actions' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Squash-merge' }))
+    await userEvent.click(await within(sheet).findByRole('button', { name: 'Squash-merge…' }))
+    await userEvent.click(
+      within(screen.getByRole('dialog', { name: 'Merge #7 into main?' })).getByRole('button', { name: 'Squash-merge' }),
+    )
+
+    const toast = await screen.findByRole('group', { name: 'Notification' })
+    expect(
+      within(toast).getByText('Commented on acme-org/example-repo#7, but it wasn’t merged: It has conflicts'),
+    ).toBeInTheDocument()
+    expect(toast.querySelector('.text-warning')).not.toBeNull()
+    expect(platform.offerReleaseAfterMerge).not.toHaveBeenCalled()
+  })
+
   describe('after a merge', () => {
     // merge merges the inbox's pull request from the review sheet, as Approve does when
     // GitHub merges it too, and returns the toast that says so.

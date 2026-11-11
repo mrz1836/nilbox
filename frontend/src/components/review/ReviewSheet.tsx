@@ -122,7 +122,9 @@ export function ReviewSheet({
   }
 
   const send = async (r: Review, action: ReviewAction, method: MergeMethod, accept: boolean) => {
-    const reviews = !['merge_now', 'auto_merge', 'merge_bypass', 'update_branch', 'rebase_bot'].includes(action)
+    // A review sends the text and line comments, and so does a merge with no review of its
+    // own, which posts them as a comment first when there are any.
+    const sendsText = action !== 'update_branch' && action !== 'rebase_bot'
     const label = r.offers.find((o) => o.action === action)?.label ?? 'Working'
 
     setProgress({ title: label, target: `${r.repo}#${String(r.number)}`, steps: [] })
@@ -131,8 +133,8 @@ export function ReviewSheet({
       itemId: id,
       action,
       head: r.head,
-      body: reviews ? reply.body : '',
-      comments: reviews
+      body: sendsText ? reply.body : '',
+      comments: sendsText
         ? draft.comments.map((c) => ({
             path: c.path,
             line: c.line,
@@ -153,6 +155,12 @@ export function ReviewSheet({
     }
 
     if (result.data.outcome === 'pushed_since') {
+      if (result.data.commented) {
+        // The merge posted the text and line comments before it found the push, so the
+        // draft keeps the chosen action and nothing that would post them twice.
+        drafts.update(id, (d) => ({ ...d, body: '', edited: true, replyId: 0, comments: [] }))
+      }
+
       setPushed(result.data.message)
       loaded.reload()
 

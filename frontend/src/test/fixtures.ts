@@ -1312,6 +1312,7 @@ export function reviewResult(overrides: Partial<ReviewResult> = {}): ReviewResul
     message: 'Approved acme-org/example-repo#7',
     reason: '',
     steps: ['Approved'],
+    commented: false,
     leftReview: true,
     leftInbox: false,
     method: '',
