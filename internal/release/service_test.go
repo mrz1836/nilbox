@@ -375,7 +375,7 @@ func TestCandidatesAheadByNothingAreUpToDate(t *testing.T) {
 	assert.Contains(t, groups(got), "acme-org/web upToDate")
 }
 
-func TestCandidatesAreKeptForFiveMinutes(t *testing.T) {
+func TestCandidatesAreKeptUntilTheUserReadsThemAgain(t *testing.T) {
 	t.Parallel()
 
 	r := newRig()
@@ -385,18 +385,19 @@ func TestCandidatesAreKeptForFiveMinutes(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	assert.Equal(t, 1, r.github.calls(), "a list under five minutes old is served as it is")
+	assert.Equal(t, 1, r.github.calls(), "the list is served as it is")
 
-	_, err := r.svc.Candidates(t.Context(), true)
+	r.clock.Advance(6 * time.Hour)
+
+	old, err := r.svc.Candidates(t.Context(), false)
 	require.NoError(t, err)
-	assert.Equal(t, 2, r.github.calls(), "refresh asks again")
+	assert.Equal(t, 1, r.github.calls(), "however old: the whole list is read again only when the user asks")
+	assert.False(t, old.Refreshing)
 
-	r.clock.Advance(FreshFor)
-
-	_, err = r.svc.Candidates(t.Context(), false)
+	_, err = r.svc.Candidates(t.Context(), true)
 	require.NoError(t, err)
-	assert.Equal(t, 3, r.github.calls(), "an older list is read again")
-	assert.Equal(t, 3, updates(r.events), "each refresh that lands tells the window")
+	assert.Equal(t, 2, r.github.calls(), "Read GitHub again asks again")
+	assert.Equal(t, 2, updates(r.events), "each refresh that lands tells the window")
 }
 
 func TestAFailedRefreshKeepsTheLastList(t *testing.T) {
@@ -416,10 +417,12 @@ func TestAFailedRefreshKeepsTheLastList(t *testing.T) {
 	assert.Equal(t, "Couldn't read your repositories from GitHub.", kept.Error)
 	assert.Equal(t, 2, updates(r.events), "a refresh that failed tells the window too")
 
+	r.clock.Advance(time.Hour)
+
 	again, err := r.svc.Candidates(t.Context(), false)
 	require.NoError(t, err)
 	assert.Equal(t, kept.Error, again.Error, "the failure stays until a refresh succeeds")
-	assert.Equal(t, 2, r.github.calls(), "and a read soon after it asks nothing")
+	assert.Equal(t, 2, r.github.calls(), "and a read after it asks nothing, until the user reads again")
 
 	r.github.fail(nil)
 
