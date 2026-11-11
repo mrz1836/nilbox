@@ -88,7 +88,8 @@ function place(trigger: HTMLElement, panel: HTMLElement, placement: Placement): 
 }
 
 // usePopover opens and closes a floating panel the way a desktop menu behaves: a click or
-// focus anywhere outside the button and the panel closes it, and Escape closes it and
+// focus anywhere outside the button and the panel closes it (focus landing on something
+// that holds the panel is not outside), and Escape closes it and
 // puts focus back on the button. Escape is taken in the capture phase and marked handled
 // (defaultPrevented), so a page-level Escape handler can tell it was used. As the panel
 // opens, it is placed (see Placement) and focus moves as asked (see PopoverFocus).
@@ -167,6 +168,13 @@ export function usePopover<T extends HTMLElement, P extends HTMLElement>({
     const inside = (target: EventTarget | null) =>
       target instanceof Node && (triggerRef.current?.contains(target) || panelRef.current?.contains(target)) === true
 
+    // holdsPanel reports focus landing on something the panel is inside, which is no
+    // focus elsewhere: the desktop's WebKit gives a radio, checkbox, or button no focus on
+    // a click, and focuses the nearest focusable thing holding it instead, such as the
+    // review sheet the panel opened in.
+    const holdsPanel = (target: EventTarget | null) =>
+      target instanceof Node && panelRef.current !== null && target.contains(panelRef.current)
+
     const onPointer = (e: MouseEvent) => {
       if (!inside(e.target)) {
         dismiss(false)
@@ -174,7 +182,7 @@ export function usePopover<T extends HTMLElement, P extends HTMLElement>({
     }
 
     const onFocus = (e: FocusEvent) => {
-      if (!inside(e.target)) {
+      if (!inside(e.target) && !holdsPanel(e.target)) {
         dismiss(false)
       }
     }
