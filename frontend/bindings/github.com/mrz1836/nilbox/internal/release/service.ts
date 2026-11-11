@@ -17,20 +17,23 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
- * Candidates returns the repositories the Release page lists. It serves the last list
- * while it is under five minutes old and was read from the clone root as set now, unless
- * refresh is set; otherwise it asks GitHub, in two rounds of batched queries, reads the
- * unreleased clones' state, and emits event.ReleasesUpdated, telling the window how far
- * it has got meanwhile (event.ReleasesProgress). A refresh that fails keeps the last list,
- * with its error, until one succeeds, and fails only when there is none.
+ * Candidates returns the repositories the Release page lists. It serves the last list,
+ * however old, while it is current and was read from the clone root as set now, unless
+ * refresh is set: the whole list is read again only when the user asks (Read GitHub
+ * again), none was read yet, the clone root changed, or the list went out of date
+ * (outOfDate). Otherwise it asks GitHub, in two rounds of batched queries, reads the
+ * unreleased clones' state, and emits event.ReleasesUpdated, telling the window how far it
+ * has got meanwhile (event.ReleasesProgress). A refresh that fails keeps the last list,
+ * with its error, until the user reads it again, and fails only when there is none.
  *
  * After a restart, the list kept from the last start, when it was read from the clone
  * root as set now, is served at once, marked Kept and Refreshing, while the Refresher
  * reads GitHub again behind the page; without the Refresher, the call waits for GitHub.
  *
- * A release that ends needn't put the list out of date: while the Refresher runs, it reads
- * the released repository alone again and patches its rows into the list, which stays as
- * fresh as it was (queuePatch). Meanwhile the list is served as it was, marked Refreshing.
+ * A release that ends, or a pull request merged in the review sheet, changes one
+ * repository's rows alone: while the Refresher runs, it reads that repository alone again
+ * and patches its rows into the list, which stays as current as it was (queuePatch,
+ * queueMerged). Meanwhile the list is served as it was, marked Refreshing.
  */
 export function Candidates(refresh: boolean): $CancellablePromise<$models.Candidates> {
     return $Call.ByID(1671334015, refresh);

@@ -499,7 +499,7 @@ export const {
   QuitAnyway: quitAnyway,
 } = narrow(scriptrun.Service)
 
-// Releases: the repositories the Release page lists (kept five minutes unless refresh
+// Releases: the repositories the Release page lists (kept however old unless refresh
 // is set; "releases:progress" events say how far a read of GitHub has got, and a
 // "releases:updated" event follows each new list; after a restart, the list kept from the
 // last start comes at once, marked kept, while it is read again behind it), a release's sheet as Decide
