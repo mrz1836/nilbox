@@ -158,7 +158,7 @@ func TestMigrateFreshDatabase(t *testing.T) {
 	assert.Equal(t, []string{
 		"accounts", "agent_profiles", "agent_sessions", "item_details", "item_files", "item_local_state", "items",
 		"launch_defaults", "notifications", "prefs", "prompts", "rate_snapshots", "repos", "review_diff_files",
-		"review_diffs", "schema_migrations", "script_runs", "tool_installs",
+		"review_diffs", "schema_migrations", "script_runs", "script_trust", "tool_installs", "user_scripts",
 		"worktree_cleanups", "worktree_records",
 	}, tables(t, db))
 

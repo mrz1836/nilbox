@@ -336,13 +336,15 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
 }
 
 // integrationsConfig is how a fresh database sets the integrations up: every switch
-// automatic, no copy of a tool chosen, runs in the app, and a merge offering a release.
+// automatic, no copy of a tool chosen, runs in the app, a merge offering a release, and
+// Repo scripts listing every source.
 export function integrationsConfig(overrides: Partial<IntegrationsConfig> = {}): IntegrationsConfig {
   return {
     switches: { 'mage-x': 'auto', 'go-pre-commit': 'auto', scripts: 'auto' },
     paths: { 'mage-x': '', 'go-pre-commit': '' },
     runsIn: 'app',
     offerAfterMerge: true,
+    scriptSources: { magexTargets: true, repoFiles: true },
     ...overrides,
   }
 }

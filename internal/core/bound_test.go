@@ -290,6 +290,22 @@ func boundCalls(t *testing.T) map[string]boundCall {
 
 			return got, err
 		},
+		"settings.Service.SetScriptSources": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetScriptSources(ctx, true, true)
+		},
+		"scripts.Service.Repos": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			got, err := c.Scripts.Repos(ctx)
+			require.Len(t, got, 1)
+
+			return got, err
+		},
+		"scripts.Service.List": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			got, err := c.Scripts.List(ctx, "~/projects/example-repo")
+			require.Len(t, got.Sections, 4)
+			require.Len(t, got.Sections[1].Entries, 1, "the clone's t3.json")
+
+			return got, err
+		},
 		"hooks.Service.Repos": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			got, err := c.Hooks.Repos(ctx, false)
 			require.Len(t, got.Repos, 1, "the clone with a config, which the fake git can't read")
@@ -442,6 +458,8 @@ func seedBound(t *testing.T) (*Core, seededItems) {
 		"projects/example-repo/.claude/worktrees/scratch")
 	// A go-pre-commit config, so the Hooks page lists the clone.
 	testutil.WriteFile(t, filepath.Join(repo, ".github", ".env.base"), "ENABLE_GO_PRE_COMMIT=true\n")
+	// A t3.json, so Repo scripts lists a script.
+	testutil.WriteFile(t, filepath.Join(repo, "t3.json"), `{"scripts": [{"name": "Test", "command": "magex test"}]}`)
 
 	c := bootstrap(t, Options{
 		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),

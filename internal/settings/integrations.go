@@ -11,6 +11,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/paths"
+	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -81,6 +82,20 @@ func (s *Service) SetRunsIn(ctx context.Context, place integrationprefs.RunsIn) 
 // review sheet asks Release whether to offer as each merge lands.
 func (s *Service) SetOfferAfterMerge(ctx context.Context, on bool) (Settings, error) {
 	return s.save(ctx, setting(integrationprefs.KeyOfferAfterMerge, integrationprefs.EncodeOfferAfterMerge(on)))
+}
+
+// SetScriptSources stores which sources Repo scripts lists besides the user's own scripts,
+// magex's targets and the commands in a repository's own files (t3.json and
+// .vscode/tasks.json), and returns the settings with them. Nothing else hears of it: Repo
+// scripts reads the setting as it lists a repository's scripts.
+func (s *Service) SetScriptSources(ctx context.Context, magexTargets, repoFiles bool) (Settings, error) {
+	return s.save(ctx, func(ctx context.Context, p *prefs.Store) error {
+		if err := p.Set(ctx, integrationprefs.KeyMagexTargets, integrationprefs.EncodeOn(magexTargets)); err != nil {
+			return err
+		}
+
+		return p.Set(ctx, integrationprefs.KeyRepoFiles, integrationprefs.EncodeOn(repoFiles))
+	})
 }
 
 // toolPath expands a ~ in path and checks that it names an executable file, worded for

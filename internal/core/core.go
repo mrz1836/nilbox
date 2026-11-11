@@ -44,6 +44,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/release"
 	"github.com/mrz1836/nilbox/internal/review"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
+	"github.com/mrz1836/nilbox/internal/scripts"
 	"github.com/mrz1836/nilbox/internal/sessions"
 	"github.com/mrz1836/nilbox/internal/sessions/observe/claude"
 	"github.com/mrz1836/nilbox/internal/sessions/observe/codex"
@@ -133,6 +134,7 @@ type Core struct {
 	ScriptRuns     *scriptrun.Service
 	Release        *release.Service
 	Hooks          *hooks.Service
+	Scripts        *scripts.Service
 
 	// ShellSettings are the settings the desktop shell reads when the app launches. They
 	// are not bound.
@@ -259,7 +261,7 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 func (c *Core) Services() []any {
 	return []any{
 		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.Notifications,
-		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Integrations, c.ScriptRuns, c.Release, c.Hooks,
+		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Integrations, c.ScriptRuns, c.Release, c.Hooks, c.Scripts,
 	}
 }
 
@@ -510,10 +512,12 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	// A release left from before a restart is read and verified as one started now.
 	runs.RegisterVerifier(scriptrun.KindRelease, release.NewVerifier(releases))
 
-	hookPage := newHooks(pool, opts, logger, hookDeps{
+	deps := hookDeps{
 		settings: prefs, tools: tools, git: releaseGit, runner: runner, clones: clones, runs: runs, history: scriptRuns,
 		shellEnv: shellEnv, terminal: terminals,
-	})
+	}
+	hookPage := newHooks(pool, opts, logger, deps)
+	repoScripts := newScripts(pool, opts, logger, deps, inboxStore)
 
 	return &Core{
 		DB:       pool,
@@ -570,6 +574,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Release:          releases,
 		ReleaseRefresher: release.NewRefresher(releases),
 		Hooks:            hookPage,
+		Scripts:          repoScripts,
 		tokens:           tokens,
 		BudgetSaver:      budget.NewSaver(tracker, keeper, logger),
 		client:           client,
@@ -605,8 +610,8 @@ func newRuns(
 	})
 }
 
-// hookDeps are the services and building blocks the Hooks page shares with the rest of
-// the app.
+// hookDeps are the services and building blocks the Hooks page and Repo scripts share with
+// the rest of the app.
 type hookDeps struct {
 	settings *settings.Service
 	tools    *integrations.Service
@@ -643,6 +648,30 @@ func newHooks(pool *sql.DB, opts Options, logger *slog.Logger, deps hookDeps) *h
 	rerun := hooks.NewRerunner(svc)
 	deps.runs.RegisterRerunner(scriptrun.KindHooks, rerun)
 	deps.runs.RegisterRerunner(scriptrun.KindChecks, rerun)
+
+	return svc
+}
+
+// newScripts builds Repo scripts' service over the same clones, read-only git, runner, and
+// shell environment as the Hooks page's: magex as the integrations found it, the settings'
+// sources and where runs go, the default branches the inbox stored, and the trusted
+// commands in script_trust. Run again works a script out afresh through its Rerunner.
+func newScripts(pool *sql.DB, opts Options, logger *slog.Logger, deps hookDeps, branches scripts.DefaultBranches,
+) *scripts.Service {
+	var runner func([]string, string) execpath.Runner
+
+	if opts.Runner != nil {
+		runner = func([]string, string) execpath.Runner { return opts.Runner }
+	}
+
+	svc := scripts.NewService(scripts.Config{
+		Clones: hooksClones{settings: deps.settings, home: opts.Home, git: deps.runner}, Git: deps.git,
+		Branches: branches, Tools: scriptsTool{tools: deps.tools}, Settings: integrationSettings{settings: deps.settings},
+		Runs: deps.runs, History: deps.history, DB: pool, Env: deps.shellEnv.Env, Shell: deps.shellEnv.Shell,
+		Runner: runner, Home: opts.Home, Clock: opts.Clock, Logger: logger,
+	})
+
+	deps.runs.RegisterRerunner(scriptrun.KindScript, scripts.NewRerunner(svc))
 
 	return svc
 }

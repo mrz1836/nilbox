@@ -8,5 +8,6 @@ export {
 } from "./models.js";
 
 export type {
-    Config
+    Config,
+    ScriptSources
 } from "./models.js";

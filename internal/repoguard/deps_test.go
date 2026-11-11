@@ -124,6 +124,13 @@ func boundaries() []boundary {
 				"and its preferences through Memory, which core adapts; it starts runs through scriptrun, never the reverse",
 		},
 		{
+			pkg: "internal/scripts",
+			forbidden: append(slices.Clone(services), "internal/release", "internal/hooks", "internal/launcher",
+				"internal/desktop"),
+			why: "scripts reads the clones through its own Clones and Git, magex through its ToolSource, and the " +
+				"settings through Settings, which core adapts; it starts runs through scriptrun, never the reverse",
+		},
+		{
 			pkg:       "internal/shellenv",
 			forbidden: noService,
 			why:       "shellenv reads the login shell's environment for whatever runs tools; it knows no service",

@@ -109,6 +109,7 @@ func TestPrefDefaults(t *testing.T) {
 			Paths:           map[integrationprefs.ID]string{integrationprefs.MageX: "", integrationprefs.GoPreCommit: ""},
 			RunsIn:          integrationprefs.RunsInApp,
 			OfferAfterMerge: true,
+			ScriptSources:   integrationprefs.ScriptSources{MagexTargets: true, RepoFiles: true},
 		},
 
 		DefaultProtectedBranches: []string{"main", "master"},
@@ -237,6 +238,7 @@ func TestSettersPersist(t *testing.T) {
 	require.NoError(t, os.Chmod(magex, 0o700)) //nolint:gosec // a fake tool must be executable
 	require.NoError(t, testutil.ErrOf(svc.SetIntegrationEnabled(t.Context(), integrationprefs.GoPreCommit, integrationprefs.SwitchOff)))
 	require.NoError(t, testutil.ErrOf(svc.SetIntegrationPath(t.Context(), integrationprefs.MageX, "~/bin/magex")))
+	require.NoError(t, testutil.ErrOf(svc.SetScriptSources(t.Context(), false, true)))
 
 	got, err := svc.Get(t.Context())
 	require.NoError(t, err)
@@ -272,6 +274,7 @@ func TestSettersPersist(t *testing.T) {
 			Paths:           map[integrationprefs.ID]string{integrationprefs.MageX: magex, integrationprefs.GoPreCommit: ""},
 			RunsIn:          integrationprefs.RunsInApp,
 			OfferAfterMerge: true,
+			ScriptSources:   integrationprefs.ScriptSources{MagexTargets: false, RepoFiles: true},
 		},
 
 		DefaultProtectedBranches: branchrules.DefaultProtected(),

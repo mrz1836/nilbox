@@ -34,6 +34,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/release"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
+	"github.com/mrz1836/nilbox/internal/scripts"
 	"github.com/mrz1836/nilbox/internal/sessions"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -878,6 +879,44 @@ func (h hooksTool) HooksTool(ctx context.Context) hooks.ToolFacts {
 	}
 
 	return hooks.ToolFactsOf(def, integrations.Tool{}, false)
+}
+
+// scriptsTool reads what the integrations know of magex, for Repo scripts
+// (scripts.ToolSource). It never waits for a detection: List serves the last one.
+type scriptsTool struct {
+	tools *integrations.Service
+}
+
+// MagexTool returns magex's facts; a list that can't be read is a magex that's missing.
+func (s scriptsTool) MagexTool(ctx context.Context) scripts.ToolFacts {
+	def := integrations.MageX()
+
+	list, err := s.tools.List(ctx)
+	if err == nil {
+		for _, t := range list.Tools {
+			if t.ID == def.ID {
+				return scripts.ToolFactsOf(t)
+			}
+		}
+	}
+
+	return scripts.ToolFactsOf(integrations.Tool{})
+}
+
+// integrationSettings reads the integrations' settings for Repo scripts: which sources it
+// lists, and where runs go (scripts.Settings).
+type integrationSettings struct {
+	settings *settings.Service
+}
+
+// Integrations returns the integrations' settings.
+func (p integrationSettings) Integrations(ctx context.Context) (integrationprefs.Config, error) {
+	all, err := p.settings.Get(ctx)
+	if err != nil {
+		return integrationprefs.Config{}, err
+	}
+
+	return all.Integrations, nil
 }
 
 // hooksSettings reads where runs go for the Hooks page (hooks.Places).

@@ -26,6 +26,11 @@ export interface Config {
      * release its repository, when Release can.
      */
     "offerAfterMerge": boolean;
+
+    /**
+     * ScriptSources are the sources Repo scripts lists.
+     */
+    "scriptSources": ScriptSources;
 }
 
 /**
@@ -78,6 +83,15 @@ export const RunsIn = {
      */
     RunsInTerminal: "terminal",
 } as const;
+
+/**
+ * ScriptSources are the sources Repo scripts lists besides the user's own scripts: magex's
+ * targets, and the commands in a repository's own files. Both start on.
+ */
+export interface ScriptSources {
+    "magexTargets": boolean;
+    "repoFiles": boolean;
+}
 
 /**
  * Switch is how the user set an integration: automatic, on, or off.

@@ -244,6 +244,16 @@ export function SetRunsIn(place: integrationprefs$0.RunsIn): $CancellablePromise
 }
 
 /**
+ * SetScriptSources stores which sources Repo scripts lists besides the user's own scripts,
+ * magex's targets and the commands in a repository's own files (t3.json and
+ * .vscode/tasks.json), and returns the settings with them. Nothing else hears of it: Repo
+ * scripts reads the setting as it lists a repository's scripts.
+ */
+export function SetScriptSources(magexTargets: boolean, repoFiles: boolean): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(2421221448, magexTargets, repoFiles);
+}
+
+/**
  * SetSectionCollapsed stores whether an inbox section is collapsed, so the inbox opens the
  * same way at the next launch, and returns the settings with it.
  */
