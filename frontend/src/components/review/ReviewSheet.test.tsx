@@ -315,6 +315,8 @@ describe('ReviewSheet', () => {
 
     await userEvent.click(await actionButton('Squash-merge'))
     const dialog = screen.getByRole('dialog', { name: 'Merge #7 into main?' })
+    // The confirmation says it too.
+    expect(within(dialog).getByText('Your text is posted as a comment first.')).toBeInTheDocument()
     await userEvent.click(within(dialog).getByRole('button', { name: 'Squash-merge' }))
 
     await waitFor(() => {
@@ -346,6 +348,9 @@ describe('ReviewSheet', () => {
     expect(await actionButton('Squash-merge')).toBeEnabled()
 
     await userEvent.click(await actionButton('Squash-merge'))
+    expect(
+      within(screen.getByRole('dialog', { name: 'Merge #7 into main?' })).queryByText(/posted as a comment first/),
+    ).not.toBeInTheDocument()
     await userEvent.click(
       within(screen.getByRole('dialog', { name: 'Merge #7 into main?' })).getByRole('button', { name: 'Squash-merge' }),
     )

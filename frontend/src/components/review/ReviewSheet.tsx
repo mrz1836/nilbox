@@ -27,7 +27,7 @@ import { AgentVerdict } from './AgentVerdict'
 import { DiffView } from './DiffView'
 import { FileList } from './FileList'
 import { MergeConfirmDialog } from './MergeConfirmDialog'
-import { needsText, ReviewComposer, useReplyBody } from './ReviewComposer'
+import { commentFirst, needsText, ReviewComposer, useReplyBody } from './ReviewComposer'
 import { ReviewHeader } from './ReviewHeader'
 import { DescriptionSkeleton, DiffSkeleton, FileListSkeleton, ReadingBanner, SummarySkeleton } from './ReviewLoading'
 import { Readiness, ReviewSummary } from './ReviewSummary'
@@ -426,6 +426,7 @@ export function ReviewSheet({
         <MergeConfirmDialog
           review={review}
           offer={confirming}
+          comment={commentFirst(confirming.action, reply.body, draft.comments.length)}
           onCancel={() => {
             setConfirming(null)
           }}
