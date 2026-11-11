@@ -277,12 +277,14 @@ export interface Offer {
     "reason": string;
 
     /**
-     * Confirm reports an action that asks the user to confirm first: every merge.
+     * Confirm reports an action that asks the user to confirm first: every merge, and every
+     * action with warnings, such as an update of Dependabot's branch.
      */
     "confirm": boolean;
 
     /**
-     * Warnings are what the user must accept before the action runs.
+     * Warnings are what the user must accept before the action runs: Act refuses it unless
+     * the request accepts them.
      */
     "warnings": string[] | null;
 
@@ -597,7 +599,9 @@ export interface Review {
     "readiness": Readiness;
 
     /**
-     * Offers are the actions the sheet offers, and Primary the one its button runs.
+     * Offers are the actions the sheet offers, and Primary the one its button runs, or
+     * ActionNone, when the button runs nothing: it only opens the menu while any offer is
+     * enabled, such as a write to the branch that is never the button on its own.
      */
     "offers": Offer[] | null;
     "primary": Action;

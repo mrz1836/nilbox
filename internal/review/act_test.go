@@ -641,6 +641,111 @@ func TestAskDependabotToRebase(t *testing.T) {
 	require.ErrorIs(t, err, errGateShut)
 }
 
+// keepUpHarness is a harness whose pull request the sheet has read in merge state status,
+// opened by Dependabot or someone else, which the user may update or not.
+func keepUpHarness(t *testing.T, status string, bot, canUpdate bool) *harness {
+	t.Helper()
+
+	h := newHarness(t)
+	if bot {
+		h.inbox.pull.AuthorLogin, h.inbox.pull.AuthorType = "dependabot", "Bot"
+	}
+
+	h.github.review = pullReview(headA, status)
+	h.github.review.ViewerCanUpdateBranch = canUpdate
+	h.refreshed(t)
+
+	return h
+}
+
+func TestActDecidesAgainOnARebaseOrAnUpdateWheneverTheyApply(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Dependabot asked to rebase a branch behind its base in any merge state", func(t *testing.T) {
+		t.Parallel()
+
+		for _, status := range []string{
+			github.MergeStateBlocked, github.MergeStateClean, github.MergeStateUnstable, github.MergeStateBehind,
+			github.MergeStateDirty,
+		} {
+			// GitHub can't update a branch with conflicts, which the rebase resolves.
+			h := keepUpHarness(t, status, true, status != github.MergeStateDirty)
+
+			res := h.act(t, ActRequest{Action: ActionRebaseBot})
+			assert.Equal(t, OutcomeAskedBot, res.Outcome, status)
+			assert.Equal(t, []string{callComment}, h.github.requests(), status)
+			assert.Equal(t, []string{"@dependabot rebase"}, h.github.comments, status)
+		}
+	})
+
+	for _, c := range []struct {
+		name, words string
+		edit        func(h *harness)
+	}{
+		{"never someone else's pull request", "isn't something the sheet can do", func(h *harness) {
+			h.inbox.pull.AuthorLogin, h.inbox.pull.AuthorType = octoOther, "User"
+		}},
+		{"nor a branch up to date", "nothing to rebase", func(h *harness) {
+			h.github.review.ViewerCanUpdateBranch = false
+		}},
+		{"nor for a user without push access", "push access", func(h *harness) {
+			h.inbox.pull.ViewerPermission = "TRIAGE"
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := newHarness(t)
+			h.inbox.pull.AuthorLogin, h.inbox.pull.AuthorType = "dependabot", "Bot"
+			h.github.review = pullReview(headA, github.MergeStateBlocked)
+			h.github.review.ViewerCanUpdateBranch = true
+			c.edit(h)
+			h.refreshed(t)
+
+			_, err := h.svc.Act(t.Context(), ActRequest{ItemID: pullID, Action: ActionRebaseBot, Head: headA})
+			require.ErrorIs(t, err, ErrNotOffered)
+			assert.Contains(t, uierr.Message(err), c.words)
+			assert.Zero(t, h.inbox.acts, "nothing was sent")
+		})
+	}
+
+	t.Run("a branch behind a base the rules don't mind is updated", func(t *testing.T) {
+		t.Parallel()
+
+		h := keepUpHarness(t, github.MergeStateBlocked, false, true)
+
+		res := h.act(t, ActRequest{Action: ActionUpdateBranch})
+		assert.Equal(t, OutcomeBranchUpdating, res.Outcome)
+		assert.Equal(t, []string{callUpdate}, h.github.requests())
+	})
+
+	t.Run("an update GitHub doesn't let the user make", func(t *testing.T) {
+		t.Parallel()
+
+		h := keepUpHarness(t, github.MergeStateBlocked, false, false)
+
+		_, err := h.svc.Act(t.Context(), ActRequest{ItemID: pullID, Action: ActionUpdateBranch, Head: headA})
+		require.ErrorIs(t, err, ErrNotOffered)
+		assert.Zero(t, h.inbox.acts, "nothing was sent")
+	})
+
+	t.Run("Dependabot's branch is updated once the warning is accepted", func(t *testing.T) {
+		t.Parallel()
+
+		h := keepUpHarness(t, github.MergeStateBlocked, true, true)
+
+		_, err := h.svc.Act(t.Context(), ActRequest{ItemID: pullID, Action: ActionUpdateBranch, Head: headA})
+		require.ErrorIs(t, err, ErrWarningsNotAccepted)
+		assert.Equal(t, "Accept the warnings first.", uierr.Message(err))
+		assert.Zero(t, h.inbox.acts, "nothing was sent")
+
+		res := h.act(t, ActRequest{Action: ActionUpdateBranch, Accept: true})
+		assert.Equal(t, OutcomeBranchUpdating, res.Outcome)
+		assert.Equal(t, []string{callUpdate}, h.github.requests())
+		assert.Empty(t, h.github.comments, "Dependabot isn't asked as well")
+	})
+}
+
 func TestTheSheetReadsAgainAfterAnAction(t *testing.T) {
 	t.Parallel()
 

@@ -473,7 +473,8 @@ func (h *harness) refreshed(t *testing.T) Review {
 	return r
 }
 
-// pullReview is what GitHub says about #7 at head in merge state status.
+// pullReview is what GitHub says about #7 at head in merge state status, which the user may
+// update while it is behind.
 func pullReview(head, status string) *github.PullReview {
 	return &github.PullReview{
 		Update: github.ItemUpdate{
@@ -485,7 +486,7 @@ func pullReview(head, status string) *github.PullReview {
 			Details: github.ItemDetails{HeadOID: head},
 		},
 		Body: "Adds a cache.\n\n![chart](https://example.com/x.png)", BaseRef: "main", MergeState: status,
-		ViewerCanEnableAutoMerge: true, ViewerCanUpdateBranch: true,
+		ViewerCanEnableAutoMerge: true, ViewerCanUpdateBranch: status == github.MergeStateBehind,
 		Reviews: []github.Review{{Author: "octo-reviewer", State: "APPROVED", Commit: headB, SubmittedAt: testNow}},
 		Checks: []github.Check{
 			{Kind: github.CheckKindRun, Name: "test", State: "SUCCESS", Outcome: github.CheckPassed, Required: true},
