@@ -118,6 +118,8 @@ func TestRefreshItemTakesAnItemThatIsNoLongerOpenOutOfTheLists(t *testing.T) {
 			assert.Equal(t, []int{2}, numbers(snap.ReviewRequested))
 			assert.Empty(t, snap.Assigned.Items)
 			assert.Equal(t, [3]bool{false, false, false}, h.reasons(t, 1))
+			assert.Equal(t, 1, snap.ReviewRequested.Total, "counted out of each list it left, so the list reads 1, not 1 of 2")
+			assert.Equal(t, 0, snap.Assigned.Total)
 			assert.Equal(t, 4970, snap.Rate.GraphQL.Remaining)
 		})
 	}
@@ -157,7 +159,8 @@ func TestARefreshDoesNotBringBackAnItemMergedSinceIndexed(t *testing.T) {
 
 	assert.Equal(t, []int{2}, numbers(snap.ReviewRequested))
 	assert.Empty(t, snap.Assigned.Items)
-	assert.Equal(t, 2, snap.ReviewRequested.Total, "totals stay as GitHub counted them")
+	assert.Equal(t, 1, snap.ReviewRequested.Total, "the merged item is counted out of GitHub's count, so the list reads 1, not 1 of 2")
+	assert.Equal(t, 0, snap.Assigned.Total)
 	assert.Equal(t, [][]string{{nodeID(2)}}, h.client.detailsIDs, "nothing is asked about the merged item")
 }
 
@@ -300,7 +303,9 @@ func TestDropClosed(t *testing.T) {
 	assert.Equal(t, []github.Item{open}, inbox.ReviewRequested.Items)
 	assert.Equal(t, []github.Item{unknown}, inbox.Authored.Items, "an item whose state is unknown stays")
 	assert.Equal(t, []github.Item{open}, inbox.Assigned.Items)
-	assert.Equal(t, 2, inbox.ReviewRequested.IssueCount, "totals stay as GitHub counted them")
+	assert.Equal(t, 1, inbox.ReviewRequested.IssueCount, "a closed item is counted out of GitHub's count")
+	assert.Equal(t, 1, inbox.Authored.IssueCount, "and only a closed one")
+	assert.Equal(t, 1, inbox.Assigned.IssueCount)
 }
 
 func TestRefreshItemThatCannotBeSavedKeepsTheItem(t *testing.T) {
