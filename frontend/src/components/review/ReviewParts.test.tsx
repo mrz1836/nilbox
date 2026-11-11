@@ -8,6 +8,7 @@ import { at } from '../../test/clock'
 import {
   agentSession,
   agents,
+  closeOffer,
   fileCheck,
   item,
   itemResolution,
@@ -23,7 +24,15 @@ import { AgentVerdict } from './AgentVerdict'
 import { DiffView } from './DiffView'
 import { LineComment } from './LineComment'
 import { MergeConfirmDialog, merges, mergeVerb } from './MergeConfirmDialog'
-import { commentFirst, heldBack, needsText, ReviewComposer, replyActionOf, sendsText } from './ReviewComposer'
+import {
+  commentFirst,
+  heldBack,
+  needsText,
+  ReviewComposer,
+  replyActionOf,
+  sendsText,
+  startsFromReply,
+} from './ReviewComposer'
 import { ReviewHeader } from './ReviewHeader'
 import { areasText, checksSummary, Readiness, ReviewSummary } from './ReviewSummary'
 
@@ -214,7 +223,7 @@ describe('MergeConfirmDialog', () => {
       expect(merges(a)).toBe(true)
     }
 
-    for (const a of ['approve', 'comment', 'request_changes', 'update_branch', 'rebase_bot', ''] as const) {
+    for (const a of ['approve', 'comment', 'request_changes', 'update_branch', 'rebase_bot', 'close', ''] as const) {
       expect(merges(a)).toBe(false)
     }
   })
@@ -506,6 +515,12 @@ describe('ReviewComposer helpers', () => {
     expect(replyActionOf('request_changes')).toBe('request_changes')
     expect(replyActionOf('comment')).toBe('comment')
     expect(replyActionOf('merge_now')).toBe('approve')
+    // A close posts its text as a comment, and starts with none.
+    expect(replyActionOf('close')).toBe('comment')
+    expect(startsFromReply('close')).toBe(false)
+    expect(startsFromReply('merge_now')).toBe(true)
+    expect(startsFromReply('comment')).toBe(true)
+    expect(needsText('close', '', 0)).toBe('')
     expect(needsText('comment', ' ', 0)).not.toBe('')
     expect(needsText('comment', '', 1)).toBe('')
     expect(needsText('approve', '', 0)).toBe('')
@@ -542,6 +557,12 @@ describe('ReviewComposer helpers', () => {
     expect(commentFirst(blocked, '', 1)).toBe('You have a review started on GitHub. Or clear your text.')
     expect(heldBack(blocked, ' ', 0)).toBe('')
     expect(heldBack(mergeOffer(), 'Thanks!', 0)).toBe('')
+    // A close goes by the same marks.
+    const closing = closeOffer({ commentBlocked: 'You have a review started on GitHub. Or clear your text.' })
+    expect(heldBack(closing, 'Superseded.', 0)).toBe('You have a review started on GitHub. Or clear your text.')
+    expect(heldBack(closing, '', 0)).toBe('')
+    expect(commentFirst(closeOffer(), 'Superseded.', 0)).toBe('Your text is posted as a comment first.')
+    expect(sendsText(closeOffer())).toBe(true)
     expect(heldBack(offer({ action: 'comment' }), '\uFEFF', 0)).toBe('Write something, or add a line comment, first.')
     expect(heldBack(undefined, '', 0)).toBe('')
   })

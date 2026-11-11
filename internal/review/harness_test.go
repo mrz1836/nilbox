@@ -142,7 +142,7 @@ func (f *fakeInbox) Act(
 		tries++
 	}
 
-	if f.recordErr != nil && (acted.Reviewed || acted.Merged) {
+	if f.recordErr != nil && (acted.Reviewed || acted.Merged || acted.Closed) {
 		err = errors.Join(err, uierr.New(
 			"GitHub made the change, but the inbox could not record it. The next refresh catches it up.", f.recordErr,
 		))
@@ -174,6 +174,7 @@ const (
 	callAuto    = "auto"
 	callUpdate  = "update"
 	callComment = "comment"
+	callClose   = "close"
 )
 
 // fakeGitHub answers the sheet's requests and counts them.
@@ -196,6 +197,8 @@ type fakeGitHub struct {
 	autoErr    error
 	updateErr  error
 	commentErr error
+	closeErr   error
+	closeOnce  error
 
 	calls map[string]int
 	// order names every request, in the order they came.
@@ -354,6 +357,26 @@ func (g *fakeGitHub) AddComment(_ context.Context, _ github.Token, _ item.Ref, b
 	g.comments = append(g.comments, body)
 
 	return &github.Comment{ID: 1}, nil
+}
+
+func (g *fakeGitHub) ClosePull(context.Context, github.Token, item.Ref) (*github.Closed, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.count(callClose)
+
+	if g.closeOnce != nil {
+		err := g.closeOnce
+		g.closeOnce = nil
+
+		return nil, err
+	}
+
+	if g.closeErr != nil {
+		return nil, g.closeErr
+	}
+
+	return &github.Closed{ClosedAt: testNow}, nil
 }
 
 func (g *fakeGitHub) count(name string) {

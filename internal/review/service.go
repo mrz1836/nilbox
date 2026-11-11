@@ -1,7 +1,7 @@
 // Package review is the review sheet: it shows one pull request (what it changes, its
 // description, checks, reviews, and what it still needs to merge) and acts on it at the
 // user's click: approve, request changes, comment, merge, turn on auto-merge, update the
-// branch, or ask Dependabot to rebase.
+// branch, ask Dependabot to rebase, or close it.
 //
 // Open shows what the sheet read before, from its own cache, with no request; Refresh
 // reads the pull request again with one GraphQL request, and its files only when it was
@@ -137,6 +137,7 @@ type Acted struct {
 	Reviewed   bool
 	ReviewedAt time.Time
 	Merged     bool
+	Closed     bool
 }
 
 // PullRead is what a read found. Its fields match inbox.PullRead's.
@@ -166,6 +167,7 @@ type GitHub interface {
 	) (*github.AutoMerge, error)
 	UpdateBranch(ctx context.Context, tok github.Token, ref item.Ref, expectedHead string) (*github.BranchUpdate, error)
 	AddComment(ctx context.Context, tok github.Token, ref item.Ref, body string) (*github.Comment, error)
+	ClosePull(ctx context.Context, tok github.Token, ref item.Ref) (*github.Closed, error)
 }
 
 // Settings reads the settings the sheet follows: how to merge, and which files are
@@ -595,6 +597,7 @@ func patchOf(f cachedFile, patches map[int]string) (string, PatchState) {
 func factsOf(pull StoredPull, c *cached, r Review) Facts {
 	f := Facts{
 		Mine: r.Mine, Draft: pull.IsDraft, CanWrite: canWrite(pull.ViewerPermission),
+		CanClose:       r.Mine || canClose(pull.ViewerPermission),
 		Dependabot:     r.IsBot && strings.HasPrefix(strings.ToLower(pull.AuthorLogin), "dependabot"),
 		ReviewRequired: pull.ReviewDecision == "REVIEW_REQUIRED", ChangesRequested: pull.ReviewDecision == "CHANGES_REQUESTED",
 		Base: r.BaseRef, Methods: methodsOf(pull), ViewerMethod: MergeMethod(pull.ViewerMergeMethod),
@@ -649,6 +652,11 @@ func canWrite(permission string) bool {
 	default:
 		return false
 	}
+}
+
+// canClose reports triage access or more, which lets a user close anyone's pull request.
+func canClose(permission string) bool {
+	return permission == "TRIAGE" || canWrite(permission)
 }
 
 // methodsOf lists the merge methods the repository allows, in GitHub's order.

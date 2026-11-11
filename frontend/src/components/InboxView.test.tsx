@@ -12,7 +12,7 @@ import { useInboxOrder } from '../lib/useInboxOrder'
 import { useReviewDrafts } from '../lib/reviewDrafts'
 import { ClockContext } from '../lib/useNow'
 import { useTriage } from '../lib/useTriage'
-import type { AfterMerge, InboxSnapshot, ListKey } from '../platform'
+import type { AfterMerge, InboxSnapshot, ListKey, ReviewResult } from '../platform'
 import { clockAt, FIXED_NOW, fixedNow, fromNow } from '../test/clock'
 import {
   afterMerge,
@@ -1574,6 +1574,66 @@ describe('InboxView review sheet', () => {
     ).toBeInTheDocument()
     expect(toast.querySelector('.text-warning')).not.toBeNull()
     expect(platform.offerReleaseAfterMerge).not.toHaveBeenCalled()
+  })
+
+  describe('after a close', () => {
+    // close closes the inbox's pull request from the review sheet, with result, and returns
+    // the toast that reports it.
+    async function close(result: ReviewResult) {
+      platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([item()]) }))
+      platform.actOnReview.mockResolvedValue(result)
+      render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Add the widget cache' }))
+
+      const sheet = await screen.findByRole('dialog', { name: 'Add the widget cache' })
+
+      await userEvent.click(await within(sheet).findByRole('button', { name: 'More review actions' }))
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Close pull request' }))
+      await userEvent.click(await within(sheet).findByRole('button', { name: 'Close pull request…' }))
+      await userEvent.click(
+        within(screen.getByRole('dialog', { name: 'Close #7 without merging it?' })).getByRole('button', {
+          name: 'Close pull request',
+        }),
+      )
+
+      return screen.findByRole('group', { name: 'Notification' })
+    }
+
+    it('says it closed, and offers no release', async () => {
+      const toast = await close(
+        reviewResult({
+          outcome: 'closed',
+          message: 'Closed acme-org/example-repo#7',
+          steps: ['Closed'],
+          leftInbox: true,
+        }),
+      )
+
+      expect(within(toast).getByText('Closed acme-org/example-repo#7')).toBeInTheDocument()
+      expect(toast.querySelector('.text-warning')).toBeNull()
+      expect(screen.queryByRole('dialog', { name: 'Add the widget cache' })).not.toBeInTheDocument()
+      expect(platform.offerReleaseAfterMerge).not.toHaveBeenCalled()
+    })
+
+    it('says its comment was posted when GitHub didn’t close it, as a warning', async () => {
+      const toast = await close(
+        reviewResult({
+          outcome: 'commented_not_closed',
+          message: 'Commented on acme-org/example-repo#7, but it wasn’t closed: GitHub refused the change',
+          reason: 'GitHub refused the change',
+          steps: ['Commented'],
+          commented: true,
+        }),
+      )
+
+      expect(
+        within(toast).getByText(
+          'Commented on acme-org/example-repo#7, but it wasn’t closed: GitHub refused the change',
+        ),
+      ).toBeInTheDocument()
+      expect(toast.querySelector('.text-warning')).not.toBeNull()
+    })
   })
 
   describe('after a merge', () => {

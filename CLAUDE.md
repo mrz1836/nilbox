@@ -264,9 +264,19 @@ app:lint` reads.
   auto-merge fallback, and `merge_bypass` still needs its rules accepted. A comment that fails
   merges nothing, and once one is posted nothing after it is an error: a merge GitHub won't make,
   or any failure, is `commented_not_merged`, a result whose words, like `Result.Commented`, say
-  the comment was posted, so the sheet drops the text and never posts it twice. It owns `review_diffs` and
+  the comment was posted, so the sheet drops the text and never posts it twice. A close
+  (`close`) is offered, enabled, on an open pull request to its author or anyone with triage
+  access or more (`Facts.CanClose`), never the button and always confirmed. GitHub takes no
+  head to pin a close to, so it reads the head first (`FetchMergeState`): one no longer open is
+  refused and one pushed to is `pushed_since`, with nothing sent. Then it posts the text and
+  line comments as a COMMENT review the same way, and closes with one REST `PATCH`
+  (`(*github.Client).ClosePull`). A comment that fails closes nothing, and a close that fails
+  after the comment is `commented_not_closed`. A merge or a close takes the pull request out of
+  every list (`Acted.Merged`, `Acted.Closed`) and drops its cache. The window starts a close's
+  text empty, never from a default reply. It owns `review_diffs` and
   `review_diff_files`, a bounded cache of the diffs it read (per pull request, in all, and by
-  age), pruned in the same transaction that writes. Nothing here lets an agent approve or merge.
+  age), pruned in the same transaction that writes. Nothing here lets an agent approve, merge,
+  or close.
 - `internal/bump/` reads a dependency update from a bot's pull request title (and Dependabot's
   commit trailer) into an `Update`, for the review sheet and the `.Dependency` prompt variables.
   It is pure and imports no service.

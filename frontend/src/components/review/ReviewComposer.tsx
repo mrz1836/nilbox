@@ -42,16 +42,24 @@ export interface ReviewComposerProps {
 }
 
 // replyActionOf is the review an action's text goes with, which decides the replies the
-// composer offers.
+// composer offers: a close posts its text as a comment.
 export function replyActionOf(action: ReviewAction): ReplyAction {
   switch (action) {
     case 'request_changes':
       return 'request_changes'
     case 'comment':
+    case 'close':
       return 'comment'
     default:
       return 'approve'
   }
+}
+
+// startsFromReply reports an action whose text starts from the default reply until the
+// user writes their own: every one but a close, which posts only what the user wrote or
+// picked, never words chosen for another review.
+export function startsFromReply(action: ReviewAction): boolean {
+  return action !== 'close'
 }
 
 // needsText says why an action is held back for want of text: a request for changes or a
@@ -65,16 +73,16 @@ export function needsText(action: ReviewAction, body: string, comments: number):
 }
 
 // sendsText reports an offer whose action sends the text and line comments, as the backend
-// marks it: one that submits a review of its own, or a merge that posts them as a comment
-// first.
+// marks it: one that submits a review of its own, or a merge or a close that posts them as
+// a comment first.
 export function sendsText(offer: ReviewOffer | undefined): boolean {
   return offer !== undefined && (offer.reviews || offer.commentsFirst)
 }
 
-// commentFirst says what a merge with no review of its own posts as a comment before it
-// merges, as the backend marks its offer, or '' when it posts nothing: clearing the text,
+// commentFirst says what a merge with no review of its own, or a close, posts as a comment
+// first, as the backend marks its offer, or '' when it posts nothing: clearing the text,
 // and the line comments, skips the comment. While GitHub can't take the comment, it says
-// why instead, and how to merge without it, which holds the button back too (heldBack).
+// why instead, and how to go ahead without it, which holds the button back too (heldBack).
 export function commentFirst(offer: ReviewOffer | undefined, body: string, comments: number): string {
   const text = body.trim() !== ''
 
@@ -90,7 +98,8 @@ export function commentFirst(offer: ReviewOffer | undefined, body: string, comme
 }
 
 // heldBack says why the window holds an offer's action back, or '': a request for changes
-// or a comment with nothing to say, or a merge whose comment GitHub can't take now.
+// or a comment with nothing to say, or a merge or a close whose comment GitHub can't take
+// now.
 export function heldBack(offer: ReviewOffer | undefined, body: string, comments: number): string {
   if (offer === undefined) {
     return ''
@@ -118,12 +127,12 @@ export interface ReplyBody {
 }
 
 // useReplyBody works out the review's text for the pull request with id, opened by a bot
-// or not, with the draft, for the action selected.
+// or not, with the draft, for the action selected. A close starts with no text.
 export function useReplyBody(id: number, isBot: boolean, draft: ReviewDraft, action: ReviewAction): ReplyBody {
   const replyAction = replyActionOf(action)
   const replies = useQuery(() => reviewReplies(replyAction), [replyAction])
   const list = replies.data
-  const fallback = list === undefined ? 0 : isBot ? list.defaultBots : list.default
+  const fallback = list === undefined || !startsFromReply(action) ? 0 : isBot ? list.defaultBots : list.default
   const filled = useQuery(() => fillReply(id, fallback), [id, fallback], { enabled: !draft.edited && fallback !== 0 })
   const body = draft.edited ? draft.body : fallback === 0 ? '' : (filled.data ?? '')
 

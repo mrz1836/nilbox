@@ -103,9 +103,14 @@ interface Reviewing {
 }
 
 // resultTone is how a review's outcome reads in the toast: a review GitHub took, an
-// approval or the comment a merge posted first, and a merge it didn't make is a warning.
+// approval or the comment a merge or a close posted first, and a merge or a close it
+// didn't make is a warning.
 function resultTone(result: ReviewResult): 'warning' | 'success' {
-  return result.outcome === 'approved_not_merged' || result.outcome === 'commented_not_merged' ? 'warning' : 'success'
+  return result.outcome === 'approved_not_merged' ||
+    result.outcome === 'commented_not_merged' ||
+    result.outcome === 'commented_not_closed'
+    ? 'warning'
+    : 'success'
 }
 
 const sections: readonly { key: ListKey; title: string }[] = [

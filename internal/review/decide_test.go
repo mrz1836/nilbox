@@ -218,8 +218,84 @@ func TestDecide(t *testing.T) {
 			assert.Equal(t, tt.primary, p.Primary)
 			assert.ElementsMatch(t, tt.enabled, enabled(p))
 			assert.Equal(t, tt.ready, p.Readiness.State)
+
+			// A user who may close it gets Close as well, in the menu: the button stays.
+			f := tt.facts()
+			f.CanClose = true
+			withClose := Decide(f, PrefRepo)
+			assert.Equal(t, tt.primary, withClose.Primary, "a close is never the button")
+
+			if f.Closed {
+				assert.Empty(t, withClose.Offers)
+
+				return
+			}
+
+			assert.ElementsMatch(t, append(slices.Clone(tt.enabled), ActionClose), enabled(withClose))
+			assert.Equal(t, ActionClose, withClose.Offers[len(withClose.Offers)-1].Action, "last in the menu")
 		})
 	}
+}
+
+func TestDecideOffersACloseToWhoeverMayClose(t *testing.T) {
+	t.Parallel()
+
+	f := facts(github.MergeStateClean)
+	f.CanClose = true
+
+	o, ok := Decide(f, PrefRepo).offer(ActionClose)
+	require.True(t, ok)
+	assert.Equal(t, Offer{
+		Action: ActionClose, Label: "Close pull request", Enabled: true, Confirm: true, Warnings: []string{},
+		CommentsFirst: true,
+	}, o, "it asks first, and posts the text first, as a comment")
+
+	// A draft, a merge queue, no merge method, and checks failing hold back no close.
+	f.Draft, f.MergeQueue, f.Methods, f.RequiredFailing, f.MergeState = true, true, nil, 1, ""
+	o, ok = Decide(f, PrefRepo).offer(ActionClose)
+	require.True(t, ok)
+	assert.True(t, o.Enabled)
+
+	f.CanClose = false
+	_, ok = Decide(f, PrefRepo).offer(ActionClose)
+	assert.False(t, ok, "never offered to a user GitHub doesn't let close it")
+
+	f.CanClose, f.Closed = true, true
+	_, ok = Decide(f, PrefRepo).offer(ActionClose)
+	assert.False(t, ok, "never offered once merged or closed")
+}
+
+func TestOnlyTheAuthorOrTriageAccessMayClose(t *testing.T) {
+	t.Parallel()
+
+	for permission, want := range map[string]bool{
+		"ADMIN": true, "MAINTAIN": true, "WRITE": true, "TRIAGE": true, "READ": false, "": false,
+	} {
+		pull := storedPull()
+		pull.ViewerPermission = permission
+
+		assert.Equal(t, want, factsOf(pull, nil, Review{State: github.StateOpen}).CanClose, permission)
+		assert.True(t, factsOf(pull, nil, Review{State: github.StateOpen, Mine: true}).CanClose,
+			"its author may close it, with %q access", permission)
+	}
+}
+
+func TestACloseIsTheOnlyActionLeft(t *testing.T) {
+	t.Parallel()
+
+	// Someone else's pull request, for a user with triage access, who may close it but not
+	// merge it, with a review of theirs pending on GitHub: only the close runs, from the
+	// menu, and it says why it can't post a comment first.
+	f := facts(github.MergeStateBlocked)
+	f.CanWrite, f.CanAutoMerge, f.PendingReview, f.CanClose = false, false, true, true
+
+	p := Decide(f, PrefRepo)
+	assert.Equal(t, []Action{ActionClose}, enabled(p))
+	assert.Equal(t, ActionNone, p.Primary, "the button only opens the menu")
+
+	o, _ := p.offer(ActionClose)
+	assert.Equal(t, "You have a review of this pull request started on GitHub. Submit or discard it there first. "+
+		"Or clear your text and line comments to close it without a comment.", o.CommentBlocked)
 }
 
 func TestDecideSaysWhatKeepsAMergeFromPassing(t *testing.T) {
@@ -341,7 +417,8 @@ func TestChooseMethod(t *testing.T) {
 // GitHub would not merge now, a draft, or a merge queue's; nobody approves or requests
 // changes on their own pull request; a pending review blocks every review; the primary is
 // an enabled offer, or none only while every enabled offer is one the button never runs on
-// its own; and an offer with warnings asks first.
+// its own; an offer with warnings asks first; and a close is offered only to whoever may
+// close the pull request, while it is open, asks first, and is never the button.
 func FuzzDecide(f *testing.F) {
 	f.Add(uint16(0), uint8(0), uint8(0), uint8(0))
 	f.Add(uint16(0xffff), uint8(1), uint8(2), uint8(3))
@@ -357,6 +434,7 @@ func FuzzDecide(f *testing.F) {
 			CanWrite: bits&16 != 0, CanUpdateBranch: bits&32 != 0, CanAutoMerge: bits&64 != 0, AutoMergeOn: bits&128 != 0,
 			Dependabot: bits&256 != 0, ApprovedAtHead: bits&512 != 0, ReviewRequired: bits&1024 != 0,
 			ChangesRequested: bits&2048 != 0, Closed: bits&4096 != 0, CanBypass: bits&8192 != 0,
+			CanClose:        bits&16384 != 0,
 			MergeState:      states[int(state)%len(states)],
 			RequiredFailing: int(failing % 3), Failing: int(failing % 5), RequiredPending: int(pending % 3),
 			Pending: int(pending % 5), Methods: []MergeMethod{MethodSquash},
@@ -388,6 +466,24 @@ func checkPlan(t *testing.T, fa Facts, p Plan) {
 	checkPrimary(t, p, on)
 	checkAsksFirst(t, p)
 	checkKeepingUp(t, fa, p, on)
+	checkClose(t, fa, p)
+}
+
+// checkClose checks that a close is offered, enabled, exactly while the pull request is
+// open to a user who may close it, that it asks first and posts the text as a comment
+// first, and that it is never the button.
+func checkClose(t *testing.T, fa Facts, p Plan) {
+	t.Helper()
+
+	assert.NotEqual(t, ActionClose, p.Primary, "a close is never the button")
+
+	o, ok := p.offer(ActionClose)
+	assert.Equal(t, fa.CanClose && !fa.Closed, ok, "offered while open, to whoever may close it")
+
+	if ok {
+		assert.True(t, o.Enabled && o.Confirm && o.CommentsFirst && !o.Reviews, "it runs, asks first, and comments first")
+		assert.Equal(t, fa.PendingReview, o.CommentBlocked != "", "a pending review holds back only its comment")
+	}
 }
 
 // checkPrimary checks that the primary is an enabled offer, or none, and that with none,
@@ -404,10 +500,11 @@ func checkPrimary(t *testing.T, p Plan, on []Action) {
 		return
 	}
 
-	// The writes the button never runs unless the user picks them: a merge past the rules,
-	// which only ever runs on purpose, and the two that write to the branch, which are the
-	// button only while the pull request is behind (or, for the rebase, has conflicts).
-	neverDefault := []Action{ActionMergeBypass, ActionRebaseBot, ActionUpdateBranch}
+	// The writes the button never runs unless the user picks them: a merge past the rules
+	// and a close, which only ever run on purpose, and the two that write to the branch,
+	// which are the button only while the pull request is behind (or, for the rebase, has
+	// conflicts).
+	neverDefault := []Action{ActionMergeBypass, ActionClose, ActionRebaseBot, ActionUpdateBranch}
 
 	for _, a := range on {
 		assert.Contains(t, neverDefault, a, "with no primary, %s is enabled", a)
@@ -600,9 +697,9 @@ func TestEachOfferSaysWhatItsTextGoesWith(t *testing.T) {
 	t.Parallel()
 
 	f := facts(github.MergeStateBlocked)
-	f.Mine, f.CanBypass, f.ReviewRequired = true, true, true
+	f.Mine, f.CanBypass, f.ReviewRequired, f.CanClose = true, true, true, true
 
-	commentsFirst := []Action{ActionMerge, ActionMergeBypass, ActionAutoMerge}
+	commentsFirst := []Action{ActionMerge, ActionMergeBypass, ActionAutoMerge, ActionClose}
 	reviews := []Action{ActionApproveMerge, ActionApproveAutoMerge, ActionApprove, ActionRequestChanges, ActionComment}
 	plan := Decide(f, PrefRepo)
 
@@ -626,8 +723,13 @@ func TestEachOfferSaysWhatItsTextGoesWith(t *testing.T) {
 			continue
 		}
 
+		without := "merge"
+		if o.Action == ActionClose {
+			without = "close it"
+		}
+
 		assert.Equal(t, "You have a review of this pull request started on GitHub. Submit or discard it there first. "+
-			"Or clear your text and line comments to merge without a comment.", o.CommentBlocked, o.Action)
+			"Or clear your text and line comments to "+without+" without a comment.", o.CommentBlocked, o.Action)
 	}
 }
 

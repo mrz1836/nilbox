@@ -132,8 +132,8 @@ export function ReviewSheet({
 
   const send = async (r: Review, action: ReviewAction, method: MergeMethod, accept: boolean) => {
     const offer = r.offers.find((o) => o.action === action)
-    // A review sends the text and line comments, and so does a merge with no review of its
-    // own, which posts them as a comment first when there are any, as the offer says.
+    // A review sends the text and line comments, and so do a merge with no review of its own
+    // and a close, which post them as a comment first when there are any, as the offer says.
     const text = sendsText(offer)
 
     setProgress({ title: offer?.label ?? 'Working', target: `${r.repo}#${String(r.number)}`, steps: [] })
@@ -166,7 +166,8 @@ export function ReviewSheet({
     if (result.data.outcome === 'pushed_since') {
       if (result.data.commented) {
         // The merge posted the text and line comments before it found the push, so the
-        // draft keeps the chosen action and nothing that would post them twice.
+        // draft keeps the chosen action and nothing that would post them twice. (A close
+        // reads the head before its comment, so it never gets here having posted one.)
         drafts.update(id, (d) => ({ ...d, body: '', edited: true, replyId: 0, comments: [] }))
       }
 
@@ -453,6 +454,7 @@ export function ReviewSheet({
           <ActionConfirmDialog
             review={review}
             offer={confirming}
+            comment={commentFirst(confirming, reply.body, draft.comments.length)}
             onCancel={() => {
               setConfirming(null)
             }}

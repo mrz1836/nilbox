@@ -22,6 +22,8 @@ import (
 //   - Nothing merges a draft, a pull request on a merge queue, or without write access.
 //   - Nobody approves or requests changes on their own pull request.
 //   - A pending review on GitHub blocks every review.
+//   - Nothing closes a pull request but the user's confirmed choice: a close is never the
+//     sheet's button.
 
 // Facts are what Decide knows about a pull request.
 type Facts struct {
@@ -42,6 +44,10 @@ type Facts struct {
 
 	// CanWrite reports write access to the repository, or more.
 	CanWrite bool
+
+	// CanClose reports a user GitHub lets close the pull request: its author, or anyone with
+	// triage access to the repository, or more.
+	CanClose bool
 
 	// CanUpdateBranch and CanAutoMerge say whether GitHub lets the user update the branch
 	// and turn on auto-merge, and CanBypass whether it lets them merge past the branch's
@@ -156,6 +162,7 @@ func (d decider) offers() []Offer {
 		out = append(out, d.updateBranch())
 	}
 
+	out = append(out, d.closePull())
 	out = slices.DeleteFunc(out, func(o Offer) bool { return o.Action == ActionNone })
 
 	for i := range out {
@@ -190,14 +197,35 @@ func (d decider) rebaseBot() Offer {
 }
 
 // markText says on an offer what its text and line comments go with: the review it
-// submits, or the comment a merge with no review of its own posts first, and why that
-// comment can't be posted now. Act and the window both go by what it says.
+// submits, or the comment a merge with no review of its own, or a close, posts first, and
+// why that comment can't be posted now. Act and the window both go by what it says.
 func (d decider) markText(o *Offer) {
 	o.Reviews, o.CommentsFirst = o.Action.reviews(), o.Action.commentsFirst()
 
 	if reason := d.reviewBlock(ActionComment); o.CommentsFirst && reason != "" {
-		o.CommentBlocked = reason + " Or clear your text and line comments to merge without a comment."
+		o.CommentBlocked = reason + " Or clear your text and line comments to " + withoutComment(o.Action)
 	}
+}
+
+// withoutComment says how an action that posts a comment first goes ahead without it.
+func withoutComment(action Action) string {
+	if action == ActionClose {
+		return "close it without a comment."
+	}
+
+	return "merge without a comment."
+}
+
+// closePull offers to close the pull request without merging it, to a user GitHub lets
+// close it: its author, or anyone with triage access or more. A draft, a merge queue, and
+// a pending review hold back no close, though a pending review holds back the comment it
+// posts first (markText). It is never the sheet's button, and always asks first.
+func (d decider) closePull() Offer {
+	if !d.f.CanClose {
+		return Offer{}
+	}
+
+	return Offer{Action: ActionClose, Label: "Close pull request", Enabled: true, Confirm: true, Warnings: []string{}}
 }
 
 // reviewBlock is why the user can't review now, or "".
@@ -506,8 +534,9 @@ func notNowReason(f Facts) string {
 // primary picks the offer the sheet's button runs: one enabled offer, or none. Asking
 // Dependabot to rebase comes first while its pull request is behind or has conflicts, and
 // Update branch while the rules hold a pull request back for being behind; otherwise both
-// wait in the menu, and are never the button, since each writes to the branch. With no
-// primary and offers enabled, the sheet's button only opens the menu.
+// wait in the menu, and are never the button, since each writes to the branch. A close
+// waits in the menu always. With no primary and offers enabled, the sheet's button only
+// opens the menu.
 func primary(f Facts, offers []Offer) Action {
 	enabled := func(a Action) bool {
 		return slices.ContainsFunc(offers, func(o Offer) bool { return o.Action == a && o.Enabled })

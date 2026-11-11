@@ -472,6 +472,122 @@ describe('ReviewSheet', () => {
     expect(await actionButton('Squash-merge')).toBeEnabled()
   })
 
+  it('closes with your comment, asking first, and Cancel and Escape close nothing', async () => {
+    const closed = reviewResult({
+      outcome: 'closed',
+      message: 'Closed acme-org/example-repo#7 with your comment',
+      steps: ['Commented', 'Closed'],
+      commented: true,
+      leftInbox: true,
+    })
+    platform.actOnReview.mockResolvedValue(closed)
+    const onDone = vi.fn()
+    const onClose = vi.fn()
+    render(<Harness onDone={onDone} onClose={onClose} />)
+
+    const box = await screen.findByRole('textbox', { name: 'Your review' })
+    await waitFor(() => {
+      expect(box).toHaveValue('Reviewed and approved. Thanks, @octo-other!')
+    })
+
+    // A close starts with no text: the approval's default reply never goes with it.
+    await choose('Close pull request')
+    expect(box).toHaveValue('')
+    expect(screen.queryByText(/posted as a comment first/)).not.toBeInTheDocument()
+    expect(platform.reviewReplies).toHaveBeenLastCalledWith('comment')
+
+    await userEvent.type(box, 'Superseded by #9.')
+    expect(screen.getByText('Your text is posted as a comment first.')).toHaveClass('text-muted')
+
+    // Cancel sends nothing.
+    await userEvent.click(await actionButton('Close pull request'))
+    let dialog = screen.getByRole('dialog', { name: 'Close #7 without merging it?' })
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('dialog', { name: 'Close #7 without merging it?' })).not.toBeInTheDocument()
+
+    // Nor does Escape, which closes the confirmation alone.
+    await userEvent.click(await actionButton('Close pull request'))
+    expect(screen.getByRole('dialog', { name: 'Close #7 without merging it?' })).toBeInTheDocument()
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog', { name: 'Close #7 without merging it?' })).not.toBeInTheDocument()
+    expect(sheet()).toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(platform.actOnReview).not.toHaveBeenCalled()
+
+    await userEvent.click(await actionButton('Close pull request'))
+    dialog = screen.getByRole('dialog', { name: 'Close #7 without merging it?' })
+    expect(dialog).toHaveTextContent('acme-org/example-repo#7, “Add the widget cache”, closes unmerged.')
+    expect(dialog).toHaveTextContent('You can reopen it on GitHub.')
+    expect(within(dialog).getByText('Your text is posted as a comment first.')).toBeInTheDocument()
+    expect(within(dialog).queryByRole('radio')).not.toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Close pull request' }))
+
+    await waitFor(() => {
+      expect(onDone).toHaveBeenCalledWith(closed, expect.objectContaining({ id: 1 }))
+    })
+    expect(platform.actOnReview).toHaveBeenCalledWith({
+      itemId: 1,
+      action: 'close',
+      head: review().head,
+      body: 'Superseded by #9.',
+      comments: [],
+      method: 'SQUASH',
+      accept: false,
+    })
+  })
+
+  it('closes with no comment while the text is empty', async () => {
+    render(<Harness />)
+
+    await choose('Close pull request')
+    expect(screen.getByRole('textbox', { name: 'Your review' })).toHaveValue('')
+
+    await userEvent.click(await actionButton('Close pull request'))
+    const dialog = screen.getByRole('dialog', { name: 'Close #7 without merging it?' })
+    expect(within(dialog).queryByText(/posted as a comment first/)).not.toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Close pull request' }))
+
+    await waitFor(() => {
+      expect(platform.actOnReview).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'close', body: '', comments: [] }),
+      )
+    })
+  })
+
+  it('drops the text a close posted when GitHub didn’t close it, so it never posts twice', async () => {
+    platform.actOnReview.mockResolvedValue(
+      reviewResult({
+        outcome: 'commented_not_closed',
+        message: 'Commented on acme-org/example-repo#7, but it wasn’t closed: GitHub refused the change',
+        reason: 'GitHub refused the change',
+        steps: ['Commented'],
+        commented: true,
+      }),
+    )
+    const onDone = vi.fn()
+    render(<Harness onDone={onDone} />)
+
+    await choose('Close pull request')
+    const box = screen.getByRole('textbox', { name: 'Your review' })
+    await userEvent.type(box, 'Superseded by #9.')
+    await userEvent.click(await actionButton('Close pull request'))
+    await userEvent.click(
+      within(screen.getByRole('dialog', { name: 'Close #7 without merging it?' })).getByRole('button', {
+        name: 'Close pull request',
+      }),
+    )
+
+    await waitFor(() => {
+      expect(onDone).toHaveBeenCalled()
+    })
+    // The draft is cleared: the sheet, still shown here, is back on its own button and reply.
+    expect(await actionButton('Approve & squash-merge')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(box).toHaveValue('Reviewed and approved. Thanks, @octo-other!')
+    })
+  })
+
   it('cancels a merge', async () => {
     render(<Harness />)
 

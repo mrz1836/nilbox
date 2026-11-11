@@ -46,9 +46,11 @@ var (
 // no review of its own posts the user's text and line comments, when there are any, as a
 // comment once that read says GitHub would merge (or, for auto-merge, that the pull request
 // is open at the head the user saw), the way a comment is posted, and then merges as it
-// would without them. A step GitHub made stands, so an approval or a comment GitHub took
-// and a merge it would not make yet is a result, not an error, and once a merge's comment
-// is posted nothing that fails after it is an error either.
+// would without them. A close reads the pull request first, and closes only one still open
+// at the head the user saw, posting the text and line comments first the same way. A step
+// GitHub made stands, so an approval or a comment GitHub took and a merge it would not
+// make yet is a result, not an error, and once a merge's or a close's comment is posted
+// nothing that fails after it is an error either.
 func (s *Service) Act(ctx context.Context, req ActRequest) (Result, error) {
 	pull, c, err := s.loadAct(ctx, req)
 	if err != nil {
@@ -88,7 +90,7 @@ func (s *Service) Act(ctx context.Context, req ActRequest) (Result, error) {
 		return run.do(ctx, s, tok)
 	})
 
-	s.settle(ctx, req.ItemID, run.acted.Merged)
+	s.settle(ctx, req.ItemID, run.gone())
 
 	if err != nil && !run.commentedFirst() {
 		return Result{}, err
@@ -103,12 +105,13 @@ func (s *Service) Act(ctx context.Context, req ActRequest) (Result, error) {
 }
 
 // settle brings the sheet's cache in line with an action that may have reached GitHub,
-// whatever it came to: a merged pull request's cache is dropped, and any other's context
-// marked out of date, since the action changed what it says (its reviews, its auto-merge,
-// or its head), so the sheet opened again reads it rather than show the offers made before.
-func (s *Service) settle(ctx context.Context, id int64, merged bool) {
+// whatever it came to: the cache of a pull request merged or closed (gone) is dropped, and
+// any other's context marked out of date, since the action changed what it says (its
+// reviews, its auto-merge, or its head), so the sheet opened again reads it rather than
+// show the offers made before.
+func (s *Service) settle(ctx context.Context, id int64, gone bool) {
 	update := s.cache.expire
-	if merged {
+	if gone {
 		update = s.cache.drop
 	}
 
@@ -291,10 +294,10 @@ func containsMethod(methods []MergeMethod, m MergeMethod) bool {
 type action struct {
 	kind Action
 
-	// reviewAs is the review the action submits: its own, the comment a merge posts first,
-	// or ActionNone. commentFirst reports a merge whose offer says it posts the text first,
-	// with or without any to post, and fellBack an auto-merge GitHub said could merge now,
-	// which merges instead.
+	// reviewAs is the review the action submits: its own, the comment a merge or a close
+	// posts first, or ActionNone. commentFirst reports a merge or a close whose offer says it
+	// posts the text first, with or without any to post, and fellBack an auto-merge GitHub
+	// said could merge now, which merges instead.
 	reviewAs     Action
 	commentFirst bool
 	fellBack     bool
@@ -354,14 +357,20 @@ func (a *action) approved() bool {
 	return a.reviewed != nil && reviewEvent(a.reviewAs) == github.ReviewApprove
 }
 
-// commentedFirst reports a merge that posted the user's text as a comment before it
-// merged.
+// gone reports a pull request the action merged or closed, which leaves every list.
+func (a *action) gone() bool {
+	return a.acted.Merged || a.acted.Closed
+}
+
+// commentedFirst reports a merge or a close that posted the user's text as a comment
+// before it merged or closed.
 func (a *action) commentedFirst() bool {
 	return a.reviewed != nil && a.commentFirst
 }
 
-// postFirst posts the comment a merge with no review of its own posts first, once, when
-// it has one: right before the merge's own write, after the merge state was read.
+// postFirst posts the comment a merge with no review of its own, or a close, posts first,
+// once, when it has one: right before the action's own write, after the pull request was
+// read.
 func (a *action) postFirst(ctx context.Context, s *Service, tok github.Token) error {
 	if !a.commentFirst || a.reviewAs == ActionNone {
 		return nil
@@ -395,11 +404,12 @@ func (a *action) checkAhead(ctx context.Context, s *Service, tok github.Token) (
 	return false, nil
 }
 
-// failedAfterComment turns an error that came after the comment a merge posted first into
-// the action's result, so the sheet hears the comment stands and never posts it twice. A
-// step GitHub had answered (the merge, auto-merge, its refusal, or a push it found) stands,
-// and the error, which then came from the inbox's own bookkeeping, is only logged; any
-// other is OutcomeCommentedNotMerged, with the error's words as its reason.
+// failedAfterComment turns an error that came after the comment a merge or a close posted
+// first into the action's result, so the sheet hears the comment stands and never posts it
+// twice. A step GitHub had answered (the merge, auto-merge, the close, a refusal, or a
+// push it found) stands, and the error, which then came from the inbox's own bookkeeping,
+// is only logged; any other is OutcomeCommentedNotMerged, or OutcomeCommentedNotClosed for
+// a close, with the error's words as its reason.
 func (a *action) failedAfterComment(ctx context.Context, s *Service, err error) {
 	if a.outcome != OutcomeReviewed {
 		s.logger.WarnContext(ctx, "an action's step failed after GitHub answered it", "outcome", a.outcome, "error", err)
@@ -407,7 +417,17 @@ func (a *action) failedAfterComment(ctx context.Context, s *Service, err error) 
 		return
 	}
 
-	a.outcome, a.reason = OutcomeCommentedNotMerged, strings.TrimSuffix(uierr.Message(err), ".")
+	a.outcome, a.reason = a.notDone(), strings.TrimSuffix(uierr.Message(err), ".")
+}
+
+// notDone is the outcome of an action whose comment GitHub took and whose own step it
+// didn't make: a close's, or a merge's.
+func (a *action) notDone() Outcome {
+	if a.kind == ActionClose {
+		return OutcomeCommentedNotClosed
+	}
+
+	return OutcomeCommentedNotMerged
 }
 
 // follow makes the steps of the action that come after its review, if any.
@@ -423,6 +443,8 @@ func (a *action) follow(ctx context.Context, s *Service, tok github.Token) error
 		return a.updateBranch(ctx, s, tok)
 	case ActionRebaseBot:
 		return a.askBot(ctx, s, tok)
+	case ActionClose:
+		return a.closePull(ctx, s, tok)
 	case ActionNone:
 		return fmt.Errorf("%w: no action", ErrNotOffered)
 	default:
@@ -808,6 +830,51 @@ func (a *action) askBot(ctx context.Context, s *Service, tok github.Token) error
 	return nil
 }
 
+// closePull closes the pull request without merging it. GitHub takes no head to pin a
+// close to, so it reads the pull request first: one no longer open is refused, and a head
+// other than the one the user saw is a pushed-since outcome, so neither gets the comment
+// or the close. The comment it posts first, if any, goes next, and the close last. A try
+// with a fresh token after the comment was posted only closes.
+func (a *action) closePull(ctx context.Context, s *Service, tok github.Token) error {
+	if a.reviewed == nil {
+		a.step(s, "Checking nothing was pushed since you opened it")
+
+		if moved, err := a.headMoved(ctx, s, tok); err != nil || moved {
+			return err
+		}
+
+		if err := a.postFirst(ctx, s, tok); err != nil {
+			return err
+		}
+	}
+
+	a.step(s, "Closing")
+
+	if _, err := s.github.ClosePull(ctx, tok, a.ref); err != nil {
+		return a.notClosed(err)
+	}
+
+	a.acted.Closed = true
+	a.outcome = OutcomeClosed
+	a.steps = append(a.steps, "Closed")
+
+	return nil
+}
+
+// notClosed records that the close failed: after the comment it posted first, it is the
+// action's result, which says the comment stands, otherwise the error. A token GitHub
+// refused comes back as it is, for the inbox's Actor to try again with a fresh one, which
+// closes without posting the comment again.
+func (a *action) notClosed(err error) error {
+	if a.reviewed == nil || github.IsBadCredentials(err) {
+		return err
+	}
+
+	a.outcome, a.reason = OutcomeCommentedNotClosed, strings.TrimSuffix(uierr.Message(err), ".")
+
+	return nil
+}
+
 // stateReason says why GitHub would not merge a pull request in a merge state.
 func stateReason(status string) string {
 	switch status {
@@ -833,7 +900,7 @@ func (a *action) result(requested bool) Result {
 
 	r := Result{
 		Outcome: a.outcome, Reason: a.reason, Steps: nonNil(a.steps), LeftReview: a.acted.Reviewed && requested,
-		LeftInbox: a.acted.Merged, Message: a.message(), Commented: a.commentedFirst(),
+		LeftInbox: a.gone(), Message: a.message(), Commented: a.commentedFirst(),
 	}
 
 	if a.kind.merges() {
@@ -843,26 +910,53 @@ func (a *action) result(requested bool) Result {
 	return r
 }
 
-// message says what the action came to, for the toast. A merge that posted the user's
-// text first says so, whatever the merge came to, so the user never posts it twice.
+// message says what the action came to, for the toast. A merge or a close that posted the
+// user's text first says so, whatever it came to, so the user never posts it twice.
 func (a *action) message() string {
 	ref := a.ref.String()
 
-	switch {
-	case a.outcome == OutcomeReviewed:
+	switch a.outcome {
+	case OutcomeReviewed:
 		return reviewStep(a.reviewAs) + " " + ref
-	case a.outcome == OutcomeMerged || a.outcome == OutcomeAutoMerge:
+	case OutcomeMerged, OutcomeAutoMerge:
 		return a.mergedMessage(ref)
+	case OutcomeApprovedNotMerged, OutcomeCommentedNotMerged:
+		return a.notMergedMessage(ref)
+	case OutcomeClosed, OutcomeCommentedNotClosed:
+		return a.closedMessage(ref)
+	case OutcomeBranchUpdating:
+		return "Updating the branch of " + ref
+	case OutcomePushedSince:
+		return pushedSinceResult(ref, a).Message
+	case OutcomeAskedBot:
+		return "Asked Dependabot to rebase " + ref
+	default:
+		return ""
+	}
+}
+
+// notMergedMessage says what an action came to whose review GitHub took, an approval or
+// the comment a merge posted first, and whose merge, or auto-merge, it would not make.
+func (a *action) notMergedMessage(ref string) string {
+	switch {
 	case a.outcome == OutcomeApprovedNotMerged:
 		return "Approved, but GitHub won't merge yet: " + a.reason
-	case a.outcome == OutcomeCommentedNotMerged && a.kind == ActionAutoMerge && !a.fellBack:
+	case a.kind == ActionAutoMerge && !a.fellBack:
 		return "Commented on " + ref + ", but auto-merge isn't on: " + a.reason
-	case a.outcome == OutcomeCommentedNotMerged:
-		return "Commented on " + ref + ", but it wasn't merged: " + a.reason
-	case a.outcome == OutcomeBranchUpdating:
-		return "Updating the branch of " + ref
 	default:
-		return "Asked Dependabot to rebase " + ref
+		return "Commented on " + ref + ", but it wasn't merged: " + a.reason
+	}
+}
+
+// closedMessage says what a close came to, with the comment it posted first, if any.
+func (a *action) closedMessage(ref string) string {
+	switch {
+	case a.outcome == OutcomeCommentedNotClosed:
+		return "Commented on " + ref + ", but it wasn't closed: " + a.reason
+	case a.commentedFirst():
+		return "Closed " + ref + " with your comment"
+	default:
+		return "Closed " + ref
 	}
 }
 
