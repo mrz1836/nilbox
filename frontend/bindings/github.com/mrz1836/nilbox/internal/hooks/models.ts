@@ -161,6 +161,14 @@ export interface ActionResult {
     "hooksDir": string;
 
     /**
+     * Shared reports a hooks folder other repositories use too, as Repo.Shared does, and
+     * SharedWith how many of the clones under the clone root use it, so the window can ask
+     * before an action there, as the row does.
+     */
+    "shared": boolean;
+    "sharedWith": number;
+
+    /**
      * OtherTool names the other tool whose hook was in the way, replaced, or put back:
      * husky, pre-commit, lefthook, or "" when it can't be told.
      */

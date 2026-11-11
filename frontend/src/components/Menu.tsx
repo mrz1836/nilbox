@@ -36,6 +36,9 @@ export interface MenuItem {
   divided?: boolean
   // section is a caption above the item, naming the group it starts, such as "On GitHub".
   section?: string
+  // note is a sentence below the item, such as what the items above it change, which
+  // describes the item to assistive tech.
+  note?: string
 }
 
 export interface MenuButtonProps {
@@ -205,6 +208,7 @@ function MenuItems({ items, onChoose }: MenuItemsProps) {
     const hasSubmenu = item.items !== undefined
     const isOpen = hasSubmenu && open?.label === item.label
     const submenuId = `${baseId}-${String(i)}`
+    const noteId = `${submenuId}-note`
 
     const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
       if (hasSubmenu && item.disabled !== true && e.key === 'ArrowRight') {
@@ -242,6 +246,7 @@ function MenuItems({ items, onChoose }: MenuItemsProps) {
             aria-haspopup={hasSubmenu ? 'menu' : undefined}
             aria-expanded={hasSubmenu ? isOpen : undefined}
             aria-controls={isOpen ? submenuId : undefined}
+            aria-describedby={item.note === undefined ? undefined : noteId}
             onPointerEnter={() => {
               if (hasSubmenu && item.disabled !== true) {
                 openSubmenu(item, false)
@@ -297,6 +302,11 @@ function MenuItems({ items, onChoose }: MenuItemsProps) {
             />
           )}
         </div>
+        {item.note !== undefined && (
+          <p id={noteId} aria-hidden="true" className="max-w-64 px-2.5 pt-0.5 pb-1.5 text-xs text-muted">
+            {item.note}
+          </p>
+        )}
       </Fragment>
     )
   })

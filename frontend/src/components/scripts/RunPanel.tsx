@@ -28,6 +28,8 @@ import { quietButtonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import { AlertIcon, CheckIcon, CopyIcon, DocumentIcon, RefreshIcon, StopIcon, TerminalIcon, XIcon } from '../icons'
 import { ErrorText } from '../settings/rows'
+import { ChecksResult } from './ChecksResult'
+import { HookResult } from './HookResult'
 import { LogView } from './LogView'
 import { RunStatus } from './RunStatus'
 
@@ -164,9 +166,10 @@ function StopNote({ id, run, terminal }: { id: string; run: ScriptRun; terminal:
 
 // RunPanel is one run, live or ended, in the app or in the terminal: what it is and where
 // it ran, its status (announced as it changes, and only it), how long it took, what can
-// be done with it, what it left to look at, and its log. It reads the run again whenever
-// the shell says the runs changed or this run's progress moved, and marks an ended run
-// seen once it shows, which clears the tab's red dot.
+// be done with it, what it left to look at (a hooks action's or a checks run's result,
+// typed, once it ended), and its log. It reads the run again whenever the shell says the
+// runs changed or this run's progress moved, and marks an ended run seen once it shows,
+// which clears the tab's red dot.
 export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
   const headingId = useId()
   const query = useQuery(() => getScriptRun(id), [id])
@@ -296,6 +299,9 @@ export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
   const offersStop = run.canStop || (isLive(run.status) && run.runsIn === 'app' && refused !== '')
   const hasResult =
     (run.exitCode !== null && run.exitCode !== 0) || result.warnings.length > 0 || result.unrecognizedCount > 0
+  // ended reports a run that has ended, whose typed result a hooks action or a checks run
+  // shows above the rest.
+  const ended = !isLive(run.status)
 
   return (
     <section aria-labelledby={headingId} className="flex h-full min-h-0 flex-col gap-3 p-4">
@@ -394,6 +400,8 @@ export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
       <StopNote id={`${headingId}-stop`} run={run} terminal={terminal} />
       <ErrorText error={error} />
       {query.error !== '' && <ErrorBanner>Couldn’t read the run again: {query.error}</ErrorBanner>}
+      {ended && run.kind === 'hooks' && <HookResult key={run.id} runId={run.id} onSelect={onSelect} />}
+      {ended && run.kind === 'checks' && <ChecksResult key={run.id} runId={run.id} />}
       {hasResult && <RunResult exitCode={run.exitCode} result={result} />}
       <LogView
         key={run.id}

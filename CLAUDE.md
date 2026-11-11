@@ -404,7 +404,10 @@ app:lint` reads.
   and, until `FeatureVerifiedTools`, the note that the checks install their own tools, folded
   once a checks run ended (`hooks.checksRan`, which hooks alone writes). The bound
   `ActionResult` and `ChecksResult` read a run's outcome back typed, and its `Rerunner`, which
-  core registers for both kinds, works Run again out afresh from the run's intent.
+  core registers for both kinds, works Run again out afresh from the run's intent. A row's
+  **Open in terminal** (`OpenTerminal`) opens the terminal the runs open in at the clone and
+  runs nothing there, and its **Open the config** (`ShowConfig`) shows `.github/env/` (or
+  `.github/.env.base`) in Finder, each only for a clone directly under the clone root.
 - `internal/measure/` and `magefiles/measure.go` take the numbers in
   [`docs/performance.md`](docs/performance.md).
 - `frontend/` is the React + TypeScript + Vite + Tailwind app. It reaches Go only through the

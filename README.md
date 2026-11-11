@@ -535,7 +535,7 @@ More in [The Worktrees view](docs/desktop.md#the-worktrees-view).
 </details>
 
 <details>
-<summary><strong><code>Scripts and Release</code></strong></summary>
+<summary><strong><code>Scripts, Release, and Hooks</code></strong></summary>
 <br/>
 
 - The **Scripts** tab appears while mage-x or go-pre-commit is on (Settings → Integrations finds
@@ -561,10 +561,24 @@ More in [The Worktrees view](docs/desktop.md#the-worktrees-view).
   or undo it.
 - **After a merge,** the review sheet's toast offers **Release acme-org/sdk…**, behind a setting
   that's on by default. Nilbox never releases by itself.
+- **Hooks** lists every clone with a go-pre-commit config, grouped into needs attention (no hook
+  yet, an outdated one, another tool's, or a hooks folder other repositories share), ready, and
+  turned off in the repository, with the clones that have no config collapsed below. The rail
+  counts the ones that need attention.
+- **Install, Update, Reinstall, or Replace…** a clone's hook in one click, or **Install and update
+  all** at once. Replacing another tool's hook (husky, pre-commit, lefthook) asks first and names
+  where it goes, a hooks folder other repositories share asks before anything changes it, and
+  what each action did is read from the hook file afterwards, never from go-pre-commit's exit
+  status alone.
+- **Run the checks** on every file, the staged ones, or one check. The result says which passed
+  and which failed and why, and every file they fixed or staged, including files that already had
+  uncommitted changes. The page warns when your shell's PATH won't let the hook find
+  go-pre-commit, with the line that fixes it.
 - **Runs** lists every release, hooks action, check, and script, with each run's status, result,
   and full log.
 
-More in [The Scripts tab](docs/desktop.md#the-scripts-tab) and [Release](docs/desktop.md#release).
+More in [The Scripts tab](docs/desktop.md#the-scripts-tab), [Release](docs/desktop.md#release),
+and [Hooks](docs/desktop.md#hooks).
 
 </details>
 

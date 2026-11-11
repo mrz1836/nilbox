@@ -1,33 +1,47 @@
 import { useRef, useState, type ReactNode } from 'react'
 
 import { counted, formatCount } from '../../lib/format'
+import { attentionCount } from '../../lib/hooks'
 import { unreleasedCount, type ReleaseRequest } from '../../lib/release'
 import { isLive } from '../../lib/scriptRuns'
 import { toolOf, usable } from '../../lib/scriptsTab'
 import type { SettingsSection } from '../../lib/settingsIndex'
+import { useHooks } from '../../lib/useHooks'
 import type { IntegrationsState } from '../../lib/useIntegrations'
 import { useReleaseCandidates } from '../../lib/useReleaseCandidates'
 import type { ScriptRunsState } from '../../lib/useScriptRuns'
 import type { IntegrationTool, RunsIn, TerminalID } from '../../platform'
-import { AlertIcon, CheckIcon, ChevronRightIcon, ClockIcon, RingIcon, TagIcon, XIcon } from '../icons'
+import {
+  AlertIcon,
+  AnchorIcon,
+  CheckIcon,
+  ChevronRightIcon,
+  ClockIcon,
+  DotIcon,
+  RingIcon,
+  TagIcon,
+  XIcon,
+} from '../icons'
 import { ErrorText } from '../settings/rows'
+import { HooksPage } from './HooksPage'
 import { ReleasePage } from './ReleasePage'
 import { ReleaseSheet, type ReleaseTarget } from './ReleaseSheet'
 import { RunsPage } from './RunsPage'
 
 // ScriptsPage is one of the tab's pages, in the rail's order. The rail lists those built
-// whose integration is on: Release and Runs so far, which Hooks and Repo scripts join as
-// they are.
+// whose integration is on: Release, Hooks, and Runs so far, which Repo scripts joins once
+// it is.
 export type ScriptsPage = 'release' | 'hooks' | 'scripts' | 'runs'
 
 // RailEntry is a page as the rail lists it: its name and icon, and what it counts, with
-// what the count means.
+// what the count means; alert marks a count that needs the user with an amber dot.
 interface RailEntry {
   id: ScriptsPage
   label: string
   icon: ReactNode
   count: number
   counts: (n: number) => string
+  alert?: boolean
 }
 
 const captionClass = 'px-2.5 pb-1 text-[0.6875rem] font-semibold tracking-wide text-muted uppercase'
@@ -97,10 +111,10 @@ export interface ScriptsViewProps {
 
 // ScriptsView is the Scripts tab: a rail of its pages, each with what it counts, and at
 // its foot the status of each tool and a way to manage them in Settings; beside it, the
-// page chosen. Release shows while mage-x is on, beside Runs; Hooks and Repo scripts join
-// them as they are built. The tab opens on the page used last, kept while the window is
-// open, or the first page that's on. It is a default export, for the window to load it
-// lazily.
+// page chosen. Release shows while mage-x is on and Hooks while go-pre-commit is, beside
+// Runs; Repo scripts joins them once it is built. The tab opens on the page used last,
+// kept while the window is open, or the first page that's on. A run a page starts opens
+// in Runs. It is a default export, for the window to load it lazily.
 export default function ScriptsView({
   terminal,
   runsIn,
@@ -112,11 +126,15 @@ export default function ScriptsView({
 }: ScriptsViewProps) {
   const { tools, error } = integrations
   const mageX = toolOf(tools, 'mage-x')
+  const goPreCommit = toolOf(tools, 'go-pre-commit')
   const releaseOn = mageX?.on === true
+  const hooksOn = goPreCommit?.on === true
   const [page, setPage] = useState<ScriptsPage | null>(null)
+  const first: ScriptsPage = releaseOn ? 'release' : hooksOn ? 'hooks' : 'runs'
   const shown: ScriptsPage =
-    page === null || (page === 'release' && !releaseOn) ? (releaseOn ? 'release' : 'runs') : page
+    page === null || (page === 'release' && !releaseOn) || (page === 'hooks' && !hooksOn) ? first : page
   const candidates = useReleaseCandidates(usable(mageX))
+  const hooks = useHooks(usable(goPreCommit), runs.runs)
   const [selectedRun, setSelectedRun] = useState<number | null>(null)
   const [sheet, setSheet] = useState<OpenSheet | null>(null)
   // handled is the last request opened, so each opens once; opens numbers the sheets the
@@ -141,6 +159,18 @@ export default function ScriptsView({
             count: unreleasedCount(candidates.list?.repos),
             counts: (n: number) =>
               counted(n, 'repository with unreleased changes', 'repositories with unreleased changes'),
+          },
+        ]
+      : []),
+    ...(hooksOn
+      ? [
+          {
+            id: 'hooks' as const,
+            label: 'Hooks',
+            icon: <AnchorIcon className="size-4" />,
+            count: attentionCount(hooks.list?.repos),
+            counts: (n: number) => counted(n, 'repository needs attention', 'repositories need attention'),
+            alert: true,
           },
         ]
       : []),
@@ -199,6 +229,7 @@ export default function ScriptsView({
                 >
                   {formatCount(entry.count)}
                 </span>
+                {entry.alert === true && <DotIcon className="-ml-1 size-3 shrink-0 text-warning" />}
                 <span className="sr-only">({entry.counts(entry.count)})</span>
               </>
             )}
@@ -237,6 +268,15 @@ export default function ScriptsView({
               opens.current -= 1
               setSheet({ target: { repo: c.repo, dir: c.dir, branch: '' }, key: opens.current })
             }}
+            onOpenRun={openRun}
+            onOpenSettings={onOpenSettings}
+          />
+        ) : shown === 'hooks' ? (
+          <HooksPage
+            hooks={hooks}
+            tool={goPreCommit}
+            runs={runs.runs}
+            runsIn={runsIn}
             onOpenRun={openRun}
             onOpenSettings={onOpenSettings}
           />
