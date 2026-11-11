@@ -1,5 +1,5 @@
 // Package clonelock keeps one clone-changing job at a time on each clone: a worktree made
-// or removed, a release, a hooks install, a checks run, or a script. A tool updating
+// or removed, a release, a hooks install, a checks run, a script, or a pull. A tool updating
 // itself, or being installed, holds its folder the same way. A job that finds its clone
 // busy learns what holds it, which the window shows: "A release is using acme-org/sdk
 // right now."
@@ -28,6 +28,9 @@ const (
 	KindChecks   Kind = "checks"
 	KindScript   Kind = "script"
 	KindWorktree Kind = "worktree"
+
+	// KindPull is a clone's branch pulled from origin, fast-forward only.
+	KindPull Kind = "gitPull"
 
 	// KindUpdate is a tool updating itself, which holds the folder its copy is in, and
 	// KindInstall the app installing a tool, which holds the folder it places it in.
@@ -80,6 +83,8 @@ func (h Holder) doer() string {
 		return "A script"
 	case KindWorktree:
 		return "A worktree change"
+	case KindPull:
+		return "A pull"
 	case KindUpdate:
 		return "A tool update"
 	case KindInstall:

@@ -184,7 +184,15 @@ type Replies interface {
 	Fill(ctx context.Context, replyID, itemID int64) (string, error)
 }
 
-// Config holds a Service's dependencies. Every one but Clock and Logger is required.
+// Merges hears of each pull request a merge in the sheet merged, by its repository: core
+// hands it the Release page's Refresher, which reads that repository's row again, since the
+// merge may give it commits to release. It must not wait.
+type Merges interface {
+	Merged(name repo.Name)
+}
+
+// Config holds a Service's dependencies. Every one but Merges, Clock, and Logger is
+// required.
 type Config struct {
 	// Pool is the database, which holds the sheet's cache.
 	Pool *sql.DB
@@ -198,6 +206,9 @@ type Config struct {
 	// sheet to show while the user waits.
 	Events event.Sink
 
+	// Merges hears of each merge the sheet makes; without it, no one does.
+	Merges Merges
+
 	Clock  clock.Clock
 	Logger *slog.Logger
 }
@@ -210,6 +221,7 @@ type Service struct {
 	replies  Replies
 	cache    *cacheStore
 	events   event.Sink
+	merges   Merges
 	clock    clock.Clock
 	logger   *slog.Logger
 
@@ -221,8 +233,8 @@ type Service struct {
 func NewService(cfg Config) *Service {
 	return &Service{
 		inbox: cfg.Inbox, github: cfg.GitHub, settings: cfg.Settings, replies: cfg.Replies,
-		cache: newCacheStore(cfg.Pool), events: event.Or(cfg.Events), clock: clock.Or(cfg.Clock),
-		logger: logging.Or(cfg.Logger),
+		cache: newCacheStore(cfg.Pool), events: event.Or(cfg.Events), merges: cfg.Merges,
+		clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger),
 	}
 }
 

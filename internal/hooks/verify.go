@@ -40,7 +40,7 @@ func (v Verifier) Verify(run scriptrun.Record) scriptrun.Verification {
 		return v.s.verifyAction(run)
 	case scriptrun.KindChecks:
 		return v.s.verifyChecks(run)
-	case scriptrun.KindRelease, scriptrun.KindScript, scriptrun.KindUpdate:
+	case scriptrun.KindRelease, scriptrun.KindScript, scriptrun.KindUpdate, scriptrun.KindPull:
 	}
 
 	return scriptrun.Verification{}

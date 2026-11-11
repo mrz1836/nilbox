@@ -5,13 +5,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/flight"
+	"github.com/mrz1836/nilbox/internal/gitread"
+	"github.com/mrz1836/nilbox/internal/textutil"
+	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
 const (
@@ -82,11 +86,21 @@ func statusArgs() []string {
 	return []string{"status", "--porcelain=v1", "-z", "--untracked-files=all"}
 }
 
-func lastCommitArgs() []string { return []string{"log", "-1", "--format=%ct"} }
+// noSignatures keeps a log from checking signatures, which a clone's own log.showSignature
+// would have it do with the program its gpg settings name, and noMailmap from reading a
+// mailmap, which a clone's own mailmap.blob can name as an object a partial clone lacks.
+const (
+	noSignatures = "--no-show-signature"
+	noMailmap    = "--no-mailmap"
+)
+
+func lastCommitArgs() []string { return []string{"log", "-1", noSignatures, noMailmap, "--format=%ct"} }
 
 // commitTimesCmd starts the argument list that prints the commit time of each commit
 // named after it, each once, without walking their history.
-func commitTimesCmd() []string { return []string{"log", "--no-walk=unsorted", "--format=%H %ct"} }
+func commitTimesCmd() []string {
+	return []string{"log", "--no-walk=unsorted", noSignatures, noMailmap, "--format=%H %ct"}
+}
 
 // commitTimesArgs reads the commit times of oids in one run.
 func commitTimesArgs(oids []string) []string { return append(commitTimesCmd(), oids...) }
@@ -102,27 +116,278 @@ func symbolicRefArgs(remote string) []string {
 	return []string{"symbolic-ref", "--quiet", remotesRef + remote + "/HEAD"}
 }
 
-// lsRemoteArgs asks remote which branch its HEAD points at.
-func lsRemoteArgs(remote string) []string { return []string{"ls-remote", "--symref", remote, "HEAD"} }
+// uploadPack asks a remote for git's own upload-pack, as gitread's ls-remote does, so a
+// remote.<name>.uploadpack in the clone's config runs nothing.
+const uploadPack = "--upload-pack=git-upload-pack"
 
-// git runs allowlisted git commands as `git -C <dir> <args>`.
-type git struct {
-	run execpath.Runner
-	bin string
+// lsRemoteArgs asks remote which branch its HEAD points at.
+func lsRemoteArgs(remote string) []string {
+	return []string{"ls-remote", uploadPack, "--symref", remote, "HEAD"}
 }
 
-// hardening are the settings every git command here runs with. Git runs hooks, and the
-// file system monitor, with the worktree as their working directory, and a worktree holds
-// a pull request's own files, which may come from anyone: a hook that runs a tool from
-// the checkout (node_modules/.bin, say) would run the pull request's code before any
-// agent starts, outside every limit a launch sets. None of these commands needs either,
-// nor to recurse into submodules, whose URLs the pull request names.
-func hardening() []string {
-	return []string{
-		"-c", "core.hooksPath=" + os.DevNull,
-		"-c", "core.fsmonitor=false",
-		"-c", "submodule.recurse=false",
+// git runs allowlisted git commands as `git -C <dir> <args>`, and, with a guard, those that
+// reach a remote or write a worktree's files under gitread's guards. Every command runs
+// bin, through run, or a guarded one its setup's git, which core finds with the same
+// finder (gitread's GitFinder), through with, for the environment of its own it needs.
+type git struct {
+	run   execpath.Runner
+	bin   string
+	guard Guard
+
+	// with runs git argv with a whole environment of its own, as a guarded command needs:
+	// Config.GitWith, the same runner as run but for the environment.
+	with func(env []string) execpath.Runner
+
+	// setups, when set, keeps the one Setup an Ensure works out (session).
+	setups *setupCache
+
+	// locals keeps the Local of each folder a command runs in, worked out once for one
+	// operation of the service's (Service.git makes one for each).
+	locals *localCache
+}
+
+// localCache is the gitread.Local of each folder, a clone or a worktree, the commands of one
+// operation run in, worked out on the first that needs it, one folder at a time and the
+// folders side by side: the lock guards the map alone, never a LocalSetup.
+type localCache struct {
+	mu    sync.Mutex
+	byID  map[string]localResult
+	calls flight.Group[localResult]
+}
+
+// localResult is one folder's Local, or why it couldn't be worked out.
+type localResult struct {
+	local gitread.Local
+	err   error
+}
+
+// kept returns dir's Local, when it was worked out.
+func (c *localCache) kept(dir string) (localResult, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	got, ok := c.byID[dir]
+
+	return got, ok
+}
+
+// keep keeps dir's Local.
+func (c *localCache) keep(dir string, got localResult) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.byID[dir] = got
+}
+
+// localFor returns the Local of a command in dir, worked out once per operation: a caller
+// for a folder whose Local is being worked out waits for it, and callers for other
+// folders don't.
+func (g git) localFor(ctx context.Context, dir string) (gitread.Local, error) {
+	c := g.locals
+	if c == nil {
+		return g.guard.LocalSetup(ctx, dir)
 	}
+
+	if got, ok := c.kept(dir); ok {
+		return got.local, got.err
+	}
+
+	got, err := c.calls.Do(ctx, dir, func(ctx context.Context) (localResult, error) {
+		if got, ok := c.kept(dir); ok {
+			return got, nil
+		}
+
+		local, err := g.guard.LocalSetup(ctx, dir)
+		got := localResult{local: local, err: err}
+
+		if err == nil || ctx.Err() == nil {
+			c.keep(dir, got)
+		}
+
+		return got, nil
+	})
+	if err != nil {
+		return gitread.Local{}, err
+	}
+
+	return got.local, got.err
+}
+
+// readOnly reports a command that only reads refs, commits, and the worktrees' own records:
+// listing the worktrees and the branches, resolving a ref, counting commits, an ancestor's
+// check, and a commit's time, with no signature check and no mailmap. None runs a filter
+// or a hook, but each could read an object a partial clone lacks, which git would fetch
+// from the clone's promisor remote, through a transport the clone's config can name, so
+// each runs with gitread's read environment (ReadEnv): no transport, no lazy fetch, no
+// optional lock, and no replace ref. Every other command, a status, which runs a file's
+// clean filter, a removal, which runs one through its own status, a prune, an unlock, and
+// a branch's deletion, which fires reference-transaction, runs only in a clone whose own
+// config passes gitread's guards (local).
+func readOnly(args []string) bool {
+	switch {
+	case len(args) == 0:
+		return false
+	case args[0] == worktreeCmd:
+		return slices.Equal(args, listArgs())
+	default:
+		return slices.Contains([]string{"for-each-ref", "rev-parse", "symbolic-ref", "rev-list", "merge-base", "log"}, args[0])
+	}
+}
+
+// guardError is a guarded command gitread's guards refused, or couldn't work out how to
+// run, before git ran: err is gitread's error, which gitread.Message words.
+type guardError struct {
+	err error
+}
+
+// Error returns gitread's error's text.
+func (e *guardError) Error() string { return e.err.Error() }
+
+// Unwrap returns gitread's error.
+func (e *guardError) Unwrap() error { return e.err }
+
+// guardRefusal is a *guardError for gitread's err, worded for the window as gitread words
+// it, in a sentence: where a worktree's status would show, or a removal's failure.
+func guardRefusal(err error) error {
+	return uierr.New(textutil.Sentence(gitread.Message(err)), &guardError{err: err})
+}
+
+// setupCache is the one Setup an Ensure works out for its clone and the remote it reaches,
+// on the first guarded command it runs, under the clone's lock it holds: every guarded
+// command the Ensure runs after uses it, a checkout its Checkout, so the clone's config,
+// folders, and remote are read once a launch.
+type setupCache struct {
+	mu     sync.Mutex
+	dir    string
+	remote string
+	done   bool
+	setup  gitread.Setup
+	err    error
+}
+
+// session returns g with a setupCache for the clone at dir and its remote called remote.
+func (g git) session(dir, remote string) git {
+	g.setups = &setupCache{dir: dir, remote: remote}
+
+	return g
+}
+
+// setupFor returns the Setup of a command in dir that reaches remote, the session's when
+// it is for them, worked out once.
+func (g git) setupFor(ctx context.Context, dir, remote string) (gitread.Setup, error) {
+	c := g.setups
+	if c == nil || c.dir != dir || c.remote != remote {
+		return g.guard.RemoteSetupFor(ctx, dir, remote)
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if !c.done {
+		c.setup, c.err = g.guard.RemoteSetupFor(ctx, dir, remote)
+		c.done = c.err == nil || ctx.Err() == nil
+	}
+
+	return c.setup, c.err
+}
+
+// setAside returns the clone's own settings the session's setup set aside, which may be
+// why a command that reached the remote failed, or none.
+func (g git) setAside() []string {
+	c := g.setups
+	if c == nil {
+		return nil
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.setup.SetAside
+}
+
+// reach runs args, a command that reaches the clone's remote, as gitread's RemoteSetupFor
+// works it out for that remote (guarded). Without a guard it runs as do does. A clone
+// whose own config sets what the guard refuses, or a remote it refuses, as one reached
+// through a remote helper, is refused before anything runs, with a *guardError.
+func (g git) reach(ctx context.Context, dir, remote string, args ...string) (stdout, stderr []byte, err error) {
+	if g.guard == nil {
+		return g.do(ctx, dir, args...)
+	}
+
+	setup, err := g.setupFor(ctx, dir, remote)
+	if err != nil {
+		return nil, nil, &guardError{err: err}
+	}
+
+	return g.guarded(ctx, dir, setup, args)
+}
+
+// write runs args, a command that writes a worktree's files and reaches no remote, as
+// gitread's Setup.Checkout of the session's setup works it out, or else CheckoutSetup's
+// (guarded). Without a guard it runs as do does. A checkout weighs only what it can reach
+// itself: a remote the session's setup refused (a RefusedError: one reached through a remote
+// helper, or one the clone's own config reroutes) doesn't refuse a checkout, which asks
+// it nothing, as one from the last fetched copy or of a branch the clone has. Its own
+// CheckoutSetup still refuses a partial clone's promisor remotes, which it may fetch from,
+// and the clone's rerouting settings while Git LFS, which it runs, may reach its server.
+func (g git) write(ctx context.Context, dir string, args ...string) (stdout, stderr []byte, err error) {
+	if g.guard == nil {
+		return g.do(ctx, dir, args...)
+	}
+
+	var setup gitread.Setup
+
+	if c := g.setups; c != nil && c.dir == dir {
+		setup, err = g.setupFor(ctx, dir, c.remote)
+		if _, refused := errors.AsType[*gitread.RefusedError](err); refused {
+			setup, err = g.guard.CheckoutSetup(ctx, dir)
+		} else {
+			setup = setup.Checkout()
+		}
+	} else {
+		setup, err = g.guard.CheckoutSetup(ctx, dir)
+	}
+
+	if err != nil {
+		return nil, nil, &guardError{err: err}
+	}
+
+	return g.guarded(ctx, dir, setup, args)
+}
+
+// runner returns what runs git with env, a whole environment of its own: Config.GitWith,
+// or else an execpath.Exec with env.
+func (g git) runner(env []string) execpath.Runner {
+	if g.with == nil {
+		return execpath.Exec{Env: env}
+	}
+
+	return g.with(env)
+}
+
+// guarded runs args, which must pass the allowlist, with setup's environment, which holds
+// its settings (gitread.Hardening's first), the clone's folders, and its transports, and
+// setup's git, the one the guard worked them out for, through the configured runner. Core
+// finds bin with the same finder, so one clone is never handled by two git builds.
+func (g git) guarded(ctx context.Context, dir string, setup gitread.Setup, args []string) (stdout, stderr []byte,
+	err error,
+) {
+	if !allowed(args) {
+		return nil, nil, fmt.Errorf("%w: git %s", ErrGitCommandNotAllowed, strings.Join(args, " "))
+	}
+
+	return g.runner(setup.Env).Run(ctx, setup.Git, append([]string{"-C", dir}, args...)...)
+}
+
+// hardening are the settings every git command here runs with, gitread.Hardening: the
+// ones every git command that changes a clone runs with. Git runs hooks, and the file
+// system monitor, with the worktree as their working directory, and a worktree holds a
+// pull request's own files, which may come from anyone: a hook that runs a tool from the
+// checkout (node_modules/.bin, say) would run the pull request's code before any agent
+// starts, outside every limit a launch sets. None of these commands needs either, nor to
+// recurse into submodules, whose URLs the pull request names.
+func hardening() []string {
+	return gitread.Hardening()
 }
 
 // do runs git in dir with args after checking them against the allowlist, with hooks,
@@ -132,13 +397,64 @@ func (g git) do(ctx context.Context, dir string, args ...string) (stdout, stderr
 		return nil, nil, fmt.Errorf("%w: git %s", ErrGitCommandNotAllowed, strings.Join(args, " "))
 	}
 
+	if g.guard != nil && !readOnly(args) {
+		return g.local(ctx, dir, args)
+	}
+
 	safe := hardening()
 	argv := make([]string, 0, len(safe)+len(args)+2)
 	argv = append(argv, "-C", dir)
 	argv = append(argv, safe...)
 	argv = append(argv, args...)
 
+	if g.guard != nil {
+		// A read runs with gitread's read environment (readOnly).
+		return g.runner(g.guard.ReadEnv()).Run(ctx, g.bin, argv...)
+	}
+
 	return g.run.Run(ctx, g.bin, argv...)
+}
+
+// local runs args, a command that could run one of the clone's own programs, in dir with
+// gitread's Local for it: refused before git runs, with a *guardError, when the clone's own
+// config holds a setting gitread's guards refuse, and otherwise run with every filter
+// driver of the clone's own off, Git LFS's too, no hook, no optional lock (a status leaves
+// the index alone), no replace ref, and no transport, by the Local's git. A command that
+// also runs inside a worktree, as a removal runs its status there, names it in within: the
+// config git reads there, the worktree's own config.worktree included, must pass the
+// guards too, and its Local's settings, which turn off the filters that config defines as
+// well as the clone's, are the ones the command runs with.
+func (g git) local(ctx context.Context, dir string, args []string, within ...string) (stdout, stderr []byte,
+	err error,
+) {
+	local, err := g.checkedLocal(ctx, dir)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	for _, inner := range within {
+		if local, err = g.checkedLocal(ctx, inner); err != nil {
+			return nil, nil, err
+		}
+	}
+
+	return g.runner(local.Env).Run(ctx, local.Git, append([]string{"-C", dir}, args...)...)
+}
+
+// checkedLocal returns the Local of a command in dir, or a refusal worded for the window
+// when it can't be worked out or the config git reads there holds a setting gitread's
+// guards refuse.
+func (g git) checkedLocal(ctx context.Context, dir string) (gitread.Local, error) {
+	local, err := g.localFor(ctx, dir)
+
+	switch {
+	case err != nil:
+		return gitread.Local{}, guardRefusal(err)
+	case local.Refused != nil:
+		return gitread.Local{}, guardRefusal(local.Refused)
+	default:
+		return local, nil
+	}
 }
 
 // list returns the worktrees of the repository at dir.
@@ -153,14 +469,29 @@ func (g git) list(ctx context.Context, dir string) ([]Entry, []byte, error) {
 	return entries, nil, err
 }
 
-// remove removes the worktree at path, passing a single --force when force is set.
+// remove removes the worktree at path, passing a single --force when force is set. Without
+// --force, git first runs a status inside the worktree, which reads the worktree's own
+// config.worktree as well as the clone's: with a guard, both must pass gitread's guards,
+// and the filters both define are off (local's within).
 func (g git) remove(ctx context.Context, dir, path string, force bool) ([]byte, error) {
 	args := []string{worktreeCmd, "remove"}
 	if force {
 		args = append(args, "--force")
 	}
 
-	_, stderr, err := g.do(ctx, dir, append(args, path)...)
+	args = append(args, path)
+
+	if !allowed(args) {
+		return nil, fmt.Errorf("%w: git %s", ErrGitCommandNotAllowed, strings.Join(args, " "))
+	}
+
+	if g.guard != nil && dirExists(path) {
+		_, stderr, err := g.local(ctx, dir, args, path)
+
+		return stderr, err
+	}
+
+	_, stderr, err := g.do(ctx, dir, args...)
 
 	return stderr, err
 }
@@ -386,8 +717,8 @@ func allowedLookup(args []string) bool {
 		return isOwnBranchRef(args[3]) || isTrackingRef(args[3])
 	case len(args) == 3 && joinArgs(args[:2]) == joinArgs(symbolicRefArgs("")[:2]):
 		return isRemoteHead(args[2])
-	case len(args) == 4 && joinArgs(args) == joinArgs(lsRemoteArgs(args[2])):
-		return remotePattern.MatchString(args[2])
+	case len(args) == 5 && joinArgs(args) == joinArgs(lsRemoteArgs(args[3])):
+		return remotePattern.MatchString(args[3])
 	default:
 		return false
 	}
@@ -499,4 +830,12 @@ func countStatusEntries(out []byte) int {
 // refused), as opposed to a failure to run git at all or a canceled context.
 func gitRefused(ctx context.Context, err error) bool {
 	return ctx.Err() == nil && execpath.ExitCode(err) > 0
+}
+
+// guarded reports err as gitread's guards refusing a command before git ran (a
+// *guardError), which uierr.Message words.
+func guarded(err error) bool {
+	_, ok := errors.AsType[*guardError](err)
+
+	return ok
 }

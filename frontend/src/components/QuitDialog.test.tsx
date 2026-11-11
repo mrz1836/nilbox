@@ -17,6 +17,22 @@ function going(change: Partial<ScriptRun> = {}): ScriptRun {
 
 const release = going({ id: 3, kind: 'release', title: 'Release v1.4.3', repo: 'acme-org/sdk' })
 
+// heldPull is a pull whose Stop is held back while git writes the clone's files.
+const heldPull = going({
+  id: 5,
+  kind: 'gitPull',
+  title: 'Pull main',
+  repo: 'acme-org/sdk',
+  canStop: false,
+  progress: {
+    step: '',
+    working: '',
+    stopRefused:
+      'A pull can’t be stopped: stopping it partway could leave the clone’s files half updated. It ends on its own, within thirty minutes.',
+    stopConfirm: '',
+  },
+})
+
 // askToQuit renders the dialog with the runs listed, then has the shell ask to quit.
 async function askToQuit(runs: ScriptRun[]) {
   platform.listScriptRuns.mockResolvedValue(runs)
@@ -116,6 +132,24 @@ describe('QuitDialog', () => {
       d.getByText(/A release is switching branches or pulling, so stopping waits up to a few seconds for it\./),
     ).toBeInTheDocument()
     expect(d.getByText(new RegExp(`that release goes on after ${brand.name} closes`))).toBeInTheDocument()
+  })
+
+  it('asks about a pull Stop holds back while git writes the clone, in its own words', async () => {
+    await askToQuit([heldPull])
+
+    expect(
+      (await dialog()).getByText(
+        `Pull main is running in acme-org/sdk. A pull can’t be stopped: stopping it partway could leave the clone’s files half updated. It ends on its own, within thirty minutes. Quitting waits up to a few seconds for it. If it hasn’t ended by then, it goes on after ${brand.name} closes. Quit anyway?`,
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('says so among several runs when a pull is held back, never as a release', async () => {
+    await askToQuit([heldPull, going({ id: 2 })])
+
+    const d = await dialog()
+    expect(d.getByText(/A run that can’t be stopped right now is waited for up to a few seconds\./)).toBeInTheDocument()
+    expect(d.queryByText(/A release is switching branches/)).not.toBeInTheDocument()
   })
 
   it('names another run and where it runs', async () => {

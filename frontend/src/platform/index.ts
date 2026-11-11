@@ -130,6 +130,7 @@ export type ScriptRunFilter = NonNullLists<scriptrun.Filter>
 export type ScriptRunChunk = NonNullLists<scriptrun.Chunk>
 export type ScriptRunProgress = NonNullLists<scriptrun.Progress>
 export type ScriptSources = NonNullLists<integrationprefs.ScriptSources>
+export type ScriptsPage = integrationprefs.ScriptsPage
 
 // UserScript is one of the user's own scripts, as saved: its scope, which clones it shows
 // in, and its icon, each a closed set, and its place, where runs go, or '' for where the
@@ -143,6 +144,8 @@ export type ScriptEntry = Omit<NonNullLists<scripts.Entry>, 'mine'> & { mine: Us
 export type ScriptSection = Omit<NonNullLists<scripts.Section>, 'entries'> & { entries: ScriptEntry[] }
 export type RepoScripts = Omit<NonNullLists<scripts.Page>, 'sections'> & { sections: ScriptSection[] }
 export type ScriptClone = NonNullLists<scripts.Clone>
+export type BranchStatus = NonNullLists<scripts.BranchStatus>
+export type BranchState = scripts.BranchState
 export type ScriptInput = NonNullLists<scripts.Input>
 export type ScriptOption = NonNullLists<scripts.Option>
 export type ScriptSource = scripts.Source
@@ -465,6 +468,9 @@ export const {
   SetRunsIn: setRunsIn,
   SetOfferAfterMerge: setOfferAfterMerge,
   SetScriptSources: setScriptSources,
+  SetIntegrationsAnnounced: setIntegrationsAnnounced,
+  SetScriptsLastPage: setScriptsLastPage,
+  SetScriptsLastRepo: setScriptsLastRepo,
 } = narrow(settings.Service)
 
 // The tools the app finds, installs, and runs for the user. List never waits for a
@@ -499,7 +505,7 @@ export const {
   QuitAnyway: quitAnyway,
 } = narrow(scriptrun.Service)
 
-// Releases: the repositories the Release page lists (kept five minutes unless refresh
+// Releases: the repositories the Release page lists (kept however old unless refresh
 // is set; "releases:progress" events say how far a read of GitHub has got, and a
 // "releases:updated" event follows each new list; after a restart, the list kept from the
 // last start comes at once, marked kept, while it is read again behind it), a release's sheet as Decide
@@ -555,8 +561,12 @@ export const getChecksResult: (runID: number) => CancellablePromise<HookChecksRe
 // with ID 0, at the end), deleted, duplicated right after the original, and moved past the
 // nearest script shown in the clone named (all of them for ''); RepoNames lists the
 // clones' GitHub repositories, owner/name, which a script for chosen repositories picks
-// from; cancelling it stops the reads still to start. Nothing here runs anything in a
-// clone but the run the user asked for, and nothing asks GitHub.
+// from; cancelling it stops the reads still to start. BranchStatus says whether the
+// clone's branch is behind the branch it follows on origin (origin's answer, one
+// ls-remote, kept five minutes unless refresh is set; never a fetch), and Pull
+// fast-forwards it, git's fast-forward-only pull, returning its run's ID; a
+// "scriptruns:updated" event follows its end. Nothing here runs anything in a clone but the
+// run the user asked for, and nothing asks GitHub's API.
 const scriptsService = narrow(scripts.Service)
 
 export const {
@@ -564,6 +574,8 @@ export const {
   RepoNames: listScriptRepoNames,
   Delete: deleteUserScript,
   Move: moveUserScript,
+  BranchStatus: getBranchStatus,
+  Pull: pullBranch,
 } = scriptsService
 
 // The calls whose user scripts the types above widen with '' for the setting's place.

@@ -188,6 +188,15 @@ export function SetIntegrationPath(id: integrationprefs$0.ID, path: string): $Ca
 }
 
 /**
+ * SetIntegrationsAnnounced stores whether the window announced the Scripts tab, as it
+ * first appeared because a tool was found, and returns the settings with it, so the toast
+ * shows once rather than at every start. Nothing else hears of it.
+ */
+export function SetIntegrationsAnnounced(announced: boolean): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(1348564163, announced);
+}
+
+/**
  * SetMenuBar stores whether the app shows its menu bar icon, and returns the settings
  * with it. Once it is stored, an event.MenuBarChanged is emitted, so the desktop shell
  * adds or removes the icon.
@@ -251,6 +260,24 @@ export function SetRunsIn(place: integrationprefs$0.RunsIn): $CancellablePromise
  */
 export function SetScriptSources(magexTargets: boolean, repoFiles: boolean): $CancellablePromise<$models.Settings> {
     return $Call.ByID(2421221448, magexTargets, repoFiles);
+}
+
+/**
+ * SetScriptsLastPage stores the Scripts tab's page shown last, which the tab reopens on,
+ * and returns the settings with it. A page that isn't one of the tab's is refused.
+ */
+export function SetScriptsLastPage(page: integrationprefs$0.ScriptsPage): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(1881352852, page);
+}
+
+/**
+ * SetScriptsLastRepo stores the clone Repo scripts showed last, as the window names it
+ * (its folder, with ~), which Repo scripts reopens on, and returns the settings with it;
+ * "" forgets it. A folder that isn't an absolute or ~ path on one line is refused. Repo
+ * scripts checks the folder again as it lists it, as it does any the window names.
+ */
+export function SetScriptsLastRepo(dir: string): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(1533637527, dir);
 }
 
 /**

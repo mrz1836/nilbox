@@ -27,6 +27,17 @@
 // in the clone, with the clone's repository, folder, and default branch in Variables,
 // where the script says, or else where the setting sends runs.
 //
+// BranchStatus tells the page's header whether the clone's branch is behind the branch it
+// follows on origin, read with gitread from the clone's own refs and one ls-remote of that
+// branch alone, whose answer is kept five minutes, and never fetches. Pull brings it level
+// on the user's
+// click: git's fast-forward-only pull of that branch, run in the app under the clone's
+// lock, its Before reading the clone again and working out what git runs with, every one of
+// gitread's guards applied, before git runs, so that the pull's own fetch is the one time
+// origin is asked: a clone whose own config holds a setting gitread refuses is refused, and
+// the status says so before offering a pull. It is the one git command the app runs that
+// changes a clone's checkout, and pull.go the one file that holds it.
+//
 // It owns the script_trust table, the commands the user trusted, and user_scripts, the
 // user's own scripts, in the order the user put them in.
 package scripts
@@ -280,4 +291,11 @@ var (
 	// ErrAsksFirst is returned by Run again for one of the user's scripts set to ask
 	// before each run, which only the page asks.
 	ErrAsksFirst = errors.New("the script asks before each run")
+
+	// ErrCantPull is returned for a pull refused before it ran: no status was worked out
+	// for the clone, it is on another branch than the one its status was worked out on,
+	// its branch follows none on origin, git is in the middle of something there, or
+	// gitread's guards refused it, as for a clone whose own config holds a setting outside
+	// their allowlist.
+	ErrCantPull = errors.New("the branch can't be pulled now")
 )

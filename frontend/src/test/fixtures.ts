@@ -13,6 +13,7 @@ import type {
   BudgetGauge,
   BudgetReading,
   BudgetWrites,
+  BranchStatus,
   BundlePrompt,
   DefaultPrompts,
   Review,
@@ -352,6 +353,9 @@ export function integrationsConfig(overrides: Partial<IntegrationsConfig> = {}):
     runsIn: 'app',
     offerAfterMerge: true,
     scriptSources: { magexTargets: true, repoFiles: true },
+    announced: false,
+    lastPage: '',
+    lastRepo: '',
     ...overrides,
   }
 }
@@ -1901,6 +1905,22 @@ export function scriptClones(): ScriptClone[] {
     scriptClone({ name: 'web', dir: '~/projects/web' }),
     scriptClone({ name: 'notes', dir: '~/projects/notes' }),
   ]
+}
+
+// branchStatus is acme-org/sdk's clone on master, up to date with origin's master, as
+// origin said a minute before FIXED_NOW.
+export function branchStatus(overrides: Partial<BranchStatus> = {}): BranchStatus {
+  return {
+    dir: '~/projects/sdk',
+    branch: 'master',
+    upstream: 'master',
+    state: 'upToDate',
+    local: '1a2b3c4',
+    origin: '1a2b3c4',
+    note: 'master is up to date with origin/master.',
+    checkedAt: '2026-06-15T11:59:00Z',
+    ...overrides,
+  }
 }
 
 // scriptEntry is t3.json's Test script, never trusted, so running it asks first.

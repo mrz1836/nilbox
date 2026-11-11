@@ -439,7 +439,7 @@ More in [Reviewing a pull request](docs/desktop.md#reviewing-a-pull-request).
 - **Launch defaults** per org and per repository resolve in a
   [fixed order](docs/desktop.md#launch-defaults).
 - **No clone yet?** The card offers `gh repo clone` into the clone root, then continues the launch.
-  An existing clone's own checkout is never changed: no checkout, pull, or reset.
+  A launch never changes an existing clone's own checkout: no checkout, pull, or reset.
 - **No trust dialog:** before each launch the worktree and its clone are marked trusted in the
   profile's own config (Claude Code's `.claude.json`, or Codex's `config.toml`), so the session
   starts straight away.
@@ -525,6 +525,8 @@ More in [Outside contributors](docs/desktop.md#outside-contributors) and
 - **Remove**, **Remove all clean**, **Force remove** (for dirty, unlocked worktrees), **Prune**,
   and **Unlock** for an agent lock whose session has ended. The main worktree is never removable, a
   worktree in use is never removed, and a lock you set by hand is never released.
+- A worktree whose status can't be read safely, as one whose clone's own git config names a hook,
+  a filter, or another program git would run, says why and is never removed or cleaned up.
 - Every removal and cleanup asks first, with a box for each worktree and branch it would take,
   ticked as **Settings → Worktrees** says: the worktree's own `worktree-<item>` branch, the pull
   request's branch when a session checked it out, or both. Untick any to keep it. A branch goes
@@ -590,12 +592,15 @@ More in [The Worktrees view](docs/desktop.md#the-worktrees-view).
   points to Release, which does it with its checks. Every command runs where your runs go, or,
   from its menu, in the other place. **New script** saves your own commands, shown first, in
   every repository, the Go ones, or those you choose, each with its own place to run and an
-  optional ask before running.
+  optional ask before running. Beside the branch, the page says whether origin has newer
+  commits on it, asking origin about that branch alone, and **Pull** fast-forwards it (`git pull
+  --ff-only`, never a merge or a rebase), so the scripts run on the newest code. A clone whose
+  own git config names a program git would run says it can't be pulled, and why.
 - **A command from the repository asks first.** Before a `t3.json` script, a VS Code task, or the
   repository's own magex target runs for the first time, Nilbox shows exactly what will run and
   where, and asks again whenever it changes, showing what you ran before. Nothing in a clone runs
   just to list its commands. Settings → Integrations chooses which sources the page reads.
-- **Runs** lists every release, hooks action, check, script, and tool update, with each run's
+- **Runs** lists every release, hooks action, check, script, pull, and tool update, with each run's
   status, result, and full log.
 
 More in [The Scripts tab](docs/desktop.md#the-scripts-tab), [Release](docs/desktop.md#release),

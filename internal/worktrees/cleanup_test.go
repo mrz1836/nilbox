@@ -170,6 +170,9 @@ type linkDeps struct {
 	auto     bool
 	procs    processTable
 	running  procs.Lister
+
+	// guard, when set, runs the Service under gitread's guards, as core does.
+	guard Guard
 }
 
 // linked builds a Service over the env that links worktrees through deps. Agent locks
@@ -202,6 +205,10 @@ func (e *env) linked(deps linkDeps) *Service {
 
 	if deps.history != nil {
 		cfg.History = deps.history
+	}
+
+	if deps.guard != nil {
+		cfg.Guard = deps.guard
 	}
 
 	svc := NewService(cfg)

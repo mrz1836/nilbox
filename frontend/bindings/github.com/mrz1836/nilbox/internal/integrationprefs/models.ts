@@ -31,6 +31,19 @@ export interface Config {
      * ScriptSources are the sources Repo scripts lists.
      */
     "scriptSources": ScriptSources;
+
+    /**
+     * Announced reports that the window announced the Scripts tab once, as it first
+     * appeared because a tool was found, so it never does again.
+     */
+    "announced": boolean;
+
+    /**
+     * LastPage is the Scripts tab's page shown last, and LastRepo the clone Repo scripts
+     * showed last, with ~: where each reopens, none until the user picks one.
+     */
+    "lastPage": ScriptsPage;
+    "lastRepo": string;
 }
 
 /**
@@ -92,6 +105,43 @@ export interface ScriptSources {
     "magexTargets": boolean;
     "repoFiles": boolean;
 }
+
+/**
+ * ScriptsPage is one of the Scripts tab's pages, which the tab reopens on.
+ */
+export type ScriptsPage = "" | "release" | "hooks" | "scripts" | "runs";
+
+/**
+ * The values of ScriptsPage, by the names of their Go constants.
+ */
+export const ScriptsPage = {
+    /**
+     * The Scripts tab's pages, in the rail's order.
+     *
+     * PageNone is no page yet: the tab opens on the first page that's on.
+     */
+    PageNone: "",
+
+    /**
+     * PageRelease is Release.
+     */
+    PageRelease: "release",
+
+    /**
+     * PageHooks is Hooks.
+     */
+    PageHooks: "hooks",
+
+    /**
+     * PageScripts is Repo scripts.
+     */
+    PageScripts: "scripts",
+
+    /**
+     * PageRuns is Runs.
+     */
+    PageRuns: "runs",
+} as const;
 
 /**
  * Switch is how the user set an integration: automatic, on, or off.

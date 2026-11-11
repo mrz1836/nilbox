@@ -57,7 +57,7 @@ export interface Filter {
 /**
  * Kind is what a run does.
  */
-export type Kind = "release" | "hooks" | "checks" | "script" | "update";
+export type Kind = "release" | "hooks" | "checks" | "script" | "update" | "gitPull";
 
 /**
  * The values of Kind, by the names of their Go constants.
@@ -91,6 +91,12 @@ export const Kind = {
      * never a clone, and doesn't count as using the tool (InUse): it is the update.
      */
     KindUpdate: "update",
+
+    /**
+     * KindPull fast-forwards a clone's branch to origin's, on the user's click on Repo
+     * scripts: git's fast-forward-only pull, and nothing else.
+     */
+    KindPull: "gitPull",
 } as const;
 
 /**

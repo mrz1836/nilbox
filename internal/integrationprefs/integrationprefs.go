@@ -1,9 +1,11 @@
 // Package integrationprefs declares the integrations' preference keys and decodes and
 // encodes their values: whether each integration is on, off, or automatic, which copy of
-// a tool to use, where the runs go, whether a merge offers a release, and which sources
-// Repo scripts lists. The settings package writes them, and the integrations, release, and
-// scripts packages read them. It imports nothing of the app's, so settings never depends
-// on the integrations package, nor through it on the GitHub client.
+// a tool to use, where the runs go, whether a merge offers a release, which sources Repo
+// scripts lists, and the window's memory of the Scripts tab (whether it was announced, and
+// the page and clone it reopens on). The settings package writes them, and the
+// integrations, release, and scripts packages read them. It imports nothing of the app's,
+// so settings never depends on the integrations package, nor through it on the GitHub
+// client.
 package integrationprefs
 
 import (
@@ -11,6 +13,9 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 const (
@@ -32,6 +37,43 @@ const (
 	// a repository's own files, t3.json and .vscode/tasks.json: "true" or "false", on when
 	// unset.
 	KeyRepoFiles = "scripts.repoFiles"
+
+	// KeyAnnounced is the preference key holding whether the window announced the Scripts
+	// tab as it first appeared because a tool was found: "true" or "false", off when unset.
+	KeyAnnounced = keyPrefix + "announced"
+
+	// KeyLastPage is the preference key holding the Scripts tab's page shown last, which
+	// the tab reopens on: one of ScriptsPage's pages, or none when unset.
+	KeyLastPage = "scripts.lastPage"
+
+	// KeyLastRepo is the preference key holding the clone Repo scripts showed last, as the
+	// window names it (its folder, with ~ for home), which Repo scripts reopens on: none
+	// when unset.
+	KeyLastRepo = "scripts.lastRepo"
+
+	// maxRepoLen is the longest clone folder KeyLastRepo holds.
+	maxRepoLen = 4096
+)
+
+// ScriptsPage is one of the Scripts tab's pages, which the tab reopens on.
+type ScriptsPage string
+
+// The Scripts tab's pages, in the rail's order.
+const (
+	// PageNone is no page yet: the tab opens on the first page that's on.
+	PageNone ScriptsPage = ""
+
+	// PageRelease is Release.
+	PageRelease ScriptsPage = "release"
+
+	// PageHooks is Hooks.
+	PageHooks ScriptsPage = "hooks"
+
+	// PageScripts is Repo scripts.
+	PageScripts ScriptsPage = "scripts"
+
+	// PageRuns is Runs.
+	PageRuns ScriptsPage = "runs"
 )
 
 // ID names an integration: a tool the app finds and runs, or the scripts.
@@ -94,6 +136,13 @@ var (
 
 	// ErrInvalidRunsIn is returned for a RunsIn that is not one of its places.
 	ErrInvalidRunsIn = errors.New("unknown place to run")
+
+	// ErrInvalidPage is returned for a ScriptsPage that is not one of the tab's pages.
+	ErrInvalidPage = errors.New("unknown Scripts page")
+
+	// ErrInvalidRepo is returned for a clone folder to reopen Repo scripts on that isn't
+	// an absolute or ~ path on one line.
+	ErrInvalidRepo = errors.New("invalid clone folder")
 )
 
 // Config is how the user set the integrations up, as the settings show it. Every
@@ -114,6 +163,15 @@ type Config struct {
 
 	// ScriptSources are the sources Repo scripts lists.
 	ScriptSources ScriptSources `json:"scriptSources"`
+
+	// Announced reports that the window announced the Scripts tab once, as it first
+	// appeared because a tool was found, so it never does again.
+	Announced bool `json:"announced"`
+
+	// LastPage is the Scripts tab's page shown last, and LastRepo the clone Repo scripts
+	// showed last, with ~: where each reopens, none until the user picks one.
+	LastPage ScriptsPage `json:"lastPage"`
+	LastRepo string      `json:"lastRepo"`
 }
 
 // ScriptSources are the sources Repo scripts lists besides the user's own scripts: magex's
@@ -176,13 +234,16 @@ func Keys() []string {
 		keys = append(keys, KeyPath(id))
 	}
 
-	return append(keys, KeyRunsIn, KeyOfferAfterMerge, KeyMagexTargets, KeyRepoFiles)
+	return append(keys, KeyRunsIn, KeyOfferAfterMerge, KeyMagexTargets, KeyRepoFiles, KeyAnnounced, KeyLastPage,
+		KeyLastRepo)
 }
 
 // Decode reads the integrations' settings from the stored preferences. A switch that is
 // unset or holds an unknown value is automatic, a path that is not absolute is none, runs
 // go in the app unless the terminal is stored, and a merge offers a release, and Repo
-// scripts lists each of its sources, unless that is stored as off.
+// scripts lists each of its sources, unless that is stored as off. The Scripts tab is
+// announced only once that is stored, and a page or clone to reopen on that isn't one
+// reads as none.
 func Decode(stored map[string]string) Config {
 	out := Config{
 		Switches: map[ID]Switch{}, Paths: map[ID]string{}, RunsIn: DecodeRunsIn(stored[KeyRunsIn]),
@@ -190,6 +251,9 @@ func Decode(stored map[string]string) Config {
 		ScriptSources: ScriptSources{
 			MagexTargets: decodeOn(stored[KeyMagexTargets]), RepoFiles: decodeOn(stored[KeyRepoFiles]),
 		},
+		Announced: decodeOff(stored[KeyAnnounced]),
+		LastPage:  DecodeLastPage(stored[KeyLastPage]),
+		LastRepo:  DecodeLastRepo(stored[KeyLastRepo]),
 	}
 
 	for _, id := range IDs() {
@@ -289,4 +353,71 @@ func decodeOn(stored string) bool {
 	}
 
 	return true
+}
+
+// decodeOff reads a switch that starts off: true only when it is stored as true.
+func decodeOff(stored string) bool {
+	on, err := strconv.ParseBool(stored)
+
+	return err == nil && on
+}
+
+// Valid reports whether p is one of the Scripts tab's pages (PageNone is not).
+func (p ScriptsPage) Valid() bool {
+	return slices.Contains([]ScriptsPage{PageRelease, PageHooks, PageScripts, PageRuns}, p)
+}
+
+// DecodeLastPage reads the Scripts tab's page to reopen on: as stored, when it is one of
+// the tab's pages, else none.
+func DecodeLastPage(stored string) ScriptsPage {
+	if p := ScriptsPage(stored); p.Valid() {
+		return p
+	}
+
+	return PageNone
+}
+
+// EncodeLastPage returns the stored form of the Scripts tab's page to reopen on. A page
+// that is not one of the tab's is refused.
+func EncodeLastPage(p ScriptsPage) (string, error) {
+	if !p.Valid() {
+		return "", ErrInvalidPage
+	}
+
+	return string(p), nil
+}
+
+// DecodeLastRepo reads the clone Repo scripts reopens on: as stored, when it reads as one
+// (validRepo), else none.
+func DecodeLastRepo(stored string) string {
+	if validRepo(stored) {
+		return stored
+	}
+
+	return ""
+}
+
+// EncodeLastRepo returns the stored form of the clone Repo scripts reopens on: dir as the
+// window names it, or "" for none. A folder that isn't an absolute or ~ path on one line,
+// with no control character, of at most maxRepoLen bytes, is refused.
+func EncodeLastRepo(dir string) (string, error) {
+	if dir != "" && !validRepo(dir) {
+		return "", ErrInvalidRepo
+	}
+
+	return dir, nil
+}
+
+// validRepo reports whether dir reads as a clone folder the window names: an absolute or
+// ~ path, of at most maxRepoLen bytes, valid UTF-8, with no control character.
+func validRepo(dir string) bool {
+	if dir == "" || len(dir) > maxRepoLen || !utf8.ValidString(dir) {
+		return false
+	}
+
+	if !strings.HasPrefix(dir, "/") && !strings.HasPrefix(dir, "~/") {
+		return false
+	}
+
+	return !strings.ContainsFunc(dir, unicode.IsControl)
 }
