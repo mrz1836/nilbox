@@ -52,7 +52,7 @@ func TestApproveSendsOnePinnedReview(t *testing.T) {
 
 	res := h.act(t, ActRequest{
 		Action: ActionApprove, Body: "Looks good.",
-		Comments: []LineComment{{Path: "cache.go", Line: 3, Side: SideRight, Body: "Nice."}},
+		Comments: []LineComment{{Path: cacheFile, Line: 3, Side: SideRight, Body: "Nice."}},
 	})
 
 	assert.Equal(t, OutcomeReviewed, res.Outcome)
@@ -64,7 +64,7 @@ func TestApproveSendsOnePinnedReview(t *testing.T) {
 	require.Len(t, h.github.sent, 1)
 	assert.Equal(t, github.ReviewInput{
 		Event: github.ReviewApprove, Body: "Looks good.", CommitID: headA,
-		Comments: []github.LineComment{{Path: "cache.go", Line: 3, Side: github.SideRight, Body: "Nice."}},
+		Comments: []github.LineComment{{Path: cacheFile, Line: 3, Side: github.SideRight, Body: "Nice."}},
 	}, h.github.sent[0])
 
 	require.Len(t, h.inbox.acted, 1)
@@ -81,7 +81,7 @@ func TestTheOtherReviewsAndTheirWords(t *testing.T) {
 	assert.Equal(t, github.ReviewRequestChanges, h.github.sent[0].Event)
 
 	res = h.act(t, ActRequest{
-		Action: ActionComment, Comments: []LineComment{{Path: "cache.go", Line: 2, Side: SideLeft, Body: "Why?"}},
+		Action: ActionComment, Comments: []LineComment{{Path: cacheFile, Line: 2, Side: SideLeft, Body: "Why?"}},
 	})
 	assert.Equal(t, "Commented acme-org/example-repo#7", res.Message)
 	assert.Equal(t, github.ReviewComment, h.github.sent[1].Event)
@@ -101,7 +101,7 @@ func TestActRefusesWhatIsNotSent(t *testing.T) {
 		{name: "an unknown action", req: ActRequest{Action: "ship"}, want: ErrNotOffered},
 		{
 			name: "a comment off the diff", want: ErrNotInDiff,
-			req: ActRequest{Action: ActionComment, Comments: []LineComment{{Path: "cache.go", Line: 99, Side: SideRight, Body: "x"}}},
+			req: ActRequest{Action: ActionComment, Comments: []LineComment{{Path: cacheFile, Line: 99, Side: SideRight, Body: "x"}}},
 		},
 		{
 			name: "a comment on a file without a diff", want: ErrNotInDiff,
@@ -113,7 +113,7 @@ func TestActRefusesWhatIsNotSent(t *testing.T) {
 		},
 		{
 			name: "comments without a review", want: ErrNotOffered,
-			req: ActRequest{Action: ActionUpdateBranch, Comments: []LineComment{{Path: "cache.go", Line: 3, Side: SideRight, Body: "x"}}},
+			req: ActRequest{Action: ActionUpdateBranch, Comments: []LineComment{{Path: cacheFile, Line: 3, Side: SideRight, Body: "x"}}},
 		},
 	}
 
@@ -244,7 +244,7 @@ func TestApproveAndMergeReportsWhatGitHubWouldNotDo(t *testing.T) {
 
 	res = h.act(t, ActRequest{Action: ActionApproveMerge, Accept: true})
 	assert.Equal(t, OutcomeApprovedNotMerged, res.Outcome, "the gate refusing the second write")
-	assert.Equal(t, 1, h.github.called("submit"))
+	assert.Equal(t, 1, h.github.called(callSubmit))
 
 	h = readHarness(t, github.MergeStateClean)
 	h.github.stateErr, h.github.stateOK = errFakeRead, 1
@@ -346,7 +346,7 @@ func TestAMergePastTheRules(t *testing.T) {
 		assert.Equal(t, []string{"Merged past the rules (squash)"}, res.Steps)
 		require.Len(t, h.github.merges, 1)
 		assert.Equal(t, github.MergeInput{SHA: headA, Method: string(MethodSquash)}, h.github.merges[0])
-		assert.Zero(t, h.github.called("submit"), "no review")
+		assert.Zero(t, h.github.called(callSubmit), "no review")
 		assert.Contains(t, h.steps(t), "Squash-merging past the rules")
 	})
 
@@ -357,7 +357,7 @@ func TestAMergePastTheRules(t *testing.T) {
 
 		_, err := h.svc.Act(t.Context(), ActRequest{ItemID: pullID, Action: ActionMergeBypass, Head: headA})
 		require.ErrorIs(t, err, ErrWarningsNotAccepted)
-		assert.Zero(t, h.github.called("merge"))
+		assert.Zero(t, h.github.called(callMerge))
 	})
 
 	t.Run("is refused once GitHub no longer lets the user", func(t *testing.T) {
@@ -368,7 +368,7 @@ func TestAMergePastTheRules(t *testing.T) {
 
 		_, err := h.svc.Act(t.Context(), ActRequest{ItemID: pullID, Action: ActionMergeBypass, Head: headA, Accept: true})
 		require.ErrorIs(t, err, github.ErrNotMergeable)
-		assert.Zero(t, h.github.called("merge"))
+		assert.Zero(t, h.github.called(callMerge))
 	})
 
 	t.Run("is a plain merge once GitHub would merge anyway", func(t *testing.T) {
@@ -392,7 +392,7 @@ func TestAMergePastTheRules(t *testing.T) {
 
 		res := h.act(t, ActRequest{Action: ActionMergeBypass, Method: MethodSquash, Accept: true})
 		assert.Equal(t, OutcomePushedSince, res.Outcome)
-		assert.Zero(t, h.github.called("merge"))
+		assert.Zero(t, h.github.called(callMerge))
 	})
 }
 
@@ -443,7 +443,7 @@ func TestAnApprovalChecksTheHeadFirst(t *testing.T) {
 
 		res := h.act(t, ActRequest{Action: ActionComment, Body: "About what I saw."})
 		assert.Equal(t, OutcomeReviewed, res.Outcome)
-		assert.Zero(t, h.github.called("state"), "no read for a comment")
+		assert.Zero(t, h.github.called(callState), "no read for a comment")
 		require.Len(t, h.github.sent, 1)
 		assert.Equal(t, headA, h.github.sent[0].CommitID)
 	})
@@ -459,7 +459,7 @@ func TestApproveAndMergeOfAPullRequestPushedMidway(t *testing.T) {
 	assert.Equal(t, OutcomePushedSince, res.Outcome)
 	assert.Equal(t, []string{"Approved"}, res.Steps)
 	assert.Contains(t, res.Message, "Approved, but")
-	assert.Zero(t, h.github.called("merge"), "never merged past the head the user saw")
+	assert.Zero(t, h.github.called(callMerge), "never merged past the head the user saw")
 
 	h = readHarness(t, github.MergeStateClean)
 	h.github.states = []*github.MergeState{open(github.MergeStateClean, headA)}
@@ -477,8 +477,8 @@ func TestAPlainMergeNeverTurnsOnAutoMerge(t *testing.T) {
 
 	_, err := h.svc.Act(t.Context(), ActRequest{ItemID: pullID, Action: ActionMerge, Head: headA, Accept: true})
 	require.ErrorIs(t, err, github.ErrNotMergeable)
-	assert.Zero(t, h.github.called("auto"))
-	assert.Zero(t, h.github.called("merge"))
+	assert.Zero(t, h.github.called(callAuto))
+	assert.Zero(t, h.github.called(callMerge))
 }
 
 func TestARetriedTokenNeverApprovesTwice(t *testing.T) {
@@ -491,8 +491,8 @@ func TestARetriedTokenNeverApprovesTwice(t *testing.T) {
 	res := h.act(t, ActRequest{Action: ActionApproveMerge, Accept: true})
 	assert.Equal(t, OutcomeMerged, res.Outcome)
 	assert.Equal(t, 2, h.inbox.tries, "tried again with a fresh token")
-	assert.Equal(t, 1, h.github.called("submit"), "approved once")
-	assert.Equal(t, 2, h.github.called("merge"))
+	assert.Equal(t, 1, h.github.called(callSubmit), "approved once")
+	assert.Equal(t, 2, h.github.called(callMerge))
 	assert.Equal(t, []string{"Approved", "Merged (squash)"}, res.Steps)
 }
 
@@ -510,7 +510,7 @@ func TestTheGuardWaitsWhileGitHubWorksItOut(t *testing.T) {
 		res := h.act(t, ActRequest{Action: ActionApproveMerge, Accept: true})
 
 		assert.Equal(t, OutcomeMerged, res.Outcome)
-		assert.Equal(t, 1+guardReads, h.github.called("state"))
+		assert.Equal(t, 1+guardReads, h.github.called(callState))
 		assert.Equal(t, 2*guardWait, time.Since(start), "two waits between three reads")
 	})
 }
@@ -524,7 +524,7 @@ func TestTheGuardGivesUpAfterItsReads(t *testing.T) {
 
 		res := h.act(t, ActRequest{Action: ActionApproveMerge, Accept: true})
 		assert.Equal(t, OutcomeApprovedNotMerged, res.Outcome)
-		assert.Equal(t, 1+guardReads, h.github.called("state"), "the head before the approval, then the guard's")
+		assert.Equal(t, 1+guardReads, h.github.called(callState), "the head before the approval, then the guard's")
 	})
 }
 
@@ -648,7 +648,7 @@ func TestTheSheetReadsAgainAfterAnAction(t *testing.T) {
 		t.Parallel()
 
 		h := readHarness(t, github.MergeStateBlocked)
-		reads := h.github.called("review")
+		reads := h.github.called(callReview)
 
 		h.act(t, ActRequest{Action: ActionApprove})
 
@@ -657,34 +657,34 @@ func TestTheSheetReadsAgainAfterAnAction(t *testing.T) {
 		assert.Empty(t, opened.FetchedAt, "the read before the approval no longer counts as current")
 
 		h.refreshed(t)
-		assert.Equal(t, reads+1, h.github.called("review"), "a refresh right after reads again")
+		assert.Equal(t, reads+1, h.github.called(callReview), "a refresh right after reads again")
 	})
 
 	t.Run("one refused for a head the sheet no longer has", func(t *testing.T) {
 		t.Parallel()
 
 		h := readHarness(t, github.MergeStateClean)
-		reads := h.github.called("review")
+		reads := h.github.called(callReview)
 
 		res := h.act(t, ActRequest{Action: ActionMerge, Head: headB, Accept: true})
 		assert.Equal(t, OutcomePushedSince, res.Outcome)
 
 		h.refreshed(t)
-		assert.Equal(t, reads+1, h.github.called("review"), "the reload the sheet offers reads")
+		assert.Equal(t, reads+1, h.github.called(callReview), "the reload the sheet offers reads")
 	})
 
 	t.Run("one GitHub refused", func(t *testing.T) {
 		t.Parallel()
 
 		h := readHarness(t, github.MergeStateBlocked)
-		reads := h.github.called("review")
+		reads := h.github.called(callReview)
 		h.github.submitErr = github.ErrOwnPull
 
 		_, err := h.svc.Act(t.Context(), ActRequest{ItemID: pullID, Action: ActionApprove, Head: headA})
 		require.ErrorIs(t, err, github.ErrOwnPull)
 
 		h.refreshed(t)
-		assert.Equal(t, reads+1, h.github.called("review"))
+		assert.Equal(t, reads+1, h.github.called(callReview))
 	})
 }
 
@@ -696,8 +696,8 @@ func TestAReviewGitHubRefusesIsAnError(t *testing.T) {
 
 	_, err := h.svc.Act(t.Context(), ActRequest{ItemID: pullID, Action: ActionApproveMerge, Head: headA, Accept: true})
 	require.ErrorIs(t, err, github.ErrOwnPull)
-	assert.Equal(t, 1, h.github.called("state"), "only the head, read before the approval")
-	assert.Zero(t, h.github.called("merge"), "no merge without the approval")
+	assert.Equal(t, 1, h.github.called(callState), "only the head, read before the approval")
+	assert.Zero(t, h.github.called(callMerge), "no merge without the approval")
 }
 
 func TestBadCredentialsMidwayAreRetriedNotReported(t *testing.T) {

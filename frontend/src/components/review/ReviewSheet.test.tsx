@@ -10,6 +10,7 @@ import {
   agentSession,
   agents,
   item,
+  mergeOffer,
   offer,
   profile,
   prompts,
@@ -330,6 +331,145 @@ describe('ReviewSheet', () => {
     )
   })
 
+  it('sends the text with a merge, which posts it as a comment first, and says so', async () => {
+    const onDone = vi.fn()
+    render(<Harness onDone={onDone} />)
+
+    const box = await screen.findByRole('textbox', { name: 'Your review' })
+    await waitFor(() => {
+      expect(box).toHaveValue('Reviewed and approved. Thanks, @octo-other!')
+    })
+    // An approval carries the text itself.
+    expect(await actionButton('Approve & squash-merge')).toBeEnabled()
+    expect(screen.queryByText(/posted as a comment first/)).not.toBeInTheDocument()
+
+    await choose('Squash-merge')
+    expect(screen.getByText('Your text is posted as a comment first.')).toHaveClass('text-muted')
+
+    await userEvent.click(await actionButton('Squash-merge'))
+    const dialog = screen.getByRole('dialog', { name: 'Merge #7 into main?' })
+    // The confirmation says it too.
+    expect(within(dialog).getByText('Your text is posted as a comment first.')).toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Squash-merge' }))
+
+    await waitFor(() => {
+      expect(onDone).toHaveBeenCalled()
+    })
+    expect(platform.actOnReview).toHaveBeenCalledWith({
+      itemId: 1,
+      action: 'merge_now',
+      head: review().head,
+      body: 'Reviewed and approved. Thanks, @octo-other!',
+      comments: [],
+      method: 'SQUASH',
+      accept: false,
+    })
+  })
+
+  it('merges with no comment once the text is cleared', async () => {
+    render(<Harness />)
+
+    await choose('Squash-merge')
+
+    const box = screen.getByRole('textbox', { name: 'Your review' })
+    await waitFor(() => {
+      expect(box).toHaveValue('Reviewed and approved. Thanks, @octo-other!')
+    })
+    await userEvent.clear(box)
+
+    expect(screen.queryByText(/posted as a comment first/)).not.toBeInTheDocument()
+    expect(await actionButton('Squash-merge')).toBeEnabled()
+
+    await userEvent.click(await actionButton('Squash-merge'))
+    expect(
+      within(screen.getByRole('dialog', { name: 'Merge #7 into main?' })).queryByText(/posted as a comment first/),
+    ).not.toBeInTheDocument()
+    await userEvent.click(
+      within(screen.getByRole('dialog', { name: 'Merge #7 into main?' })).getByRole('button', { name: 'Squash-merge' }),
+    )
+
+    await waitFor(() => {
+      expect(platform.actOnReview).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'merge_now', body: '', comments: [] }),
+      )
+    })
+  })
+
+  it('holds a merge back while GitHub can’t take its comment, until the text is cleared', async () => {
+    const reason =
+      'You have a review of this pull request started on GitHub. Submit or discard it there first. ' +
+      'Or clear your text and line comments to merge without a comment.'
+    platform.refreshReview.mockResolvedValue(
+      review({
+        mine: true,
+        offers: [
+          mergeOffer({ commentBlocked: reason }),
+          offer({ action: 'comment', label: 'Comment', enabled: false }),
+        ],
+        primary: 'merge_now',
+      }),
+    )
+    render(<Harness />)
+
+    const box = await screen.findByRole('textbox', { name: 'Your review' })
+    await waitFor(() => {
+      expect(box).toHaveValue('Reviewed and approved. Thanks, @octo-other!')
+    })
+
+    const button = await actionButton('Squash-merge')
+    expect(button).toBeDisabled()
+    expect(button).toHaveAttribute('title', reason)
+    expect(screen.getByText(reason)).toHaveClass('text-warning')
+
+    // ⌘↩ holds it back too.
+    await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
+    expect(screen.queryByRole('dialog', { name: 'Merge #7 into main?' })).not.toBeInTheDocument()
+
+    await userEvent.clear(box)
+
+    expect(screen.queryByText(reason)).not.toBeInTheDocument()
+    expect(await actionButton('Squash-merge')).toBeEnabled()
+
+    await userEvent.click(await actionButton('Squash-merge'))
+    await userEvent.click(
+      within(screen.getByRole('dialog', { name: 'Merge #7 into main?' })).getByRole('button', { name: 'Squash-merge' }),
+    )
+
+    await waitFor(() => {
+      expect(platform.actOnReview).toHaveBeenCalledWith(expect.objectContaining({ action: 'merge_now', body: '' }))
+    })
+  })
+
+  it('drops the text a merge posted before it found a push, so it never posts twice', async () => {
+    platform.actOnReview.mockResolvedValue(
+      reviewResult({
+        outcome: 'pushed_since',
+        message: 'Commented, but acme-org/example-repo#7 was pushed to since you opened it, so it wasn’t merged.',
+        steps: ['Commented'],
+        commented: true,
+      }),
+    )
+    const onDone = vi.fn()
+    render(<Harness onDone={onDone} />)
+
+    await choose('Squash-merge')
+
+    const box = screen.getByRole('textbox', { name: 'Your review' })
+    await waitFor(() => {
+      expect(box).toHaveValue('Reviewed and approved. Thanks, @octo-other!')
+    })
+    await userEvent.click(await actionButton('Squash-merge'))
+    await userEvent.click(
+      within(screen.getByRole('dialog', { name: 'Merge #7 into main?' })).getByRole('button', { name: 'Squash-merge' }),
+    )
+
+    expect(await screen.findByText(/Commented, but acme-org\/example-repo#7 was pushed to/)).toBeInTheDocument()
+    expect(onDone).not.toHaveBeenCalled()
+    expect(box).toHaveValue('')
+    expect(screen.queryByText(/posted as a comment first/)).not.toBeInTheDocument()
+    expect(await actionButton('Squash-merge')).toBeEnabled()
+  })
+
   it('cancels a merge', async () => {
     render(<Harness />)
 
@@ -601,7 +741,10 @@ describe('ReviewSheet', () => {
 
   it('runs an action that needs no review', async () => {
     platform.refreshReview.mockResolvedValue(
-      review({ offers: [offer({ action: 'update_branch', label: 'Update branch' })], primary: 'update_branch' }),
+      review({
+        offers: [offer({ action: 'update_branch', label: 'Update branch', reviews: false })],
+        primary: 'update_branch',
+      }),
     )
     platform.actOnReview.mockResolvedValue(reviewResult({ outcome: 'branch_updating', message: 'Updating' }))
     const onDone = vi.fn()

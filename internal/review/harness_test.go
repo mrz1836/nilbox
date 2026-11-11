@@ -17,6 +17,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/testutil"
+	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
 // Test values.
@@ -25,6 +26,9 @@ const (
 	octoOther = "octo-other"
 	nodePR    = "PR_fakeNodeId7"
 	pullID    = int64(1)
+
+	// cacheFile is #7's source file, whose diff the sheet shows.
+	cacheFile = "cache.go"
 )
 
 var (
@@ -84,6 +88,11 @@ type fakeInbox struct {
 	tries  int
 	acted  []Acted
 	read   []PullRead
+
+	// retryErr fails the account check of the retry with a fresh token, and recordErr the
+	// record of what an action made happen, as the Actor joins it to the action's error.
+	retryErr  error
+	recordErr error
 }
 
 func (f *fakeInbox) Pull(context.Context, int64) (StoredPull, error) {
@@ -124,9 +133,19 @@ func (f *fakeInbox) Act(
 	acted, err := act(ctx, github.NewToken("fake-token-1"), target)
 	tries := 1
 
-	if github.IsBadCredentials(err) {
+	switch {
+	case github.IsBadCredentials(err) && f.retryErr != nil:
+		err = f.retryErr
+	case github.IsBadCredentials(err):
+		// The action keeps what it made happen across tries, so the second's Acted holds both.
 		acted, err = act(ctx, github.NewToken("fake-token-2"), target)
 		tries++
+	}
+
+	if f.recordErr != nil && (acted.Reviewed || acted.Merged) {
+		err = errors.Join(err, uierr.New(
+			"GitHub made the change, but the inbox could not record it. The next refresh catches it up.", f.recordErr,
+		))
 	}
 
 	f.mu.Lock()
@@ -145,6 +164,18 @@ func (f *fakeInbox) target() Target {
 	}
 }
 
+// The fake's names for GitHub's requests, as called and requests give them.
+const (
+	callReview  = "review"
+	callDiff    = "diff"
+	callState   = "state"
+	callSubmit  = "submit"
+	callMerge   = "merge"
+	callAuto    = "auto"
+	callUpdate  = "update"
+	callComment = "comment"
+)
+
 // fakeGitHub answers the sheet's requests and counts them.
 type fakeGitHub struct {
 	mu sync.Mutex
@@ -157,14 +188,18 @@ type fakeGitHub struct {
 	// stateOK is how many merge-state reads succeed before stateErr fails the rest.
 	stateOK int
 
-	submitErr  error
+	submitErr error
+	// submitted runs once GitHub took a review, before the fake answers.
+	submitted  func()
 	mergeErr   error
 	mergeOnce  error
 	autoErr    error
 	updateErr  error
 	commentErr error
 
-	calls    map[string]int
+	calls map[string]int
+	// order names every request, in the order they came.
+	order    []string
 	sent     []github.ReviewInput
 	merges   []github.MergeInput
 	autos    []string
@@ -175,7 +210,7 @@ func (g *fakeGitHub) FetchPullReview(context.Context, github.Token, string) (*gi
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	g.count("review")
+	g.count(callReview)
 
 	if len(g.reviews) > 0 {
 		r := g.reviews[0]
@@ -195,7 +230,7 @@ func (g *fakeGitHub) FetchPullDiff(context.Context, github.Token, item.Ref, stri
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	g.count("diff")
+	g.count(callDiff)
 
 	if g.diff == nil {
 		return nil, errNotCalled
@@ -204,13 +239,17 @@ func (g *fakeGitHub) FetchPullDiff(context.Context, github.Token, item.Ref, stri
 	return g.diff, nil
 }
 
-func (g *fakeGitHub) FetchMergeState(context.Context, github.Token, string) (*github.MergeState, error) {
+func (g *fakeGitHub) FetchMergeState(ctx context.Context, _ github.Token, _ string) (*github.MergeState, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	g.count("state")
+	g.count(callState)
 
-	if g.stateErr != nil && g.calls["state"] > g.stateOK {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if g.stateErr != nil && g.calls[callState] > g.stateOK {
 		return nil, g.stateErr
 	}
 
@@ -232,13 +271,17 @@ func (g *fakeGitHub) SubmitReview(
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	g.count("submit")
+	g.count(callSubmit)
 
 	if g.submitErr != nil {
 		return nil, g.submitErr
 	}
 
 	g.sent = append(g.sent, in)
+
+	if g.submitted != nil {
+		g.submitted()
+	}
 
 	return &github.SubmittedReview{ID: 1, State: "APPROVED", CommitID: in.CommitID, SubmittedAt: testNow}, nil
 }
@@ -247,7 +290,7 @@ func (g *fakeGitHub) MergePull(_ context.Context, _ github.Token, _ item.Ref, in
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	g.count("merge")
+	g.count(callMerge)
 
 	if g.mergeOnce != nil {
 		err := g.mergeOnce
@@ -271,7 +314,7 @@ func (g *fakeGitHub) EnableAutoMerge(
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	g.count("auto")
+	g.count(callAuto)
 
 	if g.autoErr != nil {
 		err := g.autoErr
@@ -289,7 +332,7 @@ func (g *fakeGitHub) UpdateBranch(context.Context, github.Token, item.Ref, strin
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	g.count("update")
+	g.count(callUpdate)
 
 	if g.updateErr != nil {
 		return nil, g.updateErr
@@ -302,7 +345,7 @@ func (g *fakeGitHub) AddComment(_ context.Context, _ github.Token, _ item.Ref, b
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	g.count("comment")
+	g.count(callComment)
 
 	if g.commentErr != nil {
 		return nil, g.commentErr
@@ -319,6 +362,7 @@ func (g *fakeGitHub) count(name string) {
 	}
 
 	g.calls[name]++
+	g.order = append(g.order, name)
 }
 
 func (g *fakeGitHub) called(name string) int {
@@ -326,6 +370,22 @@ func (g *fakeGitHub) called(name string) int {
 	defer g.mu.Unlock()
 
 	return g.calls[name]
+}
+
+// requests names the requests made since the sheet last read the pull request, in order.
+func (g *fakeGitHub) requests() []string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	last := -1
+
+	for i, name := range g.order {
+		if name == callReview || name == callDiff {
+			last = i
+		}
+	}
+
+	return append([]string{}, g.order[last+1:]...)
 }
 
 // fakeSettings is the settings the sheet follows.
@@ -374,6 +434,7 @@ type harness struct {
 	github *fakeGitHub
 	clock  *testutil.Clock
 	events *testutil.Events
+	logs   *testutil.Logs
 }
 
 // newHarness returns a harness whose GitHub answers with review and diff at headA.
@@ -386,6 +447,7 @@ func newHarness(t *testing.T) *harness {
 	h := &harness{
 		db: db, inbox: &fakeInbox{pull: storedPull()}, clock: testutil.NewClock(testNow), events: &testutil.Events{},
 		github: &fakeGitHub{review: pullReview(headA, github.MergeStateClean), diff: pullDiff(headA)},
+		logs:   &testutil.Logs{},
 	}
 
 	h.svc = h.service(fakeSettings{}, fakeReplies{})
@@ -397,7 +459,7 @@ func newHarness(t *testing.T) *harness {
 func (h *harness) service(settings Settings, replies Replies) *Service {
 	return NewService(Config{
 		Pool: h.db, Inbox: h.inbox, GitHub: h.github, Settings: settings, Replies: replies, Events: h.events,
-		Clock: h.clock,
+		Clock: h.clock, Logger: h.logs.Logger(),
 	})
 }
 
@@ -434,7 +496,7 @@ func pullReview(head, status string) *github.PullReview {
 // pullDiff is #7's files at head: a source file, and a workflow.
 func pullDiff(head string) *github.PullDiff {
 	return &github.PullDiff{Head: head, Total: 3, Complete: true, Files: []github.PullFile{
-		{Path: "cache.go", Status: "modified", Patch: "@@ -1,2 +1,3 @@\n line\n-old\n+new\n+added", HasPatch: true, Additions: 2, Deletions: 1},
+		{Path: cacheFile, Status: "modified", Patch: "@@ -1,2 +1,3 @@\n line\n-old\n+new\n+added", HasPatch: true, Additions: 2, Deletions: 1},
 		{Path: ".github/workflows/ci.yml", Status: "modified", Patch: "@@ -1 +1 @@\n-a\n+b", HasPatch: true, Additions: 1, Deletions: 1},
 		{Path: "logo.png", Status: "added"},
 	}}

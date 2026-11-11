@@ -32,7 +32,7 @@ func TestOpenBeforeAnyReadShowsTheCard(t *testing.T) {
 	assert.Equal(t, []string{"enhancement"}, r.Labels)
 	assert.Equal(t, ReadyUnknown, r.Readiness.State)
 	assert.Equal(t, ActionApprove, r.Primary, "nothing merges before GitHub says it can")
-	assert.Zero(t, h.github.called("review"), "Open asks GitHub nothing")
+	assert.Zero(t, h.github.called(callReview), "Open asks GitHub nothing")
 }
 
 func TestRefreshReadsThePullRequestAndItsFilesOnce(t *testing.T) {
@@ -41,8 +41,8 @@ func TestRefreshReadsThePullRequestAndItsFilesOnce(t *testing.T) {
 	h := newHarness(t)
 	r := h.refreshed(t)
 
-	assert.Equal(t, 1, h.github.called("review"))
-	assert.Equal(t, 1, h.github.called("diff"), "the first read lists the files")
+	assert.Equal(t, 1, h.github.called(callReview))
+	assert.Equal(t, 1, h.github.called(callDiff), "the first read lists the files")
 	assert.False(t, r.Stale)
 	assert.Equal(t, "2026-11-09T17:00:00Z", r.FetchedAt)
 	assert.Equal(t, "main", r.BaseRef)
@@ -54,7 +54,7 @@ func TestRefreshReadsThePullRequestAndItsFilesOnce(t *testing.T) {
 
 	require.Len(t, r.Files, 3)
 	assert.Equal(t, File{
-		Path: "cache.go", Status: "modified", Additions: 2, Deletions: 1, Patch: "@@ -1,2 +1,3 @@\n line\n-old\n+new\n+added",
+		Path: cacheFile, Status: "modified", Additions: 2, Deletions: 1, Patch: "@@ -1,2 +1,3 @@\n line\n-old\n+new\n+added",
 	}, r.Files[0])
 	assert.Equal(t, "Workflows", r.Files[1].Category)
 	assert.Equal(t, sensitive.LevelDanger, r.Files[1].Level)
@@ -95,13 +95,13 @@ func TestRefreshCostsWhatItMust(t *testing.T) {
 
 	// Read again at once: nothing is asked.
 	h.refreshed(t)
-	assert.Equal(t, 1, h.github.called("review"))
+	assert.Equal(t, 1, h.github.called(callReview))
 
 	// Later, with nothing pushed: one GraphQL read, and the cached files serve the check.
 	h.clock.Advance(time.Minute)
 	r := h.refreshed(t)
-	assert.Equal(t, 2, h.github.called("review"))
-	assert.Equal(t, 1, h.github.called("diff"), "the files at that head are cached")
+	assert.Equal(t, 2, h.github.called(callReview))
+	assert.Equal(t, 1, h.github.called(callDiff), "the files at that head are cached")
 	require.Len(t, h.inbox.read, 2)
 	require.NotNil(t, h.inbox.read[1].Files)
 	assert.Equal(t, headA, h.inbox.read[1].Files.Head)
@@ -111,8 +111,8 @@ func TestRefreshCostsWhatItMust(t *testing.T) {
 	h.clock.Advance(time.Minute)
 	h.github.review, h.github.diff = pullReview(headB, github.MergeStateClean), pullDiff(headB)
 	r = h.refreshed(t)
-	assert.Equal(t, 3, h.github.called("review"))
-	assert.Equal(t, 2, h.github.called("diff"))
+	assert.Equal(t, 3, h.github.called(callReview))
+	assert.Equal(t, 2, h.github.called(callDiff))
 	assert.Equal(t, headB, r.Head)
 	assert.True(t, r.Stale, "the inbox still knows the old head until its card is stored")
 }
@@ -147,12 +147,12 @@ func TestRefreshReadsAgainWhileGitHubWorksOutTheMerge(t *testing.T) {
 	// At once: GitHub had no answer, so the sheet asks again.
 	h.github.review = pullReview(headA, github.MergeStateClean)
 	r = h.refreshed(t)
-	assert.Equal(t, 2, h.github.called("review"))
+	assert.Equal(t, 2, h.github.called(callReview))
 	assert.Equal(t, ReadyMerge, r.Readiness.State)
 
 	// With the answer read, a refresh at once asks nothing.
 	h.refreshed(t)
-	assert.Equal(t, 2, h.github.called("review"))
+	assert.Equal(t, 2, h.github.called(callReview))
 }
 
 func TestRefreshReadsAgainWhenPushedMidway(t *testing.T) {
@@ -163,7 +163,7 @@ func TestRefreshReadsAgainWhenPushedMidway(t *testing.T) {
 	h.github.diff = pullDiff(headB)
 
 	r := h.refreshed(t)
-	assert.Equal(t, 2, h.github.called("review"), "the context is read again for the head the files belong to")
+	assert.Equal(t, 2, h.github.called(callReview), "the context is read again for the head the files belong to")
 	assert.Equal(t, headB, r.Head)
 }
 
@@ -182,7 +182,7 @@ func TestRefreshOfAPullRequestNoLongerOpenDropsItsCache(t *testing.T) {
 	r := h.refreshed(t)
 	assert.True(t, r.Stale)
 	assert.Empty(t, r.Files, "the cache of a merged pull request is dropped")
-	assert.Equal(t, 1, h.github.called("diff"))
+	assert.Equal(t, 1, h.github.called(callDiff))
 }
 
 func TestRefreshFailures(t *testing.T) {
@@ -267,7 +267,7 @@ func TestPatchesReadsWhatOpenLeftOut(t *testing.T) {
 	assert.Equal(t, h.github.diff.Files[1].Patch, got[0].Patch)
 	assert.Equal(t, FilePatch{Path: "logo.png", PatchState: PatchNone}, got[1])
 
-	_, err = h.svc.Patches(t.Context(), pullID, headB, []string{"cache.go"})
+	_, err = h.svc.Patches(t.Context(), pullID, headB, []string{cacheFile})
 	require.ErrorIs(t, err, github.ErrPushedSince, "a head the cache no longer holds")
 }
 
