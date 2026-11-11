@@ -1,0 +1,154 @@
+{
+    "name": "run-fail-gitleaks",
+    "note": "a GitHub token in a committed file",
+    "dir": "/work/repos/run-fail-gitleaks",
+    "argv": [
+        "go-pre-commit",
+        "run",
+        "--no-color",
+        "--all-files"
+    ],
+    "stdout": "⏳ Running eof check...\n⏳ Running mod-tidy check...\n⏳ Running fumpt check...\n⏳ Running lint check...\n⏳ Running whitespace check...\n⏳ Running gitleaks check...\n✓ eof check passed (194μs)\n✓ fumpt check passed (11ms)\n✓ mod-tidy check passed (235ms)\n✓ whitespace check passed (219μs)\n✓ gitleaks check passed (408ms)\n✓ lint check passed (2.6s)\n\nCheck Results\n─────────────\n✓ eof completed successfully (194μs)\n✓ fumpt completed successfully (11ms)\n✓ mod-tidy completed successfully (235ms)\n✓ whitespace completed successfully (219μs)\n✓ gitleaks completed successfully (408ms)\n✓ lint completed successfully (2.6s)\n\nSummary:\n✓ 6 passed on 7 file(s) in 2.6s\n✓ All checks passed! 6 passed on 7 file(s) in 2.6s\n",
+    "stderr": "",
+    "exit": 0,
+    "durationMs": 2608,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 16,
+            "text": "⏳ Running eof check..."
+        },
+        {
+            "stream": "out",
+            "ms": 16,
+            "text": "⏳ Running mod-tidy check..."
+        },
+        {
+            "stream": "out",
+            "ms": 16,
+            "text": "⏳ Running fumpt check..."
+        },
+        {
+            "stream": "out",
+            "ms": 28,
+            "text": "⏳ Running lint check..."
+        },
+        {
+            "stream": "out",
+            "ms": 251,
+            "text": "⏳ Running whitespace check..."
+        },
+        {
+            "stream": "out",
+            "ms": 251,
+            "text": "⏳ Running gitleaks check..."
+        },
+        {
+            "stream": "out",
+            "ms": 2608,
+            "text": "✓ eof check passed (194μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 2608,
+            "text": "✓ fumpt check passed (11ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 2608,
+            "text": "✓ mod-tidy check passed (235ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 2608,
+            "text": "✓ whitespace check passed (219μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 2608,
+            "text": "✓ gitleaks check passed (408ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 2608,
+            "text": "✓ lint check passed (2.6s)"
+        },
+        {
+            "stream": "out",
+            "ms": 2608,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 2608,
+            "text": "Check Results"
+        },
+        {
+            "stream": "out",
+            "ms": 2608,
+            "text": "─────────────"
+        },
+        {
+            "stream": "out",
+            "ms": 2608,
+            "text": "✓ eof completed successfully (194μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 2608,
+            "text": "✓ fumpt completed successfully (11ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 2608,
+            "text": "✓ mod-tidy completed successfully (235ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 2608,
+            "text": "✓ whitespace completed successfully (219μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 2608,
+            "text": "✓ gitleaks completed successfully (408ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 2608,
+            "text": "✓ lint completed successfully (2.6s)"
+        },
+        {
+            "stream": "out",
+            "ms": 2608,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 2608,
+            "text": "Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 2608,
+            "text": "✓ 6 passed on 7 file(s) in 2.6s"
+        },
+        {
+            "stream": "out",
+            "ms": 2608,
+            "text": "✓ All checks passed! 6 passed on 7 file(s) in 2.6s"
+        }
+    ],
+    "before": {
+        "hooks": "",
+        "hooksDir": "/work/repos/run-fail-gitleaks/.git/hooks",
+        "staged": "",
+        "status": ""
+    },
+    "after": {
+        "hooks": "",
+        "hooksDir": "/work/repos/run-fail-gitleaks/.git/hooks",
+        "staged": "",
+        "status": ""
+    }
+}

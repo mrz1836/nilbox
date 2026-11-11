@@ -135,7 +135,7 @@ app:lint` reads.
   `Info.plist` and the rendered icon set, `icons.icns`.
 - `internal/core/` assembles the app and builds every service the window binds: settings,
   profiles, prompts, launch defaults, inbox, review, launcher, worktrees, notifications, app
-  info, sessions, integrations, script runs, and release.
+  info, sessions, integrations, script runs, release, and hooks.
   Every `internal/*` package is plain Go, built and tested on Linux without CGO.
 - Services share their building blocks rather than keep copies: `internal/repo` and
   `internal/item` name repositories, pull requests and issues, and their worktrees;
@@ -282,7 +282,8 @@ app:lint` reads.
   `Config.Progressed` hears each change with the run's ID, which core sends the window as
   `event.ScriptRunProgress` (`scriptruns:progress`), never the whole list's
   `event.ScriptRunsUpdated`. A spec's `Recorded` is told the outcome only once the run's
-  end is recorded, so a record that fails tells nothing twice. Its `Run` is a deferred desktop worker: it
+  end is recorded, so a record that fails tells nothing twice, and its `Released` once the run
+  has let go of its clone, so a page that reads the clone again finds it free. Its `Run` is a deferred desktop worker: it
   reconciles the runs left from before a restart (a live group whose start time matches is
   orphaned and followed again; one that is gone was interrupted; a terminal run is told apart by
   its PID and exit files; every one is held under a placeholder lock and registered before any
@@ -300,17 +301,17 @@ app:lint` reads.
 - `internal/gitread/` is the read-only git that release and hooks share: an exact-argv allowlist
   plus validating predicates (a branch, a tag, a commit, a `v*` pattern, an absolute clean folder)
   that refuses anything else with `ErrGitCommandNotAllowed` before git runs, and typed helpers over
-  it (the current branch, an operation in progress, uncommitted changes, unpushed commits, tags
-  here and on origin, signing, the hooks folder). Every command runs as `git -C <dir> -c
-  core.fsmonitor=false -c submodule.recurse=false` with `GIT_OPTIONAL_LOCKS=0` and
-  `GIT_TERMINAL_PROMPT=0`, never touches `core.hooksPath`, and an `ls-remote` gets a 15-second
-  limit and a batch-mode ssh unless the user's environment or the clone picks its own. A
-  `status`, which reads files and so would run their filter drivers, first reads the drivers
-  with `config --show-scope` and runs with every one the clone's own config defines turned off,
-  and with `--ignore-submodules=dirty`, so it runs no status inside a submodule, whose own config
-  could name one: reading a clone runs no program the clone names (the user's own, such as Git
-  LFS's, still run). Its allowlist test asserts that no entry holds a verb `TestNoGitCommandChangesAClone`
-  guards.
+  it (the current branch, an operation in progress, uncommitted changes, each dirty file with what
+  the index holds for it, unpushed commits, tags here and on origin, signing, the hooks folder).
+  Every command runs as `git -C <dir> -c core.fsmonitor=false -c submodule.recurse=false` with
+  `GIT_OPTIONAL_LOCKS=0` and `GIT_TERMINAL_PROMPT=0`, never touches `core.hooksPath`, and an
+  `ls-remote` gets a 15-second limit and a batch-mode ssh unless the user's environment or the
+  clone picks its own. A `status`, which reads files and so would run their filter drivers,
+  first reads the drivers with `config --show-scope` and runs with every one the clone's own
+  config defines turned off, and with `--ignore-submodules=dirty`, so it runs no status inside a
+  submodule, whose own config could name one: reading a clone runs no program the clone names
+  (the user's own, such as Git LFS's, still run). Its allowlist test asserts that no entry holds
+  a verb `TestNoGitCommandChangesAClone` guards.
 - `internal/release/` is the Release page's service. `Candidates` lists every clone under the
   clone root whose origin is on GitHub, grouped as unreleased, up to date, no releases yet, or
   can't release here, from two rounds of batched GraphQL (`(*github.Client).FetchReleaseStatus`,
@@ -357,6 +358,34 @@ app:lint` reads.
   `integrations.offerAfterMerge` setting, magex, the default branch the Release page or the
   inbox already holds, and a clone with that origin, from the page's list or else only the
   folders named as the repository is (one git command each), never a scan of the clone root.
+- `internal/hooks/` is the Hooks page's service. `Repos` scans, four at a time, every clone
+  under the clone root with a go-pre-commit config inside it (a `.github/env/*.env` file, or
+  `.github/.env.base`): where git runs its hooks (gitread's `HookPaths`), its `pre-commit` hook
+  (missing, go-pre-commit's by its marker, or another tool's, named husky, pre-commit, or
+  lefthook from its text), and `ENABLE_GO_PRE_COMMIT` and the checks' switches from the config
+  files themselves. A hooks folder outside both the clone's git folder and its work tree is
+  shared, and the scan counts the clones that use it. Only go-pre-commit's `status` says whether
+  its own hook is current, a byte comparison, so it runs in a scratch repository of the app's own
+  that holds the hook's bytes, never in a clone, whose `.env` files go-pre-commit would load into
+  its environment, `PATH` included, before it runs git; its answer is kept per copy and per
+  hook's SHA-256, so status runs once for bytes no one judged. The scan is kept
+  five minutes, a clone an action or a check ran in is scanned again on the next read, and
+  `event.HooksUpdated` tells the window once the run has let go of the clone (the spec's
+  `Released`), so the reread finds it free and the run ended. `Install`, `Update`, `Reinstall`, `Replace`,
+  `Uninstall`, and `RunChecks` hand `scriptrun` a `KindHooks` or `KindChecks` run whose `Before`,
+  under the clone's lock, reads the clone again and refuses a shared hooks folder the request
+  doesn't confirm. An action's `Finish` reads what it did from the hook files, never from the
+  exit status alone (1.13 exits 0 when another tool's hook stops it); a checks run's compares
+  git's porcelain v2 status and each dirty file's SHA-256, taken before and after, so a fix to a
+  file that was already dirty shows. `InstallAll` installs or updates one clone at a time, each
+  its own run in the app, and skips another tool's hook, a shared folder, and a busy clone. The
+  readers know 1.13.1's text, recorded in `testdata/go-pre-commit-1.13.1`, and read `status
+  --json` and `run --json` once `Definition.Features` says the copy has them. The page carries
+  the PATH warning (the hook finds go-pre-commit only on the PATH or in `$(go env GOPATH)/bin`)
+  and, until `FeatureVerifiedTools`, the note that the checks install their own tools, folded
+  once a checks run ended (`hooks.checksRan`, which hooks alone writes). The bound
+  `ActionResult` and `ChecksResult` read a run's outcome back typed, and its `Rerunner`, which
+  core registers for both kinds, works Run again out afresh from the run's intent.
 - `internal/measure/` and `magefiles/measure.go` take the numbers in
   [`docs/performance.md`](docs/performance.md).
 - `frontend/` is the React + TypeScript + Vite + Tailwind app. It reaches Go only through the

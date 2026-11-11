@@ -1,0 +1,208 @@
+{
+    "name": "run-staged",
+    "note": "a staged change with trailing spaces",
+    "dir": "/work/repos/run-staged",
+    "argv": [
+        "go-pre-commit",
+        "run",
+        "--no-color"
+    ],
+    "stdout": "⏳ Running fumpt check...\n⏳ Running whitespace check...\n⏳ Running gitleaks check...\n⏳ Running eof check...\n⏳ Running lint check...\n⏳ Running mod-tidy check...\n✓ fumpt check passed (1μs)\n✓ eof check passed (159μs)\n✓ lint check passed (0μs)\n✓ mod-tidy check passed (0μs)\n✓ gitleaks check passed (336ms)\n\nCheck Results\n─────────────\n✓ fumpt completed successfully (1μs)\n  Error: whitespace issues found\n✓ eof completed successfully (159μs)\n✓ lint completed successfully (0μs)\n✓ mod-tidy completed successfully (0μs)\n✓ gitleaks completed successfully (336ms)\n\nSummary:\n\nERRORS FOUND\n────────────\n  \n    whitespace issues found\n  \nℹ Run with --verbose flag to see full error details\nℹ Fix the errors above and run the checks again\n",
+    "stderr": "✗ whitespace check failed (6ms)\n✗ whitespace failed (6ms)\n✗ 5 passed, 1 failed on 1 file(s) in 336ms\n✗ 1 check(s) failed with the following errors:\n✗ ━ whitespace ━\nError: checks failed: 1\n",
+    "exit": 1,
+    "durationMs": 353,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 16,
+            "text": "⏳ Running fumpt check..."
+        },
+        {
+            "stream": "out",
+            "ms": 16,
+            "text": "⏳ Running whitespace check..."
+        },
+        {
+            "stream": "out",
+            "ms": 16,
+            "text": "⏳ Running gitleaks check..."
+        },
+        {
+            "stream": "out",
+            "ms": 23,
+            "text": "⏳ Running eof check..."
+        },
+        {
+            "stream": "out",
+            "ms": 23,
+            "text": "⏳ Running lint check..."
+        },
+        {
+            "stream": "out",
+            "ms": 23,
+            "text": "⏳ Running mod-tidy check..."
+        },
+        {
+            "stream": "err",
+            "ms": 353,
+            "text": "✗ whitespace check failed (6ms)"
+        },
+        {
+            "stream": "err",
+            "ms": 353,
+            "text": "✗ whitespace failed (6ms)"
+        },
+        {
+            "stream": "err",
+            "ms": 353,
+            "text": "✗ 5 passed, 1 failed on 1 file(s) in 336ms"
+        },
+        {
+            "stream": "err",
+            "ms": 353,
+            "text": "✗ 1 check(s) failed with the following errors:"
+        },
+        {
+            "stream": "err",
+            "ms": 353,
+            "text": "✗ ━ whitespace ━"
+        },
+        {
+            "stream": "err",
+            "ms": 353,
+            "text": "Error: checks failed: 1"
+        },
+        {
+            "stream": "out",
+            "ms": 353,
+            "text": "✓ fumpt check passed (1μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 353,
+            "text": "✓ eof check passed (159μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 353,
+            "text": "✓ lint check passed (0μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 353,
+            "text": "✓ mod-tidy check passed (0μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 353,
+            "text": "✓ gitleaks check passed (336ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 353,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 353,
+            "text": "Check Results"
+        },
+        {
+            "stream": "out",
+            "ms": 353,
+            "text": "─────────────"
+        },
+        {
+            "stream": "out",
+            "ms": 353,
+            "text": "✓ fumpt completed successfully (1μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 353,
+            "text": "  Error: whitespace issues found"
+        },
+        {
+            "stream": "out",
+            "ms": 353,
+            "text": "✓ eof completed successfully (159μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 353,
+            "text": "✓ lint completed successfully (0μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 353,
+            "text": "✓ mod-tidy completed successfully (0μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 353,
+            "text": "✓ gitleaks completed successfully (336ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 353,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 353,
+            "text": "Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 353,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 353,
+            "text": "ERRORS FOUND"
+        },
+        {
+            "stream": "out",
+            "ms": 353,
+            "text": "────────────"
+        },
+        {
+            "stream": "out",
+            "ms": 353,
+            "text": "  "
+        },
+        {
+            "stream": "out",
+            "ms": 353,
+            "text": "    whitespace issues found"
+        },
+        {
+            "stream": "out",
+            "ms": 353,
+            "text": "  "
+        },
+        {
+            "stream": "out",
+            "ms": 353,
+            "text": "ℹ Run with --verbose flag to see full error details"
+        },
+        {
+            "stream": "out",
+            "ms": 353,
+            "text": "ℹ Fix the errors above and run the checks again"
+        }
+    ],
+    "before": {
+        "hooks": "",
+        "hooksDir": "/work/repos/run-staged/.git/hooks",
+        "staged": "docs/setup.md",
+        "status": "1 M. N... 100644 100644 100644 722cdc6ee365366a00a4992b5fd8aeccbbe73ac6 041ccad4b751db9a07339eb01cf5a9489743f4b0 docs/setup.md"
+    },
+    "after": {
+        "hooks": "",
+        "hooksDir": "/work/repos/run-staged/.git/hooks",
+        "staged": "",
+        "status": ""
+    }
+}

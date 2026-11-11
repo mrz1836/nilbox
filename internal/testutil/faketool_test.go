@@ -70,6 +70,46 @@ func TestFakeToolReportsStdin(t *testing.T) {
 	assert.Equal(t, "stdin: 0 bytes, devnull: true\n", stdout, "exec.Cmd with no Stdin reads /dev/null")
 }
 
+func TestFakeToolChangesFilesBeforeWriting(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	hook, backup, gone := filepath.Join(dir, "pre-commit"), filepath.Join(dir, "pre-commit.backup.1"), filepath.Join(dir, "gone")
+	testutil.WriteFile(t, hook, "#!/usr/bin/env sh\n")
+	testutil.WriteFile(t, gone, "x")
+	testutil.WriteFile(t, filepath.Join(dir, "kept"), "old")
+	require.NoError(t, os.Chmod(filepath.Join(dir, "kept"), 0o600))
+
+	path, env := testutil.FakeTool(t, "go-pre-commit", testutil.FakeRun{Stdout: "done\n", Files: []testutil.FakeFile{
+		{Path: backup, From: hook},
+		{Path: hook, Content: "# Go Pre-commit Hook\n", Mode: 0o755},
+		{Path: filepath.Join(dir, "kept"), Content: "new"},
+		{Path: gone, Remove: true},
+	}})
+
+	stdout, _, code := runFake(t, path, env)
+	require.Zero(t, code)
+	assert.Equal(t, "done\n", stdout)
+
+	got, err := os.ReadFile(backup) //nolint:gosec // the test's own file
+	require.NoError(t, err)
+	assert.Equal(t, "#!/usr/bin/env sh\n", string(got))
+
+	info, err := os.Stat(hook)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o755), info.Mode().Perm())
+
+	info, err = os.Stat(filepath.Join(dir, "kept"))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm(), "a file already there keeps its mode")
+	assert.NoFileExists(t, gone)
+
+	path, env = testutil.FakeTool(t, "go-pre-commit", testutil.FakeRun{Files: []testutil.FakeFile{{Path: gone, Remove: true}}})
+	_, stderr, code := runFake(t, path, env)
+	assert.Equal(t, 1, code, "a change that fails fails the run")
+	assert.Contains(t, stderr, "fake tool:")
+}
+
 func TestLoadFakeRunReadsARecordedFixture(t *testing.T) {
 	t.Parallel()
 

@@ -42,7 +42,9 @@ function ToolLine({ tool }: { tool: IntegrationTool }) {
   if (tool.state === 'missing') {
     icon = <XIcon className="mt-px size-3.5 shrink-0 text-muted" />
     text = `${tool.binary} isn’t on this Mac`
-  } else if (!tool.on) {
+  } else if (tool.switch === 'off') {
+    // Only the user's switch turns a tool off: left automatic, a copy too old to use, or one
+    // that won't run, says so below.
     icon = <RingIcon className="mt-px size-3.5 shrink-0 text-muted" />
     text = `${tool.name} is off`
   } else if (tool.state === 'tooOld') {

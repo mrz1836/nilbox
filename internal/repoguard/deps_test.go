@@ -117,6 +117,12 @@ func boundaries() []boundary {
 				"gitread; it starts runs through scriptrun, never the reverse",
 		},
 		{
+			pkg:       "internal/hooks",
+			forbidden: append(slices.Clone(services), "internal/release", "internal/launcher", "internal/desktop"),
+			why: "hooks reads the clones through gitread and its own Clones, go-pre-commit through its ToolSource, " +
+				"and its preferences through Memory, which core adapts; it starts runs through scriptrun, never the reverse",
+		},
+		{
 			pkg:       "internal/shellenv",
 			forbidden: noService,
 			why:       "shellenv reads the login shell's environment for whatever runs tools; it knows no service",

@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/scriptrun"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // magexRecordings is where P0 recorded the real magex 1.29.5's version:bump runs.
@@ -552,11 +553,11 @@ func TestOutputCleansLines(t *testing.T) {
 func TestOutputCutsALongLine(t *testing.T) {
 	t.Parallel()
 
-	long := strings.Repeat("y", maxOutputLine+5000)
+	long := strings.Repeat("y", textutil.MaxLine+5000)
 	got := readOutput([]byte(long[:30000]), []byte(long[30000:]+"\n"), []byte("✅ Successfully pulled latest changes\n"))
 
 	require.Len(t, got.Unrecognized, 1)
-	assert.Len(t, got.Unrecognized[0], maxOutputLine)
+	assert.Len(t, got.Unrecognized[0], textutil.MaxLine)
 	assert.Equal(t, StepUpdated, got.Step, "the line after it is read whole")
 }
 

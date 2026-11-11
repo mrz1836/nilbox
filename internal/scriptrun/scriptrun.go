@@ -269,6 +269,13 @@ type Spec struct {
 	// nothing.
 	Recorded func(ctx context.Context, id int64, out Outcome)
 
+	// Released is called once the run has let go of its clone and its slot, after its end
+	// was recorded, or its record failed: what it tells sees the clone free and the run
+	// ended, as a page that reads the clone again after a run must. It isn't called for a run
+	// left going as the app quit. It runs on the goroutine that recorded the run, must return
+	// promptly, and must never call back into the engine. nil tells nothing.
+	Released func(id int64)
+
 	// Finish works out the run's outcome once it has ended and Output has read all of
 	// it. It is given how the run ended and the outcome the engine worked out from that,
 	// and returns the one to record. nil records the engine's. Its context ends when the

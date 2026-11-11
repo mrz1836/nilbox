@@ -405,9 +405,9 @@ func TestCopyableCommandsAreQuoted(t *testing.T) {
 func TestWithReason(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, "magex stopped.", withReason("magex stopped", "  "))
-	assert.Equal(t, "magex stopped: failed to push tag.", withReason("magex stopped", "failed to push tag"))
-	assert.Equal(t, "magex stopped: is it there?", withReason("magex stopped", "is it there?"))
+	assert.Equal(t, "magex stopped.", textutil.WithReason("magex stopped", "  "))
+	assert.Equal(t, "magex stopped: failed to push tag.", textutil.WithReason("magex stopped", "failed to push tag"))
+	assert.Equal(t, "magex stopped: is it there?", textutil.WithReason("magex stopped", "is it there?"))
 
 	origin, found := checkOf(Decide(Facts{Clone: CloneFacts{Error: " "}}), CheckOrigin)
 	require.True(t, found)
@@ -427,7 +427,7 @@ func TestAMajorWithoutMagexIsNotReadyRatherThanABug(t *testing.T) {
 	t.Parallel()
 
 	r := newReleaseRig(t, rigOptions{base: shownVersion})
-	r.tool = ToolFacts{Features: []integrations.Feature{}, Off: true}
+	r.tool = ToolFacts{Features: []integrations.Feature{}, State: integrations.StateMissing}
 
 	_, err := r.svc.Start(t.Context(), StartRequest{Repo: sdkRepo, Bump: BumpMajor, Version: majorVersion, Typed: majorVersion})
 	require.ErrorIs(t, err, ErrNotReady)

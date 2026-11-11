@@ -1,0 +1,62 @@
+{
+    "name": "status-not-installed",
+    "dir": "/work/repos/status-not-installed",
+    "argv": [
+        "go-pre-commit",
+        "status",
+        "--no-color"
+    ],
+    "stdout": "ℹ \n=== Go Pre-commit System Status ===\n✓ ✓ Pre-commit system is enabled\nℹ \nGit Hook Status:\nℹ Run 'go-pre-commit install' to install pre-commit hooks\n",
+    "stderr": "⚠ No hooks are currently installed\n",
+    "exit": 0,
+    "durationMs": 35,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 13,
+            "text": "ℹ "
+        },
+        {
+            "stream": "out",
+            "ms": 13,
+            "text": "=== Go Pre-commit System Status ==="
+        },
+        {
+            "stream": "out",
+            "ms": 13,
+            "text": "✓ ✓ Pre-commit system is enabled"
+        },
+        {
+            "stream": "out",
+            "ms": 13,
+            "text": "ℹ "
+        },
+        {
+            "stream": "out",
+            "ms": 13,
+            "text": "Git Hook Status:"
+        },
+        {
+            "stream": "out",
+            "ms": 34,
+            "text": "ℹ Run 'go-pre-commit install' to install pre-commit hooks"
+        },
+        {
+            "stream": "err",
+            "ms": 34,
+            "text": "⚠ No hooks are currently installed"
+        }
+    ],
+    "before": {
+        "hooks": "",
+        "hooksDir": "/work/repos/status-not-installed/.git/hooks",
+        "staged": "",
+        "status": ""
+    },
+    "after": {
+        "hooks": "",
+        "hooksDir": "/work/repos/status-not-installed/.git/hooks",
+        "staged": "",
+        "status": ""
+    }
+}

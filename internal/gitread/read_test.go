@@ -156,6 +156,20 @@ func TestReadsARealClone(t *testing.T) {
 		assert.Empty(t, got)
 	})
 
+	t.Run("entries, with what the index holds", func(t *testing.T) {
+		t.Parallel()
+
+		staged := strings.TrimSpace(testutil.RunGit(t, f.clone, "rev-parse", ":one.txt"))
+
+		got, err := g.Entries(t.Context(), f.clone)
+		require.NoError(t, err)
+		assert.ElementsMatch(t, []Entry{{Code: ".M", Index: staged, Path: "one.txt"}, {Code: "??", Path: "notes.txt"}}, got)
+
+		got, err = g.Entries(t.Context(), f.feature)
+		require.NoError(t, err)
+		assert.Empty(t, got)
+	})
+
 	t.Run("a branch checked out elsewhere", func(t *testing.T) {
 		t.Parallel()
 

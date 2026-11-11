@@ -19,6 +19,11 @@ export const AppQuitRequested = "app:quitRequested";
 export const BudgetUpdated = "budget:updated";
 
 /**
+ * Name of the custom event "hooks:updated".
+ */
+export const HooksUpdated = "hooks:updated";
+
+/**
  * Name of the custom event "inbox:reveal".
  */
 export const InboxReveal = "inbox:reveal";

@@ -1,0 +1,288 @@
+{
+    "name": "run-gitleaks-staged",
+    "note": "a GitHub token in a staged file",
+    "dir": "/work/repos/run-gitleaks-staged",
+    "argv": [
+        "go-pre-commit",
+        "run",
+        "--no-color"
+    ],
+    "stdout": "⏳ Running whitespace check...\n⏳ Running lint check...\n⏳ Running eof check...\n⏳ Running fumpt check...\n⏳ Running mod-tidy check...\n⏳ Running gitleaks check...\n✓ lint check passed (0μs)\n✓ eof check passed (36μs)\n✓ whitespace check passed (43μs)\n✓ fumpt check passed (0μs)\n✓ mod-tidy check passed (0μs)\n\nCheck Results\n─────────────\n✓ lint completed successfully (0μs)\n✓ eof completed successfully (36μs)\n✓ whitespace completed successfully (43μs)\n✓ fumpt completed successfully (0μs)\n✓ mod-tidy completed successfully (0μs)\n  Error: Found 1 secret(s):\nFinding:     token = \"\u001b[1;3;m<redacted-token>\u001b[0m\nSecret:      \u001b[1;3;m<redacted-token>\u001b[0m\nFile:        /work/repos/run-gitleaks-staged/config.txt\nLine:        1\n\n    Found 1 secret(s):\n    Finding:     token = \"<redacted-token>\n    Secret:      <redacted-token>\n    File:        /work/repos/run-gitleaks-staged/config.txt\n    Line:        1\n💡 Remove secrets from code or add exceptions to .gitleaks.toml allowlist\n\nSummary:\n\nERRORS FOUND\n────────────\n  \n    Found 1 secret(s):\n    Finding:     token = \"<redacted-token>\n    Secret:      <redacted-token>\n    File:        /work/repos/run-gitleaks-staged/config.txt\n    Line:        1\n💡 To fix: Remove secrets from code or add exceptions to .gitleaks.toml allowlist\n  \nℹ Run with --verbose flag to see full error details\nℹ Fix the errors above and run the checks again\n",
+    "stderr": "✗ gitleaks check failed (330ms)\n✗ gitleaks failed (330ms)\n✗ 5 passed, 1 failed on 1 file(s) in 330ms\n✗ 1 check(s) failed with the following errors:\n✗ ━ gitleaks ━\nError: checks failed: 1\n",
+    "exit": 1,
+    "durationMs": 347,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 16,
+            "text": "⏳ Running whitespace check..."
+        },
+        {
+            "stream": "out",
+            "ms": 16,
+            "text": "⏳ Running lint check..."
+        },
+        {
+            "stream": "out",
+            "ms": 16,
+            "text": "⏳ Running eof check..."
+        },
+        {
+            "stream": "out",
+            "ms": 16,
+            "text": "⏳ Running fumpt check..."
+        },
+        {
+            "stream": "out",
+            "ms": 16,
+            "text": "⏳ Running mod-tidy check..."
+        },
+        {
+            "stream": "out",
+            "ms": 16,
+            "text": "⏳ Running gitleaks check..."
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "✓ lint check passed (0μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "✓ eof check passed (36μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "✓ whitespace check passed (43μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "✓ fumpt check passed (0μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "✓ mod-tidy check passed (0μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "Check Results"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "─────────────"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "✓ lint completed successfully (0μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "✓ eof completed successfully (36μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "✓ whitespace completed successfully (43μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "✓ fumpt completed successfully (0μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "✓ mod-tidy completed successfully (0μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "  Error: Found 1 secret(s):"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "Finding:     token = \"\u001b[1;3;m<redacted-token>\u001b[0m"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "Secret:      \u001b[1;3;m<redacted-token>\u001b[0m"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "File:        /work/repos/run-gitleaks-staged/config.txt"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "Line:        1"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": ""
+        },
+        {
+            "stream": "err",
+            "ms": 347,
+            "text": "✗ gitleaks check failed (330ms)"
+        },
+        {
+            "stream": "err",
+            "ms": 347,
+            "text": "✗ gitleaks failed (330ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "    Found 1 secret(s):"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "    Finding:     token = \"<redacted-token>"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "    Secret:      <redacted-token>"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "    File:        /work/repos/run-gitleaks-staged/config.txt"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "    Line:        1"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "💡 Remove secrets from code or add exceptions to .gitleaks.toml allowlist"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "ERRORS FOUND"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "────────────"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "  "
+        },
+        {
+            "stream": "err",
+            "ms": 347,
+            "text": "✗ 5 passed, 1 failed on 1 file(s) in 330ms"
+        },
+        {
+            "stream": "err",
+            "ms": 347,
+            "text": "✗ 1 check(s) failed with the following errors:"
+        },
+        {
+            "stream": "err",
+            "ms": 347,
+            "text": "✗ ━ gitleaks ━"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "    Found 1 secret(s):"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "    Finding:     token = \"<redacted-token>"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "    Secret:      <redacted-token>"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "    File:        /work/repos/run-gitleaks-staged/config.txt"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "    Line:        1"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "💡 To fix: Remove secrets from code or add exceptions to .gitleaks.toml allowlist"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "  "
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "ℹ Run with --verbose flag to see full error details"
+        },
+        {
+            "stream": "out",
+            "ms": 347,
+            "text": "ℹ Fix the errors above and run the checks again"
+        },
+        {
+            "stream": "err",
+            "ms": 347,
+            "text": "Error: checks failed: 1"
+        }
+    ],
+    "before": {
+        "hooks": "",
+        "hooksDir": "/work/repos/run-gitleaks-staged/.git/hooks",
+        "staged": "config.txt",
+        "status": "1 A. N... 000000 100644 100644 0000000000000000000000000000000000000000 5a79115f8dd84448857675f9995f08794f5bc00b config.txt"
+    },
+    "after": {
+        "hooks": "",
+        "hooksDir": "/work/repos/run-gitleaks-staged/.git/hooks",
+        "staged": "config.txt",
+        "status": "1 A. N... 000000 100644 100644 0000000000000000000000000000000000000000 5a79115f8dd84448857675f9995f08794f5bc00b config.txt"
+    }
+}

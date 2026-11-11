@@ -136,3 +136,57 @@ func TestJoin(t *testing.T) {
 	assert.Equal(t, "a, b", textutil.Join([]choice{"a", "b"}, ", "))
 	assert.Empty(t, textutil.Join([]choice(nil), ", "))
 }
+
+func TestTerminalLine(t *testing.T) {
+	t.Parallel()
+
+	for raw, want := range map[string]string{
+		"plain":                "plain",
+		"trailing  \r\n":       "trailing",
+		"⏳ 10%\r⏳ 50%\r✓ done": "✓ done",
+		"\x1b[1;3;mtoken\x1b[0m = \x1b[32mok\x1b[m":       "token = ok",
+		"\x1b]8;;https://example.com\x07link\x1b]8;;\x07": "link",
+		"bell\x07 and\ttab":                               "bell and\ttab",
+		"bad \xff byte":                                   "bad � byte",
+		"  indented":                                      "  indented",
+		"":                                                "",
+	} {
+		assert.Equal(t, want, textutil.TerminalLine(raw), "%q", raw)
+	}
+}
+
+func TestWithReason(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "Couldn't check: origin hung up.", textutil.WithReason("Couldn't check", "origin hung up"))
+	assert.Equal(t, "Couldn't check: origin hung up.", textutil.WithReason("Couldn't check", " origin hung up. "))
+	assert.Equal(t, "Couldn't check.", textutil.WithReason("Couldn't check", "  "))
+}
+
+func TestLineSplitter(t *testing.T) {
+	t.Parallel()
+
+	var (
+		s     textutil.LineSplitter
+		lines []string
+	)
+
+	keep := func(line string) { lines = append(lines, line) }
+
+	for _, part := range []string{"fir", "st\nsec", "ond\r\n\x1b[32mthi", "rd\x1b[0m\n", "\n", "last"} {
+		s.Write([]byte(part), keep)
+	}
+
+	assert.Equal(t, []string{"first", "second", "third", ""}, lines)
+
+	s.Flush(keep)
+	s.Flush(keep)
+	assert.Equal(t, []string{"first", "second", "third", "", "last"}, lines, "a flush hands over the last line once")
+
+	short := textutil.LineSplitter{Max: 4}
+	lines = nil
+
+	short.Write([]byte("abcdefgh"), keep)
+	short.Write([]byte("ij\nxy\n"), keep)
+	assert.Equal(t, []string{"abcd", "xy"}, lines, "a long line keeps its start, and the next line reads whole")
+}

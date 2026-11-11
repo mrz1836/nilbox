@@ -13,6 +13,8 @@
 //   - integrations writes tools.*: each tool's last detection and latest release.
 //   - release writes release.*: the Release page's last list and the clone root it was
 //     read from, which the next start shows at once.
+//   - hooks writes hooks.*: whether a checks run has ended, after which the Hooks page
+//     folds what it says about the tools the checks install.
 //
 // A Store from New runs each call on the pool. One joined to a transaction with WithTx
 // runs every call inside it, so prefs are written together with another owner's tables

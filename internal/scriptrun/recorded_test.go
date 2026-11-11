@@ -132,3 +132,92 @@ type recordedVerifier struct {
 func (v recordedVerifier) Verify(Record) Verification {
 	return Verification{Recorded: v.hook}
 }
+
+// releasedCall is one call of a spec's Released: the run, the status its record held
+// then, and whether its clone was held.
+type releasedCall struct {
+	id     int64
+	stored Status
+	held   bool
+}
+
+func TestReleasedIsToldOnceTheCloneIsFreeAndTheEndKept(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	dir := h.clone()
+
+	var (
+		mu    sync.Mutex
+		calls []releasedCall
+	)
+
+	spec := h.spec(testutil.FakeRun{Exit: 3})
+	spec.Dir = dir
+	spec.Released = func(id int64) {
+		rec, _ := h.e.store.get(t.Context(), id)
+		_, held := h.locks.Holder(dir)
+
+		mu.Lock()
+		defer mu.Unlock()
+
+		calls = append(calls, releasedCall{id: id, stored: rec.Status, held: held})
+	}
+
+	id := h.start(spec)
+	h.ended(id)
+
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+
+		return len(calls) == 1
+	}, wait, poll)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	assert.Equal(t, []releasedCall{{id: id, stored: StatusFailed}}, calls, "once, with the clone free and the end kept")
+}
+
+func TestReleasedIsToldEvenWhenTheRecordFails(t *testing.T) {
+	t.Parallel()
+
+	var db *sql.DB
+
+	h := newHarness(t, func(cfg *Config) { db = cfg.DB })
+
+	_, err := db.ExecContext(t.Context(), `CREATE TRIGGER refuse_finish BEFORE UPDATE ON script_runs
+		WHEN NEW.finished_at IS NOT NULL BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`)
+	require.NoError(t, err)
+
+	released := make(chan int64, 1)
+
+	spec := h.spec(testutil.FakeRun{})
+	spec.Released = func(id int64) { released <- id }
+
+	id := h.start(spec)
+
+	select {
+	case got := <-released:
+		assert.Equal(t, id, got, "the clone is free, so a page reads it again")
+	case <-time.After(wait):
+		require.Fail(t, "Released was never told")
+	}
+}
+
+func TestReleasedIsntToldForAnUnsettledEnd(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	released := make(chan int64, 1)
+
+	spec := h.spec(testutil.FakeRun{})
+	spec.Released = func(id int64) { released <- id }
+	spec.Finish = func(context.Context, Ending, Outcome) Outcome { return Outcome{Unsettled: true} }
+
+	id := h.start(spec)
+
+	require.Eventually(t, func() bool { return h.e.liveRun(id) == nil }, wait, poll, "run %d is let go", id)
+	assert.Empty(t, released, "a run left going hasn't ended")
+}

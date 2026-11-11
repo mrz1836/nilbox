@@ -1,6 +1,8 @@
 package textutil
 
 import (
+	"bytes"
+	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -88,4 +90,109 @@ func Join[S ~string](elems []S, sep string) string {
 	}
 
 	return strings.Join(parts, sep)
+}
+
+// terminalEscape matches a terminal escape sequence: a CSI sequence such as a color, an
+// OSC sequence such as a link, or a two-character escape.
+var terminalEscape = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]`)
+
+// TerminalLine returns one line of a tool's output as a terminal would show it: from its
+// last bare \r, which overwrites the line, without escapes or other control characters,
+// valid UTF-8, and no trailing space.
+func TerminalLine(raw string) string {
+	raw = strings.TrimRight(raw, "\r\n")
+	if i := strings.LastIndexByte(raw, '\r'); i >= 0 {
+		raw = raw[i+1:]
+	}
+
+	raw = terminalEscape.ReplaceAllString(raw, "")
+	raw = strings.Map(func(c rune) rune {
+		if (c < ' ' && c != '\t') || c == 0x7f {
+			return -1
+		}
+
+		return c
+	}, raw)
+
+	return strings.TrimRightFunc(strings.ToValidUTF8(raw, "�"), unicode.IsSpace)
+}
+
+// WithReason ends lead with ": reason", the reason ended as a sentence, or, without one,
+// ends lead as a sentence: "Couldn't check whether v1.4.3 reached GitHub: origin hung up."
+func WithReason(lead, reason string) string {
+	if reason = EndSentence(reason); reason == "" {
+		return EndSentence(lead)
+	}
+
+	return lead + ": " + reason
+}
+
+// MaxLine is how much of one line of a tool's output a LineSplitter keeps by default.
+const MaxLine = 64 << 10
+
+// LineSplitter cuts a tool's output into lines as it arrives, split anywhere: each whole
+// line, ended by \n, goes to the callback as TerminalLine shows it, and a line longer than
+// Max keeps its first Max bytes, its rest dropped up to its newline. Flush hands over a
+// last line that has no newline. The zero value is ready, keeping MaxLine. It isn't safe
+// for concurrent use: the reader that holds it guards it, as it guards what the callback
+// changes.
+type LineSplitter struct {
+	// Max is how much of a line is kept; 0 is MaxLine.
+	Max int
+
+	// pending is the line read so far, and dropping reports one that ran past Max.
+	pending  []byte
+	dropping bool
+}
+
+// Write hands line every line p ends, and keeps the rest for the next Write.
+func (s *LineSplitter) Write(p []byte, line func(string)) {
+	for len(p) > 0 {
+		i := bytes.IndexByte(p, '\n')
+		if i < 0 {
+			s.keep(p)
+
+			return
+		}
+
+		s.keep(p[:i])
+		s.end(line)
+
+		p = p[i+1:]
+	}
+}
+
+// Flush hands line the last line, when the output ended without a newline.
+func (s *LineSplitter) Flush(line func(string)) {
+	if len(s.pending) > 0 {
+		s.end(line)
+	}
+}
+
+// keep adds b to the line being read, up to Max.
+func (s *LineSplitter) keep(b []byte) {
+	if s.dropping {
+		return
+	}
+
+	limit := s.Max
+	if limit <= 0 {
+		limit = MaxLine
+	}
+
+	if room := limit - len(s.pending); len(b) > room {
+		b = b[:room]
+		s.dropping = true
+	}
+
+	s.pending = append(s.pending, b...)
+}
+
+// end hands line the line read so far, and starts the next.
+func (s *LineSplitter) end(line func(string)) {
+	text := TerminalLine(string(s.pending))
+	s.pending = s.pending[:0]
+	s.dropping = false
+
+	line(text)
 }

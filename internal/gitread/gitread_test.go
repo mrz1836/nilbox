@@ -552,6 +552,37 @@ func TestHelpersReadGitsAnswers(t *testing.T) {
 			want:    []Change{},
 		},
 		{
+			name: "entries of every kind, odd lines skipped",
+			replies: map[string]reply{
+				words(entriesArgs()): {out: "1 .M N... 100644 100644 100644 " + headSHA + " " +
+					headSHA + " a.go\x00" +
+					"1 M. N... 100644 100644 100644 " + headSHA + " " + otherSHA + " docs/my setup.md\x00" +
+					"2 R. N... 100644 100644 100644 " + headSHA + " " + otherSHA + " R100 new.go\x00old.go\x00" +
+					"u UU N... 100644 100644 100644 100644 " + headSHA + " " + otherSHA + " " + sha256ID + " both.go\x00" +
+					"? notes/todo.txt\x00" +
+					"# branch.head main\x00" +
+					"1 .M short\x00" +
+					"u UU short\x00" +
+					"?\x00" +
+					"? \x00" +
+					"2 R. N... 100644 100644 100644 " + headSHA + " " + otherSHA + " R100 last.go"},
+			},
+			run: func(g *Git) (any, error) { return g.Entries(ctx, repoDir) },
+			want: []Entry{
+				{Code: ".M", Index: headSHA, Path: "a.go"},
+				{Code: "M.", Index: otherSHA, Path: "docs/my setup.md"},
+				{Code: "R.", Index: otherSHA, Path: "new.go", From: "old.go"},
+				{Code: "UU", Index: headSHA + ":" + otherSHA + ":" + sha256ID, Path: "both.go"},
+				{Code: "??", Path: "notes/todo.txt"},
+			},
+		},
+		{
+			name:    "no entries",
+			replies: map[string]reply{words(entriesArgs()): {}},
+			run:     func(g *Git) (any, error) { return g.Entries(ctx, repoDir) },
+			want:    []Entry{},
+		},
+		{
 			name:    "a local branch",
 			replies: map[string]reply{words(verifyArgs("refs/heads/main")): {out: headSHA + "\n"}},
 			run:     func(g *Git) (any, error) { return g.LocalBranch(ctx, repoDir, mainBranch) },
@@ -934,6 +965,7 @@ func TestEveryAllowlistEntryIsUsed(t *testing.T) {
 	_, _ = g.CurrentBranch(ctx, repoDir)
 	_, _ = g.InProgress(ctx, repoDir)
 	_, _ = g.Changes(ctx, repoDir)
+	_, _ = g.Entries(ctx, repoDir)
 	_, _ = g.CheckedOutElsewhere(ctx, repoDir, mainBranch)
 	_, _ = g.LocalBranch(ctx, repoDir, mainBranch)
 	_, _ = g.TrackingBranch(ctx, repoDir, mainBranch)

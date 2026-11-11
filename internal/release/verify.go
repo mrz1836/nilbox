@@ -12,6 +12,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/gitread"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // verifyTimeout bounds verifying a release: origin's answer about the tag, which gitread
@@ -417,7 +418,7 @@ func summaryOf(res Result, engine scriptrun.Outcome) string {
 	case ResultNotPushed:
 		return res.Tag + " is tagged on this Mac but isn't on GitHub."
 	case ResultUnverified:
-		return withReason(fmt.Sprintf("Couldn't check whether %s reached GitHub", res.Tag), res.Error)
+		return textutil.WithReason(fmt.Sprintf("Couldn't check whether %s reached GitHub", res.Tag), res.Error)
 	case ResultFailed:
 	}
 
