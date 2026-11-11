@@ -301,14 +301,34 @@ app:lint` reads.
   that refuses anything else with `ErrGitCommandNotAllowed` before git runs, and typed helpers over
   it (the current branch, an operation in progress, uncommitted changes, unpushed commits, tags
   here and on origin, signing, the hooks folder). Every command runs as `git -C <dir> -c
-  core.fsmonitor=false -c submodule.recurse=false` with `GIT_OPTIONAL_LOCKS=0` and
-  `GIT_TERMINAL_PROMPT=0`, never touches `core.hooksPath`, and an `ls-remote` gets a 15-second
-  limit and a batch-mode ssh unless the user's environment or the clone picks its own. A
+  core.fsmonitor=false -c submodule.recurse=false` with `GIT_OPTIONAL_LOCKS=0`,
+  `GIT_TERMINAL_PROMPT=0`, `GIT_NO_LAZY_FETCH=1`, and an empty `GIT_ALLOW_PROTOCOL` (no read
+  reaches a transport, so a partial clone's missing object is never fetched through a URL the
+  clone names), without `GIT_CONFIG` (which would hide the clone's settings from the guards'
+  reads), never touches `core.hooksPath`, and an `ls-remote` gets a 15-second limit and a
+  batch-mode ssh unless the user's environment or own config picks one. A
   `status`, which reads files and so would run their filter drivers, first reads the drivers
   with `config --show-scope` and runs with every one the clone's own config defines turned off,
   and with `--ignore-submodules=dirty`, so it runs no status inside a submodule, whose own config
-  could name one: reading a clone runs no program the clone names (the user's own, such as Git
-  LFS's, still run). Its allowlist test asserts that no entry holds a verb `TestNoGitCommandChangesAClone`
+  could name one. An `ls-remote` likewise first reads, with `config --show-scope`, the settings
+  it weighs, and origin's URL with `ls-remote --get-url` (which asks origin nothing): a remote
+  helper (a `<name>::` URL after `insteadOf`, or `remote.origin.vcs`) is refused
+  (`ErrRemoteHelper`), since git falls back to an alias the clone defines; only the file, http,
+  https, and ssh transports run, as the user's own config and environment allow them, through
+  `GIT_ALLOW_PROTOCOL`, which beats every config; the clone's own ssh command, `core.askPass`
+  (git runs it even with `GIT_TERMINAL_PROMPT=0`), and credential helpers give way to the
+  user's own; an http or https origin the clone's own config reroutes (its TLS checks,
+  certificates, proxy, `remote.origin.proxy`, or resolved address) is refused
+  (`ErrCloneRoutes`), since the user's credentials, cookies, and headers for the real host
+  could go elsewhere; no cookie is saved and a cookie file
+  the clone names is dropped; and origin is asked for git's own upload-pack with
+  `--upload-pack` (git keeps the first `uploadpack` it reads, so a `-c` can't replace the
+  clone's). An `ls-remote` that fails after setting anything aside returns a `SetAsideError`
+  naming it, which the Release sheet words as the likely cause and where to set the clone's own
+  settings instead: the user's global config, with an `includeIf` for the folder, which counts
+  as the user's own. Only the system, global, and environment (`command`) scopes are the
+  user's. Reading a clone runs no program the clone names (the user's own, such as Git LFS's,
+  still run). Its allowlist test asserts that no entry holds a verb `TestNoGitCommandChangesAClone`
   guards.
 - `internal/release/` is the Release page's service. `Candidates` lists every clone under the
   clone root whose origin is on GitHub, grouped as unreleased, up to date, no releases yet, or
