@@ -163,7 +163,7 @@ func fileSum(dir, rel string, hash bool) string {
 		return fmt.Sprintf("size:%d time:%d", info.Size(), info.ModTime().UnixNano())
 	}
 
-	f, err := os.Open(path) //nolint:gosec // a file in the clone a checks run ran in, only read
+	f, err := openChecked(path)
 	if err != nil {
 		return "unreadable"
 	}

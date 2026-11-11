@@ -50,7 +50,8 @@ type hookFile struct {
 	tool string
 }
 
-// readHook reads the hook at path, following a link as git does.
+// readHook reads the hook at path, following a link as git does. Only a regular file is
+// read, so a pipe there never makes the scan wait.
 func readHook(path string) hookFile {
 	info, err := os.Stat(path)
 
@@ -63,7 +64,7 @@ func readHook(path string) hookFile {
 		return hookFile{path: path, present: true, err: errNotAFile}
 	}
 
-	f, err := os.Open(path) //nolint:gosec // a hook in a clone's hooks folder, only read
+	f, err := openChecked(path)
 	if err != nil {
 		return hookFile{path: path, present: true, err: err}
 	}

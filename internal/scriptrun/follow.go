@@ -404,10 +404,11 @@ func (e *Engine) failStart(ctx context.Context, l *live, summary string) {
 	e.record(ctx, l, nil, Outcome{Status: StatusFailed, Summary: summary}, e.files.size(l.id))
 }
 
-// record records a run's end and marks the run ended once it is recorded, tells its kind's
-// Recorded, lets go of it and then tells its Released, logs it, applies the retention, and
-// tells Changed. A run whose end couldn't be recorded isn't marked: its record still says
-// it goes, and the next start settles it.
+// record records a run's end and, once it is recorded, marks the run ended and removes
+// what it kept beside its record, tells its kind's Recorded, lets go of it and then tells
+// its Released, logs it, applies the retention, and tells Changed. A run whose end couldn't
+// be recorded isn't marked, and keeps its state: its record still says it goes, and the
+// next start settles it.
 func (e *Engine) record(ctx context.Context, l *live, exitCode *int, out Outcome, size int64) {
 	unrecognized := out.Unrecognized
 	if len(unrecognized) > MaxUnrecognized {
@@ -425,6 +426,7 @@ func (e *Engine) record(ctx context.Context, l *live, exitCode *int, out Outcome
 	})
 	if err == nil {
 		e.markEnded(l)
+		e.dropKept(ctx, l.id)
 	}
 
 	switch {

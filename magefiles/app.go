@@ -389,8 +389,21 @@ func appProcesses(exe string) ([]int, error) {
 	return pids, nil
 }
 
-// Check runs every desktop check: the bindings drift check, the desktop lint, and the
-// bundle build.
+// Test runs the desktop-tagged tests of the desktop command, which run the desktop
+// runtime itself (a bound method's error reaching the window worded, for one); `magex
+// test` builds without the tag, so it never runs them.
+//
+//	magex app:test
+func (App) Test() error {
+	if err := ensureDist(); err != nil {
+		return err
+	}
+
+	return sh.RunV("go", "test", "-tags", desktopTag, "./cmd/"+brand.Slug+"/")
+}
+
+// Check runs every desktop check: the bindings drift check, the desktop lint, the
+// desktop tests, and the bundle build.
 //
 //	magex app:check
 func (App) Check() error {
@@ -399,6 +412,10 @@ func (App) Check() error {
 	}
 
 	if err := (App{}).Lint(); err != nil {
+		return err
+	}
+
+	if err := (App{}).Test(); err != nil {
 		return err
 	}
 

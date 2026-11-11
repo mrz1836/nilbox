@@ -1488,7 +1488,7 @@ func TestAppTargetsOnMacOS(t *testing.T) {
 		assert.Equal(t, "open "+bundle, lines[len(lines)-1])
 	})
 
-	t.Run("check runs the drift check, the desktop lint, and the build", func(t *testing.T) {
+	t.Run("check runs the drift check, the desktop lint, the desktop tests, and the build", func(t *testing.T) {
 		dir := inTempDir(t)
 		checkout(t, dir)
 		_, log := appTools(t)
@@ -1497,7 +1497,23 @@ func TestAppTargetsOnMacOS(t *testing.T) {
 		captureStdout(t, func() { require.NoError(t, App{}.Check()) })
 
 		lines := logLines(t, log)
-		assert.Contains(t, lines, "golangci-lint run --build-tags desktop --config .golangci.json --timeout 10m ./cmd/"+brand.Slug+"/... ./frontend/")
+		lint := slices.Index(lines, "golangci-lint run --build-tags desktop --config .golangci.json --timeout 10m ./cmd/"+
+			brand.Slug+"/... ./frontend/")
+		tests := slices.Index(lines, "go test -tags desktop ./cmd/"+brand.Slug+"/")
+
+		require.NotEqual(t, -1, lint, "the desktop lint")
+		require.NotEqual(t, -1, tests, "the desktop tests")
+		assert.Less(t, lint, tests, "the tests run after the lint")
 		assert.Equal(t, "codesign --force --sign - "+bundle, lines[len(lines)-1])
+	})
+
+	t.Run("test runs the desktop-tagged tests, with a frontend to embed", func(t *testing.T) {
+		inTempDir(t)
+		_, log := appTools(t)
+
+		require.NoError(t, App{}.Test())
+
+		assert.Equal(t, []string{"go test -tags desktop ./cmd/" + brand.Slug + "/"}, logLines(t, log))
+		assert.FileExists(t, distIndex, "the embed needs a page, so a placeholder stands in")
 	})
 }

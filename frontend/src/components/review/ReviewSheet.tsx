@@ -66,9 +66,11 @@ function keepsDraft(result: ReviewResult): boolean {
   return result.outcome === 'pushed_since' || result.outcome === 'branch_updating' || result.outcome === 'asked_bot'
 }
 
-// Progress is an action under way: what it is, and the steps the backend reported so far.
+// Progress is an action under way: what it is, the pull request it acts on, and the steps
+// the backend reported so far.
 interface Progress {
   title: string
+  target: string
   steps: readonly string[]
 }
 
@@ -131,7 +133,7 @@ export function ReviewSheet({
     const reviews = !['merge_now', 'auto_merge', 'merge_bypass', 'update_branch', 'rebase_bot'].includes(action)
     const label = r.offers.find((o) => o.action === action)?.label ?? 'Working'
 
-    setProgress({ title: `${label} ${r.repo}#${String(r.number)}`, steps: [] })
+    setProgress({ title: label, target: `${r.repo}#${String(r.number)}`, steps: [] })
 
     const result = await act.run({
       itemId: id,
@@ -411,7 +413,7 @@ export function ReviewSheet({
           </div>
         )}
       </div>
-      {progress !== null && <ActionProgress title={progress.title} steps={progress.steps} />}
+      {progress !== null && <ActionProgress title={progress.title} target={progress.target} steps={progress.steps} />}
       {confirming !== null && review !== null && (
         <MergeConfirmDialog
           review={review}

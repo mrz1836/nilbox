@@ -358,3 +358,15 @@ func TestRunShellReportsAShellThatFails(t *testing.T) {
 	_, err = shellenv.RunShell(t.Context(), []string{"relative-shell"}, nil)
 	require.Error(t, err)
 }
+
+func TestAwaitReportsWhetherTheShellWasRead(t *testing.T) {
+	t.Parallel()
+
+	read := make(chan struct{})
+	close(read)
+	assert.True(t, shellenv.Await(t.Context(), read))
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	assert.False(t, shellenv.Await(ctx, make(chan struct{})), "a quit never waits on a read that never comes")
+}

@@ -206,6 +206,43 @@ func TestReleasedIsToldEvenWhenTheRecordFails(t *testing.T) {
 	}
 }
 
+func TestAVerifierGivesARunItsReleasedAgain(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	procs := newFakeProcs()
+	procs.install(h.e)
+
+	dir := h.clone()
+	released := make(chan releasedCall, 1)
+
+	h.e.RegisterVerifier(KindScript, releasedVerifier{hook: func(id int64) {
+		rec, _ := h.e.store.get(t.Context(), id)
+		_, held := h.locks.Holder(dir)
+
+		released <- releasedCall{id: id, stored: rec.Status, held: held}
+	}})
+
+	id := h.insertRow(RunsInApp, dir, 5151, 5151, startedLong())
+	h.e.reconcile(t.Context())
+
+	select {
+	case got := <-released:
+		assert.Equal(t, releasedCall{id: id, stored: StatusInterrupted}, got, "with the clone free and the end kept")
+	case <-time.After(wait):
+		require.Fail(t, "Released was never told")
+	}
+}
+
+// releasedVerifier gives a run from before a restart only its Released.
+type releasedVerifier struct {
+	hook func(id int64)
+}
+
+func (v releasedVerifier) Verify(Record) Verification {
+	return Verification{Released: v.hook}
+}
+
 func TestReleasedIsntToldForAnUnsettledEnd(t *testing.T) {
 	t.Parallel()
 

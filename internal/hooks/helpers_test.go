@@ -3,6 +3,7 @@ package hooks
 import (
 	"cmp"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -132,6 +133,10 @@ type rig struct {
 
 	// scratch is where go-pre-commit's status judges hooks.
 	scratch string
+
+	// db and logDir are the runner's history and its logs, which the next start reads.
+	db     *sql.DB
+	logDir string
 }
 
 // newRig builds a rig with go-pre-commit 1.13.1 replaying nothing, or skips the test
@@ -146,7 +151,7 @@ func newRig(t *testing.T) *rig {
 		t: t, home: home, root: filepath.Join(home, "projects"), env: testutil.GitEnv(home),
 		tools: &fakeTools{}, status: &fakeStatus{}, locks: clonelock.New(),
 		memory: &fakeMemory{values: map[string]string{}}, events: &testutil.Events{}, logs: &testutil.Logs{},
-		scratch: filepath.Join(t.TempDir(), "scratch"),
+		scratch: filepath.Join(t.TempDir(), "scratch"), db: testutil.DB(t), logDir: filepath.Join(t.TempDir(), "script-runs"),
 	}
 	require.NoError(t, os.MkdirAll(r.root, 0o700))
 
@@ -154,8 +159,7 @@ func newRig(t *testing.T) *rig {
 	r.clones = &fakeClones{root: r.root, origins: map[string]repo.Name{}}
 
 	r.engine = scriptrun.NewEngine(scriptrun.Config{
-		DB: testutil.DB(t), Locks: r.locks, LogDir: filepath.Join(t.TempDir(), "script-runs"), Home: home,
-		Logger: r.logs.Logger(),
+		DB: r.db, Locks: r.locks, LogDir: r.logDir, Home: home, Logger: r.logs.Logger(),
 	})
 	t.Cleanup(r.engine.StopAll)
 
