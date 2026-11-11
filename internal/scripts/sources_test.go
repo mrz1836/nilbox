@@ -166,11 +166,11 @@ func TestReadTasksListsThisRepository(t *testing.T) {
 	assert.Equal(t, []Input{
 		{
 			ID: "targetBranch", Kind: InputPick, Description: "Target branch for version bump", Default: "master",
-			Options: []Option{{Label: "master", Value: "master"}, {Label: "main", Value: "main"}},
+			Options: []Option{optionOf("master", "master"), optionOf("main", "main")},
 		},
 		{
 			ID: "versionBump", Kind: InputPick, Description: "Select version bump type", Default: "patch",
-			Options: []Option{{Label: "patch", Value: "patch"}, {Label: "minor", Value: "minor"}},
+			Options: []Option{optionOf("patch", "patch"), optionOf("minor", "minor")},
 		},
 	}, bump.entry.Inputs, "its pickString inputs become a form")
 
@@ -254,7 +254,7 @@ func TestReadTasksCases(t *testing.T) {
 	assert.True(t, bump.entry.Release)
 	assert.Equal(t, []Input{
 		{ID: "bump", Kind: InputPick, Default: "patch", Options: []Option{
-			{Label: "patch", Value: "patch"}, {Label: "Minor", Value: "minor"},
+			{Label: "patch", Value: "patch", Shown: "patch"}, {Label: "Minor", Value: "minor", Shown: "Minor (minor)"},
 		}},
 		{ID: "note", Kind: InputPrompt, Description: "A note", Default: "hello", Options: []Option{}},
 	}, bump.entry.Inputs)

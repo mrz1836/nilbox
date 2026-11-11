@@ -201,7 +201,7 @@ func (r *tasksFileReader) script(def *taskDef) script {
 		name: def.label, hash: c.hash, parts: parts, inputs: c.inputs,
 	}
 
-	sc.entry.Release = strings.Contains(sc.entry.Command, releaseMarker)
+	sc.entry.Release = bumps([]string{sc.entry.Command}, nil)
 
 	if len(def.deps) > 1 && !def.sequence {
 		sc.entry.Note = "Runs its dependencies one after another, where VS Code runs them side by side."
@@ -413,7 +413,28 @@ func formProblem(f taskForm) string {
 		}
 	}
 
-	return ""
+	return runProblem(f)
+}
+
+// runProblem says why the app can't run a task's form as it is written, or "": a
+// character that hides what it runs, a program env would take for a variable, or
+// arguments for a shell whose quoting differs from the POSIX shells'.
+func runProblem(f taskForm) string {
+	shell := ""
+	if f.Shell != nil {
+		shell = f.Shell.Executable
+	}
+
+	switch {
+	case anyHidden(f.words()...):
+		return hiddenWhy
+	case f.Type == typeProcess && len(f.Env) > 0 && strings.ContainsRune(f.Command, '='):
+		return envProgramWhy
+	case shell != "" && !strings.Contains(shell, "${") && !posixShell(shell) && len(f.Args) > 0:
+		return shellWhy(shell)
+	default:
+		return ""
+	}
 }
 
 // words returns every word of a task's form that may hold a variable.
@@ -595,28 +616,49 @@ func readInputs(raw []json.RawMessage) map[string]inputDoc {
 func inputOf(in inputDoc) (Input, string) {
 	out := Input{ID: in.ID, Kind: InputKind(in.Type), Description: in.Description, Default: in.Default, Options: []Option{}}
 
-	if out.Kind != InputPick {
-		return out, ""
+	if out.Kind == InputPick {
+		options, why := pickOptions(in)
+		if why != "" {
+			return out, why
+		}
+
+		out.Options = options
 	}
+
+	if anyHidden(out.Default) || slices.ContainsFunc(out.Options, func(o Option) bool { return anyHidden(o.Label, o.Value) }) {
+		return out, hiddenWhy
+	}
+
+	return out, ""
+}
+
+// pickOptions reads a pickString's choices, each a string or {label, value}, or says why it
+// can't.
+func pickOptions(in inputDoc) ([]Option, string) {
+	out := make([]Option, 0, len(in.Options))
 
 	for _, raw := range in.Options {
 		var s string
 		if json.Unmarshal(raw, &s) == nil {
-			out.Options = append(out.Options, Option{Label: s, Value: s})
+			out = append(out, optionOf(s, s))
 
 			continue
 		}
 
-		var o Option
-		if err := json.Unmarshal(raw, &o); err != nil {
-			return out, "Its input " + in.ID + " has a choice " + brand.Name + " can't read."
+		var o struct {
+			Label string `json:"label"`
+			Value string `json:"value"`
 		}
 
-		out.Options = append(out.Options, Option{Label: cmp.Or(o.Label, o.Value), Value: o.Value})
+		if err := json.Unmarshal(raw, &o); err != nil {
+			return nil, "Its input " + in.ID + " has a choice " + brand.Name + " can't read."
+		}
+
+		out = append(out, optionOf(cmp.Or(o.Label, o.Value), o.Value))
 	}
 
-	if len(out.Options) == 0 {
-		return out, "Its input " + in.ID + " has no choices."
+	if len(out) == 0 {
+		return nil, "Its input " + in.ID + " has no choices."
 	}
 
 	return out, ""

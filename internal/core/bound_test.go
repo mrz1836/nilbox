@@ -300,7 +300,15 @@ func boundCalls(t *testing.T) map[string]boundCall {
 			return got, err
 		},
 		"scripts.Service.List": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
-			got, err := c.Scripts.List(ctx, "~/projects/example-repo")
+			off, err := c.Scripts.List(ctx, "~/projects/example-repo", false)
+			require.NoError(t, err)
+			require.True(t, off.Off, "automatic, with neither tool found")
+			require.NotNil(t, off.Sections)
+
+			_, err = c.Settings.SetIntegrationEnabled(ctx, integrationprefs.Scripts, integrationprefs.SwitchOn)
+			require.NoError(t, err)
+
+			got, err := c.Scripts.List(ctx, "~/projects/example-repo", true)
 			require.Len(t, got.Sections, 4)
 			require.Len(t, got.Sections[1].Entries, 1, "the clone's t3.json")
 

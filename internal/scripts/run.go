@@ -64,10 +64,69 @@ type Intent struct {
 }
 
 // confirmation is what the user confirmed of a repository command: its hash, and whether
-// to remember it.
+// to remember it; rerun marks Run again, which never confirms and asks nothing, so it runs
+// only a command the user trusted.
 type confirmation struct {
 	hash     string
 	remember bool
+	rerun    bool
+}
+
+// Question is what the window asks before a repository command runs, sent with the error
+// that refused it (QuestionError): the command as it will run, with the chosen inputs
+// filled in, and what the user trusted before.
+type Question struct {
+	// Ref, Name, and Source name the script.
+	Ref    string `json:"ref"`
+	Name   string `json:"name"`
+	Source Source `json:"source"`
+
+	// Command is what will run, the chosen inputs filled in; the user's environment's
+	// values are never shown.
+	Command string `json:"command"`
+
+	// Trust is why it asks, ask or changed; Trusted is the command trusted before, and
+	// TrustNote what the question adds, as on the page's entry.
+	Trust     Trust  `json:"trust"`
+	Trusted   string `json:"trusted"`
+	TrustNote string `json:"trustNote"`
+
+	// SHA256 is the hash the user confirms, which a run sends back as Confirmed.
+	SHA256 string `json:"sha256"`
+}
+
+// QuestionError refuses a run until the user answers its Question. Its message says why,
+// and Detail hands the question to the desktop runtime, which sends it to the window.
+type QuestionError struct {
+	Question Question
+	err      error
+}
+
+// Error returns the refusal's text.
+func (e *QuestionError) Error() string {
+	return e.err.Error()
+}
+
+// Unwrap returns the refusal: ErrNeedsTrust or ErrChanged, with the words for the user.
+func (e *QuestionError) Unwrap() error {
+	return e.err
+}
+
+// Detail returns the question, for the window.
+func (e *QuestionError) Detail() any {
+	return e.Question
+}
+
+// pending is a run as it was asked for, which its Before checks again under the clone's
+// lock: the clone, the script, what it set out to do, what the user confirmed, and its
+// variables.
+type pending struct {
+	c    clone
+	src  Source
+	name string
+	in   Intent
+	conf confirmation
+	v    vars
 }
 
 // Run runs the script req names in its clone, and returns the run's ID. A command from the
@@ -123,11 +182,13 @@ func (s *Service) spec(ctx context.Context, c clone, in Intent, where integratio
 		return scriptrun.Spec{}, fmt.Errorf("%w: the script %q", ErrInvalidRequest, in.Ref)
 	}
 
-	if why := sourceOff(cfg, src); why != "" {
+	tools := s.toolsNow(ctx)
+
+	if why := cmp.Or(scriptsOff(cfg, tools), sourceOff(cfg, src)); why != "" {
 		return scriptrun.Spec{}, uierr.New(why, ErrCantRun)
 	}
 
-	sc, err := s.find(ctx, c, src, name, s.tool(ctx), false)
+	sc, err := s.find(ctx, c, src, name, tools.Magex, false)
 	if err != nil {
 		return scriptrun.Spec{}, err
 	}
@@ -139,12 +200,15 @@ func (s *Service) spec(ctx context.Context, c clone, in Intent, where integratio
 	in.SHA256, in.Args = sc.hash, nonNil(in.Args)
 
 	base, _ := s.env()
-	v := vars{dir: c.dir, home: s.home, env: base, inputs: in.Inputs}
+	p := pending{
+		c: c, src: src, name: name, in: in, conf: conf,
+		v: vars{dir: c.dir, home: s.home, env: base, inputs: in.Inputs},
+	}
 
 	spec := scriptrun.Spec{
 		Kind: scriptrun.KindScript, Title: sc.entry.Name, Source: sourceFile(src), Repo: c.name, Dir: c.dir,
-		Env: runEnv(src, base, where), Command: runDisplay(sc, v, in.Args), RunsIn: where, Intent: in,
-		Before: func(ctx context.Context) ([]string, error) { return s.before(ctx, c, src, name, in, conf, v) },
+		Env: runEnv(src, base, where), Command: runDisplay(sc, p.v, in.Args), RunsIn: where, Intent: in,
+		Before: func(ctx context.Context) ([]string, error) { return s.before(ctx, p) },
 	}
 
 	if src == SourceMagex {
@@ -156,74 +220,146 @@ func (s *Service) spec(ctx context.Context, c clone, in Intent, where integratio
 
 // before is a script run's Before: under the clone's lock, it reads the script's source
 // again, from its bytes, and refuses it when its hash isn't the one worked out as the run
-// was asked for, or when the user hasn't confirmed or trusted it as it is now; then it
-// remembers a confirmation the user asked to keep, and returns the command.
-func (s *Service) before(ctx context.Context, c clone, src Source, name string, in Intent, conf confirmation, v vars,
-) ([]string, error) {
+// was asked for. It works the command out, refuses one that would tag a version unless
+// asked to run it anyway, then one the user hasn't confirmed or trusted as it is now, and
+// only then remembers a confirmation the user asked to keep, and returns the command.
+func (s *Service) before(ctx context.Context, p pending) ([]string, error) {
 	tool := s.tool(ctx)
 
-	sc, err := s.find(ctx, c, src, name, tool, true)
+	sc, err := s.find(ctx, p.c, p.src, p.name, tool, true)
 	if err != nil {
 		return nil, err
 	}
 
-	if sc.hash != in.SHA256 {
-		return nil, uierr.New(fmt.Sprintf("%q changed in %s as it was starting. Look at it again before it runs.",
-			name, sourceFile(src)), fmt.Errorf("%w: %s", ErrChanged, in.Ref))
+	shown := runDisplay(sc, p.v, p.in.Args)
+
+	if sc.hash != p.in.SHA256 {
+		return nil, s.ask(ctx, p.c, sc, shown, fmt.Sprintf("%q changed in %s as it was starting. Look at it "+
+			"again before it runs.", p.name, sourceFile(p.src)), ErrChanged)
 	}
 
-	if _, err = check(sc, in); err != nil {
+	if _, err = check(sc, p.in); err != nil {
 		return nil, err
 	}
 
-	if err = s.trusts(ctx, c, sc, conf); err != nil {
+	argv, err := s.command(ctx, p, sc, tool)
+	if err != nil {
 		return nil, err
 	}
 
+	remember, err := s.trusts(ctx, p.c, sc, p.conf, shown)
+	if err != nil {
+		return nil, err
+	}
+
+	if remember {
+		key := trustKey{source: sc.entry.Source, name: sc.name}
+		if err = s.trust.set(ctx, p.c.name, key, trustRecord{sha256: sc.hash, command: sc.entry.Command}); err != nil {
+			return nil, err
+		}
+	}
+
+	return argv, nil
+}
+
+// command works out the argv sc runs as p asks, with tool the copy of magex in use, and
+// refuses one that would tag a version unless p asked to run it anyway: what it runs,
+// inputs and aliases resolved, is checked, not only what the page showed.
+func (s *Service) command(ctx context.Context, p pending, sc script, tool ToolFacts) ([]string, error) {
 	parts := slices.Clone(sc.parts)
-	if src == SourceMagex {
-		parts[0].args = in.Args
+	if p.src == SourceMagex {
+		parts[0].args = p.in.Args
 	}
 
-	return launcher{shell: s.shell(), magex: tool.Path, vars: v}.argv(parts)
+	argv, err := launcher{shell: s.shell(), magex: tool.Path, vars: p.v}.argv(parts)
+	if err != nil {
+		return nil, err
+	}
+
+	if !p.in.Anyway && bumps(argv, s.taggingAliases(ctx, tool)) {
+		return nil, releaseError(sc)
+	}
+
+	return argv, nil
+}
+
+// taggingAliases are the other names the copy tool gives the targets that tag a version,
+// from its built-ins as listed: none while magex can't run or couldn't list them.
+func (s *Service) taggingAliases(ctx context.Context, tool ToolFacts) []string {
+	if !tool.Usable() {
+		return nil
+	}
+
+	b, err := s.builtinsOf(ctx, tool)
+	if err != nil {
+		return nil
+	}
+
+	return b.taggingAliases()
 }
 
 // trusts checks that the user trusts sc as it is now: the hash they confirmed, or else the
-// one they trusted before. A confirmation they asked to keep is remembered.
-func (s *Service) trusts(ctx context.Context, c clone, sc script, conf confirmation) error {
+// one they trusted before; Run again takes only the latter. It reports whether to
+// remember the confirmation, which the caller does once the command is worked out. A
+// refusal carries the question to ask, with shown, the command as it will run.
+func (s *Service) trusts(ctx context.Context, c clone, sc script, conf confirmation, shown string) (bool, error) {
 	if !sc.needsTrust() {
-		return nil
+		return false, nil
 	}
-
-	key := trustKey{source: sc.entry.Source, name: sc.name}
 
 	if conf.hash != "" {
-		if conf.hash != sc.hash {
-			return uierr.New(fmt.Sprintf("%q changed since you confirmed it. Look at it again before it runs.", sc.name),
-				fmt.Errorf("%w: %s", ErrChanged, sc.entry.Ref))
+		if conf.hash == sc.hash {
+			return conf.remember, nil
 		}
 
-		if conf.remember {
-			return s.trust.set(ctx, c.name, key, trustRecord{sha256: sc.hash, command: sc.entry.Command})
-		}
-
-		return nil
+		return false, s.ask(ctx, c, sc, shown, fmt.Sprintf("%q changed since you confirmed it. Look at it again "+
+			"before it runs.", sc.name), ErrChanged)
 	}
 
-	rec, ok, err := s.trust.get(ctx, c.name, key)
+	rec, ok, err := s.trust.get(ctx, c.name, trustKey{source: sc.entry.Source, name: sc.name})
 
 	switch {
 	case err != nil:
-		return err
+		return false, err
+	case ok && rec.sha256 == sc.hash:
+		return false, nil
+	case conf.rerun:
+		return false, s.ask(ctx, c, sc, shown, fmt.Sprintf("%q needs your OK to run again. Run it from Repo "+
+			"scripts, which asks first.", sc.name), ErrNeedsTrust)
 	case !ok:
-		return uierr.New(fmt.Sprintf("Confirm %q before it runs: it comes from %s, not from you.", sc.name,
-			sourceFile(sc.entry.Source)), fmt.Errorf("%w: %s", ErrNeedsTrust, sc.entry.Ref))
-	case rec.sha256 != sc.hash:
-		return uierr.New(fmt.Sprintf("%q changed since you last ran it. Confirm it again before it runs.", sc.name),
-			fmt.Errorf("%w: %s", ErrNeedsTrust, sc.entry.Ref))
+		return false, s.ask(ctx, c, sc, shown, fmt.Sprintf("Confirm %q before it runs: it comes from %s, not "+
+			"from you.", sc.name, sourceFile(sc.entry.Source)), ErrNeedsTrust)
 	default:
-		return nil
+		return false, s.ask(ctx, c, sc, shown, fmt.Sprintf("%q changed since you last ran it. Confirm it again "+
+			"before it runs.", sc.name), ErrNeedsTrust)
 	}
+}
+
+// ask refuses sc, saying msg, until the user answers its question: shown, the command as
+// it will run, with what they trusted before, read under the clone's origin.
+func (s *Service) ask(ctx context.Context, c clone, sc script, shown, msg string, why error) error {
+	key := trustKey{source: sc.entry.Source, name: sc.name}
+	records := map[trustKey]trustRecord{}
+
+	if rec, ok, err := s.trust.get(ctx, c.name, key); err == nil && ok {
+		records[key] = rec
+	}
+
+	e := withTrust(sc, records, c.display())
+
+	return &QuestionError{
+		Question: Question{
+			Ref: e.Ref, Name: e.Name, Source: e.Source, Command: shown, Trust: e.Trust, Trusted: e.Trusted,
+			TrustNote: e.TrustNote, SHA256: e.SHA256,
+		},
+		err: uierr.New(msg, fmt.Errorf("%w: %s", why, sc.entry.Ref)),
+	}
+}
+
+// releaseError refuses a command that would tag a version: Release does that.
+func releaseError(sc script) error {
+	return uierr.New("Release does this, with its checks. Open Release, or run it anyway.",
+		fmt.Errorf("%w: %s", ErrRelease, sc.entry.Ref))
 }
 
 // check returns why sc can't run as intent asks, or the values of its inputs: greyed, a
@@ -234,8 +370,7 @@ func check(sc script, in Intent) (map[string]string, error) {
 	case !sc.entry.Runnable:
 		return nil, uierr.New(sc.entry.Why, fmt.Errorf("%w: %s", ErrCantRun, sc.entry.Ref))
 	case sc.entry.Release && !in.Anyway:
-		return nil, uierr.New("Release does this, with its checks. Open Release, or run it anyway.",
-			fmt.Errorf("%w: %s", ErrRelease, sc.entry.Ref))
+		return nil, releaseError(sc)
 	case len(in.Args) > 0 && !sc.entry.Args:
 		return nil, uierr.New("Only magex's own targets take arguments.", ErrInvalidRequest)
 	case len(in.Args) > maxArgs:
@@ -264,7 +399,7 @@ func inputValues(sc script, given map[string]string) (map[string]string, error) 
 		}
 
 		switch {
-		case len(v) > maxInput || strings.ContainsRune(v, 0):
+		case len(v) > maxInput || hidden(v):
 			return nil, uierr.New(fmt.Sprintf("The value for %s is too long, or holds a character it can't.", in.ID),
 				ErrInvalidRequest)
 		case in.Kind == InputPick && !slices.ContainsFunc(in.Options, func(o Option) bool { return o.Value == v }):
@@ -320,11 +455,12 @@ func nonNil(list []string) []string {
 }
 
 // Rerunner works Run again out for script runs (scriptrun.Rerunner): the same script, with
-// the same values and arguments, read again from its source, in the same clone. It runs
-// only while the command's hash is the one that ran before; one that changed is refused,
-// and the user looks at it again on the page. Core registers it with the runner for
-// scriptrun.KindScript. It is its own type, not a method of the Service, which the window
-// binds.
+// the same values and arguments, read again from its source, in the same clone. It asks
+// nothing, so it runs a repository command only while the user trusts it as it is now, by
+// a record kept under the clone's current origin; one confirmed once, or changed since, is
+// refused, and the user runs it from the page, which asks. Core registers it with the
+// runner for scriptrun.KindScript. It is its own type, not a method of the Service, which
+// the window binds.
 type Rerunner struct {
 	s *Service
 }
@@ -350,16 +486,12 @@ func (r Rerunner) Rerun(ctx context.Context, run scriptrun.Record) (scriptrun.Sp
 		return scriptrun.Spec{}, err
 	}
 
-	if !c.name.Valid() {
-		c.name = run.Repo
-	}
-
 	cfg, err := r.s.config(ctx)
 	if err != nil {
 		return scriptrun.Spec{}, err
 	}
 
-	return r.s.spec(ctx, c, in, cmp.Or(run.RunsIn, integrationprefs.RunsInApp), cfg, confirmation{hash: in.SHA256})
+	return r.s.spec(ctx, c, in, cmp.Or(run.RunsIn, integrationprefs.RunsInApp), cfg, confirmation{rerun: true})
 }
 
 // decodeIntent reads a run's intent back from its record, where it was decoded as plain

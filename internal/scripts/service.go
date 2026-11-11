@@ -16,6 +16,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/flight"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
+	"github.com/mrz1836/nilbox/internal/integrations"
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/repo"
@@ -44,10 +45,11 @@ type DefaultBranches interface {
 	DefaultBranch(ctx context.Context, name repo.Name) (string, error)
 }
 
-// ToolSource reads what the app knows of magex. Core adapts the integrations service,
-// with ToolFactsOf. It never fails: a copy it can't read is missing.
+// ToolSource reads what the app knows of the tools: magex, and whether mage-x and
+// go-pre-commit are on. Core adapts the integrations service, with ToolsOf. It never
+// fails: a tool it can't read is missing, and off.
 type ToolSource interface {
-	MagexTool(ctx context.Context) ToolFacts
+	Tools(ctx context.Context) Tools
 }
 
 // Settings reads the integrations' settings: which sources Repo scripts lists, and where
@@ -122,7 +124,7 @@ type Service struct {
 	// mu guards the built-ins listed per copy of magex, and the magefiles read per clone,
 	// each with the fingerprint it was read at.
 	mu     sync.Mutex
-	listed map[string]builtins
+	listed map[string]listedBuiltins
 	mages  map[string]keptMagefiles
 }
 
@@ -138,7 +140,7 @@ func NewService(cfg Config) *Service {
 		clones: cfg.Clones, git: cfg.Git, branches: cfg.Branches, tools: cfg.Tools, settings: cfg.Settings,
 		runs: cfg.Runs, history: cfg.History, trust: newTrustStore(cfg.DB, cfg.Clock), env: cfg.Env, shell: cfg.Shell,
 		runner: cfg.Runner, scratch: cfg.Scratch, home: cfg.Home, logger: logging.Or(cfg.Logger),
-		listed: map[string]builtins{}, mages: map[string]keptMagefiles{},
+		listed: map[string]listedBuiltins{}, mages: map[string]keptMagefiles{},
 	}
 
 	if s.env == nil {
@@ -200,9 +202,10 @@ func (s *Service) Repos(ctx context.Context) ([]Clone, error) {
 
 // List returns Repo scripts for the clone at dir, as the picker lists it, with ~: its
 // sources in the page's order, as the settings turn them on, each script with what
-// running it asks first. It runs nothing in the clone: its files are read, and magex's
-// built-ins are listed in a folder of the app's own.
-func (s *Service) List(ctx context.Context, dir string) (Page, error) {
+// running it asks first, or the page marked off while the scripts are. It runs nothing in
+// the clone: its files are read, and magex's built-ins are listed in a folder of the
+// app's own, once per copy of magex, a list that failed included, until refresh.
+func (s *Service) List(ctx context.Context, dir string, refresh bool) (Page, error) {
 	c, err := s.cloneAt(ctx, dir)
 	if err != nil {
 		return Page{}, err
@@ -213,21 +216,32 @@ func (s *Service) List(ctx context.Context, dir string) (Page, error) {
 		return Page{}, err
 	}
 
+	tools := s.toolsNow(ctx)
+	page := Page{
+		Repo: repoText(c.name), Name: c.display(), Dir: paths.Tilde(c.dir, s.home), Switches: cfg.ScriptSources,
+		Sections: []Section{},
+	}
+
+	if page.Why = scriptsOff(cfg, tools); page.Why != "" {
+		page.Off = true
+
+		return page, nil
+	}
+
+	if refresh {
+		s.forgetBuiltins(tools.Magex)
+	}
+
 	records, err := s.trust.forRepo(ctx, c.name)
 	if err != nil {
 		return Page{}, err
 	}
 
-	page := Page{
-		Repo: repoText(c.name), Name: c.display(), Dir: paths.Tilde(c.dir, s.home), Switches: cfg.ScriptSources,
-		Sections: []Section{{Source: SourceYours, Title: "Yours", Entries: []Entry{}, Common: []string{}}},
-	}
+	page.Sections = append(page.Sections, Section{Source: SourceYours, Title: "Yours", Entries: []Entry{}, Common: []string{}})
 	page.Branch, page.FromBranch = s.branch(ctx, c)
 
-	tool := s.tool(ctx)
-
 	for _, src := range []Source{SourceT3, SourceTasks, SourceMagex} {
-		page.Sections = append(page.Sections, s.section(ctx, c, src, cfg, tool, records))
+		page.Sections = append(page.Sections, s.section(ctx, c, src, cfg, tools.Magex, records))
 	}
 
 	return page, nil
@@ -390,13 +404,34 @@ func (s *Service) config(ctx context.Context) (integrationprefs.Config, error) {
 	return cfg, nil
 }
 
-// tool returns what the app knows of magex now.
-func (s *Service) tool(ctx context.Context) ToolFacts {
+// toolsNow returns what the app knows of the tools now.
+func (s *Service) toolsNow(ctx context.Context) Tools {
 	if s.tools == nil {
-		return ToolFacts{}
+		return Tools{}
 	}
 
-	return s.tools.MagexTool(ctx)
+	return s.tools.Tools(ctx)
+}
+
+// tool returns what the app knows of magex now.
+func (s *Service) tool(ctx context.Context) ToolFacts {
+	return s.toolsNow(ctx).Magex
+}
+
+// scriptsOff says, while the Scripts integration is off, so; "" while it is on. Its
+// switch's automatic is on while mage-x or go-pre-commit is.
+func scriptsOff(cfg integrationprefs.Config, t Tools) string {
+	sw := cfg.Switches[integrationprefs.Scripts]
+
+	switch {
+	case integrations.ScriptsOn(sw, t.MageXOn, t.GoPreCommitOn):
+		return ""
+	case sw == integrationprefs.SwitchOff:
+		return "Scripts are turned off in Settings → Integrations."
+	default:
+		return "Scripts turn on with mage-x or go-pre-commit. Turn either on, or Scripts itself, in " +
+			"Settings → Integrations."
+	}
 }
 
 // branch returns the branch the clone is on, and that branch again when it isn't the

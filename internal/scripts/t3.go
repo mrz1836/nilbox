@@ -17,10 +17,6 @@ import (
 // magefiles/.
 const maxFile = 1 << 20
 
-// releaseMarker is what a command that bumps a version holds: Release does that, with its
-// checks.
-const releaseMarker = "version:bump"
-
 // t3Doc is what the app reads of a t3.json: its scripts' names, commands, and icons.
 type t3Doc struct {
 	Scripts []struct {
@@ -62,7 +58,7 @@ func readT3(dir string) (out []script, found bool, err error) {
 		sc := script{
 			entry: Entry{
 				Ref: ref(SourceT3, name), Source: SourceT3, Name: name, Command: s.Command, Icon: s.Icon,
-				Runnable: true, Release: strings.Contains(s.Command, releaseMarker), Inputs: []Input{},
+				Runnable: true, Release: bumps([]string{s.Command}, nil), Inputs: []Input{},
 			},
 			name: name, hash: hashOf(t3Form{Source: SourceT3, Name: name, Command: s.Command}),
 			parts: []part{p}, inputs: map[string]Input{},
@@ -73,6 +69,8 @@ func readT3(dir string) (out []script, found bool, err error) {
 			sc.entry.Runnable, sc.entry.Why = false, "Another script in "+t3File+" has this name."
 		case strings.TrimSpace(s.Command) == "":
 			sc.entry.Runnable, sc.entry.Why = false, "Has no command to run."
+		case hidden(s.Command):
+			sc.entry.Runnable, sc.entry.Why = false, hiddenWhy
 		}
 
 		seen[name] = true

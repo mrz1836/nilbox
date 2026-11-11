@@ -17,7 +17,7 @@ func TestLauncherArgv(t *testing.T) {
 	testutil.WriteExecutable(t, filepath.Join(bin, "zsh"), "")
 
 	dir, home := "/work/example-repo", "/home/user"
-	l := launcher{shell: "/bin/zsh", magex: "/opt/bin/magex", vars: vars{
+	l := launcher{shell: zshPath, magex: "/opt/bin/magex", vars: vars{
 		dir: dir, home: home, env: []string{"PATH=" + bin, "TOKEN=abc"},
 		inputs: map[string]string{"bump": "minor"},
 	}}
@@ -28,19 +28,19 @@ func TestLauncherArgv(t *testing.T) {
 	}{
 		"a shell command runs in the login shell": {
 			parts: []part{{kind: partShell, command: "magex format:fix && magex lint"}},
-			want:  []string{"/bin/zsh", "-c", "magex format:fix && magex lint"},
+			want:  []string{zshPath, "-c", "magex format:fix && magex lint"},
 		},
 		"a shell task's arguments are quoted onto its line": {
 			parts: []part{{kind: partShell, command: "echo", args: []string{"two words", "${workspaceFolderBasename}"}}},
-			want:  []string{"/bin/zsh", "-c", "echo 'two words' example-repo"},
+			want:  []string{zshPath, "-c", "echo 'two words' example-repo"},
 		},
 		"options.shell, absolute, with its arguments": {
-			parts: []part{{kind: partShell, command: "magex test", shell: &shellSpec{Executable: "/bin/bash", Args: []string{"-l", "-c"}}}},
-			want:  []string{"/bin/bash", "-l", "-c", "magex test"},
+			parts: []part{{kind: partShell, command: magexTest, shell: &shellSpec{Executable: "/bin/bash", Args: []string{"-l", "-c"}}}},
+			want:  []string{"/bin/bash", "-l", "-c", magexTest},
 		},
 		"options.shell found on the login shell's PATH, -c by default": {
-			parts: []part{{kind: partShell, command: "magex test", shell: &shellSpec{Executable: "zsh"}}},
-			want:  []string{filepath.Join(bin, "zsh"), "-c", "magex test"},
+			parts: []part{{kind: partShell, command: magexTest, shell: &shellSpec{Executable: "zsh"}}},
+			want:  []string{filepath.Join(bin, "zsh"), "-c", magexTest},
 		},
 		"a process with its variables filled in": {
 			parts: []part{{kind: partProcess, command: "/usr/bin/true", args: []string{"${workspaceFolder}/out", "${userHome}"}}},
@@ -52,7 +52,7 @@ func TestLauncherArgv(t *testing.T) {
 		},
 		"variables through env": {
 			parts: []part{{kind: partShell, command: "make", env: [][2]string{{"A", "${env:TOKEN}"}, {"B", "${input:bump}"}}}},
-			want:  []string{envProgram, "A=abc", "B=minor", "/bin/zsh", "-c", "make"},
+			want:  []string{envProgram, "A=abc", "B=minor", zshPath, "-c", "make"},
 		},
 		"another folder runs through sh": {
 			parts: []part{{kind: partShell, command: "make", cwd: "sub"}},
@@ -74,7 +74,7 @@ func TestLauncherArgv(t *testing.T) {
 		},
 		"an input in a shell line": {
 			parts: []part{{kind: partShell, command: "magex version:bump bump=${input:bump} ${file}"}},
-			want:  []string{"/bin/zsh", "-c", "magex version:bump bump=minor ${file}"},
+			want:  []string{zshPath, "-c", "magex version:bump bump=minor ${file}"},
 		},
 	} {
 		got, err := l.argv(tt.parts)

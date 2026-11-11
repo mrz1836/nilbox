@@ -28,6 +28,12 @@ const (
 	runPoll = 10 * time.Millisecond
 )
 
+// zshPath is a login shell of the POSIX family, and magexTest the command most tests run.
+const (
+	zshPath   = "/bin/zsh"
+	magexTest = "magex test"
+)
+
 // rig is Repo scripts end to end: a clone root under a home of its own, a fake login shell
 // and a fake magex, magex's recorded built-ins, the real runner over a fresh database, and
 // the service, with its runs' Rerunner registered.
@@ -153,7 +159,7 @@ func (r *rig) shown(dir string) string {
 func (r *rig) list(dir string) Page {
 	r.t.Helper()
 
-	p, err := r.svc.List(r.t.Context(), r.shown(dir))
+	p, err := r.svc.List(r.t.Context(), r.shown(dir), false)
 	require.NoError(r.t, err)
 
 	return p
@@ -280,24 +286,41 @@ func (f fakeBranches) DefaultBranch(_ context.Context, name repo.Name) (string, 
 	return f[name.String()], nil
 }
 
-// fakeTools is what the app knows of magex.
+// fakeTools is what the app knows of magex, and whether mage-x and go-pre-commit are on.
 type fakeTools struct {
 	mu    sync.Mutex
-	facts ToolFacts
+	tools Tools
 }
 
-func (f *fakeTools) MagexTool(context.Context) ToolFacts {
+func (f *fakeTools) Tools(context.Context) Tools {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	return f.facts
+	return f.tools
 }
 
+// magex returns the copy of magex in use.
+func (f *fakeTools) magex() ToolFacts {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return f.tools.Magex
+}
+
+// set makes facts the copy of magex in use, and mage-x on when it can be used.
 func (f *fakeTools) set(facts ToolFacts) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	f.facts = facts
+	f.tools.Magex, f.tools.MageXOn = facts, facts.Usable()
+}
+
+// on sets whether mage-x and go-pre-commit are on.
+func (f *fakeTools) on(mageX, goPreCommit bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.tools.MageXOn, f.tools.GoPreCommitOn = mageX, goPreCommit
 }
 
 // fakeSettings are the integrations' settings.
@@ -320,11 +343,20 @@ func (f *fakeSettings) sources(magexTargets, repoFiles bool) {
 	f.cfg.ScriptSources = integrationprefs.ScriptSources{MagexTargets: magexTargets, RepoFiles: repoFiles}
 }
 
-// fakeHelp is magex's help:commands, answering with out, recording the folder and argv of
-// each call.
+// scripts sets the Scripts integration's switch.
+func (f *fakeSettings) scripts(sw integrationprefs.Switch) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.cfg.Switches = map[integrationprefs.ID]integrationprefs.Switch{integrationprefs.Scripts: sw}
+}
+
+// fakeHelp is magex's help:commands, answering with out, or failing with err, recording
+// the folder and argv of each call.
 type fakeHelp struct {
 	mu    sync.Mutex
 	out   string
+	err   error
 	dirs  []string
 	argvs [][]string
 }
@@ -337,8 +369,16 @@ func (f *fakeHelp) runner(_ []string, dir string) execpath.Runner {
 		f.dirs = append(f.dirs, dir)
 		f.argvs = append(f.argvs, argv)
 
-		return []byte(f.out), nil, nil
+		return []byte(f.out), nil, f.err
 	}}
+}
+
+// answer makes help:commands answer with out, or fail with err.
+func (f *fakeHelp) answer(out string, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.out, f.err = out, err
 }
 
 func (f *fakeHelp) calls() (dirs []string, argvs [][]string) {

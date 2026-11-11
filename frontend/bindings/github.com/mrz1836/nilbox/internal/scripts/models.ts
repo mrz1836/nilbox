@@ -116,11 +116,14 @@ export const InputKind = {
 } as const;
 
 /**
- * Option is one choice of a pickString: what the form shows, and the value it fills in.
+ * Option is one choice of a pickString: its label, the value it fills in, and Shown, what
+ * the form shows for it, the label with the value beside it whenever they differ, since
+ * the value is what runs.
  */
 export interface Option {
     "label": string;
     "value": string;
+    "shown": string;
 }
 
 /**
@@ -149,6 +152,13 @@ export interface Page {
      * Switches are the settings' sources, as set now.
      */
     "switches": integrationprefs$0.ScriptSources;
+
+    /**
+     * Off reports the Scripts integration off, and Why says why; the page then has no
+     * sections, and nothing runs.
+     */
+    "off": boolean;
+    "why": string;
 
     /**
      * Sections are the sources: the user's own scripts, t3.json, tasks.json, and magex.

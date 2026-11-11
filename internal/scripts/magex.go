@@ -41,6 +41,10 @@ var (
 
 	// errTooMany is returned for magefiles too many or too large to sum.
 	errTooMany = errors.New("its magefiles are too large to check")
+
+	// errLinkedFolder is returned for magefiles that hold a link to a folder, whose files
+	// the app doesn't follow.
+	errLinkedFolder = errors.New("its magefiles hold a link to a folder, which " + brand.Name + " can't check")
 )
 
 // commonTargets are the magex targets the page offers as chips, in its order.
@@ -75,6 +79,20 @@ func ToolFactsOf(tool integrations.Tool) ToolFacts {
 		Path: tool.Copy.Path, Version: tool.Copy.Version.Raw, State: tool.State,
 		Off: tool.Switch == integrationprefs.SwitchOff,
 	}
+}
+
+// Tools is what Repo scripts knows of the integrations' tools: magex, and whether mage-x
+// and go-pre-commit are on, either of which turns the scripts on while their switch is
+// automatic.
+type Tools struct {
+	Magex         ToolFacts
+	MageXOn       bool
+	GoPreCommitOn bool
+}
+
+// ToolsOf reads the tools from what the settings show of mage-x and go-pre-commit.
+func ToolsOf(mageX, goPreCommit integrations.Tool) Tools {
+	return Tools{Magex: ToolFactsOf(mageX), MageXOn: mageX.On, GoPreCommitOn: goPreCommit.On}
 }
 
 // Usable reports a copy the page can run: on, found, and new enough.
@@ -197,28 +215,43 @@ func (s *Service) loadBuiltins(ctx context.Context, tool ToolFacts) (builtins, e
 	return parseBuiltins(out)
 }
 
-// builtinsOf returns the built-ins of the copy tool, listed once per copy.
+// listedBuiltins is what one copy of magex's help:commands gave: its built-ins, or why it
+// couldn't list them.
+type listedBuiltins struct {
+	builtins builtins
+	err      error
+}
+
+// builtinsOf returns the built-ins of the copy tool, listed once per copy: a list that
+// failed is kept failed too, so no page or run waits on magex again, until another copy
+// takes its place or the page asks for a refresh (forgetBuiltins). A list cut short by
+// its caller's context is tried again.
 func (s *Service) builtinsOf(ctx context.Context, tool ToolFacts) (builtins, error) {
 	s.mu.Lock()
 	got, ok := s.listed[tool.key()]
 	s.mu.Unlock()
 
 	if ok {
-		return got, nil
+		return got.builtins, got.err
 	}
 
 	return s.listing.Do(ctx, tool.key(), func(ctx context.Context) (builtins, error) {
 		got, err := s.loadBuiltins(ctx, tool)
-		if err != nil {
-			return builtins{}, err
+		if ctx.Err() == nil {
+			s.mu.Lock()
+			s.listed[tool.key()] = listedBuiltins{builtins: got, err: err}
+			s.mu.Unlock()
 		}
 
-		s.mu.Lock()
-		s.listed[tool.key()] = got
-		s.mu.Unlock()
-
-		return got, nil
+		return got, err
 	})
+}
+
+// forgetBuiltins drops what the copy tool listed, so the next look lists them again.
+func (s *Service) forgetBuiltins(tool ToolFacts) {
+	s.mu.Lock()
+	delete(s.listed, tool.key())
+	s.mu.Unlock()
 }
 
 // customTarget is one of the repository's own magex targets.
@@ -302,7 +335,7 @@ func targetFiles(root string, paths []string) []string {
 
 // magefilesMessage words why a clone's magefiles couldn't be read or summed.
 func magefilesMessage(err error) string {
-	if errors.Is(err, errTooMany) {
+	if errors.Is(err, errTooMany) || errors.Is(err, errLinkedFolder) {
 		return textutil.EndSentence(textutil.Capitalize(err.Error()))
 	}
 
@@ -390,6 +423,10 @@ func sumPath(root, p string, budget *int64) (fileSum, error) {
 		return fileSum{}, err
 	case info == nil:
 		return sum, nil // a link to nothing is summed by where it points
+	case info.IsDir():
+		// Go files built through a link to a folder would go unsummed, and following
+		// links could loop: the custom targets are greyed instead.
+		return fileSum{}, fmt.Errorf("%w: %s/%s", errLinkedFolder, magefilesDir, sum.Path)
 	case !info.Mode().IsRegular():
 		if sum.Kind == "file" {
 			sum.Kind = "other"
@@ -670,6 +707,7 @@ func magexScripts(b builtins, mf magefiles) []script {
 	for _, c := range b.list {
 		sc := magexScript(c.Name, c.Description)
 		sc.entry.Args = true
+		guardBuiltin(&sc, c)
 		out = append(out, sc)
 	}
 
@@ -678,12 +716,10 @@ func magexScripts(b builtins, mf magefiles) []script {
 
 // magexScript is the script that runs magex's target name.
 func magexScript(name, detail string) script {
-	command := "magex " + name
-
 	return script{
 		entry: Entry{
-			Ref: ref(SourceMagex, name), Source: SourceMagex, Name: name, Command: command, Detail: detail,
-			Runnable: true, Release: strings.Contains(command, releaseMarker), Inputs: []Input{},
+			Ref: ref(SourceMagex, name), Source: SourceMagex, Name: name, Command: "magex " + name, Detail: detail,
+			Runnable: true, Inputs: []Input{},
 		},
 		name: name, parts: []part{{kind: partMagex, command: name}}, inputs: map[string]Input{},
 	}

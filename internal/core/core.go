@@ -640,7 +640,7 @@ func newHooks(pool *sql.DB, opts Options, logger *slog.Logger, deps hookDeps) *h
 	svc := hooks.NewService(hooks.Config{
 		Clones: hooksClones{settings: deps.settings, home: opts.Home, git: deps.runner}, Git: deps.git,
 		Tools: hooksTool{tools: deps.tools}, Locks: deps.clones, Runs: deps.runs, History: deps.history,
-		Places: hooksSettings{settings: deps.settings}, Memory: prefsstore.New(pool, opts.Clock), Env: deps.shellEnv.Env,
+		Places: integrationSettings{settings: deps.settings}, Memory: prefsstore.New(pool, opts.Clock), Env: deps.shellEnv.Env,
 		Runner: runner, Terminal: deps.terminal, Reveal: revealer(deps.runner), Home: opts.Home, Clock: opts.Clock,
 		Events: opts.Events, Logger: logger,
 	})
@@ -666,7 +666,7 @@ func newScripts(pool *sql.DB, opts Options, logger *slog.Logger, deps hookDeps, 
 
 	svc := scripts.NewService(scripts.Config{
 		Clones: hooksClones{settings: deps.settings, home: opts.Home, git: deps.runner}, Git: deps.git,
-		Branches: branches, Tools: scriptsTool{tools: deps.tools}, Settings: integrationSettings{settings: deps.settings},
+		Branches: branches, Tools: scriptsTools{tools: deps.tools}, Settings: integrationSettings{settings: deps.settings},
 		Runs: deps.runs, History: deps.history, DB: pool, Env: deps.shellEnv.Env, Shell: deps.shellEnv.Shell,
 		Runner: runner, Home: opts.Home, Clock: opts.Clock, Logger: logger,
 	})

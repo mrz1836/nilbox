@@ -763,9 +763,33 @@ func (o releaseOrigins) Origin(ctx context.Context, dir string) (repo.Name, bool
 	return origin, onGitHub, nil
 }
 
-// releaseTool reads what the integrations know of magex, the copy in use and its
-// definition's features, for a release (release.ToolSource). It never waits for a
+// toolList returns what the integrations show of every tool, for the pages that run one:
+// Release, Hooks, and Repo scripts. A list that can't be read holds no tool, every one of
+// them then missing and off, and no read of the user's shell. It never waits for a
 // detection: List serves the last one.
+func toolList(ctx context.Context, tools *integrations.Service) integrations.Tools {
+	list, err := tools.List(ctx)
+	if err != nil {
+		return integrations.Tools{}
+	}
+
+	return list
+}
+
+// toolByID returns the tool id in list, or the zero Tool, a missing one, when list holds
+// none.
+func toolByID(list integrations.Tools, id integrationprefs.ID) integrations.Tool {
+	for _, t := range list.Tools {
+		if t.ID == id {
+			return t
+		}
+	}
+
+	return integrations.Tool{}
+}
+
+// releaseTool reads what the integrations know of magex, the copy in use and its
+// definition's features, for a release (release.ToolSource).
 type releaseTool struct {
 	tools *integrations.Service
 }
@@ -774,16 +798,7 @@ type releaseTool struct {
 func (r releaseTool) ReleaseTool(ctx context.Context) release.ToolFacts {
 	def := integrations.MageX()
 
-	list, err := r.tools.List(ctx)
-	if err == nil {
-		for _, t := range list.Tools {
-			if t.ID == def.ID {
-				return release.ToolFactsOf(def, t)
-			}
-		}
-	}
-
-	return release.ToolFactsOf(def, integrations.Tool{})
+	return release.ToolFactsOf(def, toolByID(toolList(ctx, r.tools), def.ID))
 }
 
 // releaseSettings reads what Release needs of the settings: where runs go, Runs in and the
@@ -858,53 +873,37 @@ func (c hooksClones) Origin(ctx context.Context, dir string) (repo.Name, bool, e
 }
 
 // hooksTool reads what the integrations know of go-pre-commit, every copy found and its
-// definition's features, for the Hooks page (hooks.ToolSource). It never waits for a
-// detection: List serves the last one.
+// definition's features, for the Hooks page (hooks.ToolSource).
 type hooksTool struct {
 	tools *integrations.Service
 }
 
 // HooksTool returns go-pre-commit's facts; a list that can't be read is a go-pre-commit
-// that's missing.
+// that's missing, with the user's shell unread.
 func (h hooksTool) HooksTool(ctx context.Context) hooks.ToolFacts {
 	def := integrations.GoPreCommit()
+	list := toolList(ctx, h.tools)
+	tool := toolByID(list, def.ID)
 
-	list, err := h.tools.List(ctx)
-	if err == nil {
-		for _, t := range list.Tools {
-			if t.ID == def.ID {
-				return hooks.ToolFactsOf(def, t, list.ShellRead)
-			}
-		}
-	}
-
-	return hooks.ToolFactsOf(def, integrations.Tool{}, false)
+	return hooks.ToolFactsOf(def, tool, list.ShellRead && tool.ID == def.ID)
 }
 
-// scriptsTool reads what the integrations know of magex, for Repo scripts
-// (scripts.ToolSource). It never waits for a detection: List serves the last one.
-type scriptsTool struct {
+// scriptsTools reads what the integrations know of magex, and whether mage-x and
+// go-pre-commit are on, for Repo scripts (scripts.ToolSource).
+type scriptsTools struct {
 	tools *integrations.Service
 }
 
-// MagexTool returns magex's facts; a list that can't be read is a magex that's missing.
-func (s scriptsTool) MagexTool(ctx context.Context) scripts.ToolFacts {
-	def := integrations.MageX()
+// Tools returns the tools' facts; a list that can't be read is every tool missing and off.
+func (s scriptsTools) Tools(ctx context.Context) scripts.Tools {
+	list := toolList(ctx, s.tools)
 
-	list, err := s.tools.List(ctx)
-	if err == nil {
-		for _, t := range list.Tools {
-			if t.ID == def.ID {
-				return scripts.ToolFactsOf(t)
-			}
-		}
-	}
-
-	return scripts.ToolFactsOf(integrations.Tool{})
+	return scripts.ToolsOf(toolByID(list, integrationprefs.MageX), toolByID(list, integrationprefs.GoPreCommit))
 }
 
-// integrationSettings reads the integrations' settings for Repo scripts: which sources it
-// lists, and where runs go (scripts.Settings).
+// integrationSettings reads the integrations' settings: all of them, for Repo scripts'
+// sources, switch, and where runs go (scripts.Settings), or only where runs go, for the
+// Hooks page (hooks.Places).
 type integrationSettings struct {
 	settings *settings.Service
 }
@@ -919,19 +918,14 @@ func (p integrationSettings) Integrations(ctx context.Context) (integrationprefs
 	return all.Integrations, nil
 }
 
-// hooksSettings reads where runs go for the Hooks page (hooks.Places).
-type hooksSettings struct {
-	settings *settings.Service
-}
-
 // RunsIn returns the integrations.runsIn setting.
-func (p hooksSettings) RunsIn(ctx context.Context) (integrationprefs.RunsIn, error) {
-	all, err := p.settings.Get(ctx)
+func (p integrationSettings) RunsIn(ctx context.Context) (integrationprefs.RunsIn, error) {
+	all, err := p.Integrations(ctx)
 	if err != nil {
 		return "", err
 	}
 
-	return all.Integrations.RunsIn, nil
+	return all.RunsIn, nil
 }
 
 // releaseSignedOut marks gh's "no one is signed in" as release.ErrSignedOut. A missing gh

@@ -116,6 +116,11 @@ type Page struct {
 	// Switches are the settings' sources, as set now.
 	Switches integrationprefs.ScriptSources `json:"switches"`
 
+	// Off reports the Scripts integration off, and Why says why; the page then has no
+	// sections, and nothing runs.
+	Off bool   `json:"off"`
+	Why string `json:"why"`
+
 	// Sections are the sources: the user's own scripts, t3.json, tasks.json, and magex.
 	Sections []Section `json:"sections"`
 }
@@ -202,10 +207,23 @@ type Input struct {
 	Options []Option `json:"options"`
 }
 
-// Option is one choice of a pickString: what the form shows, and the value it fills in.
+// Option is one choice of a pickString: its label, the value it fills in, and Shown, what
+// the form shows for it, the label with the value beside it whenever they differ, since
+// the value is what runs.
 type Option struct {
 	Label string `json:"label"`
 	Value string `json:"value"`
+	Shown string `json:"shown"`
+}
+
+// optionOf is the choice label gives value.
+func optionOf(label, value string) Option {
+	shown := value
+	if label != value {
+		shown = label + " (" + value + ")"
+	}
+
+	return Option{Label: label, Value: value, Shown: shown}
 }
 
 // Clone is a clone under the clone root, as the page's picker lists it: its folder's

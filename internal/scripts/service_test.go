@@ -141,6 +141,7 @@ func TestListWithoutMagex(t *testing.T) {
 	r := newRig(t)
 	dir := r.thisRepo()
 	r.tools.set(ToolFacts{State: integrations.StateMissing})
+	r.tools.on(false, true) // go-pre-commit keeps the scripts on
 
 	magex := r.list(dir).Sections[3]
 	assert.False(t, magex.Found)
@@ -195,7 +196,7 @@ func TestListRefusesAFolderOutsideTheCloneRoot(t *testing.T) {
 
 	r := newRig(t)
 
-	_, err := r.svc.List(t.Context(), t.TempDir())
+	_, err := r.svc.List(t.Context(), t.TempDir(), false)
 	require.ErrorIs(t, err, ErrNoClone)
 	assert.Contains(t, uierr.Message(err), "isn't a clone in ~/projects.")
 }

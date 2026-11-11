@@ -18,11 +18,12 @@ import * as $models from "./models.js";
 /**
  * List returns Repo scripts for the clone at dir, as the picker lists it, with ~: its
  * sources in the page's order, as the settings turn them on, each script with what
- * running it asks first. It runs nothing in the clone: its files are read, and magex's
- * built-ins are listed in a folder of the app's own.
+ * running it asks first, or the page marked off while the scripts are. It runs nothing in
+ * the clone: its files are read, and magex's built-ins are listed in a folder of the
+ * app's own, once per copy of magex, a list that failed included, until refresh.
  */
-export function List(dir: string): $CancellablePromise<$models.Page> {
-    return $Call.ByID(1361743794, dir);
+export function List(dir: string, refresh: boolean): $CancellablePromise<$models.Page> {
+    return $Call.ByID(1361743794, dir, refresh);
 }
 
 /**

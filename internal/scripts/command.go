@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode"
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/shellenv"
+	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
 // The programs a run starts besides the script's own: env sets a part's variables, and sh
@@ -217,6 +219,10 @@ func (l launcher) step(p part) (step, error) {
 	}
 
 	if len(p.env) > 0 {
+		if strings.ContainsRune(argv[0], '=') {
+			return step{}, uierr.New(envProgramWhy, fmt.Errorf("%w: %s", ErrCantRun, argv[0]))
+		}
+
 		set := []string{envProgram}
 		for _, kv := range p.env {
 			set = append(set, kv[0]+"="+l.vars.expand(kv[1]))
@@ -227,6 +233,10 @@ func (l launcher) step(p part) (step, error) {
 
 	return step{argv: argv, dir: dir}, nil
 }
+
+// envProgramWhy is why a part that sets variables can't run a program whose path holds
+// an =: env, which sets them, would read that program as one more variable.
+const envProgramWhy = "Sets variables for a program whose path holds an =, which env would read as one more variable."
 
 // dir returns the folder a part runs in: the clone, or its cwd, from the clone when
 // relative.
@@ -260,7 +270,7 @@ func (l launcher) command(p part, dir string) ([]string, error) {
 
 	line := commandLine(l.vars.expand(p.command), l.expandAll(p.args))
 	if p.shell == nil {
-		return []string{l.shell, "-c", line}, nil
+		return []string{l.lineShell(), "-c", line}, nil
 	}
 
 	exe, err := l.program(l.vars.expand(p.shell.Executable), dir)
@@ -268,7 +278,21 @@ func (l launcher) command(p part, dir string) ([]string, error) {
 		return nil, err
 	}
 
-	return append(append([]string{exe}, l.expandAll(shellArgs(p.shell))...), line), nil
+	if !posixShell(exe) && len(p.args) > 0 {
+		return nil, uierr.New(shellWhy(exe), fmt.Errorf("%w: %s quotes differently", ErrCantRun, exe))
+	}
+
+	return append(append([]string{exe}, l.expandAll(shellArgs(exe, p.shell.Args))...), line), nil
+}
+
+// lineShell is the shell a command line runs in: the user's login shell when it is of the
+// POSIX family, whose quoting the app writes, else sh.
+func (l launcher) lineShell() string {
+	if posixShell(l.shell) {
+		return l.shell
+	}
+
+	return chainShell
 }
 
 // expandAll fills in the variables of every word.
@@ -301,14 +325,18 @@ func (l launcher) program(name, dir string) (string, error) {
 	return found, nil
 }
 
-// shellArgs returns the arguments a task's shell takes before the command line: its own,
-// or -c, as the POSIX shells take.
-func shellArgs(sh *shellSpec) []string {
-	if sh.Args == nil {
+// shellArgs returns the arguments a task's shell takes before the command line, as VS Code
+// gives them: for a POSIX shell, its own with -c after them unless they hold it; for any
+// other, its own, or -c when it names none.
+func shellArgs(shell string, args []string) []string {
+	switch {
+	case posixShell(shell) && !slices.Contains(args, "-c"):
+		return append(slices.Clone(args), "-c")
+	case len(args) == 0:
 		return []string{"-c"}
+	default:
+		return args
 	}
-
-	return sh.Args
 }
 
 // commandLine joins a shell task's command and its arguments as VS Code does: the command
@@ -333,7 +361,7 @@ func (p part) display() string {
 		words = []string{line}
 
 		if p.shell != nil {
-			words = append(append([]string{show(p.shell.Executable)}, showAll(shellArgs(p.shell))...), show(line))
+			words = append(append([]string{show(p.shell.Executable)}, showAll(shellArgs(p.shell.Executable, p.shell.Args))...), show(line))
 		}
 	}
 
