@@ -231,7 +231,11 @@ func TestNewDefaultsToTheProcessEnvironment(t *testing.T) {
 
 	calls := rec.Calls()
 	require.Len(t, calls, 1)
-	assert.Len(t, calls[0].env, len(New(Config{}).environment()))
+
+	// Compared by count alone: the process environment holds the user's own variables,
+	// which a failure must never show.
+	want, got := len(New(Config{}).environment()), len(calls[0].env)
+	assert.Equal(t, want, got, "the process's environment, as a read takes it")
 
 	runner, ok := execRunner([]string{"PATH=/opt/tools/bin", "HOME=/srv/home"}).(execpath.Exec)
 	require.True(t, ok)
@@ -269,6 +273,7 @@ func TestRemoteTimeout(t *testing.T) {
 
 		_, err := fakeGit(plainEnv(), rec).RemoteRefs(t.Context(), repoDir)
 		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.ErrorIs(t, err, ErrRemoteTimeout, "worded as origin not answering in time")
 		assert.Equal(t, RemoteTimeout, time.Since(start), "ls-remote stops after the time limit, no sooner")
 
 		for _, c := range rec.Calls() {
@@ -413,6 +418,7 @@ func TestHelpersRefuseBadNamesBeforeRunning(t *testing.T) {
 		"Upstream":        func() error { _, err := g.Upstream(ctx, repoDir, "-x"); return err },
 		"Unpushed":        func() error { _, err := g.Unpushed(ctx, repoDir, "main\nx"); return err },
 		"IsAncestor":      func() error { _, err := g.IsAncestor(ctx, repoDir, mainBranch, headSHA); return err },
+		"CommitsBetween":  func() error { _, err := g.CommitsBetween(ctx, repoDir, headSHA, "HEAD"); return err },
 		"RemoteTagCommit": func() error { _, err := g.RemoteTagCommit(ctx, repoDir, "1.4.2"); return err },
 		"RemoteTagCommit option": func() error {
 			_, err := g.RemoteTagCommit(ctx, repoDir, "v1 "+injection)
@@ -580,6 +586,12 @@ func TestHelpersReadGitsAnswers(t *testing.T) {
 			want:    3,
 		},
 		{
+			name:    "the commits between two",
+			replies: map[string]reply{words(commitsBetweenArgs(headSHA, otherSHA)): {out: "2\n"}},
+			run:     func(g *Git) (any, error) { return g.CommitsBetween(ctx, repoDir, headSHA, otherSHA) },
+			want:    2,
+		},
+		{
 			name:    "an ancestor",
 			replies: map[string]reply{words(ancestorArgs(headSHA, otherSHA)): {}},
 			run:     func(g *Git) (any, error) { return g.IsAncestor(ctx, repoDir, headSHA, otherSHA) },
@@ -697,6 +709,32 @@ func TestHelpersReadGitsAnswers(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestRemoteBranchAsksForThatBranchAlone(t *testing.T) {
+	t.Parallel()
+
+	rec := &recorder{replies: map[string]reply{
+		words(remoteBranchArgs(mainBranch)): {out: otherSHA + "\trefs/heads/x/refs/heads/main\n" + headSHA + "\trefs/heads/main\n"},
+		words(remoteBranchArgs("gone")):     {},
+	}}
+	g := fakeGit(plainEnv(), rec)
+
+	oid, err := g.RemoteBranch(t.Context(), repoDir, mainBranch)
+	require.NoError(t, err)
+	assert.Equal(t, headSHA, oid, "that branch, never another whose name ends the same")
+
+	oid, err = g.RemoteBranch(t.Context(), repoDir, "gone")
+	require.NoError(t, err)
+	assert.Empty(t, oid, "origin has no such branch")
+
+	asked := slices.DeleteFunc(rec.Calls(), func(c call) bool { return !slices.Contains(c.args, "--heads") })
+	require.Len(t, asked, 2)
+	assert.Equal(t, []string{lsRemote, uploadPackFlag, "--heads", remoteName, "refs/heads/main"}, asked[0].args)
+	assert.Contains(t, asked[0].env, "GIT_SSH_COMMAND="+batchSSH, "under every guard an ls-remote runs under")
+
+	_, err = g.RemoteBranch(t.Context(), repoDir, "--upload-pack=x")
+	require.ErrorIs(t, err, ErrGitCommandNotAllowed)
 }
 
 func TestRemoteRefsReadsHeadsAndPeeledTags(t *testing.T) {
@@ -893,7 +931,7 @@ func TestEveryAllowlistEntryIsUsed(t *testing.T) {
 
 	ctx := t.Context()
 	rec := &recorder{
-		replies: map[string]reply{words(hookPathsArgs()): {out: repoDir + "\n.git/hooks\n"}},
+		replies: map[string]reply{words(hookPathsArgs()): {out: repoDir + "\n.git/hooks\n"}, words(configListArgs()): {}},
 		answer:  func(context.Context, []string) (string, error) { return "", exitError{code: 1} },
 	}
 	g := fakeGit(plainEnv(), rec)
@@ -911,15 +949,24 @@ func TestEveryAllowlistEntryIsUsed(t *testing.T) {
 	_, _ = g.HasCommit(ctx, repoDir, headSHA)
 	_, _ = g.Upstream(ctx, repoDir, mainBranch)
 	_, _ = g.Unpushed(ctx, repoDir, mainBranch)
+	_, _ = g.CommitsBetween(ctx, repoDir, headSHA, otherSHA)
 	_, _ = g.IsAncestor(ctx, repoDir, headSHA, otherSHA)
 	_, _ = g.LocalVersionTags(ctx, repoDir)
 	_, _ = g.RemoteRefs(ctx, repoDir)
+	_, _ = g.RemoteBranch(ctx, repoDir, mainBranch)
+	_, _ = g.IndexLocked(ctx, repoDir)
 	_, _ = g.RemoteVersionTags(ctx, repoDir)
 	_, _ = g.RemoteTagCommit(ctx, repoDir, "v1.4.2")
 	_, _ = g.LocalTagCommit(ctx, repoDir, "v1.4.2")
 	_, _ = g.Signing(ctx, repoDir)
 	_, _ = g.HooksDir(ctx, repoDir)
 	_, _ = g.HookPaths(ctx, repoDir)
+	listed, stderr, err := g.listConfig(ctx, repoDir, plainEnv())
+	require.NoError(t, err)
+	assert.Empty(t, listed)
+	assert.Empty(t, stderr)
+
+	_, _ = g.folders(ctx, repoDir, plainEnv())
 
 	used := map[string]bool{}
 

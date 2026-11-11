@@ -718,7 +718,7 @@ func TestServiceErrors(t *testing.T) {
 		row := mustRow(t, snap, feature)
 		assert.Contains(t, row.Error, "unreadable index")
 		assert.Zero(t, row.LastCommitUnix)
-		assert.True(t, row.CanRemove, "git's own check still guards a remove")
+		assert.False(t, row.CanRemove, "a worktree whose status couldn't be read is never offered a removal")
 	})
 }
 

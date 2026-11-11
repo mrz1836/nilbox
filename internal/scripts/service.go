@@ -15,6 +15,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/flight"
+	"github.com/mrz1836/nilbox/internal/gitread"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
 	"github.com/mrz1836/nilbox/internal/logging"
@@ -39,6 +40,28 @@ type Clones interface {
 type Git interface {
 	CurrentBranch(ctx context.Context, dir string) (string, error)
 	OriginHead(ctx context.Context, dir string) (string, error)
+}
+
+// BranchGit reads what a clone's branch status and its pull need, through gitread's
+// allowlist: the branch the clone is on, what it follows, what git is in the middle of,
+// whether its index is locked, its commits and origin's branch as the clone keeps them,
+// and origin's one branch the clone's follows, which RemoteBranch asks origin for with one
+// ls-remote of that branch alone, every one of gitread's guards applied; RemoteSetup works
+// out what the pull runs with under those same guards, gitread's own git included, and
+// CloneConfig checks the clone's own config as it does: *gitread.Git.
+type BranchGit interface {
+	CurrentBranch(ctx context.Context, dir string) (string, error)
+	Upstream(ctx context.Context, dir, branch string) (gitread.Upstream, error)
+	InProgress(ctx context.Context, dir string) (gitread.Operation, error)
+	LocalBranch(ctx context.Context, dir, branch string) (string, error)
+	TrackingBranch(ctx context.Context, dir, branch string) (string, error)
+	HasCommit(ctx context.Context, dir, oid string) (bool, error)
+	IsAncestor(ctx context.Context, dir, oid, of string) (bool, error)
+	CommitsBetween(ctx context.Context, dir, from, to string) (int, error)
+	RemoteBranch(ctx context.Context, dir, branch string) (string, error)
+	IndexLocked(ctx context.Context, dir string) (bool, error)
+	RemoteSetup(ctx context.Context, dir string) (gitread.Setup, error)
+	CloneConfig(ctx context.Context, dir string) error
 }
 
 // DefaultBranches reads the default branch the app last stored for a repository, "" when
@@ -70,16 +93,17 @@ type RunHistory interface {
 	Runs(ctx context.Context, filter scriptrun.Filter) ([]scriptrun.Run, error)
 }
 
-// Config holds a Service's dependencies. Clones is required; a run also needs Runs, and
-// trust the database.
+// Config holds a Service's dependencies. Clones is required; a run also needs Runs, trust
+// the database, and a branch's status and its pull BranchGit.
 type Config struct {
-	Clones   Clones
-	Git      Git
-	Branches DefaultBranches
-	Tools    ToolSource
-	Settings Settings
-	Runs     Runs
-	History  RunHistory
+	Clones    Clones
+	Git       Git
+	BranchGit BranchGit
+	Branches  DefaultBranches
+	Tools     ToolSource
+	Settings  Settings
+	Runs      Runs
+	History   RunHistory
 
 	// DB holds script_trust and user_scripts.
 	DB *sql.DB
@@ -105,31 +129,39 @@ type Config struct {
 // Service lists each clone's scripts and runs them, asking first for a command from the
 // repository's own files. The window binds it.
 type Service struct {
-	clones   Clones
-	git      Git
-	branches DefaultBranches
-	tools    ToolSource
-	settings Settings
-	runs     Runs
-	history  RunHistory
-	trust    trustStore
-	yours    yourStore
-	env      func() ([]string, bool)
-	shell    func() string
-	runner   func(env []string, dir string) execpath.Runner
-	scratch  string
-	home     string
-	logger   *slog.Logger
+	clones    Clones
+	git       Git
+	branchGit BranchGit
+	branches  DefaultBranches
+	tools     ToolSource
+	settings  Settings
+	runs      Runs
+	history   RunHistory
+	trust     trustStore
+	yours     yourStore
+	env       func() ([]string, bool)
+	shell     func() string
+	runner    func(env []string, dir string) execpath.Runner
+	scratch   string
+	home      string
+	clock     clock.Clock
+	logger    *slog.Logger
 
-	// listing lists one copy of magex's built-ins at a time.
+	// listing lists one copy of magex's built-ins at a time, and asking asks one clone's
+	// origin for its branches at a time.
 	listing flight.Group[builtins]
+	asking  flight.Group[keptHead]
 
 	// mu guards the built-ins listed per copy of magex, the magefiles read per clone, and
-	// the origins RepoNames read per clone, each with the fingerprint it was read at.
+	// the origins RepoNames read per clone, each with the fingerprint it was read at; and
+	// per clone, origin's branches as last asked, and the branch its last status was worked
+	// out on, which a pull must still be on.
 	mu      sync.Mutex
 	listed  map[string]listedBuiltins
 	mages   map[string]keptMagefiles
 	origins map[string]keptOrigin
+	heads   map[string]keptHeads
+	shown   map[string]string
 }
 
 // keptMagefiles is a clone's magefiles as last read, and what they looked like then.
@@ -141,11 +173,12 @@ type keptMagefiles struct {
 // NewService returns a Service over cfg.
 func NewService(cfg Config) *Service {
 	s := &Service{
-		clones: cfg.Clones, git: cfg.Git, branches: cfg.Branches, tools: cfg.Tools, settings: cfg.Settings,
-		runs: cfg.Runs, history: cfg.History, trust: newTrustStore(cfg.DB, cfg.Clock), yours: newYourStore(cfg.DB, cfg.Clock),
-		env: cfg.Env, shell: cfg.Shell, runner: cfg.Runner, scratch: cfg.Scratch, home: cfg.Home,
-		logger: logging.Or(cfg.Logger), listed: map[string]listedBuiltins{}, mages: map[string]keptMagefiles{},
-		origins: map[string]keptOrigin{},
+		clones: cfg.Clones, git: cfg.Git, branchGit: cfg.BranchGit, branches: cfg.Branches, tools: cfg.Tools,
+		settings: cfg.Settings, runs: cfg.Runs, history: cfg.History, trust: newTrustStore(cfg.DB, cfg.Clock),
+		yours: newYourStore(cfg.DB, cfg.Clock), env: cfg.Env, shell: cfg.Shell, runner: cfg.Runner,
+		scratch: cfg.Scratch, home: cfg.Home, clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger),
+		listed: map[string]listedBuiltins{}, mages: map[string]keptMagefiles{}, origins: map[string]keptOrigin{},
+		heads: map[string]keptHeads{}, shown: map[string]string{},
 	}
 
 	if s.env == nil {

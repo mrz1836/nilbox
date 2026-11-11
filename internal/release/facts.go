@@ -383,7 +383,7 @@ func (g *Gatherer) Gather(ctx context.Context, req GatherRequest) (Facts, error)
 	f.Repo.Branches = originBranches(f.Clone.RemoteHeads)
 
 	if err := g.settle(ctx, &f); err != nil && f.Clone.Error == "" {
-		f.Clone.Error = gitMessage(err)
+		f.Clone.Error = gitread.Message(err)
 	}
 
 	if g.locks != nil && !req.Locked {
@@ -679,12 +679,12 @@ func (r cloneReads) facts(dir string, shellRead bool) CloneFacts {
 	if out.Reached {
 		out.RemoteHeads, out.RemoteTags = textutil.NonNilMap(r.remote.Heads), textutil.NonNilMap(r.remote.Tags)
 	} else {
-		out.ReachError = gitMessage(r.remoteErr)
+		out.ReachError = gitread.Message(r.remoteErr)
 	}
 
 	if err := cmp.Or(r.originErr, r.branchErr, r.opErr, r.changesErr, r.ontoErr, r.tagsErr, r.signingErr,
 		r.hooksErr); err != nil {
-		out.Error = gitMessage(err)
+		out.Error = gitread.Message(err)
 	}
 
 	return out
@@ -715,71 +715,6 @@ func repoError(name repo.Name, err error) string {
 	}
 
 	return "Couldn't read " + name.String() + " on GitHub."
-}
-
-// gitMessage is the part of a git failure worth showing: what git said, without the
-// command and the exit status, or that origin didn't answer in time. An ls-remote that
-// failed after gitread set aside the clone's own ssh command, password program, or
-// credential helpers says so, and where to set them instead.
-func gitMessage(err error) string {
-	if errors.Is(err, gitread.ErrRemoteHelper) {
-		return "This clone reaches origin through a remote helper (a URL that starts with a name and ::, or " +
-			"remote.origin.vcs), which isn't run here, as the clone's own config could make it run anything."
-	}
-
-	if errors.Is(err, gitread.ErrCloneRoutes) {
-		return "This clone's own git config changes how origin is reached (its proxy, the certificates it " +
-			"trusts, or the address it resolves), so it isn't asked from here, where it could be handed your " +
-			"credentials: set that for this folder in your global git config, with an includeIf."
-	}
-
-	msg := gitSaid(err)
-
-	if aside, ok := errors.AsType[*gitread.SetAsideError](err); ok && len(aside.Settings) > 0 {
-		return textutil.EndSentence(msg) + " " + setAsideNote(aside.Settings)
-	}
-
-	return msg
-}
-
-// setAsideNote says which of the clone's own settings asking origin went without, which may
-// be why it failed, and where to set them so that it uses them: the user's global config,
-// for this folder alone with an includeIf, which gitread counts as the user's own.
-func setAsideNote(settings []string) string {
-	var names, verb, them string
-
-	switch n := len(settings); n {
-	case 1:
-		names, verb, them = settings[0], "isn't", "it"
-	case 2:
-		names, verb, them = settings[0]+" and "+settings[1], "aren't", "them"
-	default:
-		names, verb, them = strings.Join(settings[:n-1], ", ")+", and "+settings[n-1], "aren't", "them"
-	}
-
-	return "This clone's own " + names + " " + verb + " used to reach origin, which may be why: set " + them +
-		" for this folder in your global git config, with an includeIf."
-}
-
-// gitSaid is what git said in a failure, without the command and the exit status, or that
-// origin didn't answer in time.
-func gitSaid(err error) string {
-	if errors.Is(err, context.DeadlineExceeded) {
-		return "origin didn't answer within " + gitread.RemoteTimeout.String()
-	}
-
-	text := err.Error()
-	if inner := errors.Unwrap(err); inner != nil {
-		text = strings.TrimSuffix(text, ": "+inner.Error())
-	}
-
-	if rest, ok := strings.CutPrefix(text, "git "); ok {
-		if _, said, found := strings.Cut(rest, ": "); found && said != "" {
-			return said
-		}
-	}
-
-	return text
 }
 
 // appEnv is the app's own environment, counted as read.

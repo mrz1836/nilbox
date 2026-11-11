@@ -67,12 +67,12 @@ describe('the runsâ words', () => {
     expect(runDuration({ startedAt: '', finishedAt: '2026-06-15T12:00:38Z' })).toBe('')
   })
 
-  it('filters Hooks by both hooks actions and checks, and Updates by the tools updating themselves', () => {
+  it('filters Hooks by both hooks actions and checks, Scripts by scripts and pulls, and Updates by the tools updating themselves', () => {
     expect(runFilterOrder.map((id) => [runFilters[id].label, runFilters[id].kinds])).toEqual([
       ['All', []],
       ['Release', ['release']],
       ['Hooks', ['hooks', 'checks']],
-      ['Scripts', ['script']],
+      ['Scripts', ['script', 'gitPull']],
       ['Updates', ['update']],
     ])
   })
@@ -80,6 +80,7 @@ describe('the runsâ words', () => {
 
 describe('filterRuns', () => {
   const runs = [
+    scriptRun({ id: 6, kind: 'gitPull', title: 'Pull main', repo: 'acme-org/web' }),
     scriptRun({ id: 5, kind: 'release', repo: 'acme-org/SDK' }),
     scriptRun({ id: 4, kind: 'hooks', repo: 'acme-org/web' }),
     scriptRun({ id: 3, kind: 'checks', repo: 'other-org/sdk-tools' }),
@@ -94,21 +95,21 @@ describe('filterRuns', () => {
   }
 
   it('lists every run with no filter or search, in its order', () => {
-    expect(ids('all')).toEqual([5, 4, 3, 2, 1, 0])
+    expect(ids('all')).toEqual([6, 5, 4, 3, 2, 1, 0])
   })
 
-  it('picks the kinds a filter names, Hooks taking the checks too', () => {
+  it('picks the kinds a filter names, Hooks taking the checks too, and Scripts the pulls', () => {
     expect(ids('release')).toEqual([5])
     expect(ids('hooks')).toEqual([4, 3])
-    expect(ids('scripts')).toEqual([2, 1])
+    expect(ids('scripts')).toEqual([6, 2, 1])
     expect(ids('updates')).toEqual([0])
   })
 
   it('finds part of a repository’s name, trimmed and in any case, and no folder', () => {
     expect(ids('all', '  sdk ')).toEqual([5, 3])
-    expect(ids('all', 'ACME-ORG/')).toEqual([5, 4, 1])
+    expect(ids('all', 'ACME-ORG/')).toEqual([6, 5, 4, 1])
     expect(ids('scripts', 'sdk')).toEqual([])
-    expect(ids('all', '   ')).toEqual([5, 4, 3, 2, 1, 0])
+    expect(ids('all', '   ')).toEqual([6, 5, 4, 3, 2, 1, 0])
   })
 })
 

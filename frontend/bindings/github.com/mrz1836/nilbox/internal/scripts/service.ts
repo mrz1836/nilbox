@@ -16,6 +16,21 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * BranchStatus returns where the clone at dir, as the picker lists it, with ~, stands
+ * against origin: whether its branch is behind the branch it follows on origin, up to
+ * date, ahead, or diverged, or why there is nothing to pull. It reads the clone with
+ * gitread every time, and asks origin for the branch followed alone with one ls-remote,
+ * which it keeps for OriginKept: within it, nothing asks origin again unless refresh is
+ * set. It never fetches. A clone that can't be read, or an origin that doesn't answer, is
+ * a status that says why, not an error, and a clone whose own config a pull would refuse
+ * says so (BranchRefused), asking origin nothing. While the Scripts integration is off, it
+ * reads nothing and says so (BranchOff).
+ */
+export function BranchStatus(dir: string, refresh: boolean): $CancellablePromise<$models.BranchStatus> {
+    return $Call.ByID(1698589688, dir, refresh);
+}
+
+/**
  * Delete deletes the user's script id. The runs it made stay in the history.
  */
 export function Delete(id: number): $CancellablePromise<void> {
@@ -52,6 +67,25 @@ export function List(dir: string, refresh: boolean): $CancellablePromise<$models
  */
 export function Move(id: number, way: $models.Direction, dir: string): $CancellablePromise<void> {
     return $Call.ByID(650564211, id, way, dir);
+}
+
+/**
+ * Pull pulls the branch the clone at dir, as the picker lists it, with ~, was on when its
+ * BranchStatus was last worked out, from the branch it follows on origin, and returns the
+ * run's ID. It runs in the app, in the clone, under the clone's lock, which the runner
+ * takes and a busy clone fails at once. The run's Before reads the clone again under the
+ * lock and refuses a clone on another branch, one whose branch follows none on origin,
+ * and one git is in the middle of something in; then it works out what git runs with
+ * (gitread's RemoteSetup), every one of gitread's guards applied, before anything runs,
+ * asking origin nothing: the pull's own fetch is the one time it is asked. git's pull is
+ * fast forward only: it never merges or rebases, and a branch with commits of its own, or
+ * one origin no longer has, fails with git's own message. Stop is held back for the whole
+ * run, and so is a quit, which leaves it going for the next start. Its Finish reads the
+ * branch again, and words what the pull did. Like a script, it is refused while the Scripts
+ * integration is off.
+ */
+export function Pull(dir: string): $CancellablePromise<number> {
+    return $Call.ByID(245934037, dir);
 }
 
 /**
