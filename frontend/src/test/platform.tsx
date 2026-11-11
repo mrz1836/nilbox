@@ -212,6 +212,9 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     setOfferAfterMerge: (offerAfterMerge) => stored({ integrations: integrationsConfig({ offerAfterMerge }) }),
     setScriptSources: (magexTargets, repoFiles) =>
       stored({ integrations: integrationsConfig({ scriptSources: { magexTargets, repoFiles } }) }),
+    setIntegrationsAnnounced: (announced) => stored({ integrations: integrationsConfig({ announced }) }),
+    setScriptsLastPage: (lastPage) => stored({ integrations: integrationsConfig({ lastPage }) }),
+    setScriptsLastRepo: (lastRepo) => stored({ integrations: integrationsConfig({ lastRepo }) }),
 
     listIntegrations: () => Promise.resolve(integrationTools()),
     checkIntegrationsAgain: () => Promise.resolve(integrationTools()),

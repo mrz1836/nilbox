@@ -1,6 +1,7 @@
 package integrationprefs_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -130,7 +131,8 @@ func TestIDs(t *testing.T) {
 	assert.Equal(t, []string{
 		"integrations.mage-x.enabled", "integrations.go-pre-commit.enabled", "integrations.scripts.enabled",
 		"integrations.mage-x.path", "integrations.go-pre-commit.path", "integrations.runsIn",
-		"integrations.offerAfterMerge", "scripts.magexTargets", "scripts.repoFiles",
+		"integrations.offerAfterMerge", "scripts.magexTargets", "scripts.repoFiles", "integrations.announced",
+		"scripts.lastPage", "scripts.lastRepo",
 	}, integrationprefs.Keys())
 }
 
@@ -156,4 +158,67 @@ func FuzzDecode(f *testing.F) {
 			}
 		}
 	})
+}
+
+func TestTheScriptsTabsMemory(t *testing.T) {
+	t.Parallel()
+
+	fresh := integrationprefs.Decode(nil)
+	assert.False(t, fresh.Announced, "a fresh database hasn't announced the tab")
+	assert.Equal(t, integrationprefs.PageNone, fresh.LastPage)
+	assert.Empty(t, fresh.LastRepo)
+
+	got := integrationprefs.Decode(map[string]string{
+		"integrations.announced": "true", "scripts.lastPage": "hooks", "scripts.lastRepo": "~/projects/example-repo",
+	})
+	assert.True(t, got.Announced)
+	assert.Equal(t, integrationprefs.PageHooks, got.LastPage)
+	assert.Equal(t, "~/projects/example-repo", got.LastRepo)
+
+	odd := integrationprefs.Decode(map[string]string{
+		"integrations.announced": "yes", "scripts.lastPage": "settings", "scripts.lastRepo": "projects/example-repo",
+	})
+	assert.False(t, odd.Announced, "only true announces")
+	assert.Equal(t, integrationprefs.PageNone, odd.LastPage, "a page the tab doesn't have is none")
+	assert.Empty(t, odd.LastRepo, "a folder that isn't an absolute or ~ path is none")
+}
+
+func TestEncodeLastPage(t *testing.T) {
+	t.Parallel()
+
+	for _, page := range []integrationprefs.ScriptsPage{
+		integrationprefs.PageRelease, integrationprefs.PageHooks, integrationprefs.PageScripts, integrationprefs.PageRuns,
+	} {
+		stored, err := integrationprefs.EncodeLastPage(page)
+		require.NoError(t, err)
+		assert.Equal(t, page, integrationprefs.DecodeLastPage(stored), "%s round-trips", page)
+	}
+
+	for _, page := range []integrationprefs.ScriptsPage{integrationprefs.PageNone, "settings", "Release"} {
+		_, err := integrationprefs.EncodeLastPage(page)
+		require.ErrorIs(t, err, integrationprefs.ErrInvalidPage, "%q", page)
+	}
+}
+
+func TestEncodeLastRepo(t *testing.T) {
+	t.Parallel()
+
+	for _, dir := range []string{"", "~/projects/example-repo", "/Volumes/work/example-repo", "~/projects/naïve repo"} {
+		stored, err := integrationprefs.EncodeLastRepo(dir)
+		require.NoError(t, err, "%q", dir)
+		assert.Equal(t, dir, integrationprefs.DecodeLastRepo(stored), "%q round-trips", dir)
+	}
+
+	for name, dir := range map[string]string{
+		"relative":     "projects/example-repo",
+		"another home": "~other/example-repo",
+		"two lines":    "~/projects/a\n~/projects/b",
+		"a control":    "~/projects/a\x1b[2J",
+		"not UTF-8":    "~/projects/\xff",
+		"too long":     "/" + strings.Repeat("a", 4096),
+	} {
+		_, err := integrationprefs.EncodeLastRepo(dir)
+		require.ErrorIs(t, err, integrationprefs.ErrInvalidRepo, name)
+		assert.Empty(t, integrationprefs.DecodeLastRepo(dir), "%s reads as none", name)
+	}
 }

@@ -130,6 +130,7 @@ export type ScriptRunFilter = NonNullLists<scriptrun.Filter>
 export type ScriptRunChunk = NonNullLists<scriptrun.Chunk>
 export type ScriptRunProgress = NonNullLists<scriptrun.Progress>
 export type ScriptSources = NonNullLists<integrationprefs.ScriptSources>
+export type ScriptsPage = integrationprefs.ScriptsPage
 
 // UserScript is one of the user's own scripts, as saved: its scope, which clones it shows
 // in, and its icon, each a closed set, and its place, where runs go, or '' for where the
@@ -465,6 +466,9 @@ export const {
   SetRunsIn: setRunsIn,
   SetOfferAfterMerge: setOfferAfterMerge,
   SetScriptSources: setScriptSources,
+  SetIntegrationsAnnounced: setIntegrationsAnnounced,
+  SetScriptsLastPage: setScriptsLastPage,
+  SetScriptsLastRepo: setScriptsLastRepo,
 } = narrow(settings.Service)
 
 // The tools the app finds, installs, and runs for the user. List never waits for a

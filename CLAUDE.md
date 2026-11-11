@@ -285,7 +285,9 @@ app:lint` reads.
   serves the last detection kept in `tools.<id>.seen`, marked as checking, until this run's
   ends, and `event.ToolsUpdated` tells the window. It writes the `tools.*` preferences and only
   reads `integrations.*`, which settings writes through the leaf `internal/integrationprefs`
-  (the switches, automatic, on, or off, and the chosen copies), so settings never imports
+  (the switches, automatic, on, or off, and the chosen copies; the leaf also declares the
+  window's memory of the Scripts tab, `integrations.announced`, `scripts.lastPage`, and
+  `scripts.lastRepo`, which settings stores for the window alone), so settings never imports
   integrations. One rule says which folders are go install's (`goFolders`), for a copy's
   source and for its own updater alike: `$GOBIN`, each `$GOPATH` folder's bin, and
   `~/go/bin`, from the shell's environment and, while `go` is on its `PATH`, from `go env

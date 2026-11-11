@@ -349,17 +349,18 @@ one runner, which keeps a record of each run and its whole output.
 
 **Scripts** sits after Prompts while mage-x or go-pre-commit is on, or you turned Scripts on in
 Settings → Integrations; with everything off, the tab goes away. When it first appears because a
-tool was found while the window is open, a toast says so (*Found magex and go-pre-commit.
-They're in the new Scripts tab.*) with **Open Scripts**. The toolbar's filter isn't shown on
-Scripts: each page searches in itself.
+tool was found while the window is open, a toast says so, once and never again (*Found magex and
+go-pre-commit. They're in the new Scripts tab.*) with **Open Scripts**. The toolbar's filter
+isn't shown on Scripts: each page searches in itself.
 
 - **The rail** lists the pages: **Release** while mage-x is on, counting the repositories with
   unreleased changes; **Hooks** while go-pre-commit is on, counting the repositories that need
   attention, with an amber dot; **Repo scripts** while Scripts is on (automatically, while
   mage-x or go-pre-commit is); and **Runs**, counting the runs in progress. Its foot lists each
   tool's status, and **Manage in Settings** opens Settings → Integrations.
-- **It opens** on the page you used last while the window is open, or the first page that's
-  on. The tab keeps its page and an open release sheet while you switch tabs.
+- **It opens** on the page you picked last, even after a restart, or the first page that's on
+  when that one is off now. The tab keeps its page and an open release sheet while you switch
+  tabs.
 - **A page whose tool can't be used** says why in place of its list (*magex isn't on this
   Mac.*), with the way to fix it in Settings.
 
@@ -536,7 +537,7 @@ it works offline and signed out.
 **The page.**
 
 - **The picker** lists the clones under the clone root, the ones a script ran in most recently
-  first, and the page starts on the one you chose last while the window is open. Beside it: the
+  first, and the page starts on the one you chose last, even after a restart. Beside it: the
   repository, the folder, and the branch, with *From branch feature-x* when the clone isn't on
   its default branch, since a branch can change what the files say.
 - **The sources, in order:** **Yours** (below), then **From t3.json**, **From

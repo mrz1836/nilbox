@@ -41,7 +41,7 @@ describe('IntegrationsSection', () => {
 
     expect(
       screen.getByText(
-        `Tools ${brand.name} runs for you. Each one is found on this Mac, or installed from its GitHub release. ${brand.name} never uses go install or sudo.`,
+        `Each one is found on this Mac, or installed from its GitHub release. ${brand.name} never uses go install or sudo.`,
       ),
     ).toBeInTheDocument()
     expect(screen.getByText('Looking for the tools…')).toBeInTheDocument()
@@ -141,7 +141,9 @@ describe('IntegrationsSection', () => {
     const warning = await screen.findByRole('note')
     expect(warning).toHaveTextContent(shellWarning)
     // The warning opens the section, before what the tools are.
-    expect(warning.compareDocumentPosition(screen.getByText(/^Tools /))).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(warning.compareDocumentPosition(screen.getByText(/^Each one is found on this Mac/))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
 
     await userEvent.click(within(warning).getByRole('button', { name: 'Check again' }))
 
