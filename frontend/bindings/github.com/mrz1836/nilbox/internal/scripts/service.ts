@@ -19,11 +19,12 @@ import * as $models from "./models.js";
  * BranchStatus returns where the clone at dir, as the picker lists it, with ~, stands
  * against origin: whether its branch is behind the branch it follows on origin, up to
  * date, ahead, or diverged, or why there is nothing to pull. It reads the clone with
- * gitread every time, and asks origin for its branches with one ls-remote, which it keeps
- * for OriginKept: within it, nothing asks origin again unless refresh is set. It never
- * fetches. A clone that can't be read, or an origin that doesn't answer, is a status that
- * says why, not an error. While the Scripts integration is off, it reads nothing and says
- * so (BranchOff).
+ * gitread every time, and asks origin for the branch followed alone with one ls-remote,
+ * which it keeps for OriginKept: within it, nothing asks origin again unless refresh is
+ * set. It never fetches. A clone that can't be read, or an origin that doesn't answer, is
+ * a status that says why, not an error, and a clone whose own config a pull would refuse
+ * says so (BranchRefused), asking origin nothing. While the Scripts integration is off, it
+ * reads nothing and says so (BranchOff).
  */
 export function BranchStatus(dir: string, refresh: boolean): $CancellablePromise<$models.BranchStatus> {
     return $Call.ByID(1698589688, dir, refresh);

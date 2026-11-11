@@ -511,12 +511,11 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	toolFinder := integrations.NewWorker(tools)
 	followed.tools = toolFinder
 
-	releaseGit := shellGit
 	releases := release.NewService(release.Config{
 		GitHub:  releaseGitHub{tokens: tokens, client: client},
 		Clones:  releaseClones{settings: prefs, home: opts.Home, git: runner},
-		Checker: release.GitChecker{Git: releaseGit},
-		Git:     releaseGit, Origins: releaseOrigins{git: runner}, Tools: releaseTool{tools: tools}, Locks: clones,
+		Checker: release.GitChecker{Git: shellGit},
+		Git:     shellGit, Origins: releaseOrigins{git: runner}, Tools: releaseTool{tools: tools}, Locks: clones,
 		Env: shellEnv.Env, Ready: shellEnv.Ready, Runner: toolRunners, Runs: runs, Places: releaseSettings{settings: prefs},
 		History: scriptRuns, Notifier: releaseNotices{dispatcher: dispatcher},
 		// A merge's offer reads the setting, magex, the clones, and the default branch the
@@ -531,7 +530,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	runs.RegisterVerifier(scriptrun.KindRelease, release.NewVerifier(releases))
 
 	deps := hookDeps{
-		settings: prefs, tools: tools, git: releaseGit, runner: runner, clones: clones, runs: runs, history: scriptRuns,
+		settings: prefs, tools: tools, git: shellGit, runner: runner, clones: clones, runs: runs, history: scriptRuns,
 		shellEnv: shellEnv, terminal: terminals,
 	}
 	hookPage := newHooks(pool, opts, logger, deps)

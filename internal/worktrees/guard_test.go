@@ -356,11 +356,15 @@ func TestEnsureSaysWhichOfTheClonesOwnSettingsItWentWithout(t *testing.T) {
 	assert.NoFileExists(t, evil, "the clone's never did")
 }
 
-// failingGuard is a Guard whose setups fail with err, counting them.
+// failingGuard is a Guard whose setups fail with err, counting them, and whose reads run
+// with the rig's isolated environment.
 type failingGuard struct {
+	env   func() []string
 	err   error
 	calls *atomic.Int32
 }
+
+func (f failingGuard) ReadEnv() []string { return f.env() }
 
 func (f failingGuard) RemoteSetupFor(context.Context, string, string) (gitread.Setup, error) {
 	f.calls.Add(1)
@@ -394,7 +398,7 @@ func TestEnsureWordsASetupThatCouldntBeWorkedOut(t *testing.T) {
 			"folders.",
 		fmt.Errorf("git ls-remote: No such remote 'upstream': %w", errExit): "No such remote 'upstream'.",
 	} {
-		guard := failingGuard{err: setupErr, calls: &atomic.Int32{}}
+		guard := failingGuard{env: r.environ, err: setupErr, calls: &atomic.Int32{}}
 
 		_, err := r.makerWith(guard).Ensure(t.Context(), r.f.request(item.KindPR, 7))
 		require.Error(t, err)
@@ -760,4 +764,53 @@ func TestEnsureRefusesARemoteTheGuardsRefuse(t *testing.T) {
 		"URL that starts with a name and ::, or remote.origin.vcs), which isn't run here, as the clone's own config "+
 		"could make it run anything.", uierr.Message(err))
 	assert.NoFileExists(t, filepath.Join(r.e.home, "pwned"))
+}
+
+// TestEnsureChecksOutWhatTheCloneHasFromARemoteItRefuses refuses origin, reached through a
+// remote helper: an issue's worktree still starts from the last fetched copy of origin's
+// default branch, saying why, and one on a branch the clone has is attached, since a
+// checkout asks the remote nothing.
+func TestEnsureChecksOutWhatTheCloneHasFromARemoteItRefuses(t *testing.T) {
+	t.Parallel()
+
+	r := newGuardRig(t)
+	pwned := filepath.Join(r.e.home, "pwned")
+	testutil.RunGit(t, r.f.clone, "remote", "set-url", "origin", "ext::sh -c touch% "+pwned)
+	testutil.RunGit(t, r.f.clone, "update-ref", "refs/heads/worktree-issue-5", r.f.main)
+
+	req := r.f.request(item.KindIssue, 3)
+	req.DefaultBranch = mainBranch
+
+	issue, err := r.maker().Ensure(t.Context(), req)
+	require.NoError(t, err, "from the last fetched copy")
+	assert.Equal(t, r.f.main, issue.Head)
+	assert.Contains(t, issue.Notice, "Couldn't fetch origin/main, so the worktree starts from the last fetched copy: "+
+		"This clone reaches origin through a remote helper")
+
+	attached, err := r.maker().Ensure(t.Context(), r.f.request(item.KindIssue, 5))
+	require.NoError(t, err, "a branch the clone has")
+	assert.Equal(t, ActionAttach, attached.Action)
+	assert.NoFileExists(t, pwned)
+}
+
+// TestEnsureRefusesACheckoutGitLFSWouldReroute sets, in a clone with Git LFS's own filter,
+// a proxy for every http request: the checkout of a branch the clone has, which Git LFS
+// would download its files for through the proxy, with the user's credentials, is refused.
+// Without Git LFS, the same proxy refuses nothing, as no checkout reaches a host.
+func TestEnsureRefusesACheckoutGitLFSWouldReroute(t *testing.T) {
+	t.Parallel()
+
+	r := newGuardRig(t)
+	testutil.RunGit(t, r.f.clone, "config", "filter.lfs.process", "git-lfs filter-process")
+	testutil.RunGit(t, r.f.clone, "config", "http.proxy", "http://203.0.113.9:8080")
+	testutil.RunGit(t, r.f.clone, "update-ref", "refs/heads/worktree-issue-5", r.f.main)
+
+	_, err := r.maker().Ensure(t.Context(), r.f.request(item.KindIssue, 5))
+	require.ErrorIs(t, err, gitread.ErrCloneRoutes)
+
+	testutil.RunGit(t, r.f.clone, "config", "--unset", "filter.lfs.process")
+
+	attached, err := r.maker().Ensure(t.Context(), r.f.request(item.KindIssue, 5))
+	require.NoError(t, err)
+	assert.Equal(t, ActionAttach, attached.Action)
 }

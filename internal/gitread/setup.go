@@ -317,6 +317,17 @@ type Local struct {
 	Refused error
 }
 
+// ReadEnv returns the environment a read of a clone runs with, every gitread read's
+// (environment) with replace refs ignored too: no transport (an empty GIT_ALLOW_PROTOCOL,
+// which every git honors, so a partial clone's missing object is never fetched through a
+// URL the clone names), no lazy fetch (GIT_NO_LAZY_FETCH, from git 2.44), no optional
+// lock, no prompt, and no replace ref. The worktree service runs its own reads with it
+// (git's --no-lazy-fetch, which only git 2.44 and later take, isn't passed: the app runs
+// any git the user has).
+func (g *Git) ReadEnv() []string {
+	return withVar(environmentOf(g.env()), noReplaceVar, "1")
+}
+
 // LocalSetup works out what a git command in dir, a clone or one of its worktrees, that
 // reaches no remote runs with (Local), reading the config git reads there: no command
 // here reaches the network. A config git can't read, a folder that isn't absolute and
@@ -327,7 +338,7 @@ func (g *Git) LocalSetup(ctx context.Context, dir string) (Local, error) {
 		return Local{}, errNotAFolder(dir)
 	}
 
-	env := withVar(environmentOf(g.env()), noReplaceVar, "1")
+	env := g.ReadEnv()
 
 	git, err := g.GitFinder().Find(gitBin)
 	if err != nil {

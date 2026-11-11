@@ -93,17 +93,22 @@ function CloneBranchCheck({ dir, onStarted, onPulled }: BranchCheckProps) {
   }
 
   // settle reads the pull id, and once it has ended, reads the status and the scripts again.
+  // A pull whose run can't be read is let go of too, and the status read again, so the
+  // button never stays on Pulling… for a run no one can see.
   const settle = useEffectEvent(async (id: number) => {
     const read = await attempt(getScriptRun(id))
 
-    if (!read.ok || isLive(read.data.status) || settled.current === id) {
+    if ((read.ok && isLive(read.data.status)) || settled.current === id) {
       return
     }
 
     settled.current = id
     setPulling((was) => (was === id ? null : was))
     checkAgain(false)
-    onPulled()
+
+    if (read.ok) {
+      onPulled()
+    }
   })
 
   // The pull is read once now, in case it ended before this listened, then again each time

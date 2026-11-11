@@ -541,8 +541,9 @@ origin, with one `git ls-remote` whose answer is kept five minutes.
 - **The branch check** beside the branch says whether origin has newer commits on the branch it
   follows: **Up to date**, or **Update available** with **Pull**, which fast-forwards the branch
   (`git pull --ff-only`, never a merge or a rebase) as a run beside the scripts, in the app, and
-  reads the scripts again once it ends. It asks origin with one `git ls-remote` and never
-  fetches; the answer is kept five minutes, and its refresh button asks again. A branch ahead of
+  reads the scripts again once it ends. It asks origin about that one branch, with one `git
+  ls-remote`, and never fetches; the answer is kept five minutes, and its refresh button asks
+  again, while a pull keeps the commit it fetched without counting as a new ask. A branch ahead of
   origin, one that has diverged from it, one that tracks no branch on origin, a detached HEAD, or
   a merge or rebase in progress says so, and offers no pull. A pull refuses a clone that moved to
   another branch since the check, fails with git's own words on a branch with commits of its own,
@@ -560,9 +561,10 @@ origin, with one `git ls-remote` whose answer is kept five minutes.
   clone, it fetches the contents of the files it writes from the clone's promisor remote,
   under the same guards. Checking asks origin once; pulling asks it only in git's own fetch. A
   pull can't be stopped, since stopping partway could leave the files half updated: it ends on
-  its own within ten minutes, and quitting leaves it to finish; after a restart it still can't
-  be stopped, and says what it did once it ends. Nothing is checked or pulled while Scripts is
-  off.
+  its own within thirty minutes, and quitting leaves it to finish; after a restart it still can't
+  be stopped, and says what it did once it ends. One its limit cuts off says it was cut off
+  partway, where it left the branch, whether git's index is still locked, and to open the clone
+  in a terminal and run `git status`. Nothing is checked or pulled while Scripts is off.
 - **The sources, in order:** **Yours** (below), then **From t3.json**, **From
   .vscode/tasks.json**, and **magex**, each as Settings → Integrations turns it on (the Scripts
   card's **Show magex targets** and **Read t3.json and VS Code tasks**). A file that can't be
@@ -1913,23 +1915,27 @@ Entries for worktrees whose folders are gone are pruned first. When something gi
 already at the worktree's path, the app prunes git's entries and tries once more, then says what
 is in the way: it never deletes a folder. Git runs as an argument list with prompts off and a time
 limit, and one clone's worktrees are made one at a time. Every git command the app runs on
-worktrees runs with hooks (a hooks folder's, and the ones a git config names), the file system
-monitor, and submodule recursion turned off: a worktree holds the pull request's own files, and
-a hook in your clone that runs a tool from the checkout would otherwise run the pull request's
-code before any agent starts. The status the Worktrees view and the cleanup read, and a
-removal, run with none of the clone's own filters (Git LFS's either) and never in a clone whose
-own config holds a setting that could make git run a program
-([below](#what-a-clones-own-config-may-hold)): its worktrees say why instead, and no cleanup
-removes them. A commit is always checked out as itself, whatever replace refs the clone has. Its fetches, its
+worktrees runs with a hooks folder's hooks, the file system monitor, and submodule recursion
+turned off, and never in a clone whose own config names a hook: a worktree holds the pull
+request's own files, and a hook in your clone that runs a tool from the checkout would
+otherwise run the pull request's code before any agent starts. The status the Worktrees view
+and the cleanup read, and a removal, run with none of the clone's own filters (Git LFS's
+either) and never in a clone, or a worktree, whose own config holds a setting that could make
+git run a program ([below](#what-a-clones-own-config-may-hold)): such a worktree says why
+instead, and is never offered a removal. Every other look at a clone's worktrees, branches, and
+commits fetches nothing, even in a partial clone missing what it reads. A commit is always
+checked out as itself, whatever replace refs the clone has. Its fetches, its
 look at the remote's default branch, and `git worktree add` also run under the same guards as
 Repo scripts' **Pull**, with the environment your login shell gives and the same git as every
 other command the app runs there: a clone whose own git config holds a setting that could make
 git run a program or write elsewhere ([below](#what-a-clones-own-config-may-hold)) is refused
 before git runs, naming the settings, and so is a remote reached through a remote helper, by
-name. The clone's own ssh command, password program, and credential helpers give way to your
-own, and a fetch that fails without them says which. No maintenance runs, the remote is asked
-for git's own upload-pack, and the clone's own folder is named so its config can't send the
-checkout elsewhere. The clone's config is read once a launch. A fetch moves only the ref it
+name, though a worktree from the last fetched copy, or on a branch the clone already has, is
+still made, since that checkout asks the remote nothing. The clone's own ssh command, password
+program, and credential helpers give way to your own, and a fetch that fails without them says
+which. No maintenance runs, the remote is asked for git's own upload-pack, and the clone's own
+folder is named so its config can't send the checkout elsewhere. The clone's config is read
+once a launch. A fetch moves only the ref it
 names, whatever the clone's own refspecs say, so a launch never moves one of your branches. In
 a partial clone, the checkout fetches the files it writes from the clone's promisor remote,
 under the same guards. Every worktree made or adopted is
@@ -1954,8 +1960,10 @@ whatever it includes, and run only when every setting there is one of these:
   `fetch.prune`; a submodule's `url` and `active`; `lfs.repositoryformatversion`, what Git LFS
   keeps of a server (`access`, `locksverify`), and its own filter, exactly as `git lfs
   install --local` writes it; `rerere`'s switches; `log.excludeDecoration`, colors, and git
-  gui's settings; and `mergetool`, `difftool`, `merge.tool`, and `diff.tool`, which only `git
-  mergetool` and `git difftool` read;
+  gui's settings; `mergetool`, `difftool`, `merge.tool`, and `diff.tool`, which only `git
+  mergetool` and `git difftool` read; how `git push`, `git rebase`, and `git status` behave
+  (`push.*`, `rebase.*`, `status.*`); what `git flow init` writes (`gitflow.*`); and
+  `init.defaultBranch`, `merge.ff`, and `merge.conflictStyle`;
 - what the app sets aside or sets again for these commands, so the clone's own is never used:
   its ssh command, password program, and credential helpers, for your own (of its other
   credential settings, only the user name and `useHttpPath` are allowed); `url` rewrites,

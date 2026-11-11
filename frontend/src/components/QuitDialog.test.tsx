@@ -28,7 +28,7 @@ const heldPull = going({
     step: '',
     working: '',
     stopRefused:
-      'A pull can’t be stopped: stopping it partway could leave the clone’s files half updated. It ends on its own, within ten minutes.',
+      'A pull can’t be stopped: stopping it partway could leave the clone’s files half updated. It ends on its own, within thirty minutes.',
     stopConfirm: '',
   },
 })
@@ -139,7 +139,7 @@ describe('QuitDialog', () => {
 
     expect(
       (await dialog()).getByText(
-        `Pull main is running in acme-org/sdk. A pull can’t be stopped: stopping it partway could leave the clone’s files half updated. It ends on its own, within ten minutes. Quitting waits up to a few seconds for it. If it hasn’t ended by then, it goes on after ${brand.name} closes. Quit anyway?`,
+        `Pull main is running in acme-org/sdk. A pull can’t be stopped: stopping it partway could leave the clone’s files half updated. It ends on its own, within thirty minutes. Quitting waits up to a few seconds for it. If it hasn’t ended by then, it goes on after ${brand.name} closes. Quit anyway?`,
       ),
     ).toBeInTheDocument()
   })

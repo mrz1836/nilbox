@@ -156,10 +156,10 @@ type countingGit struct {
 	then func()
 }
 
-func (c *countingGit) RemoteRefs(ctx context.Context, dir string) (gitread.RemoteRefs, error) {
+func (c *countingGit) RemoteBranch(ctx context.Context, dir, branch string) (string, error) {
 	c.remote.Add(1)
 
-	return c.BranchGit.RemoteRefs(ctx, dir)
+	return c.BranchGit.RemoteBranch(ctx, dir, branch)
 }
 
 func (c *countingGit) RemoteSetup(ctx context.Context, dir string) (gitread.Setup, error) {

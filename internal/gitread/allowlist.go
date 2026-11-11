@@ -197,6 +197,10 @@ func allowlist() []command {
 		{name: "the local version tags", words: append(fixed("tag", "--list"), value(slotVersionPattern))},
 		{name: "origin's branches and tags", words: fixed(lsRemote, uploadPackFlag, "--heads", tagsFlag, remoteName)},
 		{
+			name:  "one branch on origin",
+			words: append(fixed(lsRemote, uploadPackFlag, "--heads", remoteName), value(slotLocalRef)),
+		},
+		{
 			name:  "origin's version tags",
 			words: append(fixed(lsRemote, uploadPackFlag, tagsFlag, "--refs", remoteName), value(slotVersionPattern)),
 		},
@@ -255,14 +259,14 @@ func isDir(dir string) bool {
 }
 
 // gitPathNames are the git paths gitread resolves: the files and folders git keeps while
-// it is in the middle of something, and the hooks folder.
+// it is in the middle of something, the hooks folder, and the index's lock.
 func gitPathNames() []string {
-	names := make([]string, 0, len(operationFiles())+1)
+	names := make([]string, 0, len(operationFiles())+2)
 	for _, f := range operationFiles() {
 		names = append(names, f.name)
 	}
 
-	return append(names, hooksName)
+	return append(names, hooksName, indexLock)
 }
 
 // isGitPathName reports one of gitPathNames.
@@ -470,6 +474,10 @@ func localTagsArgs() []string { return []string{"tag", "--list", versionTagsPatt
 
 func remoteRefsArgs() []string {
 	return []string{lsRemote, uploadPackFlag, "--heads", tagsFlag, remoteName}
+}
+
+func remoteBranchArgs(branch string) []string {
+	return []string{lsRemote, uploadPackFlag, "--heads", remoteName, headsPrefix + branch}
 }
 
 func remoteTagsArgs() []string {

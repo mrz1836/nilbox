@@ -86,7 +86,19 @@ const anyPart = "*"
 //     and gitk's own settings, which only they read;
 //   - mergetool, difftool, merge.tool, diff.tool, and their gui ones: only `git mergetool`
 //     and `git difftool` read them, which no command here runs (a merge driver,
-//     merge.<driver>.driver, and a diff driver, diff.<driver>.*, are refused).
+//     merge.<driver>.driver, and a diff driver, diff.<driver>.*, are refused);
+//   - push.<name> and rebase.<name> (never with a subsection): how git push and git rebase
+//     behave (push.default, push.autoSetupRemote, rebase.autoStash, rebase.updateRefs, and
+//     the like), which only those read and no command here is; none names a program, a
+//     path, or a host (sequence.editor and core.editor, which do, stay refused);
+//   - status.<name>: how git status shows itself (status.showUntrackedFiles, status.short,
+//     and the like), which the worktrees' own status, run with --porcelain and its own
+//     --untracked-files, sets aside; none names a program;
+//   - gitflow.*: what git flow init writes (gitflow.branch.<name>, gitflow.prefix.<name>,
+//     gitflow.path.hooks), which only git-flow reads;
+//   - init.defaultBranch, merge.ff, and merge.conflictStyle: the first branch's name for a
+//     new repository, whether a merge may fast-forward (the pull's own --ff-only beats it),
+//     and how a conflict is written, none of which names a program.
 func inertKeys() []string {
 	return []string{
 		"core.repositoryformatversion", "core.filemode", "core.bare", "core.logallrefupdates", "core.ignorecase",
@@ -105,6 +117,8 @@ func inertKeys() []string {
 		"log.excludedecoration", "color.*", "color.*.*", "gui.*", "gui.*.*",
 		"mergetool.*", "mergetool.*.*", "difftool.*", "difftool.*.*", "merge.tool", "merge.guitool", "diff.tool",
 		"diff.guitool",
+		"push.*", "rebase.*", "status.*", "gitflow.*", "gitflow.*.*", "init.defaultbranch", "merge.ff",
+		"merge.conflictstyle",
 	}
 }
 

@@ -302,15 +302,19 @@ func hardening() []string {
 }
 
 // Hardening returns the settings, ahead of its subcommand, that every git command the app
-// runs to change a clone runs with: no hook, the file system monitor off, and no submodule
-// recursion. No hook means both kinds git runs: a hooks folder's, as core.hooksPath points
-// it at an empty one, and the ones a config names (hook.<name>.command and .event, which
-// core.hooksPath doesn't reach), as hook.<event>.enabled=false turns off every hook of each
-// event git can fire (hookEvents); a git older than config hooks ignores those settings.
-// git runs hooks and the file system monitor with the clone as their working folder, so
-// either could run a program the clone's own files hold, and a submodule's URL is the
-// clone's to name. internal/worktrees runs each of its commands with them, and Repo
-// scripts' pull too (RemoteSetup).
+// runs to change a clone runs with: no hook from a hooks folder, the file system monitor
+// off, and no submodule recursion. core.hooksPath points the hooks folder at an empty one.
+// It doesn't reach the hooks a config names (hook.<name>.command and .event, from git
+// 2.54): the clone's own hook.* settings refuse every command that could fire one
+// (cloneconfig.go), which is what keeps them from running. Beside that,
+// hook.<event>.enabled=false is set for every event git can fire (hookEvents): git 2.56
+// documents it as turning off every hook of the event, the user's own config hooks too,
+// and a test shows it does there; a git whose config hooks predate that switch may read it
+// as the switch of a hook named after the event, which turns off nothing, and a git
+// older than config hooks ignores it. git runs hooks and the file system monitor with the
+// clone as their working folder, so either could run a program the clone's own files
+// hold, and a submodule's URL is the clone's to name. internal/worktrees runs each of its
+// commands with them, and Repo scripts' pull too (RemoteSetup).
 func Hardening() []string {
 	out := append([]string{"-c", "core.hooksPath=" + os.DevNull}, hardening()...)
 

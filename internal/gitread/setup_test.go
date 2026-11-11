@@ -174,6 +174,16 @@ func TestCloneSettingAllowed(t *testing.T) {
 		{"difftool.a.cmd", "x"},
 		{"merge.tool", "a"},
 		{"diff.tool", "a"},
+		{"push.default", "simple"},
+		{"push.autosetupremote", on},
+		{"rebase.autostash", on},
+		{"status.showuntrackedfiles", "all"},
+		{"gitflow.branch.master", "main"},
+		{"gitflow.prefix.feature", "feature/"},
+		{"gitflow.path.hooks", ".git/hooks"},
+		{"init.defaultbranch", "main"},
+		{"merge.ff", "only"},
+		{"merge.conflictstyle", "zdiff3"},
 	} {
 		assert.True(t, cloneSettingAllowed(s[0], s[1]), "inert: %s=%s", s[0], s[1])
 	}
@@ -211,6 +221,11 @@ func TestCloneSettingAllowed(t *testing.T) {
 		{"core.alternaterefscommand", "x"},
 		{"core.pager", "x"},
 		{"core.editor", "x"},
+		{"sequence.editor", "x"},
+		{"push.https://example.invalid.default", "x"},
+		{"rebase.x.y", "x"},
+		{"status.x.y", "x"},
+		{"merge.renormalize", on},
 		{"hook.a.command", "x"},
 		{"hook.a.event", "post-checkout"},
 		{"gc.recentobjectshook", "x"},
@@ -473,6 +488,16 @@ func TestLocalSetup(t *testing.T) {
 	g := New(Config{Env: func() []string { return env }})
 
 	testutil.RunGit(t, dir, "config", "filter.lfs.process", "git-lfs filter-process")
+
+	for _, kv := range [][2]string{
+		{"push.default", "simple"},
+		{"rebase.autoStash", on},
+		{"status.short", on},
+		{"gitflow.branch.master", "main"},
+		{"init.defaultBranch", "main"},
+	} {
+		testutil.RunGit(t, dir, "config", kv[0], kv[1]) // what users and their tools write, which refuses nothing
+	}
 
 	local, err := g.LocalSetup(t.Context(), dir)
 	require.NoError(t, err)

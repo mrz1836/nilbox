@@ -74,20 +74,18 @@ func (k Kind) Valid() bool {
 
 // Timeout returns how long a run of the kind may take before it is stopped, or 0 for no
 // limit: five minutes for a release, one for a hooks action, thirty for checks, ten for a
-// tool updating itself (its download and swap, which the tools bound at six), ten for a
-// pull (its fetch, then its checkout, which nothing should cut off), and none for a
-// script, which the user stops.
+// tool updating itself (its download and swap, which the tools bound at six), thirty for
+// a pull (its fetch, then its checkout, Git LFS's downloads included, which nothing
+// should cut off), and none for a script, which the user stops.
 func (k Kind) Timeout() time.Duration {
 	switch k {
 	case KindRelease:
 		return 5 * time.Minute
 	case KindHooks:
 		return time.Minute
-	case KindChecks:
+	case KindChecks, KindPull:
 		return 30 * time.Minute
 	case KindUpdate:
-		return 10 * time.Minute
-	case KindPull:
 		return 10 * time.Minute
 	case KindScript:
 		return 0

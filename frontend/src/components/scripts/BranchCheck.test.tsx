@@ -144,6 +144,30 @@ describe('BranchCheck', () => {
     expect(listening('scriptruns:updated')).toBe(0)
   })
 
+  it('lets go of a pull whose run can’t be read, and checks again', async () => {
+    const user = userEvent.setup()
+    const { onPulled } = renderCheck(behind)
+    platform.getScriptRun.mockResolvedValue(scriptRun({ id: 51, kind: 'gitPull', status: 'running' }))
+
+    await user.click(await screen.findByRole('button', { name: 'Pull master' }))
+    expect(await screen.findByRole('button', { name: 'Pulling master' })).toBeDisabled()
+    await waitFor(() => {
+      expect(listening('scriptruns:updated')).toBe(1)
+    })
+
+    platform.getBranchStatus.mockResolvedValue(branchStatus())
+    platform.getScriptRun.mockRejectedValue(new Error('the run is gone'))
+    act(() => {
+      emit('scriptruns:updated')
+    })
+
+    expect(await screen.findByText('Up to date')).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Pulling master' })).not.toBeInTheDocument()
+    expect(platform.getBranchStatus).toHaveBeenLastCalledWith('~/projects/sdk', false)
+    expect(onPulled).not.toHaveBeenCalled()
+    expect(listening('scriptruns:updated')).toBe(0)
+  })
+
   it('says why a pull didn’t start, in the words it came back with', async () => {
     const user = userEvent.setup()
     const { onStarted } = renderCheck(behind)

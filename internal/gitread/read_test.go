@@ -362,6 +362,26 @@ func TestReadsARealClone(t *testing.T) {
 	})
 }
 
+func TestIndexLocked(t *testing.T) {
+	t.Parallel()
+
+	env := testutil.Git(t)
+	dir := filepath.Join(t.TempDir(), "clone")
+	testutil.InitRepo(t, dir)
+
+	g := New(Config{Env: func() []string { return env }})
+
+	locked, err := g.IndexLocked(t.Context(), dir)
+	require.NoError(t, err)
+	assert.False(t, locked)
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".git", "index.lock"), nil, 0o600))
+
+	locked, err = g.IndexLocked(t.Context(), dir)
+	require.NoError(t, err)
+	assert.True(t, locked)
+}
+
 func TestReadsSigningConfig(t *testing.T) {
 	t.Parallel()
 

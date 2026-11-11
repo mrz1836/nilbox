@@ -193,6 +193,30 @@ func (g *Git) InProgress(ctx context.Context, dir string) (Operation, error) {
 	return OperationNone, nil
 }
 
+// indexLock is the file git holds while it writes the index, left behind by a git cut off
+// partway, which every later command that writes the index then refuses to run past.
+const indexLock = "index.lock"
+
+// IndexLocked reports whether the clone at dir's index is locked: whether git's
+// index.lock, as a git that was writing the index, as a checkout does, leaves when it is
+// cut off, is there. It asks git where the file would be, which differs in a linked
+// worktree, and looks for it.
+func (g *Git) IndexLocked(ctx context.Context, dir string) (bool, error) {
+	path, err := g.gitPath(ctx, dir, indexLock)
+	if err != nil {
+		return false, err
+	}
+
+	switch _, err = os.Lstat(path); {
+	case err == nil:
+		return true, nil
+	case errors.Is(err, fs.ErrNotExist):
+		return false, nil
+	default:
+		return false, fmt.Errorf("look for %s: %w", indexLock, err)
+	}
+}
+
 // Changes returns the worktree at dir's changed and untracked files, by `git status
 // --porcelain`, which is the rule a release applies: any line means uncommitted changes.
 func (g *Git) Changes(ctx context.Context, dir string) ([]Change, error) {
@@ -342,6 +366,20 @@ func (g *Git) RemoteRefs(ctx context.Context, dir string) (RemoteRefs, error) {
 	}
 
 	return parseRemoteRefs(out), nil
+}
+
+// RemoteBranch asks origin for one branch's commit (`ls-remote --heads origin
+// refs/heads/<branch>`), and returns it, or "" when origin has no such branch, under every
+// guard an ls-remote runs under: origin answers with that one branch, never every branch
+// and tag it has. A branch ValidBranch refuses is refused (ErrGitCommandNotAllowed). It
+// stops after RemoteTimeout.
+func (g *Git) RemoteBranch(ctx context.Context, dir, branch string) (string, error) {
+	out, err := g.read(ctx, dir, remoteBranchArgs(branch))
+	if err != nil {
+		return "", err
+	}
+
+	return parseRemoteRefs(out).Heads[branch], nil
 }
 
 // RemoteVersionTags asks origin for its version tags (v*) and returns their names, sorted.

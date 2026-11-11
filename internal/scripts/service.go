@@ -43,11 +43,12 @@ type Git interface {
 }
 
 // BranchGit reads what a clone's branch status and its pull need, through gitread's
-// allowlist: the branch the clone is on, what it follows, what git is in the middle of, its
-// commits and origin's branch as the clone keeps them, and origin's branches, which
-// RemoteRefs asks origin for with one ls-remote, every one of gitread's guards applied;
-// and RemoteSetup works out what the pull runs with under those same guards, gitread's own
-// git included: *gitread.Git.
+// allowlist: the branch the clone is on, what it follows, what git is in the middle of,
+// whether its index is locked, its commits and origin's branch as the clone keeps them,
+// and origin's one branch the clone's follows, which RemoteBranch asks origin for with one
+// ls-remote of that branch alone, every one of gitread's guards applied; RemoteSetup works
+// out what the pull runs with under those same guards, gitread's own git included, and
+// CloneConfig checks the clone's own config as it does: *gitread.Git.
 type BranchGit interface {
 	CurrentBranch(ctx context.Context, dir string) (string, error)
 	Upstream(ctx context.Context, dir, branch string) (gitread.Upstream, error)
@@ -57,7 +58,8 @@ type BranchGit interface {
 	HasCommit(ctx context.Context, dir, oid string) (bool, error)
 	IsAncestor(ctx context.Context, dir, oid, of string) (bool, error)
 	CommitsBetween(ctx context.Context, dir, from, to string) (int, error)
-	RemoteRefs(ctx context.Context, dir string) (gitread.RemoteRefs, error)
+	RemoteBranch(ctx context.Context, dir, branch string) (string, error)
+	IndexLocked(ctx context.Context, dir string) (bool, error)
 	RemoteSetup(ctx context.Context, dir string) (gitread.Setup, error)
 	CloneConfig(ctx context.Context, dir string) error
 }
@@ -148,7 +150,7 @@ type Service struct {
 	// listing lists one copy of magex's built-ins at a time, and asking asks one clone's
 	// origin for its branches at a time.
 	listing flight.Group[builtins]
-	asking  flight.Group[keptHeads]
+	asking  flight.Group[keptHead]
 
 	// mu guards the built-ins listed per copy of magex, the magefiles read per clone, and
 	// the origins RepoNames read per clone, each with the fingerprint it was read at; and

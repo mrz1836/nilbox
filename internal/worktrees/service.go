@@ -319,13 +319,14 @@ type Config struct {
 }
 
 // Guard works out what a git command that reaches the clone's remote, or writes a
-// worktree's files, runs with, and one in a clone or a worktree that could run one of the
-// clone's programs, as a status or a removal: gitread's RemoteSetupFor, CheckoutSetup, and
-// LocalSetup, *gitread.Git.
+// worktree's files, runs with, one in a clone or a worktree that could run one of the
+// clone's programs, as a status or a removal, and the environment a read runs with:
+// gitread's RemoteSetupFor, CheckoutSetup, LocalSetup, and ReadEnv, *gitread.Git.
 type Guard interface {
 	RemoteSetupFor(ctx context.Context, dir, remote string) (gitread.Setup, error)
 	CheckoutSetup(ctx context.Context, dir string) (gitread.Setup, error)
 	LocalSetup(ctx context.Context, dir string) (gitread.Local, error)
+	ReadEnv() []string
 }
 
 // Service lists and removes worktrees of the clones under the clone root.

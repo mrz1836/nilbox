@@ -207,7 +207,7 @@ func TestPullRunsWithGitreadsEnvironment(t *testing.T) {
 
 	assert.Equal(t, []string{"pull"}, argv[1:2], "no -c setting on the command line")
 
-	assert.Equal(t, 10*time.Minute, spec.Kind.Timeout(), "a pull gets time enough never to be cut off writing files")
+	assert.Equal(t, 30*time.Minute, spec.Kind.Timeout(), "a pull gets time enough never to be cut off writing files")
 }
 
 // TestPullHoldsStopForItsWholeRun: git writes its output only as it exits, so nothing
@@ -219,8 +219,8 @@ func TestPullHoldsStopForItsWholeRun(t *testing.T) {
 	spec := (&Service{}).pullSpec(clone{dir: "/srv/projects/sdk"}, "main")
 	require.NotNil(t, spec.Progress)
 	assert.Equal(t, scriptrun.Progress{StopRefused: stopPullRefused}, spec.Progress())
-	assert.Contains(t, stopPullRefused, "within ten minutes")
-	assert.Equal(t, 10*time.Minute, spec.Kind.Timeout())
+	assert.Contains(t, stopPullRefused, "within thirty minutes")
+	assert.Equal(t, 30*time.Minute, spec.Kind.Timeout())
 }
 
 func TestPullRefusesACloneOnAnotherBranch(t *testing.T) {
@@ -417,6 +417,63 @@ func lookup(env []string, key string) string {
 	return ""
 }
 
+// TestPullKeepsWhenOriginWasAsked pulls a minute after origin was asked: the status
+// afterwards takes the commit the pull's fetch stored, but still says origin was asked a
+// minute before, and goes on asking it again when that answer is OriginKept old.
+func TestPullKeepsWhenOriginWasAsked(t *testing.T) {
+	t.Parallel()
+
+	g := newGitRig(t)
+	two := g.pushed("two.txt")
+	asked := g.status(false).CheckedAt
+
+	g.clock.Advance(time.Minute)
+	require.Equal(t, scriptrun.StatusSucceeded, g.pull().Status)
+
+	st := g.status(false)
+	assert.Equal(t, BranchUpToDate, st.State)
+	assert.Equal(t, two[:7], st.Origin, "the commit the pull's fetch stored")
+	assert.Equal(t, asked, st.CheckedAt, "origin was asked then, not now")
+
+	calls := g.asked.remote.Load()
+	g.clock.Advance(OriginKept)
+	g.status(false)
+	assert.Equal(t, calls+1, g.asked.remote.Load(), "an answer OriginKept old is asked again")
+}
+
+// TestAPullItsLimitCutOffSaysWhatItLeft ends a pull at its limit, as git writes the
+// clone's files, its index still locked: the run says it was cut off partway, what it found,
+// and what to do, rather than the runner's words alone.
+func TestAPullItsLimitCutOffSaysWhatItLeft(t *testing.T) {
+	t.Parallel()
+
+	g := newGitRig(t)
+	g.pushed("two.txt")
+	g.status(false)
+
+	lock := filepath.Join(g.dir, ".git", "index.lock")
+	require.NoError(t, os.WriteFile(lock, nil, 0o600))
+
+	v := NewVerifier(g.branch).Verify(g.pullRecord(g.first))
+	got := v.Finish(t.Context(), scriptrun.Ending{TimedOut: true}, scriptrun.Outcome{
+		Status: scriptrun.StatusFailed, Summary: "It ran past its limit of 30m, so it was stopped.",
+	})
+
+	assert.Equal(t, scriptrun.Outcome{
+		Status: scriptrun.StatusFailed,
+		Summary: "It ran past its limit of 30m, so it was stopped. The pull was cut off partway, so the clone may be " +
+			"partly updated: main is still at " + g.first[:7] + ", git's index is still locked (.git/index.lock). Open " +
+			"the clone in a terminal and run git status to see where it stands.",
+	}, got)
+
+	require.NoError(t, os.Remove(lock))
+	testutil.RunGit(t, g.dir, "checkout", "-q", "--detach")
+
+	got = v.Finish(t.Context(), scriptrun.Ending{TimedOut: true}, scriptrun.Outcome{Status: scriptrun.StatusFailed, Summary: "x"})
+	assert.Contains(t, got.Summary, "cut off partway, so the clone may be partly updated: HEAD is detached now, main is "+
+		"still at "+g.first[:7]+".")
+}
+
 // pullRecord is the record of a pull of main in the rig's clone from before a restart, as
 // its Before left it: main at before.
 func (g *gitRig) pullRecord(before string) scriptrun.Record {
@@ -463,7 +520,8 @@ func TestAPullFollowedAgainAfterARestart(t *testing.T) {
 		"an end that was seen, as its Spec's Finish words it")
 
 	got = v.Finish(t.Context(), scriptrun.Ending{Quit: true}, scriptrun.Outcome{Status: scriptrun.StatusStopped, Summary: "x"})
-	assert.Equal(t, "x", got.Summary, "a pull stopped keeps the runner's words")
+	assert.Equal(t, scriptrun.StatusStopped, got.Status)
+	assert.True(t, strings.HasPrefix(got.Summary, "x. The pull was cut off partway"), "a pull stopped says it was cut off")
 
 	unread := NewVerifier(g.branch).Verify(scriptrun.Record{
 		ID: 8, Kind: scriptrun.KindPull, Dir: g.dir, Result: scriptrun.Result{Intent: "nonsense"},

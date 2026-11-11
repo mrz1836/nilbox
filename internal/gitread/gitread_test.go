@@ -231,7 +231,11 @@ func TestNewDefaultsToTheProcessEnvironment(t *testing.T) {
 
 	calls := rec.Calls()
 	require.Len(t, calls, 1)
-	assert.Len(t, calls[0].env, len(New(Config{}).environment()))
+
+	// Compared by count alone: the process environment holds the user's own variables,
+	// which a failure must never show.
+	want, got := len(New(Config{}).environment()), len(calls[0].env)
+	assert.Equal(t, want, got, "the process's environment, as a read takes it")
 
 	runner, ok := execRunner([]string{"PATH=/opt/tools/bin", "HOME=/srv/home"}).(execpath.Exec)
 	require.True(t, ok)
@@ -707,6 +711,32 @@ func TestHelpersReadGitsAnswers(t *testing.T) {
 	}
 }
 
+func TestRemoteBranchAsksForThatBranchAlone(t *testing.T) {
+	t.Parallel()
+
+	rec := &recorder{replies: map[string]reply{
+		words(remoteBranchArgs(mainBranch)): {out: otherSHA + "\trefs/heads/x/refs/heads/main\n" + headSHA + "\trefs/heads/main\n"},
+		words(remoteBranchArgs("gone")):     {},
+	}}
+	g := fakeGit(plainEnv(), rec)
+
+	oid, err := g.RemoteBranch(t.Context(), repoDir, mainBranch)
+	require.NoError(t, err)
+	assert.Equal(t, headSHA, oid, "that branch, never another whose name ends the same")
+
+	oid, err = g.RemoteBranch(t.Context(), repoDir, "gone")
+	require.NoError(t, err)
+	assert.Empty(t, oid, "origin has no such branch")
+
+	asked := slices.DeleteFunc(rec.Calls(), func(c call) bool { return !slices.Contains(c.args, "--heads") })
+	require.Len(t, asked, 2)
+	assert.Equal(t, []string{lsRemote, uploadPackFlag, "--heads", remoteName, "refs/heads/main"}, asked[0].args)
+	assert.Contains(t, asked[0].env, "GIT_SSH_COMMAND="+batchSSH, "under every guard an ls-remote runs under")
+
+	_, err = g.RemoteBranch(t.Context(), repoDir, "--upload-pack=x")
+	require.ErrorIs(t, err, ErrGitCommandNotAllowed)
+}
+
 func TestRemoteRefsReadsHeadsAndPeeledTags(t *testing.T) {
 	t.Parallel()
 
@@ -923,6 +953,8 @@ func TestEveryAllowlistEntryIsUsed(t *testing.T) {
 	_, _ = g.IsAncestor(ctx, repoDir, headSHA, otherSHA)
 	_, _ = g.LocalVersionTags(ctx, repoDir)
 	_, _ = g.RemoteRefs(ctx, repoDir)
+	_, _ = g.RemoteBranch(ctx, repoDir, mainBranch)
+	_, _ = g.IndexLocked(ctx, repoDir)
 	_, _ = g.RemoteVersionTags(ctx, repoDir)
 	_, _ = g.RemoteTagCommit(ctx, repoDir, "v1.4.2")
 	_, _ = g.LocalTagCommit(ctx, repoDir, "v1.4.2")

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 
@@ -582,7 +583,9 @@ func TestNewGathererDefaults(t *testing.T) {
 
 	env, read := g.env()
 	assert.True(t, read)
-	assert.Equal(t, os.Environ(), env)
+	// Compared without printing either: the process environment holds the user's own
+	// variables, which a failure must never show.
+	assert.True(t, slices.Equal(os.Environ(), env), "the process's environment")
 	assert.IsType(t, execpath.Exec{}, g.runner([]string{"PATH=/usr/bin", "HOME=/work"}))
 }
 

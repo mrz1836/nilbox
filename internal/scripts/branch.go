@@ -3,12 +3,15 @@ package scripts
 import (
 	"context"
 	"errors"
+	"maps"
 	"strings"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/gitread"
 	"github.com/mrz1836/nilbox/internal/paths"
+	"github.com/mrz1836/nilbox/internal/textutil"
+	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
 // OriginKept is how long the answer origin gave about a clone's branches is kept: a
@@ -95,20 +98,25 @@ type BranchStatus struct {
 	CheckedAt string `json:"checkedAt"`
 }
 
-// keptHeads is origin's branches, each with its commit, as a clone last asked, and when.
-type keptHeads struct {
-	heads map[string]string
-	at    time.Time
+// keptHeads is origin's branches a clone asked about, by name, each as last asked.
+type keptHeads map[string]keptHead
+
+// keptHead is origin's commit of one branch, "" for none, as a clone last asked, and when
+// it asked.
+type keptHead struct {
+	oid string
+	at  time.Time
 }
 
 // BranchStatus returns where the clone at dir, as the picker lists it, with ~, stands
 // against origin: whether its branch is behind the branch it follows on origin, up to
 // date, ahead, or diverged, or why there is nothing to pull. It reads the clone with
-// gitread every time, and asks origin for its branches with one ls-remote, which it keeps
-// for OriginKept: within it, nothing asks origin again unless refresh is set. It never
-// fetches. A clone that can't be read, or an origin that doesn't answer, is a status that
-// says why, not an error. While the Scripts integration is off, it reads nothing and says
-// so (BranchOff).
+// gitread every time, and asks origin for the branch followed alone with one ls-remote,
+// which it keeps for OriginKept: within it, nothing asks origin again unless refresh is
+// set. It never fetches. A clone that can't be read, or an origin that doesn't answer, is
+// a status that says why, not an error, and a clone whose own config a pull would refuse
+// says so (BranchRefused), asking origin nothing. While the Scripts integration is off, it
+// reads nothing and says so (BranchOff).
 func (s *Service) BranchStatus(ctx context.Context, dir string, refresh bool) (BranchStatus, error) {
 	if s.branchGit == nil {
 		return BranchStatus{}, ErrNotSetUp
@@ -149,19 +157,19 @@ func (s *Service) branchStatus(ctx context.Context, c clone, refresh bool) Branc
 	}
 
 	if err := s.branchGit.CloneConfig(ctx, c.dir); refusedConfig(err) {
-		st.State, st.Note = BranchRefused, gitread.Message(err)
+		st.State, st.Note = BranchRefused, gitNote("", err)
 
 		return st
 	}
 
-	kept, err := s.originHeads(ctx, c, refresh)
+	head, err := s.originHead(ctx, c, f.upstream, refresh)
 	if err != nil {
-		return st.unknown("Couldn't ask origin about " + f.upstream + ": " + gitread.Message(err))
+		return st.unknown(gitNote("Couldn't ask origin about "+f.upstream, err))
 	}
 
-	st.CheckedAt = clock.Format(kept.at)
+	st.CheckedAt = clock.Format(head.at)
 
-	oid := kept.heads[f.upstream]
+	oid := head.oid
 	if oid == "" {
 		st.State, st.Note = BranchNoUpstream, "origin has no branch "+f.upstream+"."
 
@@ -171,7 +179,7 @@ func (s *Service) branchStatus(ctx context.Context, c clone, refresh bool) Branc
 	st.Local, st.Origin = short(f.local), short(oid)
 
 	if st.State, err = compare(ctx, s.branchGit, c.dir, f.local, oid); err != nil {
-		return st.unknown("Couldn't compare " + f.branch + " with origin's: " + gitread.Message(err))
+		return st.unknown(gitNote("Couldn't compare "+f.branch+" with origin's", err))
 	}
 
 	st.Note = stateNote(st)
@@ -199,7 +207,7 @@ func (s *Service) readBranch(ctx context.Context, dir string) (f branchFacts, st
 
 	switch {
 	case err != nil:
-		return f, BranchUnknown, "Couldn't read the clone's branch: " + gitread.Message(err)
+		return f, BranchUnknown, gitNote("Couldn't read the clone's branch", err)
 	case branch == "":
 		return f, BranchDetached, "HEAD is detached, so there's no branch to pull."
 	}
@@ -208,7 +216,7 @@ func (s *Service) readBranch(ctx context.Context, dir string) (f branchFacts, st
 
 	up, err := g.Upstream(ctx, dir, branch)
 	if err != nil {
-		return f, BranchUnknown, "Couldn't read what " + branch + " tracks: " + gitread.Message(err)
+		return f, BranchUnknown, gitNote("Couldn't read what "+branch+" tracks", err)
 	}
 
 	if f.upstream, why = originBranch(branch, up); why != "" {
@@ -219,16 +227,27 @@ func (s *Service) readBranch(ctx context.Context, dir string) (f branchFacts, st
 
 	switch {
 	case err != nil:
-		return f, BranchUnknown, "Couldn't tell whether git is in the middle of something here: " + gitread.Message(err)
+		return f, BranchUnknown, gitNote("Couldn't tell whether git is in the middle of something here", err)
 	case op != gitread.OperationNone:
 		return f, BranchInProgress, inProgressNote(op)
 	}
 
 	if f.local, err = g.LocalBranch(ctx, dir, branch); err != nil {
-		return f, BranchUnknown, "Couldn't read " + branch + ": " + gitread.Message(err)
+		return f, BranchUnknown, gitNote("Couldn't read "+branch, err)
 	}
 
 	return f, "", ""
+}
+
+// gitNote words err, a failure of gitread's, for the window: gitread's words for it after
+// lead, "" for none, as a uierr sentence read back with uierr.Message.
+func gitNote(lead string, err error) string {
+	words := textutil.Sentence(gitread.Message(err))
+	if lead != "" {
+		words = textutil.WithReason(lead, gitread.Message(err))
+	}
+
+	return uierr.Message(uierr.New(words, err))
 }
 
 // unknown returns st as a status that couldn't be worked out, saying why.
@@ -263,13 +282,14 @@ func inProgressNote(op gitread.Operation) string {
 	return "git is " + string(op) + " here. Finish or abort that before pulling."
 }
 
-// originHeads returns origin's branches as the clone c last asked, while that answer is
-// younger than OriginKept and refresh isn't set, and else asks origin again, one ls-remote
-// per clone at a time, and keeps the answer.
-func (s *Service) originHeads(ctx context.Context, c clone, refresh bool) (keptHeads, error) {
+// originHead returns origin's branch as the clone c last asked about it, while that answer
+// is younger than OriginKept and refresh isn't set, and else asks origin again for that one
+// branch (gitread's RemoteBranch: one ls-remote of refs/heads/<branch>, never every branch
+// and tag origin has), one ask per clone and branch at a time, and keeps the answer.
+func (s *Service) originHead(ctx context.Context, c clone, branch string, refresh bool) (keptHead, error) {
 	if !refresh {
 		s.mu.Lock()
-		kept, ok := s.heads[c.dir]
+		kept, ok := s.heads[c.dir][branch]
 		s.mu.Unlock()
 
 		if age := s.clock.Now().Sub(kept.at); ok && age >= 0 && age < OriginKept {
@@ -277,30 +297,33 @@ func (s *Service) originHeads(ctx context.Context, c clone, refresh bool) (keptH
 		}
 	}
 
-	return s.asking.Do(ctx, c.dir, func(ctx context.Context) (keptHeads, error) {
-		refs, err := s.branchGit.RemoteRefs(ctx, c.dir)
+	return s.asking.Do(ctx, c.dir+"\x00"+branch, func(ctx context.Context) (keptHead, error) {
+		oid, err := s.branchGit.RemoteBranch(ctx, c.dir, branch)
 		if err != nil {
-			return keptHeads{}, err
+			return keptHead{}, err
 		}
 
-		return s.keepHeads(c.dir, refs.Heads), nil
+		return s.keepHead(c.dir, branch, oid), nil
 	})
 }
 
-// keepHeads keeps heads as origin's branches as the clone at dir asked just now, and
-// returns them as kept.
-func (s *Service) keepHeads(dir string, heads map[string]string) keptHeads {
-	if heads == nil {
-		heads = map[string]string{}
-	}
-
-	kept := keptHeads{heads: heads, at: s.clock.Now()}
+// keepHead keeps oid, "" for none, as origin's branch as the clone at dir asked just now,
+// and returns it as kept.
+func (s *Service) keepHead(dir, branch, oid string) keptHead {
+	head := keptHead{oid: oid, at: s.clock.Now()}
 
 	s.mu.Lock()
-	s.heads[dir] = kept
-	s.mu.Unlock()
+	defer s.mu.Unlock()
 
-	return kept
+	kept := maps.Clone(s.heads[dir])
+	if kept == nil {
+		kept = keptHeads{}
+	}
+
+	kept[branch] = head
+	s.heads[dir] = kept
+
+	return head
 }
 
 // refusedConfig reports a clone gitread's guards refuse for its own config, which a pull's

@@ -28,8 +28,9 @@
 // where the script says, or else where the setting sends runs.
 //
 // BranchStatus tells the page's header whether the clone's branch is behind the branch it
-// follows on origin, read with gitread from the clone's own refs and one ls-remote, whose
-// answer is kept five minutes, and never fetches. Pull brings it level on the user's
+// follows on origin, read with gitread from the clone's own refs and one ls-remote of that
+// branch alone, whose answer is kept five minutes, and never fetches. Pull brings it level
+// on the user's
 // click: git's fast-forward-only pull of that branch, run in the app under the clone's
 // lock, its Before reading the clone again and working out what git runs with, every one of
 // gitread's guards applied, before git runs, so that the pull's own fetch is the one time

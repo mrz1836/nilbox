@@ -24,7 +24,7 @@ const trackingRef = "refs/remotes/" + originRemote + "/"
 // only as it exits, so no line says in time that it has begun writing the clone's files,
 // which stopping would leave half written. Its kind's limit ends it all the same.
 const stopPullRefused = "A pull can't be stopped: stopping it partway could leave the clone's files half " +
-	"updated. It ends on its own, within ten minutes."
+	"updated. It ends on its own, within thirty minutes."
 
 // PullIntent is what a pull sets out to do, written into its run's result as it starts, so
 // Run again pulls the same branch, the one the clone was on, and a pull followed again
@@ -171,10 +171,11 @@ func movedText(asked, now string) string {
 // finishPull works out a pull's outcome once git ended: a clone moved to another branch
 // while git ran, which git may have pulled into instead; what the pull did to the branch,
 // read from the branch itself; or git's last error line when it failed, with the clone's
-// own settings it went without, which may be why. A pull stopped or cut off keeps the
-// engine's words, and one whose end wasn't seen, as one followed again after a restart,
-// is settled from the branch alone (settleUnseen). Origin's branches as kept are brought
-// up to date with what git fetched, or forgotten when that can't be told.
+// own settings it went without, which may be why. A pull its limit or a stop cut off is
+// read again and said to be cut off partway (cutOff), and one whose end wasn't seen, as one
+// followed again after a restart, is settled from the branch alone (settleUnseen).
+// Origin's branches as kept are brought up to date with what git fetched, or forgotten
+// when that can't be told.
 func (s *Service) finishPull(ctx context.Context, run *pullRun, out *pullOutput, end scriptrun.Ending,
 	engine scriptrun.Outcome,
 ) scriptrun.Outcome {
@@ -182,9 +183,7 @@ func (s *Service) finishPull(ctx context.Context, run *pullRun, out *pullOutput,
 
 	switch {
 	case end.Stopped || end.TimedOut || end.Quit:
-		s.forgetHeads(run.c.dir)
-
-		return engine
+		return s.cutOff(ctx, run, engine)
 	case !ranToItsEnd(end):
 		return s.settleUnseen(ctx, run, engine)
 	}
@@ -249,6 +248,72 @@ func (s *Service) settleUnseen(ctx context.Context, run *pullRun, engine scriptr
 	return engine
 }
 
+// cutOff works out what a pull its limit or a stop cut off left, reading the clone again:
+// the branch it is on, the branch's commit against the one before the pull, whether git's
+// index is still locked, and what git is in the middle of. It keeps the engine's status
+// and says, after the engine's words, that the pull was cut off partway, so the clone may
+// be partly updated, what it found, and what to do: open the clone in a terminal and run
+// git status. Origin's branches as kept are forgotten, as what git fetched can't be told.
+func (s *Service) cutOff(ctx context.Context, run *pullRun, engine scriptrun.Outcome) scriptrun.Outcome {
+	s.forgetHeads(run.c.dir)
+
+	found := s.leftBehind(ctx, run)
+
+	text := textutil.EndSentence(engine.Summary) + " The pull was cut off partway, so the clone may be partly updated"
+	if len(found) > 0 {
+		text += ": " + strings.Join(found, ", ")
+	}
+
+	engine.Summary = text + ". Open the clone in a terminal and run git status to see where it stands."
+
+	return engine
+}
+
+// leftBehind reads what a pull cut off left in the clone, each in a few words: another
+// branch checked out, where the branch is against its commit before the pull, git's index
+// still locked, and what git is in the middle of. A read that fails says nothing.
+func (s *Service) leftBehind(ctx context.Context, run *pullRun) []string {
+	g, dir, branch, before := s.branchGit, run.c.dir, run.intent.Branch, run.intent.Before
+
+	var found []string
+
+	if now, err := g.CurrentBranch(ctx, dir); err == nil && now != branch {
+		found = append(found, onNow(now))
+	}
+
+	if after, err := g.LocalBranch(ctx, dir, branch); err == nil && after != "" {
+		found = append(found, branchMoved(branch, before, after))
+	}
+
+	if locked, err := g.IndexLocked(ctx, dir); err == nil && locked {
+		found = append(found, "git's index is still locked (.git/index.lock)")
+	}
+
+	if op, err := g.InProgress(ctx, dir); err == nil && op != gitread.OperationNone {
+		found = append(found, "git is "+string(op)+" there")
+	}
+
+	return found
+}
+
+// branchMoved says where branch is, at after, against before, its commit before the pull.
+func branchMoved(branch, before, after string) string {
+	if before == "" || after == before {
+		return branch + " is still at " + short(after)
+	}
+
+	return branch + " moved from " + short(before) + " to " + short(after)
+}
+
+// onNow says which branch the clone is on now, or that HEAD is detached.
+func onNow(now string) string {
+	if now == "" {
+		return "HEAD is detached now"
+	}
+
+	return "the clone is on " + now + " now"
+}
+
 // failedText says why a pull failed, from git's last error line said, with any of the
 // clone's own settings it went without, which may be why; "" when git said nothing.
 func failedText(run *pullRun, said string) string {
@@ -272,9 +337,11 @@ func movedDuringText(asked, now string) string {
 		". Look at the clone before going on."
 }
 
-// fetched brings origin's branches, as kept for the clone, up to date with the commit
-// git's fetch just stored as origin's branch, which origin may have moved since Before
-// asked; when it can't be read, they are forgotten, so the next status asks origin.
+// fetched brings the pulled branch on origin, as kept for the clone, up to date with the
+// commit git's fetch just stored as origin's branch, which origin may have moved since it
+// was asked, keeping when it was asked: only that branch's commit is new, and every other
+// branch kept stays as old as it was. When it can't be read, origin's branches as kept
+// are forgotten, so the next status asks origin.
 func (s *Service) fetched(ctx context.Context, run *pullRun) {
 	oid, err := s.branchGit.TrackingBranch(ctx, run.c.dir, run.intent.Upstream)
 	if err != nil || oid == "" {
@@ -286,14 +353,15 @@ func (s *Service) fetched(ctx context.Context, run *pullRun) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	kept, ok := s.heads[run.c.dir]
+	head, ok := s.heads[run.c.dir][run.intent.Upstream]
 	if !ok {
 		return
 	}
 
-	heads := maps.Clone(kept.heads)
-	heads[run.intent.Upstream] = oid
-	s.heads[run.c.dir] = keptHeads{heads: heads, at: s.clock.Now()}
+	kept := maps.Clone(s.heads[run.c.dir])
+	head.oid = oid
+	kept[run.intent.Upstream] = head
+	s.heads[run.c.dir] = kept
 }
 
 // pulled says what a pull that ended well did to the branch, now at after: nothing, as it

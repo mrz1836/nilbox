@@ -94,7 +94,7 @@ func TestGitArgvUsesDashC(t *testing.T) {
 		{
 			name: "last commit runs in the worktree",
 			call: func(g git) error { _, err := g.lastCommit(ctx, treePath); return err },
-			want: gitArgv(treePath, "log -1 --no-show-signature --format=%ct"),
+			want: gitArgv(treePath, "log -1 --no-show-signature --no-mailmap --format=%ct"),
 		},
 		{
 			name:   "commit times run in the clone",
@@ -104,7 +104,7 @@ func TestGitArgvUsesDashC(t *testing.T) {
 
 				return err
 			},
-			want: append(gitArgv(repoDir, "log --no-walk=unsorted --no-show-signature"), "--format=%H %ct", headSHA, otherSHA),
+			want: append(gitArgv(repoDir, "log --no-walk=unsorted --no-show-signature --no-mailmap"), "--format=%H %ct", headSHA, otherSHA),
 		},
 		{
 			name:   "unpushed count runs in the worktree",
@@ -175,10 +175,10 @@ func TestGitRejectsCommandsOutsideAllowlist(t *testing.T) {
 		argv("merge-base", headSHA, headSHA),
 		argv("for-each-ref refs/heads/"),
 		argv("for-each-ref --format=%(refname) refs/"),
-		{"log", "--no-walk=unsorted", "--no-show-signature", "--format=%H %ct"},
-		{"log", "--no-walk=unsorted", "--no-show-signature", "--format=%H %ct", "HEAD"},
-		{"log", "--no-walk=unsorted", "--no-show-signature", "--format=%H %ct", headSHA, "--all"},
-		{"log", "--no-walk=unsorted", "--no-show-signature", "--format=%H %ct", strings.Repeat("0", 40)},
+		{"log", "--no-walk=unsorted", "--no-show-signature", "--no-mailmap", "--format=%H %ct"},
+		{"log", "--no-walk=unsorted", "--no-show-signature", "--no-mailmap", "--format=%H %ct", "HEAD"},
+		{"log", "--no-walk=unsorted", "--no-show-signature", "--no-mailmap", "--format=%H %ct", headSHA, "--all"},
+		{"log", "--no-walk=unsorted", "--no-show-signature", "--no-mailmap", "--format=%H %ct", strings.Repeat("0", 40)},
 		{"log", "--no-walk=unsorted", "--format=%H %an", headSHA},
 		{"log", "--no-walk", "--format=%H %ct", headSHA},
 		argv("worktree list"),
