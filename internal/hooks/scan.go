@@ -3,7 +3,6 @@ package hooks
 import (
 	"context"
 	"errors"
-	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -292,47 +291,11 @@ func within(path, dir string) bool {
 	return path == dir || strings.HasPrefix(path, strings.TrimSuffix(dir, string(filepath.Separator))+string(filepath.Separator))
 }
 
-// runEnv is the environment go-pre-commit runs with (§5.5). In the app it is base, the
-// login shell's, with go-pre-commit's quiet settings, no update banner and no color, and
-// git's terminal prompts off, since no one can answer one there. In the terminal it is
-// only the quiet settings the script exports, colors kept: the terminal's own shell sets
-// the rest up.
+// runEnv is the environment go-pre-commit runs with: no update banner and no color, as
+// every run of a tool gets it (integrations.Definition.RunEnv).
 func runEnv(base []string, runsIn integrationprefs.RunsIn) []string {
-	quiet := integrations.GoPreCommit().QuietEnv
-
-	if runsIn == integrationprefs.RunsInTerminal {
-		out := []string{}
-
-		for _, k := range slices.Sorted(maps.Keys(quiet)) {
-			if k != colorVar {
-				out = append(out, k+"="+quiet[k])
-			}
-		}
-
-		return out
-	}
-
-	set := maps.Clone(quiet)
-	set["GIT_TERMINAL_PROMPT"] = "0"
-
-	out := make([]string, 0, len(base)+len(set))
-
-	for _, kv := range base {
-		key, _, _ := strings.Cut(kv, "=")
-		if _, replaced := set[key]; !replaced {
-			out = append(out, kv)
-		}
-	}
-
-	for _, k := range slices.Sorted(maps.Keys(set)) {
-		out = append(out, k+"="+set[k])
-	}
-
-	return out
+	return integrations.GoPreCommit().RunEnv(base, runsIn)
 }
-
-// colorVar is the variable that turns colors off: a run in the terminal keeps them.
-const colorVar = "NO_COLOR"
 
 // repoText writes a repository as "owner/name", or "" for none.
 func repoText(name repo.Name) string {

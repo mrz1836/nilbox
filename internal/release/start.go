@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
@@ -495,44 +494,8 @@ func (s *Service) forget(dir string) {
 	delete(s.facts, paths.Resolved(dir))
 }
 
-// colorVar is the variable that turns magex's colors off: a run in the terminal keeps
-// them, since it has a terminal to show them.
-const colorVar = "NO_COLOR"
-
-// runEnv is the environment a release runs with (§5.5). In the app it is base, the login
-// shell's, with magex's quiet settings and git's terminal prompts off, since no one can
-// answer one there. In the terminal it is only the quiet settings the script exports,
-// colors kept: the terminal's own shell sets the rest up.
+// runEnv is the environment a release runs with: magex's, as every run of a tool gets it
+// (integrations.Definition.RunEnv).
 func runEnv(base []string, runsIn integrationprefs.RunsIn) []string {
-	quiet := integrations.MageX().QuietEnv
-
-	if runsIn == integrationprefs.RunsInTerminal {
-		out := []string{}
-
-		for _, k := range slices.Sorted(maps.Keys(quiet)) {
-			if k != colorVar {
-				out = append(out, k+"="+quiet[k])
-			}
-		}
-
-		return out
-	}
-
-	set := maps.Clone(quiet)
-	set["GIT_TERMINAL_PROMPT"] = "0"
-
-	out := make([]string, 0, len(base)+len(set))
-
-	for _, kv := range base {
-		key, _, _ := strings.Cut(kv, "=")
-		if _, replaced := set[key]; !replaced {
-			out = append(out, kv)
-		}
-	}
-
-	for _, k := range slices.Sorted(maps.Keys(set)) {
-		out = append(out, k+"="+set[k])
-	}
-
-	return out
+	return integrations.MageX().RunEnv(base, runsIn)
 }

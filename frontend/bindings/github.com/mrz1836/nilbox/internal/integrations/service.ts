@@ -71,7 +71,9 @@ export function Trash(id: integrationprefs$0.ID, path: string): $CancellableProm
 }
 
 /**
- * Update installs the latest release over the tool's copy, as its plan says.
+ * Update updates the tool's copy to its latest release, as its plan says: a copy that
+ * updates itself runs its own updater, as a run whose ID the result holds, and any other
+ * gets the latest release installed over it.
  */
 export function Update(id: integrationprefs$0.ID): $CancellablePromise<$models.InstallResult> {
     return $Call.ByID(945634048, id);

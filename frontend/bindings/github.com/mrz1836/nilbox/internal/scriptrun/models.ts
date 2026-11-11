@@ -57,7 +57,7 @@ export interface Filter {
 /**
  * Kind is what a run does.
  */
-export type Kind = "release" | "hooks" | "checks" | "script";
+export type Kind = "release" | "hooks" | "checks" | "script" | "update";
 
 /**
  * The values of Kind, by the names of their Go constants.
@@ -84,6 +84,13 @@ export const Kind = {
      * KindScript is a script: the user's own, a repository's task, or a magex target.
      */
     KindScript: "script",
+
+    /**
+     * KindUpdate is a tool updating itself: its own updater, such as magex update:install,
+     * replaces the copy it runs as with its latest release. It runs in the copy's folder,
+     * never a clone, and doesn't count as using the tool (InUse): it is the update.
+     */
+    KindUpdate: "update",
 } as const;
 
 /**

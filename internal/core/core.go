@@ -477,9 +477,14 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 			Downloads: filepath.Join(opts.Paths.Root, "downloads"), Download: client, Slug: brand.Slug,
 		},
 		Commands: runner,
+		// A copy that can update itself runs its own updater as a run the window follows, and
+		// an install holds the folder it places a program in, as that run does.
+		Runs: runs, Locks: clones,
 		// An install waits while a run is using the tool.
 		InUse: func(id integrationprefs.ID) bool { return runs.InUse(string(id)) },
 	})
+	// A tool's update left from before a restart is checked as one that just ended.
+	runs.RegisterVerifier(scriptrun.KindUpdate, integrations.NewVerifier(tools))
 	toolFinder := integrations.NewWorker(tools)
 	followed.tools = toolFinder
 

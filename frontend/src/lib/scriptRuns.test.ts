@@ -67,12 +67,13 @@ describe('the runsâ words', () => {
     expect(runDuration({ startedAt: '', finishedAt: '2026-06-15T12:00:38Z' })).toBe('')
   })
 
-  it('filters Hooks by both hooks actions and checks', () => {
+  it('filters Hooks by both hooks actions and checks, and Updates by the tools updating themselves', () => {
     expect(runFilterOrder.map((id) => [runFilters[id].label, runFilters[id].kinds])).toEqual([
       ['All', []],
       ['Release', ['release']],
       ['Hooks', ['hooks', 'checks']],
       ['Scripts', ['script']],
+      ['Updates', ['update']],
     ])
   })
 })
@@ -84,6 +85,7 @@ describe('filterRuns', () => {
     scriptRun({ id: 3, kind: 'checks', repo: 'other-org/sdk-tools' }),
     scriptRun({ id: 2, kind: 'script', repo: '', dir: '~/sdk' }),
     scriptRun({ id: 1, kind: 'script', repo: 'acme-org/example-repo' }),
+    scriptRun({ id: 0, kind: 'update', title: 'Update magex', repo: '', dir: '~/.local/bin' }),
   ]
 
   // ids lists the runs picked, by ID.
@@ -92,20 +94,21 @@ describe('filterRuns', () => {
   }
 
   it('lists every run with no filter or search, in its order', () => {
-    expect(ids('all')).toEqual([5, 4, 3, 2, 1])
+    expect(ids('all')).toEqual([5, 4, 3, 2, 1, 0])
   })
 
   it('picks the kinds a filter names, Hooks taking the checks too', () => {
     expect(ids('release')).toEqual([5])
     expect(ids('hooks')).toEqual([4, 3])
     expect(ids('scripts')).toEqual([2, 1])
+    expect(ids('updates')).toEqual([0])
   })
 
   it('finds part of a repository’s name, trimmed and in any case, and no folder', () => {
     expect(ids('all', '  sdk ')).toEqual([5, 3])
     expect(ids('all', 'ACME-ORG/')).toEqual([5, 4, 1])
     expect(ids('scripts', 'sdk')).toEqual([])
-    expect(ids('all', '   ')).toEqual([5, 4, 3, 2, 1])
+    expect(ids('all', '   ')).toEqual([5, 4, 3, 2, 1, 0])
   })
 })
 

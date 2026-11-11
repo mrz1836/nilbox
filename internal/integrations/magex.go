@@ -21,6 +21,10 @@ func MageX() Definition {
 		Checksums:    checksums,
 		QuietEnv:     quietEnv(map[string]string{"MAGEX_NO_UPDATE_CHECK": "1"}),
 
+		// It refuses a Homebrew copy and one it can't write, and runs go install for a copy
+		// in go install's folder, so the app runs it for no such copy.
+		UpdateArgs: []string{"update:install"},
+
 		// The version the release fixtures were recorded with; no older one was compared.
 		MinVersion: "1.29.5",
 
@@ -29,6 +33,10 @@ func MageX() Definition {
 			FeatureExpect:          "1.30.0",
 			FeatureBumpJSON:        "1.30.1",
 			FeatureFastForwardPull: "1.30.2",
+
+			// update:install rebuilt on go-selfupdate; before, it put the new copy in
+			// $GOPATH/bin, wherever the copy it ran as was.
+			FeatureSelfUpdate: "1.26.0",
 		},
 	}
 }

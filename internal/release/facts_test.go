@@ -600,6 +600,7 @@ func TestToolFactsOf(t *testing.T) {
 		Path: "/opt/tools/magex", Version: "1.30.1", State: integrations.StateFound,
 		Features: []integrations.Feature{
 			integrations.FeatureBumpJSON, integrations.FeatureExpect, integrations.FeaturePushFails,
+			integrations.FeatureSelfUpdate,
 		},
 		MinVersion: def.MinVersion, ExpectSince: def.Features[integrations.FeatureExpect],
 	}, got)

@@ -185,7 +185,7 @@ func TestUpdateReplacesTheCopyInPlace(t *testing.T) {
 
 	got, err := h.svc.Update(t.Context(), integrationprefs.MageX)
 	require.NoError(t, err)
-	assert.Equal(t, "Updated mage-x to "+newerMagex, got.Message)
+	assert.Equal(t, "Updated magex to "+newerMagex, got.Message)
 
 	data, err := os.ReadFile(old) //nolint:gosec // the test's own file
 	require.NoError(t, err)

@@ -14,10 +14,12 @@ import (
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/brand"
+	"github.com/mrz1836/nilbox/internal/clonelock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations/internal/queries"
 	"github.com/mrz1836/nilbox/internal/paths"
+	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/toolinstall"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
@@ -83,11 +85,18 @@ type InstallPlan struct {
 	// the command that updates a Homebrew copy.
 	Blocked     string `json:"blocked"`
 	BrewCommand string `json:"brewCommand"`
+
+	// Updater, for an update of a copy that updates itself, is the tool's own update
+	// command, as the window shows it ("~/.local/bin/magex update:install"), which the
+	// update runs in place of the app's download. It is "" when the app installs the
+	// release itself.
+	Updater string `json:"updater"`
 }
 
 // InstallProgress is how far an install of the tool has got.
 type InstallProgress struct {
-	// Step is downloading, verifying, trying, or installing, or "" when none runs.
+	// Step is downloading, verifying, trying, or installing, updating while the tool's own
+	// updater runs, or "" when none runs.
 	Step  string `json:"step"`
 	Done  int64  `json:"done"`
 	Total int64  `json:"total"`
@@ -95,8 +104,13 @@ type InstallProgress struct {
 
 // InstallResult is what an install did, and the tools as they are after it.
 type InstallResult struct {
-	// Message says what was done, as in "Installed go-pre-commit 1.13.1 in ~/.local/bin".
+	// Message says what was done, as in "Installed go-pre-commit 1.13.1 in ~/.local/bin";
+	// it is "" for an update the tool runs itself, whose run says so as it ends.
 	Message string `json:"message"`
+
+	// Run is the run of the tool's own updater an update started, which the window shows,
+	// or 0 when the app installed the release itself.
+	Run int64 `json:"run"`
 
 	Tools Tools `json:"tools"`
 }
@@ -107,7 +121,9 @@ func (s *Service) Install(ctx context.Context, id integrationprefs.ID) (InstallR
 	return s.install(ctx, id)
 }
 
-// Update installs the latest release over the tool's copy, as its plan says.
+// Update updates the tool's copy to its latest release, as its plan says: a copy that
+// updates itself runs its own updater, as a run whose ID the result holds, and any other
+// gets the latest release installed over it.
 func (s *Service) Update(ctx context.Context, id integrationprefs.ID) (InstallResult, error) {
 	return s.install(ctx, id)
 }
@@ -117,34 +133,57 @@ func (s *Service) Reinstall(ctx context.Context, id integrationprefs.ID) (Instal
 	return s.install(ctx, id)
 }
 
-// install runs one install of a tool: the latest release, refreshed first when it is more
-// than an hour old, verified and placed by toolinstall where the plan says, then recorded,
-// and the tools looked for again. Installs run one at a time.
+// install runs one install of a tool. A copy that updates itself is handed to its own
+// updater (updateItself). Any other gets the latest release, refreshed first when it is
+// more than an hour old, verified and placed by toolinstall where the plan says, then
+// recorded, and the tools looked for again. Installs run one at a time, and none while
+// the tool updates itself.
 func (s *Service) install(ctx context.Context, id integrationprefs.ID) (InstallResult, error) {
 	def, ok := s.definition(id)
 	if !ok {
 		return InstallResult{}, fmt.Errorf("%w: %q", integrationprefs.ErrUnknownIntegration, id)
 	}
 
-	if s.installer == nil {
+	// Until this run's first detection ends, the window shows the last one kept, whose
+	// plan this run hasn't checked: an install waits for what is there now.
+	if !s.hasDetected() {
+		return InstallResult{}, uierr.New(brand.Name+" is still looking for the tools. Try again in a moment.",
+			ErrInstallRefused)
+	}
+
+	self, ok, err := s.claimUpdate(ctx, def)
+
+	switch {
+	case err != nil:
+		return InstallResult{}, err
+	case ok:
+		return s.updateItself(ctx, self)
+	case s.installer == nil:
 		return InstallResult{}, uierr.New(brand.Name+" can't install tools here.", ErrInstallRefused)
 	}
 
 	s.installMu.Lock()
 	defer s.installMu.Unlock()
 
+	if err = s.updatingError(def); err != nil {
+		return InstallResult{}, err
+	}
+
 	_ = s.checkUpdates(ctx, latestFreshFor) // a failure keeps the last answer, which the plan then says is missing
 
-	plan, latest, err := s.planFor(ctx, def)
+	plan, latest, _, err := s.planFor(ctx, def)
 	if err != nil {
 		return InstallResult{}, err
 	}
 
-	if err = refusal(def, plan); err != nil {
+	release, err := s.admit(def, plan)
+	if err != nil {
 		return InstallResult{}, err
 	}
 
 	placed, err := s.installer.Install(ctx, s.request(def, latest, plan))
+
+	release()
 	s.setProgress(def.ID, InstallProgress{})
 
 	if err != nil {
@@ -179,6 +218,37 @@ func (s *Service) finish(ctx context.Context, def Definition, plan InstallPlan, 
 	return InstallResult{Message: installMessage(def, plan, placed), Tools: tools}, nil
 }
 
+// hasDetected reports whether a detection has ended since the app started.
+func (s *Service) hasDetected() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.detected != nil
+}
+
+// admit refuses a plan that can't be carried out, then takes the lock of the folder it
+// places the program in, which a tool's own update holds while it runs there, one from
+// before the app restarted included, and returns its release. A folder another job holds
+// refuses the install at once, in the lock's words.
+func (s *Service) admit(def Definition, plan InstallPlan) (func(), error) {
+	if err := refusal(def, plan); err != nil {
+		return nil, err
+	}
+
+	dir, _ := paths.ExpandHome(plan.TargetDir, s.home)
+
+	release, held, ok := s.locks.TryLock(dir, clonelock.Holder{
+		Kind: clonelock.KindInstall, Repo: plan.TargetDir, Title: "Install " + def.Binary,
+	})
+	if !ok {
+		busy := &clonelock.BusyError{Holder: held}
+
+		return nil, uierr.New(busy.Error(), fmt.Errorf("%w: %w", ErrInstallRefused, busy))
+	}
+
+	return release, nil
+}
+
 // refusal returns why a plan can't be carried out, worded, or nil.
 func refusal(def Definition, plan InstallPlan) error {
 	switch {
@@ -203,11 +273,12 @@ func (s *Service) definition(id integrationprefs.ID) (Definition, bool) {
 	return Definition{}, false
 }
 
-// planFor works out a tool's plan from its last detection and latest release.
-func (s *Service) planFor(ctx context.Context, def Definition) (InstallPlan, latestRecord, error) {
+// planFor works out a tool's plan from its last detection and latest release, and returns
+// them with it.
+func (s *Service) planFor(ctx context.Context, def Definition) (InstallPlan, latestRecord, detection, error) {
 	stored, err := s.prefs.GetMany(ctx, latestKey(def.ID))
 	if err != nil {
-		return InstallPlan{}, latestRecord{}, fmt.Errorf("read the latest release: %w", err)
+		return InstallPlan{}, latestRecord{}, detection{}, fmt.Errorf("read the latest release: %w", err)
 	}
 
 	latest := decodeLatest(stored[latestKey(def.ID)])
@@ -216,7 +287,7 @@ func (s *Service) planFor(ctx context.Context, def Definition) (InstallPlan, lat
 	d := s.detected[string(def.ID)]
 	s.mu.Unlock()
 
-	return s.plan(def, d, latest, stateOf(def, d, latest)), latest, nil
+	return s.plan(def, d, latest, stateOf(def, d, latest)), latest, d, nil
 }
 
 // plan works out what installing would do for a tool in state, or why it can't.
@@ -237,7 +308,7 @@ func (s *Service) plan(def Definition, d detection, latest latestRecord, state S
 
 	dir := s.localBin()
 	if d.has {
-		dir = s.placement(def, d.selected, &out)
+		dir = s.placement(def, d, &out)
 	}
 
 	if dir == s.localBin() && out.Blocked == "" && out.ReplacesPath == "" {
@@ -248,16 +319,19 @@ func (s *Service) plan(def Definition, d detection, latest latestRecord, state S
 	out.Target = paths.Tilde(filepath.Join(dir, def.Binary), s.home)
 
 	if out.Blocked == "" {
-		out.Blocked = s.blocked(def, latest, out.Archive)
+		out.Blocked = s.blocked(def, latest, out)
 	}
 
 	return out
 }
 
-// placement works out where installing over the copy c puts the program, and what the plan
-// says about c: it is replaced in place, left alone for a new copy in ~/.local/bin, or not
+// placement works out where installing over the copy in use, d's, puts the program, and
+// what the plan says about that copy: it updates itself in place (as the detection worked
+// out), is replaced in place, is left alone for a new copy in ~/.local/bin, or isn't
 // touched at all.
-func (s *Service) placement(def Definition, c Copy, out *InstallPlan) string {
+func (s *Service) placement(def Definition, d detection, out *InstallPlan) string {
+	c := d.selected
+
 	// Homebrew's copy is a link into its Cellar, so it is told apart first.
 	switch {
 	case c.Source == SourceHomebrew:
@@ -265,6 +339,13 @@ func (s *Service) placement(def Definition, c Copy, out *InstallPlan) string {
 		out.Blocked = "Homebrew manages this copy. Update it with " + out.BrewCommand + "."
 	case c.Link:
 		out.Blocked = fmt.Sprintf("%s is a link to %s, so %s won't replace it.", c.DisplayPath, c.Target, brand.Name)
+	case out.Action == ActionUpdate && d.selfUpdates:
+		// Its own updater replaces it, so the user isn't asked to let the app replace a copy
+		// it didn't install.
+		out.Updater = scriptrun.DisplayCommand(append([]string{c.Path}, def.UpdateArgs...), s.home)
+		out.Replaces, out.ReplacesPath = c.Version.Raw, c.DisplayPath
+
+		return filepath.Dir(c.Path)
 	case c.Source == SourceGoInstall || !writable(filepath.Dir(c.Path)):
 		// A new copy goes in ~/.local/bin; this one stays, and the card says when it comes
 		// first on the PATH.
@@ -307,16 +388,19 @@ func (s *Service) alreadyThere(def Definition, d detection, out *InstallPlan) {
 }
 
 // blocked says why an install can't run now, or "": a run uses the tool, no one is signed
-// in to find the release, or the release has no build for this Mac.
-func (s *Service) blocked(def Definition, latest latestRecord, archive string) string {
+// in to find the release, or the release has no build for this Mac. A tool updating itself
+// finds its own release and picks its own archive, so neither of those holds it back.
+func (s *Service) blocked(def Definition, latest latestRecord, plan InstallPlan) string {
 	switch {
 	case s.inUse(def.ID):
-		return fmt.Sprintf("A run is using %s. Update it when the run ends.", def.Binary)
+		return inUseText(def)
+	case plan.Updater != "":
+		return ""
 	case latest.Version == "" && s.isSignedOut():
 		return "Sign in to GitHub first, so " + brand.Name + " can find the latest release."
 	case latest.Version == "":
 		return "" // not looked up yet: an install looks it up first
-	case !hasAsset(latest, archive):
+	case !hasAsset(latest, plan.Archive):
 		return fmt.Sprintf("%s %s has no build for this Mac (%s/%s).", def.Name, latest.Version, s.goos, s.goarch)
 	default:
 		return ""
@@ -463,7 +547,7 @@ func (s *Service) record(ctx context.Context, def Definition, placed toolinstall
 func installMessage(def Definition, plan InstallPlan, placed toolinstall.Placed) string {
 	switch {
 	case plan.Replaces != "" && plan.Replaces != placed.Version:
-		return fmt.Sprintf("Updated %s to %s", def.Name, placed.Version)
+		return fmt.Sprintf("Updated %s to %s", def.Binary, placed.Version)
 	case plan.ReplacesPath != "":
 		return fmt.Sprintf("Reinstalled %s %s", def.Name, placed.Version)
 	default:

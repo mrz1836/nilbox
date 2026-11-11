@@ -21,6 +21,9 @@ func GoPreCommit() Definition {
 		Checksums:    checksums,
 		QuietEnv:     quietEnv(map[string]string{"GO_PRE_COMMIT_NO_UPDATE_CHECK": "1"}),
 
+		// It refuses a Homebrew copy, one in go install's folder, and one it can't write.
+		UpdateArgs: []string{"update"},
+
 		// An older hook in a linked worktree checks the main checkout instead.
 		MinVersion: "1.12.0",
 
@@ -29,6 +32,9 @@ func GoPreCommit() Definition {
 			FeatureInstallExitCode: "1.14.0",
 			FeatureStatusJSON:      "1.14.1",
 			FeatureRunJSON:         "1.14.1",
+
+			// update arrived on go-selfupdate; before, upgrade was another command.
+			FeatureSelfUpdate: "1.10.0",
 		},
 	}
 }

@@ -357,7 +357,7 @@ func unreachedBound() map[string]string {
 	return map[string]string{
 		"integrations.Service.CheckAgain":   "reads the user's login shell and GitHub; its result is built as List's",
 		"integrations.Service.Install":      "downloads from GitHub; its tools are built as List's",
-		"integrations.Service.Update":       "downloads from GitHub; its tools are built as List's",
+		"integrations.Service.Update":       "runs a tool's own updater or downloads from GitHub; its tools are built as List's",
 		"integrations.Service.Reinstall":    "downloads from GitHub; its tools are built as List's",
 		"integrations.Service.Trash":        "moves a copy of a tool through Finder; its result is built as List's",
 		"inbox.Service.Refresh":             "reads GitHub; its snapshot is built as Snapshot's",

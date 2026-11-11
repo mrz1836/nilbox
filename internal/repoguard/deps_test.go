@@ -96,7 +96,7 @@ func boundaries() []boundary {
 			pkg:       "internal/integrations",
 			forbidden: append(slices.Clone(services), "internal/launcher", "internal/desktop"),
 			why: "the integrations reach the settings through integrationprefs and GitHub through their own Releases, " +
-				"which core adapts",
+				"which core adapts; a tool's own updater runs through scriptrun, never the reverse",
 		},
 		{
 			pkg:       "internal/clonelock",
@@ -106,7 +106,8 @@ func boundaries() []boundary {
 		{
 			pkg: "internal/scriptrun",
 			forbidden: append(slices.Clone(services),
-				"internal/release", "internal/hooks", "internal/scripts", "internal/launcher", "internal/desktop"),
+				"internal/release", "internal/hooks", "internal/scripts", "internal/integrations", "internal/launcher",
+				"internal/desktop"),
 			why: "the runner opens the terminal through its own TerminalOpener and works a command out again through " +
 				"each kind's Rerunner; the kinds call it, never the reverse",
 		},

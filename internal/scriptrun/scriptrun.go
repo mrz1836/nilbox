@@ -1,5 +1,6 @@
 // Package scriptrun runs the commands of the Scripts tab, a release, a hooks action, a
-// checks run, or a script, in the app or in the user's terminal, and keeps their history.
+// checks run, or a script, and a tool's own updater, in the app or in the user's terminal,
+// and keeps their history.
 //
 // The Engine starts a run and follows it to its end. A run in the app starts in its own
 // process group and writes straight into its log file, never through a pipe, so a crash of
@@ -50,11 +51,16 @@ const (
 
 	// KindScript is a script: the user's own, a repository's task, or a magex target.
 	KindScript Kind = "script"
+
+	// KindUpdate is a tool updating itself: its own updater, such as magex update:install,
+	// replaces the copy it runs as with its latest release. It runs in the copy's folder,
+	// never a clone, and doesn't count as using the tool (InUse): it is the update.
+	KindUpdate Kind = "update"
 )
 
 // Kinds returns every kind.
 func Kinds() []Kind {
-	return []Kind{KindRelease, KindHooks, KindChecks, KindScript}
+	return []Kind{KindRelease, KindHooks, KindChecks, KindScript, KindUpdate}
 }
 
 // Valid reports whether k is one of Kinds.
@@ -63,7 +69,8 @@ func (k Kind) Valid() bool {
 }
 
 // Timeout returns how long a run of the kind may take before it is stopped, or 0 for no
-// limit: five minutes for a release, one for a hooks action, thirty for checks, and none
+// limit: five minutes for a release, one for a hooks action, thirty for checks, ten for a
+// tool updating itself (its download and swap, which the tools bound at six), and none
 // for a script, which the user stops.
 func (k Kind) Timeout() time.Duration {
 	switch k {
@@ -73,6 +80,8 @@ func (k Kind) Timeout() time.Duration {
 		return time.Minute
 	case KindChecks:
 		return 30 * time.Minute
+	case KindUpdate:
+		return 10 * time.Minute
 	case KindScript:
 		return 0
 	default:
@@ -80,7 +89,7 @@ func (k Kind) Timeout() time.Duration {
 	}
 }
 
-// lockKind returns the kind of job a run of the kind holds its clone as.
+// lockKind returns the kind of job a run of the kind holds its folder as.
 func (k Kind) lockKind() clonelock.Kind {
 	switch k {
 	case KindRelease:
@@ -89,6 +98,8 @@ func (k Kind) lockKind() clonelock.Kind {
 		return clonelock.KindHooks
 	case KindChecks:
 		return clonelock.KindChecks
+	case KindUpdate:
+		return clonelock.KindUpdate
 	case KindScript:
 		return clonelock.KindScript
 	default:
@@ -212,7 +223,8 @@ type Spec struct {
 	// one.
 	Repo repo.Name
 
-	// Dir is the clone's absolute folder: the run runs there, and holds its lock.
+	// Dir is the clone's absolute folder: the run runs there, and holds its lock. A tool
+	// updating itself runs in, and holds, its copy's folder.
 	Dir string
 
 	// Argv is the command, its program's absolute path first. A shell command runs as
@@ -237,7 +249,8 @@ type Spec struct {
 	// negative one is no limit. A run in the terminal has none.
 	Timeout time.Duration
 
-	// Tool is the integration it uses, such as "mage-x", which InUse reports, or "".
+	// Tool is the integration it uses, such as "mage-x", which InUse reports, or "". A
+	// tool updating itself names the tool it updates, which InUse leaves out.
 	Tool string
 
 	// Intent is what it sets out to do, written into its result as it starts, so a run

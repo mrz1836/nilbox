@@ -21,6 +21,7 @@ import {
   integrationsConfig,
   integrationTool,
   integrationTools,
+  scriptRun,
   settings,
   toolCopy,
 } from '../../test/fixtures'
@@ -116,7 +117,16 @@ function renderCard(tool: IntegrationTool = integrationTool(), checking = false)
   const reload = vi.fn(() => Promise.resolve())
   const onTools = vi.fn<(tools: IntegrationTools) => void>()
 
-  render(<IntegrationCard tool={tool} checking={checking} onSaved={onSaved} reload={reload} onTools={onTools} />)
+  render(
+    <IntegrationCard
+      tool={tool}
+      checking={checking}
+      onSaved={onSaved}
+      reload={reload}
+      onTools={onTools}
+      terminal={null}
+    />,
+  )
 
   return { onSaved, reload, onTools, card: within(screen.getByRole('region', { name: tool.name })) }
 }
@@ -634,7 +644,7 @@ describe('IntegrationCard installs', () => {
       'Update mage-x to 1.30.0?',
       'Update',
       'updateIntegration',
-      'Updated mage-x to 1.30.0',
+      'Updated magex to 1.30.0',
     ],
     [
       'reinstall',
@@ -679,9 +689,9 @@ describe('IntegrationCard installs', () => {
     expect(button).toBeDisabled()
     expect(card.getByRole('switch', { name: 'mage-x' })).toBeDisabled()
 
-    finish(installResult({ message: 'Updated mage-x to 1.30.0' }))
+    finish(installResult({ message: 'Updated magex to 1.30.0' }))
 
-    expect(await card.findByText('Updated mage-x to 1.30.0')).toBeInTheDocument()
+    expect(await card.findByText('Updated magex to 1.30.0')).toBeInTheDocument()
     await waitFor(() => {
       expect(button).toBeEnabled()
     })
@@ -709,12 +719,12 @@ describe('IntegrationCard installs', () => {
     await userEvent.click(card.getByRole('button', { name: 'Update to 1.30.0' }))
     await userEvent.click(dialog('Update mage-x to 1.30.0?').getByRole('button', { name: 'Update' }))
 
-    expect(await card.findByText('Updated mage-x to 1.30.0')).toBeInTheDocument()
+    expect(await card.findByText('Updated magex to 1.30.0')).toBeInTheDocument()
 
     await userEvent.click(card.getByRole('switch', { name: 'mage-x' }))
 
     expect(platform.setIntegrationEnabled).toHaveBeenCalledExactlyOnceWith('mage-x', 'off')
-    expect(card.queryByText('Updated mage-x to 1.30.0')).not.toBeInTheDocument()
+    expect(card.queryByText('Updated magex to 1.30.0')).not.toBeInTheDocument()
   })
 })
 
@@ -916,5 +926,197 @@ describe('IntegrationCard details of a copy the app installed', () => {
     await userEvent.click(card.getByRole('button', { name: 'Reveal in Finder' }))
 
     expect(platform.revealToolCopy).toHaveBeenCalledExactlyOnceWith('mage-x', '/Users/example/.local/bin/magex')
+  })
+})
+
+// selfUpdating is mage-x from a GitHub release in ~/.local/bin, with 1.30.0 out, which
+// updates itself, its last update and its progress as given.
+function selfUpdating(selfUpdate: Partial<IntegrationTool['selfUpdate']> = {}, progress = idle): IntegrationTool {
+  return integrationTool({
+    state: 'update',
+    latest: latest130,
+    install: installPlan({
+      action: 'update',
+      version: '1.30.0',
+      archive: 'mage-x_1.30.0_darwin_arm64.tar.gz',
+      foreign: false,
+      updater: '~/.local/bin/magex update:install',
+    }),
+    progress,
+    selfUpdate: { run: 0, running: false, updated: false, failed: false, message: '', ...selfUpdate },
+  })
+}
+
+// updating is the progress of a tool whose own updater runs.
+const updating: InstallProgress = { step: 'updating', done: 0, total: 0 }
+
+// renderSelfUpdate renders mage-x's card as tool shows it, and returns a way to show the
+// card as the tools are read again.
+function renderSelfUpdate(tool: IntegrationTool) {
+  const card = (shown: IntegrationTool) => (
+    <IntegrationCard
+      tool={shown}
+      checking={false}
+      onSaved={vi.fn()}
+      reload={() => Promise.resolve()}
+      onTools={vi.fn()}
+      terminal="iterm2"
+    />
+  )
+  const { rerender } = render(card(tool))
+
+  return {
+    card: within(screen.getByRole('region', { name: 'mage-x' })),
+    show: (next: IntegrationTool) => {
+      rerender(card(next))
+    },
+  }
+}
+
+describe('IntegrationCard updates a tool runs itself', () => {
+  it('asks first, saying what the tool’s own updater does, and never asks to replace its copy', async () => {
+    const tool = selfUpdating()
+    const { card } = renderSelfUpdate({ ...tool, install: { ...tool.install, foreign: true } })
+
+    await userEvent.click(card.getByRole('button', { name: 'Update to 1.30.0' }))
+
+    const asked = dialog('Update mage-x to 1.30.0?')
+    expect(asked.getByText(/^magex updates itself:/)).toHaveTextContent(
+      `magex updates itself: ${brand.name} runs ~/.local/bin/magex update:install, which downloads 1.30.0 from the acme-org/mage-x release on GitHub, checks it against the release’s SHA-256 checksums, and swaps it in for the copy. Its output shows here as it runs.`,
+    )
+    expect(asked.getByText(/^Replaces/)).toHaveTextContent('Replaces magex 1.29.5 at ~/.local/bin/magex.')
+    expect(asked.queryByText(/wasn’t installed by/)).not.toBeInTheDocument()
+    expect(asked.queryByRole('button', { name: 'Replace' })).not.toBeInTheDocument()
+
+    await userEvent.click(asked.getByRole('button', { name: 'Cancel' }))
+
+    expect(platform.updateIntegration).not.toHaveBeenCalled()
+  })
+
+  it('names the latest release before it is known', async () => {
+    const tool = selfUpdating()
+    const { card } = renderSelfUpdate({ ...tool, install: { ...tool.install, version: '' } })
+
+    await userEvent.click(card.getByRole('button', { name: 'Update mage-x' }))
+
+    expect(dialog('Update mage-x?').getByText(/which downloads its latest release from/)).toBeInTheDocument()
+  })
+
+  it('starts the run, shows it, then says what it did once the tool was looked for again', async () => {
+    platform.updateIntegration.mockResolvedValue(installResult({ message: '', run: 7 }))
+    platform.getScriptRun.mockResolvedValue(
+      scriptRun({ id: 7, kind: 'update', title: 'Update magex', status: 'running', dir: '~/.local/bin' }),
+    )
+    const { card, show } = renderSelfUpdate(selfUpdating())
+
+    await userEvent.click(card.getByRole('button', { name: 'Update to 1.30.0' }))
+    await userEvent.click(dialog('Update mage-x to 1.30.0?').getByRole('button', { name: 'Update' }))
+
+    expect(await card.findByRole('heading', { name: 'Update magex' })).toBeInTheDocument()
+    expect(platform.getScriptRun).toHaveBeenCalledWith(7)
+    expect(card.queryByText(/^Updated/)).not.toBeInTheDocument()
+
+    show(selfUpdating({ run: 7, running: true }, updating))
+
+    expect(card.getByText('magex is updating itself…')).toBeInTheDocument()
+    expect(card.queryByRole('button', { name: 'Show the run' })).not.toBeInTheDocument()
+    expect(card.getByRole('button', { name: 'Update to 1.30.0' })).toBeDisabled()
+
+    show(
+      integrationTool({
+        copy: toolCopy({ version: { raw: '1.30.0', commit: '', built: '' } }),
+        selfUpdate: { run: 7, running: false, updated: true, failed: false, message: 'Updated magex to 1.30.0' },
+      }),
+    )
+
+    expect(card.getByText('Updated magex to 1.30.0')).toBeInTheDocument()
+    expect(card.getByText(/^magex 1\.30\.0 · ~\/\.local\/bin\/magex/)).toBeInTheDocument()
+
+    await userEvent.click(card.getByRole('button', { name: 'Close the run' }))
+
+    expect(card.queryByRole('heading', { name: 'Update magex' })).not.toBeInTheDocument()
+    expect(card.queryByText('Updated magex to 1.30.0')).not.toBeInTheDocument()
+  })
+
+  it('says why the tool’s own update didn’t update it', async () => {
+    const failed = 'magex couldn’t update itself: update failed: checksum mismatch.'
+    platform.updateIntegration.mockResolvedValue(installResult({ message: '', run: 3 }))
+    const { card, show } = renderSelfUpdate(selfUpdating())
+
+    await userEvent.click(card.getByRole('button', { name: 'Update to 1.30.0' }))
+    await userEvent.click(dialog('Update mage-x to 1.30.0?').getByRole('button', { name: 'Update' }))
+    await waitFor(() => {
+      expect(platform.getScriptRun).toHaveBeenCalledWith(3)
+    })
+
+    show(selfUpdating({ run: 3, running: false, updated: false, failed: true, message: failed }))
+
+    expect(card.getByRole('alert')).toHaveTextContent(failed)
+  })
+
+  it('says, without an error, that the tool was already up to date', async () => {
+    const current = 'magex is already up to date (1.29.5)'
+    platform.updateIntegration.mockResolvedValue(installResult({ message: '', run: 6 }))
+    const { card, show } = renderSelfUpdate(selfUpdating())
+
+    await userEvent.click(card.getByRole('button', { name: 'Update to 1.30.0' }))
+    await userEvent.click(dialog('Update mage-x to 1.30.0?').getByRole('button', { name: 'Update' }))
+    await waitFor(() => {
+      expect(platform.getScriptRun).toHaveBeenCalledWith(6)
+    })
+
+    show(selfUpdating({ run: 6, running: false, updated: false, failed: false, message: current }))
+
+    expect(card.getByText(current)).toBeInTheDocument()
+    expect(card.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('offers no run to show before its ID is known', () => {
+    const { card } = renderSelfUpdate(selfUpdating({ run: 0, running: true }, updating))
+
+    expect(card.getByText('magex is updating itself…')).toBeInTheDocument()
+    expect(card.queryByRole('button', { name: 'Show the run' })).not.toBeInTheDocument()
+  })
+
+  it('follows no run an update didn’t start', async () => {
+    platform.updateIntegration.mockResolvedValue(installResult({ message: '', run: 0 }))
+    const { card } = renderSelfUpdate(selfUpdating())
+
+    await userEvent.click(card.getByRole('button', { name: 'Update to 1.30.0' }))
+    await userEvent.click(dialog('Update mage-x to 1.30.0?').getByRole('button', { name: 'Update' }))
+
+    await waitFor(() => {
+      expect(platform.updateIntegration).toHaveBeenCalledOnce()
+    })
+    expect(card.queryByRole('button', { name: 'Close the run' })).not.toBeInTheDocument()
+    expect(platform.getScriptRun).not.toHaveBeenCalled()
+  })
+
+  it('shows a run it didn’t start on request, and forgets it at the next change', async () => {
+    const { card } = renderSelfUpdate(selfUpdating({ run: 4, running: true }, updating))
+
+    expect(card.getByText('magex is updating itself…')).toBeInTheDocument()
+
+    await userEvent.click(card.getByRole('button', { name: 'Show the run' }))
+
+    expect(platform.getScriptRun).toHaveBeenCalledWith(4)
+    expect(card.queryByRole('button', { name: 'Show the run' })).not.toBeInTheDocument()
+
+    await userEvent.click(card.getByRole('switch', { name: 'mage-x' }))
+
+    await waitFor(() => {
+      expect(card.queryByRole('button', { name: 'Close the run' })).not.toBeInTheDocument()
+    })
+    expect(card.getByRole('button', { name: 'Show the run' })).toBeInTheDocument()
+  })
+
+  it('says nothing of a run it isn’t following', () => {
+    const { card } = renderSelfUpdate(
+      selfUpdating({ run: 5, running: false, updated: true, message: 'Updated magex to 1.30.0' }),
+    )
+
+    expect(card.queryByText('Updated magex to 1.30.0')).not.toBeInTheDocument()
+    expect(card.queryByRole('button', { name: 'Show the run' })).not.toBeInTheDocument()
+    expect(platform.getScriptRun).not.toHaveBeenCalled()
   })
 })

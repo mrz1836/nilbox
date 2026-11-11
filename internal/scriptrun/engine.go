@@ -232,7 +232,8 @@ func (e *Engine) Start(ctx context.Context, spec Spec) (int64, error) {
 }
 
 // InUse reports whether a run going now uses tool, an integration's ID such as "mage-x".
-// The installer waits for such a run to end before it replaces the tool.
+// The installer waits for such a run to end before it replaces the tool. The tool's own
+// update doesn't count: it is the replacement, not a run the replacement would cut across.
 func (e *Engine) InUse(tool string) bool {
 	if tool == "" {
 		return false
@@ -242,12 +243,32 @@ func (e *Engine) InUse(tool string) bool {
 	defer e.mu.Unlock()
 
 	for _, l := range e.live {
-		if l.tool == tool && !l.settling {
+		if l.tool == tool && !l.settling && l.kind != KindUpdate {
 			return true
 		}
 	}
 
 	return false
+}
+
+// Updating returns the ID of tool's own update going now (a KindUpdate run), however it
+// started, one from before the app restarted included, or 0: nothing else may replace the
+// tool meanwhile.
+func (e *Engine) Updating(tool string) int64 {
+	if tool == "" {
+		return 0
+	}
+
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	for id, l := range e.live {
+		if l.kind == KindUpdate && l.tool == tool && !l.settling {
+			return id
+		}
+	}
+
+	return 0
 }
 
 // Active reports whether a run is going in the app, one from before the app restarted
@@ -694,7 +715,7 @@ func (e *Engine) open(ctx context.Context, l *live, spec Spec) error {
 func (e *Engine) insert(ctx context.Context, spec Spec) (int64, error) {
 	command := spec.Command
 	if command == "" {
-		command = displayCommand(spec.Argv, e.home)
+		command = DisplayCommand(spec.Argv, e.home)
 	}
 
 	return e.store.insert(ctx, started{
@@ -910,10 +931,11 @@ func sameStart(a, b time.Time) bool {
 	return d <= startSlack && d >= -startSlack
 }
 
-// displayCommand writes argv out as a shell would read it, quoting what needs quoting,
+// DisplayCommand writes argv out as a shell would read it, quoting what needs quoting,
 // with the program's folder under home written from ~, as the window shows every folder.
-// The ~/ stays outside the quotes, where a shell still reads it as home.
-func displayCommand(argv []string, home string) string {
+// The ~/ stays outside the quotes, where a shell still reads it as home. A run's Command
+// defaults to it, and the integrations show a tool's own update command with it.
+func DisplayCommand(argv []string, home string) string {
 	parts := make([]string, 0, len(argv))
 
 	for i, arg := range argv {

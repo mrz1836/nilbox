@@ -210,8 +210,12 @@ func TestEachKindHasItsLimit(t *testing.T) {
 	assert.Equal(t, 5*time.Minute, KindRelease.Timeout())
 	assert.Equal(t, time.Minute, KindHooks.Timeout())
 	assert.Equal(t, 30*time.Minute, KindChecks.Timeout())
+	assert.Equal(t, 10*time.Minute, KindUpdate.Timeout())
 	assert.Zero(t, KindScript.Timeout(), "a script has Stop instead")
 	assert.Zero(t, Kind("other").Timeout())
+	assert.True(t, KindUpdate.Valid())
+	assert.Equal(t, clonelock.KindUpdate, KindUpdate.lockKind())
+	assert.Equal(t, clonelock.KindScript, Kind("other").lockKind())
 
 	e := NewEngine(Config{})
 	assert.Equal(t, 5*time.Minute, e.newLive(Spec{Kind: KindRelease, RunsIn: RunsInApp}, holds{}).timeout)
@@ -481,6 +485,29 @@ func TestInUseAndActive(t *testing.T) {
 	assert.False(t, h.e.InUse("mage-x"))
 }
 
+func TestAToolUpdatingItselfIsNoUseOfIt(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+
+	spec := h.spec(testutil.FakeRun{Sleep: time.Minute})
+	spec.Kind, spec.Tool = KindUpdate, "mage-x"
+	id := h.start(spec)
+
+	holder, held := h.locks.Holder(spec.Dir)
+	assert.True(t, held, "the update holds its folder")
+	assert.Equal(t, clonelock.KindUpdate, holder.Kind)
+	assert.True(t, h.e.Active(), "the quit guard still asks while it goes")
+	assert.False(t, h.e.InUse("mage-x"), "its own update doesn't keep a tool from being updated")
+	assert.Equal(t, id, h.e.Updating("mage-x"), "but it says the tool is updating")
+	assert.Zero(t, h.e.Updating("go-pre-commit"))
+	assert.Zero(t, h.e.Updating(""))
+
+	require.NoError(t, h.s.Stop(t.Context(), id))
+	assert.Equal(t, StatusStopped, h.ended(id).Status)
+	assert.Zero(t, h.e.Updating("mage-x"))
+}
+
 func TestShutdownStopsEveryRunWithinTheStopTimeout(t *testing.T) {
 	t.Parallel()
 
@@ -636,9 +663,9 @@ func TestDisplayCommandQuotesWhatAShellWouldRead(t *testing.T) {
 
 	const home = "/Users/example"
 
-	assert.Equal(t, "/bin/magex version:bump bump=patch", displayCommand([]string{"/bin/magex", "version:bump", "bump=patch"}, home))
-	assert.Equal(t, `/bin/zsh -c 'echo "$HOME" it'\''s'`, displayCommand([]string{"/bin/zsh", "-c", `echo "$HOME" it's`}, home))
-	assert.Equal(t, "/bin/x ''", displayCommand([]string{"/bin/x", ""}, home))
+	assert.Equal(t, "/bin/magex version:bump bump=patch", DisplayCommand([]string{"/bin/magex", "version:bump", "bump=patch"}, home))
+	assert.Equal(t, `/bin/zsh -c 'echo "$HOME" it'\''s'`, DisplayCommand([]string{"/bin/zsh", "-c", `echo "$HOME" it's`}, home))
+	assert.Equal(t, "/bin/x ''", DisplayCommand([]string{"/bin/x", ""}, home))
 }
 
 func TestDisplayCommandShowsTheProgramFromHome(t *testing.T) {
@@ -647,13 +674,13 @@ func TestDisplayCommandShowsTheProgramFromHome(t *testing.T) {
 	const home = "/Users/example"
 
 	assert.Equal(t, "~/.local/bin/magex version:bump branch=master",
-		displayCommand([]string{home + "/.local/bin/magex", "version:bump", "branch=master"}, home))
+		DisplayCommand([]string{home + "/.local/bin/magex", "version:bump", "branch=master"}, home))
 	assert.Equal(t, `~/'My Tools/magex' /Users/example/notes`,
-		displayCommand([]string{home + "/My Tools/magex", home + "/notes"}, home),
+		DisplayCommand([]string{home + "/My Tools/magex", home + "/notes"}, home),
 		"~/ stays outside the quotes, and only the program is shortened")
-	assert.Equal(t, "/Users/username/bin/magex", displayCommand([]string{"/Users/username/bin/magex"}, "/Users/user"),
+	assert.Equal(t, "/Users/username/bin/magex", DisplayCommand([]string{"/Users/username/bin/magex"}, "/Users/user"),
 		"a folder beside home, its name starting as home's does, isn't under it")
-	assert.Equal(t, "/Users/example/bin/magex", displayCommand([]string{home + "/bin/magex"}, ""),
+	assert.Equal(t, "/Users/example/bin/magex", DisplayCommand([]string{home + "/bin/magex"}, ""),
 		"an unknown home shortens nothing")
 }
 

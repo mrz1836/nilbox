@@ -100,6 +100,10 @@ type detection struct {
 	// stat is the selected file's size, time, and inode, which tell a later look whether
 	// it changed.
 	stat fileStat
+
+	// selfUpdates reports that the selected copy updates itself with the tool's own
+	// updater (Service.updatesItself), as of this detection.
+	selfUpdates bool
 }
 
 // runFunc runs a program and returns what it wrote.
@@ -119,33 +123,134 @@ type searchDirs struct {
 	// extra are the well-known tool folders and go install's, searched after path.
 	extra []string
 
-	// goBins are the folders go install puts a tool in.
-	goBins []string
+	// goBins are go install's folders.
+	goBins goFolders
+}
+
+// goFolders are go install's folders, by the one rule that decides both where a copy came
+// from and whether the tool's own updater would take it for one of go install's (magex's
+// then runs go install): $GOBIN and each $GOPATH folder's bin, from the shell's environment
+// and, while go is on its PATH, from go env too, which adds go env -w settings and GOPATH's
+// default, and ~/go/bin.
+type goFolders struct {
+	// dirs are the absolute folders; rel are relative ones, which an updater takes from the
+	// folder it runs in, its copy's.
+	dirs []string
+	rel  []string
+
+	// unsure reports that go is on the PATH but its settings couldn't be read: no copy can
+	// be told clear of go install's folders.
+	unsure bool
+}
+
+// add adds gobin and the bin of each folder of gopath, a list as in $GOPATH.
+func (g *goFolders) add(gobin, gopath string) {
+	bins := []string{}
+
+	if gobin = strings.TrimSpace(gobin); gobin != "" {
+		bins = append(bins, gobin)
+	}
+
+	for _, root := range filepath.SplitList(strings.TrimSpace(gopath)) {
+		if root != "" {
+			bins = append(bins, filepath.Join(root, "bin"))
+		}
+	}
+
+	for _, bin := range bins {
+		switch {
+		case !filepath.IsAbs(bin):
+			g.rel = append(g.rel, bin)
+		case !slices.Contains(g.dirs, filepath.Clean(bin)):
+			g.dirs = append(g.dirs, filepath.Clean(bin))
+		}
+	}
+}
+
+// has reports whether dir is one of go install's folders, links resolved, a relative one
+// taken from dir itself.
+func (g *goFolders) has(dir string) bool {
+	same := func(bin string) bool { return paths.Same(bin, dir) }
+	fromDir := func(bin string) bool { return paths.Same(filepath.Join(dir, bin), dir) }
+
+	return slices.ContainsFunc(g.dirs, same) || slices.ContainsFunc(g.rel, fromDir)
 }
 
 // dirsFrom works out where to look from the user's shell environment: its PATH, then
-// execpath's well-known folders, then $GOBIN, or $GOPATH/bin, or ~/go/bin.
+// execpath's well-known folders, then go install's: $GOBIN, each $GOPATH folder's bin, and
+// ~/go/bin. Service.addGoEnv adds what go env says.
 func dirsFrom(env []string, home string) searchDirs {
-	var goBins []string
+	var bins goFolders
 
-	switch gobin, gopath := shellenv.Lookup(env, "GOBIN"), shellenv.Lookup(env, "GOPATH"); {
-	case filepath.IsAbs(gobin):
-		goBins = []string{gobin}
-	case gopath != "":
-		for _, dir := range filepath.SplitList(gopath) {
-			if filepath.IsAbs(dir) {
-				goBins = append(goBins, filepath.Join(dir, "bin"))
-			}
-		}
-	case home != "":
-		goBins = []string{filepath.Join(home, "go", "bin")}
+	bins.add(shellenv.Lookup(env, "GOBIN"), shellenv.Lookup(env, "GOPATH"))
+
+	if home != "" {
+		bins.add(filepath.Join(home, "go", "bin"), "")
 	}
 
 	return searchDirs{
 		path:   absDirs(filepath.SplitList(shellenv.Lookup(env, "PATH"))),
-		extra:  absDirs(append(filepath.SplitList(execpath.FallbackPath(home, "")), goBins...)),
-		goBins: goBins,
+		extra:  absDirs(append(filepath.SplitList(execpath.FallbackPath(home, "")), bins.dirs...)),
+		goBins: bins,
 	}
+}
+
+// addGoEnv adds go install's folders as go itself reads them, when go is on the shell's
+// PATH: go env's GOBIN and GOPATH, run with the shell's environment and GOTOOLCHAIN=local,
+// so asking never fetches a toolchain. An answer it can't read leaves them unsure. Without
+// go on the PATH, nothing can run go install, so the environment's answer stands.
+func (s *Service) addGoEnv(ctx context.Context, env []string, dirs *searchDirs) {
+	goPath := findGo(dirs.path)
+	if goPath == "" {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, versionTimeout)
+	defer cancel()
+
+	stdout, _, err := s.run(ctx, goPath, []string{"env", "GOBIN", "GOPATH"}, withVar(env, "GOTOOLCHAIN", "local"))
+
+	gobin, gopath, ok := parseGoEnv(stdout)
+	if err != nil || !ok {
+		dirs.goBins.unsure = true
+
+		s.logger.InfoContext(ctx, "couldn't read go's settings, so no tool updates itself", "error", err)
+
+		return
+	}
+
+	dirs.goBins.add(gobin, gopath)
+	dirs.extra = absDirs(append(dirs.extra, dirs.goBins.dirs...))
+}
+
+// findGo returns the first go on the shell's PATH, as a tool's own updater would find it,
+// or "".
+func findGo(dirs []string) string {
+	for _, dir := range dirs {
+		if path := filepath.Join(dir, "go"); isExecutable(path) {
+			return path
+		}
+	}
+
+	return ""
+}
+
+// parseGoEnv reads go env GOBIN GOPATH's answer, a line each, GOBIN's empty when it isn't
+// set; ok is false for any other answer.
+func parseGoEnv(out []byte) (gobin, gopath string, ok bool) {
+	lines := strings.Split(strings.TrimRight(string(out), "\r\n"), "\n")
+	if len(lines) != 2 || strings.TrimSpace(lines[1]) == "" {
+		return "", "", false
+	}
+
+	return lines[0], lines[1], true
+}
+
+// withVar returns env with key set to value, in place of any it had.
+func withVar(env []string, key, value string) []string {
+	out := slices.DeleteFunc(slices.Clone(env), func(kv string) bool { return strings.HasPrefix(kv, key+"=") })
+
+	return append(out, key+"="+value)
 }
 
 // absDirs keeps the absolute folders of dirs, cleaned, each once.
@@ -341,7 +446,7 @@ func (d detector) source(c candidate, v Version) Source {
 	switch {
 	case strings.Contains(c.resolved, string(filepath.Separator)+"Cellar"+string(filepath.Separator)):
 		return SourceHomebrew
-	case slices.ContainsFunc(d.dirs.goBins, func(dir string) bool { return paths.Same(filepath.Dir(c.path), dir) }):
+	case d.dirs.goBins.has(filepath.Dir(c.path)):
 		return SourceGoInstall
 	case v.Development():
 		return SourceDevelopment
