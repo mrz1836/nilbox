@@ -56,11 +56,12 @@ pins.
 | `magex app:bindings` | Regenerates the committed TypeScript bindings in `frontend/bindings`, writing each Go string type with constants as a union of its values |
 | `magex app:bindingsCheck` | Regenerates the bindings into a temporary directory and fails on any drift |
 | `magex app:lint` | Lints the desktop-tagged Go code (the desktop shell and the frontend embed) |
+| `magex app:test` | Runs the desktop-tagged tests, which run the desktop runtime itself (a bound method's error reaching the window worded); `magex test` builds without the tag |
 | `magex app:dev` | Runs the app against the Vite dev server with hot reload |
 | `magex app:build` | Builds the production bundle `bin/Nilbox.app` and signs it ad hoc for local use |
 | `magex app:open` | Opens `bin/Nilbox.app` as it is, building it first when it is missing; a running copy is only brought to the front |
 | `magex app:run` | Builds `bin/Nilbox.app`, quits the copy already running, and opens the fresh build: the one command after a change |
-| `magex app:check` | Runs `app:bindingsCheck`, `app:lint`, and `app:build` |
+| `magex app:check` | Runs `app:bindingsCheck`, `app:lint`, `app:test`, and `app:build` |
 | `magex db:generate` | Regenerates each table owner's typed queries from its `queries/*.sql` and the migrations, with the sqlc version `.github/env/90-project.env` pins |
 | `magex db:check` | Fails when the generated queries are stale or a query does not prepare against the schema the migrations build |
 | `magex measure:startup` | Startup to the first frame on screen, over six launches |
@@ -324,7 +325,10 @@ one runner, which keeps a record of each run and its whole output.
   One that's gone shows *Nilbox closed while this was running*. A run in your terminal is followed
   again if it's still going, finished with its exit status if it wrote one, or shows *The terminal
   closed while this was running*. A release among them is checked as one that just ended is: its
-  log is read again, and GitHub is asked whether its tag is there.
+  log is read again, and GitHub is asked whether its tag is there. So is a hooks action, whose
+  result is read from the hook files against the hooks it started from, and a checks run, whose
+  result names the files the checks changed, from git's status of the clone against the one
+  taken as they started.
 - **The run panel.** A run's panel shows its status, its result, and its log as it comes
   (colors kept, the newest 2,000 lines, earlier output on request). **Open in terminal** opens
   your terminal in the run's folder and runs nothing there; **Show the log file** shows the log

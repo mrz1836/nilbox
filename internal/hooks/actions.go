@@ -207,17 +207,28 @@ type actionRun struct {
 	confirm string
 	where   integrationprefs.RunsIn
 
+	// kept is what the run keeps beside its record (scriptrun.Spec.Keep), which Before
+	// fills in with what it read.
+	kept *keptAction
+
 	// tool and before are the copy that runs and the clone's hooks, under the lock, and
 	// result what its Finish read from them.
 	tool   ToolFacts
 	before clonesHooks
 	result ActionResult
+
+	// stale reports, for an action from before a restart, that the copy that ran isn't the
+	// one in use now, so it can't be asked whether the hook it left is current; cut, that a
+	// step of the Finish was cut short by the app's quit (cutShort).
+	stale bool
+	cut   bool
 }
 
 // actionSpec is the run of action in c: go-pre-commit, its output read as it arrives,
-// its Before reading the hooks under the clone's lock, and its Finish reading them again
-// once it ended. Once the run has let go of the clone, its record kept, the clone is marked
-// to be scanned again, which tells the window, and done, when set, hears the result.
+// its Before reading the hooks under the clone's lock, and keeping them, with the copy that
+// runs, beside the run's record (Keep), and its Finish reading them again once it ended.
+// Once the run has let go of the clone, its record kept, the clone is marked to be scanned
+// again, which tells the window, and done, when set, hears the result.
 func (s *Service) actionSpec(ctx context.Context, action Action, c clone, confirm string,
 	where integrationprefs.RunsIn, done func(ActionResult),
 ) (scriptrun.Spec, error) {
@@ -229,20 +240,20 @@ func (s *Service) actionSpec(ctx context.Context, action Action, c clone, confir
 		return scriptrun.Spec{}, noToolError(tool)
 	}
 
-	run := &actionRun{action: action, clone: c, confirm: confirm, where: where}
+	run := &actionRun{action: action, clone: c, confirm: confirm, where: where, kept: &keptAction{}}
 	reader := newActionReader()
 	base, _ := s.env()
 
 	return scriptrun.Spec{
 		Kind: scriptrun.KindHooks, Title: actionTitle(action), Source: string(action), Repo: c.name, Dir: c.dir,
 		Env: runEnv(base, where), RunsIn: where, Tool: string(toolID),
-		Intent: ActionIntent{Action: action, Confirm: confirm},
+		Intent: ActionIntent{Action: action, Confirm: confirm}, Keep: run.kept,
 		Output: reader,
 		Before: func(ctx context.Context) ([]string, error) { return s.beforeAction(ctx, run) },
 		Finish: func(ctx context.Context, end scriptrun.Ending, engine scriptrun.Outcome) scriptrun.Outcome {
 			run.result = s.finishAction(ctx, run, reader, end)
 
-			return actionOutcome(run.result, reader.snapshot(), engine)
+			return settled(run.cut, actionOutcome(run.result, reader.snapshot(), engine))
 		},
 		Released: func(int64) {
 			s.markStale(run.clone.dir)
@@ -256,7 +267,7 @@ func (s *Service) actionSpec(ctx context.Context, action Action, c clone, confir
 
 // beforeAction is a hooks action's Before: under the clone's lock, it reads go-pre-commit
 // and the clone's hooks again, refuses a shared hooks folder the request didn't confirm,
-// and returns go-pre-commit's argv.
+// keeps the copy and the hooks beside the run's record, and returns go-pre-commit's argv.
 func (s *Service) beforeAction(ctx context.Context, run *actionRun) ([]string, error) {
 	tool := s.tool(ctx)
 	if !tool.Usable() {
@@ -277,6 +288,7 @@ func (s *Service) beforeAction(ctx context.Context, run *actionRun) ([]string, e
 	}
 
 	run.tool, run.before = tool, l
+	*run.kept = keptAction{Tool: keepTool(tool), Hooks: keepHooks(l)}
 
 	return actionArgv(run.action, tool.Path, l.marked, run.where), nil
 }
@@ -376,7 +388,10 @@ func (s *Service) readInstall(ctx context.Context, run *actionRun, after hookFil
 	case after.ours && changed:
 		s.wrote(run, after, res)
 	case after.ours:
-		res.Outcome = s.unchanged(ctx, run, after)
+		var why string
+
+		res.Outcome, why = s.unchanged(ctx, run, after)
+		res.Error = cmp.Or(res.Error, why)
 	case after.present && !changed:
 		res.Outcome, res.OtherTool = OutcomeBlocked, after.tool
 	default:
@@ -405,17 +420,26 @@ func (s *Service) wrote(run *actionRun, after hookFile, res *ActionResult) {
 
 // unchanged works out an install that left go-pre-commit's hook as it was: already current
 // when those bytes are what this copy writes, failed when they aren't, and unverified when
-// that can't be told.
-func (s *Service) unchanged(ctx context.Context, run *actionRun, after hookFile) ActionOutcome {
-	current, known := s.verdict(ctx, after, run.tool)
+// that can't be told, with why when there's more to say. The copy that ran is asked only
+// while it is the one in use; a status the app's quit cut short cuts the Finish short.
+func (s *Service) unchanged(ctx context.Context, run *actionRun, after hookFile) (ActionOutcome, string) {
+	if run.stale {
+		return OutcomeUnverified, "the copy of go-pre-commit that ran isn't the one in use now, so it can't say " +
+			"whether the hook it left is current"
+	}
+
+	current, known, err := s.judgeBytes(ctx, after, run.tool)
+	if cutShort(ctx, err) {
+		run.cut = true
+	}
 
 	switch {
 	case !known:
-		return OutcomeUnverified
+		return OutcomeUnverified, ""
 	case current:
-		return OutcomeCurrent
+		return OutcomeCurrent, ""
 	default:
-		return OutcomeFailed
+		return OutcomeFailed, ""
 	}
 }
 

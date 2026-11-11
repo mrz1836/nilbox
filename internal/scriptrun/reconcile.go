@@ -195,9 +195,9 @@ func (e *Engine) resumeTerminal(ctx context.Context, rec Record) *settled {
 }
 
 // liveOf returns the state of a run from before the app started. Its Spec's output
-// reader, progress, Finish, and Recorded were the app's before it restarted: its kind's
-// Verifier, when it has one, gives them again, and the reader is fed the run's log from
-// its start.
+// reader, progress, Finish, Recorded, and Released were the app's before it restarted: its
+// kind's Verifier, when it has one, gives them again, and the reader is fed the run's log
+// from its start.
 func (e *Engine) liveOf(rec Record) *live {
 	l := &live{
 		id: rec.ID, kind: rec.Kind, runsIn: rec.RunsIn, tool: rec.Result.Tool, dir: rec.Dir,
@@ -207,7 +207,8 @@ func (e *Engine) liveOf(rec Record) *live {
 
 	if v := e.verifier(rec.Kind); v != nil {
 		got := v.Verify(rec)
-		l.output, l.progress, l.finish, l.recorded = got.Output, got.Progress, got.Finish, got.Recorded
+		l.output, l.progress, l.finish = got.Output, got.Progress, got.Finish
+		l.recorded, l.released = got.Recorded, got.Released
 	}
 
 	return l

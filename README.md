@@ -781,7 +781,7 @@ Before opening a pull request, run the full gate:
 magex format:fix && magex lint && magex test:race && go-pre-commit run --all-files
 magex frontend:gate
 magex db:check       # the generated queries are current and every query prepares
-magex app:check      # macOS: bindings drift check, desktop lint, and bundle build
+magex app:check      # macOS: bindings drift check, desktop lint, desktop tests, and bundle build
 ```
 
 </details>

@@ -702,12 +702,12 @@ func fileImports(t *testing.T, root, rel string) []string {
 
 // wailsBootstrapFiles are the only files allowed to import the desktop runtime: the
 // desktop shell (the desktop main, the menu bar icon, and the notification banners, each
-// in a *_desktop.go file), its per-OS window options, and the desktop-tagged frontend
-// embed.
+// in a *_desktop.go file) and its desktop-tagged tests (*_desktop_test.go), its per-OS
+// window options, and the desktop-tagged frontend embed.
 func wailsBootstrapFiles() []string {
 	cmd := "cmd/" + brand.Slug + "/"
 
-	return []string{cmd + "*_desktop.go", cmd + "window_*.go", "frontend/assets_desktop.go"}
+	return []string{cmd + "*_desktop.go", cmd + "*_desktop_test.go", cmd + "window_*.go", "frontend/assets_desktop.go"}
 }
 
 // wailsAllowed reports whether the repository file rel may import the desktop runtime.
@@ -755,11 +755,13 @@ func TestWailsAllowed(t *testing.T) {
 
 	for rel, want := range map[string]bool{
 		cmd + "main_desktop.go":             true,
+		cmd + "bound_desktop_test.go":       true,
 		cmd + "window_darwin.go":            true,
 		cmd + "window_other.go":             true,
 		"frontend/assets_desktop.go":        true,
 		cmd + "main.go":                     false,
 		cmd + "sub/main_desktop.go":         false,
+		cmd + "main_test.go":                false,
 		"internal/core/core.go":             false,
 		"internal/launcher/main_desktop.go": false,
 		"frontend/other_desktop.go":         false,

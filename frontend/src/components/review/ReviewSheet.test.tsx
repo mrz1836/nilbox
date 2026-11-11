@@ -160,7 +160,9 @@ describe('ReviewSheet', () => {
     await userEvent.click(await actionButton('Approve'))
 
     const status = await screen.findByRole('status')
-    expect(within(status).getByRole('heading', { name: 'Approve acme-org/example-repo#7' })).toBeInTheDocument()
+    const heading = within(status).getByRole('heading', { name: 'Approve acme-org/example-repo#7' })
+    // The pull request is its own piece of the title, which wraps as a whole after the action.
+    expect(within(heading).getByText('acme-org/example-repo#7')).toBeInTheDocument()
     expect(within(status).getByRole('listitem')).toHaveTextContent('Starting…')
     expect(within(status).getByText(/Waiting for GitHub/)).toBeInTheDocument()
 
@@ -545,12 +547,16 @@ describe('ReviewSheet', () => {
 
 describe('withStep', () => {
   it('adds each new step once, and nothing when no action runs', () => {
-    const started = { title: 'Approve', steps: [] }
+    const started = { title: 'Approve', target: 'acme-org/example-repo#7', steps: [] }
 
     expect(withStep(null, 'Approving')).toBeNull()
-    expect(withStep(started, 'Approving')).toEqual({ title: 'Approve', steps: ['Approving'] })
+    expect(withStep(started, 'Approving')).toEqual({
+      title: 'Approve',
+      target: 'acme-org/example-repo#7',
+      steps: ['Approving'],
+    })
 
-    const once = { title: 'Approve', steps: ['Approving'] }
+    const once = { title: 'Approve', target: 'acme-org/example-repo#7', steps: ['Approving'] }
 
     expect(withStep(once, 'Approving')).toBe(once)
   })

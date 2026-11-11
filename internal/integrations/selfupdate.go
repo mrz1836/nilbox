@@ -20,6 +20,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
+	"github.com/mrz1836/nilbox/internal/shellenv"
 	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/toolinstall"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -148,7 +149,7 @@ func (v Verifier) Verify(run scriptrun.Record) scriptrun.Verification {
 	return scriptrun.Verification{
 		Output: r.reader,
 		Finish: func(ctx context.Context, end scriptrun.Ending, out scriptrun.Outcome) scriptrun.Outcome {
-			if !v.s.awaitShell(ctx) {
+			if !shellenv.Await(ctx, v.s.env.Ready()) {
 				return scriptrun.Outcome{Unsettled: true}
 			}
 
@@ -514,18 +515,6 @@ func (s *Service) intentOf(recorded any) (Definition, updateIntent, bool) {
 	def, known := s.definition(in.Tool)
 
 	return def, in, err == nil && known && filepath.IsAbs(in.Path)
-}
-
-// awaitShell waits, until ctx ends, for the login shell's environment to have been read
-// once, and reports whether it was: a run from before a restart is picked up as the app
-// starts, alongside that read.
-func (s *Service) awaitShell(ctx context.Context) bool {
-	select {
-	case <-s.env.Ready():
-		return true
-	case <-ctx.Done():
-		return false
-	}
 }
 
 // judgeUpdate words what a tool's own updater did into res, and returns the run's outcome:
