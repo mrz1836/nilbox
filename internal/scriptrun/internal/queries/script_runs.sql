@@ -58,6 +58,14 @@ FROM script_runs
 WHERE status IN ('running', 'orphaned')
 ORDER BY id;
 
+-- name: EndedRunsOfKind :many
+-- EndedRunsOfKind returns the runs of a kind that have finished, oldest first.
+SELECT id, kind, title, source, repo_owner, repo_name, dir, argv, command, runs_in, status, exit_code, pid, pgid,
+       proc_started_at, summary, result, log_bytes, seen_at, started_at, finished_at
+FROM script_runs
+WHERE kind = sqlc.arg(kind) AND status NOT IN ('running', 'orphaned')
+ORDER BY started_at, id;
+
 -- name: RunIDs :many
 -- RunIDs returns the ID of every run.
 SELECT id FROM script_runs ORDER BY id;

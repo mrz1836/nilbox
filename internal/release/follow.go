@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"time"
 
@@ -14,13 +15,26 @@ import (
 
 // The limits of following a release's workflow on GitHub (§3.4.9): the first poll a
 // minute after the follow starts, or resumes after a restart, then one every three
-// minutes, at most FollowPolls of them over FollowFor, whichever comes first. A release's
-// follow so spends at most 20 points of the API budget.
+// minutes, at most FollowPolls of them over FollowFor, whichever comes first. Each poll
+// is one GraphQL query of one point and, until the release is published, one REST request,
+// so a release's follow spends at most 20 of each.
 const (
 	FollowFor   = 45 * time.Minute
 	FollowPolls = 20
 	FollowFirst = time.Minute
 	FollowEvery = 3 * time.Minute
+)
+
+const (
+	// followNoRunsPolls is the poll by which a tag with no workflow run of its own, and no
+	// release published, stops the follow: the third, about seven minutes in.
+	followNoRunsPolls = 3
+
+	// recordTries is how many times a follow that ended tries to write that into its
+	// release's record, recordRetry apart and doubling, before it leaves the follow to the
+	// next start.
+	recordTries = 4
+	recordRetry = time.Second
 )
 
 // FollowState is where following a release's workflow on GitHub is.
@@ -31,14 +45,23 @@ const (
 	// FollowFollowing is a follow going on, within its limits.
 	FollowFollowing FollowState = "following"
 
-	// FollowPublished is a release its workflow published: GitHub has it, published, and
-	// not a draft.
+	// FollowPublished is a release GitHub published: it has it, published, and not a draft.
 	FollowPublished FollowState = "published"
 
-	// FollowFailed is a release whose workflow failed: the tag's own push run.
+	// FollowFailed is a release one of whose tag's workflow runs failed, once all of them
+	// ended without it being published.
 	FollowFailed FollowState = "failed"
 
-	// FollowTimedOut is a follow that reached its limits with neither: nothing is assumed.
+	// FollowNoWorkflow is a tag no workflow ran for by the third poll, with no release
+	// published: there's nothing to follow.
+	FollowNoWorkflow FollowState = "noWorkflow"
+
+	// FollowUnpublished is a tag whose workflow runs all ended well, with no release
+	// published a poll later.
+	FollowUnpublished FollowState = "unpublished"
+
+	// FollowTimedOut is a follow that reached its limits with none of those: nothing is
+	// assumed.
 	FollowTimedOut FollowState = "timedOut"
 )
 
@@ -57,12 +80,21 @@ type Follow struct {
 	Ended   string `json:"ended"`
 	Minutes int    `json:"minutes"`
 
-	// Polls counts the queries it made.
+	// Polls counts the polls it made.
 	Polls int `json:"polls"`
 
+	// RunsDone reports the last poll found every one of the tag's runs ended well, and no
+	// release published: the next poll that finds no release published either stops the
+	// follow (FollowUnpublished).
+	RunsDone bool `json:"runsDone"`
+
+	// Workflow is the name of the tag's workflow that failed, for FollowFailed, or "".
+	Workflow string `json:"workflow"`
+
 	// URL is the page its line links to: the release's once published; the failed run's,
-	// or else the tag's Actions runs, once failed; the tag's Actions runs once it stopped
-	// at its limits; and "" while it goes on.
+	// or else the tag's Actions runs, once failed; the repository's releases once the tag's
+	// runs ended with none published; the tag's Actions runs once no workflow ran, or it
+	// stopped at its limits; and "" while it goes on.
 	URL string `json:"url"`
 }
 
@@ -72,14 +104,25 @@ type Workflow struct {
 	Published  bool
 	ReleaseURL string
 
-	// Failed reports the tag's own push run failed, and RunURL is that run's page, or "".
-	Failed bool
-	RunURL string
+	// Runs are the tag's own workflow runs: those a push of the tag started at its commit.
+	// They are left unread once the release is published.
+	Runs []TagRun
 }
 
-// Workflows reads how a release's workflow goes on GitHub with one query, which the API
-// budget counts: core adapts the GitHub client's FetchReleaseProgress. commit is the
-// commit the release's tag points at on origin.
+// TagRun is one of the tag's own workflow runs.
+type TagRun struct {
+	// Workflow is its workflow's name, as goreleaser, and URL its page.
+	Workflow string
+	URL      string
+
+	// Done reports it ended, and Failed that it failed, timed out, or never started.
+	Done   bool
+	Failed bool
+}
+
+// Workflows reads how a release's workflow goes on GitHub: core adapts the GitHub client's
+// FetchReleaseProgress, which the API budget counts. commit is the commit the release's tag
+// points at on origin.
 type Workflows interface {
 	ReleaseWorkflow(ctx context.Context, name repo.Name, tag, commit string) (Workflow, error)
 }
@@ -99,16 +142,32 @@ type followed struct {
 	res  Result
 }
 
+// followLinks are the pages a follow's line links to: the tag's, its Actions runs, and the
+// repository's releases, where a draft shows.
+type followLinks struct {
+	tag      string
+	runs     string
+	releases string
+}
+
+// links returns the pages fl's line links to.
+func (fl followed) links() followLinks {
+	return followLinks{
+		tag: fl.res.TagURL, runs: fl.res.WorkflowURL, releases: "https://github.com/" + fl.name.String() + "/releases",
+	}
+}
+
 // startFollow returns the follow of res that starts now, or nil for a result that can't
 // be followed: one that isn't on GitHub, with no repository, tag, or commit to ask about,
-// or a Service that can't follow at all.
+// or a Service that can't follow at all. A follow reads the real clock, for its limits and
+// its waits alike (clock.Sleep), since a Clock makes no timers.
 func (s *Service) startFollow(name repo.Name, res Result) *Follow {
 	if s.workflows == nil || s.records == nil || res.Kind != ResultReleased || !name.Valid() || res.Tag == "" ||
 		res.Commit == "" {
 		return nil
 	}
 
-	now := s.clock.Now()
+	now := time.Now()
 
 	return &Follow{State: FollowFollowing, Since: clock.Format(now), Until: clock.Format(now.Add(FollowFor))}
 }
@@ -141,25 +200,26 @@ func (s *Service) takeFollows() []followed {
 	return out
 }
 
-// Follower follows each release that reached GitHub until its workflow publishes it, the
-// workflow fails, or the follow reaches its limits (§3.4.9): it polls GitHub a minute after
-// the follow starts, then every three minutes, at most FollowPolls times over FollowFor.
-// Each poll's count, and how the follow ended, are written into the release's record, so
-// the run's result and Recent say so, and a follow cut off by a quit resumes on the next
-// start within the same limits. A release published, or whose workflow failed, is told to
-// the user (release_published, release_failed); one that reached the limits only says so
-// in its result. The desktop shell runs it as deferred work, from the first paint until
-// quit; it is not bound.
+// Follower follows each release that reached GitHub until GitHub publishes it, one of the
+// tag's workflows fails, the answer is otherwise settled, or the follow reaches its limits
+// (§3.4.9): it polls GitHub a minute after the follow starts, then every three minutes, at
+// most FollowPolls times over FollowFor. Each poll's count, and how the follow ended, are
+// written into the release's record, so the run's result and Recent say so, and a follow
+// cut off by a quit resumes on the next start within the same limits. A release published,
+// or whose workflow failed, is told to the user (release_published, release_failed); any
+// other end only says so in the result. It reads the real clock throughout; tests run it
+// in a synctest bubble. The desktop shell runs it as deferred work, from the first paint
+// until quit; it is not bound.
 type Follower struct {
 	s *Service
 
 	// first is how long after a follow starts, or resumes, it first polls, and every how
-	// long after it polls again: FollowFirst and FollowEvery, which tests shorten.
+	// long after it polls again: FollowFirst and FollowEvery, which tests change.
 	first time.Duration
 	every time.Duration
 
-	// mu guards seen: the follows started in this run of the app, so one handed over twice,
-	// resumed and recorded meanwhile, is followed once.
+	// mu guards seen: the follows going, or ended, in this run of the app, so one handed
+	// over twice, resumed and recorded meanwhile, is followed once.
 	mu   sync.Mutex
 	seen map[followKey]bool
 
@@ -177,6 +237,11 @@ func NewFollower(s *Service) *Follower {
 type followKey struct {
 	id    int64
 	since string
+}
+
+// keyOf names fl's follow.
+func keyOf(fl followed) followKey {
+	return followKey{id: fl.id, since: fl.res.Follow.Since}
 }
 
 // Run resumes the follows the releases' records say go on, then follows each release
@@ -231,7 +296,7 @@ func (f *Follower) start(ctx context.Context, fl followed) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	key := followKey{id: fl.id, since: fl.res.Follow.Since}
+	key := keyOf(fl)
 	if f.seen[key] {
 		return
 	}
@@ -246,27 +311,29 @@ func (f *Follower) start(ctx context.Context, fl followed) {
 	}()
 }
 
-// follow polls GitHub for fl's workflow until it is published, it failed, or the follow
-// reaches its limits, writing each poll into the release's record and telling the user of
-// the end. It returns early when ctx ends, the record is gone, or the record no longer
-// says this follow goes on.
-func (f *Follower) follow(ctx context.Context, fl followed) {
-	fw := *fl.res.Follow
+// forget lets go of fl's follow, so the next resume takes it up again.
+func (f *Follower) forget(fl followed) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 
-	until, err := time.Parse(time.RFC3339, fw.Until)
-	if err != nil {
-		until = time.Time{} // a limit that can't be read is reached
-	}
+	delete(f.seen, keyOf(fl))
+}
+
+// follow polls GitHub for fl's workflow until the follow ends, writing each poll into the
+// release's record, then settles how it ended. It returns early when ctx ends, the record
+// is gone, or the record no longer says this follow goes on.
+func (f *Follower) follow(ctx context.Context, fl followed) {
+	fw, until := *fl.res.Follow, limitOf(fl.res.Follow.Until)
 
 	for wait := f.first; ; wait = f.every {
-		now := f.s.clock.Now()
+		now := time.Now()
 		if fw.Polls >= FollowPolls || !now.Before(until) {
-			f.stop(ctx, fl, fw.ended(FollowTimedOut, fl.res.WorkflowURL, earlier(now, until)))
+			f.settle(ctx, fl, fw.ended(FollowTimedOut, fl.links().runs, earlier(now, until)))
 
 			return
 		}
 
-		if !sleep(ctx, min(wait, until.Sub(now))) {
+		if clock.Sleep(ctx, min(wait, until.Sub(now))) != nil {
 			return
 		}
 
@@ -274,14 +341,31 @@ func (f *Follower) follow(ctx context.Context, fl followed) {
 		if fw, goOn = f.poll(ctx, fl, fw, until); !goOn {
 			return
 		}
+
+		if fw.State != FollowFollowing {
+			f.settle(ctx, fl, fw)
+
+			return
+		}
 	}
 }
 
-// poll asks GitHub once how fl's workflow goes, and writes the answer into its record. It
-// returns the follow as it stands then, and whether it goes on: not once it ended, the quit
-// cut the poll off (the next start polls again), or the record says otherwise. A record that
-// couldn't be written leaves the follow going, the poll counted, for the next poll to decide
-// again and write.
+// limitOf reads a follow's limit, until; one that can't be read is the zero time, which is
+// reached already.
+func limitOf(until string) time.Time {
+	t, err := time.Parse(time.RFC3339, until)
+	if err != nil {
+		return time.Time{}
+	}
+
+	return t
+}
+
+// poll asks GitHub once how fl's workflow goes, and returns the follow after it, and
+// whether to go on: not once the quit cut the poll off (the next start polls again), nor
+// once the record is gone or says otherwise. A poll that leaves the follow going is written
+// into the record; one that couldn't be is logged and counted all the same. One that ends
+// the follow is settled by the caller.
 func (f *Follower) poll(ctx context.Context, fl followed, fw Follow, until time.Time) (Follow, bool) {
 	s := f.s
 
@@ -295,37 +379,57 @@ func (f *Follower) poll(ctx context.Context, fl followed, fw Follow, until time.
 			"tag", fl.res.Tag, "error", err)
 	}
 
-	next := fw.polled(got, err, fl.res, s.clock.Now(), until)
-	written, goOn := f.record(ctx, fl, next)
-
-	switch {
-	case !goOn:
-		return fw, false
-	case !written:
-		fw.Polls = next.Polls
-
-		return fw, true
-	case next.State != FollowFollowing:
-		f.ended(ctx, fl, next)
-
-		return next, false
-	default:
+	next := fw.polled(got, err, fl.links(), time.Now(), until)
+	if next.State != FollowFollowing {
 		return next, true
 	}
+
+	if _, goOn := f.record(ctx, fl, next); !goOn {
+		return fw, false
+	}
+
+	return next, true
 }
 
-// stop records a follow that stopped without a poll, and tells of it.
-func (f *Follower) stop(ctx context.Context, fl followed, fw Follow) {
-	if written, _ := f.record(ctx, fl, fw); written {
-		f.ended(ctx, fl, fw)
+// settle writes how fl's follow ended into its record, trying again a few times a moment
+// apart without asking GitHub again, and tells of it once the record holds it. A follow
+// whose record still couldn't be written is logged and let go of, so the next start, which
+// finds the record still following, takes it up again; one the quit cut off is left to
+// the next start too.
+func (f *Follower) settle(ctx context.Context, fl followed, fw Follow) {
+	wait := recordRetry
+
+	for try := 1; ; try++ {
+		written, goOn := f.record(ctx, fl, fw)
+
+		switch {
+		case written:
+			f.ended(ctx, fl, fw)
+
+			return
+		case !goOn:
+			return
+		case try == recordTries:
+			f.s.logger.ErrorContext(ctx, "couldn't record how following a release ended; the next start follows it again",
+				"run", fl.id, "state", string(fw.State))
+			f.forget(fl)
+
+			return
+		}
+
+		if clock.Sleep(ctx, wait) != nil {
+			return
+		}
+
+		wait *= 2
 	}
 }
 
 // record writes fw into fl's record, as long as the record still says this follow goes
 // on. It reports whether it wrote it, and whether the follow goes on: not once the history
 // no longer holds the run, nor once its record says otherwise, as after the user cleared
-// it or another follow of it ended. A record that couldn't be written is logged, and the
-// follow goes on.
+// it or another follow of it ended, nor once ctx ended. A record that couldn't be written
+// is logged, and the follow goes on.
 func (f *Follower) record(ctx context.Context, fl followed, fw Follow) (written, goOn bool) {
 	changed, err := f.s.records.Amend(ctx, fl.id, func(rec scriptrun.Record) (scriptrun.Amendment, bool) {
 		res, err := decodeResult(rec.Result.Outcome)
@@ -354,8 +458,9 @@ func (f *Follower) record(ctx context.Context, fl followed, fw Follow) (written,
 
 // ended logs a follow that stopped, and tells the user of a release published or whose
 // workflow failed, once the record holds it: a follow whose record failed is followed
-// again, and told then, so nothing is told twice. A follow that reached its limits is
-// told nothing: its result says so.
+// again, and told then, so nothing is told twice. The record already holds the outcome, so
+// a quit landing now doesn't keep the user from hearing it. Any other end is told nothing:
+// its result says so.
 func (f *Follower) ended(ctx context.Context, fl followed, fw Follow) {
 	s := f.s
 	what := fl.name.String() + " " + fl.res.Tag
@@ -367,31 +472,77 @@ func (f *Follower) ended(ctx context.Context, fl followed, fw Follow) {
 		return
 	}
 
+	tell := context.WithoutCancel(ctx)
+
 	switch fw.State {
 	case FollowPublished:
-		s.notifier.Published(ctx, Notice{Repo: fl.name, Title: what + " is published", URL: fw.URL})
+		s.notifier.Published(tell, Notice{Repo: fl.name, Title: what + " is published", URL: fw.URL})
 	case FollowFailed:
-		s.notifier.WorkflowFailed(ctx, Notice{Repo: fl.name, Title: "The release workflow failed for " + what, URL: fw.URL})
-	case FollowFollowing, FollowTimedOut:
+		s.notifier.WorkflowFailed(tell, Notice{Repo: fl.name, Title: failedTitle(fw.Workflow, what), URL: fw.URL})
+	case FollowFollowing, FollowNoWorkflow, FollowUnpublished, FollowTimedOut:
 	}
 }
 
-// polled works out the follow after one poll's answer, at now: published or failed when
-// the answer says so, stopped at its limits when this was the last poll, and going on
-// otherwise. A poll that failed counts all the same.
-func (fw Follow) polled(w Workflow, err error, res Result, now, until time.Time) Follow {
+// failedTitle says that workflow, by name, failed for what, the repository and the tag.
+func failedTitle(workflow, what string) string {
+	return "The " + cmp.Or(workflow, "release") + " workflow failed for " + what
+}
+
+// polled works out the follow after one poll's answer, at now: ended when the answer
+// settles it (read), stopped at its limits when this was the last poll, and going on
+// otherwise. A poll that failed settles nothing, and counts all the same.
+func (fw Follow) polled(w Workflow, err error, links followLinks, now, until time.Time) Follow {
 	fw.Polls++
 
+	if err == nil {
+		fw = fw.read(w, links, now)
+		if fw.State != FollowFollowing {
+			return fw
+		}
+	}
+
+	if fw.Polls >= FollowPolls || !now.Before(until) {
+		return fw.ended(FollowTimedOut, links.runs, now)
+	}
+
+	return fw
+}
+
+// read works out what one answer says, at now: published wins; while one of the tag's
+// runs goes on, the follow goes on; once they all ended, one that failed ends it as
+// failed, and all of them ending well twice in a row, with no release published, ends it
+// as unpublished; and a tag with no run of its own by the third poll ends it as having
+// nothing to follow.
+func (fw Follow) read(w Workflow, links followLinks, now time.Time) Follow {
 	switch {
-	case err == nil && w.Published:
-		return fw.ended(FollowPublished, cmp.Or(w.ReleaseURL, res.TagURL), now)
-	case err == nil && w.Failed:
-		return fw.ended(FollowFailed, cmp.Or(w.RunURL, res.WorkflowURL), now)
-	case fw.Polls >= FollowPolls || !now.Before(until):
-		return fw.ended(FollowTimedOut, res.WorkflowURL, now)
-	default:
+	case w.Published:
+		return fw.ended(FollowPublished, cmp.Or(w.ReleaseURL, links.tag), now)
+	case len(w.Runs) == 0:
+		fw.RunsDone = false
+		if fw.Polls >= followNoRunsPolls {
+			return fw.ended(FollowNoWorkflow, links.runs, now)
+		}
+
+		return fw
+	case slices.ContainsFunc(w.Runs, func(r TagRun) bool { return !r.Done }):
+		fw.RunsDone = false
+
 		return fw
 	}
+
+	if i := slices.IndexFunc(w.Runs, func(r TagRun) bool { return r.Failed }); i >= 0 {
+		fw.Workflow = w.Runs[i].Workflow
+
+		return fw.ended(FollowFailed, cmp.Or(w.Runs[i].URL, links.runs), now)
+	}
+
+	if fw.RunsDone {
+		return fw.ended(FollowUnpublished, links.releases, now)
+	}
+
+	fw.RunsDone = true
+
+	return fw
 }
 
 // ended returns the follow stopped in state at at, its line linking to url.
@@ -406,15 +557,15 @@ func (fw Follow) ended(state FollowState, url string, at time.Time) Follow {
 }
 
 // followedSummary says, in a sentence, how a release on GitHub came out as its follow
-// stands: published, its workflow failed, or else on GitHub.
+// stands: published, one of its workflows failed, or else on GitHub.
 func followedSummary(res Result) string {
 	if res.Follow != nil {
 		switch res.Follow.State {
 		case FollowPublished:
 			return res.Tag + " is published."
 		case FollowFailed:
-			return res.Tag + " is on GitHub, but its release workflow failed."
-		case FollowFollowing, FollowTimedOut:
+			return res.Tag + " is on GitHub, but its " + cmp.Or(res.Follow.Workflow, "release") + " workflow failed."
+		case FollowFollowing, FollowNoWorkflow, FollowUnpublished, FollowTimedOut:
 		}
 	}
 
@@ -428,17 +579,4 @@ func earlier(a, b time.Time) time.Time {
 	}
 
 	return a
-}
-
-// sleep waits d, and reports whether it did: not when ctx ended first.
-func sleep(ctx context.Context, d time.Duration) bool {
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-
-	select {
-	case <-ctx.Done():
-		return false
-	case <-timer.C:
-		return true
-	}
 }

@@ -203,6 +203,16 @@ func (s runStore) list(ctx context.Context) ([]Record, error) {
 	return recordsOf(rows), nil
 }
 
+// ended returns the runs of kind that have ended, oldest first.
+func (s runStore) ended(ctx context.Context, kind Kind) ([]Record, error) {
+	rows, err := s.q.EndedRunsOfKind(ctx, string(kind))
+	if err != nil {
+		return nil, fmt.Errorf("read the runs that ended: %w", err)
+	}
+
+	return recordsOf(rows), nil
+}
+
 // live returns every run that has not ended, oldest first.
 func (s runStore) live(ctx context.Context) ([]Record, error) {
 	rows, err := s.q.LiveRuns(ctx)

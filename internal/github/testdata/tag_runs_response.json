@@ -1,0 +1,65 @@
+{
+    "total_count": 5,
+    "workflow_runs": [
+        {
+            "id": 1000000005,
+            "name": "goreleaser",
+            "head_branch": "v1.4.3",
+            "head_sha": "1111111111111111111111111111111111111111",
+            "path": ".github/workflows/release.yml",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "failure",
+            "html_url": "https://github.com/acme-org/sdk/actions/runs/1000000005",
+            "run_number": 41
+        },
+        {
+            "id": 1000000004,
+            "name": "CI",
+            "head_branch": "v1.4.3",
+            "head_sha": "1111111111111111111111111111111111111111",
+            "path": ".github/workflows/ci.yml",
+            "event": "push",
+            "status": "in_progress",
+            "conclusion": null,
+            "html_url": "https://github.com/acme-org/sdk/actions/runs/1000000004",
+            "run_number": 212
+        },
+        {
+            "id": 1000000003,
+            "name": "CI",
+            "head_branch": "master",
+            "head_sha": "1111111111111111111111111111111111111111",
+            "path": ".github/workflows/ci.yml",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "failure",
+            "html_url": "https://github.com/acme-org/sdk/actions/runs/1000000003",
+            "run_number": 211
+        },
+        {
+            "id": 1000000002,
+            "name": "goreleaser",
+            "head_branch": "v1.4.2",
+            "head_sha": "2222222222222222222222222222222222222222",
+            "path": ".github/workflows/release.yml",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "failure",
+            "html_url": "https://github.com/acme-org/sdk/actions/runs/1000000002",
+            "run_number": 40
+        },
+        {
+            "id": 1000000001,
+            "name": "Scorecard",
+            "head_branch": "v1.4.3",
+            "head_sha": "1111111111111111111111111111111111111111",
+            "path": ".github/workflows/scorecard.yml",
+            "event": "schedule",
+            "status": "completed",
+            "conclusion": "failure",
+            "html_url": "https://github.com/acme-org/sdk/actions/runs/1000000001",
+            "run_number": 9
+        }
+    ]
+}

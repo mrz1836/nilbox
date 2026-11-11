@@ -1596,6 +1596,8 @@ export function releaseFollow(overrides: Partial<ReleaseFollow> = {}): ReleaseFo
     ended: '',
     minutes: 0,
     polls: 3,
+    runsDone: false,
+    workflow: '',
     url: '',
     ...overrides,
   }

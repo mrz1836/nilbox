@@ -26,22 +26,9 @@ func (e *Engine) Amend(ctx context.Context, id int64, change func(Record) (Amend
 	return changed, err
 }
 
-// Ended returns the runs of kind that have ended, oldest first, as the history holds them:
-// a release's follow of its workflow is resumed from them when the app starts again.
+// Ended returns the runs of kind that have ended, oldest first, as the history holds them,
+// reading only those: a release's follow of its workflow is resumed from them when the app
+// starts again.
 func (e *Engine) Ended(ctx context.Context, kind Kind) ([]Record, error) {
-	recs, err := e.store.list(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	out := make([]Record, 0, len(recs))
-
-	// The history lists the newest first.
-	for i := len(recs) - 1; i >= 0; i-- {
-		if rec := recs[i]; rec.Kind == kind && !rec.Status.Live() {
-			out = append(out, rec)
-		}
-	}
-
-	return out, nil
+	return e.store.ended(ctx, kind)
 }

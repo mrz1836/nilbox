@@ -18,26 +18,46 @@ import (
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
-// The pages a followed release's line links to.
+// The pages a followed release's line links to, and what the user is told.
 const (
-	sdkReleaseURL  = "https://github.com/acme-org/sdk/releases/tag/v1.4.3"
-	sdkActionsURL  = "https://github.com/acme-org/sdk/actions?query=branch%3Av1.4.3"
-	sdkFailedRun   = "https://github.com/acme-org/sdk/actions/runs/1000000003"
-	followedRunID  = int64(7)
-	publishedTitle = "acme-org/sdk v1.4.3 is published"
-	failedTitle    = "The release workflow failed for acme-org/sdk v1.4.3"
+	sdkReleaseURL    = "https://github.com/acme-org/sdk/releases/tag/v1.4.3"
+	sdkReleasesURL   = "https://github.com/acme-org/sdk/releases"
+	sdkActionsURL    = "https://github.com/acme-org/sdk/actions?query=branch%3Av1.4.3"
+	sdkFailedRun     = "https://github.com/acme-org/sdk/actions/runs/1000000005"
+	followedRunID    = int64(7)
+	publishedTitle   = "acme-org/sdk v1.4.3 is published"
+	goreleaserFailed = "The goreleaser workflow failed for acme-org/sdk v1.4.3"
+	goreleaser       = "goreleaser"
 )
 
 // errNoRecord is a record that can't be written.
 var errNoRecord = errors.New("database is locked")
 
-// pending is a poll's answer while the workflow goes on.
-func pending() answer { return answer{} }
-
 // answer is one poll's answer.
 type answer struct {
 	w   Workflow
 	err error
+}
+
+// pending is a poll's answer while the tag's release workflow goes on.
+func pending() answer {
+	return answer{w: Workflow{Runs: []TagRun{{Workflow: goreleaser, URL: sdkFailedRun}}}}
+}
+
+// runsEnded is a poll's answer once the tag's runs ended, failed as failed says, with no
+// release published.
+func runsEnded(failed ...bool) answer {
+	runs := make([]TagRun, 0, len(failed))
+	for _, f := range failed {
+		runs = append(runs, TagRun{Workflow: goreleaser, URL: sdkFailedRun, Done: true, Failed: f})
+	}
+
+	return answer{w: Workflow{Runs: runs}}
+}
+
+// published is a poll's answer once the release is published.
+func published() answer {
+	return answer{w: Workflow{Published: true, ReleaseURL: sdkReleaseURL}}
 }
 
 // fakeWorkflows answers each poll in turn, the last answer again once they run out, and
@@ -82,13 +102,17 @@ func (f *fakeWorkflows) polls(start time.Time) []time.Duration {
 }
 
 // fakeRecords holds the releases' records in memory, as the runner's history would: an
-// outcome is kept as plain JSON values.
+// outcome is kept as plain JSON values. Amend fails with amendErr, or for the next
+// failNext calls, and calls afterAmend once it wrote.
 type fakeRecords struct {
-	mu       sync.Mutex
-	recs     map[int64]scriptrun.Record
-	amends   int
-	amendErr error
-	endedErr error
+	mu         sync.Mutex
+	recs       map[int64]scriptrun.Record
+	amends     int
+	tries      int
+	amendErr   error
+	failNext   int
+	afterAmend func()
+	endedErr   error
 }
 
 func newFakeRecords() *fakeRecords {
@@ -120,6 +144,14 @@ func (f *fakeRecords) Amend(
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
+	f.tries++
+
+	if f.failNext > 0 {
+		f.failNext--
+
+		return false, errNoRecord
+	}
+
 	if f.amendErr != nil {
 		return false, f.amendErr
 	}
@@ -148,6 +180,10 @@ func (f *fakeRecords) Amend(
 	f.recs[id] = rec
 	f.amends++
 
+	if f.afterAmend != nil {
+		f.afterAmend()
+	}
+
 	return true, nil
 }
 
@@ -170,6 +206,22 @@ func (f *fakeRecords) failAmends(err error) {
 	defer f.mu.Unlock()
 
 	f.amendErr = err
+}
+
+// failAmendsOnce makes the next n Amends fail.
+func (f *fakeRecords) failAmendsOnce(n int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.failNext = n
+}
+
+// counts returns how many Amends were tried and how many wrote.
+func (f *fakeRecords) counts() (tries, amends int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return f.tries, f.amends
 }
 
 // result returns the release id's result and summary as recorded.
@@ -266,7 +318,12 @@ func (r *followRig) released() {
 
 // run runs the Follower until stop is called, which waits for it to return.
 func (r *followRig) run() (stop func()) {
-	ctx, cancel := context.WithCancel(r.t.Context())
+	return r.runIn(r.t.Context())
+}
+
+// runIn runs the Follower under ctx until stop is called, which ends it and waits for it.
+func (r *followRig) runIn(parent context.Context) (stop func()) {
+	ctx, cancel := context.WithCancel(parent)
 	done := make(chan struct{})
 
 	go func() {
@@ -281,6 +338,22 @@ func (r *followRig) run() (stop func()) {
 		cancel()
 		<-done
 	}
+}
+
+// followedFor runs the Follower over a release that just reached GitHub for an hour of
+// the bubble's time, and returns the release's result and summary as recorded then.
+func (r *followRig) followedFor() (Result, string) {
+	r.t.Helper()
+
+	r.released()
+
+	stop := r.run()
+	defer stop()
+
+	time.Sleep(time.Hour)
+	synctest.Wait()
+
+	return r.recs.result(r.t, followedRunID)
 }
 
 // minutes returns each of ms as minutes.
@@ -322,7 +395,9 @@ func TestTheFollowerPollsWithinItsLimits(t *testing.T) {
 		assert.Equal(t, clock.Format(r.start.Add(FollowFor)), res.Follow.Ended)
 		assert.Equal(t, sdkActionsURL, res.Follow.URL, "its line links to the tag's runs")
 		assert.Equal(t, "v1.4.3 is on GitHub.", summary, "nothing is assumed")
-		assert.Equal(t, 16, r.recs.amends, "each poll is written down")
+
+		_, amends := r.recs.counts()
+		assert.Equal(t, 16, amends, "each poll is written down")
 
 		published, failed := r.notices.followed()
 		assert.Empty(t, published, "the limit tells nothing: the result says so")
@@ -330,22 +405,33 @@ func TestTheFollowerPollsWithinItsLimits(t *testing.T) {
 	})
 }
 
+func TestTheFollowerStopsAtFortyFiveMinutesByTheClock(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		r := newFollowRig(t, pending())
+		r.f.every = 10 * time.Minute
+
+		res, _ := r.followedFor()
+
+		assert.Equal(t, minutes(1, 11, 21, 31, 41, 45), r.gh.polls(r.start),
+			"the last poll comes as 45 minutes end, long before 20")
+		assert.Equal(t, FollowTimedOut, res.Follow.State)
+		assert.Equal(t, 6, res.Follow.Polls)
+		assert.Equal(t, clock.Format(r.start.Add(FollowFor)), res.Follow.Ended)
+		assert.Equal(t, 45, res.Follow.Minutes)
+	})
+}
+
 func TestTheFollowerStopsWhenTheReleaseIsPublished(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
-		r := newFollowRig(t, pending(), pending(), answer{w: Workflow{Published: true, ReleaseURL: sdkReleaseURL}})
-		r.released()
+		r := newFollowRig(t, pending(), pending(), published())
 
-		stop := r.run()
-		defer stop()
-
-		time.Sleep(time.Hour)
-		synctest.Wait()
+		res, summary := r.followedFor()
 
 		assert.Equal(t, minutes(1, 4, 7), r.gh.polls(r.start), "nothing is asked once it is published")
-
-		res, summary := r.recs.result(t, followedRunID)
 		assert.Equal(t, Follow{
 			State: FollowPublished, Since: clock.Format(r.start), Until: clock.Format(r.start.Add(FollowFor)),
 			Ended: clock.Format(r.start.Add(7 * time.Minute)), Minutes: 7, Polls: 3, URL: sdkReleaseURL,
@@ -361,16 +447,32 @@ func TestTheFollowerStopsWhenTheReleaseIsPublished(t *testing.T) {
 	})
 }
 
-func TestTheFollowerStopsWhenTheWorkflowFails(t *testing.T) {
+func TestTheFollowerStopsWhenAWorkflowFails(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name string
-		run  string
-		want string
+		name     string
+		run      TagRun
+		url      string
+		title    string
+		summary  string
+		workflow string
 	}{
-		{name: "it links to the run", run: sdkFailedRun, want: sdkFailedRun},
-		{name: "without the run, to the tag's runs", want: sdkActionsURL},
+		{
+			name: "it names the workflow and links to its run", run: TagRun{Workflow: goreleaser, URL: sdkFailedRun},
+			url: sdkFailedRun, title: goreleaserFailed, summary: "v1.4.3 is on GitHub, but its goreleaser workflow failed.",
+			workflow: goreleaser,
+		},
+		{
+			name: "without its run, it links to the tag's runs", run: TagRun{Workflow: goreleaser},
+			url: sdkActionsURL, title: goreleaserFailed, summary: "v1.4.3 is on GitHub, but its goreleaser workflow failed.",
+			workflow: goreleaser,
+		},
+		{
+			name: "without its name, it is the release workflow", run: TagRun{URL: sdkFailedRun},
+			url: sdkFailedRun, title: "The release workflow failed for acme-org/sdk v1.4.3",
+			summary: "v1.4.3 is on GitHub, but its release workflow failed.",
+		},
 	}
 
 	for _, tt := range tests {
@@ -378,64 +480,135 @@ func TestTheFollowerStopsWhenTheWorkflowFails(t *testing.T) {
 			t.Parallel()
 
 			synctest.Test(t, func(t *testing.T) {
-				r := newFollowRig(t, pending(), answer{w: Workflow{Failed: true, RunURL: tt.run}})
-				r.released()
+				run := tt.run
+				run.Done, run.Failed = true, true
 
-				stop := r.run()
-				defer stop()
+				r := newFollowRig(t, pending(), answer{w: Workflow{Runs: []TagRun{run}}})
 
-				time.Sleep(time.Hour)
-				synctest.Wait()
+				res, summary := r.followedFor()
 
 				assert.Equal(t, minutes(1, 4), r.gh.polls(r.start))
-
-				res, summary := r.recs.result(t, followedRunID)
 				assert.Equal(t, FollowFailed, res.Follow.State)
-				assert.Equal(t, tt.want, res.Follow.URL)
+				assert.Equal(t, tt.url, res.Follow.URL)
+				assert.Equal(t, tt.workflow, res.Follow.Workflow)
 				assert.Equal(t, 2, res.Follow.Polls)
-				assert.Equal(t, "v1.4.3 is on GitHub, but its release workflow failed.", summary)
+				assert.Equal(t, tt.summary, summary)
 
 				published, failed := r.notices.followed()
 				assert.Empty(t, published)
-				assert.Equal(t, []Notice{{Repo: name("sdk"), Title: failedTitle, URL: tt.want}}, failed)
+				assert.Equal(t, []Notice{{Repo: name("sdk"), Title: tt.title, URL: tt.url}}, failed)
 			})
 		})
 	}
+}
+
+func TestAFailureCountsOnlyOnceEveryTagRunEnded(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		failedOne := TagRun{Workflow: goreleaser, URL: sdkFailedRun, Done: true, Failed: true}
+		goingOne := TagRun{Workflow: "CI", URL: "https://github.com/acme-org/sdk/actions/runs/1000000004"}
+		ciDone := goingOne
+		ciDone.Done = true
+
+		r := newFollowRig(t,
+			answer{w: Workflow{Runs: []TagRun{failedOne, goingOne}}},
+			answer{w: Workflow{Runs: []TagRun{failedOne, ciDone}}})
+
+		res, _ := r.followedFor()
+
+		assert.Equal(t, minutes(1, 4), r.gh.polls(r.start), "the first poll found another run still going")
+		assert.Equal(t, FollowFailed, res.Follow.State)
+		assert.Equal(t, goreleaser, res.Follow.Workflow)
+	})
 }
 
 func TestAPublishedReleaseWinsOverAFailedRun(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
-		r := newFollowRig(t, answer{w: Workflow{Published: true, Failed: true, RunURL: sdkFailedRun}})
-		r.released()
+		failed := runsEnded(true)
+		failed.w.Published = true
 
-		stop := r.run()
-		defer stop()
+		r := newFollowRig(t, failed)
 
-		time.Sleep(time.Hour)
-		synctest.Wait()
+		res, _ := r.followedFor()
 
-		res, _ := r.recs.result(t, followedRunID)
 		assert.Equal(t, FollowPublished, res.Follow.State)
 		assert.Equal(t, sdkReleaseURL, res.Follow.URL, "without the release's own page, the tag's")
 	})
+}
+
+func TestTheFollowerStopsWhenNoWorkflowRanForTheTag(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		r := newFollowRig(t, answer{})
+
+		res, summary := r.followedFor()
+
+		assert.Equal(t, minutes(1, 4, 7), r.gh.polls(r.start), "it asks no more after the third poll")
+		assert.Equal(t, FollowNoWorkflow, res.Follow.State)
+		assert.Equal(t, sdkActionsURL, res.Follow.URL)
+		assert.Equal(t, "v1.4.3 is on GitHub.", summary)
+
+		published, failed := r.notices.followed()
+		assert.Empty(t, published, "a result line, and no banner")
+		assert.Empty(t, failed)
+	})
+}
+
+func TestTheFollowerStopsWhenTheWorkflowsEndedWithNoRelease(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		answers []answer
+		want    []time.Duration
+	}{
+		{name: "two polls in a row", answers: []answer{runsEnded(false)}, want: minutes(1, 4)},
+		{
+			name:    "a run started again in between",
+			answers: []answer{runsEnded(false), pending(), runsEnded(false), runsEnded(false)},
+			want:    minutes(1, 4, 7, 10),
+		},
+		{
+			name:    "a poll that failed in between",
+			answers: []answer{runsEnded(false), {err: errGitHubDown}, runsEnded(false)},
+			want:    minutes(1, 4, 7),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			synctest.Test(t, func(t *testing.T) {
+				r := newFollowRig(t, tt.answers...)
+
+				res, summary := r.followedFor()
+
+				assert.Equal(t, tt.want, r.gh.polls(r.start))
+				assert.Equal(t, FollowUnpublished, res.Follow.State)
+				assert.Equal(t, sdkReleasesURL, res.Follow.URL, "where a draft would show")
+				assert.Equal(t, "v1.4.3 is on GitHub.", summary)
+
+				published, failed := r.notices.followed()
+				assert.Empty(t, published, "a result line, and no banner")
+				assert.Empty(t, failed)
+			})
+		})
+	}
 }
 
 func TestAPollThatFailsCountsAndTheFollowGoesOn(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
-		r := newFollowRig(t, answer{err: errGitHubDown}, answer{w: Workflow{Published: true, ReleaseURL: sdkReleaseURL}})
-		r.released()
+		r := newFollowRig(t, answer{err: errGitHubDown}, published())
 
-		stop := r.run()
-		defer stop()
+		res, _ := r.followedFor()
 
-		time.Sleep(time.Hour)
-		synctest.Wait()
-
-		res, _ := r.recs.result(t, followedRunID)
 		assert.Equal(t, FollowPublished, res.Follow.State)
 		assert.Equal(t, 2, res.Follow.Polls, "the poll that failed counts against the budget")
 		assert.Contains(t, r.logs.String(), "couldn't read a release's workflow on GitHub")
@@ -504,7 +677,7 @@ func TestAReleaseHandedOverTwiceIsFollowedOnce(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
-		r := newFollowRig(t, pending(), answer{w: Workflow{Published: true, ReleaseURL: sdkReleaseURL}})
+		r := newFollowRig(t, pending(), published())
 
 		// Recorded before the Follower ran, so it is both queued and resumed.
 		r.released()
@@ -529,7 +702,7 @@ func TestAReleaseThatEndsWhileTheFollowerRunsIsFollowed(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
-		r := newFollowRig(t, answer{w: Workflow{Published: true, ReleaseURL: sdkReleaseURL}})
+		r := newFollowRig(t, published())
 
 		stop := r.run()
 		defer stop()
@@ -601,6 +774,42 @@ func (c *cancelingWorkflows) ReleaseWorkflow(ctx context.Context, _ repo.Name, _
 	return Workflow{}, ctx.Err()
 }
 
+func TestTheNoticeOutlivesAQuitThatLandsAsItIsRecorded(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		answer answer
+	}{
+		{name: "published", answer: published()},
+		{name: "a workflow failed", answer: runsEnded(true)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			synctest.Test(t, func(t *testing.T) {
+				r := newFollowRig(t, tt.answer)
+				r.released()
+
+				ctx, quit := context.WithCancel(t.Context())
+				r.recs.afterAmend = quit
+
+				stop := r.runIn(ctx)
+				defer stop()
+
+				time.Sleep(time.Hour)
+				synctest.Wait()
+
+				published, failed := r.notices.followed()
+				assert.Len(t, append(published, failed...), 1, "told, though the app quit just as it was recorded")
+				assert.Equal(t, []error{nil}, r.notices.endedContexts(), "told with a context the quit doesn't end")
+			})
+		})
+	}
+}
+
 func TestAFollowStopsWhenItsRecordDoes(t *testing.T) {
 	t.Parallel()
 
@@ -630,7 +839,7 @@ func TestAFollowStopsWhenItsRecordDoes(t *testing.T) {
 			t.Parallel()
 
 			synctest.Test(t, func(t *testing.T) {
-				r := newFollowRig(t, answer{w: Workflow{Published: true, ReleaseURL: sdkReleaseURL}})
+				r := newFollowRig(t, published())
 				r.released()
 
 				stop := r.run()
@@ -651,57 +860,101 @@ func TestAFollowStopsWhenItsRecordDoes(t *testing.T) {
 	}
 }
 
-func TestARecordThatFailsIsWrittenAgainAndToldOnce(t *testing.T) {
+func TestAPollWhoseRecordFailsStillCounts(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
-		r := newFollowRig(t, answer{w: Workflow{Published: true, ReleaseURL: sdkReleaseURL}})
-		r.released()
-		r.recs.failAmends(errNoRecord)
+		r := newFollowRig(t, pending(), published())
+		r.recs.failAmendsOnce(1)
 
-		stop := r.run()
-		defer stop()
+		res, _ := r.followedFor()
 
-		time.Sleep(2 * time.Minute)
-		synctest.Wait()
-
-		published, _ := r.notices.followed()
-		assert.Empty(t, published, "nothing is told before the record holds it")
-		assert.Contains(t, r.logs.String(), "couldn't record how following a release goes")
-
-		r.recs.failAmends(nil)
-		time.Sleep(time.Hour)
-		synctest.Wait()
-
-		assert.Equal(t, minutes(1, 4), r.gh.polls(r.start), "the next poll decides again")
-
-		res, _ := r.recs.result(t, followedRunID)
+		assert.Equal(t, minutes(1, 4), r.gh.polls(r.start))
 		assert.Equal(t, FollowPublished, res.Follow.State)
-		assert.Equal(t, 2, res.Follow.Polls)
-
-		published, _ = r.notices.followed()
-		assert.Len(t, published, 1)
+		assert.Equal(t, 2, res.Follow.Polls, "the poll whose record failed is counted all the same")
+		assert.Contains(t, r.logs.String(), "couldn't record how following a release goes")
 	})
 }
 
-func TestAFollowPastItsLimitsWhoseRecordFailsIsLeft(t *testing.T) {
+func TestADecidedFollowIsWrittenAgainWithoutAskingGitHubAgain(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
-		r := newFollowRig(t)
-		r.recs.add(t, followedRunID, followingSince(r.start.Add(-time.Hour), 3))
-		r.recs.failAmends(errNoRecord)
+		r := newFollowRig(t, published())
+		r.recs.failAmendsOnce(2)
 
-		stop := r.run()
-		defer stop()
+		res, _ := r.followedFor()
 
-		time.Sleep(time.Hour)
-		synctest.Wait()
+		assert.Equal(t, minutes(1), r.gh.polls(r.start), "it asks GitHub once")
 
-		res, _ := r.recs.result(t, followedRunID)
-		assert.Equal(t, FollowFollowing, res.Follow.State, "the next start settles it")
-		assert.Empty(t, r.gh.polls(r.start))
+		tries, amends := r.recs.counts()
+		assert.Equal(t, 3, tries, "written again, twice, a moment apart")
+		assert.Equal(t, 1, amends)
+
+		assert.Equal(t, FollowPublished, res.Follow.State, "published, never timed out")
+		assert.Equal(t, clock.Format(r.start.Add(time.Minute)), res.Follow.Ended, "as the poll decided")
+
+		published, _ := r.notices.followed()
+		assert.Len(t, published, 1, "told once, as soon as the record holds it")
 	})
+}
+
+func TestAFollowWhoseEndCantBeRecordedIsLeftToTheNextStart(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		answer answer
+		ago    time.Duration
+		polls  []time.Duration
+	}{
+		{name: "published", answer: published(), polls: minutes(1)},
+		{name: "past its limits", ago: time.Hour, polls: []time.Duration{}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			synctest.Test(t, func(t *testing.T) {
+				r := newFollowRig(t, tt.answer)
+				r.recs.add(t, followedRunID, followingSince(r.start.Add(-tt.ago), 3))
+				r.recs.failAmends(errNoRecord)
+
+				stop := r.run()
+				defer stop()
+
+				time.Sleep(time.Hour)
+				synctest.Wait()
+
+				assert.Equal(t, tt.polls, r.gh.polls(r.start))
+
+				tries, _ := r.recs.counts()
+				assert.Equal(t, recordTries, tries, "a few tries, then it gives up")
+				assert.Contains(t, r.logs.String(), "couldn't record how following a release ended")
+
+				res, _ := r.recs.result(t, followedRunID)
+				assert.Equal(t, FollowFollowing, res.Follow.State, "the next start settles it")
+
+				published, _ := r.notices.followed()
+				assert.Empty(t, published, "nothing is told the record doesn't hold")
+
+				r.f.mu.Lock()
+				assert.Empty(t, r.f.seen, "let go of, for a resume to take up again")
+				r.f.mu.Unlock()
+
+				// The next start finds the record writable again.
+				r.recs.failAmends(nil)
+				r.f.resume(t.Context())
+
+				time.Sleep(time.Hour)
+				synctest.Wait()
+
+				res, _ = r.recs.result(t, followedRunID)
+				assert.NotEqual(t, FollowFollowing, res.Follow.State, "taken up again and settled")
+			})
+		})
+	}
 }
 
 func TestAFollowWithALimitThatCantBeReadStops(t *testing.T) {
@@ -761,25 +1014,28 @@ func TestTheFollowerLogsARecordItCantRead(t *testing.T) {
 func TestStartFollow(t *testing.T) {
 	t.Parallel()
 
-	at := time.Date(2026, 11, 11, 15, 4, 5, 0, time.UTC)
-	s := NewService(Config{Workflows: &fakeWorkflows{}, Records: newFakeRecords(), Clock: testutil.NewClock(at)})
+	synctest.Test(t, func(t *testing.T) {
+		s := NewService(Config{Workflows: &fakeWorkflows{}, Records: newFakeRecords()})
+		now := time.Now()
 
-	assert.Equal(t, &Follow{State: FollowFollowing, Since: "2026-11-11T15:04:05Z", Until: "2026-11-11T15:49:05Z"},
-		s.startFollow(name("sdk"), sdkReleased()))
+		assert.Equal(t, &Follow{
+			State: FollowFollowing, Since: clock.Format(now), Until: clock.Format(now.Add(45 * time.Minute)),
+		}, s.startFollow(name("sdk"), sdkReleased()), "45 minutes from now, on the clock its waits use")
 
-	notPushed := sdkReleased()
-	notPushed.Kind = ResultNotPushed
+		notPushed := sdkReleased()
+		notPushed.Kind = ResultNotPushed
 
-	noCommit := sdkReleased()
-	noCommit.Commit = ""
+		noCommit := sdkReleased()
+		noCommit.Commit = ""
 
-	noTag := sdkReleased()
-	noTag.Tag = ""
+		noTag := sdkReleased()
+		noTag.Tag = ""
 
-	assert.Nil(t, s.startFollow(name("sdk"), notPushed), "a release not on GitHub")
-	assert.Nil(t, s.startFollow(name("sdk"), noCommit))
-	assert.Nil(t, s.startFollow(name("sdk"), noTag))
-	assert.Nil(t, s.startFollow(repo.Name{}, sdkReleased()), "no repository to ask about")
+		assert.Nil(t, s.startFollow(name("sdk"), notPushed), "a release not on GitHub")
+		assert.Nil(t, s.startFollow(name("sdk"), noCommit))
+		assert.Nil(t, s.startFollow(name("sdk"), noTag))
+		assert.Nil(t, s.startFollow(repo.Name{}, sdkReleased()), "no repository to ask about")
+	})
 }
 
 func TestFollowedSummary(t *testing.T) {
@@ -789,10 +1045,12 @@ func TestFollowedSummary(t *testing.T) {
 	assert.Equal(t, "v1.4.3 is on GitHub.", followedSummary(res))
 
 	for state, want := range map[FollowState]string{
-		FollowFollowing: "v1.4.3 is on GitHub.",
-		FollowPublished: "v1.4.3 is published.",
-		FollowFailed:    "v1.4.3 is on GitHub, but its release workflow failed.",
-		FollowTimedOut:  "v1.4.3 is on GitHub.",
+		FollowFollowing:   "v1.4.3 is on GitHub.",
+		FollowPublished:   "v1.4.3 is published.",
+		FollowFailed:      "v1.4.3 is on GitHub, but its release workflow failed.",
+		FollowNoWorkflow:  "v1.4.3 is on GitHub.",
+		FollowUnpublished: "v1.4.3 is on GitHub.",
+		FollowTimedOut:    "v1.4.3 is on GitHub.",
 	} {
 		res.Follow = &Follow{State: state}
 		assert.Equal(t, want, followedSummary(res), state)
@@ -856,12 +1114,12 @@ func TestAReleaseIsFollowedInItsRunsRecordAcrossARestart(t *testing.T) {
 	}, runWait, runPoll, "the poll is written into the run's record")
 
 	gh.mu.Lock()
-	gh.answers = []answer{{w: Workflow{Published: true, ReleaseURL: sdkReleaseURL}}}
+	gh.answers = []answer{published()}
 	gh.mu.Unlock()
 
 	stop()
 
-	// The next start resumes it, and its workflow has published it.
+	// The next start resumes it, and GitHub has published it.
 	next := NewService(Config{Workflows: gh, Records: r.engine, Notifier: r.notices, Logger: r.logs.Logger()})
 
 	stop = runFollower(t, fastFollower(next))

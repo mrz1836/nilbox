@@ -461,22 +461,29 @@ workflow until it publishes the release, and the result says how it goes:
 - **Published:** the heading reads *acme-org/sdk v1.4.3 is published*, the line *The release
   workflow published acme-org/sdk v1.4.3* · **View** opens the release, and the run's summary
   and Recent say *published*.
-- **The workflow failed:** *The release workflow failed for acme-org/sdk v1.4.3* · **View**
-  opens the failed run, or the tag's Actions runs.
+- **A workflow failed:** *The goreleaser workflow failed for acme-org/sdk v1.4.3*, naming the
+  workflow, · **View** opens its run, or the tag's Actions runs.
+- **No workflow ran:** *No workflow ran for the v1.4.3 tag, so there's nothing to follow* ·
+  **View** opens the tag's Actions runs, when none ran for the tag by the third check, about
+  seven minutes in.
+- **Not published:** *The tag's workflows finished, but GitHub hasn't published a release for
+  v1.4.3* · **View** opens the repository's releases, where a draft shows, when every one of
+  the tag's runs ended well and a check later there's still no release.
 - **Stopped:** *Stopped following acme-org/sdk v1.4.3 after 45 minutes* · **View** opens the
   tag's Actions runs. Nothing is assumed: the release is only on GitHub.
 
-It asks GitHub one query a minute after the release ends, then one every three minutes, at most
-20 over 45 minutes, whichever comes first, through the same client as everything else, so the
-API budget gauge counts each. *Published* means GitHub has the tag's release published, not a
-draft. *Failed* means only the tag's own GitHub Actions push run failed (once every one of
-them ended): the tag's commit also carries other apps' checks that may stay queued forever,
-schedule and dynamic runs, and the branch's own push run, and none of those say anything about
-the release. Each poll is written into the release's run, so a follow cut off by quitting
-resumes once the app starts again, within the same 20 queries and 45 minutes. A published
-release and a failed workflow are recorded in the [notification
-history](#menu-bar-and-notifications), with their banners when those kinds are on; a follow
-that stopped at its limits only says so in its result.
+It checks GitHub a minute after the release ends, then every three minutes, at most 20 times
+over 45 minutes, whichever comes first, through the same client as everything else, so the
+API budget gauge counts every request. Each check is one GraphQL query for the tag's release
+and, until it is published, one REST request for the tag's own workflow runs: those a push of
+the tag started at its commit, never the branch's own runs, another tag's, or a schedule's.
+*Published* means GitHub has the tag's release published, not a draft, and wins over anything
+the runs say. *Failed* means one of the tag's runs failed, timed out, or never started, once
+every one of them ended: while one still goes, the release may still be published. Each check
+is written into the release's run, so a follow cut off by quitting resumes once the app starts
+again, within the same 20 checks and 45 minutes. A published release and a failed workflow are
+recorded in the [notification history](#menu-bar-and-notifications), with their banners when
+those kinds are on, even when you quit just then; any other end only says so in its result.
 
 **After a merge.** When you merge a pull request in the review sheet, the toast that says so
 offers **Release acme-org/sdk…** when Release can release it: the setting **Offer a release after
@@ -1372,7 +1379,7 @@ and records what newly needs you:
 | Back from snooze | New activity ends a snooze early under your [wake rules](#waking-a-snooze-early); it says what was new |
 | Released | A release you started reaches GitHub; it names the version and the commit it tagged |
 | Published | The release workflow on GitHub publishes a release you started (*acme-org/sdk v1.4.3 is published*) |
-| Release workflow failed | The release workflow on GitHub fails for a release you started (*The release workflow failed for acme-org/sdk v1.4.3*) |
+| Release workflow failed | A workflow the tag of a release you started ran fails on GitHub (*The goreleaser workflow failed for acme-org/sdk v1.4.3*) |
 
 Nothing is recorded for the first refresh of an account (everything in it would be new), for
 an item you dismissed or that is still snoozed, or for a refresh that failed. A list that shows

@@ -232,15 +232,16 @@ describe('release', () => {
     expect(followState(followed({ state: 'other' }))).toBe('')
     expect(followState(scriptRun())).toBe('')
 
-    for (const state of ['following', 'published', 'failed', 'timedOut'] as const) {
+    for (const state of ['following', 'published', 'failed', 'noWorkflow', 'unpublished', 'timedOut'] as const) {
       expect(followState(followed({ state }))).toBe(state)
     }
 
     expect(recentWords(followed({ state: 'following' }))).toBe('on GitHub, following its workflow')
     expect(recentWords(followed({ state: 'published' }))).toBe('published')
     expect(recentWords(followed({ state: 'failed' }))).toBe('release workflow failed')
+    expect(recentWords(followed({ state: 'noWorkflow' }))).toBe('on GitHub')
+    expect(recentWords(followed({ state: 'unpublished' }))).toBe('on GitHub, not published')
     expect(recentWords(followed({ state: 'timedOut' }))).toBe('on GitHub')
-    expect(recentWords(followed({ state: 'published' }))).toBe('published')
     expect(
       recentWords(
         releaseRun({ result: { ...releaseRun().result, outcome: { kind: 'failed', follow: { state: 'failed' } } } }),
@@ -270,6 +271,26 @@ describe('release', () => {
       text: 'The release workflow failed for acme-org/sdk v1.4.3',
       url: 'https://github.com/acme-org/sdk/actions/runs/7',
       label: 'View the failed workflow',
+    })
+    expect(
+      line({ state: 'failed', workflow: 'goreleaser', url: 'https://github.com/acme-org/sdk/actions/runs/7' }),
+    ).toEqual({
+      tone: 'bad',
+      text: 'The goreleaser workflow failed for acme-org/sdk v1.4.3',
+      url: 'https://github.com/acme-org/sdk/actions/runs/7',
+      label: 'View the failed workflow',
+    })
+    expect(line({ state: 'noWorkflow', url: 'https://github.com/acme-org/sdk/actions' })).toEqual({
+      tone: 'warn',
+      text: 'No workflow ran for the v1.4.3 tag, so there’s nothing to follow',
+      url: 'https://github.com/acme-org/sdk/actions',
+      label: 'View the tag’s workflow runs',
+    })
+    expect(line({ state: 'unpublished', url: 'https://github.com/acme-org/sdk/releases' })).toEqual({
+      tone: 'warn',
+      text: 'The tag’s workflows finished, but GitHub hasn’t published a release for v1.4.3',
+      url: 'https://github.com/acme-org/sdk/releases',
+      label: 'View the releases',
     })
     expect(line({ state: 'timedOut', minutes: 45, url: 'https://github.com/acme-org/sdk/actions' })).toEqual({
       tone: 'warn',

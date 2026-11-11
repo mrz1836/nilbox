@@ -501,14 +501,27 @@ export interface Follow {
     "minutes": number;
 
     /**
-     * Polls counts the queries it made.
+     * Polls counts the polls it made.
      */
     "polls": number;
 
     /**
+     * RunsDone reports the last poll found every one of the tag's runs ended well, and no
+     * release published: the next poll that finds no release published either stops the
+     * follow (FollowUnpublished).
+     */
+    "runsDone": boolean;
+
+    /**
+     * Workflow is the name of the tag's workflow that failed, for FollowFailed, or "".
+     */
+    "workflow": string;
+
+    /**
      * URL is the page its line links to: the release's once published; the failed run's,
-     * or else the tag's Actions runs, once failed; the tag's Actions runs once it stopped
-     * at its limits; and "" while it goes on.
+     * or else the tag's Actions runs, once failed; the repository's releases once the tag's
+     * runs ended with none published; the tag's Actions runs once no workflow ran, or it
+     * stopped at its limits; and "" while it goes on.
      */
     "url": string;
 }
@@ -516,7 +529,7 @@ export interface Follow {
 /**
  * FollowState is where following a release's workflow on GitHub is.
  */
-export type FollowState = "following" | "published" | "failed" | "timedOut";
+export type FollowState = "following" | "published" | "failed" | "noWorkflow" | "unpublished" | "timedOut";
 
 /**
  * The values of FollowState, by the names of their Go constants.
@@ -530,18 +543,31 @@ export const FollowState = {
     FollowFollowing: "following",
 
     /**
-     * FollowPublished is a release its workflow published: GitHub has it, published, and
-     * not a draft.
+     * FollowPublished is a release GitHub published: it has it, published, and not a draft.
      */
     FollowPublished: "published",
 
     /**
-     * FollowFailed is a release whose workflow failed: the tag's own push run.
+     * FollowFailed is a release one of whose tag's workflow runs failed, once all of them
+     * ended without it being published.
      */
     FollowFailed: "failed",
 
     /**
-     * FollowTimedOut is a follow that reached its limits with neither: nothing is assumed.
+     * FollowNoWorkflow is a tag no workflow ran for by the third poll, with no release
+     * published: there's nothing to follow.
+     */
+    FollowNoWorkflow: "noWorkflow",
+
+    /**
+     * FollowUnpublished is a tag whose workflow runs all ended well, with no release
+     * published a poll later.
+     */
+    FollowUnpublished: "unpublished",
+
+    /**
+     * FollowTimedOut is a follow that reached its limits with none of those: nothing is
+     * assumed.
      */
     FollowTimedOut: "timedOut",
 } as const;

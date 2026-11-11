@@ -212,16 +212,28 @@ export function followState(run: Pick<ScriptRun, 'result'>): ReleaseFollowState 
       : null
   const state = stringField(follow, 'state')
 
-  return state === 'following' || state === 'published' || state === 'failed' || state === 'timedOut' ? state : ''
+  return followStates.includes(state as ReleaseFollowState) ? (state as ReleaseFollowState) : ''
 }
 
+// followStates are where following a release's workflow can be.
+const followStates: readonly ReleaseFollowState[] = [
+  'following',
+  'published',
+  'failed',
+  'noWorkflow',
+  'unpublished',
+  'timedOut',
+]
+
 // followWords say where a release on GitHub is as its workflow is followed, in the words
-// Recent lists it with. One that stopped at its limits is still only on GitHub: nothing is
-// assumed.
+// Recent lists it with. One no workflow ran for, or that stopped at its limits, is still
+// only on GitHub: nothing is assumed.
 export const followWords: Readonly<Record<ReleaseFollowState, string>> = {
   following: 'on GitHub, following its workflow',
   published: 'published',
   failed: 'release workflow failed',
+  noWorkflow: 'on GitHub',
+  unpublished: 'on GitHub, not published',
   timedOut: 'on GitHub',
 }
 
@@ -262,8 +274,9 @@ export interface FollowLine {
   label: string
 }
 
-// followLine is the workflow line of a release on GitHub: following it, published, its
-// workflow failed, or stopped at the follow's limits; null for a release not followed.
+// followLine is the workflow line of a release on GitHub: following it, published, one of
+// its workflows failed, no workflow ran, the workflows ended with no release published, or
+// stopped at the follow's limits; null for a release not followed.
 export function followLine(result: ReleaseResult, repo: string): FollowLine | null {
   const { follow } = result
 
@@ -271,7 +284,8 @@ export function followLine(result: ReleaseResult, repo: string): FollowLine | nu
     return null
   }
 
-  const what = `${repo} ${result.tag === '' ? result.version : result.tag}`
+  const tag = result.tag === '' ? result.version : result.tag
+  const what = `${repo} ${tag}`
 
   switch (follow.state) {
     case 'following':
@@ -281,9 +295,23 @@ export function followLine(result: ReleaseResult, repo: string): FollowLine | nu
     case 'failed':
       return {
         tone: 'bad',
-        text: `The release workflow failed for ${what}`,
+        text: `The ${follow.workflow === '' ? 'release' : follow.workflow} workflow failed for ${what}`,
         url: follow.url,
         label: 'View the failed workflow',
+      }
+    case 'noWorkflow':
+      return {
+        tone: 'warn',
+        text: `No workflow ran for the ${tag} tag, so there’s nothing to follow`,
+        url: follow.url,
+        label: 'View the tag’s workflow runs',
+      }
+    case 'unpublished':
+      return {
+        tone: 'warn',
+        text: `The tag’s workflows finished, but GitHub hasn’t published a release for ${tag}`,
+        url: follow.url,
+        label: 'View the releases',
       }
     case 'timedOut':
       return {

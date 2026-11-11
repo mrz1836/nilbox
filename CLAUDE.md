@@ -158,8 +158,8 @@ app:lint` reads.
   `sudo` (`TestNoGoInstall`, `TestNoSudo`); `internal/shellenv` reads the user's login shell's
   environment, after the first paint, and never logs a variable's name or value; and
   `internal/clock`, `internal/periodic`, `internal/flight`, `internal/paths`, and
-  `internal/textutil` hold the clock, the interval runner, one call per key at a time, `~`
-  paths, and text helpers. `internal/testutil` holds the fakes and fixtures the test suites
+  `internal/textutil` hold the clock (and `clock.Sleep`, the one wait that ends with its
+  context), the interval runner, one call per key at a time, `~` paths, and text helpers. `internal/testutil` holds the fakes and fixtures the test suites
   share (a fresh database, an isolated git, a runner, finder, clock, event sink, log, and fake
   tools); only tests may import it.
 - `internal/event/` holds the app's events, one Go type each with its name; services emit them
@@ -615,20 +615,27 @@ app:lint` reads.
   `until`, and `polls`) when the Service has `Workflows` and `Records`, and its `Recorded` hands
   it to the `Follower` once the outcome is kept. It polls a minute after a follow starts or
   resumes, then every three minutes, at most `FollowPolls` (20) over `FollowFor` (45 minutes),
-  each poll one query, `(*github.Client).FetchReleaseProgress` through `postGraphQL` (core's
-  `ReleaseWorkflow`), so the budget counts it. *Published* is the tag's release with
-  `publishedAt` set and not a draft; *failed* is only the tag's own GitHub Actions push run (for
-  no branch, or the tag) concluding in failure once every such run completed, since other
-  apps' suites that stay QUEUED, schedule and dynamic runs, and the branch's own push run say
-  nothing of the release. Each poll is written into the run's record with
-  `scriptrun.Engine.Amend` (an ended run's summary and outcome, in one transaction with its
-  read, and only while the record still says this follow goes on), and the follow stops on
-  *published* (`Notifier.Published`, `release_published`, opening the release), a failed
-  workflow (`Notifier.WorkflowFailed`, `release_failed`, opening the run, or else the tag's
-  Actions runs), or its limits (the result's line alone, no banner), each told only once the
-  record holds it. As it starts, it resumes every release whose record says it follows
-  (`Engine.Ended`), within the same limits; a quit leaves the follow recorded for the next
-  start.
+  on the real clock for its limits and its waits alike (`clock.Sleep`; tests run it in a
+  `testing/synctest` bubble). Each poll is `(*github.Client).FetchReleaseProgress` (core's
+  `ReleaseWorkflow`): the tag's release, one GraphQL query through `postGraphQL`, and, until
+  it is published, the tag's own workflow runs, one REST request through `do` (`GET
+  .../actions/runs` by the push event, the tag as the run's branch, and the tag's commit, each
+  checked again on the answer), so the budget counts both. *Published* (`publishedAt` set, not
+  a draft) wins; while one of the tag's runs goes on, the follow goes on; once they all ended,
+  one that failed, timed out, or never started ends it as failed, named by its workflow; all
+  of them ending well two polls in a row with no release published ends it as
+  `unpublished`, and no run of the tag's by the third poll as `noWorkflow`. Each poll that
+  leaves the follow going is written into the run's record with `scriptrun.Engine.Amend` (an
+  ended run's summary and outcome, in one transaction with its read, and only while the
+  record still says this follow goes on). An end is settled the same way, written again a
+  few times a moment apart without asking GitHub again, and, if it still can't be, logged
+  and let go of for the next start's resume. *Published* (`Notifier.Published`,
+  `release_published`, opening the release) and *failed* (`Notifier.WorkflowFailed`,
+  `release_failed`, opening the run, or else the tag's Actions runs) are told only once the
+  record holds them, with a context the quit doesn't end; `unpublished`, `noWorkflow`, and
+  the limits get the result's line alone, no banner. As it starts, it resumes every release
+  whose record says it follows (`Engine.Ended`, which reads only a kind's ended runs), within
+  the same limits; a quit leaves the follow recorded for the next start.
 - `internal/hooks/` is the Hooks page's service. `Repos` scans, four at a time, every clone
   under the clone root with a go-pre-commit config inside it (a `.github/env/*.env` file, or
   `.github/.env.base`): where git runs its hooks (gitread's `HookPaths`), its `pre-commit` hook

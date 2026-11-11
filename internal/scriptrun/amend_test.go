@@ -142,3 +142,15 @@ func TestEndedListsAKindsEndedRunsOldestFirst(t *testing.T) {
 	assert.NotNil(t, none)
 	assert.Empty(t, none)
 }
+
+func TestEndedFailsWhenTheHistoryCantBeRead(t *testing.T) {
+	t.Parallel()
+
+	var db *sql.DB
+
+	h := newHarness(t, func(cfg *Config) { db = cfg.DB })
+	require.NoError(t, db.Close())
+
+	_, err := h.e.Ended(t.Context(), KindRelease)
+	require.Error(t, err)
+}

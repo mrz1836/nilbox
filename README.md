@@ -568,9 +568,9 @@ More in [The Worktrees view](docs/desktop.md#the-worktrees-view).
   GitHub, the branch your clone is back on, or, if the push didn't land, the commands to finish
   or undo it.
 - **Followed to published.** Once the tag is on GitHub, Nilbox follows the tag's release
-  workflow, at most 20 queries over 45 minutes, and says when the release is published, when
-  the workflow failed, or that it stopped following, with a banner for the first two. It picks
-  up where it left off after a restart.
+  workflow, at most 20 checks over 45 minutes, and says when the release is published, when
+  one of the tag's workflows failed, or why it stopped following, with a banner for the first
+  two. It picks up where it left off after a restart.
 - **After a merge,** the review sheet's toast offers **Release acme-org/sdk…**, behind a setting
   that's on by default. Nilbox never releases by itself.
 - **Hooks** lists every clone with a go-pre-commit config, grouped into needs attention (no hook

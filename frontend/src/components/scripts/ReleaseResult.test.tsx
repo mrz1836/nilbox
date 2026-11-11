@@ -272,9 +272,21 @@ describe('ReleaseResult', () => {
     },
     {
       state: 'failed' as const,
-      text: 'The release workflow failed for acme-org/sdk v1.4.3',
+      text: 'The goreleaser workflow failed for acme-org/sdk v1.4.3',
       url: 'https://github.com/acme-org/sdk/actions/runs/7',
       label: 'View the failed workflow',
+    },
+    {
+      state: 'noWorkflow' as const,
+      text: 'No workflow ran for the v1.4.3 tag, so there’s nothing to follow',
+      url: 'https://github.com/acme-org/sdk/actions?query=branch%3Av1.4.3',
+      label: 'View the tag’s workflow runs',
+    },
+    {
+      state: 'unpublished' as const,
+      text: 'The tag’s workflows finished, but GitHub hasn’t published a release for v1.4.3',
+      url: 'https://github.com/acme-org/sdk/releases',
+      label: 'View the releases',
     },
     {
       state: 'timedOut' as const,
@@ -283,7 +295,9 @@ describe('ReleaseResult', () => {
       label: 'View the release workflow',
     },
   ])('says the workflow line once it is $state, and opens its page', async ({ state, text, url, label }) => {
-    renderResult({ follow: releaseFollow({ state, url, minutes: 45, ended: '2026-06-15T12:45:00Z' }) })
+    renderResult({
+      follow: releaseFollow({ state, url, minutes: 45, ended: '2026-06-15T12:45:00Z', workflow: 'goreleaser' }),
+    })
 
     const c = await card()
 

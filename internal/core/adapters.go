@@ -744,9 +744,9 @@ func (r releaseGitHub) ReleaseCompare(
 	return out, nil
 }
 
-// ReleaseWorkflow reads how a release's workflow on GitHub goes, with one query through the
-// shared client, so the budget counts it (release.Workflows): whether GitHub published the
-// release, and whether the tag's own push run failed, with its page.
+// ReleaseWorkflow reads how a release's workflow on GitHub goes, through the shared client,
+// so the budget counts it (release.Workflows): whether GitHub published the release, with
+// one query, and, until it has, the tag's own workflow runs, with one REST request.
 func (r releaseGitHub) ReleaseWorkflow(ctx context.Context, name repo.Name, tag, commit string) (release.Workflow, error) {
 	got, err := github.WithToken(ctx, r.tokens, func(tok github.Token) (*github.ReleaseProgress, error) {
 		return r.client.FetchReleaseProgress(ctx, tok, github.ProgressRequest{Repo: name, Tag: tag, Commit: commit})
@@ -755,13 +755,15 @@ func (r releaseGitHub) ReleaseWorkflow(ctx context.Context, name repo.Name, tag,
 		return release.Workflow{}, releaseSignedOut(err)
 	}
 
-	out := release.Workflow{Published: got.Published()}
+	out := release.Workflow{Published: got.Published(), Runs: make([]release.TagRun, 0, len(got.Runs))}
 	if got.Release != nil {
 		out.ReleaseURL = got.Release.URL
 	}
 
-	if run, failed := got.Failed(tag); failed {
-		out.Failed, out.RunURL = true, run.RunURL
+	for _, run := range got.Runs {
+		out.Runs = append(out.Runs, release.TagRun{
+			Workflow: run.Name, URL: run.URL, Done: run.Completed(), Failed: run.Failed(),
+		})
 	}
 
 	return out, nil

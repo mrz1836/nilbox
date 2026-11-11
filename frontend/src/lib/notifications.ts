@@ -49,7 +49,7 @@ export const notificationKinds: readonly KindDescription[] = [
     kind: 'release_failed',
     title: 'Release workflow failed',
     label: 'Release workflows failing',
-    description: 'The release workflow on GitHub fails for a release you started from the Scripts tab.',
+    description: 'A workflow the tag of a release you started from the Scripts tab runs on GitHub fails.',
   },
   {
     kind: 'session_needs_you',

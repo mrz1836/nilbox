@@ -5,56 +5,40 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/url"
 	"slices"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/repo"
 )
 
-// What tells a release's own workflow run apart from the rest of the check suites on the
-// tag's commit, as P0 found them on real releases: the commit also carries other apps'
-// suites that stay QUEUED forever, schedule and dynamic runs, and the branch's own push
-// run, none of which say anything about the release.
 const (
-	// actionsApp is GitHub Actions' app slug: only its suites are workflow runs.
-	actionsApp = "github-actions"
-
-	// pushEvent is the event of a run a push started, the tag's or the branch's. It names a
-	// GitHub Actions event, read from GitHub, never a git command, so it is written as a raw
-	// string: TestNoGitCommandChangesAClone looks for git's verbs as quoted words.
+	// pushEvent is the event of a workflow run a push started. It names a GitHub Actions
+	// event, read from GitHub, never a git command, so it is written as a raw string:
+	// TestNoGitCommandChangesAClone looks for git's verbs as quoted words.
 	pushEvent = `push`
+
+	// tagRunsMax is how many runs the tag's runs request lists: a tag's push starts one run
+	// per workflow that runs on tags.
+	tagRunsMax = 100
 )
 
-// The states of a check suite, as GitHub's CheckStatusState and CheckConclusionState name
-// them.
+// The states of a workflow run, as GitHub's REST API names them.
 const (
-	suiteCompleted = "COMPLETED"
+	runCompleted = "completed"
 
-	conclusionFailure        = "FAILURE"
-	conclusionTimedOut       = "TIMED_OUT"
-	conclusionStartupFailure = "STARTUP_FAILURE"
+	conclusionFailure        = "failure"
+	conclusionTimedOut       = "timed_out"
+	conclusionStartupFailure = "startup_failure"
 )
 
-// releaseProgressQuery reads how a release's workflow goes, in one query of one point:
-// the release GitHub has for the tag, if any, and the newest check suites on the tag's
-// commit, each with its app, its state, the branch GitHub ran it for, and its workflow
-// run's page and event. The commit is the one the release verified origin's tag points
-// at.
-const releaseProgressQuery = `query ReleaseProgress($owner: String!, $name: String!, $tag: String!, $oid: GitObjectID!) {
+// releaseProgressQuery reads the release GitHub has for a tag, in one query of one point.
+const releaseProgressQuery = `query ReleaseProgress($owner: String!, $name: String!, $tag: String!) {
   repository(owner: $owner, name: $name) {
     release(tagName: $tag) { url isDraft publishedAt }
-    object(oid: $oid) {
-      ... on Commit {
-        checkSuites(last: 50) {
-          nodes {
-            app { slug name }
-            status conclusion
-            branch { name }
-            workflowRun { url event workflow { name } }
-          }
-        }
-      }
-    }
   }
   rateLimit { cost }
 }
@@ -105,9 +89,10 @@ type ReleaseProgress struct {
 	// the workflow drafts it.
 	Release *TagRelease
 
-	// Suites are the newest check suites on the tag's commit, at most 50, oldest first.
-	// Never nil.
-	Suites []CheckSuite
+	// Runs are the tag's own workflow runs: those a push of the tag started at its commit,
+	// newest first. They are left unread, and empty, once the release is published. Never
+	// nil.
+	Runs []WorkflowRun
 }
 
 // TagRelease is the release GitHub has for a tag.
@@ -122,29 +107,19 @@ type TagRelease struct {
 	PublishedAt time.Time
 }
 
-// CheckSuite is one check suite on a commit: one app's checks, or one workflow run.
-type CheckSuite struct {
-	// App is the app's slug, as github-actions or codecov, and AppName its name; both ""
-	// when GitHub doesn't say.
-	App     string
-	AppName string
+// WorkflowRun is one workflow run.
+type WorkflowRun struct {
+	// Name is the workflow's name, as goreleaser.
+	Name string
 
-	// Status is where it is: QUEUED, IN_PROGRESS, COMPLETED, and the rest of GitHub's
-	// CheckStatusState. Conclusion is how it ended (SUCCESS, FAILURE, and the rest of its
-	// CheckConclusionState), or "" until it has.
+	// Status is where it is: queued, in_progress, completed, and the rest of GitHub's
+	// states. Conclusion is how it ended (success, failure, and the rest), or "" until it
+	// has.
 	Status     string
 	Conclusion string
 
-	// Branch is the branch GitHub ran it for, or "" for none, as for a run a tag's push
-	// started.
-	Branch string
-
-	// Event is what started its workflow run (push, schedule, dynamic, ...), RunURL the
-	// run's page, and Workflow the workflow's name; all "" for a suite that is no workflow
-	// run.
-	Event    string
-	RunURL   string
-	Workflow string
+	// URL is its page on GitHub.
+	URL string
 }
 
 // Published reports the release published: GitHub has it, it isn't a draft, and it has a
@@ -153,66 +128,57 @@ func (p ReleaseProgress) Published() bool {
 	return p.Release != nil && !p.Release.Draft && !p.Release.PublishedAt.IsZero()
 }
 
-// Failed returns the release's own workflow run that failed, and reports whether one did:
-// the tag's own push runs (TagRun) have all completed, and one of them concluded in
-// failure, timed out, or never started. While one of them still goes, the release may
-// still be published. Every other suite on the commit is left out: other apps' (which
-// may stay queued forever), schedule and dynamic runs, and the branch's own push run.
-func (p ReleaseProgress) Failed(tag string) (CheckSuite, bool) {
-	var failed *CheckSuite
-
-	for i, s := range p.Suites {
-		if !s.TagRun(tag) {
-			continue
-		}
-
-		if s.Status != suiteCompleted {
-			return CheckSuite{}, false
-		}
-
-		if failed == nil && s.failure() {
-			failed = &p.Suites[i]
-		}
-	}
-
-	if failed == nil {
-		return CheckSuite{}, false
-	}
-
-	return *failed, true
+// Completed reports a run that has ended.
+func (r WorkflowRun) Completed() bool {
+	return r.Status == runCompleted
 }
 
-// TagRun reports whether s is one of tag's own push runs: a GitHub Actions run a push
-// started, for no branch, or for the tag itself, as GitHub names a tag's push. A run for a
-// branch is the branch's own push of the commit.
-func (s CheckSuite) TagRun(tag string) bool {
-	return s.App == actionsApp && s.Event == pushEvent && (s.Branch == "" || s.Branch == tag)
-}
-
-// failure reports a suite that concluded in failure, timed out, or never started. One
+// Failed reports a run that concluded in failure, timed out, or never started. One
 // canceled isn't a failure: it may be run again.
-func (s CheckSuite) failure() bool {
-	return slices.Contains([]string{conclusionFailure, conclusionTimedOut, conclusionStartupFailure}, s.Conclusion)
+func (r WorkflowRun) Failed() bool {
+	return slices.Contains([]string{conclusionFailure, conclusionTimedOut, conclusionStartupFailure}, r.Conclusion)
 }
 
-// FetchReleaseProgress reads how a release's workflow on GitHub goes, as of now, with one
-// GraphQL query of one point, which the budget counts like every other: the release
-// GitHub has for the tag, and the newest check suites on the tag's commit. A repository
-// GitHub can't find fails with ErrRepositoryNotFound.
+// FetchReleaseProgress reads how a release's workflow on GitHub goes, as of now: the
+// release GitHub has for the tag, with one GraphQL query of one point, and, unless that
+// release is published, the tag's own workflow runs, with one REST request (GET
+// /repos/{owner}/{name}/actions/runs, by the push event, the tag as the run's branch, and
+// the tag's commit), which P0 found names a tag push's runs exactly. The budget counts
+// both, like every other request. A repository GitHub can't find fails with
+// ErrRepositoryNotFound.
 func (c *Client) FetchReleaseProgress(ctx context.Context, tok Token, req ProgressRequest) (*ReleaseProgress, error) {
 	progress, err := c.fetchReleaseProgress(ctx, tok, req)
 
 	return progress, Redact(err, tok)
 }
 
-// fetchReleaseProgress sends the progress query and decodes the answer.
+// fetchReleaseProgress reads the release, then the tag's runs while it isn't published.
 func (c *Client) fetchReleaseProgress(ctx context.Context, tok Token, req ProgressRequest) (*ReleaseProgress, error) {
 	if !req.valid() {
 		return nil, fmt.Errorf("%w: %q %q %q", ErrInvalidProgressRequest, req.Repo.String(), req.Tag, req.Commit)
 	}
 
+	release, err := c.fetchTagRelease(ctx, tok, req)
+	if err != nil {
+		return nil, err
+	}
+
+	out := &ReleaseProgress{Release: release, Runs: []WorkflowRun{}}
+	if out.Published() {
+		return out, nil
+	}
+
+	if out.Runs, err = c.fetchTagRuns(ctx, tok, req); err != nil {
+		return nil, err
+	}
+
+	return out, nil
+}
+
+// fetchTagRelease sends the progress query: the release GitHub has for the tag, or nil.
+func (c *Client) fetchTagRelease(ctx context.Context, tok Token, req ProgressRequest) (*TagRelease, error) {
 	body := graphQLRequest{Query: releaseProgressQuery, Variables: map[string]any{
-		"owner": req.Repo.Owner, "name": req.Repo.Repo, "tag": req.Tag, "oid": req.Commit,
+		"owner": req.Repo.Owner, "name": req.Repo.Repo, "tag": req.Tag,
 	}}
 
 	resp, _, err := postGraphQL[progressData](ctx, c, tok, "release progress", body, unlessData)
@@ -220,7 +186,8 @@ func (c *Client) fetchReleaseProgress(ctx context.Context, tok Token, req Progre
 		return nil, err
 	}
 
-	if resp.Data.Repository == nil {
+	repository := resp.Data.Repository
+	if repository == nil {
 		if len(resp.Errors) > 0 {
 			return nil, fmt.Errorf("%w %s: %w", ErrRepositoryNotFound, req.Repo.String(), graphQLErr(resp.Errors))
 		}
@@ -228,96 +195,82 @@ func (c *Client) fetchReleaseProgress(ctx context.Context, tok Token, req Progre
 		return nil, fmt.Errorf("%w %s", ErrRepositoryNotFound, req.Repo.String())
 	}
 
-	return resp.Data.Repository.progress(), nil
+	rel := repository.Release
+	if rel == nil {
+		return nil, nil //nolint:nilnil // no release yet is an answer, not an error
+	}
+
+	out := &TagRelease{URL: rel.URL, Draft: rel.IsDraft}
+	if rel.PublishedAt != nil {
+		out.PublishedAt = rel.PublishedAt.UTC()
+	}
+
+	return out, nil
+}
+
+// fetchTagRuns lists the tag's own workflow runs: those whose event is push, whose branch,
+// as GitHub names a tag push's, is the tag, and whose commit is the tag's. GitHub filters
+// by all three; the answer is checked again, so a run for any other branch, tag, or commit
+// never counts.
+func (c *Client) fetchTagRuns(ctx context.Context, tok Token, req ProgressRequest) ([]WorkflowRun, error) {
+	query := url.Values{}
+	query.Set("event", pushEvent)
+	query.Set("branch", req.Tag)
+	query.Set("head_sha", req.Commit)
+	query.Set("exclude_pull_requests", "true")
+	query.Set("per_page", strconv.Itoa(tagRunsMax))
+
+	path := "/repos/" + url.PathEscape(req.Repo.Owner) + "/" + url.PathEscape(req.Repo.Repo) + "/actions/runs?" +
+		query.Encode()
+
+	raw, _, err := c.do(ctx, tok, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("read the workflow runs of %s %s: %w", req.Repo.String(), req.Tag, err)
+	}
+
+	var body tagRunsData
+	if err = json.Unmarshal(raw, &body); err != nil {
+		return nil, fmt.Errorf("%w: decode the workflow runs: %w", ErrMalformedResponse, err)
+	}
+
+	out := []WorkflowRun{}
+
+	for _, r := range body.WorkflowRuns {
+		if r.Event != pushEvent || r.HeadBranch != req.Tag || !strings.EqualFold(r.HeadSHA, req.Commit) {
+			continue
+		}
+
+		run := WorkflowRun{Name: r.Name, Status: r.Status, URL: r.HTMLURL}
+		if r.Conclusion != nil {
+			run.Conclusion = *r.Conclusion
+		}
+
+		out = append(out, run)
+	}
+
+	return out, nil
 }
 
 // progressData is the progress query's data object.
 type progressData struct {
-	Repository *progressRepo `json:"repository"`
+	Repository *struct {
+		Release *struct {
+			URL         string     `json:"url"`
+			IsDraft     bool       `json:"isDraft"`
+			PublishedAt *time.Time `json:"publishedAt"`
+		} `json:"release"`
+	} `json:"repository"`
 }
 
-// progressRepo is the repository's answer: its release for the tag, null while it has
-// none, and the tag's commit, null when GitHub doesn't have it.
-type progressRepo struct {
-	Release *struct {
-		URL         string     `json:"url"`
-		IsDraft     bool       `json:"isDraft"`
-		PublishedAt *time.Time `json:"publishedAt"`
-	} `json:"release"`
-	Object json.RawMessage `json:"object"`
-}
-
-// progressCommit is the tag's commit, with its check suites.
-type progressCommit struct {
-	CheckSuites *struct {
-		Nodes []*progressSuite `json:"nodes"`
-	} `json:"checkSuites"`
-}
-
-// progressSuite is one check suite on the tag's commit.
-type progressSuite struct {
-	App *struct {
-		Slug string `json:"slug"`
-		Name string `json:"name"`
-	} `json:"app"`
-	Status     string `json:"status"`
-	Conclusion string `json:"conclusion"`
-	Branch     *struct {
-		Name string `json:"name"`
-	} `json:"branch"`
-	WorkflowRun *struct {
-		URL      string `json:"url"`
-		Event    string `json:"event"`
-		Workflow *struct {
-			Name string `json:"name"`
-		} `json:"workflow"`
-	} `json:"workflowRun"`
-}
-
-// progress converts the repository's answer. A commit that can't be read, or GitHub
-// doesn't have, holds no suites.
-func (r *progressRepo) progress() *ReleaseProgress {
-	out := &ReleaseProgress{Suites: []CheckSuite{}}
-
-	if rel := r.Release; rel != nil {
-		out.Release = &TagRelease{URL: rel.URL, Draft: rel.IsDraft}
-		if rel.PublishedAt != nil {
-			out.Release.PublishedAt = rel.PublishedAt.UTC()
-		}
-	}
-
-	var commit progressCommit
-	if len(r.Object) == 0 || json.Unmarshal(r.Object, &commit) != nil || commit.CheckSuites == nil {
-		return out
-	}
-
-	for _, n := range commit.CheckSuites.Nodes {
-		if n != nil {
-			out.Suites = append(out.Suites, n.suite())
-		}
-	}
-
-	return out
-}
-
-// suite converts one check suite.
-func (n *progressSuite) suite() CheckSuite {
-	s := CheckSuite{Status: n.Status, Conclusion: n.Conclusion}
-
-	if n.App != nil {
-		s.App, s.AppName = n.App.Slug, n.App.Name
-	}
-
-	if n.Branch != nil {
-		s.Branch = n.Branch.Name
-	}
-
-	if run := n.WorkflowRun; run != nil {
-		s.Event, s.RunURL = run.Event, run.URL
-		if run.Workflow != nil {
-			s.Workflow = run.Workflow.Name
-		}
-	}
-
-	return s
+// tagRunsData is the workflow runs request's answer.
+type tagRunsData struct {
+	WorkflowRuns []struct {
+		Name       string  `json:"name"`
+		HeadBranch string  `json:"head_branch"`
+		HeadSHA    string  `json:"head_sha"`
+		Event      string  `json:"event"`
+		Status     string  `json:"status"`
+		Conclusion *string `json:"conclusion"`
+		HTMLURL    string  `json:"html_url"`
+	} `json:"workflow_runs"`
 }
