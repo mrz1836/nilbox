@@ -202,9 +202,11 @@ a 16.4 MB bundle and a frontend of about 280 KB.
 The Scripts tab's code loads the first time it opens, as a script of its own: 80.6 KB (25.9 KB
 gzipped), from `vite build` (the `ScriptsView` chunk, with Release, its sheet, Runs, the run
 panel, and the log view). The window already holds the tools and the run history it badges the
-tab with, so opening it lists nothing again. Release reads its list as it opens, from the
-service's copy while that is under 5 minutes old, and from GitHub after (about 4 points of
-GraphQL budget per 50 repositories per round). Runs lists the history the window holds: listing
+tab with, so opening it lists nothing again. Release reads its list as it opens from the
+service's copy, however old; it reads GitHub for the whole list only on **Read GitHub again**,
+the first time, or behind the list kept from the last start (about 4 points of GraphQL budget
+per 50 repositories per round), and for one repository after a release of it or a merge into
+it in the review sheet. Runs lists the history the window holds: listing
 a full history, the 200 runs the app keeps, each with its result, takes about 1.0 ms on the M1
 Max (`go test -run '^$' -bench BenchmarkRunsFullHistory ./internal/scriptrun`, three runs of 2 s:
 1.00–1.01 ms, 696 KB and 10,676 allocations per list). The end-to-end time from the click to the

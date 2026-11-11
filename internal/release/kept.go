@@ -174,8 +174,9 @@ func (s *Service) keep(ctx context.Context, list Candidates, root string) {
 }
 
 // Refresher reads the Release page's list again behind the page, when the page was shown
-// the list kept from a past start, and reads the repository each release ends in again,
-// patching its rows into the list (queuePatch). Meanwhile the list reads as refreshing,
+// the list kept from a past start, and reads the repository each release ends in, or each
+// review sheet merge goes into, again, patching its rows into the list (queuePatch,
+// queueMerged). Meanwhile the list reads as refreshing,
 // event.ReleasesProgress tells the page how far the read has got, and
 // event.ReleasesUpdated when it lands. The desktop shell runs it as a worker, from start
 // until quit; it is not bound. While it isn't running, a page shown the kept list waits for
@@ -224,6 +225,13 @@ func (r *Refresher) Run(ctx context.Context) {
 			s.patchReleased(ctx)
 		}
 	}
+}
+
+// Merged tells the Refresher that a pull request merged into name in the review sheet, so
+// it reads that repository's rows again while the list can be patched (queueMerged). It
+// never waits. Core hands it to the review service.
+func (r *Refresher) Merged(name repo.Name) {
+	r.s.queueMerged(name)
 }
 
 // askBehind asks the Refresher to read the list again, unless it already is. The caller

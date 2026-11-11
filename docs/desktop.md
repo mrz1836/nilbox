@@ -382,9 +382,11 @@ itself never tags or pushes: magex does, when you click a button that names the 
   default, uncommitted files, commits not on GitHub, commits it lacks, or a version only it has.
   Those come from read-only git checks of the unreleased clones. **Release…** opens the sheet.
 - **Search** filters every group, opening each while it searches. **Read GitHub again** reads the
-  list again now; otherwise the page reads it when it opens if it's more than 5 minutes old, and
-  after every release. When GitHub can't be reached, the last list stays, marked *Couldn't reach
-  GitHub · 14m old*. Clones without a GitHub origin are counted at the foot.
+  whole list again now. Nothing else does on a timer: the list stays as it was read, however
+  old (the header says *Read 3h ago*), and after a release, or a merge in the review sheet, only
+  that repository's row is read again. When GitHub can't be reached, the last list stays, marked
+  *Couldn't reach GitHub · 14m old*, until you read it again. Clones without a GitHub origin are
+  counted at the foot.
 - **While it reads,** the page says how far it has got: *Finding your clones…*, *Asking GitHub:
   45 of 151 repositories…* (GitHub answers 15 at a time), *Asking GitHub what changed: 12 of 40
   repositories…*, then *Checking your clones: 3 of 12…*.

@@ -10,6 +10,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
@@ -89,6 +90,7 @@ func (s *Service) Act(ctx context.Context, req ActRequest) (Result, error) {
 	})
 
 	s.settle(ctx, req.ItemID, run.acted.Merged)
+	s.tellMerged(run.acted.Merged, pull.ref().Repo)
 
 	if err != nil && !run.commentedFirst() {
 		return Result{}, err
@@ -100,6 +102,14 @@ func (s *Service) Act(ctx context.Context, req ActRequest) (Result, error) {
 	}
 
 	return run.result(pull.ReviewRequested), nil
+}
+
+// tellMerged tells Merges, when there is one, the repository a merge that went through went
+// into, so the Release page reads its row again.
+func (s *Service) tellMerged(merged bool, name repo.Name) {
+	if merged && s.merges != nil {
+		s.merges.Merged(name)
+	}
 }
 
 // settle brings the sheet's cache in line with an action that may have reached GitHub,

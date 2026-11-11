@@ -3,7 +3,6 @@ package release
 import (
 	"context"
 	"slices"
-	"time"
 
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/repo"
@@ -11,7 +10,7 @@ import (
 
 // queuePatch asks the Refresher to read the released repository name again and patch its
 // rows into the Release page's list (patchReleased), rather than put the whole list out of
-// date: a release changes its own repository's rows alone, so the rest stay as fresh as
+// date: a release changes its own repository's rows alone, so the rest stay as current as
 // they were, and the page isn't read again in full for one repository. Meanwhile the list
 // is served as refreshing, and the window hears so now, so the page shows the read's
 // progress until the patch lands. Without the Refresher running, the list goes out of date
@@ -32,7 +31,31 @@ func (s *Service) queuePatch(name repo.Name) {
 		return
 	}
 
-	s.unpatched[name.Key()] = true
+	s.askPatch(name.Key())
+}
+
+// queueMerged asks the Refresher to read name again and patch its rows into the list, as
+// queuePatch does for a release, once a pull request merged into it in the review sheet:
+// the merge may give its default branch commits to release, which the list, read again in
+// full only when the user asks, would otherwise never show. Unlike a release's, it asks
+// only while the list could be patched now (patchable), and otherwise leaves the list as
+// it is: a merge into a repository the page doesn't list, or into a list read again in
+// full next anyway, changes nothing the page would show. Once asked, the patch is read as
+// a release's is, and one that fails puts the list out of date.
+func (s *Service) queueMerged(name repo.Name) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key := name.Key()
+	if s.background && s.patchable(s.root, map[string]bool{key: true}) != nil {
+		s.askPatch(key)
+	}
+}
+
+// askPatch marks the repository key to be read again, serves the list as refreshing, tells
+// the window so, and wakes the Refresher. The caller holds mu.
+func (s *Service) askPatch(key string) {
+	s.unpatched[key] = true
 	s.patching = true
 	s.events.Emit(event.ReleasesUpdated{})
 
@@ -42,14 +65,14 @@ func (s *Service) queuePatch(name repo.Name) {
 	}
 }
 
-// patchReleased reads the repositories released since the last patch again and patches
-// their rows into the list (patch), once the read of the list under way, a refresh or a
-// patch, has landed (startReading): a refresh that asked GitHub before a release ended
-// lands first, and the patch then lands over it, while one that started after the release
-// read its repository already, so the patch leaves that one out. A list that can't be
-// patched goes out of date instead, so the next Candidates reads it again in full. Either
-// way the list is no longer served as refreshing, unless another release ended meanwhile,
-// and the window hears (event.ReleasesUpdated).
+// patchReleased reads the repositories released, or merged into, since the last patch
+// again and patches their rows into the list (patch), once the read of the list under
+// way, a refresh or a patch, has landed (startReading): a refresh that asked GitHub before
+// a release ended lands first, and the patch then lands over it, while one that started
+// after the release read its repository already, so the patch leaves that one out. A list
+// that can't be patched goes out of date instead, so the next Candidates reads it again in
+// full. Either way the list is no longer served as refreshing, unless another release
+// ended meanwhile, and the window hears (event.ReleasesUpdated).
 func (s *Service) patchReleased(ctx context.Context) {
 	if s.startReading(ctx) != nil {
 		return // the app quits; Run puts the list out of date for what's left
@@ -132,14 +155,15 @@ func (s *Service) patch(ctx context.Context, names map[string]bool) bool {
 }
 
 // patchable returns the clones the last list holds of names, when it can be patched: it
-// was read from root, the clone root as set now; it is still fresh, since one that isn't
-// is read again in full by the next Candidates anyway; it was read from GitHub in this run
-// of the app, and its last read didn't fail, since a patch would keep a row of today's
-// beside the rest of an older list; and it lists every one of names, since a repository it
-// doesn't list takes a scan of the clone root. Otherwise it returns none. The caller holds
-// mu.
+// was read from root, the clone root as set now; it is current, however old, since one
+// out of date is read again in full by the next Candidates anyway; it was read from GitHub
+// in this run of the app, and its last read didn't fail, since the next read of a list
+// kept from a past start or one that failed is a full one, which the page asks for (the
+// read behind a kept list) or shows the failure until; and it lists every one of names,
+// since a repository it doesn't list takes a scan of the clone root. Otherwise it returns
+// none. The caller holds mu.
 func (s *Service) patchable(root string, names map[string]bool) []clone {
-	if !s.has || s.root != root || !s.fresh() || s.kept || s.failure != "" {
+	if !s.has || s.root != root || !s.current || s.kept || s.failure != "" {
 		return nil
 	}
 
@@ -164,6 +188,6 @@ func (s *Service) patchable(root string, names map[string]bool) []clone {
 // and so does a refresh under way, which lands out of date too: it may have asked GitHub
 // before what put the list out of date happened. The caller holds mu.
 func (s *Service) outOfDate() {
-	s.tried = time.Time{}
+	s.current = false
 	s.outdated++
 }
