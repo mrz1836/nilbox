@@ -30,6 +30,7 @@ func TestFetchPullReviewReadsTheSheet(t *testing.T) {
 		assert.NoError(t, json.Unmarshal(raw, &req))
 		assert.Contains(t, req.Query, "node(id: $id) { ...ItemFields ...DetailFields ...ReviewFields }")
 		assert.Contains(t, req.Query, "fragment ReviewFields on PullRequest")
+		assert.Contains(t, req.Query, "viewerCanClose")
 		assert.Contains(t, req.Query, "isRequired(pullRequestId: $id)")
 		assert.Equal(t, "PR_fakeNodeId94", req.Variables.ID)
 
@@ -61,6 +62,7 @@ func TestFetchPullReviewReadsTheSheet(t *testing.T) {
 	assert.False(t, review.ViewerCanUpdateBranch)
 	assert.False(t, review.ViewerCanEnableAutoMerge)
 	assert.True(t, review.ViewerCanBypass)
+	assert.True(t, review.ViewerCanClose, "GitHub's own say that the viewer may close it")
 	assert.Equal(t, ReviewMark{State: "COMMENTED", Commit: sha1s("2")}, review.ViewerReview)
 	assert.Equal(t, 1, review.PendingReviews)
 	assert.True(t, review.AutoMerge.On())

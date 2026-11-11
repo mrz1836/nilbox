@@ -63,6 +63,7 @@ func TestACloseWithoutTextOnlyCloses(t *testing.T) {
 			assert.Equal(t, []string{"Checking your account", "Checking nothing was pushed since you opened it", "Closing"},
 				h.steps(t))
 			assert.Equal(t, Acted{Closed: true}, h.inbox.acted[0])
+			assert.Empty(t, h.merges.heard(), "a close is no merge: the Release page hears nothing")
 
 			c, err := h.svc.cache.load(t.Context(), pullID, 0)
 			require.NoError(t, err)
@@ -187,7 +188,7 @@ func TestACloseOfAPullRequestNoLongerOpenSendsNothing(t *testing.T) {
 func TestACommentPostedBeforeACloseThatFailedSaysBoth(t *testing.T) {
 	t.Parallel()
 
-	refused := uierr.New("GitHub refused the change to acme-org/example-repo#7: Resource not accessible.", errGateShut)
+	refused := uierr.New("GitHub wouldn't close acme-org/example-repo#7: Resource not accessible.", errGateShut)
 	signedOut := uierr.New("You're signed in to another account now.", errFakeRead)
 
 	tests := []struct {
@@ -200,13 +201,22 @@ func TestACommentPostedBeforeACloseThatFailedSaysBoth(t *testing.T) {
 			name:     "refused by GitHub",
 			setup:    func(h *harness) { h.github.closeErr = refused },
 			requests: []string{callState, callSubmit, callClose},
-			reason:   "GitHub refused the change to acme-org/example-repo#7: Resource not accessible",
+			reason:   "GitHub wouldn't close acme-org/example-repo#7: Resource not accessible",
 		},
 		{
 			name:     "the fresh token refused too",
 			setup:    func(h *harness) { h.github.closeErr = badCredentials() },
-			requests: []string{callState, callSubmit, callClose, callClose},
+			requests: []string{callState, callSubmit, callClose, callState, callClose},
 			reason:   trimmed(badCredentials()),
+		},
+		{
+			name: "pushed to before the fresh token's try",
+			setup: func(h *harness) {
+				h.github.closeOnce = badCredentials()
+				h.github.states = []*github.MergeState{open(github.MergeStateBlocked, headA), open(github.MergeStateBlocked, headB)}
+			},
+			requests: []string{callState, callSubmit, callClose, callState},
+			reason:   "It was pushed to since you opened it",
 		},
 		{
 			name: "the fresh token's account check failing",
@@ -263,9 +273,24 @@ func TestARetriedTokenNeverCommentsTwiceBeforeAClose(t *testing.T) {
 	res := h.act(t, ActRequest{Action: ActionClose, Body: closeText})
 	assert.Equal(t, OutcomeClosed, res.Outcome)
 	assert.Equal(t, 2, h.inbox.tries, "tried again with a fresh token")
-	assert.Equal(t, []string{callState, callSubmit, callClose, callClose}, h.github.requests(), "commented once")
+	assert.Equal(t, []string{callState, callSubmit, callClose, callState, callClose}, h.github.requests(),
+		"commented once, and read the head again right before the second close")
 	assert.Equal(t, "Closed acme-org/example-repo#7 with your comment", res.Message)
 	assert.Equal(t, Acted{Reviewed: true, ReviewedAt: testNow, Closed: true}, h.inbox.acted[0])
+}
+
+func TestARetriedCloseWithoutTextReadsTheHeadAgain(t *testing.T) {
+	t.Parallel()
+
+	h := readHarness(t, github.MergeStateBlocked)
+	h.github.closeOnce = badCredentials()
+	h.github.states = []*github.MergeState{open(github.MergeStateBlocked, headA), open(github.MergeStateBlocked, headB)}
+
+	res := h.act(t, ActRequest{Action: ActionClose})
+	assert.Equal(t, OutcomePushedSince, res.Outcome, "nothing was posted, and the second try finds the push")
+	assert.False(t, res.Commented)
+	assert.Equal(t, []string{callState, callClose, callState}, h.github.requests())
+	assert.Equal(t, Acted{}, h.inbox.acted[0])
 }
 
 func TestACloseTheInboxFailedToRecordIsStillAClose(t *testing.T) {
@@ -319,12 +344,14 @@ func TestACloseSendsNothingItWouldNotOffer(t *testing.T) {
 		assert.Empty(t, h.github.requests())
 	})
 
-	t.Run("a user who may not close it", func(t *testing.T) {
+	t.Run("a user GitHub doesn't let close it", func(t *testing.T) {
 		t.Parallel()
 
+		// Write access and the author's own login count for nothing: GitHub's say does.
 		h := newHarness(t)
-		h.inbox.pull.ViewerPermission = "READ"
+		h.inbox.pull.AuthorLogin = octoUser
 		h.github.review = pullReview(headA, github.MergeStateBlocked)
+		h.github.review.ViewerCanClose = false
 		h.refreshed(t)
 
 		_, ok := closeOffer(t, h)
@@ -336,15 +363,33 @@ func TestACloseSendsNothingItWouldNotOffer(t *testing.T) {
 		assert.Empty(t, h.github.requests())
 	})
 
-	t.Run("a user with triage access", func(t *testing.T) {
+	t.Run("a user GitHub lets close it, whatever their access", func(t *testing.T) {
 		t.Parallel()
 
 		h := newHarness(t)
-		h.inbox.pull.ViewerPermission = "TRIAGE"
+		h.inbox.pull.ViewerPermission = "READ"
 		h.github.review = pullReview(headA, github.MergeStateBlocked)
 		h.refreshed(t)
 
 		res := h.act(t, ActRequest{Action: ActionClose})
-		assert.Equal(t, OutcomeClosed, res.Outcome, "triage access closes anyone's pull request")
+		assert.Equal(t, OutcomeClosed, res.Outcome)
+	})
+
+	t.Run("a pull request the sheet hasn't read", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+
+		r, err := h.svc.Open(t.Context(), pullID)
+		require.NoError(t, err)
+
+		i := slices.IndexFunc(r.Offers, func(o Offer) bool { return o.Action == ActionClose })
+		require.GreaterOrEqual(t, i, 0)
+		assert.False(t, r.Offers[i].Enabled)
+		assert.Equal(t, "Wait for it to load from GitHub.", r.Offers[i].Reason)
+
+		_, err = h.svc.Act(t.Context(), ActRequest{ItemID: pullID, Action: ActionClose, Head: headA})
+		require.ErrorIs(t, err, ErrNotRead)
+		assert.Zero(t, h.inbox.acts)
 	})
 }

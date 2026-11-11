@@ -1590,7 +1590,6 @@ describe('InboxView review sheet', () => {
 
       await userEvent.click(await within(sheet).findByRole('button', { name: 'More review actions' }))
       await userEvent.click(screen.getByRole('menuitem', { name: 'Close pull request' }))
-      await userEvent.click(await within(sheet).findByRole('button', { name: 'Close pull request…' }))
       await userEvent.click(
         within(screen.getByRole('dialog', { name: 'Close #7 without merging it?' })).getByRole('button', {
           name: 'Close pull request',

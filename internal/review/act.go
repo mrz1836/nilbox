@@ -509,8 +509,9 @@ func (a *action) review(ctx context.Context, s *Service, tok github.Token) error
 	return nil
 }
 
-// headMoved reads the pull request's head, and reports, as a pushed-since outcome, a head
-// other than the one the user saw.
+// headMoved reads the pull request's head, and reports a head other than the one the user
+// saw: a pushed-since outcome while the action has posted nothing yet. After a close's
+// comment, the caller words it (closePull).
 func (a *action) headMoved(ctx context.Context, s *Service, tok github.Token) (bool, error) {
 	state, err := s.github.FetchMergeState(ctx, tok, a.nodeID)
 	if err != nil {
@@ -522,7 +523,9 @@ func (a *action) headMoved(ctx context.Context, s *Service, tok github.Token) (b
 	}
 
 	if !strings.EqualFold(state.Head, a.head) {
-		a.outcome = OutcomePushedSince
+		if a.reviewed == nil {
+			a.outcome = OutcomePushedSince
+		}
 
 		return true, nil
 	}
@@ -841,46 +844,39 @@ func (a *action) askBot(ctx context.Context, s *Service, tok github.Token) error
 }
 
 // closePull closes the pull request without merging it. GitHub takes no head to pin a
-// close to, so it reads the pull request first: one no longer open is refused, and a head
-// other than the one the user saw is a pushed-since outcome, so neither gets the comment
-// or the close. The comment it posts first, if any, goes next, and the close last. A try
-// with a fresh token after the comment was posted only closes.
+// close to, so every try, a retry with a fresh token included, first reads the pull
+// request: one no longer open is refused, and a head other than the one the user saw stops
+// it, as a pushed-since outcome while nothing was posted, so neither the comment nor the
+// close goes. The comment it posts first, if any, goes next, once, and the close last. Any
+// failure is returned as it is: the inbox's Actor tries a refused token again, and once the
+// comment is posted, failedAfterComment makes whatever failed after it the result.
 func (a *action) closePull(ctx context.Context, s *Service, tok github.Token) error {
-	if a.reviewed == nil {
-		a.step(s, "Checking nothing was pushed since you opened it")
+	a.step(s, "Checking nothing was pushed since you opened it")
 
-		if moved, err := a.headMoved(ctx, s, tok); err != nil || moved {
-			return err
-		}
+	moved, err := a.headMoved(ctx, s, tok)
 
-		if err := a.postFirst(ctx, s, tok); err != nil {
-			return err
-		}
+	switch {
+	case err != nil || (moved && a.reviewed == nil):
+		return err
+	case moved:
+		// The comment went on an earlier try and stands; the close doesn't go.
+		return uierr.New("It was pushed to since you opened it.",
+			fmt.Errorf("close %s after the comment: %w", a.ref, github.ErrPushedSince))
+	}
+
+	if err = a.postFirst(ctx, s, tok); err != nil {
+		return err
 	}
 
 	a.step(s, "Closing")
 
-	if _, err := s.github.ClosePull(ctx, tok, a.ref); err != nil {
-		return a.notClosed(err)
+	if err = s.github.ClosePull(ctx, tok, a.ref); err != nil {
+		return err
 	}
 
 	a.acted.Closed = true
 	a.outcome = OutcomeClosed
 	a.steps = append(a.steps, "Closed")
-
-	return nil
-}
-
-// notClosed records that the close failed: after the comment it posted first, it is the
-// action's result, which says the comment stands, otherwise the error. A token GitHub
-// refused comes back as it is, for the inbox's Actor to try again with a fresh one, which
-// closes without posting the comment again.
-func (a *action) notClosed(err error) error {
-	if a.reviewed == nil || github.IsBadCredentials(err) {
-		return err
-	}
-
-	a.outcome, a.reason = OutcomeCommentedNotClosed, strings.TrimSuffix(uierr.Message(err), ".")
 
 	return nil
 }
@@ -925,23 +921,19 @@ func (a *action) result(requested bool) Result {
 func (a *action) message() string {
 	ref := a.ref.String()
 
-	switch a.outcome {
-	case OutcomeReviewed:
+	switch {
+	case a.outcome == OutcomeReviewed:
 		return reviewStep(a.reviewAs) + " " + ref
-	case OutcomeMerged, OutcomeAutoMerge:
-		return a.mergedMessage(ref)
-	case OutcomeApprovedNotMerged, OutcomeCommentedNotMerged:
-		return a.notMergedMessage(ref)
-	case OutcomeClosed, OutcomeCommentedNotClosed:
+	case a.kind == ActionClose:
 		return a.closedMessage(ref)
-	case OutcomeBranchUpdating:
+	case a.outcome == OutcomeMerged || a.outcome == OutcomeAutoMerge:
+		return a.mergedMessage(ref)
+	case a.outcome == OutcomeApprovedNotMerged || a.outcome == OutcomeCommentedNotMerged:
+		return a.notMergedMessage(ref)
+	case a.outcome == OutcomeBranchUpdating:
 		return "Updating the branch of " + ref
-	case OutcomePushedSince:
-		return pushedSinceResult(ref, a).Message
-	case OutcomeAskedBot:
-		return "Asked Dependabot to rebase " + ref
 	default:
-		return ""
+		return "Asked Dependabot to rebase " + ref
 	}
 }
 

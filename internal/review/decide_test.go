@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/sensitive"
 )
 
 // facts are a pull request someone else opened, which the user may merge by squash or
@@ -250,8 +251,9 @@ func TestDecideOffersACloseToWhoeverMayClose(t *testing.T) {
 		CommentsFirst: true,
 	}, o, "it asks first, and posts the text first, as a comment")
 
-	// A draft, a merge queue, no merge method, and checks failing hold back no close.
-	f.Draft, f.MergeQueue, f.Methods, f.RequiredFailing, f.MergeState = true, true, nil, 1, ""
+	// A draft, a merge queue, no merge method, checks failing, and conflicts hold back no
+	// close.
+	f.Draft, f.MergeQueue, f.Methods, f.RequiredFailing, f.MergeState = true, true, nil, 1, github.MergeStateDirty
 	o, ok = Decide(f, PrefRepo).offer(ActionClose)
 	require.True(t, ok)
 	assert.True(t, o.Enabled)
@@ -265,19 +267,48 @@ func TestDecideOffersACloseToWhoeverMayClose(t *testing.T) {
 	assert.False(t, ok, "never offered once merged or closed")
 }
 
-func TestOnlyTheAuthorOrTriageAccessMayClose(t *testing.T) {
+func TestACloseWaitsForTheSheetToReadThePullRequest(t *testing.T) {
 	t.Parallel()
 
-	for permission, want := range map[string]bool{
-		"ADMIN": true, "MAINTAIN": true, "WRITE": true, "TRIAGE": true, "READ": false, "": false,
-	} {
+	// Before the sheet read it, GitHub hasn't said whether the user may close it: the close
+	// waits, as the rebase does, whatever else is known.
+	for _, canClose := range []bool{false, true} {
+		f := facts("")
+		f.CanClose = canClose
+
+		o, ok := Decide(f, PrefRepo).offer(ActionClose)
+		require.True(t, ok)
+		assert.False(t, o.Enabled)
+		assert.Equal(t, "Wait for it to load from GitHub.", o.Reason)
+		assert.NotEqual(t, ActionClose, Decide(f, PrefRepo).Primary)
+	}
+}
+
+func TestOnlyGitHubSaysWhoMayClose(t *testing.T) {
+	t.Parallel()
+
+	c := &cached{head: headA, context: pullContext{MergeState: github.MergeStateBlocked}}
+
+	for _, permission := range []string{"ADMIN", "WRITE", "TRIAGE", "READ", ""} {
 		pull := storedPull()
 		pull.ViewerPermission = permission
 
-		assert.Equal(t, want, factsOf(pull, nil, Review{State: github.StateOpen}).CanClose, permission)
-		assert.True(t, factsOf(pull, nil, Review{State: github.StateOpen, Mine: true}).CanClose,
-			"its author may close it, with %q access", permission)
+		assert.False(t, factsOf(pull, c, Review{State: github.StateOpen, Mine: true}).CanClose,
+			"neither the author nor %q access closes what GitHub says the user can't", permission)
 	}
+
+	// A deleted author's pull request, whose login is empty, as the viewer's may be: GitHub's
+	// say alone counts.
+	ghost := storedPull()
+	ghost.AuthorLogin, ghost.Viewer, ghost.ViewerPermission = "", "", "READ"
+	sheet := build(ghost, c, sensitive.NewMatcher(sensitive.DefaultConfig()), PrefRepo)
+	assert.False(t, factsOf(ghost, c, sheet).CanClose)
+	assert.False(t, slices.ContainsFunc(sheet.Offers, func(o Offer) bool { return o.Action == ActionClose }),
+		"so the sheet offers no close")
+
+	c.context.CanClose = true
+	assert.True(t, factsOf(storedPull(), c, Review{State: github.StateOpen}).CanClose)
+	assert.False(t, factsOf(storedPull(), nil, Review{State: github.StateOpen}).CanClose, "nothing read, nothing said")
 }
 
 func TestACloseIsTheOnlyActionLeft(t *testing.T) {
@@ -469,19 +500,23 @@ func checkPlan(t *testing.T, fa Facts, p Plan) {
 	checkClose(t, fa, p)
 }
 
-// checkClose checks that a close is offered, enabled, exactly while the pull request is
-// open to a user who may close it, that it asks first and posts the text as a comment
-// first, and that it is never the button.
+// checkClose checks that a close is offered while the pull request is open, held back
+// until the sheet read it and then only to a user GitHub lets close it, that it runs
+// exactly then, asks first and posts the text as a comment first, and that it is never the
+// button.
 func checkClose(t *testing.T, fa Facts, p Plan) {
 	t.Helper()
 
 	assert.NotEqual(t, ActionClose, p.Primary, "a close is never the button")
 
+	read := fa.MergeState != ""
 	o, ok := p.offer(ActionClose)
-	assert.Equal(t, fa.CanClose && !fa.Closed, ok, "offered while open, to whoever may close it")
+	assert.Equal(t, !fa.Closed && (!read || fa.CanClose), ok, "offered while open, once read only to whoever may close it")
 
 	if ok {
-		assert.True(t, o.Enabled && o.Confirm && o.CommentsFirst && !o.Reviews, "it runs, asks first, and comments first")
+		assert.Equal(t, read && fa.CanClose, o.Enabled, "it runs once read")
+		assert.Equal(t, o.Enabled, o.Reason == "", "a reason exactly when it can't run")
+		assert.True(t, o.Confirm && o.CommentsFirst && !o.Reviews, "it asks first, and comments first")
 		assert.Equal(t, fa.PendingReview, o.CommentBlocked != "", "a pending review holds back only its comment")
 	}
 }

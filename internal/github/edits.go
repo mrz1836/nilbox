@@ -405,12 +405,12 @@ func editError(ref item.Ref, err error) error {
 	}
 }
 
-// writeError gives a refused review, merge, auto-merge, branch update, or close of ref a
-// message the user can act on, and the sentinel that says what went wrong, keeping err's
-// chain: a push since the head the write was pinned to (409, or a 422 about the expected
-// head), a merge GitHub won't make yet (405, or a merge queue), a review of the user's own
-// pull request, a pending review that blocks another, and a line comment off the diff. Any
-// other refusal is worded by editError.
+// writeError gives a refused review, merge, auto-merge, or branch update of ref a message
+// the user can act on, and the sentinel that says what went wrong, keeping err's chain: a
+// push since the head the write was pinned to (409, or a 422 about the expected head), a
+// merge GitHub won't make yet (405, or a merge queue), a review of the user's own pull
+// request, a pending review that blocks another, and a line comment off the diff. Any
+// other refusal is worded by editError. A close has its own wording (closeError).
 func writeError(ref item.Ref, err error) error {
 	status, ok := errors.AsType[*StatusError](err)
 	if !ok || IsBadCredentials(err) {

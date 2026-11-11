@@ -45,8 +45,8 @@ type Facts struct {
 	// CanWrite reports write access to the repository, or more.
 	CanWrite bool
 
-	// CanClose reports a user GitHub lets close the pull request: its author, or anyone with
-	// triage access to the repository, or more.
+	// CanClose reports that GitHub lets the user close the pull request (its own
+	// viewerCanClose), as the sheet last read it; false before it read it.
 	CanClose bool
 
 	// CanUpdateBranch and CanAutoMerge say whether GitHub lets the user update the branch
@@ -216,16 +216,23 @@ func withoutComment(action Action) string {
 	return "merge without a comment."
 }
 
-// closePull offers to close the pull request without merging it, to a user GitHub lets
-// close it: its author, or anyone with triage access or more. A draft, a merge queue, and
-// a pending review hold back no close, though a pending review holds back the comment it
-// posts first (markText). It is never the sheet's button, and always asks first.
+// closePull offers to close the pull request without merging it: held back until the
+// sheet read it from GitHub, then only to a user GitHub says may close it. A draft, a merge
+// queue, and a pending review hold back no close, though a pending review holds back the
+// comment it posts first (markText). It is never the sheet's button, and always asks first.
 func (d decider) closePull() Offer {
-	if !d.f.CanClose {
+	o := Offer{Action: ActionClose, Label: "Close pull request", Confirm: true, Warnings: []string{}}
+
+	switch {
+	case d.f.MergeState == "":
+		o.Reason = "Wait for it to load from GitHub."
+	case !d.f.CanClose:
 		return Offer{}
+	default:
+		o.Enabled = true
 	}
 
-	return Offer{Action: ActionClose, Label: "Close pull request", Enabled: true, Confirm: true, Warnings: []string{}}
+	return o
 }
 
 // reviewBlock is why the user can't review now, or "".

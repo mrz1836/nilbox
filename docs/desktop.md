@@ -1221,19 +1221,25 @@ check is expected**, and the text leaves your draft, so a second try doesn't pos
 While you have a review of the pull request started on GitHub, which holds back every comment,
 the button waits and says so: submit or discard that review there, or clear your text.
 
-**Closing without merging.** The menu offers **Close pull request** on an open pull request you
-may close: your own, or anyone's in a repository where you have triage access or more. It is
-never the button. Its text starts empty, never from a default reply (**Replies** offers your
-Comment replies), and what you write, with any line comments, is posted as a comment before it
-closes, the way a merge posts it: to the commit you saw, and never as an approval. It always
-asks first: the confirmation names the pull
+**Closing without merging.** The menu offers **Close pull request**, set apart at its foot, on
+an open pull request GitHub says you may close (your own, or anyone's where you have triage
+access or more). Until the sheet has read the pull request from GitHub, it waits, greyed. It is
+never the button: picking it from the menu opens its confirmation at once, it never becomes the
+action the button runs, **⌘↩** never closes, and when nothing else can run, the sheet still
+says **Nothing to do here now.**, with the close in a menu beside it. Text you wrote in **Your
+review**, or a reply you picked, goes with it, along with any line comments, as a comment
+posted before it closes, the way a merge posts one: to the commit you saw, and never as an
+approval. A default reply you never touched doesn't go. The confirmation names the pull
 request, says when your text is posted as a comment first, and notes that you can reopen it on
 GitHub. **Cancel** and Escape close nothing. GitHub takes no commit to pin a close to, so Nilbox
-first reads the pull request (1 GraphQL point): one closed, merged, or pushed to since you opened
-it gets neither the comment nor the close. If the comment fails, nothing closes. If the close
-then fails, the toast says the comment is posted and why it didn't close, as in **Commented on
-acme-org/api#212, but it wasn't closed: …**, and the text leaves your draft. Otherwise the toast
-says **Closed acme-org/api#212 with your comment** (or **Closed acme-org/api#212**).
+reads the pull request first (1 GraphQL point), and again before a second try with a fresh
+token: one closed, merged, or pushed to since you opened it gets neither the comment nor the
+close. If the comment fails, nothing closes. If the close then fails, or a push lands before a
+second try, the toast says the comment is posted and why it didn't close, as in **Commented on
+acme-org/api#212, but it wasn't closed: It was pushed to since you opened it**, and the text
+leaves your draft. GitHub's refusal reads as one of a close, as in **GitHub wouldn't close
+acme-org/api#212: …**. Otherwise the toast says **Closed acme-org/api#212 with your comment**
+(or **Closed acme-org/api#212**).
 
 **Merge method.** **Settings → Reviewing** chooses the method the confirmation starts on: **As
 each repository offers first** (the default, GitHub's own first choice for you there), **Squash

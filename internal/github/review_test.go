@@ -491,9 +491,8 @@ func TestClosePullSendsOneGatedClose(t *testing.T) {
 	rates := &recordRates{}
 	client.Writes, client.Rates = gate, rates
 
-	closed, err := client.ClosePull(t.Context(), NewToken(fakeToken), editRef())
+	err := client.ClosePull(t.Context(), NewToken(fakeToken), editRef())
 	require.NoError(t, err)
-	assert.Equal(t, &Closed{ClosedAt: time.Date(2026, 11, 9, 17, 0, 0, 0, time.UTC)}, closed)
 
 	sent := rec.all()
 	require.Len(t, sent, 1)
@@ -505,18 +504,10 @@ func TestClosePullSendsOneGatedClose(t *testing.T) {
 	assert.Equal(t, 1, rates.all()[0].spent, "one REST point")
 }
 
-func TestClosePullWithoutATime(t *testing.T) {
-	t.Parallel()
-
-	client, _ := writeServer(t, ResourceCore, http.StatusOK, `{"state":"closed","closed_at":null}`, nil)
-
-	closed, err := client.ClosePull(t.Context(), NewToken(fakeToken), editRef())
-	require.NoError(t, err)
-	assert.Equal(t, &Closed{}, closed)
-}
-
 func TestClosePullRefusals(t *testing.T) {
 	t.Parallel()
+
+	const refused = "GitHub wouldn't close acme-org/example-repo#42: "
 
 	tests := []struct {
 		name    string
@@ -530,18 +521,43 @@ func TestClosePullRefusals(t *testing.T) {
 		{name: "left open", status: http.StatusOK, body: `{"state":"open"}`, want: ErrEditIgnored, words: "GitHub did not close"},
 		{name: "a bad answer", status: http.StatusOK, body: `[]`, want: ErrMalformedResponse},
 		{
-			name: "not allowed", status: http.StatusForbidden, body: `{"message":"Resource not accessible by integration"}`,
-			want: ErrUnexpectedStatus, words: "Resource not accessible by integration",
+			name: "forbidden", status: http.StatusForbidden, body: `{"message":"Resource not accessible by integration"}`,
+			want: ErrUnexpectedStatus, words: refused + "Resource not accessible by integration.",
+		},
+		{
+			name: "forbidden, saying nothing", status: http.StatusForbidden, body: `{}`,
+			want: ErrUnexpectedStatus, words: refused + "your account may not be allowed to close it.",
+		},
+		{
+			name: "not found", status: http.StatusNotFound, body: `{"message":"Not Found"}`,
+			want: ErrUnexpectedStatus, words: "GitHub could not find acme-org/example-repo#42",
+		},
+		{
+			name: "gone", status: http.StatusGone, body: `{"message":"This pull request was deleted"}`,
+			want: ErrUnexpectedStatus, words: "GitHub could not find acme-org/example-repo#42",
+		},
+		{
+			name: "not allowed", status: http.StatusMethodNotAllowed, body: `{"message":"Pull request is locked"}`,
+			want: ErrUnexpectedStatus, words: refused + "Pull request is locked.",
+		},
+		{
+			name: "conflict", status: http.StatusConflict, body: `{"message":"Head branch was modified"}`,
+			want: ErrUnexpectedStatus, words: refused + "Head branch was modified.",
 		},
 		{
 			name: "unprocessable", status: http.StatusUnprocessableEntity,
 			body: `{"message":"Validation Failed","errors":["state cannot be changed"]}`,
-			want: ErrUnexpectedStatus, words: "GitHub refused the change to acme-org/example-repo#42",
+			want: ErrUnexpectedStatus, words: refused,
 		},
-		{name: "gone", status: http.StatusNotFound, body: `{"message":"Not Found"}`, want: ErrUnexpectedStatus, words: "could not find"},
+		{
+			name: "unprocessable, about an expected head", status: http.StatusUnprocessableEntity,
+			body: `{"message":"expected head sha didn't match"}`,
+			want: ErrUnexpectedStatus, words: refused + "expected head sha didn't match.",
+		},
 		{
 			name: "slowed down", status: http.StatusForbidden, body: `{"message":"You have exceeded a secondary rate limit"}`,
 			headers: map[string]string{"Retry-After": "120"}, want: ErrUnexpectedStatus, hold: 2 * time.Minute,
+			words: "GitHub is limiting how fast",
 		},
 	}
 
@@ -553,8 +569,12 @@ func TestClosePullRefusals(t *testing.T) {
 			gate := &fakeGate{}
 			client.Writes = gate
 
-			_, err := client.ClosePull(t.Context(), NewToken(fakeToken), editRef())
+			err := client.ClosePull(t.Context(), NewToken(fakeToken), editRef())
 			require.ErrorIs(t, err, tt.want)
+			require.NotErrorIs(t, err, ErrPushedSince, "a close is pinned to no head")
+			require.NotErrorIs(t, err, ErrNotMergeable, "a close is no merge")
+			assert.NotContains(t, uierrText(err), "merge")
+			assert.NotContains(t, uierrText(err), "pushed to")
 
 			if tt.words != "" {
 				assert.Contains(t, uierrText(err), tt.words)
@@ -576,7 +596,7 @@ func TestClosePullChecksItsInput(t *testing.T) {
 	bad := editRef()
 	bad.Number = 0
 
-	_, err := client.ClosePull(t.Context(), NewToken(fakeToken), bad)
+	err := client.ClosePull(t.Context(), NewToken(fakeToken), bad)
 	require.ErrorIs(t, err, ErrInvalidItemRef)
 	assert.Empty(t, rec.all(), "nothing is sent")
 	assert.Empty(t, gate.allowed, "nothing is counted")
@@ -604,7 +624,7 @@ func TestEveryWriteScrubsTheToken(t *testing.T) {
 	_, err = client.AddComment(t.Context(), tok, editRef(), "x")
 	assert.NotContains(t, err.Error(), fakeToken)
 
-	_, err = client.ClosePull(t.Context(), tok, editRef())
+	err = client.ClosePull(t.Context(), tok, editRef())
 	assert.NotContains(t, err.Error(), fakeToken)
 }
 

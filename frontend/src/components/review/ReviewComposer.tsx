@@ -42,24 +42,23 @@ export interface ReviewComposerProps {
 }
 
 // replyActionOf is the review an action's text goes with, which decides the replies the
-// composer offers: a close posts its text as a comment.
+// composer offers.
 export function replyActionOf(action: ReviewAction): ReplyAction {
   switch (action) {
     case 'request_changes':
       return 'request_changes'
     case 'comment':
-    case 'close':
       return 'comment'
     default:
       return 'approve'
   }
 }
 
-// startsFromReply reports an action whose text starts from the default reply until the
-// user writes their own: every one but a close, which posts only what the user wrote or
-// picked, never words chosen for another review.
-export function startsFromReply(action: ReviewAction): boolean {
-  return action !== 'close'
+// sentText is the text an action sends, from the composer's body: all of it, but for a
+// close, which is never the button, and so never the action the composer's default reply
+// was filled in for: it sends only what the user wrote or picked, never that default.
+export function sentText(action: ReviewAction, draft: ReviewDraft, body: string): string {
+  return action !== 'close' || draft.edited ? body : ''
 }
 
 // needsText says why an action is held back for want of text: a request for changes or a
@@ -127,12 +126,12 @@ export interface ReplyBody {
 }
 
 // useReplyBody works out the review's text for the pull request with id, opened by a bot
-// or not, with the draft, for the action selected. A close starts with no text.
+// or not, with the draft, for the action selected.
 export function useReplyBody(id: number, isBot: boolean, draft: ReviewDraft, action: ReviewAction): ReplyBody {
   const replyAction = replyActionOf(action)
   const replies = useQuery(() => reviewReplies(replyAction), [replyAction])
   const list = replies.data
-  const fallback = list === undefined || !startsFromReply(action) ? 0 : isBot ? list.defaultBots : list.default
+  const fallback = list === undefined ? 0 : isBot ? list.defaultBots : list.default
   const filled = useQuery(() => fillReply(id, fallback), [id, fallback], { enabled: !draft.edited && fallback !== 0 })
   const body = draft.edited ? draft.body : fallback === 0 ? '' : (filled.data ?? '')
 
@@ -244,7 +243,7 @@ export function ReviewComposer({
             onDraft((d) => ({ ...d, action }))
           }}
           onRun={onRun}
-          blocked={(action) => heldBack(offerOf(action), body, draft.comments.length)}
+          blocked={(action) => heldBack(offerOf(action), sentText(action, draft, body), draft.comments.length)}
         />
         {launch !== null && item !== undefined && (
           <LaunchControls

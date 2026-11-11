@@ -395,9 +395,9 @@ More in [The item menu and edits on GitHub](docs/desktop.md#the-item-menu-and-ed
 - **Every merge asks first,** with the methods the repository allows and any warnings to accept.
   Approve, Comment, Request changes, and Update branch are one click (Update branch asks first on
   a Dependabot pull request, which Dependabot stops rebasing once someone else changes it).
-- **Close without merging:** the menu offers **Close pull request** on your own pull request, or
-  where you have triage access or more. It is never the button, asks first, and posts your text
-  and line comments as a comment before it closes; it checks first that nothing was pushed.
+- **Close without merging:** the menu offers **Close pull request** wherever GitHub says you may
+  close it. It is never the button: picking it asks first, and it posts the text you wrote and
+  your line comments as a comment before it closes, once it checked that nothing was pushed.
 - **Safe by construction:** every write is pinned to the commit you saw: a merge after a push is
   refused, and an approval checks nothing was pushed before it goes, so you never approve code
   you didn't see. A fresh merge-state read comes before every merge, so an admin's

@@ -26,9 +26,10 @@ import { ActionProgress } from './ActionProgress'
 import { AgentVerdict } from './AgentVerdict'
 import { DiffView } from './DiffView'
 import { FileList } from './FileList'
+import { menuOnly } from './ActionButton'
 import { ActionConfirmDialog } from './ActionConfirmDialog'
 import { MergeConfirmDialog, merges } from './MergeConfirmDialog'
-import { commentFirst, heldBack, ReviewComposer, sendsText, useReplyBody } from './ReviewComposer'
+import { commentFirst, heldBack, ReviewComposer, sendsText, sentText, useReplyBody } from './ReviewComposer'
 import { ReviewHeader } from './ReviewHeader'
 import { DescriptionSkeleton, DiffSkeleton, FileListSkeleton, ReadingBanner, SummarySkeleton } from './ReviewLoading'
 import { Readiness, ReviewSummary } from './ReviewSummary'
@@ -54,11 +55,16 @@ export interface ReviewSheetProps {
 }
 
 // selectedAction is the action the sheet's button runs: the one the user chose, while the
-// sheet still offers it enabled, else the sheet's primary.
+// sheet still offers it enabled, else the sheet's primary; never one that runs only from
+// the menu, such as a close.
 export function selectedAction(review: Review, chosen: ReviewAction): ReviewAction {
   const offer = review.offers.find((o) => o.action === chosen)
 
-  return chosen !== '' && offer?.enabled === true ? chosen : review.primary
+  if (chosen !== '' && !menuOnly(chosen) && offer?.enabled === true) {
+    return chosen
+  }
+
+  return menuOnly(review.primary) ? '' : review.primary
 }
 
 // keepsDraft reports an outcome that leaves the draft for another try: an action refused
@@ -142,7 +148,7 @@ export function ReviewSheet({
       itemId: id,
       action,
       head: r.head,
-      body: text ? reply.body : '',
+      body: text ? sentText(action, draft, reply.body) : '',
       comments: text
         ? draft.comments.map((c) => ({
             path: c.path,
@@ -454,7 +460,7 @@ export function ReviewSheet({
           <ActionConfirmDialog
             review={review}
             offer={confirming}
-            comment={commentFirst(confirming, reply.body, draft.comments.length)}
+            comment={commentFirst(confirming, sentText(confirming.action, draft, reply.body), draft.comments.length)}
             onCancel={() => {
               setConfirming(null)
             }}

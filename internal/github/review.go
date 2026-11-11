@@ -125,12 +125,6 @@ type Comment struct {
 	CreatedAt time.Time
 }
 
-// Closed is a pull request as GitHub answered its closing.
-type Closed struct {
-	// ClosedAt is when GitHub closed it, zero when it did not say.
-	ClosedAt time.Time
-}
-
 // SubmitReview submits a review of the pull request ref, pinned to in.CommitID, with one
 // REST request (POST /repos/{owner}/{repo}/pulls/{number}/reviews). GitHub answers with
 // the review; one left pending, which a review with an event never is, returns
@@ -186,12 +180,11 @@ func (c *Client) AddComment(ctx context.Context, tok Token, ref item.Ref, body s
 
 // ClosePull closes the pull request ref without merging it, with one REST request (PATCH
 // /repos/{owner}/{repo}/pulls/{number}). GitHub answers with the pull request; one it left
-// open returns ErrEditIgnored. GitHub takes no head to pin a close to, so a caller reads
-// the head first (FetchMergeState) and closes only what the user saw.
-func (c *Client) ClosePull(ctx context.Context, tok Token, ref item.Ref) (*Closed, error) {
-	closed, err := c.closePull(ctx, tok, ref)
-
-	return closed, Redact(err, tok)
+// open returns ErrEditIgnored, and a refusal is worded as a close (closeError), never as a
+// merge or a push. GitHub takes no head to pin a close to, so a caller reads the head
+// first (FetchMergeState) and closes only what the user saw.
+func (c *Client) ClosePull(ctx context.Context, tok Token, ref item.Ref) error {
+	return Redact(c.closePull(ctx, tok, ref), tok)
 }
 
 // restReviewComment is a line comment as the reviews endpoint takes it.
@@ -473,40 +466,60 @@ func (c *Client) addComment(ctx context.Context, tok Token, ref item.Ref, body s
 }
 
 // closePull checks the pull request, sends the close, and checks GitHub's answer.
-func (c *Client) closePull(ctx context.Context, tok Token, ref item.Ref) (*Closed, error) {
+func (c *Client) closePull(ctx context.Context, tok Token, ref item.Ref) error {
 	if err := validateRef(ref); err != nil {
-		return nil, err
+		return err
 	}
 
 	body, err := json.Marshal(map[string]string{"state": "closed"})
 	if err != nil {
-		return nil, fmt.Errorf("encode the close: %w", err)
+		return fmt.Errorf("encode the close: %w", err)
 	}
 
 	raw, err := c.edit(ctx, tok, http.MethodPatch, pullPath(ref), body)
 	if err != nil {
-		return nil, writeError(ref, fmt.Errorf("close %s: %w", ref, err))
+		return closeError(ref, fmt.Errorf("close %s: %w", ref, err))
 	}
 
 	var answer struct {
-		State    string     `json:"state"`
-		ClosedAt *time.Time `json:"closed_at"`
+		State string `json:"state"`
 	}
 
 	if err = json.Unmarshal(raw, &answer); err != nil {
-		return nil, fmt.Errorf("%w: decode the close of %s: %w", ErrMalformedResponse, ref, err)
+		return fmt.Errorf("%w: decode the close of %s: %w", ErrMalformedResponse, ref, err)
 	}
 
 	if !strings.EqualFold(answer.State, "closed") {
-		return nil, uierr.New(fmt.Sprintf("GitHub did not close %s.", ref), fmt.Errorf("close %s: %w", ref, ErrEditIgnored))
+		return uierr.New(fmt.Sprintf("GitHub did not close %s.", ref), fmt.Errorf("close %s: %w", ref, ErrEditIgnored))
 	}
 
-	closed := &Closed{}
-	if answer.ClosedAt != nil {
-		closed.ClosedAt = answer.ClosedAt.UTC()
+	return nil
+}
+
+// closeError gives a refused close of ref a message the user can act on, keeping err's
+// chain. A close is neither a merge nor pinned to a head, so a refusal is worded as a close
+// whatever its status, never as a merge GitHub won't make (405) or a push (409), and it
+// carries neither ErrNotMergeable nor ErrPushedSince. A rate limit, a token GitHub refused,
+// and a request that got no answer keep what they say.
+func closeError(ref item.Ref, err error) error {
+	status, ok := errors.AsType[*StatusError](err)
+	if !ok || IsBadCredentials(err) {
+		return err
 	}
 
-	return closed, nil
+	switch status.StatusCode {
+	case http.StatusNotFound, http.StatusGone:
+		return uierr.New(fmt.Sprintf("GitHub could not find %s, or your account cannot see it, so it wasn't closed.", ref), err)
+	case http.StatusForbidden, http.StatusMethodNotAllowed, http.StatusConflict, http.StatusUnprocessableEntity:
+		if rateLimited(status) {
+			return editError(ref, err)
+		}
+
+		return uierr.New(fmt.Sprintf("GitHub wouldn't close %s: %s", ref, sentence(nonEmpty(status.Message,
+			"your account may not be allowed to close it"))), err)
+	default:
+		return editError(ref, err)
+	}
 }
 
 // validateReview checks a review before anything is sent: its pull request, its event,

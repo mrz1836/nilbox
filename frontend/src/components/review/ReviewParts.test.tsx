@@ -24,15 +24,7 @@ import { AgentVerdict } from './AgentVerdict'
 import { DiffView } from './DiffView'
 import { LineComment } from './LineComment'
 import { MergeConfirmDialog, merges, mergeVerb } from './MergeConfirmDialog'
-import {
-  commentFirst,
-  heldBack,
-  needsText,
-  ReviewComposer,
-  replyActionOf,
-  sendsText,
-  startsFromReply,
-} from './ReviewComposer'
+import { commentFirst, heldBack, needsText, ReviewComposer, replyActionOf, sendsText, sentText } from './ReviewComposer'
 import { ReviewHeader } from './ReviewHeader'
 import { areasText, checksSummary, Readiness, ReviewSummary } from './ReviewSummary'
 
@@ -423,6 +415,79 @@ describe('ActionButton', () => {
 
     expect(screen.getByRole('button', { name: 'Working…' })).toBeDisabled()
   })
+
+  it('runs a close when it is picked, and never makes it the button or the choice', async () => {
+    const onSelect = vi.fn()
+    const onRun = vi.fn()
+    const { rerender } = render(
+      <ActionButton
+        offers={[offer(), closeOffer()]}
+        selected="close"
+        onSelect={onSelect}
+        onRun={onRun}
+        busy={false}
+        blocked={() => ''}
+      />,
+    )
+
+    // A close asked for as the choice is no button: the menu holds it.
+    expect(screen.queryByRole('button', { name: /^Close pull request/ })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Choose an action' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Close pull request' }))
+    expect(onRun).toHaveBeenCalledWith('close')
+    expect(onSelect).not.toHaveBeenCalled()
+
+    // While GitHub can't take its comment, the menu holds it back and says why.
+    rerender(
+      <ActionButton
+        offers={[offer(), closeOffer()]}
+        selected="approve"
+        onSelect={onSelect}
+        onRun={onRun}
+        busy={false}
+        blocked={(a) => (a === 'close' ? 'You have a review started on GitHub.' : '')}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'More review actions' }))
+    expect(screen.getByRole('menuitem', { name: 'Close pull request' })).toBeDisabled()
+    expect(screen.getByRole('menuitem', { name: 'Close pull request' })).toHaveAttribute(
+      'title',
+      'You have a review started on GitHub.',
+    )
+  })
+
+  it('counts a close as nothing to do, keeping it in a menu beside the words', async () => {
+    const onRun = vi.fn()
+    const { rerender } = render(
+      <ActionButton
+        offers={[offer({ enabled: false, reason: 'Not now.' }), closeOffer()]}
+        selected=""
+        onSelect={vi.fn()}
+        onRun={onRun}
+        busy={false}
+        blocked={() => ''}
+      />,
+    )
+
+    expect(screen.getByText('Nothing to do here now.')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'More review actions' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Close pull request' }))
+    expect(onRun).toHaveBeenCalledWith('close')
+
+    // With no close to run either, there is no menu at all.
+    rerender(
+      <ActionButton
+        offers={[offer({ enabled: false, reason: 'Not now.' }), closeOffer({ enabled: false, reason: 'Wait.' })]}
+        selected=""
+        onSelect={vi.fn()}
+        onRun={onRun}
+        busy={false}
+        blocked={() => ''}
+      />,
+    )
+    expect(screen.getByText('Nothing to do here now.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'More review actions' })).not.toBeInTheDocument()
+  })
 })
 
 describe('DiffView', () => {
@@ -515,11 +580,12 @@ describe('ReviewComposer helpers', () => {
     expect(replyActionOf('request_changes')).toBe('request_changes')
     expect(replyActionOf('comment')).toBe('comment')
     expect(replyActionOf('merge_now')).toBe('approve')
-    // A close posts its text as a comment, and starts with none.
-    expect(replyActionOf('close')).toBe('comment')
-    expect(startsFromReply('close')).toBe(false)
-    expect(startsFromReply('merge_now')).toBe(true)
-    expect(startsFromReply('comment')).toBe(true)
+    // A close sends only what the user wrote or picked, never a default reply left as it was.
+    const untouched = { ...emptyDraft, edited: false }
+    const written = { ...emptyDraft, edited: true }
+    expect(sentText('close', untouched, 'Reviewed and approved.')).toBe('')
+    expect(sentText('close', written, 'Superseded.')).toBe('Superseded.')
+    expect(sentText('merge_now', untouched, 'Reviewed and approved.')).toBe('Reviewed and approved.')
     expect(needsText('close', '', 0)).toBe('')
     expect(needsText('comment', ' ', 0)).not.toBe('')
     expect(needsText('comment', '', 1)).toBe('')

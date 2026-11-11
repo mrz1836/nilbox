@@ -360,7 +360,7 @@ func (g *fakeGitHub) AddComment(_ context.Context, _ github.Token, _ item.Ref, b
 	return &github.Comment{ID: 1}, nil
 }
 
-func (g *fakeGitHub) ClosePull(context.Context, github.Token, item.Ref) (*github.Closed, error) {
+func (g *fakeGitHub) ClosePull(context.Context, github.Token, item.Ref) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
@@ -370,14 +370,10 @@ func (g *fakeGitHub) ClosePull(context.Context, github.Token, item.Ref) (*github
 		err := g.closeOnce
 		g.closeOnce = nil
 
-		return nil, err
+		return err
 	}
 
-	if g.closeErr != nil {
-		return nil, g.closeErr
-	}
-
-	return &github.Closed{ClosedAt: testNow}, nil
+	return g.closeErr
 }
 
 func (g *fakeGitHub) count(name string) {
@@ -500,7 +496,7 @@ func (h *harness) refreshed(t *testing.T) Review {
 }
 
 // pullReview is what GitHub says about #7 at head in merge state status, which the user may
-// update while it is behind.
+// update while it is behind, and close.
 func pullReview(head, status string) *github.PullReview {
 	return &github.PullReview{
 		Update: github.ItemUpdate{
@@ -512,7 +508,7 @@ func pullReview(head, status string) *github.PullReview {
 			Details: github.ItemDetails{HeadOID: head},
 		},
 		Body: "Adds a cache.\n\n![chart](https://example.com/x.png)", BaseRef: "main", MergeState: status,
-		ViewerCanEnableAutoMerge: true, ViewerCanUpdateBranch: status == github.MergeStateBehind,
+		ViewerCanEnableAutoMerge: true, ViewerCanUpdateBranch: status == github.MergeStateBehind, ViewerCanClose: true,
 		Reviews: []github.Review{{Author: "octo-reviewer", State: "APPROVED", Commit: headB, SubmittedAt: testNow}},
 		Checks: []github.Check{
 			{Kind: github.CheckKindRun, Name: "test", State: "SUCCESS", Outcome: github.CheckPassed, Required: true},

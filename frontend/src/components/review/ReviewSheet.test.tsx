@@ -10,6 +10,7 @@ import { at } from '../../test/clock'
 import {
   agentSession,
   agents,
+  closeOffer,
   item,
   itemResolution,
   mergeOffer,
@@ -489,25 +490,18 @@ describe('ReviewSheet', () => {
     await waitFor(() => {
       expect(box).toHaveValue('Reviewed and approved. Thanks, @octo-other!')
     })
-
-    // A close starts with no text: the approval's default reply never goes with it.
-    await choose('Close pull request')
-    expect(box).toHaveValue('')
-    expect(screen.queryByText(/posted as a comment first/)).not.toBeInTheDocument()
-    expect(platform.reviewReplies).toHaveBeenLastCalledWith('comment')
-
+    await userEvent.clear(box)
     await userEvent.type(box, 'Superseded by #9.')
-    expect(screen.getByText('Your text is posted as a comment first.')).toHaveClass('text-muted')
 
-    // Cancel sends nothing.
-    await userEvent.click(await actionButton('Close pull request'))
+    // Picking it from the menu asks at once; Cancel sends nothing.
+    await choose('Close pull request')
     let dialog = screen.getByRole('dialog', { name: 'Close #7 without merging it?' })
     expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus()
     await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
     expect(screen.queryByRole('dialog', { name: 'Close #7 without merging it?' })).not.toBeInTheDocument()
 
     // Nor does Escape, which closes the confirmation alone.
-    await userEvent.click(await actionButton('Close pull request'))
+    await choose('Close pull request')
     expect(screen.getByRole('dialog', { name: 'Close #7 without merging it?' })).toBeInTheDocument()
     await userEvent.keyboard('{Escape}')
     expect(screen.queryByRole('dialog', { name: 'Close #7 without merging it?' })).not.toBeInTheDocument()
@@ -515,7 +509,7 @@ describe('ReviewSheet', () => {
     expect(onClose).not.toHaveBeenCalled()
     expect(platform.actOnReview).not.toHaveBeenCalled()
 
-    await userEvent.click(await actionButton('Close pull request'))
+    await choose('Close pull request')
     dialog = screen.getByRole('dialog', { name: 'Close #7 without merging it?' })
     expect(dialog).toHaveTextContent('acme-org/example-repo#7, “Add the widget cache”, closes unmerged.')
     expect(dialog).toHaveTextContent('You can reopen it on GitHub.')
@@ -537,13 +531,16 @@ describe('ReviewSheet', () => {
     })
   })
 
-  it('closes with no comment while the text is empty', async () => {
+  it('closes with no comment while the text is the default reply the user never touched', async () => {
     render(<Harness />)
 
-    await choose('Close pull request')
-    expect(screen.getByRole('textbox', { name: 'Your review' })).toHaveValue('')
+    const box = await screen.findByRole('textbox', { name: 'Your review' })
+    await waitFor(() => {
+      expect(box).toHaveValue('Reviewed and approved. Thanks, @octo-other!')
+    })
 
-    await userEvent.click(await actionButton('Close pull request'))
+    // The approval's default reply never goes with a close.
+    await choose('Close pull request')
     const dialog = screen.getByRole('dialog', { name: 'Close #7 without merging it?' })
     expect(within(dialog).queryByText(/posted as a comment first/)).not.toBeInTheDocument()
     await userEvent.click(within(dialog).getByRole('button', { name: 'Close pull request' }))
@@ -552,6 +549,94 @@ describe('ReviewSheet', () => {
       expect(platform.actOnReview).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'close', body: '', comments: [] }),
       )
+    })
+  })
+
+  it('never makes Close the button, the chosen action, or what ⌘↩ runs', async () => {
+    // Reopening keeps the drafts, as the window does, so the sheet opens again on what was
+    // chosen before.
+    function Reopening() {
+      const kept = useReviewDrafts()
+      const [open, setOpen] = useState(true)
+
+      return open ? (
+        <Harness
+          drafts={kept}
+          onClose={() => {
+            setOpen(false)
+          }}
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => {
+            setOpen(true)
+          }}
+        >
+          Open again
+        </button>
+      )
+    }
+
+    render(<Reopening />)
+
+    const button = await actionButton('Approve & squash-merge')
+    expect(button).toHaveClass('rounded-r-none')
+
+    await choose('Close pull request')
+    await userEvent.click(
+      within(screen.getByRole('dialog', { name: 'Close #7 without merging it?' })).getByRole('button', {
+        name: 'Cancel',
+      }),
+    )
+
+    // The button is what it was, and ⌘↩ runs it, never the close.
+    expect(await actionButton('Approve & squash-merge')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Close pull request/ })).not.toBeInTheDocument()
+    await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
+    expect(screen.getByRole('dialog', { name: 'Approve and merge #7 into main?' })).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Close #7 without merging it?' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    // Opened again, the sheet's button is still its own.
+    await userEvent.click(within(sheet()).getByRole('button', { name: 'Close' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Open again' }))
+    expect(await actionButton('Approve & squash-merge')).toBeInTheDocument()
+    expect(platform.actOnReview).not.toHaveBeenCalled()
+  })
+
+  it('says there is nothing to do when only a close could run, and keeps the close in its menu', async () => {
+    platform.refreshReview.mockResolvedValue(
+      review({
+        offers: [
+          offer({
+            action: 'approve',
+            label: 'Approve',
+            enabled: false,
+            reason: 'You have a review started on GitHub.',
+          }),
+          closeOffer(),
+        ],
+        primary: '',
+      }),
+    )
+    render(<Harness />)
+
+    expect(await screen.findByText('Nothing to do here now.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Choose an action' })).not.toBeInTheDocument()
+
+    // ⌘↩ runs nothing.
+    await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
+    expect(screen.queryByRole('dialog', { name: 'Close #7 without merging it?' })).not.toBeInTheDocument()
+
+    await choose('Close pull request')
+    await userEvent.click(
+      within(screen.getByRole('dialog', { name: 'Close #7 without merging it?' })).getByRole('button', {
+        name: 'Close pull request',
+      }),
+    )
+    await waitFor(() => {
+      expect(platform.actOnReview).toHaveBeenCalledWith(expect.objectContaining({ action: 'close' }))
     })
   })
 
@@ -568,10 +653,13 @@ describe('ReviewSheet', () => {
     const onDone = vi.fn()
     render(<Harness onDone={onDone} />)
 
-    await choose('Close pull request')
-    const box = screen.getByRole('textbox', { name: 'Your review' })
+    const box = await screen.findByRole('textbox', { name: 'Your review' })
+    await waitFor(() => {
+      expect(box).toHaveValue('Reviewed and approved. Thanks, @octo-other!')
+    })
+    await userEvent.clear(box)
     await userEvent.type(box, 'Superseded by #9.')
-    await userEvent.click(await actionButton('Close pull request'))
+    await choose('Close pull request')
     await userEvent.click(
       within(screen.getByRole('dialog', { name: 'Close #7 without merging it?' })).getByRole('button', {
         name: 'Close pull request',
@@ -1210,5 +1298,10 @@ describe('selectedAction', () => {
     expect(selectedAction(r, 'comment')).toBe('comment')
     expect(selectedAction(r, 'rebase_bot')).toBe('approve_merge')
     expect(selectedAction(review({ offers: [offer({ enabled: false })] }), 'approve')).toBe('approve_merge')
+  })
+
+  it('never keeps a close, which runs only from the menu, even one offered and enabled', () => {
+    expect(selectedAction(review(), 'close')).toBe('approve_merge')
+    expect(selectedAction(review({ offers: [closeOffer()], primary: 'close' }), 'close')).toBe('')
   })
 })
