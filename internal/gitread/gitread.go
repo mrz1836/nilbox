@@ -16,7 +16,12 @@
 // the app, so the checks use the same git, and the same credential helpers, as the tools
 // the user releases with. The ls-remote commands, the only ones that reach origin, stop
 // after RemoteTimeout, and run ssh in batch mode unless the user chose their own ssh
-// command, which can carry an agent such as a password manager's.
+// command, which can carry an agent such as a password manager's. They run no program the
+// clone's own config names (see remoteGuard): a remote helper is refused, and so is an
+// http or https origin the clone's own config reroutes; only the file, http, https, and
+// ssh transports are allowed; the clone's ssh command, password program, and credential
+// helpers give way to the user's own; no cookie file is written; and origin is asked for
+// git's own upload-pack. No other command reaches a transport at all.
 package gitread
 
 import (
@@ -92,7 +97,8 @@ func New(cfg Config) *Git {
 // returns what git wrote, once args has passed the allowlist and dir is absolute and
 // clean; otherwise it returns ErrGitCommandNotAllowed and runs nothing. A non-zero exit is
 // an error that execpath.ExitCode reads. An ls-remote stops after RemoteTimeout, when the
-// error wraps context.DeadlineExceeded.
+// error wraps context.DeadlineExceeded. One that fails otherwise, after setting aside a
+// setting the clone's own config makes, returns a *SetAsideError.
 func (g *Git) Run(ctx context.Context, dir string, args ...string) (stdout, stderr []byte, err error) {
 	switch {
 	case !isDir(dir):
@@ -105,12 +111,28 @@ func (g *Git) Run(ctx context.Context, dir string, args ...string) (stdout, stde
 		return g.exec(ctx, dir, g.environment(), nil, args)
 	}
 
+	return g.remote(ctx, dir, args)
+}
+
+// remote runs an ls-remote, which has passed the allowlist, within RemoteTimeout and as
+// remoteGuard sets it up, and words its failure as Run says.
+func (g *Git) remote(ctx context.Context, dir string, args []string) (stdout, stderr []byte, err error) {
 	ctx, cancel := context.WithTimeout(ctx, RemoteTimeout)
 	defer cancel()
 
-	stdout, stderr, err = g.exec(ctx, dir, g.withSSH(ctx, dir, g.environment()), nil, args)
-	if err != nil && ctx.Err() != nil {
+	base := g.env()
+
+	setup, stderr, err := g.remoteGuard(ctx, dir, environmentOf(base), lookupVar(base, allowProtocolVar))
+	if err == nil {
+		stdout, stderr, err = g.exec(ctx, dir, setup.env, setup.extra, args)
+	}
+
+	switch {
+	case err == nil:
+	case ctx.Err() != nil:
 		err = fmt.Errorf("%w: %w", ctx.Err(), err)
+	case len(setup.setAside) > 0:
+		err = &SetAsideError{Err: err, Settings: setup.setAside}
 	}
 
 	return stdout, stderr, err
@@ -158,14 +180,14 @@ func (g *Git) status(ctx context.Context, dir string, args []string) (stdout, st
 
 // cloneFiltersOff reads `git config --show-scope --get-regexp` lines for the filter
 // drivers' keys and returns the settings that turn off each driver from the clone's own
-// config (local or worktree scope). A driver name holding '=' or a control character
-// can't be named in a -c setting, and is refused.
+// config (any scope but trustedScopes). A driver name passable refuses can't be named in
+// a -c setting, and is refused.
 func cloneFiltersOff(out []byte) ([]string, error) {
 	var off []string
 
 	for line := range strings.Lines(string(out)) {
 		scope, rest, ok := strings.Cut(strings.TrimRight(line, "\n"), "\t")
-		if !ok || (scope != "local" && scope != "worktree") {
+		if !ok || trustedScope(scope) {
 			continue
 		}
 
@@ -196,11 +218,8 @@ func filterName(key string) (string, bool) {
 	}
 
 	name := rest[:cut]
-	if strings.ContainsRune(name, '=') || strings.ContainsFunc(name, func(r rune) bool { return r < ' ' || r == 0x7f }) {
-		return "", false
-	}
 
-	return name, true
+	return name, passable(name)
 }
 
 // filterDriversArgs lists the filter drivers' program settings with where each is set.
@@ -208,13 +227,18 @@ func filterDriversArgs() []string {
 	return []string{configCmd, "--show-scope", "--get-regexp", filterKeysPattern}
 }
 
-// environment returns Env's environment with GIT_OPTIONAL_LOCKS=0 and
-// GIT_TERMINAL_PROMPT=0 in place of any value it had, and without the variables that
-// would point git at another repository than -C's.
-func (g *Git) environment() []string {
-	base := g.env()
+// environment returns Env's environment with GIT_OPTIONAL_LOCKS=0, GIT_TERMINAL_PROMPT=0,
+// GIT_NO_LAZY_FETCH=1, and an empty GIT_ALLOW_PROTOCOL in place of any value it had, and
+// without the variables that would point git at another repository than -C's or another
+// config file. No command reaches a transport: a partial clone's missing object isn't
+// fetched (GIT_NO_LAZY_FETCH from git 2.44, and no transport allowed before it), so a
+// clone can't make a read reach origin. An ls-remote allows its own transports again.
+func (g *Git) environment() []string { return environmentOf(g.env()) }
+
+// environmentOf is environment over base.
+func environmentOf(base []string) []string {
 	dropped := droppedVars()
-	env := make([]string, 0, len(base)+2)
+	env := make([]string, 0, len(base)+4)
 
 	for _, kv := range base {
 		if key, _, _ := strings.Cut(kv, "="); !slices.Contains(dropped, key) {
@@ -222,22 +246,7 @@ func (g *Git) environment() []string {
 		}
 	}
 
-	return append(env, "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0")
-}
-
-// withSSH returns env with GIT_SSH_COMMAND set to batchSSH, unless the user chose an ssh
-// of their own: GIT_SSH_COMMAND or GIT_SSH in env, or core.sshCommand in the clone's
-// config. A config git can't read leaves env as it is.
-func (g *Git) withSSH(ctx context.Context, dir string, env []string) []string {
-	if hasVar(env, sshCommandVar) || hasVar(env, sshVar) {
-		return env
-	}
-
-	if _, set, err := g.config(ctx, dir, keySSHCommand); err != nil || set {
-		return env
-	}
-
-	return append(env, sshCommandVar+"="+batchSSH)
+	return append(env, "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0", "GIT_NO_LAZY_FETCH=1", allowProtocolVar+"=")
 }
 
 // hardening are the settings every command runs with: the file system monitor and
@@ -247,12 +256,15 @@ func hardening() []string {
 	return []string{"-c", "core.fsmonitor=false", "-c", "submodule.recurse=false"}
 }
 
-// droppedVars are the variables environment drops: the two it sets, and those that would
-// point git at another repository, index, object store, or namespace than the one at -C.
+// droppedVars are the variables environment drops: the four it sets, those that would
+// point git at another repository, index, object store, or namespace than the one at -C,
+// and GIT_CONFIG, which only `git config` reads, so it would hide the clone's own settings
+// from the guards' reads while the command they guard still reads them.
 func droppedVars() []string {
 	return []string{
-		"GIT_OPTIONAL_LOCKS", "GIT_TERMINAL_PROMPT", "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR",
-		"GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE",
+		"GIT_OPTIONAL_LOCKS", "GIT_TERMINAL_PROMPT", "GIT_NO_LAZY_FETCH", allowProtocolVar, "GIT_DIR", "GIT_WORK_TREE",
+		"GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE",
+		"GIT_CONFIG",
 	}
 }
 
