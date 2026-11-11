@@ -54,24 +54,32 @@ func (s *Service) judge(ctx context.Context, hook hookFile, tool ToolFacts) (Sta
 // in use, and whether that is known: from what that copy said of the same bytes before, or
 // else from its status in a scratch repository that holds them.
 func (s *Service) verdict(ctx context.Context, hook hookFile, tool ToolFacts) (current, known bool) {
+	current, known, _ = s.judgeBytes(ctx, hook, tool)
+
+	return current, known
+}
+
+// judgeBytes is verdict, with the error of go-pre-commit's status when it ran and failed,
+// which an action's Finish weighs against the app's quit.
+func (s *Service) judgeBytes(ctx context.Context, hook hookFile, tool ToolFacts) (current, known bool, err error) {
 	if !tool.Usable() || !hook.ours {
-		return false, false
+		return false, false, nil
 	}
 
 	if current, known = s.judged.get(tool.key(), hook.sha); known {
-		return current, true
+		return current, true, nil
 	}
 
-	data, err := readSmall(hook.path, hookLimit)
-	if sum := sha256.Sum256(data); err != nil || hex.EncodeToString(sum[:]) != hook.sha {
-		return false, false // the hook changed since it was read, or is too big to be one
+	data, same := readJudged(hook)
+	if !same {
+		return false, false, nil
 	}
 
 	rep, err := s.statusOf(ctx, data, tool)
 	if err != nil {
 		s.logger.WarnContext(ctx, "go-pre-commit status failed", "error", err)
 
-		return false, false
+		return false, false, err
 	}
 
 	switch rep.hooks[hookPreCommit] {
@@ -82,12 +90,21 @@ func (s *Service) verdict(ctx context.Context, hook hookFile, tool ToolFacts) (c
 	default:
 		s.logger.WarnContext(ctx, "go-pre-commit status said nothing of the hook it was given")
 
-		return false, false
+		return false, false, nil
 	}
 
 	s.judged.set(tool.key(), hook.sha, current)
 
-	return current, true
+	return current, true, nil
+}
+
+// readJudged reads hook's bytes for status to judge, and reports whether they are the bytes
+// it was read with: a hook that changed since, or is too big to be one, isn't judged.
+func readJudged(hook hookFile) ([]byte, bool) {
+	data, err := readSmall(hook.path, hookLimit)
+	sum := sha256.Sum256(data)
+
+	return data, err == nil && hex.EncodeToString(sum[:]) == hook.sha
 }
 
 // statusOf runs `go-pre-commit status` on hook, and reads it: as JSON with a copy that has
@@ -112,7 +129,7 @@ func (s *Service) statusOf(ctx context.Context, hook []byte, tool ToolFacts) (st
 
 	withJSON := tool.Has(integrations.FeatureStatusJSON)
 	if withJSON {
-		args = append(args, "--json")
+		args = append(args, jsonFlag)
 	}
 
 	stdout, stderr, err := s.runner(runEnv(base, integrationprefs.RunsInApp), dir).Run(ctx, tool.Path, args...)

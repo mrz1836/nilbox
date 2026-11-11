@@ -84,7 +84,8 @@ export function Replace(req: $models.ActionRequest): $CancellablePromise<number>
  * scan that fails keeps the last page, with its error, until one succeeds. A scan runs
  * apart from the caller that started it, within ScanTimeout: a caller whose context ends
  * stops waiting, and the scan goes on for the next. What holds each clone, and its newest
- * checks run, are read for every call.
+ * checks run, are read for every call. The whole call, its scan included, runs within the
+ * app's lifetime (Scans): the app's quit ends it, and refuses one after it.
  */
 export function Repos(refresh: boolean): $CancellablePromise<$models.Page> {
     return $Call.ByID(1187910443, refresh);

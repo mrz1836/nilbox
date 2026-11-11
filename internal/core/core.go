@@ -188,6 +188,11 @@ type Core struct {
 	// it as a worker. It is not bound.
 	ReleaseRefresher *release.Refresher
 
+	// HooksScans holds the Hooks page's scans, which run apart from the window's calls, to
+	// the app's lifetime: the app's quit ends them, and the desktop shell, which runs it as
+	// a worker, waits for them before it closes the database. It is not bound.
+	HooksScans hooks.Scans
+
 	// tokens holds the GitHub token the inbox and the worktree service borrow, until
 	// Close forgets it.
 	tokens *github.TokenSource
@@ -574,6 +579,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Release:          releases,
 		ReleaseRefresher: release.NewRefresher(releases),
 		Hooks:            hookPage,
+		HooksScans:       hooks.NewScans(hookPage),
 		Scripts:          repoScripts,
 		tokens:           tokens,
 		BudgetSaver:      budget.NewSaver(tracker, keeper, logger),
@@ -629,7 +635,8 @@ type hookDeps struct {
 // and checks run through the runner with the shell's environment, and the hooks.*
 // preferences. A row's Open in terminal opens the terminal the runs open in, and its Open
 // the config shows the config in Finder, as Show the log file does. Run again works a
-// hooks action or a checks run out afresh through its Rerunner.
+// hooks action or a checks run out afresh through its Rerunner, and one left from before a
+// restart is read and judged, once the shell's environment is read, through its Verifier.
 func newHooks(pool *sql.DB, opts Options, logger *slog.Logger, deps hookDeps) *hooks.Service {
 	var runner func([]string, string) execpath.Runner
 
@@ -641,13 +648,17 @@ func newHooks(pool *sql.DB, opts Options, logger *slog.Logger, deps hookDeps) *h
 		Clones: hooksClones{settings: deps.settings, home: opts.Home, git: deps.runner}, Git: deps.git,
 		Tools: hooksTool{tools: deps.tools}, Locks: deps.clones, Runs: deps.runs, History: deps.history,
 		Places: integrationSettings{settings: deps.settings}, Memory: prefsstore.New(pool, opts.Clock), Env: deps.shellEnv.Env,
-		Runner: runner, Terminal: deps.terminal, Reveal: revealer(deps.runner), Home: opts.Home, Clock: opts.Clock,
-		Events: opts.Events, Logger: logger,
+		Ready: deps.shellEnv.Ready, Runner: runner, Terminal: deps.terminal, Reveal: revealer(deps.runner), Home: opts.Home,
+		Clock: opts.Clock, Events: opts.Events, Logger: logger,
 	})
 
 	rerun := hooks.NewRerunner(svc)
 	deps.runs.RegisterRerunner(scriptrun.KindHooks, rerun)
 	deps.runs.RegisterRerunner(scriptrun.KindChecks, rerun)
+
+	verify := hooks.NewVerifier(svc)
+	deps.runs.RegisterVerifier(scriptrun.KindHooks, verify)
+	deps.runs.RegisterVerifier(scriptrun.KindChecks, verify)
 
 	return svc
 }

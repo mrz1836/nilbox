@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"unicode"
 )
 
@@ -91,6 +93,8 @@ func configSource(dir string) (shown string, files []string) {
 }
 
 // modularFiles returns the .env files in folder, sorted, or none when folder isn't one.
+// Only a regular file counts, or a link to one: a folder, a pipe, or a device named so is
+// left out, so it is never read, nor counted as a config.
 func modularFiles(folder string) []string {
 	entries, err := os.ReadDir(folder)
 	if err != nil {
@@ -100,14 +104,25 @@ func modularFiles(folder string) []string {
 	var files []string
 
 	for _, e := range entries {
-		if strings.HasSuffix(e.Name(), envExt) && !e.IsDir() {
-			files = append(files, filepath.Join(folder, e.Name()))
+		path := filepath.Join(folder, e.Name())
+		if strings.HasSuffix(e.Name(), envExt) && regularEntry(e, path) {
+			files = append(files, path)
 		}
 	}
 
 	slices.Sort(files)
 
 	return files
+}
+
+// regularEntry reports a folder's entry e, at path, that is a regular file, or a link to
+// one.
+func regularEntry(e fs.DirEntry, path string) bool {
+	if e.Type()&fs.ModeSymlink != 0 {
+		return isRegular(path)
+	}
+
+	return e.Type().IsRegular()
 }
 
 // enabled reports ENABLE_GO_PRE_COMMIT, which is on unless a file sets it to a false
@@ -119,9 +134,12 @@ func (c repoConfig) enabled() bool {
 // checkOn reports whether check is on in the repository: gitleaks is off unless turned
 // on, every other check on unless turned off.
 func (c repoConfig) checkOn(check Check) bool {
-	key := checkKeyPrefix + strings.ToUpper(strings.ReplaceAll(string(check), "-", "_"))
+	return c.flag(checkKey(check), check != CheckGitleaks)
+}
 
-	return c.flag(key, check != CheckGitleaks)
+// checkKey is check's switch in the config, as in GO_PRE_COMMIT_ENABLE_MOD_TIDY.
+func checkKey(check Check) string {
+	return checkKeyPrefix + strings.ToUpper(strings.ReplaceAll(string(check), "-", "_"))
 }
 
 // ciVersion is GO_PRE_COMMIT_VERSION, the go-pre-commit the repository's CI runs, without
@@ -225,7 +243,9 @@ func readSmall(path string, limit int64) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// openRegular opens the regular file at path, following a link, and refuses anything else.
+// openRegular opens the regular file at path, following a link, and refuses anything else:
+// a path that isn't one is never opened, and one swapped for a pipe or a device since it
+// was looked at is refused by openChecked.
 func openRegular(path string) (*os.File, error) {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -236,5 +256,27 @@ func openRegular(path string) (*os.File, error) {
 		return nil, errNotAFile
 	}
 
-	return os.Open(path) //nolint:gosec // a file in a clone the user listed, only read
+	return openChecked(path)
+}
+
+// openChecked opens path to read without waiting, as opening a pipe that nothing writes to
+// otherwise would, and keeps it open only when what it opened is a regular file.
+func openChecked(path string) (*os.File, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0) //nolint:gosec // a file in a clone the user listed, only read
+	if err != nil {
+		return nil, err
+	}
+
+	info, err := f.Stat()
+	if err == nil && !info.Mode().IsRegular() {
+		err = errNotAFile
+	}
+
+	if err != nil {
+		_ = f.Close()
+
+		return nil, err
+	}
+
+	return f, nil
 }
