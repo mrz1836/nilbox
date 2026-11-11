@@ -27,7 +27,7 @@ import { AgentVerdict } from './AgentVerdict'
 import { DiffView } from './DiffView'
 import { FileList } from './FileList'
 import { MergeConfirmDialog } from './MergeConfirmDialog'
-import { needsText, ReviewComposer, useReplyBody } from './ReviewComposer'
+import { commentFirst, heldBack, ReviewComposer, sendsText, useReplyBody } from './ReviewComposer'
 import { ReviewHeader } from './ReviewHeader'
 import { DescriptionSkeleton, DiffSkeleton, FileListSkeleton, ReadingBanner, SummarySkeleton } from './ReviewLoading'
 import { Readiness, ReviewSummary } from './ReviewSummary'
@@ -130,17 +130,19 @@ export function ReviewSheet({
   }
 
   const send = async (r: Review, action: ReviewAction, method: MergeMethod, accept: boolean) => {
-    const reviews = !['merge_now', 'auto_merge', 'merge_bypass', 'update_branch', 'rebase_bot'].includes(action)
-    const label = r.offers.find((o) => o.action === action)?.label ?? 'Working'
+    const offer = r.offers.find((o) => o.action === action)
+    // A review sends the text and line comments, and so does a merge with no review of its
+    // own, which posts them as a comment first when there are any, as the offer says.
+    const text = sendsText(offer)
 
-    setProgress({ title: label, target: `${r.repo}#${String(r.number)}`, steps: [] })
+    setProgress({ title: offer?.label ?? 'Working', target: `${r.repo}#${String(r.number)}`, steps: [] })
 
     const result = await act.run({
       itemId: id,
       action,
       head: r.head,
-      body: reviews ? reply.body : '',
-      comments: reviews
+      body: text ? reply.body : '',
+      comments: text
         ? draft.comments.map((c) => ({
             path: c.path,
             line: c.line,
@@ -161,6 +163,12 @@ export function ReviewSheet({
     }
 
     if (result.data.outcome === 'pushed_since') {
+      if (result.data.commented) {
+        // The merge posted the text and line comments before it found the push, so the
+        // draft keeps the chosen action and nothing that would post them twice.
+        drafts.update(id, (d) => ({ ...d, body: '', edited: true, replyId: 0, comments: [] }))
+      }
+
       setPushed(result.data.message)
       loaded.reload()
 
@@ -232,7 +240,13 @@ export function ReviewSheet({
     if (e.key === 'Enter' && e.metaKey) {
       e.preventDefault()
 
-      if (needsText(selected, reply.body, draft.comments.length) === '') {
+      if (
+        heldBack(
+          review?.offers.find((o) => o.action === selected),
+          reply.body,
+          draft.comments.length,
+        ) === ''
+      ) {
         run(selected)
       }
 
@@ -288,6 +302,10 @@ export function ReviewSheet({
                 }
           }
           onClose={close}
+          // A notice that it was pushed to since stays until its own Reload is clicked.
+          onRefresh={() => {
+            loaded.reload()
+          }}
         />
         <div className="space-y-2 px-5 empty:hidden">
           {loaded.error !== '' && <ErrorBanner>{loaded.error}</ErrorBanner>}
@@ -418,6 +436,7 @@ export function ReviewSheet({
         <MergeConfirmDialog
           review={review}
           offer={confirming}
+          comment={commentFirst(confirming, reply.body, draft.comments.length)}
           onCancel={() => {
             setConfirming(null)
           }}

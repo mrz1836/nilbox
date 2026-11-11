@@ -1244,7 +1244,8 @@ export function reviewFile(overrides: Partial<ReviewFile> = {}): ReviewFile {
   }
 }
 
-// offer is an action the review sheet offers, enabled.
+// offer is an action the review sheet offers, enabled: Approve, a review, unless overrides
+// say otherwise, as the backend marks every offer.
 export function offer(overrides: Partial<ReviewOffer> = {}): ReviewOffer {
   return {
     action: 'approve',
@@ -1253,8 +1254,24 @@ export function offer(overrides: Partial<ReviewOffer> = {}): ReviewOffer {
     reason: '',
     confirm: false,
     warnings: [],
+    reviews: true,
+    commentsFirst: false,
+    commentBlocked: '',
     ...overrides,
   }
+}
+
+// mergeOffer is a merge with no review of its own, which posts the text as a comment
+// first, as the backend marks it.
+export function mergeOffer(overrides: Partial<ReviewOffer> = {}): ReviewOffer {
+  return offer({
+    action: 'merge_now',
+    label: 'Squash-merge',
+    confirm: true,
+    reviews: false,
+    commentsFirst: true,
+    ...overrides,
+  })
 }
 
 // review is pull request #7 as the review sheet shows it, read from GitHub: ready to
@@ -1290,7 +1307,7 @@ export function review(overrides: Partial<Review> = {}): Review {
     readiness: { state: 'ready', sentence: 'Ready to merge', needs: [] },
     offers: [
       offer({ action: 'approve_merge', label: 'Approve & squash-merge', confirm: true }),
-      offer({ action: 'merge_now', label: 'Squash-merge', confirm: true }),
+      mergeOffer(),
       offer(),
       offer({ action: 'request_changes', label: 'Request changes' }),
       offer({ action: 'comment', label: 'Comment' }),
@@ -1313,6 +1330,7 @@ export function reviewResult(overrides: Partial<ReviewResult> = {}): ReviewResul
     message: 'Approved acme-org/example-repo#7',
     reason: '',
     steps: ['Approved'],
+    commented: false,
     leftReview: true,
     leftInbox: false,
     method: '',

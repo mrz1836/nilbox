@@ -266,7 +266,19 @@ app:lint` reads.
   ("merge past the rules") does, offered when GitHub sets `viewerCanMergeAsAdmin`, never the
   sheet's button, and with each rule it skips to accept. Each step is reported as an
   `event.ReviewProgress`, which the sheet shows while the user waits. Line comments are checked
-  against the cached diff (`hunks.go`) before anything is sent. It owns `review_diffs` and
+  against the cached diff (`hunks.go`) before anything is sent. `Decide` marks every offer with
+  what its text goes with (`Offer.Reviews`, `Offer.CommentsFirst`, and `Offer.CommentBlocked`,
+  why GitHub can't take the comment now), and `Act` and the window both go by those marks. A
+  merge with no review of its own (`merge_now`, `merge_bypass`, `auto_merge`) posts the
+  composer's text and line comments, when there are any (by `hasText`, which trims as the
+  window's `trim()` does), as a COMMENT review at the head the user saw, the way `comment` does
+  (never an approval, so it works on the user's own pull request), but only once the fresh merge
+  state says GitHub would merge (auto-merge: that it is open, not a draft, at that head), so a
+  refused merge strands no comment; then it merges exactly as it would without them: no
+  auto-merge fallback, and `merge_bypass` still needs its rules accepted. A comment that fails
+  merges nothing, and once one is posted nothing after it is an error: a merge GitHub won't make,
+  or any failure, is `commented_not_merged`, a result whose words, like `Result.Commented`, say
+  the comment was posted, so the sheet drops the text and never posts it twice. It owns `review_diffs` and
   `review_diff_files`, a bounded cache of the diffs it read (per pull request, in all, and by
   age), pruned in the same transaction that writes. Nothing here lets an agent approve or merge.
 - `internal/bump/` reads a dependency update from a bot's pull request title (and Dependabot's

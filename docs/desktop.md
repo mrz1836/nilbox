@@ -1059,7 +1059,8 @@ Return chooses, and Escape closes the menu.
 **Edits on GitHub.** These are the only changes Nilbox makes on GitHub, and only when you choose
 one. Each is made with your `gh` token, and GitHub's answer is checked before the card changes.
 A combined action, such as **Approve & merge**, makes its changes one at a time and costs the sum
-of their rows. Nilbox never goes past branch protection on its own (only **Merge past the
+of their rows, and so does a merge that posts your text as a comment first (Merge when ready
+then reads the merge state before the comment, 1 GraphQL point more). Nilbox never goes past branch protection on its own (only **Merge past the
 rules** does, when you choose it), and no agent ever approves or merges: every approval and
 merge happens only because you clicked.
 
@@ -1148,7 +1149,9 @@ Every card gets it, in any list.
 **Opening is instant.** The sheet opens from what it read last time, with no request, then reads
 the pull request from GitHub in the background (**Checking GitHub…**): one GraphQL request, and
 its files only when it was pushed to since. Opening one you read in the last 20 seconds asks
-nothing. When the inbox has seen a push the sheet hasn't, it says so and offers **Reload**. Right
+nothing. The refresh button in the header reads it again whenever you click it, however recent
+the last read (a check re-run on GitHub shows up), and a light glides along the header while it
+reads. When the inbox has seen a push the sheet hasn't, it says so and offers **Reload**. Right
 after a push, GitHub can still be working out whether the pull request can merge (**Checking
 whether it can merge**); the sheet then asks again, up to twice, two seconds apart.
 
@@ -1175,6 +1178,20 @@ auto-merge open a confirmation with the merge methods the repository allows, the
 merges, and any warnings to accept first: optional checks failing, or sensitive files
 of the danger level. **Cancel** is where the focus starts. Approve, Comment, Request changes,
 Update branch, and Ask Dependabot to rebase are one click.
+
+**Your text goes with a merge.** Merge, Merge past the rules, and Merge when ready post the text
+in **Your review**, and any line comments, as a comment before they merge, so the pull request
+shows it was reviewed, your own included, where GitHub takes a comment but never your approval.
+A note under the button, and the confirmation, say so (**Your text is posted as a comment
+first.**); clear the text to merge without one. The comment goes to the commit you saw, the way
+**Comment** sends one, and only once the merge state Nilbox reads first says GitHub would make
+the merge, so a pull request that has conflicts, is blocked, or was pushed to gets no comment.
+The merge then runs exactly as it would without it. If the comment fails, nothing merges. If
+GitHub then won't merge, or anything else fails, the toast says the comment is posted and why
+it didn't merge, as in **Commented on acme-org/api#212, but it wasn't merged: Required status
+check is expected**, and the text leaves your draft, so a second try doesn't post it again.
+While you have a review of the pull request started on GitHub, which holds back every comment,
+the button waits and says so: submit or discard that review there, or clear your text.
 
 **Merge method.** **Settings → Reviewing** chooses the method the confirmation starts on: **As
 each repository offers first** (the default, GitHub's own first choice for you there), **Squash
@@ -1218,7 +1235,8 @@ marked. The sheet can't be closed or stepped away from until the action ends, so
 never lost.
 
 **After acting** the sheet closes and the inbox's toast reports what happened, as in **Merged
-acme-org/api#212 (squash)** or **Approved acme-org/api#212 · auto-merge is on**. A review takes the
+acme-org/api#212 (squash)**, **Commented and merged acme-org/api#212 (squash)**, or **Approved
+acme-org/api#212 · auto-merge is on**. A review takes the
 pull request out of **Review requested**, and a merge out of every list, at once, with no extra
 request.
 

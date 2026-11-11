@@ -13,6 +13,7 @@ import {
   type ReplyAction,
   type Review,
   type ReviewAction,
+  type ReviewOffer,
   type ReviewReplyList,
 } from '../../platform'
 import { fieldClass, quietButtonClass } from '../controls'
@@ -63,6 +64,47 @@ export function needsText(action: ReviewAction, body: string, comments: number):
   return ''
 }
 
+// sendsText reports an offer whose action sends the text and line comments, as the backend
+// marks it: one that submits a review of its own, or a merge that posts them as a comment
+// first.
+export function sendsText(offer: ReviewOffer | undefined): boolean {
+  return offer !== undefined && (offer.reviews || offer.commentsFirst)
+}
+
+// commentFirst says what a merge with no review of its own posts as a comment before it
+// merges, as the backend marks its offer, or '' when it posts nothing: clearing the text,
+// and the line comments, skips the comment. While GitHub can't take the comment, it says
+// why instead, and how to merge without it, which holds the button back too (heldBack).
+export function commentFirst(offer: ReviewOffer | undefined, body: string, comments: number): string {
+  const text = body.trim() !== ''
+
+  if (offer?.commentsFirst !== true || (!text && comments === 0)) {
+    return ''
+  }
+
+  if (offer.commentBlocked !== '') {
+    return offer.commentBlocked
+  }
+
+  return text ? 'Your text is posted as a comment first.' : 'Your line comments are posted as a comment first.'
+}
+
+// heldBack says why the window holds an offer's action back, or '': a request for changes
+// or a comment with nothing to say, or a merge whose comment GitHub can't take now.
+export function heldBack(offer: ReviewOffer | undefined, body: string, comments: number): string {
+  if (offer === undefined) {
+    return ''
+  }
+
+  const reason = needsText(offer.action, body, comments)
+
+  if (reason !== '' || offer.commentBlocked === '') {
+    return reason
+  }
+
+  return commentFirst(offer, body, comments)
+}
+
 // ReplyBody is a review's text as the composer shows it, and the replies it offers.
 export interface ReplyBody {
   // list is the replies for the review the selected action sends, with the defaults, or
@@ -109,6 +151,11 @@ export function ReviewComposer({
 }: ReviewComposerProps) {
   const id = useId()
   const { list, fallback, body } = reply
+  const offerOf = (action: ReviewAction) => review.offers.find((o) => o.action === action)
+  const offer = offerOf(selected)
+  const firstNote = commentFirst(offer, body, draft.comments.length)
+  // A note that says why the comment can't be posted holds the button back.
+  const noteBlocks = firstNote !== '' && offer !== undefined && offer.commentBlocked !== ''
 
   const pick = (replyId: number) => {
     void fillReply(review.id, replyId).then(
@@ -188,7 +235,7 @@ export function ReviewComposer({
             onDraft((d) => ({ ...d, action }))
           }}
           onRun={onRun}
-          blocked={(action) => needsText(action, body, draft.comments.length)}
+          blocked={(action) => heldBack(offerOf(action), body, draft.comments.length)}
         />
         {launch !== null && item !== undefined && (
           <LaunchControls
@@ -206,6 +253,7 @@ export function ReviewComposer({
           />
         )}
       </div>
+      {firstNote !== '' && <p className={`text-xs ${noteBlocks ? 'text-warning' : 'text-muted'}`}>{firstNote}</p>}
     </section>
   )
 }

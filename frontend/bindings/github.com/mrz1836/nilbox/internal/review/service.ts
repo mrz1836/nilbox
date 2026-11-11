@@ -19,9 +19,13 @@ import * as $models from "./models.js";
  * It runs only what the sheet offers now, decided again on what the sheet read, only at
  * the head the user saw (a pull request pushed to since returns OutcomePushedSince and
  * sends nothing), and with its line comments checked against the diff. Every merge reads
- * the merge state fresh first and merges only what GitHub says can merge now. A step GitHub
- * made stands, so an approval GitHub took and a merge it would not make yet is a result,
- * not an error.
+ * the merge state fresh first and merges only what GitHub says can merge now. A merge with
+ * no review of its own posts the user's text and line comments, when there are any, as a
+ * comment once that read says GitHub would merge (or, for auto-merge, that the pull request
+ * is open at the head the user saw), the way a comment is posted, and then merges as it
+ * would without them. A step GitHub made stands, so an approval or a comment GitHub took
+ * and a merge it would not make yet is a result, not an error, and once a merge's comment
+ * is posted nothing that fails after it is an error either.
  */
 export function Act(req: $models.ActRequest): $CancellablePromise<$models.Result> {
     return $Call.ByID(1916819644, req);
@@ -50,6 +54,15 @@ export function Open(id: number): $CancellablePromise<$models.Review> {
  */
 export function Patches(id: number, head: string, paths: string[] | null): $CancellablePromise<$models.FilePatch[] | null> {
     return $Call.ByID(3740437158, id, head, paths);
+}
+
+/**
+ * ReadAgain reads the pull request with id from GitHub as Refresh does, however recently
+ * it was read: the user asked for it, from the sheet's refresh button. A read already
+ * under way for the pull request is joined rather than run beside it.
+ */
+export function ReadAgain(id: number): $CancellablePromise<$models.Review> {
+    return $Call.ByID(2338345112, id);
 }
 
 /**
