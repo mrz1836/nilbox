@@ -1,0 +1,46 @@
+{
+    "name": "install-commit-msg",
+    "dir": "/work/repos/install-commit-msg",
+    "argv": [
+        "go-pre-commit",
+        "install",
+        "--no-color",
+        "--hook-type",
+        "pre-commit",
+        "--hook-type",
+        "commit-msg"
+    ],
+    "stdout": "✓ Successfully installed hooks: [pre-commit commit-msg]\nℹ Run 'git commit' to test the pre-commit hook\nℹ Run 'go-pre-commit run --help' to see available checks\n",
+    "stderr": "",
+    "exit": 0,
+    "durationMs": 30,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 29,
+            "text": "✓ Successfully installed hooks: [pre-commit commit-msg]"
+        },
+        {
+            "stream": "out",
+            "ms": 29,
+            "text": "ℹ Run 'git commit' to test the pre-commit hook"
+        },
+        {
+            "stream": "out",
+            "ms": 29,
+            "text": "ℹ Run 'go-pre-commit run --help' to see available checks"
+        }
+    ],
+    "before": {
+        "hooks": "",
+        "hooksDir": "/work/repos/install-commit-msg/.git/hooks",
+        "staged": "",
+        "status": ""
+    },
+    "after": {
+        "hooks": "commit-msg mode=-rwxr-xr-x size=3101 sha=e69979e1c8ed marker=true first=\"#!/bin/bash\"\npre-commit mode=-rwxr-xr-x size=3101 sha=e69979e1c8ed marker=true first=\"#!/bin/bash\"",
+        "hooksDir": "/work/repos/install-commit-msg/.git/hooks",
+        "staged": "",
+        "status": ""
+    }
+}

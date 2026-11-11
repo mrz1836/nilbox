@@ -1,0 +1,32 @@
+{
+    "name": "uninstall-own",
+    "dir": "/work/repos/uninstall-own",
+    "argv": [
+        "go-pre-commit",
+        "uninstall",
+        "--no-color"
+    ],
+    "stdout": "✓ Successfully uninstalled hooks: [pre-commit]\n",
+    "stderr": "",
+    "exit": 0,
+    "durationMs": 15,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 15,
+            "text": "✓ Successfully uninstalled hooks: [pre-commit]"
+        }
+    ],
+    "before": {
+        "hooks": "pre-commit mode=-rwxr-xr-x size=3101 sha=e69979e1c8ed marker=true first=\"#!/bin/bash\"",
+        "hooksDir": "/work/repos/uninstall-own/.git/hooks",
+        "staged": "",
+        "status": ""
+    },
+    "after": {
+        "hooks": "",
+        "hooksDir": "/work/repos/uninstall-own/.git/hooks",
+        "staged": "",
+        "status": ""
+    }
+}

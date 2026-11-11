@@ -1,0 +1,209 @@
+{
+    "name": "run-whitespace-dirty-file",
+    "note": "docs/setup.md has an uncommitted edit with trailing spaces; README.md committed with trailing spaces",
+    "dir": "/work/repos/run-whitespace-dirty-file",
+    "argv": [
+        "go-pre-commit",
+        "run",
+        "--no-color",
+        "--all-files"
+    ],
+    "stdout": "⏳ Running gitleaks check...\n⏳ Running fumpt check...\n⏳ Running whitespace check...\n⏳ Running eof check...\n⏳ Running lint check...\n⏳ Running mod-tidy check...\n✓ fumpt check passed (16ms)\n✓ eof check passed (111μs)\n✓ lint check passed (224ms)\n✓ mod-tidy check passed (35ms)\n✓ gitleaks check passed (353ms)\n\nCheck Results\n─────────────\n✓ fumpt completed successfully (16ms)\n  Error: whitespace issues found\n✓ eof completed successfully (111μs)\n✓ lint completed successfully (224ms)\n✓ mod-tidy completed successfully (35ms)\n✓ gitleaks completed successfully (353ms)\n\nSummary:\n\nERRORS FOUND\n────────────\n  \n    whitespace issues found\n  \nℹ Run with --verbose flag to see full error details\nℹ Fix the errors above and run the checks again\n",
+    "stderr": "✗ whitespace check failed (7ms)\n✗ whitespace failed (7ms)\n✗ 5 passed, 1 failed on 6 file(s) in 353ms\n✗ 1 check(s) failed with the following errors:\n✗ ━ whitespace ━\nError: checks failed: 1\n",
+    "exit": 1,
+    "durationMs": 371,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 16,
+            "text": "⏳ Running gitleaks check..."
+        },
+        {
+            "stream": "out",
+            "ms": 16,
+            "text": "⏳ Running fumpt check..."
+        },
+        {
+            "stream": "out",
+            "ms": 33,
+            "text": "⏳ Running whitespace check..."
+        },
+        {
+            "stream": "out",
+            "ms": 40,
+            "text": "⏳ Running eof check..."
+        },
+        {
+            "stream": "out",
+            "ms": 40,
+            "text": "⏳ Running lint check..."
+        },
+        {
+            "stream": "out",
+            "ms": 265,
+            "text": "⏳ Running mod-tidy check..."
+        },
+        {
+            "stream": "err",
+            "ms": 370,
+            "text": "✗ whitespace check failed (7ms)"
+        },
+        {
+            "stream": "err",
+            "ms": 370,
+            "text": "✗ whitespace failed (7ms)"
+        },
+        {
+            "stream": "err",
+            "ms": 370,
+            "text": "✗ 5 passed, 1 failed on 6 file(s) in 353ms"
+        },
+        {
+            "stream": "err",
+            "ms": 370,
+            "text": "✗ 1 check(s) failed with the following errors:"
+        },
+        {
+            "stream": "err",
+            "ms": 370,
+            "text": "✗ ━ whitespace ━"
+        },
+        {
+            "stream": "err",
+            "ms": 370,
+            "text": "Error: checks failed: 1"
+        },
+        {
+            "stream": "out",
+            "ms": 370,
+            "text": "✓ fumpt check passed (16ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 370,
+            "text": "✓ eof check passed (111μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 370,
+            "text": "✓ lint check passed (224ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 370,
+            "text": "✓ mod-tidy check passed (35ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 370,
+            "text": "✓ gitleaks check passed (353ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 370,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 370,
+            "text": "Check Results"
+        },
+        {
+            "stream": "out",
+            "ms": 370,
+            "text": "─────────────"
+        },
+        {
+            "stream": "out",
+            "ms": 370,
+            "text": "✓ fumpt completed successfully (16ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 370,
+            "text": "  Error: whitespace issues found"
+        },
+        {
+            "stream": "out",
+            "ms": 370,
+            "text": "✓ eof completed successfully (111μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 370,
+            "text": "✓ lint completed successfully (224ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 370,
+            "text": "✓ mod-tidy completed successfully (35ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 370,
+            "text": "✓ gitleaks completed successfully (353ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 370,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 370,
+            "text": "Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 370,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 370,
+            "text": "ERRORS FOUND"
+        },
+        {
+            "stream": "out",
+            "ms": 370,
+            "text": "────────────"
+        },
+        {
+            "stream": "out",
+            "ms": 370,
+            "text": "  "
+        },
+        {
+            "stream": "out",
+            "ms": 370,
+            "text": "    whitespace issues found"
+        },
+        {
+            "stream": "out",
+            "ms": 370,
+            "text": "  "
+        },
+        {
+            "stream": "out",
+            "ms": 370,
+            "text": "ℹ Run with --verbose flag to see full error details"
+        },
+        {
+            "stream": "out",
+            "ms": 370,
+            "text": "ℹ Fix the errors above and run the checks again"
+        }
+    ],
+    "before": {
+        "hooks": "",
+        "hooksDir": "/work/repos/run-whitespace-dirty-file/.git/hooks",
+        "staged": "",
+        "status": "1 .M N... 100644 100644 100644 722cdc6ee365366a00a4992b5fd8aeccbbe73ac6 722cdc6ee365366a00a4992b5fd8aeccbbe73ac6 docs/setup.md"
+    },
+    "after": {
+        "hooks": "",
+        "hooksDir": "/work/repos/run-whitespace-dirty-file/.git/hooks",
+        "staged": "README.md\ndocs/setup.md",
+        "status": "1 M. N... 100644 100644 100644 9f2c5732429a10b89aa145a4d05a8ddfa188a366 4e31d2f35c5f9ca6648f9a999753a9429e22210f README.md\n1 M. N... 100644 100644 100644 722cdc6ee365366a00a4992b5fd8aeccbbe73ac6 281017c4e1665fd4841663d7829a1d8245d110cb docs/setup.md"
+    }
+}

@@ -61,6 +61,12 @@ const (
 	// submodule moved to another commit still shows, and edits inside one don't.
 	ignoreSubmodulesDirty = "--ignore-submodules=dirty"
 
+	// porcelainV2 is the status format that names each changed file's staged object, so a
+	// file staged again shows even when its status letters stay the same, and untrackedAll
+	// lists every untracked file rather than its folder.
+	porcelainV2  = "--porcelain=v2"
+	untrackedAll = "--untracked-files=all"
+
 	// filterKeysPattern matches the config keys that make a filter driver run a program
 	// when git reads a file: its clean command and its long-running process.
 	filterKeysPattern = `^filter\..*\.(clean|process)$`
@@ -158,6 +164,10 @@ func allowlist() []command {
 		{name: "a commit in the clone", words: append(fixed(revParse, verifyFlag, quietFlag), value(slotCommitPeel))},
 		{name: "a version tag's commit", words: append(fixed(revParse, verifyFlag, quietFlag), value(slotTagCommit))},
 		{name: "uncommitted changes", words: fixed(statusCmd, "--porcelain", "-z", ignoreSubmodulesDirty)},
+		{
+			name:  "every changed and untracked file, with its staged object",
+			words: fixed(statusCmd, porcelainV2, "-z", untrackedAll, ignoreSubmodulesDirty),
+		},
 		{name: "the filter drivers", words: fixed(configCmd, "--show-scope", "--get-regexp", filterKeysPattern)},
 		{name: "what an ls-remote's guard weighs", words: fixed(configCmd, "--show-scope", "-z", "--get-regexp", remoteKeysPattern)},
 		{name: "origin's URL, asking nothing of it", words: fixed(lsRemote, "--get-url", remoteName)},
@@ -389,6 +399,10 @@ func commonDirArgs() []string { return []string{revParse, "--git-common-dir"} }
 func verifyArgs(ref string) []string { return []string{revParse, verifyFlag, quietFlag, ref} }
 
 func statusArgs() []string { return []string{statusCmd, "--porcelain", "-z", ignoreSubmodulesDirty} }
+
+func entriesArgs() []string {
+	return []string{statusCmd, porcelainV2, "-z", untrackedAll, ignoreSubmodulesDirty}
+}
 
 func currentBranchArgs() []string { return []string{"symbolic-ref", quietFlag, "--short", "HEAD"} }
 

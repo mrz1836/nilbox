@@ -165,6 +165,8 @@ func TestExecRun(t *testing.T) {
 
 	testutil.RequireGit(t)
 
+	workDir := testutil.RealTempDir(t)
+
 	tests := []struct {
 		name string
 		exec Exec
@@ -195,6 +197,17 @@ func TestExecRun(t *testing.T) {
 
 				require.NoError(t, err)
 				assert.Equal(t, "ran\n", string(stdout))
+			},
+		},
+		{
+			name: "a program runs in Dir",
+			exec: Exec{Dir: workDir},
+			argv: []string{writeScript(t, "pwd -P")},
+			check: func(t *testing.T, stdout, _ []byte, err error) {
+				t.Helper()
+
+				require.NoError(t, err)
+				assert.Equal(t, workDir+"\n", string(stdout))
 			},
 		},
 		{

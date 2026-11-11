@@ -1,0 +1,304 @@
+{
+    "name": "run-installs-tools",
+    "note": "PATH has only git and go; GOPATH and HOME are empty",
+    "dir": "/work/repos/run-installs-tools",
+    "argv": [
+        "go-pre-commit",
+        "run",
+        "--no-color",
+        "--all-files"
+    ],
+    "stdout": "⏳ Running eof check...\n⏳ Running mod-tidy check...\n⏳ Running fumpt check...\n→ Installing gofumpt@v0.12.0...\n⏳ Running gitleaks check...\n⏳ Running lint check...\n→ Installing gitleaks@v8.30.1...\n⏳ Running whitespace check...\n→ Installing golangci-lint@v2.15.0...\n✓ eof check passed (135μs)\n✓ mod-tidy check passed (221ms)\n✓ whitespace check passed (492μs)\n\nCheck Results\n─────────────\n✓ eof completed successfully (135μs)\n✓ mod-tidy completed successfully (221ms)\n  Error: command 'gofumpt' failed\n    tool installed but not found in PATH: gofumpt: exec: \"gofumpt\": executable file not found in $PATH\n💡 Failed to install gofumpt. Verify network access and that the pinned GO_PRE_COMMIT_FUMPT_VERSION exists, then retry.\n  Error: command 'gitleaks' failed\n    tool installation failed for gitleaks: tool installed but not found in PATH: gitleaks: exec: \"gitleaks\": executable file not found in $PATH\n💡 Failed to install gitleaks. You can install it manually from: https://github.com/gitleaks/gitleaks#installation\n✓ whitespace completed successfully (492μs)\n  Error: golangci-lint not found\n💡 Install golangci-lint manually: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest\n\nSummary:\n\nERRORS FOUND\n────────────\n  \n    tool installed but not found in PATH: gofumpt: exec: \"gofumpt\": executable file not found in $PATH\n💡 To fix: Failed to install gofumpt. Verify network access and that the pinned GO_PRE_COMMIT_FUMPT_VERSION exists, then retry.\n  \n    tool installation failed for gitleaks: tool installed but not found in PATH: gitleaks: exec: \"gitleaks\": executable file not found in $PATH\n💡 To fix: Failed to install gitleaks. You can install it manually from: https://github.com/gitleaks/gitleaks#installation\n  \n    golangci-lint not found\n💡 To fix: Install golangci-lint manually: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest\n  \nℹ Run with --verbose flag to see full error details\nℹ Fix the errors above and run the checks again\n",
+    "stderr": "✗ fumpt check failed (4.7s)\n✗ gitleaks check failed (9.8s)\n✗ lint check failed (11.8s)\n✗ fumpt failed (4.7s)\n✗ gitleaks failed (9.8s)\n✗ lint failed (11.8s)\n✗ 3 passed, 3 failed on 6 file(s) in 16.5s\n✗ 3 check(s) failed with the following errors:\n✗ ━ fumpt ━\n✗ ━ gitleaks ━\n✗ ━ lint ━\nError: checks failed: 3\n",
+    "exit": 1,
+    "durationMs": 16561,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 18,
+            "text": "⏳ Running eof check..."
+        },
+        {
+            "stream": "out",
+            "ms": 18,
+            "text": "⏳ Running mod-tidy check..."
+        },
+        {
+            "stream": "out",
+            "ms": 18,
+            "text": "⏳ Running fumpt check..."
+        },
+        {
+            "stream": "out",
+            "ms": 26,
+            "text": "→ Installing gofumpt@v0.12.0..."
+        },
+        {
+            "stream": "out",
+            "ms": 239,
+            "text": "⏳ Running gitleaks check..."
+        },
+        {
+            "stream": "out",
+            "ms": 4736,
+            "text": "⏳ Running lint check..."
+        },
+        {
+            "stream": "out",
+            "ms": 4736,
+            "text": "→ Installing gitleaks@v8.30.1..."
+        },
+        {
+            "stream": "out",
+            "ms": 10068,
+            "text": "⏳ Running whitespace check..."
+        },
+        {
+            "stream": "out",
+            "ms": 10068,
+            "text": "→ Installing golangci-lint@v2.15.0..."
+        },
+        {
+            "stream": "err",
+            "ms": 16560,
+            "text": "✗ fumpt check failed (4.7s)"
+        },
+        {
+            "stream": "err",
+            "ms": 16560,
+            "text": "✗ gitleaks check failed (9.8s)"
+        },
+        {
+            "stream": "err",
+            "ms": 16560,
+            "text": "✗ lint check failed (11.8s)"
+        },
+        {
+            "stream": "err",
+            "ms": 16560,
+            "text": "✗ fumpt failed (4.7s)"
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "✓ eof check passed (135μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "✓ mod-tidy check passed (221ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "✓ whitespace check passed (492μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "Check Results"
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "─────────────"
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "✓ eof completed successfully (135μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "✓ mod-tidy completed successfully (221ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "  Error: command 'gofumpt' failed"
+        },
+        {
+            "stream": "err",
+            "ms": 16560,
+            "text": "✗ gitleaks failed (9.8s)"
+        },
+        {
+            "stream": "err",
+            "ms": 16560,
+            "text": "✗ lint failed (11.8s)"
+        },
+        {
+            "stream": "err",
+            "ms": 16560,
+            "text": "✗ 3 passed, 3 failed on 6 file(s) in 16.5s"
+        },
+        {
+            "stream": "err",
+            "ms": 16560,
+            "text": "✗ 3 check(s) failed with the following errors:"
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "    tool installed but not found in PATH: gofumpt: exec: \"gofumpt\": executable file not found in $PATH"
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "💡 Failed to install gofumpt. Verify network access and that the pinned GO_PRE_COMMIT_FUMPT_VERSION exists, then retry."
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "  Error: command 'gitleaks' failed"
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "    tool installation failed for gitleaks: tool installed but not found in PATH: gitleaks: exec: \"gitleaks\": executable file not found in $PATH"
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "💡 Failed to install gitleaks. You can install it manually from: https://github.com/gitleaks/gitleaks#installation"
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "✓ whitespace completed successfully (492μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "  Error: golangci-lint not found"
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "💡 Install golangci-lint manually: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "ERRORS FOUND"
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "────────────"
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "  "
+        },
+        {
+            "stream": "err",
+            "ms": 16560,
+            "text": "✗ ━ fumpt ━"
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "    tool installed but not found in PATH: gofumpt: exec: \"gofumpt\": executable file not found in $PATH"
+        },
+        {
+            "stream": "err",
+            "ms": 16560,
+            "text": "✗ ━ gitleaks ━"
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "💡 To fix: Failed to install gofumpt. Verify network access and that the pinned GO_PRE_COMMIT_FUMPT_VERSION exists, then retry."
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "  "
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "    tool installation failed for gitleaks: tool installed but not found in PATH: gitleaks: exec: \"gitleaks\": executable file not found in $PATH"
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "💡 To fix: Failed to install gitleaks. You can install it manually from: https://github.com/gitleaks/gitleaks#installation"
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "  "
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "    golangci-lint not found"
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "💡 To fix: Install golangci-lint manually: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "  "
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "ℹ Run with --verbose flag to see full error details"
+        },
+        {
+            "stream": "out",
+            "ms": 16560,
+            "text": "ℹ Fix the errors above and run the checks again"
+        },
+        {
+            "stream": "err",
+            "ms": 16560,
+            "text": "✗ ━ lint ━"
+        },
+        {
+            "stream": "err",
+            "ms": 16560,
+            "text": "Error: checks failed: 3"
+        }
+    ],
+    "before": {
+        "hooks": "",
+        "hooksDir": "/work/repos/run-installs-tools/.git/hooks",
+        "staged": "",
+        "status": ""
+    },
+    "after": {
+        "hooks": "",
+        "hooksDir": "/work/repos/run-installs-tools/.git/hooks",
+        "staged": "",
+        "status": ""
+    }
+}

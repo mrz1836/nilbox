@@ -12,6 +12,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/gitread"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // verifyTimeout bounds verifying a release: origin's answer about the tag, which gitread
@@ -388,10 +389,10 @@ func tagMade(said Output, tag string) bool {
 
 // outcomeOf turns a release's result into its run's outcome: succeeded only when the tag
 // is on GitHub. Anything else failed, unless the user stopped it or its end wasn't seen,
-// which the engine's own outcome says.
+// which the engine's own outcome says. Its warnings are magex's notable ones.
 func outcomeOf(res Result, said Output, engine scriptrun.Outcome) scriptrun.Outcome {
 	out := scriptrun.Outcome{
-		Status: scriptrun.StatusFailed, Summary: summaryOf(res, engine), Warnings: said.Warnings,
+		Status: scriptrun.StatusFailed, Summary: summaryOf(res, engine), Warnings: said.NotableWarnings(),
 		Unrecognized: said.Unrecognized, UnrecognizedCount: said.UnrecognizedCount, Detail: res,
 	}
 
@@ -417,7 +418,7 @@ func summaryOf(res Result, engine scriptrun.Outcome) string {
 	case ResultNotPushed:
 		return res.Tag + " is tagged on this Mac but isn't on GitHub."
 	case ResultUnverified:
-		return withReason(fmt.Sprintf("Couldn't check whether %s reached GitHub", res.Tag), res.Error)
+		return textutil.WithReason(fmt.Sprintf("Couldn't check whether %s reached GitHub", res.Tag), res.Error)
 	case ResultFailed:
 	}
 

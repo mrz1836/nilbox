@@ -145,6 +145,11 @@ type Exec struct {
 	// without changing the process's, which every other goroutine shares. Search looks a
 	// program up on its own Path, or this process's search path, never on a PATH in Env.
 	Env []string
+
+	// Dir, when set, is the folder each program runs in, as in exec.Cmd.Dir: a tool that
+	// reads the repository it runs in, such as go-pre-commit, takes it from there. "" runs
+	// it in this process's folder.
+	Dir string
 }
 
 // Run runs name with args and returns what it wrote to stdout and stderr. The error is the
@@ -165,6 +170,7 @@ func (r Exec) Run(ctx context.Context, name string, args ...string) (stdout, std
 
 	cmd := exec.CommandContext(ctx, path, args...) //nolint:gosec // argv only, no shell
 	cmd.Env = r.Env
+	cmd.Dir = r.Dir
 	cmd.Stdout = &outBuf
 	cmd.Stderr = &errBuf
 	cmd.WaitDelay = runWaitDelay

@@ -34,6 +34,20 @@ func TestStatusTurnsOffTheClonesFilterDrivers(t *testing.T) {
 	assert.Contains(t, status, "-c filter.x.clean= -c filter.x.process= -c filter.odd.name.clean= -c filter.odd.name.process=")
 	assert.NotContains(t, status, "filter.lfs", "the user's own drivers still run")
 	assert.True(t, strings.HasSuffix(status, "status --porcelain -z --ignore-submodules=dirty"))
+
+	rec = &recorder{replies: map[string]reply{
+		words(filterDriversArgs()): {out: "local\tfilter.x.clean sh -c 'touch /tmp/owned; cat'\n"},
+	}, answer: func(_ context.Context, _ []string) (string, error) { return "", nil }}
+
+	_, err = fakeGit(plainEnv(), rec).Entries(t.Context(), repoDir)
+	require.NoError(t, err)
+
+	calls = rec.Calls()
+	require.Len(t, calls, 2, "the entries' status turns them off too")
+
+	status = strings.Join(calls[1].argv, " ")
+	assert.Contains(t, status, "-c filter.x.clean= -c filter.x.process=")
+	assert.True(t, strings.HasSuffix(status, "status --porcelain=v2 -z --untracked-files=all --ignore-submodules=dirty"))
 }
 
 func TestStatusRefusesADriverItCantName(t *testing.T) {
@@ -88,6 +102,34 @@ func TestStatusRunsNoFilterTheCloneNames(t *testing.T) {
 	assert.NoFileExists(t, marker, "gitread's status ran the clone's filter")
 
 	testutil.RunGit(t, dir, "status", "--porcelain")
+	assert.FileExists(t, marker, "the clone is set up so that a plain status runs it")
+}
+
+// TestEntriesRunNoFilterTheCloneNames is TestStatusRunsNoFilterTheCloneNames for the
+// porcelain v2 status a checks run takes before and after: it, too, runs none of the
+// clone's own filter drivers, and looks inside no submodule.
+func TestEntriesRunNoFilterTheCloneNames(t *testing.T) {
+	t.Parallel()
+
+	env := testutil.Git(t)
+	dir := filepath.Join(t.TempDir(), "clone")
+	marker := filepath.Join(t.TempDir(), "ran")
+
+	testutil.InitRepo(t, dir)
+	writeFile(t, dir, ".gitattributes", "* filter=x")
+	commitFile(t, dir, "a.txt", "a")
+	testutil.RunGit(t, dir, "config", "filter.x.clean", "touch '"+marker+"'; cat")
+
+	later := time.Now().Add(time.Hour)
+	require.NoError(t, os.Chtimes(filepath.Join(dir, "a.txt"), later, later))
+
+	g := New(Config{Env: func() []string { return env }})
+
+	_, err := g.Entries(t.Context(), dir)
+	require.NoError(t, err)
+	assert.NoFileExists(t, marker, "gitread's status ran the clone's filter")
+
+	testutil.RunGit(t, dir, "status", "--porcelain=v2")
 	assert.FileExists(t, marker, "the clone is set up so that a plain status runs it")
 }
 

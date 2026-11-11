@@ -173,8 +173,14 @@ func toolAndRepoCases() []decideCase {
 			change: func(f *Facts) { f.Tool = ToolFacts{State: integrations.StateMissing} },
 		},
 		{
-			name: "magex off", id: CheckTool, state: CheckBlock, text: "magex isn't available",
+			name: "magex off", id: CheckTool, state: CheckBlock, text: "mage-x is turned off in Settings",
 			fixes: []Fix{FixOpenSettings}, change: func(f *Facts) { f.Tool.Off = true },
+		},
+		{
+			name: "magex off and too old", id: CheckTool, state: CheckBlock, text: "mage-x is turned off in Settings",
+			fixes: []Fix{FixOpenSettings}, change: func(f *Facts) {
+				f.Tool.Off, f.Tool.State, f.Tool.Version = true, integrations.StateTooOld, "1.27.0"
+			},
 		},
 		{
 			name: "magex won't run", id: CheckTool, state: CheckBlock, text: "magex isn't available",

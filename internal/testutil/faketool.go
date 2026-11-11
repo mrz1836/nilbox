@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -23,13 +24,17 @@ const (
 )
 
 // FakeRun is what a fake tool does when it runs, in this order: ignore signals, start a
-// grandchild, report its stdin or open descriptors, write Stdout and Stderr, sleep, and
-// exit with Exit. A recorded fixture's {"stdout", "stderr", "exit"} reads straight into
-// it (see LoadFakeRun).
+// grandchild, report its stdin or open descriptors, change Files, write Stdout and Stderr,
+// sleep, and exit with Exit. A recorded fixture's {"stdout", "stderr", "exit"} reads
+// straight into it (see LoadFakeRun).
 type FakeRun struct {
 	Stdout string `json:"stdout"`
 	Stderr string `json:"stderr"`
 	Exit   int    `json:"exit"`
+
+	// Files are changed in order before it writes, as a tool that writes, moves, or
+	// removes files does: go-pre-commit installing a hook, or fixing a file.
+	Files []FakeFile `json:"files,omitempty"`
 
 	// Sleep is how long it waits after writing, before it exits.
 	Sleep time.Duration `json:"sleep,omitempty"`
@@ -46,6 +51,30 @@ type FakeRun struct {
 
 	// ReportFDs writes "fds: 0,1,2" to stdout: every descriptor open in it.
 	ReportFDs bool `json:"reportFds,omitempty"`
+}
+
+// FakeFile is one change a fake tool makes to the file at Path, absolute or relative to the
+// folder the tool runs in, such as the clone a run starts in: it renames From to Path when
+// From is set, removes Path when Remove is set, and otherwise writes Content to Path with
+// Mode (0o644 when zero), keeping the mode of a file already there, as os.WriteFile does.
+type FakeFile struct {
+	Path    string      `json:"path"`
+	Content string      `json:"content,omitempty"`
+	Mode    os.FileMode `json:"mode,omitempty"`
+	From    string      `json:"from,omitempty"`
+	Remove  bool        `json:"remove,omitempty"`
+}
+
+// change makes the change f describes.
+func (f FakeFile) change() error {
+	switch {
+	case f.From != "":
+		return os.Rename(f.From, f.Path)
+	case f.Remove:
+		return os.Remove(f.Path)
+	default:
+		return os.WriteFile(f.Path, []byte(f.Content), cmp.Or(f.Mode, 0o644))
+	}
 }
 
 // FakeGrandchild is a process a fake tool leaves behind: it writes its PID to PIDFile,
@@ -159,6 +188,14 @@ func play(run FakeRun) int {
 
 	if run.ReportFDs {
 		_, _ = fmt.Fprintf(os.Stdout, "fds: %s\n", openFDs())
+	}
+
+	for _, f := range run.Files {
+		if err := f.change(); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, "fake tool:", err)
+
+			return 1
+		}
 	}
 
 	_, _ = os.Stdout.WriteString(run.Stdout)

@@ -1,0 +1,229 @@
+{
+    "name": "run-fail-lint",
+    "note": "an unchecked error",
+    "dir": "/work/repos/run-fail-lint",
+    "argv": [
+        "go-pre-commit",
+        "run",
+        "--no-color",
+        "--all-files"
+    ],
+    "stdout": "⏳ Running fumpt check...\n⏳ Running gitleaks check...\n⏳ Running lint check...\n⏳ Running whitespace check...\n⏳ Running eof check...\n⏳ Running mod-tidy check...\n✓ fumpt check passed (15ms)\n✓ whitespace check passed (180μs)\n✓ eof check passed (87μs)\n✓ mod-tidy check passed (35ms)\n✓ gitleaks check passed (353ms)\n\nCheck Results\n─────────────\n✓ fumpt completed successfully (15ms)\n  Error: Found 1 linting issue(s):\nmain.go:6:11: Error return value of `os.Remove` is not checked (errcheck)\n    main.go:6:11: Error return value of `os.Remove` is not checked (errcheck)\n💡 Fix the linting issues shown above. Run 'golangci-lint run .' to see full details.\n✓ whitespace completed successfully (180μs)\n✓ eof completed successfully (87μs)\n✓ mod-tidy completed successfully (35ms)\n✓ gitleaks completed successfully (353ms)\n\nSummary:\n\nERRORS FOUND\n────────────\n  \n    main.go:6:11: Error return value of `os.Remove` is not checked (errcheck)\n💡 To fix: Fix the linting issues shown above. Run 'golangci-lint run .' to see full details.\n  \nℹ Run with --verbose flag to see full error details\nℹ Fix the errors above and run the checks again\n",
+    "stderr": "✗ lint check failed (263ms)\n✗ lint failed (263ms)\n✗ 5 passed, 1 failed on 6 file(s) in 353ms\n✗ 1 check(s) failed with the following errors:\n✗ ━ lint ━\nError: checks failed: 1\n",
+    "exit": 1,
+    "durationMs": 371,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 18,
+            "text": "⏳ Running fumpt check..."
+        },
+        {
+            "stream": "out",
+            "ms": 18,
+            "text": "⏳ Running gitleaks check..."
+        },
+        {
+            "stream": "out",
+            "ms": 33,
+            "text": "⏳ Running lint check..."
+        },
+        {
+            "stream": "out",
+            "ms": 297,
+            "text": "⏳ Running whitespace check..."
+        },
+        {
+            "stream": "out",
+            "ms": 297,
+            "text": "⏳ Running eof check..."
+        },
+        {
+            "stream": "out",
+            "ms": 297,
+            "text": "⏳ Running mod-tidy check..."
+        },
+        {
+            "stream": "err",
+            "ms": 371,
+            "text": "✗ lint check failed (263ms)"
+        },
+        {
+            "stream": "err",
+            "ms": 371,
+            "text": "✗ lint failed (263ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "✓ fumpt check passed (15ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "✓ whitespace check passed (180μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "✓ eof check passed (87μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "✓ mod-tidy check passed (35ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "✓ gitleaks check passed (353ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "Check Results"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "─────────────"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "✓ fumpt completed successfully (15ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "  Error: Found 1 linting issue(s):"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "main.go:6:11: Error return value of `os.Remove` is not checked (errcheck)"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "    main.go:6:11: Error return value of `os.Remove` is not checked (errcheck)"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "💡 Fix the linting issues shown above. Run 'golangci-lint run .' to see full details."
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "✓ whitespace completed successfully (180μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "✓ eof completed successfully (87μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "✓ mod-tidy completed successfully (35ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "✓ gitleaks completed successfully (353ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "ERRORS FOUND"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "────────────"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "  "
+        },
+        {
+            "stream": "err",
+            "ms": 371,
+            "text": "✗ 5 passed, 1 failed on 6 file(s) in 353ms"
+        },
+        {
+            "stream": "err",
+            "ms": 371,
+            "text": "✗ 1 check(s) failed with the following errors:"
+        },
+        {
+            "stream": "err",
+            "ms": 371,
+            "text": "✗ ━ lint ━"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "    main.go:6:11: Error return value of `os.Remove` is not checked (errcheck)"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "💡 To fix: Fix the linting issues shown above. Run 'golangci-lint run .' to see full details."
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "  "
+        },
+        {
+            "stream": "err",
+            "ms": 371,
+            "text": "Error: checks failed: 1"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "ℹ Run with --verbose flag to see full error details"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "ℹ Fix the errors above and run the checks again"
+        }
+    ],
+    "before": {
+        "hooks": "",
+        "hooksDir": "/work/repos/run-fail-lint/.git/hooks",
+        "staged": "",
+        "status": ""
+    },
+    "after": {
+        "hooks": "",
+        "hooksDir": "/work/repos/run-fail-lint/.git/hooks",
+        "staged": "",
+        "status": ""
+    }
+}

@@ -1,0 +1,209 @@
+{
+    "name": "run-fail-whitespace",
+    "note": "README.md has trailing spaces",
+    "dir": "/work/repos/run-fail-whitespace",
+    "argv": [
+        "go-pre-commit",
+        "run",
+        "--no-color",
+        "--all-files"
+    ],
+    "stdout": "⏳ Running gitleaks check...\n⏳ Running eof check...\n⏳ Running whitespace check...\n⏳ Running lint check...\n⏳ Running fumpt check...\n⏳ Running mod-tidy check...\n✓ eof check passed (124μs)\n✓ lint check passed (228ms)\n✓ fumpt check passed (11ms)\n✓ mod-tidy check passed (34ms)\n✓ gitleaks check passed (355ms)\n\nCheck Results\n─────────────\n✓ eof completed successfully (124μs)\n  Error: whitespace issues found\n✓ lint completed successfully (228ms)\n✓ fumpt completed successfully (11ms)\n✓ mod-tidy completed successfully (34ms)\n✓ gitleaks completed successfully (355ms)\n\nSummary:\n\nERRORS FOUND\n────────────\n  \n    whitespace issues found\n  \nℹ Run with --verbose flag to see full error details\nℹ Fix the errors above and run the checks again\n",
+    "stderr": "✗ whitespace check failed (7ms)\n✗ whitespace failed (7ms)\n✗ 5 passed, 1 failed on 6 file(s) in 355ms\n✗ 1 check(s) failed with the following errors:\n✗ ━ whitespace ━\nError: checks failed: 1\n",
+    "exit": 1,
+    "durationMs": 371,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 15,
+            "text": "⏳ Running gitleaks check..."
+        },
+        {
+            "stream": "out",
+            "ms": 15,
+            "text": "⏳ Running eof check..."
+        },
+        {
+            "stream": "out",
+            "ms": 15,
+            "text": "⏳ Running whitespace check..."
+        },
+        {
+            "stream": "out",
+            "ms": 22,
+            "text": "⏳ Running lint check..."
+        },
+        {
+            "stream": "out",
+            "ms": 251,
+            "text": "⏳ Running fumpt check..."
+        },
+        {
+            "stream": "out",
+            "ms": 262,
+            "text": "⏳ Running mod-tidy check..."
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "✓ eof check passed (124μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "✓ lint check passed (228ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "✓ fumpt check passed (11ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "✓ mod-tidy check passed (34ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "✓ gitleaks check passed (355ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "Check Results"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "─────────────"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "✓ eof completed successfully (124μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "  Error: whitespace issues found"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "✓ lint completed successfully (228ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "✓ fumpt completed successfully (11ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "✓ mod-tidy completed successfully (34ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "✓ gitleaks completed successfully (355ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "ERRORS FOUND"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "────────────"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "  "
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "    whitespace issues found"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "  "
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "ℹ Run with --verbose flag to see full error details"
+        },
+        {
+            "stream": "out",
+            "ms": 371,
+            "text": "ℹ Fix the errors above and run the checks again"
+        },
+        {
+            "stream": "err",
+            "ms": 371,
+            "text": "✗ whitespace check failed (7ms)"
+        },
+        {
+            "stream": "err",
+            "ms": 371,
+            "text": "✗ whitespace failed (7ms)"
+        },
+        {
+            "stream": "err",
+            "ms": 371,
+            "text": "✗ 5 passed, 1 failed on 6 file(s) in 355ms"
+        },
+        {
+            "stream": "err",
+            "ms": 371,
+            "text": "✗ 1 check(s) failed with the following errors:"
+        },
+        {
+            "stream": "err",
+            "ms": 371,
+            "text": "✗ ━ whitespace ━"
+        },
+        {
+            "stream": "err",
+            "ms": 371,
+            "text": "Error: checks failed: 1"
+        }
+    ],
+    "before": {
+        "hooks": "",
+        "hooksDir": "/work/repos/run-fail-whitespace/.git/hooks",
+        "staged": "",
+        "status": ""
+    },
+    "after": {
+        "hooks": "",
+        "hooksDir": "/work/repos/run-fail-whitespace/.git/hooks",
+        "staged": "README.md",
+        "status": "1 M. N... 100644 100644 100644 1757fb804d34ad6e4d42f358ff367ab56318dae3 41444918793ad9633efb4bcfca36436cfe2bcced README.md"
+    }
+}

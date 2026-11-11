@@ -1,0 +1,58 @@
+{
+    "name": "status-not-executable",
+    "note": "our hook, mode 0600",
+    "dir": "/work/repos/status-not-executable",
+    "argv": [
+        "go-pre-commit",
+        "status",
+        "--no-color"
+    ],
+    "stdout": "ℹ \n=== Go Pre-commit System Status ===\n✓ ✓ Pre-commit system is enabled\nℹ \nGit Hook Status:\n",
+    "stderr": "⚠   ⚠ pre-commit: Go pre-commit hook installed and ready (warning: not executable)\n",
+    "exit": 0,
+    "durationMs": 29,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 10,
+            "text": "ℹ "
+        },
+        {
+            "stream": "out",
+            "ms": 10,
+            "text": "=== Go Pre-commit System Status ==="
+        },
+        {
+            "stream": "out",
+            "ms": 10,
+            "text": "✓ ✓ Pre-commit system is enabled"
+        },
+        {
+            "stream": "out",
+            "ms": 10,
+            "text": "ℹ "
+        },
+        {
+            "stream": "out",
+            "ms": 10,
+            "text": "Git Hook Status:"
+        },
+        {
+            "stream": "err",
+            "ms": 15,
+            "text": "⚠   ⚠ pre-commit: Go pre-commit hook installed and ready (warning: not executable)"
+        }
+    ],
+    "before": {
+        "hooks": "pre-commit mode=-rw------- size=3101 sha=e69979e1c8ed marker=true first=\"#!/bin/bash\"",
+        "hooksDir": "/work/repos/status-not-executable/.git/hooks",
+        "staged": "",
+        "status": ""
+    },
+    "after": {
+        "hooks": "pre-commit mode=-rw------- size=3101 sha=e69979e1c8ed marker=true first=\"#!/bin/bash\"",
+        "hooksDir": "/work/repos/status-not-executable/.git/hooks",
+        "staged": "",
+        "status": ""
+    }
+}

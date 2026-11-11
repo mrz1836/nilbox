@@ -299,14 +299,14 @@ app:lint` reads.
 - `internal/gitread/` is the read-only git that release and hooks share: an exact-argv allowlist
   plus validating predicates (a branch, a tag, a commit, a `v*` pattern, an absolute clean folder)
   that refuses anything else with `ErrGitCommandNotAllowed` before git runs, and typed helpers over
-  it (the current branch, an operation in progress, uncommitted changes, unpushed commits, tags
-  here and on origin, signing, the hooks folder). Every command runs as `git -C <dir> -c
-  core.fsmonitor=false -c submodule.recurse=false` with `GIT_OPTIONAL_LOCKS=0`,
-  `GIT_TERMINAL_PROMPT=0`, `GIT_NO_LAZY_FETCH=1`, and an empty `GIT_ALLOW_PROTOCOL` (no read
-  reaches a transport, so a partial clone's missing object is never fetched through a URL the
-  clone names), without `GIT_CONFIG` (which would hide the clone's settings from the guards'
-  reads), never touches `core.hooksPath`, and an `ls-remote` gets a 15-second limit and a
-  batch-mode ssh unless the user's environment or own config picks one. A
+  it (the current branch, an operation in progress, uncommitted changes, each dirty file with what
+  the index holds for it, unpushed commits, tags here and on origin, signing, the hooks folder).
+  Every command runs as `git -C <dir> -c core.fsmonitor=false -c submodule.recurse=false` with
+  `GIT_OPTIONAL_LOCKS=0`, `GIT_TERMINAL_PROMPT=0`, `GIT_NO_LAZY_FETCH=1`, and an empty
+  `GIT_ALLOW_PROTOCOL` (no read reaches a transport, so a partial clone's missing object is never
+  fetched through a URL the clone names), without `GIT_CONFIG` (which would hide the clone's
+  settings from the guards' reads), never touches `core.hooksPath`, and an `ls-remote` gets a
+  15-second limit and a batch-mode ssh unless the user's environment or own config picks one. A
   `status`, which reads files and so would run their filter drivers, first reads the drivers
   with `config --show-scope` and runs with every one the clone's own config defines turned off,
   and with `--ignore-submodules=dirty`, so it runs no status inside a submodule, whose own config

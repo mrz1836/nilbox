@@ -18,6 +18,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
 	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/release"
@@ -210,7 +211,9 @@ func TestReleaseGitHubAdaptsBothRounds(t *testing.T) {
 	sdk := repo.Name{Owner: boundOwner, Repo: boundRepo}
 	at := time.Date(2026, 11, 10, 4, 0, 0, 0, time.UTC)
 
-	status, err := gh.ReleaseStatus(t.Context(), []repo.Name{sdk})
+	var answered []int
+
+	status, err := gh.ReleaseStatus(t.Context(), []repo.Name{sdk}, func(n int) { answered = append(answered, n) })
 	require.NoError(t, err)
 	assert.Equal(t, map[string]release.RepoStatus{sdk.Key(): {
 		Permission: "WRITE", DefaultBranch: "master", HeadOID: "c2", HeadAt: at, Headline: "Fix retries",
@@ -218,11 +221,13 @@ func TestReleaseGitHubAdaptsBothRounds(t *testing.T) {
 		Tags:   []release.Tag{{Name: "v1.4.2", Commit: "c1"}},
 	}}, status, "an annotated tag is peeled to its commit")
 
-	compared, err := gh.ReleaseCompare(t.Context(), []release.CompareRequest{{Repo: sdk, Tag: "v1.4.2", Branch: "master"}})
+	compared, err := gh.ReleaseCompare(t.Context(), []release.CompareRequest{{Repo: sdk, Tag: "v1.4.2", Branch: "master"}},
+		func(n int) { answered = append(answered, n) })
 	require.NoError(t, err)
 	assert.Equal(t, map[string]release.Compare{sdk.Key(): {
 		Ahead: 2, Commits: []release.Commit{{OID: "c2", Headline: "Fix retries", At: at}},
 	}}, compared)
+	assert.Equal(t, []int{1, 1}, answered, "each round tells the page as GitHub answers")
 }
 
 func TestReleaseGitHubAsksNothingWhenSignedOut(t *testing.T) {
@@ -239,10 +244,10 @@ func TestReleaseGitHubAsksNothingWhenSignedOut(t *testing.T) {
 	}
 	sdk := repo.Name{Owner: boundOwner, Repo: boundRepo}
 
-	_, err := gh.ReleaseStatus(t.Context(), []repo.Name{sdk})
+	_, err := gh.ReleaseStatus(t.Context(), []repo.Name{sdk}, nil)
 	require.ErrorIs(t, err, release.ErrSignedOut)
 
-	_, err = gh.ReleaseCompare(t.Context(), []release.CompareRequest{{Repo: sdk, Tag: "v1.4.2", Branch: "master"}})
+	_, err = gh.ReleaseCompare(t.Context(), []release.CompareRequest{{Repo: sdk, Tag: "v1.4.2", Branch: "master"}}, nil)
 	require.ErrorIs(t, err, release.ErrSignedOut)
 	assert.Zero(t, requests.Load())
 }
@@ -283,4 +288,75 @@ func TestReleaseClonesListTheCloneRoot(t *testing.T) {
 		{Dir: filepath.Join(root, "notes")},
 		{Dir: filepath.Join(root, "sdk"), Origin: repo.Name{Owner: boundOwner, Repo: boundRepo}, OnHub: true},
 	}, got)
+}
+
+func TestHooksClonesListTheCloneRootWithoutGit(t *testing.T) {
+	t.Parallel()
+
+	home := testutil.ClaudeHome(t)
+	root := filepath.Join(home, "projects")
+	env := testutil.Git(t)
+
+	sdk, notes := filepath.Join(root, "sdk"), filepath.Join(root, "notes")
+	testutil.InitRepo(t, sdk)
+	testutil.InitRepo(t, notes)
+	testutil.RunGit(t, sdk, "remote", "add", "origin", "https://github.com/acme-org/example-repo.git")
+
+	c := bootstrap(t, Options{
+		Paths: appdata.NewPaths(filepath.Join(t.TempDir(), "data")), Home: home, Runner: noPrograms(),
+	})
+	require.NoError(t, testutil.ErrOf(c.Settings.SetCloneRoot(t.Context(), root)))
+
+	clones := hooksClones{settings: c.Settings, home: home, git: execpath.Exec{Env: env}}
+
+	gotRoot, err := clones.Root(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, root, gotRoot)
+
+	dirs, err := clones.Dirs(t.Context(), gotRoot)
+	require.NoError(t, err)
+	assert.Equal(t, []string{notes, sdk}, dirs)
+
+	name, onHub, err := clones.Origin(t.Context(), sdk)
+	require.NoError(t, err)
+	assert.True(t, onHub)
+	assert.Equal(t, repo.Name{Owner: boundOwner, Repo: boundRepo}, name)
+
+	_, onHub, err = clones.Origin(t.Context(), notes)
+	require.NoError(t, err)
+	assert.False(t, onHub)
+
+	_, err = clones.Dirs(t.Context(), filepath.Join(root, "missing"))
+	require.Error(t, err)
+}
+
+func TestHooksToolAndSettingsReadWhatTheAppKnows(t *testing.T) {
+	t.Parallel()
+
+	c := bootstrap(t, Options{
+		Paths: appdata.NewPaths(filepath.Join(t.TempDir(), "data")), Home: testutil.ClaudeHome(t), Runner: noPrograms(),
+	})
+
+	facts := hooksTool{tools: c.Integrations}.HooksTool(t.Context())
+	assert.False(t, facts.Usable(), "no go-pre-commit is found")
+	assert.Empty(t, facts.Copies)
+
+	place := hooksSettings{settings: c.Settings}
+
+	got, err := place.RunsIn(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, integrationprefs.RunsInApp, got)
+
+	_, err = c.Settings.SetRunsIn(t.Context(), integrationprefs.RunsInTerminal)
+	require.NoError(t, err)
+
+	got, err = place.RunsIn(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, integrationprefs.RunsInTerminal, got)
+
+	require.NoError(t, c.Close())
+
+	_, err = place.RunsIn(t.Context())
+	require.Error(t, err, "a closed database can't say")
+	assert.False(t, hooksTool{tools: c.Integrations}.HooksTool(t.Context()).Usable())
 }

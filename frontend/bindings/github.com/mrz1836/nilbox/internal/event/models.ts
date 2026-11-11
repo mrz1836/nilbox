@@ -9,6 +9,14 @@ export interface BudgetUpdated {
 }
 
 /**
+ * HooksUpdated says the Hooks page's list changed: a clone was scanned again, or a hooks
+ * action or a checks run ended. The window reads the list again, which serves what is kept
+ * and scans again only the clones that changed.
+ */
+export interface HooksUpdated {
+}
+
+/**
  * InboxUpdated says the stored inbox, or the status of its last refresh, changed: the
  * window reads the inbox again, and the menu bar redraws.
  */
@@ -26,6 +34,51 @@ export interface NotificationsUpdated {
  * asks whether to stop them and quit, or keep running.
  */
 export interface QuitRequested {
+}
+
+/**
+ * ReleasesPhase is how far a read of the Release page's list has got.
+ */
+export type ReleasesPhase = "clones" | "github" | "compare" | "checking";
+
+/**
+ * The values of ReleasesPhase, by the names of their Go constants.
+ */
+export const ReleasesPhase = {
+    /**
+     * The phases of a read of the Release page's list, in order.
+     *
+     * ReleasesFindingClones is the clone root being searched for clones.
+     */
+    ReleasesFindingClones: "clones",
+
+    /**
+     * ReleasesAskingGitHub is GitHub being asked about each clone's repository.
+     */
+    ReleasesAskingGitHub: "github",
+
+    /**
+     * ReleasesComparing is GitHub being asked how far each default branch is ahead of its
+     * newest version.
+     */
+    ReleasesComparing: "compare",
+
+    /**
+     * ReleasesCheckingClones is the unreleased clones being read.
+     */
+    ReleasesCheckingClones: "checking",
+} as const;
+
+/**
+ * ReleasesProgress says how far a read of the Release page's list has got, while it runs:
+ * its phase, and how many of the phase's repositories or clones are done. Finding the
+ * clones counts nothing. It comes a few times a second at most, and ReleasesUpdated
+ * follows once the read lands.
+ */
+export interface ReleasesProgress {
+    "phase": ReleasesPhase;
+    "done": number;
+    "total": number;
 }
 
 /**

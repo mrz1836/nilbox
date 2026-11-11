@@ -1,0 +1,63 @@
+{
+    "name": "status-commit-msg",
+    "note": "installed for pre-commit and commit-msg",
+    "dir": "/work/repos/status-commit-msg",
+    "argv": [
+        "go-pre-commit",
+        "status",
+        "--no-color"
+    ],
+    "stdout": "ℹ \n=== Go Pre-commit System Status ===\n✓ ✓ Pre-commit system is enabled\nℹ \nGit Hook Status:\n✓   ✓ pre-commit: Go pre-commit hook installed and ready\n✓   ✓ commit-msg: Go pre-commit hook installed and ready\n",
+    "stderr": "",
+    "exit": 0,
+    "durationMs": 31,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 12,
+            "text": "ℹ "
+        },
+        {
+            "stream": "out",
+            "ms": 12,
+            "text": "=== Go Pre-commit System Status ==="
+        },
+        {
+            "stream": "out",
+            "ms": 12,
+            "text": "✓ ✓ Pre-commit system is enabled"
+        },
+        {
+            "stream": "out",
+            "ms": 12,
+            "text": "ℹ "
+        },
+        {
+            "stream": "out",
+            "ms": 12,
+            "text": "Git Hook Status:"
+        },
+        {
+            "stream": "out",
+            "ms": 17,
+            "text": "✓   ✓ pre-commit: Go pre-commit hook installed and ready"
+        },
+        {
+            "stream": "out",
+            "ms": 26,
+            "text": "✓   ✓ commit-msg: Go pre-commit hook installed and ready"
+        }
+    ],
+    "before": {
+        "hooks": "commit-msg mode=-rwxr-xr-x size=3101 sha=e69979e1c8ed marker=true first=\"#!/bin/bash\"\npre-commit mode=-rwxr-xr-x size=3101 sha=e69979e1c8ed marker=true first=\"#!/bin/bash\"",
+        "hooksDir": "/work/repos/status-commit-msg/.git/hooks",
+        "staged": "",
+        "status": ""
+    },
+    "after": {
+        "hooks": "commit-msg mode=-rwxr-xr-x size=3101 sha=e69979e1c8ed marker=true first=\"#!/bin/bash\"\npre-commit mode=-rwxr-xr-x size=3101 sha=e69979e1c8ed marker=true first=\"#!/bin/bash\"",
+        "hooksDir": "/work/repos/status-commit-msg/.git/hooks",
+        "staged": "",
+        "status": ""
+    }
+}

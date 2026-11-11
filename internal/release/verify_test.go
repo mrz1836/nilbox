@@ -173,6 +173,19 @@ func TestJudgeAndOutcome(t *testing.T) {
 	}
 }
 
+func TestTheResultLeavesOutTheWarningEveryReleaseHas(t *testing.T) {
+	t.Parallel()
+
+	said := Output{Warnings: []string{
+		notOnHead, sendByHand, "Current version tag is not on HEAD – there are 12 commits since v0.9.1",
+	}}
+	out := outcomeOf(Result{Kind: ResultNotPushed, Tag: recVersion}, said, scriptrun.Outcome{})
+
+	assert.Equal(t, []string{sendByHand}, out.Warnings, "a version tag not on HEAD is why a release is made")
+	assert.Len(t, said.Warnings, 3, "the output keeps every warning, for reading a failure")
+	assert.Empty(t, Output{}.NotableWarnings())
+}
+
 func TestJudgeWithoutARepositoryLinksNothing(t *testing.T) {
 	t.Parallel()
 
@@ -392,9 +405,9 @@ func TestCopyableCommandsAreQuoted(t *testing.T) {
 func TestWithReason(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, "magex stopped.", withReason("magex stopped", "  "))
-	assert.Equal(t, "magex stopped: failed to push tag.", withReason("magex stopped", "failed to push tag"))
-	assert.Equal(t, "magex stopped: is it there?", withReason("magex stopped", "is it there?"))
+	assert.Equal(t, "magex stopped.", textutil.WithReason("magex stopped", "  "))
+	assert.Equal(t, "magex stopped: failed to push tag.", textutil.WithReason("magex stopped", "failed to push tag"))
+	assert.Equal(t, "magex stopped: is it there?", textutil.WithReason("magex stopped", "is it there?"))
 
 	origin, found := checkOf(Decide(Facts{Clone: CloneFacts{Error: " "}}), CheckOrigin)
 	require.True(t, found)
@@ -414,7 +427,7 @@ func TestAMajorWithoutMagexIsNotReadyRatherThanABug(t *testing.T) {
 	t.Parallel()
 
 	r := newReleaseRig(t, rigOptions{base: shownVersion})
-	r.tool = ToolFacts{Features: []integrations.Feature{}, Off: true}
+	r.tool = ToolFacts{Features: []integrations.Feature{}, State: integrations.StateMissing}
 
 	_, err := r.svc.Start(t.Context(), StartRequest{Repo: sdkRepo, Bump: BumpMajor, Version: majorVersion, Typed: majorVersion})
 	require.ErrorIs(t, err, ErrNotReady)

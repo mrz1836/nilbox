@@ -70,6 +70,12 @@ const (
 
 	// NameReleasesUpdated is ReleasesUpdated's name.
 	NameReleasesUpdated = "releases:updated"
+
+	// NameReleasesProgress is ReleasesProgress's name.
+	NameReleasesProgress = "releases:progress"
+
+	// NameHooksUpdated is HooksUpdated's name.
+	NameHooksUpdated = "hooks:updated"
 )
 
 // Event is something that happened, or was asked for, that another part of the app
@@ -119,6 +125,8 @@ func WindowEvents() []WindowEvent {
 		ScriptRunProgress{},
 		QuitRequested{},
 		ReleasesUpdated{},
+		ReleasesProgress{},
+		HooksUpdated{},
 	}
 }
 
@@ -307,6 +315,50 @@ type ReleasesUpdated struct{}
 func (ReleasesUpdated) Name() string { return NameReleasesUpdated }
 
 func (ReleasesUpdated) window() {}
+
+// ReleasesPhase is how far a read of the Release page's list has got.
+type ReleasesPhase string
+
+// The phases of a read of the Release page's list, in order.
+const (
+	// ReleasesFindingClones is the clone root being searched for clones.
+	ReleasesFindingClones ReleasesPhase = "clones"
+
+	// ReleasesAskingGitHub is GitHub being asked about each clone's repository.
+	ReleasesAskingGitHub ReleasesPhase = "github"
+
+	// ReleasesComparing is GitHub being asked how far each default branch is ahead of its
+	// newest version.
+	ReleasesComparing ReleasesPhase = "compare"
+
+	// ReleasesCheckingClones is the unreleased clones being read.
+	ReleasesCheckingClones ReleasesPhase = "checking"
+)
+
+// ReleasesProgress says how far a read of the Release page's list has got, while it runs:
+// its phase, and how many of the phase's repositories or clones are done. Finding the
+// clones counts nothing. It comes a few times a second at most, and ReleasesUpdated
+// follows once the read lands.
+type ReleasesProgress struct {
+	Phase ReleasesPhase `json:"phase"`
+	Done  int           `json:"done"`
+	Total int           `json:"total"`
+}
+
+// Name returns NameReleasesProgress.
+func (ReleasesProgress) Name() string { return NameReleasesProgress }
+
+func (ReleasesProgress) window() {}
+
+// HooksUpdated says the Hooks page's list changed: a clone was scanned again, or a hooks
+// action or a checks run ended. The window reads the list again, which serves what is kept
+// and scans again only the clones that changed.
+type HooksUpdated struct{}
+
+// Name returns NameHooksUpdated.
+func (HooksUpdated) Name() string { return NameHooksUpdated }
+
+func (HooksUpdated) window() {}
 
 // Discard is a Sink that drops every event.
 type Discard struct{}

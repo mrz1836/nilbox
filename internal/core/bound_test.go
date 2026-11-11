@@ -18,6 +18,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/hooks"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/item"
@@ -285,7 +286,25 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		},
 		"scriptrun.Service.Runs": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			got, err := c.ScriptRuns.Runs(ctx, scriptrun.Filter{})
-			require.Len(t, got, 2)
+			require.Len(t, got, 4)
+
+			return got, err
+		},
+		"hooks.Service.Repos": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			got, err := c.Hooks.Repos(ctx, false)
+			require.Len(t, got.Repos, 1, "the clone with a config, which the fake git can't read")
+
+			return got, err
+		},
+		"hooks.Service.ActionResult": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			got, err := c.Hooks.ActionResult(ctx, 3)
+			require.Equal(t, hooks.OutcomeInstalled, got.Outcome)
+
+			return got, err
+		},
+		"hooks.Service.ChecksResult": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			got, err := c.Hooks.ChecksResult(ctx, 4)
+			require.Equal(t, hooks.ScopeAll, got.Scope)
 
 			return got, err
 		},
@@ -358,6 +377,7 @@ func unreachedBound() map[string]string {
 		"review.Service.Act":                "edits GitHub; its steps start empty",
 		"release.Service.Candidates":        "scans the clone root and reads GitHub; its lists start empty",
 		"release.Service.Prepare":           "needs a clone of a GitHub repository; Decide starts every list empty",
+		"hooks.Service.InstallAll":          "needs go-pre-commit; its lines start empty",
 	}
 }
 
@@ -420,6 +440,8 @@ func seedBound(t *testing.T) (*Core, seededItems) {
 	repo := filepath.Join(home, "projects", "example-repo")
 	testutil.MakeClaudeDirs(t, home, ".claude", "projects/example-repo/.git",
 		"projects/example-repo/.claude/worktrees/scratch")
+	// A go-pre-commit config, so the Hooks page lists the clone.
+	testutil.WriteFile(t, filepath.Join(repo, ".github", ".env.base"), "ENABLE_GO_PRE_COMMIT=true\n")
 
 	c := bootstrap(t, Options{
 		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
@@ -494,6 +516,16 @@ func seedBound(t *testing.T) (*Core, seededItems) {
 		started_at, finished_at) VALUES (2, 'release', 'Release v1.4.3', '/work/example-repo',
 		'["/usr/local/bin/magex","version:bump"]', 'failed', 0, '{"outcome":{"kind":"notPushed","tag":"v1.4.3"}}', ?, ?)`,
 		now, now)
+	require.NoError(t, err)
+
+	// A hooks action and a checks run whose results are as sparse.
+	_, err = c.DB.ExecContext(ctx, `INSERT INTO script_runs (id, kind, title, dir, argv, status, exit_code, result,
+		started_at, finished_at) VALUES (3, 'hooks', 'Install the hook', '/work/example-repo',
+		'["/usr/local/bin/go-pre-commit","install"]', 'succeeded', 0,
+		'{"outcome":{"action":"install","outcome":"installed"}}', ?, ?),
+		(4, 'checks', 'Checks · all files', '/work/example-repo', '["/usr/local/bin/go-pre-commit","run"]',
+		'failed', 1, '{"outcome":{"scope":"all","checks":[{"name":"eof","state":"failed"}],"changed":[{"path":"a"}]}}', ?, ?)`,
+		now, now, now, now)
 	require.NoError(t, err)
 
 	return c, seededItems{item: ids[0], stuck: ids[1]}

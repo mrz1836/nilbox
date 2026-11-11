@@ -332,5 +332,7 @@ func assertReadOnlyForm(t *testing.T, name, verb string, words []string, form st
 		return
 	}
 
-	assert.Contains(t, words, form, "%s: %s without %s", name, verb, form)
+	// A form's value, as status's --porcelain=v2, keeps it the same form.
+	has := slices.ContainsFunc(words, func(w string) bool { return w == form || strings.HasPrefix(w, form+"=") })
+	assert.True(t, has, "%s: %s without %s", name, verb, form)
 }

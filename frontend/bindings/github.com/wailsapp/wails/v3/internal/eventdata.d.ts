@@ -14,9 +14,11 @@ declare module "@wailsio/runtime" {
         interface CustomEvents {
             "app:quitRequested": event$0.QuitRequested;
             "budget:updated": event$0.BudgetUpdated;
+            "hooks:updated": event$0.HooksUpdated;
             "inbox:reveal": event$0.RevealItem;
             "inbox:updated": event$0.InboxUpdated;
             "notifications:updated": event$0.NotificationsUpdated;
+            "releases:progress": event$0.ReleasesProgress;
             "releases:updated": event$0.ReleasesUpdated;
             "review:progress": event$0.ReviewProgress;
             "scriptruns:progress": event$0.ScriptRunProgress;

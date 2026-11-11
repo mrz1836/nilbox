@@ -20,7 +20,9 @@ import (
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/hooks"
 	"github.com/mrz1836/nilbox/internal/inbox"
+	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launcher"
@@ -680,9 +682,12 @@ type releaseGitHub struct {
 }
 
 // ReleaseStatus is round one: each repository's state, default branch, and newest tags.
-func (r releaseGitHub) ReleaseStatus(ctx context.Context, repos []repo.Name) (map[string]release.RepoStatus, error) {
+// answered hears each batch GitHub answers.
+func (r releaseGitHub) ReleaseStatus(
+	ctx context.Context, repos []repo.Name, answered func(n int),
+) (map[string]release.RepoStatus, error) {
 	got, err := github.WithToken(ctx, r.tokens, func(tok github.Token) (map[string]github.ReleaseStatus, error) {
-		return r.client.FetchReleaseStatus(ctx, tok, repos)
+		return r.client.FetchReleaseStatus(ctx, tok, repos, answered)
 	})
 	if err != nil {
 		return nil, releaseSignedOut(err)
@@ -708,14 +713,17 @@ func (r releaseGitHub) ReleaseStatus(ctx context.Context, repos []repo.Name) (ma
 }
 
 // ReleaseCompare is round two: how far each default branch is ahead of its version tag.
-func (r releaseGitHub) ReleaseCompare(ctx context.Context, reqs []release.CompareRequest) (map[string]release.Compare, error) {
+// answered hears each batch GitHub answers.
+func (r releaseGitHub) ReleaseCompare(
+	ctx context.Context, reqs []release.CompareRequest, answered func(n int),
+) (map[string]release.Compare, error) {
 	asks := make([]github.CompareRequest, 0, len(reqs))
 	for _, q := range reqs {
 		asks = append(asks, github.CompareRequest{Repo: q.Repo, Tag: q.Tag, Branch: q.Branch})
 	}
 
 	got, err := github.WithToken(ctx, r.tokens, func(tok github.Token) (map[string]github.ReleaseCompare, error) {
-		return r.client.FetchReleaseCompare(ctx, tok, asks)
+		return r.client.FetchReleaseCompare(ctx, tok, asks, answered)
 	})
 	if err != nil {
 		return nil, releaseSignedOut(err)
@@ -816,6 +824,75 @@ func (n releaseNotices) Released(ctx context.Context, notice release.Notice) {
 		Kind: notify.KindReleaseDone, Title: notice.Title, Body: notice.Body, URL: notice.URL,
 		RepoOwner: notice.Repo.Owner, RepoName: notice.Repo.Repo,
 	})
+}
+
+// hooksClones lists the clones under the clone root the settings name, for the Hooks
+// page, reading no git, and a clone's origin with the read-only remote lookup
+// localrepos.Inspect runs (hooks.Clones).
+type hooksClones struct {
+	settings *settings.Service
+	home     string
+	git      execpath.Runner
+}
+
+// Root returns the clone root as it is set now, with ~ expanded.
+func (c hooksClones) Root(ctx context.Context) (string, error) {
+	return releaseClones{settings: c.settings, home: c.home}.Root(ctx)
+}
+
+// Dirs lists the clones directly under root.
+func (c hooksClones) Dirs(_ context.Context, root string) ([]string, error) {
+	clones, err := localrepos.Clones(root)
+	if err != nil {
+		return nil, err
+	}
+
+	return slices.Collect(clones), nil
+}
+
+// Origin returns the repository the clone at dir's origin points at, and whether it is a
+// GitHub repository.
+func (c hooksClones) Origin(ctx context.Context, dir string) (repo.Name, bool, error) {
+	return releaseOrigins{git: c.git}.Origin(ctx, dir)
+}
+
+// hooksTool reads what the integrations know of go-pre-commit, every copy found and its
+// definition's features, for the Hooks page (hooks.ToolSource). It never waits for a
+// detection: List serves the last one.
+type hooksTool struct {
+	tools *integrations.Service
+}
+
+// HooksTool returns go-pre-commit's facts; a list that can't be read is a go-pre-commit
+// that's missing.
+func (h hooksTool) HooksTool(ctx context.Context) hooks.ToolFacts {
+	def := integrations.GoPreCommit()
+
+	list, err := h.tools.List(ctx)
+	if err == nil {
+		for _, t := range list.Tools {
+			if t.ID == def.ID {
+				return hooks.ToolFactsOf(def, t, list.ShellRead)
+			}
+		}
+	}
+
+	return hooks.ToolFactsOf(def, integrations.Tool{}, false)
+}
+
+// hooksSettings reads where runs go for the Hooks page (hooks.Places).
+type hooksSettings struct {
+	settings *settings.Service
+}
+
+// RunsIn returns the integrations.runsIn setting.
+func (p hooksSettings) RunsIn(ctx context.Context) (integrationprefs.RunsIn, error) {
+	all, err := p.settings.Get(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	return all.Integrations.RunsIn, nil
 }
 
 // releaseSignedOut marks gh's "no one is signed in" as release.ErrSignedOut. A missing gh

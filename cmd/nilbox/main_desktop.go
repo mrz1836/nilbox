@@ -38,6 +38,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/core"
 	"github.com/mrz1836/nilbox/internal/desktop"
 	"github.com/mrz1836/nilbox/internal/event"
+	"github.com/mrz1836/nilbox/internal/hooks"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/integrations"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
@@ -161,7 +162,7 @@ func assemble(
 		Inbox:          c.Inbox,
 		Settings:       c.ShellSettings,
 		Sessions:       c.ShellSessions,
-		Workers:        []desktop.Worker{c.Scheduler, c.Sweeper, c.BudgetSaver, c.Watcher},
+		Workers:        []desktop.Worker{c.Scheduler, c.Sweeper, c.BudgetSaver, c.Watcher, c.ReleaseRefresher},
 		Deferred:       []desktop.Worker{c.Deferred, c.ToolFinder, c.Runs},
 		Data:           c,
 		Banners:        banners.poster(),
@@ -228,6 +229,8 @@ func registerEvents() {
 	application.RegisterEvent[event.ScriptRunProgress](event.NameScriptRunProgress)
 	application.RegisterEvent[event.QuitRequested](event.NameQuitRequested)
 	application.RegisterEvent[event.ReleasesUpdated](event.NameReleasesUpdated)
+	application.RegisterEvent[event.ReleasesProgress](event.NameReleasesProgress)
+	application.RegisterEvent[event.HooksUpdated](event.NameHooksUpdated)
 }
 
 // services wraps every service the core binds, in the core's order. A service no binder
@@ -270,7 +273,7 @@ func binders() []func(svc any) (application.Service, bool) {
 		binder[launchdefaults.Service], binder[inbox.Service], binder[launcher.Service],
 		binder[worktrees.Service], binder[notify.Service], binder[appinfo.Service], binder[budget.Service],
 		binder[sessions.Service], binder[review.Service], binder[integrations.Service], binder[scriptrun.Service],
-		binder[releases.Service],
+		binder[releases.Service], binder[hooks.Service],
 	}
 }
 

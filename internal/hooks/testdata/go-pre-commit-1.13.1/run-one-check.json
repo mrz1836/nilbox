@@ -1,0 +1,135 @@
+{
+    "name": "run-one-check",
+    "note": "a check named first; README.md has trailing spaces",
+    "dir": "/work/repos/run-one-check",
+    "argv": [
+        "go-pre-commit",
+        "run",
+        "whitespace",
+        "--no-color",
+        "--all-files"
+    ],
+    "stdout": "⏳ Running whitespace check...\n\nCheck Results\n─────────────\n  Error: whitespace issues found\n\nSummary:\n\nERRORS FOUND\n────────────\n  \n    whitespace issues found\n  \nℹ Run with --verbose flag to see full error details\nℹ Fix the errors above and run the checks again\n",
+    "stderr": "✗ whitespace check failed (6ms)\n✗ whitespace failed (6ms)\n✗ 1 failed on 6 file(s) in 6ms\n✗ 1 check(s) failed with the following errors:\n✗ ━ whitespace ━\nError: checks failed: 1\n",
+    "exit": 1,
+    "durationMs": 22,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 15,
+            "text": "⏳ Running whitespace check..."
+        },
+        {
+            "stream": "err",
+            "ms": 22,
+            "text": "✗ whitespace check failed (6ms)"
+        },
+        {
+            "stream": "err",
+            "ms": 22,
+            "text": "✗ whitespace failed (6ms)"
+        },
+        {
+            "stream": "err",
+            "ms": 22,
+            "text": "✗ 1 failed on 6 file(s) in 6ms"
+        },
+        {
+            "stream": "err",
+            "ms": 22,
+            "text": "✗ 1 check(s) failed with the following errors:"
+        },
+        {
+            "stream": "err",
+            "ms": 22,
+            "text": "✗ ━ whitespace ━"
+        },
+        {
+            "stream": "err",
+            "ms": 22,
+            "text": "Error: checks failed: 1"
+        },
+        {
+            "stream": "out",
+            "ms": 22,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 22,
+            "text": "Check Results"
+        },
+        {
+            "stream": "out",
+            "ms": 22,
+            "text": "─────────────"
+        },
+        {
+            "stream": "out",
+            "ms": 22,
+            "text": "  Error: whitespace issues found"
+        },
+        {
+            "stream": "out",
+            "ms": 22,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 22,
+            "text": "Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 22,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 22,
+            "text": "ERRORS FOUND"
+        },
+        {
+            "stream": "out",
+            "ms": 22,
+            "text": "────────────"
+        },
+        {
+            "stream": "out",
+            "ms": 22,
+            "text": "  "
+        },
+        {
+            "stream": "out",
+            "ms": 22,
+            "text": "    whitespace issues found"
+        },
+        {
+            "stream": "out",
+            "ms": 22,
+            "text": "  "
+        },
+        {
+            "stream": "out",
+            "ms": 22,
+            "text": "ℹ Run with --verbose flag to see full error details"
+        },
+        {
+            "stream": "out",
+            "ms": 22,
+            "text": "ℹ Fix the errors above and run the checks again"
+        }
+    ],
+    "before": {
+        "hooks": "",
+        "hooksDir": "/work/repos/run-one-check/.git/hooks",
+        "staged": "",
+        "status": ""
+    },
+    "after": {
+        "hooks": "",
+        "hooksDir": "/work/repos/run-one-check/.git/hooks",
+        "staged": "README.md",
+        "status": "1 M. N... 100644 100644 100644 9f2c5732429a10b89aa145a4d05a8ddfa188a366 4e31d2f35c5f9ca6648f9a999753a9429e22210f README.md"
+    }
+}

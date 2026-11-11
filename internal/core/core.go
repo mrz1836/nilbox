@@ -27,6 +27,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/gitread"
+	"github.com/mrz1836/nilbox/internal/hooks"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
@@ -131,6 +132,7 @@ type Core struct {
 	Integrations   *integrations.Service
 	ScriptRuns     *scriptrun.Service
 	Release        *release.Service
+	Hooks          *hooks.Service
 
 	// ShellSettings are the settings the desktop shell reads when the app launches. They
 	// are not bound.
@@ -178,6 +180,11 @@ type Core struct {
 	// picks up the runs left from before a restart and stops the app's own at quit, and
 	// asks it before quitting whether runs are going (desktop.QuitGuard). It is not bound.
 	Runs *scriptrun.Engine
+
+	// ReleaseRefresher reads the Release page's list again behind the page when, after a
+	// restart, the page was shown the list kept from the last start. The desktop shell runs
+	// it as a worker. It is not bound.
+	ReleaseRefresher *release.Refresher
 
 	// tokens holds the GitHub token the inbox and the worktree service borrow, until
 	// Close forgets it.
@@ -252,7 +259,7 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 func (c *Core) Services() []any {
 	return []any{
 		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.Notifications,
-		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Integrations, c.ScriptRuns, c.Release,
+		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Integrations, c.ScriptRuns, c.Release, c.Hooks,
 	}
 }
 
@@ -491,10 +498,17 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		// inbox stored: nothing of GitHub's.
 		AfterMerge: releaseSettings{settings: prefs}, Branches: inboxStore,
 		// A check's Open in terminal opens the terminal chosen for launches in the clone.
-		Terminal: terminals, Home: opts.Home, Clock: opts.Clock, Events: opts.Events, Logger: logger,
+		Terminal: terminals,
+		// The last list is kept in the prefs, so the next start shows it at once.
+		Keeper: prefsstore.New(pool, opts.Clock), Home: opts.Home, Clock: opts.Clock, Events: opts.Events, Logger: logger,
 	})
 	// A release left from before a restart is read and verified as one started now.
 	runs.RegisterVerifier(scriptrun.KindRelease, release.NewVerifier(releases))
+
+	hookPage := newHooks(pool, opts, logger, hookDeps{
+		settings: prefs, tools: tools, git: releaseGit, runner: runner, clones: clones, runs: runs, history: scriptRuns,
+		shellEnv: shellEnv,
+	})
 
 	return &Core{
 		DB:       pool,
@@ -535,25 +549,27 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 			Settings: reviewSettings{settings: prefs}, Replies: reviewReplies{store: promptStore, source: previews},
 			Events: opts.Events, Clock: opts.Clock, Logger: logger,
 		}),
-		Watcher:       follow.watcher,
-		ShellSessions: ShellSessions{ledger: follow.ledger, service: follow.service},
-		ShellSettings: newShellSettings(prefs, pool, opts.Clock),
-		ProfileStore:  profileStore,
-		Scheduler:     inbox.NewScheduler(inboxSvc, logger),
-		Sweeper:       worktrees.NewSweeper(sweeps, worktrees.DefaultSweepInterval),
-		Timing:        recorder,
-		ShellEnv:      shellEnv,
-		Deferred:      &Deferred{steps: []func(context.Context){func(ctx context.Context) { _ = shellEnv.Read(ctx) }}},
-		Integrations:  tools,
-		ToolFinder:    toolFinder,
-		Runs:          runs,
-		ScriptRuns:    scriptRuns,
-		Release:       releases,
-		tokens:        tokens,
-		BudgetSaver:   budget.NewSaver(tracker, keeper, logger),
-		client:        client,
-		budget:        tracker,
-		budgetKeeper:  keeper,
+		Watcher:          follow.watcher,
+		ShellSessions:    ShellSessions{ledger: follow.ledger, service: follow.service},
+		ShellSettings:    newShellSettings(prefs, pool, opts.Clock),
+		ProfileStore:     profileStore,
+		Scheduler:        inbox.NewScheduler(inboxSvc, logger),
+		Sweeper:          worktrees.NewSweeper(sweeps, worktrees.DefaultSweepInterval),
+		Timing:           recorder,
+		ShellEnv:         shellEnv,
+		Deferred:         &Deferred{steps: []func(context.Context){func(ctx context.Context) { _ = shellEnv.Read(ctx) }}},
+		Integrations:     tools,
+		ToolFinder:       toolFinder,
+		Runs:             runs,
+		ScriptRuns:       scriptRuns,
+		Release:          releases,
+		ReleaseRefresher: release.NewRefresher(releases),
+		Hooks:            hookPage,
+		tokens:           tokens,
+		BudgetSaver:      budget.NewSaver(tracker, keeper, logger),
+		client:           client,
+		budget:           tracker,
+		budgetKeeper:     keeper,
 	}
 }
 
@@ -582,6 +598,45 @@ func newRuns(
 		Reveal:     revealer(runner),
 		Quit:       func() { events.Emit(event.QuitConfirmed{}) },
 	})
+}
+
+// hookDeps are the services and building blocks the Hooks page shares with the rest of
+// the app.
+type hookDeps struct {
+	settings *settings.Service
+	tools    *integrations.Service
+	git      *gitread.Git
+	runner   execpath.Runner
+	clones   *clonelock.Set
+	runs     *scriptrun.Engine
+	history  *scriptrun.Service
+	shellEnv *shellenv.Reader
+}
+
+// newHooks builds the Hooks page's service: the clones under the clone root, read with the
+// same read-only git as Release's, go-pre-commit as the integrations found it, its actions
+// and checks run through the runner with the shell's environment, and the hooks.*
+// preferences. Run again works a hooks action or a checks run out afresh through its
+// Rerunner.
+func newHooks(pool *sql.DB, opts Options, logger *slog.Logger, deps hookDeps) *hooks.Service {
+	var runner func([]string, string) execpath.Runner
+
+	if opts.Runner != nil {
+		runner = func([]string, string) execpath.Runner { return opts.Runner }
+	}
+
+	svc := hooks.NewService(hooks.Config{
+		Clones: hooksClones{settings: deps.settings, home: opts.Home, git: deps.runner}, Git: deps.git,
+		Tools: hooksTool{tools: deps.tools}, Locks: deps.clones, Runs: deps.runs, History: deps.history,
+		Places: hooksSettings{settings: deps.settings}, Memory: prefsstore.New(pool, opts.Clock), Env: deps.shellEnv.Env,
+		Runner: runner, Home: opts.Home, Clock: opts.Clock, Events: opts.Events, Logger: logger,
+	})
+
+	rerun := hooks.NewRerunner(svc)
+	deps.runs.RegisterRerunner(scriptrun.KindHooks, rerun)
+	deps.runs.RegisterRerunner(scriptrun.KindChecks, rerun)
+
+	return svc
 }
 
 // following is what follows the agent sessions: the ledger launches record them in, the

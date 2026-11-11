@@ -104,7 +104,9 @@ type ToolFacts struct {
 	Path    string
 	Version string
 
-	// State is what the settings say of it, and Off reports the user turned mage-x off.
+	// State is what the settings say of it, and Off reports the user turned mage-x off:
+	// only their switch says so, since automatic is on whenever the copy can be used, and a
+	// copy too old to use is too old, not off.
 	State integrations.State
 	Off   bool
 
@@ -121,7 +123,8 @@ type ToolFacts struct {
 // definition and tool what the settings show of it.
 func ToolFactsOf(def integrations.Definition, tool integrations.Tool) ToolFacts {
 	out := ToolFacts{
-		Path: tool.Copy.Path, Version: tool.Copy.Version.Raw, State: tool.State, Off: !tool.On,
+		Path: tool.Copy.Path, Version: tool.Copy.Version.Raw, State: tool.State,
+		Off:      tool.Switch == integrationprefs.SwitchOff,
 		Features: []integrations.Feature{}, MinVersion: def.MinVersion,
 		ExpectSince: def.Features[integrations.FeatureExpect],
 	}
@@ -419,7 +422,7 @@ func (g *Gatherer) tool(ctx context.Context) ToolFacts {
 func (g *Gatherer) repo(ctx context.Context, name repo.Name) RepoFacts {
 	out := RepoFacts{Name: name, Branches: []string{}}
 
-	got, err := g.github.ReleaseStatus(ctx, []repo.Name{name})
+	got, err := g.github.ReleaseStatus(ctx, []repo.Name{name}, nil)
 	if err != nil {
 		out.Error = repoError(name, err)
 

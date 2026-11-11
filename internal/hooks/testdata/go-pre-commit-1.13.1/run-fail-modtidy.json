@@ -1,0 +1,279 @@
+{
+    "name": "run-fail-modtidy",
+    "note": "go.mod requires a module nothing imports",
+    "dir": "/work/repos/run-fail-modtidy",
+    "argv": [
+        "go-pre-commit",
+        "run",
+        "--no-color",
+        "--all-files"
+    ],
+    "stdout": "⏳ Running gitleaks check...\n⏳ Running fumpt check...\n⏳ Running whitespace check...\n⏳ Running mod-tidy check...\n⏳ Running eof check...\n⏳ Running lint check...\n✓ fumpt check passed (16ms)\n✓ whitespace check passed (162μs)\n✓ eof check passed (121μs)\n✓ gitleaks check passed (361ms)\n✓ lint check passed (689ms)\n\nCheck Results\n─────────────\n✓ fumpt completed successfully (16ms)\n✓ whitespace completed successfully (162μs)\n  Error: command 'go mod tidy (in one or more modules)' failed\n    Module . needs tidying:\n    diff current/go.mod tidy/go.mod\n    --- current/go.mod\n    +++ tidy/go.mod\n    @@ -1,5 +1,3 @@\n    -\n    -require golang.org/x/text v0.21.0\n💡 Fix the mod tidy issues shown above. Run 'go mod tidy' in each module directory.\n✓ eof completed successfully (121μs)\n✓ gitleaks completed successfully (361ms)\n✓ lint completed successfully (689ms)\n\nSummary:\n\nERRORS FOUND\n────────────\n  \n    Module . needs tidying:\n    diff current/go.mod tidy/go.mod\n    --- current/go.mod\n    +++ tidy/go.mod\n    @@ -1,5 +1,3 @@\n    ... and 2 more errors\n💡 To fix: Fix the mod tidy issues shown above. Run 'go mod tidy' in each module directory.\n  \nℹ Run with --verbose flag to see full error details\nℹ Fix the errors above and run the checks again\n",
+    "stderr": "✗ mod-tidy check failed (22ms)\n✗ mod-tidy failed (22ms)\n✗ 5 passed, 1 failed on 6 file(s) in 728ms\n✗ 1 check(s) failed with the following errors:\n✗ ━ mod-tidy ━\nError: checks failed: 1\n",
+    "exit": 1,
+    "durationMs": 745,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 15,
+            "text": "⏳ Running gitleaks check..."
+        },
+        {
+            "stream": "out",
+            "ms": 15,
+            "text": "⏳ Running fumpt check..."
+        },
+        {
+            "stream": "out",
+            "ms": 32,
+            "text": "⏳ Running whitespace check..."
+        },
+        {
+            "stream": "out",
+            "ms": 32,
+            "text": "⏳ Running mod-tidy check..."
+        },
+        {
+            "stream": "out",
+            "ms": 55,
+            "text": "⏳ Running eof check..."
+        },
+        {
+            "stream": "out",
+            "ms": 55,
+            "text": "⏳ Running lint check..."
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "✓ fumpt check passed (16ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "✓ whitespace check passed (162μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "✓ eof check passed (121μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "✓ gitleaks check passed (361ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "✓ lint check passed (689ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "Check Results"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "─────────────"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "✓ fumpt completed successfully (16ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "✓ whitespace completed successfully (162μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "  Error: command 'go mod tidy (in one or more modules)' failed"
+        },
+        {
+            "stream": "err",
+            "ms": 744,
+            "text": "✗ mod-tidy check failed (22ms)"
+        },
+        {
+            "stream": "err",
+            "ms": 744,
+            "text": "✗ mod-tidy failed (22ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "    Module . needs tidying:"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "    diff current/go.mod tidy/go.mod"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "    --- current/go.mod"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "    +++ tidy/go.mod"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "    @@ -1,5 +1,3 @@"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "    -"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "    -require golang.org/x/text v0.21.0"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "💡 Fix the mod tidy issues shown above. Run 'go mod tidy' in each module directory."
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "✓ eof completed successfully (121μs)"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "✓ gitleaks completed successfully (361ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "✓ lint completed successfully (689ms)"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "ERRORS FOUND"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "────────────"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "  "
+        },
+        {
+            "stream": "err",
+            "ms": 744,
+            "text": "✗ 5 passed, 1 failed on 6 file(s) in 728ms"
+        },
+        {
+            "stream": "err",
+            "ms": 744,
+            "text": "✗ 1 check(s) failed with the following errors:"
+        },
+        {
+            "stream": "err",
+            "ms": 744,
+            "text": "✗ ━ mod-tidy ━"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "    Module . needs tidying:"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "    diff current/go.mod tidy/go.mod"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "    --- current/go.mod"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "    +++ tidy/go.mod"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "    @@ -1,5 +1,3 @@"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "    ... and 2 more errors"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "💡 To fix: Fix the mod tidy issues shown above. Run 'go mod tidy' in each module directory."
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "  "
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "ℹ Run with --verbose flag to see full error details"
+        },
+        {
+            "stream": "out",
+            "ms": 744,
+            "text": "ℹ Fix the errors above and run the checks again"
+        },
+        {
+            "stream": "err",
+            "ms": 744,
+            "text": "Error: checks failed: 1"
+        }
+    ],
+    "before": {
+        "hooks": "",
+        "hooksDir": "/work/repos/run-fail-modtidy/.git/hooks",
+        "staged": "",
+        "status": ""
+    },
+    "after": {
+        "hooks": "",
+        "hooksDir": "/work/repos/run-fail-modtidy/.git/hooks",
+        "staged": "",
+        "status": ""
+    }
+}

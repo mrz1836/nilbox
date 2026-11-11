@@ -109,7 +109,7 @@ func ExplainFailure(in FailureInput) Failure {
 		quote = in.Output.LoggedErrors[len(in.Output.LoggedErrors)-1]
 	}
 
-	return Failure{Kind: FailureOther, Heading: withReason("magex stopped", quote), Quote: quote}
+	return Failure{Kind: FailureOther, Heading: textutil.WithReason("magex stopped", quote), Quote: quote}
 }
 
 // failureRule tells one kind of failure: whether the input is it, and its heading and
@@ -184,16 +184,6 @@ func fixedHeading(heading string) func(FailureInput, string) (string, string) {
 // release's.
 const takenHeading = "That version is already on GitHub at another commit. Someone released it first."
 
-// withReason ends lead as a sentence, with ": " and reason when there is one, reason kept
-// as it was written: "magex stopped: failed to push tag." or "magex stopped."
-func withReason(lead, reason string) string {
-	if reason = textutil.EndSentence(reason); reason == "" {
-		return textutil.EndSentence(lead)
-	}
-
-	return lead + ": " + reason
-}
-
 func unconfirmedHeading(FailureInput, string) (string, string) {
 	return "magex wanted a confirmation " + brand.Name + " didn't send.", ""
 }
@@ -237,7 +227,7 @@ func unsafeHeading(in FailureInput, _ string) (string, string) {
 		quote = warnings[i-1]
 	}
 
-	return withReason("magex refused this bump as unsafe", quote), quote
+	return textutil.WithReason("magex refused this bump as unsafe", quote), quote
 }
 
 // gitTimedOut is magex's error for a git command past its limit.
@@ -278,7 +268,7 @@ func refusedHeading(in FailureInput, _ string) (string, string) {
 
 	quote := in.Output.Refused
 
-	return withReason("GitHub refused the tag "+tag, quote), quote
+	return textutil.WithReason("GitHub refused the tag "+tag, quote), quote
 }
 
 // hookStopped matches git's line that the tag didn't go, with nothing refused: a pre-push
@@ -290,5 +280,5 @@ func hookStopped(in FailureInput, _ string) bool {
 func hookHeading(in FailureInput, _ string) (string, string) {
 	quote := in.Output.HookLine
 
-	return withReason("Your pre-push hook stopped the push", quote), quote
+	return textutil.WithReason("Your pre-push hook stopped the push", quote), quote
 }

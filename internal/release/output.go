@@ -1,7 +1,6 @@
 package release
 
 import (
-	"bytes"
 	"cmp"
 	"encoding/json"
 	"regexp"
@@ -11,6 +10,7 @@ import (
 	"unicode"
 
 	"github.com/mrz1836/nilbox/internal/scriptrun"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // Step is a step of a release, as the sheet lists them. The names avoid git's own verbs,
@@ -53,9 +53,6 @@ func (s Step) rank() int {
 }
 
 const (
-	// maxOutputLine caps one line of output; the rest of a longer line is dropped.
-	maxOutputLine = 64 << 10
-
 	// maxOutputNotes caps the warning lines and logged errors an Output keeps: the first
 	// ones.
 	maxOutputNotes = 200
@@ -200,6 +197,17 @@ func (o Output) LastError() string {
 	return strings.TrimSpace(first)
 }
 
+// mxExpectedWarning is a WARN line magex prints on every release with something to
+// release: its newest version tag isn't on HEAD, which is why the release is made.
+var mxExpectedWarning = regexp.MustCompile(`^Current version tag is not on HEAD\b`)
+
+// NotableWarnings returns the warnings that tell the user something, for the result:
+// every WARN line but those magex prints on every release with something to release. The
+// log keeps them all, and Warnings still holds them for reading the failures.
+func (o Output) NotableWarnings() []string {
+	return slices.DeleteFunc(slices.Clone(o.Warnings), mxExpectedWarning.MatchString)
+}
+
 // clone returns a copy of o that shares nothing with it, with no nil lists.
 func (o Output) clone() Output {
 	o.Warnings = cloneOutputLines(o.Warnings)
@@ -236,10 +244,8 @@ func cloneOutputLines(lines []string) []string {
 type OutputReader struct {
 	mu sync.Mutex
 
-	// pending is the line read so far, and dropping reports one that ran past
-	// maxOutputLine, whose rest is dropped up to its newline.
-	pending  []byte
-	dropping bool
+	// lines cuts the output into the lines read reads.
+	lines textutil.LineSplitter
 
 	out Output
 
@@ -263,20 +269,7 @@ func (r *OutputReader) Write(p []byte) (int, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	rest := p
-	for len(rest) > 0 {
-		i := bytes.IndexByte(rest, '\n')
-		if i < 0 {
-			r.keep(rest)
-
-			break
-		}
-
-		r.keep(rest[:i])
-		r.endLine()
-
-		rest = rest[i+1:]
-	}
+	r.lines.Write(p, r.read)
 
 	return len(p), nil
 }
@@ -287,9 +280,7 @@ func (r *OutputReader) Flush() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if len(r.pending) > 0 {
-		r.endLine()
-	}
+	r.lines.Flush(r.read)
 }
 
 // Snapshot returns what the reader has read so far. A line still missing its newline is
@@ -299,53 +290,6 @@ func (r *OutputReader) Snapshot() Output {
 	defer r.mu.Unlock()
 
 	return r.out.clone()
-}
-
-// keep adds b to the line being read, up to maxOutputLine.
-func (r *OutputReader) keep(b []byte) {
-	if r.dropping {
-		return
-	}
-
-	if room := maxOutputLine - len(r.pending); len(b) > room {
-		b = b[:room]
-		r.dropping = true
-	}
-
-	r.pending = append(r.pending, b...)
-}
-
-// endLine reads the line kept so far and starts the next.
-func (r *OutputReader) endLine() {
-	line := cleanOutputLine(string(r.pending))
-	r.pending = r.pending[:0]
-	r.dropping = false
-
-	r.read(line)
-}
-
-// mxEscape matches a terminal escape sequence: a CSI sequence such as a color, an OSC
-// sequence such as a link, or a two-character escape.
-var mxEscape = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]`)
-
-// cleanOutputLine returns a line as a terminal would show it: from its last bare \r,
-// without escapes or other control characters, valid UTF-8, and no trailing space.
-func cleanOutputLine(raw string) string {
-	raw = strings.TrimRight(raw, "\r")
-	if i := strings.LastIndexByte(raw, '\r'); i >= 0 {
-		raw = raw[i+1:]
-	}
-
-	raw = mxEscape.ReplaceAllString(raw, "")
-	raw = strings.Map(func(c rune) rune {
-		if (c < ' ' && c != '\t') || c == 0x7f {
-			return -1
-		}
-
-		return c
-	}, raw)
-
-	return strings.TrimRightFunc(strings.ToValidUTF8(raw, "�"), unicode.IsSpace)
 }
 
 // plainOutputText returns a magex message without the indentation, emoji, or bullet it

@@ -56,6 +56,24 @@ type Change struct {
 	Path string
 }
 
+// Entry is one changed, staged, unmerged, or untracked file in a worktree, as `git status
+// --porcelain=v2` lists it.
+type Entry struct {
+	// Code is git's two-letter status, "." standing for no change on that side, as in
+	// ".M" (changed, not staged), "M." (staged), or "A."; "??" is an untracked file.
+	Code string
+
+	// Index names what the index holds for the file: its staged object, or, for an
+	// unmerged file, its three stages' objects joined by ":"; "" for an untracked file. A
+	// file staged again shows as a new Index even when Code stays the same.
+	Index string
+
+	// Path is the file, relative to the worktree's top folder; for a rename or a copy, its
+	// new name, and From its old one.
+	Path string
+	From string
+}
+
 // Upstream is the branch a local branch is set to follow, from its config.
 type Upstream struct {
 	// Remote is branch.<b>.remote, as in "origin", or "" when unset.
@@ -165,6 +183,19 @@ func (g *Git) Changes(ctx context.Context, dir string) ([]Change, error) {
 	}
 
 	return parseStatus(out), nil
+}
+
+// Entries returns every changed, staged, unmerged, and untracked file in the worktree at
+// dir, each untracked file listed on its own, by `git status --porcelain=v2
+// --untracked-files=all`, which names what the index holds for each. Taken before and
+// after a tool runs, they tell which files it changed or staged.
+func (g *Git) Entries(ctx context.Context, dir string) ([]Entry, error) {
+	out, err := g.read(ctx, dir, entriesArgs())
+	if err != nil {
+		return nil, err
+	}
+
+	return parseEntries(out), nil
 }
 
 // CheckedOutElsewhere returns the folders of the clone's other worktrees, every one but

@@ -38,6 +38,86 @@ func parseStatus(out []byte) []Change {
 	return changes
 }
 
+// The fields before the path on each kind of `git status --porcelain=v2` line: an
+// ordinary change ("1 XY sub mH mI mW hH hI path"), a rename or copy ("2 ... hI Xscore
+// path", its old path in the next NUL-ended field), and an unmerged file ("u XY sub m1 m2
+// m3 mW h1 h2 h3 path").
+const (
+	ordinaryFields = 7
+	renamedFields  = 8
+	unmergedFields = 9
+)
+
+// parseEntries reads `git status --porcelain=v2 -z`: one NUL-ended field per file, a
+// rename's or copy's old path in the field after it. Lines of a shape it doesn't know, such
+// as the headers --branch would add, are skipped.
+func parseEntries(out []byte) []Entry {
+	fields := strings.Split(string(out), "\x00")
+	entries := make([]Entry, 0, len(fields))
+
+	for i := 0; i < len(fields); i++ {
+		e, renamed, ok := parseEntry(fields[i])
+
+		if renamed {
+			// The old path is the next field; a rename without it is cut short.
+			if i++; i >= len(fields) {
+				break
+			}
+
+			e.From = fields[i]
+		}
+
+		if ok {
+			entries = append(entries, e)
+		}
+	}
+
+	return entries
+}
+
+// parseEntry reads one field of `git status --porcelain=v2 -z`, and reports whether it is
+// a rename or a copy, whose old path follows, and whether it is an entry at all.
+func parseEntry(field string) (e Entry, renamed, ok bool) {
+	kind, rest, _ := strings.Cut(field, " ")
+
+	switch kind {
+	case "1":
+		e, ok = changedEntry(rest, ordinaryFields)
+	case "2":
+		e, ok = changedEntry(rest, renamedFields)
+
+		return e, ok, ok
+	case "u":
+		e, ok = unmergedEntry(rest)
+	case "?":
+		e, ok = Entry{Code: "??", Path: rest}, rest != ""
+	}
+
+	return e, false, ok
+}
+
+// changedEntry reads an ordinary or renamed entry's fields after its kind: n fields, then
+// the path, which may hold spaces. The staged object is the seventh field.
+func changedEntry(rest string, n int) (Entry, bool) {
+	parts := strings.SplitN(rest, " ", n+1)
+	if len(parts) != n+1 || len(parts[0]) != 2 || parts[n] == "" {
+		return Entry{}, false
+	}
+
+	return Entry{Code: parts[0], Index: parts[6], Path: parts[n]}, true
+}
+
+// unmergedEntry reads an unmerged entry's fields after its kind: its three stages' objects
+// are the seventh to ninth fields.
+func unmergedEntry(rest string) (Entry, bool) {
+	parts := strings.SplitN(rest, " ", unmergedFields+1)
+	if len(parts) != unmergedFields+1 || len(parts[0]) != 2 || parts[unmergedFields] == "" {
+		return Entry{}, false
+	}
+
+	return Entry{Code: parts[0], Index: strings.Join(parts[6:9], ":"), Path: parts[unmergedFields]}, true
+}
+
 // parseWorktrees reads `git worktree list --porcelain -z`: attributes ending in a NUL, a
 // "worktree <path>" starting each worktree and an empty one ending it. Attributes it
 // doesn't need are skipped, so a newer git's still read.
