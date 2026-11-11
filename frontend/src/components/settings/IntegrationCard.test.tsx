@@ -423,8 +423,33 @@ describe('IntegrationCard details', () => {
     expect(others.map((li) => li.textContent)).toEqual([
       'Your terminal runs ~/go/bin/magex 1.28.0, not this one.Move it to the Trash',
       '/opt/homebrew/bin/magex 1.29.1 (Homebrew)',
-      '/usr/local/bin/magex (GitHub release) won’t run: permission denied',
+      '/usr/local/bin/magex (GitHub release) won’t run: permission denied' + 'Move to the Trash',
     ])
+  })
+
+  it('moves a copy the tool doesn’t use to the Trash, once asked, but never a link', async () => {
+    const unused = toolCopy({
+      path: '/Users/example/bin/magex',
+      displayPath: '~/bin/magex',
+      version: { raw: '1.27.0', commit: '', built: '' },
+    })
+    const linked = toolCopy({
+      path: '/Users/example/.local/share/magex',
+      displayPath: '~/.local/share/magex',
+      link: true,
+      version: { raw: '1.29.5', commit: '', built: '' },
+    })
+    const { card } = renderCard(integrationTool({ others: [unused, linked] }))
+
+    await openDetails()
+
+    const others = within(card.getByRole('list', { name: 'Other copies' })).getAllByRole('listitem')
+    expect(within(others[1] as HTMLElement).queryByRole('button')).not.toBeInTheDocument()
+
+    await userEvent.click(within(others[0] as HTMLElement).getByRole('button', { name: 'Move to the Trash' }))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Move to the Trash' }))
+
+    expect(platform.trashToolCopy).toHaveBeenCalledWith('mage-x', '/Users/example/bin/magex')
   })
 
   it('uses a copy typed in, and reads the tools again', async () => {

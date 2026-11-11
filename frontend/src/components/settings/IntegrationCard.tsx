@@ -156,6 +156,13 @@ function versionText(copy: ToolCopy): string {
 
 // otherText is another copy of a tool, as Details lists it: its version and where it came
 // from, or why it won't run.
+// trashable reports whether a copy the tool doesn't use can be moved to the Trash from its
+// card: not a link, which Finder would follow to trash what it points to, nor a Homebrew
+// copy, which Homebrew manages (the service refuses both too).
+function trashable(copy: ToolCopy): boolean {
+  return !copy.link && copy.source !== 'homebrew'
+}
+
 function otherText(copy: ToolCopy): string {
   const source = sourceLabels[copy.source]
 
@@ -303,8 +310,11 @@ function Details({ tool, id, busy, save, reinstall, trash }: DetailsProps) {
                   </div>
                 </li>
               ) : (
-                <li key={other.path} className="font-mono break-all text-muted">
-                  {otherText(other)}
+                <li key={other.path} className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+                  <span className="min-w-0 font-mono break-all text-muted">{otherText(other)}</span>
+                  {trashable(other) && (
+                    <TrashCopy toolId={tool.id} copy={other} label="Move to the Trash" disabled={busy} trash={trash} />
+                  )}
                 </li>
               ),
             )}
