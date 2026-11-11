@@ -298,7 +298,7 @@ func judge(name repo.Name, in Intent, said Output, end scriptrun.Ending, got see
 
 	switch mine := taggedCommit(said, got); {
 	case got.err != nil:
-		res.Kind, res.Error = ResultUnverified, gitMessage(got.err)
+		res.Kind, res.Error = ResultUnverified, gitread.Message(got.err)
 	case got.commit != "" && got.commit == mine:
 		return releasedResult(name, res, got.commit)
 	case got.commit != "":

@@ -496,9 +496,11 @@ func nonNil(list []string) []string {
 // a record kept under the clone's current origin; one confirmed once, or changed since, is
 // refused, and the user runs it from the page, which asks. One of the user's own scripts
 // runs as it is saved now, found by its ID, and is refused once deleted, and while it is
-// set to ask before each run, which only the page asks. Core registers it with the runner
-// for scriptrun.KindScript. It is its own type, not a method of the Service, which the
-// window binds.
+// set to ask before each run, which only the page asks. A pull pulls the same branch
+// again, its Before checking everything afresh, and is refused once the clone is on
+// another. Core registers it with the runner for scriptrun.KindScript and
+// scriptrun.KindPull. It is its own type, not a method of the Service, which the window
+// binds.
 type Rerunner struct {
 	s *Service
 }
@@ -510,10 +512,46 @@ func NewRerunner(s *Service) Rerunner {
 
 // Rerun returns the spec of run again, where it ran.
 func (r Rerunner) Rerun(ctx context.Context, run scriptrun.Record) (scriptrun.Spec, error) {
-	if run.Kind != scriptrun.KindScript {
-		return scriptrun.Spec{}, fmt.Errorf("%w: a %s run", ErrInvalidRequest, run.Kind)
+	switch run.Kind {
+	case scriptrun.KindScript:
+		return r.script(ctx, run)
+	case scriptrun.KindPull:
+		return r.pull(ctx, run)
+	case scriptrun.KindRelease, scriptrun.KindHooks, scriptrun.KindChecks, scriptrun.KindUpdate:
 	}
 
+	return scriptrun.Spec{}, fmt.Errorf("%w: a %s run", ErrInvalidRequest, run.Kind)
+}
+
+// pull returns the spec of a pull again: the same branch, in the same clone.
+func (r Rerunner) pull(ctx context.Context, run scriptrun.Record) (scriptrun.Spec, error) {
+	if r.s.branchGit == nil {
+		return scriptrun.Spec{}, ErrNotSetUp
+	}
+
+	var in PullIntent
+	if err := decodeIntent(run.Result.Intent, &in); err != nil {
+		return scriptrun.Spec{}, err
+	}
+
+	if in.Branch == "" {
+		return scriptrun.Spec{}, fmt.Errorf("%w: a pull of no branch", ErrInvalidRequest)
+	}
+
+	if err := r.s.pullsOff(ctx); err != nil {
+		return scriptrun.Spec{}, err
+	}
+
+	c, err := r.s.cloneAt(ctx, paths.Tilde(run.Dir, r.s.home))
+	if err != nil {
+		return scriptrun.Spec{}, err
+	}
+
+	return r.s.pullSpec(c, in.Branch), nil
+}
+
+// script returns the spec of a script again.
+func (r Rerunner) script(ctx context.Context, run scriptrun.Record) (scriptrun.Spec, error) {
 	var in Intent
 	if err := decodeIntent(run.Result.Intent, &in); err != nil {
 		return scriptrun.Spec{}, err

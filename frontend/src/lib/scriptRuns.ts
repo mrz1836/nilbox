@@ -87,12 +87,13 @@ export interface RunFilter {
 }
 
 // runFilters are the Runs page's filters. Hooks takes the checks along with the hooks
-// actions, since go-pre-commit does both; Updates are the tools updating themselves.
+// actions, since go-pre-commit does both; Scripts takes the pulls Repo scripts starts along
+// with the scripts; Updates are the tools updating themselves.
 export const runFilters: Readonly<Record<RunFilterID, RunFilter>> = {
   all: { label: 'All', kinds: [], none: 'Nothing has run yet. Releases, checks, and scripts you run show here.' },
   release: { label: 'Release', kinds: ['release'], none: 'No release has run yet.' },
   hooks: { label: 'Hooks', kinds: ['hooks', 'checks'], none: 'No hooks actions or checks have run yet.' },
-  scripts: { label: 'Scripts', kinds: ['script'], none: 'No script has run yet.' },
+  scripts: { label: 'Scripts', kinds: ['script', 'gitPull'], none: 'No script or pull has run yet.' },
   updates: { label: 'Updates', kinds: ['update'], none: 'No tool has updated itself yet.' },
 }
 
