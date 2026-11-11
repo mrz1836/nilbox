@@ -53,6 +53,15 @@ export function InstallAll(dirs: string[] | null): $CancellablePromise<$models.I
 }
 
 /**
+ * OpenTerminal opens the terminal chosen for launches in the clone the page lists at dir
+ * (with ~), for a row's Open in terminal: the user looks at the clone or fixes it there.
+ * The app runs nothing in it. Only a clone directly under the clone root is opened.
+ */
+export function OpenTerminal(dir: string): $CancellablePromise<void> {
+    return $Call.ByID(1334707302, dir);
+}
+
+/**
  * Reinstall writes go-pre-commit's hook again.
  */
 export function Reinstall(req: $models.ActionRequest): $CancellablePromise<number> {
@@ -86,6 +95,15 @@ export function Repos(refresh: boolean): $CancellablePromise<$models.Page> {
  */
 export function RunChecks(req: $models.ChecksRequest): $CancellablePromise<number> {
     return $Call.ByID(1567581702, req);
+}
+
+/**
+ * ShowConfig shows the go-pre-commit config of the clone the page lists at dir (with ~) in
+ * Finder, for a row's Open the config: its .github/env folder, or the legacy
+ * .github/.env.base. Only a clone directly under the clone root, with a config, is shown.
+ */
+export function ShowConfig(dir: string): $CancellablePromise<void> {
+    return $Call.ByID(3217116281, dir);
 }
 
 /**

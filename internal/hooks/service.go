@@ -103,6 +103,12 @@ type Config struct {
 	// in are made in, and removed from; "" is the system's temporary folder.
 	Scratch string
 
+	// Terminal opens the user's terminal in a clone, for a row's Open in terminal, and
+	// Reveal shows a clone's config in Finder, for its Open the config. Without them,
+	// each says it can't.
+	Terminal FolderOpener
+	Reveal   Revealer
+
 	Home   string
 	Clock  clock.Clock
 	Events event.Sink
@@ -210,21 +216,23 @@ type LastRun struct {
 // Service lists the clones and their hooks, runs go-pre-commit's actions and checks in
 // them, and reads their results back. The window binds it.
 type Service struct {
-	clones  Clones
-	git     Git
-	tools   ToolSource
-	locks   LockHolders
-	runs    Runs
-	history RunHistory
-	places  Places
-	memory  Memory
-	env     func() ([]string, bool)
-	runner  func(env []string, dir string) execpath.Runner
-	scratch string
-	home    string
-	clock   clock.Clock
-	events  event.Sink
-	logger  *slog.Logger
+	clones   Clones
+	git      Git
+	tools    ToolSource
+	locks    LockHolders
+	runs     Runs
+	history  RunHistory
+	places   Places
+	memory   Memory
+	env      func() ([]string, bool)
+	runner   func(env []string, dir string) execpath.Runner
+	scratch  string
+	terminal FolderOpener
+	reveal   Revealer
+	home     string
+	clock    clock.Clock
+	events   event.Sink
+	logger   *slog.Logger
 
 	// judged keeps which hook bytes each copy of go-pre-commit said were current.
 	judged verdicts
@@ -254,7 +262,8 @@ type Service struct {
 func NewService(cfg Config) *Service {
 	s := &Service{
 		clones: cfg.Clones, git: cfg.Git, tools: cfg.Tools, locks: cfg.Locks, runs: cfg.Runs, history: cfg.History,
-		places: cfg.Places, memory: cfg.Memory, env: cfg.Env, runner: cfg.Runner, scratch: cfg.Scratch, home: cfg.Home,
+		places: cfg.Places, memory: cfg.Memory, env: cfg.Env, runner: cfg.Runner, scratch: cfg.Scratch,
+		terminal: cfg.Terminal, reveal: cfg.Reveal, home: cfg.Home,
 		clock: clock.Or(cfg.Clock), events: event.Or(cfg.Events), logger: logging.Or(cfg.Logger),
 		stale: map[string]uint64{},
 	}
