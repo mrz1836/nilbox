@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -17,11 +16,14 @@ import (
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
-// failedCall is one call of Config.Failed: what it was told, and the status the run's
-// record held then.
+// failedCall is one call of Config.Failed: what it was told, with Started left out, and,
+// as it was called, the status the run's record held, whether Started was the record's
+// start, and whether the run's clone was still held.
 type failedCall struct {
-	f      Failure
-	stored Status
+	f         Failure
+	stored    Status
+	sameStart bool
+	held      bool
 }
 
 // failures collects Config.Failed's calls; h is the harness whose records it reads.
@@ -31,14 +33,18 @@ type failures struct {
 	calls []failedCall
 }
 
-// hook is Config.Failed, which reads the run's record as it is called.
+// hook is Config.Failed, which reads the run's record and its clone's lock as it is
+// called.
 func (f *failures) hook(ctx context.Context, got Failure) {
 	rec, _ := f.h.e.store.get(ctx, got.ID)
+	_, held := f.h.locks.Holder(rec.Dir)
+	sameStart := got.Started.Equal(rec.StartedAt)
+	got.Started = time.Time{}
 
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	f.calls = append(f.calls, failedCall{f: got, stored: rec.Status})
+	f.calls = append(f.calls, failedCall{f: got, stored: rec.Status, sameStart: sameStart, held: held})
 }
 
 // all returns the calls so far.
@@ -47,6 +53,11 @@ func (f *failures) all() []failedCall {
 	defer f.mu.Unlock()
 
 	return append([]failedCall(nil), f.calls...)
+}
+
+// told is the call Config.Failed gets for f, once the run's end is kept and its clone free.
+func told(f Failure) failedCall {
+	return failedCall{f: f, stored: StatusFailed, sameStart: true}
 }
 
 // failingHarness returns a harness whose engine tells the returned failures of each run
@@ -61,18 +72,24 @@ func failingHarness(t *testing.T, edit ...func(*Config)) (*harness, *failures) {
 	return h, got
 }
 
-func TestAFailedRunIsToldOnceItsEndIsKept(t *testing.T) {
+// settle waits for every run's follower to end, as the app's quit does, so each run that
+// ended has told what it tells. Nothing starts after it.
+func (h *harness) settle() {
+	h.e.StopAll()
+}
+
+func TestAFailedRunIsToldOnceItsEndIsKeptAndItsCloneFree(t *testing.T) {
 	t.Parallel()
 
 	h, got := failingHarness(t)
 
 	id := h.start(h.spec(testutil.FakeRun{Stderr: "boom\n", Exit: 3}))
 	h.ended(id)
+	h.settle()
 
-	assert.Equal(t, []failedCall{{f: Failure{
-		ID: id, Kind: KindScript, Repo: testRepo(), Title: "A script failed in acme-org/sdk: Lint",
-		Body: "It exited with status 3.",
-	}, stored: StatusFailed}}, got.all(), "once, with its end already kept")
+	assert.Equal(t, []failedCall{told(Failure{
+		ID: id, Repo: testRepo(), Title: "A script failed: Lint", Body: "It exited with status 3.",
+	})}, got.all(), "once, with its end kept and its clone free, and the repository beside the title")
 
 	// Its end recorded again, as a second follower or the next start might, changes nothing
 	// and tells nothing.
@@ -93,14 +110,14 @@ func TestARunPastItsLimitIsToldAsTimedOut(t *testing.T) {
 
 	id := h.start(spec)
 	h.ended(id)
+	h.settle()
 
-	assert.Equal(t, []failedCall{{f: Failure{
-		ID: id, Kind: KindChecks, Repo: testRepo(), Title: "Checks failed in acme-org/sdk: Checks · all files",
-		Body: "Timed out after 300ms.",
-	}, stored: StatusFailed}}, got.all())
+	assert.Equal(t, []failedCall{told(Failure{
+		ID: id, Repo: testRepo(), Title: "Checks failed: Checks · all files", Body: "Timed out after 300ms.",
+	})}, got.all())
 }
 
-func TestARunThatCantStartIsToldAsFailed(t *testing.T) {
+func TestARunThatCantStartIsntTold(t *testing.T) {
 	t.Parallel()
 
 	h, got := failingHarness(t)
@@ -109,13 +126,11 @@ func TestARunThatCantStartIsToldAsFailed(t *testing.T) {
 	spec.Argv = []string{filepath.Join(t.TempDir(), "missing")}
 
 	id, err := h.e.Start(t.Context(), spec)
-	require.Error(t, err)
-	h.ended(id)
+	require.Error(t, err, "the start's error tells whoever asked")
+	assert.Equal(t, StatusFailed, h.ended(id).Status)
 
-	calls := got.all()
-	require.Len(t, calls, 1)
-	assert.Equal(t, id, calls[0].f.ID)
-	assert.True(t, strings.HasPrefix(calls[0].f.Body, "It couldn't start: "), calls[0].f.Body)
+	h.settle()
+	assert.Empty(t, got.all())
 }
 
 func TestAFailedRunInAFolderNamesTheFolder(t *testing.T) {
@@ -132,11 +147,11 @@ func TestAFailedRunInAFolderNamesTheFolder(t *testing.T) {
 
 	id := h.start(spec)
 	h.ended(id)
+	h.settle()
 
-	assert.Equal(t, []failedCall{{f: Failure{
-		ID: id, Kind: KindUpdate, Title: "A tool's update failed in ~/notes: Update magex",
-		Body: "It exited with status 1.",
-	}, stored: StatusFailed}}, got.all(), "no repository for a folder that isn't one")
+	assert.Equal(t, []failedCall{told(Failure{
+		ID: id, Title: "A tool's update failed in ~/notes: Update magex", Body: "It exited with status 1.",
+	})}, got.all(), "no repository for a folder that isn't one")
 }
 
 func TestNothingIsToldOfARunThatSucceeds(t *testing.T) {
@@ -145,6 +160,7 @@ func TestNothingIsToldOfARunThatSucceeds(t *testing.T) {
 	h, got := failingHarness(t)
 
 	assert.Equal(t, StatusSucceeded, h.ended(h.start(h.spec(testutil.FakeRun{}))).Status)
+	h.settle()
 	assert.Empty(t, got.all())
 }
 
@@ -169,7 +185,24 @@ func TestNothingIsToldOfARunTheUserStopped(t *testing.T) {
 	require.NoError(t, h.s.Stop(t.Context(), judged))
 	assert.Equal(t, StatusFailed, h.ended(judged).Status)
 
+	h.settle()
 	assert.Empty(t, got.all(), "the user stopped them")
+}
+
+func TestNothingIsToldOfARunASignalEnded(t *testing.T) {
+	t.Parallel()
+
+	h, got := failingHarness(t)
+
+	for _, code := range []int{129, 130, 143} {
+		rec := h.ended(h.start(h.spec(testutil.FakeRun{Exit: code})))
+		assert.Equal(t, StatusFailed, rec.Status, "its record says how it ended, status %d", code)
+	}
+
+	h.settle()
+	assert.Empty(t, got.all(), "a hang-up, Control-C, or SIGTERM: someone stopped it")
+	assert.False(t, stoppedBySignal(1))
+	assert.False(t, stoppedBySignal(137), "SIGKILL is the system's, as when memory runs out")
 }
 
 func TestNothingIsToldOfARunTheQuitStopped(t *testing.T) {
@@ -184,7 +217,7 @@ func TestNothingIsToldOfARunTheQuitStopped(t *testing.T) {
 
 	id := h.start(spec)
 	h.waitReady(id)
-	h.e.StopAll()
+	h.settle()
 
 	assert.Equal(t, StatusFailed, h.record(id).Status, "its kind made a failure of the end")
 	assert.Empty(t, got.all(), "but the quit stopped it")
@@ -204,6 +237,7 @@ func TestNothingIsToldOfAnEndNotKept(t *testing.T) {
 	id := h.start(h.spec(testutil.FakeRun{Exit: 3}))
 
 	require.Eventually(t, func() bool { return h.e.liveRun(id) == nil }, wait, poll, "run %d ends", id)
+	h.settle()
 	assert.Equal(t, StatusRunning, h.record(id).Status, "the next start settles it, and tells then")
 	assert.Empty(t, got.all())
 }
@@ -219,6 +253,7 @@ func TestNothingIsToldOfAnUnsettledEnd(t *testing.T) {
 	id := h.start(spec)
 
 	require.Eventually(t, func() bool { return h.e.liveRun(id) == nil }, wait, poll, "run %d is let go", id)
+	h.settle()
 	assert.Equal(t, StatusRunning, h.record(id).Status)
 	assert.Empty(t, got.all())
 }
@@ -243,11 +278,11 @@ func TestARunAVerifierSettlesAsFailedIsTold(t *testing.T) {
 	id := h.insertRow(RunsInApp, h.clone(), 5151, 5151, startedLong())
 	h.e.reconcile(t.Context())
 	h.ended(id)
+	h.settle()
 
-	assert.Equal(t, []failedCall{{f: Failure{
-		ID: id, Kind: KindScript, Repo: testRepo(), Title: "A script failed in acme-org/sdk: Lint",
-		Body: "The tag isn't on GitHub.",
-	}, stored: StatusFailed}}, got.all())
+	assert.Equal(t, []failedCall{told(Failure{
+		ID: id, Repo: testRepo(), Title: "A script failed: Lint", Body: "The tag isn't on GitHub.",
+	})}, got.all())
 }
 
 func TestRunsFromBeforeARestartAreToldOfOnlyWhenTheyFailed(t *testing.T) {
@@ -271,33 +306,32 @@ func TestRunsFromBeforeARestartAreToldOfOnlyWhenTheyFailed(t *testing.T) {
 	assert.Equal(t, StatusSucceeded, h.ended(succeeded).Status)
 	assert.Equal(t, StatusFailed, h.ended(failed).Status)
 
-	assert.Equal(t, []failedCall{{f: Failure{
-		ID: failed, Kind: KindScript, Repo: testRepo(), Title: "A script failed in acme-org/sdk: Lint",
-		Body: "It exited with status 2.",
-	}, stored: StatusFailed}}, got.all(), "a run in the terminal that failed while the app was away")
+	h.settle()
+	assert.Equal(t, []failedCall{told(Failure{
+		ID: failed, Repo: testRepo(), Title: "A script failed: Lint", Body: "It exited with status 2.",
+	})}, got.all(), "a run in the terminal that failed while the app was away")
 }
 
 func TestFailureTitlesNameEachKind(t *testing.T) {
 	t.Parallel()
 
-	where := "acme-org/example-repo"
-
 	tests := []struct {
-		kind  Kind
-		title string
-		want  string
+		kind   Kind
+		title  string
+		folder string
+		want   string
 	}{
-		{KindRelease, "Release v1.4.3", "A release failed in acme-org/example-repo: Release v1.4.3"},
-		{KindHooks, "Install the hook", "A hook change failed in acme-org/example-repo: Install the hook"},
-		{KindChecks, "Check whitespace", "Checks failed in acme-org/example-repo: Check whitespace"},
-		{KindScript, "lint", "A script failed in acme-org/example-repo: lint"},
-		{KindUpdate, "Update magex", "A tool's update failed in acme-org/example-repo: Update magex"},
-		{KindPull, "Pull main", "A pull failed in acme-org/example-repo: Pull main"},
-		{"other", "Something", "A run failed in acme-org/example-repo: Something"},
-		{KindScript, "", "A script failed in acme-org/example-repo"},
+		{KindRelease, "Release v1.4.3", "", "A release failed: Release v1.4.3"},
+		{KindHooks, "Install the hook", "", "A hook change failed: Install the hook"},
+		{KindChecks, "Check whitespace", "", "Checks failed: Check whitespace"},
+		{KindScript, "lint", "", "A script failed: lint"},
+		{KindUpdate, "Update magex", "~/go/bin", "A tool's update failed in ~/go/bin: Update magex"},
+		{KindPull, "Pull main", "", "A pull failed: Pull main"},
+		{"other", "Something", "", "A run failed: Something"},
+		{KindScript, "", "~/projects/notes", "A script failed in ~/projects/notes"},
 	}
 
 	for _, tt := range tests {
-		assert.Equal(t, tt.want, failureTitle(tt.kind, tt.title, where))
+		assert.Equal(t, tt.want, failureTitle(tt.kind, tt.title, tt.folder))
 	}
 }

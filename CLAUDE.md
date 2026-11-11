@@ -393,20 +393,27 @@ app:lint` reads.
   `event.ScriptRunProgress` (`scriptruns:progress`), never the whole list's
   `event.ScriptRunsUpdated`. A spec's `Recorded` is told the outcome only once the run's
   end is recorded, so a record that fails tells nothing twice, and its `Released` once the run
-  has let go of its clone, so a page that reads the clone again finds it free. Right after
-  `Recorded`, the engine's own `Config.Failed` hears each run whose end is recorded as failed
-  (one stopped at its time limit included), of every kind, in the app or the terminal, started
-  now or settled after a restart (by a `Verifier` or by how it ended), and never one the user
-  or the quit stopped, one interrupted, one that succeeded, or one left `Unsettled`: once,
-  since the record that ends a run changes only a row still recorded as going. It gets a
-  `scriptrun.Failure`, worded there ("Checks failed in acme-org/example-repo: Checks · all
-  files", with the run's summary or "Timed out after 30 minutes."), which core
-  (`runFailures`) hands the notify `Dispatcher`'s `Notify` as a `run_failed` notification about
-  no item, with its banner under the same rules as every kind's. The entry keeps the run's ID
-  (`notifications.run_id`, `Entry.RunID`, `Notification.RunID`), and a click on it in the
-  history, or on its banner (`event.RevealItem.RunID`), opens the run in Scripts → Runs, or
-  nothing while the Scripts tab is gone; scriptrun never imports notify (the repoguard
-  boundary test). A spec's `Keep`,
+  has let go of its clone, so a page that reads the clone again finds it free. After
+  `Released`, once the run has let go of its clone and its slot, the engine's own
+  `Config.Failed` hears each run whose end is recorded as failed (one stopped at its time limit
+  included), of every kind, in the app or the terminal, started now or settled after a restart
+  (by a `Verifier` or by how it ended), and never one that couldn't start (its start's error
+  says so), one the user or the quit stopped, one a hang-up, Control-C, or SIGTERM ended (exit
+  129, 130, or 143, unless the engine sent it at the time limit), one interrupted, one that
+  succeeded, or one left `Unsettled`: once, since the record that ends a run changes only a
+  row still recorded as going. It gets a `scriptrun.Failure`, worded there ("Checks failed:
+  Checks · all files", the run's folder in place of a repository it lacks, with the run's
+  summary or "Timed out after 30 minutes."), which core (`runFailures`) hands the notify
+  `Dispatcher`'s `Gather` as a `run_failed` notification about no item: recorded at once, its
+  banner held `GatherWindow` (2 s) with those of the failures that follow, so a burst past
+  `MaxBanners` (Install all, a restart's reconcile) shows one summary, under the same rules as
+  every kind's banner; core's `Close` shows what is still held before the database closes. The
+  entry keeps the run's ID and its recorded start as RFC 3339 (`notifications.run_id` and
+  `run_started`, `Entry.RunID`/`RunStarted`, `Notification.RunID`/`RunStarted`, and
+  `event.RevealItem`'s for a banner's click), and the window opens it in Scripts → Runs only
+  once the run with that ID says it started then, since Clear history lets an ID be handed out
+  again; otherwise, or while the Scripts tab is gone, a toast says why. scriptrun never imports
+  notify (the repoguard boundary test). A spec's `Keep`,
   which its `Before` may fill in, is written as JSON once `Before` has run into the run's own
   `<id>.kept` beside its log, never into its record or the window's view; `Engine.Kept` reads it
   back for a kind's `Verifier`, and it is removed once the run's end is recorded (it stays while

@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/appdata"
+	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
@@ -195,24 +196,28 @@ func TestRunFailuresRecordAFailedRun(t *testing.T) {
 		Events: events,
 	})
 
-	failures := runFailures{dispatcher: notify.NewDispatcher(notify.Config{Pool: c.DB, Events: events})}
+	dispatcher := notify.NewDispatcher(notify.Config{Pool: c.DB, Events: events})
+	t.Cleanup(dispatcher.Close)
+
+	started := time.Date(2026, 11, 10, 16, 0, 0, 0, time.UTC)
+	failures := runFailures{dispatcher: dispatcher}
 	failures.Failed(t.Context(), scriptrun.Failure{
-		ID: 7, Kind: scriptrun.KindChecks, Repo: repo.Name{Owner: boundOwner, Repo: boundRepo},
-		Title: "Checks failed in acme-org/example-repo: Checks · all files", Body: "4 passed, 1 failed: whitespace.",
+		ID: 7, Started: started, Repo: repo.Name{Owner: boundOwner, Repo: boundRepo},
+		Title: "Checks failed: Checks · all files", Body: "4 passed, 1 failed: whitespace.",
 	})
 	failures.Failed(t.Context(), scriptrun.Failure{
-		ID: 8, Kind: scriptrun.KindUpdate, Title: "A tool's update failed in ~/go/bin: Update magex",
+		ID: 8, Started: started, Title: "A tool's update failed in ~/go/bin: Update magex",
 		Body: "Timed out after 10 minutes.",
 	})
 
 	log, err := c.Notifications.List(t.Context())
 	require.NoError(t, err)
-	require.Len(t, log.Items, 2)
+	require.Len(t, log.Items, 2, "recorded at once, while their banners gather")
 	assert.Equal(t, notify.Notification{
 		ID: log.Items[1].ID, Kind: notify.KindRunFailed, CreatedAt: log.Items[1].CreatedAt, Repo: "acme-org/example-repo",
-		Title: "Checks failed in acme-org/example-repo: Checks · all files", Detail: "4 passed, 1 failed: whitespace.",
-		RunID: 7,
-	}, log.Items[1], "about no item, naming the run a click opens")
+		Title: "Checks failed: Checks · all files", Detail: "4 passed, 1 failed: whitespace.", RunID: 7,
+		RunStarted: clock.Format(started),
+	}, log.Items[1], "about no item, naming the run a click opens and when it started, as the run reads")
 	assert.Empty(t, log.Items[0].Repo, "a folder that isn't a repository names none")
 	assert.Equal(t, int64(8), log.Items[0].RunID)
 	assert.Contains(t, events.All(), event.Event(event.NotificationsUpdated{}))
@@ -227,21 +232,42 @@ func TestTheRunsTellTheNotificationsOfAFailedRun(t *testing.T) {
 		Runner: noPrograms(),
 	})
 
-	// A run the app can't start is recorded as failed before Start returns, by the engine
-	// core built, which tells the notifications then.
-	id, err := c.Runs.Start(t.Context(), scriptrun.Spec{
+	// A run the app can't start isn't told: its start's error reaches the window.
+	_, err := c.Runs.Start(t.Context(), scriptrun.Spec{
 		Kind: scriptrun.KindScript, Title: "Lint", Repo: repo.Name{Owner: boundOwner, Repo: boundRepo},
 		Dir: t.TempDir(), Argv: []string{filepath.Join(t.TempDir(), "missing")},
 	})
 	require.Error(t, err)
-	require.Positive(t, id)
+
+	// One that fails is, through the engine core built.
+	path, env := testutil.FakeTool(t, "magex", testutil.FakeRun{Stderr: "lint failed\n", Exit: 2})
+
+	id, err := c.Runs.Start(t.Context(), scriptrun.Spec{
+		Kind: scriptrun.KindScript, Title: "Lint", Repo: repo.Name{Owner: boundOwner, Repo: boundRepo},
+		Dir: t.TempDir(), Argv: []string{path, "lint"}, Env: []string{env},
+	})
+	require.NoError(t, err)
+
+	var run scriptrun.Run
+
+	require.Eventually(t, func() bool {
+		run, err = c.ScriptRuns.Run(t.Context(), id)
+
+		return err == nil && !run.Status.Live()
+	}, 15*time.Second, 10*time.Millisecond, "the run ends")
+	assert.Equal(t, scriptrun.StatusFailed, run.Status)
+
+	c.Runs.StopAll() // waits for the run's follower, which tells of its end once it let go of the clone
 
 	log, err := c.Notifications.List(t.Context())
 	require.NoError(t, err)
 	require.Len(t, log.Items, 1)
 	assert.Equal(t, notify.KindRunFailed, log.Items[0].Kind)
 	assert.Equal(t, id, log.Items[0].RunID)
-	assert.Equal(t, "A script failed in acme-org/example-repo: Lint", log.Items[0].Title)
+	assert.Equal(t, run.StartedAt, log.Items[0].RunStarted, "the key the window checks the run against")
+	assert.Equal(t, "A script failed: Lint", log.Items[0].Title)
+	assert.Equal(t, "acme-org/example-repo", log.Items[0].Repo)
+	assert.Equal(t, "It exited with status 2.", log.Items[0].Detail)
 }
 
 func TestReleaseGitHubAdaptsBothRounds(t *testing.T) {

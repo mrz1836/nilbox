@@ -33,7 +33,7 @@ func TestABannerClickRevealsItsItem(t *testing.T) {
 func TestAFailedRunsBannerClickOpensTheRun(t *testing.T) {
 	t.Parallel()
 
-	banner := notify.Banner{ID: "run-6", Title: "Run failed", RunID: 42}
+	banner := notify.Banner{ID: "run-6", Title: "Run failed", RunID: 42, RunStarted: "2026-11-10T16:00:00Z"}
 
 	encoded, err := json.Marshal(desktop.BannerData(banner))
 	require.NoError(t, err)
@@ -41,7 +41,8 @@ func TestAFailedRunsBannerClickOpensTheRun(t *testing.T) {
 	var decoded map[string]any
 	require.NoError(t, json.Unmarshal(encoded, &decoded))
 
-	assert.Equal(t, event.RevealItem{RunID: 42}, desktop.BannerClicked(decoded), "handed back through JSON")
+	assert.Equal(t, event.RevealItem{RunID: 42, RunStarted: "2026-11-10T16:00:00Z"}, desktop.BannerClicked(decoded),
+		"handed back through JSON, with when the run started")
 }
 
 func TestABannerClickReadsWhatItCan(t *testing.T) {
@@ -58,6 +59,7 @@ func TestABannerClickReadsWhatItCan(t *testing.T) {
 		"a number url":     {data: map[string]any{"itemId": float64(9), "url": 12}, want: event.RevealItem{ItemID: 9}},
 		"a run":            {data: map[string]any{"itemId": 0, "url": "", "runId": float64(42)}, want: event.RevealItem{RunID: 42}},
 		"a text run id":    {data: map[string]any{"runId": "42"}, want: event.RevealItem{}},
+		"a number start":   {data: map[string]any{"runId": 42, "runStarted": 7}, want: event.RevealItem{RunID: 42}},
 	} {
 		assert.Equal(t, c.want, desktop.BannerClicked(c.data), name)
 	}

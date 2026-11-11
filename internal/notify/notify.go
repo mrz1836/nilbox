@@ -93,8 +93,11 @@ type Notification struct {
 	Detail string `json:"detail"`
 
 	// RunID is the run an entry is about, which a click on it opens in Scripts → Runs, or 0
-	// for none: every entry but a KindRunFailed one.
-	RunID int64 `json:"runId"`
+	// for none: every entry but a KindRunFailed one. RunStarted is when that run started, as
+	// RFC 3339, or "": the window opens the run only while the run with that id started then,
+	// since the history hands an id out again once it is cleared.
+	RunID      int64  `json:"runId"`
+	RunStarted string `json:"runStarted"`
 }
 
 // Entry is a notification about no item, as a release whose tag reached GitHub or a run
@@ -113,8 +116,10 @@ type Entry struct {
 	RepoOwner string
 	RepoName  string
 
-	// RunID is the run it is about, which a click on it opens, or 0 for none.
-	RunID int64
+	// RunID is the run it is about, which a click on it opens, or 0 for none, and RunStarted
+	// when that run started, as RFC 3339, which tells it from a later run given its id.
+	RunID      int64
+	RunStarted string
 }
 
 // Log is the notification history: the newest first, and how many are unread.
@@ -189,6 +194,7 @@ func (s *Store) RecordEvent(ctx context.Context, now time.Time, entry Entry) (No
 		row, err := q.InsertNotification(ctx, queries.InsertNotificationParams{
 			Kind: string(entry.Kind), CreatedAt: now.UTC(), RepoOwner: entry.RepoOwner, RepoName: entry.RepoName,
 			Title: entry.Title, URL: entry.URL, Detail: entry.Body, RunID: entry.RunID,
+			RunStarted: entry.RunStarted,
 		})
 		if err != nil {
 			return err
@@ -262,6 +268,7 @@ func fromRow(r queries.Notification) Notification {
 		ID: r.ID, Kind: notifyprefs.Kind(r.Kind), CreatedAt: clock.Format(r.CreatedAt), Read: r.ReadAt != nil,
 		ItemID: itemID, ItemKind: item.Kind(r.ItemKind), Repo: repoName(r.RepoOwner, r.RepoName), Number: int(r.Number),
 		Title: r.Title, URL: r.URL, Author: r.Author, Detail: r.Detail, RunID: r.RunID,
+		RunStarted: r.RunStarted,
 	}
 }
 

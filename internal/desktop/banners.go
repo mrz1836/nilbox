@@ -10,22 +10,26 @@ const (
 	bannerItemKey = "itemId"
 	bannerURLKey  = "url"
 	bannerRunKey  = "runId"
+	bannerStarted = "runStarted"
 )
 
 // BannerData is the data a banner carries for b, which the system hands back when the
 // banner is clicked: the item it is for and the item's URL, or the page or the run of an
-// entry about no item.
+// entry about no item, with when the run started.
 func BannerData(b notify.Banner) map[string]any {
-	return map[string]any{bannerItemKey: b.ItemID, bannerURLKey: b.URL, bannerRunKey: b.RunID}
+	return map[string]any{
+		bannerItemKey: b.ItemID, bannerURLKey: b.URL, bannerRunKey: b.RunID, bannerStarted: b.RunStarted,
+	}
 }
 
 // BannerClicked reads the data a clicked banner carried, as BannerData wrote it, into the
 // request to reveal its item, or the run it is about. A banner that stands for many items
 // names none. The data comes back through JSON, so an id is a float64; an id that is not a
-// number, or a URL that is not a string, reads as none.
+// number, or a URL or a run's start that is not a string, reads as none.
 func BannerClicked(data map[string]any) event.RevealItem {
 	r := event.RevealItem{ItemID: bannerID(data[bannerItemKey]), RunID: bannerID(data[bannerRunKey])}
 	r.URL, _ = data[bannerURLKey].(string)
+	r.RunStarted, _ = data[bannerStarted].(string)
 
 	return r
 }

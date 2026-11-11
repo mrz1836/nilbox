@@ -159,6 +159,7 @@ export function notification(overrides: Partial<AppNotification> = {}): AppNotif
     author: 'octo-other',
     detail: '',
     runId: 0,
+    runStarted: '',
     ...overrides,
   }
 }

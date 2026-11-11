@@ -111,9 +111,12 @@ export interface RevealItem {
     "url": string;
 
     /**
-     * RunID is the run to open, which a failed run's notification names, or 0 for none.
+     * RunID is the run to open, which a failed run's notification names, or 0 for none, and
+     * RunStarted when it started, as RFC 3339: the window opens the run only while the run
+     * with that ID started then.
      */
     "runId": number;
+    "runStarted": string;
 }
 
 /**

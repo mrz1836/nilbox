@@ -843,17 +843,18 @@ func (n releaseNotices) Released(ctx context.Context, notice release.Notice) {
 }
 
 // runFailures tells the user of a run that failed with a notification about no item,
-// run_failed, which names the run a click on it opens, and its banner when that kind is on
-// (scriptrun's Config.Failed).
+// run_failed, which names the run a click on it opens and when it started, and its banner
+// when that kind is on, gathered with those of the failures that follow it closely, so a
+// burst shows as one (scriptrun's Config.Failed).
 type runFailures struct {
 	dispatcher *notify.Dispatcher
 }
 
-// Failed records the notice and shows its banner.
+// Failed records the notice at once and gathers its banner.
 func (n runFailures) Failed(ctx context.Context, f scriptrun.Failure) {
-	n.dispatcher.Notify(ctx, notify.Entry{
+	n.dispatcher.Gather(ctx, notify.Entry{
 		Kind: notify.KindRunFailed, Title: f.Title, Body: f.Body, RepoOwner: f.Repo.Owner, RepoName: f.Repo.Repo,
-		RunID: f.ID,
+		RunID: f.ID, RunStarted: clock.Format(f.Started),
 	})
 }
 

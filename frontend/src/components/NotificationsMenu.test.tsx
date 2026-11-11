@@ -159,7 +159,7 @@ describe('NotificationsMenu', () => {
       itemKind: '',
       repo: 'acme-org/example-repo',
       number: 0,
-      title: 'Checks failed in acme-org/example-repo: Checks · all files',
+      title: 'Checks failed: Checks · all files',
       url: '',
       detail: '4 passed, 1 failed: whitespace.',
       runId: 9,

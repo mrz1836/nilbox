@@ -205,6 +205,10 @@ type Core struct {
 	// and budgetKeeper keeps its state between runs.
 	budget       *budget.Tracker
 	budgetKeeper budget.Keeper
+
+	// dispatcher records every notification and shows its banner; Close stops it gathering
+	// banners before the database closes.
+	dispatcher *notify.Dispatcher
 }
 
 // Bootstrap prepares the data directory, opens the database (backing it up and applying
@@ -270,9 +274,14 @@ func (c *Core) Services() []any {
 	}
 }
 
-// Close forgets the GitHub token held in memory and closes the database.
+// Close forgets the GitHub token held in memory, drops the banners of failed runs still
+// gathered (their notifications are kept), and closes the database.
 func (c *Core) Close() error {
 	c.tokens.Clear()
+
+	if c.dispatcher != nil {
+		c.dispatcher.Close()
+	}
 
 	if err := c.DB.Close(); err != nil {
 		return fmt.Errorf("close database: %w", err)
@@ -601,6 +610,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		client:           client,
 		budget:           tracker,
 		budgetKeeper:     keeper,
+		dispatcher:       dispatcher,
 	}
 }
 

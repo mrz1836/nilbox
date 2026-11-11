@@ -217,6 +217,10 @@ func TestATerminalRunThatFailsIsTold(t *testing.T) {
 	failed := h.start(h.terminalSpec(testutil.FakeRun{Exit: 4}))
 	h.ended(failed)
 
+	// Control-C in the terminal stopped it: that tells nothing, though its record says failed.
+	interrupted := h.start(h.terminalSpec(testutil.FakeRun{Exit: 130}))
+	assert.Equal(t, StatusFailed, h.ended(interrupted).Status)
+
 	// A terminal that closed mid-run interrupted it: that tells nothing.
 	term.mu.Lock()
 	term.noExit = true
@@ -229,8 +233,8 @@ func TestATerminalRunThatFailsIsTold(t *testing.T) {
 	testutil.WriteFile(t, proceed, "")
 	assert.Equal(t, StatusInterrupted, h.ended(closed).Status)
 
-	assert.Equal(t, []failedCall{{f: Failure{
-		ID: failed, Kind: KindScript, Repo: testRepo(), Title: "A script failed in acme-org/sdk: Lint",
-		Body: "It exited with status 4.",
-	}, stored: StatusFailed}}, got.all(), "a failure in the terminal is told as one in the app is")
+	h.settle()
+	assert.Equal(t, []failedCall{told(Failure{
+		ID: failed, Repo: testRepo(), Title: "A script failed: Lint", Body: "It exited with status 4.",
+	})}, got.all(), "a failure in the terminal is told as one in the app is")
 }

@@ -48,8 +48,10 @@ type Banner struct {
 	ItemID int64
 	URL    string
 
-	// RunID is the run a click on the banner opens in Scripts → Runs, or 0 for none.
-	RunID int64
+	// RunID is the run a click on the banner opens in Scripts → Runs, or 0 for none, and
+	// RunStarted when it started, which the window checks first.
+	RunID      int64
+	RunStarted string
 }
 
 // Poster shows banners. The desktop shell implements it over the system's notification
@@ -107,23 +109,30 @@ func banner(n Notification) Banner {
 	}
 
 	return Banner{
-		ID:       brand.Slug + "-" + strconv.FormatInt(n.ID, 10),
-		Title:    kindTitles[n.Kind],
-		Subtitle: subtitle,
-		Body:     body,
-		Thread:   string(n.Kind),
-		ItemID:   n.ItemID,
-		URL:      n.URL,
-		RunID:    n.RunID,
+		ID:         brand.Slug + "-" + strconv.FormatInt(n.ID, 10),
+		Title:      kindTitles[n.Kind],
+		Subtitle:   subtitle,
+		Body:       body,
+		Thread:     string(n.Kind),
+		ItemID:     n.ItemID,
+		URL:        n.URL,
+		RunID:      n.RunID,
+		RunStarted: n.RunStarted,
 	}
 }
 
 // summary is the one banner that stands for many: "5 new in your inbox", with how many of
-// each kind.
+// each kind, or "5 new notifications" when none is about an item, as a burst of failed runs.
 func summary(rows []Notification) Banner {
 	counts := make(map[notifyprefs.Kind]int)
+	title := " new notifications"
+
 	for _, r := range rows {
 		counts[r.Kind]++
+
+		if r.ItemKind != "" {
+			title = " new in your inbox"
+		}
 	}
 
 	var parts []string
@@ -141,7 +150,7 @@ func summary(rows []Notification) Banner {
 
 	return Banner{
 		ID:     brand.Slug + "-summary-" + strconv.FormatInt(rows[0].ID, 10),
-		Title:  strconv.Itoa(len(rows)) + " new in your inbox",
+		Title:  strconv.Itoa(len(rows)) + title,
 		Body:   strings.Join(parts, ", "),
 		Thread: "summary",
 	}

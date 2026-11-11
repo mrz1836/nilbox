@@ -17,6 +17,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/branchrules"
+	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/hooks"
 	"github.com/mrz1836/nilbox/internal/inbox"
@@ -555,8 +556,8 @@ func seedBound(t *testing.T) (*Core, seededItems) {
 
 	// And one about a run that failed, which names the run.
 	_, err = notify.NewStore(c.DB).RecordEvent(ctx, now.Add(time.Second), notify.Entry{
-		Kind: notify.KindRunFailed, Title: "A script failed in acme-org/example-repo: Lint", Body: "It exited with status 1.",
-		RepoOwner: boundOwner, RepoName: "example-repo", RunID: 1,
+		Kind: notify.KindRunFailed, Title: "A script failed: Lint", Body: "It exited with status 1.",
+		RepoOwner: boundOwner, RepoName: "example-repo", RunID: 1, RunStarted: clock.Format(now),
 	})
 	require.NoError(t, err)
 

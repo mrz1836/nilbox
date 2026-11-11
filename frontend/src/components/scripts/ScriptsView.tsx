@@ -200,11 +200,16 @@ export default function ScriptsView({
     setSheet({ target: { repo: request.repo, dir: request.dir, branch: request.branch }, key: request.seq })
   }
 
+  // openRun shows a run in the Runs page's panel.
+  const openRun = (id: number) => {
+    setSheet(null)
+    setSelectedRun(id)
+    setPage('runs')
+  }
+
   if (runRequest !== null && runRequest.seq !== handledRun) {
     setHandledRun(runRequest.seq)
-    setSheet(null)
-    setSelectedRun(runRequest.id)
-    setPage('runs')
+    openRun(runRequest.id)
   }
 
   const going = runs.runs?.filter((run) => isLive(run.status)).length ?? 0
@@ -252,13 +257,6 @@ export default function ScriptsView({
       counts: (n) => counted(n, 'run in progress', 'runs in progress'),
     },
   ]
-
-  // openRun shows a run in the Runs page's panel.
-  const openRun = (id: number) => {
-    setSheet(null)
-    setSelectedRun(id)
-    setPage('runs')
-  }
 
   const openIntegrations = () => {
     onOpenSettings('integrations')

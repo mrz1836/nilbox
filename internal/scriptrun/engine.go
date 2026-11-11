@@ -601,7 +601,7 @@ func (e *Engine) startApp(ctx context.Context, spec Spec, h holds) (int64, error
 
 	l := e.newLive(spec, h)
 
-	id, err := e.insert(ctx, spec)
+	id, err := e.insert(ctx, spec, l.started)
 	if err != nil {
 		h.free()
 
@@ -689,7 +689,7 @@ func (e *Engine) register(ctx context.Context, spec Spec, h holds) (*live, error
 
 	l := e.newLive(spec, h)
 
-	id, err := e.insert(ctx, spec)
+	id, err := e.insert(ctx, spec, l.started)
 	if err != nil {
 		h.free()
 
@@ -733,15 +733,16 @@ func (e *Engine) open(ctx context.Context, l *live, spec Spec) error {
 	return nil
 }
 
-// insert records a run as it starts.
-func (e *Engine) insert(ctx context.Context, spec Spec) (int64, error) {
+// insert records a run as it starts, at at: the start its state holds too, which a
+// failure's notification keeps to tell the run from a later one given its ID.
+func (e *Engine) insert(ctx context.Context, spec Spec, at time.Time) (int64, error) {
 	command := spec.Command
 	if command == "" {
 		command = DisplayCommand(spec.Argv, e.home)
 	}
 
 	return e.store.insert(ctx, started{
-		spec: spec, command: command, runsIn: spec.RunsIn, at: e.clock.Now(),
+		spec: spec, command: command, runsIn: spec.RunsIn, at: at,
 		result: Result{Tool: spec.Tool, Intent: spec.Intent, Warnings: []string{}, Unrecognized: []string{}},
 	})
 }
