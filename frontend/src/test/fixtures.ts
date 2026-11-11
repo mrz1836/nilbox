@@ -1707,6 +1707,8 @@ export function hookActionResult(overrides: Partial<HookActionResult> = {}): Hoo
     name: 'acme-org/api',
     dir: '~/projects/api',
     hooksDir: '~/projects/api/.git/hooks',
+    shared: false,
+    sharedWith: 0,
     otherTool: '',
     backup: '',
     restored: false,

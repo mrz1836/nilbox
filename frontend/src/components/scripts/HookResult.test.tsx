@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
+import type { HookActionResult } from '../../platform'
 import { hookActionResult } from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { HookResult } from './HookResult'
@@ -10,7 +11,7 @@ vi.mock('../../platform', () => import('../../test/platform').then((fake) => fak
 
 // blockedResult is an install husky's hook stopped in acme-org/sdk, though go-pre-commit
 // exited 0.
-function blockedResult() {
+function blockedResult(overrides: Partial<HookActionResult> = {}) {
   return hookActionResult({
     outcome: 'nothingInstalled',
     message: 'Nothing installed: husky’s hook is in the way.',
@@ -19,6 +20,7 @@ function blockedResult() {
     dir: '~/projects/sdk',
     hooksDir: '~/projects/sdk/.git/hooks',
     otherTool: 'husky',
+    ...overrides,
   })
 }
 
@@ -77,6 +79,28 @@ describe('HookResult', () => {
     expect(platform.replaceHook).toHaveBeenCalledExactlyOnceWith({ dir: '~/projects/sdk', confirm: '', runsIn: '' })
     await waitFor(() => {
       expect(onSelect).toHaveBeenCalledExactlyOnceWith(11)
+    })
+  })
+
+  it('names a shared hooks folder before Replace… changes it, and confirms that folder', async () => {
+    platform.getHookActionResult.mockResolvedValue(
+      blockedResult({ hooksDir: '~/.githooks', shared: true, sharedWith: 6 }),
+    )
+    renderResult()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Replace the hook in acme-org/sdk…' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Replace husky’s hook?' })
+
+    expect(dialog).toHaveAccessibleDescription(
+      /~\/\.githooks is shared by 6 of your repositories, and by any other repository that uses it\. Installing here installs go-pre-commit’s hook for all of them\.$/,
+    )
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Replace husky’s hook' }))
+
+    expect(platform.replaceHook).toHaveBeenCalledExactlyOnceWith({
+      dir: '~/projects/sdk',
+      confirm: '~/.githooks',
+      runsIn: '',
     })
   })
 

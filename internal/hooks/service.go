@@ -283,8 +283,10 @@ func NewService(cfg Config) *Service {
 // was read from the clone root as set now, and no copy of go-pre-commit took the place of
 // the one it judged with, scanning again first only the clones an action or a check ran
 // in; refresh, or anything else, scans every clone again and emits event.HooksUpdated. A
-// scan that fails keeps the last page, with its error, until one succeeds. What holds each
-// clone, and its newest checks run, are read for every call.
+// scan that fails keeps the last page, with its error, until one succeeds. A scan runs
+// apart from the caller that started it, within ScanTimeout: a caller whose context ends
+// stops waiting, and the scan goes on for the next. What holds each clone, and its newest
+// checks run, are read for every call.
 func (s *Service) Repos(ctx context.Context, refresh bool) (Page, error) {
 	root, err := s.clones.Root(ctx)
 	if err != nil {
@@ -298,17 +300,20 @@ func (s *Service) Repos(ctx context.Context, refresh bool) (Page, error) {
 	fresh := s.has && s.root == root && s.judgedBy == judgeKey(tool) && age >= 0 && age < FreshFor
 	s.mu.Unlock()
 
-	key, scan := scanAllKey+root, func(ctx context.Context) (struct{}, error) {
-		return struct{}{}, s.scanAll(ctx, root, tool)
-	}
+	key, scan := scanAllKey+root, func(ctx context.Context) error { return s.scanAll(ctx, root, tool) }
 
 	if fresh && !refresh {
-		key, scan = scanStaleKey+root, func(ctx context.Context) (struct{}, error) {
-			return struct{}{}, s.scanStale(ctx, tool)
-		}
+		key, scan = scanStaleKey+root, func(ctx context.Context) error { return s.scanStale(ctx, tool) }
 	}
 
-	if _, err = s.scanning.Do(ctx, key, scan); err != nil {
+	detached := func(ctx context.Context) (struct{}, error) {
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), ScanTimeout)
+		defer cancel()
+
+		return struct{}{}, scan(ctx)
+	}
+
+	if _, err = s.scanning.Do(ctx, key, detached); err != nil {
 		return Page{}, err
 	}
 
@@ -325,7 +330,7 @@ const (
 // scanAll scans every clone under root and keeps what it found, with the marks of the
 // clones to scan again that were there when it began cleared; a mark set while it ran
 // stays. A scan that fails keeps the last one, with why, unless there is none to keep, or
-// root changed. A scan cut short, as when the page closes, keeps nothing.
+// root changed. A scan cut short, as by ScanTimeout, keeps nothing.
 func (s *Service) scanAll(ctx context.Context, root string, tool ToolFacts) error {
 	s.mu.Lock()
 	marked := maps.Clone(s.stale)

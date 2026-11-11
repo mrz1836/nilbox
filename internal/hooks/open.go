@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -62,7 +61,7 @@ func (s *Service) ShowConfig(ctx context.Context, dir string) error {
 		return err
 	}
 
-	path := configPath(c.dir)
+	path, _ := configSource(c.dir)
 	if path == "" {
 		return notSetUpError(c, s.home)
 	}
@@ -76,18 +75,4 @@ func (s *Service) ShowConfig(ctx context.Context, dir string) error {
 	}
 
 	return nil
-}
-
-// configPath is what shows the go-pre-commit config of the clone at dir: the modular
-// folder when it holds a .env file, else the legacy .env.base, else "" for none.
-func configPath(dir string) string {
-	if folder := filepath.Join(dir, filepath.FromSlash(envDir)); len(modularFiles(folder)) > 0 {
-		return folder
-	}
-
-	if base := filepath.Join(dir, filepath.FromSlash(envBase)); isRegular(base) {
-		return base
-	}
-
-	return ""
 }

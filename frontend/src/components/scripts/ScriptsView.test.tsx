@@ -6,10 +6,11 @@ import type { ReleaseRequest } from '../../lib/release'
 import type { SettingsSection } from '../../lib/settingsIndex'
 import { useIntegrations } from '../../lib/useIntegrations'
 import { useScriptRuns } from '../../lib/useScriptRuns'
-import type { IntegrationTool, TerminalID } from '../../platform'
+import type { HookInstallAllResult, IntegrationTool, TerminalID } from '../../platform'
 import { at } from '../../test/clock'
 import {
   goPreCommitTool,
+  hookInstallAll,
   hookRepo,
   hooksList,
   hooksRun,
@@ -462,6 +463,35 @@ describe('ScriptsView', () => {
 
       expect(await screen.findByRole('heading', { name: 'Runs', level: 2 })).toBeInTheDocument()
       expect(rail().queryByRole('button', { name: /^Hooks/ })).not.toBeInTheDocument()
+    })
+
+    it('keeps Install and update all going, and its result, while another page shows', async () => {
+      hooksOnly()
+      let finish: (result: HookInstallAllResult) => void = () => undefined
+      platform.installAllHooks.mockReturnValue(
+        new Promise<HookInstallAllResult>((resolve) => {
+          finish = resolve
+        }),
+      )
+      renderView()
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Install and update all (2)' }))
+      await userEvent.click(rail().getByRole('button', { name: /^Runs/ }))
+      await userEvent.click(rail().getByRole('button', { name: /^Hooks/ }))
+
+      expect(await screen.findByRole('button', { name: 'Install and update all (2)' })).toBeDisabled()
+      expect(screen.getByRole('region', { name: 'Install and update all' })).toBeInTheDocument()
+
+      await userEvent.click(rail().getByRole('button', { name: /^Runs/ }))
+      act(() => {
+        finish(hookInstallAll())
+      })
+      await userEvent.click(rail().getByRole('button', { name: /^Hooks/ }))
+
+      const card = within(await screen.findByRole('region', { name: 'Install and update all' }))
+
+      expect(card.getByRole('list', { name: 'Each clone' })).toBeInTheDocument()
+      expect(platform.installAllHooks).toHaveBeenCalledOnce()
     })
 
     it('keeps Hooks once chosen, beside Release', async () => {

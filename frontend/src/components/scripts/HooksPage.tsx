@@ -7,9 +7,7 @@ import type { SettingsSection } from '../../lib/settingsIndex'
 import { exportLine } from '../../lib/shell'
 import { formatAge, formatAgo } from '../../lib/time'
 import type { HooksState } from '../../lib/useHooks'
-import { useMutation } from '../../lib/useMutation'
 import {
-  installAllHooks,
   openExternal,
   type HookGroup,
   type HookInstallAllResult,
@@ -218,9 +216,7 @@ export function HooksPage({ hooks, tool, runs, runsIn, onOpenRun, onOpenSettings
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState(sectionsOpen)
   const [more, setMore] = useState<Fold>(null)
-  const [installed, setInstalled] = useState<HookInstallAllResult | null>(null)
-  const installAll = useMutation((dirs: string[]) => installAllHooks(dirs))
-  const { list, error, refreshing, refreshError, refresh } = hooks
+  const { list, error, refreshing, refreshError, refresh, installAll } = hooks
   const searching = search.trim() !== ''
   const matched = list === null ? [] : matchHooks(list.repos, search)
   const others = list === null ? [] : matchClones(list.notSetUp, search)
@@ -230,16 +226,6 @@ export function HooksPage({ hooks, tool, runs, runsIn, onOpenRun, onOpenSettings
 
   const toggle = (section: Section) => {
     setOpen({ ...open, [section]: open[section] !== true })
-  }
-
-  const installEvery = async (dirs: string[]) => {
-    setInstalled(null)
-
-    const done = await installAll.run(dirs)
-
-    if (done.ok) {
-      setInstalled(done.data)
-    }
   }
 
   let body: ReactNode
@@ -292,16 +278,13 @@ export function HooksPage({ hooks, tool, runs, runsIn, onOpenRun, onOpenSettings
             }}
           />
         )}
-        {(installAll.pending || installed !== null || installAll.error !== '') && (
+        {(installAll.pending || installAll.result !== null || installAll.error !== '') && (
           <InstallAll
             pending={installAll.pending}
-            result={installed}
+            result={installAll.result}
             error={installAll.error}
             onOpenRun={onOpenRun}
-            onDismiss={() => {
-              setInstalled(null)
-              installAll.reset()
-            }}
+            onDismiss={installAll.dismiss}
           />
         )}
         {list.repos.length === 0 && !searching && (
@@ -340,7 +323,7 @@ export function HooksPage({ hooks, tool, runs, runsIn, onOpenRun, onOpenSettings
                       type="button"
                       disabled={installAll.pending}
                       onClick={() => {
-                        void installEvery(dirs)
+                        void installAll.run(dirs)
                       }}
                       className={buttonClass}
                     >

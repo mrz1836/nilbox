@@ -1,6 +1,6 @@
 import { useId, useState } from 'react'
 
-import { blocked, outcomeTones, ownerOf, replaceQuestion } from '../../lib/hooks'
+import { blocked, outcomeTones, ownerOf, replaceQuestion, sharedQuestion } from '../../lib/hooks'
 import { useMutation } from '../../lib/useMutation'
 import { useQuery } from '../../lib/useQuery'
 import { getHookActionResult, replaceHook } from '../../platform'
@@ -18,14 +18,15 @@ export interface HookResultProps {
 // HookResult is what a hooks action did, as the hook files said once go-pre-commit ended,
 // never from its exit status alone: installed, updated, already current, replaced (and
 // where the other tool's hook went), uninstalled (and what came back), or nothing
-// installed because another tool's hook is in the way, with Replace…, which asks first and
-// opens the run it starts. It shows nothing until the result is read, nor for a run that
-// ended without one, whose status says why.
+// installed because another tool's hook is in the way, with Replace…, which asks first (and
+// names a shared hooks folder, as a row does) and opens the run it starts. It shows
+// nothing until the result is read, nor for a run that ended without one, whose status
+// says why.
 export function HookResult({ runId, onSelect }: HookResultProps) {
   const id = useId()
   const query = useQuery(() => getHookActionResult(runId), [runId])
   const [asking, setAsking] = useState(false)
-  const replace = useMutation((dir: string) => replaceHook({ dir, confirm: '', runsIn: '' }))
+  const replace = useMutation((dir: string, confirm: string) => replaceHook({ dir, confirm, runsIn: '' }))
   const result = query.data
 
   if (result === undefined) {
@@ -37,7 +38,8 @@ export function HookResult({ runId, onSelect }: HookResultProps) {
   const replaceIt = async () => {
     setAsking(false)
 
-    const started = await replace.run(result.dir)
+    // A shared hooks folder is changed only once the question below named it, as a row does.
+    const started = await replace.run(result.dir, result.shared ? result.hooksDir : '')
 
     if (started.ok) {
       onSelect(started.data)
@@ -90,6 +92,7 @@ export function HookResult({ runId, onSelect }: HookResultProps) {
           }}
         >
           {replaceQuestion(result)}
+          {result.shared && ` ${sharedQuestion(result, 'replace')}`}
         </ConfirmDialog>
       )}
     </section>

@@ -101,6 +101,8 @@ func TestNothingInstalledWhenAnotherToolsHookIsInTheWayOnExitZero(t *testing.T) 
 	assert.Equal(t, OutcomeBlocked, res.Outcome)
 	assert.Equal(t, toolHusky, res.OtherTool)
 	assert.Equal(t, "Nothing installed: husky's hook is in the way.", res.Message)
+	assert.False(t, res.Shared, "the clone's own hooks folder")
+	assert.Zero(t, res.SharedWith)
 	assert.Equal(t, huskyHook, readHookText(t, dir))
 }
 
@@ -339,6 +341,8 @@ func TestASharedHooksFolderBlocksUntilConfirmed(t *testing.T) {
 	assert.Equal(t, scriptrun.StatusSucceeded, run.Status)
 	assert.Equal(t, OutcomeInstalled, res.Outcome)
 	assert.Equal(t, "~/.githooks", res.HooksDir)
+	assert.True(t, res.Shared, "the result says the folder is shared, so the window asks before acting there again")
+	assert.Equal(t, 2, res.SharedWith)
 	assert.FileExists(t, filepath.Join(shared, hookPreCommit))
 }
 

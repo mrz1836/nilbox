@@ -1,6 +1,6 @@
-import { useEffect, useEffectEvent } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 
-import { listHooks, on, type HooksList, type ScriptRun } from '../platform'
+import { installAllHooks, listHooks, on, type HookInstallAllResult, type HooksList, type ScriptRun } from '../platform'
 import { liveDirs } from './hooks'
 import { useMutation } from './useMutation'
 import { useQuery } from './useQuery'
@@ -18,6 +18,22 @@ export interface HooksState {
   refreshError: string
   // refresh scans every clone again now, whatever the list's age.
   refresh: () => Promise<void>
+  // installAll is Install and update all, held here rather than by the page, so that it
+  // survives the page giving way to another one of the tab's while it goes.
+  installAll: InstallAllState
+}
+
+// InstallAllState is Install and update all as it goes, then how it went.
+export interface InstallAllState {
+  // pending reports it under way; result is its line per clone once it ended, or null;
+  // error why it failed, or ''.
+  pending: boolean
+  result: HookInstallAllResult | null
+  error: string
+  // run installs or updates the hooks in dirs, one clone at a time; dismiss clears the
+  // result and the error.
+  run: (dirs: string[]) => Promise<void>
+  dismiss: () => void
 }
 
 // useHooks reads the Hooks page's list each time the tab shows (the service serves its
@@ -30,6 +46,8 @@ export function useHooks(enabled: boolean, runs: readonly ScriptRun[] | null): H
   const busy = liveDirs(runs)
   const query = useQuery(() => listHooks(false), [busy], { enabled })
   const refresher = useMutation(() => listHooks(true))
+  const installer = useMutation((dirs: string[]) => installAllHooks(dirs))
+  const [installed, setInstalled] = useState<HookInstallAllResult | null>(null)
   const readOnUpdate = useEffectEvent(() => {
     void query.refetch()
   })
@@ -43,6 +61,16 @@ export function useHooks(enabled: boolean, runs: readonly ScriptRun[] | null): H
       readOnUpdate()
     })
   }, [enabled])
+
+  const installEvery = async (dirs: string[]) => {
+    setInstalled(null)
+
+    const done = await installer.run(dirs)
+
+    if (done.ok) {
+      setInstalled(done.data)
+    }
+  }
 
   const refresh = async () => {
     const result = await refresher.run()
@@ -58,5 +86,15 @@ export function useHooks(enabled: boolean, runs: readonly ScriptRun[] | null): H
     refreshing: refresher.pending,
     refreshError: refresher.error,
     refresh,
+    installAll: {
+      pending: installer.pending,
+      result: installed,
+      error: installer.error,
+      run: installEvery,
+      dismiss: () => {
+        setInstalled(null)
+        installer.reset()
+      },
+    },
   }
 }

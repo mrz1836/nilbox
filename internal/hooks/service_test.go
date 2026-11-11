@@ -568,3 +568,35 @@ func TestConcurrentReadsRescanAStaleCloneOnce(t *testing.T) {
 	_, after := r.clones.counts()
 	assert.Equal(t, 1, after-before, "the stale clone's origin is read once")
 }
+
+// TestReposScanOutlivesTheCallerThatStartedIt checks that a window that stops waiting, as
+// it does when it asks again, leaves the scan it started to finish and be kept, rather than
+// throwing it away for the next caller to start over.
+func TestReposScanOutlivesTheCallerThatStartedIt(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t)
+	r.clone("api", cloneOpts{config: coreEnv})
+
+	ctx, cancel := context.WithCancel(t.Context())
+
+	r.clones.mu.Lock()
+	r.clones.onDirs = cancel // the caller goes while the clones are listed
+	r.clones.mu.Unlock()
+
+	_, err := r.svc.Repos(ctx, false)
+	require.ErrorIs(t, err, context.Canceled)
+
+	r.clones.mu.Lock()
+	r.clones.onDirs = nil
+	r.clones.mu.Unlock()
+
+	page, err := r.svc.Repos(t.Context(), false)
+	require.NoError(t, err)
+	require.Len(t, page.Repos, 1)
+
+	r.clones.mu.Lock()
+	listed := r.clones.listed
+	r.clones.mu.Unlock()
+	assert.Equal(t, 1, listed, "the first scan went on and was kept, so the clones were listed once")
+}

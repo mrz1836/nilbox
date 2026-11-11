@@ -52,14 +52,9 @@ type repoConfig struct {
 // readConfig reads the go-pre-commit config inside the clone at dir. A file that can't be
 // read sets nothing.
 func readConfig(dir string) repoConfig {
-	files := modularFiles(filepath.Join(dir, filepath.FromSlash(envDir)))
+	_, files := configSource(dir)
 	if len(files) == 0 {
-		base := filepath.Join(dir, filepath.FromSlash(envBase))
-		if !isRegular(base) {
-			return repoConfig{values: map[string]string{}}
-		}
-
-		files = []string{base, filepath.Join(dir, filepath.FromSlash(envCustom))}
+		return repoConfig{values: map[string]string{}}
 	}
 
 	cfg := repoConfig{present: true, values: map[string]string{}}
@@ -76,6 +71,23 @@ func readConfig(dir string) repoConfig {
 	}
 
 	return cfg
+}
+
+// configSource is where the clone at dir keeps its go-pre-commit config, by the one rule the
+// scan and Open the config share: what shows it (the modular folder when it holds a .env
+// file, else the legacy .env.base) and the files to read, in order; both empty for none.
+func configSource(dir string) (shown string, files []string) {
+	folder := filepath.Join(dir, filepath.FromSlash(envDir))
+	if files = modularFiles(folder); len(files) > 0 {
+		return folder, files
+	}
+
+	base := filepath.Join(dir, filepath.FromSlash(envBase))
+	if !isRegular(base) {
+		return "", nil
+	}
+
+	return base, []string{base, filepath.Join(dir, filepath.FromSlash(envCustom))}
 }
 
 // modularFiles returns the .env files in folder, sorted, or none when folder isn't one.
