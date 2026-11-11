@@ -45,13 +45,31 @@ describe('SessionTag', () => {
     expect(tag).toHaveAttribute('title', 'Claude needs approval: Permission prompt')
   })
 
-  it('swells a ring out of the dot while the session works, and holds it still otherwise', () => {
-    const { container, rerender } = renderTag([agentSession({ state: 'working', detail: '' })])
+  it('leaves the worktree mark to the card when the card already shows its worktree', () => {
+    const { container, rerender } = renderTag([agentSession()])
+    const marks = () => container.querySelectorAll('button svg')
 
-    expect(container.querySelector('.motion-safe\\:animate-session-ping')).not.toBeNull()
+    expect(marks()).toHaveLength(1)
+
+    rerender(<SessionTag sessions={[agentSession()]} agents={agents()} markWorktree={false} />)
+    expect(marks()).toHaveLength(0)
+  })
+
+  it('swells a ring out of the dot while the session works, pulses it while it starts, and holds it still otherwise', () => {
+    const { container, rerender } = renderTag([agentSession({ state: 'working', detail: '' })])
+    const ring = () => container.querySelector('.motion-safe\\:animate-ping')
+    const pulse = () => container.querySelector('.motion-safe\\:animate-pulse')
+
+    expect(ring()).not.toBeNull()
+    expect(pulse()).toBeNull()
+
+    rerender(<SessionTag sessions={[agentSession({ state: 'starting', detail: '' })]} agents={agents()} />)
+    expect(ring()).toBeNull()
+    expect(pulse()).not.toBeNull()
 
     rerender(<SessionTag sessions={[agentSession({ state: 'idle', detail: '' })]} agents={agents()} />)
-    expect(container.querySelector('.motion-safe\\:animate-session-ping')).toBeNull()
+    expect(ring()).toBeNull()
+    expect(pulse()).toBeNull()
   })
 
   it('shows nothing for an item whose sessions ended over a day ago', () => {

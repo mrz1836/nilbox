@@ -186,7 +186,7 @@ describe('ReviewSheet', () => {
     expect(await screen.findByText('cache')).toBeInTheDocument()
 
     let answer: (r: ReturnType<typeof review>) => void = () => undefined
-    platform.refreshReview.mockReturnValueOnce(
+    platform.readReviewAgain.mockReturnValueOnce(
       new Promise((resolve) => {
         answer = resolve
       }),
@@ -194,17 +194,22 @@ describe('ReviewSheet', () => {
     const refresh = screen.getByRole('button', { name: 'Read it from GitHub again' })
     await userEvent.click(refresh)
 
-    // While it reads, the button waits, and the header says so.
-    expect(refresh).toBeDisabled()
+    // The button's read reaches GitHub however recent the last one was. While it reads,
+    // the button waits, keeping focus, and a second click asks nothing more.
+    expect(platform.readReviewAgain).toHaveBeenCalledExactlyOnceWith(1)
+    expect(platform.refreshReview).toHaveBeenCalledOnce()
+    expect(refresh).toHaveAttribute('aria-disabled', 'true')
+    expect(refresh).toHaveFocus()
     expect(screen.getByText('Checking GitHub…')).toBeInTheDocument()
-    expect(platform.refreshReview).toHaveBeenCalledTimes(2)
+    await userEvent.click(refresh)
+    expect(platform.readReviewAgain).toHaveBeenCalledOnce()
 
     act(() => {
       answer(review({ body: 'Adds a **faster cache**.' }))
     })
 
     expect(await screen.findByText('faster cache')).toBeInTheDocument()
-    expect(refresh).toBeEnabled()
+    expect(refresh).toHaveAttribute('aria-disabled', 'false')
   })
 
   it('approves with the default reply, and closes', async () => {
@@ -370,10 +375,23 @@ describe('ReviewSheet', () => {
     expect(onDone).not.toHaveBeenCalled()
     expect(screen.getByRole('textbox', { name: 'Your review' })).toHaveValue('Why?')
 
+    // The push read it again at once, reaching GitHub.
+    await waitFor(() => {
+      expect(platform.readReviewAgain).toHaveBeenCalledOnce()
+    })
+
+    // The header's refresh reads again but leaves the notice for its own Reload to answer.
+    await userEvent.click(screen.getByRole('button', { name: 'Read it from GitHub again' }))
+    await waitFor(() => {
+      expect(platform.readReviewAgain).toHaveBeenCalledTimes(2)
+    })
+    expect(screen.getByText('acme-org/example-repo#7 was pushed to since you opened it.')).toBeInTheDocument()
+
     await userEvent.click(screen.getByRole('button', { name: 'Reload' }))
     await waitFor(() => {
-      expect(platform.refreshReview).toHaveBeenCalledTimes(3)
+      expect(platform.readReviewAgain).toHaveBeenCalledTimes(3)
     })
+    expect(screen.queryByText('acme-org/example-repo#7 was pushed to since you opened it.')).not.toBeInTheDocument()
   })
 
   it('shows why an action failed', async () => {

@@ -117,6 +117,25 @@ func TestRefreshCostsWhatItMust(t *testing.T) {
 	assert.True(t, r.Stale, "the inbox still knows the old head until its card is stored")
 }
 
+func TestReadAgainReadsGitHubHoweverRecentlyItRead(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.refreshed(t)
+
+	// Refresh skips a read this recent; the sheet's refresh button asks again regardless.
+	h.github.review = pullReview(headA, github.MergeStateBlocked)
+	r, err := h.svc.ReadAgain(t.Context(), pullID)
+	require.NoError(t, err)
+	assert.Equal(t, 2, h.github.called("review"), "the button's read reaches GitHub")
+	assert.Equal(t, 1, h.github.called("diff"), "the files at that head are still cached")
+	assert.Equal(t, headA, r.Head)
+
+	// A Refresh right after it still skips.
+	h.refreshed(t)
+	assert.Equal(t, 2, h.github.called("review"))
+}
+
 func TestRefreshReadsAgainWhileGitHubWorksOutTheMerge(t *testing.T) {
 	t.Parallel()
 

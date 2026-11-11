@@ -288,9 +288,8 @@ export function ReviewSheet({
                 }
           }
           onClose={close}
-          // Reading it again also answers a notice that it was pushed to since.
+          // A notice that it was pushed to since stays until its own Reload is clicked.
           onRefresh={() => {
-            setPushed('')
             loaded.reload()
           }}
         />

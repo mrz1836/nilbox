@@ -141,6 +141,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
 
     openReview: () => Promise.resolve(review()),
     refreshReview: () => Promise.resolve(review()),
+    readReviewAgain: () => Promise.resolve(review()),
     reviewPatches: (_id, _head, paths) =>
       Promise.resolve((paths ?? []).map((path) => ({ path, patch: '@@ -1 +1 @@\n-a\n+b', patchState: '' as const }))),
     actOnReview: () => Promise.resolve(reviewResult()),

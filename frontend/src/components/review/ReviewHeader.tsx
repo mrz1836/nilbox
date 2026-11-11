@@ -101,11 +101,17 @@ export function ReviewHeader({
           type="button"
           aria-label="Read it from GitHub again"
           title={
-            checking ? 'Reading GitHub…' : 'Read it from GitHub again: checks, reviews, files, and the description'
+            checking ? 'Checking GitHub…' : 'Read it from GitHub again: checks, reviews, files, and the description'
           }
-          disabled={checking}
-          onClick={onRefresh}
-          className={iconButtonClass}
+          // It waits while a read runs, but stays focusable, so a keyboard user keeps
+          // their place.
+          aria-disabled={checking}
+          onClick={() => {
+            if (!checking) {
+              onRefresh()
+            }
+          }}
+          className={`${iconButtonClass} aria-disabled:cursor-default aria-disabled:opacity-60`}
         >
           <RefreshIcon className={`size-4 ${checking ? 'motion-safe:animate-spin' : ''}`} />
         </button>

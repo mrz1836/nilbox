@@ -121,7 +121,9 @@ describe('useReview', () => {
     await waitFor(() => {
       expect(result.current.error).toBe('')
     })
-    expect(platform.refreshReview).toHaveBeenCalledTimes(2)
+    // The user asked: the read reaches GitHub however recently it read.
+    expect(platform.refreshReview).toHaveBeenCalledOnce()
+    expect(platform.readReviewAgain).toHaveBeenCalledExactlyOnceWith(1)
   })
 
   it('reads the diffs Open left out', async () => {
