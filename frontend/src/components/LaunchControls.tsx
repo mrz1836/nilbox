@@ -18,7 +18,6 @@ import {
   type SaveStatus,
 } from '../lib/launchChoices'
 import { useMutation } from '../lib/useMutation'
-import { usePopover } from '../lib/usePopover'
 import { useQuery } from '../lib/useQuery'
 import {
   cloneRepo,
@@ -43,9 +42,9 @@ import {
 } from '../platform'
 import { ConfirmDialog } from './ConfirmDialog'
 import { AlertIcon, ChevronDownIcon, TerminalIcon } from './icons'
+import { LaunchDialog } from './LaunchDialog'
 import { LaunchHoldDialog } from './LaunchHoldDialog'
 import { LaunchMenu } from './LaunchMenu'
-import { PopoverPanel } from './PopoverPanel'
 
 export interface LaunchControlsProps {
   item: InboxItem
@@ -67,10 +66,6 @@ export interface LaunchControlsProps {
   // initial are the choices every launch from here starts with, such as the worktree on
   // for a launch from the Worktrees view; none by default.
   initial?: Partial<Choices>
-  // menuAlign lines the launch menu up with the button's right edge, for a button at the
-  // right of a card (the default), or its left edge, for one at the left of a row, so the
-  // menu opens over the content rather than off the side of the view.
-  menuAlign?: 'left' | 'right'
 }
 
 // LaunchState is where the row's launch stands. A launch that finds no local clone ends
@@ -107,12 +102,14 @@ function launchedText(result: LaunchResult, agent: string): string {
 // LaunchControls is one row's "Open in Claude" or "Open in Codex" split button. The
 // button launches with the item's resolved settings: the agent, prompt, and profile its
 // org's and repository's defaults choose, the prompt and profile named on the arrow beside
-// it ("Review · default"). The arrow opens the launch menu, where this launch can use
-// another agent, prompt, profile, model, effort, worktree, or plan mode, preview exactly
-// what it runs, or save those choices as the repository's or the org's defaults. Choices
-// apply to the next launch only, and the arrow shows a dot while any differs from the
-// defaults. A launch that finds no local clone offers to clone the repository into the
-// clone root and, once confirmed, continues with the same choices.
+// it ("Review · default"). The arrow opens the launch options in a dialog in the middle of
+// the window (LaunchDialog), where this launch can use another agent, prompt, profile,
+// model, effort, worktree, or plan mode, preview exactly what it runs, or save those
+// choices as the repository's or the org's defaults. The dialog is rendered only while it
+// is open, so a list of rows holds none. Choices apply to the next launch only and outlast
+// closing the dialog, and the arrow shows a dot while any differs from the defaults. A
+// launch that finds no local clone offers to clone the repository into the clone root
+// and, once confirmed, continues with the same choices.
 //
 // It renders two grid children: the button, and below the row's content, the launch's
 // outcome, which runs to the card's right edge. The inbox row is the grid that places
@@ -127,22 +124,13 @@ export function LaunchControls({
   onDefaultsSaved,
   onManagePrompts,
   initial,
-  menuAlign = 'right',
   running = null,
 }: LaunchControlsProps) {
   // start is the choices a launch starts from, and goes back to after it.
   const start: Choices = { ...noChoices, ...initial }
   const id = useId()
-  // The menu opens upward when there is not enough room below the button, and focus goes
-  // to the chosen prompt.
-  const popover = usePopover<HTMLButtonElement, HTMLDivElement>({
-    placement: 'flip',
-    focus: (panel) =>
-      panel.querySelector<HTMLInputElement>('[data-initial-focus] input:checked') ??
-      panel.querySelector<HTMLInputElement>('input:checked') ??
-      panel.querySelector('input'),
-  })
-  const { open, toggle, close, triggerRef } = popover
+  // open says the launch options are showing.
+  const [open, setOpen] = useState(false)
   const [choices, setChoices] = useState<Choices>(start)
   const [state, setState] = useState<LaunchState>({ kind: 'idle' })
   const [confirmingClone, setConfirmingClone] = useState(false)
@@ -225,6 +213,11 @@ export function LaunchControls({
     setStatus(null)
   }
 
+  // close hides the launch options, keeping the choices for the next launch.
+  const close = () => {
+    setOpen(false)
+  }
+
   const launchNow = () => {
     close()
     void run(launchRequest(item.id, choices, untrusted))
@@ -298,7 +291,7 @@ export function LaunchControls({
 
   return (
     <>
-      <div className="relative self-center">
+      <div className="self-center">
         <div className="inline-flex items-stretch rounded-md border border-border bg-surface text-[0.8125rem]">
           {running === null ? (
             <button
@@ -336,7 +329,6 @@ export function LaunchControls({
             </button>
           )}
           <button
-            ref={triggerRef}
             type="button"
             disabled={resolution === null}
             aria-label={`Launch options: ${chip}${changed ? ', changed for this launch' : ''}`}
@@ -344,7 +336,12 @@ export function LaunchControls({
             aria-haspopup="dialog"
             aria-expanded={open}
             aria-controls={open ? id : undefined}
-            onClick={toggle}
+            onClick={(e) => {
+              // The desktop's WebKit focuses no button on a click. Focusing this one first
+              // makes it where the dialog gives focus back as it closes.
+              e.currentTarget.focus()
+              setOpen(true)
+            }}
             className="inline-flex max-w-52 items-center gap-1 rounded-r-md border-l border-border px-2 text-xs text-muted transition-colors hover:bg-raised hover:text-text aria-expanded:bg-raised"
           >
             {changed && <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-accent" />}
@@ -353,60 +350,56 @@ export function LaunchControls({
             <ChevronDownIcon className="size-3 shrink-0" />
           </button>
         </div>
-        <PopoverPanel
-          state={popover}
-          align={menuAlign}
-          id={id}
-          role="dialog"
-          aria-label="Launch options"
-          className="z-20 max-h-[calc(100vh-8rem)] w-[22rem] overflow-y-auto shadow-black/25"
-        >
-          {base === null ? (
-            <div className="flex flex-col gap-2 p-3.5 text-sm">
-              <p className="flex items-start gap-2 text-warning">
-                <AlertIcon className="mt-0.5 size-4 shrink-0" />
-                {problem !== '' ? problem : 'Loading the launch settings…'}
-              </p>
-              {problem !== '' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    close()
-                    onManagePrompts()
-                  }}
-                  className="self-start text-sm font-medium text-accent hover:underline"
-                >
-                  Open the Prompts page
-                </button>
-              )}
-            </div>
-          ) : (
-            <LaunchMenu
-              item={item}
-              resolved={base}
-              choices={choices}
-              onChoices={(next) => {
-                setChoices(next)
-                setStatus(null)
-              }}
-              agents={agents}
-              profiles={profiles}
-              prompts={prompts}
-              agentName={agentName}
-              onLaunch={launchNow}
-              onSave={(scope) => {
-                void save(scope)
-              }}
-              saving={saver.pending}
-              status={status}
-              resolveError={resolveError}
-              onManagePrompts={() => {
-                close()
-                onManagePrompts()
-              }}
-            />
-          )}
-        </PopoverPanel>
+        {open && (
+          <LaunchDialog id={id} title={openLabel} item={item} onClose={close}>
+            {base === null ? (
+              <div className="flex flex-col gap-2 p-3.5 text-sm">
+                <p className="flex items-start gap-2 text-warning">
+                  <AlertIcon className="mt-0.5 size-4 shrink-0" />
+                  {problem !== '' ? problem : 'Loading the launch settings…'}
+                </p>
+                {problem !== '' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      close()
+                      onManagePrompts()
+                    }}
+                    className="self-start text-sm font-medium text-accent hover:underline"
+                  >
+                    Open the Prompts page
+                  </button>
+                )}
+              </div>
+            ) : (
+              <LaunchMenu
+                item={item}
+                resolved={base}
+                choices={choices}
+                onChoices={(next) => {
+                  setChoices(next)
+                  setStatus(null)
+                }}
+                agents={agents}
+                profiles={profiles}
+                prompts={prompts}
+                agentName={agentName}
+                onLaunch={launchNow}
+                onSave={(scope) => {
+                  void save(scope)
+                }}
+                saving={saver.pending}
+                status={status}
+                resolveError={resolveError}
+                onManagePrompts={() => {
+                  close()
+                  onManagePrompts()
+                }}
+                onCancel={close}
+              />
+            )}
+          </LaunchDialog>
+        )}
       </div>
       {state.kind === 'launched' && (
         <p

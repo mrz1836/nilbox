@@ -10,6 +10,7 @@ import {
   agentSession,
   agents,
   item,
+  itemResolution,
   offer,
   profile,
   prompts,
@@ -397,6 +398,47 @@ describe('ReviewSheet', () => {
     await userEvent.keyboard('{Escape}')
     expect(onClose).not.toHaveBeenCalled()
 
+    await userEvent.keyboard('{Escape}')
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('opens the launch options over itself, which take its keys until Escape closes them alone', async () => {
+    platform.openReview.mockImplementation((id) => Promise.resolve(review({ id })))
+    platform.refreshReview.mockImplementation((id) => Promise.resolve(review({ id })))
+    const onClose = vi.fn()
+    render(<Harness onClose={onClose} launch={launch} resolution={itemResolution()} />)
+
+    await actionButton('Approve & squash-merge')
+
+    const arrow = screen.getByRole('button', { name: /^Launch options/ })
+    await userEvent.click(arrow)
+
+    const options = screen.getByRole('dialog', { name: 'Launch options' })
+    expect(sheet()).toContainElement(options)
+    expect(within(options).getByRole('heading', { name: 'Open in Claude' })).toBeInTheDocument()
+    expect(within(options).getByRole('radio', { name: /Review/ })).toHaveFocus()
+
+    // Neither the arrows nor ⌘↩ reach the sheet behind the dialog.
+    await userEvent.keyboard('{ArrowRight}')
+    await userEvent.keyboard('{ArrowLeft}')
+    await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
+    expect(screen.getByText('1 of 3 in Assigned')).toBeInTheDocument()
+    expect(platform.openReview).not.toHaveBeenCalledWith(2)
+    expect(screen.queryByRole('dialog', { name: /Approve and merge/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Launch options' })).toBeInTheDocument()
+
+    // Escape closes the launch options, and the sheet stays.
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog', { name: 'Launch options' })).not.toBeInTheDocument()
+    expect(sheet()).toHaveAttribute('open')
+    expect(onClose).not.toHaveBeenCalled()
+    expect(arrow).toHaveFocus()
+
+    // The sheet's keys are its own again.
+    await userEvent.keyboard('{ArrowRight}')
+    await waitFor(() => {
+      expect(platform.openReview).toHaveBeenLastCalledWith(2)
+    })
     await userEvent.keyboard('{Escape}')
     expect(onClose).toHaveBeenCalledOnce()
   })

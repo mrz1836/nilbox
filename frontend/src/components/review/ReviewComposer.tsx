@@ -201,8 +201,6 @@ export function ReviewComposer({
             onDefaultsSaved={launch.onDefaultsSaved}
             onManagePrompts={launch.onManagePrompts}
             running={runningSession(sessions)}
-            // The menu opens leftward, over the diff: the column is narrower than it.
-            menuAlign="right"
           />
         )}
       </div>
