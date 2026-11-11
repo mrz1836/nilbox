@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"sync"
 	"time"
 
@@ -166,8 +167,14 @@ type Service struct {
 	keeper        Keeper
 	progressEvery time.Duration
 
-	// wake asks the Refresher to read the list again behind the page.
-	wake chan struct{}
+	// wake asks the Refresher to read the list again behind the page, and wakePatch asks it
+	// to read again the repositories released since (queuePatch).
+	wake      chan struct{}
+	wakePatch chan struct{}
+
+	// reading lets one read of the list run at a time, a refresh or a patch, so neither
+	// lands over the other with older answers (startReading).
+	reading chan struct{}
 
 	// factsMu guards facts: the facts each clone's sheet was last shown, by its folder,
 	// resolved.
@@ -182,7 +189,10 @@ type Service struct {
 	// for, and why that failed, if it did. kept reports the last list as the one kept from
 	// a past start, which no refresh has replaced yet, and restored that it was read.
 	// background reports the Refresher running, and pending a refresh it was asked for
-	// that hasn't landed.
+	// that hasn't landed. unpatched holds the keys of the repositories released since the
+	// Refresher last patched the list, patching reports a patch queued or under way, so the
+	// list is served as refreshing, and outdated counts the times the list went out of date
+	// (outOfDate).
 	mu         sync.Mutex
 	last       Candidates
 	root       string
@@ -193,6 +203,9 @@ type Service struct {
 	restored   bool
 	background bool
 	pending    bool
+	unpatched  map[string]bool
+	patching   bool
+	outdated   int
 }
 
 // NewService returns a Service over cfg.
@@ -204,8 +217,9 @@ func NewService(cfg Config) *Service {
 		notifier: cfg.Notifier, origins: cfg.Origins, tools: cfg.Tools, afterMerge: cfg.AfterMerge,
 		branches: cfg.Branches,
 		terminal: cfg.Terminal,
-		keeper:   cfg.Keeper, progressEvery: progressEvery, wake: make(chan struct{}, 1),
-		facts: map[string]keptFacts{},
+		keeper:   cfg.Keeper, progressEvery: progressEvery,
+		wake: make(chan struct{}, 1), wakePatch: make(chan struct{}, 1), reading: make(chan struct{}, 1),
+		facts: map[string]keptFacts{}, unpatched: map[string]bool{},
 	}
 
 	if s.env == nil {
@@ -233,6 +247,10 @@ func NewService(cfg Config) *Service {
 // After a restart, the list kept from the last start, when it was read from the clone
 // root as set now, is served at once, marked Kept and Refreshing, while the Refresher
 // reads GitHub again behind the page; without the Refresher, the call waits for GitHub.
+//
+// A release that ends needn't put the list out of date: while the Refresher runs, it reads
+// the released repository alone again and patches its rows into the list, which stays as
+// fresh as it was (queuePatch). Meanwhile the list is served as it was, marked Refreshing.
 func (s *Service) Candidates(ctx context.Context, refresh bool) (Candidates, error) {
 	root, err := s.clones.Root(ctx)
 	if err != nil {
@@ -261,7 +279,7 @@ func (s *Service) serveNow(root string, refresh bool) (Candidates, bool) {
 		return Candidates{}, false
 	}
 
-	if s.clock.Now().Sub(s.tried) < FreshFor {
+	if s.fresh() {
 		return s.served(), true
 	}
 
@@ -274,11 +292,17 @@ func (s *Service) serveNow(root string, refresh bool) (Candidates, bool) {
 	return s.served(), true
 }
 
+// fresh reports whether the last list was asked for under FreshFor ago. The caller holds
+// mu.
+func (s *Service) fresh() bool {
+	return s.clock.Now().Sub(s.tried) < FreshFor
+}
+
 // served is the last list as the page shows it, with the last refresh's failure, whether
 // it was kept from a past start, and whether a refresh runs behind it. The caller holds mu.
 func (s *Service) served() Candidates {
 	out := s.last
-	out.Error, out.Kept, out.Refreshing = s.failure, s.kept, s.pending
+	out.Error, out.Kept, out.Refreshing = s.failure, s.kept, s.pending || s.patching
 
 	return out
 }
@@ -286,7 +310,22 @@ func (s *Service) served() Candidates {
 // refresh asks GitHub and the clones under root again, keeping the last list when it
 // fails. A list that lands is kept for the next start too. A refresh cut short, as when
 // the page closes, keeps nothing and records nothing.
+//
+// It waits for a patch under way to land first (startReading). A list that went out of
+// date while it ran, as when a release ended without the Refresher, lands out of date too:
+// GitHub may have answered before the release reached it. A repository released before it
+// began, whose patch is still queued, is read here, so the patch leaves it out.
 func (s *Service) refresh(ctx context.Context, root string) (Candidates, error) {
+	if err := s.startReading(ctx); err != nil {
+		return Candidates{}, err
+	}
+
+	defer s.doneReading()
+
+	s.mu.Lock()
+	outdated, covered := s.outdated, maps.Clone(s.unpatched)
+	s.mu.Unlock()
+
 	progress := newListProgress(s.events, s.progressEvery)
 
 	got, err := s.gather(ctx, root, progress)
@@ -304,6 +343,9 @@ func (s *Service) refresh(ctx context.Context, root string) (Candidates, error) 
 	}
 
 	s.tried = s.clock.Now()
+	if s.outdated != outdated {
+		s.tried = time.Time{}
+	}
 
 	if err != nil {
 		if !s.has || s.root != root {
@@ -319,9 +361,33 @@ func (s *Service) refresh(ctx context.Context, root string) (Candidates, error) 
 
 	s.last, s.root, s.failure, s.has, s.kept, s.pending = got, root, "", true, false, false
 	s.keep(context.WithoutCancel(ctx), got, root)
+
+	// The repositories released before it began are read already: no patch reads them again.
+	for key := range covered {
+		delete(s.unpatched, key)
+	}
+
 	s.events.Emit(event.ReleasesUpdated{})
 
 	return got, nil
+}
+
+// startReading waits for the read of the list under way, a refresh or a patch, to land,
+// and then lets this one run, until doneReading. One at a time, a refresh that asked
+// GitHub before a release ended lands before the release's patch reads its repository, so
+// the patch lands over it, never under it. It fails only when ctx ends first.
+func (s *Service) startReading(ctx context.Context) error {
+	select {
+	case s.reading <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// doneReading lets the next read of the list run.
+func (s *Service) doneReading() {
+	<-s.reading
 }
 
 // gather lists the clones, asks GitHub about their origins, and reads the clones whose
@@ -359,16 +425,7 @@ func (s *Service) gather(ctx context.Context, root string, progress *listProgres
 		return Candidates{}, err
 	}
 
-	for _, c := range listed {
-		key := c.origin.Key()
-		status, found := statuses[key]
-		since, compared := compares[key]
-
-		cand := candidateFor(c, status, found, since, compared)
-		cand.Dir = paths.Tilde(c.dir, s.home)
-		out.Repos = append(out.Repos, cand)
-	}
-
+	out.Repos = s.candidates(listed, statuses, compares)
 	s.checkClones(ctx, out.Repos, statuses, progress)
 	sortCandidates(out.Repos)
 
@@ -405,6 +462,24 @@ func (s *Service) askGitHub(
 	}
 
 	return statuses, compares, nil
+}
+
+// candidates works out each listed clone's row from GitHub's answers, its folder written
+// with ~ for home.
+func (s *Service) candidates(listed []clone, statuses map[string]RepoStatus, compares map[string]Compare) []Candidate {
+	out := make([]Candidate, 0, len(listed))
+
+	for _, c := range listed {
+		key := c.origin.Key()
+		status, found := statuses[key]
+		since, compared := compares[key]
+
+		cand := candidateFor(c, status, found, since, compared)
+		cand.Dir = paths.Tilde(c.dir, s.home)
+		out = append(out, cand)
+	}
+
+	return out
 }
 
 // uniqueRepos returns the clones' repositories, each once: two clones of one repository

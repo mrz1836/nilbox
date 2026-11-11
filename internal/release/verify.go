@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/gitread"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
@@ -147,18 +146,13 @@ func (s *Service) finisher(name repo.Name, dir string, in *Intent, reader *Outpu
 	}
 }
 
-// released notes that a release ended: the clone's kept facts and the Release page's list
-// are out of date, so the next Candidates reads GitHub again, and the window hears so
-// (event.ReleasesUpdated) whether or not the sheet is open; and a failure only a bug
-// causes is logged as one.
+// released notes that a release ended: the clone's kept facts are out of date, and so is
+// the repository's row on the Release page, which the Refresher reads again and patches
+// into the list, telling the window (event.ReleasesUpdated) whether or not the sheet is
+// open (queuePatch); and a failure only a bug causes is logged as one.
 func (s *Service) released(ctx context.Context, name repo.Name, dir string, res Result) {
 	s.forget(dir)
-
-	s.mu.Lock()
-	s.tried = time.Time{}
-	s.mu.Unlock()
-
-	s.events.Emit(event.ReleasesUpdated{})
+	s.queuePatch(name)
 
 	if res.Failure != nil && res.Failure.Bug {
 		s.logger.ErrorContext(ctx, "magex wanted a confirmation the release didn't send; this is a bug",

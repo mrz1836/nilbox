@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/store"
 )
@@ -173,9 +174,12 @@ func (s *Service) keep(ctx context.Context, list Candidates, root string) {
 }
 
 // Refresher reads the Release page's list again behind the page, when the page was shown
-// the list kept from a past start, and event.ReleasesUpdated tells the page when it lands.
-// The desktop shell runs it as a worker, from start until quit; it is not bound. While it
-// isn't running, a page shown the kept list waits for GitHub instead.
+// the list kept from a past start, and reads the repository each release ends in again,
+// patching its rows into the list (queuePatch). Meanwhile the list reads as refreshing,
+// event.ReleasesProgress tells the page how far the read has got, and
+// event.ReleasesUpdated when it lands. The desktop shell runs it as a worker, from start
+// until quit; it is not bound. While it isn't running, a page shown the kept list waits for
+// GitHub instead, and a release that ends puts the whole list out of date.
 type Refresher struct {
 	s *Service
 }
@@ -185,8 +189,11 @@ func NewRefresher(s *Service) *Refresher {
 	return &Refresher{s: s}
 }
 
-// Run reads the list again each time the page is shown the kept list, until ctx ends,
-// and returns once the read under way has. A read cut short by ctx keeps nothing.
+// Run reads the list again each time the page is shown the kept list, and the released
+// repositories each time a release ends, until ctx ends, and returns once the read under
+// way has. A read cut short by ctx keeps nothing, and a release it never read again leaves
+// the list out of date, no longer refreshing, as one that ends while it isn't running does,
+// and the window hears so (event.ReleasesUpdated).
 func (r *Refresher) Run(ctx context.Context) {
 	s := r.s
 
@@ -196,8 +203,15 @@ func (r *Refresher) Run(ctx context.Context) {
 
 	defer func() {
 		s.mu.Lock()
+		defer s.mu.Unlock()
+
 		s.background, s.pending = false, false
-		s.mu.Unlock()
+
+		if len(s.unpatched) > 0 || s.patching {
+			s.unpatched, s.patching = map[string]bool{}, false
+			s.outOfDate()
+			s.events.Emit(event.ReleasesUpdated{})
+		}
 	}()
 
 	for {
@@ -206,6 +220,8 @@ func (r *Refresher) Run(ctx context.Context) {
 			return
 		case <-s.wake:
 			s.refreshBehind(ctx)
+		case <-s.wakePatch:
+			s.patchReleased(ctx)
 		}
 	}
 }
