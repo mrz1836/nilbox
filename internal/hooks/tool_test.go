@@ -16,11 +16,12 @@ func TestToolFactsOfReadsTheFeaturesOfEachVersion(t *testing.T) {
 	t.Parallel()
 
 	for version, want := range map[string][]integrations.Feature{
-		"1.13.1": {},
-		"1.14.0": {integrations.FeatureInstallExitCode, integrations.FeatureVerifiedTools},
+		"1.9.0":  {},
+		"1.13.1": {integrations.FeatureSelfUpdate},
+		"1.14.0": {integrations.FeatureInstallExitCode, integrations.FeatureSelfUpdate, integrations.FeatureVerifiedTools},
 		"1.14.1": {
-			integrations.FeatureInstallExitCode, integrations.FeatureRunJSON, integrations.FeatureStatusJSON,
-			integrations.FeatureVerifiedTools,
+			integrations.FeatureInstallExitCode, integrations.FeatureRunJSON, integrations.FeatureSelfUpdate,
+			integrations.FeatureStatusJSON, integrations.FeatureVerifiedTools,
 		},
 		"dev": {},
 	} {

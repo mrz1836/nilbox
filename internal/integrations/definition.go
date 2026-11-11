@@ -1,6 +1,9 @@
 package integrations
 
 import (
+	"maps"
+	"strings"
+
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/repo"
 )
@@ -40,6 +43,12 @@ const (
 
 	// FeatureRunJSON is go-pre-commit's run --json.
 	FeatureRunJSON Feature = "runJson"
+
+	// FeatureSelfUpdate is a tool's own updater, which the app runs to update a copy that
+	// can update itself: it downloads the latest release, checks it against the release's
+	// SHA-256 checksums, and swaps it in for the copy it runs as, with a rename. Older
+	// updaters put the new copy elsewhere, or ran go install.
+	FeatureSelfUpdate Feature = "selfUpdate"
 )
 
 // Definition describes one tool the app can find, install, and drive. Adding a tool is
@@ -69,6 +78,10 @@ type Definition struct {
 	// QuietEnv is set on every run of it: no update banners, no color.
 	QuietEnv map[string]string
 
+	// UpdateArgs make it update itself, in place, from its latest release, once the copy
+	// has FeatureSelfUpdate.
+	UpdateArgs []string
+
 	// MinVersion is the oldest version the app drives.
 	MinVersion string
 
@@ -84,6 +97,46 @@ func (d Definition) Has(f Feature, v Version) bool {
 	return first != "" && v.AtLeast(first)
 }
 
+// RunEnv is the environment a run of the tool gets (§5.5). In the app it is base, the login
+// shell's, with the tool's quiet settings and git's terminal prompts off, since no one can
+// answer one there, each in place of base's own. In the terminal it is only the quiet
+// settings the script exports, colors kept: the terminal's own shell sets the rest up.
+func (d Definition) RunEnv(base []string, runsIn integrationprefs.RunsIn) []string {
+	if runsIn == integrationprefs.RunsInTerminal {
+		out := []string{}
+
+		for _, k := range sortedKeys(d.QuietEnv) {
+			if k != colorVar {
+				out = append(out, k+"="+d.QuietEnv[k])
+			}
+		}
+
+		return out
+	}
+
+	set := map[string]string{"GIT_TERMINAL_PROMPT": "0"}
+	maps.Copy(set, d.QuietEnv)
+
+	out := make([]string, 0, len(base)+len(set))
+
+	for _, kv := range base {
+		key, _, _ := strings.Cut(kv, "=")
+		if _, replaced := set[key]; !replaced {
+			out = append(out, kv)
+		}
+	}
+
+	for _, k := range sortedKeys(set) {
+		out = append(out, k+"="+set[k])
+	}
+
+	return out
+}
+
+// colorVar is the variable that turns a tool's colors off: a run in the terminal keeps
+// them, since it has a terminal to show them in.
+const colorVar = "NO_COLOR"
+
 // Definitions returns every tool the app knows, in the order the settings list them.
 func Definitions() []Definition {
 	return []Definition{MageX(), GoPreCommit()}
@@ -91,7 +144,7 @@ func Definitions() []Definition {
 
 // quietEnv is the environment every tool runs with, plus the tool's own variables.
 func quietEnv(own map[string]string) map[string]string {
-	env := map[string]string{"NO_COLOR": "1"}
+	env := map[string]string{colorVar: "1"}
 
 	for k, v := range own {
 		env[k] = v

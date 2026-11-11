@@ -1,7 +1,8 @@
 // Package clonelock keeps one clone-changing job at a time on each clone: a worktree made
-// or removed, a release, a hooks install, a checks run, or a script. A job that finds its
-// clone busy learns what holds it, which the window shows: "A release is using
-// acme-org/sdk right now."
+// or removed, a release, a hooks install, a checks run, or a script. A tool updating
+// itself, or being installed, holds its folder the same way. A job that finds its clone
+// busy learns what holds it, which the window shows: "A release is using acme-org/sdk
+// right now."
 //
 // A clone is keyed by paths.Resolved, so a path through a symbolic link shares the lock of
 // the folder it names. The locks are in-process: they keep the app's own jobs apart, not
@@ -27,6 +28,11 @@ const (
 	KindChecks   Kind = "checks"
 	KindScript   Kind = "script"
 	KindWorktree Kind = "worktree"
+
+	// KindUpdate is a tool updating itself, which holds the folder its copy is in, and
+	// KindInstall the app installing a tool, which holds the folder it places it in.
+	KindUpdate  Kind = "update"
+	KindInstall Kind = "install"
 
 	// KindOrphan is a run from before the app restarted, still running, which the app
 	// follows under a placeholder lock.
@@ -74,6 +80,10 @@ func (h Holder) doer() string {
 		return "A script"
 	case KindWorktree:
 		return "A worktree change"
+	case KindUpdate:
+		return "A tool update"
+	case KindInstall:
+		return "A tool install"
 	case KindOrphan:
 		return "A run from before " + brand.Name + " restarted"
 	default:

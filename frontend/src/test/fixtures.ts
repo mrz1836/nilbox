@@ -381,6 +381,7 @@ export function installPlan(overrides: Partial<InstallPlan> = {}): InstallPlan {
     foreign: true,
     blocked: '',
     brewCommand: '',
+    updater: '',
     ...overrides,
   }
 }
@@ -420,7 +421,7 @@ export function scriptRunChunk(overrides: Partial<ScriptRunChunk> = {}): ScriptR
 
 // installResult is what installing mage-x 1.30.0 said it did, and the tools after it.
 export function installResult(overrides: Partial<InstallResult> = {}): InstallResult {
-  return { message: 'Installed mage-x 1.30.0 in ~/.local/bin', tools: integrationTools(), ...overrides }
+  return { message: 'Installed mage-x 1.30.0 in ~/.local/bin', run: 0, tools: integrationTools(), ...overrides }
 }
 
 // integrationTool is mage-x, switched automatically, found, and as new as its latest
@@ -449,6 +450,7 @@ export function integrationTool(overrides: Partial<IntegrationTool> = {}): Integ
     },
     install: installPlan(),
     progress: { step: '', done: 0, total: 0 },
+    selfUpdate: { run: 0, running: false, updated: false, failed: false, message: '' },
     checkedAt: '2026-06-15T11:50:00Z',
     ...overrides,
   }

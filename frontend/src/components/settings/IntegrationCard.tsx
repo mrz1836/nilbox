@@ -20,6 +20,7 @@ import {
   type IntegrationTool,
   type IntegrationTools,
   type Settings,
+  type TerminalID,
   type ToolCopy,
   type ToolSource,
   type ToolState,
@@ -27,6 +28,7 @@ import {
 import { CommandLine } from '../CommandLine'
 import { buttonClass, fieldClass, primaryButtonClass, quietButtonClass, Switch } from '../controls'
 import { AlertIcon, CheckIcon, ChevronRightIcon, ExternalIcon, XIcon } from '../icons'
+import { RunPanel } from '../scripts/RunPanel'
 import { Spinner } from '../Spinner'
 import { InstallDialog, type InstallKind } from './InstallDialog'
 import { cardMatchClass, headingMatchClass, useSetting } from './match'
@@ -89,8 +91,9 @@ function megabytes(bytes: number): string {
 }
 
 // progressText is how far a running install has got: the download, in megabytes once its
-// size is known, then the checksum, a trial run, and putting it in place.
-function progressText({ step, done, total }: InstallProgress): string {
+// size is known, then the checksum, a trial run, and putting it in place; or the tool's
+// own updater, running.
+function progressText({ step, done, total }: InstallProgress, binary: string): string {
   switch (step) {
     case 'downloading':
       return total > 0 ? `Downloading… ${megabytes(done)} of ${megabytes(total)} MB` : 'Downloading…'
@@ -98,6 +101,8 @@ function progressText({ step, done, total }: InstallProgress): string {
       return 'Checking the checksum…'
     case 'trying':
       return 'Trying it…'
+    case 'updating':
+      return `${binary} is updating itself…`
     default:
       return 'Installing…'
   }
@@ -376,6 +381,9 @@ export interface IntegrationCardProps {
   // onTools receives the tools as an install or a move to the Trash left them, to show in
   // place of the list.
   onTools: (tools: IntegrationTools) => void
+  // terminal is the terminal chosen for launches, which the run of a tool's own updater
+  // names, or null until the settings have loaded.
+  terminal: TerminalID | null
 }
 
 // Asking is the install the dialog asks about: its kind, and whether confirming it turns
@@ -390,8 +398,10 @@ interface Asking {
 // behind Details, every copy found and a way to choose another or move one to the Trash.
 // A change to the switch shows at once, and holds until the tools are read again. Every
 // install asks first, then shows its progress here as the tools are read again, and what
-// it did, or why it failed, until the next change.
-export function IntegrationCard({ tool, checking, onSaved, reload, onTools }: IntegrationCardProps) {
+// it did, or why it failed, until the next change. A copy that updates itself runs its own
+// updater: its run shows here, live, and once it ended and the tool was looked for again,
+// what it did.
+export function IntegrationCard({ tool, checking, onSaved, reload, onTools, terminal }: IntegrationCardProps) {
   const id = useId()
   const [marks, match] = useSetting(tool.name)
   const [shownSwitch, showSwitch] = useOptimistic(tool.switch)
@@ -401,7 +411,10 @@ export function IntegrationCard({ tool, checking, onSaved, reload, onTools }: In
   const [asking, setAsking] = useState<Asking | null>(null)
   // outcome is what the last install did, or why it failed, until the next change.
   const [outcome, setOutcome] = useState<Result<string> | null>(null)
-  const { copy, install: plan } = tool
+  // followed is the run of the tool's own updater the card shows, as an update started it
+  // or the user opened it, until it is closed or the next change.
+  const [followed, setFollowed] = useState<number | null>(null)
+  const { copy, install: plan, selfUpdate } = tool
   // The switch shows the tool as listed, or, while a flip is stored, as flipped.
   const on = shownSwitch === tool.switch ? tool.on : shownSwitch === 'on'
   const installing = tool.progress.step !== ''
@@ -409,6 +422,14 @@ export function IntegrationCard({ tool, checking, onSaved, reload, onTools }: In
   const kind = mainKinds[tool.state]
   const blocked = kind === null ? '' : plan.blocked
   const folder = folderOf(copy)
+  // ended is what the followed run did, once it ended and the tool was looked for again.
+  const ended =
+    followed !== null && selfUpdate.run === followed && !selfUpdate.running && selfUpdate.message !== ''
+      ? selfUpdate
+      : null
+  // showable is the run of the tool's own updater going now that the card can show, once
+  // its ID is known, while it doesn't already.
+  const showable = selfUpdate.running && selfUpdate.run !== 0 && followed !== selfUpdate.run ? selfUpdate.run : null
 
   // act runs a change with call while the card is busy, showing it at once with show,
   // and resolves with how it went. What the last install did is cleared first: it shows
@@ -416,6 +437,7 @@ export function IntegrationCard({ tool, checking, onSaved, reload, onTools }: In
   const act = <T,>(call: () => PromiseLike<T>, show?: () => void) =>
     new Promise<Result<T>>((resolve) => {
       setOutcome(null)
+      setFollowed(null)
       startSaving(async () => {
         show?.()
         resolve(await attempt(start(call)))
@@ -472,7 +494,9 @@ export function IntegrationCard({ tool, checking, onSaved, reload, onTools }: In
   }
 
   // runInstall runs the install the user confirmed, turning the tool on first when that
-  // is how they asked, and shows the tools as it left them and what it did.
+  // is how they asked, and shows the tools as it left them and what it did. An update the
+  // tool runs itself says nothing yet: its run shows instead, and says what it did as it
+  // ends.
   const runInstall = async (confirmed: Asking) => {
     if (confirmed.turnOn && !(await setSwitch('on'))) {
       return
@@ -483,12 +507,16 @@ export function IntegrationCard({ tool, checking, onSaved, reload, onTools }: In
 
       startTransition(() => {
         onTools(done.tools)
+
+        if (done.run !== 0) {
+          setFollowed(done.run)
+        }
       })
 
       return done.message
     })
 
-    setOutcome(result)
+    setOutcome(result.ok && result.data === '' ? null : result)
   }
 
   // trash moves a copy to the Trash, then shows the tools as it left them.
@@ -538,7 +566,18 @@ export function IntegrationCard({ tool, checking, onSaved, reload, onTools }: In
             {installing ? (
               <p className="flex items-start gap-1.5 text-text">
                 <Spinner className="mt-px size-3.5" />
-                <span className="min-w-0 break-words">{progressText(tool.progress)}</span>
+                <span className="min-w-0 break-words">{progressText(tool.progress, tool.binary)}</span>
+                {showable !== null && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFollowed(showable)
+                    }}
+                    className="shrink-0 font-medium text-accent hover:underline"
+                  >
+                    Show the run
+                  </button>
+                )}
               </p>
             ) : (
               <p className={`flex items-start gap-1.5 ${tool.state === 'tooOld' ? 'text-warning' : 'text-text'}`}>
@@ -581,6 +620,27 @@ export function IntegrationCard({ tool, checking, onSaved, reload, onTools }: In
           ) : (
             <ErrorText error={outcome.error} />
           ))}
+        {ended !== null &&
+          (ended.failed ? (
+            <ErrorText error={ended.message} />
+          ) : (
+            <p role="status" className="flex items-start gap-1.5 text-text">
+              <CheckIcon className="mt-px size-3.5 shrink-0 text-success" />
+              <span className="min-w-0 break-words">{ended.message}</span>
+            </p>
+          ))}
+        {followed !== null && (
+          <div className="mt-1.5 flex h-80 flex-col rounded-lg border border-border">
+            <RunPanel
+              id={followed}
+              terminal={terminal}
+              onSelect={setFollowed}
+              onClose={() => {
+                setFollowed(null)
+              }}
+            />
+          </div>
+        )}
         {copy.source === 'app' && !copy.onPath && (
           <div className="flex flex-col items-start gap-1.5">
             <p className="flex items-start gap-1.5 text-warning">

@@ -36,6 +36,21 @@ function downloadText(tool: IntegrationTool): string {
   return `${brand.name} downloads ${what}, checks it against the release’s SHA-256 checksums, and puts ${tool.binary} in ${targetDir}. Nothing else on your Mac changes.`
 }
 
+// SelfUpdateText says what a tool's own updater does: the command the app runs, which
+// downloads the latest release, checks it, and swaps it in for the copy.
+function SelfUpdateText({ tool }: { tool: IntegrationTool }) {
+  const { version, updater } = tool.install
+  const release = version === '' ? 'its latest release' : version
+
+  return (
+    <p>
+      {tool.binary} updates itself: {brand.name} runs <span className="font-mono break-all text-text">{updater}</span>,
+      which downloads {release} from the {tool.repo} release on GitHub, checks it against the release’s SHA-256
+      checksums, and swaps it in for the copy. Its output shows here as it runs.
+    </p>
+  )
+}
+
 export interface InstallDialogProps {
   tool: IntegrationTool
   kind: InstallKind
@@ -45,28 +60,31 @@ export interface InstallDialogProps {
 
 // InstallDialog asks before an install, an update, or a reinstall: what is downloaded
 // and checked, where it goes, the copy it replaces, and, for a copy the app didn't
-// install, whether to replace it at all. It only asks; the card runs the install and
-// shows its progress.
+// install, whether to replace it at all. An update a copy runs itself says what its own
+// updater does instead, and never asks that: the tool replaces its own copy. It only
+// asks; the card runs the install and shows its progress.
 export function InstallDialog({ tool, kind, onConfirm, onCancel }: InstallDialogProps) {
   const { binary } = tool
-  const { version, replaces, replacesPath, foreign } = tool.install
+  const { version, replaces, replacesPath, foreign, updater } = tool.install
+  const itself = kind === 'update' && updater !== ''
+  const alarm = foreign && !itself
 
   return (
     <ConfirmDialog
       title={installTitle(kind, tool)}
-      confirmLabel={foreign ? 'Replace' : confirmLabels[kind]}
-      tone={foreign ? 'danger' : 'primary'}
+      confirmLabel={alarm ? 'Replace' : confirmLabels[kind]}
+      tone={alarm ? 'danger' : 'primary'}
       onConfirm={onConfirm}
       onCancel={onCancel}
     >
-      <p>{downloadText(tool)}</p>
+      {itself ? <SelfUpdateText tool={tool} /> : <p>{downloadText(tool)}</p>}
       {replacesPath !== '' && (
         <p className="mt-2">
           Replaces <span className="font-mono text-text">{`${binary} ${replaces}`.trimEnd()}</span> at{' '}
           <span className="font-mono break-all text-text">{replacesPath}</span>.
         </p>
       )}
-      {foreign && (
+      {alarm && (
         <p className="mt-2 text-text">
           This copy wasn’t installed by {brand.name}. Replace it with {version === '' ? 'the latest release' : version}?
         </p>

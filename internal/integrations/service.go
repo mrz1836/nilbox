@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/clonelock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
@@ -122,6 +123,15 @@ type Config struct {
 	// Installer installs releases. Without it, nothing is installed.
 	Installer *toolinstall.Installer
 
+	// Runs runs a tool's own updater, for a copy that can update itself, as a run the
+	// window follows. Without it, no tool updates itself: the Installer does every update.
+	Runs Runs
+
+	// Locks is the app's one set of clone locks, which the runs hold too: the Installer
+	// holds the folder it places a program in, so it never meets a tool's own update there.
+	// Without it, the service keeps a set of its own.
+	Locks *clonelock.Set
+
 	// Commands runs Finder's scripts and open, for the Trash and Reveal in Finder.
 	Commands execpath.Runner
 
@@ -151,6 +161,8 @@ type Service struct {
 
 	queries      *queries.Queries
 	installer    *toolinstall.Installer
+	runs         Runs
+	locks        *clonelock.Set
 	commands     execpath.Runner
 	inUse        func(id integrationprefs.ID) bool
 	goos, goarch string
@@ -165,18 +177,22 @@ type Service struct {
 	detectMu sync.Mutex
 	checkMu  sync.Mutex
 
-	// mu guards detected and detectedAt, this run's last detection, nil until one ends;
-	// pending, set while a detection is asked for; and running, set while one runs.
+	// mu guards detected and detectedAt, this run's last detection, nil until one ends,
+	// and goBins, go install's folders as it found them; pending, set while a detection is
+	// asked for; and running, set while one runs.
 	mu         sync.Mutex
 	detected   map[string]detection
 	detectedAt time.Time
+	goBins     goFolders
 	pending    bool
 	running    bool
 
-	// installing is each running install's progress, and hashes the files hashed, by
-	// path; signedOut reports that the last update check found no one signed in to GitHub.
-	// mu guards them.
+	// installing is each running install's progress, updates each tool's last run of its
+	// own updater since the app started, and hashes the files hashed, by path; signedOut
+	// reports that the last update check found no one signed in to GitHub. mu guards them,
+	// and the runs' own fields.
 	installing map[integrationprefs.ID]InstallProgress
+	updates    map[integrationprefs.ID]*selfRun
 	hashes     map[string]cachedHash
 	signedOut  bool
 }
@@ -198,12 +214,16 @@ func NewService(cfg Config) *Service {
 	s := &Service{
 		prefs: cfg.Prefs, env: cfg.Env, releases: cfg.Releases, home: cfg.Home, clock: clock.Or(cfg.Clock),
 		events: event.Or(cfg.Events), logger: logging.Or(cfg.Logger), defs: defs, run: run, dirsFor: dirsFrom,
-		wake: make(chan struct{}, 1), installer: cfg.Installer, commands: cfg.Commands, inUse: cfg.InUse,
+		wake: make(chan struct{}, 1), installer: cfg.Installer, runs: cfg.Runs, commands: cfg.Commands, inUse: cfg.InUse,
 		goos: cmp.Or(cfg.GOOS, runtime.GOOS), goarch: cmp.Or(cfg.GOARCH, runtime.GOARCH),
 	}
 
 	if cfg.DB != nil {
 		s.queries = queries.New(cfg.DB)
+	}
+
+	if s.locks = cfg.Locks; s.locks == nil {
+		s.locks = clonelock.New()
 	}
 
 	if s.inUse == nil {
@@ -251,9 +271,7 @@ func (s *Service) List(ctx context.Context) (Tools, error) {
 		t := tool(def, cfg, d, latest, checking, checkedAt, s.home)
 		t.Install = s.plan(def, d, latest, t.State)
 
-		s.mu.Lock()
-		t.Progress = s.installing[def.ID]
-		s.mu.Unlock()
+		t.Progress, t.SelfUpdate = s.progressOf(def.ID)
 
 		out.Tools = append(out.Tools, t)
 	}
@@ -292,6 +310,29 @@ func (s *Service) CheckAgain(ctx context.Context) (Tools, error) {
 	return s.List(ctx)
 }
 
+// progressOf returns how far the tool's install has got, updating while its own updater
+// runs, and that updater's last run since the app started, or the one the runner follows
+// from before the app restarted.
+func (s *Service) progressOf(id integrationprefs.ID) (InstallProgress, SelfUpdate) {
+	if run := s.orphanedUpdate(id); run != 0 {
+		return InstallProgress{Step: StepUpdating}, SelfUpdate{Run: run, Running: true}
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	r := s.updates[id]
+
+	switch {
+	case r == nil:
+		return s.installing[id], SelfUpdate{}
+	case r.running:
+		return InstallProgress{Step: StepUpdating}, r.view()
+	default:
+		return s.installing[id], r.view()
+	}
+}
+
 // keys returns every preference List reads.
 func (s *Service) keys() []string {
 	keys := integrationprefs.Keys()
@@ -316,6 +357,12 @@ func (s *Service) wakeUp() {
 
 // detect looks for every tool, keeps what it found, and emits an event.ToolsUpdated.
 func (s *Service) detect(ctx context.Context) error {
+	return s.detectThen(ctx, nil)
+}
+
+// detectThen is detect, handing seen what the look found before its copies are matched
+// with the installs recorded, where a tool's own update records the copy it swapped in.
+func (s *Service) detectThen(ctx context.Context, seen func(map[string]detection)) error {
 	s.detectMu.Lock()
 	defer s.detectMu.Unlock()
 
@@ -344,20 +391,53 @@ func (s *Service) detect(ctx context.Context) error {
 	}
 
 	env, _ := s.env.Env()
-	got := detectAll(ctx, s.defs, chosen, s.dirsFor(env, s.home), env, s.home, s.run)
+	dirs := s.dirsFor(env, s.home)
+	s.addGoEnv(ctx, env, &dirs)
+
+	got := detectAll(ctx, s.defs, chosen, dirs, env, s.home, s.run)
 	now := s.clock.Now()
 
-	for id, d := range got {
-		s.markInstalled(ctx, &d)
-		got[id] = d
+	if seen != nil {
+		seen(got)
 	}
+
+	s.settle(ctx, got, dirs.goBins)
 
 	if ctx.Err() != nil {
 		return ctx.Err() //nolint:wrapcheck // the caller's own context ended
 	}
 
-	values := make(map[string]string, len(got))
+	found, err := s.keep(ctx, got, now)
+	if err != nil {
+		return err
+	}
 
+	s.mu.Lock()
+	s.detected, s.detectedAt, s.goBins = got, now, dirs.goBins
+	s.mu.Unlock()
+
+	s.logger.InfoContext(ctx, "looked for the tools", "duration", time.Since(start).Round(time.Millisecond),
+		"found", found, "of", len(s.defs))
+	s.events.Emit(event.ToolsUpdated{})
+
+	return nil
+}
+
+// settle marks each copy the app installed, then works out, once per detection, whether
+// the copy in use updates itself.
+func (s *Service) settle(ctx context.Context, got map[string]detection, bins goFolders) {
+	for _, def := range s.defs {
+		d := got[string(def.ID)]
+		s.markInstalled(ctx, &d)
+		d.selfUpdates = d.has && s.updatesItself(def, d.selected, bins)
+		got[string(def.ID)] = d
+	}
+}
+
+// keep keeps what a detection found of each tool, for the next start, and returns how many
+// were found. A failed write is logged: the detection still stands for this run.
+func (s *Service) keep(ctx context.Context, got map[string]detection, now time.Time) (int, error) {
+	values := make(map[string]string, len(got))
 	found := 0
 
 	for _, def := range s.defs {
@@ -366,27 +446,19 @@ func (s *Service) detect(ctx context.Context) error {
 			found++
 		}
 
-		raw, encodeErr := json.Marshal(recordOf(d, now))
-		if encodeErr != nil {
-			return fmt.Errorf("keep what was found of %s: %w", def.Name, encodeErr)
+		raw, err := json.Marshal(recordOf(d, now))
+		if err != nil {
+			return 0, fmt.Errorf("keep what was found of %s: %w", def.Name, err)
 		}
 
 		values[seenKey(def.ID)] = string(raw)
 	}
 
-	if err = s.prefs.SetMany(ctx, values); err != nil {
+	if err := s.prefs.SetMany(ctx, values); err != nil {
 		s.logger.WarnContext(ctx, "couldn't keep what was found of the tools", "error", err)
 	}
 
-	s.mu.Lock()
-	s.detected, s.detectedAt = got, now
-	s.mu.Unlock()
-
-	s.logger.InfoContext(ctx, "looked for the tools", "duration", time.Since(start).Round(time.Millisecond),
-		"found", found, "of", len(s.defs))
-	s.events.Emit(event.ToolsUpdated{})
-
-	return nil
+	return found, nil
 }
 
 // checkUpdates looks up every tool's latest release and keeps it, unless every tool was

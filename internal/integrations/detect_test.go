@@ -60,6 +60,7 @@ type machine struct {
 	mu      sync.Mutex
 	answers map[string]answer
 	envs    map[string][]string
+	args    map[string][]string
 }
 
 func newMachine(t *testing.T) *machine {
@@ -70,7 +71,7 @@ func newMachine(t *testing.T) *machine {
 		t: t, root: root, home: filepath.Join(root, "home"),
 		pathA: filepath.Join(root, "usr", "local", "bin"), pathB: filepath.Join(root, "home", ".local", "bin"),
 		brew: filepath.Join(root, "opt", "homebrew", "bin"), goBin: filepath.Join(root, "home", "go", "bin"),
-		answers: map[string]answer{}, envs: map[string][]string{},
+		answers: map[string]answer{}, envs: map[string][]string{}, args: map[string][]string{},
 	}
 
 	for _, dir := range []string{m.pathA, m.pathB, m.brew, m.goBin} {
@@ -82,7 +83,9 @@ func newMachine(t *testing.T) *machine {
 
 // dirs is where the machine's tools are looked for.
 func (m *machine) dirs() searchDirs {
-	return searchDirs{path: []string{m.pathA, m.pathB}, extra: []string{m.brew, m.goBin}, goBins: []string{m.goBin}}
+	return searchDirs{
+		path: []string{m.pathA, m.pathB}, extra: []string{m.brew, m.goBin}, goBins: goFolders{dirs: []string{m.goBin}},
+	}
 }
 
 // put writes an executable magex in dir that answers a.
@@ -117,6 +120,7 @@ func (m *machine) run(ctx context.Context, path string, args, env []string) ([]b
 	m.mu.Lock()
 	a, ok := m.answers[path]
 	m.envs[path] = env
+	m.args[path] = args
 	m.mu.Unlock()
 
 	// The copies the test puts are empty files that answer as recorded. A file with
@@ -136,7 +140,9 @@ func (m *machine) run(ctx context.Context, path string, args, env []string) ([]b
 		return nil, nil, ctx.Err()
 	}
 
-	assert.Equal(m.t, []string{"--version"}, args)
+	if filepath.Base(path) != "go" {
+		assert.Equal(m.t, []string{"--version"}, args)
+	}
 
 	return []byte(a.stdout), []byte(a.stderr), a.err
 }
@@ -452,16 +458,32 @@ func TestDirsFrom(t *testing.T) {
 		name       string
 		env        []string
 		wantPath   []string
-		wantGoBins []string
+		wantGoBins goFolders
 	}{
 		{
 			"no go settings",
 			[]string{"PATH=/usr/bin:relative/bin::/bin:/usr/bin"},
 			[]string{"/usr/bin", "/bin"},
-			[]string{"/Users/example/go/bin"},
+			goFolders{dirs: []string{"/Users/example/go/bin"}},
 		},
-		{"GOBIN", []string{"GOBIN=/opt/go/bin"}, []string{}, []string{"/opt/go/bin"}},
-		{"GOPATH", []string{"GOPATH=/opt/go:/srv/go"}, []string{}, []string{"/opt/go/bin", "/srv/go/bin"}},
+		{
+			"GOBIN, with GOPATH's default too",
+			[]string{"GOBIN=/opt/go/bin"},
+			[]string{},
+			goFolders{dirs: []string{"/opt/go/bin", "/Users/example/go/bin"}},
+		},
+		{
+			"GOPATH",
+			[]string{"GOPATH=/opt/go:/srv/go:"},
+			[]string{},
+			goFolders{dirs: []string{"/opt/go/bin", "/srv/go/bin", "/Users/example/go/bin"}},
+		},
+		{
+			"every one, relative ones apart",
+			[]string{"GOBIN= rel ", "GOPATH=/opt/go:../tools"},
+			[]string{},
+			goFolders{dirs: []string{"/opt/go/bin", "/Users/example/go/bin"}, rel: []string{"rel", "../tools/bin"}},
+		},
 	}
 
 	for _, tt := range tests {
@@ -472,10 +494,31 @@ func TestDirsFrom(t *testing.T) {
 			assert.Equal(t, tt.wantPath, got.path, "the shell's PATH, absolute folders once each")
 			assert.Equal(t, tt.wantGoBins, got.goBins)
 
-			assert.Equal(t, absDirs(append(slices.Clone(wellKnown), tt.wantGoBins...)), got.extra,
+			assert.Equal(t, absDirs(append(slices.Clone(wellKnown), tt.wantGoBins.dirs...)), got.extra,
 				"the well-known folders, then go install's, each once")
 		})
 	}
+}
+
+func TestGoFoldersHaveOneRule(t *testing.T) {
+	t.Parallel()
+
+	root := testutil.RealTempDir(t)
+	work := filepath.Join(root, "work")
+	linked := filepath.Join(root, "linked")
+	require.NoError(t, os.MkdirAll(filepath.Join(work, "bin"), 0o700))
+	require.NoError(t, os.Symlink(work, linked))
+
+	var bins goFolders
+
+	bins.add(filepath.Join(root, "gobin"), linked+string(filepath.ListSeparator)+"..")
+	bins.add(filepath.Join(root, "gobin"), "")
+
+	assert.Equal(t, []string{filepath.Join(root, "gobin"), filepath.Join(linked, "bin")}, bins.dirs, "each once")
+	assert.True(t, bins.has(filepath.Join(root, "gobin")), "$GOBIN")
+	assert.True(t, bins.has(filepath.Join(work, "bin")), "a $GOPATH folder's bin, through a link")
+	assert.True(t, bins.has(filepath.Join(root, "tools", "bin")), "../bin, taken from a bin folder itself")
+	assert.False(t, bins.has(filepath.Join(root, "tools")))
 }
 
 func TestDetectionRunsAtMostFourCopiesAtOnce(t *testing.T) {

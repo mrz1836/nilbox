@@ -64,6 +64,37 @@ func TestReconcileFollowsAnOrphanedRunUntilItsGroupEnds(t *testing.T) {
 	assert.False(t, held)
 }
 
+func TestReconcileKeepsAToolsOrphanedUpdateTellingItUpdates(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	procs := newFakeProcs()
+	procs.install(h.e)
+	procs.run(4343, startedLong())
+
+	dir := h.clone()
+	id, err := h.e.store.insert(t.Context(), started{
+		spec:    Spec{Kind: KindUpdate, Title: "Update magex", Dir: dir, Argv: []string{"/usr/bin/true"}},
+		command: "magex update:install", runsIn: RunsInApp, at: time.Now(), result: Result{Tool: "mage-x"},
+	})
+	require.NoError(t, err)
+	require.NoError(t, h.e.store.setProcess(t.Context(), id, 4343, 4343, startedLong()))
+
+	h.e.reconcile(t.Context())
+
+	assert.Equal(t, id, h.e.Updating("mage-x"), "however it started, the tool is updating")
+	assert.False(t, h.e.InUse("mage-x"))
+
+	holder, held := h.locks.Holder(dir)
+	require.True(t, held, "it holds its copy's folder, which an install then can't take")
+	assert.Equal(t, clonelock.KindOrphan, holder.Kind)
+
+	procs.end(4343)
+	h.ended(id)
+
+	assert.Zero(t, h.e.Updating("mage-x"))
+}
+
 func TestReconcileTellsOrphanedFromInterrupted(t *testing.T) {
 	t.Parallel()
 

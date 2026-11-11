@@ -210,7 +210,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     listIntegrations: () => Promise.resolve(integrationTools()),
     checkIntegrationsAgain: () => Promise.resolve(integrationTools()),
     installIntegration: () => Promise.resolve(installResult()),
-    updateIntegration: () => Promise.resolve(installResult({ message: 'Updated mage-x to 1.30.0' })),
+    updateIntegration: () => Promise.resolve(installResult({ message: 'Updated magex to 1.30.0' })),
     reinstallIntegration: () => Promise.resolve(installResult({ message: 'Reinstalled mage-x 1.29.5' })),
     trashToolCopy: () => Promise.resolve(integrationTools()),
     revealToolCopy: done,

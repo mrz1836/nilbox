@@ -91,6 +91,14 @@ export interface InstallPlan {
      */
     "blocked": string;
     "brewCommand": string;
+
+    /**
+     * Updater, for an update of a copy that updates itself, is the tool's own update
+     * command, as the window shows it ("~/.local/bin/magex update:install"), which the
+     * update runs in place of the app's download. It is "" when the app installs the
+     * release itself.
+     */
+    "updater": string;
 }
 
 /**
@@ -98,7 +106,8 @@ export interface InstallPlan {
  */
 export interface InstallProgress {
     /**
-     * Step is downloading, verifying, trying, or installing, or "" when none runs.
+     * Step is downloading, verifying, trying, or installing, updating while the tool's own
+     * updater runs, or "" when none runs.
      */
     "step": string;
     "done": number;
@@ -110,9 +119,16 @@ export interface InstallProgress {
  */
 export interface InstallResult {
     /**
-     * Message says what was done, as in "Installed go-pre-commit 1.13.1 in ~/.local/bin".
+     * Message says what was done, as in "Installed go-pre-commit 1.13.1 in ~/.local/bin";
+     * it is "" for an update the tool runs itself, whose run says so as it ends.
      */
     "message": string;
+
+    /**
+     * Run is the run of the tool's own updater an update started, which the window shows,
+     * or 0 when the app installed the release itself.
+     */
+    "run": number;
     "tools": Tools;
 }
 
@@ -130,6 +146,29 @@ export interface Latest {
      * CheckedAt is when it was checked.
      */
     "checkedAt": string;
+}
+
+/**
+ * SelfUpdate is the last run of a tool's own updater since the app started, or one the
+ * runner follows from before it restarted, as the settings card follows it.
+ */
+export interface SelfUpdate {
+    /**
+     * Run is the run's ID, or 0 when the tool hasn't updated itself since the app started,
+     * and Running reports that it goes now.
+     */
+    "run": number;
+    "running": boolean;
+
+    /**
+     * Updated reports that it ended with the copy at a newer version, Failed that it ended
+     * any way but updated or already up to date, and Message says what it did, as "Updated
+     * magex to 1.30.0" or "magex is already up to date (1.30.0)", or why it failed, once the
+     * run ended and the tool was looked for again; until then all three are unset.
+     */
+    "updated": boolean;
+    "failed": boolean;
+    "message": string;
 }
 
 /**
@@ -258,6 +297,11 @@ export interface Tool {
      */
     "install": InstallPlan;
     "progress": InstallProgress;
+
+    /**
+     * SelfUpdate is the last run of the tool's own updater since the app started.
+     */
+    "selfUpdate": SelfUpdate;
 
     /**
      * CheckedAt is when the tool was last looked for, or "" when it never was.

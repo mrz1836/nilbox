@@ -17,6 +17,7 @@ export type {
     InstallProgress,
     InstallResult,
     Latest,
+    SelfUpdate,
     Tool,
     Tools,
     Version

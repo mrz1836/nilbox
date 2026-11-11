@@ -76,7 +76,7 @@ export function runDuration(run: Pick<ScriptRun, 'startedAt' | 'finishedAt'>): s
 }
 
 // RunFilterID is one of the Runs page's filters.
-export type RunFilterID = 'all' | 'release' | 'hooks' | 'scripts'
+export type RunFilterID = 'all' | 'release' | 'hooks' | 'scripts' | 'updates'
 
 // RunFilter is a filter's name, the kinds of run it lists (none for every kind), and
 // what the page says when it lists none.
@@ -87,16 +87,17 @@ export interface RunFilter {
 }
 
 // runFilters are the Runs page's filters. Hooks takes the checks along with the hooks
-// actions, since go-pre-commit does both.
+// actions, since go-pre-commit does both; Updates are the tools updating themselves.
 export const runFilters: Readonly<Record<RunFilterID, RunFilter>> = {
   all: { label: 'All', kinds: [], none: 'Nothing has run yet. Releases, checks, and scripts you run show here.' },
   release: { label: 'Release', kinds: ['release'], none: 'No release has run yet.' },
   hooks: { label: 'Hooks', kinds: ['hooks', 'checks'], none: 'No hooks actions or checks have run yet.' },
   scripts: { label: 'Scripts', kinds: ['script'], none: 'No script has run yet.' },
+  updates: { label: 'Updates', kinds: ['update'], none: 'No tool has updated itself yet.' },
 }
 
 // runFilterOrder is the order the page offers the filters in.
-export const runFilterOrder: readonly RunFilterID[] = ['all', 'release', 'hooks', 'scripts']
+export const runFilterOrder: readonly RunFilterID[] = ['all', 'release', 'hooks', 'scripts', 'updates']
 
 // filterRuns picks the runs a filter and a repository search list, in their order, as
 // the backend's Filter would: a run of one of the filter's kinds, whose "owner/name"

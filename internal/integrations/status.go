@@ -78,6 +78,9 @@ type Tool struct {
 	Install  InstallPlan     `json:"install"`
 	Progress InstallProgress `json:"progress"`
 
+	// SelfUpdate is the last run of the tool's own updater since the app started.
+	SelfUpdate SelfUpdate `json:"selfUpdate"`
+
 	// CheckedAt is when the tool was last looked for, or "" when it never was.
 	CheckedAt string `json:"checkedAt"`
 }
@@ -198,6 +201,7 @@ type seenRecord struct {
 	Chosen        bool      `json:"chosen"`
 	ChosenMissing bool      `json:"chosenMissing"`
 	Stat          fileStat  `json:"stat"`
+	SelfUpdates   bool      `json:"selfUpdates"`
 	CheckedAt     time.Time `json:"checkedAt"`
 }
 
@@ -205,7 +209,7 @@ type seenRecord struct {
 func recordOf(d detection, at time.Time) seenRecord {
 	return seenRecord{
 		Has: d.has, Copy: d.selected, Others: d.others, ChosenPath: d.chosenPath, Chosen: d.chosen,
-		ChosenMissing: d.chosenMissing, Stat: d.stat,
+		ChosenMissing: d.chosenMissing, Stat: d.stat, SelfUpdates: d.selfUpdates,
 		CheckedAt: at.UTC(),
 	}
 }
@@ -214,7 +218,7 @@ func recordOf(d detection, at time.Time) seenRecord {
 func (r seenRecord) detection() detection {
 	return detection{
 		selected: r.Copy, has: r.Has, chosenPath: r.ChosenPath, chosen: r.Chosen, chosenMissing: r.ChosenMissing,
-		others: r.Others, stat: r.Stat,
+		others: r.Others, stat: r.Stat, selfUpdates: r.SelfUpdates,
 	}
 }
 

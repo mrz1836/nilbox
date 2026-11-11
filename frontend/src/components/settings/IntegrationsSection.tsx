@@ -156,6 +156,7 @@ export function IntegrationsSection({ settings, onSaved }: IntegrationsSectionPr
               onSaved={onSaved}
               reload={reload}
               onTools={replace}
+              terminal={settings?.terminal ?? null}
             />
           ))}
       {settings !== null && (
