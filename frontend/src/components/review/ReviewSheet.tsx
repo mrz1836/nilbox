@@ -26,7 +26,8 @@ import { ActionProgress } from './ActionProgress'
 import { AgentVerdict } from './AgentVerdict'
 import { DiffView } from './DiffView'
 import { FileList } from './FileList'
-import { MergeConfirmDialog } from './MergeConfirmDialog'
+import { ActionConfirmDialog } from './ActionConfirmDialog'
+import { MergeConfirmDialog, merges } from './MergeConfirmDialog'
 import { commentFirst, heldBack, ReviewComposer, sendsText, useReplyBody } from './ReviewComposer'
 import { ReviewHeader } from './ReviewHeader'
 import { DescriptionSkeleton, DiffSkeleton, FileListSkeleton, ReadingBanner, SummarySkeleton } from './ReviewLoading'
@@ -432,20 +433,35 @@ export function ReviewSheet({
         )}
       </div>
       {progress !== null && <ActionProgress title={progress.title} target={progress.target} steps={progress.steps} />}
-      {confirming !== null && review !== null && (
-        <MergeConfirmDialog
-          review={review}
-          offer={confirming}
-          comment={commentFirst(confirming, reply.body, draft.comments.length)}
-          onCancel={() => {
-            setConfirming(null)
-          }}
-          onConfirm={(method) => {
-            setConfirming(null)
-            void send(review, confirming.action, method, confirming.warnings.length > 0)
-          }}
-        />
-      )}
+      {/* A merge asks with its methods; any other action that asks first, with none. */}
+      {confirming !== null &&
+        review !== null &&
+        (merges(confirming.action) ? (
+          <MergeConfirmDialog
+            review={review}
+            offer={confirming}
+            comment={commentFirst(confirming, reply.body, draft.comments.length)}
+            onCancel={() => {
+              setConfirming(null)
+            }}
+            onConfirm={(method) => {
+              setConfirming(null)
+              void send(review, confirming.action, method, confirming.warnings.length > 0)
+            }}
+          />
+        ) : (
+          <ActionConfirmDialog
+            review={review}
+            offer={confirming}
+            onCancel={() => {
+              setConfirming(null)
+            }}
+            onConfirm={() => {
+              setConfirming(null)
+              void send(review, confirming.action, review.defaultMethod, confirming.warnings.length > 0)
+            }}
+          />
+        ))}
     </Sheet>
   )
 }

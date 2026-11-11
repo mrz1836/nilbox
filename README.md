@@ -387,9 +387,14 @@ More in [The item menu and edits on GitHub](docs/desktop.md#the-item-menu-and-ed
   and **→** step through the list it came from.
 - **One button:** it runs the action that fits, and says what it does: **Approve & squash-merge**,
   **Approve & auto-merge**, **Merge**, **Update branch**, **Ask Dependabot to rebase**, or
-  **Comment** when checks fail. Its menu lists every action, with why one can't run now.
+  **Comment** when checks fail. Its menu lists every action, with why one can't run now, and
+  offers **Ask Dependabot to rebase** on every open Dependabot pull request behind its base and
+  **Update branch** whenever GitHub lets you, whatever the merge state. Neither is the button
+  unless the rules hold the pull request back for being behind (or, for the rebase, it has
+  conflicts); with nothing else to run, the button reads **Choose an action** and opens the menu.
 - **Every merge asks first,** with the methods the repository allows and any warnings to accept.
-  Approve, Comment, Request changes, and Update branch are one click.
+  Approve, Comment, Request changes, and Update branch are one click (Update branch asks first on
+  a Dependabot pull request, which Dependabot stops rebasing once someone else changes it).
 - **Safe by construction:** every write is pinned to the commit you saw: a merge after a push is
   refused, and an approval checks nothing was pushed before it goes, so you never approve code
   you didn't see. A fresh merge-state read comes before every merge, so an admin's

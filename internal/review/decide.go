@@ -144,21 +144,49 @@ func (d decider) offers() []Offer {
 	out := []Offer{d.approveMerge(), d.approveAutoMerge(), d.merge(), d.autoMerge(), d.bypass()}
 	out = append(out, d.review(ActionApprove), d.review(ActionRequestChanges), d.review(ActionComment))
 
-	if f.MergeState == github.MergeStateBehind && !f.Dependabot {
-		out = append(out, d.updateBranch())
+	if f.Dependabot {
+		out = append(out, d.rebaseBot())
 	}
 
-	if f.Dependabot && (f.MergeState == github.MergeStateBehind || f.MergeState == github.MergeStateDirty) {
-		out = append(out, Offer{Action: ActionRebaseBot, Label: "Ask Dependabot to rebase", Enabled: true, Warnings: []string{}})
+	// GitHub says when the user can bring the branch up to date, however the merge state reads
+	// (a branch behind its base reads BLOCKED or CLEAN when the rules don't want it up to
+	// date). A branch the rules hold back for being behind is offered anyway, with why the
+	// user can't, unless it is Dependabot's, which the rebase above keeps up to date.
+	if f.CanUpdateBranch || (f.MergeState == github.MergeStateBehind && !f.Dependabot) {
+		out = append(out, d.updateBranch())
 	}
 
 	out = slices.DeleteFunc(out, func(o Offer) bool { return o.Action == ActionNone })
 
 	for i := range out {
+		// An action with warnings to accept always asks first: Act refuses it otherwise.
+		out[i].Confirm = out[i].Confirm || len(out[i].Warnings) > 0
 		d.markText(&out[i])
 	}
 
 	return out
+}
+
+// rebaseBot offers to ask Dependabot to rebase its pull request, which picks up what
+// landed on the base since, such as the fix for a check failing, whatever the merge state:
+// once the sheet read the pull request, for a user Dependabot takes commands from, and
+// while the branch is behind its base or has conflicts with it.
+func (d decider) rebaseBot() Offer {
+	f := d.f
+	o := Offer{Action: ActionRebaseBot, Label: "Ask Dependabot to rebase", Warnings: []string{}}
+
+	switch {
+	case f.MergeState == "":
+		o.Reason = "Wait for it to load from GitHub."
+	case !f.CanWrite:
+		o.Reason = "Dependabot only takes commands from people with push access to the repository."
+	case f.MergeState != github.MergeStateBehind && f.MergeState != github.MergeStateDirty && !f.CanUpdateBranch:
+		o.Reason = fmt.Sprintf("It's up to date with %s, so there's nothing to rebase.", base(f))
+	default:
+		o.Enabled = true
+	}
+
+	return o
 }
 
 // markText says on an offer what its text and line comments go with: the review it
@@ -410,9 +438,18 @@ func (d decider) autoMergeBlock() string {
 	}
 }
 
-// updateBranch offers to merge the base branch in.
+// dependabotUpdateWarning is what an update of Dependabot's branch asks the user to accept.
+const dependabotUpdateWarning = "Dependabot stops rebasing a pull request once someone else changes its branch. " +
+	"Ask Dependabot to rebase instead to keep it managed."
+
+// updateBranch offers to merge the base branch in. On Dependabot's pull request it warns
+// first, so it asks first: Dependabot stops rebasing a branch someone else changed.
 func (d decider) updateBranch() Offer {
 	o := Offer{Action: ActionUpdateBranch, Label: "Update branch", Warnings: []string{}}
+
+	if d.f.Dependabot {
+		o.Warnings = []string{dependabotUpdateWarning}
+	}
 
 	if d.f.CanUpdateBranch {
 		o.Enabled = true
@@ -466,14 +503,22 @@ func notNowReason(f Facts) string {
 	}
 }
 
-// primary picks the offer the sheet's button runs: exactly one enabled offer, or none
-// when nothing is enabled.
+// primary picks the offer the sheet's button runs: one enabled offer, or none. Asking
+// Dependabot to rebase comes first while its pull request is behind or has conflicts, and
+// Update branch while the rules hold a pull request back for being behind; otherwise both
+// wait in the menu, and are never the button, since each writes to the branch. With no
+// primary and offers enabled, the sheet's button only opens the menu.
 func primary(f Facts, offers []Offer) Action {
 	enabled := func(a Action) bool {
 		return slices.ContainsFunc(offers, func(o Offer) bool { return o.Action == a && o.Enabled })
 	}
 
-	order := []Action{ActionRebaseBot}
+	behind := f.MergeState == github.MergeStateBehind
+	order := []Action{}
+
+	if behind || f.MergeState == github.MergeStateDirty {
+		order = append(order, ActionRebaseBot)
+	}
 
 	// A required check failing holds the merge back, so the button says something about it
 	// instead. An optional one failing doesn't: GitHub merges, once the user accepts it.
@@ -485,8 +530,13 @@ func primary(f Facts, offers []Offer) Action {
 		order = append(order, ActionMerge, ActionAutoMerge)
 	}
 
-	order = append(order, ActionApproveMerge, ActionApproveAutoMerge, ActionUpdateBranch, ActionMerge,
-		ActionAutoMerge, ActionApprove, ActionComment, ActionRequestChanges)
+	order = append(order, ActionApproveMerge, ActionApproveAutoMerge)
+
+	if behind {
+		order = append(order, ActionUpdateBranch)
+	}
+
+	order = append(order, ActionMerge, ActionAutoMerge, ActionApprove, ActionComment, ActionRequestChanges)
 
 	for _, a := range order {
 		if enabled(a) {

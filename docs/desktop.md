@@ -1114,7 +1114,11 @@ Every card gets it, in any list.
   (as in `golang.org/x/net 0.30.0 → 0.31.0 · minor`, a major in amber); the checks, listed open
   with the failing ones first, then those running, then those passed, the required ones marked,
   and the skipped ones folded away below them under their count (click a count to open or fold
-  it); the card's sensitive-file chip; and each reviewer's latest review.
+  it); the card's sensitive-file chip; and each reviewer's latest review. A check that is queued
+  or in progress has a ring swelling slowly out of its amber dot, as a working session's dot
+  does on its card, and so does the count of those running (**43 checks · 5 failing · 5
+  running**), so a folded list still shows that CI is at work. With reduced motion, the dots
+  hold still.
 - **The latest agent session** on the pull request, with what it last said. **Show all** reads
   the whole message from the agent's own files on this Mac, and **Use as review comment** puts it
   into your review's text, to edit before you send it.
@@ -1141,7 +1145,7 @@ what it does, as in **Approve & squash-merge**:
 | only waits for your approval | **Approve & merge** |
 | waits for required checks still running | **Approve & auto-merge** |
 | has a required check failing | **Comment**, with Ask Claude beside it |
-| is behind its base | **Update branch**; on a Dependabot pull request, **Ask Dependabot to rebase**, since Dependabot stops maintaining a branch someone else pushed to |
+| is behind its base, and the rules want it up to date | **Update branch**; on a Dependabot pull request, **Ask Dependabot to rebase**, since Dependabot stops maintaining a branch someone else pushed to |
 | has conflicts, from Dependabot | **Ask Dependabot to rebase** |
 | is your own | Merge or auto-merge, never Approve or Request changes. When the rules want an approval, the sheet says it needs one **from someone else**, since GitHub never lets you approve your own, and **Merge when ready** warns that it waits for one |
 
@@ -1149,11 +1153,27 @@ The menu beside it lists every action, with why one can't run now (a draft, a me
 write access, a pending review of yours on GitHub, and so on). **⌘↩** runs the button. **Request
 changes** and **Comment** need text or a line comment.
 
+**Bringing a branch up to date.** The menu offers **Ask Dependabot to rebase** on every open
+Dependabot pull request, whatever its merge state, so one held back by a failing check can pick
+up the fix from its base. It runs once the sheet has read the pull request from GitHub, for an
+account with push access (Dependabot takes commands from no one else), while the branch is
+behind its base or has conflicts with it; otherwise the menu says why not, as in **It's up to
+date with main, so there's nothing to rebase.** The menu offers **Update branch** whenever GitHub
+says you can update the branch (it is behind its base and you may push to it), even when the
+rules don't need it up to date and the pull request reads as blocked or ready. Both write to the
+branch, so outside the rows above neither is ever the button: it keeps its own action, and when
+nothing else can run it reads **Choose an action** and only opens the menu, and **⌘↩** does
+nothing until you pick one. **Nothing to do here now.** shows only when no action can run.
+
 **Every merge asks first.** Merge, Merge when ready (auto-merge), Approve & merge, and Approve &
 auto-merge open a confirmation with the merge methods the repository allows, the commit it
 merges, and any warnings to accept first: optional checks failing, or sensitive files
 of the danger level. **Cancel** is where the focus starts. Approve, Comment, Request changes,
-Update branch, and Ask Dependabot to rebase are one click.
+Update branch, and Ask Dependabot to rebase are one click, but any action with a warning asks
+first, in a confirmation of its own with no merge methods. **Update branch** on a Dependabot
+pull request does: its confirmation warns that Dependabot stops rebasing a pull request once
+someone else changes its branch, and that asking Dependabot to rebase keeps it managed, and it
+updates only once you tick **I've looked, update anyway**.
 
 **Your text goes with a merge.** Merge, Merge past the rules, and Merge when ready post the text
 in **Your review**, and any line comments, as a comment before they merge, so the pull request

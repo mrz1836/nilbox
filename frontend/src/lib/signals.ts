@@ -15,6 +15,14 @@ export const toneText: Readonly<Record<Tone, string>> = {
   muted: 'text-muted',
 }
 
+// toneDot is each tone's dot color, spelled out in full so Tailwind finds it.
+export const toneDot: Readonly<Record<Tone, string>> = {
+  success: 'bg-success',
+  warning: 'bg-warning',
+  danger: 'bg-danger',
+  muted: 'bg-muted',
+}
+
 export interface Signal<K extends string> {
   // kind picks the icon.
   kind: K

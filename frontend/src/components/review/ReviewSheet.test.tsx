@@ -869,6 +869,148 @@ describe('ReviewSheet', () => {
     expect(platform.actOnReview).toHaveBeenCalledWith(expect.objectContaining({ body: '', comments: [] }))
   })
 
+  it('asks Dependabot to rebase, and asks before updating its branch', async () => {
+    const warning =
+      'Dependabot stops rebasing a pull request once someone else changes its branch. Ask Dependabot to rebase instead to keep it managed.'
+    platform.refreshReview.mockResolvedValue(
+      review({
+        author: 'dependabot',
+        isBot: true,
+        offers: [
+          offer({ action: 'comment', label: 'Comment' }),
+          offer({ action: 'rebase_bot', label: 'Ask Dependabot to rebase', reviews: false }),
+          offer({
+            action: 'update_branch',
+            label: 'Update branch',
+            reviews: false,
+            confirm: true,
+            warnings: [warning],
+          }),
+        ],
+        primary: 'comment',
+      }),
+    )
+    platform.actOnReview.mockResolvedValue(reviewResult({ outcome: 'branch_updating', message: 'Updating' }))
+    const onDone = vi.fn()
+    render(<Harness onDone={onDone} />)
+
+    // Both wait in the menu while the pull request is neither behind nor in conflict.
+    expect(await actionButton('Comment')).toBeInTheDocument()
+    await choose('Update branch')
+    await userEvent.click(await actionButton('Update branch'))
+
+    // Cancel sends nothing.
+    await userEvent.click(
+      within(screen.getByRole('dialog', { name: 'Update the branch of #7 with main?' })).getByRole('button', {
+        name: 'Cancel',
+      }),
+    )
+    expect(screen.queryByRole('dialog', { name: 'Update the branch of #7 with main?' })).not.toBeInTheDocument()
+    expect(platform.actOnReview).not.toHaveBeenCalled()
+
+    await userEvent.click(await actionButton('Update branch'))
+    const dialog = screen.getByRole('dialog', { name: 'Update the branch of #7 with main?' })
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus()
+    expect(within(dialog).getByText(warning)).toBeInTheDocument()
+    expect(within(dialog).queryByRole('radio')).not.toBeInTheDocument()
+
+    const confirm = within(dialog).getByRole('button', { name: 'Update branch' })
+    expect(confirm).toBeDisabled()
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'I’ve looked, update anyway' }))
+    await userEvent.click(confirm)
+
+    await waitFor(() => {
+      expect(onDone).toHaveBeenCalled()
+    })
+    expect(platform.actOnReview).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'update_branch', accept: true, body: '', comments: [] }),
+    )
+
+    // Asking Dependabot is one click.
+    platform.actOnReview.mockClear()
+    await choose('Ask Dependabot to rebase')
+    await userEvent.click(await actionButton('Ask Dependabot to rebase'))
+    await waitFor(() => {
+      expect(platform.actOnReview).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'rebase_bot', accept: false }),
+      )
+    })
+  })
+
+  it('only opens the menu when the actions that can run are never the button on their own', async () => {
+    platform.refreshReview.mockResolvedValue(
+      review({
+        offers: [
+          offer({
+            action: 'comment',
+            label: 'Comment',
+            enabled: false,
+            reason: 'You have a review started on GitHub.',
+          }),
+          offer({ action: 'rebase_bot', label: 'Ask Dependabot to rebase', reviews: false }),
+          offer({
+            action: 'update_branch',
+            label: 'Update branch',
+            reviews: false,
+            confirm: true,
+            warnings: ['Careful.'],
+          }),
+        ],
+        primary: '',
+      }),
+    )
+    render(<Harness />)
+
+    const choose = await screen.findByRole('button', { name: 'Choose an action' })
+    expect(screen.queryByText('Nothing to do here now.')).not.toBeInTheDocument()
+
+    // ⌘↩ runs nothing: there is no action to run until the user picks one.
+    await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
+    expect(platform.actOnReview).not.toHaveBeenCalled()
+
+    await userEvent.click(choose)
+    expect(screen.getByRole('menuitem', { name: 'Comment' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Ask Dependabot to rebase' }))
+
+    // Picked, it is the button, and runs on a click.
+    await userEvent.click(await actionButton('Ask Dependabot to rebase'))
+    await waitFor(() => {
+      expect(platform.actOnReview).toHaveBeenCalledWith(expect.objectContaining({ action: 'rebase_bot' }))
+    })
+  })
+
+  it('asks before any action with warnings, never with merge methods unless it merges', async () => {
+    platform.refreshReview.mockResolvedValue(
+      review({
+        offers: [
+          offer({
+            action: 'rebase_bot',
+            label: 'Ask Dependabot to rebase',
+            reviews: false,
+            confirm: true,
+            warnings: ['It drops your commits.'],
+          }),
+        ],
+        primary: 'rebase_bot',
+      }),
+    )
+    platform.actOnReview.mockResolvedValue(reviewResult({ outcome: 'asked_bot', message: 'Asked' }))
+    render(<Harness />)
+
+    await userEvent.click(await actionButton('Ask Dependabot to rebase'))
+
+    const dialog = screen.getByRole('dialog', { name: 'Ask Dependabot to rebase on #7?' })
+    expect(within(dialog).queryByRole('radio')).not.toBeInTheDocument()
+    expect(within(dialog).queryByText('Merge method')).not.toBeInTheDocument()
+    expect(within(dialog).getByText('It drops your commits.')).toBeInTheDocument()
+
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'I’ve looked, go ahead' }))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Ask Dependabot to rebase' }))
+    await waitFor(() => {
+      expect(platform.actOnReview).toHaveBeenCalledWith(expect.objectContaining({ action: 'rebase_bot', accept: true }))
+    })
+  })
+
   it('says when there is nothing to do', async () => {
     platform.refreshReview.mockResolvedValue(review({ offers: [], primary: '' }))
     render(<Harness />)
@@ -876,6 +1018,27 @@ describe('ReviewSheet', () => {
     expect(await screen.findByText('Nothing to do here now.')).toBeInTheDocument()
     await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
     expect(platform.actOnReview).not.toHaveBeenCalled()
+  })
+
+  it('says there is nothing to do when no offer can run', async () => {
+    platform.refreshReview.mockResolvedValue(
+      review({
+        offers: [
+          offer({
+            action: 'rebase_bot',
+            label: 'Ask Dependabot to rebase',
+            reviews: false,
+            enabled: false,
+            reason: 'Wait for it to load from GitHub.',
+          }),
+        ],
+        primary: '',
+      }),
+    )
+    render(<Harness />)
+
+    expect(await screen.findByText('Nothing to do here now.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Choose an action' })).not.toBeInTheDocument()
   })
 
   it('runs nothing before the pull request loads', async () => {

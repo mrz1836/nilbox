@@ -236,11 +236,19 @@ app:lint` reads.
   files, on demand, for the review sheet.
 - `internal/review/` is the review sheet's service. `Decide` is pure: from a pull request's
   facts it works out every action's offer and the one primary, and `Act` runs it again before
-  any write. Every write goes through the inbox's `Actor` (the item lock, the account check,
-  and the token retry, never bound, since its methods take funcs), is pinned to the head the
-  user saw (an approval reads the head first, since GitHub takes a review of an older commit),
-  and a merge first reads `mergeStateStatus` fresh and merges only when GitHub says it can, so
-  an admin's token never merges past branch protection on its own: only `merge_bypass`
+  any write. An offer with warnings asks first (`offers` sets `Offer.Confirm` for it), since
+  `Act` refuses it unless the request accepts them; the window confirms a merge with its
+  methods and any other action with none. Asking Dependabot to rebase is offered on every open
+  Dependabot pull request, enabled once the sheet read it, for a user with push access, while
+  the branch is behind or has conflicts; Update branch whenever GitHub's `viewerCanUpdateBranch`
+  lets the user (with a warning on Dependabot's). Each is the primary only while the pull
+  request is behind (the rebase also with conflicts), never as a fallback: with no primary and
+  offers enabled, the sheet's button only opens the menu. Every write goes through the inbox's
+  `Actor` (the item lock, the account check, and the token retry, never bound, since its
+  methods take funcs), is pinned to the head the user saw (an approval reads the head first,
+  since GitHub takes a review of an older commit), and a merge first reads `mergeStateStatus`
+  fresh and merges only when GitHub says it can, so an admin's token never merges past branch
+  protection on its own: only `merge_bypass`
   ("merge past the rules") does, offered when GitHub sets `viewerCanMergeAsAdmin`, never the
   sheet's button, and with each rule it skips to accept. Each step is reported as an
   `event.ReviewProgress`, which the sheet shows while the user waits. Line comments are checked
