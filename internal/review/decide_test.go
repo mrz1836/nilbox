@@ -510,3 +510,38 @@ func TestDecideNamesEachRuleAMergePastThemSkips(t *testing.T) {
 		})
 	}
 }
+
+func TestEachOfferSaysWhatItsTextGoesWith(t *testing.T) {
+	t.Parallel()
+
+	f := facts(github.MergeStateBlocked)
+	f.Mine, f.CanBypass, f.ReviewRequired = true, true, true
+
+	commentsFirst := []Action{ActionMerge, ActionMergeBypass, ActionAutoMerge}
+	reviews := []Action{ActionApproveMerge, ActionApproveAutoMerge, ActionApprove, ActionRequestChanges, ActionComment}
+	plan := Decide(f, PrefRepo)
+
+	for _, a := range commentsFirst {
+		_, ok := plan.offer(a)
+		require.True(t, ok, "the user's own pull request offers %q", a)
+	}
+
+	for _, o := range plan.Offers {
+		assert.Equal(t, slices.Contains(reviews, o.Action), o.Reviews, o.Action)
+		assert.Equal(t, slices.Contains(commentsFirst, o.Action), o.CommentsFirst, o.Action)
+		assert.Empty(t, o.CommentBlocked, "GitHub takes a comment on one's own pull request: %q", o.Action)
+	}
+
+	f.PendingReview = true
+
+	for _, o := range Decide(f, PrefRepo).Offers {
+		if !o.CommentsFirst {
+			assert.Empty(t, o.CommentBlocked, o.Action)
+
+			continue
+		}
+
+		assert.Equal(t, "You have a review of this pull request started on GitHub. Submit or discard it there first. "+
+			"Or clear your text and line comments to merge without a comment.", o.CommentBlocked, o.Action)
+	}
+}
