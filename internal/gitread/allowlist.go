@@ -18,6 +18,7 @@ const (
 	quietFlag   = "--quiet"
 	gitPathFlag = "--git-path"
 	getFlag     = "--get"
+	tagsFlag    = "--tags"
 
 	// remoteName is the only remote gitread asks about: the one magex releases to.
 	remoteName = "origin"
@@ -47,7 +48,6 @@ const (
 	keyForceSign  = "tag.forceSignAnnotated"
 	keyGPGFormat  = "gpg.format"
 	keySigningKey = "user.signingkey"
-	keySSHCommand = "core.sshCommand"
 
 	// versionTagPrefix starts every version tag, and versionTagsPattern lists them all.
 	versionTagPrefix   = "v"
@@ -70,6 +70,19 @@ const (
 	// filterKeysPattern matches the config keys that make a filter driver run a program
 	// when git reads a file: its clean command and its long-running process.
 	filterKeysPattern = `^filter\..*\.(clean|process)$`
+
+	// remoteKeysPattern matches the config keys an ls-remote's guard weighs: the ssh command,
+	// the program that asks for a password, and the credential helpers (the URL-scoped ones
+	// too), which run programs; the transports' allowances, for the user's own policy;
+	// origin's remote helper; the cookie settings, which write a file; and the http settings
+	// that change how https reaches origin (routeKeys), for every URL or one.
+	remoteKeysPattern = `^(core\.(sshcommand|askpass)|credential\.(.*\.)?helper|protocol\.(.*\.)?allow|remote\.origin\.(vcs|proxy)|` +
+		`http\.(.*\.)?(savecookies|cookiefile|sslverify|sslcainfo|sslcapath|proxy|curloptresolve))$`
+
+	// uploadPackFlag names the upload-pack an ls-remote asks for: git's own, which a
+	// remote.origin.uploadpack in the clone's config can't replace, as the flag wins over
+	// the config and a -c setting doesn't (git takes the first uploadpack it reads).
+	uploadPackFlag = "--upload-pack=git-upload-pack"
 )
 
 // objectIDPattern is a full object ID, SHA-1 or SHA-256.
@@ -156,6 +169,8 @@ func allowlist() []command {
 			words: fixed(statusCmd, porcelainV2, "-z", untrackedAll, ignoreSubmodulesDirty),
 		},
 		{name: "the filter drivers", words: fixed(configCmd, "--show-scope", "--get-regexp", filterKeysPattern)},
+		{name: "what an ls-remote's guard weighs", words: fixed(configCmd, "--show-scope", "-z", "--get-regexp", remoteKeysPattern)},
+		{name: "origin's URL, asking nothing of it", words: fixed(lsRemote, "--get-url", remoteName)},
 		{name: "the current branch", words: fixed("symbolic-ref", quietFlag, "--short", "HEAD")},
 		{name: "the worktrees", words: fixed("worktree", "list", "--porcelain", "-z")},
 		{name: "a setting", words: append(fixed(configCmd, getFlag), value(slotConfigKey))},
@@ -163,14 +178,14 @@ func allowlist() []command {
 		{name: "unpushed commits", words: append(fixed("rev-list", "--count"), value(slotUnpushedRange), word{text: "--"})},
 		{name: "an ancestor", words: append(fixed("merge-base", "--is-ancestor"), value(slotCommitID), value(slotCommitID))},
 		{name: "the local version tags", words: append(fixed("tag", "--list"), value(slotVersionPattern))},
-		{name: "origin's branches and tags", words: fixed(lsRemote, "--heads", "--tags", remoteName)},
+		{name: "origin's branches and tags", words: fixed(lsRemote, uploadPackFlag, "--heads", tagsFlag, remoteName)},
 		{
 			name:  "origin's version tags",
-			words: append(fixed(lsRemote, "--tags", "--refs", remoteName), value(slotVersionPattern)),
+			words: append(fixed(lsRemote, uploadPackFlag, tagsFlag, "--refs", remoteName), value(slotVersionPattern)),
 		},
 		{
 			name:     "a tag on origin and its commit",
-			words:    append(fixed(lsRemote, remoteName), value(slotTagRef), value(slotPeeledTagRef)),
+			words:    append(fixed(lsRemote, uploadPackFlag, remoteName), value(slotTagRef), value(slotPeeledTagRef)),
 			together: samePeeledTag,
 		},
 	}
@@ -264,7 +279,7 @@ func isCommitID(oid string) bool {
 
 // plainKeys are the config keys gitread reads as text.
 func plainKeys() []string {
-	return []string{keyGPGFormat, keySigningKey, keySSHCommand}
+	return []string{keyGPGFormat, keySigningKey}
 }
 
 // boolKeys are the config keys gitread reads as git booleans.
@@ -405,12 +420,14 @@ func ancestorArgs(oid, of string) []string { return []string{"merge-base", "--is
 
 func localTagsArgs() []string { return []string{"tag", "--list", versionTagsPattern} }
 
-func remoteRefsArgs() []string { return []string{lsRemote, "--heads", "--tags", remoteName} }
+func remoteRefsArgs() []string {
+	return []string{lsRemote, uploadPackFlag, "--heads", tagsFlag, remoteName}
+}
 
 func remoteTagsArgs() []string {
-	return []string{lsRemote, "--tags", "--refs", remoteName, versionTagsPattern}
+	return []string{lsRemote, uploadPackFlag, tagsFlag, "--refs", remoteName, versionTagsPattern}
 }
 
 func remoteTagArgs(tag string) []string {
-	return []string{lsRemote, remoteName, tagsPrefix + tag, tagsPrefix + tag + peelSuffix}
+	return []string{lsRemote, uploadPackFlag, remoteName, tagsPrefix + tag, tagsPrefix + tag + peelSuffix}
 }

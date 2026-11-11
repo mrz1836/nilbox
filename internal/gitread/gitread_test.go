@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -23,6 +22,9 @@ import (
 
 const repoDir = "/srv/projects/example-repo"
 
+// originURL is the URL the fake git gives origin, unless a reply says otherwise.
+const originURL = "https://github.com/acme-org/example-repo.git"
+
 var errKilled = errors.New("fake: signal: killed")
 
 // exitError is a fake process exit with a status, which execpath.ExitCode reads.
@@ -40,9 +42,11 @@ type reply struct {
 
 // call is one command a recorder ran.
 type call struct {
-	// argv is the whole command line, git first, and args the words after the hardening.
-	argv []string
-	args []string
+	// argv is the whole command line, git first; extra the -c settings gitread added after
+	// the hardening; and args the words after those.
+	argv  []string
+	extra []string
+	args  []string
 
 	env []string
 
@@ -100,8 +104,13 @@ func (c recorded) Run(ctx context.Context, name string, args ...string) (stdout,
 	argv := append([]string{name}, args...)
 	rest := args[min(len(args), 2+len(hardening())):]
 
+	var extra []string
+	for len(rest) >= 2 && rest[0] == "-c" {
+		extra, rest = append(extra, rest[:2]...), rest[2:]
+	}
+
 	c.r.mu.Lock()
-	c.r.calls = append(c.r.calls, call{argv: argv, args: rest, env: c.env, deadline: deadline, hasDeadline: ok})
+	c.r.calls = append(c.r.calls, call{argv: argv, extra: extra, args: rest, env: c.env, deadline: deadline, hasDeadline: ok})
 	c.r.mu.Unlock()
 
 	if got, found := c.r.replies[strings.Join(rest, " ")]; found {
@@ -112,14 +121,18 @@ func (c recorded) Run(ctx context.Context, name string, args ...string) (stdout,
 		return []byte(got.out), nil, nil
 	}
 
+	if slices.Equal(rest, getURLArgs()) {
+		return []byte(originURL + "\n"), nil, nil // origin on GitHub, unless a reply says otherwise
+	}
+
 	if c.r.answer != nil {
 		out, answerErr := c.r.answer(ctx, rest)
 
 		return []byte(out), nil, answerErr
 	}
 
-	if slices.Equal(rest, filterDriversArgs()) {
-		return nil, nil, exitError{code: 1} // no filter drivers, unless a reply says otherwise
+	if slices.Equal(rest, filterDriversArgs()) || slices.Equal(rest, remoteKeysArgs()) {
+		return nil, nil, exitError{code: 1} // none of the keys set, unless a reply says otherwise
 	}
 
 	return nil, []byte("fatal: fake git knows no such command\n"), exitError{code: 128}
@@ -167,6 +180,7 @@ func TestRunEnvironment(t *testing.T) {
 		"GIT_DIR=/srv/other/.git", "GIT_WORK_TREE=/srv/other", "GIT_INDEX_FILE=/srv/other/index",
 		"GIT_COMMON_DIR=/srv/other/.git", "GIT_OBJECT_DIRECTORY=/srv/other/objects",
 		"GIT_ALTERNATE_OBJECT_DIRECTORIES=/srv/more", "GIT_NAMESPACE=ns", "GIT_CONFIG_GLOBAL=/srv/home/gitconfig",
+		"GIT_CONFIG=/srv/other/config", "GIT_NO_LAZY_FETCH=0", "GIT_ALLOW_PROTOCOL=ext",
 		"SSH_AUTH_SOCK=/srv/agent.sock",
 	}
 	snapshot := slices.Clone(given)
@@ -180,8 +194,8 @@ func TestRunEnvironment(t *testing.T) {
 	require.Len(t, calls, 1)
 	assert.Equal(t, []string{
 		"PATH=/opt/tools/bin", "HOME=/srv/home", "GIT_CONFIG_GLOBAL=/srv/home/gitconfig", "SSH_AUTH_SOCK=/srv/agent.sock",
-		"GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0",
-	}, calls[0].env, "the two settings replace the given ones, and nothing points git at another repository")
+		"GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0", "GIT_NO_LAZY_FETCH=1", "GIT_ALLOW_PROTOCOL=",
+	}, calls[0].env, "the four settings replace the given ones, and nothing points git at another repository or config")
 	assert.Equal(t, snapshot, given, "the given environment is not changed")
 }
 
@@ -226,107 +240,6 @@ func TestNewDefaultsToTheProcessEnvironment(t *testing.T) {
 	assert.Equal(t, []string{"PATH=/opt/tools/bin", "HOME=/srv/home"}, runner.Env)
 }
 
-// sshCase is a case of the ssh command an ls-remote runs with.
-type sshCase struct {
-	name    string
-	env     []string
-	replies map[string]reply
-	want    []string // what the ls-remote's environment must hold
-	notWant []string // and must not
-	asked   bool     // whether the clone's core.sshCommand was read
-}
-
-func TestRemoteSSHCommand(t *testing.T) {
-	t.Parallel()
-
-	batch := "GIT_SSH_COMMAND=" + batchSSH
-	sshConfig := words(configArgs(keySSHCommand))
-
-	tests := []sshCase{
-		{
-			name:    "nothing chosen: batch mode",
-			env:     plainEnv(),
-			replies: map[string]reply{sshConfig: {code: 1}},
-			want:    []string{batch},
-			asked:   true,
-		},
-		{
-			name:    "GIT_SSH_COMMAND in the environment",
-			env:     append(plainEnv(), "GIT_SSH_COMMAND=ssh -o IdentityAgent=/srv/agent.sock"),
-			want:    []string{"GIT_SSH_COMMAND=ssh -o IdentityAgent=/srv/agent.sock"},
-			notWant: []string{batch},
-		},
-		{
-			name:    "an empty GIT_SSH_COMMAND is set, as git reads it",
-			env:     append(plainEnv(), "GIT_SSH_COMMAND="),
-			want:    []string{"GIT_SSH_COMMAND="},
-			notWant: []string{batch},
-		},
-		{
-			name:    "GIT_SSH in the environment",
-			env:     append(plainEnv(), "GIT_SSH=/opt/tools/bin/plink"),
-			want:    []string{"GIT_SSH=/opt/tools/bin/plink"},
-			notWant: []string{batch},
-		},
-		{
-			name:    "core.sshCommand in the clone's config",
-			env:     plainEnv(),
-			replies: map[string]reply{sshConfig: {out: "ssh -o IdentityAgent=/srv/agent.sock\n"}},
-			notWant: []string{batch},
-			asked:   true,
-		},
-		{
-			name:    "a config git can't read",
-			env:     plainEnv(),
-			replies: map[string]reply{sshConfig: {code: 3}},
-			notWant: []string{batch},
-			asked:   true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			for _, args := range [][]string{remoteRefsArgs(), remoteTagsArgs(), remoteTagArgs("v1.4.2")} {
-				checkSSH(t, tt, args)
-			}
-		})
-	}
-}
-
-// checkSSH runs the ls-remote args as tt sets it up and checks the ssh it ran with.
-func checkSSH(t *testing.T, tt sshCase, args []string) {
-	t.Helper()
-
-	replies := map[string]reply{words(args): {}}
-	maps.Copy(replies, tt.replies)
-
-	rec := &recorder{replies: replies}
-
-	_, _, err := fakeGit(tt.env, rec).Run(t.Context(), repoDir, args...)
-	require.NoError(t, err)
-
-	calls := rec.Calls()
-	last := calls[len(calls)-1]
-	assert.Equal(t, args, last.args)
-
-	if tt.asked {
-		assert.Equal(t, [][]string{configArgs(keySSHCommand), args}, rec.Args())
-		assert.NotContains(t, calls[0].env, "GIT_SSH_COMMAND="+batchSSH, "reading the config sets no ssh")
-	} else {
-		assert.Equal(t, [][]string{args}, rec.Args(), "a chosen ssh needs no config read")
-	}
-
-	for _, kv := range tt.want {
-		assert.Contains(t, last.env, kv)
-	}
-
-	for _, kv := range tt.notWant {
-		assert.NotContains(t, last.env, kv)
-	}
-}
-
 func TestOnlyRemoteCommandsGetTheBatchSSH(t *testing.T) {
 	t.Parallel()
 
@@ -344,7 +257,7 @@ func TestRemoteTimeout(t *testing.T) {
 
 	synctest.Test(t, func(t *testing.T) {
 		rec := &recorder{
-			replies: map[string]reply{words(configArgs(keySSHCommand)): {code: 1}},
+			replies: map[string]reply{words(remoteKeysArgs()): {code: 1}},
 			answer: func(ctx context.Context, _ []string) (string, error) {
 				<-ctx.Done() // origin never answers
 
@@ -370,7 +283,7 @@ func TestRemoteAnswersInTimeAreKept(t *testing.T) {
 
 	synctest.Test(t, func(t *testing.T) {
 		rec := &recorder{
-			replies: map[string]reply{words(configArgs(keySSHCommand)): {code: 1}},
+			replies: map[string]reply{words(remoteKeysArgs()): {code: 1}},
 			answer: func(_ context.Context, _ []string) (string, error) {
 				time.Sleep(RemoteTimeout - time.Second)
 
@@ -451,6 +364,12 @@ func TestRunRefusesCommandsOutsideTheAllowlist(t *testing.T) {
 		{lsRemote, remoteName, "refs/tags/v1.4.2", "refs/tags/v1.4.3^{}"},
 		{lsRemote, remoteName, "refs/tags/v1.4.2"},
 		{lsRemote, "--symref", remoteName, "HEAD"},
+		{lsRemote, "--heads", tagsFlag, remoteName},
+		{lsRemote, "--upload-pack=sh -c touch", "--heads", tagsFlag, remoteName},
+		{lsRemote, uploadPackFlag, "--upload-pack=x", "--heads", tagsFlag, remoteName},
+		{configCmd, getFlag, "core.sshCommand"},
+		{configCmd, "--show-scope", "-z", "--get-regexp", "^core\\..*$"},
+		{configCmd, "--show-scope", "--get-regexp", remoteKeysPattern},
 		{"-c", "core.hooksPath=/srv/hooks", "status", "--porcelain", "-z"},
 		{"--exec-path=/srv/bin", "status", "--porcelain", "-z"},
 		{"--git-dir=/srv/other/.git", "status", "--porcelain", "-z"},
@@ -663,7 +582,6 @@ func TestHelpersReadGitsAnswers(t *testing.T) {
 		{
 			name: "origin's version tags",
 			replies: map[string]reply{
-				words(configArgs(keySSHCommand)): {code: 1},
 				words(remoteTagsArgs()): {out: headSHA + "\trefs/tags/v1.1.0\n" + otherSHA + "\trefs/tags/release/v2\n" +
 					otherSHA + "\trefs/tags/v1.0.0\n"},
 			},
@@ -673,7 +591,6 @@ func TestHelpersReadGitsAnswers(t *testing.T) {
 		{
 			name: "an annotated tag's commit on origin",
 			replies: map[string]reply{
-				words(configArgs(keySSHCommand)): {code: 1},
 				words(remoteTagArgs("v1.4.2")): {
 					out: otherSHA + "\trefs/tags/v1.4.2\n" + headSHA + "\trefs/tags/v1.4.2^{}\n",
 				},
@@ -684,8 +601,7 @@ func TestHelpersReadGitsAnswers(t *testing.T) {
 		{
 			name: "a lightweight tag's commit on origin",
 			replies: map[string]reply{
-				words(configArgs(keySSHCommand)): {code: 1},
-				words(remoteTagArgs("v1.4.2")):   {out: headSHA + "\trefs/tags/v1.4.2\n"},
+				words(remoteTagArgs("v1.4.2")): {out: headSHA + "\trefs/tags/v1.4.2\n"},
 			},
 			run:  func(g *Git) (any, error) { return g.RemoteTagCommit(ctx, repoDir, "v1.4.2") },
 			want: headSHA,
@@ -693,8 +609,7 @@ func TestHelpersReadGitsAnswers(t *testing.T) {
 		{
 			name: "a tag origin doesn't have",
 			replies: map[string]reply{
-				words(configArgs(keySSHCommand)): {code: 1},
-				words(remoteTagArgs("v1.4.2")):   {},
+				words(remoteTagArgs("v1.4.2")): {},
 			},
 			run:  func(g *Git) (any, error) { return g.RemoteTagCommit(ctx, repoDir, "v1.4.2") },
 			want: "",
@@ -778,8 +693,7 @@ func TestRemoteRefsReadsHeadsAndPeeledTags(t *testing.T) {
 		headSHA + "\trefs/pull/7/head\n"
 
 	rec := &recorder{replies: map[string]reply{
-		words(configArgs(keySSHCommand)): {code: 1},
-		words(remoteRefsArgs()):          {out: out},
+		words(remoteRefsArgs()): {out: out},
 	}}
 
 	refs, err := fakeGit(plainEnv(), rec).RemoteRefs(t.Context(), repoDir)

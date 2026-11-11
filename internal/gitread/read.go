@@ -246,12 +246,12 @@ func (g *Git) HasCommit(ctx context.Context, dir, oid string) (bool, error) {
 // Upstream returns the upstream config of the clone's branch, which a release's
 // `pull --rebase origin` needs. A key that isn't set is "".
 func (g *Git) Upstream(ctx context.Context, dir, branch string) (Upstream, error) {
-	remote, _, err := g.config(ctx, dir, branchKeyPrefix+branch+remoteKeySuffix)
+	remote, err := g.config(ctx, dir, branchKeyPrefix+branch+remoteKeySuffix)
 	if err != nil {
 		return Upstream{}, err
 	}
 
-	ref, _, err := g.config(ctx, dir, branchKeyPrefix+branch+upstreamKeySuffix)
+	ref, err := g.config(ctx, dir, branchKeyPrefix+branch+upstreamKeySuffix)
 	if err != nil {
 		return Upstream{}, err
 	}
@@ -350,11 +350,11 @@ func (g *Git) Signing(ctx context.Context, dir string) (Signing, error) {
 		return Signing{}, err
 	}
 
-	if s.Format, _, err = g.config(ctx, dir, keyGPGFormat); err != nil {
+	if s.Format, err = g.config(ctx, dir, keyGPGFormat); err != nil {
 		return Signing{}, err
 	}
 
-	if s.Key, _, err = g.config(ctx, dir, keySigningKey); err != nil {
+	if s.Key, err = g.config(ctx, dir, keySigningKey); err != nil {
 		return Signing{}, err
 	}
 
@@ -423,15 +423,15 @@ func (g *Git) resolve(ctx context.Context, dir, ref string) (string, error) {
 	return oid, nil
 }
 
-// config returns the value of the config key as git reads it in the clone, and whether it
-// is set.
-func (g *Git) config(ctx context.Context, dir, key string) (string, bool, error) {
+// config returns the value of the config key as git reads it in the clone, or "" when it
+// isn't set.
+func (g *Git) config(ctx context.Context, dir, key string) (string, error) {
 	out, yes, err := g.ask(ctx, dir, configArgs(key))
 	if err != nil || !yes {
-		return "", false, err
+		return "", err
 	}
 
-	return firstLine(out), true, nil
+	return firstLine(out), nil
 }
 
 // flag returns the boolean config key as git reads it in the clone; unset is false.

@@ -79,11 +79,11 @@ func slotSamples() map[slot]samples {
 		},
 		slotConfigKey: {
 			good: []string{
-				"gpg.format", "user.signingkey", "core.sshCommand", "branch.main.remote", "branch.feature/x.merge",
+				"gpg.format", "user.signingkey", "branch.main.remote", "branch.feature/x.merge",
 				"branch.release-1.4.remote",
 			},
 			bad: []string{
-				"core.hooksPath", "remote.origin.url", "credential.helper", "branch.main.pushRemote", "branch..remote",
+				"core.hooksPath", "core.sshCommand", "core.askPass", "remote.origin.url", "credential.helper", "branch.main.pushRemote", "branch..remote",
 				"branch.-x.remote", "branch.a b.merge", "branch.a..b.remote", "tag.gpgSign", "user.signingkey\n",
 			},
 		},
@@ -213,8 +213,9 @@ func TestAllowlist(t *testing.T) {
 			assert.NotContains(t, guarded, w.text, "%s: %q changes a clone", c.name, w.text)
 			assert.False(t, strings.HasPrefix(w.text, "-c") || strings.Contains(w.text, "hooksPath"),
 				"%s: %q sets config", c.name, w.text)
-			assert.False(t, strings.HasPrefix(w.text, "--upload-pack") || strings.HasPrefix(w.text, "--exec"),
-				"%s: %q runs a program", c.name, w.text)
+			// Only git's own upload-pack, which the clone's config can't then replace.
+			assert.False(t, (strings.HasPrefix(w.text, "--upload-pack") && w.text != "--upload-pack=git-upload-pack") ||
+				strings.HasPrefix(w.text, "--exec"), "%s: %q runs a program", c.name, w.text)
 		}
 
 		assertReadOnlyForm(t, c.name, verb.text, words, form)
