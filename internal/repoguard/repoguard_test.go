@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"io/fs"
@@ -482,10 +483,18 @@ func cloneChangingVerbs() []string {
 // checkout.
 const worktreeMakerFile = "internal/worktrees/create.go"
 
+// clonePullerFile is the only production file allowed to pull: Repo scripts' pull of the
+// branch a clone is on from the branch it follows on origin, fast-forward only, on the
+// user's click. It runs no other git command that changes a clone.
+const clonePullerFile = "internal/scripts/pull.go"
+
 // TestNoGitCommandChangesAClone keeps every git command the app runs from changing a
-// clone's checkout. Work that does change one belongs to the integration's own tool, run
-// on the user's click: a release's magex switches, pulls, tags, and pushes, and the app
-// only starts it and reads, afterwards, where the tag and the clone are.
+// clone's checkout, with two exceptions, each held to one file: worktree creation
+// (worktreeMakerFile) fetches and adds worktrees, and Repo scripts' pull (clonePullerFile)
+// fast-forwards the branch a clone is on to origin's, on the user's click. Other work
+// that changes one belongs to the integration's own tool, run on the user's click: a
+// release's magex switches, pulls, tags, and pushes, and the app only starts it and reads,
+// afterwards, where the tag and the clone are.
 func TestNoGitCommandChangesAClone(t *testing.T) {
 	t.Parallel()
 
@@ -506,12 +515,153 @@ func TestNoGitCommandChangesAClone(t *testing.T) {
 	assert.Empty(t, hits(worktreeMakerFile, maker, argvLiteral(changing...).MatchString),
 		"%s only fetches and adds worktrees", worktreeMakerFile)
 
-	found := productionGoHits(t, root, verbs, worktreeMakerFile)
+	assertMakerFetchesOnlyItsOwnRefs(t, maker)
+	assertPullerOnlyFastForwards(t, root)
+
+	found := productionGoHits(t, root, verbs, worktreeMakerFile, clonePullerFile)
 	found = append(found, productionGoHits(t, root, worktreeAdd, worktreeMakerFile)...)
 
 	assert.Empty(t, found, "nothing changes a clone's own checkout: no checkout, stash, branch switch, pull, reset, "+
-		"merge, rebase, commit, push, restore, cherry-pick, or clean anywhere, and only worktree creation ("+
-		worktreeMakerFile+") fetches and adds worktrees")
+		"merge, rebase, commit, push, restore, cherry-pick, or clean anywhere, only worktree creation ("+
+		worktreeMakerFile+") fetches and adds worktrees, and only Repo scripts' pull ("+clonePullerFile+") pulls")
+}
+
+// TestNoGitCommandRunsAMergeOrDiffTool keeps the app from running git mergetool or git
+// difftool anywhere: gitread lets a clone's own config name their programs
+// (mergetool.<name>.cmd, difftool.<name>.cmd) as settings nothing the app runs reads, which
+// holds only while no command the app runs is one of them.
+func TestNoGitCommandRunsAMergeOrDiffTool(t *testing.T) {
+	t.Parallel()
+
+	// Built from parts so this file does not match itself.
+	tools := argvLiteral("merge"+"tool", "diff"+"tool")
+
+	assert.Empty(t, productionGoHits(t, moduleRoot(t), tools),
+		"no git command the app runs is mergetool or difftool, whose programs a clone's config may name")
+}
+
+// makerFetchWords are the only words worktree creation's fetch holds, besides the remote
+// and the refspec: no tag, nothing fetched through the clone's own refspecs (--refmap=,
+// which a forced map onto the clone's own branches would otherwise move), and git's own
+// upload-pack; makerOptions are every option worktreeMakerFile may name, those and
+// `worktree add`'s. Built from parts so this file does not match itself.
+func makerFetchWords() []string {
+	return []string{"fet" + "ch", "--no-tags", "--refmap=", "--upload-pack=git-upload-pack"}
+}
+
+func makerOptions() []string {
+	return append(makerFetchWords()[1:], "--no-track", "-b")
+}
+
+// assertMakerFetchesOnlyItsOwnRefs checks worktreeMakerFile's text: it fetches with one
+// argv literal whose words are exactly makerFetchWords, each a literal, and names no
+// option but makerOptions anywhere, so no forced refspec, --update-head-ok, -c setting, or
+// other upload-pack can be added beside.
+func assertMakerFetchesOnlyItsOwnRefs(t *testing.T, text string) {
+	t.Helper()
+
+	words := makerFetchWords()
+	argvs, options := verbLiterals(t, text, words[0])
+
+	require.Len(t, argvs, 1, "%s fetches with one argv literal; update this guard", worktreeMakerFile)
+	assert.ElementsMatch(t, words, argvs[0], "%s fetches with exactly these words, each a literal", worktreeMakerFile)
+
+	for _, option := range options {
+		assert.Contains(t, makerOptions(), option, "%s names an option it may not run git with", worktreeMakerFile)
+	}
+}
+
+// pullWords are the only words Repo scripts' pull holds, besides origin's name and its
+// refspec: the verb, then fast-forward only, never a rebase, nothing fetched through the
+// clone's own refspecs and no tag, nothing set aside, no submodule, no signature program,
+// no diff, and git's own upload-pack. Built from parts so this file does not match itself.
+func pullWords() []string {
+	return []string{
+		"pu" + "ll", "--ff-only", "--no-re" + "base", "--refmap=", "--no-tags", "--no-auto" + "stash",
+		"--no-recurse-submodules", "--no-verify-signatures", "--no-stat", "--upload-pack=git-upload-pack",
+	}
+}
+
+// assertPullerOnlyFastForwards checks clonePullerFile: it still pulls, with one argv
+// literal whose words are exactly pullWords, each a literal, so --ff-only, --refmap=, and
+// --no-verify-signatures are there and nothing else is; every option it names anywhere is
+// one of them, so no -c setting, short option, merge strategy, or --update-head-ok can be
+// added beside; and it holds no other verb that changes a clone.
+func assertPullerOnlyFastForwards(t *testing.T, root string) {
+	t.Helper()
+
+	words := pullWords()
+	pull := words[0]
+	others := slices.DeleteFunc(cloneChangingVerbs(), func(v string) bool { return v == pull })
+
+	text, ok := readText(t, root, clonePullerFile)
+	require.True(t, ok, "%s is gone; update this guard", clonePullerFile)
+
+	argvs, options := verbLiterals(t, text, pull)
+
+	require.Len(t, argvs, 1, "%s pulls with one argv literal; update this guard", clonePullerFile)
+	assert.ElementsMatch(t, words, argvs[0], "%s pulls with exactly these words, each a literal", clonePullerFile)
+
+	for _, option := range options {
+		assert.Contains(t, words, option, "%s names an option its pull may not take", clonePullerFile)
+	}
+
+	assert.Empty(t, hits(clonePullerFile, text, argvLiteral(others...).MatchString), "%s only pulls", clonePullerFile)
+}
+
+// verbLiterals parses the Go source text and returns the words of each []string literal
+// whose first element is the string verb, a word that isn't a string literal kept as "?",
+// and every string literal in it that starts with "-".
+func verbLiterals(t *testing.T, text, verb string) (argvs [][]string, options []string) {
+	t.Helper()
+
+	file, err := parser.ParseFile(token.NewFileSet(), "src.go", text, parser.SkipObjectResolution)
+	require.NoError(t, err)
+
+	ast.Inspect(file, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.CompositeLit:
+			if words := literalWords(x.Elts); len(words) > 0 && words[0] == verb {
+				argvs = append(argvs, words)
+			}
+		case *ast.BasicLit:
+			if s, ok := stringLiteral(x); ok && strings.HasPrefix(s, "-") {
+				options = append(options, s)
+			}
+		}
+
+		return true
+	})
+
+	return argvs, options
+}
+
+// literalWords returns each expression's value as a string literal, or "?" for one that
+// isn't.
+func literalWords(exprs []ast.Expr) []string {
+	words := make([]string, 0, len(exprs))
+
+	for _, e := range exprs {
+		s, ok := stringLiteral(e)
+		if !ok {
+			s = "?"
+		}
+
+		words = append(words, s)
+	}
+
+	return words
+}
+
+func TestVerbLiterals(t *testing.T) {
+	t.Parallel()
+
+	src := "package p\n\nfunc a(b string) []string {\n\treturn append([]string{\"pu" + "ll\", \"--ff-only\", x, " +
+		"\"-r\"}, \"origin\", \"+\"+b)\n}\n\nvar c = []string{\"-X\", \"ours\"}\n"
+
+	argvs, options := verbLiterals(t, src, "pu"+"ll")
+	assert.Equal(t, [][]string{{"pu" + "ll", "--ff-only", "?", "-r"}}, argvs)
+	assert.Equal(t, []string{"--ff-only", "-r", "-X"}, options)
 }
 
 func TestArgvLiteral(t *testing.T) {

@@ -72,15 +72,19 @@ const (
 	untrackedAll = "--untracked-files=all"
 
 	// filterKeysPattern matches the config keys that make a filter driver run a program
-	// when git reads a file: its clean command and its long-running process.
-	filterKeysPattern = `^filter\..*\.(clean|process)$`
+	// when git reads a file or writes one out: its clean and smudge commands and its
+	// long-running process.
+	filterKeysPattern = `^filter\..*\.(clean|smudge|process)$`
 
 	// remoteKeysPattern matches the config keys an ls-remote's guard weighs: the ssh command,
 	// the program that asks for a password, and the credential helpers (the URL-scoped ones
 	// too), which run programs; the transports' allowances, for the user's own policy;
-	// origin's remote helper; the cookie settings, which write a file; and the http settings
-	// that change how https reaches origin (routeKeys), for every URL or one.
-	remoteKeysPattern = `^(core\.(sshcommand|askpass)|credential\.(.*\.)?helper|protocol\.(.*\.)?allow|remote\.origin\.(vcs|proxy)|` +
+	// each remote's remote helper and proxy, of which the guard weighs its remote's; a
+	// partial clone's promisor remotes and their upload-pack, which a lazy fetch reaches;
+	// the cookie settings, which write a file; and the http settings that change how https
+	// reaches a remote (routeKeys), for every URL or one.
+	remoteKeysPattern = `^(core\.(sshcommand|askpass)|credential\.(.*\.)?helper|protocol\.(.*\.)?allow|` +
+		`remote\..+\.(vcs|proxy|promisor|uploadpack)|extensions\.partialclone|` +
 		`http\.(.*\.)?(savecookies|cookiefile|sslverify|sslcainfo|sslcapath|proxy|curloptresolve))$`
 
 	// uploadPackFlag names the upload-pack an ls-remote asks for: git's own, which a
@@ -115,6 +119,8 @@ const (
 	slotTagRef
 	slotPeeledTagRef
 	slotTagCommit
+	slotCommitRange
+	slotRemoteName
 )
 
 // word is one word of an allowlisted command: text itself, or a value its slot accepts.
@@ -172,9 +178,11 @@ func allowlist() []command {
 			name:  "every changed and untracked file, with its staged object",
 			words: fixed(statusCmd, porcelainV2, "-z", untrackedAll, ignoreSubmodulesDirty),
 		},
-		{name: "the filter drivers", words: fixed(configCmd, "--show-scope", "--get-regexp", filterKeysPattern)},
+		{name: "the filter drivers", words: fixed(configCmd, "--show-scope", "-z", "--get-regexp", filterKeysPattern)},
+		{name: "every setting, with where it is set", words: fixed(configCmd, "--show-scope", "--show-origin", "-z", "--list")},
+		{name: "the git folder and the top folder", words: fixed(revParse, "--absolute-git-dir", "--show-toplevel")},
 		{name: "what an ls-remote's guard weighs", words: fixed(configCmd, "--show-scope", "-z", "--get-regexp", remoteKeysPattern)},
-		{name: "origin's URL, asking nothing of it", words: fixed(lsRemote, "--get-url", remoteName)},
+		{name: "a remote's URL, asking nothing of it", words: append(fixed(lsRemote, "--get-url"), value(slotRemoteName))},
 		{name: "the current branch", words: fixed("symbolic-ref", quietFlag, "--short", "HEAD")},
 		{
 			name:  "origin's default branch, as the clone last learned it",
@@ -184,9 +192,14 @@ func allowlist() []command {
 		{name: "a setting", words: append(fixed(configCmd, getFlag), value(slotConfigKey))},
 		{name: "a switch", words: append(fixed(configCmd, "--type=bool", getFlag), value(slotBoolKey))},
 		{name: "unpushed commits", words: append(fixed("rev-list", "--count"), value(slotUnpushedRange), word{text: "--"})},
+		{name: "the commits between two", words: append(fixed("rev-list", "--count"), value(slotCommitRange), word{text: "--"})},
 		{name: "an ancestor", words: append(fixed("merge-base", "--is-ancestor"), value(slotCommitID), value(slotCommitID))},
 		{name: "the local version tags", words: append(fixed("tag", "--list"), value(slotVersionPattern))},
 		{name: "origin's branches and tags", words: fixed(lsRemote, uploadPackFlag, "--heads", tagsFlag, remoteName)},
+		{
+			name:  "one branch on origin",
+			words: append(fixed(lsRemote, uploadPackFlag, "--heads", remoteName), value(slotLocalRef)),
+		},
 		{
 			name:  "origin's version tags",
 			words: append(fixed(lsRemote, uploadPackFlag, tagsFlag, "--refs", remoteName), value(slotVersionPattern)),
@@ -229,6 +242,8 @@ func validators() map[slot]func(string) bool {
 		slotTagRef:         isTagRef,
 		slotPeeledTagRef:   isPeeledTagRef,
 		slotTagCommit:      isTagCommit,
+		slotCommitRange:    isCommitRange,
+		slotRemoteName:     isRemoteName,
 	}
 }
 
@@ -244,14 +259,14 @@ func isDir(dir string) bool {
 }
 
 // gitPathNames are the git paths gitread resolves: the files and folders git keeps while
-// it is in the middle of something, and the hooks folder.
+// it is in the middle of something, the hooks folder, and the index's lock.
 func gitPathNames() []string {
-	names := make([]string, 0, len(operationFiles())+1)
+	names := make([]string, 0, len(operationFiles())+2)
 	for _, f := range operationFiles() {
 		names = append(names, f.name)
 	}
 
-	return append(names, hooksName)
+	return append(names, hooksName, indexLock)
 }
 
 // isGitPathName reports one of gitPathNames.
@@ -332,6 +347,23 @@ func isUnpushedRange(arg string) bool {
 	return strings.TrimPrefix(from, trackingPrefix) == strings.TrimPrefix(to, headsPrefix)
 }
 
+// isCommitRange reports <commit ID>..<commit ID>, two full commit IDs.
+func isCommitRange(arg string) bool {
+	from, to, ok := strings.Cut(arg, "..")
+
+	return ok && isCommitID(from) && isCommitID(to)
+}
+
+// remoteNamePattern is what a remote's name must look like to be named in a command or a
+// config key: a letter or a digit first, then letters, digits, '.', '_', or '-'.
+var remoteNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+// isRemoteName reports a remote's name gitread may pass to git, which can't be read as an
+// option, a path, or a URL: remoteNamePattern, with no "..", and at most maxNameLen bytes.
+func isRemoteName(name string) bool {
+	return len(name) <= maxNameLen && remoteNamePattern.MatchString(name) && !strings.Contains(name, "..")
+}
+
 // isVersionTag reports a tag name that starts with v and is otherwise a well-formed ref
 // name, as validBranch has it.
 func isVersionTag(name string) bool {
@@ -404,6 +436,12 @@ func hookPathsArgs() []string { return []string{revParse, "--show-toplevel", git
 
 func commonDirArgs() []string { return []string{revParse, "--git-common-dir"} }
 
+func configListArgs() []string {
+	return []string{configCmd, "--show-scope", "--show-origin", "-z", "--list"}
+}
+
+func gitDirArgs() []string { return []string{revParse, "--absolute-git-dir", "--show-toplevel"} }
+
 func verifyArgs(ref string) []string { return []string{revParse, verifyFlag, quietFlag, ref} }
 
 func statusArgs() []string { return []string{statusCmd, "--porcelain", "-z", ignoreSubmodulesDirty} }
@@ -426,12 +464,20 @@ func unpushedArgs(branch string) []string {
 	return []string{"rev-list", "--count", trackingPrefix + branch + ".." + headsPrefix + branch, "--"}
 }
 
+func commitsBetweenArgs(from, to string) []string {
+	return []string{"rev-list", "--count", from + ".." + to, "--"}
+}
+
 func ancestorArgs(oid, of string) []string { return []string{"merge-base", "--is-ancestor", oid, of} }
 
 func localTagsArgs() []string { return []string{"tag", "--list", versionTagsPattern} }
 
 func remoteRefsArgs() []string {
 	return []string{lsRemote, uploadPackFlag, "--heads", tagsFlag, remoteName}
+}
+
+func remoteBranchArgs(branch string) []string {
+	return []string{lsRemote, uploadPackFlag, "--heads", remoteName, headsPrefix + branch}
 }
 
 func remoteTagsArgs() []string {

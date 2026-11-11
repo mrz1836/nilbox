@@ -21,6 +21,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/clonelock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/gitread"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/logging"
@@ -265,6 +266,19 @@ type Config struct {
 	// error. Without it, Git resolves "git" itself.
 	Finder execpath.Finder
 
+	// Guard works out what the commands worktree creation runs that reach a remote (its
+	// fetches and its ls-remote) or write a worktree's files (git worktree add) run with:
+	// gitread's guards, which refuse a clone whose own git config holds a setting outside
+	// their allowlist, so none runs a program the clone's own config names. They run the
+	// same git as every other command here, with the guard's environment, which holds their
+	// settings, through GitWith. Core gives every Service one; without it, as in tests that
+	// script git, they run as every other command here does.
+	Guard Guard
+
+	// GitWith runs git argv with the whole environment env, as a guarded command needs: the
+	// same runner as Git but for the environment. It defaults to an execpath.Exec with env.
+	GitWith func(env []string) execpath.Runner
+
 	// Home is the user's home directory; it expands a ~ clone root and shortens paths.
 	Home string
 
@@ -304,11 +318,24 @@ type Config struct {
 	Logger *slog.Logger
 }
 
+// Guard works out what a git command that reaches the clone's remote, or writes a
+// worktree's files, runs with, one in a clone or a worktree that could run one of the
+// clone's programs, as a status or a removal, and the environment a read runs with:
+// gitread's RemoteSetupFor, CheckoutSetup, LocalSetup, and ReadEnv, *gitread.Git.
+type Guard interface {
+	RemoteSetupFor(ctx context.Context, dir, remote string) (gitread.Setup, error)
+	CheckoutSetup(ctx context.Context, dir string) (gitread.Setup, error)
+	LocalSetup(ctx context.Context, dir string) (gitread.Local, error)
+	ReadEnv() []string
+}
+
 // Service lists and removes worktrees of the clones under the clone root.
 type Service struct {
 	settings SettingsReader
 	run      execpath.Runner
 	finder   execpath.Finder
+	guard    Guard
+	gitWith  func(env []string) execpath.Runner
 	home     string
 	realHome string
 	clock    clock.Clock
@@ -356,6 +383,8 @@ func NewService(cfg Config) *Service {
 		settings: cfg.Settings,
 		run:      cfg.Git,
 		finder:   cfg.Finder,
+		guard:    cfg.Guard,
+		gitWith:  cfg.GitWith,
 		home:     cfg.Home,
 		realHome: realHome,
 		clock:    clock.Or(cfg.Clock),
@@ -918,10 +947,13 @@ func (s *Service) prepare(ctx context.Context) (git, string, SweepSettings, erro
 	return g, root, prefs, nil
 }
 
-// git returns the allowlisted git runner, resolving the binary when a Finder is set.
+// git returns the allowlisted git runner, resolving the binary when a Finder is set, for
+// one operation: the Local of each folder it runs a command in is worked out once.
 func (s *Service) git() (git, error) {
+	locals := &localCache{byID: map[string]localResult{}}
+
 	if s.finder == nil {
-		return git{run: s.run, bin: gitBin}, nil
+		return git{run: s.run, bin: gitBin, guard: s.guard, with: s.gitWith, locals: locals}, nil
 	}
 
 	bin, err := s.finder.Find(gitBin)
@@ -929,7 +961,7 @@ func (s *Service) git() (git, error) {
 		return git{}, fmt.Errorf("find git: %w", err)
 	}
 
-	return git{run: s.run, bin: bin}, nil
+	return git{run: s.run, bin: bin, guard: s.guard, with: s.gitWith, locals: locals}, nil
 }
 
 // checkedGit resolves git and checks that repoPath is a clone directly under the clone
@@ -1202,6 +1234,10 @@ func (s *Service) readState(ctx context.Context, g git, wt *Worktree, times map[
 	switch {
 	case err == nil:
 		wt.Dirty, wt.DirtyCount = count > 0, count
+	case guarded(err):
+		// The clone's own config refuses a status: the worktree says why, and nothing that
+		// needs its status, as a sweep's removal, touches it.
+		wt.Error = uierr.Message(err)
 	case gitRefused(ctx, err):
 		wt.Error = uierr.Message(fmt.Errorf("could not read the status: %w", gitError(err, stderr)))
 	default:

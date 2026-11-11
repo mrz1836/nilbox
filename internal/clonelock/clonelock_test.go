@@ -272,6 +272,7 @@ func TestSentence(t *testing.T) {
 		{clonelock.Holder{Kind: clonelock.KindChecks, Repo: "acme-org/sdk"}, "A checks run is using acme-org/sdk right now."},
 		{clonelock.Holder{Kind: clonelock.KindScript, Repo: "acme-org/sdk"}, "A script is using acme-org/sdk right now."},
 		{worktreeJob(), "A worktree change is using acme-org/sdk right now."},
+		{clonelock.Holder{Kind: clonelock.KindPull, Repo: "acme-org/sdk"}, "A pull is using acme-org/sdk right now."},
 		{clonelock.Holder{Kind: clonelock.KindUpdate, Repo: "~/.local/bin"}, "A tool update is using ~/.local/bin right now."},
 		{clonelock.Holder{Kind: clonelock.KindInstall, Repo: "~/.local/bin"}, "A tool install is using ~/.local/bin right now."},
 		{clonelock.Holder{Kind: clonelock.KindOrphan, Repo: "acme-org/sdk"}, "A run from before " + brand.Name + " restarted is using acme-org/sdk right now."},

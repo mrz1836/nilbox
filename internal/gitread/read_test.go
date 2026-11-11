@@ -241,6 +241,21 @@ func TestReadsARealClone(t *testing.T) {
 		require.Error(t, err, "without origin's branch there is nothing to count against")
 	})
 
+	t.Run("the commits between two", func(t *testing.T) {
+		t.Parallel()
+
+		got, err := g.CommitsBetween(t.Context(), f.clone, f.first, f.third)
+		require.NoError(t, err)
+		assert.Equal(t, 2, got)
+
+		got, err = g.CommitsBetween(t.Context(), f.clone, f.third, f.first)
+		require.NoError(t, err)
+		assert.Zero(t, got, "the newer commit has every commit the older one has")
+
+		_, err = g.CommitsBetween(t.Context(), f.clone, f.first, otherSHA)
+		require.Error(t, err, "a commit the clone lacks can't be counted to")
+	})
+
 	t.Run("ancestors", func(t *testing.T) {
 		t.Parallel()
 
@@ -345,6 +360,26 @@ func TestReadsARealClone(t *testing.T) {
 		require.Error(t, err)
 		assert.NotErrorIs(t, err, ErrGitCommandNotAllowed)
 	})
+}
+
+func TestIndexLocked(t *testing.T) {
+	t.Parallel()
+
+	env := testutil.Git(t)
+	dir := filepath.Join(t.TempDir(), "clone")
+	testutil.InitRepo(t, dir)
+
+	g := New(Config{Env: func() []string { return env }})
+
+	locked, err := g.IndexLocked(t.Context(), dir)
+	require.NoError(t, err)
+	assert.False(t, locked)
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".git", "index.lock"), nil, 0o600))
+
+	locked, err = g.IndexLocked(t.Context(), dir)
+	require.NoError(t, err)
+	assert.True(t, locked)
 }
 
 func TestReadsSigningConfig(t *testing.T) {

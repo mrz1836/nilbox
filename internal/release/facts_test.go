@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 
@@ -582,7 +583,9 @@ func TestNewGathererDefaults(t *testing.T) {
 
 	env, read := g.env()
 	assert.True(t, read)
-	assert.Equal(t, os.Environ(), env)
+	// Compared without printing either: the process environment holds the user's own
+	// variables, which a failure must never show.
+	assert.True(t, slices.Equal(os.Environ(), env), "the process's environment")
 	assert.IsType(t, execpath.Exec{}, g.runner([]string{"PATH=/usr/bin", "HOME=/work"}))
 }
 
@@ -654,60 +657,5 @@ func TestParseModulePath(t *testing.T) {
 
 	for in, want := range tests {
 		assert.Equal(t, want, parseModulePath([]byte(in)), "%q", in)
-	}
-}
-
-func TestGitMessage(t *testing.T) {
-	t.Parallel()
-
-	inner := fmt.Errorf("run git: %w", errToolExit)
-
-	tests := []struct {
-		err  error
-		want string
-	}{
-		{err: fmt.Errorf("git ls-remote: Permission denied (publickey).: %w", inner), want: "Permission denied (publickey)."},
-		{err: fmt.Errorf("git status: %w", inner), want: "git status"},
-		{
-			err:  fmt.Errorf("git ls-remote: %w", fmt.Errorf("%w: %w", context.DeadlineExceeded, inner)),
-			want: "origin didn't answer within " + gitread.RemoteTimeout.String(),
-		},
-		{err: errOriginUnread, want: errOriginUnread.Error()},
-		{
-			err: fmt.Errorf("git ls-remote: Permission denied (publickey): %w",
-				&gitread.SetAsideError{Err: inner, Settings: []string{gitread.SetAsideSSHCommand}}),
-			want: "Permission denied (publickey). This clone's own core.sshCommand isn't used to reach origin, " +
-				"which may be why: set it for this folder in your global git config, with an includeIf.",
-		},
-		{
-			err: fmt.Errorf("git ls-remote: Repository not found.: %w", &gitread.SetAsideError{
-				Err: inner, Settings: []string{gitread.SetAsideSSHCommand, gitread.SetAsideHelpers},
-			}),
-			want: "Repository not found. This clone's own core.sshCommand and credential.helper aren't used to reach " +
-				"origin, which may be why: set them for this folder in your global git config, with an includeIf.",
-		},
-		{
-			err: fmt.Errorf("git ls-remote: %w", &gitread.SetAsideError{
-				Err: inner, Settings: []string{gitread.SetAsideSSHCommand, gitread.SetAsideAskPass, gitread.SetAsideHelpers},
-			}),
-			want: "git ls-remote. This clone's own core.sshCommand, core.askPass, and credential.helper aren't used to " +
-				"reach origin, which may be why: set them for this folder in your global git config, with an includeIf.",
-		},
-		{err: &gitread.SetAsideError{Err: inner}, want: inner.Error()},
-		{
-			err: fmt.Errorf("git ls-remote: %w", fmt.Errorf("%w (http.proxy)", gitread.ErrCloneRoutes)),
-			want: "This clone's own git config changes how origin is reached (its proxy, the certificates it trusts, " +
-				"or the address it resolves), so it isn't asked from here, where it could be handed your credentials: " +
-				"set that for this folder in your global git config, with an includeIf.",
-		},
-		{
-			err: fmt.Errorf("git ls-remote: %w", fmt.Errorf("%w (origin's URL is \"ssh::x\")", gitread.ErrRemoteHelper)),
-			want: "This clone reaches origin through a remote helper (a URL that starts with a name and ::, or " +
-				"remote.origin.vcs), which isn't run here, as the clone's own config could make it run anything.",
-		},
-	}
-
-	for _, tc := range tests {
-		assert.Equal(t, tc.want, gitMessage(tc.err), "%v", tc.err)
 	}
 }

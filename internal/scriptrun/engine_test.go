@@ -211,10 +211,13 @@ func TestEachKindHasItsLimit(t *testing.T) {
 	assert.Equal(t, time.Minute, KindHooks.Timeout())
 	assert.Equal(t, 30*time.Minute, KindChecks.Timeout())
 	assert.Equal(t, 10*time.Minute, KindUpdate.Timeout())
+	assert.Equal(t, 30*time.Minute, KindPull.Timeout())
 	assert.Zero(t, KindScript.Timeout(), "a script has Stop instead")
 	assert.Zero(t, Kind("other").Timeout())
 	assert.True(t, KindUpdate.Valid())
+	assert.True(t, KindPull.Valid())
 	assert.Equal(t, clonelock.KindUpdate, KindUpdate.lockKind())
+	assert.Equal(t, clonelock.KindPull, KindPull.lockKind())
 	assert.Equal(t, clonelock.KindScript, Kind("other").lockKind())
 
 	e := NewEngine(Config{})
@@ -338,6 +341,34 @@ func TestBeforeCanWorkTheCommandOut(t *testing.T) {
 
 	_, err = h.e.Start(t.Context(), spec)
 	require.ErrorIs(t, err, ErrInvalidSpec, "without Before, the command is needed up front")
+}
+
+func TestBeforeEnvReplacesTheEnvironmentUnderTheLock(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	spec := h.spec(testutil.FakeRun{})
+	worked := []string{"PATH=/usr/bin", "GIT_TERMINAL_PROMPT=0"}
+
+	spec.Before = func(context.Context) ([]string, error) { return nil, nil }
+	spec.BeforeEnv = func() []string {
+		_, held := h.locks.Holder(spec.Dir)
+		assert.True(t, held, "it is asked under the clone's lock")
+
+		return worked
+	}
+
+	held, err := h.e.hold(t.Context(), &spec)
+	require.NoError(t, err)
+	held.free()
+	assert.Equal(t, worked, spec.Env, "the environment Before's work gave is the one the run gets")
+
+	spec.Env = nil
+	spec.Before = func(context.Context) ([]string, error) { return nil, errFacts }
+
+	_, err = h.e.hold(t.Context(), &spec)
+	require.ErrorIs(t, err, errFacts)
+	assert.Nil(t, spec.Env, "a Before that fails gives no environment")
 }
 
 func TestTheSlotLimitHoldsAndAReleaseNeverWaits(t *testing.T) {
