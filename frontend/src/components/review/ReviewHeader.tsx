@@ -2,6 +2,7 @@ import { openExternal, type InboxItem, type Review } from '../../platform'
 import { quietButtonClass } from '../controls'
 import { ChevronLeftIcon, ChevronRightIcon, ExternalIcon, PullRequestIcon, XIcon } from '../icons'
 import { TrustTag } from '../ItemRow'
+import { Spinner } from '../Spinner'
 
 export interface ReviewHeaderProps {
   // titleId names the sheet: the heading that holds the title.
@@ -26,7 +27,8 @@ const iconButtonClass = `${quietButtonClass} p-1`
 
 // ReviewHeader is the review sheet's top: the pull request's title and where it is, who
 // opened it, which branch merges into which, where it sits in its list with buttons to
-// step through it, and buttons to open it on GitHub and to close the sheet.
+// step through it, and buttons to open it on GitHub and to close the sheet. While GitHub is
+// read, it says so beside a spinner, and a light glides along its bottom edge.
 export function ReviewHeader({
   titleId,
   review,
@@ -44,7 +46,7 @@ export function ReviewHeader({
   const author = review?.author ?? item?.author ?? ''
 
   return (
-    <header className="flex items-start gap-3 border-b border-border px-5 py-3">
+    <header className="relative flex items-start gap-3 border-b border-border px-5 py-3">
       <PullRequestIcon className="mt-1 size-4 shrink-0 text-success" />
       <div className="min-w-0 flex-1">
         <h2 id={titleId} className="truncate text-base font-semibold" title={title}>
@@ -61,7 +63,12 @@ export function ReviewHeader({
             </span>
           )}
           {position !== '' && <span>{position}</span>}
-          {checking && <span aria-live="polite">Checking GitHub…</span>}
+          {checking && (
+            <span aria-live="polite" className="flex items-center gap-1">
+              <Spinner className="size-3" />
+              Checking GitHub…
+            </span>
+          )}
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-1">
@@ -101,6 +108,8 @@ export function ReviewHeader({
           <XIcon className="size-4" />
         </button>
       </div>
+      {/* While GitHub is read, a light glides along the header's bottom edge. */}
+      {checking && <div aria-hidden="true" className="loading-bar absolute inset-x-0 -bottom-px" />}
     </header>
   )
 }

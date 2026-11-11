@@ -27,7 +27,9 @@ export interface PopoverPanelProps extends HTMLAttributes<HTMLDivElement> {
 
 // PopoverPanel is the floating card a popover button opens, rendered only while it is
 // open. The button and the panel share a positioned parent; className adds the panel's
-// size, layer, shadow, and layout.
+// size, layer, shadow, and layout. The panel takes focus itself (tabIndex -1), so a click
+// on a radio, checkbox, or button in it, which the desktop's WebKit focuses no control
+// for, leaves focus in the panel rather than on whatever holds it.
 export function PopoverPanel({ state, align, className = '', style, children, ...rest }: PopoverPanelProps) {
   const { open, panelRef, side, maxHeight } = state
 
@@ -38,9 +40,10 @@ export function PopoverPanel({ state, align, className = '', style, children, ..
   return (
     <div
       ref={panelRef}
+      tabIndex={-1}
       {...rest}
       style={maxHeight === undefined ? style : { ...style, maxHeight }}
-      className={`absolute rounded-lg border border-border bg-surface shadow-xl motion-safe:animate-pop-in ${placements[side][align]} ${className}`}
+      className={`absolute rounded-lg border border-border bg-surface shadow-xl outline-none motion-safe:animate-pop-in ${placements[side][align]} ${className}`}
     >
       {children}
     </div>

@@ -202,4 +202,35 @@
       background-position: 0% 0;
     }
   }
+
+  /* A hairline under a header while something is read from GitHub: a faint accent track
+     with a brighter stretch gliding across it, again and again. With reduced motion only
+     the track shows. */
+  .loading-bar {
+    position: relative;
+    overflow: hidden;
+    height: 2px;
+    background-color: color-mix(in oklab, var(--color-accent) 18%, transparent);
+  }
+
+  .loading-bar::before {
+    content: '';
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 40%;
+    background-image: linear-gradient(90deg, transparent, var(--color-accent), transparent);
+    transform: translateX(-100%);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .loading-bar::before {
+      animation: loading-glide 1.4s ease-in-out infinite;
+    }
+  }
+
+  @keyframes loading-glide {
+    to {
+      transform: translateX(250%);
+    }
+  }
 }

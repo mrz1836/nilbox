@@ -85,15 +85,21 @@ describe('Toast', () => {
     expect(card.querySelector(`svg.${color}`)).not.toBeNull()
   })
 
-  it('shows an action button with its label', async () => {
+  it('shows an action button with its label, whole on hover when it is cut short', async () => {
     const person = user()
     const onClick = vi.fn()
     render(<Toast toast={{ id: 1, text: 'Cleaned up', action: { label: 'View', onClick } }} onClose={vi.fn()} />)
 
     expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
 
-    await person.click(screen.getByRole('button', { name: 'View' }))
+    const view = screen.getByRole('button', { name: 'View' })
+    expect(view).toHaveAttribute('title', 'View')
+    await person.click(view)
     expect(onClick).toHaveBeenCalledOnce()
+  })
+
+  it('stays twelve seconds, time to read it and reach its button', () => {
+    expect(toastMs).toBe(12_000)
   })
 
   it('waits while the pointer rests on it', async () => {

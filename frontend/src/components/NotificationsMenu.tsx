@@ -150,7 +150,6 @@ export function NotificationsMenu({ notifications, onOpen, onSettings }: Notific
         id={id}
         role="dialog"
         aria-labelledby={`${id}-title`}
-        tabIndex={-1}
         className="z-40 flex max-h-[min(32rem,calc(100vh-5rem))] w-96 flex-col shadow-black/20 outline-none"
       >
         <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
