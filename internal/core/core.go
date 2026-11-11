@@ -528,6 +528,9 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	})
 	// A release left from before a restart is read and verified as one started now.
 	runs.RegisterVerifier(scriptrun.KindRelease, release.NewVerifier(releases))
+	// The Refresher reads the Release page's rows of a released repository again, and of
+	// one a merge in the review sheet went into.
+	releaseRefresher := release.NewRefresher(releases)
 
 	deps := hookDeps{
 		settings: prefs, tools: tools, git: shellGit, runner: runner, clones: clones, runs: runs, history: scriptRuns,
@@ -573,7 +576,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Review: review.NewService(review.Config{
 			Pool: pool, Inbox: reviewInbox{store: inboxStore, actor: inbox.NewActor(inboxSvc)}, GitHub: client,
 			Settings: reviewSettings{settings: prefs}, Replies: reviewReplies{store: promptStore, source: previews},
-			Events: opts.Events, Clock: opts.Clock, Logger: logger,
+			Events: opts.Events, Merges: releaseRefresher, Clock: opts.Clock, Logger: logger,
 		}),
 		Watcher:          follow.watcher,
 		ShellSessions:    ShellSessions{ledger: follow.ledger, service: follow.service},
@@ -589,7 +592,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Runs:             runs,
 		ScriptRuns:       scriptRuns,
 		Release:          releases,
-		ReleaseRefresher: release.NewRefresher(releases),
+		ReleaseRefresher: releaseRefresher,
 		Hooks:            hookPage,
 		HooksScans:       hooks.NewScans(hookPage),
 		Scripts:          repoScripts,

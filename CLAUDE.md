@@ -316,7 +316,9 @@ app:lint` reads.
   or any failure, is `commented_not_merged`, a result whose words, like `Result.Commented`, say
   the comment was posted, so the sheet drops the text and never posts it twice. It owns `review_diffs` and
   `review_diff_files`, a bounded cache of the diffs it read (per pull request, in all, and by
-  age), pruned in the same transaction that writes. Nothing here lets an agent approve or merge.
+  age), pruned in the same transaction that writes. A merge that went through tells its
+  `Merges` the repository, without waiting (core: the Release page's `Refresher`, which reads
+  that repository's row again). Nothing here lets an agent approve or merge.
 - `internal/bump/` reads a dependency update from a bot's pull request title (and Dependabot's
   commit trailer) into an `Update`, for the review sheet and the `.Dependency` prompt variables.
   It is pure and imports no service.
@@ -542,15 +544,18 @@ app:lint` reads.
   clone root whose origin is on GitHub, grouped as unreleased, up to date, no releases yet, or
   can't release here, from two rounds of batched GraphQL (`(*github.Client).FetchReleaseStatus`,
   then `FetchReleaseCompare` for the repositories with a version, 15 to a query, adapted in core),
-  and reads each unreleased clone's state with `gitread`, never asking origin; it keeps the list
-  five minutes and keeps the last one when a refresh fails. A refresh tells the window how far
-  it has got, at most four times a second (`event.ReleasesProgress`: finding the clones, each
-  round's repositories as GitHub answers each batch, then the unreleased clones), and each list
-  that lands is kept in the `release.lastCandidates` pref with its clone root. After a restart,
-  the first `Candidates` serves that list at once, marked `Kept`, while the `Refresher` (a
-  desktop worker) reads GitHub again behind the page and `event.ReleasesUpdated` says when it
-  lands; a list from another clone root is never served, and a refresh that fails or is cut
-  short keeps nothing. `version.go` works the next version
+  and reads each unreleased clone's state with `gitread`, never asking origin. It serves the
+  last list however old it is: the whole list is read again only on the page's **Read GitHub
+  again**, for a list from another clone root, for one out of date, or with none yet (and
+  behind a list kept from a past start, below), never on a timer. A refresh that fails keeps
+  the last list, with its failure, until the user reads it again. A refresh tells the window
+  how far it has got, at most four times a second (`event.ReleasesProgress`: finding the
+  clones, each round's repositories as GitHub answers each batch, then the unreleased
+  clones), and each list that lands is kept in the `release.lastCandidates` pref with its
+  clone root. After a restart, the first `Candidates` serves that list at once, marked
+  `Kept`, while the `Refresher` (a desktop worker) reads GitHub again behind the page and
+  `event.ReleasesUpdated` says when it lands; a list from another clone root is never served,
+  and a refresh that fails or is cut short keeps nothing. `version.go` works the next version
   out exactly as magex does, tested against a table recorded from the real magex. A release
   follows the review sheet's template: the `Gatherer` reads its `Facts` at once (magex through
   a `ToolSource`, GitHub's status of the one repository, origin's refs with one `ls-remote`,
@@ -583,14 +588,17 @@ app:lint` reads.
   The `Refresher` reads the repository alone again (its status, a comparison only when its
   newest version isn't on its newest commit, and its clones' state, telling the window how
   far it has got with `event.ReleasesProgress`), once any refresh under way has landed (one
-  read of the list at a time), patches those rows into the list, which stays as fresh as it
-  was and is kept for the next start, and emits `event.ReleasesUpdated` again. A refresh
-  that began after the release ended has read the repository already, so the patch asks
-  GitHub nothing. A list it can't patch (none yet, another clone root's, over five minutes
-  old, kept from a past start, one whose last refresh failed, without that repository, or
-  GitHub failing) goes out of date instead, as it does when the `Refresher` isn't running or
-  stops with a patch still queued, and a refresh under way when a list goes out of date lands
-  out of date too. The bound
+  read of the list at a time), patches those rows into the list, however old, which stays as
+  current as it was and is kept for the next start, and emits `event.ReleasesUpdated` again.
+  A refresh that began after the release ended has read the repository already, so the patch
+  asks GitHub nothing. A list it can't patch (none yet, another clone root's, out of date,
+  kept from a past start, one whose last refresh failed, without that repository, or GitHub
+  failing) goes out of date instead, as it does when the `Refresher` isn't running or stops
+  with a patch still queued, and a refresh under way when a list goes out of date lands out
+  of date too. A merge in the review sheet is patched in the same way: the review service
+  tells its `Merges` (core wires the `Refresher`'s `Merged`) the repository a pull request
+  merged into, and the `Refresher` reads it again, but only while the list could be patched
+  then, so a merge never puts the list out of date. The bound
   `ReleaseResult` reads a run's outcome back as a typed `Result`, and the bound
   `OfferAfterMerge` answers the review sheet's offer after a merge from local state alone: the
   `integrations.offerAfterMerge` setting, magex, the default branch the Release page or the

@@ -25,10 +25,11 @@ export interface ReleaseCandidatesState {
 }
 
 // useReleaseCandidates reads the Release page's list each time the tab shows (the service
-// serves its last list while it is under five minutes old, and reads GitHub again after),
-// and again whenever the shell says a new list landed, as after a release or a read behind
-// the list kept from the last start. Meanwhile it follows how far each read of GitHub has
-// got. While enabled is false, as while mage-x is off, nothing is read.
+// serves its last list however old, reading GitHub in full only when refresh asks), and
+// again whenever the shell says a new list landed, as after a release, a merge in the
+// review sheet, or a read behind the list kept from the last start. Meanwhile it follows
+// how far each read of GitHub has got. While enabled is false, as while mage-x is off,
+// nothing is read.
 export function useReleaseCandidates(enabled: boolean): ReleaseCandidatesState {
   const query = useQuery(() => listReleaseCandidates(false), [], { enabled })
   const refresher = useMutation(() => listReleaseCandidates(true))

@@ -42,6 +42,12 @@ function initialFocus(body: HTMLElement | null): HTMLElement | null {
 // backdrop. A page that hides with it open (the window's views are Activities, kept while
 // another shows) closes it, so it never shows again unasked, nor opens before the review
 // sheet it was opened over. Render it only while it is open.
+//
+// The dialog has no height of its own, only a cap, so it is as tall as what it holds. No
+// column inside it may take flex-1 (a basis of 0%): the desktop's WebKit then counts the
+// column as empty, and the whole dialog collapses to its border over the dimmed window.
+// Each column keeps its content's height and shrinks under the cap (min-h-0), the options
+// scrolling between the heading and the buttons.
 export function LaunchDialog({ id, title, item, onClose, children }: LaunchDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
@@ -87,7 +93,7 @@ export function LaunchDialog({ id, title, item, onClose, children }: LaunchDialo
     >
       {/* The body takes focus itself, so a click on a radio, checkbox, or button, which the
           desktop's WebKit focuses no control for, leaves focus in the dialog. */}
-      <div ref={bodyRef} tabIndex={-1} className="flex min-h-0 flex-1 flex-col outline-none">
+      <div ref={bodyRef} tabIndex={-1} className="flex min-h-0 flex-col outline-none">
         <header className="flex shrink-0 items-start gap-3 border-b border-border py-3 pr-2.5 pl-3.5">
           <div className="min-w-0 flex-1">
             <h2 className="truncate text-base font-semibold">{title}</h2>
