@@ -31,13 +31,22 @@ export function changedCommand(question: ScriptQuestion): string {
   return question.trusted
 }
 
-// shownSections are the sources the page shows, in its order: each one the settings turn
-// on that has scripts, couldn't be read, or, for magex, says why it can't list them. The
-// user's own scripts show once they have some.
+// shownSections are the repository's sources the page shows, in its order: each one the
+// settings turn on that has scripts, couldn't be read, or, for magex, says why it can't
+// list them. The user's own scripts show apart, always (yoursSection).
 export function shownSections(page: RepoScripts): ScriptSection[] {
   return page.sections.filter(
-    (s) => !s.off && (s.entries.length > 0 || s.error !== '' || (s.source === 'magex' && s.note !== '')),
+    (s) =>
+      s.source !== 'yours' &&
+      !s.off &&
+      (s.entries.length > 0 || s.error !== '' || (s.source === 'magex' && s.note !== '')),
   )
+}
+
+// yoursSection is the page's section of the user's own scripts, or null when it has none,
+// as while Scripts is off.
+export function yoursSection(page: RepoScripts): ScriptSection | null {
+  return page.sections.find((s) => s.source === 'yours') ?? null
 }
 
 // EmptyReason says why a clone shows no scripts, a sentence each: a file that lists none,
@@ -48,8 +57,10 @@ export interface EmptyReason {
   off: boolean
 }
 
-// emptyReason words why page shows no source (shownSections is empty): its t3.json or
-// .vscode/tasks.json lists nothing, the clone has neither, or the sources are turned off.
+// emptyReason words why page shows none of the repository's own sources (shownSections is
+// empty): its t3.json or .vscode/tasks.json lists nothing, the clone has neither, or the
+// sources are turned off. With none of those to say, it says the clone has nothing to show,
+// or, while the user's own scripts show above, nothing of its own.
 export function emptyReason(page: RepoScripts): EmptyReason {
   const files = page.sections.filter((s) => s.source === 't3' || s.source === 'tasks')
   const on = files.filter((s) => !s.off)
@@ -74,7 +85,9 @@ export function emptyReason(page: RepoScripts): EmptyReason {
   }
 
   if (lines.length === 0) {
-    lines.push(`${page.name} has no scripts to show.`)
+    const yours = page.sections.some((s) => s.source === 'yours' && s.entries.length > 0)
+
+    lines.push(yours ? `${page.name} has no commands of its own to show.` : `${page.name} has no scripts to show.`)
   }
 
   return { lines, off: off.length > 0 }

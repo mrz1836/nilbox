@@ -132,14 +132,29 @@ export interface ScriptRowProps extends ScriptMenuProps {
   // command reports whether the row shows the command it runs, as a repository file's
   // scripts do; a magex target's is its name.
   command: boolean
+  // about is a quiet line under the command, such as where one of the user's own scripts
+  // shows, or ''.
+  about?: string
+  // more are the menu's items after the ways to run it, such as Edit for one of the
+  // user's own scripts, which its menu holds even while it can't run.
+  more?: readonly MenuItem[]
+}
+
+// rowMenu is a row's ⋯ menu: the ways to run its script, while it can run, then more, set
+// apart from them.
+function rowMenu(menu: ScriptMenuProps, more: readonly MenuItem[]): MenuItem[] {
+  const runs = menu.entry.runnable ? scriptMenu(menu) : []
+
+  return [...runs, ...more.map((item, i) => (i === 0 && runs.length > 0 ? { ...item, divided: true } : item))]
 }
 
 // ScriptRow is one script: its name, what it does or runs, and Run, with a menu that runs
 // it in the other place. A script the app can't run is greyed, with why. One that bumps a
 // version points to Release, which does it with its checks, and its menu runs it anyway.
 // It says when a command changed since the user last ran it, when a task runs until it is
-// stopped, and anything else about how it runs.
-export function ScriptRow({ command, ...menu }: ScriptRowProps) {
+// stopped, and anything else about how it runs. One of the user's own scripts says where it
+// shows, and its menu edits it too.
+export function ScriptRow({ command, about = '', more = [], ...menu }: ScriptRowProps) {
   const { entry, args, pending, onRun, onOpenRelease } = menu
 
   return (
@@ -151,6 +166,7 @@ export function ScriptRow({ command, ...menu }: ScriptRowProps) {
           {entry.detail !== '' && <span className="text-xs text-muted">{entry.detail}</span>}
         </p>
         {command && <p className="font-mono text-xs break-all text-muted">{entry.command}</p>}
+        {about !== '' && <p className="text-xs text-muted">{about}</p>}
         {!entry.runnable && (
           <p className="text-xs text-muted">
             <span className="sr-only">Can’t run: </span>
@@ -178,9 +194,9 @@ export function ScriptRow({ command, ...menu }: ScriptRowProps) {
         )}
         {entry.note !== '' && <Note icon={<InfoIcon className={`${noteIcon} text-info`} />}>{entry.note}</Note>}
       </div>
-      {entry.runnable && (
+      {(entry.runnable || more.length > 0) && (
         <div className="flex shrink-0 items-center gap-1">
-          {!entry.release && (
+          {entry.runnable && !entry.release && (
             <button
               type="button"
               aria-label={`Run ${entry.name}`}
@@ -195,7 +211,7 @@ export function ScriptRow({ command, ...menu }: ScriptRowProps) {
           )}
           <MenuButton
             label={`More for ${entry.name}`}
-            items={() => scriptMenu(menu)}
+            items={() => rowMenu(menu, more)}
             className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text"
           >
             <MoreIcon className="size-4" />

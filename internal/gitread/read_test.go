@@ -444,4 +444,42 @@ func TestReadsANewRepository(t *testing.T) {
 
 	_, err = g.RemoteRefs(t.Context(), repo)
 	require.Error(t, err, "there is no origin to ask")
+
+	head, err := g.OriginHead(t.Context(), repo)
+	require.NoError(t, err)
+	assert.Empty(t, head, "no origin, so no origin HEAD")
+}
+
+func TestReadsOriginHead(t *testing.T) {
+	t.Parallel()
+
+	env := testutil.Git(t)
+	g := New(Config{Env: func() []string { return env }})
+	root := t.TempDir()
+	origin, repo := filepath.Join(root, "origin.git"), filepath.Join(root, "repo")
+
+	testutil.RunGit(t, root, "-c", "init.defaultBranch=trunk", "init", "-q", "--bare", origin)
+	testutil.InitRepo(t, repo)
+	commitFile(t, repo, "one.txt", "one")
+	testutil.RunGit(t, repo, "switch", "-q", "-c", "trunk")
+	testutil.RunGit(t, repo, "remote", "add", "origin", origin)
+	testutil.RunGit(t, repo, "push", "-q", "-u", "origin", "trunk")
+	testutil.RunGit(t, repo, "switch", "-q", "-c", "feature")
+
+	head, err := g.OriginHead(t.Context(), repo)
+	require.NoError(t, err)
+	assert.Empty(t, head, "a pushed branch sets no origin HEAD")
+
+	testutil.RunGit(t, repo, "remote", "set-head", "origin", "trunk")
+
+	head, err = g.OriginHead(t.Context(), repo)
+	require.NoError(t, err)
+	assert.Equal(t, "trunk", head, "read from the clone's own ref, on any branch")
+
+	cloned := filepath.Join(root, "cloned")
+	testutil.RunGit(t, root, "clone", "-q", origin, cloned)
+
+	head, err = g.OriginHead(t.Context(), cloned)
+	require.NoError(t, err)
+	assert.Equal(t, "trunk", head, "git clone writes it")
 }

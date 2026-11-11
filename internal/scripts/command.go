@@ -13,6 +13,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/shellenv"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
@@ -51,6 +52,10 @@ type part struct {
 	cwd   string
 	env   [][2]string
 	shell *shellSpec
+
+	// raw is a command line of the user's own, which runs exactly as written, no ${…} in
+	// it filled in, in their login shell whatever its family: the app wrote none of it.
+	raw bool
 }
 
 // shellSpec is the shell a tasks.json shell task names, and the arguments before its
@@ -70,6 +75,14 @@ type script struct {
 	// for a script that needs no trust.
 	name string
 	hash string
+
+	// place is where the script itself says it runs, or "" for the setting, and asksFirst
+	// reports one the user set to ask before each run: only the user's own scripts say.
+	// look is the SHA-256 of what one of the user's scripts runs and how (yoursForm), which
+	// a run's Before compares, or "" for any other.
+	place     integrationprefs.RunsIn
+	asksFirst bool
+	look      string
 
 	// parts are what it runs, in order, and inputs the values they ask for, by ID.
 	parts  []part
@@ -268,6 +281,10 @@ func (l launcher) command(p part, dir string) ([]string, error) {
 	case partShell:
 	}
 
+	if p.raw {
+		return []string{l.ownShell(), "-c", p.command}, nil
+	}
+
 	line := commandLine(l.vars.expand(p.command), l.expandAll(p.args))
 	if p.shell == nil {
 		return []string{l.lineShell(), "-c", line}, nil
@@ -285,10 +302,22 @@ func (l launcher) command(p part, dir string) ([]string, error) {
 	return append(append([]string{exe}, l.expandAll(shellArgs(exe, p.shell.Args))...), line), nil
 }
 
-// lineShell is the shell a command line runs in: the user's login shell when it is of the
-// POSIX family, whose quoting the app writes, else sh.
+// lineShell is the shell a repository's command line runs in: the user's login shell when
+// it is of the POSIX family, whose quoting the app writes and t3.json and tasks.json
+// assume, else sh.
 func (l launcher) lineShell() string {
 	if posixShell(l.shell) {
+		return l.shell
+	}
+
+	return chainShell
+}
+
+// ownShell is the shell a line of the user's own runs in: their login shell as it is,
+// fish and tcsh included, since the app quotes nothing in it; sh only when the login shell
+// isn't an absolute path.
+func (l launcher) ownShell() string {
+	if filepath.IsAbs(l.shell) {
 		return l.shell
 	}
 

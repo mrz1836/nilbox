@@ -3,3 +3,21 @@
 //   sqlc v1.31.1
 
 package queries
+
+import (
+	"time"
+)
+
+type UserScript struct {
+	ID         int64
+	Name       string
+	Command    string
+	Icon       string
+	Scope      string
+	ScopeRepos string
+	RunsIn     string
+	Confirm    int64
+	Position   int64
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}

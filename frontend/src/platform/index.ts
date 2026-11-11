@@ -131,10 +131,18 @@ export type ScriptRunChunk = NonNullLists<scriptrun.Chunk>
 export type ScriptRunProgress = NonNullLists<scriptrun.Progress>
 export type ScriptSources = NonNullLists<integrationprefs.ScriptSources>
 
-export type RepoScripts = NonNullLists<scripts.Page>
+// UserScript is one of the user's own scripts, as saved: its scope, which clones it shows
+// in, and its icon, each a closed set, and its place, where runs go, or '' for where the
+// setting sends them ("As set in Settings"), which the generated type, a place, leaves
+// out. The page's types carry it as they carry the user's scripts.
+export type UserScript = Omit<NonNullLists<scripts.UserScript>, 'runsIn'> & { runsIn: RunsIn | '' }
+export type UserScriptScope = scripts.Scope
+export type UserScriptIcon = scripts.Icon
+export type UserScriptMove = scripts.Direction
+export type ScriptEntry = Omit<NonNullLists<scripts.Entry>, 'mine'> & { mine: UserScript | null }
+export type ScriptSection = Omit<NonNullLists<scripts.Section>, 'entries'> & { entries: ScriptEntry[] }
+export type RepoScripts = Omit<NonNullLists<scripts.Page>, 'sections'> & { sections: ScriptSection[] }
 export type ScriptClone = NonNullLists<scripts.Clone>
-export type ScriptSection = NonNullLists<scripts.Section>
-export type ScriptEntry = NonNullLists<scripts.Entry>
 export type ScriptInput = NonNullLists<scripts.Input>
 export type ScriptOption = NonNullLists<scripts.Option>
 export type ScriptSource = scripts.Source
@@ -540,13 +548,27 @@ export const installAllHooks: (dirs: string[] | null) => CancellablePromise<Hook
 export const getChecksResult: (runID: number) => CancellablePromise<HookChecksResult> = hooksService.ChecksResult
 
 // Repo scripts: the clones the page's picker lists, the ones a script ran in most recently
-// first; one clone's scripts, from its t3.json, its .vscode/tasks.json, and magex (refresh
-// lists magex's built-ins again); and a run of one of them, which returns its run's ID.
-// Nothing here runs anything in a clone but the run the user asked for, and nothing asks
-// GitHub.
+// first; one clone's scripts, the user's own whose scope includes it, then its t3.json,
+// its .vscode/tasks.json, and magex (refresh lists magex's built-ins again); and a run of
+// one of them, which returns its run's ID. The user's own scripts are saved (a new one
+// with ID 0, at the end), deleted, duplicated right after the original, and moved past the
+// nearest script shown in the clone named (all of them for ''); RepoNames lists the
+// clones' GitHub repositories, owner/name, which a script for chosen repositories picks
+// from; cancelling it stops the reads still to start. Nothing here runs anything in a
+// clone but the run the user asked for, and nothing asks GitHub.
 const scriptsService = narrow(scripts.Service)
 
-export const { Repos: listScriptRepos, List: listRepoScripts } = scriptsService
+export const {
+  Repos: listScriptRepos,
+  RepoNames: listScriptRepoNames,
+  Delete: deleteUserScript,
+  Move: moveUserScript,
+} = scriptsService
+
+// The calls whose user scripts the types above widen with '' for the setting's place.
+export const listRepoScripts: (dir: string, refresh: boolean) => CancellablePromise<RepoScripts> = scriptsService.List
+export const saveUserScript = scriptsService.Save as (script: UserScript) => CancellablePromise<UserScript>
+export const duplicateUserScript: (id: number) => CancellablePromise<UserScript> = scriptsService.Duplicate
 
 // questionFields are the fields every ScriptQuestion holds, each a string.
 const questionFields = ['ref', 'name', 'source', 'command', 'trust', 'trusted', 'trustNote', 'sha256'] as const

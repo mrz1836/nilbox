@@ -39,7 +39,8 @@ type RunRequest struct {
 	Inputs map[string]string `json:"inputs"`
 	Args   []string          `json:"args"`
 
-	// RunsIn is where it runs, or "" for the setting.
+	// RunsIn is where it runs, or "" for where the script says, as one of the user's own
+	// may, or else the setting.
 	RunsIn integrationprefs.RunsIn `json:"runsIn"`
 
 	// Confirmed is the SHA256 of the command the user confirmed in the trust question,
@@ -127,6 +128,11 @@ type pending struct {
 	in   Intent
 	conf confirmation
 	v    vars
+
+	// title is the script's name as the run records it, and look what one of the user's
+	// own scripts ran as then (script.look), which the Before compares.
+	title string
+	look  string
 }
 
 // Run runs the script req names in its clone, and returns the run's ID. A command from the
@@ -138,7 +144,7 @@ func (s *Service) Run(ctx context.Context, req RunRequest) (int64, error) {
 		return 0, ErrNotSetUp
 	}
 
-	if req.RunsIn != "" && !req.RunsIn.Valid() {
+	if !validPlace(req.RunsIn) {
 		return 0, fmt.Errorf("%w: the place %q", ErrInvalidRequest, req.RunsIn)
 	}
 
@@ -152,10 +158,9 @@ func (s *Service) Run(ctx context.Context, req RunRequest) (int64, error) {
 		return 0, err
 	}
 
-	where := cmp.Or(req.RunsIn, cfg.RunsIn, integrationprefs.RunsInApp)
 	in := Intent{Ref: req.Ref, Inputs: req.Inputs, Args: req.Args, Anyway: req.Anyway}
 
-	spec, err := s.spec(ctx, c, in, where, cfg, confirmation{hash: req.Confirmed, remember: req.Remember})
+	spec, err := s.spec(ctx, c, in, req.RunsIn, cfg, confirmation{hash: req.Confirmed, remember: req.Remember})
 	if err != nil {
 		return 0, err
 	}
@@ -166,19 +171,20 @@ func (s *Service) Run(ctx context.Context, req RunRequest) (int64, error) {
 	}
 
 	s.logger.InfoContext(ctx, "a script started", "run", id, "source", spec.Source, "repo", c.display(),
-		"in", string(where))
+		"in", string(spec.RunsIn))
 
 	return id, nil
 }
 
 // spec is the run of the script in intent, in c: worked out now, for its title and its
 // display form, and again by its Before under the clone's lock, which refuses it unless it
-// is still what was worked out now and what the user trusts.
-func (s *Service) spec(ctx context.Context, c clone, in Intent, where integrationprefs.RunsIn,
+// is still what was worked out now and what the user trusts. It runs where asked, or else
+// where the script says, or else where the setting sends runs.
+func (s *Service) spec(ctx context.Context, c clone, in Intent, asked integrationprefs.RunsIn,
 	cfg integrationprefs.Config, conf confirmation,
 ) (scriptrun.Spec, error) {
 	src, name, ok := parseRef(in.Ref)
-	if !ok || src == SourceYours {
+	if !ok {
 		return scriptrun.Spec{}, fmt.Errorf("%w: the script %q", ErrInvalidRequest, in.Ref)
 	}
 
@@ -193,16 +199,23 @@ func (s *Service) spec(ctx context.Context, c clone, in Intent, where integratio
 		return scriptrun.Spec{}, err
 	}
 
+	if conf.rerun && sc.asksFirst {
+		return scriptrun.Spec{}, uierr.New(fmt.Sprintf("%q asks before each run, so run it from Repo scripts.",
+			sc.entry.Name), fmt.Errorf("%w: %s", ErrAsksFirst, sc.entry.Ref))
+	}
+
 	if in.Inputs, err = check(sc, in); err != nil {
 		return scriptrun.Spec{}, err
 	}
 
 	in.SHA256, in.Args = sc.hash, nonNil(in.Args)
+	where := cmp.Or(asked, sc.place, cfg.RunsIn, integrationprefs.RunsInApp)
 
 	base, _ := s.env()
 	p := pending{
 		c: c, src: src, name: name, in: in, conf: conf,
-		v: vars{dir: c.dir, home: s.home, env: base, inputs: in.Inputs},
+		v:     vars{dir: c.dir, home: s.home, env: base, inputs: in.Inputs},
+		title: sc.entry.Name, look: sc.look,
 	}
 
 	spec := scriptrun.Spec{
@@ -211,16 +224,34 @@ func (s *Service) spec(ctx context.Context, c clone, in Intent, where integratio
 		Before: func(ctx context.Context) ([]string, error) { return s.before(ctx, p) },
 	}
 
-	if src == SourceMagex {
+	switch src {
+	case SourceMagex:
 		spec.Tool = string(integrationprefs.MageX)
+	case SourceYours:
+		spec.Env = withVars(spec.Env, s.repoVars(ctx, c))
+	case SourceT3, SourceTasks:
 	}
 
 	return spec, nil
 }
 
+// repoVars are the Variables one of the user's scripts runs with in the clone c, KEY=value:
+// its repository, its folder, and its repository's default branch, worked out as the
+// page's From branch note works it out.
+func (s *Service) repoVars(ctx context.Context, c clone) []string {
+	names := Variables()
+
+	return []string{
+		names[0] + "=" + repoText(c.name),
+		names[1] + "=" + c.dir,
+		names[2] + "=" + s.defaultBranch(ctx, c),
+	}
+}
+
 // before is a script run's Before: under the clone's lock, it reads the script's source
 // again, from its bytes, and refuses it when its hash isn't the one worked out as the run
-// was asked for. It works the command out, refuses one that would tag a version unless
+// was asked for, or, for one of the user's own scripts, when it was saved again since with
+// another name, command, place, or Ask before running. It works the command out, refuses one that would tag a version unless
 // asked to run it anyway, then one the user hasn't confirmed or trusted as it is now, and
 // only then remembers a confirmation the user asked to keep, and returns the command.
 func (s *Service) before(ctx context.Context, p pending) ([]string, error) {
@@ -232,6 +263,11 @@ func (s *Service) before(ctx context.Context, p pending) ([]string, error) {
 	}
 
 	shown := runDisplay(sc, p.v, p.in.Args)
+
+	if sc.look != p.look {
+		return nil, uierr.New(fmt.Sprintf("%q changed as it was starting. Look at it again before it runs.", p.title),
+			fmt.Errorf("%w: %s", ErrChanged, sc.entry.Ref))
+	}
 
 	if sc.hash != p.in.SHA256 {
 		return nil, s.ask(ctx, p.c, sc, shown, fmt.Sprintf("%q changed in %s as it was starting. Look at it "+
@@ -415,7 +451,7 @@ func inputValues(sc script, given map[string]string) (map[string]string, error) 
 
 // runEnv is the environment a run gets: in the app, the login shell's, with magex's quiet
 // settings for a magex target; in the terminal, only those settings, since the terminal's
-// own shell sets the rest up.
+// own shell sets the rest up. One of the user's scripts gets its Variables on top.
 func runEnv(src Source, base []string, where integrationprefs.RunsIn) []string {
 	if src == SourceMagex {
 		return integrations.MageX().RunEnv(base, where)
@@ -458,9 +494,11 @@ func nonNil(list []string) []string {
 // the same values and arguments, read again from its source, in the same clone. It asks
 // nothing, so it runs a repository command only while the user trusts it as it is now, by
 // a record kept under the clone's current origin; one confirmed once, or changed since, is
-// refused, and the user runs it from the page, which asks. Core registers it with the
-// runner for scriptrun.KindScript. It is its own type, not a method of the Service, which
-// the window binds.
+// refused, and the user runs it from the page, which asks. One of the user's own scripts
+// runs as it is saved now, found by its ID, and is refused once deleted, and while it is
+// set to ask before each run, which only the page asks. Core registers it with the runner
+// for scriptrun.KindScript. It is its own type, not a method of the Service, which the
+// window binds.
 type Rerunner struct {
 	s *Service
 }

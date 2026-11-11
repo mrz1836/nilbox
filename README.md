@@ -580,7 +580,9 @@ More in [The Worktrees view](docs/desktop.md#the-worktrees-view).
   reason), and magex's targets, the common ones one click away, with an Arguments field for
   `key=value` pairs. A task's inputs open a small form first, and anything that bumps a version
   points to Release, which does it with its checks. Every command runs where your runs go, or,
-  from its menu, in the other place.
+  from its menu, in the other place. **New script** saves your own commands, shown first, in
+  every repository, the Go ones, or those you choose, each with its own place to run and an
+  optional ask before running.
 - **A command from the repository asks first.** Before a `t3.json` script, a VS Code task, or the
   repository's own magex target runs for the first time, Nilbox shows exactly what will run and
   where, and asks again whenever it changes, showing what you ran before. Nothing in a clone runs

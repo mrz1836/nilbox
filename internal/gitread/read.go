@@ -151,6 +151,25 @@ func (g *Git) CurrentBranch(ctx context.Context, dir string) (string, error) {
 	return firstLine(out), nil
 }
 
+// OriginHead returns origin's default branch as the clone at dir last learned it, as in
+// "main": the branch its refs/remotes/origin/HEAD points at, which git clone and git remote
+// set-head write. It reads the clone's own refs and never asks origin. It is "" when the
+// clone has no such ref, as one made with git init and git remote add, or when it doesn't
+// name a branch of origin's.
+func (g *Git) OriginHead(ctx context.Context, dir string) (string, error) {
+	out, yes, err := g.ask(ctx, dir, originHeadArgs())
+	if err != nil || !yes {
+		return "", err
+	}
+
+	branch, ok := strings.CutPrefix(firstLine(out), remoteName+"/")
+	if !ok || !isLocalRef(headsPrefix+branch) {
+		return "", nil
+	}
+
+	return branch, nil
+}
+
 // InProgress returns what git is in the middle of in the worktree at dir: a rebase (or git
 // am), a merge, a cherry-pick, or a revert, or OperationNone. It asks git where each one's
 // file would be, which differs in a linked worktree, and looks for it.

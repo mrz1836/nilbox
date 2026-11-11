@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { bumpInput, magexTarget, repoScripts, scriptEntry, scriptQuestion, scriptSection } from '../test/fixtures'
+import { bumpInput, magexTarget, repoScripts, scriptQuestion, scriptSection, yourEntry } from '../test/fixtures'
 import {
   argsOf,
   changedCommand,
@@ -11,6 +11,7 @@ import {
   otherPlace,
   shownSections,
   trustTitle,
+  yoursSection,
 } from './repoScripts'
 
 describe('trustTitle', () => {
@@ -52,6 +53,16 @@ describe('shownSections', () => {
 
     expect(shownSections(page).map((s) => s.source)).toEqual(['t3', 'magex'])
     expect(shownSections(repoScripts({ sections: [scriptSection({ note: 'a note' })] }))).toEqual([])
+    expect(
+      shownSections(repoScripts({ sections: [scriptSection({ source: 'yours', entries: [yourEntry()] })] })),
+    ).toEqual([])
+  })
+})
+
+describe('yoursSection', () => {
+  it('is the user’s own scripts, or null for a page without them', () => {
+    expect(yoursSection(repoScripts())?.title).toBe('Yours')
+    expect(yoursSection(repoScripts({ off: true, sections: [] }))).toBeNull()
   })
 })
 
@@ -151,9 +162,18 @@ describe('emptyReason', () => {
 
   it('says there is nothing to show when no source is listed', () => {
     expect(reason()).toEqual({ lines: ['acme-org/sdk has no scripts to show.'], off: false })
-    expect(reason(scriptSection({ source: 'yours', title: 'Yours', entries: [scriptEntry()] })).lines).toEqual([
+    expect(reason(scriptSection({ source: 'yours', title: 'Yours' })).lines).toEqual([
       'acme-org/sdk has no scripts to show.',
     ])
+  })
+
+  it('says only that the repository has nothing of its own while the user’s scripts show', () => {
+    expect(reason(scriptSection({ source: 'yours', title: 'Yours', entries: [yourEntry()] })).lines).toEqual([
+      'acme-org/sdk has no commands of its own to show.',
+    ])
+    expect(
+      reason(scriptSection({ source: 'yours', title: 'Yours', entries: [yourEntry()] }), { ...t3, found: false }).lines,
+    ).toEqual(['acme-org/sdk has no t3.json.'])
   })
 })
 

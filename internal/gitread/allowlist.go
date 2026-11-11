@@ -32,6 +32,10 @@ const (
 	trackingPrefix = "refs/remotes/" + remoteName + "/"
 	tagsPrefix     = "refs/tags/"
 
+	// originHeadRef is origin's HEAD as the clone last learned it, a clone's own ref that
+	// names origin's default branch: git clone and git remote set-head write it.
+	originHeadRef = trackingPrefix + "HEAD"
+
 	// peelSuffix names the commit an annotated tag points at, as ls-remote lists it, and
 	// commitSuffix makes rev-parse answer only for a commit the clone has.
 	peelSuffix   = "^{}"
@@ -172,6 +176,10 @@ func allowlist() []command {
 		{name: "what an ls-remote's guard weighs", words: fixed(configCmd, "--show-scope", "-z", "--get-regexp", remoteKeysPattern)},
 		{name: "origin's URL, asking nothing of it", words: fixed(lsRemote, "--get-url", remoteName)},
 		{name: "the current branch", words: fixed("symbolic-ref", quietFlag, "--short", "HEAD")},
+		{
+			name:  "origin's default branch, as the clone last learned it",
+			words: fixed("symbolic-ref", quietFlag, "--short", originHeadRef),
+		},
 		{name: "the worktrees", words: fixed("worktree", "list", "--porcelain", "-z")},
 		{name: "a setting", words: append(fixed(configCmd, getFlag), value(slotConfigKey))},
 		{name: "a switch", words: append(fixed(configCmd, "--type=bool", getFlag), value(slotBoolKey))},
@@ -405,6 +413,8 @@ func entriesArgs() []string {
 }
 
 func currentBranchArgs() []string { return []string{"symbolic-ref", quietFlag, "--short", "HEAD"} }
+
+func originHeadArgs() []string { return []string{"symbolic-ref", quietFlag, "--short", originHeadRef} }
 
 func worktreesArgs() []string { return []string{"worktree", "list", "--porcelain", "-z"} }
 
