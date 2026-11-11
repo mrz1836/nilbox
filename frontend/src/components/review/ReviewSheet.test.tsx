@@ -104,19 +104,49 @@ describe('ReviewSheet', () => {
     expect(await actionButton('Approve & squash-merge')).toBeEnabled()
   })
 
-  it('says it is loading, and that a pull request has no description', async () => {
+  it('says what it reads from GitHub while the pull request loads, and that it has no description', async () => {
     platform.openReview.mockReturnValue(new Promise(() => undefined))
     platform.refreshReview.mockReturnValue(new Promise(() => undefined))
     const { unmount } = render(<Harness />)
 
-    expect(screen.getByText('Loading the pull request…')).toBeInTheDocument()
+    // Nothing to show yet: the banner names the pull request and what its read brings.
+    const reading = screen.getByRole('status')
+    expect(reading).toHaveTextContent('Reading acme-org/example-repo#7 from GitHub…')
+    expect(
+      within(within(reading).getByRole('list', { name: 'Coming from GitHub' }))
+        .getAllByRole('listitem')
+        .map((part) => part.textContent),
+    ).toEqual(['Description', 'Changed files', 'Checks', 'Reviews'])
     expect(screen.getByText('Checking GitHub…')).toBeInTheDocument()
     unmount()
 
-    platform.openReview.mockResolvedValue(review({ body: '', fetchedAt: '' }))
+    // The inbox's copy shows while the first read runs, with the banner, and placeholders
+    // where the files, the description, and the summary come.
+    platform.openReview.mockResolvedValue(review({ body: '', fetchedAt: '', files: [] }))
     platform.refreshReview.mockReturnValue(new Promise(() => undefined))
+    const { unmount: unmountStub } = render(<Harness />)
+    expect(await screen.findByRole('status')).toHaveTextContent('Reading acme-org/example-repo#7 from GitHub…')
+    expect(screen.getByRole('region', { name: 'Description' })).not.toHaveTextContent(/./)
+    expect(screen.queryByRole('navigation', { name: 'Files' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Summary' })).not.toBeInTheDocument()
+    unmountStub()
+
+    // Once GitHub answers, the banner goes, and an empty description says so.
+    platform.openReview.mockResolvedValue(review({ body: '', fetchedAt: '' }))
+    platform.refreshReview.mockResolvedValue(review({ body: '' }))
     render(<Harness />)
-    expect(await screen.findByText('Reading the description…')).toBeInTheDocument()
+    expect(await screen.findByText('No description.')).toBeInTheDocument()
+    expect(screen.queryByText(/from GitHub…/)).not.toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: 'Files' })).toBeInTheDocument()
+  })
+
+  it('says a pull request GitHub never answered for has not been read', async () => {
+    platform.openReview.mockResolvedValue(review({ body: '', fetchedAt: '' }))
+    platform.refreshReview.mockRejectedValue(new Error('GitHub is down'))
+    render(<Harness />)
+
+    expect(await screen.findByText('Not read from GitHub yet.')).toBeInTheDocument()
+    expect(screen.queryByText(/from GitHub…/)).not.toBeInTheDocument()
   })
 
   it('approves with the default reply, and closes', async () => {

@@ -29,6 +29,14 @@ import { FileList } from './FileList'
 import { MergeConfirmDialog } from './MergeConfirmDialog'
 import { needsText, ReviewComposer, useReplyBody } from './ReviewComposer'
 import { ReviewHeader } from './ReviewHeader'
+import {
+  DescriptionSkeleton,
+  DiffSkeleton,
+  FileListSkeleton,
+  ReadingBanner,
+  SheetSkeleton,
+  SummarySkeleton,
+} from './ReviewLoading'
 import { Readiness, ReviewSummary } from './ReviewSummary'
 
 export interface ReviewSheetProps {
@@ -109,6 +117,13 @@ export function ReviewSheet({
   const [confirming, setConfirming] = useState<ReviewOffer | null>(null)
   const [pushed, setPushed] = useState('')
   const [progress, setProgress] = useState<Progress | null>(null)
+
+  // target names the pull request while it loads, and reading reports its first read from
+  // GitHub under way: nothing the sheet would show has come from GitHub yet, so each
+  // column shows placeholders shaped like what comes.
+  const shown = review ?? item
+  const target = shown === undefined ? '' : `${shown.repo}#${String(shown.number)}`
+  const reading = loaded.checking && (review === null || review.fetchedAt === '')
 
   const at = siblings.findIndex((s) => s.id === id)
   const prev = at > 0 ? siblings[at - 1] : undefined
@@ -299,31 +314,42 @@ export function ReviewSheet({
           {loaded.patchError !== '' && <ErrorBanner>{loaded.patchError}</ErrorBanner>}
         </div>
         {review === null ? (
-          <p className="p-5 text-sm text-muted">Loading the pull request…</p>
+          loaded.error === '' && <SheetSkeleton key={id} target={target} />
         ) : (
           <div className="grid min-h-0 flex-1 grid-cols-[14rem_minmax(0,1fr)_22rem]">
             <aside className="min-h-0 overflow-y-auto border-r border-border p-3">
-              <FileList review={review} viewed={draft.viewed} />
+              {reading && review.files.length === 0 ? (
+                <FileListSkeleton />
+              ) : (
+                <FileList review={review} viewed={draft.viewed} />
+              )}
             </aside>
             <main className="min-h-0 space-y-4 overflow-y-auto p-4">
+              {reading && <ReadingBanner key={id} target={target} />}
               <section aria-label="Description" className="rounded-md border border-border p-3">
-                {review.body.trim() === '' ? (
-                  <p className="text-sm text-muted">
-                    {review.fetchedAt === '' ? 'Reading the description…' : 'No description.'}
-                  </p>
-                ) : (
+                {review.body.trim() !== '' ? (
                   <Markdown text={review.body} />
+                ) : reading ? (
+                  <DescriptionSkeleton />
+                ) : (
+                  <p className="text-sm text-muted">
+                    {review.fetchedAt === '' ? 'Not read from GitHub yet.' : 'No description.'}
+                  </p>
                 )}
               </section>
-              <DiffView
-                review={review}
-                draft={draft}
-                onDraft={onDraft}
-                loading={loaded.loading}
-                onLoad={(paths) => {
-                  void loaded.loadPatches(paths)
-                }}
-              />
+              {reading && review.files.length === 0 ? (
+                <DiffSkeleton />
+              ) : (
+                <DiffView
+                  review={review}
+                  draft={draft}
+                  onDraft={onDraft}
+                  loading={loaded.loading}
+                  onLoad={(paths) => {
+                    void loaded.loadPatches(paths)
+                  }}
+                />
+              )}
             </main>
             {/* The review form sits below the scrolling summary, in no scrolling box of its
                 own, so its menus open over the diff rather than being cut off at the column's
@@ -334,7 +360,11 @@ export function ReviewSheet({
                 <Readiness review={review} />
               </div>
               <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
-                <ReviewSummary review={review} item={item} onFilesSettings={onFilesSettings} />
+                {reading ? (
+                  <SummarySkeleton />
+                ) : (
+                  <ReviewSummary review={review} item={item} onFilesSettings={onFilesSettings} />
+                )}
                 <AgentVerdict
                   sessions={sessions}
                   agents={launch?.agents ?? []}
