@@ -2,8 +2,10 @@ import { CheckIcon } from '../icons'
 import { Spinner } from '../Spinner'
 
 export interface ActionProgressProps {
-  // title says what the action is, as in "Approve & squash-merge acme-org/api#212".
+  // title says what the action is, as in "Approve & squash-merge", and target the pull
+  // request it acts on, as in "acme-org/api#212".
   title: string
+  target: string
   // steps are what the action did so far, in order, as the backend reported them; the last
   // is the one it is doing now.
   steps: readonly string[]
@@ -12,8 +14,10 @@ export interface ActionProgressProps {
 // ActionProgress covers the review sheet while an action runs: the sheet behind it is dimmed
 // and takes no input, and a panel says what the action is, ticks off each step GitHub
 // finished, and shows the one under way, so it is clear the sheet is waiting for GitHub. It
-// announces each step to assistive technology as it comes.
-export function ActionProgress({ title, steps }: ActionProgressProps) {
+// announces each step to assistive technology as it comes. The panel is wide enough for most
+// titles on one line, and a longer one wraps before the pull request, inside its name only
+// when the name is wider than the panel.
+export function ActionProgress({ title, target, steps }: ActionProgressProps) {
   const shown = steps.length === 0 ? ['Starting'] : steps
 
   return (
@@ -21,11 +25,13 @@ export function ActionProgress({ title, steps }: ActionProgressProps) {
       <div
         role="status"
         aria-live="polite"
-        className="w-[min(28rem,calc(100%-2rem))] rounded-lg border border-border bg-surface p-5 shadow-xl"
+        className="w-[min(36rem,calc(100%-2rem))] rounded-lg border border-border bg-surface p-5 shadow-xl"
       >
         <div className="flex items-center gap-3">
           <Spinner className="size-5" />
-          <h3 className="min-w-0 text-sm font-semibold">{title}</h3>
+          <h3 className="min-w-0 text-sm font-semibold">
+            {title} <span className="inline-block max-w-full wrap-anywhere">{target}</span>
+          </h3>
         </div>
         <ol aria-label="Steps" className="mt-4 space-y-2 text-sm">
           {shown.map((step, i) => {
