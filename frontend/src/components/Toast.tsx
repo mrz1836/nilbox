@@ -2,12 +2,13 @@ import { useEffect, useEffectEvent, useState } from 'react'
 
 import { AlertIcon, CircleCheckIcon, XIcon } from './icons'
 
-// toastMs is how long a toast shows, unless the pointer rests on it.
-export const toastMs = 6000
+// toastMs is how long a toast shows, unless the pointer rests on it: long enough to read
+// a message and reach its button.
+export const toastMs = 12000
 
 // toastButtonClass is a toast's text button, such as Undo.
 const toastButtonClass =
-  'shrink-0 rounded-md px-2 py-1 text-sm font-medium text-accent transition-colors hover:bg-surface'
+  'max-w-full truncate rounded-md px-2 py-1 text-sm font-medium text-accent transition-colors hover:bg-surface'
 
 // ToastMessage is one short confirmation, such as "Dismissed", with an optional Undo.
 export interface ToastMessage {
@@ -37,10 +38,11 @@ export interface ToastProps {
   onClose: () => void
 }
 
-// Toast shows a short confirmation at the bottom of the window. It closes itself after a
-// few seconds, waits while the pointer rests on it or focus is in it (so Undo can be
-// reached with the keyboard), and is announced politely to screen readers: the live
-// region stays mounted, so each new message is read.
+// Toast shows a short confirmation at the bottom of the window, its message wrapping over
+// its buttons, with a button to close it. It closes itself after twelve seconds
+// (toastMs), waits while the pointer rests on it or focus is in it (so Undo can be reached
+// with the keyboard), and is announced politely to screen readers: the live region stays
+// mounted, so each new message is read.
 export function Toast({ toast, onClose }: ToastProps) {
   // hoveredId and focusedId are the toast the pointer rests on and the one focus is in.
   // Keyed by toast, a pause never outlives the toast it was for, even when that one is
@@ -96,32 +98,47 @@ export function Toast({ toast, onClose }: ToastProps) {
               setFocusedId(null)
             }
           }}
-          className="pointer-events-auto flex max-w-xl min-w-0 items-center gap-3 rounded-lg border border-border bg-raised py-1.5 pr-1.5 pl-3.5 text-sm shadow-xl shadow-black/30 motion-safe:animate-pop-in"
+          className="pointer-events-auto flex max-w-2xl min-w-0 items-start gap-3 rounded-lg border border-border bg-raised py-2.5 pr-2 pl-4 text-sm shadow-xl shadow-black/30 motion-safe:animate-pop-in"
         >
-          {toast.tone === 'success' && <CircleCheckIcon className="size-4 shrink-0 text-success" />}
-          {toast.tone === 'warning' && <AlertIcon className="size-4 shrink-0 text-warning" />}
-          <p className="min-w-0 truncate">
-            <span className={`font-medium ${error ? 'text-danger' : 'text-text'}`}>{toast.text}</span>
-            {toast.detail !== undefined && toast.detail !== '' && <span className="text-muted"> · {toast.detail}</span>}
-          </p>
-          {toast.undo !== undefined && (
-            <button type="button" onClick={toast.undo} className={toastButtonClass}>
-              Undo
-            </button>
-          )}
-          {toast.action !== undefined && (
-            <button type="button" onClick={toast.action.onClick} className={toastButtonClass}>
-              {toast.action.label}
-            </button>
-          )}
+          {toast.tone === 'success' && <CircleCheckIcon className="mt-0.5 size-4 shrink-0 text-success" />}
+          {toast.tone === 'warning' && <AlertIcon className="mt-0.5 size-4 shrink-0 text-warning" />}
+          <div className="min-w-0 flex-1">
+            {/* The message wraps, up to three lines, rather than being cut short beside a
+                button; the buttons sit on their own line under it. */}
+            <p className="line-clamp-3 leading-snug break-words">
+              <span className={`font-medium ${error ? 'text-danger' : 'text-text'}`}>{toast.text}</span>
+              {toast.detail !== undefined && toast.detail !== '' && (
+                <span className="text-muted"> · {toast.detail}</span>
+              )}
+            </p>
+            {(toast.undo !== undefined || toast.action !== undefined) && (
+              <div className="mt-1 -ml-2 flex min-w-0 flex-wrap items-center gap-1">
+                {toast.undo !== undefined && (
+                  <button type="button" onClick={toast.undo} className={toastButtonClass}>
+                    Undo
+                  </button>
+                )}
+                {toast.action !== undefined && (
+                  <button
+                    type="button"
+                    title={toast.action.label}
+                    onClick={toast.action.onClick}
+                    className={toastButtonClass}
+                  >
+                    {toast.action.label}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
           <button
             type="button"
             aria-label="Close"
             title="Close"
             onClick={onClose}
-            className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface hover:text-text"
+            className="-my-0.5 flex size-8 shrink-0 items-center justify-center rounded-md text-text/70 transition-colors hover:bg-surface hover:text-text"
           >
-            <XIcon className="size-3.5" />
+            <XIcon className="size-4" />
           </button>
         </div>
       )}
