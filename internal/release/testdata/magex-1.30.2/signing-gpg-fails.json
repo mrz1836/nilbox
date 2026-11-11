@@ -1,0 +1,176 @@
+{
+    "name": "signing-gpg-fails",
+    "note": "tag.gpgSign with openpgp and a gpg program that fails",
+    "dir": "/work/cases/signing-gpg-fails/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true",
+        "expect=v1.4.3",
+        "json=true",
+        "ff-only"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n00:38:40 [INFO] Using bump type: patch\n00:38:40 [INFO] Already on target branch 'master'\n00:38:40 [INFO] Updating 'master' from origin/master (fast-forward only)...\n✅ 'master' is level with origin/master\n00:38:40 [INFO] Detecting current version...\n00:38:40 [INFO] No tags found on HEAD commit\n00:38:40 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.2\n00:38:40 [INFO] Recent commits:\n5e2e07d fix: retries on 502 (#45)\n52cdad7 feat: first feature\nb5145c1 chore: initial commit\n00:38:40 [INFO] 📋 Version Bump Summary:\n00:38:40 [INFO]   From:    v1.4.2\n00:38:40 [INFO]   To:      v1.4.3\n00:38:40 [INFO]   Type:    patch bump\n✅ v1.4.3 matches expect\n{\"from\":\"v1.4.2\",\"to\":\"v1.4.3\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"\",\"commit\":\"\",\"pushed\":false,\"startBranch\":\"master\",\"branch\":\"master\",\"warnings\":[\"Current version tag is not on HEAD - there are 1 commits since v1.4.2\"],\"error\":\"failed to create tag: command failed [git tag -a v1.4.3 -m GitHubRelease v1.4.3]: exit status 128\"}\n",
+    "stderr": "error: gpg failed to sign the data:\n(no gpg output)\nerror: unable to sign the tag\nThe tag message has been left in .git/TAG_EDITMSG\n❌ Error: failed to create tag: command failed [git tag -a v1.4.3 -m GitHubRelease v1.4.3]: exit status 128\n",
+    "exit": 1,
+    "durationMs": 156,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 9,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 9,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 9,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 9,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 9,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 15,
+            "text": "00:38:40 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 28,
+            "text": "00:38:40 [INFO] Already on target branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 28,
+            "text": "00:38:40 [INFO] Updating 'master' from origin/master (fast-forward only)..."
+        },
+        {
+            "stream": "out",
+            "ms": 65,
+            "text": "✅ 'master' is level with origin/master"
+        },
+        {
+            "stream": "out",
+            "ms": 72,
+            "text": "00:38:40 [INFO] Detecting current version..."
+        },
+        {
+            "stream": "out",
+            "ms": 78,
+            "text": "00:38:40 [INFO] No tags found on HEAD commit"
+        },
+        {
+            "stream": "out",
+            "ms": 105,
+            "text": "00:38:40 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 112,
+            "text": "00:38:40 [INFO] Recent commits:"
+        },
+        {
+            "stream": "out",
+            "ms": 112,
+            "text": "5e2e07d fix: retries on 502 (#45)"
+        },
+        {
+            "stream": "out",
+            "ms": 112,
+            "text": "52cdad7 feat: first feature"
+        },
+        {
+            "stream": "out",
+            "ms": 112,
+            "text": "b5145c1 chore: initial commit"
+        },
+        {
+            "stream": "out",
+            "ms": 131,
+            "text": "00:38:40 [INFO] 📋 Version Bump Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 131,
+            "text": "00:38:40 [INFO]   From:    v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 131,
+            "text": "00:38:40 [INFO]   To:      v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 131,
+            "text": "00:38:40 [INFO]   Type:    patch bump"
+        },
+        {
+            "stream": "out",
+            "ms": 131,
+            "text": "✅ v1.4.3 matches expect"
+        },
+        {
+            "stream": "err",
+            "ms": 149,
+            "text": "error: gpg failed to sign the data:"
+        },
+        {
+            "stream": "err",
+            "ms": 149,
+            "text": "(no gpg output)"
+        },
+        {
+            "stream": "err",
+            "ms": 149,
+            "text": "error: unable to sign the tag"
+        },
+        {
+            "stream": "err",
+            "ms": 149,
+            "text": "The tag message has been left in .git/TAG_EDITMSG"
+        },
+        {
+            "stream": "err",
+            "ms": 155,
+            "text": "❌ Error: failed to create tag: command failed [git tag -a v1.4.3 -m GitHubRelease v1.4.3]: exit status 128"
+        },
+        {
+            "stream": "out",
+            "ms": 155,
+            "text": "{\"from\":\"v1.4.2\",\"to\":\"v1.4.3\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"\",\"commit\":\"\",\"pushed\":false,\"startBranch\":\"master\",\"branch\":\"master\",\"warnings\":[\"Current version tag is not on HEAD - there are 1 commits since v1.4.2\"],\"error\":\"failed to create tag: command failed [git tag -a v1.4.3 -m GitHubRelease v1.4.3]: exit status 128\"}"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "head": "5e2e07d",
+        "inProgress": "",
+        "localMaster": "5e2e07d",
+        "localTags": "v1.4.2 ba8975b 52cdad7",
+        "remoteMaster": "5e2e07d26908e3609c8af2f83996023640520486\trefs/heads/master",
+        "remoteTags": "ba8975b8e4ebd6aaef8794b0eba634890cd5d12e\trefs/tags/v1.4.2\n52cdad7c732e3bde3f9a91075b5f4105b28b3830\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "master",
+        "head": "5e2e07d",
+        "inProgress": "",
+        "localMaster": "5e2e07d",
+        "localTags": "v1.4.2 ba8975b 52cdad7",
+        "remoteMaster": "5e2e07d26908e3609c8af2f83996023640520486\trefs/heads/master",
+        "remoteTags": "ba8975b8e4ebd6aaef8794b0eba634890cd5d12e\trefs/tags/v1.4.2\n52cdad7c732e3bde3f9a91075b5f4105b28b3830\trefs/tags/v1.4.2^{}",
+        "status": ""
+    }
+}

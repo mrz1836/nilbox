@@ -1,0 +1,171 @@
+{
+    "name": "origin-without-head",
+    "note": "origin's HEAD names a branch it doesn't have, so the push check fails after the tag",
+    "dir": "/work/cases/origin-without-head/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true",
+        "expect=v1.4.3",
+        "json=true",
+        "ff-only"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n00:38:29 [INFO] Using bump type: patch\n00:38:29 [INFO] Already on target branch 'master'\n00:38:29 [INFO] Updating 'master' from origin/master (fast-forward only)...\n✅ 'master' is level with origin/master\n00:38:29 [INFO] Detecting current version...\n00:38:29 [INFO] No tags found on HEAD commit\n00:38:29 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.2\n00:38:29 [INFO] Recent commits:\n5bb1676 fix: retries on 502 (#45)\n02657f3 feat: first feature\n4b0ed50 chore: initial commit\n00:38:29 [INFO] 📋 Version Bump Summary:\n00:38:29 [INFO]   From:    v1.4.2\n00:38:29 [INFO]   To:      v1.4.3\n00:38:29 [INFO]   Type:    patch bump\n✅ v1.4.3 matches expect\n✅ ✅ Created tag: v1.4.3\n00:38:29 [WARN] ⚠️  Git remote validation failed: remote 'origin' exists but may not be accessible: command failed [git ls-remote --exit-code origin HEAD]: exit status 2\n{\"from\":\"v1.4.2\",\"to\":\"v1.4.3\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"v1.4.3\",\"commit\":\"5bb16768ce6f4230edef9daa9481c1b2b12b2149\",\"pushed\":false,\"startBranch\":\"master\",\"branch\":\"master\",\"warnings\":[\"Current version tag is not on HEAD - there are 1 commits since v1.4.2\",\"Git remote validation failed: remote 'origin' exists but may not be accessible: command failed [git ls-remote --exit-code origin HEAD]: exit status 2\"],\"error\":\"failed to push tag: remote 'origin' exists but may not be accessible: command failed [git ls-remote --exit-code origin HEAD]: exit status 2\\ntag v1.4.3 was left in the local repository: push it with 'git push origin v1.4.3' or delete it with 'git tag -d v1.4.3'\"}\n",
+    "stderr": "❌ Error: failed to push tag: remote 'origin' exists but may not be accessible: command failed [git ls-remote --exit-code origin HEAD]: exit status 2\ntag v1.4.3 was left in the local repository: push it with 'git push origin v1.4.3' or delete it with 'git tag -d v1.4.3'\n",
+    "exit": 1,
+    "durationMs": 170,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 9,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 9,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 9,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 9,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 9,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 15,
+            "text": "00:38:29 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 28,
+            "text": "00:38:29 [INFO] Already on target branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 28,
+            "text": "00:38:29 [INFO] Updating 'master' from origin/master (fast-forward only)..."
+        },
+        {
+            "stream": "out",
+            "ms": 63,
+            "text": "✅ 'master' is level with origin/master"
+        },
+        {
+            "stream": "out",
+            "ms": 69,
+            "text": "00:38:29 [INFO] Detecting current version..."
+        },
+        {
+            "stream": "out",
+            "ms": 76,
+            "text": "00:38:29 [INFO] No tags found on HEAD commit"
+        },
+        {
+            "stream": "out",
+            "ms": 100,
+            "text": "00:38:29 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 107,
+            "text": "00:38:29 [INFO] Recent commits:"
+        },
+        {
+            "stream": "out",
+            "ms": 107,
+            "text": "5bb1676 fix: retries on 502 (#45)"
+        },
+        {
+            "stream": "out",
+            "ms": 107,
+            "text": "02657f3 feat: first feature"
+        },
+        {
+            "stream": "out",
+            "ms": 107,
+            "text": "4b0ed50 chore: initial commit"
+        },
+        {
+            "stream": "out",
+            "ms": 125,
+            "text": "00:38:29 [INFO] 📋 Version Bump Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 125,
+            "text": "00:38:29 [INFO]   From:    v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 125,
+            "text": "00:38:29 [INFO]   To:      v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 125,
+            "text": "00:38:29 [INFO]   Type:    patch bump"
+        },
+        {
+            "stream": "out",
+            "ms": 125,
+            "text": "✅ v1.4.3 matches expect"
+        },
+        {
+            "stream": "out",
+            "ms": 139,
+            "text": "✅ ✅ Created tag: v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 164,
+            "text": "00:38:29 [WARN] ⚠️  Git remote validation failed: remote 'origin' exists but may not be accessible: command failed [git ls-remote --exit-code origin HEAD]: exit status 2"
+        },
+        {
+            "stream": "err",
+            "ms": 169,
+            "text": "❌ Error: failed to push tag: remote 'origin' exists but may not be accessible: command failed [git ls-remote --exit-code origin HEAD]: exit status 2"
+        },
+        {
+            "stream": "err",
+            "ms": 169,
+            "text": "tag v1.4.3 was left in the local repository: push it with 'git push origin v1.4.3' or delete it with 'git tag -d v1.4.3'"
+        },
+        {
+            "stream": "out",
+            "ms": 169,
+            "text": "{\"from\":\"v1.4.2\",\"to\":\"v1.4.3\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"v1.4.3\",\"commit\":\"5bb16768ce6f4230edef9daa9481c1b2b12b2149\",\"pushed\":false,\"startBranch\":\"master\",\"branch\":\"master\",\"warnings\":[\"Current version tag is not on HEAD - there are 1 commits since v1.4.2\",\"Git remote validation failed: remote 'origin' exists but may not be accessible: command failed [git ls-remote --exit-code origin HEAD]: exit status 2\"],\"error\":\"failed to push tag: remote 'origin' exists but may not be accessible: command failed [git ls-remote --exit-code origin HEAD]: exit status 2\\ntag v1.4.3 was left in the local repository: push it with 'git push origin v1.4.3' or delete it with 'git tag -d v1.4.3'\"}"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "head": "5bb1676",
+        "inProgress": "",
+        "localMaster": "5bb1676",
+        "localTags": "v1.4.2 e8669ad 02657f3",
+        "remoteMaster": "5bb16768ce6f4230edef9daa9481c1b2b12b2149\trefs/heads/master",
+        "remoteTags": "e8669ad001869e6c5b4c052735052fac4ff69b18\trefs/tags/v1.4.2\n02657f340b6983693a86d62a0c5bc23c54d8727a\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "master",
+        "head": "5bb1676",
+        "inProgress": "",
+        "localMaster": "5bb1676",
+        "localTags": "v1.4.2 e8669ad 02657f3\nv1.4.3 58928ca 5bb1676",
+        "remoteMaster": "5bb16768ce6f4230edef9daa9481c1b2b12b2149\trefs/heads/master",
+        "remoteTags": "e8669ad001869e6c5b4c052735052fac4ff69b18\trefs/tags/v1.4.2\n02657f340b6983693a86d62a0c5bc23c54d8727a\trefs/tags/v1.4.2^{}",
+        "status": ""
+    }
+}

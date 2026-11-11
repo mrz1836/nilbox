@@ -1,0 +1,136 @@
+{
+    "name": "ff-only-ahead-from-feature",
+    "note": "on feature-x; master has 1 commit not on origin",
+    "dir": "/work/cases/ff-only-ahead-from-feature/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true",
+        "expect=v1.4.3",
+        "json=true",
+        "ff-only"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n00:38:25 [INFO] Using bump type: patch\n00:38:25 [INFO] Switching to branch 'master'...\nYour branch is ahead of 'origin/master' by 1 commit.\n  (use \"git push\" to publish your local commits)\n✅ Switched to branch 'master'\n00:38:25 [INFO] Updating 'master' from origin/master (fast-forward only)...\n00:38:25 [INFO] Switching to branch 'feature-x'...\n✅ Switched to branch 'feature-x'\n✅ ✅ Switched back to original branch 'feature-x'\n{\"from\":\"\",\"to\":\"\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"\",\"commit\":\"\",\"pushed\":false,\"startBranch\":\"feature-x\",\"branch\":\"feature-x\",\"warnings\":[],\"error\":\"ff-only: branch 'master' has 1 commit that origin/master doesn't have, so it can't be fast-forwarded; nothing was tagged\\nto release it, push it first (git push origin master); to drop it, reset the branch to origin in a terminal (git checkout master && git reset --hard origin/master)\"}\n",
+    "stderr": "Switched to branch 'master'\nSwitched to branch 'feature-x'\n❌ Error: ff-only: branch 'master' has 1 commit that origin/master doesn't have, so it can't be fast-forwarded; nothing was tagged\nto release it, push it first (git push origin master); to drop it, reset the branch to origin in a terminal (git checkout master && git reset --hard origin/master)\n",
+    "exit": 1,
+    "durationMs": 95,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 9,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 9,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 9,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 9,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 9,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 15,
+            "text": "00:38:25 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 34,
+            "text": "00:38:25 [INFO] Switching to branch 'master'..."
+        },
+        {
+            "stream": "err",
+            "ms": 41,
+            "text": "Switched to branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 42,
+            "text": "Your branch is ahead of 'origin/master' by 1 commit."
+        },
+        {
+            "stream": "out",
+            "ms": 42,
+            "text": "  (use \"git push\" to publish your local commits)"
+        },
+        {
+            "stream": "out",
+            "ms": 43,
+            "text": "✅ Switched to branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 43,
+            "text": "00:38:25 [INFO] Updating 'master' from origin/master (fast-forward only)..."
+        },
+        {
+            "stream": "out",
+            "ms": 80,
+            "text": "00:38:25 [INFO] Switching to branch 'feature-x'..."
+        },
+        {
+            "stream": "err",
+            "ms": 88,
+            "text": "Switched to branch 'feature-x'"
+        },
+        {
+            "stream": "out",
+            "ms": 89,
+            "text": "✅ Switched to branch 'feature-x'"
+        },
+        {
+            "stream": "out",
+            "ms": 89,
+            "text": "✅ ✅ Switched back to original branch 'feature-x'"
+        },
+        {
+            "stream": "out",
+            "ms": 95,
+            "text": "{\"from\":\"\",\"to\":\"\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"\",\"commit\":\"\",\"pushed\":false,\"startBranch\":\"feature-x\",\"branch\":\"feature-x\",\"warnings\":[],\"error\":\"ff-only: branch 'master' has 1 commit that origin/master doesn't have, so it can't be fast-forwarded; nothing was tagged\\nto release it, push it first (git push origin master); to drop it, reset the branch to origin in a terminal (git checkout master && git reset --hard origin/master)\"}"
+        },
+        {
+            "stream": "err",
+            "ms": 95,
+            "text": "❌ Error: ff-only: branch 'master' has 1 commit that origin/master doesn't have, so it can't be fast-forwarded; nothing was tagged"
+        },
+        {
+            "stream": "err",
+            "ms": 95,
+            "text": "to release it, push it first (git push origin master); to drop it, reset the branch to origin in a terminal (git checkout master && git reset --hard origin/master)"
+        }
+    ],
+    "before": {
+        "branch": "feature-x",
+        "head": "8dfa8e1",
+        "inProgress": "",
+        "localMaster": "8dfa8e1",
+        "localTags": "v1.4.2 96f9d32 a1e6294",
+        "remoteMaster": "a84ccad19b4f6c0b947ffeb93f47f3d9ae6ca195\trefs/heads/master",
+        "remoteTags": "96f9d323bc52615cf0541edc52d53c6a1eb0f145\trefs/tags/v1.4.2\na1e62945fa5f84e1929d6c8f6a22a8ccadf31b11\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "feature-x",
+        "head": "8dfa8e1",
+        "inProgress": "",
+        "localMaster": "8dfa8e1",
+        "localTags": "v1.4.2 96f9d32 a1e6294",
+        "remoteMaster": "a84ccad19b4f6c0b947ffeb93f47f3d9ae6ca195\trefs/heads/master",
+        "remoteTags": "96f9d323bc52615cf0541edc52d53c6a1eb0f145\trefs/tags/v1.4.2\na1e62945fa5f84e1929d6c8f6a22a8ccadf31b11\trefs/tags/v1.4.2^{}",
+        "status": ""
+    }
+}

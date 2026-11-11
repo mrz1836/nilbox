@@ -1,0 +1,179 @@
+{
+    "name": "detached-no-branch",
+    "note": "detached at HEAD, no branch=",
+    "dir": "/work/cases/detached-no-branch/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "push=true",
+        "expect=v1.4.3",
+        "json=true"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n00:38:27 [INFO] Using bump type: patch\n00:38:27 [WARN] ⚠️  No branch parameter specified - performing version bump on current branch: ''\n00:38:27 [WARN] 💡 If not on a release branch, consider using: magex version:bump branch=master bump=patch\n00:38:27 [INFO] To proceed with version bump on current branch, this is normal behavior\n00:38:27 [INFO] Detecting current version...\n00:38:27 [INFO] No tags found on HEAD commit\n00:38:27 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.2\n00:38:27 [INFO] Recent commits:\n04175b0 fix: retries on 502 (#45)\n4c87986 feat: first feature\n098b33c chore: initial commit\n00:38:27 [INFO] 📋 Version Bump Summary:\n00:38:27 [INFO]   From:    v1.4.2\n00:38:27 [INFO]   To:      v1.4.3\n00:38:27 [INFO]   Type:    patch bump\n✅ v1.4.3 matches expect\n✅ ✅ Created tag: v1.4.3\n04175b0e5cc5d76d684ade71a47634e9dd706782\tHEAD\n00:38:27 [INFO] Pushing tag to remote...\n✅ ✅ Tag pushed to remote\n{\"from\":\"v1.4.2\",\"to\":\"v1.4.3\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"v1.4.3\",\"commit\":\"04175b0e5cc5d76d684ade71a47634e9dd706782\",\"pushed\":true,\"startBranch\":\"\",\"branch\":\"\",\"warnings\":[\"No branch parameter specified - performing version bump on current branch: ''\",\"If not on a release branch, consider using: magex version:bump branch=master bump=patch\",\"Current version tag is not on HEAD - there are 1 commits since v1.4.2\"],\"error\":\"\"}\n",
+    "stderr": "To /work/cases/detached-no-branch/origin.git\n * [new tag]         v1.4.3 -> v1.4.3\n",
+    "exit": 0,
+    "durationMs": 208,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 14,
+            "text": "00:38:27 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 26,
+            "text": "00:38:27 [WARN] ⚠️  No branch parameter specified - performing version bump on current branch: ''"
+        },
+        {
+            "stream": "out",
+            "ms": 26,
+            "text": "00:38:27 [WARN] 💡 If not on a release branch, consider using: magex version:bump branch=master bump=patch"
+        },
+        {
+            "stream": "out",
+            "ms": 26,
+            "text": "00:38:27 [INFO] To proceed with version bump on current branch, this is normal behavior"
+        },
+        {
+            "stream": "out",
+            "ms": 33,
+            "text": "00:38:27 [INFO] Detecting current version..."
+        },
+        {
+            "stream": "out",
+            "ms": 38,
+            "text": "00:38:27 [INFO] No tags found on HEAD commit"
+        },
+        {
+            "stream": "out",
+            "ms": 65,
+            "text": "00:38:27 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 73,
+            "text": "00:38:27 [INFO] Recent commits:"
+        },
+        {
+            "stream": "out",
+            "ms": 73,
+            "text": "04175b0 fix: retries on 502 (#45)"
+        },
+        {
+            "stream": "out",
+            "ms": 73,
+            "text": "4c87986 feat: first feature"
+        },
+        {
+            "stream": "out",
+            "ms": 73,
+            "text": "098b33c chore: initial commit"
+        },
+        {
+            "stream": "out",
+            "ms": 91,
+            "text": "00:38:27 [INFO] 📋 Version Bump Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 91,
+            "text": "00:38:27 [INFO]   From:    v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 91,
+            "text": "00:38:27 [INFO]   To:      v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 91,
+            "text": "00:38:27 [INFO]   Type:    patch bump"
+        },
+        {
+            "stream": "out",
+            "ms": 91,
+            "text": "✅ v1.4.3 matches expect"
+        },
+        {
+            "stream": "out",
+            "ms": 106,
+            "text": "✅ ✅ Created tag: v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 135,
+            "text": "04175b0e5cc5d76d684ade71a47634e9dd706782\tHEAD"
+        },
+        {
+            "stream": "out",
+            "ms": 151,
+            "text": "00:38:27 [INFO] Pushing tag to remote..."
+        },
+        {
+            "stream": "err",
+            "ms": 201,
+            "text": "To /work/cases/detached-no-branch/origin.git"
+        },
+        {
+            "stream": "err",
+            "ms": 201,
+            "text": " * [new tag]         v1.4.3 -> v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 201,
+            "text": "✅ ✅ Tag pushed to remote"
+        },
+        {
+            "stream": "out",
+            "ms": 208,
+            "text": "{\"from\":\"v1.4.2\",\"to\":\"v1.4.3\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"v1.4.3\",\"commit\":\"04175b0e5cc5d76d684ade71a47634e9dd706782\",\"pushed\":true,\"startBranch\":\"\",\"branch\":\"\",\"warnings\":[\"No branch parameter specified - performing version bump on current branch: ''\",\"If not on a release branch, consider using: magex version:bump branch=master bump=patch\",\"Current version tag is not on HEAD - there are 1 commits since v1.4.2\"],\"error\":\"\"}"
+        }
+    ],
+    "before": {
+        "branch": "(detached)",
+        "head": "04175b0",
+        "inProgress": "",
+        "localMaster": "04175b0",
+        "localTags": "v1.4.2 80f5780 4c87986",
+        "remoteMaster": "04175b0e5cc5d76d684ade71a47634e9dd706782\trefs/heads/master",
+        "remoteTags": "80f578058c1dda64c50ca4b2bc347beef0757fbf\trefs/tags/v1.4.2\n4c87986b077ee1a93bfac6deb46ea14d072f2023\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "(detached)",
+        "head": "04175b0",
+        "inProgress": "",
+        "localMaster": "04175b0",
+        "localTags": "v1.4.2 80f5780 4c87986\nv1.4.3 007dfc9 04175b0",
+        "remoteMaster": "04175b0e5cc5d76d684ade71a47634e9dd706782\trefs/heads/master",
+        "remoteTags": "80f578058c1dda64c50ca4b2bc347beef0757fbf\trefs/tags/v1.4.2\n4c87986b077ee1a93bfac6deb46ea14d072f2023\trefs/tags/v1.4.2^{}\n007dfc9dc087078a814f283cba08c6c20e6f83a8\trefs/tags/v1.4.3\n04175b0e5cc5d76d684ade71a47634e9dd706782\trefs/tags/v1.4.3^{}",
+        "status": ""
+    }
+}

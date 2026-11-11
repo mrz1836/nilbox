@@ -1,0 +1,116 @@
+{
+    "name": "origin-unreachable-branch",
+    "note": "origin points at a missing folder",
+    "dir": "/work/cases/origin-unreachable-branch/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true",
+        "expect=v1.4.3",
+        "json=true",
+        "ff-only"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n00:38:28 [INFO] Using bump type: patch\n00:38:28 [INFO] Already on target branch 'master'\n00:38:28 [INFO] Updating 'master' from origin/master (fast-forward only)...\n{\"from\":\"\",\"to\":\"\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"\",\"commit\":\"\",\"pushed\":false,\"startBranch\":\"master\",\"branch\":\"master\",\"warnings\":[],\"error\":\"failed to fetch branch 'master' from origin: command failed [git fetch --tags --force origin +refs/heads/master:refs/remotes/origin/master]: exit status 128\"}\n",
+    "stderr": "fatal: '/work/cases/origin-unreachable-branch/missing.git' does not appear to be a git repository\nfatal: Could not read from remote repository.\n\nPlease make sure you have the correct access rights\nand the repository exists.\n❌ Error: failed to fetch branch 'master' from origin: command failed [git fetch --tags --force origin +refs/heads/master:refs/remotes/origin/master]: exit status 128\n",
+    "exit": 1,
+    "durationMs": 48,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 13,
+            "text": "00:38:28 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 27,
+            "text": "00:38:28 [INFO] Already on target branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 27,
+            "text": "00:38:28 [INFO] Updating 'master' from origin/master (fast-forward only)..."
+        },
+        {
+            "stream": "err",
+            "ms": 41,
+            "text": "fatal: '/work/cases/origin-unreachable-branch/missing.git' does not appear to be a git repository"
+        },
+        {
+            "stream": "err",
+            "ms": 41,
+            "text": "fatal: Could not read from remote repository."
+        },
+        {
+            "stream": "err",
+            "ms": 41,
+            "text": ""
+        },
+        {
+            "stream": "err",
+            "ms": 41,
+            "text": "Please make sure you have the correct access rights"
+        },
+        {
+            "stream": "err",
+            "ms": 41,
+            "text": "and the repository exists."
+        },
+        {
+            "stream": "err",
+            "ms": 47,
+            "text": "❌ Error: failed to fetch branch 'master' from origin: command failed [git fetch --tags --force origin +refs/heads/master:refs/remotes/origin/master]: exit status 128"
+        },
+        {
+            "stream": "out",
+            "ms": 47,
+            "text": "{\"from\":\"\",\"to\":\"\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"\",\"commit\":\"\",\"pushed\":false,\"startBranch\":\"master\",\"branch\":\"master\",\"warnings\":[],\"error\":\"failed to fetch branch 'master' from origin: command failed [git fetch --tags --force origin +refs/heads/master:refs/remotes/origin/master]: exit status 128\"}"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "head": "fe5cec1",
+        "inProgress": "",
+        "localMaster": "fe5cec1",
+        "localTags": "v1.4.2 ee00b95 fb8e204",
+        "remoteMaster": "fatal: '/work/cases/origin-unreachable-branch/missing.git' does not appear to be a git repository\nfatal: Could not read from remote repository.\n\nPlease make sure you have the correct access rights\nand the repository exists.",
+        "remoteTags": "fatal: '/work/cases/origin-unreachable-branch/missing.git' does not appear to be a git repository\nfatal: Could not read from remote repository.\n\nPlease make sure you have the correct access rights\nand the repository exists.",
+        "status": ""
+    },
+    "after": {
+        "branch": "master",
+        "head": "fe5cec1",
+        "inProgress": "",
+        "localMaster": "fe5cec1",
+        "localTags": "v1.4.2 ee00b95 fb8e204",
+        "remoteMaster": "fatal: '/work/cases/origin-unreachable-branch/missing.git' does not appear to be a git repository\nfatal: Could not read from remote repository.\n\nPlease make sure you have the correct access rights\nand the repository exists.",
+        "remoteTags": "fatal: '/work/cases/origin-unreachable-branch/missing.git' does not appear to be a git repository\nfatal: Could not read from remote repository.\n\nPlease make sure you have the correct access rights\nand the repository exists.",
+        "status": ""
+    }
+}

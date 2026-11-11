@@ -1,0 +1,96 @@
+{
+    "name": "ff-only-ahead",
+    "note": "master has 2 commits not on origin; origin has nothing new",
+    "dir": "/work/cases/ff-only-ahead/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true",
+        "expect=v1.4.3",
+        "json=true",
+        "ff-only"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n00:38:24 [INFO] Using bump type: patch\n00:38:24 [INFO] Already on target branch 'master'\n00:38:24 [INFO] Updating 'master' from origin/master (fast-forward only)...\n{\"from\":\"\",\"to\":\"\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"\",\"commit\":\"\",\"pushed\":false,\"startBranch\":\"master\",\"branch\":\"master\",\"warnings\":[],\"error\":\"ff-only: branch 'master' has 2 commits that origin/master doesn't have, so it can't be fast-forwarded; nothing was tagged\\nto release them, push them first (git push origin master); to drop them, reset the branch to origin in a terminal (git checkout master && git reset --hard origin/master)\"}\n",
+    "stderr": "❌ Error: ff-only: branch 'master' has 2 commits that origin/master doesn't have, so it can't be fast-forwarded; nothing was tagged\nto release them, push them first (git push origin master); to drop them, reset the branch to origin in a terminal (git checkout master && git reset --hard origin/master)\n",
+    "exit": 1,
+    "durationMs": 69,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 13,
+            "text": "00:38:24 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 26,
+            "text": "00:38:24 [INFO] Already on target branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 26,
+            "text": "00:38:24 [INFO] Updating 'master' from origin/master (fast-forward only)..."
+        },
+        {
+            "stream": "out",
+            "ms": 69,
+            "text": "{\"from\":\"\",\"to\":\"\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"\",\"commit\":\"\",\"pushed\":false,\"startBranch\":\"master\",\"branch\":\"master\",\"warnings\":[],\"error\":\"ff-only: branch 'master' has 2 commits that origin/master doesn't have, so it can't be fast-forwarded; nothing was tagged\\nto release them, push them first (git push origin master); to drop them, reset the branch to origin in a terminal (git checkout master && git reset --hard origin/master)\"}"
+        },
+        {
+            "stream": "err",
+            "ms": 69,
+            "text": "❌ Error: ff-only: branch 'master' has 2 commits that origin/master doesn't have, so it can't be fast-forwarded; nothing was tagged"
+        },
+        {
+            "stream": "err",
+            "ms": 69,
+            "text": "to release them, push them first (git push origin master); to drop them, reset the branch to origin in a terminal (git checkout master && git reset --hard origin/master)"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "head": "d5c4fd0",
+        "inProgress": "",
+        "localMaster": "d5c4fd0",
+        "localTags": "v1.4.2 96f9d32 a1e6294",
+        "remoteMaster": "a84ccad19b4f6c0b947ffeb93f47f3d9ae6ca195\trefs/heads/master",
+        "remoteTags": "96f9d323bc52615cf0541edc52d53c6a1eb0f145\trefs/tags/v1.4.2\na1e62945fa5f84e1929d6c8f6a22a8ccadf31b11\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "master",
+        "head": "d5c4fd0",
+        "inProgress": "",
+        "localMaster": "d5c4fd0",
+        "localTags": "v1.4.2 96f9d32 a1e6294",
+        "remoteMaster": "a84ccad19b4f6c0b947ffeb93f47f3d9ae6ca195\trefs/heads/master",
+        "remoteTags": "96f9d323bc52615cf0541edc52d53c6a1eb0f145\trefs/tags/v1.4.2\na1e62945fa5f84e1929d6c8f6a22a8ccadf31b11\trefs/tags/v1.4.2^{}",
+        "status": ""
+    }
+}

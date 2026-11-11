@@ -478,7 +478,8 @@ func TestStartReleases(t *testing.T) {
 	assert.Equal(t, string(integrationprefs.MageX), run.Result.Tool)
 	assert.Equal(t, map[string]any{
 		"version": recVersion, "bump": "patch", "branch": "master", "original": recFeature, "head": r.second,
-	}, run.Result.Intent)
+		"fastForward": true,
+	}, run.Result.Intent, "magex 1.30.2 is told ff-only")
 	assert.Empty(t, run.Result.Warnings, "a version tag not on HEAD is why it released, not a warning")
 
 	logged, err := r.runs.Output(t.Context(), run.ID, 0, 0)

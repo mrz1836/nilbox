@@ -18,8 +18,14 @@ import (
 	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
-// magexRecordings is where P0 recorded the real magex 1.29.5's version:bump runs.
-const magexRecordings = "testdata/magex-1.29.5"
+// The recorded version:bump runs of the real magex: P0's of magex 1.29.5, and magex
+// 1.30.2's, run with the arguments Decide sends a magex that has expect=, json=true, and
+// ff-only. Both were recorded in temp repositories with a local bare origin and an isolated
+// HOME and git config, and hold the clone's state before and after each run.
+const (
+	magexRecordings     = "testdata/magex-1.29.5"
+	magex1302Recordings = "testdata/magex-1.30.2"
+)
 
 // What most recorded runs release: a patch from v1.4.2 to v1.4.3 on master, many of them
 // started on feature-x, and the patch after it.
@@ -32,8 +38,9 @@ const (
 	recBump    = "patch"
 )
 
-// magexRecording is one recorded run: its arguments, its exit status, and its lines in the
-// order they arrived, each from stdout ("out") or stderr ("err").
+// magexRecording is one recorded run: its arguments, its exit status, its lines in the
+// order they arrived, each from stdout ("out") or stderr ("err"), and the clone's state
+// before and after it, as git told the recorder.
 type magexRecording struct {
 	Name  string   `json:"name"`
 	Argv  []string `json:"argv"`
@@ -42,13 +49,32 @@ type magexRecording struct {
 		Stream string `json:"stream"`
 		Text   string `json:"text"`
 	} `json:"lines"`
+	Before cloneRecord `json:"before"`
+	After  cloneRecord `json:"after"`
 }
 
-// loadRecording reads the recording called name.
+// cloneRecord is a clone's state as the recorder read it with git: its branch, or
+// "(detached)"; each local tag as "<name> <object> <commit>", abbreviated; origin's tags
+// as ls-remote prints them, or its error; and what git is in the middle of.
+type cloneRecord struct {
+	Branch     string `json:"branch"`
+	LocalTags  string `json:"localTags"`
+	RemoteTags string `json:"remoteTags"`
+	InProgress string `json:"inProgress"`
+}
+
+// loadRecording reads magex 1.29.5's recording called name.
 func loadRecording(t *testing.T, name string) magexRecording {
 	t.Helper()
 
-	data, err := fs.ReadFile(os.DirFS(magexRecordings), name+".json")
+	return loadRecordingIn(t, magexRecordings, name)
+}
+
+// loadRecordingIn reads the recording called name from the folder dir.
+func loadRecordingIn(t *testing.T, dir, name string) magexRecording {
+	t.Helper()
+
+	data, err := fs.ReadFile(os.DirFS(dir), name+".json")
 	require.NoError(t, err)
 
 	var rec magexRecording
@@ -59,11 +85,18 @@ func loadRecording(t *testing.T, name string) magexRecording {
 	return rec
 }
 
-// recordingNames lists the recorded version:bump runs.
+// recordingNames lists magex 1.29.5's recorded version:bump runs.
 func recordingNames(t *testing.T) []string {
 	t.Helper()
 
-	paths, err := filepath.Glob(filepath.Join(magexRecordings, "*.json"))
+	return recordingNamesIn(t, magexRecordings)
+}
+
+// recordingNamesIn lists the recorded version:bump runs in the folder dir.
+func recordingNamesIn(t *testing.T, dir string) []string {
+	t.Helper()
+
+	paths, err := filepath.Glob(filepath.Join(dir, "*.json"))
 	require.NoError(t, err)
 
 	names := make([]string, 0, len(paths))
@@ -445,39 +478,47 @@ func colored(line string) string {
 func TestOutputReadsTheSameHoweverItArrives(t *testing.T) {
 	t.Parallel()
 
-	for _, name := range recordingNames(t) {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			rec := loadRecording(t, name)
-			whole := rec.log("\n")
-			want := readOutput(whole)
-
-			bytewise := make([][]byte, 0, len(whole))
-			for i := range whole {
-				bytewise = append(bytewise, whole[i:i+1])
-			}
-
-			assert.Equal(t, want, readOutput(bytewise...), "fed a byte at a time")
-
-			var uneven [][]byte
-
-			for rest, n := whole, 1; len(rest) > 0; n = n%13 + 1 {
-				n = min(n, len(rest))
-				uneven, rest = append(uneven, rest[:n]), rest[n:]
-			}
-
-			assert.Equal(t, want, readOutput(uneven...), "fed in uneven parts")
-			assert.Equal(t, want, readOutput(rec.log("\r\n")), "with \\r\\n endings")
-
-			var paint strings.Builder
-			for _, l := range rec.Lines {
-				paint.WriteString(colored(l.Text) + "\n")
-			}
-
-			assert.Equal(t, want, readOutput([]byte(paint.String())), "in color")
-		})
+	for _, dir := range []string{magexRecordings, magex1302Recordings} {
+		for _, name := range recordingNamesIn(t, dir) {
+			t.Run(filepath.Base(dir)+"/"+name, func(t *testing.T) {
+				t.Parallel()
+				readsTheSameHoweverItArrives(t, loadRecordingIn(t, dir, name))
+			})
+		}
 	}
+}
+
+// readsTheSameHoweverItArrives checks that rec's output reads the same fed a byte at a
+// time, in uneven parts, with \r\n endings, and in color.
+func readsTheSameHoweverItArrives(t *testing.T, rec magexRecording) {
+	t.Helper()
+
+	whole := rec.log("\n")
+	want := readOutput(whole)
+
+	bytewise := make([][]byte, 0, len(whole))
+	for i := range whole {
+		bytewise = append(bytewise, whole[i:i+1])
+	}
+
+	assert.Equal(t, want, readOutput(bytewise...), "fed a byte at a time")
+
+	var uneven [][]byte
+
+	for rest, n := whole, 1; len(rest) > 0; n = n%13 + 1 {
+		n = min(n, len(rest))
+		uneven, rest = append(uneven, rest[:n]), rest[n:]
+	}
+
+	assert.Equal(t, want, readOutput(uneven...), "fed in uneven parts")
+	assert.Equal(t, want, readOutput(rec.log("\r\n")), "with \\r\\n endings")
+
+	var paint strings.Builder
+	for _, l := range rec.Lines {
+		paint.WriteString(colored(l.Text) + "\n")
+	}
+
+	assert.Equal(t, want, readOutput([]byte(paint.String())), "in color")
 }
 
 func TestOutputKeepsLinesItDoesNotKnow(t *testing.T) {
@@ -734,9 +775,10 @@ func backOnFeature() []string {
 func TestOutputReadsTheJSONResult(t *testing.T) {
 	t.Parallel()
 
-	// No magex 1.30.x run is recorded yet: these follow mage-x's code (bumpReport in
-	// pkg/mage/version_bump_json.go), whose JSON line is the last of stdout and comes
-	// before the ❌ Error: line magex prints to stderr once the run returns.
+	// Runs built from mage-x's code (bumpReport in pkg/mage/version_bump_json.go), whose
+	// JSON line is the last of stdout and comes before the ❌ Error: line magex prints to
+	// stderr once the run returns. magex 1.30.2's recordings hold the real runs
+	// (TestOutputReadsEveryMagex1302Recording, TestMagex1302ResultsAgreeWithGit).
 	const commit = "725b4e00476a9f1c2fd877b7157fb3eac747e300"
 
 	t.Run("a release that went well", func(t *testing.T) {
@@ -849,6 +891,7 @@ func TestOutputReadsTheFastForwardOnlyLines(t *testing.T) {
 			"10:00:00 [INFO] Updating 'master' from origin/master (fast-forward only)...",
 		)...)
 		assert.Equal(t, StepUpdated, got.Working, done)
+		assert.True(t, got.FastForward, done)
 
 		got = readLines(append(bumpHeader(),
 			"10:00:00 [INFO] Already on target branch 'master'",
@@ -859,6 +902,10 @@ func TestOutputReadsTheFastForwardOnlyLines(t *testing.T) {
 		assert.Empty(t, got.Working, done)
 		assert.Empty(t, got.Unrecognized, done)
 	}
+
+	pulling := readLines(append(bumpHeader(), "10:00:00 [INFO] Pulling latest changes...")...)
+	assert.Equal(t, StepUpdated, pulling.Working)
+	assert.False(t, pulling.FastForward, "git pull --rebase, as magex does without ff-only")
 
 	refused := readLines(
 		"❌ Error: ff-only: branch 'master' has 2 commits that origin/master doesn't have, so it can't be "+

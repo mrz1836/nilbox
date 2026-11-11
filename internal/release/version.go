@@ -109,9 +109,10 @@ func Highest(tags []string) (Version, bool) {
 }
 
 // Next returns the version magex makes for b over tags: the highest version raised by b,
-// or b over v0.0.0 when there is none. It matches magex 1.29.5's own choice, recorded in
-// testdata/magex-1.29.5/next-version.json. A raised highest version is above every tag,
-// so no tag ever names it already: magex's skip of a taken version never comes into it.
+// or b over v0.0.0 when there is none. It matches magex's own choice, recorded from magex
+// 1.29.5 and 1.30.2 in testdata/magex-*/next-version.json. A raised highest version is
+// above every tag, so no tag ever names it already: magex's skip of a taken version never
+// comes into it.
 func Next(tags []string, b Bump) Version {
 	highest, _ := Highest(tags)
 

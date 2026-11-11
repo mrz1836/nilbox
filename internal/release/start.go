@@ -248,6 +248,7 @@ func (s *Service) recheck(ctx context.Context, req StartRequest, gather GatherRe
 	}
 
 	in.Branch, in.Original, in.Head = o.Branch, cmp.Or(in.Original, f.Clone.Branch), cmp.Or(in.Head, o.Head)
+	in.FastForward = slices.Contains(o.Argv, argFastForward)
 
 	return o.Argv, nil
 }

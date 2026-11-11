@@ -1,0 +1,176 @@
+{
+    "name": "signing-ssh-missing-key",
+    "note": "tag.gpgSign with ssh and a key file that doesn't exist",
+    "dir": "/work/cases/signing-ssh-missing-key/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=master",
+        "push=true",
+        "expect=v1.4.3",
+        "json=true",
+        "ff-only"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n00:38:39 [INFO] Using bump type: patch\n00:38:39 [INFO] Already on target branch 'master'\n00:38:39 [INFO] Updating 'master' from origin/master (fast-forward only)...\n✅ 'master' is level with origin/master\n00:38:40 [INFO] Detecting current version...\n00:38:40 [INFO] No tags found on HEAD commit\n00:38:40 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.2\n00:38:40 [INFO] Recent commits:\n155db63 fix: retries on 502 (#45)\nac1aad4 feat: first feature\nfec488c chore: initial commit\n00:38:40 [INFO] 📋 Version Bump Summary:\n00:38:40 [INFO]   From:    v1.4.2\n00:38:40 [INFO]   To:      v1.4.3\n00:38:40 [INFO]   Type:    patch bump\n✅ v1.4.3 matches expect\n{\"from\":\"v1.4.2\",\"to\":\"v1.4.3\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"\",\"commit\":\"\",\"pushed\":false,\"startBranch\":\"master\",\"branch\":\"master\",\"warnings\":[\"Current version tag is not on HEAD - there are 1 commits since v1.4.2\"],\"error\":\"failed to create tag: command failed [git tag -a v1.4.3 -m GitHubRelease v1.4.3]: exit status 128\"}\n",
+    "stderr": "error: Couldn't load public key /work/cases/signing-ssh-missing-key/missing-key.pub: No such file or directory?\n\nerror: unable to sign the tag\nThe tag message has been left in .git/TAG_EDITMSG\n❌ Error: failed to create tag: command failed [git tag -a v1.4.3 -m GitHubRelease v1.4.3]: exit status 128\n",
+    "exit": 1,
+    "durationMs": 157,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 7,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 13,
+            "text": "00:38:39 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 26,
+            "text": "00:38:39 [INFO] Already on target branch 'master'"
+        },
+        {
+            "stream": "out",
+            "ms": 26,
+            "text": "00:38:39 [INFO] Updating 'master' from origin/master (fast-forward only)..."
+        },
+        {
+            "stream": "out",
+            "ms": 63,
+            "text": "✅ 'master' is level with origin/master"
+        },
+        {
+            "stream": "out",
+            "ms": 69,
+            "text": "00:38:40 [INFO] Detecting current version..."
+        },
+        {
+            "stream": "out",
+            "ms": 76,
+            "text": "00:38:40 [INFO] No tags found on HEAD commit"
+        },
+        {
+            "stream": "out",
+            "ms": 103,
+            "text": "00:38:40 [WARN] Current version tag is not on HEAD - there are 1 commits since v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 109,
+            "text": "00:38:40 [INFO] Recent commits:"
+        },
+        {
+            "stream": "out",
+            "ms": 109,
+            "text": "155db63 fix: retries on 502 (#45)"
+        },
+        {
+            "stream": "out",
+            "ms": 109,
+            "text": "ac1aad4 feat: first feature"
+        },
+        {
+            "stream": "out",
+            "ms": 109,
+            "text": "fec488c chore: initial commit"
+        },
+        {
+            "stream": "out",
+            "ms": 128,
+            "text": "00:38:40 [INFO] 📋 Version Bump Summary:"
+        },
+        {
+            "stream": "out",
+            "ms": 128,
+            "text": "00:38:40 [INFO]   From:    v1.4.2"
+        },
+        {
+            "stream": "out",
+            "ms": 128,
+            "text": "00:38:40 [INFO]   To:      v1.4.3"
+        },
+        {
+            "stream": "out",
+            "ms": 128,
+            "text": "00:38:40 [INFO]   Type:    patch bump"
+        },
+        {
+            "stream": "out",
+            "ms": 128,
+            "text": "✅ v1.4.3 matches expect"
+        },
+        {
+            "stream": "err",
+            "ms": 150,
+            "text": "error: Couldn't load public key /work/cases/signing-ssh-missing-key/missing-key.pub: No such file or directory?"
+        },
+        {
+            "stream": "err",
+            "ms": 150,
+            "text": ""
+        },
+        {
+            "stream": "err",
+            "ms": 150,
+            "text": "error: unable to sign the tag"
+        },
+        {
+            "stream": "err",
+            "ms": 150,
+            "text": "The tag message has been left in .git/TAG_EDITMSG"
+        },
+        {
+            "stream": "err",
+            "ms": 156,
+            "text": "❌ Error: failed to create tag: command failed [git tag -a v1.4.3 -m GitHubRelease v1.4.3]: exit status 128"
+        },
+        {
+            "stream": "out",
+            "ms": 156,
+            "text": "{\"from\":\"v1.4.2\",\"to\":\"v1.4.3\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"\",\"commit\":\"\",\"pushed\":false,\"startBranch\":\"master\",\"branch\":\"master\",\"warnings\":[\"Current version tag is not on HEAD - there are 1 commits since v1.4.2\"],\"error\":\"failed to create tag: command failed [git tag -a v1.4.3 -m GitHubRelease v1.4.3]: exit status 128\"}"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "head": "155db63",
+        "inProgress": "",
+        "localMaster": "155db63",
+        "localTags": "v1.4.2 ec8e6cc ac1aad4",
+        "remoteMaster": "155db6326600c930523ef9a63584ab124f8b711b\trefs/heads/master",
+        "remoteTags": "ec8e6ccdac278c4ab169064821e4dc036a6b7a24\trefs/tags/v1.4.2\nac1aad421be12cf682bea33f7aa0ffc61acc04cb\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "master",
+        "head": "155db63",
+        "inProgress": "",
+        "localMaster": "155db63",
+        "localTags": "v1.4.2 ec8e6cc ac1aad4",
+        "remoteMaster": "155db6326600c930523ef9a63584ab124f8b711b\trefs/heads/master",
+        "remoteTags": "ec8e6ccdac278c4ab169064821e4dc036a6b7a24\trefs/tags/v1.4.2\nac1aad421be12cf682bea33f7aa0ffc61acc04cb\trefs/tags/v1.4.2^{}",
+        "status": ""
+    }
+}

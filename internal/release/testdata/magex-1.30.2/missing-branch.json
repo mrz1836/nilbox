@@ -1,0 +1,80 @@
+{
+    "name": "missing-branch",
+    "dir": "/work/cases/missing-branch/clone",
+    "argv": [
+        "magex",
+        "version:bump",
+        "bump=patch",
+        "branch=release",
+        "push=true",
+        "expect=v1.4.3",
+        "json=true",
+        "ff-only"
+    ],
+    "stdout": "\n============================================================\n=== Bumping Version ===\n============================================================\n\n00:38:21 [INFO] Using bump type: patch\n{\"from\":\"\",\"to\":\"\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"\",\"commit\":\"\",\"pushed\":false,\"startBranch\":\"master\",\"branch\":\"master\",\"warnings\":[],\"error\":\"branch does not exist locally or remotely: 'release'\"}\n",
+    "stderr": "❌ Error: branch does not exist locally or remotely: 'release'\n",
+    "exit": 1,
+    "durationMs": 40,
+    "lines": [
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": "=== Bumping Version ==="
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": "============================================================"
+        },
+        {
+            "stream": "out",
+            "ms": 8,
+            "text": ""
+        },
+        {
+            "stream": "out",
+            "ms": 14,
+            "text": "00:38:21 [INFO] Using bump type: patch"
+        },
+        {
+            "stream": "out",
+            "ms": 40,
+            "text": "{\"from\":\"\",\"to\":\"\",\"bump\":\"patch\",\"expect\":\"v1.4.3\",\"dryRun\":false,\"tag\":\"\",\"commit\":\"\",\"pushed\":false,\"startBranch\":\"master\",\"branch\":\"master\",\"warnings\":[],\"error\":\"branch does not exist locally or remotely: 'release'\"}"
+        },
+        {
+            "stream": "err",
+            "ms": 40,
+            "text": "❌ Error: branch does not exist locally or remotely: 'release'"
+        }
+    ],
+    "before": {
+        "branch": "master",
+        "head": "ba2d73c",
+        "inProgress": "",
+        "localMaster": "ba2d73c",
+        "localTags": "v1.4.2 19c1356 2415a79",
+        "remoteMaster": "ba2d73cd0df4428987ed5f322f4f47b7ff806943\trefs/heads/master",
+        "remoteTags": "19c1356bd503f8c32c9975b43781ced6baedbcbd\trefs/tags/v1.4.2\n2415a797eb0650455a4d373fcd170c89bdb98e15\trefs/tags/v1.4.2^{}",
+        "status": ""
+    },
+    "after": {
+        "branch": "master",
+        "head": "ba2d73c",
+        "inProgress": "",
+        "localMaster": "ba2d73c",
+        "localTags": "v1.4.2 19c1356 2415a79",
+        "remoteMaster": "ba2d73cd0df4428987ed5f322f4f47b7ff806943\trefs/heads/master",
+        "remoteTags": "19c1356bd503f8c32c9975b43781ced6baedbcbd\trefs/tags/v1.4.2\n2415a797eb0650455a4d373fcd170c89bdb98e15\trefs/tags/v1.4.2^{}",
+        "status": ""
+    }
+}

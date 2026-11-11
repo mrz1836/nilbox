@@ -17,12 +17,19 @@ type progressAt struct {
 	want scriptrun.Progress
 }
 
-// progressThrough feeds a fresh reader the recording called name one line at a time, and
-// returns the progress after each line, in order, with the lines.
+// progressThrough feeds a fresh reader magex 1.29.5's recording called name one line at a
+// time, and returns the progress after each line, in order, with the lines.
 func progressThrough(t *testing.T, name string, in Intent) ([]string, []scriptrun.Progress) {
 	t.Helper()
 
-	rec := loadRecording(t, name)
+	return progressThroughIn(t, magexRecordings, name, in)
+}
+
+// progressThroughIn is progressThrough for the recording called name in the folder dir.
+func progressThroughIn(t *testing.T, dir, name string, in Intent) ([]string, []scriptrun.Progress) {
+	t.Helper()
+
+	rec := loadRecordingIn(t, dir, name)
 	r := NewOutputReader()
 	lines := make([]string, 0, len(rec.Lines))
 	seen := make([]scriptrun.Progress, 0, len(rec.Lines))
@@ -138,18 +145,51 @@ func TestStopIsOffWheneverMagexSwitchesOrPulls(t *testing.T) {
 	}
 }
 
+func TestStopIsOffWhileMagexSwitchesOrFastForwards(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range recordingNamesIn(t, magex1302Recordings) {
+		rec := loadRecordingIn(t, magex1302Recordings, name)
+		branch := rec.param("branch")
+		in := Intent{Version: recVersion, Branch: branch, Original: recFeature, FastForward: true}
+		lines, seen := progressThroughIn(t, magex1302Recordings, name, in)
+
+		for i, p := range seen {
+			pulling := p.Working == string(StepOnBranch) || p.Working == string(StepUpdated) ||
+				p.Step == string(StepOnBranch)
+
+			assert.Equal(t, pulling, p.StopRefused != "", "%s, after %q: %+v", name, lines[i], p)
+
+			if p.StopRefused != "" {
+				assert.Equal(t, "Stopping now could leave "+branch+" partly updated.", p.StopRefused,
+					"ff-only never rebases")
+			}
+		}
+	}
+}
+
 func TestProgressOfTheFastForwardOnlyPull(t *testing.T) {
 	t.Parallel()
 
 	r := NewOutputReader()
 	in := Intent{Version: recVersion, Branch: recBranch, Original: recBranch}
+	partly := "Stopping now could leave master partly updated."
 
-	_, _ = r.Write([]byte("21:59:47 [INFO] Already on target branch 'master'\n" +
-		"21:59:47 [INFO] Updating 'master' from origin (fast-forward only)...\n"))
-	assert.Equal(t, scriptrun.Progress{Step: "onBranch", Working: "updated", StopRefused: stopOff}, r.Progress(in))
+	_, _ = r.Write([]byte("21:59:47 [INFO] Already on target branch 'master'\n"))
+	assert.Equal(t, stopOff, r.Progress(in).StopRefused, "an intent that doesn't say ff-only")
+
+	in.FastForward = true
+	assert.Equal(t, partly, r.Progress(in).StopRefused, "one that does, before magex says so")
+
+	in.FastForward = false
+	_, _ = r.Write([]byte("21:59:47 [INFO] Updating 'master' from origin (fast-forward only)...\n"))
+	assert.Equal(t, scriptrun.Progress{Step: "onBranch", Working: "updated", StopRefused: partly}, r.Progress(in),
+		"magex's own line says so too")
 
 	_, _ = r.Write([]byte("✅ Fast-forwarded 'master' by 2 commits to 3bb9381\n"))
 	assert.Equal(t, scriptrun.Progress{Step: "updated"}, r.Progress(in), "Stop is on again once the branch is updated")
+
+	assert.Equal(t, "Stopping now could leave the branch partly updated.", stopOffFastForward(""))
 }
 
 func TestProgressOfATagNotNamedYet(t *testing.T) {

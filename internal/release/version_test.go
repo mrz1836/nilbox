@@ -2,6 +2,7 @@ package release
 
 import (
 	"encoding/json"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,23 +28,25 @@ type versionTable struct {
 func TestNextMatchesMagex(t *testing.T) {
 	t.Parallel()
 
-	data, err := os.ReadFile(filepath.Join("testdata", "magex-1.29.5", "next-version.json"))
-	require.NoError(t, err)
+	for _, magex := range []string{"1.29.5", "1.30.2"} {
+		data, err := fs.ReadFile(os.DirFS(filepath.Join("testdata", "magex-"+magex)), "next-version.json")
+		require.NoError(t, err)
 
-	var table versionTable
-	require.NoError(t, json.Unmarshal(data, &table))
-	require.Equal(t, "1.29.5", table.Magex)
-	require.Len(t, table.Rows, 26, "every recorded row is checked")
+		var table versionTable
+		require.NoError(t, json.Unmarshal(data, &table))
+		require.Equal(t, magex, table.Magex)
+		require.Len(t, table.Rows, 26, "every recorded row is checked")
 
-	for _, row := range table.Rows {
-		name := strings.Join(row.Tags, ",") + " " + string(row.Bump) + " " + row.Note
+		for _, row := range table.Rows {
+			name := magex + " " + strings.Join(row.Tags, ",") + " " + string(row.Bump) + " " + row.Note
 
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
 
-			require.Zero(t, row.Exit, "magex made a version")
-			assert.Equal(t, row.Made, Next(row.Tags, row.Bump).String())
-		})
+				require.Zero(t, row.Exit, "magex made a version")
+				assert.Equal(t, row.Made, Next(row.Tags, row.Bump).String())
+			})
+		}
 	}
 }
 
