@@ -264,7 +264,9 @@ func (s *Service) view(rec Record) Run {
 		run.LogBytes = s.e.files.size(rec.ID)
 	}
 
-	if l == nil || l.settling {
+	// Progress and Stop are a going run's alone: the engine records a run's end a moment
+	// before it lets go of the run, and a record read in between has ended.
+	if l == nil || l.settling || !rec.Status.Live() {
 		return run
 	}
 

@@ -4,6 +4,7 @@ package scriptrun
 
 import (
 	"bytes"
+	"context"
 	"slices"
 	"strings"
 	"sync"
@@ -144,6 +145,37 @@ func TestStopIsRefusedWhileTheKindSaysSo(t *testing.T) {
 	require.NotNil(t, rec.ExitCode)
 	assert.Equal(t, 130, *rec.ExitCode, "SIGINT ended it")
 	assert.Equal(t, Progress{}, h.run(id).Progress, "a run that ended has no progress")
+}
+
+func TestARunReadAsItsEndIsRecordedHasNoProgress(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	spec, _ := withKind(h.spec(testutil.FakeRun{Stdout: "step updated\nconfirm Stopping now can leave v1.4.3 on this Mac.\n"}))
+
+	type seen struct {
+		run  Run
+		err  error
+		held bool
+	}
+
+	got := make(chan seen, 1)
+
+	// Recorded is told once the end is recorded, before the engine lets go of the run: a
+	// window reading the run then reads an ended record of a run still registered.
+	spec.Recorded = func(ctx context.Context, id int64, _ Outcome) {
+		run, err := h.s.Run(ctx, id)
+		got <- seen{run: run, err: err, held: h.e.liveRun(id) != nil}
+	}
+
+	h.ended(h.start(spec))
+
+	read := <-got
+	require.NoError(t, read.err)
+	require.True(t, read.held, "the engine still held the run")
+	assert.Equal(t, StatusSucceeded, read.run.Status)
+	assert.Equal(t, Progress{}, read.run.Progress, "a run that ended has no progress")
+	assert.False(t, read.run.CanStop, "nor a Stop")
 }
 
 func TestProgressIsToldWhenItChanges(t *testing.T) {

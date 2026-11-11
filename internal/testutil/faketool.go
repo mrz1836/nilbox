@@ -25,8 +25,8 @@ const (
 
 // FakeRun is what a fake tool does when it runs, in this order: ignore signals, start a
 // grandchild, report its stdin or open descriptors, change Files, write Stdout and Stderr,
-// sleep, and exit with Exit. A recorded fixture's {"stdout", "stderr", "exit"} reads
-// straight into it (see LoadFakeRun).
+// sleep (until WaitFor appears, when set), and exit with Exit. A recorded fixture's
+// {"stdout", "stderr", "exit"} reads straight into it (see LoadFakeRun).
 type FakeRun struct {
 	Stdout string `json:"stdout"`
 	Stderr string `json:"stderr"`
@@ -38,6 +38,11 @@ type FakeRun struct {
 
 	// Sleep is how long it waits after writing, before it exits.
 	Sleep time.Duration `json:"sleep,omitempty"`
+
+	// WaitFor, when set, names a file that ends the Sleep early: it exits as soon as the
+	// file appears, so a test that must see it running decides when it ends, rather than
+	// guessing how long it takes to start. Sleep still bounds the wait.
+	WaitFor string `json:"waitFor,omitempty"`
 
 	// IgnoreSignals makes it ignore SIGINT, SIGTERM, and SIGHUP, so only SIGKILL ends it.
 	IgnoreSignals bool `json:"ignoreSignals,omitempty"`
@@ -201,9 +206,37 @@ func play(run FakeRun) int {
 	_, _ = os.Stdout.WriteString(run.Stdout)
 	_, _ = os.Stderr.WriteString(run.Stderr)
 
-	time.Sleep(run.Sleep)
+	awaitFile(run.WaitFor, run.Sleep)
 
 	return run.Exit
+}
+
+// awaitPoll is how often a fake tool looks for the file it waits for.
+const awaitPoll = 10 * time.Millisecond
+
+// awaitFile waits until the file at path exists, for at most limit, and reports whether
+// it appeared; with no path, it waits all of limit.
+func awaitFile(path string, limit time.Duration) bool {
+	if path == "" {
+		time.Sleep(limit)
+
+		return false
+	}
+
+	deadline := time.Now().Add(limit)
+
+	for {
+		if _, err := os.Stat(path); err == nil {
+			return true
+		}
+
+		left := time.Until(deadline)
+		if left <= 0 {
+			return false
+		}
+
+		time.Sleep(min(awaitPoll, left))
+	}
 }
 
 // startGrandchild starts this binary again as g, sharing this process's output, and
