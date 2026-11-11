@@ -29,14 +29,7 @@ import { FileList } from './FileList'
 import { MergeConfirmDialog } from './MergeConfirmDialog'
 import { needsText, ReviewComposer, useReplyBody } from './ReviewComposer'
 import { ReviewHeader } from './ReviewHeader'
-import {
-  DescriptionSkeleton,
-  DiffSkeleton,
-  FileListSkeleton,
-  ReadingBanner,
-  SheetSkeleton,
-  SummarySkeleton,
-} from './ReviewLoading'
+import { DescriptionSkeleton, DiffSkeleton, FileListSkeleton, ReadingBanner, SummarySkeleton } from './ReviewLoading'
 import { Readiness, ReviewSummary } from './ReviewSummary'
 
 export interface ReviewSheetProps {
@@ -313,12 +306,13 @@ export function ReviewSheet({
           )}
           {loaded.patchError !== '' && <ErrorBanner>{loaded.patchError}</ErrorBanner>}
         </div>
-        {review === null ? (
-          loaded.error === '' && <SheetSkeleton key={id} target={target} />
-        ) : (
+        {/* One grid in every state, so the reading banner stays as the inbox's copy of the
+            pull request arrives and its seconds run on. Before any copy, each column shows
+            placeholders; with nothing read and nothing reading, only the error shows. */}
+        {(review !== null || loaded.checking || loaded.error === '') && (
           <div className="grid min-h-0 flex-1 grid-cols-[14rem_minmax(0,1fr)_22rem]">
             <aside className="min-h-0 overflow-y-auto border-r border-border p-3">
-              {reading && review.files.length === 0 ? (
+              {review === null || (reading && review.files.length === 0) ? (
                 <FileListSkeleton />
               ) : (
                 <FileList review={review} viewed={draft.viewed} />
@@ -326,71 +320,94 @@ export function ReviewSheet({
             </aside>
             <main className="min-h-0 space-y-4 overflow-y-auto p-4">
               {reading && <ReadingBanner key={id} target={target} />}
-              <section aria-label="Description" className="rounded-md border border-border p-3">
-                {review.body.trim() !== '' ? (
-                  <Markdown text={review.body} />
-                ) : reading ? (
-                  <DescriptionSkeleton />
-                ) : (
-                  <p className="text-sm text-muted">
-                    {review.fetchedAt === '' ? 'Not read from GitHub yet.' : 'No description.'}
-                  </p>
-                )}
-              </section>
-              {reading && review.files.length === 0 ? (
-                <DiffSkeleton />
+              {review === null ? (
+                <>
+                  <div className="rounded-md border border-border p-3">
+                    <DescriptionSkeleton />
+                  </div>
+                  <DiffSkeleton />
+                </>
               ) : (
-                <DiffView
-                  review={review}
-                  draft={draft}
-                  onDraft={onDraft}
-                  loading={loaded.loading}
-                  onLoad={(paths) => {
-                    void loaded.loadPatches(paths)
-                  }}
-                />
+                <>
+                  <section aria-label="Description" className="rounded-md border border-border p-3">
+                    {review.body.trim() !== '' ? (
+                      <Markdown text={review.body} />
+                    ) : reading ? (
+                      <DescriptionSkeleton />
+                    ) : (
+                      <p className="text-sm text-muted">
+                        {review.fetchedAt === '' ? 'Not read from GitHub yet.' : 'No description.'}
+                      </p>
+                    )}
+                  </section>
+                  {reading && review.files.length === 0 ? (
+                    <DiffSkeleton />
+                  ) : (
+                    <DiffView
+                      review={review}
+                      draft={draft}
+                      onDraft={onDraft}
+                      loading={loaded.loading}
+                      onLoad={(paths) => {
+                        void loaded.loadPatches(paths)
+                      }}
+                    />
+                  )}
+                </>
               )}
             </main>
-            {/* The review form sits below the scrolling summary, in no scrolling box of its
-                own, so its menus open over the diff rather than being cut off at the column's
-                edge, and its button never scrolls out of view. */}
-            <aside className="flex min-h-0 flex-col border-l border-border">
-              {/* How close it is to merging stays in view while the summary scrolls. */}
-              <div className="shrink-0 border-b border-border px-4 py-3">
-                <Readiness review={review} />
-              </div>
-              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
-                {reading ? (
-                  <SummarySkeleton />
-                ) : (
-                  <ReviewSummary review={review} item={item} onFilesSettings={onFilesSettings} />
-                )}
-                <AgentVerdict
-                  sessions={sessions}
-                  agents={launch?.agents ?? []}
-                  onUse={(text) => {
-                    onDraft((d) => ({ ...d, body: text, edited: true, action: d.action === '' ? 'comment' : d.action }))
-                  }}
-                />
-              </div>
-              <div className="shrink-0 border-t border-border p-4">
-                <ReviewComposer
-                  review={review}
-                  item={item}
-                  draft={draft}
-                  onDraft={onDraft}
-                  reply={reply}
-                  selected={selected}
-                  onRun={run}
-                  busy={act.pending}
-                  error={act.error}
-                  launch={launch}
-                  resolution={resolution}
-                  sessions={sessions}
-                  onManageReplies={onManageReplies}
-                />
-              </div>
-            </aside>
+            {review === null ? (
+              <aside className="min-h-0 border-l border-border p-4">
+                <span aria-hidden="true" className="skeleton mb-4 block h-3.5 w-36" />
+                <SummarySkeleton />
+              </aside>
+            ) : (
+              /* The review form sits below the scrolling summary, in no scrolling box of its
+                 own, so its menus open over the diff rather than being cut off at the column's
+                 edge, and its button never scrolls out of view. */
+              <aside className="flex min-h-0 flex-col border-l border-border">
+                {/* How close it is to merging stays in view while the summary scrolls. */}
+                <div className="shrink-0 border-b border-border px-4 py-3">
+                  <Readiness review={review} />
+                </div>
+                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+                  {reading ? (
+                    <SummarySkeleton />
+                  ) : (
+                    <ReviewSummary review={review} item={item} onFilesSettings={onFilesSettings} />
+                  )}
+                  <AgentVerdict
+                    sessions={sessions}
+                    agents={launch?.agents ?? []}
+                    onUse={(text) => {
+                      onDraft((d) => ({
+                        ...d,
+                        body: text,
+                        edited: true,
+                        action: d.action === '' ? 'comment' : d.action,
+                      }))
+                    }}
+                  />
+                </div>
+                <div className="shrink-0 border-t border-border p-4">
+                  <ReviewComposer
+                    review={review}
+                    item={item}
+                    draft={draft}
+                    onDraft={onDraft}
+                    reply={reply}
+                    selected={selected}
+                    onRun={run}
+                    busy={act.pending}
+                    error={act.error}
+                    launch={launch}
+                    resolution={resolution}
+                    sessions={sessions}
+                    onManageReplies={onManageReplies}
+                  />
+                </div>
+              </aside>
+            )}
           </div>
         )}
       </div>

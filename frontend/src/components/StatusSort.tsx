@@ -121,7 +121,6 @@ export function StatusSort({
         id={id}
         role="dialog"
         aria-labelledby={`${id}-title`}
-        tabIndex={-1}
         className="z-30 w-72 shadow-black/20 outline-none"
       >
         <div className="flex items-center justify-between gap-2 px-3 pt-3">

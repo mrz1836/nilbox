@@ -14,15 +14,16 @@ const coming = ['Description', 'Changed files', 'Checks', 'Reviews'] as const
 const countAfter = 3
 
 export interface ReadingBannerProps {
-  // target names the pull request, as in "acme-org/api#212".
+  // target names the pull request, as in "acme-org/api#212", or is '' when nothing names it
+  // yet.
   target: string
 }
 
 // ReadingBanner says the sheet is reading a pull request from GitHub for the first time,
 // and what that read brings: an accent ring pulses out from the pull request's icon, each
 // part to come carries a pulsing mark, and once the read has run a few seconds it counts
-// them, so a slow GitHub reads as slow rather than stuck. Assistive technology hears it
-// once, as a status; the count is left out of what it reads.
+// them, so a slow GitHub reads as slow rather than stuck. It is a named region, not a live
+// one: the header already announces that GitHub is being checked.
 export function ReadingBanner({ target }: ReadingBannerProps) {
   const [seconds, setSeconds] = useState(0)
 
@@ -37,7 +38,10 @@ export function ReadingBanner({ target }: ReadingBannerProps) {
   }, [])
 
   return (
-    <div role="status" className="flex items-start gap-3 rounded-md border border-border bg-raised/50 p-3">
+    <section
+      aria-label="Reading from GitHub"
+      className="flex items-start gap-3 rounded-md border border-border bg-raised/50 p-3"
+    >
       <span aria-hidden="true" className="relative mt-0.5 flex size-8 shrink-0 items-center justify-center">
         <span className="absolute inset-0 rounded-full bg-accent/25 motion-safe:animate-ping" />
         <span className="relative flex size-8 items-center justify-center rounded-full bg-accent/15">
@@ -47,7 +51,7 @@ export function ReadingBanner({ target }: ReadingBannerProps) {
       <div className="min-w-0 flex-1">
         <p className="flex flex-wrap items-baseline gap-x-2 text-sm font-medium">
           <span>
-            Reading <span className="font-mono">{target}</span> from GitHub…
+            Reading {target === '' ? 'the pull request' : <span className="font-mono">{target}</span>} from GitHub…
           </span>
           {seconds >= countAfter && (
             <span aria-hidden="true" className="text-xs font-normal text-muted tabular-nums">
@@ -68,7 +72,7 @@ export function ReadingBanner({ target }: ReadingBannerProps) {
           ))}
         </ul>
       </div>
-    </div>
+    </section>
   )
 }
 
@@ -192,35 +196,6 @@ export function SummarySkeleton() {
           </li>
         ))}
       </ul>
-    </div>
-  )
-}
-
-export interface SheetSkeletonProps {
-  // target names the pull request, as in "acme-org/api#212".
-  target: string
-}
-
-// SheetSkeleton stands in for the whole sheet before anything of the pull request is
-// shown: the banner saying what is being read, over placeholders in each column shaped
-// like what comes.
-export function SheetSkeleton({ target }: SheetSkeletonProps) {
-  return (
-    <div className="grid min-h-0 flex-1 grid-cols-[14rem_minmax(0,1fr)_22rem]">
-      <aside className="min-h-0 overflow-hidden border-r border-border p-3">
-        <FileListSkeleton />
-      </aside>
-      <main className="min-h-0 space-y-4 overflow-hidden p-4">
-        <ReadingBanner target={target} />
-        <div className="rounded-md border border-border p-3">
-          <DescriptionSkeleton />
-        </div>
-        <DiffSkeleton />
-      </main>
-      <aside className="min-h-0 overflow-hidden border-l border-border p-4">
-        <span aria-hidden="true" className="skeleton mb-4 block h-3.5 w-36" />
-        <SummarySkeleton />
-      </aside>
     </div>
   )
 }

@@ -110,7 +110,7 @@ describe('ReviewSheet', () => {
     const { unmount } = render(<Harness />)
 
     // Nothing to show yet: the banner names the pull request and what its read brings.
-    const reading = screen.getByRole('status')
+    const reading = screen.getByRole('region', { name: 'Reading from GitHub' })
     expect(reading).toHaveTextContent('Reading acme-org/example-repo#7 from GitHub…')
     expect(
       within(within(reading).getByRole('list', { name: 'Coming from GitHub' }))
@@ -125,7 +125,9 @@ describe('ReviewSheet', () => {
     platform.openReview.mockResolvedValue(review({ body: '', fetchedAt: '', files: [] }))
     platform.refreshReview.mockReturnValue(new Promise(() => undefined))
     const { unmount: unmountStub } = render(<Harness />)
-    expect(await screen.findByRole('status')).toHaveTextContent('Reading acme-org/example-repo#7 from GitHub…')
+    expect(await screen.findByRole('region', { name: 'Reading from GitHub' })).toHaveTextContent(
+      'Reading acme-org/example-repo#7 from GitHub…',
+    )
     expect(screen.getByRole('region', { name: 'Description' })).not.toHaveTextContent(/./)
     expect(screen.queryByRole('navigation', { name: 'Files' })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Summary' })).not.toBeInTheDocument()
@@ -138,6 +140,35 @@ describe('ReviewSheet', () => {
     expect(await screen.findByText('No description.')).toBeInTheDocument()
     expect(screen.queryByText(/from GitHub…/)).not.toBeInTheDocument()
     expect(screen.getByRole('navigation', { name: 'Files' })).toBeInTheDocument()
+  })
+
+  it('keeps one reading banner, counting on, as the inbox’s copy arrives mid-read', async () => {
+    let opened: (r: ReturnType<typeof review>) => void = () => undefined
+    platform.openReview.mockReturnValue(
+      new Promise((resolve) => {
+        opened = resolve
+      }),
+    )
+    platform.refreshReview.mockReturnValue(new Promise(() => undefined))
+    render(<Harness />)
+
+    const banner = screen.getByRole('region', { name: 'Reading from GitHub' })
+
+    act(() => {
+      opened(review({ body: '', fetchedAt: '', files: [] }))
+    })
+
+    expect(await screen.findByRole('region', { name: 'Description' })).toBeInTheDocument()
+    expect(banner).toBeInTheDocument()
+  })
+
+  it('shows placeholders while a read runs, even with the last pull request’s error showing', async () => {
+    platform.openReview.mockRejectedValue(new Error('the database is busy'))
+    platform.refreshReview.mockReturnValue(new Promise(() => undefined))
+    render(<Harness />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('the database is busy')
+    expect(screen.getByRole('region', { name: 'Reading from GitHub' })).toBeInTheDocument()
   })
 
   it('says a pull request GitHub never answered for has not been read', async () => {

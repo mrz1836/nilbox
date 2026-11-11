@@ -103,9 +103,9 @@ export function Toast({ toast, onClose }: ToastProps) {
           {toast.tone === 'success' && <CircleCheckIcon className="mt-0.5 size-4 shrink-0 text-success" />}
           {toast.tone === 'warning' && <AlertIcon className="mt-0.5 size-4 shrink-0 text-warning" />}
           <div className="min-w-0 flex-1">
-            {/* The message wraps, up to three lines, rather than being cut short beside a
-                button; the buttons sit on their own line under it. */}
-            <p className="line-clamp-3 leading-snug break-words">
+            {/* The message wraps, whole, rather than being cut short beside a button; the
+                buttons sit on their own line under it. */}
+            <p className="leading-snug break-words">
               <span className={`font-medium ${error ? 'text-danger' : 'text-text'}`}>{toast.text}</span>
               {toast.detail !== undefined && toast.detail !== '' && (
                 <span className="text-muted"> · {toast.detail}</span>

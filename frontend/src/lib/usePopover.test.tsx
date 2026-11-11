@@ -35,20 +35,18 @@ function panel() {
   return screen.queryByRole('dialog', { name: 'Options' })
 }
 
-describe('usePopover', () => {
-  it('stays open when a click in it leaves focus on what holds it, as the desktop WebKit does', async () => {
+describe('usePopover with PopoverPanel', () => {
+  it('stays open when a click in it focuses no control, as the desktop WebKit does', async () => {
     render(<Probe />)
     await userEvent.click(screen.getByRole('button', { name: 'Options' }))
 
-    // The desktop's WebKit focuses no radio on a click, but the nearest focusable thing
-    // holding it: the panel itself, or else the sheet.
-    act(() => {
-      panel()?.focus()
-    })
-    expect(panel()).toBeInTheDocument()
+    // The desktop's WebKit gives a radio no focus on a click and focuses the nearest
+    // focusable thing holding it. The panel takes focus itself, so that is the panel,
+    // never the sheet around it, which would read as focus leaving.
+    expect(panel()).toHaveAttribute('tabindex', '-1')
 
     act(() => {
-      screen.getByRole('region', { name: 'Sheet' }).focus()
+      panel()?.focus()
     })
     expect(panel()).toBeInTheDocument()
 
@@ -57,12 +55,5 @@ describe('usePopover', () => {
       screen.getByRole('button', { name: 'Elsewhere' }).focus()
     })
     expect(panel()).not.toBeInTheDocument()
-  })
-
-  it('takes focus itself, so a click in it keeps focus there', async () => {
-    render(<Probe />)
-    await userEvent.click(screen.getByRole('button', { name: 'Options' }))
-
-    expect(panel()).toHaveAttribute('tabindex', '-1')
   })
 })

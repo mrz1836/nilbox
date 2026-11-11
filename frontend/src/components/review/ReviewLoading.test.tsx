@@ -1,7 +1,14 @@
 import { act, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { DiffLinesSkeleton, ReadingBanner, SheetSkeleton } from './ReviewLoading'
+import {
+  DescriptionSkeleton,
+  DiffLinesSkeleton,
+  DiffSkeleton,
+  FileListSkeleton,
+  ReadingBanner,
+  SummarySkeleton,
+} from './ReviewLoading'
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -15,8 +22,9 @@ describe('ReadingBanner', () => {
   it('names the pull request and counts the seconds once the read runs a few, unannounced', () => {
     render(<ReadingBanner target="acme-org/api#212" />)
 
-    const status = screen.getByRole('status')
-    expect(status).toHaveTextContent('Reading acme-org/api#212 from GitHub…')
+    expect(screen.getByRole('region', { name: 'Reading from GitHub' })).toHaveTextContent(
+      'Reading acme-org/api#212 from GitHub…',
+    )
 
     act(() => {
       vi.advanceTimersByTime(2000)
@@ -28,13 +36,27 @@ describe('ReadingBanner', () => {
     })
     expect(screen.getByText('4s')).toHaveAttribute('aria-hidden', 'true')
   })
+
+  it('reads as the pull request when nothing names it yet', () => {
+    render(<ReadingBanner target="" />)
+
+    expect(screen.getByRole('region', { name: 'Reading from GitHub' })).toHaveTextContent(
+      'Reading the pull request from GitHub…',
+    )
+  })
 })
 
-describe('SheetSkeleton', () => {
-  it('shows the banner over placeholders that assistive technology skips', () => {
-    const { container } = render(<SheetSkeleton target="acme-org/api#212" />)
+describe('the placeholders', () => {
+  it('are all hidden from assistive technology', () => {
+    const { container } = render(
+      <>
+        <FileListSkeleton />
+        <DescriptionSkeleton />
+        <DiffSkeleton />
+        <SummarySkeleton />
+      </>,
+    )
 
-    expect(screen.getByRole('status')).toHaveTextContent('Reading acme-org/api#212 from GitHub…')
     // Every placeholder sits inside something hidden from assistive technology.
     const placeholders = [...container.querySelectorAll('.skeleton')]
     expect(placeholders.length).toBeGreaterThan(10)
