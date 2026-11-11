@@ -15,6 +15,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/gitread"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
+	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
@@ -60,6 +61,10 @@ func newGitRig(t *testing.T) *gitRig {
 	g.first = g.commit(g.other, "one.txt")
 	testutil.RunGit(t, g.other, "push", "-q", "origin", "HEAD:main")
 	testutil.RunGit(t, r.root, "clone", "-q", g.url(), g.dir)
+
+	// The clone's origin is on GitHub, as the clones list reads it, so its status asks
+	// origin unasked (a local bare repository stands in for GitHub's).
+	r.clones.setOrigin(g.dir, repo.Name{Owner: "acme-org", Repo: "sdk"})
 
 	g.asked = &countingGit{BranchGit: gitread.New(gitread.Config{Env: g.environ})}
 	g.branch = NewService(Config{
@@ -325,6 +330,33 @@ func TestBranchStatusKeepsOriginsAnswerFiveMinutes(t *testing.T) {
 	g.clock.Advance(OriginKept)
 	g.status(false)
 	assert.EqualValues(t, 3, g.asked.remote.Load(), "an answer five minutes old is asked again")
+}
+
+func TestBranchStatusAsksAnOriginOffGitHubOnlyWhenTheUserDoes(t *testing.T) {
+	t.Parallel()
+
+	g := newGitRig(t)
+	g.clones.mu.Lock()
+	delete(g.clones.origins, g.dir)
+	g.clones.mu.Unlock()
+
+	st := g.status(false)
+	assert.Equal(t, BranchNotAsked, st.State, "an origin off GitHub isn't asked unasked")
+	assert.Equal(t, "origin isn't on GitHub, so it's asked only when you check.", st.Note)
+	assert.Equal(t, "main", st.Branch)
+	assert.Empty(t, st.CheckedAt)
+	assert.Zero(t, g.asked.remote.Load(), "nothing leaves the Mac")
+
+	st = g.status(true)
+	assert.Equal(t, BranchUpToDate, st.State, "the user's check asks it")
+	assert.EqualValues(t, 1, g.asked.remote.Load())
+
+	assert.Equal(t, BranchUpToDate, g.status(false).State, "and its answer is served while it is kept")
+	assert.EqualValues(t, 1, g.asked.remote.Load())
+
+	g.clock.Advance(OriginKept)
+	assert.Equal(t, BranchNotAsked, g.status(false).State, "once it is old, the next read asks nothing again")
+	assert.EqualValues(t, 1, g.asked.remote.Load())
 }
 
 func TestBranchStatusSaysWhyOriginCantBeAsked(t *testing.T) {

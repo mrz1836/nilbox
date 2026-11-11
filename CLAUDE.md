@@ -731,10 +731,12 @@ app:lint` reads.
   The bound `BranchStatus` tells the header beside the branch where the clone's branch
   stands against the branch it follows on origin (`BranchState`: up to date, behind, ahead,
   diverged, detached, no upstream on origin, git in the middle of something, unknown,
-  refused, or off while the Scripts integration is, which reads nothing, with a worded
-  note), read through its `BranchGit` (gitread) from the clone's own refs and one
+  refused, not asked, or off while the Scripts integration is, which reads nothing, with a
+  worded note), read through its `BranchGit` (gitread) from the clone's own refs and one
   `RemoteBranch` ls-remote of the followed branch alone (`ls-remote --heads origin
-  refs/heads/<branch>`, never every branch and tag), never a fetch; a clone the pull would
+  refs/heads/<branch>`, never every branch and tag), never a fetch, and only for an origin
+  on GitHub unless refresh is set (the user's click): another host's origin is
+  `BranchNotAsked` until the user checks, then served from the kept answer; a clone the pull would
   refuse for its own config (gitread's `CloneConfig`, read locally, before origin is asked)
   is `BranchRefused`; every note built from a gitread failure goes through `gitNote`
   (`uierr.New` of gitread's words, read with `uierr.Message`); origin's answer is kept per
