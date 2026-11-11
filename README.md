@@ -535,12 +535,13 @@ More in [The Worktrees view](docs/desktop.md#the-worktrees-view).
 </details>
 
 <details>
-<summary><strong><code>Scripts, Release, and Hooks</code></strong></summary>
+<summary><strong><code>Scripts, Release, Hooks, and Repo scripts</code></strong></summary>
 <br/>
 
 - The **Scripts** tab appears while mage-x or go-pre-commit is on (Settings → Integrations finds
-  them, or installs them from their GitHub releases). Its badge counts the runs going, with a red
-  dot after a run fails and an amber one while a tool that's on can't be used.
+  them, or installs them from their GitHub releases), or while you turn Scripts on there. Its
+  badge counts the runs going, with a red dot after a run fails and an amber one while a tool
+  that's on can't be used.
 - **Release** lists every clone under your clone root whose `origin` is on GitHub, grouped into
   unreleased changes (newest commit first), up to date, no releases yet, and can't release here.
   Each row shows the newest version, the commits since it, the checks on the newest commit, and
@@ -574,11 +575,21 @@ More in [The Worktrees view](docs/desktop.md#the-worktrees-view).
   and which failed and why, and every file they fixed or staged, including files that already had
   uncommitted changes. The page warns when your shell's PATH won't let the hook find
   go-pre-commit, with the line that fixes it.
+- **Repo scripts** lists a clone's own commands: its `t3.json` scripts, the `.vscode/tasks.json`
+  tasks Nilbox can run (one it can't, such as a task that uses `${file}`, shows greyed with the
+  reason), and magex's targets, the common ones one click away, with an Arguments field for
+  `key=value` pairs. A task's inputs open a small form first, and anything that bumps a version
+  points to Release, which does it with its checks. Every command runs where your runs go, or,
+  from its menu, in the other place.
+- **A command from the repository asks first.** Before a `t3.json` script, a VS Code task, or the
+  repository's own magex target runs for the first time, Nilbox shows exactly what will run and
+  where, and asks again whenever it changes, showing what you ran before. Nothing in a clone runs
+  just to list its commands. Settings → Integrations chooses which sources the page reads.
 - **Runs** lists every release, hooks action, check, script, and tool update, with each run's
   status, result, and full log.
 
 More in [The Scripts tab](docs/desktop.md#the-scripts-tab), [Release](docs/desktop.md#release),
-and [Hooks](docs/desktop.md#hooks).
+[Hooks](docs/desktop.md#hooks), and [Repo scripts](docs/desktop.md#repo-scripts).
 
 </details>
 
@@ -700,6 +711,10 @@ View the full documentation for Nilbox:
 >   `~/go/bin`, as your shell and `go env` set them), where magex's would run `go install`.
 >   Those tools then fetch what they need themselves: before 1.14.0,
 >   go-pre-commit installs its own linters with `go install` and `curl`, which Nilbox can't check.
+> - **Repository commands run as you:** a `t3.json` script, a VS Code task, or a magex target runs
+>   in its clone with your permissions, and magex reads the repository's code and `.github/env`
+>   settings. Nilbox asks before a command from the repository's files first runs and whenever it
+>   changes; read it before you say yes.
 > - **No formal audit:** Nilbox has not been professionally audited.
 > - **No liability:** the authors accept no responsibility for lost work, exposed data, or damages.
 >

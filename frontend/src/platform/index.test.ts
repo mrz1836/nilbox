@@ -8,6 +8,7 @@ import * as platform from './index'
 const mocks = vi.hoisted(() => ({
   inbox: { CheckFiles: vi.fn() },
   settings: { SetWindowSize: vi.fn() },
+  scripts: { Run: vi.fn(), Repos: vi.fn(), List: vi.fn() },
   events: { On: vi.fn<(name: string, callback: (event: { data: unknown }) => void) => () => void>() },
   browser: { OpenURL: vi.fn() },
   clipboard: { SetText: vi.fn() },
@@ -27,6 +28,7 @@ vi.mock('@wailsio/runtime', () => ({
 }))
 vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/inbox', () => ({ Service: mocks.inbox }))
 vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/settings', () => ({ Service: mocks.settings }))
+vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/scripts', () => ({ Service: mocks.scripts }))
 
 const url = 'https://github.com/acme-org/example-repo/pull/7'
 
@@ -187,5 +189,79 @@ describe('file dialogs', () => {
 
     await platform.chooseFileToSave({ title: 'Export prompts', button: 'Export', filters: prompts })
     expect(mocks.dialogs.SaveFile).toHaveBeenLastCalledWith(expect.objectContaining({ Filename: '' }))
+  })
+})
+
+describe('runScript', () => {
+  const request: platform.ScriptRunRequest = {
+    dir: '~/projects/sdk',
+    ref: 't3:Test',
+    inputs: {},
+    args: [],
+    runsIn: '',
+    confirmed: '',
+    remember: false,
+    anyway: false,
+  }
+  const question: platform.ScriptQuestion = {
+    ref: 't3:Test',
+    name: 'Test',
+    source: 't3',
+    command: 'magex test',
+    trust: 'ask',
+    trusted: '',
+    trustNote: '',
+    sha256: 'c0ffee01',
+  }
+
+  // refused is a run refused as the desktop runtime delivers it: the full text, and the
+  // cause the backend encoded.
+  function refused(cause: unknown): Error {
+    return new Error('the command needs the user’s trust: t3:Test', { cause })
+  }
+
+  it('resolves with the run’s ID once it started', async () => {
+    mocks.scripts.Run.mockResolvedValue(42)
+
+    await expect(platform.runScript(request)).resolves.toEqual({ started: true, id: 42 })
+    expect(mocks.scripts.Run).toHaveBeenCalledExactlyOnceWith(request)
+  })
+
+  it('resolves with the question a refusal carries, and the backend’s words for it', async () => {
+    mocks.scripts.Run.mockRejectedValueOnce(refused({ message: 'Confirm “Test” before it runs.', detail: question }))
+    mocks.scripts.Run.mockRejectedValueOnce(refused({ detail: question }))
+
+    await expect(platform.runScript(request)).resolves.toEqual({
+      started: false,
+      question,
+      message: 'Confirm “Test” before it runs.',
+    })
+    await expect(platform.runScript(request)).resolves.toEqual({ started: false, question, message: '' })
+  })
+
+  it('rejects with any other failure', async () => {
+    const failures = [
+      new Error('plain'),
+      'not an error',
+      refused(null),
+      refused({ message: 'A release is using acme-org/sdk right now.' }),
+      refused({ message: 'odd', detail: 'a string' }),
+      refused({ message: 'odd', detail: { ...question, sha256: 7 } }),
+    ]
+
+    for (const failure of failures) {
+      mocks.scripts.Run.mockRejectedValueOnce(failure)
+
+      await expect(platform.runScript(request)).rejects.toBe(failure)
+    }
+  })
+
+  it('cancels the bound call when the caller cancels', async () => {
+    const cancelled = vi.fn()
+    mocks.scripts.Run.mockReturnValue(new CancellablePromise<number>(() => undefined, cancelled))
+
+    await platform.runScript(request).cancel()
+
+    expect(cancelled).toHaveBeenCalledOnce()
   })
 })

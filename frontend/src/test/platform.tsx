@@ -45,9 +45,11 @@ import {
   releaseResult,
   removeResult,
   replyList,
+  repoScripts,
   resolution,
   review,
   reviewResult,
+  scriptClones,
   scriptRun,
   scriptRunChunk,
   sessionsSnapshot,
@@ -206,6 +208,8 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
       stored({ integrations: integrationsConfig({ paths: { ...integrationsConfig().paths, [id]: path } }) }),
     setRunsIn: (runsIn) => stored({ integrations: integrationsConfig({ runsIn }) }),
     setOfferAfterMerge: (offerAfterMerge) => stored({ integrations: integrationsConfig({ offerAfterMerge }) }),
+    setScriptSources: (magexTargets, repoFiles) =>
+      stored({ integrations: integrationsConfig({ scriptSources: { magexTargets, repoFiles } }) }),
 
     listIntegrations: () => Promise.resolve(integrationTools()),
     checkIntegrationsAgain: () => Promise.resolve(integrationTools()),
@@ -232,6 +236,10 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     getReleaseResult: () => Promise.resolve(releaseResult()),
     offerReleaseAfterMerge: () => Promise.resolve(afterMerge({ offer: false, repo: '', dir: '', branch: '' })),
     openReleaseTerminal: done,
+
+    listScriptRepos: () => Promise.resolve(scriptClones()),
+    listRepoScripts: (dir) => Promise.resolve(repoScripts({ dir })),
+    runScript: () => Promise.resolve({ started: true, id: 31 }),
 
     listHooks: () => Promise.resolve(hooksList()),
     installHook: () => Promise.resolve(11),

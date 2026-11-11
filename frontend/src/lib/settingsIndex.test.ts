@@ -95,12 +95,14 @@ describe('matchSettings', () => {
     expect(matchSettings(brand.name)?.isMatch('about', 'Version')).toBe(true)
   })
 
-  it('finds every tool the app runs, and where runs go, by the section’s name, after Sensitive files and before About', () => {
+  it('finds every tool the app runs, the scripts, and where runs go, by the section’s name, after Sensitive files and before About', () => {
     const match = matchSettings('integrations')
 
-    expect(found('integrations')).toEqual([['integrations', 4]])
+    expect(found('integrations')).toEqual([['integrations', 5]])
     expect(match?.isMatch('integrations', 'mage-x')).toBe(true)
     expect(match?.isMatch('integrations', 'go-pre-commit')).toBe(true)
+    expect(match?.isMatch('integrations', 'Scripts')).toBe(true)
+    expect(found('tasks.json')).toEqual([['integrations', 1]])
     expect(match?.isMatch('integrations', 'Runs in')).toBe(true)
     expect(match?.isMatch('integrations', 'Offer a release after you merge a pull request')).toBe(true)
     expect(sectionOrder.indexOf('integrations')).toBe(sectionOrder.indexOf('files') + 1)

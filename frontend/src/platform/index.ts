@@ -29,6 +29,7 @@ import * as prompts from '../../bindings/github.com/mrz1836/nilbox/internal/prom
 import * as release from '../../bindings/github.com/mrz1836/nilbox/internal/release'
 import * as review from '../../bindings/github.com/mrz1836/nilbox/internal/review'
 import * as scriptrun from '../../bindings/github.com/mrz1836/nilbox/internal/scriptrun'
+import * as scripts from '../../bindings/github.com/mrz1836/nilbox/internal/scripts'
 import type * as sensitive from '../../bindings/github.com/mrz1836/nilbox/internal/sensitive'
 import * as sessions from '../../bindings/github.com/mrz1836/nilbox/internal/sessions'
 import * as settings from '../../bindings/github.com/mrz1836/nilbox/internal/settings'
@@ -128,6 +129,40 @@ export type ScriptRunResult = NonNullLists<scriptrun.Result>
 export type ScriptRunFilter = NonNullLists<scriptrun.Filter>
 export type ScriptRunChunk = NonNullLists<scriptrun.Chunk>
 export type ScriptRunProgress = NonNullLists<scriptrun.Progress>
+export type ScriptSources = NonNullLists<integrationprefs.ScriptSources>
+
+export type RepoScripts = NonNullLists<scripts.Page>
+export type ScriptClone = NonNullLists<scripts.Clone>
+export type ScriptSection = NonNullLists<scripts.Section>
+export type ScriptEntry = NonNullLists<scripts.Entry>
+export type ScriptInput = NonNullLists<scripts.Input>
+export type ScriptOption = NonNullLists<scripts.Option>
+export type ScriptSource = scripts.Source
+export type ScriptTrust = scripts.Trust
+// ScriptRunRequest's runsIn is '' for the setting, which the generated type, a place,
+// leaves out.
+export type ScriptRunRequest = Omit<NonNullLists<scripts.RunRequest>, 'runsIn'> & { runsIn: RunsIn | '' }
+
+// ScriptQuestion is what the window asks before a command from a repository's own files
+// runs (Go's scripts.Question): the script, the command as it will run, with the chosen
+// inputs filled in, why it asks (ask, or changed, with the command trusted before), what
+// the question adds, such as that a magex target runs the repository's own code, and the
+// hash the user confirms. It comes as the detail of the error a run is refused with, not
+// as a bound result, so nothing generates it: its fields are the Go JSON names.
+export interface ScriptQuestion {
+  ref: string
+  name: string
+  source: ScriptSource
+  command: string
+  trust: ScriptTrust
+  trusted: string
+  trustNote: string
+  sha256: string
+}
+
+// ScriptStart is how asking to run a script ended: started, with its run's ID, or held
+// back until the user answers its question, with the backend's words for why.
+export type ScriptStart = { started: true; id: number } | { started: false; question: ScriptQuestion; message: string }
 
 export type ReleaseCandidates = NonNullLists<release.Candidates>
 export type ReleaseCandidate = NonNullLists<release.Candidate>
@@ -420,6 +455,7 @@ export const {
   SetIntegrationPath: setIntegrationPath,
   SetRunsIn: setRunsIn,
   SetOfferAfterMerge: setOfferAfterMerge,
+  SetScriptSources: setScriptSources,
 } = narrow(settings.Service)
 
 // The tools the app finds, installs, and runs for the user. List never waits for a
@@ -502,6 +538,64 @@ export const runChecks = hooksService.RunChecks as (req: HookChecksRequest) => C
 export const installAllHooks: (dirs: string[] | null) => CancellablePromise<HookInstallAllResult> =
   hooksService.InstallAll
 export const getChecksResult: (runID: number) => CancellablePromise<HookChecksResult> = hooksService.ChecksResult
+
+// Repo scripts: the clones the page's picker lists, the ones a script ran in most recently
+// first; one clone's scripts, from its t3.json, its .vscode/tasks.json, and magex (refresh
+// lists magex's built-ins again); and a run of one of them, which returns its run's ID.
+// Nothing here runs anything in a clone but the run the user asked for, and nothing asks
+// GitHub.
+const scriptsService = narrow(scripts.Service)
+
+export const { Repos: listScriptRepos, List: listRepoScripts } = scriptsService
+
+// questionFields are the fields every ScriptQuestion holds, each a string.
+const questionFields = ['ref', 'name', 'source', 'command', 'trust', 'trusted', 'trustNote', 'sha256'] as const
+
+// refusal reads what a failed call's cause carries beside its message: the backend's words
+// for the user, and the question to ask, or null when it holds none.
+function refusal(err: unknown): { question: ScriptQuestion; message: string } | null {
+  if (!(err instanceof Error) || typeof err.cause !== 'object' || err.cause === null) {
+    return null
+  }
+
+  const { cause } = err
+  const detail: unknown = 'detail' in cause ? cause.detail : undefined
+
+  if (typeof detail !== 'object' || detail === null) {
+    return null
+  }
+
+  const fields = detail as Record<string, unknown>
+
+  if (!questionFields.every((f) => typeof fields[f] === 'string')) {
+    return null
+  }
+
+  const message = 'message' in cause && typeof cause.message === 'string' ? cause.message : ''
+
+  return { question: detail as ScriptQuestion, message }
+}
+
+// runScript asks to run a script in its clone. It resolves with the run's ID once it
+// started, or, for a command from the repository's files the user hasn't confirmed as it
+// is now, with the question the refusal carries (the error's detail), for the window to
+// ask; any other failure rejects.
+export function runScript(req: ScriptRunRequest): CancellablePromise<ScriptStart> {
+  const run = scriptsService.Run as (req: ScriptRunRequest) => CancellablePromise<number>
+
+  return run(req).then(
+    (id): ScriptStart => ({ started: true, id }),
+    (err: unknown): ScriptStart => {
+      const held = refusal(err)
+
+      if (held === null) {
+        throw err
+      }
+
+      return { started: false, ...held }
+    },
+  )
+}
 
 export const {
   List: listWorktrees,

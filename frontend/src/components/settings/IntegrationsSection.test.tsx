@@ -29,13 +29,14 @@ function renderSection(stored: Settings | null = settings()) {
   return { onSaved }
 }
 
-// cards lists the tools' cards, by name, in the order the section shows them.
+// cards lists the cards, by name, in the order the section shows them: each tool's, then
+// Scripts'.
 function cards(): string[] {
   return screen.getAllByRole('region').map((r) => within(r).getByRole('heading').textContent)
 }
 
 describe('IntegrationsSection', () => {
-  it('says what the tools are, then shows a card for each, in order', async () => {
+  it('says what the tools are, then shows a card for each, in order, then Scripts’', async () => {
     renderSection()
 
     expect(
@@ -46,7 +47,7 @@ describe('IntegrationsSection', () => {
     expect(screen.getByText('Looking for the tools…')).toBeInTheDocument()
 
     await waitFor(() => {
-      expect(cards()).toEqual(['mage-x', 'go-pre-commit'])
+      expect(cards()).toEqual(['mage-x', 'go-pre-commit', 'Scripts'])
     })
     expect(screen.queryByText('Looking for the tools…')).not.toBeInTheDocument()
     expect(screen.queryByText(shellWarning)).not.toBeInTheDocument()
@@ -81,7 +82,7 @@ describe('IntegrationsSection', () => {
     })
 
     await waitFor(() => {
-      expect(cards()).toEqual(['mage-x'])
+      expect(cards()).toEqual(['mage-x', 'Scripts'])
     })
     expect(screen.getByText('Not on this Mac')).toBeInTheDocument()
   })
@@ -92,7 +93,7 @@ describe('IntegrationsSection', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Couldn’t list the tools: database is locked')
     expect(screen.queryByText('Looking for the tools…')).not.toBeInTheDocument()
-    expect(screen.queryByRole('region')).not.toBeInTheDocument()
+    expect(cards()).toEqual(['Scripts'])
   })
 
   it('checks again, busy until it is done, showing what it found', async () => {
@@ -117,7 +118,7 @@ describe('IntegrationsSection', () => {
     })
 
     expect(await screen.findByRole('button', { name: 'Check again' })).toBeEnabled()
-    expect(cards()).toEqual(['mage-x'])
+    expect(cards()).toEqual(['mage-x', 'Scripts'])
     expect(screen.queryByText('Checking…')).not.toBeInTheDocument()
   })
 
@@ -129,7 +130,7 @@ describe('IntegrationsSection', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Check again' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('the shell timed out')
-    expect(cards()).toEqual(['mage-x', 'go-pre-commit'])
+    expect(cards()).toEqual(['mage-x', 'go-pre-commit', 'Scripts'])
   })
 
   it('says when the shell’s environment couldn’t be read, with a way to try again', async () => {

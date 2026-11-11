@@ -58,9 +58,15 @@ import type {
   ReleaseOffer,
   ReleaseResult,
   RemoveResult,
+  RepoScripts,
   Resolution,
+  ScriptClone,
+  ScriptEntry,
+  ScriptInput,
+  ScriptQuestion,
   ScriptRun,
   ScriptRunChunk,
+  ScriptSection,
   SensitiveCategory,
   SensitiveGroup,
   SessionsSnapshot,
@@ -1847,4 +1853,262 @@ export function checksRun(overrides: Partial<ScriptRun> = {}): ScriptRun {
     },
     ...overrides,
   })
+}
+
+// scriptClone is acme-org/sdk's clone, as Repo scripts' picker lists it.
+export function scriptClone(overrides: Partial<ScriptClone> = {}): ScriptClone {
+  return { name: 'sdk', dir: '~/projects/sdk', ...overrides }
+}
+
+// scriptClones are the clones Repo scripts' picker lists, the one a script ran in last
+// first.
+export function scriptClones(): ScriptClone[] {
+  return [
+    scriptClone(),
+    scriptClone({ name: 'web', dir: '~/projects/web' }),
+    scriptClone({ name: 'notes', dir: '~/projects/notes' }),
+  ]
+}
+
+// scriptEntry is t3.json's Test script, never trusted, so running it asks first.
+export function scriptEntry(overrides: Partial<ScriptEntry> = {}): ScriptEntry {
+  return {
+    ref: 't3:Test',
+    source: 't3',
+    name: 'Test',
+    command: 'magex test',
+    icon: 'test',
+    detail: '',
+    custom: false,
+    args: false,
+    runnable: true,
+    why: '',
+    release: false,
+    background: false,
+    note: '',
+    trust: 'ask',
+    trusted: '',
+    trustNote: '',
+    sha256: 'c0ffee01',
+    inputs: [],
+    ...overrides,
+  }
+}
+
+// magexTarget is one of magex's own targets, which needs no trust and takes arguments.
+export function magexTarget(name: string, detail: string, overrides: Partial<ScriptEntry> = {}): ScriptEntry {
+  return scriptEntry({
+    ref: `magex:${name}`,
+    source: 'magex',
+    name,
+    command: `magex ${name}`,
+    icon: '',
+    detail,
+    args: true,
+    trust: 'none',
+    sha256: '',
+    ...overrides,
+  })
+}
+
+// bumpInput is a release task's pickString: the part of the version to bump, each choice
+// a label beside the value it fills in.
+export function bumpInput(overrides: Partial<ScriptInput> = {}): ScriptInput {
+  return {
+    id: 'bump',
+    kind: 'pickString',
+    description: 'Which part of the version to bump',
+    default: 'patch',
+    options: [
+      { label: 'Patch', value: 'patch', shown: 'Patch (patch)' },
+      { label: 'Minor', value: 'minor', shown: 'Minor (minor)' },
+      { label: 'major', value: 'major', shown: 'major' },
+    ],
+    ...overrides,
+  }
+}
+
+// scriptSection is one source of Repo scripts, found, with no scripts.
+export function scriptSection(overrides: Partial<ScriptSection> = {}): ScriptSection {
+  return {
+    source: 't3',
+    title: 'From t3.json',
+    off: false,
+    found: true,
+    error: '',
+    note: '',
+    entries: [],
+    common: [],
+    ...overrides,
+  }
+}
+
+// repoScripts is Repo scripts for acme-org/sdk, on its default branch: none of the user's
+// own yet; t3.json's scripts (one trusted, one never run, one that bumps a version);
+// .vscode/tasks.json's tasks (one changed since it was trusted, one greyed, one asking
+// for inputs, one that runs until stopped); and magex, with the repository's own target
+// and a few built-ins, one greyed and one that tags a version.
+export function repoScripts(overrides: Partial<RepoScripts> = {}): RepoScripts {
+  return {
+    repo: 'acme-org/sdk',
+    name: 'acme-org/sdk',
+    dir: '~/projects/sdk',
+    branch: 'master',
+    fromBranch: '',
+    switches: { magexTargets: true, repoFiles: true },
+    off: false,
+    why: '',
+    sections: [
+      scriptSection({ source: 'yours', title: 'Yours', found: false }),
+      scriptSection({
+        entries: [
+          scriptEntry({
+            ref: 't3:Fix all',
+            name: 'Fix all',
+            command: 'magex format:fix && magex lint && magex test:race',
+            icon: 'play',
+            trust: 'trusted',
+            sha256: 'c0ffee00',
+          }),
+          scriptEntry(),
+          scriptEntry({
+            ref: 't3:Version: bump patch',
+            name: 'Version: bump patch',
+            command: 'magex version:bump bump=patch push',
+            icon: 'configure',
+            release: true,
+            sha256: 'c0ffee02',
+          }),
+        ],
+      }),
+      scriptSection({
+        source: 'tasks',
+        title: 'From .vscode/tasks.json',
+        entries: [
+          scriptEntry({
+            ref: 'tasks:magex: lint',
+            source: 'tasks',
+            name: 'magex: lint',
+            command: 'magex lint',
+            icon: '',
+            detail: 'Run comprehensive linting with golangci-lint',
+            trust: 'changed',
+            trusted: 'magex lint:fix',
+            sha256: 'c0ffee10',
+          }),
+          scriptEntry({
+            ref: 'tasks:go: test file',
+            source: 'tasks',
+            name: 'go: test file',
+            command: 'go test ${file}',
+            icon: '',
+            runnable: false,
+            why: `Uses \${file}, which ${brand.name} can’t fill in.`,
+            sha256: 'c0ffee11',
+          }),
+          scriptEntry({
+            ref: 'tasks:Release: bump',
+            source: 'tasks',
+            name: 'Release: bump',
+            command: 'magex version:bump bump=${input:bump}',
+            icon: '',
+            release: true,
+            sha256: 'c0ffee12',
+            inputs: [bumpInput()],
+          }),
+          scriptEntry({
+            ref: 'tasks:Bench',
+            source: 'tasks',
+            name: 'Bench',
+            command: 'go test -run=^$ -bench=${input:pattern} -count=${input:count} ./...',
+            icon: '',
+            sha256: 'c0ffee13',
+            note: 'Runs its dependencies one after another, where VS Code runs them side by side.',
+            inputs: [
+              {
+                id: 'pattern',
+                kind: 'promptString',
+                description: 'Which benchmarks to run',
+                default: '.',
+                options: [],
+              },
+              {
+                id: 'count',
+                kind: 'pickString',
+                description: '',
+                default: '1',
+                options: [
+                  { label: 'Once', value: '1', shown: 'Once (1)' },
+                  { label: 'Five times', value: '5', shown: 'Five times (5)' },
+                ],
+              },
+            ],
+          }),
+          scriptEntry({
+            ref: 'tasks:docs: watch',
+            source: 'tasks',
+            name: 'docs: watch',
+            command: 'magex docs:serve',
+            icon: '',
+            background: true,
+            trust: 'trusted',
+            sha256: 'c0ffee14',
+          }),
+        ],
+      }),
+      scriptSection({
+        source: 'magex',
+        title: 'magex',
+        note: 'magex targets run the repository’s own code and its .github/env settings, as any build does.',
+        common: ['magex:format:fix', 'magex:lint', 'magex:test'],
+        entries: [
+          scriptEntry({
+            ref: 'magex:deploy:docs',
+            source: 'magex',
+            name: 'deploy:docs',
+            command: 'magex deploy:docs',
+            icon: '',
+            detail: 'Publish the docs site',
+            custom: true,
+            trustNote: 'This runs acme-org/sdk’s own magefiles code.',
+            sha256: 'c0ffee20',
+          }),
+          magexTarget('format:fix', 'Fix the code’s formatting'),
+          magexTarget('lint', 'Run the linters'),
+          magexTarget('test', 'Run the tests'),
+          magexTarget('version:bump', 'Bump the version and tag it', { release: true }),
+          magexTarget('update:install', 'Install the latest magex', {
+            runnable: false,
+            why: 'This updates magex itself. Update it in Settings → Integrations, which updates it the way it was installed.',
+          }),
+        ],
+      }),
+    ],
+    ...overrides,
+  }
+}
+
+// scriptQuestion is what running t3.json's Test asks first: it was never trusted.
+export function scriptQuestion(overrides: Partial<ScriptQuestion> = {}): ScriptQuestion {
+  return {
+    ref: 't3:Test',
+    name: 'Test',
+    source: 't3',
+    command: 'magex test',
+    trust: 'ask',
+    trusted: '',
+    trustNote: '',
+    sha256: 'c0ffee01',
+    ...overrides,
+  }
+}
+
+// questionError is the error a run is refused with until the user answers question, as
+// the desktop runtime delivers it: the full text for the console, and the cause the
+// window reads, with the backend's words and the question as its detail.
+export function questionError(
+  question: ScriptQuestion = scriptQuestion(),
+  message = 'Confirm “Test” before it runs.',
+): Error {
+  return new Error(`the command needs the user's trust: ${question.ref}`, { cause: { message, detail: question } })
 }

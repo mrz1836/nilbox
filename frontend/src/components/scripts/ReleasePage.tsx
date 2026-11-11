@@ -17,7 +17,7 @@ import type { SettingsSection } from '../../lib/settingsIndex'
 import { usable } from '../../lib/scriptsTab'
 import { formatAge, formatAgo } from '../../lib/time'
 import type { CommitChecks, IntegrationTool, ReleaseCandidate, ReleaseGroup, ScriptRun } from '../../platform'
-import { buttonClass, quietButtonClass } from '../controls'
+import { buttonClass, captionClass, quietButtonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import { AlertIcon, CheckIcon, DotIcon, RefreshIcon, RingIcon, XIcon } from '../icons'
 import { RelativeTime } from '../RelativeTime'
@@ -306,7 +306,7 @@ export function ReleasePage({
         {body}
         {recent.length > 0 && (
           <section aria-labelledby={`${id}-recent`} className="flex flex-col gap-1">
-            <h3 id={`${id}-recent`} className="px-1 text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">
+            <h3 id={`${id}-recent`} className={`${captionClass} px-1`}>
               Recent
             </h3>
             <ul aria-label="Recent releases" className="flex flex-col">

@@ -236,8 +236,8 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     { label: 'Try a path', keywords: ['test a path', 'check a path'] },
     { label: 'How it works', keywords: ['sensitive check', 'changed files', 'paths'] },
   ],
-  // Each tool's card, by the tool's name, with what it does and what its card shows; then
-  // where the runs go.
+  // Each tool's card, by the tool's name, with what it does and what its card shows; the
+  // Scripts card; then where the runs go.
   integrations: [
     {
       label: 'mage-x',
@@ -246,6 +246,10 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     {
       label: 'go-pre-commit',
       keywords: ['pre-commit', 'git hooks', 'checks', 'tools', 'version', 'update', 'install', 'path', 'copy', 'shell'],
+    },
+    {
+      label: 'Scripts',
+      keywords: ['repo scripts', 't3.json', 'VS Code tasks', 'tasks.json', 'magex targets', 'commands', 'automatic'],
     },
     {
       label: 'Runs in',
