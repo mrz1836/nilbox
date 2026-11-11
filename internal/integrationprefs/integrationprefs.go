@@ -1,8 +1,9 @@
 // Package integrationprefs declares the integrations' preference keys and decodes and
 // encodes their values: whether each integration is on, off, or automatic, which copy of
-// a tool to use, where the runs go, and whether a merge offers a release. The settings
-// package writes them, and the integrations and release packages read them. It imports nothing of the app's, so settings never depends on the integrations
-// package, nor through it on the GitHub client.
+// a tool to use, where the runs go, whether a merge offers a release, and which sources
+// Repo scripts lists. The settings package writes them, and the integrations, release, and
+// scripts packages read them. It imports nothing of the app's, so settings never depends
+// on the integrations package, nor through it on the GitHub client.
 package integrationprefs
 
 import (
@@ -22,6 +23,15 @@ const (
 	// KeyOfferAfterMerge is the preference key holding whether merging a pull request in
 	// the review sheet offers to release its repository: "true" or "false", on when unset.
 	KeyOfferAfterMerge = keyPrefix + "offerAfterMerge"
+
+	// KeyMagexTargets is the preference key holding whether Repo scripts lists magex's
+	// targets: "true" or "false", on when unset.
+	KeyMagexTargets = "scripts.magexTargets"
+
+	// KeyRepoFiles is the preference key holding whether Repo scripts lists the commands in
+	// a repository's own files, t3.json and .vscode/tasks.json: "true" or "false", on when
+	// unset.
+	KeyRepoFiles = "scripts.repoFiles"
 )
 
 // ID names an integration: a tool the app finds and runs, or the scripts.
@@ -101,6 +111,16 @@ type Config struct {
 	// OfferAfterMerge reports whether merging a pull request in the review sheet offers to
 	// release its repository, when Release can.
 	OfferAfterMerge bool `json:"offerAfterMerge"`
+
+	// ScriptSources are the sources Repo scripts lists.
+	ScriptSources ScriptSources `json:"scriptSources"`
+}
+
+// ScriptSources are the sources Repo scripts lists besides the user's own scripts: magex's
+// targets, and the commands in a repository's own files. Both start on.
+type ScriptSources struct {
+	MagexTargets bool `json:"magexTargets"`
+	RepoFiles    bool `json:"repoFiles"`
 }
 
 // IDs returns the integrations, in the order the settings list them.
@@ -146,7 +166,7 @@ func (r RunsIn) Valid() bool {
 
 // Keys returns every key Decode reads.
 func Keys() []string {
-	keys := make([]string, 0, len(IDs())+len(Tools())+2)
+	keys := make([]string, 0, len(IDs())+len(Tools())+4)
 
 	for _, id := range IDs() {
 		keys = append(keys, KeyEnabled(id))
@@ -156,17 +176,20 @@ func Keys() []string {
 		keys = append(keys, KeyPath(id))
 	}
 
-	return append(keys, KeyRunsIn, KeyOfferAfterMerge)
+	return append(keys, KeyRunsIn, KeyOfferAfterMerge, KeyMagexTargets, KeyRepoFiles)
 }
 
 // Decode reads the integrations' settings from the stored preferences. A switch that is
 // unset or holds an unknown value is automatic, a path that is not absolute is none, runs
-// go in the app unless the terminal is stored, and a merge offers a release unless that is
-// stored as off.
+// go in the app unless the terminal is stored, and a merge offers a release, and Repo
+// scripts lists each of its sources, unless that is stored as off.
 func Decode(stored map[string]string) Config {
 	out := Config{
 		Switches: map[ID]Switch{}, Paths: map[ID]string{}, RunsIn: DecodeRunsIn(stored[KeyRunsIn]),
 		OfferAfterMerge: DecodeOfferAfterMerge(stored[KeyOfferAfterMerge]),
+		ScriptSources: ScriptSources{
+			MagexTargets: decodeOn(stored[KeyMagexTargets]), RepoFiles: decodeOn(stored[KeyRepoFiles]),
+		},
 	}
 
 	for _, id := range IDs() {
@@ -245,14 +268,25 @@ func EncodeRunsIn(r RunsIn) (string, error) {
 // DecodeOfferAfterMerge reads whether a merge offers a release: as stored, when it reads as
 // a boolean, else on, the default.
 func DecodeOfferAfterMerge(stored string) bool {
+	return decodeOn(stored)
+}
+
+// EncodeOfferAfterMerge returns the stored form of whether a merge offers a release.
+func EncodeOfferAfterMerge(on bool) string {
+	return EncodeOn(on)
+}
+
+// EncodeOn returns the stored form of a switch that starts on, such as a Repo scripts
+// source's: "true" or "false".
+func EncodeOn(on bool) string {
+	return strconv.FormatBool(on)
+}
+
+// decodeOn reads a switch that starts on: as stored, when it reads as a boolean, else on.
+func decodeOn(stored string) bool {
 	if on, err := strconv.ParseBool(stored); err == nil {
 		return on
 	}
 
 	return true
-}
-
-// EncodeOfferAfterMerge returns the stored form of whether a merge offers a release.
-func EncodeOfferAfterMerge(on bool) string {
-	return strconv.FormatBool(on)
 }

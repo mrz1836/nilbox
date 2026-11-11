@@ -5,7 +5,8 @@
 //
 //   - settings writes the user's settings, among them the rules that the trust, snooze,
 //     sensitive, notifyprefs, branchrules, and integrationprefs packages declare and
-//     decode (trust.*, snooze.*, files.*, notify.*, branches.*, and integrations.*).
+//     decode (trust.*, snooze.*, files.*, notify.*, branches.*, integrations.*, and the
+//     scripts.magexTargets and scripts.repoFiles switches of Repo scripts' sources).
 //   - inbox writes inbox.*: the account and status of the last refresh, and the cached
 //     avatar.
 //   - prompts writes prompts.*: the default prompts and the starters already added.

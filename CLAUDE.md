@@ -135,7 +135,7 @@ app:lint` reads.
   `Info.plist` and the rendered icon set, `icons.icns`.
 - `internal/core/` assembles the app and builds every service the window binds: settings,
   profiles, prompts, launch defaults, inbox, review, launcher, worktrees, notifications, app
-  info, sessions, integrations, script runs, release, and hooks.
+  info, sessions, integrations, script runs, release, hooks, and repository scripts.
   Every `internal/*` package is plain Go, built and tested on Linux without CGO.
 - Services share their building blocks rather than keep copies: `internal/repo` and
   `internal/item` name repositories, pull requests and issues, and their worktrees;
@@ -454,6 +454,49 @@ app:lint` reads.
   **Open in terminal** (`OpenTerminal`) opens the terminal the runs open in at the clone and
   runs nothing there, and its **Open the config** (`ShowConfig`) shows `.github/env/` (or
   `.github/.env.base`) in Finder, each only for a clone directly under the clone root.
+- `internal/scripts/` is Repo scripts' service. While the Scripts integration is off (its own
+  switch, whose automatic is on while mage-x or go-pre-commit is), `List` returns the page
+  marked off and `Run` and Run again refuse. Otherwise `List` reads a clone's sources in the
+  page's order (the user's own scripts, which come later, then `t3.json`'s `scripts`, the
+  subset of `.vscode/tasks.json` the app can run, read through `jsonc.go`, and magex's
+  targets), as the `scripts.repoFiles` and `scripts.magexTargets` switches in
+  `integrationprefs` turn them on, and runs nothing in a clone: the files are read, magex's
+  built-ins come from `magex help:commands json=true` run in a scratch folder of the app's
+  own (a clone's `.github/env` files would override magex's environment, `PATH` included),
+  kept per copy, a list that failed too, until another copy or `List`'s refresh, and the
+  repository's own targets from parsing `magefiles/` with `go/parser` by magex's own rules,
+  kept until a file there changes. An entry the app can't run is listed greyed with the
+  reason in words: an editor variable such as `${file}`, `${command:…}` or `${config:…}`, a
+  password input, another task type, a character that hides what runs (a control character
+  but tab, DEL, or a bidirectional text control, in any command, argument, folder,
+  variable, shell, or input value), a task shell outside the POSIX family (sh, bash, zsh,
+  dash, ksh, mksh) given arguments to quote, a process task setting variables for a program
+  whose path holds an `=`, magex's own updaters (`update`, `update:*`, `version:update`, and
+  their aliases: Settings → Integrations updates magex), and the custom targets while
+  `magefiles/` holds a link to a folder. A pickString option shows its value beside a label
+  that differs (`Option.Shown`). A command that tags a version (`version:bump`,
+  `version:tag`, `git:tag`, `git:tagupdate`, `git:tagremove`, or a magex alias of one) points
+  to Release (`Anyway` runs it), checked again on the command as it will run; goreleaser's
+  `release:*` targets are plain built-ins. A command from the repository's files asks before
+  its first run and whenever it changes (D13): its trust is the SHA-256 of the canonical
+  JSON of its effective form, `${workspaceFolder}` and `${env:…}` as written, a custom magex
+  target's holding every file under `magefiles/` by its bytes (only those: not `go.mod` or the
+  packages it imports, the known limit), recorded in `script_trust` under the clone's origin
+  with the display text trusted; magex's built-ins need none. `Run` hands `scriptrun` a
+  `KindScript` run whose `Before`, under the clone's lock, reads the source again from its
+  bytes, refuses a command whose hash isn't the one worked out as the run was asked for,
+  works the command out, refuses a version bump, then one that isn't the one the user
+  confirmed (or, with no confirmation, the one they trusted), and only then remembers a
+  confirmation they asked to keep, so what runs is what they saw. A refusal that asks is a
+  `QuestionError` whose `Question` holds the command with the chosen inputs filled in;
+  `desktop.MarshalError` sends any error's `Detail` to the window beside its message. A
+  shell command runs as `[$SHELL, -c, command]` when the login shell is of the POSIX family,
+  else under `/bin/sh` (a task's `options.shell` as written, with `-c` after its arguments as
+  VS Code adds it), a process as its argv, a magex target as `[magex, target, key=value…]`
+  with magex's `RunEnv`, and a `dependsOn` chain, or a part in another folder, as one `/bin/sh
+  -c` line of shell-quoted parts joined by `&&`. Its `Rerunner` works Run again out from the
+  run's intent and asks nothing, so it runs a repository command only while a trust record
+  under the clone's current origin matches it; anything else is run from the page, which asks.
 - `internal/measure/` and `magefiles/measure.go` take the numbers in
   [`docs/performance.md`](docs/performance.md).
 - `frontend/` is the React + TypeScript + Vite + Tailwind app. It reaches Go only through the

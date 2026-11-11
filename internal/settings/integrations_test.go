@@ -104,6 +104,58 @@ func TestSetOfferAfterMerge(t *testing.T) {
 	assert.Zero(t, events.Count(), "the review sheet asks as each merge lands")
 }
 
+func TestSetScriptSources(t *testing.T) {
+	t.Parallel()
+
+	events := &testutil.Events{}
+	svc := serviceOver(t, testutil.DB(t), t.TempDir(), WithEvents(events))
+
+	fresh, err := svc.Get(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, integrationprefs.ScriptSources{MagexTargets: true, RepoFiles: true}, fresh.Integrations.ScriptSources,
+		"Repo scripts lists every source until the user turns one off")
+
+	got, err := svc.SetScriptSources(t.Context(), false, true)
+	require.NoError(t, err)
+	assert.Equal(t, integrationprefs.ScriptSources{MagexTargets: false, RepoFiles: true}, got.Integrations.ScriptSources)
+
+	for key, want := range map[string]string{
+		integrationprefs.KeyMagexTargets: "false", integrationprefs.KeyRepoFiles: "true",
+	} {
+		stored, ok, getErr := svc.prefs.Get(t.Context(), key)
+		require.NoError(t, getErr)
+		assert.True(t, ok, key)
+		assert.Equal(t, want, stored, key)
+	}
+
+	got, err = svc.SetScriptSources(t.Context(), true, false)
+	require.NoError(t, err)
+	assert.Equal(t, integrationprefs.ScriptSources{MagexTargets: true, RepoFiles: false}, got.Integrations.ScriptSources)
+
+	reread, err := svc.Get(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, got.Integrations.ScriptSources, reread.Integrations.ScriptSources, "they are kept")
+	assert.Zero(t, events.Count(), "Repo scripts reads the setting as it lists")
+}
+
+func TestSetScriptSourcesStoresBothOrNeither(t *testing.T) {
+	t.Parallel()
+
+	db := testutil.DB(t)
+	svc := serviceOver(t, db, t.TempDir())
+
+	_, err := db.ExecContext(t.Context(), `CREATE TRIGGER refuse_files BEFORE INSERT ON prefs
+		WHEN NEW.key = 'scripts.repoFiles' BEGIN SELECT RAISE(ABORT, 'refused'); END`)
+	require.NoError(t, err)
+
+	_, err = svc.SetScriptSources(t.Context(), false, false)
+	require.Error(t, err)
+
+	reread, err := svc.Get(t.Context())
+	require.NoError(t, err)
+	assert.True(t, reread.Integrations.ScriptSources.MagexTargets, "the first write rolled back with the second")
+}
+
 func TestSetIntegrationPath(t *testing.T) {
 	t.Parallel()
 

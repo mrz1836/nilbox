@@ -58,6 +58,12 @@ sql:
         !!merge <<: *go
         out: internal/scriptrun/internal/queries
   - !!merge <<: *owner
+    queries: internal/scripts/internal/queries
+    gen:
+      go:
+        !!merge <<: *go
+        out: internal/scripts/internal/queries
+  - !!merge <<: *owner
     queries: internal/notify/internal/queries
     gen:
       go:

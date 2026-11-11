@@ -51,6 +51,7 @@ import (
 	releases "github.com/mrz1836/nilbox/internal/release"
 	"github.com/mrz1836/nilbox/internal/review"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
+	"github.com/mrz1836/nilbox/internal/scripts"
 	"github.com/mrz1836/nilbox/internal/sessions"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/worktrees"
@@ -273,7 +274,7 @@ func binders() []func(svc any) (application.Service, bool) {
 		binder[launchdefaults.Service], binder[inbox.Service], binder[launcher.Service],
 		binder[worktrees.Service], binder[notify.Service], binder[appinfo.Service], binder[budget.Service],
 		binder[sessions.Service], binder[review.Service], binder[integrations.Service], binder[scriptrun.Service],
-		binder[releases.Service], binder[hooks.Service],
+		binder[releases.Service], binder[hooks.Service], binder[scripts.Service],
 	}
 }
 

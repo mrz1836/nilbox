@@ -23,8 +23,9 @@ func TestDecodeDefaultsToAutomatic(t *testing.T) {
 		Paths:           map[integrationprefs.ID]string{integrationprefs.MageX: "", integrationprefs.GoPreCommit: ""},
 		RunsIn:          integrationprefs.RunsInApp,
 		OfferAfterMerge: true,
+		ScriptSources:   integrationprefs.ScriptSources{MagexTargets: true, RepoFiles: true},
 	}, got, "a fresh database: every switch automatic, no copy chosen, runs in the app, a merge offers a release, "+
-		"and no nil map")
+		"Repo scripts lists every source, and no nil map")
 }
 
 func TestDecodeReadsTheStoredValues(t *testing.T) {
@@ -38,6 +39,8 @@ func TestDecodeReadsTheStoredValues(t *testing.T) {
 		"integrations.go-pre-commit.path":    "bin/go-pre-commit",
 		"integrations.runsIn":                "terminal",
 		"integrations.offerAfterMerge":       "false",
+		"scripts.magexTargets":               "false",
+		"scripts.repoFiles":                  "yes",
 	})
 
 	assert.Equal(t, integrationprefs.SwitchOn, got.Switches[integrationprefs.MageX])
@@ -47,6 +50,8 @@ func TestDecodeReadsTheStoredValues(t *testing.T) {
 	assert.Empty(t, got.Paths[integrationprefs.GoPreCommit], "a relative path is none")
 	assert.Equal(t, integrationprefs.RunsInTerminal, got.RunsIn)
 	assert.False(t, got.OfferAfterMerge)
+	assert.Equal(t, integrationprefs.ScriptSources{MagexTargets: false, RepoFiles: true}, got.ScriptSources,
+		"a value that doesn't read as a boolean is the default, on")
 }
 
 func TestOfferAfterMerge(t *testing.T) {
@@ -125,7 +130,7 @@ func TestIDs(t *testing.T) {
 	assert.Equal(t, []string{
 		"integrations.mage-x.enabled", "integrations.go-pre-commit.enabled", "integrations.scripts.enabled",
 		"integrations.mage-x.path", "integrations.go-pre-commit.path", "integrations.runsIn",
-		"integrations.offerAfterMerge",
+		"integrations.offerAfterMerge", "scripts.magexTargets", "scripts.repoFiles",
 	}, integrationprefs.Keys())
 }
 

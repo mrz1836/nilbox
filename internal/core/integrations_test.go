@@ -341,7 +341,7 @@ func TestHooksToolAndSettingsReadWhatTheAppKnows(t *testing.T) {
 	assert.False(t, facts.Usable(), "no go-pre-commit is found")
 	assert.Empty(t, facts.Copies)
 
-	place := hooksSettings{settings: c.Settings}
+	place := integrationSettings{settings: c.Settings}
 
 	got, err := place.RunsIn(t.Context())
 	require.NoError(t, err)
@@ -359,4 +359,23 @@ func TestHooksToolAndSettingsReadWhatTheAppKnows(t *testing.T) {
 	_, err = place.RunsIn(t.Context())
 	require.Error(t, err, "a closed database can't say")
 	assert.False(t, hooksTool{tools: c.Integrations}.HooksTool(t.Context()).Usable())
+}
+
+func TestScriptsToolsReadWhatTheAppKnows(t *testing.T) {
+	t.Parallel()
+
+	c := bootstrap(t, Options{
+		Paths: appdata.NewPaths(filepath.Join(t.TempDir(), "data")), Home: testutil.ClaudeHome(t), Runner: noPrograms(),
+	})
+
+	got := scriptsTools{tools: c.Integrations}.Tools(t.Context())
+	assert.False(t, got.Magex.Usable(), "no magex is found")
+	assert.False(t, got.MageXOn)
+	assert.False(t, got.GoPreCommitOn)
+
+	assert.Equal(t, integrations.Tool{}, toolByID(integrations.Tools{}, integrationprefs.MageX), "a tool the list lacks")
+
+	cfg, err := integrationSettings{settings: c.Settings}.Integrations(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, integrationprefs.ScriptSources{MagexTargets: true, RepoFiles: true}, cfg.ScriptSources)
 }
