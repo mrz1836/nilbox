@@ -2,11 +2,14 @@ package github
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -113,6 +116,35 @@ func errorIsAny(err error, targets ...error) bool {
 	}
 
 	return false
+}
+
+// FuzzGraphQLString checks that any value graphQLString writes is one string GraphQL reads
+// back as that value: a JSON string, whose escapes are GraphQL's, with no line break or
+// other control character written raw, so no owner, name, branch, or tag can break out of
+// its argument. A value that is not UTF-8 still comes back as UTF-8.
+func FuzzGraphQLString(f *testing.F) {
+	for _, seed := range []string{
+		"", filesOwner, `acme"org\`, `main\"`, "v1\") { x }\n#", hostileValue,
+		"\r\n\t\b\f\x00\x1f\x7f", "<&>\u2028\u2029", "bad \xff\xfe",
+	} {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(t *testing.T, s string) {
+		quoted, err := graphQLString(s)
+		require.NoError(t, err)
+
+		var back string
+		require.NoError(t, json.Unmarshal([]byte(quoted), &back), "%q is not one string", quoted)
+		assert.False(t, strings.ContainsFunc(quoted, func(r rune) bool { return r < ' ' }),
+			"%q holds a raw control character", quoted)
+
+		if utf8.ValidString(s) {
+			assert.Equal(t, s, back)
+		} else {
+			assert.True(t, utf8.ValidString(back), "%q comes back as UTF-8", back)
+		}
+	})
 }
 
 // FuzzDecodeFiles checks that any page of files either fails to decode or keeps exactly

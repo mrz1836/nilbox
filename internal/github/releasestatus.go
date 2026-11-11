@@ -2,14 +2,12 @@ package github
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
 	"net"
 	"net/http"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -340,7 +338,7 @@ func (c *Client) fetchReleaseStatus(ctx context.Context, tok Token, repos []repo
 	out := make(map[string]ReleaseStatus, len(repos))
 
 	for i, r := range repos {
-		if status, ok := (*resp.Data)[releaseAlias(i)].status(); ok {
+		if status, ok := (*resp.Data)[batchAlias("r", i)].status(); ok {
 			out[r.Key()] = status
 		}
 	}
@@ -365,7 +363,7 @@ func (c *Client) fetchReleaseCompare(
 	out := make(map[string]ReleaseCompare, len(reqs))
 
 	for i, req := range reqs {
-		if compare, ok := (*resp.Data)[releaseAlias(i)].compare(); ok {
+		if compare, ok := (*resp.Data)[batchAlias("r", i)].compare(); ok {
 			out[req.key()] = compare
 		}
 	}
@@ -373,21 +371,20 @@ func (c *Client) fetchReleaseCompare(
 	return out, nil
 }
 
-// releaseStatusQuery asks about each repository under its own alias. Owners and names are
-// written as JSON strings, which GraphQL reads the same way, so no name can break out of
-// its argument.
+// releaseStatusQuery asks about each repository under its own alias. The repository is
+// written by repoField, so no name can break out of its argument.
 func releaseStatusQuery(repos []repo.Name) (string, error) {
 	var b strings.Builder
 
 	b.WriteString("query ReleaseStatus {\n")
 
 	for i, r := range repos {
-		owner, name, err := repoArgs(r)
+		field, err := repoField(batchAlias("r", i), r)
 		if err != nil {
 			return "", err
 		}
 
-		fmt.Fprintf(&b, "  %s: repository(owner: %s, name: %s) { ...ReleaseStatusFields }\n", releaseAlias(i), owner, name)
+		fmt.Fprintf(&b, "  %s { ...ReleaseStatusFields }\n", field)
 	}
 
 	// The query's own cost, so the API budget counts it; the key is not an alias, so no
@@ -399,14 +396,15 @@ func releaseStatusQuery(repos []repo.Name) (string, error) {
 }
 
 // releaseCompareQuery compares each request's tag with its branch under its own alias.
-// Every value is written as a JSON string, as in releaseStatusQuery.
+// The repository is written by repoField and the tag and branch by graphQLString, so none
+// can break out of its argument.
 func releaseCompareQuery(reqs []CompareRequest) (string, error) {
 	var b strings.Builder
 
 	b.WriteString("query ReleaseCompare {\n")
 
 	for i, req := range reqs {
-		owner, name, err := repoArgs(req.Repo)
+		field, err := repoField(batchAlias("r", i), req.Repo)
 		if err != nil {
 			return "", err
 		}
@@ -421,43 +419,14 @@ func releaseCompareQuery(reqs []CompareRequest) (string, error) {
 			return "", err
 		}
 
-		fmt.Fprintf(&b, "  %s: repository(owner: %s, name: %s) { ref(qualifiedName: %s) { compare(headRef: %s) "+
-			"{ ...ReleaseCompareFields } } }\n", releaseAlias(i), owner, name, tag, branch)
+		fmt.Fprintf(&b, "  %s { ref(qualifiedName: %s) { compare(headRef: %s) { ...ReleaseCompareFields } } }\n",
+			field, tag, branch)
 	}
 
 	b.WriteString("  rateLimit { cost }\n}\n")
 	fmt.Fprintf(&b, releaseCompareFragment, releaseCommitsMax)
 
 	return b.String(), nil
-}
-
-// repoArgs writes a repository's owner and name as GraphQL strings.
-func repoArgs(r repo.Name) (owner, name string, err error) {
-	if owner, err = graphQLString(r.Owner); err != nil {
-		return "", "", err
-	}
-
-	if name, err = graphQLString(r.Repo); err != nil {
-		return "", "", err
-	}
-
-	return owner, name, nil
-}
-
-// graphQLString writes s as a JSON string, which GraphQL reads as the same string, with
-// every quote and control character escaped.
-func graphQLString(s string) (string, error) {
-	raw, err := json.Marshal(s)
-	if err != nil {
-		return "", fmt.Errorf("encode %q for a query: %w", s, err)
-	}
-
-	return string(raw), nil
-}
-
-// releaseAlias is the alias of the i-th repository in a release query.
-func releaseAlias(i int) string {
-	return "r" + strconv.Itoa(i)
 }
 
 // releaseStatusData is the status query's data object: one aliased repository each, null

@@ -2,7 +2,6 @@ package github
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -123,7 +122,7 @@ func (c *Client) fetchStates(ctx context.Context, tok Token, req statesRequest) 
 	states := make(map[string]ItemState, len(req.refs))
 
 	for i, ref := range req.refs {
-		if state, ok := (*resp.Data)[statesAlias(i)].state(); ok {
+		if state, ok := (*resp.Data)[batchAlias("r", i)].state(); ok {
 			states[ref.Key()] = state
 		}
 	}
@@ -131,9 +130,8 @@ func (c *Client) fetchStates(ctx context.Context, tok Token, req statesRequest) 
 	return states, nil
 }
 
-// statesQuery asks about each ref under its own alias. The repository names are written
-// as JSON strings, which GraphQL reads the same way, so no name can break out of its
-// argument.
+// statesQuery asks about each ref under its own alias. The repository is written by
+// repoField, so no name can break out of its argument.
 func statesQuery(refs []item.Ref) (string, error) {
 	var b strings.Builder
 
@@ -144,18 +142,12 @@ func statesQuery(refs []item.Ref) (string, error) {
 			return "", fmt.Errorf("%w: number %d", ErrInvalidItemRef, ref.Number)
 		}
 
-		owner, err := json.Marshal(ref.Repo.Owner)
+		field, err := repoField(batchAlias("r", i), ref.Repo)
 		if err != nil {
-			return "", fmt.Errorf("encode the owner: %w", err)
+			return "", err
 		}
 
-		name, err := json.Marshal(ref.Repo.Repo)
-		if err != nil {
-			return "", fmt.Errorf("encode the name: %w", err)
-		}
-
-		fmt.Fprintf(&b, "  %s: repository(owner: %s, name: %s) { item: issueOrPullRequest(number: %s) { ...StateFields } }\n",
-			statesAlias(i), owner, name, strconv.Itoa(ref.Number))
+		fmt.Fprintf(&b, "  %s { item: issueOrPullRequest(number: %s) { ...StateFields } }\n", field, strconv.Itoa(ref.Number))
 	}
 
 	// The query's own cost, so the API budget counts it; the key is not an alias, so no ref
@@ -164,11 +156,6 @@ func statesQuery(refs []item.Ref) (string, error) {
 	b.WriteString(stateFieldsFragment)
 
 	return b.String(), nil
-}
-
-// statesAlias is the alias of the i-th ref in a states query.
-func statesAlias(i int) string {
-	return "r" + strconv.Itoa(i)
 }
 
 // statesData is the states query's data object: one aliased repository per ref, null
