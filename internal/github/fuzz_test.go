@@ -118,32 +118,36 @@ func errorIsAny(err error, targets ...error) bool {
 	return false
 }
 
-// FuzzGraphQLString checks that any value graphQLString writes is one string GraphQL reads
-// back as that value: a JSON string, whose escapes are GraphQL's, with no line break or
-// other control character written raw, so no owner, name, branch, or tag can break out of
-// its argument. A value that is not UTF-8 still comes back as UTF-8.
+// FuzzGraphQLString checks that graphQLString refuses any value that is not valid UTF-8,
+// never rewriting it, and writes any other as one string GraphQL reads back as exactly
+// that value: a JSON string, whose escapes are GraphQL's, so its quotes and backslashes
+// are escaped, with no C0 control character (U+0000 to U+001F, line breaks among them)
+// written raw. No owner, name, branch, or tag can break out of its argument. DEL and the
+// C1 control characters, which a GraphQL string may hold, may be written raw.
 func FuzzGraphQLString(f *testing.F) {
 	for _, seed := range []string{
 		"", filesOwner, `acme"org\`, `main\"`, "v1\") { x }\n#", hostileValue,
-		"\r\n\t\b\f\x00\x1f\x7f", "<&>\u2028\u2029", "bad \xff\xfe",
+		"\r\n\t\b\f\x00\x1f", "\x7f\u0080\u0085\u009f", "<&>\u2028\u2029", "bad \xff\xfe", "feat-\xff",
 	} {
 		f.Add(seed)
 	}
 
 	f.Fuzz(func(t *testing.T, s string) {
 		quoted, err := graphQLString(s)
+		if !utf8.ValidString(s) {
+			require.ErrorIs(t, err, errNotUTF8)
+			assert.Empty(t, quoted)
+
+			return
+		}
+
 		require.NoError(t, err)
 
 		var back string
 		require.NoError(t, json.Unmarshal([]byte(quoted), &back), "%q is not one string", quoted)
-		assert.False(t, strings.ContainsFunc(quoted, func(r rune) bool { return r < ' ' }),
-			"%q holds a raw control character", quoted)
-
-		if utf8.ValidString(s) {
-			assert.Equal(t, s, back)
-		} else {
-			assert.True(t, utf8.ValidString(back), "%q comes back as UTF-8", back)
-		}
+		assert.Equal(t, s, back)
+		assert.False(t, strings.ContainsFunc(quoted, func(r rune) bool { return r < 0x20 }),
+			"%q holds a raw C0 control character", quoted)
 	})
 }
 

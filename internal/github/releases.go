@@ -10,8 +10,12 @@ import (
 )
 
 // releaseAssetsMax is the most files a latest-release query reads of each release. Both
-// tools publish seven (six archives and the checksums).
-const releaseAssetsMax = 30
+// tools publish seven (six archives and the checksums). Each repository is asked about
+// under releasesPrefix and its index, as in t0.
+const (
+	releaseAssetsMax = 30
+	releasesPrefix   = "t"
+)
 
 // LatestRelease is a repository's latest release as GitHub reports it: the newest one
 // that is neither a draft nor a prerelease.
@@ -66,7 +70,7 @@ func (c *Client) FetchLatestReleases(ctx context.Context, tok Token, repos []rep
 	out := make(map[string]LatestRelease, len(repos))
 
 	for i, r := range repos {
-		if release, ok := (*resp.Data)[batchAlias("t", i)].release(); ok {
+		if release, ok := (*resp.Data)[batchAlias(releasesPrefix, i)].release(); ok {
 			out[r.Key()] = release
 		}
 	}
@@ -82,7 +86,7 @@ func latestReleasesQuery(repos []repo.Name) (string, error) {
 	b.WriteString("query LatestReleases {\n")
 
 	for i, r := range repos {
-		field, err := repoField(batchAlias("t", i), r)
+		field, err := repoField(batchAlias(releasesPrefix, i), r)
 		if err != nil {
 			return "", err
 		}

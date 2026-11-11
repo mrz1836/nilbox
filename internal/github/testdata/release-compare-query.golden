@@ -1,0 +1,10 @@
+query ReleaseCompare {
+  r0: repository(owner: "acme-org", name: "example-repo") { ref(qualifiedName: "refs/tags/v1.4.2") { compare(headRef: "develop") { ...ReleaseCompareFields } } }
+  r1: repository(owner: "acme\"org\\", name: "x\") { viewer { login } }\n#\t\u0000\u003c\u0026\u003e\u2028") { ref(qualifiedName: "refs/tags/x\") { viewer { login } }\n#\t\u0000\u003c\u0026\u003e\u2028") { compare(headRef: "x\") { viewer { login } }\n#\t\u0000\u003c\u0026\u003e\u2028") { ...ReleaseCompareFields } } }
+  rateLimit { cost }
+}
+
+fragment ReleaseCompareFields on Comparison {
+  aheadBy
+  commits(last: 10) { totalCount nodes { oid messageHeadline committedDate } }
+}

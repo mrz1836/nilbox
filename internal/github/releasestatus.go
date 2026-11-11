@@ -29,6 +29,10 @@ const (
 	// releaseCommitsMax how many of the newest commits since a tag the compare query reads.
 	releaseTagsMax    = 20
 	releaseCommitsMax = 10
+
+	// releasePrefix is what both release queries ask about each repository under, with its
+	// index, as in r0.
+	releasePrefix = "r"
 )
 
 // GitHub's GraphQL names for the objects a tag can point at, and its error type for a node
@@ -338,7 +342,7 @@ func (c *Client) fetchReleaseStatus(ctx context.Context, tok Token, repos []repo
 	out := make(map[string]ReleaseStatus, len(repos))
 
 	for i, r := range repos {
-		if status, ok := (*resp.Data)[batchAlias("r", i)].status(); ok {
+		if status, ok := (*resp.Data)[batchAlias(releasePrefix, i)].status(); ok {
 			out[r.Key()] = status
 		}
 	}
@@ -363,7 +367,7 @@ func (c *Client) fetchReleaseCompare(
 	out := make(map[string]ReleaseCompare, len(reqs))
 
 	for i, req := range reqs {
-		if compare, ok := (*resp.Data)[batchAlias("r", i)].compare(); ok {
+		if compare, ok := (*resp.Data)[batchAlias(releasePrefix, i)].compare(); ok {
 			out[req.key()] = compare
 		}
 	}
@@ -379,7 +383,7 @@ func releaseStatusQuery(repos []repo.Name) (string, error) {
 	b.WriteString("query ReleaseStatus {\n")
 
 	for i, r := range repos {
-		field, err := repoField(batchAlias("r", i), r)
+		field, err := repoField(batchAlias(releasePrefix, i), r)
 		if err != nil {
 			return "", err
 		}
@@ -404,19 +408,19 @@ func releaseCompareQuery(reqs []CompareRequest) (string, error) {
 	b.WriteString("query ReleaseCompare {\n")
 
 	for i, req := range reqs {
-		field, err := repoField(batchAlias("r", i), req.Repo)
+		field, err := repoField(batchAlias(releasePrefix, i), req.Repo)
 		if err != nil {
 			return "", err
 		}
 
 		tag, err := graphQLString("refs/tags/" + req.Tag)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("encode the tag of %s: %w", req.Repo, err)
 		}
 
 		branch, err := graphQLString(req.Branch)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("encode the branch of %s: %w", req.Repo, err)
 		}
 
 		fmt.Fprintf(&b, "  %s { ref(qualifiedName: %s) { compare(headRef: %s) { ...ReleaseCompareFields } } }\n",

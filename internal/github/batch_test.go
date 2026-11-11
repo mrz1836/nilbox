@@ -1,6 +1,10 @@
 package github
 
 import (
+	"flag"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,13 +14,25 @@ import (
 	"github.com/mrz1836/nilbox/internal/repo"
 )
 
+// updateGoldens makes TestBatchedQueriesText rewrite its golden files from the current
+// output instead of comparing against them.
+var updateGoldens = flag.Bool("update", false, "rewrite the golden files from the current output") //nolint:gochecknoglobals // a test flag
+
 // hostileValue is a name, branch, or tag that would break out of an unquoted argument: a
 // quote, a brace, a newline and a comment, other control characters, characters JSON
 // escapes for HTML, and a line separator.
 const hostileValue = "x\") { viewer { login } }\n#\t\x00<&>\u2028"
 
-// TestBatchedQueriesText pins the whole text of every batched query, for a plain repository
-// and a hostile one, so a change to how any is written, or quoted, shows here.
+// goldenPath returns the golden file for the test case called name: the name in lower
+// case, its spaces as hyphens, under testdata.
+func goldenPath(name string) string {
+	return filepath.Join("testdata", strings.ReplaceAll(strings.ToLower(name), " ", "-")+".golden")
+}
+
+// TestBatchedQueriesText compares the whole text of every batched query, for a plain
+// repository and a hostile one, with its golden file under testdata, so a change to how any
+// is written, or quoted, shows there. After a deliberate change, rewrite them with
+// go test ./internal/github -run TestBatchedQueriesText -update, and review the diff.
 func TestBatchedQueriesText(t *testing.T) {
 	t.Parallel()
 
@@ -26,100 +42,42 @@ func TestBatchedQueriesText(t *testing.T) {
 	tests := []struct {
 		name  string
 		query func() (string, error)
-		want  string
 	}{
 		{
-			name: "states",
+			name: "states query",
 			query: func() (string, error) {
 				return statesQuery([]item.Ref{{Repo: plain, Number: 184}, {Repo: hostile, Number: 7}})
 			},
-			want: `query ItemStates {
-  r0: repository(owner: "acme-org", name: "example-repo") { item: issueOrPullRequest(number: 184) { ...StateFields } }
-  r1: repository(owner: "acme\"org\\", name: "x\") { viewer { login } }\n#\t\u0000\u003c\u0026\u003e\u2028") { item: issueOrPullRequest(number: 7) { ...StateFields } }
-  rateLimit { cost }
-}
-
-fragment StateFields on IssueOrPullRequest {
-  __typename
-  ... on PullRequest { title url prState: state closedAt mergedAt headRefOid headRefName }
-  ... on Issue { title url issueState: state closedAt }
-}
-`,
 		},
 		{
-			name: "merged branches",
+			name: "merged branches query",
 			query: func() (string, error) {
 				return mergedQuery([]mergedAsk{
 					{repo: plain, branches: []string{"feature-x", hostileValue}},
 					{repo: hostile, branches: []string{"main"}},
 				})
 			},
-			want: `query MergedBranches {
-  r0: repository(owner: "acme-org", name: "example-repo") {
-    b0: pullRequests(headRefName: "feature-x", states: MERGED, first: 5, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { number title url mergedAt headRefOid } }
-    b1: pullRequests(headRefName: "x\") { viewer { login } }\n#\t\u0000\u003c\u0026\u003e\u2028", states: MERGED, first: 5, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { number title url mergedAt headRefOid } }
-  }
-  r1: repository(owner: "acme\"org\\", name: "x\") { viewer { login } }\n#\t\u0000\u003c\u0026\u003e\u2028") {
-    b0: pullRequests(headRefName: "main", states: MERGED, first: 5, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { number title url mergedAt headRefOid } }
-  }
-  rateLimit { cost }
-}
-`,
 		},
 		{
-			name: "latest releases",
+			name: "latest releases query",
 			query: func() (string, error) {
 				return latestReleasesQuery([]repo.Name{plain, hostile})
 			},
-			want: `query LatestReleases {
-  t0: repository(owner: "acme-org", name: "example-repo") { latestRelease { tagName url publishedAt releaseAssets(first: 30) { nodes { name downloadUrl size digest } } } }
-  t1: repository(owner: "acme\"org\\", name: "x\") { viewer { login } }\n#\t\u0000\u003c\u0026\u003e\u2028") { latestRelease { tagName url publishedAt releaseAssets(first: 30) { nodes { name downloadUrl size digest } } } }
-  rateLimit { cost }
-}
-`,
 		},
 		{
-			name: "release status",
+			name: "release status query",
 			query: func() (string, error) {
 				return releaseStatusQuery([]repo.Name{plain, hostile})
 			},
-			want: `query ReleaseStatus {
-  r0: repository(owner: "acme-org", name: "example-repo") { ...ReleaseStatusFields }
-  r1: repository(owner: "acme\"org\\", name: "x\") { viewer { login } }\n#\t\u0000\u003c\u0026\u003e\u2028") { ...ReleaseStatusFields }
-  rateLimit { cost }
-}
-
-fragment ReleaseStatusFields on Repository {
-  isArchived viewerPermission
-  defaultBranchRef {
-    name
-    target { oid ... on Commit { committedDate messageHeadline statusCheckRollup { state } } }
-  }
-  refs(refPrefix: "refs/tags/", first: 20, orderBy: {field: TAG_COMMIT_DATE, direction: DESC}) {
-    nodes { name target { __typename oid ... on Tag { target { __typename oid } } } }
-  }
-}
-`,
 		},
 		{
-			name: "release compare",
+			name: "release compare query",
 			query: func() (string, error) {
 				return releaseCompareQuery([]CompareRequest{
 					{Repo: plain, Tag: "v1.4.2", Branch: "develop"},
 					{Repo: hostile, Tag: hostileValue, Branch: hostileValue},
 				})
 			},
-			want: `query ReleaseCompare {
-  r0: repository(owner: "acme-org", name: "example-repo") { ref(qualifiedName: "refs/tags/v1.4.2") { compare(headRef: "develop") { ...ReleaseCompareFields } } }
-  r1: repository(owner: "acme\"org\\", name: "x\") { viewer { login } }\n#\t\u0000\u003c\u0026\u003e\u2028") { ref(qualifiedName: "refs/tags/x\") { viewer { login } }\n#\t\u0000\u003c\u0026\u003e\u2028") { compare(headRef: "x\") { viewer { login } }\n#\t\u0000\u003c\u0026\u003e\u2028") { ...ReleaseCompareFields } } }
-  rateLimit { cost }
-}
-
-fragment ReleaseCompareFields on Comparison {
-  aheadBy
-  commits(last: 10) { totalCount nodes { oid messageHeadline committedDate } }
-}
-`,
 		},
 	}
 
@@ -129,7 +87,93 @@ fragment ReleaseCompareFields on Comparison {
 
 			got, err := tt.query()
 			require.NoError(t, err)
-			assert.Equal(t, tt.want, got)
+
+			path := goldenPath(tt.name)
+			if *updateGoldens {
+				require.NoError(t, os.WriteFile(path, []byte(got), 0o644)) //nolint:gosec // committed test data, world-readable
+				require.NoError(t, os.Chmod(path, 0o644))                  //nolint:gosec // committed test data, world-readable
+			}
+
+			want, err := os.ReadFile(path) //nolint:gosec // a fixed case name under testdata
+			require.NoError(t, err)
+			assert.Equal(t, string(want), got)
+		})
+	}
+}
+
+// TestBatchedQueriesRefuseValuesThatAreNotUTF8 checks that a value that is not valid UTF-8
+// fails its query, saying which value it was, rather than being asked about rewritten.
+func TestBatchedQueriesRefuseValuesThatAreNotUTF8(t *testing.T) {
+	t.Parallel()
+
+	plain := repo.Name{Owner: filesOwner, Repo: exampleRepo}
+	badOwner := repo.Name{Owner: "acme-\xff", Repo: exampleRepo}
+	badName := repo.Name{Owner: filesOwner, Repo: "example-\xff"}
+
+	tests := []struct {
+		name  string
+		query func() (string, error)
+		want  string
+	}{
+		{
+			name: "states, an owner",
+			query: func() (string, error) {
+				return statesQuery([]item.Ref{{Repo: badOwner, Number: 7}})
+			},
+			want: `encode the repository's owner: "acme-\xff"`,
+		},
+		{
+			name: "merged branches, a name",
+			query: func() (string, error) {
+				return mergedQuery([]mergedAsk{{repo: badName, branches: []string{"feature-x"}}})
+			},
+			want: `encode the repository's name: "example-\xff"`,
+		},
+		{
+			name: "merged branches, a branch",
+			query: func() (string, error) {
+				return mergedQuery([]mergedAsk{{repo: plain, branches: []string{"feat-\xff"}}})
+			},
+			want: `encode a branch of acme-org/example-repo: "feat-\xff"`,
+		},
+		{
+			name: "latest releases, an owner",
+			query: func() (string, error) {
+				return latestReleasesQuery([]repo.Name{badOwner})
+			},
+			want: `encode the repository's owner: "acme-\xff"`,
+		},
+		{
+			name: "release status, a name",
+			query: func() (string, error) {
+				return releaseStatusQuery([]repo.Name{badName})
+			},
+			want: `encode the repository's name: "example-\xff"`,
+		},
+		{
+			name: "release compare, a tag",
+			query: func() (string, error) {
+				return releaseCompareQuery([]CompareRequest{{Repo: plain, Tag: "v1\xff", Branch: "develop"}})
+			},
+			want: `encode the tag of acme-org/example-repo: "refs/tags/v1\xff"`,
+		},
+		{
+			name: "release compare, a branch",
+			query: func() (string, error) {
+				return releaseCompareQuery([]CompareRequest{{Repo: plain, Tag: "v1.0.0", Branch: "dev-\xff"}})
+			},
+			want: `encode the branch of acme-org/example-repo: "dev-\xff"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			query, err := tt.query()
+			require.ErrorIs(t, err, errNotUTF8)
+			assert.Contains(t, err.Error(), tt.want)
+			assert.Empty(t, query)
 		})
 	}
 }

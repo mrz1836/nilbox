@@ -18,10 +18,11 @@ import (
 // statesBatch is the most items one states request asks about. Each is a single object,
 // so a request costs one point whatever its size; the cap only keeps a request small.
 // Requests are sent side by side, at most statesParallel at a time, like the details
-// requests.
+// requests. Each ref is asked about under statesPrefix and its index, as in r0.
 const (
 	statesBatch    = 50
 	statesParallel = detailsParallel
+	statesPrefix   = "r"
 )
 
 // stateFieldsFragment is what the states query reads about a pull request or issue: just
@@ -122,7 +123,7 @@ func (c *Client) fetchStates(ctx context.Context, tok Token, req statesRequest) 
 	states := make(map[string]ItemState, len(req.refs))
 
 	for i, ref := range req.refs {
-		if state, ok := (*resp.Data)[batchAlias("r", i)].state(); ok {
+		if state, ok := (*resp.Data)[batchAlias(statesPrefix, i)].state(); ok {
 			states[ref.Key()] = state
 		}
 	}
@@ -142,7 +143,7 @@ func statesQuery(refs []item.Ref) (string, error) {
 			return "", fmt.Errorf("%w: number %d", ErrInvalidItemRef, ref.Number)
 		}
 
-		field, err := repoField(batchAlias("r", i), ref.Repo)
+		field, err := repoField(batchAlias(statesPrefix, i), ref.Repo)
 		if err != nil {
 			return "", err
 		}
