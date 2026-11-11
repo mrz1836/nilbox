@@ -302,6 +302,10 @@ export function ReviewSheet({
                 }
           }
           onClose={close}
+          // A notice that it was pushed to since stays until its own Reload is clicked.
+          onRefresh={() => {
+            loaded.reload()
+          }}
         />
         <div className="space-y-2 px-5 empty:hidden">
           {loaded.error !== '' && <ErrorBanner>{loaded.error}</ErrorBanner>}

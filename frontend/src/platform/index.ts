@@ -394,6 +394,7 @@ export const { List: listSessions, Focus: focusSession, LastWords: sessionLastWo
 export const {
   Open: openReview,
   Refresh: refreshReview,
+  ReadAgain: readReviewAgain,
   Patches: reviewPatches,
   Act: actOnReview,
   Replies: reviewReplies,

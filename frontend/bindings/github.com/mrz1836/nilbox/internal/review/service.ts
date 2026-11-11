@@ -57,6 +57,15 @@ export function Patches(id: number, head: string, paths: string[] | null): $Canc
 }
 
 /**
+ * ReadAgain reads the pull request with id from GitHub as Refresh does, however recently
+ * it was read: the user asked for it, from the sheet's refresh button. A read already
+ * under way for the pull request is joined rather than run beside it.
+ */
+export function ReadAgain(id: number): $CancellablePromise<$models.Review> {
+    return $Call.ByID(2338345112, id);
+}
+
+/**
  * Refresh reads the pull request with id from GitHub, stores it, and returns it: one
  * GraphQL request, and its files only when it was pushed to since the sheet listed them.
  * A pull request read in the last 20 seconds is not read again. Two refreshes of one pull
