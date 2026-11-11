@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/gitread"
@@ -59,6 +58,10 @@ const (
 	// BranchUnknown is a status that couldn't be worked out: origin didn't answer, or the
 	// clone couldn't be read.
 	BranchUnknown BranchState = "unknown"
+
+	// BranchOff is no status at all: the Scripts integration is off, so neither the clone
+	// nor origin is read, and nothing is pulled.
+	BranchOff BranchState = "off"
 )
 
 // BranchStatus is a clone's branch against origin's, for Repo scripts' header: whether a
@@ -97,7 +100,8 @@ type keptHeads struct {
 // gitread every time, and asks origin for its branches with one ls-remote, which it keeps
 // for OriginKept: within it, nothing asks origin again unless refresh is set. It never
 // fetches. A clone that can't be read, or an origin that doesn't answer, is a status that
-// says why, not an error.
+// says why, not an error. While the Scripts integration is off, it reads nothing and says
+// so (BranchOff).
 func (s *Service) BranchStatus(ctx context.Context, dir string, refresh bool) (BranchStatus, error) {
 	if s.branchGit == nil {
 		return BranchStatus{}, ErrNotSetUp
@@ -108,7 +112,15 @@ func (s *Service) BranchStatus(ctx context.Context, dir string, refresh bool) (B
 		return BranchStatus{}, err
 	}
 
-	st := s.branchStatus(ctx, c, refresh)
+	cfg, err := s.config(ctx)
+	if err != nil {
+		return BranchStatus{}, err
+	}
+
+	st := BranchStatus{Dir: paths.Tilde(c.dir, s.home), State: BranchOff, Note: scriptsOff(cfg, s.toolsNow(ctx))}
+	if st.Note == "" {
+		st = s.branchStatus(ctx, c, refresh)
+	}
 
 	s.mu.Lock()
 	s.shown[c.dir] = st.Branch
@@ -226,18 +238,11 @@ func originBranch(branch string, up gitread.Upstream) (upstream, why string) {
 		return "", branch + " tracks another local branch, not one on origin."
 	case up.Remote != originRemote:
 		return "", branch + " tracks a branch on " + up.Remote + ", not origin."
-	case !onHeads || !pullable(name):
+	case !onHeads || !gitread.ValidBranch(name):
 		return "", branch + " doesn't track a branch on origin."
 	}
 
 	return name, ""
-}
-
-// pullable reports a branch name the app hands git as an argument: one that can't be read
-// as an option or a range, and holds no whitespace or control character.
-func pullable(name string) bool {
-	return name != "" && !strings.HasPrefix(name, "-") && !strings.Contains(name, "..") &&
-		!strings.ContainsFunc(name, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) })
 }
 
 // inProgressNote says that git is in the middle of op in the clone, which a pull waits for.
@@ -327,7 +332,7 @@ func stateNote(st BranchStatus) string {
 		return st.Branch + " has commits that aren't on " + theirs + " yet, and nothing to pull."
 	case BranchDiverged:
 		return st.Branch + " and " + theirs + " both have commits the other doesn't, so it can't be fast-forwarded."
-	case BranchDetached, BranchNoUpstream, BranchInProgress, BranchUnknown:
+	case BranchDetached, BranchNoUpstream, BranchInProgress, BranchUnknown, BranchOff:
 	}
 
 	return ""

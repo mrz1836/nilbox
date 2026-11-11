@@ -4,7 +4,8 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
+	"slices"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/gitread"
+	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
@@ -33,6 +35,11 @@ type gitRig struct {
 	clock  *testutil.Clock
 	asked  *countingGit
 	branch *Service
+
+	// envMu guards genv, the user's environment every git here gets: an isolated git's,
+	// with the fake programs' entries.
+	envMu sync.Mutex
+	genv  []string
 }
 
 // newGitRig builds a gitRig, or skips the test without git.
@@ -45,6 +52,7 @@ func newGitRig(t *testing.T) *gitRig {
 	g := &gitRig{
 		rig: r, origin: filepath.Join(r.home, "origin.git"), dir: filepath.Join(r.root, "sdk"),
 		other: filepath.Join(r.home, "other"), clock: testutil.NewClock(time.Date(2026, 11, 11, 9, 0, 0, 0, time.UTC)),
+		genv: testutil.GitEnv(r.home),
 	}
 
 	testutil.RunGit(t, r.home, "-c", "init.defaultBranch=main", "init", "-q", "--bare", g.origin)
@@ -53,15 +61,40 @@ func newGitRig(t *testing.T) *gitRig {
 	testutil.RunGit(t, g.other, "push", "-q", "origin", "HEAD:main")
 	testutil.RunGit(t, r.root, "clone", "-q", g.url(), g.dir)
 
-	env := testutil.GitEnv(r.home)
-	g.asked = &countingGit{BranchGit: gitread.New(gitread.Config{Env: func() []string { return env }})}
+	g.asked = &countingGit{BranchGit: gitread.New(gitread.Config{Env: g.environ})}
 	g.branch = NewService(Config{
 		Clones: r.clones, BranchGit: g.asked, Tools: r.tools, Settings: r.settings, Runs: r.engine, History: r.runs,
-		DB: r.db, Env: func() ([]string, bool) { return env, true }, Home: r.home, Clock: g.clock,
+		DB: r.db, Env: func() ([]string, bool) { return g.environ(), true }, Home: r.home, Clock: g.clock,
 	})
 	r.engine.RegisterRerunner(scriptrun.KindPull, NewRerunner(g.branch))
 
 	return g
+}
+
+// environ is the user's environment, as the login shell gives it.
+func (g *gitRig) environ() []string {
+	g.envMu.Lock()
+	defer g.envMu.Unlock()
+
+	return slices.Clone(g.genv)
+}
+
+// marker makes a fake program called name that writes the file ran/<name> when it runs,
+// whatever it is run for, and returns its path and that file's.
+func (g *gitRig) marker(name string) (program, marker string) {
+	g.t.Helper()
+
+	ran := filepath.Join(g.home, "ran")
+	require.NoError(g.t, os.MkdirAll(ran, 0o700))
+
+	marker = filepath.Join(ran, name)
+	program, entry := testutil.FakeTool(g.t, name, testutil.FakeRun{Files: []testutil.FakeFile{{Path: marker, Content: "ran"}}})
+
+	g.envMu.Lock()
+	g.genv = append(g.genv, entry)
+	g.envMu.Unlock()
+
+	return program, marker
 }
 
 // url is origin's address.
@@ -80,11 +113,15 @@ func (g *gitRig) commit(dir, name string) string {
 	return g.head(dir)
 }
 
-// head returns the commit dir's HEAD is at.
+// head returns the commit dir's HEAD is at, read with the fake programs' entries in git's
+// environment, as nothing the clone plants may run without them.
 func (g *gitRig) head(dir string) string {
 	g.t.Helper()
 
-	return strings.TrimSpace(testutil.RunGit(g.t, dir, "rev-parse", "HEAD"))
+	oid := g.ref(dir, "HEAD")
+	require.NotEmpty(g.t, oid)
+
+	return oid
 }
 
 // pushed commits name in the other clone and pushes it to origin's main, returning the
@@ -108,17 +145,44 @@ func (g *gitRig) status(refresh bool) BranchStatus {
 	return st
 }
 
-// countingGit is a BranchGit that counts the times it asks origin.
+// countingGit is a BranchGit that counts the times it asks origin, and runs then, once,
+// after it next works out a pull's setup, as git is about to run.
 type countingGit struct {
 	BranchGit
 
 	remote atomic.Int32
+
+	mu   sync.Mutex
+	then func()
 }
 
 func (c *countingGit) RemoteRefs(ctx context.Context, dir string) (gitread.RemoteRefs, error) {
 	c.remote.Add(1)
 
 	return c.BranchGit.RemoteRefs(ctx, dir)
+}
+
+func (c *countingGit) RemoteSetup(ctx context.Context, dir string) (gitread.Setup, error) {
+	setup, err := c.BranchGit.RemoteSetup(ctx, dir)
+
+	c.mu.Lock()
+	then := c.then
+	c.then = nil
+	c.mu.Unlock()
+
+	if then != nil {
+		then()
+	}
+
+	return setup, err
+}
+
+// afterSetup runs then once the next pull's setup is worked out.
+func (c *countingGit) afterSetup(then func()) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.then = then
 }
 
 func TestBranchStatusUpToDate(t *testing.T) {
@@ -280,6 +344,21 @@ func TestBranchStatusSaysWhyOriginCantBeAsked(t *testing.T) {
 	assert.Equal(t, BranchUpToDate, g.status(false).State, "a failure isn't kept")
 }
 
+func TestBranchStatusReadsNothingWhileScriptsAreOff(t *testing.T) {
+	t.Parallel()
+
+	g := newGitRig(t)
+	g.settings.scripts(integrationprefs.SwitchOff)
+
+	assert.Equal(t, BranchStatus{
+		Dir: "~/projects/sdk", State: BranchOff, Note: "Scripts are turned off in Settings → Integrations.",
+	}, g.status(true))
+	assert.Zero(t, g.asked.remote.Load(), "origin isn't asked")
+
+	_, err := g.branch.Pull(t.Context(), g.shown(g.dir))
+	require.ErrorIs(t, err, ErrCantRun)
+}
+
 func TestBranchStatusOnlyInAClone(t *testing.T) {
 	t.Parallel()
 
@@ -295,19 +374,25 @@ func TestBranchStatusOnlyInAClone(t *testing.T) {
 func TestOriginBranch(t *testing.T) {
 	t.Parallel()
 
+	const notTracking = "dev doesn't track a branch on origin."
+
 	for _, tc := range []struct {
 		up   gitread.Upstream
 		want string
 		why  string
 	}{
-		{up: gitread.Upstream{Remote: "origin", Ref: "refs/heads/main"}, want: "main"},
-		{up: gitread.Upstream{Remote: "origin", Ref: "refs/heads/release/1.x"}, want: "release/1.x"},
-		{up: gitread.Upstream{}, why: "dev doesn't track a branch on origin."},
-		{up: gitread.Upstream{Remote: "origin"}, why: "dev doesn't track a branch on origin."},
-		{up: gitread.Upstream{Remote: "origin", Ref: "refs/tags/v1"}, why: "dev doesn't track a branch on origin."},
-		{up: gitread.Upstream{Remote: "origin", Ref: "refs/heads/-x"}, why: "dev doesn't track a branch on origin."},
-		{up: gitread.Upstream{Remote: "origin", Ref: "refs/heads/a..b"}, why: "dev doesn't track a branch on origin."},
-		{up: gitread.Upstream{Remote: "origin", Ref: "refs/heads/a b"}, why: "dev doesn't track a branch on origin."},
+		{up: gitread.Upstream{Remote: originRemote, Ref: "refs/heads/main"}, want: "main"},
+		{up: gitread.Upstream{Remote: originRemote, Ref: "refs/heads/release/1.x"}, want: "release/1.x"},
+		{up: gitread.Upstream{}, why: notTracking},
+		{up: gitread.Upstream{Remote: originRemote}, why: notTracking},
+		{up: gitread.Upstream{Remote: originRemote, Ref: "refs/tags/v1"}, why: notTracking},
+		{up: gitread.Upstream{Remote: originRemote, Ref: "refs/heads/-x"}, why: notTracking},
+		{up: gitread.Upstream{Remote: originRemote, Ref: "refs/heads/a..b"}, why: notTracking},
+		{up: gitread.Upstream{Remote: originRemote, Ref: "refs/heads/a b"}, why: notTracking},
+		{up: gitread.Upstream{Remote: originRemote, Ref: "refs/heads/a:b"}, why: notTracking},
+		{up: gitread.Upstream{Remote: originRemote, Ref: "refs/heads/a*"}, why: notTracking},
+		{up: gitread.Upstream{Remote: originRemote, Ref: "refs/heads/a^"}, why: notTracking},
+		{up: gitread.Upstream{Remote: originRemote, Ref: "refs/heads/x.lock"}, why: notTracking},
 		{up: gitread.Upstream{Remote: "fork", Ref: "refs/heads/main"}, why: "dev tracks a branch on fork, not origin."},
 	} {
 		got, why := originBranch("dev", tc.up)

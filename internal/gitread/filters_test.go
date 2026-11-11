@@ -31,7 +31,8 @@ func TestStatusTurnsOffTheClonesFilterDrivers(t *testing.T) {
 	require.Len(t, calls, 2, "the drivers are read first, then the status runs")
 
 	status := strings.Join(calls[1].argv, " ")
-	assert.Contains(t, status, "-c filter.x.clean= -c filter.x.process= -c filter.odd.name.clean= -c filter.odd.name.process=")
+	assert.Contains(t, status, "-c filter.x.clean= -c filter.x.smudge= -c filter.x.process= -c filter.x.required=false "+
+		"-c filter.odd.name.clean= -c filter.odd.name.smudge= -c filter.odd.name.process= -c filter.odd.name.required=false")
 	assert.NotContains(t, status, "filter.lfs", "the user's own drivers still run")
 	assert.True(t, strings.HasSuffix(status, "status --porcelain -z --ignore-submodules=dirty"))
 
@@ -46,7 +47,7 @@ func TestStatusTurnsOffTheClonesFilterDrivers(t *testing.T) {
 	require.Len(t, calls, 2, "the entries' status turns them off too")
 
 	status = strings.Join(calls[1].argv, " ")
-	assert.Contains(t, status, "-c filter.x.clean= -c filter.x.process=")
+	assert.Contains(t, status, "-c filter.x.clean= -c filter.x.smudge= -c filter.x.process= -c filter.x.required=false")
 	assert.True(t, strings.HasSuffix(status, "status --porcelain=v2 -z --untracked-files=all --ignore-submodules=dirty"))
 }
 
@@ -205,7 +206,8 @@ func TestStatusTrustsOnlyTheUsersOwnScopes(t *testing.T) {
 	require.Len(t, calls, 2)
 
 	status := strings.Join(calls[1].argv, " ")
-	assert.Contains(t, status, "-c filter.odd.clean= -c filter.odd.process=", "a scope that isn't the user's is the clone's")
+	assert.Contains(t, status, "-c filter.odd.clean= -c filter.odd.smudge= -c filter.odd.process= "+
+		"-c filter.odd.required=false", "a scope that isn't the user's is the clone's")
 	assert.NotContains(t, status, "filter.sys", "the system config is the user's")
 	assert.NotContains(t, status, "filter.mine", "the environment's settings are the user's")
 }

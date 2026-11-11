@@ -44,17 +44,21 @@ type Git interface {
 
 // BranchGit reads what a clone's branch status and its pull need, through gitread's
 // allowlist: the branch the clone is on, what it follows, what git is in the middle of, its
-// commits, and origin's branches, which RemoteRefs asks origin for with one ls-remote, every
-// one of gitread's guards applied: *gitread.Git.
+// commits and origin's branch as the clone keeps them, and origin's branches, which
+// RemoteRefs asks origin for with one ls-remote, every one of gitread's guards applied;
+// and RemoteSetup works out what the pull runs with under those same guards, gitread's own
+// git included: *gitread.Git.
 type BranchGit interface {
 	CurrentBranch(ctx context.Context, dir string) (string, error)
 	Upstream(ctx context.Context, dir, branch string) (gitread.Upstream, error)
 	InProgress(ctx context.Context, dir string) (gitread.Operation, error)
 	LocalBranch(ctx context.Context, dir, branch string) (string, error)
+	TrackingBranch(ctx context.Context, dir, branch string) (string, error)
 	HasCommit(ctx context.Context, dir, oid string) (bool, error)
 	IsAncestor(ctx context.Context, dir, oid, of string) (bool, error)
 	CommitsBetween(ctx context.Context, dir, from, to string) (int, error)
 	RemoteRefs(ctx context.Context, dir string) (gitread.RemoteRefs, error)
+	RemoteSetup(ctx context.Context, dir string) (gitread.Setup, error)
 }
 
 // DefaultBranches reads the default branch the app last stored for a repository, "" when

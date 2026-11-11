@@ -161,6 +161,18 @@ func (g *Git) exec(ctx context.Context, dir string, env, extra, args []string) (
 func (g *Git) status(ctx context.Context, dir string, args []string) (stdout, stderr []byte, err error) {
 	env := g.environment()
 
+	off, errOut, err := g.filtersOff(ctx, dir, env)
+	if err != nil {
+		return nil, errOut, err
+	}
+
+	return g.exec(ctx, dir, env, off, args)
+}
+
+// filtersOff reads the filter drivers' program settings in dir, with where each is set,
+// and returns the settings that turn off every driver the clone's own config defines
+// (cloneFiltersOff), or git's error output when they can't be read.
+func (g *Git) filtersOff(ctx context.Context, dir string, env []string) (off []string, stderr []byte, err error) {
 	out, errOut, err := g.exec(ctx, dir, env, nil, filterDriversArgs())
 
 	switch {
@@ -171,20 +183,22 @@ func (g *Git) status(ctx context.Context, dir string, args []string) (stdout, st
 		return nil, errOut, err
 	}
 
-	off, err := cloneFiltersOff(out)
-	if err != nil {
-		return nil, nil, err
-	}
+	off, err = cloneFiltersOff(out)
 
-	return g.exec(ctx, dir, env, off, args)
+	return off, nil, err
 }
 
 // cloneFiltersOff reads `git config --show-scope --get-regexp` lines for the filter
 // drivers' keys and returns the settings that turn off each driver from the clone's own
-// config (any scope but trustedScopes). A driver name passable refuses can't be named in
-// a -c setting, and is refused.
+// config (any scope but trustedScopes): its clean, smudge, and process commands emptied,
+// which git reads as no filter, and required off, so the file is read or written as it is
+// rather than failing. A driver name passable refuses can't be named in a -c setting, and
+// is refused.
 func cloneFiltersOff(out []byte) ([]string, error) {
-	var off []string
+	var (
+		off  []string
+		seen []string
+	)
 
 	for line := range strings.Lines(string(out)) {
 		scope, rest, ok := strings.Cut(strings.TrimRight(line, "\n"), "\t")
@@ -199,14 +213,20 @@ func cloneFiltersOff(out []byte) ([]string, error) {
 			return nil, fmt.Errorf("%w: a filter driver named %q", ErrGitCommandNotAllowed, key)
 		}
 
-		off = append(off, "-c", "filter."+name+".clean=", "-c", "filter."+name+".process=")
+		if slices.Contains(seen, name) {
+			continue
+		}
+
+		seen = append(seen, name)
+		off = append(off, "-c", "filter."+name+".clean=", "-c", "filter."+name+".smudge=",
+			"-c", "filter."+name+".process=", "-c", "filter."+name+".required=false")
 	}
 
 	return off, nil
 }
 
-// filterName returns the driver's name in a filter.<name>.clean or .process key, and
-// whether it can be named in a -c setting.
+// filterName returns the driver's name in a filter.<name>.clean, .smudge, or .process
+// key, and whether it can be named in a -c setting.
 func filterName(key string) (string, bool) {
 	rest, ok := strings.CutPrefix(key, "filter.")
 	if !ok {
@@ -251,10 +271,28 @@ func environmentOf(base []string) []string {
 }
 
 // hardening are the settings every command runs with: the file system monitor and
-// submodule recursion off. Unlike internal/worktrees, hooks stay where core.hooksPath
-// puts them, since `rev-parse --git-path hooks` must name the real folder.
+// submodule recursion off. Unlike a command that changes a clone (Hardening), hooks stay
+// where core.hooksPath puts them, since `rev-parse --git-path hooks` must name the real
+// folder, and none of these commands runs one.
 func hardening() []string {
 	return []string{"-c", "core.fsmonitor=false", "-c", "submodule.recurse=false"}
+}
+
+// Hardening returns the settings, ahead of its subcommand, that every git command the app
+// runs to change a clone runs with: no hook, the file system monitor off, and no submodule
+// recursion. git runs hooks and the file system monitor with the clone as their working
+// folder, so either could run a program the clone's own files hold, and a submodule's URL
+// is the clone's to name. internal/worktrees runs each of its commands with them, and Repo
+// scripts' pull too (RemoteSetup).
+func Hardening() []string {
+	return append([]string{"-c", "core.hooksPath=" + os.DevNull}, hardening()...)
+}
+
+// ValidBranch reports a branch name the app may hand git as an argument: one that can't be
+// read as an option, a range, a refspec's src:dst, or a pattern, and that git itself
+// would take (validBranch).
+func ValidBranch(name string) bool {
+	return validBranch(name)
 }
 
 // droppedVars are the variables environment drops: the four it sets, those that would
@@ -275,10 +313,14 @@ func hasVar(env []string, key string) bool {
 	return slices.ContainsFunc(env, func(kv string) bool { return strings.HasPrefix(kv, key+"=") })
 }
 
-// execRunner is the default Runner: an execpath.Exec that runs with env and finds git on
-// env's PATH, then in the well-known tool folders under env's HOME.
+// execRunner is the default Runner: an execpath.Exec that runs with env and finds git as
+// gitSearch does.
 func execRunner(env []string) execpath.Runner {
-	search := execpath.Search{Path: shellenv.Lookup(env, "PATH"), Home: shellenv.Lookup(env, "HOME")}
+	return execpath.Exec{Search: gitSearch(env), Env: env}
+}
 
-	return execpath.Exec{Search: search, Env: env}
+// gitSearch finds git on env's PATH, then in the well-known tool folders under env's HOME:
+// the git every command runs, and the one RemoteSetup names.
+func gitSearch(env []string) execpath.Search {
+	return execpath.Search{Path: shellenv.Lookup(env, "PATH"), Home: shellenv.Lookup(env, "HOME")}
 }

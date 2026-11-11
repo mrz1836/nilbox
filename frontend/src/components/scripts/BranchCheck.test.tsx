@@ -55,6 +55,7 @@ describe('BranchCheck', () => {
     ['detached', 'No branch checked out'],
     ['noUpstream', 'Not tracking origin'],
     ['inProgress', 'git is in the middle of something'],
+    ['off', 'Scripts are off'],
   ])('says %s in a few words, the note in its tooltip, and offers no pull', async (state, words) => {
     renderCheck({ state, note: `The note for ${state}.`, checkedAt: '' })
 

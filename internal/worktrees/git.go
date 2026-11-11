@@ -5,13 +5,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/gitread"
 )
 
 const (
@@ -111,18 +111,15 @@ type git struct {
 	bin string
 }
 
-// hardening are the settings every git command here runs with. Git runs hooks, and the
-// file system monitor, with the worktree as their working directory, and a worktree holds
-// a pull request's own files, which may come from anyone: a hook that runs a tool from
-// the checkout (node_modules/.bin, say) would run the pull request's code before any
-// agent starts, outside every limit a launch sets. None of these commands needs either,
-// nor to recurse into submodules, whose URLs the pull request names.
+// hardening are the settings every git command here runs with, gitread.Hardening: the
+// ones every git command that changes a clone runs with. Git runs hooks, and the file
+// system monitor, with the worktree as their working directory, and a worktree holds a
+// pull request's own files, which may come from anyone: a hook that runs a tool from the
+// checkout (node_modules/.bin, say) would run the pull request's code before any agent
+// starts, outside every limit a launch sets. None of these commands needs either, nor to
+// recurse into submodules, whose URLs the pull request names.
 func hardening() []string {
-	return []string{
-		"-c", "core.hooksPath=" + os.DevNull,
-		"-c", "core.fsmonitor=false",
-		"-c", "submodule.recurse=false",
-	}
+	return gitread.Hardening()
 }
 
 // do runs git in dir with args after checking them against the allowlist, with hooks,

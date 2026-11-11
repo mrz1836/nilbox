@@ -4,14 +4,19 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/clonelock"
+	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/gitread"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
+	"github.com/mrz1836/nilbox/internal/shellenv"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
@@ -24,6 +29,18 @@ func (g *gitRig) pull() scriptrun.Run {
 	require.NoError(g.t, err)
 
 	return g.ended(id)
+}
+
+// ref returns the commit ref names in dir, or "" for none.
+func (g *gitRig) ref(dir, ref string) string {
+	g.t.Helper()
+
+	out, _, err := execpath.Exec{Env: g.environ(), Dir: dir}.Run(g.t.Context(), "git", "rev-parse", "--verify", "-q", ref)
+	if err != nil {
+		return ""
+	}
+
+	return strings.TrimSpace(string(out))
 }
 
 func TestPullFastForwardsTheBranch(t *testing.T) {
@@ -42,18 +59,27 @@ func TestPullFastForwardsTheBranch(t *testing.T) {
 	assert.Equal(t, scriptrun.RunsInApp, run.RunsIn)
 	assert.Equal(t, map[string]any{"branch": "main"}, run.Result.Intent)
 	assert.Equal(t, third, g.head(g.dir))
+	assert.Equal(t, third, g.ref(g.dir, "refs/remotes/origin/main"), "origin's branch as the clone keeps it moved too")
 	assert.FileExists(t, filepath.Join(g.dir, "three.txt"))
 
-	git := run.Argv[0]
-	assert.True(t, filepath.IsAbs(git), "git by its absolute path")
+	env := g.environ()
+	git, err := execpath.Search{Path: shellenv.Lookup(env, "PATH"), Home: shellenv.Lookup(env, "HOME")}.Find("git")
+	require.NoError(t, err)
+
+	assert.Equal(t, git, run.Argv[0], "gitread's own git, by its absolute path")
+	assert.Equal(t, gitread.Hardening(), run.Argv[1:7], "no hook, file system monitor, or submodule recursion")
+	assert.Contains(t, strings.Join(run.Argv, " "), "-c http.savecookies=false", "gitread's ls-remote settings")
+
+	i := slices.Index(run.Argv, "pull")
+	require.Positive(t, i)
 	assert.Equal(t, []string{
-		git, "-c", "core.hooksPath=" + os.DevNull, "-c", "core.fsmonitor=false", "-c", "submodule.recurse=false",
-		"pull", "--ff-only", "--no-rebase", "--no-autostash", "--no-recurse-submodules", "--upload-pack=git-upload-pack",
-		"origin", "refs/heads/main",
-	}, run.Argv)
+		"pull", "--ff-only", "--no-rebase", "--refmap=", "--no-tags", "--no-autostash", "--no-recurse-submodules",
+		"--no-verify-signatures", "--no-stat", "--upload-pack=git-upload-pack", originRemote,
+		"+refs/heads/main:refs/remotes/origin/main",
+	}, run.Argv[i:])
 
 	asked := g.asked.remote.Load()
-	assert.Equal(t, BranchUpToDate, g.status(false).State, "the pull's own look at origin is kept")
+	assert.Equal(t, BranchUpToDate, g.status(false).State, "what the pull fetched is kept as origin's")
 	assert.Equal(t, asked, g.asked.remote.Load(), "and origin isn't asked again")
 }
 
@@ -85,18 +111,103 @@ func TestPullNeverRebasesOrMergesADivergedBranch(t *testing.T) {
 	assert.NoFileExists(t, filepath.Join(g.dir, "theirs.txt"))
 }
 
-func TestPullRunsNoHook(t *testing.T) {
+// TestPullNeverMovesARefThroughTheClonesOwnRefspecs reproduces a clone whose own
+// remote.origin.fetch maps origin's branches onto its own, forced: a plain pull's fetch
+// would force the branch onto origin's commit, dropping the clone's own commit, before the
+// fast-forward check ever ran.
+func TestPullNeverMovesARefThroughTheClonesOwnRefspecs(t *testing.T) {
 	t.Parallel()
 
 	g := newGitRig(t)
-	ran := filepath.Join(g.home, "hook-ran")
-	hook := filepath.Join(g.dir, ".git", "hooks", "post-merge")
-	require.NoError(t, os.WriteFile(hook, []byte("#!/bin/sh\ntouch '"+ran+"'\n"), 0o700)) //nolint:gosec // a hook must be executable
+	testutil.RunGit(t, g.dir, "config", "remote.origin.fetch", "+refs/heads/*:refs/heads/*")
+	mine := g.commit(g.dir, "mine.txt")
+	theirs := g.pushed("theirs.txt")
+	g.status(false)
+
+	run := g.pull()
+	assert.Equal(t, scriptrun.StatusFailed, run.Status)
+	assert.Equal(t, "Couldn't pull main: Not possible to fast-forward, aborting.", run.Summary)
+	assert.Equal(t, mine, g.head(g.dir), "the clone's own commit stays on its branch")
+	assert.Equal(t, mine, g.ref(g.dir, "refs/heads/main"))
+	assert.Equal(t, theirs, g.ref(g.dir, "refs/remotes/origin/main"), "only origin's branch's own ref moved")
+}
+
+// TestPullKeepsWhatItFetchedAsOrigins moves origin on after the pull's Before asked it, as
+// git is about to fetch: the status afterwards is up to date with what git fetched, never
+// ahead of an answer from before.
+func TestPullKeepsWhatItFetchedAsOrigins(t *testing.T) {
+	t.Parallel()
+
+	g := newGitRig(t)
+	g.pushed("two.txt")
+	require.Equal(t, BranchBehind, g.status(false).State)
+
+	var newer string
+
+	g.asked.afterSetup(func() { newer = g.pushed("three.txt") })
+
+	run := g.pull()
+	require.Equal(t, scriptrun.StatusSucceeded, run.Status)
+	require.Equal(t, newer, g.head(g.dir), "git fetched what origin had then")
+
+	st := g.status(false)
+	assert.Equal(t, BranchUpToDate, st.State)
+	assert.Equal(t, newer[:7], st.Origin)
+}
+
+// TestPullSaysWhenTheCloneMovedWhileItRan switches the clone to another branch after the
+// pull's Before checked it, as git is about to run: git fast-forwards whatever is checked
+// out, and the run says so rather than that the branch asked for was up to date.
+func TestPullSaysWhenTheCloneMovedWhileItRan(t *testing.T) {
+	t.Parallel()
+
+	g := newGitRig(t)
 	g.pushed("two.txt")
 	g.status(false)
 
-	assert.Equal(t, scriptrun.StatusSucceeded, g.pull().Status)
-	assert.NoFileExists(t, ran, "the clone's hooks don't run")
+	g.asked.afterSetup(func() { testutil.RunGit(t, g.dir, "checkout", "-q", "-b", "feature") })
+
+	run := g.pull()
+	assert.Equal(t, scriptrun.StatusFailed, run.Status)
+	assert.Equal(t, "The clone was switched to feature while the pull ran, so git may have pulled into it rather "+
+		"than main. Look at the clone before going on.", run.Summary)
+}
+
+func TestPullRunsWithGitreadsEnvironment(t *testing.T) {
+	t.Parallel()
+
+	g := newGitRig(t)
+	g.status(false)
+
+	spec := g.branch.pullSpec(clone{dir: g.dir}, "main")
+	argv, err := spec.Before(t.Context())
+	require.NoError(t, err)
+	require.NotEmpty(t, argv)
+
+	env := spec.BeforeEnv()
+	for _, want := range []string{
+		"GIT_TERMINAL_PROMPT=0", "GIT_NO_LAZY_FETCH=1", "GIT_ALLOW_PROTOCOL=file:http:https:ssh", "LC_ALL=C",
+		"GIT_SSH_COMMAND=ssh -o BatchMode=yes -o ConnectTimeout=10",
+	} {
+		assert.Contains(t, env, want)
+	}
+
+	assert.Equal(t, 10*time.Minute, spec.Kind.Timeout(), "a pull gets time enough never to be cut off writing files")
+}
+
+func TestPullHoldsStopOnceGitWritesTheClonesFiles(t *testing.T) {
+	t.Parallel()
+
+	out := &pullOutput{}
+	assert.Equal(t, scriptrun.Progress{StopConfirm: stopPullConfirm}, out.progress(), "fetching, Stop asks first")
+
+	_, err := out.Write([]byte("From file:///srv/origin\n * branch main -> FETCH_HEAD\nUpdating 1a2b3c4..5d6e"))
+	require.NoError(t, err)
+	assert.Equal(t, scriptrun.Progress{StopConfirm: stopPullConfirm}, out.progress(), "not until the line ends")
+
+	_, err = out.Write([]byte("7f8\n"))
+	require.NoError(t, err)
+	assert.Equal(t, scriptrun.Progress{Step: "updating", StopRefused: stopPullRefused}, out.progress())
 }
 
 func TestPullRefusesACloneOnAnotherBranch(t *testing.T) {
@@ -219,18 +330,6 @@ func TestPullRunsAgainOnTheSameBranch(t *testing.T) {
 
 	_, err = g.runs.RunAgain(t.Context(), again.ID)
 	require.ErrorIs(t, err, ErrCantPull, "Run again checks the branch afresh")
-}
-
-func TestPullEnv(t *testing.T) {
-	t.Parallel()
-
-	got := pullEnv([]string{
-		"PATH=/usr/bin", "SSH_AUTH_SOCK=/tmp/agent", "GIT_DIR=/elsewhere/.git", "GIT_WORK_TREE=/elsewhere",
-		"GIT_INDEX_FILE=/elsewhere/index", "GIT_TERMINAL_PROMPT=1", "GIT_CONFIG_GLOBAL=/dev/null",
-	})
-	assert.Equal(t, []string{
-		"PATH=/usr/bin", "SSH_AUTH_SOCK=/tmp/agent", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_TERMINAL_PROMPT=0",
-	}, got)
 }
 
 func TestPullOutputLastError(t *testing.T) {

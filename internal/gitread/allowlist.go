@@ -72,8 +72,9 @@ const (
 	untrackedAll = "--untracked-files=all"
 
 	// filterKeysPattern matches the config keys that make a filter driver run a program
-	// when git reads a file: its clean command and its long-running process.
-	filterKeysPattern = `^filter\..*\.(clean|process)$`
+	// when git reads a file or writes one out: its clean and smudge commands and its
+	// long-running process.
+	filterKeysPattern = `^filter\..*\.(clean|smudge|process)$`
 
 	// remoteKeysPattern matches the config keys an ls-remote's guard weighs: the ssh command,
 	// the program that asks for a password, and the credential helpers (the URL-scoped ones

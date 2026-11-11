@@ -537,6 +537,10 @@ func (e *Engine) hold(ctx context.Context, spec *Spec) (holds, error) {
 		spec.Argv = argv
 	}
 
+	if spec.BeforeEnv != nil {
+		spec.Env = spec.BeforeEnv()
+	}
+
 	if !validArgv(spec.Argv) {
 		h.free()
 

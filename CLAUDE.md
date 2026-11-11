@@ -201,16 +201,19 @@ app:lint` reads.
 - The app owns its worktrees: `internal/worktrees` makes them (one per item per clone, shared by
   every agent, under `<clone root>/.<slug>/worktrees/<clone>/`), records them in
   `internal/worklog`, checks every record against git on each listing and sweep, and removes
-  them safely. Only `internal/worktrees/create.go` fetches or runs `git worktree add`, and
-  nothing the app runs changes a clone's own checkout; `TestNoGitCommandChangesAClone` in
-  `internal/repoguard` fails the build otherwise. There are two exceptions, each on the user's
-  click. A tool the user turned on: a release's magex switches to the branch, pulls, tags, and
-  pushes the tag (`internal/release`), and the app only starts it and checks afterwards where
-  the tag and the clone are. And Repo scripts' **Pull**: a fast-forward-only pull of the
-  branch a clone is on from the branch it follows on origin (`git pull --ff-only`, never a
-  merge or a rebase), held to `internal/scripts/pull.go`, which the guard checks still pulls
-  only that way and runs no other verb it bans. Every git command there runs with hooks, the
-  file system monitor, and submodule recursion off (`hardening` in `internal/worktrees/git.go`),
+  them safely. Only `internal/worktrees/create.go` fetches or runs `git worktree add` (Repo
+  scripts' pull, below, fetches only as `git pull` itself does), and nothing the app runs
+  changes a clone's own checkout; `TestNoGitCommandChangesAClone` in `internal/repoguard` fails
+  the build otherwise. There are two exceptions, each on the user's click. A tool the user
+  turned on: a release's magex switches to the branch, pulls, tags, and pushes the tag
+  (`internal/release`), and the app only starts it and checks afterwards where the tag and the
+  clone are. And Repo scripts' **Pull**: a fast-forward-only pull of the branch a clone is on
+  from the branch it follows on origin (never a merge or a rebase), held to
+  `internal/scripts/pull.go`, whose one pull argv the guard parses and holds to an exact list
+  of literal words (`--ff-only`, `--refmap=`, and `--no-verify-signatures` among them),
+  with no other option anywhere in the file and no other verb it bans. Every git command
+  there runs with hooks, the file system monitor, and submodule recursion off
+  (`gitread.Hardening`, which the worktrees' `hardening` and the pull share),
   since a worktree holds a pull request's own files, and a pull request's worktree is made only
   at the head whose files the launch checked. The launcher reaches the `Maker` through its
   `WorktreeMaker` interface; no agent's own `--worktree` flag is used. A branch is deleted only
@@ -360,7 +363,8 @@ app:lint` reads.
   settings from the guards' reads), never touches `core.hooksPath`, and an `ls-remote` gets a
   15-second limit and a batch-mode ssh unless the user's environment or own config picks one. A
   `status`, which reads files and so would run their filter drivers, first reads the drivers
-  with `config --show-scope` and runs with every one the clone's own config defines turned off,
+  with `config --show-scope` and runs with every one the clone's own config defines turned off
+  (its clean, smudge, and process emptied and required off),
   and with `--ignore-submodules=dirty`, so it runs no status inside a submodule, whose own config
   could name one. An `ls-remote` likewise first reads, with `config --show-scope`, the settings
   it weighs, and origin's URL with `ls-remote --get-url` (which asks origin nothing): a remote
@@ -381,7 +385,13 @@ app:lint` reads.
   as the user's own. Only the system, global, and environment (`command`) scopes are the
   user's. Reading a clone runs no program the clone names (the user's own, such as Git LFS's,
   still run). Its allowlist test asserts that no entry holds a verb `TestNoGitCommandChangesAClone`
-  guards.
+  guards. For the git commands that do change a clone, run elsewhere, it hands over what they
+  run with rather than running them: `Hardening` (no hook, fsmonitor, or submodule
+  recursion), and `RemoteSetup`, for one that reaches origin and writes files, which works
+  out exactly what its ls-remote runs under (its git, environment, and `-c` settings, with
+  the same refusals) plus `Hardening` and the clone's own filter drivers turned off;
+  `ValidBranch` is the branch rule a command's argument must pass, and `SetAsideNote` words
+  what such a command went without.
 - `internal/release/` is the Release page's service. `Candidates` lists every clone under the
   clone root whose origin is on GitHub, grouped as unreleased, up to date, no releases yet, or
   can't release here, from two rounds of batched GraphQL (`(*github.Client).FetchReleaseStatus`,
@@ -564,23 +574,36 @@ app:lint` reads.
   Ask before running is the window's confirmation, which `Run` leaves to the user.
   The bound `BranchStatus` tells the header beside the branch where the clone's branch
   stands against the branch it follows on origin (`BranchState`: up to date, behind, ahead,
-  diverged, detached, no upstream on origin, git in the middle of something, or unknown,
-  with a worded note), read through its `BranchGit` (gitread) from the clone's own refs and
-  one `RemoteRefs` ls-remote, never a fetch; origin's answer is kept per clone for
-  `OriginKept` (five minutes) unless refreshed, the clone itself is read on every call, and
-  an origin commit the clone lacks counts as behind. Only behind is offered **Pull**. The
-  bound `Pull` (`pull.go`) returns a `scriptrun.KindPull` run's ID, in the app, under the
-  clone's lock, of the branch the last status was worked out on: its `Before` refuses a
-  clone now on another branch, one whose branch follows none on origin, and one git is in
-  the middle of something in, asks origin again with `RemoteRefs` (every gitread guard
-  applied before git runs, the answer kept), and runs `git pull --ff-only --no-rebase
-  --no-autostash --no-recurse-submodules --upload-pack=git-upload-pack origin
-  refs/heads/<branch>` as argv, with worktrees' hardening (hooks, fsmonitor, submodule
-  recursion off) and the run env without the variables that point git elsewhere, plus
-  `GIT_TERMINAL_PROMPT=0`; its `Finish` reads the branch back and words the run's summary
-  (updated from one commit to another, how many commits, already up to date, or git's last
-  error line). Stop asks first, since stopping partway can leave the files half updated.
-  Run again pulls the same branch, its `Before` checking everything afresh.
+  diverged, detached, no upstream on origin, git in the middle of something, unknown, or
+  off while the Scripts integration is, which reads nothing, with a worded note), read
+  through its `BranchGit` (gitread) from the clone's own refs and one `RemoteRefs`
+  ls-remote, never a fetch; origin's answer is kept per clone for `OriginKept` (five
+  minutes) unless refreshed, the clone itself is read on every call, and an origin commit
+  the clone lacks counts as behind. Only behind is offered **Pull**. The bound `Pull`
+  (`pull.go`) returns a `scriptrun.KindPull` run's ID (ten minutes' limit), in the app,
+  under the clone's lock, of the branch the last status was worked out on, an upstream
+  `gitread.ValidBranch` passes: its `Before` refuses a clone now on another branch, one
+  whose branch follows none on origin, and one git is in the middle of something in, asks
+  origin again with `RemoteRefs` (the answer kept), and works out with
+  `gitread.RemoteSetup` exactly what the ls-remote ran under: gitread's own git, its
+  environment (`GIT_TERMINAL_PROMPT=0`, `GIT_NO_LAZY_FETCH=1`, the user's transports in
+  `GIT_ALLOW_PROTOCOL`, the user's ssh command or a batch-mode one) and `-c` settings (the
+  clone's own password program, credential helpers, and cookie file set aside), plus
+  `gitread.Hardening` and every filter driver the clone's own config defines turned off
+  (clean, smudge, and process emptied, required off; the user's own, such as Git LFS's,
+  still run). It runs `git pull --ff-only --no-rebase --refmap= --no-tags --no-autostash
+  --no-recurse-submodules --no-verify-signatures --no-stat --upload-pack=git-upload-pack
+  origin +refs/heads/<b>:refs/remotes/origin/<b>` as argv, with `LC_ALL=C` so its reader
+  knows git's words, handed to the runner through the spec's `BeforeEnv`: the fetch updates
+  that one remote-tracking ref, never one the clone's own `remote.origin.fetch` maps. Stop
+  asks first while git fetches and is held back (`StopRefused`) once git prints `Updating`,
+  and so is a quit; the kind's limit isn't. Its `Finish` checks the clone is still on the
+  branch (a switch while git ran fails the run, saying git may have pulled into the other),
+  reads the branch back and words the summary (updated from one commit to another, how many
+  commits, already up to date, or git's last error line with any setting set aside), and
+  keeps the commit git fetched as origin's for the next status, or forgets origin's answer
+  when that can't be told. Run again pulls the same branch, its `Before` checking
+  everything afresh.
 - `internal/measure/` and `magefiles/measure.go` take the numbers in
   [`docs/performance.md`](docs/performance.md).
 - `frontend/` is the React + TypeScript + Vite + Tailwind app. It reaches Go only through the

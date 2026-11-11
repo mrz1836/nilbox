@@ -21,6 +21,7 @@ const stateLabels: Readonly<Record<BranchState, string>> = {
   noUpstream: 'Not tracking origin',
   inProgress: 'git is in the middle of something',
   unknown: 'Couldn’t check origin',
+  off: 'Scripts are off',
 }
 
 // statusTitle is a status in full, for its tooltip: its note, and when origin was asked.

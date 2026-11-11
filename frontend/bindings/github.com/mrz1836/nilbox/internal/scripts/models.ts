@@ -8,7 +8,7 @@ import * as integrationprefs$0 from "../integrationprefs/models.js";
 /**
  * BranchState is where a clone's branch stands against the branch it follows on origin.
  */
-export type BranchState = "upToDate" | "behind" | "ahead" | "diverged" | "detached" | "noUpstream" | "inProgress" | "unknown";
+export type BranchState = "upToDate" | "behind" | "ahead" | "diverged" | "detached" | "noUpstream" | "inProgress" | "unknown" | "off";
 
 /**
  * The values of BranchState, by the names of their Go constants.
@@ -62,6 +62,12 @@ export const BranchState = {
      * clone couldn't be read.
      */
     BranchUnknown: "unknown",
+
+    /**
+     * BranchOff is no status at all: the Scripts integration is off, so neither the clone
+     * nor origin is read, and nothing is pulled.
+     */
+    BranchOff: "off",
 } as const;
 
 /**

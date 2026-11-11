@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"io/fs"
@@ -524,30 +525,97 @@ func TestNoGitCommandChangesAClone(t *testing.T) {
 		worktreeMakerFile+") fetches and adds worktrees, and only Repo scripts' pull ("+clonePullerFile+") pulls")
 }
 
-// assertPullerOnlyFastForwards checks that clonePullerFile still pulls, that each pull
-// there is fast-forward only, with --ff-only beside it and none of the options that
-// would rebase, merge, set changes aside, or recurse into submodules, and that it holds no
-// other verb that changes a clone.
+// pullWords are the only words Repo scripts' pull holds, besides origin's name and its
+// refspec: the verb, then fast-forward only, never a rebase, nothing fetched through the
+// clone's own refspecs and no tag, nothing set aside, no submodule, no signature program,
+// no diff, and git's own upload-pack. Built from parts so this file does not match itself.
+func pullWords() []string {
+	return []string{
+		"pu" + "ll", "--ff-only", "--no-re" + "base", "--refmap=", "--no-tags", "--no-auto" + "stash",
+		"--no-recurse-submodules", "--no-verify-signatures", "--no-stat", "--upload-pack=git-upload-pack",
+	}
+}
+
+// assertPullerOnlyFastForwards checks clonePullerFile: it still pulls, with one argv
+// literal whose words are exactly pullWords, each a literal, so --ff-only, --refmap=, and
+// --no-verify-signatures are there and nothing else is; every option it names anywhere is
+// one of them, so no -c setting, short option, merge strategy, or --update-head-ok can be
+// added beside; and it holds no other verb that changes a clone.
 func assertPullerOnlyFastForwards(t *testing.T, root string) {
 	t.Helper()
 
-	// Built from parts so this file does not match itself.
-	pull := "pu" + "ll"
+	words := pullWords()
+	pull := words[0]
 	others := slices.DeleteFunc(cloneChangingVerbs(), func(v string) bool { return v == pull })
-	widening := regexp.MustCompile(`"--(re` + `base|no-ff|ff|squash|auto` + `stash|recurse-submodules|allow-unrelated-histories)[="]`)
 
 	text, ok := readText(t, root, clonePullerFile)
 	require.True(t, ok, "%s is gone; update this guard", clonePullerFile)
 
-	pulls := hits(clonePullerFile, text, argvLiteral(pull).MatchString)
-	assert.NotEmpty(t, pulls, "%s no longer pulls; update this guard", clonePullerFile)
+	argvs, options := pullLiterals(t, text, pull)
 
-	for _, line := range pulls {
-		assert.Contains(t, line, `"--ff-only"`, "%s pulls fast-forward only, --ff-only beside the pull", clonePullerFile)
+	require.Len(t, argvs, 1, "%s pulls with one argv literal; update this guard", clonePullerFile)
+	assert.ElementsMatch(t, words, argvs[0], "%s pulls with exactly these words, each a literal", clonePullerFile)
+
+	for _, option := range options {
+		assert.Contains(t, words, option, "%s names an option its pull may not take", clonePullerFile)
 	}
 
-	assert.Empty(t, hits(clonePullerFile, text, widening.MatchString), "%s pulls fast-forward only", clonePullerFile)
 	assert.Empty(t, hits(clonePullerFile, text, argvLiteral(others...).MatchString), "%s only pulls", clonePullerFile)
+}
+
+// pullLiterals parses the Go source text and returns the words of each []string literal
+// whose first element is the string pull, a word that isn't a string literal kept as "?",
+// and every string literal in it that starts with "-".
+func pullLiterals(t *testing.T, text, pull string) (argvs [][]string, options []string) {
+	t.Helper()
+
+	file, err := parser.ParseFile(token.NewFileSet(), clonePullerFile, text, parser.SkipObjectResolution)
+	require.NoError(t, err)
+
+	ast.Inspect(file, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.CompositeLit:
+			if words := literalWords(x.Elts); len(words) > 0 && words[0] == pull {
+				argvs = append(argvs, words)
+			}
+		case *ast.BasicLit:
+			if s, ok := stringLiteral(x); ok && strings.HasPrefix(s, "-") {
+				options = append(options, s)
+			}
+		}
+
+		return true
+	})
+
+	return argvs, options
+}
+
+// literalWords returns each expression's value as a string literal, or "?" for one that
+// isn't.
+func literalWords(exprs []ast.Expr) []string {
+	words := make([]string, 0, len(exprs))
+
+	for _, e := range exprs {
+		s, ok := stringLiteral(e)
+		if !ok {
+			s = "?"
+		}
+
+		words = append(words, s)
+	}
+
+	return words
+}
+
+func TestPullLiterals(t *testing.T) {
+	t.Parallel()
+
+	src := "package p\n\nfunc a(b string) []string {\n\treturn append([]string{\"pu" + "ll\", \"--ff-only\", x, " +
+		"\"-r\"}, \"origin\", \"+\"+b)\n}\n\nvar c = []string{\"-X\", \"ours\"}\n"
+
+	argvs, options := pullLiterals(t, src, "pu"+"ll")
+	assert.Equal(t, [][]string{{"pu" + "ll", "--ff-only", "?", "-r"}}, argvs)
+	assert.Equal(t, []string{"--ff-only", "-r", "-X"}, options)
 }
 
 func TestArgvLiteral(t *testing.T) {

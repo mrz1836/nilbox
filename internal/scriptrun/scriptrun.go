@@ -74,8 +74,9 @@ func (k Kind) Valid() bool {
 
 // Timeout returns how long a run of the kind may take before it is stopped, or 0 for no
 // limit: five minutes for a release, one for a hooks action, thirty for checks, ten for a
-// tool updating itself (its download and swap, which the tools bound at six), two for a
-// pull, and none for a script, which the user stops.
+// tool updating itself (its download and swap, which the tools bound at six), ten for a
+// pull (its fetch, then its checkout, which nothing should cut off), and none for a
+// script, which the user stops.
 func (k Kind) Timeout() time.Duration {
 	switch k {
 	case KindRelease:
@@ -87,7 +88,7 @@ func (k Kind) Timeout() time.Duration {
 	case KindUpdate:
 		return 10 * time.Minute
 	case KindPull:
-		return 2 * time.Minute
+		return 10 * time.Minute
 	case KindScript:
 		return 0
 	default:
@@ -289,6 +290,12 @@ type Spec struct {
 	// under the lock, which replaces Argv; nil keeps Argv. A release gathers its facts again
 	// in it and decides there what magex runs.
 	Before func(ctx context.Context) ([]string, error)
+
+	// BeforeEnv, when set, is asked once Before has run without an error, still under the
+	// clone's lock, for the environment that replaces Env: a kind whose Before works out
+	// what its command runs with, as a pull works out git's guards there, hands it over
+	// this way. nil keeps Env.
+	BeforeEnv func() []string
 
 	// Recorded is called once the run's end is recorded, with the outcome recorded, before
 	// the run lets go of its clone: what is told of an outcome is told only once it is

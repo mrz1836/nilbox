@@ -544,9 +544,17 @@ origin, with one `git ls-remote` whose answer is kept five minutes.
   reads the scripts again once it ends. It asks origin with one `git ls-remote` and never
   fetches; the answer is kept five minutes, and its refresh button asks again. A branch ahead of
   origin, one that has diverged from it, one that tracks no branch on origin, a detached HEAD, or
-  a merge or rebase in progress says so, and offers no pull. A pull runs no hook, refuses a clone
-  that moved to another branch since the check, and fails with git's own words on a branch with
-  commits of its own.
+  a merge or rebase in progress says so, and offers no pull. A pull refuses a clone that moved to
+  another branch since the check, fails with git's own words on a branch with commits of its own,
+  and says so if the clone is switched to another branch while it runs. It runs under the same
+  guards as the app's own reads of a clone: no hook, no file system monitor, no submodule, no
+  signature program, and none of the programs the clone's own git config names (its ssh command,
+  password program, credential helpers, and filter drivers give way to your own, and its cookie
+  file is dropped), and it updates only the branch and origin's copy of it, whatever the clone's
+  own refspecs say. If it fails because a setting of the clone's own was set aside, it says
+  which, and to set it for that folder in your global git config with an `includeIf`. Stop asks
+  first while git fetches, and waits once git is writing the files. Nothing is checked or pulled
+  while Scripts is off.
 - **The sources, in order:** **Yours** (below), then **From t3.json**, **From
   .vscode/tasks.json**, and **magex**, each as Settings → Integrations turns it on (the Scripts
   card's **Show magex targets** and **Read t3.json and VS Code tasks**). A file that can't be
@@ -1807,8 +1815,9 @@ branch, pulls, tags, and pushes the tag, and the app then checks where the tag a
 are. When a session needs a pull request's branch, the
 starter prompts ask the agent to run `gh pr checkout <n>` inside the worktree. The only git
 commands the app runs that change a clone are its [worktree creation](#worktrees) (a fetch into
-the item's own refs, and `git worktree add`) and the [Worktrees view's](#the-worktrees-view)
-removals, prunes, and unlocks, with the [branch deletions](#branches) you confirm there.
+the item's own refs, and `git worktree add`), the [Worktrees view's](#the-worktrees-view)
+removals, prunes, and unlocks, with the [branch deletions](#branches) you confirm there, and
+[Repo scripts'](#repo-scripts) **Pull** you click, which fast-forwards the clone's branch.
 
 **A repository with no clone.** When a launch finds no clone of the item's repository, the row
 says so and offers **Clone into ~/projects/&lt;name&gt;**: the clone root, then the repository's
