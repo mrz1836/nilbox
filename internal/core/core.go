@@ -655,7 +655,9 @@ func newHooks(pool *sql.DB, opts Options, logger *slog.Logger, deps hookDeps) *h
 // newScripts builds Repo scripts' service over the same clones, read-only git, runner, and
 // shell environment as the Hooks page's: magex as the integrations found it, the settings'
 // sources and where runs go, the default branches the inbox stored, and the trusted
-// commands in script_trust. Run again works a script out afresh through its Rerunner.
+// commands in script_trust. The same read-only git reads a clone's branch status, and the
+// runner runs its pull. Run again works a script, or a pull, out afresh through its
+// Rerunner.
 func newScripts(pool *sql.DB, opts Options, logger *slog.Logger, deps hookDeps, branches scripts.DefaultBranches,
 ) *scripts.Service {
 	var runner func([]string, string) execpath.Runner
@@ -666,12 +668,15 @@ func newScripts(pool *sql.DB, opts Options, logger *slog.Logger, deps hookDeps, 
 
 	svc := scripts.NewService(scripts.Config{
 		Clones: hooksClones{settings: deps.settings, home: opts.Home, git: deps.runner}, Git: deps.git,
-		Branches: branches, Tools: scriptsTools{tools: deps.tools}, Settings: integrationSettings{settings: deps.settings},
-		Runs: deps.runs, History: deps.history, DB: pool, Env: deps.shellEnv.Env, Shell: deps.shellEnv.Shell,
-		Runner: runner, Home: opts.Home, Clock: opts.Clock, Logger: logger,
+		BranchGit: deps.git, Branches: branches, Tools: scriptsTools{tools: deps.tools},
+		Settings: integrationSettings{settings: deps.settings}, Runs: deps.runs, History: deps.history, DB: pool,
+		Env: deps.shellEnv.Env, Shell: deps.shellEnv.Shell, Runner: runner, Home: opts.Home, Clock: opts.Clock,
+		Logger: logger,
 	})
 
-	deps.runs.RegisterRerunner(scriptrun.KindScript, scripts.NewRerunner(svc))
+	rerun := scripts.NewRerunner(svc)
+	deps.runs.RegisterRerunner(scriptrun.KindScript, rerun)
+	deps.runs.RegisterRerunner(scriptrun.KindPull, rerun)
 
 	return svc
 }

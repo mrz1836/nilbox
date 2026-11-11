@@ -198,10 +198,13 @@ app:lint` reads.
   `internal/worklog`, checks every record against git on each listing and sweep, and removes
   them safely. Only `internal/worktrees/create.go` fetches or runs `git worktree add`, and
   nothing the app runs changes a clone's own checkout; `TestNoGitCommandChangesAClone` in
-  `internal/repoguard` fails the build otherwise. The one exception is a tool the user turned
-  on, run on their click: a release's magex switches to the branch, pulls, tags, and pushes
-  the tag (`internal/release`), and the app only starts it and checks afterwards where the tag
-  and the clone are. Every git command there runs with hooks, the
+  `internal/repoguard` fails the build otherwise. There are two exceptions, each on the user's
+  click. A tool the user turned on: a release's magex switches to the branch, pulls, tags, and
+  pushes the tag (`internal/release`), and the app only starts it and checks afterwards where
+  the tag and the clone are. And Repo scripts' **Pull**: a fast-forward-only pull of the
+  branch a clone is on from the branch it follows on origin (`git pull --ff-only`, never a
+  merge or a rebase), held to `internal/scripts/pull.go`, which the guard checks still pulls
+  only that way and runs no other verb it bans. Every git command there runs with hooks, the
   file system monitor, and submodule recursion off (`hardening` in `internal/worktrees/git.go`),
   since a worktree holds a pull request's own files, and a pull request's worktree is made only
   at the head whose files the launch checked. The launcher reaches the `Maker` through its
@@ -300,7 +303,7 @@ app:lint` reads.
   kinds of update back, nothing installs a tool while it updates itself, and nothing installs
   before this run's first detection ends (the kept one is only shown, never acted on).
 - `internal/scriptrun/` runs the commands the integrations start (releases, hooks actions,
-  checks, scripts, and a tool's own update) and follows them, in the app or in the user's terminal, and owns
+  checks, scripts, a clone's pull, and a tool's own update) and follows them, in the app or in the user's terminal, and owns
   `script_runs`. The `Engine` is never bound, since a `Spec` holds functions: `Start` takes the
   clone's lock first and fails at once when the clone is busy, runs the program through
   `execpath.Start` in its own process group, writing straight into its log in
@@ -332,12 +335,13 @@ app:lint` reads.
   going now, one from before a restart included. The history keeps 200 runs and 512 MB of logs, and cuts a long log to its
   head and tail; Run again works the command out afresh from its source, never for a release
   or a tool's update.
-- `internal/gitread/` is the read-only git that release and hooks share: an exact-argv allowlist
+- `internal/gitread/` is the read-only git that release, hooks, and Repo scripts share: an exact-argv allowlist
   plus validating predicates (a branch, a tag, a commit, a `v*` pattern, an absolute clean folder)
   that refuses anything else with `ErrGitCommandNotAllowed` before git runs, and typed helpers over
   it (the current branch, origin's default branch as the clone last learned it from its own
   `refs/remotes/origin/HEAD`, an operation in progress, uncommitted changes, each dirty file with what
-  the index holds for it, unpushed commits, tags here and on origin, signing, the hooks folder).
+  the index holds for it, unpushed commits, the commits between two, tags here and on origin, signing,
+  the hooks folder).
   Every command runs as `git -C <dir> -c core.fsmonitor=false -c submodule.recurse=false` with
   `GIT_OPTIONAL_LOCKS=0`, `GIT_TERMINAL_PROMPT=0`, `GIT_NO_LAZY_FETCH=1`, and an empty
   `GIT_ALLOW_PROTOCOL` (no read reaches a transport, so a partial clone's missing object is never
@@ -360,7 +364,8 @@ app:lint` reads.
   could go elsewhere; no cookie is saved, and a cookie file the clone names is dropped; and
   origin is asked for git's own upload-pack with `--upload-pack` (git keeps the first
   `uploadpack` it reads, so a `-c` can't replace the clone's). An `ls-remote` that fails after setting anything aside returns a `SetAsideError`
-  naming it, which the Release sheet words as the likely cause and where to set the clone's own
+  naming it, which `Message` (the words the Release sheet and Repo scripts' branch status
+  share for every gitread failure) gives as the likely cause and where to set the clone's own
   settings instead: the user's global config, with an `includeIf` for the folder, which counts
   as the user's own. Only the system, global, and environment (`command`) scopes are the
   user's. Reading a clone runs no program the clone names (the user's own, such as Git LFS's,
@@ -531,6 +536,25 @@ app:lint` reads.
   command out afresh from the saved script by its ID and refuses one deleted, no longer
   shown there, or set to ask before running (`ErrAsksFirst`), which only the page asks:
   Ask before running is the window's confirmation, which `Run` leaves to the user.
+  The bound `BranchStatus` tells the header beside the branch where the clone's branch
+  stands against the branch it follows on origin (`BranchState`: up to date, behind, ahead,
+  diverged, detached, no upstream on origin, git in the middle of something, or unknown,
+  with a worded note), read through its `BranchGit` (gitread) from the clone's own refs and
+  one `RemoteRefs` ls-remote, never a fetch; origin's answer is kept per clone for
+  `OriginKept` (five minutes) unless refreshed, the clone itself is read on every call, and
+  an origin commit the clone lacks counts as behind. Only behind is offered **Pull**. The
+  bound `Pull` (`pull.go`) returns a `scriptrun.KindPull` run's ID, in the app, under the
+  clone's lock, of the branch the last status was worked out on: its `Before` refuses a
+  clone now on another branch, one whose branch follows none on origin, and one git is in
+  the middle of something in, asks origin again with `RemoteRefs` (every gitread guard
+  applied before git runs, the answer kept), and runs `git pull --ff-only --no-rebase
+  --no-autostash --no-recurse-submodules --upload-pack=git-upload-pack origin
+  refs/heads/<branch>` as argv, with worktrees' hardening (hooks, fsmonitor, submodule
+  recursion off) and the run env without the variables that point git elsewhere, plus
+  `GIT_TERMINAL_PROMPT=0`; its `Finish` reads the branch back and words the run's summary
+  (updated from one commit to another, how many commits, already up to date, or git's last
+  error line). Stop asks first, since stopping partway can leave the files half updated.
+  Run again pulls the same branch, its `Before` checking everything afresh.
 - `internal/measure/` and `magefiles/measure.go` take the numbers in
   [`docs/performance.md`](docs/performance.md).
 - `frontend/` is the React + TypeScript + Vite + Tailwind app. It reaches Go only through the

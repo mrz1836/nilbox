@@ -1,7 +1,8 @@
-// Package gitread runs the read-only git commands the release and hooks services ask of a
-// clone, and reads their answers: the current branch, uncommitted changes, what git is in
-// the middle of, branches and tags here and on origin, the signing settings, and where
-// the hooks live.
+// Package gitread runs the read-only git commands the release, hooks, and Repo scripts
+// services ask of a clone, and reads their answers: the current branch, uncommitted
+// changes, what git is in the middle of, branches and tags here and on origin, the
+// commits between two, the signing settings, and where the hooks live. Message words
+// their failures for the user.
 //
 // Every command is checked against an exact allowlist before it runs, and anything else
 // is refused with ErrGitCommandNotAllowed: no command here changes a clone's files, index,

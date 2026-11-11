@@ -211,10 +211,13 @@ func TestEachKindHasItsLimit(t *testing.T) {
 	assert.Equal(t, time.Minute, KindHooks.Timeout())
 	assert.Equal(t, 30*time.Minute, KindChecks.Timeout())
 	assert.Equal(t, 10*time.Minute, KindUpdate.Timeout())
+	assert.Equal(t, 2*time.Minute, KindPull.Timeout())
 	assert.Zero(t, KindScript.Timeout(), "a script has Stop instead")
 	assert.Zero(t, Kind("other").Timeout())
 	assert.True(t, KindUpdate.Valid())
+	assert.True(t, KindPull.Valid())
 	assert.Equal(t, clonelock.KindUpdate, KindUpdate.lockKind())
+	assert.Equal(t, clonelock.KindPull, KindPull.lockKind())
 	assert.Equal(t, clonelock.KindScript, Kind("other").lockKind())
 
 	e := NewEngine(Config{})

@@ -115,6 +115,7 @@ const (
 	slotTagRef
 	slotPeeledTagRef
 	slotTagCommit
+	slotCommitRange
 )
 
 // word is one word of an allowlisted command: text itself, or a value its slot accepts.
@@ -184,6 +185,7 @@ func allowlist() []command {
 		{name: "a setting", words: append(fixed(configCmd, getFlag), value(slotConfigKey))},
 		{name: "a switch", words: append(fixed(configCmd, "--type=bool", getFlag), value(slotBoolKey))},
 		{name: "unpushed commits", words: append(fixed("rev-list", "--count"), value(slotUnpushedRange), word{text: "--"})},
+		{name: "the commits between two", words: append(fixed("rev-list", "--count"), value(slotCommitRange), word{text: "--"})},
 		{name: "an ancestor", words: append(fixed("merge-base", "--is-ancestor"), value(slotCommitID), value(slotCommitID))},
 		{name: "the local version tags", words: append(fixed("tag", "--list"), value(slotVersionPattern))},
 		{name: "origin's branches and tags", words: fixed(lsRemote, uploadPackFlag, "--heads", tagsFlag, remoteName)},
@@ -229,6 +231,7 @@ func validators() map[slot]func(string) bool {
 		slotTagRef:         isTagRef,
 		slotPeeledTagRef:   isPeeledTagRef,
 		slotTagCommit:      isTagCommit,
+		slotCommitRange:    isCommitRange,
 	}
 }
 
@@ -332,6 +335,13 @@ func isUnpushedRange(arg string) bool {
 	return strings.TrimPrefix(from, trackingPrefix) == strings.TrimPrefix(to, headsPrefix)
 }
 
+// isCommitRange reports <commit ID>..<commit ID>, two full commit IDs.
+func isCommitRange(arg string) bool {
+	from, to, ok := strings.Cut(arg, "..")
+
+	return ok && isCommitID(from) && isCommitID(to)
+}
+
 // isVersionTag reports a tag name that starts with v and is otherwise a well-formed ref
 // name, as validBranch has it.
 func isVersionTag(name string) bool {
@@ -424,6 +434,10 @@ func boolConfigArgs(key string) []string { return []string{configCmd, "--type=bo
 
 func unpushedArgs(branch string) []string {
 	return []string{"rev-list", "--count", trackingPrefix + branch + ".." + headsPrefix + branch, "--"}
+}
+
+func commitsBetweenArgs(from, to string) []string {
+	return []string{"rev-list", "--count", from + ".." + to, "--"}
 }
 
 func ancestorArgs(oid, of string) []string { return []string{"merge-base", "--is-ancestor", oid, of} }

@@ -22,6 +22,7 @@ import { ErrorBanner } from '../ErrorBanner'
 import { AlertIcon, InfoIcon, PlusIcon, RefreshIcon } from '../icons'
 import { ErrorText } from '../settings/rows'
 import { Spinner } from '../Spinner'
+import { BranchCheck } from './BranchCheck'
 import { MagexSection } from './MagexSection'
 import { RunPanel } from './RunPanel'
 import { ScriptEditor } from './ScriptEditor'
@@ -230,8 +231,10 @@ interface ClonePageProps extends PlaceProps {
 }
 
 // ClonePage is the page for one clone: its repository, folder, and branch beside the
-// picker, the note when it is on another branch than the default, New script and Read
-// again, and its scripts, with the editor of the user's own.
+// picker, with whether origin has newer commits on it and Pull when it does, the note when
+// it is on another branch than the default, New script and Read again, and its scripts,
+// with the editor of the user's own. A pull shows as a run, and once it ends the scripts
+// are read again, since the files they come from may have moved with the branch.
 function ClonePage({ clone, picker, onStarted, onOpenSettings, ...place }: ClonePageProps) {
   // read counts the reads of the clone's scripts after the first: Read again, which
   // lists magex's targets afresh (refresh), and each change to the user's own scripts,
@@ -359,6 +362,18 @@ function ClonePage({ clone, picker, onStarted, onOpenSettings, ...place }: Clone
                     </span>
                   </>
                 )}
+                {!page.off && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <BranchCheck
+                      dir={clone.dir}
+                      onStarted={onStarted}
+                      onPulled={() => {
+                        readAgain(false)
+                      }}
+                    />
+                  </>
+                )}
               </p>
             )}
           </div>
@@ -425,7 +440,8 @@ export interface RepoScriptsPageProps {
 // A script of the user's set to ask before running asks first, a task with inputs asks
 // for them first, and a command from the repository's own files asks before its first
 // run and whenever it changes. A run that starts shows beside the scripts, which stay as
-// they were. Nothing here asks GitHub.
+// they were. Nothing here asks GitHub's API: only the chosen clone's branch check asks its
+// origin, one ls-remote whose answer is kept five minutes.
 export function RepoScriptsPage({
   dir,
   onDir,

@@ -413,6 +413,7 @@ func TestHelpersRefuseBadNamesBeforeRunning(t *testing.T) {
 		"Upstream":        func() error { _, err := g.Upstream(ctx, repoDir, "-x"); return err },
 		"Unpushed":        func() error { _, err := g.Unpushed(ctx, repoDir, "main\nx"); return err },
 		"IsAncestor":      func() error { _, err := g.IsAncestor(ctx, repoDir, mainBranch, headSHA); return err },
+		"CommitsBetween":  func() error { _, err := g.CommitsBetween(ctx, repoDir, headSHA, "HEAD"); return err },
 		"RemoteTagCommit": func() error { _, err := g.RemoteTagCommit(ctx, repoDir, "1.4.2"); return err },
 		"RemoteTagCommit option": func() error {
 			_, err := g.RemoteTagCommit(ctx, repoDir, "v1 "+injection)
@@ -578,6 +579,12 @@ func TestHelpersReadGitsAnswers(t *testing.T) {
 			replies: map[string]reply{words(unpushedArgs(mainBranch)): {out: "3\n"}},
 			run:     func(g *Git) (any, error) { return g.Unpushed(ctx, repoDir, mainBranch) },
 			want:    3,
+		},
+		{
+			name:    "the commits between two",
+			replies: map[string]reply{words(commitsBetweenArgs(headSHA, otherSHA)): {out: "2\n"}},
+			run:     func(g *Git) (any, error) { return g.CommitsBetween(ctx, repoDir, headSHA, otherSHA) },
+			want:    2,
 		},
 		{
 			name:    "an ancestor",
@@ -911,6 +918,7 @@ func TestEveryAllowlistEntryIsUsed(t *testing.T) {
 	_, _ = g.HasCommit(ctx, repoDir, headSHA)
 	_, _ = g.Upstream(ctx, repoDir, mainBranch)
 	_, _ = g.Unpushed(ctx, repoDir, mainBranch)
+	_, _ = g.CommitsBetween(ctx, repoDir, headSHA, otherSHA)
 	_, _ = g.IsAncestor(ctx, repoDir, headSHA, otherSHA)
 	_, _ = g.LocalVersionTags(ctx, repoDir)
 	_, _ = g.RemoteRefs(ctx, repoDir)

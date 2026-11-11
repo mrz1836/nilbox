@@ -524,8 +524,9 @@ Agent sessions' worktrees share each clone's hooks, so an agent's commits run th
 
 **Repo scripts** runs a clone's own commands: its `t3.json` scripts, its `.vscode/tasks.json`
 tasks, and magex's targets. Listing them runs nothing in the clone: the files are read, and
-magex's built-in targets are listed in a folder of the app's own. The page never asks GitHub, so
-it works offline and signed out.
+magex's built-in targets are listed in a folder of the app's own. The page never asks GitHub's
+API, so it works offline and signed out; only the branch check beside the chosen clone asks its
+origin, with one `git ls-remote` whose answer is kept five minutes.
 
 **The page.**
 
@@ -533,6 +534,15 @@ it works offline and signed out.
   first, and the page starts on the one you chose last while the window is open. Beside it: the
   repository, the folder, and the branch, with *From branch feature-x* when the clone isn't on
   its default branch, since a branch can change what the files say.
+- **The branch check** beside the branch says whether origin has newer commits on the branch it
+  follows: **Up to date**, or **Update available** with **Pull**, which fast-forwards the branch
+  (`git pull --ff-only`, never a merge or a rebase) as a run beside the scripts, in the app, and
+  reads the scripts again once it ends. It asks origin with one `git ls-remote` and never
+  fetches; the answer is kept five minutes, and its refresh button asks again. A branch ahead of
+  origin, one that has diverged from it, one that tracks no branch on origin, a detached HEAD, or
+  a merge or rebase in progress says so, and offers no pull. A pull runs no hook, refuses a clone
+  that moved to another branch since the check, and fails with git's own words on a branch with
+  commits of its own.
 - **The sources, in order:** **Yours** (below), then **From t3.json**, **From
   .vscode/tasks.json**, and **magex**, each as Settings → Integrations turns it on (the Scripts
   card's **Show magex targets** and **Read t3.json and VS Code tasks**). A file that can't be
@@ -1786,9 +1796,11 @@ whose agent isn't installed says so, as in "Codex isn't installed (codex wasn't 
 each repository's git remotes. The match is remembered and checked again on the next launch. To
 find and check clones, the launcher runs only the read-only `git -C <clone> config --get-regexp`
 remote lookup. No git command the app runs changes a clone's own checkout: no checkout, stash,
-pull, reset, or branch switch. Only a tool you turn on in Settings → Integrations does, when you
-click: a release's magex switches to the branch, pulls, tags, and pushes the tag, and the app
-then checks where the tag and your clone are. When a session needs a pull request's branch, the
+pull, reset, or branch switch, with one exception you click: Repo scripts' **Pull**, which
+fast-forwards the branch a clone is on to origin's (`git pull --ff-only`). Otherwise only a tool
+you turn on in Settings → Integrations does, when you click: a release's magex switches to the
+branch, pulls, tags, and pushes the tag, and the app then checks where the tag and your clone
+are. When a session needs a pull request's branch, the
 starter prompts ask the agent to run `gh pr checkout <n>` inside the worktree. The only git
 commands the app runs that change a clone are its [worktree creation](#worktrees) (a fetch into
 the item's own refs, and `git worktree add`) and the [Worktrees view's](#the-worktrees-view)

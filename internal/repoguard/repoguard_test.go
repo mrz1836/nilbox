@@ -482,10 +482,18 @@ func cloneChangingVerbs() []string {
 // checkout.
 const worktreeMakerFile = "internal/worktrees/create.go"
 
+// clonePullerFile is the only production file allowed to pull: Repo scripts' pull of the
+// branch a clone is on from the branch it follows on origin, fast-forward only, on the
+// user's click. It runs no other git command that changes a clone.
+const clonePullerFile = "internal/scripts/pull.go"
+
 // TestNoGitCommandChangesAClone keeps every git command the app runs from changing a
-// clone's checkout. Work that does change one belongs to the integration's own tool, run
-// on the user's click: a release's magex switches, pulls, tags, and pushes, and the app
-// only starts it and reads, afterwards, where the tag and the clone are.
+// clone's checkout, with two exceptions, each held to one file: worktree creation
+// (worktreeMakerFile) fetches and adds worktrees, and Repo scripts' pull (clonePullerFile)
+// fast-forwards the branch a clone is on to origin's, on the user's click. Other work
+// that changes one belongs to the integration's own tool, run on the user's click: a
+// release's magex switches, pulls, tags, and pushes, and the app only starts it and reads,
+// afterwards, where the tag and the clone are.
 func TestNoGitCommandChangesAClone(t *testing.T) {
 	t.Parallel()
 
@@ -506,12 +514,40 @@ func TestNoGitCommandChangesAClone(t *testing.T) {
 	assert.Empty(t, hits(worktreeMakerFile, maker, argvLiteral(changing...).MatchString),
 		"%s only fetches and adds worktrees", worktreeMakerFile)
 
-	found := productionGoHits(t, root, verbs, worktreeMakerFile)
+	assertPullerOnlyFastForwards(t, root)
+
+	found := productionGoHits(t, root, verbs, worktreeMakerFile, clonePullerFile)
 	found = append(found, productionGoHits(t, root, worktreeAdd, worktreeMakerFile)...)
 
 	assert.Empty(t, found, "nothing changes a clone's own checkout: no checkout, stash, branch switch, pull, reset, "+
-		"merge, rebase, commit, push, restore, cherry-pick, or clean anywhere, and only worktree creation ("+
-		worktreeMakerFile+") fetches and adds worktrees")
+		"merge, rebase, commit, push, restore, cherry-pick, or clean anywhere, only worktree creation ("+
+		worktreeMakerFile+") fetches and adds worktrees, and only Repo scripts' pull ("+clonePullerFile+") pulls")
+}
+
+// assertPullerOnlyFastForwards checks that clonePullerFile still pulls, that each pull
+// there is fast-forward only, with --ff-only beside it and none of the options that
+// would rebase, merge, set changes aside, or recurse into submodules, and that it holds no
+// other verb that changes a clone.
+func assertPullerOnlyFastForwards(t *testing.T, root string) {
+	t.Helper()
+
+	// Built from parts so this file does not match itself.
+	pull := "pu" + "ll"
+	others := slices.DeleteFunc(cloneChangingVerbs(), func(v string) bool { return v == pull })
+	widening := regexp.MustCompile(`"--(re` + `base|no-ff|ff|squash|auto` + `stash|recurse-submodules|allow-unrelated-histories)[="]`)
+
+	text, ok := readText(t, root, clonePullerFile)
+	require.True(t, ok, "%s is gone; update this guard", clonePullerFile)
+
+	pulls := hits(clonePullerFile, text, argvLiteral(pull).MatchString)
+	assert.NotEmpty(t, pulls, "%s no longer pulls; update this guard", clonePullerFile)
+
+	for _, line := range pulls {
+		assert.Contains(t, line, `"--ff-only"`, "%s pulls fast-forward only, --ff-only beside the pull", clonePullerFile)
+	}
+
+	assert.Empty(t, hits(clonePullerFile, text, widening.MatchString), "%s pulls fast-forward only", clonePullerFile)
+	assert.Empty(t, hits(clonePullerFile, text, argvLiteral(others...).MatchString), "%s only pulls", clonePullerFile)
 }
 
 func TestArgvLiteral(t *testing.T) {

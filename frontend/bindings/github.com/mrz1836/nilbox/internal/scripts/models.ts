@@ -6,6 +6,98 @@
 import * as integrationprefs$0 from "../integrationprefs/models.js";
 
 /**
+ * BranchState is where a clone's branch stands against the branch it follows on origin.
+ */
+export type BranchState = "upToDate" | "behind" | "ahead" | "diverged" | "detached" | "noUpstream" | "inProgress" | "unknown";
+
+/**
+ * The values of BranchState, by the names of their Go constants.
+ */
+export const BranchState = {
+    /**
+     * The states of a clone's branch.
+     *
+     * BranchUpToDate is a branch at origin's commit.
+     */
+    BranchUpToDate: "upToDate",
+
+    /**
+     * BranchBehind is a branch origin has commits for, with none of its own: a pull
+     * fast-forwards it. A commit of origin's the clone hasn't fetched counts as behind
+     * too, since only the pull can tell; it refuses, fast-forward only, a branch that
+     * turns out to have commits of its own.
+     */
+    BranchBehind: "behind",
+
+    /**
+     * BranchAhead is a branch with commits origin doesn't have, and none to bring.
+     */
+    BranchAhead: "ahead",
+
+    /**
+     * BranchDiverged is a branch with commits of its own while origin has others: no
+     * fast-forward brings it level.
+     */
+    BranchDiverged: "diverged",
+
+    /**
+     * BranchDetached is a clone whose HEAD is detached, on no branch.
+     */
+    BranchDetached: "detached",
+
+    /**
+     * BranchNoUpstream is a branch that follows no branch on origin: none at all, another
+     * remote's, or one origin no longer has.
+     */
+    BranchNoUpstream: "noUpstream",
+
+    /**
+     * BranchInProgress is a clone git is in the middle of a merge, a rebase, a
+     * cherry-pick, or a revert in.
+     */
+    BranchInProgress: "inProgress",
+
+    /**
+     * BranchUnknown is a status that couldn't be worked out: origin didn't answer, or the
+     * clone couldn't be read.
+     */
+    BranchUnknown: "unknown",
+} as const;
+
+/**
+ * BranchStatus is a clone's branch against origin's, for Repo scripts' header: whether a
+ * pull would bring it newer commits. Only a branch that is behind is offered one.
+ */
+export interface BranchStatus {
+    /**
+     * Dir is the clone, with ~; Branch the branch it is on, or "" when HEAD is detached;
+     * and Upstream origin's branch it follows, or "" when it follows none there.
+     */
+    "dir": string;
+    "branch": string;
+    "upstream": string;
+    "state": BranchState;
+
+    /**
+     * Local and Origin are the branch's commit and origin's, shortened, or "" when
+     * unknown.
+     */
+    "local": string;
+    "origin": string;
+
+    /**
+     * The note says where the branch stands in a sentence, and for one no pull is
+     * offered on, why.
+     */
+    "note": string;
+
+    /**
+     * CheckedAt is when origin was asked, as RFC 3339, or "" when it wasn't.
+     */
+    "checkedAt": string;
+}
+
+/**
  * Clone is a clone under the clone root, as the page's picker lists it: its folder's
  * name, and its folder, with ~.
  */

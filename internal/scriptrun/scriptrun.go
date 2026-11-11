@@ -1,6 +1,6 @@
 // Package scriptrun runs the commands of the Scripts tab, a release, a hooks action, a
-// checks run, or a script, and a tool's own updater, in the app or in the user's terminal,
-// and keeps their history.
+// checks run, a script, or a clone's fast-forward pull, and a tool's own updater, in the
+// app or in the user's terminal, and keeps their history.
 //
 // The Engine starts a run and follows it to its end. A run in the app starts in its own
 // process group and writes straight into its log file, never through a pipe, so a crash of
@@ -56,11 +56,15 @@ const (
 	// replaces the copy it runs as with its latest release. It runs in the copy's folder,
 	// never a clone, and doesn't count as using the tool (InUse): it is the update.
 	KindUpdate Kind = "update"
+
+	// KindPull fast-forwards a clone's branch to origin's, on the user's click on Repo
+	// scripts: git's fast-forward-only pull, and nothing else.
+	KindPull Kind = "gitPull"
 )
 
 // Kinds returns every kind.
 func Kinds() []Kind {
-	return []Kind{KindRelease, KindHooks, KindChecks, KindScript, KindUpdate}
+	return []Kind{KindRelease, KindHooks, KindChecks, KindScript, KindUpdate, KindPull}
 }
 
 // Valid reports whether k is one of Kinds.
@@ -70,8 +74,8 @@ func (k Kind) Valid() bool {
 
 // Timeout returns how long a run of the kind may take before it is stopped, or 0 for no
 // limit: five minutes for a release, one for a hooks action, thirty for checks, ten for a
-// tool updating itself (its download and swap, which the tools bound at six), and none
-// for a script, which the user stops.
+// tool updating itself (its download and swap, which the tools bound at six), two for a
+// pull, and none for a script, which the user stops.
 func (k Kind) Timeout() time.Duration {
 	switch k {
 	case KindRelease:
@@ -82,6 +86,8 @@ func (k Kind) Timeout() time.Duration {
 		return 30 * time.Minute
 	case KindUpdate:
 		return 10 * time.Minute
+	case KindPull:
+		return 2 * time.Minute
 	case KindScript:
 		return 0
 	default:
@@ -100,6 +106,8 @@ func (k Kind) lockKind() clonelock.Kind {
 		return clonelock.KindChecks
 	case KindUpdate:
 		return clonelock.KindUpdate
+	case KindPull:
+		return clonelock.KindPull
 	case KindScript:
 		return clonelock.KindScript
 	default:

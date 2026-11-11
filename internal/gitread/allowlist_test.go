@@ -121,6 +121,14 @@ func slotSamples() map[slot]samples {
 				"refs/tags/1.4.2^{commit}", "v1.4.2^{commit}", "refs/tags/v1..2^{commit}",
 			},
 		},
+		slotCommitRange: {
+			good: []string{headSHA + ".." + otherSHA, otherSHA + ".." + headSHA, sha256ID + ".." + sha256ID},
+			bad: []string{
+				headSHA, headSHA + "...", headSHA + "..." + otherSHA, headSHA + "..HEAD", "HEAD.." + headSHA,
+				"main.." + headSHA, "fc1c397.." + headSHA, strings.Repeat("0", 40) + ".." + headSHA,
+				headSHA + ".." + otherSHA + "..x", "^" + headSHA + ".." + otherSHA, headSHA + "..-x",
+			},
+		},
 	}
 }
 
@@ -160,7 +168,7 @@ func TestEverySlotHasAValidatorAndSamples(t *testing.T) {
 	checks := validators()
 	all := slotSamples()
 
-	for s := slotGitPath; s <= slotTagCommit; s++ {
+	for s := slotGitPath; s <= slotCommitRange; s++ {
 		assert.Contains(t, checks, s, "slot %d has no validator", s)
 		assert.Contains(t, all, s, "slot %d has no samples", s)
 	}

@@ -282,7 +282,19 @@ func (g *Git) Upstream(ctx context.Context, dir, branch string) (Upstream, error
 // clone last learned it, doesn't. It fails when either ref is missing (see LocalBranch and
 // TrackingBranch).
 func (g *Git) Unpushed(ctx context.Context, dir, branch string) (int, error) {
-	out, err := g.read(ctx, dir, unpushedArgs(branch))
+	return g.count(ctx, dir, unpushedArgs(branch))
+}
+
+// CommitsBetween returns how many commits the commit to has that the commit from doesn't,
+// as `rev-list --count from..to` counts them: the commits a fast-forward from one to the
+// other brought. It fails when the clone lacks either commit (see HasCommit).
+func (g *Git) CommitsBetween(ctx context.Context, dir, from, to string) (int, error) {
+	return g.count(ctx, dir, commitsBetweenArgs(from, to))
+}
+
+// count runs a rev-list --count in dir and reads its count.
+func (g *Git) count(ctx context.Context, dir string, args []string) (int, error) {
+	out, err := g.read(ctx, dir, args)
 	if err != nil {
 		return 0, err
 	}
