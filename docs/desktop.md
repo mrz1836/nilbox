@@ -1124,7 +1124,9 @@ Every card gets it, in any list.
 **Opening is instant.** The sheet opens from what it read last time, with no request, then reads
 the pull request from GitHub in the background (**Checking GitHub…**): one GraphQL request, and
 its files only when it was pushed to since. Opening one you read in the last 20 seconds asks
-nothing. When the inbox has seen a push the sheet hasn't, it says so and offers **Reload**. Right
+nothing. The refresh button in the header reads it again whenever you click it, however recent
+the last read (a check re-run on GitHub shows up), and a light glides along the header while it
+reads. When the inbox has seen a push the sheet hasn't, it says so and offers **Reload**. Right
 after a push, GitHub can still be working out whether the pull request can merge (**Checking
 whether it can merge**); the sheet then asks again, up to twice, two seconds apart.
 

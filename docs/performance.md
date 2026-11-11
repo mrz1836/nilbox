@@ -241,7 +241,7 @@ budget: it reads only when you open a pull request, and nothing ahead of time.
 | What you do | Requests |
 |---|---|
 | Open the sheet | None: it shows what it read last time |
-| Its refresh, nothing pushed since | 1 GraphQL point (none within 20 seconds of the last, unless GitHub was still working out whether it can merge, when it asks up to twice more) |
+| Its refresh, nothing pushed since | 1 GraphQL point (none within 20 seconds of the last, unless GitHub was still working out whether it can merge, when it asks up to twice more, or the header's refresh button asked) |
 | Its first refresh of a pull request of up to 100 files | 1 GraphQL point and 1 REST request |
 | Its refresh after a push | 1 GraphQL point, 1 REST request per 100 files, and 1 more to confirm the head when the file list doesn't name it |
 | Approve | 1 GraphQL point to check nothing was pushed since, then 1 REST request |
