@@ -306,9 +306,11 @@ type QuitConfirmed struct{}
 // Name returns NameQuitConfirmed.
 func (QuitConfirmed) Name() string { return NameQuitConfirmed }
 
-// ReleasesUpdated says the Release page's list was read again from GitHub, or went out of
-// date, as when a release ended: the window reads it, and a list out of date is read again
-// from GitHub then.
+// ReleasesUpdated says the Release page's list changed: it was read again from GitHub, in
+// full or, after a release ended, for the repository released alone; a release ended, and
+// its repository is being read again, so the list reads as refreshing until that lands; or
+// the list went out of date. The window reads it, and a list out of date is read again from
+// GitHub then.
 type ReleasesUpdated struct{}
 
 // Name returns NameReleasesUpdated.
@@ -337,8 +339,8 @@ const (
 
 // ReleasesProgress says how far a read of the Release page's list has got, while it runs:
 // its phase, and how many of the phase's repositories or clones are done. Finding the
-// clones counts nothing. It comes a few times a second at most, and ReleasesUpdated
-// follows once the read lands.
+// clones counts nothing, and the read of a released repository alone finds none. It comes
+// a few times a second at most, and ReleasesUpdated follows once the read lands.
 type ReleasesProgress struct {
 	Phase ReleasesPhase `json:"phase"`
 	Done  int           `json:"done"`

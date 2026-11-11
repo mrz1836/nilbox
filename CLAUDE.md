@@ -404,8 +404,20 @@ app:lint` reads.
   from magex's switch to the branch until its pull ends, and asks first once the tag exists; a
   release that reaches GitHub is told once its outcome is recorded (the run's `Recorded`),
   through its `Notifier` (core: the notify `Dispatcher`'s `Notify`, a `release_done`
-  notification about no item, and its banner), and every release that ends emits
-  `event.ReleasesUpdated`, since the page's list is then out of date. The bound
+  notification about no item, and its banner). A release that ends doesn't put the page's
+  whole list out of date: its `Finish` hands the repository to the `Refresher` and emits
+  `event.ReleasesUpdated` at once, and the list reads as `Refreshing` until the patch lands.
+  The `Refresher` reads the repository alone again (its status, a comparison only when its
+  newest version isn't on its newest commit, and its clones' state, telling the window how
+  far it has got with `event.ReleasesProgress`), once any refresh under way has landed (one
+  read of the list at a time), patches those rows into the list, which stays as fresh as it
+  was and is kept for the next start, and emits `event.ReleasesUpdated` again. A refresh
+  that began after the release ended has read the repository already, so the patch asks
+  GitHub nothing. A list it can't patch (none yet, another clone root's, over five minutes
+  old, kept from a past start, one whose last refresh failed, without that repository, or
+  GitHub failing) goes out of date instead, as it does when the `Refresher` isn't running or
+  stops with a patch still queued, and a refresh under way when a list goes out of date lands
+  out of date too. The bound
   `ReleaseResult` reads a run's outcome back as a typed `Result`, and the bound
   `OfferAfterMerge` answers the review sheet's offer after a merge from local state alone: the
   `integrations.offerAfterMerge` setting, magex, the default branch the Release page or the

@@ -27,6 +27,10 @@ import * as $models from "./models.js";
  * After a restart, the list kept from the last start, when it was read from the clone
  * root as set now, is served at once, marked Kept and Refreshing, while the Refresher
  * reads GitHub again behind the page; without the Refresher, the call waits for GitHub.
+ *
+ * A release that ends needn't put the list out of date: while the Refresher runs, it reads
+ * the released repository alone again and patches its rows into the list, which stays as
+ * fresh as it was (queuePatch). Meanwhile the list is served as it was, marked Refreshing.
  */
 export function Candidates(refresh: boolean): $CancellablePromise<$models.Candidates> {
     return $Call.ByID(1671334015, refresh);
