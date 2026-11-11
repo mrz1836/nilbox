@@ -221,7 +221,7 @@ func TestAFailedReadBehindKeepsTheKeptList(t *testing.T) {
 	assert.Equal(t, "Couldn't read your repositories from GitHub.", got.Error, "with why it couldn't be read again")
 	assert.Equal(t, first.CheckedAt, got.CheckedAt)
 	assert.Equal(t, groups(first), groups(got))
-	assert.False(t, next.askedBehind(), "and a read soon after asks nothing")
+	assert.False(t, next.askedBehind(), "and a read after asks nothing")
 
 	third, _ := newKeptRig(prefs.New(db, nil))
 	third.refresherOn()
@@ -230,18 +230,17 @@ func TestAFailedReadBehindKeepsTheKeptList(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, first.CheckedAt, stillKept.CheckedAt, "a failed read keeps nothing for the next start")
 
-	next.clock.Advance(FreshFor)
+	next.clock.Advance(time.Hour)
 	next.github.fail(nil)
 
 	got, err = next.svc.Candidates(t.Context(), false)
 	require.NoError(t, err)
-	assert.True(t, got.Refreshing, "five minutes on, it is read again behind the page")
+	assert.False(t, got.Refreshing, "however long on, nothing reads it again unasked")
+	assert.False(t, next.askedBehind())
 
-	next.readBehind(t.Context(), t)
-
-	healed, err := next.svc.Candidates(t.Context(), false)
+	healed, err := next.svc.Candidates(t.Context(), true)
 	require.NoError(t, err)
-	assert.False(t, healed.Kept)
+	assert.False(t, healed.Kept, "Read GitHub again replaces it")
 	assert.Empty(t, healed.Error)
 }
 

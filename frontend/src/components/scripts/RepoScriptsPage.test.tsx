@@ -7,15 +7,17 @@ import { brand } from '../../generated/brand'
 import type { SettingsSection } from '../../lib/settingsIndex'
 import type { RepoScripts, RunsIn, ScriptSection, ScriptStart, TerminalID } from '../../platform'
 import {
+  branchStatus,
   bumpInput,
   magexTarget,
   repoScripts,
   scriptClone,
   scriptEntry,
   scriptQuestion,
+  scriptRun,
   scriptSection,
 } from '../../test/fixtures'
-import { platform } from '../../test/platform'
+import { emit, platform } from '../../test/platform'
 import { RepoScriptsPage } from './RepoScriptsPage'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
@@ -930,6 +932,7 @@ describe('RepoScriptsPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Open Settings' }))
 
     expect(onOpenSettings).toHaveBeenCalledExactlyOnceWith('integrations')
+    expect(platform.getBranchStatus).not.toHaveBeenCalled()
   })
 
   it('starts on the clone chosen last while it is still listed', async () => {
@@ -979,6 +982,46 @@ describe('RepoScriptsPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Close the run' }))
     expect(onFollow).toHaveBeenLastCalledWith(null)
     expect(screen.queryByRole('region', { name: 'magex lint' })).not.toBeInTheDocument()
+  })
+
+  it('says whether origin has newer commits on the branch, beside it', async () => {
+    renderPage()
+
+    expect(await screen.findByText('Up to date')).toBeInTheDocument()
+    expect(platform.getBranchStatus).toHaveBeenCalledExactlyOnceWith('~/projects/sdk', false)
+    expect(screen.queryByRole('button', { name: 'Pull master' })).not.toBeInTheDocument()
+  })
+
+  it('pulls a branch behind origin, shows the pull as a run, and reads the scripts again once it ends', async () => {
+    const pull = { id: 51, kind: 'gitPull' as const, title: 'Pull master', repo: 'acme-org/sdk', dir: '~/projects/sdk' }
+    platform.getBranchStatus.mockResolvedValue(
+      branchStatus({ state: 'behind', origin: '5d6e7f8', note: 'origin/master has newer commits.' }),
+    )
+    platform.getScriptRun.mockResolvedValue(scriptRun({ ...pull, status: 'running', summary: '', finishedAt: '' }))
+    const { onFollow } = renderPage()
+
+    expect(await screen.findByText('Update available')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Pull master' }))
+
+    expect(platform.pullBranch).toHaveBeenCalledExactlyOnceWith('~/projects/sdk')
+    expect(onFollow).toHaveBeenCalledExactlyOnceWith(51)
+    expect(await screen.findByRole('region', { name: 'Pull master' })).toBeInTheDocument()
+    expect(platform.listRepoScripts).toHaveBeenCalledOnce()
+
+    platform.getBranchStatus.mockResolvedValue(branchStatus())
+    platform.getScriptRun.mockResolvedValue(
+      scriptRun({ ...pull, summary: 'Updated master from 1a2b3c4 to 5d6e7f8, 2 new commits.' }),
+    )
+    act(() => {
+      emit('scriptruns:updated')
+    })
+
+    expect(await screen.findByText('Up to date')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(platform.listRepoScripts).toHaveBeenCalledTimes(2)
+    })
+    expect(platform.listRepoScripts).toHaveBeenLastCalledWith('~/projects/sdk', false)
+    expect(platform.getBranchStatus).toHaveBeenLastCalledWith('~/projects/sdk', false)
   })
 
   it('fills in a release task’s choice with its first value when its default isn’t one', async () => {

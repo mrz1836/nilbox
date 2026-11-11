@@ -376,11 +376,15 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	versionRunner := runner
 	agentRunners := func([]string) execpath.Runner { return opts.Runner }
 	toolRunners := func([]string) execpath.Runner { return opts.Runner }
+	// gitWith is gitRunner with an environment of its own, for the worktree commands that
+	// run under gitread's guards, each by its Setup's absolute path.
+	gitWith := func([]string) execpath.Runner { return opts.Runner }
 
 	if runner == nil {
 		runner, gitRunner, versionRunner = execpath.Exec{Search: search}, worktreeRunner(search), agentRunner{search: search}
 		agentRunners = func(env []string) execpath.Runner { return agentRunner{search: search, env: env} }
 		toolRunners = nil // the integrations run each tool by its path, with the shell's environment
+		gitWith = func(env []string) execpath.Runner { return execpath.Exec{Search: search, Env: env} }
 	}
 
 	profileStore := profiles.NewStore(pool, opts.Clock)
@@ -429,10 +433,22 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	// its clone's, so a worktree is never made or removed while a run is using it.
 	clones := clonelock.New()
 
+	// The clones are read with the git the user's shell finds, as magex runs it, and the
+	// git commands that reach a clone's remote or write its files run under the same
+	// guards: Release's and Hooks' reads, Repo scripts' branch status and pull, and
+	// worktree creation's fetches and checkouts.
+	shellGit := gitread.New(gitread.Config{
+		Env: func() []string { env, _ := shellEnv.Env(); return env }, Runner: toolRunners,
+	})
+
+	// The worktrees find git with gitread's own finder, so the git a guarded command runs
+	// (its Setup's) is the one every other worktree command runs: one clone, one git build.
 	sweeps := worktrees.NewService(worktrees.Config{
 		Settings: settingsView[worktrees.SweepSettings]{settings: prefs, part: sweepSettings},
 		Git:      gitRunner,
-		Finder:   search,
+		Finder:   shellGit.GitFinder(),
+		Guard:    shellGit,
+		GitWith:  gitWith,
 		Home:     opts.Home,
 		Clock:    opts.Clock,
 		GitHub:   itemStates{tokens: tokens, client: client},
@@ -495,15 +511,11 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	toolFinder := integrations.NewWorker(tools)
 	followed.tools = toolFinder
 
-	// The clones are read with the git the user's shell finds, as magex runs it.
-	releaseGit := gitread.New(gitread.Config{
-		Env: func() []string { env, _ := shellEnv.Env(); return env }, Runner: toolRunners,
-	})
 	releases := release.NewService(release.Config{
 		GitHub:  releaseGitHub{tokens: tokens, client: client},
 		Clones:  releaseClones{settings: prefs, home: opts.Home, git: runner},
-		Checker: release.GitChecker{Git: releaseGit},
-		Git:     releaseGit, Origins: releaseOrigins{git: runner}, Tools: releaseTool{tools: tools}, Locks: clones,
+		Checker: release.GitChecker{Git: shellGit},
+		Git:     shellGit, Origins: releaseOrigins{git: runner}, Tools: releaseTool{tools: tools}, Locks: clones,
 		Env: shellEnv.Env, Ready: shellEnv.Ready, Runner: toolRunners, Runs: runs, Places: releaseSettings{settings: prefs},
 		History: scriptRuns, Notifier: releaseNotices{dispatcher: dispatcher},
 		// A merge's offer reads the setting, magex, the clones, and the default branch the
@@ -516,9 +528,12 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	})
 	// A release left from before a restart is read and verified as one started now.
 	runs.RegisterVerifier(scriptrun.KindRelease, release.NewVerifier(releases))
+	// The Refresher reads the Release page's rows of a released repository again, and of
+	// one a merge in the review sheet went into.
+	releaseRefresher := release.NewRefresher(releases)
 
 	deps := hookDeps{
-		settings: prefs, tools: tools, git: releaseGit, runner: runner, clones: clones, runs: runs, history: scriptRuns,
+		settings: prefs, tools: tools, git: shellGit, runner: runner, clones: clones, runs: runs, history: scriptRuns,
 		shellEnv: shellEnv, terminal: terminals,
 	}
 	hookPage := newHooks(pool, opts, logger, deps)
@@ -561,7 +576,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Review: review.NewService(review.Config{
 			Pool: pool, Inbox: reviewInbox{store: inboxStore, actor: inbox.NewActor(inboxSvc)}, GitHub: client,
 			Settings: reviewSettings{settings: prefs}, Replies: reviewReplies{store: promptStore, source: previews},
-			Events: opts.Events, Clock: opts.Clock, Logger: logger,
+			Events: opts.Events, Merges: releaseRefresher, Clock: opts.Clock, Logger: logger,
 		}),
 		Watcher:          follow.watcher,
 		ShellSessions:    ShellSessions{ledger: follow.ledger, service: follow.service},
@@ -577,7 +592,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Runs:             runs,
 		ScriptRuns:       scriptRuns,
 		Release:          releases,
-		ReleaseRefresher: release.NewRefresher(releases),
+		ReleaseRefresher: releaseRefresher,
 		Hooks:            hookPage,
 		HooksScans:       hooks.NewScans(hookPage),
 		Scripts:          repoScripts,
@@ -666,7 +681,9 @@ func newHooks(pool *sql.DB, opts Options, logger *slog.Logger, deps hookDeps) *h
 // newScripts builds Repo scripts' service over the same clones, read-only git, runner, and
 // shell environment as the Hooks page's: magex as the integrations found it, the settings'
 // sources and where runs go, the default branches the inbox stored, and the trusted
-// commands in script_trust. Run again works a script out afresh through its Rerunner.
+// commands in script_trust. The same read-only git reads a clone's branch status, and the
+// runner runs its pull. Run again works a script, or a pull, out afresh through its
+// Rerunner.
 func newScripts(pool *sql.DB, opts Options, logger *slog.Logger, deps hookDeps, branches scripts.DefaultBranches,
 ) *scripts.Service {
 	var runner func([]string, string) execpath.Runner
@@ -677,12 +694,17 @@ func newScripts(pool *sql.DB, opts Options, logger *slog.Logger, deps hookDeps, 
 
 	svc := scripts.NewService(scripts.Config{
 		Clones: hooksClones{settings: deps.settings, home: opts.Home, git: deps.runner}, Git: deps.git,
-		Branches: branches, Tools: scriptsTools{tools: deps.tools}, Settings: integrationSettings{settings: deps.settings},
-		Runs: deps.runs, History: deps.history, DB: pool, Env: deps.shellEnv.Env, Shell: deps.shellEnv.Shell,
-		Runner: runner, Home: opts.Home, Clock: opts.Clock, Logger: logger,
+		BranchGit: deps.git, Branches: branches, Tools: scriptsTools{tools: deps.tools},
+		Settings: integrationSettings{settings: deps.settings}, Runs: deps.runs, History: deps.history, DB: pool,
+		Env: deps.shellEnv.Env, Shell: deps.shellEnv.Shell, Runner: runner, Home: opts.Home, Clock: opts.Clock,
+		Logger: logger,
 	})
 
-	deps.runs.RegisterRerunner(scriptrun.KindScript, scripts.NewRerunner(svc))
+	rerun := scripts.NewRerunner(svc)
+	deps.runs.RegisterRerunner(scriptrun.KindScript, rerun)
+	deps.runs.RegisterRerunner(scriptrun.KindPull, rerun)
+	// A pull left going at a quit comes back with Stop held and its own words.
+	deps.runs.RegisterVerifier(scriptrun.KindPull, scripts.NewVerifier(svc))
 
 	return svc
 }

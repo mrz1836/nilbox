@@ -121,6 +121,21 @@ func slotSamples() map[slot]samples {
 				"refs/tags/1.4.2^{commit}", "v1.4.2^{commit}", "refs/tags/v1..2^{commit}",
 			},
 		},
+		slotCommitRange: {
+			good: []string{headSHA + ".." + otherSHA, otherSHA + ".." + headSHA, sha256ID + ".." + sha256ID},
+			bad: []string{
+				headSHA, headSHA + "...", headSHA + "..." + otherSHA, headSHA + "..HEAD", "HEAD.." + headSHA,
+				"main.." + headSHA, "fc1c397.." + headSHA, strings.Repeat("0", 40) + ".." + headSHA,
+				headSHA + ".." + otherSHA + "..x", "^" + headSHA + ".." + otherSHA, headSHA + "..-x",
+			},
+		},
+		slotRemoteName: {
+			good: []string{remoteName, "upstream", "fork-2", "acme.org_x"},
+			bad: []string{
+				"-o", ".hidden", "a..b", "a/b", "a b", "https://example.com/r", "ext::sh", "a:b", "a;b",
+				strings.Repeat("a", maxNameLen+1),
+			},
+		},
 	}
 }
 
@@ -160,7 +175,7 @@ func TestEverySlotHasAValidatorAndSamples(t *testing.T) {
 	checks := validators()
 	all := slotSamples()
 
-	for s := slotGitPath; s <= slotTagCommit; s++ {
+	for s := slotGitPath; s <= slotRemoteName; s++ {
 		assert.Contains(t, checks, s, "slot %d has no validator", s)
 		assert.Contains(t, all, s, "slot %d has no samples", s)
 	}
@@ -328,7 +343,10 @@ func TestIsDir(t *testing.T) {
 func assertReadOnlyForm(t *testing.T, name, verb string, words []string, form string) {
 	t.Helper()
 
-	if form == "" || (verb == configCmd && slices.Contains(words, "--get-regexp")) {
+	// config's --get-regexp and --list only read too, and ls-remote's --get-url asks no
+	// remote anything.
+	if form == "" || (verb == configCmd && (slices.Contains(words, "--get-regexp") || slices.Contains(words, "--list"))) ||
+		(verb == lsRemote && slices.Contains(words, "--get-url")) {
 		return
 	}
 

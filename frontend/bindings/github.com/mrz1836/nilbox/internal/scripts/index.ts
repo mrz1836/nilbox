@@ -7,6 +7,7 @@ export {
 };
 
 export {
+    BranchState,
     Direction,
     Icon,
     InputKind,
@@ -16,6 +17,7 @@ export {
 } from "./models.js";
 
 export type {
+    BranchStatus,
     Clone,
     Entry,
     Input,

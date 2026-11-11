@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -435,6 +436,7 @@ type harness struct {
 	clock  *testutil.Clock
 	events *testutil.Events
 	logs   *testutil.Logs
+	merges *fakeMerges
 }
 
 // newHarness returns a harness whose GitHub answers with review and diff at headA.
@@ -448,6 +450,7 @@ func newHarness(t *testing.T) *harness {
 		db: db, inbox: &fakeInbox{pull: storedPull()}, clock: testutil.NewClock(testNow), events: &testutil.Events{},
 		github: &fakeGitHub{review: pullReview(headA, github.MergeStateClean), diff: pullDiff(headA)},
 		logs:   &testutil.Logs{},
+		merges: &fakeMerges{},
 	}
 
 	h.svc = h.service(fakeSettings{}, fakeReplies{})
@@ -459,7 +462,7 @@ func newHarness(t *testing.T) *harness {
 func (h *harness) service(settings Settings, replies Replies) *Service {
 	return NewService(Config{
 		Pool: h.db, Inbox: h.inbox, GitHub: h.github, Settings: settings, Replies: replies, Events: h.events,
-		Clock: h.clock, Logger: h.logs.Logger(),
+		Merges: h.merges, Clock: h.clock, Logger: h.logs.Logger(),
 	})
 }
 
@@ -506,4 +509,26 @@ func pullDiff(head string) *github.PullDiff {
 // badCredentials is GitHub refusing the token.
 func badCredentials() error {
 	return &github.StatusError{StatusCode: http.StatusUnauthorized, Message: "Bad credentials"}
+}
+
+// fakeMerges records the repositories the sheet's merges went into, as the Release page's
+// Refresher hears them.
+type fakeMerges struct {
+	mu    sync.Mutex
+	names []repo.Name
+}
+
+func (f *fakeMerges) Merged(name repo.Name) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.names = append(f.names, name)
+}
+
+// heard returns the repositories heard so far.
+func (f *fakeMerges) heard() []repo.Name {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return slices.Clone(f.names)
 }

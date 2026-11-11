@@ -294,6 +294,15 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.SetScriptSources": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetScriptSources(ctx, true, true)
 		},
+		"settings.Service.SetIntegrationsAnnounced": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetIntegrationsAnnounced(ctx, true)
+		},
+		"settings.Service.SetScriptsLastPage": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetScriptsLastPage(ctx, integrationprefs.PageHooks)
+		},
+		"settings.Service.SetScriptsLastRepo": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetScriptsLastRepo(ctx, "~/projects/example-repo")
+		},
 		"scripts.Service.Repos": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			got, err := c.Scripts.Repos(ctx)
 			require.Len(t, got, 1)

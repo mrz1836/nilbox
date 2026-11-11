@@ -11,6 +11,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -225,6 +226,32 @@ func TestApproveAndMergeFallsBackToAutoMerge(t *testing.T) {
 			assert.False(t, res.LeftInbox)
 		})
 	}
+}
+
+func TestAMergeTellsTheReleasePageWhichRepositoryChanged(t *testing.T) {
+	t.Parallel()
+
+	merged := readHarness(t, github.MergeStateClean)
+	merged.github.states = []*github.MergeState{open(github.MergeStateClean, headA)}
+
+	res := merged.act(t, ActRequest{Action: ActionApproveMerge, Accept: true})
+	require.Equal(t, OutcomeMerged, res.Outcome)
+	assert.Equal(t, []repo.Name{{Owner: "acme-org", Repo: "example-repo"}}, merged.merges.heard(),
+		"the merged pull request's repository is heard once")
+
+	auto := readHarness(t, github.MergeStateClean)
+	auto.github.states = []*github.MergeState{open(github.MergeStateBlocked, headA)}
+
+	res = auto.act(t, ActRequest{Action: ActionApproveMerge, Accept: true})
+	require.Equal(t, OutcomeAutoMerge, res.Outcome)
+	assert.Empty(t, auto.merges.heard(), "auto-merge merges nothing yet")
+
+	refused := readHarness(t, github.MergeStateClean)
+	refused.github.states = []*github.MergeState{open(github.MergeStateDirty, headA)}
+
+	res = refused.act(t, ActRequest{Action: ActionApproveMerge, Accept: true})
+	require.Equal(t, OutcomeApprovedNotMerged, res.Outcome)
+	assert.Empty(t, refused.merges.heard(), "nor does a merge GitHub won't make")
 }
 
 func TestApproveAndMergeReportsWhatGitHubWouldNotDo(t *testing.T) {

@@ -160,11 +160,34 @@ func TestAReleasePatchesItsRepositoryAlone(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, groups(got), groups(kept), "the patched list is kept for the next start")
 
-	r.clock.Advance(FreshFor - time.Minute)
+	r.clock.Advance(6 * time.Hour)
 
 	_, err = r.svc.Candidates(t.Context(), false)
 	require.NoError(t, err)
-	assert.Equal(t, 3, r.github.calls(), "five minutes after the list was read, not patched, it is read again")
+	assert.Equal(t, 2, r.github.calls(), "however old the list grows, the rest isn't read again unasked")
+}
+
+func TestAReleasePatchesAListOfAnyAge(t *testing.T) {
+	t.Parallel()
+
+	r := newRig()
+	r.refresherOn()
+
+	_, err := r.svc.Candidates(t.Context(), false)
+	require.NoError(t, err)
+
+	r.clock.Advance(24 * time.Hour)
+	r.github.releaseWeb()
+	r.svc.released(t.Context(), name("web"), webDir, Result{Kind: ResultReleased})
+	r.patchBehind(t.Context(), t)
+
+	assert.Equal(t, 2, r.github.calls())
+	assert.Equal(t, []repo.Name{name("web")}, r.github.askedAt(1), "a day-old list is patched, the released repository alone")
+
+	got, err := r.svc.Candidates(t.Context(), false)
+	require.NoError(t, err)
+	assert.Equal(t, "v0.9.2", rowOf(t, got, "acme-org/web").Version)
+	assert.Equal(t, 2, r.github.calls(), "and served without reading GitHub again")
 }
 
 func TestAReleasePatchesEveryCloneOfItsRepository(t *testing.T) {
@@ -332,11 +355,13 @@ func TestAListThatCantBePatchedGoesOutOfDate(t *testing.T) {
 			released: name("web"),
 		},
 		{
-			name: "a list over five minutes old",
+			name: "a list out of date",
 			before: func(t *testing.T, r *rig) {
 				t.Helper()
 				read(t, r)
-				r.clock.Advance(FreshFor)
+				r.svc.mu.Lock()
+				r.svc.outOfDate()
+				r.svc.mu.Unlock()
 			},
 			released: name("web"),
 		},
@@ -413,9 +438,9 @@ func TestAKeptListIsntPatched(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, kept.Kept, "the list kept from the past start is shown")
 
-	// As fresh as a list can be, so only its being kept stops the patch.
+	// As current as a list can be, so only its being kept stops the patch.
 	r.svc.mu.Lock()
-	r.svc.tried = r.clock.Now()
+	r.svc.current = true
 	r.svc.mu.Unlock()
 
 	r.github.releaseWeb()
@@ -777,4 +802,113 @@ func TestAReleaseEndingPatchesTheReleasePage(t *testing.T) {
 	assert.False(t, got.Refreshing)
 	assert.Len(t, r.events.All()[before:], 4, "the page reads the patched list, not the whole list again")
 	assert.Equal(t, 3, r.github.calls())
+}
+
+func TestAMergeInTheReviewSheetPatchesItsRepository(t *testing.T) {
+	t.Parallel()
+
+	r := newRig()
+	r.svc.progressEvery = 0
+	r.refresherOn()
+
+	_, err := r.svc.Candidates(t.Context(), false)
+	require.NoError(t, err)
+
+	r.clock.Advance(3 * time.Hour)
+	r.github.releaseWeb() // GitHub answers anew for web, as after a merge into it
+
+	before := r.events.Count()
+
+	NewRefresher(r.svc).Merged(name("web"))
+	assert.Equal(t, []event.Event{event.ReleasesUpdated{}}, r.events.All()[before:], "the window hears at once")
+	assert.True(t, servedNow(r.svc).Refreshing, "the list reads as refreshing until the patch lands")
+
+	r.patchBehind(t.Context(), t)
+
+	assert.Equal(t, 2, r.github.calls())
+	assert.Equal(t, []repo.Name{name("web")}, r.github.askedAt(1), "GitHub is asked about the merged repository alone")
+	assert.Equal(t, 1, r.clones.scans(), "and the clone root isn't scanned again")
+
+	got, err := r.svc.Candidates(t.Context(), false)
+	require.NoError(t, err)
+	assert.False(t, got.Refreshing)
+	assert.Equal(t, "v0.9.2", rowOf(t, got, "acme-org/web").Version, "web's row is read again")
+	assert.Equal(t, 2, r.github.calls(), "and the patched list is served as it is")
+}
+
+func TestAMergeLeavesAListItCantPatchAsItIs(t *testing.T) {
+	t.Parallel()
+
+	read := func(t *testing.T, r *rig) {
+		t.Helper()
+
+		_, err := r.svc.Candidates(t.Context(), false)
+		require.NoError(t, err)
+	}
+
+	tests := []struct {
+		name    string
+		before  func(t *testing.T, r *rig)
+		merged  repo.Name
+		running bool
+	}{
+		{name: "the Refresher not running", before: read, merged: name("web")},
+		{name: "no list yet", before: func(*testing.T, *rig) {}, merged: name("web"), running: true},
+		{name: "a repository the list doesn't hold", before: read, merged: name("other"), running: true},
+		{
+			name: "a list whose last read failed",
+			before: func(t *testing.T, r *rig) {
+				t.Helper()
+				read(t, r)
+				r.github.fail(errGitHubDown)
+
+				_, err := r.svc.Candidates(t.Context(), true)
+				require.NoError(t, err)
+			},
+			merged: name("web"), running: true,
+		},
+		{
+			name: "a list out of date",
+			before: func(t *testing.T, r *rig) {
+				t.Helper()
+				read(t, r)
+				r.svc.mu.Lock()
+				r.svc.outOfDate()
+				r.svc.mu.Unlock()
+			},
+			merged: name("web"), running: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := newRig()
+			if tt.running {
+				r.refresherOn()
+			}
+
+			tt.before(t, r)
+
+			r.svc.mu.Lock()
+			current, outdated := r.svc.current, r.svc.outdated
+			r.svc.mu.Unlock()
+
+			asked, before := r.github.calls(), r.events.Count()
+
+			NewRefresher(r.svc).Merged(tt.merged)
+
+			assert.False(t, r.askedPatch(), "nothing is read again")
+			assert.Empty(t, r.events.All()[before:], "nor is the window told anything")
+			assert.Equal(t, asked, r.github.calls())
+			assert.False(t, servedNow(r.svc).Refreshing)
+
+			r.svc.mu.Lock()
+			defer r.svc.mu.Unlock()
+
+			assert.Equal(t, current, r.svc.current, "the list is left as current as it was")
+			assert.Equal(t, outdated, r.svc.outdated, "and never put out of date by a merge")
+		})
+	}
 }

@@ -19,6 +19,7 @@ import {
   toolVersions,
   agents,
   appInfo,
+  branchStatus,
   budgetGauge,
   checkResult,
   cloneTarget,
@@ -212,6 +213,9 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     setOfferAfterMerge: (offerAfterMerge) => stored({ integrations: integrationsConfig({ offerAfterMerge }) }),
     setScriptSources: (magexTargets, repoFiles) =>
       stored({ integrations: integrationsConfig({ scriptSources: { magexTargets, repoFiles } }) }),
+    setIntegrationsAnnounced: (announced) => stored({ integrations: integrationsConfig({ announced }) }),
+    setScriptsLastPage: (lastPage) => stored({ integrations: integrationsConfig({ lastPage }) }),
+    setScriptsLastRepo: (lastRepo) => stored({ integrations: integrationsConfig({ lastRepo }) }),
 
     listIntegrations: () => Promise.resolve(integrationTools()),
     checkIntegrationsAgain: () => Promise.resolve(integrationTools()),
@@ -247,6 +251,8 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     deleteUserScript: done,
     duplicateUserScript: (id) => Promise.resolve(userScript({ id: id + 40, name: 'Fix all copy' })),
     moveUserScript: done,
+    getBranchStatus: (dir) => Promise.resolve(branchStatus({ dir })),
+    pullBranch: () => Promise.resolve(51),
 
     listHooks: () => Promise.resolve(hooksList()),
     installHook: () => Promise.resolve(11),

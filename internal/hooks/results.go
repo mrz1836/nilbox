@@ -141,7 +141,7 @@ func (r Rerunner) Rerun(ctx context.Context, run scriptrun.Record) (scriptrun.Sp
 		}
 
 		return r.s.checksSpec(ctx, c, in, where)
-	case scriptrun.KindRelease, scriptrun.KindScript, scriptrun.KindUpdate:
+	case scriptrun.KindRelease, scriptrun.KindScript, scriptrun.KindUpdate, scriptrun.KindPull:
 	}
 
 	return scriptrun.Spec{}, fmt.Errorf("%w: a %s run", ErrInvalidRequest, run.Kind)

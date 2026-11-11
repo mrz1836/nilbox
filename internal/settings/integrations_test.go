@@ -205,3 +205,45 @@ func TestSetIntegrationPath(t *testing.T) {
 
 	assert.Equal(t, 2, events.Count(), "a refused path says nothing")
 }
+
+func TestTheScriptsTabsMemoryIsKept(t *testing.T) {
+	t.Parallel()
+
+	events := &testutil.Events{}
+	svc := serviceOver(t, testutil.DB(t), t.TempDir(), WithEvents(events))
+
+	fresh, err := svc.Get(t.Context())
+	require.NoError(t, err)
+	assert.False(t, fresh.Integrations.Announced)
+	assert.Equal(t, integrationprefs.PageNone, fresh.Integrations.LastPage)
+	assert.Empty(t, fresh.Integrations.LastRepo)
+
+	got, err := svc.SetIntegrationsAnnounced(t.Context(), true)
+	require.NoError(t, err)
+	assert.True(t, got.Integrations.Announced)
+
+	got, err = svc.SetScriptsLastPage(t.Context(), integrationprefs.PageScripts)
+	require.NoError(t, err)
+	assert.Equal(t, integrationprefs.PageScripts, got.Integrations.LastPage)
+
+	got, err = svc.SetScriptsLastRepo(t.Context(), "~/projects/example-repo")
+	require.NoError(t, err)
+	assert.Equal(t, "~/projects/example-repo", got.Integrations.LastRepo)
+
+	_, err = svc.SetScriptsLastPage(t.Context(), "settings")
+	require.ErrorIs(t, err, integrationprefs.ErrInvalidPage)
+
+	_, err = svc.SetScriptsLastRepo(t.Context(), "projects/example-repo")
+	require.ErrorIs(t, err, integrationprefs.ErrInvalidRepo)
+
+	reread, err := svc.Get(t.Context())
+	require.NoError(t, err)
+	assert.True(t, reread.Integrations.Announced, "each is kept")
+	assert.Equal(t, integrationprefs.PageScripts, reread.Integrations.LastPage, "a refused page stored nothing")
+	assert.Equal(t, "~/projects/example-repo", reread.Integrations.LastRepo, "nor did a refused folder")
+
+	got, err = svc.SetScriptsLastRepo(t.Context(), "")
+	require.NoError(t, err)
+	assert.Empty(t, got.Integrations.LastRepo, "an empty folder forgets it")
+	assert.Zero(t, events.Count(), "only the window reads them")
+}

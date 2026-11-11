@@ -20,13 +20,8 @@ import (
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
-const (
-	// FreshFor is how long a candidates list is served without asking GitHub again.
-	FreshFor = 5 * time.Minute
-
-	// checkConcurrency is how many clones' states are read at once.
-	checkConcurrency = 8
-)
+// checkConcurrency is how many clones' states are read at once.
+const checkConcurrency = 8
 
 // ErrSignedOut is returned when no one is signed in to GitHub, so nothing could be asked.
 var ErrSignedOut = errors.New("not signed in to GitHub")
@@ -185,18 +180,19 @@ type Service struct {
 	// answer.
 	refreshes flight.Group[Candidates]
 
-	// mu guards the last list, the clone root it was read from, when it was last asked
-	// for, and why that failed, if it did. kept reports the last list as the one kept from
-	// a past start, which no refresh has replaced yet, and restored that it was read.
-	// background reports the Refresher running, and pending a refresh it was asked for
-	// that hasn't landed. unpatched holds the keys of the repositories released since the
+	// mu guards the last list, the clone root it was read from, whether it is current (its
+	// last read landed, and nothing put it out of date since), and why that read failed, if
+	// it did. kept reports the last list as the one kept from a past start, which no
+	// refresh has replaced yet, and restored that it was read. background reports the
+	// Refresher running, and pending a refresh it was asked for that hasn't landed.
+	// unpatched holds the keys of the repositories released, or merged into, since the
 	// Refresher last patched the list, patching reports a patch queued or under way, so the
 	// list is served as refreshing, and outdated counts the times the list went out of date
 	// (outOfDate).
 	mu         sync.Mutex
 	last       Candidates
 	root       string
-	tried      time.Time
+	current    bool
 	failure    string
 	has        bool
 	kept       bool
@@ -237,20 +233,23 @@ func NewService(cfg Config) *Service {
 	return s
 }
 
-// Candidates returns the repositories the Release page lists. It serves the last list
-// while it is under five minutes old and was read from the clone root as set now, unless
-// refresh is set; otherwise it asks GitHub, in two rounds of batched queries, reads the
-// unreleased clones' state, and emits event.ReleasesUpdated, telling the window how far
-// it has got meanwhile (event.ReleasesProgress). A refresh that fails keeps the last list,
-// with its error, until one succeeds, and fails only when there is none.
+// Candidates returns the repositories the Release page lists. It serves the last list,
+// however old, while it is current and was read from the clone root as set now, unless
+// refresh is set: the whole list is read again only when the user asks (Read GitHub
+// again), none was read yet, the clone root changed, or the list went out of date
+// (outOfDate). Otherwise it asks GitHub, in two rounds of batched queries, reads the
+// unreleased clones' state, and emits event.ReleasesUpdated, telling the window how far it
+// has got meanwhile (event.ReleasesProgress). A refresh that fails keeps the last list,
+// with its error, until the user reads it again, and fails only when there is none.
 //
 // After a restart, the list kept from the last start, when it was read from the clone
 // root as set now, is served at once, marked Kept and Refreshing, while the Refresher
 // reads GitHub again behind the page; without the Refresher, the call waits for GitHub.
 //
-// A release that ends needn't put the list out of date: while the Refresher runs, it reads
-// the released repository alone again and patches its rows into the list, which stays as
-// fresh as it was (queuePatch). Meanwhile the list is served as it was, marked Refreshing.
+// A release that ends, or a pull request merged in the review sheet, changes one
+// repository's rows alone: while the Refresher runs, it reads that repository alone again
+// and patches its rows into the list, which stays as current as it was (queuePatch,
+// queueMerged). Meanwhile the list is served as it was, marked Refreshing.
 func (s *Service) Candidates(ctx context.Context, refresh bool) (Candidates, error) {
 	root, err := s.clones.Root(ctx)
 	if err != nil {
@@ -269,7 +268,7 @@ func (s *Service) Candidates(ctx context.Context, refresh bool) (Candidates, err
 }
 
 // serveNow returns the last list read from root when it is served without waiting for
-// GitHub: while it is fresh, unless refresh is set, or, when it is the list kept from a
+// GitHub: while it is current, unless refresh is set, or, when it is the list kept from a
 // past start, at once, asking the Refresher to read GitHub again behind it.
 func (s *Service) serveNow(root string, refresh bool) (Candidates, bool) {
 	s.mu.Lock()
@@ -279,7 +278,7 @@ func (s *Service) serveNow(root string, refresh bool) (Candidates, bool) {
 		return Candidates{}, false
 	}
 
-	if s.fresh() {
+	if s.current {
 		return s.served(), true
 	}
 
@@ -290,12 +289,6 @@ func (s *Service) serveNow(root string, refresh bool) (Candidates, bool) {
 	s.askBehind()
 
 	return s.served(), true
-}
-
-// fresh reports whether the last list was asked for under FreshFor ago. The caller holds
-// mu.
-func (s *Service) fresh() bool {
-	return s.clock.Now().Sub(s.tried) < FreshFor
 }
 
 // served is the last list as the page shows it, with the last refresh's failure, whether
@@ -342,10 +335,7 @@ func (s *Service) refresh(ctx context.Context, root string) (Candidates, error) 
 		return Candidates{}, ctx.Err()
 	}
 
-	s.tried = s.clock.Now()
-	if s.outdated != outdated {
-		s.tried = time.Time{}
-	}
+	s.current = s.outdated == outdated
 
 	if err != nil {
 		if !s.has || s.root != root {

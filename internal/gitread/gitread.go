@@ -1,7 +1,8 @@
-// Package gitread runs the read-only git commands the release and hooks services ask of a
-// clone, and reads their answers: the current branch, uncommitted changes, what git is in
-// the middle of, branches and tags here and on origin, the signing settings, and where
-// the hooks live.
+// Package gitread runs the read-only git commands the release, hooks, and Repo scripts
+// services ask of a clone, and reads their answers: the current branch, uncommitted
+// changes, what git is in the middle of, branches and tags here and on origin, the
+// commits between two, the signing settings, and where the hooks live. Message words
+// their failures for the user.
 //
 // Every command is checked against an exact allowlist before it runs, and anything else
 // is refused with ErrGitCommandNotAllowed: no command here changes a clone's files, index,
@@ -22,6 +23,10 @@
 // ssh transports are allowed; the clone's ssh command, password program, and credential
 // helpers give way to the user's own; no cookie file is written; and origin is asked for
 // git's own upload-pack. No other command reaches a transport at all.
+//
+// The git commands that do change a clone, run elsewhere, get what they run with from a
+// Setup (RemoteSetup, RemoteSetupFor, CheckoutSetup), which first refuses a clone whose own
+// config holds a setting cloneconfig.go's classes refuse.
 package gitread
 
 import (
@@ -116,8 +121,8 @@ func (g *Git) Run(ctx context.Context, dir string, args ...string) (stdout, stde
 
 // remote runs an ls-remote, which has passed the allowlist, within RemoteTimeout and as
 // remoteGuard sets it up, and words its failure as Run says.
-func (g *Git) remote(ctx context.Context, dir string, args []string) (stdout, stderr []byte, err error) {
-	ctx, cancel := context.WithTimeout(ctx, RemoteTimeout)
+func (g *Git) remote(parent context.Context, dir string, args []string) (stdout, stderr []byte, err error) {
+	ctx, cancel := context.WithTimeout(parent, RemoteTimeout)
 	defer cancel()
 
 	base := g.env()
@@ -129,10 +134,12 @@ func (g *Git) remote(ctx context.Context, dir string, args []string) (stdout, st
 
 	switch {
 	case err == nil:
+	case ctx.Err() != nil && parent.Err() == nil:
+		err = fmt.Errorf("%w: %w: %w", ErrRemoteTimeout, ctx.Err(), err)
 	case ctx.Err() != nil:
 		err = fmt.Errorf("%w: %w", ctx.Err(), err)
 	case len(setup.setAside) > 0:
-		err = &SetAsideError{Err: err, Settings: setup.setAside}
+		err = &SetAsideError{Err: err, Settings: setup.setAside, Remote: remoteName}
 	}
 
 	return stdout, stderr, err
@@ -152,14 +159,27 @@ func (g *Git) exec(ctx context.Context, dir string, env, extra, args []string) (
 }
 
 // status runs a status with every filter driver the clone's own config defines turned
-// off. A status reads a file whose stat data changed, as in a copied clone, and reading
-// it runs the clean filter or the process its .gitattributes names: a clone's config could
-// make that any program, run with no click when the Release page reads its clones. The
-// user's own drivers, in their global or system config, such as Git LFS's, still run. A
-// driver whose name can't be passed safely refuses the status.
+// off, Git LFS's too. A status reads a file whose stat data changed, as in a copied clone,
+// and reading it runs the clean filter or the process its .gitattributes names: a clone's
+// config could make that any program, run with no click when the Release page reads its
+// clones, and even Git LFS's own writes into the clone. The user's own drivers, in their
+// global or system config, such as Git LFS's, still run. A driver whose name can't be
+// passed safely refuses the status.
 func (g *Git) status(ctx context.Context, dir string, args []string) (stdout, stderr []byte, err error) {
 	env := g.environment()
 
+	off, errOut, err := g.filtersOff(ctx, dir, env)
+	if err != nil {
+		return nil, errOut, err
+	}
+
+	return g.exec(ctx, dir, env, off, args)
+}
+
+// filtersOff reads the filter drivers' program settings in dir, with where each is set,
+// and returns the settings that turn off every driver the clone's own config defines
+// (cloneFiltersOff), or git's error output when they can't be read.
+func (g *Git) filtersOff(ctx context.Context, dir string, env []string) (off []string, stderr []byte, err error) {
 	out, errOut, err := g.exec(ctx, dir, env, nil, filterDriversArgs())
 
 	switch {
@@ -170,42 +190,65 @@ func (g *Git) status(ctx context.Context, dir string, args []string) (stdout, st
 		return nil, errOut, err
 	}
 
-	off, err := cloneFiltersOff(out)
+	settings, err := parseScoped(out)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return g.exec(ctx, dir, env, off, args)
+	off, err = cloneFiltersOff(settings, false)
+
+	return off, nil, err
 }
 
-// cloneFiltersOff reads `git config --show-scope --get-regexp` lines for the filter
-// drivers' keys and returns the settings that turn off each driver from the clone's own
-// config (any scope but trustedScopes). A driver name passable refuses can't be named in
-// a -c setting, and is refused.
-func cloneFiltersOff(out []byte) ([]string, error) {
-	var off []string
+// cloneFiltersOff returns, from the filter drivers' settings, the -c settings that turn
+// off each driver the clone's own config (any scope but trustedScopes) defines: its clean,
+// smudge, and process commands emptied, which git reads as no filter, and required off,
+// so the file is read or written as it is rather than failing. A read turns off every
+// one, Git LFS's too, since git-lfs's clean writes into the clone's .git/lfs. With keepLFS,
+// as for a pull or a checkout, which write the clone's files, Git LFS's own driver,
+// filter.lfs with only the commands `git lfs install --local` writes (lfsSettings), stays
+// on: it runs the user's own git-lfs, from their PATH, not a program the clone chose. A
+// driver name passable refuses can't be named in a -c setting, and is refused.
+func cloneFiltersOff(settings []scopedSetting, keepLFS bool) ([]string, error) {
+	var order []string
 
-	for line := range strings.Lines(string(out)) {
-		scope, rest, ok := strings.Cut(strings.TrimRight(line, "\n"), "\t")
-		if !ok || trustedScope(scope) {
+	lfs := map[string]bool{}
+
+	for _, s := range settings {
+		if s.trusted() {
 			continue
 		}
 
-		key, _, _ := strings.Cut(rest, " ")
-
-		name, ok := filterName(key)
+		name, ok := filterName(s.key)
 		if !ok {
-			return nil, fmt.Errorf("%w: a filter driver named %q", ErrGitCommandNotAllowed, key)
+			return nil, fmt.Errorf("%w: a filter driver named %q", ErrGitCommandNotAllowed, s.key)
 		}
 
-		off = append(off, "-c", "filter."+name+".clean=", "-c", "filter."+name+".process=")
+		kept, seen := lfs[name]
+		if !seen {
+			order, kept = append(order, name), keepLFS && name == "lfs"
+		}
+
+		lfs[name] = kept && slices.Contains(lfsSettings()[s.key], s.value)
 	}
 
-	return off, nil
+	return driversOff(slices.DeleteFunc(order, func(name string) bool { return lfs[name] })), nil
 }
 
-// filterName returns the driver's name in a filter.<name>.clean or .process key, and
-// whether it can be named in a -c setting.
+// driversOff returns the -c settings that turn off each of the filter drivers names.
+func driversOff(names []string) []string {
+	off := make([]string, 0, 8*len(names))
+
+	for _, name := range names {
+		off = append(off, "-c", "filter."+name+".clean=", "-c", "filter."+name+".smudge=",
+			"-c", "filter."+name+".process=", "-c", "filter."+name+".required=false")
+	}
+
+	return off
+}
+
+// filterName returns the driver's name in a filter.<name>.clean, .smudge, or .process
+// key, and whether it can be named in a -c setting.
 func filterName(key string) (string, bool) {
 	rest, ok := strings.CutPrefix(key, "filter.")
 	if !ok {
@@ -222,9 +265,10 @@ func filterName(key string) (string, bool) {
 	return name, passable(name)
 }
 
-// filterDriversArgs lists the filter drivers' program settings with where each is set.
+// filterDriversArgs lists the filter drivers' program settings with where each is set,
+// NUL-terminated so a value may hold a newline.
 func filterDriversArgs() []string {
-	return []string{configCmd, "--show-scope", "--get-regexp", filterKeysPattern}
+	return []string{configCmd, "--show-scope", "-z", "--get-regexp", filterKeysPattern}
 }
 
 // environment returns Env's environment with GIT_OPTIONAL_LOCKS=0, GIT_TERMINAL_PROMPT=0,
@@ -250,10 +294,55 @@ func environmentOf(base []string) []string {
 }
 
 // hardening are the settings every command runs with: the file system monitor and
-// submodule recursion off. Unlike internal/worktrees, hooks stay where core.hooksPath
-// puts them, since `rev-parse --git-path hooks` must name the real folder.
+// submodule recursion off. Unlike a command that changes a clone (Hardening), hooks stay
+// where core.hooksPath puts them, since `rev-parse --git-path hooks` must name the real
+// folder, and none of these commands runs one.
 func hardening() []string {
 	return []string{"-c", "core.fsmonitor=false", "-c", "submodule.recurse=false"}
+}
+
+// Hardening returns the settings, ahead of its subcommand, that every git command the app
+// runs to change a clone runs with: no hook from a hooks folder, the file system monitor
+// off, and no submodule recursion. core.hooksPath points the hooks folder at an empty one.
+// It doesn't reach the hooks a config names (hook.<name>.command and .event, from git
+// 2.54): the clone's own hook.* settings refuse every command that could fire one
+// (cloneconfig.go), which is what keeps them from running. Beside that,
+// hook.<event>.enabled=false is set for every event git can fire (hookEvents): git 2.56
+// documents it as turning off every hook of the event, the user's own config hooks too,
+// and a test shows it does there; a git whose config hooks predate that switch may read it
+// as the switch of a hook named after the event, which turns off nothing, and a git
+// older than config hooks ignores it. git runs hooks and the file system monitor with the
+// clone as their working folder, so either could run a program the clone's own files
+// hold, and a submodule's URL is the clone's to name. internal/worktrees runs each of its
+// commands with them, and Repo scripts' pull too (RemoteSetup).
+func Hardening() []string {
+	out := append([]string{"-c", "core.hooksPath=" + os.DevNull}, hardening()...)
+
+	for _, event := range hookEvents() {
+		out = append(out, "-c", "hook."+event+".enabled=false")
+	}
+
+	return out
+}
+
+// hookEvents are every event git fires hooks for, through 2.56: those a command the app
+// runs could fire (post-checkout, post-merge, post-rewrite, reference-transaction,
+// post-index-change, pre-auto-gc, push-to-checkout), and the rest, so none is left on.
+func hookEvents() []string {
+	return []string{
+		"applypatch-msg", "pre-applypatch", "post-applypatch", "pre-commit", "pre-merge-commit", "prepare-commit-msg",
+		"commit-msg", "post-commit", "pre-rebase", "post-checkout", "post-merge", "pre-push", "pre-receive", "update",
+		"proc-receive", "post-receive", "post-update", "reference-transaction", "push-to-checkout", "pre-auto-gc",
+		"post-rewrite", "sendemail-validate", "fsmonitor-watchman", "p4-changelist", "p4-prepare-changelist",
+		"p4-post-changelist", "p4-pre-submit", "post-index-change",
+	}
+}
+
+// ValidBranch reports a branch name the app may hand git as an argument: one that can't be
+// read as an option, a range, a refspec's src:dst, or a pattern, and that git itself
+// would take (validBranch).
+func ValidBranch(name string) bool {
+	return validBranch(name)
 }
 
 // droppedVars are the variables environment drops: the four it sets, those that would
@@ -274,10 +363,14 @@ func hasVar(env []string, key string) bool {
 	return slices.ContainsFunc(env, func(kv string) bool { return strings.HasPrefix(kv, key+"=") })
 }
 
-// execRunner is the default Runner: an execpath.Exec that runs with env and finds git on
-// env's PATH, then in the well-known tool folders under env's HOME.
+// execRunner is the default Runner: an execpath.Exec that runs with env and finds git as
+// gitSearch does.
 func execRunner(env []string) execpath.Runner {
-	search := execpath.Search{Path: shellenv.Lookup(env, "PATH"), Home: shellenv.Lookup(env, "HOME")}
+	return execpath.Exec{Search: gitSearch(env), Env: env}
+}
 
-	return execpath.Exec{Search: search, Env: env}
+// gitSearch finds git on env's PATH, then in the well-known tool folders under env's HOME:
+// the git every command runs, and the one RemoteSetup names.
+func gitSearch(env []string) execpath.Search {
+	return execpath.Search{Path: shellenv.Lookup(env, "PATH"), Home: shellenv.Lookup(env, "HOME")}
 }
