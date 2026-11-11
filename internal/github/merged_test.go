@@ -121,6 +121,46 @@ func TestFetchMergedPullRequestsFailsOnAnyOtherError(t *testing.T) {
 	assert.NotContains(t, err.Error(), fakeToken)
 }
 
+func TestFetchMergedPullRequestsLeavesOutANameThatIsNotUTF8(t *testing.T) {
+	t.Parallel()
+
+	example := repo.Name{Owner: filesOwner, Repo: exampleRepo}
+
+	var requests atomic.Int32
+
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+
+		raw, err := io.ReadAll(r.Body)
+		assert.NoError(t, err)
+
+		var req graphQLRequest
+		assert.NoError(t, json.Unmarshal(raw, &req))
+		assert.Contains(t, req.Query, `b0: pullRequests(headRefName: "feature-x", states: MERGED`)
+		assert.Equal(t, 1, strings.Count(req.Query, "pullRequests("), "only the UTF-8 name is asked about")
+		assert.Equal(t, 1, strings.Count(req.Query, "repository("), "a repository with no name left is not asked about")
+		assert.NotContains(t, req.Query, "\uFFFD", "no name is asked about rewritten")
+
+		_, _ = io.WriteString(w, mergedBody)
+	})
+
+	got, err := client.FetchMergedPullRequests(t.Context(), NewToken(fakeToken), []BranchQuery{
+		{Repo: example, Branches: []string{"feature-\xff", "feature-x"}},
+		{Repo: repo.Name{Owner: filesOwner, Repo: "quiet"}, Branches: []string{"\xfe"}},
+	})
+	require.NoError(t, err)
+	assert.Len(t, got, 1)
+	assert.Contains(t, got, MergedKey(example, "feature-x"))
+	assert.NotContains(t, got, MergedKey(example, "feature-\xff"), "a name that is not UTF-8 reads as unknown")
+
+	got, err = client.FetchMergedPullRequests(t.Context(), NewToken(fakeToken), []BranchQuery{
+		{Repo: example, Branches: []string{"feature-\xff"}},
+	})
+	require.NoError(t, err)
+	assert.Empty(t, got)
+	assert.Equal(t, int32(1), requests.Load(), "nothing left to ask sends nothing")
+}
+
 func TestMergedQueryQuotesNames(t *testing.T) {
 	t.Parallel()
 

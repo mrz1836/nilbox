@@ -73,6 +73,7 @@ import type {
   Settings,
   SweepReport,
   ToolCopy,
+  UserScript,
   Worktree,
   WorktreeBranch,
   WorktreeCleanup,
@@ -1891,8 +1892,45 @@ export function scriptEntry(overrides: Partial<ScriptEntry> = {}): ScriptEntry {
     trustNote: '',
     sha256: 'c0ffee01',
     inputs: [],
+    mine: null,
     ...overrides,
   }
+}
+
+// scriptVariables name the variables each of the user's scripts runs with, as Go's
+// scripts.Variables does, from the product's slug.
+export function scriptVariables(): string[] {
+  return ['REPO', 'REPO_DIR', 'DEFAULT_BRANCH'].map((v) => `${brand.slug.toUpperCase()}_${v}`)
+}
+
+// userScript is the user's own Fix all, for every clone, run where the setting sends runs.
+export function userScript(overrides: Partial<UserScript> = {}): UserScript {
+  return {
+    id: 1,
+    name: 'Fix all',
+    command: 'magex format:fix && magex lint',
+    icon: 'play',
+    scope: 'all',
+    repos: [],
+    runsIn: '',
+    confirm: false,
+    ...overrides,
+  }
+}
+
+// yourEntry is the user's script u as Repo scripts lists it: it needs no trust.
+export function yourEntry(u: UserScript = userScript(), overrides: Partial<ScriptEntry> = {}): ScriptEntry {
+  return scriptEntry({
+    ref: `yours:${String(u.id)}`,
+    source: 'yours',
+    name: u.name,
+    command: u.command,
+    icon: u.icon,
+    trust: 'none',
+    sha256: '',
+    mine: u,
+    ...overrides,
+  })
 }
 
 // magexTarget is one of magex's own targets, which needs no trust and takes arguments.
@@ -1956,6 +1994,7 @@ export function repoScripts(overrides: Partial<RepoScripts> = {}): RepoScripts {
     branch: 'master',
     fromBranch: '',
     switches: { magexTargets: true, repoFiles: true },
+    variables: scriptVariables(),
     off: false,
     why: '',
     sections: [

@@ -23,6 +23,16 @@ that is not hex. A refreshed file must keep every case a test asserts on.
 
 <br>
 
+## The query golden files
+
+The `*-query.golden` files are not responses: each holds the whole text of one batched query
+(states, merged branches, latest releases, release status, release compare) as the package
+writes it for a plain repository and a hostile one. `TestBatchedQueriesText` in `batch_test.go`
+compares the queries with them. After a deliberate change to a query, rewrite them with
+`go test ./internal/github -run TestBatchedQueriesText -update`, and review the diff.
+
+<br>
+
 ## Refreshing a fixture
 
 1. Copy the query into a scratch file outside the repository, with the fragments its Go

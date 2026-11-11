@@ -113,11 +113,12 @@ describe('RepoScriptsPage', () => {
       'docs: watch',
     ])
     expect(screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual([
+      'Yours',
       'From t3.json',
       'From .vscode/tasks.json',
       'magex',
     ])
-    expect(screen.queryByText('Yours')).not.toBeInTheDocument()
+    expect(screen.getByText('Save a command you run often with New script, and it shows here.')).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'Repository' })).toHaveValue('~/projects/sdk')
     expect(screen.getByText('acme-org/sdk')).toBeInTheDocument()
     expect(screen.getByText('~/projects/sdk')).toBeInTheDocument()

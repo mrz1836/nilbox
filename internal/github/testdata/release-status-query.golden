@@ -1,0 +1,16 @@
+query ReleaseStatus {
+  r0: repository(owner: "acme-org", name: "example-repo") { ...ReleaseStatusFields }
+  r1: repository(owner: "acme\"org\\", name: "x\") { viewer { login } }\n#\t\u0000\u003c\u0026\u003e\u2028") { ...ReleaseStatusFields }
+  rateLimit { cost }
+}
+
+fragment ReleaseStatusFields on Repository {
+  isArchived viewerPermission
+  defaultBranchRef {
+    name
+    target { oid ... on Commit { committedDate messageHeadline statusCheckRollup { state } } }
+  }
+  refs(refPrefix: "refs/tags/", first: 20, orderBy: {field: TAG_COMMIT_DATE, direction: DESC}) {
+    nodes { name target { __typename oid ... on Tag { target { __typename oid } } } }
+  }
+}

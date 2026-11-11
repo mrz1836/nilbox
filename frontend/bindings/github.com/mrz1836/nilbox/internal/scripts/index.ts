@@ -7,7 +7,10 @@ export {
 };
 
 export {
+    Direction,
+    Icon,
     InputKind,
+    Scope,
     Source,
     Trust
 } from "./models.js";
@@ -19,5 +22,6 @@ export type {
     Option,
     Page,
     RunRequest,
-    Section
+    Section,
+    UserScript
 } from "./models.js";

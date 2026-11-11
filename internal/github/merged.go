@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"golang.org/x/sync/errgroup"
 
@@ -17,11 +17,15 @@ import (
 
 // mergedBatch is the most branch names one merged-branches request asks about. Each is a
 // small connection of at most mergedPerBranch pull requests, so a full request stays
-// cheap; requests are sent side by side like the states requests.
+// cheap; requests are sent side by side like the states requests. Each repository is
+// asked about under mergedRepoPrefix and its index, as in r0, and each of its branch names
+// under mergedBranchPrefix and its index, as in b0.
 const (
-	mergedBatch     = 50
-	mergedPerBranch = 5
-	mergedParallel  = statesParallel
+	mergedBatch        = 50
+	mergedPerBranch    = 5
+	mergedParallel     = statesParallel
+	mergedRepoPrefix   = "r"
+	mergedBranchPrefix = "b"
 )
 
 // BranchQuery asks which of a repository's branch names were the head branch of a pull
@@ -51,7 +55,9 @@ func MergedKey(r repo.Name, branch string) string {
 // FetchMergedPullRequests returns, under MergedKey, the merged pull requests whose head
 // branch had each name asked about, newest first, at most five each. A name no merged pull
 // request had is left out, and so is a repository GitHub cannot resolve; any other error
-// fails the whole call, so a passing problem never makes a branch look merged.
+// fails the whole call, so a passing problem never makes a branch look merged. A name that
+// is not valid UTF-8 is never asked about, so it is left out too: a query could only ask
+// about it rewritten, and so about another branch.
 func (c *Client) FetchMergedPullRequests(ctx context.Context, tok Token, queries []BranchQuery) (map[string][]MergedPR, error) {
 	requests := mergedRequests(queries)
 	answers := make([]map[string][]MergedPR, len(requests))
@@ -88,7 +94,7 @@ type mergedAsk struct {
 }
 
 // mergedRequests splits queries into requests of at most mergedBatch branch names,
-// dropping empty names and repositories with none.
+// dropping empty names, names that are not valid UTF-8, and repositories with none.
 func mergedRequests(queries []BranchQuery) [][]mergedAsk {
 	var (
 		out   [][]mergedAsk
@@ -97,7 +103,7 @@ func mergedRequests(queries []BranchQuery) [][]mergedAsk {
 	)
 
 	for _, q := range queries {
-		names := slices.DeleteFunc(slices.Clone(q.Branches), func(b string) bool { return b == "" })
+		names := slices.DeleteFunc(slices.Clone(q.Branches), func(b string) bool { return b == "" || !utf8.ValidString(b) })
 
 		for len(names) > 0 {
 			take := min(len(names), mergedBatch-count)
@@ -132,13 +138,13 @@ func (c *Client) fetchMerged(ctx context.Context, tok Token, asks []mergedAsk) (
 	out := map[string][]MergedPR{}
 
 	for i, ask := range asks {
-		branches := (*resp.Data)[mergedRepoAlias(i)]
+		branches := (*resp.Data)[batchAlias(mergedRepoPrefix, i)]
 		if branches == nil {
 			continue
 		}
 
 		for j, name := range ask.branches {
-			if prs := branches.pullRequests(mergedBranchAlias(j)); len(prs) > 0 {
+			if prs := branches.pullRequests(batchAlias(mergedBranchPrefix, j)); len(prs) > 0 {
 				out[MergedKey(ask.repo, name)] = prs
 			}
 		}
@@ -148,35 +154,31 @@ func (c *Client) fetchMerged(ctx context.Context, tok Token, asks []mergedAsk) (
 }
 
 // mergedQuery asks, for each repository and each of its branch names, for the merged pull
-// requests whose head branch had that name. Owners, names, and branch names are written as
-// JSON strings, which GraphQL reads the same way, so none can break out of its argument.
+// requests whose head branch had that name. The repository is written by repoField and each
+// branch name by graphQLString, so none can break out of its argument. mergedRequests has
+// already dropped every name graphQLString would refuse.
 func mergedQuery(asks []mergedAsk) (string, error) {
 	var b strings.Builder
 
 	b.WriteString("query MergedBranches {\n")
 
 	for i, ask := range asks {
-		owner, err := json.Marshal(ask.repo.Owner)
+		field, err := repoField(batchAlias(mergedRepoPrefix, i), ask.repo)
 		if err != nil {
-			return "", fmt.Errorf("encode the owner: %w", err)
+			return "", err
 		}
 
-		name, err := json.Marshal(ask.repo.Repo)
-		if err != nil {
-			return "", fmt.Errorf("encode the name: %w", err)
-		}
-
-		fmt.Fprintf(&b, "  %s: repository(owner: %s, name: %s) {\n", mergedRepoAlias(i), owner, name)
+		fmt.Fprintf(&b, "  %s {\n", field)
 
 		for j, branch := range ask.branches {
-			ref, err := json.Marshal(branch)
+			ref, err := graphQLString(branch)
 			if err != nil {
-				return "", fmt.Errorf("encode the branch: %w", err)
+				return "", fmt.Errorf("encode a branch of %s: %w", ask.repo, err)
 			}
 
 			fmt.Fprintf(&b, "    %s: pullRequests(headRefName: %s, states: MERGED, first: %d, "+
 				"orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { number title url mergedAt headRefOid } }\n",
-				mergedBranchAlias(j), ref, mergedPerBranch)
+				batchAlias(mergedBranchPrefix, j), ref, mergedPerBranch)
 		}
 
 		b.WriteString("  }\n")
@@ -187,11 +189,6 @@ func mergedQuery(asks []mergedAsk) (string, error) {
 
 	return b.String(), nil
 }
-
-// mergedRepoAlias and mergedBranchAlias are the aliases of the i-th repository and its
-// j-th branch name in a merged-branches query.
-func mergedRepoAlias(i int) string   { return "r" + strconv.Itoa(i) }
-func mergedBranchAlias(j int) string { return "b" + strconv.Itoa(j) }
 
 // mergedData is the merged-branches query's data object: one aliased repository per ask,
 // null when GitHub could not find it, or the rate limit, which is no repository.
