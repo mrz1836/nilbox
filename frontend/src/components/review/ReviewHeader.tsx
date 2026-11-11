@@ -1,6 +1,6 @@
 import { openExternal, type InboxItem, type Review } from '../../platform'
 import { quietButtonClass } from '../controls'
-import { ChevronLeftIcon, ChevronRightIcon, ExternalIcon, PullRequestIcon, XIcon } from '../icons'
+import { ChevronLeftIcon, ChevronRightIcon, ExternalIcon, PullRequestIcon, RefreshIcon, XIcon } from '../icons'
 import { TrustTag } from '../ItemRow'
 import { Spinner } from '../Spinner'
 
@@ -18,6 +18,9 @@ export interface ReviewHeaderProps {
   onPrev: (() => void) | null
   onNext: (() => void) | null
   onClose: () => void
+  // onRefresh reads the pull request from GitHub again: its description, files, checks,
+  // reviews, and whether it can merge.
+  onRefresh: () => void
   // checking reports a read from GitHub under way.
   checking: boolean
 }
@@ -27,8 +30,9 @@ const iconButtonClass = `${quietButtonClass} p-1`
 
 // ReviewHeader is the review sheet's top: the pull request's title and where it is, who
 // opened it, which branch merges into which, where it sits in its list with buttons to
-// step through it, and buttons to open it on GitHub and to close the sheet. While GitHub is
-// read, it says so beside a spinner, and a light glides along its bottom edge.
+// step through it, and buttons to read it from GitHub again, to open it on GitHub, and to
+// close the sheet. While GitHub is read, it says so beside a spinner, the refresh button
+// turns and waits, and a light glides along its bottom edge.
 export function ReviewHeader({
   titleId,
   review,
@@ -37,6 +41,7 @@ export function ReviewHeader({
   onPrev,
   onNext,
   onClose,
+  onRefresh,
   checking,
 }: ReviewHeaderProps) {
   const title = review?.title ?? item?.title ?? ''
@@ -91,6 +96,18 @@ export function ReviewHeader({
           className={iconButtonClass}
         >
           <ChevronRightIcon className="size-4" />
+        </button>
+        <button
+          type="button"
+          aria-label="Read it from GitHub again"
+          title={
+            checking ? 'Reading GitHub…' : 'Read it from GitHub again: checks, reviews, files, and the description'
+          }
+          disabled={checking}
+          onClick={onRefresh}
+          className={iconButtonClass}
+        >
+          <RefreshIcon className={`size-4 ${checking ? 'motion-safe:animate-spin' : ''}`} />
         </button>
         <button
           type="button"

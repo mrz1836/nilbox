@@ -180,6 +180,33 @@ describe('ReviewSheet', () => {
     expect(screen.queryByText(/from GitHub…/)).not.toBeInTheDocument()
   })
 
+  it('reads the pull request from GitHub again on request, turning while it reads', async () => {
+    platform.refreshReview.mockResolvedValueOnce(review({ body: 'Adds a **cache**.' }))
+    render(<Harness />)
+    expect(await screen.findByText('cache')).toBeInTheDocument()
+
+    let answer: (r: ReturnType<typeof review>) => void = () => undefined
+    platform.refreshReview.mockReturnValueOnce(
+      new Promise((resolve) => {
+        answer = resolve
+      }),
+    )
+    const refresh = screen.getByRole('button', { name: 'Read it from GitHub again' })
+    await userEvent.click(refresh)
+
+    // While it reads, the button waits, and the header says so.
+    expect(refresh).toBeDisabled()
+    expect(screen.getByText('Checking GitHub…')).toBeInTheDocument()
+    expect(platform.refreshReview).toHaveBeenCalledTimes(2)
+
+    act(() => {
+      answer(review({ body: 'Adds a **faster cache**.' }))
+    })
+
+    expect(await screen.findByText('faster cache')).toBeInTheDocument()
+    expect(refresh).toBeEnabled()
+  })
+
   it('approves with the default reply, and closes', async () => {
     const onDone = vi.fn()
     render(<Harness onDone={onDone} />)

@@ -288,6 +288,11 @@ export function ReviewSheet({
                 }
           }
           onClose={close}
+          // Reading it again also answers a notice that it was pushed to since.
+          onRefresh={() => {
+            setPushed('')
+            loaded.reload()
+          }}
         />
         <div className="space-y-2 px-5 empty:hidden">
           {loaded.error !== '' && <ErrorBanner>{loaded.error}</ErrorBanner>}
