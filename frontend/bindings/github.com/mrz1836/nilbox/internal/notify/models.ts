@@ -53,7 +53,7 @@ export interface Notification {
     "id": number;
 
     /**
-     * Kind is KindReviewRequested, KindAssigned, KindWoke, or KindReleaseDone.
+     * Kind is KindReviewRequested, KindAssigned, KindWoke, KindReleaseDone, or KindRunFailed.
      */
     "kind": notifyprefs$0.Kind;
 
@@ -95,4 +95,10 @@ export interface Notification {
      * KindWoke; an entry's body ("Tagged a1b2c3d on master."); and "" otherwise.
      */
     "detail": string;
+
+    /**
+     * RunID is the run an entry is about, which a click on it opens in Scripts → Runs, or 0
+     * for none: every entry but a KindRunFailed one.
+     */
+    "runId": number;
 }

@@ -393,7 +393,20 @@ app:lint` reads.
   `event.ScriptRunProgress` (`scriptruns:progress`), never the whole list's
   `event.ScriptRunsUpdated`. A spec's `Recorded` is told the outcome only once the run's
   end is recorded, so a record that fails tells nothing twice, and its `Released` once the run
-  has let go of its clone, so a page that reads the clone again finds it free. A spec's `Keep`,
+  has let go of its clone, so a page that reads the clone again finds it free. Right after
+  `Recorded`, the engine's own `Config.Failed` hears each run whose end is recorded as failed
+  (one stopped at its time limit included), of every kind, in the app or the terminal, started
+  now or settled after a restart (by a `Verifier` or by how it ended), and never one the user
+  or the quit stopped, one interrupted, one that succeeded, or one left `Unsettled`: once,
+  since the record that ends a run changes only a row still recorded as going. It gets a
+  `scriptrun.Failure`, worded there ("Checks failed in acme-org/example-repo: Checks · all
+  files", with the run's summary or "Timed out after 30 minutes."), which core
+  (`runFailures`) hands the notify `Dispatcher`'s `Notify` as a `run_failed` notification about
+  no item, with its banner under the same rules as every kind's. The entry keeps the run's ID
+  (`notifications.run_id`, `Entry.RunID`, `Notification.RunID`), and a click on it in the
+  history, or on its banner (`event.RevealItem.RunID`), opens the run in Scripts → Runs, or
+  nothing while the Scripts tab is gone; scriptrun never imports notify (the repoguard
+  boundary test). A spec's `Keep`,
   which its `Before` may fill in, is written as JSON once `Before` has run into the run's own
   `<id>.kept` beside its log, never into its record or the window's view; `Engine.Kept` reads it
   back for a kind's `Verifier`, and it is removed once the run's end is recorded (it stays while

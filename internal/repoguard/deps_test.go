@@ -107,9 +107,10 @@ func boundaries() []boundary {
 			pkg: "internal/scriptrun",
 			forbidden: append(slices.Clone(services),
 				"internal/release", "internal/hooks", "internal/scripts", "internal/integrations", "internal/launcher",
-				"internal/desktop"),
-			why: "the runner opens the terminal through its own TerminalOpener and works a command out again through " +
-				"each kind's Rerunner; the kinds call it, never the reverse",
+				"internal/desktop", "internal/notify"),
+			why: "the runner opens the terminal through its own TerminalOpener, works a command out again through " +
+				"each kind's Rerunner, and tells of a failed run through its Config's Failed, which core hands the " +
+				"notifications; the kinds call it, never the reverse",
 		},
 		{
 			pkg:       "internal/release",

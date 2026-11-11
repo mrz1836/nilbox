@@ -96,6 +96,17 @@ type Config struct {
 	// may be nil.
 	Progressed func(id int64)
 
+	// Failed is told of each run whose end is recorded as failed, one stopped at its time
+	// limit included, once that end is kept: every kind, in the app or in the terminal,
+	// started now or settled after a restart, as its kind's Verifier works it out or as the
+	// engine reads how it ended. A run the user stopped, one the quit stopped or a restart
+	// interrupted, one that succeeded, and one left Unsettled tell nothing, and no run tells
+	// twice: only the record that marks it ended tells, and a record that fails tells nothing
+	// until the next start settles the run. Core tells the user (notify's run_failed). It
+	// runs on the goroutine that recorded the run, after its Spec's Recorded, must return
+	// promptly, and must never call back into the engine. nil tells nothing.
+	Failed func(ctx context.Context, f Failure)
+
 	// Terminal opens runs in the user's terminal, and the terminal in a run's folder.
 	// Without it, runs there fail to start, and Open in terminal fails.
 	Terminal TerminalOpener
@@ -120,6 +131,7 @@ type Engine struct {
 	logger     *slog.Logger
 	changed    func()
 	progressed func(id int64)
+	failed     func(ctx context.Context, f Failure)
 	terminal   TerminalOpener
 	reveal     Revealer
 	quit       func()
@@ -175,7 +187,7 @@ func NewEngine(cfg Config) *Engine {
 	return &Engine{
 		store: runStore{q: queries.New(cfg.DB)}, locks: locks, files: logFiles{dir: cfg.LogDir}, home: cfg.Home,
 		clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger), changed: cfg.Changed, progressed: cfg.Progressed,
-		terminal: cfg.Terminal, reveal: cfg.Reveal, quit: cfg.Quit, slots: make(chan struct{}, Slots),
+		failed: cfg.Failed, terminal: cfg.Terminal, reveal: cfg.Reveal, quit: cfg.Quit, slots: make(chan struct{}, Slots),
 		keep:       retention{runs: KeepRuns, bytes: KeepLogBytes},
 		compaction: compaction{over: CompactOver, head: CompactHead, tail: CompactTail},
 		tailEvery:  tailEvery, quitKill: QuitKillAfter, quitGrace: quitGrace, pidWait: pidWait,
@@ -745,10 +757,10 @@ func (e *Engine) newLive(spec Spec, h holds) *live {
 	}
 
 	return &live{
-		kind: spec.Kind, runsIn: spec.RunsIn, tool: spec.Tool, dir: spec.Dir, repo: e.where(spec.Repo, spec.Dir),
-		title: spec.Title, timeout: timeout, output: spec.Output, progress: spec.Progress, finish: spec.Finish,
-		recorded: spec.Recorded, released: spec.Released, intent: spec.Intent, holds: h, started: e.clock.Now(),
-		done: make(chan struct{}), abandon: make(chan struct{}),
+		kind: spec.Kind, runsIn: spec.RunsIn, tool: spec.Tool, dir: spec.Dir, name: spec.Repo,
+		repo: e.where(spec.Repo, spec.Dir), title: spec.Title, timeout: timeout, output: spec.Output,
+		progress: spec.Progress, finish: spec.Finish, recorded: spec.Recorded, released: spec.Released,
+		intent: spec.Intent, holds: h, started: e.clock.Now(), done: make(chan struct{}), abandon: make(chan struct{}),
 	}
 }
 

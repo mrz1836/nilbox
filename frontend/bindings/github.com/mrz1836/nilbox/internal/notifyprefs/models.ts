@@ -4,9 +4,9 @@
 /**
  * Kind is a kind of notification: one of the inbox's kinds of arrival (see
  * inbox.Arrival), a moment an agent session needs the user, or an event about no item,
- * such as a release that reached GitHub.
+ * such as a release that reached GitHub or a run that failed.
  */
-export type Kind = "review_requested" | "assigned" | "woke" | "session_needs_you" | "session_finished" | "release_done";
+export type Kind = "review_requested" | "assigned" | "woke" | "session_needs_you" | "session_finished" | "release_done" | "run_failed";
 
 /**
  * The values of Kind, by the names of their Go constants.
@@ -43,4 +43,9 @@ export const Kind = {
      * KindReleaseDone is a release whose tag reached GitHub.
      */
     KindReleaseDone: "release_done",
+
+    /**
+     * KindRunFailed is a run from the Scripts tab that failed or ran past its time limit.
+     */
+    KindRunFailed: "run_failed",
 } as const;

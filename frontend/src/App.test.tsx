@@ -885,7 +885,7 @@ describe('App', () => {
     // bar or on a notification.
     function reveal(itemId: number, url = '') {
       act(() => {
-        emit('inbox:reveal', { itemId, url })
+        emit('inbox:reveal', { itemId, url, runId: 0 })
       })
     }
 
@@ -1015,7 +1015,7 @@ describe('App’s filter field', () => {
 
   function reveal(itemId: number) {
     act(() => {
-      emit('inbox:reveal', { itemId, url: '' })
+      emit('inbox:reveal', { itemId, url: '', runId: 0 })
     })
   }
 
@@ -1443,5 +1443,74 @@ describe('the Scripts tab', () => {
 
     await userEvent.click(entry)
     expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/sdk/releases/tag/v1.4.3')
+  })
+
+  // failedRun is run 7, checks that failed in acme-org/example-repo, and failedEntry its
+  // notification.
+  const failedRun = () => scriptRun({ id: 7, kind: 'checks', title: 'Checks · all files', status: 'failed' })
+  const failedEntry = () =>
+    notification({
+      kind: 'run_failed',
+      itemId: 0,
+      itemKind: '',
+      number: 0,
+      title: 'Checks failed in acme-org/example-repo: Checks · all files',
+      url: '',
+      detail: '4 passed, 1 failed: whitespace.',
+      runId: 7,
+    })
+
+  it('opens a failed run’s notification at the run, in Scripts → Runs', async () => {
+    platform.listScriptRuns.mockResolvedValue([failedRun()])
+    platform.getScriptRun.mockResolvedValue(failedRun())
+    platform.listNotifications.mockResolvedValue({ items: [failedEntry()], unread: 1 })
+    await renderApp()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Notifications, 1 unread' }))
+
+    const entry = screen.getByRole('button', { name: /Checks failed in acme-org\/example-repo/ })
+
+    expect(entry).toHaveTextContent('Run failed')
+    await userEvent.click(entry)
+
+    expect(await screen.findByRole('heading', { name: 'Checks · all files', level: 2 })).toBeInTheDocument()
+    expect(views().getByRole('button', { name: 'Scripts' })).toHaveAttribute('aria-pressed', 'true')
+    expect(
+      within(screen.getByRole('navigation', { name: 'Scripts' })).getByRole('button', { name: /^Runs/ }),
+    ).toHaveAttribute('aria-current', 'page')
+    expect(platform.openExternal).not.toHaveBeenCalled()
+  })
+
+  it('opens the run a failed run’s banner asks for', async () => {
+    platform.listScriptRuns.mockResolvedValue([failedRun()])
+    platform.getScriptRun.mockResolvedValue(failedRun())
+    await renderApp()
+
+    await views().findByRole('button', { name: 'Scripts' })
+    act(() => {
+      emit('inbox:reveal', { itemId: 0, url: '', runId: 7 })
+    })
+
+    expect(await screen.findByRole('heading', { name: 'Checks · all files', level: 2 })).toBeInTheDocument()
+    expect(views().getByRole('button', { name: 'Scripts' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('opens nothing from a failed run’s notification while the Scripts tab is gone', async () => {
+    platform.listIntegrations.mockResolvedValue(
+      integrationTools({
+        tools: [integrationTool({ switch: 'off', on: false }), goPreCommitTool({ switch: 'off', on: false })],
+      }),
+    )
+    platform.listNotifications.mockResolvedValue({ items: [failedEntry()], unread: 1 })
+    await renderApp()
+
+    await screen.findByRole('region', { name: 'Review requested' })
+    await userEvent.click(await screen.findByRole('button', { name: 'Notifications, 1 unread' }))
+    await userEvent.click(screen.getByRole('button', { name: /Checks failed in acme-org\/example-repo/ }))
+
+    expect(views().queryByRole('button', { name: 'Scripts' })).not.toBeInTheDocument()
+    expect(views().getByRole('button', { name: 'Inbox' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByRole('navigation', { name: 'Scripts' })).not.toBeInTheDocument()
+    expect(platform.openExternal).not.toHaveBeenCalled()
   })
 })

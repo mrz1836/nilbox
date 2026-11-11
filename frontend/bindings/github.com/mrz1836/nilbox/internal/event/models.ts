@@ -93,9 +93,10 @@ export interface ReleasesUpdated {
 
 /**
  * RevealItem asks for the window to come forward with an item in view, for a click on
- * the item in the menu bar or on its notification. A request that names neither an item
- * nor a URL, such as a click on a banner that stands for many items, only brings the
- * window forward; the frontend is not told.
+ * the item in the menu bar or on its notification, or with the run a notification is about
+ * open in Scripts → Runs. A request that names no item, URL, or run, such as a click on a
+ * banner that stands for many items, only brings the window forward; the frontend is not
+ * told.
  */
 export interface RevealItem {
     /**
@@ -105,9 +106,14 @@ export interface RevealItem {
 
     /**
      * URL is the item on GitHub, which the window opens when the item is no longer in
-     * the inbox.
+     * the inbox, or the page of a notification about no item.
      */
     "url": string;
+
+    /**
+     * RunID is the run to open, which a failed run's notification names, or 0 for none.
+     */
+    "runId": number;
 }
 
 /**

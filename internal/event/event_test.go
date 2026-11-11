@@ -117,7 +117,11 @@ func TestRevealItemIsSentAsTheFrontendReadsIt(t *testing.T) {
 
 	data, err := json.Marshal(event.RevealItem{ItemID: 7, URL: "https://github.com/acme-org/example-repo/pull/12"})
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"itemId":7,"url":"https://github.com/acme-org/example-repo/pull/12"}`, string(data))
+	assert.JSONEq(t, `{"itemId":7,"url":"https://github.com/acme-org/example-repo/pull/12","runId":0}`, string(data))
+
+	data, err = json.Marshal(event.RevealItem{RunID: 42})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"itemId":0,"url":"","runId":42}`, string(data), "a failed run's notification opens the run")
 }
 
 func TestOrFallsBackToDiscard(t *testing.T) {

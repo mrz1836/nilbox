@@ -409,7 +409,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Pool: pool, Poster: opts.Banners, Events: opts.Events, Clock: opts.Clock, Logger: logger,
 	}
 	// One dispatcher records the inbox's arrivals and the notifications about no item, such
-	// as a release that reached GitHub.
+	// as a release that reached GitHub or a run that failed.
 	dispatcher := notify.NewDispatcher(notices)
 
 	inboxSvc := inbox.NewService(inbox.Config{
@@ -489,7 +489,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		launch: opts.Paths.Launch, opener: launcher.NewCommandOpener(launch), clock: opts.Clock, logger: logger,
 		shell: shellEnv.Shell,
 	}
-	runs := newRuns(pool, opts, clones, terminals, runner, logger)
+	runs := newRuns(pool, opts, clones, terminals, runner, dispatcher, logger)
 	scriptRuns := scriptrun.NewService(runs)
 
 	tools := integrations.NewService(integrations.Config{
@@ -608,12 +608,13 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 // clone locks, with its logs in <data>/script-runs. Its changes reach the window as
 // event.ScriptRunsUpdated, and as event.ToolsUpdated too, since a run starting or ending
 // can block or free a tool's update; a run's progress alone, as a release's next step,
-// reaches it as event.ScriptRunProgress, which names the run. A run in the terminal opens
-// through terminals, and the user's choice to stop the runs and quit reaches the desktop
-// shell as event.QuitConfirmed.
+// reaches it as event.ScriptRunProgress, which names the run. A run that failed is told to
+// the user through dispatcher (run_failed). A run in the terminal opens through terminals,
+// and the user's choice to stop the runs and quit reaches the desktop shell as
+// event.QuitConfirmed.
 func newRuns(
 	pool *sql.DB, opts Options, clones *clonelock.Set, terminals terminalRuns, runner execpath.Runner,
-	logger *slog.Logger,
+	dispatcher *notify.Dispatcher, logger *slog.Logger,
 ) *scriptrun.Engine {
 	events := event.Or(opts.Events)
 
@@ -625,6 +626,7 @@ func newRuns(
 			events.Emit(event.ToolsUpdated{})
 		},
 		Progressed: func(id int64) { events.Emit(event.ScriptRunProgress{ID: id}) },
+		Failed:     runFailures{dispatcher: dispatcher}.Failed,
 		Terminal:   terminals,
 		Reveal:     revealer(runner),
 		Quit:       func() { events.Emit(event.QuitConfirmed{}) },

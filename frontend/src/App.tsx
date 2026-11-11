@@ -23,7 +23,9 @@ import { attempt } from './lib/call'
 import { filterInbox, inboxItems, inboxSpec, inboxSuggestions } from './lib/inboxFilter'
 import { isFindKey, isTyping } from './lib/keys'
 import { toggleFilter } from './lib/query'
+import { opensRun } from './lib/notifications'
 import type { ReleaseRequest } from './lib/release'
+import type { RunRequest } from './lib/scriptRuns'
 import { foundToolsText, scriptsBadge, showsScripts } from './lib/scriptsTab'
 import { matchSettings } from './lib/settingsIndex'
 import { itemWorktrees } from './lib/itemWorktrees'
@@ -155,8 +157,9 @@ function useWorktreeSweeps() {
 // useReveal shows an item in the inbox when asked: by the menu bar, a notification, or an
 // entry in the notification history. An item no longer in the inbox opens on GitHub
 // instead. show opens the inbox at the item, so reveal is the request the inbox view
-// follows; clear drops it once another view opens.
-function useReveal(snapshot: InboxSnapshot | null, openInbox: () => void) {
+// follows; clear drops it once another view opens. A notification about a run, as a
+// failed run's banner is, opens the run with openRun instead.
+function useReveal(snapshot: InboxSnapshot | null, openInbox: () => void, openRun: (id: number) => void) {
   const [reveal, setReveal] = useState<Reveal | null>(null)
   // requests numbers the requests, so asking for the same item again shows it again.
   const requests = useRef(0)
@@ -176,14 +179,20 @@ function useReveal(snapshot: InboxSnapshot | null, openInbox: () => void) {
   }
 
   // The menu bar's request is read against the inbox as shown when it arrives.
-  const showOnRequest = useEffectEvent((itemId: number, url: string) => {
+  const showOnRequest = useEffectEvent((itemId: number, url: string, runId: number) => {
+    if (runId > 0) {
+      openRun(runId)
+
+      return
+    }
+
     show(itemId, url)
   })
 
   useEffect(
     () =>
-      on('inbox:reveal', ({ itemId, url }) => {
-        showOnRequest(itemId, url)
+      on('inbox:reveal', ({ itemId, url, runId }) => {
+        showOnRequest(itemId, url, runId)
       }),
     [],
   )
@@ -391,7 +400,26 @@ export function App() {
   const openInbox = () => {
     go({ type: 'reveal' })
   }
-  const revealer = useReveal(inbox.snapshot, openInbox)
+
+  // releaseRequest is the release sheet a merge's toast asked for last, and runRequest the
+  // run a failed run's notification asked for last, which the Scripts tab opens; requests
+  // numbers them.
+  const [releaseRequest, setReleaseRequest] = useState<ReleaseRequest | null>(null)
+  const [runRequest, setRunRequest] = useState<RunRequest | null>(null)
+  const requests = useRef(0)
+
+  // openRun opens Scripts → Runs with a run in its panel, as a failed run's notification
+  // asks. With the Scripts tab gone, it opens nothing.
+  const openRun = (id: number) => {
+    if (!scriptsShown) {
+      return
+    }
+
+    requests.current += 1
+    setRunRequest({ id, seq: requests.current })
+    go({ type: 'show', view: 'scripts' })
+  }
+  const revealer = useReveal(inbox.snapshot, openInbox, openRun)
   const { clear: clearReveal, show: showItem } = revealer
 
   const changeView = (next: View) => {
@@ -429,10 +457,6 @@ export function App() {
     setChangeToast(null)
   }
 
-  // releaseRequest is the release sheet a merge's toast asked for last, which the Scripts
-  // tab opens; requests numbers them.
-  const [releaseRequest, setReleaseRequest] = useState<ReleaseRequest | null>(null)
-  const requests = useRef(0)
   // openRelease opens Scripts → Release at a repository's sheet, as a merge offers.
   const [openRelease] = useState(() => (offer: AfterMerge) => {
     requests.current += 1
@@ -497,8 +521,14 @@ export function App() {
     go({ type: 'settings', section: 'notifications' })
   }
 
-  // openNotification shows a history entry's item.
+  // openNotification shows a history entry's item, or opens its page or its run.
   const openNotification = (entry: AppNotification) => {
+    if (opensRun(entry)) {
+      openRun(entry.runId)
+
+      return
+    }
+
     showItem(entry.itemId, entry.url)
   }
 
@@ -776,6 +806,7 @@ export function App() {
                   scriptsSwitch={config.settings?.integrations.switches.scripts ?? 'auto'}
                   runs={scriptRuns}
                   request={releaseRequest}
+                  runRequest={runRequest}
                   onOpenSettings={openSettingsAt}
                   lastPage={config.settings?.integrations.lastPage ?? ''}
                   lastRepo={config.settings?.integrations.lastRepo ?? ''}

@@ -2,20 +2,20 @@ import { useId, useState, type ReactNode } from 'react'
 
 import { formatAgo } from '../lib/time'
 import { formatCount } from '../lib/format'
-import { entryRef, entryTitle, kindTitle } from '../lib/notifications'
+import { entryTitle, entryWhere, kindTitle } from '../lib/notifications'
 import { useMutation } from '../lib/useMutation'
 import type { NotificationsState } from '../lib/useNotifications'
 import { usePopover } from '../lib/usePopover'
 import type { AppNotification, NotificationKind } from '../platform'
 import { quietButtonClass } from './controls'
-import { AssignIcon, BellIcon, ClockIcon, EyeIcon, SlidersIcon, TagIcon } from './icons'
+import { AssignIcon, BellIcon, ClockIcon, EyeIcon, SlidersIcon, TagIcon, XIcon } from './icons'
 import { PopoverPanel } from './PopoverPanel'
 import { RelativeTime } from './RelativeTime'
 
 export interface NotificationsMenuProps {
   notifications: NotificationsState
   // onOpen shows an entry's item: in the inbox while it is there, on GitHub after; an
-  // entry about no item, such as a release, opens its page.
+  // entry about no item opens its page, as a release does, or its run, as a failed run does.
   onOpen: (entry: AppNotification) => void
   // onSettings opens the notification settings.
   onSettings: () => void
@@ -28,6 +28,13 @@ const kindIcons: Readonly<Partial<Record<NotificationKind, (props: { className?:
   assigned: AssignIcon,
   woke: ClockIcon,
   release_done: TagIcon,
+  run_failed: XIcon,
+}
+
+// kindTones color the icon of a kind that tells of something gone wrong, as the Runs page
+// marks a failed run; every other kind's icon is muted.
+const kindTones: Readonly<Partial<Record<NotificationKind, string>>> = {
+  run_failed: 'text-danger',
 }
 
 // bellLabel names the bell with how many entries are unread.
@@ -45,7 +52,8 @@ interface EntryProps {
 // Entry is one notification in the history: what happened, to which item, and when.
 function Entry({ entry, fresh, onOpen }: EntryProps) {
   const Icon = kindIcons[entry.kind] ?? BellIcon
-  const where = entry.detail === '' ? entryRef(entry) : `${entryRef(entry)} · ${entry.detail}`
+  const tone = kindTones[entry.kind] ?? 'text-muted'
+  const where = entryWhere(entry)
 
   return (
     <li>
@@ -55,7 +63,7 @@ function Entry({ entry, fresh, onOpen }: EntryProps) {
         title={entryTitle(entry)}
         className="flex w-full items-start gap-3 px-4 py-2.5 text-left transition-colors hover:bg-raised focus-visible:bg-raised focus-visible:outline-none"
       >
-        <span className="relative mt-0.5 shrink-0 text-muted">
+        <span className={`relative mt-0.5 shrink-0 ${tone}`}>
           <Icon className="size-4" />
           {fresh && (
             <span
@@ -78,7 +86,7 @@ function Entry({ entry, fresh, onOpen }: EntryProps) {
             />
           </span>
           <span className="mt-0.5 block truncate text-sm font-medium">{entry.title}</span>
-          <span className="block truncate text-xs text-muted">{where}</span>
+          {where !== '' && <span className="block truncate text-xs text-muted">{where}</span>}
         </span>
       </button>
     </li>

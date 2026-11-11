@@ -22,4 +22,5 @@ type Notification struct {
 	URL       string
 	Author    string
 	Detail    string
+	RunID     int64
 }

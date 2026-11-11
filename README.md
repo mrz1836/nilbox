@@ -612,8 +612,9 @@ More in [The Scripts tab](docs/desktop.md#the-scripts-tab), [Release](docs/deskt
 - A **menu bar icon** shows how many items need you. Its menu lists up to five items per list,
   refreshes the inbox, and opens any item in the window. While the icon is shown, closing the
   window keeps Nilbox running in the menu bar.
-- **Native banners** announce new review requests, new assignments, snoozes that end early, and
-  releases you started that reach GitHub, each kind with its own switch. More than three at once are summed up in one banner.
+- **Native banners** announce new review requests, new assignments, snoozes that end early,
+  releases you started that reach GitHub, and runs from the Scripts tab that fail, each kind with
+  its own switch. More than three at once are summed up in one banner.
 - A **notification history** behind the toolbar's bell keeps the newest 200.
 
 More in [Menu bar and notifications](docs/desktop.md#menu-bar-and-notifications).

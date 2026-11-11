@@ -842,6 +842,21 @@ func (n releaseNotices) Released(ctx context.Context, notice release.Notice) {
 	})
 }
 
+// runFailures tells the user of a run that failed with a notification about no item,
+// run_failed, which names the run a click on it opens, and its banner when that kind is on
+// (scriptrun's Config.Failed).
+type runFailures struct {
+	dispatcher *notify.Dispatcher
+}
+
+// Failed records the notice and shows its banner.
+func (n runFailures) Failed(ctx context.Context, f scriptrun.Failure) {
+	n.dispatcher.Notify(ctx, notify.Entry{
+		Kind: notify.KindRunFailed, Title: f.Title, Body: f.Body, RepoOwner: f.Repo.Owner, RepoName: f.Repo.Repo,
+		RunID: f.ID,
+	})
+}
+
 // hooksClones lists the clones under the clone root the settings name, for the Hooks
 // page, reading no git, and a clone's origin with the read-only remote lookup
 // localrepos.Inspect runs (hooks.Clones).

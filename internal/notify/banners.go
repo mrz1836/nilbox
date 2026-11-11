@@ -44,9 +44,12 @@ type Banner struct {
 	Thread string
 
 	// ItemID is the item a click on the banner shows, or 0 for none. URL is the item on
-	// GitHub, for when it is no longer in the inbox.
+	// GitHub, for when it is no longer in the inbox, or the page of an entry about no item.
 	ItemID int64
 	URL    string
+
+	// RunID is the run a click on the banner opens in Scripts → Runs, or 0 for none.
+	RunID int64
 }
 
 // Poster shows banners. The desktop shell implements it over the system's notification
@@ -72,6 +75,7 @@ var kindTitles = map[notifyprefs.Kind]string{
 	KindAssigned:        "Assigned to you",
 	KindWoke:            "Back from snooze",
 	KindReleaseDone:     "Released",
+	KindRunFailed:       "Run failed",
 }
 
 // summaryNouns name each kind in a summary banner, singular and plural.
@@ -82,6 +86,7 @@ var summaryNouns = map[notifyprefs.Kind][2]string{
 	KindAssigned:        {"assignment", "assignments"},
 	KindWoke:            {"back from snooze", "back from snooze"},
 	KindReleaseDone:     {"release", "releases"},
+	KindRunFailed:       {"failed run", "failed runs"},
 }
 
 // maxTitleRunes bounds an item title in a banner body; the system wraps and cuts the rest.
@@ -89,7 +94,7 @@ const maxTitleRunes = 160
 
 // banner is the banner for one recorded notification: its kind as the title, and its item,
 // or for an entry about no item its repository, as the subtitle. A click shows the item,
-// or opens the entry's page.
+// opens the entry's page, or opens the run it is about.
 func banner(n Notification) Banner {
 	body := textutil.Truncate(n.Title, maxTitleRunes)
 	if n.Detail != "" {
@@ -109,6 +114,7 @@ func banner(n Notification) Banner {
 		Thread:   string(n.Kind),
 		ItemID:   n.ItemID,
 		URL:      n.URL,
+		RunID:    n.RunID,
 	}
 }
 

@@ -23,6 +23,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/release"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -181,6 +182,66 @@ func TestReleaseNoticesRecordARelease(t *testing.T) {
 	assert.Equal(t, "Tagged abc1234 on main.", log.Items[0].Detail)
 	assert.Empty(t, log.Items[0].ItemKind, "about no item")
 	assert.Contains(t, events.All(), event.Event(event.NotificationsUpdated{}))
+}
+
+func TestRunFailuresRecordAFailedRun(t *testing.T) {
+	t.Parallel()
+
+	events := &testutil.Events{}
+	c := bootstrap(t, Options{
+		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
+		Home:   testutil.ClaudeHome(t),
+		Runner: noPrograms(),
+		Events: events,
+	})
+
+	failures := runFailures{dispatcher: notify.NewDispatcher(notify.Config{Pool: c.DB, Events: events})}
+	failures.Failed(t.Context(), scriptrun.Failure{
+		ID: 7, Kind: scriptrun.KindChecks, Repo: repo.Name{Owner: boundOwner, Repo: boundRepo},
+		Title: "Checks failed in acme-org/example-repo: Checks · all files", Body: "4 passed, 1 failed: whitespace.",
+	})
+	failures.Failed(t.Context(), scriptrun.Failure{
+		ID: 8, Kind: scriptrun.KindUpdate, Title: "A tool's update failed in ~/go/bin: Update magex",
+		Body: "Timed out after 10 minutes.",
+	})
+
+	log, err := c.Notifications.List(t.Context())
+	require.NoError(t, err)
+	require.Len(t, log.Items, 2)
+	assert.Equal(t, notify.Notification{
+		ID: log.Items[1].ID, Kind: notify.KindRunFailed, CreatedAt: log.Items[1].CreatedAt, Repo: "acme-org/example-repo",
+		Title: "Checks failed in acme-org/example-repo: Checks · all files", Detail: "4 passed, 1 failed: whitespace.",
+		RunID: 7,
+	}, log.Items[1], "about no item, naming the run a click opens")
+	assert.Empty(t, log.Items[0].Repo, "a folder that isn't a repository names none")
+	assert.Equal(t, int64(8), log.Items[0].RunID)
+	assert.Contains(t, events.All(), event.Event(event.NotificationsUpdated{}))
+}
+
+func TestTheRunsTellTheNotificationsOfAFailedRun(t *testing.T) {
+	t.Parallel()
+
+	c := bootstrap(t, Options{
+		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
+		Home:   testutil.ClaudeHome(t),
+		Runner: noPrograms(),
+	})
+
+	// A run the app can't start is recorded as failed before Start returns, by the engine
+	// core built, which tells the notifications then.
+	id, err := c.Runs.Start(t.Context(), scriptrun.Spec{
+		Kind: scriptrun.KindScript, Title: "Lint", Repo: repo.Name{Owner: boundOwner, Repo: boundRepo},
+		Dir: t.TempDir(), Argv: []string{filepath.Join(t.TempDir(), "missing")},
+	})
+	require.Error(t, err)
+	require.Positive(t, id)
+
+	log, err := c.Notifications.List(t.Context())
+	require.NoError(t, err)
+	require.Len(t, log.Items, 1)
+	assert.Equal(t, notify.KindRunFailed, log.Items[0].Kind)
+	assert.Equal(t, id, log.Items[0].RunID)
+	assert.Equal(t, "A script failed in acme-org/example-repo: Lint", log.Items[0].Title)
 }
 
 func TestReleaseGitHubAdaptsBothRounds(t *testing.T) {

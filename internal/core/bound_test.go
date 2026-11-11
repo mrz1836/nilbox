@@ -403,7 +403,8 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		},
 		"notify.Service.List": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			got, err := c.Notifications.List(ctx)
-			require.Len(t, got.Items, 2, "an item's notification and one about no item")
+			require.Len(t, got.Items, 3, "an item's notification, one about no item, and one about a run")
+			assert.Equal(t, int64(1), got.Items[0].RunID, "the run a click opens")
 
 			return got, err
 		},
@@ -549,6 +550,13 @@ func seedBound(t *testing.T) (*Core, seededItems) {
 	// And one about no item: a release that reached GitHub.
 	_, err = notify.NewStore(c.DB).RecordEvent(ctx, now, notify.Entry{
 		Kind: notify.KindReleaseDone, Title: "v1.4.3 is on GitHub", RepoOwner: boundOwner, RepoName: "example-repo",
+	})
+	require.NoError(t, err)
+
+	// And one about a run that failed, which names the run.
+	_, err = notify.NewStore(c.DB).RecordEvent(ctx, now.Add(time.Second), notify.Entry{
+		Kind: notify.KindRunFailed, Title: "A script failed in acme-org/example-repo: Lint", Body: "It exited with status 1.",
+		RepoOwner: boundOwner, RepoName: "example-repo", RunID: 1,
 	})
 	require.NoError(t, err)
 

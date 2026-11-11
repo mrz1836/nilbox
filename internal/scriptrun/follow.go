@@ -13,6 +13,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/repo"
 )
 
 // The summaries of runs whose end the app couldn't see.
@@ -27,13 +28,18 @@ const (
 
 // live is a run the engine follows: one it started, or one from before the app restarted.
 type live struct {
-	id       int64
-	kind     Kind
-	runsIn   RunsIn
-	tool     string
-	dir      string
-	repo     string
-	title    string
+	id     int64
+	kind   Kind
+	runsIn RunsIn
+	tool   string
+	dir    string
+	title  string
+
+	// name is its clone's repository on GitHub, or the zero Name for a folder that isn't
+	// one, and repo names its clone for the user: that repository, or else its folder.
+	name repo.Name
+	repo string
+
 	timeout  time.Duration
 	output   io.Writer
 	finish   func(ctx context.Context, end Ending, out Outcome) Outcome
@@ -405,10 +411,12 @@ func (e *Engine) failStart(ctx context.Context, l *live, summary string) {
 }
 
 // record records a run's end and, once it is recorded, marks the run ended and removes
-// what it kept beside its record, tells its kind's Recorded, lets go of it and then tells
-// its Released, logs it, applies the retention, and tells Changed. A run whose end couldn't
-// be recorded isn't marked, and keeps its state: its record still says it goes, and the
-// next start settles it.
+// what it kept beside its record, tells its kind's Recorded and, for a run that failed,
+// Failed, lets go of it and then tells its Released, logs it, applies the retention, and
+// tells Changed. A run whose end couldn't be recorded isn't marked, tells neither, and keeps
+// its state: its record still says it goes, and the next start settles it. The record
+// changes only a run recorded as going, so of every record of one run's end, only one
+// holds, and the run's end is told once.
 func (e *Engine) record(ctx context.Context, l *live, exitCode *int, out Outcome, size int64) {
 	unrecognized := out.Unrecognized
 	if len(unrecognized) > MaxUnrecognized {
@@ -429,11 +437,14 @@ func (e *Engine) record(ctx context.Context, l *live, exitCode *int, out Outcome
 		e.dropKept(ctx, l.id)
 	}
 
-	switch {
-	case err != nil:
+	if err != nil {
 		e.logger.WarnContext(ctx, "couldn't record how a run ended", "run", l.id, "error", err)
-	case l.recorded != nil:
-		l.recorded(ctx, l.id, out)
+	} else {
+		if l.recorded != nil {
+			l.recorded(ctx, l.id, out)
+		}
+
+		e.tellFailure(ctx, l, out)
 	}
 
 	e.release(l)
@@ -445,6 +456,28 @@ func (e *Engine) record(ctx context.Context, l *live, exitCode *int, out Outcome
 	e.logEnd(ctx, l, exitCode, out.Status, result)
 	e.prune(ctx)
 	e.notify()
+}
+
+// tellFailure tells Failed of a run whose end was just recorded as out, when out is a
+// failure: the run's title, where it ran, and its summary, or, for a run stopped at its time
+// limit, how long that was. A run the user or the quit stopped tells nothing, whatever its
+// kind made of its end: the user stopped it.
+func (e *Engine) tellFailure(ctx context.Context, l *live, out Outcome) {
+	if e.failed == nil || out.Status != StatusFailed || l.stopped.Load() || l.quit.Load() {
+		return
+	}
+
+	f := Failure{ID: l.id, Kind: l.kind, Title: failureTitle(l.kind, l.title, l.repo), Body: out.Summary}
+
+	if l.name.Valid() {
+		f.Repo = l.name
+	}
+
+	if l.timedOut.Load() {
+		f.Body = "Timed out after " + durationText(l.timeout) + "."
+	}
+
+	e.failed(ctx, f)
 }
 
 // markEnded marks a run whose end is recorded as ended.

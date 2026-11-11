@@ -130,8 +130,9 @@ func TestKindsAreTheInboxArrivals(t *testing.T) {
 
 	assert.Equal(t, []notifyprefs.Kind{
 		KindReviewRequested, KindAssigned, KindWoke, KindSessionNeedsYou, KindSessionFinished, KindReleaseDone,
+		KindRunFailed,
 	}, notifyprefs.Kinds(),
-		"the kinds the settings list are the inbox's kinds of arrival, in order, then the sessions', then a release's")
+		"the kinds the settings list are the inbox's kinds of arrival, in order, then the sessions', a release's, and a failed run's")
 }
 
 // releaseEntry is the entry for acme-org/sdk's v1.4.3 reaching GitHub.
@@ -183,6 +184,50 @@ func TestRecordEventStoresAnEntryAboutNoItem(t *testing.T) {
 	got, err = s.RecordEvent(t.Context(), testNow, repoless)
 	require.NoError(t, err)
 	assert.Empty(t, got.Repo, "no repository reads as none")
+}
+
+// runEntry is the entry for run 42, checks that failed in acme-org/sdk.
+func runEntry() Entry {
+	return Entry{
+		Kind: KindRunFailed, Title: "Checks failed in acme-org/sdk: Checks · all files",
+		Body: "4 passed, 1 failed: whitespace.", RepoOwner: "acme-org", RepoName: "sdk", RunID: 42,
+	}
+}
+
+func TestRecordEventKeepsTheRunAnEntryIsAbout(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, 1)
+	s := NewStore(f.pool)
+
+	got, err := s.RecordEvent(t.Context(), testNow, runEntry())
+	require.NoError(t, err)
+
+	want := Notification{
+		ID: got.ID, Kind: KindRunFailed, CreatedAt: "2026-03-04T12:00:00Z", Repo: "acme-org/sdk",
+		Title: "Checks failed in acme-org/sdk: Checks · all files", Detail: "4 passed, 1 failed: whitespace.", RunID: 42,
+	}
+	assert.Equal(t, want, got, "no item and no page: the run is what a click opens")
+
+	_, err = s.Record(t.Context(), testNow.Add(time.Minute), []inbox.Arrival{f.arrival(0, KindReviewRequested)})
+	require.NoError(t, err)
+
+	release, err := s.RecordEvent(t.Context(), testNow.Add(2*time.Minute), releaseEntry())
+	require.NoError(t, err)
+	assert.Zero(t, release.RunID, "an entry about no run names none")
+
+	log, err := s.Log(t.Context())
+	require.NoError(t, err)
+	require.Len(t, log.Items, 3)
+	assert.Equal(t, want, log.Items[2], "read back as stored")
+	assert.Zero(t, log.Items[1].RunID, "an arrival names no run")
+
+	negative := runEntry()
+	negative.RunID = -1
+
+	_, err = s.RecordEvent(t.Context(), testNow, negative)
+	require.Error(t, err, "a run's ID is never negative")
+	assert.Equal(t, 3, countNotifications(t, f.pool), "and nothing is stored")
 }
 
 func TestRecordEventKeepsOnlyTheNewest(t *testing.T) {
@@ -672,6 +717,36 @@ func TestTheDispatcherNotifiesOfAnEntryAboutNoItem(t *testing.T) {
 	d.Notify(t.Context(), Entry{Kind: "mentions"})
 	assert.Equal(t, 2, f.events.Count(), "an entry that can't be recorded tells nothing")
 	assert.Contains(t, logs.String(), "could not record the notification")
+}
+
+func TestTheDispatcherNotifiesOfAFailedRun(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, 0)
+	d := NewDispatcher(f.config())
+
+	d.Notify(t.Context(), runEntry())
+
+	log, err := NewStore(f.pool).Log(t.Context())
+	require.NoError(t, err)
+	require.Len(t, log.Items, 1)
+	assert.Equal(t, []Banner{{
+		ID: brand.Slug + "-" + strconv.FormatInt(log.Items[0].ID, 10), Title: "Run failed", Subtitle: "acme-org/sdk",
+		Body:   "Checks failed in acme-org/sdk: Checks · all files\n4 passed, 1 failed: whitespace.",
+		Thread: string(KindRunFailed), RunID: 42,
+	}}, f.poster.posted(), "a click opens the run")
+
+	require.NoError(t, prefs.New(f.pool, f.clock).Set(t.Context(), notifyprefs.KeyBannersOff, `["run_failed"]`))
+	d.Notify(t.Context(), runEntry())
+	assert.Len(t, f.poster.posted(), 1, "its kind's banners are off")
+	assert.Equal(t, 2, f.events.Count(), "the log still keeps it")
+
+	f.poster.status = StatusOff
+
+	require.NoError(t, prefs.New(f.pool, f.clock).Set(t.Context(), notifyprefs.KeyBannersOff, `[]`))
+	d.Notify(t.Context(), runEntry())
+	assert.Len(t, f.poster.posted(), 1, "no banner while the user doesn't allow them")
+	assert.Equal(t, 3, f.events.Count(), "the log still keeps it")
 }
 
 func TestTheDispatcherSurvivesFailures(t *testing.T) {

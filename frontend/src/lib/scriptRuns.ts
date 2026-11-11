@@ -23,6 +23,14 @@ export const runStatusLabels: Readonly<Record<ScriptRunStatus, string>> = {
   orphaned: 'Orphaned',
 }
 
+// RunRequest asks the Scripts tab to open a run in Scripts → Runs, as a failed run's
+// notification does: the run, and seq, which numbers the requests, so asking for the same
+// run again opens it again.
+export interface RunRequest {
+  id: number
+  seq: number
+}
+
 // isLive reports a run that has not ended: running, or orphaned, which runs on from
 // before the app restarted.
 export function isLive(status: ScriptRunStatus): boolean {
