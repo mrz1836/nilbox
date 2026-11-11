@@ -52,6 +52,9 @@ import {
   on,
   openExternal,
   setProjectsTipDismissed,
+  setIntegrationsAnnounced,
+  setScriptsLastPage,
+  setScriptsLastRepo,
   type AfterMerge,
   type AgentID,
   type AppNotification,
@@ -196,9 +199,10 @@ function useReveal(snapshot: InboxSnapshot | null, openInbox: () => void) {
 // found: shown is whether the tab shows, and ready whether that is known yet (the tools
 // and the settings have loaded). A tab already showing when that is first known was
 // announced before, so only a tab that appears while the window is open is announced, and
-// only once while it is. Nothing is stored, so a tab that appears again after the next
-// start is announced again.
-function useFoundTools(tools: IntegrationTools | null, shown: boolean, ready: boolean) {
+// only once while it is; announcedBefore, the stored integrations.announced, says it was
+// announced at a past start, so it never is again. announced says the toast showed, which
+// the window then stores.
+function useFoundTools(tools: IntegrationTools | null, shown: boolean, ready: boolean, announcedBefore: boolean) {
   // was is whether the tab showed when last looked at, or null until it is known.
   const [was, setWas] = useState<boolean | null>(null)
   const [announced, setAnnounced] = useState(false)
@@ -209,7 +213,7 @@ function useFoundTools(tools: IntegrationTools | null, shown: boolean, ready: bo
 
     const text = foundToolsText(tools)
 
-    if (was === false && shown && !announced && text !== '') {
+    if (was === false && shown && !announced && !announcedBefore && text !== '') {
       setAnnounced(true)
       setToast({ id: 0, text, tone: 'success' })
     }
@@ -219,7 +223,7 @@ function useFoundTools(tools: IntegrationTools | null, shown: boolean, ready: bo
     setToast(null)
   }
 
-  return { toast, close }
+  return { toast, close, announced }
 }
 
 // SearchView is a page the toolbar's field filters; Prompts searches in its own sidebar,
@@ -363,7 +367,12 @@ export function App() {
   const integrations = useIntegrations()
   const scriptsShown = showsScripts(integrations.tools, config.settings?.integrations ?? null)
   const scriptRuns = useScriptRuns(scriptsShown)
-  const found = useFoundTools(integrations.tools, scriptsShown, integrations.tools !== null && config.settings !== null)
+  const found = useFoundTools(
+    integrations.tools,
+    scriptsShown,
+    integrations.tools !== null && config.settings !== null,
+    config.settings?.integrations.announced ?? false,
+  )
   const [nav, go] = useReducer(navigate, startNav)
   // A Scripts tab gone, as when every integration was turned off, shows the inbox.
   const view = nav.view === 'scripts' && !scriptsShown ? 'inbox' : nav.view
@@ -561,6 +570,30 @@ export function App() {
     })
   }
 
+  // remember stores a change to the window's memory of the Scripts tab: that it was
+  // announced, or the page or clone it reopens on. What shows has changed already; a store
+  // that fails only means the next start doesn't remember it.
+  const remember = (store: Promise<Settings>, what: string) => {
+    void attempt(store).then((result) => {
+      if (result.ok) {
+        saveSettings(result.data)
+      } else {
+        console.error(`could not remember ${what}:`, result.error)
+      }
+    })
+  }
+
+  // Once the found-tools toast shows, that is stored, so a later start never shows it again.
+  const storeAnnounced = useEffectEvent(() => {
+    remember(setIntegrationsAnnounced(true), 'that the Scripts tab was announced')
+  })
+
+  useEffect(() => {
+    if (found.announced) {
+      storeAnnounced()
+    }
+  }, [found.announced])
+
   const launch: LaunchOptions | null =
     config.settings === null
       ? null
@@ -744,6 +777,14 @@ export function App() {
                   runs={scriptRuns}
                   request={releaseRequest}
                   onOpenSettings={openSettingsAt}
+                  lastPage={config.settings?.integrations.lastPage ?? ''}
+                  lastRepo={config.settings?.integrations.lastRepo ?? ''}
+                  onPage={(page) => {
+                    remember(setScriptsLastPage(page), 'the Scripts page shown')
+                  }}
+                  onRepo={(dir) => {
+                    remember(setScriptsLastRepo(dir), 'the clone Repo scripts shows')
+                  }}
                 />
               </div>
             </Suspense>

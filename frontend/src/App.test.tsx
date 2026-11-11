@@ -1264,6 +1264,9 @@ describe('the Scripts tab', () => {
     const shown = within(await toast())
 
     expect(shown.getByText('Found magex and go-pre-commit. They’re in the new Scripts tab.')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(platform.setIntegrationsAnnounced).toHaveBeenCalledExactlyOnceWith(true)
+    })
     await userEvent.click(shown.getByRole('button', { name: 'Open Scripts' }))
 
     expect(await screen.findByRole('navigation', { name: 'Scripts' })).toBeInTheDocument()
@@ -1284,6 +1287,61 @@ describe('the Scripts tab', () => {
 
     expect(await views().findByRole('button', { name: 'Scripts' })).toBeInTheDocument()
     expect(screen.queryByText(/in the new Scripts tab/)).not.toBeInTheDocument()
+  })
+
+  it('never announces the tab again once a past start did', async () => {
+    platform.getSettings.mockResolvedValue(settings({ integrations: integrationsConfig({ announced: true }) }))
+    platform.listIntegrations.mockResolvedValue(missing())
+    await renderApp()
+
+    await screen.findByRole('region', { name: 'Review requested' })
+    platform.listIntegrations.mockResolvedValue(integrationTools())
+    act(() => {
+      emit('tools:updated')
+    })
+
+    expect(await views().findByRole('button', { name: 'Scripts' })).toBeInTheDocument()
+    expect(screen.queryByText(/in the new Scripts tab/)).not.toBeInTheDocument()
+    expect(platform.setIntegrationsAnnounced).not.toHaveBeenCalled()
+  })
+
+  it('remembers the Scripts page and the Repo scripts clone picked, for the next start', async () => {
+    platform.getSettings.mockResolvedValue(settings({ integrations: integrationsConfig({ lastPage: 'runs' }) }))
+    await renderApp()
+
+    await userEvent.click(await views().findByRole('button', { name: 'Scripts' }))
+    const rail = within(await screen.findByRole('navigation', { name: 'Scripts' }))
+
+    await waitFor(() => {
+      expect(rail.getByRole('button', { name: /^Runs/ })).toHaveAttribute('aria-current', 'page')
+    })
+
+    await userEvent.click(rail.getByRole('button', { name: 'Repo scripts' }))
+    expect(platform.setScriptsLastPage).toHaveBeenLastCalledWith('scripts')
+
+    const picker = await screen.findByRole('combobox', { name: 'Repository' })
+    await waitFor(() => {
+      expect(platform.setScriptsLastRepo).toHaveBeenLastCalledWith('~/projects/sdk')
+    })
+
+    await userEvent.selectOptions(picker, '~/projects/web')
+    expect(platform.setScriptsLastRepo).toHaveBeenLastCalledWith('~/projects/web')
+  })
+
+  it('still shows the page picked when it can’t be remembered, and logs why', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    platform.setScriptsLastPage.mockRejectedValue(new Error('database gone'))
+    await renderApp()
+
+    await userEvent.click(await views().findByRole('button', { name: 'Scripts' }))
+    const rail = within(await screen.findByRole('navigation', { name: 'Scripts' }))
+    await userEvent.click(rail.getByRole('button', { name: /^Runs/ }))
+
+    expect(rail.getByRole('button', { name: /^Runs/ })).toHaveAttribute('aria-current', 'page')
+    await vi.waitFor(() => {
+      expect(error).toHaveBeenCalledWith('could not remember the Scripts page shown:', 'database gone')
+    })
+    error.mockRestore()
   })
 
   it('closes the announcement from its close button', async () => {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/event"
@@ -96,6 +97,37 @@ func (s *Service) SetScriptSources(ctx context.Context, magexTargets, repoFiles 
 
 		return p.Set(ctx, integrationprefs.KeyRepoFiles, integrationprefs.EncodeOn(repoFiles))
 	})
+}
+
+// SetIntegrationsAnnounced stores whether the window announced the Scripts tab, as it
+// first appeared because a tool was found, and returns the settings with it, so the toast
+// shows once rather than at every start. Nothing else hears of it.
+func (s *Service) SetIntegrationsAnnounced(ctx context.Context, announced bool) (Settings, error) {
+	return s.save(ctx, setting(integrationprefs.KeyAnnounced, strconv.FormatBool(announced)))
+}
+
+// SetScriptsLastPage stores the Scripts tab's page shown last, which the tab reopens on,
+// and returns the settings with it. A page that isn't one of the tab's is refused.
+func (s *Service) SetScriptsLastPage(ctx context.Context, page integrationprefs.ScriptsPage) (Settings, error) {
+	stored, err := integrationprefs.EncodeLastPage(page)
+	if err != nil {
+		return Settings{}, fmt.Errorf("%w: %q", err, page)
+	}
+
+	return s.save(ctx, setting(integrationprefs.KeyLastPage, stored))
+}
+
+// SetScriptsLastRepo stores the clone Repo scripts showed last, as the window names it
+// (its folder, with ~), which Repo scripts reopens on, and returns the settings with it;
+// "" forgets it. A folder that isn't an absolute or ~ path on one line is refused. Repo
+// scripts checks the folder again as it lists it, as it does any the window names.
+func (s *Service) SetScriptsLastRepo(ctx context.Context, dir string) (Settings, error) {
+	stored, err := integrationprefs.EncodeLastRepo(dir)
+	if err != nil {
+		return Settings{}, fmt.Errorf("%w: %q", err, dir)
+	}
+
+	return s.save(ctx, setting(integrationprefs.KeyLastRepo, stored))
 }
 
 // toolPath expands a ~ in path and checks that it names an executable file, worded for

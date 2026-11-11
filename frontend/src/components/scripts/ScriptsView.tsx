@@ -10,7 +10,7 @@ import { useHooks } from '../../lib/useHooks'
 import type { IntegrationsState } from '../../lib/useIntegrations'
 import { useReleaseCandidates } from '../../lib/useReleaseCandidates'
 import type { ScriptRunsState } from '../../lib/useScriptRuns'
-import type { IntegrationSwitch, IntegrationTool, RunsIn, TerminalID } from '../../platform'
+import type { IntegrationSwitch, IntegrationTool, RunsIn, ScriptsPage as StoredPage, TerminalID } from '../../platform'
 import {
   AlertIcon,
   AnchorIcon,
@@ -32,8 +32,8 @@ import { RepoScriptsPage } from './RepoScriptsPage'
 import { RunsPage } from './RunsPage'
 
 // ScriptsPage is one of the tab's pages, in the rail's order. The rail lists those whose
-// integration is on, and Runs.
-export type ScriptsPage = 'release' | 'hooks' | 'scripts' | 'runs'
+// integration is on, and Runs. It is a page the settings store (StoredPage), never none.
+export type ScriptsPage = Exclude<StoredPage, ''>
 
 // RailEntry is a page as the rail lists it: its name and icon, and what it counts, with
 // what the count means, or null for a page that counts nothing; alert marks a count that
@@ -113,16 +113,22 @@ export interface ScriptsViewProps {
   // onOpenSettings opens the settings at a section: Integrations, or Repositories for the
   // clone root.
   onOpenSettings: (section: SettingsSection) => void
+  // lastPage and lastRepo are the page and the Repo scripts clone the settings remember
+  // from a past start, '' for none; onPage and onRepo store the ones the user picks.
+  lastPage: StoredPage
+  lastRepo: string
+  onPage: (page: ScriptsPage) => void
+  onRepo: (dir: string) => void
 }
 
 // ScriptsView is the Scripts tab: a rail of its pages, each with what it counts, and at
 // its foot the status of each tool and a way to manage them in Settings; beside it, the
 // page chosen. Release shows while mage-x is on, Hooks while go-pre-commit is, and Repo
-// scripts while Scripts is, beside Runs. The tab opens on the page used last, kept while
-// the window is open, or the first page that's on, and Repo scripts on the clone chosen
-// last. A run Release or Hooks starts opens in Runs; one Repo scripts starts shows beside
-// its scripts, which stay as they were. It is a default export, for the window to load it
-// lazily.
+// scripts while Scripts is, beside Runs. The tab opens on the page used last, and Repo
+// scripts on the clone chosen last, kept across starts in the settings (a page that's off
+// now opens the first page that's on). A run Release or Hooks starts opens in Runs; one
+// Repo scripts starts shows beside its scripts, which stay as they were. It is a default
+// export, for the window to load it lazily.
 export default function ScriptsView({
   terminal,
   runsIn,
@@ -132,6 +138,10 @@ export default function ScriptsView({
   runs,
   request,
   onOpenSettings,
+  lastPage,
+  lastRepo,
+  onPage,
+  onRepo,
 }: ScriptsViewProps) {
   const { tools, error } = integrations
   const mageX = toolOf(tools, 'mage-x')
@@ -139,21 +149,39 @@ export default function ScriptsView({
   const releaseOn = mageX?.on === true
   const hooksOn = goPreCommit?.on === true
   const repoScriptsOn = scriptsOn(tools, scriptsSwitch)
+  // page is the page picked while the window is open, or null before one is, when the one
+  // remembered from a past start opens; the settings may load after the tab does.
   const [page, setPage] = useState<ScriptsPage | null>(null)
+  const wanted = page ?? (lastPage === '' ? null : lastPage)
   const first: ScriptsPage = releaseOn ? 'release' : hooksOn ? 'hooks' : repoScriptsOn ? 'scripts' : 'runs'
   const shown: ScriptsPage =
-    page === null ||
-    (page === 'release' && !releaseOn) ||
-    (page === 'hooks' && !hooksOn) ||
-    (page === 'scripts' && !repoScriptsOn)
+    wanted === null ||
+    (wanted === 'release' && !releaseOn) ||
+    (wanted === 'hooks' && !hooksOn) ||
+    (wanted === 'scripts' && !repoScriptsOn)
       ? first
-      : page
+      : wanted
+  // pick shows a page the user chose and remembers it for the next start.
+  const pick = (next: ScriptsPage) => {
+    setPage(next)
+    onPage(next)
+  }
   const candidates = useReleaseCandidates(usable(mageX))
   const hooks = useHooks(usable(goPreCommit), runs.runs)
   const [selectedRun, setSelectedRun] = useState<number | null>(null)
-  // repoDir is the clone Repo scripts showed last, and repoRun the run it shows beside its
-  // scripts, both kept while the window is open.
-  const [repoDir, setRepoDir] = useState('')
+  // repoDir is the clone Repo scripts showed last, or null before one is picked while the
+  // window is open, when the one remembered from a past start shows; repoRun is the run it
+  // shows beside its scripts, kept while the window is open.
+  const [repoDir, setRepoDir] = useState<string | null>(null)
+  // chooseRepo shows the clone Repo scripts picked, and remembers it for the next start
+  // unless it is the one remembered already.
+  const chooseRepo = (dir: string) => {
+    setRepoDir(dir)
+
+    if (dir !== lastRepo) {
+      onRepo(dir)
+    }
+  }
   const [repoRun, setRepoRun] = useState<number | null>(null)
   const [sheet, setSheet] = useState<OpenSheet | null>(null)
   // handled is the last request opened, so each opens once; opens numbers the sheets the
@@ -248,7 +276,7 @@ export default function ScriptsView({
               aria-current={entry.id === shown ? 'page' : undefined}
               title={words === '' ? undefined : words}
               onClick={() => {
-                setPage(entry.id)
+                pick(entry.id)
               }}
               className="flex items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm text-muted transition-colors hover:bg-raised hover:text-text aria-[current=page]:bg-raised aria-[current=page]:font-medium aria-[current=page]:text-text"
             >
@@ -317,8 +345,8 @@ export default function ScriptsView({
           />
         ) : shown === 'scripts' ? (
           <RepoScriptsPage
-            dir={repoDir}
-            onDir={setRepoDir}
+            dir={repoDir ?? lastRepo}
+            onDir={chooseRepo}
             followed={repoRun}
             onFollow={setRepoRun}
             runsIn={runsIn}
@@ -327,7 +355,7 @@ export default function ScriptsView({
             onOpenRelease={
               releaseOn
                 ? () => {
-                    setPage('release')
+                    pick('release')
                   }
                 : null
             }

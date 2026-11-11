@@ -6,7 +6,13 @@ import type { ReleaseRequest } from '../../lib/release'
 import type { SettingsSection } from '../../lib/settingsIndex'
 import { useIntegrations } from '../../lib/useIntegrations'
 import { useScriptRuns } from '../../lib/useScriptRuns'
-import type { HookInstallAllResult, IntegrationSwitch, IntegrationTool, TerminalID } from '../../platform'
+import type {
+  HookInstallAllResult,
+  IntegrationSwitch,
+  IntegrationTool,
+  ScriptsPage as StoredScriptsPage,
+  TerminalID,
+} from '../../platform'
 import { at } from '../../test/clock'
 import {
   goPreCommitTool,
@@ -25,7 +31,7 @@ import {
   scriptRun,
 } from '../../test/fixtures'
 import { emit, platform } from '../../test/platform'
-import ScriptsView from './ScriptsView'
+import ScriptsView, { type ScriptsPage } from './ScriptsView'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
 
@@ -33,11 +39,24 @@ interface TabProps {
   terminal?: TerminalID | null
   request?: ReleaseRequest | null
   scriptsSwitch?: IntegrationSwitch
+  lastPage?: StoredScriptsPage
+  lastRepo?: string
   onOpenSettings: (section: SettingsSection) => void
+  onPage?: (page: ScriptsPage) => void
+  onRepo?: (dir: string) => void
 }
 
 // Tab is the tab as the window shows it: fed the tools and the runs the window lists.
-function Tab({ terminal = 'iterm2', request = null, scriptsSwitch = 'auto', onOpenSettings }: TabProps) {
+function Tab({
+  terminal = 'iterm2',
+  request = null,
+  scriptsSwitch = 'auto',
+  lastPage = '',
+  lastRepo = '',
+  onOpenSettings,
+  onPage = () => undefined,
+  onRepo = () => undefined,
+}: TabProps) {
   return (
     <ScriptsView
       terminal={terminal}
@@ -48,6 +67,10 @@ function Tab({ terminal = 'iterm2', request = null, scriptsSwitch = 'auto', onOp
       runs={useScriptRuns()}
       request={request}
       onOpenSettings={onOpenSettings}
+      lastPage={lastPage}
+      lastRepo={lastRepo}
+      onPage={onPage}
+      onRepo={onRepo}
     />
   )
 }
@@ -117,6 +140,28 @@ describe('ScriptsView', () => {
     await userEvent.click(rail().getByRole('button', { name: /^Runs/ }))
     expect(rail().getByRole('button', { name: /^Runs/ })).toHaveAttribute('aria-current', 'page')
     expect(await screen.findByRole('heading', { name: 'Runs', level: 2 })).toBeInTheDocument()
+  })
+
+  it('opens on the page remembered from a past start, and remembers each page the user picks', async () => {
+    const onPage = vi.fn<(page: ScriptsPage) => void>()
+    renderView({ lastPage: 'hooks', onPage })
+
+    await waitFor(() => {
+      expect(rail().getByRole('button', { name: /^Hooks/ })).toHaveAttribute('aria-current', 'page')
+    })
+    expect(onPage).not.toHaveBeenCalled()
+
+    await userEvent.click(rail().getByRole('button', { name: /^Runs/ }))
+    expect(rail().getByRole('button', { name: /^Runs/ })).toHaveAttribute('aria-current', 'page')
+    expect(onPage).toHaveBeenLastCalledWith('runs')
+  })
+
+  it('opens on the first page that’s on when the page remembered is off now', async () => {
+    magexOff()
+    renderView({ lastPage: 'release' })
+
+    expect(await screen.findByRole('heading', { name: 'Runs', level: 2 })).toBeInTheDocument()
+    expect(rail().queryByRole('button', { name: /^Release/ })).not.toBeInTheDocument()
   })
 
   it('opens on Runs while mage-x is off, and leaves Release when mage-x goes off', async () => {
@@ -625,6 +670,29 @@ describe('ScriptsView', () => {
         expect(platform.listScriptRepos).toHaveBeenCalledTimes(2)
       })
       expect(await screen.findByRole('combobox', { name: 'Repository' })).toHaveValue('~/projects/sdk')
+    })
+
+    it('opens on the clone remembered from a past start, and remembers each one picked', async () => {
+      const onRepo = vi.fn<(dir: string) => void>()
+      renderView({ lastPage: 'scripts', lastRepo: '~/projects/web', onRepo })
+
+      const picker = await screen.findByRole('combobox', { name: 'Repository' })
+      expect(picker).toHaveValue('~/projects/web')
+      expect(onRepo).not.toHaveBeenCalled()
+
+      await userEvent.selectOptions(picker, '~/projects/notes')
+      expect(picker).toHaveValue('~/projects/notes')
+      expect(onRepo).toHaveBeenLastCalledWith('~/projects/notes')
+    })
+
+    it('remembers the first clone when the one remembered is gone', async () => {
+      const onRepo = vi.fn<(dir: string) => void>()
+      renderView({ lastPage: 'scripts', lastRepo: '~/projects/gone', onRepo })
+
+      expect(await screen.findByRole('combobox', { name: 'Repository' })).toHaveValue('~/projects/sdk')
+      await waitFor(() => {
+        expect(onRepo).toHaveBeenLastCalledWith('~/projects/sdk')
+      })
     })
 
     it('opens Release from a command Release does, while Release is on', async () => {

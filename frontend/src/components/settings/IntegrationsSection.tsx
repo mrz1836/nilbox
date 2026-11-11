@@ -137,8 +137,8 @@ export function IntegrationsSection({ settings, onSaved }: IntegrationsSectionPr
       <div className="flex flex-col gap-1">
         <div className="flex items-start justify-between gap-6">
           <p className="text-sm text-muted">
-            Tools {brand.name} runs for you. Each one is found on this Mac, or installed from its GitHub release.{' '}
-            {brand.name} never uses go install or sudo.
+            Each one is found on this Mac, or installed from its GitHub release. {brand.name} never uses go install or
+            sudo.
           </p>
           <button type="button" disabled={checking} onClick={check} className={`${buttonClass} shrink-0`}>
             <RefreshIcon className={`size-3.5 text-muted ${checking ? 'motion-safe:animate-spin' : ''}`} />
