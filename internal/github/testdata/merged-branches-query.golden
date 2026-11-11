@@ -1,0 +1,10 @@
+query MergedBranches {
+  r0: repository(owner: "acme-org", name: "example-repo") {
+    b0: pullRequests(headRefName: "feature-x", states: MERGED, first: 5, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { number title url mergedAt headRefOid } }
+    b1: pullRequests(headRefName: "x\") { viewer { login } }\n#\t\u0000\u003c\u0026\u003e\u2028", states: MERGED, first: 5, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { number title url mergedAt headRefOid } }
+  }
+  r1: repository(owner: "acme\"org\\", name: "x\") { viewer { login } }\n#\t\u0000\u003c\u0026\u003e\u2028") {
+    b0: pullRequests(headRefName: "main", states: MERGED, first: 5, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { number title url mergedAt headRefOid } }
+  }
+  rateLimit { cost }
+}

@@ -147,7 +147,7 @@ func answerEach(n int, node string) string {
 	b.WriteString(`{"data": {`)
 
 	for i := range n {
-		fmt.Fprintf(&b, "%q: %s, ", releaseAlias(i), node)
+		fmt.Fprintf(&b, "%q: %s, ", batchAlias(releasePrefix, i), node)
 	}
 
 	b.WriteString(`"rateLimit": {"cost": 1}}}`)

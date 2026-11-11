@@ -2,9 +2,7 @@ package github
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -12,8 +10,12 @@ import (
 )
 
 // releaseAssetsMax is the most files a latest-release query reads of each release. Both
-// tools publish seven (six archives and the checksums).
-const releaseAssetsMax = 30
+// tools publish seven (six archives and the checksums). Each repository is asked about
+// under releasesPrefix and its index, as in t0.
+const (
+	releaseAssetsMax = 30
+	releasesPrefix   = "t"
+)
 
 // LatestRelease is a repository's latest release as GitHub reports it: the newest one
 // that is neither a draft nor a prerelease.
@@ -68,7 +70,7 @@ func (c *Client) FetchLatestReleases(ctx context.Context, tok Token, repos []rep
 	out := make(map[string]LatestRelease, len(repos))
 
 	for i, r := range repos {
-		if release, ok := (*resp.Data)[releasesAlias(i)].release(); ok {
+		if release, ok := (*resp.Data)[batchAlias(releasesPrefix, i)].release(); ok {
 			out[r.Key()] = release
 		}
 	}
@@ -77,38 +79,26 @@ func (c *Client) FetchLatestReleases(ctx context.Context, tok Token, repos []rep
 }
 
 // latestReleasesQuery asks for each repository's latest release under its own alias. The
-// names are written as JSON strings, which GraphQL reads the same way, so no name can
-// break out of its argument.
+// repository is written by repoField, so no name can break out of its argument.
 func latestReleasesQuery(repos []repo.Name) (string, error) {
 	var b strings.Builder
 
 	b.WriteString("query LatestReleases {\n")
 
 	for i, r := range repos {
-		owner, err := json.Marshal(r.Owner)
+		field, err := repoField(batchAlias(releasesPrefix, i), r)
 		if err != nil {
-			return "", fmt.Errorf("encode the owner: %w", err)
+			return "", err
 		}
 
-		name, err := json.Marshal(r.Repo)
-		if err != nil {
-			return "", fmt.Errorf("encode the name: %w", err)
-		}
-
-		fmt.Fprintf(&b, "  %s: repository(owner: %s, name: %s) { latestRelease { tagName url publishedAt "+
-			"releaseAssets(first: %d) { nodes { name downloadUrl size digest } } } }\n",
-			releasesAlias(i), owner, name, releaseAssetsMax)
+		fmt.Fprintf(&b, "  %s { latestRelease { tagName url publishedAt "+
+			"releaseAssets(first: %d) { nodes { name downloadUrl size digest } } } }\n", field, releaseAssetsMax)
 	}
 
 	// The query's own cost, so the API budget counts it.
 	b.WriteString("  rateLimit { cost }\n}\n")
 
 	return b.String(), nil
-}
-
-// releasesAlias is the alias of the i-th repository in a latest-release query.
-func releasesAlias(i int) string {
-	return "t" + strconv.Itoa(i)
 }
 
 // releasesData is the latest-release query's data object: one aliased repository each,

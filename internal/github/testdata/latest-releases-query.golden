@@ -1,0 +1,5 @@
+query LatestReleases {
+  t0: repository(owner: "acme-org", name: "example-repo") { latestRelease { tagName url publishedAt releaseAssets(first: 30) { nodes { name downloadUrl size digest } } } }
+  t1: repository(owner: "acme\"org\\", name: "x\") { viewer { login } }\n#\t\u0000\u003c\u0026\u003e\u2028") { latestRelease { tagName url publishedAt releaseAssets(first: 30) { nodes { name downloadUrl size digest } } } }
+  rateLimit { cost }
+}
