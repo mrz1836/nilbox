@@ -23,6 +23,7 @@ const (
 	exitSuffix    = ".exit"
 	exitTmpSuffix = ".exit.tmp"
 	compactSuffix = ".log.compact"
+	keptSuffix    = ".kept"
 )
 
 // readBlock is how much of a log one read takes.
@@ -32,7 +33,7 @@ const readBlock = 64 << 10
 const cutWindow = 64 << 10
 
 // runFile matches the name of a file of a run: its ID, then what the file is.
-var runFile = regexp.MustCompile(`^([0-9]+)(\.log|\.pid|\.exit|\.exit\.tmp|\.log\.compact)$`)
+var runFile = regexp.MustCompile(`^([0-9]+)(\.log|\.pid|\.exit|\.exit\.tmp|\.log\.compact|\.kept)$`)
 
 // logFiles are where a run's files are.
 type logFiles struct {
@@ -47,6 +48,9 @@ func (f logFiles) pid(id int64) string { return f.path(id, pidSuffix) }
 
 // exit returns the path of a terminal run's exit file.
 func (f logFiles) exit(id int64) string { return f.path(id, exitSuffix) }
+
+// kept returns the path of the file of what a run keeps beside its record (Spec.Keep).
+func (f logFiles) kept(id int64) string { return f.path(id, keptSuffix) }
 
 // path returns the path of a run's file with suffix.
 func (f logFiles) path(id int64, suffix string) string {
@@ -82,11 +86,39 @@ func (f logFiles) create(id int64) (*os.File, error) {
 	return file, nil
 }
 
+// writeKept writes what a run keeps beside its record into its own file, readable only by
+// the user, in place of any file a run the history no longer holds left at that name.
+func (f logFiles) writeKept(id int64, data []byte) error {
+	path := f.kept(id)
+
+	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("keep the run's state: %w", err)
+	}
+
+	file, err := openNew(path)
+	if err != nil {
+		return fmt.Errorf("keep the run's state: %w", err)
+	}
+
+	_, err = file.Write(data)
+	if closeErr := file.Close(); err == nil {
+		err = closeErr
+	}
+
+	if err != nil {
+		_ = os.Remove(path)
+
+		return fmt.Errorf("keep the run's state: %w", err)
+	}
+
+	return nil
+}
+
 // clear removes a run's files, if there are any.
 func (f logFiles) clear(id int64) error {
 	var errs []error
 
-	for _, suffix := range []string{logSuffix, pidSuffix, exitSuffix, exitTmpSuffix, compactSuffix} {
+	for _, suffix := range []string{logSuffix, pidSuffix, exitSuffix, exitTmpSuffix, compactSuffix, keptSuffix} {
 		if err := os.Remove(f.path(id, suffix)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			errs = append(errs, err)
 		}

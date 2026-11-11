@@ -134,9 +134,12 @@ func (c repoConfig) enabled() bool {
 // checkOn reports whether check is on in the repository: gitleaks is off unless turned
 // on, every other check on unless turned off.
 func (c repoConfig) checkOn(check Check) bool {
-	key := checkKeyPrefix + strings.ToUpper(strings.ReplaceAll(string(check), "-", "_"))
+	return c.flag(checkKey(check), check != CheckGitleaks)
+}
 
-	return c.flag(key, check != CheckGitleaks)
+// checkKey is check's switch in the config, as in GO_PRE_COMMIT_ENABLE_MOD_TIDY.
+func checkKey(check Check) string {
+	return checkKeyPrefix + strings.ToUpper(strings.ReplaceAll(string(check), "-", "_"))
 }
 
 // ciVersion is GO_PRE_COMMIT_VERSION, the go-pre-commit the repository's CI runs, without

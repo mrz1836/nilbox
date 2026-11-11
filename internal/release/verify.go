@@ -12,6 +12,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/gitread"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
+	"github.com/mrz1836/nilbox/internal/shellenv"
 	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
@@ -489,13 +490,8 @@ func (v Verifier) Verify(run scriptrun.Record) scriptrun.Verification {
 // once: the runs from before a restart are picked up as the app starts, alongside that
 // read. A context that ends first leaves the release unsettled, for the next start.
 func (s *Service) awaitShell(ctx context.Context) {
-	if s.ready == nil {
-		return
-	}
-
-	select {
-	case <-s.ready():
-	case <-ctx.Done():
+	if s.ready != nil {
+		shellenv.Await(ctx, s.ready())
 	}
 }
 

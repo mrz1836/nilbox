@@ -54,9 +54,11 @@ type LockHolders interface {
 	Holder(path string) (clonelock.Holder, bool)
 }
 
-// Runs starts a run: the scriptrun engine.
+// Runs starts a run, and reads what a run from before a restart kept beside its record
+// (scriptrun.Spec.Keep) for the Verifier: the scriptrun engine.
 type Runs interface {
 	Start(ctx context.Context, spec scriptrun.Spec) (int64, error)
+	Kept(id int64, into any) (bool, error)
 }
 
 // RunHistory reads runs back from the runner's history: the scriptrun Service.
@@ -247,13 +249,14 @@ type Service struct {
 	// gets its answer.
 	scanning flight.Group[struct{}]
 
-	// lifeMu guards what holds the scans to the app's lifetime (Scans): quitting refuses a
-	// scan once the app quits, and cancels ends each scan under way, by its number, the last
-	// of which was lastScan. going counts the scans under way, which Scans waits for.
+	// lifeMu guards what holds the page's calls and their scans to the app's lifetime
+	// (Scans): quitting refuses one once the app quits, and cancels ends each under way, by
+	// its number, the last of which was lastHeld. going counts those under way, which Scans
+	// waits for.
 	lifeMu   sync.Mutex
 	quitting bool
 	cancels  map[uint64]context.CancelFunc
-	lastScan uint64
+	lastHeld uint64
 	going    sync.WaitGroup
 
 	// mu guards the last scan: the clone root it read, when, the copy of go-pre-commit it
@@ -299,10 +302,26 @@ func NewService(cfg Config) *Service {
 // the one it judged with, scanning again first only the clones an action or a check ran
 // in; refresh, or anything else, scans every clone again and emits event.HooksUpdated. A
 // scan that fails keeps the last page, with its error, until one succeeds. A scan runs
-// apart from the caller that started it, within ScanTimeout and the app's lifetime (Scans):
-// a caller whose context ends stops waiting, and the scan goes on for the next, until the
-// app quits. What holds each clone, and its newest checks run, are read for every call.
+// apart from the caller that started it, within ScanTimeout: a caller whose context ends
+// stops waiting, and the scan goes on for the next. What holds each clone, and its newest
+// checks run, are read for every call. The whole call, its scan included, runs within the
+// app's lifetime (Scans): the app's quit ends it, and refuses one after it.
 func (s *Service) Repos(ctx context.Context, refresh bool) (Page, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	done, err := s.hold(cancel)
+	if err != nil {
+		return Page{}, err
+	}
+
+	defer done()
+
+	return s.readPage(ctx, refresh)
+}
+
+// readPage is Repos, within the app's lifetime.
+func (s *Service) readPage(ctx context.Context, refresh bool) (Page, error) {
 	root, err := s.clones.Root(ctx)
 	if err != nil {
 		return Page{}, fmt.Errorf("read the clone root: %w", err)
@@ -325,7 +344,7 @@ func (s *Service) Repos(ctx context.Context, refresh bool) (Page, error) {
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), ScanTimeout)
 		defer cancel()
 
-		done, refused := s.scanStarts(cancel) // the app's quit ends it too
+		done, refused := s.hold(cancel) // the app's quit ends it too
 		if refused != nil {
 			return struct{}{}, refused
 		}

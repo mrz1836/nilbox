@@ -162,9 +162,21 @@ func (r *Reader) Read(ctx context.Context) error {
 
 // Ready is closed once the first Read has ended, whether it read the environment or not.
 // Nothing reads before the window's first paint, and a startup measurement never reads,
-// so a caller waits on it together with its own context, never on it alone.
+// so a caller waits on it together with its own context, never on it alone (Await).
 func (r *Reader) Ready() <-chan struct{} {
 	return r.ready
+}
+
+// Await waits until ready, a Reader's Ready, is closed, or until ctx ends, and reports
+// whether ready was closed: what runs before a Read has ended, such as a run settled as the
+// app starts, waits for it with this, so a quit never waits on a read that never comes.
+func Await(ctx context.Context, ready <-chan struct{}) bool {
+	select {
+	case <-ready:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 // Env returns the environment the latest successful read found, and true; until a read

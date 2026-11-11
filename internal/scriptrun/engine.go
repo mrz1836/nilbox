@@ -606,12 +606,14 @@ func (e *Engine) startApp(ctx context.Context, spec Spec, h holds) (int64, error
 	return id, nil
 }
 
-// launch creates a run's log and starts its program writing into it, in its own process
-// group, and records the process.
+// launch keeps the run's state, creates its log and starts its program writing into it,
+// in its own process group, and records the process.
 func (e *Engine) launch(ctx context.Context, l *live, spec Spec) error {
 	if err := e.files.ensureDir(); err != nil {
 		return err
 	}
+
+	e.keepState(ctx, l.id, spec.Keep)
 
 	log, err := e.files.create(l.id)
 	if err != nil {
@@ -688,7 +690,7 @@ func (e *Engine) register(ctx context.Context, spec Spec, h holds) (*live, error
 }
 
 // open opens a run in the terminal, after clearing any file a run the history no longer
-// holds left at its names.
+// holds left at its names and keeping the run's state.
 func (e *Engine) open(ctx context.Context, l *live, spec Spec) error {
 	if e.terminal == nil {
 		return uierr.New("Runs in your terminal aren't available here.", ErrNoTerminal)
@@ -701,6 +703,8 @@ func (e *Engine) open(ctx context.Context, l *live, spec Spec) error {
 	if err := e.files.clear(l.id); err != nil {
 		return fmt.Errorf("clear the run's files: %w", err)
 	}
+
+	e.keepState(ctx, l.id, spec.Keep)
 
 	err := e.terminal.OpenRun(ctx, TerminalRun{
 		Name: fmt.Sprintf("run-%d", l.id), Dir: spec.Dir, Argv: spec.Argv, Env: spec.Env,

@@ -257,6 +257,14 @@ type Spec struct {
 	// cut short can still be checked. It must encode as JSON; nil is none.
 	Intent any
 
+	// Keep is what the run keeps beside its record while it goes, for its kind's Verifier
+	// after a restart, such as what Before read of the clone. It is encoded as JSON once
+	// Before has run, into a file of the run's own beside its log, which Engine.Kept reads,
+	// never into its record, so the window never gets it, and removed once the run's end is
+	// recorded, or with its log. A state that can't be written is only logged. nil keeps
+	// nothing.
+	Keep any
+
 	// Output is the run's output reader: it is fed every byte of the log in order, as it
 	// arrives, from one goroutine at a time. nil reads nothing.
 	Output io.Writer
