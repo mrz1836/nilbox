@@ -11,6 +11,8 @@
 //   - prompts writes prompts.*: the default prompts and the starters already added.
 //   - budget writes budget.*: the API budget's state between runs, through core's keeper.
 //   - integrations writes tools.*: each tool's last detection and latest release.
+//   - hooks writes hooks.*: whether a checks run has ended, after which the Hooks page
+//     folds what it says about the tools the checks install.
 //
 // A Store from New runs each call on the pool. One joined to a transaction with WithTx
 // runs every call inside it, so prefs are written together with another owner's tables
