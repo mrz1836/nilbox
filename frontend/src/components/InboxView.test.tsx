@@ -708,7 +708,10 @@ describe('InboxView triage', () => {
     await waitFor(() => {
       expect(review.queryByRole('button', { name: 'Unpin' })).not.toBeInTheDocument()
     })
-    expect(titles()).toEqual(['Add the widget cache', 'Tidy the docs'])
+    // The pin goes before the stored order lands, so the order is waited for too.
+    await waitFor(() => {
+      expect(titles()).toEqual(['Add the widget cache', 'Tidy the docs'])
+    })
   })
 
   it('shows the pin of a pinned item set aside, and unpins it there', async () => {
@@ -788,7 +791,10 @@ describe('InboxView triage', () => {
     await waitFor(() => {
       expect(review.queryByRole('button', { name: 'Unpin' })).not.toBeInTheDocument()
     })
-    expect(titles()).toEqual(['Add the widget cache', 'Tidy the docs'])
+    // The pin goes before the stored order lands, so the order is waited for too.
+    await waitFor(() => {
+      expect(titles()).toEqual(['Add the widget cache', 'Tidy the docs'])
+    })
   })
 
   it('sets a dismissed item aside at once, before the backend answers', async () => {
